@@ -558,8 +558,10 @@ pub struct BuildContextInput {
     pub server_tz: Option<String>,
     /// The host's DISPLAY zone VALUE (P4.140, Option V) — distinct from
     /// [`Self::server_tz`], the calendar NAME, and [`Self::timezone`], the story
-    /// zone. The Suparṇā mail context, the whisper seam and the progressions
-    /// fallback render every human-readable date in it.
+    /// zone. The Suparṇā mail context and the whisper seam render every
+    /// human-readable date in it; the progressions section falls back to it
+    /// only when [`Self::timezone`] is `None` (the greeting — a turn fills the
+    /// story zone with the calendar NAME, P4.140 Tier 3).
     pub display_zone: crate::host_zone::TimeZone,
     pub minutes_since_last_timestamp_announcement: Option<i64>,
     /// v4 `options.autonomousContextCap` (U4.4, the enclave per-turn clamp):

@@ -306,9 +306,11 @@ pub struct RegenerateSwipeOptions {
     pub server_tz: Option<String>,
     /// The host's DISPLAY zone VALUE (P4.140, Option V) — distinct from
     /// [`Self::server_tz`], the calendar NAME, and [`Self::timezone`], the story
-    /// zone. The swipe's `build_context` renders the Suparṇā whisper and the
-    /// progressions fallback in it (the swipe reaches the same seam the turn
-    /// does, so a name-fed swipe showed UTC on a POSIX-`TZ` host).
+    /// zone. The swipe's `build_context` renders the Suparṇā whisper in it (the
+    /// swipe reaches the same seam the turn does, so a name-fed swipe showed UTC
+    /// on a POSIX-`TZ` host). Its progressions section does NOT reach the
+    /// value: the story zone is filled with the calendar name (P4.140 Tier 3,
+    /// see `host_zone`'s residue note).
     pub display_zone: crate::host_zone::TimeZone,
     /// The wall clock (v4 `Date.now()` — the buildContext timestamp base + the
     /// swipe id/… mint points; the swipe's own `createdAt` is the target's).

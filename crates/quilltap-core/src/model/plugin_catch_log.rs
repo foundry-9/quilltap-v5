@@ -222,7 +222,9 @@ impl PluginCatchLog {
                 } else {
                     "OllamaProvider.sendMessage"
                 },
-                base_url: resolved_base()?,
+                // v4's constructor strips trailing slashes (`ollama/provider.ts:
+                // 74`, `baseUrl.replace(/\/+$/, '')`) — the field logs that.
+                base_url: resolved_base()?.trim_end_matches('/').to_string(),
             },
             // The SDK path logs nothing.
             ProviderKind::OpenRouter if !raw_path => return None,
@@ -477,9 +479,35 @@ mod tests {
                 "ERROR quilltap::model::completion_provider NanoGPT API error in sendMessage context=NanoGPTProvider.sendMessage baseUrl=https://nano-gpt.com/api/v1 error=x",
                 &format!(
                     "ERROR quilltap::model::completion_provider Ollama sendMessage failed context=OllamaProvider.sendMessage baseUrl={} error=x",
-                    rewrite_localhost_url("http://localhost:11434", Some("gw"))
+                    // v4's registry rewrites, then the constructor strips the
+                    // trailing slash the URL normalisation added.
+                    rewrite_localhost_url("http://localhost:11434", Some("gw")).trim_end_matches('/')
                 ),
             ]
+        );
+    }
+
+    /// Ollama's `baseUrl` is the CONSTRUCTOR's: trailing slashes stripped
+    /// (`ollama/provider.ts:74`) — a §3 finding at the `f6426e196`
+    /// recorded-divergences unification (the corpus always used the manifest
+    /// default). The SDK shapes keep the profile's bytes.
+    #[test]
+    fn ollamas_base_url_drops_trailing_slashes() {
+        let lines = captured(|| {
+            PluginCatchLog::for_call(
+                "OLLAMA",
+                Some("http://ollama.lan:11434//"),
+                None,
+                SEND,
+                "m",
+                false,
+            )
+            .unwrap()
+            .emit_thrown("x");
+        });
+        assert_eq!(
+            lines,
+            ["ERROR quilltap::model::completion_provider Ollama sendMessage failed context=OllamaProvider.sendMessage baseUrl=http://ollama.lan:11434 error=x"]
         );
     }
 

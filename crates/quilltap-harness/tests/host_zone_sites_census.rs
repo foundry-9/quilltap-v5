@@ -35,7 +35,9 @@
 //! child is machine-independent). Each drives the DB-free host wiring it CAN
 //! reach — `HostConfig::new` (the one environment read) — and renders the
 //! whisper, the web-search dates and the progressions fallback from
-//! `HostConfig.display_zone`, the value the spine is handed. The spine-built
+//! `HostConfig.display_zone`, the value the spine is handed (the fallback is
+//! reached on a live turn only by the greeting — a turn fills the story zone
+//! with the calendar NAME, P4.140 Tier 3). The spine-built
 //! runner, `build_context`, the swipe, the step and the greeting fills are held
 //! by the SOURCE needles above, not by the children.
 //!

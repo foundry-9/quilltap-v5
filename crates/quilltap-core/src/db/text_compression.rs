@@ -46,6 +46,12 @@
 //! `harness/oracle/fixtures/text-compression.json` and the pin is the tier-1
 //! family `text_compression_equivalence`.
 //!
+//! **One RULED exception (the human, 2026-10-02, P4.144):** ten
+//! MEMORY_EXTRACTION `request` envelopes (JSON, ~9–12 KB) store DIFFERENT
+//! brotli bytes than Node's — each side decodes the other's to the identical
+//! text, so reads are unaffected and no codec change is owed.
+//! `memory_pipeline_jobs_tier3` pins the count (10) both ways.
+//!
 //! **The measured parity ceiling is 262,293 raw bytes** — the corpus row
 //! `real-shaped prose ~256 KiB`, which stores as 51,589 bytes on both sides;
 //! `real-shaped prose ~64 KiB` (65,551 → 13,224) sits below it. Until those

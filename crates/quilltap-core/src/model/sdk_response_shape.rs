@@ -200,7 +200,12 @@ fn responses_chain(body: &Js<'_>) -> Result<(), String> {
     Ok(())
 }
 
-/// `response.content.filter(block => block.type === 'text')` (ANTHROPIC).
+/// `response.content.filter(block => block.type === 'text')` (ANTHROPIC),
+/// then `rawUsage.cache_creation_input_tokens` off `rawUsage = response.usage`
+/// (`anthropic/provider.ts:519-520`) — a 2xx with no `usage` (a compat gateway)
+/// throws there, so v4's cheap chain fails over where an answer would
+/// otherwise come back (a §3 finding at the `f6426e196` recorded-divergences
+/// unification; the second `content.filter` walk reads nothing new).
 fn anthropic_chain(body: &Js<'_>) -> Result<(), String> {
     let content = get(body, "content")?;
     // `.filter` off a nullish `content` names the read that throws.
@@ -211,6 +216,8 @@ fn anthropic_chain(body: &Js<'_>) -> Result<(), String> {
     for block in iterate(&content, "response.content")? {
         get(&block, "type")?;
     }
+    let usage = get(body, "usage")?;
+    get(&usage, "cache_creation_input_tokens")?;
     Ok(())
 }
 
@@ -384,8 +391,23 @@ mod tests {
             );
         }
         assert_eq!(g(p, r#"{"content":[null]}"#), Some(NULL("type")));
-        assert_eq!(g(p, r#"{"content":[{"type":"text","text":"x"}]}"#), None);
-        assert_eq!(g(p, r#"{"content":[]}"#), None);
+        // `rawUsage.cache_creation_input_tokens` off a missing / null `usage`.
+        assert_eq!(
+            g(p, r#"{"content":[{"type":"text","text":"x"}]}"#),
+            Some(UNDEF("cache_creation_input_tokens"))
+        );
+        assert_eq!(
+            g(p, r#"{"content":[],"usage":null}"#),
+            Some(NULL("cache_creation_input_tokens"))
+        );
+        assert_eq!(
+            g(
+                p,
+                r#"{"content":[{"type":"text","text":"x"}],"usage":{"input_tokens":1,"output_tokens":1}}"#
+            ),
+            None
+        );
+        assert_eq!(g(p, r#"{"content":[],"usage":{}}"#), None);
     }
 
     #[test]

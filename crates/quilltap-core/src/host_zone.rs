@@ -42,8 +42,14 @@
 //! routes, which must agree), the memory distill's TODAY line and day-reference
 //! scan (`server_tz`), the zone-less timestamp offset (`js_local_offset_minutes`),
 //! the story-zone fallback, the LLM-log cleanup and the Almanack's `timezone`
-//! fact. Under a POSIX `TZ` those run on UTC while every rendered date honours
-//! the rule; a value-taking cron + day-reference seam is its own order.
+//! fact. Under a POSIX `TZ` those run on UTC; a value-taking cron +
+//! day-reference seam is its own order. ⚠ The story-zone fallback reaches two
+//! RENDERED surfaces too: a turn / swipe / chained turn / autonomous step fills
+//! `timezone` with that NAME, so its progressions section and the Host's
+//! timestamp line ("Current time: …") render in UTC under a POSIX rule — only
+//! the greeting (which passes no story zone) reaches the value. The tool dates,
+//! the mail context and the whisper do honour the rule (the `f6426e196`
+//! recorded-divergences unification's §3 correction of P4.140's wording).
 //!
 //! **v4 does not honour a POSIX DST rule (recorded, not ported):** Node 24's
 //! ICU ignores a `TZ` rule with DST and shows `/etc/localtime`'s zone (it

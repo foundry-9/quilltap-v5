@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — fix(model): background cheap tasks retry a real transport timeout; Anthropic's 2xx guard reads usage; Ollama's catch line strips the trailing slash (P4.141 review)
+
+_Versions: core 0.0.1183, harness 0.0.1110._
+
+§3 review findings from the `f6426e196` recorded-divergences unification.
+
+- **`cheap_llm_exec::is_timeout_failure` now reads `transport_kind == Timeout`.** This is v4's `AbortError` / `TimeoutError` name arm. reqwest renders a timeout as `error sending request for url (…)`, which no arm of the regex matches. So a real provider timeout on a background cheap task skipped v4's single same-route retry and reported `timed_out: false`, the bug-107 shape. The old doc's "NO-PORT with evidence" claim was false. A new unit test covers Timeout vs Connect for the same message.
+- **The ANTHROPIC 2xx shape guard continues to `rawUsage.cache_creation_input_tokens`** (`anthropic/provider.ts:519-520`). A body with `content` but no `usage` now throws v4's TypeError text, so the cheap chain fails over instead of answering.
+- **Ollama's plugin catch line logs `baseUrl` with trailing slashes stripped**, as v4's constructor does after the registry's localhost rewrite.
+
+Doc corrections, no behavior change:
+- P4.140's display-zone docs no longer claim that a turn's progressions section and the Host's timestamp line honour a POSIX `TZ` rule. They read the story zone, which is a name, and only the greeting reaches the value; this is Tier 3, recorded. Affected: `host_zone`, `BuildContextInput`, `ProcessMessageInput`, `RegenerateSwipeOptions`, and the census header.
+- `db/text_compression.rs` names the ruled brotli stored-byte exception (P4.144).
+- `quilltap_import/entities.rs` says three repository ERRORs, not two.
+
 #### 2026-10-03 — fix(backup): backup, .qtap export, import and the cascade delete's image check fail on a broken store instead of dropping vaulted rows (P4.142 §S)
 
 _Versions: core 0.0.1182, harness 0.0.1109._

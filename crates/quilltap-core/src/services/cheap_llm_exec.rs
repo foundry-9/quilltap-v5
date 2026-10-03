@@ -369,17 +369,23 @@ const JS_SPACE: &str = "[\\t\\n\\x0B\\x0C\\r \\u{a0}\\u{1680}\\u{2000}-\\u{200a}
 /// design. Both are transient and worth one more attempt; a refusal, a parse
 /// failure or a bad key is neither.
 ///
-/// **v4 asks three questions; v5 asks two.** v4's `instanceof
+/// **v4 asks three questions; so does v5.** v4's `instanceof
 /// CheapLLMTimeoutError` becomes a match on the message
 /// [`cheap_llm_timeout_message`] builds — the same equivalence the port already
 /// records for that helper (v5 has no thrown-value hierarchy here, and the
 /// deadline is the only thing that ever produces those bytes). v4's
-/// `error.name === 'AbortError' | 'TimeoutError'` is a **NO-PORT with
-/// evidence**: those are Node `fetch`/SDK error *names*, and v5's transport
-/// surfaces a timeout as a [`CompletionError`] message with no name channel —
-/// the regex below is what actually classifies them on this side, and it
-/// already matches every message those two carry.
+/// `error.name === 'AbortError' | 'TimeoutError'` (and its SDKs' `Request timed
+/// out.`) is v5's transport KIND: a [`CompletionError`] whose
+/// `transport_kind` is `Timeout` (P4.141). The message alone cannot carry it —
+/// reqwest renders a timeout as `error sending request for url (…)`, which the
+/// regex never matches — so before the kind existed a REAL provider timeout on
+/// a background cheap task skipped v4's one same-route retry and reported
+/// `timed_out: false` (a §3 finding at the `f6426e196` recorded-divergences
+/// unification; the earlier "NO-PORT with evidence" claim was false).
 pub fn is_timeout_failure(error: &CompletionError) -> bool {
+    if error.transport_kind == Some(crate::model::transport::TransportErrorKind::Timeout) {
+        return true;
+    }
     static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
     // v4: `/timed?\s?out|timeout|ETIMEDOUT|ESOCKETTIMEDOUT/i`.
     let re = RE.get_or_init(|| {
@@ -2192,6 +2198,24 @@ mod tests {
                 "not classified as a timeout: {msg}"
             );
         }
+    }
+
+    /// v4's `AbortError` / `TimeoutError` name arm is v5's transport KIND: a
+    /// reqwest timeout's message (`error sending request for url (…)`) matches
+    /// no regex arm, so only the kind classifies it — and a CONNECT failure
+    /// with the same message is not a timeout. Mutation: drop the kind arm →
+    /// RED.
+    #[test]
+    fn is_timeout_failure_reads_the_transport_kind() {
+        use crate::model::transport::TransportErrorKind;
+        let msg = "error sending request for url (http://127.0.0.1:9/v1/chat/completions)";
+        assert!(is_timeout_failure(
+            &CompletionError::new(msg).with_transport(TransportErrorKind::Timeout, true)
+        ));
+        assert!(!is_timeout_failure(
+            &CompletionError::new(msg).with_transport(TransportErrorKind::Connect, true)
+        ));
+        assert!(!is_timeout_failure(&CompletionError::new(msg)));
     }
 
     #[test]

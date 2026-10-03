@@ -464,8 +464,10 @@ pub struct ProcessMessageInput {
     pub server_tz: Option<String>,
     /// The host's DISPLAY zone VALUE (P4.140, Option V) — distinct from
     /// [`Self::server_tz`], the calendar NAME, and [`Self::timezone`], the story
-    /// zone. The turn's tool runner and `build_context`'s mail context, whisper
-    /// seam and progressions fallback render in it. A VALUE, never a name: a
+    /// zone. The turn's tool runner and `build_context`'s mail context and
+    /// whisper seam render in it (the progressions section and the Host's
+    /// timestamp line read the story zone, a NAME — P4.140 Tier 3, see
+    /// `host_zone`'s residue note). A VALUE, never a name: a
     /// POSIX `TZ` rule has no IANA name, and re-deriving the zone from
     /// `server_tz` rendered UTC there where the host shows the rule's offset.
     pub display_zone: crate::host_zone::TimeZone,
