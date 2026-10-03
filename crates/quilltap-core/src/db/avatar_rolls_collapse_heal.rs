@@ -128,38 +128,52 @@ pub enum CollapseOutcome {
     },
 }
 
-/// Why a pass did not complete, split by the v4 arm the failure lands in,
-/// because the two arms do not fail the boot the same way.
+/// Why a pass did not complete, split by the v4 arm the failure lands in —
+/// at `e5c6bd0c0` (v4 bug 175, this port's own filing) the arms no longer fail
+/// the boot the same way. v4's runner now DEFERS a failed `resumable`
+/// migration (only this one is marked, `collapse-duplicate-avatar-rolls-v1.ts:
+/// 328-331`) on both of its failure arms through `deferResumable`
+/// (`migrations/index.ts:73-81`): no ledger row, a WARN, and the loop
+/// `continue`s, so the next boot's `shouldRun` finds the work and finishes it.
 #[derive(Debug)]
 pub enum CollapseError {
     /// One of `shouldRun`'s reads failed: the `files` table and
     /// `generationKey` column probes, or the pending-row `SELECT`. v4's runner
     /// catches that throw, logs `Error checking if migration should run`,
-    /// SKIPS the migration and boots on (`migrations/index.ts:131-148`), so
-    /// the host logs that line and carries on (P4.135's unification review:
-    /// the flip had made this arm fatal too, harder than v4).
+    /// SKIPS the migration and boots on (`migrations/index.ts:162-179`,
+    /// unchanged by `e5c6bd0c0`), so the host logs that line and carries on.
     ShouldRun(DbError),
-    /// Everything else, which fails the boot: the pass itself (v4's
-    /// `success: false` → the runner breaks → `process.exit(1)`); the ledger
-    /// write after it (v4's `recordCompletedMigration` throws inside the
-    /// runner's `try` → `Migration threw an exception` → the same exit); and
-    /// the ledger probe. That last one is a recorded divergence: v4's
-    /// `loadMigrationState` falls back to a file-based state when the table
-    /// read throws (`migrations/state.ts:150-170`), whereas v5 refuses to
-    /// guess which migrations have run.
-    Fatal(DbError),
-}
-
-impl From<DbError> for CollapseError {
-    fn from(error: DbError) -> Self {
-        CollapseError::Fatal(error)
-    }
-}
-
-impl From<rusqlite::Error> for CollapseError {
-    fn from(error: rusqlite::Error) -> Self {
-        CollapseError::Fatal(error.into())
-    }
+    /// The pass itself (v4's `run()` body). v4's `run()` catches everything,
+    /// logs `Failed to collapse duplicate avatar rolls` and returns `success:
+    /// false` (`:646-663`), so a failed pass is ALWAYS the runner's result arm:
+    /// `Migration failed` (logged before the defer check, `index.ts:203-208`),
+    /// then `deferResumable`'s WARN, then the boot continues. Nothing is
+    /// stamped — the pass autocommits per statement, leaving every unfinished
+    /// victim unkeyed for the next boot's gate.
+    Pass(DbError),
+    /// The ledger write after a COMMITTED pass (v4's `recordCompletedMigration`
+    /// at `index.ts:194`, inside the runner's `try`). The pass's outcome rides
+    /// along so the host still logs the success line first — v4 logs it inside
+    /// `run()`, before the runner records anything. v4's realistic arm here is
+    /// a SUCCESS: `saveMigrationState` falls back to a file ledger
+    /// (`state.ts:181-205`) that v5 does not have; only when that write throws
+    /// too does the runner's catch log `Migration threw an exception`
+    /// (`index.ts:218-244`) and defer. v5 takes that both-writes-failed arm
+    /// (ruled R2 at P4.D248's planning; the missing file fallback recorded):
+    /// no row, the next boot's gate answers `NotApplicable` since every row
+    /// is already keyed.
+    Stamp {
+        outcome: Box<CollapseOutcome>,
+        error: DbError,
+    },
+    /// The ledger PROBE (`migrations_state` and this id's row). Still fails
+    /// the boot. v4's `loadMigrationState` never throws — it falls back to a
+    /// file ledger, then to an empty state (`state.ts:150-176`) — so v4 has no
+    /// line and no arm here, and v5 refuses to guess which migrations have
+    /// run. DEAD through the boot: P4.D97's byte-identical probe
+    /// (`thinking_prefill_retire_heal`, `host.rs`) runs ~300 lines earlier
+    /// with `?` and kills the boot first.
+    Probe(DbError),
 }
 
 /// One `files` row in the avatar selection.
@@ -634,21 +648,34 @@ pub fn collapse_duplicate_avatar_rolls(
 ) -> Result<CollapseOutcome, CollapseError> {
     // The completed check comes FIRST, exactly as v4's runner orders it
     // (`isMigrationCompleted` before `shouldRun`).
-    if table_exists(main, "migrations_state")? {
-        let mut stmt = main.prepare("SELECT 1 FROM \"migrations_state\" WHERE \"id\" = ?1")?;
-        if stmt.exists([MIGRATION_ID])? {
-            return Ok(CollapseOutcome::AlreadyCompleted);
-        }
+    if ledger_has_row(main).map_err(CollapseError::Probe)? {
+        return Ok(CollapseOutcome::AlreadyCompleted);
     }
 
     // v4 `shouldRun`: the table, the column, and at least one unkeyed avatar row.
     // A failure in any of these reads is the runner's skip arm, not a failed
     // pass ([`CollapseError::ShouldRun`]).
     if should_run(main).map_err(CollapseError::ShouldRun)? {
-        let outcome = run_pass(main, mount)?;
-        return stamp(main, now_iso, outcome);
+        let outcome = run_pass(main, mount).map_err(CollapseError::Pass)?;
+        return match stamp(main, now_iso, &outcome) {
+            Ok(()) => Ok(outcome),
+            Err(error) => Err(CollapseError::Stamp {
+                outcome: Box::new(outcome),
+                error,
+            }),
+        };
     }
     Ok(CollapseOutcome::NotApplicable)
+}
+
+/// v4's `isMigrationCompleted` over the loaded ledger: does `migrations_state`
+/// hold this migration's row?
+fn ledger_has_row(main: &Connection) -> Result<bool, DbError> {
+    if !table_exists(main, "migrations_state")? {
+        return Ok(false);
+    }
+    let mut stmt = main.prepare("SELECT 1 FROM \"migrations_state\" WHERE \"id\" = ?1")?;
+    Ok(stmt.exists([MIGRATION_ID])?)
 }
 
 /// v4 `shouldRun()`: `files` exists, `generationKey` exists, and at least one
@@ -671,11 +698,7 @@ fn should_run(main: &Connection) -> Result<bool, DbError> {
 
 /// The ledger write after a pass that ran (v4's runner's
 /// `recordCompletedMigration`).
-fn stamp(
-    main: &Connection,
-    now_iso: &str,
-    outcome: CollapseOutcome,
-) -> Result<CollapseOutcome, CollapseError> {
+fn stamp(main: &Connection, now_iso: &str, outcome: &CollapseOutcome) -> Result<(), DbError> {
     // The ledger write — v4's `migrations/state.ts` shapes verbatim (the P4.D152
     // heal's shapes, unchanged). v4's runner records every successful pass,
     // including its "nothing to collapse" early return, so this is unconditional
@@ -691,9 +714,9 @@ fn stamp(
         victims_deleted,
         protected_kept,
         ..
-    } = outcome
+    } = *outcome
     else {
-        return Ok(outcome);
+        return Ok(());
     };
     // Both sentences carry v4's kept clause (`23abc1ba1`): the ledger row is the
     // one record that outlives the logs, so a pass that kept a portrait says so.
@@ -701,7 +724,7 @@ fn stamp(
         format!(
             "Keyed {} avatar configurations; nothing to collapse{}",
             match outcome {
-                CollapseOutcome::Ran { rows_keyed, .. } => rows_keyed,
+                CollapseOutcome::Ran { rows_keyed, .. } => *rows_keyed,
                 _ => 0,
             },
             kept_clause(protected_kept)
@@ -734,7 +757,7 @@ fn stamp(
         )?;
     }
 
-    Ok(outcome)
+    Ok(())
 }
 
 /// v4's `run()` body. Separated from the gate so the gate reads as the gate.

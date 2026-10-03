@@ -163613,3 +163613,75 @@ branch. The lane's `target/` was removed after the gate; the two pins and
 The order's rows, unchanged; add: `project_info` on the Friday copy's
 projects BEFORE and AFTER P4.D247's roster edit; the closed store by NAME
 under `document_store` for the §D4 note's wording in a real Salon turn.
+## P4.D248 — bugs 175 + 176 ported ruling-aware (lane `claude/p4-d248-resumable-defer-tables-3e6790`, 2026-10-03)
+
+v4 `e5c6bd0c0` (this port's own P4.135 filings, fixed upstream in a different
+shape). §2 probe PASSED at lane start (v4 `main` at `e5c6bd0c0`, clean, both
+logs empty). Pins: `/tmp/qt-v4-pin-p4d248-e5c6bd0c0` (target) and
+`/tmp/qt-v4-pin-p4d248-f6426e196` (baseline), each verified by `rev-parse` +
+`ls -ld`; `lib/database/table-shape.ts` present at the target, absent at the
+baseline.
+
+### Unit 1 — bug 175: the collapse defers and the boot continues (core + host)
+
+- `CollapseError` split four ways: `ShouldRun` (unchanged, v4's logged skip),
+  `Pass` (`run_pass`), `Stamp { outcome: Box<CollapseOutcome>, error }` (the
+  ledger write; boxed — clippy `result_large_err`), `Probe` (the ledger probe —
+  still `return Err`, dead through the boot behind P4.D97's identical probe;
+  v4's `loadMigrationState` never throws, so v4 has no line there — recorded,
+  not tested through the host). The blanket `From<DbError>` /
+  `From<rusqlite::Error>` impls are DROPPED (every `?` now names its arm via
+  `map_err`); the probe lives in a new `ledger_has_row`.
+- Host arm (`host.rs`): `Pass` → `Failed to collapse duplicate avatar rolls`
+  (unchanged bytes) → `Migration failed context=migrations.runMigrations
+  migrationId=… error=<bare> resultMessage=Failed to collapse duplicate avatar
+  rolls` → WARN `Resumable migration deferred to the next boot; continuing
+  startup context=migrations.runMigrations migrationId=…` → continue. `Stamp`
+  → the success INFO from the carried outcome → `Migration threw an exception
+  context=… migrationId=… error=<bare>` → the WARN → continue (R2). The success
+  INFO moved into `log_collapse_ran` (shared by `Ok` and `Stamp`); the WARN is
+  `log_collapse_deferred`. The `:1658-1699` comment rewritten to `e5c6bd0c0`
+  (P4.135's FATAL ruling recorded OVERTAKEN by v4's own fix; the stamp
+  divergence; the probe's unreachability; the aggregate lines + the dependant
+  arm NO-PORT).
+- **T1 MEASURED** (a throwaway test in `quilltap-web`'s `log_file` tests,
+  removed): `tracing::error!(…, message = "Failed to collapse …", "Migration
+  failed")` renders in `CaptureLayer` as `… error=planted message=Failed to
+  collapse duplicate avatar rolls` (a `&str` goes through `record_str`, so
+  `message=` IS keyed — the order's "bare value" worry holds only for a
+  `Debug`-recorded `message`), but the FILE layer writes the second field as the
+  record's ENVELOPE `message` — `{"message":"Failed to collapse duplicate avatar
+  rolls", …}` where v4's record reads `"message":"Migration failed"` with
+  `context.message` holding the meta (v4 `lib/logger.ts:141-145`). tracing puts
+  the format string FIRST (`tracing-0.1.44/src/macros.rs:660`), so the explicit
+  field wins in the file layer. **Chosen representation: `resultMessage`** (the
+  value is v4's `result.message`) — exactly-one-assertable in the capture,
+  correct envelope in the file. Recorded divergence: the meta's KEY.
+- `host_boot_hardness`: `a_failed_avatar_roll_collapse_fails_the_boot` →
+  `a_failed_avatar_roll_collapse_is_deferred_and_the_boot_continues` (SAME
+  plant + `DELETE_MARKERS`; the three lines exactly once AND in order through a
+  new `assert_lines_in_order`; the readback unchanged; `assert_tool_folder_
+  restored` + `STATE_SEEDED`); the resume arm's first boot now `host()` + the
+  three lines (its readback and reboot unchanged; the reboot also silent on the
+  WARN); NEW `a_failed_collapse_ledger_write_is_deferred` (a `BEFORE INSERT ON
+  migrations_state WHEN NEW.id = …` trigger — the plant creates the ledger
+  table with v4's DDL, since a fresh instance may not have it yet; the success
+  INFO → `Migration threw an exception … error=planted ledger failure` → the
+  WARN, in order; one keyed row, no ledger; `DROP TRIGGER` + reboot → no
+  success line, no WARN, still no row — the gate answers `NotApplicable`).
+  `GUARDED_MESSAGES` gains `Migration failed`, `Migration threw an exception`,
+  `Resumable migration deferred`. Stale prose rewritten: the module doc, the
+  three FATAL arms (v4 now boots those LOUD and reachable — R5), the cadence
+  arm (v4 re-CHECKS once per boot at 3.1; it did not change the ledger gate).
+- **Red-first:** the three collapse arms on `main`'s `host.rs` + heal (the test
+  file alone changed): `a_failed_collapse_ledger_write_is_deferred`,
+  `a_failed_avatar_roll_collapse_is_deferred_and_the_boot_continues`,
+  `a_collapse_failed_mid_delete_resumes_on_the_next_boot` FAILED — each "the
+  boot FAILED — this step must not kill it: engine assembly failed: built-in
+  seed failed: sqlite error: planted {ledger,collapse,delete} failure"; the
+  `ShouldRun` arm ok. Green after: 17/17.
+- **Mutations:** M1 (`Pass` → `return Err`) reds the pass + resume arms; M2 (the
+  WARN's text altered) reds all three deferral arms; M3 (the core stamps on a
+  failed pass) reds the pass + resume arms' `!ledger`. All three reverted.
+- `host_boot_avatar_rolls_collapse` 3/3 and the core `avatar_rolls_collapse`
+  unit tests 7/7 unchanged; clippy clean both feature sets.

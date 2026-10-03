@@ -141,6 +141,16 @@ v4 `9753d0eb2` flipped the project create default from `false` to `true`. The ei
 _Versions: core 0.0.1184._
 
 `get_accessible_mount_points` (the `doc_list_files` / `doc_grep` / blob enumeration side) now calls the path resolver's own `collect_accessible_mount_point_ids`, made `pub(crate)`, instead of carrying a hand-copy of its covenant arm. v4 has ONE function (`getAccessibleMountPoints` routes through `collectAccessibleMountPointIds`); v5 had two, so a rule added to the collector would have left listing and resolution disagreeing about a store (the bug-153 shape). The enumeration passes `operator_override: false`, as v4 passes no override, so the collector's only fallible arm is never taken. Behaviour-neutral: `doc_opacity` (72 ops), `doc_enum` (17) and `doc_ui` (9) regenerated once at the `f6426e196` baseline pin and green on unported main and on this tree against the same oracle bytes. Substrate for the project-roster tool-access gate (v4 `9753d0eb2`), which lands on the collector in a later commit.
+#### 2026-10-03 — fix(host): a failed avatar-roll collapse defers and the boot continues, as v4 does since bug 175 (P4.D248)
+
+_Versions: core 0.0.1184, host 0.0.177._
+
+v4 `e5c6bd0c0` fixed bug 175 (filed by this port): the avatar-roll collapse is now a resumable migration, so a failed pass is deferred to the next boot instead of stopping the server. v5 follows, reversing the 2026-10-01 ruling that made the failure fatal.
+
+- `CollapseError` splits into four arms: `ShouldRun` (unchanged — v4's logged skip), `Pass` (the pass failed), `Stamp` (the ledger write after a committed pass failed; carries the outcome so the success line is still logged first), and `Probe` (the ledger probe; still fatal, and unreachable through the boot because an earlier heal runs the same probe first). The blanket `From` impls are gone.
+- A failed pass now logs v4's three lines in order — `Failed to collapse duplicate avatar rolls`, the runner's `Migration failed`, and the WARN `Resumable migration deferred to the next boot; continuing startup` — writes no ledger row, and lets the boot continue. v4's `message` meta field on `Migration failed` is carried as `resultMessage`, because a second `message` field would replace the file log's record message.
+- A failed ledger write after a committed pass logs the success line, `Migration threw an exception`, and the same WARN, then continues. v4 normally succeeds here through a file-ledger fallback v5 does not have; v5 takes v4's both-writes-failed arm (recorded divergence).
+- `host_boot_hardness`: P4.135's two fatal-collapse arms rewritten red-first on the same plants (both panicked "the boot FAILED" on `main`'s host before the change), a new ledger-write arm over a `BEFORE INSERT ON migrations_state` trigger with a reboot, the three new lines added to the silence leg, and the stale prose updated to `e5c6bd0c0`.
 
 #### 2026-10-03 — docs(porting): order the e5c6bd0c0 drift catch-up round (P4.D245 ∥ P4.D246 ∥ P4.D247 ∥ P4.D248)
 

@@ -1670,74 +1670,60 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                 // Friday instance has already been collapsed BY v4, so a v5 boot
                 // there must find the row and do nothing at all.
                 //
-                // A failed pass FAILS THE BOOT — ruled 2026-10-01, P4.135 (it
-                // logged and booted on until then, which was softer than v4).
-                // v4 at `f6426e196`, in order: the migration's catch logs ERROR
+                // A failed pass DEFERS and the boot CONTINUES — v4 `e5c6bd0c0`
+                // (bug 175, this port's own filing from P4.135). The 2026-10-01
+                // ruling that made it FAIL THE BOOT (P4.135, matching v4's
+                // `process.exit(1)` at `f6426e196`) is OVERTAKEN by v4's own fix.
+                // v4 at `e5c6bd0c0`, in order: the migration's catch logs ERROR
                 // `Failed to collapse duplicate avatar rolls` `{context:
-                // 'migration.collapse-duplicate-avatar-rolls', error}` (the
-                // singular `migration.`, the bare message) and returns `success:
-                // false` (`collapse-duplicate-avatar-rolls-v1.ts:642-659`); the
-                // runner logs `Migration failed`, BREAKS, and logs `Migration
-                // runner completed {success: false}` (`migrations/index.ts:
-                // 171-182`, `:212-219`); `instrumentation.ts:419-428` logs
-                // `Migrations failed - cannot start server` and calls
-                // `process.exit(1)` — inside the outer `try`, so `Fatal error
-                // initializing services` is never reached. v5 emits ONLY the
-                // migration's own line: v5 has no runner, and the `built-in seed
-                // failed:` envelope this `?` reaches is v5's own fatal path (the
-                // one the hardness binary's other FATAL arms assert).
-                //
-                // The exit buys an operator nothing, which is why v4 bug 175 is
-                // filed: the pass is resumable and UNSTAMPED. No ledger row is
-                // written on failure (the stamp follows `run_pass` below; v4's is
-                // the runner's success-only `recordCompletedMigration`), and only
+                // 'migration.collapse-duplicate-avatar-rolls', error}` and
+                // returns `success: false` (`collapse-duplicate-avatar-rolls-v1.ts:
+                // 646-663`); the runner logs ERROR `Migration failed` `{context:
+                // 'migrations.runMigrations', migrationId, error, message}` — now
+                // BEFORE its defer check — and, the migration being `resumable`
+                // (`:328-331`), `deferResumable` logs WARN `Resumable migration
+                // deferred to the next boot; continuing startup` `{context,
+                // migrationId}` and the loop continues (`migrations/index.ts:
+                // 73-81`, `:189-217`). No ledger row is written, and only
                 // survivors (+ protected portraits) are keyed before the delete
-                // loop — every ordinary victim stays `generationKey IS NULL` until
-                // it is deleted, so the next boot's gate finds it and the pass
-                // finishes (v4 `:398-412`, `:569`; measured on both boots by
-                // `host_boot_hardness`'s resume arm). When v4 fixes 175, this arm
-                // goes back to log-and-continue in that drift catch-up.
+                // loop, so the next boot's gate finds the unfinished victims and
+                // the pass finishes (measured on both boots by
+                // `host_boot_hardness`'s resume arm). v5 has no runner, so it
+                // carries v4's two runner lines here, as the `ShouldRun` arm
+                // below already carries one.
+                //
+                // v4's `message` META field on `Migration failed` is carried as
+                // `resultMessage`: a second field named `message` collides with
+                // tracing's own (the format string), and the file layer then
+                // writes it as the record's envelope `message` — the record would
+                // read `Failed to collapse …` where v4's reads `Migration failed`
+                // (measured at P4.D248; v4's own record nests it under
+                // `context.message`, which no v5 field can reach).
+                //
+                // A failed LEDGER WRITE after a committed pass (`Stamp`) defers
+                // the same way, through v4's throw arm — `Migration threw an
+                // exception` `{context, migrationId, error}` then the WARN
+                // (`index.ts:218-244`), after the pass's own success line (v4
+                // logs that inside `run()`). v4 reaches that arm only when its
+                // FILE-ledger fallback also fails (`migrations/state.ts:181-205`);
+                // v5 has no file ledger, so it defers on the first failure —
+                // recorded. The ledger PROBE (`Probe`) stays fatal and is dead
+                // through the boot: v4's `loadMigrationState` never throws, and
+                // P4.D97's identical probe above kills the boot first. v4's
+                // aggregate lines (`Migration runner completed` / `Migrations
+                // completed successfully` with `deferred`) and its
+                // dependant-deferral arm have no v5 twin — no runner, and nothing
+                // in v5 (or v4) depends on this migration — recorded NO-PORT.
                 use quilltap_core::db::avatar_rolls_collapse_heal::{self, CollapseError};
                 match avatar_rolls_collapse_heal::collapse_duplicate_avatar_rolls(
                     main,
                     Some(mount_index),
                     &quilltap_core::clock::now_iso(),
                 ) {
-                    Ok(quilltap_core::db::avatar_rolls_collapse_heal::CollapseOutcome::Ran {
-                        avatar_rows,
-                        configurations,
-                        rows_keyed,
-                        victims_deleted,
-                        protected_kept,
-                        album_copies_kept,
-                        blobs_deleted,
-                        chats_changed,
-                        characters_changed,
-                        messages_changed,
-                    }) => {
-                        tracing::info!(
-                            target: "quilltap::boot",
-                            avatar_rows,
-                            configurations,
-                            rows_keyed,
-                            victims_deleted,
-                            // [`23abc1ba1`] What the pass KEPT, alongside what it
-                            // collapsed: a portrait held back, and a victim whose
-                            // bytes stayed because the operator had kept that
-                            // plate in a character's album.
-                            protected_kept,
-                            album_copies_kept,
-                            blobs_deleted,
-                            chats_changed,
-                            characters_changed,
-                            messages_changed,
-                            "Collapsed duplicate avatar rolls into one image per configuration"
-                        );
-                    }
-                    Ok(_) => {}
+                    Ok(outcome) => log_collapse_ran(&outcome),
                     // A failed `shouldRun` read is v4's runner SKIP arm, not a
                     // failed pass: the runner logs this line and boots on
-                    // (`migrations/index.ts:131-148`). It is the one v4 line on
+                    // (`migrations/index.ts:162-179` at `e5c6bd0c0`). It is the one v4 line on
                     // this path, so v5 carries it even though v5 has no runner.
                     Err(CollapseError::ShouldRun(error)) => {
                         tracing::error!(
@@ -1748,15 +1734,36 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                             "Error checking if migration should run"
                         );
                     }
-                    Err(CollapseError::Fatal(error)) => {
+                    Err(CollapseError::Pass(error)) => {
+                        let error = quilltap_core::db::fallback::error_text(&error);
                         tracing::error!(
                             target: "quilltap::boot",
                             context = "migration.collapse-duplicate-avatar-rolls",
-                            error = %quilltap_core::db::fallback::error_text(&error),
+                            error = %error,
                             "Failed to collapse duplicate avatar rolls"
                         );
-                        return Err(error);
+                        tracing::error!(
+                            target: "quilltap::boot",
+                            context = "migrations.runMigrations",
+                            migrationId = avatar_rolls_collapse_heal::MIGRATION_ID,
+                            error = %error,
+                            resultMessage = "Failed to collapse duplicate avatar rolls",
+                            "Migration failed"
+                        );
+                        log_collapse_deferred();
                     }
+                    Err(CollapseError::Stamp { outcome, error }) => {
+                        log_collapse_ran(&outcome);
+                        tracing::error!(
+                            target: "quilltap::boot",
+                            context = "migrations.runMigrations",
+                            migrationId = avatar_rolls_collapse_heal::MIGRATION_ID,
+                            error = %quilltap_core::db::fallback::error_text(&error),
+                            "Migration threw an exception"
+                        );
+                        log_collapse_deferred();
+                    }
+                    Err(CollapseError::Probe(error)) => return Err(error),
                 }
                 // === end P4.D184 ===
                 // === P4.D175 (v4 `78b381a96`, migration
@@ -1884,6 +1891,56 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
     .join()
     .map_err(|_| "built-in seed thread panicked".to_string())?
     .map_err(|e| format!("built-in seed failed: {e}"))
+}
+
+/// The avatar-roll collapse's success line (P4.D184), shared by the clean arm
+/// and the `Stamp` arm, which still logs it first: v4 logs it inside the
+/// migration's `run()`, before the runner records anything. Silent for every
+/// outcome but `Ran`.
+fn log_collapse_ran(outcome: &quilltap_core::db::avatar_rolls_collapse_heal::CollapseOutcome) {
+    if let quilltap_core::db::avatar_rolls_collapse_heal::CollapseOutcome::Ran {
+        avatar_rows,
+        configurations,
+        rows_keyed,
+        victims_deleted,
+        protected_kept,
+        album_copies_kept,
+        blobs_deleted,
+        chats_changed,
+        characters_changed,
+        messages_changed,
+    } = *outcome
+    {
+        tracing::info!(
+            target: "quilltap::boot",
+            avatar_rows,
+            configurations,
+            rows_keyed,
+            victims_deleted,
+            // [`23abc1ba1`] What the pass KEPT, alongside what it
+            // collapsed: a portrait held back, and a victim whose
+            // bytes stayed because the operator had kept that
+            // plate in a character's album.
+            protected_kept,
+            album_copies_kept,
+            blobs_deleted,
+            chats_changed,
+            characters_changed,
+            messages_changed,
+            "Collapsed duplicate avatar rolls into one image per configuration"
+        );
+    }
+}
+
+/// v4 `deferResumable`'s WARN (`migrations/index.ts:73-81` at `e5c6bd0c0`),
+/// the last line on both of the collapse's deferring arms.
+fn log_collapse_deferred() {
+    tracing::warn!(
+        target: "quilltap::boot",
+        context = "migrations.runMigrations",
+        migrationId = quilltap_core::db::avatar_rolls_collapse_heal::MIGRATION_ID,
+        "Resumable migration deferred to the next boot; continuing startup"
+    );
 }
 
 /// The gated sample-content seed (P4.4u4): v4's `seedFromImports` + `seedAvatars`
