@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — test(web): the project roster verbs pinned at the dispatch wire (P4.D246 Tier 2 item 14)
+
+_Versions: web 0.0.214._
+
+New `crates/quilltap-web/tests/project_update_dispatch_wire.rs` over a copy of the committed `groups-projects` pair, materialized by the test itself: `projectUpdate` on Iota answers the enriched project (`characterRoster[0]` an object carrying the Shared contract's keys — `id`, `name`, `defaultImage`, `tags`, `chatCount`, `defaultImageId` only when present — and `_count` appended last); the PUT body equals the `projectGet` body apart from `updatedAt`; `projectCharacterAdd` and `projectCharacterRemove` answer only `{success: true}` and the refetch shows the roster move; an unknown project is the 404 `Project not found`; a bad field is the 400 `Validation error` with nothing written. This is the contract P4.D247's Characters card consumes, held at the only transport it crosses (the verbs are dispatch-only; v5 has no REST project PUT).
+
 #### 2026-10-03 — fix(chat-create): creating a chat in a project never writes the project's roster; the chat-PUT roster deferral retired as a convergence (v4 `9753d0eb2`, P4.D246 unit 4)
 
 _Versions: core 0.0.1186._
