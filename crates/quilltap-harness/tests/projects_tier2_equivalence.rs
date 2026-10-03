@@ -477,10 +477,12 @@ fn projects_tier2_matches_oracle() {
         let i = TABLES.iter().position(|t| t.oracle_key == key).unwrap();
         got[i]["rows"].as_array().unwrap().clone()
     };
-    // [P4.D146] Zeta is the sixth — the planted-retired-mode arm.
-    assert_eq!(rows("projects").len(), 6, "6 project rows");
-    assert_eq!(rows("points").len(), 6, "6 mount-point rows");
-    assert_eq!(rows("projectLinks").len(), 6, "6 project→store links");
+    // [P4.D146] Zeta is the sixth — the planted-retired-mode arm. [P4.D246]
+    // Eta (the null-seed arm) and Theta (the planted key-less bag) are the
+    // seventh and eighth.
+    assert_eq!(rows("projects").len(), 8, "8 project rows");
+    assert_eq!(rows("points").len(), 8, "8 mount-point rows");
+    assert_eq!(rows("projectLinks").len(), 8, "8 project→store links");
 
     // The minimal project's properties.json = the five materialized defaults,
     // in schema order, with backgroundDisplayMode 'theme' (Beta after the
@@ -503,8 +505,16 @@ fn projects_tier2_matches_oracle() {
     // parse, which coerces the retired modes, so a retired value can no longer
     // reach disk at all. This literal was `"project"` before the fix — it is the
     // write-side proof, pinned by bytes.
+    //
+    // [P4.D246 / v4 9753d0eb2] Alpha's create omits `allowAnyCharacter`, so
+    // the repository's `prepareCreateData` seed decides it — `?? true` since
+    // the roster became a tool-access list. This literal was `false` before the
+    // flip; it is the ONE cell the two pins' oracles disagree on, and the
+    // create-seed proof pinned by bytes (the API prefault is the routes
+    // family's; this is the repository's own default, the one import/restore
+    // reach).
     let alpha_props =
-        "{\n  \"allowAnyCharacter\": false,\n  \"characterRoster\": [\n    \"aaaaaaaa-0000-4000-8000-000000000002\"\n  ],\n  \"color\": \"#778899\",\n  \"defaultDisabledTools\": [],\n  \"defaultDisabledToolGroups\": [],\n  \"defaultImageProfileId\": \"11111111-1111-4111-8111-111111111111\",\n  \"answerConfirmationOverride\": \"ON\",\n  \"backgroundDisplayMode\": \"theme\"\n}";
+        "{\n  \"allowAnyCharacter\": true,\n  \"characterRoster\": [\n    \"aaaaaaaa-0000-4000-8000-000000000002\"\n  ],\n  \"color\": \"#778899\",\n  \"defaultDisabledTools\": [],\n  \"defaultDisabledToolGroups\": [],\n  \"defaultImageProfileId\": \"11111111-1111-4111-8111-111111111111\",\n  \"answerConfirmationOverride\": \"ON\",\n  \"backgroundDisplayMode\": \"theme\"\n}";
     assert!(
         docs.iter()
             .any(|d| d["content"] == Value::String(alpha_props.into())),
@@ -568,6 +578,31 @@ fn projects_tier2_matches_oracle() {
             "{\n  \"allowAnyCharacter\": false,\n  \"characterRoster\": [],\n  \"color\": \"#0e0e0e\",\n  \"defaultDisabledTools\": [],\n  \"defaultDisabledToolGroups\": [],\n  \"backgroundDisplayMode\": \"theme\"\n}"
         ),
         "the genuine-absence seed arm did not write its defaults-seeded bag; documents: {docs:?}"
+    );
+
+    // ── P4.D246 (v4 `9753d0eb2`): the two defaults, pinned by bytes ─────────
+    // Eta's create carries `allowAnyCharacter: null`. v4's `prepareCreateData`
+    // runs BEFORE validation and `??` treats null as absent, so the bag lands
+    // OPEN — the arm only a repository caller (import / restore / a builder) can
+    // reach, since the API schema refuses a null. Before the seed existed v5's
+    // serde refused the null outright (`invalid type: null, expected a boolean`).
+    assert!(
+        has_doc(
+            "{\n  \"allowAnyCharacter\": true,\n  \"characterRoster\": [],\n  \"color\": \"#ee0000\",\n  \"defaultDisabledTools\": [],\n  \"defaultDisabledToolGroups\": [],\n  \"backgroundDisplayMode\": \"theme\"\n}"
+        ),
+        "eta's null-flag create did not seed `allowAnyCharacter: true`; documents: {docs:?}"
+    );
+    // Theta's `properties.json` was PLANTED without the key, then touched with an
+    // unrelated `icon` patch: the write overlay's RMW seeds from the PARSED bag,
+    // whose READ default is still `false` (v4's `ProjectPropertiesSchema.default
+    // (false)` did not move). This is the direct pin of the rule Epsilon's
+    // delete-then-update pins indirectly; a port that flipped the serde default
+    // instead of adding the create seed lands `true` here and reddens.
+    assert!(
+        has_doc(
+            "{\n  \"allowAnyCharacter\": false,\n  \"characterRoster\": [],\n  \"color\": \"#ff0000\",\n  \"icon\": \"lamp\",\n  \"defaultDisabledTools\": [],\n  \"defaultDisabledToolGroups\": [],\n  \"backgroundDisplayMode\": \"theme\"\n}"
+        ),
+        "theta's key-less planted bag did not read back CLOSED on the RMW; documents: {docs:?}"
     );
 
     eprintln!(

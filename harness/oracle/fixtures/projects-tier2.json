@@ -144,6 +144,43 @@
       "patch": {
         "icon": "anchor"
       }
+    },
+
+    {
+      "$comment": "[P4.D246 / v4 9753d0eb2] The repository's CREATE seed, `allowAnyCharacter ?? true`, on its null arm: v4's `prepareCreateData` runs BEFORE the entity is validated and `??` treats an explicit null as absent, so a create carrying `allowAnyCharacter: null` lands OPEN. (The API refuses a null at the schema, so only a repository caller — import, restore, a fixture builder — can reach this arm.) Measured at the pin: v4's create accepts it.",
+      "kind": "create",
+      "label": "eta",
+      "input": {
+        "name": "Eta",
+        "description": "Desc H",
+        "state": {},
+        "allowAnyCharacter": null,
+        "color": "#ee0000"
+      }
+    },
+
+    {
+      "$comment": "[P4.D246 / v4 9753d0eb2] The READ default, pinned directly: a stored bag MISSING `allowAnyCharacter` (the shape a pre-flip store or a hand-edited one carries) is planted on disk, then touched with an unrelated patch. The write overlay's read-modify-write seeds from the PARSED bag, so the value that lands back on disk is the schema's read default — `false` — and NOT the create seed's `true`. v4's `ProjectPropertiesSchema.default(false)` did not move at `9753d0eb2`; only the two create-time defaults did. (Epsilon's deleteProperties-then-update is the other, indirect pin of the same rule.)",
+      "kind": "create",
+      "label": "theta",
+      "input": {
+        "name": "Theta",
+        "description": "Desc T",
+        "state": {},
+        "color": "#ff0000"
+      }
+    },
+    {
+      "kind": "plantProperties",
+      "label": "theta",
+      "content": "{\n  \"characterRoster\": [],\n  \"color\": \"#ff0000\",\n  \"defaultDisabledTools\": [],\n  \"defaultDisabledToolGroups\": [],\n  \"backgroundDisplayMode\": \"theme\"\n}"
+    },
+    {
+      "kind": "update",
+      "label": "theta",
+      "patch": {
+        "icon": "lamp"
+      }
     }
   ]
 }

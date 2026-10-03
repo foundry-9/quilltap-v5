@@ -232,9 +232,19 @@ impl StoreEntity for ProjectEntity {
 
 /// Create payload for a project. `properties` is the property-bag subset as a
 /// JSON object (the caller's hydrated fields minus name/description/instructions/
-/// state); [`StoreEntity::parse_properties`] materializes the schema defaults
-/// (mirrors v4's `prepareCreateData` seeding `allowAnyCharacter`/`characterRoster`
-/// — the schema defaults make the seeding redundant, reproduced here for free).
+/// state). [`ProjectsRepository::create`] runs v4's `prepareCreateData` seed over
+/// it FIRST ([`seed_create_properties`]: `allowAnyCharacter ?? true`,
+/// `characterRoster ?? []`), then [`StoreEntity::parse_properties`] materializes
+/// the remaining schema defaults.
+///
+/// The seed is NOT redundant with the schema defaults, and has not been since v4
+/// `9753d0eb2`: the create seed says `true` while the READ default
+/// (`ProjectProperties::allow_any_character`'s `#[serde(default)]`, v4's
+/// `ProjectPropertiesSchema.default(false)`) still says `false`. So a project
+/// CREATED without the flag is open, while a stored bag MISSING the flag still
+/// reads closed. The API path (`api/projects.rs`) inserts the flag itself (v4's
+/// `createProjectSchema` prefault) and never reaches the seed; the `.qtap`
+/// importer, the backup restore and the fixture builders do.
 pub struct ProjectCreateInput {
     pub name: String,
     pub description: Option<String>,
@@ -256,6 +266,11 @@ impl<'c> ProjectsRepository<'c> {
     }
 
     /// Create a project, provision its store, and return the overlaid entity.
+    ///
+    /// v4 `AbstractStoreBackedRepository.create` calls the subclass's
+    /// `prepareCreateData` BEFORE the entity is validated
+    /// (`store-backed.repository.ts:138`), and `ProjectsRepository`'s seeds the
+    /// two roster defaults — see [`seed_create_properties`].
     pub fn create(
         &self,
         input: &ProjectCreateInput,
@@ -264,7 +279,7 @@ impl<'c> ProjectsRepository<'c> {
         self.inner.create(
             &input.name,
             &ManagedFields {
-                properties: input.properties.clone(),
+                properties: seed_create_properties(&input.properties),
                 description: input.description.clone(),
                 instructions: input.instructions.clone(),
                 state: input.state.clone(),
@@ -361,8 +376,15 @@ impl<'c> ProjectsRepository<'c> {
         self.update(project_id, &patch)
     }
 
-    /// Whether a character may participate (v4 `canCharacterParticipate`):
-    /// `allowAnyCharacter` OR the roster contains it. Missing project → `false`.
+    /// The roster policy (v4 `canCharacterParticipate`, its doc rewritten at
+    /// `9753d0eb2`): may this character use their tools on the project's files
+    /// and shared wardrobe? (`allowAnyCharacter`, or on the roster.) It does not
+    /// govern who may chat in the project. v4's call sites go through
+    /// `projectRosterAdmits` in `lib/projects/roster-access.ts` (no project or
+    /// no character → admit; else this predicate, fail-closed on a miss).
+    /// Missing project → `false`. The `allowAnyCharacter` read here is the
+    /// stored bag's value under the READ default (`false` when the key is
+    /// missing) — never the create seed's `true`.
     pub fn can_character_participate(
         &self,
         project_id: &str,
@@ -414,6 +436,34 @@ pub fn find_official_mount_point_id_raw(
     .map_err(DbError::from)
 }
 
+/// v4 `ProjectsRepository.prepareCreateData` (`projects.repository.ts:55-63` at
+/// `9753d0eb2`): the roster defaults a fresh project needs before its row is
+/// written — `allowAnyCharacter: data.allowAnyCharacter ?? true` and
+/// `characterRoster: data.characterRoster ?? []`. JS `??` treats `null` as
+/// absent, so an explicit `null` on either key is seeded too (serde would
+/// otherwise refuse a `null` where the struct wants a `bool`/array). An explicit
+/// `false` is kept. A non-object bag passes through unchanged — the inner
+/// create's `parse_properties` refuses it, as before.
+///
+/// Why this exists beside the schema defaults: since `9753d0eb2` the CREATE seed
+/// (`true`) and the READ default (`false`, `ProjectPropertiesSchema.default`)
+/// disagree, so the seed can no longer be "reproduced for free" by the parse —
+/// a flag-less create must land `true` on disk while a flag-less stored bag
+/// must still read `false`.
+fn seed_create_properties(properties: &Value) -> Value {
+    let Value::Object(bag) = properties else {
+        return properties.clone();
+    };
+    let mut bag = bag.clone();
+    if bag.get("allowAnyCharacter").is_none_or(Value::is_null) {
+        bag.insert("allowAnyCharacter".into(), Value::Bool(true));
+    }
+    if bag.get("characterRoster").is_none_or(Value::is_null) {
+        bag.insert("characterRoster".into(), Value::Array(Vec::new()));
+    }
+    Value::Object(bag)
+}
+
 /// Read `characterRoster` off a hydrated project (absent/non-array → empty).
 fn roster_of(project: &Value) -> Vec<String> {
     project
@@ -435,6 +485,80 @@ fn roster_patch(roster: Vec<String>) -> Map<String, Value> {
         Value::Array(roster.into_iter().map(Value::String).collect()),
     );
     patch
+}
+
+#[cfg(test)]
+mod create_seed_tests {
+    //! P4.D246 (v4 `9753d0eb2`): the CREATE seed and the READ default, pinned
+    //! side by side so a future "simplification" that folds one into the other
+    //! reddens here by name. The differential twins: `projects_tier2_equivalence`
+    //! (Alpha's flag-less create → `true`; Eta's `null` → `true`; Theta's
+    //! planted key-less bag → `false` on the RMW) and `projects_routes_equivalence`.
+    use super::*;
+    use serde_json::json;
+
+    fn seeded(bag: Value) -> Map<String, Value> {
+        seed_create_properties(&bag)
+            .as_object()
+            .cloned()
+            .expect("an object bag seeds to an object")
+    }
+
+    #[test]
+    fn an_absent_flag_seeds_true() {
+        let out = seeded(json!({ "color": "#abcdef" }));
+        assert_eq!(out["allowAnyCharacter"], Value::Bool(true));
+        assert_eq!(out["color"], Value::from("#abcdef"), "other keys untouched");
+    }
+
+    /// JS `??` treats `null` as absent — the arm only a repository caller
+    /// (import / restore / a fixture builder) can reach, since the API refuses
+    /// a `null` at the schema.
+    #[test]
+    fn a_null_flag_seeds_true() {
+        let out = seeded(json!({ "allowAnyCharacter": null }));
+        assert_eq!(out["allowAnyCharacter"], Value::Bool(true));
+    }
+
+    #[test]
+    fn an_explicit_false_is_kept() {
+        let out = seeded(json!({ "allowAnyCharacter": false }));
+        assert_eq!(out["allowAnyCharacter"], Value::Bool(false));
+    }
+
+    #[test]
+    fn an_absent_or_null_roster_seeds_empty() {
+        assert_eq!(seeded(json!({}))["characterRoster"], json!([]));
+        assert_eq!(
+            seeded(json!({ "characterRoster": null }))["characterRoster"],
+            json!([])
+        );
+        assert_eq!(
+            seeded(json!({ "characterRoster": ["a1000000-0000-4000-8000-000000000001"] }))
+                ["characterRoster"],
+            json!(["a1000000-0000-4000-8000-000000000001"]),
+            "a given roster is kept"
+        );
+    }
+
+    #[test]
+    fn a_non_object_bag_passes_through_for_the_parse_to_refuse() {
+        assert_eq!(seed_create_properties(&json!("nope")), json!("nope"));
+        assert!(ProjectEntity::parse_properties(&json!("nope")).is_err());
+    }
+
+    /// The READ default did NOT move at `9753d0eb2` (v4's
+    /// `ProjectPropertiesSchema.default(false)`): a stored bag missing the key
+    /// hydrates CLOSED, and the seeded create bag parses OPEN — the two defaults
+    /// disagree by design, which is the whole reason the seed exists.
+    #[test]
+    fn a_stored_bag_missing_the_flag_still_reads_false() {
+        let stored = ProjectEntity::parse_properties(&json!({ "color": "#abcdef" })).unwrap();
+        assert!(!stored.allow_any_character, "the READ default stays false");
+        let created = ProjectEntity::parse_properties(&seed_create_properties(&json!({}))).unwrap();
+        assert!(created.allow_any_character, "the CREATE seed says true");
+        assert!(created.character_roster.is_empty());
+    }
 }
 
 #[cfg(test)]

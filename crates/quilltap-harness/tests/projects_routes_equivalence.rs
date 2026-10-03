@@ -670,6 +670,49 @@ fn projects_routes_match_oracle() {
             "a null colour must not survive as a value: {v5_color}"
         );
     }
+    {
+        // P4.D246 (v4 `9753d0eb2`): `allowAnyCharacter: z.boolean().prefault(true)`
+        // — a project created with the flag ABSENT is OPEN, stated by itself on a
+        // minimal `{name}` body. `color`/`icon` are masked exactly as in
+        // `create_null_color_and_icon` (v4's route hands `create` an explicit
+        // `color: null`; v5's bag folds it to an absent key — the standing
+        // null-vs-absent properties seam), so the comparand is the rest of the
+        // echo: the prefaulted flag, the empty roster, the four literals.
+        let name = "create_flag_absent_defaults_open";
+        let db = fresh_db(&spec, "cfado");
+        let resp = rt.block_on(projects::project_create(&db, json!({ "name": "Pi" })));
+        let mask = |v: &Value| {
+            let mut v = v.clone();
+            if let Some(p) = v.get_mut("project").and_then(Value::as_object_mut) {
+                p.remove("color");
+                p.remove("icon");
+            }
+            v
+        };
+        let got = mask(&response_data(&resp));
+        let want = mask(&oracle[name]["body"]);
+        if norm_blanked(&got) != norm_blanked(&want) {
+            eprintln!(
+                "[{name}] MISMATCH:\n{}",
+                first_diff(&norm_blanked(&got), &norm_blanked(&want))
+            );
+            failed.push(name.to_string());
+        } else {
+            eprintln!("[{name}] OK (color/icon masked).");
+        }
+        // The rule by name, so a regression reads as itself and not as one
+        // line of a body diff: the flag-less create answers OPEN.
+        assert_eq!(
+            response_data(&resp)["project"]["allowAnyCharacter"],
+            Value::Bool(true),
+            "{name}: a project created without the flag opens (v4 9753d0eb2)"
+        );
+        assert_eq!(
+            oracle[name]["body"]["project"]["allowAnyCharacter"],
+            Value::Bool(true),
+            "{name}: the oracle was not recorded at a pin past 9753d0eb2"
+        );
+    }
     for (name, tag, body) in [
         ("create_missing_name", "cmn", json!({})),
         ("create_empty_name", "cen", json!({ "name": "" })),

@@ -490,6 +490,18 @@ async function main(): Promise<void> {
         mockRequest(B, { name: 'Omicron', color: '#abcdef', icon: 'rocket', notAField: 'should vanish' }),
       )),
     },
+    {
+      // P4.D246 (v4 `9753d0eb2`): `allowAnyCharacter: z.boolean().prefault(true)`
+      // — a project created with the flag ABSENT is OPEN. Stated by itself on a
+      // minimal `{name}` body rather than read off a validation row's echo. (The
+      // Rust side masks `color`/`icon` here as `create_null_color_and_icon` does:
+      // v4's route hands `create` an explicit `color: null`; v5's bag folds it to
+      // an absent key — the standing null-vs-absent properties seam.)
+      name: 'create_flag_absent_defaults_open',
+      run: async () => respond(await (await loadRoute('@/app/api/v1/projects/route')).POST(
+        mockRequest(B, { name: 'Pi' }),
+      )),
+    },
     { name: 'update', run: async () => respond(await (await loadRoute(idRoute)).PUT(mockRequest(`${B}/${IOTA}`, { name: 'Iota Renamed', backgroundDisplayMode: 'theme' }), p(IOTA))) },
     // P4.55 (the merge-verb silent-keep sweep): v4 runs
     // `updateProjectSchema.parse(body)` and hands the repository the PARSED
@@ -558,6 +570,29 @@ async function main(): Promise<void> {
       name: 'update_clear_description',
       run: async () =>
         respond(await (await loadRoute(idRoute)).PUT(mockRequest(`${B}/${IOTA}`, { description: null }), p(IOTA))),
+    },
+    // ── P4.D246 (v4 `9753d0eb2`): the PUT answers the ENRICHED project ──
+    // `handlePutDefault` now runs the GET's `enrichProject` over the stored
+    // project after the write, so the echo carries `characterRoster` as display
+    // entries (not ids) and `_count`. The four standing PUT rows above pin it
+    // on Iota's rich roster; these two state the shape where the standing rows
+    // cannot: an EMPTY roster (Kappa — `characterRoster: []` + `_count` with
+    // `characters: 0`), and the "same shape as GET" claim made a row (a PUT on
+    // Iota followed by the GET, both bodies recorded; the Rust side blanks the
+    // minted `updatedAt` and asserts the two agree).
+    {
+      name: 'update_on_empty_roster',
+      run: async () =>
+        respond(await (await loadRoute(idRoute)).PUT(mockRequest(`${B}/${KAPPA}`, { description: 'Kappa, re-described' }), p(KAPPA))),
+    },
+    {
+      name: 'update_then_get_agree',
+      run: async () => {
+        const mod = await loadRoute(idRoute);
+        const put = await respond(await mod.PUT(mockRequest(`${B}/${IOTA}`, { name: 'Iota Agreed' }), p(IOTA)));
+        const get = await respond(await mod.GET(mockRequest(`${B}/${IOTA}`), p(IOTA)));
+        return { status: put.status, body: { put: put.body, get: get.body } };
+      },
     },
     {
       name: 'delete',

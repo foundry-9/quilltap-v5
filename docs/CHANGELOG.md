@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — feat(projects): a project created without `allowAnyCharacter` opens — the API prefault and a new repository create seed, both `true` (v4 `9753d0eb2`, P4.D246 unit 2)
+
+_Versions: core 0.0.1184._
+
+Ports the DATA half's two create defaults from v4 `9753d0eb2` (the roster became a hand-curated tool-access list, so a new project opens its files and shared wardrobe to every character until the operator closes it). The READ default does not move: a stored `properties.json` missing the key still hydrates `false` (v4's `ProjectPropertiesSchema.default(false)` is unchanged), which is why the second default is an ADD, not a flip.
+
+- `api/projects.rs`: `createProjectSchema`'s prefault `false → true` on an absent flag (a present `null` is still the 400).
+- `db/projects.rs`: `ProjectsRepository::create` runs v4's `prepareCreateData` seed over the property bag before the inner create — `allowAnyCharacter ?? true`, `characterRoster ?? []`, JS `??` semantics so an explicit `null` seeds too. v5 had NO seed before (its doc claimed the schema defaults made one redundant, true only while both said `false`); the `.qtap` importer, the backup restore and the fixture builders reach it, the API path never does. `can_character_participate`'s doc carries v4's rewrite; seven unit tests pin the seed beside the read default.
+- `projects_tier2_equivalence` + `projects-tier2.json`: Alpha's final bag flips to `true` (the ONE cell the two pins disagree on); two new ops — Eta, a create with `allowAnyCharacter: null` (v4 accepts it and seeds `true`, measured at the pin), and Theta, a planted key-less bag touched by an unrelated patch (reads back `false` — the read default pinned directly).
+- `projects_routes_equivalence` + `projects-routes.test.ts`: new `create_flag_absent_defaults_open` (a minimal `{name}` body answers `allowAnyCharacter: true`); the case also records `update_on_empty_roster` and `update_then_get_agree` for unit 3's enriched PUT.
+
+Red-first at the target on unported main: routes RED on the five flag-less creates (GREEN after), tier-2 RED on Alpha (GREEN after); both RED against the baseline oracle afterwards. Mutations: the API default reverted reddens the six create rows and leaves tier-2 green (M1); the seed removed reddens tier-2 at Eta (M2a); the read default flipped with the seed kept moves exactly Epsilon and Theta (M2c).
+
 #### 2026-10-03 — docs(help): re-vendor the whole help tree and the docs/v4 mirror at v4 `e5c6bd0c0` (P4.D246 unit 1)
 
 _No crate versions bumped._

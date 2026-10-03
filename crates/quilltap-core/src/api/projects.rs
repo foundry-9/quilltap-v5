@@ -239,13 +239,21 @@ pub async fn project_create(db: &Db, body: Value) -> Response {
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string();
-    // createProjectSchema: allowAnyCharacter prefault false, characterRoster
-    // prefault []. The four literals (defaultDisabledTools/…/backgroundDisplayMode)
-    // are already ProjectProperties defaults; state:{} passed explicitly.
+    // createProjectSchema: allowAnyCharacter prefault TRUE (v4 `9753d0eb2` —
+    // the roster became a hand-curated tool-access list, so a new project opens
+    // its files and shared wardrobe to every character until the operator closes
+    // it), characterRoster prefault []. `prefault` fills an ABSENT key only: a
+    // present `null` is already the 400 (`PROJECT_CREATE_SCHEMA`'s
+    // `nullable: false` row), so `unwrap_or` here only ever sees absence. The
+    // four literals (defaultDisabledTools/…/backgroundDisplayMode) are already
+    // ProjectProperties defaults; state:{} passed explicitly. The flag is
+    // ALWAYS inserted into `properties` below, so the repository's own seed
+    // (`ProjectsRepository::create`, v4's `prepareCreateData`) never fires on
+    // this path — exactly v4's split between the two defaults.
     let allow_any = obj
         .get("allowAnyCharacter")
         .and_then(Value::as_bool)
-        .unwrap_or(false);
+        .unwrap_or(true);
     let roster = obj.get("characterRoster").cloned().unwrap_or(json!([]));
     let mut properties = Map::new();
     properties.insert("allowAnyCharacter".into(), Value::Bool(allow_any));
