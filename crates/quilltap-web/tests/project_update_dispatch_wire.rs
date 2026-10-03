@@ -229,7 +229,11 @@ async fn the_project_roster_verbs_carry_the_contract_over_the_wire() {
     );
     // `_count` is the LAST key (v4 `{ ...project, characterRoster, _count }`).
     assert_eq!(
-        put.as_object().unwrap().keys().last().map(String::as_str),
+        put.as_object()
+            .unwrap()
+            .keys()
+            .next_back()
+            .map(String::as_str),
         Some("_count"),
         "_count is appended last"
     );

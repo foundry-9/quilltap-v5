@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — docs(porting): P4.D246 lane record closed — the gate, the deferrals, LANE COMPLETE; one clippy lint in the wire test
+
+_Versions: web 0.0.215._
+
+Closes the P4.D246 lane record in `status-log.md` (the red-first counts at both pins, the M1–M5 outcomes, the capstone's blind/visible verdict, the mirror residual, the gate on the final tree, the 💸 rows) and sets the order's status header to LANE COMPLETE. The one code change is a clippy lint the workspace gate caught in `project_update_dispatch_wire.rs` (`keys().last()` → `next_back()`, `double_ended_iterator_last`); the test's meaning is unchanged.
+
 #### 2026-10-03 — feat(projects): v4's four `[Projects v1]` INFO lines on create, update, add-character and remove-character (P4.D246 Tier 2 item 15)
 
 _Versions: core 0.0.1187._
