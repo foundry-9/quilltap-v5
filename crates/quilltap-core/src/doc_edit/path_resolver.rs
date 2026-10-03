@@ -405,7 +405,13 @@ fn resolve_general_path(
 /// `collectAccessibleMountPointIds`): operator override → every enabled store;
 /// else the tiered pool flattened — the participant AND character tiers included
 /// only while vaults are visible; the opacity covenant subtracts both (v4 bug 152).
-fn collect_accessible_mount_point_ids(
+///
+/// `pub(crate)` since P4.D245: the enumeration side
+/// (`tools::doc_edit::shared::get_accessible_mount_points`) calls THIS function,
+/// as v4's `getAccessibleMountPoints` does, instead of carrying a hand-copy of
+/// the covenant arm — so a rule added here (the roster gate) reaches listing and
+/// resolution alike and the two can never disagree about a store.
+pub(crate) fn collect_accessible_mount_point_ids(
     main: &Connection,
     mount: &Connection,
     context: &PathResolutionContext,

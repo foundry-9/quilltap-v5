@@ -53,9 +53,6 @@ use serde_json::Value;
 use crate::db::database_store::{self, DbStoreErrorCode, ReadDoc, StoreError};
 use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
 use crate::db::doc_mount_points::DocMountPointsRepository;
-use crate::db::tiered_mount_pool::{
-    flatten_tier_pool, resolve_tiered_mount_pool, FlattenOptions, TierContext, TierResolveOptions,
-};
 use crate::db::{characters_read, chats_read, projects};
 use crate::doc_edit::path_resolver::{PathResolutionContext, ResolveError, ResolvedPath};
 use crate::doc_edit::qtap_uri::parse_qtap_uri;
@@ -706,10 +703,16 @@ pub struct AccessibleMountPointsQuery<'a> {
 /// v4 `getAccessibleMountPoints` over `collectAccessibleMountPointIds`: every
 /// store the chat context can reach (responding + participant vaults +
 /// project-linked stores + Quilltap General), deduped and filtered to enabled
-/// mounts. Composed from the ported tiered-mount-pool resolver.
+/// mounts.
 ///
-/// Shares the covenant rule with `resolve_document_store_path`, so whatever this
-/// lists is exactly what an open will accept.
+/// Routes through the resolver's OWN collector
+/// (`path_resolver::collect_accessible_mount_point_ids`), exactly as v4 does —
+/// ONE function on both sides since P4.D245. Until then this was a hand-copy of
+/// the collector's covenant arm, and a rule added to one copy (the roster gate,
+/// v4 `9753d0eb2`) would have left enumeration and resolution disagreeing about
+/// the project store — the bug-153 failure shape on a new axis: a listing
+/// advertises a store the open then refuses. Whatever this lists is exactly
+/// what an open will accept, by construction rather than by discipline.
 pub fn get_accessible_mount_points(
     main: &Connection,
     mount: &Connection,
@@ -722,37 +725,25 @@ pub fn get_accessible_mount_points(
         hide_character_vaults,
         mount_pool,
     } = query;
-    // v4 routes this through `collectAccessibleMountPointIds`, whose pre-built-
-    // pool arm (`d1c06cd9d`) returns the pool verbatim, ahead of the covenant.
-    if let Some(pool) = mount_pool {
-        let ids = crate::doc_edit::path_resolver::prebuilt_pool_accessible_ids(pool);
-        return enabled_accessible_mount_points(mount, ids);
-    }
-    let vaults_visible = !hide_character_vaults;
-    let tier_ctx = TierContext {
-        user_id: None,
-        character_id: character_id.map(str::to_string),
-        character_mount_point_id: None,
-        character_ids: if extra_character_ids.is_empty() {
-            None
-        } else {
-            Some(extra_character_ids.to_vec())
+    // v4 `getAccessibleMountPoints` passes NO `operatorOverride` into the
+    // collector (an enumeration is never the operator's "look everywhere"), so
+    // the collector's only fallible arm — the operator's `findEnabled` read — is
+    // never taken here and the `Err` below is unreachable; an empty set is the
+    // honest rendering of a path that cannot be entered.
+    let ids = crate::doc_edit::path_resolver::collect_accessible_mount_point_ids(
+        main,
+        mount,
+        &PathResolutionContext {
+            project_id: project_id.map(str::to_string),
+            character_id: character_id.map(str::to_string),
+            character_ids: extra_character_ids.to_vec(),
+            hide_character_vaults,
+            mount_point: None,
+            operator_override: false,
+            mount_pool: mount_pool.cloned(),
         },
-        project_id: project_id.map(str::to_string),
-    };
-    let opts = TierResolveOptions {
-        require_ownership: false,
-        include_participants: vaults_visible,
-    };
-    let pool = resolve_tiered_mount_pool(main, mount, &tier_ctx, &opts);
-    let ids = flatten_tier_pool(
-        &pool,
-        FlattenOptions {
-            include_participants: vaults_visible,
-            include_character_tier: vaults_visible,
-            ..Default::default()
-        },
-    );
+    )
+    .unwrap_or_default();
     enabled_accessible_mount_points(mount, ids)
 }
 
