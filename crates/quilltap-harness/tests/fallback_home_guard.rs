@@ -62,6 +62,10 @@ const HOME_MESSAGES: &[&str] = &[
     // P4.142 G2: v4's FILES repository PATH line (`doc-mount-files.
     // repository.ts:100-117`) — the chat attach route.
     "Error finding file by mount point and path",
+    // P4.D245 (v4 `9753d0eb2`): the roster chokepoint's fail-closed OUTER line
+    // (`projects.repository.ts:186-206` `canCharacterParticipate`'s own
+    // `safeQuery`); the inner arm reuses `Error finding entity by ID`.
+    "Error checking character participation",
 ];
 
 const HOME: &str = "db/fallback.rs";

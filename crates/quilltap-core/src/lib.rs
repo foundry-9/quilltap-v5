@@ -223,6 +223,7 @@ pub mod pascal;
 pub mod photos;
 pub mod post_office;
 pub mod pricing;
+pub mod project_roster_access;
 pub mod pronoun_gender;
 pub mod provider_manifest;
 // === P4.D167 ===

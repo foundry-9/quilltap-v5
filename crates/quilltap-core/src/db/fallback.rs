@@ -19,6 +19,7 @@
 //! differentials map it (`danger_routing_equivalence`'s `Repository →
 //! quilltap::db`); every emitter of these two lines uses it.
 
+use super::document_store_overlay::OverlayError;
 use super::DbError;
 
 /// The `error` field's bytes: v4 logs `extractErrorMessage(error)` — the
@@ -1125,5 +1126,57 @@ pub(crate) mod test_plants {
             rusqlite::params![id, user_id],
         )
         .unwrap();
+    }
+}
+
+/// v4 `ProjectsRepository.canCharacterParticipate` as its ONE caller
+/// (`projectRosterAdmits`, `lib/projects/roster-access.ts`) sees it: a fallback
+/// `safeQuery(…, 'Error checking character participation', { projectId,
+/// characterId }, false)` around `findById` (`projects.repository.ts:186-206`).
+/// Fail-closed in TWO layers, each with its own v4 line:
+///
+/// - the inner `_findById` is itself a fallback read, so a SLIM-ROW failure logs
+///   `Error finding entity by ID {collection: projects, id}` and answers `null`
+///   → `false` with NO outer line;
+/// - a throw from the store OVERLAY (`applyOverlayOne` — the store missing or
+///   unreadable) passes the inner read and lands in the OUTER catch → ERROR
+///   `Error checking character participation {collection: projects, projectId,
+///   characterId, error}` → `false`.
+///
+/// v5's `can_character_participate` propagates both as `OverlayError`; this home
+/// maps each to its v4 line. The split is attributable because
+/// `OverlayError::Db` can only come from the slim MAIN read: the overlay's own
+/// mount read is the fallback `documents_by_mount_point_ids_and_path_or_empty`
+/// (P4.142), so a mount failure surfaces as `Unavailable` (`properties.json
+/// missing`) — the OUTER line, exactly as v4. (Inside
+/// [`with_strict_repository_failures`] v4 would THROW from the inner read where
+/// v5 logs the inner line and answers `false`; no roster-gate site runs under
+/// the strict scope — backup, export, import and the cascade delete alone do.)
+/// The `error` field's bytes: the bare SQLite message for the inner arm, the
+/// overlay error's own message (`Project … has no usable document store (…):
+/// …`, v4's `ProjectStoreUnavailableError.message`) for the outer.
+pub fn can_character_participate_or_false(
+    project_id: &str,
+    character_id: &str,
+    check: impl FnOnce() -> Result<bool, OverlayError>,
+) -> bool {
+    match check() {
+        Ok(allowed) => allowed,
+        Err(OverlayError::Db(error)) => {
+            // v4's inner `_findById` line, through the ONE emitter of it.
+            let _: Option<()> = find_by_id_or_none("projects", project_id, || Err(error));
+            false
+        }
+        Err(unavailable) => {
+            tracing::error!(
+                target: "quilltap::db",
+                collection = "projects",
+                projectId = %project_id,
+                characterId = %character_id,
+                error = %unavailable,
+                "Error checking character participation"
+            );
+            false
+        }
     }
 }
