@@ -1,0 +1,340 @@
+{
+  "$comment": "Fixture + op matrix for the PROJECT ROSTER ACCESS differential (P4.D245 — v4 9753d0eb2, lib/projects/roster-access.ts). Drives v4's REAL projectRosterAdmits / rosterGatedProjectId / getAccessibleMountPoints / resolveDocEditPath / executeDocEditTool / resolveSharedWardrobeTiersForChat / executeWardrobeListTool over a REAL two-partition fixture whose projects set allowAnyCharacter EXPLICITLY — Closed (false, roster [Ada]) with a project-store doc + a project Wardrobe/ item, Open (true, roster []), and Broken (false, roster [Ada]) whose official store is wiped from the mount index after the build (the overlay's `properties.json missing` → v4's outer fail-closed line). Characters: Ada (rostered) and Bea (the stranger), both transparent so the opacity covenant stays out of the way. Chats: one in Closed carrying BOTH characters (the shared tiers key on chat × character), one in Open (Bea), one with no project (Bea). Every op records v4's `DocEdit:PathResolver` lines AND the ROOT-logger lines the gate emits ([ProjectRoster] / [Wardrobe] / the two repository fail-closed lines), compared on the Rust side by level, message and field name. The `admits` / `gated_id` ops import @/lib/projects/roster-access DYNAMICALLY and emit {absent:true} at a pin that predates the module, so the case runs at BOTH pins (the composition arms are the both-directions proof).",
+  "$safety": "testPepperBase64 is the SAME throwaway key the other minted fixtures use — never a real pepper.",
+  "testPepperBase64": "3q2+796tvu3erb7t3q2+796tvu3erb7t3q2+796tvu0=",
+  "seedTimestamp": "2026-10-03T00:00:00.000Z",
+  "userId": "a3000000-0000-4000-8000-0000000000d3",
+  "adaId": "c3000000-0000-4000-8000-0000000000a1",
+  "adaName": "Ada",
+  "beaId": "c3000000-0000-4000-8000-0000000000a2",
+  "beaName": "Bea",
+  "closedProjectId": "d3000000-0000-4000-8000-000000000001",
+  "closedProjectName": "Closed Ledger",
+  "openProjectId": "d3000000-0000-4000-8000-000000000002",
+  "openProjectName": "Open Commons",
+  "brokenProjectId": "d3000000-0000-4000-8000-000000000003",
+  "brokenProjectName": "Broken Vault",
+  "closedCloakId": "e3000000-0000-4000-8000-00000000c10a",
+  "closedCloakTitle": "Project cloak",
+  "generalMountPointId": "e3000000-0000-4000-8000-0000000000a1",
+  "generalStoreName": "Quilltap General",
+  "closedChatId": "d3000000-0000-4000-8000-00000000c001",
+  "openChatId": "d3000000-0000-4000-8000-00000000c002",
+  "noProjectChatId": "d3000000-0000-4000-8000-00000000c003",
+  "missingChatId": "d3000000-0000-4000-8000-00000000c0ff",
+  "adaClosedParticipantId": "b3000000-0000-4000-8000-000000000001",
+  "beaClosedParticipantId": "b3000000-0000-4000-8000-000000000002",
+  "beaOpenParticipantId": "b3000000-0000-4000-8000-000000000003",
+  "beaNoProjectParticipantId": "b3000000-0000-4000-8000-000000000004",
+  "_opsComment": "project: closed|open|broken|missing (a uuid with no row)|none (no project) | empty (the empty string — JS-falsy). actor: ada|bea|none|empty. chat: closed|open|noproject|missing|empty. Placeholders {{closedStoreName}} / {{closedStoreId}} / {{openStoreId}} are MINTED by the builder and read back on both sides.",
+  "ops": [
+    {
+      "name": "admits_closed_ada",
+      "kind": "admits",
+      "project": "closed",
+      "actor": "ada"
+    },
+    {
+      "name": "admits_closed_bea",
+      "kind": "admits",
+      "project": "closed",
+      "actor": "bea"
+    },
+    {
+      "name": "admits_open_bea",
+      "kind": "admits",
+      "project": "open",
+      "actor": "bea"
+    },
+    {
+      "name": "admits_no_project",
+      "kind": "admits",
+      "project": "none",
+      "actor": "bea"
+    },
+    {
+      "name": "admits_no_character",
+      "kind": "admits",
+      "project": "closed",
+      "actor": "none"
+    },
+    {
+      "name": "admits_empty_project",
+      "kind": "admits",
+      "project": "empty",
+      "actor": "bea"
+    },
+    {
+      "name": "admits_empty_character",
+      "kind": "admits",
+      "project": "closed",
+      "actor": "empty"
+    },
+    {
+      "name": "admits_broken_ada",
+      "kind": "admits",
+      "project": "broken",
+      "actor": "ada"
+    },
+    {
+      "name": "admits_missing_project",
+      "kind": "admits",
+      "project": "missing",
+      "actor": "ada"
+    },
+    {
+      "name": "gated_id_closed_ada",
+      "kind": "gated_id",
+      "project": "closed",
+      "actor": "ada"
+    },
+    {
+      "name": "gated_id_closed_bea",
+      "kind": "gated_id",
+      "project": "closed",
+      "actor": "bea"
+    },
+    {
+      "name": "gated_id_no_project",
+      "kind": "gated_id",
+      "project": "none",
+      "actor": "bea"
+    },
+    {
+      "name": "gated_id_empty_project",
+      "kind": "gated_id",
+      "project": "empty",
+      "actor": "bea"
+    },
+    {
+      "name": "gated_id_no_character",
+      "kind": "gated_id",
+      "project": "closed",
+      "actor": "none"
+    },
+    {
+      "name": "accessible_closed_ada",
+      "kind": "accessible",
+      "project": "closed",
+      "actor": "ada"
+    },
+    {
+      "name": "accessible_closed_bea",
+      "kind": "accessible",
+      "project": "closed",
+      "actor": "bea"
+    },
+    {
+      "name": "accessible_open_bea",
+      "kind": "accessible",
+      "project": "open",
+      "actor": "bea"
+    },
+    {
+      "name": "accessible_closed_nobody",
+      "kind": "accessible",
+      "project": "closed",
+      "actor": "none"
+    },
+    {
+      "name": "accessible_broken_ada",
+      "kind": "accessible",
+      "project": "broken",
+      "actor": "ada"
+    },
+    {
+      "name": "resolve_project_closed_bea",
+      "kind": "resolve",
+      "scope": "project",
+      "path": "Docs/plan.md",
+      "project": "closed",
+      "actor": "bea"
+    },
+    {
+      "name": "resolve_project_closed_ada",
+      "kind": "resolve",
+      "scope": "project",
+      "path": "Docs/plan.md",
+      "project": "closed",
+      "actor": "ada"
+    },
+    {
+      "name": "resolve_project_closed_nobody",
+      "kind": "resolve",
+      "scope": "project",
+      "path": "Docs/plan.md",
+      "project": "closed",
+      "actor": "none"
+    },
+    {
+      "name": "resolve_project_open_bea",
+      "kind": "resolve",
+      "scope": "project",
+      "path": "Docs/notes.md",
+      "project": "open",
+      "actor": "bea"
+    },
+    {
+      "name": "resolve_project_closed_empty_character",
+      "kind": "resolve",
+      "scope": "project",
+      "path": "Docs/plan.md",
+      "project": "closed",
+      "actor": "empty"
+    },
+    {
+      "name": "resolve_store_by_name_closed_bea",
+      "kind": "resolve",
+      "scope": "document_store",
+      "mountPoint": "{{closedStoreName}}",
+      "path": "Docs/plan.md",
+      "project": "closed",
+      "actor": "bea"
+    },
+    {
+      "name": "resolve_store_by_name_closed_ada",
+      "kind": "resolve",
+      "scope": "document_store",
+      "mountPoint": "{{closedStoreName}}",
+      "path": "Docs/plan.md",
+      "project": "closed",
+      "actor": "ada"
+    },
+    {
+      "name": "list_files_closed_ada",
+      "kind": "tool",
+      "tool": "doc_list_files",
+      "args": {},
+      "chat": "closed",
+      "project": "closed",
+      "actor": "ada"
+    },
+    {
+      "name": "list_files_closed_bea",
+      "kind": "tool",
+      "tool": "doc_list_files",
+      "args": {},
+      "chat": "closed",
+      "project": "closed",
+      "actor": "bea"
+    },
+    {
+      "name": "list_files_project_scope_closed_ada",
+      "kind": "tool",
+      "tool": "doc_list_files",
+      "args": {
+        "scope": "project"
+      },
+      "chat": "closed",
+      "project": "closed",
+      "actor": "ada"
+    },
+    {
+      "name": "list_files_project_scope_closed_bea",
+      "kind": "tool",
+      "tool": "doc_list_files",
+      "args": {
+        "scope": "project"
+      },
+      "chat": "closed",
+      "project": "closed",
+      "actor": "bea"
+    },
+    {
+      "name": "grep_closed_ada",
+      "kind": "tool",
+      "tool": "doc_grep",
+      "args": {
+        "query": "quarry"
+      },
+      "chat": "closed",
+      "project": "closed",
+      "actor": "ada"
+    },
+    {
+      "name": "grep_closed_bea",
+      "kind": "tool",
+      "tool": "doc_grep",
+      "args": {
+        "query": "quarry"
+      },
+      "chat": "closed",
+      "project": "closed",
+      "actor": "bea"
+    },
+    {
+      "name": "open_blank_closed_bea",
+      "kind": "tool",
+      "tool": "doc_open_document",
+      "args": {},
+      "chat": "closed",
+      "project": "closed",
+      "actor": "bea"
+    },
+    {
+      "name": "open_blank_closed_ada",
+      "kind": "tool",
+      "tool": "doc_open_document",
+      "args": {},
+      "chat": "closed",
+      "project": "closed",
+      "actor": "ada"
+    },
+    {
+      "name": "tiers_closed_bea",
+      "kind": "wardrobe_tiers",
+      "chat": "closed",
+      "actor": "bea"
+    },
+    {
+      "name": "tiers_closed_ada",
+      "kind": "wardrobe_tiers",
+      "chat": "closed",
+      "actor": "ada"
+    },
+    {
+      "name": "tiers_closed_bea_operator",
+      "kind": "wardrobe_tiers",
+      "chat": "closed",
+      "actor": "bea",
+      "operator": true
+    },
+    {
+      "name": "tiers_open_bea",
+      "kind": "wardrobe_tiers",
+      "chat": "open",
+      "actor": "bea"
+    },
+    {
+      "name": "tiers_noproject_bea",
+      "kind": "wardrobe_tiers",
+      "chat": "noproject",
+      "actor": "bea"
+    },
+    {
+      "name": "tiers_missing_chat_bea",
+      "kind": "wardrobe_tiers",
+      "chat": "missing",
+      "actor": "bea"
+    },
+    {
+      "name": "tiers_empty_chat_bea",
+      "kind": "wardrobe_tiers",
+      "chat": "empty",
+      "actor": "bea"
+    },
+    {
+      "name": "wardrobe_list_closed_bea",
+      "kind": "wardrobe_list",
+      "chat": "closed",
+      "actor": "bea"
+    },
+    {
+      "name": "wardrobe_list_closed_ada",
+      "kind": "wardrobe_list",
+      "chat": "closed",
+      "actor": "ada"
+    }
+  ],
+  "missingProjectId": "d3000000-0000-4000-8000-0000000000ff"
+}
