@@ -42,6 +42,7 @@ pub mod provider_io;
 pub mod provider_models_api;
 pub mod request_builder;
 pub mod response_parse;
+pub mod sdk_response_shape;
 pub mod stream;
 pub mod stream_watchdog;
 pub mod streaming_provider;

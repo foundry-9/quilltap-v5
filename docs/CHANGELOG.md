@@ -21,6 +21,12 @@ _Docs-only change._
 - `9753d0eb2` (PORT): the project character roster now gates a character's doc tools, `search_scriptorium` and the project tier of the shared wardrobe through one chokepoint. The roster auto-add on chat create and chat move is removed. `allowAnyCharacter` now defaults to `true`, and the project PUT returns the enriched project. The SPA Characters card and four help pages change too.
 - `e5c6bd0c0` (CONVERGENCE on this port's filings 175/176, shaped differently from P4.135): a failed avatar-roll collapse is now deferred to the next boot instead of being fatal. Separately, a new boot-time structural table check reports damage through a `structure` service in `/api/health`. The ledger gate itself is unchanged.
 - §1 is rewritten for the new state. The previous dirty-tree waiver is spent because v4 committed the 175/176 filings itself.
+#### 2026-10-02 — fix(model): a 2xx body the v4 plugin cannot read now fails the non-streaming send with v4's thrown text
+
+_Versions: core 0.0.1151, harness 0.0.1079._
+
+New `model/sdk_response_shape.rs` reproduces each v4 plugin's read chain over a non-streaming 2xx body as a JS-faithful property walk. That covers the OpenAI-compatible base, DeepSeek, Z.AI, NanoGPT, the Responses API (OpenAI and Grok, including the SDK's `'object' in rsp` check) and Anthropic. The walk answers V8's error text at the first throwing read. Google, Ollama and OpenRouter's raw fetch never throw on a JSON shape. A body that is not JSON returns V8's `JSON.parse` text on every provider. An empty JSON body reads as `undefined` for the openai SDK, as that SDK's parse does. `execute_completion` runs the guard before the parser, which stays total. On a hit it logs the plugin's catch line and returns a `CompletionError` carrying v4's text. Before this, the seven throwing providers answered `Ok("")`, so the cheap path handed tasks an empty result where v4 fails over. 62 pending divergences in `text_http_errors_equivalence` close.
+
 #### 2026-10-02 — fix(fallback): file transport timeouts and raw-fetch connect failures under v4's network trigger
 
 _Versions: core 0.0.1150, harness 0.0.1078._

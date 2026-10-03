@@ -284,6 +284,22 @@ pub fn execute_completion_with_anchor<'a, T: ProviderTransport + ?Sized>(
                 }
             }
         };
+        // P4.141: v4's plugin reads the SDK's parsed body with plain property
+        // reads, and a read off `undefined` / `null` THROWS — a `TypeError`
+        // (or V8's `JSON.parse` text for a body that is not JSON) inside its
+        // `try`, so the catch line fires and the cheap path's stand-in chain
+        // engages (`provider-error`), where v5's total parsers answered `""`.
+        // The guard runs BESIDE the parsers (`model::sdk_response_shape`);
+        // the error's message IS v4's thrown text — no v5 transport text
+        // exists on this arm.
+        if let Some(thrown) =
+            crate::model::sdk_response_shape::v4_send_shape_error(provider, &resp.body)
+        {
+            if let Some(log) = &catch_log {
+                log.emit_thrown(&thrown);
+            }
+            return Err(CompletionError::new(thrown));
+        }
         let json = resp
             .json()
             .map_err(|e| CompletionError::new(format!("response parse: {e}")))?;

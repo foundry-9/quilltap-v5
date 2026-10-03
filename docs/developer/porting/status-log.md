@@ -160313,3 +160313,60 @@ clean; NEUTRAL by name all green (`streaming_composer` 5/5, `stream_decoders`
 5/5, `primary_stream_tier3`, `cheap_llm_fallback`, `ollama_think_retry_tier3`,
 `tool_wire_call_site`, `request_builder`, `file_attachment_tier3`,
 `initial_greeting`, `stream_watchdog_wrap_census`).
+
+### Unit 6 — the 2xx shape guard (Tier 1 item 5)
+
+NEW `model/sdk_response_shape.rs`: `v4_send_shape_error(provider, body)` →
+`Some(v4's thrown text)` at the FIRST throwing read of the provider's own v4
+chain, walked JS-faithfully over the parsed body (`undefined` / `null`
+reads throw `Cannot read properties of … (reading '<k>')`, an array index
+key `'0'`, a string indexes to its UTF-16 unit, numbers/booleans have no
+properties): OPENAI_COMPATIBLE `choices[0].message.tool_calls`;
+DEEPSEEK / Z_AI `….message.reasoning_content`; NANOGPT `….message.reasoning`;
+OPENAI / GROK the SDK's `'object' in rsp` (`Cannot use 'in' operator to search
+for 'object' in <String(v)>`), its `addOutputText` walk when `object ===
+'response'` (`rsp.output is not iterable`, `output.content is not iterable`),
+then the plugin's `response.output` loop reading `item.type` (`response.output
+is not iterable` — V8 renders the SOURCE expression, measured);
+ANTHROPIC `response.content.filter(…)` (`… (reading 'filter')`,
+`response.content.filter is not a function`, a block's `.type`); GOOGLE /
+OLLAMA / OPENROUTER none on a JSON shape. Bodies: an EMPTY body is the openai
+SDK's `undefined` for the six openai-SDK providers (`internal/parse.js`
+`!bodyText`), `JSON.parse('')` → `Unexpected end of JSON input` for every
+other client; a non-JSON body → `optimizer::v8_json_parse_message` (called in
+place, P4.139's file untouched), its `None` (a failure INSIDE a legally
+started value) falling back to serde's text — a RECORDED divergence,
+unit-pinned (`{x` → `key must be a string at line 1 column 2`). Recorded
+Tier-3 shapes are named in the module doc (the content-type branch; a
+non-array `tool_calls`; a `tool_calls` element that is null / primitive;
+Responses items past `.type`; Anthropic blocks past `.type`; a 2xx Responses
+body with a truthy `error` — v4 throws `<Name> API error: ${message}` after
+an unported `Responses API returned error` line, no corpus row poses it).
+`execute_completion` runs the guard BEFORE `parse_for_provider_ex` (the
+parsers stay total): on `Some`, `catch_log.emit_thrown(&text)` (the three
+SDK catch lines, Google's, Ollama's; OpenRouter's vision send stays silent —
+its `response.json()` sits outside v4's `try`) and `Err(CompletionError::new
+(text))` (`transport_kind: None`; v4's TypeError / SyntaxError texts classify
+`provider-error` on both sides).
+
+Unit pins (`sdk_response_shape::tests`): one per family × shape incl.
+`null`-valued keys, a `choices` array of `null`, a `null` body, primitive
+bodies, a string `choices`; the Responses SDK walk; Anthropic's four arms;
+the never-throwing trio + their empty-body throw; the non-JSON and
+whitespace bodies on all ten; the serde fallback; an unknown provider.
+
+Family: **62 PENDING entries retired by VANISHING** (the whole unit-6
+group: 21 `outcome` + 22 `message` + 19 `lines`); matched ERROR lines **517
+→ 536**. (The unit-5 retire had dropped the group's HEADER comment — an
+over-eager cleanup rule in the lane's retire helper; the 62 entries were
+intact and are verified equal to the vanished set before removal.)
+**M4** (the guard removed) → exactly **62** (19 lines + 22 message + 21
+outcome); **M5** (the guard's catch emit removed) → exactly **19** `lines`;
+both reverted by file backup, `cmp`-identical. Gate for this unit: core
+2,912 / 0; clippy both sets clean; NEUTRAL green (`streaming_composer`,
+`cheap_llm_fallback`, `ollama_think_retry_tier3`, `file_attachment_tier3`,
+`initial_greeting`, `request_builder`). The non-streaming callers beyond the
+cheap path (`compression`, `file_fallback`, the gatekeeper, `memory_recap`,
+`outfit_selections`, `voice_rewrite_core`, `build_context`, `message_context`)
+now see v4's `Err` on these bodies where they saw `Ok("")`; their families
+run in the lane's closing workspace gate.
