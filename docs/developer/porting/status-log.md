@@ -160943,3 +160943,67 @@ scope → the caller's `Err`), on the union.
   chunks_read_logs_v4s_line_and_enqueues_nothing` + `a_failed_clear_logs_the_
   homes_line_only`.
 - No proof SURVIVED.
+
+### Unit 11 — G2/G3: the safe 19 converted, 23 HELD (core 0.0.1157, harness 0.0.1082)
+
+**RULED (the human, 2026-10-02): "convert safe, hold risky".** Two read-only
+research agents classified the 42 remaining G2/G3 sites against v4's
+downstream arm (and the importer's strict scope). Their finding: nearly every
+site MIRRORS v4 — and at 23 of them v4's fallback is itself destructive or
+misreporting on a failed read, where v5's propagation refuses.
+
+- **Converted (19).** G2 14: `tools/photo.rs` `find_existing_photos_link_by_
+  sha` (v4 `photo-handlers.ts:90`), `file_storage::store_mount_blob` (`store-
+  file.ts:276-279`), `image_job_storage::write_main_avatar_to_vault` ×2 (`character-
+  vault-bridge.ts:166-172`), `store_file::store_mount_file`'s three link reads
+  (`store-file.ts:181,230,276`), `scanner::process_mount_file` (`scanner.ts:
+  170-176`), `reindex_file::reindex_inner` ×2 (`reindex-file.ts:86-100,137-200`),
+  `link_groups` (`link-groups.ts:51-52`), `knowledge_injector` (`knowledge-
+  injector.ts:253-272`), `librarian_notifications` (`writer.ts:74-75`),
+  `api/chat_media.rs` `chat_attach_mount_file` — v4 reads the FILES repository
+  there (`chats/[id]/files/route.ts:363-366`, `docMountFiles.
+  findByMountPointAndPath`), so a NEW home `file_by_mount_point_and_path_or_none`
+  (`Error finding file by mount point and path {collection: doc_mount_files,
+  mountPointId, relativePath}`, `doc-mount-files.repository.ts:100-117`;
+  `HOME_MESSAGES` 23). G3 5: `file_ops::compute_dest_sha256` (→ VERIFY_FAILED),
+  `scanner::remove_mount_file`'s lookup (→ not counted),
+  `rescan_database_mount_point` (→ 0 documents), `reindex` ×2 (→ zero work).
+- **Per-site capture units (8 sites):** `scanner::g2g3_fallback_tests` (remove
+  lookup, rescan), `reindex::g3_fallback_tests` (both reads), `link_groups::
+  g2_fallback_tests`, `file_ops::g3_fallback_tests` (verify), `librarian_
+  notifications::g2_fallback_tests`, `tools::photo::g2_fallback_tests` — each
+  over a provisioned store with the links `originalMimeType` plant: v4's line
+  + the v4 outcome (+ a silence leg where a healthy call is cheap). **The other
+  11 sites rest on their twins' exact pins + their covering families** (the
+  neutrality sweep after this unit): their setups (character vaults, blob
+  stores, store-file inputs, chats) are not cheap enough for a unit each; named
+  as such.
+- **HELD (23), census class `held-pending-ruling`, each hazard named in
+  `OVERRIDES`:** G2 6 — `save_image_to_album` dedup (a duplicate album photo),
+  `store_file`'s `expected_mtime` guard (a concurrent edit silently overwritten;
+  + a doubled log line), `general_state` (`state.json` reset to `{}`),
+  `character_vault::ensure_character_metadata_file` (`metadata.json` overwritten
+  with the seed — and v5 reaches it from every FK `ensure_character_vault` and
+  the importer's adopt arm, where v4 only from the boot backfill),
+  `vault_character_update::read_current_properties` (the six vault properties
+  reset — bug 8 / #47's loss), `document_store_overlay::read_properties` (the
+  project/group settings bag reset; importer-reachable); G3 17 — the avatar-roll,
+  character-gallery and user-gallery deletes (false `deleted: true`; the user
+  gallery ALSO differs — v4 404s via `fileId !== null`), the blob delete
+  (orphaned link + blob, success reported), `prune_vault` ×3 + `prune_empty_
+  folders` (a failed survivors re-read wipes every non-Wardrobe folder row and
+  reports success), `file_ops` source probe / `dest_exists` (**a skipped
+  DEST_EXISTS guard silently overwrites**) / `delete_at_source` ×2 /
+  `delete_at_dest` ×2 / `move_file` (moves reporting success while duplicating
+  or leaving stale links), `move_folder` (links keep old paths; the next scan
+  drops their chunks/embeddings/descriptions), `remove_mount_file`'s delete
+  (over-counted). Census fix with it: a blobs receiver is `other-repo` BEFORE any
+  `OVERRIDES` key (one fn can call the same method on two repositories).
+- **Census: (80, 13, 19, 0, 13, 1, 1, 23, 5)** — 9 classes; the 5 left on the
+  conversion list are the sync applier (the separate RULING).
+- **v4 bugs found by the classification** (to file — see the lane close): v4's
+  `readProperties` / `readCharacterVaultPropertiesForWrite` "unreadable —
+  refuse" arms (bug 8 / `dcd9440a`) are unreachable outside the importer's
+  strict scope, because `docMountDocuments.findByMountPointAndPath` is a
+  fallback `withRawDb(null)`: a repository failure reads as ABSENT and the
+  settings/property bag is reseeded from defaults.

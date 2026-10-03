@@ -1158,7 +1158,11 @@ pub fn store_mount_blob(
     // 'overwrite'/force re-point an existing link at new content — drop its
     // stale chunks first (v4 store-file.ts; under unique-suffix an existing
     // LINK at a blob-free path can still collide — e.g. a text document there).
-    if let Some(existing) = links.find_by_mount_point_and_path(input.mount_point_id, &final_path)? {
+    // v4 `store-file.ts:276-279`: the fallback path read (`null` → no chunk
+    // delete → the upsert) — P4.142 G2.
+    if let Some(existing) =
+        links.find_by_mount_point_and_path_or_none(input.mount_point_id, &final_path)
+    {
         links.delete_chunks_by_link_id(&existing.id)?;
     }
 

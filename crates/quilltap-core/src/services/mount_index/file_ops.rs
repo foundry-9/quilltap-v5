@@ -342,8 +342,10 @@ fn compute_dest_sha256(
         let bytes = std::fs::read(&abs).map_err(|e| MountFileError::Other(e.to_string()))?;
         return Ok(sha256_hex(&bytes));
     }
+    // v4 `file-ops.ts:274-280`: the fallback link read — `null` →
+    // `VERIFY_FAILED` (P4.142 G3).
     let link = DocMountFileLinksRepository::new(conn)
-        .find_by_mount_point_and_path(&mp.id, relative_path)?;
+        .find_by_mount_point_and_path_or_none(&mp.id, relative_path);
     match link {
         Some(l) => Ok(l.sha256),
         None => Err(MountFileError::FileOp(FileOpError::new(
@@ -1144,5 +1146,69 @@ mod tests {
         assert_eq!(node_dirname("a/b/c.md"), "a/b");
         assert_eq!(node_dirname("c.md"), ".");
         assert_eq!(node_dirname("/x"), "/");
+    }
+}
+
+#[cfg(test)]
+mod g3_fallback_tests {
+    use super::*;
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    /// A provisioned instance's mount-index writer, one of its database
+    /// stores (service info), and `notes/a.md` written into it.
+    fn store(
+        dir: &tempfile::TempDir,
+    ) -> (
+        crate::db::Writer,
+        crate::db::doc_mount_points::MountServiceInfo,
+    ) {
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER).unwrap();
+        let w =
+            crate::db::Writer::open_writable(&dir.path().join("quilltap-mount-index.db"), PEPPER)
+                .unwrap();
+        let id: String = w
+            .connection()
+            .query_row(
+                "SELECT id FROM doc_mount_points WHERE mountType = 'database' LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        crate::db::doc_mount_file_links::DocMountFileLinksRepository::new(w.connection())
+            .write_database_document(&id, "notes/a.md", "hello")
+            .unwrap();
+        let info = crate::db::doc_mount_points::DocMountPointsRepository::new(w.connection())
+            .find_service_info_by_id(&id)
+            .unwrap()
+            .unwrap();
+        (w, info)
+    }
+
+    /// Breaks every joined link read (named by `queryJoined`, by no overlay read).
+    fn plant_links(w: &crate::db::Writer) {
+        w.connection()
+            .execute_batch(
+                "ALTER TABLE doc_mount_file_links RENAME COLUMN originalMimeType TO originalMimeType_x",
+            )
+            .unwrap();
+    }
+
+    const PATH_LINE: &str = "ERROR quilltap::db Error querying joined file links collection=doc_mount_file_links whereClause=WHERE l.mountPointId = ? AND LOWER(l.relativePath) = LOWER(?) error=no such column: l.originalMimeType";
+
+    /// P4.142 G3: the post-write verify read (v4 `file-ops.ts:274-280`) — a
+    /// failed read is `null` → `VERIFY_FAILED`, with v4's line.
+    #[test]
+    fn a_failed_verify_read_is_verify_failed() {
+        let dir = tempfile::tempdir().unwrap();
+        let (w, mp) = store(&dir);
+        plant_links(&w);
+        let (got, lines) = crate::test_support::captured_with(|| {
+            compute_dest_sha256(w.connection(), &mp, "notes/a.md")
+        });
+        match got {
+            Err(MountFileError::FileOp(e)) => assert_eq!(e.code, FileOpErrorCode::VerifyFailed),
+            other => panic!("expected VERIFY_FAILED, got {other:?}"),
+        }
+        assert_eq!(lines, vec![PATH_LINE.to_string()]);
     }
 }

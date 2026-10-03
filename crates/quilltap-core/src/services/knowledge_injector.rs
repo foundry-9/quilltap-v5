@@ -341,9 +341,14 @@ pub async fn retrieve_knowledge_for_turn<P: EmbeddingProvider>(
                 let doc_content = {
                     let mp = hit.mount_point_id.clone();
                     let rp = hit.relative_path.clone();
+                    // v4 `knowledge-injector.ts:253-272`: the fallback document
+                    // read — `null` → a pointer-only candidate, with v4's line
+                    // (P4.142 G2; the `Err` had been swallowed silently).
                     db.read_mount_index(move |conn| {
-                        crate::db::doc_mount_documents::DocMountDocumentsRepository::new(conn)
-                            .find_by_mount_point_and_path(&mp, &rp)
+                        Ok(
+                            crate::db::doc_mount_documents::DocMountDocumentsRepository::new(conn)
+                                .find_by_mount_point_and_path_or_none(&mp, &rp),
+                        )
                     })
                     .ok()
                     .flatten()

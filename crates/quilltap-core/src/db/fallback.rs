@@ -546,6 +546,31 @@ pub fn files_by_mount_point_id_or_empty<T>(
     })
 }
 
+/// v4 `docMountFiles.findByMountPointAndPath` as its callers see it: a
+/// fallback `withRawDb(null)` on the repository constructed with
+/// `'doc_mount_files'` (`queryLinks` inside it is a plain helper), so `read()`'s
+/// `Err` logs `Error finding file by mount point and path {collection,
+/// mountPointId, relativePath, error}` and answers `None`
+/// (`doc-mount-files.repository.ts:100-117`) — the chat attach route's read
+/// (`chats/[id]/files/route.ts:363-366`), NOT the links repository's line.
+pub fn file_by_mount_point_and_path_or_none<T>(
+    mount_point_id: &str,
+    relative_path: &str,
+    read: impl FnOnce() -> Result<Option<T>, DbError>,
+) -> Option<T> {
+    read().unwrap_or_else(|error| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "doc_mount_files",
+            mountPointId = %mount_point_id,
+            relativePath = %relative_path,
+            error = %error_text(&error),
+            "Error finding file by mount point and path"
+        );
+        None
+    })
+}
+
 /// v4 `docMountChunks.clearEmbeddingsByLinkId` as its callers see it: a
 /// fallback `withRawDb(0)` (a WRITE), so `write()`'s `Err` logs `Error clearing
 /// embeddings by link ID {collection, linkId, error}` and answers `0`
@@ -955,6 +980,24 @@ mod tests {
         let caught = std::panic::catch_unwind(|| with_strict_repository_failures(|| panic!("x")));
         assert!(caught.is_err());
         assert!(!strict_repository_failures_active());
+    }
+
+    /// The files repository's PATH line (P4.142 G2 — the chat attach route).
+    #[test]
+    fn the_file_by_path_shape_logs_v4s_line() {
+        let (got, lines) = crate::test_support::captured_with(|| {
+            file_by_mount_point_and_path_or_none::<i32>("mp-1", "a.md", || Err(posed()))
+        });
+        assert!(got.is_none());
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error finding file by mount point and path collection=doc_mount_files mountPointId=mp-1 relativePath=a.md error=posed".to_string()]
+        );
+        let (got, lines) = crate::test_support::captured_with(|| {
+            file_by_mount_point_and_path_or_none("mp-1", "a.md", || Ok(Some(1)))
+        });
+        assert_eq!(got, Some(1));
+        assert!(lines.is_empty(), "{lines:?}");
     }
 
     /// The chunk-clear write's line (P4.142 Tier 2) — answers 0.

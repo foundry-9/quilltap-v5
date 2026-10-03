@@ -2320,8 +2320,15 @@ pub async fn chat_attach_mount_file(
     }
 
     let (mp, rp) = (mount_point_id.to_string(), relative_path.to_string());
+    // v4 `chats/[id]/files/route.ts:363-366` reads `docMountFiles.
+    // findByMountPointAndPath`, a fallback — a failed read is the 404, with
+    // the FILES repository's line (P4.142 G2).
     let mount_file = match db.read_mount_index(move |c| {
-        DocMountFileLinksRepository::new(c).find_by_mount_point_and_path(&mp, &rp)
+        Ok(crate::db::fallback::file_by_mount_point_and_path_or_none(
+            &mp,
+            &rp,
+            || DocMountFileLinksRepository::new(c).find_by_mount_point_and_path(&mp, &rp),
+        ))
     }) {
         Ok(Some(f)) => f,
         Ok(None) => return not_found("Mount-point file"),

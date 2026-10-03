@@ -168,7 +168,9 @@ pub fn process_mount_file(
     let sha256 = sha256_hex(&bytes);
 
     let links = DocMountFileLinksRepository::new(conn);
-    let existing = links.find_by_mount_point_and_path(&mount_point.id, relative_path)?;
+    // v4 `scanner.ts:170-176`: the fallback path read — `null` → no
+    // `unchanged` shortcut, no chunk delete, the upsert (P4.142 G2).
+    let existing = links.find_by_mount_point_and_path_or_none(&mount_point.id, relative_path);
 
     if let Some(ex) = &existing {
         if ex.sha256 == sha256 {
@@ -243,7 +245,12 @@ pub fn remove_mount_file(
     relative_path: &str,
 ) -> Result<bool, DbError> {
     let links = DocMountFileLinksRepository::new(conn);
-    let Some(existing) = links.find_by_mount_point_and_path(mount_point_id, relative_path)? else {
+    // v4 `scanner.ts:255-259`: the fallback path read — `null` → `false` (not
+    // counted). The delete below stays propagating: held pending a ruling
+    // (P4.142 G3 — a swallowed delete would count a removal that did not
+    // happen).
+    let Some(existing) = links.find_by_mount_point_and_path_or_none(mount_point_id, relative_path)
+    else {
         return Ok(false);
     };
     links.delete_with_gc(&existing.id)?;
@@ -414,7 +421,10 @@ pub fn rescan_database_mount_point(
             "rescanDatabaseMountPoint called on non-database mount point".to_string(),
         ));
     }
-    let links = DocMountFileLinksRepository::new(conn).find_by_mount_point_id(&mount_point.id)?;
+    // v4 `database-store.ts:639`: the fallback joined read — `[]` → a 0-document
+    // rescan (P4.142 G3).
+    let links =
+        DocMountFileLinksRepository::new(conn).find_by_mount_point_id_or_empty(&mount_point.id);
     let doc_links: Vec<_> = links
         .into_iter()
         .filter(|l| l.file_type != "blob")
@@ -546,5 +556,92 @@ mod tests {
         // The traversal guard still wins over the availability check.
         let err = create_filesystem_folder(base, "m1", "../escape").unwrap_err();
         assert!(matches!(err, CreateFolderError::Escapes));
+    }
+}
+
+#[cfg(test)]
+mod g2g3_fallback_tests {
+    use super::*;
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    /// A provisioned instance's mount-index writer, one of its database
+    /// stores (service info), and `notes/a.md` written into it.
+    fn store(
+        dir: &tempfile::TempDir,
+    ) -> (
+        crate::db::Writer,
+        crate::db::doc_mount_points::MountServiceInfo,
+    ) {
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER).unwrap();
+        let w =
+            crate::db::Writer::open_writable(&dir.path().join("quilltap-mount-index.db"), PEPPER)
+                .unwrap();
+        let id: String = w
+            .connection()
+            .query_row(
+                "SELECT id FROM doc_mount_points WHERE mountType = 'database' LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        crate::db::doc_mount_file_links::DocMountFileLinksRepository::new(w.connection())
+            .write_database_document(&id, "notes/a.md", "hello")
+            .unwrap();
+        let info = crate::db::doc_mount_points::DocMountPointsRepository::new(w.connection())
+            .find_service_info_by_id(&id)
+            .unwrap()
+            .unwrap();
+        (w, info)
+    }
+
+    /// Breaks every joined link read (named by `queryJoined`, by no overlay read).
+    fn plant_links(w: &crate::db::Writer) {
+        w.connection()
+            .execute_batch(
+                "ALTER TABLE doc_mount_file_links RENAME COLUMN originalMimeType TO originalMimeType_x",
+            )
+            .unwrap();
+    }
+
+    const PATH_LINE: &str = "ERROR quilltap::db Error querying joined file links collection=doc_mount_file_links whereClause=WHERE l.mountPointId = ? AND LOWER(l.relativePath) = LOWER(?) error=no such column: l.originalMimeType";
+    const ID_LINE: &str = "ERROR quilltap::db Error querying joined file links collection=doc_mount_file_links whereClause=WHERE l.mountPointId = ? error=no such column: l.originalMimeType";
+
+    /// P4.142 G3: `removeMountFile`'s lookup (v4 `scanner.ts:255-259`) — a
+    /// failed read is `null` → `false` (not counted), never an `Err`; the
+    /// healthy lookup removes and is silent.
+    #[test]
+    fn remove_mount_file_falls_back_to_not_counted() {
+        let dir = tempfile::tempdir().unwrap();
+        let (w, mp) = store(&dir);
+        let (got, lines) = crate::test_support::captured_with(|| {
+            remove_mount_file(w.connection(), &mp.id, "notes/missing.md")
+        });
+        assert!(!got.unwrap());
+        assert!(lines.is_empty(), "{lines:?}");
+        plant_links(&w);
+        let (got, lines) = crate::test_support::captured_with(|| {
+            remove_mount_file(w.connection(), &mp.id, "notes/a.md")
+        });
+        assert!(!got.unwrap());
+        assert_eq!(lines, vec![PATH_LINE.to_string()]);
+    }
+
+    /// P4.142 G3: `rescanDatabaseMountPoint`'s link read (v4 `database-store.ts:
+    /// 639`) — a failed read is `[]` → a 0-document rescan.
+    #[test]
+    fn rescan_falls_back_to_zero_documents() {
+        let dir = tempfile::tempdir().unwrap();
+        let (w, mp) = store(&dir);
+        plant_links(&w);
+        let extractor = super::super::converters::RefusingTextExtractor;
+        let (got, lines) = crate::test_support::captured_with(|| {
+            rescan_database_mount_point(w.connection(), &mp, &extractor)
+        });
+        assert_eq!(got.unwrap(), 0);
+        assert_eq!(
+            lines.first().map(String::as_str),
+            Some(ID_LINE),
+            "{lines:#?}"
+        );
     }
 }

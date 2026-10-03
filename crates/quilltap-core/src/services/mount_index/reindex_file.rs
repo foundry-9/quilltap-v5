@@ -193,7 +193,11 @@ fn reindex_inner(
         // Text source 1: doc_mount_documents.content (native text); source 2:
         // doc_mount_blobs.extractedText (derived pdf/docx plaintext).
         let docs = DocMountDocumentsRepository::new(conn);
-        match docs.find_content_and_mtime_by_mount_point_and_path(mount_point_id, relative_path)? {
+        // v4 `reindex-file.ts:86-100`: the fallback document read — `null` →
+        // the blob branch (P4.142 G2).
+        match docs
+            .find_content_and_mtime_by_mount_point_and_path_or_none(mount_point_id, relative_path)
+        {
             Some((content, last_modified)) => {
                 plain_text = content;
                 last_modified_iso = last_modified;
@@ -248,7 +252,8 @@ fn reindex_inner(
     }
 
     let links = DocMountFileLinksRepository::new(conn);
-    let existing_link = links.find_by_mount_point_and_path(mount_point_id, relative_path)?;
+    // v4 `reindex-file.ts:137-200`: the fallback link read (P4.142 G2).
+    let existing_link = links.find_by_mount_point_and_path_or_none(mount_point_id, relative_path);
 
     let link_id: String = if is_database_backed {
         // Database stores refresh chunk metadata on the EXISTING link in place —

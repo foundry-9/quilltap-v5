@@ -74,6 +74,12 @@ _Versions: core 0.0.1148._
 _Versions: core 0.0.1147, harness 0.0.1075._
 
 `TransportError` gains `kind: TransportErrorKind` (`Http`, `Connect`, `Timeout`) and four constructors: `http(status, body)`, `connect(message)`, `timeout(message)` and `headers_timeout(ms)` (now a `Timeout`). All 52 struct literals across 12 files (core 38, harness 14) now go through them. `is_headers_timeout`'s message-prefix sniff is replaced by `is_timeout()`, which reads the kind. Behaviour does not change: every status-less site is `Connect`, every status site is `Http`, and the headers timeout is still the only `Timeout`. This is P4.141's first commit, landed early so a later field cannot cross the shared struct's literals again.
+#### 2026-10-02 — feat(mount-index): P4.142 unit 11 — the harmless G2/G3 sites take v4's fallbacks; 23 hazardous ones held pending a ruling
+
+_Versions: core 0.0.1157, harness 0.0.1082._
+
+Nineteen more document-store call sites now read through v4's fallbacks: the photo tool's dedup lookup, the blob and avatar writes' existing-link checks, store_file's three link reads, the scanner's process and remove lookups, the database-mount rescan, the reindex link reads, the file-reindex reads, the link-group sibling reindex, the post-write verify, the knowledge injector's body read, the Librarian's read-permission check, and the chat attach route. The attach route reads v4's files repository, so it gets that repository's own line through a new `Error finding file by mount point and path` home. The other 23 sites match v4 but would bring over v4's data loss on a failed read: settings and vault-property resets, a `metadata.json` or `state.json` overwrite, a skipped overwrite guard, a folder-row wipe, and deletes or moves that report success. Following the human's ruling, they keep propagating under a new census class, `held-pending-ruling`, each with its hazard named. The census now reads 80 converted, 23 held, and 5 sync rows left for the sync ruling.
+
 #### 2026-10-02 — feat(api): P4.142 unit 10 — the scenario writes' lookups and the qtap-link classifier take v4's fallbacks (G2 first five)
 
 _Versions: core 0.0.1156._

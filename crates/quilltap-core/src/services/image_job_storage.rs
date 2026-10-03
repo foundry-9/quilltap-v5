@@ -186,8 +186,13 @@ pub fn write_main_avatar_to_vault(
     links.ensure_folder_path(&mount_point_id, "images")?;
     // Drop any existing link at the canonical main path (GC-safe — takes the
     // blob when it was the last reference).
-    if let Some(existing) = links.find_by_mount_point_and_path(&mount_point_id, MAIN_AVATAR_PATH)? {
-        links.delete_with_gc(&existing.id)?;
+    // v4 `character-vault-bridge.ts:166-172`: both fallbacks — `null` skips the
+    // delete, a failed delete (its transaction rolled back) is ignored, and the
+    // `linkBlobContent` upsert follows (P4.142 G2).
+    if let Some(existing) =
+        links.find_by_mount_point_and_path_or_none(&mount_point_id, MAIN_AVATAR_PATH)
+    {
+        links.delete_with_gc_or_false(&existing.id);
     }
 
     let safe_original_name = sanitize_leaf_name(filename);

@@ -133,7 +133,9 @@ pub fn reindex_links(
     let scope = normalise_path_scope(options.path.as_deref());
     let force = options.force;
 
-    let all_links = links_repo.find_by_mount_point_id(&mount_point.id)?;
+    // v4 `reindex.ts:106` / `:214`: the fallback joined read — `[]` → zero
+    // work (P4.142 G3).
+    let all_links = links_repo.find_by_mount_point_id_or_empty(&mount_point.id);
     let in_scope: Vec<&LinkRow> = all_links
         .iter()
         .filter(|l| link_matches_scope(l, scope.as_deref()))
@@ -287,7 +289,9 @@ pub fn enqueue_embedding_jobs_scoped(
     let scope = normalise_path_scope(options.path.as_deref());
     let force = options.force;
 
-    let all_links = links_repo.find_by_mount_point_id(&mount_point.id)?;
+    // v4 `reindex.ts:106` / `:214`: the fallback joined read — `[]` → zero
+    // work (P4.142 G3).
+    let all_links = links_repo.find_by_mount_point_id_or_empty(&mount_point.id);
     let in_scope_link_ids: std::collections::HashSet<String> = all_links
         .iter()
         .filter(|l| link_matches_scope(l, scope.as_deref()))
@@ -410,5 +414,86 @@ mod chunk_fallback_tests {
                 .unwrap_or_else(|e| panic!("{e}"))
         });
         assert!(lines.is_empty(), "the silence leg: {lines:?}");
+    }
+}
+
+#[cfg(test)]
+mod g3_fallback_tests {
+    use super::*;
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    /// A provisioned instance's mount-index writer, one of its database
+    /// stores (service info), and `notes/a.md` written into it.
+    fn store(
+        dir: &tempfile::TempDir,
+    ) -> (
+        crate::db::Writer,
+        crate::db::doc_mount_points::MountServiceInfo,
+    ) {
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER).unwrap();
+        let w =
+            crate::db::Writer::open_writable(&dir.path().join("quilltap-mount-index.db"), PEPPER)
+                .unwrap();
+        let id: String = w
+            .connection()
+            .query_row(
+                "SELECT id FROM doc_mount_points WHERE mountType = 'database' LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        crate::db::doc_mount_file_links::DocMountFileLinksRepository::new(w.connection())
+            .write_database_document(&id, "notes/a.md", "hello")
+            .unwrap();
+        let info = crate::db::doc_mount_points::DocMountPointsRepository::new(w.connection())
+            .find_service_info_by_id(&id)
+            .unwrap()
+            .unwrap();
+        (w, info)
+    }
+
+    /// Breaks every joined link read (named by `queryJoined`, by no overlay read).
+    fn plant_links(w: &crate::db::Writer) {
+        w.connection()
+            .execute_batch(
+                "ALTER TABLE doc_mount_file_links RENAME COLUMN originalMimeType TO originalMimeType_x",
+            )
+            .unwrap();
+    }
+
+    const ID_LINE: &str = "ERROR quilltap::db Error querying joined file links collection=doc_mount_file_links whereClause=WHERE l.mountPointId = ? error=no such column: l.originalMimeType";
+
+    /// P4.142 G3: the two link reads (v4 `reindex.ts:106` / `:214`) — a failed
+    /// read is `[]` → zero work, with v4's line.
+    #[test]
+    fn a_failed_links_read_is_zero_work() {
+        let dir = tempfile::tempdir().unwrap();
+        let (w, mp) = store(&dir);
+        plant_links(&w);
+        let extractor = super::super::converters::RefusingTextExtractor;
+        let opts = ReindexOptions {
+            path: None,
+            force: false,
+        };
+        let (got, lines) = crate::test_support::captured_with(|| {
+            reindex_links(w.connection(), &mp, &opts, &extractor).map(|_| ())
+        });
+        assert!(got.is_ok());
+        assert_eq!(
+            lines.first().map(String::as_str),
+            Some(ID_LINE),
+            "{lines:#?}"
+        );
+        let (got, lines) = crate::test_support::captured_with(|| {
+            enqueue_embedding_jobs_scoped(w.connection(), w.connection(), &mp, &opts)
+        });
+        let (jobs, queued, skipped) = got.unwrap_or_else(|e| panic!("{e}"));
+        assert!(jobs.is_empty());
+        assert_eq!((queued, skipped), (0, 0));
+        assert_eq!(
+            lines.first().map(String::as_str),
+            Some(ID_LINE),
+            "{lines:#?}"
+        );
     }
 }

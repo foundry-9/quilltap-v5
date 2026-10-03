@@ -241,7 +241,9 @@ pub fn store_mount_file(
             delete_at_dest(mount, &mp, &rel)?;
         }
         let (sha, size, mtime) = write_fs_file_bytes(mount, &mp, &rel, &input.data, extractor)?;
-        let link = links.find_by_mount_point_and_path(&mp.id, &rel)?;
+        // v4 `store-file.ts:181`: the fallback path read — `null` shapes the
+        // result from the extension (P4.142 G2).
+        let link = links.find_by_mount_point_and_path_or_none(&mp.id, &rel);
         // If processMountFile failed to index (no link row), still report a
         // sensible type: native text by extension before the binary fallback.
         let file_type = link
@@ -332,7 +334,9 @@ pub fn store_mount_file(
             eprintln!("storeMountFile: best-effort stats refresh failed: {e}");
         }
 
-        let link = links.find_by_mount_point_and_path(&mp.id, &rel)?;
+        // v4 `store-file.ts:230`: the fallback path read — `null` → the sha from
+        // the text (P4.142 G2).
+        let link = links.find_by_mount_point_and_path_or_none(&mp.id, &rel);
         let size_bytes = text.len() as i64;
         return Ok(StoreFileResult {
             mount_point_id: mp.id.clone(),
@@ -398,7 +402,9 @@ pub fn store_mount_file(
 
     // 'overwrite' (and force) re-point an existing link at new content — drop
     // its stale chunks first so a re-extraction starts clean.
-    if let Some(existing) = links.find_by_mount_point_and_path(&mp.id, &final_path)? {
+    // v4 `store-file.ts:276-279`: the fallback path read (`null` → no chunk
+    // delete → the upsert) — P4.142 G2.
+    if let Some(existing) = links.find_by_mount_point_and_path_or_none(&mp.id, &final_path) {
         links.delete_chunks_by_link_id(&existing.id)?;
     }
 

@@ -85,9 +85,13 @@ pub async fn document_hidden_from_characters(
     }
     let mount_point_id = mount_point_id.to_string();
     let relative_path = relative_path.to_string();
+    // v4 `writer.ts:74-75`: the fallback link read — `null` → not hidden, with
+    // v4's line (P4.142 G2; the `Err` had been swallowed silently).
     match db.read_mount_index(move |mount| {
-        crate::db::doc_mount_file_links::DocMountFileLinksRepository::new(mount)
-            .find_by_mount_point_and_path(&mount_point_id, &relative_path)
+        Ok(
+            crate::db::doc_mount_file_links::DocMountFileLinksRepository::new(mount)
+                .find_by_mount_point_and_path_or_none(&mount_point_id, &relative_path),
+        )
     }) {
         Ok(Some(link)) => !link.allow_character_read,
         _ => false,
@@ -1467,4 +1471,53 @@ pub fn post_librarian_blob_write_announcement_conn(
         None,
         None,
     )
+}
+
+#[cfg(test)]
+mod g2_fallback_tests {
+    use super::*;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    /// P4.142 G2: the `character_read` check (v4 `writer.ts:74-75`) — a failed
+    /// read is `null` → not hidden, now with v4's joined line (the `Err` had been
+    /// swallowed silently).
+    #[test]
+    fn a_failed_link_read_is_not_hidden_and_logs_v4s_line() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER).unwrap();
+        let mount = dir.path().join("quilltap-mount-index.db");
+        crate::db::Writer::open_writable(&mount, PEPPER)
+            .unwrap()
+            .connection()
+            .execute_batch(
+                "ALTER TABLE doc_mount_file_links RENAME COLUMN originalMimeType TO originalMimeType_x",
+            )
+            .unwrap();
+        let db = Db::open(
+            crate::db::runtime::DbPaths {
+                main: dir.path().join("quilltap.db"),
+                mount_index: Some(mount),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let (got, lines) = crate::test_support::captured_with(|| {
+            rt.block_on(document_hidden_from_characters(
+                &db,
+                Some("mp-1"),
+                Some("a.md"),
+            ))
+        });
+        assert!(!got);
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error querying joined file links collection=doc_mount_file_links whereClause=WHERE l.mountPointId = ? AND LOWER(l.relativePath) = LOWER(?) error=no such column: l.originalMimeType".to_string()]
+        );
+    }
 }

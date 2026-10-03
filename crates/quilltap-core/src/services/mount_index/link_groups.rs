@@ -85,7 +85,10 @@ fn reindex_inner(
     extractor: &dyn DocumentTextExtractor,
 ) -> Result<usize, crate::db::DbError> {
     let links = DocMountFileLinksRepository::new(conn);
-    let Some(link) = links.find_by_mount_point_and_path(mount_point_id, relative_path)? else {
+    // v4 `link-groups.ts:51-52`: the fallback link read — `null` → 0 (P4.142
+    // G2).
+    let Some(link) = links.find_by_mount_point_and_path_or_none(mount_point_id, relative_path)
+    else {
         return Ok(0);
     };
     let Some(group_id) = link.link_group_id.clone() else {
@@ -128,4 +131,70 @@ fn reindex_inner(
     }
 
     Ok(reindexed)
+}
+
+#[cfg(test)]
+mod g2_fallback_tests {
+    use super::*;
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    /// A provisioned instance's mount-index writer, one of its database
+    /// stores (service info), and `notes/a.md` written into it.
+    fn store(
+        dir: &tempfile::TempDir,
+    ) -> (
+        crate::db::Writer,
+        crate::db::doc_mount_points::MountServiceInfo,
+    ) {
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER).unwrap();
+        let w =
+            crate::db::Writer::open_writable(&dir.path().join("quilltap-mount-index.db"), PEPPER)
+                .unwrap();
+        let id: String = w
+            .connection()
+            .query_row(
+                "SELECT id FROM doc_mount_points WHERE mountType = 'database' LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        crate::db::doc_mount_file_links::DocMountFileLinksRepository::new(w.connection())
+            .write_database_document(&id, "notes/a.md", "hello")
+            .unwrap();
+        let info = crate::db::doc_mount_points::DocMountPointsRepository::new(w.connection())
+            .find_service_info_by_id(&id)
+            .unwrap()
+            .unwrap();
+        (w, info)
+    }
+
+    /// Breaks every joined link read (named by `queryJoined`, by no overlay read).
+    fn plant_links(w: &crate::db::Writer) {
+        w.connection()
+            .execute_batch(
+                "ALTER TABLE doc_mount_file_links RENAME COLUMN originalMimeType TO originalMimeType_x",
+            )
+            .unwrap();
+    }
+
+    const PATH_LINE: &str = "ERROR quilltap::db Error querying joined file links collection=doc_mount_file_links whereClause=WHERE l.mountPointId = ? AND LOWER(l.relativePath) = LOWER(?) error=no such column: l.originalMimeType";
+
+    /// P4.142 G2: the sibling reindex's link read (v4 `link-groups.ts:51-52`) —
+    /// a failed read is `null` → 0, with v4's line; silent when healthy.
+    #[test]
+    fn a_failed_link_read_reindexes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let (w, mp) = store(&dir);
+        let (got, lines) = crate::test_support::captured_with(|| {
+            reindex_link_group_siblings_after_database_write(w.connection(), &mp.id, "notes/a.md")
+        });
+        assert_eq!(got, 0);
+        assert!(lines.is_empty(), "{lines:?}");
+        plant_links(&w);
+        let (got, lines) = crate::test_support::captured_with(|| {
+            reindex_link_group_siblings_after_database_write(w.connection(), &mp.id, "notes/a.md")
+        });
+        assert_eq!(got, 0);
+        assert_eq!(lines, vec![PATH_LINE.to_string()]);
+    }
 }

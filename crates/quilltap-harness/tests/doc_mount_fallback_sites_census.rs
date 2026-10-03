@@ -41,6 +41,10 @@
 //! - `strict-by-ruling` — v4 falls back, but a standing ruling keeps v5 STRICT
 //!   (P4.142: the `.qtap` export's store read under the 2026-08-03 "fix, don't
 //!   match" ruling — named in [`OVERRIDES`]).
+//! - `held-pending-ruling` — v5's downstream mirrors v4's, but v4's fallback at
+//!   that site destroys or misreports data on a failed read (an overwrite, a
+//!   settings reset, a false delete success); v5 keeps propagating until the
+//!   human rules (P4.142 — each row in [`OVERRIDES`] names its hazard).
 //! - `handed(P4.144)` — not a row: a documentation table ([`HANDED`]) naming
 //!   reads another lane of the same round converts; it checks only that each
 //!   file exists.
@@ -254,6 +258,168 @@ const OVERRIDES: &[(&str, &str, &str, &str)] = &[
         "find_by_mount_point_id",
         "converted",
     ),
+    // P4.142 G2: the chat attach route reads v4's FILES repository
+    // (`docMountFiles.findByMountPointAndPath`) — the propagating links read sits
+    // inside the `doc_mount_files` PATH home (`Error finding file by mount point
+    // and path`).
+    (
+        "quilltap-core/src/api/chat_media.rs",
+        "chat_attach_mount_file",
+        "find_by_mount_point_and_path",
+        "converted",
+    ),
+    // P4.142 G2/G3 — HELD PENDING A RULING (the human, 2026-10-02: "convert safe,
+    // hold risky"). Each site's v5 downstream MIRRORS v4's on a failed read, and
+    // that is the problem: v4's fallback there destroys or misreports data, and
+    // v5's propagation refuses instead. Each row names the hazard; the lane
+    // record writes them up beside the sync ruling.
+    // a failed read is "absent" → the user's `metadata.json` is overwritten with the empty seed; v5 calls this on every FK `ensure_character_vault` AND from the importer's adopt arm, where v4 calls it from the boot backfill only.
+    (
+        "quilltap-core/src/db/character_vault.rs",
+        "ensure_character_metadata_file",
+        "find_by_mount_point_and_path",
+        "held-pending-ruling",
+    ),
+    // a failed read is "absent" → the whole project/group settings bag is reseeded from schema defaults (v4 `dcd9440a` is incomplete outside the strict scope); importer-reachable (`reconcile.rs:493`).
+    (
+        "quilltap-core/src/db/document_store_overlay.rs",
+        "read_properties",
+        "find_by_mount_point_and_path",
+        "held-pending-ruling",
+    ),
+    // a failed read is "absent" → all six vault properties reset to `empty_properties_default` — the loss bug 8 / dogfood #47 prevent; v4's refusal arm is unreachable outside the strict scope.
+    (
+        "quilltap-core/src/db/vault_character_update.rs",
+        "read_current_properties",
+        "find_by_mount_point_and_path",
+        "held-pending-ruling",
+    ),
+    // a swallowed delete still deletes the `files` row and reports `deleted: true` — the roll's link + blob survive, invisible.
+    (
+        "quilltap-core/src/photos/avatar_rolls_service.rs",
+        "delete_avatar_roll",
+        "delete_with_gc",
+        "held-pending-ruling",
+    ),
+    // the portrait pointers are cleared first; a swallowed delete then reports 200 `deleted: true` while the photo stays in the vault.
+    (
+        "quilltap-core/src/photos/character_gallery_service.rs",
+        "remove_from_character_gallery",
+        "delete_with_gc",
+        "held-pending-ruling",
+    ),
+    // a failed dedup read saves a DUPLICATE album photo (a unique-suffixed name) where v5 fails the save.
+    (
+        "quilltap-core/src/photos/save_image_to_album.rs",
+        "find_existing_photos_link_by_sha",
+        "find_by_mount_point_id",
+        "held-pending-ruling",
+    ),
+    // DIFFERS besides: v4 answers `deleted: result.fileId !== null` (→ 404 on the fallback); the bool twin cannot carry it.
+    (
+        "quilltap-core/src/photos/user_gallery_service.rs",
+        "remove_from_user_gallery",
+        "delete_with_gc",
+        "held-pending-ruling",
+    ),
+    // a failed survivors re-read → `undead = 0` → `prune_empty_folders` with no survivors deletes every non-Wardrobe folder row (the kept avatar links' folders included) and reports the prune succeeded.
+    (
+        "quilltap-core/src/services/character_archive/service.rs",
+        "prune_vault",
+        "find_by_mount_point_id",
+        "held-pending-ruling",
+    ),
+    // a swallowed delete still deletes the surviving chunks' `embedding_status` rows.
+    (
+        "quilltap-core/src/services/character_archive/service.rs",
+        "prune_vault",
+        "delete_with_gc",
+        "held-pending-ruling",
+    ),
+    // prunes nothing and says nothing (paired with the `prune_vault` hazard).
+    (
+        "quilltap-core/src/services/character_archive/service.rs",
+        "prune_empty_folders",
+        "find_by_mount_point_id",
+        "held-pending-ruling",
+    ),
+    // callers drop the `files` row after a swallowed link delete — the link + blob orphaned, success reported.
+    (
+        "quilltap-core/src/services/file_storage.rs",
+        "delete_mount_blob_conn",
+        "delete_with_gc",
+        "held-pending-ruling",
+    ),
+    // a filesystem move then renames on disk but never deletes the source link (a stale row until rescan).
+    (
+        "quilltap-core/src/services/mount_index/file_ops.rs",
+        "source_exists_or_throw",
+        "find_by_mount_point_and_path",
+        "held-pending-ruling",
+    ),
+    // a failed read skips the DEST_EXISTS guard → a non-force copy / move / write SILENTLY OVERWRITES the destination (and its hard-link siblings).
+    (
+        "quilltap-core/src/services/mount_index/file_ops.rs",
+        "dest_exists",
+        "find_by_mount_point_and_path",
+        "held-pending-ruling",
+    ),
+    // a move reports success while the source link survives (DB arm: the file is duplicated, not moved).
+    (
+        "quilltap-core/src/services/mount_index/file_ops.rs",
+        "delete_at_source",
+        "delete_with_gc",
+        "held-pending-ruling",
+    ),
+    // a force overwrite keeps the old link; with the verify read also failing, `delete_file` reports a false `deleted: true`.
+    (
+        "quilltap-core/src/services/mount_index/file_ops.rs",
+        "delete_at_dest",
+        "find_by_mount_point_and_path",
+        "held-pending-ruling",
+    ),
+    // as `delete_at_dest`'s read — the swallowed delete half of the same false success.
+    (
+        "quilltap-core/src/services/mount_index/file_ops.rs",
+        "delete_at_dest",
+        "delete_with_gc",
+        "held-pending-ruling",
+    ),
+    // a move reports success while the source link survives.
+    (
+        "quilltap-core/src/services/mount_index/file_ops.rs",
+        "move_file",
+        "delete_with_gc",
+        "held-pending-ruling",
+    ),
+    // the disk rename has happened; the links keep the old paths and success is reported — the next scan drops them with their chunks, embeddings and descriptions.
+    (
+        "quilltap-core/src/services/mount_index/folder_ops.rs",
+        "move_folder",
+        "find_by_mount_point_id",
+        "held-pending-ruling",
+    ),
+    // a failed read is "absent" → the user's general `state.json` is reset to `{}` at boot (v5's boot warns and skips today).
+    (
+        "quilltap-core/src/services/mount_index/general_state.rs",
+        "ensure_general_state_file",
+        "find_by_mount_point_and_path",
+        "held-pending-ruling",
+    ),
+    // a swallowed delete is counted in `files_deleted` (the stale link heals on the next scan).
+    (
+        "quilltap-core/src/services/mount_index/scanner.rs",
+        "remove_mount_file",
+        "delete_with_gc",
+        "held-pending-ruling",
+    ),
+    // bypasses the optimistic-concurrency guard → a concurrent edit is SILENTLY OVERWRITTEN; also logs the documents line twice where v4 logs once (the inner `write_database_document` pre-read).
+    (
+        "quilltap-core/src/services/mount_index/store_file.rs",
+        "store_mount_file",
+        "find_content_and_mtime_by_mount_point_and_path",
+        "held-pending-ruling",
+    ),
     // P4.142 Tier 3 (G5): the `.qtap` export's store read stays STRICT under the
     // standing backup/restore/import/export ruling (2026-08-03, "fix, don't
     // match"): v4's `lib/export/ndjson-writer.ts:625,642` falls back and exports
@@ -286,6 +452,12 @@ fn classify(
     after: &str,
     head: &str,
 ) -> &'static str {
+    // A blobs-repository receiver is `other-repo` before any override: an
+    // `OVERRIDES` key is (file, fn, method), and one fn can call the same method
+    // name on two repositories (`chat_attach_mount_file` — P4.142).
+    if recv.to_lowercase().contains("blobs") {
+        return "other-repo";
+    }
     if let Some((_, _, _, class)) = OVERRIDES
         .iter()
         .find(|(f, n, m, _)| *f == rel && *n == func && *m == method)
@@ -417,7 +589,7 @@ fn render(rows: &[Row]) -> String {
 const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/api/characters.rs", "character_depiction_guidelines", "find_by_mount_point_and_path", "swallowed-by-other-means"),
     ("quilltap-core/src/api/characters.rs", "character_stats", "find_by_mount_point_id_or_empty", "converted"),
-    ("quilltap-core/src/api/chat_media.rs", "chat_attach_mount_file", "find_by_mount_point_and_path", "fallback-in-v4"),
+    ("quilltap-core/src/api/chat_media.rs", "chat_attach_mount_file", "find_by_mount_point_and_path", "converted"),
     ("quilltap-core/src/api/chat_media.rs", "chat_attach_mount_file", "find_by_mount_point_and_path", "other-repo"),
     ("quilltap-core/src/api/mount_files.rs", "mount_file_update", "find_by_mount_point_and_path", "other-repo"),
     ("quilltap-core/src/api/mount_files.rs", "mount_blob_update", "find_by_mount_point_and_path", "other-repo"),
@@ -428,7 +600,7 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/api/scenarios.rs", "update_op", "find_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/api/scenarios.rs", "rename_op", "find_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/api/scenarios.rs", "rename_op", "find_by_mount_point_and_path_or_none", "converted"),
-    ("quilltap-core/src/db/character_vault.rs", "ensure_character_metadata_file", "find_by_mount_point_and_path", "fallback-in-v4"),
+    ("quilltap-core/src/db/character_vault.rs", "ensure_character_metadata_file", "find_by_mount_point_and_path", "held-pending-ruling"),
     ("quilltap-core/src/db/database_store.rs", "read_database_document", "find_content_and_mtime_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/db/database_store.rs", "write_database_document", "find_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/db/database_store.rs", "write_database_document", "find_content_and_mtime_by_mount_point_and_path", "no-v4-counterpart"),
@@ -468,10 +640,10 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/db/doc_mount_folders.rs", "find_by_mount_point_and_path_or_none", "find_by_mount_point_id_or_empty", "converted"),
     ("quilltap-core/src/db/doc_mount_folders.rs", "find_by_mount_point_id_or_empty", "find_by_mount_point_id", "internal"),
     ("quilltap-core/src/db/document_store_overlay.rs", "load_store_files", "find_many_by_mount_points_and_path_or_empty", "converted"),
-    ("quilltap-core/src/db/document_store_overlay.rs", "read_properties", "find_by_mount_point_and_path", "fallback-in-v4"),
+    ("quilltap-core/src/db/document_store_overlay.rs", "read_properties", "find_by_mount_point_and_path", "held-pending-ruling"),
     ("quilltap-core/src/db/scenarios.rs", "list_scenarios_in_folder", "find_many_by_mount_points_in_folder_or_empty", "converted"),
     ("quilltap-core/src/db/scenarios.rs", "set_scenario_default_in_folder", "find_many_by_mount_points_in_folder_or_empty", "converted"),
-    ("quilltap-core/src/db/vault_character_update.rs", "read_current_properties", "find_by_mount_point_and_path", "fallback-in-v4"),
+    ("quilltap-core/src/db/vault_character_update.rs", "read_current_properties", "find_by_mount_point_and_path", "held-pending-ruling"),
     ("quilltap-core/src/db/vault_read_overlay.rs", "load_vault_file_maps", "find_many_by_mount_points_and_path_or_empty", "converted"),
     ("quilltap-core/src/db/vault_read_overlay.rs", "load_vault_file_maps", "find_many_by_mount_points_in_folder_or_empty", "converted"),
     ("quilltap-core/src/db/vault_read_overlay.rs", "load_vault_file_maps", "find_many_by_mount_points_in_folder_or_empty", "converted"),
@@ -479,71 +651,71 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/db/vault_read_overlay.rs", "read_character_vault_wardrobe", "find_many_by_mount_points_and_path_or_empty", "converted"),
     ("quilltap-core/src/db/vault_wardrobe_write.rs", "project_array_into_vault_folder", "find_many_by_mount_points_in_folder_or_empty", "converted"),
     ("quilltap-core/src/documents/mod.rs", "classify_resolved_target", "find_by_mount_point_and_path_or_none", "converted"),
-    ("quilltap-core/src/photos/avatar_rolls_service.rs", "delete_avatar_roll", "delete_with_gc", "fallback-in-v4"),
+    ("quilltap-core/src/photos/avatar_rolls_service.rs", "delete_avatar_roll", "delete_with_gc", "held-pending-ruling"),
     ("quilltap-core/src/photos/character_gallery_service.rs", "list_character_gallery", "find_by_mount_point_id_or_empty", "converted"),
-    ("quilltap-core/src/photos/character_gallery_service.rs", "remove_from_character_gallery", "delete_with_gc", "fallback-in-v4"),
+    ("quilltap-core/src/photos/character_gallery_service.rs", "remove_from_character_gallery", "delete_with_gc", "held-pending-ruling"),
     ("quilltap-core/src/photos/chat_gallery.rs", "add_blob_reference", "find_by_mount_point_and_path", "swallowed-by-other-means"),
-    ("quilltap-core/src/photos/save_image_to_album.rs", "find_existing_photos_link_by_sha", "find_by_mount_point_id", "fallback-in-v4"),
+    ("quilltap-core/src/photos/save_image_to_album.rs", "find_existing_photos_link_by_sha", "find_by_mount_point_id", "held-pending-ruling"),
     ("quilltap-core/src/photos/save_image_to_album.rs", "resolve_unique_relative_path", "find_by_mount_point_and_path", "other-repo"),
     ("quilltap-core/src/photos/save_image_to_album.rs", "resolve_unique_relative_path", "find_by_mount_point_and_path", "other-repo"),
     ("quilltap-core/src/photos/user_gallery_service.rs", "list_user_gallery", "find_by_mount_point_id_or_empty", "converted"),
-    ("quilltap-core/src/photos/user_gallery_service.rs", "remove_from_user_gallery", "delete_with_gc", "fallback-in-v4"),
+    ("quilltap-core/src/photos/user_gallery_service.rs", "remove_from_user_gallery", "delete_with_gc", "held-pending-ruling"),
     ("quilltap-core/src/services/aesthetics.rs", "read_store_file_internal", "find_by_mount_point_and_path", "swallowed-by-other-means"),
-    ("quilltap-core/src/services/character_archive/service.rs", "prune_vault", "find_by_mount_point_id", "fallback-in-v4"),
+    ("quilltap-core/src/services/character_archive/service.rs", "prune_vault", "find_by_mount_point_id", "held-pending-ruling"),
     ("quilltap-core/src/services/character_archive/service.rs", "prune_vault", "find_ids_by_link_id_or_empty", "converted"),
-    ("quilltap-core/src/services/character_archive/service.rs", "prune_vault", "delete_with_gc", "fallback-in-v4"),
-    ("quilltap-core/src/services/character_archive/service.rs", "prune_vault", "find_by_mount_point_id", "fallback-in-v4"),
-    ("quilltap-core/src/services/character_archive/service.rs", "prune_empty_folders", "find_by_mount_point_id", "fallback-in-v4"),
+    ("quilltap-core/src/services/character_archive/service.rs", "prune_vault", "delete_with_gc", "held-pending-ruling"),
+    ("quilltap-core/src/services/character_archive/service.rs", "prune_vault", "find_by_mount_point_id", "held-pending-ruling"),
+    ("quilltap-core/src/services/character_archive/service.rs", "prune_empty_folders", "find_by_mount_point_id", "held-pending-ruling"),
     ("quilltap-core/src/services/core_whisper.rs", "read_vault_core_files", "find_many_by_mount_points_in_folder_opts_or_empty", "converted"),
     ("quilltap-core/src/services/core_whisper.rs", "assemble_group_core_files", "find_many_by_mount_points_in_folder_opts_or_empty", "converted"),
     ("quilltap-core/src/services/embedding_generate_job.rs", "mount_chunk_branch", "find_row_by_id", "converted"),
     ("quilltap-core/src/services/embedding_reindex_job.rs", "phase_mount_chunks", "find_rows_by_mount_point_id", "converted"),
-    ("quilltap-core/src/services/file_storage.rs", "delete_mount_blob_conn", "delete_with_gc", "fallback-in-v4"),
+    ("quilltap-core/src/services/file_storage.rs", "delete_mount_blob_conn", "delete_with_gc", "held-pending-ruling"),
     ("quilltap-core/src/services/file_storage.rs", "resolve_unique_relative_path", "find_by_mount_point_and_path", "other-repo"),
     ("quilltap-core/src/services/file_storage.rs", "resolve_unique_relative_path", "find_by_mount_point_and_path", "other-repo"),
-    ("quilltap-core/src/services/file_storage.rs", "store_mount_blob", "find_by_mount_point_and_path", "fallback-in-v4"),
-    ("quilltap-core/src/services/image_job_storage.rs", "write_main_avatar_to_vault", "find_by_mount_point_and_path", "fallback-in-v4"),
-    ("quilltap-core/src/services/image_job_storage.rs", "write_main_avatar_to_vault", "delete_with_gc", "fallback-in-v4"),
+    ("quilltap-core/src/services/file_storage.rs", "store_mount_blob", "find_by_mount_point_and_path_or_none", "converted"),
+    ("quilltap-core/src/services/image_job_storage.rs", "write_main_avatar_to_vault", "find_by_mount_point_and_path_or_none", "converted"),
+    ("quilltap-core/src/services/image_job_storage.rs", "write_main_avatar_to_vault", "delete_with_gc_or_false", "converted"),
     ("quilltap-core/src/services/image_job_storage.rs", "resolve_unique_relative_path", "find_by_mount_point_and_path", "other-repo"),
     ("quilltap-core/src/services/image_job_storage.rs", "resolve_unique_relative_path", "find_by_mount_point_and_path", "other-repo"),
-    ("quilltap-core/src/services/knowledge_injector.rs", "retrieve_knowledge_for_turn", "find_by_mount_point_and_path", "fallback-in-v4"),
-    ("quilltap-core/src/services/librarian_notifications.rs", "document_hidden_from_characters", "find_by_mount_point_and_path", "fallback-in-v4"),
+    ("quilltap-core/src/services/knowledge_injector.rs", "retrieve_knowledge_for_turn", "find_by_mount_point_and_path_or_none", "converted"),
+    ("quilltap-core/src/services/librarian_notifications.rs", "document_hidden_from_characters", "find_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/services/memory_processor.rs", "read_vault_text_file_conn", "find_by_mount_point_and_path", "swallowed-by-other-means"),
     ("quilltap-core/src/services/mount_index/embedding_scheduler.rs", "enqueue_embedding_jobs_for_mount_point", "find_by_mount_point_id_or_empty", "converted"),
     ("quilltap-core/src/services/mount_index/embedding_scheduler.rs", "enqueue_embedding_jobs_for_mount_point", "find_rows_by_mount_point_id_or_empty", "converted"),
-    ("quilltap-core/src/services/mount_index/file_ops.rs", "source_exists_or_throw", "find_by_mount_point_and_path", "fallback-in-v4"),
-    ("quilltap-core/src/services/mount_index/file_ops.rs", "dest_exists", "find_by_mount_point_and_path", "fallback-in-v4"),
-    ("quilltap-core/src/services/mount_index/file_ops.rs", "compute_dest_sha256", "find_by_mount_point_and_path", "fallback-in-v4"),
-    ("quilltap-core/src/services/mount_index/file_ops.rs", "delete_at_source", "delete_with_gc", "fallback-in-v4"),
-    ("quilltap-core/src/services/mount_index/file_ops.rs", "delete_at_source", "delete_with_gc", "fallback-in-v4"),
-    ("quilltap-core/src/services/mount_index/file_ops.rs", "delete_at_dest", "find_by_mount_point_and_path", "fallback-in-v4"),
-    ("quilltap-core/src/services/mount_index/file_ops.rs", "delete_at_dest", "delete_with_gc", "fallback-in-v4"),
-    ("quilltap-core/src/services/mount_index/file_ops.rs", "move_file", "delete_with_gc", "fallback-in-v4"),
+    ("quilltap-core/src/services/mount_index/file_ops.rs", "source_exists_or_throw", "find_by_mount_point_and_path", "held-pending-ruling"),
+    ("quilltap-core/src/services/mount_index/file_ops.rs", "dest_exists", "find_by_mount_point_and_path", "held-pending-ruling"),
+    ("quilltap-core/src/services/mount_index/file_ops.rs", "compute_dest_sha256", "find_by_mount_point_and_path_or_none", "converted"),
+    ("quilltap-core/src/services/mount_index/file_ops.rs", "delete_at_source", "delete_with_gc", "held-pending-ruling"),
+    ("quilltap-core/src/services/mount_index/file_ops.rs", "delete_at_source", "delete_with_gc", "held-pending-ruling"),
+    ("quilltap-core/src/services/mount_index/file_ops.rs", "delete_at_dest", "find_by_mount_point_and_path", "held-pending-ruling"),
+    ("quilltap-core/src/services/mount_index/file_ops.rs", "delete_at_dest", "delete_with_gc", "held-pending-ruling"),
+    ("quilltap-core/src/services/mount_index/file_ops.rs", "move_file", "delete_with_gc", "held-pending-ruling"),
     ("quilltap-core/src/services/mount_index/file_ops.rs", "link_file", "find_by_mount_point_and_path", "swallowed-by-other-means"),
-    ("quilltap-core/src/services/mount_index/folder_ops.rs", "move_folder", "find_by_mount_point_id", "fallback-in-v4"),
-    ("quilltap-core/src/services/mount_index/general_state.rs", "ensure_general_state_file", "find_by_mount_point_and_path", "fallback-in-v4"),
-    ("quilltap-core/src/services/mount_index/link_groups.rs", "reindex_inner", "find_by_mount_point_and_path", "fallback-in-v4"),
+    ("quilltap-core/src/services/mount_index/folder_ops.rs", "move_folder", "find_by_mount_point_id", "held-pending-ruling"),
+    ("quilltap-core/src/services/mount_index/general_state.rs", "ensure_general_state_file", "find_by_mount_point_and_path", "held-pending-ruling"),
+    ("quilltap-core/src/services/mount_index/link_groups.rs", "reindex_inner", "find_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/services/mount_index/list.rs", "mount_files_list", "find_by_mount_point_id", "converted"),
     ("quilltap-core/src/services/mount_index/read_file.rs", "read_mount_file_bytes_conn", "find_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/services/mount_index/read_file.rs", "read_mount_file_bytes_conn", "find_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/services/mount_index/read_file.rs", "read_mount_file_bytes_conn", "find_by_mount_point_and_path", "other-repo"),
     ("quilltap-core/src/services/mount_index/read_file.rs", "read_mount_file", "find_by_mount_point_and_path_or_none", "converted"),
-    ("quilltap-core/src/services/mount_index/reindex.rs", "reindex_links", "find_by_mount_point_id", "fallback-in-v4"),
-    ("quilltap-core/src/services/mount_index/reindex.rs", "enqueue_embedding_jobs_scoped", "find_by_mount_point_id", "fallback-in-v4"),
+    ("quilltap-core/src/services/mount_index/reindex.rs", "reindex_links", "find_by_mount_point_id_or_empty", "converted"),
+    ("quilltap-core/src/services/mount_index/reindex.rs", "enqueue_embedding_jobs_scoped", "find_by_mount_point_id_or_empty", "converted"),
     ("quilltap-core/src/services/mount_index/reindex.rs", "enqueue_embedding_jobs_scoped", "find_rows_by_mount_point_id_or_empty", "converted"),
-    ("quilltap-core/src/services/mount_index/reindex_file.rs", "reindex_inner", "find_content_and_mtime_by_mount_point_and_path", "fallback-in-v4"),
+    ("quilltap-core/src/services/mount_index/reindex_file.rs", "reindex_inner", "find_content_and_mtime_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/services/mount_index/reindex_file.rs", "reindex_inner", "find_by_mount_point_and_path", "other-repo"),
-    ("quilltap-core/src/services/mount_index/reindex_file.rs", "reindex_inner", "find_by_mount_point_and_path", "fallback-in-v4"),
-    ("quilltap-core/src/services/mount_index/scanner.rs", "process_mount_file", "find_by_mount_point_and_path", "fallback-in-v4"),
-    ("quilltap-core/src/services/mount_index/scanner.rs", "remove_mount_file", "find_by_mount_point_and_path", "fallback-in-v4"),
-    ("quilltap-core/src/services/mount_index/scanner.rs", "remove_mount_file", "delete_with_gc", "fallback-in-v4"),
-    ("quilltap-core/src/services/mount_index/scanner.rs", "rescan_database_mount_point", "find_by_mount_point_id", "fallback-in-v4"),
+    ("quilltap-core/src/services/mount_index/reindex_file.rs", "reindex_inner", "find_by_mount_point_and_path_or_none", "converted"),
+    ("quilltap-core/src/services/mount_index/scanner.rs", "process_mount_file", "find_by_mount_point_and_path_or_none", "converted"),
+    ("quilltap-core/src/services/mount_index/scanner.rs", "remove_mount_file", "find_by_mount_point_and_path_or_none", "converted"),
+    ("quilltap-core/src/services/mount_index/scanner.rs", "remove_mount_file", "delete_with_gc", "held-pending-ruling"),
+    ("quilltap-core/src/services/mount_index/scanner.rs", "rescan_database_mount_point", "find_by_mount_point_id_or_empty", "converted"),
     ("quilltap-core/src/services/mount_index/store_file.rs", "resolve_unique_relative_path", "find_by_mount_point_and_path", "other-repo"),
     ("quilltap-core/src/services/mount_index/store_file.rs", "resolve_unique_relative_path", "find_by_mount_point_and_path", "other-repo"),
-    ("quilltap-core/src/services/mount_index/store_file.rs", "store_mount_file", "find_by_mount_point_and_path", "fallback-in-v4"),
-    ("quilltap-core/src/services/mount_index/store_file.rs", "store_mount_file", "find_content_and_mtime_by_mount_point_and_path", "fallback-in-v4"),
-    ("quilltap-core/src/services/mount_index/store_file.rs", "store_mount_file", "find_by_mount_point_and_path", "fallback-in-v4"),
-    ("quilltap-core/src/services/mount_index/store_file.rs", "store_mount_file", "find_by_mount_point_and_path", "fallback-in-v4"),
+    ("quilltap-core/src/services/mount_index/store_file.rs", "store_mount_file", "find_by_mount_point_and_path_or_none", "converted"),
+    ("quilltap-core/src/services/mount_index/store_file.rs", "store_mount_file", "find_content_and_mtime_by_mount_point_and_path", "held-pending-ruling"),
+    ("quilltap-core/src/services/mount_index/store_file.rs", "store_mount_file", "find_by_mount_point_and_path_or_none", "converted"),
+    ("quilltap-core/src/services/mount_index/store_file.rs", "store_mount_file", "find_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/services/mount_index/sync/apply_store.rs", "assert_unchanged", "find_by_mount_point_and_path", "fallback-in-v4"),
     ("quilltap-core/src/services/mount_index/sync/apply_store.rs", "write_store_file", "find_by_mount_point_and_path", "fallback-in-v4"),
     ("quilltap-core/src/services/mount_index/sync/apply_store.rs", "read_store_bytes", "find_by_mount_point_and_path", "fallback-in-v4"),
@@ -560,7 +732,7 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/tools/generate_image.rs", "resolve_unique_relative_path", "find_by_mount_point_and_path", "other-repo"),
     ("quilltap-core/src/tools/photo.rs", "handle_list_images", "find_by_mount_point_id", "swallowed-by-other-means"),
     ("quilltap-core/src/tools/photo.rs", "semantic_branch", "find_by_mount_point_and_path", "swallowed-by-other-means"),
-    ("quilltap-core/src/tools/photo.rs", "find_existing_photos_link_by_sha", "find_by_mount_point_id", "fallback-in-v4"),
+    ("quilltap-core/src/tools/photo.rs", "find_existing_photos_link_by_sha", "find_by_mount_point_id_or_empty", "converted"),
     ("quilltap-web/src/files_routes.rs", "read_database_mount_file", "find_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-web/src/files_routes.rs", "read_database_mount_file", "find_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-web/src/files_routes.rs", "read_database_mount_file", "find_by_mount_point_and_path", "other-repo"),
@@ -610,22 +782,24 @@ fn the_class_counts_are_pinned() {
             count("swallowed-by-other-means"),
             count("no-v4-counterpart"),
             count("strict-by-ruling"),
+            count("held-pending-ruling"),
             count("fallback-in-v4"),
         ),
         COUNTS,
-        "class counts moved (converted, internal, other-repo, strict-in-v4, swallowed, no-v4-counterpart, strict-by-ruling, fallback-in-v4)"
+        "class counts moved (converted, internal, other-repo, strict-in-v4, swallowed, no-v4-counterpart, strict-by-ruling, held-pending-ruling, fallback-in-v4)"
     );
 }
 
 /// (converted, internal, other-repo, strict-in-v4 (import), swallowed-by-other-means,
-/// no-v4-counterpart, strict-by-ruling, fallback-in-v4), with the arithmetic:
+/// no-v4-counterpart, strict-by-ruling, held-pending-ruling, fallback-in-v4),
+/// with the arithmetic:
 ///
-/// - **155 direct call sites in all** = 61 + 13 + 19 + 0 + 13 + 1 + 1 + 47.
+/// - **155 direct call sites in all** = 80 + 13 + 19 + 0 + 13 + 1 + 1 + 23 + 5.
 ///   P4.131 measured 130 over four method names; P4.142 widened [`METHODS`] by
 ///   the overlay's batch reads and the chunk reads (+25 rows: 19 converted, 6
 ///   internal) and corrected two classes (below).
-/// - **converted 61** = P4.131's 23 + P4.142's 19 + G1's 14 + G2's first 5
-///   (below). The 19: the overlay batch twins at
+/// - **converted 80** = P4.131's 23 + P4.142's 19 + G1's 14 + G2's first 5 +
+///   the G2/G3 SAFE 19 (below). The 19: the overlay batch twins at
 ///   their 11 callers (`vault_read_overlay` 5, `document_store_overlay` 1,
 ///   `vault_wardrobe_write` 1, `scenarios` 2, `core_whisper` 2) + the documents
 ///   repository's own `…_in_folder_or_empty` → `…_opts_or_empty` 1 + the chunk
@@ -638,7 +812,15 @@ fn the_class_counts_are_pinned() {
 ///   folders line, [`OVERRIDES`]), `read_file` 3, `web/files_routes` 4,
 ///   `web/qtap_target_route` 2, the two gallery lists 2. **G2's first 5**
 ///   (item 10): `api/scenarios` `create_op` 1 + `update_op` 1 + `rename_op` 2,
-///   `documents/mod.rs` `classify_resolved_target` 1.
+///   `documents/mod.rs` `classify_resolved_target` 1. **The G2/G3 safe 19**
+///   (after the human's 2026-10-02 "convert safe, hold risky" ruling over two
+///   per-site classifications): G2 14 — `tools/photo.rs` 1, `file_storage::
+///   store_mount_blob` 1, `image_job_storage` 2, `store_file` 3 (the path
+///   reads), `scanner::process_mount_file` 1, `reindex_file` 2, `link_groups` 1,
+///   `knowledge_injector` 1, `librarian_notifications` 1, `chat_media` 1 (the
+///   FILES path home, [`OVERRIDES`]); G3 5 — `file_ops::compute_dest_sha256`,
+///   `scanner::remove_mount_file`'s lookup, `rescan_database_mount_point`,
+///   `reindex` 2.
 /// - **internal 13** = P4.131's 7 + each P4.142 twin's closure over its
 ///   propagating sibling (documents 3, chunks 3).
 /// - **other-repo 19** = P4.131's 18 + `doc_mount_blobs.rs` `create_with_ids`
@@ -655,17 +837,26 @@ fn the_class_counts_are_pinned() {
 /// - **strict-by-ruling 1** = `qtap_export/records.rs` `stream_one_store` (G5):
 ///   held strict under the 2026-08-03 backup/export ruling — v4 exports a broken
 ///   store EMPTY ([`OVERRIDES`]).
-/// - **fallback-in-v4 47** (P4.131's "68" was 67 — the blobs self-call — G5
-///   moves out, G1's 14 and G2's first 5 converted) — THE CONVERSION LIST. Its
-///   groups (survey §D2): **G2** 20 more lookup-before-write sites; **G3** 22
-///   deletes/prunes; **G4**
+/// - **held-pending-ruling 23** — G2 6 + G3 17 whose v4 fallback destroys or
+///   misreports data on a failed read (each named in [`OVERRIDES`]).
+/// - **fallback-in-v4 5** (P4.131's "68" was 67 — the blobs self-call — G5
+///   moved out, the rest converted or held) — **G4**
 ///   the sync applier's 5 (`apply_store.rs`) — the human's
 ///   RULING, unchanged (P4.142 Tier 3: option B, strict sync, recommended; v4's
 ///   `walkStore` reads through the same fallbacks and, with `propagateDeletes`
 ///   true, would plan the deletion of every unchanged disk file). Each G2/G3 site
 ///   converts only after its v4 downstream arm is read.
-const COUNTS: (usize, usize, usize, usize, usize, usize, usize, usize) =
-    (61, 13, 19, 0, 13, 1, 1, 47);
+const COUNTS: (
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+) = (80, 13, 19, 0, 13, 1, 1, 23, 5);
 
 /// P4.142 §S.4 — reads HANDED to P4.144 this round, recorded as documentation:
 /// the fold-episode pass's two memory reads (`services/fold_episode_pass.rs` —

@@ -788,7 +788,10 @@ fn find_existing_photos_link_by_sha(
     mount_point_id: &str,
     sha256: &str,
 ) -> Result<Option<(String, String, String)>, crate::db::DbError> {
-    let links = DocMountFileLinksRepository::new(mount).find_by_mount_point_id(mount_point_id)?;
+    // v4 `photo-handlers.ts:90`: the fallback joined read (`[]` → no collision
+    // → "No kept image found…") — P4.142 G2.
+    let links =
+        DocMountFileLinksRepository::new(mount).find_by_mount_point_id_or_empty(mount_point_id);
     for l in links {
         if l.sha256 == sha256 && is_photos_relative_path(Some(&l.relative_path)) {
             return Ok(Some((l.id, l.relative_path, l.created_at)));
@@ -1190,5 +1193,26 @@ mod tests {
         assert!(matches_saved_by_filter(&meta, Some("char-1")));
         assert!(!matches_saved_by_filter(&meta, Some("bob")));
         assert!(matches_saved_by_filter(&meta, None));
+    }
+}
+
+#[cfg(test)]
+mod g2_fallback_tests {
+    use super::*;
+
+    /// P4.142 G2: the kept-image dedup read (v4 `photo-handlers.ts:90`) — a
+    /// failed read is `[]` → no collision (`Ok(None)`), with v4's joined line,
+    /// never the `Err` the caller had swallowed silently.
+    #[test]
+    fn a_failed_dedup_read_is_no_collision() {
+        let conn = Connection::open_in_memory().unwrap();
+        let (got, lines) = crate::test_support::captured_with(|| {
+            find_existing_photos_link_by_sha(&conn, "mp-1", "abc")
+        });
+        assert!(matches!(got, Ok(None)));
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error querying joined file links collection=doc_mount_file_links whereClause=WHERE l.mountPointId = ? error=no such table: doc_mount_file_links".to_string()]
+        );
     }
 }
