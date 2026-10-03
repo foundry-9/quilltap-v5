@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — feat(projects): v4's four `[Projects v1]` INFO lines on create, update, add-character and remove-character (P4.D246 Tier 2 item 15)
+
+_Versions: core 0.0.1187._
+
+The four handler lines v4 has always logged and v5 never did (pre-existing, not `9753d0eb2`'s): `[Projects v1] Project created` `{projectId, name}` after the create (`route.ts:82-85`); `[Projects v1] Project updated` `{projectId, userId}` after the write and before the enrichment (`project-crud.ts:113`; `userId` is the engine's `SINGLE_USER_ID`); `[Projects v1] Character added to project` and `[Projects v1] Character removed from project` `{projectId, characterId}` after the roster write (`roster.ts:87,113`). Level INFO, v4's message bytes and field names, the module's default target. `projects_routes_equivalence` pins each line byte-exact through the thread-scoped capture rig on `create_flag_absent_defaults_open`, `update_on_empty_roster`, `add_character` and `remove_character`, and holds the silence legs on every refused create and PUT and on the archived-character refusal (v4 returns before its INFO).
+
 #### 2026-10-03 — test(web): the project roster verbs pinned at the dispatch wire (P4.D246 Tier 2 item 14)
 
 _Versions: web 0.0.214._

@@ -12,6 +12,7 @@
 
 use serde_json::{json, Map, Value};
 
+use super::SINGLE_USER_ID;
 use crate::db::chats_outfits::ChatOutfitsRepository;
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
 use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
@@ -286,7 +287,19 @@ pub async fn project_create(db: &Db, body: Value) -> Response {
     })
     .await;
     match out {
-        Ok(project) => Response::Project(json!({ "project": project })),
+        Ok(project) => {
+            // v4 `projects/route.ts:82-85`: `logger.info('[Projects v1] Project
+            // created', { projectId: project.id, name: project.name })` — after
+            // the create, before the best-effort Scenarios/ ensure's own catch.
+            let project_id = project.get("id").and_then(Value::as_str).unwrap_or("");
+            let project_name = project.get("name").and_then(Value::as_str).unwrap_or("");
+            tracing::info!(
+                projectId = %project_id,
+                name = %project_name,
+                "[Projects v1] Project created"
+            );
+            Response::Project(json!({ "project": project }))
+        }
         Err(e) => db_error_response(e),
     }
 }
@@ -564,6 +577,15 @@ pub async fn project_update(db: &Db, project_id: &str, patch: Value) -> Response
         // an unavailable roster member's vault is the middleware's contextful
         // 503), never the GET's fixed `internal("Failed to fetch project")`.
         Ok(ProjectUpdateOutcome::Updated(project)) => {
+            // v4 `project-crud.ts:113`: `logger.info('[Projects v1] Project
+            // updated', { projectId, userId: user.id })` — AFTER the write,
+            // BEFORE `enrichProject` (so it fires even when the enrichment
+            // then fails); `user.id` is the engine's single user.
+            tracing::info!(
+                projectId = %project_id,
+                userId = %SINGLE_USER_ID,
+                "[Projects v1] Project updated"
+            );
             match read_both(db, move |main, mount| enrich_project(main, mount, project)) {
                 Ok(project) => Response::Project(json!({ "project": project })),
                 Err(e) => db_error_response(e),
@@ -685,7 +707,17 @@ pub async fn project_character_add(db: &Db, project_id: &str, character_id: &str
     })
     .await;
     match out {
-        Ok(Ok(())) => Response::Project(json!({ "success": true })),
+        Ok(Ok(())) => {
+            // v4 `roster.ts:87`: `logger.info('[Projects v1] Character added to
+            // project', { projectId, characterId })` — after the (possibly
+            // skipped, idempotent) write; the three refusals above return first.
+            tracing::info!(
+                projectId = %project_id,
+                characterId = %character_id,
+                "[Projects v1] Character added to project"
+            );
+            Response::Project(json!({ "success": true }))
+        }
         Ok(Err(r)) => r,
         Err(e) => db_error_response(e),
     }
@@ -715,7 +747,17 @@ pub async fn project_character_remove(db: &Db, project_id: &str, character_id: &
     })
     .await;
     match out {
-        Ok(true) => Response::Project(json!({ "success": true })),
+        Ok(true) => {
+            // v4 `roster.ts:113`: `logger.info('[Projects v1] Character removed
+            // from project', { projectId, characterId })` — after the
+            // always-written update.
+            tracing::info!(
+                projectId = %project_id,
+                characterId = %character_id,
+                "[Projects v1] Character removed from project"
+            );
+            Response::Project(json!({ "success": true }))
+        }
         Ok(false) => not_found("Project"),
         Err(e) => db_error_response(e),
     }

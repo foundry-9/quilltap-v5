@@ -80,6 +80,22 @@ fn env_or_skip(key: &str) -> Option<String> {
     }
 }
 
+/// P4.D246 Tier 2 (order item 15): v4's four `[Projects v1]` INFO lines the
+/// handlers never logged, pinned through the thread-scoped capture rig. The
+/// rig renders `<LEVEL> <target> <message> <field>=<value> …` — the message
+/// FIRST and unquoted (a `fmt::Arguments` Debug), then the fields in callsite
+/// order (`%` → Display, unquoted — the memory note on the sigil) — so a pin
+/// here is BYTE-exact and ORDER-sensitive.
+const PROJECTS_TARGET: &str = "INFO quilltap_core::api::projects";
+
+fn projects_v1_lines(lines: &[String]) -> Vec<String> {
+    lines
+        .iter()
+        .filter(|l| l.contains("[Projects v1]"))
+        .cloned()
+        .collect()
+}
+
 fn canon_numbers(v: &mut Value) {
     match v {
         Value::Number(n) => {
@@ -681,7 +697,24 @@ fn projects_routes_match_oracle() {
         // echo: the prefaulted flag, the empty roster, the four literals.
         let name = "create_flag_absent_defaults_open";
         let db = fresh_db(&spec, "cfado");
-        let resp = rt.block_on(projects::project_create(&db, json!({ "name": "Pi" })));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(projects::project_create(&db, json!({ "name": "Pi" })))
+        });
+        // P4.D246 Tier 2: v4 `route.ts:82-85` — `{ projectId, name }`, the id
+        // minted, so the line is pinned around it.
+        let created = projects_v1_lines(&lines);
+        assert_eq!(
+            created.len(),
+            1,
+            "{name}: exactly one [Projects v1] line: {lines:?}"
+        );
+        assert!(
+            created[0].starts_with(&format!(
+                "{PROJECTS_TARGET} [Projects v1] Project created projectId="
+            )) && created[0].ends_with(" name=Pi"),
+            "{name}: v4's create INFO line: {}",
+            created[0]
+        );
         let mask = |v: &Value| {
             let mut v = v.clone();
             if let Some(p) = v.get_mut("project").and_then(Value::as_object_mut) {
@@ -768,8 +801,16 @@ fn projects_routes_match_oracle() {
         ("create_non_object_body", "cnob", json!("hello")),
     ] {
         let db = fresh_db(&spec, tag);
-        let resp = rt.block_on(projects::project_create(&db, body));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(projects::project_create(&db, body))
+        });
         check_error(name, &resp, &mut failed);
+        // P4.D246 Tier 2, the silence leg: a refused create logs no `[Projects
+        // v1]` line (v4's parse throws before the handler's INFO).
+        assert!(
+            projects_v1_lines(&lines).is_empty(),
+            "{name}: a refusal must log no [Projects v1] line: {lines:?}"
+        );
     }
     {
         let db = fresh_db(&spec, "update");
@@ -814,8 +855,16 @@ fn projects_routes_match_oracle() {
         ),
     ] {
         let db = fresh_db(&spec, tag);
-        let resp = rt.block_on(projects::project_update(&db, IOTA, patch));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(projects::project_update(&db, IOTA, patch))
+        });
         check_error(name, &resp, &mut failed);
+        // P4.D246 Tier 2, the silence leg: a refused PUT logs no `[Projects v1]`
+        // line (v4's parse throws before the write and the INFO).
+        assert!(
+            projects_v1_lines(&lines).is_empty(),
+            "{name}: a refusal must log no [Projects v1] line: {lines:?}"
+        );
     }
     {
         // …and the surviving mode still passes, so the narrowing is not a
@@ -881,17 +930,37 @@ fn projects_routes_match_oracle() {
     }
     {
         let db = fresh_db(&spec, "addc");
-        let resp = rt.block_on(projects::project_character_add(&db, KAPPA, BRAM));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(projects::project_character_add(&db, KAPPA, BRAM))
+        });
         check("add_character", &response_data(&resp), false, &mut failed);
+        // P4.D246 Tier 2: v4 `roster.ts:87` — `{ projectId, characterId }`.
+        assert_eq!(
+            projects_v1_lines(&lines),
+            vec![format!(
+                "{PROJECTS_TARGET} [Projects v1] Character added to project projectId={KAPPA} characterId={BRAM}"
+            )],
+            "add_character: v4's add INFO line"
+        );
     }
     {
         let db = fresh_db(&spec, "remc");
-        let resp = rt.block_on(projects::project_character_remove(&db, IOTA, ARIA));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(projects::project_character_remove(&db, IOTA, ARIA))
+        });
         check(
             "remove_character",
             &response_data(&resp),
             false,
             &mut failed,
+        );
+        // P4.D246 Tier 2: v4 `roster.ts:113` — `{ projectId, characterId }`.
+        assert_eq!(
+            projects_v1_lines(&lines),
+            vec![format!(
+                "{PROJECTS_TARGET} [Projects v1] Character removed from project projectId={IOTA} characterId={ARIA}"
+            )],
+            "remove_character: v4's remove INFO line"
         );
     }
     {
@@ -1213,8 +1282,15 @@ fn projects_routes_match_oracle() {
         // Placed here because `check_err` — the error-shape comparand — comes
         // into scope with the files section.
         let db = fresh_db(&spec, "addc_arch");
-        let resp = rt.block_on(projects::project_character_add(&db, KAPPA, EDDA));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(projects::project_character_add(&db, KAPPA, EDDA))
+        });
         check_err("add_character_archived", &resp, &mut failed);
+        // P4.D246 Tier 2, the silence leg: v4 returns the 400 BEFORE its INFO.
+        assert!(
+            projects_v1_lines(&lines).is_empty(),
+            "add_character_archived: a refusal must log no [Projects v1] line: {lines:?}"
+        );
     }
     {
         let db = fresh_db(&spec, "rm_file");
@@ -1343,12 +1419,24 @@ fn projects_routes_match_oracle() {
         // An EMPTY roster: `characterRoster: []` + `_count.characters: 0`.
         let name = "update_on_empty_roster";
         let db = fresh_db(&spec, "uoer");
-        let resp = rt.block_on(projects::project_update(
-            &db,
-            KAPPA,
-            json!({ "description": "Kappa, re-described" }),
-        ));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(projects::project_update(
+                &db,
+                KAPPA,
+                json!({ "description": "Kappa, re-described" }),
+            ))
+        });
         check(name, &response_data(&resp), true, &mut failed);
+        // P4.D246 Tier 2: v4 `project-crud.ts:113` — `{ projectId, userId }`,
+        // `userId` the engine's single user, logged after the write.
+        assert_eq!(
+            projects_v1_lines(&lines),
+            vec![format!(
+                "{PROJECTS_TARGET} [Projects v1] Project updated projectId={KAPPA} userId={}",
+                quilltap_core::api::SINGLE_USER_ID
+            )],
+            "{name}: v4's update INFO line"
+        );
         let project = &response_data(&resp)["project"];
         assert_eq!(
             project["characterRoster"],
