@@ -261,8 +261,15 @@ async function main(): Promise<void> {
   await repos.groupCharacterMembers.addMember(spec.groupId, spec.abigailId);
 
   // 6. The project (REAL create → official store) + one linked store.
+  // P4.D245 (v4 `9753d0eb2`): `allowAnyCharacter` is set EXPLICITLY so the
+  // project bakes OPEN at every v4 pin. v4's create default flipped
+  // `false` → `true` at that commit; a flag-less create would bake `false` + an
+  // empty roster at the baseline and `true` at the target, and a roster-gated
+  // v5 would then red this family at one pin for a reason that is not the
+  // port's. The roster gate's own arms live in `project_roster_access`, on
+  // projects created with an explicit `false`.
   await repos.projects.create(
-    { name: spec.projectName, userId: spec.userId } as never,
+    { name: spec.projectName, userId: spec.userId, allowAnyCharacter: true } as never,
     { id: spec.projectId, createdAt: TS, updatedAt: TS } as never,
   );
   const project = await repos.projects.findById(spec.projectId);

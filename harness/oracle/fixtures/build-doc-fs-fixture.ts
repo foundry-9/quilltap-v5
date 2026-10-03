@@ -198,7 +198,14 @@ async function main(): Promise<void> {
   ]);
 
   // 3. Project P (real create → real official store), link the normal + fs stores.
-  await repos.projects.create({ userId: spec.userId, name: 'Project P' } as never, {
+  // P4.D245 (v4 `9753d0eb2`): `allowAnyCharacter` is set EXPLICITLY so the
+  // project bakes OPEN at every v4 pin. v4's create default flipped
+  // `false` → `true` at that commit; a flag-less create would bake `false` + an
+  // empty roster at the baseline and `true` at the target, and a roster-gated
+  // v5 would then red this family at one pin for a reason that is not the
+  // port's. The roster gate's own arms live in `project_roster_access`, on
+  // projects created with an explicit `false`.
+  await repos.projects.create({ userId: spec.userId, name: 'Project P', allowAnyCharacter: true } as never, {
     id: spec.projectId,
     createdAt: PINNED_TS,
     updatedAt: PINNED_TS,
@@ -235,7 +242,7 @@ async function main(): Promise<void> {
 
   // 5. Legacy project L: its minted official store is DISABLED, so resolveProjectPath
   //    falls through to the <filesDir>/<projectId> on-disk fallback.
-  await repos.projects.create({ userId: spec.userId, name: 'Project L' } as never, {
+  await repos.projects.create({ userId: spec.userId, name: 'Project L', allowAnyCharacter: true } as never, {
     id: spec.legacyProjectId,
     createdAt: PINNED_TS,
     updatedAt: PINNED_TS,

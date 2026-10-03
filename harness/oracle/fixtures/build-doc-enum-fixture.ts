@@ -173,8 +173,15 @@ async function main(): Promise<void> {
   if (!v1) throw new Error('character has no characterDocumentMountPointId');
 
   // 3. Project with an official store (OS1).
+  // P4.D245 (v4 `9753d0eb2`): `allowAnyCharacter` is set EXPLICITLY so the
+  // project bakes OPEN at every v4 pin. v4's create default flipped
+  // `false` → `true` at that commit; a flag-less create would bake `false` + an
+  // empty roster at the baseline and `true` at the target, and a roster-gated
+  // v5 would then red this family at one pin for a reason that is not the
+  // port's. The roster gate's own arms live in `project_roster_access`, on
+  // projects created with an explicit `false`.
   await repos.projects.create(
-    { name: spec.project.name, userId: spec.userId } as never,
+    { name: spec.project.name, userId: spec.userId, allowAnyCharacter: true } as never,
     { id: spec.projectId, createdAt: TS, updatedAt: TS } as never,
   );
   const p1 = await repos.projects.findById(spec.projectId);

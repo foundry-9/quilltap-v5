@@ -64,6 +64,12 @@ Red-first at the target on unported main: routes RED on the five flag-less creat
 _No crate versions bumped._
 
 Copies v4's `help/` tree at `e5c6bd0c0` over v5's (`diff -rq` against the pin is empty). Five pages change, none added or removed, so the count stays 129 and both count literals (`help_tree_embed_guard.rs`, `host_help_docs_boot.rs`) are unmoved: `project-characters.md`, `project-chats.md`, `project-settings.md`, `projects.md` (`9753d0eb2` — the roster as a tool-access list) and `cli-migrations.md` (`e5c6bd0c0` — resumable migrations and the boot-time table check). `docs/v4/` gains the same commits' `CHANGELOG.md`, `developer/API.md`, `developer/bugs.md` and the two new `developer/bugs/fixed/bug-175-*.md` / `bug-176-*.md`; the only residual against v4's `docs/` is the standing `packages-quilltap-README.md` (byte-identical to v4's `packages/quilltap/README.md` at both pins). Red-first: `help_tree_equivalence` and `help_section_size_equivalence`, regenerated at the pin, failed on the unported tree (the five pages; `cli-migrations.md` gains a second section, 744 → 745 chunks) and pass after the copy; regenerated at the baseline `f6426e196` they now fail, so the move is pinned in both directions. The embed guard and the host help-boot test pass unmoved.
+#### 2026-10-03 — test(harness): the eight doc fixture builders set allowAnyCharacter explicitly (P4.D245 item 2)
+
+_No crate versions bumped._
+
+v4 `9753d0eb2` flipped the project create default from `false` to `true`. The eight doc builders (`build-doc-{opacity,enum,ui,text,blob,fm,fs}-fixture.ts`, `build-doc-edit-path-resolver-fixture.ts`; eleven `projects.create` calls) never set the flag, so a fixture rebuilt at the baseline pin baked a CLOSED project with an empty roster and one rebuilt at the target baked an OPEN one. Each create now passes `allowAnyCharacter: true` explicitly, so the project bakes OPEN at every pin and the roster gate's own arms live on projects created with an explicit `false`. Neutral by measurement: all eight families regenerated at `f6426e196` AND `e5c6bd0c0` and green on this tree at both pins (doc_opacity 72 ops, doc_enum 17, doc_ui 9, doc_text 47, doc_blob 11, doc_fm 20, doc_fs 21, doc_edit_path_resolver 38 rows).
+
 #### 2026-10-03 — refactor(doc-edit): fold the enumeration twin onto the path resolver's collector (P4.D245 substrate)
 
 _Versions: core 0.0.1184._

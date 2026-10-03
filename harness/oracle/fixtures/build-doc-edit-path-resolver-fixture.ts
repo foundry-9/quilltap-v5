@@ -184,7 +184,14 @@ async function main(): Promise<void> {
 
   // Project P via the REAL create — provisions a real official store (with the
   // properties.json the overlaid `projects.findById` reads in resolveProjectPath).
-  await repos.projects.create({ userId: spec.userId, name: 'Project P' } as never, {
+  // P4.D245 (v4 `9753d0eb2`): `allowAnyCharacter` is set EXPLICITLY so the
+  // project bakes OPEN at every v4 pin. v4's create default flipped
+  // `false` → `true` at that commit; a flag-less create would bake `false` + an
+  // empty roster at the baseline and `true` at the target, and a roster-gated
+  // v5 would then red this family at one pin for a reason that is not the
+  // port's. The roster gate's own arms live in `project_roster_access`, on
+  // projects created with an explicit `false`.
+  await repos.projects.create({ userId: spec.userId, name: 'Project P', allowAnyCharacter: true } as never, {
     id: spec.projectId,
     createdAt: PINNED_TS,
     updatedAt: PINNED_TS,
@@ -204,7 +211,7 @@ async function main(): Promise<void> {
 
   // P4.6bg legacy-fallback project L: its minted official store is DISABLED, so
   // `resolveProjectPath` falls through to the `<filesDir>/<projectId>` legacy path.
-  await repos.projects.create({ userId: spec.userId, name: 'Project L' } as never, {
+  await repos.projects.create({ userId: spec.userId, name: 'Project L', allowAnyCharacter: true } as never, {
     id: spec.legacyProjectId,
     createdAt: PINNED_TS,
     updatedAt: PINNED_TS,
@@ -216,7 +223,7 @@ async function main(): Promise<void> {
 
   // P4.6bg project-official-fs project F: its minted official store is flipped to
   // `mountType: 'filesystem'` with the sentinel basePath (rewritten per-side).
-  await repos.projects.create({ userId: spec.userId, name: 'Project F' } as never, {
+  await repos.projects.create({ userId: spec.userId, name: 'Project F', allowAnyCharacter: true } as never, {
     id: spec.fsProjectId,
     createdAt: PINNED_TS,
     updatedAt: PINNED_TS,
