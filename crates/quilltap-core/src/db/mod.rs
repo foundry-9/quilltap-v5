@@ -121,6 +121,7 @@ pub mod scenario_seeded_summary_heal;
 pub mod scenarios;
 pub mod sqlite_errors;
 pub mod store_backed;
+pub mod table_shape;
 pub mod tags;
 pub mod terminal_sessions;
 pub mod text_compression;

@@ -163685,3 +163685,96 @@ baseline.
   failed pass) reds the pass + resume arms' `!ledger`. All three reverted.
 - `host_boot_avatar_rolls_collapse` 3/3 and the core `avatar_rolls_collapse`
   unit tests 7/7 unchanged; clippy clean both feature sets.
+
+### Unit 2 — the shape check + `table_shape_equivalence` (core + harness)
+
+- NEW `crates/quilltap-core/src/db/table_shape.rs` (+ `pub mod table_shape;` in
+  `db/mod.rs`, NOT `lib.rs` — §S.2's text merge is in `db/mod.rs`):
+  `Partition` (`db_target()` / `label()` = v4's `DB_LABELS` + `main`),
+  `StructuralTable`, `STRUCTURAL_TABLES` (11 rows, GENERATED from the case's
+  `census` rows by `render_census` in the Rust test — it prints the literal on
+  a mismatch), `find_table_shape_problem`, `unavailable`, `ensure_failed`,
+  `STRUCTURE_HEALTHY_MESSAGE`, `structure_message(n)` (transcribed from
+  `route.ts:118-131`, unit-pinned n = 1, 2, 3), the help-chunks `main`
+  template unit-pinned (transcribed: the repository's `getCollection` connects
+  the configured main backend, which the case must never open — recorded).
+- NEW tier-1 family: case `harness/oracle/cases/table-shape.ts`, spec
+  `harness/oracle/fixtures/table-shape-spec.json`, test
+  `crates/quilltap-harness/tests/table_shape_equivalence.rs`
+  (`QT_ORACLE_TABLE_SHAPE`, `SKIP:` sentinel). The case drives v4's REAL
+  `createRepositories()` (constructing it touches no DB under tsx — measured)
+  with the pass's seen-set + `verifyStructure` filter, so the census IS v4's
+  container: `llmLogs, helpDocChunks, docMountPoints, docMountFiles,
+  docMountFileLinks, docMountFolders, docMountChunks, docMountDocuments,
+  projectDocMountLinks, groupDocMountLinks, groupCharacterMembers` (field
+  counts 20/8/18/7/25/7/10/7/5/5/5), `checked = 11`. The `links` rows drive the
+  REAL `requireMountIndexDb` / `requireLLMLogsDb` (uninitialized; degraded via
+  the `globalThis.__quilltap…Degraded` flags) and v4's own test repository
+  through BOTH targets. `zod` is required from the v4 tree (`createRequire` at
+  the cwd's `package.json`) — the bare import died `ERR_MODULE_NOT_FOUND` from
+  the case's own directory (the standing memory note).
+- 91 rows at `e5c6bd0c0` (11 census + 1 count + 55 shape + 10 links + 1
+  substrate + 13 plant). **4/4 green on the first run.** Baseline pin
+  `f6426e196`: exit 1, ZERO bytes, `ERR_MODULE_NOT_FOUND` (the
+  `table-shape.ts` import — absent there). On `main` the Rust test does not
+  compile (`E0432 unresolved import quilltap_core::db::table_shape`, measured
+  by removing the `pub mod` line).
+- Mutations: M5 (`type IN ('table')`) reds `every_shape_…`; M6 (PRAGMA-order
+  — the list reversed) reds `every_shape_…` (the reversed-column plural rows);
+  M7 (`column`/`columns` swapped) reds `every_shape_…` + `the_links_…`; M10
+  (`llmLogs` / `helpDocChunks` swapped in `STRUCTURAL_TABLES`) reds
+  `the_census_…`. All reverted.
+- **The `plant` rows (v4's REAL pass over its own `generateDDL` substrate,
+  a fresh container per plant) — MEASURED findings, for unit 3:**
+  1. **RENAME-then-VIEW does NOT read `is a view` on v4** — the survey's §A6 /
+     the order's item 7 premise is REFUTED: `chunk-view` answers
+     `doc_mount_chunks in mount index database: views may not be indexed` with
+     every index kept, because SQLite rejects `CREATE INDEX` on a view BEFORE
+     its `IF NOT EXISTS` name check. So `X is a view, not a table` is
+     unreachable through v4's `verifyStructure` for every dedicated table (only
+     v4's direct `findTableShapeProblem` test reaches it). v5 never ensures
+     `doc_mount_chunks`, so v5 reads the view (the shape form) — a recorded
+     divergence; the spec marks `chunk-view` `divergence: true`.
+  2. **`link-group-index` is TWO problems on v4** —
+     `doc_mount_file_links …` AND `doc_mount_documents in mount index database:
+     there is already a table named idx_doc_mount_file_links_linkGroupId`: BOTH
+     repositories' `onTableEnsured` call `ensureLinkGroupColumn`
+     (`doc-mount-documents.repository.ts:48-60`). v5 collapses the two call
+     sites into one boot sub-step, so unit 3's collector must record that
+     sub-step's failure under BOTH collections (one log line, two problems).
+  3. `files-dropped` and `points-pre-alter` answer `[]` on v4 (the ensure
+     CREATES the table / ADDs the column back) — as R3 and the deferred ALTERs
+     predicted.
+
+### ⛔ STOP — item 7's fixture census finds the STOP condition (R3)
+
+`find_table_shape_problem` over every committed pair under
+`crates/quilltap-web/tests/fixtures/` (each COPIED to a tempdir before opening;
+109 files, 15 under a different pepper): raw, 21 sound / 73 damaged. Then
+measured POST-BOOT — each `<stem>-main/-mount[/-llmlogs]` pair booted through the
+real `Host` and re-checked (v5's per-boot ensures CREATE `help_doc_chunks`,
+`doc_mount_points` and `doc_mount_folders`, so those raw reds vanish): of 42
+pairs that boot, **35 still report problems** — almost all `table
+group_doc_mount_links does not exist` / `table group_character_members does
+not exist` / `table project_doc_mount_links does not exist` (one pair,
+`chat-compressed`, has an EMPTY mount index: all nine mount tables), plus
+`llm-log-cleanup`'s legacy `llm_logs` (`missing columns connectionProfileId,
+imageProfileId`). Sound post-boot: `chat-delete`, `chat-dialogs`,
+`chat-scenario`, `groups-projects`, `in-scene-voiced`, `inspector-nostore`,
+`pascal-run-custom`, `store-delete`, `system-data`, `wardrobe-routes`.
+
+**The e2e seeds are hit:** `salon` (the global-setup instance —
+`waitForHealth` accepts ONLY 200/423, `e2e/global-setup.ts:762-780`),
+`salon-long`, `characters`, `memories`, `courier-images` all report missing
+link tables; `characters-flow.spec.ts:400-412` and five more specs wait the
+same way. Under R3 the whole Playwright suite would fail to start.
+
+**It is not fixture damage — it is R3's premise.** v4's repositories create
+their tables LAZILY (every fixture builder that never touched groups lacks the
+group tables, and so may a real instance of any v4 vintage before
+`e5c6bd0c0`); v4's PHASE 3.1 ensure CREATES a missing dedicated table and
+reports it SOUND (the `files-dropped` plant row: `[]`). So R3 ("REPORT `table
+X does not exist`") would answer a false `degraded` 503 on healthy instances —
+likely real ones too (dogfood 💸 row 1: "a v5 false positive is a finding").
+Per item 7 the lane STOPS before commit 3 and reports; the ruling is the
+human's.

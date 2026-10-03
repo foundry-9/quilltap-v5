@@ -1,0 +1,97 @@
+{
+  "_doc": "Shared spec for table_shape_equivalence (P4.D248, v4 e5c6bd0c0 bug 176). shapeCases run over EVERY real structural schema; linksTargets drive v4's own test-shaped LinksRepository through both dedicated targets; plants run over v4's own generateDDL-created mount-index + LLM-logs substrate and are replayed by v5's real boot-pass pieces. A plant with divergence=true is a RECORDED divergence pinned both ways by the Rust side (v4's out and v5's out asserted separately).",
+  "shapeCases": [
+    "sound-extra",
+    "one-renamed",
+    "two-renamed-reversed",
+    "rename-then-view",
+    "absent"
+  ],
+  "linksTargets": ["mountIndex", "llmLogs"],
+  "plants": [
+    { "name": "sound", "mount": [], "llm": [] },
+    {
+      "name": "link-relativepath",
+      "why": "dogfood #134: the file-links NOCASE repair SELECTs relativePath, so the ENSURE fails first on both sides (v4's API.md example string is not what v4 emits here)",
+      "mount": ["ALTER TABLE doc_mount_file_links RENAME COLUMN relativePath TO relativePath_x"],
+      "llm": []
+    },
+    {
+      "name": "folder-name",
+      "mount": ["ALTER TABLE doc_mount_folders RENAME COLUMN name TO name_x"],
+      "llm": []
+    },
+    {
+      "name": "point-name",
+      "mount": ["ALTER TABLE doc_mount_points RENAME COLUMN name TO name_x"],
+      "llm": []
+    },
+    {
+      "name": "link-group-index",
+      "mount": [
+        "DROP INDEX idx_doc_mount_file_links_linkGroupId",
+        "CREATE TABLE idx_doc_mount_file_links_linkGroupId (x TEXT)"
+      ],
+      "llm": []
+    },
+    {
+      "name": "chunk-heading",
+      "why": "a column no ensure step names: the SHAPE form on both sides",
+      "mount": ["ALTER TABLE doc_mount_chunks RENAME COLUMN headingContext TO headingContext_x"],
+      "llm": []
+    },
+    {
+      "name": "link-description",
+      "mount": ["ALTER TABLE doc_mount_file_links RENAME COLUMN description TO description_x"],
+      "llm": []
+    },
+    {
+      "name": "two-tables",
+      "mount": [
+        "ALTER TABLE doc_mount_chunks RENAME COLUMN headingContext TO headingContext_x",
+        "ALTER TABLE doc_mount_file_links RENAME COLUMN description TO description_x"
+      ],
+      "llm": []
+    },
+    {
+      "name": "chunk-view",
+      "divergence": true,
+      "why": "MEASURED at e5c6bd0c0 (the survey's 'is a view on both sides' refuted): SQLite rejects CREATE INDEX on a view BEFORE its IF NOT EXISTS name check, so v4's ensure fails 'views may not be indexed' even with every index kept (the ensure form); v5 never ensures doc_mount_chunks and reads the view (the shape form)",
+      "mount": [
+        "ALTER TABLE doc_mount_chunks RENAME TO doc_mount_chunks_x",
+        "CREATE VIEW doc_mount_chunks AS SELECT * FROM doc_mount_chunks_x"
+      ],
+      "llm": []
+    },
+    {
+      "name": "llm-column",
+      "mount": [],
+      "llm": ["ALTER TABLE llm_logs RENAME COLUMN provider TO provider_x"]
+    },
+    {
+      "name": "files-dropped",
+      "divergence": true,
+      "why": "R3: v4's ensure CREATES a missing table and reports it sound; v5 never ensures doc_mount_files and reports it missing",
+      "mount": ["DROP TABLE doc_mount_files"],
+      "llm": []
+    },
+    {
+      "name": "points-pre-alter",
+      "divergence": true,
+      "why": "v4's doc_mount_points ensure ADDs totalSizeBytes back (one of its four ALTER self-heals); v5 has no twin and reports the column missing",
+      "mount": ["ALTER TABLE doc_mount_points DROP COLUMN totalSizeBytes"],
+      "llm": []
+    },
+    {
+      "name": "chunk-view-index-gone",
+      "divergence": true,
+      "why": "with the createdAt index dropped first, v4's ensure fails 'views may not be indexed' (the ensure form); v5 never ensures doc_mount_chunks and reads the view (the shape form)",
+      "mount": [
+        "DROP INDEX idx_doc_mount_chunks_createdAt",
+        "ALTER TABLE doc_mount_chunks RENAME TO doc_mount_chunks_x",
+        "CREATE VIEW doc_mount_chunks AS SELECT * FROM doc_mount_chunks_x"
+      ],
+      "llm": []
+    }
+  ]
+}

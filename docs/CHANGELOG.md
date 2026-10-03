@@ -141,6 +141,16 @@ v4 `9753d0eb2` flipped the project create default from `false` to `true`. The ei
 _Versions: core 0.0.1184._
 
 `get_accessible_mount_points` (the `doc_list_files` / `doc_grep` / blob enumeration side) now calls the path resolver's own `collect_accessible_mount_point_ids`, made `pub(crate)`, instead of carrying a hand-copy of its covenant arm. v4 has ONE function (`getAccessibleMountPoints` routes through `collectAccessibleMountPointIds`); v5 had two, so a rule added to the collector would have left listing and resolution disagreeing about a store (the bug-153 shape). The enumeration passes `operator_override: false`, as v4 passes no override, so the collector's only fallible arm is never taken. Behaviour-neutral: `doc_opacity` (72 ops), `doc_enum` (17) and `doc_ui` (9) regenerated once at the `f6426e196` baseline pin and green on unported main and on this tree against the same oracle bytes. Substrate for the project-roster tool-access gate (v4 `9753d0eb2`), which lands on the collector in a later commit.
+#### 2026-10-03 — feat(core): the structural table shape check and its tier-1 differential, from v4's bug-176 fix (P4.D248)
+
+_Versions: core 0.0.1185._
+
+The shape half of v4 `e5c6bd0c0`'s boot-time structural table check. Nothing calls it yet; the boot pass and `/health` wiring are a later commit.
+
+- New `db/table_shape.rs`: `find_table_shape_problem` (v4's two statements and three problem strings; missing columns listed in schema order, extra columns allowed), the per-repository problem templates (`unavailable`, `ensure_failed`, with v4's database labels), the `/health` structure messages, and `STRUCTURAL_TABLES` — v4's 11 structure-verifiable repositories in container order with their schema fields, generated from the oracle's census.
+- New tier-1 family `table_shape_equivalence` over v4's real `findTableShapeProblem`, real schemas, real repository container and real `verifyStructure`: the census field-for-field (the test prints the regenerated table on a mismatch), five shapes over every real schema, v4's own test repository through both dedicated databases (real guard messages; the ensure-failure, fresh and pre-made forms replayed from v4's own `generateDDL` output, so the SQLite message itself is compared), and v4's substrate checked sound. The case also records v4's verdict on 14 planted damages over its own substrate, for the boot-pass commit.
+- Red-first: the test does not compile without the module, and the case fails to import at the baseline pin `f6426e196`. Mutations (view type dropped, PRAGMA-order missing list, `column`/`columns` swapped, census reordered) each red the intended test.
+
 #### 2026-10-03 — fix(host): a failed avatar-roll collapse defers and the boot continues, as v4 does since bug 175 (P4.D248)
 
 _Versions: core 0.0.1184, host 0.0.177._
