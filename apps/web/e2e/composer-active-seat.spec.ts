@@ -96,10 +96,11 @@ test.describe('P4.81 — the composer stays enabled when the only active charact
     const editor = page.locator('.qt-chat-composer-input .qt-rich-editor-content');
     await expect(editor).toBeVisible();
     const placeholder = editor.locator('.qt-rich-editor-placeholder');
-    await expect(placeholder).not.toHaveAttribute(
-      'data-placeholder',
-      'Add a character to start chatting…',
-    );
+    // v4 (`ChatComposer.tsx:523`, the P4.145 Option A ruling): with an active
+    // character and nothing attached the placeholder is `""`, so the editor
+    // paints NO hint at all — which also proves it is not the "no active
+    // character" sentence.
+    await expect(placeholder).toHaveCount(0);
 
     await editor.click();
     await page.keyboard.type('Just us, then.');

@@ -191,7 +191,9 @@ test.describe('Salon composer modes (P4.6ak∥al∥am unification)', () => {
 
     // And the editor is the dominant share of the row — the user-visible
     // symptom in #75 was the "Type a message…" placeholder clipping to
-    // "Type a" once the box fell to its 12rem floor.
+    // "Type a" once the box fell to its 12rem floor. Since the P4.145 Option A
+    // ruling an empty composer shows NO placeholder (v4 passes `""`), so the
+    // clip probe below finds none and the two width assertions carry the guard.
     expect(inputBox.width).toBeGreaterThan(300);
     expect(inputBox.width).toBeGreaterThan(gutterBox.width + togglesBox.width);
     const placeholder = page.locator('.qt-rich-editor-placeholder').first();

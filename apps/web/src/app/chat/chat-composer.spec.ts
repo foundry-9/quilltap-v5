@@ -230,6 +230,50 @@ describe('ChatComposer — attach affordance', () => {
   });
 });
 
+/**
+ * The editor placeholder, byte-for-byte v4 (`ChatComposer.tsx:523`) — the P4.145
+ * Option A ruling (the human, 2026-10-02): three ASCII dots, not U+2026, and NO
+ * placeholder at all on an empty composer with nothing attached.
+ */
+describe("ChatComposer — the editor placeholder is v4's three strings", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    TestBed.resetTestingModule();
+  });
+
+  /** What the rich editor actually renders; `null` when no placeholder decoration exists. */
+  function shownPlaceholder(fixture: ComponentFixture<ChatComposer>): string | null {
+    return (
+      fixture.nativeElement
+        .querySelector('.qt-rich-editor-placeholder')
+        ?.getAttribute('data-placeholder') ?? null
+    );
+  }
+
+  it('no active character → "Add a character to start chatting..."', async () => {
+    const fixture = render();
+    fixture.componentRef.setInput('hasActiveCharacters', false);
+    await settle(fixture);
+    expect(shownPlaceholder(fixture)).toBe('Add a character to start chatting...');
+  });
+
+  it('a file attached → "Add a message (optional)..."', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(UPLOADED)));
+    const fixture = render();
+    fixture.componentRef.setInput('hasActiveCharacters', true);
+    pickFile(fixture);
+    await settle(fixture);
+    expect(shownPlaceholder(fixture)).toBe('Add a message (optional)...');
+  });
+
+  it('nothing attached → no placeholder at all (v4 passes "")', async () => {
+    const fixture = render();
+    fixture.componentRef.setInput('hasActiveCharacters', true);
+    await settle(fixture);
+    expect(shownPlaceholder(fixture)).toBeNull();
+  });
+});
+
 describe('ChatComposer — draft persistence (v4 useDraftPersistence)', () => {
   const KEY = 'quilltap-draft-chat-1';
 

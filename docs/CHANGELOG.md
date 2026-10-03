@@ -382,6 +382,16 @@ _Versions: core 0.0.1147, harness 0.0.1075._
 `run_fold_episode_pass` now emits v4's three reachable `[FoldEpisodePass]` lines: `Episode extraction failed` (WARN, only when the extraction fails; an empty or unparseable reply stays silent), `Failed to write episode for character` (WARN, with the bare SQLite message), and `Episode pass complete` (INFO, after the episode loop). Each character's write is one fallible block, as in v4's per-character `try`: a failed gate write, episode link update, or fragment back-link ends that character's linking. Before, the link writes were `let _ =`, so v5 kept linking and over-counted `fragmentsLinked` after a failed write. The chat read moves to `chats_read::find_by_id_or_none`, and the fragment read to a new fallback twin, `memories_read::find_by_character_and_source_message_ids_or_empty`. Measured against v4's real repository, a failed fragment read logs the inner `findByFilter` line (`Error finding entities by filter`), not the method's own message, which v4 can never reach. v4's two unreachable lines and its dead `SKIP_GATE` count arm are recorded as comments, not ported.
 
 `fold_episode_tier3_equivalence` now diffs the pass's log lines against v4's own logger output, with three new runs: a throwing completion, an INSERT trigger plant, and two UPDATE trigger plants (the episode link and a fragment back-link). Red-first on unported `main` on 4 of 5 runs.
+#### 2026-10-03 — fix(spa): the composer placeholder follows v4 byte for byte, and the rich editor repaints a changed placeholder (P4.145 ruling A)
+
+_Versions: SPA 0.5.794._
+
+The human ruled Option A for the composer placeholder. The Salon composer now uses v4's exact strings (`ChatComposer.tsx:523`): `Add a character to start chatting...` and `Add a message (optional)...` with three ASCII dots, and no placeholder at all on an empty composer with nothing attached (v5 used to show `Type a message…`).
+
+Writing the tests exposed a separate bug: the rich editor's placeholder is a ProseMirror decoration, recomputed only on a view update, so a changed placeholder stayed painted wrong until the next keystroke. The editor now nudges its view when the placeholder input changes, as it already did for spellcheck.
+
+Three new composer specs read the painted placeholder. All three failed before the fix, and removing the nudge fails the two that change the input after mount. The attachment-only Playwright beat now checks that no hint shows before the attach and v4's sentence shows after it. `composer-active-seat` now asserts no placeholder instead of a negative string match, and `salon-composer-modes`' dogfood #75 comment notes the width assertions carry that guard now.
+
 #### 2026-10-02 — fix(salon): an attachment-only send carries v4's sentence, and the optimistic bubble reads [Attached: …] (P4.145)
 
 _Versions: SPA 0.5.793._

@@ -752,9 +752,14 @@ export class ChatComposer implements OnInit {
     () => this.hasActiveCharacters() && !this.composerLocked(),
   );
 
+  /**
+   * v4 `ChatComposer.tsx:523`, byte-for-byte (the P4.145 Option A ruling, the
+   * human, 2026-10-02): three ASCII dots, and NO placeholder on an empty
+   * composer with nothing attached — v4 passes `""` there.
+   */
   protected readonly placeholder = computed(() => {
-    if (!this.hasActiveCharacters()) return 'Add a character to start chatting…';
-    return this.attachedFiles().length > 0 ? 'Add a message (optional)…' : 'Type a message…';
+    if (!this.hasActiveCharacters()) return 'Add a character to start chatting...';
+    return this.attachedFiles().length > 0 ? 'Add a message (optional)...' : '';
   });
 
   /**

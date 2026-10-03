@@ -169,6 +169,15 @@ export class RichEditor {
       this.view?.setProps({});
     });
 
+    // The placeholder is a decoration, recomputed only on a view update — so a
+    // host that changes it (the Salon composer flips it when a file is attached
+    // or the last character leaves, P4.145) must nudge the view too, or the old
+    // hint stays painted until the next keystroke.
+    effect(() => {
+      this.placeholder();
+      this.view?.setProps({});
+    });
+
     this.destroyRef.onDestroy(() => this.view?.destroy());
   }
 

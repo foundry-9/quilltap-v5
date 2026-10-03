@@ -163058,3 +163058,38 @@ frame on the wire, and the SPA shows nothing for it.
 
 SPA 0.5.792 → **0.5.793** (`package.json` + both `package-lock.json`
 lines). No crate bumps; no `Cargo.toml` delta.
+
+### P4.145 addendum — the placeholder ruling landed + the port-4321 re-runs (2026-10-03)
+
+**Tier 3 item 8 RULED Option A by the human (2026-10-02) and LANDED.**
+`chat-composer.ts` `placeholder` is v4's `ChatComposer.tsx:523` byte for byte:
+`'Add a character to start chatting...'` / `'Add a message (optional)...'` /
+`''`. **A second defect found by the red-first run and fixed:**
+`rich-editor.ts` never repainted a changed placeholder. It is a ProseMirror
+decoration, recomputed only on a view update, so the red arms received the
+STALE `'Type a message…'` where even the old code should have shown the
+other strings. Fix: an `effect` nudging `view.setProps({})` on `placeholder()`,
+the twin of the spellcheck nudge. `rich-editor.ts` is outside the order's
+ownership list; it is recorded here, and no other lane touches `apps/web/**`.
+
+- New describe `ChatComposer — the editor placeholder is v4's three strings`
+  (three arms reading the PAINTED `data-placeholder`): red-first 3/3 on the
+  old source; green after; **mutation** (nudge removed) → arms 1–2 RED (the
+  two that change the input after mount), arm 3 green as expected.
+- e2e: `composer-active-seat.spec.ts`'s negative string match became
+  `toHaveCount(0)` on the placeholder (v4's `""`). `salon-composer-modes`'
+  #75 comment records that the clip probe now finds no placeholder, so the
+  two width assertions carry the guard. The attachment-only beat now asserts
+  no hint before the attach and `Add a message (optional)...` after it: the
+  live proof of both the selector and the nudge.
+- Gate: `npm test` **466 files / 8,801 / 0**; `npm run build` + `npm run
+  lint` clean; Playwright by file (rebuilt dist): the beat 1/1,
+  `composer-active-seat` 1/1, `salon-composer-modes` 8/8.
+
+**The two port-4321 reds re-run with the port free** (the human stopped the
+Astro dev server): `salon-scroll` **1/1**, `settings-flow` **8/8**. All five
+full-suite reds are now accounted for: two environmental (4321), three green
+by file (documents 5/5, workspace 13/13).
+
+Versions: SPA 0.5.793 → **0.5.794** (a second bump: the ruling landed after
+lane close; the unifier recounts it).

@@ -126,6 +126,12 @@ test.describe('P4.145 — the attachment-only send (LIVE)', () => {
 
       const before = await userRows(chatId!);
 
+      // v4's composer hint (`ChatComposer.tsx:523`, the P4.145 Option A
+      // ruling): none on an empty composer, then "Add a message (optional)..."
+      // once a file is attached — the live proof the editor repaints it.
+      const hint = page.locator('.qt-chat-composer-input .qt-rich-editor-content .qt-rich-editor-placeholder');
+      await expect(hint).toHaveCount(0);
+
       await page.getByRole('button', { name: 'Attach file', exact: true }).click();
       await page.locator('input[type=file][aria-label="Choose a file to attach"]').setInputFiles({
         name: FILE_NAME,
@@ -135,6 +141,7 @@ test.describe('P4.145 — the attachment-only send (LIVE)', () => {
       await expect(page.locator('.qt-chat-attachment-chip')).toContainText(FILE_NAME, {
         timeout: 15_000,
       });
+      await expect(hint).toHaveAttribute('data-placeholder', 'Add a message (optional)...');
 
       // The editor is empty: the attachment alone enables Send.
       await expect(sendButton).toBeEnabled();
