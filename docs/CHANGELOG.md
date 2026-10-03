@@ -64,6 +64,12 @@ Red-first at the target on unported main: routes RED on the five flag-less creat
 _No crate versions bumped._
 
 Copies v4's `help/` tree at `e5c6bd0c0` over v5's (`diff -rq` against the pin is empty). Five pages change, none added or removed, so the count stays 129 and both count literals (`help_tree_embed_guard.rs`, `host_help_docs_boot.rs`) are unmoved: `project-characters.md`, `project-chats.md`, `project-settings.md`, `projects.md` (`9753d0eb2` — the roster as a tool-access list) and `cli-migrations.md` (`e5c6bd0c0` — resumable migrations and the boot-time table check). `docs/v4/` gains the same commits' `CHANGELOG.md`, `developer/API.md`, `developer/bugs.md` and the two new `developer/bugs/fixed/bug-175-*.md` / `bug-176-*.md`; the only residual against v4's `docs/` is the standing `packages-quilltap-README.md` (byte-identical to v4's `packages/quilltap/README.md` at both pins). Red-first: `help_tree_equivalence` and `help_section_size_equivalence`, regenerated at the pin, failed on the unported tree (the five pages; `cli-migrations.md` gains a second section, 744 → 745 chunks) and pass after the copy; regenerated at the baseline `f6426e196` they now fail, so the move is pinned in both directions. The embed guard and the host help-boot test pass unmoved.
+#### 2026-10-03 — fix(doc-edit): the project scope's missing-project refusal logs v4's WARN (P4.D245 Tier 2 item 14)
+
+_Versions: core 0.0.1191._
+
+`resolve_project_path`'s `MISSING_CONTEXT` refusal now logs v4's `project scope requires projectId in context` WARN (`path-resolver.ts:597`, no context object) — a pre-existing absent line beside the roster gate, with a capture pin and no chokepoint call. The item's second half (`resolve_project_mount_point_ids`' `Error finding links by project ID` home) lives in `tools/wardrobe_shared.rs`, which this lane only reads; deferred by name.
+
 #### 2026-10-03 — test(harness): search_tools grows a closed third project — the roster gate on search_scriptorium and project_info's third sentence (P4.D245 item 10)
 
 _No crate versions bumped._

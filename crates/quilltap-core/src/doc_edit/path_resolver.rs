@@ -766,6 +766,10 @@ fn resolve_project_path(
     files_dir: Option<&Path>,
 ) -> Result<ResolvedPath, ResolveError> {
     let Some(project_id) = &context.project_id else {
+        // v4 `path-resolver.ts:597` — a pre-existing absent line, restored
+        // alongside the roster gate (P4.D245 Tier 2 item 14): the WARN has no
+        // context object.
+        tracing::warn!("project scope requires projectId in context");
         return Err(ResolveError::path(
             PathErrorCode::MissingContext,
             "Project ID is required for project scope",
@@ -1573,6 +1577,47 @@ mod tests {
         assert!(
             !lines.iter().any(|l| l.contains("[ProjectRoster]")),
             "{lines:?}"
+        );
+    }
+
+    #[test]
+    fn project_scope_without_a_project_warns_as_v4_does() {
+        // P4.D245 Tier 2 item 14: v4 `:597`'s WARN (no context object), the
+        // pre-existing absent line beside the roster gate; its silence leg is
+        // every resolving `project` pin above.
+        let (main, mount) = roster_fixture();
+        let ctx = PathResolutionContext {
+            character_id: Some("c-on".to_string()),
+            ..Default::default()
+        };
+        let (out, lines) = crate::test_support::captured_with(|| {
+            resolve_doc_edit_path(
+                &main,
+                &mount,
+                DocEditScope::Project,
+                Some("plan.md"),
+                &ctx,
+                None,
+            )
+        });
+        assert!(matches!(
+            out,
+            Err(ResolveError::Path {
+                code: PathErrorCode::MissingContext,
+                ..
+            })
+        ));
+        let warn = lines
+            .iter()
+            .find(|l| l.contains("project scope requires projectId in context"))
+            .unwrap_or_else(|| panic!("{lines:?}"));
+        assert!(
+            warn.starts_with("WARN quilltap_core::doc_edit::path_resolver"),
+            "{warn}"
+        );
+        assert!(
+            !lines.iter().any(|l| l.contains("[ProjectRoster]")),
+            "no chokepoint call without a project: {lines:?}"
         );
     }
 }
