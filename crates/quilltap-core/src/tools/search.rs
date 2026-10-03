@@ -37,6 +37,7 @@ use crate::literal_boost::{
     LITERAL_BOOST_CHARACTER, LITERAL_BOOST_GLOBAL, LITERAL_BOOST_GROUP, LITERAL_BOOST_PROJECT,
 };
 use crate::model::embedding::{EmbeddingPriority, EmbeddingProvider};
+use crate::project_roster_access::roster_gated_project_id;
 use crate::services::knowledge_injector::{
     search_document_chunks, DocumentSearchOptions, DocumentSearchResult,
 };
@@ -643,6 +644,9 @@ fn build_pool_context(
                         .map(|r| r.id)
                         .collect();
                 } else {
+                    // The project tier is roster-gated (lib/projects/roster-access.ts).
+                    // Only this standard arm — the pre-built-pool and operator arms
+                    // above are v4's untouched arms (v4 `9753d0eb2`).
                     pool = resolve_tiered_mount_pool(
                         main,
                         mount,
@@ -651,7 +655,12 @@ fn build_pool_context(
                             character_id: context.character_id.clone(),
                             character_mount_point_id: None,
                             character_ids: None,
-                            project_id: context.project_id.clone(),
+                            project_id: roster_gated_project_id(
+                                main,
+                                mount,
+                                context.project_id.as_deref(),
+                                context.character_id.as_deref(),
+                            ),
                         },
                         &TierResolveOptions {
                             require_ownership: true,

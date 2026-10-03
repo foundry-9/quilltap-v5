@@ -64,6 +64,12 @@ Red-first at the target on unported main: routes RED on the five flag-less creat
 _No crate versions bumped._
 
 Copies v4's `help/` tree at `e5c6bd0c0` over v5's (`diff -rq` against the pin is empty). Five pages change, none added or removed, so the count stays 129 and both count literals (`help_tree_embed_guard.rs`, `host_help_docs_boot.rs`) are unmoved: `project-characters.md`, `project-chats.md`, `project-settings.md`, `projects.md` (`9753d0eb2` — the roster as a tool-access list) and `cli-migrations.md` (`e5c6bd0c0` — resumable migrations and the boot-time table check). `docs/v4/` gains the same commits' `CHANGELOG.md`, `developer/API.md`, `developer/bugs.md` and the two new `developer/bugs/fixed/bug-175-*.md` / `bug-176-*.md`; the only residual against v4's `docs/` is the standing `packages-quilltap-README.md` (byte-identical to v4's `packages/quilltap/README.md` at both pins). Red-first: `help_tree_equivalence` and `help_section_size_equivalence`, regenerated at the pin, failed on the unported tree (the five pages; `cli-migrations.md` gains a second section, 744 → 745 chunks) and pass after the copy; regenerated at the baseline `f6426e196` they now fail, so the move is pinned in both directions. The embed guard and the host help-boot test pass unmoved.
+#### 2026-10-03 — feat(tools): search_scriptorium's standard pool gates the project tier on the roster (P4.D245 item 6)
+
+_Versions: core 0.0.1188._
+
+v4 `9753d0eb2`'s `search-scriptorium-handler.ts` hunk: the standard arm of `build_pool_context` passes `project_id` through `roster_gated_project_id`, so an off-roster character's search has no project tier; the pre-built-pool and operator-surface arms are v4's untouched arms and stay as they were. The witness lands with the `search_tools` growth (a closed third project with on- and off-roster search rows) in a later commit.
+
 #### 2026-10-03 — feat(doc-edit): doc_open_document, doc_grep and doc_list_files gate the project on the roster (P4.D245 item 5)
 
 _Versions: core 0.0.1187._
