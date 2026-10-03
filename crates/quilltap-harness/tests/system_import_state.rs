@@ -84,9 +84,12 @@
 //! three profile kinds, each with one field of the wrong type so both engines'
 //! validation refuses it. No committed archive can express this — every archive
 //! is a real export, and a real export imports — so the payload is built to
-//! fail. The five sentences are compared through `mask_warning`'s quoted
-//! families (the quoted item NAME is verbatim; only the validator's own
-//! sentence is masked, since Zod's wording is not v5's).
+//! fail. **[P4.143]** v4's five tails are ZodError messages, kept VERBATIM by
+//! `mask_warning`'s widened exception; v5's are serde's own sentences, so each
+//! warning is a `SERDE_ARM_DIVERGENCES` row — pinned both ways (VANISHED if
+//! the tails agree, WRONG SHAPE unless v4's first issue path and v5's serde
+//! prefix are the recorded ones), then carved to a stand-in on both sides.
+//! (Before P4.143 the quoted-family mask hid all five tails as `<ENGINE>`.)
 //!
 //! ## [P4.63 → v4 bug 105] `execute_bug105_seed_abort` — CONVERGED at `679e450e3`
 //!
@@ -102,7 +105,9 @@
 //! `Bug 105 Survivor` — byte-for-byte what v5's leg asserted all along. The
 //! divergence classifier is retired; the case stays as a PLAIN-EQUALITY
 //! regression guard that one malformed profile is named-and-skipped while the
-//! import carries on to the importers behind it.
+//! import carries on to the importers behind it. **[P4.143]** Its one
+//! warning's TAIL is a `SERDE_ARM_DIVERGENCES` row (v4's ZodError vs v5's
+//! serde sentence); everything else stays a plain equality.
 //!
 //! ✅ **The standing vacuity that arm surfaced is CLOSED (P4.70).** The
 //! committed `system-data-main.db` used to predate three
@@ -631,61 +636,148 @@ const COLON_FAMILIES: &[&str] = &[
     "Failed to reconcile roleplay template relationships: ",
 ];
 
-/// [P4.130 Tier 2 item 10] The import's serde-decode arm — a RECORDED
-/// DIVERGENCE, pinned in both directions. A chat whose three Concierge columns
-/// pass but whose `scenarioText` is a number: v4's `repos.chats.create`
-/// `validate` throws the ZodError (`expected string, received number` at
-/// `scenarioText`), so its skip warning's tail is the ZodError message (kept
-/// VERBATIM by the mask exception); v5 checks only the three Concierge columns
-/// before its typed decode (`concierge_columns_zod_error`'s recorded scope), so
-/// its tail is serde's own sentence (`invalid type: integer `5`, expected a
-/// string`) — and its two repository ERRORs carry that sentence as though it
-/// were a ZodError (pre-existing, `quilltap_import/entities.rs`). Both skip the
-/// chat and land its neighbour; the state diff stays a plain equality. The
-/// carve-out replaces exactly that one warning on both sides with a stand-in;
-/// it reds "VANISHED" if the two tails agree and "WRONG SHAPE" if either side
-/// stops matching the recorded shape.
-const SERDE_ARM_CASE: &str = "execute_concierge_serde_arm";
-const SERDE_ARM_HEAD: &str = "Failed to import chat \"Concierge Bogus 8\": ";
+/// [P4.130 Tier 2 item 10 → P4.143 item 1] The import's serde-decode arms — a
+/// RECORDED DIVERGENCE per row, each pinned in both directions.
+///
+/// v4 refuses a malformed item at its repository create's Zod `validate`
+/// (`base.repository.ts:130-141`), so the skip warning's tail is the ZodError
+/// message — kept VERBATIM by `mask_warning`'s exception in every quoted
+/// family. v5 decodes the item into a typed DTO first (`serde_json::from_value`)
+/// and answers serde's own `Display` sentence, which carries no path. Both
+/// skip the item and carry on; only the warning's tail differs.
+///
+/// - The CHAT row (P4.130): a chat whose three Concierge columns pass but whose
+///   `scenarioText` is a number — v5 checks only the Concierge columns before
+///   its typed decode (`concierge_columns_zod_error`'s recorded scope).
+/// - The SIX create rows (P4.143, measured at `f6426e196`): the tag
+///   (`visualStyle: "not-an-object"` — v4's `invalid_type` expected object,
+///   v5's `expected struct TagVisualStyle`), and the five integer fields
+///   (`modelName` / `provider` × 3 / `systemPrompt` = 42 — v4's `invalid_type`
+///   expected string, or for the embedding provider the `invalid_value` over
+///   `EmbeddingProfileProviderEnum`'s five values; v5's ``invalid type:
+///   integer `42`, expected a string``).
+///
+/// Closing them needs a GENERATED schema-shape table (P4.143 Tier 3 item 12);
+/// a row retires by measurement when its two tails agree ("VANISHED").
+struct SerdeArm {
+    /// The oracle case the row lives in.
+    case: &'static str,
+    /// The warning's deterministic head, through `": "`.
+    head: &'static str,
+    /// v4's tail must be a Zod message whose FIRST issue's `path` is
+    /// `[v4_path_key]`.
+    v4_path_key: &'static str,
+    /// v5's tail must start with serde's sentence.
+    v5_serde_prefix: &'static str,
+}
 
-fn classify_serde_arm(
+const SERDE_ARM_DIVERGENCES: &[SerdeArm] = &[
+    SerdeArm {
+        case: "execute_concierge_serde_arm",
+        head: "Failed to import chat \"Concierge Bogus 8\": ",
+        v4_path_key: "scenarioText",
+        v5_serde_prefix: "invalid type: integer `5`, expected a string",
+    },
+    SerdeArm {
+        case: "execute_named_item_failures",
+        head: "Failed to import tag \"Broken Tag\": ",
+        v4_path_key: "visualStyle",
+        v5_serde_prefix: "invalid type: string \"not-an-object\", expected struct TagVisualStyle",
+    },
+    SerdeArm {
+        case: "execute_named_item_failures",
+        head: "Failed to import connection profile \"Broken Connection\": ",
+        v4_path_key: "modelName",
+        v5_serde_prefix: "invalid type: integer `42`, expected a string",
+    },
+    SerdeArm {
+        case: "execute_named_item_failures",
+        head: "Failed to import image profile \"Broken Image\": ",
+        v4_path_key: "provider",
+        v5_serde_prefix: "invalid type: integer `42`, expected a string",
+    },
+    SerdeArm {
+        case: "execute_named_item_failures",
+        head: "Failed to import embedding profile \"Broken Embedding\": ",
+        v4_path_key: "provider",
+        v5_serde_prefix: "invalid type: integer `42`, expected a string",
+    },
+    SerdeArm {
+        case: "execute_named_item_failures",
+        head: "Failed to import roleplay template \"Broken Template\": ",
+        v4_path_key: "systemPrompt",
+        v5_serde_prefix: "invalid type: integer `42`, expected a string",
+    },
+    SerdeArm {
+        case: "execute_bug105_seed_abort",
+        head: "Failed to import connection profile \"Bug 105 Connection\": ",
+        v4_path_key: "provider",
+        v5_serde_prefix: "invalid type: integer `42`, expected a string",
+    },
+];
+
+/// How many `SERDE_ARM_DIVERGENCES` rows the run classified — asserted equal
+/// to the table's length after the loop, so a row whose case or head never
+/// appears is a FAILURE, never a silent skip.
+static SERDE_ARMS_EXERCISED: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+/// Apply every `SERDE_ARM_DIVERGENCES` row of case `name`: VANISHED if the two
+/// tails agree, WRONG SHAPE unless v4's tail is a Zod message whose first
+/// issue's path is `[v4_path_key]` AND v5's starts with `v5_serde_prefix`;
+/// then both sides' warning is replaced with `<head><SERDE-ARM-DIVERGENCE>`
+/// before the result compare.
+fn classify_serde_arms(
     name: &str,
     got: &Value,
     want: &Value,
     failures: &mut Vec<String>,
 ) -> (Value, Value) {
-    let tail_of = |body: &Value| -> Option<String> {
-        body["warnings"]
-            .as_array()?
-            .iter()
-            .filter_map(Value::as_str)
-            .find_map(|w| w.strip_prefix(SERDE_ARM_HEAD).map(str::to_string))
-    };
-    let (g, w) = (tail_of(got), tail_of(want));
-    match (&g, &w) {
-        (Some(g), Some(w)) if g == w => failures.push(format!(
-            "[{name}] the serde-arm divergence VANISHED — both sides now say {g:?}; retire the pin"
-        )),
-        (Some(g), Some(w))
-            if is_zod_error_message(w)
-                && w.contains("\"scenarioText\"")
-                && g.starts_with("invalid type: integer `5`, expected a string") => {}
-        _ => failures.push(format!(
-            "[{name}] the serde-arm divergence has the WRONG SHAPE\n  rust:   {g:?}\n  oracle: {w:?}"
-        )),
-    }
-    let carve = |body: &Value| -> Value {
-        let mut out = body.clone();
-        if let Some(ws) = out.get_mut("warnings").and_then(Value::as_array_mut) {
-            for w in ws.iter_mut() {
-                if w.as_str().is_some_and(|s| s.starts_with(SERDE_ARM_HEAD)) {
-                    *w = json!(format!("{SERDE_ARM_HEAD}<SERDE-ARM-DIVERGENCE>"));
+    let (mut got, mut want) = (got.clone(), want.clone());
+    for arm in SERDE_ARM_DIVERGENCES.iter().filter(|a| a.case == name) {
+        SERDE_ARMS_EXERCISED.fetch_add(1, Ordering::SeqCst);
+        let tail_of = |body: &Value| -> Option<String> {
+            body["warnings"]
+                .as_array()?
+                .iter()
+                .filter_map(Value::as_str)
+                .find_map(|w| w.strip_prefix(arm.head).map(str::to_string))
+        };
+        let head = arm.head;
+        let (g, w) = (tail_of(&got), tail_of(&want));
+        let first_path_is = |tail: &str| {
+            serde_json::from_str::<Value>(tail)
+                .ok()
+                .and_then(|v| v.get(0).and_then(|i| i.get("path")).cloned())
+                == Some(json!([arm.v4_path_key]))
+        };
+        match (&g, &w) {
+            (Some(g), Some(w)) if g == w => failures.push(format!(
+                "[{name}] {head:?}: the serde-arm divergence VANISHED — both sides now say \
+                 {g:?}; retire the row"
+            )),
+            (Some(g), Some(w))
+                if is_zod_error_message(w)
+                    && first_path_is(w)
+                    && g.starts_with(arm.v5_serde_prefix) => {}
+            _ => failures.push(format!(
+                "[{name}] {head:?}: the serde-arm divergence has the WRONG SHAPE\n  rust:   \
+                 {g:?}\n  oracle: {w:?}"
+            )),
+        }
+        let carve = |body: &mut Value| {
+            if let Some(ws) = body.get_mut("warnings").and_then(Value::as_array_mut) {
+                for w in ws.iter_mut() {
+                    if w.as_str().is_some_and(|s| s.starts_with(head)) {
+                        *w = json!(format!("{head}<SERDE-ARM-DIVERGENCE>"));
+                    }
                 }
             }
-        }
-        out
-    };
-    (carve(got), carve(want))
+        };
+        carve(&mut got);
+        carve(&mut want);
+    }
+    (got, want)
 }
 
 /// Is `tail` a `ZodError.message` — a non-empty JSON array of objects each
@@ -729,18 +821,18 @@ fn mask_warning(w: &str) -> String {
     for family in QUOTED_FAMILIES {
         if let Some(rest) = w.strip_prefix(family) {
             if let Some(cut) = rest.find("\": ") {
-                // [P4.130] The ONE exception: a CHAT whose tail IS a
+                // [P4.130 → P4.143] The exception: a tail that IS a
                 // `ZodError` message (a JSON array of Zod issues — v4's
                 // `JSON.stringify(issues, null, 2)`) is not an engine sentence
-                // but schema bytes both sides must agree on (v5 renders them
-                // through `concierge_columns_zod_error`), so it stays
-                // VERBATIM. Scoped to the chat family on purpose, MEASURED:
-                // v4's tag / connection / image / embedding profile and
-                // roleplay-template refusals are ZodError tails too, but v5
-                // answers those with its own decode sentence (pre-existing,
-                // outside P4.130 — `execute_named_item_failures` and
-                // `execute_bug105_seed_abort` would red), so they stay masked.
-                if *family == "Failed to import chat \"" && is_zod_error_message(&rest[cut + 3..]) {
+                // but schema bytes both sides must agree on, so it stays
+                // VERBATIM — in EVERY quoted family. P4.130 had scoped it to
+                // the chat head; P4.143 measured what widening does: v4's tag /
+                // roleplay-template / three profile refusals are ZodError tails
+                // too, and the six warnings where v5 answers its own serde
+                // sentence instead are carved by `SERDE_ARM_DIVERGENCES` (each
+                // row pinned both ways), not hidden here. What stays masked is
+                // the genuine engine text (SQLite constraint sentences).
+                if is_zod_error_message(&rest[cut + 3..]) {
                     return w.to_string();
                 }
                 return format!("{family}{}\": <ENGINE>", &rest[..cut]);
@@ -1501,6 +1593,19 @@ fn system_import_execute_state_equivalence() {
         failures.len(),
         failures.join("\n\n")
     );
+    // [P4.143] Every serde-arm row was classified — a row whose case never ran
+    // is a failure, not a skip (a row whose HEAD is missing already reported
+    // WRONG SHAPE by name).
+    assert_eq!(
+        SERDE_ARMS_EXERCISED.load(Ordering::SeqCst),
+        SERDE_ARM_DIVERGENCES.len(),
+        "SERDE_ARM_DIVERGENCES rows exercised"
+    );
+    assert_eq!(
+        SERDE_ARM_DIVERGENCES.len(),
+        7,
+        "the chat row + the six create rows"
+    );
 }
 
 /// [P4.31 → P4.33 → bug 11] The `.qtap` overwrite-clear's FOLDER behavior —
@@ -1921,8 +2026,8 @@ fn run_execute_case(
     // gone with it (see the module header).
     let (got_body, want_body) = if name == "execute_preserve_ids_unvalidatable_row_refuses" {
         classify_unvalidatable_row(name, &got_body, &want_body, failures)
-    } else if name == SERDE_ARM_CASE {
-        classify_serde_arm(name, &got_body, &want_body, failures)
+    } else if SERDE_ARM_DIVERGENCES.iter().any(|a| a.case == name) {
+        classify_serde_arms(name, &got_body, &want_body, failures)
     } else {
         (got_body, want_body)
     };

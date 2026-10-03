@@ -162243,3 +162243,41 @@ collapse) → RED at read 1's first collapsed row (`e0000090-…-0001`, the bad
 `updateMessage parse: …` text moves with `zod_shape_failure` (now the joined
 issue lines, e.g. `: Invalid input` for an aborting merged event); its
 pass/fail set does not; nothing pins the text.
+
+### Unit 3 — item 1: the import mask widened + `SERDE_ARM_DIVERGENCES`
+
+Regen from the pin (the §R.2 probe re-run first — PASS): the family header's
+recipe with `TMPO=/tmp/p4143/sysimport-stage`, the case + `system-data.json`
+mirrored there, the three committed `QT_FIXTURE_SD_*`,
+`QT_ORACLE_OUT=/tmp/p4143/oracle-system-import-execute.ndjson`, `npx jest
+--silent --watchman=false --testTimeout=600000 --roots "$PWD" --roots
+"$TMPO/cases" -- 'system-import-execute\.test\.ts$'` (1 suite passed, 6.8 s;
+44 lines = 43 cases + `_meta`; 47,441,139 bytes). The six v4 tails read
+byte-for-byte as survey §A2 predicted (five `invalid_type`, the embedding row
+`invalid_value` over the five providers).
+
+**Red-first:** with the exception widened (the chat-only condition deleted)
+and the table holding only the chat row, EXACTLY two cases red —
+`execute_named_item_failures` and `execute_bug105_seed_abort` — on exactly the
+six warnings (v4 verbatim, v5 `<ENGINE>`); no other case moved. **The port:**
+`SerdeArm { case, head, v4_path_key, v5_serde_prefix }`, seven rows; each row
+VANISHED if the tails agree, WRONG SHAPE unless v4's tail
+`is_zod_error_message` AND its first issue's `path == [v4_path_key]` AND v5's
+tail starts with the prefix; carved to `<head><SERDE-ARM-DIVERGENCE>` on both
+sides before the compare; a static `SERDE_ARMS_EXERCISED` counter asserted ==
+the table's length (7) AFTER the failures report. **v5's actual tails:** all
+seven prefixes matched on the first green run, so the predicted tag sentence
+``invalid type: string "not-an-object", expected struct TagVisualStyle`` is now
+MEASURED (the WRONG SHAPE gate would have printed the raw tail). GREEN.
+**M1** (delete the `Broken Image` row) → RED, `[execute_named_item_failures]
+result body differs` (one difference — that warning verbatim vs `<ENGINE>`).
+**M2 SURVIVED as first written** — a finding, not a deletion: classification
+reads the RAW bodies before `mask_warning` runs (it must — masking first would
+turn v5's serde tail into `<ENGINE>` and no prefix could be checked), so with
+all six non-chat Zod tails carved, NOTHING yet depends on the widened
+exception. The order's predicted mechanism ("the v4 tails masked to
+`<ENGINE>`") cannot occur. The widening becomes load-bearing with Tier 2 item
+8 (v5 renders v4's `invalid_value` bytes for an out-of-enum embedding
+provider, compared VERBATIM through the exception) — M2 is re-run there.
+Module header's two paragraphs corrected (the named-item arm was "masked";
+bug 105's warning tail is now a row). harness 0.0.1076.

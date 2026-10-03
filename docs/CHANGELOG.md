@@ -245,6 +245,12 @@ _Versions: core 0.0.1148, harness 0.0.1076._
 _Versions: core 0.0.1147, harness 0.0.1075, host 0.0.175, web 0.0.208, tauri 0.0.8._
 
 On a host whose `TZ` is a POSIX rule (no IANA name), every name-fed date surface rendered UTC: the turn's tool runner, `build_context` on the turn and the swipe, the autonomous turn, the greeting, the spine's own tool runner and the Scenario Builder clock all re-derived their zone from the `tz` NAME, which falls back to `"UTC"`. The host's zone VALUE was already correct (jiff 0.2.31 parses the rule), so the fix threads it: a required `display_zone` on `ProcessMessageInput`, `BuildContextArgs`, `BuildContextInput`, `RegenerateSwipeOptions`, `StepDeps` and `ChatCreateDeps`, filled by `ChatSpine` / `ChatCreateSpine` and `ProductionSpineFactory::with_display_zone` from `HostConfig.display_zone` in `quilltap-web`'s `production_host_config`. `display_zone_named` is retired; `server_tz` stays as the calendar name (cron, the distill, the cleanup — a recorded Tier-3 residue). New `host_zone::zone_name` is the one name derivation, used by `HostConfig::new` and the new `HostConfig::set_display_zone`, which the web and Tauri test commons now call. `host_zone_sites_census` is reshaped (a `VALUE_SITES` table replaces `HELPER_SITES`; the host needles re-aimed and grown) and gains a POSIX-`TZ` child process that was red on `main` (offset 0 vs −18000; the whisper read 07:40 PM).
+#### 2026-10-02 — test(harness): the .qtap import mask keeps every family's ZodError tail; seven serde-arm divergences pinned in one table (P4.143 item 1)
+
+_Versions: harness 0.0.1076._
+
+`system_import_state`'s warning mask now keeps a ZodError tail verbatim in every quoted family, not only the chat family. The six warnings where v5 answers its own serde sentence instead (the broken tag, roleplay template, and three profile kinds, plus the bug-105 connection profile) join the existing chat row in one `SERDE_ARM_DIVERGENCES` table. Each row is pinned both ways: it fails as VANISHED if the two tails agree and as WRONG SHAPE unless v4's first issue path and v5's serde prefix match the recorded ones, and an exercised-count assert fails if any of the seven rows is never reached. Red-first: widening the mask without the six new rows failed exactly six warnings in two cases.
+
 #### 2026-10-02 — fix(core): the corrupted-row WARN logs v4's `errors` array with zod 4.6.5's union collapse (P4.143 items 4–5)
 
 _Versions: core 0.0.1148, harness 0.0.1075._
