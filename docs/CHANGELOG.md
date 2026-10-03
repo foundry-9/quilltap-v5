@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — test(harness): ai_import_tier3's v4 appVersion stamp moves to e5c6bd0c0 (4.10.0-dev.108)
+
+_No crate versions bumped._
+
+The constant moves with every oracle baseline move; the unified sweep from the `e5c6bd0c0` pin reddened it by design (`4.10.0-dev.108` vs `4.10.0-dev.106`). Green by name from the pin after the bump.
+
 #### 2026-10-03 — fix(unify): the e5c6bd0c0 round's review findings — the created doc_mount_files keeps its sha256 index, a failed index rolls its table back, a lock clears the structural record, an empty projectId is missing context, the update INFO pinned before a failing enrichment
 
 _Versions: core 0.0.1199, host 0.0.179, tauri 0.0.9, SPA 0.5.797._
