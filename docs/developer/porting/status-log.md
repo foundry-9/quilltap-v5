@@ -162363,3 +162363,36 @@ exception compares the Zod tail verbatim); **M2 + M2′** → GREEN (the
 re-narrowed mask hides the wrong bytes). So the widening is load-bearing from
 this unit on. `.min(1)`'s empty-provider class for connection/image stays
 Tier 3 item 14. core 0.0.1149, harness 0.0.1078.
+
+### Unit 6 — Tier 2 item 9: the serde-arm WARNs, camelCase
+
+v4's five catches (`import-entities.ts:73-82`, `:171-180`;
+`import-profiles.ts:116-125`, `:181-190`, `:246-255`) push the named warning
+AND `moduleLogger.warn('Failed to import <kind>', { <kind>Id: x.id, error })`
+— ONE catch per item, so every refusal logs both. **The port takes v4's
+shape:** every serde arm (tag × 2, template × 2, connection × 2 via
+`parse_connection_profile`, image × 2, embedding × 2 via
+`parse_embedding_profile`) now returns its error INTO the existing per-item
+catch as `DbError::Internal(<sentence>)` — whose `Display` is the bare
+sentence (`db/mod.rs:212`), so every warning's bytes are unchanged (the import
+family stays green with no edit) — and that catch logs the WARN.
+`parse_connection_profile`'s own profile-less WARN is gone (folded: one line,
+with `profileId`). The six outer WARNs renamed camelCase: `tagId`,
+`templateId`, `chatId` (`entities.rs`), `profileId` × 3 (`profiles.rs`).
+⚠ Not renamed (outside the order's named list, recorded as a follow-up): the
+`project_id` / `group_id` (`entities.rs`), `character_id` (`characters.rs`)
+and the `reconcile.rs` lines — each wants its own v4 read first. The target
+stays v5's module path (v4's is the child logger `import:quilltap-import-service`
+— the house shape every import line already carries).
+
+Unit pins (`captured_with`, WARN lines filtered, asserted WHOLE — so the field
+order `<kind>Id` before `error` is pinned): `profiles.rs`
+`a_refused_profile_logs_v4s_one_warn_per_family` (connection / image /
+embedding wrong-typed + the embedding `BOGUS` enum refusal carrying v4's
+ZodError bytes, each with a clean-item silence leg on the CURRENT
+`fresh_schema.json` tables) and `entities.rs`
+`a_refused_tag_or_template_logs_v4s_one_warn` (tag `visualStyle:
+"not-an-object"`, template `systemPrompt: 42`, silence legs). Mutation: the
+image create arm back to its old push-and-return shape → RED (`left: []`).
+No family captures these lines (the order's optional differential is item 10).
+core 0.0.1150.

@@ -245,6 +245,12 @@ _Versions: core 0.0.1148, harness 0.0.1076._
 _Versions: core 0.0.1147, harness 0.0.1075, host 0.0.175, web 0.0.208, tauri 0.0.8._
 
 On a host whose `TZ` is a POSIX rule (no IANA name), every name-fed date surface rendered UTC: the turn's tool runner, `build_context` on the turn and the swipe, the autonomous turn, the greeting, the spine's own tool runner and the Scenario Builder clock all re-derived their zone from the `tz` NAME, which falls back to `"UTC"`. The host's zone VALUE was already correct (jiff 0.2.31 parses the rule), so the fix threads it: a required `display_zone` on `ProcessMessageInput`, `BuildContextArgs`, `BuildContextInput`, `RegenerateSwipeOptions`, `StepDeps` and `ChatCreateDeps`, filled by `ChatSpine` / `ChatCreateSpine` and `ProductionSpineFactory::with_display_zone` from `HostConfig.display_zone` in `quilltap-web`'s `production_host_config`. `display_zone_named` is retired; `server_tz` stays as the calendar name (cron, the distill, the cleanup — a recorded Tier-3 residue). New `host_zone::zone_name` is the one name derivation, used by `HostConfig::new` and the new `HostConfig::set_display_zone`, which the web and Tauri test commons now call. `host_zone_sites_census` is reshaped (a `VALUE_SITES` table replaces `HELPER_SITES`; the host needles re-aimed and grown) and gains a POSIX-`TZ` child process that was red on `main` (offset 0 vs −18000; the whisper read 07:40 PM).
+#### 2026-10-02 — fix(core): every refused .qtap tag, template and profile logs v4's per-item WARN with camelCase ids (P4.143 item 9)
+
+_Versions: core 0.0.1150._
+
+A tag, roleplay template, connection, image or embedding profile that fails v5's typed decode (or, for an embedding profile, the provider enum) now goes through the importer's one per-item catch, as v4's `validate` throw does: the same named warning as before, plus v4's WARN `Failed to import <kind> {<kind>Id, error}`. Before, the tag, template, image and embedding arms logged no WARN and the connection arm logged one without `profileId`. The six outer-catch WARNs now use v4's camelCase fields (`tagId`, `templateId`, `chatId`, `profileId`). Unit capture pins cover each family's line, field order and a clean-item silence leg.
+
 #### 2026-10-02 — fix(core): .qtap import names a malformed duplicate image/embedding profile and refuses an out-of-enum embedding provider (P4.143 items 7–8)
 
 _Versions: core 0.0.1149, harness 0.0.1078._

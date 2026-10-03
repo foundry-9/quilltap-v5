@@ -186,15 +186,7 @@ pub(super) fn import_connection_profiles(
                         // row's id (see the module header).
                         let phantom = uuid::Uuid::new_v4().to_string();
                         id_map.set(source_id.clone(), phantom);
-                        let p = match parse_connection_profile(raw_profile) {
-                            Ok(p) => p,
-                            Err(e) => {
-                                warnings.push(format!(
-                                    "Failed to import connection profile \"{name}\": {e}"
-                                ));
-                                return Ok(());
-                            }
-                        };
+                        let p = parse_connection_profile(raw_profile)?;
                         let unique = make_unique_profile_name(
                             &format!("{} (imported)", p.name),
                             &taken_names,
@@ -215,15 +207,7 @@ pub(super) fn import_connection_profiles(
                 }
             }
 
-            let p = match parse_connection_profile(raw_profile) {
-                Ok(p) => p,
-                Err(e) => {
-                    warnings.push(format!(
-                        "Failed to import connection profile \"{name}\": {e}"
-                    ));
-                    return Ok(());
-                }
-            };
+            let p = parse_connection_profile(raw_profile)?;
             let unique = make_unique_profile_name(&p.name, &taken_names);
             taken_names.insert(normalize_profile_name(&unique));
             let new_id = create_connection_profile(
@@ -243,7 +227,8 @@ pub(super) fn import_connection_profiles(
             warnings.push(format!(
                 "Failed to import connection profile \"{name}\": {e}"
             ));
-            tracing::warn!(profile_id = %source_id, error = %e, "Failed to import connection profile");
+            // v4 `import-profiles.ts:116-125`: `{ profileId: rawProfile.id, error }`.
+            tracing::warn!(profileId = %source_id, error = %e, "Failed to import connection profile");
         }
     }
 
@@ -252,14 +237,14 @@ pub(super) fn import_connection_profiles(
 
 /// Deserialize with the pre-validation shape checks. An `Err` mirrors v4's Zod
 /// throw landing in the per-item catch — which since `275cd7bc` (bug 79) names
-/// the item in `warnings` as well as logging it, so the error text comes back
-/// out rather than being swallowed here.
-fn parse_connection_profile(raw: &Value) -> Result<ImportedConnectionProfile, serde_json::Error> {
-    let parsed = serde_json::from_value::<ImportedConnectionProfile>(raw.clone());
-    if let Err(e) = &parsed {
-        tracing::warn!(error = %e, "Failed to import connection profile");
-    }
-    parsed
+/// the item in `warnings` as well as logging it. P4.143 item 9: the `Err` is
+/// returned INTO that catch (`DbError::Internal`, whose `Display` is the bare
+/// serde sentence), which pushes the warning and logs v4's ONE WARN `Failed to
+/// import connection profile {profileId, error}` — this fn used to log its own
+/// WARN with no `profileId`.
+fn parse_connection_profile(raw: &Value) -> Result<ImportedConnectionProfile, DbError> {
+    serde_json::from_value::<ImportedConnectionProfile>(raw.clone())
+        .map_err(|e| DbError::Internal(e.to_string()))
 }
 
 fn create_connection_profile(
@@ -402,15 +387,8 @@ pub(super) fn import_image_profiles(
                         // 150-160`) sets the phantom map, then its `create`'s Zod
                         // `validate` throws into the per-item catch, which NAMES
                         // the item — this arm used to drop it with no warning.
-                        let p = match serde_json::from_value::<ImportedImageProfile>(raw.clone()) {
-                            Ok(p) => p,
-                            Err(e) => {
-                                warnings.push(format!(
-                                    "Failed to import image profile \"{name}\": {e}"
-                                ));
-                                return Ok(());
-                            }
-                        };
+                        let p = serde_json::from_value::<ImportedImageProfile>(raw.clone())
+                            .map_err(|e| DbError::Internal(e.to_string()))?;
                         let name = format!("{} (imported)", p.name);
                         create_image_profile(options, &source_id, &repo, user_id, p, name)?;
                         imported += 1;
@@ -418,13 +396,9 @@ pub(super) fn import_image_profiles(
                     }
                 }
             }
-            let p = match serde_json::from_value::<ImportedImageProfile>(raw.clone()) {
-                Ok(p) => p,
-                Err(e) => {
-                    warnings.push(format!("Failed to import image profile \"{name}\": {e}"));
-                    return Ok(());
-                }
-            };
+            // P4.143 item 9: refused → the per-item catch (warning + WARN).
+            let p = serde_json::from_value::<ImportedImageProfile>(raw.clone())
+                .map_err(|e| DbError::Internal(e.to_string()))?;
             let name = p.name.clone();
             let new_id = create_image_profile(options, &source_id, &repo, user_id, p, name)?;
             id_map.set(source_id.clone(), new_id);
@@ -433,7 +407,8 @@ pub(super) fn import_image_profiles(
         })();
         if let Err(e) = out {
             warnings.push(format!("Failed to import image profile \"{name}\": {e}"));
-            tracing::warn!(profile_id = %source_id, error = %e, "Failed to import image profile");
+            // v4 `import-profiles.ts:181-190`: `{ profileId, error }`.
+            tracing::warn!(profileId = %source_id, error = %e, "Failed to import image profile");
         }
     }
     Ok(Counts { imported, skipped })
@@ -525,15 +500,7 @@ pub(super) fn import_embedding_profiles(
                         // P4.143 items 7–8: v4's duplicate arm (`import-profiles.ts:
                         // 215-225`) NAMES a refused item, as the create arm does —
                         // this arm used to drop a malformed one silently.
-                        let p = match parse_embedding_profile(raw) {
-                            Ok(p) => p,
-                            Err(e) => {
-                                warnings.push(format!(
-                                    "Failed to import embedding profile \"{name}\": {e}"
-                                ));
-                                return Ok(());
-                            }
-                        };
+                        let p = parse_embedding_profile(raw).map_err(DbError::Internal)?;
                         let name = format!("{} (imported)", p.name);
                         create_embedding_profile(options, &source_id, &repo, user_id, p, name)?;
                         imported += 1;
@@ -541,15 +508,8 @@ pub(super) fn import_embedding_profiles(
                     }
                 }
             }
-            let p = match parse_embedding_profile(raw) {
-                Ok(p) => p,
-                Err(e) => {
-                    warnings.push(format!(
-                        "Failed to import embedding profile \"{name}\": {e}"
-                    ));
-                    return Ok(());
-                }
-            };
+            // P4.143 item 9: refused → the per-item catch (warning + WARN).
+            let p = parse_embedding_profile(raw).map_err(DbError::Internal)?;
             let name = p.name.clone();
             let new_id = create_embedding_profile(options, &source_id, &repo, user_id, p, name)?;
             id_map.set(source_id.clone(), new_id);
@@ -560,7 +520,8 @@ pub(super) fn import_embedding_profiles(
             warnings.push(format!(
                 "Failed to import embedding profile \"{name}\": {e}"
             ));
-            tracing::warn!(profile_id = %source_id, error = %e, "Failed to import embedding profile");
+            // v4 `import-profiles.ts:246-255`: `{ profileId, error }`.
+            tracing::warn!(profileId = %source_id, error = %e, "Failed to import embedding profile");
         }
     }
     Ok(Counts { imported, skipped })
@@ -903,5 +864,135 @@ mod tests {
         // …and the survivor still got its seeding.
         assert_eq!(stored_image_flag(&conn, "Fine Connection"), Some(1));
         assert_eq!(stored_prefill(&conn, "Fine Connection"), None);
+    }
+
+    /// A connection on the CURRENT fresh schema with the named main tables.
+    fn fresh_main(tables: &[&str]) -> Connection {
+        let schema: Value =
+            serde_json::from_str(include_str!("../provisioning/fresh_schema.json")).unwrap();
+        let conn = Connection::open_in_memory().unwrap();
+        for t in tables {
+            let head = format!("CREATE TABLE \"{t}\" (");
+            let ddl = schema["main"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter_map(Value::as_str)
+                .find(|s| s.starts_with(&head))
+                .unwrap_or_else(|| panic!("no DDL for {t}"));
+            conn.execute_batch(ddl).unwrap();
+        }
+        conn
+    }
+
+    /// P4.143 item 9: every refused profile logs v4's ONE per-item WARN —
+    /// `Failed to import <kind> profile {profileId, error}`
+    /// (`import-profiles.ts:116-125`, `:181-190`, `:246-255`), the id the RAW
+    /// item's, camelCase, `profileId` before `error` — beside the named warning;
+    /// a clean item logs no WARN. Before P4.143 the image and embedding serde
+    /// arms logged nothing and the connection arm logged a WARN with no
+    /// `profileId`. The tails are serde's sentence (the recorded
+    /// `SERDE_ARM_DIVERGENCES` class) and, for an out-of-enum embedding
+    /// provider, v4's own ZodError bytes.
+    #[test]
+    fn a_refused_profile_logs_v4s_one_warn_per_family() {
+        const T: &str = "quilltap_core::services::quilltap_import::profiles";
+        const SERDE: &str = "invalid type: integer `42`, expected a string";
+        let conn = fresh_main(&[
+            "connection_profiles",
+            "image_profiles",
+            "embedding_profiles",
+        ]);
+        let opts = ImportOptions::seed_defaults();
+        let warns = |lines: Vec<String>| -> Vec<String> {
+            lines
+                .into_iter()
+                .filter(|l| l.starts_with("WARN "))
+                .collect()
+        };
+        type Importer = fn(
+            &Connection,
+            &str,
+            &[Value],
+            &ImportOptions,
+            &mut IdMap,
+            &mut Vec<String>,
+        ) -> Result<Counts, DbError>;
+        let families: [(&str, Importer, Value, Value, String); 4] = [
+            (
+                "connection profile",
+                import_connection_profiles,
+                json!({"id": "cp-bad", "name": "Bad", "provider": "OPENAI", "modelName": 42}),
+                json!({"id": "a3000000-0000-4000-8000-000000000001", "name": "Good",
+                       "provider": "OPENAI", "modelName": "m"}),
+                format!("profileId=cp-bad error={SERDE}"),
+            ),
+            (
+                "image profile",
+                import_image_profiles,
+                json!({"id": "ip-bad", "name": "Bad", "provider": 42, "modelName": "m"}),
+                json!({"id": "a3000000-0000-4000-8000-000000000002", "name": "Good",
+                       "provider": "OPENAI", "modelName": "m"}),
+                format!("profileId=ip-bad error={SERDE}"),
+            ),
+            (
+                "embedding profile",
+                import_embedding_profiles,
+                json!({"id": "ep-bad", "name": "Bad", "provider": "OPENAI", "modelName": 42}),
+                json!({"id": "a3000000-0000-4000-8000-000000000003", "name": "Good",
+                       "provider": "OPENAI", "modelName": "m"}),
+                format!("profileId=ep-bad error={SERDE}"),
+            ),
+            (
+                "embedding profile",
+                import_embedding_profiles,
+                json!({"id": "ep-enum", "name": "Bogus", "provider": "BOGUS", "modelName": "m"}),
+                json!({"id": "a3000000-0000-4000-8000-000000000004", "name": "Good Too",
+                       "provider": "BUILTIN", "modelName": "m"}),
+                format!(
+                    "profileId=ep-enum error={}",
+                    crate::api::zod_issues::zod_error_message(&[
+                        crate::api::zod_issues::ZodIssue::invalid_value(
+                            &EMBEDDING_PROFILE_PROVIDERS,
+                            vec![crate::api::zod_issues::key("provider")],
+                        )
+                    ])
+                ),
+            ),
+        ];
+        for (kind, import, bad, good, fields) in families {
+            let mut warnings = Vec::new();
+            let (counts, lines) = crate::test_support::captured_with(|| {
+                import(
+                    &conn,
+                    "u",
+                    std::slice::from_ref(&bad),
+                    &opts,
+                    &mut IdMap::default(),
+                    &mut warnings,
+                )
+            });
+            assert_eq!(counts.unwrap().imported, 0, "{kind}");
+            assert_eq!(warnings.len(), 1, "{kind}: {warnings:?}");
+            assert_eq!(
+                warns(lines),
+                vec![format!("WARN {T} Failed to import {kind} {fields}")],
+                "{kind}"
+            );
+            // Silence leg: a clean item imports and logs no WARN.
+            let mut warnings = Vec::new();
+            let (counts, lines) = crate::test_support::captured_with(|| {
+                import(
+                    &conn,
+                    "u",
+                    std::slice::from_ref(&good),
+                    &opts,
+                    &mut IdMap::default(),
+                    &mut warnings,
+                )
+            });
+            assert_eq!(counts.unwrap().imported, 1, "{kind}: {warnings:?}");
+            assert!(warns(lines).is_empty(), "{kind}");
+        }
     }
 }

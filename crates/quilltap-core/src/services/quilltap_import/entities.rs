@@ -122,13 +122,11 @@ pub(super) fn import_tags(
                         // v4's create Zod-validates inside the per-item `try`,
                         // so a malformed tag lands in the same catch the write
                         // failures do — which `275cd7bc` gave a named warning.
-                        let t = match serde_json::from_value::<ImportedTag>(raw.clone()) {
-                            Ok(t) => t,
-                            Err(e) => {
-                                warnings.push(format!("Failed to import tag \"{name}\": {e}"));
-                                return Ok(());
-                            }
-                        };
+                        // P4.143 item 9: the refusal goes to the ONE per-item
+                        // catch below (v4's shape) — the same warning, plus v4's
+                        // WARN `Failed to import tag {tagId, error}`.
+                        let t = serde_json::from_value::<ImportedTag>(raw.clone())
+                            .map_err(|e| DbError::Internal(e.to_string()))?;
                         // v4: name `${name} (imported)`, nameLower
                         // `${nameLower || name.toLowerCase()} (imported)` — the
                         // create's own `(nameLower || name).toLowerCase()` then
@@ -163,13 +161,9 @@ pub(super) fn import_tags(
                     }
                 }
             }
-            let t = match serde_json::from_value::<ImportedTag>(raw.clone()) {
-                Ok(t) => t,
-                Err(e) => {
-                    warnings.push(format!("Failed to import tag \"{name}\": {e}"));
-                    return Ok(());
-                }
-            };
+            // P4.143 item 9: refused → the per-item catch (warning + WARN).
+            let t = serde_json::from_value::<ImportedTag>(raw.clone())
+                .map_err(|e| DbError::Internal(e.to_string()))?;
             let (id, now) = mint_or_preserve(options, &source_id);
             repo.create(
                 &tags::TagCreate {
@@ -191,7 +185,8 @@ pub(super) fn import_tags(
         })();
         if let Err(e) = out {
             warnings.push(format!("Failed to import tag \"{name}\": {e}"));
-            tracing::warn!(tag_id = %source_id, error = %e, "Failed to import tag");
+            // v4 `import-entities.ts:73-82`: `{ tagId, error }` (camelCase).
+            tracing::warn!(tagId = %source_id, error = %e, "Failed to import tag");
         }
     }
     Ok(Counts {
@@ -345,15 +340,9 @@ pub(super) fn import_roleplay_templates(
                         // Phantom-map quirk (see the module header).
                         let phantom = uuid::Uuid::new_v4().to_string();
                         id_map.set(source_id.clone(), phantom);
-                        let t = match serde_json::from_value::<ImportedTemplate>(migrated.clone()) {
-                            Ok(t) => t,
-                            Err(e) => {
-                                warnings.push(format!(
-                                    "Failed to import roleplay template \"{name}\": {e}"
-                                ));
-                                return Ok(());
-                            }
-                        };
+                        // P4.143 item 9: refused → the per-item catch (warning + WARN).
+                        let t = serde_json::from_value::<ImportedTemplate>(migrated.clone())
+                            .map_err(|e| DbError::Internal(e.to_string()))?;
                         let name = format!("{} (imported)", t.name);
                         create_template(&repo, user_id, t, name, options, DUPLICATE_MINTS)?;
                         imported += 1;
@@ -361,15 +350,9 @@ pub(super) fn import_roleplay_templates(
                     }
                 }
             }
-            let t = match serde_json::from_value::<ImportedTemplate>(migrated) {
-                Ok(t) => t,
-                Err(e) => {
-                    warnings.push(format!(
-                        "Failed to import roleplay template \"{name}\": {e}"
-                    ));
-                    return Ok(());
-                }
-            };
+            // P4.143 item 9: refused → the per-item catch (warning + WARN).
+            let t = serde_json::from_value::<ImportedTemplate>(migrated)
+                .map_err(|e| DbError::Internal(e.to_string()))?;
             let name = t.name.clone();
             let new_id = create_template(&repo, user_id, t, name, options, &source_id)?;
             id_map.set(source_id.clone(), new_id);
@@ -380,7 +363,8 @@ pub(super) fn import_roleplay_templates(
             warnings.push(format!(
                 "Failed to import roleplay template \"{name}\": {e}"
             ));
-            tracing::warn!(template_id = %source_id, error = %e, "Failed to import roleplay template");
+            // v4 `import-entities.ts:171-180`: `{ templateId, error }`.
+            tracing::warn!(templateId = %source_id, error = %e, "Failed to import roleplay template");
         }
     }
     Ok(Counts {
@@ -729,7 +713,8 @@ pub(super) fn import_chats(
         })();
         if let Err(e) = out {
             warnings.push(format!("Failed to import chat \"{title}\": {e}"));
-            tracing::warn!(chat_id = %source_id, error = %e, "Failed to import chat");
+            // v4's `{ chatId, error }` (camelCase, P4.143 item 9).
+            tracing::warn!(chatId = %source_id, error = %e, "Failed to import chat");
         }
     }
     Ok(Counts {
@@ -940,5 +925,97 @@ mod rendered_markdown_strip_tests {
         });
         got.expect("a valid mode imports");
         assert!(!lines.iter().any(|l| l.starts_with("ERROR ")), "{lines:?}");
+    }
+
+    /// P4.143 item 9: a refused tag / roleplay template logs v4's ONE per-item
+    /// WARN — `Failed to import tag {tagId, error}` (`import-entities.ts:73-82`)
+    /// and `Failed to import roleplay template {templateId, error}`
+    /// (`:171-180`), camelCase, the raw item's id, before `error` — beside the
+    /// named warning; a clean item logs none. Before P4.143 both serde arms
+    /// logged NO WARN (only the outer write-failure arm did, `tag_id` /
+    /// `template_id`).
+    #[test]
+    fn a_refused_tag_or_template_logs_v4s_one_warn() {
+        const T: &str = "quilltap_core::services::quilltap_import::entities";
+        let schema: Value =
+            serde_json::from_str(include_str!("../provisioning/fresh_schema.json")).unwrap();
+        let conn = Connection::open_in_memory().unwrap();
+        for t in ["tags", "roleplay_templates"] {
+            let head = format!("CREATE TABLE \"{t}\" (");
+            let ddl = schema["main"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter_map(Value::as_str)
+                .find(|s| s.starts_with(&head))
+                .unwrap();
+            conn.execute_batch(ddl).unwrap();
+        }
+        let opts = ImportOptions::seed_defaults();
+        let warns = |lines: Vec<String>| -> Vec<String> {
+            lines
+                .into_iter()
+                .filter(|l| l.starts_with("WARN "))
+                .collect()
+        };
+        type Importer = fn(
+            &Connection,
+            &str,
+            &[Value],
+            &ImportOptions,
+            &mut IdMap,
+            &mut Vec<String>,
+        ) -> Result<Counts, DbError>;
+        let families: [(&str, Importer, Value, Value, &str); 2] = [
+            (
+                "tag",
+                import_tags,
+                json!({"id": "tag-bad", "name": "Bad", "visualStyle": "not-an-object"}),
+                json!({"id": "a4000000-0000-4000-8000-000000000001", "name": "Good"}),
+                "tagId=tag-bad error=invalid type: string \"not-an-object\", expected struct \
+                 TagVisualStyle",
+            ),
+            (
+                "roleplay template",
+                import_roleplay_templates,
+                json!({"id": "rt-bad", "name": "Bad", "systemPrompt": 42}),
+                json!({"id": "a4000000-0000-4000-8000-000000000002", "name": "Good",
+                       "systemPrompt": "p"}),
+                "templateId=rt-bad error=invalid type: integer `42`, expected a string",
+            ),
+        ];
+        for (kind, import, bad, good, fields) in families {
+            let mut warnings = Vec::new();
+            let (counts, lines) = crate::test_support::captured_with(|| {
+                import(
+                    &conn,
+                    "u",
+                    std::slice::from_ref(&bad),
+                    &opts,
+                    &mut IdMap::default(),
+                    &mut warnings,
+                )
+            });
+            assert_eq!(counts.unwrap().imported, 0, "{kind}");
+            assert_eq!(warnings.len(), 1, "{kind}: {warnings:?}");
+            assert_eq!(
+                warns(lines),
+                vec![format!("WARN {T} Failed to import {kind} {fields}")],
+                "{kind}"
+            );
+            let mut warnings = Vec::new();
+            let (counts, lines) = crate::test_support::captured_with(|| {
+                import(
+                    &conn,
+                    "u",
+                    std::slice::from_ref(&good),
+                    &opts,
+                    &mut IdMap::default(),
+                    &mut warnings,
+                )
+            });
+            assert_eq!(counts.unwrap().imported, 1, "{kind}: {warnings:?}");
+            assert!(warns(lines).is_empty(), "{kind}");
+        }
     }
 }
