@@ -77,6 +77,7 @@ use tracing_subscriber::layer::SubscriberExt;
 const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
 const MAIN: &str = "quilltap.db";
 const MOUNT: &str = "quilltap-mount-index.db";
+const LLM: &str = "quilltap-llm-logs.db";
 
 /// Arms boot one at a time: the capture is process-global.
 static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
@@ -226,6 +227,17 @@ impl Booted {
         );
     }
 
+    /// The host's structural record (P4.D248, v4 `e5c6bd0c0`'s PHASE 3.1) —
+    /// what `/health`'s `structure` service reports.
+    fn assert_structural(&self, problems: &[&str]) {
+        assert_eq!(
+            self.host().structural_problems(),
+            problems,
+            "the structural record; captured:\n{}",
+            self.lines.join("\n")
+        );
+    }
+
     /// No captured line contains `needle`.
     fn assert_silent(&self, needle: &str) {
         let hits: Vec<&String> = self.lines.iter().filter(|l| l.contains(needle)).collect();
@@ -301,6 +313,209 @@ async fn an_unplanted_boot_logs_none_of_the_guarded_lines() {
     }
     booted.assert_line(STATE_SEEDED);
     booted.assert_tool_folder_restored();
+    // P4.D248: v4's PHASE 3.1 over a sound instance — nothing recorded, the
+    // DEBUG summary over all eleven tables, and no problem line.
+    booted.assert_structural(&[]);
+    booted.assert_line(STRUCTURE_VERIFIED);
+    booted.assert_silent("Structural table check failed");
+    booted.assert_silent("Structural tables damaged");
+    booted.assert_silent("Structural table check could not run");
+}
+
+/// v4 `verifyStructuralTables`' DEBUG on a sound boot (`lib/startup/
+/// verify-structural-tables.ts:73-74` at `e5c6bd0c0`; `context` FIRST — v4's
+/// child-logger merge).
+const STRUCTURE_VERIFIED: &str =
+    "DEBUG quilltap::boot Structural tables verified context=startup.verify-structural-tables checked=11";
+
+/// v4's per-problem ERROR (`verify-structural-tables.ts:63-66`).
+fn structural_line(repository: &str, problem: &str) -> String {
+    format!(
+        "ERROR quilltap::boot Structural table check failed; reads through this repository will come back empty context=startup.verify-structural-tables repository={repository} problem={problem}"
+    )
+}
+
+/// v4's summary ERROR (`verify-structural-tables.ts:75-79`).
+fn damaged_line(damaged: usize) -> String {
+    format!(
+        "ERROR quilltap::boot Structural tables damaged; /api/health will report degraded until repaired context=startup.verify-structural-tables checked=11 damaged={damaged}"
+    )
+}
+
+/// P4.D248 (v4 `e5c6bd0c0`, bug 176) — the SHAPE form: a column no ensure step
+/// names. Before the port this plant booted SILENT on `main` (every chunk read
+/// through the renamed column failed into a fallback behind a 200 `/health`).
+/// Now v4's per-problem ERROR, the summary, the record — and the boot goes on.
+/// v4 reports the same string for the same plant (`table_shape_equivalence`'s
+/// `chunk-heading` row).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_renamed_chunk_heading_column_is_a_structural_problem_and_boots() {
+    let _serial = SERIAL.lock().await;
+    let booted = boot_planted(
+        Substrate::Fresh,
+        &[
+            (MOUNT, DELETE_MARKERS),
+            (
+                MOUNT,
+                "ALTER TABLE doc_mount_chunks RENAME COLUMN headingContext TO headingContext_x",
+            ),
+        ],
+    )
+    .await;
+    let problem = "table doc_mount_chunks is missing column headingContext";
+    booted.assert_structural(&[problem]);
+    booted.assert_lines_in_order(&[
+        "DEBUG quilltap::db Verified dedicated-database table structure collection=doc_mount_chunks dbTarget=mountIndex ok=false".to_string(),
+        structural_line("docMountChunks", problem),
+        damaged_line(1),
+    ]);
+    booted.assert_silent("Structural tables verified");
+    booted.assert_silent("Failed to ensure doc_mount_chunks");
+    booted.assert_tool_folder_restored();
+    booted.assert_line(STATE_SEEDED);
+}
+
+/// P4.D248 — an `llm_logs` column (the LLM-logs partition, v4's container
+/// FIRST). No v5 boot step reads it, so the plant booted silent on `main`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_renamed_llm_logs_column_is_a_structural_problem_and_boots() {
+    let _serial = SERIAL.lock().await;
+    let booted = boot_planted(
+        Substrate::Fresh,
+        &[(
+            LLM,
+            "ALTER TABLE llm_logs RENAME COLUMN provider TO provider_x",
+        )],
+    )
+    .await;
+    let problem = "table llm_logs is missing column provider";
+    booted.assert_structural(&[problem]);
+    booted.assert_lines_in_order(&[
+        "DEBUG quilltap::db Verified dedicated-database table structure collection=llm_logs dbTarget=llmLogs ok=false".to_string(),
+        structural_line("llmLogs", problem),
+        damaged_line(1),
+    ]);
+    booted.assert_line(STATE_SEEDED);
+}
+
+/// P4.D248 — a VIEW standing in for `doc_mount_chunks` (RENAME-then-VIEW).
+/// v5 reads the view: `doc_mount_chunks is a view, not a table`. ⚠ RECORDED
+/// DIVERGENCE (measured through v4's REAL pass, `table_shape_equivalence`'s
+/// `chunk-view` row — the order's "both sides read `is a view`" premise is
+/// refuted): v4's ensure runs `CREATE INDEX IF NOT EXISTS` on the name first
+/// and SQLite refuses a view before the name check, so v4 reports `doc_mount_
+/// chunks in mount index database: views may not be indexed`. v5 creates a
+/// table only when the name is free and never re-runs an ensure in the pass.
+/// Booted silent on `main`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_chunk_view_is_a_structural_problem_and_boots() {
+    let _serial = SERIAL.lock().await;
+    let booted = boot_planted(
+        Substrate::Fresh,
+        &[
+            (MOUNT, DELETE_MARKERS),
+            (
+                MOUNT,
+                "ALTER TABLE doc_mount_chunks RENAME TO doc_mount_chunks_x;\
+                 CREATE VIEW doc_mount_chunks AS SELECT * FROM doc_mount_chunks_x;",
+            ),
+        ],
+    )
+    .await;
+    let problem = "doc_mount_chunks is a view, not a table";
+    booted.assert_structural(&[problem]);
+    booted.assert_line(&structural_line("docMountChunks", problem));
+    booted.assert_line(&damaged_line(1));
+    booted.assert_tool_folder_restored();
+    booted.assert_line(STATE_SEEDED);
+}
+
+/// P4.D248 — an ABSENT dedicated table is CREATED at boot and reported sound,
+/// as v4's PHASE 3.1 ensure creates it (RULED 2026-10-03 by the human: the
+/// order's R3 "report `table X does not exist`" would have answered a false
+/// `degraded` on 35 of 42 committed fixture pairs — v4 creates its link tables
+/// lazily). The created table is v4's own DDL (`table_shape_equivalence`'s
+/// `creating_every_absent_table_reproduces_v4s_substrate`).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn an_absent_group_link_table_is_created_and_reported_sound() {
+    let _serial = SERIAL.lock().await;
+    let booted = boot_planted(
+        Substrate::Fresh,
+        &[(MOUNT, "DROP TABLE group_character_members;")],
+    )
+    .await;
+    booted.assert_structural(&[]);
+    booted.assert_line(STRUCTURE_VERIFIED);
+    booted.assert_line("DEBUG quilltap::db Verified dedicated-database table structure collection=group_character_members dbTarget=mountIndex ok=true");
+    booted.assert_silent("Failed to ensure group_character_members");
+    let w = Writer::open_writable(&booted.data.join(MOUNT), PEPPER).unwrap();
+    let indexes: i64 = w
+        .connection()
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND tbl_name = 'group_character_members' AND sql IS NOT NULL",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(indexes >= 1, "the created table carries v4's indexes");
+}
+
+/// P4.D248 — the record is REPLACED on every assemble (v4's
+/// `setStructuralProblems` replaces): a damaged boot records the problem; the
+/// operator repairs the table; a lock/unlock (a fresh assembly) clears it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_repaired_table_clears_the_record_on_the_next_assemble() {
+    use quilltap_core::api::PepperState;
+    let _serial = SERIAL.lock().await;
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    provision_fresh_instance(&data, PEPPER).expect("provision");
+    quilltap_core::dbkey::save_dbkey(&data, PEPPER, "open sesame").unwrap();
+    Writer::open_writable(&data.join(MOUNT), PEPPER)
+        .unwrap()
+        .connection()
+        .execute_batch(
+            "ALTER TABLE doc_mount_chunks RENAME COLUMN headingContext TO headingContext_x",
+        )
+        .unwrap();
+    capture().lock().unwrap().clear();
+    let mut cfg = config(dir.path());
+    cfg.env_pepper = None;
+    let host = Host::start(cfg).expect("a locked boot");
+    let core = host.core();
+    let unlock = || Request::Unlock {
+        passphrase: "open sesame".into(),
+    };
+    match core.dispatch(unlock()).await {
+        Response::UnlockState(u) => assert_eq!(u.state, PepperState::Resolved),
+        other => panic!("unexpected: {other:?}"),
+    }
+    assert_eq!(
+        host.structural_problems(),
+        vec!["table doc_mount_chunks is missing column headingContext".to_string()]
+    );
+    // The operator's repair.
+    Writer::open_writable(&data.join(MOUNT), PEPPER)
+        .unwrap()
+        .connection()
+        .execute_batch(
+            "ALTER TABLE doc_mount_chunks RENAME COLUMN headingContext_x TO headingContext",
+        )
+        .unwrap();
+    match core.dispatch(Request::Lock).await {
+        Response::UnlockState(u) => assert_eq!(u.state, PepperState::NeedsPassphrase),
+        other => panic!("unexpected: {other:?}"),
+    }
+    match core.dispatch(unlock()).await {
+        Response::UnlockState(u) => assert_eq!(u.state, PepperState::Resolved),
+        other => panic!("unexpected: {other:?}"),
+    }
+    assert!(
+        host.structural_problems().is_empty(),
+        "a fresh assembly replaces the record: {:?}",
+        host.structural_problems()
+    );
 }
 
 /// 25c — the #134 failure itself: the file-links case repair's SELECT names
@@ -325,7 +540,22 @@ async fn a_renamed_link_column_logs_v4s_ensure_table_line_and_boots() {
     booted.assert_line("ERROR quilltap::db Failed to ensure doc_mount_file_links table in mount index database error=no such column: relativePath");
     booted.assert_tool_folder_restored();
     booted.assert_line("WARN quilltap::boot Error ensuring general state.json, continuing startup context=instrumentation.register error=no such column: l.relativePath");
+    // P4.D248: the ensure's own failure, REUSED by the PHASE 3.1 pass in v4's
+    // ensure form — the `Failed to ensure` line above stays exactly one (the
+    // pass re-runs nothing). v4 emits this string for this plant, not its
+    // `API.md` example (`table_shape_equivalence`'s `link-relativepath` row).
+    booted.assert_structural(&[LINK_RELATIVEPATH_PROBLEM]);
+    booted.assert_line(&structural_line(
+        "docMountFileLinks",
+        LINK_RELATIVEPATH_PROBLEM,
+    ));
+    booted.assert_line(&damaged_line(1));
 }
+
+/// The #134 plant's structural problem — v4's ensure form, measured through
+/// v4's REAL pass.
+const LINK_RELATIVEPATH_PROBLEM: &str =
+    "doc_mount_file_links in mount index database: no such column: relativePath";
 
 /// 25c on the POST-OFFICE pair — a populated mount index (six vaults, a
 /// letter), the substrate P4.131's mail plants run on and dogfood #134's
@@ -344,6 +574,7 @@ async fn the_134_plant_on_the_post_office_pair_boots() {
     booted.host();
     booted.assert_line("ERROR quilltap::db Failed to ensure doc_mount_file_links table in mount index database error=no such column: relativePath");
     booted.assert_line("WARN quilltap::boot Error ensuring general state.json, continuing startup context=instrumentation.register error=no such column: l.relativePath");
+    booted.assert_structural(&[LINK_RELATIVEPATH_PROBLEM]);
 }
 
 /// 25b — the folder case repair. `name`, not `path`: `path` also breaks the
@@ -385,6 +616,7 @@ async fn a_renamed_folder_name_logs_v4s_ensure_table_line_and_boots() {
         .unwrap();
     assert_eq!(orphans, 0, "the sub-steps after the failed one did not run");
     booted.assert_line(STATE_SEEDED);
+    booted.assert_structural(&["doc_mount_folders in mount index database: no such column: name"]);
 }
 
 /// 25d — the mount-point name repair.
@@ -406,6 +638,7 @@ async fn a_renamed_mount_point_name_logs_v4s_ensure_table_line_and_boots() {
     booted.assert_line("ERROR quilltap::db Failed to ensure doc_mount_points table in mount index database error=no such column: name");
     booted.assert_tool_folder_restored();
     booted.assert_line(STATE_SEEDED);
+    booted.assert_structural(&["doc_mount_points in mount index database: no such column: name"]);
 }
 
 /// 25e — the link-group column. A renamed column self-heals (the ensure ADDs
@@ -430,6 +663,15 @@ async fn a_blocked_link_group_index_logs_v4s_ensure_table_line_and_boots() {
     booted.assert_line("ERROR quilltap::db Failed to ensure doc_mount_file_links table in mount index database error=there is already a table named idx_doc_mount_file_links_linkGroupId");
     booted.assert_tool_folder_restored();
     booted.assert_line(STATE_SEEDED);
+    // P4.D248: TWO problems from ONE logged line — v4's documents repository
+    // runs the same `ensureLinkGroupColumn` in its own `ensureTable`, so v4's
+    // pass reports both (`table_shape_equivalence`'s `link-group-index` row);
+    // v5 runs the step once and records it for both, in container order.
+    booted.assert_structural(&[
+        "doc_mount_file_links in mount index database: there is already a table named idx_doc_mount_file_links_linkGroupId",
+        "doc_mount_documents in mount index database: there is already a table named idx_doc_mount_file_links_linkGroupId",
+    ]);
+    booted.assert_line(&damaged_line(2));
 }
 
 /// 25g — the orphaned store-children reap (v4 phase 3.3b, a fallback read).
@@ -457,6 +699,9 @@ async fn a_renamed_chunk_column_logs_v4s_reap_fallback_line_and_boots() {
     booted.assert_silent("Error reaping orphaned doc-store children");
     booted.assert_tool_folder_restored();
     booted.assert_line(STATE_SEEDED);
+    // P4.D248: the reap is a fallback read, not an ensure, so the pass meets
+    // this column in the SHAPE form.
+    booted.assert_structural(&["table doc_mount_chunks is missing column mountPointId"]);
 }
 
 /// #1 — the built-in roleplay templates seed (v4 phase 1.25, a fallback
@@ -934,7 +1179,9 @@ async fn the_134_plant_is_re_ensured_and_re_logged_on_every_boot() {
     .await;
     booted.host();
     booted.assert_line(line);
+    booted.assert_structural(&[LINK_RELATIVEPATH_PROBLEM]);
     let booted = booted.reboot().await;
     booted.host();
     booted.assert_line(line);
+    booted.assert_structural(&[LINK_RELATIVEPATH_PROBLEM]);
 }

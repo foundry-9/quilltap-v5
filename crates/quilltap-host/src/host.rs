@@ -44,6 +44,7 @@ use quilltap_core::clock::{iso_to_ms, now_unix_ms};
 use quilltap_core::db::background_jobs::BackgroundJobsRepository;
 use quilltap_core::db::chat_settings;
 use quilltap_core::db::runtime::Db;
+use quilltap_core::db::table_shape::EnsureFailures;
 use quilltap_core::enclave::step::AutonomousRoomScheduleTickHandler;
 use quilltap_core::realtime::bus::BusSpawner;
 use quilltap_core::services::aurora_notifications::WardrobeOutfitAnnouncementHandler;
@@ -230,6 +231,10 @@ pub struct Host {
     /// The CURRENT assembly's terminal manager (filled on assemble, cleared
     /// on shutdown — a lock/unlock cycle swaps it).
     terminal: Arc<Mutex<Option<Arc<TerminalManager>>>>,
+    /// P4.D248: the CURRENT assembly's structural problems (v4's
+    /// `startupState.structuralProblems`, `e5c6bd0c0`) — replaced on every
+    /// assemble, read by `/health`'s `structure` service.
+    structural_problems: Arc<Mutex<Vec<String>>>,
     base_dir: PathBuf,
 }
 
@@ -247,6 +252,7 @@ impl Host {
         });
 
         let terminal_slot: Arc<Mutex<Option<Arc<TerminalManager>>>> = Arc::new(Mutex::new(None));
+        let structural_problems: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         // P4.9G5: one backup-services instance per HOST (see the field's note).
         let backup_services = Arc::new(HostBackupServices::new(
             config.base_dir.clone(),
@@ -262,6 +268,7 @@ impl Host {
             spine: config.spine,
             terminal: config.terminal,
             terminal_slot: terminal_slot.clone(),
+            structural_problems: structural_problems.clone(),
             tz: config.tz,
             display_zone: config.display_zone.clone(),
             autonomous_tick_ms: config.autonomous_tick_ms,
@@ -329,6 +336,7 @@ impl Host {
             core,
             backup_services,
             terminal: terminal_slot,
+            structural_problems,
             base_dir,
         })
     }
@@ -343,6 +351,13 @@ impl Host {
     /// The boundary handle (`Clone`) transports dispatch through.
     pub fn core(&self) -> &CoreEngine {
         &self.core
+    }
+
+    /// The structural problems the CURRENT assembly's PHASE 3.1 pass found
+    /// (P4.D248, v4 `startupState.getStructuralProblems()`) — a copy, as v4's
+    /// getter copies. Empty while locked (no assembly yet) and on a sound boot.
+    pub fn structural_problems(&self) -> Vec<String> {
+        self.structural_problems.lock().unwrap().clone()
     }
 
     /// The CURRENT assembly's terminal manager (None while locked or when
@@ -418,6 +433,8 @@ struct HostAssembler {
     spine: Option<Arc<dyn SpineFactory>>,
     terminal: bool,
     terminal_slot: Arc<Mutex<Option<Arc<TerminalManager>>>>,
+    /// P4.D248: shared with the `Host` (see its field).
+    structural_problems: Arc<Mutex<Vec<String>>>,
     tz: String,
     display_zone: quilltap_core::host_zone::TimeZone,
     autonomous_tick_ms: u64,
@@ -539,7 +556,7 @@ impl EngineAssembler for HostAssembler {
         // stores, never duplicating. Run on a fresh OS thread so `write_blocking`
         // is legal whether `assemble` was reached from the sync boot path or an
         // async `Unlock` dispatch (`blocking_recv` panics on a tokio worker).
-        seed_built_ins(db)?;
+        let ensure_failures = seed_built_ins(db)?;
 
         // The gated sample-content seed (P4.4u4): on a first boot (zero-characters
         // gate) import Lorian + Riya + 42 memories + Lorian's avatar, matching a
@@ -548,6 +565,16 @@ impl EngineAssembler for HostAssembler {
         if self.seed_sample_content {
             seed_sample_content(db)?;
         }
+
+        // === P4.D248: v4's PHASE 3.1, the structural table check ===
+        // After the migrations' twins and the seeds (3.1 < 3.66 < 3.7, v4's
+        // `instrumentation.ts:568-582`), read-only; the result REPLACES the
+        // host's record on every assemble — boot AND unlock — as v4's
+        // `setStructuralProblems` replaces (a lock/unlock after a repair clears a
+        // stale record). `/health` reports it as the `structure` service.
+        *self.structural_problems.lock().unwrap() =
+            verify_structural_tables_at_boot(db, &ensure_failures);
+        // === end P4.D248 ===
 
         // === P4.9I2A / P4.D222: v4's PHASE 3.66, the help reconcile ===
         // Since v4 `492771aff` the help reconcile is a STARTUP phase in v4 too
@@ -1209,15 +1236,20 @@ fn reconcile_embedding_dimensions_at_boot(db: &Db) {
 /// `write_blocking` is legal from either the sync boot path or an async
 /// `Unlock` dispatch. The mount families are skipped on a main-only instance
 /// (no mount-index partition).
-fn seed_built_ins(db: &Db) -> Result<(), String> {
+///
+/// Answers this boot's structural ensure failures by collection (P4.D248): the
+/// built-in mounts' lazy-home sub-steps and the absent-table creation, which
+/// the PHASE 3.1 pass reports in v4's ensure form without re-running them.
+fn seed_built_ins(db: &Db) -> Result<EnsureFailures, String> {
     use quilltap_core::db::DbError;
     use quilltap_core::services::mount_index::general_state;
     use quilltap_core::services::{builtin_mounts, builtin_templates};
 
     let db = db.clone();
-    std::thread::spawn(move || -> Result<(), DbError> {
+    std::thread::spawn(move || -> Result<EnsureFailures, DbError> {
         db.write_blocking(|ws| {
             let main = ws.main().connection();
+            let mut ensure_failures = EnsureFailures::default();
             // === P4.134 (dogfood #134(b)) ===
             // v4 seeds the templates inside `seedInitialData` (phase 1.25)
             // through a FALLBACK `safeQuery`: a failure logs `Error seeding
@@ -1809,11 +1841,13 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                 // v4's line and continue (v4 runs them lazily per access, or
                 // as a fallback read at phase 3.3b), so a damaged mount-index
                 // column degrades reads instead of killing the engine.
-                builtin_mounts::ensure_builtin_mounts_with(
+                // P4.D248: the failures they log are collected for the
+                // PHASE 3.1 pass, which reports them without re-running them.
+                ensure_failures.extend(builtin_mounts::ensure_builtin_mounts_with(
                     main,
                     mount_index,
                     builtin_mounts::LazyRepairFailures::LogAndContinue,
-                )?;
+                )?);
                 // v4's phase 3.4c. The folder failure is logged INSIDE (v4's
                 // `[GeneralScenarios]` catch); this arm is v4's
                 // `instrumentation.ts:766-776` WARN for anything else.
@@ -1885,12 +1919,78 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                     );
                 // === end P4.82 ===
             }
-            Ok(())
+            // === P4.D248 (v4 `e5c6bd0c0`, bug 176) ===
+            // v4's PHASE 3.1 runs each structural repository's `ensureTable`
+            // before its shape check, and that ensure CREATES an absent table
+            // (v4's tables are created lazily, so an instance — and most
+            // committed fixtures — can lack the group/project link tables with
+            // nothing wrong). v5's own boot ensures cover `help_doc_chunks`,
+            // `doc_mount_points` and `doc_mount_folders`; this creates any
+            // other dedicated structural table that is ABSENT, from v4's own
+            // DDL dump (RULED 2026-10-03 by the human — the order's R3 said
+            // "report it", which would have answered a false `degraded`). It
+            // never touches an existing table, so the pass still runs no
+            // ensure of its own.
+            quilltap_core::db::table_shape::create_missing_structural_tables(
+                ws.mount_index().map(|w| w.connection()),
+                ws.llm_logs().map(|w| w.connection()),
+                &mut ensure_failures,
+            );
+            // === end P4.D248 ===
+            Ok(ensure_failures)
         })
     })
     .join()
     .map_err(|_| "built-in seed thread panicked".to_string())?
     .map_err(|e| format!("built-in seed failed: {e}"))
+}
+
+/// v4's PHASE 3.1 (`lib/startup/verify-structural-tables.ts`, `e5c6bd0c0`, bug
+/// 176): check every structural table once, read-only, and answer the
+/// problems for the host's slot. The shape check runs on the read pools (an
+/// absent partition answers `PartitionUnavailable` → skipped, R4); the ensure
+/// failures this boot already logged are REUSED, never re-run. The pass logs
+/// v4's lines itself (`table_shape::verify_structural_tables`). v4 wraps the
+/// phase in its own catch (`instrumentation.ts:568-582`): a failure there logs
+/// WARN `Structural table check could not run, continuing startup` and the
+/// boot goes on with nothing recorded. The pass returns no error of its own,
+/// so here that arm is a PANIC inside it.
+fn verify_structural_tables_at_boot(db: &Db, ensure_failures: &EnsureFailures) -> Vec<String> {
+    use quilltap_core::db::table_shape::{
+        find_table_shape_problem, verify_structural_tables, Partition, TableRead,
+    };
+    use quilltap_core::db::DbError;
+
+    let pass = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        verify_structural_tables(ensure_failures, |table| {
+            let (name, fields) = (table.collection, table.fields);
+            let read = match table.partition {
+                Partition::Main => db.read_main(|c| find_table_shape_problem(c, name, fields)),
+                Partition::MountIndex => {
+                    db.read_mount_index(|c| find_table_shape_problem(c, name, fields))
+                }
+                Partition::LlmLogs => {
+                    db.read_llm_logs(|c| find_table_shape_problem(c, name, fields))
+                }
+            };
+            match read {
+                Err(DbError::PartitionUnavailable(_)) => TableRead::PartitionAbsent,
+                other => TableRead::Read(other),
+            }
+        })
+    }));
+    match pass {
+        Ok(problems) => problems.into_iter().map(|p| p.problem).collect(),
+        Err(_) => {
+            tracing::warn!(
+                target: "quilltap::boot",
+                context = "instrumentation.register",
+                error = "the structural table check panicked",
+                "Structural table check could not run, continuing startup"
+            );
+            Vec::new()
+        }
+    }
 }
 
 /// The avatar-roll collapse's success line (P4.D184), shared by the clean arm

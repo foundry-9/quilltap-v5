@@ -70,8 +70,7 @@
     },
     {
       "name": "files-dropped",
-      "divergence": true,
-      "why": "R3: v4's ensure CREATES a missing table and reports it sound; v5 never ensures doc_mount_files and reports it missing",
+      "why": "v4's ensure CREATES an absent table and reports it sound; v5 creates it from v4's own DDL dump at boot (R3 reversed by the human's ruling, 2026-10-03), so both report nothing",
       "mount": ["DROP TABLE doc_mount_files"],
       "llm": []
     },

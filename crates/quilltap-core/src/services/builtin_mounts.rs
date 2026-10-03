@@ -33,6 +33,7 @@ use crate::clock;
 use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
 use crate::db::doc_mount_points::DocMountPointsRepository;
 use crate::db::mount_index_case_repair;
+use crate::db::table_shape::EnsureFailures;
 use crate::db::{instance_settings, DbError};
 
 /// One built-in store's identity: its name, its pointer getter/setter, and its
@@ -88,13 +89,18 @@ const GENERAL_SCENARIOS_FOLDER: &str = "Scenarios";
 /// v4's migration runner exits the process on a failed migration. That exit is
 /// v4-fatal only on an instance whose ledger LACKS the migration: a
 /// ledger-complete instance skips it before `shouldRun`
-/// (`migrations/index.ts:125-129`) and then reaches these tables only through
-/// the lazy, guarded repository reads — so there v5 is HARDER than v4 (the
-/// ledger-gate divergence P4.134 named; ruled KEPT 2026-10-01 and filed
-/// upstream as v4 bug 176 — v4 never re-checks a ledgered structural
-/// migration, so a damaged table there degrades every read silently behind a
-/// healthy `/health`; P4.135 pins v5's every-boot cadence in
-/// `host_boot_hardness`).
+/// (`migrations/index.ts:145-148`) and then reaches these tables only through
+/// the repositories — so there v5 is HARDER than v4 (the ledger-gate divergence
+/// P4.134 named; ruled KEPT 2026-10-01, filed upstream as v4 bug 176). v4's
+/// `e5c6bd0c0` fix for that bug did not change the ledger gate: it added a
+/// read-only PHASE 3.1 pass that checks each structural table once per boot and
+/// reports damage through a `structure` service in `/api/health`
+/// (`lib/startup/verify-structural-tables.ts`). v5 ports it as
+/// `db::table_shape::verify_structural_tables`, which REUSES the failure text
+/// these lazy sub-steps record (the [`EnsureFailures`] this function returns)
+/// instead of re-running them — so a damaged table here now degrades LOUDLY
+/// behind a `degraded` `/health`, as on v4 (P4.D248). P4.135 pins v5's
+/// every-boot cadence in `host_boot_hardness`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LazyRepairFailures {
     /// Every sub-step's `Err` propagates — fresh-instance provisioning, and
@@ -110,17 +116,22 @@ pub enum LazyRepairFailures {
 /// `mount_index` holds the mount rows and their folders. Every failure
 /// propagates ([`LazyRepairFailures::Propagate`]).
 pub fn ensure_builtin_mounts(main: &Connection, mount_index: &Connection) -> Result<(), DbError> {
-    ensure_builtin_mounts_with(main, mount_index, LazyRepairFailures::Propagate)
+    ensure_builtin_mounts_with(main, mount_index, LazyRepairFailures::Propagate).map(|_| ())
 }
 
 /// [`ensure_builtin_mounts`] with the five lazy-home sub-steps' failure mode
 /// chosen by the caller (see [`LazyRepairFailures`]). One function with a mode,
 /// not five public entry points, so the sub-step ORDER stays in one place.
+///
+/// Answers the lazy-home ensure failures it logged, by collection (the FIRST
+/// per collection — v4's `ensureTable` stops at its first throw): the text the
+/// boot's structural pass reports in v4's ensure form (P4.D248). Always empty
+/// under [`LazyRepairFailures::Propagate`], where a failure is the `Err`.
 pub fn ensure_builtin_mounts_with(
     main: &Connection,
     mount_index: &Connection,
     failures: LazyRepairFailures,
-) -> Result<(), DbError> {
+) -> Result<EnsureFailures, DbError> {
     // v4's migration `shouldRun` guards on `sqliteTableExists('instance_settings')`
     // — skip entirely on a bare / not-yet-provisioned db (e.g. a loose-typed test
     // fixture).
@@ -133,18 +144,18 @@ pub fn ensure_builtin_mounts_with(
         .optional()?
         .is_some();
     if !has_settings {
-        return Ok(());
+        return Ok(EnsureFailures::default());
     }
 
     // v4's migration `run()` calls `ensureMountIndexTables` first — create the
     // mount-index tables when absent. A no-op on a generateDDL-provisioned instance
     // (the tables already exist, in REAL-affinity form).
-    ensure_mount_index_tables(mount_index, failures)?;
+    let collected = ensure_mount_index_tables(mount_index, failures)?;
 
     for spec in MOUNTS {
         ensure_one_mount(main, mount_index, spec)?;
     }
-    Ok(())
+    Ok(collected)
 }
 
 /// v4's label for the mount-index partition in `ensureTable`'s line
@@ -152,16 +163,28 @@ pub fn ensure_builtin_mounts_with(
 const MOUNT_INDEX_LABEL: &str = "mount index";
 
 /// One lazy-home sub-step under `failures`: `LogAndContinue` answers an `Err`
-/// with v4's `ensureTable` line for `collection` and moves on.
+/// with v4's `ensureTable` line for `collections[0]` (once) and moves on,
+/// recording the failure's text in `collected` for EVERY collection in
+/// `collections` — the v4 repositories whose `ensureTable` runs this step
+/// (P4.D248: the boot's structural pass reports it in v4's ensure form).
 fn lazy_ensure(
     failures: LazyRepairFailures,
-    collection: &'static str,
+    collections: &[&'static str],
+    collected: &mut EnsureFailures,
     ensure: impl FnOnce() -> Result<(), DbError>,
 ) -> Result<(), DbError> {
     match failures {
         LazyRepairFailures::Propagate => ensure(),
         LazyRepairFailures::LogAndContinue => {
-            crate::db::fallback::ensure_table_or_log(collection, MOUNT_INDEX_LABEL, ensure);
+            let mut text = None;
+            crate::db::fallback::ensure_table_or_log(collections[0], MOUNT_INDEX_LABEL, || {
+                ensure().inspect_err(|e| text = Some(crate::db::fallback::error_text(e)))
+            });
+            if let Some(text) = text {
+                for collection in collections {
+                    collected.record(collection, text.clone());
+                }
+            }
             Ok(())
         }
     }
@@ -175,7 +198,8 @@ fn lazy_ensure(
 fn ensure_mount_index_tables(
     mount_index: &Connection,
     failures: LazyRepairFailures,
-) -> Result<(), DbError> {
+) -> Result<EnsureFailures, DbError> {
+    let mut collected = EnsureFailures::default();
     mount_index.execute_batch(
         "CREATE TABLE IF NOT EXISTS \"doc_mount_points\" (\
            \"id\" TEXT PRIMARY KEY, \"name\" TEXT NOT NULL, \
@@ -212,7 +236,7 @@ fn ensure_mount_index_tables(
     // trusts-or-recreates the genuine NOCASE unique index. A no-op on a fresh
     // generateDDL-provisioned instance (the NOCASE indexes exist and no rows
     // collide); an existing pre-`0a0419f5` instance is migrated here.
-    lazy_ensure(failures, "doc_mount_folders", || {
+    lazy_ensure(failures, &["doc_mount_folders"], &mut collected, || {
         mount_index_case_repair::ensure_folder_nocase_unique_index(mount_index)
     })?;
     // v4 `40319484` (migration `add-doc-mount-link-groups-v1`): deliberate
@@ -227,14 +251,20 @@ fn ensure_mount_index_tables(
     // repo's `ensureTable` line. v4's one `try` logs ONE line per access for
     // the pair; v5 logs one per sub-step (TWO on a plant that fails both, the
     // column's error first — pinned below, recorded as the cadence
-    // divergence's other half).
-    lazy_ensure(failures, "doc_mount_file_links", || {
-        mount_index_case_repair::ensure_link_group_column(mount_index)
-    })?;
-    lazy_ensure(failures, "doc_mount_file_links", || {
+    // divergence's other half). Its failure is BOTH repositories' ensure error
+    // (P4.D248, measured through v4's real pass: a squatted index name reports
+    // `doc_mount_file_links …` AND `doc_mount_documents in mount index
+    // database: …`) — one line, two recorded problems.
+    lazy_ensure(
+        failures,
+        &["doc_mount_file_links", "doc_mount_documents"],
+        &mut collected,
+        || mount_index_case_repair::ensure_link_group_column(mount_index),
+    )?;
+    lazy_ensure(failures, &["doc_mount_file_links"], &mut collected, || {
         mount_index_case_repair::ensure_link_nocase_unique_index(mount_index)
     })?;
-    lazy_ensure(failures, "doc_mount_points", || {
+    lazy_ensure(failures, &["doc_mount_points"], &mut collected, || {
         mount_index_case_repair::repair_mount_point_name_collisions(mount_index).map(|_| ())
     })?;
     // Step 2 — collect the backlog of content rows abandoned by
@@ -267,7 +297,7 @@ fn ensure_mount_index_tables(
             });
         }
     }
-    Ok(())
+    Ok(collected)
 }
 
 /// One store's provision-or-adopt (v4 migration `run()`).
@@ -517,7 +547,15 @@ mod tests {
         let (result, lines) = crate::test_support::captured_with(|| {
             ensure_builtin_mounts_with(&main, &mount, LazyRepairFailures::LogAndContinue)
         });
-        result.unwrap();
+        // P4.D248: the logged failure's text is what the boot's structural
+        // pass reports (v4's ensure form) — recorded once, for the links
+        // repository alone (the link-group column passed here).
+        let collected = result.unwrap();
+        assert_eq!(
+            collected.get("doc_mount_file_links"),
+            Some("no such column: relativePath")
+        );
+        assert_eq!(collected.get("doc_mount_documents"), None);
         assert_eq!(
             lines
                 .iter()
@@ -564,7 +602,23 @@ mod tests {
         let (result, lines) = crate::test_support::captured_with(|| {
             ensure_builtin_mounts_with(&main, &mount, LazyRepairFailures::LogAndContinue)
         });
-        result.unwrap();
+        // P4.D248: the FIRST failure per collection is the one recorded (v4's
+        // `ensureTable` stops at its first throw), and the link-group column's
+        // failure is BOTH repositories' — v4's documents repository runs the
+        // same `ensureLinkGroupColumn` in its own `onTableEnsured`.
+        let collected = result.unwrap();
+        let squatted = format!(
+            "there is already a table named {}",
+            mount_index_case_repair::LINK_GROUP_INDEX
+        );
+        assert_eq!(
+            collected.get("doc_mount_file_links"),
+            Some(squatted.as_str())
+        );
+        assert_eq!(
+            collected.get("doc_mount_documents"),
+            Some(squatted.as_str())
+        );
         let errors: Vec<&String> = lines.iter().filter(|l| l.starts_with("ERROR")).collect();
         assert_eq!(
             errors,

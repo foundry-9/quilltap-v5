@@ -328,6 +328,243 @@ pub fn structure_message(n: usize) -> String {
     )
 }
 
+/// This boot's ensure failures, by collection: the FIRST failure text each
+/// collection met (v4's `ensureTable` throws on its first failing statement, so
+/// one repository has one ensure error). Filled by the lazy-home sub-steps in
+/// `services::builtin_mounts` and by [`create_missing_structural_tables`];
+/// read by [`verify_structural_tables`], which REUSES the text rather than
+/// re-running an ensure (a second ensure would log `Failed to ensure …` twice
+/// per boot).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct EnsureFailures(Vec<(&'static str, String)>);
+
+impl EnsureFailures {
+    /// Record `text` for `collection` unless it already failed this boot.
+    pub fn record(&mut self, collection: &'static str, text: String) {
+        if self.get(collection).is_none() {
+            self.0.push((collection, text));
+        }
+    }
+
+    /// The first failure text recorded for `collection`.
+    pub fn get(&self, collection: &str) -> Option<&str> {
+        self.0
+            .iter()
+            .find(|(c, _)| *c == collection)
+            .map(|(_, t)| t.as_str())
+    }
+
+    /// Fold another collector in (first failure per collection still wins).
+    pub fn extend(&mut self, other: EnsureFailures) {
+        for (collection, text) in other.0 {
+            self.record(collection, text);
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+/// v4's `generateDDL` dump for the structural tables — the same artifact
+/// fresh-instance provisioning replays (`services/provisioning`).
+const FRESH_SCHEMA_JSON: &str = include_str!("../services/provisioning/fresh_schema.json");
+
+/// The dump's statements for `collection` in `partition`, in dump order: its
+/// `CREATE TABLE`, then every `CREATE INDEX` on it.
+fn fresh_ddl_for(partition: Partition, collection: &str) -> Vec<String> {
+    let key = match partition {
+        Partition::Main => "main",
+        Partition::MountIndex => "mountIndex",
+        Partition::LlmLogs => "llmLogs",
+    };
+    let schema: serde_json::Value =
+        serde_json::from_str(FRESH_SCHEMA_JSON).expect("fresh_schema.json parses");
+    let table_prefix = format!("CREATE TABLE \"{collection}\" (");
+    let on_table = format!(" ON \"{collection}\" (");
+    schema[key]
+        .as_array()
+        .expect("fresh_schema.json partition array")
+        .iter()
+        .filter_map(|v| v.as_str())
+        .filter(|sql| {
+            sql.starts_with(&table_prefix)
+                || ((sql.starts_with("CREATE INDEX ") || sql.starts_with("CREATE UNIQUE INDEX "))
+                    && sql.contains(&on_table))
+        })
+        .map(str::to_string)
+        .collect()
+}
+
+/// Does any table or view hold `name`? (The shape check's own first question.)
+fn name_is_taken(conn: &Connection, name: &str) -> Result<bool, DbError> {
+    let mut stmt =
+        conn.prepare("SELECT 1 FROM sqlite_master WHERE name = ? AND type IN ('table', 'view')")?;
+    Ok(stmt.exists([name])?)
+}
+
+/// v4's PHASE 3.1 ensure, for the one case v5's own boot ensures do not cover:
+/// a dedicated structural table that does not exist at all. v4's
+/// `verifyStructure` runs the repository's `ensureTable` first, whose
+/// `CREATE TABLE IF NOT EXISTS` (+ the default and `onTableEnsured` indexes)
+/// CREATES an absent table, which the shape check then reports sound
+/// (`dedicated-db.repository.ts:138-156`, `:186-195`). v4 creates its tables
+/// LAZILY, so an instance — and every committed fixture whose builder never
+/// touched groups — can lack the link tables with nothing wrong at all.
+///
+/// RULED 2026-10-03 (the human, at P4.D248's STOP — the order's R3 had said
+/// "report it", which the fixture census showed would answer a false
+/// `degraded` 503 on healthy instances): create it, from v4's own DDL dump,
+/// ONLY when no table or view holds the name. An existing table is never
+/// touched (its damage is the shape check's to report), and a view standing in
+/// for the table is left for the shape check too — a recorded divergence: v4's
+/// index DDL fails on the view (`views may not be indexed`, the ensure form)
+/// where v5 reports `X is a view, not a table`.
+///
+/// A failed creation logs v4's `ensureTable` line once (the `db::fallback`
+/// home) and is recorded for the pass's ensure form. The main partition is not
+/// walked: its one structural table, `help_doc_chunks`, has its own (fatal)
+/// boot ensure. `None` partitions are skipped (R4).
+pub fn create_missing_structural_tables(
+    mount_index: Option<&Connection>,
+    llm_logs: Option<&Connection>,
+    failures: &mut EnsureFailures,
+) {
+    for table in STRUCTURAL_TABLES {
+        let conn = match table.partition {
+            Partition::Main => continue,
+            Partition::MountIndex => mount_index,
+            Partition::LlmLogs => llm_logs,
+        };
+        let Some(conn) = conn else { continue };
+        if failures.get(table.collection).is_some() {
+            continue;
+        }
+        let mut error = None;
+        crate::db::fallback::ensure_table_or_log(table.collection, table.partition.label(), || {
+            if name_is_taken(conn, table.collection)? {
+                return Ok(());
+            }
+            for sql in fresh_ddl_for(table.partition, table.collection) {
+                if let Err(e) = conn.execute_batch(&sql) {
+                    let e = DbError::from(e);
+                    error = Some(crate::db::fallback::error_text(&e));
+                    return Err(e);
+                }
+            }
+            Ok(())
+        });
+        if let Some(text) = error {
+            failures.record(table.collection, text);
+        }
+    }
+}
+
+/// One table's read in the pass, from the caller's connection pool.
+pub enum TableRead {
+    /// The table's partition file is absent (`None`) — a v5-only state, skipped
+    /// and not counted (R4).
+    PartitionAbsent,
+    /// The shape check's answer, or the read's own failure.
+    Read(Result<Option<String>, DbError>),
+}
+
+/// One problem the pass found, with v4's repository key.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StructuralProblem {
+    pub repository: &'static str,
+    pub problem: String,
+}
+
+/// v4's `context` on every pass line (`lib/startup/verify-structural-tables.ts`'s
+/// child logger — v4's merge puts it FIRST).
+const PASS_CONTEXT: &str = "startup.verify-structural-tables";
+
+/// v4's PHASE 3.1 pass (`verifyStructuralTables`, `e5c6bd0c0`) over
+/// [`STRUCTURAL_TABLES`] in container order, with v4's lines:
+///
+/// - a collection whose ensure already failed THIS boot reports that failure in
+///   the ensure form — no shape check, no DEBUG, and never a second ensure;
+/// - otherwise `read` runs the shape check: an absent partition is skipped and
+///   not counted (R4); a read failure is v4's catch, the ensure form; a dedicated
+///   table's answer logs v4's DEBUG `Verified dedicated-database table
+///   structure` `{collection, dbTarget, ok}` (v4's root logger — no `context`;
+///   `help_doc_chunks` logs none, as v4's own `verifyStructure` there does not);
+/// - each problem logs ERROR `Structural table check failed; reads through this
+///   repository will come back empty` `{context, repository, problem}`;
+/// - then ERROR `Structural tables damaged; /api/health will report degraded
+///   until repaired` `{context, checked, damaged}` or DEBUG `Structural tables
+///   verified` `{context, checked}`.
+pub fn verify_structural_tables(
+    failures: &EnsureFailures,
+    mut read: impl FnMut(&StructuralTable) -> TableRead,
+) -> Vec<StructuralProblem> {
+    let mut problems = Vec::new();
+    let mut checked = 0usize;
+    for table in STRUCTURAL_TABLES {
+        let label = table.partition.label();
+        let problem = if let Some(text) = failures.get(table.collection) {
+            checked += 1;
+            Some(ensure_failed(table.collection, label, text))
+        } else {
+            match read(table) {
+                TableRead::PartitionAbsent => continue,
+                TableRead::Read(Err(error)) => {
+                    checked += 1;
+                    Some(ensure_failed(
+                        table.collection,
+                        label,
+                        &crate::db::fallback::error_text(&error),
+                    ))
+                }
+                TableRead::Read(Ok(problem)) => {
+                    checked += 1;
+                    if table.partition != Partition::Main {
+                        tracing::debug!(
+                            target: "quilltap::db",
+                            collection = table.collection,
+                            dbTarget = table.partition.db_target(),
+                            ok = problem.is_none(),
+                            "Verified dedicated-database table structure"
+                        );
+                    }
+                    problem
+                }
+            }
+        };
+        if let Some(problem) = problem {
+            tracing::error!(
+                target: "quilltap::boot",
+                context = PASS_CONTEXT,
+                repository = table.repository,
+                problem = problem.as_str(),
+                "Structural table check failed; reads through this repository will come back empty"
+            );
+            problems.push(StructuralProblem {
+                repository: table.repository,
+                problem,
+            });
+        }
+    }
+    if problems.is_empty() {
+        tracing::debug!(
+            target: "quilltap::boot",
+            context = PASS_CONTEXT,
+            checked,
+            "Structural tables verified"
+        );
+    } else {
+        tracing::error!(
+            target: "quilltap::boot",
+            context = PASS_CONTEXT,
+            checked,
+            damaged = problems.len(),
+            "Structural tables damaged; /api/health will report degraded until repaired"
+        );
+    }
+    problems
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

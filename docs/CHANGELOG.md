@@ -141,6 +141,19 @@ v4 `9753d0eb2` flipped the project create default from `false` to `true`. The ei
 _Versions: core 0.0.1184._
 
 `get_accessible_mount_points` (the `doc_list_files` / `doc_grep` / blob enumeration side) now calls the path resolver's own `collect_accessible_mount_point_ids`, made `pub(crate)`, instead of carrying a hand-copy of its covenant arm. v4 has ONE function (`getAccessibleMountPoints` routes through `collectAccessibleMountPointIds`); v5 had two, so a rule added to the collector would have left listing and resolution disagreeing about a store (the bug-153 shape). The enumeration passes `operator_override: false`, as v4 passes no override, so the collector's only fallible arm is never taken. Behaviour-neutral: `doc_opacity` (72 ops), `doc_enum` (17) and `doc_ui` (9) regenerated once at the `f6426e196` baseline pin and green on unported main and on this tree against the same oracle bytes. Substrate for the project-roster tool-access gate (v4 `9753d0eb2`), which lands on the collector in a later commit.
+#### 2026-10-03 — feat(host): the boot-time structural table check and /health's structure service, as v4 does since bug 176 (P4.D248)
+
+_Versions: core 0.0.1186, host 0.0.178, web 0.0.214._
+
+v4 `e5c6bd0c0` fixed bug 176 (filed by this port) with a read-only boot pass over its 11 structural tables, reported through a `structure` service in `/api/health`. v5 now does the same.
+
+- The boot runs v4's PHASE 3.1 after the seeds and before the help reconcile: every structural table in v4's order, each problem logged with v4's bytes, the summary as an ERROR (damaged) or DEBUG (verified). The result replaces a new per-assembly record on `Host` (`structural_problems()`) on every boot and unlock.
+- The pass never re-runs an ensure. The built-in mounts' lazy ensures now return the first failure text per collection, and the pass reports it in v4's ensure form. The link-group column step's failure is recorded for both `doc_mount_file_links` and `doc_mount_documents`, because both of v4's repositories run that step; this was measured through v4's real pass.
+- Ruled by the human at the lane's stop: a dedicated structural table that does not exist is created at boot from v4's own DDL dump, as v4's ensure creates it. The work order's R3 said to report it instead, but v4 creates these tables lazily, and the fixture census showed that would mark 35 of 42 committed fixture pairs `degraded`. An existing table is never touched.
+- `/health`: on a ready engine, `structure` follows `json` and `fileStorage`. It reads `healthy` with `All structural tables verified`, or `degraded` with v4's pluralized message and the problems. A degraded body answers 503 through v4's two maps. The SPA carve-out for that 503 belongs to the P4.D247 lane, under the shared contract.
+- Recorded divergences: a view standing in for a table (v4's ensure fails `views may not be indexed`; v5 reports `X is a view, not a table`); `doc_mount_points`' four v4 ALTER self-heals, which v5 lacks; a missing partition file, which is skipped.
+- Tests: the tier-1 family gains v4's real-pass plant replay (13 plants) and a check that the creation reproduces v4's substrate. `host_boot_hardness` gains six arms and adds record asserts to the ensure-form arms. A new web binary, `health_structure`, covers the body. Red-first records and mutations are in the status log.
+
 #### 2026-10-03 — feat(core): the structural table shape check and its tier-1 differential, from v4's bug-176 fix (P4.D248)
 
 _Versions: core 0.0.1185._

@@ -163778,3 +163778,155 @@ X does not exist`") would answer a false `degraded` 503 on healthy instances —
 likely real ones too (dogfood 💸 row 1: "a v5 false positive is a finding").
 Per item 7 the lane STOPS before commit 3 and reports; the ruling is the
 human's.
+
+### RULED (the human, 2026-10-03, at the lane's STOP) — R3 REVERSED: create a missing structural table at boot
+
+Asked in-session with the measured census: **"Create it at boot"** (full v4
+parity; the order's Tier 3 item 17 brought into the lane). v4's PHASE 3.1
+ensure CREATES an absent dedicated table and reports it sound; v5 now does the
+same from v4's own `generateDDL` dump (`services/provisioning/fresh_schema.json`,
+the table's `CREATE TABLE` + every `CREATE INDEX` on it, in dump order), at
+boot, ONLY when no table or view holds the name — so the pass still never
+re-runs an ensure on an existing table (T2), and a view standing in for a
+table stays the recorded divergence (v4's index DDL fails on it; v5 reads it).
+A failed creation logs v4's `Failed to ensure {collection} table in {label}
+database` once and is reported in the ensure form, like the lazy sub-steps.
+
+### Unit 3 — the pass + the creation + the `Host` slot + `/health` (core + host + web), under the 2026-10-03 ruling
+
+- **Core (`db/table_shape.rs`):** `EnsureFailures` (first failure text per
+  collection; `record` / `get` / `extend`); `create_missing_structural_tables(
+  mount, llm, &mut failures)` — for each dedicated row whose partition is
+  present and whose name NO table or view holds, run v4's own statements for
+  it from `services/provisioning/fresh_schema.json` (`include_str!`, the
+  `CREATE TABLE` + every `CREATE INDEX … ON` it, dump order) inside
+  `fallback::ensure_table_or_log` (v4's `Failed to ensure` line once on
+  failure; the text recorded); `TableRead::{PartitionAbsent, Read}`;
+  `StructuralProblem { repository, problem }`; `verify_structural_tables(
+  &failures, read)` with v4's lines (per-problem ERROR `context, repository,
+  problem` on `quilltap::boot`; DEBUG `Verified dedicated-database table
+  structure collection, dbTarget, ok` on `quilltap::db`, dedicated rows only,
+  never after an ensure failure; summary ERROR `checked, damaged` / DEBUG
+  `checked`). `fallback.rs` untouched (its existing `pub` home is CALLED).
+- **Core (`services/builtin_mounts.rs`):** `ensure_builtin_mounts_with` →
+  `Result<EnsureFailures, DbError>`; `lazy_ensure` takes the collections a step
+  belongs to and records its text for each, logging ONE line (under the
+  first) — the link-group column step is `["doc_mount_file_links",
+  "doc_mount_documents"]` (v4's documents repository runs `ensureLinkGroupColumn`
+  in its own `onTableEnsured`, measured through v4's real pass). The two core
+  test callers now pin the collector (incl. the two-collection record); the
+  `LazyRepairFailures` doc rewritten to `e5c6bd0c0`.
+- **Host:** `seed_built_ins` → `Result<EnsureFailures, String>` (the lazy
+  collector + `create_missing_structural_tables` at the closure's end — after
+  every mount step, both siblings through `ws`); NEW
+  `verify_structural_tables_at_boot(db, &failures)` over the read pools
+  (`PartitionUnavailable` → `PartitionAbsent`, R4), inside `catch_unwind` →
+  v4's WARN `Structural table check could not run, continuing startup
+  context=instrumentation.register error=…` + an empty record; the step in
+  `assemble` AFTER `seed_sample_content`, BEFORE the help reconcile (3.1 < 3.66
+  < 3.7), REPLACING `Host`'s `structural_problems: Arc<Mutex<Vec<String>>>`
+  (shared with `HostAssembler`, the `terminal_slot` shape) on every assemble;
+  `Host::structural_problems()` returns a copy. `state.rs` untouched; no
+  `api/types.rs` change.
+- **Web (`health.rs`):** the ready arm pushes `structure` after `json` and
+  `fileStorage`; `structure_service` (key order `status, message, problems`),
+  `overall_status` (v4's `getOverallStatus`), `status_code` (v4's
+  `getStatusCode`); degraded → 503 `status: "degraded"` with the same
+  `version`/`timestamp`/`uptime`. Locked / lock-conflict / failed arms
+  unchanged. v4's `Structural health check unavailable` WARN NO-PORT (the slot
+  read cannot fail).
+- **Tier-1 (`table_shape_equivalence`, 6 tests):** NEW
+  `every_plant_reports_what_v4s_pass_reports` (13 plants over v4's substrate:
+  the stores provisioned once first, as on any booted instance — the replay's
+  first run had died on the folder-name plant's store INSERT, which no real
+  boot meets; then the plant, then v5's real lazy ensures + creation + pass;
+  TEN agree exactly — incl. `link-group-index`'s TWO problems and
+  `files-dropped`'s `[]`, now a CONVERGENCE; THREE pinned both ways in
+  `EXPECTED_DIVERGENCES`); NEW `creating_every_absent_table_reproduces_v4s_
+  substrate` (the dump-created tables equal v4's ensure-created substrate,
+  table by table, every index included). Regenerated once at the pin after the
+  spec's `files-dropped` flag moved (probe passed; 91 rows; 3 divergence rows).
+- **Host arms (`host_boot_hardness`, 17 → 22):** the silence leg + empty record
+  + `DEBUG … Structural tables verified context=startup.verify-structural-tables
+  checked=11`; NEW `a_renamed_chunk_heading_column_is_a_structural_problem_and_
+  boots` (DEBUG `ok=false` → the per-problem ERROR → `damaged=1`, in order),
+  `a_renamed_llm_logs_column_…`, `a_chunk_view_…` (v5's side of the view
+  divergence), `an_absent_group_link_table_is_created_and_reported_sound`,
+  `a_repaired_table_clears_the_record_on_the_next_assemble` (a locked `.dbkey`
+  boot → unlock → the problem → repair → `Lock` → `Unlock` → empty); the #134
+  (both substrates), folder-name, point-name, link-group-index (TWO problems,
+  `damaged=2`), reap (shape form: `table doc_mount_chunks is missing column
+  mountPointId`) and cadence (both boots) arms assert their record, their
+  `Failed to ensure` lines still exactly one.
+- **Web arms (NEW `health_structure`, 3):** a provisioned Fresh instance via
+  `serve_instance`: sound → 200 + `structure` healthy + service order `json,
+  fileStorage, structure`; one plant → 503 `degraded` + the exact object + its
+  key order + `json`/`fileStorage` healthy + `version`/`timestamp`/`uptime`;
+  two tables → the plural message, problems in CONTAINER order. Every arm also
+  asserts `health_parts` directly (the Tauri command's core). `contract` 3/3,
+  `profile_web_routes` 1/1, `lock_conflict_boot_status` 2/2, Tauri
+  `ipc_contract` 7/7 — all green unedited.
+- **Red-first:** `health_structure` on `main`'s `health.rs`: 3/3 RED (`left:
+  Null` for `structure`; `left: 200 right: 503` twice). The four new host
+  plants on commit 2's `host.rs` (no pass): all four BOOT, ZERO `Structural…` /
+  `Failed to ensure` lines, and the dropped `group_character_members` stays
+  absent — the "nothing reported" baseline (the arms themselves cannot compile
+  there: no `structural_problems`).
+- **Mutations:** M4 (the pass re-runs `ensure_builtin_mounts_with` on the
+  writer) reds SEVEN arms (the six exactly-one `Failed to ensure` arms + the
+  reap arm's sweep line); M9 (the slot APPENDS) reds the lock/unlock arm; M8
+  (degraded → 200) reds both degraded web arms; M-docs (the link-group step
+  recorded for file links only) reds the hardness link-group arm and the tier-1
+  plant replay; M-create (creation disabled) reds the absent-table and
+  post-office arms and both new tier-1 tests. (M1–M3 unit 1; M5–M7, M10 unit 2.)
+- **Item 7, re-run with the pass:** every `<stem>-main/-mount[/-llmlogs]` pair
+  booted through the real `Host`, reading `structural_problems()`: **41 sound,
+  1 damaged** — `llm-log-cleanup` (`table llm_logs is missing columns
+  connectionProfileId, imageProfileId`, a legacy partition v4 reports too; no
+  `/health`-reading test or e2e seed boots it). Seven pairs do not boot on
+  this lane OR its base (six keyed to another pepper; `almanack`'s legacy
+  ledger — another heal's stamp). Every e2e seed (`salon`, `salon-long`,
+  `characters`, `groups-projects`, `memories`, `courier-images`,
+  `pascal-run-custom`) is SOUND post-boot.
+
+### Recorded divergences (item 16, for the unifier's `phase-4.md`)
+
+1. **Stamp (R2):** a failed collapse ledger write defers on the FIRST failure;
+   v4 falls back to a file ledger (`migrations/state.ts:181-205`) and normally
+   SUCCEEDS — v5 has no file ledger.
+2. **Probe:** stays fatal; unreachable through the boot (P4.D97 first); v4's
+   `loadMigrationState` never throws (no v4 line, no v5 test).
+3. **R3 REVERSED by ruling:** an absent dedicated table is CREATED (from v4's
+   DDL dump), as v4's ensure creates it — CONVERGED on `/health`; the
+   mechanism differs (v5 creates at the seed step, v4 inside the pass, and v4's
+   ensure also re-runs its index DDL on EXISTING tables, which v5 does not).
+4. **R4:** an absent partition FILE (a v5-only state) is skipped, not counted.
+5. **`doc_mount_points`' four ALTER self-heals** (`totalSizeBytes`,
+   `conversionStatus`, `conversionError`, `storeType`): v4 heals, v5 reports
+   the column missing (pinned: `points-pre-alter`). Deferred by name (Tier 3
+   item 18).
+6. **A view standing in for a dedicated table** (with or without its indexes):
+   v4 `{collection} in {label} database: views may not be indexed` (SQLite
+   refuses `CREATE INDEX` on a view before its `IF NOT EXISTS` check); v5
+   `{collection} is a view, not a table` (pinned: `chunk-view`,
+   `chunk-view-index-gone`; the order's "both sides read `is a view`" premise
+   REFUTED by v4's real pass).
+7. **The per-boot ensure cadence** stands (P4.135); v4 re-checks once per boot.
+8. **T1:** `Migration failed`'s `message` meta carried as `resultMessage`.
+9. **NO-PORT:** v4's `MigrationRunner`, `Migration.resumable`,
+   `MigrationRunResult.deferred`, the dependant-deferral WARN, the aggregate
+   `deferred` fields, `Structural health check unavailable`, `jest.setup.ts`'s
+   two mocks. Tier 2 item 15 (a jest confirmation of the runner's line bytes)
+   NOT taken — the bytes are copied from the pin's source and T1 was measured.
+10. **Candidate v4 notes:** `API.md`'s example problem string is not what v4
+    emits for its plant; v4's own `X is a view, not a table` is unreachable
+    through `verifyStructure` (only the direct `findTableShapeProblem` test
+    reaches it).
+
+### The §S request, restated (P4.D247 / the unifier)
+
+`/health` now answers 503 `{status: "degraded", …, services: {json,
+fileStorage, structure: {status: "degraded", message, problems}}}` on a
+damaged instance; v5's SPA `interpretHealth` must treat a 503 whose body
+`status === "degraded"` as `healthy` (with `version`) — P4.D247's half. On
+this lane alone a damaged instance shows the SPA's error screen.

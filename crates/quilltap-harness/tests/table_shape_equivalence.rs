@@ -17,7 +17,14 @@
 //!     (in the row) on rusqlite — so the SQLite message itself is compared, not
 //!     only the template;
 //!   - `substrate` — the DDL v4's ensures create on an empty mount index + LLM
-//!     logs; its sound shape is checked here.
+//!     logs; its sound shape is checked here, and v5's absent-table creation
+//!     (`create_missing_structural_tables`, from v4's own DDL dump) must
+//!     reproduce it table by table;
+//!   - `plant` — v4's REAL pass (a fresh container per plant) over that
+//!     substrate with each spec plant, replayed through v5's real boot pieces
+//!     in boot order (the built-in mounts' lazy ensures + their collector, the
+//!     absent-table creation, the pass). Ten plants agree exactly; three are
+//!     pinned divergences both ways ([`EXPECTED_DIVERGENCES`]).
 //!
 //! Red-first (P4.D248's lane record): this binary did not compile on `main`
 //! (no `db::table_shape`), and the case FAILS TO IMPORT at the baseline pin
@@ -252,4 +259,217 @@ fn v4s_own_substrate_is_sound_to_the_ported_check() {
             t.collection
         );
     }
+}
+
+/// The plants v5's pass meets differently from v4's, BY DESIGN, each pinned
+/// both ways: v4's recorded answer AND v5's. `(plant, v4, v5)`, each a list of
+/// `(repository, problem)`.
+type Problems = &'static [(&'static str, &'static str)];
+const EXPECTED_DIVERGENCES: &[(&str, Problems, Problems)] = &[
+    // A view standing in for the table: v4's ensure runs `CREATE INDEX IF NOT
+    // EXISTS` on it and SQLite refuses a view BEFORE the name check (the
+    // ensure form, even with every index kept); v5 creates a table only when
+    // the name is FREE, so its shape check reads the view.
+    (
+        "chunk-view",
+        &[(
+            "docMountChunks",
+            "doc_mount_chunks in mount index database: views may not be indexed",
+        )],
+        &[("docMountChunks", "doc_mount_chunks is a view, not a table")],
+    ),
+    (
+        "chunk-view-index-gone",
+        &[(
+            "docMountChunks",
+            "doc_mount_chunks in mount index database: views may not be indexed",
+        )],
+        &[("docMountChunks", "doc_mount_chunks is a view, not a table")],
+    ),
+    // v4's `doc_mount_points` ensure ADDs four columns back
+    // (`doc-mount-points.repository.ts`'s `onTableEnsured`); v5 has no twin of
+    // those self-heals (deferred by name), so the column is reported.
+    (
+        "points-pre-alter",
+        &[],
+        &[(
+            "docMountPoints",
+            "table doc_mount_points is missing column totalSizeBytes",
+        )],
+    ),
+];
+
+/// Every spec plant over v4's own substrate, through v5's REAL boot pieces in
+/// boot order: the built-in mounts' lazy ensures (`ensure_builtin_mounts_with`,
+/// whose failures are collected), the absent-table creation, then the pass.
+/// The main partition is the one boot ensure this replay does not stage (its
+/// structural table has its own fatal ensure), so it is skipped as absent —
+/// v4's plant rows walk the ten dedicated repositories only.
+#[test]
+fn every_plant_reports_what_v4s_pass_reports() {
+    use quilltap_core::db::table_shape::{
+        create_missing_structural_tables, verify_structural_tables, TableRead,
+    };
+    use quilltap_core::services::builtin_mounts::{ensure_builtin_mounts_with, LazyRepairFailures};
+
+    let Some(rows) = rows() else { return };
+    let substrate = of_kind(&rows, "substrate");
+    let plants = of_kind(&rows, "plant");
+    assert_eq!(plants.len(), 13, "plant rows");
+    let mut failures = Vec::new();
+    let mut divergences_seen = 0;
+    for r in &plants {
+        let name = r["name"].as_str().unwrap();
+        let main = Connection::open_in_memory().unwrap();
+        main.execute_batch(
+            "CREATE TABLE instance_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+        )
+        .unwrap();
+        let mount = Connection::open_in_memory().unwrap();
+        let llm = Connection::open_in_memory().unwrap();
+        for sql in strings(&substrate[0]["mount"]) {
+            mount.execute_batch(&sql).unwrap();
+        }
+        for sql in strings(&substrate[0]["llm"]) {
+            llm.execute_batch(&sql).unwrap();
+        }
+        // The three built-in stores exist on any booted instance; provision
+        // them once BEFORE the plant (the provisions INSERT folder rows, which
+        // a renamed folder column would otherwise turn into a fatal failure
+        // no real boot meets — the hardness arms' `tool`-folder note).
+        ensure_builtin_mounts_with(&main, &mount, LazyRepairFailures::Propagate)
+            .unwrap_or_else(|e| panic!("{name}: provisioning the stores failed: {e}"));
+        let spec = plant_spec(name);
+        for sql in strings(&spec["mount"]) {
+            mount.execute_batch(&sql).unwrap();
+        }
+        for sql in strings(&spec["llm"]) {
+            llm.execute_batch(&sql).unwrap();
+        }
+
+        let mut collected =
+            ensure_builtin_mounts_with(&main, &mount, LazyRepairFailures::LogAndContinue)
+                .unwrap_or_else(|e| panic!("{name}: the built-in mounts failed: {e}"));
+        create_missing_structural_tables(Some(&mount), Some(&llm), &mut collected);
+        let got: Vec<(String, String)> = verify_structural_tables(&collected, |t| {
+            let conn = match t.partition {
+                Partition::Main => return TableRead::PartitionAbsent,
+                Partition::MountIndex => &mount,
+                Partition::LlmLogs => &llm,
+            };
+            TableRead::Read(find_table_shape_problem(conn, t.collection, t.fields))
+        })
+        .into_iter()
+        .map(|p| (p.repository.to_string(), p.problem))
+        .collect();
+        let v4: Vec<(String, String)> = r["problems"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| {
+                (
+                    p["repository"].as_str().unwrap().to_string(),
+                    p["problem"].as_str().unwrap().to_string(),
+                )
+            })
+            .collect();
+        let owned = |ps: Problems| -> Vec<(String, String)> {
+            ps.iter()
+                .map(|(a, b)| (a.to_string(), b.to_string()))
+                .collect()
+        };
+        match EXPECTED_DIVERGENCES.iter().find(|(n, _, _)| *n == name) {
+            Some((_, want_v4, want_v5)) => {
+                divergences_seen += 1;
+                assert_eq!(r["divergence"], true, "{name}: the spec must mark it");
+                if v4 != owned(want_v4) {
+                    failures.push(format!("{name}: v4 moved: {v4:?}"));
+                }
+                if got != owned(want_v5) {
+                    failures.push(format!("{name}: v5 moved: {got:?}"));
+                }
+            }
+            None => {
+                assert_eq!(r["divergence"], false, "{name}: unexpected divergence flag");
+                if got != v4 {
+                    failures.push(format!("{name}: v5 {got:?} != v4 {v4:?}"));
+                }
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+    assert_eq!(divergences_seen, EXPECTED_DIVERGENCES.len());
+    eprintln!(
+        "plant: {} rows ({divergences_seen} pinned divergences)",
+        plants.len()
+    );
+}
+
+/// The spec's plant `name`, read from the committed spec (the oracle row
+/// carries only the name and v4's answer).
+fn plant_spec(name: &str) -> Value {
+    let spec: Value = serde_json::from_str(include_str!(
+        "../../../harness/oracle/fixtures/table-shape-spec.json"
+    ))
+    .unwrap();
+    spec["plants"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["name"] == name)
+        .cloned()
+        .unwrap_or_else(|| panic!("plant {name} is not in the spec"))
+}
+
+/// The absent-table creation (R3 reversed, 2026-10-03) builds each dedicated
+/// table from v4's own `generateDDL` dump: on empty partitions it must produce,
+/// table by table, exactly the statements v4's own ensures left in the
+/// substrate — the table and every index on it.
+#[test]
+fn creating_every_absent_table_reproduces_v4s_substrate() {
+    use quilltap_core::db::table_shape::{create_missing_structural_tables, EnsureFailures};
+
+    let Some(rows) = rows() else { return };
+    let substrate = of_kind(&rows, "substrate");
+    let mount = Connection::open_in_memory().unwrap();
+    let llm = Connection::open_in_memory().unwrap();
+    let mut collected = EnsureFailures::default();
+    create_missing_structural_tables(Some(&mount), Some(&llm), &mut collected);
+    assert!(collected.is_empty(), "{collected:?}");
+
+    let dump = |conn: &Connection, table: &str| -> Vec<String> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT sql FROM sqlite_master WHERE tbl_name = ?1 AND sql IS NOT NULL ORDER BY sql",
+            )
+            .unwrap();
+        stmt.query_map([table], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap()
+    };
+    let v4_for = |partition: &str, table: &str| -> Vec<String> {
+        let mut v: Vec<String> = strings(&substrate[0][partition])
+            .into_iter()
+            .filter(|sql| {
+                sql.starts_with(&format!("CREATE TABLE \"{table}\" ("))
+                    || sql.contains(&format!(" ON \"{table}\" ("))
+            })
+            .collect();
+        v.sort();
+        v
+    };
+    let mut failures = Vec::new();
+    for t in STRUCTURAL_TABLES {
+        let (conn, partition) = match t.partition {
+            Partition::Main => continue,
+            Partition::MountIndex => (&mount, "mount"),
+            Partition::LlmLogs => (&llm, "llm"),
+        };
+        let (got, want) = (dump(conn, t.collection), v4_for(partition, t.collection));
+        if got != want {
+            failures.push(format!("{}:\n  v5 {got:#?}\n  v4 {want:#?}", t.collection));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
