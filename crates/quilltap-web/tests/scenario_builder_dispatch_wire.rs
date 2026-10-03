@@ -29,6 +29,13 @@
 //! passes), a tools-OFF clone, an ANTHROPIC clone with no key, a FOREIGN-owned
 //! clone; a Salon chat, a Brahma chat, a foreign chat.
 //!
+//! 6. **The profile's OWN key reaches the stream** (P4.139 §S.3, applied at
+//!    the round's unification): a KEYED Anthropic clone whose `apiKeyId` names
+//!    a planted `api_keys` row; every keyed call the spine makes carries that
+//!    row's value. Mutations: `api_key: ""` at the host spine's
+//!    `run_scenario_builder_build` fill, or `String::new()` at the engine's
+//!    `ScenarioBuilderBuildRequest` fill — each RED here.
+//!
 //! Run:
 //!   cargo test -p quilltap-web --test scenario_builder_dispatch_wire
 
@@ -47,6 +54,10 @@ const PROFILE_OK: &str = "5b170000-0000-4000-8000-0000000000a1";
 const PROFILE_TOOLS_OFF: &str = "5b170000-0000-4000-8000-0000000000a2";
 const PROFILE_NO_KEY: &str = "5b170000-0000-4000-8000-0000000000a3";
 const PROFILE_FOREIGN: &str = "5b170000-0000-4000-8000-0000000000a4";
+const PROFILE_KEYED: &str = "5b170000-0000-4000-8000-0000000000a5";
+const API_KEY_ID: &str = "5b170000-0000-4000-8000-0000000000b1";
+/// The planted key's value — what every keyed stream call must carry.
+const SPINE_KEY: &str = "synthetic-sb-spine-key";
 const CHAT_SALON: &str = "5b170000-0000-4000-8000-0000000000c1";
 const CHAT_BRAHMA: &str = "5b170000-0000-4000-8000-0000000000c2";
 const CHAT_FOREIGN: &str = "5b170000-0000-4000-8000-0000000000c3";
@@ -104,6 +115,26 @@ fn planted_instance() -> tempfile::TempDir {
         "connection_profiles",
         PROFILE_FOREIGN,
         &format!("\"name\" = 'Host Foreign', \"provider\" = 'OLLAMA', \"apiKeyId\" = NULL, \"allowToolUse\" = 1, \"isDefault\" = 0, \"userId\" = '{OTHER_USER}'"),
+    );
+    // v4's `api_keys` DDL, `IF NOT EXISTS` (the pair may not carry the
+    // table — v4 creates it lazily); the key belongs to the profile's owner.
+    c.execute_batch(
+        "CREATE TABLE IF NOT EXISTS api_keys (id TEXT PRIMARY KEY, userId TEXT NOT NULL, \
+         label TEXT NOT NULL, provider TEXT NOT NULL, key_value TEXT NOT NULL, \
+         isActive INTEGER DEFAULT 1, lastUsed TEXT, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL)",
+    )
+    .unwrap();
+    c.execute(
+        "INSERT INTO api_keys (id, userId, label, provider, key_value, isActive, createdAt, updatedAt) \
+         VALUES (?1, ?2, 'Spine key', 'ANTHROPIC', ?3, 1, '2026-10-02T00:00:00.000Z', '2026-10-02T00:00:00.000Z')",
+        rusqlite::params![API_KEY_ID, owner, SPINE_KEY],
+    )
+    .unwrap();
+    clone_row(
+        c,
+        "connection_profiles",
+        PROFILE_KEYED,
+        &format!("\"name\" = 'Host Keyed', \"provider\" = 'ANTHROPIC', \"apiKeyId\" = '{API_KEY_ID}', \"allowToolUse\" = 1, \"isDefault\" = 0, \"userId\" = '{owner}'"),
     );
     clone_row(c, "chats", CHAT_SALON, "\"chatType\" = 'salon'");
     clone_row(c, "chats", CHAT_BRAHMA, "\"chatType\" = 'brahma'");
@@ -572,4 +603,27 @@ async fn a_duplicate_run_id_is_409_and_abort_ends_a_live_run_with_no_terminal_fr
         .post(json!({ "type": "scenarioBuilderAbort", "runId": run_id }))
         .await;
     assert_eq!(v["data"], json!({ "aborted": false }));
+}
+
+/// §6 — the profile's own key on every keyed stream call (P4.139 §S.3).
+#[tokio::test(flavor = "multi_thread")]
+async fn the_profiles_own_key_reaches_every_stream_call() {
+    let keys = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let (_base, wire, _addr) = serve(Canned::KeyedScene(Arc::clone(&keys))).await;
+    let (status, v) = wire
+        .post(build(
+            "r-keyed",
+            with(good_body(), "connectionProfileId", json!(PROFILE_KEYED)),
+        ))
+        .await;
+    assert_eq!(status, 200, "{v}");
+    let recorded = keys.lock().unwrap().clone();
+    assert!(
+        !recorded.is_empty(),
+        "the build made no keyed stream call — the pin would be vacuous: {v}"
+    );
+    assert!(
+        recorded.iter().all(|k| k == SPINE_KEY),
+        "every keyed call carries the profile's own key, got {recorded:?}"
+    );
 }

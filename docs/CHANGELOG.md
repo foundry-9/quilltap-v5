@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — test(web): the Scenario Builder's keyed profile sends its own key on every stream call (P4.139 §S.3)
+
+_Versions: web 0.0.213._
+
+Unification wire P4.139 had to stop on (its spine half lived in P4.140's files). The shared `scenario_builder_spine` module gains `KeyedSceneStream`, which records the key on every `stream_message_keyed` call, and a `Canned::KeyedScene` arm. `scenario_builder_dispatch_wire` plants a keyed Anthropic clone of the tools-on profile whose `apiKeyId` names a planted `api_keys` row, runs one build over the real dispatch wire, and asserts that at least one keyed call was made and that every one carried the planted key. Blanking the key at the host spine's `run_scenario_builder_build` fill turns the test red.
+
 #### 2026-10-03 — fix(api-keys): the §S fold, the web-search key read, the wizard's vision-key fallback and a wider import guard (P4.139 unification)
 
 _Versions: core 0.0.1181, harness 0.0.1108, host 0.0.176._

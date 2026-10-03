@@ -11,7 +11,11 @@
 //! - [`FailingStream`] fails before a chunk (the "detained" error frame);
 //! - [`SlowStream`] yields one reasoning chunk (a frame), then a content chunk
 //!   every 100 ms for ~20 s, so an abort or a client disconnect lands
-//!   MID-STREAM (the loop checks the token per chunk).
+//!   MID-STREAM (the loop checks the token per chunk);
+//! - [`KeyedSceneStream`] is [`SceneStream`] that also RECORDS the key each
+//!   keyed call carries (P4.139 §S.3, applied at the round's unification) —
+//!   the default `stream_message_keyed` drops the key, so only an override
+//!   can see what the spine actually sent.
 
 #![allow(dead_code)] // each family uses the parts it needs
 
@@ -45,11 +49,13 @@ pub const SLOW_REASONING: &str = "weighing the quay";
 pub const FAILING_STREAM_MESSAGE: &str = "the Host's cab never came";
 
 /// Which canned stream a spine is built over.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub enum Canned {
     Scene,
     Failing,
     Slow,
+    /// [`KeyedSceneStream`] over the shared key log.
+    KeyedScene(Arc<std::sync::Mutex<Vec<String>>>),
 }
 
 pub struct SceneStream;
@@ -73,6 +79,32 @@ impl StreamingCompletionProvider for SceneStream {
                 .await;
             rx
         }
+    }
+}
+
+/// [`SceneStream`]'s reply, recording every keyed call's `api_key`.
+pub struct KeyedSceneStream {
+    pub keys: Arc<std::sync::Mutex<Vec<String>>>,
+}
+impl StreamingCompletionProvider for KeyedSceneStream {
+    fn stream_message(
+        &self,
+        provider: &str,
+        base_url: Option<&str>,
+        params: &StreamParams,
+    ) -> impl Future<Output = tokio::sync::mpsc::Receiver<StreamChunkResult>> + Send {
+        SceneStream.stream_message(provider, base_url, params)
+    }
+
+    fn stream_message_keyed(
+        &self,
+        provider: &str,
+        base_url: Option<&str>,
+        api_key: &str,
+        params: &StreamParams,
+    ) -> impl Future<Output = tokio::sync::mpsc::Receiver<StreamChunkResult>> + Send {
+        self.keys.lock().unwrap().push(api_key.to_string());
+        SceneStream.stream_message(provider, base_url, params)
     }
 }
 
@@ -213,7 +245,19 @@ impl SpineFactory for ScenarioBuilderSpineFactory {
     ) -> SpineBundle {
         // `StreamingCompletionProvider` is not object-safe, so one generic
         // helper per provider (the `swipe_spine` shape).
-        match self.canned {
+        match &self.canned {
+            Canned::KeyedScene(keys) => bundle(
+                &self.base_dir,
+                self.driver.as_ref(),
+                Arc::new(KeyedSceneStream {
+                    keys: Arc::clone(keys),
+                }),
+                db,
+                events,
+                pepper,
+                data_dir,
+                bus,
+            ),
             Canned::Scene => bundle(
                 &self.base_dir,
                 self.driver.as_ref(),
