@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — chore(unify): drop a redundant cascade-pin assert; P4.130's header records what P4.143 closed
+
+_No crate versions bumped._
+
+Removes an assert from the new cascade-delete strict-scope test that the line assert above it already implies. Adds the sentence P4.143 left for the unifier, because §R.7 forbade cross-order header edits in lanes. P4.130's status header now records that `ToolMetadata.route_trail` is retired as an item (it is already typed) and that P4.143 closed or pinned the trail WARN's `errors`, the import mask's per-family carve, and the restore serde arm.
+
 #### 2026-10-03 — fix(model): background cheap tasks retry a real transport timeout; Anthropic's 2xx guard reads usage; Ollama's catch line strips the trailing slash (P4.141 review)
 
 _Versions: core 0.0.1183, harness 0.0.1110._

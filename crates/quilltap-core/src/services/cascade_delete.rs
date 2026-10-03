@@ -433,9 +433,5 @@ mod strict_image_check_tests {
             lines.iter().any(|l| l.ends_with("strictFailures=true")),
             "{got:?} {lines:#?}"
         );
-        assert!(
-            !lines.is_empty(),
-            "{lines:#?}"
-        );
     }
 }
