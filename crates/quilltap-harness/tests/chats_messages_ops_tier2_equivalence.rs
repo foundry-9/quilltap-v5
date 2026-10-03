@@ -723,6 +723,17 @@ fn check_update_return(
 /// SECOND element, a non-array trail — and keeps a valid two-row trail and a
 /// 200-code-point `detail` (199 × `x` + one astral character). Before P4.130
 /// v5's read never looked at the trail and kept all five.
+///
+/// P4.143: every WARN's `errors` array is compared whole. v4's
+/// `ChatEventSchema` is a plain `z.union`, so zod 4.6.5 collapses a row
+/// carrying any ABORTING issue (a type or enum miss — the `null` trigger, the
+/// bad `via`, the non-array trail, the bad `role`, `hostEvent: 42` …) to the
+/// ONE line `": Invalid input"`, and logs every issue only when all are
+/// non-aborting CHECKS (uuid / datetime formats, the `detail` length) — then
+/// all of them, in schema key order. The fourth read gains an eighth row
+/// planted with BOTH checks (a non-uuid `id` and a 201-character `detail`), so
+/// the two-line shape is reached. Before P4.143 v5 logged one `error` string
+/// (the first failure) and no `errors` field at all.
 fn assert_reads(got: &[(String, Value, Vec<String>)], want: &Value) {
     let want = want
         .as_array()
@@ -760,6 +771,17 @@ fn assert_reads(got: &[(String, Value, Vec<String>)], want: &Value) {
                     assert!(g.contains(&format!("{key}={v}")), "read {i}: {key}: {g}");
                 }
             }
+            // P4.143: v4's `errors` ARRAY, compared whole — v5 logs it as the
+            // line's LAST field, `errorsJson=<JSON array>` (the file layer's
+            // `…Json` convention). Present on exactly the lines v4 carries it.
+            let got_errors = g
+                .split_once(" errorsJson=")
+                .map(|(_, raw)| serde_json::from_str::<Value>(raw).unwrap_or(Value::Null));
+            assert_eq!(
+                got_errors.as_ref(),
+                wl.get("errors"),
+                "read {i}: errors — v4 {wl} rust {g}"
+            );
         }
     }
 }

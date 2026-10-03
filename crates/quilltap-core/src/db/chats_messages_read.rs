@@ -70,6 +70,7 @@ use serde_json::{Map, Value};
 use super::js_number_to_json;
 use super::text_compression::CompressedText;
 use super::DbError;
+use crate::api::zod_issues::{zod_issue_lines, ZodIssue};
 
 /// Every column the three union members consume, in a fixed SELECT order. The
 /// `type` discriminator is column 1; `chatId` / `isSilentMessage` are not read
@@ -292,98 +293,41 @@ fn marshal_row(row: &Row) -> Result<Option<Value>, rusqlite::Error> {
     })
 }
 
-/// v4's `RoleEnum` (`lib/schemas/common.types.ts:38`).
-const ROLE_ENUM: [&str; 4] = ["SYSTEM", "USER", "ASSISTANT", "TOOL"];
-
-/// `hostEvent.toStatus`'s enum (`lib/schemas/chat.types.ts`, `MessageEventSchema`).
-const HOST_EVENT_STATUSES: [&str; 4] = ["active", "silent", "absent", "removed"];
-
 /// P4.112 — the Zod-only half of v4's per-row `ChatEventSchema.safeParse`: the
 /// shapes a raw cell can carry that still MARSHAL here (every cell reads as
 /// its column's type) but that v4's schema rejects, so v4 skips the row with
 /// `Skipping corrupted chat message` exactly as it does a bad cell. The
-/// `00c290c9a` unification review named three, and those three are what this
-/// checks: an `id` that is not a Zod uuid (every member's `id: UUIDSchema`), a
-/// message `role` outside `RoleEnum`, and a message `hostEvent` that is not
-/// its object shape (`{ participantId?: uuid, toStatus?: enum,
-/// introducedCharacterIds?: uuid[] }` — `.optional()`, not `.nullable()`, so a
-/// PRESENT `null` inside it fails too). P4.113 adds two more shapes a raw
-/// cell can carry: `createdAt` (`TimestampSchema`, all three members — through the
-/// ONE [`zod_iso_datetime_ok`](crate::api::zod_issues::zod_iso_datetime_ok)
-/// home) and the message's `participantId` (`UUIDSchema.nullable().optional()`);
-/// P4.130 adds the message's `routeTrail` (each element through the strict
-/// `RouteAttemptSchema` twin, [`crate::api::zod_issues::zod_route_attempt_failure`]);
-/// and makes this the ONE home of the check for BOTH the per-row skip and
-/// `updateMessage`'s `ChatEventSchema.parse` of the MERGED event
-/// (`chats_messages.rs`). Returns the failing path + reason, the
-/// stand-in for v4's issue list (v5 has no Zod issue source here). Every
-/// other `MessageEventSchema` field v4 can reject on a raw cell (`recoveryType`,
-/// `attachments`' uuids, `systemEventType`, the nested JSON shapes …) is NOT
-/// checked — named in P4.112's lane record, never silently claimed.
+/// `00c290c9a` unification review named three (a non-uuid `id`, a message
+/// `role` outside `RoleEnum`, a message `hostEvent` not of its object shape);
+/// P4.113 added `createdAt` (all three members) and the message's
+/// `participantId`; P4.130 the message's `routeTrail`. This is the ONE home of
+/// the check for BOTH the per-row skip and `updateMessage`'s
+/// `ChatEventSchema.parse` of the MERGED event (`chats_messages.rs`).
+///
+/// P4.143: the issue SOURCE is
+/// [`crate::api::zod_issues::zod_chat_event_issues`] (every issue, in schema
+/// key order, with zod 4.6.5's union collapse); this answers `None` when it is
+/// empty, else its `path: message` lines joined with `", "` — the same
+/// `Some`/`None` set as before (so neither caller moved), the TEXT now the
+/// issue lines (`updateMessage parse: …` carries it; nothing pins that text).
+/// Every other `MessageEventSchema` field v4 can reject on a raw cell
+/// (`recoveryType`, `attachments`' uuids, `systemEventType`, the nested JSON
+/// shapes …) is NOT checked — named in P4.112's lane record, never silently
+/// claimed.
 pub(crate) fn zod_shape_failure(event: &Value) -> Option<String> {
-    use crate::api::zod_issues::{zod_iso_datetime_ok, zod_uuid_ok};
-    let obj = event.as_object()?;
-    let is_uuid = |v: &Value| v.as_str().is_some_and(zod_uuid_ok);
-    if !obj.get("id").is_some_and(is_uuid) {
-        return Some("id: Invalid UUID".to_string());
-    }
-    // P4.113: `createdAt: TimestampSchema` on ALL THREE members —
-    // `z.iso.datetime().or(z.date())`; a JSON value is never a `Date`, so the
-    // string arm is the whole check.
-    if !obj
-        .get("createdAt")
-        .and_then(Value::as_str)
-        .is_some_and(zod_iso_datetime_ok)
-    {
-        return Some(format!(
-            "createdAt: Invalid ISO datetime ({})",
-            obj.get("createdAt").unwrap_or(&Value::Null)
-        ));
-    }
-    if obj.get("type").and_then(Value::as_str) != Some("message") {
-        return None;
-    }
-    let role = obj.get("role").and_then(Value::as_str).unwrap_or_default();
-    if !ROLE_ENUM.contains(&role) {
-        return Some(format!("role: invalid option {role:?}"));
-    }
-    // P4.113: `participantId: UUIDSchema.nullable().optional()` (message only).
-    if let Some(p) = obj.get("participantId") {
-        if !p.is_null() && !is_uuid(p) {
-            return Some(format!("participantId: Invalid UUID ({p})"));
-        }
-    }
-    // P4.130 (P4.D228 re-premised): `routeTrail: RouteAttemptSchema.array()
-    // .nullable().optional()` — every element through the strict twin, so a
-    // trail row v4 refuses skips the WHOLE message here as it does in v4's
-    // `getMessages` (and the "Try uncensored" picture route then answers 404
-    // `Tool message not found`, as v4's does, instead of re-saving the row).
-    if let Some(trail) = obj.get("routeTrail").filter(|t| !t.is_null()) {
-        let Some(rows) = trail.as_array() else {
-            return Some(format!("routeTrail: not an array ({trail})"));
-        };
-        for (i, row) in rows.iter().enumerate() {
-            if let Some(why) = crate::api::zod_issues::zod_route_attempt_failure(row) {
-                return Some(format!("routeTrail.{i}.{why}"));
-            }
-        }
-    }
-    // `.nullable().optional()` on the object itself: a `null` hostEvent passes
-    // (the read path never sees one — `put_opt_json` drops it — but a MERGED
-    // update event does: `{ hostEvent: null }` is the repair, P4.113).
-    if let Some(host) = obj.get("hostEvent").filter(|h| !h.is_null()) {
-        let ok = host.as_object().is_some_and(|h| {
-            h.get("participantId").is_none_or(is_uuid)
-                && h.get("toStatus")
-                    .is_none_or(|s| s.as_str().is_some_and(|s| HOST_EVENT_STATUSES.contains(&s)))
-                && h.get("introducedCharacterIds")
-                    .is_none_or(|ids| ids.as_array().is_some_and(|a| a.iter().all(is_uuid)))
-        });
-        if !ok {
-            return Some(format!("hostEvent: not its object shape ({host})"));
-        }
-    }
-    None
+    let issues = crate::api::zod_issues::zod_chat_event_issues(event);
+    (!issues.is_empty()).then(|| zod_issue_lines(&issues, ": ").join(", "))
+}
+
+/// v4's `errors` for a row whose `ChatEventSchema.safeParse` fails on
+/// something v5 meets BEFORE the shape check — a cell that does not read as
+/// its member's type (a NULL `content`, a text `tokenCount` …) or an unknown
+/// `type`. Each is an ABORTING issue in zod (a type gate, or every member's
+/// `type` literal), so v4's union collapses the row to ONE `invalid_union`
+/// whose line is `": Invalid input"` (measured with v4's real schema at
+/// `f6426e196`, P4.143).
+fn collapsed_errors() -> Vec<String> {
+    zod_issue_lines(&[ZodIssue::invalid_union(vec![], vec![])], ": ")
 }
 
 /// The `context` field on this module's `safeQuery`-arm lines (the house shape of
@@ -400,7 +344,9 @@ enum RowOutcome {
     Corrupted {
         id: Option<String>,
         typ: Option<String>,
-        error: String,
+        /// v4's `result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`)`
+        /// (P4.143 — the WARN's `errors` array).
+        errors: Vec<String>,
     },
 }
 
@@ -417,28 +363,27 @@ fn is_cell_error(e: &rusqlite::Error) -> bool {
 }
 
 fn read_row(row: &Row) -> Result<RowOutcome, rusqlite::Error> {
-    let corrupted = |error: String| RowOutcome::Corrupted {
+    let corrupted = |errors: Vec<String>| RowOutcome::Corrupted {
         id: row.get::<_, Option<String>>(0).ok().flatten(),
         typ: row.get::<_, Option<String>>(1).ok().flatten(),
-        error,
+        errors,
     };
     match marshal_row(row) {
         // P4.112: a row whose cells all read can still fail v4's Zod shape.
-        Ok(Some(v)) => Ok(match zod_shape_failure(&v) {
-            None => RowOutcome::Event(v),
-            Some(error) => corrupted(error),
+        Ok(Some(v)) => Ok({
+            let issues = crate::api::zod_issues::zod_chat_event_issues(&v);
+            if issues.is_empty() {
+                RowOutcome::Event(v)
+            } else {
+                corrupted(zod_issue_lines(&issues, ": "))
+            }
         }),
         // The `00c290c9a` unification: an unknown `type` fails v4's
-        // discriminated-union `safeParse` exactly like a bad cell, so it takes
-        // the same WARN (P4.109 had dropped it silently).
-        Ok(None) => Ok(corrupted(format!(
-            "unrecognized chat event type {:?}",
-            row.get::<_, Option<String>>(1)
-                .ok()
-                .flatten()
-                .unwrap_or_default()
-        ))),
-        Err(e) if is_cell_error(&e) => Ok(corrupted(e.to_string())),
+        // `ChatEventSchema.safeParse` exactly like a bad cell, so it takes the
+        // same WARN (P4.109 had dropped it silently) — every member's `type`
+        // literal aborts, so the union collapses (P4.143).
+        Ok(None) => Ok(corrupted(collapsed_errors())),
+        Err(e) if is_cell_error(&e) => Ok(corrupted(collapsed_errors())),
         Err(e) => Err(e),
     }
 }
@@ -531,9 +476,10 @@ pub(crate) fn find_event_raw(
 /// A CORRUPTED row — one whose cells do not fit its member, e.g. a NULL
 /// `content` — is skipped with v4's WARN `Skipping corrupted chat message`
 /// (`chats-messages.ops.ts:346`, the per-row `ChatEventSchema.safeParse`), not
-/// allowed to fail the whole chat (P4.105's finding 1). v4's `errors` field
-/// carries Zod issue strings v5 has no source for; v5 logs the cell error in
-/// its place.
+/// allowed to fail the whole chat (P4.105's finding 1). Since P4.143 the WARN
+/// carries v4's `errors` ARRAY (as `errorsJson` — the file layer's `…Json`
+/// convention turns it into `errors: [...]`), with zod 4.6.5's union collapse
+/// ([`crate::api::zod_issues::zod_chat_event_issues`]).
 pub fn get_messages_strict(conn: &Connection, chat_id: &str) -> Result<Vec<Value>, DbError> {
     let sql =
         format!("SELECT {COLUMNS} FROM chat_messages WHERE chatId = ?1 ORDER BY createdAt ASC");
@@ -543,7 +489,7 @@ pub fn get_messages_strict(conn: &Connection, chat_id: &str) -> Result<Vec<Value
     for r in rows {
         match r? {
             RowOutcome::Event(v) => out.push(v),
-            RowOutcome::Corrupted { id, typ, error } => {
+            RowOutcome::Corrupted { id, typ, errors } => {
                 // v4's `msg?.id || 'unknown'`: JS `||`, so an EMPTY string
                 // falls back too, not only an absent one.
                 let or_unknown = |v: &Option<String>| {
@@ -557,7 +503,10 @@ pub fn get_messages_strict(conn: &Connection, chat_id: &str) -> Result<Vec<Value
                     chatId = chat_id,
                     messageId = or_unknown(&id).as_str(),
                     messageType = or_unknown(&typ).as_str(),
-                    error = %error,
+                    // v4's `errors` array, after `messageType` (v4's field
+                    // order). ⚠ `context` above is v5's house shape, not v4's
+                    // (v4 logs on the root logger) — P4.143 Tier 3 item 15.
+                    errorsJson = %serde_json::to_string(&errors).unwrap_or_default(),
                     "Skipping corrupted chat message",
                 );
             }
@@ -717,16 +666,26 @@ mod tests {
     /// an unknown evidence — or a non-uuid `profileId`, which this test's rows
     /// used to carry — is SKIPPED with v4's WARN, as v4 skips it (the
     /// differential is `chats_messages_ops_tier2`'s trail read).
+    ///
+    /// P4.143 — the same read carries one trail row per class, each WARN's
+    /// `errorsJson` the bytes v4's real `ChatEventSchema.safeParse` renders
+    /// (the probe recorded in P4.143's lane record, zod 4.6.5 at `f6426e196`):
+    /// a check-only failure logs its issue; an aborting one (the unknown
+    /// evidence, a `null` trigger) collapses to `": Invalid input"`; a row
+    /// failing TWO checks logs BOTH, in `MessageEventSchema` key order (`id`
+    /// before `routeTrail`). ONE `get_messages` call, so
+    /// `get_messages_caller_census` stays unmoved.
     #[test]
     fn a_route_trail_with_every_evidence_value_round_trips() {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(MIGRATED_DDL).unwrap();
         crate::test_support::ensure_p4d171_columns(&conn);
-        let row = |evidence: &str| {
+        let row_with = |evidence: &str, patch: &str| {
             format!(
-                r#"{{"profileId":"a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11","profileName":"Painter","provider":"OPENAI","modelName":"gpt-image-2","via":"primary","outcome":"refused","profileKind":"image","trigger":"moderation-refusal","evidence":"{evidence}","detail":"d"}}"#
+                r#"{{"profileId":"a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11","profileName":"Painter","provider":"OPENAI","modelName":"gpt-image-2","via":"primary","outcome":"refused","profileKind":"image","trigger":"moderation-refusal","evidence":"{evidence}","detail":"d"{patch}}}"#
             )
         };
+        let row = |evidence: &str| row_with(evidence, "");
         let trail_of = |evidences: &[&str]| {
             format!(
                 "[{}]",
@@ -745,9 +704,27 @@ mod tests {
             "inferred",
         ]);
         let unknown = trail_of(&["typed-error", "some-future-evidence"]);
+        // JSON objects keep the LAST duplicate key (serde_json and V8 alike).
+        let check_only = format!(
+            "[{}]",
+            row_with("inferred", r#","profileId":"not-a-profile""#)
+        );
+        let null_trigger = format!("[{}]", row_with("inferred", r#","trigger":null"#));
+        let long_detail = format!(
+            "[{}]",
+            row_with("inferred", &format!(r#","detail":"{}""#, "x".repeat(201)))
+        );
+        const TWO_CHECK_ID: &str = "not-a-uuid-two-check";
         for (id, at, t) in [
             (M1, "2026-09-25T00:00:01.000Z", &trail),
             (M2, "2026-09-25T00:00:02.000Z", &unknown),
+            (M3, "2026-09-25T00:00:03.000Z", &check_only),
+            (
+                "a0000000-0000-4000-8000-000000000004",
+                "2026-09-25T00:00:04.000Z",
+                &null_trigger,
+            ),
+            (TWO_CHECK_ID, "2026-09-25T00:00:05.000Z", &long_detail),
         ] {
             conn.execute(
                 "INSERT INTO chat_messages (id, chatId, type, role, content, createdAt, routeTrail) \
@@ -761,7 +738,7 @@ mod tests {
         assert_eq!(
             msgs.len(),
             1,
-            "the unknown-evidence row is skipped, as v4 skips it"
+            "only the five-evidence row survives; every other row is skipped, as v4 skips it"
         );
         assert_eq!(msgs[0]["id"], M1);
         assert_eq!(
@@ -769,14 +746,29 @@ mod tests {
             trail,
             "the trail must survive byte-for-byte"
         );
-        assert_eq!(lines.len(), 1, "{lines:?}");
-        assert!(
-            lines[0].starts_with("WARN quilltap::db Skipping corrupted chat message")
-                && lines[0].contains(&format!("messageId={M2}"))
-                && lines[0].contains("routeTrail.1.evidence"),
-            "{}",
-            lines[0]
-        );
+        let want: [(&str, &str); 4] = [
+            // An out-of-enum `evidence` is an ABORTING issue → the collapse.
+            (M2, r#"[": Invalid input"]"#),
+            (M3, r#"["routeTrail.0.profileId: Invalid UUID"]"#),
+            (
+                "a0000000-0000-4000-8000-000000000004",
+                r#"[": Invalid input"]"#,
+            ),
+            (
+                TWO_CHECK_ID,
+                r#"["id: Invalid UUID","routeTrail.0.detail: Too big: expected string to have <=200 characters"]"#,
+            ),
+        ];
+        assert_eq!(lines.len(), want.len(), "{lines:?}");
+        for (line, (id, errors)) in lines.iter().zip(want) {
+            assert_eq!(
+                line,
+                &format!(
+                    "WARN quilltap::db Skipping corrupted chat message context=db.chats-messages \
+                     chatId=c1 messageId={id} messageType=message errorsJson={errors}"
+                ),
+            );
+        }
     }
 
     /// A three-row chat on the migrated DDL: `M1`, `M2`, `M3` in order.
@@ -877,10 +869,16 @@ mod tests {
                 line.starts_with("WARN quilltap::db"),
                 "level/target: {line}"
             );
-            assert!(line.contains("Skipping corrupted chat message"), "{line}");
-            assert!(line.contains("chatId=c1"), "{line}");
-            assert!(line.contains(&format!("messageId={M2}")), "{line}");
-            assert!(line.contains("messageType=message"), "{line}");
+            // P4.143: the whole line, v4's field order — `errors` after
+            // `messageType`, the cell error collapsed by v4's union to the
+            // one `": Invalid input"` (`context` is v5's house shape, Tier 3).
+            assert_eq!(
+                line,
+                &format!(
+                    "WARN quilltap::db Skipping corrupted chat message context=db.chats-messages \
+                     chatId=c1 messageId={M2} messageType=message errorsJson=[\": Invalid input\"]"
+                ),
+            );
         }
     }
 
@@ -911,6 +909,11 @@ mod tests {
             assert!(line.contains("Skipping corrupted chat message"), "{line}");
             assert!(line.contains("messageId=unknown"), "{line}");
             assert!(line.contains("messageType=bogus"), "{line}");
+            // Every member's `type` literal aborts → the union collapses.
+            assert!(
+                line.ends_with(r#" messageType=bogus errorsJson=[": Invalid input"]"#),
+                "{line}"
+            );
         }
     }
 }

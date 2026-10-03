@@ -610,6 +610,13 @@
           "role": "ASSISTANT",
           "content": "trail row 7",
           "createdAt": "2026-03-01T00:00:07.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e00000b0-0000-4000-8000-000000000008",
+          "role": "ASSISTANT",
+          "content": "trail row 8",
+          "createdAt": "2026-03-01T00:00:08.000Z"
         }
       ]
     }
@@ -1017,6 +1024,20 @@
       "messageId": "e00000b0-0000-4000-8000-000000000007",
       "column": "routeTrail",
       "value": "{\"not\": \"an array\"}"
+    },
+    {
+      "kind": "plantCell",
+      "chatId": "c00000b0-0000-4000-8000-000000000001",
+      "messageId": "e00000b0-0000-4000-8000-000000000008",
+      "column": "routeTrail",
+      "value": "[{\"profileId\": \"a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11\", \"profileName\": \"Frank Desk\", \"provider\": \"OPENAI\", \"modelName\": \"gpt-image-2\", \"via\": \"primary\", \"outcome\": \"refused\", \"trigger\": \"moderation-refusal\", \"evidence\": \"provider-code\", \"profileKind\": \"image\", \"detail\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"}]"
+    },
+    {
+      "kind": "plantCell",
+      "chatId": "c00000b0-0000-4000-8000-000000000001",
+      "messageId": "e00000b0-0000-4000-8000-000000000008",
+      "column": "id",
+      "value": "not-a-uuid-two-check"
     },
     {
       "kind": "getMessages",

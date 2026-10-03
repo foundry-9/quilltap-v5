@@ -245,6 +245,15 @@ _Versions: core 0.0.1148, harness 0.0.1076._
 _Versions: core 0.0.1147, harness 0.0.1075, host 0.0.175, web 0.0.208, tauri 0.0.8._
 
 On a host whose `TZ` is a POSIX rule (no IANA name), every name-fed date surface rendered UTC: the turn's tool runner, `build_context` on the turn and the swipe, the autonomous turn, the greeting, the spine's own tool runner and the Scenario Builder clock all re-derived their zone from the `tz` NAME, which falls back to `"UTC"`. The host's zone VALUE was already correct (jiff 0.2.31 parses the rule), so the fix threads it: a required `display_zone` on `ProcessMessageInput`, `BuildContextArgs`, `BuildContextInput`, `RegenerateSwipeOptions`, `StepDeps` and `ChatCreateDeps`, filled by `ChatSpine` / `ChatCreateSpine` and `ProductionSpineFactory::with_display_zone` from `HostConfig.display_zone` in `quilltap-web`'s `production_host_config`. `display_zone_named` is retired; `server_tz` stays as the calendar name (cron, the distill, the cleanup — a recorded Tier-3 residue). New `host_zone::zone_name` is the one name derivation, used by `HostConfig::new` and the new `HostConfig::set_display_zone`, which the web and Tauri test commons now call. `host_zone_sites_census` is reshaped (a `VALUE_SITES` table replaces `HELPER_SITES`; the host needles re-aimed and grown) and gains a POSIX-`TZ` child process that was red on `main` (offset 0 vs −18000; the whisper read 07:40 PM).
+#### 2026-10-02 — fix(core): the corrupted-row WARN logs v4's `errors` array with zod 4.6.5's union collapse (P4.143 items 4–5)
+
+_Versions: core 0.0.1148, harness 0.0.1075._
+
+`Skipping corrupted chat message` now carries v4's `errors` array (as `errorsJson`, which the file log renders as `errors: [...]`) in place of v5's single first-failure `error` string. `api/zod_issues.rs` gains the chat-event issue source: `zod_route_attempt_issues` (every issue of one trail element, in `RouteAttemptSchema` key order) and `zod_chat_event_issues` (every issue of the shapes v5 checks, in `MessageEventSchema` key order). Because v4's `ChatEventSchema` is a plain `z.union`, zod collapses any row with an aborting issue (a type or enum miss) to the single line `": Invalid input"`, and logs every issue only when all are non-aborting checks (uuid and datetime formats, the `detail` length); the source reproduces both. A NULL-content cell and an unknown `type` log the collapsed line. `zod_route_attempt_failure` and `zod_shape_failure` keep their signatures and pass/fail sets, now derived from the issue lists.
+
+- `chats_messages_ops_tier2` records and compares `errors` on every WARN of its four reads (25 lines; red-first on all of them before the fix). The spec grows by addition: an eighth seeded message on the trail chat, planted with a non-uuid `id` and a 201-character `detail`, reaches the two-line shape.
+- A unit table in `zod_issues.rs` pins 32 shapes against lines recorded from v4's real schema at `f6426e196`.
+
 #### 2026-10-02 — fix(core): a refused chat create logs v4's third repository ERROR, `Failed to create chat` (P4.143 item 3)
 
 _Versions: core 0.0.1147._

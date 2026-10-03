@@ -657,12 +657,62 @@ fn zod_timestamp_issues(row: &serde_json::Map<String, Value>, k: &str, issues: &
     }
 }
 
+/// v4 `RouteAttemptViaEnum` (`lib/schemas/chat.types.ts`), in schema order.
+const ROUTE_ATTEMPT_VIA: [&str; 5] = ["primary", "retry", "concierge", "understudy", "tier-pick"];
+/// v4 `RouteAttemptOutcomeEnum`, in schema order.
+const ROUTE_ATTEMPT_OUTCOME: [&str; 3] = ["answered", "failed", "refused"];
+/// `RouteAttemptSchema.trigger`'s enum, in schema order — the VALUES an
+/// `invalid_value` issue echoes. Membership is decided by v5's ONE union
+/// ([`FallbackTrigger::from_wire`](crate::llm_fallback::FallbackTrigger::from_wire));
+/// `route_attempt_enum_lists_are_the_wire_unions` pins that the two agree.
+const ROUTE_ATTEMPT_TRIGGER: [&str; 7] = [
+    "auth",
+    "rate-limit",
+    "network",
+    "model-missing",
+    "provider-error",
+    "empty-response",
+    "moderation-refusal",
+];
+/// `RouteAttemptSchema.evidence`'s enum, in schema order (membership:
+/// [`RefusalEvidence::from_wire`](crate::services::dangerous_content::refusal::RefusalEvidence::from_wire)).
+const ROUTE_ATTEMPT_EVIDENCE: [&str; 5] = [
+    "typed-error",
+    "provider-code",
+    "finish-reason",
+    "message-pattern",
+    "inferred",
+];
+/// `RouteAttemptSchema.profileKind`'s enum.
+const ROUTE_ATTEMPT_PROFILE_KIND: [&str; 2] = ["connection", "image"];
+
+/// A `UUIDSchema` (`z.uuid()`) key that is PRESENT: a non-string is the
+/// string type check's `invalid_type` (aborting), a string that is not a Zod
+/// uuid the format check's `invalid_format` (continuing).
+fn uuid_key_issues(got: &Value, path: Vec<Value>, issues: &mut Vec<ZodIssue>) {
+    match got {
+        Value::String(s) if zod_uuid_ok(s) => {}
+        Value::String(_) => issues.push(ZodIssue::invalid_uuid(path)),
+        other => issues.push(ZodIssue::invalid_type("string", path, Some(other))),
+    }
+}
+
+/// `path` with one more element appended — Zod's `prefixIssues` builds a
+/// child's path the same way, outermost first.
+fn child_path(prefix: &[Value], k: Value) -> Vec<Value> {
+    let mut p = prefix.to_vec();
+    p.push(k);
+    p
+}
+
 /// v4 `RouteAttemptSchema` (`lib/schemas/chat.types.ts`) — the STRICT twin of
 /// one `routeTrail` element as v4's per-row `ChatEventSchema.safeParse` meets
 /// it (`MessageEventSchema.routeTrail` is `RouteAttemptSchema.array()
-/// .nullable().optional()`). `None` when the element passes; otherwise the
-/// first failing key and zod's sentence for it (the stand-in for the issue
-/// list the per-row WARN reports — P4.130, P4.D228 re-premised).
+/// .nullable().optional()`). Returns EVERY issue zod 4.6.5 raises for the
+/// element, in schema key order, each path prefixed by `prefix` (the
+/// element's own position, e.g. `["routeTrail", 1]` — `&[]` for a bare
+/// element). Empty = the element passes. P4.143 made this the issue SOURCE
+/// (P4.130's twin answered a pre-rendered first-failure string).
 ///
 /// The schema, key by key: `profileId: UUIDSchema`; `profileName`,
 /// `provider`, `modelName: z.string()`; `via` (`RouteAttemptViaEnum`, 5) and
@@ -673,92 +723,259 @@ fn zod_timestamp_issues(row: &serde_json::Map<String, Value>, k: &str, issues: &
 /// `profileKind` (`connection` | `image`) and `detail: z.string().max(200)`
 /// (CODE POINTS) — all `.optional()`, so ABSENT passes and an explicit `null`
 /// FAILS (`.optional()` is not `.nullable()`). Unknown keys are stripped, not
-/// refused. v5's lenient reader `RouteAttempt::from_value`
-/// (`services/route_trail.rs`) had read `null` as absent and checked neither
-/// the uuid nor the length, so a row v4 skips was KEPT (and re-saved by the
-/// "Try uncensored" picture route).
-pub fn zod_route_attempt_failure(v: &Value) -> Option<String> {
+/// refused. A non-object element is the object type check's one
+/// `invalid_type` (zod checks no key of it). v5's lenient reader
+/// `RouteAttempt::from_value` (`services/route_trail.rs`) had read `null` as
+/// absent and checked neither the uuid nor the length, so a row v4 skips was
+/// KEPT (and re-saved by the "Try uncensored" picture route).
+///
+/// Which issues ABORT (type / enum) and which CONTINUE (the uuid format, the
+/// `detail` length) is [`zod_issue_aborts`]'s; this source does not collapse —
+/// the union collapse belongs to the chat event ([`zod_chat_event_issues`]).
+pub fn zod_route_attempt_issues(v: &Value, prefix: &[Value]) -> Vec<ZodIssue> {
+    let mut issues = Vec::new();
     let Some(o) = v.as_object() else {
-        return Some(format!(
-            "Invalid input: expected object, received {}",
-            zod_parsed_type(Some(v))
-        ));
+        issues.push(ZodIssue::invalid_type("object", prefix.to_vec(), Some(v)));
+        return issues;
     };
-    let fail = |k: &str, why: String| Some(format!("{k}: {why}"));
+    let at = |k: &str| child_path(prefix, key(k));
     match o.get("profileId") {
-        Some(Value::String(id)) if zod_uuid_ok(id) => {}
-        Some(Value::String(_)) => return fail("profileId", "Invalid UUID".into()),
-        got => {
-            return fail(
-                "profileId",
-                format!(
-                    "Invalid input: expected string, received {}",
-                    zod_parsed_type(got)
-                ),
-            )
-        }
+        Some(got) => uuid_key_issues(got, at("profileId"), &mut issues),
+        None => issues.push(ZodIssue::invalid_type("string", at("profileId"), None)),
     }
     for k in ["profileName", "provider", "modelName"] {
         if !o.get(k).is_some_and(Value::is_string) {
-            return fail(
-                k,
-                format!(
-                    "Invalid input: expected string, received {}",
-                    zod_parsed_type(o.get(k))
-                ),
-            );
+            issues.push(ZodIssue::invalid_type("string", at(k), o.get(k)));
         }
     }
-    let member = |k: &str, ok: &dyn Fn(&str) -> bool, required: bool| -> Option<String> {
-        match o.get(k) {
-            None if !required => None,
-            Some(Value::String(s)) if ok(s) => None,
-            _ => fail(k, "Invalid option".into()),
-        }
+    // `z.enum` compares values and has no separate type gate, so an absent
+    // REQUIRED key and a wrong type are the same `invalid_value`.
+    let mut member =
+        |k: &str, values: &[&str], ok: &dyn Fn(&str) -> bool, required: bool| match o.get(k) {
+            None if !required => {}
+            Some(Value::String(s)) if ok(s) => {}
+            _ => issues.push(ZodIssue::invalid_value(values, at(k))),
+        };
+    member(
+        "via",
+        &ROUTE_ATTEMPT_VIA,
+        &|s| ROUTE_ATTEMPT_VIA.contains(&s),
+        true,
+    );
+    member(
+        "outcome",
+        &ROUTE_ATTEMPT_OUTCOME,
+        &|s| ROUTE_ATTEMPT_OUTCOME.contains(&s),
+        true,
+    );
+    member(
+        "trigger",
+        &ROUTE_ATTEMPT_TRIGGER,
+        &|s| crate::llm_fallback::FallbackTrigger::from_wire(s).is_some(),
+        false,
+    );
+    member(
+        "evidence",
+        &ROUTE_ATTEMPT_EVIDENCE,
+        &|s| crate::services::dangerous_content::refusal::RefusalEvidence::from_wire(s).is_some(),
+        false,
+    );
+    member(
+        "profileKind",
+        &ROUTE_ATTEMPT_PROFILE_KIND,
+        &|s| ROUTE_ATTEMPT_PROFILE_KIND.contains(&s),
+        false,
+    );
+    match o.get("detail") {
+        None => {}
+        Some(Value::String(d)) if crate::jsstr::zod_len_max_ok(d, 200) => {}
+        Some(Value::String(_)) => issues.push(ZodIssue::too_big_string(json!(200), at("detail"))),
+        got => issues.push(ZodIssue::invalid_type("string", at("detail"), got)),
+    }
+    issues
+}
+
+/// [`zod_route_attempt_issues`] over a bare element, rendered — `None` when the
+/// element passes, else its issue lines (`path: message`) joined with `", "`.
+/// Kept for the callers that only ask WHETHER an element passes
+/// (`api/chat_media.rs`'s `saved_trail` filter, `.is_none()`); its `Some` /
+/// `None` set is exactly [`zod_route_attempt_issues`]'s non-empty / empty
+/// (P4.143 kept the signature so no caller moved).
+pub fn zod_route_attempt_failure(v: &Value) -> Option<String> {
+    let issues = zod_route_attempt_issues(v, &[]);
+    (!issues.is_empty()).then(|| zod_issue_lines(&issues, ": ").join(", "))
+}
+
+/// Does this issue ABORT its schema's parse in zod 4.6.5's sense — i.e. does
+/// it lack `continue: true` (`util.aborted`, `core/util.js:520-529`)? Zod's
+/// TYPE gates (`invalid_type`, every `invalid_value` — enum and literal alike
+/// — and a nested `invalid_union`) push an issue with no `continue`; its
+/// CHECKS (`invalid_format` uuid / datetime, the `too_big` / `too_small`
+/// length and range bounds, a `.refine`'s `custom`) push `continue: true`
+/// unless declared `abort` — none in the schemas this module twins is.
+pub fn zod_issue_aborts(issue: &ZodIssue) -> bool {
+    match issue {
+        ZodIssue::InvalidType { .. }
+        | ZodIssue::InvalidIntType { .. }
+        | ZodIssue::InvalidValue { .. }
+        | ZodIssue::InvalidUnion { .. } => true,
+        ZodIssue::InvalidFormat { .. }
+        | ZodIssue::TooSmall { .. }
+        | ZodIssue::TooBig { .. }
+        | ZodIssue::TooSmallInt { .. }
+        | ZodIssue::TooBigInt { .. }
+        | ZodIssue::Custom { .. } => false,
+    }
+}
+
+/// v4's `RoleEnum` (`lib/schemas/common.types.ts:38`), in schema order.
+const ROLE_ENUM: [&str; 4] = ["SYSTEM", "USER", "ASSISTANT", "TOOL"];
+/// `hostEvent.toStatus`'s enum (`MessageEventSchema`), in schema order.
+const HOST_EVENT_STATUSES: [&str; 4] = ["active", "silent", "absent", "removed"];
+
+/// v4 `ChatEventSchema.safeParse(event)`'s issue list — the `errors` v4's
+/// `getMessages` WARN renders (`chats-messages.ops.ts:343-356`) — over the
+/// shapes v5 checks (P4.143; the checks are P4.112 / P4.113 / P4.130's):
+/// on all three members `id: UUIDSchema` and `createdAt: TimestampSchema`;
+/// on a message `role: RoleEnum`, `participantId: UUIDSchema.nullable()
+/// .optional()`, `routeTrail` (non-array, then each element through
+/// [`zod_route_attempt_issues`]) and `hostEvent` (`z.object({ participantId?:
+/// uuid, toStatus?: enum, introducedCharacterIds?: uuid[] }).nullable()
+/// .optional()`). Issues come in each member's SCHEMA KEY ORDER — the
+/// message's is `id`, `role`, `createdAt`, `participantId`, `routeTrail`,
+/// `hostEvent`; the other two members' `id`, `createdAt`.
+///
+/// **The union collapse (measured, zod 4.6.5).** `ChatEventSchema` is a plain
+/// `z.union([MessageEventSchema, ContextSummaryEventSchema,
+/// SystemEventSchema])` (`chat.types.ts:637-641`), and `handleUnionResults`
+/// (`core/schemas.js:1195-1214`) answers the lone NON-ABORTED option's issues
+/// when exactly one option did not abort, else ONE `invalid_union`. The two
+/// members whose `type` literal fails always abort, so: when every issue of
+/// the row's own member CONTINUES ([`zod_issue_aborts`] false — uuid /
+/// datetime formats, the `detail` length), v4 logs ALL of them; when ANY
+/// aborts (a `null` trigger, a bad `via`, a non-array trail, a bad `role`, a
+/// non-object `hostEvent` …), v4 logs the single collapsed issue (`path:
+/// []`, `"Invalid input"` → the line `": Invalid input"`). This answers that
+/// collapsed issue with `errors: []` — sufficient for the WARN's `path:
+/// message` projection, and NOT v4's `ZodError.message` (v4's `errors` holds
+/// each member's nested issues; [`zod_error_message`] over this is not v4's —
+/// P4.143 Tier 3 item 13, `updateMessage`'s ERROR).
+///
+/// Out of scope (recorded in P4.112's lane record, never silently claimed):
+/// every other member field v4 can reject (`content`, `recoveryType`,
+/// `attachments`' uuids, `systemEventType` …) — a NULL `content` is a cell
+/// error the read path collapses itself. A non-object event and an UNKNOWN
+/// `type` answer `[]` here: the read path collapses an unknown `type` before
+/// it calls this, and `updateMessage`'s merged check
+/// (`db/chats_messages.rs`) has never refused one (P4.143 kept every
+/// caller's pass/fail set unchanged).
+pub fn zod_chat_event_issues(event: &Value) -> Vec<ZodIssue> {
+    let mut issues = Vec::new();
+    let Some(obj) = event.as_object() else {
+        return issues;
     };
-    const VIA: [&str; 5] = ["primary", "retry", "concierge", "understudy", "tier-pick"];
-    const OUTCOME: [&str; 3] = ["answered", "failed", "refused"];
-    member("via", &|s| VIA.contains(&s), true)
-        .or_else(|| member("outcome", &|s| OUTCOME.contains(&s), true))
-        .or_else(|| {
-            member(
-                "trigger",
-                &|s| crate::llm_fallback::FallbackTrigger::from_wire(s).is_some(),
-                false,
-            )
-        })
-        .or_else(|| {
-            member(
-                "evidence",
-                &|s| {
-                    crate::services::dangerous_content::refusal::RefusalEvidence::from_wire(s)
-                        .is_some()
-                },
-                false,
-            )
-        })
-        .or_else(|| {
-            member(
-                "profileKind",
-                &|s| matches!(s, "connection" | "image"),
-                false,
-            )
-        })
-        .or_else(|| match o.get("detail") {
-            None => None,
-            Some(Value::String(d)) if crate::jsstr::zod_len_max_ok(d, 200) => None,
-            Some(Value::String(_)) => fail(
-                "detail",
-                "Too big: expected string to have <=200 characters".into(),
-            ),
-            got => fail(
-                "detail",
-                format!(
-                    "Invalid input: expected string, received {}",
-                    zod_parsed_type(got)
-                ),
-            ),
-        })
+    let is_message = match obj.get("type").and_then(Value::as_str) {
+        Some("message") => true,
+        Some("context-summary" | "system") => false,
+        _ => return issues,
+    };
+    match obj.get("id") {
+        Some(got) => uuid_key_issues(got, vec![key("id")], &mut issues),
+        None => issues.push(ZodIssue::invalid_type("string", vec![key("id")], None)),
+    }
+    if is_message {
+        let role_ok = obj
+            .get("role")
+            .and_then(Value::as_str)
+            .is_some_and(|r| ROLE_ENUM.contains(&r));
+        if !role_ok {
+            issues.push(ZodIssue::invalid_value(&ROLE_ENUM, vec![key("role")]));
+        }
+    }
+    // `TimestampSchema` = `z.iso.datetime().or(z.date())`: a malformed STRING
+    // is the lone non-aborted option's `invalid_format` (continuing), anything
+    // else aborts both options (an `invalid_union`).
+    zod_timestamp_issues(obj, "createdAt", &mut issues);
+    if !is_message {
+        return chat_event_union_collapse(issues);
+    }
+    if let Some(p) = obj.get("participantId").filter(|p| !p.is_null()) {
+        uuid_key_issues(p, vec![key("participantId")], &mut issues);
+    }
+    if let Some(trail) = obj.get("routeTrail").filter(|t| !t.is_null()) {
+        match trail.as_array() {
+            None => issues.push(ZodIssue::invalid_type(
+                "array",
+                vec![key("routeTrail")],
+                Some(trail),
+            )),
+            Some(rows) => {
+                for (i, row) in rows.iter().enumerate() {
+                    issues.extend(zod_route_attempt_issues(
+                        row,
+                        &[key("routeTrail"), json!(i)],
+                    ));
+                }
+            }
+        }
+    }
+    // `.nullable().optional()` on the object itself: a `null` hostEvent passes
+    // (the read path never sees one — `put_opt_json` drops it — but a MERGED
+    // update event does: `{ hostEvent: null }` is the repair, P4.113). Inside
+    // it every key is `.optional()` only, so a PRESENT `null` fails.
+    if let Some(host) = obj.get("hostEvent").filter(|h| !h.is_null()) {
+        let at = |k: &str| vec![key("hostEvent"), key(k)];
+        match host.as_object() {
+            None => issues.push(ZodIssue::invalid_type(
+                "object",
+                vec![key("hostEvent")],
+                Some(host),
+            )),
+            Some(h) => {
+                if let Some(p) = h.get("participantId") {
+                    uuid_key_issues(p, at("participantId"), &mut issues);
+                }
+                if let Some(s) = h.get("toStatus") {
+                    if !s.as_str().is_some_and(|s| HOST_EVENT_STATUSES.contains(&s)) {
+                        issues.push(ZodIssue::invalid_value(
+                            &HOST_EVENT_STATUSES,
+                            at("toStatus"),
+                        ));
+                    }
+                }
+                if let Some(ids) = h.get("introducedCharacterIds") {
+                    match ids.as_array() {
+                        None => issues.push(ZodIssue::invalid_type(
+                            "array",
+                            at("introducedCharacterIds"),
+                            Some(ids),
+                        )),
+                        Some(a) => {
+                            for (i, id) in a.iter().enumerate() {
+                                uuid_key_issues(
+                                    id,
+                                    child_path(&at("introducedCharacterIds"), json!(i)),
+                                    &mut issues,
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    chat_event_union_collapse(issues)
+}
+
+/// `handleUnionResults` over the row's own member: its issues when none
+/// aborts, else the ONE collapsed `invalid_union` (see
+/// [`zod_chat_event_issues`]).
+fn chat_event_union_collapse(issues: Vec<ZodIssue>) -> Vec<ZodIssue> {
+    if issues.iter().any(zod_issue_aborts) {
+        vec![ZodIssue::invalid_union(vec![], vec![])]
+    } else {
+        issues
+    }
 }
 
 /// v4 zod **4.6.5**'s `z.iso.datetime()` (no options: no `offset`, no `local`,
@@ -1226,6 +1443,295 @@ mod tests {
         }
         assert!(zod_route_attempt_failure(&without("profileId")).is_some());
         assert!(zod_route_attempt_failure(&json!("row")).is_some());
+    }
+
+    /// The enum lists an `invalid_value` echoes are the wire unions v5 decides
+    /// membership by — every listed value is a member, and the counts are
+    /// v4's (`RouteAttemptSchema`, `lib/schemas/chat.types.ts`).
+    #[test]
+    fn route_attempt_enum_lists_are_the_wire_unions() {
+        for t in ROUTE_ATTEMPT_TRIGGER {
+            assert!(
+                crate::llm_fallback::FallbackTrigger::from_wire(t).is_some(),
+                "{t}"
+            );
+        }
+        for e in ROUTE_ATTEMPT_EVIDENCE {
+            assert!(
+                crate::services::dangerous_content::refusal::RefusalEvidence::from_wire(e)
+                    .is_some(),
+                "{e}"
+            );
+        }
+        assert!(crate::llm_fallback::FallbackTrigger::from_wire("boredom").is_none());
+        assert!(
+            crate::services::dangerous_content::refusal::RefusalEvidence::from_wire("hunch")
+                .is_none()
+        );
+    }
+
+    /// P4.143 — [`zod_chat_event_issues`] rendered as v4's WARN renders it
+    /// (`issues.map(i => `${i.path.join('.')}: ${i.message}`)`) against the
+    /// lines v4's REAL `ChatEventSchema.safeParse` produced for the same
+    /// shapes: a throwaway `npx tsx` probe run from the `f6426e196` pin (zod
+    /// 4.6.5), recorded verbatim in P4.143's lane record. `None` = v4 keeps the
+    /// row. The table is the byte reference for the union collapse: every
+    /// row whose member carries an aborting issue is `[": Invalid input"]`;
+    /// check-only rows log every issue in schema key order.
+    #[test]
+    fn chat_event_issues_match_v4s_errors() {
+        let trail_ok = json!({
+            "profileId": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11", "profileName": "Frank Desk",
+            "provider": "OPENAI", "modelName": "gpt-image-2", "via": "primary",
+            "outcome": "refused", "trigger": "moderation-refusal",
+            "evidence": "provider-code", "profileKind": "image", "detail": "declined",
+        });
+        let el = |patch: Value| {
+            let mut o = trail_ok.clone();
+            for (k, v) in patch.as_object().unwrap() {
+                if v == &json!("<absent>") {
+                    o.as_object_mut().unwrap().remove(k);
+                } else {
+                    o[k] = v.clone();
+                }
+            }
+            o
+        };
+        let base = |typ: &str, n: char, extra: Value| {
+            let mut o = json!({
+                "type": typ, "id": format!("e00000b0-0000-4000-8000-00000000000{n}"),
+                "createdAt": "2026-03-01T00:00:01.000Z",
+            });
+            for (k, v) in extra.as_object().unwrap() {
+                o[k] = v.clone();
+            }
+            o
+        };
+        let msg = |patch: Value| {
+            let mut o = base(
+                "message",
+                '1',
+                json!({"role": "ASSISTANT", "content": "c", "attachments": []}),
+            );
+            for (k, v) in patch.as_object().unwrap() {
+                o[k] = v.clone();
+            }
+            o
+        };
+        let cs = |patch: Value| {
+            let mut o = base("context-summary", '2', json!({"context": "ctx"}));
+            for (k, v) in patch.as_object().unwrap() {
+                o[k] = v.clone();
+            }
+            o
+        };
+        let sys = |patch: Value| {
+            let mut o = base(
+                "system",
+                '3',
+                json!({"systemEventType": "SUMMARIZATION", "description": "d"}),
+            );
+            for (k, v) in patch.as_object().unwrap() {
+                o[k] = v.clone();
+            }
+            o
+        };
+        let x201 = "x".repeat(201);
+        let collapsed: Option<&[&str]> = Some(&[": Invalid input"]);
+        let table: Vec<(&str, Value, Option<&[&str]>)> = vec![
+            (
+                "trail_valid_two",
+                msg(json!({"routeTrail": [trail_ok.clone(),
+                    el(json!({"outcome": "answered", "trigger": "<absent>", "evidence": "<absent>"}))]})),
+                None,
+            ),
+            (
+                "trail_bad_profile_id",
+                msg(json!({"routeTrail": [el(json!({"profileId": "not-a-profile"}))]})),
+                Some(&["routeTrail.0.profileId: Invalid UUID"]),
+            ),
+            (
+                "trail_detail_201",
+                msg(json!({"routeTrail": [el(json!({"detail": x201}))]})),
+                Some(&["routeTrail.0.detail: Too big: expected string to have <=200 characters"]),
+            ),
+            (
+                "trail_null_trigger",
+                msg(json!({"routeTrail": [el(json!({"trigger": null}))]})),
+                collapsed,
+            ),
+            (
+                "trail_detail_200_astral",
+                msg(
+                    json!({"routeTrail": [el(json!({"detail": format!("{}\u{1F600}", "x".repeat(199))}))]}),
+                ),
+                None,
+            ),
+            (
+                "trail_bad_via_second",
+                msg(json!({"routeTrail": [trail_ok.clone(), el(json!({"via": "sideways"}))]})),
+                collapsed,
+            ),
+            (
+                "trail_not_array",
+                msg(json!({"routeTrail": {"not": "an array"}})),
+                collapsed,
+            ),
+            (
+                "trail_element_not_object",
+                msg(json!({"routeTrail": ["row"]})),
+                collapsed,
+            ),
+            (
+                "trail_detail_number",
+                msg(json!({"routeTrail": [el(json!({"detail": 42}))]})),
+                collapsed,
+            ),
+            (
+                "trail_profile_id_missing",
+                msg(json!({"routeTrail": [el(json!({"profileId": "<absent>"}))]})),
+                collapsed,
+            ),
+            (
+                "trail_two_checks_one_element",
+                msg(
+                    json!({"routeTrail": [el(json!({"profileId": "not-a-profile", "detail": x201}))]}),
+                ),
+                Some(&[
+                    "routeTrail.0.profileId: Invalid UUID",
+                    "routeTrail.0.detail: Too big: expected string to have <=200 characters",
+                ]),
+            ),
+            ("bad_role", msg(json!({"role": "narrator"})), collapsed),
+            (
+                "bad_id",
+                msg(json!({"id": "not-a-uuid"})),
+                Some(&["id: Invalid UUID"]),
+            ),
+            ("host_event_42", msg(json!({"hostEvent": 42})), collapsed),
+            (
+                "host_event_bad_status",
+                msg(json!({"hostEvent": {"toStatus": "asleep"}})),
+                collapsed,
+            ),
+            (
+                "host_event_bad_participant",
+                msg(json!({"hostEvent": {"participantId": "not-a-participant"}})),
+                Some(&["hostEvent.participantId: Invalid UUID"]),
+            ),
+            (
+                "host_event_bad_introduced_1",
+                msg(json!({"hostEvent": {"introducedCharacterIds":
+                    ["fb000090-0000-4000-8000-000000000001", "not-a-character"]}})),
+                Some(&["hostEvent.introducedCharacterIds.1: Invalid UUID"]),
+            ),
+            (
+                "host_event_null_participant",
+                msg(json!({"hostEvent": {"participantId": null}})),
+                collapsed,
+            ),
+            (
+                "host_event_valid",
+                msg(
+                    json!({"hostEvent": {"participantId": "fb000090-0000-4000-8000-000000000001",
+                    "toStatus": "active", "introducedCharacterIds": []}}),
+                ),
+                None,
+            ),
+            (
+                "message_created_no_seconds",
+                msg(json!({"createdAt": "2024-01-01T10:00Z"})),
+                Some(&["createdAt: Invalid ISO datetime"]),
+            ),
+            (
+                "message_created_offset",
+                msg(json!({"createdAt": "2024-01-01T10:00:00+01:00"})),
+                Some(&["createdAt: Invalid ISO datetime"]),
+            ),
+            (
+                "context_summary_created_yesterday",
+                cs(json!({"createdAt": "yesterday"})),
+                Some(&["createdAt: Invalid ISO datetime"]),
+            ),
+            (
+                "system_created_yesterday",
+                sys(json!({"createdAt": "yesterday"})),
+                Some(&["createdAt: Invalid ISO datetime"]),
+            ),
+            (
+                "system_created_no_seconds",
+                sys(json!({"createdAt": "2024-01-01T10:00Z"})),
+                Some(&["createdAt: Invalid ISO datetime"]),
+            ),
+            (
+                "context_summary_bad_id",
+                cs(json!({"id": "not-a-uuid"})),
+                Some(&["id: Invalid UUID"]),
+            ),
+            (
+                "message_created_null",
+                msg(json!({"createdAt": null})),
+                collapsed,
+            ),
+            (
+                "bad_participant_id",
+                msg(json!({"participantId": "not-a-participant"})),
+                Some(&["participantId: Invalid UUID"]),
+            ),
+            (
+                "null_participant_id",
+                msg(json!({"participantId": null})),
+                None,
+            ),
+            (
+                "number_participant_id",
+                msg(json!({"participantId": 7})),
+                collapsed,
+            ),
+            (
+                "two_checks_id_and_detail",
+                msg(json!({"id": "not-a-uuid", "routeTrail": [el(json!({"detail": x201}))]})),
+                Some(&[
+                    "id: Invalid UUID",
+                    "routeTrail.0.detail: Too big: expected string to have <=200 characters",
+                ]),
+            ),
+            (
+                "three_checks_id_created_participant",
+                msg(json!({"id": "not-a-uuid", "createdAt": "yesterday", "participantId": "nope"})),
+                Some(&[
+                    "id: Invalid UUID",
+                    "createdAt: Invalid ISO datetime",
+                    "participantId: Invalid UUID",
+                ]),
+            ),
+            (
+                "check_then_abort",
+                msg(json!({"id": "not-a-uuid", "role": "narrator"})),
+                collapsed,
+            ),
+        ];
+        assert_eq!(
+            table.len(),
+            32,
+            "the probe's shapes minus its two cell-level rows"
+        );
+        for (name, event, want) in table {
+            let issues = zod_chat_event_issues(&event);
+            let got = zod_issue_lines(&issues, ": ");
+            match want {
+                None => assert!(
+                    got.is_empty(),
+                    "{name}: v4 keeps the row, v5 logged {got:?}"
+                ),
+                Some(lines) => assert_eq!(got, lines, "{name}"),
+            }
+        }
+        // The probe's two cell-level rows (`null_content`, `unknown_type` —
+        // both `[": Invalid input"]` in v4) are the read path's own collapse
+        // (`chats_messages_read::collapsed_errors`); an unknown `type` answers
+        // `[]` HERE so `updateMessage`'s merged check keeps its pass set.
+        assert!(zod_chat_event_issues(&msg(json!({"type": "bogus"}))).is_empty());
     }
 
     /// The echoed JS pattern and the Rust matcher are ONE pattern: the matcher

@@ -162157,3 +162157,89 @@ closure in `crates/quilltap-core/src/services/backup/restore/orchestrator.rs`
 name); the import-side `a_bundle_chat_with_an_unknown_concierge_mode_logs_v4s_repository_errors`
 moved 2 → 3 with the third prefix. **M4** (drop the line, by file backup,
 `cmp`-restored): both chat_override tests red (2 ≠ 3). core 0.0.1147.
+
+### Unit 2 — items 4–5: the chat-event issue source and v4's `errors` array
+
+**The measurement (survey §D1, re-run).** A throwaway probe
+(`/tmp/p4143/probe/chat-event-errors.ts`, run with `npx tsx` from the pin under
+Node 24.13.1 + `TZ=UTC`, importing ONLY `@/lib/schemas/chat.types`'s
+`ChatEventSchema`) printed `r.error.issues.map(i => `${i.path.join('.')}:
+${i.message}`)` for 34 shapes. The zod 4.6.5 source confirms the model:
+`handleUnionResults` (`core/schemas.js:1195-1214`) returns the lone
+non-aborted option's issues, else one `invalid_union`; `util.aborted`
+(`core/util.js:520-529`) is any issue without `continue: true`; the
+`TimestampSchema` pipe's `left.aborted = true` (`handlePipeResult`) sits on
+the CHILD result and never reaches the member's `aborted` flag, so a malformed
+datetime string stays a continuing check (measured: `["createdAt: Invalid ISO
+datetime"]`). `MessageEventSchema`'s key order puts `role` BEFORE `createdAt`
+(the old first-failure check ran `createdAt` first). The 34 lines are the byte
+reference — 32 live in `zod_issues.rs`'s unit table
+`chat_event_issues_match_v4s_errors`; the other two (`null_content`,
+`unknown_type`, both `[": Invalid input"]`) are the read path's own collapse.
+Notable: `hostEvent: {participantId: null}` collapses (`.optional()` only);
+`participantId: 7` collapses; `[id non-uuid, createdAt "yesterday",
+participantId "nope"]` logs all three in key order; a check followed by an
+abort (`id` non-uuid + bad `role`) collapses.
+
+**The port (`api/zod_issues.rs`, the ONE home).** `zod_route_attempt_issues(v,
+prefix) -> Vec<ZodIssue>` (every issue, `RouteAttemptSchema` key order; the
+enum `values` from four new const lists, membership still decided by
+`FallbackTrigger::from_wire` / `RefusalEvidence::from_wire` —
+`route_attempt_enum_lists_are_the_wire_unions` pins they agree);
+`zod_chat_event_issues(event) -> Vec<ZodIssue>` over the shapes
+`zod_shape_failure` checked (`id`, `createdAt` on all three members; `role`,
+`participantId`, `routeTrail`, `hostEvent` on a message), with the collapse to
+ONE `invalid_union { errors: [], path: [] }` when any issue aborts
+(`zod_issue_aborts`: `InvalidType`/`InvalidIntType`/`InvalidValue`/
+`InvalidUnion` abort; formats, bounds and `custom` continue). The doc comment
+records that `zod_error_message` over the collapsed issue is NOT v4's
+`ZodError.message` (Tier 3 item 13). A non-object event and an unknown `type`
+answer `[]` HERE (the read path collapses an unknown type itself), so
+`updateMessage`'s merged check keeps its exact pass set.
+`zod_route_attempt_failure` / `zod_shape_failure` are now thin derivations
+(`issues.is_empty()` → `None`, else the `", "`-joined `path: message` lines) —
+**signatures and `Some`/`None` sets unchanged; `api/chat_media.rs` and
+`db/chats_messages.rs` NOT edited** (every core unit test green, 2866/0).
+`RowOutcome::Corrupted` carries `errors: Vec<String>`; the WARN
+(`db/chats_messages_read.rs`) logs `errorsJson = %serde_json::to_string(&errors)`
+after `messageType`; `context = LOG_CONTEXT` KEPT (Tier 3 item 15).
+
+**Unit pins.** The two existing tests gain the bytes (`a_null_content_row_…`
+now asserts the WHOLE line); `a_route_trail_with_every_evidence_value_round_trips`
+grows to ONE read over five rows — the kept five-evidence row, the unknown
+evidence (collapsed), a check-only non-uuid `profileId`, a `null` trigger
+(collapsed), and the two-check row (`not-a-uuid-two-check` + a 201-char
+`detail` → both lines in order). ⚠ **Folded into that existing test, not a new
+one, because `get_messages_caller_census` counts every `get_messages(` call
+site by enclosing fn** (a new test fn moved it; the census file is not this
+lane's — the order requires it UNMOVED). The order's "NEW tests" landed as
+cases of the existing fn.
+
+**The differential (`chats_messages_ops_tier2`).** Oracle: `errors` joins the
+spy's recorded keys. Spec (by ADDITION — 21 lines, no deletion): an EIGHTH
+seed message on the trail chat (`e00000b0-…-0008`, the builder seeds from the
+JSON's `seedMessages`, so no committed fixture moves) and two `plantCell` ops
+before the fourth read (its `routeTrail` with a 201-char `detail`, then its
+`id` → `not-a-uuid-two-check` — order matters, the second op re-keys the row).
+Comparator: `assert_reads` parses the captured ` errorsJson=` tail as JSON and
+compares it to `wl["errors"]` (presence must agree both ways). **Regen** from
+the pin: builder last line `built chats messages ops seed fixture:
+/tmp/p4143/chatsmsgops-fixture.db (11 chats)`; NDJSON 95,303 bytes;
+`grep -o '"errors"'` = 25. Per-read WARN counts **1 / 12 / 6 / 6** (read 4 =
+the five planned + the two-check row). **Red-first** (both core files
+`git show HEAD:`-restored, then `cmp`-restored): RED at read 0's WARN
+(`left: None`, `right: [": Invalid input"]` — v5 logged `error=Invalid column
+type Null at index: 3, name: content`); the family is one `#[test]` that
+fail-fasts, so the count is the oracle's: all **25** WARN lines carry `errors`
+and pre-fix v5 logs no `errorsJson` on any of them. GREEN after. **M5** (never
+collapse) → RED at read 1's first collapsed row (`e0000090-…-0001`, the bad
+`role`); **M6** (first issue only) → RED at read 3's two-check row; **M7**
+(drop the element index) → RED at read 3's row 02. Each by file backup,
+`cmp`-restored. Guards: `zod_issues_home_guard` green (constructor census
+5/1/1 and parsed-type 6/6 unmoved — no new `fn invalid_*`/`fn parsed_type(`);
+`get_messages_caller_census` green, UNMOVED.
+
+**§S.2 note (for the round record).** `db/chats_messages.rs:618`'s
+`updateMessage parse: …` text moves with `zod_shape_failure` (now the joined
+issue lines, e.g. `: Invalid input` for an aborting merged event); its
+pass/fail set does not; nothing pins the text.

@@ -142,7 +142,10 @@ async function main(): Promise<void> {
       ...rest: unknown[]
     ) {
       const line: Record<string, unknown> = { level, message };
-      for (const key of ['chatId', 'messageId', 'messageType']) {
+      // P4.143: + `errors` — the corrupted-row WARN's issue array
+      // (`chats-messages.ops.ts:343-356`), which zod 4.6.5's plain-union
+      // collapse turns into `[": Invalid input"]` for any aborting issue.
+      for (const key of ['chatId', 'messageId', 'messageType', 'errors']) {
         if (context && key in context) line[key] = context[key];
       }
       opLogs?.push(line);
