@@ -244,7 +244,26 @@ pub fn build_manifest(
 /// rows). Otherwise the per-type `findAll().map(id)`, with two special cases:
 /// roleplay-templates filters `!isBuiltIn && userId === userId` (:634-636), and
 /// document-stores reads the INSTANCE-scoped `globalRepos.docMountPoints`.
+///
+/// Runs inside [`crate::db::fallback::with_strict_repository_failures`] (the
+/// human's 2026-10-02 ruling, applied at the `f6426e196` recorded-divergences
+/// unification — P4.142's §S hunk): a broken mount index FAILS the export
+/// rather than exporting the vaulted characters / store-backed entities EMPTY.
+/// A RECORDED DIVERGENCE — v4 (`ndjson-writer.ts:625,642`) runs non-strict —
+/// under the 2026-08-03 "fix, don't match" backup/restore ruling.
 pub fn resolve_export_ids(
+    main: &Connection,
+    mount: &Connection,
+    user_id: &str,
+    options: &ExportOptions,
+) -> Result<Vec<String>, ExportError> {
+    crate::db::fallback::with_strict_repository_failures(|| {
+        resolve_export_ids_strict(main, mount, user_id, options)
+    })
+}
+
+/// [`resolve_export_ids`]'s body, run inside the strict-repository scope.
+fn resolve_export_ids_strict(
     main: &Connection,
     mount: &Connection,
     user_id: &str,
@@ -334,8 +353,41 @@ fn id_list(rows: &[Value]) -> Vec<String> {
 
 /// v4 `streamExportRecords` (`ndjson-writer.ts:658`) materialized as a `Vec` in
 /// yield order. See the module header for the envelope/footer discipline.
+///
+/// Runs inside [`crate::db::fallback::with_strict_repository_failures`] (the
+/// human's 2026-10-02 ruling, applied at the `f6426e196` recorded-divergences
+/// unification — P4.142's §S hunk): a broken mount index FAILS the export
+/// rather than exporting the vaulted characters / store-backed entities EMPTY.
+/// A RECORDED DIVERGENCE — v4 (`ndjson-writer.ts:625,642`) runs non-strict —
+/// under the 2026-08-03 "fix, don't match" backup/restore ruling.
 #[allow(clippy::too_many_arguments)]
 pub fn stream_export_records(
+    main: &Connection,
+    mount: &Connection,
+    storage: Option<&dyn crate::services::file_storage::StorageBackend>,
+    user_id: &str,
+    options: &ExportOptions,
+    preserve_ids: bool,
+    created_at: &str,
+    app_version: &str,
+) -> Result<Vec<Value>, ExportError> {
+    crate::db::fallback::with_strict_repository_failures(|| {
+        stream_export_records_strict(
+            main,
+            mount,
+            storage,
+            user_id,
+            options,
+            preserve_ids,
+            created_at,
+            app_version,
+        )
+    })
+}
+
+/// [`stream_export_records`]'s body, run inside the strict-repository scope.
+#[allow(clippy::too_many_arguments)]
+fn stream_export_records_strict(
     main: &Connection,
     mount: &Connection,
     storage: Option<&dyn crate::services::file_storage::StorageBackend>,
@@ -523,6 +575,84 @@ pub(crate) fn kind_data(kind: &str, data: Value) -> Value {
     m.insert("kind".into(), Value::String(kind.to_string()));
     m.insert("data".into(), data);
     Value::Object(m)
+}
+
+#[cfg(test)]
+mod strict_scope_tests {
+    use super::*;
+
+    /// A main DB holding one store-backed group whose store lives on `mp-1`,
+    /// and a mount index with none of the joined tables — every overlay batch
+    /// read fails on `no such table: doc_mount_file_links`.
+    fn broken_store() -> (Connection, Connection) {
+        let main = Connection::open_in_memory().unwrap();
+        main.execute_batch(
+            "CREATE TABLE groups (id TEXT, name, officialMountPointId TEXT, \
+             createdAt TEXT, updatedAt TEXT); \
+             INSERT INTO groups VALUES ('g-1', 'Loners', 'mp-1', \
+               '2026-01-02T03:04:05.000Z', '2026-01-02T03:04:05.000Z');",
+        )
+        .unwrap();
+        (main, Connection::open_in_memory().unwrap())
+    }
+
+    fn groups_all() -> ExportOptions {
+        ExportOptions {
+            entity_type: "groups".into(),
+            scope: "all".into(),
+            selected_ids: Vec::new(),
+            include_memories: false,
+        }
+    }
+
+    const STRICT_TAIL: &str = "error=no such table: doc_mount_file_links strictFailures=true";
+
+    /// P4.142's §S hunk (the human's 2026-10-02 ruling), applied at the
+    /// `f6426e196` recorded-divergences unification: the export's three entry
+    /// points run inside the strict-repository scope, so a broken store FAILS
+    /// the export (the repository line marked `strictFailures=true`) instead
+    /// of exporting the group EMPTY — the body alone, outside the scope, is
+    /// v4's non-strict fallback and drops it. Mutation: call the `_strict`
+    /// body directly from any entry point → RED.
+    #[test]
+    fn the_export_entry_points_fail_a_broken_store_instead_of_dropping_it() {
+        let (main, mount) = broken_store();
+        let (ids, _) = crate::test_support::captured_with(|| {
+            resolve_export_ids_strict(&main, &mount, "u-1", &groups_all())
+        });
+        assert_eq!(
+            ids.unwrap(),
+            Vec::<String>::new(),
+            "outside the scope: dropped"
+        );
+
+        let (ids, lines) = crate::test_support::captured_with(|| {
+            resolve_export_ids(&main, &mount, "u-1", &groups_all())
+        });
+        assert!(ids.is_err(), "{ids:?}");
+        assert!(lines.iter().any(|l| l.ends_with(STRICT_TAIL)), "{lines:#?}");
+
+        let (records, lines) = crate::test_support::captured_with(|| {
+            stream_export_records(
+                &main,
+                &mount,
+                None,
+                "u-1",
+                &groups_all(),
+                false,
+                "2026-10-02T00:00:00.000Z",
+                "test",
+            )
+        });
+        assert!(records.is_err(), "{records:?}");
+        assert!(lines.iter().any(|l| l.ends_with(STRICT_TAIL)), "{lines:#?}");
+
+        let (preview, lines) = crate::test_support::captured_with(|| {
+            preview::preview_export(&main, &mount, "u-1", &groups_all())
+        });
+        assert!(preview.is_err(), "{preview:?}");
+        assert!(lines.iter().any(|l| l.ends_with(STRICT_TAIL)), "{lines:#?}");
+    }
 }
 
 #[cfg(test)]

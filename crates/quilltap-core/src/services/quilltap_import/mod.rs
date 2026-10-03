@@ -960,7 +960,27 @@ fn preflight_preserve_ids(
 /// mid-transaction store failure) takes that arm rather than erroring the call.
 /// The `Result` return survives for the seed/reset consumers' historical
 /// signature.
+///
+/// Runs inside [`crate::db::fallback::with_strict_repository_failures`], as
+/// v4's does (`execute.ts:430`, applied at the `f6426e196` recorded-divergences
+/// unification — P4.142's §S hunk). ⚠ v5's scope reaches only the homes that
+/// honour it (the overlay's two batch reads); v4's reaches every fallback
+/// `safeQuery` (P4.143 Tier 3 item 11, deferred by name).
 pub fn execute_import(
+    main: &rusqlite::Connection,
+    mount: &rusqlite::Connection,
+    user_id: &str,
+    export: &QuilltapExport,
+    options: &ImportOptions,
+    codec: &dyn crate::services::file_storage::PixelCodec,
+) -> Result<ImportResult, ImportError> {
+    crate::db::fallback::with_strict_repository_failures(|| {
+        execute_import_strict(main, mount, user_id, export, options, codec)
+    })
+}
+
+/// [`execute_import`]'s body, run inside the strict-repository scope.
+fn execute_import_strict(
     main: &rusqlite::Connection,
     mount: &rusqlite::Connection,
     user_id: &str,
@@ -2020,6 +2040,57 @@ mod tests {
             manifest: json!({"format": "quilltap-export", "version": "1.0"}),
             data: json!({ kind: [item] }),
         }
+    }
+
+    /// P4.142's §S hunk, applied at the `f6426e196` recorded-divergences
+    /// unification: the import runs inside the strict-repository scope, as
+    /// v4's does (`execute.ts:430`). A group whose store sits on a broken mount
+    /// index: the preflight's existence read logs the batch line with
+    /// `strictFailures=true` through the entry point, and without it through
+    /// the body alone. Mutation: drop the wrapper → RED.
+    #[test]
+    fn the_import_runs_inside_the_strict_scope() {
+        let main = Connection::open_in_memory().unwrap();
+        main.execute_batch(
+            "CREATE TABLE groups (id TEXT, name, officialMountPointId TEXT, \
+             createdAt TEXT, updatedAt TEXT); \
+             INSERT INTO groups VALUES ('g1', 'Loners', 'mp-1', \
+               '2026-01-02T03:04:05.000Z', '2026-01-02T03:04:05.000Z');",
+        )
+        .unwrap();
+        let mount = Connection::open_in_memory().unwrap();
+        let export = export_with("groups", json!({"id": "g1", "name": "G"}));
+        let codec = crate::services::file_storage::NotConfiguredPixelCodec;
+        let strict_line = |lines: &[String]| {
+            lines.iter().any(|l| {
+                l.contains("Error finding documents by mount point IDs and path")
+                    && l.ends_with("strictFailures=true")
+            })
+        };
+        let (body, lines) = crate::test_support::captured_with(|| {
+            execute_import_strict(
+                &main,
+                &mount,
+                "user",
+                &export,
+                &preserve_ids_options(),
+                &codec,
+            )
+        });
+        assert!(!body.unwrap().success);
+        assert!(!strict_line(&lines), "{lines:#?}");
+        let (got, lines) = crate::test_support::captured_with(|| {
+            execute_import(
+                &main,
+                &mount,
+                "user",
+                &export,
+                &preserve_ids_options(),
+                &codec,
+            )
+        });
+        assert!(!got.unwrap().success);
+        assert!(strict_line(&lines), "{lines:#?}");
     }
 
     /// A `projects` slim table holding one row with a NULL `officialMountPointId`.

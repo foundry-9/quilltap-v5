@@ -70,7 +70,25 @@ fn id_of(item: &Value) -> String {
 }
 
 /// v4 `previewImport(userId, exportData)`.
+///
+/// Runs inside [`crate::db::fallback::with_strict_repository_failures`], as
+/// v4's does (`preview.ts:31`, applied at the `f6426e196` recorded-divergences
+/// unification — P4.142's §S hunk). ⚠ v5's scope reaches only the homes that
+/// honour it (the overlay's two batch reads); v4's reaches every fallback
+/// `safeQuery` (P4.143 Tier 3 item 11, deferred by name).
 pub fn preview_import(
+    main: &Connection,
+    mount: &Connection,
+    user_id: &str,
+    export: &QuilltapExport,
+) -> Result<Value, DbError> {
+    crate::db::fallback::with_strict_repository_failures(|| {
+        preview_import_strict(main, mount, user_id, export)
+    })
+}
+
+/// [`preview_import`]'s body, run inside the strict-repository scope.
+fn preview_import_strict(
     main: &Connection,
     mount: &Connection,
     user_id: &str,
@@ -452,6 +470,50 @@ mod tests {
             data,
         };
         preview_import(main, mount, "user", &export)
+    }
+
+    /// P4.142's §S hunk, applied at the `f6426e196` recorded-divergences
+    /// unification: the preview runs inside the strict-repository scope, as
+    /// v4's does (`preview.ts:31`) — a group conflict check against a broken
+    /// store logs the batch read's line with `strictFailures=true` and fails
+    /// on the DATABASE error; the body alone (outside the scope) answers the
+    /// store's own unavailability. Mutation: drop the wrapper → RED.
+    #[test]
+    fn the_preview_runs_inside_the_strict_scope() {
+        let main = Connection::open_in_memory().unwrap();
+        main.execute_batch(
+            "CREATE TABLE groups (id TEXT, name, officialMountPointId TEXT, \
+             createdAt TEXT, updatedAt TEXT); \
+             INSERT INTO groups VALUES ('g-1', 'Loners', 'mp-1', \
+               '2026-01-02T03:04:05.000Z', '2026-01-02T03:04:05.000Z');",
+        )
+        .unwrap();
+        let mount = Connection::open_in_memory().unwrap();
+        let export = super::super::QuilltapExport {
+            manifest: json!({"format": "quilltap-export", "version": "1.0"}),
+            data: json!({ "groups": [{ "id": "g-1", "name": "Loners" }] }),
+        };
+        let (body, lines) = crate::test_support::captured_with(|| {
+            preview_import_strict(&main, &mount, "user", &export)
+        });
+        assert!(
+            matches!(body, Err(DbError::StoreUnavailable { .. })),
+            "outside the scope the overlay refuses the store: {body:?}"
+        );
+        assert!(
+            lines.iter().all(|l| !l.contains("strictFailures")),
+            "{lines:#?}"
+        );
+        let (got, lines) =
+            crate::test_support::captured_with(|| preview_import(&main, &mount, "user", &export));
+        assert!(
+            matches!(got, Err(DbError::Sqlite(_))),
+            "inside the scope the batch read propagates: {got:?}"
+        );
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error finding documents by mount point IDs and path collection=doc_mount_documents mountPointIdCount=1 relativePath=properties.json error=no such table: doc_mount_file_links strictFailures=true".to_string()]
+        );
     }
 
     /// Every kind whose existence test reads a repository, against a database

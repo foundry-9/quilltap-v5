@@ -845,11 +845,12 @@ fn v5_repo_logs(lines: &[String]) -> Vec<Value> {
 /// serde arm (`serde = Some((v4_path_key, v5_serde_prefix))`), the RECORDED
 /// divergence: v4's `error` a Zod message whose first issue path is
 /// `[v4_path_key]`, v5's starting with serde's sentence (VANISHED if they
-/// agree). `strictFailures` is a v4-ONLY field (P4.143 Tier 3 item 11 — v5
-/// has no strict-repository scope): pinned on v4 to exactly the lines
-/// `strict_lines` names (the import's two `safeQuery`-born ERRORs; none on
-/// restore), pinned ABSENT on v5 (it reds "VANISHED" if v5 grows it), then
-/// dropped from the compare.
+/// agree). `strictFailures` is pinned on BOTH sides to exactly the lines
+/// `strict_lines` names (the import's two `safeQuery`-born ERRORs), then
+/// dropped from the compare — v5's import entered the strict-repository scope
+/// at the `f6426e196` recorded-divergences unification, and the chat-create
+/// helper reads it, so the field is no longer v4-only (it was P4.143's pinned
+/// v4-only field until then).
 fn compare_repo_logs(
     name: &str,
     want: &Value,
@@ -864,12 +865,26 @@ fn compare_repo_logs(
         ));
         return;
     };
-    if got_lines.iter().any(|l| l.contains("strictFailures=")) {
-        failures.push(format!(
-            "[{name}] v5 now logs `strictFailures` — the v4-only field VANISHED; retire the pin"
-        ));
+    // v5's field rides LAST (after `error`, which the parser reads to the end
+    // of the line): pin it on exactly `strict_lines`, then strip it.
+    let mut stripped: Vec<String> = Vec::with_capacity(got_lines.len());
+    for l in got_lines {
+        let is_strict = l.ends_with(" strictFailures=true");
+        let line = l.strip_suffix(" strictFailures=true").unwrap_or(l);
+        if let Some(message) = REPO_LOG_MESSAGES
+            .iter()
+            .find(|m| line.contains(&format!(" {m} ")))
+        {
+            if is_strict != strict_lines.contains(message) {
+                failures.push(format!(
+                    "[{name}] v5 `strictFailures` on {message:?}: {is_strict}, expected {}",
+                    strict_lines.contains(message)
+                ));
+            }
+        }
+        stripped.push(line.to_string());
     }
-    let got = v5_repo_logs(got_lines);
+    let got = v5_repo_logs(&stripped);
     let mut want: Vec<Value> = want.clone();
     for w in want.iter_mut() {
         let message = w["message"].as_str().unwrap_or("").to_string();

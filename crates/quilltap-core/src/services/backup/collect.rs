@@ -467,18 +467,35 @@ pub fn compact_backup_data(mut data: BackupData) -> BackupData {
 pub fn collect_user_data(db: &Db, user_id: &str) -> Result<BackupData, DbError> {
     // The mount-index partition is required for the vault overlays; an instance
     // without one cannot have characters at all.
+    //
+    // The three overlay reads run inside the strict-repository scope (the
+    // human's 2026-10-02 ruling, applied at the `f6426e196` recorded-divergences
+    // unification — P4.142's §S hunk): on a broken mount index the overlay's
+    // batch reads log their line with `strictFailures=true` and the BACKUP
+    // FAILS, rather than silently omitting every vaulted character and
+    // store-backed project/group. A RECORDED DIVERGENCE — v4's
+    // `backup-service.ts:159` runs non-strict and drops — under the 2026-08-03
+    // "fix, don't match" ruling. For the same reason the project/group reads no
+    // longer `.unwrap_or_default()` a failure into an EMPTY collection (a
+    // missing table still reads as none, as for `characters`).
     let (characters, projects, groups) = db.read_main(|main| {
         db.read_mount_index(|mount| {
-            let characters = if_table(main, "characters", || {
-                characters_read::find_all(main, mount)
-            })?;
-            let projects = crate::db::projects::ProjectsRepository::new(main, mount)
-                .find_all()
-                .unwrap_or_default();
-            let groups = crate::db::groups::GroupsRepository::new(main, mount)
-                .find_all()
-                .unwrap_or_default();
-            Ok((characters, projects, groups))
+            crate::db::fallback::with_strict_repository_failures(|| {
+                let characters = if_table(main, "characters", || {
+                    characters_read::find_all(main, mount)
+                })?;
+                let projects = if_table(main, "projects", || {
+                    crate::db::projects::ProjectsRepository::new(main, mount)
+                        .find_all()
+                        .map_err(|e| e.into_db())
+                })?;
+                let groups = if_table(main, "groups", || {
+                    crate::db::groups::GroupsRepository::new(main, mount)
+                        .find_all()
+                        .map_err(|e| e.into_db())
+                })?;
+                Ok((characters, projects, groups))
+            })
         })
     })?;
 
@@ -960,4 +977,59 @@ fn json_array_or_empty(cell: Option<String>) -> Value {
     cell.and_then(|t| serde_json::from_str::<Value>(&t).ok())
         .filter(Value::is_array)
         .unwrap_or_else(|| Value::Array(Vec::new()))
+}
+
+#[cfg(test)]
+mod strict_scope_tests {
+    use super::*;
+    use crate::db::runtime::DbPaths;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    /// P4.142's §S hunk (the human's 2026-10-02 ruling), applied at the
+    /// `f6426e196` recorded-divergences unification: a group whose store sits
+    /// on a mount index with none of the joined tables FAILS the backup — the
+    /// overlay's batch line marked `strictFailures=true` — where the
+    /// non-strict overlay (and, before it, the `.unwrap_or_default()`) would
+    /// have written a backup silently missing the group. A RECORDED
+    /// DIVERGENCE: v4's collect runs non-strict and drops. Mutations: remove the
+    /// scope, or restore `.unwrap_or_default()` → RED.
+    #[test]
+    fn a_broken_store_fails_the_backup_instead_of_dropping_the_group() {
+        let dir = tempfile::tempdir().unwrap();
+        let (main, mount) = (dir.path().join("main.db"), dir.path().join("mount.db"));
+        {
+            let w = crate::db::Writer::open_writable(&main, PEPPER).unwrap();
+            w.connection()
+                .execute_batch(
+                    "CREATE TABLE groups (id TEXT, name, officialMountPointId TEXT, \
+                     createdAt TEXT, updatedAt TEXT); \
+                     INSERT INTO groups VALUES ('g-1', 'Loners', 'mp-1', \
+                       '2026-01-02T03:04:05.000Z', '2026-01-02T03:04:05.000Z');",
+                )
+                .unwrap();
+            let m = crate::db::Writer::open_writable(&mount, PEPPER).unwrap();
+            m.connection()
+                .execute_batch("CREATE TABLE stand_in (id TEXT);")
+                .unwrap();
+        }
+        let db = Db::open(
+            DbPaths {
+                main,
+                mount_index: Some(mount),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        let (got, lines) =
+            crate::test_support::captured_with(|| collect_user_data(&db, "u-1").map(|_| ()));
+        assert!(got.is_err(), "the backup must fail, not drop the group");
+        assert!(
+            lines.iter().any(|l| l.starts_with(
+                "ERROR quilltap::db Error finding documents by mount point IDs and path"
+            ) && l.ends_with("strictFailures=true")),
+            "{lines:#?}"
+        );
+    }
 }

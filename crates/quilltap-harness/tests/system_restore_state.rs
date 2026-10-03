@@ -1453,11 +1453,9 @@ fn v5_repo_logs(lines: &[String]) -> Vec<Value> {
 /// serde arm (`serde = Some((v4_path_key, v5_serde_prefix))`), the RECORDED
 /// divergence: v4's `error` a Zod message whose first issue path is
 /// `[v4_path_key]`, v5's starting with serde's sentence (VANISHED if they
-/// agree). `strictFailures` is a v4-ONLY field (P4.143 Tier 3 item 11 — v5
-/// has no strict-repository scope): pinned on v4 to exactly the lines
-/// `strict_lines` names (the import's two `safeQuery`-born ERRORs; none on
-/// restore), pinned ABSENT on v5 (it reds "VANISHED" if v5 grows it), then
-/// dropped from the compare.
+/// agree). `strictFailures`: restore runs OUTSIDE the strict-repository scope
+/// on both sides, so it is pinned on v4 to exactly the lines `strict_lines`
+/// names (none here) and ABSENT on v5, then dropped from the compare.
 fn compare_repo_logs(
     name: &str,
     want: &Value,
@@ -1474,7 +1472,7 @@ fn compare_repo_logs(
     };
     if got_lines.iter().any(|l| l.contains("strictFailures=")) {
         failures.push(format!(
-            "[{name}] v5 now logs `strictFailures` — the v4-only field VANISHED; retire the pin"
+            "[{name}] v5 logs `strictFailures` on a restore — restore runs outside the strict scope on both sides"
         ));
     }
     let got = v5_repo_logs(got_lines);

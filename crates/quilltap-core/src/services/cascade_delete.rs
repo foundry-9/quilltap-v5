@@ -161,9 +161,7 @@ pub fn find_exclusive_images_for_character(
         if !is_exclusive {
             continue;
         }
-        let chars_default = characters_read::find_by_default_image_id(main, mount, &image.id)?;
-        let chars_overrides =
-            characters_read::find_by_avatar_override_image_id(main, mount, &image.id)?;
+        let (chars_default, chars_overrides) = characters_using_image(main, mount, &image.id)?;
         let used_elsewhere = chars_default
             .iter()
             .any(|c| c.get("id").and_then(Value::as_str) != Some(character_id))
@@ -177,6 +175,30 @@ pub fn find_exclusive_images_for_character(
         out.push(ExclusiveCharacterImage::LegacyFile { id: image.id });
     }
     Ok(out)
+}
+
+/// The characters using `image_id` as their default image and through an
+/// avatar override — the "is this image used by another character" check both
+/// exclusivity scans make before a file is DELETED outside the transaction.
+///
+/// Read inside the strict-repository scope (the `f6426e196` recorded-divergences
+/// unification, a §3 finding): since P4.142 the vault overlay's batch reads
+/// answer `[]` on a broken mount index, so a legacy avatar shared with a
+/// vaulted character would read as exclusive and its file be deleted. Inside
+/// the scope the read fails the cascade instead — the behaviour `main` had
+/// before P4.142. A RECORDED DIVERGENCE: v4's overlay drops non-strict here
+/// (the same "fix, don't match" call as the backup collect).
+fn characters_using_image(
+    main: &Connection,
+    mount: &Connection,
+    image_id: &str,
+) -> Result<(Vec<Value>, Vec<Value>), DbError> {
+    crate::db::fallback::with_strict_repository_failures(|| {
+        Ok((
+            characters_read::find_by_default_image_id(main, mount, image_id)?,
+            characters_read::find_by_avatar_override_image_id(main, mount, image_id)?,
+        ))
+    })
 }
 
 /// v4 `findExclusiveImagesForChats` — image ids attached to messages in the given
@@ -225,9 +247,7 @@ pub fn find_exclusive_images_for_chats(
         if linked_to_others {
             continue;
         }
-        let chars_default = characters_read::find_by_default_image_id(main, mount, &image.id)?;
-        let chars_overrides =
-            characters_read::find_by_avatar_override_image_id(main, mount, &image.id)?;
+        let (chars_default, chars_overrides) = characters_using_image(main, mount, &image.id)?;
         if chars_default.is_empty() && chars_overrides.is_empty() {
             out.push(image.id);
         }
@@ -376,5 +396,46 @@ fn gallery_db_err(e: crate::photos::character_gallery_service::GalleryError) -> 
         GalleryError::Db(err) => err,
         GalleryError::CharacterNotFound => DbError::Internal("character not found".into()),
         GalleryError::BadRequest(msg) => DbError::Internal(msg),
+    }
+}
+
+#[cfg(test)]
+mod strict_image_check_tests {
+    use super::*;
+
+    /// A vaulted character using `img-1` as its default image, on a mount index
+    /// with none of the joined tables: the image check FAILS (the batch line
+    /// marked `strictFailures=true`) rather than reading the image as unused —
+    /// which would let the cascade delete a file another character still
+    /// shows. Mutation: drop the scope → `Ok(([], []))` and RED.
+    #[test]
+    fn a_broken_vault_read_fails_the_image_check_instead_of_reading_unused() {
+        let main = Connection::open_in_memory().unwrap();
+        main.execute_batch(
+            "CREATE TABLE characters (id, userId, name, defaultImageId, \
+             defaultConnectionProfileId, defaultPartnerId, defaultRoleplayTemplateId, \
+             defaultImageProfileId, sillyTavernData, isFavorite, npc, controlledBy, \
+             defaultAgentModeEnabled, defaultHelpToolsEnabled, defaultTimestampConfig, \
+             defaultScenarioId, defaultSystemPromptId, characterDocumentMountPointId, \
+             canDressThemselves, canCreateOutfits, systemTransparency, coreWhisperEnabled, \
+             canBeCarina, partnerLinks, tags, avatarOverrides, createdAt, updatedAt); \
+             INSERT INTO characters (id, userId, name, defaultImageId, \
+               characterDocumentMountPointId, avatarOverrides, createdAt, updatedAt) \
+             VALUES ('c-2', 'u-1', 'Other', 'img-1', 'mp-1', '[]', \
+               '2026-01-02T03:04:05.000Z', '2026-01-02T03:04:05.000Z');",
+        )
+        .unwrap();
+        let mount = Connection::open_in_memory().unwrap();
+        let (got, lines) =
+            crate::test_support::captured_with(|| characters_using_image(&main, &mount, "img-1"));
+        assert!(got.is_err(), "{got:?}");
+        assert!(
+            lines.iter().any(|l| l.ends_with("strictFailures=true")),
+            "{got:?} {lines:#?}"
+        );
+        assert!(
+            !lines.is_empty(),
+            "{lines:#?}"
+        );
     }
 }

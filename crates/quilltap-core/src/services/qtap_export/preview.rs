@@ -18,7 +18,26 @@ use crate::db::{
 };
 
 /// v4 `previewExport(userId, options)`.
+///
+/// Runs inside [`crate::db::fallback::with_strict_repository_failures`] (the
+/// human's 2026-10-02 ruling, applied at the `f6426e196` recorded-divergences
+/// unification — P4.142's §S hunk): a broken mount index FAILS the export
+/// rather than exporting the vaulted characters / store-backed entities EMPTY.
+/// A RECORDED DIVERGENCE — v4 (`ndjson-writer.ts:625,642`) runs non-strict —
+/// under the 2026-08-03 "fix, don't match" backup/restore ruling.
 pub fn preview_export(
+    main: &Connection,
+    mount: &Connection,
+    user_id: &str,
+    options: &ExportOptions,
+) -> Result<Value, ExportError> {
+    crate::db::fallback::with_strict_repository_failures(|| {
+        preview_export_strict(main, mount, user_id, options)
+    })
+}
+
+/// [`preview_export`]'s body, run inside the strict-repository scope.
+fn preview_export_strict(
     main: &Connection,
     mount: &Connection,
     user_id: &str,

@@ -371,13 +371,16 @@ pub fn concierge_columns_zod_error(chat: &Value) -> Option<String> {
 /// added the third line, which v5 had never logged). `error` is the ZodError's
 /// message on all three lines (`extractErrorMessage`).
 ///
-/// ⚠ Two recorded divergences: (a) on v5's typed-decode (serde) arm the
-/// callers pass serde's sentence, so all three lines carry it where v4
-/// carries a ZodError (the generated schema-shape table closes it — P4.143
-/// Tier 3 item 12); (b) on the IMPORT path v4's second and third lines also
-/// carry `strictFailures: true` (`execute.ts:425-431`'s
-/// `withStrictRepositoryFailures`) — v5 has no strict-repository scope
-/// (P4.143 Tier 3 item 11). Restore runs outside that scope on v4 too.
+/// ⚠ One recorded divergence: on v5's typed-decode (serde) arm the callers
+/// pass serde's sentence, so all three lines carry it where v4 carries a
+/// ZodError (the generated schema-shape table closes it — P4.143 Tier 3 item
+/// 12). On the IMPORT path the second and third lines (v4's two
+/// `safeQuery`-born ERRORs) carry `strictFailures: true` LAST, as v4's do
+/// inside `withStrictRepositoryFailures` (`execute.ts:425-431`; the first,
+/// `validate`'s own line, never does) — read off
+/// [`strict_repository_failures_active`](crate::db::fallback::strict_repository_failures_active)
+/// since the import entered the scope at the `f6426e196` recorded-divergences
+/// unification. Restore runs outside that scope on both sides.
 pub fn log_chat_create_validation_failure(zod_message: &str) {
     tracing::error!(
         target: "quilltap::db",
@@ -385,18 +388,35 @@ pub fn log_chat_create_validation_failure(zod_message: &str) {
         error = %zod_message,
         "Data validation failed"
     );
-    tracing::error!(
-        target: "quilltap::db",
-        collection = "chats",
-        error = %zod_message,
-        "Error creating entity"
-    );
-    tracing::error!(
-        target: "quilltap::db",
-        collection = "chats",
-        error = %zod_message,
-        "Failed to create chat"
-    );
+    if crate::db::fallback::strict_repository_failures_active() {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "chats",
+            error = %zod_message,
+            strictFailures = true,
+            "Error creating entity"
+        );
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "chats",
+            error = %zod_message,
+            strictFailures = true,
+            "Failed to create chat"
+        );
+    } else {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "chats",
+            error = %zod_message,
+            "Error creating entity"
+        );
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "chats",
+            error = %zod_message,
+            "Failed to create chat"
+        );
+    }
 }
 
 /// JS object spread of `src` over `dst`: an existing key is overwritten in

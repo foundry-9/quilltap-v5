@@ -363,7 +363,12 @@ pub fn sweep_orphaned_store_children_or_default<T: Default>(
 // match" family) enter it too — a deliberate divergence, since v4 runs them
 // non-strict and exports a broken store EMPTY (RULED, the human, 2026-10-02).
 // The bit is THREAD-local: a `Db::write` closure runs on the writer thread, so
-// a caller enters the scope INSIDE the closure that makes the reads. ===
+// a caller enters the scope INSIDE the closure that makes the reads — and the
+// scope is SYNCHRONOUS: a closure that returns a `Future` leaves the scope
+// before the future is polled (nothing refuses it), so wrap the sync body,
+// never an async one. Entered at the `f6426e196` recorded-divergences
+// unification by the backup collect, the export's three entry points, the
+// import's execute + preview, and the cascade delete's image checks. ===
 
 thread_local! {
     static STRICT_REPOSITORY_FAILURES: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };

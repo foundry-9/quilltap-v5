@@ -756,7 +756,7 @@ fn create_chat(
     );
     // v4's `repos.chats.create` validates the three Concierge enums (P4.124):
     // an out-of-enum value fails the chat with the ZodError message.
-    // A refused create is v4's `validate` throw inside `_create`: the two
+    // A refused create is v4's `validate` throw inside `_create`: the three
     // repository ERRORs precede the caller's `Failed to import chat` WARN.
     if let Some(zod) =
         crate::services::dangerous_content::chat_override::concierge_columns_zod_error(&obj)

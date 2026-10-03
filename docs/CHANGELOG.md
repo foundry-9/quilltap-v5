@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — fix(backup): backup, .qtap export, import and the cascade delete's image check fail on a broken store instead of dropping vaulted rows (P4.142 §S)
+
+_Versions: core 0.0.1182, harness 0.0.1109._
+
+Unification wire for P4.142's strict-repository scope, applying the human's 2026-10-02 ruling. Once P4.142's overlay batch reads fall back to `[]` on a broken mount index, any caller that is not in the strict scope silently loses every vaulted character and store-backed project or group. These callers now run inside `db::fallback::with_strict_repository_failures`:
+
+- **Backup collect.** The three overlay reads run in the scope, and the project/group reads no longer `.unwrap_or_default()` a failure into an empty list (a missing table still reads as empty). The backup now fails with the batch line marked `strictFailures=true`. This is a recorded divergence: v4 runs non-strict and drops.
+- **`.qtap` export.** `resolve_export_ids`, `stream_export_records` and `preview_export` each wrap a private `*_strict` body. Same recorded divergence.
+- **Import.** `execute_import` and `preview_import` are wrapped as v4 wraps them (`execute.ts:430`, `preview.ts:31`). v5's scope still reaches only the overlay's batch homes (P4.143 Tier 3 item 11).
+- **Cascade delete** (a §3 finding outside the lane's list). The "is this image used by another character" check feeds a file deletion outside the transaction, so it now runs in the scope. A broken vault read fails the cascade, as it did on `main` before P4.142, instead of judging a shared legacy avatar exclusive. Recorded divergence.
+
+The refused chat create's second and third repository ERRORs now carry `strictFailures=true` when the scope is active, as v4's import logs them. `system_import_state` therefore pins the field on both sides instead of treating it as v4-only, and `system_restore_state` pins it absent on both sides (restore runs outside the scope everywhere). The scope's doc now warns that it is synchronous: a closure that returns a future leaves the scope before it is polled. Each wrap has a unit test planting a broken mount index. The collect and cascade wraps were mutation-proven.
+
 #### 2026-10-03 — test(web): the Scenario Builder's keyed profile sends its own key on every stream call (P4.139 §S.3)
 
 _Versions: web 0.0.213._
