@@ -240,9 +240,12 @@ pub(crate) fn create_op(
     }
     let relative_path = format!("{SCENARIOS_FOLDER}/{cleaned}.md");
 
+    // v4 `scenarios/route.ts:89` (and the project/group twins): the fallback
+    // `findByMountPointAndPath` — a failed read is "no conflict" and the write
+    // proceeds, as in v4 (P4.142 G2).
     let docs = DocMountDocumentsRepository::new(mount);
     if docs
-        .find_by_mount_point_and_path(mp, &relative_path)?
+        .find_by_mount_point_and_path_or_none(mp, &relative_path)
         .is_some()
     {
         return Ok(Err(bad_request(format!(
@@ -307,7 +310,9 @@ pub(crate) fn update_op(
     let fields = extract_fields(bag);
 
     let docs = DocMountDocumentsRepository::new(mount);
-    let Some(existing) = docs.find_by_mount_point_and_path(mp, resolved_path)? else {
+    // v4 `scenario-item-route-factory.ts:165-169`: fallback read → `null` →
+    // `notFound('Scenario')` (P4.142 G2).
+    let Some(existing) = docs.find_by_mount_point_and_path_or_none(mp, resolved_path) else {
         return Ok(Err(not_found("Scenario")));
     };
 
@@ -358,13 +363,18 @@ pub(crate) fn rename_op(
             .insert("path".into(), json!(new_path));
         return Ok(Ok(body));
     }
+    // v4 `scenario-item-route-factory.ts:239-251`: both fallback reads —
+    // `null` existing → 404, `null` conflict → the move proceeds (P4.142 G2).
     if docs
-        .find_by_mount_point_and_path(mp, resolved_path)?
+        .find_by_mount_point_and_path_or_none(mp, resolved_path)
         .is_none()
     {
         return Ok(Err(not_found("Scenario")));
     }
-    if docs.find_by_mount_point_and_path(mp, &new_path)?.is_some() {
+    if docs
+        .find_by_mount_point_and_path_or_none(mp, &new_path)
+        .is_some()
+    {
         return Ok(Err(bad_request(format!(
             "A scenario named \"{cleaned}\" already exists"
         ))));
@@ -560,4 +570,89 @@ pub async fn scenario_delete(db: &Db, scenario_path: String, include_archived: b
     })
     .await;
     finish(out)
+}
+
+#[cfg(test)]
+mod fallback_read_tests {
+    use super::*;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    /// A provisioned instance's mount index with `Scenarios/a.md` written into a
+    /// database store, then `doc_mount_documents.content` renamed (the column
+    /// only the documents read names).
+    fn planted(dir: &tempfile::TempDir) -> (crate::db::Writer, String) {
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER).unwrap();
+        let w =
+            crate::db::Writer::open_writable(&dir.path().join("quilltap-mount-index.db"), PEPPER)
+                .unwrap();
+        let mp: String = w
+            .connection()
+            .query_row(
+                "SELECT id FROM doc_mount_points WHERE mountType = 'database' LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        crate::db::doc_mount_file_links::DocMountFileLinksRepository::new(w.connection())
+            .write_database_document(&mp, "Scenarios/a.md", "---\nname: A\n---\nbody")
+            .unwrap();
+        w.connection()
+            .execute_batch("ALTER TABLE doc_mount_documents RENAME COLUMN content TO content_x")
+            .unwrap();
+        (w, mp)
+    }
+
+    fn line(mp: &str, path: &str) -> String {
+        format!("ERROR quilltap::db Error finding document by mount point and path collection=doc_mount_documents mountPointId={mp} relativePath={path} error=no such column: d.content")
+    }
+
+    /// P4.142 G2 — the three scenario writes' lookups are v4's FALLBACKS: a
+    /// failed read is the not-found arm (update / rename → 404 `Scenario`), and
+    /// for the create's conflict check "no conflict", so the write itself is what
+    /// fails next — after v4's repository line, never the read's own `Err`.
+    #[test]
+    fn the_scenario_lookups_fall_back_as_v4() {
+        let dir = tempfile::tempdir().unwrap();
+        let (w, mp) = planted(&dir);
+        let conn = w.connection();
+
+        let (got, lines) = crate::test_support::captured_with(|| {
+            update_op(
+                conn,
+                &mp,
+                "Scenarios/a.md",
+                &json!({ "name": "B", "body": "b" }),
+                false,
+            )
+        });
+        assert!(
+            matches!(got, Ok(Err(Response::Error(ref e))) if e.kind == ErrorKind::NotFound),
+            "{got:?} {lines:#?}"
+        );
+        assert_eq!(lines, vec![line(&mp, "Scenarios/a.md")]);
+
+        let (got, lines) = crate::test_support::captured_with(|| {
+            rename_op(conn, &mp, "Scenarios/a.md", "b", false)
+        });
+        assert!(matches!(got, Ok(Err(Response::Error(ref e))) if e.kind == ErrorKind::NotFound));
+        assert_eq!(lines, vec![line(&mp, "Scenarios/a.md")]);
+
+        let (got, lines) = crate::test_support::captured_with(|| {
+            create_op(
+                conn,
+                &mp,
+                &json!({ "filename": "c", "name": "C", "body": "c" }),
+            )
+        });
+        assert!(
+            !matches!(got, Ok(Err(Response::Error(ref e))) if e.kind == ErrorKind::BadRequest),
+            "a failed conflict read must not read as a conflict: {got:?}"
+        );
+        assert_eq!(
+            lines.first(),
+            Some(&line(&mp, "Scenarios/c.md")),
+            "{lines:#?}"
+        );
+    }
 }

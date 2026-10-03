@@ -160902,3 +160902,44 @@ scope → the caller's `Err`), on the union.
   photo_link_summary}.rs`, `services/maintenance.rs` (not this lane's files)
   and `services/file_storage.rs:927` (a G2/G3 site, deferred with its group);
   `quilltap_import/mod.rs:677` stays strict.
+
+### Unit 10 — G2, the first five sites (core 0.0.1156)
+
+- `api/scenarios.rs` `create_op` (conflict check), `update_op` (existing),
+  `rename_op` ×2 (existing, conflict) → the documents twin
+  `find_by_mount_point_and_path_or_none`, after reading v4: `scenarios/
+  route.ts:89-95` (and its project/group twins — `null` → no conflict → the
+  write), `scenario-item-route-factory.ts:165-169` / `:239-251` (`null` →
+  `notFound('Scenario')`; `null` conflict → the move). `documents/mod.rs`
+  `classify_resolved_target` → the links twin (v4 `operator-doc-actions.ts:
+  160-170`, `null` → `'other'`). Capture units: `api::scenarios::
+  fallback_read_tests` (the documents `content` plant on a provisioned store:
+  update / rename → 404 + the line; create → the line FIRST and never the
+  conflict 400 — the write is what fails next, as in v4) and `documents::
+  classify_fallback_tests`.
+
+### Mutation proofs (item 15), each reverted by file backup
+
+- **M1** (the path batch twin back to propagating — measured at unit 4):
+  `vault_read_overlay_equivalence` RED (`must DROP … got Err`),
+  `mail_carina_tools_equivalence` RED (`links:send: v5 logged []`),
+  `salon_reads_equivalence` RED on `list_all_mount_plant:status` (+ lines,
+  `get_solo_mount_plant:body`).
+- **M2** (`recursive` dropped from the folder home): RED
+  `each_p4142_document_store_shape_logs_v4s_exact_line` +
+  `the_strict_scope_appends_strict_failures_and_propagates`.
+- **M3** (`chat_get`'s catch back to `internal(e)`): `salon_reads` RED on
+  exactly `get_solo_mount_plant:{body,lines}` + `get_third:{body,lines}`.
+- **M4** (the project drop ERROR removed): RED `drop_line_tests::
+  a_dropped_store_logs_v4s_error_and_summary_warn` AND `salon_reads` on
+  exactly `list_all_mount_plant:lines`.
+- **M5** (one census row's class flipped): RED `every_document_store_read_
+  site_is_classified` only (the counts test stays green — a flip inside one
+  row moves no total… the row compare is the tripwire).
+- **M6** (the chunk-search fold reverted to the module-target copy): RED
+  `doc_mount_chunks::search_tests::a_broken_table_answers_empty_not_an_error`
+  AND `fallback_home_guard::every_home_line_is_emitted_only_by_the_home`.
+- **M7** (`embedding_scheduler.rs`' chunk read back to `?`): RED `a_failed_
+  chunks_read_logs_v4s_line_and_enqueues_nothing` + `a_failed_clear_logs_the_
+  homes_line_only`.
+- No proof SURVIVED.

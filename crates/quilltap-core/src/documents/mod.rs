@@ -239,8 +239,12 @@ pub fn classify_resolved_target(
     }
     if resolved.mount_type.as_deref() == Some("database") {
         if let Some(mp) = resolved.mount_point_id.as_deref() {
+            // v4 `operator-doc-actions.ts:160-170`: the fallback link read — a
+            // failed read is `null` → `'other'` (P4.142 G2).
             let links = DocMountFileLinksRepository::new(mount);
-            if let Some(link) = links.find_by_mount_point_and_path(mp, &resolved.relative_path)? {
+            if let Some(link) =
+                links.find_by_mount_point_and_path_or_none(mp, &resolved.relative_path)
+            {
                 if link.file_type == "blob" {
                     let blobs = DocMountBlobsRepository::new(mount);
                     if let Some(blob) = blobs.find_by_file_id(&link.file_id)? {
@@ -982,5 +986,36 @@ mod tests {
         assert_eq!(node_dirname("c.md"), ".");
         assert_eq!(node_dirname("/a"), "/");
         assert_eq!(node_basename("a/b/c.md"), "c.md");
+    }
+}
+
+#[cfg(test)]
+mod classify_fallback_tests {
+    use super::*;
+    use crate::doc_edit::path_resolver::ResolvedPath;
+    use crate::doc_edit::DocEditScope;
+
+    /// P4.142 G2: the qtap-link gate's link read is v4's fallback
+    /// (`operator-doc-actions.ts:160-170`) — a broken links table classifies a
+    /// database-mount `.bin` as `other` with v4's joined line, never an `Err`.
+    #[test]
+    fn a_failed_link_read_classifies_as_other() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        let resolved = ResolvedPath {
+            absolute_path: String::new(),
+            scope: DocEditScope::DocumentStore,
+            mount_point_id: Some("mp-1".into()),
+            mount_point_name: None,
+            mount_type: Some("database".into()),
+            base_path: String::new(),
+            relative_path: "files/x.bin".into(),
+        };
+        let (got, lines) =
+            crate::test_support::captured_with(|| classify_resolved_target(&conn, &resolved));
+        assert_eq!(got.unwrap(), "other");
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error querying joined file links collection=doc_mount_file_links whereClause=WHERE l.mountPointId = ? AND LOWER(l.relativePath) = LOWER(?) error=no such table: doc_mount_file_links".to_string()]
+        );
     }
 }

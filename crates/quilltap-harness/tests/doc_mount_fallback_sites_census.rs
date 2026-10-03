@@ -424,10 +424,10 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/api/mount_points.rs", "mount_point_list", "count_embedded_by_mount_point_ids_or_empty", "converted"),
     ("quilltap-core/src/api/mount_points.rs", "mount_point_get", "count_nonempty_embeddings_by_mount_point_id_or_zero", "converted"),
     ("quilltap-core/src/api/projects.rs", "project_file_list", "find_by_mount_point_id", "converted"),
-    ("quilltap-core/src/api/scenarios.rs", "create_op", "find_by_mount_point_and_path", "fallback-in-v4"),
-    ("quilltap-core/src/api/scenarios.rs", "update_op", "find_by_mount_point_and_path", "fallback-in-v4"),
-    ("quilltap-core/src/api/scenarios.rs", "rename_op", "find_by_mount_point_and_path", "fallback-in-v4"),
-    ("quilltap-core/src/api/scenarios.rs", "rename_op", "find_by_mount_point_and_path", "fallback-in-v4"),
+    ("quilltap-core/src/api/scenarios.rs", "create_op", "find_by_mount_point_and_path_or_none", "converted"),
+    ("quilltap-core/src/api/scenarios.rs", "update_op", "find_by_mount_point_and_path_or_none", "converted"),
+    ("quilltap-core/src/api/scenarios.rs", "rename_op", "find_by_mount_point_and_path_or_none", "converted"),
+    ("quilltap-core/src/api/scenarios.rs", "rename_op", "find_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/db/character_vault.rs", "ensure_character_metadata_file", "find_by_mount_point_and_path", "fallback-in-v4"),
     ("quilltap-core/src/db/database_store.rs", "read_database_document", "find_content_and_mtime_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/db/database_store.rs", "write_database_document", "find_by_mount_point_and_path_or_none", "converted"),
@@ -478,7 +478,7 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/db/vault_read_overlay.rs", "read_character_vault_wardrobe", "find_many_by_mount_points_in_folder_or_empty", "converted"),
     ("quilltap-core/src/db/vault_read_overlay.rs", "read_character_vault_wardrobe", "find_many_by_mount_points_and_path_or_empty", "converted"),
     ("quilltap-core/src/db/vault_wardrobe_write.rs", "project_array_into_vault_folder", "find_many_by_mount_points_in_folder_or_empty", "converted"),
-    ("quilltap-core/src/documents/mod.rs", "classify_resolved_target", "find_by_mount_point_and_path", "fallback-in-v4"),
+    ("quilltap-core/src/documents/mod.rs", "classify_resolved_target", "find_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/photos/avatar_rolls_service.rs", "delete_avatar_roll", "delete_with_gc", "fallback-in-v4"),
     ("quilltap-core/src/photos/character_gallery_service.rs", "list_character_gallery", "find_by_mount_point_id_or_empty", "converted"),
     ("quilltap-core/src/photos/character_gallery_service.rs", "remove_from_character_gallery", "delete_with_gc", "fallback-in-v4"),
@@ -620,11 +620,12 @@ fn the_class_counts_are_pinned() {
 /// (converted, internal, other-repo, strict-in-v4 (import), swallowed-by-other-means,
 /// no-v4-counterpart, strict-by-ruling, fallback-in-v4), with the arithmetic:
 ///
-/// - **155 direct call sites in all** = 56 + 13 + 19 + 0 + 13 + 1 + 1 + 52.
+/// - **155 direct call sites in all** = 61 + 13 + 19 + 0 + 13 + 1 + 1 + 47.
 ///   P4.131 measured 130 over four method names; P4.142 widened [`METHODS`] by
 ///   the overlay's batch reads and the chunk reads (+25 rows: 19 converted, 6
 ///   internal) and corrected two classes (below).
-/// - **converted 56** = P4.131's 23 + P4.142's 19 + G1's 14 (below). The 19: the overlay batch twins at
+/// - **converted 61** = P4.131's 23 + P4.142's 19 + G1's 14 + G2's first 5
+///   (below). The 19: the overlay batch twins at
 ///   their 11 callers (`vault_read_overlay` 5, `document_store_overlay` 1,
 ///   `vault_wardrobe_write` 1, `scenarios` 2, `core_whisper` 2) + the documents
 ///   repository's own `…_in_folder_or_empty` → `…_opts_or_empty` 1 + the chunk
@@ -635,7 +636,9 @@ fn the_class_counts_are_pinned() {
 ///   `character_stats` 1, `api/projects` `project_file_list` 1 and
 ///   `mount_index/list` `mount_files_list` 1 (both through the home's FILES /
 ///   folders line, [`OVERRIDES`]), `read_file` 3, `web/files_routes` 4,
-///   `web/qtap_target_route` 2, the two gallery lists 2.
+///   `web/qtap_target_route` 2, the two gallery lists 2. **G2's first 5**
+///   (item 10): `api/scenarios` `create_op` 1 + `update_op` 1 + `rename_op` 2,
+///   `documents/mod.rs` `classify_resolved_target` 1.
 /// - **internal 13** = P4.131's 7 + each P4.142 twin's closure over its
 ///   propagating sibling (documents 3, chunks 3).
 /// - **other-repo 19** = P4.131's 18 + `doc_mount_blobs.rs` `create_with_ids`
@@ -652,16 +655,17 @@ fn the_class_counts_are_pinned() {
 /// - **strict-by-ruling 1** = `qtap_export/records.rs` `stream_one_store` (G5):
 ///   held strict under the 2026-08-03 backup/export ruling — v4 exports a broken
 ///   store EMPTY ([`OVERRIDES`]).
-/// - **fallback-in-v4 52** (P4.131's "68" was 67 — the blobs self-call — G5
-///   moves out, and G1's 14 converted) — THE CONVERSION LIST. Its groups (survey
-///   §D2): **G2** 25 lookup-before-write sites; **G3** 22 deletes/prunes; **G4**
+/// - **fallback-in-v4 47** (P4.131's "68" was 67 — the blobs self-call — G5
+///   moves out, G1's 14 and G2's first 5 converted) — THE CONVERSION LIST. Its
+///   groups (survey §D2): **G2** 20 more lookup-before-write sites; **G3** 22
+///   deletes/prunes; **G4**
 ///   the sync applier's 5 (`apply_store.rs`) — the human's
 ///   RULING, unchanged (P4.142 Tier 3: option B, strict sync, recommended; v4's
 ///   `walkStore` reads through the same fallbacks and, with `propagateDeletes`
 ///   true, would plan the deletion of every unchanged disk file). Each G2/G3 site
 ///   converts only after its v4 downstream arm is read.
 const COUNTS: (usize, usize, usize, usize, usize, usize, usize, usize) =
-    (56, 13, 19, 0, 13, 1, 1, 52);
+    (61, 13, 19, 0, 13, 1, 1, 47);
 
 /// P4.142 §S.4 — reads HANDED to P4.144 this round, recorded as documentation:
 /// the fold-episode pass's two memory reads (`services/fold_episode_pass.rs` —

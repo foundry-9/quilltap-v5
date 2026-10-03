@@ -74,6 +74,12 @@ _Versions: core 0.0.1148._
 _Versions: core 0.0.1147, harness 0.0.1075._
 
 `TransportError` gains `kind: TransportErrorKind` (`Http`, `Connect`, `Timeout`) and four constructors: `http(status, body)`, `connect(message)`, `timeout(message)` and `headers_timeout(ms)` (now a `Timeout`). All 52 struct literals across 12 files (core 38, harness 14) now go through them. `is_headers_timeout`'s message-prefix sniff is replaced by `is_timeout()`, which reads the kind. Behaviour does not change: every status-less site is `Connect`, every status site is `Http`, and the headers timeout is still the only `Timeout`. This is P4.141's first commit, landed early so a later field cannot cross the shared struct's literals again.
+#### 2026-10-02 — feat(api): P4.142 unit 10 — the scenario writes' lookups and the qtap-link classifier take v4's fallbacks (G2 first five)
+
+_Versions: core 0.0.1156._
+
+The scenario create, update and rename lookups and the operator-document link classifier now read through v4's fallbacks: a failed lookup is the not-found arm (update and rename answer 404), `other` for the classifier, and "no conflict" for the create check, after which the write itself fails. Capture units pin each line and outcome. The lane record also logs the mutation proofs M1 through M7, each of which reddens exactly its target test.
+
 #### 2026-10-02 — feat(db): P4.142 unit 9 — the joined file-link home takes a dynamic where-clause; twins for findByFileId and findByIdsWithContent
 
 _Versions: core 0.0.1155._
