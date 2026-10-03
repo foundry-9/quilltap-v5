@@ -24,56 +24,52 @@ probe verifies against._
   `4.10.0-dev.108`), adopted when the `e5c6bd0c0` drift catch-up round was
   unified, all four lanes (P4.D245 ∥ P4.D246 ∥ P4.D247 ∥ P4.D248,
   2026-10-03). CLAUDE.md's Status bullet agrees.
-- **Checked:** 2026-10-03 (the `e5c6bd0c0` unification, main-checkout
-  session; `git fetch --all` first). The §2 probe PASSED at the unification's
-  start (branch `main`, tree CLEAN, both logs empty against `e5c6bd0c0` /
-  `1a2b2164c`); every regen and the full sweep ran from the detached pin
-  `/tmp/qt-v4-pin-unify-e5c6bd0c0`. **At the close probe the tree was
-  DIRTY** (see below) — HEAD unmoved, no new commit on either branch.
-  Previous check: 2026-10-03, the round's `/setupphase`.
-- **v4 `main` HEAD at check: `e5c6bd0c0`** — AT the baseline; `origin/main`
-  agrees; `e5c6bd0c0..main` and `..origin/main` empty.
+- **Checked:** 2026-10-03 evening (`/driftcheck` invoked from `/dogfood`,
+  whose §2 probe failed on a new main commit; `git fetch --all` first).
+  Previous check: 2026-10-03, the `e5c6bd0c0` unification (which recorded
+  the checkout DIRTY with the in-flight Inform change this check finds
+  committed).
+- **v4 `main` HEAD at check: `52d6e7ecd`** ("Inform: standing (per-chat)
+  informs", 2026-10-03 18:00, `4.10.0-dev.109`) — ONE commit past the
+  baseline; `origin/main` agrees.
 - **v4 `bugfix` tip at check:** `1a2b2164c` ("bugfix: started 4.9.2 bug
-  branch"), UNMOVED; `1a2b2164c..bugfix` and `..origin/bugfix` empty.
-  **`release` tip:** `8fbf2afe0` ("release: 4.9.2"), UNMOVED; still no
-  `release: 4.10.0` squash.
-- **Checkout at check:** branch **`main`**, tree **DIRTY since 2026-10-03
-  ~17:16 (mid-gate, after the start probe)** — an IN-FLIGHT, uncommitted v4
-  feature: Inform made standing/permanent. 24 modified tracked paths
-  (`app/api/v1/chats/[id]/actions/inform.ts` + `schemas.ts`,
-  `components/chat/InformDialog.tsx` + `PendingInformChips.tsx`,
-  `lib/chat/context/inform-block.ts`,
-  `lib/database/repositories/chat-informs.repository.ts`,
-  `lib/import/quilltap-import/reconcile.ts`, `lib/schemas/chat-inform.types.ts`,
-  `lib/startup/prettify.ts`, `migrations/scripts/index.ts`,
-  `public/schemas/qtap-export.schema.json`, `help/inform.md`, five tests,
-  `CLAUDE.md`, `docs/CHANGELOG.md`, `docs/developer/{API,DDL,PROMPT_ARCHITECTURE}.md`,
-  `docs/developer/features/salon-inform.md`,
-  `.claude/commands/update-documentation.md`) and 3 untracked
-  (`migrations/scripts/add-chat-informs-permanent.ts` + two tests). **It
-  carries a NEW MIGRATION and a DDL.md change — expect a D23 re-dump and a
-  `qtap-export.schema.json` re-vendor when it lands.** The unified gate was
-  unaffected (every regen pinned); the one live-checkout reader that saw it,
-  `qtap_schema_embed_guard` (it defaults to the live checkout, not
-  `QT_V4_CHECKOUT`), went red in the workspace run and is green against the
-  pin. **The dirt is NOT drift until committed — the next `/driftcheck`
-  records the commit(s) as §3 rows.**
-- **Verdict: NO DRIFT (HEAD at the baseline), checkout DIRTY** — §3 EMPTY.
-- **Regen rule: PIN REQUIRED** — the checkout is dirty with `lib/`/`app/`/
-  `migrations/` edits; every regen pins at `e5c6bd0c0` (§5.1). Point every
-  live-checkout guard at the pin too (`QT_V4_CHECKOUT` AND `QT_V4_ROOT`).
+  branch"), UNMOVED; `1a2b2164c..bugfix` and `..origin/bugfix` empty (the
+  `main..bugfix -- lib/ app/ packages/` content list is the historical
+  lineage only, unchanged). **`release` tip:** `8fbf2afe0` ("release:
+  4.9.2"), UNMOVED; still no `release: 4.10.0` squash.
+- **Checkout at check:** branch **`main`**, tree **CLEAN** (the
+  2026-10-03 ~17:16 dirt was exactly `52d6e7ecd`'s file list, now
+  committed).
+- **Verdict: DRIFT PENDING — 1 commit** (§3: `52d6e7ecd`, PORT, with a NEW
+  MIGRATION — the fourth D23 re-dump).
+- **Regen rule: PIN REQUIRED** — HEAD is past the baseline; every regen pins
+  at `e5c6bd0c0` (§5.1). Point every live-checkout guard at the pin too
+  (`QT_V4_CHECKOUT` AND `QT_V4_ROOT`) — `qtap_schema_embed_guard` (live checkout by default)
+  reads RED against v4 HEAD by design until the catch-up re-vendors
+  `qtap-export.schema.json`; so does any help guard run against HEAD until
+  `help/inform.md` is re-vendored.
 - **Live-checkout guards at the baseline:** `builtin_prompt_templates_guard`,
   `provider_sdk_version_guard`, `qtap_schema_embed_guard` GREEN against the
   pin at the unification.
 - **The workspace gate at the baseline:** the round record in
   `status-log.md` has the counts.
 - **Schema state:** `fresh_schema.json` stays the THIRD D23 re-dump
-  (P4.D235) — `e5c6bd0c0` moved no DDL. Since P4.D248 v5's boot CREATES an
-  absent dedicated structural table from that dump (the 2026-10-03 R3
-  reversal) — so the next D23 re-dump also moves what the boot creates.
-- **`help/**`:** whole at `e5c6bd0c0` (129 files). **`docs/v4/`:** CURRENT
-  at `e5c6bd0c0` (the five paths P4.D246 re-vendored; residual only
-  `packages-quilltap-README.md`).
+  (P4.D235) — `e5c6bd0c0` moved no DDL, but **`52d6e7ecd` does**
+  (`chat_informs.permanent INTEGER NOT NULL DEFAULT 0`, migration
+  `add-chat-informs-permanent-v1`): its catch-up re-dumps from v4's live
+  `generateDDL` (D23), and since P4.D248 that also moves what v5's boot
+  creates for an absent structural table.
+- **Real-instance note (measured 2026-10-03):** the standing dogfood copy
+  (`~/qt-dogfood-friday`, rsynced ~17:05, before v4 ran the dirty tree)
+  has NO `add-chat-informs-permanent-v1` ledger row — `chat_informs` is the
+  baseline shape (34 rows, 0 pending). A LATER copy of live Friday may carry
+  the column: v5 then ignores it (one-shot semantics for a v4-written
+  standing row) until the catch-up lands.
+- **`help/**`:** whole at `e5c6bd0c0` (129 files; `52d6e7ecd` edits
+  `help/inform.md`). **`docs/v4/`:** CURRENT at `e5c6bd0c0` (the five paths
+  P4.D246 re-vendored; residual only `packages-quilltap-README.md`;
+  `52d6e7ecd` edits `docs/developer/{API,DDL,PROMPT_ARCHITECTURE}.md` and
+  `features/salon-inform.md`).
 - **Standing deferrals unchanged:** the three text-compression migrations,
   the image re-encode migration and the stored-`renderedMarkdown`
   reclamation stay DEFERRED as reclamation; the animated-input ruling is
@@ -120,6 +116,7 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
+| `52d6e7ecd` | 2026-10-03 | Inform: standing (per-chat) informs | **PORT** (schema-moving: a new migration) | Inform, ported whole in the `f45a517a9` round — server half P4.D205 (`db/chat_informs.rs`, `api/chat_informs.rs`, `services/inform_block.rs`, `message_finalizer.rs`, `regenerate_swipe.rs`, `quilltap_import/reconcile.rs`, `qtap_export/records.rs`, the backup manifest's `chatInforms`), client half P4.D206 (Inform dialog + composer chip). Hunks: `chat_informs.permanent INTEGER NOT NULL DEFAULT 0` via `add-chat-informs-permanent-v1` (dependsOn the table migration; `shouldRun` gated on table-exists ∧ column-absent; a prettify label) → D23 re-dump #4 + the boot-created table shape; `ChatInformSchema.permanent` `z.boolean().default(false)` + the ONE `isInformInForce` predicate (`permanent ∨ !consumedAt`) under `findPendingForParticipant` / `findPendingBatches` / `deletePendingByBatch`; `byDeliveryOrder` (standing first, then posting order, `id` tiebreak) on the participant + consumed-by-messages reads, `byPostingOrder` on the batches read; `PendingInformBatch.permanent`; `createBatch({permanent})` + its debug field; `buildInformBlock`: swipes get `mergeForSwipe(reapplied, standing)` (standing first, de-duplicated), the debug counts gain `standing` and subtract it from `pending`/`reapplied`, `rowIds` excludes already-stamped rows (a standing row's first-delivery stamp never moves); the inform POST body gains `permanent: z.boolean().optional().default(false)`, the GET `?action=informs` reports it, cancel-inform withdraws a standing batch whole; import remap `permanent: inform.permanent === true`; `qtap-export.schema.json` gains `permanent` + two description changes (re-vendor); `help/inform.md` (re-vendor); the SPA dialog's "Keep it standing in this chat" checkbox + the chip. Not a CONVERGENCE (no bug number; a feature). The dogfood copy of 2026-10-03 predates the migration (§1). | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 

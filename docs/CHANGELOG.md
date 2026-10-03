@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — docs(drift): record v4 `52d6e7ecd` (standing informs) — drift pending, one commit, a new migration
+
+_Docs-only change._
+
+`/driftcheck`, run from `/dogfood` after the ledger's §2 probe failed. v4 main moved one commit past the `e5c6bd0c0` baseline: `52d6e7ecd`, the Inform change the unification had recorded as uncommitted dirt, now committed (`4.10.0-dev.109`); `bugfix` and `release` unmoved; the checkout clean. Classified from its hunks as PORT on the Inform surface (P4.D205 server, P4.D206 client): a `chat_informs.permanent` column through a new migration (the fourth D23 re-dump), one in-force predicate under the repository reads and the cancel, standing-first delivery order, swipes carrying standing rows, the POST/GET/cancel API, the import remap, and re-vendors of `qtap-export.schema.json` and `help/inform.md`. §1 now reads DRIFT PENDING, PIN REQUIRED at `e5c6bd0c0`; it also records that the standing dogfood copy predates the migration (34 inform rows, none pending, no ledger row).
+
 #### 2026-10-03 — docs(dogfood): correct the release-build warmth note — post-/unify recompiles the touched crates, and `-p quilltap-web` rebuilds every dependency
 
 _Docs-only change._
