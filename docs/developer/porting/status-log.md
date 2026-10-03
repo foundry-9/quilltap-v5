@@ -160423,3 +160423,13 @@ Gemini API", "context": {"context": "GoogleProvider.streamMessage",
 end"}, "error": null}]}`.
 Gate for this unit: `stream_decoders` 5/5 and `streaming_composer` 5/5
 (the existing google rows neutral under the edit); core `google_parts` 8/8.
+
+### Unit 8 — `refusal-server.py`'s three modes (Tier 2 item 12)
+
+`empty-choices` (a non-streaming `200 {"choices": []}`; a stream gets an
+ordinary answer), `hang` (accept, never answer), `stall-body` (200 headers
++ `Content-Length: 100`, then silence) — in the header's mode list, the
+`MODES` table (so `/v1/models` lists them), and a NEW `harness/tools/
+README.md` section for the instrument. Smoke-run on :8997: `empty-choices`
+→ 200 with `"choices": []` (non-streaming) / an SSE answer (streaming);
+`hang` and `stall-body` → the client's 1 s timeout fires. For the 💸 rows.

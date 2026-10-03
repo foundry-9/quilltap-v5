@@ -294,6 +294,33 @@ hosted provider, by design. And a base URL pointed at the tap **persists
 on the profile**: clear it when you are done, or the profile silently
 stops working the moment the tap is not running (v4 bug 73's territory).
 
+## `refusal-server.py` — a provider that fails on demand
+
+The dogfood instrument for the provider paths that only run when a provider
+fails in one specific way (the 2026-09-29 walk; the full mode list is the
+script's own header). Run it, point an OPENAI_COMPATIBLE profile's **Base
+URL** at `http://127.0.0.1:8898/v1`, and pick the failure by the profile's
+**model name**:
+
+```bash
+python3 harness/tools/refusal-server.py          # :8898
+```
+
+P4.141 added three modes for the model layer's transport and 2xx arms:
+
+- `empty-choices` — a non-streaming `200 {"choices": []}`: the 2xx shape
+  guard's throw (`Cannot read properties of undefined (reading 'message')`),
+  the `OpenAICompatible API error in sendMessage` catch line, and the cheap
+  path's stand-in chain engaging where a blank result used to come back.
+- `hang` — accepts the request and never answers: with a short budget, the
+  catch line reads `Request timed out.` and the failover trigger is
+  `network`.
+- `stall-body` — a 200 whose headers promise `Content-Length: 100` and whose
+  body never arrives: a `Timeout` transport error, never an empty answer.
+
+`hang` and `stall-body` hold their connections open until the client gives
+up; stop the server with Ctrl-C when the walk is done.
+
 ## Checkout aliases and `nothing_to_run` (P4.53)
 
 **A header never decides which checkout it is tested against.** `normalize()`

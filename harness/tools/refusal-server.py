@@ -52,6 +52,19 @@ model name, default `code`):
                  tool call (`list_mail` if offered, else the first tool, args
                  {}); once a tool result is in the history, answers in text
                  -> P4.121's per-leg CHAT_MESSAGE rows, deterministically
+  empty-choices  200 {"choices": []} on a non-streaming request (added
+                 2026-10-02, P4.141); a stream gets an ordinary answer -> the
+                 2xx shape guard: v4's `Cannot read properties of undefined
+                 (reading 'message')` throw, the `OpenAICompatible API error in
+                 sendMessage` catch line, and the cheap path's stand-in chain
+                 engaging (trigger `provider-error`) instead of a blank result
+  hang           accepts the request and NEVER answers (P4.141) -> with a short
+                 budget, `Request timed out.` on the catch line and the
+                 failover trigger `network` (a timeout); the streaming arm's
+                 headers deadline likewise
+  stall-body     200 headers with `Content-Length: 100`, then silence
+                 (P4.141) -> the non-streaming body-read deadline: a `Timeout`
+                 transport error, never an empty answer
 
 A POST to .../responses (the OPENAI provider's Responses API) is answered in
 that shape, non-streaming only -- enough for an OPENAI-provider describer
@@ -85,7 +98,8 @@ MODES = {"refuse-code": "code", "refuse-finish": "finish", "tokenlimit": "tokenl
          "notools": "notools", "blind": "blind", "echo": "echo",
          "midframe": "midframe", "midframe-late": "midframe-late",
          "midframe-uncoded": "midframe-uncoded", "toolcall": "toolcall",
-         "malformed": "malformed", "unauthorized": "unauthorized", "json": "json"}
+         "malformed": "malformed", "unauthorized": "unauthorized", "json": "json",
+         "empty-choices": "empty-choices", "hang": "hang", "stall-body": "stall-body"}
 
 # Azure OpenAI's content-filter rejection, as the openai SDK surfaces it.
 CODE_BODY = {"error": {
@@ -287,6 +301,24 @@ class H(BaseHTTPRequestHandler):
                 self._toolcall(req)
             else:
                 self._answer(req, "The posed tool ran; here is its answer, in plain text.")
+        elif mode == "empty-choices":
+            if req.get("stream"):
+                self._answer(req, "ok")
+            else:
+                self._json(200, {"id": "posed-1", "object": "chat.completion",
+                                 "model": req.get("model", "empty-choices"), "choices": []})
+        elif mode == "hang":
+            # Hold the socket open, silently, until the client gives up.
+            while True:
+                time.sleep(3600)
+        elif mode == "stall-body":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", "100")
+            self.end_headers()
+            self.wfile.flush()
+            while True:
+                time.sleep(3600)
         elif mode == "blind":
             self._answer(req, BLIND_TEXT, prompt_tokens=40)
         elif mode == "json":
