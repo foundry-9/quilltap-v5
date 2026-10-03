@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — docs(dogfood): say how warm the release build is after /unify vs /setupphase, and keep dogfood away from cargo-sweep
+
+_Docs-only change._
+
+`/dogfood` §2 now says the release build is warm straight after `/unify` and cold after `/setupphase`, whose `cargo-sweep.sh` stamp/file cycle deletes the release artifacts; the cold rebuild takes several minutes, including the SQLite3MC amalgamation. It also forbids starting the build while a `/setupphase` warm build or a `cargo-sweep.sh` step is running in main's tree, and states that `/dogfood` never runs `cargo-sweep.sh` itself.
+
 #### 2026-10-03 — docs(porting): unify the e5c6bd0c0 drift catch-up round — all four lanes landed; the baseline moves to e5c6bd0c0; the review's findings fixed
 
 _Docs-only change._

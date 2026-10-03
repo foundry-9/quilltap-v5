@@ -72,6 +72,22 @@ cargo build --release
 cd apps/web && npm run build
 ```
 
+**How warm the release build is depends on what ran last in main's tree.**
+Straight after `/unify` it is warm (the unify gate builds release), so the
+build above is near a no-op. After a `/setupphase`, it starts cold: step 6's
+`scripts/cargo-sweep.sh stamp` → gate builds → `file` cycle keeps only what
+the lanes' dev/test builds used and deletes the release artifacts. Expect
+several minutes, including the pinned SQLite3MC amalgamation compiled in
+release. That is expected, not a fault. Two rules:
+
+- **Never start this build while a `/setupphase` warm build or a
+  `cargo-sweep.sh` step is running in main's tree.** Two builds would
+  contend for one `target/`, and a fingerprint read that lands before the
+  stamp's atime reset gets its artifact swept and rebuilt later.
+- **`/dogfood` never runs `cargo-sweep.sh` itself.** Garbage-collecting
+  main's `target/` belongs to `/setupphase` alone (CLAUDE.md). The release
+  artifacts this build leaves behind are swept at the next `/setupphase`.
+
 ⚠ **Always `npm run build`, never a bare `ng build`/`npx ng build`.** Raw `ng`
 finishes the work and then never exits (its esbuild service child stays ref'd —
 `@angular/build` 21.x, fixed upstream only in 22.0.4, which needs a major
