@@ -4701,6 +4701,24 @@ export interface ChatStreamFrame {
 
   // answer confirmation
   confirmationResult?: ConfirmationResult;
+
+  /**
+   * v4 `encodeFallbackInfo` (`streaming.service.ts:563-576`): one entry per
+   * attached file, sent once per streamed turn that loaded attachments
+   * (`ChatEvent::FileProcessing`, P4.140). Server telemetry: v4's client reads
+   * nothing from it — `readSSEStream` has no arm — and neither does v5's
+   * reducer. An entry's `error` is NESTED and is never the stream's error.
+   */
+  fileProcessing?: FileProcessingEntry[];
+}
+
+/** One `fileProcessing` entry (v4 `StreamChunkData.fileProcessing`, `types.ts:471-476`). */
+export interface FileProcessingEntry {
+  filename: string;
+  type: 'text' | 'image_description' | 'unsupported';
+  usedImageDescriptionLLM: boolean;
+  /** v4's `FallbackResult.error`; ABSENT when undefined. */
+  error?: string;
 }
 
 export interface ResponseStatus {

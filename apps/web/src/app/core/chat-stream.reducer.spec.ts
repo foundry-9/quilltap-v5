@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { ScopedEvent } from './core-contract';
+import type { ChatStreamFrame, ScopedEvent } from './core-contract';
 import { foldChatFrames, initialChatStreamState, reduceChatFrame, type StreamMessage } from './chat-stream.reducer';
 import {
   FIXTURE_CHAT_ID,
@@ -302,5 +302,49 @@ describe('chat stream reducer', () => {
     expect(bubble.confirmationRevised).toBe(true);
     expect(bubble.confirmed).toBe(true);
     expect(bubble.confirmationNotes).toBe('tightened');
+  });
+
+  // P4.145 — v4's `fileProcessing` frame (`streaming.service.ts:563-576`,
+  // emitted once per send that loaded attachments) is server telemetry no v4
+  // client reads: `readSSEStream` has no arm for it and v4's own client type
+  // omits the key. The SPA must stay NEUTRAL when the server starts emitting
+  // it — above all, an entry's NESTED `error` is never the stream's error.
+  const failedEntryFrame: ChatStreamFrame = {
+    fileProcessing: [
+      {
+        filename: 'a.txt',
+        type: 'unsupported',
+        usedImageDescriptionLLM: false,
+        error:
+          'File type application/x-thing is not supported by provider OPENAI_COMPATIBLE and no fallback is available',
+      },
+    ],
+  };
+
+  it('ignores a fileProcessing frame — the previous state comes back by reference', () => {
+    const prev = initialChatStreamState();
+    expect(reduceChatFrame(prev, failedEntryFrame)).toBe(prev);
+  });
+
+  it('a fileProcessing frame mid-stream leaves the live turn untouched (a nested error is not the stream error)', () => {
+    const frames = framesFor(singleTurnTrace, FIXTURE_CHAT_ID);
+    const mid = frames.slice(0, -1).reduce(reduceChatFrame, initialChatStreamState());
+    expect(mid.content).toBe('Cats are wonderful.');
+
+    const after = reduceChatFrame(mid, failedEntryFrame);
+    expect(after).toBe(mid);
+    expect(after.content).toBe('Cats are wonderful.');
+    expect(after.streaming).toBe(true);
+    expect(after.waitingForResponse).toBe(mid.waitingForResponse);
+    expect(after.error).toBeNull();
+    expect(after.status).toBe(mid.status);
+  });
+
+  it('ignores a successful text entry with no error key', () => {
+    const prev = initialChatStreamState();
+    const frame: ChatStreamFrame = {
+      fileProcessing: [{ filename: 'a.txt', type: 'text', usedImageDescriptionLLM: false }],
+    };
+    expect(reduceChatFrame(prev, frame)).toBe(prev);
   });
 });
