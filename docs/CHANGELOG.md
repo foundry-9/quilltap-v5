@@ -180,6 +180,12 @@ v4 `e5c6bd0c0` fixed bug 175 (filed by this port): the avatar-roll collapse is n
 - A failed pass now logs v4's three lines in order — `Failed to collapse duplicate avatar rolls`, the runner's `Migration failed`, and the WARN `Resumable migration deferred to the next boot; continuing startup` — writes no ledger row, and lets the boot continue. v4's `message` meta field on `Migration failed` is carried as `resultMessage`, because a second `message` field would replace the file log's record message.
 - A failed ledger write after a committed pass logs the success line, `Migration threw an exception`, and the same WARN, then continues. v4 normally succeeds here through a file-ledger fallback v5 does not have; v5 takes v4's both-writes-failed arm (recorded divergence).
 - `host_boot_hardness`: P4.135's two fatal-collapse arms rewritten red-first on the same plants (both panicked "the boot FAILED" on `main`'s host before the change), a new ledger-write arm over a `BEFORE INSERT ON migrations_state` trigger with a reboot, the three new lines added to the silence leg, and the stale prose updated to `e5c6bd0c0`.
+#### 2026-10-03 — docs(porting): P4.D247 lane record — gate, mutation proofs, status header
+
+_Docs-only change._
+
+Closes out the P4.D247 lane: the gate record (SPA 467 files / 8,816 tests; both Playwright files green by file; fmt and clippy clean in both feature sets; the workspace suite 660 binaries / 4,228 passed / 0 failed), the neutral run of the two P4.D246-owned project families (green at the baseline pin, red at the target pin on exactly the rows that lane is ordered to fix), and the order's status header set to LANE COMPLETE.
+
 #### 2026-10-03 — feat(spa): the project Characters card gains v4's add picker and shows the roster at last (P4.D247)
 
 _Versions: SPA 0.5.796._

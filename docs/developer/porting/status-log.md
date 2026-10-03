@@ -164147,3 +164147,42 @@ build` ok; `npm test` **467 files / 8,816 passed / 0** (unit 1: 8,805; +11 —
 the 15 new card arms replace the 4 old). Prettier: only this lane's hunks were
 formatted, file by file (the card's explainer rewrap is whitespace inside a
 text node — the rendered bytes are unchanged and V2 pins them). SPA 0.5.796.
+
+### Gate — P4.D247's lane gate (the SPA, both Playwright files by FILE, and the Rust liveness checks; no crate edited)
+
+- §2 probe PASSED at lane start and again before the oracle regens (v4 `main`
+  at `e5c6bd0c0`, clean, both logs empty). Pins: `/tmp/qt-v4-pin-p4d247-
+  e5c6bd0c0` and `/tmp/qt-v4-pin-p4d247-f6426e196`, each verified by
+  `rev-parse` + `ls -ld` and by marker (the routes oracle carries 6
+  `"allowAnyCharacter":true` at the target vs 1 at the baseline).
+- SPA: `npm run lint` / `npm run build` / `npm test` green — **467 files /
+  8,816 / 0**.
+- Playwright, one invocation at a time (4319/4323/4325 checked free):
+  `e2e/projects-flow.spec.ts` **6/6** (the new beat green on its first live
+  run, 835 ms; 812 ms after the M9 strengthening); `e2e/toast-open-rows-
+  flow.spec.ts` **3/3**.
+- `cargo fmt --all --check` ok; `cargo clippy --workspace --all-targets -D
+  warnings` ok in BOTH feature sets (default; `quilltap-core/
+  native-transport`).
+- The two P4.D246-owned server families, run BY NAME with `--nocapture`
+  against lane-private regens (`/tmp/p4d247/…`, never the recipes' shared
+  `/tmp` paths, which P4.D246 also writes): **at the baseline pin both GREEN**
+  (`projects_routes_equivalence` 1/1, `projects_tier2_equivalence` 1/1 — this
+  lane is neutral); **at the target pin both RED exactly as §R.5 predicts for
+  P4.D246** — `projects_routes` on the nine rows `create_blank_description`,
+  `create_whitespace_name`, `create_unknown_key_stripped`,
+  `create_name_astral_within_max`, `create_null_color_and_icon`, `update`,
+  `update_surviving_mode_latest_chat`, `update_unknown_key_stripped`,
+  `update_clear_description`; `projects_tier2` on the one `doc_mount_files`
+  row (Alpha's `properties.json` hash). P4.D246 territory — reported, not
+  touched.
+- `CARGO_INCREMENTAL=0 QT_V4_CHECKOUT=/tmp/qt-v4-pin-p4d247-e5c6bd0c0 cargo
+  test --workspace --no-fail-fast` (no oracle env block — this lane authors no
+  oracle): **660 binaries / 4,228 passed / 0 failed / 3 ignored**, exit 0;
+  `builtin_prompt_templates_guard`, `provider_sdk_version_guard`,
+  `spelling_guard`, `dispatch_wrong_type_census` (441 unmoved — no `crates/**`
+  diff against `main`) and Tier R (`cli_differential`, at the target pin) all
+  green. Zero `SKIP:` lines appear in the captured log (cargo captures test
+  stdout; the oracle-less families pass silently there — the two families
+  above were the ones this order names, and they ran by name).
+- Versions: SPA 0.5.794 → **0.5.796** (two commits); no crate bumped.
