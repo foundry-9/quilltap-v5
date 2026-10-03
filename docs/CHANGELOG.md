@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — docs(porting): order the e5c6bd0c0 drift catch-up round (P4.D245 ∥ P4.D246 ∥ P4.D247 ∥ P4.D248)
+
+_Docs-only change._
+
+Four work orders and four surveys for the next porting round, which absorbs the drift ledger's two unprocessed rows: v4 `9753d0eb2` (the project character roster enforced as a tool-access gate for the file tools and the shared wardrobe; `allowAnyCharacter` defaulting to `true`; the roster auto-add removed from chat creation; the project PUT answering the enriched project; the Characters card's add picker) and v4 `e5c6bd0c0` (bugs 175 and 176, this port's own filings, fixed upstream in a different shape: a failed resumable migration now defers and the boot continues; a boot-time structural table check reported by a `structure` service in `/api/health`).
+
+- `work-orders/p4.d245-…` the tool-access gate (core + harness); `p4.d246-…` the data half plus the `help/` and `docs/v4/` trees re-vendored whole at `e5c6bd0c0`; `p4.d247-…` the Characters card (Angular); `p4.d248-…` bugs 175/176, ruling-aware (host + web + core + harness).
+- Two binding shared contracts: the project roster wire (P4.D246 ↔ P4.D247) and the degraded `/health` body (P4.D248 ↔ P4.D247). The second carries a ruling made at planning: v4's 503 for a degraded instance is ported as is, and the SPA's `interpretHealth` learns to treat a 503 whose body says `degraded` as reachable, because v5's shell otherwise shows the error screen on exactly the instance the fix keeps up.
+- The surveys corrected the ledger rows in five places and found one standing v5 defect (the Characters card reads a `roster` key the server never sends, so every v5 project has shown an empty roster) and one cross-lane hazard (the create-default flip rewrites every fixture builder that omits the flag).
+- The drift ledger's two §3 rows are marked ORDERED; `phase-4.md` gains the round's ORDERED section.
+
 #### 2026-10-03 — build: cut target/ size — less debuginfo, lanes clone main's target, cargo-sweep in /setupphase, harness version frozen
 
 _No crate versions bumped._

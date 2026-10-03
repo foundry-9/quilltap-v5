@@ -7124,6 +7124,122 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
+## The `e5c6bd0c0` drift catch-up round (P4.D245 ∥ P4.D246 ∥ P4.D247 ∥ P4.D248) — ORDERED 2026-10-03
+
+**Baseline `f6426e196`; v4 `main` HEAD `e5c6bd0c0` at the planning probe —
+TWO commits past the baseline (`9753d0eb2` PORT, the project roster as a
+tool-access gate; `e5c6bd0c0` CONVERGENCE, v4's own fixes for this port's
+filings 175/176, shaped differently from P4.135) — the ledger's §2 probe
+PASSED (branch `main`, tree CLEAN after `e5c6bd0c0` committed the
+bug-175/176 filings, both logs empty, `bugfix` `1a2b2164c` and `release`
+`8fbf2afe0` unmoved); both §3 rows marked ORDERED in the same commit as the
+orders; the round's ONE target pin is `e5c6bd0c0`, the baseline pin
+`f6426e196`; at unification the baseline MOVES to `e5c6bd0c0`.** The round
+is the `f6426e196` recorded-divergences unification's NEXT item 1 and
+nothing else: drift debt first, the owed dogfood pass and the follow-ups
+smalls round after it. Four fresh surveys
+(`work-orders/surveys/2026-10-03-e5c6bd0c0/`, committed with the orders)
+measured the scope from the shipped hunks and corrected the ledger rows in
+five places before any lane started: (1) `doc_opacity_equivalence` needs NO
+`canCharacterParticipate` mock (its oracle runs v4's real repositories);
+(2) v5 carries TWO hand-copies of the accessible-pool enumeration where v4
+has one — the gate lane folds them first; (3) the chat-PUT roster write was
+NEVER ported (a named deferral at `api/salon.rs:1555`) so v4's deletion is a
+convergence, and v5's PUT not-found re-read arm already exists; (4) the
+Characters card has read a PHANTOM `roster` key since P4.6l — every v5
+project has shown an empty roster (a standing v5 defect, fixed in-lane); (5)
+the failed ledger PROBE is unreachable through v5's boot (P4.D97's probe
+runs first), nothing `dependsOn` the collapse, and v4's `API.md` example
+string is wrong for its own plant. **The surveys also found the round's
+one cross-lane hazard — v4's create-default flip rewrites every fixture
+builder that omits `allowAnyCharacter` (34 of 39), making an off-roster arm
+over a target-built fixture vacuous — and its one cross-lane consequence:
+v4's degraded `/health` answers 503, which v5's SPA reads as "unhealthy"
+and shows the error screen, locking the operator out of exactly the
+instance bug 176 keeps reachable.** Four single lanes, disjoint ownership
+(two one-line `lib.rs`/`db/mod.rs` `pub mod` additions are the only shared
+hunks), TWO shared contracts (the project roster wire P4.D246 ↔ P4.D247; the
+degraded `/health` body P4.D248 ↔ P4.D247). **Rulings made at planning (the
+human may reverse before a lane launches):** R1 — the 503 stays as v4 and
+`interpretHealth` carves out `status: "degraded"` (a one-function item in
+the SPA lane); R2 — a failed ledger WRITE after a committed collapse pass
+DEFERS and boots (recorded divergence: v4 falls back to a file ledger v5
+lacks); R3 — a table v5 never ensures is REPORTED missing, never created at
+boot; R4 — a missing sibling partition file is SKIPPED by the pass; R5 —
+the 2026-10-01 keep-the-ensures ruling STANDS (a later revisit named);
+v4's unreachable `[Wardrobe] Project lookup for chat failed` WARN recorded,
+not ported; the project READ default stays `false`.
+
+- **P4.D245 — the roster as a tool-access gate (core + harness):**
+  `work-orders/p4.d245-project-roster-tool-access-gate-core.md` — a NEW
+  `project_roster_access.rs` (v4's `projectRosterAdmits` /
+  `rosterGatedProjectId` / `PROJECT_ROSTER_REFUSAL`, fail-closed, the one
+  DEBUG line, a new `db::fallback` home for the unavailable-store arm);
+  the two pool enumerations FOLDED into one, then gated; `resolve_project_
+  path`'s `ACCESS_DENIED` + INFO line; `doc_open_document`'s target scope
+  (+ `character_id` to the resolver); `doc_grep`'s legacy walk and
+  `doc_list_files`' project branch; `search_scriptorium`'s pool; the
+  shared wardrobe project tier with `{operator}` (the outfit dialog passes
+  `true`, the seven `wardrobe_*` tools the default) and the off-roster
+  DEBUG; `project_info`'s three sentences; the eight doc builders set
+  `allowAnyCharacter: true` explicitly, every off-roster case on an
+  explicit-`false` project; a NEW real-DB `project_roster_access_
+  equivalence` + three `search_tools` cases + a `doc_fs` grep case,
+  `search_tools` red-first on two rows; M1–M10. The most capable tier.
+- **P4.D246 — the data half + the vendored trees (core + harness):**
+  `work-orders/p4.d246-project-roster-data-half-help-mirror.md` — the
+  create default `true` at BOTH of v4's sites (the API prefault; a NEW
+  repository seed — v5 had none), the READ default kept `false`; the PUT
+  answering the ENRICHED project through ONE helper shared with the GET,
+  run after the write; the chat-create auto-add deleted; the chat-PUT half
+  retired as a convergence (comment); `projects_routes` red-first on nine
+  rows, `projects_tier2` on one cell; the capstone builder pinned `false`
+  and measured for blindness; `help/**` (five pages, 129 → 129) and
+  `docs/v4/**` (five paths) WHOLE at the pin. Opus tier.
+- **P4.D247 — the Characters card (Angular only):**
+  `work-orders/p4.d247-project-roster-characters-card-spa.md` — the
+  contract retype (`characterRoster: ProjectRosterCharacter[]`, the phantom
+  `roster` deleted — the defect's red), `addProjectCharacter`, the card
+  whole (the picker over the shared `characterKeys.list()` read, fetched
+  only while expanded ∧ Allow-Any-OFF ∧ open; the grid only when OFF; remove
+  visible at rest; every string and all four toasts in v4's bytes; v4's
+  fixed error sentences), thirteen vitest arms red-first, ONE live beat in
+  `projects-flow.spec.ts` + the `toast-open-rows-flow` strings; **plus the
+  R1 carve-out: `interpretHealth`'s degraded-503 arm + its spec** (Tier 1
+  item 14, added at planning). Opus tier; the only Playwright lane.
+- **P4.D248 — bugs 175 + 176, ruling-aware (host + web + core + harness):**
+  `work-orders/p4.d248-bugs-175-176-resumable-defer-structural-tables-health.md`
+  — `CollapseError` split four ways (`Pass` and `Stamp` DEFER with v4's
+  three lines in order and the boot continues; `ShouldRun` unchanged;
+  `Probe` fatal and recorded unreachable), P4.135's two fatal arms
+  rewritten red-first on the same plants; the PHASE 3.1 structural pass
+  over v4's 11 tables in v4's container order (lazy-ensure failures REUSED,
+  never re-run; a NEW `db/table_shape.rs`; a per-assembly `Host` slot); the
+  `structure` service in `/health` through v4's two maps (503 on degraded);
+  a NEW tier-1 `table_shape_equivalence` over v4's real function, host arms
+  over measured plants, a NEW web `health_structure` binary; a fixture
+  census BEFORE wiring `/health`. The most capable tier.
+
+**Fences:** `api/types.rs` FROZEN (`dispatch_wrong_type_census` 441 — no
+new verb anywhere); `db/fallback.rs` + `fallback_home_guard` P4.D245 alone;
+`db/projects.rs`, `services/chat_create.rs`, `api/projects.rs`, `help/**`,
+`docs/v4/**` P4.D246; `apps/web/**` P4.D247 (incl. the health carve-out);
+`crates/quilltap-host/**`, `health.rs`, `builtin_mounts.rs` P4.D248;
+committed real-DB pairs rebuilt by NOBODY; `quilltap-harness` FROZEN at
+0.0.1110. **Execution:** four branches cut from `main` at the orders'
+commit; worktree per lane, each cloning main's warmed `target/`; P4.D245 +
+P4.D248 the most capable tier, P4.D246 + P4.D247 Opus; at most TWO Rust
+full workspace gates at once; one Playwright run at a time (P4.D247, then
+the unifier); cherry-pick order P4.D246 → P4.D245 → P4.D248 → P4.D247; the
+unifier runs §S.1 (the degraded `/health` end to end), the fixture-flag
+census, the full sweep from the pin, recounts versions, moves the baseline,
+and writes P4.135's "overtaken" sentence. **Deliberately left out:** the
+owed dogfood pass (after this round, `/dogfood`); the follow-ups smalls
+round the previous unification named (item 3 — nothing in it is drift);
+a `structure` banner in the SPA (v4 has none); a boot-time DDL path for
+tables v5 never ensures (R3, deferred by name); revisiting the
+keep-the-ensures ruling (R5).
+
 ## The `f6426e196` recorded-divergences round (P4.139 ∥ P4.140 ∥ P4.141 ∥ P4.142 ∥ P4.143 ∥ P4.144 ∥ P4.145) — UNIFIED 2026-10-03 (ordered 2026-10-02)
 
 **UNIFIED on main (2026-10-03) — ALL SEVEN LANES LANDED; the oracle
