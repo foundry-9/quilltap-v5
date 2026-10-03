@@ -69,6 +69,8 @@ struct Spec {
     chat_id: String,
     #[serde(rename = "legacyProjectId")]
     legacy_project_id: String,
+    #[serde(rename = "closedLegacyProjectId")]
+    closed_legacy_project_id: String,
     ops: Vec<Op>,
 }
 
@@ -93,13 +95,25 @@ struct OpCtx {
 /// Build the host-filesystem tree both sides materialize identically under a
 /// CANONICAL scratch root (mirrors the oracle's `materializeTree`). Returns
 /// `<root>/mount`, the fs-mount base.
-fn materialize_tree(root: &Path, legacy_project_id: &str) -> PathBuf {
+fn materialize_tree(
+    root: &Path,
+    legacy_project_id: &str,
+    closed_legacy_project_id: &str,
+) -> PathBuf {
     let general = root.join("files").join("_general");
     let legacy = root.join("files").join(legacy_project_id);
+    // P4.D245: the CLOSED legacy project's on-disk tree (the roster-gated grep arm).
+    let closed_legacy = root.join("files").join(closed_legacy_project_id);
     let mount = root.join("mount");
     let outside = root.join("outside");
     std::fs::create_dir_all(&general).unwrap();
     std::fs::create_dir_all(&legacy).unwrap();
+    std::fs::create_dir_all(&closed_legacy).unwrap();
+    std::fs::write(
+        closed_legacy.join("draft.md"),
+        "# draft\n\nclosed draft body\n",
+    )
+    .unwrap();
     std::fs::create_dir_all(mount.join("docs")).unwrap();
     std::fs::create_dir_all(&outside).unwrap();
     std::fs::write(general.join("existing.md"), "# existing general\n").unwrap();
@@ -421,7 +435,11 @@ fn doc_fs_matches_oracle() {
     let _ = std::fs::remove_dir_all(&scratch_raw);
     std::fs::create_dir_all(&scratch_raw).unwrap();
     let root = std::fs::canonicalize(&scratch_raw).unwrap();
-    let fs_mount_base = materialize_tree(&root, &spec.legacy_project_id);
+    let fs_mount_base = materialize_tree(
+        &root,
+        &spec.legacy_project_id,
+        &spec.closed_legacy_project_id,
+    );
     let files_dir = root.join("files");
 
     let work_main = root.join("dfs-main.db");

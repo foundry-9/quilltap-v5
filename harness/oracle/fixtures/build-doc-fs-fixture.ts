@@ -39,6 +39,7 @@ interface Spec {
   fsStore: string;
   fsStoreName: string;
   legacyProjectId: string;
+  closedLegacyProjectId: string;
   characterA: Record<string, unknown>;
 }
 
@@ -251,6 +252,19 @@ async function main(): Promise<void> {
   const legacyOfficial = legacyProject?.officialMountPointId as string | null;
   if (!legacyOfficial) throw new Error('project L official store not minted');
   midb.prepare('UPDATE doc_mount_points SET enabled = 0 WHERE id = ?').run(legacyOfficial);
+
+  // 6. P4.D245 (v4 `9753d0eb2`): CLOSED legacy project C — `allowAnyCharacter:
+  //    false` EXPLICITLY, roster [], its minted store DISABLED like L's — so the
+  //    grep's legacy on-disk walk has an off-roster arm: character A is refused
+  //    and the walk is withheld, where the character-less grep on L still runs.
+  await repos.projects.create(
+    { userId: spec.userId, name: 'Project C', allowAnyCharacter: false, characterRoster: [] } as never,
+    { id: spec.closedLegacyProjectId, createdAt: PINNED_TS, updatedAt: PINNED_TS } as never,
+  );
+  const closedLegacy = await repos.projects.findByIdRaw(spec.closedLegacyProjectId);
+  const closedLegacyOfficial = closedLegacy?.officialMountPointId as string | null;
+  if (!closedLegacyOfficial) throw new Error('project C official store not minted');
+  midb.prepare('UPDATE doc_mount_points SET enabled = 0 WHERE id = ?').run(closedLegacyOfficial);
 
   closeMountIndexSQLiteClient();
   await closeDatabase();

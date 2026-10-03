@@ -105,6 +105,7 @@ interface Spec {
   chatId: string;
   fsStore: string;
   legacyProjectId: string;
+  closedLegacyProjectId: string;
   ops: Op[];
 }
 
@@ -123,13 +124,17 @@ interface TreeEntry {
  *   <root>/mount/escape -> <root>/outside      (fs-mount symlink escape)
  *   <root>/outside/secret.md                   (escape destination)
  */
-function materializeTree(root: string, legacyProjectId: string): string {
+function materializeTree(root: string, legacyProjectId: string, closedLegacyProjectId: string): string {
   const general = join(root, 'files', '_general');
   const legacy = join(root, 'files', legacyProjectId);
+  // P4.D245: the CLOSED legacy project's on-disk tree (the roster-gated grep arm).
+  const closedLegacy = join(root, 'files', closedLegacyProjectId);
   const mount = join(root, 'mount');
   const outside = join(root, 'outside');
   mkdirSync(general, { recursive: true });
   mkdirSync(legacy, { recursive: true });
+  mkdirSync(closedLegacy, { recursive: true });
+  writeFileSync(join(closedLegacy, 'draft.md'), '# draft\n\nclosed draft body\n');
   mkdirSync(join(mount, 'docs'), { recursive: true });
   mkdirSync(outside, { recursive: true });
   writeFileSync(join(general, 'existing.md'), '# existing general\n');
@@ -198,7 +203,7 @@ async function main(): Promise<void> {
   // fs-mount basePath.
   const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'qt-dfs-oracle-')));
   mkdirSync(join(scratch, 'data'), { recursive: true });
-  const fsMountBase = materializeTree(scratch, spec.legacyProjectId);
+  const fsMountBase = materializeTree(scratch, spec.legacyProjectId, spec.closedLegacyProjectId);
 
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
   process.env.QUILLTAP_DATA_DIR = scratch;
