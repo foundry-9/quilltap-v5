@@ -163930,3 +163930,56 @@ fileStorage, structure: {status: "degraded", message, problems}}}` on a
 damaged instance; v5's SPA `interpretHealth` must treat a 503 whose body
 `status === "degraded"` as `healthy` (with `version`) — P4.D247's half. On
 this lane alone a damaged instance shows the SPA's error screen.
+
+### Gate — P4.D248's lane gate on `d66d02f52` (one log, one tree)
+
+- §2 probe PASSED before every regen batch and before the gate (v4 `main` at
+  `e5c6bd0c0`, clean, both logs empty); pins verified by `rev-parse` + `ls -ld`.
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -- -D
+  warnings` and `--features quilltap-core/native-transport` clean.
+- `CARGO_INCREMENTAL=0 QT_V4_CHECKOUT=/tmp/qt-v4-pin-p4d248-e5c6bd0c0
+  QT_NODE=<real Node 24 path> QT_ORACLE_TABLE_SHAPE=/tmp/p4d248/oracle-table-shape.ndjson
+  cargo test --workspace --no-fail-fast`: **662 test binaries / 4,246 passed / 0
+  failed / 3 ignored**, exit 0. The lane's env block carries ONLY its own oracle
+  (not the round's harvested block), so oracle-gated families outside the lane
+  ran their SKIP path — the unifier's sweep covers them. Confirmed RUN by name
+  with real durations: `table_shape_equivalence` 6/6, `host_boot_hardness`
+  22/22, `health_structure` 3/3, `host_boot_avatar_rolls_collapse` 3/3,
+  `contract` 3/3, `profile_web_routes` 1/1, Tauri `ipc_contract` 7/7,
+  `builtin_prompt_templates_guard` 2/2, `provider_sdk_version_guard` 3/3,
+  `spelling_guard`, `fallback_home_guard` 2/2, `dispatch_wrong_type_census`
+  14/14 (441 UNMOVED).
+- Tier R by name at the pin: **271 cases / 0 failures** (326 s).
+- `recipe_sweep.py --self-test` exit 0; `--show table_shape_equivalence`
+  extracts the regen + run stages cleanly.
+- No SPA edit (`apps/web` untouched).
+
+### Versions
+
+core 0.0.1183 → 0.0.1186 (+3: one per commit), host 0.0.176 → 0.0.178 (+2),
+web 0.0.213 → 0.0.214 (+1); harness FROZEN (0.0.1110). No dependency added
+(no non-version `Cargo.toml` delta).
+
+### 💸 for the owed dogfood pass (all free)
+
+1. The Friday copy boots with `structure` healthy and `checked=11` (a v5
+   false positive is a finding). Note: the boot now CREATES any absent
+   dedicated table — read the copy's mount index for newly created link
+   tables after the first v5 boot.
+2. `ALTER TABLE doc_mount_chunks RENAME COLUMN headingContext TO
+   headingContext_x` on the copy's mount index → the boot continues, both
+   ERRORs, `/health` 503 `degraded` naming `table doc_mount_chunks is missing
+   column headingContext`; the SPA opens only with P4.D247's carve-out (§S.1);
+   rename back → healthy.
+3. The #134 plant → `doc_mount_file_links in mount index database: no such
+   column: relativePath` on both apps (a two-app cross-check).
+4. The collapse trigger plant only if an unkeyed avatar row exists (expect
+   `NotApplicable` on Friday).
+
+### Lane close
+
+OPEN under the order: NOTHING in Tier 1. Tier 2: item 14 landed (M1–M10 + two
+extra mutations); item 15 NOT taken (recorded); item 16 written above. Tier 3:
+item 17 LANDED by the human's ruling (creation at boot); items 18–21 stand as
+deferred / NO-PORT by name. Fixtures changed: NONE committed; the new spec +
+case + family are new files.

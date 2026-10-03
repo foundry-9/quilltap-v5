@@ -141,6 +141,12 @@ v4 `9753d0eb2` flipped the project create default from `false` to `true`. The ei
 _Versions: core 0.0.1184._
 
 `get_accessible_mount_points` (the `doc_list_files` / `doc_grep` / blob enumeration side) now calls the path resolver's own `collect_accessible_mount_point_ids`, made `pub(crate)`, instead of carrying a hand-copy of its covenant arm. v4 has ONE function (`getAccessibleMountPoints` routes through `collectAccessibleMountPointIds`); v5 had two, so a rule added to the collector would have left listing and resolution disagreeing about a store (the bug-153 shape). The enumeration passes `operator_override: false`, as v4 passes no override, so the collector's only fallible arm is never taken. Behaviour-neutral: `doc_opacity` (72 ops), `doc_enum` (17) and `doc_ui` (9) regenerated once at the `f6426e196` baseline pin and green on unported main and on this tree against the same oracle bytes. Substrate for the project-roster tool-access gate (v4 `9753d0eb2`), which lands on the collector in a later commit.
+#### 2026-10-03 — docs(porting): P4.D248 lane close — gate record and order status
+
+_Docs-only change._
+
+Records the lane's gate (662 test binaries, 4,246 passed, 0 failed; Tier R 271/0 at the `e5c6bd0c0` pin), the version sums, the dogfood rows, and marks the P4.D248 work order LANE COMPLETE.
+
 #### 2026-10-03 — feat(host): the boot-time structural table check and /health's structure service, as v4 does since bug 176 (P4.D248)
 
 _Versions: core 0.0.1186, host 0.0.178, web 0.0.214._
