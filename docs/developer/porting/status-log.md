@@ -162755,3 +162755,94 @@ green and `quilltap-core --lib db::memories_read` 8/8.
   shown by M10, not M11. The P4.138 `KeyRecording` set-equality and its
   non-vacuity guard are unchanged.
 - Regenerated at the pin (lane-private `/tmp/p4.144/mpj`); green.
+
+### Tier 3 — deferred by name (loud, never silent)
+
+- **Item 9 — the v4-side `MigrationRunner` ledger-skip pin (bug 176):
+  DEFERRED.** Shape fixed by survey §C2 if ever taken: a tsx script
+  `harness/oracle/cases/migration-runner-ledger-skip.ts` under `node --import
+  tsx` from the pin (the `build-migration-vintage-fixture.ts:83-100`
+  precedent), chain once, `ALTER TABLE help_doc_chunks RENAME TO
+  help_doc_chunks_x` (a TABLE rename — a column rename trips no `shouldRun`),
+  chain again, emit `{kind:'ledgerSkip', …}`, a Rust test failing on a flip.
+  Why deferred: it sees only the bug file's fix part 2; part 1 lives in
+  `instrumentation.ts` (undrivable), and the drift ledger already watches the
+  three files by name. For `phase-4.md` NEXT (§S.8).
+- **Item 10 — an L3 capture pin in MPJ (`cs_fold`/`cs_force`): DEFERRED,**
+  redundant beside `fold_episode_tier3`'s true differential.
+- **Item 11 — v4's three repository lines inside `updateForCharacter`**
+  (`Memory not found for update`, `Memory does not belong to character`, the
+  strict `Error updating memory for character` ERROR,
+  `memories.repository.ts:456-477`): **DEFERRED** — `db/memories.rs` is
+  outside this lane, and the arm is unreachable from the fold pass with valid
+  ids. (The pass's own L2 still fires on a strict update failure, as v4's
+  does.)
+- **NEW, escalated (not an order item): the brotli encoder divergence** in
+  `db/text_compression.rs` (Unit 3) — for the unifier / a ruling.
+
+### For the unifier (§S)
+
+1. **§S.1 / P4.142's census.** Both `handed(P4.144)` sites are converted:
+   `fold_episode_pass.rs`'s chat read now goes through
+   `chats_read::find_by_id_or_none`, and its fragment read through
+   `memories_read::find_by_character_and_source_message_ids_or_empty` (the
+   line numbers moved: the reads sit in `run_fold_episode_pass` and
+   `write_episode_for_character`). If P4.142's census greps for a strict read
+   in this file, it goes green only on the union.
+2. **§S handoff 2 DISSOLVES.** The fragment-read twin adds NO literal outside
+   `db/fallback.rs` — it delegates to the existing home
+   `find_by_filter_or_empty("memories", …)` (v4's reachable line, measured).
+   Nothing to fold; `fallback_home_guard` green on this branch.
+3. **§S handoff 3 (conditional, P4.140's Option V).** `RunFoldEpisodePassInput`
+   is UNCHANGED by this lane (fields at `fold_episode_pass.rs` ~`:93-101`). A
+   field P4.140 adds threads through; the L1–L3 bodies read no zone. The test
+   constructor is in `fold_episode_tier3_equivalence.rs`'s run loop.
+4. **§S handoff 4.** `recipe_sweep.py`'s widening is commit `3ad475b49`
+   (`recipe_sweep.py` + the two append-only docs). Merge it with no sweep
+   running; run `--self-test` right after (exit 0 here, under the widened
+   rule; `--show` byte-identical on all 642 families).
+5. **The brotli escalation** (Unit 3): `STORED_BYTE_DIVERGENCES = 10` in
+   `memory_pipeline_jobs_tier3_equivalence.rs` trips on any codec change —
+   if a sibling or the unifier touches `db/text_compression.rs`, re-run MPJ.
+
+### Gate — P4.144's own gate, on tree `0656e6d7a` (pin `f6426e196`, `CARGO_INCREMENTAL=0`)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -D
+  warnings` clean in BOTH feature sets (default; `--features
+  quilltap-core/native-transport`); `cargo build --workspace --release` exit 0.
+- The family sweep through the driver at the pin on the final tree
+  (`--run-all` of four, `--v4 /tmp/qt-v4-pin-p4144-f6426e196`, `TZ=UTC`):
+  `fold_episode_tier3` ok (`OK: … results + [FoldEpisodePass] lines + 3
+  tables`), `memory_pipeline_jobs_tier3` ok (`10 cases OK`, with the llm-logs
+  comparand), `context_summary_service_tier3` ok, `courier_images_routes` ok.
+- `python3 harness/tools/recipe_sweep.py --self-test` → `self-test: 0
+  failure(s)`, exit 0, under the widened rule.
+- `QT_V4_CHECKOUT=<pin> cargo test --workspace --no-fail-fast` with the lane's
+  env block (fold-episode, MPJ, csum and courier oracles staged lane-private
+  under `/tmp/p4.144/gate`, `QT_NODE` a real path): **659 test binaries /
+  4,112 passed / 0 failed / 3 ignored**, exit 0. Confirmed RUN by name with
+  non-zero durations: `fold_episode_tier3` (0.06 s), `memory_pipeline_jobs_
+  tier3` (0.20 s), `context_summary_service_tier3` (0.36 s),
+  `courier_images_routes` (0.08 s), `cli_differential` (422 s; re-run alone with `--nocapture`: **Tier R 271 cases, 0 failures**),
+  `dispatch_wrong_type_census` (14/14 — 441 UNMOVED, it asserts the count),
+  `builtin_prompt_templates_guard` + `provider_sdk_version_guard` GREEN,
+  `fallback_home_guard` GREEN, `spelling_guard`, `bare_cheap_llm_executor_guard`.
+- No sibling family touched; no designed red of a sibling observed.
+
+### Versions
+
+core 0.0.1146 → **0.0.1147** (one core commit); harness 0.0.1074 →
+**0.0.1076** (two harness commits); host/web/cli/tauri/SPA unchanged;
+`recipe_sweep.py` bumps no crate. No non-version `Cargo.toml` delta.
+
+### 💸 for the dogfood pass
+
+As the order lists (Lantern OFF on the copy first): a real fold's single
+`INFO … [FoldEpisodePass] Episode pass complete chatId=… episodesExtracted=…
+memoriesWritten=… fragmentsLinked=…` with `memoriesWritten` equal to the
+episodic rows added; a posed-failing cheap endpoint's one `WARN … Episode
+extraction failed` and no episodic rows; optionally, on the copy, a `BEFORE
+INSERT ON memories` trigger for one character → one `WARN … Failed to write
+episode for character … error=<bare SQLite message>` with the other
+character's episode written. (Plant an UPDATE trigger only with the
+changed-links guard — a bare one fires inside the gate.)

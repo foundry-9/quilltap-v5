@@ -297,6 +297,12 @@ _Versions: core 0.0.1148, harness 0.0.1075._
 _Versions: core 0.0.1147._
 
 `log_chat_create_validation_failure` now logs the three repository ERRORs v4 logs when `repos.chats.create` refuses a chat — `Data validation failed`, `Error creating entity`, and the missing `Failed to create chat` from `chats.repository.ts`'s own `safeQuery` — on both the restore and the `.qtap` import paths. The unit test pins three lines in order; a sibling test records that on v5's serde arm all three carry serde's sentence where v4 carries a ZodError (a recorded divergence, Tier 3).
+#### 2026-10-02 — docs(porting): P4.144 lane record, gate and status header
+
+_Docs-only change._
+
+Closes the P4.144 lane record: the Tier 3 deferrals (the MigrationRunner ledger-skip pin, an MPJ capture pin, v4's `updateForCharacter` repository lines), the unifier handoffs, the gate on the lane tree (659 test binaries, 4,112 passed, 0 failed; Tier R 271/0; clippy in both feature sets; release build), versions, and the dogfood rows. The work order's status header now reads LANE COMPLETE.
+
 #### 2026-10-02 — test(harness): memory_pipeline_jobs_tier3 diffs the llm_logs rows (P4.144)
 
 _Versions: harness 0.0.1076._
