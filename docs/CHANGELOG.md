@@ -180,6 +180,11 @@ v4 `e5c6bd0c0` fixed bug 175 (filed by this port): the avatar-roll collapse is n
 - A failed pass now logs v4's three lines in order — `Failed to collapse duplicate avatar rolls`, the runner's `Migration failed`, and the WARN `Resumable migration deferred to the next boot; continuing startup` — writes no ledger row, and lets the boot continue. v4's `message` meta field on `Migration failed` is carried as `resultMessage`, because a second `message` field would replace the file log's record message.
 - A failed ledger write after a committed pass logs the success line, `Migration threw an exception`, and the same WARN, then continues. v4 normally succeeds here through a file-ledger fallback v5 does not have; v5 takes v4's both-writes-failed arm (recorded divergence).
 - `host_boot_hardness`: P4.135's two fatal-collapse arms rewritten red-first on the same plants (both panicked "the boot FAILED" on `main`'s host before the change), a new ledger-write arm over a `BEFORE INSERT ON migrations_state` trigger with a reboot, the three new lines added to the silence leg, and the stale prose updated to `e5c6bd0c0`.
+#### 2026-10-03 — fix(spa): a degraded /health 503 opens the app instead of the error screen (P4.D247 item 14)
+
+_Versions: SPA 0.5.795._
+
+v4 `e5c6bd0c0` answers `/api/health` with 503 and `status: "degraded"` when its boot-time structural table check finds damage, and its own UI never reads that 503, so a damaged instance stays reachable for a restore. v5's `interpretHealth` (shared by the HTTP transport and the Tauri `health` command) mapped every 503 to `unhealthy` and the shell showed the error screen. It now reads a 503 whose body says `degraded` as healthy, carrying `version` the way the 200 arm does; every other 503 keeps the unhealthy mapping. This is the SPA half of the P4.D248 ↔ P4.D247 shared contract (ruling R1). New `core-transport.spec.ts` pins four arms; the degraded arm was red before the change (1 failed / 3 passed).
 
 #### 2026-10-03 — docs(porting): order the e5c6bd0c0 drift catch-up round (P4.D245 ∥ P4.D246 ∥ P4.D247 ∥ P4.D248)
 

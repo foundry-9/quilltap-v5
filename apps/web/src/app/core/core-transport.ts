@@ -195,6 +195,15 @@ export function interpretHealth(status: number, body: Record<string, unknown>): 
     case 409:
       return { kind: 'lock-conflict', lockConflict: body['lockConflict'] ?? null };
     case 503:
+      // P4.D247 / ruling R1: v4 `e5c6bd0c0` answers a damaged-but-booted
+      // instance with 503 + `status: "degraded"` (`app/api/health/route.ts`
+      // `getStatusCode`), and v4's UI never reads that 503
+      // (`hooks/useHealthCheck.ts:62-87` branches on 409 alone) — the instance
+      // "stays reachable for a restore". So a degraded body is NOT the error
+      // screen here; every other 503 keeps the unhealthy mapping.
+      if (body['status'] === 'degraded') {
+        return version ? { kind: 'healthy', version } : { kind: 'healthy' };
+      }
       return {
         kind: 'unhealthy',
         message: (body['error'] as string) ?? 'The server is not ready.',

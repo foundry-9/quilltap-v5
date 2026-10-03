@@ -163983,3 +163983,26 @@ extra mutations); item 15 NOT taken (recorded); item 16 written above. Tier 3:
 item 17 LANDED by the human's ruling (creation at boot); items 18–21 stand as
 deferred / NO-PORT by name. Fixtures changed: NONE committed; the new spec +
 case + family are new files.
+## P4.D247 — `9753d0eb2`'s SPA half (the project Characters card) + the degraded-`/health` carve-out — LANE record (2026-10-03)
+
+Branch `claude/project-roster-characters-card-bd2b84` (worktree
+`.claude/worktrees/project-roster-characters-card-bd2b84`), cut from `main`
+`0e17596b4`. The ledger's §2 probe PASSED at lane start (v4 `main` at
+`e5c6bd0c0`, tree clean, both logs empty). No harness family reads
+`apps/web/**`, so the lane builds no v4 pin; every v4 byte is quoted from
+`git show e5c6bd0c0:<path>`.
+
+### Unit 1 — item 14: `interpretHealth`'s degraded arm (the Shared contract P4.D248 ↔ P4.D247, R1)
+
+- NEW `apps/web/src/app/core/core-transport.spec.ts` (four arms: degraded
+  503 → healthy with/without `version`; `status: "unhealthy"` 503 →
+  unhealthy with its `error`; a body-less-status 503 → the default sentence;
+  200 unchanged). **RED-FIRST on the unported function: 1 failed / 3 passed**
+  (exactly the degraded arm: `expected { kind: 'unhealthy', …(1) } to deeply
+  equal { kind: 'healthy', …(1) }`).
+- `core-transport.ts` `interpretHealth`: ONE arm before the 503 fall-through,
+  with v4's cites (`app/api/health/route.ts` `getStatusCode` answers 503 for
+  `degraded`; `hooks/useHealthCheck.ts:62-87` reads only 409). The Tauri
+  `health` command shares the function — no Tauri edit.
+- Gate: `npm run lint` ok; `npm run build` ok; `npm test` **467 files /
+  8,805 passed / 0** (main 466 / 8,801; +1 file / +4). SPA 0.5.795.
