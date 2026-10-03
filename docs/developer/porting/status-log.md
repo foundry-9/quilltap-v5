@@ -162446,3 +162446,121 @@ name[, provider]}` for each; v5 logs none of them, because its typed decode
 refuses BEFORE any repository is touched. Closing that needs the generated
 schema-shape table (Tier 3 item 12) moving the refusal into the repository
 create; it is not spied here.
+
+### Gate — P4.143's lane gate, on `claude/p4-143-data-zod-smalls-86ac7a` at `c914b499f`, pinned to `f6426e196`
+
+- §R.2 probe PASSED at lane start and before every regen batch (branch `main`,
+  HEAD `f6426e196`, both logs empty, the three waived docs paths only); `git
+  worktree list` checked each time (the checkout, P4.142's pin, this pin).
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -D
+  warnings` clean in BOTH feature sets (default; `quilltap-core/native-transport`);
+  `cargo build --workspace --release` clean.
+- **The pinned sweep** (`recipe_sweep.py --run-all --force --v4
+  /tmp/qt-v4-pin-p4143-f6426e196`, announced first): **10/10 ok, zero `SKIP:`** —
+  own: `system_import_state`, `system_restore_state`,
+  `chats_messages_ops_tier2_equivalence` (canonical recipe headers regenerate
+  and pass); NEUTRAL: `retry_uncensored_tier3` (reads the strict twin through
+  `api/chat_media.rs`), `repository_zod_messages` (51 rows, real run despite
+  0.00 s), `scenario_builder_mount_pool`, `scenario_builder_routes` (web crate),
+  `system_restore_equivalence`, `restore_vintage_state`, `post_office_writers_tier3`.
+  `recipe_sweep.py --self-test` exit 0.
+- **`cargo test --workspace --no-fail-fast`** (`QT_V4_CHECKOUT` = the pin; the
+  lane's env block with every neutral family's oracle SNAPSHOTTED under
+  `/tmp/p4143/ws/` so a sibling's sweep could not clobber it): **659 test
+  binaries / 4,113 passed / 1 failed / 3 ignored, zero `SKIP:` lines.** Every
+  lane family + neutral family confirmed RUN by its `test result` line. Guards:
+  `zod_issues_home_guard` (5/1/1, 6/6 unmoved), `get_messages_caller_census`
+  (UNMOVED), `concierge_state_writers_census`, `dispatch_wrong_type_census`
+  (**441**, 14/14), `builtin_prompt_templates_guard`, `provider_sdk_version_guard`,
+  `fallback_home_guard` — all green. **Tier R (`cli_differential`) green at the
+  pin** (271 cases, 1/1 in 42 s). **The one red:** core's
+  `db::chats::concierge_state_tests::a_failed_write_errors_and_answers_false`
+  (`db/chats.rs`, untouched by this lane) captured 1 line where it expects 2 —
+  its own DEBUG event went missing under the parallel lib run (the tracing
+  callsite-interest race the thread-scoped rig is exposed to); **green by name
+  3/3**; this lane's two earlier full core-lib runs (2866/0, 2865/0) were green.
+  Recorded as a standing-intermittent candidate, not fixed.
+- Versions: **core 0.0.1150** (base 0.0.1146 + 4), **harness 0.0.1079** (base
+  0.0.1074 + 5), **web 0.0.208** (base 0.0.207 + 1, tests only — the new zip).
+  No other crate; no `Cargo.toml` dependency delta.
+
+### Commits
+
+- `0a057247f` fix(core): a refused chat create logs v4's third repository ERROR (item 3) — core 0.0.1147.
+- `f4e892fd4` fix(core): the corrupted-row WARN logs v4's `errors` array with the union collapse (items 4–5) — core 0.0.1148, harness 0.0.1075.
+- `2c937d07e` test(harness): the import mask widened + `SERDE_ARM_DIVERGENCES` (item 1) — harness 0.0.1076.
+- `11928ce1a` test(harness): the restore serde arm planted + pinned (item 2) — harness 0.0.1077, web 0.0.208.
+- `8caaf8dee` fix(core): duplicate-arm warnings + the embedding provider enum (Tier 2 items 7–8) — core 0.0.1149, harness 0.0.1078.
+- `0d98558c7` fix(core): the serde-arm WARNs, camelCase (Tier 2 item 9) — core 0.0.1150.
+- `c914b499f` test(harness): the repository ERRORs made differential (Tier 2 item 10) — harness 0.0.1079.
+- (this record + the order header) docs.
+
+### Landed vs OPEN
+
+**Landed: Tier 1 items 1–6 whole; Tier 2 items 7, 8, 9, 10 whole.** Item 6's
+record half: the §R.4 corrections are this record's units; the
+`ToolMetadata.route_trail` item is **RETIRED** here (measured by the survey:
+`services/tool_execution.rs:124-134`, already `Vec<RouteAttempt>` — nothing to
+retype). ⚠ **P4.130's header sentence NOT written** — item 6 asks for one,
+but §R.7 says "Cross-order header edits allowed this round: NONE"; left for
+the unifier (the sentence: "`ToolMetadata.route_trail` RETIRED by P4.143 — it
+is already typed, `services/tool_execution.rs`; the trail WARN's `errors`,
+the import mask's per-family carve and the restore serde arm CLOSED or pinned
+by P4.143").
+
+**Deferred by name (Tier 3, loud, as ordered):** item 11 `strictFailures` (v5
+has no strict-repository scope — pinned as a v4-only field by item 10); item 12
+the generated schema-shape table that would retire `SERDE_ARM_DIVERGENCES`'s
+nine rows, the restore serde pin and the chat serde arm's ERROR-text
+divergence — and would also move the six NON-chat import refusals INTO the
+repository create so v5 logs v4's `Data validation failed` / `Error creating
+entity` / `Error creating <entity>` for them (absent on v5 today, recorded in
+unit 7); item 13 `updateMessage`'s full `ZodError.message`
+(`db/chats_messages.rs:618`); item 14 the `.min(1)` empty-provider class, the
+restore message replay's serde arm, the restore create's DB-error arm (no
+WARN); item 15 the v5-invented `context` field (kept); item 16
+`dumpFileFacts`' tier-3 upgrade (the survey §C3 design, verbatim in the
+order); item 17 `GroupSchema`'s store-resident columns and the v4-only
+`characters` validation line. **New follow-up found here:** the import's
+`project_id` / `group_id` / `character_id` and `reconcile.rs` WARN fields
+are still snake_case (outside item 9's named list).
+
+### §S handoffs (pre-written)
+
+1. **`api/chat_media.rs:1972`** — still `zod_route_attempt_failure(row).is_none()`;
+   signature and `None` set unchanged; NO hunk needed. P4.142 may switch to
+   `zod_route_attempt_issues(row, &[]).is_empty()` (the identical set).
+2. **`db/chats_messages.rs:618`** (nobody's) — `zod_shape_failure`'s TEXT is now
+   the `", "`-joined issue lines (`: Invalid input` for any aborting merged
+   event); pass/fail set unchanged; nothing pins it — for the round record.
+3. **P4.144** — this lane's four recipe headers moved by ADDITION only (none
+   of them was edited — the cases' headers are untouched; the order arithmetic
+   lives in test bodies); all four extract under `--show`; re-run
+   `--self-test` on the union.
+4. **The new `restore-archive-chat-serde-arm.zip`** is read by
+   `system_restore_state` + `system-restore.test.ts` ONLY.
+
+### Fixtures and regen recipes
+
+- NEW `crates/quilltap-web/tests/fixtures/restore-archives/restore-archive-chat-serde-arm.zip`
+  (derived; md5 `7e002943d5121f8b53a6d50ce14bfebf`) — invalidates no other
+  oracle (no other reader). `harness/oracle/fixtures/chats-messages-ops-tier2.json`
+  grew by addition (an 8th seed message + two plant ops) — read only by
+  `chats_messages_ops_tier2` (builder + case); no committed `.db` moved.
+- Regens (Node 24.13.1, `TZ=UTC`, from `/tmp/qt-v4-pin-p4143-f6426e196`):
+  `chats_messages_ops_tier2` — builder `QT_FIXTURE_OUT=…/chatsmsgops-fixture.db
+  npx tsx $W/harness/oracle/fixtures/build-chats-messages-ops-fixture.ts`, then
+  `QT_FIXTURE_CHATSMSGOPS=… npx tsx $W/harness/oracle/cases/chats-messages-ops-tier2.ts
+  > …/oracle-chatsmsgops.ndjson`; `system_import_state` / `system_restore_state`
+  — the jest mirror recipes in each case header (`TMPO` a lane-private stage,
+  the jest filter ANCHORED `'<case>\.test\.ts$'`). The sweep driver's canonical
+  headers reproduce all three green.
+
+### 💸 for the dogfood pass
+
+As the order's 💸 section, plus: a `duplicate`-strategy `.qtap` re-importing an
+existing image/embedding profile with a wrong-typed field is now NAMED (and
+logs `Failed to import image profile profileId=…`); every refused tag /
+template / profile logs v4's WARN with a camelCase id; the server log on a
+refused restored chat shows the THIRD `quilltap::db` ERROR `Failed to create
+chat`.

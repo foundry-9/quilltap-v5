@@ -245,6 +245,12 @@ _Versions: core 0.0.1148, harness 0.0.1076._
 _Versions: core 0.0.1147, harness 0.0.1075, host 0.0.175, web 0.0.208, tauri 0.0.8._
 
 On a host whose `TZ` is a POSIX rule (no IANA name), every name-fed date surface rendered UTC: the turn's tool runner, `build_context` on the turn and the swipe, the autonomous turn, the greeting, the spine's own tool runner and the Scenario Builder clock all re-derived their zone from the `tz` NAME, which falls back to `"UTC"`. The host's zone VALUE was already correct (jiff 0.2.31 parses the rule), so the fix threads it: a required `display_zone` on `ProcessMessageInput`, `BuildContextArgs`, `BuildContextInput`, `RegenerateSwipeOptions`, `StepDeps` and `ChatCreateDeps`, filled by `ChatSpine` / `ChatCreateSpine` and `ProductionSpineFactory::with_display_zone` from `HostConfig.display_zone` in `quilltap-web`'s `production_host_config`. `display_zone_named` is retired; `server_tz` stays as the calendar name (cron, the distill, the cleanup — a recorded Tier-3 residue). New `host_zone::zone_name` is the one name derivation, used by `HostConfig::new` and the new `HostConfig::set_display_zone`, which the web and Tauri test commons now call. `host_zone_sites_census` is reshaped (a `VALUE_SITES` table replaces `HELPER_SITES`; the host needles re-aimed and grown) and gains a POSIX-`TZ` child process that was red on `main` (offset 0 vs −18000; the whisper read 07:40 PM).
+#### 2026-10-02 — docs(porting): P4.143 lane record and order status — LANE COMPLETE
+
+_Docs-only change._
+
+The P4.143 lane record gains its gate (the pinned sweep of ten families, the workspace suite, Tier R, the guards), the commit list, what landed and what stays deferred, the pre-written handoffs, the fixture and regen notes, and the dogfood rows. The order's status header reads LANE COMPLETE.
+
 #### 2026-10-02 — test(harness): the refused chat create's three repository ERRORs are compared against v4 on restore and import (P4.143 item 10)
 
 _Versions: harness 0.0.1079._
