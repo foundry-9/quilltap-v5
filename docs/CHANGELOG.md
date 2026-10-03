@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — docs(porting): unify the e5c6bd0c0 drift catch-up round — all four lanes landed; the baseline moves to e5c6bd0c0; the review's findings fixed
+
+_Docs-only change._
+
+Unification of P4.D245 ∥ P4.D246 ∥ P4.D247 ∥ P4.D248 (v4 `9753d0eb2`, the project roster as a tool-access gate; v4 `e5c6bd0c0`, bugs 175/176). Picked P4.D246 → P4.D245 → P4.D248 → P4.D247 (27 commits; only version-file conflicts), versions recounted once (core +15 across three lanes, then +1 for the review fixes). Review (four parallel readers + the unifier): no blocking finding; one defect that would have shipped (a created `doc_mount_files` missing its unquoted sha256 index) and four smaller gaps fixed in the preceding `fix(unify)` commit. Wires: §S.1 run live on a planted copy of the e2e salon instance (`/health` 503 `degraded` with v4's message; the dashboard renders; repaired → 200); the fixture-flag census recorded; the version recount; the censuses; P4.135's "overtaken" paragraph. Gate: fmt and clippy (both feature sets) clean; release build clean; the full sweep from the `e5c6bd0c0` pin 579 ok / 4 run_failed (three standing + `ai_import_tier3`'s per-baseline stamp, bumped) / 3 refused of 586; Tier R 271/0; `cargo test --workspace` 665 binaries / 4,272 passed / 6 failed (three standing, two env-block artifacts, and `qtap_schema_embed_guard` reading the live v4 checkout that went dirty mid-gate, green against the pin) / 3 ignored, zero `SKIP:`; SPA 467 files / 8,816 tests; full Playwright 358 passed / 0 failed / 6 skipped. The drift ledger moves the baseline to `e5c6bd0c0` (§3 empty; the dirty checkout recorded, PIN REQUIRED); the four orders' Unification paragraphs, `phase-4.md` (UNIFIED + NEXT), CLAUDE.md's Status and the round record in `status-log.md` updated; the sweep artifact committed. Final versions: core 0.0.1199, harness 0.0.1110, host 0.0.179, web 0.0.216, tauri 0.0.9, SPA 0.5.797; cli 0.0.29 unchanged.
+
 #### 2026-10-03 — test(harness): ai_import_tier3's v4 appVersion stamp moves to e5c6bd0c0 (4.10.0-dev.108)
 
 _No crate versions bumped._

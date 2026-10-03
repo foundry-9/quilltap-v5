@@ -163294,7 +163294,7 @@ background cheap task against `refusal-server.py`'s `hang` mode RETRYING
 once (`is_timeout_failure` by kind); a keyless vision profile behind a keyed
 primary in the wizard sending the PRIMARY's key.
 
-## P4.D246 — v4 `9753d0eb2`'s DATA half (the `allowAnyCharacter` create default at both sites, the enriched project PUT, the chat-create roster auto-add deleted) + `help/**` and `docs/v4/**` re-vendored whole at `e5c6bd0c0` — LANE record IN PROGRESS (2026-10-03)
+## P4.D246 — v4 `9753d0eb2`'s DATA half (the `allowAnyCharacter` create default at both sites, the enriched project PUT, the chat-create roster auto-add deleted) + `help/**` and `docs/v4/**` re-vendored whole at `e5c6bd0c0` — LANE COMPLETE (2026-10-03)
 
 **Branch** `claude/project-roster-data-mirror-aa9044` (worktree `.claude/worktrees/project-roster-data-mirror-aa9044`), cut from `main` `0e17596b4`. **Baseline** `f6426e196`; **target pin** `e5c6bd0c0`. Order: `work-orders/p4.d246-project-roster-data-half-help-mirror.md`; survey: `work-orders/surveys/2026-10-03-e5c6bd0c0/survey-project-roster-data-half-help-mirror-p4.d246.md`.
 
@@ -164186,3 +164186,209 @@ text node — the rendered bytes are unchanged and V2 pins them). SPA 0.5.796.
   stdout; the oracle-less families pass silently there — the two families
   above were the ones this order names, and they ran by name).
 - Versions: SPA 0.5.794 → **0.5.796** (two commits); no crate bumped.
+
+## The `e5c6bd0c0` drift catch-up round — UNIFICATION record (2026-10-03)
+
+**P4.D245 ∥ P4.D246 ∥ P4.D247 ∥ P4.D248 — ALL FOUR LANES LANDED WHOLE; the
+oracle baseline MOVES `f6426e196` → `e5c6bd0c0`; the drift ledger's §3 is
+EMPTY (v4 HEAD AT the baseline) — but the v4 checkout went DIRTY mid-gate
+with an in-flight, uncommitted Inform change carrying a new migration, so
+the regen rule stays PIN REQUIRED.** Branch `unify/e5c6bd0c0` from `main`
+`0e17596b4`; picks in the planned order P4.D246 (7) → P4.D245 (13) →
+P4.D248 (4) → P4.D247 (3) = 27 commits, every conflict a version file
+(resolved ours, then ONE recount); the two union-merged docs checked block by
+block — every lane insert present verbatim and contiguous (the splice the
+`f6426e196` round met did not recur). The two `pub mod` one-liners (§S.2)
+merged textually and compile.
+
+### The §2 probe
+
+PASSED at the start (`git fetch --all`; branch `main`, tree CLEAN, HEAD
+`e5c6bd0c0`, `e5c6bd0c0..main` and `1a2b2164c..bugfix` empty). One detached
+pin, `/tmp/qt-v4-pin-unify-e5c6bd0c0` (`rev-parse` = `e5c6bd0c0`;
+`prefault(true)` present; `lib/database/table-shape.ts` present), with the
+three symlink classes; every regen and the full sweep ran from it. **At the
+close probe the checkout was DIRTY** (24 modified tracked paths + 3
+untracked, mtime ~17:16, after the start probe): an in-flight v4 feature
+making Inform standing/permanent, incl. `migrations/scripts/add-chat-informs-
+permanent.ts`, `DDL.md` and `public/schemas/qtap-export.schema.json`. HEAD
+unmoved — not drift until committed. The ledger's §1 records it.
+
+### What the §3 review found (four parallel readers, one per lane, each against v4's real code; plus the unifier's reads of the cross-lane seams)
+
+**No blocking finding in any lane. ONE defect that would have shipped,
+fixed:**
+
+1. **P4.D248 — a created `doc_mount_files` lacked its sha256 index.** The
+   boot-time creation of an absent structural table (the human's mid-lane R3
+   reversal) picked index DDL only in the quoted spelling ` ON "<table>" (`;
+   v4's `doc-mount-files.repository.ts` writes `CREATE INDEX
+   idx_doc_mount_files_sha256 ON doc_mount_files (sha256)` UNQUOTED and
+   `fresh_schema.json` keeps v4's text — so any instance whose mount index
+   lacks `doc_mount_files` (the committed `chat-compressed` pair lacks all
+   nine mount tables) would have been given the table without its index, a
+   v5-only schema difference. `table_shape_equivalence`'s
+   `creating_every_absent_table_reproduces_v4s_substrate` filtered v4's side
+   with the SAME quoted pattern, so both sides dropped the index and the test
+   agreed with itself. Fix: both spellings matched in `fresh_ddl_for` and in
+   the test's v4-side filter — RED-FIRST on the oracle regenerated from the
+   pin (the test widened alone → `doc_mount_files` RED, v4 carrying the
+   index), green after; a unit pin `a_created_doc_mount_files_carries_its_
+   unquoted_sha256_index` (mutation: the bare-name arm removed → RED).
+
+**Fixed at unification (should-fix / nit class), each pinned:**
+
+2. **P4.D248 — a partial creation read SOUND forever.** `CREATE TABLE`
+   succeeding and a later `CREATE INDEX` failing (a squatted index name) left
+   an index-less table that every later boot skipped (`name_is_taken`) and the
+   column-only shape check passed; v4's `IF NOT EXISTS` index DDL re-fails
+   and re-reports every boot. Now one SAVEPOINT per table — a failing index
+   rolls the table back, the failure is recorded, the next boot retries. Unit
+   pin `a_failed_index_rolls_the_created_table_back_and_is_recorded`
+   (mutation: no ROLLBACK → RED). The dump is now parsed once per process.
+3. **P4.D248 — a `Lock` left the previous assembly's structural record
+   readable** (`AssemblyTeardown` cleared the terminal slot, not
+   `structural_problems`; the getter documents "empty while locked").
+   `/health` could not see it (423 first), but the getter lied. Teardown
+   clears it; the lock/unlock arm asserts empty after `Lock` (mutation: the
+   clear removed → RED with the stale problem). The created-table index
+   assert made exact (`== 1`).
+4. **P4.D245 — an empty `projectId` passed the `project` scope guard.** v4's
+   `if (!context.projectId)` treats `""` as missing; v5 matched a bare
+   `Some`, so `Some("")` reached the chokepoint (which admits a falsy
+   project) and the legacy fallback joined `""` onto `files_dir` — the whole
+   `files/` root. Pre-existing, but the lane had just edited this guard and
+   treats `""` as falsy at every other new site. Now `MissingContext` + v4's
+   WARN for `None` and `""` (the WARN pin loops both, RED-FIRST on the old
+   guard).
+5. **P4.D246 — the update INFO's position on the failure arm was
+   unpinned.** `update_enrich_store_corrupt` captured no lines, so moving
+   `[Projects v1] Project updated` after a successful enrichment stayed green
+   while the code comment says it fires before the 503 (v4
+   `project-crud.ts:113`). Pinned (mutation: the line moved into the
+   enrichment's `Ok` arm → RED).
+6. **Docs:** the Tauri `health` command and the SPA's `interpretHealth` now
+   describe the degraded 503; three SPA comments cite `enrich_project` by
+   name instead of line numbers P4.D246 had moved.
+
+**Recorded, not fixed (each order's Unification paragraph):** the card's
+search not refocused on collapse/re-expand with the picker open (P4.D247);
+v4's Scenarios-folder WARN never ported and no missing-character roster arm
+(P4.D246); the enumeration's latent `.unwrap_or_default()` and two candidate
+v4 notes (P4.D245); the structural pass logging AFTER the reaper/backfill
+lines where v4's PHASE 3.1 precedes them — a new recorded divergence
+(P4.D248); `qtap_schema_embed_guard` reading the live checkout
+(`QT_V4_ROOT`) rather than the pin.
+
+### The unification wires (§S)
+
+- **§S.1 — the degraded `/health` end to end:** the e2e salon instance materialized by
+  calling `e2e/global-setup.ts` itself (its server stopped), COPIED, the
+  P4.D248 plant applied through the CLI (`ALTER TABLE doc_mount_chunks
+  RENAME COLUMN headingContext TO headingContext_x` on the mount index), the
+  union's release `quilltap-web` booted on it unlocked (the e2e test pepper).
+  Boot: v4's two ERRORs (`Structural table check failed; …`
+  `repository="docMountChunks" problem="table doc_mount_chunks is missing
+  column headingContext"`, then `Structural tables damaged; …` `checked=11
+  damaged=1`). `curl /health` → **503** `{"status":"degraded", …,
+  "structure":{"status":"degraded","message":"1 damaged table; reads through
+  it answer empty","problems":["table doc_mount_chunks is missing column
+  headingContext"]}}` — the message byte-identical to v4's `route.ts`
+  template at n = 1. The SPA against it: **the Home dashboard renders whole**
+  ("Welcome back, Friday!", Recent Chats, Active Projects) — not the error
+  screen. Repaired (column renamed back) and rebooted: **200**, `structure`
+  `All structural tables verified`, zero structural ERRORs. The counterfactual
+  (P4.D248 without P4.D247's carve-out shows the error screen) stands on
+  P4.D247's red-first vitest arm (`interpretHealth` unported → the degraded
+  503 maps `unhealthy`). A first attempt on the reduced `groups-projects` pair
+  rendered the shell but its Home tab 500'd on `no such table: memories` — a
+  fixture artifact (that pair carries no `memories` / `chat_settings`), not
+  the plant; recorded so nobody re-reads it as a finding.
+- **§S.2:** both `pub mod` lines on the union; `fallback_home_guard` 2/2
+  (P4.D245's one new literal), `spelling_guard` green.
+- **§S.3 — the fixture-flag census** (`harness/oracle/` `projects.create(`,
+  40 files with a create): explicit `allowAnyCharacter: true` — P4.D245's eight doc
+  builders (`doc-blob`, `doc-edit-path-resolver`, `doc-enum`, `doc-fm`,
+  `doc-fs` [+ its closed Project C, explicit `false`], `doc-opacity`,
+  `doc-text`, `doc-ui`) and `search-tools` (three projects, explicit both
+  ways); explicit `false` — `build-chat-create-capstone.ts` (P4.D246) and
+  the new `build-project-roster-access-fixture.ts` (P4.D245); a flag
+  mention, not a create-time flag — `almanack`, `groups-projects`,
+  `state-sql-tools`, `system-data`; untouched (open on BOTH sides at the
+  target, since v4's builder and v5's reader share the fixture) — the other
+  24 builders + `cases/projects-tier2.ts`. Proven neutral by the full sweep
+  from the pin: every family they feed `ok`.
+- **§S.4:** the cross-lane roster proof is the first 💸 row of the owed walk.
+- **§S.5 — the recount:** core 0.0.1183 + 4 (P4.D246) + 8 (P4.D245) + 3
+  (P4.D248) = **0.0.1198** (the same-number trap fired: three lanes all
+  started from 0.0.1184), +1 for the review fixes = **0.0.1199**; web
+  0.0.213 + 2 + 1 = **0.0.216**; host 0.0.176 + 2 = 0.0.178, +1 = **0.0.179**;
+  tauri 0.0.8 + 1 (review doc fix) = **0.0.9**; SPA 0.5.794 + 2 = 0.5.796,
+  +1 = **0.5.797**; harness FROZEN at 0.0.1110; cli 0.0.29 unchanged. The
+  lock delta is version-only.
+- **§S.6 — the censuses:** `dispatch_wrong_type_census` 14/14, **441
+  UNMOVED**; `fallback_home_guard` 2/2; `help_tree_embed_guard` 129;
+  `recipe_sweep.py --self-test` 0 failures.
+- **§S.7:** `host_boot_hardness` 22/22 on the union — the pass plant logs
+  v4's three lines in order and the boot continues; P4.135's header carries
+  the "overtaken" paragraph.
+- **§S.8:** the ledger's §1 rewritten (baseline `e5c6bd0c0`, the dirty
+  checkout recorded); both rows retired to §6 as ABSORBED.
+
+### Gate (final code tree `9fbf9b5c2`)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean in BOTH feature sets (re-run on the touched crates
+  after the review fixes); `cargo build --workspace --release` clean (3 m
+  41 s).
+- **The full sweep from the pin** (`recipe_sweep.py --run-all --v4
+  /tmp/qt-v4-pin-unify-e5c6bd0c0`, 586 families): **579 ok / 4 run_failed /
+  1 refused_repo_write / 2 refused_non_extractable** — three reds the
+  standing rows (`ariel_writers_tier3`, `memory_processor_tier3`,
+  `search_replace`), the fourth `ai_import_tier3`'s `V4_APP_VERSION`, which
+  moves with every baseline move (bumped to `4.10.0-dev.108`, green by name
+  from the pin); the refusals by design (`backup_uuid_remap`,
+  `avatar_rolls_routes`, `generator_sse_wire`). **No red a lane or the
+  unification caused.** Every round family `ok`: `project_roster_access`,
+  `table_shape`, `projects_routes`, `projects_tier2`, `chat_create_capstone`,
+  `search_tools`, `doc_fs`, `doc_opacity`, `doc_enum`, `doc_ui`, `doc_text`,
+  `doc_blob`, `doc_fm`, `doc_edit_path_resolver`, `wardrobe_routes`,
+  `wardrobe_tools`, `tiered_mount_pool`, `scenario_builder_mount_pool`,
+  `help_tree`, `help_section_size`, `qtap_import`, `system_restore`.
+  **Tier R 271 cases / 0 failures** (310.8 s). Artifact:
+  `harness/tools/sweep-results/2026-10-03-e5c6bd0c0-unify.json`. (The sweep
+  ran on `5d5b3ba7e` — the review fixes in; the later `ai_import` bump is
+  harness-only.)
+- **`QT_V4_CHECKOUT=<the pin> TZ=UTC cargo test --workspace
+  --no-fail-fast`** with the 749-variable env block harvested from every
+  family's `--show` run stage (the same 8 dup-valued vars withheld): **665
+  test binaries / 4,272 passed / 6 failed / 3 ignored, zero `SKIP:` lines.**
+  The six: the three standing families; the two recorded env-block artifacts
+  (`backup_uuid_remap`, `doc_mount_files_tier2`); and
+  `qtap_schema_embed_guard` — it defaults to the LIVE checkout
+  (`QT_V4_ROOT`), which went dirty mid-run (v4 97,324 bytes vs vendored
+  96,967; v4 committed nothing to that file past `4d370a90f`) — GREEN 2/2
+  against the pin.
+- SPA: `npm run lint` clean; `npm test` **467 files / 8,816 passed / 0**;
+  `npm run build` clean (re-run after the review commit).
+- **Full Playwright** **358 passed / 0 failed / 6 skipped (10.9 m)** against the fresh
+  build and the fresh release binaries — the six skips the standing parks; no
+  intermittent fired. P4.D247's new `projects-flow` roster beat and the
+  `toast-open-rows-flow` strings green on the union. The live-checkout
+  regen rule held: no e2e spec reads the v4 checkout.
+
+### Versions
+
+core 0.0.1199, harness 0.0.1110, host 0.0.179, web 0.0.216, tauri 0.0.9,
+SPA 0.5.797; cli 0.0.29 unchanged.
+
+### 💸 for the owed dogfood pass
+
+The four lanes' rows (each order's 💸 section and lane record), led by
+§S.4: remove a character from a CLOSED project's roster in the Characters
+card, then in a project chat have that character call `doc_list_files` /
+`search_scriptorium` → refused with v4's sentence; re-add → admitted. Add:
+the Friday copy's first boot after this round reads `checked=11` with
+`structure` healthy, and any newly CREATED link table carries v4's indexes
+(read `sqlite_master` on the copy's mount index — the sha256 index on a
+created `doc_mount_files`); a `Lock` → `/health` 423 → unlock → healthy.

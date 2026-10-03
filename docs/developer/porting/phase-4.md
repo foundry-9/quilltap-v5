@@ -7124,7 +7124,55 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
-## The `e5c6bd0c0` drift catch-up round (P4.D245 ∥ P4.D246 ∥ P4.D247 ∥ P4.D248) — ORDERED 2026-10-03
+## The `e5c6bd0c0` drift catch-up round (P4.D245 ∥ P4.D246 ∥ P4.D247 ∥ P4.D248) — UNIFIED 2026-10-03 (ordered 2026-10-03)
+
+**UNIFIED on main (2026-10-03) — ALL FOUR LANES LANDED WHOLE; the oracle
+baseline MOVES `f6426e196` → `e5c6bd0c0` and the drift ledger's §3 is
+EMPTY — but the v4 checkout went DIRTY mid-gate (an in-flight, uncommitted
+"Inform made standing/permanent" change carrying a NEW migration,
+`add-chat-informs-permanent.ts`, a `DDL.md` change and a
+`qtap-export.schema.json` edit), so the regen rule stays PIN REQUIRED.**
+Round record: `status-log.md` → "The `e5c6bd0c0` drift catch-up round —
+UNIFICATION record (2026-10-03)"; each order's **Unification:** paragraph
+lists exactly what stays OPEN. **The §3 review (four parallel readers + the
+unifier) found no blocking finding in any lane; ONE defect that would have
+shipped, fixed:** P4.D248's boot-time creation of an absent structural table
+matched index DDL only in the quoted spelling, so a created
+`doc_mount_files` lacked v4's UNQUOTED `idx_doc_mount_files_sha256` — a
+v5-only schema difference the tier-1 substrate test could not see (it
+filtered v4's side the same way); fixed red-first on a fresh oracle. Also
+fixed: a partial creation now rolls back (SAVEPOINT) instead of reading
+sound forever; a `Lock` clears the structural record; an empty `projectId`
+is `MissingContext` as v4's `!context.projectId` (it had resolved the
+`project` scope to the whole `files/` root); the update INFO pinned on the
+enrichment-failure arm. §S.1 ran end to end on the union (a planted salon
+copy: `/health` 503 `degraded` in v4's bytes, the dashboard renders,
+repaired → 200). Gate: fmt/clippy (both feature sets)/release clean; the full sweep from the pin 579 ok / 4 run_failed (three standing + `ai_import_tier3`'s per-baseline `V4_APP_VERSION`, bumped) / 3 refused of 586 — no lane- or unifier-caused red; Tier R 271/0; `cargo test --workspace` 665 binaries / 4,272 / 6 (three standing + two env-block artifacts + `qtap_schema_embed_guard` reading the dirtied live checkout, green against the pin) / 3 ignored, zero `SKIP:`; SPA 467 files / 8,816; full Playwright 358 / 0 / 6. Versions: core 0.0.1199, harness 0.0.1110, host 0.0.179, web 0.0.216, tauri 0.0.9, SPA 0.5.797; cli 0.0.29.
+
+**NEXT (in order):**
+1. **The owed dogfood pass** over this round's 💸 rows (the round record's
+   list, led by §S.4 — the roster refusal live through the Characters card
+   — plus the Friday copy's first boot reading `checked=11` / `structure`
+   healthy, and any CREATED link table carrying v4's indexes) AND the
+   `f6426e196` recorded-divergences round's still-owed rows.
+2. **A follow-ups smalls round** from the Unification paragraphs, by name:
+   the previous NEXT item 3's list (P4.139–P4.144's named items) plus this
+   round's — the `wardrobe_shared.rs` `Error finding links by project ID`
+   home, `resolve_project_mount_point_ids_for_chat`'s silent chat-read
+   `Err`, the enumeration's latent `.unwrap_or_default()` (P4.D245); the
+   add/remove-character `z.uuid()` gate, the project GET's error-line bytes,
+   the chat PUT's slim project gate, the Scenarios-folder WARN, a
+   missing-character roster arm, the `FieldVisitor` doc (P4.D246); the
+   error-toast leak on the other project-detail handlers, the picker refocus
+   on re-expand (P4.D247); `doc_mount_points`' four ALTER self-heals, the
+   collapse success INFO's v4 bytes, the structural pass's log position
+   relative to the reaper/backfills, `qtap_schema_embed_guard` honouring
+   `QT_V4_CHECKOUT` (P4.D248).
+3. **When v4 commits the in-flight Inform change: `/driftcheck`, then its
+   catch-up** — expect a D23 re-dump (its new migration), a
+   `qtap-export.schema.json` re-vendor, and P4.D248's boot creation moving
+   with the dump.
+
 
 **Baseline `f6426e196`; v4 `main` HEAD `e5c6bd0c0` at the planning probe —
 TWO commits past the baseline (`9753d0eb2` PORT, the project roster as a

@@ -1453,10 +1453,42 @@ records THERE. Update this summary only when a phase or round completes.
   0.0.176, web 0.0.213, tauri 0.0.8, SPA 0.5.794. **Next: the `e5c6bd0c0`
   drift catch-up, the owed dogfood pass, then a follow-ups smalls round** —
   `phase-4.md`. Round record: `status-log.md`.
-- **Oracle baseline: `f6426e196` (2026-10-01, v4 main — "Fix bug 174: send
-  vault image bytes, not a server path, to Z.AI and NanoGPT",
-  `4.10.0-dev.106`), adopted at the `f6426e196` round's unification
-  (2026-10-02).**
+- **The `e5c6bd0c0` drift catch-up round (P4.D245 ∥ P4.D246 ∥ P4.D247 ∥
+  P4.D248): UNIFIED on main (2026-10-03) — ALL FOUR LANDED WHOLE; the oracle
+  baseline MOVES to `e5c6bd0c0` and the ledger's §3 is EMPTY — but the v4
+  checkout went DIRTY mid-gate (an uncommitted Inform-permanent change with
+  a NEW migration), so PIN REQUIRED.** v4 `9753d0eb2` absorbed: the project
+  roster as a TOOL-ACCESS gate through ONE `project_roster_access`
+  chokepoint at v4's seven sites (the enumeration twin folded first; a NEW
+  real-DB family), the `allowAnyCharacter` create default `true` at both of
+  v4's sites with the READ default kept, the enriched project PUT, the
+  chat-create roster auto-add deleted, and the Characters card whole — which
+  fixed a v5 defect: the card had read a phantom `roster` key since P4.6l,
+  so every v5 project showed an empty roster. v4 `e5c6bd0c0` (this port's
+  own bug-175/176 filings, fixed upstream in a different shape): a failed
+  collapse now DEFERS and boots (P4.135's D184 FATAL ruling OVERTAKEN), the
+  PHASE 3.1 structural pass + the `/health` `structure` service (503
+  `degraded`, with the SPA's carve-out so a damaged instance stays
+  reachable), and — by the human's mid-lane R3 reversal — an absent
+  dedicated table CREATED at boot from v4's DDL dump. **The §3 review (four
+  readers): no blocking finding; the one that would have shipped — a created
+  `doc_mount_files` lacked v4's UNQUOTED sha256 index, invisible to a test
+  that filtered both sides the same way — fixed red-first**, with a
+  SAVEPOINT per created table, the lock clearing the structural record, and
+  an empty `projectId` as missing context (it had resolved the `project`
+  scope to the whole `files/` root). Gate: sweep 579 ok / 4 / 3 of 586
+  (three standing + the per-baseline `ai_import` stamp); Tier R 271/0; 665
+  binaries / 4,272 / 6 (standing + env artifacts + a live-checkout guard red
+  only from v4's dirt) / 3 ignored, zero SKIP; SPA 467 / 8,816; Playwright
+  358 / 0 / 6; §S.1 live (degraded 503 → the dashboard renders). Versions:
+  core 0.0.1199, host 0.0.179, web 0.0.216, tauri 0.0.9, SPA 0.5.797.
+  **Next: the owed dogfood pass, then a follow-ups smalls round, then the
+  Inform catch-up when v4 commits it** — `phase-4.md`. Round record:
+  `status-log.md`.
+- **Oracle baseline: `e5c6bd0c0` (2026-10-02, v4 main — "Fix bugs 175 and
+  176: resumable migrations and a boot-time table check",
+  `4.10.0-dev.108`), adopted at the `e5c6bd0c0` round's unification
+  (2026-10-03).**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting
