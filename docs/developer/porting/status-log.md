@@ -162672,3 +162672,28 @@ with non-zero durations): `fold_episode_tier3`, `context_summary_service_tier3`,
 `memory_pipeline_jobs_tier3` (10 cases OK), `courier_images_routes`; plus
 `fallback_home_guard`, `spelling_guard`, `bare_cheap_llm_executor_guard`
 green and `quilltap-core --lib db::memories_read` 8/8.
+
+### Unit 2 — the `ALIAS_ASSIGN` widening (Tier 2 item 7; its own commit, no crate)
+
+- Three `val` atoms added to `ALIAS_ASSIGN` (`$( … )` with one nested level,
+  `` `…` ``, `${ … }` that may hold a `$( … )`); `lead`/`tail`/the `(?=$|;)`
+  lookahead byte-identical. The module docstring's "UNFORGEABLE … ANY
+  assignment" rewritten to the value grammar actually covered, naming the
+  three-level boundary; the regex comment says the same.
+- Self-test rows 1–4 as ordered, plus **row 5** (below). `--self-test` →
+  `self-test: 0 failure(s)`, exit 0, before AND after.
+- **M8** (the pre-P4.144 value grammar restored): 7 checks red (rows 1, 2, 3×3,
+  incl. the nested `$(cd "$(dirname x)" && pwd)`; row 5). **M9** (only the
+  `${…}` atom dropped): ⚠ **as ordered it SURVIVED** — rows 1–2 stay green
+  without it, because `[^\s;#]` walks `${V5W:-` and the `$( … )` atom takes the
+  substitution (the survey's "rows 1–2 fail" prediction is refuted). The
+  atom's unique reach is a `${…}` default holding an unquoted space outside
+  any substitution, so **row 5** pins `W=${V5W:-$HOME/my checkout}`; M9 now
+  reds row 5 alone. Both restored from a backup (`cmp` clean), never through a
+  heredoc env var.
+- `--show` before/after byte-identical on `context_summary_service_tier3`,
+  `fold_episode_tier3` and `doc_opacity` — and, wider than ordered, on ALL
+  642 families (old driver vs new, same `--v5w`): zero committed recipes move.
+- The commit touches `recipe_sweep.py` plus the two append-only docs (the
+  per-commit CHANGELOG rule); §S handoff 4 stands: merge it with no sweep
+  running and run `--self-test` straight after.

@@ -297,6 +297,12 @@ _Versions: core 0.0.1148, harness 0.0.1075._
 _Versions: core 0.0.1147._
 
 `log_chat_create_validation_failure` now logs the three repository ERRORs v4 logs when `repos.chats.create` refuses a chat — `Data validation failed`, `Error creating entity`, and the missing `Failed to create chat` from `chats.repository.ts`'s own `safeQuery` — on both the restore and the `.qtap` import paths. The unit test pins three lines in order; a sibling test records that on v5's serde arm all three carry serde's sentence where v4 carries a ZodError (a recorded divergence, Tier 3).
+#### 2026-10-02 — fix(harness): the sweep driver's alias backstop covers command-substitution values (P4.144)
+
+_No crate versions bumped._
+
+`recipe_sweep.py`'s `ALIAS_ASSIGN` now matches alias assignments whose value is a `$(…)` command substitution (one level of nested parentheses), a backtick substitution, or a `${…}` expansion that may hold a `$(…)`. Before, `W=$(git rev-parse --show-toplevel)` and its backtick form passed both the backstop and the self-test's header scan, so a recipe written that way would test the wrong checkout with every guard green. Env prefixes such as `W=$(…) npx jest …` are still left alone. Five new self-test rows cover the cross form, the settled self form, the two spellings neither guard saw, a `${…}` default with a space, and two substitution-valued env prefixes. No committed recipe changes: `--show` is byte-identical for all 642 families.
+
 #### 2026-10-02 — fix(memory): the fold episode pass logs v4's three lines and stops a character's linking on a failed write (P4.144)
 
 _Versions: core 0.0.1147, harness 0.0.1075._

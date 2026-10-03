@@ -63,9 +63,17 @@ Variable conventions the driver understands (and headers should use):
   Legacy aliases (`V5`, `W`, `WT`) and the literal `~/source/quilltap-v5`
   are rewritten to the driver's `--v5w` at run time.
 
-ALIAS ASSIGNMENTS ARE UNFORGEABLE (P4.53). `normalize()` rewrites ANY
-`V5W=`/`WT=`/`V5=`/`W=` assignment statement to `--v5w` and says so once per
-family, so a header cannot decide which checkout it is tested against. Five
+ALIAS ASSIGNMENTS ARE NEUTRALIZED (P4.53; widened by P4.144). `normalize()`
+rewrites every `V5W=`/`WT=`/`V5=`/`W=` assignment STATEMENT whose value is
+built from plain words, single/double quotes, a `$(…)` command substitution
+(one level of nested parentheses), a backtick substitution, or a `${…}`
+expansion that may itself hold such a `$(…)` — to `--v5w`, and says so once per
+family, so a header cannot decide which checkout it is tested against. A value
+nested DEEPER than that grammar (a `$(… $(… $(…) …) …)` three levels down) is
+still outside it — `ALIAS_ASSIGN`'s comment names the boundary. Before P4.144
+the grammar had no substitution atoms at all: `W=$(git rev-parse
+--show-toplevel)` and its backtick twin passed BOTH this backstop and the
+self-test's header scan, and `W=${V5W:-$(…)}` passed the backstop. Five
 case headers had written `W=${V5W:-$HOME/source/quilltap-v5}`, which overwrote
 the driver's injected alias with MAIN's path — the family staged its case file
 and its fixtures from main during a worktree sweep and exited 0 regardless. The
@@ -840,9 +848,27 @@ CHECKOUT_ALIASES = ("V5W", "WT", "V5", "W")
 # The shape is deliberately narrow. `V5W=/some/path cargo test …` is an ENV
 # PREFIX, not an assignment, and rewriting it would swallow the command — hence
 # the lookahead requiring the statement to end after the value (or its comment).
+#
+# P4.144: the VALUE grammar. Before it, a value was quoted strings and
+# non-space words only, so the one spelling a careful human reaches for —
+# `W=$(git rev-parse --show-toplevel)` — had an unquoted space and never
+# matched, and neither did a backtick form or `W=${V5W:-$(…)}`; the first two
+# also slip past the self-test's `CROSS_ALIAS_DEFAULT` header scan (no `${`),
+# so a header written that way was a LIVE clobber with every guard green. Three
+# atoms close it, each also allowed inside the others' neighbours:
+#   - `$( … )` with ONE level of nested parentheses (`$(cd "$(dirname x)" && pwd)`);
+#   - `` `…` ``;
+#   - `${ … }` that may hold such a `$( … )` (`${V5W:-$(git rev-parse …)}`).
+# A substitution nested three levels deep is still outside the grammar and is
+# NOT rewritten — say so here rather than claim "any". The env-prefix guard is
+# unchanged: `W=$(…) npx jest …` still fails the end-of-statement lookahead.
 ALIAS_ASSIGN = re.compile(
     r"(?P<lead>^|;)(?P<sp>[ \t]*)(?P<var>" + "|".join(CHECKOUT_ALIASES) + r")="
-    r"(?P<val>(?:\"[^\"\n]*\"|'[^'\n]*'|[^\s;#])+)"
+    r"(?P<val>(?:\"[^\"\n]*\"|'[^'\n]*'"
+    r"|\$\((?:[^()\n]|\([^()\n]*\))*\)"
+    r"|`[^`\n]*`"
+    r"|\$\{(?:[^{}\n]|\$\((?:[^()\n]|\([^()\n]*\))*\))*\}"
+    r"|[^\s;#])+)"
     r"(?P<tail>[ \t]*(?:#[^\n]*)?)(?=$|;)",
     re.M,
 )
@@ -1938,6 +1964,55 @@ def cmd_self_test() -> int:
             out.split("=", 1)[1] == f'"{probe}"',
             f"a settled value must still be rewritten to --v5w: {out!r}",
         )
+
+    # ── P4.144: the substitution-valued spellings (rows 1–4) ────────────────
+    #
+    # Row 1 — the CROSS form with a command substitution inside the default:
+    # rewritten, the `rev-parse` gone, and ANNOUNCED (it is the P4.53 clobber).
+    norm = normalize(
+        ["N=~/.nvm/versions/node/v24.13.1/bin", "W=${V5W:-$(git rev-parse --show-toplevel)}",
+         "cp $W/x /tmp/y"],
+        probe,
+        "sa3",
+    )
+    check(f'W="{probe}"' in norm, f"P4.144 row 1: the `${{V5W:-$(…)}}` value was not rewritten: {norm}")
+    check("rev-parse" not in norm, f"P4.144 row 1: the substitution survived the rewrite: {norm}")
+    _, changed = neutralize_aliases("W=${V5W:-$(git rev-parse --show-toplevel)}", probe)
+    check(
+        changed == ["W=${V5W:-$(git rev-parse --show-toplevel)}"],
+        f"P4.144 row 1: the cross form must be ANNOUNCED verbatim: {changed}",
+    )
+    # Row 2 — the SELF form is settled: rewritten, silent.
+    out, ch = neutralize_aliases("V5W=${V5W:-$(git rev-parse --show-toplevel)}", probe)
+    check(
+        out == f'V5W="{probe}"' and ch == [],
+        f"P4.144 row 2: the self form must be rewritten and quiet: {out!r} {ch}",
+    )
+    # Row 3 — the two spellings NEITHER guard saw: rewritten and announced.
+    for stmt in ("W=$(git rev-parse --show-toplevel)", "W=`git rev-parse --show-toplevel`",
+                 'W=$(cd "$(dirname x)" && pwd)'):
+        out, ch = neutralize_aliases(stmt, probe)
+        check(
+            out == f'W="{probe}"' and ch == [stmt],
+            f"P4.144 row 3: a substitution-valued assignment was missed: {out!r} {ch}",
+        )
+    # Row 5 — the `${…}` atom's OWN reach. Rows 1–2 do not need it (`[^\s;#]`
+    # walks `${V5W:-` and the `$( … )` atom takes the substitution — measured:
+    # dropping the `${…}` atom alone left rows 1–4 green, the order's M9
+    # prediction refuted). What only it covers is a default holding an unquoted
+    # space OUTSIDE any substitution, e.g. a checkout path with a space.
+    out, ch = neutralize_aliases("W=${V5W:-$HOME/my checkout}", probe)
+    check(
+        out == f'W="{probe}"' and ch == ["W=${V5W:-$HOME/my checkout}"],
+        f"P4.144 row 5: a `${{…}}` default with a space was missed: {out!r} {ch}",
+    )
+    # Row 4 — a substitution-valued ENV PREFIX is still not an assignment.
+    for prefix in (
+        "W=$(git rev-parse --show-toplevel) npx jest -- x",
+        "V5W=${V5W:-$(git rev-parse --show-toplevel)} cargo test -p quilltap-harness",
+    ):
+        out, ch = neutralize_aliases(prefix, probe)
+        check(out == prefix and ch == [], f"P4.144 row 4: an env prefix was rewritten: {out!r}")
 
     # The committed headers, as a durable regression pin on item 1: no header in
     # the tree may default one checkout alias from a DIFFERENT one. The
