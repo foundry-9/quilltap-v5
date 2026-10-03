@@ -223,23 +223,19 @@ impl ProviderKeySource for DbProviderKeys {
 /// LIVE since P4.59: with the Serper provider registered,
 /// [`RealWebSearchProvider`](quilltap_core::tools::web_search::RealWebSearchProvider)
 /// consults this on every `search_web` call, and a missing row surfaces as v4's
-/// `MissingApiKey` sentence rather than as a silent refusal. The error fold
-/// (`.ok().flatten()`) is v4's own: its `getSearchProviderApiKey` catches, logs,
-/// and returns `null`, so a read failure is indistinguishable from "no key" on
-/// both sides.
+/// `MissingApiKey` sentence rather than as a silent refusal. v4's
+/// `getAllApiKeys()` is a fallback `safeQuery` that never throws — a read error
+/// logs the repository's `Error finding API keys by user ID` and is `[]`;
+/// `getSearchProviderApiKey`'s catch (`web-search-handler.ts:105-110`) is
+/// unreachable for it. So the pick reads through the by-user-id fallback home
+/// (P4.139 §S.2, applied at the round's unification), and a read failure is
+/// "no key" WITH v4's line.
 #[derive(Clone)]
 pub struct DbSearchApiKeys(pub Db);
 
 impl quilltap_core::tools::web_search::SearchApiKeyLookup for DbSearchApiKeys {
     fn find_active_key(&self, provider: &str, user_id: &str) -> Option<String> {
-        let provider = provider.to_string();
-        let user_id = user_id.to_string();
-        self.0
-            .read_main(move |conn| {
-                api_key_service::find_active_api_key_for_provider(conn, &user_id, &provider)
-            })
-            .ok()
-            .flatten()
+        api_key_service::find_active_api_key_for_provider_or_none(&self.0, user_id, provider)
             .map(|k| k.key_value)
     }
 }
@@ -4498,5 +4494,72 @@ mod profile_timeout_tests {
             result.is_err(),
             "a silent endpoint must surface as an error, got {result:?}"
         );
+    }
+}
+
+#[cfg(test)]
+mod search_api_key_tests {
+    use super::*;
+    use quilltap_core::tools::web_search::SearchApiKeyLookup;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    /// A main DB holding `api_keys` (or not, when `ddl` is `None`) plus a
+    /// stand-in table, so the file is a real encrypted DB either way.
+    fn db_with(ddl: Option<&str>) -> (tempfile::TempDir, Db) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("main.db");
+        {
+            let w = quilltap_core::db::Writer::open_writable(&path, PEPPER).unwrap();
+            w.connection()
+                .execute_batch("CREATE TABLE stand_in (id TEXT);")
+                .unwrap();
+            if let Some(ddl) = ddl {
+                w.connection().execute_batch(ddl).unwrap();
+            }
+        }
+        let db = Db::open_main(&path, PEPPER).unwrap();
+        (dir, db)
+    }
+
+    /// P4.139 §S.2, applied at the round's unification: the search-key pick
+    /// reads through the by-user-id fallback home — a failed read is "no key"
+    /// WITH v4's `Error finding API keys by user ID` line (v4's `getAllApiKeys`
+    /// is a fallback `safeQuery`; `getSearchProviderApiKey`'s catch is
+    /// unreachable for it). Mutation: restore the `.ok().flatten()` over the
+    /// propagating scan → the line vanishes and this is RED.
+    #[test]
+    fn a_failed_key_read_is_no_key_with_v4s_repository_line() {
+        let (_dir, db) = db_with(None);
+        let (got, lines) = quilltap_core::test_support::captured_with(|| {
+            DbSearchApiKeys(db.clone()).find_active_key("SERPER", "u-1")
+        });
+        assert_eq!(got, None);
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert_eq!(
+            lines[0],
+            "ERROR quilltap::db Error finding API keys by user ID \
+             collection=connection_profiles userId=u-1 error=no such table: api_keys"
+        );
+    }
+
+    /// The healthy arm: the acting user's first ACTIVE key for the provider,
+    /// silently (an inactive one and a foreign user's are skipped).
+    #[test]
+    fn the_users_first_active_key_for_the_provider_is_picked_silently() {
+        let (_dir, db) = db_with(Some(
+            "CREATE TABLE api_keys (id TEXT PRIMARY KEY, userId TEXT NOT NULL, \
+             label TEXT NOT NULL, provider TEXT NOT NULL, key_value TEXT NOT NULL, \
+             isActive INTEGER DEFAULT 1, lastUsed TEXT, createdAt TEXT NOT NULL, \
+             updatedAt TEXT NOT NULL);
+             INSERT INTO api_keys VALUES ('k0','u-1','off','SERPER','dead',0,NULL,'t','t');
+             INSERT INTO api_keys VALUES ('k1','u-2','theirs','SERPER','foreign',1,NULL,'t','t');
+             INSERT INTO api_keys VALUES ('k2','u-1','mine','SERPER','live-key',1,NULL,'t','t');",
+        ));
+        let (got, lines) = quilltap_core::test_support::captured_with(|| {
+            DbSearchApiKeys(db.clone()).find_active_key("SERPER", "u-1")
+        });
+        assert_eq!(got.as_deref(), Some("live-key"));
+        assert!(lines.is_empty(), "{lines:?}");
     }
 }

@@ -25,9 +25,9 @@
 //!   `find_api_keys_by_user_id_or_empty(…)`): v4's fallback, v4's line.
 //! - `internal` — the read IS a home's body: `db/api_keys.rs`, `db/fallback.rs`,
 //!   and the bodies of `services::api_key_service`'s helpers (`read_api_key`,
-//!   `read_api_key_scoped`, and the lane-local by-user-id helper
-//!   `api_keys_by_user_id_or_empty`, which folds onto `db::fallback` at
-//!   unification — §S.1 — and then reads `home`).
+//!   `read_api_key_scoped`). The by-user-id helper
+//!   `api_keys_by_user_id_or_empty` folded onto `db::fallback` at the round's
+//!   unification (§S.1) and reads `home`.
 //! - `no-v4-counterpart` — `find_active_api_key_for_provider`, the propagating
 //!   provider scan `quilltap-host`'s `DbProviderKeys` reads (no v4 model call
 //!   scans; one [`OVERRIDES`] row).
@@ -79,11 +79,9 @@ const HOMES: [&str; 3] = [
 ];
 
 /// The helper bodies in `services/api_key_service.rs` that ARE a home's read.
-const HELPER_BODIES: [&str; 3] = [
-    "read_api_key",
-    "read_api_key_scoped",
-    "api_keys_by_user_id_or_empty",
-];
+/// (`api_keys_by_user_id_or_empty` left this list at the §S.1 fold: its body is
+/// now an argument of `db::fallback::find_api_keys_by_user_id_or_empty`.)
+const HELPER_BODIES: [&str; 2] = ["read_api_key", "read_api_key_scoped"];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Row {
@@ -310,7 +308,7 @@ fn render(rows: &[Row]) -> String {
 const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/services/api_key_service.rs", "read_api_key", "find_by_id", "internal"),
     ("quilltap-core/src/services/api_key_service.rs", "read_api_key_scoped", "find_by_id_and_user_id", "internal"),
-    ("quilltap-core/src/services/api_key_service.rs", "api_keys_by_user_id_or_empty", "get_api_keys_by_user_id", "internal"),
+    ("quilltap-core/src/services/api_key_service.rs", "api_keys_by_user_id_or_empty", "get_api_keys_by_user_id", "home"),
     ("quilltap-core/src/services/api_key_service.rs", "find_active_api_key_for_provider", "get_api_keys_by_user_id", "no-v4-counterpart"),
     ("quilltap-core/src/services/api_key_service.rs", "get_all_api_keys", "get_api_keys_by_user_id", "wrapper-no-caller"),
     ("quilltap-core/src/services/api_key_service.rs", "find_api_key_by_id_scoped", "find_by_id_and_user_id", "wrapper-no-caller"),
@@ -367,15 +365,15 @@ fn the_class_counts_are_pinned() {
 /// (home, internal, no-v4-counterpart, wrapper-no-caller, recorded-divergence,
 /// fallback-in-v4), with the arithmetic:
 ///
-/// - 10 raw call sites = 3 + 3 + 1 + 2 + 1 + 0. Every OTHER v5 key read goes
+/// - 10 raw call sites = 4 + 2 + 1 + 2 + 1 + 0. Every OTHER v5 key read goes
 ///   through `api_key_service`'s helpers and is not a raw call at all.
-/// - **home 3** — the sites that call the `db::fallback` home DIRECTLY: Carina's
+/// - **home 4** — the sites that call the `db::fallback` home DIRECTLY: Carina's
 ///   `carina_api_key` (P4.140's file, already home since P4.136), the
 ///   greeting's key read and the chat-enrichment summary's (both deliberately
 ///   over the home, not the helper, so their files' `api_keys` imports — outside
-///   P4.139's named hunks — stay used).
-/// - **internal 3** — the two read helpers' bodies + the lane-local by-user-id
-///   helper (→ `home` after the §S.1 fold: update EXPECTED with it).
+///   P4.139's named hunks — stay used) — and the by-user-id helper's body,
+///   folded onto `find_api_keys_by_user_id_or_empty` at unification (§S.1).
+/// - **internal 2** — the two read helpers' bodies.
 /// - **no-v4-counterpart 1**, **wrapper-no-caller 2**, **recorded-divergence 1**
 ///   — see [`OVERRIDES`].
 /// - **fallback-in-v4 0** — the conversion list, EMPTY. Red-first: the same
@@ -385,7 +383,7 @@ fn the_class_counts_are_pinned() {
 ///   unscoped label read — made scoped this lane) and `provider_routing.rs`'s
 ///   two (read through a local `find_api_key_or_none` wrapper the scanner does
 ///   not know — folded onto `read_api_key_scoped` this lane).
-const COUNTS: (usize, usize, usize, usize, usize, usize) = (3, 3, 1, 2, 1, 0);
+const COUNTS: (usize, usize, usize, usize, usize, usize) = (4, 2, 1, 2, 1, 0);
 
 /// No bare-name escape hatch: a `use …::api_keys::{find_by_id, …}` import would
 /// let a raw read slip past the `api_keys::` anchor.
@@ -410,7 +408,13 @@ fn no_read_fn_is_imported_by_bare_name() {
     );
 }
 
-/// The read fns a `use` item imports out of an `api_keys` module, by bare name.
+/// The escape hatches a `use` item can open past the `api_keys::` anchor: a
+/// read fn imported by its bare name (in a brace group or not, at any nesting),
+/// a glob (`api_keys::*` → `"*"`), or a module ALIAS (`api_keys as ak` →
+/// `"as"`, after which `ak::find_by_id` would be invisible). Every `api_keys`
+/// segment in the item is examined, not only the first (the `f6426e196`
+/// recorded-divergences unification, a §3 finding — the scanner had read one
+/// segment and kept a brace-group's trailing comma on a single path).
 fn bare_imports(code: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut from = 0usize;
@@ -424,25 +428,43 @@ fn bare_imports(code: &str) -> Vec<String> {
             break;
         };
         let item = &code[abs..abs + semi];
-        let Some(p) = item.find("api_keys::") else {
-            continue;
-        };
-        let rest = &item[p + "api_keys::".len()..];
-        let names: Vec<&str> = if let Some(inner) = rest.trim_start().strip_prefix('{') {
-            inner
-                .trim_end_matches('}')
-                .split(',')
-                .map(|n| n.split_whitespace().next().unwrap_or(""))
-                .collect()
-        } else {
-            vec![rest.split_whitespace().next().unwrap_or("")]
-        };
-        out.extend(
-            names
-                .into_iter()
-                .filter(|n| METHODS.contains(n))
-                .map(str::to_string),
-        );
+        for (p, _) in item.match_indices("api_keys") {
+            let bytes = item.as_bytes();
+            if p > 0 && is_ident(bytes[p - 1]) {
+                continue;
+            }
+            let after = &item[p + "api_keys".len()..];
+            if after.as_bytes().first().is_some_and(|b| is_ident(*b)) {
+                continue;
+            }
+            let after = after.trim_start();
+            if after.starts_with("as ") || after.starts_with("as\n") {
+                out.push("as".to_string());
+                continue;
+            }
+            let Some(rest) = after.strip_prefix("::") else {
+                continue;
+            };
+            let rest = rest.trim_start();
+            let names: Vec<&str> = if let Some(inner) = rest.strip_prefix('{') {
+                let end = inner.find('}').unwrap_or(inner.len());
+                inner[..end]
+                    .split(',')
+                    .map(|n| n.split_whitespace().next().unwrap_or(""))
+                    .collect()
+            } else {
+                vec![rest
+                    .split(|c: char| c.is_whitespace() || c == ',' || c == '}')
+                    .next()
+                    .unwrap_or("")]
+            };
+            out.extend(
+                names
+                    .into_iter()
+                    .filter(|n| *n == "*" || METHODS.contains(n))
+                    .map(str::to_string),
+            );
+        }
     }
     out
 }
@@ -488,6 +510,29 @@ mod tests { fn t() { api_keys::get_api_keys_by_user_id(c, "u").unwrap(); } }
         vec![
             "find_by_id".to_string(),
             "get_api_keys_by_user_id".to_string()
+        ]
+    );
+}
+
+/// The widened guard on synthetic text (the `f6426e196` recorded-divergences
+/// unification): a module alias, a glob, a single path inside a brace group, a
+/// second `api_keys` segment in one item — each caught; an unrelated module
+/// whose name merely ends in `api_keys`, and a non-read fn, are not.
+#[test]
+fn the_import_guard_catches_aliases_globs_and_nested_paths() {
+    let code = "use crate::db::api_keys as ak;\n\
+                use crate::db::api_keys::*;\n\
+                use crate::db::{api_keys::find_by_id, chats};\n\
+                use crate::db::{files, api_keys::{get_api_keys_by_user_id}};\n\
+                use crate::db::my_api_keys::find_by_id;\n\
+                use crate::db::api_keys::ApiKey;\n";
+    assert_eq!(
+        bare_imports(code),
+        vec![
+            "as".to_string(),
+            "*".to_string(),
+            "find_by_id".to_string(),
+            "get_api_keys_by_user_id".to_string(),
         ]
     );
 }

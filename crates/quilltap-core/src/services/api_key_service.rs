@@ -113,23 +113,13 @@ pub fn read_api_key_scoped<R: MainReads>(
 /// {collection: 'connection_profiles', userId, error}` and `[]`
 /// (`connection-profiles.repository.ts:218-244`, a 4-arg fallback on the
 /// repository constructed with `'connection_profiles'`).
-// §S fold → db::fallback::find_api_keys_by_user_id_or_empty
 pub(crate) fn api_keys_by_user_id_or_empty<R: MainReads>(
     reads: &R,
     user_id: &str,
 ) -> Vec<api_keys::ApiKey> {
-    reads
-        .read_main_with(|conn| api_keys::get_api_keys_by_user_id(conn, user_id))
-        .unwrap_or_else(|error| {
-            tracing::error!(
-                target: "quilltap::db",
-                collection = "connection_profiles",
-                userId = %user_id,
-                error = %crate::db::fallback::error_text(&error),
-                "Error finding API keys by user ID"
-            );
-            Vec::new()
-        })
+    crate::db::fallback::find_api_keys_by_user_id_or_empty(user_id, || {
+        reads.read_main_with(|conn| api_keys::get_api_keys_by_user_id(conn, user_id))
+    })
 }
 
 /// The generators' key idiom (P4.139) — v4's external-prompt generator, the
@@ -147,16 +137,24 @@ pub fn profile_api_key_value_scoped<R: MainReads>(
     profile: &serde_json::Value,
     user_id: &str,
 ) -> String {
-    match profile
+    profile_api_key_found_scoped(reads, profile, user_id).unwrap_or_default()
+}
+
+/// [`profile_api_key_value_scoped`] without the `''` default: `Some` only when
+/// the profile names a key AND the scoped row is found. For the caller whose
+/// v4 fallback is NOT `''` — the wizard's vision key starts as the PRIMARY's
+/// and is replaced only on a found row (`character-wizard.service.ts:754,766-
+/// 771`; the `f6426e196` recorded-divergences unification, a §3 finding).
+pub fn profile_api_key_found_scoped<R: MainReads>(
+    reads: &R,
+    profile: &serde_json::Value,
+    user_id: &str,
+) -> Option<String> {
+    let key_id = profile
         .get("apiKeyId")
         .and_then(serde_json::Value::as_str)
-        .filter(|s| !s.is_empty())
-    {
-        Some(key_id) => read_api_key_scoped(reads, key_id, user_id)
-            .map(|k| k.key_value)
-            .unwrap_or_default(),
-        None => String::new(),
-    }
+        .filter(|s| !s.is_empty())?;
+    read_api_key_scoped(reads, key_id, user_id).map(|k| k.key_value)
 }
 
 /// v4 `getApiKeyForConnectionProfile` — resolve the (plaintext) key for a
@@ -785,6 +783,40 @@ mod tests {
                 String::new(),
                 String::new()
             )
+        );
+        assert!(lines.is_empty(), "{lines:?}");
+    }
+
+    /// The wizard's vision key (a §3 finding at the `f6426e196`
+    /// recorded-divergences unification): v4 starts it as the PRIMARY's key and
+    /// replaces it only on a FOUND scoped row (`character-wizard.service.ts:
+    /// 754,766-771`), so every not-found arm must answer `None` — never `''`,
+    /// which would overwrite the primary's key and send a bare request. The
+    /// corrupt row still logs the scoped line.
+    #[test]
+    fn the_found_key_is_none_on_every_arm_that_keeps_the_primarys_key() {
+        use crate::db::fallback::test_plants::{conn_with_api_keys, plant_api_key};
+        use serde_json::json;
+        let conn = conn_with_api_keys();
+        plant_api_key(&conn, "k-bad", "u-1", true);
+        plant_api_key(&conn, "k-ok", "u-1", false);
+        let (got, lines) = crate::test_support::captured_with(|| {
+            profile_api_key_found_scoped(&conn, &json!({ "apiKeyId": "k-bad" }), "u-1")
+        });
+        assert_eq!(got, None);
+        assert_eq!(lines, vec![test_instance::scoped_line("k-bad", "u-1")]);
+        let (got, lines) = crate::test_support::captured_with(|| {
+            [
+                profile_api_key_found_scoped(&conn, &json!({ "apiKeyId": "k-ok" }), "u-1"),
+                profile_api_key_found_scoped(&conn, &json!({ "apiKeyId": "k-ok" }), "u-2"),
+                profile_api_key_found_scoped(&conn, &json!({ "apiKeyId": "k-gone" }), "u-1"),
+                profile_api_key_found_scoped(&conn, &json!({}), "u-1"),
+                profile_api_key_found_scoped(&conn, &json!({ "apiKeyId": "" }), "u-1"),
+            ]
+        });
+        assert_eq!(
+            got,
+            [Some("synthetic-k-ok".to_string()), None, None, None, None]
         );
         assert!(lines.is_empty(), "{lines:?}");
     }

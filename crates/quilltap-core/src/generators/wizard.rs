@@ -790,9 +790,14 @@ async fn run_wizard_core<CMP: CompletionProvider>(
                         .is_none_or(|u| u == user_id)
                 })
                 .ok_or_else(|| "Vision profile not found".to_string())?;
-            vision_api_key = crate::services::api_key_service::profile_api_key_value_scoped(
+            // Only a FOUND secondary row replaces the primary's key (v4
+            // `:766-771`) — no `apiKeyId`, a dangling or foreign one, or a read
+            // error (its scoped line logged) keeps the primary's.
+            if let Some(key) = crate::services::api_key_service::profile_api_key_found_scoped(
                 db, &secondary, user_id,
-            );
+            ) {
+                vision_api_key = key;
+            }
             vision_profile = secondary;
         }
 

@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — fix(api-keys): the §S fold, the web-search key read, the wizard's vision-key fallback and a wider import guard (P4.139 unification)
+
+_Versions: core 0.0.1181, harness 0.0.1108, host 0.0.176._
+
+Unification wire for the `f6426e196` recorded-divergences round. `api_key_service::api_keys_by_user_id_or_empty` now delegates to `db::fallback::find_api_keys_by_user_id_or_empty`, so the lane-local copy of v4's `Error finding API keys by user ID` line is gone. `api_key_read_sites_census` moves the helper's body row from `internal` to `home` (counts 4/2/1/2/1/0). The host's `DbSearchApiKeys` now picks the web-search key through `find_active_api_key_for_provider_or_none`, so a failed read is "no key" with v4's repository line instead of a silent `.ok().flatten()`. Two new host unit tests pin the failed-read line and the healthy first-active pick.
+
+Two §3 review findings fixed in the same commit. The wizard's vision key regressed in P4.139: it was overwritten with `''` whenever the vision profile had no key, a dangling or foreign key, or a failed read, where v4 keeps the primary profile's key and replaces it only when the secondary's row is found (`character-wizard.service.ts:754,766-771`). A new `profile_api_key_found_scoped` returns `Option` and the wizard replaces the key only on `Some`; its unit test pins every not-found arm as `None`. The census's import guard also missed three ways to bring back a raw read: a module alias (`api_keys as ak`), a glob (`api_keys::*`), and a single path inside a brace group (the trailing comma failed the name match). It now checks every `api_keys` segment of a `use` item, and a synthetic test pins all three.
+
 #### 2026-10-02 — docs(porting): drift check — v4 is two commits past f6426e196 (the project roster gate; bugs 175/176 fixed)
 
 _Docs-only change._
