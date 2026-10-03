@@ -402,10 +402,11 @@ pub fn find_by_avatar_override_image_id(
 ///
 /// Ids are deduped and blanks dropped first (v4 filters `typeof id ===
 /// 'string' && id.length > 0` into a `Set`); an empty list queries nothing.
-/// A read failure logs v4's `Error resolving character names` and yields an
-/// EMPTY map rather than an `Err` — v4 wraps the body in `safeQuery(…, new
-/// Map())`, and this port keeps the fail-soft leg because the turn is what it
-/// protects. (v4's `withStrictRepositoryFailures` scope, which suspends that
+/// A read failure logs v4's `Error finding entities by filter {collection:
+/// characters}` (the inner `findByFilter` fallback answers before the outer
+/// `safeQuery(…, 'Error resolving character names', …, new Map())` can) and
+/// yields an EMPTY map rather than an `Err` — the fail-soft leg that protects
+/// the turn. (v4's `withStrictRepositoryFailures` scope, which suspends that
 /// fallback, is not on this path.)
 pub fn find_names_by_ids(main: &Connection, ids: &[String]) -> HashMap<String, String> {
     let mut unique: Vec<String> = Vec::new();
@@ -425,19 +426,15 @@ pub fn find_names_by_ids(main: &Connection, ids: &[String]) -> HashMap<String, S
         .join(", ");
     let params: Vec<&dyn rusqlite::ToSql> =
         unique.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
-    let rows = match query_raw(main, &format!("id IN ({placeholders})"), &params) {
-        Ok(rows) => rows,
-        Err(e) => {
-            tracing::error!(
-                target: "quilltap::memory",
-                collection = "characters",
-                count = unique.len(),
-                error = %e,
-                "Error resolving character names"
-            );
-            return HashMap::new();
-        }
-    };
+    // v4's body is `super.findByIds(unique)` — the base `findByFilter`, itself a
+    // fallback (`base.repository.ts:283-297`, `:563-569`) — so a failed read
+    // logs `Error finding entities by filter {collection: characters}` and
+    // answers `[]` FIRST; the outer `Error resolving character names` is
+    // UNREACHABLE on a database failure (P4.142 Tier 2 — v5 had logged that
+    // outer line, under `quilltap::memory`, with the `sqlite error:` prefix).
+    let rows = super::fallback::find_by_filter_or_empty("characters", || {
+        query_raw(main, &format!("id IN ({placeholders})"), &params)
+    });
 
     let mut names = HashMap::new();
     for row in rows {
@@ -644,6 +641,14 @@ mod tests {
     #[test]
     fn a_read_failure_is_an_empty_map() {
         let main = Connection::open_in_memory().unwrap(); // no `characters` table
-        assert!(find_names_by_ids(&main, &["c1".to_string()]).is_empty());
+        let (names, lines) =
+            crate::test_support::captured_with(|| find_names_by_ids(&main, &["c1".to_string()]));
+        assert!(names.is_empty());
+        // P4.142: the INNER `findByFilter` line, the bare message — v4's outer
+        // `Error resolving character names` is unreachable.
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error finding entities by filter collection=characters error=no such table: characters".to_string()]
+        );
     }
 }

@@ -74,6 +74,12 @@ _Versions: core 0.0.1148._
 _Versions: core 0.0.1147, harness 0.0.1075._
 
 `TransportError` gains `kind: TransportErrorKind` (`Http`, `Connect`, `Timeout`) and four constructors: `http(status, body)`, `connect(message)`, `timeout(message)` and `headers_timeout(ms)` (now a `Timeout`). All 52 struct literals across 12 files (core 38, harness 14) now go through them. `is_headers_timeout`'s message-prefix sniff is replaced by `is_timeout()`, which reads the kind. Behaviour does not change: every status-less site is `Connect`, every status site is `Http`, and the headers timeout is still the only `Timeout`. This is P4.141's first commit, landed early so a later field cannot cross the shared struct's literals again.
+#### 2026-10-02 — feat(mount-index): P4.142 unit 8 — the embedding scheduler's v4 lines, the chunk-clear fallback, and the character-name read's inner line
+
+_Versions: core 0.0.1154, harness 0.0.1081._
+
+The mount-chunk embedding scheduler printed three `eprintln!` messages where v4 logs. It now logs v4's WARNs for no default profile, no user, and a failed per-chunk enqueue, plus the INFO pair around a real enqueue (`Enqueuing embedding jobs for mount chunks`, `Embedding job enqueueing complete`), all with v4's fields under `quilltap::mount_index`. Its profile and user lookups take v4's `_findAll` fallbacks, so a failed read reaches the no-default or no-user warning. The blocked-link embedding clear goes through a new home (`Error clearing embeddings by link ID`, answering 0), which makes the old `Failed to clear embeddings` message unreachable, as it is in v4. `characters_read::find_names_by_ids` now logs v4's inner `Error finding entities by filter {collection: characters}` line instead of the unreachable outer `Error resolving character names`.
+
 #### 2026-10-02 — feat(api): P4.142 unit 7 — the 14 read-only route and listing sites take v4's fallbacks (G1)
 
 _Versions: core 0.0.1153, harness 0.0.1080, web 0.0.208._

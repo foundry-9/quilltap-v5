@@ -133,8 +133,9 @@ pub fn first_user_id(main: &Connection) -> Result<Option<String>, DbError> {
 /// v4 `enqueueEmbeddingJobsForMountPoint(mountPointId)` — the whole-mount
 /// enqueue (the scan runner's follow-up): erase embeddings on `embed:false`
 /// links, then enqueue for every un-embedded, un-blocked chunk. Returns the
-/// number of NEW jobs enqueued (0 with a stderr warning when no profile or no
-/// user is configured, matching v4's warn-and-return-0 arms).
+/// number of NEW jobs enqueued (0 with v4's WARN when no default profile or no
+/// user is configured — v4's warn-and-return-0 arms; P4.142 replaced the
+/// `eprintln!`s with v4's lines, `embedding-scheduler.ts:80-127`).
 pub fn enqueue_embedding_jobs_for_mount_point(
     main: &Connection,
     mount: &Connection,
@@ -154,11 +155,13 @@ pub fn enqueue_embedding_jobs_for_mount_point(
     }
     // Erase lingering embeddings for blocked links (NULL, don't delete — the
     // chunk text survives so re-embedding stays possible if the flag flips).
+    // v4's `clearEmbeddingsByLinkId` is a fallback WRITE (`0` after its own
+    // `Error clearing embeddings by link ID`), so the `Failed to clear embeddings
+    // for embed:false link` WARN around it (`embedding-scheduler.ts:47-53`) is
+    // unreachable — the home's line is the only one (P4.142).
     let chunks_repo = DocMountChunksRepository::new(mount);
     for link_id in blocked {
-        if let Err(e) = chunks_repo.clear_embeddings_by_link_id(link_id) {
-            eprintln!("Failed to clear embeddings for embed:false link {link_id}: {e}");
-        }
+        chunks_repo.clear_embeddings_by_link_id_or_zero(link_id);
     }
 
     // Un-embedded chunks whose link is not blocked (a link absent from the map
@@ -174,33 +177,80 @@ pub fn enqueue_embedding_jobs_for_mount_point(
         return Ok(0);
     }
 
-    let Some(profile_id) = default_profile_id(main)? else {
-        eprintln!(
-            "No embedding profile configured, skipping mount chunk embedding \
-             (mount {mount_point_id}, {} un-embedded chunks)",
-            unembedded.len()
+    // v4 `embeddingProfiles.findAll()` and `users.findAll()` are `_findAll`
+    // fallbacks (`Error finding all entities`, `[]`), so a failed read takes the
+    // no-default / no-user WARN arm below, never an `Err` (P4.142).
+    let profiles =
+        crate::db::fallback::find_all_or_empty("embedding_profiles", || all_profile_heads(main));
+    let Some((profile_id, profile_name, _)) = profiles.into_iter().find(|(_, _, d)| *d) else {
+        tracing::warn!(
+            target: "quilltap::mount_index",
+            mountPointId = %mount_point_id,
+            unembeddedCount = unembedded.len(),
+            "No default embedding profile configured, skipping mount chunk embedding"
         );
         return Ok(0);
     };
-    let Some(user_id) = first_user_id(main)? else {
-        eprintln!("No user found, skipping mount chunk embedding (mount {mount_point_id})");
+    let users = crate::db::fallback::find_all_or_empty("users", || {
+        first_user_id(main).map(|u| u.into_iter().collect::<Vec<_>>())
+    });
+    let Some(user_id) = users.into_iter().next() else {
+        tracing::warn!(
+            target: "quilltap::mount_index",
+            mountPointId = %mount_point_id,
+            "No user found, skipping mount chunk embedding"
+        );
         return Ok(0);
     };
 
+    tracing::info!(
+        target: "quilltap::mount_index",
+        mountPointId = %mount_point_id,
+        chunkCount = unembedded.len(),
+        profileId = %profile_id,
+        profileName = %profile_name,
+        "Enqueuing embedding jobs for mount chunks"
+    );
     let mut enqueued = 0i64;
-    for chunk in unembedded {
+    for chunk in &unembedded {
         match enqueue_mount_chunk_embedding(main, &user_id, &chunk.id, &profile_id) {
             Ok((_, true)) => enqueued += 1,
             Ok((_, false)) => {}
             Err(e) => {
-                eprintln!(
-                    "Failed to enqueue embedding job for mount chunk {}: {e}",
-                    chunk.id
+                tracing::warn!(
+                    target: "quilltap::mount_index",
+                    chunkId = %chunk.id,
+                    error = %e,
+                    "Failed to enqueue embedding job for mount chunk"
                 );
             }
         }
     }
+    tracing::info!(
+        target: "quilltap::mount_index",
+        mountPointId = %mount_point_id,
+        totalChunks = unembedded.len(),
+        enqueued,
+        "Embedding job enqueueing complete"
+    );
     Ok(enqueued)
+}
+
+/// Every embedding profile's `(id, name, isDefault)`, in table order — the
+/// scheduler's view of v4's `embeddingProfiles.findAll()` (it logs the default
+/// profile's NAME, `embedding-scheduler.ts:97-102`).
+fn all_profile_heads(main: &Connection) -> Result<Vec<(String, String, bool)>, DbError> {
+    let mut stmt = main.prepare("SELECT id, name, isDefault FROM embedding_profiles")?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<i64>>(2)?.unwrap_or(0) != 0,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
 }
 
 #[cfg(test)]
@@ -296,6 +346,172 @@ mod fallback_read_tests {
         assert_eq!(
             lines,
             vec!["ERROR quilltap::db Error finding entities by filter collection=doc_mount_chunks error=no such table: doc_mount_chunks".to_string()]
+        );
+    }
+
+    /// One un-embedded chunk on `mp-1` (its link absent from the allow map —
+    /// v4's "defaults to allowed").
+    fn plant_chunk(mount: &Connection) {
+        mount
+            .execute(
+                "INSERT INTO doc_mount_chunks (id, linkId, mountPointId, chunkIndex, content, \
+                 tokenCount, headingContext, embedding, createdAt, updatedAt) VALUES \
+                 ('ch-1', 'l-x', 'mp-1', 0, 'text', 1, NULL, NULL, 't', 't')",
+                [],
+            )
+            .unwrap();
+    }
+
+    fn run(main: &crate::db::Writer, mount: &crate::db::Writer) -> (i64, Vec<String>) {
+        let (got, lines) = crate::test_support::captured_with(|| {
+            enqueue_embedding_jobs_for_mount_point(main.connection(), mount.connection(), "mp-1")
+        });
+        (got.unwrap(), lines)
+    }
+
+    /// P4.142 Tier 2 (survey §A6): v4's INFO pair around a real enqueue, its
+    /// fields in v4's order (`embedding-scheduler.ts:97-127`), where v5 had
+    /// printed nothing.
+    #[test]
+    fn a_real_enqueue_logs_v4s_info_pair() {
+        let dir = tempfile::tempdir().unwrap();
+        let (main, mount) = instance(&dir);
+        plant_chunk(mount.connection());
+        let (pid, pname): (String, String) = main
+            .connection()
+            .query_row(
+                "SELECT id, name FROM embedding_profiles WHERE isDefault = 1",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .expect("the provisioned instance marks a default profile");
+        let (n, lines) = run(&main, &mount);
+        assert_eq!(n, 1);
+        assert_eq!(
+            lines,
+            vec![
+                format!("INFO quilltap::mount_index Enqueuing embedding jobs for mount chunks mountPointId=mp-1 chunkCount=1 profileId={pid} profileName={pname}"),
+                "INFO quilltap::mount_index Embedding job enqueueing complete mountPointId=mp-1 totalChunks=1 enqueued=1".to_string(),
+            ]
+        );
+    }
+
+    /// v4's two warn-and-return-0 arms, and a failed profile read taking the
+    /// first of them through `_findAll`'s fallback (`Error finding all
+    /// entities {collection: embedding_profiles}`, `[]`) rather than an `Err`.
+    #[test]
+    fn the_no_default_and_no_user_arms_warn_as_v4() {
+        let dir = tempfile::tempdir().unwrap();
+        let (main, mount) = instance(&dir);
+        plant_chunk(mount.connection());
+        main.connection()
+            .execute_batch("UPDATE embedding_profiles SET isDefault = 0")
+            .unwrap();
+        let (n, lines) = run(&main, &mount);
+        assert_eq!(n, 0);
+        assert_eq!(
+            lines,
+            vec!["WARN quilltap::mount_index No default embedding profile configured, skipping mount chunk embedding mountPointId=mp-1 unembeddedCount=1".to_string()]
+        );
+
+        main.connection()
+            .execute_batch("ALTER TABLE embedding_profiles RENAME COLUMN isDefault TO isDefault_x")
+            .unwrap();
+        let (n, lines) = run(&main, &mount);
+        assert_eq!(n, 0);
+        assert_eq!(
+            lines,
+            vec![
+                "ERROR quilltap::db Error finding all entities collection=embedding_profiles error=no such column: isDefault".to_string(),
+                "WARN quilltap::mount_index No default embedding profile configured, skipping mount chunk embedding mountPointId=mp-1 unembeddedCount=1".to_string(),
+            ]
+        );
+
+        main.connection()
+            .execute_batch(
+                "ALTER TABLE embedding_profiles RENAME COLUMN isDefault_x TO isDefault; \
+                 UPDATE embedding_profiles SET isDefault = 1 WHERE rowid = (SELECT MIN(rowid) FROM embedding_profiles); \
+                 DELETE FROM users",
+            )
+            .unwrap();
+        let (n, lines) = run(&main, &mount);
+        assert_eq!(n, 0);
+        assert_eq!(
+            lines,
+            vec!["WARN quilltap::mount_index No user found, skipping mount chunk embedding mountPointId=mp-1".to_string()]
+        );
+    }
+
+    /// v4's per-chunk catch (`:116-119`): a failed enqueue WARNs `{chunkId,
+    /// error}` and the run goes on — the INFO pair still closes it.
+    #[test]
+    fn a_failed_enqueue_warns_and_the_run_completes() {
+        let dir = tempfile::tempdir().unwrap();
+        let (main, mount) = instance(&dir);
+        plant_chunk(mount.connection());
+        main.connection()
+            .execute_batch("DROP TABLE background_jobs")
+            .unwrap();
+        let (n, lines) = run(&main, &mount);
+        assert_eq!(n, 0);
+        assert_eq!(lines.len(), 3, "{lines:#?}");
+        assert!(
+            lines[1].starts_with(
+                "WARN quilltap::mount_index Failed to enqueue embedding job for mount chunk chunkId=ch-1 error="
+            ),
+            "{}",
+            lines[1]
+        );
+        assert!(
+            lines[2].ends_with("totalChunks=1 enqueued=0"),
+            "{}",
+            lines[2]
+        );
+    }
+
+    /// The blocked-link clear is v4's fallback WRITE: a failure logs `Error
+    /// clearing embeddings by link ID` and the run goes on (v4's own `Failed to
+    /// clear embeddings for embed:false link` WARN is unreachable).
+    #[test]
+    fn a_failed_clear_logs_the_homes_line_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let (main, mount) = instance(&dir);
+        let mp: String = mount
+            .connection()
+            .query_row(
+                "SELECT id FROM doc_mount_points WHERE mountType = 'database' LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        crate::db::doc_mount_file_links::DocMountFileLinksRepository::new(mount.connection())
+            .write_database_document(&mp, "notes/a.md", "hello")
+            .unwrap();
+        mount
+            .connection()
+            .execute_batch(
+                "UPDATE doc_mount_file_links SET allowEmbed = 0; \
+                 ALTER TABLE doc_mount_chunks RENAME COLUMN embedding TO embedding_x",
+            )
+            .unwrap();
+        let link_id: String = mount
+            .connection()
+            .query_row(
+                "SELECT id FROM doc_mount_file_links WHERE mountPointId = ?1",
+                [&mp],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let (got, lines) = crate::test_support::captured_with(|| {
+            enqueue_embedding_jobs_for_mount_point(main.connection(), mount.connection(), &mp)
+        });
+        assert_eq!(got.unwrap(), 0);
+        assert_eq!(
+            lines,
+            vec![
+                format!("ERROR quilltap::db Error clearing embeddings by link ID collection=doc_mount_chunks linkId={link_id} error=no such column: embedding"),
+                "ERROR quilltap::db Error finding entities by filter collection=doc_mount_chunks error=no such column: embedding".to_string(),
+            ]
         );
     }
 

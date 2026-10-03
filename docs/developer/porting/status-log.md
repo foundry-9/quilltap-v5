@@ -160843,3 +160843,38 @@ scope → the caller's `Err`), on the union.
 - Census: G1's 14 rows `converted` (12 by text, `project_file_list` +
   `mount_files_list` by `OVERRIDES`; the web rows' enclosing fns renamed by the
   extraction) — **(56, 13, 19, 0, 13, 1, 1, 52)**.
+
+### Unit 8 — Tier 2 items 13 + 14 (core 0.0.1154, harness 0.0.1081)
+
+- **Item 13 — the embedding scheduler's v4 lines** (survey §A6;
+  `embedding-scheduler.ts:25-130`, `createServiceLogger('MountIndex:
+  EmbeddingScheduler')` → v5 target `quilltap::mount_index`, the module's
+  existing convention, camelCase fields): the three `eprintln!`s replaced by
+  WARN `No default embedding profile configured, skipping mount chunk
+  embedding` `{mountPointId, unembeddedCount}`, WARN `No user found, skipping
+  mount chunk embedding` `{mountPointId}`, WARN `Failed to enqueue embedding
+  job for mount chunk` `{chunkId, error}`; plus the INFO pair `Enqueuing
+  embedding jobs for mount chunks` `{mountPointId, chunkCount, profileId,
+  profileName}` / `Embedding job enqueueing complete` `{mountPointId,
+  totalChunks, enqueued}` v5 never had. The profile and user reads take v4's
+  `_findAll` fallbacks (`find_all_or_empty("embedding_profiles" | "users",
+  …)` over a new `all_profile_heads` — the INFO line names the PROFILE).
+  The SIXTH home `clear_embeddings_by_link_id_or_zero` (`Error clearing
+  embeddings by link ID {collection, linkId, error}` → 0; a fallback WRITE,
+  `doc-mount-chunks.repository.ts:256-276`) + the repository twin
+  `clear_embeddings_by_link_id_or_zero`, replacing the unreachable `Failed to
+  clear embeddings for embed:false link` path. `HOME_MESSAGES` 22. Pins
+  (`embedding_scheduler::fallback_read_tests`): the INFO pair on a real
+  enqueue, the no-default arm, a failed profile read through the home into
+  the same arm, the no-user arm, a failed per-chunk enqueue (the run
+  completes, `enqueued=0`), a failed clear (the home's line, then the chunk
+  read's).
+- **Item 14 — `characters_read::find_names_by_ids`:** v4's outer `Error
+  resolving character names` is UNREACHABLE (`super.findByIds` → the base
+  `findByFilter` falls back first); v5 had logged it under `quilltap::memory`
+  with the `sqlite error:` prefix. Now `find_by_filter_or_empty("characters",
+  …)`; the existing test re-aimed at the exact home line.
+  ⚠ **Named handoff (not this lane's file):** `services/memory_subject.rs:53`
+  logs `Error resolving character names` on a READ-POOL failure before
+  `find_names_by_ids` runs — in v4 the pool checkout (`getCollection()`) sits
+  inside the same inner `findByFilter`, so v4 logs the FILTER line there too.

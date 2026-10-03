@@ -522,6 +522,15 @@ impl<'c> DocMountChunksRepository<'c> {
         Ok(n)
     }
 
+    /// v4 `clearEmbeddingsByLinkId` exactly as its callers see it (P4.142): a
+    /// fallback `withRawDb(0)` — a failed write logs `Error clearing embeddings
+    /// by link ID` and answers 0.
+    pub fn clear_embeddings_by_link_id_or_zero(&self, link_id: &str) -> usize {
+        super::fallback::clear_embeddings_by_link_id_or_zero(link_id, || {
+            self.clear_embeddings_by_link_id(link_id)
+        })
+    }
+
     pub fn delete(&self, id: &str) -> Result<bool, DbError> {
         let affected = self
             .conn

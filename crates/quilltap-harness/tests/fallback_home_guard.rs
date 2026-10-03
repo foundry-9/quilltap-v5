@@ -56,6 +56,9 @@ const HOME_MESSAGES: &[&str] = &[
     // P4.142 (G1): v4's FILES repository list line (`doc-mount-files.
     // repository.ts:86-95`) — the files-list and project-files routes.
     "Error finding files by mount point ID",
+    // P4.142 Tier 2: the chunk-clear WRITE's fallback (`doc-mount-chunks.
+    // repository.ts:256-276`).
+    "Error clearing embeddings by link ID",
 ];
 
 const HOME: &str = "db/fallback.rs";

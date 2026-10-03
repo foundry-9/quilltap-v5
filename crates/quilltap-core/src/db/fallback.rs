@@ -543,6 +543,28 @@ pub fn files_by_mount_point_id_or_empty<T>(
     })
 }
 
+/// v4 `docMountChunks.clearEmbeddingsByLinkId` as its callers see it: a
+/// fallback `withRawDb(0)` (a WRITE), so `write()`'s `Err` logs `Error clearing
+/// embeddings by link ID {collection, linkId, error}` and answers `0`
+/// (`doc-mount-chunks.repository.ts:256-276`) — which is why the embedding
+/// scheduler's own `Failed to clear embeddings for embed:false link` WARN
+/// (`embedding-scheduler.ts:47-53`) is unreachable.
+pub fn clear_embeddings_by_link_id_or_zero(
+    link_id: &str,
+    write: impl FnOnce() -> Result<usize, DbError>,
+) -> usize {
+    write().unwrap_or_else(|error| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "doc_mount_chunks",
+            linkId = %link_id,
+            error = %error_text(&error),
+            "Error clearing embeddings by link ID"
+        );
+        0
+    })
+}
+
 /// v4 `getApiKeysByUserId` as its callers see it: `read()`'s `Err` logs
 /// `Error finding API keys by user ID {collection, userId, error}` and answers
 /// `[]` (`connection-profiles.repository.ts:218-244`, 4-arg fallback
@@ -930,6 +952,24 @@ mod tests {
         let caught = std::panic::catch_unwind(|| with_strict_repository_failures(|| panic!("x")));
         assert!(caught.is_err());
         assert!(!strict_repository_failures_active());
+    }
+
+    /// The chunk-clear write's line (P4.142 Tier 2) — answers 0.
+    #[test]
+    fn the_clear_embeddings_shape_logs_v4s_line_and_answers_zero() {
+        let (got, lines) = crate::test_support::captured_with(|| {
+            clear_embeddings_by_link_id_or_zero("l-1", || Err(posed()))
+        });
+        assert_eq!(got, 0);
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error clearing embeddings by link ID collection=doc_mount_chunks linkId=l-1 error=posed".to_string()]
+        );
+        let (got, lines) = crate::test_support::captured_with(|| {
+            clear_embeddings_by_link_id_or_zero("l-1", || Ok(3))
+        });
+        assert_eq!(got, 3);
+        assert!(lines.is_empty(), "{lines:?}");
     }
 
     /// The files repository's list line (P4.142, G1) — collection
