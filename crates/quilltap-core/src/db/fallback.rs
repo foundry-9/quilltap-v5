@@ -118,18 +118,21 @@ pub fn find_one_by_filter_or_none<T>(
 /// `withRawDb`, so `read()`'s `Err` logs `Error querying joined file links
 /// {collection, whereClause, error}` and answers `[]`
 /// (`doc-mount-file-links.repository.ts:1445-1505`). `where_clause` is the
-/// plain string v4 passes (`WHERE l.mountPointId = ?`, …). Both public joined
-/// reads (`findByMountPointId`, `findByMountPointAndPath`) wrap this in their
-/// own `safeQuery`, which therefore NEVER fires — this is the only line.
+/// plain string v4 passes (`WHERE l.mountPointId = ?`, …) — a `&str` since
+/// P4.142 (v4's batched `findByIdsWithContent` builds `WHERE l.id IN (?,…)`
+/// per call; a tracing field VALUE need not be static, only its name). Every
+/// public joined read (`findByMountPointId`, `findByMountPointAndPath`,
+/// `findByFileId`, `findByIdsWithContent`) wraps this in its own `safeQuery`,
+/// which therefore NEVER fires — this is the only line.
 pub fn joined_file_links_or_empty<T>(
-    where_clause: &'static str,
+    where_clause: &str,
     read: impl FnOnce() -> Result<Vec<T>, DbError>,
 ) -> Vec<T> {
     read().unwrap_or_else(|error| {
         tracing::error!(
             target: "quilltap::db",
             collection = "doc_mount_file_links",
-            whereClause = where_clause,
+            whereClause = %where_clause,
             error = %error_text(&error),
             "Error querying joined file links"
         );

@@ -1917,6 +1917,18 @@ impl<'c> DocMountFileLinksRepository<'c> {
         Ok(rows)
     }
 
+    /// v4 `findByFileId` exactly as its callers see it (P4.142): `safeQuery(
+    /// queryJoined('WHERE l.fileId = ?'), 'Error finding file links by file ID',
+    /// …, [])`, and `queryJoined` is itself a fallback, so a failed read logs
+    /// `Error querying joined file links {whereClause: "WHERE l.fileId = ?"}`
+    /// and answers `[]` — the outer line is UNREACHABLE
+    /// (`doc-mount-file-links.repository.ts:537-544`).
+    pub fn find_by_file_id_or_empty(&self, file_id: &str) -> Vec<LinkRow> {
+        super::fallback::joined_file_links_or_empty("WHERE l.fileId = ?", || {
+            self.find_by_file_id(file_id)
+        })
+    }
+
     /// v4 `findByIdWithContent` (`doc-mount-file-links.repository.ts:387`): one link
     /// by its primary key, joined with content fields (`f.sha256` etc.). `None` when
     /// absent. Drives the character-avatar sha256 resolution (vault-link path).
@@ -1991,6 +2003,30 @@ impl<'c> DocMountFileLinksRepository<'c> {
     /// `lib/utils/chunk.ts`). The chunking is the P4.65 scale-safety measure taken
     /// after P4.D126 measured a 40,000-id batch failing with "too many SQL
     /// variables"; it is invisible in the output.
+    /// v4 `findByIdsWithContent` exactly as its callers see it (P4.142): the
+    /// empty-ids guard, then `safeQuery(queryJoined(\`WHERE l.id IN
+    /// (${placeholders})\`), 'Error finding file links by ids', …, [])` — the
+    /// inner `queryJoined` fallback answers first, so a failed read logs `Error
+    /// querying joined file links` with v4's DYNAMIC `whereClause` (one `?` per
+    /// UNIQUE id, `,`-joined) and answers `[]`; the outer line is UNREACHABLE
+    /// (`doc-mount-file-links.repository.ts:567-579`). The whole chunked read
+    /// sits inside the home, so a failure logs ONCE with v4's whole clause —
+    /// as v4 does — even above `SQLITE_VARIABLE_CHUNK_SIZE`, where v5 runs one
+    /// statement per chunk and v4 one statement in all.
+    pub fn find_by_ids_with_content_or_empty(&self, ids: &[String]) -> Vec<LinkWithContent> {
+        if ids.is_empty() {
+            return Vec::new();
+        }
+        let unique = ids.iter().collect::<std::collections::HashSet<_>>().len();
+        let where_clause = format!(
+            "WHERE l.id IN ({})",
+            (0..unique).map(|_| "?").collect::<Vec<_>>().join(",")
+        );
+        super::fallback::joined_file_links_or_empty(&where_clause, || {
+            self.find_by_ids_with_content(ids)
+        })
+    }
+
     pub fn find_by_ids_with_content(
         &self,
         ids: &[String],
@@ -3515,6 +3551,35 @@ mod find_by_ids_with_content_tests {
         out
     }
 
+    /// P4.142: the batched twin answers v4's fallback with v4's DYNAMIC
+    /// `whereClause` — one `?` per UNIQUE id, `,`-joined — once, and `[]`; the
+    /// silence leg on the healthy tables; the empty-ids guard before the home.
+    #[test]
+    fn the_ids_twin_logs_v4s_dynamic_where_clause() {
+        let conn = scratch();
+        link(&conn, "l1");
+        let repo = DocMountFileLinksRepository::new(&conn);
+        let (got, lines) = crate::test_support::captured_with(|| {
+            repo.find_by_ids_with_content_or_empty(&ids(&["l1", "l1", "ghost"]))
+        });
+        assert_eq!(sorted_ids(&got), ids(&["l1"]));
+        assert!(lines.is_empty(), "{lines:?}");
+        conn.execute_batch("ALTER TABLE doc_mount_files RENAME COLUMN sha256 TO sha256_x")
+            .unwrap();
+        let (got, lines) = crate::test_support::captured_with(|| {
+            repo.find_by_ids_with_content_or_empty(&ids(&["l1", "l1", "ghost"]))
+        });
+        assert!(got.is_empty());
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error querying joined file links collection=doc_mount_file_links whereClause=WHERE l.id IN (?,?) error=no such column: f.sha256".to_string()]
+        );
+        let (got, lines) =
+            crate::test_support::captured_with(|| repo.find_by_ids_with_content_or_empty(&[]));
+        assert!(got.is_empty());
+        assert!(lines.is_empty(), "{lines:?}");
+    }
+
     /// The present ids come back joined with their content fields; a missing id
     /// is simply absent.
     #[test]
@@ -3762,5 +3827,38 @@ mod normalize_before_the_sha_tests {
             .unwrap();
         assert_eq!(blob_sha, hex::encode(Sha256::digest(b"pretend-png-bytes")));
         assert_eq!(blob_mime, "image/png");
+    }
+}
+
+#[cfg(test)]
+mod file_id_twin_tests {
+    use super::*;
+
+    /// P4.142: `findByFileId` as v4's callers see it — the inner `queryJoined`
+    /// fallback's line (`whereClause: "WHERE l.fileId = ?"`) and `[]`; the outer
+    /// `Error finding file links by file ID` is unreachable. The silence leg on
+    /// a provisioned (healthy, empty) mount index.
+    #[test]
+    fn the_file_id_twin_logs_the_joined_line_and_answers_empty() {
+        let broken = Connection::open_in_memory().unwrap();
+        let (got, lines) = crate::test_support::captured_with(|| {
+            DocMountFileLinksRepository::new(&broken).find_by_file_id_or_empty("f-1")
+        });
+        assert!(got.is_empty());
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error querying joined file links collection=doc_mount_file_links whereClause=WHERE l.fileId = ? error=no such table: doc_mount_file_links".to_string()]
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let pepper = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+        crate::services::provisioning::provision_fresh_instance(dir.path(), pepper).unwrap();
+        let w =
+            crate::db::Writer::open_writable(&dir.path().join("quilltap-mount-index.db"), pepper)
+                .unwrap();
+        let (got, lines) = crate::test_support::captured_with(|| {
+            DocMountFileLinksRepository::new(w.connection()).find_by_file_id_or_empty("f-1")
+        });
+        assert!(got.is_empty());
+        assert!(lines.is_empty(), "{lines:?}");
     }
 }

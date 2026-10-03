@@ -160878,3 +160878,27 @@ scope → the caller's `Err`), on the union.
   logs `Error resolving character names` on a READ-POOL failure before
   `find_names_by_ids` runs — in v4 the pool checkout (`getCollection()`) sits
   inside the same inner `findByFilter`, so v4 logs the FILTER line there too.
+
+### Unit 9 — Tier 2 item 11 (core 0.0.1155)
+
+- `fallback::joined_file_links_or_empty`'s `where_clause` widened to `&str`
+  (the field NAME stays static; the value renders through `%`, byte-identical
+  — every existing `whereClause=…` pin unchanged).
+- Twins: `find_by_file_id_or_empty` (`WHERE l.fileId = ?`; v4's outer `Error
+  finding file links by file ID` unreachable, `doc-mount-file-links.
+  repository.ts:537-544`) and `find_by_ids_with_content_or_empty` (empty-ids
+  guard first; v4's DYNAMIC `WHERE l.id IN (?,…)` — one `?` per UNIQUE id,
+  `,`-joined; the outer `Error finding file links by ids` unreachable, `:567-
+  579`). **Measured design choice:** the whole chunked read sits inside the
+  home, so a failure logs ONCE with v4's whole clause even above
+  `SQLITE_VARIABLE_CHUNK_SIZE` (the order had predicted once-per-chunk; this
+  shape matches v4 instead). Pins: `find_by_ids_with_content_tests::the_ids_
+  twin_logs_v4s_dynamic_where_clause` (silence, `IN (?,?)` for three ids with
+  a duplicate, the empty guard), `file_id_twin_tests`.
+- **Not repointed (handoffs, named):** `services/chat_enrichment.rs:869`
+  (`listChats`' avatar read → `find_by_ids_with_content_or_empty`; P4.139's
+  file this round — with §S.3's `:452` profile read, the successor's); the
+  `find_by_file_id` callers in `photos/{auto_describe_attachment,
+  photo_link_summary}.rs`, `services/maintenance.rs` (not this lane's files)
+  and `services/file_storage.rs:927` (a G2/G3 site, deferred with its group);
+  `quilltap_import/mod.rs:677` stays strict.

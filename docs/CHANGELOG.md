@@ -74,6 +74,12 @@ _Versions: core 0.0.1148._
 _Versions: core 0.0.1147, harness 0.0.1075._
 
 `TransportError` gains `kind: TransportErrorKind` (`Http`, `Connect`, `Timeout`) and four constructors: `http(status, body)`, `connect(message)`, `timeout(message)` and `headers_timeout(ms)` (now a `Timeout`). All 52 struct literals across 12 files (core 38, harness 14) now go through them. `is_headers_timeout`'s message-prefix sniff is replaced by `is_timeout()`, which reads the kind. Behaviour does not change: every status-less site is `Connect`, every status site is `Http`, and the headers timeout is still the only `Timeout`. This is P4.141's first commit, landed early so a later field cannot cross the shared struct's literals again.
+#### 2026-10-02 — feat(db): P4.142 unit 9 — the joined file-link home takes a dynamic where-clause; twins for findByFileId and findByIdsWithContent
+
+_Versions: core 0.0.1155._
+
+`joined_file_links_or_empty` now takes a `&str` where-clause, so it can carry v4's dynamic `WHERE l.id IN (?,...)`. Two links-repository twins follow v4's fallbacks: `find_by_file_id_or_empty` and `find_by_ids_with_content_or_empty` (the batched one logs once with v4's whole clause, one placeholder per unique id, even where v5 chunks the query). The chat-list avatar read that would use the batched twin lives in another lane's file this round and is recorded as a handoff.
+
 #### 2026-10-02 — feat(mount-index): P4.142 unit 8 — the embedding scheduler's v4 lines, the chunk-clear fallback, and the character-name read's inner line
 
 _Versions: core 0.0.1154, harness 0.0.1081._
