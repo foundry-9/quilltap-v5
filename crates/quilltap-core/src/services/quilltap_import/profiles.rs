@@ -398,9 +398,18 @@ pub(super) fn import_image_profiles(
                     ConflictStrategy::Duplicate => {
                         let phantom = uuid::Uuid::new_v4().to_string();
                         id_map.set(source_id.clone(), phantom);
-                        let Ok(p) = serde_json::from_value::<ImportedImageProfile>(raw.clone())
-                        else {
-                            return Ok(());
+                        // P4.143 item 7: v4's duplicate arm (`import-profiles.ts:
+                        // 150-160`) sets the phantom map, then its `create`'s Zod
+                        // `validate` throws into the per-item catch, which NAMES
+                        // the item — this arm used to drop it with no warning.
+                        let p = match serde_json::from_value::<ImportedImageProfile>(raw.clone()) {
+                            Ok(p) => p,
+                            Err(e) => {
+                                warnings.push(format!(
+                                    "Failed to import image profile \"{name}\": {e}"
+                                ));
+                                return Ok(());
+                            }
                         };
                         let name = format!("{} (imported)", p.name);
                         create_image_profile(options, &source_id, &repo, user_id, p, name)?;
@@ -513,9 +522,17 @@ pub(super) fn import_embedding_profiles(
                     ConflictStrategy::Duplicate => {
                         let phantom = uuid::Uuid::new_v4().to_string();
                         id_map.set(source_id.clone(), phantom);
-                        let Ok(p) = serde_json::from_value::<ImportedEmbeddingProfile>(raw.clone())
-                        else {
-                            return Ok(());
+                        // P4.143 items 7–8: v4's duplicate arm (`import-profiles.ts:
+                        // 215-225`) NAMES a refused item, as the create arm does —
+                        // this arm used to drop a malformed one silently.
+                        let p = match parse_embedding_profile(raw) {
+                            Ok(p) => p,
+                            Err(e) => {
+                                warnings.push(format!(
+                                    "Failed to import embedding profile \"{name}\": {e}"
+                                ));
+                                return Ok(());
+                            }
                         };
                         let name = format!("{} (imported)", p.name);
                         create_embedding_profile(options, &source_id, &repo, user_id, p, name)?;
@@ -524,7 +541,7 @@ pub(super) fn import_embedding_profiles(
                     }
                 }
             }
-            let p = match serde_json::from_value::<ImportedEmbeddingProfile>(raw.clone()) {
+            let p = match parse_embedding_profile(raw) {
                 Ok(p) => p,
                 Err(e) => {
                     warnings.push(format!(
@@ -547,6 +564,35 @@ pub(super) fn import_embedding_profiles(
         }
     }
     Ok(Counts { imported, skipped })
+}
+
+/// v4 `EmbeddingProfileProviderEnum` (`lib/schemas/common.types.ts:35`), in
+/// schema order — `EmbeddingProfileSchema.provider` is this `z.enum`, NOT the
+/// `z.string().min(1)` the connection and image profiles use.
+const EMBEDDING_PROFILE_PROVIDERS: [&str; 5] =
+    ["OPENAI", "OLLAMA", "OPENROUTER", "NANOGPT", "BUILTIN"];
+
+/// Decode one embedding-profile item, then apply the one create-time Zod check
+/// the typed decode cannot express: P4.143 item 8 — a STRING `provider` outside
+/// [`EMBEDDING_PROFILE_PROVIDERS`] is refused with v4's `invalid_value`
+/// ZodError message (v5's `provider: String` used to ACCEPT it and write the
+/// row, where v4's `repos.embeddingProfiles.create` → `validate` throws). A
+/// CLOSED divergence: the message is v4's bytes (`zod_error_message`), compared
+/// verbatim by `system_import_state`'s `execute_embedding_provider_enum`.
+/// ⚠ Scope: the provider enum only; any other check v4's schema would raise on
+/// a decodable item is not reproduced (a wrong TYPE is serde's sentence — the
+/// recorded `SERDE_ARM_DIVERGENCES` class, P4.143 Tier 3 item 12).
+fn parse_embedding_profile(raw: &Value) -> Result<ImportedEmbeddingProfile, String> {
+    use crate::api::zod_issues::{key, zod_error_message, ZodIssue};
+    let p = serde_json::from_value::<ImportedEmbeddingProfile>(raw.clone())
+        .map_err(|e| e.to_string())?;
+    if !EMBEDDING_PROFILE_PROVIDERS.contains(&p.provider.as_str()) {
+        return Err(zod_error_message(&[ZodIssue::invalid_value(
+            &EMBEDDING_PROFILE_PROVIDERS,
+            vec![key("provider")],
+        )]));
+    }
+    Ok(p)
 }
 
 fn create_embedding_profile(

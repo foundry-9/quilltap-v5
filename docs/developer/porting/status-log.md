@@ -162322,3 +162322,44 @@ ABSENT both sides; exactly one `Failed to restore chat "The Serde Room": `
 warning each). GREEN. **M3** (remove the classify application) → RED on that
 one warning (and the two items go dead-code — the compiler names them). harness
 0.0.1077, web 0.0.208 (tests only — the new zip).
+
+### Unit 5 — Tier 2 items 7–8: the duplicate-arm warnings and the embedding provider enum
+
+**Measured first:** the destination fixture holds image profile
+`a6000000-0000-4000-8000-000000000001` ("Primary Imagery") and embedding
+profile `a8000000-0000-4000-8000-000000000001` ("Local Embeddings") — read from
+`execute_duplicate_all`'s `preState` in the fresh NDJSON. **Oracle (by
+ADDITION):** `duplicateMalformedProfilesPayload` (those two ids,
+`conflictStrategy: 'duplicate'`; the image's `provider: 42`, the embedding's
+`modelName: 42` — a different path than the create row's, for coverage) and
+`embeddingProviderEnumPayload` (a fresh id `dd143000-…-0001`, `provider:
+'BOGUS'`); cases `execute_duplicate_malformed_profiles` /
+`execute_embedding_provider_enum` after `execute_bug105_seed_abort`. Regen from
+the pin (probe PASS): 46 lines; v4 names both duplicate items (ZodError
+`invalid_type` at `provider` / `modelName`), writes nothing; refuses `BOGUS`
+with the five-value `invalid_value`, writes nothing.
+
+**Red-first** (count 43 → 45 first, core unported): `3 import-state
+difference(s)` — `execute_duplicate_malformed_profiles` result body (v5 NO
+warnings, v4 two); `execute_embedding_provider_enum` result body (v5
+`imported.embeddingProfiles: 1`, no warning) AND `main.embedding_profiles`
+(v5 wrote the row). **The port** (`services/quilltap_import/profiles.rs`): the
+two duplicate arms push the named warning (the phantom map still set first,
+v4's order); `parse_embedding_profile` (decode, then the
+`EMBEDDING_PROFILE_PROVIDERS` check — a local const citing
+`common.types.ts:35`; no shared copy exists in an owned file) refuses an
+out-of-enum string with `zod_error_message(&[ZodIssue::invalid_value(…,
+["provider"])])`, on BOTH arms (v4 validates in both creates). The two
+duplicate tails join `SERDE_ARM_DIVERGENCES` as rows 8–9 (exercised count 7 →
+9); the enum refusal is a CLOSED divergence compared VERBATIM (no row). GREEN.
+**M8** (the image duplicate arm's silent `let Ok … else { return Ok(()) }`
+restored) → RED: WRONG SHAPE on `Duplicate Broken Image` + the body (the
+image half; the embedding half is the symmetric code). **Item 1's M2,
+re-proven properly:** M2 alone still survives here too — v5 now renders v4's
+bytes, so both tails mask identically when the exception is narrowed — so the
+widening is proven by a PAIR: **M2′** (swap two values in v5's enum list) →
+RED, `[execute_embedding_provider_enum] result body differs` (the widened
+exception compares the Zod tail verbatim); **M2 + M2′** → GREEN (the
+re-narrowed mask hides the wrong bytes). So the widening is load-bearing from
+this unit on. `.min(1)`'s empty-provider class for connection/image stays
+Tier 3 item 14. core 0.0.1149, harness 0.0.1078.

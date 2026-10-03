@@ -245,6 +245,14 @@ _Versions: core 0.0.1148, harness 0.0.1076._
 _Versions: core 0.0.1147, harness 0.0.1075, host 0.0.175, web 0.0.208, tauri 0.0.8._
 
 On a host whose `TZ` is a POSIX rule (no IANA name), every name-fed date surface rendered UTC: the turn's tool runner, `build_context` on the turn and the swipe, the autonomous turn, the greeting, the spine's own tool runner and the Scenario Builder clock all re-derived their zone from the `tz` NAME, which falls back to `"UTC"`. The host's zone VALUE was already correct (jiff 0.2.31 parses the rule), so the fix threads it: a required `display_zone` on `ProcessMessageInput`, `BuildContextArgs`, `BuildContextInput`, `RegenerateSwipeOptions`, `StepDeps` and `ChatCreateDeps`, filled by `ChatSpine` / `ChatCreateSpine` and `ProductionSpineFactory::with_display_zone` from `HostConfig.display_zone` in `quilltap-web`'s `production_host_config`. `display_zone_named` is retired; `server_tz` stays as the calendar name (cron, the distill, the cleanup — a recorded Tier-3 residue). New `host_zone::zone_name` is the one name derivation, used by `HostConfig::new` and the new `HostConfig::set_display_zone`, which the web and Tauri test commons now call. `host_zone_sites_census` is reshaped (a `VALUE_SITES` table replaces `HELPER_SITES`; the host needles re-aimed and grown) and gains a POSIX-`TZ` child process that was red on `main` (offset 0 vs −18000; the whisper read 07:40 PM).
+#### 2026-10-02 — fix(core): .qtap import names a malformed duplicate image/embedding profile and refuses an out-of-enum embedding provider (P4.143 items 7–8)
+
+_Versions: core 0.0.1149, harness 0.0.1078._
+
+Two import divergences no case reached before. The image and embedding profile `duplicate` arms dropped a malformed item silently; they now push `Failed to import image profile "…": …` / `Failed to import embedding profile "…": …` as v4's duplicate arms do (the phantom id map is still set first). An embedding profile whose `provider` is a string outside v4's five values (`OPENAI`, `OLLAMA`, `OPENROUTER`, `NANOGPT`, `BUILTIN`) used to import; it is now refused with v4's exact `invalid_value` ZodError message, on both the create and duplicate arms.
+
+- `system_import_state` gains `execute_duplicate_malformed_profiles` (red-first: two warnings v5 never pushed; the two tails join `SERDE_ARM_DIVERGENCES` as rows 8–9) and `execute_embedding_provider_enum` (red-first: v5 wrote the row and pushed no warning; now compared verbatim). Cases 43 → 45.
+
 #### 2026-10-02 — test(harness): plant the restore's serde arm in a derived archive and pin its divergence both ways (P4.143 item 2)
 
 _Versions: harness 0.0.1077, web 0.0.208._

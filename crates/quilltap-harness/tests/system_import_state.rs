@@ -714,6 +714,21 @@ const SERDE_ARM_DIVERGENCES: &[SerdeArm] = &[
         v4_path_key: "provider",
         v5_serde_prefix: "invalid type: integer `42`, expected a string",
     },
+    // [P4.143 Tier 2 item 7] The image / embedding `duplicate` arms — named on
+    // both sides since P4.143 (v5's used to drop the item silently); their
+    // tails are the same serde-vs-Zod class.
+    SerdeArm {
+        case: "execute_duplicate_malformed_profiles",
+        head: "Failed to import image profile \"Duplicate Broken Image\": ",
+        v4_path_key: "provider",
+        v5_serde_prefix: "invalid type: integer `42`, expected a string",
+    },
+    SerdeArm {
+        case: "execute_duplicate_malformed_profiles",
+        head: "Failed to import embedding profile \"Duplicate Broken Embedding\": ",
+        v4_path_key: "modelName",
+        v5_serde_prefix: "invalid type: integer `42`, expected a string",
+    },
 ];
 
 /// How many `SERDE_ARM_DIVERGENCES` rows the run classified — asserted equal
@@ -1377,7 +1392,9 @@ fn system_import_execute_state_equivalence() {
     // …+ P4.D226's `execute_concierge_legacy` arm (40 + 1 = 41).
     // …+ P4.130's `execute_concierge_bogus` and `execute_concierge_serde_arm`
     // arms (41 + 2 = 43).
-    assert_eq!(ran, 43, "expected 43 cases, ran {ran}");
+    // …+ P4.143's `execute_duplicate_malformed_profiles` (Tier 2 item 7) and
+    // `execute_embedding_provider_enum` (item 8) arms (43 + 2 = 45).
+    assert_eq!(ran, 45, "expected 45 cases, ran {ran}");
     // [P4.130] The refused-chat arm is non-vacuous only if v4 really refused
     // the bogus chat with its ZodError bytes AND landed the neighbour: the
     // bogus chat is ABSENT from v4's end-state, the neighbour PRESENT, and
@@ -1603,8 +1620,8 @@ fn system_import_execute_state_equivalence() {
     );
     assert_eq!(
         SERDE_ARM_DIVERGENCES.len(),
-        7,
-        "the chat row + the six create rows"
+        9,
+        "the chat row + the six create rows + P4.143 Tier 2's two duplicate-arm rows"
     );
 }
 

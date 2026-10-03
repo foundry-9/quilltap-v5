@@ -1430,6 +1430,90 @@ function bug105SeedAbortPayload(): { manifest: unknown; data: Record<string, unk
 }
 
 /**
+ * [P4.143 Tier 2 item 7] The `duplicate` arm over a MALFORMED image and
+ * embedding profile whose ids the destination ALREADY holds (the fixture's
+ * `Primary Imagery` and `Local Embeddings`, measured from
+ * `execute_duplicate_all`'s pre-state). v4's duplicate arm
+ * (`import-profiles.ts:150-160`, `:215-225`) sets the phantom map, calls
+ * `create`, the Zod `validate` throws, and the per-item catch pushes the named
+ * warning — so each item is NAMED. v5's duplicate arm used to `let Ok(p) = …
+ * else { return Ok(()) }`: the item vanished with no warning at all.
+ *
+ * One wrong-typed field each: the image's `provider` (`z.string().min(1)` →
+ * `invalid_type`), the embedding's `modelName` (`z.string()` →
+ * `invalid_type`).
+ */
+function duplicateMalformedProfilesPayload(): {
+  manifest: unknown;
+  data: Record<string, unknown>;
+} {
+  return {
+    manifest: {
+      format: 'quilltap-export',
+      version: '1.0',
+      exportType: 'all',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      appVersion: '4.0.0',
+      settings: { includeMemories: false, scope: 'all', selectedIds: [] },
+      counts: {},
+    },
+    data: {
+      imageProfiles: [
+        {
+          id: 'a6000000-0000-4000-8000-000000000001',
+          name: 'Duplicate Broken Image',
+          provider: 42,
+          modelName: 'mock-image-model',
+        },
+      ],
+      embeddingProfiles: [
+        {
+          id: 'a8000000-0000-4000-8000-000000000001',
+          name: 'Duplicate Broken Embedding',
+          provider: 'OPENAI',
+          modelName: 42,
+        },
+      ],
+    },
+  };
+}
+
+/**
+ * [P4.143 Tier 2 item 8] An embedding profile whose `provider` is a STRING
+ * outside v4's `EmbeddingProfileProviderEnum` (`common.types.ts:35`, five
+ * values). v4's create-time `validate` refuses it with an `invalid_value`
+ * issue and the per-item catch names it; v5's `provider: String` used to
+ * ACCEPT it and write the row — a state divergence, not only wording. A fresh
+ * id, so no conflict strategy diverts it.
+ */
+function embeddingProviderEnumPayload(): {
+  manifest: unknown;
+  data: Record<string, unknown>;
+} {
+  return {
+    manifest: {
+      format: 'quilltap-export',
+      version: '1.0',
+      exportType: 'all',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      appVersion: '4.0.0',
+      settings: { includeMemories: false, scope: 'all', selectedIds: [] },
+      counts: {},
+    },
+    data: {
+      embeddingProfiles: [
+        {
+          id: 'dd143000-0000-4000-8000-000000000001',
+          name: 'Bogus Provider Embedding',
+          provider: 'BOGUS',
+          modelName: 'an-embedding-model',
+        },
+      ],
+    },
+  };
+}
+
+/**
  * [P4.D226 → v4 `4d370a90f`, #75] A `.qtap` from before the three Concierge
  * states: its chats carry only the legacy pair. `import-entities.ts:383` wraps
  * the create in `withConciergeModeFromLegacy`, so each chat's state is DERIVED
@@ -2250,6 +2334,21 @@ async function main(): Promise<void> {
     // (a plain equality since v4 converged at `679e450e3`) — see
     // `bug105SeedAbortPayload`.
     executeCase('execute_bug105_seed_abort', () => bug105SeedAbortPayload(), {
+      conflictStrategy: 'skip',
+      includeMemories: false,
+      includeRelatedEntities: false,
+    }),
+    // [P4.143 Tier 2 item 7] The image/embedding `duplicate` arm over a
+    // malformed item whose id the destination holds — see
+    // `duplicateMalformedProfilesPayload`.
+    executeCase('execute_duplicate_malformed_profiles', () => duplicateMalformedProfilesPayload(), {
+      conflictStrategy: 'duplicate',
+      includeMemories: false,
+      includeRelatedEntities: false,
+    }),
+    // [P4.143 Tier 2 item 8] An out-of-enum embedding `provider` — see
+    // `embeddingProviderEnumPayload`.
+    executeCase('execute_embedding_provider_enum', () => embeddingProviderEnumPayload(), {
       conflictStrategy: 'skip',
       includeMemories: false,
       includeRelatedEntities: false,
