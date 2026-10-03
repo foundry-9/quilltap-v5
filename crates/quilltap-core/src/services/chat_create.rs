@@ -1249,7 +1249,17 @@ where
         }
     }
 
-    // 6. Project defaults + roster (v4 L1077-1113).
+    // 6. Project defaults (v4 `resolveProjectDefaults`, `chats/route.ts:1134-1162`
+    // at `9753d0eb2`): the defaults a new chat inherits from its project — tool
+    // settings, avatar generation, image profile, roleplay template. A missing
+    // project is the caller's 404. v4's doc sentence, verbatim: "The character
+    // roster is never touched here: it is a hand-curated access list (project
+    // file tools + shared wardrobe), edited only from the project's Characters
+    // card, so joining a chat must not grant access." (The auto-add that used
+    // to follow the reads — every CHARACTER participant off the roster written
+    // onto it when `allowAnyCharacter` was false — was DELETED by `9753d0eb2`
+    // on both sides; `chat_create_capstone_equivalence`'s project-bearing cases
+    // compare the hydrated roster after the create.)
     let mut project_disabled_tools: Vec<Value> = Vec::new();
     let mut project_disabled_tool_groups: Vec<Value> = Vec::new();
     let mut project_avatar_default: Option<bool> = None;
@@ -1282,42 +1292,6 @@ where
             .get("defaultRoleplayTemplateId")
             .and_then(Value::as_str)
             .map(str::to_string);
-
-        let allow_any = project
-            .get("allowAnyCharacter")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-        if !allow_any {
-            let roster: Vec<String> = project
-                .get("characterRoster")
-                .and_then(Value::as_array)
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|v| v.as_str().map(str::to_string))
-                        .collect()
-                })
-                .unwrap_or_default();
-            let mut new_ids: Vec<String> = Vec::new();
-            for p in &participants {
-                if p.get("type").and_then(Value::as_str) == Some("CHARACTER") {
-                    if let Some(cid) = p.get("characterId").and_then(Value::as_str) {
-                        if !roster.iter().any(|r| r == cid) && !new_ids.iter().any(|n| n == cid) {
-                            new_ids.push(cid.to_string());
-                        }
-                    }
-                }
-            }
-            if !new_ids.is_empty() {
-                let mut merged = roster.clone();
-                merged.extend(new_ids);
-                let mut patch = Map::new();
-                patch.insert(
-                    "characterRoster".into(),
-                    Value::Array(merged.into_iter().map(Value::String).collect()),
-                );
-                repo.update(project_id, &patch)?;
-            }
-        }
     }
 
     // 7. Resolve the fallback chains.

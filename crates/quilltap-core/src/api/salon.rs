@@ -1551,9 +1551,14 @@ pub fn message_swipe_switch(
 ///
 /// Deferrals (named in the report): the top-level
 /// `roleplayTemplateId`/`imageProfileId` shortcuts (not in the v5 `chatUpdate`
-/// contract — it carries the `chat` bag plus the three participant families),
-/// and the `projectId` `characterRoster` auto-add (a store-backed
-/// properties.json RMW).
+/// contract — it carries the `chat` bag plus the three participant families).
+///
+/// **The `projectId` `characterRoster` auto-add is NOT a deferral any more
+/// (P4.D246).** v5 never ported it (it was named here as one); v4 DELETED it at
+/// `9753d0eb2` (`chats/[id]/helpers.ts:504-513` — the roster became a
+/// hand-curated tool-access list), so v5's omission is now v4's behaviour: a
+/// CONVERGENCE, closed by this comment and the why-comment at the `projectId`
+/// gate below. No code moved.
 // v4's `processChatUpdates` takes one validated-body object; the port spells its
 // families out as parameters so each arm's presence is a type-level fact. Eight
 // is one over clippy's default and the shape mirrors v4's schema deliberately.
@@ -1612,6 +1617,10 @@ pub async fn chat_update(
                 Ok(false) => return not_found("Project"),
                 Err(e) => return internal(e),
             }
+            // v4 `helpers.ts:511-512` (`9753d0eb2`): "Moving a chat into a
+            // project never edits the roster — it is a hand-curated access list
+            // (lib/projects/roster-access.ts)." The gate is the whole of v4's
+            // project arm now.
         }
     }
 

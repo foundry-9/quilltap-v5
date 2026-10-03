@@ -120,6 +120,14 @@ interface CaseSpec {
   outfitContent?: string;
 }
 
+/**
+ * P4.D246: the fixture's one project ("The Lantern Project",
+ * `build-chat-create-capstone.ts` `W.projectId`, created with
+ * `allowAnyCharacter: false` and an EMPTY roster). Hard-coded here because the
+ * spec JSON carries it only inside the project-bearing requests.
+ */
+const CAPSTONE_PROJECT_ID = 'd0000000-0000-4000-8000-0000000000f2';
+
 // The MAIN-db tables to dump after each case, with the sort key.
 const MAIN_TABLES: Array<{ key: string; table: string; orderBy: string }> = [
   { key: 'chats', table: 'chats', orderBy: 'id' },
@@ -411,7 +419,23 @@ async function runCase(
         .all() as Array<Record<string, unknown>>
     ).map((r) => [r.chatId, r.type, r.role, r.systemSender, r.systemKind, r.content].map(canonValue));
 
-    return { name: c.name, status, ok, body, tables, frames, messageOrder, recordings };
+    // P4.D246 (v4 `9753d0eb2`): the fixture project's hydrated roster + flag
+    // AFTER the create, read through v4's REAL overlay-aware repository. The
+    // roster lives in the project store's `properties.json` (MOUNT), which the
+    // MAIN-only `tables` dump above cannot see — measured: with v4's auto-add
+    // (deleted by `9753d0eb2`) kept on one side and removed on the other, every
+    // section above stayed green. Recorded for EVERY case, so the non-project
+    // and refused cases are the silence leg (the project untouched).
+    const { getRepositories } = await import('@/lib/repositories/factory');
+    const fixtureProject = await getRepositories().projects.findById(CAPSTONE_PROJECT_ID);
+    const projectRoster = fixtureProject
+      ? {
+          allowAnyCharacter: fixtureProject.allowAnyCharacter,
+          characterRoster: fixtureProject.characterRoster,
+        }
+      : null;
+
+    return { name: c.name, status, ok, body, tables, frames, messageOrder, recordings, projectRoster };
   } finally {
     Math.random = origRandom;
     await closeDatabase();

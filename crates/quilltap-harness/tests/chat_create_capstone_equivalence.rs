@@ -65,10 +65,36 @@
 
 mod sampling_capture;
 
+/// P4.D246 (v4 `9753d0eb2`): the fixture's one project — "The Lantern Project",
+/// `build-chat-create-capstone.ts` `W.projectId`, created with
+/// `allowAnyCharacter: false` and an EMPTY roster — whose hydrated roster + flag
+/// are compared after EVERY case (see `project_roster`). The roster lives in the
+/// project store's `properties.json` (MOUNT), which the four MAIN-table dumps
+/// cannot see: measured at the baseline pin with v5's auto-add deleted and v4's
+/// kept, every other section stayed green — the family was BLIND to the write
+/// `9753d0eb2` removed, and this comparand is what makes it see.
+const CAPSTONE_PROJECT_ID: &str = "d0000000-0000-4000-8000-0000000000f2";
+
+/// The fixture project's `{allowAnyCharacter, characterRoster}` through the
+/// overlay-aware repository (v4's `repos.projects.findById`), `Null` if absent.
+fn project_roster(main: &rusqlite::Connection, mount: &rusqlite::Connection) -> Value {
+    match ProjectsRepository::new(main, mount)
+        .find_by_id(CAPSTONE_PROJECT_ID)
+        .expect("read the fixture project")
+    {
+        Some(p) => json!({
+            "allowAnyCharacter": p.get("allowAnyCharacter").cloned().unwrap_or(Value::Null),
+            "characterRoster": p.get("characterRoster").cloned().unwrap_or(Value::Null),
+        }),
+        None => Value::Null,
+    }
+}
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use quilltap_core::db::projects::ProjectsRepository;
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::db::{dump_table_json_conn, Writer};
 use quilltap_core::enclave::announce::{system_mint_uuid, system_now_ms};
@@ -988,6 +1014,13 @@ fn chat_create_capstone_matches_oracle() {
                     c.name
                 );
             }
+            // P4.D246: the roster untouched by a refusal, on both sides.
+            assert_eq!(
+                project_roster(main_w.connection(), mount_w.connection()),
+                want["projectRoster"],
+                "case {}: the fixture project's roster after a refusal",
+                c.name
+            );
             eprintln!(
                 "OK: chat-create case {} matched oracle (reject arm + wrote nothing).",
                 c.name
@@ -1079,6 +1112,13 @@ fn chat_create_capstone_matches_oracle() {
         let got_msgs = dump("chat_messages");
         let got_projects = dump("projects");
         let got_bg = dump("background_jobs");
+
+        // P4.D246 (v4 `9753d0eb2`): the fixture project's roster + flag after
+        // the create — the one write the MAIN dumps cannot see (it lives in the
+        // project store's `properties.json`). Fixture-baked ids both sides,
+        // compared RAW below (no uuid remap), so `[]` vs `[aria, cleo]` is a
+        // visible red and not two `<uN>` lists of different length.
+        let got_project_roster = project_roster(main_w.connection(), mount_w.connection());
 
         // P4.D148: the insertion-ordered message trace (position proof).
         let got_message_order = dump_message_order(&db);
@@ -1187,6 +1227,16 @@ fn chat_create_capstone_matches_oracle() {
         ];
 
         let mut failed: Vec<String> = Vec::new();
+
+        // P4.D246: the roster, RAW (fixture-baked ids; the normalizing sections
+        // would remap them to tokens and hide a same-length difference).
+        if got_project_roster != want["projectRoster"] {
+            eprintln!(
+                "[{}] section `project_roster` MISMATCH:\n  GOT : {got_project_roster}\n  WANT: {}",
+                c.name, want["projectRoster"]
+            );
+            failed.push("project_roster".into());
+        }
 
         // P4.D44: the un-normalized template-id proof (see `chat_template_ids`).
         // Compared BEFORE the normalizing sections so a template-resolution

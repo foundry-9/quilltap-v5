@@ -375,10 +375,18 @@ async function main(): Promise<void> {
   // P4.D44 hangs the PROJECT roleplay-template default here rather than on a new
   // project row: the two standing outfit cases already pass this `projectId`, so
   // the project > user precedence gets exercised without minting a second store.
+  // P4.D246 (v4 `9753d0eb2`): `allowAnyCharacter` is set EXPLICITLY. v4's
+  // `prepareCreateData` seed flipped `?? false` → `?? true` at that commit, so
+  // a flag-less create bakes a CLOSED project at `f6426e196` and an OPEN one at
+  // `e5c6bd0c0` — and the roster auto-add this family compares (removed by the
+  // same commit) only ever fired on a closed project. Without the explicit
+  // `false` the target-built fixture is open and the capstone is green whether
+  // or not v5 still writes the roster.
   const project = await repos.projects.create(
     {
       name: 'The Lantern Project',
       description: null,
+      allowAnyCharacter: false,
       characterRoster: [],
       state: {},
       defaultRoleplayTemplateId: spec.roleplayTemplateProjectDefaultId,

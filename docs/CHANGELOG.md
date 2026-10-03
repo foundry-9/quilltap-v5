@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — fix(chat-create): creating a chat in a project never writes the project's roster; the chat-PUT roster deferral retired as a convergence (v4 `9753d0eb2`, P4.D246 unit 4)
+
+_Versions: core 0.0.1186._
+
+v4 `9753d0eb2` deleted the roster auto-add from chat creation (`resolveProjectDefaults` lost its `participants` argument and the whole `if (!project.allowAnyCharacter) { … repos.projects.update(projectId, { characterRoster: [...] }) }` block) and from the chat PUT's move-into-project: the roster is a hand-curated access list for the project's file tools and shared wardrobe, edited only from the Characters card, so joining a chat must not grant access. `services/chat_create.rs` deletes the ported auto-add whole (the project-defaults reads and the `NotFound("Project")` gate stay; v4's new doc sentence carried verbatim). `api/salon.rs` changes COMMENTS only: the `chat_update` doc's "projectId characterRoster auto-add" deferral is retired as the convergence it is (v5 never ported that half; v4's deletion makes the omission v4's behaviour) and v4's one-line why-comment sits at the `projectId` gate.
+
+`chat_create_capstone_equivalence` is made able to see the change: its fixture builder now creates "The Lantern Project" with an explicit `allowAnyCharacter: false` (a flag-less create bakes a closed project at the baseline and an OPEN one at the target since the seed flipped, so the auto-add never fired and the family was green on both sides whatever v5 did), and — measured BLIND (with v4's write kept on one side and v5's removed on the other, every section stayed green: the roster lives in the project store's `properties.json`, which the four MAIN-table dumps cannot see) — both sides gain a `projectRoster` comparand, the fixture project's `{allowAnyCharacter, characterRoster}` read through the overlay-aware repository after every case and compared raw. Counted from the oracle bytes: the baseline records a non-empty roster on exactly the five project-bearing success cases (`outfit_default_tri_tier`, `outfit_llm_choose_shared_composite`, `rt_project_default_beats_user`, `rt_explicit_beats_both_defaults`, `sp_greeting_and_green_room_carry_block`), the target on none. With v5's auto-add present: RED at the target, GREEN at the baseline; with it deleted: GREEN at the target (141 cases), RED at the baseline.
+
 #### 2026-10-03 — feat(projects): the project PUT answers the enriched project through the one helper the GET uses (v4 `9753d0eb2`, P4.D246 unit 3)
 
 _Versions: core 0.0.1185._
