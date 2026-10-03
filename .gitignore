@@ -1,6 +1,8 @@
 # Rust
 /target
 **/*.rs.bk
+# cargo-sweep's stamp (scripts/cargo-sweep.sh stamp writes it; `file` deletes it)
+sweep.timestamp
 # Cargo.lock IS committed — this repo produces binaries (CLI, Tauri). Do not ignore it.
 
 # Probe scratch

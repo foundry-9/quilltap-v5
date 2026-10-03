@@ -93,6 +93,14 @@ If a crate's source changed, bump that crate's `version` in its `Cargo.toml`
 committed — in step (`cargo build` will update it; stage the result). Skip this
 for docs-only or scaffolding-only commits that don't touch crate source.
 
+**Exempt: `quilltap-harness` is never bumped** (frozen at `0.0.1110` since
+2026-10-03). It ships nothing, and cargo folds a package's version — and
+every upstream crate's — into each artifact's file name, so a bump re-mints
+all ~549 harness test binaries (~16 GB) while the old set stays on disk. The
+freeze stops that on harness-only commits; a `core` (or `host`/`web`) bump
+still re-mints them. Harness source changes still get a changelog entry; they
+just carry no harness version.
+
 > Don't initiate a release. This repo's release process isn't established yet —
 > set it up deliberately when the time comes, don't improvise it from a commit.
 
@@ -109,7 +117,7 @@ month's section has grown large (roughly 400+ entries), archive it to
 ```markdown
 #### 2026-08-19 — fix(import): remap composite componentItemIds on .qtap import
 
-_Versions: core 0.0.582, harness 0.0.504._
+_Versions: core 0.0.582, web 0.0.204._
 
 One or more paragraphs describing the change...
 ```
@@ -120,10 +128,11 @@ One or more paragraphs describing the change...
   (Historical entries, restructured mechanically in 2026-08, do carry their
   hashes; new entries never do.)
 - The versions line lists every crate whose `version` this commit bumps, using
-  the short names `core`, `harness`, `host`, `web`, `cli`, `tauri`,
+  the short names `core`, `host`, `web`, `cli`, `tauri`,
   `fixture-sanitizer`, `sqlite3mc-sys`, and `SPA` (the `apps/web`
-  `package.json` version). If nothing was bumped, write `_Docs-only change._`
-  for docs commits or `_No crate versions bumped._` otherwise.
+  `package.json` version). Never `harness` — it is exempt (§6). If nothing
+  was bumped, write `_Docs-only change._` for docs commits or
+  `_No crate versions bumped._` otherwise.
 
 **The changelog is the exception to the Quilltap writing voice.** Write entries
 terse and direct in plain American English — the steampunk / Roaring-Twenties /

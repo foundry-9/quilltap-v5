@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — build: cut target/ size — less debuginfo, lanes clone main's target, cargo-sweep in /setupphase, harness version frozen
+
+_No crate versions bumped._
+
+Build-disk and build-time changes. Main's `target/` went from 57 GB to 18 GB after a clean rebuild under the new profile (free space 41 → 81 GB).
+
+- **Debuginfo.** Workspace `Cargo.toml` sets `[profile.dev] debug = "line-tables-only"` and `[profile.dev.package."*"] debug = false`. Checked with `cargo build -v`: workspace crates get `-C debuginfo=line-tables-only`, dependencies get none, and the existing `opt-level` overrides still apply. Debuginfo `.o` files went from 12.9 GB to 1.6 GB and dependency rlibs from 8.7 GB to 1.2 GB.
+- **Lanes start warm.** `/carryout` rule 8 now clones main's `target/` with `cp -cR` (APFS copy-on-write) before the lane's first build. Measured: 15 s and ~0.2 GB for a 57 GB target, all ~316 dependency crates fresh in the new worktree. Hard links are ruled out: a scratch test showed a lane build rewriting cargo's shared fingerprint files in place, after which main reported `Fresh` over an unbuilt edit and kept stale code.
+- **cargo-sweep.** New `scripts/cargo-sweep.sh` (`stamp` / `file`). Bare `cargo sweep --stamp` / `--file` deletes exactly the reused artifacts on APFS, which updates a file's atime only on its first read after a write; the script resets fingerprint atimes after stamping. `/setupphase` gains step 6: stamp, run the lanes' gate builds on main, sweep, so lanes clone exactly one generation. `sweep.timestamp` is gitignored.
+- **Harness version frozen** at `0.0.1110` (`commit.md` §6). A package's version and its upstream crates' versions are part of every artifact's file name, so each harness bump left a full old set of ~549 test binaries on disk. A `core`/`host`/`web` bump still re-mints them.
+- CLAUDE.md: main's `target/` is garbage-collected with cargo-sweep, never `cargo clean`ed or deleted by agents.
+
+Remaining: test executables are now 83% of the target; the 66 binaries over 100 MB (8.2 GB) are `quilltap-web`'s 74 test files plus `quilltap-tauri`'s, each linking the full web stack. Consolidating them is the next lever.
+
 #### 2026-10-03 — docs(porting): unify the f6426e196 recorded-divergences round — all seven lanes landed; the review's findings fixed
 
 _Docs-only change._

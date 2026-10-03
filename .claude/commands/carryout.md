@@ -44,7 +44,7 @@ what's marked landed.
    clean invocation — batched runs have left stale minted ids).
 5. **Small units, one commit each**, every commit through
    `.claude/commands/commit.md` (changelog entry, version bump for touched
-   crates, full workspace gate). Append each unit's record to
+   crates — never `quilltap-harness`, which is frozen — full workspace gate). Append each unit's record to
    `status-log.md` as you go.
 6. **Defer loudly, never silently.** Anything you bank instead of landing
    gets the loud typed refusal pattern (the `not_available` idiom), an entry
@@ -59,6 +59,16 @@ what's marked landed.
    mid-gate as mysterious slowness or `os error 28`. So:
    - **Check `df -h ~` before starting** and before each full workspace
      gate. If free space is under ~20 GB, reclaim before building.
+   - **Start warm: clone main's `target/` before your first build** —
+     `cp -cR ~/source/quilltap-v5/target <your-worktree>/target`. That is
+     an APFS copy-on-write clone, not a copy: measured 2026-10-03 at 15 s
+     and ~0.2 GB for a 57 GB target, with all ~316 dependency crates Fresh
+     in the worktree (cargo's hashes don't depend on the checkout path);
+     only the workspace crates rebuild, because the checkout gave their
+     sources new mtimes. Your builds then consume space only for what they
+     change. **Never hardlink instead** — cargo rewrites fingerprint files
+     in place, so a hardlinked tree corrupts main's. Skip the clone if your
+     `target/` already exists, and don't clone while main is mid-build.
    - **Run the workspace gates with `CARGO_INCREMENTAL=0`** — the
      incremental cache is the multiplier and buys little in a
      compile-once-per-commit lane.

@@ -232,6 +232,17 @@ version bumps), and their findings are recorded here and in
   the lock tracked and removing the ignore line.
 - **macOS dev:** account for BSD tool variants; GNU coreutils/`gnu-sed` are
   installed under `g`-prefixed names.
+- **Main's `target/` is garbage-collected with cargo-sweep, not wiped.**
+  `/setupphase` ends by running `scripts/cargo-sweep.sh stamp` → the lanes'
+  gate builds → `scripts/cargo-sweep.sh file`, leaving main with exactly the
+  artifacts the lanes will clone (incl. the pinned amalgamation).
+  **Never bare `cargo sweep --stamp`:** APFS freezes a file's atime after its
+  first read, so the plain cycle deletes exactly the REUSED artifacts — the
+  script's header has the measurement. Agents: never `cargo clean`, `rm -rf`
+  main's `target/` (or its `deps`), run either step outside `/setupphase`,
+  or touch `sweep.timestamp` unless asked. Lane worktree targets are still deleted
+  whole at lane close, and START as an APFS clone of main's (`cp -cR`;
+  `/carryout` rule 8) so dependencies never build cold in a lane.
 - **Plan large changes with the most capable model; delegate well-specified
   subtasks to cheaper agents.** Don't use `git stash`/worktrees with agents.
 

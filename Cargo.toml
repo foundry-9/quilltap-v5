@@ -41,6 +41,17 @@ opt-level = 3
 [profile.dev.package.quilltap-sqlite3mc-sys]
 opt-level = 2
 
+# Debuginfo: line tables only for workspace code (panics and backtraces keep
+# file:line), none for dependencies. Full DWARF was ~13 GB of `.o` files in
+# main's target/ alone, and turning debuginfo off measured a lane's target at
+# roughly half (36 GB → 17 GB) with identical test results. The test profile
+# inherits dev. Need a debugger? `CARGO_PROFILE_DEV_DEBUG=2` locally (forces a
+# full rebuild, and again when you drop it).
+[profile.dev]
+debug = "line-tables-only"
+[profile.dev.package."*"]
+debug = false
+
 # Shared dependency versions live here so every crate pins the same ones.
 # (Members opt in with `foo = { workspace = true }`.) Add as the port grows.
 #

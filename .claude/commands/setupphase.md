@@ -99,13 +99,47 @@ shape of the existing orders (e.g. `p4.6f-characters-server.md`):
   tests/build if applicable) and the per-commit rule: follow
   `.claude/commands/commit.md`.
 
-## 5. Commit and report
+## 5. Commit
 
 Commit the orders per `.claude/commands/commit.md` (docs-only: CHANGELOG
-entry, no version bumps) and push. Then report to the human:
+entry, no version bumps) and push.
+
+## 6. Warm main's `target/` for the lanes
+
+Every lane starts by cloning main's `target/` (`/carryout` rule 8), so build
+main now — at the commit the lanes branch from — with the gate commands the
+lanes run, and sweep away every artifact that build did not use (stale
+version generations, old profiles). From the main checkout, as ONE
+`run_in_background: true` command with its full output in a scratchpad log,
+then wait for the completion notification (never a poll loop — CLAUDE.md):
+
+```bash
+scripts/cargo-sweep.sh stamp && \
+CARGO_INCREMENTAL=0 cargo test --workspace --no-run && \
+CARGO_INCREMENTAL=0 cargo clippy --workspace --all-targets -- -D warnings && \
+CARGO_INCREMENTAL=0 cargo clippy --workspace --all-targets \
+  --features quilltap-core/native-transport -- -D warnings && \
+scripts/cargo-sweep.sh file
+```
+
+- Record `df -h ~` and `du -sh target` before and after.
+- Don't start it while anything else is building in main's tree, and don't
+  start lanes until it finishes — a lane cloning a half-built target starts
+  cold anyway.
+- The sweep also drops artifacts this build doesn't produce (the release
+  bins, other feature sets); the next `/dogfood` rebuilds release.
+- A failure stops the chain BEFORE the sweep (the stamp stays; the next run
+  overwrites it). A red build or clippy on main is news — report it, don't
+  fix it here.
+
+## 7. Report
+
+Report to the human:
 
 - One line per order: **the exact file path**, the lane's scope, and its
   sibling/dependency relationships.
 - The recommended execution arrangement (which lanes run in parallel, which
   model/agent tier, worktree per lane).
+- The warm build's result: exit status, `target/` size and free space after,
+  and roughly how many lanes that space allows.
 - Anything you deliberately left out of the round and why.
