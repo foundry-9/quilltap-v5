@@ -865,9 +865,10 @@ mod rendered_markdown_strip_tests {
     }
 
     /// P4.124 item 14 + its unification follow-up: an out-of-enum
-    /// `conciergeMode` is refused with v4's ZodError message, and the two
-    /// repository ERRORs v4's `validate` / `_create` log precede the caller's
-    /// catch; a valid chat logs neither.
+    /// `conciergeMode` is refused with v4's ZodError message, and the three
+    /// repository ERRORs v4's `validate` / `_create` / `chats.create` log
+    /// precede the caller's catch (the third since P4.143); a valid chat logs
+    /// none.
     #[test]
     fn a_bundle_chat_with_an_unknown_concierge_mode_logs_v4s_repository_errors() {
         let schema: Value =
@@ -904,7 +905,8 @@ mod rendered_markdown_strip_tests {
         let err = got.expect_err("the chat is refused");
         assert!(err.contains("invalid_value"), "{err}");
         let errors: Vec<&String> = lines.iter().filter(|l| l.starts_with("ERROR ")).collect();
-        assert_eq!(errors.len(), 2, "{lines:?}");
+        // THREE since P4.143 item 3 (`chats.repository.ts`'s own `safeQuery`).
+        assert_eq!(errors.len(), 3, "{lines:?}");
         assert!(
             errors[0]
                 .starts_with("ERROR quilltap::db Data validation failed collection=chats error="),
@@ -916,6 +918,12 @@ mod rendered_markdown_strip_tests {
                 .starts_with("ERROR quilltap::db Error creating entity collection=chats error="),
             "{}",
             errors[1]
+        );
+        assert!(
+            errors[2]
+                .starts_with("ERROR quilltap::db Failed to create chat collection=chats error="),
+            "{}",
+            errors[2]
         );
         // Silence leg.
         let mut ok = raw.clone();

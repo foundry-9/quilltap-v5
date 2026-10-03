@@ -162124,3 +162124,36 @@ answerer, NULL `messageId`) visible in the LLM Inspector.
 - Every Cargo version bump mints new hashes for every test binary; a lane's
   `target/debug/deps` grew to 57 GB and a newest-per-stem prune reclaimed
   28 GB, then 19 GB, with nothing lost.
+## P4.143 — the data/zod smalls: the import mask per family, the restore serde arm, the third chat-create ERROR, the trail WARN's `errors` — LANE record (2026-10-02)
+
+Branch `claude/p4-143-data-zod-smalls-86ac7a` (worktree
+`.claude/worktrees/p4-143-data-zod-smalls-86ac7a`), cut from `main`
+`75219b8dd` (the round's order commit + the #124 ruling on top of
+`cb9ecf256`). Pin `/tmp/qt-v4-pin-p4143-f6426e196` (verified by `rev-parse`
+= `f6426e1969…`, `ls -ld`, `package.json` `4.10.0-dev.106`; the three
+symlink classes). The §R.2 probe PASSED at lane start: branch `main`, HEAD
+`f6426e196`, both logs empty, the tree dirty by EXACTLY the three waived
+docs paths (`docs/developer/bugs.md` M + the two untracked bug-175/176
+files); `git worktree list` showed the checkout and P4.142's pin only.
+
+### Unit 1 — item 3: v4's third repository ERROR
+
+v4 (`git show f6426e196:`) `chats.repository.ts:233-281` — `create` is
+`this.safeQuery(…, 'Failed to create chat', {})`; `base.repository.ts:95-105`
+builds `{ collection: this.collectionName, ...context }`; `safe-query.ts:51-72`
+logs `logger.error(errorMessage, { ...context, error, ...(strict ?
+{strictFailures: true} : {}) })` and rethrows. So every refused chat create
+logs THREE ERRORs before the caller's catch, not two.
+`services/dangerous_content/chat_override.rs::log_chat_create_validation_failure`
+gains `ERROR quilltap::db Failed to create chat collection=chats error=…`
+after `Error creating entity`; the doc comment names all three v4 sites and
+the two recorded divergences (the serde arm's text — Tier 3 item 12; import's
+`strictFailures: true` — Tier 3 item 11). Callers unchanged (the restore
+closure in `crates/quilltap-core/src/services/backup/restore/orchestrator.rs`
+— READ only — and `quilltap_import/entities.rs`'s two arms). Unit pins:
+`a_refused_chat_create_logs_v4s_three_repository_errors_in_order` (renamed;
+`len() == 3`, the third line's exact prefix) + NEW
+`the_serde_arm_logs_serdes_sentence_on_all_three_lines` (the divergence by
+name); the import-side `a_bundle_chat_with_an_unknown_concierge_mode_logs_v4s_repository_errors`
+moved 2 → 3 with the third prefix. **M4** (drop the line, by file backup,
+`cmp`-restored): both chat_override tests red (2 ≠ 3). core 0.0.1147.

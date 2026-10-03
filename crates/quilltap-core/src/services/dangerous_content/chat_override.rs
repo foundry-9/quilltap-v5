@@ -352,14 +352,32 @@ pub fn concierge_columns_zod_error(chat: &Value) -> Option<String> {
     (!issues.is_empty()).then(|| zod_error_message(&issues))
 }
 
-/// The two repository ERRORs v4 logs when `repos.chats.create` refuses a chat
-/// (`base.repository.ts:130-141` `validate` → `Data validation failed
-/// {collection, error}`, then the rethrowing `safeQuery` around `_create` →
-/// `Error creating entity {collection, error}`, `:350-378`), in that order,
-/// BEFORE the caller's per-chat catch. Both restore and import log them beside
-/// the refusal [`concierge_columns_zod_error`] returns (unified at the
-/// `97b25fc53` follow-ups round — P4.124 item 14 ported the refusal without
-/// them). `error` is the ZodError's message on both lines (`extractErrorMessage`).
+/// The THREE repository ERRORs v4 logs when `repos.chats.create` refuses a
+/// chat, in that order, BEFORE the caller's per-chat catch:
+/// 1. `base.repository.ts:130-141` `validate` → `Data validation failed
+///    {collection, error}`;
+/// 2. the rethrowing `safeQuery` around `_create` (`:350-378`,
+///    `createErrorMessage()` — `chats.repository.ts` does not override it) →
+///    `Error creating entity {collection, error}`;
+/// 3. `chats.repository.ts:233-281` — `create` is itself
+///    `this.safeQuery(…, 'Failed to create chat', {})`, so the throw passes a
+///    THIRD rethrowing `safeQuery` (`base.repository.ts:95-105` builds
+///    `{ collection, ...{} }`; `safe-query.ts:51-72` appends `error`) →
+///    `Failed to create chat {collection, error}`.
+///
+/// Both restore and import log them beside the refusal
+/// [`concierge_columns_zod_error`] returns (unified at the `97b25fc53`
+/// follow-ups round — P4.124 item 14 ported the refusal without them; P4.143
+/// added the third line, which v5 had never logged). `error` is the ZodError's
+/// message on all three lines (`extractErrorMessage`).
+///
+/// ⚠ Two recorded divergences: (a) on v5's typed-decode (serde) arm the
+/// callers pass serde's sentence, so all three lines carry it where v4
+/// carries a ZodError (the generated schema-shape table closes it — P4.143
+/// Tier 3 item 12); (b) on the IMPORT path v4's second and third lines also
+/// carry `strictFailures: true` (`execute.ts:425-431`'s
+/// `withStrictRepositoryFailures`) — v5 has no strict-repository scope
+/// (P4.143 Tier 3 item 11). Restore runs outside that scope on v4 too.
 pub fn log_chat_create_validation_failure(zod_message: &str) {
     tracing::error!(
         target: "quilltap::db",
@@ -372,6 +390,12 @@ pub fn log_chat_create_validation_failure(zod_message: &str) {
         collection = "chats",
         error = %zod_message,
         "Error creating entity"
+    );
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "chats",
+        error = %zod_message,
+        "Failed to create chat"
     );
 }
 
@@ -440,14 +464,16 @@ mod tests {
         }
     }
 
-    /// The two repository ERRORs precede the caller's catch, in v4's order,
-    /// with the ZodError message on both — and nothing else is logged.
+    /// The THREE repository ERRORs precede the caller's catch, in v4's order
+    /// (`validate`, `_create`'s `safeQuery`, `chats.repository.ts`'s own
+    /// `safeQuery` — P4.143 item 3 added the third), with the message on all
+    /// three — and nothing else is logged.
     #[test]
-    fn a_refused_chat_create_logs_v4s_two_repository_errors_in_order() {
+    fn a_refused_chat_create_logs_v4s_three_repository_errors_in_order() {
         let (_, lines) = crate::test_support::captured_with(|| {
             log_chat_create_validation_failure("[\n  \"posed\"\n]")
         });
-        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert_eq!(lines.len(), 3, "{lines:?}");
         assert!(
             lines[0]
                 .starts_with("ERROR quilltap::db Data validation failed collection=chats error="),
@@ -460,7 +486,32 @@ mod tests {
             "{}",
             lines[1]
         );
+        assert!(
+            lines[2]
+                .starts_with("ERROR quilltap::db Failed to create chat collection=chats error="),
+            "{}",
+            lines[2]
+        );
         assert!(lines.iter().all(|l| l.contains("posed")), "{lines:?}");
+    }
+
+    /// The recorded divergence (P4.143 item 3, Tier 3 item 12 closes it): on
+    /// v5's serde arm the callers hand serde's sentence to the helper, so all
+    /// three lines carry it — where v4's three carry the create schema's
+    /// ZodError (`[{"expected": "string", "code": "invalid_type", …}]`). The
+    /// family-level pin is `system_restore_state`'s
+    /// `classify_restore_serde_arm`; this pins the lines' text by name.
+    #[test]
+    fn the_serde_arm_logs_serdes_sentence_on_all_three_lines() {
+        let serde_sentence = "invalid type: integer `5`, expected a string";
+        let (_, lines) = crate::test_support::captured_with(|| {
+            log_chat_create_validation_failure(serde_sentence)
+        });
+        assert_eq!(lines.len(), 3, "{lines:?}");
+        for line in &lines {
+            assert!(line.ends_with(&format!("error={serde_sentence}")), "{line}");
+            assert!(!line.contains("invalid_type"), "{line}");
+        }
     }
 
     type SetByRow = Option<ConciergeSetBy>;
