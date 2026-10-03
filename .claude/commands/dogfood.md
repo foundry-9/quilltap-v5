@@ -73,13 +73,23 @@ cd apps/web && npm run build
 ```
 
 **How warm the release build is depends on what ran last in main's tree.**
-Straight after `/unify` it is warm (the unify gate builds release), so the
-build above is near a no-op. After a `/setupphase`, it starts cold: step 6's
-`scripts/cargo-sweep.sh stamp` → gate builds → `file` cycle keeps only what
-the lanes' dev/test builds used and deletes the release artifacts. Expect
+Straight after `/unify`, the DEPENDENCIES are warm (the unify gate builds the
+whole workspace in release), but `quilltap-core` and the crates above it still
+recompile for a few minutes: the merge step checks out the old `main` and then
+fast-forwards it, which rewrites the timestamps of every source file the round
+touched AFTER the gate's release build. After a `/setupphase`, it starts cold:
+step 6's `scripts/cargo-sweep.sh stamp` → gate builds → `file` cycle keeps only
+what the lanes' dev/test builds used and deletes the release artifacts. Expect
 several minutes, including the pinned SQLite3MC amalgamation compiled in
-release. That is expected, not a fault. Two rules:
+release. That is expected, not a fault. Three rules:
 
+- **Run exactly `cargo build --release` — never `-p quilltap-web`.** Cargo
+  resolves dependency features from the packages selected, so building one
+  package gives many dependencies a different feature set than the gate's
+  whole-workspace build. They get new artifact hashes and rebuild from
+  scratch — the amalgamation included — beside the warm copies (measured
+  2026-10-03: `serde_json`, `icu_*`, `image`/`rav1e`, `axum`/`hyper`,
+  `quilltap-sqlite3mc-sys` all rebuilt under new hashes).
 - **Never start this build while a `/setupphase` warm build or a
   `cargo-sweep.sh` step is running in main's tree.** Two builds would
   contend for one `target/`, and a fingerprint read that lands before the

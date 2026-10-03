@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — docs(dogfood): correct the release-build warmth note — post-/unify recompiles the touched crates, and `-p quilltap-web` rebuilds every dependency
+
+_Docs-only change._
+
+`/dogfood` §2 over-claimed a near no-op release build after `/unify`. Two causes measured on the first build after the `e5c6bd0c0` unification: the merge step's checkout of the old `main` followed by the fast-forward rewrites the timestamps of every source file the round touched after the gate's release build, so `quilltap-core` and the crates above it recompile; and `cargo build --release -p quilltap-web` resolves dependency features differently from the gate's whole-workspace build, so the whole dependency tree, the SQLite3MC amalgamation included, rebuilt under new hashes. The section now says the dependencies are warm but the touched crates are not, and adds a rule to run exactly `cargo build --release`.
+
 #### 2026-10-03 — docs(dogfood): say how warm the release build is after /unify vs /setupphase, and keep dogfood away from cargo-sweep
 
 _Docs-only change._
