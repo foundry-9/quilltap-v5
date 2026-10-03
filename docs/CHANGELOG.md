@@ -297,6 +297,12 @@ _Versions: core 0.0.1148, harness 0.0.1075._
 _Versions: core 0.0.1147._
 
 `log_chat_create_validation_failure` now logs the three repository ERRORs v4 logs when `repos.chats.create` refuses a chat — `Data validation failed`, `Error creating entity`, and the missing `Failed to create chat` from `chats.repository.ts`'s own `safeQuery` — on both the restore and the `.qtap` import paths. The unit test pins three lines in order; a sibling test records that on v5's serde arm all three carry serde's sentence where v4 carries a ZodError (a recorded divergence, Tier 3).
+#### 2026-10-02 — test(harness): memory_pipeline_jobs_tier3 diffs the llm_logs rows (P4.144)
+
+_Versions: harness 0.0.1076._
+
+The memory-pipeline-jobs oracle now runs v4's real `logLLMCall` (each call's promise drained before the dump) into a fresh llm-logs database and emits the rows. The Rust side opens an llm-logs partition and builds one `with_logging` executor per case with the case's chat id, as the host spine does per job, and installs the canned cheap-LLM key twin (a logging executor resolves the profile's key from the database; without the twin every extraction call refused). All 16 rows match v4, with zero failed-call rows on either side. Compressed `request`/`response` cells are compared decoded: v5's brotli encoder stores different bytes than Node's for the ten 9–12 KB memory-extraction requests, although both decode to the same text. That contradicts the byte parity `db/text_compression.rs` records; it is escalated, and the count of such rows (10) is pinned in both directions.
+
 #### 2026-10-02 — fix(harness): the sweep driver's alias backstop covers command-substitution values (P4.144)
 
 _No crate versions bumped._

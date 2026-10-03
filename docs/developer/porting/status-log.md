@@ -162697,3 +162697,61 @@ green and `quilltap-core --lib db::memories_read` 8/8.
 - The commit touches `recipe_sweep.py` plus the two append-only docs (the
   per-commit CHANGELOG rule); §S handoff 4 stands: merge it with no sweep
   running and run `--self-test` straight after.
+
+### Unit 3 — the MPJ llm-logs comparand (Tier 2 item 8)
+
+- **Oracle**: `SQLITE_LLM_LOGS_PATH` → a scratch DB; the `logLLMCall` no-op
+  replaced by the orchestrator family's pending-drain wrapper
+  (`requireActual` + `pendingLogs.push`); after the cases,
+  `Promise.allSettled(pendingLogs)`, a `sqlite_master` guard (loud — this
+  corpus always logs), then the dump (`id`/`createdAt`/`updatedAt`
+  placeholdered, canonical-JSON sort) as `{kind:'llmlogs'}` before
+  `closeDatabase()`. Header mock list updated. 16 rows at the pin: 10
+  MEMORY_EXTRACTION (`chatId` + `characterId` set, `messageId` null), 4
+  SUMMARIZATION and 2 TITLE_GENERATION (`characterId` null).
+- **Rust**: a materialized llm-logs partition (`llm_logs: Some(…)`); one
+  `CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig { db, user_id,
+  chat_id: Some(case chat), message_id: None, ctx: LogContext::none() })` PER
+  CASE (the spine's per-job shape); the dump diffed after the tables through
+  `split_ruled_failed_call_rows`, asserting ZERO failure rows on BOTH sides.
+  ⚠ The order named `assert_ruled_failed_call_divergence`, which asserts v5
+  HAS a failure row (its non-vacuity guard) — the opposite of "expect zero";
+  the split helper is used instead, `common/mod.rs` untouched.
+- **Measured, not in the order: the canned-key twin.** A `with_logging`
+  executor resolves the selection's own API key through the DB (P4.133); a
+  bare `new()` never asked. The oracle mocks `getApiKeyForCheapLLMSelection`,
+  so without `test_support::CannedCheapLlmKey::install("test-key")` (the csum
+  precedent) every extraction call refused with `No API key available for
+  cheap LLM provider` — 15 of v4's 16 keys never called. Installed.
+- **Measured neutral** (as the order predicted): the per-case
+  `profiles_without_custom_temp` cache (no call is temperature-rejected); the
+  armed fallback chain (the fixture's two `connectionProfiles` carry no
+  fallback fields, and no call fails).
+- ⚠ **ESCALATED — a real encoder divergence in a file this lane does not own
+  (`db/text_compression.rs`).** All 16 rows match DECODED, but the ten
+  MEMORY_EXTRACTION `request` BLOBs (8,919–11,702 raw bytes) store DIFFERENT
+  brotli bytes than v4 (two are 1–2 bytes LONGER: 3,840 vs 3,839, 3,999 vs
+  3,997); the six ≤ 2,516-byte rows are byte-identical. v4's bytes equal
+  Node 24.13.1's `brotliCompressSync(raw, { QUALITY: 5, SIZE_HINT })`
+  exactly. An out-of-tree repro against the same `brotli` 8.0.4 crate: the
+  `CompressorWriter` at 4096 and at 2× input buffer, and the one-shot
+  `BrotliCompress`, ALL differ from Node on all ten and match on the six — so
+  it is the encoder, not the call shape (the encoder's default params match
+  C's). This refutes the module doc's "35 encode rows, byte-identical"
+  parity claim for these inputs (its corpus is prose; these are JSON
+  request envelopes). Reads are unaffected (decode identical); the stakes are
+  the doc's own "v5 is a PEER WRITER … compressed bytes must match". **Not
+  fixed here.** The family compares the compressed cells DECODED (a recorded
+  normalization) and pins `STORED_BYTE_DIVERGENCES = 10` both ways, so a
+  codec fix trips it (retire the pin) and a new divergence trips it too. The
+  repro inputs (`.raw` + Node's `.node` + v5's `.v5` bytes) and the scratch
+  crate are recorded in the lane's final report; the natural home for the
+  fix's proof is `text_compression_equivalence` grown by these payloads.
+- **Mutations** (restored by backup, `cmp` clean): **M10** (`chat_id: None`)
+  reds the llm-logs rows (all 16 differ on `chatId`); **M11a** (one byte of
+  `FOLD_SUMMARY_PROMPT`) reds the key set (5 v4 keys never called); **M11b**
+  (the same with the key assert disabled) reds the `memories` table before
+  the rows are reached (fail-fast) — the rows half of "both" is therefore
+  shown by M10, not M11. The P4.138 `KeyRecording` set-equality and its
+  non-vacuity guard are unchanged.
+- Regenerated at the pin (lane-private `/tmp/p4.144/mpj`); green.

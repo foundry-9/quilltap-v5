@@ -23,7 +23,12 @@
  *     (`kind:"cannedEmbedding"` rows); the Rust side registers exactly the
  *     recorded texts, so a divergent embedding input surfaces as a canned-miss.
  *   - `getApiKeyForCheapLLMSelection` → a constant (key management is host-side).
- *   - `logLLMCall` → no-op (the llm-logs partition is not part of this family).
+ *   - `logLLMCall` → the REAL one, wrapped (P4.144): every call's promise is
+ *     kept and drained (`Promise.allSettled`) before the `llm_logs` dump — the
+ *     orchestrator family's pending-drain shape — and `SQLITE_LLM_LOGS_PATH`
+ *     points at a fresh scratch DB. The rows land as `{kind:"llmlogs"}` and the
+ *     Rust side diffs them against a per-case `with_logging` executor (the
+ *     spine's per-job construction).
  *   - `getMemoryExtractionLimits` → the corpus limits (the Rust port injects the
  *     same value).
  *   - `estimateMessageCost` → `{ cost: null }` (matching the Rust side's canned
@@ -146,6 +151,8 @@ async function main(): Promise<void> {
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
   process.env.SQLITE_PATH = workMain;
   process.env.SQLITE_MOUNT_INDEX_PATH = workMount;
+  // P4.144: a fresh llm-logs DB for the un-mocked `logLLMCall`.
+  process.env.SQLITE_LLM_LOGS_PATH = join(scratch, 'mpj-llm-logs.db');
   process.env.QUILLTAP_DATA_DIR = scratch;
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
@@ -250,12 +257,20 @@ async function main(): Promise<void> {
       getApiKeyForCheapLLMSelection: async () => 'test-key',
     };
   });
+  // P4.144: the REAL `logLLMCall`, every promise kept so the dump can drain
+  // them (the cheap-task logging is fire-and-forget; a fixed sleep can lose a
+  // row) — `orchestrator-tier3.test.ts`'s wrapper, copied as a pattern.
+  const pendingLogs: Array<Promise<unknown>> = [];
   jest.doMock('@/lib/services/llm-logging.service', () => {
     const actual = jest.requireActual('@/lib/services/llm-logging.service');
     return {
       __esModule: true,
       ...actual,
-      logLLMCall: async () => undefined,
+      logLLMCall: (...args: unknown[]) => {
+        const p = (actual.logLLMCall as (...a: unknown[]) => Promise<unknown>)(...args);
+        pendingLogs.push(p);
+        return p;
+      },
     };
   });
   jest.doMock('@/lib/instance-settings', () => {
@@ -363,6 +378,41 @@ async function main(): Promise<void> {
   lines.push(
     JSON.stringify({ kind: 'table', ...(await dumpTable('background_jobs', 'type')) })
   );
+
+  // P4.144: the `llm_logs` rows the un-mocked `logLLMCall` wrote — every
+  // pending call drained first, read through the llm-logs handle BEFORE
+  // closeDatabase(); id/createdAt/updatedAt placeholdered, sorted by canonical
+  // JSON. v4 creates the table LAZILY, so a run that logged nothing has none:
+  // that is loud here (this family's extraction + fold calls always log).
+  await Promise.allSettled(pendingLogs);
+  const { getRawLLMLogsDatabase } = await import(
+    '@/lib/database/backends/sqlite/llm-logs-client'
+  );
+  const lldb = getRawLLMLogsDatabase();
+  if (!lldb) throw new Error('llm-logs DB handle unavailable (degraded open?)');
+  const hasTable = lldb
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'llm_logs'")
+    .get();
+  if (!hasTable) throw new Error('no llm_logs table — v4 logged no cheap-LLM call at all');
+  const llColumns = (lldb.pragma('table_info(llm_logs)') as Array<{ name: string }>).map(
+    (c) => c.name
+  );
+  const llRawRows = lldb.prepare('SELECT * FROM llm_logs').all() as Array<Record<string, unknown>>;
+  const llRows = llRawRows
+    .map((r) => {
+      const out: Record<string, unknown> = {};
+      for (const col of llColumns) out[col] = canonValue(r[col]);
+      out.id = '<id>';
+      out.createdAt = '<ts>';
+      out.updatedAt = '<ts>';
+      return out;
+    })
+    .sort((a, b) => {
+      const sa = JSON.stringify(a);
+      const sb = JSON.stringify(b);
+      return sa < sb ? -1 : sa > sb ? 1 : 0;
+    });
+  lines.push(JSON.stringify({ kind: 'llmlogs', columns: llColumns, rows: llRows }));
 
   closeMountIndexSQLiteClient();
   await closeDatabase();

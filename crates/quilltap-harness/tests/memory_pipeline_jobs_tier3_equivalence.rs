@@ -15,6 +15,22 @@
 //! minted-values remap form, and asserts each case's thrown-error string
 //! matches the oracle's.
 //!
+//! P4.144: an `llm_logs` comparand. The oracle runs v4's REAL `logLLMCall`
+//! (wrapped so every promise is drained before the dump) into a fresh
+//! llm-logs DB and emits `{kind:"llmlogs"}`; this side opens a fresh
+//! llm-logs partition and builds one `CheapLlmTaskExecutor::with_logging`
+//! PER CASE with `chat_id: Some(case chat)`, `message_id: None` — exactly the
+//! host spine's per-job construction (`spine.rs`'s MEMORY_EXTRACTION and
+//! CONTEXT_SUMMARY handlers); a bare `new()` writes no rows at all. The rows
+//! are diffed after the tables, through `split_ruled_failed_call_rows`
+//! expecting ZERO failure rows on BOTH sides (a canned miss would add a v5
+//! error row v4 never writes — the P4.13 ruled divergence — so this is a
+//! second consumption guard beside the key set). Measured and neutral: the
+//! per-case executor makes `profiles_without_custom_temp` per-case where v4's
+//! is per-run (no MPJ call is temperature-rejected), and `with_logging` arms
+//! the cheap fallback chain (the fixture's profiles carry no fallbacks, and no
+//! call fails).
+//!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout; the /tmp
 //! mirror dodges jest's `/.claude/` testPathIgnorePatterns):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=<this worktree>
@@ -44,15 +60,18 @@ use quilltap_core::model::completion::{
     CompletionRole, CompletionUsage,
 };
 use quilltap_core::model::embedding::CannedEmbeddingProvider;
-use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
+use quilltap_core::services::cheap_llm_exec::{CheapLlmLogConfig, CheapLlmTaskExecutor};
 use quilltap_core::services::context_summary_job::{handle_context_summary, ContextSummaryPayload};
 use quilltap_core::services::cost_estimation::MessageCostEstimator;
+use quilltap_core::services::llm_logging::LogContext;
 use quilltap_core::services::memory_extraction_job::{
     handle_memory_extraction, MemoryExtractionPayload,
 };
 use quilltap_core::services::memory_processor::MemoryExtractionLimits;
 use serde::Deserialize;
 use serde_json::Value;
+
+mod common;
 
 // ---------------------------------------------------------------------------
 // Spec structures (harness/oracle/fixtures/memory-pipeline-jobs-tier3.json).
@@ -351,8 +370,63 @@ fn normalize_all(dumps: &mut [Value]) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// P4.144: the `llm_logs` comparand's compressed cells.
+// ---------------------------------------------------------------------------
+
+/// ESCALATED, not ruled (P4.144): the number of `llm_logs` rows whose STORED
+/// compressed bytes differ from v4's while decoding to the identical text.
+/// `db::text_compression`'s module doc records encoder byte parity with
+/// Node's brotli (35 rows to 262,293 bytes); this family's corpus refutes it on
+/// all ten MEMORY_EXTRACTION `request` payloads (8,919–11,702 raw bytes; two
+/// store 1–2 bytes LONGER on v5), while the six ≤ 2,516-byte rows match.
+/// Measured out of tree against the same `brotli` 8.0.4 crate: the
+/// `CompressorWriter` (any buffer size) and the one-shot `BrotliCompress` both
+/// differ from Node 24.13.1's bundled C brotli at `QUALITY 5` + `SIZE_HINT`,
+/// which the oracle's bytes equal exactly — the divergence is inside the
+/// encoder, not the call shape. The codec is not this lane's file, so the
+/// family compares the cells DECODED and pins this count in both directions:
+/// a codec fix trips it (retire the pin), and so does any new divergence.
+const STORED_BYTE_DIVERGENCES: usize = 10;
+
+/// A dumped cell holding a compressed text BLOB arrives as hex (the shared
+/// dump's convention, both sides). Decode it to the text it stores.
+fn decoded_cell(v: &Value) -> Option<String> {
+    let s = v.as_str()?;
+    let bytes = hex::decode(s).ok()?;
+    quilltap_core::db::text_compression::is_compressed_text_blob(&bytes)
+        .then(|| quilltap_core::db::text_compression::decode_blob(&bytes))
+}
+
+/// Each row paired with its decoded twin (every compressed cell replaced by its
+/// text), sorted by the decoded twin's canonical JSON.
+fn decode_llm_log_rows(rows: Vec<Value>) -> Vec<(Value, Value)> {
+    let mut pairs: Vec<(Value, Value)> = rows
+        .into_iter()
+        .map(|row| {
+            let mut decoded = row.clone();
+            if let Some(obj) = decoded.as_object_mut() {
+                for v in obj.values_mut() {
+                    if let Some(text) = decoded_cell(v) {
+                        *v = Value::String(text);
+                    }
+                }
+            }
+            (decoded, row)
+        })
+        .collect();
+    pairs.sort_by_key(|(decoded, _)| serde_json::to_string(decoded).unwrap());
+    pairs
+}
+
 #[tokio::test]
 async fn memory_pipeline_jobs_tier3_matches_oracle() {
+    // P4.144: the oracle mocks `getApiKeyForCheapLLMSelection` to a constant;
+    // a `with_logging` executor resolves the selection's own key through the
+    // DB (P4.133) where a bare `new()` never asked, so the twin is needed now —
+    // without it every extraction call refused with `No API key available for
+    // cheap LLM provider` (measured: 15 of v4's 16 keys never called).
+    let _canned_key = quilltap_core::test_support::CannedCheapLlmKey::install("test-key");
     let oracle_path = match std::env::var("QT_ORACLE_MPJ") {
         Ok(p) => p,
         Err(_) => {
@@ -386,6 +460,7 @@ async fn memory_pipeline_jobs_tier3_matches_oracle() {
     let mut oracle_embeddings: Vec<(String, Vec<f32>)> = Vec::new();
     let mut oracle_tables: HashMap<String, Value> = HashMap::new();
     let mut oracle_errors: HashMap<String, Option<String>> = HashMap::new();
+    let mut oracle_llmlogs: Option<Value> = None;
     for line in oracle_text.lines() {
         let line = line.trim();
         if line.is_empty() {
@@ -415,6 +490,7 @@ async fn memory_pipeline_jobs_tier3_matches_oracle() {
             Some("table") => {
                 oracle_tables.insert(v["table"].as_str().unwrap().to_string(), v);
             }
+            Some("llmlogs") => oracle_llmlogs = Some(v),
             other => panic!("unknown oracle row kind {other:?}"),
         }
     }
@@ -428,8 +504,11 @@ async fn memory_pipeline_jobs_tier3_matches_oracle() {
     let pid = std::process::id();
     let work_main = std::env::temp_dir().join(format!("qt-mpj-main-rust-{pid}.db"));
     let work_mount = std::env::temp_dir().join(format!("qt-mpj-mount-rust-{pid}.db"));
+    let work_llm_logs = std::env::temp_dir().join(format!("qt-mpj-llm-logs-rust-{pid}.db"));
     let _ = std::fs::remove_file(&work_main);
     let _ = std::fs::remove_file(&work_mount);
+    let _ = std::fs::remove_file(&work_llm_logs);
+    common::materialize_llm_logs(&work_llm_logs, &spec.test_pepper_base64);
     std::fs::copy(&fixture_main, &work_main).unwrap_or_else(|e| panic!("copy main: {e}"));
     std::fs::copy(&fixture_mount, &work_mount).unwrap_or_else(|e| panic!("copy mount: {e}"));
 
@@ -490,13 +569,22 @@ async fn memory_pipeline_jobs_tier3_matches_oracle() {
         DbPaths {
             main: work_main.clone(),
             mount_index: Some(work_mount.clone()),
-            llm_logs: None,
+            llm_logs: Some(work_llm_logs.clone()),
         },
         &spec.test_pepper_base64,
     )
     .unwrap_or_else(|e| panic!("open fixture copies: {e}"));
 
-    let executor = CheapLlmTaskExecutor::new();
+    // One logging executor per case, as the spine builds one per job.
+    let executor_for = |chat_id: &str| {
+        CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
+            db: db.clone(),
+            user_id: spec.user_id.clone(),
+            chat_id: Some(chat_id.to_string()),
+            message_id: None,
+            ctx: LogContext::none(),
+        })
+    };
     let cost = NullCost;
     let limits = MemoryExtractionLimits {
         enabled: spec.memory_extraction_limits.enabled,
@@ -519,6 +607,7 @@ async fn memory_pipeline_jobs_tier3_matches_oracle() {
             extraction_anchor_message_id: case.extraction_anchor_message_id.clone(),
             connection_profile_id: spec.connection_profile_id.clone(),
         };
+        let executor = executor_for(&case.chat_id);
         let got = handle_memory_extraction(
             &db,
             &completion,
@@ -540,6 +629,7 @@ async fn memory_pipeline_jobs_tier3_matches_oracle() {
             connection_profile_id: spec.connection_profile_id.clone(),
             force_regenerate: case.force_regenerate.unwrap_or(false),
         };
+        let executor = executor_for(&case.chat_id);
         let got = handle_context_summary(
             &db,
             &completion,
@@ -590,9 +680,11 @@ async fn memory_pipeline_jobs_tier3_matches_oracle() {
                 .unwrap_or_else(|e| panic!("dump {}: {e:?}", t.table))
         })
         .collect();
+    let got_llm_logs = common::dump_llm_logs(&db);
     drop(db);
     let _ = std::fs::remove_file(&work_main);
     let _ = std::fs::remove_file(&work_mount);
+    let _ = std::fs::remove_file(&work_llm_logs);
 
     let mut want: Vec<Value> = TABLES
         .iter()
@@ -643,6 +735,65 @@ async fn memory_pipeline_jobs_tier3_matches_oracle() {
             );
         }
     }
+    // P4.144: the `llm_logs` comparand (see the header). Zero failed-call rows
+    // on EITHER side: v5's would be a canned miss (the P4.13 ruled-divergence
+    // signature), v4's would mean v4 started logging failures.
+    let want_llm_logs = common::oracle_llm_logs(
+        oracle_llmlogs
+            .as_ref()
+            .expect("oracle ndjson has no llmlogs row — regenerate (P4.144)"),
+    );
+    let (got_llm_logs, got_failed) = common::split_ruled_failed_call_rows(got_llm_logs);
+    let (want_llm_logs, want_failed) = common::split_ruled_failed_call_rows(want_llm_logs);
+    assert!(
+        got_failed.is_empty() && want_failed.is_empty(),
+        "failed cheap-call rows (v5 {}, v4 {}) — a canned miss or a converged \
+         failure log; none is expected in this corpus: {got_failed:#?} {want_failed:#?}",
+        got_failed.len(),
+        want_failed.len(),
+    );
+    assert!(
+        !want_llm_logs.is_empty(),
+        "the oracle logged no llm_logs rows — the comparand would measure nothing"
+    );
+    let got_pairs = decode_llm_log_rows(got_llm_logs);
+    let want_pairs = decode_llm_log_rows(want_llm_logs);
+    let got_llm_logs: Vec<Value> = got_pairs.iter().map(|(d, _)| d.clone()).collect();
+    let want_llm_logs: Vec<Value> = want_pairs.iter().map(|(d, _)| d.clone()).collect();
+    if got_llm_logs != want_llm_logs {
+        let gp = std::env::temp_dir().join("qt-mpj-got-llm_logs.json");
+        let wp = std::env::temp_dir().join("qt-mpj-want-llm_logs.json");
+        let _ = std::fs::write(&gp, serde_json::to_string_pretty(&got_llm_logs).unwrap());
+        let _ = std::fs::write(&wp, serde_json::to_string_pretty(&want_llm_logs).unwrap());
+        for (j, (g, w)) in got_llm_logs.iter().zip(want_llm_logs.iter()).enumerate() {
+            if g != w {
+                panic!(
+                    "llm_logs rows diverge at index {j} (full dumps: {} / {})\n got: {g:#}\nwant: {w:#}",
+                    gp.display(),
+                    wp.display()
+                );
+            }
+        }
+        panic!(
+            "llm_logs row-count diverges: got {} vs want {} (full dumps: {} / {})",
+            got_llm_logs.len(),
+            want_llm_logs.len(),
+            gp.display(),
+            wp.display()
+        );
+    }
+    let stored_byte_divergences = got_pairs
+        .iter()
+        .zip(want_pairs.iter())
+        .filter(|((_, got_stored), (_, want_stored))| got_stored != want_stored)
+        .count();
+    assert_eq!(
+        stored_byte_divergences, STORED_BYTE_DIVERGENCES,
+        "llm_logs rows whose stored brotli bytes differ from v4's (decoded text identical) \
+         moved from the escalated count — see `STORED_BYTE_DIVERGENCES`: a codec fix \
+         retires the pin, a rise is a new encoder divergence"
+    );
+
     println!(
         "memory_pipeline_jobs: {} cases OK",
         spec.me_cases.len() + spec.cs_cases.len()
