@@ -1167,6 +1167,7 @@ fn system_restore_state_equivalence() {
 
     let mut failures: Vec<String> = Vec::new();
     let mut seen = 0usize;
+    let mut repo_log_cases = 0usize;
 
     for case in &cases {
         let name = case["name"].as_str().unwrap();
@@ -1224,6 +1225,14 @@ fn system_restore_state_equivalence() {
         compare_baseline(name, &got_pre, &case["preState"], &mut failures);
         let db = reopen_instance(&instance);
 
+        // [P4.143 Tier 2 item 10] A case whose oracle recorded the refused chat
+        // create's repository lines starts from an EMPTY process-global buffer
+        // (the restore's chat creates log on the WRITER thread).
+        let repo_buf = case.get("repoLogs").map(|_| {
+            let buf = global_capture();
+            buf.lock().unwrap().clear();
+            buf
+        });
         let summary = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
@@ -1263,6 +1272,16 @@ fn system_restore_state_equivalence() {
             want_state,
             &mut failures,
         );
+
+        // [P4.143 Tier 2 item 10] the refused chat create's repository lines.
+        if let Some(buf) = repo_buf {
+            let lines = std::mem::take(&mut *buf.lock().unwrap());
+            let serde = (name == SERDE_ROOM_CASE).then_some(("scenarioText", SERDE_ROOM_V5_PREFIX));
+            // Restore runs OUTSIDE `withStrictRepositoryFailures`: no line
+            // carries `strictFailures` on v4 either.
+            compare_repo_logs(name, &case["repoLogs"], &lines, serde, &[], &mut failures);
+            repo_log_cases += 1;
+        }
 
         // [P4.143 item 2] the serde-arm plant, by name.
         assert_serde_room_skipped(
@@ -1317,6 +1336,12 @@ fn system_restore_state_equivalence() {
         "{} restore-state difference(s):\n{}",
         failures.len(),
         failures.join("\n")
+    );
+    // [P4.143 Tier 2 item 10] Both chat refusal arms compared their repository
+    // lines (the Concierge-bogus arm byte for byte, the serde arm carved).
+    assert_eq!(
+        repo_log_cases, 2,
+        "cases that compared the refused chat create's repository lines"
     );
 }
 
@@ -1376,6 +1401,172 @@ fn assert_bogus_concierge_chat_skipped(
             ));
         }
     }
+}
+
+// ── [P4.143 Tier 2 item 10] the refused chat create's repository lines ──────
+
+/// The messages v4's refused chat create logs (its oracle's
+/// `REPO_LOG_MESSAGES`): the THREE repository ERRORs and the per-chat WARN.
+const REPO_LOG_MESSAGES: &[&str] = &[
+    "Data validation failed",
+    "Error creating entity",
+    "Failed to create chat",
+    "Failed to restore chat",
+];
+
+/// v5's captured lines (`LEVEL target message k=v …`, the `CaptureLayer`
+/// shape) projected onto the oracle's `{level, message, collection, chatId,
+/// error}` record. `error` is every line's LAST field, so it runs to the end
+/// of the line (a ZodError message spans many).
+fn v5_repo_logs(lines: &[String]) -> Vec<Value> {
+    let mut out = Vec::new();
+    for line in lines {
+        let mut parts = line.splitn(3, ' ');
+        let (Some(level), Some(_target), Some(rest)) = (parts.next(), parts.next(), parts.next())
+        else {
+            continue;
+        };
+        let Some(message) = REPO_LOG_MESSAGES
+            .iter()
+            .find(|m| rest.starts_with(&format!("{m} ")))
+        else {
+            continue;
+        };
+        let fields = &rest[message.len() + 1..];
+        let mut rec = serde_json::Map::new();
+        rec.insert("level".into(), json!(level.to_lowercase()));
+        rec.insert("message".into(), json!(message));
+        let (head, error) = fields.split_once("error=").unwrap_or((fields, ""));
+        for kv in head.split_whitespace() {
+            if let Some((k, v)) = kv.split_once('=') {
+                rec.insert(k.to_string(), json!(v));
+            }
+        }
+        rec.insert("error".into(), json!(error));
+        out.push(Value::Object(rec));
+    }
+    out
+}
+
+/// Compare v5's refused-chat lines to v4's `repoLogs`, in order: level,
+/// message, `collection` / `chatId`, and `error` byte for byte — or, on a
+/// serde arm (`serde = Some((v4_path_key, v5_serde_prefix))`), the RECORDED
+/// divergence: v4's `error` a Zod message whose first issue path is
+/// `[v4_path_key]`, v5's starting with serde's sentence (VANISHED if they
+/// agree). `strictFailures` is a v4-ONLY field (P4.143 Tier 3 item 11 — v5
+/// has no strict-repository scope): pinned on v4 to exactly the lines
+/// `strict_lines` names (the import's two `safeQuery`-born ERRORs; none on
+/// restore), pinned ABSENT on v5 (it reds "VANISHED" if v5 grows it), then
+/// dropped from the compare.
+fn compare_repo_logs(
+    name: &str,
+    want: &Value,
+    got_lines: &[String],
+    serde: Option<(&str, &str)>,
+    strict_lines: &[&str],
+    failures: &mut Vec<String>,
+) {
+    let Some(want) = want.as_array() else {
+        failures.push(format!(
+            "[{name}] the oracle carries no `repoLogs` — regenerate it"
+        ));
+        return;
+    };
+    if got_lines.iter().any(|l| l.contains("strictFailures=")) {
+        failures.push(format!(
+            "[{name}] v5 now logs `strictFailures` — the v4-only field VANISHED; retire the pin"
+        ));
+    }
+    let got = v5_repo_logs(got_lines);
+    let mut want: Vec<Value> = want.clone();
+    for w in want.iter_mut() {
+        let message = w["message"].as_str().unwrap_or("").to_string();
+        let strict = w.as_object_mut().and_then(|o| o.remove("strictFailures"));
+        let expect = strict_lines
+            .contains(&message.as_str())
+            .then_some(json!(true));
+        if strict != expect {
+            failures.push(format!(
+                "[{name}] v4 `strictFailures` on {message:?}: {strict:?}, recorded {expect:?}"
+            ));
+        }
+    }
+    if got.len() != want.len() {
+        failures.push(format!(
+            "[{name}] refused-chat repository lines: v5 {} vs v4 {}\n  rust:   {got:?}\n  oracle: \
+             {want:?}",
+            got.len(),
+            want.len()
+        ));
+        return;
+    }
+    for (i, (mut g, mut w)) in got.into_iter().zip(want).enumerate() {
+        if let Some((key, prefix)) = serde {
+            let (ge, we) = (
+                g["error"].as_str().unwrap_or("").to_string(),
+                w["error"].as_str().unwrap_or("").to_string(),
+            );
+            let v4_first_path = serde_json::from_str::<Value>(&we)
+                .ok()
+                .and_then(|v| v.get(0).and_then(|i| i.get("path")).cloned());
+            if ge == we {
+                failures.push(format!(
+                    "[{name}] line {i}: the serde-arm divergence VANISHED — both log {ge:?}; \
+                     retire the pin"
+                ));
+            } else if !(is_zod_error_message(&we)
+                && v4_first_path == Some(json!([key]))
+                && ge.starts_with(prefix))
+            {
+                failures.push(format!(
+                    "[{name}] line {i}: the serde-arm divergence has the WRONG SHAPE\n  rust:   \
+                     {ge:?}\n  oracle: {we:?}"
+                ));
+            }
+            g["error"] = json!("<SERDE-ARM-DIVERGENCE>");
+            w["error"] = json!("<SERDE-ARM-DIVERGENCE>");
+        }
+        if g != w {
+            failures.push(format!(
+                "[{name}] refused-chat repository line {i} differs\n  rust:   {g}\n  oracle: {w}"
+            ));
+        }
+    }
+}
+
+/// Is `tail` a `ZodError.message` — a non-empty JSON array of objects each
+/// carrying Zod's `code`, `path` and `message` keys?
+fn is_zod_error_message(tail: &str) -> bool {
+    serde_json::from_str::<Value>(tail)
+        .ok()
+        .and_then(|v| v.as_array().cloned())
+        .is_some_and(|issues| {
+            !issues.is_empty()
+                && issues.iter().all(|i| {
+                    i.get("code").is_some_and(Value::is_string)
+                        && i.get("path").is_some_and(Value::is_array)
+                        && i.get("message").is_some_and(Value::is_string)
+                })
+        })
+}
+
+/// A PROCESS-GLOBAL capture (the `search_replace_equivalence` precedent): the
+/// restore's chat creates log inside `db.write`, on the WRITER thread, where a
+/// thread-scoped subscriber sees nothing. Installed once per binary; the
+/// comparator filters to [`REPO_LOG_MESSAGES`], so the binary's other test
+/// logging into the same buffer cannot colour it.
+fn global_capture() -> std::sync::Arc<std::sync::Mutex<Vec<String>>> {
+    static BUF: std::sync::OnceLock<std::sync::Arc<std::sync::Mutex<Vec<String>>>> =
+        std::sync::OnceLock::new();
+    BUF.get_or_init(|| {
+        use tracing_subscriber::layer::SubscriberExt;
+        let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let subscriber = tracing_subscriber::registry()
+            .with(quilltap_core::test_support::CaptureLayer(buf.clone()));
+        tracing::subscriber::set_global_default(subscriber).expect("one global capture per binary");
+        buf
+    })
+    .clone()
 }
 
 /// [P4.143 item 2] **The restore's serde arm** — a RECORDED DIVERGENCE,

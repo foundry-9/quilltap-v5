@@ -162396,3 +162396,53 @@ ZodError bytes, each with a clean-item silence leg on the CURRENT
 image create arm back to its old push-and-return shape → RED (`left: []`).
 No family captures these lines (the order's optional differential is item 10).
 core 0.0.1150.
+
+### Unit 7 — Tier 2 item 10: the repository ERRORs made differential
+
+**Oracles.** `system-import-execute.test.ts` and `system-restore.test.ts` each
+gain `withRepoLogs` — a `Logger.prototype.error/warn` spy (the
+`chats-messages-ops-tier2.ts` recipe) imported INSIDE the case's run, after
+`runCase` / `runRestoreCase`'s `resetModules` (so it is the registry
+generation the import/restore logs through), restored in a `finally`, and
+filtered to `REPO_LOG_MESSAGES` (the three repository messages + the family's
+per-chat WARN); each line keeps `{level, message, collection, chatId, error,
+strictFailures}`, an `Error`-object `error` recorded as its `message`
+(restore's `moduleLogger.warn('Failed to restore chat', { chatId, error })`
+passes the OBJECT). Scoped to the two chat refusal cases per family
+(`execute_concierge_bogus` / `execute_concierge_serde_arm`;
+`restore_concierge_bogus_replace` / `restore_chat_serde_arm_replace`), emitted
+as `repoLogs`. **Measured at the pin:** import — `Data validation failed
+{collection: chats}`, `Error creating entity {…, strictFailures: true}`,
+`Failed to create chat {…, strictFailures: true}`, `Failed to import chat
+{chatId, error}`; restore — the same three WITHOUT `strictFailures` (restore
+runs outside `withStrictRepositoryFailures`) + `Failed to restore chat`. So
+§R.4(d)'s correction is now an oracle fact, not a survey's.
+
+**Rust.** A `compare_repo_logs` helper in each family file (their `tests/common`
+is another lane's): v5's captured lines projected onto the oracle record
+(`error` = the line's last field, to end of line), compared in order —
+byte-for-byte on the Concierge arms; on the serde arms the `error` field goes
+through the SAME carve as the warning (import: the chat row of
+`SERDE_ARM_DIVERGENCES`, found by case + head; restore: `SERDE_ROOM_*`),
+VANISHED / WRONG SHAPE as there. `strictFailures` pinned on v4 to exactly the
+two `safeQuery` lines on import and to none on restore, pinned ABSENT on v5
+(reds "VANISHED" if v5 grows it — Tier 3 item 11), then dropped. Capture:
+import wraps `execute_import` in `captured_with` INSIDE the `write_blocking`
+closure (the writer thread; synchronous); restore installs a process-global
+`CaptureLayer` once per binary (`global_capture`, the
+`search_replace_equivalence` precedent — the async restore writes on the
+writer thread), cleared per flagged case and filtered by message. Exercised
+counts asserted (2 + 2). GREEN in both families.
+
+**Red-first** (item 3's line removed, by file backup, `cmp`-restored): all FOUR
+arms red — `refused-chat repository lines: v5 3 vs v4 4` (import ×2, restore
+×2). **Carve mutation** (import `serde = None`): the serde arm's four lines
+each red (`line 0..3 differs`). harness 0.0.1079.
+
+⚠ **Recorded, not ported (scope):** the six NON-chat import refusals (tag /
+template / three profiles / bug 105) — v4 logs `Data validation failed`,
+`Error creating entity` and `Error creating <entity> {collection, userId,
+name[, provider]}` for each; v5 logs none of them, because its typed decode
+refuses BEFORE any repository is touched. Closing that needs the generated
+schema-shape table (Tier 3 item 12) moving the refusal into the repository
+create; it is not spied here.

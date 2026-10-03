@@ -245,6 +245,12 @@ _Versions: core 0.0.1148, harness 0.0.1076._
 _Versions: core 0.0.1147, harness 0.0.1075, host 0.0.175, web 0.0.208, tauri 0.0.8._
 
 On a host whose `TZ` is a POSIX rule (no IANA name), every name-fed date surface rendered UTC: the turn's tool runner, `build_context` on the turn and the swipe, the autonomous turn, the greeting, the spine's own tool runner and the Scenario Builder clock all re-derived their zone from the `tz` NAME, which falls back to `"UTC"`. The host's zone VALUE was already correct (jiff 0.2.31 parses the rule), so the fix threads it: a required `display_zone` on `ProcessMessageInput`, `BuildContextArgs`, `BuildContextInput`, `RegenerateSwipeOptions`, `StepDeps` and `ChatCreateDeps`, filled by `ChatSpine` / `ChatCreateSpine` and `ProductionSpineFactory::with_display_zone` from `HostConfig.display_zone` in `quilltap-web`'s `production_host_config`. `display_zone_named` is retired; `server_tz` stays as the calendar name (cron, the distill, the cleanup — a recorded Tier-3 residue). New `host_zone::zone_name` is the one name derivation, used by `HostConfig::new` and the new `HostConfig::set_display_zone`, which the web and Tauri test commons now call. `host_zone_sites_census` is reshaped (a `VALUE_SITES` table replaces `HELPER_SITES`; the host needles re-aimed and grown) and gains a POSIX-`TZ` child process that was red on `main` (offset 0 vs −18000; the whisper read 07:40 PM).
+#### 2026-10-02 — test(harness): the refused chat create's three repository ERRORs are compared against v4 on restore and import (P4.143 item 10)
+
+_Versions: harness 0.0.1079._
+
+The restore and `.qtap` import oracles now record v4's repository lines for the two chat refusal cases in each family (a `Logger.prototype.error/warn` spy limited to `Data validation failed`, `Error creating entity`, `Failed to create chat` and the per-chat `Failed to restore chat` / `Failed to import chat` WARN). The Rust families capture the same lines on the writer thread and compare them in order: byte for byte on the Concierge-bogus arms, and on the serde arms through the same divergence carve the warnings use. `strictFailures: true`, which v4 adds to the import's two `safeQuery` lines, is pinned as a v4-only field (absent on v5, absent on restore). Reverting the third ERROR reddens all four arms (three lines against four).
+
 #### 2026-10-02 — fix(core): every refused .qtap tag, template and profile logs v4's per-item WARN with camelCase ids (P4.143 item 9)
 
 _Versions: core 0.0.1150._

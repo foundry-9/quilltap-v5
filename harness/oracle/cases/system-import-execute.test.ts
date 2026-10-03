@@ -1597,10 +1597,71 @@ function conciergeBogusPayload(
   return p;
 }
 
+/**
+ * [P4.143 Tier 2 item 10] The messages a refused chat create logs: v4's THREE
+ * repository ERRORs (`base.repository.ts` `validate`, `_create`'s rethrowing
+ * `safeQuery`, `chats.repository.ts`'s own `safeQuery`) and the importer's
+ * per-chat WARN. Only these are recorded — the case's other lines are not
+ * this pin's comparand.
+ */
+const REPO_LOG_MESSAGES = new Set([
+  'Data validation failed',
+  'Error creating entity',
+  'Failed to create chat',
+  'Failed to import chat',
+]);
+
+/**
+ * [P4.143 Tier 2 item 10] Run `body` with `Logger.prototype.error/warn`
+ * recorded (the `chats-messages-ops-tier2.ts` recipe — the singleton and every
+ * child logger share the prototype; recorded before the level check). Imported
+ * AFTER `runCase`'s `resetModules`, so this is the registry generation
+ * `executeImport` logs through. Each line keeps `{level, message, collection,
+ * chatId, error, strictFailures}` where present; an `Error` object `error` is
+ * its `message`.
+ */
+async function withRepoLogs<T>(
+  body: () => Promise<T>,
+): Promise<{ out: T; repoLogs: Array<Record<string, unknown>> }> {
+  const repoLogs: Array<Record<string, unknown>> = [];
+  const { Logger } = await import('@/lib/logger');
+  const originals = { error: Logger.prototype.error, warn: Logger.prototype.warn };
+  for (const level of ['error', 'warn'] as const) {
+    const original = originals[level];
+    Logger.prototype[level] = function (
+      this: unknown,
+      message: string,
+      context?: Record<string, unknown>,
+      ...rest: unknown[]
+    ) {
+      if (REPO_LOG_MESSAGES.has(message)) {
+        const line: Record<string, unknown> = { level, message };
+        for (const key of ['collection', 'chatId', 'error', 'strictFailures']) {
+          if (context && key in context) {
+            const v = context[key];
+            line[key] = v instanceof Error ? v.message : v;
+          }
+        }
+        repoLogs.push(line);
+      }
+      return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+    } as never;
+  }
+  try {
+    return { out: await body(), repoLogs };
+  } finally {
+    Logger.prototype.error = originals.error;
+    Logger.prototype.warn = originals.warn;
+  }
+}
+
 function executeCase(
   name: string,
   payload: (spec: Spec) => Promise<unknown> | unknown,
   options: Record<string, unknown>,
+  // [P4.143 Tier 2 item 10] Record the refused chat create's repository
+  // ERRORs + WARN (`withRepoLogs`) and emit them as `repoLogs`.
+  recordRepoLogs = false,
 ) {
   return {
     name,
@@ -1608,9 +1669,20 @@ function executeCase(
       const exportData = await payload(spec);
       const preState = dumpAll();
       const { executeImport } = await import('@/lib/import/quilltap-import/execute');
-      const result = await executeImport(spec.userId, exportData as never, options as never);
+      const run = () => executeImport(spec.userId, exportData as never, options as never);
+      const { out: result, repoLogs } = recordRepoLogs
+        ? await withRepoLogs(run)
+        : { out: await run(), repoLogs: undefined };
       await settle();
-      return { kind: 'execute', exportData, options, result, preState, state: dumpAll() };
+      return {
+        kind: 'execute',
+        exportData,
+        options,
+        result,
+        preState,
+        state: dumpAll(),
+        ...(repoLogs ? { repoLogs } : {}),
+      };
     },
   };
 }
@@ -2036,11 +2108,13 @@ async function main(): Promise<void> {
       includeRelatedEntities: false,
     }),
     // P4.130: a chat the schema refuses — the ZodError bytes in `warnings`.
-    executeCase('execute_concierge_bogus', () => conciergeBogusPayload(chatsInformsPayload), {
-      conflictStrategy: 'skip',
-      includeMemories: false,
-      includeRelatedEntities: false,
-    }),
+    executeCase(
+      'execute_concierge_bogus',
+      () => conciergeBogusPayload(chatsInformsPayload),
+      { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
+      // [P4.143 Tier 2 item 10] v4's three repository ERRORs + the WARN.
+      true,
+    ),
     // P4.130 Tier 2 item 10: a chat whose Concierge columns PASS but another
     // field v4's schema refuses (`scenarioText: 5`) — v5 reaches its typed
     // serde decode, not the Concierge check, so its warning tail is serde's
@@ -2049,6 +2123,8 @@ async function main(): Promise<void> {
       'execute_concierge_serde_arm',
       () => conciergeBogusPayload(chatsInformsPayload, [[8, { scenarioText: 5 }], [9, {}]]),
       { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
+      // [P4.143 Tier 2 item 10] the serde arm's three ERRORs + the WARN.
+      true,
     ),
     executeCase('execute_legacy_folds', () => legacyFoldsPayload(), {
       conflictStrategy: 'skip',

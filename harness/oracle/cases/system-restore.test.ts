@@ -127,6 +127,11 @@ const RESTORE_CASES: Array<{
   alignUploadsPointer?: boolean;
   /** Run `collapse-duplicate-folders-v1` on the TARGET first (see the case). */
   collapseFolders?: boolean;
+  /**
+   * [P4.143 Tier 2 item 10] Record the refused chat create's three repository
+   * ERRORs + the per-chat WARN (`withRepoLogs`) and emit them as `repoLogs`.
+   */
+  recordRepoLogs?: boolean;
 }> = [
   { name: 'restore_replace', archive: 'restore-archive.zip' },
   { name: 'restore_legacy_archive', archive: 'restore-archive-legacy.zip' },
@@ -265,7 +270,11 @@ const RESTORE_CASES: Array<{
   // per-chat catch skips it with `Failed to restore chat "The Bogus Room":
   // <ZodError message>` — `summary.warnings` carries the ZodError bytes. Built
   // by `fixtures/derive-restore-archive-concierge-bogus.py`.
-  { name: 'restore_concierge_bogus_replace', archive: 'restore-archive-concierge-bogus.zip' },
+  {
+    name: 'restore_concierge_bogus_replace',
+    archive: 'restore-archive-concierge-bogus.zip',
+    recordRepoLogs: true,
+  },
 
   // ── P4.143 item 2: the restore's serde arm, planted ──────────────────────
   //
@@ -279,7 +288,11 @@ const RESTORE_CASES: Array<{
   // message>`. v5 skips it too, at its typed decode, with serde's sentence —
   // the recorded divergence the Rust side pins both ways. Built by
   // `fixtures/derive-restore-archive-chat-serde-arm.py`.
-  { name: 'restore_chat_serde_arm_replace', archive: 'restore-archive-chat-serde-arm.zip' },
+  {
+    name: 'restore_chat_serde_arm_replace',
+    archive: 'restore-archive-chat-serde-arm.zip',
+    recordRepoLogs: true,
+  },
 
   // ── P4.D126 (`e000d6bfc`, bug 103): the columns an older archive predates ─
   //
@@ -433,6 +446,61 @@ function dumpPartition(db: import('better-sqlite3').Database): Record<string, un
   return out;
 }
 
+/**
+ * [P4.143 Tier 2 item 10] The messages a refused chat create logs on restore:
+ * v4's THREE repository ERRORs (`base.repository.ts` `validate`, `_create`'s
+ * rethrowing `safeQuery`, `chats.repository.ts`'s own `safeQuery` — restore
+ * runs OUTSIDE `withStrictRepositoryFailures`, so no `strictFailures`) and
+ * `restore.ts:239`'s `Failed to restore chat {chatId, error}` WARN (its
+ * `error` the Error OBJECT — recorded as its `message`).
+ */
+const REPO_LOG_MESSAGES = new Set([
+  'Data validation failed',
+  'Error creating entity',
+  'Failed to create chat',
+  'Failed to restore chat',
+]);
+
+/**
+ * [P4.143 Tier 2 item 10] Run `body` with `Logger.prototype.error/warn`
+ * recorded (the `chats-messages-ops-tier2.ts` recipe), imported AFTER this
+ * case's `resetModules` so it is the generation `restore` logs through.
+ */
+async function withRepoLogs<T>(
+  body: () => Promise<T>,
+): Promise<{ out: T; repoLogs: Array<Record<string, unknown>> }> {
+  const repoLogs: Array<Record<string, unknown>> = [];
+  const { Logger } = await import('@/lib/logger');
+  const originals = { error: Logger.prototype.error, warn: Logger.prototype.warn };
+  for (const level of ['error', 'warn'] as const) {
+    const original = originals[level];
+    Logger.prototype[level] = function (
+      this: unknown,
+      message: string,
+      context?: Record<string, unknown>,
+      ...rest: unknown[]
+    ) {
+      if (REPO_LOG_MESSAGES.has(message)) {
+        const line: Record<string, unknown> = { level, message };
+        for (const key of ['collection', 'chatId', 'error', 'strictFailures']) {
+          if (context && key in context) {
+            const v = context[key];
+            line[key] = v instanceof Error ? v.message : v;
+          }
+        }
+        repoLogs.push(line);
+      }
+      return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+    } as never;
+  }
+  try {
+    return { out: await body(), repoLogs };
+  } finally {
+    Logger.prototype.error = originals.error;
+    Logger.prototype.warn = originals.warn;
+  }
+}
+
 async function runRestoreCase(
   c: {
     name: string;
@@ -440,6 +508,7 @@ async function runRestoreCase(
     mode?: string;
     alignUploadsPointer?: boolean;
     collapseFolders?: boolean;
+    recordRepoLogs?: boolean;
   },
   archives: string,
   scratchRoot: string,
@@ -575,16 +644,21 @@ async function runRestoreCase(
     const preState = dumpAll();
 
     const { restore } = await import('@/lib/backup/restore/restore');
-    const summary = await restore(join(archives, c.archive), {
-      mode: c.mode ?? 'replace',
-      targetUserId: SINGLE_USER_ID,
-    });
+    const run = () =>
+      restore(join(archives, c.archive), {
+        mode: c.mode ?? 'replace',
+        targetUserId: SINGLE_USER_ID,
+      });
+    const { out: summary, repoLogs } = c.recordRepoLogs
+      ? await withRepoLogs(run)
+      : { out: await run(), repoLogs: undefined };
 
     return {
       name: c.name,
       summary,
       preState,
       state: dumpAll(),
+      ...(repoLogs ? { repoLogs } : {}),
     };
   } finally {
     await closeDatabase();
