@@ -160433,3 +160433,73 @@ ordinary answer), `hang` (accept, never answer), `stall-body` (200 headers
 README.md` section for the instrument. Smoke-run on :8997: `empty-choices`
 → 200 with `"choices": []` (non-streaming) / an SSE answer (streaming);
 `hang` and `stall-body` → the client's 1 s timeout fires. For the 💸 rows.
+
+### Gate — P4.141's closing gate, run on the lane branch at `868306cf7` (2026-10-02)
+
+§2 probe PASSED immediately before (branch `main`, HEAD `f6426e196`, both
+logs empty, the three waived docs paths only). Disk: the lane's own
+`target/` (55 GB of stale per-bump binaries) removed first → 64 GB free.
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+-- -D warnings` clean in BOTH feature sets; `cargo build --workspace
+--release` OK (3 m 47 s); `QT_V4_CHECKOUT=/tmp/qt-v4-pin-p4141-f6426e196
+CARGO_INCREMENTAL=0 cargo test --workspace --no-fail-fast` (Node 24.13.1 on
+PATH) **659 binaries / 4,135 passed / 0 failed / 3 ignored, zero `SKIP:`
+lines** — every lane family confirmed RUN by name: `text_http_errors_
+equivalence` 1/1, `stream_decoders` 5/5, `streaming_composer` 5/5,
+`primary_stream_tier3` 2/2, `cheap_llm_fallback` 2/2, Tier R
+`cli_differential` 1/1 (415 s against the pin — ran, not skipped),
+`builtin_prompt_templates_guard` 2/2 and `provider_sdk_version_guard` 3/3
+(the live-checkout guards GREEN), `fallback_home_guard` 2/2 (green — this
+lane adds no home message), web `dispatch_wrong_type_census` 14/14 (441
+UNMOVED), `spelling_guard`. `python3 harness/tools/recipe_sweep.py
+--self-test` exit 0 (no recipe header changed by this lane).
+
+### Lane close-out — P4.141
+
+**Landed:** Tier 1 items 1–8 whole; Tier 2 item 9 (Google's `No
+candidates found` WARN — recorder `pluginWarnLog` + the family's WARN diff),
+item 10 (the decoder throw; the extra `.wire` row withdrawn as a §S handoff,
+above), item 11 (mid-stream emission pins for #2 / #6 / #9 in
+`plugin_catch_log::tests` via `emit_thrown`, the composer's three
+mid-stream arms wired to it), item 12, item 13 (M1–M9, each reddening
+exactly its target, every one reverted by file backup and `cmp`-checked).
+**Deferred (Tier 3, unchanged):** 14 the `UND_ERR_HEADERS_TIMEOUT` long
+message; 16 the SDK content-type branch; 17 exotic JS shapes (named in
+`sdk_response_shape`'s doc, plus the Responses 2xx-with-`error` arm); 18
+OpenRouter's SDK modes on hang / fetch-throws; 19 the SDK body-timeout retry
+count; 20 v4's mid-stream transport bytes + Anthropic's raw `SyntaxError`.
+Item 15 not taken (the human did not reverse the trigger ruling).
+**New deferral, named:** `UNPORTED_PLUGIN_WARN_LINES` — OPENAI / GROK
+`stream` `Stream ended without response.completed event` (the Responses
+decoder's EOF WARN; `model/decoders/responses_api*` is outside this lane).
+**§S handoffs for the unifier:** (1) `primary_stream_tier3_equivalence.rs`
+— this lane's hunk is the two `TransportError` literal conversions only;
+(2) `services/cheap_llm_exec.rs` — the one `:1393-1410` hunk +
+the adjacent `#[cfg(test)] mod transport_trigger_tests` block after the
+`impl` it pins (the order's sanctioned placement); (3) `StreamError` /
+`CompletionError` gained `transport_kind` + `transport_network`, both
+defaulted in `new()` — convert any sibling struct literal on the union;
+(4) the withdrawn `google-incomplete-tail` stream row (unit 7 — bytes in the
+record) wants `streaming_composer_equivalence::assert_catch_lines` widened
+first; (5) `cheap_llm_exec::is_timeout_failure` should also read
+`transport_kind == Some(Timeout)` (v4's `AbortError` / `TimeoutError` name
+arm) so a real reqwest timeout gets the background path's one retry
+(unit 5); (6) versions — core 0.0.1146 → **0.0.1152** (+6), harness
+0.0.1074 → **0.0.1080** (+6); no other crate; no non-version
+`Cargo.toml` delta. **Fixtures changed:** `harness/oracle/fixtures/
+text-http-errors/{cases.json, text-http-errors.recorded.ndjson}` (736 → 880,
+the 736 parse-identical) — read ONLY by `text_http_errors_equivalence`.
+**Regen recipe:** `PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH TZ=UTC
+V4=<pin> bash harness/oracle/providers/regenerate-text-errors.sh`, then
+`cargo test -p quilltap-harness --test text_http_errors_equivalence`.
+💸 **for the dogfood pass** (the order's list, instrument ready): an
+OPENAI_COMPATIBLE cheap desk on `refusal-server.py` model `hang` with a
+short budget (`OpenAICompatible API error in sendMessage … error=Request
+timed out.`, the stand-in on `trigger=network`); the same desk on
+`empty-choices` (`error=Cannot read properties of undefined (reading
+'message')`, the chain stepping on instead of a blank title); an OLLAMA
+profile at `http://127.0.0.1:1` (`Ollama streamMessage failed …
+error=fetch failed`, `[Failover] … network`); a real Google 4xx on a bad key
+(`Error streaming from Google Gemini API context=… model=… error=…`); an
+OpenRouter image send with a junk key (line #7 alone). Plus `stall-body`
+on a non-streaming desk (a `Timeout`, never an empty answer).

@@ -21,6 +21,12 @@ _Docs-only change._
 - `9753d0eb2` (PORT): the project character roster now gates a character's doc tools, `search_scriptorium` and the project tier of the shared wardrobe through one chokepoint. The roster auto-add on chat create and chat move is removed. `allowAnyCharacter` now defaults to `true`, and the project PUT returns the enriched project. The SPA Characters card and four help pages change too.
 - `e5c6bd0c0` (CONVERGENCE on this port's filings 175/176, shaped differently from P4.135): a failed avatar-roll collapse is now deferred to the next boot instead of being fatal. Separately, a new boot-time structural table check reports damage through a `structure` service in `/api/health`. The ledger gate itself is unchanged.
 - §1 is rewritten for the new state. The previous dirty-tree waiver is spent because v4 committed the 175/176 filings itself.
+#### 2026-10-02 — docs(porting): P4.141 lane complete — the model layer's timeout trigger, 2xx shape guard and plugin lines
+
+_Docs-only change._
+
+Closes the P4.141 lane record with the closing gate, and marks the work order LANE COMPLETE. All Tier 1 items and Tier 2 items 9–13 landed. Tier 3 is deferred as written. Recorded handoffs: the withdrawn Google `.wire` row (the streaming composer family cannot render its line yet), and `is_timeout_failure` not reading the new transport kind.
+
 #### 2026-10-02 — chore(harness): refusal-server gains empty-choices, hang and stall-body modes for the model-layer dogfood rows
 
 _No crate versions bumped._
