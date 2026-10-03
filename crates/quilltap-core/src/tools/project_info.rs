@@ -295,22 +295,29 @@ pub fn format_project_info(out: &ProjectInfoOutput) -> String {
             parts.push(format!(
                 "Files: {file_count}, Chats: {chat_count}, Memories: {memory_count}"
             ));
+            // ONE roster sentence (v4 `9753d0eb2`, `project-info-handler.ts:257-268`):
+            // `allowAnyCharacter` is checked FIRST, so an open project's roster
+            // names never appear; a closed project lists its roster or says the
+            // roster is empty. (Before: `Characters: …` / `No characters in roster`
+            // + an optional `(Any character can participate)`.)
             let roster = d
                 .get("characterRoster")
                 .and_then(Value::as_array)
                 .cloned()
                 .unwrap_or_default();
-            if !roster.is_empty() {
+            if d.get("allowAnyCharacter").and_then(Value::as_bool) == Some(true) {
+                parts.push("Project files and wardrobe: open to every character".to_string());
+            } else if !roster.is_empty() {
                 let names: Vec<&str> = roster
                     .iter()
                     .map(|c| c.get("name").and_then(Value::as_str).unwrap_or(""))
                     .collect();
-                parts.push(format!("Characters: {}", names.join(", ")));
+                parts.push(format!(
+                    "Project files and wardrobe: roster only ({})",
+                    names.join(", ")
+                ));
             } else {
-                parts.push("No characters in roster".to_string());
-            }
-            if d.get("allowAnyCharacter").and_then(Value::as_bool) == Some(true) {
-                parts.push("(Any character can participate)".to_string());
+                parts.push("Project files and wardrobe: roster only (roster is empty)".to_string());
             }
             match d.get("documentStore") {
                 Some(ds) if !ds.is_null() => {
@@ -335,5 +342,62 @@ pub fn format_project_info(out: &ProjectInfoOutput) -> String {
             format!("Project Instructions:\n{inst}")
         }
         _ => "Unknown action result".to_string(),
+    }
+}
+
+#[cfg(test)]
+mod roster_sentence_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn formatted(allow_any: bool, roster: Value) -> String {
+        format_project_info(&ProjectInfoOutput {
+            success: true,
+            action: "get_info".to_string(),
+            data: Some(json!({
+                "name": "Papers",
+                "fileCount": 0, "chatCount": 0, "memoryCount": 0,
+                "allowAnyCharacter": allow_any,
+                "characterRoster": roster,
+                "documentStore": null,
+            })),
+            error: None,
+        })
+    }
+
+    /// v4 `9753d0eb2`: the three branches, byte for byte, `allowAnyCharacter`
+    /// checked FIRST (an open project's roster names never appear).
+    #[test]
+    fn open_project_says_open_even_with_a_roster() {
+        let out = formatted(true, json!([{ "id": "a", "name": "Ada" }]));
+        assert!(
+            out.contains("\nProject files and wardrobe: open to every character\n"),
+            "{out}"
+        );
+        assert!(!out.contains("Ada"), "{out}");
+        assert!(!out.contains("Characters:"), "the old line is gone: {out}");
+    }
+
+    #[test]
+    fn closed_project_lists_the_roster() {
+        let out = formatted(
+            false,
+            json!([{ "id": "a", "name": "Ada" }, { "id": "b", "name": "Bea" }]),
+        );
+        assert!(
+            out.contains("\nProject files and wardrobe: roster only (Ada, Bea)\n"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn closed_project_with_an_empty_roster_says_so() {
+        let out = formatted(false, json!([]));
+        assert!(
+            out.contains("\nProject files and wardrobe: roster only (roster is empty)\n"),
+            "{out}"
+        );
+        assert!(!out.contains("No characters in roster"), "{out}");
+        assert!(!out.contains("(Any character can participate)"), "{out}");
     }
 }

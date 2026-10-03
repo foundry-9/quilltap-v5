@@ -64,6 +64,12 @@ Red-first at the target on unported main: routes RED on the five flag-less creat
 _No crate versions bumped._
 
 Copies v4's `help/` tree at `e5c6bd0c0` over v5's (`diff -rq` against the pin is empty). Five pages change, none added or removed, so the count stays 129 and both count literals (`help_tree_embed_guard.rs`, `host_help_docs_boot.rs`) are unmoved: `project-characters.md`, `project-chats.md`, `project-settings.md`, `projects.md` (`9753d0eb2` — the roster as a tool-access list) and `cli-migrations.md` (`e5c6bd0c0` — resumable migrations and the boot-time table check). `docs/v4/` gains the same commits' `CHANGELOG.md`, `developer/API.md`, `developer/bugs.md` and the two new `developer/bugs/fixed/bug-175-*.md` / `bug-176-*.md`; the only residual against v4's `docs/` is the standing `packages-quilltap-README.md` (byte-identical to v4's `packages/quilltap/README.md` at both pins). Red-first: `help_tree_equivalence` and `help_section_size_equivalence`, regenerated at the pin, failed on the unported tree (the five pages; `cli-migrations.md` gains a second section, 744 → 745 chunks) and pass after the copy; regenerated at the baseline `f6426e196` they now fail, so the move is pinned in both directions. The embed guard and the host help-boot test pass unmoved.
+#### 2026-10-03 — feat(tools): project_info describes the roster as tool access in v4's three sentences (P4.D245 item 8)
+
+_Versions: core 0.0.1190._
+
+v4 `9753d0eb2`'s `project-info-handler.ts` hunk: ONE line where there were up to two. `allowAnyCharacter` is checked FIRST (`Project files and wardrobe: open to every character`, so an open project's roster names no longer appear), else the roster is listed (`… roster only (Ada, Bea)`) or declared empty (`… roster only (roster is empty)`); the old `Characters: …` / `No characters in roster` / `(Any character can participate)` lines are gone. Three unit pins. `search_tools_equivalence` regenerated at `e5c6bd0c0` was red on exactly `pi_get_info_rich` and `pi_get_info_minimal` (the `formatted` string; the 39 search rows unmoved) before this commit and is green after it; against the `f6426e196` oracle it is now red on those two rows, as it must be.
+
 #### 2026-10-03 — feat(wardrobe): the shared wardrobe's project tier is roster-gated, with the operator's bypass (P4.D245 item 7)
 
 _Versions: core 0.0.1189._
