@@ -82,6 +82,10 @@ struct Spec {
     project_id: String,
     #[serde(rename = "minimalProjectId")]
     minimal_project_id: String,
+    #[serde(rename = "closedProjectId")]
+    closed_project_id: String,
+    #[serde(rename = "charBId")]
+    char_b_id: String,
     #[serde(rename = "bogusProjectId")]
     bogus_project_id: String,
     #[serde(rename = "chatAId")]
@@ -361,6 +365,12 @@ async fn run_readwrite(
             action: serde_json::json!({ "action": "get_info" }),
             project_id: spec.minimal_project_id.clone(),
         },
+        // P4.D245: the formatter's THIRD sentence (a closed project with a roster).
+        PiCase {
+            label: "pi_get_info_closed",
+            action: serde_json::json!({ "action": "get_info" }),
+            project_id: spec.closed_project_id.clone(),
+        },
         PiCase {
             label: "pi_get_instructions_present",
             action: serde_json::json!({ "action": "get_instructions" }),
@@ -572,6 +582,10 @@ async fn run_search(
         wrong_user: bool,
         /// P4.D216: carry the pre-built mount pool (and no project).
         pool: bool,
+        /// P4.D245: the CLOSED project (roster [B]) in place of the open one.
+        closed_project: bool,
+        /// P4.D245: act as char B (rostered) instead of char A.
+        as_char_b: bool,
     }
     let s_cases = vec![
         SearchCase {
@@ -581,6 +595,8 @@ async fn run_search(
             with_character: true,
             wrong_user: false,
             pool: false,
+            closed_project: false,
+            as_char_b: false,
         },
         SearchCase {
             label: "search_conversations_only",
@@ -589,6 +605,8 @@ async fn run_search(
             with_character: true,
             wrong_user: false,
             pool: false,
+            closed_project: false,
+            as_char_b: false,
         },
         SearchCase {
             label: "search_documents_only",
@@ -597,6 +615,8 @@ async fn run_search(
             with_character: true,
             wrong_user: false,
             pool: false,
+            closed_project: false,
+            as_char_b: false,
         },
         SearchCase {
             label: "search_knowledge_only",
@@ -605,6 +625,8 @@ async fn run_search(
             with_character: true,
             wrong_user: false,
             pool: false,
+            closed_project: false,
+            as_char_b: false,
         },
         SearchCase {
             label: "search_combined",
@@ -613,6 +635,8 @@ async fn run_search(
             with_character: true,
             wrong_user: false,
             pool: false,
+            closed_project: false,
+            as_char_b: false,
         },
         SearchCase {
             label: "search_empty_result",
@@ -621,6 +645,8 @@ async fn run_search(
             with_character: true,
             wrong_user: false,
             pool: false,
+            closed_project: false,
+            as_char_b: false,
         },
         SearchCase {
             label: "search_limit_cap",
@@ -629,6 +655,8 @@ async fn run_search(
             with_character: true,
             wrong_user: false,
             pool: false,
+            closed_project: false,
+            as_char_b: false,
         },
         SearchCase {
             label: "search_truncation",
@@ -637,6 +665,8 @@ async fn run_search(
             with_character: true,
             wrong_user: false,
             pool: false,
+            closed_project: false,
+            as_char_b: false,
         },
         SearchCase {
             label: "search_operator_surface",
@@ -645,6 +675,8 @@ async fn run_search(
             with_character: false,
             wrong_user: false,
             pool: false,
+            closed_project: false,
+            as_char_b: false,
         },
         SearchCase {
             label: "search_invalid_empty",
@@ -653,6 +685,8 @@ async fn run_search(
             with_character: true,
             wrong_user: false,
             pool: false,
+            closed_project: false,
+            as_char_b: false,
         },
         // ---- episodic recall (P4.d13 unit 6): since/until + aboutCharacter ----
         SearchCase {
@@ -662,6 +696,8 @@ async fn run_search(
             with_character: true,
             wrong_user: false,
             pool: false,
+            closed_project: false,
+            as_char_b: false,
         },
         SearchCase {
             label: "search_until_createdat_fallback",
@@ -670,6 +706,8 @@ async fn run_search(
             with_character: true,
             wrong_user: false,
             pool: false,
+            closed_project: false,
+            as_char_b: false,
         },
         SearchCase {
             label: "search_since_full_iso",
@@ -678,6 +716,8 @@ async fn run_search(
             with_character: true,
             wrong_user: false,
             pool: false,
+            closed_project: false,
+            as_char_b: false,
         },
         SearchCase {
             label: "search_window_empty",
@@ -686,6 +726,8 @@ async fn run_search(
             with_character: true,
             wrong_user: false,
             pool: false,
+            closed_project: false,
+            as_char_b: false,
         },
         SearchCase {
             label: "search_about_resolved",
@@ -694,6 +736,8 @@ async fn run_search(
             with_character: true,
             wrong_user: false,
             pool: false,
+            closed_project: false,
+            as_char_b: false,
         },
         SearchCase {
             label: "search_about_alias",
@@ -702,6 +746,8 @@ async fn run_search(
             with_character: true,
             wrong_user: false,
             pool: false,
+            closed_project: false,
+            as_char_b: false,
         },
         SearchCase {
             label: "search_about_trimmed_case",
@@ -710,6 +756,8 @@ async fn run_search(
             with_character: true,
             wrong_user: false,
             pool: false,
+            closed_project: false,
+            as_char_b: false,
         },
         SearchCase {
             label: "search_about_unresolved",
@@ -718,6 +766,8 @@ async fn run_search(
             with_character: true,
             wrong_user: false,
             pool: false,
+            closed_project: false,
+            as_char_b: false,
         },
         SearchCase {
             label: "search_conversations_window_in",
@@ -726,6 +776,8 @@ async fn run_search(
             with_character: true,
             wrong_user: false,
             pool: false,
+            closed_project: false,
+            as_char_b: false,
         },
         SearchCase {
             label: "search_conversations_window_out",
@@ -734,6 +786,8 @@ async fn run_search(
             with_character: true,
             wrong_user: false,
             pool: false,
+            closed_project: false,
+            as_char_b: false,
         },
         SearchCase {
             label: "search_invalid_since",
@@ -742,6 +796,30 @@ async fn run_search(
             with_character: true,
             wrong_user: false,
             pool: false,
+            closed_project: false,
+            as_char_b: false,
+        },
+        // ── P4.D245 (v4 `9753d0eb2`): the roster gate — A off the closed roster
+        // sees no project hit; B on it sees the observatory chunk.
+        SearchCase {
+            label: "search_closed_offroster",
+            args: serde_json::json!({ "query": "guide to celestial mechanics", "sources": ["documents"] }),
+            operator_surface: false,
+            with_character: true,
+            wrong_user: false,
+            pool: false,
+            closed_project: true,
+            as_char_b: false,
+        },
+        SearchCase {
+            label: "search_closed_onroster",
+            args: serde_json::json!({ "query": "guide to celestial mechanics", "sources": ["documents"] }),
+            operator_surface: false,
+            with_character: true,
+            wrong_user: false,
+            pool: false,
+            closed_project: true,
+            as_char_b: true,
         },
         // ── P4.D216 (v4 `d1c06cd9d`): the pre-built mount pool (see the oracle).
         SearchCase {
@@ -751,6 +829,8 @@ async fn run_search(
             with_character: false,
             wrong_user: false,
             pool: true,
+            closed_project: false,
+            as_char_b: false,
         },
         SearchCase {
             label: "pool_knowledge",
@@ -759,6 +839,8 @@ async fn run_search(
             with_character: false,
             wrong_user: false,
             pool: true,
+            closed_project: false,
+            as_char_b: false,
         },
         SearchCase {
             label: "pool_default_sources",
@@ -767,6 +849,8 @@ async fn run_search(
             with_character: false,
             wrong_user: false,
             pool: true,
+            closed_project: false,
+            as_char_b: false,
         },
         SearchCase {
             label: "pool_scope_character",
@@ -775,6 +859,8 @@ async fn run_search(
             with_character: false,
             wrong_user: false,
             pool: true,
+            closed_project: false,
+            as_char_b: false,
         },
         SearchCase {
             label: "pool_scope_project",
@@ -783,6 +869,8 @@ async fn run_search(
             with_character: false,
             wrong_user: false,
             pool: true,
+            closed_project: false,
+            as_char_b: false,
         },
         SearchCase {
             label: "pool_memories_forced_off",
@@ -791,6 +879,8 @@ async fn run_search(
             with_character: true,
             wrong_user: false,
             pool: true,
+            closed_project: false,
+            as_char_b: false,
         },
         SearchCase {
             label: "pool_conversations_forced_off",
@@ -799,6 +889,8 @@ async fn run_search(
             with_character: true,
             wrong_user: false,
             pool: true,
+            closed_project: false,
+            as_char_b: false,
         },
         SearchCase {
             label: "pool_with_character_all_sources",
@@ -807,6 +899,8 @@ async fn run_search(
             with_character: true,
             wrong_user: false,
             pool: true,
+            closed_project: false,
+            as_char_b: false,
         },
         SearchCase {
             label: "pool_beats_operator_in_handler",
@@ -815,6 +909,8 @@ async fn run_search(
             with_character: false,
             wrong_user: false,
             pool: true,
+            closed_project: false,
+            as_char_b: false,
         },
     ];
     use tracing_subscriber::layer::SubscriberExt;
@@ -836,13 +932,24 @@ async fn run_search(
                 spec.user_id.clone()
             },
             character_id: if c.with_character {
-                Some(spec.char_a_id.clone())
+                Some(if c.as_char_b {
+                    spec.char_b_id.clone()
+                } else {
+                    spec.char_a_id.clone()
+                })
             } else {
                 None
             },
             embedding_profile_id: spec.embedding_profile_id.clone(),
             // P4.D216: a pool case carries NO project (the Scenario Builder shape).
-            project_id: (!c.pool).then(|| spec.project_id.clone()),
+            // P4.D245: the roster cases carry the CLOSED project.
+            project_id: (!c.pool).then(|| {
+                if c.closed_project {
+                    spec.closed_project_id.clone()
+                } else {
+                    spec.project_id.clone()
+                }
+            }),
             operator_surface: c.operator_surface,
             mount_pool: c.pool.then(|| {
                 pool_for(
@@ -916,10 +1023,11 @@ async fn run_search(
         log_failures.join("\n")
     );
     assert_eq!(pool_cases_run, 9, "every P4.D216 pool case must run");
-    // P4.114: 28 successes carry the INFO; the two validation refusals are its
-    // silence legs (measured against the regenerated oracle).
+    // P4.114: 28 successes carry the INFO (30 since P4.D245's two roster cases);
+    // the two validation refusals are its silence legs (measured against the
+    // regenerated oracle).
     assert_eq!(
-        info_cases_run, 28,
+        info_cases_run, 30,
         "every successful search compares the INFO"
     );
     assert_eq!(silent_cases_run, 2, "both refusals are silence legs");

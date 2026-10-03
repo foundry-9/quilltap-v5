@@ -48,7 +48,7 @@ interface StoreBlob {
 }
 interface DocChunk {
   id: string;
-  store: 'project' | 'character' | 'global';
+  store: 'project' | 'character' | 'global' | 'closed';
   relativePath: string;
   chunkIndex: number;
   headingContext: string | null;
@@ -99,6 +99,9 @@ interface Spec {
   projectInstructions: string;
   minimalProjectId: string;
   minimalProjectName: string;
+  closedProjectId: string;
+  closedProjectName: string;
+  closedProjectStoreFiles: StoreFile[];
   chatAId: string;
   chatMinimalId: string;
   seedTimestamp: string;
@@ -266,9 +269,26 @@ async function main(): Promise<void> {
     } as never,
     { id: spec.minimalProjectId, createdAt: PINNED_TS, updatedAt: PINNED_TS } as never,
   );
+  // P4.D245 (v4 `9753d0eb2`): a CLOSED project — `allowAnyCharacter: false`
+  // EXPLICITLY, roster [B] — so `search_scriptorium`'s roster gate has an
+  // off-roster arm (A) and an on-roster arm (B), and `project_info` renders the
+  // formatter's third sentence (`roster only (<B's name>)`).
+  await repos.projects.create(
+    {
+      name: spec.closedProjectName,
+      description: null,
+      instructions: null,
+      characterRoster: [spec.charBId],
+      allowAnyCharacter: false,
+    } as never,
+    { id: spec.closedProjectId, createdAt: PINNED_TS, updatedAt: PINNED_TS } as never,
+  );
   const project = await repos.projects.findById(spec.projectId);
   const projectStoreId = project?.officialMountPointId as string | null;
   if (!projectStoreId) throw new Error('project store not minted');
+  const closedProject = await repos.projects.findById(spec.closedProjectId);
+  const closedStoreId = closedProject?.officialMountPointId as string | null;
+  if (!closedStoreId) throw new Error('closed project store not minted');
 
   // 3. The Quilltap General singleton (pinned id) + MAIN instance_settings.
   await repos.docMountPoints.create(
@@ -320,6 +340,7 @@ async function main(): Promise<void> {
 
   // 4. Store files.
   for (const f of spec.projectStoreFiles) await writeFileTo(projectStoreId, f);
+  for (const f of spec.closedProjectStoreFiles) await writeFileTo(closedStoreId, f);
   for (const f of spec.characterKnowledgeFiles) await writeFileTo(charAVault, f);
   for (const f of spec.globalKnowledgeFiles) await writeFileTo(spec.generalMountPointId, f);
 
@@ -342,7 +363,13 @@ async function main(): Promise<void> {
 
   // 6. Doc chunks (embeddings direct). Resolve each chunk's linkId by (store, path).
   const storeIdFor = (s: DocChunk['store']): string =>
-    s === 'project' ? projectStoreId : s === 'character' ? charAVault : spec.generalMountPointId;
+    s === 'project'
+      ? projectStoreId
+      : s === 'closed'
+        ? closedStoreId
+        : s === 'character'
+          ? charAVault
+          : spec.generalMountPointId;
   const chunks = new DocMountChunksRepository();
   for (const c of spec.docChunks) {
     const mountPointId = storeIdFor(c.store);

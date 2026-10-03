@@ -34,7 +34,9 @@ interface Spec {
   userId: string;
   wrongUserId: string;
   charAId: string;
+  charBId: string;
   projectId: string;
+  closedProjectId: string;
   chatAId: string;
   $nowMs: number;
   cannedEmbeddings: Record<string, number[]>;
@@ -76,6 +78,10 @@ async function main(): Promise<void> {
     wrongUser?: boolean;
     /** P4.D216: carry the pre-built mount pool (see `buildPool`). */
     pool?: boolean;
+    /** P4.D245: the CLOSED project (roster [B]) in place of the open one. */
+    closedProject?: boolean;
+    /** P4.D245: act as char B (the rostered one) instead of char A. */
+    asCharB?: boolean;
   };
   /** P4.D216: `executeToolCallWithContext` itself — the pool/operator refusal. */
   type ExecutorCase = {
@@ -123,6 +129,11 @@ async function main(): Promise<void> {
     { label: 'search_conversations_window_in', tool: 'search', args: { query: 'what did we say about the ledger', sources: ['conversations'], since: '2025-05-01', until: '2025-07-01' } },
     { label: 'search_conversations_window_out', tool: 'search', args: { query: 'what did we say about the ledger', sources: ['conversations'], since: '2020-01-01', until: '2020-12-31' } },
     { label: 'search_invalid_since', tool: 'search', args: { query: 'recall the star navigation notes', since: 'last week' } },
+    // ── P4.D245 (v4 `9753d0eb2`): the project tier is roster-gated. The CLOSED
+    // project admits only B: A's search sees no project hit, B's sees the
+    // observatory chunk.
+    { label: 'search_closed_offroster', tool: 'search', args: { query: 'guide to celestial mechanics', sources: ['documents'] }, closedProject: true },
+    { label: 'search_closed_onroster', tool: 'search', args: { query: 'guide to celestial mechanics', sources: ['documents'] }, closedProject: true, asCharB: true },
     // ── P4.D216 (v4 `d1c06cd9d`): a pre-built mount pool — the cast vault in the
     // participant tier, the project store, Quilltap General, no character tier.
     // `noCharacter` is the Scenario Builder's own shape; the arms that KEEP a
@@ -277,9 +288,9 @@ async function main(): Promise<void> {
       const context: Record<string, unknown> = {
         userId: sc.wrongUser ? spec.wrongUserId : spec.userId,
         embeddingProfileId: undefined,
-        projectId: spec.projectId,
+        projectId: sc.closedProject ? spec.closedProjectId : spec.projectId,
       };
-      if (!sc.noCharacter) context.characterId = spec.charAId;
+      if (!sc.noCharacter) context.characterId = sc.asCharB ? spec.charBId : spec.charAId;
       if (sc.operatorSurface) context.operatorSurface = true;
       // P4.D216: the pool cases carry NO project (the Scenario Builder shape).
       if (sc.pool) {

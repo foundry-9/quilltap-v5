@@ -64,6 +64,18 @@ Red-first at the target on unported main: routes RED on the five flag-less creat
 _No crate versions bumped._
 
 Copies v4's `help/` tree at `e5c6bd0c0` over v5's (`diff -rq` against the pin is empty). Five pages change, none added or removed, so the count stays 129 and both count literals (`help_tree_embed_guard.rs`, `host_help_docs_boot.rs`) are unmoved: `project-characters.md`, `project-chats.md`, `project-settings.md`, `projects.md` (`9753d0eb2` — the roster as a tool-access list) and `cli-migrations.md` (`e5c6bd0c0` — resumable migrations and the boot-time table check). `docs/v4/` gains the same commits' `CHANGELOG.md`, `developer/API.md`, `developer/bugs.md` and the two new `developer/bugs/fixed/bug-175-*.md` / `bug-176-*.md`; the only residual against v4's `docs/` is the standing `packages-quilltap-README.md` (byte-identical to v4's `packages/quilltap/README.md` at both pins). Red-first: `help_tree_equivalence` and `help_section_size_equivalence`, regenerated at the pin, failed on the unported tree (the five pages; `cli-migrations.md` gains a second section, 744 → 745 chunks) and pass after the copy; regenerated at the baseline `f6426e196` they now fail, so the move is pinned in both directions. The embed guard and the host help-boot test pass unmoved.
+#### 2026-10-03 — test(harness): search_tools grows a closed third project — the roster gate on search_scriptorium and project_info's third sentence (P4.D245 item 10)
+
+_No crate versions bumped._
+
+`build-search-tools-fixture.ts` creates Closed Observatory (`allowAnyCharacter: false` EXPLICITLY, roster [Bram]) with one project-store doc and a chunk scoring 0.65 against the celestial query; three new rows: `pi_get_info_closed` renders `Project files and wardrobe: roster only (Bram Roster)` (the formatter's third sentence, which no row reached before), `search_closed_offroster` (Ada, off the roster: her vault and General only, no project hit) and `search_closed_onroster` (Bram: the observatory chunk first); the case driver and the Rust family gain per-case project and character overrides, the INFO-line floor moves 28 → 30. Regenerated at `e5c6bd0c0`: green on the ported tree; against the `f6426e196` oracle red on `pi_get_info_rich` first. Every pre-existing row's bytes are unmoved by the third project (UUID-normalized) except `search_operator_surface`, whose operator set is every enabled store and so legitimately gains the new store's hit on both sides.
+
+#### 2026-10-03 — test(harness): doc_fs grows a closed legacy project — the roster gate on doc_grep's on-disk walk (P4.D245 item 11)
+
+_No crate versions bumped._
+
+`build-doc-fs-fixture.ts` creates Project C (`allowAnyCharacter: false` EXPLICITLY, roster [], its minted store DISABLED like Project L's, so the resolver falls through to the legacy `<filesDir>/<id>/` walk); both sides materialize `files/<C>/draft.md`; the new `legacy-project-grep-closed` op greps it AS character A, whom the roster refuses — no legacy match at `e5c6bd0c0`, where the character-less `legacy-project-grep` on L still matches. Green on the ported tree at the target; against the `f6426e196` oracle red on exactly that op.
+
 #### 2026-10-03 — test(harness): the project_roster_access_equivalence family — v4's roster gate on a real DB with explicitly closed projects (P4.D245 item 9)
 
 _No crate versions bumped._

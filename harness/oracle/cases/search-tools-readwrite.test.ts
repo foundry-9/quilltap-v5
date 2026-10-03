@@ -45,6 +45,7 @@ interface Spec {
   userId: string;
   projectId: string;
   minimalProjectId: string;
+  closedProjectId: string;
   bogusProjectId: string;
   chatAId: string;
 }
@@ -91,6 +92,8 @@ async function main(): Promise<void> {
     // project_info
     { label: 'pi_get_info_rich', tool: 'project_info', args: { action: 'get_info' }, projectId: spec.projectId },
     { label: 'pi_get_info_minimal', tool: 'project_info', args: { action: 'get_info' }, projectId: spec.minimalProjectId },
+    // P4.D245: the formatter's THIRD sentence — a closed project with a roster.
+    { label: 'pi_get_info_closed', tool: 'project_info', args: { action: 'get_info' }, projectId: spec.closedProjectId },
     { label: 'pi_get_instructions_present', tool: 'project_info', args: { action: 'get_instructions' }, projectId: spec.projectId },
     { label: 'pi_get_instructions_none', tool: 'project_info', args: { action: 'get_instructions' }, projectId: spec.minimalProjectId },
     { label: 'pi_project_not_found', tool: 'project_info', args: { action: 'get_info' }, projectId: spec.bogusProjectId },
