@@ -662,6 +662,37 @@ pub fn find_by_character_and_source_message_ids(
     )
 }
 
+/// v4's FALLBACK `findByCharacterAndSourceMessageIds`, as its one caller (the
+/// fold-time episode pass) sees it (`memories.repository.ts:833-848`): an
+/// empty id list answers `[]` before any query (v4 `:837` — no query, no
+/// line); otherwise a failed read logs `Error finding entities by filter
+/// {collection: 'memories', error}` and answers `[]`.
+///
+/// ⚠ NOT the method's own `'Error finding memories by character and source
+/// message IDs'` (P4.144's order prescribed that literal; measured at
+/// `f6426e196` it is UNREACHABLE). v4's outer `safeQuery` wraps
+/// `this.findByFilter(…)`, which is itself a fallback `safeQuery`
+/// (`base.repository.ts:283-297`, `[]`): it logs FIRST and never throws
+/// outside a strict-failures scope (`safe-query.ts:64-69`; only the importer
+/// enters one), so the outer catch never runs. A tsx probe through v4's real
+/// repository over a renamed `memories` table logged exactly `SQLite find
+/// error {table, error}` (the backend line, the recorded unported class) then
+/// `Error finding entities by filter {collection: 'memories', error: 'no such
+/// table: memories'}` — the `doc_mount_folders` `find_by_mount_point_id_or_empty`
+/// shape. The propagating sibling stays for strict callers.
+pub fn find_by_character_and_source_message_ids_or_empty(
+    conn: &Connection,
+    character_id: &str,
+    source_message_ids: &[String],
+) -> Vec<Value> {
+    if source_message_ids.is_empty() {
+        return Vec::new();
+    }
+    super::fallback::find_by_filter_or_empty("memories", || {
+        find_by_character_and_source_message_ids(conn, character_id, source_message_ids)
+    })
+}
+
 /// `searchByContentAboutCharacter` — `{ characterId, aboutCharacterId,
 /// $or:[content,summary] }`.
 pub fn search_by_content_about_character(
@@ -1042,5 +1073,66 @@ mod tests {
         assert_eq!(out["chatB"], Value::from(1));
         assert_eq!(out["chatC"], Value::from(3));
         assert_eq!(out.as_object().unwrap().len(), 3);
+    }
+
+    // ── `find_by_character_and_source_message_ids_or_empty` (P4.144) ────────
+
+    /// A `memories` table carrying exactly the columns `COLS` selects.
+    fn fragment_scratch() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        let cols: Vec<String> = COLS.split(',').map(|c| c.trim().to_string()).collect();
+        conn.execute_batch(&format!("CREATE TABLE memories ({});", cols.join(", ")))
+            .unwrap();
+        conn
+    }
+
+    fn ids(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// The capture leg over a planted failure (the table renamed away): v4's
+    /// INNER `findByFilter` line, `collection` first, the BARE SQLite message
+    /// (no `sqlite error:` prefix — the `97b25fc53` smalls unification's rule;
+    /// v4's bytes measured through its real repository at `f6426e196`), and `[]`.
+    #[test]
+    fn fragment_read_failure_logs_v4s_find_by_filter_line_and_answers_empty() {
+        let conn = fragment_scratch();
+        conn.execute_batch("ALTER TABLE memories RENAME TO memories_x;")
+            .unwrap();
+        let (out, lines) = crate::test_support::captured_with(|| {
+            find_by_character_and_source_message_ids_or_empty(&conn, "c1", &ids(&["m1", "m2"]))
+        });
+        assert!(out.is_empty());
+        assert_eq!(
+            lines,
+            vec![
+                "ERROR quilltap::db Error finding entities by filter collection=memories \
+                 error=no such table: memories"
+                    .to_string()
+            ],
+        );
+    }
+
+    /// The silence leg: a healthy table logs nothing.
+    #[test]
+    fn fragment_read_on_a_healthy_table_is_silent() {
+        let conn = fragment_scratch();
+        let (out, lines) = crate::test_support::captured_with(|| {
+            find_by_character_and_source_message_ids_or_empty(&conn, "c1", &ids(&["m1"]))
+        });
+        assert!(out.is_empty());
+        assert!(lines.is_empty(), "a healthy read logs nothing: {lines:?}");
+    }
+
+    /// The empty-ids leg: v4 answers `[]` BEFORE the query (`:837`), so even a
+    /// missing table logs nothing.
+    #[test]
+    fn fragment_read_with_no_ids_never_queries() {
+        let conn = Connection::open_in_memory().unwrap();
+        let (out, lines) = crate::test_support::captured_with(|| {
+            find_by_character_and_source_message_ids_or_empty(&conn, "c1", &[])
+        });
+        assert!(out.is_empty());
+        assert!(lines.is_empty(), "no ids, no query, no line: {lines:?}");
     }
 }

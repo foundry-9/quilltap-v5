@@ -38,6 +38,36 @@
 //! `resolvedCount` are what see the map. The rest of the corpus is neutral
 //! across the two pins.
 //!
+//! P4.144: the pass's own LOG LINES are a comparand. v4's three reachable
+//! `[FoldEpisodePass]` lines — `Episode extraction failed` (WARN, the
+//! `!success` arm only), `Failed to write episode for character` (WARN, the
+//! per-character catch — which sits OUTSIDE both link loops, so a failed write
+//! skips the rest of that character), and `Episode pass complete` (INFO, after
+//! the episode loop) — are captured by the oracle from v4's OWN logger
+//! (`Logger.prototype` wrapped in the same `resetModules` generation) as
+//! `{kind:'logs', run, lines:[{level, message, context}]}`. This side runs each
+//! pass under `global_capture::capture_async`, keeps the lines containing
+//! `[FoldEpisodePass]`, and compares each against the oracle's line rendered
+//! the way the capture renders it — level, the default module target,
+//! message, then every context field in v4's ORDER (`key=value`, strings
+//! unquoted) — so a swapped field, a wrong level, a `sqlite error:` prefix or
+//! an extra/missing line each reds. Three runs exist for this, each over a NEW
+//! chat with Aria + Bram present: `episode_fail` (the completion THROWS —
+//! registered here through `with_failure` from the oracle's `fail` row),
+//! `episode_write_fail` (a BEFORE INSERT trigger plant aborts Aria's episode)
+//! and `episode_link_fail` (a BEFORE UPDATE plant that fires only when
+//! `relatedMemoryIds` CHANGES aborts Aria's episode LINK update — her two
+//! window fragments must stay unlinked — and a third plant refuses Bram's one
+//! fragment BACK-link, so both link-write sites reach the catch and
+//! `fragmentsLinked` must count neither; v4 at the pin: `memoriesWritten: 2,
+//! fragmentsLinked: 0`, two WARNs then the INFO). Measured red-first on
+//! unported `main` against the fresh oracle: 4 of 5 runs carry lines (every
+//! run but the `no_episodes` silence leg); with the line assert disabled,
+//! `main` also reds `episode_link_fail`'s result (`fragmentsLinked` 3 against
+//! v4's 0 — its `let _ =` link writes kept linking Aria's two fragments and
+//! counted Bram's refused back-link) and the `memories` table. The one
+//! `#[test]` fail-fasts on `episode_pass`.
+//!
 //! Generate the fixtures + oracle output (Node 24, from the v4 checkout — the
 //! CASES run from a `/tmp` mirror because jest ignores `.claude/` paths):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; W=<v5 worktree> ; M=/tmp/qt-d14-oracle
@@ -92,6 +122,10 @@ struct WindowMessageW {
 #[serde(rename_all = "camelCase")]
 struct RunW {
     name: String,
+    /// P4.144: the completion THROWS this (the oracle records it on the canned
+    /// row too; only the canned row is read here).
+    #[allow(dead_code)]
+    fail: Option<String>,
     chat_id: String,
     timeline_mode: String,
     project_id: Option<String>,
@@ -145,6 +179,40 @@ struct CannedRowW {
     messages: Vec<CannedMessageW>,
     response: String,
     usage: CannedUsageW,
+    /// P4.144: a failing call key — register a failure, not a response.
+    fail: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// P4.144: the `[FoldEpisodePass]` log-line comparand.
+// ---------------------------------------------------------------------------
+
+use quilltap_core::test_support::global_capture;
+
+const LINE_MARK: &str = "[FoldEpisodePass]";
+const PASS_TARGET: &str = "quilltap_core::services::fold_episode_pass";
+
+/// One oracle line rendered as `global_capture` renders a v5 event: `<LEVEL>
+/// <target> <message>` then ` key=value` per context field in v4's key order
+/// (the oracle's JSON keeps insertion order; `serde_json`'s `preserve_order`
+/// keeps it here). Strings render unquoted (the `%` sigil), numbers bare.
+fn render_oracle_line(line: &Value) -> String {
+    let level = line["level"]
+        .as_str()
+        .expect("oracle log level")
+        .to_uppercase();
+    let message = line["message"].as_str().expect("oracle log message");
+    let mut out = format!("{level} {PASS_TARGET} {message}");
+    if let Some(ctx) = line["context"].as_object() {
+        for (k, v) in ctx {
+            let rendered = match v {
+                Value::String(s) => s.clone(),
+                other => other.to_string(),
+            };
+            out.push_str(&format!(" {k}={rendered}"));
+        }
+    }
+    out
 }
 
 fn spec_path() -> PathBuf {
@@ -280,6 +348,7 @@ async fn fold_episode_tier3_matches_oracle() {
         std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("read oracle: {e}"));
 
     let mut oracle_results: Vec<(String, Value)> = Vec::new();
+    let mut oracle_logs: HashMap<String, Vec<String>> = HashMap::new();
     let mut oracle_canned: Vec<CannedRowW> = Vec::new();
     let mut oracle_tables: HashMap<String, Value> = HashMap::new();
     for line in oracle_text.lines() {
@@ -291,6 +360,15 @@ async fn fold_episode_tier3_matches_oracle() {
         match v.get("kind").and_then(Value::as_str) {
             Some("result") => {
                 oracle_results.push((v["run"].as_str().unwrap().to_string(), v["result"].clone()))
+            }
+            Some("logs") => {
+                let rendered = v["lines"]
+                    .as_array()
+                    .expect("oracle logs row has a lines array")
+                    .iter()
+                    .map(render_oracle_line)
+                    .collect();
+                oracle_logs.insert(v["run"].as_str().unwrap().to_string(), rendered);
             }
             Some("canned") => {
                 oracle_canned.push(serde_json::from_value(v).expect("parse canned row"))
@@ -327,6 +405,16 @@ async fn fold_episode_tier3_matches_oracle() {
                 content: m.content.clone(),
             })
             .collect();
+        if let Some(fail) = &row.fail {
+            completion = completion.with_failure(
+                &row.provider,
+                &row.model,
+                row.temperature,
+                &messages,
+                fail,
+            );
+            continue;
+        }
         completion = completion.with_response(
             &row.provider,
             &row.model,
@@ -371,6 +459,8 @@ async fn fold_episode_tier3_matches_oracle() {
     // pre-existing `cheap_llm_exec` deferral, and the oracle's fold pass writes
     // no llm_logs rows this test diffs.
     let executor = CheapLlmTaskExecutor::new();
+    // Before the first callsite is reached (the capture rig's contract).
+    global_capture::install();
 
     for (run, (oracle_name, oracle_result)) in spec.runs.iter().zip(oracle_results) {
         assert_eq!(run.name, oracle_name, "run order mismatch");
@@ -392,16 +482,40 @@ async fn fold_episode_tier3_matches_oracle() {
             project_id: run.project_id.clone(),
             in_autonomous_room: run.in_autonomous_room,
         };
-        let result =
-            run_fold_episode_pass(&db, &completion, &embedding, &executor, &selection, &input)
-                .await;
+        let (result, captured) = global_capture::capture_async(run_fold_episode_pass(
+            &db,
+            &completion,
+            &embedding,
+            &executor,
+            &selection,
+            &input,
+        ))
+        .await;
         let got = json!({
             "episodesExtracted": result.episodes_extracted,
             "memoriesWritten": result.memories_written,
             "fragmentsLinked": result.fragments_linked,
         });
         assert_eq!(got, oracle_result, "{}: result object diverges", run.name);
+
+        let got_lines: Vec<String> = captured
+            .into_iter()
+            .filter(|l| l.contains(LINE_MARK))
+            .collect();
+        let want_lines = oracle_logs
+            .get(&run.name)
+            .unwrap_or_else(|| panic!("{}: oracle ndjson has no logs row", run.name));
+        assert_eq!(
+            &got_lines, want_lines,
+            "{}: the [FoldEpisodePass] lines diverge (level, target, message, field order)",
+            run.name
+        );
     }
+    assert_eq!(
+        oracle_logs.len(),
+        spec.runs.len(),
+        "one logs row per run — regenerate the oracle NDJSON"
+    );
 
     let mut got: Vec<Value> = TABLES
         .iter()
@@ -440,14 +554,19 @@ async fn fold_episode_tier3_matches_oracle() {
         );
     }
 
-    // Sanity: the 4 seeded fragments + 1 embedded Bug-26 seed + 4 episode
-    // memories (2 episodes × 2 present characters; the absent participant gets
-    // none) = 9, and 5 vector entries (one per episode write plus the embedded
-    // seed's — the fragments were seeded without).
+    // Sanity: the 7 seeded fragments + 1 embedded Bug-26 seed + 4
+    // `episode_pass` episode memories (2 episodes × 2 present characters; the
+    // absent participant gets none) + 1 `episode_write_fail` episode (Bram's;
+    // Aria's INSERT is planted away) + 2 `episode_link_fail` episodes (both
+    // written; Aria's LINK update is planted away) = 15, and 8 vector entries
+    // (one per episode write plus the embedded seed's — the fragments were
+    // seeded without).
     let mem_rows = got[0]["rows"].as_array().expect("memory rows");
-    assert_eq!(mem_rows.len(), 9, "expected 9 memory rows");
+    assert_eq!(mem_rows.len(), 15, "expected 15 memory rows");
     let entry_rows = got[1]["rows"].as_array().expect("entry rows");
-    assert_eq!(entry_rows.len(), 5, "expected 5 vector entries");
+    assert_eq!(entry_rows.len(), 8, "expected 8 vector entries");
 
-    eprintln!("OK: fold-episode tier-3 matched oracle (results + 3 tables).");
+    eprintln!(
+        "OK: fold-episode tier-3 matched oracle (results + [FoldEpisodePass] lines + 3 tables)."
+    );
 }

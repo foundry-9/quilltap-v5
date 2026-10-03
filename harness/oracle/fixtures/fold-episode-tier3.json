@@ -1,5 +1,5 @@
 {
-  "_comment": "Tier-3 (mocked cheap-LLM + mocked-embedding) corpus for the fold-time episode pass (v4 runFoldEpisodePass, lib/memory/fold-episode-pass.ts). The COMPLETION call is pinned by recording the exact (provider|model|temperature|messages) key the oracle answered and replaying it through CannedCompletionProvider on the Rust side — so a prompt-byte divergence surfaces as a canned-miss. The EMBEDDING call is pinned by exact buildMemoryEmbeddingText text, as in the memory-gate corpus. Two runs: `episode_pass` (a narrative-timeline window with two present characters, one absent participant, and per-character fragment memories to link) and `no_episodes` (the model returns [] — the pass must write nothing).",
+  "_comment": "Tier-3 (mocked cheap-LLM + mocked-embedding) corpus for the fold-time episode pass (v4 runFoldEpisodePass, lib/memory/fold-episode-pass.ts). The COMPLETION call is pinned by recording the exact (provider|model|temperature|messages) key the oracle answered and replaying it through CannedCompletionProvider on the Rust side — so a prompt-byte divergence surfaces as a canned-miss. The EMBEDDING call is pinned by exact buildMemoryEmbeddingText text, as in the memory-gate corpus. Two runs: `episode_pass` (a narrative-timeline window with two present characters, one absent participant, and per-character fragment memories to link) and `no_episodes` (the model returns [] — the pass must write nothing). P4.144 adds three LOG-LINE runs (each over a NEW chat with TWO present characters, Aria + Bram): `episode_fail` (the completion THROWS — v4's `[FoldEpisodePass] Episode extraction failed` WARN), `episode_write_fail` (a BEFORE INSERT trigger plant aborts Aria's episode — `Failed to write episode for character` for Aria, Bram's written, then `Episode pass complete`), and `episode_link_fail` (a BEFORE UPDATE trigger plant aborts Aria's episode LINK update — v4's catch sits outside both link loops, so Aria's window fragments are NOT back-linked). The plants live in `plants` and are created by the builder in the /tmp pair only. A third plant fails Bram's fragment BACK-link in `episode_link_fail`, so both link-write sites reach the catch.",
   "_safety": "testPepperBase64 is the same THROWAWAY key the other fixtures use — never a real pepper.",
   "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
   "userId": "00000000-0000-4000-8000-0000000000ee",
@@ -74,6 +74,60 @@
           "status": "active"
         }
       ]
+    },
+    {
+      "id": "1c000000-0000-4000-8000-00000000c0e3",
+      "title": "The boiler-room afternoon",
+      "participants": [
+        {
+          "id": "9a000000-0000-4000-8000-0000000000a3",
+          "characterId": "aa000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "9b000000-0000-4000-8000-0000000000b3",
+          "characterId": "bb000000-0000-4000-8000-0000000000b1",
+          "controlledBy": "llm",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "id": "1c000000-0000-4000-8000-00000000c0e4",
+      "title": "The Brassworks fair",
+      "participants": [
+        {
+          "id": "9a000000-0000-4000-8000-0000000000a4",
+          "characterId": "aa000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "9b000000-0000-4000-8000-0000000000b4",
+          "characterId": "bb000000-0000-4000-8000-0000000000b1",
+          "controlledBy": "llm",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "id": "1c000000-0000-4000-8000-00000000c0e5",
+      "title": "The copper observatory",
+      "participants": [
+        {
+          "id": "9a000000-0000-4000-8000-0000000000a5",
+          "characterId": "aa000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "9b000000-0000-4000-8000-0000000000b5",
+          "characterId": "bb000000-0000-4000-8000-0000000000b1",
+          "controlledBy": "llm",
+          "status": "active"
+        }
+      ]
     }
   ],
   "seedMemories": [
@@ -118,6 +172,27 @@
         0.131019,
         0.163774
       ]
+    },
+    {
+      "id": "f6000000-0000-4000-8000-0000000000f6",
+      "characterId": "aa000000-0000-4000-8000-0000000000a1",
+      "content": "Aria polished the observatory lens until it sang.",
+      "summary": "polished the lens",
+      "sourceMessageId": "e5000000-0000-4000-8000-0000000000e2"
+    },
+    {
+      "id": "f7000000-0000-4000-8000-0000000000f7",
+      "characterId": "aa000000-0000-4000-8000-0000000000a1",
+      "content": "Aria wound the orrery's mainspring by hand.",
+      "summary": "wound the orrery",
+      "sourceMessageId": "e5000000-0000-4000-8000-0000000000e3"
+    },
+    {
+      "id": "f8000000-0000-4000-8000-0000000000f8",
+      "characterId": "bb000000-0000-4000-8000-0000000000b1",
+      "content": "Bram logged the comet's tail in chalk on the dome wall.",
+      "summary": "logged the comet",
+      "sourceMessageId": "e5000000-0000-4000-8000-0000000000e3"
     }
   ],
   "runs": [
@@ -192,6 +267,108 @@
           "createdAt": "2026-07-15T20:00:00.000Z"
         }
       ]
+    },
+    {
+      "name": "episode_fail",
+      "chatId": "1c000000-0000-4000-8000-00000000c0e3",
+      "timelineMode": "realtime",
+      "projectId": null,
+      "inAutonomousRoom": false,
+      "fail": "the cheap model's boiler burst mid-sentence",
+      "episodeResponse": "",
+      "usage": {
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "totalTokens": 0
+      },
+      "windowMessages": [
+        {
+          "id": "e3000000-0000-4000-8000-0000000000e1",
+          "role": "USER",
+          "content": "Mind the pressure gauge.",
+          "participantId": null,
+          "createdAt": "2026-07-16T14:00:00.000Z"
+        },
+        {
+          "id": "e3000000-0000-4000-8000-0000000000e2",
+          "role": "ASSISTANT",
+          "content": "The needle is dancing again.",
+          "participantId": "9a000000-0000-4000-8000-0000000000a3",
+          "createdAt": "2026-07-16T14:02:00.000Z"
+        }
+      ]
+    },
+    {
+      "name": "episode_write_fail",
+      "chatId": "1c000000-0000-4000-8000-00000000c0e4",
+      "timelineMode": "realtime",
+      "projectId": null,
+      "inAutonomousRoom": false,
+      "episodeResponse": "[{\"narrative\": \"At the Brassworks fair Aria and Bram rode the steam carousel twice.\", \"summary\": \"rode the steam carousel\", \"entities\": [\"Brassworks fair\"], \"importance\": 0.7}]",
+      "usage": {
+        "promptTokens": 200,
+        "completionTokens": 40,
+        "totalTokens": 240
+      },
+      "windowMessages": [
+        {
+          "id": "e4000000-0000-4000-8000-0000000000e1",
+          "role": "USER",
+          "content": "Shall we ride it again?",
+          "participantId": null,
+          "createdAt": "2026-07-17T15:00:00.000Z"
+        },
+        {
+          "id": "e4000000-0000-4000-8000-0000000000e2",
+          "role": "ASSISTANT",
+          "content": "Twice is tradition, Bram.",
+          "participantId": "9a000000-0000-4000-8000-0000000000a4",
+          "createdAt": "2026-07-17T15:03:00.000Z"
+        },
+        {
+          "id": "e4000000-0000-4000-8000-0000000000e3",
+          "role": "ASSISTANT",
+          "content": "Then twice it is.",
+          "participantId": "9b000000-0000-4000-8000-0000000000b4",
+          "createdAt": "2026-07-17T15:05:00.000Z"
+        }
+      ]
+    },
+    {
+      "name": "episode_link_fail",
+      "chatId": "1c000000-0000-4000-8000-00000000c0e5",
+      "timelineMode": "realtime",
+      "projectId": null,
+      "inAutonomousRoom": false,
+      "episodeResponse": "[{\"narrative\": \"In the copper observatory Aria and Bram charted the comet's return.\", \"summary\": \"charted the comet\", \"entities\": [\"copper observatory\"], \"importance\": 0.75}]",
+      "usage": {
+        "promptTokens": 210,
+        "completionTokens": 42,
+        "totalTokens": 252
+      },
+      "windowMessages": [
+        {
+          "id": "e5000000-0000-4000-8000-0000000000e1",
+          "role": "USER",
+          "content": "Is it back yet?",
+          "participantId": null,
+          "createdAt": "2026-07-18T22:00:00.000Z"
+        },
+        {
+          "id": "e5000000-0000-4000-8000-0000000000e2",
+          "role": "ASSISTANT",
+          "content": "The lens is ready.",
+          "participantId": "9a000000-0000-4000-8000-0000000000a5",
+          "createdAt": "2026-07-18T22:04:00.000Z"
+        },
+        {
+          "id": "e5000000-0000-4000-8000-0000000000e3",
+          "role": "ASSISTANT",
+          "content": "There — the tail, low over the river.",
+          "participantId": "9b000000-0000-4000-8000-0000000000b5",
+          "createdAt": "2026-07-18T22:09:00.000Z"
+        }
+      ]
     }
   ],
   "profile": {
@@ -214,7 +391,46 @@
       1,
       0,
       0
+    ],
+    "rode the steam carousel\n\nAt the Brassworks fair Aria and Bram rode the steam carousel twice.\n(when: 2026-07-17 · place: Brassworks fair)": [
+      0,
+      0,
+      1,
+      0
+    ],
+    "charted the comet\n\nIn the copper observatory Aria and Bram charted the comet's return.\n(when: 2026-07-18 · place: copper observatory)": [
+      0,
+      0,
+      0,
+      1
     ]
   },
-  "cannedFailures": []
+  "cannedFailures": [],
+  "plants": [
+    {
+      "name": "qt_plant_episode_write",
+      "event": "INSERT",
+      "content": "At the Brassworks fair Aria and Bram rode the steam carousel twice.",
+      "characterId": "aa000000-0000-4000-8000-0000000000a1",
+      "message": "planted episode write failure"
+    },
+    {
+      "name": "qt_plant_episode_link",
+      "event": "UPDATE",
+      "content": "In the copper observatory Aria and Bram charted the comet's return.",
+      "characterId": "aa000000-0000-4000-8000-0000000000a1",
+      "message": "planted episode link failure",
+      "extraCondition": "NEW.relatedMemoryIds IS NOT OLD.relatedMemoryIds",
+      "comment": "P4.144: v4's INSERT path is `create` THEN an `updateForCharacter({ embedding })` (memory-service.ts:595-606), so a trigger on content + character alone fires INSIDE the gate (measured: memoriesWritten 1, the create-path arm again). Requiring the link column to CHANGE leaves the embedding update alone and aborts the episode's own LINK update (fold-episode-pass.ts:176-180) — the arm v4's catch placement turns into 'skip the rest of that character'."
+    },
+    {
+      "name": "qt_plant_fragment_backlink",
+      "event": "UPDATE",
+      "content": "Bram logged the comet's tail in chalk on the dome wall.",
+      "characterId": "bb000000-0000-4000-8000-0000000000b1",
+      "message": "planted fragment back-link failure",
+      "extraCondition": "NEW.relatedMemoryIds IS NOT OLD.relatedMemoryIds",
+      "comment": "P4.144: Bram's one window fragment in `episode_link_fail` refuses its BACK-link (the second `updateForCharacter` site, fold-episode-pass.ts:194-197), so the per-character catch is exercised on BOTH link writes: Bram's episode links the fragment, the fragment's back-link fails, and `fragmentsLinked` must not count it (v5's pre-port `let _ =` counted it)."
+    }
+  ]
 }

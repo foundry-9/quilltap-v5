@@ -162564,3 +162564,111 @@ logs `Failed to import image profile profileId=…`); every refused tag /
 template / profile logs v4's WARN with a camelCase id; the server log on a
 refused restored chat shows the THIRD `quilltap::db` ERROR `Failed to create
 chat`.
+## P4.144 — the memory + harness smalls: v4's three `[FoldEpisodePass]` lines, the fragment/chat fallback reads, the `ALIAS_ASSIGN` widening, the MPJ llm-logs comparand (2026-10-02)
+
+Lane branch `claude/memory-harness-smalls-fold-13f6df`, cut from `main`
+`75219b8dd`; pin `/tmp/qt-v4-pin-p4144-f6426e196` (detached at `f6426e196`,
+three symlink classes; `rev-parse` and `package.json` `4.10.0-dev.106`
+verified). The §R.2 probe PASSED at lane start and before every regen batch:
+branch `main`, HEAD `f6426e196`, both logs empty, dirt = EXACTLY the three
+waived bug-175/176 docs paths.
+
+### Unit 1 — the fold pass's lines, catch placement and reads (Tier 1 items 1–6)
+
+- **L1/L2/L3 ported** in `services/fold_episode_pass.rs` at v4's levels and
+  bytes (default module target, camelCase fields in v4's order, `%`):
+  `Episode extraction failed` on `!success` only (the `[]` arm silent);
+  `Failed to write episode for character` with `error` through
+  `db::fallback::error_text`; `Episode pass complete` after the episode loop.
+  Measured at the pin: L1's `error` is the thrown message verbatim (v4's cheap
+  fallback walk found no stand-ins and did NOT rewrite it); L2's is the bare
+  `RAISE(ABORT, …)` message on both sides.
+- **v4's catch placement**: the per-character body is ONE fallible
+  `write_episode_for_character` (gate write, episode link update, fragment
+  back-links all `?`); the `Err` arm is L2 then the next character.
+  `fragments_linked` increments only after a back-link write returned;
+  `update_for_character`'s `Ok(false)` stays a non-error (v4's `null`).
+- **Reads**: the chat read on `chats_read::find_by_id_or_none`; the fragment
+  read on the NEW `memories_read::find_by_character_and_source_message_ids_or_empty`.
+- **Recorded, NOT ported** (module doc): L4 (`fold-episode-pass.ts:218`) and L5
+  (`context-summary.ts:566`, ERROR, 3-arg, colon included) — unreachable; the
+  dead `SKIP_GATE` count arm (`memory-service.ts:396-398`, `8bf3cb5f3`) as a
+  why-comment at the count. No `GateAction::SkipGate`, no count change.
+
+**What the order got wrong (measured, §R.4):**
+
+1. **The fragment-read twin's literal is UNREACHABLE in v4.** The order
+   prescribed `Error finding memories by character and source message IDs
+   {collection, characterId, count, error}`. v4's outer `safeQuery` wraps
+   `this.findByFilter(…)`, itself a FALLBACK `safeQuery`
+   (`base.repository.ts:283-297`) that logs first and answers `[]`; outside a
+   strict scope it never throws, so the outer catch never runs. A tsx probe
+   through v4's REAL repository at the pin, over a renamed `memories` table,
+   logged exactly `SQLite find error {table:'memories', error}` (the backend
+   line — the recorded unported class, `search_replace`/`ui_search`/
+   `chats_search`'s `UNPORTED_BACKEND_LINES`) then `Error finding entities by
+   filter {collection:'memories', error:'no such table: memories'}` and
+   answered `[]`; the empty-ids call logged nothing. So the twin delegates to
+   the EXISTING home `db::fallback::find_by_filter_or_empty("memories", …)` —
+   the `doc_mount_folders::find_by_mount_point_id_or_empty` shape. **No new
+   literal exists outside `db/fallback.rs`**, so §S handoff 2 (the optional
+   fold of a new home message) DISSOLVES; `fallback_home_guard` green.
+2. **The order's UPDATE plant fires inside the GATE, not at the link update.**
+   v4's INSERT path is `create` THEN `updateForCharacter({ embedding })`
+   (`memory-service.ts:595-606`), so `BEFORE UPDATE … WHEN NEW.content =
+   marker AND characterId = A` aborted the embedding update (measured:
+   `memoriesWritten: 1`, the create-path arm a second time). The plant gains
+   `AND NEW.relatedMemoryIds IS NOT OLD.relatedMemoryIds`, so it fires on the
+   episode's own LINK update (measured: `memoriesWritten: 2`).
+3. **M4 as written ("the back-link `?` → `let _ =`") would SURVIVE**: nothing
+   in the corpus failed a fragment BACK-link. A third plant
+   (`qt_plant_fragment_backlink`, Bram's one window fragment in
+   `episode_link_fail`, same changed-links guard) makes both link-write sites
+   reach the catch; M4 (episode link) and M4b (back-link) both red.
+
+**The differential** (`fold_episode_tier3_equivalence`, a TRUE two-sided log
+comparand): the oracle wraps `Logger.prototype.{error,warn,info,debug}` after
+the module imports (same `resetModules` generation) and emits `{kind:'logs',
+run, lines:[{level,message,context}]}` per run; a per-run `fail` records the
+key with `fail` and throws. The Rust side runs each pass under
+`global_capture::capture_async`, keeps `[FoldEpisodePass]` lines, and compares
+each to the oracle line rendered as the capture renders it (level, target,
+message, fields in v4's order) — full-string, order-sensitive. Corpus: three
+new chats (Aria + Bram present), three window fragments, three runs, three
+plants (`plants` in the JSON, created by the builder in the `/tmp` pair only),
+two harvested canned embeddings (`[0,0,1,0]`, `[0,0,0,1]` — plain INSERTs).
+
+| run | v4 at the pin | unported `main` |
+|---|---|---|
+| `episode_pass` | L3 `2/4/8` | no line → **RED (first, fail-fast)** |
+| `no_episodes` | none | none (silence leg) |
+| `episode_fail` | L1 | no line → red |
+| `episode_write_fail` | L2 (Aria) + L3 `1/1/0` | no lines → red |
+| `episode_link_fail` | L2 (Aria, link) + L2 (Bram, back-link) + L3 `1/2/0` | no lines; result `fragmentsLinked` 3 vs 0; `memories` table diverges → red |
+
+Red-first **4 of 5**, counted from the NDJSON (`logs` rows with non-empty
+`lines` = 4); with the line assert disabled (a throwaway edit, restored),
+unported `main` matched every other result and failed `episode_link_fail`'s
+result and the `memories` table.
+
+**Mutations** (each applied, observed red, restored by backup — `cmp` clean):
+M0 (`main`'s file whole) red on `episode_pass`; M1 (L1 collapsed) red on
+`episode_fail`; M2 (L1 on `[]`) red on `no_episodes`; M3 (L2 dropped) red on
+`episode_write_fail`; M4 (episode-link `?` → `let _`) red on
+`episode_link_fail`'s result (2 vs 0); M4b (back-link `?` → `let _`) red on
+the same (1 vs 0); M5 (L3 in the episode loop) red on `episode_pass` (2 lines,
+partial counts); M6 (`%error`, the `sqlite error:` prefix) red on
+`episode_write_fail`; M7 (two L3 fields swapped) red on `episode_pass`.
+
+**Unit pins** (`memories_read`, `captured_with`): the planted rename leg
+(`ERROR quilltap::db Error finding entities by filter collection=memories
+error=no such table: memories` — v4's bytes as measured), the healthy-table
+silence leg, the empty-ids leg. ⚠ The empty-ids leg is guarded TWICE (the
+strict sibling also returns `[]` on no ids), so dropping the twin's early
+return alone stays green — recorded, not a vacuous claim.
+
+**Neutral** (run at the pin through the driver, `--run-all` of four, all ok
+with non-zero durations): `fold_episode_tier3`, `context_summary_service_tier3`,
+`memory_pipeline_jobs_tier3` (10 cases OK), `courier_images_routes`; plus
+`fallback_home_guard`, `spelling_guard`, `bare_cheap_llm_executor_guard`
+green and `quilltap-core --lib db::memories_read` 8/8.

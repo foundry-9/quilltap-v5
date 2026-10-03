@@ -16,6 +16,25 @@
  * real code, and the three affected tables are structural-diffed against
  * `quilltap_core::services::fold_episode_pass` by the Rust harness.
  *
+ * P4.144: the pass's own LOG LINES are a comparand too. After the module
+ * imports (same `resetModules` generation, so this `Logger` IS the class of the
+ * pass's `logger` instance — the `jest-oracle-instanceof-across-resetmodules`
+ * trap does not apply), `Logger.prototype.{error,warn,info,debug}` are wrapped:
+ * every message starting `[FoldEpisodePass]` is pushed to the current run's
+ * sink as `{level, message, context}` (context in v4's key order), then the
+ * call goes through. The wrap sits ABOVE `log()`'s level filter, so
+ * `LOG_LEVEL=error` hides nothing it sees (the `instance-settings-json-warns`
+ * precedent). Each run emits `{kind:'logs', run, lines}` beside its `result`.
+ * A run with `fail` set records its key WITH `fail` and THROWS `new
+ * Error(fail)` from `sendMessage` (the csum `fail` shape); the Rust side
+ * registers it through `CannedCompletionProvider::with_failure`. The two
+ * `memories` trigger plants (`plants`) come from the fixture builder.
+ *
+ * Mocks: `createLLMProvider` (canned / failing `sendMessage`),
+ * `generateEmbeddingForUser` (canned vectors), `getApiKeyForCheapLLMSelection`
+ * (a dummy key); `better-sqlite3` → the cipher driver; the DB manager,
+ * repositories, factory and vector store un-mocked (`requireActual`).
+ *
  * Run (Node 24, from the v4 checkout — cp the cases to a /tmp mirror; jest
  * ignores .claude/ paths):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; W=<v5 worktree> ; M=/tmp/qt-d14-oracle
@@ -76,6 +95,8 @@ interface RunSpec {
   projectId: string | null;
   inAutonomousRoom: boolean;
   episodeResponse: string;
+  /** P4.144: when set, `sendMessage` records the key and THROWS this message. */
+  fail?: string;
   usage: Usage;
   windowMessages: Array<{
     id: string;
@@ -143,6 +164,7 @@ async function main(): Promise<void> {
       messages: Array<{ role: string; content: string }>;
       response: string;
       usage: Usage;
+      fail?: string;
     }
   >();
   const missingEmbeddings: string[] = [];
@@ -212,8 +234,10 @@ async function main(): Promise<void> {
               messages,
               response: currentRun.episodeResponse,
               usage: currentRun.usage,
+              ...(currentRun.fail ? { fail: currentRun.fail } : {}),
             });
           }
+          if (currentRun.fail) throw new Error(currentRun.fail);
           return {
             content: currentRun.episodeResponse,
             finishReason: 'stop',
@@ -237,6 +261,24 @@ async function main(): Promise<void> {
     '@/lib/database/backends/sqlite/mount-index-client'
   );
   const { runFoldEpisodePass } = await import('@/lib/memory/fold-episode-pass');
+  const { Logger } = await import('@/lib/logger');
+
+  // P4.144: capture v4's own `[FoldEpisodePass]` lines per run (see header).
+  let runSink: Array<{ level: string; message: string; context: unknown }> | null = null;
+  for (const level of ['error', 'warn', 'info', 'debug'] as const) {
+    const original = (Logger.prototype as unknown as Record<string, (...a: unknown[]) => void>)[level];
+    (Logger.prototype as unknown as Record<string, unknown>)[level] = function (
+      this: unknown,
+      message: string,
+      context?: Record<string, unknown>,
+      ...rest: unknown[]
+    ) {
+      if (runSink && typeof message === 'string' && message.startsWith('[FoldEpisodePass]')) {
+        runSink.push({ level, message, context: JSON.parse(JSON.stringify(context ?? {})) });
+      }
+      return original.call(this, message, context, ...rest);
+    };
+  }
 
   await initializeDatabase();
 
@@ -252,6 +294,7 @@ async function main(): Promise<void> {
   const lines: string[] = [];
   for (const run of spec.runs) {
     currentRun = run;
+    runSink = [];
     const result = await runFoldEpisodePass({
       chatId: run.chatId,
       userId: spec.userId,
@@ -262,6 +305,8 @@ async function main(): Promise<void> {
       inAutonomousRoom: run.inAutonomousRoom,
     });
     lines.push(JSON.stringify({ kind: 'result', run: run.name, result }));
+    lines.push(JSON.stringify({ kind: 'logs', run: run.name, lines: runSink }));
+    runSink = null;
   }
   currentRun = null;
 

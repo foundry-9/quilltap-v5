@@ -9,7 +9,10 @@
  * form the episode memory, and the per-turn FRAGMENT memories (pinned ids +
  * `sourceMessageId`s inside the folded window) the pass links the consolidated
  * episode to. No vector entries are seeded: the pass's gate writes must land as
- * plain INSERTs, and an empty per-character store is exactly that.
+ * plain INSERTs, and an empty per-character store is exactly that. P4.144 adds
+ * the corpus's `plants` — two `memories` triggers (BEFORE INSERT / BEFORE
+ * UPDATE) that fail one character's episode write in the log-line runs; they
+ * exist ONLY in this /tmp pair.
  *
  * Both the jest oracle and the Rust test then copy BOTH fixture files and run
  * only the pass — which mints new ids/timestamps — so the seed rows are
@@ -60,6 +63,21 @@ interface SeedMemory {
    */
   embedding?: number[];
 }
+/**
+ * P4.144: a trigger PLANT that makes one character's episode write (INSERT) or
+ * episode link update (UPDATE) fail, narrowed on the marker narrative AND the
+ * character so every other run's writes are untouched. Both differential sides
+ * copy this /tmp pair, so both see the same trigger.
+ */
+interface PlantSpec {
+  name: string;
+  event: 'INSERT' | 'UPDATE';
+  content: string;
+  characterId: string;
+  message: string;
+  /** An extra `AND …` clause (the link plant: fire only when the links change). */
+  extraCondition?: string;
+}
 interface Spec {
   testPepperBase64: string;
   userId: string;
@@ -67,6 +85,7 @@ interface Spec {
   characters: CharacterSpec[];
   chats: ChatSpec[];
   seedMemories: SeedMemory[];
+  plants: PlantSpec[];
 }
 
 async function main(): Promise<void> {
@@ -258,11 +277,25 @@ async function main(): Promise<void> {
     }
   }
 
+  // P4.144: the log-line runs' trigger plants, created AFTER every seed write
+  // so no seed trips them. `RAISE(ABORT, …)` surfaces as the bare message on
+  // both sides (v4's SqliteError.message; v5 through `db::fallback::error_text`).
+  const sqlString = (v: string) => `'${v.replace(/'/g, "''")}'`;
+  for (const plant of spec.plants) {
+    maindb.exec(
+      `CREATE TRIGGER ${plant.name} BEFORE ${plant.event} ON memories ` +
+        `WHEN NEW.content = ${sqlString(plant.content)} AND NEW.characterId = ${sqlString(plant.characterId)}` +
+        (plant.extraCondition ? ` AND ${plant.extraCondition} ` : ' ') +
+        `BEGIN SELECT RAISE(ABORT, ${sqlString(plant.message)}); END;`
+    );
+  }
+
   closeMountIndexSQLiteClient();
   await closeDatabase();
   process.stderr.write(
     `built fold-episode fixture: ${outMain} + ${outMount} (${spec.characters.length} characters, ` +
-      `${spec.chats.length} chats, ${spec.seedMemories.length} fragment memories)\n`
+      `${spec.chats.length} chats, ${spec.seedMemories.length} fragment memories, ` +
+      `${spec.plants.length} trigger plants)\n`
   );
   process.exit(0);
 }
