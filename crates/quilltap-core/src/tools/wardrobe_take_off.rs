@@ -150,7 +150,14 @@ fn run(
     ops: &[TakeOffOp],
 ) -> Result<(WardrobeTakeOffToolOutput, Vec<String>), DbError> {
     let docs = DocMountDocumentsRepository::new(mount);
-    let tiers = resolve_shared_wardrobe_tiers_for_chat(main, mount, chat_id, character_id);
+    let tiers = resolve_shared_wardrobe_tiers_for_chat(
+        main,
+        mount,
+        chat_id,
+        character_id,
+        // A character tool call: the project roster applies (v4 `9753d0eb2`).
+        Default::default(),
+    );
 
     let mut results: Vec<WardrobeTakeOffOpResult> = Vec::new();
     let mut applied_count = 0usize;

@@ -230,7 +230,14 @@ fn run(
     input: &LocateInput,
 ) -> Result<WardrobeReadToolOutput, DbError> {
     let docs = DocMountDocumentsRepository::new(mount);
-    let tiers = resolve_shared_wardrobe_tiers_for_chat(main, mount, chat_id, character_id);
+    let tiers = resolve_shared_wardrobe_tiers_for_chat(
+        main,
+        mount,
+        chat_id,
+        character_id,
+        // A character tool call: the project roster applies (v4 `9753d0eb2`).
+        Default::default(),
+    );
     let item = resolve_wardrobe_item_across_tiers(
         main,
         &docs,

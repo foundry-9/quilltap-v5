@@ -161,7 +161,14 @@ fn run(
     // The character's own wardrobe merged under the shared archetypes (group +
     // project + Quilltap General, v4 `8600c83f`). Character items win on id
     // collision so a personal override masks the shared item.
-    let tiers = resolve_shared_wardrobe_tiers_for_chat(main, mount, chat_id, character_id);
+    let tiers = resolve_shared_wardrobe_tiers_for_chat(
+        main,
+        mount,
+        chat_id,
+        character_id,
+        // A character tool call: the project roster applies (v4 `9753d0eb2`).
+        Default::default(),
+    );
     let all_items = find_wearable_pool_for_character(main, &docs, character_id, &tiers)?;
 
     let equipped =

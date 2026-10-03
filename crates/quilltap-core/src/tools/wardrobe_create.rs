@@ -266,7 +266,15 @@ fn run(
     // Keyed on the *target* character, not the caller: a gift is assembled from
     // what the recipient can reach, and the group tier is per-character
     // (`8600c83f` — one of the two real fixes riding that commit).
-    let tiers = resolve_shared_wardrobe_tiers_for_chat(main, mount, chat_id, &target_character_id);
+    let tiers = resolve_shared_wardrobe_tiers_for_chat(
+        main,
+        mount,
+        chat_id,
+        // The gate keys on the TARGET (v4 `targetCharacterId`), a character tool
+        // call: the project roster applies (v4 `9753d0eb2`).
+        &target_character_id,
+        Default::default(),
+    );
 
     // Resolve components against the target character's wardrobe + shared archetypes.
     let components = resolve_component_items(

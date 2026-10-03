@@ -42,7 +42,9 @@ use crate::services::avatar_generation::{
 use crate::services::image_job_common::with_both_conns;
 use crate::services::queue_service::enqueue_wardrobe_outfit_announcement;
 use crate::tools::wardrobe_shared::{add_to_slot, equip_item, remove_from_slot, replace_item};
-use crate::wardrobe_tiers::{resolve_shared_wardrobe_tiers_for_chat, SharedWardrobeTiers};
+use crate::wardrobe_tiers::{
+    resolve_shared_wardrobe_tiers_for_chat, SharedWardrobeTierOptions, SharedWardrobeTiers,
+};
 
 use super::types::{ErrorKind, Response};
 
@@ -533,8 +535,14 @@ pub async fn chat_equip(db: &Db, user_id: &str, chat_id: &str, body: Value) -> R
     let out = with_both_conns(db, move |main, mount| {
         // Every shared tier in scope for THIS character (v4
         // `resolveSharedWardrobeTiersForChat` — each half `[]` on any failure).
-        let tiers =
-            resolve_shared_wardrobe_tiers_for_chat(main, mount, &cid, &character_id_for_tiers);
+        // The operator is dressing the character, so the project roster does not apply.
+        let tiers = resolve_shared_wardrobe_tiers_for_chat(
+            main,
+            mount,
+            &cid,
+            &character_id_for_tiers,
+            SharedWardrobeTierOptions { operator: true },
+        );
         let docs = DocMountDocumentsRepository::new(mount);
 
         let updated: Value = match parsed.mode.as_str() {
