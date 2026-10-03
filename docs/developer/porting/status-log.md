@@ -162872,6 +162872,7 @@ behaviour. The escalation is closed as a RULED divergence.
   2026-10-02) — the unifier's call where it lands.
 - §S handoff 5 (Unit 3's close) stands with the new reading: a codec change
   trips the pin, which then retires by measurement.
+
 ## P4.145 — the Salon's attachment-only send carries v4's sentence + v4's `[Attached: …]` bubble + the `fileProcessing` neutrality pin (SPA only) — LANE COMPLETE (2026-10-02)
 
 Branch `claude/spa-attachment-sentence-neutrality-644837` (worktree
