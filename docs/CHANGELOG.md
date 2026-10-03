@@ -12,6 +12,36 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — docs(porting): unify the f6426e196 recorded-divergences round — all seven lanes landed; the review's findings fixed
+
+_Docs-only change._
+
+Unification of P4.139 ∥ P4.140 ∥ P4.141 ∥ P4.142 ∥ P4.143 ∥ P4.144 ∥ P4.145 onto main. The oracle baseline stays `f6426e196`. The drift ledger's §2 probe passed, with v4 still at the two commits `/driftcheck` recorded.
+
+**Scope.** All seven lanes landed, cherry-picked in the order P4.141 → P4.142 → P4.139 → P4.140 → P4.143 → P4.144 → P4.145, with versions recounted from the base. P4.145 was picked last, after its session committed the human's Option A placeholder ruling.
+
+**Wires.**
+- The API-key home fold and the web-search key read (§S.1, §S.2).
+- The keyed Scenario Builder spine pin (§S.3).
+- P4.142's strict-repository wraps on backup, `.qtap` export and import.
+- `orchestrator_tier3` and `build_context_tier3` regenerated once from the pin.
+- P4.145's live attachment-only beat run against P4.140's real frame.
+
+**Review.**
+- Blocking, fixed: P4.139's wizard vision-key regression.
+- Blocking, fixed: the backup/export silent drop, closed by the strict wraps.
+- Also fixed: the cascade delete's shared-image check, now strict (a recorded divergence, surfaced to the human); `is_timeout_failure` reading the transport kind; the Anthropic usage read; the Ollama trailing slash; the converged `strictFailures` pin; the widened census import guard; P4.140's POSIX-`TZ` docs.
+
+**Gate.**
+- fmt, clippy (both feature sets) and the release build are clean.
+- Full pinned sweep: 576 ok, 3 standing reds, 3 refused by design, out of 582.
+- Tier R: 271/0.
+- `cargo test --workspace`: 660 binaries, 4,223 passed, 5 failed (three standing reds plus two env-block artifacts), 3 ignored, zero `SKIP:`.
+- SPA: 466 files, 8,801 tests passed.
+- Full Playwright: 357 passed, 0 failed, 6 skipped.
+
+Also commits the separator restore after P4.145's pick (`8af2a0070`, which had no entry of its own), the orders' Unification paragraphs, the phase plan, the round record, CLAUDE.md's Status and the ledger's re-probe line.
+
 #### 2026-10-03 — chore(unify): drop a redundant cascade-pin assert; P4.130's header records what P4.143 closed
 
 _No crate versions bumped._

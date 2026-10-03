@@ -7124,7 +7124,56 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
-## The `f6426e196` recorded-divergences round (P4.139 ∥ P4.140 ∥ P4.141 ∥ P4.142 ∥ P4.143 ∥ P4.144 ∥ P4.145) — ORDERED 2026-10-02
+## The `f6426e196` recorded-divergences round (P4.139 ∥ P4.140 ∥ P4.141 ∥ P4.142 ∥ P4.143 ∥ P4.144 ∥ P4.145) — UNIFIED 2026-10-03 (ordered 2026-10-02)
+
+**UNIFIED on main (2026-10-03) — ALL SEVEN LANES LANDED; the oracle
+baseline STAYS `f6426e196`** (no drift absorbed; the §2 probe passed at
+unification — v4 HEAD `e5c6bd0c0`, two commits past the baseline exactly as
+the ledger's 2026-10-02 `/driftcheck` recorded, both rows still UNPROCESSED;
+every regen pinned at `f6426e196`). Round record: `status-log.md` → "The
+`f6426e196` recorded-divergences round — UNIFICATION record (2026-10-03)";
+each order's **Unification:** paragraph lists exactly what stays OPEN. **The
+§3 review (six parallel readers + the unifier) found ONE BLOCKING
+regression in a lane** (P4.139: the wizard's vision key overwritten with
+`''` for a keyless vision profile, where v4 keeps the primary's key — fixed,
+helper-pinned) **and ONE blocking handoff for the union** (P4.142's
+strict-scope wraps — without them backup and export silently drop every
+vaulted character on a broken mount index — applied to the backup collect,
+the `.qtap` export and the import, each pinned); plus a fourth data-safety
+caller the lane never listed (the cascade delete's shared-image check, now
+strict — a recorded divergence **surfaced to the human for confirmation**),
+`is_timeout_failure` reading the transport kind (a real provider timeout
+skipped v4's background retry), the Anthropic usage read and the Ollama
+slash in P4.141's guard, P4.143's `strictFailures` pin converged once the
+import went strict, the census's import guard widened, and P4.140's
+POSIX-`TZ` docs corrected. Gate: fmt/clippy (both feature sets)/release clean; the full sweep from the pin 576 ok / 3 standing reds / 3 refused by design of 582 (no catch); Tier R 271/0; `cargo test --workspace` 660 binaries / 4,223 / 5 (three standing + two env-block artifacts) / 3 ignored, zero `SKIP:`; SPA 466 files / 8,801; full Playwright 357 / 0 / 6. Versions: core 0.0.1183, harness 0.0.1110, host 0.0.176, web 0.0.213, tauri 0.0.8, SPA 0.5.794.
+
+**NEXT (in order):**
+1. **The `e5c6bd0c0` drift catch-up** (the ledger's §3: `9753d0eb2` PORT —
+   the project roster as a tool-access gate, `allowAnyCharacter` defaulting
+   `true`, the roster auto-add removed, four help pages; `e5c6bd0c0`
+   CONVERGENCE — v4's own fixes for this port's filings 175/176 shaped
+   differently from P4.135: a failed resumable migration now DEFERS and
+   boots, plus a boot-time structural check behind a `structure` service in
+   `/api/health`). Run `/driftcheck` first; P4.135's D184-fatal premise is
+   overtaken.
+2. **The owed dogfood pass** over this round's 💸 rows (the round record's
+   list, corrected: P4.140's POSIX-`TZ` row splits; the strict wraps, the
+   cascade abort, the background timeout retry and the wizard vision key
+   added).
+3. **A follow-ups smalls round** from the Unification paragraphs, by name:
+   the sync applier RULING + the 23 held G2/G3 sites (P4.142); the strict
+   scope honoured by the other fallback homes the importer reaches (P4.142
+   × P4.143 item 11); the scenario conflict checks and `list_chats`' first
+   read (P4.142); the greeting's corrupt-key arm, the wizard caller pin, the
+   dead `wrapper-no-caller` wrappers (a human call), the two hand-wraps
+   (P4.139); the Google `.wire` row + `assert_catch_lines` widening, the
+   `No parts found` WARN, the family's `transport_kind == None` / send-side
+   policy gaps (P4.141); the import DB-error arm and the snake_case WARN
+   fields (P4.143); the reached-but-unported repository lines and the
+   `character_id_of` divergence (P4.144); `ProductionSpineFactory::new`'s
+   UTC default + a `TimeZone::get(server_tz)` census needle (P4.140).
+
 
 **Baseline `f6426e196`; v4 AT the baseline at the planning probe (HEAD
 `f6426e196`, `origin/main` agreeing after a fetch, `bugfix` `1a2b2164c` and

@@ -163094,3 +163094,202 @@ by file (documents 5/5, workspace 13/13).
 
 Versions: SPA 0.5.793 → **0.5.794** (a second bump: the ruling landed after
 lane close; the unifier recounts it).
+
+## The `f6426e196` recorded-divergences round — UNIFICATION record (2026-10-03)
+
+Seven lanes, ordered 2026-10-02 (`38f23517b`): P4.139 (the API-key read
+class) ∥ P4.140 (the Salon spine: Option V, item (g), the `fileProcessing`
+frame, Carina's row) ∥ P4.141 (the model layer: timeout kind + trigger, the
+2xx shape guard, the ten plugin lines) ∥ P4.142 (the repository fallbacks:
+overlay batch reads, chunk reads, the chat GET/list arms) ∥ P4.143 (the
+data/zod smalls) ∥ P4.144 (the memory + harness smalls) ∥ P4.145 (the SPA
+attachment-only sentence + `fileProcessing` neutrality). **ALL SEVEN LANDED;
+the oracle baseline STAYS `f6426e196`.** The drift ledger's §2 probe PASSED
+at the start of unification (v4 `main` HEAD `e5c6bd0c0`, tree clean,
+`bugfix` `1a2b2164c` unmoved — exactly the ledger's §1 as `/driftcheck`
+recorded it on 2026-10-02), so nothing arrived mid-round: the two §3 rows
+(`9753d0eb2`, `e5c6bd0c0`) stay UNPROCESSED for the next catch-up, and every
+regen ran from a detached pin at `f6426e196`
+(`/tmp/qt-v4-pin-unify-recdiv-f6426e196`, the three symlink classes).
+
+### Survey
+
+- Six lanes finished, clean worktrees, each with its record and a LANE
+  COMPLETE header. **P4.145 was still LIVE at the survey** (its session was
+  re-running e2e files to commit the composer-placeholder Option A ruling
+  the human gave at 23:25) — reconciled last, after it committed (below).
+- Overlap: ONE shared source file (`services/chat_create.rs`, P4.139's key
+  read ∥ P4.140's deps/greeting — disjoint hunks, auto-merged). Every
+  `Cargo.toml` delta version-only.
+
+### Reconciliation (`unify/f6426e196-recorded-divergences`)
+
+Pick order P4.141 → P4.142 → P4.139 → P4.140 → P4.143 → P4.144 → P4.145
+(the model layer first, then the fallback homes P4.139 folds onto). 51
+server commits; every conflict a version file (resolved ours, then
+recounted). `merge=union` for the two shared docs, then **every lane's
+CHANGELOG / status-log block verified VERBATIM and CONTIGUOUS** by a
+`git diff -U0` hunk check (the previous round's splice trap) — all twelve
+blocks intact; ten blank separators the union collapsed restored.
+**Recount** (base + every lane's bumps, the same-number trap firing on all
+six core lanes): core 1146 → 1180, harness 1074 → 1107, host 174 → 175,
+web 207 → 212, tauri 7 → 8; then the unifier's own commits.
+
+### The §3 review
+
+Six parallel readers (one per server lane; P4.143 + P4.144 shared one),
+each checking the order's tiers and v4 at the pin, plus my own reading of the
+wires. **ONE BLOCKING regression in a lane's code, and ONE blocking handoff
+for the union; both fixed. Should-fixes landed with pins; the rest recorded
+by name in each order's Unification paragraph.**
+
+1. **BLOCKING (P4.139) — the wizard's vision key.** P4.139 replaced the
+   wizard's guarded secondary-key read with an unconditional
+   `profile_api_key_value_scoped(...)`, which answers `''` for a keyless,
+   dangling, foreign or unreadable vision profile — overwriting the
+   PRIMARY's key, where v4 starts `visionApiKey = primaryApiKey` and replaces
+   it only on a found row (`character-wizard.service.ts:754,766-771`). A
+   keyed OpenAI primary whose image MIME needs a keyless vision profile
+   would send a bare request and 401. Caught by the P4.139 reader (the file's
+   own comment three lines up said the opposite); nothing caught it in the
+   lane because `character_wizard_tier3` strips `apiKey` from every recorded
+   call. Fixed: `profile_api_key_found_scoped` (`Option`), the wizard
+   replaces only on `Some`; pinned at the helper (every not-found arm
+   `None`). A caller-level pin needs the wizard oracle to record the key —
+   OPEN by name.
+2. **BLOCKING for the union (P4.142's handoff) — backup and export silently
+   dropping vaulted characters.** Once P4.142's overlay batch reads fall back
+   to `[]`, a broken mount index makes the backup collect and the `.qtap`
+   export write files with no vaulted characters (the raw mount dumps still
+   succeed, so the backup reports success). The lane named this and
+   pre-wrote the hunks under the human's 2026-10-02 ruling; applied:
+   `collect_user_data` (plus the pre-existing project/group
+   `.unwrap_or_default()` dropped — the decision the lane left to the
+   unifier — so a broken store FAILS the backup; a missing table still reads
+   as none), `resolve_export_ids` / `stream_export_records` /
+   `preview_export`, and `execute_import` / `preview_import` (v4's own
+   wrapper-over-`*_strict` shape). Each has a broken-mount-index unit pin;
+   collect mutation-proven.
+3. **should-fix, FIXED (found by the P4.142 reader, outside the lane's list)
+   — the cascade delete's shared-image check.** `find_exclusive_character_
+   images` / `find_exclusive_images_for_chats` decide "used by another
+   character" over the overlay before deleting a FILE outside the
+   transaction; on a broken mount index that read now answered `[]` and a
+   legacy avatar shared with a vaulted character would have been deleted.
+   `characters_using_image` reads inside the strict scope (the failure
+   aborts the cascade, as `main` did before P4.142) — a RECORDED DIVERGENCE
+   (v4 drops), mutation-proven, **surfaced to the human for confirmation**.
+4. **should-fix, FIXED (P4.141's own handoff (5), rated high by its reader)
+   — `is_timeout_failure` never saw a real provider timeout.** reqwest's
+   timeout message matches no arm of v4's regex, so a background cheap task
+   skipped v4's one same-route retry and reported `timed_out: false` — the
+   bug-107 shape. Now reads `transport_kind == Timeout` (v4's `AbortError` /
+   `TimeoutError` name arm); unit-pinned Timeout vs Connect.
+5. **should-fix, FIXED (P4.141)** — the ANTHROPIC 2xx guard stopped before
+   `rawUsage.cache_creation_input_tokens`; Ollama's catch line logged the
+   profile URL's trailing slash v4's constructor strips. Both pinned.
+6. **should-fix, FIXED (P4.143 × P4.142, a cross-lane premise)** —
+   P4.143 pinned `strictFailures` as v4-ONLY ("v5 has no strict-repository
+   scope"), but P4.142 ported the scope and the import now enters it. The
+   chat-create helper reads the scope on its two `safeQuery`-born lines;
+   `system_import_state` pins the field on BOTH sides; restore pinned absent
+   on both.
+7. **should-fix, FIXED (P4.139)** — the census's import guard missed a
+   module alias, a glob and a brace-group single path; the lane record's
+   §S.1 instruction (EXPECTED → `home`) would have reddened the census
+   unless the helper also left `HELPER_BODIES` (it did, in the fold).
+8. **should-fix, FIXED as docs (P4.140)** — the display-zone docs claimed a
+   turn's progressions and the Host's `Current time:` line honour a POSIX
+   `TZ`; they read the story zone (a NAME). Reworded in five places; the
+   dogfood row split (below).
+9. **Docs** — the strict scope's synchronous-only caveat; the ruled brotli
+   exception in `db/text_compression.rs`; "three repository ERRORs".
+
+Recorded, not fixed (each in its order's Unification paragraph): P4.142's
+importer-reachable converted twins ignore the strict scope; the scenario
+conflict checks; `list_chats`' first read; P4.141's withdrawn Google `.wire`
+row + Google's `No parts found` WARN; P4.144's reached-but-unported
+repository lines and the `character_id_of` divergence; P4.143's import
+DB-error arm; P4.140's residue + `ProductionSpineFactory::new`'s UTC
+default; P4.139's dead `wrapper-no-caller` wrappers and the greeting pin.
+
+### The unification wires
+
+- **§S.1** the API-key fold (+ census update) — `47109b209`.
+- **§S.2** the host search-key hunk + two host pins — `47109b209`.
+- **§S.3 (P4.139 Tier 2 item 11)** the keyed Scenario Builder spine pin —
+  `e3e11c0d3`, mutation-proven (`api_key: ""` at the host spine fill).
+- **P4.142 §S** the strict wraps + the cascade check + the `strictFailures`
+  convergence — `d28814f0e`.
+- **Review fixes** — `625f37933` (model layer + docs), `4cc594b51` (nit +
+  P4.130's header sentence).
+- **§S.2 (round)** `orchestrator_tier3` + `build_context_tier3` regenerated
+  once from the pin on the union — both `ok` in the sweep (no bytes to explain).
+- **§S.3 (round)** P4.145's live beat receiving P4.140's real frame —
+  `salon-attachment-only-send-flow` GREEN in the full run (an attachment-only send through the real server — the frame P4.140 emits arrives and the reducer stays neutral; a flattened or mis-keyed frame would have surfaced as a stream error).
+- **§S.6** censuses — `dispatch_wrong_type_census` 441 unmoved; `api_key_read_sites_census` 0 conversion rows; `doc_mount_fallback_sites_census` at P4.142's recount with both `handed(P4.144)` rows closed; `host_zone_sites_census` reshaped; `spelling_guard`; `--self-test` exit 0 — all green.
+- **§S.7** retirements by VANISHING (P4.140's frame + Carina entries,
+  P4.142's `assert_send_divergence`, P4.141's approximations) re-confirmed
+  absent on the union's fresh oracles — green on the union's fresh oracles with the pins deleted (`orchestrator_tier3`, `mail_carina_tools`, `text_http_errors`).
+
+### Gate (final tree `8af2a0070`; the sweep on `4cc594b51`, the same Rust tree — P4.145's three SPA commits and a docs fix were picked after it started and touch no swept file)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean in BOTH feature sets; `cargo build --workspace
+  --release` clean (3 m 31 s).
+- **The full sweep from the pin** (`recipe_sweep.py --run-all --v4
+  /tmp/qt-v4-pin-unify-recdiv-f6426e196`, 582 families, ~75 min): **576 ok
+  / 3 run_failed / 1 refused_repo_write / 2 refused_non_extractable** — the
+  three reds EXACTLY the standing rows (`ariel_writers_tier3`,
+  `memory_processor_tier3`, `search_replace`), the refusals by design
+  (`backup_uuid_remap`, `avatar_rolls_routes`, `generator_sse_wire`); **no
+  catch this round** (no family red that a lane or the unifier caused).
+  Every round family `ok`, incl. `orchestrator_tier3` + `build_context_tier3`
+  regenerated once on the union (§S.2), `system_import_state` /
+  `system_restore_state` (the `strictFailures` convergence), `mail_carina_
+  tools` (the `send_mail` divergence VANISHED on a fresh oracle — §S.7),
+  `salon_reads`, `vault_read_overlay`, `fold_episode_tier3`,
+  `memory_pipeline_jobs_tier3`, `host_zone_dates`, `chats_messages_ops_
+  tier2`, `headshoulders_backfill_tier3`, `primary_stream_tier3`,
+  `cheap_llm_fallback`, `character_wizard_tier3`, `chat_create_capstone`;
+  **Tier R 271 cases / 0 failures.** `recipe_sweep.py --self-test` exit 0
+  under P4.144's widened rule. Artifact:
+  `harness/tools/sweep-results/2026-10-03-f6426e196-recorded-divergences-unify.json`.
+- **`QT_V4_CHECKOUT=<the pin> TZ=UTC cargo test --workspace
+  --no-fail-fast`** with the 745-variable env block harvested from every
+  family's `--show` run stage (the same 8 dup-valued vars withheld): **660
+  test binaries / 4,223 passed / 5 failed / 3 ignored, zero `SKIP:`
+  lines.** The five reds: the three standing families + the two recorded
+  env-block artifacts (`backup_uuid_remap`, `doc_mount_files_tier2` — `ok` /
+  by-design through the driver). Confirmed RUN by name: the committed-corpus
+  families `text_http_errors` and `stream_decoders` (which the sweep does
+  not list), `streaming_composer`, `cli_differential` (400.8 s), the
+  censuses (`api_key_read_sites_census` 5/5, `fallback_home_guard` 2/2,
+  `doc_mount_fallback_sites_census` 4/4, `host_zone_sites_census` 6/6,
+  `dispatch_wrong_type_census` 14/14 — 441 UNMOVED), `spelling_guard`,
+  `scenario_builder_dispatch_wire` 5/5 (the keyed pin), both live-checkout
+  guards.
+- SPA: `npm test` **466 files / 8,801 passed**; `npm run build` and
+  `npm run lint` clean.
+- **Full Playwright 357 passed / 0 failed / 6 skipped (11.5 m)** against
+  the fresh build and fresh debug binaries — the six skips the standing
+  parks; no intermittent fired this run. P4.145's new
+  `salon-attachment-only-send-flow` beat green on the union (11.8 s).
+
+### Versions
+
+core 0.0.1183, harness 0.0.1110, host 0.0.176, web 0.0.213, tauri 0.0.8,
+SPA 0.5.794; cli 0.0.29 unchanged.
+
+### 💸 for the owed dogfood pass
+
+The seven lanes' rows (each order's 💸 section), corrected at unification:
+P4.140's POSIX-`TZ` row SPLITS — tool dates, `list_mail` / the mail
+context, the whisper, the Scenario Builder clock show the rule's zone; a
+turn's / swipe's progressions and the Host's `Current time:` line show UTC
+(Tier 3 item 17). Add: a broken-mount-index plant on the Friday copy
+FAILING a backup and an export (the strict wraps), and a cascade delete of a
+character sharing a legacy avatar under the same plant aborting; a
+background cheap task against `refusal-server.py`'s `hang` mode RETRYING
+once (`is_timeout_failure` by kind); a keyless vision profile behind a keyed
+primary in the wizard sending the PRIMARY's key.

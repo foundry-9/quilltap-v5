@@ -26,6 +26,11 @@ probe verifies against._
   P4.136 ∥ P4.137 ∥ P4.138, 2026-10-02). CLAUDE.md's Status bullet agrees.
 - **Checked:** 2026-10-02 (`/driftcheck`, main-checkout session; `git fetch
   --all` first). Previous check: 2026-10-02, the `f6426e196` unification.
+  **Re-probed 2026-10-03 at the `f6426e196` recorded-divergences
+  unification (§2 probe PASSED — branch `main`, tree clean, both logs empty
+  against `e5c6bd0c0` / `1a2b2164c`):** the round absorbed NO row and the
+  baseline STAYS; every regen ran from a detached pin at `f6426e196`. The two
+  §3 rows stay UNPROCESSED for the next catch-up.
 - **v4 `main` HEAD at check: `e5c6bd0c0`** ("Fix bugs 175 and 176:
   resumable migrations and a boot-time table check", 2026-10-02 23:38,
   `4.10.0-dev.108`) — **TWO commits past the baseline**; `origin/main`

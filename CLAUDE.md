@@ -1411,6 +1411,37 @@ records THERE. Update this summary only when a phase or round completes.
   a real chat (v4 anchors on any user-role message). ⚠ **Walk rule:** Friday's
   Lantern is ON — disable it on the copy before creating test chats (one real
   background was bought). **Still owed:** the standing queue.
+- **The `f6426e196` recorded-divergences round (P4.139 ∥ P4.140 ∥ P4.141 ∥
+  P4.142 ∥ P4.143 ∥ P4.144 ∥ P4.145): UNIFIED on main (2026-10-03) — ALL
+  SEVEN LANDED; the oracle baseline STAYS `f6426e196`; the ledger's §3 keeps
+  its two UNPROCESSED rows (`9753d0eb2` the project roster gate,
+  `e5c6bd0c0` v4's own fixes for bugs 175/176), PIN REQUIRED.** The API-key
+  read class through v4's fallbacks with a census (P4.139); Option V — the
+  host's display-zone VALUE threaded through the Salon spine, v4's
+  `fileProcessing` frame, Carina's `CHAT_MESSAGE` row (P4.140); the
+  transport KIND + v4's `network` trigger for timeouts, the 2xx shape guard
+  on seven providers, ten plugin ERROR lines (P4.141); the overlay batch and
+  chunk reads as v4's fallbacks with a ported strict-repository scope
+  (P4.142); the data/zod smalls (P4.143); the fold-episode lines + the alias
+  widening + the MPJ llm-logs comparand (P4.144); the attachment-only
+  sentence + the `[Attached: …]` bubble + the ruled placeholder bytes
+  (P4.145). **The §3 review (six readers): ONE BLOCKING lane regression —
+  P4.139's wizard sent `''` for a keyless vision profile where v4 keeps the
+  primary's key — and ONE blocking union handoff — without P4.142's strict
+  wraps, backup and `.qtap` export silently dropped every vaulted character
+  on a broken mount index; both fixed and pinned.** Also fixed: the cascade
+  delete's shared-image check made strict (a recorded divergence, surfaced
+  for the human's confirmation); background cheap tasks retry a real
+  transport timeout (`is_timeout_failure` by kind — the bug-107 shape);
+  the Anthropic usage read; the Ollama slash; P4.143's `strictFailures`
+  pin converged; the census import guard widened; P4.140's POSIX-`TZ` docs
+  corrected. Gate: the sweep 576 ok / 3 standing / 3 refused of 582 (no
+  catch); Tier R 271/0; 660 binaries / 4,223 / 5 (three standing + two
+  env-block artifacts) / 3 ignored, zero SKIP; SPA 466 / 8,801; full
+  Playwright 357 / 0 / 6. Versions: core 0.0.1183, harness 0.0.1110, host
+  0.0.176, web 0.0.213, tauri 0.0.8, SPA 0.5.794. **Next: the `e5c6bd0c0`
+  drift catch-up, the owed dogfood pass, then a follow-ups smalls round** —
+  `phase-4.md`. Round record: `status-log.md`.
 - **Oracle baseline: `f6426e196` (2026-10-01, v4 main — "Fix bug 174: send
   vault image bytes, not a server path, to Z.AI and NanoGPT",
   `4.10.0-dev.106`), adopted at the `f6426e196` round's unification
