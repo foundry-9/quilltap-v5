@@ -267,6 +267,20 @@ const RESTORE_CASES: Array<{
   // by `fixtures/derive-restore-archive-concierge-bogus.py`.
   { name: 'restore_concierge_bogus_replace', archive: 'restore-archive-concierge-bogus.zip' },
 
+  // ── P4.143 item 2: the restore's serde arm, planted ──────────────────────
+  //
+  // `restore-archive-chat-serde-arm.zip` is `restore-archive.zip` plus ONE
+  // message-less clone (`c…0006`, "The Serde Room") carrying `scenarioText:
+  // 5` with VALID Concierge columns. `stripScenarioSeededSummary` reads the
+  // column only through `typeof … !== 'string'`, so the number reaches
+  // `repos.chats.create` → `validate` (`ChatMetadataBaseSchema`), which throws
+  // the ZodError (`invalid_type` at `["scenarioText"]`), and the per-chat
+  // catch skips it with `Failed to restore chat "The Serde Room": <ZodError
+  // message>`. v5 skips it too, at its typed decode, with serde's sentence —
+  // the recorded divergence the Rust side pins both ways. Built by
+  // `fixtures/derive-restore-archive-chat-serde-arm.py`.
+  { name: 'restore_chat_serde_arm_replace', archive: 'restore-archive-chat-serde-arm.zip' },
+
   // ── P4.D126 (`e000d6bfc`, bug 103): the columns an older archive predates ─
   //
   // `restore-archive-legacy-profiles.zip` is the ONE archive that can see the

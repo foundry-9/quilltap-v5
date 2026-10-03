@@ -162281,3 +162281,44 @@ exception. The order's predicted mechanism ("the v4 tails masked to
 provider, compared VERBATIM through the exception) — M2 is re-run there.
 Module header's two paragraphs corrected (the named-item arm was "masked";
 bug 105's warning tail is now a row). harness 0.0.1076.
+
+### Unit 4 — item 2: the restore serde arm planted and pinned
+
+NEW `harness/oracle/fixtures/derive-restore-archive-chat-serde-arm.py` (the
+bogus derive's template and register; asserts the clone's three Concierge
+columns are absent/null or in v4's enums so v5's
+`concierge_columns_zod_error` passes and the typed decode is reached; writes a
+NEW path, asserts `SRC != DST`): clone of `c…0001` → `c1000000-0000-4000-8000-000000000006`,
+`title: "The Serde Room"`, `scenarioText: 5`, `messages: []`, `messageCount:
+0`; manifest `counts.chats` 2 → 3. NEW
+`crates/quilltap-web/tests/fixtures/restore-archives/restore-archive-chat-serde-arm.zip`
+(27,039 bytes, md5 `7e002943d5121f8b53a6d50ce14bfebf`, deterministic —
+re-run gives the same md5). **Untouched, md5 = `git show HEAD:`:**
+`restore-archive.zip` `6b076003bacf8db22c1bf8440fac09d6`,
+`restore-archive-concierge-bogus.zip` `318c65905c64b19dd9ad621a5f96c5ef`.
+Nothing enumerates the archive directory (grep: every reader names its zip;
+`system_restore_equivalence` runs only `preview_*` cases and stays green over
+the fresh oracle).
+
+Case `restore_chat_serde_arm_replace` in `RESTORE_CASES` (beside the bogus row,
+a comment block in its register) and in `archive_for`; `seen` 21 → 22 with the
+arithmetic sentence extended. Regen from the pin (probe PASS first): the
+header's recipe with `TMPO=/tmp/p4143/sysrestore-stage`,
+`QT_ORACLE_OUT=/tmp/p4143/oracle-system-restore.ndjson`, the jest filter
+ANCHORED (`'system-restore\.test\.ts$'` — the header's bare `system-restore`
+is a substring match); 1 suite passed (5.6 s), 28 lines, `grep -c
+scenarioText` = 22. v4's tail for the new chat is survey §B1's byte for byte
+(`[{"expected": "string", "code": "invalid_type", "path": ["scenarioText"],
+"message": "Invalid input: expected string, received number"}]`, pretty).
+**Red-first** (case added, no carve): `1 restore-state difference(s):
+[restore_chat_serde_arm_replace] summary.warnings differ` — v5 `Failed to
+restore chat "The Serde Room": invalid type: integer `5`, expected a string`
+vs v4's ZodError; every other case unmoved (21/21). **The carve:**
+`classify_restore_serde_arm` (VANISHED / WRONG SHAPE as item 1's rows — v4's
+tail a Zod message whose first issue path is `["scenarioText"]`, v5's starting
+serde's sentence), applied in `compare_case`'s warnings branch BEFORE
+`compare_warnings` for that case only; `assert_serde_room_skipped` (`c…0006`
+ABSENT both sides; exactly one `Failed to restore chat "The Serde Room": `
+warning each). GREEN. **M3** (remove the classify application) → RED on that
+one warning (and the two items go dead-code — the compiler names them). harness
+0.0.1077, web 0.0.208 (tests only — the new zip).

@@ -912,6 +912,12 @@ fn archive_for(name: &str) -> &'static str {
         // BOTH sides with the ZodError bytes in `summary.warnings`. Built by
         // `harness/oracle/fixtures/derive-restore-archive-concierge-bogus.py`.
         "restore_concierge_bogus_replace" => "restore-archive-concierge-bogus.zip",
+        // P4.143 item 2 (the restore's serde arm): `restore-archive.zip` plus
+        // one message-less clone carrying `scenarioText: 5` with valid
+        // Concierge columns — skipped by BOTH sides, v4 with the ZodError, v5
+        // with serde's sentence (`classify_restore_serde_arm`). Built by
+        // `harness/oracle/fixtures/derive-restore-archive-chat-serde-arm.py`.
+        "restore_chat_serde_arm_replace" => "restore-archive-chat-serde-arm.zip",
         "restore_legacy_archive" => "restore-archive-legacy.zip",
         "restore_minimal" => "restore-archive-minimal.zip",
         "restore_new_account" => "restore-archive.zip",
@@ -1258,6 +1264,16 @@ fn system_restore_state_equivalence() {
             &mut failures,
         );
 
+        // [P4.143 item 2] the serde-arm plant, by name.
+        assert_serde_room_skipped(
+            name,
+            &summary,
+            &case["summary"],
+            &got_state,
+            want_state,
+            &mut failures,
+        );
+
         // [P4.106 item 6] the pre-4.10-archive arm.
         assert_pre_410_archive_restores_no_informs(
             name,
@@ -1285,14 +1301,16 @@ fn system_restore_state_equivalence() {
     // 18 + 1 = 19: P4.D208's bug-158 arm (the seeded summary a stale backup
     // carries, stripped on the way in). 19 + 1 = 20: P4.D226's legacy
     // Concierge arm (the three states derived from the legacy pair). 20 + 1 =
-    // 21: P4.130's refused-chat arm (a `conciergeMode` outside the enum).
+    // 21: P4.130's refused-chat arm (a `conciergeMode` outside the enum). 21 +
+    // 1 = 22: P4.143's serde-arm plant (a numeric `scenarioText`).
     assert_eq!(
-        seen, 21,
-        "expected all twenty-one restore cases in the oracle (ten + the #58 orphan-links arm \
+        seen, 22,
+        "expected all twenty-two restore cases in the oracle (ten + the #58 orphan-links arm \
          + P4.D46's two compact arms + P4.D126's bug-103 legacy-profiles arm \
          + P4.D145's bug-114 duplicate-folders arm + P4.D152's bug-117 arm \
          + P4.D158's two bag-key arms + P4.D208's bug-158 arm \
-         + P4.D226's legacy-Concierge arm + P4.130's refused-chat arm)"
+         + P4.D226's legacy-Concierge arm + P4.130's refused-chat arm \
+         + P4.143's serde-arm plant)"
     );
     assert!(
         failures.is_empty(),
@@ -1354,6 +1372,129 @@ fn assert_bogus_concierge_chat_skipped(
         if hits != 1 {
             failures.push(format!(
                 "[{name}] {side}: expected exactly one ZodError-carrying skip warning, got {hits}: \
+                 {warnings}"
+            ));
+        }
+    }
+}
+
+/// [P4.143 item 2] **The restore's serde arm** — a RECORDED DIVERGENCE,
+/// pinned in both directions (P4.130's un-planted follow-up).
+/// `restore-archive-chat-serde-arm.zip` carries one chat, `c…0006` ("The
+/// Serde Room"), whose `scenarioText` is the NUMBER 5 and whose Concierge
+/// columns are valid. v4's `repos.chats.create` → `validate`
+/// (`ChatMetadataBaseSchema`) throws the ZodError, so its skip warning's tail
+/// is `[{"expected": "string", "code": "invalid_type", "path":
+/// ["scenarioText"], …}]`; v5 checks only the Concierge columns before its
+/// typed decode (`concierge_columns_zod_error`'s recorded scope), so the
+/// decode refuses the number with serde's sentence and the restore closure in
+/// `crates/quilltap-core/src/services/backup/restore/orchestrator.rs` (its
+/// `skip` serves both refusals) pushes that instead. Both skip the chat; only
+/// the tail differs. VANISHED if the two tails agree (retire the pin — the
+/// generated schema-shape table, P4.143 Tier 3 item 12, closes it); WRONG
+/// SHAPE unless v4's tail is a Zod message whose FIRST issue's path is
+/// `["scenarioText"]` and v5's starts with serde's sentence. The warning is
+/// then replaced with `<head><SERDE-ARM-DIVERGENCE>` on both sides, and the
+/// rest of `summary.warnings` compares verbatim.
+const SERDE_ROOM_CASE: &str = "restore_chat_serde_arm_replace";
+const SERDE_ROOM_HEAD: &str = "Failed to restore chat \"The Serde Room\": ";
+const SERDE_ROOM_V5_PREFIX: &str = "invalid type: integer `5`, expected a string";
+
+fn classify_restore_serde_arm(
+    name: &str,
+    got: &Value,
+    want: &Value,
+    failures: &mut Vec<String>,
+) -> (Value, Value) {
+    let tail_of = |warnings: &Value| -> Option<String> {
+        warnings
+            .as_array()?
+            .iter()
+            .filter_map(Value::as_str)
+            .find_map(|w| w.strip_prefix(SERDE_ROOM_HEAD).map(str::to_string))
+    };
+    let is_zod_scenario_text = |tail: &str| {
+        serde_json::from_str::<Value>(tail)
+            .ok()
+            .and_then(|v| v.as_array().cloned())
+            .is_some_and(|issues| {
+                !issues.is_empty()
+                    && issues.iter().all(|i| {
+                        i.get("code").is_some_and(Value::is_string)
+                            && i.get("path").is_some_and(Value::is_array)
+                            && i.get("message").is_some_and(Value::is_string)
+                    })
+                    && issues[0]["path"] == json!(["scenarioText"])
+            })
+    };
+    let (g, w) = (tail_of(got), tail_of(want));
+    match (&g, &w) {
+        (Some(g), Some(w)) if g == w => failures.push(format!(
+            "[{name}] the restore serde-arm divergence VANISHED — both sides now say {g:?}; \
+             retire the pin"
+        )),
+        (Some(g), Some(w)) if is_zod_scenario_text(w) && g.starts_with(SERDE_ROOM_V5_PREFIX) => {}
+        _ => failures.push(format!(
+            "[{name}] the restore serde-arm divergence has the WRONG SHAPE\n  rust:   {g:?}\n  \
+             oracle: {w:?}"
+        )),
+    }
+    let carve = |warnings: &Value| -> Value {
+        let mut out = warnings.clone();
+        if let Some(ws) = out.as_array_mut() {
+            for w in ws.iter_mut() {
+                if w.as_str().is_some_and(|s| s.starts_with(SERDE_ROOM_HEAD)) {
+                    *w = json!(format!("{SERDE_ROOM_HEAD}<SERDE-ARM-DIVERGENCE>"));
+                }
+            }
+        }
+        out
+    };
+    (carve(got), carve(want))
+}
+
+/// [P4.143 item 2] The serde-arm plant pinned by NAME, so the arm cannot go
+/// vacuous: chat `c…0006` is ABSENT on both sides, and both warning lists
+/// carry exactly one `Failed to restore chat "The Serde Room": ` warning.
+fn assert_serde_room_skipped(
+    name: &str,
+    got_summary: &RestoreSummary,
+    want_summary: &Value,
+    got_state: &BTreeMap<String, BTreeMap<String, Vec<Value>>>,
+    want_state: &Value,
+    failures: &mut Vec<String>,
+) {
+    if name != SERDE_ROOM_CASE {
+        return;
+    }
+    const SERDE_ROOM: &str = "c1000000-0000-4000-8000-000000000006";
+    let got_chats = got_state
+        .get("main")
+        .and_then(|m| m.get("chats"))
+        .map(|rows| rows.iter().any(|r| r["id"] == SERDE_ROOM));
+    let want_chats = want_state["main"]["chats"]
+        .as_array()
+        .map(|rows| rows.iter().any(|r| r["id"] == SERDE_ROOM));
+    if got_chats != Some(false) || want_chats != Some(false) {
+        failures.push(format!(
+            "[{name}] the serde-arm chat must be ABSENT on both sides (v5 present: \
+             {got_chats:?}, v4 present: {want_chats:?})"
+        ));
+    }
+    let got_warn = json!(got_summary.warnings);
+    for (side, warnings) in [("v5", &got_warn), ("v4", &want_summary["warnings"])] {
+        let hits = warnings
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(Value::as_str)
+                    .filter(|w| w.starts_with(SERDE_ROOM_HEAD))
+                    .count()
+            })
+            .unwrap_or(0);
+        if hits != 1 {
+            failures.push(format!(
+                "[{name}] {side}: expected exactly one serde-arm skip warning, got {hits}: \
                  {warnings}"
             ));
         }
@@ -2454,6 +2595,11 @@ fn compare_case(
             // exactly the skip sentences, v4 must have none.
             if name == ORPHAN_LINKS_CASE {
                 assert_orphan_warnings(name, gv, wv, failures);
+            } else if name == SERDE_ROOM_CASE {
+                // [P4.143 item 2] the serde arm's ONE warning is a recorded
+                // divergence — classified and carved, then the rest verbatim.
+                let (g, w) = classify_restore_serde_arm(name, gv, wv, failures);
+                compare_warnings(name, &g, &w, failures);
             } else if !dedupe {
                 compare_warnings(name, gv, wv, failures);
             }
