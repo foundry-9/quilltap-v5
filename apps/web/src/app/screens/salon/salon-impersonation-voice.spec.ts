@@ -239,7 +239,7 @@ async function settle(fixture: ComponentFixture<SalonConversation>): Promise<voi
 function typeAndSubmit(r: Rig, text: string): void {
   const composer = r.composer as unknown as { text: { set(v: string): void } };
   composer.text.set(text);
-  r.composer.send.emit({ content: text, fileIds: [] });
+  r.composer.send.emit({ content: text, fileIds: [], attachments: [] });
 }
 
 afterEach(() => {
@@ -346,10 +346,24 @@ describe('SalonConversation — the In Their Own Words intercept', () => {
     host.pendingToolResults.set([{ id: 'roll-1', label: '1d20', value: '17' }]);
     const composer = r.composer as unknown as { text: { set(v: string): void } };
     composer.text.set('I roll and say so.');
-    r.composer.send.emit({ content: 'I roll and say so.', fileIds: ['f-9'] });
+    r.composer.send.emit({
+      content: 'I roll and say so.',
+      fileIds: ['f-9'],
+      attachments: [{ id: 'f-9', filename: 'map.txt', filepath: 'chat/map.txt', mimeType: 'text/plain' }],
+    });
     await settle(r.fixture);
 
     r.voice.send('A seventeen, sir.');
+    // The stashed attachments reach the bubble too: v4 re-enters `sendMessage`
+    // with the files still attached, so its bubble names them (P4.145). Read
+    // before the settle — this rig's `chatSend` resolves at once, and the
+    // post-turn sweep then retires the bubble.
+    const shown = (
+      r.fixture.componentInstance as unknown as { displayMessages(): { id: string; content: string }[] }
+    )
+      .displayMessages()
+      .find((m) => m.id.startsWith('temp-'));
+    expect(shown?.content).toBe('A seventeen, sir.\n[Attached: map.txt]');
     await settle(r.fixture);
 
     expect(r.sends).toHaveLength(1);

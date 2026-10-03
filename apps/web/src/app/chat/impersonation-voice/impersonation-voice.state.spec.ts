@@ -37,6 +37,7 @@ function interceptArgs(over: Partial<InterceptArgs> = {}): InterceptArgs {
     enabled: true,
     impersonatingParticipantIds: [SEAT_ID],
     fileIds: [],
+    attachments: [],
     pending: [],
     ...over,
   };
@@ -296,7 +297,8 @@ describe('ImpersonationVoiceState — the re-runs', () => {
 describe('ImpersonationVoiceState — the five doors', () => {
   it('Send posts the proposal with the stash and closes', async () => {
     const r = rig();
-    r.state.intercept(interceptArgs({ fileIds: ['f-1'], pending: ['roll'] }));
+    const attachments = [{ id: 'f-1', filename: 'a.txt', filepath: 'chat/a.txt', mimeType: 'text/plain' }];
+    r.state.intercept(interceptArgs({ fileIds: ['f-1'], attachments, pending: ['roll'] }));
     await flush();
     r.state.send(r.state.proposal());
     expect(r.sent).toEqual([
@@ -305,6 +307,7 @@ describe('ImpersonationVoiceState — the five doors', () => {
         stash: {
           seed: 'I tell him I will take the job.',
           fileIds: ['f-1'],
+          attachments,
           pending: ['roll'],
         },
       },

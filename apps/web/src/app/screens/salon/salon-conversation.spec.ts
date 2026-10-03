@@ -29,6 +29,7 @@ import type {
   ChatStreamFrame,
   CoreRequest,
   CoreResponse,
+  MessageAttachment,
   MessageDto,
   ParticipantDetail,
   ScopedEvent,
@@ -3444,18 +3445,32 @@ describe('SalonConversation — the provisional bubble reconciles against a mid-
   });
 
   it('retires an attachment-only send by pass 2 — the bubble and its row do NOT read alike', async () => {
-    // Pass 1 matches on content and cannot fire here: the composer's bubble
-    // shows what the operator typed (nothing), while the server stores
-    // "Please look at the attached file(s)." for a send that was all
-    // attachment. Pass 2 — same role, newly arrived, within the clock slack —
-    // is the fallback that exists for exactly this shape.
+    // Pass 1 matches on content and cannot fire here: the bubble and the row
+    // never read alike for a send that was all attachment. The Salon SENDS
+    // "Please look at the attached file(s)." on that request (v4
+    // `useSSEStreaming.ts:845`, P4.145), so the server writes the row planted
+    // below, while the bubble reads v4's `[Attached: file-1.txt]`
+    // (`useSSEStreaming.ts:799-802`). Pass 2 — same role, newly arrived, within
+    // the clock slack — is the fallback that exists for exactly this shape. (Before P4.145 the client sent `''` and the server
+    // wrote NO row, so this plant was unreachable; the dispatch assertion
+    // below keeps it reachable.)
     const state = { messages: [...chatDetail().messages] };
-    const fixture = await render(reconcileClient(state));
+    const client = reconcileClient(state);
+    const fixture = await render(client);
     const inst = fixture.componentInstance as unknown as Host;
 
-    inst.send({ content: '', fileIds: ['file-1'] });
+    (inst as unknown as { send(p: { content: string; fileIds: string[]; attachments: MessageAttachment[] }): void }).send({
+      content: '',
+      fileIds: ['file-1'],
+      attachments: [{ id: 'file-1', filename: 'file-1.txt', filepath: 'chat/file-1.txt', mimeType: 'text/plain' }],
+    });
     const temp = provisionalBubble(inst);
-    expect(temp).toBeDefined();
+    expect(temp?.content).toBe('[Attached: file-1.txt]');
+    const dispatch = client.dispatch as unknown as { mock: { calls: [CoreRequest][] } };
+    const sent = dispatch.mock.calls
+      .map((c) => c[0] as Record<string, unknown>)
+      .find((r) => r['type'] === 'chatSend')!;
+    expect(sent['content']).toBe('Please look at the attached file(s).');
 
     state.messages = [
       ...state.messages,
@@ -3502,6 +3517,176 @@ describe('SalonConversation — the provisional bubble reconciles against a mid-
 
     const echoes = inst.displayMessages().filter((m) => m.content === 'Are we there yet?');
     expect(echoes).toHaveLength(2); // the earlier persisted row + this send's own bubble
+  });
+});
+
+/**
+ * P4.145 — the attachment-only send carries v4's sentence on the REQUEST.
+ *
+ * v4 `useSSEStreaming.ts:845`:
+ * `content: userMessage || (attachedFiles.length > 0 ? 'Please look at the attached file(s).' : '')`.
+ * Its server saves the USER row (and links the files to it) only when the
+ * content is non-empty (`orchestrator.service.ts:783`; v5's twin is
+ * `orchestrator.rs:1796`), so before this the v5 Salon's attachment-only post
+ * persisted nothing and its bubble was swept. The substitution keys on the
+ * attached files ALONE (a results-only send keeps `''`), and it is the
+ * request's only — v4's optimistic bubble never shows the sentence.
+ */
+describe("SalonConversation — the attachment-only send carries v4's sentence (useSSEStreaming.ts:845)", () => {
+  type Host = {
+    send(p: { content: string; fileIds: string[]; attachments?: MessageAttachment[] }): void;
+    continueTurn(): void;
+    onPendingToolResult(r: Record<string, unknown>): void;
+    displayMessages(): MessageDto[];
+  };
+
+  /** `chatSend` held in flight, so the optimistic bubble is still on screen. */
+  function heldClient(): Partial<CoreClient> {
+    const dispatch = vi.fn(async (req: CoreRequest): Promise<CoreResponse> => {
+      if (req.type === 'chatGet') return { type: 'chat', data: { chat: chatDetail() } };
+      if (req.type === 'chatSettings') {
+        return { type: 'chatSettings', data: { avatarDisplayMode: 'ALWAYS', avatarDisplayStyle: 'CIRCULAR' } };
+      }
+      if (req.type === 'chatSend') return new Promise<CoreResponse>(() => {});
+      return { type: 'ack', data: {} };
+    });
+    return {
+      events$: new Subject<ScopedEvent>().asObservable(),
+      connection: signal<ConnectionState>('idle'),
+      resyncCounter: signal(0),
+      dispatch,
+      dispatchData: vi.fn(async () => ({
+        backgroundUrl: null,
+        fileId: null,
+        filename: null,
+        sha256: null,
+        linkSummary: null,
+      })) as unknown as CoreClient['dispatchData'],
+      dispatchExpect: (async (req: CoreRequest, expected: string) => {
+        const resp = await dispatch(req);
+        if (resp.type !== expected) throw new Error(`unexpected ${resp.type}`);
+        return resp;
+      }) as CoreClient['dispatchExpect'],
+    };
+  }
+
+  function sentChatSend(client: Partial<CoreClient>): Record<string, unknown> {
+    const dispatch = client.dispatch as unknown as { mock: { calls: [CoreRequest][] } };
+    return dispatch.mock.calls
+      .map((c) => c[0] as Record<string, unknown>)
+      .find((r) => r['type'] === 'chatSend')!;
+  }
+
+  async function settle(fixture: ComponentFixture<SalonConversation>): Promise<void> {
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+  }
+
+  function attachment(id: string, filename: string, mimeType = 'text/plain'): MessageAttachment {
+    return { id, filename, filepath: `chat/${filename}`, mimeType };
+  }
+
+  it('(a) an attachment-only send carries the sentence and its files', async () => {
+    const client = heldClient();
+    const fixture = await render(client);
+    (fixture.componentInstance as unknown as Host).send({ content: '', fileIds: ['file-1'] });
+    await settle(fixture);
+
+    const sent = sentChatSend(client);
+    expect(sent['content']).toBe('Please look at the attached file(s).');
+    expect(sent['fileIds']).toEqual(['file-1']);
+  });
+
+  it('(b) typed text with a file keeps the text — the sentence is a fallback, not a suffix', async () => {
+    const client = heldClient();
+    const fixture = await render(client);
+    (fixture.componentInstance as unknown as Host).send({ content: 'a note', fileIds: ['file-1'] });
+    await settle(fixture);
+
+    const sent = sentChatSend(client);
+    expect(sent['content']).toBe('a note');
+    expect(sent['fileIds']).toEqual(['file-1']);
+  });
+
+  it('(c) a pending-tool-result-only send keeps empty content (v4 keys on attached files alone)', async () => {
+    const client = heldClient();
+    const fixture = await render(client);
+    const inst = fixture.componentInstance as unknown as Host;
+    inst.onPendingToolResult({
+      tool: 'rng',
+      displayName: 'Random Number Generator',
+      icon: '🎲',
+      summary: 'd20: 17',
+      formattedResult: '🎲 Rolled 1d20: **17**',
+      requestPrompt: 'Roll a d20',
+      arguments: { type: 20, rolls: 1 },
+      success: true,
+    });
+    inst.send({ content: '', fileIds: [] });
+    await settle(fixture);
+
+    const sent = sentChatSend(client);
+    expect(sent['content']).toBe('');
+    expect(sent['fileIds']).toBeUndefined();
+    expect(sent['pendingToolResults']).toHaveLength(1);
+  });
+
+  it('(d) a continue carries no content and no files', async () => {
+    const client = heldClient();
+    const fixture = await render(client);
+    (fixture.componentInstance as unknown as Host).continueTurn();
+    await settle(fixture);
+
+    const sent = sentChatSend(client);
+    expect(sent['continueMode']).toBe(true);
+    expect(sent['content']).toBeUndefined();
+    expect(sent['fileIds']).toBeUndefined();
+  });
+
+  it("(e) the optimistic bubble reads v4's [Attached: …], never the sentence — that is the request's alone", async () => {
+    const client = heldClient();
+    const fixture = await render(client);
+    const inst = fixture.componentInstance as unknown as Host;
+    const attachments = [attachment('file-1', 'p4145-attach-only.txt')];
+    inst.send({ content: '', fileIds: ['file-1'], attachments });
+    await settle(fixture);
+
+    const bubble = provisionalBubble(inst);
+    expect(bubble).toBeDefined();
+    expect(bubble!.content).not.toContain('Please look at the attached file(s).');
+    // v4 `useSSEStreaming.ts:799-802`: no typed text, so no leading newline.
+    expect(bubble!.content).toBe('[Attached: p4145-attach-only.txt]');
+    expect(bubble!.attachments).toEqual(attachments);
+    // The request still carries the sentence.
+    expect(sentChatSend(client)['content']).toBe('Please look at the attached file(s).');
+  });
+
+  it('(f) typed text with files: the bubble names every file under the text, comma-joined', async () => {
+    const client = heldClient();
+    const fixture = await render(client);
+    const inst = fixture.componentInstance as unknown as Host;
+    const attachments = [attachment('f-a', 'a.txt'), attachment('f-b', 'b.png', 'image/png')];
+    inst.send({ content: 'a note', fileIds: ['f-a', 'f-b'], attachments });
+    await settle(fixture);
+
+    const bubble = provisionalBubble(inst);
+    expect(bubble!.content).toBe('a note\n[Attached: a.txt, b.png]');
+    expect(bubble!.attachments).toEqual(attachments);
+    expect(sentChatSend(client)['content']).toBe('a note');
+  });
+
+  it('(g) a send with no files keeps the bubble the bare text with no attachments', async () => {
+    const client = heldClient();
+    const fixture = await render(client);
+    const inst = fixture.componentInstance as unknown as Host;
+    inst.send({ content: 'just words', fileIds: [], attachments: [] });
+    await settle(fixture);
+
+    const bubble = provisionalBubble(inst);
+    expect(bubble!.content).toBe('just words');
+    expect(bubble!.attachments).toEqual([]);
   });
 });
 

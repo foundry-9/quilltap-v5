@@ -17,6 +17,7 @@ import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experime
 
 import {
   ChatComposer,
+  type ComposerSend,
   type PendingToolResultChip,
   type ToolExecutionStatus,
   type SpeakingAsSeat,
@@ -145,6 +146,7 @@ import type {
   ChatDetail,
   ChatSettingsDto,
   ConnectionProfileDto,
+  MessageAttachment,
   MessageDto,
   ParticipantDetail,
   ParticipantStatusWire,
@@ -230,6 +232,20 @@ const DOC_RELOAD_TOOLS = new Set<string>([
  * release rather than one per step.
  */
 const TALKATIVENESS_DEBOUNCE_MS = 400;
+
+/**
+ * What an attachment-only send carries as its `content` (v4
+ * `useSSEStreaming.ts:845`: `userMessage || (attachedFiles.length > 0 ? … : '')`).
+ *
+ * Why it exists: v4's server saves the USER row — and links the attached files
+ * to it — only when the content is non-empty (`orchestrator.service.ts:783`;
+ * v5's twin is `orchestrator.rs:1796`). Without the sentence the files reach
+ * the model but are never linked, no row is written, and the operator's post
+ * vanishes from the transcript once the turn settles. It is the REQUEST's
+ * only: v4's optimistic bubble never shows it, and a send carrying only
+ * pending tool results keeps `''` (v4 keys on the attached files alone).
+ */
+const ATTACHMENT_ONLY_CONTENT = 'Please look at the attached file(s).';
 
 /** The next-speaker projection off `chatTurnAction { action: 'query' }`. */
 interface TurnInfo {
@@ -927,7 +943,12 @@ export class SalonConversation {
     this.impersonationVoice.attach({
       chatId: () => this.chatId(),
       sendFinal: (final: string, stash: PendingSend) =>
-        this.postComposedMessage(final, stash.fileIds, stash.pending as PendingToolResultChip[]),
+        this.postComposedMessage(
+          final,
+          stash.fileIds,
+          stash.attachments,
+          stash.pending as PendingToolResultChip[],
+        ),
       focusComposer: () => this.composer()?.focusEditor(),
     });
 
@@ -3491,7 +3512,7 @@ export class SalonConversation {
   // Send + streaming
   // -------------------------------------------------------------------------
 
-  protected send(payload: { content: string; fileIds: string[] }): void {
+  protected send(payload: ComposerSend): void {
     // In Their Own Words takes the submit over when it is armed (v4
     // `SalonView.tsx:1615-1642`). It sits ABOVE the pending-results snapshot on
     // purpose: an intercepted submit must leave the rolls in state, exactly as
@@ -3504,6 +3525,7 @@ export class SalonConversation {
         enabled: this.impersonationVoiceEnabled(),
         impersonatingParticipantIds: this.impersonatingIds(),
         fileIds: payload.fileIds,
+        attachments: payload.attachments,
         pending: this.pendingToolResults(),
       })
     ) {
@@ -3511,7 +3533,7 @@ export class SalonConversation {
       // holds the draft and the tray, which is what "Edit original" returns to.
       return;
     }
-    this.postComposedMessage(payload.content, payload.fileIds);
+    this.postComposedMessage(payload.content, payload.fileIds, payload.attachments);
   }
 
   /**
@@ -3527,6 +3549,7 @@ export class SalonConversation {
   private postComposedMessage(
     content: string,
     fileIds: string[],
+    attachments: MessageAttachment[],
     pendingOverride?: readonly PendingToolResultChip[],
   ): void {
     // v4 `sendMessage`'s in-flight refusal (bug 136) at v4's own site — the ONE
@@ -3541,7 +3564,7 @@ export class SalonConversation {
     const pending = [...(pendingOverride ?? this.pendingToolResults())];
     this.pendingToolResults.set([]);
     this.composer()?.clearAfterSend();
-    void this.runTurn({ content, fileIds, pending });
+    void this.runTurn({ content, fileIds, attachments, pending });
   }
 
   /**
@@ -3561,6 +3584,8 @@ export class SalonConversation {
   private async runTurn(opts: {
     content?: string;
     fileIds?: string[];
+    /** The attached files' bubble view (v4 `messageAttachments`). */
+    attachments?: MessageAttachment[];
     continueMode?: boolean;
     respondingParticipantId?: string;
     nudge?: boolean;
@@ -3628,7 +3653,7 @@ export class SalonConversation {
       // v4 `useSSEStreaming.ts:728-751` — the bubble is pushed into the SAME
       // array the read reconciles into, so it is retired by the fold rather
       // than by a separate clear.
-      const bubble = this.makeTempUserMessage(opts.content ?? '');
+      const bubble = this.makeTempUserMessage(opts.content ?? '', opts.attachments ?? []);
       this.transcriptMessages.update((prev) => [...prev, bubble]);
       // A user send always chases the bottom and re-enables auto-scroll (v4).
       this.messageList()?.scrollOnUserMessage();
@@ -3651,7 +3676,7 @@ export class SalonConversation {
         {
           type: 'chatSend',
           chatId,
-          content: opts.content,
+          content: opts.content || (hasAttachments ? ATTACHMENT_ONLY_CONTENT : opts.content),
           fileIds: opts.fileIds?.length ? opts.fileIds : undefined,
           continueMode: opts.continueMode,
           respondingParticipantId: opts.respondingParticipantId,
@@ -4170,7 +4195,18 @@ export class SalonConversation {
     );
   }
 
-  private makeTempUserMessage(content: string): MessageDto {
+  /**
+   * v4's optimistic bubble (`useSSEStreaming.ts:799-802`, `:836`): with files
+   * attached it reads `[Attached: a.txt, b.png]`, under the typed text when
+   * there is any — never the attachment-only sentence, which is the request's
+   * alone. v4 sets `attachments: undefined` when there are none; v5's
+   * `MessageDto.attachments` is required, so it stays `[]`.
+   */
+  private makeTempUserMessage(content: string, attachments: MessageAttachment[]): MessageDto {
+    const displayContent =
+      attachments.length > 0
+        ? `${content}${content ? '\n' : ''}[Attached: ${attachments.map((f) => f.filename).join(', ')}]`
+        : content;
     const participants = this.chat()?.participants ?? [];
     const speakingAsId = this.activeSpeakerId();
     // Attribute the optimistic bubble to the seat the SERVER will resolve this
@@ -4187,7 +4223,7 @@ export class SalonConversation {
     return {
       id: `temp-user-${Date.now()}`,
       role: 'USER',
-      content,
+      content: displayContent,
       tokenCount: null,
       promptTokens: null,
       completionTokens: null,
@@ -4195,7 +4231,7 @@ export class SalonConversation {
       swipeGroupId: null,
       swipeIndex: null,
       participantId: optimisticAuthor?.id ?? speakingAsId ?? null,
-      attachments: [],
+      attachments,
       provider: null,
       modelName: null,
       routeTrail: null,

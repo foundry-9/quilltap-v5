@@ -31,7 +31,7 @@ import { applySourceFormat } from '../editor/source-transforms';
 import { RichEditor } from '../editor/rich-editor';
 import { SmartTypographySettings } from '../smart-typography/settings';
 import type { CompiledRules } from '../editor/text-replacement';
-import type { NarrationDelimiters, TemplateDelimiter } from '../core/core-contract';
+import type { MessageAttachment, NarrationDelimiters, TemplateDelimiter } from '../core/core-contract';
 import { characterKeys, fetchCharacterList } from '../screens/characters/characters.api';
 import { Icon } from '../ui/icon';
 import {
@@ -71,10 +71,16 @@ export interface SpeakingAsSeat {
   avatarUrl: string | null;
 }
 
-/** What the composer emits on send — the text plus any attached file ids. */
+/** What the composer emits on send — the text plus any attached files. */
 export interface ComposerSend {
   content: string;
   fileIds: string[];
+  /**
+   * The same attached files as v4's `messageAttachments`
+   * (`useSSEStreaming.ts:778-783`) — the four fields the optimistic bubble
+   * names and carries. `fileIds` stays the request's field.
+   */
+  attachments: MessageAttachment[];
 }
 
 /**
@@ -988,6 +994,12 @@ export class ChatComposer implements OnInit {
     this.send.emit({
       content: content.trim(),
       fileIds: this.attachedFiles().map((f) => f.id),
+      attachments: this.attachedFiles().map((f) => ({
+        id: f.id,
+        filename: f.filename,
+        filepath: f.filepath,
+        mimeType: f.mimeType,
+      })),
     });
   }
 

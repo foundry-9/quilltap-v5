@@ -1,6 +1,7 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 
 import { CoreClient } from '../../core/core-client';
+import type { MessageAttachment } from '../../core/core-contract';
 import { ToastService } from '../../ui/toast.service';
 import { shouldRehearseImpersonatedLine, type RehearsalSeat } from './gate';
 import { previewImpersonationVoice } from './impersonation-voice.api';
@@ -61,6 +62,8 @@ export type RehearsalStage = 'idle' | 'generating' | 'review';
 export interface PendingSend {
   seed: string;
   fileIds: string[];
+  /** The attached files' bubble view (v4 re-enters `sendMessage` with them still attached). */
+  attachments: MessageAttachment[];
   /** Rolled-but-unsent tool results riding this send (v4 `pendingToolResults`). */
   pending: readonly unknown[];
 }
@@ -87,6 +90,7 @@ export interface InterceptArgs {
   enabled: boolean;
   impersonatingParticipantIds: readonly string[];
   fileIds: string[];
+  attachments: MessageAttachment[];
   pending: readonly unknown[];
 }
 
@@ -157,7 +161,12 @@ export class ImpersonationVoiceState {
 
     if (!armed || !args.seatTarget) return false;
 
-    this.pending.set({ seed: args.text, fileIds: args.fileIds, pending: args.pending });
+    this.pending.set({
+      seed: args.text,
+      fileIds: args.fileIds,
+      attachments: args.attachments,
+      pending: args.pending,
+    });
     this.target.set(args.seatTarget);
     this.profileOverride.set(null);
     this.systemPromptOverride.set(null);

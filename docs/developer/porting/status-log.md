@@ -162872,3 +162872,189 @@ behaviour. The escalation is closed as a RULED divergence.
   2026-10-02) — the unifier's call where it lands.
 - §S handoff 5 (Unit 3's close) stands with the new reading: a codec change
   trips the pin, which then retires by measurement.
+## P4.145 — the Salon's attachment-only send carries v4's sentence + v4's `[Attached: …]` bubble + the `fileProcessing` neutrality pin (SPA only) — LANE COMPLETE (2026-10-02)
+
+Branch `claude/spa-attachment-sentence-neutrality-644837` (worktree
+`.claude/worktrees/spa-attachment-sentence-neutrality-644837`), cut from
+`main` `75219b8dd`. Read-only pin `/tmp/qt-v4-pin-p4145-f6426e196`
+(`rev-parse` = `f6426e1969…`, `ls -ld` checked); no oracle regen — v4's
+source at the pin is the oracle for an SPA string. The §R.2 probe PASSED at
+lane start: branch `main`, HEAD `f6426e196`, both logs empty, the tree dirty
+by EXACTLY the three recorded docs paths (`docs/developer/bugs.md` + the
+bug-175/176 files). Zero Rust, zero harness families, zero fixtures touched.
+
+### Commits
+
+- `feb9a4239` test(spa): the reducer neutrality pin + the
+  `FileProcessingEntry` mirror (Tier 1 item 5 + Tier 2 item 7).
+- (next) fix(salon): the attachment-only sentence + v4's bubble + the live
+  beat + this record (Tier 1 items 1–4, Tier 2 item 6) — SPA 0.5.793 (the
+  one bump of the series).
+
+### Landed — Tier 1 (all five) and Tier 2 (both)
+
+1. **The substitution** — `ATTACHMENT_ONLY_CONTENT` (a named module
+   constant with v4's cite + the *why*) at the `chatSend` dispatch:
+   `content: opts.content || (hasAttachments ? ATTACHMENT_ONLY_CONTENT : opts.content)`.
+   Keyed on attached files ALONE (`hasAttachments` = `fileIds.length > 0`).
+   The fall-through is `opts.content`, not v4's literal `''`, so a continue/
+   nudge keeps sending NO `content` key exactly as before (v4's continue
+   never passes through `sendMessage`, so there is no v4 bytes to contradict)
+   and a pending-results-only send keeps `''` as v4. No `continueMode`
+   conjunct.
+2. **Unit arms** — new describe `SalonConversation — the attachment-only send
+   carries v4's sentence (useSSEStreaming.ts:845)`, seven arms over a
+   held-`chatSend` client: (a) attachment-only → the sentence + `fileIds`;
+   (b) text + file → the text; (c) pending-only → `''`; (d) continue → no
+   `content`/`fileIds`; (e) the bubble reads `[Attached:
+   p4145-attach-only.txt]` with its attachment objects, never the sentence
+   (Tier 2 re-aim); (f) `'a note\n[Attached: a.txt, b.png]'`; (g) no files →
+   bare text, `attachments: []`.
+   **Red-first on unported source (measured):** exactly (a) and the re-armed
+   pass-2 arm RED (`expected '' to be 'Please look at the attached
+   file(s).'`), (b)–(e) GREEN — 2 failed / 149 passed in the file, as the
+   order predicted.
+3. **The stale arm corrected** — `retires an attachment-only send by pass 2`:
+   comment rewritten to the truth (v5 now SENDS the sentence, so the planted
+   row is reachable; the bubble reads v4's `[Attached: file-1.txt]`), the arm
+   asserts the dispatched `content` AND the bubble text. The
+   `transcript-reconcile.ts` doc comment gains one sentence naming
+   `ATTACHMENT_ONLY_CONTENT`.
+4. **The live beat** — NEW `e2e/salon-attachment-only-send-flow.spec.ts`:
+   upload `p4145-attach-only.txt` (`text/plain`) through the real composer,
+   press `Send message` on an empty editor, assert v4's bubble
+   `[Attached: p4145-attach-only.txt]` while the (slowed, 400 ms/word) reply
+   streams, then `chatGet` holds exactly ONE new `USER` row whose content is
+   the sentence and whose `attachments` names the file, and the transcript
+   shows one `qt-message-row` with the sentence and none with the bubble text.
+   GREEN on the branch (1/1, 12.7 s alone; 11.8 s inside the full suite).
+   **⚠ Deviation, recorded (the order's "discover a general chat" step):**
+   measured from `harness/oracle/fixtures/salon.json`, the fixture has
+   exactly ONE general chat — "Group Expedition" (both profiles are
+   `OPENAI_COMPATIBLE`, so every chat reaches the mock) — and sends into it
+   are the measured P4.D187 title-checkpoint cascade (~22 downstream reds);
+   "Solo Voyage" is forbidden (§5b) and a project chat; "Ridge Reunion" is
+   an autonomous project room. So the beat CREATES a throwaway general chat
+   on the mock profile via `chatCreate` and `chatDelete`s it in `finally`
+   (the `chat-delete-flow` idiom) — no fixture chat moves, no list keeps the
+   extra card. `global-setup.ts` and `e2e/support/**` untouched.
+5. **The `fileProcessing` neutrality pin** — three reducer arms (`toBe(prev)`
+   by reference with a nested-`error` entry; the same frame mid-stream leaves
+   `content`/`streaming`/`waitingForResponse`/`error` (`null`)/`status`
+   untouched and returns the same object; a `{type:'text'}` entry with no
+   `error` key). GREEN by construction.
+6. **v4's optimistic bubble** (Tier 2) — `ComposerSend` gains a REQUIRED
+   `attachments: MessageAttachment[]` (`{id, filename, filepath, mimeType}`
+   from `UploadedChatFile`, never the `url`; `fileIds` stays); threaded
+   through `send` → `postComposedMessage` → `runTurn` (`opts.attachments`,
+   optional like every `runTurn` field) and the In Their Own Words stash
+   (`PendingSend.attachments`, `InterceptArgs.attachments`, `sendFinal`);
+   `makeTempUserMessage` builds v4's `displayContent` byte-for-byte and keeps
+   `attachments` (`[]` when none — `MessageDto.attachments` is required where
+   v4 sets `undefined`). Literals updated: `chat-composer.spec.ts` (the emit
+   `toEqual`), `impersonation-voice.state.spec.ts` (the helper + the stash
+   `toEqual`), `salon-impersonation-voice.spec.ts` (both emits + a new
+   assertion that a dialog Send's bubble reads `'A seventeen, sir.\n[Attached:
+   map.txt]'`, read before the settle — that rig's `chatSend` resolves at once
+   and the post-turn sweep retires the bubble).
+7. **The contract mirror** (Tier 2) — `ChatStreamFrame.fileProcessing?:
+   FileProcessingEntry[]` + `FileProcessingEntry` in `core-contract.ts`, per
+   the Shared contract (P4.140's order fixes the key); item 5's cast dropped.
+   **§S handoff 1 (the mirror) is therefore DONE on this branch** — the
+   unifier needs only to confirm P4.140's serialized key matches.
+
+### Mutation proofs (each applied, run, reverted, re-confirmed green)
+
+- **M1** (substitution removed) → (a) + the pass-2 arm RED (2); and the
+  **live beat RED against a REBUILT dist** (`expect.poll` new USER rows:
+  `Expected: 1, Received: 0`, 26.7 s) — dist rebuilt again after the revert.
+- **M2** (keyed on `hasAttachments || pending.length > 0`) → (c) RED only.
+- **M3** (sentence fed into `makeTempUserMessage`) → Tier 1: (e) RED only;
+  Tier 2 re-run: (e) + the pass-2 arm RED.
+- **M4** (`opts.content ||` dropped) → (b) RED only.
+- **M5** (a reducer arm copying `fileProcessing[0].error` into `s.error`) →
+  5(a) + 5(b) RED; 5(c) green (no `error` key — as it should be).
+- **M6** (`'\n'` always inserted) → (e) + the pass-2 arm RED.
+- **M7** (the dialog Send drops `stash.attachments`) → the
+  `salon-impersonation-voice` stash arm RED only.
+
+### Gate — P4.145's SPA gate (vitest, build, lint, Playwright; no cargo gate — no Rust touched)
+
+- `npm test` (whole): **466 files / 8,798 passed / 0** (main: 8,788; +10 —
+  the seven Salon arms and the three reducer arms). qt-class self-test +
+  census clean.
+- `npm run build`: clean (the ONLY type gate). `npm run lint`: clean (956
+  qt-* classes, self-test 5/5).
+- Playwright, the new spec by FILE: **1/1 passed** (release
+  `quilltap-web`/`quilltap` built in the worktree with `CARGO_INCREMENTAL=0`;
+  dist rebuilt).
+- Playwright, the full suite once: **352 passed / 5 failed / 6 skipped
+  (15.6 m)** — the six skips the standing parks; the new beat GREEN inside it.
+  The five reds, classified:
+  - `salon-documents-flow.spec.ts` (2 beats, terminal-pane / toolbar
+    "element was detached" timeouts) — **green alone 5/5 (53 s)**.
+  - `workspace-flow.spec.ts` (the terminal pop-out deep link, 1 tab of 2) —
+    **green alone 13/13 (54 s)**.
+  - `salon-scroll.spec.ts` + `settings-flow.spec.ts` — **ENVIRONMENTAL, NOT
+    re-runnable this session:** both boot a second server on port **4321**,
+    and port 4321 is held by an Astro dev server from
+    `~/source/quilltap-website` (`node … astro dev`, PID 30128, started
+    mid-suite), which answered the health probe with 404 ("long-chat server
+    did not become ready within 30s (health status 404)"; the settings
+    `beforeAll` 30 s timeout). The process is the human's; the lane did not
+    kill it. Neither spec touches the Salon send path. **Owed to the
+    unifier's full suite with 4321 free.**
+
+### Designed reds / neutrality (§R.5)
+
+P4.145's designed reds held exactly: the vitest arm (a) and the re-armed
+pass-2 arm RED on unported source, GREEN on the branch; the new Playwright
+beat RED under M1 (no USER row), GREEN on the branch. No harness family run
+(none is this lane's).
+
+### §S handoffs (pre-written)
+
+- **§S.3 — run the beat on the UNION** after P4.140 lands: it then receives
+  the real `{"fileProcessing":[{"filename":"p4145-attach-only.txt","type":"text","usedImageDescriptionLLM":false}]}`;
+  GREEN is the live neutrality proof (red = flattened/mis-keyed).
+- **The mirror** (§S's first bullet) is already on this branch — confirm
+  P4.140's `ChatEvent::FileProcessing` serializes `fileProcessing` with
+  entries `filename, type, usedImageDescriptionLLM, error` (error skipped
+  when `None`); no SPA hunk owed.
+- **Retire the P4.137 deferral** (`phase-4.md:7280-7289`) and annotate
+  `status-log.md`'s "SPA shows no fallback notice where v4 would" line
+  REFUTED (survey §B2) — unifier's.
+- **The two port-4321 specs** — re-run on the union with 4321 free.
+
+### Tier 3 — deferred loudly
+
+8. **RULING for the human — the composer placeholder bytes.** v4
+   `ChatComposer.tsx:523`: `"Add a character to start chatting..."` /
+   `"Add a message (optional)..."` (three ASCII dots) / `""` (NO placeholder
+   when nothing is attached). v5 `chat-composer.ts`: `'Add a character to
+   start chatting…'` / `'Add a message (optional)…'` (U+2026) / `'Type a
+   message…'`. **Option A** — follow v4 byte-for-byte (three strings change;
+   the empty-composer hint disappears; dogfood #75's prose names "Type a
+   message…" but its e2e guard asserts width, not text — re-read before
+   flipping). **Option B** — keep v5's typography as a recorded divergence
+   (U+2026 is the SPA's convention elsewhere; an empty hint is v4's choice,
+   not a defect). Unchanged by this lane.
+9. **No UI for `fileProcessing`** — v4 has none (survey §B2); none added.
+10. **The injected-frame e2e beat** — named, not written: it adds nothing
+    visible over item 5, and the item-4 beat receives the real frame on the
+    union (§S.3).
+
+### 💸 for the dogfood pass
+
+On the Friday copy (Lantern OFF): attach a text file, Send on an empty
+editor — the bubble reads `[Attached: <name>]` until the row lands, then one
+user row reading `Please look at the attached file(s).` with the file under
+it; `chatGet` shows its `attachments`; the LLM Inspector's request shows the
+inlined body then the sentence. A rehearsed (In Their Own Words) send with a
+file names the file in its bubble. Once P4.140 lands, the `fileProcessing`
+frame on the wire, and the SPA shows nothing for it.
+
+### Versions
+
+SPA 0.5.792 → **0.5.793** (`package.json` + both `package-lock.json`
+lines). No crate bumps; no `Cargo.toml` delta.

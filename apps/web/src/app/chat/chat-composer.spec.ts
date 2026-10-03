@@ -96,7 +96,13 @@ describe('ChatComposer — attach affordance', () => {
     richEditor(fixture).setMarkdown('look at this');
     await settle(fixture);
     fixture.nativeElement.querySelector('form').dispatchEvent(new Event('submit'));
-    expect(sent).toEqual({ content: 'look at this', fileIds: ['f-1'] });
+    expect(sent).toEqual({
+      content: 'look at this',
+      fileIds: ['f-1'],
+      // v4's `messageAttachments` (`useSSEStreaming.ts:778-783`): the four
+      // fields, never the upload's `url`.
+      attachments: [{ id: 'f-1', filename: 'pic.png', filepath: 'chat/pic.png', mimeType: 'image/png' }],
+    });
 
     // P4.D181: `submit` EMITS and stops there — the clear belongs to whoever
     // posts the message, because In Their Own Words can take this submit over

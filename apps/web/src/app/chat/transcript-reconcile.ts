@@ -180,6 +180,8 @@ const PROVISIONAL_CLOCK_SLACK_MS = 60_000;
  *      *not* always read the same as its persisted row: a send with attachments
  *      shows `[Attached: …]` and stores the bare prose, and a send that is
  *      nothing but attachments stores "Please look at the attached file(s)."
+ *      (v5's Salon sends that same sentence from `salon-conversation.ts`'s
+ *      `ATTACHMENT_ONLY_CONTENT`, as v4's `useSSEStreaming.ts:845` does.)
  *
  * "Newly arrived" gates *both* passes — only a row the previous display did not
  * already hold may answer a bubble. Without it an older, identical line further
