@@ -160503,6 +160503,7 @@ error=fetch failed`, `[Failover] … network`); a real Google 4xx on a bad key
 (`Error streaming from Google Gemini API context=… model=… error=…`); an
 OpenRouter image send with a junk key (line #7 alone). Plus `stall-body`
 on a non-streaming desk (a `Timeout`, never an empty answer).
+
 ## P4.142 — the repository fallbacks (overlay batch reads, chunk reads, the chat GET/list arms) — lane record IN PROGRESS (2026-10-02)
 
 Branch `claude/p4-142-repository-fallbacks-75219b8dd` (worktree
@@ -161275,6 +161276,7 @@ dependency delta.
   capture cannot see them; pin at the twin or at a caller-thread entry.
 - **Matching v4 can import v4's data loss:** a fallback twin is only safe where
   v4's "absent" arm is harmless; 23 of 47 write-path sites were not.
+
 ## P4.139 — the API-key read class (lane record, `claude/p4-139-api-key-read-class-75219b8dd`, from `main` `75219b8dd`, pin `f6426e196`)
 
 Order: `work-orders/p4.139-api-key-read-class-census-guard-isactive-routes.md`;
@@ -162124,6 +162126,7 @@ answerer, NULL `messageId`) visible in the LLM Inspector.
 - Every Cargo version bump mints new hashes for every test binary; a lane's
   `target/debug/deps` grew to 57 GB and a newest-per-stem prune reclaimed
   28 GB, then 19 GB, with nothing lost.
+
 ## P4.143 — the data/zod smalls: the import mask per family, the restore serde arm, the third chat-create ERROR, the trail WARN's `errors` — LANE record (2026-10-02)
 
 Branch `claude/p4-143-data-zod-smalls-86ac7a` (worktree
@@ -162564,6 +162567,7 @@ logs `Failed to import image profile profileId=…`); every refused tag /
 template / profile logs v4's WARN with a camelCase id; the server log on a
 refused restored chat shows the THIRD `quilltap::db` ERROR `Failed to create
 chat`.
+
 ## P4.144 — the memory + harness smalls: v4's three `[FoldEpisodePass]` lines, the fragment/chat fallback reads, the `ALIAS_ASSIGN` widening, the MPJ llm-logs comparand (2026-10-02)
 
 Lane branch `claude/memory-harness-smalls-fold-13f6df`, cut from `main`
