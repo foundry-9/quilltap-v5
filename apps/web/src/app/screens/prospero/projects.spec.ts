@@ -2,12 +2,25 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { of } from 'rxjs';
-import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
+import {
+  QueryClient,
+  QueryObserver,
+  provideTanStackQuery,
+} from '@tanstack/angular-query-experimental';
 import { describe, expect, it } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
 import { RichEditor } from '../../editor/rich-editor';
-import type { ProjectDetail, ProjectFileDto, RoleplayTemplateDto } from '../../core/core-contract';
+import { CoreDispatchError } from '../../core/core-contract';
+import type {
+  CharacterListItem,
+  ProjectDetail,
+  ProjectFileDto,
+  ProjectRosterCharacter,
+  RoleplayTemplateDto,
+} from '../../core/core-contract';
+import { QuickHideService } from '../../quick-hide/quick-hide.service';
+import { characterKeys } from '../characters/characters.api';
 import { WORKSPACE_BACKDROP_REGISTRY, WORKSPACE_TAB_ID } from '../../workspace/workspace-contract';
 import type { WorkspaceBackdropEntry } from '../../workspace/workspace-contract';
 import { ProjectCharactersCard } from './cards/project-characters-card';
@@ -53,7 +66,6 @@ function project(over: Partial<ProjectDetail> = {}): ProjectDetail {
     icon: '📁',
     allowAnyCharacter: false,
     characterRoster: [],
-    roster: [],
     defaultAgentModeEnabled: null,
     defaultAvatarGenerationEnabled: null,
     defaultImageProfileId: null,
@@ -430,107 +442,572 @@ describe('ProjectModelBehaviorCard', () => {
   });
 });
 
+/**
+ * P4.D247 — the project Characters card as v4 `9753d0eb2` left it (every
+ * string quoted from `git show e5c6bd0c0:"app/prospero/[id]/components/
+ * CharactersCard.tsx"` and `…/hooks/useProjectDetail.ts`). The `project()`
+ * builder carries the WIRE shape: `characterRoster` holds the enriched entries
+ * `projectGet` sends (`api/projects.rs:350`) and there is no `roster` key —
+ * the phantom the card read since P4.6l (survey §D1).
+ */
 describe('ProjectCharactersCard', () => {
+  const HIDDEN_TAG = 't-hidden';
+  const EXPLAINER =
+    'Any character in a project chat may read and edit its files and borrow from its wardrobe. Turn this off to choose who may.';
+
+  function rosterChar(
+    id: string,
+    name: string,
+    over: Partial<ProjectRosterCharacter> = {},
+  ): ProjectRosterCharacter {
+    return { id, name, defaultImage: null, tags: [], chatCount: 0, ...over };
+  }
+
+  function listChar(
+    id: string,
+    name: string,
+    over: Partial<CharacterListItem> = {},
+  ): CharacterListItem {
+    return {
+      id,
+      name,
+      title: null,
+      defaultImageId: null,
+      defaultImage: null,
+      tags: [],
+      ...over,
+    } as CharacterListItem;
+  }
+
+  /** A held promise: the test decides when the stubbed dispatch answers. */
+  function held<T>(): { promise: Promise<T>; release: (v: T) => void } {
+    let release!: (v: T) => void;
+    const promise = new Promise<T>((r) => (release = r));
+    return { promise, release };
+  }
+
   async function render(
     client: Partial<CoreClient>,
     proj: ProjectDetail,
+    opts: { queryClient?: QueryClient; defaultOpen?: boolean } = {},
   ): Promise<ComponentFixture<ProjectCharactersCard>> {
     TestBed.configureTestingModule({
       imports: [ProjectCharactersCard],
       providers: [
         provideRouter([]),
-        provideTanStackQuery(new QueryClient()),
+        provideTanStackQuery(opts.queryClient ?? new QueryClient()),
         { provide: CoreClient, useValue: client },
+        // The real service needs `tagList` + localStorage; the card only asks
+        // the one question (v4 `shouldHideByIds`).
+        {
+          provide: QuickHideService,
+          useValue: {
+            shouldHideByIds: (ids?: ReadonlyArray<string | null | undefined>) =>
+              (ids ?? []).includes(HIDDEN_TAG),
+          },
+        },
       ],
     });
     const fixture = TestBed.createComponent(ProjectCharactersCard);
     fixture.componentRef.setInput('project', proj);
-    fixture.componentRef.setInput('defaultOpen', true);
+    fixture.componentRef.setInput('defaultOpen', opts.defaultOpen ?? true);
     fixture.detectChanges();
     await settle(fixture);
     return fixture;
   }
 
-  it('toggles Allow Any Character with an immediate PUT and toasts (P4.29, v4 has no inline surface)', async () => {
+  function el(fixture: ComponentFixture<unknown>): HTMLElement {
+    return fixture.nativeElement as HTMLElement;
+  }
+
+  /** Whitespace-collapsed text (Angular collapses template whitespace too). */
+  function text(fixture: ComponentFixture<unknown>): string {
+    return (el(fixture).textContent ?? '').replace(/\s+/g, ' ');
+  }
+
+  function buttonNamed(
+    fixture: ComponentFixture<unknown>,
+    label: string,
+  ): HTMLButtonElement | null {
+    return (
+      (Array.from(el(fixture).querySelectorAll('button')).find(
+        (b) => (b.textContent ?? '').trim() === label,
+      ) as HTMLButtonElement | undefined) ?? null
+    );
+  }
+
+  function searchBox(fixture: ComponentFixture<unknown>): HTMLInputElement | null {
+    return el(fixture).querySelector('input[aria-label="Search characters to add"]');
+  }
+
+  /** The picker's candidate rows, in render order. */
+  function rows(fixture: ComponentFixture<unknown>): HTMLButtonElement[] {
+    return Array.from(el(fixture).querySelectorAll('ul li button')) as HTMLButtonElement[];
+  }
+
+  function rowNames(fixture: ComponentFixture<unknown>): string[] {
+    return rows(fixture).map((r) => (r.querySelector('.text-sm')?.textContent ?? '').trim());
+  }
+
+  async function openPicker(fixture: ComponentFixture<unknown>): Promise<void> {
+    const add = buttonNamed(fixture, 'Add character');
+    expect(add, 'the closed picker button').not.toBeNull();
+    add!.click();
+    await settle(fixture);
+  }
+
+  async function type(fixture: ComponentFixture<unknown>, value: string): Promise<void> {
+    const box = searchBox(fixture);
+    expect(box, 'the picker search box').not.toBeNull();
+    box!.value = value;
+    box!.dispatchEvent(new Event('input'));
+    await settle(fixture);
+  }
+
+  function toggle(fixture: ComponentFixture<unknown>): HTMLButtonElement {
+    return el(fixture).querySelector(
+      'button[aria-label="Allow Any Character"]',
+    ) as HTMLButtonElement;
+  }
+
+  // --- V1 — the defect: the roster renders from `characterRoster` ----------
+
+  it('V1 renders the roster from the wire `characterRoster` (the phantom-`roster` defect)', async () => {
+    const fixture = await render(
+      stubClient(() => ({})),
+      project({
+        characterRoster: [rosterChar('c1', 'Bertie', { chatCount: 1 }), rosterChar('c2', 'Clara')],
+      }),
+    );
+    const t = text(fixture);
+    expect(t).toContain('2 characters in roster');
+    expect(t).toContain('Bertie');
+    expect(t).toContain('Clara');
+    expect(t).toContain('1 chat');
+    expect(t).toContain('0 chats');
+  });
+
+  // --- V2 / V3 — the two Allow Any modes -------------------------------------
+
+  it('V2 Allow Any ON: the open subtitle, the explainer, no picker, no grid even over a roster', async () => {
+    const fixture = await render(
+      stubClient(() => ({})),
+      project({ allowAnyCharacter: true, characterRoster: [rosterChar('c1', 'Bertie')] }),
+    );
+    const t = text(fixture);
+    expect(t).toContain('Open to every character');
+    expect(t).toContain('Every character may use the project files and shared wardrobe.');
+    const explainer = Array.from(el(fixture).querySelectorAll('p')).find((p) =>
+      (p.textContent ?? '').includes('Any character in a project chat'),
+    );
+    // v4's two source lines render joined by ONE space (JSX whitespace rule).
+    expect(explainer?.textContent?.trim()).toBe(EXPLAINER);
+    expect(t).not.toContain('Add character');
+    expect(t).not.toContain('Bertie');
+    expect(el(fixture).querySelector('button[title="Remove from roster"]')).toBeNull();
+    expect(t).not.toContain('in roster');
+  });
+
+  it('V3 Allow Any OFF: the roster-only description, the picker button, no explainer', async () => {
+    const fixture = await render(
+      stubClient(() => ({})),
+      project({ allowAnyCharacter: false }),
+    );
+    const t = text(fixture);
+    expect(t).toContain('Only roster characters may use the project files and shared wardrobe.');
+    expect(buttonNamed(fixture, 'Add character')).not.toBeNull();
+    expect(t).not.toContain('Any character in a project chat');
+    expect(t).not.toContain('Any character can join project chats.');
+  });
+
+  // --- V4 — the empty and all-hidden branches --------------------------------
+
+  it('V4 an empty roster says so with the hint; an all-hidden roster says so WITHOUT it', async () => {
+    const empty = await render(
+      stubClient(() => ({})),
+      project({ characterRoster: [] }),
+    );
+    expect(text(empty)).toContain('No characters in the roster yet.');
+    expect(text(empty)).toContain(
+      'Until someone is added, no character may use the project files or shared wardrobe.',
+    );
+    expect(text(empty)).not.toContain('Characters are added when chats are associated');
+
+    TestBed.resetTestingModule();
+    const hidden = await render(
+      stubClient(() => ({})),
+      project({ characterRoster: [rosterChar('c1', 'Shade', { tags: [HIDDEN_TAG] })] }),
+    );
+    const t = text(hidden);
+    expect(t).toContain('No visible characters (some may be hidden).');
+    expect(t).not.toContain('Until someone is added');
+    expect(t).not.toContain('Shade');
+    expect(t).toContain('0 characters in roster');
+  });
+
+  // --- V5 — the remove button at rest ----------------------------------------
+
+  it('V5 the remove button is visible at rest and names its character', async () => {
+    const fixture = await render(
+      stubClient(() => ({})),
+      project({ characterRoster: [rosterChar('c1', 'Bertie'), rosterChar('c2', '')] }),
+    );
+    const remove = el(fixture).querySelector(
+      'button[aria-label="Remove Bertie from roster"]',
+    ) as HTMLButtonElement | null;
+    expect(remove).not.toBeNull();
+    expect(remove!.classList).toContain('opacity-60');
+    expect(remove!.classList).toContain('group-hover:opacity-100');
+    expect(remove!.classList).toContain('focus:opacity-100');
+    expect(remove!.classList).not.toContain('opacity-0');
+    expect(remove!.getAttribute('title')).toBe('Remove from roster');
+    expect(
+      el(fixture).querySelector('button[aria-label="Remove character from roster"]'),
+    ).not.toBeNull();
+  });
+
+  // --- V6 — the picker's fetch gate (expanded ∧ !allowAny ∧ pickerOpen) ------
+
+  it('V6 the characters list is fetched only while expanded, roster-editable and open', async () => {
+    const seen: DispatchReq[] = [];
+    const qc = new QueryClient();
+    const client = stubClient((r) => {
+      seen.push(r);
+      return r.type === 'characterList' ? { characters: [listChar('c9', 'Bram')] } : {};
+    });
+    const lists = () => seen.filter((r) => r.type === 'characterList').length;
+
+    const fixture = await render(client, project({ allowAnyCharacter: false }), {
+      queryClient: qc,
+    });
+    expect(lists(), 'nothing before Add character').toBe(0);
+    await openPicker(fixture);
+    expect(lists(), 'exactly one after opening').toBe(1);
+
+    // Collapsed with the picker left open: an invalidation must not refetch.
+    (el(fixture).querySelector('.qt-collapsible-card-header') as HTMLButtonElement).click();
+    await settle(fixture);
+    expect(searchBox(fixture), 'the body is collapsed').toBeNull();
+    await qc.invalidateQueries({ queryKey: characterKeys.list() });
+    await settle(fixture);
+    expect(lists(), 'no refetch while collapsed').toBe(1);
+
+    // Allow Any ON with the picker state left open: likewise.
+    (el(fixture).querySelector('.qt-collapsible-card-header') as HTMLButtonElement).click();
+    await settle(fixture);
+    const afterReopen = lists();
+    fixture.componentRef.setInput('project', project({ allowAnyCharacter: true }));
+    await settle(fixture);
+    await qc.invalidateQueries({ queryKey: characterKeys.list() });
+    await settle(fixture);
+    expect(lists(), 'no refetch with Allow Any ON').toBe(afterReopen);
+
+    TestBed.resetTestingModule();
+    const onSeen: DispatchReq[] = [];
+    await render(
+      stubClient((r) => {
+        onSeen.push(r);
+        return {};
+      }),
+      project({ allowAnyCharacter: true }),
+    );
+    expect(onSeen.filter((r) => r.type === 'characterList')).toEqual([]);
+  });
+
+  // --- V7 — the candidates pipeline ------------------------------------------
+
+  it('V7 candidates: roster + hidden excluded, search by name or title, localeCompare order', async () => {
     const seen: DispatchReq[] = [];
     const fixture = await render(
       stubClient((r) => {
         seen.push(r);
-        return r.type === 'projectUpdate' ? new Error('boom') : {};
+        return r.type === 'characterList'
+          ? {
+              characters: [
+                listChar('c-zed', 'Zed', { title: 'The Quiet One' }),
+                listChar('c-aria', 'Aria'),
+                // A quick-hidden ROSTER member whose list entry is not tagged
+                // (a warm shared cache can disagree with the enrichment): v4
+                // builds `onRoster` from the RAW roster, so it stays excluded.
+                listChar('c-cleo', 'Cleo'),
+                listChar('c-hid', 'Hidra', { tags: [HIDDEN_TAG] }),
+                listChar('c-dora', 'Dora'),
+                listChar('c-bram', 'Bram', { title: 'Engineer' }),
+              ],
+            }
+          : {};
+      }),
+      project({
+        characterRoster: [
+          rosterChar('c-aria', 'Aria'),
+          rosterChar('c-cleo', 'Cleo', { tags: [HIDDEN_TAG] }),
+        ],
+      }),
+    );
+    await openPicker(fixture);
+    expect(seen.find((r) => r.type === 'characterList')).toEqual({ type: 'characterList' });
+    expect(rowNames(fixture)).toEqual(['Bram', 'Dora', 'Zed']);
+    // The title line only when truthy.
+    expect(rows(fixture)[0].textContent).toContain('Engineer');
+    expect(rows(fixture)[1].querySelectorAll('.qt-text-xs').length).toBe(1);
+
+    await type(fixture, '  BRA ');
+    expect(rowNames(fixture)).toEqual(['Bram']);
+    await type(fixture, 'quiet');
+    expect(rowNames(fixture)).toEqual(['Zed']);
+    await type(fixture, 'zzz');
+    expect(rows(fixture)).toEqual([]);
+    expect(text(fixture)).toContain('No characters match.');
+    expect(text(fixture)).not.toContain('Every character is already on the roster.');
+  });
+
+  it('V7 an exhausted list says everyone is on the roster; a held list says Loading', async () => {
+    const fixture = await render(
+      stubClient((r) =>
+        r.type === 'characterList' ? { characters: [listChar('c-aria', 'Aria')] } : {},
+      ),
+      project({ characterRoster: [rosterChar('c-aria', 'Aria')] }),
+    );
+    await openPicker(fixture);
+    expect(text(fixture)).toContain('Every character is already on the roster.');
+    expect(text(fixture)).not.toContain('No characters match.');
+
+    TestBed.resetTestingModule();
+    const gate = held<Record<string, unknown>>();
+    const loading = await render(
+      stubClient((r) => (r.type === 'characterList' ? gate.promise : {})),
+      project({}),
+    );
+    await openPicker(loading);
+    expect(text(loading)).toContain('Loading characters…');
+    gate.release({ characters: [listChar('c-bram', 'Bram')] });
+    await settle(loading);
+    expect(text(loading)).not.toContain('Loading characters…');
+    expect(rowNames(loading)).toEqual(['Bram']);
+  });
+
+  // --- V8 / V9 — add -----------------------------------------------------------
+
+  it('V8 add: every row disabled while in flight; the refetch lands before the toast and the re-enable', async () => {
+    const seen: DispatchReq[] = [];
+    const qc = new QueryClient();
+    const addGate = held<Record<string, unknown>>();
+    let getGate: ReturnType<typeof held<Record<string, unknown>>> | null = null;
+    const client = stubClient((r) => {
+      seen.push(r);
+      if (r.type === 'characterList') {
+        return { characters: [listChar('c-bram', 'Bram'), listChar('c-dora', 'Dora')] };
+      }
+      if (r.type === 'projectCharacterAdd') return addGate.promise;
+      if (r.type === 'projectGet') return getGate ? getGate.promise : { project: project() };
+      return {};
+    });
+    // The detail screen's own query (`project-detail.ts`) — the observer that
+    // makes `invalidateQueries(detail)` a real, awaited refetch.
+    const detail = new QueryObserver(qc, {
+      queryKey: projectKeys.detail('p1'),
+      queryFn: () => client.dispatchData!({ type: 'projectGet', projectId: 'p1' }),
+    });
+    const unsubscribe = detail.subscribe(() => undefined);
+    try {
+      const fixture = await render(client, project({}), { queryClient: qc });
+      await openPicker(fixture);
+      expect(rowNames(fixture)).toEqual(['Bram', 'Dora']);
+
+      rows(fixture)[0].click();
+      await settle(fixture);
+      expect(seen.find((r) => r.type === 'projectCharacterAdd')).toMatchObject({
+        projectId: 'p1',
+        characterId: 'c-bram',
+      });
+      expect(rows(fixture).every((b) => b.disabled)).toBe(true);
+      expect(rows(fixture)[0].textContent).toContain('Adding…');
+      expect(rows(fixture)[1].textContent).toContain('Add');
+      expect(rows(fixture)[1].textContent).not.toContain('Adding…');
+
+      // The add answers; the detail refetch is now in flight and HELD.
+      getGate = held();
+      addGate.release({ success: true });
+      await settle(fixture);
+      expect(seen.filter((r) => r.type === 'projectGet').length).toBe(2);
+      expect(toasts(), 'no toast before the refetch lands').toEqual([]);
+      expect(rows(fixture).every((b) => b.disabled)).toBe(true);
+      expect(rows(fixture)[0].textContent).toContain('Adding…');
+
+      getGate.release({ project: project() });
+      await settle(fixture);
+      expect(toasts()).toEqual([{ type: 'success', message: 'Character added to the roster' }]);
+      expect(rows(fixture).some((b) => b.disabled)).toBe(false);
+      expect(rows(fixture)[0].textContent).not.toContain('Adding…');
+      // The picker stays open after a successful add.
+      expect(searchBox(fixture)).not.toBeNull();
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it("V9 add errors: the server's sentence verbatim, else the fixed fallback; rows re-enabled", async () => {
+    const archived = 'That character is archived; rehydrate them before adding them to a roster.';
+    for (const [thrown, expected] of [
+      [new CoreDispatchError({ kind: 'bad-request', message: archived }), archived],
+      [new CoreDispatchError({ kind: 'bad-request', message: '' }), 'Failed to add character'],
+    ] as const) {
+      TestBed.resetTestingModule();
+      const fixture = await render(
+        stubClient((r) => {
+          if (r.type === 'characterList') return { characters: [listChar('c-bram', 'Bram')] };
+          if (r.type === 'projectCharacterAdd') return thrown;
+          return {};
+        }),
+        project({}),
+      );
+      await openPicker(fixture);
+      rows(fixture)[0].click();
+      await settle(fixture);
+      expect(toasts()).toEqual([{ type: 'error', message: expected }]);
+      expect(rows(fixture)[0].disabled).toBe(false);
+      expect(rows(fixture)[0].textContent).not.toContain('Adding…');
+    }
+  });
+
+  // --- V10 — toggle ------------------------------------------------------------
+
+  it("V10 toggle: v4's two success sentences on the PUT body's flag", async () => {
+    const seen: DispatchReq[] = [];
+    const on = await render(
+      stubClient((r) => {
+        seen.push(r);
+        return r.type === 'projectUpdate' ? { project: project({ allowAnyCharacter: true }) } : {};
       }),
       project({ allowAnyCharacter: false }),
     );
-    const toggle = fixture.nativeElement.querySelector(
-      'button[aria-label="Allow Any Character"]',
-    ) as HTMLButtonElement;
-    toggle.click();
-    await settle(fixture);
+    toggle(on).click();
+    await settle(on);
     expect(seen.find((r) => r.type === 'projectUpdate')).toMatchObject({
       projectId: 'p1',
       project: { allowAnyCharacter: true },
     });
-    expect(fixture.nativeElement.querySelector('.qt-alert-error')).toBeNull();
-    expect(toasts()).toEqual([{ type: 'error', message: 'boom' }]);
-  });
+    expect(toasts()).toEqual([
+      { type: 'success', message: 'Every character may now use the project files and wardrobe' },
+    ]);
 
-  it('renders the roster with the no-add-picker note when empty', async () => {
-    const fixture = await render(
-      stubClient(() => ({})),
-      project({ roster: [] }),
-    );
-    expect(fixture.nativeElement.textContent).toContain(
-      'Characters are added when chats are associated',
-    );
-  });
-
-  it('toasts the v4 sentence for each Allow-Any-Character direction', async () => {
-    const fixture = await render(
+    TestBed.resetTestingModule();
+    const off = await render(
       stubClient((r) =>
-        r.type === 'projectUpdate' ? { project: project({ allowAnyCharacter: true }) } : {},
+        r.type === 'projectUpdate' ? { project: project({ allowAnyCharacter: false }) } : {},
       ),
-      project({ allowAnyCharacter: false }),
+      project({ allowAnyCharacter: true }),
+    );
+    toggle(off).click();
+    await settle(off);
+    expect(toasts()).toEqual([
+      { type: 'success', message: 'Only roster characters may use the project files and wardrobe' },
+    ]);
+  });
+
+  it("V10 toggle errors: a refusal is v4's fixed sentence, a thrown Error its message, else the fallback", async () => {
+    const cases: [unknown, string][] = [
+      [new CoreDispatchError({ kind: 'not-found', message: 'boom' }), 'Failed to update project'],
+      [new Error('network down'), 'network down'],
+      ['not an error', 'Failed to update setting'],
+    ];
+    for (const [thrown, expected] of cases) {
+      TestBed.resetTestingModule();
+      const fixture = await render(
+        {
+          dispatchData: (async (req: DispatchReq) => {
+            if (req.type === 'projectUpdate') throw thrown;
+            return {};
+          }) as CoreClient['dispatchData'],
+        },
+        project({ allowAnyCharacter: false }),
+      );
+      toggle(fixture).click();
+      await settle(fixture);
+      expect(fixture.nativeElement.querySelector('.qt-alert-error')).toBeNull();
+      expect(toasts()).toEqual([{ type: 'error', message: expected }]);
+    }
+  });
+
+  // --- V11 — remove ------------------------------------------------------------
+
+  it("V11 remove: v4's success sentence; a refusal is v4's fixed sentence", async () => {
+    const characterRoster = [rosterChar('c1', 'Bertie')];
+    const seen: DispatchReq[] = [];
+    const fixture = await render(
+      stubClient((r) => {
+        seen.push(r);
+        return {};
+      }),
+      project({ characterRoster }),
     );
     (
-      fixture.nativeElement.querySelector(
-        'button[aria-label="Allow Any Character"]',
+      el(fixture).querySelector(
+        'button[aria-label="Remove Bertie from roster"]',
       ) as HTMLButtonElement
     ).click();
     await settle(fixture);
-    expect(toasts()).toEqual([{ type: 'success', message: 'Any character can now participate' }]);
-  });
-
-  it('removes a roster character with a success toast, and toasts a failure', async () => {
-    const roster = [
-      {
-        id: 'c1',
-        name: 'Bertie',
-        defaultImageId: null,
-        defaultImage: null,
-        tags: [],
-        chatCount: 0,
-      },
-    ];
-    const fixture = await render(
-      stubClient(() => ({})),
-      project({ roster }),
-    );
-    (
-      fixture.nativeElement.querySelector('button[title="Remove from roster"]') as HTMLButtonElement
-    ).click();
-    await settle(fixture);
-    expect(toasts()).toEqual([{ type: 'success', message: 'Character removed from project' }]);
+    expect(seen.find((r) => r.type === 'projectCharacterRemove')).toMatchObject({
+      projectId: 'p1',
+      characterId: 'c1',
+    });
+    expect(toasts()).toEqual([{ type: 'success', message: 'Character removed from the roster' }]);
 
     TestBed.resetTestingModule();
     const failing = await render(
-      stubClient((r) => (r.type === 'projectCharacterRemove' ? new Error('cannot remove') : {})),
-      project({ roster }),
+      stubClient((r) =>
+        r.type === 'projectCharacterRemove'
+          ? new CoreDispatchError({ kind: 'not-found', message: 'cannot remove' })
+          : {},
+      ),
+      project({ characterRoster }),
     );
     (
-      failing.nativeElement.querySelector('button[title="Remove from roster"]') as HTMLButtonElement
+      el(failing).querySelector(
+        'button[aria-label="Remove Bertie from roster"]',
+      ) as HTMLButtonElement
     ).click();
     await settle(failing);
     // A fresh TestBed module ⇒ a fresh ToastService; only this render's toast.
-    expect(toasts()).toEqual([{ type: 'error', message: 'cannot remove' }]);
+    expect(toasts()).toEqual([{ type: 'error', message: 'Failed to remove character' }]);
+  });
+
+  // --- V12 — Done clears the search --------------------------------------------
+
+  it('V12 Done closes the picker and clears the search', async () => {
+    const fixture = await render(
+      stubClient((r) =>
+        r.type === 'characterList' ? { characters: [listChar('c-bram', 'Bram')] } : {},
+      ),
+      project({}),
+    );
+    await openPicker(fixture);
+    await type(fixture, 'bra');
+    buttonNamed(fixture, 'Done')!.click();
+    await settle(fixture);
+    expect(searchBox(fixture)).toBeNull();
+    await openPicker(fixture);
+    expect(searchBox(fixture)!.value).toBe('');
+    expect(searchBox(fixture)!.getAttribute('placeholder')).toBe('Search characters…');
+  });
+
+  // --- V13 — the shared cache key ----------------------------------------------
+
+  it('V13 the picker reads the SHARED characterKeys.list() entry (no second fetch when warm)', async () => {
+    const seen: DispatchReq[] = [];
+    const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 60_000 } } });
+    qc.setQueryData(characterKeys.list(), [listChar('c-bram', 'Bram')]);
+    const fixture = await render(
+      stubClient((r) => {
+        seen.push(r);
+        return {};
+      }),
+      project({}),
+      { queryClient: qc },
+    );
+    await openPicker(fixture);
+    expect(rowNames(fixture)).toEqual(['Bram']);
+    expect(seen.filter((r) => r.type === 'characterList')).toEqual([]);
   });
 });
 

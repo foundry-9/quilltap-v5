@@ -86,6 +86,21 @@ export async function updateProject(
   return (data['project'] as ProjectDetail) ?? (data as unknown as ProjectDetail);
 }
 
+/**
+ * Add a character to the project roster (v4 `actions/roster.ts:56-90`, called
+ * by `useProjectDetail.ts:271-290` `handleAddCharacter`). Idempotent server
+ * side; the answer carries no project, so the caller refetches `projectGet`.
+ * A refusal (`Project not found`, `Character not found`, the archived
+ * sentence) arrives as a `CoreDispatchError` whose message is v4's `error`.
+ */
+export async function addProjectCharacter(
+  core: CoreClient,
+  projectId: string,
+  characterId: string,
+): Promise<void> {
+  await core.dispatchData({ type: 'projectCharacterAdd', projectId, characterId });
+}
+
 export async function removeProjectCharacter(
   core: CoreClient,
   projectId: string,

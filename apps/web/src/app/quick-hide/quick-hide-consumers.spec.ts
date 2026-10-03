@@ -224,8 +224,9 @@ function project(roster: ProjectRosterCharacter[]): ProjectDetail {
   return {
     id: 'proj-1',
     name: 'A Project',
-    characterRoster: roster.map((r) => r.id),
-    roster,
+    // The WIRE shape: `projectGet` sends the enriched entries under
+    // `characterRoster` (`api/projects.rs:350`); there is no `roster` key.
+    characterRoster: roster,
     allowAnyCharacter: false,
     defaultAgentModeEnabled: null,
     defaultAvatarGenerationEnabled: null,

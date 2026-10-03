@@ -292,6 +292,123 @@ test.describe('P4.6l — Projects vertical (list → detail → toggle → renam
     await expect(reloadedCard).toContainText(/disabled/, { timeout: 10_000 });
   });
 
+  // P4.D247 — the Characters card as v4 `9753d0eb2` left it, over the real
+  // `projectGet` / `characterList` / `projectCharacterAdd` /
+  // `projectCharacterRemove` / `projectUpdate` handlers. Before P4.D247 the
+  // card read a phantom `roster` key and no v5 project showed its roster at
+  // all. Earlier beats toggle and rename "the first card", so Iota's state is
+  // FORCED through a `projectUpdate` first. Edda is present and ARCHIVED in
+  // the fixture (read with `quilltap db` on a copy, 2026-10-03), so the picker
+  // must not offer her; Diana is the other live non-roster character.
+  test('the Characters card: roster, the add picker, remove, both Allow Any toasts', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    const IOTA = 'a3000000-0000-4000-8000-000000000001';
+    const ARIA = 'a1000000-0000-4000-8000-000000000001';
+    const CLEO = 'a1000000-0000-4000-8000-000000000003';
+    const toasts = page.locator('[role="toast-container"] > div');
+
+    await page.goto(`${PROJ_BASE_URL}/prospero`);
+    await unlockIfLocked(page);
+    const forced = await page.request.post(`${PROJ_BASE_URL}/api/dispatch`, {
+      data: {
+        type: 'projectUpdate',
+        projectId: IOTA,
+        project: { allowAnyCharacter: false, characterRoster: [ARIA, CLEO] },
+      },
+    });
+    expect(forced.ok()).toBe(true);
+
+    await page.goto(`${PROJ_BASE_URL}/prospero/${IOTA}`);
+    const card = page.locator('qt-project-characters-card');
+    const header = card.locator('.qt-collapsible-card-header');
+    await expect(header).toBeVisible({ timeout: 10_000 });
+    if ((await header.getAttribute('aria-expanded')) === 'false') {
+      await header.click();
+    }
+
+    // The roster renders from the GET's enriched `characterRoster`.
+    await expect(card).toContainText('2 characters in roster', { timeout: 10_000 });
+    await expect(card.getByRole('heading', { name: 'Aria', exact: true })).toBeVisible();
+    await expect(card.getByRole('heading', { name: 'Cleo', exact: true })).toBeVisible();
+    // Visible AT REST — `toBeVisible` ignores opacity, so the CSS is the proof.
+    const removeAria = card.getByRole('button', { name: 'Remove Aria from roster' });
+    await expect(removeAria).toBeVisible();
+    await expect(removeAria).toHaveCSS('opacity', '0.6');
+
+    // The picker: focused on open; live non-roster characters only.
+    await card.getByRole('button', { name: 'Add character', exact: true }).click();
+    const search = card.getByRole('textbox', { name: 'Search characters to add' });
+    await expect(search).toBeFocused();
+    const picker = card.locator('ul');
+    await expect(picker.locator('li', { hasText: 'Bram' })).toBeVisible({ timeout: 10_000 });
+    await expect(picker.locator('li', { hasText: 'Diana' })).toBeVisible();
+    await expect(picker).not.toContainText('Aria');
+    await expect(picker).not.toContainText('Cleo');
+    await expect(picker).not.toContainText('Edda');
+
+    await search.fill('zzz');
+    await expect(card).toContainText('No characters match.');
+    await search.fill('bra');
+    await expect(picker.locator('li')).toHaveCount(1);
+    await expect(picker.locator('li').first()).toContainText('Bram');
+
+    // Add Bram: the toast, a tile, the count, and Bram gone from the list.
+    await picker.locator('li', { hasText: 'Bram' }).getByRole('button').click();
+    await expect(toasts.filter({ hasText: 'Character added to the roster' })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(card).toContainText('3 characters in roster');
+    await expect(card.getByRole('heading', { name: 'Bram', exact: true })).toBeVisible();
+    await expect(card.locator('ul li', { hasText: 'Bram' })).toHaveCount(0);
+
+    // Remove Bram again.
+    await card.getByRole('button', { name: 'Remove Bram from roster' }).click();
+    await expect(toasts.filter({ hasText: 'Character removed from the roster' })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(card).toContainText('2 characters in roster');
+
+    // Done clears the search. The REOPEN is focused too: a bare `autofocus`
+    // attribute passes the FIRST open (a document honours its first autofocus
+    // candidate even when inserted late — measured, P4.D247 M9) but never a
+    // second, so this is the assertion that pins v4's focus-as-it-mounts.
+    await card.getByRole('button', { name: 'Done', exact: true }).click();
+    await card.getByRole('button', { name: 'Add character', exact: true }).click();
+    await expect(search).toHaveValue('');
+    await expect(search).toBeFocused();
+
+    // Allow Any ON: v4's toast, the open subtitle, the explainer, no picker.
+    const toggle = card.getByRole('switch', { name: 'Allow Any Character' });
+    await toggle.click();
+    await expect(
+      toasts.filter({ hasText: 'Every character may now use the project files and wardrobe' }),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(card).toContainText('Open to every character');
+    await expect(card).toContainText(
+      'Any character in a project chat may read and edit its files and borrow from its wardrobe. Turn this off to choose who may.',
+    );
+    await expect(card.getByRole('button', { name: 'Add character', exact: true })).toHaveCount(0);
+
+    // OFF again: the other sentence.
+    await toggle.click();
+    await expect(
+      toasts.filter({ hasText: 'Only roster characters may use the project files and wardrobe' }),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(card).toContainText('2 characters in roster');
+
+    // The roster is server state.
+    await page.reload();
+    await unlockIfLocked(page, header);
+    if ((await header.getAttribute('aria-expanded')) === 'false') {
+      await header.click();
+    }
+    await expect(card).toContainText('2 characters in roster', { timeout: 10_000 });
+    await expect(card.getByRole('heading', { name: 'Aria', exact: true })).toBeVisible();
+    await expect(card.getByRole('heading', { name: 'Cleo', exact: true })).toBeVisible();
+  });
+
   // P4.6o — the project Wardrobe card (inline draft form + rows).
   test('the Wardrobe card: create a default item, see its badges, delete it', async ({ page }) => {
     test.setTimeout(60_000);

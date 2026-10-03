@@ -180,6 +180,20 @@ v4 `e5c6bd0c0` fixed bug 175 (filed by this port): the avatar-roll collapse is n
 - A failed pass now logs v4's three lines in order — `Failed to collapse duplicate avatar rolls`, the runner's `Migration failed`, and the WARN `Resumable migration deferred to the next boot; continuing startup` — writes no ledger row, and lets the boot continue. v4's `message` meta field on `Migration failed` is carried as `resultMessage`, because a second `message` field would replace the file log's record message.
 - A failed ledger write after a committed pass logs the success line, `Migration threw an exception`, and the same WARN, then continues. v4 normally succeeds here through a file-ledger fallback v5 does not have; v5 takes v4's both-writes-failed arm (recorded divergence).
 - `host_boot_hardness`: P4.135's two fatal-collapse arms rewritten red-first on the same plants (both panicked "the boot FAILED" on `main`'s host before the change), a new ledger-write arm over a `BEFORE INSERT ON migrations_state` trigger with a reboot, the three new lines added to the silence leg, and the stale prose updated to `e5c6bd0c0`.
+#### 2026-10-03 — feat(spa): the project Characters card gains v4's add picker and shows the roster at last (P4.D247)
+
+_Versions: SPA 0.5.796._
+
+Ports the SPA half of v4 `9753d0eb2` into `screens/prospero/cards/project-characters-card.ts`, and fixes a standing v5 defect in the same change.
+
+- **Defect fixed:** the card read `project().roster`, a key no server path has ever sent (`projectGet` writes the enriched list to `characterRoster`, as v4 does). Every v5 project showed "No characters in the roster yet." and the remove button was unreachable, since P4.6l (2026-07-11). The specs passed because their fixtures filled the same invented key. `ProjectDetail.characterRoster` is now typed `ProjectRosterCharacter[]` and `roster?` is gone; the spec builders carry the wire shape.
+- **The picker:** "Add character" opens a search box (focused on open) over the shared `characterKeys.list()` read, fetched only while the card is expanded, Allow Any is off, and the picker is open. On-roster characters (from the raw roster, so a quick-hidden member is not offered again) and quick-hidden characters are excluded; search matches name or title, trimmed and case-insensitive; the list sorts with `localeCompare`. Every row is disabled while an add is in flight, the clicked row reads `Adding…`, and the toast waits for the project refetch. `Done` closes the picker and clears the search. New `addProjectCharacter` helper over the existing `projectCharacterAdd` verb.
+- **Allow Any:** the card body shows v4's explainer instead of the roster when it is on; the subtitle reads `Open to every character`. New toggle descriptions, empty-roster hint, and the all-hidden sentence.
+- **Remove buttons** are visible at rest (`opacity-60`) and carry `Remove <name> from roster` as their accessible name.
+- **Toasts** in v4's new wording (`Every character may now use the project files and wardrobe`, `Only roster characters may use the project files and wardrobe`, `Character added to the roster`, `Character removed from the roster`). Toggle and remove failures now show v4's fixed sentences (`Failed to update project`, `Failed to remove character`) instead of the server's message; add failures show the server's sentence, as v4 does.
+- The card now runs `qt-collapsible-card` in controlled mode so the picker query can follow the expanded state.
+- Tests: the `ProjectCharactersCard` describe rewritten (15 arms, all red against the unported card, plus the quick-hide consumer arm); nine mutation proofs (the bare-`autofocus` one survived at first: Chromium honors a page's first late-inserted `autofocus`, so the beat now also asserts focus on the reopen, where it reds); one new live beat in `e2e/projects-flow.spec.ts`; `e2e/toast-open-rows-flow.spec.ts` updated to the new toggle sentences.
+
 #### 2026-10-03 — fix(spa): a degraded /health 503 opens the app instead of the error screen (P4.D247 item 14)
 
 _Versions: SPA 0.5.795._

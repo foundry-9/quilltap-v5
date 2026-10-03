@@ -164006,3 +164006,144 @@ Branch `claude/project-roster-characters-card-bd2b84` (worktree
   `health` command shares the function — no Tauri edit.
 - Gate: `npm run lint` ok; `npm run build` ok; `npm test` **467 files /
   8,805 passed / 0** (main 466 / 8,801; +1 file / +4). SPA 0.5.795.
+
+### Unit 2 — items 1–7: the Characters card, whole (`9753d0eb2`'s SPA half + the §D1 defect)
+
+**The §D1 defect, recorded as a v5 defect found by the survey (NOT drift):**
+since P4.6l (`fc07efcc3`, 2026-07-11) the card read `project().roster`, a key
+no server revision ever emitted (`project_get` writes the enriched list to
+`characterRoster`, `api/projects.rs:350`, exactly as v4 does), and
+`core-contract.ts` carried both a wrong `characterRoster: string[]` and the
+invented `roster?`. Every v5 project rendered "No characters in the roster
+yet.", the subtitle always read `0 characters in roster`, and remove was
+unreachable. The specs and the quick-hide consumer spec populated the phantom
+key, so nothing failed. **Dogfood-class lesson:** the P4.6l walk asserted the
+toggle and never a roster NAME — a walk over a list surface must assert a row
+the fixture is known to hold.
+
+- **Contract** (`core-contract.ts`, the ONLY hunk): `ProjectDetail.
+  characterRoster: ProjectRosterCharacter[]` (doc cites v4 `app/prospero/[id]/
+  types.ts:96` + `api/projects.rs:350`), `roster?` deleted;
+  `ProjectRosterCharacter.defaultImageId` made optional (omitted on the wire
+  when null, `api/projects.rs:333-338`). `npm run build` named NO production
+  compile site (no production reader of `.characterRoster` existed); the two
+  spec builders were rebuilt to the wire shape.
+- **`addProjectCharacter`** (`projects.api.ts`) over the existing
+  `projectCharacterAdd` verb (v4 `roster.ts:56-90`, `useProjectDetail.ts:
+  271-290`). No dispatch verb added; `api/types.rs` untouched.
+- **The card** (`project-characters-card.ts`, whole): v4's why-paragraph
+  carried; the frozen "There is NO add picker" claim deleted; the
+  `qt-collapsible-card` CONTROLLED (`[isOpen]`/`(openChange)`, `expanded`
+  seeded from `defaultOpen` in `ngOnInit` — the moment the uncontrolled card
+  seeded itself); the picker query `injectQuery(() => ({ queryKey:
+  characterKeys.list(), queryFn: () => fetchCharacterList(this.core), enabled:
+  expanded ∧ rosterEditable ∧ pickerOpen }))` with the loading line on
+  `isLoading()`; candidates per v4 `:80-88` (raw-roster `onRoster`, hidden
+  excluded, trimmed lower-case name-OR-title `includes`, `localeCompare`); the
+  focus as a `viewChild` + `effect` (`outfit-quick-pick.ts` precedent); every
+  string in v4's bytes from `git show e5c6bd0c0:"app/prospero/[id]/components/
+  CharactersCard.tsx"`; the grid only with Allow Any OFF, the explainer
+  otherwise; the remove button's v4 class string + `Remove ${name ||
+  'character'} from roster`. Handlers: toggle/remove refusals → v4's FIXED
+  `Failed to update project` / `Failed to remove character` (the leak closed,
+  P4.29's class); add → the server's sentence (`err.message || 'Failed to add
+  character'`), the detail invalidation awaited BEFORE the toast inside the
+  `try` whose `finally` clears `addingId`; the picker stays open.
+  `project-detail.ts` untouched (no hunk needed).
+
+**Red-first (the unported card, behind a behaviour-preserving compile shim —
+the retyped contract read through `project()['roster']` — so the new arms
+compile):** `projects.spec.ts` + `quick-hide-consumers.spec.ts`: **16 failed /
+56 passed (72)** — every one of the 15 new `ProjectCharactersCard` arms (V1
+`0 characters in roster` where 2 expected; V2/V3/V4 the old strings; V5 no
+named remove button; V6–V9/V12/V13 no `Add character` button; V10 the old
+toast + the leaked `boom`; V11 no named remove button) plus the quick-hide
+consumer arm (`0 characters in roster` over the wire shape). After the port:
+**72 / 72**.
+
+**Mutation proofs (each applied, the named arm seen RED, reverted; the card
+cmp-identical to its backup after each battery):**
+- M1 (`roster` read again) → V1 + V5 + V11 + the quick-hide arm RED (4).
+- M2 (`pickerOpen` conjunct dropped) → V6 only (`nothing before Add
+  character: expected 1 to be +0`).
+- M3 (`expanded` conjunct dropped) → V6 only, on the collapsed arm (`no
+  refetch while collapsed: expected 2 to be 1`) — the controlled card is
+  load-bearing.
+- M4 (`onRoster` from the VISIBLE list) → V7 only (`[Bram, Cleo, Dora, Zed]`
+  — the quick-hidden roster member offered again).
+- M5 (sort removed) → V7 only (`[Zed, Dora, Bram]`).
+- M6 (`opacity-60` → `opacity-0`) → the live beat RED at `toHaveCSS('opacity',
+  '0.6')` (`Received: "0"`) — while its `toBeVisible` one line earlier PASSED
+  at opacity 0, as predicted.
+- M7 (toast + `addingId` clear moved before the awaited invalidation) → V8
+  only (`no toast before the refetch lands`).
+- M8 (`closePicker` not clearing the search) → V12 only (`expected 'bra' to be
+  ''`).
+- **M9 (the focus effect → a bare `autofocus` attribute) — MEASURED, and it
+  SURVIVED as first written:** the beat stayed GREEN. Chromium honours a
+  document's FIRST autofocus candidate even when it is inserted after load,
+  so the survey's §D5 ("plain `autofocus` does nothing on a late-inserted
+  node") is wrong for the first open. Per HTML's once-per-document autofocus
+  processing it never fires again, so the beat now also asserts
+  `toBeFocused()` on the REOPEN after `Done`; re-measured, M9 RED exactly
+  there (`Expected: focused / Received: inactive`, line 380). The surviving
+  proof was a finding and is fixed, not deleted.
+
+**The Edda read:** a COPY of the committed `groups-projects-{main,mount}.db`
+pair keyed by a fresh test `.dbkey`, read with this branch's `quilltap db`:
+characters Aria (`…0001`), Bram (`…0002`), Cleo (`…0003`, `controlledBy:
+user`), Diana (`…0004`), Edda (`…0005`, `archivedAt
+2026-03-15T09:30:00.000Z`) — **Edda present AND archived**, so the beat
+asserts her absence from the picker; Diana is the other live non-roster
+character and is asserted present.
+
+**The live beat** (`e2e/projects-flow.spec.ts`, after the Default Tool
+Settings beat): forces Iota to Allow Any OFF + roster [Aria, Cleo] through
+`projectUpdate` (asserted `ok`), then the order's whole gesture, toasts read
+through `[role="toast-container"] > div`. **First LIVE run: GREEN** (6/6 in the
+file, the beat 835 ms). After M9's strengthening: 6/6 again (812 ms).
+`e2e/toast-open-rows-flow.spec.ts`: the four occurrences of the two old toggle
+sentences moved to v4's new pair (nothing else) — 3/3 green.
+
+**Retained idiom (not a divergence):** v4 swaps the PUT body into state on the
+toggle; v5 awaits `invalidateQueries(projectKeys.detail(id))` (a `projectGet`
+refetch) at every per-field save, so it reads one field
+(`project.allowAnyCharacter`) from the PUT body and is shape-agnostic across
+P4.D246's enriched PUT — no pick-order dependency with that lane.
+
+### Tier 3 — deferred loudly (P4.D247)
+
+- **10:** the same server-message leak on the OTHER project-detail handlers
+  (`project-detail.ts:378` header save; `project-model-behavior-card.ts`;
+  `project-image-generation-card.ts`) — v4 throws fixed sentences there too;
+  outside `9753d0eb2`; named for the next smalls round.
+- **11:** v4's `console.error('useProjectDetail: …')` lines — NO-PORT by
+  convention (v5's SPA ports no hook console lines).
+- **12:** the tile link stays v5's `['/characters', id]` (v4
+  `/characters/${id}/view`) — v5's route idiom.
+- **13:** no SPA recorder — v4's picker logic is component-inline with no
+  exported function; the vitest arms + the beat are the proof.
+- A `structure`-service banner for the degraded `/health` — none in v4 either.
+
+### 💸 for the dogfood pass (P4.D247)
+
+1. A real Friday project's v4-populated roster renders at all — the first time
+   on v5 (with chat counts).
+2. Both toggle directions: the toasts, the subtitle, the explainer.
+3. The picker on real data — archived absent, quick-hidden absent, NPCs
+   present, a TITLE search, `Adding…`, `Character added to the roster`.
+4. Remove; `Every character is already on the roster.`; `No characters
+   match.`; `Done` clearing.
+5. With P4.D245 on the same tree (§S.4): a removed character refused by
+   `doc_list_files` / `search_scriptorium` on the project files, re-added
+   admitted.
+6. A NEW project opening in "Open to every character" mode (P4.D246's
+   default).
+7. The degraded `/health` end to end (§S.1, the unifier's).
+
+**Unit 2 gate (P4.D247's SPA unit gate — lint, build, whole vitest):** `npm
+run lint` ok (956 qt-* classes, every guarded reference resolves); `npm run
+build` ok; `npm test` **467 files / 8,816 passed / 0** (unit 1: 8,805; +11 —
+the 15 new card arms replace the 4 old). Prettier: only this lane's hunks were
+formatted, file by file (the card's explainer rewrap is whitespace inside a
+text node — the rendered bytes are unchanged and V2 pins them). SPA 0.5.796.

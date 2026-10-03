@@ -207,8 +207,8 @@ test.describe('P4.29 — the census OPEN rows, three representative beats', () =
 
     const firstMessage =
       before === 'true'
-        ? 'Only roster characters can participate'
-        : 'Any character can now participate';
+        ? 'Only roster characters may use the project files and wardrobe'
+        : 'Every character may now use the project files and wardrobe';
     await expect(toasts(page).filter({ hasText: firstMessage })).toBeVisible({ timeout: 15_000 });
 
     // Toggle back — leaves the fixture exactly as this beat found it.
@@ -216,8 +216,8 @@ test.describe('P4.29 — the census OPEN rows, three representative beats', () =
     await expect(toggle).toHaveAttribute('aria-checked', before ?? 'false');
     const secondMessage =
       before === 'true'
-        ? 'Any character can now participate'
-        : 'Only roster characters can participate';
+        ? 'Every character may now use the project files and wardrobe'
+        : 'Only roster characters may use the project files and wardrobe';
     await expect(toasts(page).filter({ hasText: secondMessage })).toBeVisible({ timeout: 15_000 });
   });
 
