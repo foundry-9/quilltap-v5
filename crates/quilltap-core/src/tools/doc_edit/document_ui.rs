@@ -45,6 +45,7 @@ use crate::db::database_store::database_document_exists;
 use crate::doc_edit::path_resolver::{resolve_doc_edit_path, PathResolutionContext};
 use crate::doc_edit::uri_producers::uri_for_resolved_path;
 use crate::doc_edit::DocEditScope;
+use crate::project_roster_access::project_roster_admits;
 use crate::services::librarian_notifications::{LibrarianOpenAnnouncement, LibrarianOpenKind};
 use crate::tools::llm_number::llm_number;
 
@@ -202,13 +203,28 @@ pub fn handle_open_document(
         // the mtime. Any failure (incl. the resolver's FsSeam refusal on a host with
         // no files dir) becomes `Failed to create blank document: <message>`.
         let file_path = format!("{}.md", uuid::Uuid::new_v4());
-        let target_scope = if ctx.project_id.is_some() {
+        // Lands in the project store only when the roster admits the character;
+        // otherwise it falls back to Quilltap General. (v4 `9753d0eb2`; the
+        // project test is JS truthiness — `context.projectId && …` — so an empty
+        // id is no project.)
+        let target_scope = if ctx.project_id.as_deref().is_some_and(|p| !p.is_empty())
+            && project_roster_admits(
+                main,
+                mount,
+                ctx.project_id.as_deref(),
+                ctx.character_id.as_deref(),
+            ) {
             DocEditScope::Project
         } else {
             DocEditScope::General
         };
+        // v4 `9753d0eb2`'s second hunk: `characterId` reaches the resolver too, so
+        // the `project` scope's own gate re-checks the roster — an admitted
+        // character's new-blank open runs the chokepoint TWICE (two
+        // `[ProjectRoster]` lines), which is the only observable of this hunk.
         let blank_ctx = PathResolutionContext {
             project_id: ctx.project_id.clone(),
+            character_id: ctx.character_id.clone(),
             ..Default::default()
         };
         let created = (|| -> Result<(String, i64), String> {

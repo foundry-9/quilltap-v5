@@ -64,6 +64,12 @@ Red-first at the target on unported main: routes RED on the five flag-less creat
 _No crate versions bumped._
 
 Copies v4's `help/` tree at `e5c6bd0c0` over v5's (`diff -rq` against the pin is empty). Five pages change, none added or removed, so the count stays 129 and both count literals (`help_tree_embed_guard.rs`, `host_help_docs_boot.rs`) are unmoved: `project-characters.md`, `project-chats.md`, `project-settings.md`, `projects.md` (`9753d0eb2` — the roster as a tool-access list) and `cli-migrations.md` (`e5c6bd0c0` — resumable migrations and the boot-time table check). `docs/v4/` gains the same commits' `CHANGELOG.md`, `developer/API.md`, `developer/bugs.md` and the two new `developer/bugs/fixed/bug-175-*.md` / `bug-176-*.md`; the only residual against v4's `docs/` is the standing `packages-quilltap-README.md` (byte-identical to v4's `packages/quilltap/README.md` at both pins). Red-first: `help_tree_equivalence` and `help_section_size_equivalence`, regenerated at the pin, failed on the unported tree (the five pages; `cli-migrations.md` gains a second section, 744 → 745 chunks) and pass after the copy; regenerated at the baseline `f6426e196` they now fail, so the move is pinned in both directions. The embed guard and the host help-boot test pass unmoved.
+#### 2026-10-03 — feat(doc-edit): doc_open_document, doc_grep and doc_list_files gate the project on the roster (P4.D245 item 5)
+
+_Versions: core 0.0.1187._
+
+v4 `9753d0eb2`'s three doc-tool hunks, in v4's evaluation order. `doc_open_document`'s new-blank branch lands in the project store only when the project is truthy AND the roster admits the character, otherwise Quilltap General; the resolver context now carries `character_id` too (v4's second hunk), so an admitted character's open runs the chokepoint twice. `doc_grep`'s legacy on-disk project walk gates after the `mount_point` and project-truthiness conjuncts and BEFORE `resolve_official_project_mount`. `doc_list_files`' project branch gates AFTER `include_project`, so a scope that excludes the project never runs the chokepoint. `project_roster_access_equivalence` against the `e5c6bd0c0` oracle: 13 red before, 7 after (the wardrobe-tier and wardrobe-list arms await item 7; the two new-blank rows awaited the family's own `chat_documents` table and the jest-realm `Error: ` normalizer).
+
 #### 2026-10-03 — feat(doc-edit): the path resolver gates the project tier and the project scope on the roster (P4.D245 item 4)
 
 _Versions: core 0.0.1186._

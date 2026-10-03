@@ -37,6 +37,7 @@ use crate::doc_edit::unified_diff::generate_unified_diff;
 use crate::doc_edit::uri_producers::{uri_for_resolved_path, DocStoreUriResolver};
 use crate::doc_edit::DocEditScope;
 use crate::folder_utils::{is_automatic_image_path, is_os_cruft_name};
+use crate::project_roster_access::project_roster_admits;
 use crate::services::librarian_notifications::{
     content_hidden_from_characters, LibrarianWriteAnnouncement, LibrarianWriteChange,
 };
@@ -881,8 +882,14 @@ pub fn handle_grep(
     // files dir; skipped with `files_dir: None`.
     // v4 `d1c06cd9d`: `!input.mount_point && context.projectId` — a pool-only
     // (project-less) grep has no legacy project directory to walk.
+    // v4 `9753d0eb2`: `&& projectRosterAdmits(projectId, characterId)` — the
+    // roster gate is the THIRD conjunct, evaluated BEFORE
+    // `resolveOfficialProjectMount` (the order decides the line sequence: a
+    // refused character logs the chokepoint's DEBUG and never reads the mount).
     if let Some(project_id) = project_id.as_deref().filter(|pid| {
         addressing.mount_point.is_none()
+            && !pid.is_empty()
+            && project_roster_admits(main, mount, Some(pid), ctx.character_id.as_deref())
             && resolve_official_project_mount(main, mount, Some(pid)).is_none()
     }) {
         if let Some(files_dir) = ctx.files_dir.as_deref() {
@@ -1265,7 +1272,14 @@ pub fn handle_list_files(
     }
 
     // v4 `d1c06cd9d`: `shouldIncludeProject && context.projectId`.
-    if let Some(project_id) = project_id.as_deref().filter(|_| include_project) {
+    // Roster-gated: a character off the project roster lists no project files.
+    // (v4 `9753d0eb2` — `shouldIncludeProject` FIRST, so a scope that excludes
+    // the project never runs the chokepoint and logs no line.)
+    if let Some(project_id) = project_id.as_deref().filter(|pid| {
+        include_project
+            && !pid.is_empty()
+            && project_roster_admits(main, mount, Some(pid), ctx.character_id.as_deref())
+    }) {
         if let Some(official) = resolve_official_project_mount(main, mount, Some(project_id)) {
             // The document-store branch already enumerated this mount when listing
             // every scope; only re-emit when scope was explicitly 'project'.
