@@ -31,6 +31,9 @@ use crate::db::tiered_mount_pool::{
     flatten_tier_pool, resolve_tiered_mount_pool, FlattenOptions, TierContext, TierResolveOptions,
     TieredMountPool,
 };
+use crate::project_roster_access::{
+    project_roster_admits, roster_gated_project_id, PROJECT_ROSTER_REFUSAL,
+};
 
 /// Reserved `mount_point` token meaning "the acting character's own vault"
 /// (v4 `SELF_VAULT_TOKEN`).
@@ -444,7 +447,27 @@ pub(crate) fn collect_accessible_mount_point_ids(
     // The opacity covenant subtracts the two vault tiers and nothing else. The
     // character still goes INTO the pool so her group stores resolve — that is
     // the whole point of expressing this as a subtraction (v4 bug 152).
+    //
+    // The project tier is roster-gated: a character off the project's roster
+    // sees no project-linked stores (see `crate::project_roster_access`; v4
+    // `9753d0eb2`). Neither the operator arm nor the pre-built-pool arm above is
+    // gated — v4 gates only this one.
     let vaults_visible = !context.hide_character_vaults;
+    let project_id = roster_gated_project_id(
+        main,
+        mount,
+        context.project_id.as_deref(),
+        context.character_id.as_deref(),
+    );
+    // v4 `if (context.projectId && !projectId)` — JS truthiness on the context's
+    // project (an empty string is no project and logs nothing).
+    if context.project_id.as_deref().is_some_and(|p| !p.is_empty()) && project_id.is_none() {
+        tracing::debug!(
+            projectId = %context.project_id.as_deref().unwrap_or_default(),
+            characterId = %context.character_id.as_deref().unwrap_or_default(),
+            "Path resolver: character off project roster — project tier withheld"
+        );
+    }
     let pool = resolve_tiered_mount_pool(
         main,
         mount,
@@ -455,7 +478,7 @@ pub(crate) fn collect_accessible_mount_point_ids(
             } else {
                 Some(context.character_ids.clone())
             },
-            project_id: context.project_id.clone(),
+            project_id,
             ..Default::default()
         },
         &TierResolveOptions {
@@ -749,6 +772,29 @@ fn resolve_project_path(
         ));
     };
 
+    // The roster gate sits HERE, in the scope resolver, not in the collector —
+    // so it fires regardless of `operator_override` / `mount_pool` whenever a
+    // character is present (v4 `9753d0eb2`, `path-resolver.ts:603`). A missing
+    // or falsy character admits (an operator surface, not a character's tool
+    // call); the Document-Mode operator passes a character only for the `self`
+    // vault, so this arm is unreachable there on both sides (measured).
+    if !project_roster_admits(
+        main,
+        mount,
+        Some(project_id),
+        context.character_id.as_deref(),
+    ) {
+        tracing::info!(
+            projectId = %project_id,
+            characterId = %context.character_id.as_deref().unwrap_or_default(),
+            "Project scope refused: character off project roster"
+        );
+        return Err(ResolveError::path(
+            PathErrorCode::AccessDenied,
+            PROJECT_ROSTER_REFUSAL,
+        ));
+    }
+
     // v4 reads `projects.findById(projectId).officialMountPointId` — the slim
     // pointer lives in the MAIN db. When set + the mount is a database store, the
     // `project` scope is just an alias for that mount.
@@ -904,6 +950,17 @@ mod tests {
     /// The fixture both warn pins share: one enabled `documents` store (the
     /// out-of-scope subject) and one enabled `character` vault (which must keep
     /// the indistinguishable NOT_FOUND), with NOTHING accessible to the context.
+    ///
+    /// P4.D245: the main partition also carries the slim `projects` row for `p-1`
+    /// (official store `r-1`) and the mount index the three-table overlay join
+    /// with `r-1`'s `properties.json` — `allowAnyCharacter: true`, so the roster
+    /// chokepoint ADMITS `c-1` and every pre-existing pin keeps its meaning (the
+    /// project-linked `r-1` in the pool, the stranger `s-1` out of scope). The
+    /// order's first idea — an EMPTY `projects` table, `p-1` off-roster by
+    /// absence — was measured wrong: it withholds `r-1` too, the pool goes empty,
+    /// and three pins then exercise the "no stores accessible" refusal instead of
+    /// the out-of-scope split they were written for. [`roster_fixture`] flips the
+    /// same row CLOSED for the gate's own pins.
     fn warn_fixture() -> (rusqlite::Connection, rusqlite::Connection) {
         let main = rusqlite::Connection::open_in_memory().unwrap();
         // P4.113: `read_setting` logs v4's `[InstanceSettings] Failed to read
@@ -912,7 +969,10 @@ mod tests {
         // has — without it the General lookup WARNs and the silence leg below
         // would be measuring the fixture, not the resolver.
         main.execute_batch(
-            r#"CREATE TABLE "instance_settings" ("key" TEXT PRIMARY KEY, "value" TEXT NOT NULL);"#,
+            r#"CREATE TABLE "instance_settings" ("key" TEXT PRIMARY KEY, "value" TEXT NOT NULL);
+               CREATE TABLE "projects" ("id" TEXT PRIMARY KEY NOT NULL, "name" TEXT NOT NULL,
+                 "officialMountPointId" TEXT, "createdAt" TEXT NOT NULL, "updatedAt" TEXT NOT NULL);
+               INSERT INTO "projects" VALUES ('p-1','Papers','r-1','2020-01-01T00:00:00.000Z','2020-01-01T00:00:00.000Z');"#,
         )
         .unwrap();
         let mount = rusqlite::Connection::open_in_memory().unwrap();
@@ -930,7 +990,13 @@ mod tests {
                      ('s-1','Someone Elses Papers','','database','documents',1),
                      ('v-1','Leilani Character Vault','','database','character',1),
                      ('r-1','Project Papers','','database','documents',1);
-                   INSERT INTO "project_doc_mount_links" VALUES ('l-1','p-1','r-1','','');"#,
+                   INSERT INTO "project_doc_mount_links" VALUES ('l-1','p-1','r-1','','');
+                   CREATE TABLE doc_mount_files (id TEXT PRIMARY KEY NOT NULL);
+                   CREATE TABLE doc_mount_documents (id TEXT PRIMARY KEY NOT NULL, fileId TEXT NOT NULL, content TEXT);
+                   CREATE TABLE doc_mount_file_links (id TEXT PRIMARY KEY NOT NULL, fileId TEXT NOT NULL, mountPointId TEXT NOT NULL, relativePath TEXT NOT NULL);
+                   INSERT INTO doc_mount_files VALUES ('f-1');
+                   INSERT INTO doc_mount_documents VALUES ('d-1','f-1','{"allowAnyCharacter":true,"characterRoster":[]}');
+                   INSERT INTO doc_mount_file_links VALUES ('fl-1','f-1','r-1','properties.json');"#,
             )
             .unwrap();
         (main, mount)
@@ -1246,6 +1312,267 @@ mod tests {
         assert!(
             !lines.iter().any(|l| l.starts_with("WARN ")),
             "a resolving store must log nothing at WARN: {lines:?}"
+        );
+    }
+
+    // ---- P4.D245 (v4 `9753d0eb2`): the project roster as a tool-access gate ----
+
+    /// [`warn_fixture`] with `p-1` CLOSED: `allowAnyCharacter: false`, roster
+    /// `[c-on]` — `c-on` admitted, everyone else refused.
+    fn roster_fixture() -> (rusqlite::Connection, rusqlite::Connection) {
+        let (main, mount) = warn_fixture();
+        mount
+            .execute_batch(
+                r#"UPDATE doc_mount_documents SET content = '{"allowAnyCharacter":false,"characterRoster":["c-on"]}' WHERE id = 'd-1';"#,
+            )
+            .unwrap();
+        (main, mount)
+    }
+
+    #[test]
+    fn project_scope_refuses_an_off_roster_character_with_v4s_sentence_and_info() {
+        let (main, mount) = roster_fixture();
+        let ctx = PathResolutionContext {
+            project_id: Some("p-1".to_string()),
+            character_id: Some("c-off".to_string()),
+            ..Default::default()
+        };
+        let (out, lines) = crate::test_support::captured_with(|| {
+            resolve_doc_edit_path(
+                &main,
+                &mount,
+                DocEditScope::Project,
+                Some("plan.md"),
+                &ctx,
+                None,
+            )
+        });
+        match out {
+            Err(ResolveError::Path { code, message }) => {
+                assert_eq!(code, PathErrorCode::AccessDenied);
+                assert_eq!(message, PROJECT_ROSTER_REFUSAL);
+            }
+            other => panic!("expected ACCESS_DENIED, got {other:?}"),
+        }
+        let info = lines
+            .iter()
+            .find(|l| l.contains("Project scope refused: character off project roster"))
+            .unwrap_or_else(|| panic!("no INFO: {lines:?}"));
+        assert!(
+            info.starts_with("INFO quilltap_core::doc_edit::path_resolver"),
+            "{info}"
+        );
+        assert!(info.contains("projectId=p-1 characterId=c-off"), "{info}");
+        // The chokepoint's own line precedes it, reading `allowed=false`.
+        let dbg = lines
+            .iter()
+            .position(|l| l.contains("[ProjectRoster] Tool access check"))
+            .unwrap_or_else(|| panic!("no chokepoint DEBUG: {lines:?}"));
+        assert!(lines[dbg].contains("allowed=false"), "{}", lines[dbg]);
+        let info_at = lines.iter().position(|l| l == info).unwrap();
+        assert!(dbg < info_at, "{lines:?}");
+    }
+
+    #[test]
+    fn project_scope_resolves_for_a_rostered_character_and_logs_no_refusal() {
+        let (main, mount) = roster_fixture();
+        let ctx = PathResolutionContext {
+            project_id: Some("p-1".to_string()),
+            character_id: Some("c-on".to_string()),
+            ..Default::default()
+        };
+        let (out, lines) = crate::test_support::captured_with(|| {
+            resolve_doc_edit_path(
+                &main,
+                &mount,
+                DocEditScope::Project,
+                Some("plan.md"),
+                &ctx,
+                None,
+            )
+        });
+        assert_eq!(out.unwrap().mount_point_id.as_deref(), Some("r-1"));
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("[ProjectRoster] Tool access check")
+                    && l.contains("allowed=true")),
+            "{lines:?}"
+        );
+        assert!(
+            !lines.iter().any(|l| l.contains("Project scope refused")),
+            "{lines:?}"
+        );
+    }
+
+    #[test]
+    fn project_scope_without_a_character_is_not_gated_and_logs_no_chokepoint_line() {
+        // No character (an operator surface) and an EMPTY character (JS-falsy):
+        // both admit silently — the chokepoint never runs.
+        let (main, mount) = roster_fixture();
+        for character_id in [None, Some(String::new())] {
+            let ctx = PathResolutionContext {
+                project_id: Some("p-1".to_string()),
+                character_id,
+                ..Default::default()
+            };
+            let (out, lines) = crate::test_support::captured_with(|| {
+                resolve_doc_edit_path(
+                    &main,
+                    &mount,
+                    DocEditScope::Project,
+                    Some("plan.md"),
+                    &ctx,
+                    None,
+                )
+            });
+            assert_eq!(out.unwrap().mount_point_id.as_deref(), Some("r-1"));
+            assert!(
+                !lines
+                    .iter()
+                    .any(|l| l.contains("[ProjectRoster]") || l.contains("Project scope refused")),
+                "{lines:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn project_scope_gate_fires_even_under_the_operator_override() {
+        // D8: the gate belongs to the SCOPE resolver, not the collector — the
+        // operator flags do not bypass it when a character is present.
+        let (main, mount) = roster_fixture();
+        let ctx = PathResolutionContext {
+            project_id: Some("p-1".to_string()),
+            character_id: Some("c-off".to_string()),
+            operator_override: true,
+            ..Default::default()
+        };
+        let out = resolve_doc_edit_path(
+            &main,
+            &mount,
+            DocEditScope::Project,
+            Some("plan.md"),
+            &ctx,
+            None,
+        );
+        assert!(
+            matches!(
+                out,
+                Err(ResolveError::Path {
+                    code: PathErrorCode::AccessDenied,
+                    ..
+                })
+            ),
+            "{out:?}"
+        );
+    }
+
+    #[test]
+    fn the_collector_withholds_the_project_tier_off_roster_and_logs_the_debug() {
+        let (main, mount) = roster_fixture();
+        let off = PathResolutionContext {
+            project_id: Some("p-1".to_string()),
+            character_id: Some("c-off".to_string()),
+            ..Default::default()
+        };
+        let (ids, lines) = crate::test_support::captured_with(|| {
+            collect_accessible_mount_point_ids(&main, &mount, &off).unwrap()
+        });
+        assert!(!ids.contains(&"r-1".to_string()), "withheld: {ids:?}");
+        let dbg = lines
+            .iter()
+            .find(|l| {
+                l.contains("Path resolver: character off project roster — project tier withheld")
+            })
+            .unwrap_or_else(|| panic!("no collector DEBUG: {lines:?}"));
+        assert!(
+            dbg.starts_with("DEBUG quilltap_core::doc_edit::path_resolver"),
+            "{dbg}"
+        );
+        assert!(dbg.contains("projectId=p-1 characterId=c-off"), "{dbg}");
+
+        let on = PathResolutionContext {
+            project_id: Some("p-1".to_string()),
+            character_id: Some("c-on".to_string()),
+            ..Default::default()
+        };
+        let (ids, lines) = crate::test_support::captured_with(|| {
+            collect_accessible_mount_point_ids(&main, &mount, &on).unwrap()
+        });
+        assert!(ids.contains(&"r-1".to_string()), "admitted: {ids:?}");
+        assert!(
+            !lines.iter().any(|l| l.contains("project tier withheld")),
+            "{lines:?}"
+        );
+    }
+
+    #[test]
+    fn the_collector_logs_nothing_for_a_project_less_or_character_less_context() {
+        let (main, mount) = roster_fixture();
+        for ctx in [
+            PathResolutionContext {
+                character_id: Some("c-off".to_string()),
+                ..Default::default()
+            },
+            PathResolutionContext {
+                project_id: Some("p-1".to_string()),
+                ..Default::default()
+            },
+            PathResolutionContext {
+                project_id: Some(String::new()),
+                character_id: Some("c-off".to_string()),
+                ..Default::default()
+            },
+        ] {
+            let (_ids, lines) = crate::test_support::captured_with(|| {
+                collect_accessible_mount_point_ids(&main, &mount, &ctx).unwrap()
+            });
+            assert!(
+                !lines
+                    .iter()
+                    .any(|l| l.contains("[ProjectRoster]") || l.contains("project tier withheld")),
+                "{ctx:?}: {lines:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_operator_and_pool_arms_of_the_collector_are_not_gated() {
+        let (main, mount) = roster_fixture();
+        let operator = PathResolutionContext {
+            project_id: Some("p-1".to_string()),
+            character_id: Some("c-off".to_string()),
+            operator_override: true,
+            ..Default::default()
+        };
+        let (ids, lines) = crate::test_support::captured_with(|| {
+            collect_accessible_mount_point_ids(&main, &mount, &operator).unwrap()
+        });
+        assert!(ids.contains(&"r-1".to_string()), "{ids:?}");
+        assert!(
+            !lines.iter().any(|l| l.contains("[ProjectRoster]")),
+            "{lines:?}"
+        );
+
+        let pool = PathResolutionContext {
+            project_id: Some("p-1".to_string()),
+            character_id: Some("c-off".to_string()),
+            mount_pool: Some(TieredMountPool {
+                character_mount_point_id: None,
+                participant_mount_point_ids: Vec::new(),
+                group_mount_point_ids: Vec::new(),
+                project_mount_point_ids: vec!["r-1".to_string()],
+                global_mount_point_id: None,
+            }),
+            ..Default::default()
+        };
+        let (ids, lines) = crate::test_support::captured_with(|| {
+            collect_accessible_mount_point_ids(&main, &mount, &pool).unwrap()
+        });
+        assert!(ids.contains(&"r-1".to_string()), "{ids:?}");
+        assert!(
+            !lines.iter().any(|l| l.contains("[ProjectRoster]")),
+            "{lines:?}"
         );
     }
 }
