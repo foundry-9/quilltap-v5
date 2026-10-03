@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-02 — docs(porting): drift check — v4 is two commits past f6426e196 (the project roster gate; bugs 175/176 fixed)
+
+_Docs-only change._
+
+`/driftcheck` recorded two new v4 `main` commits in the drift ledger. The `bugfix` and `release` branches have not moved, and the checkout is clean. Both commits are logged in §3 as UNPROCESSED, and the regen rule is now PIN REQUIRED.
+
+- `9753d0eb2` (PORT): the project character roster now gates a character's doc tools, `search_scriptorium` and the project tier of the shared wardrobe through one chokepoint. The roster auto-add on chat create and chat move is removed. `allowAnyCharacter` now defaults to `true`, and the project PUT returns the enriched project. The SPA Characters card and four help pages change too.
+- `e5c6bd0c0` (CONVERGENCE on this port's filings 175/176, shaped differently from P4.135): a failed avatar-roll collapse is now deferred to the next boot instead of being fatal. Separately, a new boot-time structural table check reports damage through a `structure` service in `/api/health`. The ledger gate itself is unchanged.
+- §1 is rewritten for the new state. The previous dirty-tree waiver is spent because v4 committed the 175/176 filings itself.
+
 #### 2026-10-02 — docs(dogfood): rule finding #124 closed — WaveSpeed will not be directly supported
 
 _Docs-only change._

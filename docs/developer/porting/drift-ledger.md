@@ -23,79 +23,63 @@ probe verifies against._
   not a server path, to Z.AI and NanoGPT" (v4 main, 2026-10-01 15:59,
   `4.10.0-dev.106`), adopted when the `f6426e196` bug-174 drift catch-up +
   review-follow-ups round was unified, all five lanes (P4.D244 ∥ P4.135 ∥
-  P4.136 ∥ P4.137 ∥ P4.138, 2026-10-02). The one row `f6426e196` is
-  ABSORBED(P4.D244) (§6). CLAUDE.md's Status bullet agrees.
-- **Checked:** 2026-10-02 (`/unify` of the `f6426e196` round, main-checkout
-  session; `git fetch --all` first). The §2 probe PASSED at the
-  unification's start AND at its close: HEAD `f6426e196`, both logs empty,
-  `origin/main` agreeing, the tree dirty by EXACTLY the round's recorded
-  waiver (below). Every regen of the unification ran from the detached pin
-  `/tmp/qt-v4-pin-unify-f6426e196` (§5.1). Previous check: 2026-10-01, the
-  `ca363178d` unification.
-- **v4 `main` HEAD at check: `f6426e196`** — AT the baseline; `origin/main`
+  P4.136 ∥ P4.137 ∥ P4.138, 2026-10-02). CLAUDE.md's Status bullet agrees.
+- **Checked:** 2026-10-02 (`/driftcheck`, main-checkout session; `git fetch
+  --all` first). Previous check: 2026-10-02, the `f6426e196` unification.
+- **v4 `main` HEAD at check: `e5c6bd0c0`** ("Fix bugs 175 and 176:
+  resumable migrations and a boot-time table check", 2026-10-02 23:38,
+  `4.10.0-dev.108`) — **TWO commits past the baseline**; `origin/main`
   agrees.
 - **v4 `bugfix` tip at check:** `1a2b2164c` ("bugfix: started 4.9.2 bug
   branch"), UNMOVED; `1a2b2164c..bugfix` and `..origin/bugfix` empty.
   **`release` tip:** `8fbf2afe0` ("release: 4.9.2"), UNMOVED; still no
   `release: 4.10.0` squash.
-- **Checkout at check:** branch **`main`**, tree **DIRTY by three docs-only
-  paths — the v4 bugs 175 and 176 filings this port wrote, UNCOMMITTED, for
-  the human to commit:** `docs/developer/bugs.md` (modified — the two
-  register rows + the Status sentence), `docs/developer/bugs/bug-175-
-  collapse-failure-exits-process.md` and `docs/developer/bugs/bug-176-
-  ledger-skips-shouldrun.md` (untracked). P4.135 wrote them; the
-  unification CORRECTED them in place (the same three paths, nothing else):
-  bug 176's fresh-instance ledger claim (the two `add-doc-mount-*`
-  migrations are never stamped on a fresh instance — their `shouldRun`
-  answers false on the post-refactor shape), its v5-status overclaim (only
-  the DDL class is fatal on v5; the lazy-home repairs log per boot and
-  continue), its `/api/health` wording (health reads the main DB, not the
-  mount index or `help_doc_chunks`), its `isMigrationCompleted` wording; bug
-  175's coordination paragraph (v5 measured steps 1 and 3, and the
-  `shouldRun` skip). **A §2 probe that finds exactly those three paths dirty
-  PASSES; any other dirt is a STOP.** When the human commits them, HEAD
-  moves by ONE docs-only commit: a NO-PORT? row for `/driftcheck` (its file
-  list is the proof), and the `docs/v4/` mirror then lags it on
-  `docs/developer/bugs.md` + two new open-bug files.
-- **Verdict: AT BASELINE — 0 commits** (§3 EMPTY).
-- **Regen rule: NO PIN REQUIRED for `lib/`/`app/`/`packages/`/`plugins/`
-  regens** — HEAD is the baseline and the dirt is docs-only (§2's note).
-  A pin is still the cheap total proof; the unification used one. HEAD's
-  SDKs equal the recorded ones (openai 7.23.0, `@openrouter/sdk` 1.3.28,
-  anthropic 0.115.0, genai 1.52.0 — P4.D232).
+- **Checkout at check:** branch **`main`**, tree **CLEAN**. The previous
+  check's waiver (the three uncommitted bug-175/176 filing paths) is SPENT:
+  `e5c6bd0c0` committed them — not as a separate docs-only commit as the
+  last §1 predicted, but folded into v4's own fix, with both bug files
+  landing directly under `docs/developer/bugs/fixed/`. **Any dirt now is a
+  STOP.**
+- **Verdict: DRIFT PENDING — 2 commits** (§3): `9753d0eb2` (PORT — the
+  project roster enforced as a tool-access gate) and `e5c6bd0c0`
+  (CONVERGENCE — v4's fixes for this port's own filings 175/176, both
+  shaped differently from what v5 did at P4.135; pins trip by design).
+- **Regen rule: PIN REQUIRED** for every `lib/`/`app/`/`packages/`/
+  `plugins/`/`migrations/` regen — HEAD is past the baseline. Pin at
+  `f6426e196` for baseline work; a catch-up lane pins at the target
+  (§5.1). SDK versions unmoved by both commits (`package-lock.json` moves
+  only the version stamp — verify at the catch-up).
 - **Live-checkout guards at the baseline:** `builtin_prompt_templates_guard`
-  and `provider_sdk_version_guard` GREEN (run in the unified sweep and the
-  workspace suite).
+  and `provider_sdk_version_guard` were GREEN at the unification; neither
+  commit touches a built-in prompt or an SDK dependency, so both should
+  stay green against HEAD.
 - **The workspace gate at the baseline:** the round record in
-  `status-log.md` has the counts (the pinned sweep at `f6426e196`, the
-  workspace suite, Tier R, Playwright).
-- **Schema state:** unchanged by `f6426e196` (no DDL, no migration);
-  `fresh_schema.json` stays the THIRD D23 re-dump (P4.D235, `f7f3d7bf0`).
-  v5 tolerates both shapes for the two dropped `chats` columns
-  (`conciergeOverride`, `renderedMarkdown`) and drops neither at boot; the
-  reclamation migrations stay the standing deferral class
-  (`db/text_compression.rs`). #74's two ledger columns stay a BOOT ENSURE
-  (P4.D225). A Friday copy of ANY vintage from `-dev.88` on opens on v5.
-- **`help/**`:** whole at `ca363178d` = `f6426e196` (the commit moves no
-  help file; 129 files).
-- **`docs/v4/`:** CURRENT at `f6426e196` (P4.D244 byte-copied the three
-  paths the commit moved: `CHANGELOG.md`, `developer/bugs.md`, the new
-  `developer/bugs/fixed/bug-174-vault-image-relative-url-to-provider.md`;
-  `diff -rq docs/v4 "$PIN/docs"` lists only the mirror's deliberate extra
-  `packages-quilltap-README.md`). It deliberately does NOT carry the
-  uncommitted 175/176 filings.
+  `status-log.md` has the counts.
+- **Schema state:** neither commit moves DDL or adds a migration. `e5c6bd0c0`
+  adds a `resumable` FLAG to the migration type (marking only the avatar-roll
+  collapse) and a read-only shape check; `9753d0eb2` flips only a create-time
+  DEFAULT (`allowAnyCharacter` → `true`, in the API schema and the repo's
+  create path — not a column default). `fresh_schema.json` stays the THIRD
+  D23 re-dump (P4.D235) — no re-dump owed.
+- **`help/**`:** whole at `f6426e196` (129 files). HEAD moves FIVE pages,
+  no adds/removes (129 stays 129): `project-characters.md`,
+  `project-chats.md`, `project-settings.md`, `projects.md` (`9753d0eb2`) and
+  `cli-migrations.md` (`e5c6bd0c0`).
+- **`docs/v4/`:** CURRENT at `f6426e196`; LAGS HEAD on `CHANGELOG.md`,
+  `developer/API.md`, `developer/bugs.md`, `README.md` and the two new
+  `developer/bugs/fixed/bug-17{5,6}-*.md` files.
 - **Standing deferrals unchanged:** the three text-compression migrations,
   the image re-encode migration and the stored-`renderedMarkdown`
   reclamation stay DEFERRED as reclamation; the animated-input ruling is
   LANDED (P4.108); the corrupt-second-frame ruling keeps v5's still.
-  **The P4.D184 avatar-collapse guard is RULED + LANDED** (P4.135 + the
-  unification's `shouldRun` split): a failed PASS fails the boot as v4's
-  runner does (v4 bug 175 filed); a failed `shouldRun` read is v4's logged
-  SKIP; a failed ledger PROBE is fatal on v5 where v4 falls back to a file
-  state (a recorded divergence, `CollapseError::Fatal`'s doc). **The
-  ledger-gate divergence is RECORDED** (v5 re-ensures every boot; v4 skips a
-  ledgered migration before `shouldRun` — v4 bug 176 filed; v5 KEEPS its
-  ensures; pinned v5-side by `host_boot_hardness`'s cadence arm).
+  ⚠ **Two P4.135 rulings are now OVERTAKEN by v4 (see `e5c6bd0c0`'s row):**
+  the P4.D184 "a failed collapse PASS fails the boot as v4's runner does"
+  premise is no longer v4's behaviour (v4 now DEFERS a failed resumable
+  migration and boots), and the ledger-gate divergence is UNCHANGED in v4
+  (v4 still skips a ledgered migration before `shouldRun`) but v4 now pairs
+  it with a separate boot-time structural check + a `structure` service in
+  `/api/health`, which v5 lacks. Both need a ruling-aware catch-up, not a
+  mechanical port.
 
 ## §2 The freshness probe
 
@@ -134,6 +118,8 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
+| `9753d0eb2` | 2026-10-02 23:23 | Enforce the project character roster for file tools and the shared wardrobe (`4.10.0-dev.107`) | **PORT** (no bug number) | The roster becomes a TOOL-ACCESS gate through ONE new chokepoint, `lib/projects/roster-access.ts` (`projectRosterAdmits` — no project or no character → admit; else `canCharacterParticipate`, i.e. `allowAnyCharacter` OR on the roster, fail-closed on a miss; `rosterGatedProjectId`; the `PROJECT_ROSTER_REFUSAL` sentence; one DEBUG line). Hunks, by v5 surface: (1) **the doc path resolver** (`lib/doc-edit/path-resolver.ts` → v5's path resolver, last moved by P4.D200's opacity covenant): the accessible-pool enumeration threads a roster-gated `projectId` (a new DEBUG line) and `resolveProjectPath` refuses scope `project` off-roster with `ACCESS_DENIED` + the refusal sentence + an INFO line; (2) **the doc tools** — `handleOpenDocument` (target scope `project` only when admitted, else `general`, and `characterId` now passed to the resolver), `handleGrep`'s and `handleListFiles`' project tier gated; (3) **`search_scriptorium`** — `projectId` through `rosterGatedProjectId`; (4) **the shared wardrobe tiers** (`lib/wardrobe/shared-tiers.ts` → v5 `wardrobe_tiers.rs`, the `8600c83f` group/shared tiers port): a new `resolveProjectTierForChat` with an `{operator}` option, a chat-lookup WARN, an off-roster DEBUG, and the Salon outfit dialog's `handleEquipSlot` passing `operator: true`; (5) **`project_info`'s formatter** (`tools/project_info.rs:299-313` carries the OLD strings `No characters in roster` / `(Any character can participate)` — three new sentences replace them); (6) **the roster auto-add REMOVED** from chat create (`resolveProjectDefaults` loses its `participants` arg → v5 `services/chat_create.rs:1248-1310`, P4.4 unit 2, which ports the adopt-new-ids write) and from `processChatUpdates`' move-into-project (a grep of v5's chat PUT finds no roster write — measure whether v5 ever ported that half before calling it a no-op); (7) **`allowAnyCharacter` create default `false` → `true`** in `createProjectSchema` AND `ProjectsRepository`'s create (`?? true`) → v5 `api/projects.rs:242` (the prefault comment + validator) and the `db/projects.rs` create path; (8) **the project PUT now answers the ENRICHED project** (a shared `enrichProject` helper; a `notFound` arm when the re-read misses) → v5 `api/projects.rs:352`'s GET enrichment + `projects_routes_equivalence`; (9) **SPA** — `CharactersCard.tsx` (an Add-character picker, visible remove buttons when Allow Any is off) and `useProjectDetail.ts` (`handleAddCharacter` over the existing `?action=add-character`; three reworded toasts) → v5 `screens/prospero/cards/project-characters-card.ts`; (10) **`help/`** four pages re-vendored (`project-characters`, `project-chats`, `project-settings`, `projects`; 129 stays 129). `docs/developer/API.md`'s "Archived characters are refused (400)" sentence documents the EXISTING add-character route — no route hunk. Two v4 opacity tests gain a `canCharacterParticipate` mock — the doc-opacity oracles (`doc_opacity_equivalence`, P4.D200) will need the same at the target. No DDL, no migration. | UNPROCESSED |
+| `e5c6bd0c0` | 2026-10-02 23:38 | Fix bugs 175 and 176: resumable migrations and a boot-time table check (`4.10.0-dev.108`) | **CONVERGENCE** (both bugs filed by THIS port at P4.135) — but neither fix is the shape v5 adopted, so this is a PORT under a convergence row | **Bug 175 — v4 did NOT keep the fatal exit v5 matched at P4.135.** `migrations/types.ts` gains `resumable?` (and `MigrationRunResult.deferred?`); `migrations/index.ts` adds `deferResumable` — a failed (result `!success` OR thrown) resumable migration logs v4's ERROR `Migration failed` as before, then a WARN `Resumable migration deferred to the next boot; continuing startup`, writes NO ledger row, and the loop CONTINUES; a migration whose `dependsOn` names a deferred one is deferred too with its own WARN (`…a dependency did not complete`, `dependsOn`); the completion log and result gain `deferred`; `instrumentation.ts` logs `deferred`. ONLY `collapse-duplicate-avatar-rolls-v1` is marked resumable. → v5 `host.rs:1739`'s `CollapseError::Fatal` arm + `db/avatar_rolls_collapse_heal.rs` (P4.D184 → P4.135's FATAL flip + the unification's `ShouldRun`/`Fatal` split): **the 2026-10-01 ruling's premise ("match v4") now points the OTHER way** — a failed collapse PASS must defer and boot; the `shouldRun`-read SKIP is unchanged; whether a failed ledger PROBE stays v5-fatal needs re-reading against the new runner. P4.135's fatal-arm pins in `host_boot_hardness` trip BY DESIGN (§5.4). Nothing in v5 depends on the collapse, so the dependant-deferral arm has no v5 consumer today — confirm. **Bug 176 — v4 did NOT change the ledger gate** (it still skips a ledgered migration before `shouldRun`); instead a NEW boot step, `lib/startup/verify-structural-tables.ts` (PHASE 3.1, after file-storage init, wrapped in a WARN-and-continue catch), asks every repository with a `verifyStructure()` — the dedicated mount-index + LLM-logs repos (`dedicated-db.repository.ts`) and `help-doc-chunks.repository.ts` — to run its ensure with NO fallback plus `lib/database/table-shape.ts`'s `findTableShapeProblem` (missing → `table X does not exist`; a view → `X is a view, not a table`; missing schema columns → `table X is missing column(s) a, b`; extras allowed); each problem an ERROR, a summary ERROR or DEBUG, the list stored on `startupState.structuralProblems`; **`/api/health` gains a `structure` service** (`healthy` / `degraded` with v4's pluralized message + `problems[]`, a degraded status → 503 via the existing overall-status map). → v5 `quilltap-web/src/health.rs` (no `structure` service today; its doc comment says "collapsed to the phases v5 has"), the host boot chain (P4.134's warn-and-continue steps), and v5's per-boot ensures (P4.135's recorded divergence stays — v5 KEEPS them; the structural check is additive, and its shape check is something v5's ensures do not do either). `host_boot_hardness.rs:777`'s comment ("a `/health` that checks neither table") goes stale. Also: `help/cli-migrations.md` (+8 lines), the bug register + both bug files committed under `bugs/fixed/` (the previous §1's dirty waiver, SPENT), `API.md` documents the `structure` service. Two new v4 unit tests (`runner-resumable.test.ts`, `verify-structural-tables.test.ts`) are the natural oracle shapes. | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
