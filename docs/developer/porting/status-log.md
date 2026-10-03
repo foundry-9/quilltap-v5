@@ -161007,3 +161007,271 @@ misreporting on a failed read, where v5's propagation refuses.
   strict scope, because `docMountDocuments.findByMountPointAndPath` is a
   fallback `withRawDb(null)`: a repository failure reads as ABSENT and the
   settings/property bag is reseeded from defaults.
+
+## P4.142 — the repository fallbacks — LANE COMPLETE (2026-10-02)
+
+Closes the lane record opened above ("lane record IN PROGRESS"); branch
+`claude/p4-142-repository-fallbacks-75219b8dd`, 12 commits on `main`
+`75219b8dd` (11 units + this close-out). The §R.2 probe passed at lane start
+and before every regen batch (HEAD `f6426e196`, both logs empty, the tree dirty
+by exactly the three bug-175/176 docs paths). Two human rulings this lane: the
+overlay's STRICT SCOPE (lane start) and "convert safe, hold risky" for G2/G3
+(unit 11).
+
+### Commits
+
+`878cf83d0` unit 1 (homes + strict scope + P4.139's home) · `537740bd5` unit 2
+(the overlay batch reads; `send_mail` VANISHED) · `37e8f06b5` unit 3 (project/
+group drop lines) · `de0c0bc25` unit 4 (`chatGet` / `listChats`) · `03e9a2317`
+unit 5 (chunk reads; the re-poison re-aimed) · `b1bef3759` unit 6 (the census)
+· `5d6a9e71d` unit 7 (G1) · `5ee757d15` unit 8 (Tier 2 items 13 + 14) ·
+`cb06af753` unit 9 (item 11) · `c5407fc31` unit 10 (G2 first five + mutation
+proofs) · `fbb3ffbad` unit 11 (G2/G3 safe 19, 23 held) · the close-out (this
+record, the order header).
+
+### Landed vs OPEN, exactly
+
+- **Tier 1 — all landed:** items 1 (homes — 5 shapes + the strict scope), 2
+  (batch twins, 11 callers, both red-firsts), 3 (drop lines + a `state.json`
+  rider), 4 (chat GET/list), 5 (chunk twins, 7 callers), 6 (re-poison), 7
+  (census), 8 (G1 — 14 sites; plant arms in 3 families, capture units for the
+  web routes + the user gallery; `files_routes_equivalence` CANNOT pose these
+  plants — it drives `api::files`), 9 (families at the pin).
+- **Tier 2 — landed:** 11, 12 (with unit 4), 13, 14, 15. **Item 10 PARTIAL BY
+  RULING:** 24 of 47 G2/G3 sites converted; 23 `held-pending-ruling` (named in
+  the census `OVERRIDES`; written up in unit 11's record) — OPEN for the human.
+- **Tier 3 — deferred loudly:** below.
+
+### Tier 3 — the sync applier's fallback RULING (item 16), written up for the human
+
+**No ruling exists; nothing in `services/mount_index/sync/**` changed.** The
+census keeps the applier's 5 rows `fallback-in-v4` with the COUNTS comment
+pointing here. Measured at `f6426e196`:
+
+- **v4 reads the store through FALLBACKS everywhere in sync**, and no sync
+  path enters `withStrictRepositoryFailures` (only the importer does):
+  - the WALKER: `walk-store.ts:47` `docMountFolders.findByMountPointId` and
+    `:60` `docMountFileLinks.findByMountPointId` — a failed read is an EMPTY
+    store walk;
+  - the APPLIER: `apply-store.ts:65` `assertUnchanged` (`current?.sha256` —
+    `undefined` on a failed read → `StoreRaceError` when a sha was expected, or
+    PROCEED when none was), `:133-134` the post-write re-read (`written?.
+    sha256 ?? ''` → an empty sha recorded in the manifest), `index.ts:271-274`
+    `readStoreBytes` (`null` → `The store has no content at …`), the describe,
+    the delete (`deleteWithGC`) and the rmdir.
+- **The hazard is the walker:** with an empty store walk, every base-manifest
+  entry unchanged on disk reaches `planner.ts:212-214` — `removal('disk', d,
+  'deleted in the store since last sync')` — because `propagateDeletes`
+  defaults `true` (`types.ts:37`). **A failed store read in v4 plans the
+  deletion of the operator's whole disk side.** There is no degraded-index
+  guard (only the character keystone refusal, `planner.ts:62`).
+- v5 today: `walk_store.rs` (hand-SQL) and `apply_store.rs:125,261,273,347,
+  381` PROPAGATE; `delete_database_folder` (the rmdir) already takes v4's
+  fallback via the store layer (P4.131).
+
+**Option A — follow v4.** The applier's five reads and the walker's two take
+the twins: v4 fidelity, and the disk-deletion hazard reproduced.
+
+**Option B — strict sync (RECOMMENDED).** The walker, the applier's five
+reads, and a strict sibling for the applier's rmdir all propagate; a store
+read failure fails the run BEFORE planning. A recorded divergence of bug 79's
+kind (v4's own strict-scope precedent — the importer) and of the 2026-08-03
+"fix, don't match" ruling's kind; pinned both ways in `sync_engine_
+equivalence` with a rename-plant case (v4 plans deletes; v5 refuses); the
+walker hazard filed upstream as a v4 bug. Unchanged this round.
+
+### Tier 3 — the other loud deferrals (named, never silent)
+
+- **G5 (item 17):** `qtap_export/records.rs` `stream_one_store` stays STRICT
+  (census class `strict-by-ruling`; v4 `ndjson-writer.ts:625,642` exports a
+  broken store EMPTY). The both-ways pin lands when the export family next
+  regenerates. NOTE the §S strict-scope hunk for the export (unit 2's record)
+  is the overlay half of the same ruling.
+- **`refresh_stats` (item 18):** `db/doc_mount_points.rs:359-379` — v4
+  (`doc-mount-points.repository.ts:182-201`) WRITES `chunkCount: 0` /
+  `fileCount: 0` on a failed inner read. A cached-stats write; fidelity vs
+  harm; not converted.
+- **The other inline `quilltap::db` lines outside the home (item 19):**
+  `conversation_chunks.rs:276-280`, `help_doc_chunks.rs:371-374`,
+  `memories_read.rs:923-925`, `embedding_status.rs:424-428` — unverified this
+  round; the guard widening ("every `quilltap::db` `Error …` literal lives in
+  `fallback.rs`") is the follow-up.
+- **v4's rethrow-mode chunk lines (item 20):** `Error updating doc mount chunk
+  embedding`, `Error deleting chunks by …`, `Error bulk inserting doc mount
+  chunks` — the log + rethrow class, unported.
+- **`chat_enrichment.rs:452` (item 21, §S.3):** the propagating profile read
+  — reserved for the successor; nobody's this round.
+- **`test_plants`' move (item 22):** not done (the planner's ruling).
+- **The participant fan-out (unit 4's pinned divergence):** v4's `handleGet`
+  runs every participant's overlay reads under `Promise.all` before the first
+  refusal surfaces; v5's `assemble_chat_get` stops at the first `?` (22 vs 11
+  batch lines on the plant). Outside this lane's error-arm scope in
+  `api/salon.rs`; pinned both ways in `salon_reads_equivalence`.
+- **`[EmbeddingGenerate] Mount chunk not found`** logs `chunk_id` where v4
+  logs `{context: 'handleEmbeddingGenerate', jobId, chunkId}` — pre-existing,
+  outside the order.
+- **`services/memory_subject.rs:53`** logs `Error resolving character names`
+  on a read-pool failure where v4 logs the inner filter line (unit 8) — not
+  this lane's file.
+
+### Fixtures changed
+
+**None committed.** Every plant is per-run (column RENAMEs on fresh copies or
+on provisioned scratch instances): links `relativePath` (the overlay plants),
+links `originalMimeType` (the joined link reads — named by `queryJoined` /
+`queryLinks`, by no overlay batch read, never re-added by v4's links
+`onTableEnsured`), documents `content`, folders `mountPointId`, chunks
+`mountPointId` / `linkId` / `embedding`. No committed pair was read
+differently, so no other family's oracle is invalidated. Oracle CASE files
+changed (each family regenerated from the pin): `vault-read-overlay.ts`,
+`salon-reads.test.ts`, `characters-reads.test.ts`, `projects-routes.test.ts`,
+`mount-points-routes.test.ts`, `mount-read.ts`.
+
+### Regen recipes (lane-private staging under `/tmp/p4142/`; the committed recipe headers are unchanged and canonical)
+
+All from the pin `PIN=/tmp/qt-v4-pin-p4142-f6426e196`, `PATH=$HOME/.nvm/
+versions/node/v24.13.1/bin:$PATH`, `TZ=UTC`, `W=<this worktree>`:
+
+- **vault_read_overlay:** `cd $PIN; QT_FIXTURE_OUT=/tmp/p4142/vro-fixture.db npx
+  tsx $W/harness/oracle/fixtures/build-vault-read-overlay-fixture.ts;
+  QT_FIXTURE_VAULT_READ_OVERLAY=/tmp/p4142/vro-fixture.db npx tsx
+  $W/harness/oracle/cases/vault-read-overlay.ts > /tmp/p4142/oracle-vault-read-
+  overlay.ndjson` → run with `QT_ORACLE_VAULT_READ_OVERLAY` +
+  `QT_FIXTURE_VAULT_READ_OVERLAY`.
+- **mail_carina_tools:** the header recipe with `STAGE=/tmp/p4142/mail-stage`,
+  fixtures `/tmp/p4142/mail-{main,mount}.db`, outputs `/tmp/p4142/oracle-mail-
+  tools{,-plants}.ndjson` + `/tmp/p4142/oracle-carina-tool.ndjson`.
+- **salon_reads:** the `.ts` header recipe with `TMPO=/tmp/p4142/salon-oracle`,
+  `QT_FIXTURE_SALON_{MAIN,MOUNT}=$W/crates/quilltap-web/tests/fixtures/salon-
+  {main,mount}.db`, `QT_ORACLE_OUT=/tmp/p4142/oracle-salon-reads.ndjson` (20 cases).
+- **characters_reads / projects_routes / mount_points_routes:** each `.ts`
+  header recipe with `TMPO=/tmp/p4142/{chars,proj,mpr}-oracle` and
+  `QT_ORACLE_OUT=/tmp/p4142/oracle-{characters-reads,projects-routes,mount-points-
+  routes}.ndjson`.
+- **mount_read:** `cd $PIN; QT_FIXTURE_MOUNTS_{MAIN,MOUNT}=…mounts-{main,mount}.db
+  QT_MOUNTS_FS_TREE=…mounts-fs-tree node --import tsx $W/harness/oracle/cases/
+  mount-read.ts > /tmp/p4142/oracle-mount-read.ndjson` (22 rows).
+- Both neutrality sweeps ran through the sanctioned driver (`recipe_sweep.py
+  --run-all --force --v4 $PIN --v5w $W`), announced; results
+  `/tmp/p4142/sweep{1,2}.json`.
+
+### For the unifier (§S)
+
+- **§S.1 (P4.139's fold):** `db::fallback::find_api_keys_by_user_id_or_empty`
+  is DELIVERED verbatim (signature, target, fields, message) with the two
+  contract pins; `HOME_MESSAGES` carries `"Error finding API keys by user ID"`.
+  After folding P4.139's lane-local helper (its literal is the same string),
+  `fallback_home_guard` must be green with `HOME_MESSAGES` = **23** (the base 14
+  + this lane's 9: the 5 Tier 1 shapes, the API-key contract, `files_by_mount_
+  point_id`, `clear_embeddings_by_link_id`, `file_by_mount_point_and_path`) —
+  the order's §S.1 predicted 14 + 5 + 1 [+ 1].
+- **The strict-scope wraps (the human's 2026-10-02 ruling, unit 2's record):**
+  `backup/collect.rs` `collect_user_data` (+ the `.unwrap_or_default()`
+  decision), `qtap_export/{mod.rs resolve_export_ids + stream_export_records,
+  preview.rs preview_export}`, `quilltap_import/{mod.rs execute_import,
+  preview.rs preview_import}` — each body in `crate::db::fallback::
+  with_strict_repository_failures(|| …)`. Until applied, backup/export DROP
+  vaulted characters on a broken mount index.
+- **§S.2:** `orchestrator_tier3` + `build_context_tier3` ran GREEN on this branch
+  (sweep 1, zero bytes moved); re-run once on the union.
+- **§S.3 (named for the successor):** `chat_enrichment.rs:452`'s profile read
+  and `:869`'s avatar read (→ `find_by_ids_with_content_or_empty`, delivered).
+- **§S.5:** `api/salon.rs` — only the error arms + the first read changed; the
+  `chat_get` / `list_chats` signatures (incl. `zone`) untouched.
+- **§S.6:** `files_routes_equivalence` was NOT edited (it drives `api::files`,
+  not the web mount routes) — P4.143's `dumpFileFacts` upgrade can take it.
+- **§S.7 census trips:** run `fallback_home_guard`, `doc_mount_fallback_sites_
+  census` and P4.139's `api_key_read_sites_census` by name on the union.
+- **Handoffs found (not this lane's files):** `services/memory_subject.rs:53`
+  (a pool failure logs the unreachable outer `Error resolving character names`);
+  `services/cascade_delete.rs:328` propagates gallery errors where v4 catches.
+
+### 💸 for the dogfood pass (the order's five, corrected)
+
+1. `listChats` under `doc_mount_file_links.relativePath` renamed on the copy's
+   mount index → 200 with the vaulted participants unresolved and the project
+   dropped; the log: 9 path + 2 folder batch lines (+ `properties.json` in any
+   order — v4 logs it LAST on a fresh process), one `Dropping character from
+   list — vault unavailable` per character, the summary WARN, the project pair.
+2. `chatGet` under the same plant → 500 `Failed to fetch chat` + `[Chats v1]
+   Error fetching chat chatId=…` (v5 logs ONE participant's 11 batch lines
+   where v4 logs every participant's — the pinned fan-out).
+3. `send_mail` under the same plant → `No soul by that name keeps a postbox
+   here.`, no catch line.
+4. Revert; the Scriptorium search box's chunk search logs nothing.
+5. **Corrected plant:** a mount-points list under `doc_mount_chunks.mountPointId`
+   renamed (NOT `embedding` — v4's GET does not fail on that) → 200, zero
+   embedded counts, `Error counting embedded chunks by mount point IDs`.
+6. NEW: a character stats / Photo Gallery tab under `doc_mount_file_links.
+   originalMimeType` renamed → 200, zero vault counts / an empty gallery, one
+   `Error querying joined file links` each; the project Files tab → the FILES
+   line `Error finding files by mount point ID`.
+
+### Gate — P4.142's own close-out gate (tree `fbb3ffbad`, `CARGO_INCREMENTAL=0`, pin `f6426e196`)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -- -D
+  warnings` clean in BOTH feature sets (default; `--features quilltap-core/
+  native-transport`); `cargo build --workspace --release` clean (4 m 11 s).
+- `QT_V4_CHECKOUT=<pin> cargo test --workspace --no-fail-fast` with the lane's
+  env block (the seven families' `/tmp/p4142/` oracles): **659 binaries /
+  4,154 passed / 0 failed / 3 ignored**; every lane family confirmed RUN by its
+  result line (`salon_reads` 1, `vault_read_overlay` 1, `mail_carina_tools` 2,
+  `characters_reads` 1, `projects_routes` 1, `mount_read` 1,
+  `mount_points_routes` 1, `fallback_home_guard` 2, `doc_mount_fallback_sites_
+  census` 4); **Tier R (`cli_differential`) green at the pin (402 s)**;
+  `dispatch_wrong_type_census` green at **441** (`api/types.rs` untouched);
+  `builtin_prompt_templates_guard` + `provider_sdk_version_guard` GREEN
+  (re-run by name with output — real assertions, not a skip);
+  `recipe_sweep.py --self-test` exit 0.
+- **Two neutrality sweeps through the driver, from the pin, announced:** sweep 1
+  (after unit 10's code, 29 families — the lane's 7 + the order's 22
+  neutrality families incl. P4.140's `orchestrator_tier3` +
+  `build_context_tier3`, §S.2) **29/29 ok**; sweep 2 (after unit 11, 30 families —
+  every G1/G2/G3 covering family: `almanack_tier2`, `attach_mount_file`,
+  `avatar_rolls_tier2`, `character_avatar_write_tier2`, `character_photo_
+  upload_tier2`, `doc_fm`, `doc_mount_files_tier2`, `doc_mount_write_metadata`,
+  `documents_routes`, `mount_link_groups`, `mount_ops`, `mount_write`,
+  `state_cascade`, `state_routes`, `tool_execution_tier2`, + the re-runs) **30/30
+  ok**; zero `SKIP:` lines in either log.
+- **Designed reds, measured:** `fallback_home_guard` 2 offenders (unit 1);
+  `vault_read_overlay` the plant (`must DROP … got Err`); `mail_carina_tools`
+  `links:send` VANISHED (1 row); `salon_reads` `list_all_mount_plant` STATUS
+  (500 vs 200) and `get_solo_mount_plant` BODY (+ `get_third` BODY);
+  `mount_embedding_effects` 0 ≠ 1; the census on its moved rows each recount;
+  every G1 plant arm on STATUS (500 vs 200) / the raw sqlite error. **Sibling
+  designed reds seen: none** (no P4.139 helper on this branch, so the guard is
+  green here).
+- **One intermittent seen, not this lane's code:** `db::chats::concierge_
+  state_tests::a_failed_write_errors_and_answers_false` failed once in a
+  parallel `--lib` run (unit 7's pass) and passed alone and in every later run
+  (incl. the full gate).
+
+### Versions
+
+core 0.0.1146 → **0.0.1157** (+11), harness 0.0.1074 → **0.0.1082** (+8), web
+0.0.207 → **0.0.208** (+1). host/cli/tauri/SPA untouched; no `Cargo.toml`
+dependency delta.
+
+### Gotchas (memory-note candidates)
+
+- **A column-rename plant must break ONLY the read under test.** A links
+  `relativePath` rename fails the vault overlay's batch reads first, so every
+  character/project lookup refuses before a G1 read is reached; `originalMimeType`
+  (named by the joined reads, not the overlay) isolates them. And a renamed
+  column is not always a v4 failure: v4's `findByFilter` reads `SELECT *` and
+  drops rows on Zod validation (`path` on folders, `embedding` on chunks) — only
+  a column the WHERE clause names fails both stacks.
+- **v4 reads some sites through the legacy FILES repository** (`docMountFiles.
+  findByMountPointId` / `findByMountPointAndPath`), whose lines and collection
+  (`doc_mount_files`) differ from the links repository's — read the v4 call, not
+  the v5 repository it maps to.
+- **v4's per-case fresh repositories reorder `Promise.all` lines:** the first
+  read's `ensureTable` adds an `await`, so `properties.json` logs LAST in a jest
+  case where a long-lived process logs it first; compare plant lines as a
+  multiset.
+- **An `OVERRIDES` key `(file, fn, method)` can swallow a second repository's
+  call in the same fn** — a receiver rule must outrank it.
+- **A `db.write` closure's lines fire on the writer thread** — a thread-scoped
+  capture cannot see them; pin at the twin or at a caller-thread entry.
+- **Matching v4 can import v4's data loss:** a fallback twin is only safe where
+  v4's "absent" arm is harmless; 23 of 47 write-path sites were not.

@@ -74,6 +74,12 @@ _Versions: core 0.0.1148._
 _Versions: core 0.0.1147, harness 0.0.1075._
 
 `TransportError` gains `kind: TransportErrorKind` (`Http`, `Connect`, `Timeout`) and four constructors: `http(status, body)`, `connect(message)`, `timeout(message)` and `headers_timeout(ms)` (now a `Timeout`). All 52 struct literals across 12 files (core 38, harness 14) now go through them. `is_headers_timeout`'s message-prefix sniff is replaced by `is_timeout()`, which reads the kind. Behaviour does not change: every status-less site is `Connect`, every status site is `Http`, and the headers timeout is still the only `Timeout`. This is P4.141's first commit, landed early so a later field cannot cross the shared struct's literals again.
+#### 2026-10-02 — docs(porting): P4.142 lane close-out — the lane record, the sync and held-site rulings written up, the order marked complete
+
+_Docs-only change._
+
+The P4.142 lane record closes in the status log: the commits, what landed and what stays open (the 23 write-path sites held pending a ruling and the sync applier ruling, both written up with v4 citations), the regen recipes, the hunks for the unifier (including the strict-scope wraps for backup, export and import), the dogfood checks, and the gate. The work order's status header now reads LANE COMPLETE.
+
 #### 2026-10-02 — feat(mount-index): P4.142 unit 11 — the harmless G2/G3 sites take v4's fallbacks; 23 hazardous ones held pending a ruling
 
 _Versions: core 0.0.1157, harness 0.0.1082._
