@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — docs(orders): P4.D250 lane complete
+
+_Docs-only change._
+
+The P4.D250 order's status header now reads LANE COMPLETE with the branch name. Tier 1 landed; Tier 2 needed no hunk; the gated beat waits for the unifier's flip.
+
 #### 2026-10-03 — test(e2e): the standing-inform beat, gated on P4.D249 (P4.D250 unit 3)
 
 _Versions: SPA 0.5.801._
