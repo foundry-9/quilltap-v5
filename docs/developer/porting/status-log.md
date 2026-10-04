@@ -164594,3 +164594,49 @@ then-uncommitted bug-177/178 change) and the lane STOPPED; it resumed after
   null asserts neutralized for the count so the per-row collector reports
   every row): projects **8 of 9** new/lifted rows MISMATCH (all but the 400,
   which did not move); groups **5 of 6** (all but the 400). Green after.
+
+### Gate + lane close (P4.146)
+
+- **Neutrality (item 10), the sweep driver from the `52d6e7ecd` pin** (one
+  `--run-all`, 18 families incl. the lane's four): **17 ok, 1 run_failed** —
+  `project_background_display_mode`, `project_roster_access`,
+  `project_doc_mount_links_tier2`, `group_doc_mount_links_tier2`,
+  `group_character_members_tier2`, `group_wardrobe_routes`,
+  `mount_link_groups`, `store_unavailable_envelope` (web),
+  `store_delete`, `chat_export`, `system_restore_state`, `qtap_import`,
+  `home_routes` (web — the family the survey missed) all GREEN. The one red,
+  `system_backup_equivalence`, is EXACTLY one archive entry —
+  `data/chat-informs.json`'s `"permanent": false` (v4 `52d6e7ecd`'s new
+  column; P4.D249's designed backup hunk, §R.4(a)); every projects/groups
+  entry agrees. **No §R.8 handoff:** no export / backup / key-order / restore
+  family moved on a project or group key.
+- **Workspace gate** (`CARGO_INCREMENTAL=0`, `QT_V4_CHECKOUT`=`QT_V4_ROOT`=the
+  pin, the lane's eight env vars): **664 binaries / 4,291 passed / 1 failed /
+  3 ignored**; the one red is `qtap_schema_embed_guard::the_embedded_schema_
+  equals_the_v4_checkouts` — RED at the target BY DESIGN until P4.D249
+  re-vendors `qtap-export.schema.json` (§R.3), NOT this lane's. The lane's
+  four families confirmed RUN by name (non-zero duration, `ok`);
+  `spelling_guard`, `fallback_home_guard`, `builtin_prompt_templates_guard`,
+  `provider_sdk_version_guard` GREEN; `dispatch_wrong_type_census` GREEN
+  (`EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE` 451 unmoved — no `*_id` key
+  added). fmt + clippy (both feature sets) clean; `recipe_sweep.py
+  --self-test` exit 0; `npm run build` (apps/web) green as a liveness check
+  (no SPA edit).
+- **Versions:** core 0.0.1200 → **0.0.1202** (two commits; the unifier
+  recounts — P4.D249 bumps core too). Harness never bumped.
+- **Tier 3, recorded (unchanged):** item 13 — `backup/restore/orchestrator.rs`
+  `project_properties` copies six keys on restore (P4.D249's file this
+  round; not measured here); NOTE the restore's group create also goes
+  through `GroupsRepository::create` (value-or-absent), so a restored group's
+  explicit `null` colour still lands ABSENT — the same later order should
+  take both (it can call `create_with_properties`). Item 14 — the two private
+  deserialize-only `double_option` copies left as they were.
+- **Fixtures changed:** `harness/oracle/fixtures/{projects-tier2.json,
+  groups-tier2.json}` (JSON specs; no other family reads them). No committed
+  real-DB pair touched.
+- **💸 for the next `/dogfood`:** LUC Ranch's Allow Any Character toggle on a
+  fresh Friday copy — the 598-byte `properties.json` changes in ONE key and
+  `projectList` carries `color`/`icon`/`storyBackgroundsEnabled`/
+  `staticBackgroundImageId` as `null`; a new project with no colour writes
+  `"color": null, "icon": null` and the home dashboard row carries `color:
+  null`; a group-editor save with the colour cleared writes `"color": null`.

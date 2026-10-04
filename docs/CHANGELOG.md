@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — docs(status): the P4.146 lane record — gate, neutrality sweep, order marked complete
+
+_Docs-only change._
+
+Records the lane's gate (664 test binaries, one designed red owned by the
+sibling lane), the 18-family neutrality sweep from the `52d6e7ecd` pin
+(17 ok; the one red is the sibling lane's `chat_informs.permanent` backup
+column), the recorded Tier 3 deferrals, and the dogfood rows. Marks the
+P4.146 order LANE COMPLETE.
+
 #### 2026-10-03 — fix(core): project and group create store v4's color/icon `|| null`; the routes families' null masks lifted (P4.146, dogfood #136)
 
 _Versions: core 0.0.1202._
