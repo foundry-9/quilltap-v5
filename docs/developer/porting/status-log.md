@@ -164775,3 +164775,22 @@ symlink classes; `4.10.0-dev.109` / `.108` verified).
   second boot a no-op.
 - A `.qtap` export + re-import of a chat with a standing inform — the flag
   survives; a backup + restore round trip likewise.
+
+### Gate (P4.D249 lane, on `35aa9a967`)
+fmt clean; clippy clean on both feature sets; `recipe_sweep.py --self-test`
+exit 0; `cargo test --workspace --no-fail-fast` with the lane's env block and
+`QT_V4_CHECKOUT`/`QT_V4_ROOT` at the target pin: **666 binaries / 4,302 passed
+/ 1 failed / 3 ignored, zero `SKIP:` lines.** The one red,
+`system_backup_equivalence`, was the SHARED `/tmp/oracle-system-backup.ndjson`
+overwritten at 23:27 by another session regenerating the family from main's
+unmodified case at the same pin (`permanent: false` where this lane's plant
+says `true`); regenerated to a lane-private path and green by name (1/1).
+Censuses: `dispatch_wrong_type_census` 14/14 (its 451 constant UNMOVED),
+`tri_state_edges_share_the_decoder` 11/11, `fallback_home_guard`,
+`spelling_guard`, `builtin_prompt_templates_guard`,
+`provider_sdk_version_guard`, `qtap_schema_embed_guard`, `help_tree_*`,
+`host_help_docs_boot`, `table_shape_equivalence` (neutrality) all green;
+Tier R (`cli_differential`) green. SPA `npm run build` green (no SPA edit).
+Versions: core 0.0.1202, host 0.0.180, web 0.0.217.
+**Gotcha:** a family's canonical `/tmp/oracle-*.ndjson` is shared by every
+session — regen to a lane-private path before a workspace gate.

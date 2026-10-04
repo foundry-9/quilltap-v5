@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — docs(status): the P4.D249 lane gate record
+
+_Docs-only change._
+
+Appends the lane's workspace-gate result (666 binaries, 4,302 passed, one shared-`/tmp` oracle collision regenerated privately and green) and the censuses to the P4.D249 lane record.
+
 #### 2026-10-03 — chore(vendor): re-vendor help/inform.md, five docs/v4 paths and qtap-export.schema.json from v4 52d6e7ecd (P4.D249)
 
 _Versions: core 0.0.1202._
