@@ -118,7 +118,10 @@ pub fn create_backup(
     // by default — full fidelity is the documented behaviour and the safer one.
     compact: bool,
 ) -> Result<CreatedBackup, String> {
-    let collected = collect_user_data(db, user_id).map_err(|e| e.to_string())?;
+    // The bare SQLite message (v4's `error.message`), not `DbError`'s `sqlite
+    // error: …` Display — it is what `backup_create` logs (dogfood #137).
+    let collected =
+        collect_user_data(db, user_id).map_err(|e| crate::db::fallback::error_text(&e))?;
     let data = if compact {
         collect::compact_backup_data(collected)
     } else {

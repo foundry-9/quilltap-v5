@@ -42,7 +42,10 @@ pub fn backup_create(db: &Db, host: &dyn BackupHost, compact: bool) -> Response 
     ) {
         Ok(c) => c,
         Err(e) => {
-            tracing::error!(error = %e, "createBackup failed");
+            // v4 `backup/route.ts:58-60`: ERROR `[System Backup v1] Error creating
+            // backup` `{}` + the Error, then the generic 500 (dogfood #137 — v5
+            // had logged its own `createBackup failed` wording).
+            tracing::error!(error = %e, "[System Backup v1] Error creating backup");
             return Response::error(ErrorKind::Internal, "Failed to create backup");
         }
     };
@@ -262,7 +265,113 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
 
 #[cfg(test)]
 mod tests {
-    use super::iso_from_millis;
+    use super::{backup_create, iso_from_millis};
+    use crate::api::types::Response;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    /// The `collect.rs` strict-scope fixture: a group whose store sits on a
+    /// mount index with none of the joined tables, so the strict overlay read
+    /// fails with a SQLite error.
+    fn broken_store_db(dir: &std::path::Path) -> crate::db::runtime::Db {
+        let (main, mount) = (dir.join("main.db"), dir.join("mount.db"));
+        {
+            let w = crate::db::Writer::open_writable(&main, PEPPER).unwrap();
+            w.connection()
+                .execute_batch(
+                    "CREATE TABLE groups (id TEXT, name, officialMountPointId TEXT, \
+                     createdAt TEXT, updatedAt TEXT); \
+                     INSERT INTO groups VALUES ('g-1', 'Loners', 'mp-1', \
+                       '2026-01-02T03:04:05.000Z', '2026-01-02T03:04:05.000Z');",
+                )
+                .unwrap();
+            let m = crate::db::Writer::open_writable(&mount, PEPPER).unwrap();
+            m.connection()
+                .execute_batch("CREATE TABLE stand_in (id TEXT);")
+                .unwrap();
+        }
+        crate::db::runtime::Db::open(
+            crate::db::runtime::DbPaths {
+                main,
+                mount_index: Some(mount),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap()
+    }
+
+    struct NoUploadsHost {
+        tmp: PathBuf,
+    }
+    impl crate::services::backup::BackupHost for NoUploadsHost {
+        fn storage(&self) -> Arc<dyn crate::services::file_storage::StorageBackend> {
+            Arc::new(crate::services::file_storage::NotConfiguredStorageBackend)
+        }
+        fn pixel_codec(&self) -> Arc<dyn crate::services::file_storage::PixelCodec> {
+            Arc::new(crate::services::file_storage::NotConfiguredPixelCodec)
+        }
+        fn temp_dir(&self) -> PathBuf {
+            self.tmp.clone()
+        }
+        fn host_dirs(&self) -> crate::services::backup::HostDirs {
+            crate::services::backup::HostDirs {
+                npm_plugins: None,
+                themes: None,
+            }
+        }
+        fn app_version(&self) -> String {
+            "test".into()
+        }
+        fn now_ms(&self) -> i64 {
+            0
+        }
+        fn store_backup(&self, _backup_id: &str, _zip_path: &std::path::Path) {}
+        fn take_backup(&self, _backup_id: &str) -> Option<PathBuf> {
+            None
+        }
+        fn store_upload(&self, _upload_id: &str, _zip_path: &std::path::Path) {}
+        fn get_upload(&self, _upload_id: &str) -> Option<PathBuf> {
+            None
+        }
+        fn remove_upload(&self, _upload_id: &str) {}
+    }
+
+    /// Dogfood #137: a failed backup logs v4's line —
+    /// `[System Backup v1] Error creating backup` (`backup/route.ts:58-60`) —
+    /// with the BARE SQLite message v4's `error.message` carries, never v5's
+    /// old `createBackup failed` wording or `DbError`'s `sqlite error: ` prefix;
+    /// the body stays v4's generic `Failed to create backup`.
+    #[test]
+    fn a_failed_backup_logs_v4s_line_with_the_bare_message() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = broken_store_db(dir.path());
+        let host = NoUploadsHost {
+            tmp: dir.path().join("tmp"),
+        };
+        let (resp, lines) = crate::test_support::captured_with(|| backup_create(&db, &host, false));
+        match resp {
+            Response::Error(e) => assert_eq!(e.message, "Failed to create backup"),
+            other => panic!("expected the generic 500, got {other:?}"),
+        }
+        let line = lines
+            .iter()
+            .find(|l| l.starts_with("ERROR quilltap_core::api::system_backup "))
+            .unwrap_or_else(|| panic!("no backup ERROR line: {lines:#?}"));
+        assert!(
+            line.starts_with(
+                "ERROR quilltap_core::api::system_backup [System Backup v1] Error creating backup error=no such "
+            ),
+            "{line}"
+        );
+        assert!(!line.contains("sqlite error"), "{line}");
+        assert!(
+            !lines.iter().any(|l| l.contains("createBackup failed")),
+            "{lines:#?}"
+        );
+    }
 
     #[test]
     fn iso_matches_js_to_iso_string() {

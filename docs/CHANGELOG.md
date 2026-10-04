@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — fix(core): a failed backup and a failed .qtap export log v4's lines with the bare SQLite message (dogfood #137)
+
+_Versions: core 0.0.1200._
+
+Under P4.142's broken-mount-index plant, both verbs failed closed as designed. But the backup logged v5's own `createBackup failed`, rendered with `DbError`'s `sqlite error: ` prefix, and the export logged nothing. `backup_create` now logs v4's `[System Backup v1] Error creating backup` (`backup/route.ts:58-60`), and `create_backup` renders the collect's `DbError` through `db::fallback::error_text`, so the line carries the bare message as v4's `error.message` does. `export_stream`'s failure arm logs v4's `[System Tools v1] Export failed` with `userId` (`system/tools/route.ts:420-426`): the bare SQLite text for a storage failure, the thrown text otherwise. Three unit pins over the `collect.rs` broken-store fixture (the backup line; the export's thrown arm; the export's storage arm), mutation-proven (the old wording, the line removed, the prefixed rendering → all three red). Gate: fmt clean; clippy both feature sets clean; release build clean; `cargo test --workspace` 664 binaries / 4,280 passed / 1 failed / 3 ignored — the one red `qtap_schema_embed_guard` reading the LIVE v4 checkout, which moved to `52d6e7ecd` (the recorded drift); green against a pinned `e5c6bd0c0` worktree (2/2).
+
 #### 2026-10-03 — fix(spa): the project Files card names and sizes its files from v4's wire keys (dogfood #135)
 
 _Versions: SPA 0.5.798._

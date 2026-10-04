@@ -27,6 +27,15 @@ fn with_both<T>(
     db.read_main(|main| db.read_mount_index(|mount| f(main, mount)))
 }
 
+/// An export failure as v4's `error.message`: the bare SQLite message for a
+/// storage failure (`db::fallback::error_text`), the thrown text otherwise.
+fn export_error_text(e: &ExportError) -> String {
+    match e {
+        ExportError::Db(d) => crate::db::fallback::error_text(d),
+        other => other.to_string(),
+    }
+}
+
 fn db_error(e: crate::db::DbError) -> Response {
     Response::error(ErrorKind::Internal, e.to_string())
 }
@@ -117,11 +126,19 @@ pub fn export_stream(
         ))
     }) {
         Ok(Ok(r)) => r,
-        Ok(Err(_)) => {
+        Ok(Err(e)) => {
+            // v4 `system/tools/route.ts:420-426`: ERROR `[System Tools v1] Export
+            // failed` `{userId}` + the Error, then the generic 500 (dogfood #137 —
+            // v5 had answered the 500 with no line at all).
+            tracing::error!(
+                userId = %user_id,
+                error = %export_error_text(&e),
+                "[System Tools v1] Export failed"
+            );
             return Err(Response::error(
                 ErrorKind::Internal,
                 "Failed to create export",
-            ))
+            ));
         }
         Err(e) => return Err(db_error(e)),
     };
@@ -347,6 +364,91 @@ pub fn js_truthy(v: Option<&Value>) -> bool {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    /// The `collect.rs` strict-scope fixture: a group whose store sits on a
+    /// mount index with none of the joined tables, so the strict overlay read
+    /// fails with a SQLite error.
+    fn broken_store_db(dir: &std::path::Path) -> crate::db::runtime::Db {
+        let (main, mount) = (dir.join("main.db"), dir.join("mount.db"));
+        {
+            let w = crate::db::Writer::open_writable(&main, PEPPER).unwrap();
+            w.connection()
+                .execute_batch(
+                    "CREATE TABLE groups (id TEXT, name, officialMountPointId TEXT, \
+                     createdAt TEXT, updatedAt TEXT); \
+                     INSERT INTO groups VALUES ('g-1', 'Loners', 'mp-1', \
+                       '2026-01-02T03:04:05.000Z', '2026-01-02T03:04:05.000Z');",
+                )
+                .unwrap();
+            let m = crate::db::Writer::open_writable(&mount, PEPPER).unwrap();
+            m.connection()
+                .execute_batch("CREATE TABLE stand_in (id TEXT);")
+                .unwrap();
+        }
+        crate::db::runtime::Db::open(
+            crate::db::runtime::DbPaths {
+                main,
+                mount_index: Some(mount),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap()
+    }
+
+    fn export_failure_line(lines: &[String]) -> &String {
+        lines
+            .iter()
+            .find(|l| l.contains("[System Tools v1] Export failed"))
+            .unwrap_or_else(|| panic!("no export failure line: {lines:#?}"))
+    }
+
+    /// Dogfood #137: v4's export catch (`system/tools/route.ts:420-426`) logs
+    /// ERROR `[System Tools v1] Export failed` `{userId}` + the Error before its
+    /// generic 500; v5 answered the 500 with no line at all. A thrown export
+    /// (`Unknown export type`) carries its own text.
+    #[test]
+    fn a_thrown_export_logs_v4s_failure_line() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = broken_store_db(dir.path());
+        let options = export_options_from_body(&json!({"type": "no-such-type"}));
+        let (got, lines) = crate::test_support::captured_with(|| {
+            export_stream(&db, "u-1", options, "test", None).map(|_| ())
+        });
+        match got {
+            Err(Response::Error(e)) => assert_eq!(e.message, "Failed to create export"),
+            other => panic!("expected the generic 500, got {other:?}"),
+        }
+        assert_eq!(
+            export_failure_line(&lines),
+            "ERROR quilltap_core::api::system_qtap [System Tools v1] Export failed \
+             userId=u-1 error=Unknown export type: no-such-type"
+        );
+    }
+
+    /// The storage arm (P4.142's strict wraps): a broken store fails the export,
+    /// and the line carries the BARE SQLite message, not `DbError`'s
+    /// `sqlite error: ` prefix.
+    #[test]
+    fn a_failed_store_read_logs_the_bare_sqlite_message() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = broken_store_db(dir.path());
+        let options = export_options_from_body(&json!({"type": "groups"}));
+        let (got, lines) = crate::test_support::captured_with(|| {
+            export_stream(&db, "u-1", options, "test", None).map(|_| ())
+        });
+        assert!(got.is_err(), "a broken store must fail the export");
+        let line = export_failure_line(&lines);
+        assert!(
+            line.starts_with(
+                "ERROR quilltap_core::api::system_qtap [System Tools v1] Export failed userId=u-1 error=no such "
+            ),
+            "{line}"
+        );
+        assert!(!line.contains("sqlite error"), "{line}");
+    }
 
     #[test]
     fn body_coercions_match_v4() {
