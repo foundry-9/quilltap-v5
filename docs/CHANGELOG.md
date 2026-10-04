@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — docs(orders): the 52d6e7ecd standing-informs drift catch-up round — P4.D249 ∥ P4.D250 ∥ P4.146 (dogfood #136 as a rider)
+
+_Docs-only change._
+
+Three work orders plus two surveys for a small round. P4.D249 ports the server half of v4 `52d6e7ecd` (standing per-chat informs): the fourth D23 re-dump of `fresh_schema.json`, a boot ensure for the new `chat_informs.permanent` column re-homed from v4's migration, one in-force predicate under every repository read and delete, the swipe merge in the inform block, the `permanent` body key (refusing `null` as v4 does), and the import/export/backup/restore carriers, plus the `help/`, `docs/v4/` and export-schema re-vendors. P4.D250 ports the SPA half: the "Keep it standing in this chat" checkbox, its help sentence and toast, and the standing chip, with one gated Playwright beat the unifier turns on. P4.146 closes dogfood #136: a project's or group's `properties.json` keeps v4's explicit `null`s on create, read and read-modify-write. The drift ledger row is marked ORDERED, finding #136 is marked ORDERED, and `phase-4.md` gains the round section.
+
 #### 2026-10-03 — docs(dogfood): the f6426e196 + e5c6bd0c0 dogfood pass — 42 rows, 38 PASS, 4 BLOCKED; findings #135 and #137 fixed, #136 order-pending
 
 _Docs-only change._

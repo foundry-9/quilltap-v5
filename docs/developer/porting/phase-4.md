@@ -7124,6 +7124,83 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
+## The `52d6e7ecd` standing-informs drift catch-up round (P4.D249 ∥ P4.D250 ∥ P4.146) — ORDERED 2026-10-03
+
+**Baseline `e5c6bd0c0`; v4 `main` HEAD `52d6e7ecd` at the planning probe —
+ONE commit past the baseline (standing per-chat informs, class PORT, with a
+NEW migration `add-chat-informs-permanent-v1` → D23 re-dump #4); the
+ledger's §2 probe PASSED (branch `main`, tree CLEAN, both logs empty,
+`bugfix` `1a2b2164c` and `release` `8fbf2afe0` unmoved); the §3 row marked
+`ORDERED(P4.D249, P4.D250)` in the same commit as the orders; the round's
+ONE target pin is `52d6e7ecd`, the baseline pin `e5c6bd0c0`; at unification
+the baseline MOVES to `52d6e7ecd`.** A SMALL round by the human's direction:
+the drift row plus dogfood finding #136 as a rider. Two fresh surveys
+(`work-orders/surveys/2026-10-03-52d6e7ecd/`, committed with the orders)
+measured the scope from the shipped hunks and corrected the ledger row in
+two places: `chat_informs` is NOT one of P4.D248's structural tables (the
+re-dump reaches `table_shape.rs` only as its input), and v4's "backup/
+restore carry the flag" has no v4 hunk (whole-row backup) while v5 marshals
+fixed column lists and so DOES need backup, restore and export-key-order
+hunks. #136's survey measured a SMALL blast radius (the typed bags live
+only inside the overlay engine; one direct field access) and found the
+null enters v4 at THREE points — create's `color || null`, the PUT, a
+stored bag — and that the routes families have masked the seam since
+P4.D246. Three lanes, disjoint ownership, ONE shared contract (the
+standing-inform wire P4.D249 ↔ P4.D250, no pick-order dependency — the SPA
+types the list's `permanent` optional). `api/types.rs` is OPEN to P4.D249
+alone (the `ChatInform` request gains `permanent`, which must refuse an
+explicit `null` as v4's `z.boolean().optional()` does — never a plain
+`Option<bool>`).
+
+- **P4.D249 — the server half (core + host + web edge + harness + vendored
+  trees):** `work-orders/p4.d249-standing-informs-server-schema-ensure-
+  carriers.md` — the D23 re-dump + `CHAT_INFORMS_TABLE_DDL` + a NEW
+  `db/chat_informs_permanent_repair.rs` boot ensure (differentially
+  compared against v4's real migration via the migrator's `--module`), the
+  ONE in-force predicate, the delivery/posting comparators, `create_batch`'s
+  flag, the block's swipe merge + stamped-row exclusion + debug fields, the
+  wire (201 / list / cancel log), import / export / backup / restore, the
+  committed pairs widened only as `--report-only` measures, `help/inform.md`
+  + five `docs/v4/` paths + `qtap-export.schema.json`; red-first across the
+  four dedicated inform families + four spine regens + five carrier
+  families + both web wire tests. The most capable tier.
+- **P4.D250 — the SPA half (Angular only):** `work-orders/p4.d250-standing-
+  informs-spa-checkbox-chip.md` — the checkbox, the conditional help
+  sentence, the three-way toast, `permanent` always posted, the chip's
+  standing label / hover / withdraw title, the three contract types, vitest
+  red-first over v4's strings read at the pin, ONE Playwright beat gated
+  `P4D249_SERVER_LANDED = false` that the unifier flips LIVE. Opus tier.
+- **P4.146 — dogfood #136 (core + harness):** `work-orders/p4.146-
+  properties-json-null-preservation.md` — the eleven project + two group
+  nullable keys three-state over the existing pub `double_option`, create
+  injecting v4's `null`s, the home wire and the group import following,
+  the tier-2 corpora grown with null cells compared as file BYTES + sha
+  through v4's real overlay, the routes families' masks lifted; any
+  export/backup/key-order hunk is a recorded handoff to the unifier (those
+  files are P4.D249's). Opus tier.
+
+**Fences:** `api/types.rs` P4.D249 only (§R.5); `fresh_schema.json`, every
+`*_repair.rs`, `crates/quilltap-host/**`, `crates/quilltap-web/src/**`,
+`help/**`, `docs/v4/**`, `services/{qtap_export,backup}/**`,
+`schema-key-order.json` P4.D249; `apps/web/**` P4.D250; `db/{projects,
+groups,document_store_overlay}.rs`, `api/{projects,groups}.rs`,
+`services/home.rs`, `quilltap_import/entities.rs` P4.146; `quilltap-harness`
+never bumped (frozen by `commit.md` §6). **Execution:** three branches cut
+from `main` at the orders' commit; worktree per lane, the two Rust lanes
+cloning main's warmed `target/`; P4.D249 the most capable tier, P4.D250 +
+P4.146 Opus; the two Rust lanes announce sweeps (one at a time); one
+Playwright run at a time; cherry-pick order P4.146 → P4.D249 → P4.D250; the
+unifier flips the gated beat, runs the full sweep from the pin, recounts
+versions (core bumped by two lanes), lands any §R.8 handoff, moves the
+baseline, and moves #136 to FIXED. **Deliberately left out:** the
+follow-ups smalls round the `e5c6bd0c0` unification named (NEXT item 2 —
+nothing in it is drift, and the human scoped this round small); the
+dogfood standing notes' item 2 (a BLOB in `connection_profiles.name`
+failing a background job — measure v4 first, P4.139/P4.142 census class,
+low priority) and the 2026-10-02 note's `doc_mount_file_links` plant 500;
+the restore's six-key `project_properties` helper (pre-existing); the owed
+dogfood pass (after this round, with the three lanes' 💸 rows).
+
 ## The `e5c6bd0c0` drift catch-up round (P4.D245 ∥ P4.D246 ∥ P4.D247 ∥ P4.D248) — UNIFIED 2026-10-03 (ordered 2026-10-03)
 
 **UNIFIED on main (2026-10-03) — ALL FOUR LANES LANDED WHOLE; the oracle
