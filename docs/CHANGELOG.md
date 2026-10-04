@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — fix(spa): the project Files card names and sizes its files from v4's wire keys (dogfood #135)
+
+_Versions: SPA 0.5.798._
+
+The project Files card rendered every file nameless at `0 B`: it read `fileName` and `fileSizeBytes`, but `projectFileList` (v4's `?action=list-files`, both branches) sends `originalFilename` and `size`. Its thumbnails read `thumbnailUrl`/`filepath`, which the wire never carries either, and v4's `+N more files` line was missing. `ProjectFileDto` now follows the wire's shape. The card renders `originalFilename` and `formatBytes(size)` through the ported `qt-file-thumbnail`: the mount-blob route for a store-backed row, the thumbnail route for a legacy row. It also adds `+N more files`, and the lightbox's full-size URL follows the same split. The unit spec had frozen the wrong shape; it is rebuilt over the real LUC Ranch wire row plus a legacy row and mutation-proven. `projects-flow.spec.ts`'s detail beat now checks the opened project's Files card against `projectFileList` row by row. Gate: SPA 467 files / 8,817 tests; build clean; the projects-flow spec 6/6; the full Playwright run 350 passed / 8 failed / 6 skipped (the standing parks); the eight are in five untouched Salon streaming files, each green when re-run alone (3/3, 2/2, 2/2, 1/1, 2/2).
+
 #### 2026-10-03 — docs(drift): record v4 `52d6e7ecd` (standing informs) — drift pending, one commit, a new migration
 
 _Docs-only change._

@@ -138,6 +138,27 @@ test.describe('P4.6l — Projects vertical (list → detail → toggle → renam
       timeout: 10_000,
     });
 
+    // The Files card names and sizes every row as `projectFileList` sends it
+    // (dogfood #135: the card read `fileName` / `fileSizeBytes`, which the
+    // wire never carries, so a real project's files all rendered nameless at
+    // `0 B`).
+    const projectId = page.url().split('/').pop() as string;
+    const listed = await page.request.post(`${PROJ_BASE_URL}/api/dispatch`, {
+      data: { type: 'projectFileList', projectId },
+    });
+    const files = ((await listed.json()) as {
+      data: { files: { originalFilename: string; size: number }[] };
+    }).data.files;
+    expect(files.length).toBeGreaterThan(0);
+    const fileRows = page.locator('qt-project-files-card .max-h-64 > button');
+    await expect(fileRows).toHaveCount(Math.min(files.length, 10), { timeout: 10_000 });
+    for (const [i, f] of files.slice(0, 10).entries()) {
+      await expect(fileRows.nth(i).locator('p').first()).toHaveText(f.originalFilename);
+      if (f.size > 0) {
+        await expect(fileRows.nth(i).locator('p').nth(1)).not.toContainText(/^0 B/);
+      }
+    }
+
     // Toggle Allow Any Character (an immediate projectUpdate).
     const toggle = page.getByRole('switch', { name: 'Allow Any Character' });
     const before = await toggle.getAttribute('aria-checked');

@@ -4212,23 +4212,30 @@ export interface ProjectDetail {
 }
 
 /**
- * One project file row (v4 `?action=files` legacy-file-shaped DTO). Store-backed
- * rows add `mountPointId`/`relativePath`; both branches share this shape.
+ * One project file row — v4 `GET /api/v1/projects/[id]?action=list-files`
+ * (`actions/files.ts` `handleListFiles`). Both branches name the file
+ * `originalFilename` and its byte count `size`: a store-backed row (the
+ * project's linked Scriptorium store) adds `mountPointId`/`relativePath`; a
+ * legacy files-table row adds `userId`. v4's `FilesCard.tsx` reads exactly
+ * `originalFilename`, `size`, `category`, `mimeType` and the two mount keys.
  */
 export interface ProjectFileDto {
   id: string;
-  fileName: string;
+  userId?: string;
+  originalFilename: string;
+  filename: string;
   mimeType: string;
-  fileSizeBytes: number;
+  size: number;
   category: string;
-  filepath?: string | null;
-  thumbnailUrl?: string | null;
+  description: string | null;
+  projectId: string | null;
+  folderPath: string | null;
+  width: number | null;
+  height: number | null;
   createdAt: string;
   updatedAt: string;
-  folderPath?: string | null;
   mountPointId?: string;
   relativePath?: string;
-  [key: string]: unknown;
 }
 
 /**

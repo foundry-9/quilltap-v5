@@ -4,16 +4,19 @@ import { injectQuery } from '@tanstack/angular-query-experimental';
 import { CoreClient } from '../../../core/core-client';
 import type { ProjectFileDto } from '../../../core/core-contract';
 import { CollapsibleCard } from '../../../ui/collapsible-card';
-import { Icon } from '../../../ui/icon';
 import { Modal } from '../../../ui/modal';
 import { formatBytes } from '../../../ui/format-bytes';
-import { normalizeAvatarSrc } from '../../../ui/avatar-stack';
+import { FileThumbnail } from '../../files/file-thumbnail';
+import { fileUrl } from '../../../images/image-urls';
+import { buildMountBlobUrl } from '../../scriptorium/scriptorium.api';
 import { fetchProjectFiles, projectKeys } from '../projects.api';
 
 /**
- * The project Files card (v4 `FilesCard.tsx`), tier-1 form: the first 10 files
- * with a thumbnail (image files), name, size, and category. Clicking an image
- * opens a plain lightbox.
+ * The project Files card (v4 `FilesCard.tsx`), tier-1 form: the first 10 files,
+ * each with v4's `FileThumbnail` (an image thumbnail, else the type glyph),
+ * `originalFilename`, `formatBytes(size)` and the category, then v4's `+N more
+ * files` line. A store-backed row's thumbnail and preview go through the
+ * mount-point blob route, as v4's do. Clicking an image opens a plain lightbox.
  *
  * DEFERRED LOUDLY (tier 3): "Browse All Files" (the ~5k-line FileBrowser /
  * FilePreview family) is a disabled affordance; project file UPLOAD (multipart
@@ -23,7 +26,7 @@ import { fetchProjectFiles, projectKeys } from '../projects.api';
 @Component({
   selector: 'qt-project-files-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CollapsibleCard, Icon, Modal],
+  imports: [CollapsibleCard, FileThumbnail, Modal],
   template: `
     <qt-collapsible-card
       title="Files"
@@ -44,26 +47,27 @@ import { fetchProjectFiles, projectKeys } from '../projects.api';
               class="w-full flex items-center gap-3 p-2 rounded-lg hover:qt-bg-muted transition-colors text-left"
               (click)="onClick(file)"
             >
-              @if (thumbFor(file); as src) {
-                <img
-                  [src]="src"
-                  [alt]="file.fileName"
-                  class="w-10 h-10 rounded object-cover flex-shrink-0"
-                />
-              } @else {
-                <span
-                  class="w-10 h-10 rounded flex items-center justify-center qt-bg-muted flex-shrink-0"
-                >
-                  <qt-icon name="file" class="w-5 h-5 qt-text-secondary" />
-                </span>
-              }
+              <qt-file-thumbnail
+                [fileId]="file.id"
+                [mimeType]="file.mimeType"
+                [alt]="file.originalFilename"
+                [size]="40"
+                className="rounded flex-shrink-0"
+                [mountPointId]="file.mountPointId"
+                [relativePath]="file.relativePath"
+              />
               <div class="min-w-0 flex-1">
-                <p class="qt-label text-foreground truncate">{{ file.fileName }}</p>
+                <p class="qt-label text-foreground truncate">{{ file.originalFilename }}</p>
                 <p class="qt-text-xs qt-text-secondary">
                   {{ sizeLabel(file) }} &bull; {{ file.category }}
                 </p>
               </div>
             </button>
+          }
+          @if (files().length > 10) {
+            <p class="qt-text-xs qt-text-secondary text-center py-2">
+              +{{ files().length - 10 }} more files
+            </p>
           }
         </div>
       }
@@ -108,18 +112,21 @@ export class ProjectFilesCard {
   });
 
   protected sizeLabel(file: ProjectFileDto): string {
-    return formatBytes(file.fileSizeBytes ?? 0);
+    return formatBytes(file.size ?? 0);
   }
 
-  protected thumbFor(file: ProjectFileDto): string | null {
+  /** The full-size image URL: the mount blob for a store row, else the file route. */
+  protected imageSrc(file: ProjectFileDto): string | null {
     if (!file.mimeType?.startsWith('image/')) {
       return null;
     }
-    return normalizeAvatarSrc(file.thumbnailUrl ?? file.filepath ?? undefined);
+    return file.mountPointId && file.relativePath
+      ? buildMountBlobUrl(file.mountPointId, file.relativePath)
+      : fileUrl(file.id);
   }
 
   protected onClick(file: ProjectFileDto): void {
-    const src = this.thumbFor(file);
+    const src = this.imageSrc(file);
     if (src) {
       this.lightbox.set(src);
     }

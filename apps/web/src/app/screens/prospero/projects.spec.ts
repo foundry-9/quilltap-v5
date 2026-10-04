@@ -1438,14 +1438,48 @@ describe('ProjectImageGenerationCard', () => {
 });
 
 describe('ProjectFilesCard', () => {
-  function file(over: Partial<ProjectFileDto> = {}): ProjectFileDto {
+  /**
+   * A row exactly as `projectFileList` answers it — copied from the dogfood
+   * copy's LUC Ranch project (store-backed, 2026-10-03). The card had read
+   * `fileName` / `fileSizeBytes`, which this wire (v4's and v5's) never
+   * carries, so every row rendered nameless at `0 B` (dogfood #135).
+   */
+  function storeRow(over: Partial<ProjectFileDto> = {}): ProjectFileDto {
+    return {
+      id: '26373ad4-bbe3-4e37-8e15-cf7c77cd385b',
+      originalFilename: 'description.md',
+      filename: 'description.md',
+      mimeType: 'text/markdown',
+      size: 39,
+      category: 'DOCUMENT',
+      description: null,
+      projectId: 'p1',
+      folderPath: null,
+      width: null,
+      height: null,
+      createdAt: '2026-06-08T00:36:38.374Z',
+      updatedAt: '2026-06-08T00:36:38.374Z',
+      mountPointId: 'mp-1',
+      relativePath: 'description.md',
+      ...over,
+    };
+  }
+
+  /** A legacy files-table row (no mount keys), v4's second branch. */
+  function legacyRow(over: Partial<ProjectFileDto> = {}): ProjectFileDto {
     return {
       id: 'f1',
-      fileName: 'map.png',
+      userId: 'u1',
+      originalFilename: 'map.png',
+      filename: 'map.png',
       mimeType: 'image/png',
-      fileSizeBytes: 2048,
-      category: 'image',
-      filepath: '/uploads/map.png',
+      size: 2048,
+      category: 'IMAGE',
+      description: null,
+      projectId: 'p1',
+      folderPath: '/',
+      width: 64,
+      height: 64,
       createdAt: '2024-01-01T00:00:00Z',
       updatedAt: '2024-01-01T00:00:00Z',
       ...over,
@@ -1470,24 +1504,47 @@ describe('ProjectFilesCard', () => {
     return fixture;
   }
 
+  /** Each file row's two lines — the name line and the `size • category` line. */
+  function rowTexts(fixture: ComponentFixture<ProjectFilesCard>): string[] {
+    return [...fixture.nativeElement.querySelectorAll('.max-h-64 > button')].map(
+      (b: HTMLButtonElement) =>
+        [...b.querySelectorAll('p')]
+          .map((p) => p.textContent?.replace(/\s+/g, ' ').trim() ?? '')
+          .join(' | '),
+    );
+  }
+
   it('shows the empty state when there are no files', async () => {
     const empty = await render([]);
     expect(empty.nativeElement.textContent).toContain('No files in this project yet');
   });
 
-  it('lists files with size and category', async () => {
-    const fixture = await render([file({ fileName: 'map.png', category: 'image' })]);
-    const text = fixture.nativeElement.textContent as string;
-    expect(text).toContain('map.png');
-    expect(text).toContain('2.0 KB');
-    expect(text).toContain('image');
+  it("names each row by v4's originalFilename and sizes it by v4's size", async () => {
+    const fixture = await render([storeRow(), legacyRow()]);
+    expect(rowTexts(fixture)).toEqual([
+      'description.md | 39 B • DOCUMENT',
+      'map.png | 2.0 KB • IMAGE',
+    ]);
   });
 
-  it('caps the list at the first 10 files and disables Browse All Files', async () => {
-    const many = Array.from({ length: 14 }, (_, i) => file({ id: `f${i}`, fileName: `f${i}.png` }));
+  it("feeds v4's FileThumbnail the row: a store image through the mount blob, a legacy one through the thumbnail route", async () => {
+    const fixture = await render([
+      storeRow({ id: 's1', originalFilename: 'cover.png', mimeType: 'image/png', relativePath: 'art/cover.png' }),
+      legacyRow(),
+    ]);
+    const imgs = [...fixture.nativeElement.querySelectorAll('img')] as HTMLImageElement[];
+    expect(imgs.map((i) => i.getAttribute('alt'))).toEqual(['cover.png', 'map.png']);
+    expect(imgs[0].getAttribute('src')).toContain('/api/v1/mount-points/mp-1/blobs/art/cover.png');
+    expect(imgs[1].getAttribute('src')).toContain('/api/v1/files/f1?action=thumbnail&size=40');
+  });
+
+  it("caps the list at the first 10 files, says v4's +N more files, and disables Browse All Files", async () => {
+    const many = Array.from({ length: 14 }, (_, i) =>
+      storeRow({ id: `f${i}`, originalFilename: `f${i}.md`, relativePath: `f${i}.md` }),
+    );
     const fixture = await render(many);
-    const rows = fixture.nativeElement.querySelectorAll('img');
-    expect(rows.length).toBe(10);
+    expect(rowTexts(fixture).length).toBe(10);
+    expect(fixture.nativeElement.textContent).toContain('+4 more files');
     const browse = [...fixture.nativeElement.querySelectorAll('button')].find(
       (b: HTMLButtonElement) => b.textContent?.trim() === 'Browse All Files',
     ) as HTMLButtonElement;
