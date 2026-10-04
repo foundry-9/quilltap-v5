@@ -1507,10 +1507,62 @@ records THERE. Update this summary only when a phase or round completes.
   and the read wire omits them (the `Option` + `skip_serializing_if` seam).
   **Next: the `52d6e7ecd` standing-informs catch-up (with #136 as a rider
   order), then the not-run rows** — `dogfood-findings.md` standing notes.
-- **Oracle baseline: `e5c6bd0c0` (2026-10-02, v4 main — "Fix bugs 175 and
-  176: resumable migrations and a boot-time table check",
-  `4.10.0-dev.108`), adopted at the `e5c6bd0c0` round's unification
-  (2026-10-03).**
+- **The `52d6e7ecd` standing-informs drift catch-up round (P4.D249 ∥
+  P4.D250 ∥ P4.146): UNIFIED on main (2026-10-04) — ALL THREE LANES LANDED
+  WHOLE; the oracle baseline MOVES to `52d6e7ecd`; the ledger's §3 holds
+  ONE row (`a434c715b`, bugs 177/178 — PDF text extraction, UNPROCESSED,
+  pushed), so the regen rule is PIN REQUIRED at `52d6e7ecd`.** v4's standing
+  (per-chat) informs absorbed whole: the FOURTH D23 re-dump (EXACTLY one
+  line — `chat_informs.permanent INTEGER DEFAULT 0`) + v4's migration
+  re-homed as a boot ensure with BOTH v4 shapes carried (generateDDL's
+  nullable schema-order column for a fresh table, the migration's `NOT NULL
+  DEFAULT 0` appended for an existing one — the ensure itself
+  differentially compared against v4's REAL migration, `table_info` +
+  `sqlite_master` byte-equal), ONE `is_inform_in_force` predicate under
+  every read and delete with a source census, the delivery/posting
+  comparators, the block's swipe merge + stamped-row exclusion + `standing`
+  counts, the `permanent` body key as a tri-state refusing `null` on both
+  transports, the 201 / list / cancel bytes, import / export key order /
+  backup / restore carriers, `help/inform.md` + five `docs/v4/` paths +
+  `qtap-export.schema.json` re-vendored (P4.D249); the SPA's "Keep it
+  standing in this chat" checkbox, the flipped guidance tail, the three-way
+  toast, the chip's standing label / hover / withdraw title, the three
+  contract types, and ONE gated Playwright beat the unifier flipped LIVE
+  (P4.D250 — which also found and fixed a pre-existing v5 defect: the
+  guidance paragraph ran two sentences together where Angular drops a
+  whitespace-only node); and **dogfood #136 FIXED** — the eleven project +
+  two group `.nullable().optional()` keys three-state over `double_option`,
+  so a v4-written `properties.json` keeps its explicit `null`s through read,
+  read-modify-write and create (LUC Ranch's one toggle changes ONE key),
+  create writes v4's `color || null`, the home wire and the group import
+  follow, the tier-2 corpora grown with null cells through v4's REAL overlay
+  and the routes families' masks LIFTED (P4.146). **The §3 review (four
+  parallel readers + the unifier): NO blocking defect — the fourteenth such
+  round; seven should-fixes landed, led by a false claim:** P4.D249's items
+  9/10 said the `[Inform]` debug lines and `Inform batch created` were
+  capture-pinned — the differential compared v4's field order against
+  LITERALS and nothing captured v5's lines (now captured, armed against
+  tracing's `Interest`-cache race after the pin flaked once); the routes
+  family's three `permanent` 400 arms passed a CONSTANT as v5's effects (now
+  a before/after row count); the backup's `F::Bool` failed whole on a NULL
+  cell the reader maps to `false` (`F::BoolDefault`); P4.146's group import
+  kept a non-string colour where v4 fails the group; P4.D250's beat could
+  pass on a one-shot server (now waits on the saved assistant row); the
+  sweep driver's second `--` (zero tests, reported OK) fixed with a
+  self-test. Gate: fmt/clippy both feature sets/release clean;
+  the full sweep from the pin 581 ok / 3 standing / 3 refused of 587 (no lane- or unifier-caused red); Tier R 271/0; `cargo test --workspace` 666 binaries / 4,315 / 5 (three standing + two env-block artifacts, each green by name) / 3 ignored, zero SKIP;
+  SPA 467 / 8,828; full Playwright 354 / 5 / 6 (12.6 m; every red green alone — the P4.66 bubble, the regenerate-stream intermittent 3/3 twice, and three timing-cluster files 2/2, 13/13, 3/3; the standing beat LIVE and green). Versions: core 0.0.1205,
+  host 0.0.180, web 0.0.217, SPA 0.5.802; harness frozen 0.0.1110. 💸 the
+  dogfood queue gains the standing inform end to end on the Friday copy,
+  the first boot ALTERing the 34-row table, the export/import/backup/restore
+  round trips, the SPA checkbox + chip, LUC Ranch's one-key toggle, the null
+  colour on create / home / group editor, a refused `"color": 5` import.
+  **Next: the `a434c715b` bug-177/178 catch-up, the owed dogfood pass, then
+  the follow-ups smalls round** — `phase-4.md`. Round record:
+  `status-log.md`.
+- **Oracle baseline: `52d6e7ecd` (2026-10-03, v4 main — "Inform: standing
+  (per-chat) informs", `4.10.0-dev.109`), adopted at the `52d6e7ecd`
+  round's unification (2026-10-04).**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting

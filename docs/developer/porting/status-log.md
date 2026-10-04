@@ -164936,3 +164936,224 @@ on main afterwards is invisible to `docs/…/drift-ledger.md` in the
 worktree, so the §2 probe must be compared against `git show
 main:docs/developer/porting/drift-ledger.md`. This lane STOPPED twice on a
 probe that main's ledger already passed.
+
+## The `52d6e7ecd` standing-informs drift catch-up round — UNIFICATION record (2026-10-04)
+
+**P4.D249 ∥ P4.D250 ∥ P4.146 — ALL THREE LANES LANDED WHOLE; the oracle
+baseline MOVES `e5c6bd0c0` → `52d6e7ecd`; the drift ledger's §3 holds ONE
+row (`a434c715b`, bugs 177/178 — PDF text extraction — UNPROCESSED, now
+pushed to `origin/main`), so the regen rule stays PIN REQUIRED at
+`52d6e7ecd`.** Branch `unify/52d6e7ecd` from `main` `106913111`; picks in
+the planned order P4.146 (3) → P4.D249 (3) → P4.D250 (4) = 10 commits. Every
+conflict a version file or an append-only doc: core's `Cargo.toml` twice (the
+same-number trap — both Rust lanes went 0.0.1200 → 0.0.1202; recounted IN the
+picks to 0.0.1203 / 0.0.1204, `Cargo.lock` synced with `cargo metadata
+--offline`), `docs/CHANGELOG.md` four times (union, newest first) and
+`status-log.md` twice (union, pick order). Two mechanics worth a line: `git
+cherry-pick --continue` after the FIRST conflict resumed the whole remaining
+sequence (re-issuing the picks then conflicted on the duplicated docs —
+`--quit` + `reset --hard HEAD` recovered, HEAD already carried all three), and
+a zsh `for f in $u` over the conflict list did not word-split (`${(f)u}`).
+Dogfood #136 moves to FIXED.
+
+### The §2 probe
+
+PASSED at the start (`git fetch --all`; branch `main`, tree CLEAN, HEAD
+`a434c715b`, `a434c715b..main` and `1a2b2164c..bugfix` empty) — with ONE
+fact changed since the ledger's check: `a434c715b` is now PUSHED
+(`main...origin/main` = `0 0`; the ledger's "LOCAL ONLY" note retired). The
+lanes had removed their own pins; one detached pin,
+`/tmp/qt-v4-pin-unify-52d6e7ecd` (`rev-parse` = `52d6e7ecd`;
+`4.10.0-dev.109`; `migrations/scripts/add-chat-informs-permanent.ts`
+present; the three symlink classes, 227 plugin `node_modules`), served every
+regen and the full sweep.
+
+### What the §3 review found (four parallel readers — P4.D249's server code, P4.D249's differentials + vendored trees, P4.146, P4.D250 — each against v4's real code at the pin; plus the unifier's own reads of the core inform port, the carriers and the SPA)
+
+**NO blocking defect in any lane — the fourteenth such round. Six
+should-fixes landed in ONE `fix(unify)` commit (`7f6b9f7bd`) and one in the
+wire commit, each with a test; the one that came closest to shipping a false
+claim first:**
+
+1. **P4.D249 items 9 + 10 — "capture-pinned" with NO capture.** The lane
+   record says the `[Inform] Built inform block` / `No inform block` debug
+   fields and `Inform batch created`'s `permanent`-LAST are capture-pinned;
+   `inform_block_equivalence` compared v4's captured field order against
+   LITERALS and never captured v5's lines, and nothing in the tree captured
+   `Inform batch created` either (the only hit was the emitting site). A v5
+   that dropped `standing`, reordered the fields or changed the level stayed
+   green. Fixed: `inform_block.rs` tests capture the built line off a swipe
+   (`pending=1 reapplied=0 standing=1 passages=2`) and on one (`0/1/1/2`),
+   and the no-block line with `standing=0` LAST; `db/chat_informs.rs` tests
+   capture `Inform batch created` (`collection, chat_id, batch_id,
+   target_count, record_message_id, permanent`) and — item 18's missing pin
+   — `Pending informs deleted by batch` (`collection, batch_id, count`), both
+   `DEBUG quilltap::db`. **Two findings on the way:** (a) tracing records an
+   `Option` field only when `Some`, so with `record_message_id: None` the
+   line simply LACKS the field where v4 logs `recordMessageId: null` — a
+   pre-existing shape on every v5 line carrying an `Option` (P4.D205),
+   recorded, the pin uses a `Some` id; (b) the pin was green once and
+   captured `[]` the next run — tracing's `Interest`-cache race with sibling
+   tests hitting the same callsite un-subscribed; the sanctioned
+   `db/memories.rs` `arm_global_callsites()` idiom armed in both modules,
+   then 3/3 green.
+2. **P4.D249 item 14 — the three `permanent` 400 arms never proved "NOTHING
+   written".** `chat_informs_routes_equivalence` passed the CONSTANT
+   `effects_none()` as v5's effects, observing only v4's mocked calls; a v5
+   decoder that ran `create_batch` and then refused would have passed. Now
+   `row_counts(db, chat)` (chat_informs + chat_messages) before and after
+   each refusal, asserted unchanged.
+3. **P4.D249 item 13 — the backup FAILED whole on a NULL `permanent` cell the
+   reader maps to `false`.** `collect.rs` marshalled it as `F::Bool`
+   (`row.get::<i64>`), while `row_from` reads `Option<bool>` → `false` and v4
+   emits `false` (NULL → `undefined` → Zod default); generateDDL's shape is
+   NULLABLE (`INTEGER DEFAULT 0`) and `tolerant_select_list` writes `NULL AS
+   "permanent"` for an absent column. No writer stores the NULL, but v5
+   disagreed with itself. New `F::BoolDefault(bool)` emits the default; a
+   marshal test shows `F::Bool` would have errored.
+4. **P4.146 item 7 — the group import kept a NON-string colour/icon and
+   imported the group, with a comment claiming v4 parity it never measured.**
+   v4's `repos.groups.create` validates the spread bundle entity against
+   `GroupSchema` (which spreads `GroupPropertiesSchema.shape`) and FAILS the
+   group (the per-item catch logs `Failed to import group` and skips it); the
+   project import already folded + parsed. `create_group` now runs
+   `fold_properties` → `GroupEntity::parse_properties`, the `Err` becoming the
+   per-item warning; unit arm `color: 5` / `icon: ["gear"]` → refused,
+   nothing written.
+5. **P4.D250's gated beat could pass on a one-shot server.** Its only wait on
+   the turn was the streamed reply's text, which the bubble shows BEFORE the
+   assistant row is saved — and that insert is what consumes an inform; the
+   pre-reload chip read resolved on its first poll. The beat now polls
+   `chatGet` for the saved second ASSISTANT row, reads `chatInformsList`
+   directly (one batch, `permanent: true`, one pending seat — Shared
+   contract item 3), and after the reload asserts both replies before the
+   chip. Also: the seat button matched by substring (an unescaped `RegExp`);
+   the stub reply's required `permanent: false`; an arm pinning "every
+   eligible seat ticked by hand IS Everyone" (`targetParticipantIds: null`,
+   the company toast — v4 `InformDialog.tsx:116`). **The hardened beat's
+   FIRST live run then failed on its own new proof** (`Expected: 2,
+   Received: 38` assistant rows): the throwaway chat seats only the model
+   (the P4.145 idiom, no user seat), so once the seat has the floor the mock
+   reply chains turn after turn — 38 saved rows inside 15 s — and the Host's
+   inform records are assistant-role rows too; the proof was rewritten to
+   "an assistant row carrying the reply follows the user's row" + the direct
+   `chatInformsList` read, never a count. By file 5/5 (the beat 15.9 s).
+   **Recorded for measurement, not filed:** a chat created over dispatch
+   with ONLY model seats chains replies without end — `salon-attachment-only-
+   send-flow.spec.ts` builds the same room and never noticed; whether v4's
+   `chatCreate` admits a user-less room and what its turn manager does there
+   is the next dogfood's question before any finding is filed.
+6. **The sweep driver's `--nocapture` splice** (the lane's recorded gotcha,
+   left unfixed as "outside the lane"): a recipe already ending in `--
+   --test-threads=1` gained a SECOND `--`, libtest read `--nocapture` as a
+   name filter, ran `0 passed; N filtered out`, exit 0, and the driver
+   reported OK. Only `regenerate_swipe_tier3_equivalence` has libtest flags
+   today; fixed in `harness/tools/recipe_sweep.py` (`--nocapture` appended
+   AFTER an existing bare `--`) with a self-test.
+7. `ai_import_tier3`'s per-baseline `V4_APP_VERSION` bumped to
+   `4.10.0-dev.109` BEFORE the sweep (it reds by design at every baseline
+   move).
+
+**Recorded, NOT fixed (each in its order's Unification paragraph):**
+P4.D249 — the restore accepts a malformed `permanent` (`null` / `"true"` /
+`1` → one-shot) where v4's Zod skips the row with `Failed to restore chat
+inform` (the backup/restore "fix v4, don't match it" ruling; no pin);
+integer-to-bool reads any non-zero as `true` where v4 reads `=== 1`
+(unreachable from either writer); v4's `Error deleting entity` line has no
+v5 analog (needs a `delete` shape in `db::fallback`; pre-existing); the
+tier-2 standing corpus seeds its standing rows in `createdAt` order so the
+posting-order leg AMONG standing rows is observable only in the unit test;
+the swipe-dedup case is tier-1 only; the ensure differential is one-mode
+(baseline shape); the in-force census test's needles are `.is_none()` /
+`.is_some()` only (a SQL `IS NULL` would pass) and it finds the test module
+by `split("#[cfg(test)]")`; `primary_stream_tier3` and `system_import_state`
+were regenerated at the pin with no red-first count in the lane record.
+P4.146 — the restore's `project_properties` helper copies SIX keys (a
+restored project loses the VALUES of `icon`, `defaultImageProfileId`,
+`answerConfirmationOverride` and the other nullable keys, not just their
+nulls) and the group restore still lands a null colour ABSENT (the fix is
+`fold_properties` over the whole bag + `create_with_properties`);
+`parse_properties` checks no hex / 50-char / UUID rule (`"color": "red"`
+passes both imports where v4 refuses); `db/{projects,groups}.rs` now import
+`double_option` from a `services::` module; `create_with_properties` ignores
+`GroupCreateInput.color/icon` silently; plain `GroupsRepository::create` has
+no differential; the projects routes `check` compares bodies only. P4.D250 —
+the greeting wait could resolve before the greeting turn settles (fails
+loudly, never falsely).
+
+**Verified correct by the readers (the headline items):** the ensure's
+ALTER is byte-identical to v4's `addColumnIfMissing` template with the
+migration's DDL; `CHAT_INFORMS_TABLE_DDL` matches the D23 dump (pinned) and
+generateDDL's boolean mapping; boot order + fatal class match v4's
+non-`resumable` migration; `is_inform_in_force` under every read/delete with
+the two correct open checks (`inform_block.rs`'s "never delivered",
+`api/chat_informs.rs`'s "ever delivered") mirroring v4's own; both
+comparators incl. the NaN leg; the swipe merge, `row_ids`, debug arithmetic;
+the tri-state `permanent` on both transports with v4's `invalid_type` bytes
+LAST in key order; the 201 / list / cancel key orders; import `=== true`;
+export key order exactly `permanent`; `help/inform.md`, the five `docs/v4/`
+paths and `qtap-export.schema.json` BYTE-IDENTICAL to the pin (97,324, both
+literals); `fresh_schema.json` exactly one line; the eleven + two
+three-state fields in v4's schema order with the five defaulted keys
+untouched; create's `|| null` with `HexColorSchema` 400-ing `''` first; the
+PUT's `null` kept / absent left alone through `apply_write_overlay` with no
+engine hunk; every other hydrated-bag reader typed; the home wire; the
+tier-2 families diffing `doc_mount_documents.content` + `doc_mount_files.
+sha256` row for row; the SPA strings byte-exact (every em-dash U+2014), the
+`&ngsp;` paragraph equal to v4's in both states, the checkbox/footer/body/
+toast/chip/contract as ordered, no other `chatInform` builder in the tree.
+
+### The unification wires
+
+- **§S.1 — the gated beat flipped LIVE** (`de7fa56b7`), hardened per
+  finding 5, run by file (alone, 4319 free) and inside the full suite:
+  **5 passed (1.1 m)** — the standing beat LIVE for the first time (15.9 s), the four P4.D206 beats unmoved; the full suite **354 passed / 5 failed / 6 skipped (12.6 m)** — the six skips the standing parks; the five reds the documented P4.66 bubble intermittent, the documented `salon-regenerate-stream-flow` intermittent, and three untouched files of the Salon-streaming timing cluster (`terminal-flow`, `workspace-flow`, `workspace-search-documents-flow` — visibility timeouts; none in the first full run, which read 357 / 2 / 6 with the standing beat RED on its own too-strict count before the fix) — EVERY red green alone, one invocation at a time: 2/2, 13/13, 3/3, 2/2, and `salon-regenerate-stream-flow` 3/3 TWICE.
+- **§S.2 — the full sweep from the pin** (`recipe_sweep.py --run-all --v4
+  /tmp/qt-v4-pin-unify-52d6e7ecd`): **581 ok / 3 run_failed / 1 refused_repo_write / 2 refused_non_extractable of 587** — the three reds EXACTLY the standing rows (`ariel_writers_tier3`, `memory_processor_tier3`, `search_replace`), the refusals by design (`backup_uuid_remap`, `avatar_rolls_routes`, `generator_sse_wire`); **no red a lane or the unification caused**; every round family `ok` by name (the five inform families incl. the NEW `chat_informs_permanent_ensure`, `provisioning`, `qtap_schema_embed_guard`, `help_tree` / `help_section_size` / `help_tree_embed_guard`, `table_shape`, the four spine regens, the five carriers, `salon_mutations`, `projects_tier2` / `groups_tier2` / `projects_routes` / `groups_routes` / `home_routes`, `ai_import_tier3` at its new stamp, and the censuses); `regenerate_swipe_tier3` ran `2 passed` under the FIXED splice where the old one ran zero. **Tier R (`cli_differential`) 271 cases / 0 failures** (307.7 s). Artifact:
+  `harness/tools/sweep-results/2026-10-04-52d6e7ecd-unify.json`.
+- **The workspace suite** (`QT_V4_CHECKOUT=<pin> QT_V4_ROOT=<pin> TZ=UTC
+  cargo test --workspace --no-fail-fast` with the 754-variable env block
+  harvested from every family's run stage — the same 8 dup-valued names
+  withheld): **666 test binaries / 4,315 passed / 5 failed / 3 ignored, zero `SKIP:` lines.** The five: the three standing families (`ariel_writers_tier3`, `memory_processor_tier3`, `search_replace`) and the two recorded env-block artifacts (`backup_uuid_remap`, `doc_mount_files_tier2`) — `doc_mount_files_tier2` `ok` in the sweep from the pin, `backup_uuid_remap` regenerated by hand from the pin (25 cases; the committed `uuid-remap-corpus.json` byte-identical afterwards) and green by name (1/1). Every round family confirmed RUN by name with a non-zero result (`host_help_docs_boot` 2/2 and `host_boot_p4d249_inform_permanent` 2/2 — the two host binaries the sweep cannot reach — among them); `qtap_schema_embed_guard` 2/2 and the help guards GREEN against the pin.
+- **§S.3 — the version recount:** core 0.0.1200 + 2 (P4.146) + 2 (P4.D249)
+  = 0.0.1204 in the picks, + 1 for the review fixes = **0.0.1205**; host
+  0.0.180, web 0.0.217 (P4.D249); SPA 0.5.801 (P4.D250) + 1 for the wire =
+  **0.5.802**; harness frozen at 0.0.1110; cli 0.0.29, tauri 0.0.9 unchanged.
+- **§S.4 — the censuses:** `dispatch_wrong_type_census` 14/14 (`EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE` 451 UNMOVED — a boolean body key adds no `*_id`), `tri_state_edges_share_the_decoder` 11/11, `fallback_home_guard` 2/2, `spelling_guard` 1/1, `help_tree_embed_guard` 1/1 (129), `builtin_prompt_templates_guard` and `provider_sdk_version_guard` `ok` from the pin, `recipe_sweep.py --self-test` exit 0 — with the new libtest-flags arm.
+- **§S.5 — handoffs:** none recorded by P4.146 (no export / backup /
+  key-order / restore family moved on a project or group key).
+- **§S.6 — the ledger:** baseline → `52d6e7ecd`; the row retired
+  `ABSORBED(P4.D249, P4.D250)` to §6; §1 restated (FOURTH D23 re-dump; the
+  Friday copy gains the column at its first v5 boot; `a434c715b` pushed);
+  `a434c715b` stays the one §3 row. #136 → FIXED in `dogfood-findings.md`,
+  its standing-notes item 1 struck.
+
+### SPA
+
+`npm run lint` clean; `npm test` **467 files / 8,827 passed / 0** (before
+the wire) and **467 files / 8,828 passed / 0** after it; `npm run build`
+clean.
+
+### Versions
+
+core 0.0.1205, harness 0.0.1110, host 0.0.180, web 0.0.217, tauri 0.0.9,
+cli 0.0.29, SPA 0.5.802.
+
+### 💸 for the owed dogfood pass
+
+The three lanes' rows (each order's 💸 section + lane record): a standing
+inform on the Friday copy posted, delivered on two consecutive turns (first
+in the block; `consumedAt` stamped once and unmoved), carried on a swipe,
+then withdrawn whole (`removed` = every row); the first v5 boot on a copy
+whose `chat_informs` lacks the column (the standing copy's 34 rows) — the
+column appended in the migration's shape, every row a one-shot, the second
+boot a no-op; a `.qtap` export + re-import and a backup + restore of a chat
+with a standing inform, the flag surviving both; the checkbox, the flipped
+guidance tail, the standing toast by name for a subset, the chip's standing
+label and hover, a withdrawal under `Withdraw this standing inform`; LUC
+Ranch's Allow-Any-Character toggle changing ONLY `allowAnyCharacter` in its
+598-byte `properties.json` and `projectList` carrying its four `null`s; a
+new project with no colour writing `"color": null, "icon": null` and the
+home row carrying `color: null`; a group-editor save with the colour cleared
+writing `"color": null`; a `.qtap` import of a group with `"color": 5`
+refused with `Failed to import group` (this round's fix 4).

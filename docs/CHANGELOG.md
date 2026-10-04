@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-04 — docs(porting): unify the 52d6e7ecd standing-informs drift catch-up round — all three lanes landed; the baseline moves to 52d6e7ecd; dogfood #136 fixed; the review's findings fixed
+
+_Docs-only change._
+
+Unification of P4.D249 ∥ P4.D250 ∥ P4.146 (v4 `52d6e7ecd`, standing per-chat informs, with dogfood #136 as the rider). Picked P4.146 → P4.D249 → P4.D250 (10 commits; conflicts only in version files and the two append-only docs), versions recounted in the picks (core +2 +2, then +1 for the review fixes). Review (four parallel readers + the unifier): no blocking defect; seven should-fixes in the preceding `fix(unify)` and `test(e2e)` commits, led by P4.D249's claim of capture pins that did not exist. Wires: §S.1 run LIVE (the standing-inform beat, hardened after its first live run showed the throwaway room chaining replies); the full sweep from the `52d6e7ecd` pin; the version recount; the censuses. Gate: fmt and clippy (both feature sets) clean; release build clean; the full sweep from the pin 581 ok / 3 standing / 3 refused of 587 (no lane- or unifier-caused red); Tier R 271/0; `cargo test --workspace` 666 binaries / 4,315 / 5 (three standing + two env-block artifacts, each green by name) / 3 ignored, zero SKIP; SPA 467 files / 8,828 tests; full Playwright 354 passed / 5 failed / 6 skipped with every red green alone (the standing beat LIVE). The drift ledger moves the baseline to `52d6e7ecd` (one §3 row left, `a434c715b`; PIN REQUIRED); the three orders' Unification paragraphs, `dogfood-findings.md` (#136 FIXED), `phase-4.md` (UNIFIED + NEXT), CLAUDE.md's Status and the round record in `status-log.md` updated; the sweep artifact committed. Final versions: core 0.0.1205, harness 0.0.1110, host 0.0.180, web 0.0.217, tauri 0.0.9, cli 0.0.29, SPA 0.5.802.
+
 #### 2026-10-04 — test(e2e): the standing-inform beat flips LIVE and proves the turn was saved before it reads the chip (§S.1 of the 52d6e7ecd round)
 
 _Versions: SPA 0.5.802._

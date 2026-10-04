@@ -19,63 +19,65 @@ write it** — a lane that finds the probe failing STOPs and reports instead.
 _Updated only by `/driftcheck` and `/unify`. Every field here is what the §2
 probe verifies against._
 
-- **Oracle baseline: `e5c6bd0c0`**: "Fix bugs 175 and 176: resumable
-  migrations and a boot-time table check" (v4 main, 2026-10-02 23:38,
-  `4.10.0-dev.108`), adopted when the `e5c6bd0c0` drift catch-up round was
-  unified, all four lanes (P4.D245 ∥ P4.D246 ∥ P4.D247 ∥ P4.D248,
-  2026-10-03). CLAUDE.md's Status bullet agrees.
-- **Checked:** 2026-10-03 late night (`/driftcheck`, `git fetch --all`
-  first; the §2 probe FAILED on a new local main commit). Previous check:
-  2026-10-03 evening (recorded `52d6e7ecd`, then re-verified unmoved; the
-  `52d6e7ecd` round has since been ORDERED, P4.D249 ∥ P4.D250 ∥ P4.146).
+- **Oracle baseline: `52d6e7ecd`**: "Inform: standing (per-chat) informs"
+  (v4 main, 2026-10-03 18:00, `4.10.0-dev.109`), adopted when the
+  `52d6e7ecd` standing-informs drift catch-up round was unified, all three
+  lanes (P4.D249 ∥ P4.D250 ∥ P4.146, 2026-10-04). CLAUDE.md's Status bullet
+  agrees.
+- **Checked:** 2026-10-04 early morning (`/unify`, `git fetch --all` first;
+  the §2 probe PASSED against the previous §1 — HEAD, tree and both logs
+  unchanged). Previous check: 2026-10-03 late night (`/driftcheck`,
+  recorded `a434c715b`).
 - **v4 `main` HEAD at check: `a434c715b`** ("Fix bugs 177 and 178: PDF text
-  extraction", 2026-10-03 22:28, `4.10.0-dev.110`) — TWO commits past the
-  baseline. ⚠ **`a434c715b` is LOCAL ONLY**: `main...origin/main [ahead 1]`,
-  `origin/main` still at `52d6e7ecd`. The probe reads the local branch, so
-  this is the state of record; if the human amends or rebases before
-  pushing, re-run `/driftcheck`.
+  extraction", 2026-10-03 22:28, `4.10.0-dev.110`) — ONE commit past the
+  baseline. Now PUSHED: `main...origin/main` is `0 0` (the previous §1's
+  "LOCAL ONLY" note is retired).
 - **v4 `bugfix` tip at check:** `1a2b2164c` ("bugfix: started 4.9.2 bug
   branch"), UNMOVED; `1a2b2164c..bugfix` and `..origin/bugfix` empty (the
   `main..bugfix -- lib/ app/ packages/` content list is the historical
   lineage only, unchanged). **`release` tip:** `8fbf2afe0` ("release:
   4.9.2"), UNMOVED; still no `release: 4.10.0` squash.
 - **Checkout at check:** branch **`main`**, tree **CLEAN**.
-- **Verdict: DRIFT PENDING — 2 commits** (§3: `52d6e7ecd`, PORT,
-  ORDERED; `a434c715b`, PORT (small) + a NO-PORT? half, UNPROCESSED).
+- **Verdict: DRIFT PENDING — 1 commit** (§3: `a434c715b`, PORT (small) + a
+  NO-PORT? half, UNPROCESSED).
 - **Regen rule: PIN REQUIRED** — HEAD is past the baseline; every regen pins
-  at `e5c6bd0c0` (§5.1), or at `52d6e7ecd` for the ordered `52d6e7ecd`
-  round's own target regens (that round's orders name their pin; nothing in
-  it may regen from HEAD, which now carries `a434c715b`'s extractor change).
-  Point every live-checkout guard at the pin too (`QT_V4_CHECKOUT` AND
-  `QT_V4_ROOT`) — `qtap_schema_embed_guard` (live checkout by default)
-  reads RED against v4 HEAD by design until the `52d6e7ecd` catch-up
-  re-vendors `qtap-export.schema.json`; so does any help guard run against
-  HEAD until `help/inform.md` is re-vendored. `a434c715b` touches no
-  `help/`, no schema, no prompt, no provider SDK.
+  at `52d6e7ecd` (§5.1). Point every live-checkout guard at the pin too
+  (`QT_V4_CHECKOUT` AND `QT_V4_ROOT`) — although `a434c715b` touches no
+  `help/`, no schema, no prompt and no provider SDK, so
+  `qtap_schema_embed_guard`, the help guards, `builtin_prompt_templates_
+  guard` and `provider_sdk_version_guard` read GREEN against HEAD as well
+  (measured at the unification's gate).
 - **Live-checkout guards at the baseline:** `builtin_prompt_templates_guard`,
   `provider_sdk_version_guard`, `qtap_schema_embed_guard` GREEN against the
-  pin at the unification.
+  pin at the unification (the schema literal re-vendored to 97,324 bytes by
+  P4.D249).
 - **The workspace gate at the baseline:** the round record in
   `status-log.md` has the counts.
-- **Schema state:** `fresh_schema.json` stays the THIRD D23 re-dump
-  (P4.D235) — `e5c6bd0c0` moved no DDL, but **`52d6e7ecd` does**
-  (`chat_informs.permanent INTEGER NOT NULL DEFAULT 0`, migration
-  `add-chat-informs-permanent-v1`): its catch-up re-dumps from v4's live
-  `generateDDL` (D23), and since P4.D248 that also moves what v5's boot
-  creates for an absent structural table. `a434c715b` moves no DDL.
-- **Real-instance note (measured 2026-10-03):** the standing dogfood copy
-  (`~/qt-dogfood-friday`, rsynced ~17:05, before v4 ran the dirty tree)
-  has NO `add-chat-informs-permanent-v1` ledger row — `chat_informs` is the
-  baseline shape (34 rows, 0 pending). A LATER copy of live Friday may carry
-  the column: v5 then ignores it (one-shot semantics for a v4-written
-  standing row) until the catch-up lands.
-- **`help/**`:** whole at `e5c6bd0c0` (129 files; `52d6e7ecd` edits
-  `help/inform.md`; `a434c715b` none). **`docs/v4/`:** CURRENT at
-  `e5c6bd0c0` (the five paths P4.D246 re-vendored; residual only
-  `packages-quilltap-README.md`; `52d6e7ecd` edits
-  `docs/developer/{API,DDL,PROMPT_ARCHITECTURE}.md` and
-  `features/salon-inform.md`; `a434c715b` edits `docs/developer/bugs.md` +
-  adds `bugs/fixed/bug-177-…md` and `bug-178-…md` — the bugs mirror).
+- **Schema state:** `fresh_schema.json` is the FOURTH D23 re-dump (P4.D249,
+  from the `52d6e7ecd` pin — EXACTLY one line moved: `chat_informs` gained
+  `"permanent" INTEGER DEFAULT 0` in schema order, generateDDL's spelling of
+  `z.boolean().default(false)`; the seed `cmp`-identical). v4's migration
+  `add-chat-informs-permanent-v1` is re-homed as the boot ensure
+  `db::chat_informs_permanent_repair` (its ALTER spells `INTEGER NOT NULL
+  DEFAULT 0`, appended — the two v4 shapes disagree and BOTH are carried,
+  the P4.D78 / P4.D171 class). `chat_informs` is NOT one of P4.D248's 11
+  structural tables (measured; `table_shape_equivalence` neutral).
+  `a434c715b` moves no DDL.
+- **Real-instance note (measured 2026-10-03, still true at the move):** the
+  standing dogfood copy (`~/qt-dogfood-friday`, rsynced before v4 ran the
+  dirty tree) has NO `add-chat-informs-permanent-v1` ledger row — its
+  `chat_informs` is the baseline shape (34 rows, 0 pending). **The first v5
+  boot on it now ALTERs the column in (every existing row a one-shot) and
+  the second boot is a no-op** — a 💸 row for the next `/dogfood`. A LATER
+  copy of live Friday may already carry the column from v4's migration; v5
+  then reads it as v4 does. v4's `migrations_state` row is NOT written by
+  v5 (the deferred runner; the `chats_cycle_order_repair.rs` precedent).
+- **`help/**`:** whole at `52d6e7ecd` (129 files; `help/inform.md`
+  re-vendored by P4.D249; `a434c715b` edits none). **`docs/v4/`:** CURRENT
+  at `52d6e7ecd` (the five paths P4.D249 re-vendored; residual only
+  `packages-quilltap-README.md`); `a434c715b` edits `docs/developer/bugs.md`
+  + adds `bugs/fixed/bug-177-…md` and `bug-178-…md` — the bugs mirror, for
+  its catch-up.
 - **Standing deferrals unchanged:** the three text-compression migrations,
   the image re-encode migration and the stored-`renderedMarkdown`
   reclamation stay DEFERRED as reclamation; the animated-input ruling is
@@ -124,8 +126,7 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-| `52d6e7ecd` | 2026-10-03 | Inform: standing (per-chat) informs | **PORT** (schema-moving: a new migration) | Inform, ported whole in the `f45a517a9` round — server half P4.D205 (`db/chat_informs.rs`, `api/chat_informs.rs`, `services/inform_block.rs`, `message_finalizer.rs`, `regenerate_swipe.rs`, `quilltap_import/reconcile.rs`, `qtap_export/records.rs`, the backup manifest's `chatInforms`), client half P4.D206 (Inform dialog + composer chip). Hunks: `chat_informs.permanent INTEGER NOT NULL DEFAULT 0` via `add-chat-informs-permanent-v1` (dependsOn the table migration; `shouldRun` gated on table-exists ∧ column-absent; a prettify label) → D23 re-dump #4 + the boot-created table shape; `ChatInformSchema.permanent` `z.boolean().default(false)` + the ONE `isInformInForce` predicate (`permanent ∨ !consumedAt`) under `findPendingForParticipant` / `findPendingBatches` / `deletePendingByBatch`; `byDeliveryOrder` (standing first, then posting order, `id` tiebreak) on the participant + consumed-by-messages reads, `byPostingOrder` on the batches read; `PendingInformBatch.permanent`; `createBatch({permanent})` + its debug field; `buildInformBlock`: swipes get `mergeForSwipe(reapplied, standing)` (standing first, de-duplicated), the debug counts gain `standing` and subtract it from `pending`/`reapplied`, `rowIds` excludes already-stamped rows (a standing row's first-delivery stamp never moves); the inform POST body gains `permanent: z.boolean().optional().default(false)`, the GET `?action=informs` reports it, cancel-inform withdraws a standing batch whole; import remap `permanent: inform.permanent === true`; `qtap-export.schema.json` gains `permanent` + two description changes (re-vendor); `help/inform.md` (re-vendor); the SPA dialog's "Keep it standing in this chat" checkbox + the chip. Not a CONVERGENCE (no bug number; a feature). The dogfood copy of 2026-10-03 predates the migration (§1). **Planning correction (2026-10-03, `/setupphase`, survey `work-orders/surveys/2026-10-03-52d6e7ecd/`):** `chat_informs` is NOT one of P4.D248's 11 structural tables — the re-dump reaches `table_shape.rs` only as its input; v4 has no backup hunk but v5 marshals fixed column lists, so v5 needs backup/restore/export-key-order hunks. | ORDERED(P4.D249, P4.D250) |
-| `a434c715b` | 2026-10-03 | Fix bugs 177 and 178: PDF text extraction | **PORT** (small; bug 177's half) + **NO-PORT?** (bug 178's half). Not a CONVERGENCE (v4-only provenance, no v5 filing) | `generators::file_content` (v4 `lib/services/file-content-extractor.ts`, ported whole in `p4.9k` / P4.9K2 — the AI Wizard's `document` source and Summon From Lore's `sourceFileIds`; status-log "`generators::file_content`"), and v5's mount-index `DocumentTextExtractor` seam (`services/mount_index/converters.rs`, the refusing default answering `''` — v5's stand-in for v4's `convertPdfBufferToText`; the production pdf/docx impl a standing deferral). **Bug 177 hunks (`lib/`):** `extractPdfContent` now reads `(await convertPdfBufferToText(buffer)).trim()` FIRST and falls to `extractPdfTextFallback` only when that is empty, with a NEW warn `pdf-parse found no text, using native fallback extraction` `{ size }`; the failure error becomes `Failed to extract PDF content (no text found)`; a NEW debug `Extracted PDF content` `{ size, chars }` on success; the old `pdf-parse not available…` warn and `(pdf-parse unavailable and fallback extractor found no text)` error are GONE; truncation unchanged. **v5 measured NOT to have bug 177's symptom** — it never called `pdf-parse` and always ran the fallback (`file_content.rs:261`), so v5 extracted the regex-fallback text where real v4 FAILED every PDF since 2.7.0. **But v5's module-header "Recorded divergence — PDFs" (`file_content.rs:11-19`, mirrored in status-log) rests on a FALSE premise** ("a real v4 extracts PDF text through it" — it threw `pdfParse is not a function`); after the fix the divergence becomes TRUE as written only where v4's converter finds text; with v5's refusing extractor (`''`) the two sides now take the SAME fallback arm, differing only in v5's stale warn text (no `size` field), stale error string, and the absent debug line. Likely order: route `extract_pdf_content` through the `DocumentTextExtractor` seam (v4's single-converter shape), adopt the three log/error strings, rewrite the recorded divergence; check what `convertPdfBufferToText` answers inside the jest oracle at the target pin before claiming tier-3 parity (v4's new test mocks `pdf-parse` with the 2.x shape). No committed fixture carries a PDF (status-log). **Bug 178 hunks:** `next.config.js` only (`serverExternalPackages += 'pdf-parse'`, `outputFileTracingIncludes` for `pdf-parse` + `pdfjs-dist`) — a webpack/Next packaging fix; v5 has no webpack bundle and no `pdfjs-dist` server path → NO-PORT? (ratify on the file list). **Riders:** `__tests__/unit/lib/services/file-content-extractor-pdf.test.ts` (new, test-only — the order's reference shapes); `docs/developer/bugs.md` + `bugs/fixed/bug-177-…md` + `bug-178-…md` (re-vendor the `docs/v4/developer/bugs/` mirror); `docs/CHANGELOG.md`, `README.md`, the three version stamps (NO-PORT). ⚠ Recorded LOCAL ONLY at check (`origin/main` behind by 1). | UNPROCESSED |
+| `a434c715b` | 2026-10-03 | Fix bugs 177 and 178: PDF text extraction | **PORT** (small; bug 177's half) + **NO-PORT?** (bug 178's half). Not a CONVERGENCE (v4-only provenance, no v5 filing) | `generators::file_content` (v4 `lib/services/file-content-extractor.ts`, ported whole in `p4.9k` / P4.9K2 — the AI Wizard's `document` source and Summon From Lore's `sourceFileIds`; status-log "`generators::file_content`"), and v5's mount-index `DocumentTextExtractor` seam (`services/mount_index/converters.rs`, the refusing default answering `''` — v5's stand-in for v4's `convertPdfBufferToText`; the production pdf/docx impl a standing deferral). **Bug 177 hunks (`lib/`):** `extractPdfContent` now reads `(await convertPdfBufferToText(buffer)).trim()` FIRST and falls to `extractPdfTextFallback` only when that is empty, with a NEW warn `pdf-parse found no text, using native fallback extraction` `{ size }`; the failure error becomes `Failed to extract PDF content (no text found)`; a NEW debug `Extracted PDF content` `{ size, chars }` on success; the old `pdf-parse not available…` warn and `(pdf-parse unavailable and fallback extractor found no text)` error are GONE; truncation unchanged. **v5 measured NOT to have bug 177's symptom** — it never called `pdf-parse` and always ran the fallback (`file_content.rs:261`), so v5 extracted the regex-fallback text where real v4 FAILED every PDF since 2.7.0. **But v5's module-header "Recorded divergence — PDFs" (`file_content.rs:11-19`, mirrored in status-log) rests on a FALSE premise** ("a real v4 extracts PDF text through it" — it threw `pdfParse is not a function`); after the fix the divergence becomes TRUE as written only where v4's converter finds text; with v5's refusing extractor (`''`) the two sides now take the SAME fallback arm, differing only in v5's stale warn text (no `size` field), stale error string, and the absent debug line. Likely order: route `extract_pdf_content` through the `DocumentTextExtractor` seam (v4's single-converter shape), adopt the three log/error strings, rewrite the recorded divergence; check what `convertPdfBufferToText` answers inside the jest oracle at the target pin before claiming tier-3 parity (v4's new test mocks `pdf-parse` with the 2.x shape). No committed fixture carries a PDF (status-log). **Bug 178 hunks:** `next.config.js` only (`serverExternalPackages += 'pdf-parse'`, `outputFileTracingIncludes` for `pdf-parse` + `pdfjs-dist`) — a webpack/Next packaging fix; v5 has no webpack bundle and no `pdfjs-dist` server path → NO-PORT? (ratify on the file list). **Riders:** `__tests__/unit/lib/services/file-content-extractor-pdf.test.ts` (new, test-only — the order's reference shapes); `docs/developer/bugs.md` + `bugs/fixed/bug-177-…md` + `bug-178-…md` (re-vendor the `docs/v4/developer/bugs/` mirror); `docs/CHANGELOG.md`, `README.md`, the three version stamps (NO-PORT). Recorded LOCAL ONLY at the 2026-10-03 check; PUSHED by the 2026-10-04 unification probe. | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
@@ -279,6 +280,20 @@ don't silently swap it in.
 
 ## §6 History
 
+- **The `52d6e7ecd` standing-informs drift catch-up round (2026-10-04,
+  baseline `e5c6bd0c0` → `52d6e7ecd`; P4.D249 ∥ P4.D250 ∥ P4.146 as the
+  rider):** `52d6e7ecd` (Inform: standing per-chat informs — a NEW
+  migration) ABSORBED(P4.D249, P4.D250 — the FOURTH D23 re-dump + the
+  re-homed boot ensure with BOTH v4 shapes carried and the ensure itself
+  differentially compared against v4's real migration; ONE `is_inform_in_
+  force` predicate under every read and delete with a source census; the
+  two comparators; the block's swipe merge, stamped-row exclusion and
+  `standing` debug counts; the `permanent` body key as a tri-state refusing
+  `null` on both transports; the 201 / list / cancel bytes; import / export
+  key order / backup / restore carriers; `help/inform.md`, five `docs/v4/`
+  paths and `qtap-export.schema.json` re-vendored; the SPA's checkbox, help
+  tail, three-way toast, chip strings and the gated beat run LIVE at the
+  unification). Round record: `status-log.md`.
 - **The `e5c6bd0c0` drift catch-up round (2026-10-03, baseline
   `f6426e196` → `e5c6bd0c0`; P4.D245 ∥ P4.D246 ∥ P4.D247 ∥ P4.D248):**
   `9753d0eb2` (the project roster as a tool-access gate)

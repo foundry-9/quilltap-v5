@@ -7124,7 +7124,65 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
-## The `52d6e7ecd` standing-informs drift catch-up round (P4.D249 ∥ P4.D250 ∥ P4.146) — ORDERED 2026-10-03
+## The `52d6e7ecd` standing-informs drift catch-up round (P4.D249 ∥ P4.D250 ∥ P4.146) — UNIFIED 2026-10-04 (ordered 2026-10-03)
+**UNIFIED on main (2026-10-04) — ALL THREE LANES LANDED WHOLE; the oracle
+baseline MOVES `e5c6bd0c0` → `52d6e7ecd`; the drift ledger's §3 holds ONE
+row (`a434c715b`, bugs 177/178 — PDF text extraction — UNPROCESSED, now
+pushed), so the regen rule stays PIN REQUIRED at `52d6e7ecd`.** Round
+record: `status-log.md` → "The `52d6e7ecd` standing-informs drift catch-up
+round — UNIFICATION record (2026-10-04)"; each order's **Unification:**
+paragraph lists exactly what stays OPEN. Dogfood #136 FIXED. **The §3 review
+(four parallel readers + the unifier) found NO blocking defect in any lane;
+seven should-fixes landed, led by a false claim that would have shipped:**
+P4.D249's items 9/10 said the two `[Inform]` debug lines and `Inform batch
+created` were capture-pinned — the differential compared v4's field order
+against LITERALS and nothing captured v5's lines (now captured in both
+modules, with the `arm_global_callsites()` idiom after the pin flaked once
+on tracing's `Interest` cache); the routes family's three `permanent` 400
+arms passed a CONSTANT as v5's effects (now a before/after row count); the
+backup marshalled `permanent` as `F::Bool`, failing whole on a NULL cell the
+reader maps to `false` (`F::BoolDefault`); P4.146's group import kept a
+non-string colour where v4 fails the group (now fold + parse, as projects);
+P4.D250's beat could pass on a one-shot server (now waits on the saved
+assistant row and reads `chatInformsList`); the sweep driver's second `--`
+(zero tests reported OK) fixed with a self-test; `ai_import_tier3`'s
+per-baseline stamp bumped. Gate: fmt/clippy (both feature sets)/release
+clean; the full sweep from the pin 581 ok / 3 standing / 3 refused of 587 (no lane- or unifier-caused red); Tier R 271/0; `cargo test --workspace`
+666 binaries / 4,315 / 5 (three standing + two env-block artifacts, each green by name) / 3 ignored, zero SKIP; SPA 467 files / 8,828; full Playwright 354 / 5 / 6 (12.6 m; every red green alone — the P4.66 bubble, the regenerate-stream intermittent 3/3 twice, and three timing-cluster files 2/2, 13/13, 3/3; the standing beat LIVE and green) (the
+standing-inform beat LIVE for the first time, green). Versions: core
+0.0.1205, harness 0.0.1110, host 0.0.180, web 0.0.217, tauri 0.0.9, cli
+0.0.29, SPA 0.5.802.
+
+**NEXT (in order):**
+1. **The `a434c715b` bug-177/178 drift catch-up** — the ledger's one §3 row:
+   route `extract_pdf_content` through the `DocumentTextExtractor` seam
+   (v4's single-converter shape), adopt the three new log/error strings
+   (`pdf-parse found no text, using native fallback extraction` with
+   `{ size }`, `Failed to extract PDF content (no text found)`, the
+   `Extracted PDF content` debug), rewrite `file_content.rs`'s "Recorded
+   divergence — PDFs" header (its premise was false — real v4 threw
+   `pdfParse is not a function`), ratify bug 178's `next.config.js` half
+   NO-PORT on the file list, re-vendor the `docs/v4/developer/bugs/` mirror.
+   Small; `/driftcheck` first in case v4 moved again.
+2. **The owed dogfood pass** over this round's 💸 rows (the round record's
+   list: the standing inform end to end on the Friday copy, the first boot
+   ALTERing `chat_informs.permanent` into the 34-row table, the export /
+   import / backup / restore round trips, the SPA checkbox + chip, LUC
+   Ranch's one-key toggle, the null colour on create / home / group editor,
+   the refused `"color": 5` import) AND the previous rounds' still-owed rows.
+3. **A follow-ups smalls round** from the three Unification paragraphs, by
+   name: the restore's `project_properties` six-key helper + the group
+   restore through `create_with_properties` (a restored project loses the
+   VALUES of its nullable keys, not just the nulls); `parse_properties`'
+   missing hex / 50-char / UUID rules on both imports; a `delete` shape in
+   `db::fallback` for v4's `Error deleting entity`; the restore's malformed
+   `permanent` (v4 skips the row — pin the divergence or match it);
+   `double_option` moved to a neutral home (db → services dependency); the
+   tier-2 standing corpus with one standing row seeded out of order; a
+   tier-3 swipe-dedup case; the in-force census widened to `IS NULL` /
+   `IS NOT NULL` needles and a brace-stripped test module; the beat's
+   greeting wait on the saved row; plus the previous NEXT item 2's list
+   (P4.139–P4.144's and P4.D245–P4.D248's named items).
 
 **Baseline `e5c6bd0c0`; v4 `main` HEAD `52d6e7ecd` at the planning probe —
 ONE commit past the baseline (standing per-chat informs, class PORT, with a
