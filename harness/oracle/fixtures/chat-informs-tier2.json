@@ -138,6 +138,84 @@
       "updatedAt": "2026-01-01T21:15:00.000Z",
       "consumedAt": null,
       "consumedByMessageId": null
+    },
+    {
+      "id": "5a000000-0000-4000-8000-0000000000a1",
+      "chatId": "33333333-3333-4333-8333-333333333333",
+      "batchId": "5b000000-0000-4000-8000-0000000000a1",
+      "participantId": "aaaaaaaa-0000-4000-8000-000000000001",
+      "contentMarkdown": "standing corpus: one-shot pending",
+      "recordMessageId": null,
+      "permanent": false,
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "consumedAt": null,
+      "consumedByMessageId": null
+    },
+    {
+      "id": "5a000000-0000-4000-8000-0000000000b1",
+      "chatId": "33333333-3333-4333-8333-333333333333",
+      "batchId": "5b000000-0000-4000-8000-0000000000b1",
+      "participantId": "aaaaaaaa-0000-4000-8000-000000000001",
+      "contentMarkdown": "standing corpus: one-shot consumed",
+      "recordMessageId": null,
+      "permanent": false,
+      "createdAt": "2026-02-01T00:01:00.000Z",
+      "updatedAt": "2026-02-01T00:09:00.000Z",
+      "consumedAt": "2026-02-01T00:09:00.000Z",
+      "consumedByMessageId": "ee000000-0000-4000-8000-000000000301"
+    },
+    {
+      "id": "5a000000-0000-4000-8000-0000000000c1",
+      "chatId": "33333333-3333-4333-8333-333333333333",
+      "batchId": "5b000000-0000-4000-8000-0000000000c1",
+      "participantId": "aaaaaaaa-0000-4000-8000-000000000001",
+      "contentMarkdown": "standing corpus: standing delivered",
+      "recordMessageId": null,
+      "permanent": true,
+      "createdAt": "2026-02-01T00:02:00.000Z",
+      "updatedAt": "2026-02-01T00:09:00.000Z",
+      "consumedAt": "2026-02-01T00:09:00.000Z",
+      "consumedByMessageId": "ee000000-0000-4000-8000-000000000301"
+    },
+    {
+      "id": "5a000000-0000-4000-8000-0000000000c2",
+      "chatId": "33333333-3333-4333-8333-333333333333",
+      "batchId": "5b000000-0000-4000-8000-0000000000c1",
+      "participantId": "aaaaaaaa-0000-4000-8000-000000000002",
+      "contentMarkdown": "standing corpus: standing delivered",
+      "recordMessageId": null,
+      "permanent": true,
+      "createdAt": "2026-02-01T00:02:00.000Z",
+      "updatedAt": "2026-02-01T00:02:00.000Z",
+      "consumedAt": null,
+      "consumedByMessageId": null
+    },
+    {
+      "id": "5a000000-0000-4000-8000-0000000000d1",
+      "chatId": "33333333-3333-4333-8333-333333333333",
+      "batchId": "5b000000-0000-4000-8000-0000000000d1",
+      "participantId": "aaaaaaaa-0000-4000-8000-000000000001",
+      "contentMarkdown": "standing corpus: standing fresh",
+      "recordMessageId": null,
+      "permanent": true,
+      "createdAt": "2026-02-01T00:03:00.000Z",
+      "updatedAt": "2026-02-01T00:03:00.000Z",
+      "consumedAt": null,
+      "consumedByMessageId": null
+    },
+    {
+      "id": "5a000000-0000-4000-8000-0000000000e1",
+      "chatId": "33333333-3333-4333-8333-333333333333",
+      "batchId": "5b000000-0000-4000-8000-0000000000e1",
+      "participantId": "aaaaaaaa-0000-4000-8000-000000000001",
+      "contentMarkdown": "standing corpus: standing delivered earlier",
+      "recordMessageId": null,
+      "permanent": true,
+      "createdAt": "2026-02-01T00:04:00.000Z",
+      "updatedAt": "2026-02-01T00:08:00.000Z",
+      "consumedAt": "2026-02-01T00:08:00.000Z",
+      "consumedByMessageId": "ee000000-0000-4000-8000-000000000300"
     }
   ],
   "ops": [
@@ -262,6 +340,68 @@
       "kind": "deleteByChatId",
       "label": "the chat-delete cascade (v5's only cascade \u2014 no FK on the generateDDL surface)",
       "chatId": "22222222-2222-4222-8222-222222222222"
+    },
+    {
+      "kind": "findPendingForParticipant",
+      "label": "P4.D249: in force for p1 \u2014 standing first (delivered or not), then the pending one-shot; the consumed one-shot excluded",
+      "chatId": "33333333-3333-4333-8333-333333333333",
+      "participantId": "aaaaaaaa-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "findConsumedByMessages",
+      "label": "P4.D249: the consumed-by read sorts by DELIVERY order \u2014 the standing row ahead of the earlier-posted one-shot",
+      "chatId": "33333333-3333-4333-8333-333333333333",
+      "participantId": "aaaaaaaa-0000-4000-8000-000000000001",
+      "messageIds": [
+        "ee000000-0000-4000-8000-000000000301"
+      ]
+    },
+    {
+      "kind": "findPendingBatches",
+      "label": "P4.D249: the batch read keeps a delivered standing batch (every target) with permanent: true, in POSTING order",
+      "chatId": "33333333-3333-4333-8333-333333333333"
+    },
+    {
+      "kind": "createBatch",
+      "label": "P4.D249: createBatch({ permanent: true }) writes the flag on every row",
+      "chatId": "33333333-3333-4333-8333-333333333333",
+      "contentMarkdown": "standing corpus: a standing post",
+      "participantIds": [
+        "aaaaaaaa-0000-4000-8000-000000000002"
+      ],
+      "recordMessageId": null,
+      "permanent": true
+    },
+    {
+      "kind": "createBatch",
+      "label": "P4.D249: createBatch without the key defaults to a one-shot",
+      "chatId": "33333333-3333-4333-8333-333333333333",
+      "contentMarkdown": "standing corpus: a default post",
+      "participantIds": [
+        "aaaaaaaa-0000-4000-8000-000000000003"
+      ],
+      "recordMessageId": null
+    },
+    {
+      "kind": "deletePendingByBatch",
+      "label": "P4.D249: cancel withdraws a standing batch WHOLE \u2014 the delivered row with the undelivered one",
+      "batchId": "5b000000-0000-4000-8000-0000000000c1"
+    },
+    {
+      "kind": "deletePendingByBatch",
+      "label": "P4.D249: a consumed one-shot still survives cancel",
+      "batchId": "5b000000-0000-4000-8000-0000000000b1"
+    },
+    {
+      "kind": "deletePendingForParticipant",
+      "label": "P4.D249: seat removal now takes the seat's DELIVERED standing row too (no code hunk \u2014 inherited)",
+      "chatId": "33333333-3333-4333-8333-333333333333",
+      "participantId": "aaaaaaaa-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "findByChatId",
+      "label": "P4.D249: what is left \u2014 the consumed one-shot and the two created posts",
+      "chatId": "33333333-3333-4333-8333-333333333333"
     }
   ],
   "routes": {
@@ -338,5 +478,7 @@
     "pendingBatchId": "3f1c9f4a-1111-4a2b-9c3d-00000000000e",
     "goneBatchId": "3f1c9f4a-1111-4a2b-9c3d-0000000000ee",
     "foreignBatchId": "b1111111-0000-4000-8000-000000000001"
-  }
+  },
+  "standingChatId": "33333333-3333-4333-8333-333333333333",
+  "_commentStanding": "P4.D249 (v4 52d6e7ecd) \u2014 the standing-inform corpus, in its own chat so the P4.D205 ops above read unchanged. Posting order is A(T0) < B(T1) < C(T2) < D(T3) < E(T4); the standing rows (C, D, E) are posted AFTER the one-shots, so delivery order (standing first) and posting order (createdAt) disagree and both comparators are observable. C and E are DELIVERED standing rows: still in force, never in the batch-delete's spared set, and taken by seat removal."
 }

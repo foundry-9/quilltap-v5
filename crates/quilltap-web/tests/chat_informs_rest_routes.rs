@@ -249,3 +249,119 @@ async fn an_explicit_null_reads_received_null_not_undefined() {
         json!("Invalid input: expected string, received null")
     );
 }
+
+/// P4.D249 (v4 `52d6e7ecd`) — a standing inform over the REST edge: the flag
+/// reaches the core (the 201 echoes it, in v4's key order), the list reports it,
+/// and the cancel withdraws the batch whole.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_standing_inform_round_trips_the_edge() {
+    let (_base, addr) = boot().await;
+    let client = reqwest::Client::new();
+
+    let resp = client
+        .post(format!("http://{addr}/api/v1/chats/{CHAT}?action=inform"))
+        .json(&json!({
+            "contentMarkdown": "Keep the lighthouse in mind.",
+            "targetParticipantIds": [SEAT_ARIA],
+            "permanent": true,
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 201);
+    let text = resp.text().await.unwrap();
+    let body: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(body["permanent"], json!(true), "{body}");
+    // v4's `{ success, batchId, targetParticipantIds, permanent, message }`.
+    let at = |k: &str| text.find(&format!("\"{k}\"")).unwrap_or(usize::MAX);
+    assert!(
+        at("targetParticipantIds") < at("permanent") && at("permanent") < at("message"),
+        "v4's key order: {text}"
+    );
+    let batch_id = body["batchId"].as_str().unwrap().to_string();
+
+    let body: Value = client
+        .get(format!("http://{addr}/api/v1/chats/{CHAT}?action=informs"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(body["batches"][0]["permanent"], json!(true), "{body}");
+
+    let body: Value = client
+        .post(format!(
+            "http://{addr}/api/v1/chats/{CHAT}?action=cancel-inform"
+        ))
+        .json(&json!({ "batchId": batch_id }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(body["removed"], json!(1), "{body}");
+    assert_eq!(
+        body["recordDeleted"],
+        json!(true),
+        "never delivered: {body}"
+    );
+
+    // An absent flag answers `permanent: false` — v4's `.default(false)`.
+    let body: Value = client
+        .post(format!("http://{addr}/api/v1/chats/{CHAT}?action=inform"))
+        .json(&json!({
+            "contentMarkdown": "Just once.",
+            "targetParticipantIds": [SEAT_ARIA],
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(body["permanent"], json!(false), "{body}");
+}
+
+/// P4.D249 — `permanent` is `.optional()` but NOT `.nullable()`: an explicit
+/// `null` (and any non-boolean) is v4's Zod 400 with NOTHING written. The null
+/// leg is the one a plain `Option<bool>` would get wrong.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_null_or_non_boolean_permanent_is_v4s_validation_400() {
+    let (_base, addr) = boot().await;
+    let client = reqwest::Client::new();
+    for (raw, word) in [
+        (Value::Null, "null"),
+        (json!("yes"), "string"),
+        (json!(1), "number"),
+    ] {
+        let resp = client
+            .post(format!("http://{addr}/api/v1/chats/{CHAT}?action=inform"))
+            .json(&json!({
+                "contentMarkdown": "Never posted.",
+                "targetParticipantIds": Value::Null,
+                "permanent": raw,
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status().as_u16(), 400, "{word}");
+        let body: Value = resp.json().await.unwrap();
+        assert_eq!(body["error"], json!("Validation error"));
+        assert_eq!(body["details"][0]["path"], json!(["permanent"]), "{body}");
+        assert_eq!(
+            body["details"][0]["message"],
+            json!(format!("Invalid input: expected boolean, received {word}"))
+        );
+    }
+    let body: Value = client
+        .get(format!("http://{addr}/api/v1/chats/{CHAT}?action=informs"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(body["batches"], json!([]), "nothing was written: {body}");
+}

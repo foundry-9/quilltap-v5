@@ -19,6 +19,11 @@
 //! `Omit<ChatInform, 'id' | 'createdAt' | 'updatedAt'>`), and the port's minted
 //! values are asserted to be present and fresh instead.
 //!
+//! **P4.D249 (v4 `52d6e7ecd`)**: `data.permanent` is compared too — v4 writes
+//! `inform.permanent === true`, so only a JSON `true` survives (absent, `false`,
+//! `"true"` and `1` all import as a one-shot). Red-first from the oracle at both
+//! pins: every kept row's `data` gains the key at the target.
+//!
 //! Generate the oracle (Node 24, from the TARGET-pinned v4 worktree):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   cd ~/source/quilltap-server
@@ -179,6 +184,13 @@ fn chat_informs_remap_matches_oracle() {
                     data.record_message_id,
                     want_opt("recordMessageId"),
                     "[{}] recordMessageId",
+                    case.label
+                );
+                // P4.D249: v4 writes `permanent: inform.permanent === true`.
+                assert_eq!(
+                    json!(data.permanent),
+                    d["permanent"],
+                    "[{}] permanent",
                     case.label
                 );
                 assert_eq!(

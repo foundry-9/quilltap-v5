@@ -5048,6 +5048,28 @@
    "participantId": "1a000000-0000-4000-8000-0000000000a4",
    "contentMarkdown": "The gardener has gone home.",
    "createdAt": "2026-06-01T00:00:01.000Z"
+  },
+  {
+   "id": "1a000000-0000-4000-8000-0000000000e8",
+   "chatId": "1a000000-0000-4000-8000-0000000000c3",
+   "batchId": "1a000000-0000-4000-8000-0000000000f8",
+   "participantId": "1a000000-0000-4000-8000-0000000000a3",
+   "contentMarkdown": "Standing: you are, and remain, the night porter.",
+   "createdAt": "2026-06-01T00:00:03.000Z",
+   "consumedAt": "2026-06-01T00:00:05.000Z",
+   "consumedByMessageId": "1a000000-0000-4000-8000-0000000000d3",
+   "permanent": true,
+   "_comment": "P4.D249 (v4 52d6e7ecd): a STANDING row already delivered once — still in force, so the turn carries it (first in the block), but its first-delivery stamp must NOT move."
+  },
+  {
+   "id": "1a000000-0000-4000-8000-0000000000e9",
+   "chatId": "1a000000-0000-4000-8000-0000000000c3",
+   "batchId": "1a000000-0000-4000-8000-0000000000f9",
+   "participantId": "1a000000-0000-4000-8000-0000000000a3",
+   "contentMarkdown": "Standing: the lift is out of order.",
+   "createdAt": "2026-06-01T00:00:04.000Z",
+   "permanent": true,
+   "_comment": "P4.D249: a STANDING row never delivered — the turn hands it back, which stamps its first delivery without retiring it."
   }
  ],
  "informPoisonRowIds": [

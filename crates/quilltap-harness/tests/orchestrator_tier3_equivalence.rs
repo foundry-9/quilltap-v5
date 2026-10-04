@@ -2671,15 +2671,27 @@ fn orchestrator_tier3_matches_oracle() {
     // consume; the dump must carry them and at least one consumption.
     {
         let rows = got_informs["rows"].as_array().expect("chat_informs rows");
-        assert_eq!(rows.len(), 7, "the planted chat_informs rows went missing");
+        assert_eq!(rows.len(), 9, "the planted chat_informs rows went missing");
         let consumed_by_turns = rows
             .iter()
             .filter(|r| r["consumedAt"] == Value::String("<ts>".into()))
             .count();
         assert_eq!(
-            consumed_by_turns, 4,
-            "the saved turn consumes two rows, the preserved partial one, and the \
-             poisoned turn its FIRST row (e6) before the trigger aborts the second"
+            consumed_by_turns, 5,
+            "the saved turn consumes two rows, the preserved partial one, the \
+             poisoned turn its FIRST row (e6) before the trigger aborts the second, \
+             and the already-consumed call stamps its never-delivered STANDING row \
+             (e9, P4.D249)"
+        );
+        // P4.D249 (v4 `52d6e7ecd`): a standing row delivered before rides the
+        // turn but is never handed back, so its first-delivery stamp holds.
+        let stamped = rows
+            .iter()
+            .find(|r| r["id"] == "1a000000-0000-4000-8000-0000000000e8")
+            .expect("the delivered standing row");
+        assert_eq!(
+            stamped["consumedAt"], "2026-06-01T00:00:05.000Z",
+            "a delivered standing row's stamp must not move: {stamped}"
         );
         // P4.106 Tier 2 — the failed consume, measured: v4 `markConsumed` loops
         // `update` per id inside `safeQuery(…, 0)`, so a write that fails on the

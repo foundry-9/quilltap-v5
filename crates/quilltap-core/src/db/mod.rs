@@ -41,6 +41,9 @@ pub mod chat_message_fts_reconcile;
 // === P4.D205 ===
 pub mod chat_informs;
 // === end P4.D205 ===
+// === P4.D249 ===
+pub mod chat_informs_permanent_repair;
+// === end P4.D249 ===
 // === P4.D171 ===
 pub mod chat_messages_route_trail_repair;
 // === end P4.D171 ===

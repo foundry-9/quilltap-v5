@@ -1579,6 +1579,28 @@ fn seed_built_ins(db: &Db) -> Result<EnsureFailures, String> {
             // deletes these rows explicitly.
             quilltap_core::db::chat_informs::ensure_chat_informs_table(main)?;
             // === end P4.D205 ===
+            // === P4.D249 (v4 52d6e7ecd, migration add-chat-informs-permanent-v1) ===
+            // The standing-inform flag, re-homed from v4's migration runner
+            // for the same reason as the table ensure above — and AFTER it,
+            // which is v4's `dependsOn: ['add-chat-informs-table-v1']`. Every
+            // inform read names `permanent` explicitly, so on an instance whose
+            // table predates `52d6e7ecd` the composer's pending-chip poll would
+            // fail on its first read without this. It ALTERs in v4's migration
+            // DDL (`INTEGER NOT NULL DEFAULT 0`, appended), no backfill — the
+            // default makes every existing row the one-shot it always was. A
+            // table the ensure above just created already has the column (the
+            // generateDDL shape), and this is a no-op.
+            //
+            // Fatal on failure, like the ensure beside it — v4's migration is
+            // not `resumable`, so a failed `add-chat-informs-permanent-v1`
+            // lands in the runner's `failed` list and `instrumentation.ts`
+            // exits with "Migrations failed - cannot start server" (measured at
+            // the pin; not the P4.D248 defer-and-boot class, which is the
+            // `resumable` flag's alone).
+            quilltap_core::db::chat_informs_permanent_repair::ensure_chat_informs_permanent_column(
+                main,
+            )?;
+            // === end P4.D249 ===
 
             // === P4.D204 (v4 `f45a517a9`, `lib/startup/reconcile-chat-
             // message-fts.ts` PHASE 3.65 + the migration

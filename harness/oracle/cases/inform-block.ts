@@ -9,10 +9,16 @@
  *
  * Each row emits:
  *   - `content` / `rowIds` — the module's answer;
- *   - `calledMethod` — which of the two reads it chose (`findPendingForParticipant`
- *     or `findConsumedByMessages`), which pins the `isSwipe` predicate,
- *     including v4's `Array.isArray(ids) && ids.length > 0` (an EMPTY list falls
- *     back to pending);
+ *   - `calledMethod` — the FIRST read it made (kept for continuity; since
+ *     P4.D249 / v4 `52d6e7ecd` it is always `findPendingForParticipant`, because
+ *     the in-force set is read on every call);
+ *   - `readCalls` — EVERY read, in order (P4.D249): a swipe reads the in-force
+ *     set AND the consumed set, which pins the `isSwipe` predicate including
+ *     v4's `Array.isArray(ids) && ids.length > 0` (an EMPTY list falls back to
+ *     pending alone);
+ *   - `debug` — the fields of the module's last `[Inform] …` debug line
+ *     (P4.D249: `pending` / `reapplied` / `standing` / `passages`), captured by
+ *     patching the logger singleton's `debug` method the module calls;
  *   - `consumedArgs` — the message-id list handed to the swipe read;
  *   - `writeCalls` — every write method called. **It must be 0 on every row**:
  *     selection is not delivery, and `markConsumed` belongs to the finalizer.
@@ -35,6 +41,7 @@ interface Row {
   participantId: string;
   contentMarkdown: string;
   recordMessageId: string | null;
+  permanent?: boolean;
   createdAt: string;
   updatedAt: string;
   consumedAt: string | null;
@@ -65,6 +72,19 @@ async function main(): Promise<void> {
     '@/lib/chat/context/inform-block'
   );
 
+  // The module's own debug lines, captured off the logger singleton it imports
+  // (patching the method bypasses the level gate, so LOG_LEVEL stays quiet).
+  const { logger } = await import('@/lib/logger');
+  let lastDebug: { message: string; fields: Record<string, unknown> } | null = null;
+  (logger as unknown as { debug: unknown }).debug = (
+    message: string,
+    fields?: Record<string, unknown>
+  ) => {
+    if (typeof message === 'string' && message.startsWith('[Inform]')) {
+      lastDebug = { message, fields: fields ?? {} };
+    }
+  };
+
   const out: string[] = [];
 
   // The separator itself, so the Rust constant is pinned against v4's, not
@@ -77,6 +97,7 @@ async function main(): Promise<void> {
   );
 
   for (const c of spec.cases) {
+    lastDebug = null;
     const calls: string[] = [];
     let consumedArgs: unknown = null;
 
@@ -134,6 +155,8 @@ async function main(): Promise<void> {
         content: result.content,
         rowIds: result.rowIds,
         calledMethod: calls.find((k) => !k.startsWith('WRITE:')) ?? null,
+        readCalls: calls.filter((k) => !k.startsWith('WRITE:')),
+        debug: lastDebug,
         consumedArgs,
         writeCalls: calls.filter((k) => k.startsWith('WRITE:')),
       })

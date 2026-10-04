@@ -213,9 +213,20 @@ fn inform_plant() -> Vec<ChatInformCreate> {
             "b2000000-0000-4000-8000-000000000002",
             None,
         ),
+        // P4.D249: Aria's DELIVERED STANDING row — still in force, so the
+        // remove-participant action now takes it (the oracle's `aaa4`).
+        (
+            "11110000-0000-4000-8000-00000000aaa4",
+            "b2000000-0000-4000-8000-000000000001",
+            Some((
+                "2026-02-02T00:00:00.000Z",
+                "d2000000-0000-4000-8000-000000000002",
+            )),
+        ),
     ]
     .into_iter()
     .map(|(id, participant, consumed)| ChatInformCreate {
+        permanent: id.ends_with("aaa4"),
         id: id.to_string(),
         chat_id: "c1000000-0000-4000-8000-000000000002".to_string(),
         batch_id: "bbbbbbbb-0000-4000-8000-000000000001".to_string(),

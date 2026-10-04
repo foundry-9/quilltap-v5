@@ -58,11 +58,18 @@ interface CaseSpec {
  * CONSUMED inform for the seat being removed (Aria) and a PENDING one for the
  * other LLM seat. Ids and stamps pinned; v5 plants the same cells through its
  * own `ChatInformsRepository::create`.
+ *
+ * P4.D249 (v4 `52d6e7ecd`) adds a fourth row: a DELIVERED STANDING inform for
+ * Aria. It is still in force, so the remove-participant action's
+ * `deletePendingForParticipant` now takes it too (no code hunk in v4 — the
+ * method reads through the in-force predicate), while the consumed one-shot
+ * (`aaa2`) still survives.
  */
 const INFORM_PLANT = [
   { id: '11110000-0000-4000-8000-00000000aaa1', participantId: 'b2000000-0000-4000-8000-000000000001', consumedAt: null, consumedByMessageId: null },
   { id: '11110000-0000-4000-8000-00000000aaa2', participantId: 'b2000000-0000-4000-8000-000000000001', consumedAt: '2026-02-02T00:00:00.000Z', consumedByMessageId: 'd2000000-0000-4000-8000-000000000002' },
   { id: '11110000-0000-4000-8000-00000000aaa3', participantId: 'b2000000-0000-4000-8000-000000000002', consumedAt: null, consumedByMessageId: null },
+  { id: '11110000-0000-4000-8000-00000000aaa4', participantId: 'b2000000-0000-4000-8000-000000000001', consumedAt: '2026-02-02T00:00:00.000Z', consumedByMessageId: 'd2000000-0000-4000-8000-000000000002', permanent: true },
 ];
 
 const TABLES = [
@@ -175,6 +182,7 @@ async function runCase(
           participantId: row.participantId,
           contentMarkdown: 'The clock in the hall has stopped.',
           recordMessageId: null,
+          ...('permanent' in row ? { permanent: row.permanent } : {}),
           consumedAt: row.consumedAt,
           consumedByMessageId: row.consumedByMessageId,
         } as never,

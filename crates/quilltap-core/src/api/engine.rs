@@ -5801,6 +5801,7 @@ impl CoreEngine {
                 chat_id,
                 content_markdown,
                 target_participant_ids,
+                permanent,
             } => match self.ready_db() {
                 Ok(db) => {
                     super::chat_informs::chat_inform(
@@ -5808,6 +5809,7 @@ impl CoreEngine {
                         &chat_id,
                         &content_markdown,
                         &target_participant_ids,
+                        &permanent,
                     )
                     .await
                 }

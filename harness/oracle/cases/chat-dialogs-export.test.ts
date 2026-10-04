@@ -163,6 +163,10 @@ async function plantInform(chatId: string): Promise<void> {
         participantId: `1f10000${k}-0000-4000-8000-0000000000a${k}`,
         contentMarkdown: 'The clock in the hall has stopped.',
         recordMessageId: INFORM_RECORD_ID,
+        // P4.D249 (v4 `52d6e7ecd`): the consumed row is a STANDING inform — a
+        // delivered standing row, still in force. Neither surface reads the
+        // table, so this is neutrality on the new column.
+        permanent: consumed,
         consumedAt: consumed ? '2026-01-03T00:00:00.000Z' : null,
         consumedByMessageId: consumed ? `1f10000${k}-0000-4000-8000-0000000000e${k}` : null,
       } as never,

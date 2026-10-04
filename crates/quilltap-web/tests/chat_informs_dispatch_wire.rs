@@ -126,8 +126,19 @@ async fn post_list_and_cancel_round_trip_over_dispatch() {
     let keys: Vec<&String> = data.as_object().unwrap().keys().collect();
     assert_eq!(
         keys,
-        ["success", "batchId", "targetParticipantIds", "message"],
-        "v4's four keys, in its order: {data}"
+        [
+            "success",
+            "batchId",
+            "targetParticipantIds",
+            "permanent",
+            "message"
+        ],
+        "v4's five keys, in its order (P4.D249 adds `permanent`): {data}"
+    );
+    assert_eq!(
+        data["permanent"],
+        json!(false),
+        "an absent flag is v4's default"
     );
     assert_eq!(data["success"], json!(true));
     assert_eq!(data["targetParticipantIds"], Value::Null);
@@ -191,10 +202,12 @@ async fn post_list_and_cancel_round_trip_over_dispatch() {
                 "contentMarkdown",
                 "createdAt",
                 "recordMessageId",
+                "permanent",
                 "pendingParticipantIds"
             ],
             "{b}"
         );
+        assert_eq!(b["permanent"], json!(false), "{b}");
     }
 
     // ---- chatInformCancel: withdraw the whisper; nothing consumed, so the
@@ -219,6 +232,38 @@ async fn post_list_and_cancel_round_trip_over_dispatch() {
     let batches = v["data"]["batches"].as_array().expect("batches");
     assert_eq!(batches.len(), 1, "only the Everyone batch is left: {v}");
     assert_eq!(batches[0]["batchId"], json!(everyone_batch));
+    // ---- P4.D249: a STANDING inform over dispatch — the flag echoes in the
+    //      201 data and the list, and the cancel withdraws it.
+    let (status, v) = wire
+        .post(json!({
+            "type": "chatInform",
+            "chatId": CHAT,
+            "contentMarkdown": "Keep the lighthouse in mind.",
+            "targetParticipantIds": [SEAT_ARIA],
+            "permanent": true,
+        }))
+        .await;
+    assert_eq!(status, 200, "{v}");
+    assert_eq!(v["data"]["permanent"], json!(true), "{v}");
+    let standing = v["data"]["batchId"].as_str().unwrap().to_string();
+    let (_, v) = wire
+        .post(json!({ "type": "chatInformsList", "chatId": CHAT }))
+        .await;
+    let listed = v["data"]["batches"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|b| b["batchId"] == json!(standing))
+        .cloned()
+        .unwrap_or_else(|| panic!("the standing batch is listed: {v}"));
+    assert_eq!(listed["permanent"], json!(true));
+    let (_, v) = wire
+        .post(json!({ "type": "chatInformCancel", "chatId": CHAT, "batchId": standing }))
+        .await;
+    assert_eq!(
+        v["data"],
+        json!({ "success": true, "removed": 1, "recordDeleted": true })
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -285,6 +330,34 @@ async fn the_tri_state_survives_the_dispatch_decode() {
             ),
         ]
     );
+
+    // ---- P4.D249: `permanent` is `.optional()` but NOT `.nullable()` — an
+    //      explicit null must survive the dispatch decode as PRESENT and fail
+    //      Zod (a plain `Option<bool>` would read it as absent and POST the
+    //      inform); a non-boolean names its own type.
+    for (raw, word) in [
+        (Value::Null, "null"),
+        (json!("yes"), "string"),
+        (json!(1), "number"),
+    ] {
+        let (status, v) = wire
+            .post(json!({
+                "type": "chatInform",
+                "chatId": CHAT,
+                "contentMarkdown": "Never posted.",
+                "targetParticipantIds": Value::Null,
+                "permanent": raw,
+            }))
+            .await;
+        assert_eq!(
+            issue_messages(status, &v),
+            vec![(
+                json!(["permanent"]),
+                format!("Invalid input: expected boolean, received {word}")
+            )],
+            "{word}"
+        );
+    }
 
     // ---- The cancel verb's single key: absent, null, malformed.
     let (status, v) = wire

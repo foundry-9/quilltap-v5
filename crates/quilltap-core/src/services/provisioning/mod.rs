@@ -134,6 +134,17 @@ pub const SINGLE_USER_ID: &str = "ffffffff-ffff-ffff-ffff-ffffffffffff";
 /// instance born from `SQLITE_TABLES` shows the drop in its migration log; the
 /// `generateDDL` surface this module is built from never has it. The seed is
 /// UNMOVED at this pin (`cmp`-identical).
+///
+/// `52d6e7ecd` (P4.D249 — D23 re-dump #4, v4 "Inform: standing (per-chat)
+/// informs", migration `add-chat-informs-permanent-v1`; run FROM the pin,
+/// 2026-10-03): EXACTLY one line moves, as measured. `chat_informs` GAINS
+/// `"permanent" INTEGER DEFAULT 0` between `"recordMessageId"` and
+/// `"createdAt"` — generateDDL's spelling of `z.boolean().default(false)`,
+/// in schema order and WITHOUT the `NOT NULL` the migration's
+/// `ADD COLUMN "permanent" INTEGER NOT NULL DEFAULT 0` carries (the two v4
+/// shapes disagree; the migration's is re-homed as
+/// `db::chat_informs_permanent_repair`, this one is `CHAT_INFORMS_TABLE_DDL`).
+/// The seed is UNMOVED at this pin (`cmp`-identical).
 static FRESH_SCHEMA_JSON: &str = include_str!("fresh_schema.json");
 
 /// The captured `chat_settings` seed row's columns (all but the minted

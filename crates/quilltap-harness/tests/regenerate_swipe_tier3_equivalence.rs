@@ -412,6 +412,15 @@ fn run_corpus(label: &str, emit_progress: bool) -> Option<[Value; 5]> {
             !any("Pending, and never delivered") && !any("Consumed by a message outside"),
             "a pending or out-of-group inform reached a swipe's request"
         );
+        // P4.D249 (v4 `52d6e7ecd`): a STANDING row rides the swipe too — read
+        // from the seat's in-force set even though its first delivery was a
+        // message outside the group — and leads the block although it was
+        // posted last.
+        assert!(
+            any("Standing: you are, and remain, the ship's cat.\n\n---\n\n\
+                 The sibling swipe read this.\n\n---\n\nThe target line read this."),
+            "the standing row must lead the grouped swipe's re-applied block"
+        );
     }
 
     let scratch =
@@ -680,7 +689,8 @@ fn run_corpus(label: &str, emit_progress: bool) -> Option<[Value; 5]> {
     assert_rows_eq("chat_informs", &got_informs, &want_informs);
     {
         let rows = got_informs["rows"].as_array().expect("chat_informs rows");
-        assert_eq!(rows.len(), 6, "the planted chat_informs rows went missing");
+        // Seven since P4.D249: the standing row a swipe now carries too.
+        assert_eq!(rows.len(), 7, "the planted chat_informs rows went missing");
         for r in rows {
             assert_eq!(
                 r["updatedAt"], r["createdAt"],

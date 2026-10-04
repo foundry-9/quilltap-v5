@@ -18,6 +18,17 @@
 //!     assert the order asks for, and it is checked against v4's own answer
 //!     rather than asserted only of v5.
 //!
+//! **P4.D249 (v4 `52d6e7ecd`, standing informs)** moves three things this
+//! family now pins: v4 reads the seat's in-force set on EVERY call, so a swipe
+//! makes TWO reads (`readCalls` replaces the single-read `calledMethod`
+//! comparand, which is now always the in-force read); a swipe's rows are the
+//! standing rows first, then the re-applied ones de-duplicated
+//! ([`merge_for_swipe`]); and the `[Inform] …` debug line's
+//! `pending`/`reapplied`/`standing`/`passages` ([`inform_counts`]). Red-first
+//! from the oracle at both pins: 15 of 16 cases move between `e5c6bd0c0` and
+//! `52d6e7ecd` (every built block's debug gains `standing`, every swipe gains
+//! its second read, and the five new standing cases).
+//!
 //! The separator constant is pinned from v4's exported `INFORM_BLOCK_SEPARATOR`,
 //! so the Rust constant is compared against v4's value, not a transcription.
 //!
@@ -34,7 +45,7 @@ use std::path::{Path, PathBuf};
 
 use quilltap_core::db::chat_informs::ChatInformRow;
 use quilltap_core::services::inform_block::{
-    assemble_inform_block, is_swipe_request, INFORM_BLOCK_SEPARATOR,
+    assemble_inform_block, inform_counts, is_swipe_request, merge_for_swipe, INFORM_BLOCK_SEPARATOR,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -70,6 +81,8 @@ struct SpecRow {
     content_markdown: String,
     #[serde(rename = "recordMessageId")]
     record_message_id: Option<String>,
+    #[serde(default)]
+    permanent: bool,
     #[serde(rename = "createdAt")]
     created_at: String,
     #[serde(rename = "updatedAt")]
@@ -89,6 +102,7 @@ impl From<&SpecRow> for ChatInformRow {
             participant_id: r.participant_id.clone(),
             content_markdown: r.content_markdown.clone(),
             record_message_id: r.record_message_id.clone(),
+            permanent: r.permanent,
             created_at: r.created_at.clone(),
             updated_at: r.updated_at.clone(),
             consumed_at: r.consumed_at.clone(),
@@ -157,27 +171,96 @@ fn inform_block_matches_oracle() {
         let ids = case.regeneration_of_message_ids.as_deref();
         let is_swipe = is_swipe_request(ids);
 
-        // The predicate, pinned against which read v4 actually performed.
-        let want_method = want["calledMethod"].as_str().unwrap_or("");
-        let got_method = if is_swipe {
-            "findConsumedByMessages"
+        // The predicate, pinned against the reads v4 actually performed:
+        // the in-force read always, the consumed read on a swipe too — the
+        // order `build_inform_block` issues them.
+        let got_reads: Vec<&str> = if is_swipe {
+            vec!["findPendingForParticipant", "findConsumedByMessages"]
         } else {
-            "findPendingForParticipant"
+            vec!["findPendingForParticipant"]
         };
+        let want_reads: Vec<&str> = want["readCalls"]
+            .as_array()
+            .expect("readCalls array")
+            .iter()
+            .map(|v| v.as_str().unwrap_or_default())
+            .collect();
         assert_eq!(
-            got_method, want_method,
-            "[{}] the isSwipe predicate chose a different read than v4",
+            got_reads, want_reads,
+            "[{}] the reads diverged from v4's",
             case.label
         );
 
-        // v4 chose the set; the port's assembly runs over the same rows.
-        let source = if is_swipe {
-            &case.consumed
+        // v4's selection over the stub's two answers: the in-force set off a
+        // swipe; on a swipe the standing rows of the in-force set merged ahead
+        // of the consumed ones.
+        let in_force: Vec<ChatInformRow> = case.pending.iter().map(ChatInformRow::from).collect();
+        let rows: Vec<ChatInformRow> = if is_swipe {
+            merge_for_swipe(
+                case.consumed.iter().map(ChatInformRow::from).collect(),
+                in_force.into_iter().filter(|r| r.permanent).collect(),
+            )
         } else {
-            &case.pending
+            in_force
         };
-        let rows: Vec<ChatInformRow> = source.iter().map(ChatInformRow::from).collect();
         let got = assemble_inform_block(&rows, is_swipe);
+
+        // The debug line's counts (absent when v4 logged no `[Inform]` line —
+        // the all-whitespace arm returns EMPTY silently, as v5 does).
+        match &want["debug"] {
+            Value::Null => assert!(
+                got.content.is_none() && !rows.is_empty(),
+                "[{}] v4 logged nothing, which only the all-whitespace arm does",
+                case.label
+            ),
+            d => {
+                let f = &d["fields"];
+                let (pending, reapplied, standing) = if rows.is_empty() {
+                    assert_eq!(d["message"], "[Inform] No inform block for this turn");
+                    (0, 0, 0)
+                } else {
+                    assert_eq!(d["message"], "[Inform] Built inform block");
+                    let c = inform_counts(&rows, is_swipe);
+                    assert_eq!(
+                        f["passages"], got.passage_count,
+                        "[{}] passages",
+                        case.label
+                    );
+                    (c.pending, c.reapplied, c.standing)
+                };
+                assert_eq!(
+                    (
+                        f["pending"].clone(),
+                        f["reapplied"].clone(),
+                        f["standing"].clone()
+                    ),
+                    (pending.into(), reapplied.into(), standing.into()),
+                    "[{}] debug counts diverged",
+                    case.label
+                );
+                // v4's field order on the line.
+                let keys: Vec<&str> = f.as_object().unwrap().keys().map(String::as_str).collect();
+                let want_keys: &[&str] = if rows.is_empty() {
+                    &[
+                        "chatId",
+                        "participantId",
+                        "pending",
+                        "reapplied",
+                        "standing",
+                    ]
+                } else {
+                    &[
+                        "chatId",
+                        "participantId",
+                        "pending",
+                        "reapplied",
+                        "standing",
+                        "passages",
+                    ]
+                };
+                assert_eq!(keys, want_keys, "[{}] debug field order", case.label);
+            }
+        }
 
         let want_content = match &want["content"] {
             Value::Null => None,
@@ -225,6 +308,14 @@ fn inform_block_matches_oracle() {
             .any(|c| c.regeneration_of_message_ids.as_deref() == Some(&[])),
         "corpus has no EMPTY-regeneration-list case — v4's Array.isArray && length > 0 \
          fallback is untested"
+    );
+
+    assert!(
+        spec.cases.iter().any(|c| c
+            .pending
+            .iter()
+            .any(|r| r.permanent && r.consumed_at.is_some())),
+        "corpus has no delivered standing row — the stamped-row exclusion is untested"
     );
 
     eprintln!("OK: inform_block matched oracle ({checked} cases).");

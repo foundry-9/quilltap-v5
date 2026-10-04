@@ -15,6 +15,14 @@
  * The calls are the discriminator the body cannot be: the coverage rule decides
  * `recordTargets`, and only the record-write call shows it.
  *
+ * P4.D249 (v4 `52d6e7ecd`, standing informs): the calls gain
+ * `createBatchPermanent` (what the handler handed `createBatch`); the mocked
+ * `findPendingBatches` answers carry `permanent`, because the REAL repository
+ * now writes it at that position and the handler's `...batch` spread keeps it;
+ * and five new cases pin the flag — a standing post, an explicit `false`, the
+ * three Zod refusals (`null`, a string, a number), a standing batch listed,
+ * and a standing batch cancelled whole.
+ *
  * Run (Node 24, from a TARGET-pinned v4 worktree — cp to a /tmp mirror, because
  * jest ignores `.claude/` paths):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
@@ -53,6 +61,7 @@ const {
 const { postInformRecord } = require('@/lib/services/announcer/writer')
 const { resolveAnnouncementAudience } = require('@/lib/services/announcer/audience')
 const { publishRealtime } = require('@/lib/realtime/bus')
+const { validationError } = require('@/lib/api/responses')
 
 const CHAT_ID = '3f1c9f4a-1111-4a2b-9c3d-000000000001'
 const OTHER_CHAT = '3f1c9f4a-1111-4a2b-9c3d-000000000002'
@@ -173,6 +182,10 @@ describe('chats [id] inform actions — oracle', () => {
       createBatchBody:
         ctx.repos.chatInforms.createBatch.mock.calls.length > 0
           ? ctx.repos.chatInforms.createBatch.mock.calls[0][0].contentMarkdown
+          : null,
+      createBatchPermanent:
+        ctx.repos.chatInforms.createBatch.mock.calls.length > 0
+          ? (ctx.repos.chatInforms.createBatch.mock.calls[0][0].permanent ?? null)
           : null,
       createBatchRecordId:
         ctx.repos.chatInforms.createBatch.mock.calls.length > 0
@@ -320,6 +333,7 @@ describe('chats [id] inform actions — oracle', () => {
         contentMarkdown: BODY,
         createdAt: '2026-01-01T21:14:00.000Z',
         recordMessageId: RECORD_ID,
+        permanent: false,
         pendingParticipantIds: [ALICE, BOB],
       },
     ])
@@ -334,6 +348,7 @@ describe('chats [id] inform actions — oracle', () => {
         contentMarkdown: BODY,
         createdAt: '2026-01-01T21:14:00.000Z',
         recordMessageId: RECORD_ID,
+        permanent: false,
         pendingParticipantIds: [ALICE, DEPARTED],
       },
       {
@@ -341,6 +356,7 @@ describe('chats [id] inform actions — oracle', () => {
         contentMarkdown: 'Only the departed were owed this.',
         createdAt: '2026-01-01T21:15:00.000Z',
         recordMessageId: null,
+        permanent: false,
         pendingParticipantIds: [DEPARTED],
       },
     ])
@@ -411,6 +427,82 @@ describe('chats [id] inform actions — oracle', () => {
       ...(await read(res)),
       calls: calls(),
     })
+  })
+
+  // ---- P4.D249: standing informs -----------------------------------------
+
+  it('a standing post hands permanent to the batch and echoes it', async () => {
+    const res = await handleInform(
+      makeRequest({ contentMarkdown: BODY, targetParticipantIds: [ALICE], permanent: true }),
+      CHAT_ID,
+      ctx,
+    )
+    emit('inform: a standing post carries permanent', { ...(await read(res)), calls: calls() })
+  })
+
+  it('an explicit false is a one-shot', async () => {
+    const res = await handleInform(
+      makeRequest({ contentMarkdown: BODY, targetParticipantIds: [ALICE], permanent: false }),
+      CHAT_ID,
+      ctx,
+    )
+    emit('inform: an explicit permanent false', { ...(await read(res)), calls: calls() })
+  })
+
+  for (const [word, raw] of [
+    ['null', null],
+    ['a string', 'yes'],
+    ['a number', 1],
+  ] as const) {
+    it(`400s on a permanent that is ${word}`, async () => {
+      // `informSchema.parse` THROWS; v4's route wrapper
+      // (`createContextParamsHandler`, `lib/api/middleware/context.ts:166-167`)
+      // turns a ZodError into `validationError(error)`. The same REAL function
+      // is applied here, so the envelope is v4's bytes, not a transcription.
+      // (`instanceof z.ZodError` is not used: jest's module registry can hand
+      // the case a different zod realm — the `issues` array is the signal.)
+      let res: any
+      try {
+        res = await handleInform(
+          makeRequest({ contentMarkdown: BODY, targetParticipantIds: null, permanent: raw }),
+          CHAT_ID,
+          ctx,
+        )
+      } catch (err: any) {
+        if (!Array.isArray(err?.issues)) throw err
+        res = validationError(err)
+      }
+      emit(`inform: 400 on a permanent that is ${word}`, { ...(await read(res)), calls: calls() })
+    })
+  }
+
+  it('lists a standing batch with every target still seated', async () => {
+    ctx.repos.chatInforms.findPendingBatches.mockResolvedValue([
+      {
+        batchId: BATCH_ID,
+        contentMarkdown: 'Keep the lighthouse in mind.',
+        createdAt: '2026-01-01T21:16:00.000Z',
+        recordMessageId: RECORD_ID,
+        permanent: true,
+        pendingParticipantIds: [ALICE, BOB],
+      },
+    ])
+    const res = await handleGetInforms(CHAT_ID, ctx)
+    emit('informs: a standing batch', { ...(await read(res)), calls: calls() })
+  })
+
+  it('withdraws a standing batch whole, keeping the record once it was delivered', async () => {
+    ctx.repos.chatInforms.findByBatchId.mockResolvedValue([
+      makeRow({
+        permanent: true,
+        consumedAt: '2026-01-01T21:20:00.000Z',
+        consumedByMessageId: 'msg-1',
+      }),
+      makeRow({ id: 'row-2', participantId: BOB, permanent: true }),
+    ])
+    ctx.repos.chatInforms.deletePendingByBatch.mockResolvedValue(2)
+    const res = await handleCancelInform(makeRequest({ batchId: BATCH_ID }), CHAT_ID, ctx)
+    emit('cancel: a standing batch goes whole', { ...(await read(res)), calls: calls() })
   })
 
   afterAll(() => {

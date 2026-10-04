@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — feat(core): standing informs on the server — the chat_informs.permanent column, its boot ensure, the in-force predicate and the wire (P4.D249, v4 52d6e7ecd)
+
+_Versions: core 0.0.1201, host 0.0.180, web 0.0.217._
+
+Ports the server half of v4 `52d6e7ecd` ("Inform: standing (per-chat) informs"). An operator can now post a standing inform (`permanent: true`) that rides every generation its seats make in the chat until withdrawn.
+
+- Schema: the fourth D23 re-dump of `fresh_schema.json` from the pin moves exactly one line (`chat_informs` gains `"permanent" INTEGER DEFAULT 0` between `recordMessageId` and `createdAt`). `CHAT_INFORMS_TABLE_DDL` carries the same shape, pinned against the dump by a test.
+- New `db/chat_informs_permanent_repair.rs`: v4's `add-chat-informs-permanent-v1` re-homed as a boot ensure (`ALTER TABLE ... ADD COLUMN "permanent" INTEGER NOT NULL DEFAULT 0`, no backfill), called in `host.rs` right after the table ensure and fatal on failure, as v4's non-resumable migration is. The two v4 shapes disagree (generateDDL has no `NOT NULL`); both are carried. A new differential runs v4's real migration and v5's ensure on the same baseline-shape file and compares `table_info`, `sqlite_master.sql` and the rows byte for byte.
+- Repository: one `is_inform_in_force` predicate under every in-force read and delete (a census test keeps it from being open-coded); two comparators (`by_posting_order`, `by_delivery_order` with standing rows first); `create_batch` takes the flag and logs it; a standing batch cancels whole; seat removal now takes a delivered standing row; batches carry `permanent`. A NULL cell reads `false`.
+- Inform block: the in-force set is read on every call (two seat reads on a swipe), standing rows lead a swipe's block de-duplicated, already-stamped rows are never handed back for consumption, and the debug line gains `standing`. A failed seat read now logs v4's `Error finding entities by filter` line instead of nothing.
+- Wire: `chatInform` takes an optional `permanent` through the same tri-state decode on dispatch and REST, so `null` or a non-boolean is v4's Zod 400 with nothing written. The 201 body adds `permanent` before `message`; the list adds it per batch; the cancel debug line logs it. The cancel's failed batch read now logs v4's reachable `Error finding entities by filter` line.
+- Carriers: import remap (`permanent === true` only), backup column list, restore (absent key reads one-shot), and the export key order (regenerated from the pin).
+- Harness: `chat_informs_tier2`, `inform_block`, `chat_informs_routes` and `chat_informs_remap` grown with standing cases and red-first against the baseline oracle; `regenerate_swipe_tier3` and `orchestrator_tier3` gain standing rows; `build_context_tier3`'s seat-read count moves to two on its swipe op; the backup, import, uuid-remap, export and salon-mutation plants gain a standing row; host and web tests pin the boot ensure and both transports.
+
 #### 2026-10-03 — docs(status): the P4.146 lane record — gate, neutrality sweep, order marked complete
 
 _Docs-only change._

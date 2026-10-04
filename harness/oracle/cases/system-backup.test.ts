@@ -181,6 +181,10 @@ async function plantInforms(userId: string): Promise<void> {
           participantId: `1c0000${n}0-0000-4000-8000-0000000000a${n}`,
           contentMarkdown: consumed ? `Consumed passage ${n}.` : `Pending passage ${n}.`,
           recordMessageId: null,
+          // P4.D249 (v4 `52d6e7ecd`): ONE standing row — the first chat's
+          // consumed one (a delivered standing inform). v4's backup carries the
+          // flag by serializing whole rows; v5's fixed column list must name it.
+          permanent: n === 1 && consumed,
           consumedAt: consumed ? '2026-01-03T00:00:00.000Z' : null,
           consumedByMessageId: consumed ? `1c0000${n}${k}-0000-4000-8000-0000000000d${k}` : null,
         } as never,

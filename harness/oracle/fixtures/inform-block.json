@@ -328,6 +328,183 @@
         }
       ],
       "consumed": []
+    },
+    {
+      "label": "P4.D249: a swipe carries every standing row now in force, ahead of the re-applied ones, once each (v4's own case)",
+      "chatId": "chat-1",
+      "participantId": "participant-a",
+      "regenerationOfMessageIds": [
+        "msg-target"
+      ],
+      "pending": [
+        {
+          "id": "standing-row",
+          "chatId": "chat-1",
+          "batchId": "batch-1",
+          "participantId": "participant-a",
+          "contentMarkdown": "You are, and remain, quietly furious.",
+          "recordMessageId": "msg-record",
+          "createdAt": "2026-09-19T10:00:00.000Z",
+          "updatedAt": "2026-09-19T10:00:00.000Z",
+          "consumedAt": "2026-09-19T10:05:00.000Z",
+          "consumedByMessageId": "msg-target",
+          "permanent": true
+        },
+        {
+          "id": "pending-row",
+          "chatId": "chat-1",
+          "batchId": "batch-1",
+          "participantId": "participant-a",
+          "contentMarkdown": "Brand new.",
+          "recordMessageId": "msg-record",
+          "createdAt": "2026-09-19T10:00:00.000Z",
+          "updatedAt": "2026-09-19T10:00:00.000Z",
+          "consumedAt": null,
+          "consumedByMessageId": null
+        }
+      ],
+      "consumed": [
+        {
+          "id": "standing-row",
+          "chatId": "chat-1",
+          "batchId": "batch-1",
+          "participantId": "participant-a",
+          "contentMarkdown": "You are, and remain, quietly furious.",
+          "recordMessageId": "msg-record",
+          "createdAt": "2026-09-19T10:00:00.000Z",
+          "updatedAt": "2026-09-19T10:00:00.000Z",
+          "consumedAt": "2026-09-19T10:05:00.000Z",
+          "consumedByMessageId": "msg-target",
+          "permanent": true
+        },
+        {
+          "id": "consumed-row",
+          "chatId": "chat-1",
+          "batchId": "batch-1",
+          "participantId": "participant-a",
+          "contentMarkdown": "What she knew at the time.",
+          "recordMessageId": "msg-record",
+          "createdAt": "2026-09-19T10:00:00.000Z",
+          "updatedAt": "2026-09-19T10:00:00.000Z",
+          "consumedAt": "2026-09-19T10:05:00.000Z",
+          "consumedByMessageId": "msg-target"
+        }
+      ]
+    },
+    {
+      "label": "P4.D249: a swipe carries a standing row first delivered elsewhere, plus what the swiped turn consumed",
+      "chatId": "chat-1",
+      "participantId": "participant-a",
+      "regenerationOfMessageIds": [
+        "msg-target"
+      ],
+      "pending": [
+        {
+          "id": "standing-elsewhere",
+          "chatId": "chat-1",
+          "batchId": "batch-1",
+          "participantId": "participant-a",
+          "contentMarkdown": "The house is haunted.",
+          "recordMessageId": "msg-record",
+          "createdAt": "2026-09-19T10:00:00.000Z",
+          "updatedAt": "2026-09-19T10:00:00.000Z",
+          "consumedAt": "2026-09-19T09:00:00.000Z",
+          "consumedByMessageId": "msg-first",
+          "permanent": true
+        }
+      ],
+      "consumed": [
+        {
+          "id": "consumed-row",
+          "chatId": "chat-1",
+          "batchId": "batch-1",
+          "participantId": "participant-a",
+          "contentMarkdown": "What she knew at the time.",
+          "recordMessageId": "msg-record",
+          "createdAt": "2026-09-19T10:00:00.000Z",
+          "updatedAt": "2026-09-19T10:00:00.000Z",
+          "consumedAt": "2026-09-19T10:05:00.000Z",
+          "consumedByMessageId": "msg-target"
+        }
+      ]
+    },
+    {
+      "label": "P4.D249: a swipe whose group consumed nothing still carries the standing rows",
+      "chatId": "chat-1",
+      "participantId": "participant-a",
+      "regenerationOfMessageIds": [
+        "msg-target"
+      ],
+      "pending": [
+        {
+          "id": "standing-only",
+          "chatId": "chat-1",
+          "batchId": "batch-1",
+          "participantId": "participant-a",
+          "contentMarkdown": "Speak only in rhyme.",
+          "recordMessageId": "msg-record",
+          "createdAt": "2026-09-19T10:00:00.000Z",
+          "updatedAt": "2026-09-19T10:00:00.000Z",
+          "consumedAt": null,
+          "consumedByMessageId": null,
+          "permanent": true
+        }
+      ],
+      "consumed": []
+    },
+    {
+      "label": "P4.D249: a standing row delivered before is carried but NOT handed back to consume (v4's own case)",
+      "chatId": "chat-1",
+      "participantId": "participant-a",
+      "pending": [
+        {
+          "id": "standing-row",
+          "chatId": "chat-1",
+          "batchId": "batch-1",
+          "participantId": "participant-a",
+          "contentMarkdown": "You are the ship's cat.",
+          "recordMessageId": "msg-record",
+          "createdAt": "2026-09-19T10:00:00.000Z",
+          "updatedAt": "2026-09-19T10:00:00.000Z",
+          "consumedAt": "2026-09-19T10:05:00.000Z",
+          "consumedByMessageId": "msg-first",
+          "permanent": true
+        },
+        {
+          "id": "oneshot-row",
+          "chatId": "chat-1",
+          "batchId": "batch-2",
+          "participantId": "participant-a",
+          "contentMarkdown": "The lamp gutters.",
+          "recordMessageId": "msg-record",
+          "createdAt": "2026-09-19T10:00:00.000Z",
+          "updatedAt": "2026-09-19T10:00:00.000Z",
+          "consumedAt": null,
+          "consumedByMessageId": null
+        }
+      ],
+      "consumed": []
+    },
+    {
+      "label": "P4.D249: a standing row never delivered IS handed back, to stamp its first delivery (v4's own case)",
+      "chatId": "chat-1",
+      "participantId": "participant-a",
+      "pending": [
+        {
+          "id": "standing-row",
+          "chatId": "chat-1",
+          "batchId": "batch-1",
+          "participantId": "participant-a",
+          "contentMarkdown": "You notice the clock has stopped.",
+          "recordMessageId": "msg-record",
+          "createdAt": "2026-09-19T10:00:00.000Z",
+          "updatedAt": "2026-09-19T10:00:00.000Z",
+          "consumedAt": null,
+          "consumedByMessageId": null,
+          "permanent": true
+        }
+      ],
+      "consumed": []
     }
   ]
 }

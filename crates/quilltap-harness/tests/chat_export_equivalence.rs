@@ -115,6 +115,9 @@ fn plant_inform(db: &Db, chat_id: &str) {
                 participant_id: format!("1f10000{k}-0000-4000-8000-0000000000a{k}"),
                 content_markdown: "The clock in the hall has stopped.".into(),
                 record_message_id: Some(RECORD.into()),
+                // P4.D249: the consumed row is a delivered STANDING inform
+                // (the oracle's `permanent: consumed`) — neutrality only.
+                permanent: consumed,
                 created_at: "2026-01-02T00:00:00.000Z".into(),
                 updated_at: if consumed {
                     "2026-01-03T00:00:00.000Z".into()

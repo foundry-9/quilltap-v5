@@ -38,6 +38,7 @@ interface SeedRow {
   participantId: string;
   contentMarkdown: string;
   recordMessageId: string | null;
+  permanent?: boolean;
   createdAt: string;
   updatedAt: string;
   consumedAt: string | null;
@@ -103,6 +104,11 @@ async function main(): Promise<void> {
         participantId: row.participantId,
         contentMarkdown: row.contentMarkdown,
         recordMessageId: row.recordMessageId,
+        // P4.D249 (v4 `52d6e7ecd`): the standing flag. Absent on the P4.D205
+        // rows (the schema default, false). Built at the BASELINE pin the
+        // schema has no such key and Zod strips it — which is what the
+        // ensure differential's baseline-shape copy relies on.
+        ...(row.permanent === undefined ? {} : { permanent: row.permanent }),
         consumedAt: row.consumedAt,
         consumedByMessageId: row.consumedByMessageId,
       } as never,

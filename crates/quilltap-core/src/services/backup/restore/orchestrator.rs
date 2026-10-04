@@ -1119,19 +1119,7 @@ fn restore_on_writer(
     {
         let repo = crate::db::chat_informs::ChatInformsRepository::new(main);
         for inform in &data.chat_informs {
-            let now = crate::clock::now_iso();
-            let create = crate::db::chat_informs::ChatInformCreate {
-                id: id_of(inform),
-                chat_id: s(inform, "chatId"),
-                batch_id: s(inform, "batchId"),
-                participant_id: s(inform, "participantId"),
-                content_markdown: s(inform, "contentMarkdown"),
-                record_message_id: os(inform, "recordMessageId"),
-                created_at: now.clone(),
-                updated_at: now,
-                consumed_at: os(inform, "consumedAt"),
-                consumed_by_message_id: os(inform, "consumedByMessageId"),
-            };
+            let create = restored_inform(inform, crate::clock::now_iso());
             warn_row!(
                 w,
                 c.chat_informs,
@@ -2216,6 +2204,50 @@ fn store_opts(id: String) -> crate::db::store_backed::StoreCreateOptions {
         id: Some(id),
         created_at: None,
         updated_at: None,
+    }
+}
+
+/// One archived `chat_informs` row as v4's restore writes it: the id kept,
+/// the clocks minted (`now`), and — P4.D249, v4 `52d6e7ecd` — the standing
+/// flag carried. v4 spreads the archived row into `create`, where
+/// `ChatInformSchema.permanent: z.boolean().default(false)` fills an absent
+/// key, so a pre-standing archive restores every row as a one-shot.
+fn restored_inform(inform: &Value, now: String) -> crate::db::chat_informs::ChatInformCreate {
+    crate::db::chat_informs::ChatInformCreate {
+        id: id_of(inform),
+        chat_id: s(inform, "chatId"),
+        batch_id: s(inform, "batchId"),
+        participant_id: s(inform, "participantId"),
+        content_markdown: s(inform, "contentMarkdown"),
+        record_message_id: os(inform, "recordMessageId"),
+        permanent: b(inform, "permanent", false),
+        created_at: now.clone(),
+        updated_at: now,
+        consumed_at: os(inform, "consumedAt"),
+        consumed_by_message_id: os(inform, "consumedByMessageId"),
+    }
+}
+
+#[cfg(test)]
+mod restored_inform_tests {
+    use super::*;
+    use serde_json::json;
+
+    /// P4.D249: the flag survives a restore, and an archive written before
+    /// standing informs (no key) restores a one-shot.
+    #[test]
+    fn the_standing_flag_round_trips_and_an_old_archive_reads_one_shot() {
+        let row = json!({
+            "id": "i1", "chatId": "c1", "batchId": "b1", "participantId": "p1",
+            "contentMarkdown": "x", "permanent": true,
+            "createdAt": "2026-01-01T00:00:00.000Z", "updatedAt": "2026-01-01T00:00:00.000Z"
+        });
+        let got = restored_inform(&row, "NOW".into());
+        assert!(got.permanent);
+        assert_eq!((got.id.as_str(), got.created_at.as_str()), ("i1", "NOW"));
+        let mut old = row.clone();
+        old.as_object_mut().unwrap().remove("permanent");
+        assert!(!restored_inform(&old, "NOW".into()).permanent);
     }
 }
 

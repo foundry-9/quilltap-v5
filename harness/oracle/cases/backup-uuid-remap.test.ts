@@ -652,6 +652,9 @@ function edgeCases(): Case[] {
             participantId: 'inf-part',
             contentMarkdown: 'You notice the clock has stopped.',
             recordMessageId: 'inf-record-msg',
+            // P4.D249 (v4 `52d6e7ecd`): a STANDING row — a boolean the remap
+            // must carry through untouched (it remaps id fields only).
+            permanent: true,
             consumedAt: '2026-01-01T00:00:00.000Z',
             consumedByMessageId: 'inf-consumed-msg',
           },

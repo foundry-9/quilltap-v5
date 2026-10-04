@@ -64,29 +64,50 @@
 //! `delete`); v5 has no such proxy, but the oracle cases call them by name and
 //! the correspondence is worth more than a rename.
 //!
+//! ## Standing informs (P4.D249, v4 `52d6e7ecd`)
+//!
+//! A **standing** row (`permanent: true`) is never retired by consumption: it
+//! is in force for every generation its seat makes in this chat until the
+//! operator withdraws it. `consumedAt` / `consumedByMessageId` on such a row
+//! record only its first delivery. [`is_inform_in_force`] is the one
+//! definition of "still owed" — every read and delete below goes through it.
+//! The column arrives on an existing instance through
+//! `db::chat_informs_permanent_repair` (v4's migration, re-homed).
+//!
 //! ## Ordering
 //!
-//! Three reads sort identically, reproducing v4's JS comparator exactly:
+//! Two comparators, reproducing v4's exactly. [`by_posting_order`]:
 //! `new Date(createdAt).getTime()` ascending, tie-broken by
-//! `id.localeCompare(...)`. `id` breaks the tie because a single post mints
-//! several rows inside one millisecond, and the prompt path stacks them in this
-//! order. See [`by_created_at_then_id`] for the NaN leg.
+//! `id.localeCompare(...)` — `id` breaks the tie because a single post mints
+//! several rows inside one millisecond. [`by_delivery_order`]: standing rows
+//! first, then posting order — the two per-seat reads use it (the prompt path
+//! stacks in this order); the batches read keeps posting order. See
+//! [`by_posting_order`] for the NaN leg.
 
 use rusqlite::{params, Connection};
 
 use super::DbError;
 
 /// The two statements v4's `generateDDL(ChatInformSchema)` emits, verbatim from
-/// the D23 re-dump at `f45a517a9` (see the module header on why this shape and
-/// not the migration's). Kept byte-identical to `fresh_schema.json`'s entries so
-/// a fresh instance and an ensured one carry the same `sqlite_master` text.
-const CHAT_INFORMS_TABLE_DDL: &str = r#"CREATE TABLE IF NOT EXISTS "chat_informs" (
+/// the D23 re-dump #4 at `52d6e7ecd` (see the module header on why this shape
+/// and not the migration's). Kept byte-identical to `fresh_schema.json`'s
+/// entries — modulo the `IF NOT EXISTS` the ensure needs, which SQLite strips
+/// from `sqlite_master` — so a fresh instance and an ensured one carry the same
+/// text (pinned by `the_table_ddl_matches_the_d23_dump`).
+///
+/// `"permanent" INTEGER DEFAULT 0` is generateDDL's spelling of v4's
+/// `z.boolean().default(false)`, in schema order and **without** `NOT NULL`;
+/// v4's migration ALTER (`chat_informs_permanent_repair`) spells it `INTEGER
+/// NOT NULL DEFAULT 0` and appends it. The two v4 shapes disagree; both are
+/// carried.
+pub(crate) const CHAT_INFORMS_TABLE_DDL: &str = r#"CREATE TABLE IF NOT EXISTS "chat_informs" (
   "id" TEXT PRIMARY KEY NOT NULL,
   "chatId" TEXT NOT NULL,
   "batchId" TEXT NOT NULL,
   "participantId" TEXT NOT NULL,
   "contentMarkdown" TEXT NOT NULL,
   "recordMessageId" TEXT,
+  "permanent" INTEGER DEFAULT 0,
   "createdAt" TEXT NOT NULL,
   "updatedAt" TEXT NOT NULL,
   "consumedAt" TEXT,
@@ -121,23 +142,43 @@ pub struct ChatInformRow {
     /// The Host transcript message documenting the post. Nullable so a
     /// record-write failure cannot orphan the batch.
     pub record_message_id: Option<String>,
+    /// A standing inform: delivered on every generation this seat makes in this
+    /// chat, never retired by consumption, until the operator withdraws it.
+    /// `false` (the default) is the one-shot inform gone after the seat's next
+    /// turn.
+    pub permanent: bool,
     pub created_at: String,
     pub updated_at: String,
-    /// `None` while pending.
+    /// `None` while pending. On a standing row it records the FIRST delivery
+    /// only, and does not retire the row.
     pub consumed_at: Option<String>,
-    /// The assistant message whose generation delivered this row — what makes a
-    /// swipe of that message re-apply the same inform.
+    /// The assistant message whose generation delivered this row (the first
+    /// one, for a standing row) — what makes a swipe of that message re-apply
+    /// the same inform.
     pub consumed_by_message_id: Option<String>,
 }
 
-/// One pending batch, as the composer chip reads it: the body once, plus the
-/// seats still owed it (v4 `PendingInformBatch`).
+/// v4 `isInformInForce` — whether a row is still owed: a standing row always
+/// is, a one-shot row until its seat's turn consumes it. **The one definition
+/// every reader and deleter of "what is still owed" goes through** — nothing
+/// else in this module may open-code it (pinned by
+/// `the_in_force_predicate_is_never_open_coded`).
+pub fn is_inform_in_force(row: &ChatInformRow) -> bool {
+    row.permanent || row.consumed_at.is_none()
+}
+
+/// One batch still in force, as the composer chip reads it: the body once,
+/// plus the seats still owed it — every target, for a standing batch (v4
+/// `PendingInformBatch`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PendingInformBatch {
     pub batch_id: String,
     pub content_markdown: String,
     pub created_at: String,
     pub record_message_id: Option<String>,
+    /// A standing inform — the first-seen row's flag (v4
+    /// `Boolean(row.permanent)`).
+    pub permanent: bool,
     pub pending_participant_ids: Vec<String>,
 }
 
@@ -175,6 +216,9 @@ pub fn row_to_json(r: &ChatInformRow) -> serde_json::Value {
     if let Some(v) = &r.record_message_id {
         put("recordMessageId", serde_json::Value::String(v.clone()));
     }
+    // NOT NULL-omitted: v4's schema defaults it, so the parsed row always
+    // carries a boolean, in schema order.
+    put("permanent", serde_json::Value::Bool(r.permanent));
     put("createdAt", serde_json::Value::String(r.created_at.clone()));
     put("updatedAt", serde_json::Value::String(r.updated_at.clone()));
     if let Some(v) = &r.consumed_at {
@@ -197,6 +241,7 @@ pub struct ChatInformCreate {
     pub participant_id: String,
     pub content_markdown: String,
     pub record_message_id: Option<String>,
+    pub permanent: bool,
     pub created_at: String,
     pub updated_at: String,
     pub consumed_at: Option<String>,
@@ -204,7 +249,7 @@ pub struct ChatInformCreate {
 }
 
 const SELECT_COLUMNS: &str = "SELECT id, chatId, batchId, participantId, contentMarkdown, \
-     recordMessageId, createdAt, updatedAt, consumedAt, consumedByMessageId \
+     recordMessageId, permanent, createdAt, updatedAt, consumedAt, consumedByMessageId \
      FROM chat_informs";
 
 fn row_from(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChatInformRow> {
@@ -215,14 +260,17 @@ fn row_from(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChatInformRow> {
         participant_id: row.get(3)?,
         content_markdown: row.get(4)?,
         record_message_id: row.get(5)?,
-        created_at: row.get(6)?,
-        updated_at: row.get(7)?,
-        consumed_at: row.get(8)?,
-        consumed_by_message_id: row.get(9)?,
+        // generateDDL's shape is nullable; v4's SQLite deserializer turns a
+        // NULL cell into `undefined` and Zod's `.default(false)` fills it.
+        permanent: row.get::<_, Option<bool>>(6)?.unwrap_or(false),
+        created_at: row.get(7)?,
+        updated_at: row.get(8)?,
+        consumed_at: row.get(9)?,
+        consumed_by_message_id: row.get(10)?,
     })
 }
 
-/// v4's comparator, exactly:
+/// v4 `byPostingOrder`, exactly:
 ///
 /// ```js
 /// const delta = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
@@ -236,7 +284,7 @@ fn row_from(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChatInformRow> {
 /// and the `id` tiebreak applies only when BOTH parse. (`a-nan-comparator-is-not-
 /// a-total-order`: nothing in v5 may promote this to a total order without
 /// changing the observable order.)
-fn by_created_at_then_id(a: &ChatInformRow, b: &ChatInformRow) -> std::cmp::Ordering {
+fn by_posting_order(a: &ChatInformRow, b: &ChatInformRow) -> std::cmp::Ordering {
     use std::cmp::Ordering;
     let (Some(am), Some(bm)) = (
         crate::clock::iso_to_ms(&a.created_at),
@@ -248,6 +296,27 @@ fn by_created_at_then_id(a: &ChatInformRow, b: &ChatInformRow) -> std::cmp::Orde
         Ordering::Equal => crate::collation::locale_compare(&a.id, &b.id),
         other => other,
     }
+}
+
+/// v4 `byDeliveryOrder`: standing rows first, then one-shot rows, each in
+/// posting order. Standing passages are the same turn after turn, so putting
+/// them ahead of the one-shots keeps the front of the block stable for
+/// providers that cache by prefix.
+///
+/// ```js
+/// if (Boolean(a.permanent) !== Boolean(b.permanent)) return a.permanent ? -1 : 1;
+/// return byPostingOrder(a, b);
+/// ```
+fn by_delivery_order(a: &ChatInformRow, b: &ChatInformRow) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    if a.permanent != b.permanent {
+        return if a.permanent {
+            Ordering::Less
+        } else {
+            Ordering::Greater
+        };
+    }
+    by_posting_order(a, b)
 }
 
 /// Repository over a borrowed connection.
@@ -264,8 +333,10 @@ impl<'c> ChatInformsRepository<'c> {
     // Reads
     // ========================================================================
 
-    /// v4 `findPendingForParticipant` — every pending row owed to one seat,
-    /// oldest first. This is what the prompt path delivers.
+    /// v4 `findPendingForParticipant` — every row still in force for one seat,
+    /// in delivery order: standing rows (whether or not they have been
+    /// delivered before), then unconsumed one-shot rows, each oldest first.
+    /// This is what the prompt path delivers.
     pub fn find_pending_for_participant(
         &self,
         chat_id: &str,
@@ -277,11 +348,11 @@ impl<'c> ChatInformsRepository<'c> {
         let mut out: Vec<ChatInformRow> = Vec::new();
         for r in rows {
             let r = r?;
-            if r.consumed_at.is_none() {
+            if is_inform_in_force(&r) {
                 out.push(r);
             }
         }
-        out.sort_by(by_created_at_then_id);
+        out.sort_by(by_delivery_order);
         Ok(out)
     }
 
@@ -314,13 +385,14 @@ impl<'c> ChatInformsRepository<'c> {
                 out.push(r);
             }
         }
-        out.sort_by(by_created_at_then_id);
+        out.sort_by(by_delivery_order);
         Ok(out)
     }
 
-    /// v4 `findPendingBatches` — the chat's pending rows folded back into the
-    /// batches they were posted as, one entry per post carrying the seats still
-    /// owed it. Drives the composer's pending chip.
+    /// v4 `findPendingBatches` — the chat's rows still in force folded back into
+    /// the batches they were posted as, one entry per post carrying the seats
+    /// still owed it (every target, for a standing batch). Drives the
+    /// composer's pending chip. Sorted in POSTING order, not delivery order.
     ///
     /// The fold walks the rows in sorted order and keeps first-seen wins for the
     /// body/`createdAt`/`recordMessageId`, appending each later row's
@@ -336,11 +408,11 @@ impl<'c> ChatInformsRepository<'c> {
         let mut pending: Vec<ChatInformRow> = Vec::new();
         for r in rows {
             let r = r?;
-            if r.consumed_at.is_none() {
+            if is_inform_in_force(&r) {
                 pending.push(r);
             }
         }
-        pending.sort_by(by_created_at_then_id);
+        pending.sort_by(by_posting_order);
 
         let mut batches: Vec<PendingInformBatch> = Vec::new();
         let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
@@ -355,6 +427,7 @@ impl<'c> ChatInformsRepository<'c> {
                 content_markdown: row.content_markdown,
                 created_at: row.created_at,
                 record_message_id: row.record_message_id,
+                permanent: row.permanent,
                 pending_participant_ids: vec![row.participant_id],
             });
         }
@@ -398,8 +471,8 @@ impl<'c> ChatInformsRepository<'c> {
         self.conn.execute(
             "INSERT INTO chat_informs \
                (id, chatId, batchId, participantId, contentMarkdown, recordMessageId, \
-                createdAt, updatedAt, consumedAt, consumedByMessageId) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                permanent, createdAt, updatedAt, consumedAt, consumedByMessageId) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
                 data.id,
                 data.chat_id,
@@ -407,6 +480,7 @@ impl<'c> ChatInformsRepository<'c> {
                 data.participant_id,
                 data.content_markdown,
                 data.record_message_id,
+                data.permanent,
                 data.created_at,
                 data.updated_at,
                 data.consumed_at,
@@ -417,8 +491,9 @@ impl<'c> ChatInformsRepository<'c> {
     }
 
     /// v4 `createBatch` — mint ONE `batchId` and one row per target, all
-    /// carrying the same body, all pending. Returns the created rows in target
-    /// order.
+    /// carrying the same body, all pending. `permanent` makes it a standing
+    /// inform for this chat (v4 `params.permanent === true`, written on every
+    /// row). Returns the created rows in target order.
     ///
     /// The single batch id across many rows is the whole design: it is what
     /// cancel addresses and what the composer chip folds on.
@@ -436,6 +511,7 @@ impl<'c> ChatInformsRepository<'c> {
         content_markdown: &str,
         participant_ids: &[String],
         record_message_id: Option<&str>,
+        permanent: bool,
     ) -> Result<Vec<ChatInformRow>, DbError> {
         let batch_id = uuid::Uuid::new_v4().to_string();
         let mut created = Vec::with_capacity(participant_ids.len());
@@ -448,6 +524,7 @@ impl<'c> ChatInformsRepository<'c> {
                 participant_id: participant_id.clone(),
                 content_markdown: content_markdown.to_string(),
                 record_message_id: record_message_id.map(str::to_string),
+                permanent,
                 created_at: now.clone(),
                 updated_at: now,
                 consumed_at: None,
@@ -460,6 +537,7 @@ impl<'c> ChatInformsRepository<'c> {
                 participant_id: row.participant_id.clone(),
                 content_markdown: row.content_markdown.clone(),
                 record_message_id: row.record_message_id.clone(),
+                permanent,
                 created_at: row.created_at.clone(),
                 updated_at: row.updated_at.clone(),
                 consumed_at: None,
@@ -475,6 +553,7 @@ impl<'c> ChatInformsRepository<'c> {
             batch_id,
             target_count = created.len(),
             record_message_id,
+            permanent,
             "Inform batch created",
         );
 
@@ -482,7 +561,9 @@ impl<'c> ChatInformsRepository<'c> {
     }
 
     /// v4 `markConsumed` — mark exactly these rows consumed by `message_id`,
-    /// returning how many rows moved.
+    /// returning how many rows moved. On a standing row this stamps its first
+    /// delivery and leaves it in force; `build_inform_block` only hands over
+    /// rows not yet stamped, so a later turn never moves the stamp.
     ///
     /// Called once a generation has produced a **persisted** assistant message —
     /// never from context building, so a provider failure that saves nothing
@@ -517,14 +598,16 @@ impl<'c> ChatInformsRepository<'c> {
         Ok(count)
     }
 
-    /// v4 `deletePendingByBatch` — cancel: drop only the rows nobody has had
-    /// yet. A seat that already read the passage keeps its consumed row, so a
-    /// later swipe of that turn still re-applies it.
+    /// v4 `deletePendingByBatch` — cancel: drop every row still in force — the
+    /// one-shot rows nobody has had yet, and every row of a standing batch
+    /// (withdrawing it is the only way it ends). A seat that already consumed a
+    /// one-shot passage keeps its row, so a later swipe of that turn still
+    /// re-applies it.
     pub fn delete_pending_by_batch(&self, batch_id: &str) -> Result<usize, DbError> {
         let rows = self.find_by_batch_id(batch_id)?;
         let mut count = 0usize;
         for row in rows {
-            if row.consumed_at.is_some() {
+            if !is_inform_in_force(&row) {
                 continue;
             }
             count += self
@@ -542,7 +625,10 @@ impl<'c> ChatInformsRepository<'c> {
     }
 
     /// v4 `deletePendingForParticipant` — a seat has left the chat: it can never
-    /// collect what it was owed.
+    /// collect what it was owed, standing or not. No code of its own moved at
+    /// `52d6e7ecd`: it reads through [`Self::find_pending_for_participant`],
+    /// so it inherits the in-force predicate and now also removes the seat's
+    /// DELIVERED standing rows.
     pub fn delete_pending_for_participant(
         &self,
         chat_id: &str,
@@ -581,5 +667,205 @@ impl<'c> ChatInformsRepository<'c> {
                 .execute("DELETE FROM chat_informs WHERE id = ?1", params![row.id])?;
         }
         Ok(count)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn conn() -> Connection {
+        let c = Connection::open_in_memory().unwrap();
+        ensure_chat_informs_table(&c).unwrap();
+        c
+    }
+
+    fn plant(c: &Connection, id: &str, batch: &str, seat: &str, at: &str, permanent: bool) {
+        ChatInformsRepository::new(c)
+            .create(&ChatInformCreate {
+                id: id.into(),
+                chat_id: "c1".into(),
+                batch_id: batch.into(),
+                participant_id: seat.into(),
+                content_markdown: format!("body {id}"),
+                record_message_id: None,
+                permanent,
+                created_at: at.into(),
+                updated_at: at.into(),
+                consumed_at: None,
+                consumed_by_message_id: None,
+            })
+            .unwrap();
+    }
+
+    fn ids(rows: &[ChatInformRow]) -> Vec<&str> {
+        rows.iter().map(|r| r.id.as_str()).collect()
+    }
+
+    /// The table DDL is byte-identical to the D23 dump's two `chat_informs`
+    /// statements once SQLite's own `IF NOT EXISTS` strip is applied — which is
+    /// exactly what `sqlite_master` stores for a fresh-provisioned table.
+    #[test]
+    fn the_table_ddl_matches_the_d23_dump() {
+        let dump: serde_json::Value =
+            serde_json::from_str(include_str!("../services/provisioning/fresh_schema.json"))
+                .unwrap();
+        let main: Vec<&str> = dump["main"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .filter(|s| s.contains("\"chat_informs\""))
+            .collect();
+        let ours: Vec<String> = CHAT_INFORMS_TABLE_DDL
+            .replace(" IF NOT EXISTS", "")
+            .split(";\n")
+            .map(str::to_string)
+            .collect();
+        assert_eq!(main, ours);
+    }
+
+    /// Item 19's census: the in-force predicate lives in ONE function. A read
+    /// or delete that open-codes `consumed_at.is_none()` / `.is_some()` is the
+    /// drift class `52d6e7ecd` closed in v4.
+    #[test]
+    fn the_in_force_predicate_is_never_open_coded() {
+        let src = include_str!("chat_informs.rs");
+        let prod = src.split("#[cfg(test)]").next().unwrap();
+        let needle_none = concat!("consumed_at", ".is_none()");
+        let needle_some = concat!("consumed_at", ".is_some()");
+        assert_eq!(
+            prod.matches(needle_none).count(),
+            1,
+            "only is_inform_in_force"
+        );
+        assert_eq!(prod.matches(needle_some).count(), 0);
+        let home = prod.find("pub fn is_inform_in_force").unwrap();
+        let at = prod.find(needle_none).unwrap();
+        assert!(
+            at > home && at < home + 120,
+            "the one use is inside the predicate"
+        );
+    }
+
+    #[test]
+    fn the_seat_read_puts_standing_first_and_keeps_a_delivered_standing_row() {
+        let c = conn();
+        plant(&c, "a", "b1", "p1", "2026-01-01T00:00:00.000Z", false);
+        plant(&c, "b", "b2", "p1", "2026-01-01T00:00:01.000Z", true);
+        plant(&c, "c", "b3", "p1", "2026-01-01T00:00:02.000Z", true);
+        let repo = ChatInformsRepository::new(&c);
+        repo.mark_consumed(&["c".into()], "m1").unwrap();
+        repo.mark_consumed(&["a".into()], "m1").unwrap();
+        // `a` (one-shot, consumed) drops; `c` (standing, delivered) stays.
+        assert_eq!(
+            ids(&repo.find_pending_for_participant("c1", "p1").unwrap()),
+            ["b", "c"]
+        );
+        // The consumed-by read sorts by delivery order too.
+        assert_eq!(
+            ids(&repo
+                .find_consumed_by_messages("c1", "p1", &["m1".into()])
+                .unwrap()),
+            ["c", "a"]
+        );
+    }
+
+    #[test]
+    fn the_batch_read_is_posting_order_and_carries_the_flag() {
+        let c = conn();
+        plant(&c, "a", "b1", "p1", "2026-01-01T00:00:00.000Z", false);
+        plant(&c, "b", "b2", "p1", "2026-01-01T00:00:01.000Z", true);
+        let repo = ChatInformsRepository::new(&c);
+        repo.mark_consumed(&["b".into()], "m1").unwrap();
+        let batches = repo.find_pending_batches("c1").unwrap();
+        let got: Vec<(&str, bool)> = batches
+            .iter()
+            .map(|b| (b.batch_id.as_str(), b.permanent))
+            .collect();
+        assert_eq!(got, [("b1", false), ("b2", true)]);
+    }
+
+    #[test]
+    fn cancel_withdraws_a_standing_batch_whole_and_spares_a_consumed_one_shot() {
+        let c = conn();
+        plant(&c, "s1", "bs", "p1", "2026-01-01T00:00:00.000Z", true);
+        plant(&c, "s2", "bs", "p2", "2026-01-01T00:00:00.000Z", true);
+        plant(&c, "o1", "bo", "p1", "2026-01-01T00:00:00.000Z", false);
+        plant(&c, "o2", "bo", "p2", "2026-01-01T00:00:00.000Z", false);
+        let repo = ChatInformsRepository::new(&c);
+        repo.mark_consumed(&["s1".into(), "o1".into()], "m1")
+            .unwrap();
+        assert_eq!(repo.delete_pending_by_batch("bs").unwrap(), 2);
+        assert_eq!(repo.delete_pending_by_batch("bo").unwrap(), 1);
+        assert_eq!(ids(&repo.find_by_chat_id("c1").unwrap()), ["o1"]);
+    }
+
+    /// §R.4(e): no code hunk, but seat removal now also takes the seat's
+    /// DELIVERED standing row.
+    #[test]
+    fn seat_removal_takes_a_delivered_standing_row() {
+        let c = conn();
+        plant(&c, "s1", "bs", "p1", "2026-01-01T00:00:00.000Z", true);
+        plant(&c, "o1", "bo", "p1", "2026-01-01T00:00:00.000Z", false);
+        let repo = ChatInformsRepository::new(&c);
+        repo.mark_consumed(&["s1".into(), "o1".into()], "m1")
+            .unwrap();
+        assert_eq!(repo.delete_pending_for_participant("c1", "p1").unwrap(), 1);
+        assert_eq!(ids(&repo.find_by_chat_id("c1").unwrap()), ["o1"]);
+    }
+
+    #[test]
+    fn create_batch_writes_the_flag_on_every_row() {
+        let c = conn();
+        let repo = ChatInformsRepository::new(&c);
+        let seats = vec!["p1".to_string(), "p2".to_string()];
+        repo.create_batch("c1", "x", &seats, None, true).unwrap();
+        repo.create_batch("c1", "y", &seats, None, false).unwrap();
+        let flags: Vec<bool> = repo
+            .find_by_chat_id("c1")
+            .unwrap()
+            .iter()
+            .map(|r| r.permanent)
+            .collect();
+        assert_eq!(flags, [true, true, false, false]);
+    }
+
+    /// A NULL cell (permitted by generateDDL's nullable shape) reads `false`,
+    /// as v4's Zod default makes of it; `row_to_json` emits the flag in schema
+    /// order, never omitted.
+    #[test]
+    fn a_null_flag_reads_false_and_the_json_carries_it_in_schema_order() {
+        let c = conn();
+        c.execute(
+            "INSERT INTO chat_informs (id, chatId, batchId, participantId, contentMarkdown, \
+               permanent, createdAt, updatedAt) VALUES ('n', 'c1', 'b', 'p', 'x', NULL, 't', 't')",
+            [],
+        )
+        .unwrap();
+        let row = ChatInformsRepository::new(&c)
+            .find_by_chat_id("c1")
+            .unwrap()
+            .remove(0);
+        assert!(!row.permanent);
+        let keys: Vec<String> = row_to_json(&row)
+            .as_object()
+            .unwrap()
+            .keys()
+            .cloned()
+            .collect();
+        assert_eq!(
+            keys,
+            [
+                "id",
+                "chatId",
+                "batchId",
+                "participantId",
+                "contentMarkdown",
+                "permanent",
+                "createdAt",
+                "updatedAt"
+            ]
+        );
     }
 }

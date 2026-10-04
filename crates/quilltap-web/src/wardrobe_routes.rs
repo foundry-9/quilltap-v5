@@ -521,7 +521,9 @@ pub async fn chat_action_post(
             match crate::request_envelope::request_envelope(
                 "chatInform",
                 &parsed,
-                &["contentMarkdown", "targetParticipantIds"],
+                // P4.D249 (v4 `52d6e7ecd`): `permanent` rides the same
+                // tri-state as its siblings, so `null` is v4's Zod 400 here too.
+                &["contentMarkdown", "targetParticipantIds", "permanent"],
                 &[("chatId", serde_json::Value::String(chat_id))],
             ) {
                 Some(r) => {

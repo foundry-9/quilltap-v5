@@ -274,6 +274,10 @@ const CHAT_INFORMS: &[(&str, F)] = &[
     ("participantId", F::Str),
     ("contentMarkdown", F::Str),
     ("recordMessageId", F::StrOpt),
+    // P4.D249 (v4 `52d6e7ecd`): v4 has NO backup hunk — it serializes whole
+    // parsed rows, so the flag rides along in schema order. v5 marshals this
+    // fixed list, so it must name it, at the same position.
+    ("permanent", F::Bool),
     ("createdAt", F::Str),
     ("updatedAt", F::Str),
     ("consumedAt", F::StrOpt),

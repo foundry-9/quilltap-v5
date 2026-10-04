@@ -708,6 +708,18 @@
       "participantId": "aa0a0006-0000-4000-8000-0000000000a6",
       "contentMarkdown": "Pending here too.",
       "createdAt": "2026-01-02T03:04:05.600Z"
+    },
+    {
+      "id": "aa0c0007-0000-4000-8000-000000000007",
+      "chatId": "aa000005-0000-4000-8000-000000000005",
+      "batchId": "aa0d0007-0000-4000-8000-000000000007",
+      "participantId": "aa0a0005-0000-4000-8000-0000000000a5",
+      "contentMarkdown": "Standing: you are, and remain, the ship's cat.",
+      "createdAt": "2026-01-02T03:04:05.700Z",
+      "consumedAt": "2026-01-02T03:04:07.000Z",
+      "consumedByMessageId": "aa0f0005-0000-4000-8000-0000000000f5",
+      "permanent": true,
+      "_comment": "P4.D249 (v4 52d6e7ecd): a STANDING row, posted LAST and first delivered by a message OUTSIDE the swipe group — v4 now reads the seat's in-force set on a swipe too, so it rides the re-roll anyway, AHEAD of the re-applied rows."
     }
   ]
 }

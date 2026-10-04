@@ -3948,6 +3948,13 @@ pub enum Request {
         content_markdown: Option<Option<serde_json::Value>>,
         #[serde(default, deserialize_with = "double_option")]
         target_participant_ids: Option<Option<serde_json::Value>>,
+        /// P4.D249 (v4 `52d6e7ecd`): a standing inform. v4's
+        /// `permanent: z.boolean().optional().default(false)` — OPTIONAL but
+        /// NOT nullable, so an explicit `null` is a Zod 400 where an absent key
+        /// is `false`. The same tri-state, for the same reason: a plain
+        /// `Option<bool>` would read `null` as absent and post the inform.
+        #[serde(default, deserialize_with = "double_option")]
+        permanent: Option<Option<serde_json::Value>>,
     },
     /// `GET /api/v1/chats/{id}?action=informs` — the pending batches, for the
     /// composer's chip. No body, so nothing to tri-state.

@@ -246,6 +246,9 @@ fn plant_informs(db: &Db) {
                         format!("Pending passage {n}.")
                     },
                     record_message_id: None,
+                    // P4.D249: ONE standing row (the oracle's
+                    // `permanent: n === 1 && consumed`).
+                    permanent: n == 1 && consumed,
                     created_at: "2026-01-02T00:00:00.000Z".into(),
                     updated_at: if consumed {
                         "2026-01-03T00:00:00.000Z".into()

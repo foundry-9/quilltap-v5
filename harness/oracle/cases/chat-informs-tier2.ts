@@ -46,6 +46,7 @@ interface Op {
   contentMarkdown?: string;
   participantIds?: string[];
   recordMessageId?: string | null;
+  permanent?: boolean;
   ids?: string[];
   messageId?: string;
 }
@@ -117,6 +118,9 @@ async function main(): Promise<void> {
           contentMarkdown: op.contentMarkdown!,
           participantIds: op.participantIds!,
           recordMessageId: op.recordMessageId ?? null,
+          // P4.D249: passed only when the op names it, so the default leg
+          // is v4's own `params.permanent === true` on an absent key.
+          ...(op.permanent === undefined ? {} : { permanent: op.permanent }),
         });
         break;
       case 'markConsumed':

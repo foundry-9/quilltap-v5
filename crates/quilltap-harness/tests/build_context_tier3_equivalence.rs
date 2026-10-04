@@ -1071,12 +1071,24 @@ async fn build_context_tier3_matches_oracle() {
         if let Some(prior) = prior_chat_type {
             set_chat_type(&db, &spec.chat.id, prior).await;
         }
-        // P4.106 item 7: ONE per-seat `chat_informs` read per turn — the inform
-        // block's (pending on a fresh turn, consumed on a swipe; the two share
-        // their SQL) — and NONE when there is no responding seat (v4 gates the
-        // read on `respondingParticipant`). No other `chat_informs` statement.
+        // P4.106 item 7: ONE per-seat `chat_informs` read per fresh turn — the
+        // inform block's in-force read — and NONE when there is no responding
+        // seat (v4 gates the read on `respondingParticipant`). No other
+        // `chat_informs` statement. P4.D249 (v4 `52d6e7ecd`): a SWIPE now makes
+        // TWO — the in-force read (its standing rows ride the re-roll) and the
+        // consumed read; the two share their SQL, so the count moves by design.
         let (seat_reads, other_reads) = inform_read_counter::take();
-        let want_seat_reads = usize::from(op.responding_participant_id.is_some());
+        let is_swipe = op
+            .regeneration_of_message_ids
+            .as_ref()
+            .is_some_and(|ids| !ids.is_empty());
+        let want_seat_reads = if op.responding_participant_id.is_none() {
+            0
+        } else if is_swipe {
+            2
+        } else {
+            1
+        };
         assert_eq!(
             (seat_reads, other_reads),
             (want_seat_reads, 0),

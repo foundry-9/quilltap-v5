@@ -564,7 +564,9 @@ async function buildMergedExport(
  * `consumedByMessageId` names a message no destination has (v4's reconcile
  * keeps it and clears the anchor); plus, on the first chat only, a PENDING row
  * for a seat that chat does not have (v4 drops it with a named warning —
- * `reconcile.ts` `remapChatInform`). Five rows.
+ * `reconcile.ts` `remapChatInform`). Five rows. P4.D249: the first chat's
+ * consumed row is STANDING (`permanent: true`), so the flag rides the export
+ * bytes and the import remap.
  */
 async function buildChatsInformsExport(
   userId: string,
@@ -596,6 +598,10 @@ async function buildChatsInformsExport(
         participantId,
         contentMarkdown: body,
         recordMessageId: null,
+        // P4.D249 (v4 `52d6e7ecd`): ONE standing row — the first chat's
+        // consumed one. v4's writer exports the flag and `remapChatInform`
+        // keeps it (`inform.permanent === true`); v5's import must too.
+        permanent: id === '1d000012-0000-4000-8000-000000000002',
         consumedAt: consumedBy ? '2026-01-03T00:00:00.000Z' : null,
         consumedByMessageId: consumedBy,
       } as never,

@@ -20,12 +20,21 @@
 //! seat's next attempt. `mark_consumed` is called by the finalizer, against a
 //! *persisted* assistant message id — never from here.
 //!
+//! A **standing** inform (`permanent: true`, P4.D249 / v4 `52d6e7ecd`) is the
+//! exception to "consumed once": it rides every generation the seat makes in
+//! this chat until the operator withdraws it. Standing passages lead the block
+//! (they are the same turn after turn, so the block's front stays stable for
+//! prefix caches), and only a standing row that has never been delivered is
+//! handed back for consumption — which stamps its first delivery without
+//! retiring it.
+//!
 //! A swipe is the one case that reads consumed rows. Re-rolling a past line has
 //! to see exactly the informs that line's generation saw, so the caller passes
 //! `regeneration_of_message_ids` (the target message plus every id in its swipe
 //! group) and gets those rows back. Pending rows are deliberately NOT delivered
 //! to a swipe — a swipe re-rolls a past line, and it would be surprising for a
-//! brand-new inform to land there and vanish.
+//! brand-new inform to land there and vanish. Standing rows ARE delivered to a
+//! swipe: they are in force for every prompt from now on, and a swipe is one.
 //!
 //! Nothing else reads `chat_informs` on the prompt path.
 
@@ -39,7 +48,8 @@ pub const INFORM_BLOCK_SEPARATOR: &str = "\n\n---\n\n";
 pub struct InformBlock {
     /// The assembled system block, or `None` when there is nothing to deliver.
     pub content: Option<String>,
-    /// The rows this block carried, for the finalizer to consume. **Empty on a
+    /// The rows this block carried that the finalizer should consume: every
+    /// one-shot row, and any standing row not yet delivered. **Empty on a
     /// swipe.**
     pub row_ids: Vec<String>,
     /// How many non-empty passages the block joined — v4's `passages` debug
@@ -55,8 +65,10 @@ pub struct InformBlock {
 /// what keeps the cache-determinism golden and the provider prompt caches
 /// intact.
 ///
-/// `regeneration_of_message_ids` non-empty selects the swipe arm: consumed rows
-/// for those messages, and **no row ids at all**. v4 returns the empty list
+/// The seat's in-force rows are read on EVERY call (a swipe too — two seat
+/// reads on a swipe, as v4). `regeneration_of_message_ids` non-empty selects
+/// the swipe arm: every standing row now in force, then the rows those
+/// messages consumed (de-duplicated), and **no row ids at all**. v4 returns the empty list
 /// rather than relying on the caller to ignore them, "makes that impossible to
 /// get wrong by accident" — kept.
 ///
@@ -73,16 +85,30 @@ pub fn build_inform_block(
     let chat = chat_id.to_string();
     let participant = participant_id.to_string();
     let ids: Vec<String> = regeneration_of_message_ids.unwrap_or(&[]).to_vec();
-    let rows = db
-        .read_main(move |conn| {
-            let repo = crate::db::chat_informs::ChatInformsRepository::new(conn);
-            if is_swipe {
-                repo.find_consumed_by_messages(&chat, &participant, &ids)
-            } else {
-                repo.find_pending_for_participant(&chat, &participant)
-            }
-        })
-        .unwrap_or_default();
+    // Each read is its own v4 fallback: a failed in-force read still lets a
+    // swipe re-apply what it consumed, and vice versa. Both read through
+    // `findByFilter`, whose own `safeQuery` logs `Error finding entities by
+    // filter {collection, error}` and answers `[]` before the method's outer
+    // `safeQuery` can (`base.repository.ts:283-297`) — `db::fallback`'s line.
+    use crate::db::fallback::find_by_filter_or_empty;
+    let read =
+        |f: &dyn Fn(
+            &crate::db::chat_informs::ChatInformsRepository<'_>,
+        )
+            -> Result<Vec<crate::db::chat_informs::ChatInformRow>, crate::db::DbError>| {
+            find_by_filter_or_empty("chat_informs", || {
+                db.read_main(|conn| f(&crate::db::chat_informs::ChatInformsRepository::new(conn)))
+            })
+        };
+    let in_force = read(&|repo| repo.find_pending_for_participant(&chat, &participant));
+    let rows = if is_swipe {
+        merge_for_swipe(
+            read(&|repo| repo.find_consumed_by_messages(&chat, &participant, &ids)),
+            in_force.into_iter().filter(|r| r.permanent).collect(),
+        )
+    } else {
+        in_force
+    };
 
     if rows.is_empty() {
         tracing::debug!(
@@ -91,6 +117,7 @@ pub fn build_inform_block(
             participant_id,
             pending = 0,
             reapplied = 0,
+            standing = 0,
             "[Inform] No inform block for this turn",
         );
         return InformBlock::default();
@@ -98,17 +125,57 @@ pub fn build_inform_block(
 
     let block = assemble_inform_block(&rows, is_swipe);
     if block.content.is_some() {
+        let counts = inform_counts(&rows, is_swipe);
         tracing::debug!(
             target: "quilltap::inform",
             chat_id,
             participant_id,
-            pending = if is_swipe { 0 } else { rows.len() },
-            reapplied = if is_swipe { rows.len() } else { 0 },
+            pending = counts.pending,
+            reapplied = counts.reapplied,
+            standing = counts.standing,
             passages = block.passage_count,
             "[Inform] Built inform block",
         );
     }
     block
+}
+
+/// The three row counts of v4's `[Inform] Built inform block` debug line.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct InformCounts {
+    pub pending: usize,
+    pub reapplied: usize,
+    pub standing: usize,
+}
+
+/// v4's debug arithmetic over the selected rows: standing rows are counted on
+/// their own and subtracted from whichever of `pending` / `reapplied` the turn
+/// is (`isSwipe ? 0 : rows.length - standing`, and its mirror).
+pub fn inform_counts(
+    rows: &[crate::db::chat_informs::ChatInformRow],
+    is_swipe: bool,
+) -> InformCounts {
+    let standing = rows.iter().filter(|r| r.permanent).count();
+    let rest = rows.len() - standing;
+    InformCounts {
+        pending: if is_swipe { 0 } else { rest },
+        reapplied: if is_swipe { rest } else { 0 },
+        standing,
+    }
+}
+
+/// v4 `mergeForSwipe` — a swipe's rows: what the re-rolled generation consumed,
+/// plus every standing row now in force, standing first and without duplicates
+/// (a standing row's first delivery may have been the very message being
+/// swiped).
+pub fn merge_for_swipe(
+    reapplied: Vec<crate::db::chat_informs::ChatInformRow>,
+    standing: Vec<crate::db::chat_informs::ChatInformRow>,
+) -> Vec<crate::db::chat_informs::ChatInformRow> {
+    let seen: std::collections::HashSet<String> = standing.iter().map(|r| r.id.clone()).collect();
+    let mut out = standing;
+    out.extend(reapplied.into_iter().filter(|r| !seen.contains(&r.id)));
+    out
 }
 
 /// Which set the block reads (v4 `isSwipe`): a regeneration list that is present
@@ -147,12 +214,77 @@ pub fn assemble_inform_block(
     InformBlock {
         content: Some(bodies.join(INFORM_BLOCK_SEPARATOR)),
         // A swipe never consumes: the caller ignores these, but returning an
-        // empty list makes that impossible to get wrong by accident.
+        // empty list makes that impossible to get wrong by accident. Off a
+        // swipe, a standing row already delivered is left out so its
+        // first-delivery stamp never moves.
         row_ids: if is_swipe {
             Vec::new()
         } else {
-            rows.iter().map(|r| r.id.clone()).collect()
+            rows.iter()
+                .filter(|r| r.consumed_at.is_none())
+                .map(|r| r.id.clone())
+                .collect()
         },
         passage_count: bodies.len(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! The fallback line (P4.D249 Tier 2 item 18): v4's seat reads go through
+    //! `findByFilter`, so a broken `chat_informs` logs `Error finding entities
+    //! by filter {collection, error}` — once per read — and the turn proceeds
+    //! with no block.
+
+    use super::*;
+    use crate::db::runtime::{Db, DbPaths};
+    use crate::test_support::captured_with;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    fn db_without_the_table(dir: &tempfile::TempDir) -> Db {
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
+        let db = Db::open(
+            DbPaths {
+                main: data.join("quilltap.db"),
+                mount_index: None,
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        db.write_blocking(|w| {
+            w.main()
+                .connection()
+                .execute_batch("DROP TABLE chat_informs")?;
+            Ok::<_, crate::db::DbError>(())
+        })
+        .unwrap();
+        db
+    }
+
+    #[test]
+    fn a_broken_table_logs_v4s_filter_line_per_read_and_delivers_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = db_without_the_table(&dir);
+        for (ids, want_lines) in [(None, 1usize), (Some(vec!["m1".to_string()]), 2usize)] {
+            let (block, lines) =
+                captured_with(|| build_inform_block(&db, "c1", "p1", ids.as_deref()));
+            assert_eq!(block, InformBlock::default());
+            let hits: Vec<&String> = lines
+                .iter()
+                .filter(|l| l.contains("Error finding entities by filter"))
+                .collect();
+            assert_eq!(hits.len(), want_lines, "one line per seat read: {lines:#?}");
+            assert!(hits[0].starts_with("ERROR"), "{}", hits[0]);
+            assert!(hits[0].contains("collection=chat_informs"), "{}", hits[0]);
+            assert!(
+                hits[0].contains("no such table: chat_informs"),
+                "{}",
+                hits[0]
+            );
+        }
     }
 }

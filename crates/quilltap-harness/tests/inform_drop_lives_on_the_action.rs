@@ -79,6 +79,7 @@ fn row(id: &str, chat_id: &str, participant_id: &str, consumed: Option<&str>) ->
         participant_id: participant_id.to_string(),
         content_markdown: "The clock in the hall has stopped.".to_string(),
         record_message_id: None,
+        permanent: false,
         created_at: "2026-05-01T00:00:00.000Z".to_string(),
         updated_at: "2026-05-01T00:00:00.000Z".to_string(),
         consumed_at: consumed.map(str::to_string),

@@ -4266,6 +4266,7 @@
             "participantId": "inf-part",
             "contentMarkdown": "You notice the clock has stopped.",
             "recordMessageId": "inf-record-msg",
+            "permanent": true,
             "consumedAt": "2026-01-01T00:00:00.000Z",
             "consumedByMessageId": "inf-consumed-msg"
           },

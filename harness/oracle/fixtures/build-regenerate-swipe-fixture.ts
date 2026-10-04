@@ -99,6 +99,8 @@ interface Spec {
     createdAt: string;
     consumedAt?: string | null;
     consumedByMessageId?: string | null;
+    /** P4.D249: a standing inform (absent = the schema default, false). */
+    permanent?: boolean;
   }>;
 }
 
@@ -316,6 +318,7 @@ async function main(): Promise<void> {
           participantId: row.participantId,
           contentMarkdown: row.contentMarkdown,
           recordMessageId: null,
+          ...(row.permanent === undefined ? {} : { permanent: row.permanent }),
           consumedAt: row.consumedAt ?? null,
           consumedByMessageId: row.consumedByMessageId ?? null,
         } as never,

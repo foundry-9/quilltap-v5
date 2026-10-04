@@ -27,6 +27,15 @@
 //! | `createBatch({contentMarkdown})` | the created rows' `contentMarkdown` |
 //! | `createBatch({recordMessageId})` | the created rows' `recordMessageId` (tokenized) |
 //! | `chats.deleteMessagesByIds` called | the record message row is GONE |
+//! | `createBatch({permanent})` (P4.D249) | the created rows' `permanent` |
+//!
+//! **P4.D249 (v4 `52d6e7ecd`)** adds the standing arms: a standing post and an
+//! explicit `false`, the three Zod refusals of a non-boolean `permanent`
+//! (`null` included — `.optional()`, not `.nullable()`), a standing batch
+//! listed, and a standing batch cancelled whole. The oracle's mocked
+//! `findPendingBatches` answers carry `permanent` the way v4's real repository
+//! now writes it. Red-first from the oracle at both pins: 10 of 24 cases move
+//! between `e5c6bd0c0` and `52d6e7ecd`.
 //!
 //! `batchId` and the record message id are minted on both sides, so both are
 //! tokenized before the diff; every other byte is compared exactly.
@@ -242,6 +251,7 @@ fn chat_informs_routes_match_oracle() {
             &missing_chat,
             &Some(Some(json!(body))),
             &Some(None),
+            &None,
         ));
         let (st, b) = body_of(&resp);
         compare("inform: 404s when the chat is gone", st, b, effects_none());
@@ -269,6 +279,7 @@ fn chat_informs_routes_match_oracle() {
             &chat,
             &Some(Some(json!(body))),
             &t,
+            &None,
         ));
         let (st, b) = body_of(&resp);
         let eff = observed_effects(&db, &chat, b["batchId"].as_str());
@@ -289,6 +300,7 @@ fn chat_informs_routes_match_oracle() {
             &chat,
             &Some(Some(json!(body))),
             &Some(Some(targets)),
+            &None,
         ));
         let (st, b) = body_of(&resp);
         // A refusal creates nothing, so there is no batch to scope to.
@@ -304,6 +316,7 @@ fn chat_informs_routes_match_oracle() {
             &chat,
             &Some(Some(json!(body))),
             &Some(None),
+            &None,
         ));
         let (st, b) = body_of(&resp);
         compare("inform: 400 when no LLM seat exists", st, b, effects_none());
@@ -316,6 +329,7 @@ fn chat_informs_routes_match_oracle() {
             &chat,
             &Some(Some(json!(format!("  {body}  \n")))),
             &Some(None),
+            &None,
         ));
         let (st, b) = body_of(&resp);
         let eff = observed_effects(&db, &chat, b["batchId"].as_str());
@@ -381,9 +395,96 @@ fn chat_informs_routes_match_oracle() {
         );
     }
 
+    // ---- P4.D249: standing informs -----------------------------------------
+
+    for (label, flag) in [
+        ("inform: a standing post carries permanent", json!(true)),
+        ("inform: an explicit permanent false", json!(false)),
+    ] {
+        let (db, _s) = fresh_db(&fixture, &pepper, "inform_standing");
+        let resp = rt.block_on(chat_informs::chat_inform(
+            &db,
+            &chat,
+            &Some(Some(json!(body))),
+            &Some(Some(json!([alice]))),
+            &Some(Some(flag)),
+        ));
+        let (st, b) = body_of(&resp);
+        let eff = observed_effects(&db, &chat, b["batchId"].as_str());
+        compare(label, st, b, eff);
+    }
+
+    for (label, raw) in [
+        ("inform: 400 on a permanent that is null", None),
+        (
+            "inform: 400 on a permanent that is a string",
+            Some(json!("yes")),
+        ),
+        (
+            "inform: 400 on a permanent that is a number",
+            Some(json!(1)),
+        ),
+    ] {
+        let (db, _s) = fresh_db(&fixture, &pepper, "inform_permanent_400");
+        let resp = rt.block_on(chat_informs::chat_inform(
+            &db,
+            &chat,
+            &Some(Some(json!(body))),
+            &Some(None),
+            &Some(raw),
+        ));
+        let (st, b) = match &resp {
+            // v4's `validationError(zodError)` — `{ error, details }`.
+            Response::Error(e) if e.kind == quilltap_core::api::types::ErrorKind::BadRequest => (
+                400,
+                json!({ "error": e.message, "details": e.details.as_deref().cloned().unwrap_or(Value::Null) }),
+            ),
+            _ => body_of(&resp),
+        };
+        compare(label, st, b, effects_none());
+    }
+
+    {
+        // v4's case mocks one standing batch owed to both LLM seats; v5 reads
+        // the room, so the copy's seeded rows are swapped for exactly that
+        // batch — Alice's row already delivered (a standing row stays listed),
+        // Bob's not.
+        let (db, _s) = fresh_db(&fixture, &pepper, "informs_standing");
+        replace_informs(
+            &db,
+            &chat,
+            &[
+                standing_row("aa000000-0000-4000-8000-0000000000b1", &chat, &alice, true),
+                standing_row("aa000000-0000-4000-8000-0000000000b2", &chat, &bob, false),
+            ],
+        );
+        let resp = rt.block_on(chat_informs::chat_informs_list(&db, &chat));
+        let (st, b) = body_of(&resp);
+        compare("informs: a standing batch", st, b, effects_none());
+    }
+
+    {
+        let (db, _s) = fresh_db(&fixture, &pepper, "cancel_standing");
+        replace_informs(
+            &db,
+            &chat,
+            &[
+                standing_row("aa000000-0000-4000-8000-0000000000b1", &chat, &alice, true),
+                standing_row("aa000000-0000-4000-8000-0000000000b2", &chat, &bob, false),
+            ],
+        );
+        let resp = rt.block_on(chat_informs::chat_inform_cancel(
+            &db,
+            &chat,
+            &Some(Some(json!(STANDING_BATCH))),
+        ));
+        let (st, b) = body_of(&resp);
+        compare("cancel: a standing batch goes whole", st, b, effects_none());
+    }
+
     assert!(
-        checked >= 12,
-        "expected at least twelve route cases to run; ran {checked}"
+        checked >= 19,
+        "expected at least nineteen route cases to run; ran {checked}"
     );
     eprintln!("OK: chat_informs routes matched oracle ({checked} cases).");
 }
@@ -433,6 +534,7 @@ fn oracle_effects(calls: &Value) -> Value {
         "recordBody": record_body,
         "createBatchTargets": calls["createBatchTargets"].clone(),
         "createBatchBody": calls["createBatchBody"].clone(),
+        "createBatchPermanent": calls["createBatchPermanent"].clone(),
     })
 }
 
@@ -442,6 +544,7 @@ fn effects_none() -> Value {
         "recordBody": Value::Null,
         "createBatchTargets": Value::Null,
         "createBatchBody": Value::Null,
+        "createBatchPermanent": Value::Null,
     })
 }
 
@@ -512,6 +615,7 @@ fn observed_effects(db: &Db, chat_id: &str, batch: Option<&str>) -> Value {
         "recordBody": record_body,
         "createBatchTargets": targets,
         "createBatchBody": body,
+        "createBatchPermanent": rows[0].permanent,
     })
 }
 
@@ -542,4 +646,50 @@ fn strip_llm_seats(db: &Db, chat_id: &str, seats: &[String]) {
         Ok::<_, quilltap_core::db::DbError>(())
     })
     .expect("strip llm seats");
+}
+
+/// The standing batch the P4.D249 arms plant (minted on v4's mocked side as
+/// `BATCH_ID`; tokenized either way).
+const STANDING_BATCH: &str = "3f1c9f4a-1111-4a2b-9c3d-0000000000bb";
+
+/// One row of the planted standing batch, at v4's mocked `createdAt`.
+fn standing_row(
+    id: &str,
+    chat: &str,
+    seat: &str,
+    delivered: bool,
+) -> quilltap_core::db::chat_informs::ChatInformCreate {
+    quilltap_core::db::chat_informs::ChatInformCreate {
+        id: id.into(),
+        chat_id: chat.into(),
+        batch_id: STANDING_BATCH.into(),
+        participant_id: seat.into(),
+        content_markdown: "Keep the lighthouse in mind.".into(),
+        record_message_id: Some("3f1c9f4a-1111-4a2b-9c3d-0000000000bf".into()),
+        permanent: true,
+        created_at: "2026-01-01T21:16:00.000Z".into(),
+        updated_at: "2026-01-01T21:16:00.000Z".into(),
+        consumed_at: delivered.then(|| "2026-01-01T21:20:00.000Z".into()),
+        consumed_by_message_id: delivered.then(|| "3f1c9f4a-1111-4a2b-9c3d-0000000000c1".into()),
+    }
+}
+
+/// Replace the copy's seeded inform rows for `chat_id` with `rows`.
+fn replace_informs(
+    db: &Db,
+    chat_id: &str,
+    rows: &[quilltap_core::db::chat_informs::ChatInformCreate],
+) {
+    let cid = chat_id.to_string();
+    let rows = rows.to_vec();
+    db.write_blocking(move |ws| {
+        let repo =
+            quilltap_core::db::chat_informs::ChatInformsRepository::new(ws.main().connection());
+        repo.delete_by_chat_id(&cid)?;
+        for r in &rows {
+            repo.create(r)?;
+        }
+        Ok::<_, quilltap_core::db::DbError>(())
+    })
+    .expect("replace informs");
 }

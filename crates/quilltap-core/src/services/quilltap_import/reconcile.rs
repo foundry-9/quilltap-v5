@@ -905,6 +905,10 @@ pub fn remap_chat_inform(
             participant_id,
             content_markdown: s("contentMarkdown").unwrap_or_default(),
             record_message_id,
+            // Bundles written before standing informs existed carry no flag.
+            // v4 `inform.permanent === true`: a JSON `true` only — a missing
+            // key, `false`, `1` or `"true"` all import as a one-shot.
+            permanent: inform.get("permanent") == Some(&serde_json::Value::Bool(true)),
             created_at: now.clone(),
             updated_at: now,
             consumed_at: s("consumedAt"),

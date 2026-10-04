@@ -76,7 +76,8 @@ fn participants_of(chat: &Value) -> Vec<Value> {
 fn parse_inform(
     content_markdown: &Option<Option<Value>>,
     target_participant_ids: &Option<Option<Value>>,
-) -> Result<(String, Option<Vec<String>>), Value> {
+    permanent: &Option<Option<Value>>,
+) -> Result<(String, Option<Vec<String>>, bool), Value> {
     let mut issues: Vec<Value> = Vec::new();
 
     // `contentMarkdown: z.string().min(1)`.
@@ -167,8 +168,29 @@ fn parse_inform(
         },
     };
 
+    // `permanent: z.boolean().optional().default(false)` (P4.D249, v4
+    // `52d6e7ecd`). Absent → `false`; a boolean is honoured; an explicit `null`
+    // or any non-boolean is an `invalid_type` issue — `.optional()` admits
+    // `undefined` only, and `.default()` fills nothing but `undefined`. Zod
+    // reports issues in schema key order, so this one comes last.
+    let permanent = match permanent {
+        None => false,
+        Some(Some(Value::Bool(b))) => *b,
+        Some(inner) => {
+            issues.push(
+                ZodIssue::invalid_type(
+                    "boolean",
+                    vec![key("permanent")],
+                    Some(inner.as_ref().unwrap_or(&explicit_null)),
+                )
+                .to_value(),
+            );
+            false
+        }
+    };
+
     if issues.is_empty() {
-        Ok((content, targets))
+        Ok((content, targets, permanent))
     } else {
         Err(Value::Array(issues))
     }
@@ -215,13 +237,14 @@ pub async fn chat_inform(
     chat_id: &str,
     content_markdown: &Option<Option<Value>>,
     target_participant_ids: &Option<Option<Value>>,
+    permanent: &Option<Option<Value>>,
 ) -> Response {
     // v4 `informSchema.parse(body)` runs BEFORE the chat read.
-    let (content, requested_targets) = match parse_inform(content_markdown, target_participant_ids)
-    {
-        Ok(v) => v,
-        Err(issues) => return Response::validation_error(issues),
-    };
+    let (content, requested_targets, permanent) =
+        match parse_inform(content_markdown, target_participant_ids, permanent) {
+            Ok(v) => v,
+            Err(issues) => return Response::validation_error(issues),
+        };
 
     let cid = chat_id.to_string();
     let chat = match db.read_main(move |c| crate::db::chats_read::find_by_id(c, &cid)) {
@@ -335,6 +358,7 @@ pub async fn chat_inform(
                 &trimmed,
                 &ids_owned,
                 record_owned.as_deref(),
+                permanent,
             )
         })
         .await
@@ -370,6 +394,7 @@ pub async fn chat_inform(
         target_count = participant_ids.len(),
         audience = if record_targets.is_some() { "whisper" } else { "public" },
         recordMessageIdJson = record_message_id_json.as_str(),
+        permanent,
         "[Chats v1] Inform posted",
     );
 
@@ -380,6 +405,7 @@ pub async fn chat_inform(
             Some(ids) => json!(ids),
             None => Value::Null,
         },
+        "permanent": permanent,
         "message": message.unwrap_or(Value::Null),
     }))
 }
@@ -411,11 +437,14 @@ pub async fn chat_informs_list(db: &Db, chat_id: &str) -> Response {
         .collect();
 
     let cid2 = chat_id.to_string();
-    let all = db
-        .read_main(move |c| {
+    // v4 `findPendingBatches` reads through `findByFilter`, whose own
+    // `safeQuery` logs `Error finding entities by filter` and answers `[]`
+    // first (the outer `Error finding pending inform batches` is unreachable).
+    let all = crate::db::fallback::find_by_filter_or_empty("chat_informs", || {
+        db.read_main(move |c| {
             crate::db::chat_informs::ChatInformsRepository::new(c).find_pending_batches(&cid2)
         })
-        .unwrap_or_default();
+    });
     let total = all.len();
 
     let batches: Vec<Value> = all
@@ -440,6 +469,9 @@ pub async fn chat_informs_list(db: &Db, chat_id: &str) -> Response {
                     Some(id) => Value::String(id),
                     None => Value::Null,
                 },
+                // P4.D249 (v4 `52d6e7ecd`): `findPendingBatches` writes it at
+                // this position and v4's `...batch` spread keeps it there.
+                "permanent": b.permanent,
                 "pendingParticipantIds": pending,
             }))
         })
@@ -458,10 +490,12 @@ pub async fn chat_informs_list(db: &Db, chat_id: &str) -> Response {
 /// `POST ?action=cancel-inform` — withdraw a batch's still-pending targets (v4
 /// `handleCancelInform`).
 ///
-/// A seat that already read the passage keeps its consumed row (a later swipe of
-/// that turn must still re-apply it), and the record stays with it. When nothing
-/// was consumed the record goes too: it would otherwise document something that
-/// never happened.
+/// A seat that already read a one-shot passage keeps its consumed row (a later
+/// swipe of that turn must still re-apply it), and the record stays with it. A
+/// standing batch is withdrawn whole — every row goes, delivered or not, since
+/// withdrawal is the only way it ends (P4.D249, v4 `52d6e7ecd`). Either way,
+/// when nothing was ever delivered the record goes too: it would otherwise
+/// document something that never happened.
 pub async fn chat_inform_cancel(
     db: &Db,
     chat_id: &str,
@@ -479,19 +513,18 @@ pub async fn chat_inform_cancel(
     // `rows.is_empty()` arm below and the operator sees v4's 404 — not a 500.
     // (`safeQuery`'s rethrow leg only arms inside
     // `withStrictRepositoryFailures`, which only the importer enters.)
-    let rows = match db.read_main(move |c| {
-        crate::db::chat_informs::ChatInformsRepository::new(c).find_by_batch_id(&b1)
-    }) {
-        Ok(rows) => rows,
-        Err(e) => {
-            tracing::error!(
-                batch_id = %batch,
-                error = %e,
-                "Error finding informs by batch ID",
-            );
-            Vec::new()
-        }
-    };
+    //
+    // The line is the INNER one: `findByBatchId`'s body is `findByFilter`,
+    // itself `safeQuery(…, 'Error finding entities by filter', {}, [])`
+    // (`base.repository.ts:283-297`), which catches first and answers `[]` — so
+    // v4's outer `Error finding informs by batch ID` is unreachable (measured
+    // at `52d6e7ecd` while porting P4.D249; v5 had logged the outer sentence
+    // since P4.D205).
+    let rows = crate::db::fallback::find_by_filter_or_empty("chat_informs", || {
+        db.read_main(move |c| {
+            crate::db::chat_informs::ChatInformsRepository::new(c).find_by_batch_id(&b1)
+        })
+    });
     if rows.is_empty() {
         return Response::error(ErrorKind::NotFound, "Inform batch not found");
     }
@@ -502,7 +535,10 @@ pub async fn chat_inform_cancel(
         );
     }
 
+    // On a standing row `consumedAt` stamps its first delivery, so this reads
+    // "was it ever delivered to anyone" for both kinds.
     let any_consumed = rows.iter().any(|r| r.consumed_at.is_some());
+    let permanent = rows.iter().any(|r| r.permanent);
     let record_message_id: Option<String> = rows
         .iter()
         .find(|r| r.record_message_id.is_some())
@@ -569,6 +605,7 @@ pub async fn chat_inform_cancel(
         batch_id = %batch,
         removed,
         any_consumed,
+        permanent,
         record_deleted,
         "[Chats v1] Inform cancelled",
     );
@@ -605,7 +642,7 @@ mod zod_rendering_tests {
 
     #[test]
     fn an_absent_content_markdown_is_received_undefined() {
-        let err = parse_inform(&None, &Some(None)).expect_err("an absent key is an issue");
+        let err = parse_inform(&None, &Some(None), &None).expect_err("an absent key is an issue");
         assert_eq!(
             message(&err, 0),
             "Invalid input: expected string, received undefined"
@@ -615,7 +652,7 @@ mod zod_rendering_tests {
 
     #[test]
     fn an_explicit_null_content_markdown_is_received_null() {
-        let err = parse_inform(&Some(None), &Some(None)).expect_err("null is not a string");
+        let err = parse_inform(&Some(None), &Some(None), &None).expect_err("null is not a string");
         assert_eq!(
             message(&err, 0),
             "Invalid input: expected string, received null"
@@ -624,7 +661,7 @@ mod zod_rendering_tests {
 
     #[test]
     fn a_non_string_content_markdown_still_names_its_own_type() {
-        let err = parse_inform(&Some(Some(json!(42))), &Some(None))
+        let err = parse_inform(&Some(Some(json!(42))), &Some(None), &None)
             .expect_err("a number is not a string");
         assert_eq!(
             message(&err, 0),
@@ -657,16 +694,52 @@ mod zod_rendering_tests {
         // `targetParticipantIds` IS `.nullable()`, so `Some(None)` is the
         // "Everyone" spelling and must produce NO issue — the other half of the
         // same tri-state, and the reason the two keys cannot share one arm.
-        let ok = parse_inform(&Some(Some(json!("a passage"))), &Some(None))
+        let ok = parse_inform(&Some(Some(json!("a passage"))), &Some(None), &None)
             .expect("an explicit null means every eligible seat");
-        assert_eq!(ok, ("a passage".to_string(), None));
+        assert_eq!(ok, ("a passage".to_string(), None, false));
 
-        let err = parse_inform(&Some(Some(json!("a passage"))), &None)
+        let err = parse_inform(&Some(Some(json!("a passage"))), &None, &None)
             .expect_err("an ABSENT targets key is still an issue");
         assert_eq!(
             message(&err, 0),
             "Invalid input: expected array, received undefined"
         );
+    }
+
+    /// P4.D249: `permanent: z.boolean().optional().default(false)` — absent is
+    /// `false`, a boolean is honoured, and `null` / a string / a number are each
+    /// an `invalid_type` naming what was seen (never "undefined" for `null`:
+    /// the field is optional, NOT nullable).
+    #[test]
+    fn permanent_is_optional_but_not_nullable() {
+        let body = Some(Some(json!("a passage")));
+        let everyone = Some(None);
+        assert!(!parse_inform(&body, &everyone, &None).unwrap().2);
+        assert!(
+            parse_inform(&body, &everyone, &Some(Some(json!(true))))
+                .unwrap()
+                .2
+        );
+        assert!(
+            !parse_inform(&body, &everyone, &Some(Some(json!(false))))
+                .unwrap()
+                .2
+        );
+        for (raw, word) in [
+            (None, "null"),
+            (Some(json!("yes")), "string"),
+            (Some(json!(1)), "number"),
+        ] {
+            let err = parse_inform(&body, &everyone, &Some(raw)).expect_err(word);
+            assert_eq!(
+                message(&err, 0),
+                format!("Invalid input: expected boolean, received {word}")
+            );
+            assert_eq!(err[0]["path"], json!(["permanent"]));
+        }
+        // Zod reports in schema key order: `permanent`'s issue comes last.
+        let err = parse_inform(&None, &everyone, &Some(None)).unwrap_err();
+        assert_eq!(err[1]["path"], json!(["permanent"]));
     }
 }
 
@@ -780,9 +853,18 @@ mod safe_query_and_log_tests {
             }
             other => panic!("expected v4's 404, got {other:?}"),
         }
-        let l = line(&lines, "Error finding informs by batch ID");
+        // P4.D249: v4's INNER `findByFilter` line answers first — `{}` context
+        // plus the injected `collection`, no batch id — and the outer
+        // `Error finding informs by batch ID` is unreachable.
+        let l = line(&lines, "Error finding entities by filter");
         assert!(l.starts_with("ERROR"), "v4's safeQuery logs at error: {l}");
-        assert!(l.contains(&format!("batch_id={BATCH}")), "{l}");
+        assert!(l.contains("collection=chat_informs"), "{l}");
+        assert!(
+            !lines
+                .iter()
+                .any(|x| x.contains("Error finding informs by batch ID")),
+            "the outer sentence is unreachable on v4"
+        );
     }
 
     #[test]
@@ -802,6 +884,7 @@ mod safe_query_and_log_tests {
                     // NULL, so the record-delete leg is not entered and this
                     // case measures the delete arm alone.
                     record_message_id: None,
+                    permanent: false,
                     created_at: "2026-05-01T00:00:00.000Z".to_string(),
                     updated_at: "2026-05-01T00:00:00.000Z".to_string(),
                     consumed_at: None,
@@ -836,6 +919,53 @@ mod safe_query_and_log_tests {
         assert!(l.starts_with("ERROR"), "{l}");
     }
 
+    /// P4.D249 (v4 `52d6e7ecd`): a standing batch is withdrawn whole — the
+    /// delivered row goes with the undelivered one — and the record stays
+    /// because the batch WAS delivered. The DEBUG line gains `permanent`
+    /// between `anyConsumed` and `recordDeleted` (v4's field order; v5's
+    /// level was already v4's DEBUG — measured, no divergence).
+    #[test]
+    fn a_standing_batch_is_cancelled_whole_and_logs_its_flag() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let (_dir, db) = provisioned("d");
+        rt.block_on(seed_chat(&db));
+        let posted = match rt.block_on(chat_inform(
+            &db,
+            CHAT,
+            &Some(Some(json!("Remember the lighthouse."))),
+            &Some(None),
+            &Some(Some(json!(true))),
+        )) {
+            Response::ChatInform(v) => v,
+            other => panic!("{other:?}"),
+        };
+        let batch = posted["batchId"].as_str().unwrap().to_string();
+        let b = batch.clone();
+        rt.block_on(db.write(move |w| {
+            let repo = crate::db::chat_informs::ChatInformsRepository::new(w.main().connection());
+            let first = repo.find_by_batch_id(&b)?.remove(0).id;
+            repo.mark_consumed(&[first], "22220000-0000-4000-8000-00000000bbb1")?;
+            Ok(())
+        }))
+        .unwrap();
+
+        let (resp, lines) =
+            captured_with(|| rt.block_on(chat_inform_cancel(&db, CHAT, &Some(Some(json!(batch))))));
+        match resp {
+            Response::ChatInformCancelled(v) => {
+                assert_eq!(v["removed"], json!(2), "every row of a standing batch: {v}");
+                assert_eq!(v["recordDeleted"], json!(false), "it was delivered: {v}");
+            }
+            other => panic!("{other:?}"),
+        }
+        let l = line(&lines, "[Chats v1] Inform cancelled");
+        assert!(l.starts_with("DEBUG"), "{l}");
+        let any = l.find("any_consumed=true").expect(l);
+        let perm = l.find("permanent=true").expect(l);
+        let rec = l.find("record_deleted=false").expect(l);
+        assert!(any < perm && perm < rec, "v4's field order: {l}");
+    }
+
     #[test]
     fn the_posted_inform_line_renders_both_ids_as_json() {
         let rt = tokio::runtime::Runtime::new().unwrap();
@@ -848,6 +978,7 @@ mod safe_query_and_log_tests {
                 CHAT,
                 &Some(Some(json!("The clock in the hall has stopped."))),
                 &Some(None),
+                &Some(Some(json!(true))),
             ))
         });
         let body = match resp {
@@ -878,6 +1009,30 @@ mod safe_query_and_log_tests {
             l.contains("audience=public") && l.contains("target_count=2"),
             "both eligible seats were covered, so the record is public: {l}"
         );
+        // P4.D249: v4 adds `permanent` LAST to the line — after
+        // `recordMessageId`, before the message.
+        let rec = l.find("recordMessageIdJson=").unwrap();
+        let perm = l.find("permanent=true").expect("the flag is logged");
+        assert!(perm > rec, "permanent comes after recordMessageId: {l}");
+        // …and the 201 body is v4's `{ success, batchId, targetParticipantIds,
+        // permanent, message }`, in exactly that order.
+        let keys: Vec<&str> = body
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(
+            keys,
+            [
+                "success",
+                "batchId",
+                "targetParticipantIds",
+                "permanent",
+                "message"
+            ]
+        );
+        assert_eq!(body["permanent"], json!(true));
         // The silence leg: the two ids never reach the wire under their old
         // spellings, which rendered `"\"uuid\""` and the literal string `null`.
         assert!(

@@ -37,6 +37,13 @@
 //! apart; v5 writes one `now` to both. Both are `<ts>` here, so the diff cannot
 //! see it — recorded rather than hidden.
 //!
+//! **P4.D249 (v4 `52d6e7ecd`)** grew the corpus with a standing-inform chat
+//! (seed rows carry `permanent`; `createBatch` ops may name it): delivery order
+//! vs posting order, the batch flag, a standing batch cancelled whole, a
+//! consumed one-shot surviving cancel, seat removal taking delivered standing
+//! rows. Red-first measured from the oracle at both pins: 16 of 27 read
+//! results move between `e5c6bd0c0` and `52d6e7ecd`.
+//!
 //! Generate the oracle output + fixture (Node 24, from the TARGET-pinned v4
 //! worktree — §R.3 PIN REQUIRED):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
@@ -84,6 +91,9 @@ struct Op {
     participant_ids: Option<Vec<String>>,
     #[serde(default, rename = "recordMessageId")]
     record_message_id: Option<String>,
+    /// P4.D249: `createBatch`'s standing flag; absent = v4's default leg.
+    #[serde(default)]
+    permanent: Option<bool>,
     #[serde(default)]
     ids: Option<Vec<String>>,
     #[serde(default, rename = "messageId")]
@@ -132,6 +142,9 @@ fn row_json(r: &ChatInformRow) -> Value {
     if let Some(v) = &r.record_message_id {
         m.insert("recordMessageId".into(), Value::from(v.clone()));
     }
+    // P4.D249: schema order, never omitted — Zod's `.default(false)` always
+    // fills it.
+    m.insert("permanent".into(), Value::from(r.permanent));
     m.insert("createdAt".into(), Value::from(r.created_at.clone()));
     m.insert("updatedAt".into(), Value::from(r.updated_at.clone()));
     if let Some(v) = &r.consumed_at {
@@ -162,6 +175,7 @@ fn created_row_json(r: &ChatInformRow) -> Value {
         "recordMessageId".into(),
         r.record_message_id.clone().map_or(Value::Null, Value::from),
     );
+    m.insert("permanent".into(), Value::from(r.permanent));
     m.insert("createdAt".into(), Value::from(r.created_at.clone()));
     m.insert("updatedAt".into(), Value::from(r.updated_at.clone()));
     m.insert(
@@ -339,6 +353,7 @@ fn chat_informs_tier2_matches_oracle() {
                                 "contentMarkdown": b.content_markdown,
                                 "createdAt": b.created_at,
                                 "recordMessageId": b.record_message_id,
+                                "permanent": b.permanent,
                                 "pendingParticipantIds": b.pending_participant_ids,
                             })
                         })
@@ -364,6 +379,8 @@ fn chat_informs_tier2_matches_oracle() {
                         op.content_markdown.as_deref().unwrap(),
                         op.participant_ids.as_deref().unwrap(),
                         op.record_message_id.as_deref(),
+                        // v4 `params.permanent === true`.
+                        op.permanent == Some(true),
                     )
                     .expect("create_batch")
                     .iter()
@@ -468,11 +485,13 @@ fn chat_informs_tier2_matches_oracle() {
                 .is_some_and(|s| s.starts_with("ID_"))
         })
         .count();
-    // Three rows are created, but `deletePendingForParticipant` later removes the
-    // one targeting p2, so TWO minted-id rows survive into the final state.
+    // Three P4.D205 rows are created, but `deletePendingForParticipant` later
+    // removes the one targeting p2, so TWO of those survive; the P4.D249
+    // standing corpus creates two more (p2 standing, p3 default), both of which
+    // survive the p1 seat removal — FOUR minted-id rows in the final state.
     assert_eq!(
-        tokened, 2,
-        "expected the two surviving createBatch rows to carry tokenized minted ids; the \
+        tokened, 4,
+        "expected the four surviving createBatch rows to carry tokenized minted ids; the \
          normalization tokenized {tokened}"
     );
     // And a guard the other way: the seed's pinned timestamps must NOT have been
