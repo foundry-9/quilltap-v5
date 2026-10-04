@@ -696,6 +696,74 @@ fn groups_routes_match_oracle() {
         ));
         check_err("update_missing_group_invalid_body_404", &resp, &mut failed);
     }
+    // ---- P4.146 (dogfood #136): the `|| null` arm, compared whole ----
+    // Every successful create above passes a real colour/icon (the value arm).
+    // v4's route stores `color: validatedData.color || null` (and `icon`), so a
+    // create with NO colour/icon writes and echoes explicit nulls; the typed
+    // verb decodes a wire `null` to `None`, the same input as absent.
+    for (name, tag, group_name, desc, icon) in [
+        ("create_no_colour", "cnc", "Epsilon", "A new group", None),
+        ("create_null_colour", "cnul", "Lambda", "l", None),
+        ("create_empty_icon", "cei", "Nu", "n", Some(String::new())),
+    ] {
+        let db = fresh_db(&spec, tag);
+        let resp = rt.block_on(groups::group_create(
+            &db,
+            group_name.into(),
+            Some(desc.into()),
+            None,
+            None,
+            icon,
+        ));
+        check_blanked(name, &resp, &mut failed);
+        let group = &response_data(&resp)["group"];
+        assert_eq!(
+            group.get("color"),
+            Some(&Value::Null),
+            "{name}: null colour"
+        );
+        assert_eq!(group.get("icon"), Some(&Value::Null), "{name}: null icon");
+    }
+    {
+        // MEASURED at the pin: an empty COLOUR never reaches `|| null` — the
+        // hex check refuses `''` first.
+        let db = fresh_db(&spec, "cec400");
+        let resp = rt.block_on(groups::group_create(
+            &db,
+            "Mu".into(),
+            Some("m".into()),
+            None,
+            Some(String::new()),
+            None,
+        ));
+        check_err("create_empty_colour_400", &resp, &mut failed);
+    }
+    {
+        // The group editor's save with the colour cleared (`color: this.color()
+        // || null`, `group-editor.ts:337-338`): the PUT writes `null`, not absent
+        // — the server half of the SPA's save.
+        let db = fresh_db(&spec, "unc");
+        let resp = rt.block_on(groups::group_update(&db, GAMMA, json!({ "color": null })));
+        check_blanked("update_null_color", &resp, &mut failed);
+        // And the read wire after a nulling PUT: `groupList` carries the nulls.
+        let db = fresh_db(&spec, "lanc");
+        let _ = rt.block_on(groups::group_update(
+            &db,
+            GAMMA,
+            json!({ "color": null, "icon": null }),
+        ));
+        let got = response_data(&groups::group_list(&db, &spec.user_id, None));
+        let want = &oracle["list_after_null_color"]["body"];
+        if norm_blanked(&got) != norm_blanked(want) {
+            eprintln!(
+                "[list_after_null_color] MISMATCH:\n{}",
+                first_diff(&norm_blanked(&got), &norm_blanked(want))
+            );
+            failed.push("list_after_null_color".into());
+        } else {
+            eprintln!("[list_after_null_color] OK.");
+        }
+    }
     {
         let db = fresh_db(&spec, "update");
         let resp = rt.block_on(groups::group_update(

@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — fix(core): project and group create store v4's color/icon `|| null`; the routes families' null masks lifted (P4.146, dogfood #136)
+
+_Versions: core 0.0.1202._
+
+`projectCreate` and `groupCreate` now store `color: color || null, icon:
+icon || null` as v4's routes do, so a project or group created with no
+colour or icon (or an empty icon) writes `"color": null, "icon": null` to
+`properties.json` and echoes them. An empty colour still never reaches the
+`||`: the hex check refuses it with a 400 (measured at `52d6e7ecd`). The
+two masks `projects_routes_equivalence` carried over `color`/`icon` are
+removed and both echoes compare whole; both routes families gain sibling
+create rows without a colour/icon, an empty-icon row, an empty-colour 400,
+a PUT `color: null`, and a list read after a nulling PUT, all recorded
+through v4's real handlers and red on unported main (projects 8 of 9 new or
+lifted rows, groups 5 of 6).
+
 #### 2026-10-03 — fix(core): project and group properties.json keep v4's explicit nulls through read and read-modify-write (P4.146, dogfood #136)
 
 _Versions: core 0.0.1201._

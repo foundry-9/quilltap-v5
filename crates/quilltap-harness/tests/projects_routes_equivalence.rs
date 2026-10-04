@@ -644,57 +644,114 @@ fn projects_routes_match_oracle() {
         let resp = rt.block_on(projects::project_create(&db, body));
         check(name, &response_data(&resp), true, &mut failed);
     }
+    // ---- P4.146 (dogfood #136): the `|| null` arm, compared whole ----
+    // Siblings of the value-arm rows (`create`, `create_blank_description`,
+    // `create_whitespace_name`) with NO colour/icon — v4's route stores
+    // `color: null, icon: null` — plus an empty icon (`'' || null`).
+    for (name, tag, body) in [
+        (
+            "create_no_colour",
+            "cnc",
+            json!({ "name": "Mu", "description": "A new project", "allowAnyCharacter": true, "characterRoster": [ARIA] }),
+        ),
+        (
+            "create_blank_description_no_colour",
+            "cbdnc",
+            json!({ "name": "Nu", "description": null, "instructions": null }),
+        ),
+        (
+            "create_whitespace_name_no_colour",
+            "cwnnc",
+            json!({ "name": "   " }),
+        ),
+        (
+            "create_empty_icon",
+            "cei",
+            json!({ "name": "Sigma", "icon": "" }),
+        ),
+    ] {
+        let db = fresh_db(&spec, tag);
+        let resp = rt.block_on(projects::project_create(&db, body));
+        check(name, &response_data(&resp), true, &mut failed);
+        assert_eq!(
+            response_data(&resp)["project"].get("icon"),
+            Some(&Value::Null),
+            "{name}: v4 stores and echoes an explicit null icon"
+        );
+    }
+    {
+        // MEASURED at the pin: an empty COLOUR never reaches `|| null` —
+        // `HexColorSchema` refuses `''` first.
+        let db = fresh_db(&spec, "cec400");
+        let resp = rt.block_on(projects::project_create(
+            &db,
+            json!({ "name": "Rho", "color": "" }),
+        ));
+        check_error("create_empty_colour_400", &resp, &mut failed);
+    }
+    {
+        // The PUT entry point: `color: null` is written as `null`, not absent.
+        let db = fresh_db(&spec, "unc");
+        let resp = rt.block_on(projects::project_update(
+            &db,
+            IOTA,
+            json!({ "color": null, "icon": null }),
+        ));
+        check(
+            "update_null_color",
+            &response_data(&resp),
+            true,
+            &mut failed,
+        );
+        // And the read wire after it: `projectList` carries Iota's two nulls.
+        let db = fresh_db(&spec, "lanc");
+        let _ = rt.block_on(projects::project_update(
+            &db,
+            IOTA,
+            json!({ "color": null, "icon": null }),
+        ));
+        check(
+            "list_after_null_color",
+            &response_data(&projects::project_list(&db)),
+            true,
+            &mut failed,
+        );
+    }
     {
         // `color`/`icon` null: bug 98's other two legs — v4 REFUSED this body
-        // before `c93ec7ff`. The echo is compared with `color` and `icon`
-        // MASKED OUT on both sides, because those two keys sit on the
-        // pre-existing null-vs-absent properties seam the `create` case's own
-        // comment records (v4's route hands `create` an explicit
-        // `color: null`; v5's `ProjectProperties` folds a null to an absent
-        // key). Everything else about the created project — that it exists at
-        // all, its name, the prefaults, the whole rest of the bag — is a live
-        // comparand, which is what this arm is for.
+        // before `c93ec7ff`. P4.146 (dogfood #136) LIFTED the mask this arm
+        // carried: v4's route stores `color: null, icon: null` (`|| null`) and
+        // echoes them, and v5's three-state bag now does too, so the whole echo
+        // is the comparand.
         let db = fresh_db(&spec, "cnci");
         let resp = rt.block_on(projects::project_create(
             &db,
             json!({ "name": "Xi", "color": null, "icon": null }),
         ));
-        let mask = |v: &Value| {
-            let mut v = v.clone();
-            if let Some(p) = v.get_mut("project").and_then(Value::as_object_mut) {
-                p.remove("color");
-                p.remove("icon");
-            }
-            v
-        };
-        let got = mask(&response_data(&resp));
-        let want = mask(&oracle["create_null_color_and_icon"]["body"]);
-        if norm_blanked(&got) != norm_blanked(&want) {
-            eprintln!(
-                "[create_null_color_and_icon] MISMATCH:\n{}",
-                first_diff(&norm_blanked(&got), &norm_blanked(&want))
-            );
-            failed.push("create_null_color_and_icon".to_string());
-        } else {
-            eprintln!("[create_null_color_and_icon] OK (color/icon masked).");
-        }
-        // The masked keys still carry the ONE assertion that matters here: v4
-        // answers an explicit null, and v5 answers null-or-absent — never a
-        // stale value, and never a refusal.
-        let v5_color = response_data(&resp)["project"]["color"].clone();
-        assert!(
-            v5_color.is_null(),
-            "a null colour must not survive as a value: {v5_color}"
+        check(
+            "create_null_color_and_icon",
+            &response_data(&resp),
+            true,
+            &mut failed,
+        );
+        let project = &response_data(&resp)["project"];
+        assert_eq!(
+            project.get("color"),
+            Some(&Value::Null),
+            "an explicit null colour"
+        );
+        assert_eq!(
+            project.get("icon"),
+            Some(&Value::Null),
+            "an explicit null icon"
         );
     }
     {
         // P4.D246 (v4 `9753d0eb2`): `allowAnyCharacter: z.boolean().prefault(true)`
         // — a project created with the flag ABSENT is OPEN, stated by itself on a
-        // minimal `{name}` body. `color`/`icon` are masked exactly as in
-        // `create_null_color_and_icon` (v4's route hands `create` an explicit
-        // `color: null`; v5's bag folds it to an absent key — the standing
-        // null-vs-absent properties seam), so the comparand is the rest of the
-        // echo: the prefaulted flag, the empty roster, the four literals.
+        // minimal `{name}` body. Since P4.146 (dogfood #136) the whole echo is the
+        // comparand — `color: null, icon: null` (v4's `|| null` on an absent key)
+        // included; the mask this arm carried is LIFTED.
         let name = "create_flag_absent_defaults_open";
         let db = fresh_db(&spec, "cfado");
         let (resp, lines) = quilltap_core::test_support::captured_with(|| {
@@ -715,25 +772,12 @@ fn projects_routes_match_oracle() {
             "{name}: v4's create INFO line: {}",
             created[0]
         );
-        let mask = |v: &Value| {
-            let mut v = v.clone();
-            if let Some(p) = v.get_mut("project").and_then(Value::as_object_mut) {
-                p.remove("color");
-                p.remove("icon");
-            }
-            v
-        };
-        let got = mask(&response_data(&resp));
-        let want = mask(&oracle[name]["body"]);
-        if norm_blanked(&got) != norm_blanked(&want) {
-            eprintln!(
-                "[{name}] MISMATCH:\n{}",
-                first_diff(&norm_blanked(&got), &norm_blanked(&want))
-            );
-            failed.push(name.to_string());
-        } else {
-            eprintln!("[{name}] OK (color/icon masked).");
-        }
+        check(name, &response_data(&resp), true, &mut failed);
+        assert_eq!(
+            response_data(&resp)["project"].get("color"),
+            Some(&Value::Null),
+            "{name}: v4's `|| null` on an absent colour"
+        );
         // The rule by name, so a regression reads as itself and not as one
         // line of a body diff: the flag-less create answers OPEN.
         assert_eq!(

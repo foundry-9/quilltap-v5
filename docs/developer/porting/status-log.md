@@ -164561,3 +164561,36 @@ then-uncommitted bug-177/178 change) and the lane STOPPED; it resumed after
   compile on base; its red-first is the semantic proxy (`deserialize_with`
   removed from both group fields → unported serde behaviour): RED on the reads.
   Green after the port.
+
+### Unit 2 — create's `|| null` + the routes masks lifted (core 0.0.1202)
+
+- `api/projects.rs` create inserts `color`/`icon` ALWAYS — `or_null(v)
+  .map_or(Null, String)` (v4 `projects/route.ts:74-75`); `api/groups.rs`
+  create passes `GroupProperties { color: Some(or_null(…)), icon: … }` to
+  `create_with_properties` (v4 `groups/route.ts:89-90`). `or_null` stays (it
+  still serves `description`/`instructions`).
+- **A measurement corrected the order's prose:** "an empty-string colour is
+  stored as `null`" is FALSE for the colour — `HexColorSchema` 400s `''`
+  before `|| null` sees it (both routes, recorded as the
+  `create_empty_colour_400` rows). An empty ICON does reach `||` and is
+  stored `null` (`create_empty_icon`).
+- **Masks lifted:** `projects_routes_equivalence`'s `create_null_color_and_
+  icon` and `create_flag_absent_defaults_open` compare the WHOLE echo, each
+  with a by-name assert that `color` is an explicit `null`. The oracle-side
+  "dodge" comments rewritten. **New rows** (kept the value-arm rows): projects
+  — `create_no_colour`, `create_blank_description_no_colour`,
+  `create_whitespace_name_no_colour`, `create_empty_icon`,
+  `create_empty_colour_400`, `update_null_color`, `list_after_null_color`
+  (a PUT nulling Iota's colour/icon, then `projectList`); groups —
+  `create_no_colour`, `create_null_colour`, `create_empty_icon`,
+  `create_empty_colour_400`, `update_null_color` (**the server proof of the
+  SPA group editor's `color: this.color() || null` save,
+  `group-editor.ts:337-338` — Tier 2 item 11**), `list_after_null_color`.
+  The `projectList`/`groupList` read of a null-carrying entity is built by a
+  PUT inside the case, since the committed `groups-projects` pair carries no
+  null bag and this lane rebuilds no pair.
+- **Red-first on unported `main`, target oracle** (core restored from base;
+  the routes families compile against the old API; the lane's by-name
+  null asserts neutralized for the count so the per-row collector reports
+  every row): projects **8 of 9** new/lifted rows MISMATCH (all but the 400,
+  which did not move); groups **5 of 6** (all but the 400). Green after.

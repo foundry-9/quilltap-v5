@@ -515,6 +515,73 @@ async function main(): Promise<void> {
         );
       },
     },
+    // ---- P4.146 (dogfood #136): the `|| null` arm, compared whole ----
+    // v4's create route stores `color: validatedData.color || null` and the
+    // same for `icon`, so a body with NO colour/icon writes explicit nulls into
+    // `properties.json` and echoes them. Every successful create above passes a
+    // real colour/icon (the value arm) — these are their siblings.
+    {
+      name: 'create_no_colour',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/groups/route')).POST(
+            mockRequest(B, { name: 'Epsilon', description: 'A new group' }),
+          ),
+        ),
+    },
+    {
+      name: 'create_null_colour',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/groups/route')).POST(
+            mockRequest(B, { name: 'Lambda', description: 'l', color: null, icon: null }),
+          ),
+        ),
+    },
+    {
+      // MEASURED: an empty colour never reaches `|| null` — `HexColorSchema`
+      // refuses `''` first, so this is the flat 400.
+      name: 'create_empty_colour_400',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/groups/route')).POST(
+            mockRequest(B, { name: 'Mu', description: 'm', color: '' }),
+          ),
+        ),
+    },
+    {
+      // An empty ICON passes `z.string().max(50)` and `'' || null` stores null.
+      name: 'create_empty_icon',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/groups/route')).POST(
+            mockRequest(B, { name: 'Nu', description: 'n', icon: '' }),
+          ),
+        ),
+    },
+    {
+      // The group editor's save with the colour cleared (`color: this.color()
+      // || null`): the PUT writes the key as `null`, not absent.
+      name: 'update_null_color',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/groups/[id]/route')).PUT(
+            mockRequest(`${B}/${GAMMA}`, { color: null }),
+            { params: Promise.resolve({ id: GAMMA }) },
+          ),
+        ),
+    },
+    {
+      // The read wire after a nulling PUT: `groupList` spreads the parsed bag.
+      name: 'list_after_null_color',
+      run: async () => {
+        await (await loadRoute('@/app/api/v1/groups/[id]/route')).PUT(
+          mockRequest(`${B}/${GAMMA}`, { color: null, icon: null }),
+          { params: Promise.resolve({ id: GAMMA }) },
+        );
+        return respond(await (await loadRoute('@/app/api/v1/groups/route')).GET(mockRequest(B)));
+      },
+    },
     {
       name: 'update',
       run: async () =>

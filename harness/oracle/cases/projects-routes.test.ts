@@ -352,9 +352,8 @@ async function main(): Promise<void> {
     // --- Mutations ---
     {
       name: 'create',
-      // NB icon is provided so the create echo does not exercise the null-vs-absent
-      // open-JSON seam (v4's route injects `icon: x || null`; v5's ProjectProperties
-      // folds null→absent — a pre-existing, documented repo-layer divergence).
+      // The value arm of `color`/`icon` (a real colour + icon). Its sibling
+      // `create_no_colour` below is the `|| null` arm (P4.146, dogfood #136).
       run: async () => respond(await (await loadRoute('@/app/api/v1/projects/route')).POST(
         mockRequest(B, { name: 'Mu', description: 'A new project', allowAnyCharacter: true, characterRoster: [ARIA], color: '#abcdef', icon: 'rocket' }),
       )),
@@ -368,8 +367,8 @@ async function main(): Promise<void> {
     // arm below is unchanged by the fix and exists because v5's hand-rolled
     // create validated NOTHING but the name.
     {
-      // The bug-98 body itself. `icon` is a real string for the same reason
-      // the `create` case above gives (the null-vs-absent properties seam).
+      // The bug-98 body itself, with a real colour/icon (the value arm); its
+      // sibling `create_blank_description_no_colour` is the `|| null` arm.
       name: 'create_blank_description',
       run: async () => respond(await (await loadRoute('@/app/api/v1/projects/route')).POST(
         mockRequest(B, { name: 'Nu', description: null, instructions: null, color: '#abcdef', icon: 'rocket' }),
@@ -386,10 +385,8 @@ async function main(): Promise<void> {
     },
     {
       // `color`/`icon` null — bug 98's other two legs (v4 REFUSED this body
-      // before `c93ec7ff`). The Rust side masks `color`/`icon` out of BOTH
-      // echoes: they sit on the pre-existing null-vs-absent properties seam
-      // the `create` case's own comment records. The rest of the echo is a
-      // live comparand.
+      // before `c93ec7ff`). Since P4.146 (dogfood #136) the whole echo is a
+      // live comparand, `"color": null, "icon": null` included.
       name: 'create_null_color_and_icon',
       run: async () => respond(await (await loadRoute('@/app/api/v1/projects/route')).POST(
         mockRequest(B, { name: 'Xi', color: null, icon: null }),
@@ -493,14 +490,67 @@ async function main(): Promise<void> {
     {
       // P4.D246 (v4 `9753d0eb2`): `allowAnyCharacter: z.boolean().prefault(true)`
       // — a project created with the flag ABSENT is OPEN. Stated by itself on a
-      // minimal `{name}` body rather than read off a validation row's echo. (The
-      // Rust side masks `color`/`icon` here as `create_null_color_and_icon` does:
-      // v4's route hands `create` an explicit `color: null`; v5's bag folds it to
-      // an absent key — the standing null-vs-absent properties seam.)
+      // minimal `{name}` body rather than read off a validation row's echo. (Since
+      // P4.146 the echo's `color: null, icon: null` — v4's `|| null` on an
+      // absent key — is compared too.)
       name: 'create_flag_absent_defaults_open',
       run: async () => respond(await (await loadRoute('@/app/api/v1/projects/route')).POST(
         mockRequest(B, { name: 'Pi' }),
       )),
+    },
+    // ---- P4.146 (dogfood #136): the `|| null` arm, compared whole ----
+    // v4's create route stores `color: validatedData.color || null` (and the
+    // same for `icon`), so a body with NO colour/icon writes an explicit
+    // `null` into `properties.json` and echoes it. Siblings of the three
+    // value-arm rows above (each kept: it pins the value arm).
+    {
+      name: 'create_no_colour',
+      run: async () => respond(await (await loadRoute('@/app/api/v1/projects/route')).POST(
+        mockRequest(B, { name: 'Mu', description: 'A new project', allowAnyCharacter: true, characterRoster: [ARIA] }),
+      )),
+    },
+    {
+      name: 'create_blank_description_no_colour',
+      run: async () => respond(await (await loadRoute('@/app/api/v1/projects/route')).POST(
+        mockRequest(B, { name: 'Nu', description: null, instructions: null }),
+      )),
+    },
+    {
+      name: 'create_whitespace_name_no_colour',
+      run: async () => respond(await (await loadRoute('@/app/api/v1/projects/route')).POST(
+        mockRequest(B, { name: '   ' }),
+      )),
+    },
+    {
+      // MEASURED: an empty colour never reaches `|| null` — `HexColorSchema`
+      // refuses `''` first, so this is the flat 400.
+      name: 'create_empty_colour_400',
+      run: async () => respond(await (await loadRoute('@/app/api/v1/projects/route')).POST(
+        mockRequest(B, { name: 'Rho', color: '' }),
+      )),
+    },
+    {
+      // An empty ICON passes `z.string().max(50)` and `'' || null` stores null.
+      name: 'create_empty_icon',
+      run: async () => respond(await (await loadRoute('@/app/api/v1/projects/route')).POST(
+        mockRequest(B, { name: 'Sigma', icon: '' }),
+      )),
+    },
+    {
+      // The PUT entry point: `updateProjectSchema`'s `color` is
+      // `.nullable().optional()`, the repository copies the null verbatim into
+      // the read-modify-write, and the parse keeps it.
+      name: 'update_null_color',
+      run: async () => respond(await (await loadRoute(idRoute)).PUT(mockRequest(`${B}/${IOTA}`, { color: null, icon: null }), p(IOTA))),
+    },
+    {
+      // The read wire after a nulling PUT: `projectList` spreads the parsed bag,
+      // so Iota's row carries `color: null` and `icon: null`.
+      name: 'list_after_null_color',
+      run: async () => {
+        await (await loadRoute(idRoute)).PUT(mockRequest(`${B}/${IOTA}`, { color: null, icon: null }), p(IOTA));
+        return respond(await (await loadRoute('@/app/api/v1/projects/route')).GET(mockRequest(B)));
+      },
     },
     { name: 'update', run: async () => respond(await (await loadRoute(idRoute)).PUT(mockRequest(`${B}/${IOTA}`, { name: 'Iota Renamed', backgroundDisplayMode: 'theme' }), p(IOTA))) },
     // P4.55 (the merge-verb silent-keep sweep): v4 runs

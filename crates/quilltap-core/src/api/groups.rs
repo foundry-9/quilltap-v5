@@ -30,7 +30,7 @@ use crate::db::group_character_members::GroupCharacterMembersRepository;
 use crate::db::group_doc_mount_links::GroupDocMountLinksRepository;
 use crate::db::groups::{
     find_name_and_official_mount_point_id_raw, GroupCreateInput, GroupCreateOptions, GroupEntity,
-    GroupsRepository,
+    GroupProperties, GroupsRepository,
 };
 use crate::db::runtime::Db;
 use crate::db::vault_wardrobe_public::{
@@ -320,13 +320,21 @@ pub async fn group_create(
         description: or_null(description.as_deref()),
         instructions: or_null(instructions.as_deref()),
         state: json!({}),
-        color: or_null(color.as_deref()),
-        icon: or_null(icon.as_deref()),
+        color: None,
+        icon: None,
+    };
+    // v4 `groups/route.ts:89-90` `color: validatedData.color || null, icon: …
+    // || null` — an absent or `null` colour/icon, or an empty icon, is STORED as
+    // an explicit `null` (dogfood #136), so the bag goes in whole. An empty
+    // colour never gets here: the hex check above 400s it.
+    let properties = GroupProperties {
+        color: Some(or_null(color.as_deref())),
+        icon: Some(or_null(icon.as_deref())),
     };
     let out = with_both_conns(db, move |main, mount| {
         let repo = GroupsRepository::new(main, mount);
         let group = repo
-            .create(&input, &GroupCreateOptions::default())
+            .create_with_properties(&input, &properties, &GroupCreateOptions::default())
             .map_err(overlay_to_db)?;
         // Best-effort Scenarios/ + Knowledge/ folder ensure (v4 non-fatal try/catch
         // in the POST handler; the GET /scenarios path also ensures them).

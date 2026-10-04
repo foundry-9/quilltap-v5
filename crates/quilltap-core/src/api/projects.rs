@@ -259,11 +259,13 @@ pub async fn project_create(db: &Db, body: Value) -> Response {
     let mut properties = Map::new();
     properties.insert("allowAnyCharacter".into(), Value::Bool(allow_any));
     properties.insert("characterRoster".into(), roster);
-    if let Some(c) = or_null(obj.get("color").and_then(Value::as_str)) {
-        properties.insert("color".into(), Value::String(c));
-    }
-    if let Some(i) = or_null(obj.get("icon").and_then(Value::as_str)) {
-        properties.insert("icon".into(), Value::String(i));
+    // v4 `projects/route.ts:74-75` `color: validatedData.color || null, icon:
+    // validatedData.icon || null` — an absent or `null` colour/icon, or an empty
+    // icon, is STORED as an explicit `null` (the three-state bag keeps it;
+    // dogfood #136). An empty colour never gets here: `HexColorSchema` 400s it.
+    for key in ["color", "icon"] {
+        let v = or_null(obj.get(key).and_then(Value::as_str)).map_or(Value::Null, Value::String);
+        properties.insert(key.into(), v);
     }
     let input = ProjectCreateInput {
         name,
