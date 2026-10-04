@@ -28,7 +28,11 @@ probe verifies against._
   whose §2 probe failed on a new main commit; `git fetch --all` first).
   Previous check: 2026-10-03, the `e5c6bd0c0` unification (which recorded
   the checkout DIRTY with the in-flight Inform change this check finds
-  committed).
+  committed). **Re-verified 2026-10-03 (later, `/driftcheck` re-run, `git
+  fetch --all` first): nothing moved** — main HEAD still `52d6e7ecd`
+  (`origin/main` agrees), checkout `main` and CLEAN, `bugfix`/`release` tips
+  unchanged (`bugfix..origin/bugfix` empty; the `main..bugfix` list is the
+  Sept-6 historical lineage — bugs 124/125, already ported). §3 stands.
 - **v4 `main` HEAD at check: `52d6e7ecd`** ("Inform: standing (per-chat)
   informs", 2026-10-03 18:00, `4.10.0-dev.109`) — ONE commit past the
   baseline; `origin/main` agrees.
