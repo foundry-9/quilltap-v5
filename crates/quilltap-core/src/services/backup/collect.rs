@@ -276,8 +276,10 @@ const CHAT_INFORMS: &[(&str, F)] = &[
     ("recordMessageId", F::StrOpt),
     // P4.D249 (v4 `52d6e7ecd`): v4 has NO backup hunk — it serializes whole
     // parsed rows, so the flag rides along in schema order. v5 marshals this
-    // fixed list, so it must name it, at the same position.
-    ("permanent", F::Bool),
+    // fixed list, so it must name it, at the same position. `BoolDefault`, not
+    // `Bool`: generateDDL's shape is NULLABLE (`INTEGER DEFAULT 0`) and the
+    // reader maps a NULL cell to `false` — the backup must agree with it.
+    ("permanent", F::BoolDefault(false)),
     ("createdAt", F::Str),
     ("updatedAt", F::Str),
     ("consumedAt", F::StrOpt),

@@ -1136,9 +1136,22 @@ def splice_nocapture(script: str) -> str:
     """
     if "--nocapture" in script:
         return script
+
+    def _add(m: re.Match[str]) -> str:
+        cmd = m.group(1)
+        # A recipe that already hands libtest its own flags (`-- --test-threads=1`)
+        # has the bare `--` in place: a SECOND `--` makes libtest read
+        # `--nocapture` as a NAME FILTER, run `0 passed; N filtered out`, exit 0,
+        # and the driver reports OK on a family that ran nothing (P4.D249 hit it
+        # on `regenerate_swipe_tier3_equivalence`). Append the flag after the
+        # existing separator instead.
+        if re.search(r"(?<!\S)--(?!\S)", cmd):
+            return cmd + " --nocapture"
+        return cmd + " -- --nocapture"
+
     return re.sub(
         r"(cargo test(?:[^\n]*\\\n)*[^\n]*)$",
-        r"\1 -- --nocapture",
+        _add,
         script,
         count=1,
         flags=re.M,
@@ -1586,6 +1599,18 @@ def cmd_self_test() -> int:
     check(
         splice_nocapture(already) == already,
         "an already-spliced script must be left alone",
+    )
+    # P4.D249's catch: a recipe that already carries libtest flags behind a
+    # bare `--` must gain `--nocapture` AFTER that separator — a second `--`
+    # turns the flag into a name filter and the family runs zero tests as OK.
+    libtest_flags = "cargo test -p quilltap-harness --test fam \\\n  -- --test-threads=1"
+    check(
+        splice_nocapture(libtest_flags) == libtest_flags + " --nocapture",
+        f"libtest-flags splice wrong: {splice_nocapture(libtest_flags)!r}",
+    )
+    check(
+        len(re.findall(r"(?<!\S)--(?!\S)", splice_nocapture(libtest_flags))) == 1,
+        "a second bare `--` makes --nocapture a libtest name filter",
     )
 
     # P4.45's indentation rule, both directions: at the prose margin these

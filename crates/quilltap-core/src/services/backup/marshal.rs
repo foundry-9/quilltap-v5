@@ -42,6 +42,13 @@ pub(crate) enum F {
     Bool,
     /// Optional boolean — omitted when NULL.
     BoolOpt,
+    /// A `z.boolean().default(x)` column whose generateDDL shape is NULLABLE
+    /// (`INTEGER DEFAULT 0`, no `NOT NULL`): a NULL cell reads as the schema
+    /// default, which is what v4's SQLite deserializer (NULL → `undefined`) plus
+    /// Zod's `.default()` make of it — where [`F::Bool`] would fail the whole
+    /// backup on the cell. No v4 or v5 writer stores the NULL; the shape (and
+    /// `tolerant_select_list`'s `NULL AS "col"` for an absent column) permits it.
+    BoolDefault(bool),
     /// A JSON-text column that Zod defaults when absent. The `&str` is the
     /// default's JSON source (`"[]"`, `"{}"`), used when the cell is NULL or
     /// unparseable — matching `fromJsonSafe` + the schema default.
@@ -94,6 +101,14 @@ pub(crate) fn marshal(row: &Row<'_>, fields: &[(&str, F)]) -> rusqlite::Result<V
                 if !is_null {
                     o.insert((*name).into(), Value::Bool(row.get::<_, i64>(idx)? != 0));
                 }
+            }
+            F::BoolDefault(default) => {
+                let v = if is_null {
+                    *default
+                } else {
+                    row.get::<_, i64>(idx)? != 0
+                };
+                o.insert((*name).into(), Value::Bool(v));
             }
             F::Json(default_src) => {
                 let parsed = row
@@ -242,4 +257,40 @@ pub(super) fn dump_table(conn: &rusqlite::Connection, table: &str) -> Vec<Value>
         out.push(Value::Object(o));
     }
     out
+}
+
+#[cfg(test)]
+mod bool_default_tests {
+    use super::*;
+
+    /// A NULL cell on a nullable `z.boolean().default(false)` column marshals
+    /// as the default (v4: NULL → `undefined` → Zod default), where `F::Bool`
+    /// errors — the inconsistency the `52d6e7ecd` unification's review caught
+    /// on `chat_informs.permanent` (the reader already mapped NULL to `false`).
+    #[test]
+    fn a_null_cell_marshals_as_the_default_where_bool_would_fail() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE t (id TEXT NOT NULL, flag INTEGER DEFAULT 0); \
+             INSERT INTO t VALUES ('n', NULL), ('one', 1), ('zero', 0)",
+        )
+        .unwrap();
+        let read = |fields: &[(&str, F)], id: &str| -> rusqlite::Result<Value> {
+            conn.query_row("SELECT id, flag FROM t WHERE id = ?1", [id], |r| {
+                marshal(r, fields)
+            })
+        };
+        let with_default: &[(&str, F)] = &[("id", F::Str), ("flag", F::BoolDefault(false))];
+        assert_eq!(read(with_default, "n").unwrap()["flag"], Value::Bool(false));
+        assert_eq!(
+            read(with_default, "one").unwrap()["flag"],
+            Value::Bool(true)
+        );
+        assert_eq!(
+            read(with_default, "zero").unwrap()["flag"],
+            Value::Bool(false)
+        );
+        let required: &[(&str, F)] = &[("id", F::Str), ("flag", F::Bool)];
+        assert!(read(required, "n").is_err(), "F::Bool fails the NULL cell");
+    }
 }

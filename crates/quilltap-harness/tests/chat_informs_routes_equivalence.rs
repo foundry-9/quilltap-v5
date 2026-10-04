@@ -426,6 +426,11 @@ fn chat_informs_routes_match_oracle() {
         ),
     ] {
         let (db, _s) = fresh_db(&fixture, &pepper, "inform_permanent_400");
+        // The order's "NOTHING written": `effects_none()` is a CONSTANT, so it
+        // proves nothing about v5 on its own — count the chat's inform and
+        // message rows around the refusal (the `52d6e7ecd` unification's
+        // review catch).
+        let before = row_counts(&db, &chat);
         let resp = rt.block_on(chat_informs::chat_inform(
             &db,
             &chat,
@@ -441,6 +446,11 @@ fn chat_informs_routes_match_oracle() {
             ),
             _ => body_of(&resp),
         };
+        assert_eq!(
+            row_counts(&db, &chat),
+            before,
+            "{label}: a Zod refusal writes no inform row and no Host record"
+        );
         compare(label, st, b, effects_none());
     }
 
@@ -536,6 +546,20 @@ fn oracle_effects(calls: &Value) -> Value {
         "createBatchBody": calls["createBatchBody"].clone(),
         "createBatchPermanent": calls["createBatchPermanent"].clone(),
     })
+}
+
+/// `(chat_informs, chat_messages)` rows for one chat — the "nothing written"
+/// comparand around a refused post.
+fn row_counts(db: &Db, chat_id: &str) -> (i64, i64) {
+    let cid = chat_id.to_string();
+    db.read_main(move |c| {
+        let n = |sql: &str| c.query_row(sql, [&cid], |r| r.get::<_, i64>(0));
+        Ok((
+            n("SELECT COUNT(*) FROM chat_informs WHERE chatId = ?1")?,
+            n("SELECT COUNT(*) FROM chat_messages WHERE chatId = ?1")?,
+        ))
+    })
+    .unwrap()
 }
 
 fn effects_none() -> Value {

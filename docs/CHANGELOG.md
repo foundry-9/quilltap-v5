@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-04 — fix(unify): the 52d6e7ecd round's review findings — capture pins the lanes claimed but never wrote, a nothing-written proof on the permanent 400 arms, the backup's NULL-tolerant boolean, the group import refusing a non-string colour as v4 does, the sweep driver's second `--`
+
+_Versions: core 0.0.1205._
+
+The §3 review of P4.D249 ∥ P4.D250 ∥ P4.146 found no blocking defect; these are its should-fixes, each with a test. P4.D249: items 9 and 10 reported capture pins on the two `[Inform]` debug lines and on `Inform batch created` that did not exist (the differential compared v4's field order against literals and never captured v5's lines) — `inform_block.rs` now captures the built line off a swipe and on one and the no-block line, and `db/chat_informs.rs` captures both repository lines (`permanent` last on the create; `collection, batch_id, count` on the delete — item 18's missing pin too). The routes family's three `permanent` 400 arms passed a constant as v5's effects; they now count the chat's inform and message rows around the refusal. The backup marshalled `permanent` as `F::Bool`, which fails the whole backup on a NULL cell that the reader maps to `false` (generateDDL's shape is nullable; v4 emits `false`); a new `F::BoolDefault(bool)` emits the default, with a test that `F::Bool` would have failed. P4.146: the group import kept a non-string, non-null `color`/`icon` and imported the group, with a comment claiming parity v4 does not have — v4 validates the spread entity against `GroupSchema` and fails the group; `create_group` now folds and parses the bag as the project import does, the error becoming the per-item `Failed to import group` warning (unit arm: `color: 5`, `icon: ["gear"]` → refused, nothing written). Tooling: `recipe_sweep.py`'s `--nocapture` splice appended a second `--` to a recipe already carrying libtest flags, so libtest read `--nocapture` as a name filter and the family ran zero tests as OK (the P4.D249 lane recorded it on `regenerate_swipe_tier3`); fixed with a self-test. `ai_import_tier3`'s per-baseline `V4_APP_VERSION` moves to `4.10.0-dev.109`.
+
 #### 2026-10-03 — docs(orders): P4.D250 lane complete
 
 _Docs-only change._

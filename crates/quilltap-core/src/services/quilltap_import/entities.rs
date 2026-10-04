@@ -609,20 +609,22 @@ fn create_group(
         icon: None,
     };
     // v4 spreads the bundle entity into `repos.groups.create` →
-    // `writeManagedFields(parseProperties(entity))` (`import-entities.ts:286,300`),
-    // so an explicit `null` colour/icon is KEPT and an absent one stays ABSENT —
-    // measured at `52d6e7ecd`: unlike the create route, the import injects no
-    // `|| null` (dogfood #136). A non-string, non-null value is dropped, as the
-    // prior `opt_str_field` arm dropped it.
-    let tri = |key: &str| match raw.get(key) {
-        Some(Value::Null) => Some(None),
-        Some(Value::String(s)) => Some(Some(s.clone())),
-        _ => None,
-    };
-    let properties = groups::GroupProperties {
-        color: tri("color"),
-        icon: tri("icon"),
-    };
+    // `_create` validates it against `GroupSchema` (which spreads
+    // `GroupPropertiesSchema.shape`) → `writeManagedFields(parseProperties(entity))`
+    // (`import-entities.ts:286,300`, `base.repository.ts`), so an explicit
+    // `null` colour/icon is KEPT and an absent one stays ABSENT — measured at
+    // `52d6e7ecd`: unlike the create route, the import injects no `|| null`
+    // (dogfood #136). A non-string, non-null value FAILS the validate, and the
+    // per-item catch in `import_groups` records `Failed to import group` and
+    // skips the group — the same fold-then-parse the project import runs
+    // (P4.146's lane had dropped the value and imported the group; the
+    // `52d6e7ecd` unification's review measured v4 and corrected it).
+    let properties = <groups::GroupEntity as crate::db::document_store_overlay::StoreEntity>::parse_properties(
+        &fold_properties(
+            raw,
+            <groups::GroupEntity as crate::db::document_store_overlay::StoreEntity>::property_keys(),
+        ),
+    )?;
     let created = repo
         .create_with_properties(
             &input,
@@ -1096,6 +1098,30 @@ mod group_null_import_tests {
             let group = repo.find_by_id(&id).unwrap().unwrap();
             let mp = group["officialMountPointId"].as_str().unwrap();
             assert_eq!(stored_properties(&mount, mp), want, "{raw}");
+        }
+    }
+
+    /// v4 validates the spread bundle entity against `GroupSchema` before it
+    /// writes, so a colour or icon that is neither a string nor `null` fails
+    /// the group (the per-item catch warns and skips it). The P4.146 lane had
+    /// dropped the value and imported the group anyway.
+    #[test]
+    fn a_non_string_colour_or_icon_fails_the_group_as_v4_does() {
+        let (main, mount) = conns();
+        let repo = groups::GroupsRepository::new(&main, &mount);
+        let opts = ImportOptions::seed_defaults();
+        for raw in [
+            json!({ "id": "g-bad-1", "name": "Numbered", "color": 5 }),
+            json!({ "id": "g-bad-2", "name": "Listed", "icon": ["gear"] }),
+        ] {
+            let source = raw["id"].as_str().unwrap().to_string();
+            let err = create_group(&repo, &raw, None, &opts, &source)
+                .expect_err("v4's validate refuses the bag");
+            assert!(!err.is_empty(), "{raw}");
+            assert!(
+                repo.find_all().unwrap().is_empty(),
+                "nothing is written for a refused group: {raw}"
+            );
         }
     }
 }

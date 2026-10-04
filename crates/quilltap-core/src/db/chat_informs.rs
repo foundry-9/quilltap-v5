@@ -815,6 +815,83 @@ mod tests {
         assert_eq!(ids(&repo.find_by_chat_id("c1").unwrap()), ["o1"]);
     }
 
+    /// Install `global_capture`'s process-global subscriber once per binary
+    /// (the `db/memories.rs` idiom): sibling tests hit the same `debug!`
+    /// callsites with NO subscriber on their thread, and tracing's `Interest`
+    /// cache can leave a callsite `never` for the thread that IS capturing —
+    /// the first run of this pin captured the line, the second captured
+    /// nothing (memory: a-second-global-default-silences-the-first). One
+    /// permanently-live `always` dispatcher keeps every callsite interesting.
+    fn arm_global_callsites() {
+        static INIT: std::sync::Once = std::sync::Once::new();
+        INIT.call_once(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .build()
+                .expect("a current-thread runtime to arm the global capture layer")
+                .block_on(crate::test_support::global_capture::capture_events(async {}));
+        });
+    }
+
+    /// Item 9's capture pin (the P4.D249 lane recorded it without writing it):
+    /// v4's `Inform batch created` debug carries `permanent` LAST, after
+    /// `recordMessageId`; and item 18's `Pending informs deleted by batch`
+    /// carries v4's `{collection, batchId, count}`.
+    #[test]
+    fn the_two_repository_debug_lines_carry_v4s_fields_in_order() {
+        arm_global_callsites();
+        let c = conn();
+        let repo = ChatInformsRepository::new(&c);
+        let seats = vec!["p1".to_string(), "p2".to_string()];
+        // A `Some` record id: tracing records an `Option` field only when it is
+        // `Some`, so with `None` the line simply lacks `record_message_id` where
+        // v4 logs `recordMessageId: null` — a pre-existing (P4.D205) shape on
+        // every v5 line that carries an `Option`, recorded, not this pin's
+        // subject. The ORDER is what `52d6e7ecd` moved (`permanent` LAST).
+        let (rows, lines) = crate::test_support::captured_with(|| {
+            repo.create_batch("c1", "x", &seats, Some("m-rec"), true)
+        });
+        let rows = rows.unwrap();
+        let created = lines
+            .iter()
+            .find(|l| l.contains("Inform batch created"))
+            .unwrap_or_else(|| panic!("{lines:#?}"));
+        assert!(created.starts_with("DEBUG quilltap::db"), "{created}");
+        let keys: Vec<&str> = created
+            .split_whitespace()
+            .filter_map(|tok| tok.split_once('=').map(|(k, _)| k))
+            .collect();
+        assert_eq!(
+            keys,
+            [
+                "collection",
+                "chat_id",
+                "batch_id",
+                "target_count",
+                "record_message_id",
+                "permanent"
+            ],
+            "{created}"
+        );
+        assert!(created.contains("target_count=2"), "{created}");
+        assert!(created.contains("permanent=true"), "{created}");
+
+        let batch = rows[0].batch_id.clone();
+        let (count, lines) =
+            crate::test_support::captured_with(|| repo.delete_pending_by_batch(&batch));
+        assert_eq!(count.unwrap(), 2);
+        let deleted = lines
+            .iter()
+            .find(|l| l.contains("Pending informs deleted by batch"))
+            .unwrap_or_else(|| panic!("{lines:#?}"));
+        assert!(deleted.starts_with("DEBUG quilltap::db"), "{deleted}");
+        let keys: Vec<&str> = deleted
+            .split_whitespace()
+            .filter_map(|tok| tok.split_once('=').map(|(k, _)| k))
+            .collect();
+        assert_eq!(keys, ["collection", "batch_id", "count"], "{deleted}");
+        assert!(deleted.contains("count=2"), "{deleted}");
+    }
+
     #[test]
     fn create_batch_writes_the_flag_on_every_row() {
         let c = conn();

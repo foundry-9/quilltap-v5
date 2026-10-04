@@ -265,6 +265,168 @@ mod tests {
         db
     }
 
+    fn provisioned_db(dir: &tempfile::TempDir) -> Db {
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
+        Db::open(
+            DbPaths {
+                main: data.join("quilltap.db"),
+                mount_index: None,
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap()
+    }
+
+    /// Install `global_capture`'s process-global subscriber once per binary
+    /// (the `db/memories.rs` idiom): sibling tests hit the same `debug!`
+    /// callsites with NO subscriber on their thread, and tracing's `Interest`
+    /// cache can leave a callsite `never` for the thread that IS capturing —
+    /// the first run of this pin captured the line, the second captured
+    /// nothing (memory: a-second-global-default-silences-the-first). One
+    /// permanently-live `always` dispatcher keeps every callsite interesting.
+    fn arm_global_callsites() {
+        static INIT: std::sync::Once = std::sync::Once::new();
+        INIT.call_once(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .build()
+                .expect("a current-thread runtime to arm the global capture layer")
+                .block_on(crate::test_support::global_capture::capture_events(async {}));
+        });
+    }
+
+    /// The ONE line about the block, if any, and the fields it carries after
+    /// the level + target prefix, in emission order.
+    fn inform_line(lines: &[String], needle: &str) -> (String, Vec<String>) {
+        let l = lines
+            .iter()
+            .find(|l| l.contains(needle))
+            .unwrap_or_else(|| panic!("no {needle:?} in {lines:#?}"))
+            .clone();
+        let fields = l
+            .split_whitespace()
+            .filter_map(|tok| tok.split_once('=').map(|(k, _)| k.to_string()))
+            .collect();
+        (l, fields)
+    }
+
+    /// The order's items 9–10 asked for capture pins on the two debug lines;
+    /// the P4.D249 lane pinned v4's field order against LITERALS inside the
+    /// differential and never captured v5's own lines (the `52d6e7ecd`
+    /// unification's review catch). Off a swipe: `pending` counts the one-shot
+    /// rows, `standing` the standing ones, in v4's field order at v4's level.
+    #[test]
+    fn the_built_line_carries_v4s_fields_in_order_off_a_swipe() {
+        arm_global_callsites();
+        let dir = tempfile::tempdir().unwrap();
+        let db = provisioned_db(&dir);
+        let seats = vec!["p1".to_string()];
+        db.write_blocking(move |w| {
+            let repo = crate::db::chat_informs::ChatInformsRepository::new(w.main().connection());
+            repo.create_batch("c1", "a standing note", &seats, None, true)?;
+            repo.create_batch("c1", "a one-shot", &seats, None, false)?;
+            Ok::<_, crate::db::DbError>(())
+        })
+        .unwrap();
+        let (block, lines) = captured_with(|| build_inform_block(&db, "c1", "p1", None));
+        assert_eq!(
+            block.row_ids.len(),
+            2,
+            "both undelivered rows are handed back"
+        );
+        let (l, fields) = inform_line(&lines, "[Inform] Built inform block");
+        assert!(l.starts_with("DEBUG quilltap::inform"), "{l}");
+        assert_eq!(
+            fields,
+            [
+                "chat_id",
+                "participant_id",
+                "pending",
+                "reapplied",
+                "standing",
+                "passages"
+            ],
+            "{l}"
+        );
+        for want in ["pending=1", "reapplied=0", "standing=1", "passages=2"] {
+            assert!(l.contains(want), "{want}: {l}");
+        }
+        assert!(
+            !lines
+                .iter()
+                .any(|x| x.contains("[Inform] No inform block for this turn")),
+            "{lines:#?}"
+        );
+    }
+
+    /// On a swipe the standing row (delivered or not) is merged in and counted
+    /// as `standing`; the swiped message's consumed one-shot is `reapplied`;
+    /// `pending` is 0 and no row id is handed back.
+    #[test]
+    fn the_built_line_counts_standing_and_reapplied_on_a_swipe() {
+        arm_global_callsites();
+        let dir = tempfile::tempdir().unwrap();
+        let db = provisioned_db(&dir);
+        let seats = vec!["p1".to_string()];
+        db.write_blocking(move |w| {
+            let repo = crate::db::chat_informs::ChatInformsRepository::new(w.main().connection());
+            let standing = repo.create_batch("c1", "a standing note", &seats, None, true)?;
+            let one_shot = repo.create_batch("c1", "a one-shot", &seats, None, false)?;
+            repo.mark_consumed(&[one_shot[0].id.clone()], "m-swiped")?;
+            repo.mark_consumed(&[standing[0].id.clone()], "m-earlier")?;
+            Ok::<_, crate::db::DbError>(())
+        })
+        .unwrap();
+        let ids = vec!["m-swiped".to_string()];
+        let (block, lines) =
+            captured_with(|| build_inform_block(&db, "c1", "p1", Some(ids.as_slice())));
+        assert!(block.row_ids.is_empty(), "a swipe never consumes");
+        let (l, fields) = inform_line(&lines, "[Inform] Built inform block");
+        assert!(l.starts_with("DEBUG quilltap::inform"), "{l}");
+        assert_eq!(
+            fields,
+            [
+                "chat_id",
+                "participant_id",
+                "pending",
+                "reapplied",
+                "standing",
+                "passages"
+            ],
+            "{l}"
+        );
+        for want in ["pending=0", "reapplied=1", "standing=1", "passages=2"] {
+            assert!(l.contains(want), "{want}: {l}");
+        }
+    }
+
+    /// Nothing owed: v4's no-block line, with the `standing: 0` field
+    /// `52d6e7ecd` added, LAST.
+    #[test]
+    fn the_no_block_line_gains_standing_zero_last() {
+        arm_global_callsites();
+        let dir = tempfile::tempdir().unwrap();
+        let db = provisioned_db(&dir);
+        let (block, lines) = captured_with(|| build_inform_block(&db, "c1", "p1", None));
+        assert_eq!(block, InformBlock::default());
+        let (l, fields) = inform_line(&lines, "[Inform] No inform block for this turn");
+        assert!(l.starts_with("DEBUG quilltap::inform"), "{l}");
+        assert_eq!(
+            fields,
+            [
+                "chat_id",
+                "participant_id",
+                "pending",
+                "reapplied",
+                "standing"
+            ],
+            "{l}"
+        );
+        assert!(l.contains("standing=0"), "{l}");
+    }
+
     #[test]
     fn a_broken_table_logs_v4s_filter_line_per_read_and_delivers_nothing() {
         let dir = tempfile::tempdir().unwrap();
