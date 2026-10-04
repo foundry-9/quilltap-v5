@@ -164392,3 +164392,100 @@ the Friday copy's first boot after this round reads `checked=11` with
 `structure` healthy, and any newly CREATED link table carries v4's indexes
 (read `sqlite_master` on the copy's mount index — the sha256 index on a
 created `doc_mount_files`); a `Lock` → `/health` 423 → unlock → healthy.
+
+## Dogfood pass — the `f6426e196` recorded-divergences round + the `e5c6bd0c0` roster/structure round: the API-key read class, the Salon spine, the model layer, the repository fallbacks, the data/zod and memory smalls, the attachment sentence, the project roster gate, the structural check (2026-10-03)
+
+**Walk doc:** `dogfood-walks/2026-10-03-recorded-divergences-and-roster-pass.md`.
+**42 rows: 38 PASS, 4 BLOCKED (each with its reason). THREE findings: #135
+FIXED (SPA, `ef9c74c02`), #137 FIXED (core), #136 OPEN as a proposed order.**
+Eight boots of the copy (clean; the debug filter; two mount-index plants;
+the main-DB plants; clean; the POSIX `TZ`), zero panics.
+
+Orders covered: P4.139–P4.145 (the `f6426e196` recorded-divergences round)
+and P4.D245–P4.D248 (the `e5c6bd0c0` round). **The ledger's §2 probe FAILED
+at walk start** — v4 had committed the in-flight standing-informs change as
+`52d6e7ecd` — so `/driftcheck` ran first (`b3c31274a`: DRIFT PENDING, 1
+commit, PORT, schema-moving). No walk row touched Inform, and the copy
+predates the migration.
+
+### Proven live
+- **P4.D247 ⭐ + P4.D246 + P4.D245.** LUC Ranch's v4-written roster rendered
+  on v5 for the first time; both toggle directions' strings; the PUT's
+  enriched `characterRoster` + `_count`; the picker (42 = 44 live minus the
+  roster; archived absent, NPCs present, a "Secret"-tagged character gone
+  under quick-hide, a TITLE search, `Adding…`, both toasts, `No characters
+  match.`, Done clearing); a new project opening "Open to every character";
+  a new chat with an off-roster character leaving `properties.json`
+  md5-identical (the auto-add gone); Help "roster" landing on the rewritten
+  page. **The gate on a real turn:** off-roster Laura's `doc_read_file
+  scope:project` refused with v4's roster sentence verbatim, DEBUG
+  `[ProjectRoster] Tool access check … allowed=false`; added through the card,
+  the same read admitted (`allowed=true`) with no restart; the Salon wardrobe
+  dialog equipped a project-tier garment for her while off-roster (the
+  operator bypass, flushed on Done).
+- **P4.D248 ⭐.** The fresh copy: `checked=11`, `structure` healthy. Under a
+  two-column `doc_mount_chunks` rename the boot continued, `/health` 503
+  `degraded` named the table and both columns, **the SPA opened anyway** and
+  the Scriptorium listed files; the #134 links plant gave the ensure-form
+  problem; reverted → healthy; Lock → 423 → unlock → healthy; the collapse
+  gate `AlreadyCompleted` (v4's 2026-09-11 ledger row).
+- **P4.142.** Under the links plant: `listChats` 200 with every line by count
+  (13 path + 2 folder batch reads, 54 + 7 drops, both summary WARNs);
+  `chatGet` 500 `Failed to fetch chat`; the backup and the `.qtap` export both
+  FAIL closed (the strict wraps); the embedded-count line under an `embedding`
+  rename; the reverted search silent.
+- **P4.139.** A corrupted key: the list renders the rest with v4's WARN;
+  edit/test/delete 404 with v4's lines (the test the scoped one); an image
+  profile lists `apiKey: null`; Serper's `isActive = NULL` still searches; a
+  BLOB profile name 404s the Scenario Builder with v4's line.
+- **P4.140.** Under `TZ='XST6XDT,…'`: item 13's WARN; the export and
+  `read_conversation` in CDT while the Host's line reads UTC — the recorded
+  split, exactly; one `fileProcessing` frame between `processing_files` and
+  `validating`, the SPA showing nothing; an `@Friday:` consult writing one
+  `CHAT_MESSAGE` row with the answerer's id and NULL `messageId`.
+- **P4.141.** v4's catch lines live on posed and real endpoints: `Request
+  timed out.` with the background cheap task's one same-route retry
+  (`budget_ms=90000`), the 2xx shape guard's `Cannot read properties of
+  undefined (reading 'message')`, Ollama's `fetch failed` with `[Failover]
+  trigger="network"`, Google's on a junk key, and OpenRouter's line #7 alone
+  (driven free through the image describer).
+- **P4.143 + P4.144 + P4.145.** The import names a bad tag (the serde
+  sentence) and an integer image provider and refuses a BOGUS embedding
+  provider with v4's Zod bytes; both `routeTrail` plants skipped with their
+  `errorsJson`; a summary rebuild's `[FoldEpisodePass] Episode pass complete
+  … memoriesWritten=2` matching +2 episodic rows; the attachment-only send's
+  sentence, `[Attached: …]` bubble and the inlined file in the request.
+
+### Findings
+- **#135 FIXED (`ef9c74c02`, SPA 0.5.798).** Every project's Files card listed
+  its files nameless at `0 B` — the card read keys the wire never carries
+  (P4.6l, 2026-07-11), and its spec had frozen the same wrong shape.
+- **#137 FIXED (`eec676900`, core 0.0.1200).** A failed backup logged v5's own words with
+  `sqlite error:`; a failed export logged nothing. Both now log v4's lines
+  with the bare message.
+- **#136 OPEN → a proposed order.** A project's `properties.json` loses v4's
+  explicit `null`s on the first v5 write (598 → 337 bytes) and the read wire
+  omits them — the `Option<T>` + `skip_serializing_if` seam the struct's doc
+  records; groups share it.
+
+### Not run (reasons in the walk doc)
+C6 (the wizard key — setup-heavy, pinned at the helper), F3 (`send_mail`
+under the plant — no turn reaches a tool), G3 (the restore — rewrites the
+copy), H2 (one cheap desk fails the summary first), D3's
+`image_description` arm (the seat is vision-capable), B4's full-roster
+string (e2e-asserted). **Instrument notes:** the workspace keeps hidden tabs
+MOUNTED (scope scripts to the active component — a `main`-scoped match added a
+character to a roster through a hidden picker); the pane's screenshot frame is
+a scaled copy, so `ref` clicks miss; the roster gate's DEBUG line needs
+`quilltap_core::project_roster_access=debug`.
+
+### `target/` swept mid-pass (the human's request, 2026-10-03)
+#137's core bump re-mints every harness test binary, and the data volume fell
+to **746 MiB free** during its gate. At the human's request the sanctioned
+`scripts/cargo-sweep.sh` cycle ran OUTSIDE `/setupphase`: the in-flight gate
+was stopped, `stamp` written with nothing building, the gate's own
+`cargo test --workspace` and a no-op `cargo build --release` re-run inside
+the window, then `file -d` (70.62 GiB) → `file` (**cleaned 70.62 GiB → 70 GiB
+free**). Main's `target/` now holds exactly this tree's debug-test and release
+artifacts; clippy's ran after the sweep. The next `/setupphase` runs its own
+cycle as usual.

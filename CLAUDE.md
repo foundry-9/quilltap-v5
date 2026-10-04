@@ -1485,6 +1485,28 @@ records THERE. Update this summary only when a phase or round completes.
   **Next: the owed dogfood pass, then a follow-ups smalls round, then the
   Inform catch-up when v4 commits it** — `phase-4.md`. Round record:
   `status-log.md`.
+- **The `f6426e196` recorded-divergences + `e5c6bd0c0` roster/structure
+  dogfood pass RAN (2026-10-03, agent-driven, on the Friday copy) — 42 rows,
+  38 PASS, 4 BLOCKED (each reasoned), THREE findings: #135 + #137 FIXED, #136
+  ORDER-PENDING.** Walk doc:
+  `dogfood-walks/2026-10-03-recorded-divergences-and-roster-pass.md`; record
+  in `status-log.md`. The §2 probe FAILED at walk start (v4 committed the
+  standing-informs change as `52d6e7ecd`) → `/driftcheck` first (DRIFT
+  PENDING, 1 commit, PORT, a new migration); no row touched Inform. ⭐ The
+  roster gate on a real turn both ways (v4's sentence + `allowed=false`, then
+  admitted after a card add with no restart) and the operator wardrobe
+  bypass; ⭐ a damaged structural table → `/health` 503 `degraded` and the SPA
+  opens anyway; ⭐ v4's catch lines on posed + real endpoints (the timeout's
+  one cheap retry, the 2xx guard, `fetch failed` → `network`, OpenRouter #7
+  alone); the API-key, fallback, import and fold-episode rows. **FIXED #135**
+  (`ef9c74c02`, SPA 0.5.798): every project's Files card listed its files
+  nameless at `0 B` (keys the wire never sends, frozen in the spec since
+  P4.6l). **FIXED #137** (`eec676900`, core 0.0.1200): the backup/export failure lines in
+  v4's words with the bare message. **#136 ORDER-PENDING:** a project's /
+  group's `properties.json` loses v4's explicit `null`s on the first v5 write
+  and the read wire omits them (the `Option` + `skip_serializing_if` seam).
+  **Next: the `52d6e7ecd` standing-informs catch-up (with #136 as a rider
+  order), then the not-run rows** — `dogfood-findings.md` standing notes.
 - **Oracle baseline: `e5c6bd0c0` (2026-10-02, v4 main — "Fix bugs 175 and
   176: resumable migrations and a boot-time table check",
   `4.10.0-dev.108`), adopted at the `e5c6bd0c0` round's unification

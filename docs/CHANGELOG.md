@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — docs(dogfood): the f6426e196 + e5c6bd0c0 dogfood pass — 42 rows, 38 PASS, 4 BLOCKED; findings #135 and #137 fixed, #136 order-pending
+
+_Docs-only change._
+
+An agent-driven walk of the `f6426e196` recorded-divergences round (P4.139–P4.145) and the `e5c6bd0c0` roster/structure round (P4.D245–P4.D248) on the Friday copy. The ledger's §2 probe failed at the start (v4 committed `52d6e7ecd`), so `/driftcheck` ran first; no row touched Inform. Proven live: the roster gate on a real turn in both directions, plus the operator wardrobe bypass; the structural check (`checked=11`; a damaged table gives `/health` 503 `degraded` while the SPA still opens); v4's catch lines on posed and real endpoints; the API-key, repository-fallback, import, fold-episode and attachment rows. Findings: #135 (the project Files card; fixed in `ef9c74c02`), #137 (the backup and export failure lines; fixed in `eec676900`), #136 (a project's or group's `properties.json` loses v4's explicit `null`s; a proposed order). Not run, with reasons: C6, F3, G3, H2. Also: the walk doc, the findings rows and standing notes, the status-log record (including the mid-pass `cargo-sweep.sh` cycle the human asked for, which freed 70.62 GiB), and the CLAUDE.md status bullet.
+
 #### 2026-10-03 — fix(core): a failed backup and a failed .qtap export log v4's lines with the bare SQLite message (dogfood #137)
 
 _Versions: core 0.0.1200._
