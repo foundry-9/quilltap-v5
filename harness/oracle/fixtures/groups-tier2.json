@@ -36,7 +36,6 @@
         "name": "Beta Renamed"
       }
     },
-
     {
       "kind": "create",
       "label": "gamma",
@@ -70,7 +69,6 @@
         "icon": "bolt"
       }
     },
-
     {
       "kind": "plantProperties",
       "label": "gamma",
@@ -83,7 +81,6 @@
         "color": "#010203"
       }
     },
-
     {
       "kind": "plantProperties",
       "label": "delta",
@@ -96,7 +93,6 @@
         "icon": "moon"
       }
     },
-
     {
       "kind": "deleteProperties",
       "label": "epsilon"
@@ -107,6 +103,101 @@
       "patch": {
         "color": "#0e0e0e"
       }
+    },
+    {
+      "$comment": "[P4.146 / dogfood #136] A repository create carrying `color: null, icon: null` (the bag v4's create route writes with `|| null`, and the shape a bundle's group carries) keeps both nulls on disk and on the read. Before P4.146 v5 folded them into absent (`{}`).",
+      "kind": "create",
+      "label": "zeta",
+      "input": {
+        "name": "Zeta",
+        "description": "Desc Z",
+        "state": {},
+        "color": null,
+        "icon": null
+      }
+    },
+    {
+      "kind": "read",
+      "label": "zeta"
+    },
+    {
+      "$comment": "[P4.146] (a)+(b) A planted v4 bag with both keys null, then a one-key update: ONLY icon moves, the colour's null survives the read-modify-write.",
+      "kind": "create",
+      "label": "eta",
+      "input": {
+        "name": "Eta",
+        "description": "Desc H",
+        "state": {},
+        "color": "#123456",
+        "icon": "gear"
+      }
+    },
+    {
+      "kind": "plantProperties",
+      "label": "eta",
+      "content": "{\n  \"color\": null,\n  \"icon\": null\n}"
+    },
+    {
+      "kind": "update",
+      "label": "eta",
+      "patch": {
+        "icon": "leaf"
+      }
+    },
+    {
+      "kind": "read",
+      "label": "eta"
+    },
+    {
+      "$comment": "[P4.146] (c) The group editor's save with the colour cleared (`color: this.color() || null`): the key is written as null, not removed — the server half of the SPA's save.",
+      "kind": "create",
+      "label": "theta",
+      "input": {
+        "name": "Theta",
+        "description": "Desc T",
+        "state": {},
+        "color": "#abcdef",
+        "icon": "gear"
+      }
+    },
+    {
+      "kind": "update",
+      "label": "theta",
+      "patch": {
+        "color": null
+      }
+    },
+    {
+      "kind": "read",
+      "label": "theta"
+    },
+    {
+      "$comment": "[P4.146] (d) A null set back to a value while the other null stays.",
+      "kind": "create",
+      "label": "iota",
+      "input": {
+        "name": "Iota",
+        "description": "Desc I",
+        "state": {},
+        "color": null,
+        "icon": null
+      }
+    },
+    {
+      "kind": "update",
+      "label": "iota",
+      "patch": {
+        "color": "#00aa00"
+      }
+    },
+    {
+      "kind": "read",
+      "label": "iota"
+    },
+    {
+      "$comment": "[P4.146] (e) A read of a bag with both keys ABSENT stays absent.",
+      "kind": "read",
+      "label": "beta"
     }
   ]
 }

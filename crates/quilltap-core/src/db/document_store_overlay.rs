@@ -86,8 +86,13 @@ pub trait StoreEntity {
     /// fields in schema-declaration order — a serde struct, so that order is
     /// declared and reviewable — because the stored bytes feed the content-dedup
     /// sha and must match v4's `JSON.stringify(parse(x), null, 2)` byte-for-byte.
-    /// Optional fields use `skip_serializing_if` so an absent key stays absent
-    /// (Zod `.optional()`).
+    /// A Zod `.nullable().optional()` field is three-state — `Option<Option<T>>`
+    /// with `deserialize_with = "double_option"` and `skip_serializing_if` — so an
+    /// absent key stays absent AND an explicit `null` stays `null`. That one
+    /// typing is what carries v4's nulls through this engine: the hydrated read
+    /// spreads `to_value(&properties)`, and the write overlay seeds from it and
+    /// re-serializes through it, so a plain `Option<T>` dropped a stored `null`
+    /// on every read and on every read-modify-write (dogfood #136).
     type Properties: Serialize + DeserializeOwned;
 
     /// Lowercase singular label for the unavailability error, e.g. `"group"`.
@@ -887,5 +892,236 @@ mod drop_line_tests {
         assert_eq!(repo_lines, ALL_OVERLAY_PATHS.len(), "{lines:#?}");
         assert_eq!(lines.len(), ALL_OVERLAY_PATHS.len() + 2, "{lines:#?}");
         assert!(lines[ALL_OVERLAY_PATHS.len()].contains("Dropping project from list"));
+    }
+}
+
+/// P4.146 (dogfood #136): the three-state typed bag ALONE carries v4's explicit
+/// `null`s through this engine — the hydrated read (`hydrate_one`'s spread) and
+/// the read-modify-write (`apply_write_overlay`'s seed + re-serialize). No engine
+/// hunk: these drive the real repositories over the fresh-instance DDL and would
+/// redden on a plain `Option<T>` bag (the pre-#136 shape) in both directions.
+#[cfg(test)]
+mod null_preservation_tests {
+    use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
+    use crate::db::groups::{GroupCreateInput, GroupCreateOptions, GroupsRepository};
+    use crate::db::projects::{ProjectCreateInput, ProjectCreateOptions, ProjectsRepository};
+    use rusqlite::Connection;
+    use serde_json::{json, Map, Value};
+
+    fn conns() -> (Connection, Connection) {
+        let schema: Value =
+            serde_json::from_str(include_str!("../services/provisioning/fresh_schema.json"))
+                .unwrap();
+        let open = |part: &str| {
+            let conn = Connection::open_in_memory().unwrap();
+            for ddl in schema[part].as_array().unwrap() {
+                conn.execute_batch(ddl.as_str().unwrap()).unwrap();
+            }
+            conn
+        };
+        (open("main"), open("mountIndex"))
+    }
+
+    /// The stored `properties.json` bytes and their content sha (the mount-index
+    /// row the finding's symptom moves).
+    fn stored(mount: &Connection, mount_point_id: &str) -> (String, String) {
+        mount
+            .query_row(
+                "SELECT d.content, f.sha256 FROM doc_mount_file_links l \
+                 JOIN doc_mount_documents d ON d.fileId = l.fileId \
+                 JOIN doc_mount_files f ON f.id = l.fileId \
+                 WHERE l.mountPointId = ?1 AND l.relativePath = 'properties.json'",
+                [mount_point_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap()
+    }
+
+    fn patch(pairs: Value) -> Map<String, Value> {
+        pairs.as_object().cloned().unwrap()
+    }
+
+    /// The finding's reference case, widened to all eleven nullable keys: a
+    /// v4-written bag (the cutover shape — every NULL column an explicit `null`),
+    /// one Allow-Any-Character toggle, and the written bytes differ from the
+    /// planted bytes ONLY in that key.
+    const PLANTED_PROJECT: &str = r#"{
+  "allowAnyCharacter": false,
+  "characterRoster": [],
+  "color": null,
+  "icon": null,
+  "defaultDisabledTools": [],
+  "defaultDisabledToolGroups": [],
+  "defaultAgentModeEnabled": null,
+  "defaultAvatarGenerationEnabled": null,
+  "defaultImageProfileId": null,
+  "defaultRoleplayTemplateId": null,
+  "defaultAlertCharactersOfLanternImages": null,
+  "answerConfirmationOverride": null,
+  "storyBackgroundsEnabled": null,
+  "staticBackgroundImageId": null,
+  "storyBackgroundImageId": null,
+  "backgroundDisplayMode": "theme"
+}"#;
+
+    #[test]
+    fn a_one_key_project_update_keeps_every_planted_null() {
+        let (main, mount) = conns();
+        let repo = ProjectsRepository::new(&main, &mount);
+        let created = repo
+            .create(
+                &ProjectCreateInput {
+                    name: "LUC Ranch".into(),
+                    description: None,
+                    instructions: None,
+                    state: json!({}),
+                    properties: json!({ "color": "#abcdef" }),
+                },
+                &ProjectCreateOptions::default(),
+            )
+            .unwrap();
+        let id = created["id"].as_str().unwrap().to_string();
+        let mp = created["officialMountPointId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        DocMountFileLinksRepository::new(&mount)
+            .write_database_document(&mp, "properties.json", PLANTED_PROJECT)
+            .unwrap();
+        assert_eq!(stored(&mount, &mp).0, PLANTED_PROJECT);
+
+        // The read wire carries every planted null (v4 `hydrateOne` spreads the
+        // parsed bag — Zod keeps `null` on a `.nullable().optional()` key).
+        let read = repo.find_by_id(&id).unwrap().unwrap();
+        for key in [
+            "color",
+            "icon",
+            "defaultAgentModeEnabled",
+            "defaultAvatarGenerationEnabled",
+            "defaultImageProfileId",
+            "defaultRoleplayTemplateId",
+            "defaultAlertCharactersOfLanternImages",
+            "answerConfirmationOverride",
+            "storyBackgroundsEnabled",
+            "staticBackgroundImageId",
+            "storyBackgroundImageId",
+        ] {
+            assert_eq!(read.get(key), Some(&Value::Null), "{key} on the read");
+        }
+
+        repo.update(&id, &patch(json!({ "allowAnyCharacter": true })))
+            .unwrap();
+        let (bytes, sha) = stored(&mount, &mp);
+        assert_eq!(
+            bytes,
+            PLANTED_PROJECT.replace(
+                "\"allowAnyCharacter\": false",
+                "\"allowAnyCharacter\": true"
+            ),
+            "ONLY allowAnyCharacter moved"
+        );
+        assert_eq!(
+            sha,
+            crate::services::mount_index::sync::types::sha256_hex(bytes.as_bytes())
+        );
+    }
+
+    /// The other arms of the three states over the RMW: a `null` patch on a key
+    /// with a value writes `null` (not absent); a value patch on a `null` key
+    /// writes the value; an ABSENT key stays absent through an unrelated edit.
+    #[test]
+    fn a_null_patch_writes_null_and_absent_stays_absent() {
+        let (main, mount) = conns();
+        let repo = ProjectsRepository::new(&main, &mount);
+        let created = repo
+            .create(
+                &ProjectCreateInput {
+                    name: "Mixed".into(),
+                    description: None,
+                    instructions: None,
+                    state: json!({}),
+                    properties: json!({ "color": "#abcdef", "icon": null }),
+                },
+                &ProjectCreateOptions::default(),
+            )
+            .unwrap();
+        let id = created["id"].as_str().unwrap().to_string();
+        let mp = created["officialMountPointId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let bag =
+            |mount: &Connection| -> Value { serde_json::from_str(&stored(mount, &mp).0).unwrap() };
+        assert_eq!(bag(&mount)["icon"], Value::Null, "create keeps the null");
+        assert!(bag(&mount).get("storyBackgroundsEnabled").is_none());
+
+        repo.update(&id, &patch(json!({ "color": null, "icon": "gear" })))
+            .unwrap();
+        let after = bag(&mount);
+        assert_eq!(after.get("color"), Some(&Value::Null));
+        assert_eq!(after["icon"], "gear");
+        assert!(
+            after.get("storyBackgroundsEnabled").is_none(),
+            "an absent key stays absent through an unrelated edit"
+        );
+        let read = repo.find_by_id(&id).unwrap().unwrap();
+        assert_eq!(read.get("color"), Some(&Value::Null));
+        assert!(read.get("storyBackgroundsEnabled").is_none());
+    }
+
+    #[test]
+    fn a_group_keeps_its_null_colour_through_create_read_and_update() {
+        let (main, mount) = conns();
+        let repo = GroupsRepository::new(&main, &mount);
+        let created = repo
+            .create_with_properties(
+                &GroupCreateInput {
+                    name: "Loners".into(),
+                    description: None,
+                    instructions: None,
+                    state: json!({}),
+                    color: None,
+                    icon: None,
+                },
+                &crate::db::groups::GroupProperties {
+                    color: Some(None),
+                    icon: Some(None),
+                },
+                &GroupCreateOptions::default(),
+            )
+            .unwrap();
+        let id = created["id"].as_str().unwrap().to_string();
+        let mp = created["officialMountPointId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert_eq!(
+            stored(&mount, &mp).0,
+            "{\n  \"color\": null,\n  \"icon\": null\n}"
+        );
+        assert_eq!(created.get("color"), Some(&Value::Null));
+        repo.update(&id, &patch(json!({ "icon": "gear" }))).unwrap();
+        assert_eq!(
+            stored(&mount, &mp).0,
+            "{\n  \"color\": null,\n  \"icon\": \"gear\"\n}"
+        );
+        // The plain create leaves an absent colour absent (the restore + harness
+        // callers' contract, unchanged).
+        let plain = repo
+            .create(
+                &GroupCreateInput {
+                    name: "Plain".into(),
+                    description: None,
+                    instructions: None,
+                    state: json!({}),
+                    color: None,
+                    icon: Some("star".into()),
+                },
+                &GroupCreateOptions::default(),
+            )
+            .unwrap();
+        let mp = plain["officialMountPointId"].as_str().unwrap();
+        assert_eq!(stored(&mount, mp).0, "{\n  \"icon\": \"star\"\n}");
+        assert!(plain.get("color").is_none());
     }
 }

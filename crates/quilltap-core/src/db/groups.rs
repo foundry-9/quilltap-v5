@@ -21,23 +21,33 @@ use super::document_store_overlay::{ManagedFields, OverlayError, StoreEntity};
 use super::group_doc_mount_links::GroupDocMountLinksRepository;
 use super::store_backed::StoreBackedRepository;
 use super::DbError;
+use crate::services::mount_index::sync::types::double_option;
 
 pub use super::store_backed::StoreCreateOptions as GroupCreateOptions;
 
 /// The `properties.json` bag (v4 `GroupPropertiesSchema`). Both keys are
-/// `.nullable().optional()`; serialized in schema-declaration order with
-/// `skip_serializing_if` so an absent key stays absent — matching
-/// `JSON.stringify(parse(x), null, 2)` byte-for-byte (the dedup sha depends on
-/// it). NB an explicit `null` value is treated as absent here (serde `Option`
-/// folds `null`→`None`); the corpus keeps `color`/`icon` to present-or-absent, so
-/// the null-vs-absent distinction (the open-JSON insertion/null seam) is not
-/// exercised — a tracked deferral, same family as `state` multi-key order.
+/// `.nullable().optional()` and THREE-state here (`Option<Option<String>>` over
+/// [`double_option`]): `None` = absent and omitted on write (`skip_serializing_if`),
+/// `Some(None)` = an explicit `null`, written back as `null`, `Some(Some(v))` = a
+/// value. v4's Zod parse keeps an explicit `null` — its create route stores
+/// `color: … || null`, and its group editor saves `color: this.color() || null` —
+/// so a v5 read-modify-write must not fold it into absent (dogfood #136).
+/// Serialized in schema-declaration order, matching `JSON.stringify(parse(x),
+/// null, 2)` byte-for-byte (the dedup sha depends on it).
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct GroupProperties {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub color: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub icon: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub color: Option<Option<String>>,
+    #[serde(
+        default,
+        deserialize_with = "double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub icon: Option<Option<String>>,
 }
 
 /// The group's [`StoreEntity`] binding for the generic engine + base repository.
@@ -92,6 +102,9 @@ pub struct GroupCreateInput {
     /// Arbitrary JSON (`null`/absent → `{}`). Kept `{}`/single-key in the corpus
     /// (the open-JSON multi-key order seam).
     pub state: Value,
+    /// A value, or absent from `properties.json`. A caller that must store v4's
+    /// explicit `null` (the create route's `|| null`, a bundle's `null`) passes a
+    /// three-state bag to [`GroupsRepository::create_with_properties`] instead.
     pub color: Option<String>,
     pub icon: Option<String>,
 }
@@ -108,17 +121,31 @@ impl<'c> GroupsRepository<'c> {
         }
     }
 
-    /// Create a group, provision its store, and return the overlaid entity.
+    /// Create a group, provision its store, and return the overlaid entity. The
+    /// input's `color`/`icon` are written as a value or left absent.
     pub fn create(
         &self,
         input: &GroupCreateInput,
         opts: &GroupCreateOptions,
     ) -> Result<Value, OverlayError> {
-        let properties = serde_json::to_value(GroupProperties {
-            color: input.color.clone(),
-            icon: input.icon.clone(),
-        })
-        .map_err(|e| OverlayError::Db(DbError::Internal(format!("properties build: {e}"))))?;
+        let properties = GroupProperties {
+            color: input.color.clone().map(Some),
+            icon: input.icon.clone().map(Some),
+        };
+        self.create_with_properties(input, &properties, opts)
+    }
+
+    /// [`Self::create`] with the `properties.json` bag given whole, so an explicit
+    /// `null` survives (v4 `writeManagedFields(parseProperties(entity))`). The
+    /// bag SUPERSEDES `input.color`/`input.icon`, which are not read.
+    pub fn create_with_properties(
+        &self,
+        input: &GroupCreateInput,
+        properties: &GroupProperties,
+        opts: &GroupCreateOptions,
+    ) -> Result<Value, OverlayError> {
+        let properties = serde_json::to_value(properties)
+            .map_err(|e| OverlayError::Db(DbError::Internal(format!("properties build: {e}"))))?;
         self.inner.create(
             &input.name,
             &ManagedFields {
@@ -353,5 +380,35 @@ mod validated_raw_read_tests {
             find_validated_name_and_official_mount_point_id_raw(&conn, "absent")
         });
         assert_eq!(found.unwrap(), None);
+    }
+}
+
+/// P4.146 (dogfood #136): the group bag's three states through the parse +
+/// 2-space serialize every write takes.
+#[cfg(test)]
+mod three_state_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn round_trip(bag: &Value) -> String {
+        serde_json::to_string_pretty(&GroupEntity::parse_properties(bag).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn null_absent_value_and_mixed() {
+        let both_null = "{\n  \"color\": null,\n  \"icon\": null\n}";
+        assert_eq!(
+            round_trip(&serde_json::from_str(both_null).unwrap()),
+            both_null
+        );
+        assert_eq!(round_trip(&json!({})), "{}");
+        assert_eq!(
+            round_trip(&json!({ "icon": "gear", "color": "#abcdef" })),
+            "{\n  \"color\": \"#abcdef\",\n  \"icon\": \"gear\"\n}"
+        );
+        assert_eq!(
+            round_trip(&json!({ "icon": null })),
+            "{\n  \"icon\": null\n}"
+        );
     }
 }

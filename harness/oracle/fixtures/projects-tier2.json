@@ -48,7 +48,6 @@
       "label": "alpha",
       "characterId": "aaaaaaaa-0000-4000-8000-000000000001"
     },
-
     {
       "kind": "create",
       "label": "gamma",
@@ -83,7 +82,6 @@
         "icon": "bolt"
       }
     },
-
     {
       "kind": "plantProperties",
       "label": "gamma",
@@ -96,7 +94,6 @@
         "answerConfirmationOverride": "ON"
       }
     },
-
     {
       "kind": "plantProperties",
       "label": "delta",
@@ -109,7 +106,6 @@
         "defaultAgentModeEnabled": true
       }
     },
-
     {
       "kind": "deleteProperties",
       "label": "epsilon"
@@ -121,7 +117,6 @@
         "color": "#0e0e0e"
       }
     },
-
     {
       "$comment": "[P4.D146 / v4 70505745a] The READ side of the retired-mode coercion. A project stored in 'static' — the shape a pre-4.9 instance is full of, and one that the post-fix create can no longer produce — is planted on disk here, then touched with an unrelated patch. The write overlay's read-modify-write seeds from the parsed bag, so the value that lands back on disk is the NORMALIZED 'theme'. (Alpha's create carries 'project' and covers the WRITE side: the retired value never reaches disk at all.)",
       "kind": "create",
@@ -145,7 +140,6 @@
         "icon": "anchor"
       }
     },
-
     {
       "$comment": "[P4.D246 / v4 9753d0eb2] The repository's CREATE seed, `allowAnyCharacter ?? true`, on its null arm: v4's `prepareCreateData` runs BEFORE the entity is validated and `??` treats an explicit null as absent, so a create carrying `allowAnyCharacter: null` lands OPEN. (The API refuses a null at the schema, so only a repository caller — import, restore, a fixture builder — can reach this arm.) Measured at the pin: v4's create accepts it.",
       "kind": "create",
@@ -158,7 +152,6 @@
         "color": "#ee0000"
       }
     },
-
     {
       "$comment": "[P4.D246 / v4 9753d0eb2] The READ default, pinned directly: a stored bag MISSING `allowAnyCharacter` (the shape a pre-flip store or a hand-edited one carries) is planted on disk, then touched with an unrelated patch. The write overlay's read-modify-write seeds from the PARSED bag, so the value that lands back on disk is the schema's read default — `false` — and NOT the create seed's `true`. v4's `ProjectPropertiesSchema.default(false)` did not move at `9753d0eb2`; only the two create-time defaults did. (Epsilon's deleteProperties-then-update is the other, indirect pin of the same rule.)",
       "kind": "create",
@@ -181,6 +174,86 @@
       "patch": {
         "icon": "lamp"
       }
+    },
+    {
+      "$comment": "[P4.146 / dogfood #136] (a)+(b) The finding's reference case widened to all eleven `.nullable().optional()` keys: a cutover-shaped v4 bag (every NULL column an explicit null) is planted, then ONLY allowAnyCharacter is toggled. v4's Zod parse keeps every null through the read-modify-write, so the stored bytes (and so the file's sha) differ from the planted bytes in that ONE key. Before P4.146 v5 folded every null into absent and rewrote the file to the five defaulted keys.",
+      "kind": "create",
+      "label": "iota",
+      "input": {
+        "name": "Iota",
+        "description": "Desc I",
+        "state": {},
+        "color": "#123456"
+      }
+    },
+    {
+      "kind": "plantProperties",
+      "label": "iota",
+      "content": "{\n  \"allowAnyCharacter\": false,\n  \"characterRoster\": [],\n  \"color\": null,\n  \"icon\": null,\n  \"defaultDisabledTools\": [],\n  \"defaultDisabledToolGroups\": [],\n  \"defaultAgentModeEnabled\": null,\n  \"defaultAvatarGenerationEnabled\": null,\n  \"defaultImageProfileId\": null,\n  \"defaultRoleplayTemplateId\": null,\n  \"defaultAlertCharactersOfLanternImages\": null,\n  \"answerConfirmationOverride\": null,\n  \"storyBackgroundsEnabled\": null,\n  \"staticBackgroundImageId\": null,\n  \"storyBackgroundImageId\": null,\n  \"backgroundDisplayMode\": \"theme\"\n}"
+    },
+    {
+      "kind": "update",
+      "label": "iota",
+      "patch": {
+        "allowAnyCharacter": true
+      }
+    },
+    {
+      "kind": "read",
+      "label": "iota"
+    },
+    {
+      "$comment": "[P4.146] (c) A PUT-shaped patch setting `color: null` on a bag that carries a colour: v4 copies the null verbatim and its parse keeps it — the key is written as null, not removed.",
+      "kind": "create",
+      "label": "kappa",
+      "input": {
+        "name": "Kappa",
+        "description": "Desc K",
+        "state": {},
+        "color": "#abcdef",
+        "icon": "gear"
+      }
+    },
+    {
+      "kind": "update",
+      "label": "kappa",
+      "patch": {
+        "color": null
+      }
+    },
+    {
+      "kind": "read",
+      "label": "kappa"
+    },
+    {
+      "$comment": "[P4.146] (d) A repository create carrying explicit nulls (the shape v4's route writes with `|| null`) keeps them; then two of them are set back to values while the third null stays.",
+      "kind": "create",
+      "label": "lambda",
+      "input": {
+        "name": "Lambda",
+        "description": "Desc L",
+        "state": {},
+        "color": null,
+        "icon": null,
+        "storyBackgroundsEnabled": null
+      }
+    },
+    {
+      "kind": "update",
+      "label": "lambda",
+      "patch": {
+        "color": "#00aa00",
+        "storyBackgroundsEnabled": true
+      }
+    },
+    {
+      "kind": "read",
+      "label": "lambda"
+    },
+    {
+      "$comment": "[P4.146] (e) A read of a bag whose nullable keys are ABSENT: they stay absent on the read wire (Beta's five-default bag).",
+      "kind": "read",
+      "label": "beta"
     }
   ]
 }

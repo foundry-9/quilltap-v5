@@ -29,6 +29,13 @@
 //! here, ids remapped through each side's own token map and only the
 //! parse-detail tail elided (see `UNPARSEABLE_MARKER`).
 //!
+//! Since P4.146 (dogfood #136) it also banks the explicit-`null` arms of the
+//! `.nullable().optional()` keys — a planted v4 bag carrying `null`s through a
+//! one-key read-modify-write (the stored BYTES and their `sha256` are the
+//! comparand: the `documents` and `files` dumps diff them exactly), a patch
+//! setting a key to `null`, a `null` set back to a value, and a `read` op whose
+//! hydrated entity (minus the four minted keys) is diffed whole as `reads`.
+//!
 //! Generate the oracle output + fixtures (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   cd ~/source/quilltap-server
@@ -103,6 +110,30 @@ enum Op {
         label: String,
         patch: Map<String, Value>,
     },
+    /// P4.146 (dogfood #136): record the hydrated `find_by_id` entity, minus
+    /// the four minted keys, into `reads` — the read wire's `null`s.
+    #[serde(rename = "read")]
+    Read { label: String },
+}
+
+/// The label's minted id (both sides track minted ids by corpus label).
+fn lookup_id(map: &HashMap<String, String>, label: &str) -> String {
+    map.get(label)
+        .unwrap_or_else(|| panic!("op references unknown label {label}"))
+        .clone()
+}
+
+/// P4.146: the hydrated entity minus the four minted keys both sides drop
+/// (v4's case destructures `id`/`officialMountPointId`/`createdAt`/`updatedAt`).
+fn read_entity(label: &str, found: Option<Value>) -> Value {
+    let mut entity = found.unwrap_or_else(|| panic!("read {label}: not found"));
+    let obj = entity
+        .as_object_mut()
+        .expect("hydrated entity is an object");
+    for key in ["id", "officialMountPointId", "createdAt", "updatedAt"] {
+        obj.remove(key);
+    }
+    json!({ "label": label, "entity": entity })
 }
 
 struct TableSpec {
@@ -351,6 +382,7 @@ fn projects_tier2_matches_oracle() {
         .unwrap_or_else(|e| panic!("open mount: {e}"));
 
     let mut got_errors: Vec<Value> = Vec::new();
+    let mut got_reads: Vec<Value> = Vec::new();
     {
         let repo = ProjectsRepository::new(main.connection(), mount.connection());
         let mut id_by_label: HashMap<String, String> = HashMap::new();
@@ -380,6 +412,12 @@ fn projects_tier2_matches_oracle() {
                     DocMountFileLinksRepository::new(mount.connection())
                         .delete_database_document(&mp, "properties.json")
                         .unwrap_or_else(|e| panic!("delete properties {label}: {e}"));
+                }
+                Op::Read { label } => {
+                    let found = repo
+                        .find_by_id(&lookup_id(&id_by_label, label))
+                        .unwrap_or_else(|e| panic!("read {label}: {e}"));
+                    got_reads.push(read_entity(label, found));
                 }
                 Op::UpdateExpectError { label, patch } => {
                     let message = match repo.update(&lookup(&id_by_label, label), patch) {
@@ -459,6 +497,19 @@ fn projects_tier2_matches_oracle() {
         "refusal-arm messages diverged\n  rust:   {got_errs:?}\n  oracle: {want_errs:?}"
     );
 
+    // P4.146 (dogfood #136): the hydrated reads — a stored `null` on a
+    // `.nullable().optional()` key reaches the read wire as `null`, an absent
+    // key stays absent. Compared whole (minted keys dropped on both sides).
+    let want_reads = oracle
+        .get("reads")
+        .and_then(Value::as_array)
+        .unwrap_or_else(|| panic!("oracle has no `reads` array — regenerate it (see header)"))
+        .clone();
+    assert_eq!(
+        got_reads, want_reads,
+        "hydrated reads diverged\n  rust:   {got_reads:?}\n  oracle: {want_reads:?}"
+    );
+
     for (i, s) in TABLES.iter().enumerate() {
         assert_eq!(got[i]["table"], want[i]["table"], "{}: table name", s.table);
         assert_eq!(
@@ -480,9 +531,10 @@ fn projects_tier2_matches_oracle() {
     // [P4.D146] Zeta is the sixth — the planted-retired-mode arm. [P4.D246]
     // Eta (the null-seed arm) and Theta (the planted key-less bag) are the
     // seventh and eighth.
-    assert_eq!(rows("projects").len(), 8, "8 project rows");
-    assert_eq!(rows("points").len(), 8, "8 mount-point rows");
-    assert_eq!(rows("projectLinks").len(), 8, "8 project→store links");
+    // [P4.146] Iota, Kappa and Lambda (the null-preservation arms) make eleven.
+    assert_eq!(rows("projects").len(), 11, "11 project rows");
+    assert_eq!(rows("points").len(), 11, "11 mount-point rows");
+    assert_eq!(rows("projectLinks").len(), 11, "11 project→store links");
 
     // The minimal project's properties.json = the five materialized defaults,
     // in schema order, with backgroundDisplayMode 'theme' (Beta after the
@@ -604,6 +656,36 @@ fn projects_tier2_matches_oracle() {
         ),
         "theta's key-less planted bag did not read back CLOSED on the RMW; documents: {docs:?}"
     );
+
+    // ── P4.146 (dogfood #136): the explicit nulls, pinned by bytes ─────────
+    // Iota is the finding's own reference case widened to all eleven nullable
+    // keys: a cutover-shaped all-null bag planted, ONLY `allowAnyCharacter`
+    // toggled, and the stored bytes differ from the plant in that ONE key (the
+    // row's sha follows the bytes — the `files` table above diffs it). Before
+    // P4.146 v5 folded every null into absent and rewrote the five-default bag.
+    let iota_planted = spec
+        .ops
+        .iter()
+        .find_map(|op| match op {
+            Op::PlantProperties { label, content } if label == "iota" => Some(content.clone()),
+            _ => None,
+        })
+        .expect("iota's planted bag");
+    assert!(
+        has_doc(&iota_planted.replace(
+            "\"allowAnyCharacter\": false",
+            "\"allowAnyCharacter\": true"
+        )),
+        "iota's one-key toggle moved more than allowAnyCharacter; documents: {docs:?}"
+    );
+    // Kappa's `color: null` patch wrote the key as `null`; Lambda's create kept
+    // its three nulls and two went back to values.
+    for content in [
+        "{\n  \"allowAnyCharacter\": true,\n  \"characterRoster\": [],\n  \"color\": null,\n  \"icon\": \"gear\",\n  \"defaultDisabledTools\": [],\n  \"defaultDisabledToolGroups\": [],\n  \"backgroundDisplayMode\": \"theme\"\n}",
+        "{\n  \"allowAnyCharacter\": true,\n  \"characterRoster\": [],\n  \"color\": \"#00aa00\",\n  \"icon\": null,\n  \"defaultDisabledTools\": [],\n  \"defaultDisabledToolGroups\": [],\n  \"storyBackgroundsEnabled\": true,\n  \"backgroundDisplayMode\": \"theme\"\n}",
+    ] {
+        assert!(has_doc(content), "missing null-carrying bag {content:?}; documents: {docs:?}");
+    }
 
     eprintln!(
         "OK: projects store-backed tier-2 matched oracle (7 tables, 2 DBs, {} refusal arms).",

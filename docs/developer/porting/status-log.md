@@ -164489,3 +164489,75 @@ the window, then `file -d` (70.62 GiB) → `file` (**cleaned 70.62 GiB → 70 Gi
 free**). Main's `target/` now holds exactly this tree's debug-test and release
 artifacts; clippy's ran after the sweep. The next `/setupphase` runs its own
 cycle as usual.
+
+## P4.146 — dogfood #136: project/group `properties.json` keeps v4's explicit `null`s (lane, 2026-10-03)
+
+Branch `claude/properties-json-null-preservation-da5c4e`. The `52d6e7ecd`
+round's rider. Ports NO v4 change (v4's project/group code is identical at
+`e5c6bd0c0` and `52d6e7ecd`); closes a recorded v5 divergence. Pin
+`/tmp/qt-v4-pin-p4146-52d6e7ecd` (HEAD `52d6e7ecd`, `4.10.0-dev.109`). The
+ledger's §2 probe FAILED at the first lane start (v4's tree dirty with the
+then-uncommitted bug-177/178 change) and the lane STOPPED; it resumed after
+`/driftcheck` recorded `a434c715b` (ledger on main `106913111` — v4 HEAD
+`a434c715b`, CLEAN) and passed again before every regen batch.
+
+### Unit 1 — the three-state bags (core 0.0.1201)
+
+- `ProjectProperties`' eleven `.nullable().optional()` fields and
+  `GroupProperties`' two are `Option<Option<T>>` with `default,
+  deserialize_with = "double_option", skip_serializing_if = "Option::is_none"`
+  over the pub helper in `services/mount_index/sync/types.rs` (imported, not
+  edited). Field order unchanged. Both docs and the `StoreEntity` doc rewritten.
+- **The engine needed NO hunk** — measured, not presumed: the
+  `null_preservation_tests` module in `document_store_overlay.rs` drives the
+  real repositories over the fresh-instance DDL (a planted all-null bag → a
+  one-key `allowAnyCharacter` update → the stored bytes differ from the plant
+  in that ONE key and the file row's `sha256` follows them; the hydrated read
+  carries all eleven nulls; a `null` patch writes `null`, an absent key stays
+  absent). Mutation: `deserialize_with` dropped from `color` → both project
+  arms RED.
+- `GroupsRepository::create_with_properties` (new) takes the bag whole so a
+  caller can store an explicit `null`; `create` keeps "value or absent" — so
+  the restore (`backup/restore/orchestrator.rs:753`, P4.D249's file this
+  round) and the harness callers are unchanged.
+- **Group import — v4's absent-key behaviour MEASURED at the pin:**
+  `importGroups` spreads the bundle entity into `repos.groups.create` →
+  `_create` validates (Zod keeps absent absent) → `writeManagedFields(parse
+  Properties(entity))`, with NO `|| null` (`import-entities.ts:286,300`). So
+  `entities.rs`' arm keeps a `null`, leaves an absent key absent, and (as the
+  prior `opt_str_field` did) drops a non-string, non-null value. Unit test
+  `group_null_import_tests` (four bundle shapes, bytes).
+- `services/home.rs`: NO code hunk was needed — `HomepageProject.color/icon`
+  is already `Option<Value>` fed by `project.get(k).cloned()`, which now
+  yields `Some(Null)` for a stored `null`; pinned by `project_colour_tests`
+  through `get_home_data` over the fresh DDL (null → `null`, value → value,
+  absent → omitted; v4 `home-data.service.ts:171-172`). NB a
+  `home_routes_equivalence` family DOES exist (in `quilltap-web/tests`, the
+  survey said none) — web is P4.D249's crate this round; run for neutrality
+  only (see the gate record).
+- Tier 2 item 12: `enrich_null_tests` in `api/projects.rs` — the
+  dispatch-level `projectGet` body (`enrich_project` over the hydrated row)
+  keeps the spread nulls and leaves absent keys absent.
+- **Corpora (red-first through v4's REAL overlay):** `projects-tier2.json`
+  gains Iota (a cutover-shaped all-eleven-null bag planted, ONLY
+  `allowAnyCharacter` toggled), Kappa (`color: null` patch on a coloured bag),
+  Lambda (a create carrying three nulls, two set back to values), and a `read`
+  of each plus Beta (absent stays absent); `groups-tier2.json` gains Zeta
+  (create with both nulls), Eta (planted both-null bag, one-key `icon`
+  update), Theta (`color: null` patch — the group editor's cleared save),
+  Iota (a null back to a value), and reads incl. Beta. Both cases gain a
+  `read` op recording `findById` minus `id`/`officialMountPointId`/
+  `createdAt`/`updatedAt` into a `reads` array; both families diff it whole.
+  **Bytes + sha comparand verdict:** the families ALREADY diff
+  `doc_mount_documents.content` and `doc_mount_files.sha256` row for row, so
+  the finding's own symptom was always visible once a corpus reached it — no
+  new comparand needed; byte pins added for each new bag.
+- **Red-first on unported `main`, target oracle:** `projects_tier2` (core
+  sources restored from base, harness kept — compiles against the old API):
+  reads **3 of 4 red** (Iota, Kappa, Lambda; Beta's absent keys agree), and
+  the tables RED — `doc_mount_files` 23 rows vs the oracle's 24 (two v5 bags
+  collapse into one sha), the id-remap cascade reddening every later mount
+  table. `groups_tier2` needs the new `create_with_properties`, so it cannot
+  compile on base; its red-first is the semantic proxy (`deserialize_with`
+  removed from both group fields → unported serde behaviour): RED on the reads.
+  Green after the port.

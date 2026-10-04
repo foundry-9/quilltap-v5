@@ -38,6 +38,13 @@
 //! remapped through each side's own token map and only the parse-detail tail
 //! elided (see `UNPARSEABLE_MARKER`).
 //!
+//! Since P4.146 (dogfood #136) it also banks the explicit-`null` arms of the
+//! `.nullable().optional()` keys — a planted v4 bag carrying `null`s through a
+//! one-key read-modify-write (the stored BYTES and their `sha256` are the
+//! comparand: the `documents` and `files` dumps diff them exactly), a patch
+//! setting a key to `null`, a `null` set back to a value, and a `read` op whose
+//! hydrated entity (minus the four minted keys) is diffed whole as `reads`.
+//!
 //! Generate the oracle output + fixtures (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   cd ~/source/quilltap-server
@@ -58,9 +65,11 @@ use std::path::{Path, PathBuf};
 
 use quilltap_core::db::doc_mount_file_links::DocMountFileLinksRepository;
 use quilltap_core::db::groups::{
-    find_official_mount_point_id_raw, GroupCreateInput, GroupCreateOptions, GroupsRepository,
+    find_official_mount_point_id_raw, GroupCreateInput, GroupCreateOptions, GroupProperties,
+    GroupsRepository,
 };
 use quilltap_core::db::Writer;
+use quilltap_core::services::mount_index::sync::types::double_option;
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
@@ -95,6 +104,10 @@ enum Op {
         label: String,
         patch: Map<String, Value>,
     },
+    /// P4.146 (dogfood #136): record the hydrated `find_by_id` entity, minus
+    /// the four minted keys, into `reads` — the read wire's `null`s.
+    #[serde(rename = "read")]
+    Read { label: String },
 }
 
 #[derive(Deserialize)]
@@ -106,10 +119,32 @@ struct CreateInput {
     instructions: Option<String>,
     #[serde(default)]
     state: Option<Value>,
-    #[serde(default)]
-    color: Option<String>,
-    #[serde(default)]
-    icon: Option<String>,
+    /// P4.146: three-state, as v4's repository create takes the bundle/route
+    /// entity — an explicit `null` is kept, an absent key stays absent.
+    #[serde(default, deserialize_with = "double_option")]
+    color: Option<Option<String>>,
+    #[serde(default, deserialize_with = "double_option")]
+    icon: Option<Option<String>>,
+}
+
+/// The label's minted id (both sides track minted ids by corpus label).
+fn lookup_id(map: &HashMap<String, String>, label: &str) -> String {
+    map.get(label)
+        .unwrap_or_else(|| panic!("op references unknown label {label}"))
+        .clone()
+}
+
+/// P4.146: the hydrated entity minus the four minted keys both sides drop
+/// (v4's case destructures `id`/`officialMountPointId`/`createdAt`/`updatedAt`).
+fn read_entity(label: &str, found: Option<Value>) -> Value {
+    let mut entity = found.unwrap_or_else(|| panic!("read {label}: not found"));
+    let obj = entity
+        .as_object_mut()
+        .expect("hydrated entity is an object");
+    for key in ["id", "officialMountPointId", "createdAt", "updatedAt"] {
+        obj.remove(key);
+    }
+    json!({ "label": label, "entity": entity })
 }
 
 /// Per-table normalization spec. `from_mount` = read from the mount-index writer
@@ -375,6 +410,7 @@ fn groups_tier2_matches_oracle() {
         .unwrap_or_else(|e| panic!("open mount: {e}"));
 
     let mut got_errors: Vec<Value> = Vec::new();
+    let mut got_reads: Vec<Value> = Vec::new();
     {
         let repo = GroupsRepository::new(main.connection(), mount.connection());
         let mut id_by_label: HashMap<String, String> = HashMap::new();
@@ -403,6 +439,12 @@ fn groups_tier2_matches_oracle() {
                         .delete_database_document(&mp, "properties.json")
                         .unwrap_or_else(|e| panic!("delete properties {label}: {e}"));
                 }
+                Op::Read { label } => {
+                    let found = repo
+                        .find_by_id(&lookup_id(&id_by_label, label))
+                        .unwrap_or_else(|e| panic!("read {label}: {e}"));
+                    got_reads.push(read_entity(label, found));
+                }
                 Op::UpdateExpectError { label, patch } => {
                     let id = id_by_label
                         .get(label)
@@ -415,7 +457,7 @@ fn groups_tier2_matches_oracle() {
                 }
                 Op::Create { label, input } => {
                     let created = repo
-                        .create(
+                        .create_with_properties(
                             &GroupCreateInput {
                                 name: input.name.clone(),
                                 description: input.description.clone(),
@@ -424,6 +466,10 @@ fn groups_tier2_matches_oracle() {
                                     .state
                                     .clone()
                                     .unwrap_or_else(|| Value::Object(Map::new())),
+                                color: None,
+                                icon: None,
+                            },
+                            &GroupProperties {
                                 color: input.color.clone(),
                                 icon: input.icon.clone(),
                             },
@@ -487,6 +533,19 @@ fn groups_tier2_matches_oracle() {
         "refusal-arm messages diverged\n  rust:   {got_errs:?}\n  oracle: {want_errs:?}"
     );
 
+    // P4.146 (dogfood #136): the hydrated reads — a stored `null` on a
+    // `.nullable().optional()` key reaches the read wire as `null`, an absent
+    // key stays absent. Compared whole (minted keys dropped on both sides).
+    let want_reads = oracle
+        .get("reads")
+        .and_then(Value::as_array)
+        .unwrap_or_else(|| panic!("oracle has no `reads` array — regenerate it (see header)"))
+        .clone();
+    assert_eq!(
+        got_reads, want_reads,
+        "hydrated reads diverged\n  rust:   {got_reads:?}\n  oracle: {want_reads:?}"
+    );
+
     for (i, s) in TABLES.iter().enumerate() {
         assert_eq!(got[i]["table"], want[i]["table"], "{}: table name", s.table);
         assert_eq!(
@@ -506,20 +565,21 @@ fn groups_tier2_matches_oracle() {
         let i = TABLES.iter().position(|t| t.oracle_key == key).unwrap();
         got[i]["rows"].as_array().unwrap().clone()
     };
-    assert_eq!(rows("groups").len(), 5, "5 group rows");
-    assert_eq!(rows("points").len(), 5, "5 mount-point rows");
+    // P4.146 adds four (zeta/eta/theta/iota — the null-preservation arms).
+    assert_eq!(rows("groups").len(), 9, "9 group rows");
+    assert_eq!(rows("points").len(), 9, "9 mount-point rows");
     // 11, not 15: v4 `40319484` collects the content row every store rewrite
     // abandons (`gcOrphanedFileRow`), so the four orphans the old corpus counted
     // are gone on both sides.
-    assert_eq!(rows("files").len(), 11, "11 deduped file rows");
+    assert_eq!(rows("files").len(), 19, "19 deduped file rows");
     assert_eq!(
         rows("documents").len(),
-        11,
-        "11 document rows (each collected orphan took its payload)"
+        19,
+        "19 document rows (each collected orphan took its payload)"
     );
-    assert_eq!(rows("links").len(), 20, "20 link rows (5 stores × 4 files)");
+    assert_eq!(rows("links").len(), 36, "36 link rows (9 stores × 4 files)");
     assert_eq!(rows("folders").len(), 0, "0 folders (all files top-level)");
-    assert_eq!(rows("groupLinks").len(), 5, "5 group→store links");
+    assert_eq!(rows("groupLinks").len(), 9, "9 group→store links");
 
     // The properties read-modify-write PRESERVED the untouched `icon` while
     // changing `color` (Alpha's final properties.json).
@@ -565,6 +625,23 @@ fn groups_tier2_matches_oracle() {
         has_doc("{\n  \"color\": \"#0e0e0e\"\n}"),
         "the genuine-absence seed arm did not write its defaults-seeded bag"
     );
+
+    // ── P4.146 (dogfood #136): the explicit nulls, pinned by bytes ─────────
+    // Zeta's create kept both nulls (pre-#136 v5 wrote `{}`); Eta's planted
+    // all-null bag changed ONLY `icon` under a one-key patch; Theta's colour
+    // patch to `null` wrote the key as `null` (the group editor's cleared save);
+    // Iota's null went back to a value while the other null stayed.
+    for content in [
+        "{\n  \"color\": null,\n  \"icon\": null\n}",
+        "{\n  \"color\": null,\n  \"icon\": \"leaf\"\n}",
+        "{\n  \"color\": null,\n  \"icon\": \"gear\"\n}",
+        "{\n  \"color\": \"#00aa00\",\n  \"icon\": null\n}",
+    ] {
+        assert!(
+            has_doc(content),
+            "missing null-carrying bag {content:?}; documents: {docs:?}"
+        );
+    }
 
     eprintln!(
         "OK: groups store-backed tier-2 matched oracle (8 tables, 2 DBs, {} refusal arms).",

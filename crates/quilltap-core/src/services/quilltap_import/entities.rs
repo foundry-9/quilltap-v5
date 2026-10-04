@@ -605,11 +605,30 @@ fn create_group(
         description: opt_str_field(raw, "description"),
         instructions: opt_str_field(raw, "instructions"),
         state: raw.get("state").cloned().unwrap_or_else(|| json!({})),
-        color: opt_str_field(raw, "color"),
-        icon: opt_str_field(raw, "icon"),
+        color: None,
+        icon: None,
+    };
+    // v4 spreads the bundle entity into `repos.groups.create` →
+    // `writeManagedFields(parseProperties(entity))` (`import-entities.ts:286,300`),
+    // so an explicit `null` colour/icon is KEPT and an absent one stays ABSENT —
+    // measured at `52d6e7ecd`: unlike the create route, the import injects no
+    // `|| null` (dogfood #136). A non-string, non-null value is dropped, as the
+    // prior `opt_str_field` arm dropped it.
+    let tri = |key: &str| match raw.get(key) {
+        Some(Value::Null) => Some(None),
+        Some(Value::String(s)) => Some(Some(s.clone())),
+        _ => None,
+    };
+    let properties = groups::GroupProperties {
+        color: tri("color"),
+        icon: tri("icon"),
     };
     let created = repo
-        .create(&input, &store_create_options(options, source_id))
+        .create_with_properties(
+            &input,
+            &properties,
+            &store_create_options(options, source_id),
+        )
         .map_err(|e| e.to_string())?;
     Ok(created
         .get("id")
@@ -1016,6 +1035,67 @@ mod rendered_markdown_strip_tests {
             });
             assert_eq!(counts.unwrap().imported, 1, "{kind}: {warnings:?}");
             assert!(warns(lines).is_empty(), "{kind}");
+        }
+    }
+}
+
+/// P4.146 (dogfood #136): a bundle group's `color`/`icon` land in
+/// `properties.json` as v4's `repos.groups.create(entity)` writes them — an
+/// explicit `null` kept, an absent key left absent (no `|| null` on the import).
+#[cfg(test)]
+mod group_null_import_tests {
+    use super::*;
+
+    fn conns() -> (Connection, Connection) {
+        let schema: Value =
+            serde_json::from_str(include_str!("../provisioning/fresh_schema.json")).unwrap();
+        let open = |part: &str| {
+            let conn = Connection::open_in_memory().unwrap();
+            for ddl in schema[part].as_array().unwrap() {
+                conn.execute_batch(ddl.as_str().unwrap()).unwrap();
+            }
+            conn
+        };
+        (open("main"), open("mountIndex"))
+    }
+
+    fn stored_properties(mount: &Connection, mount_point_id: &str) -> String {
+        mount
+            .query_row(
+                "SELECT d.content FROM doc_mount_file_links l \
+                 JOIN doc_mount_documents d ON d.fileId = l.fileId \
+                 WHERE l.mountPointId = ?1 AND l.relativePath = 'properties.json'",
+                [mount_point_id],
+                |r| r.get(0),
+            )
+            .unwrap()
+    }
+
+    #[test]
+    fn a_null_colour_is_kept_and_an_absent_icon_stays_absent() {
+        let (main, mount) = conns();
+        let repo = groups::GroupsRepository::new(&main, &mount);
+        let opts = ImportOptions::seed_defaults();
+        for (raw, want) in [
+            (
+                json!({ "id": "g-src-1", "name": "Nulled", "color": null, "icon": null }),
+                "{\n  \"color\": null,\n  \"icon\": null\n}",
+            ),
+            (
+                json!({ "id": "g-src-2", "name": "Half", "color": null }),
+                "{\n  \"color\": null\n}",
+            ),
+            (json!({ "id": "g-src-3", "name": "Bare" }), "{}"),
+            (
+                json!({ "id": "g-src-4", "name": "Valued", "color": "#abcdef", "icon": "gear" }),
+                "{\n  \"color\": \"#abcdef\",\n  \"icon\": \"gear\"\n}",
+            ),
+        ] {
+            let source = raw["id"].as_str().unwrap().to_string();
+            let id = create_group(&repo, &raw, None, &opts, &source).unwrap();
+            let group = repo.find_by_id(&id).unwrap().unwrap();
+            let mp = group["officialMountPointId"].as_str().unwrap();
+            assert_eq!(stored_properties(&mount, mp), want, "{raw}");
         }
     }
 }

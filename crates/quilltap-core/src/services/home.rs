@@ -494,3 +494,71 @@ fn map_participant(p: &EnrichedParticipantSummary) -> RecentChatParticipant {
         }),
     }
 }
+
+/// P4.146 (dogfood #136): `HomepageProject.color`/`icon` follow v4's
+/// `home-data.service.ts:171-172` (`color: project.color, icon: project.icon`) —
+/// a stored `null` reaches the wire as `null`, an ABSENT key is `undefined` and
+/// `JSON.stringify` omits it, and a value is a value. Driven through
+/// `get_home_data` over the fresh-instance DDL, so the hydrated row's three
+/// states (the three-state `ProjectProperties`) are what is under test.
+#[cfg(test)]
+mod project_colour_tests {
+    use super::*;
+    use crate::db::projects::{ProjectCreateInput, ProjectCreateOptions};
+    use serde_json::json;
+
+    fn conns() -> (Connection, Connection) {
+        let schema: Value =
+            serde_json::from_str(include_str!("provisioning/fresh_schema.json")).unwrap();
+        let open = |part: &str| {
+            let conn = Connection::open_in_memory().unwrap();
+            for ddl in schema[part].as_array().unwrap() {
+                conn.execute_batch(ddl.as_str().unwrap()).unwrap();
+            }
+            conn
+        };
+        (open("main"), open("mountIndex"))
+    }
+
+    #[test]
+    fn a_null_colour_is_null_an_absent_one_is_omitted() {
+        let (main, mount) = conns();
+        let repo = ProjectsRepository::new(&main, &mount);
+        for (name, properties) in [
+            ("Nulled", json!({ "color": null, "icon": null })),
+            ("Coloured", json!({ "color": "#abcdef", "icon": "gear" })),
+            ("Bare", json!({})),
+        ] {
+            repo.create(
+                &ProjectCreateInput {
+                    name: name.into(),
+                    description: None,
+                    instructions: None,
+                    state: json!({}),
+                    properties,
+                },
+                &ProjectCreateOptions::default(),
+            )
+            .unwrap();
+        }
+        let home = get_home_data(&main, &mount, "u1", None).unwrap();
+        let wire = serde_json::to_value(&home.projects).unwrap();
+        let by_name = |n: &str| {
+            wire.as_array()
+                .unwrap()
+                .iter()
+                .find(|p| p["name"] == n)
+                .unwrap()
+                .clone()
+        };
+        let nulled = by_name("Nulled");
+        assert_eq!(nulled.get("color"), Some(&Value::Null));
+        assert_eq!(nulled.get("icon"), Some(&Value::Null));
+        let coloured = by_name("Coloured");
+        assert_eq!(coloured["color"], "#abcdef");
+        assert_eq!(coloured["icon"], "gear");
+        let bare = by_name("Bare");
+        assert!(bare.get("color").is_none(), "{bare}");
+        assert!(bare.get("icon").is_none(), "{bare}");
+    }
+}

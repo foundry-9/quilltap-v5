@@ -2226,3 +2226,67 @@ mod create_schema_tests {
         assert!(!ok(Value::Null));
     }
 }
+
+/// P4.146 (dogfood #136) Tier 2 item 12: the dispatch-level `projectGet` body
+/// (`enrich_project` over the hydrated row) keeps the `null`s the overlay
+/// spreads — v4's `enrichProject` spreads `...project` — and leaves an absent
+/// nullable key absent. The web-crate wire pin is P4.D249's crate this round.
+#[cfg(test)]
+mod enrich_null_tests {
+    use super::*;
+    use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
+
+    fn conns() -> (rusqlite::Connection, rusqlite::Connection) {
+        let schema: Value =
+            serde_json::from_str(include_str!("../services/provisioning/fresh_schema.json"))
+                .unwrap();
+        let open = |part: &str| {
+            let conn = rusqlite::Connection::open_in_memory().unwrap();
+            for ddl in schema[part].as_array().unwrap() {
+                conn.execute_batch(ddl.as_str().unwrap()).unwrap();
+            }
+            conn
+        };
+        (open("main"), open("mountIndex"))
+    }
+
+    #[test]
+    fn the_enriched_get_body_keeps_the_stored_nulls() {
+        let (main, mount) = conns();
+        let repo = ProjectsRepository::new(&main, &mount);
+        let created = repo
+            .create(
+                &ProjectCreateInput {
+                    name: "LUC Ranch".into(),
+                    description: None,
+                    instructions: None,
+                    state: json!({}),
+                    properties: json!({}),
+                },
+                &ProjectCreateOptions::default(),
+            )
+            .unwrap();
+        let id = created["id"].as_str().unwrap();
+        let mp = created["officialMountPointId"].as_str().unwrap();
+        DocMountFileLinksRepository::new(&mount)
+            .write_database_document(
+                mp,
+                "properties.json",
+                "{\n  \"allowAnyCharacter\": true,\n  \"characterRoster\": [],\n  \"color\": null,\n  \"icon\": null,\n  \"storyBackgroundsEnabled\": null,\n  \"staticBackgroundImageId\": null\n}",
+            )
+            .unwrap();
+        let hydrated = repo.find_by_id(id).unwrap().unwrap();
+        let body = enrich_project(&main, &mount, hydrated).unwrap();
+        for key in [
+            "color",
+            "icon",
+            "storyBackgroundsEnabled",
+            "staticBackgroundImageId",
+        ] {
+            assert_eq!(body.get(key), Some(&Value::Null), "{key}: {body}");
+        }
+        assert!(body.get("defaultImageProfileId").is_none(), "{body}");
+        assert!(body.get("answerConfirmationOverride").is_none(), "{body}");
+        assert_eq!(body["allowAnyCharacter"], true);
+    }
+}

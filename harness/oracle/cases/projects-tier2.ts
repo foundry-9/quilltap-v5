@@ -48,7 +48,9 @@ interface Op {
     // P4.D29 (v4 dcd9440a): the readProperties refusal/seed arms.
     | 'plantProperties'
     | 'deleteProperties'
-    | 'updateExpectError';
+    | 'updateExpectError'
+    // P4.146 (dogfood #136): record the hydrated entity.
+    | 'read';
   label: string;
   input?: Record<string, unknown>;
   patch?: Record<string, unknown>;
@@ -108,6 +110,12 @@ async function main(): Promise<void> {
   const idByLabel = new Map<string, string>();
   /** Thrown-error messages from the `updateExpectError` arms, in op order. */
   const errors: Array<{ label: string; message: string | null }> = [];
+  /**
+   * P4.146 (dogfood #136): the hydrated `findById` entity per `read` op, minus
+   * the four minted keys (`id`, `officialMountPointId`, `createdAt`,
+   * `updatedAt`) — the read wire's property bag, `null`s and all.
+   */
+  const reads: Array<{ label: string; entity: unknown }> = [];
   for (const op of spec.ops) {
     const id = () => {
       const v = idByLabel.get(op.label);
@@ -138,6 +146,13 @@ async function main(): Promise<void> {
       case 'deleteProperties':
         await deleteDatabaseDocument(await mountPointId(), 'properties.json');
         break;
+      case 'read': {
+        const found = (await repos.projects.findById(id())) as Record<string, unknown> | null;
+        if (!found) throw new Error(`read: project ${op.label} not found`);
+        const { id: _id, officialMountPointId: _mp, createdAt: _c, updatedAt: _u, ...entity } = found;
+        reads.push({ label: op.label, entity });
+        break;
+      }
       case 'updateExpectError': {
         let message: string | null = null;
         try {
@@ -206,6 +221,7 @@ async function main(): Promise<void> {
       folders,
       projectLinks,
       errors,
+      reads,
     }) + '\n'
   );
   process.exit(0);

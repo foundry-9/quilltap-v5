@@ -20,6 +20,7 @@ use super::document_store_overlay::{ManagedFields, OverlayError, StoreEntity};
 use super::project_doc_mount_links::ProjectDocMountLinksRepository;
 use super::store_backed::StoreBackedRepository;
 use super::DbError;
+use crate::services::mount_index::sync::types::double_option;
 
 pub use super::store_backed::StoreCreateOptions as ProjectCreateOptions;
 
@@ -63,21 +64,34 @@ pub fn normalize_background_display_mode(value: Option<&Value>) -> Option<&'stat
 /// schema-declaration order. Five fields carry Zod `.default(...)` and are
 /// therefore **always materialized** (`allowAnyCharacter`, `characterRoster`,
 /// `defaultDisabledTools`, `defaultDisabledToolGroups`, `backgroundDisplayMode`);
-/// the rest are `.nullable().optional()` → `skip_serializing_if` so an absent key
-/// stays absent. This matches `JSON.stringify(parse(x), null, 2)` byte-for-byte
-/// (the dedup sha depends on it). The null-vs-absent distinction on the optional
-/// keys is the open-JSON seam (serde folds `null`→`None`); the corpus keeps them
-/// present-or-absent.
+/// the eleven others are `.nullable().optional()` and are THREE-state here
+/// (`Option<Option<T>>` over [`double_option`]): `None` = the key is absent and
+/// stays absent (`skip_serializing_if`), `Some(None)` = an explicit `null`,
+/// written back as `null`, `Some(Some(v))` = a value. v4's Zod parse keeps an
+/// explicit `null` on such a key, so a v4-written bag (the cutover wrote whole
+/// former rows, NULL columns as `null`; create writes `color: null, icon: null`)
+/// must come back through a v5 read-modify-write with its nulls intact — a
+/// plain `Option<T>` folded `null` into absent and rewrote every such file on
+/// the first v5 edit (dogfood #136). This matches `JSON.stringify(parse(x),
+/// null, 2)` byte-for-byte (the dedup sha depends on it).
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ProjectProperties {
     #[serde(default, rename = "allowAnyCharacter")]
     pub allow_any_character: bool,
     #[serde(default, rename = "characterRoster")]
     pub character_roster: Vec<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub color: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub icon: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub color: Option<Option<String>>,
+    #[serde(
+        default,
+        deserialize_with = "double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub icon: Option<Option<String>>,
     #[serde(default, rename = "defaultDisabledTools")]
     pub default_disabled_tools: Vec<String>,
     #[serde(default, rename = "defaultDisabledToolGroups")]
@@ -85,60 +99,69 @@ pub struct ProjectProperties {
     #[serde(
         default,
         rename = "defaultAgentModeEnabled",
+        deserialize_with = "double_option",
         skip_serializing_if = "Option::is_none"
     )]
-    pub default_agent_mode_enabled: Option<bool>,
+    pub default_agent_mode_enabled: Option<Option<bool>>,
     #[serde(
         default,
         rename = "defaultAvatarGenerationEnabled",
+        deserialize_with = "double_option",
         skip_serializing_if = "Option::is_none"
     )]
-    pub default_avatar_generation_enabled: Option<bool>,
+    pub default_avatar_generation_enabled: Option<Option<bool>>,
     #[serde(
         default,
         rename = "defaultImageProfileId",
+        deserialize_with = "double_option",
         skip_serializing_if = "Option::is_none"
     )]
-    pub default_image_profile_id: Option<String>,
+    pub default_image_profile_id: Option<Option<String>>,
     #[serde(
         default,
         rename = "defaultRoleplayTemplateId",
+        deserialize_with = "double_option",
         skip_serializing_if = "Option::is_none"
     )]
-    pub default_roleplay_template_id: Option<String>,
+    pub default_roleplay_template_id: Option<Option<String>>,
     #[serde(
         default,
         rename = "defaultAlertCharactersOfLanternImages",
+        deserialize_with = "double_option",
         skip_serializing_if = "Option::is_none"
     )]
-    pub default_alert_characters_of_lantern_images: Option<bool>,
+    pub default_alert_characters_of_lantern_images: Option<Option<bool>>,
     /// Per-project answer-confirmation override, `z.enum(['ON','OFF']).nullable()
     /// .optional()` (v4 `add-answer-confirmation-columns-v2`). Schema-order: between
     /// `defaultAlertCharactersOfLanternImages` and `storyBackgroundsEnabled`.
     #[serde(
         default,
         rename = "answerConfirmationOverride",
+        deserialize_with = "double_option",
         skip_serializing_if = "Option::is_none"
     )]
-    pub answer_confirmation_override: Option<String>,
+    pub answer_confirmation_override: Option<Option<String>>,
     #[serde(
         default,
         rename = "storyBackgroundsEnabled",
+        deserialize_with = "double_option",
         skip_serializing_if = "Option::is_none"
     )]
-    pub story_backgrounds_enabled: Option<bool>,
+    pub story_backgrounds_enabled: Option<Option<bool>>,
     #[serde(
         default,
         rename = "staticBackgroundImageId",
+        deserialize_with = "double_option",
         skip_serializing_if = "Option::is_none"
     )]
-    pub static_background_image_id: Option<String>,
+    pub static_background_image_id: Option<Option<String>>,
     #[serde(
         default,
         rename = "storyBackgroundImageId",
+        deserialize_with = "double_option",
         skip_serializing_if = "Option::is_none"
     )]
-    pub story_background_image_id: Option<String>,
+    pub story_background_image_id: Option<Option<String>>,
     #[serde(
         default = "default_background_display_mode",
         rename = "backgroundDisplayMode"
@@ -665,5 +688,99 @@ mod find_by_ids_tests {
             .find_by_ids(&[])
             .unwrap()
             .is_empty());
+    }
+}
+
+/// P4.146 (dogfood #136): the bag's three states through
+/// `JSON.stringify(ProjectPropertiesSchema.parse(x), null, 2)`'s twin — the
+/// parse + 2-space serialize every write takes.
+#[cfg(test)]
+mod three_state_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn round_trip(bag: &Value) -> String {
+        serde_json::to_string_pretty(&ProjectEntity::parse_properties(bag).unwrap()).unwrap()
+    }
+
+    const NULLABLE: [&str; 11] = [
+        "color",
+        "icon",
+        "defaultAgentModeEnabled",
+        "defaultAvatarGenerationEnabled",
+        "defaultImageProfileId",
+        "defaultRoleplayTemplateId",
+        "defaultAlertCharactersOfLanternImages",
+        "answerConfirmationOverride",
+        "storyBackgroundsEnabled",
+        "staticBackgroundImageId",
+        "storyBackgroundImageId",
+    ];
+
+    /// A null on every nullable key comes back byte-identical (schema order,
+    /// 2-space, no trailing newline).
+    #[test]
+    fn every_nullable_null_round_trips_byte_for_byte() {
+        let text = "{\n  \"allowAnyCharacter\": false,\n  \"characterRoster\": [],\n  \"color\": null,\n  \"icon\": null,\n  \"defaultDisabledTools\": [],\n  \"defaultDisabledToolGroups\": [],\n  \"defaultAgentModeEnabled\": null,\n  \"defaultAvatarGenerationEnabled\": null,\n  \"defaultImageProfileId\": null,\n  \"defaultRoleplayTemplateId\": null,\n  \"defaultAlertCharactersOfLanternImages\": null,\n  \"answerConfirmationOverride\": null,\n  \"storyBackgroundsEnabled\": null,\n  \"staticBackgroundImageId\": null,\n  \"storyBackgroundImageId\": null,\n  \"backgroundDisplayMode\": \"theme\"\n}";
+        let bag: Value = serde_json::from_str(text).unwrap();
+        assert_eq!(round_trip(&bag), text);
+        let props = ProjectEntity::parse_properties(&bag).unwrap();
+        assert_eq!(props.color, Some(None));
+        assert_eq!(props.story_backgrounds_enabled, Some(None));
+    }
+
+    #[test]
+    fn an_absent_key_stays_absent_and_a_value_stays_a_value() {
+        let out: Value = serde_json::from_str(&round_trip(&json!({}))).unwrap();
+        for key in NULLABLE {
+            assert!(out.get(key).is_none(), "{key} absent");
+        }
+        let out: Value = serde_json::from_str(&round_trip(&json!({
+            "color": "#abcdef",
+            "defaultAgentModeEnabled": true,
+            "answerConfirmationOverride": "ON",
+        })))
+        .unwrap();
+        assert_eq!(out["color"], "#abcdef");
+        assert_eq!(out["defaultAgentModeEnabled"], true);
+        assert_eq!(out["answerConfirmationOverride"], "ON");
+    }
+
+    /// A mixed bag: null, value and absent side by side, each kept as given.
+    #[test]
+    fn a_mixed_bag_keeps_each_state() {
+        let out: Value = serde_json::from_str(&round_trip(&json!({
+            "color": null,
+            "icon": "gear",
+            "storyBackgroundsEnabled": false,
+        })))
+        .unwrap();
+        assert_eq!(out.get("color"), Some(&Value::Null));
+        assert_eq!(out["icon"], "gear");
+        assert_eq!(out["storyBackgroundsEnabled"], false);
+        assert!(out.get("staticBackgroundImageId").is_none());
+    }
+
+    /// The five defaulted keys did not move: absent materializes the default,
+    /// and `backgroundDisplayMode: null` is still refused (v4's enum fails on
+    /// it, and `parse_properties` leaves it to fail).
+    #[test]
+    fn the_defaulted_keys_are_unchanged() {
+        let out: Value = serde_json::from_str(&round_trip(&json!({}))).unwrap();
+        assert_eq!(out["allowAnyCharacter"], false);
+        assert_eq!(out["characterRoster"], json!([]));
+        assert_eq!(out["defaultDisabledTools"], json!([]));
+        assert_eq!(out["defaultDisabledToolGroups"], json!([]));
+        assert_eq!(out["backgroundDisplayMode"], "theme");
+        assert!(
+            ProjectEntity::parse_properties(&json!({ "backgroundDisplayMode": null })).is_err()
+        );
+        assert!(ProjectEntity::parse_properties(&json!({ "allowAnyCharacter": null })).is_err());
+        for (given, want) in [("latest_chat", "latest_chat"), ("bogus", "theme")] {
+            let out: Value =
+                serde_json::from_str(&round_trip(&json!({ "backgroundDisplayMode": given })))
+                    .unwrap();
+            assert_eq!(out["backgroundDisplayMode"], want, "{given}");
+        }
     }
 }

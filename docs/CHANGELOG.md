@@ -12,6 +12,26 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — fix(core): project and group properties.json keep v4's explicit nulls through read and read-modify-write (P4.146, dogfood #136)
+
+_Versions: core 0.0.1201._
+
+The eleven `.nullable().optional()` keys of a project's `properties.json` and
+the two of a group's are now three-state (`Option<Option<T>>` over the
+existing `double_option`): absent stays absent, an explicit `null` stays
+`null`, a value stays a value. Before this, serde folded `null` into absent,
+so the first v5 edit of a v4-written file (LUC Ranch's Allow Any Character
+toggle) rewrote it from 598 to 337 bytes, and the read wire omitted keys v4
+returns as `null`. The overlay engine needed no change: the hydrated read
+and the write overlay both pass through the typed bag. A `.qtap` group
+import keeps a bundle's `null` colour/icon and leaves an absent one absent,
+as v4's import does (measured at `52d6e7ecd`). `GroupsRepository` gains
+`create_with_properties` for callers that must store a `null`. The home
+dashboard's project `color`/`icon` already passed the value through and now
+emit `null` when stored. Proven by `projects_tier2` / `groups_tier2` (new
+corpus arms recorded through v4's real overlay, a `read` op, red on
+unported main) and core unit tests over the fresh-instance DDL.
+
 #### 2026-10-03 — docs(drift): record v4 a434c715b (bugs 177/178, PDF text extraction) — drift pending, 2 commits
 
 _Docs-only change._
