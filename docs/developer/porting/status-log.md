@@ -164794,3 +164794,74 @@ Tier R (`cli_differential`) green. SPA `npm run build` green (no SPA edit).
 Versions: core 0.0.1202, host 0.0.180, web 0.0.217.
 **Gotcha:** a family's canonical `/tmp/oracle-*.ndjson` is shared by every
 session — regen to a lane-private path before a workspace gate.
+
+## P4.D250 — `52d6e7ecd`'s standing informs, SPA half — LANE record (lane `claude/p4-d250-standing-informs-spa-9c8374`, 2026-10-03)
+
+**The §2 probe.** At first it read the lane's STALE copy of the ledger (the
+worktree was cut at `4d560872c`, one commit before the human's `/driftcheck`
+landed `106913111` on main) and STOPPED twice: first on v4's uncommitted
+`lib/services/file-content-extractor.ts` dirt, then on the committed
+`a434c715b`. Against MAIN's ledger it PASSES: v4 `main` at `a434c715b`, tree
+clean, `bugfix` unmoved, and §1 keeps the `52d6e7ecd` round on its own pin.
+Lesson recorded below. This lane runs no oracle: every string was read with
+`git show 52d6e7ecd:<path>`, which the working tree cannot reach.
+
+### Unit 1 — the dialog + the contract (SPA 0.5.799)
+
+Every asserted string with its v4 source line at `52d6e7ecd`
+(`components/chat/InformDialog.tsx`):
+
+| string / behaviour | v4 line |
+|---|---|
+| `permanent` state, default `false` | `:100-102` |
+| body `{contentMarkdown, targetParticipantIds, permanent}`, `permanent` LAST | `:148-152` |
+| `whom = everyone ? 'the company' : selectedNames.join(', ')` | `:162` |
+| `A standing note for ${whom}, for the rest of this chat` / `The company has been informed` / `Informed ${whom}` | `:163-169` |
+| guidance paragraph, `It is never spoken aloud, and ` + tail | `:257-265` |
+| tail (standing) `it stays at their elbow for every turn they take in this chat, until you withdraw it.` | `:264` |
+| tail (one-shot) `once they have had their turn it is gone, like a note fed to the fire.` | `:265` |
+| footer `<label className="mr-auto flex items-start gap-2 cursor-pointer">` FIRST | `:286-287` |
+| checkbox `qt-checkbox mt-0.5`, `disabled={isPosting}`, `aria-describedby="inform-permanent-hint"` | `:288-295` |
+| `Keep it standing in this chat` (`qt-text-small`) | `:297` |
+| hint `Every turn they take here, until you withdraw it. This chat only — it follows no one anywhere else.` (id `inform-permanent-hint`, `qt-text-xs`) | `:298-301` |
+
+**The class guard: NO mapping.** `qt-checkbox`, `qt-text-small` and
+`qt-text-xs` are all defined v5 classes (`check-qt-classes`: 956 defined,
+every reference resolves). v4's footer classes carry onto v5's
+`[qt-modal-footer]` row unchanged.
+
+**vitest arms** (`inform-dialog.spec.ts`), each mapped to what it mirrors:
+- the three existing body assertions gain `permanent: false`, mirroring v4's
+  three `+permanent: false` lines (`InformDialog.test.tsx` `:157,:176,:196`
+  at the pin);
+- `posts a standing inform when the toggle is ticked (off by default)`: v4's
+  ONE new test under its own name (`:200-218`), plus the key-order assertion
+  (`permanent` last) v4's `toEqual` cannot see;
+- these arms pin template and toast behaviour v4's suite leaves untested,
+  read from the component lines above: the label/hint/`aria-describedby` and
+  the footer position, the guidance tail in BOTH states (whole paragraph,
+  whitespace-normalised `textContent`), disabled-while-posting, the toast's
+  two standing arms (everyone → `…for the company…`; a subset → the names,
+  and NOT `Informed Alice`), a fresh mount opening unticked (v4's
+  conditional-mount reset, `:105-107`).
+
+**Red-first:** 10 of 18 red against the unported source (the three updated
+bodies + seven new arms). **The guidance arm's first red was a REAL
+pre-existing v5 defect, not only the missing tail:** v5 rendered
+`…her sleeve.You remember…`. Angular's default `preserveWhitespaces: false`
+drops the whitespace-only node between `</em>` and `<em>`, where v4 writes
+an explicit `{' '}` (`:259`). Fixed with `&ngsp;`; the whole-paragraph
+assertion now pins it. Green 18/18. **Mutation:** dropping the checkbox's
+`[disabled]="isPosting()"` reddens exactly `disables the toggle while the
+post is in flight`.
+
+**The fresh-dialog reset:** v5's salon mounts the dialog conditionally, as
+v4's parent does, so the signal's initializer decides the default each open.
+Pinned by `opens unticked on a fresh mount even after a standing post`.
+
+**Tier 2 item 9: no hunk.** `npm run build` (the real type-check) is green
+with `ChatInformRequest.permanent` required. No other file builds a
+`chatInform` literal or a `PendingInformBatch` literal that the change breaks.
+
+Gate: `npm run lint` ok; `npm run build` ok; `npm test` 467 files / 8,824
+passed / 0.

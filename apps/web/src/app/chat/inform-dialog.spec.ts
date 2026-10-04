@@ -28,8 +28,11 @@ import { InformDialog, type InformAudienceCandidate } from './inform-dialog';
  * v4's fixture ids are carried verbatim, so a diff against its file reads
  * straight across. The transport differs by construction: v4's dialog `fetch`es
  * `?action=inform` and its spec reads the POST body; v5's dispatches
- * `chatInform` and this spec reads the dispatched request — the SAME three keys
- * either way (§S.1), which is the thing the cases are actually about.
+ * `chatInform` and this spec reads the dispatched request — the SAME keys either
+ * way (§S.1), which is the thing the cases are actually about. Since v4
+ * `52d6e7ecd` that is FOUR keys: each body gains `permanent: false` exactly as
+ * v4's three updated assertions do (`InformDialog.test.tsx` `:157`, `:176`,
+ * `:196` at the pin); the standing arms live in their own block below.
  */
 
 const ALICE = 'aaaa1111-1111-1111-1111-111111111111';
@@ -196,6 +199,7 @@ describe('InformDialog — posting (v4 components/chat/InformDialog.tsx @ f45a51
       chatId: 'chat-1',
       contentMarkdown: 'You notice the clock has stopped.',
       targetParticipantIds: null,
+      permanent: false,
     });
     expect(posted).toHaveBeenCalledTimes(1);
     expect(TestBed.inject(ToastService).toasts().map((t) => t.message)).toContain(
@@ -220,6 +224,7 @@ describe('InformDialog — posting (v4 components/chat/InformDialog.tsx @ f45a51
       chatId: 'chat-1',
       contentMarkdown: 'You see Bob pocket the key.',
       targetParticipantIds: [ALICE],
+      permanent: false,
     });
     // v4's other half of the subset arm, its success toast.
     expect(TestBed.inject(ToastService).toasts().map((t) => t.message)).toContain('Informed Alice');
@@ -245,6 +250,7 @@ describe('InformDialog — posting (v4 components/chat/InformDialog.tsx @ f45a51
       chatId: 'chat-1',
       contentMarkdown: 'You hear the gate close.',
       targetParticipantIds: null,
+      permanent: false,
     });
   });
 
@@ -266,6 +272,161 @@ describe('InformDialog — posting (v4 components/chat/InformDialog.tsx @ f45a51
     expect(TestBed.inject(ToastService).toasts().map((t) => t.message)).toContain(
       'No LLM-controlled seat to inform.',
     );
+  });
+});
+
+/**
+ * Standing informs (v4 `52d6e7ecd`). Every string below is read from v4's
+ * `components/chat/InformDialog.tsx` at the pin:
+ *
+ *   the toggle's label `:297` and hint `:299-300` (id `:298`), the checkbox
+ *   `:288-295` (default `false` `:102`, `disabled={isPosting}` `:292`); the
+ *   guidance paragraph `:258-265` with its conditional tail `:263-265`; the
+ *   posted body `:148-152` (`permanent` LAST); the success toast `:162-169`.
+ *
+ * The first case is v4's own new test (`InformDialog.test.tsx` `posts a
+ * standing inform when the toggle is ticked (off by default)`), under its own
+ * name; the rest pin the template and toast arms v4's suite leaves untested.
+ */
+describe('InformDialog — standing informs (v4 components/chat/InformDialog.tsx @ 52d6e7ecd)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  const ONE_SHOT_TAIL =
+    'It is never spoken aloud, and once they have had their turn it is gone, like a note fed to the fire.';
+  const STANDING_TAIL =
+    'It is never spoken aloud, and it stays at their elbow for every turn they take in this chat, until you withdraw it.';
+  const GUIDANCE_HEAD =
+    'Write it to them, in the second person, as something they now know or notice — ' +
+    'You see that Alice slipped the letter into her sleeve. ' +
+    'You remember that Bob and Carol were at school together. Everyone you tick receives ' +
+    'the identical words before their next turn, so set down a passage that is true from ' +
+    'each of their chairs. ';
+
+  function toggle(fixture: ComponentFixture<unknown>): HTMLInputElement {
+    const labels = [...fixture.nativeElement.querySelectorAll('label')] as HTMLLabelElement[];
+    const label = labels.find((l) => (l.textContent ?? '').includes('Keep it standing in this chat'));
+    return label!.querySelector('input[type="checkbox"]') as HTMLInputElement;
+  }
+
+  function tick(fixture: ComponentFixture<unknown>): void {
+    toggle(fixture).click();
+    fixture.detectChanges();
+  }
+
+  function guidance(fixture: ComponentFixture<unknown>): string {
+    const div = fixture.nativeElement.querySelector('div.mb-4.qt-text-xs') as HTMLElement;
+    return (div.textContent ?? '').replace(/\s+/g, ' ').trim();
+  }
+
+  function toasts(): string[] {
+    return TestBed.inject(ToastService).toasts().map((t) => t.message);
+  }
+
+  it('posts a standing inform when the toggle is ticked (off by default)', async () => {
+    const s = stub();
+    const fixture = await mount(s);
+    const closed = vi.fn();
+    fixture.componentInstance.close.subscribe(closed);
+
+    expect(toggle(fixture).checked).toBe(false);
+    tick(fixture);
+    await setPassage(fixture, "You are the ship's cat.");
+    named(fixture, 'Inform').click();
+    await settle(fixture);
+
+    expect(closed).toHaveBeenCalled();
+    expect(postedBody(s)).toEqual({
+      chatId: 'chat-1',
+      contentMarkdown: "You are the ship's cat.",
+      targetParticipantIds: null,
+      permanent: true,
+    });
+    // v4's `JSON.stringify` body puts `permanent` LAST (`:148-152`).
+    expect(Object.keys(postedBody(s))).toEqual([
+      'chatId',
+      'contentMarkdown',
+      'targetParticipantIds',
+      'permanent',
+    ]);
+  });
+
+  it('labels the toggle and its hint, and wires the hint by aria-describedby', async () => {
+    const fixture = await mount(stub());
+    const box = toggle(fixture);
+    expect(box.classList.contains('qt-checkbox')).toBe(true);
+    expect(box.getAttribute('aria-describedby')).toBe('inform-permanent-hint');
+    const hint = fixture.nativeElement.querySelector('#inform-permanent-hint') as HTMLElement;
+    expect((hint.textContent ?? '').replace(/\s+/g, ' ').trim()).toBe(
+      'Every turn they take here, until you withdraw it. This chat only — it follows no one anywhere else.',
+    );
+    // Last thing read before posting: the toggle sits FIRST in the footer row,
+    // pushed left by `mr-auto` ahead of Cancel and Inform (v4 `:286-287`).
+    const footer = box.closest('[qt-modal-footer]') as HTMLElement;
+    expect(footer).toBeTruthy();
+    const first = footer.firstElementChild as HTMLElement;
+    expect(first.tagName).toBe('LABEL');
+    expect(first.classList.contains('mr-auto')).toBe(true);
+  });
+
+  it('switches the guidance tail with the toggle', async () => {
+    const fixture = await mount(stub());
+    expect(guidance(fixture)).toBe(GUIDANCE_HEAD + ONE_SHOT_TAIL);
+    tick(fixture);
+    expect(guidance(fixture)).toBe(GUIDANCE_HEAD + STANDING_TAIL);
+    tick(fixture);
+    expect(guidance(fixture)).toBe(GUIDANCE_HEAD + ONE_SHOT_TAIL);
+  });
+
+  it('disables the toggle while the post is in flight', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const s = stub();
+    const inner = s.client.dispatchData!;
+    s.client.dispatchData = (async (req: Record<string, unknown>) => {
+      await gate;
+      return inner(req as never);
+    }) as unknown as CoreClient['dispatchData'];
+    const fixture = await mount(s);
+
+    expect(toggle(fixture).disabled).toBe(false);
+    await setPassage(fixture, 'You hear the gate close.');
+    named(fixture, 'Inform').click();
+    await settle(fixture);
+    expect(toggle(fixture).disabled).toBe(true);
+
+    release();
+    await settle(fixture);
+  });
+
+  it('reports a standing note for the company when Everyone is told', async () => {
+    const fixture = await mount(stub());
+    tick(fixture);
+    await setPassage(fixture, 'You notice the clock has stopped.');
+    named(fixture, 'Inform').click();
+    await settle(fixture);
+    expect(toasts()).toContain('A standing note for the company, for the rest of this chat');
+  });
+
+  it('reports a standing note by name for a subset', async () => {
+    const fixture = await mount(stub());
+    seat(fixture, 'Alice')!.click();
+    fixture.detectChanges();
+    tick(fixture);
+    await setPassage(fixture, 'You see Bob pocket the key.');
+    named(fixture, 'Inform').click();
+    await settle(fixture);
+    expect(toasts()).toContain('A standing note for Alice, for the rest of this chat');
+    expect(toasts()).not.toContain('Informed Alice');
+  });
+
+  it('opens unticked on a fresh mount even after a standing post', async () => {
+    // v4 resets by conditional mount (`:105-107`); so does v5's salon. Pin that
+    // the signal's initializer, not leftover state, decides the default.
+    const first = await mount(stub());
+    tick(first);
+    expect(toggle(first).checked).toBe(true);
+    const second = await mount(stub());
+    expect(toggle(second).checked).toBe(false);
   });
 });
 

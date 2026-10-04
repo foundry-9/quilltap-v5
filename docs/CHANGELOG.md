@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — feat(spa): the Inform dialog's "Keep it standing in this chat" toggle (P4.D250 unit 1, v4 `52d6e7ecd`)
+
+_Versions: SPA 0.5.799._
+
+The Inform dialog gains v4's standing toggle: a `qt-checkbox` first in the footer (pushed left by `mr-auto`), off by default, disabled while posting, with v4's label and hint (`aria-describedby="inform-permanent-hint"`). The guidance paragraph's last clause follows the toggle. The `chatInform` dispatch always carries `permanent`, as its last key. The success toast gains v4's standing arm (`A standing note for ${whom}, for the rest of this chat`). The contract gains `ChatInformRequest.permanent` (required), `ChatInformResult.permanent`, and `PendingInformBatch.permanent?` (optional, so an older server's batches read as one-shot). Also fixed: the guidance paragraph ran its two example sentences together (`sleeve.You remember`), because Angular drops a whitespace-only node between two elements where v4 writes an explicit `{' '}`; an `&ngsp;` restores the space. Ten vitest arms ran red against the unported source first (10 of 18); one mutation (dropping the toggle's `[disabled]`) was caught.
+
 #### 2026-10-03 — docs(status): the P4.D249 lane gate record
 
 _Docs-only change._

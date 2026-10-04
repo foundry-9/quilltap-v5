@@ -8207,7 +8207,13 @@ export interface PendingInformBatch {
   contentMarkdown: string;
   createdAt: string;
   recordMessageId: string | null;
-  /** CHAT PARTICIPANT ids still awaiting delivery. */
+  /**
+   * A standing inform — delivered every turn in this chat until withdrawn (v4
+   * `52d6e7ecd` `PendingInformChips.tsx:35-36`). OPTIONAL as v4's client types
+   * it: absent reads as a one-shot, so the chip renders against an older server.
+   */
+  permanent?: boolean;
+  /** CHAT PARTICIPANT ids still awaiting delivery (every target, if standing). */
   pendingParticipantIds: string[];
 }
 
@@ -8226,6 +8232,12 @@ export interface ChatInformRequest {
   chatId: string;
   contentMarkdown: string;
   targetParticipantIds: string[] | null;
+  /**
+   * Keep it standing in this chat (v4 `52d6e7ecd`): delivered on every turn the
+   * targets take here until withdrawn. The server defaults an absent key to
+   * `false`; the dialog ALWAYS sends it, as v4's does.
+   */
+  permanent: boolean;
 }
 
 /** Success data for {@link ChatInformRequest} (201), §S.1's key order. */
@@ -8234,6 +8246,8 @@ export interface ChatInformResult {
   batchId: string;
   /** The RECORD's audience — `null` when the batch covers every eligible seat. */
   targetParticipantIds: string[] | null;
+  /** The validated flag — `false` when the request omitted it (v4 `52d6e7ecd`). */
+  permanent: boolean;
   /** The persisted Host record, or `null` when the record write failed. */
   message: PostedMessage | null;
 }

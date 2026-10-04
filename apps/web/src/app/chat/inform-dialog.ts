@@ -40,9 +40,12 @@ export interface InformAudienceCandidate {
  *
  * The operator picks one, several or every LLM-controlled seat and writes a
  * short second-person passage. Each target receives it verbatim as a system
- * block on their next generation, and then it is consumed. Nothing here is ever
- * spoken aloud; the transcript keeps a Host record for the operator alone
- * (labelled `out of character` — `system-message-labels.ts`).
+ * block on their next generation, and then it is consumed — unless the operator
+ * ticks **Keep it standing in this chat**, which delivers it on every turn those
+ * seats take in this conversation until withdrawn from the chip (v4
+ * `52d6e7ecd`). Off by default. Nothing here is ever spoken aloud; the
+ * transcript keeps a Host record for the operator alone (labelled `out of
+ * character` — `system-message-labels.ts`).
  *
  * Only LLM-controlled seats are offered: a seat the human plays has no
  * generation to slip the passage into. An empty selection means Everyone, and
@@ -127,14 +130,16 @@ export interface InformAudienceCandidate {
         }
       </div>
 
-      <!-- Guidance — the second-person rule, in the house voice (v4 :236-244). -->
+      <!-- Guidance — the second-person rule, in the house voice (v4 52d6e7ecd :256-266).
+           The ngsp entity is v4's {' '}: Angular drops a whitespace-only node between
+           two elements, which ran the two example sentences together. -->
       <div class="mb-4 qt-text-xs">
         Write it <em>to</em> them, in the second person, as something they now know or notice —
-        <em>You see that Alice slipped the letter into her sleeve.</em>
+        <em>You see that Alice slipped the letter into her sleeve.</em>&ngsp;
         <em>You remember that Bob and Carol were at school together.</em> Everyone you tick
         receives the identical words before their next turn, so set down a passage that is true
-        from each of their chairs. It is never spoken aloud, and once they have had their turn it
-        is gone, like a note fed to the fire.
+        from each of their chairs. It is never spoken aloud, and
+        {{ helpTail() }}
       </div>
 
       <!-- The passage itself (v4 :247-262). -->
@@ -151,7 +156,26 @@ export interface InformAudienceCandidate {
         />
       </div>
 
+      <!-- Footer — the standing toggle sits with the buttons, so it is the last
+           thing read before posting (v4 52d6e7ecd :284-303). -->
       <div qt-modal-footer class="flex items-center justify-end gap-3">
+        <label class="mr-auto flex items-start gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            [checked]="permanent()"
+            (change)="permanent.set($any($event.target).checked)"
+            [disabled]="isPosting()"
+            class="qt-checkbox mt-0.5"
+            aria-describedby="inform-permanent-hint"
+          />
+          <span class="flex flex-col">
+            <span class="qt-text-small">Keep it standing in this chat</span>
+            <span id="inform-permanent-hint" class="qt-text-xs">
+              Every turn they take here, until you withdraw it. This chat only — it follows no
+              one anywhere else.
+            </span>
+          </span>
+        </label>
         <button
           type="button"
           class="qt-button qt-button-secondary"
@@ -193,7 +217,19 @@ export class InformDialog {
    * collapses back to when it is posted (v4 `:101-103`).
    */
   protected readonly selected = signal<string[]>([]);
+  /**
+   * A standing inform rides every turn in THIS chat until withdrawn. Off by
+   * default: the ordinary inform is a one-shot (v4 `52d6e7ecd` `:100-102`).
+   */
+  protected readonly permanent = signal(false);
   protected readonly isPosting = signal(false);
+
+  /** The guidance paragraph's tail, which follows the toggle (v4 `:263-265`). */
+  protected readonly helpTail = computed(() =>
+    this.permanent()
+      ? 'it stays at their elbow for every turn they take in this chat, until you withdraw it.'
+      : 'once they have had their turn it is gone, like a note fed to the fire.',
+  );
 
   /**
    * Only LLM-controlled seats can be informed: a seat the human plays has no
@@ -237,7 +273,7 @@ export class InformDialog {
     this.close.emit();
   }
 
-  /** v4 `handlePost` (`:126-161`). */
+  /** v4 `handlePost` (`52d6e7ecd` `:137-179`). */
   protected async onPost(): Promise<void> {
     if (!this.canSubmit()) return;
     // Actual coverage decides the record's public/whisper shape, not how the
@@ -245,6 +281,7 @@ export class InformDialog {
     const everyone = this.everyone();
     const targetParticipantIds = everyone ? null : this.selected();
     const names = this.selectedNames();
+    const permanent = this.permanent();
 
     this.isPosting.set(true);
     try {
@@ -253,9 +290,16 @@ export class InformDialog {
         chatId: this.chatId(),
         contentMarkdown: this.content().trim(),
         targetParticipantIds,
+        // ALWAYS sent, last — v4's `JSON.stringify` body (`:148-152`).
+        permanent,
       });
+      const whom = everyone ? 'the company' : names.join(', ');
       this.toasts.showSuccess(
-        everyone ? 'The company has been informed' : `Informed ${names.join(', ')}`,
+        permanent
+          ? `A standing note for ${whom}, for the rest of this chat`
+          : everyone
+            ? 'The company has been informed'
+            : `Informed ${whom}`,
       );
       this.posted.emit();
       void this.queryClient.invalidateQueries({
