@@ -20,6 +20,10 @@ import { PendingInformChips, firstInformLine } from './pending-inform-chips';
  *   cancels the batch through `?action=cancel-inform`;
  *   does not poll while the realtime socket is up.
  *
+ * v4 `52d6e7ecd` adds one case (`says a standing inform rides every turn in
+ * this chat`), carried under its own name; two more pin the withdraw title
+ * and the one-shot fallback for a batch without the key.
+ *
  * v4's fixture ids and passage are carried verbatim. Two transport
  * differences, both by construction: the reads/writes are `chatInformsList` /
  * `chatInformCancel` dispatches rather than v4's two `fetch`es, and the poll
@@ -120,6 +124,44 @@ describe('PendingInformChips (v4 components/chat/PendingInformChips.tsx @ f45a51
     expect(chip.getAttribute('title')).toBe(
       'You see that Alice slipped the letter into her sleeve.',
     );
+  });
+
+  // v4 52d6e7ecd's new case, under its own name (`PendingInformChips.test.tsx`
+  // `:104-112` at the pin). Strings from `PendingInformChips.tsx` `:101-103`
+  // (label) and `:110-114` (hover title).
+  it('says a standing inform rides every turn in this chat', async () => {
+    const fixture = await mount(stub([{ ...BATCH, permanent: true }]));
+    expect(chipLabels(fixture)).toContain('Informing Alice, Bob on every turn in this chat');
+    const chip = fixture.nativeElement.querySelector('.qt-chat-tool-result-chip');
+    expect(chip.getAttribute('title')).toBe(
+      'Standing in this chat until withdrawn — You see that Alice slipped the letter into her sleeve.',
+    );
+  });
+
+  // `:123` — the withdraw button's title follows the batch; its aria-label
+  // (`:124`) does not move.
+  it('titles the cross for a standing batch and leaves its aria-label alone', async () => {
+    const fixture = await mount(stub([{ ...BATCH, permanent: true }]));
+    const remove = fixture.nativeElement.querySelector(
+      '.qt-chat-attachment-chip-remove',
+    ) as HTMLButtonElement;
+    expect(remove.getAttribute('title')).toBe('Withdraw this standing inform');
+    expect(remove.getAttribute('aria-label')).toBe('Withdraw the inform for Alice, Bob');
+  });
+
+  // An absent key (an older server) and an explicit `false` both read as a
+  // one-shot — v4 tests `batch.permanent` for truthiness.
+  it('renders the one-shot strings for a batch without the key or with false', async () => {
+    for (const batch of [BATCH, { ...BATCH, permanent: false }]) {
+      const fixture = await mount(stub([batch]));
+      expect(chipLabels(fixture)).toContain('Informing Alice, Bob before their next turn');
+      const chip = fixture.nativeElement.querySelector('.qt-chat-tool-result-chip');
+      expect(chip.getAttribute('title')).toBe(
+        'You see that Alice slipped the letter into her sleeve.',
+      );
+      const remove = chip.querySelector('.qt-chat-attachment-chip-remove') as HTMLButtonElement;
+      expect(remove.getAttribute('title')).toBe('Withdraw this inform');
+    }
   });
 
   it('skips a batch whose seats have all left the chat', async () => {

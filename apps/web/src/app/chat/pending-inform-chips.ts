@@ -21,9 +21,11 @@ export function firstInformLine(markdown: string): string {
  * PendingInformChips — the notes still waiting in the wings (v4
  * `components/chat/PendingInformChips.tsx`, `e7d77bb60`).
  *
- * One chip per pending Inform batch, sitting in the composer just above the
- * form: *Informing Alice, Bob before their next turn*, with a × that cancels the
- * batch and a hover title carrying the passage's first line.
+ * One chip per Inform batch still in force, sitting in the composer just above
+ * the form: *Informing Alice, Bob before their next turn* — or, for a standing
+ * inform (v4 `52d6e7ecd`), *Informing Alice, Bob on every turn in this chat* —
+ * with a × that cancels (or withdraws) the batch and a hover title carrying the
+ * passage's first line.
  *
  * Realtime rides the existing `chats` topic. Posting an inform inserts the Host
  * record, consuming one rides the assistant-message insert, and the cancel
@@ -52,7 +54,7 @@ export function firstInformLine(markdown: string): string {
             <button
               type="button"
               class="qt-chat-attachment-chip-remove"
-              title="Withdraw this inform"
+              [title]="chip.withdrawTitle"
               [attr.aria-label]="'Withdraw the inform for ' + chip.names"
               [disabled]="cancelling()"
               (click)="onCancel(chip.batchId)"
@@ -104,12 +106,23 @@ export class PendingInformChips {
         .filter((name): name is string => Boolean(name));
       if (seatNames.length === 0) return [];
       const joined = seatNames.join(', ');
+      // Absent (an older server) reads as a one-shot, as v4's truthiness test.
+      const standing = Boolean(batch.permanent);
       return [
         {
           batchId: batch.batchId,
           names: joined,
-          label: `Informing ${joined} before their next turn`,
-          hover: firstInformLine(batch.contentMarkdown),
+          // v4 `52d6e7ecd` `:101-103`.
+          label: standing
+            ? `Informing ${joined} on every turn in this chat`
+            : `Informing ${joined} before their next turn`,
+          // The label truncates in a narrow composer, so a standing chip says
+          // what it is in the hover title too (v4 `:108-114`).
+          hover: standing
+            ? `Standing in this chat until withdrawn — ${firstInformLine(batch.contentMarkdown)}`
+            : firstInformLine(batch.contentMarkdown),
+          // v4 `:123`; the aria-label (`:124`) does not move.
+          withdrawTitle: standing ? 'Withdraw this standing inform' : 'Withdraw this inform',
         },
       ];
     });

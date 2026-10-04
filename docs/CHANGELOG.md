@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — feat(spa): the pending-inform chip names a standing batch (P4.D250 unit 2, v4 `52d6e7ecd`)
+
+_Versions: SPA 0.5.800._
+
+A batch with `permanent: true` now renders v4's standing chip: `Informing ${names} on every turn in this chat`, with the hover title `Standing in this chat until withdrawn — ${firstLine}` and the withdraw button titled `Withdraw this standing inform`. The aria-label is unchanged. A batch without the key, or with `false`, keeps the one-shot strings, so the chip reads correctly against an older server. v4's new case is carried under its own name, plus two arms for the withdraw title and the one-shot fallback (2 of 10 red first).
+
 #### 2026-10-03 — feat(spa): the Inform dialog's "Keep it standing in this chat" toggle (P4.D250 unit 1, v4 `52d6e7ecd`)
 
 _Versions: SPA 0.5.799._

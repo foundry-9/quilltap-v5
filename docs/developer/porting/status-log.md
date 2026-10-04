@@ -164865,3 +164865,25 @@ with `ChatInformRequest.permanent` required. No other file builds a
 
 Gate: `npm run lint` ok; `npm run build` ok; `npm test` 467 files / 8,824
 passed / 0.
+
+### Unit 2 — the chip (SPA 0.5.800)
+
+Strings at `52d6e7ecd` (`components/chat/PendingInformChips.tsx`):
+`Informing ${names.join(', ')} on every turn in this chat` / `… before their
+next turn` (`:101-103`); hover `Standing in this chat until withdrawn —
+${firstLine(...)}` / `firstLine(...)` (`:110-114`); withdraw title
+`Withdraw this standing inform` / `Withdraw this inform` (`:123`); aria-label
+`Withdraw the inform for ${names}` UNCHANGED (`:124`). `batch.permanent` is
+read for truthiness, so an absent key is a one-shot.
+
+vitest (`pending-inform-chips.spec.ts`): `says a standing inform rides every
+turn in this chat` mirrors v4's ONE new case under its own name
+(`PendingInformChips.test.tsx` `:104-112` at the pin: the label plus the
+chip's `title`). `titles the cross for a standing batch and leaves its
+aria-label alone` and `renders the one-shot strings for a batch without the
+key or with false` pin `:123`/`:124` and the truthiness fallback, which v4's
+suite leaves untested. **Red-first: 2 of 10** (the two standing arms; the
+fallback arm is a guard and is green against the unported source by
+construction). Green 10/10.
+
+Gate: lint ok; build ok; `npm test` 467 files / 8,827 passed / 0.
