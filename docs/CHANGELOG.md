@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — docs(drift): record v4 a434c715b (bugs 177/178, PDF text extraction) — drift pending, 2 commits
+
+_Docs-only change._
+
+`/driftcheck` found one new v4 main commit past `52d6e7ecd`, local and not yet pushed. Bug 177's half is a small port: v4's file extractor now reads PDFs through its converter and falls back to the regex extractor, with new warn, error and debug strings. v5 never had the bug (it always ran the fallback), but its recorded PDF divergence rested on a false premise and its log strings are now stale. Bug 178's half is a Next.js packaging fix and a NO-PORT candidate. The ledger's §1 is rewritten (verdict DRIFT PENDING, 2 commits; pin rule unchanged) and the commit is added to §3 as UNPROCESSED.
+
 #### 2026-10-03 — docs(orders): the 52d6e7ecd standing-informs drift catch-up round — P4.D249 ∥ P4.D250 ∥ P4.146 (dogfood #136 as a rider)
 
 _Docs-only change._
