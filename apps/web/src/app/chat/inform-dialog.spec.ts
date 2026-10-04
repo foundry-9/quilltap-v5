@@ -58,7 +58,13 @@ function stub(result?: Record<string, unknown> | Error): Stub {
     if (req['type'] === 'chatInform') {
       if (result instanceof Error) throw result;
       return (
-        result ?? { success: true, batchId: 'batch-1', targetParticipantIds: null, message: null }
+        result ?? {
+          success: true,
+          batchId: 'batch-1',
+          targetParticipantIds: null,
+          permanent: false,
+          message: null,
+        }
       );
     }
     return {};
@@ -405,6 +411,23 @@ describe('InformDialog — standing informs (v4 components/chat/InformDialog.tsx
     named(fixture, 'Inform').click();
     await settle(fixture);
     expect(toasts()).toContain('A standing note for the company, for the rest of this chat');
+  });
+
+  it('reports a standing note for the company when every eligible seat is ticked by hand', async () => {
+    // v4 `InformDialog.tsx:116`: every eligible seat selected IS Everyone, so
+    // the body sends `null` and the toast names the company, not the roster.
+    const s = stub();
+    const fixture = await mount(s);
+    seat(fixture, 'Alice')!.click();
+    seat(fixture, 'Bob')!.click();
+    fixture.detectChanges();
+    tick(fixture);
+    await setPassage(fixture, 'You notice the clock has stopped.');
+    named(fixture, 'Inform').click();
+    await settle(fixture);
+    expect(s.calls[0]['targetParticipantIds']).toBeNull();
+    expect(toasts()).toContain('A standing note for the company, for the rest of this chat');
+    expect(toasts()).not.toContain('A standing note for Alice, Bob, for the rest of this chat');
   });
 
   it('reports a standing note by name for a subset', async () => {

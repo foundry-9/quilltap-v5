@@ -40,12 +40,12 @@ const P4D205_SERVER_LANDED = true;
 /**
  * P4.D250 — v4 `52d6e7ecd`'s STANDING inform (the beat at the end of this file).
  * The SPA half sends `permanent` and renders the standing chip; only P4.D249's
- * server keeps a delivered standing row in force, so before it lands the chip
- * would vanish after the seat's turn exactly as a one-shot's does. **The
- * unifier flips this to `true` after P4.D249 is picked** (the order's §S.1);
- * the beat's first live run is the unified gate's own step.
+ * server keeps a delivered standing row in force, so before it landed the chip
+ * would vanish after the seat's turn exactly as a one-shot's does. Written
+ * `false` by the P4.D250 lane and flipped `true` at the `52d6e7ecd`
+ * unification (the order's §S.1), where the beat ran LIVE for the first time.
  */
-const P4D249_SERVER_LANDED = false;
+const P4D249_SERVER_LANDED = true;
 
 test.describe('P4.D206 — Inform, the word out of character', () => {
   let mock: MockLlm;
@@ -291,7 +291,8 @@ test.describe('P4.D206 — Inform, the word out of character', () => {
     }>;
     const seat = characters.find((c) => c.controlledBy !== 'user');
     expect(seat, 'the fixture must seed an llm character').toBeTruthy();
-    const profiles = ((await dispatch({ type: 'connectionProfileList' }))['profiles'] ?? []) as Array<{
+    const profiles = ((await dispatch({ type: 'connectionProfileList' }))['profiles'] ??
+      []) as Array<{
       id: string;
       provider?: string;
     }>;
@@ -302,7 +303,12 @@ test.describe('P4.D206 — Inform, the word out of character', () => {
       type: 'chatCreate',
       title: `P4.D250 standing inform ${Date.now()}`,
       participants: [
-        { type: 'CHARACTER', characterId: seat!.id, controlledBy: 'llm', connectionProfileId: profileId },
+        {
+          type: 'CHARACTER',
+          characterId: seat!.id,
+          controlledBy: 'llm',
+          connectionProfileId: profileId,
+        },
       ],
     });
     const chatId = (created['chat'] as { id?: string } | undefined)?.id;
@@ -319,7 +325,7 @@ test.describe('P4.D206 — Inform, the word out of character', () => {
       // paragraph's tail follows it.
       await page.getByRole('button', { name: 'Inform the cast' }).click();
       const dialog = page.getByRole('dialog');
-      await dialog.getByRole('button', { name: new RegExp(seat!.name) }).click();
+      await dialog.getByRole('button', { name: seat!.name }).click();
       const toggle = dialog.getByRole('checkbox', { name: /Keep it standing in this chat/ });
       await expect(toggle).not.toBeChecked();
       await toggle.check();
@@ -349,15 +355,54 @@ test.describe('P4.D206 — Inform, the word out of character', () => {
       await composer.click();
       await page.keyboard.type('What do you make of it?');
       await page.locator('button[aria-label="Send message"]').click();
-      await expect(page.getByText(MOCK_LLM_REPLY)).toHaveCount(2, { timeout: 30_000 });
+      // This room has NO user seat (the P4.145 throwaway idiom seats only the
+      // model), so once the seat has the floor it keeps it — the mock reply
+      // chains turn after turn (38 saved rows inside 15 s on the first live
+      // run). Nothing below may count replies: wait for AT LEAST the second
+      // bubble, then prove the turn was SAVED by finding an assistant row
+      // AFTER the user's row in `chatGet` (the Host's inform records are
+      // assistant-role rows too, so the role alone is not enough). The
+      // streamed bubble shows the reply BEFORE that row exists, and its insert
+      // is what consumes an inform — so a chip read off the bubble proves
+      // nothing on either kind of server.
+      await expect
+        .poll(() => page.getByText(MOCK_LLM_REPLY).count(), { timeout: 30_000 })
+        .toBeGreaterThanOrEqual(2);
+      await expect
+        .poll(
+          async () => {
+            const chat = (await dispatch({ type: 'chatGet', chatId }))['chat'] as
+              { messages?: Array<{ role: string; content?: string }> } | undefined;
+            const messages = chat?.messages ?? [];
+            const user = messages.findIndex((m) => m.role === 'USER');
+            return (
+              user >= 0 &&
+              messages
+                .slice(user + 1)
+                .some((m) => m.role === 'ASSISTANT' && (m.content ?? '').includes(MOCK_LLM_REPLY))
+            );
+          },
+          { timeout: 15_000 },
+        )
+        .toBe(true);
+      // With a reply saved, ask the server directly: the batch is still in
+      // force and says so (Shared contract item 3). A one-shot batch is gone
+      // from this list by now — the consumption beat above shows that.
+      const listed = (await dispatch({ type: 'chatInformsList', chatId }))['batches'] as Array<{
+        permanent?: boolean;
+        pendingParticipantIds: string[];
+      }>;
+      expect(listed).toHaveLength(1);
+      expect(listed[0].permanent).toBe(true);
+      expect(listed[0].pendingParticipantIds).toHaveLength(1);
 
-      // The note was delivered, and it STANDS: the chip is still there after
-      // the turn — and after a reload, which re-reads `chatInformsList` cold
-      // rather than trusting a cache the turn's refetch might not yet have
-      // replaced.
-      await expect(chip).toBeVisible();
+      // The note was delivered, and it STANDS: a reload re-reads
+      // `chatInformsList` cold rather than trusting a cache the turn's refetch
+      // might not yet have replaced, so the chip beside the transcript is the
+      // post-turn truth.
       await page.reload();
       await maybeUnlock(page).catch(() => undefined);
+      await expect(page.locator('.qt-chat-messages-list')).toBeVisible({ timeout: 15_000 });
       await expect(chip).toBeVisible({ timeout: 15_000 });
 
       // The cross withdraws it whole, under the standing title.

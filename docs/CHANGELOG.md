@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-04 — test(e2e): the standing-inform beat flips LIVE and proves the turn was saved before it reads the chip (§S.1 of the 52d6e7ecd round)
+
+_Versions: SPA 0.5.802._
+
+The `52d6e7ecd` unification's §S.1 wire. `P4D249_SERVER_LANDED` flips to `true` in `salon-inform-flow.spec.ts`, so the standing-inform beat P4.D250 wrote runs for real against P4.D249's server. The beat's post-turn proof is hardened at the same time, on the review's catch: its only wait on the turn was the streamed reply's text, which the bubble shows BEFORE the assistant row is saved, and that insert is what consumes an inform — so a one-shot server could have passed it. The beat now polls `chatGet` until an assistant row carrying the mock reply follows the user's row, reads `chatInformsList` directly (one batch, `permanent: true`, one pending seat), and after the reload asserts the chip over the server's transcript. The first live run also showed why no proof here may COUNT replies: the throwaway chat seats only the model (the P4.145 idiom), so once the seat has the floor the mock reply chains turn after turn — 38 saved assistant rows inside 15 s — and the Host's inform records are assistant-role rows too. The seat button is matched by substring rather than an unescaped `RegExp`. In the dialog spec the stub's `chatInform` reply gains the required `permanent: false`, and a new arm pins that ticking every eligible seat by hand IS Everyone (`targetParticipantIds: null`, the company toast — v4 `InformDialog.tsx:116`).
+
 #### 2026-10-04 — fix(unify): the 52d6e7ecd round's review findings — capture pins the lanes claimed but never wrote, a nothing-written proof on the permanent 400 arms, the backup's NULL-tolerant boolean, the group import refusing a non-string colour as v4 does, the sweep driver's second `--`
 
 _Versions: core 0.0.1205._
