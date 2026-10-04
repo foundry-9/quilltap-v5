@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — test(e2e): the standing-inform beat, gated on P4.D249 (P4.D250 unit 3)
+
+_Versions: SPA 0.5.801._
+
+A new beat in `salon-inform-flow.spec.ts`, gated behind `P4D249_SERVER_LANDED = false` (the unifier flips it after P4.D249 is picked). It posts a standing inform with the box ticked, checks the guidance tail and the standing toast, reads the chip's standing label and hover title, runs a turn, and asserts the chip still stands after the turn and after a reload. It then withdraws the chip by its `Withdraw this standing inform` cross. The beat runs in a throwaway one-LLM-seat chat, created and deleted inside the beat. Sending into Group Expedition would trip the shared title checkpoint (the P4.D187 cascade), and with one model seat every turn is that seat's, so the result never depends on the draw. By file: the four existing beats pass and the new one is skipped. Flipped locally against today's server, the beat ran live through the toast and stopped exactly at the standing chip, which reads one-shot until P4.D249's list reports `permanent`.
+
 #### 2026-10-03 — feat(spa): the pending-inform chip names a standing batch (P4.D250 unit 2, v4 `52d6e7ecd`)
 
 _Versions: SPA 0.5.800._

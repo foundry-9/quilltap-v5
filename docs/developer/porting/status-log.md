@@ -164887,3 +164887,52 @@ fallback arm is a guard and is green against the unported source by
 construction). Green 10/10.
 
 Gate: lint ok; build ok; `npm test` 467 files / 8,827 passed / 0.
+
+### Unit 3 — the gated beat (SPA 0.5.801)
+
+ONE new test at the end of `apps/web/e2e/salon-inform-flow.spec.ts`, `a
+STANDING inform survives its seat’s turn, and the cross withdraws it whole`,
+behind the NEW const `P4D249_SERVER_LANDED = false` (skip reason names
+P4.D249). The existing four beats are untouched.
+
+**Two shape decisions, both recorded in the beat's doc comment:**
+- **A throwaway chat, not Group Expedition.** The beat SENDS, and extra sends
+  into the shared fixture chat cross a Host title checkpoint that
+  `salon-impersonation-voice-flow`'s non-streaming mock later resolves (the
+  P4.D187 cascade, memory `e2e-sends-into-a-shared-chat-trip-a-title-
+  checkpoint`). The P4.145 idiom: `chatCreate` with one llm seat on the
+  `OPENAI_COMPATIBLE` mock profile, wait for the greeting, `chatDelete` in
+  `finally`.
+- **The deterministic turn = ONE model seat.** The order pointed at memory
+  `forcing-a-deterministic-turn-in-a-salon-e2e-beat`, but that lever
+  (impersonation) makes the walk total only for HUMAN-voiced seats; it cannot
+  put a chosen LLM seat on the floor. With exactly one model-played seat every
+  turn is that seat's, so the chip standing after the turn is a real proof
+  (a one-shot chip is gone by then, which the existing consumption beat
+  shows). Consequence, v4-faithful: picking the only eligible seat IS
+  Everyone (`InformDialog.tsx:116`), so the toast the beat asserts is `A
+  standing note for the company, for the rest of this chat`. The by-name
+  standing toast is pinned in vitest (unit 1).
+
+**Gate (by file, port 4319 free, main's release binaries cloned with `cp -c`
+into the lane's `target/release`):** 4 passed / 1 skipped (1.0 m).
+**Flipped locally against today's (pre-P4.D249) server, `--grep STANDING`:**
+ran LIVE through unlock → create → greeting → the toggle (unticked, then
+checked) → the standing guidance tail → post → the standing toast, then
+failed exactly at the standing chip: the DOM read `Informing Lora before their
+next turn`, because today's `chatInformsList` omits `permanent`. That is the
+server half, as designed. The gate was restored to `false` before the commit.
+**§S.1 for the unifier:** flip it on the union, run the spec by file, then
+the full suite.
+
+### 💸 for the dogfood pass
+The checkbox on the Friday copy: the guidance sentence flips, the standing
+toast (by name for a subset), the chip's standing label and hover, a
+withdrawal under `Withdraw this standing inform`.
+
+### Lesson (memory note)
+A lane's worktree holds the ledger AS OF ITS CUT. A `/driftcheck` that lands
+on main afterwards is invisible to `docs/…/drift-ledger.md` in the
+worktree, so the §2 probe must be compared against `git show
+main:docs/developer/porting/drift-ledger.md`. This lane STOPPED twice on a
+probe that main's ledger already passed.

@@ -1,6 +1,8 @@
+import { request as pwRequest } from '@playwright/test';
+
 import { expect, test, type Page } from './support/fixtures';
 
-import { E2E_PASSPHRASE, MOCK_LLM_PORT } from './support/env';
+import { BASE_URL, E2E_PASSPHRASE, MOCK_LLM_PORT } from './support/env';
 import { startMockLlm, MOCK_LLM_REPLY, type MockLlm } from './support/mock-llm';
 
 /**
@@ -34,6 +36,16 @@ import { startMockLlm, MOCK_LLM_REPLY, type MockLlm } from './support/mock-llm';
 // Flipped to `true` at the `f45a517a9` round unification (2026-09-22): P4.D205
 // is picked; the beat's first fully-live run is the unified gate's own step.
 const P4D205_SERVER_LANDED = true;
+
+/**
+ * P4.D250 — v4 `52d6e7ecd`'s STANDING inform (the beat at the end of this file).
+ * The SPA half sends `permanent` and renders the standing chip; only P4.D249's
+ * server keeps a delivered standing row in force, so before it lands the chip
+ * would vanish after the seat's turn exactly as a one-shot's does. **The
+ * unifier flips this to `true` after P4.D249 is picked** (the order's §S.1);
+ * the beat's first live run is the unified gate's own step.
+ */
+const P4D249_SERVER_LANDED = false;
 
 test.describe('P4.D206 — Inform, the word out of character', () => {
   let mock: MockLlm;
@@ -221,6 +233,141 @@ test.describe('P4.D206 — Inform, the word out of character', () => {
       // Leave nothing behind for a later spec reading this chat.
       await oneSeat.getByRole('button', { name: /^Withdraw the inform for / }).click();
       await expect(oneSeat).toHaveCount(0);
+    }
+  });
+
+  /**
+   * P4.D250 — a STANDING inform survives its seat's turn and is withdrawn whole
+   * (v4 `52d6e7ecd`).
+   *
+   * WHY A THROWAWAY CHAT (the P4.145 / `chat-delete-flow` idiom): this beat
+   * must SEND, and extra sends into "Group Expedition" push it past a Host
+   * title checkpoint that a later spec's non-streaming mock resolves, renaming
+   * it and failing every title-keyed beat downstream (the P4.D187 cascade).
+   *
+   * WHY ONE LLM SEAT: the rotation's speaker is a weighted draw no beat can
+   * force onto an LLM seat (`forcing-a-deterministic-turn-in-a-salon-e2e-beat`
+   * — impersonation makes the walk total only for HUMAN-voiced seats). With
+   * exactly one model-played seat, every turn is that seat's, so the chip
+   * standing AFTER the turn is the proof: a one-shot chip is gone by then.
+   * One eligible seat also means picking it IS Everyone (v4's coverage rule,
+   * `InformDialog.tsx:116`), so the toast reads "the company" — v4's bytes.
+   */
+  test('a STANDING inform survives its seat’s turn, and the cross withdraws it whole', async ({
+    page,
+  }) => {
+    test.skip(
+      !P4D249_SERVER_LANDED,
+      'awaits P4.D249: the server keeps a delivered standing row in force (chat_informs.permanent + the in-force predicate)',
+    );
+    test.setTimeout(120_000);
+
+    /** Raw dispatch against the real axum server (the `new-chat-flow` idiom). */
+    async function dispatch(req: unknown): Promise<Record<string, unknown>> {
+      const ctx = await pwRequest.newContext();
+      try {
+        const res = await ctx.post(`${BASE_URL}/api/dispatch`, { data: req });
+        const body = (await res.json().catch(() => null)) as {
+          type?: string;
+          data?: Record<string, unknown>;
+        } | null;
+        return { type: body?.type ?? '', ...(body?.data ?? {}) };
+      } finally {
+        await ctx.dispose();
+      }
+    }
+
+    // Unlock FIRST: a raw dispatch against a locked vault refuses.
+    await page.goto('/salon');
+    await maybeUnlock(page);
+    await expect(page.getByRole('heading', { name: 'Chats', exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    const characters = ((await dispatch({ type: 'characterList' }))['characters'] ?? []) as Array<{
+      id: string;
+      name: string;
+      controlledBy?: string;
+    }>;
+    const seat = characters.find((c) => c.controlledBy !== 'user');
+    expect(seat, 'the fixture must seed an llm character').toBeTruthy();
+    const profiles = ((await dispatch({ type: 'connectionProfileList' }))['profiles'] ?? []) as Array<{
+      id: string;
+      provider?: string;
+    }>;
+    const profileId = profiles.find((p) => p.provider === 'OPENAI_COMPATIBLE')?.id;
+    expect(profileId, 'the fixture must seed the mock-backed profile').toBeTruthy();
+
+    const created = await dispatch({
+      type: 'chatCreate',
+      title: `P4.D250 standing inform ${Date.now()}`,
+      participants: [
+        { type: 'CHARACTER', characterId: seat!.id, controlledBy: 'llm', connectionProfileId: profileId },
+      ],
+    });
+    const chatId = (created['chat'] as { id?: string } | undefined)?.id;
+    expect(chatId, `chatCreate must answer a chat id, got ${JSON.stringify(created)}`).toBeTruthy();
+
+    try {
+      await page.goto(`/salon/${chatId}`);
+      await expect(page.locator('.qt-chat-messages-list')).toBeVisible({ timeout: 15_000 });
+      // The greeting turn the create drew must settle before anything else, or
+      // the send below meets the "still speaking" refusal.
+      await expect(page.getByText(MOCK_LLM_REPLY)).toHaveCount(1, { timeout: 30_000 });
+
+      // Post a standing inform to the one seat: tick the box, and the guidance
+      // paragraph's tail follows it.
+      await page.getByRole('button', { name: 'Inform the cast' }).click();
+      const dialog = page.getByRole('dialog');
+      await dialog.getByRole('button', { name: new RegExp(seat!.name) }).click();
+      const toggle = dialog.getByRole('checkbox', { name: /Keep it standing in this chat/ });
+      await expect(toggle).not.toBeChecked();
+      await toggle.check();
+      await expect(
+        dialog.getByText(/it stays at their elbow for every turn they take in this chat/),
+      ).toBeVisible();
+      await writePassage(page, 'You are the ship’s cat.\n\nNobody else knows.');
+      await footerButton(page, 'Inform').click();
+
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      await expect(
+        page.getByText('A standing note for the company, for the rest of this chat'),
+      ).toBeVisible();
+
+      // The standing chip: its label and its hover title both say what it is.
+      const chip = page.locator('.qt-chat-tool-result-chip', {
+        hasText: `Informing ${seat!.name} on every turn in this chat`,
+      });
+      await expect(chip).toBeVisible({ timeout: 15_000 });
+      await expect(chip).toHaveAttribute(
+        'title',
+        'Standing in this chat until withdrawn — You are the ship’s cat.',
+      );
+
+      // Run the seat's turn (the only seat there is).
+      const composer = page.locator('.qt-chat-composer-input').first();
+      await composer.click();
+      await page.keyboard.type('What do you make of it?');
+      await page.locator('button[aria-label="Send message"]').click();
+      await expect(page.getByText(MOCK_LLM_REPLY)).toHaveCount(2, { timeout: 30_000 });
+
+      // The note was delivered, and it STANDS: the chip is still there after
+      // the turn — and after a reload, which re-reads `chatInformsList` cold
+      // rather than trusting a cache the turn's refetch might not yet have
+      // replaced.
+      await expect(chip).toBeVisible();
+      await page.reload();
+      await maybeUnlock(page).catch(() => undefined);
+      await expect(chip).toBeVisible({ timeout: 15_000 });
+
+      // The cross withdraws it whole, under the standing title.
+      const cross = chip.getByRole('button', { name: `Withdraw the inform for ${seat!.name}` });
+      await expect(cross).toHaveAttribute('title', 'Withdraw this standing inform');
+      await cross.click();
+      await expect(page.getByText('The note has been withdrawn')).toBeVisible();
+      await expect(chip).toHaveCount(0);
+    } finally {
+      await dispatch({ type: 'chatDelete', chatId });
     }
   });
 });
