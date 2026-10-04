@@ -95,8 +95,8 @@ release. That is expected, not a fault. Three rules:
   contend for one `target/`, and a fingerprint read that lands before the
   stamp's atime reset gets its artifact swept and rebuilt later.
 - **`/dogfood` never runs `cargo-sweep.sh` itself.** Garbage-collecting
-  main's `target/` belongs to `/setupphase` alone (CLAUDE.md). The release
-  artifacts this build leaves behind are swept at the next `/setupphase`.
+  main's `target/` belongs to `/setupphase` and `/cleanup` (CLAUDE.md). The release
+  artifacts this build leaves behind are swept at the next `/setupphase`, or kept by a `/cleanup`, which builds this same release target and sweeps everything stale around it.
 
 ⚠ **Always `npm run build`, never a bare `ng build`/`npx ng build`.** Raw `ng`
 finishes the work and then never exits (its esbuild service child stays ref'd —
