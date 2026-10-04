@@ -164640,3 +164640,138 @@ then-uncommitted bug-177/178 change) and the lane STOPPED; it resumed after
   `staticBackgroundImageId` as `null`; a new project with no colour writes
   `"color": null, "icon": null` and the home dashboard row carries `color:
   null`; a group-editor save with the colour cleared writes `"color": null`.
+
+## P4.D249 — standing informs, SERVER half (v4 `52d6e7ecd`), lane record (2026-10-03)
+
+Branch `claude/p4-d249-standing-informs-schema-5c0991`, cut from `main`
+`4d560872c`. Target pin `/tmp/qt-v4-pin-p4d249-52d6e7ecd`, baseline pin
+`/tmp/qt-v4-pin-p4d249-e5c6bd0c0` (both built per ledger §5.1, all three
+symlink classes; `4.10.0-dev.109` / `.108` verified).
+
+### The probe (twice)
+- **First start: STOPPED.** v4's checkout was dirty in `lib/`
+  (`file-content-extractor.ts`, `next.config.js`) against a ledger §1 that
+  said CLEAN. Reported, nothing done.
+- **Second start: PASS** against main's ledger `106913111`, which records v4
+  HEAD `a434c715b` (bugs 177/178, PDF extraction) and explicitly keeps this
+  round's regens pinned at `52d6e7ecd`. Re-probed before each regen batch;
+  passed every time.
+
+### Units
+1. **D23 re-dump #4.** `dump-fresh-schema.ts` from the pin: EXACTLY one line
+   moves — `chat_informs` gains `"permanent" INTEGER DEFAULT 0` between
+   `recordMessageId` and `createdAt`; the seed `cmp`-identical. Dated note in
+   `provisioning/mod.rs`. `provisioning_equivalence`: the re-dumped tree vs
+   the BASELINE oracle → RED (the backwards sensitivity proof; the only schema
+   statement differing between the two oracles is `chat_informs`); vs the
+   target oracle → 3/3 green.
+2. **The one-or-two-shapes verdict: TWO.** generateDDL spells
+   `z.boolean().default(false)` as `INTEGER DEFAULT 0` (nullable, schema
+   order); the migration as `INTEGER NOT NULL DEFAULT 0` (appended). Carried
+   as `routeTrail` precedent: `CHAT_INFORMS_TABLE_DDL` = generateDDL's (a new
+   test pins it against the embedded dump), the ensure = the migration's. The
+   reader maps a NULL cell to `false` (v4's Zod default over its
+   NULL→`undefined` deserializer).
+3. **`db/chat_informs_permanent_repair.rs`** + host call after the table
+   ensure. **Failure class MEASURED:** v4's migration is not `resumable`, so a
+   failure lands in `failed` and `instrumentation.ts:419-428` exits ("Migrations
+   failed - cannot start server") — the fatal `?`, NOT the P4.D248 defer class.
+   Unit tests: absent table no-op; baseline shape gains the column appended
+   with `table_info` (INTEGER, notnull 1, dflt `0`); existing rows read 0;
+   second run no-op; a generateDDL table untouched. Host test
+   (`host_boot_p4d249_inform_permanent`): legacy boot → column appended + a
+   standing row round-trips + second boot leaves `sqlite_master` unchanged;
+   setup → schema-order nullable shape. Mutation: dropping the host call →
+   the boot arm RED.
+   **The ensure differential** (`chat_informs_permanent_ensure_equivalence`,
+   NEW, case `chat-informs-permanent-ensure.ts`): the case derives the
+   baseline table from v4's OWN generateDDL at the pin minus the one
+   `permanent` line, runs v4's REAL migration on a copy; v5 runs the ensure on
+   its own copy. `PRAGMA table_info` (11 columns, `permanent` at cid 10,
+   INTEGER/1/`0`), `sqlite_master.sql` (`…"consumedByMessageId" TEXT\n,
+   "permanent" INTEGER NOT NULL DEFAULT 0)`) and the rows — **byte-equal**.
+4. **DDL mirrors:** NONE outside `src/db/` (every builder uses v4's
+   `ensureCollection`). **Committed pairs (§R.6): NONE** — v4's real migration
+   `--report-only` over all 106 pairs answered `not needed` 106 times.
+5. **Repository** (`db/chat_informs.rs`): `ChatInformRow`/`ChatInformCreate`/
+   `PendingInformBatch` gain `permanent`; `is_inform_in_force` the one
+   predicate (census test `the_in_force_predicate_is_never_open_coded`, item
+   19); `by_posting_order` (renamed, NaN leg kept) + `by_delivery_order`;
+   `create_batch(…, permanent)` logs it LAST; `delete_pending_by_batch` skips
+   only rows not in force; `delete_pending_for_participant` no hunk, pinned.
+6. **Block** (`services/inform_block.rs`): the in-force set read on every call,
+   `merge_for_swipe`, `inform_counts`, row ids exclude stamped rows, `standing`
+   on both debug lines.
+7. **Wire:** `Request::ChatInform.permanent` (`double_option` tri-state, inside
+   the P4.D205 fence); `parse_inform`'s third key (absent → false; `null` / a
+   string / a number → `invalid_type` LAST in key order); the 201 body's
+   `permanent` before `message`; the list's `permanent`; the cancel's DEBUG
+   line `any_consumed, permanent, record_deleted`. REST envelope key list grew.
+8. **Carriers:** import (`== Value::Bool(true)` only), backup (`F::Bool` at
+   schema position — the `api_keys.isActive` precedent; a NULL is unreachable
+   from any writer), restore (`restored_inform` + unit test; absent → false),
+   export key order regenerated from the pin (exactly `permanent` added).
+9. **Vendored trees:** `help/inform.md` (129 → 129), the five `docs/v4/`
+   paths, `qtap-export.schema.json` (96,967 → 97,324; both literals moved).
+
+### Red-first counts (oracle at both pins)
+| family | baseline → target |
+|---|---|
+| `chat_informs_tier2_equivalence` | 16 of 27 read results move (every row read gains `permanent`; the 9 new standing ops); vs the baseline fixture the ported read fails `no such column: permanent` |
+| `inform_block_equivalence` | 15 of 16 cases move (`standing` in every debug line, the swipe's second read, the 5 new cases) |
+| `chat_informs_routes_equivalence` | 10 of 24 cases move (the 5 posting arms gain `permanent`/`createBatchPermanent`, 2 standing posts, 3 Zod refusals) |
+| `chat_informs_remap_equivalence` | every kept row (12 of 15) gains `data.permanent` at the target |
+| `provisioning_equivalence` | the one `chat_informs` statement |
+| `qtap_schema_embed_guard` | 96,967 vendored vs 97,324 at the pin |
+| `help_tree_equivalence` | `help/inform.md` differs at line 17 |
+| `regenerate_swipe_tier3` | the new standing row leads the grouped swipe's block (a pinned assert) |
+| `orchestrator_tier3` | call 63 carries both standing rows; e8's stamp holds, e9 is stamped (rows 7 → 9, consumed 4 → 5) |
+| `build_context_tier3` | the seat-read count on `inform_swipe_reapplies_the_groups_consumed_rows` 1 → 2 (by design) |
+
+### Tier 2
+- **17 — the cancel log level: NO divergence.** v5's `[Chats v1] Inform
+  cancelled` was already `tracing::debug!` (the survey's "INFO" was wrong);
+  capture-pinned with the new field order.
+- **18 — MEASURED, FIXED.** v5 emitted NO line for a failed seat read (the
+  block swallowed it). v4's methods all read through `findByFilter`, whose own
+  `safeQuery` answers first, so the line is `Error finding entities by filter
+  {collection, error}` — now emitted through `db::fallback` (one per read; a
+  pin). The same rule showed the cancel's failed batch read logging v4's
+  UNREACHABLE outer `Error finding informs by batch ID` since P4.D205 — moved
+  to the reachable line, its test re-pinned both ways. `Pending informs
+  deleted by batch` already matched.
+- **19 — the census pin:** landed (unit test in `db/chat_informs.rs`).
+
+### Recorded, not landed
+- v4's `Error deleting entity` line (the base `_delete`'s `safeQuery` logs it
+  before rethrowing to `deletePendingByBatch`'s outer catch) has no v5 analog —
+  pre-existing (P4.D205), needs a `delete` shape in `db::fallback`; a
+  follow-up, not this commit's class.
+- Tier 3 items 20/21: v4's migration INFO/ERROR lines, its
+  `migrations_state` row and its prettify label — NO-PORT (the deferred
+  runner; the `chats_cycle_order_repair.rs` precedent). No `docs/developer/*`
+  prose beyond the five mirrored paths moved.
+- `system_restore_state` carries no inform plant (its archives predate
+  Inform); the restore hunk is pinned by `restored_inform_tests` instead.
+- `chat_export_equivalence`'s surfaces never read `chat_informs`; its standing
+  row is neutrality only.
+
+### Gotchas
+- **The sweep driver's `--nocapture` splice breaks a recipe that already ends
+  in `-- --test-threads=1`:** it appends a second ` -- --nocapture`, libtest
+  takes `--nocapture` as a NAME FILTER, runs `0 passed; 2 filtered out`, and
+  the driver reports `OK … ran end-to-end`. Hit on
+  `regenerate_swipe_tier3_equivalence`; run by hand (2/2). Not fixed here
+  (`harness/tools/` is outside this lane).
+- `backup_uuid_remap_equivalence` is refused by the driver by design (its
+  recipe writes the committed corpus); run by hand.
+
+### 💸 for the next `/dogfood`
+- A standing inform on the Friday copy: posted, delivered on two consecutive
+  turns (first in the block; `consumedAt` stamped once and unmoved), carried
+  on a swipe, then withdrawn whole (`removed` = every row).
+- The first v5 boot on a copy whose `chat_informs` lacks the column (the
+  standing copy has 34 rows): the column appended, every row a one-shot, the
+  second boot a no-op.
+- A `.qtap` export + re-import of a chat with a standing inform — the flag
+  survives; a backup + restore round trip likewise.

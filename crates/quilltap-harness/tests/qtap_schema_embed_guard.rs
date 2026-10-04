@@ -35,7 +35,10 @@ use serde_json::{json, Value};
 /// P4.D226: 96,967 at v4 `4d370a90f` — #75's `chats.conciergeOverride`
 /// DEPRECATED (its description rewritten) and the three Concierge keys
 /// `conciergeMode` / `conciergeModeSetBy` / `conciergeModeReason` after it.
-const VENDORED_BYTES: usize = 96_967;
+/// P4.D249: 97,324 at v4 `52d6e7ecd` — `$defs.ChatInform.permanent` (a
+/// boolean, default false) after `recordMessageId`, and `consumedAt` /
+/// `consumedByMessageId` gaining their first-delivery descriptions.
+const VENDORED_BYTES: usize = 97_324;
 
 fn v4_root() -> Option<PathBuf> {
     if let Ok(p) = std::env::var("QT_V4_ROOT") {

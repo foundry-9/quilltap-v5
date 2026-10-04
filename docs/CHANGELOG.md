@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-03 — chore(vendor): re-vendor help/inform.md, five docs/v4 paths and qtap-export.schema.json from v4 52d6e7ecd (P4.D249)
+
+_Versions: core 0.0.1202._
+
+Byte-copies from the `52d6e7ecd` pin: `help/inform.md` (the standing-inform help; the tree stays at 129 files), `docs/v4/CHANGELOG.md`, `docs/v4/developer/{API,DDL,PROMPT_ARCHITECTURE}.md` and `docs/v4/developer/features/salon-inform.md`, and `public/schemas/qtap-export.schema.json` into `crates/quilltap-core/src/generators/` (96,967 → 97,324 bytes: `$defs.ChatInform.permanent` plus two rewritten descriptions; both byte-count literals moved). `qtap_schema_embed_guard`, `help_tree_equivalence`, `help_section_size_equivalence` and `help_tree_embed_guard` are green against the pin. Also appends the P4.D249 lane record to `status-log.md` and marks the order LANE COMPLETE.
+
 #### 2026-10-03 — feat(core): standing informs on the server — the chat_informs.permanent column, its boot ensure, the in-force predicate and the wire (P4.D249, v4 52d6e7ecd)
 
 _Versions: core 0.0.1201, host 0.0.180, web 0.0.217._

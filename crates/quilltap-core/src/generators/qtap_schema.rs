@@ -174,7 +174,10 @@ mod tests {
         // widening — the five-valued `evidence`, `profileKind`).
         // P4.D226: 96,967 at v4 `4d370a90f` (#75: `conciergeOverride`
         // deprecated, the three Concierge keys after it).
-        assert_eq!(QTAP_EXPORT_SCHEMA_JSON.len(), 96_967);
+        // P4.D249: 97,324 at v4 `52d6e7ecd` (`$defs.ChatInform.permanent`
+        // plus the two rewritten `consumedAt`/`consumedByMessageId`
+        // descriptions).
+        assert_eq!(QTAP_EXPORT_SCHEMA_JSON.len(), 97_324);
     }
 
     #[test]
