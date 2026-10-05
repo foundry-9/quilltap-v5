@@ -7124,6 +7124,109 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
+## The `07b8f0209` two-commit drift catch-up round (P4.D251 ∥ P4.D252 ∥ P4.D253) — ORDERED 2026-10-04
+
+**Baseline `52d6e7ecd`; v4 `main` HEAD `07b8f0209` at the planning probe —
+TWO commits past the baseline (`a434c715b`, bugs 177/178 — PDF text
+extraction, class PORT (small) + NO-PORT?; `07b8f0209`, the impersonated-
+line voice as three modes, class PORT with a NEW migration
+`impersonation-voice-mode-v1` that REPLACES `chat_settings.
+impersonationVoiceRewrite` by `impersonationVoiceMode` in place → D23
+re-dump #5); the ledger's §2 probe PASSED (branch `main`, tree CLEAN, both
+logs empty after `git fetch --all`, `bugfix` `1a2b2164c` and `release`
+`8fbf2afe0` unmoved); both §3 rows marked `ORDERED(…)` in the same commit
+as the orders; the round's ONE target pin is `07b8f0209` (it contains both
+commits), the baseline pin `52d6e7ecd`; at unification the baseline MOVES
+to `07b8f0209`.** A DRIFT-ONLY round by the human's direction (`/setupphase
+for v4 drift only`): the two ledger rows and nothing else — the follow-ups
+smalls round and the owed dogfood pass the `52d6e7ecd` unification named
+are deliberately left for after it. The planning survey measured the scope
+from the shipped hunks and fixed four things the ledger row's paraphrase
+left open: (a) v5's backup carries the chat-settings row WHOLE, so a backup
+taken before this round carries the OLD key and v5's restore needs the
+legacy translation as much as v4's does; (b) NO hunk touches the preview
+action, the log-type map or the in-scene voiced service — `in_scene_voiced_
+tier3` and `announcer_tier3` are neutral regens; (c) v4's PUT no longer
+destructures the old key, so a body carrying it is silently IGNORED (200)
+— not the retired-Concierge 400 arm; (d) the P4.D179 boot ensure must be
+DELETED, not kept beside the new one: live Friday has had the toggle ON
+since before 2026-09-15, v4's next boot drops the column, and a v5 still
+adding it back would ping-pong the file (§R.13). Three lanes, disjoint
+ownership, ONE shared contract (the chat-settings wire P4.D251 ↔ P4.D252,
+no pick-order dependency — the SPA types the key optional and defaults
+`'off'`). `api/types.rs` and `api/engine.rs` are CLOSED to every lane (no
+new verb; the key rides the raw settings bag).
+
+- **P4.D251 — the `07b8f0209` server half + both vendored trees (core +
+  host + web edge + harness):** `work-orders/p4.d251-impersonation-voice-
+  mode-server-schema-ensure-restore-almanack.md` — the D23 re-dump #5 +
+  the seed from the pin; a NEW `db/chat_settings_impersonation_voice_mode_
+  repair.rs` REPLACING the P4.D179 ensure (ADD + translate `1 → 'ask'` +
+  DROP, one transaction) differentially compared against v4's REAL
+  migration in THREE starting shapes (old column present / neither column
+  — v4 runs both migrations / both present — the re-runnable arm); the
+  six data-layer sites as a TEXT enum with the tolerant read (v4's
+  behaviour on a stored out-of-enum string MEASURED first); the settings
+  PUT's enum arm with v4's sentence, the retired key ignored with a silence
+  pin; the Almanack's three labels with the raw fallback; a NEW pure
+  `impersonation_voice_legacy` module under the restore with its own
+  tier-1 family and a capture-pinned debug line; the committed pairs
+  NARROWED through v4's real migration (`--report-only` first, every
+  reader re-run); `settings_routes`'s family re-shaped (10 rows), nine
+  families regenerated red-first, three neutral `cmp`s; the two help
+  pages + the seven `docs/v4/` paths (both commits) byte-copied. The most
+  capable tier.
+- **P4.D252 — the `07b8f0209` SPA half (Angular only):** `work-orders/
+  p4.d252-impersonation-voice-mode-spa-draft-stage-radios.md` — the gate
+  on `mode`, the state machine's `draft` stage (`ask` opens with NO model
+  call; `always` keeps the eager call), `restate` replacing `regenerate`
+  with the picker handlers dropping a stale proposal and waiting, the
+  dialog's two footers (Send as written PRIMARY under `draft`,
+  Cmd/Ctrl+Enter in the draft, the `Would be spoken through` line), the
+  shared `voiceRehearsalTitle` with v4's four strings on the portrait and
+  the Send button, the Composer card's three-radio fieldset with v4's
+  labels and descriptions (`qt-radio` measured, never invented), the
+  contract's union type; v4's three client specs transcribed case for
+  case red-first; the two existing beats re-shaped (a new `ask` beat
+  proving NO LLM call) and PARKED behind `P4D251_SERVER_LANDED = false`
+  for the unifier to flip. Opus tier.
+- **P4.D253 — `a434c715b`'s bug 177 + the bug-178 ratification (core +
+  harness):** `work-orders/p4.d253-bug177-pdf-extraction-through-the-
+  converter-seam.md` — `extract_pdf_content` reads the `DocumentText
+  Extractor` seam FIRST (resolved in place as `api/mount_files.rs` does —
+  no threading, no new parameter), the regex fallback only when the seam
+  finds nothing, v4's three new lines capture-pinned and the two retired
+  strings gone; the module header's FALSE-premise divergence rewritten
+  (before `a434c715b` real v4 FAILED every PDF); the FIRST tier-1 family
+  over v4's REAL `extractFileContent` with v4's own test mocks and the
+  extractor SCRIPTED on both sides (the P4.D198 precedent) so the one
+  production divergence — pdf-parse finds text, v5's seam refuses — is
+  pinned by name; bug 178 (`next.config.js` only) NO-PORT-ratified on the
+  file list. Opus tier.
+
+**Fences:** `fresh_schema.json`, `chat_settings_seed.json`, every
+`*_repair.rs`, `crates/quilltap-host/**`, `help/**`, `docs/v4/**`,
+`services/backup/**`, the settings / Almanack files P4.D251; `apps/web/**`
+P4.D252; `generators/**` P4.D253 (`ai_import.rs` ONE comment hunk;
+`wizard.rs` no hunk predicted); `services/mount_index/**` READ-ONLY for
+everyone; `api/types.rs` + `api/engine.rs` CLOSED; `quilltap-harness`
+never bumped. **Execution:** three branches cut from `main` at the orders'
+commit; worktree per lane, the two Rust lanes cloning main's warmed
+`target/`; P4.D251 the most capable tier, P4.D252 + P4.D253 Opus; the two
+Rust lanes announce sweeps (one at a time); one Playwright run at a time;
+cherry-pick order P4.D253 → P4.D251 → P4.D252; the unifier flips the two
+parked beats, bumps `ai_import_tier3`'s stamp to `4.10.0-dev.111`, runs
+the full sweep from the pin, recounts versions (core bumped by two lanes),
+lands any §R.8 handoff, moves the baseline, and retires the two rows
+(`07b8f0209` ABSORBED(P4.D251, P4.D252); `a434c715b` ABSORBED(P4.D253) for
+bug 177 + NO-PORT-RATIFIED(P4.D253) for bug 178). **Deliberately left
+out:** the follow-ups smalls round (the previous NEXT item 3 — none of it
+is drift); the owed dogfood pass (NEXT item 2 — it runs AFTER this round,
+on a Friday copy whose first v5 boot now translates the toggle, with the
+three lanes' 💸 rows added); the dogfood standing notes' open items (the
+BLOB-in-`connection_profiles.name` job failure, the `doc_mount_file_links`
+plant 500) — not drift.
+
 ## The `52d6e7ecd` standing-informs drift catch-up round (P4.D249 ∥ P4.D250 ∥ P4.146) — UNIFIED 2026-10-04 (ordered 2026-10-03)
 **UNIFIED on main (2026-10-04) — ALL THREE LANES LANDED WHOLE; the oracle
 baseline MOVES `e5c6bd0c0` → `52d6e7ecd`; the drift ledger's §3 holds ONE

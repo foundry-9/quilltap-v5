@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-04 — docs(orders): the `07b8f0209` two-commit drift catch-up round — P4.D251 ∥ P4.D252 ∥ P4.D253 ordered; both ledger rows marked ORDERED
+
+_Docs-only change._
+
+`/setupphase for v4 drift only`. The ledger's §2 probe passed (v4 on `main` at `07b8f0209`, clean, nothing new on origin), so the round is exactly the two UNPROCESSED rows. Three orders under `docs/developer/porting/work-orders/`, each with a fresh 2026-10-04 survey from the shipped hunks and a byte-identical §R/§S/Ownership/Shared-contract block: P4.D251 (the `07b8f0209` server half — the D23 re-dump #5, v4's `impersonation-voice-mode-v1` re-homed as a boot ensure that REPLACES the P4.D179 one and is differentially compared against v4's real migration in three starting shapes, the six data-layer sites as a TEXT enum, the settings PUT's enum arm with the retired key ignored, the Almanack labels, the pure legacy translation under the restore, the committed pairs narrowed, `help/` + the whole `docs/v4/` mirror for both commits), P4.D252 (the SPA half — the gate on `mode`, the `draft` stage with no model call under `ask`, Restate replacing Regenerate, the dialog's two footers and the shared tooltip wording, the three-radio Composer card, the two beats re-shaped and parked), and P4.D253 (`a434c715b`'s bug 177 — the PDF arm through the `DocumentTextExtractor` seam with v4's three new lines and a first tier-1 family over v4's real extractor with the seam scripted on both sides; bug 178 ratified NO-PORT on the file list). The survey corrected four things the ledger row's paraphrase left open (the backup carries the old key whole; nothing touches the preview action; a PUT carrying the retired key is ignored, not refused; the P4.D179 ensure must be deleted or it ping-pongs a v4-migrated file). The drift ledger's two §3 rows now read `ORDERED(…)`; `phase-4.md` gains the round's section.
+
 #### 2026-10-04 — docs(porting): record v4 drift at 07b8f0209 — the impersonated-line voice becomes three modes
 
 _Docs-only change._
