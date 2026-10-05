@@ -10,13 +10,14 @@
 //! through pdf-parse" was false for a whole release line (v4 called pdf-parse
 //! 2.x's class as the 1.x function and failed EVERY PDF; the oracle at the
 //! baseline `52d6e7ecd` records exactly that, `pdfParse is not a function` on
-//! all eleven PDF rows).
+//! all thirteen PDF rows of the 25-case corpus — re-measured at the
+//! `07b8f0209` unification).
 //!
-//! Both sides read the same 23-case corpus
+//! Both sides read the same 25-case corpus
 //! (`harness/oracle/cases/file-content-extractor-corpus.json`): the text /
 //! markdown / code / JSON arms, the 50,000-unit truncation, the image
 //! description and placeholder arms, the binary placeholder, the 10 MB ceiling,
-//! the no-storage-key and failed-download refusals, and eleven PDF rows. The
+//! the no-storage-key and failed-download refusals, and thirteen PDF rows. The
 //! storage read answers the case's bytes on both sides (v4's mocked
 //! `downloadFile`; a [`CaseBackend`] here), and the converter seam is SCRIPTED
 //! identically from the case's `pdfParse` field: v4's mocked `PDFParse.getText`
@@ -28,7 +29,9 @@
 //!   serialized struct (absent keys stay absent on both sides);
 //! - the extractor's log lines, in order — level, message, and every field
 //!   (`size` / `chars` bare integers; a `child` line carries v4's `fileId`
-//!   binding as v5's `file_id`). One field is compared by PRESENCE only: the
+//!   binding as v5's `file_id`; the child's other binding, `module:
+//!   'file-content-extractor'`, is what v5's target names, so it is not
+//!   rendered as a field). One field is compared by PRESENCE only: the
 //!   failed download's `error` (v4's is the mock's raw rejection; v5's is
 //!   `download_file`'s v4-wrapped message over the backend's).
 //!
@@ -38,9 +41,12 @@
 //!   _finds_text`): over the PRODUCTION seam (`default_text_extractor()`, which
 //!   refuses — P4.6y), v5 equals v4 on every row EXCEPT the four where
 //!   pdf-parse finds text (`pdf_parsed_text`, `pdf_parsed_padded`,
-//!   `pdf_parsed_multibyte`, `pdf_parsed_truncated`); there v4 answers the
-//!   parsed text and v5 runs the regex fallback over the same bytes. Asserted
-//!   both ways, never masked.
+//!   `pdf_parsed_multibyte`, `pdf_parsed_wins_over_fallback`,
+//!   `pdf_parsed_js_whitespace`, `pdf_parsed_truncated`); there v4 answers the
+//!   parsed text and v5 runs the regex fallback over the same bytes — which
+//!   finds nothing, except on `pdf_parsed_wins_over_fallback`, whose bytes the
+//!   scrape CAN read (the row that pins the converter's precedence on the
+//!   scripted side). Asserted both ways, never masked.
 //! - **The converter's own WARNs** (`PDF buffer is empty`, `Failed to extract
 //!   text from PDF buffer`, under `MountIndex:PdfConverter`) are v4's and not
 //!   v5's — the seam does not reproduce the converter (P4.D253 Tier 3 item
@@ -57,7 +63,7 @@
 //!   rm -f /tmp/oracle-file-content-extractor.ndjson
 //!   QT_ORACLE_OUT=/tmp/oracle-file-content-extractor.ndjson \
 //!     PATH=$N:$PATH $N/npx jest --silent --watchman=false --testTimeout=120000 \
-//!       --roots "$PWD" --roots "$TMPO/cases" -- "file-content-extractor.test"
+//!       --roots "$PWD" --roots "$TMPO/cases" -- 'cases/file-content-extractor\.test\.ts$'
 //! Run:
 //!   QT_ORACLE_FILE_CONTENT_EXTRACTOR=/tmp/oracle-file-content-extractor.ndjson \
 //!     cargo test -p quilltap-harness --test file_content_extractor_equivalence -- --nocapture
@@ -86,8 +92,18 @@ const PARSED_TEXT_ROWS: &[&str] = &[
     "pdf_parsed_text",
     "pdf_parsed_padded",
     "pdf_parsed_multibyte",
+    "pdf_parsed_wins_over_fallback",
+    "pdf_parsed_js_whitespace",
     "pdf_parsed_truncated",
 ];
+
+/// The parsed-text rows whose bytes the regex fallback CAN read (the §3 review
+/// of the `07b8f0209` unification): v4 answers pdf-parse's text — the
+/// converter WINS, bug 177's whole point — while v5's refusing production seam
+/// falls through to the scrape and answers it. Every other parsed-text row's
+/// bytes are a junk header the fallback finds nothing in.
+const FALLBACK_READABLE_PARSED_ROWS: &[(&str, &str)] =
+    &[("pdf_parsed_wins_over_fallback", "Fallback would say this")];
 
 #[derive(Deserialize)]
 struct Corpus {
@@ -348,7 +364,12 @@ fn compare_case(case: &Case, row: &Value, v5_result: &Value, v5_lines: &[String]
 
 fn clip(s: &str) -> String {
     if s.len() > 300 {
-        format!("{}…({} bytes)", &s[..300], s.len())
+        // Cut on a char boundary — a red report may carry multibyte text.
+        let cut = (0..=300)
+            .rev()
+            .find(|&i| s.is_char_boundary(i))
+            .unwrap_or(0);
+        format!("{}…({} bytes)", &s[..cut], s.len())
     } else {
         s.to_string()
     }
@@ -394,15 +415,28 @@ fn production_seam_diverges_only_where_pdf_parse_finds_text() {
         let (result, lines) = run_v5(case, false);
         if PARSED_TEXT_ROWS.contains(&case.name.as_str()) {
             // v4: pdf-parse's text. v5's refusing seam: the regex fallback over
-            // the same bytes — which finds nothing in the corpus's junk header.
+            // the same bytes — which finds nothing in the corpus's junk header,
+            // or (the fallback-readable rows) the scrape v4 never reached.
             assert_eq!(row["result"]["success"], true, "{}: v4 parses", case.name);
-            assert_eq!(
-                result,
-                serde_json::json!({
+            let scrape = FALLBACK_READABLE_PARSED_ROWS
+                .iter()
+                .find(|(name, _)| *name == case.name)
+                .map(|(_, text)| *text);
+            let expected = match scrape {
+                Some(text) => serde_json::json!({
+                    "success": true,
+                    "content": text,
+                    "contentType": "text",
+                    "truncated": false,
+                }),
+                None => serde_json::json!({
                     "success": false,
                     "contentType": "error",
                     "error": "Failed to extract PDF content (no text found)",
                 }),
+            };
+            assert_eq!(
+                result, expected,
                 "{}: the recorded divergence — v5's production seam refuses, so the fallback runs",
                 case.name
             );
@@ -411,12 +445,20 @@ fn production_seam_diverges_only_where_pdf_parse_finds_text() {
                 "{}: the divergence is real",
                 case.name
             );
+            let mut expected_lines = vec![format!(
+                "WARN {TARGET} pdf-parse found no text, using native fallback extraction size={}",
+                case.bytes().len()
+            )];
+            if let Some(text) = scrape {
+                expected_lines.push(format!(
+                    "DEBUG {TARGET} Extracted PDF content size={} chars={}",
+                    case.bytes().len(),
+                    text.encode_utf16().count()
+                ));
+            }
             assert_eq!(
                 lines.iter().map(|l| cut_v5_line(l)).collect::<Vec<_>>(),
-                vec![format!(
-                    "WARN {TARGET} pdf-parse found no text, using native fallback extraction size={}",
-                    case.bytes().len()
-                )],
+                expected_lines,
                 "{}: v5 announces the fallback v4 never reached",
                 case.name
             );

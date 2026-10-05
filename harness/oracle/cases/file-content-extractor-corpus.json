@@ -171,6 +171,32 @@
       }
     },
     {
+      "name": "pdf_parsed_wins_over_fallback",
+      "file": {
+        "originalFilename": "lore.pdf",
+        "mimeType": "application/pdf",
+        "size": 1024,
+        "storageKey": "users/user-1/files/lore.pdf"
+      },
+      "bytesBase64": "QlQgKEZhbGxiYWNrIHdvdWxkIHNheSB0aGlzKSBUaiBFVA==",
+      "pdfParse": {
+        "text": "Parsed wins."
+      }
+    },
+    {
+      "name": "pdf_parsed_js_whitespace",
+      "file": {
+        "originalFilename": "lore.pdf",
+        "mimeType": "application/pdf",
+        "size": 1024,
+        "storageKey": "users/user-1/files/lore.pdf"
+      },
+      "bytesBase64": "JVBERi0xLjQgbm90IHJlYWxseSBwYXJzZWQgaGVyZQ==",
+      "pdfParse": {
+        "text": "﻿ Parsed past a BOM."
+      }
+    },
+    {
       "name": "pdf_whitespace_then_fallback_literal",
       "file": {
         "originalFilename": "lore.pdf",

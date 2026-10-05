@@ -45,7 +45,7 @@
  *   rm -f /tmp/oracle-file-content-extractor.ndjson
  *   QT_ORACLE_OUT=/tmp/oracle-file-content-extractor.ndjson \
  *     PATH=$N:$PATH $N/npx jest --silent --watchman=false --testTimeout=120000 \
- *       --roots "$PWD" --roots "$TMPO/cases" -- "file-content-extractor.test"
+ *       --roots "$PWD" --roots "$TMPO/cases" -- 'cases/file-content-extractor\.test\.ts$'
  */
 
 import * as fs from 'fs';

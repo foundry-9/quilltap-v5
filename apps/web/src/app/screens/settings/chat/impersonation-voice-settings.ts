@@ -113,7 +113,13 @@ export class ImpersonationVoiceSettings extends ChatSettingsCard {
     // The radios are CONTROLLED by the stored mode, as v4's React `checked` is:
     // a refused save leaves the setting where it was, and Angular's binding only
     // writes `checked` when the mode CHANGES — so without this the clicked radio
-    // would stay lit over a setting that never moved.
+    // would stay lit over a setting that never moved. ONLY on a refusal: after a
+    // successful save the query's `data()` reaches `mode()` a macrotask later
+    // (the query observer notifies on `setTimeout(0)`), so a resync here would
+    // briefly re-light the OLD radio over the one just picked — a visible
+    // flicker, and a race for Playwright's `.check()` (the §3 review of the
+    // `07b8f0209` unification). The `[checked]` binding settles a success.
+    if (this.saveError() === null) return;
     const mode = this.mode();
     this.host.nativeElement
       .querySelectorAll<HTMLInputElement>('input[name="impersonationVoiceMode"]')

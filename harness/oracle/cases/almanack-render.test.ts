@@ -447,6 +447,18 @@ function variants(): Variant[] {
         return d;
       },
     },
+    // 10. The third label (`Always restate`) — `base` renders `ask` and
+    //     `all_empty` renders `off`, so without this the `always` arm was
+    //     compared against nothing (the §3 review of the `07b8f0209`
+    //     unification).
+    {
+      name: 'voice_mode_always',
+      build: () => {
+        const d = clone(fixture());
+        (d.featureConfig as { impersonationVoiceMode: string }).impersonationVoiceMode = 'always';
+        return d;
+      },
+    },
   ];
 }
 

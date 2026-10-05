@@ -17,9 +17,9 @@
  *     key `1` beside an explicit `'off'` (the `??` keeps `'off'`).
  *
  * Output: one NDJSON line per row. Record outputs are emitted as JSON so the
- * Rust side compares key ORDER too (v4 spreads `...rest` then sets the mode,
- * which puts the mode LAST — after `createdAt` — regardless of where the
- * retired key sat). An `undefined` input is spelled `{"undefined": true}` in
+ * Rust side compares key ORDER too (v4 spreads `...rest` then sets the mode:
+ * a mode key the record already carried KEEPS its slot; a mode it lacked is
+ * appended LAST — after `createdAt` — wherever the retired key sat). An `undefined` input is spelled `{"undefined": true}` in
  * the `value` slot because JSON has no undefined.
  *
  * Run (Node 24, from the v4 checkout or a pinned worktree):
@@ -66,6 +66,10 @@ const records: Array<[string, Record<string, unknown>]> = [
   ['key_true_no_mode', { id: 'cs-1', impersonationVoiceRewrite: true, createdAt: 't' }],
   ['key_true_mode_always', { id: 'cs-1', impersonationVoiceRewrite: true, impersonationVoiceMode: 'always', createdAt: 't' }],
   ['key_false_mode_null', { id: 'cs-1', impersonationVoiceRewrite: false, impersonationVoiceMode: null, createdAt: 't' }],
+  // A `null` mode FALLS to the legacy value (JS `??`) — with legacy `true`, so
+  // a port mapping a null mode to "default off" cannot pass (the §3 review of
+  // the `07b8f0209` unification).
+  ['key_true_mode_null', { id: 'cs-1', impersonationVoiceRewrite: true, impersonationVoiceMode: null, createdAt: 't' }],
   ['key_present_undefined', { id: 'cs-1', impersonationVoiceRewrite: undefined, createdAt: 't' }],
   ['key_one_mode_off', { id: 'cs-1', impersonationVoiceRewrite: 1, impersonationVoiceMode: 'off', createdAt: 't' }],
 ];

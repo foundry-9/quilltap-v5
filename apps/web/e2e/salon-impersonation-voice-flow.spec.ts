@@ -125,6 +125,21 @@ async function dispatch(req: unknown): Promise<Record<string, unknown>> {
 }
 
 /**
+ * How many persisted USER lines carry `text` — the proof a Send actually
+ * posted. The mock answers EVERY completion with the same `REHEARSED` text, so
+ * the newest bubble may already read `REHEARSED` (an LLM seat's reply from an
+ * earlier beat) and a bubble poll alone passes whether or not Send posted
+ * anything (the §3 review of the `07b8f0209` unification).
+ */
+async function userLinesWith(chatId: string, text: string): Promise<number> {
+  const resp = await dispatch({ type: 'chatGet', chatId });
+  const chat = (resp['chat'] as Record<string, unknown> | undefined) ?? {};
+  const messages = (chat['messages'] as Array<Record<string, unknown>> | undefined) ?? [];
+  return messages.filter((m) => m['role'] === 'USER' && String(m['content'] ?? '').includes(text))
+    .length;
+}
+
+/**
  * Open the fixture's "Group Expedition" — the multi-seat chat the other
  * send-beats (`m4-salon`, `smart-typography-flow`) already share, and the one
  * no beat asserts token totals on ("Solo Voyage" is `salon-token-cost-flow`'s,
@@ -361,11 +376,15 @@ test.describe('P4.D181 — In Their Own Words, the full round trip', () => {
         REHEARSED,
         { timeout: 20_000 },
       );
+      const postedBefore = await userLinesWith(chatId, REHEARSED);
       await dialog(page).getByRole('button', { name: 'Send', exact: true }).click();
       await expect(dialog(page)).toHaveCount(0, { timeout: 15_000 });
       await expect
         .poll(async () => await newestBubble(page), { timeout: 20_000 })
         .toContain(REHEARSED);
+      await expect
+        .poll(async () => await userLinesWith(chatId, REHEARSED), { timeout: 20_000 })
+        .toBe(postedBefore + 1);
     } finally {
       // Leave the shared instance as we found it even when an assertion above
       // fails — the sibling beats read the same seat and the same setting.
@@ -434,12 +453,17 @@ test.describe('P4.D181 — In Their Own Words, the full round trip', () => {
       );
       expect(previews()).toBe(1);
 
-      // Send posts the proposal.
+      // Send posts the proposal — as a NEW persisted user line, not merely a
+      // bubble that happens to read `REHEARSED`.
+      const postedBefore = await userLinesWith(chatId, REHEARSED);
       await dialog(page).getByRole('button', { name: 'Send', exact: true }).click();
       await expect(dialog(page)).toHaveCount(0, { timeout: 15_000 });
       await expect
         .poll(async () => await newestBubble(page), { timeout: 20_000 })
         .toContain(REHEARSED);
+      await expect
+        .poll(async () => await userLinesWith(chatId, REHEARSED), { timeout: 20_000 })
+        .toBe(postedBefore + 1);
       expect(previews()).toBe(1);
     } finally {
       await waitForFloor(page);

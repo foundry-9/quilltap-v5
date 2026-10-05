@@ -319,7 +319,7 @@ describe('ImpersonationVoiceState — Restate, and the pickers that only drop', 
     expect(r.state.stage()).toBe('draft');
   });
 
-  it('a Restate or a picker change with no open rehearsal does nothing', async () => {
+  it('a Restate or a picker change with no open rehearsal spends no call', async () => {
     const r = rig();
     r.state.restate();
     r.state.changeProfile('p-2');

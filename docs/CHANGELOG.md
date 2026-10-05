@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-05 — fix(unify): the `07b8f0209` round's review findings — the PDF converter's precedence over a readable fallback pinned, the settings radios no longer flicker on a successful save, Send proven to post, the Almanack's third label and the voice-mode predicate compared at last
+
+_Versions: core 0.0.1208, web 0.0.219, SPA 0.5.805._
+
+Fixes from the unifier's review of P4.D251 ∥ P4.D252 ∥ P4.D253. No v5 behaviour was wrong against v4; the findings were tests that could not fail and one SPA timing defect.
+
+- **PDF (P4.D253):** every parsed-text corpus row used bytes the regex fallback cannot read, so a fallback-first port passed every test. New corpus rows `pdf_parsed_wins_over_fallback` (converter text plus fallback-readable bytes; v4 answers the converter's text) and `pdf_parsed_js_whitespace` (U+FEFF trimmed, U+0085 kept, per JS `.trim()`), matching core unit tests, and the production-seam test now pins the non-empty scrape. A fallback-first mutation reddens the new row on both the unit and differential side. The baseline-pin claim was re-measured: 13 of 13 PDF rows answer `pdfParse is not a function` at `52d6e7ecd`. The jest filter is anchored, the report clip cuts on a char boundary, and the module now uses `jsstr::utf16_len`.
+- **Settings card (P4.D252):** the radio resync ran after a successful save too, while the query's `data()` was still the old mode (its observer notifies on `setTimeout(0)`), so it re-lit the old radio for a beat and raced Playwright's `.check()`. It now runs only after a refused save; a new spec reads the DOM the instant `onChange` resolves and reddens on the old code. The state service's dead `generating` computed is removed.
+- **e2e (P4.D252):** the mock answers every completion with the same text, so "the newest bubble contains the proposal" passed even if Send posted nothing. Both voice beats now also require one new persisted USER line carrying the proposal (`chatGet`).
+- **Server differentials (P4.D251):** `almanack_render` gains a `voice_mode_always` variant (the `Always restate` label had never been compared). The web venue's ping-pong test plants `'always'` beside old `1` (an `'ask'` plant could not tell an ensure that ignored v4's `IS NULL OR = 'off'` predicate). The legacy family feeds the float `1.0` (the oracle's JSON `1` re-drove the integer arm), adds `key_true_mode_null`, and asserts label sets rather than counts. `settings_routes` gains the `false` and `''` refusals and a voice-mode plant, so the explicit `'off'` write and the retired-key silence run over a row stored at `'always'` (10 → 12 rows). The ensure differential cross-checks v4's `translated N` against v5's backfill in modes (a) and (c).
+
 #### 2026-10-05 — test(unify): the `07b8f0209` round's wires — the two In Their Own Words beats flip LIVE, `ai_import_tier3`'s per-baseline stamp moves to `4.10.0-dev.111`, the core version recounted
 
 _Versions: core 0.0.1207._

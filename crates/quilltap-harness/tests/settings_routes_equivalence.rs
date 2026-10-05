@@ -480,6 +480,24 @@ fn settings_routes_match_v4() {
             .expect("seed brahma-console");
         }
 
+        // The `07b8f0209` unification: the voice-mode plant (the oracle applies
+        // the same raw UPDATE on its work copy) — a non-default stored mode, so
+        // an explicit `'off'` write and the retired-key silence are observable.
+        if let Some(mode) = req["plantVoiceMode"].as_str().map(str::to_string) {
+            let n = rt
+                .block_on(db.write(move |w| {
+                    w.main()
+                        .connection()
+                        .execute(
+                            "UPDATE chat_settings SET \"impersonationVoiceMode\" = ?1",
+                            [&mode],
+                        )
+                        .map_err(Into::into)
+                }))
+                .expect("plant the voice mode");
+            assert!(n >= 1, "[{name}] the voice-mode plant must land on a row");
+        }
+
         // P4.139: the corrupt-key plant (the oracle applies the same UPDATE on
         // its work copy) — a BLOB `key_value` both sides' marshals refuse.
         if let Some(key_id) = req["corruptApiKey"].as_str().map(str::to_string) {
@@ -612,14 +630,18 @@ fn settings_routes_match_v4() {
     // P4.D251 (2026-10-05): the `impersonationVoiceMode` enum that replaced
     // P4.D179's boolean — the family was RE-SHAPED (the seven boolean rows
     // deleted, not kept: v4 no longer has the boolean), so the floor moved
-    // 7 → 10. Same stale-oracle guard as its neighbours. (These rows pin key
-    // presence, the three members, the four refusals and the retired-key
-    // silence; the `'off'` read tolerance for an absent/NULL column is pinned
-    // by the `chat_settings.rs` unit tests and the web arm that drops the
-    // column, not here — the corpus row's column is present on both sides.)
+    // 7 → 10, then 10 → 12 at the `07b8f0209` unification (the `false` and
+    // `''` refusals, and the `'off'` write + retired-key rows planted at
+    // `'always'` so both are observable). Same stale-oracle guard as its
+    // neighbours. (These rows pin key presence, the three members, the six
+    // refusals and the retired-key silence; the `'off'` read tolerance for an
+    // absent/NULL column is pinned by the `chat_settings.rs` unit test
+    // `find_by_user_id_defaults_the_composer_columns_when_absent`, not here —
+    // the corpus row's column is present on both sides, and the web venue
+    // boots through the ensure, which re-adds the column before any read.)
     assert!(
-        impersonation_voice_cases >= 10,
-        "expected >= 10 impersonation_voice cases, got {impersonation_voice_cases} — regenerate the oracle"
+        impersonation_voice_cases >= 12,
+        "expected >= 12 impersonation_voice cases, got {impersonation_voice_cases} — regenerate the oracle"
     );
     // P4.47 (A): the three sibling Zod arms
     // (`answerConfirmationSettings` / `cheapLLMSettings` /

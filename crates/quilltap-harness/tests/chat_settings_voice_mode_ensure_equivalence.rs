@@ -110,7 +110,12 @@ fn snapshot(conn: &rusqlite::Connection) -> (Value, Value, Value) {
 
 /// v4's report per mode: the add-field migration RUNS only in (b); the mode
 /// migration RUNS in every mode (anything else makes the diff vacuous). The
-/// message's counts are v5's expected outcome, pinned here from the rows.
+/// outcome is v5's, pinned here from the rows; in (a) and (c) v4's own
+/// `translated N` count is cross-checked against it below. In (b) the two
+/// DIFFER by construction and agree only in the final state: v4 runs the
+/// add-field migration first (adding the old column), so its mode migration
+/// translates every row and drops that column, while v5's one ensure only
+/// appends the mode.
 fn expected(mode: &str) -> (&'static str, VoiceModeEnsureOutcome) {
     match mode {
         "a" => (
@@ -180,6 +185,19 @@ fn the_boot_ensure_matches_v4s_migration_in_three_starting_shapes() {
             "[{mode}] the mode migration must have RUN, or the diff is vacuous: {}",
             report[1]
         );
+        if mode != "b" {
+            let msg = report[1].as_str().unwrap();
+            let translated: usize = msg
+                .split("translated ")
+                .nth(1)
+                .and_then(|t| t.split_whitespace().next())
+                .and_then(|n| n.parse().ok())
+                .unwrap_or_else(|| panic!("[{mode}] no `translated N` in v4's report: {msg}"));
+            assert_eq!(
+                translated, want_outcome.rows_backfilled,
+                "[{mode}] v4's translated count vs v5's backfill"
+            );
+        }
 
         let fixture = Path::new(&fixture_dir).join(format!("voice-mode-{mode}.db"));
         let work = std::env::temp_dir().join(format!(

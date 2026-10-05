@@ -93,6 +93,12 @@ interface CaseSpec {
    *  the route's key read takes the repository's FALLBACK arm. The Rust
    *  harness plants identically. */
   corruptApiKey?: string;
+  /** The `07b8f0209` unification's §3 review: set EVERY `chat_settings` row's
+   *  `impersonationVoiceMode` on the case's work copy before the case runs (a
+   *  raw UPDATE — user A owns the only row). An explicit `'off'` write and the
+   *  retired-key silence are invisible on a row that is already `'off'`. The
+   *  Rust harness plants identically. */
+  plantVoiceMode?: string;
   /** P4.D85: a v4 arm with NO v5 counterpart by design — v5 carries no
    *  `?action=` surface for connection profiles (the verbs ARE the action
    *  selection and no REST edge exists), so v4's two action-gate 400s and the
@@ -199,6 +205,10 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
       const { setBrahmaConsoleSettings } = await import('@/lib/instance-settings');
       await setBrahmaConsoleSettings({ maxAgentTurns: c.seedBrahmaConsole });
     }
+    if (c.plantVoiceMode !== undefined) {
+      const { rawQuery } = await import('@/lib/database/manager');
+      await rawQuery('UPDATE chat_settings SET "impersonationVoiceMode" = ?', [c.plantVoiceMode]);
+    }
     if (c.corruptApiKey !== undefined) {
       const { rawQuery } = await import('@/lib/database/manager');
       await rawQuery("UPDATE api_keys SET key_value = x'00000000' WHERE id = ?", [
@@ -281,6 +291,7 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
         seedTaboo: c.seedTaboo ?? null,
         seedBrahmaConsole: c.seedBrahmaConsole ?? null,
         corruptApiKey: c.corruptApiKey ?? null,
+        plantVoiceMode: c.plantVoiceMode ?? null,
         recorded: c.recorded ?? false,
       },
       status,
@@ -609,8 +620,9 @@ describe('settings-routes oracle', () => {
     // arm pins key PRESENCE and the seeded value `'off'` — NOT the absent-column
     // read tolerance: user A's row is built by v4's own repo at the pin, so the
     // column is present on both sides (the tolerance is pinned by the
-    // `chat_settings.rs` unit tests and by the web arm that drops the column
-    // before boot). The PUT arms are v4's `typeof !== 'undefined'` guard →
+    // `chat_settings.rs` unit test `find_by_user_id_defaults_the_composer_
+    // columns_when_absent` — the web venue boots through the ensure, which
+    // re-adds the column before any read). The PUT arms are v4's `typeof !== 'undefined'` guard →
     // `ImpersonationVoiceModeEnum.safeParse` (route.ts:236-243), whose fixed
     // sentence `Invalid impersonationVoiceMode value (must be one of off, ask,
     // always)` the route's `includes('Invalid') ? 400 : 500` split turns into a
@@ -652,7 +664,8 @@ describe('settings-routes oracle', () => {
     },
     {
       // Explicit 'off' — NOT a no-op for the guard (`typeof 'off' !==
-      // 'undefined'`), so the assignment runs and the column is written.
+      // 'undefined'`), so the assignment runs and the column is written. Over
+      // a row PLANTED at 'always', so the write is observable.
       name: 's_put_impersonation_voice_off',
       family: 'impersonation_voice',
       user: 'A',
@@ -660,6 +673,7 @@ describe('settings-routes oracle', () => {
       method: 'PUT',
       url: 'http://x/api/v1/settings/chat',
       body: { impersonationVoiceMode: 'off' },
+      plantVoiceMode: 'always',
     },
     {
       // A string outside the enum.
@@ -707,9 +721,31 @@ describe('settings-routes oracle', () => {
       body: { impersonationVoiceMode: true },
     },
     {
+      // `false` and the empty string — the rest of the Shared contract's refusal
+      // list; `''` is the arm a port treating an empty string as absent would
+      // turn into a silent 200.
+      name: 's_put_impersonation_voice_false',
+      family: 'impersonation_voice',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { impersonationVoiceMode: false },
+    },
+    {
+      name: 's_put_impersonation_voice_empty_string',
+      family: 'impersonation_voice',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { impersonationVoiceMode: '' },
+    },
+    {
       // The RETIRED key, any value: v4's PUT no longer destructures it, so the
       // body falls into the unknown-key silence — 200, the echo is the row
-      // UNCHANGED (still 'off' on a fresh copy), nothing written.
+      // UNCHANGED (planted at 'always', so a port that translated the retired
+      // key into a write would show), nothing written.
       name: 's_put_impersonation_voice_retired_key',
       family: 'impersonation_voice',
       user: 'A',
@@ -717,6 +753,7 @@ describe('settings-routes oracle', () => {
       method: 'PUT',
       url: 'http://x/api/v1/settings/chat',
       body: { impersonationVoiceRewrite: true },
+      plantVoiceMode: 'always',
     },
     {
       // The CREATE branch (user B has no settings row) — proves the repository

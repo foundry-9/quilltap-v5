@@ -378,15 +378,18 @@ async fn impersonation_voice_mode_web_edges() {
 
 /// P4.D251 Tier 2 item 13 (§R.13): the ping-pong heal. A file where v4's
 /// migration already wrote the mode and a v5 still carrying the P4.D179
-/// ensure re-added the retired column after it (old `1`, mode `'ask'`) boots
+/// ensure re-added the retired column after it (old `1`, mode `'always'`) boots
 /// into: the old column gone, the mode UNTOUCHED (v4's `IS NULL OR = 'off'`
-/// predicate leaves a non-default row alone), the table's `sqlite_master.sql`
+/// predicate leaves a non-default row alone — planted `'always'`, not `'ask'`,
+/// because old `1` TRANSLATES to `'ask'`, so an `'ask'` plant could not tell an
+/// ensure that ignored the predicate from one that honoured it; the §3 review
+/// of the `07b8f0209` unification), the table's `sqlite_master.sql`
 /// no longer naming the retired column, and a second boot an exact no-op.
 #[tokio::test(flavor = "multi_thread")]
 async fn impersonation_voice_mode_ping_pong_shape_is_healed_at_boot() {
     let base = common::materialize_fixture_instance();
     let data = base.path().join("data");
-    plant_old_column(&data, 1, Some("ask"));
+    plant_old_column(&data, 1, Some("always"));
     {
         let w = Writer::open_writable(&data.join("quilltap.db"), common::TEST_PEPPER).unwrap();
         let cols: Vec<String> = {
@@ -428,7 +431,7 @@ async fn impersonation_voice_mode_ping_pong_shape_is_healed_at_boot() {
     assert_eq!(status, 200);
     assert_eq!(
         body["data"][MODE_COL],
-        json!("ask"),
+        json!("always"),
         "a non-default mode is left alone"
     );
 

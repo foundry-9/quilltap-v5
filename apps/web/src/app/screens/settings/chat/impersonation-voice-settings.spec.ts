@@ -130,6 +130,26 @@ describe('ImpersonationVoiceSettings', () => {
     expect(radio(fixture, 'Always restate').checked).toBe(false);
   });
 
+  it('a successful save never re-lights the old radio, even before the query notifies', async () => {
+    // The §3 review of the `07b8f0209` unification: the query's `data()` reaches
+    // `mode()` a macrotask after `setQueryData`, so a resync on SUCCESS would
+    // flip the just-picked radio back for a beat (and race Playwright's
+    // `.check()`). Read the DOM the instant `onChange` resolves — no `settle()`.
+    const stub = cardStub(settingsRow({ impersonationVoiceMode: 'off' }));
+    const fixture = await mountCard(ImpersonationVoiceSettings, stub);
+    const ask = radio(fixture, 'Ask each time');
+    ask.checked = true; // what the user's click does before `change` fires
+    await (fixture.componentInstance as unknown as {
+      onChange(v: string): Promise<void>;
+    }).onChange('ask');
+    expect(stub.updates).toEqual([{ impersonationVoiceMode: 'ask' }]);
+    expect(ask.checked).toBe(true);
+    expect(radio(fixture, 'Never').checked).toBe(false);
+    await settle(fixture);
+    expect(ask.checked).toBe(true);
+    expect(radio(fixture, 'Never').checked).toBe(false);
+  });
+
   it("carries v4's structure, classes and copy verbatim (`ImpersonationVoiceSettings.tsx:11-71`)", async () => {
     const fixture = await mountCard(ImpersonationVoiceSettings, cardStub(settingsRow()));
     const el = fixture.nativeElement as HTMLElement;

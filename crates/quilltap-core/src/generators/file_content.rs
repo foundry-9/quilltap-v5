@@ -35,7 +35,8 @@
 //! 1.x function, threw `pdfParse is not a function` into its catch, and FAILED
 //! EVERY PDF (`Failed to extract PDF content`) — while v5 always ran the
 //! fallback. The family's oracle at the old baseline `52d6e7ecd` records
-//! exactly that on all eleven PDF rows.
+//! exactly that on all thirteen PDF rows (re-measured over the 25-case
+//! corpus at the `07b8f0209` unification).
 //!
 //! [`DocumentTextExtractor`]: crate::services::mount_index::converters::DocumentTextExtractor
 
@@ -47,6 +48,7 @@ use serde::Serialize;
 use crate::db::files::{FileEntry, FileFull};
 use crate::db::runtime::Db;
 use crate::format_bytes::format_bytes;
+use crate::jsstr::utf16_len;
 use crate::services::file_storage::{download_file, StorageBackend};
 use crate::services::mount_index::converters::{default_text_extractor, SharedTextExtractor};
 
@@ -165,10 +167,7 @@ fn language_from_filename(filename: &str) -> Option<&'static str> {
         .map(|(_, lang)| *lang)
 }
 
-/// JS `s.length` / `s.slice(0, n)` in UTF-16 units.
-fn utf16_len(s: &str) -> usize {
-    s.encode_utf16().count()
-}
+/// JS `s.slice(0, n)` in UTF-16 units.
 fn utf16_prefix(s: &str, n: usize) -> String {
     String::from_utf16_lossy(&s.encode_utf16().take(n).collect::<Vec<u16>>())
 }
@@ -510,6 +509,27 @@ mod tests {
         // `chars` is v4's `content.length` — UTF-16 units (the bee is two),
         // never bytes (8) or scalars (6).
         assert_eq!(lines, vec![format!("{DEBUG} size=31 chars=7")]);
+    }
+
+    /// The converter WINS over a fallback that could also read the bytes —
+    /// bug 177's whole point (v4 `extractPdfContent` runs the scrape only on
+    /// `!content`). Every other parsed-text test feeds junk bytes the scrape
+    /// cannot read, so a fallback-first mutation survived them (the §3 review
+    /// of the `07b8f0209` unification).
+    #[test]
+    fn converter_text_wins_over_a_readable_fallback() {
+        let bytes = b"BT (Fallback would say this) Tj ET";
+        let (out, lines) = run("Parsed wins.", bytes);
+        assert_eq!(out.content.as_deref(), Some("Parsed wins."));
+        assert_eq!(lines, vec![format!("{DEBUG} size=34 chars=12")]);
+    }
+
+    /// v4's `.trim()` is JS's: U+FEFF is whitespace, U+0085 is NOT (Rust's
+    /// `str::trim` has both the other way round).
+    #[test]
+    fn converter_text_is_trimmed_by_js_rules() {
+        let (out, _) = run("\u{feff} Parsed past a BOM.\u{85}", b"%PDF-1.4 junk");
+        assert_eq!(out.content.as_deref(), Some("Parsed past a BOM.\u{85}"));
     }
 
     #[test]

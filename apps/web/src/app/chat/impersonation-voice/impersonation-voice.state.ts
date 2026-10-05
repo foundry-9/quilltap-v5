@@ -132,7 +132,6 @@ export class ImpersonationVoiceState {
 
   readonly isOpen = computed(() => this.pending() !== null);
   readonly seed = computed(() => this.pending()?.seed ?? '');
-  readonly generating = computed(() => this.stage() === 'generating');
 
   /** The Salon registers itself once, in its own constructor. */
   attach(host: ImpersonationVoiceHost): void {

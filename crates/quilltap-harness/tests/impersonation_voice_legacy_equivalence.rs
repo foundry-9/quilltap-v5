@@ -48,19 +48,29 @@ fn legacy_translation_matches_v4() {
         return;
     };
     let text = std::fs::read_to_string(&path).unwrap();
-    let (mut scalars, mut records) = (0, 0);
+    let (mut scalars, mut records) = (Vec::new(), Vec::new());
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let row: Value = serde_json::from_str(line).unwrap();
         let label = row["label"].as_str().unwrap();
         match row["op"].as_str().unwrap() {
             "fromLegacy" => {
-                let got = impersonation_voice_mode_from_legacy(&unspell(&row["value"]));
+                // `JSON.stringify(1.0)` is `1`, which serde reads as an INTEGER —
+                // so the oracle's `one_point_zero` row would re-drive the `one`
+                // arm. Feed the FLOAT variant v4's `=== 1` must also accept (one
+                // JS number type), after checking the oracle saw the number 1.
+                let value = if label == "one_point_zero" {
+                    assert_eq!(row["value"].as_f64(), Some(1.0), "[fromLegacy {label}]");
+                    Value::from(1.0_f64)
+                } else {
+                    unspell(&row["value"])
+                };
+                let got = impersonation_voice_mode_from_legacy(&value);
                 assert_eq!(
                     got.as_str(),
                     row["result"].as_str().unwrap(),
                     "[fromLegacy {label}]"
                 );
-                scalars += 1;
+                scalars.push(label.to_string());
             }
             "withLegacy" => {
                 let input = unspell(&row["input"]);
@@ -76,18 +86,44 @@ fn legacy_translation_matches_v4() {
                     serde_json::to_string(&row["result"]).unwrap(),
                     "[withLegacy {label}] output record (key order included)"
                 );
-                records += 1;
+                records.push(label.to_string());
             }
             other => panic!("unknown op {other}"),
         }
     }
-    assert!(
-        scalars >= 10,
-        "expected >= 10 scalar rows, got {scalars} — regenerate the oracle"
+    // The label SETS, not counts — a duplicated row cannot mask a missing one.
+    assert_eq!(
+        scalars,
+        [
+            "true",
+            "one",
+            "false",
+            "zero",
+            "null",
+            "undefined",
+            "one_point_zero",
+            "two",
+            "string_one",
+            "string_true",
+        ],
+        "scalar rows — regenerate the oracle"
     );
-    assert!(
-        records >= 6,
-        "expected >= 6 record rows, got {records} — regenerate the oracle"
+    assert_eq!(
+        records,
+        [
+            "no_key",
+            "key_true_no_mode",
+            "key_true_mode_always",
+            "key_false_mode_null",
+            "key_true_mode_null",
+            "key_present_undefined",
+            "key_one_mode_off",
+        ],
+        "record rows — regenerate the oracle"
     );
-    eprintln!("OK: {scalars} scalar + {records} record rows match v4.");
+    eprintln!(
+        "OK: {} scalar + {} record rows match v4.",
+        scalars.len(),
+        records.len()
+    );
 }
