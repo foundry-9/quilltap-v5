@@ -127,9 +127,11 @@ fn embedding_provider_matches_v4() {
     );
 
     // One copy for the whole run — the embedding path only READS.
-    let work =
-        std::env::temp_dir().join(format!("qt-embed-provider-tier3-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    let work_dir = tempfile::Builder::new()
+        .prefix("qt-embed-provider-tier3-")
+        .tempdir()
+        .expect("tempdir");
+    let work = work_dir.path().join("embed-provider-tier3.db");
     std::fs::copy(&fixture_main, &work).expect("copy fixture");
     let db = Db::open(
         DbPaths {
@@ -220,5 +222,4 @@ fn embedding_provider_matches_v4() {
         cases.len()
     );
     drop(db);
-    let _ = std::fs::remove_file(&work);
 }

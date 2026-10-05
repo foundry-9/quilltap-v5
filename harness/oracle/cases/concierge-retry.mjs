@@ -24,7 +24,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -38,6 +38,7 @@ const src = execFileSync('git', ['-C', CHECKOUT, 'show', `${PIN}:${SOURCE}`], {
 });
 
 const dir = mkdtempSync(join(tmpdir(), 'qt-concierge-retry-'));
+process.on('exit', () => rmSync(dir, { recursive: true, force: true }));
 const file = join(dir, 'concierge-retry.ts');
 writeFileSync(file, src);
 

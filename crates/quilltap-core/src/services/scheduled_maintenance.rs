@@ -472,7 +472,7 @@ mod tests {
     /// most of v4's sentences at once without inventing a single error.
     #[test]
     fn the_pass_announces_itself_its_failures_and_its_summary() {
-        let db = test_db();
+        let (db, _scratch) = test_db();
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -526,15 +526,14 @@ mod tests {
         assert!(summary.failures.contains(&"assets".to_string()));
     }
 
-    fn test_db() -> Db {
-        let dir = std::env::temp_dir().join(format!(
-            "qt-sched-maint-{}-{}",
-            std::process::id(),
-            uuid::Uuid::new_v4()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
+    /// The scratch dir rides out with the handle — bind it for the test's life.
+    fn test_db() -> (Db, tempfile::TempDir) {
+        let dir = tempfile::Builder::new()
+            .prefix("qt-sched-maint-")
+            .tempdir()
+            .expect("tempdir");
         let db = Db::open_main(
-            dir.join("main.db"),
+            dir.path().join("main.db"),
             "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
         )
         .unwrap();
@@ -549,7 +548,7 @@ mod tests {
             Ok(())
         })
         .unwrap();
-        db
+        (db, dir)
     }
 
     fn seed_session(db: &Db, id: &str, exited_at: Option<&str>, transcript: Option<&str>) {
@@ -568,7 +567,7 @@ mod tests {
 
     #[test]
     fn cleanup_reaps_only_closed_old_sessions() {
-        let db = test_db();
+        let (db, _scratch) = test_db();
         // Old + closed → reaped (transcript removed).
         seed_session(&db, "s-old", Some("2020-06-01T00:00:00.000Z"), None);
         // Old + closed, transcript "already gone" → row reaped, not counted.
@@ -612,7 +611,7 @@ mod tests {
 
     #[test]
     fn full_pass_records_stamp_and_isolates_failures() {
-        let db = test_db();
+        let (db, _scratch) = test_db();
         // instance_settings for the stamp; NO background_jobs / chats / files
         // tables → the jobs + assets sweeps fail and are isolated.
         db.write_blocking(|writers| {

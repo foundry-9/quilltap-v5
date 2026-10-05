@@ -62,8 +62,11 @@ fn mount_case_resolution_matches_oracle() {
     )
     .expect("parse oracle");
 
-    let work = std::env::temp_dir().join(format!("qt-mount-case-res-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    let work_scratch = tempfile::Builder::new()
+        .prefix("qt-mount-case-res-")
+        .tempdir()
+        .expect("tempdir");
+    let work = work_scratch.path().join("work.db");
     std::fs::copy(&fixture, &work).expect("copy fixture");
 
     let writer = Writer::open_writable(&work, TEST_PEPPER).expect("open fixture copy");
@@ -148,7 +151,6 @@ fn mount_case_resolution_matches_oracle() {
     let blobs_dump = writer
         .dump_table_json("doc_mount_blobs", "fileId")
         .expect("dump blobs");
-    let _ = std::fs::remove_file(&work);
 
     let got = json!({
         "links": project(&links_dump, &["relativePath", "fileName"]),

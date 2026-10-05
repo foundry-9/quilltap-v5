@@ -175,8 +175,13 @@ fn vault_read_overlay_matches_oracle() {
     .expect("parse oracle");
 
     // Fresh copy so the shared seed fixture stays pristine.
-    let work = std::env::temp_dir().join(format!("qt-vro-rust-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    // A scratch dir removed on drop — with the TRUNCATE-mode `-journal`
+    // the writable open leaves beside the DB.
+    let scratch = tempfile::Builder::new()
+        .prefix("qt-vro-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = scratch.path().join("work.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
     let writer = Writer::open_writable(&work, &spec.test_pepper_base64)
         .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
@@ -286,17 +291,19 @@ fn vault_read_overlay_matches_oracle() {
         "a list with no broken vault must log neither drop line: {clean_lines:?}"
     );
 
-    let _ = std::fs::remove_file(&work);
-
     // ── P4.142 — the RENAME plant, on a SECOND per-run copy. v4's batch reads
     // are fallback `withRawDb([])`s, so the batch overlay drops every vaulted
     // character (9 path lines, 2 folder lines, one drop ERROR per vaulted
     // character, 1 summary WARN) and the single overlay throws
     // `CharacterVaultUnavailableError` (`properties.json missing`) after its own
     // 9 + 2 lines.
-    let plant_work =
-        std::env::temp_dir().join(format!("qt-vro-rust-plant-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&plant_work);
+    // A scratch dir removed on drop — with the TRUNCATE-mode `-journal`
+    // the writable open leaves beside the DB.
+    let plant_scratch = tempfile::Builder::new()
+        .prefix("qt-vro-rust-plant-")
+        .tempdir()
+        .expect("tempdir");
+    let plant_work = plant_scratch.path().join("work.db");
     std::fs::copy(&fixture, &plant_work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
     let plant_writer = Writer::open_writable(&plant_work, &spec.test_pepper_base64)
         .unwrap_or_else(|e| panic!("open plant copy: {e}"));
@@ -370,7 +377,6 @@ fn vault_read_overlay_matches_oracle() {
     );
     assert_eq!(want_one.len(), 9 + 2, "{want_one:#?}");
     drop(plant_writer);
-    let _ = std::fs::remove_file(&plant_work);
 
     eprintln!(
         "OK: vault read overlay matched oracle on {} characters (+ the …One throw, + the rename plant: {} lines).",

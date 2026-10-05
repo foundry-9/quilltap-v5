@@ -574,11 +574,12 @@ async fn build_context_tier3_matches_oracle() {
     }
 
     // Fresh copies so the shared seed fixture stays pristine.
-    let pid = std::process::id();
-    let work_main = std::env::temp_dir().join(format!("qt-bc-rust-main-{pid}.db"));
-    let work_mount = std::env::temp_dir().join(format!("qt-bc-rust-mount-{pid}.db"));
-    let _ = std::fs::remove_file(&work_main);
-    let _ = std::fs::remove_file(&work_mount);
+    let scratch_dir = tempfile::Builder::new()
+        .prefix("qt-bc-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work_main = scratch_dir.path().join("qt-bc-rust-main.db");
+    let work_mount = scratch_dir.path().join("qt-bc-rust-mount.db");
     std::fs::copy(&fixture_main, &work_main).unwrap_or_else(|e| panic!("copy main: {e}"));
     std::fs::copy(&fixture_mount, &work_mount).unwrap_or_else(|e| panic!("copy mount: {e}"));
 

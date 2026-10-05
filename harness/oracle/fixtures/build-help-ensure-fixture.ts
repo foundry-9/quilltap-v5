@@ -158,6 +158,8 @@ async function buildScenario(spec: Spec, scenario: Scenario, outDir: string): Pr
       `${(scenario.seedChunks ?? []).length} help_doc_chunks, ` +
       `profile=${scenario.seedProfile})\n`
   );
+  // Per-scenario scratch dir: remove it once the DB is closed (the fixture itself lives at `out`).
+  rmSync(scratch, { recursive: true, force: true });
 }
 
 async function main(): Promise<void> {

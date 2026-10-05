@@ -472,11 +472,16 @@ async fn memory_processor_tier3_matches_oracle() {
     }
 
     // Fresh copies so the shared seed fixtures stay pristine.
-    let pid = std::process::id();
-    let work_main = std::env::temp_dir().join(format!("qt-memproc-main-rust-{pid}.db"));
-    let work_mount = std::env::temp_dir().join(format!("qt-memproc-mount-rust-{pid}.db"));
-    let _ = std::fs::remove_file(&work_main);
-    let _ = std::fs::remove_file(&work_mount);
+    let work_main_scratch = tempfile::Builder::new()
+        .prefix("qt-memproc-main-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work_main = work_main_scratch.path().join("work_main.db");
+    let work_mount_scratch = tempfile::Builder::new()
+        .prefix("qt-memproc-mount-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work_mount = work_mount_scratch.path().join("work_mount.db");
     std::fs::copy(&fixture_main, &work_main).unwrap_or_else(|e| panic!("copy main: {e}"));
     std::fs::copy(&fixture_mount, &work_mount).unwrap_or_else(|e| panic!("copy mount: {e}"));
 
@@ -536,7 +541,6 @@ async fn memory_processor_tier3_matches_oracle() {
     // W4.10b: a fresh llm-logs partition for the MEMORY_EXTRACTION rows the SELF/
     // OTHER extraction cheap calls write.
     let work_ll = work_main.with_file_name(format!("qt-memproc-ll-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work_ll);
     common::materialize_llm_logs(&work_ll, &spec.test_pepper_base64);
 
     let db = Db::open(
@@ -676,9 +680,6 @@ async fn memory_processor_tier3_matches_oracle() {
         })
         .collect();
     drop(db);
-    let _ = std::fs::remove_file(&work_main);
-    let _ = std::fs::remove_file(&work_mount);
-    let _ = std::fs::remove_file(&work_ll);
 
     let want_logs = oracle_llm_logs.expect("oracle emitted no llmlogs row");
     assert_eq!(

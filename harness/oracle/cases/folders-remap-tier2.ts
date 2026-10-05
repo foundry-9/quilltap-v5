@@ -32,6 +32,7 @@ import {
   readFileSync,
   copyFileSync,
   existsSync,
+  rmSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { canonicalizeRows } from '../lib/tier2.js';
@@ -61,6 +62,7 @@ async function main(): Promise<void> {
 
   // Work on a fresh copy so the shared seed fixture stays pristine.
   const scratch = mkdtempSync(join(tmpdir(), 'qt-folders-remap-oracle-'));
+  process.on('exit', () => rmSync(scratch, { recursive: true, force: true }));
   mkdirSync(join(scratch, 'data'), { recursive: true });
   const work = join(scratch, 'folders-remap-work.db');
   copyFileSync(fixture, work);

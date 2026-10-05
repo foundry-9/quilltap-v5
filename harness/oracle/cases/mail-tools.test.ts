@@ -42,7 +42,7 @@
 import * as fs from 'fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { mkdtempSync, mkdirSync, copyFileSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, copyFileSync, existsSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 interface Spec {
@@ -404,6 +404,7 @@ async function main(): Promise<void> {
     jest.useRealTimers();
     closeMountIndexSQLiteClient();
     await closeDatabase();
+    rmSync(scratch, { recursive: true, force: true });
 
     lines.push(JSON.stringify({ label: sc.label, tz: new Intl.DateTimeFormat().resolvedOptions().timeZone, steps }));
   }
@@ -530,6 +531,7 @@ async function main(): Promise<void> {
     jest.useRealTimers();
     closeMountIndexSQLiteClient();
     await closeDatabase();
+    rmSync(scratch, { recursive: true, force: true });
   }
   fs.writeFileSync(plantOut, plantLines.join('\n') + '\n');
   process.stderr.write(`mail-tools plants oracle wrote ${plantOut} (${plantLines.length} records)\n`);

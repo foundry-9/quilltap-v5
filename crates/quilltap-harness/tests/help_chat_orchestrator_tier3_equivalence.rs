@@ -524,11 +524,16 @@ async fn help_chat_orchestrator_tier3_matches_oracle() {
         "oracle cases vs corpus"
     );
 
-    let pid = std::process::id();
-    let work_main = std::env::temp_dir().join(format!("qt-help-orch-main-{pid}.db"));
-    let work_mount = std::env::temp_dir().join(format!("qt-help-orch-mount-{pid}.db"));
-    let _ = std::fs::remove_file(&work_main);
-    let _ = std::fs::remove_file(&work_mount);
+    let work_main_dir = tempfile::Builder::new()
+        .prefix("qt-help-orch-main-")
+        .tempdir()
+        .expect("tempdir");
+    let work_main = work_main_dir.path().join("help-orch-main.db");
+    let work_mount_dir = tempfile::Builder::new()
+        .prefix("qt-help-orch-mount-")
+        .tempdir()
+        .expect("tempdir");
+    let work_mount = work_mount_dir.path().join("help-orch-mount.db");
     std::fs::copy(fixtures_dir().join("help-chat-main.db"), &work_main).unwrap();
     std::fs::copy(fixtures_dir().join("help-chat-mount.db"), &work_mount).unwrap();
 
@@ -841,8 +846,6 @@ async fn help_chat_orchestrator_tier3_matches_oracle() {
     assert_eq!(nonneg_dur, rows);
 
     drop(db);
-    let _ = std::fs::remove_file(&work_main);
-    let _ = std::fs::remove_file(&work_mount);
     assert!(
         failed.is_empty(),
         "help-chat-orchestrator tier-3 FAILED: {failed:?}"

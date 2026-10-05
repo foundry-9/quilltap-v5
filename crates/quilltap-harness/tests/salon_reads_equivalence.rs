@@ -367,12 +367,13 @@ fn error_body(r: &Response) -> Value {
 /// A FRESH `Db` over its own copy of the committed fixture (the same vintage
 /// heals + `transcriptVersion = 7` the shared copy gets), with `plant` — a raw
 /// `ALTER TABLE` — run on the MOUNT-INDEX copy first.
-fn fresh_db(pepper: &str, tag: &str, plant: Option<&str>) -> (PathBuf, Db) {
-    let scratch = std::env::temp_dir().join(format!("qt-salon-reads-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
-    let main = scratch.join("main.db");
-    let mount = scratch.join("mount.db");
+fn fresh_db(pepper: &str, tag: &str, plant: Option<&str>) -> (tempfile::TempDir, Db) {
+    let scratch = tempfile::Builder::new()
+        .prefix(&format!("qt-salon-reads-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let main = scratch.path().join("main.db");
+    let mount = scratch.path().join("mount.db");
     std::fs::copy(fixtures_dir().join("salon-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("salon-mount.db"), &mount).unwrap();
     {
@@ -438,11 +439,12 @@ fn salon_reads_match_oracle() {
     let uid = &spec.user_id;
 
     // A fresh Db over a copy of the committed fixture.
-    let scratch = std::env::temp_dir().join(format!("qt-salon-reads-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
-    let main = scratch.join("main.db");
-    let mount = scratch.join("mount.db");
+    let scratch = tempfile::Builder::new()
+        .prefix("qt-salon-reads-")
+        .tempdir()
+        .expect("tempdir");
+    let main = scratch.path().join("main.db");
+    let mount = scratch.path().join("mount.db");
     std::fs::copy(fixtures_dir().join("salon-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("salon-mount.db"), &mount).unwrap();
     // P4.D171: the committed `salon-{main,mount}.db` predates the two
@@ -792,7 +794,7 @@ fn salon_reads_match_oracle() {
     }
 
     drop(db);
-    let _ = std::fs::remove_dir_all(&scratch);
+    drop(scratch);
 
     let mut failed = Vec::new();
 
@@ -809,7 +811,7 @@ fn salon_reads_match_oracle() {
             salon::list_chats(&pdb, uid, &[], None, false)
         });
         drop(pdb);
-        let _ = std::fs::remove_dir_all(&dir);
+        drop(dir);
         let rec = &oracle[name];
         let (status, want_status) = (status_of(&resp), rec["status"].as_i64().unwrap());
         if status != want_status {
@@ -843,7 +845,7 @@ fn salon_reads_match_oracle() {
             rt.block_on(salon::chat_get(&pdb, uid, chat, None, &TimeZone::UTC))
         });
         drop(pdb);
-        let _ = std::fs::remove_dir_all(&dir);
+        drop(dir);
         let rec = &oracle[name];
         let (status, want_status) = (status_of(&resp), rec["status"].as_i64().unwrap());
         if status != want_status {

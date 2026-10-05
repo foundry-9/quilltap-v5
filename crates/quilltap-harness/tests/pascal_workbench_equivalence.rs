@@ -39,15 +39,30 @@ fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../quilltap-web/tests/fixtures")
 }
 
-fn open(case: &str) -> Db {
-    let scratch = std::env::temp_dir().join(format!("qt-workbench-{}-{case}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
-    let main = scratch.join("main.db");
-    let mount = scratch.join("mount.db");
+/// A fresh Db over a private scratch dir; the dir is deleted when this drops
+/// (the `Db` field drops first).
+struct ScratchDb {
+    db: Db,
+    _dir: tempfile::TempDir,
+}
+
+impl std::ops::Deref for ScratchDb {
+    type Target = Db;
+    fn deref(&self) -> &Db {
+        &self.db
+    }
+}
+
+fn open(case: &str) -> ScratchDb {
+    let scratch = tempfile::Builder::new()
+        .prefix(&format!("qt-workbench-{case}-"))
+        .tempdir()
+        .expect("tempdir");
+    let main = scratch.path().join("main.db");
+    let mount = scratch.path().join("mount.db");
     std::fs::copy(fixtures_dir().join("workbench-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("workbench-mount.db"), &mount).unwrap();
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
@@ -55,7 +70,8 @@ fn open(case: &str) -> Db {
         },
         PEPPER,
     )
-    .expect("open db")
+    .expect("open db");
+    ScratchDb { db, _dir: scratch }
 }
 
 /// Collapse a JSON-PARSE failure reason to its prefix.

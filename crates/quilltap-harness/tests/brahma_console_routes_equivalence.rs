@@ -188,16 +188,17 @@ fn drop_zod_details(name: &str, want_body: &Value) -> Value {
     json!({ "error": "Validation error" })
 }
 
-fn fresh_db(spec: &Spec, tag: &str) -> Db {
-    let scratch =
-        std::env::temp_dir().join(format!("qt-brahma-routes-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
+fn fresh_db(spec: &Spec, tag: &str) -> (Db, tempfile::TempDir) {
+    let scratch_dir = tempfile::Builder::new()
+        .prefix(&format!("qt-brahma-routes-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let scratch = scratch_dir.path();
     let main = scratch.join("main.db");
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("brahma-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("brahma-mount.db"), &mount).unwrap();
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
@@ -205,7 +206,8 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
         },
         &spec.test_pepper_base64,
     )
-    .expect("open db")
+    .expect("open db");
+    (db, scratch_dir)
 }
 
 #[test]
@@ -256,11 +258,11 @@ fn brahma_console_routes_match_oracle() {
 
     // --- Reads (no mutation; still fresh copies for uniformity) ---
     {
-        let db = fresh_db(&spec, "list");
+        let (db, _scratch) = fresh_db(&spec, "list");
         check("list", &brahma::brahma_console_list(&db, USER_A), false);
     }
     {
-        let db = fresh_db(&spec, "listb");
+        let (db, _scratch) = fresh_db(&spec, "listb");
         check(
             "list_other_user",
             &brahma::brahma_console_list(&db, USER_B),
@@ -268,7 +270,7 @@ fn brahma_console_routes_match_oracle() {
         );
     }
     {
-        let db = fresh_db(&spec, "get");
+        let (db, _scratch) = fresh_db(&spec, "get");
         check(
             "get",
             &brahma::brahma_console_get(&db, USER_A, CHAT_A),
@@ -276,7 +278,7 @@ fn brahma_console_routes_match_oracle() {
         );
     }
     {
-        let db = fresh_db(&spec, "getsalon");
+        let (db, _scratch) = fresh_db(&spec, "getsalon");
         check(
             "get_salon_404",
             &brahma::brahma_console_get(&db, USER_A, CHAT_SALON),
@@ -284,7 +286,7 @@ fn brahma_console_routes_match_oracle() {
         );
     }
     {
-        let db = fresh_db(&spec, "getmissing");
+        let (db, _scratch) = fresh_db(&spec, "getmissing");
         check(
             "get_missing_404",
             &brahma::brahma_console_get(&db, USER_A, MISSING),
@@ -292,7 +294,7 @@ fn brahma_console_routes_match_oracle() {
         );
     }
     {
-        let db = fresh_db(&spec, "getother");
+        let (db, _scratch) = fresh_db(&spec, "getother");
         check(
             "get_other_user_404",
             &brahma::brahma_console_get(&db, USER_B, CHAT_A),
@@ -300,7 +302,7 @@ fn brahma_console_routes_match_oracle() {
         );
     }
     {
-        let db = fresh_db(&spec, "messages");
+        let (db, _scratch) = fresh_db(&spec, "messages");
         check(
             "get_messages",
             &brahma::brahma_console_messages(&db, USER_A, CHAT_A),
@@ -310,17 +312,17 @@ fn brahma_console_routes_match_oracle() {
 
     // --- Create ---
     {
-        let db = fresh_db(&spec, "createdef");
+        let (db, _scratch) = fresh_db(&spec, "createdef");
         let r = rt.block_on(brahma::brahma_console_create(&db, USER_A, None));
         check("create_default", &r, true);
     }
     {
-        let db = fresh_db(&spec, "createprof");
+        let (db, _scratch) = fresh_db(&spec, "createprof");
         let r = rt.block_on(brahma::brahma_console_create(&db, USER_A, Some(&json!(P2))));
         check("create_with_profile", &r, true);
     }
     {
-        let db = fresh_db(&spec, "createbad");
+        let (db, _scratch) = fresh_db(&spec, "createbad");
         let r = rt.block_on(brahma::brahma_console_create(
             &db,
             USER_A,
@@ -331,7 +333,7 @@ fn brahma_console_routes_match_oracle() {
 
     // --- Rename / set-model / delete ---
     {
-        let db = fresh_db(&spec, "rename");
+        let (db, _scratch) = fresh_db(&spec, "rename");
         let r = rt.block_on(brahma::brahma_console_rename(
             &db,
             USER_A,
@@ -341,7 +343,7 @@ fn brahma_console_routes_match_oracle() {
         check("rename", &r, false);
     }
     {
-        let db = fresh_db(&spec, "setmodel");
+        let (db, _scratch) = fresh_db(&spec, "setmodel");
         let r = rt.block_on(brahma::brahma_console_set_model(
             &db,
             USER_A,
@@ -351,7 +353,7 @@ fn brahma_console_routes_match_oracle() {
         check("set_model", &r, false);
     }
     {
-        let db = fresh_db(&spec, "setmodelbad");
+        let (db, _scratch) = fresh_db(&spec, "setmodelbad");
         let r = rt.block_on(brahma::brahma_console_set_model(
             &db,
             USER_A,
@@ -361,24 +363,24 @@ fn brahma_console_routes_match_oracle() {
         check("set_model_bad_profile", &r, false);
     }
     {
-        let db = fresh_db(&spec, "delete");
+        let (db, _scratch) = fresh_db(&spec, "delete");
         let r = rt.block_on(brahma::brahma_console_delete(&db, USER_A, CHAT_C));
         check("delete", &r, false);
     }
 
     // --- P4.60: the create / rename / set-model bodies ---
     {
-        let db = fresh_db(&spec, "createwrongtype");
+        let (db, _scratch) = fresh_db(&spec, "createwrongtype");
         let r = rt.block_on(brahma::brahma_console_create(&db, USER_A, Some(&json!(7))));
         check("create_profile_wrong_type", &r, false);
     }
     {
-        let db = fresh_db(&spec, "createempty");
+        let (db, _scratch) = fresh_db(&spec, "createempty");
         let r = rt.block_on(brahma::brahma_console_create(&db, USER_A, Some(&json!(""))));
         check("create_profile_empty", &r, false);
     }
     {
-        let db = fresh_db(&spec, "createnull");
+        let (db, _scratch) = fresh_db(&spec, "createnull");
         let r = rt.block_on(brahma::brahma_console_create(
             &db,
             USER_A,
@@ -387,7 +389,7 @@ fn brahma_console_routes_match_oracle() {
         check("create_profile_null", &r, false);
     }
     {
-        let db = fresh_db(&spec, "renamewrongtype");
+        let (db, _scratch) = fresh_db(&spec, "renamewrongtype");
         let r = rt.block_on(brahma::brahma_console_rename(
             &db,
             USER_A,
@@ -397,7 +399,7 @@ fn brahma_console_routes_match_oracle() {
         check("rename_title_wrong_type", &r, false);
     }
     {
-        let db = fresh_db(&spec, "renameempty");
+        let (db, _scratch) = fresh_db(&spec, "renameempty");
         let r = rt.block_on(brahma::brahma_console_rename(
             &db,
             USER_A,
@@ -409,7 +411,7 @@ fn brahma_console_routes_match_oracle() {
     {
         // The guard-ORDER arm: the verify runs before the schema, so a bad body
         // on a chat that does not exist is a 404.
-        let db = fresh_db(&spec, "renamemissing");
+        let (db, _scratch) = fresh_db(&spec, "renamemissing");
         let r = rt.block_on(brahma::brahma_console_rename(
             &db,
             USER_A,
@@ -419,7 +421,7 @@ fn brahma_console_routes_match_oracle() {
         check("rename_missing_chat_bad_body", &r, false);
     }
     {
-        let db = fresh_db(&spec, "setmodelwrongtype");
+        let (db, _scratch) = fresh_db(&spec, "setmodelwrongtype");
         let r = rt.block_on(brahma::brahma_console_set_model(
             &db,
             USER_A,
@@ -429,7 +431,7 @@ fn brahma_console_routes_match_oracle() {
         check("set_model_profile_wrong_type", &r, false);
     }
     {
-        let db = fresh_db(&spec, "setmodelnotuuid");
+        let (db, _scratch) = fresh_db(&spec, "setmodelnotuuid");
         let r = rt.block_on(brahma::brahma_console_set_model(
             &db,
             USER_A,
@@ -480,7 +482,7 @@ fn brahma_console_routes_match_oracle() {
             ),
         ];
         for (name, chat, body) in &sends {
-            let db = fresh_db(&spec, name);
+            let (db, _scratch) = fresh_db(&spec, name);
             let resp = brahma::brahma_send_prepare(
                 &db,
                 chat,

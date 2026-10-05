@@ -326,11 +326,12 @@ fn qtap_import_tier2_matches_oracle() {
     let export = parse_export_file(&qtap).expect("parse committed .qtap");
 
     // Fresh copies so the shared seed fixtures stay pristine.
-    let pid = std::process::id();
-    let main_work = std::env::temp_dir().join(format!("qt-qtapimport-main-rust-{pid}.db"));
-    let mount_work = std::env::temp_dir().join(format!("qt-qtapimport-mount-rust-{pid}.db"));
-    let _ = std::fs::remove_file(&main_work);
-    let _ = std::fs::remove_file(&mount_work);
+    let scratch = tempfile::Builder::new()
+        .prefix("qt-qtapimport-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let main_work = scratch.path().join("main.db");
+    let mount_work = scratch.path().join("mount.db");
     std::fs::copy(&main_fixture, &main_work).unwrap_or_else(|e| panic!("copy main: {e}"));
     std::fs::copy(&mount_fixture, &mount_work).unwrap_or_else(|e| panic!("copy mount: {e}"));
 
@@ -661,10 +662,12 @@ fn qtap_import_tier2_matches_oracle() {
     // `write_user_upload_to_mount_store` refuses without a
     // `userUploadsMountPointId` pointing at a database-backed store.
     {
-        let main2_path = std::env::temp_dir().join(format!("qt-qtapimport-b117-main-{pid}.db"));
-        let mount2_path = std::env::temp_dir().join(format!("qt-qtapimport-b117-mount-{pid}.db"));
-        let _ = std::fs::remove_file(&main2_path);
-        let _ = std::fs::remove_file(&mount2_path);
+        let scratch2 = tempfile::Builder::new()
+            .prefix("qt-qtapimport-b117-")
+            .tempdir()
+            .expect("tempdir");
+        let main2_path = scratch2.path().join("main.db");
+        let mount2_path = scratch2.path().join("mount.db");
         std::fs::copy(&main_fixture, &main2_path).unwrap_or_else(|e| panic!("copy main2: {e}"));
         std::fs::copy(&mount_fixture, &mount2_path).unwrap_or_else(|e| panic!("copy mount2: {e}"));
         let main2 = Writer::open_writable(&main2_path, &spec.test_pepper_base64)
@@ -750,8 +753,6 @@ fn qtap_import_tier2_matches_oracle() {
 
         drop(main2);
         drop(mount2);
-        let _ = std::fs::remove_file(&main2_path);
-        let _ = std::fs::remove_file(&mount2_path);
     }
 
     // ── P4.D208 / bug 158 (v4 `da9c4f34f`) — a THIRD isolated pair ───────────
@@ -768,11 +769,12 @@ fn qtap_import_tier2_matches_oracle() {
     // bug117 reason — three new chats in the shared pair would move the dumps
     // the main diff asserts as multisets.
     {
-        let pid = std::process::id();
-        let main3_path = std::env::temp_dir().join(format!("qt-qtapimport-b158-main-{pid}.db"));
-        let mount3_path = std::env::temp_dir().join(format!("qt-qtapimport-b158-mount-{pid}.db"));
-        let _ = std::fs::remove_file(&main3_path);
-        let _ = std::fs::remove_file(&mount3_path);
+        let scratch3 = tempfile::Builder::new()
+            .prefix("qt-qtapimport-b158-")
+            .tempdir()
+            .expect("tempdir");
+        let main3_path = scratch3.path().join("main.db");
+        let mount3_path = scratch3.path().join("mount.db");
         std::fs::copy(&main_fixture, &main3_path).unwrap_or_else(|e| panic!("copy main3: {e}"));
         std::fs::copy(&mount_fixture, &mount3_path).unwrap_or_else(|e| panic!("copy mount3: {e}"));
         let main3 = Writer::open_writable(&main3_path, &spec.test_pepper_base64)
@@ -829,8 +831,6 @@ fn qtap_import_tier2_matches_oracle() {
 
         drop(main3);
         drop(mount3);
-        let _ = std::fs::remove_file(&main3_path);
-        let _ = std::fs::remove_file(&mount3_path);
     }
 
     // ── P4.106 item 10: the two-link blob (the P4.D209 OPEN row) ───────────
@@ -845,11 +845,12 @@ fn qtap_import_tier2_matches_oracle() {
     // `document_stores.rs` → `Some(&created.link_id)`, which no row could see
     // before). Isolated for the bug117 reason.
     {
-        let pid = std::process::id();
-        let main4_path = std::env::temp_dir().join(format!("qt-qtapimport-2link-main-{pid}.db"));
-        let mount4_path = std::env::temp_dir().join(format!("qt-qtapimport-2link-mount-{pid}.db"));
-        let _ = std::fs::remove_file(&main4_path);
-        let _ = std::fs::remove_file(&mount4_path);
+        let scratch4 = tempfile::Builder::new()
+            .prefix("qt-qtapimport-2link-")
+            .tempdir()
+            .expect("tempdir");
+        let main4_path = scratch4.path().join("main.db");
+        let mount4_path = scratch4.path().join("mount.db");
         std::fs::copy(&main_fixture, &main4_path).unwrap_or_else(|e| panic!("copy main4: {e}"));
         std::fs::copy(&mount_fixture, &mount4_path).unwrap_or_else(|e| panic!("copy mount4: {e}"));
         let main4 = Writer::open_writable(&main4_path, &spec.test_pepper_base64)
@@ -920,12 +921,7 @@ fn qtap_import_tier2_matches_oracle() {
 
         drop(main4);
         drop(mount4);
-        let _ = std::fs::remove_file(&main4_path);
-        let _ = std::fs::remove_file(&mount4_path);
     }
-
-    let _ = std::fs::remove_file(&main_work);
-    let _ = std::fs::remove_file(&mount_work);
 
     eprintln!(
         "OK: qtap-import tier-2 matched oracle (9 tables, 2 DBs) + skip branch + bug-117 sha join \

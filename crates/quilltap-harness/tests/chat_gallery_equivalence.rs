@@ -281,17 +281,19 @@ fn status_body(r: &Response) -> (u16, Value) {
     }
 }
 
-fn fresh_db(spec: &Spec, tag: &str) -> Db {
+fn fresh_db(spec: &Spec, tag: &str) -> (Db, tempfile::TempDir) {
     fresh_db_planted(spec, tag, None)
 }
 
 /// P4.88: the twin of the oracle's `plant` hook — damage the per-case COPY of
 /// the mount partition before the roll (the P4.D91 `plantProbe` idiom). The
 /// committed pair is READ-ONLY and is never rebuilt.
-fn fresh_db_planted(spec: &Spec, tag: &str, mount_plant: Option<&str>) -> Db {
-    let scratch = std::env::temp_dir().join(format!("qt-cg-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
+fn fresh_db_planted(spec: &Spec, tag: &str, mount_plant: Option<&str>) -> (Db, tempfile::TempDir) {
+    let scratch_dir = tempfile::Builder::new()
+        .prefix(&format!("qt-cg-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let scratch = scratch_dir.path();
     let main = scratch.join("main.db");
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("chat-gallery-main.db"), &main).unwrap();
@@ -301,7 +303,7 @@ fn fresh_db_planted(spec: &Spec, tag: &str, mount_plant: Option<&str>) -> Db {
             .expect("open the mount copy writable to plant");
         w.connection().execute_batch(sql).expect("plant");
     }
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
@@ -309,7 +311,8 @@ fn fresh_db_planted(spec: &Spec, tag: &str, mount_plant: Option<&str>) -> Db {
         },
         &spec.test_pepper_base64,
     )
-    .expect("open db")
+    .expect("open db");
+    (db, scratch_dir)
 }
 
 /// The RAW per-entry key sequence, mirroring the oracle's `gallery_key_order`.
@@ -466,13 +469,13 @@ fn chat_gallery_equivalence() {
 
     // --- The roll ---
     let gallery_body = {
-        let db = fresh_db(&spec, "roll");
+        let (db, _scratch) = fresh_db(&spec, "roll");
         let r = chat_media::chat_gallery(&db, CHAT);
         check(&mut failed, &oracle, "gallery", &r, Norm::Exact);
         status_body(&r).1
     };
     {
-        let db = fresh_db(&spec, "portrait");
+        let (db, _scratch) = fresh_db(&spec, "portrait");
         check(
             &mut failed,
             &oracle,
@@ -482,7 +485,7 @@ fn chat_gallery_equivalence() {
         );
     }
     {
-        let db = fresh_db(&spec, "nochat");
+        let (db, _scratch) = fresh_db(&spec, "nochat");
         check(
             &mut failed,
             &oracle,
@@ -531,7 +534,7 @@ fn chat_gallery_equivalence() {
             r#"UPDATE "doc_mount_files" SET "sha256" = '';"#,
         ),
     ] {
-        let db = fresh_db_planted(&spec, tag, Some(sql));
+        let (db, _scratch) = fresh_db_planted(&spec, tag, Some(sql));
         check(
             &mut failed,
             &oracle,
@@ -568,7 +571,7 @@ fn chat_gallery_equivalence() {
 
     // --- The listing that shares the walk ---
     {
-        let db = fresh_db(&spec, "flist");
+        let (db, _scratch) = fresh_db(&spec, "flist");
         check(
             &mut failed,
             &oracle,
@@ -581,7 +584,7 @@ fn chat_gallery_equivalence() {
     // --- Save-image, in v4's ladder order ---
     let save =
         |failed: &mut Vec<String>, name: &str, tag: &str, chat: &str, body: Value, mode: Norm| {
-            let db = fresh_db(&spec, tag);
+            let (db, _scratch) = fresh_db(&spec, tag);
             let r = rt.block_on(chat_media::chat_save_gallery_image(
                 &db,
                 USER,
@@ -619,7 +622,7 @@ fn chat_gallery_equivalence() {
     );
     // The ALREADY_SAVED 409: the SAME save runs twice; the second is the answer.
     {
-        let db = fresh_db(&spec, "savealready");
+        let (db, _scratch) = fresh_db(&spec, "savealready");
         let body = json!({ "fileId": F_GEN, "mountPointId": meta.general_mp });
         let _ = rt.block_on(chat_media::chat_save_gallery_image(
             &db,
@@ -699,7 +702,7 @@ fn chat_gallery_equivalence() {
 
     // --- The MESSAGE-scoped leg on the newly-shared schema ---
     let msg_save = |failed: &mut Vec<String>, name: &str, tag: &str, body: Value| {
-        let db = fresh_db(&spec, tag);
+        let (db, _scratch) = fresh_db(&spec, tag);
         let r = rt.block_on(chat_media::message_save_image(
             &db,
             USER,
@@ -723,7 +726,7 @@ fn chat_gallery_equivalence() {
     // --- The delete guard the gallery modal relies on (API.md: only the
     //     `"file"` species) ---
     {
-        let db = fresh_db(&spec, "delnk");
+        let (db, _scratch) = fresh_db(&spec, "delnk");
         let r = rt.block_on(chat_media::chat_file_delete(&db, USER, &meta.kept_link_id));
         check(
             &mut failed,
@@ -734,7 +737,7 @@ fn chat_gallery_equivalence() {
         );
     }
     {
-        let db = fresh_db(&spec, "delfl");
+        let (db, _scratch) = fresh_db(&spec, "delfl");
         let r = rt.block_on(chat_media::chat_file_delete(&db, USER, F_UPLOAD));
         check(
             &mut failed,

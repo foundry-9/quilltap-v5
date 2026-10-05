@@ -89,16 +89,19 @@ mod tests {
         dir
     }
 
-    fn scratch(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("qt-spa-resolve-{name}"));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).expect("create scratch");
-        dir
+    /// A fresh scratch root, removed when the returned `TempDir` drops —
+    /// bind it for the test's life.
+    fn scratch(name: &str) -> tempfile::TempDir {
+        tempfile::Builder::new()
+            .prefix(&format!("qt-spa-resolve-{name}-"))
+            .tempdir()
+            .expect("create scratch")
     }
 
     #[test]
     fn flag_wins_over_everything_and_is_taken_verbatim() {
-        let root = scratch("flag-wins");
+        let tmp = scratch("flag-wins");
+        let root = tmp.path();
         let exe_dir = root.join("bin");
         dist_at(&exe_dir, "spa");
         // The flag names a path that does NOT exist: explicit is an
@@ -115,7 +118,8 @@ mod tests {
 
     #[test]
     fn env_wins_over_the_binary_relative_default() {
-        let root = scratch("env-wins");
+        let tmp = scratch("env-wins");
+        let root = tmp.path();
         let exe_dir = root.join("bin");
         dist_at(&exe_dir, "spa");
         let env_dir = root.join("env-dist");
@@ -126,7 +130,8 @@ mod tests {
 
     #[test]
     fn an_empty_env_var_does_not_count_as_explicit() {
-        let root = scratch("empty-env");
+        let tmp = scratch("empty-env");
+        let root = tmp.path();
         let exe_dir = root.join("bin");
         let beside = dist_at(&exe_dir, "spa");
 
@@ -136,7 +141,8 @@ mod tests {
 
     #[test]
     fn finds_the_dist_sitting_beside_the_binary() {
-        let root = scratch("beside");
+        let tmp = scratch("beside");
+        let root = tmp.path();
         let exe_dir = root.join("bin");
         let beside = dist_at(&exe_dir, "spa");
 
@@ -147,10 +153,11 @@ mod tests {
     #[test]
     fn finds_the_fhs_install_layout_the_container_uses() {
         // /usr/local/bin/quilltap-web + /usr/local/share/quilltap/spa
-        let root = scratch("fhs");
+        let tmp = scratch("fhs");
+        let root = tmp.path();
         let exe_dir = root.join("bin");
         std::fs::create_dir_all(&exe_dir).expect("create bin");
-        let share = dist_at(&root, "share/quilltap/spa");
+        let share = dist_at(root, "share/quilltap/spa");
 
         let got = resolve_spa_dir(None, None, Some(&exe_dir)).expect("resolved");
         assert_eq!(
@@ -161,10 +168,11 @@ mod tests {
 
     #[test]
     fn the_beside_candidate_is_searched_before_the_share_one() {
-        let root = scratch("precedence");
+        let tmp = scratch("precedence");
+        let root = tmp.path();
         let exe_dir = root.join("bin");
         let beside = dist_at(&exe_dir, "spa");
-        dist_at(&root, "share/quilltap/spa");
+        dist_at(root, "share/quilltap/spa");
 
         let got = resolve_spa_dir(None, None, Some(&exe_dir));
         assert_eq!(got, Some(beside));
@@ -172,7 +180,8 @@ mod tests {
 
     #[test]
     fn a_candidate_without_an_index_html_is_not_a_dist() {
-        let root = scratch("no-index");
+        let tmp = scratch("no-index");
+        let root = tmp.path();
         let exe_dir = root.join("bin");
         // An empty `spa/` next to the binary must not satisfy the chain, or
         // the banner would announce an SPA that cannot be served.
@@ -183,7 +192,8 @@ mod tests {
 
     #[test]
     fn nothing_anywhere_yields_none_the_placeholder_tail() {
-        let root = scratch("none");
+        let tmp = scratch("none");
+        let root = tmp.path();
         let exe_dir = root.join("bin");
         std::fs::create_dir_all(&exe_dir).expect("create bin");
 

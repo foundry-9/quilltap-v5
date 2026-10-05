@@ -207,8 +207,11 @@ fn embedding_profiles_tier2_matches_oracle() {
     );
 
     // Work on a fresh copy of the seed fixture so the shared file stays pristine.
-    let work = std::env::temp_dir().join(format!("qt-ep-rust-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    let work_dir = tempfile::Builder::new()
+        .prefix("qt-ep-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = work_dir.path().join("ep-rust.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
     // Run the SAME op sequence through the Rust port.
@@ -287,8 +290,6 @@ fn embedding_profiles_tier2_matches_oracle() {
     let got = writer
         .dump_table_json("embedding_profiles", "id")
         .expect("dump embedding_profiles");
-
-    let _ = std::fs::remove_file(&work);
 
     // Structural diff: table + columns + rows must match (ignore the oracle's
     // "case" label). assert_eq on serde_json::Value is order-independent for

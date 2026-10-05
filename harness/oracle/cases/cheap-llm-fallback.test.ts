@@ -57,6 +57,7 @@ it('cheap-llm fallback selections', async () => {
   if (!src || !out) throw new Error('set QT_FIXTURE_CHEAP_FALLBACK and QT_ORACLE_OUT');
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-cheap-fallback-'));
+  try {
   mkdirSync(join(scratch, 'data'), { recursive: true });
   const work = join(scratch, 'data', 'quilltap.db');
   copyFileSync(src, work);
@@ -203,4 +204,7 @@ it('cheap-llm fallback selections', async () => {
   fs.writeFileSync(out, lines.map((l) => l + '\n').join(''));
   process.stderr.write(`cheap-llm-fallback oracle wrote ${out} (${lines.length} cases)\n`);
   expect(lines.length).toBeGreaterThan(0);
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
 });

@@ -333,15 +333,21 @@ async fn native_tool_loop_tier3_matches_oracle() {
         }
     }
 
-    let work = std::env::temp_dir().join(format!("qt-ntl-rust-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    let work_scratch = tempfile::Builder::new()
+        .prefix("qt-ntl-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = work_scratch.path().join("work.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
     let provider = QueuedStreamingProvider::from_oracle(&oracle_canned);
     // P4.121: a fresh llm-logs partition so every loop leg's CHAT_MESSAGE row
     // lands somewhere we can dump and diff against v4's REAL funnel.
-    let ll_work = std::env::temp_dir().join(format!("qt-ntl-rust-ll-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&ll_work);
+    let ll_work_scratch = tempfile::Builder::new()
+        .prefix("qt-ntl-rust-ll-")
+        .tempdir()
+        .expect("tempdir");
+    let ll_work = ll_work_scratch.path().join("ll_work.db");
     common::materialize_llm_logs(&ll_work, &spec.test_pepper_base64);
     let db = Db::open(
         DbPaths {
@@ -515,8 +521,6 @@ async fn native_tool_loop_tier3_matches_oracle() {
         .expect("dump chats");
     let got_logs = common::dump_llm_logs(&db);
     drop(db);
-    let _ = std::fs::remove_file(&work);
-    let _ = std::fs::remove_file(&ll_work);
 
     let want_chats = oracle_chats.expect("oracle chats dump");
     assert_eq!(

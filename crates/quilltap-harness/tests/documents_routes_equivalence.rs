@@ -166,16 +166,17 @@ fn response_data(r: &Response) -> Value {
         .unwrap_or(Value::Null)
 }
 
-fn fresh_db(spec: &Spec, tag: &str) -> Db {
-    let scratch =
-        std::env::temp_dir().join(format!("qt-doc-routes-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
+fn fresh_db(spec: &Spec, tag: &str) -> ScratchDb {
+    let scratch_dir = tempfile::Builder::new()
+        .prefix(&format!("qt-doc-routes-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let scratch = scratch_dir.path().to_path_buf();
     let main = scratch.join("main.db");
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("documents-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("documents-mount.db"), &mount).unwrap();
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
@@ -183,7 +184,26 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
         },
         &spec.test_pepper_base64,
     )
-    .expect("open db")
+    .expect("open db");
+    ScratchDb {
+        db,
+        _dir: scratch_dir,
+    }
+}
+
+/// A scratch [`Db`] plus the temp dir holding its files: the dir (and every
+/// file SQLite wrote beside them) is removed when this drops. Derefs to the
+/// `Db`, so call sites read exactly as before.
+struct ScratchDb {
+    db: Db,
+    _dir: tempfile::TempDir,
+}
+
+impl std::ops::Deref for ScratchDb {
+    type Target = Db;
+    fn deref(&self) -> &Db {
+        &self.db
+    }
 }
 
 /// The id-free chat_documents state for a chat + its documentMode (the oracle's

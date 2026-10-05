@@ -824,12 +824,13 @@ fn subprompts_storage_matches_oracle() {
         let want = oracle
             .get(name)
             .unwrap_or_else(|| panic!("oracle missing {name}"));
-        let scratch =
-            std::env::temp_dir().join(format!("qt-sp-rust-{}-{name}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&scratch);
-        std::fs::create_dir_all(&scratch).unwrap();
-        let main_work = scratch.join("main.db");
-        let mount_work = scratch.join("mount.db");
+        // Removed at the end of the iteration, after the connections drop.
+        let scratch = tempfile::Builder::new()
+            .prefix(&format!("qt-sp-rust-{name}-"))
+            .tempdir()
+            .expect("tempdir");
+        let main_work = scratch.path().join("main.db");
+        let mount_work = scratch.path().join("mount.db");
         std::fs::copy(&main_fixture, &main_work).unwrap();
         std::fs::copy(&mount_fixture, &mount_work).unwrap();
         // The op + the census run on WRITABLE connections to both partitions
@@ -880,7 +881,6 @@ fn subprompts_storage_matches_oracle() {
                 "OK"
             }
         );
-        let _ = std::fs::remove_dir_all(&scratch);
     }
     assert!(
         failed.is_empty(),

@@ -137,6 +137,7 @@ async function main(): Promise<void> {
   if (!outPath) throw new Error('QT_ORACLE_OUT must point at the NDJSON file to write');
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-carina-query-oracle-'));
+  try {
   mkdirSync(join(scratch, 'data'), { recursive: true });
   const workMain = join(scratch, 'carina-main.db');
   const workMount = join(scratch, 'carina-mount.db');
@@ -355,6 +356,9 @@ async function main(): Promise<void> {
 
   fs.writeFileSync(outPath, lines.join('\n') + '\n');
   process.stderr.write(`carina-query oracle wrote ${outPath}\n`);
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
 }
 
 test('carina-query tier-3 oracle', async () => {

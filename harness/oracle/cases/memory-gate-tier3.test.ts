@@ -35,7 +35,7 @@
 import * as fs from 'fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { mkdtempSync, mkdirSync, copyFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 // Inlined from ../lib/tier2.ts: jest (unlike tsx) can't resolve the `.js` ESM
@@ -120,6 +120,7 @@ async function main(): Promise<void> {
   }
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-memory-gate-oracle-'));
+  scratchDirs.push(scratch);
   mkdirSync(join(scratch, 'data'), { recursive: true });
   const work = join(scratch, 'gate-work.db');
   copyFileSync(fixture, work);
@@ -240,4 +241,10 @@ async function main(): Promise<void> {
 // A jest `test` wrapper so the file runs under `jest` (which discovers *.test.ts).
 test('memory-gate tier-3 oracle', async () => {
   await main();
+});
+
+// Remove the OS-temp scratch dir(s) once the oracle has written its NDJSON.
+const scratchDirs: string[] = [];
+afterAll(() => {
+  for (const d of scratchDirs) rmSync(d, { recursive: true, force: true });
 });

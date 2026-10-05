@@ -75,6 +75,7 @@ async function main(): Promise<void> {
   // startup physical backups, the THROWAWAY main + llm-logs DBs). A unique dir
   // per run avoids stale-lock collisions. The MOUNT-INDEX db lands at QT_FIXTURE_OUT.
   const scratch = mkdtempSync(join(tmpdir(), 'qt-dmd-fixture-build-'));
+  process.on('exit', () => rmSync(scratch, { recursive: true, force: true }));
   // v4 nests working files under `<dataDir>/data/`; pre-create it so the
   // instance lock + throwaway main DB have a home.
   mkdirSync(join(scratch, 'data'), { recursive: true });

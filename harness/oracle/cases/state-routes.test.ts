@@ -35,7 +35,7 @@
 import * as fs from 'fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { mkdtempSync, mkdirSync, copyFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, copyFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 interface Spec {
@@ -253,6 +253,7 @@ async function main(): Promise<void> {
     );
     closeMountIndexSQLiteClient();
     await closeDatabase();
+    rmSync(scratch, { recursive: true, force: true });
   }
 
   fs.writeFileSync(outPath, lines.join('\n') + '\n');

@@ -170,10 +170,12 @@ fn env_or_skip(key: &str) -> Option<String> {
 /// A fresh copy per case: of the committed pair, or — for a P4.D215 planted
 /// case — of the planted seed the oracle saved beside its NDJSON
 /// (`<oracle>.<case>.{main,mount}.db`; see the oracle's `CaseSpec.plant`).
-fn fresh_db(spec: &Spec, tag: &str, seed: Option<(PathBuf, PathBuf)>) -> Db {
-    let scratch = std::env::temp_dir().join(format!("qt-rt-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
+fn fresh_db(spec: &Spec, tag: &str, seed: Option<(PathBuf, PathBuf)>) -> (Db, tempfile::TempDir) {
+    let scratch_dir = tempfile::Builder::new()
+        .prefix(&format!("qt-rt-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let scratch = scratch_dir.path();
     let main = scratch.join("main.db");
     let mount = scratch.join("mount.db");
     let (src_main, src_mount) = seed.unwrap_or_else(|| {
@@ -185,7 +187,7 @@ fn fresh_db(spec: &Spec, tag: &str, seed: Option<(PathBuf, PathBuf)>) -> Db {
     std::fs::copy(&src_main, &main)
         .unwrap_or_else(|e| panic!("copy seed {}: {e}", src_main.display()));
     std::fs::copy(&src_mount, &mount).unwrap();
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
@@ -193,7 +195,8 @@ fn fresh_db(spec: &Spec, tag: &str, seed: Option<(PathBuf, PathBuf)>) -> Db {
         },
         &spec.test_pepper_base64,
     )
-    .expect("open db")
+    .expect("open db");
+    (db, scratch_dir)
 }
 
 fn sorted(v: &Value) -> Value {
@@ -408,7 +411,7 @@ fn chat_regenerate_title_matches_oracle() {
                 PathBuf::from(format!("{oracle_path}.{name}.mount.db")),
             )
         });
-        let db = fresh_db(&spec, name, seed);
+        let (db, _scratch) = fresh_db(&spec, name, seed);
         let provider = CannedTitleProvider {
             canned: spec.canned_titles.clone(),
             override_reply,
@@ -514,7 +517,7 @@ fn capture_regen_with(
         .enable_all()
         .build()
         .unwrap();
-    let db = fresh_db(&spec, tag, None);
+    let (db, _scratch) = fresh_db(&spec, tag, None);
     if let Some(sql) = pre_sql {
         rt.block_on(db.write(move |w| {
             w.main().connection().execute_batch(sql)?;

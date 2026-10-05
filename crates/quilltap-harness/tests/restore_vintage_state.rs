@@ -59,11 +59,14 @@ fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../quilltap-web/tests/fixtures")
 }
 
-/// A private copy of the committed migration-vintage instance.
-fn vintage_instance(tag: &str) -> (PathBuf, PathBuf) {
-    let root = std::env::temp_dir().join(format!("qt-vintage-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
-    let instance = root.join("instance");
+/// A private copy of the committed migration-vintage instance, in a scratch
+/// dir removed when the returned `TempDir` drops.
+fn vintage_instance(tag: &str) -> (tempfile::TempDir, PathBuf) {
+    let root = tempfile::Builder::new()
+        .prefix(&format!("qt-vintage-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let instance = root.path().join("instance");
     std::fs::create_dir_all(&instance).unwrap();
     let src = fixtures_dir().join("migration-vintage");
     for name in [
@@ -178,11 +181,17 @@ fn count(conn: &Connection, sql: &str) -> i64 {
         .unwrap_or_else(|e| panic!("{sql}: {e}"))
 }
 
-fn run_restore(tag: &str, archive: &str, mode: RestoreMode) -> (PathBuf, Vec<String>, usize) {
+fn run_restore(
+    tag: &str,
+    archive: &str,
+    mode: RestoreMode,
+) -> (tempfile::TempDir, PathBuf, Vec<String>, usize) {
     let (root, instance) = vintage_instance(tag);
     let zip = fixtures_dir().join("restore-archives").join(archive);
     assert!(zip.exists(), "missing committed archive: {zip:?}");
-    let host = TestHost { root: root.clone() };
+    let host = TestHost {
+        root: root.path().to_path_buf(),
+    };
     std::fs::create_dir_all(host.temp_dir()).unwrap();
 
     let db = open(&instance);
@@ -201,7 +210,7 @@ fn run_restore(tag: &str, archive: &str, mode: RestoreMode) -> (PathBuf, Vec<Str
         .expect("restore returned an error");
     drop(db);
     let links = summary.doc_mount_file_links;
-    (instance, summary.warnings, links)
+    (root, instance, summary.warnings, links)
 }
 
 /// Every warning a constraint produced, i.e. the raw SQLite sentence leaking
@@ -270,7 +279,7 @@ fn no_restore_phase_names_a_column_a_migrated_table_lacks() {
             ("newacct", RestoreMode::NewAccount),
         ] {
             let tag = format!("{}-{suffix}", archive.trim_end_matches(".zip"));
-            let (_instance, warnings, _links) = run_restore(&tag, archive, mode);
+            let (_scratch, _instance, warnings, _links) = run_restore(&tag, archive, mode);
             assert_no_raw_sqlite(&format!("{archive} / {suffix}"), &warnings);
         }
     }
@@ -322,7 +331,9 @@ fn a_column_a_migration_never_added_still_loses_that_collection() {
     let zip = fixtures_dir()
         .join("restore-archives")
         .join("restore-archive.zip");
-    let host = TestHost { root: root.clone() };
+    let host = TestHost {
+        root: root.path().to_path_buf(),
+    };
     std::fs::create_dir_all(host.temp_dir()).unwrap();
     let db = open(&instance);
     let summary = tokio::runtime::Builder::new_multi_thread()
@@ -379,7 +390,7 @@ fn a_column_a_migration_never_added_still_loses_that_collection() {
 /// that CAN land must all land.
 #[test]
 fn orphaned_doc_store_rows_are_skipped_by_name_not_by_constraint() {
-    let (instance, warnings, links_restored) = run_restore(
+    let (_scratch, instance, warnings, links_restored) = run_restore(
         "orphans",
         "restore-archive-orphan-links.zip",
         RestoreMode::Replace,
@@ -468,7 +479,7 @@ fn annotations_restore_onto_a_vintage_instance_without_colliding() {
     // Seed the target with the exact collision: the archive's own annotations,
     // already present. This is the state a `replace` restore arrives at on any
     // instance that has been used, and the state v4 leaves permanently.
-    let (root, instance) = vintage_instance("annotations");
+    let (_root, instance) = vintage_instance("annotations");
     {
         let conn = Connection::open(instance.join("quilltap.db")).unwrap();
         conn.pragma_update(
@@ -489,7 +500,6 @@ fn annotations_restore_onto_a_vintage_instance_without_colliding() {
         )
         .expect("seed the surviving annotation");
     }
-    drop(root);
 
     let zip = fixtures_dir()
         .join("restore-archives")
@@ -650,7 +660,7 @@ fn the_vintage_fixture_carries_the_columns_v4s_chain_adds() {
 /// said here is what the migrated DEFAULT does about it.
 #[test]
 fn a_pre_49_archive_lands_never_chosen_not_the_migrated_default() {
-    let (instance, warnings, _links) = run_restore(
+    let (_scratch, instance, warnings, _links) = run_restore(
         "legacyprofiles",
         "restore-archive-legacy-profiles.zip",
         RestoreMode::Replace,

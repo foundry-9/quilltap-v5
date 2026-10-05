@@ -239,8 +239,11 @@ async fn memory_gate_tier3_matches_oracle() {
         std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("read oracle: {e}"));
 
     // Fresh copy so the shared seed fixture stays pristine.
-    let work = std::env::temp_dir().join(format!("qt-memory-gate-rust-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    let work_scratch = tempfile::Builder::new()
+        .prefix("qt-memory-gate-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = work_scratch.path().join("work.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
     // The same canned embeddings both sides inject.
@@ -299,7 +302,6 @@ async fn memory_gate_tier3_matches_oracle() {
         })
         .collect();
     drop(db);
-    let _ = std::fs::remove_file(&work);
 
     let mut want: Vec<Value> = TABLES
         .iter()

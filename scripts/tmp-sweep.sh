@@ -22,6 +22,10 @@
 #    cases `mkdtempSync(join(tmpdir(), 'qt-…-'))` without removing it, as do
 #    several harness tests; 80,000 `qt-*` entries held ~36 GB after eleven
 #    days (~8,000 a day). macOS only purges $TMPDIR on reboot.
+#    Fixed at the source the same day: the oracle cases remove their scratch
+#    (an exit hook, a `finally`, or an `afterAll`) and the Rust tests hold a
+#    `tempfile::TempDir` with the same `qt-…` prefix. This sweep stays as the
+#    backstop for crashed runs, a test that panics, and the dirs from before.
 #
 # What it removes:
 #   - $TMPDIR/jest_*                                  whole, unless jest is running

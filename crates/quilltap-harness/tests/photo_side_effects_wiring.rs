@@ -216,10 +216,14 @@ fn fixtures_dir() -> PathBuf {
 }
 
 /// A scratch instance from a committed fixture pair, healed for the columns
-/// the write paths bind.
-fn scratch_instance(tag: &str, stem: &str, pepper: &str) -> PathBuf {
-    let base = std::env::temp_dir().join(format!("qt-p4120w-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&base);
+/// the write paths bind. The instance dir is deleted when the returned
+/// `TempDir` drops — keep it alive past the engine.
+fn scratch_instance(tag: &str, stem: &str, pepper: &str) -> (tempfile::TempDir, PathBuf) {
+    let scratch = tempfile::Builder::new()
+        .prefix(&format!("qt-p4120w-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let base = scratch.path().to_path_buf();
     let data = base.join("data");
     std::fs::create_dir_all(&data).unwrap();
     std::fs::copy(
@@ -235,7 +239,7 @@ fn scratch_instance(tag: &str, stem: &str, pepper: &str) -> PathBuf {
     let w = quilltap_core::db::Writer::open_writable(&data.join("quilltap.db"), pepper).unwrap();
     quilltap_core::test_support::ensure_p4d171_columns(w.connection());
     quilltap_core::test_support::ensure_p4d182_columns(w.connection());
-    base
+    (scratch, base)
 }
 
 fn boot(base: &Path, pepper: &str, assembler: Box<dyn EngineAssembler>) -> CoreEngine {
@@ -271,7 +275,7 @@ fn count_embedding_jobs(db: &Db) -> i64 {
 #[tokio::test]
 async fn an_uploaded_image_is_described_and_its_mount_enqueued() {
     let _serial = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
-    let base = scratch_instance("upload", "system-data", PEPPER);
+    let (_scratch, base) = scratch_instance("upload", "system-data", PEPPER);
     let engine = boot(&base, PEPPER, Box::new(Assembler { root: base.clone() }));
     let db = engine.db().expect("ready db");
     let q = arm_queue();
@@ -332,7 +336,7 @@ fn read_description(db: &Db, id: &str) -> Option<String> {
 #[tokio::test]
 async fn the_engines_save_to_album_door_enqueues() {
     let _serial = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
-    let base = scratch_instance("save", "chat-gallery", PEPPER);
+    let (_scratch, base) = scratch_instance("save", "chat-gallery", PEPPER);
     let meta: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(fixtures_dir().join("chat-gallery-main.db.meta.json")).unwrap(),
     )

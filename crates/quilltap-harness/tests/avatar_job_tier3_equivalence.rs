@@ -360,20 +360,23 @@ fn env_or_skip(key: &str) -> Option<String> {
     }
 }
 
-fn fresh_copy(main_fixture: &str, mount_fixture: &str, tag: &str) -> (PathBuf, PathBuf) {
-    let dir = std::env::temp_dir();
-    let main_work = dir.join(format!(
-        "qt-avatar-main-rust-{}-{tag}.db",
-        std::process::id()
-    ));
-    let mount_work = dir.join(format!(
-        "qt-avatar-mount-rust-{}-{tag}.db",
-        std::process::id()
-    ));
-    cleanup(&main_work, &mount_work);
+/// Copies the pair into a fresh scratch dir; the returned `TempDir` owns it
+/// (and anything a caller puts beside the copies), so keep it alive while the
+/// copies are in use.
+fn fresh_copy(
+    main_fixture: &str,
+    mount_fixture: &str,
+    tag: &str,
+) -> (PathBuf, PathBuf, tempfile::TempDir) {
+    let dir = tempfile::Builder::new()
+        .prefix(&format!("qt-avatar-rust-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let main_work = dir.path().join("qt-avatar-main-rust.db");
+    let mount_work = dir.path().join("qt-avatar-mount-rust.db");
     std::fs::copy(main_fixture, &main_work).unwrap_or_else(|e| panic!("copy main: {e}"));
     std::fs::copy(mount_fixture, &mount_work).unwrap_or_else(|e| panic!("copy mount: {e}"));
-    (main_work, mount_work)
+    (main_work, mount_work, dir)
 }
 
 fn cleanup(main: &Path, mount: &Path) {
@@ -761,7 +764,7 @@ fn avatar_job_matches_oracle() {
 
     for label in chat_keys {
         let case = &spec.chats[label];
-        let (main_work, mount_work) = fresh_copy(&main_fixture, &mount_fixture, label);
+        let (main_work, mount_work, _scratch) = fresh_copy(&main_fixture, &mount_fixture, label);
 
         // W4.10b: a fresh per-case llm-logs partition for the IMAGE_GENERATION rows.
         let ll_work = main_work.with_file_name(format!("avatar-ll-{label}.db"));
@@ -1186,7 +1189,7 @@ fn avatar_job_runner_registration_e2e() {
         .build()
         .expect("tokio runtime");
 
-    let (main_work, mount_work) = fresh_copy(&main_fixture, &mount_fixture, "e2e");
+    let (main_work, mount_work, _scratch) = fresh_copy(&main_fixture, &mount_fixture, "e2e");
     let db = Db::open(
         DbPaths {
             main: main_work.clone(),

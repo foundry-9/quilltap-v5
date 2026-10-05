@@ -95,6 +95,7 @@ async function main(): Promise<void> {
 
   // 1. v4's own generateDDL for the table, from a scratch database.
   const scratch = mkdtempSync(join(tmpdir(), 'qt-voice-mode-ensure-ddl-'));
+  process.on('exit', () => rmSync(scratch, { recursive: true, force: true }));
   mkdirSync(join(scratch, 'data'), { recursive: true });
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
   process.env.SQLITE_PATH = join(scratch, 'ddl.db');
@@ -160,7 +161,8 @@ async function main(): Promise<void> {
     base.close();
 
     // 3. v4's migrations on a COPY.
-    const work = join(mkdtempSync(join(tmpdir(), `qt-voice-mode-ensure-${mode}-`)), 'work.db');
+    const workDir = mkdtempSync(join(tmpdir(), `qt-voice-mode-ensure-${mode}-`));
+    const work = join(workDir, 'work.db');
     copyFileSync(out, work);
     const report = await runV4Migrations({
       dbPath: work,
@@ -180,6 +182,7 @@ async function main(): Promise<void> {
       .prepare('SELECT id, impersonationVoiceMode FROM chat_settings ORDER BY id')
       .all();
     db.close();
+    rmSync(workDir, { recursive: true, force: true });
 
     process.stdout.write(
       JSON.stringify({ case: 'chat-settings-voice-mode-ensure', mode, report, tableInfo, sql, rows }) + '\n'

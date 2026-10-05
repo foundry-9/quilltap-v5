@@ -38,7 +38,7 @@
 
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { mkdtempSync, mkdirSync, readFileSync, copyFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, readFileSync, copyFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { canonicalizeRows } from '../lib/tier2.js';
 
@@ -73,6 +73,7 @@ async function main(): Promise<void> {
   }
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-qtapimport-oracle-'));
+  process.on('exit', () => rmSync(scratch, { recursive: true, force: true }));
   mkdirSync(join(scratch, 'data'), { recursive: true });
   const mainWork = join(scratch, 'qtapimport-main-work.db');
   const mountWork = join(scratch, 'qtapimport-mount-work.db');
@@ -198,6 +199,7 @@ async function main(): Promise<void> {
   // instance setting pointing at a database-backed store.
   const bug117 = await (async () => {
     const scratch2 = mkdtempSync(join(tmpdir(), 'qt-qtapimport-bug117-'));
+    process.on('exit', () => rmSync(scratch2, { recursive: true, force: true }));
     mkdirSync(join(scratch2, 'data'), { recursive: true });
     const main2 = join(scratch2, 'bug117-main.db');
     const mount2 = join(scratch2, 'bug117-mount.db');
@@ -290,6 +292,7 @@ async function main(): Promise<void> {
   // pair would move the dumps the main diff asserts as multisets.
   const bug158 = await (async () => {
     const scratch3 = mkdtempSync(join(tmpdir(), 'qt-qtapimport-bug158-'));
+    process.on('exit', () => rmSync(scratch3, { recursive: true, force: true }));
     mkdirSync(join(scratch3, 'data'), { recursive: true });
     const main3 = join(scratch3, 'bug158-main.db');
     const mount3 = join(scratch3, 'bug158-mount.db');
@@ -331,6 +334,7 @@ async function main(): Promise<void> {
   // A FOURTH isolated pair, for the bug117 reason.
   const twoLinkBlob = await (async () => {
     const scratch4 = mkdtempSync(join(tmpdir(), 'qt-qtapimport-twolink-'));
+    process.on('exit', () => rmSync(scratch4, { recursive: true, force: true }));
     mkdirSync(join(scratch4, 'data'), { recursive: true });
     const main4 = join(scratch4, 'twolink-main.db');
     const mount4 = join(scratch4, 'twolink-mount.db');

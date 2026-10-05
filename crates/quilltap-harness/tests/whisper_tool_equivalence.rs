@@ -153,12 +153,12 @@ async fn whisper_tool_matches_oracle() {
     };
     let returns = returns.as_array().expect("returns is array");
 
-    let scratch = std::env::temp_dir().join(format!("qt-whisper-harness-{}", std::process::id()));
-    std::fs::create_dir_all(&scratch).expect("scratch dir");
-    let work_main = scratch.join("whisper-main.db");
-    let work_mount = scratch.join("whisper-mount.db");
-    let _ = std::fs::remove_file(&work_main);
-    let _ = std::fs::remove_file(&work_mount);
+    let scratch = tempfile::Builder::new()
+        .prefix("qt-whisper-harness-")
+        .tempdir()
+        .expect("scratch dir");
+    let work_main = scratch.path().join("whisper-main.db");
+    let work_mount = scratch.path().join("whisper-mount.db");
     std::fs::copy(&fixture_main, &work_main).expect("copy main fixture");
     std::fs::copy(&fixture_mount, &work_mount).expect("copy mount fixture");
 
@@ -210,8 +210,7 @@ async fn whisper_tool_matches_oracle() {
         .read_main(|conn| dump_table_json_conn(conn, "chat_messages", "chatId"))
         .expect("dump chat_messages");
     drop(db);
-    let _ = std::fs::remove_file(&work_main);
-    let _ = std::fs::remove_file(&work_mount);
+    drop(scratch);
 
     let mut want = oracle_table(&oracle_text, "chat_messages");
 

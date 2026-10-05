@@ -132,9 +132,12 @@ fn restore_route_guards_match_oracle() {
         oracle.insert(v["name"].as_str().unwrap().to_string(), v);
     }
 
-    let scratch = std::env::temp_dir().join(format!("qt-restore-guards-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
+    // Removed when `scratch_dir` drops at the end of the test (after `db`).
+    let scratch_dir = tempfile::Builder::new()
+        .prefix("qt-restore-guards-")
+        .tempdir()
+        .expect("tempdir");
+    let scratch = scratch_dir.path().to_path_buf();
     let db = open_db(&scratch);
     let host = EmptyUploadHost {
         root: scratch.clone(),
@@ -228,7 +231,6 @@ fn restore_route_guards_match_oracle() {
         checked += 1;
     }
 
-    let _ = std::fs::remove_dir_all(&scratch);
     // Declared on BOTH sides, so a case added to the oracle and forgotten here
     // would pass silently on a smaller set.
     assert_eq!(

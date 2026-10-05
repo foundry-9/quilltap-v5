@@ -30,7 +30,7 @@
  *     > /tmp/oracle-fictional-clock-anchor.ndjson
  */
 
-import { mkdtempSync, mkdirSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -72,6 +72,7 @@ class MockDate extends RealDate {
 
 async function main(): Promise<void> {
   const scratch = mkdtempSync(join(tmpdir(), 'qt-fictional-clock-oracle-'));
+  process.on('exit', () => rmSync(scratch, { recursive: true, force: true }));
   mkdirSync(join(scratch, 'data'), { recursive: true });
 
   process.env.ENCRYPTION_MASTER_PEPPER = TEST_PEPPER;

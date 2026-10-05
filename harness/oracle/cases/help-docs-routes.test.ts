@@ -185,6 +185,7 @@ test('help-docs-routes oracle', async () => {
   const outPath = process.env.QT_ORACLE_OUT;
   if (!outPath) throw new Error('QT_ORACLE_OUT must point at the NDJSON file to write');
   const scratch = mkdtempSync(join(tmpdir(), 'qt-help-docs-routes-'));
+  try {
   mkdirSync(join(scratch, 'data'), { recursive: true });
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
   process.env.QUILLTAP_DATA_DIR = scratch;
@@ -197,4 +198,7 @@ test('help-docs-routes oracle', async () => {
   }
   fs.writeFileSync(outPath, lines.join('\n') + '\n');
   process.stderr.write(`help-docs-routes oracle wrote ${outPath} (${lines.length} cases)\n`);
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
 });

@@ -1013,14 +1013,15 @@ pub fn release_write_lock(data_dir: &Path) {
 mod tests {
     use super::*;
 
-    fn temp_lock_path() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "qt-lock-test-{}-{}",
-            std::process::id(),
-            uuid_suffix()
-        ));
-        std::fs::create_dir_all(dir.join("data")).unwrap();
-        instance_lock_path(&dir)
+    /// A lock path under a fresh scratch instance dir. The `TempDir` rides
+    /// out with it — bind it for the test's life; it removes the dir on drop.
+    fn temp_lock_path() -> (PathBuf, tempfile::TempDir) {
+        let dir = tempfile::Builder::new()
+            .prefix("qt-lock-test-")
+            .tempdir()
+            .expect("tempdir");
+        std::fs::create_dir_all(dir.path().join("data")).unwrap();
+        (instance_lock_path(dir.path()), dir)
     }
 
     /// `test_support::captured` installs a THREAD-scoped subscriber, and
@@ -1040,22 +1041,6 @@ mod tests {
         quilltap_core::test_support::captured(f)
     }
 
-    fn uuid_suffix() -> String {
-        // Nanos alone can tie across parallel test threads; a process-local
-        // counter disambiguates.
-        use std::sync::atomic::{AtomicU64, Ordering};
-        use std::time::{SystemTime, UNIX_EPOCH};
-        static N: AtomicU64 = AtomicU64::new(0);
-        format!(
-            "{}-{}",
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos(),
-            N.fetch_add(1, Ordering::Relaxed)
-        )
-    }
-
     /// A PID that is (almost certainly) not running: spawn a child, wait it,
     /// and use its now-dead PID.
     fn dead_pid() -> u32 {
@@ -1071,7 +1056,7 @@ mod tests {
 
     #[test]
     fn fresh_acquire_then_release_unlinks() {
-        let path = temp_lock_path();
+        let (path, _scratch) = temp_lock_path();
         acquire_instance_lock(&path).unwrap();
         let content = read_lock_file(&path).expect("lock written");
         assert_eq!(content.pid, std::process::id());
@@ -1090,7 +1075,7 @@ mod tests {
 
     #[test]
     fn reentrant_same_pid_refreshes() {
-        let path = temp_lock_path();
+        let (path, _scratch) = temp_lock_path();
         acquire_instance_lock(&path).unwrap();
         acquire_instance_lock(&path).unwrap(); // same PID → re-entrant
         let content = read_lock_file(&path).unwrap();
@@ -1107,7 +1092,7 @@ mod tests {
     #[test]
     #[cfg(unix)]
     fn stale_dead_pid_is_claimed_with_history() {
-        let path = temp_lock_path();
+        let (path, _scratch) = temp_lock_path();
         let dead = dead_pid();
         let mut content = build_lock_content();
         content.pid = dead;
@@ -1135,7 +1120,7 @@ mod tests {
     #[test]
     #[cfg(unix)]
     fn live_conflict_same_host_refuses() {
-        let path = temp_lock_path();
+        let (path, _scratch) = temp_lock_path();
         // PID 1 is always alive (kill → EPERM → alive).
         let mut content = build_lock_content();
         content.pid = 1;
@@ -1159,7 +1144,7 @@ mod tests {
 
     #[test]
     fn foreign_host_fresh_heartbeat_refuses_stale_claims() {
-        let path = temp_lock_path();
+        let (path, _scratch) = temp_lock_path();
         // A docker lock from another host with a FRESH heartbeat → refuse.
         let mut content = build_lock_content();
         content.pid = 4242;
@@ -1232,7 +1217,7 @@ mod tests {
             EnvironmentType::Electron,
             EnvironmentType::Docker,
         ] {
-            let path = temp_lock_path();
+            let (path, _scratch) = temp_lock_path();
             let mut content = build_lock_content();
             content.pid = 4242;
             content.hostname = "laptop-elsewhere".to_string();
@@ -1271,7 +1256,7 @@ mod tests {
             EnvironmentType::Electron,
             EnvironmentType::Docker,
         ] {
-            let path = temp_lock_path();
+            let (path, _scratch) = temp_lock_path();
             let mut content = build_lock_content();
             content.pid = 4242;
             content.hostname = "laptop-elsewhere".to_string();
@@ -1346,7 +1331,7 @@ mod tests {
 
     #[test]
     fn heartbeat_rewrites_and_detects_loss() {
-        let path = temp_lock_path();
+        let (path, _scratch) = temp_lock_path();
         acquire_instance_lock(&path).unwrap();
         let before = read_lock_file(&path).unwrap().last_heartbeat;
         std::thread::sleep(std::time::Duration::from_millis(5));
@@ -1373,7 +1358,7 @@ mod tests {
     /// advances `lastHeartbeat`.
     #[test]
     fn heartbeat_survives_a_hostname_change_and_refreshes_the_label() {
-        let path = temp_lock_path();
+        let (path, _scratch) = temp_lock_path();
         acquire_instance_lock(&path).unwrap();
         let ours = read_lock_file(&path).unwrap();
 
@@ -1415,7 +1400,7 @@ mod tests {
     /// (the PID-reuse shape) IS a takeover. v4 `isStillOurLock`.
     #[test]
     fn heartbeat_reports_loss_when_only_started_at_moved() {
-        let path = temp_lock_path();
+        let (path, _scratch) = temp_lock_path();
         acquire_instance_lock(&path).unwrap();
         let mut taken = read_lock_file(&path).unwrap();
         taken.started_at = "2030-01-01T00:00:00.000Z".to_string();
@@ -1431,7 +1416,7 @@ mod tests {
     /// process's` — keyed on PID + `startedAt`, no longer on hostname.
     #[test]
     fn release_skips_another_processes_record() {
-        let path = temp_lock_path();
+        let (path, _scratch) = temp_lock_path();
         acquire_instance_lock(&path).unwrap();
         let mut theirs = read_lock_file(&path).unwrap();
         theirs.pid = 99_999;
@@ -1461,7 +1446,7 @@ mod tests {
     /// body's two early returns), plus the per-tick `debug` line.
     #[test]
     fn heartbeat_loss_logs_v4s_sentences() {
-        let path = temp_lock_path();
+        let (path, _scratch) = temp_lock_path();
         acquire_instance_lock(&path).unwrap();
 
         let lines = captured(|| {
@@ -1515,7 +1500,7 @@ mod tests {
 
     #[test]
     fn history_is_capped_at_fifty() {
-        let path = temp_lock_path();
+        let (path, _scratch) = temp_lock_path();
         let mut content = build_lock_content();
         for i in 0..60 {
             add_history_entry(&mut content, LockEvent::Acquired, Some(format!("e{i}")));
@@ -1531,7 +1516,7 @@ mod tests {
 
     #[test]
     fn corrupt_lock_classifies_and_reads_none() {
-        let path = temp_lock_path();
+        let (path, _scratch) = temp_lock_path();
         std::fs::write(&path, "{ not json").unwrap();
         assert!(read_lock_file(&path).is_none());
         assert_eq!(classify_lock_status(&path, 0), LockStatus::Corrupt);
@@ -1548,7 +1533,7 @@ mod tests {
     #[test]
     #[cfg(unix)]
     fn probed_classification_reports_suspect_and_write_lock_refuses() {
-        let path = temp_lock_path();
+        let (path, _scratch) = temp_lock_path();
         // Spawn a live non-Quilltap-shaped process ("sleep") and lock under it.
         let mut child = std::process::Command::new("sleep")
             .arg("30")
@@ -1598,7 +1583,7 @@ mod tests {
     #[test]
     #[cfg(unix)]
     fn write_lock_acquires_claims_stale_and_releases() {
-        let path = temp_lock_path();
+        let (path, _scratch) = temp_lock_path();
         let data_dir = path.parent().unwrap().to_path_buf();
 
         // Fresh acquire writes the CLI acquisition detail.
@@ -1676,7 +1661,7 @@ mod tests {
     /// whatever its heartbeat says.
     #[test]
     fn a_retired_lima_lock_parses_and_is_not_a_container() {
-        let path = temp_lock_path();
+        let (path, _scratch) = temp_lock_path();
         let raw = r#"{"pid": 4242, "hostname": "elsewhere-host",
 "startedAt": "2026-01-01T00:00:00.000Z", "lastHeartbeat": "2026-01-01T00:00:00.000Z",
 "environment": "lima", "processTitle": "node", "processArgv0": "/usr/bin/node",
@@ -1711,7 +1696,7 @@ mod tests {
     #[test]
     fn v4_electron_lock_parses() {
         // A v4-written lock (environment 'electron') must classify, not corrupt.
-        let path = temp_lock_path();
+        let (path, _scratch) = temp_lock_path();
         let raw = format!(
             r#"{{"pid": 4242, "hostname": "{}", "startedAt": "2026-01-01T00:00:00.000Z",
 "lastHeartbeat": "2026-01-01T00:00:00.000Z", "environment": "electron",

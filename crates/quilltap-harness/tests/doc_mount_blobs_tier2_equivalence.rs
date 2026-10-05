@@ -109,8 +109,11 @@ fn doc_mount_blobs_tier2_matches_oracle() {
     )
     .expect("parse oracle dump");
 
-    let work = std::env::temp_dir().join(format!("qt-blobs-rust-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    let work_dir = tempfile::Builder::new()
+        .prefix("qt-blobs-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = work_dir.path().join("blobs-rust.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
     let writer = Writer::open_writable(&work, &spec.test_pepper_base64)
@@ -132,7 +135,6 @@ fn doc_mount_blobs_tier2_matches_oracle() {
     let mut got = writer
         .dump_table_json("doc_mount_blobs", "fileId")
         .expect("dump");
-    let _ = std::fs::remove_file(&work);
     let mut want = oracle.clone();
 
     normalize(&mut got);

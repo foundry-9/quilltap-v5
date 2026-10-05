@@ -63,6 +63,7 @@ async function main(): Promise<void> {
   // startup physical backup, sibling llm-logs / mount-index DBs). A unique dir
   // per run avoids stale-lock collisions. The MAIN db still lands at SQLITE_PATH.
   const scratch = mkdtempSync(join(tmpdir(), 'qt-pm-upsert-fixture-build-'));
+  process.on('exit', () => rmSync(scratch, { recursive: true, force: true }));
   mkdirSync(join(scratch, 'data'), { recursive: true });
 
   // Env MUST be set before importing v4 config/manager modules.

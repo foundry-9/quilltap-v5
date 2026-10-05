@@ -243,9 +243,11 @@ fn refusal_ledger_matches_v4() {
         .map(|l| serde_json::from_str(l).expect("parse oracle row"))
         .collect();
 
-    let work =
-        std::env::temp_dir().join(format!("qt-refusal-ledger-rust-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    let work_scratch = tempfile::Builder::new()
+        .prefix("qt-refusal-ledger-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = work_scratch.path().join("work.db");
     std::fs::copy(&fixture, &work).expect("copy fixture");
 
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -397,7 +399,6 @@ fn refusal_ledger_matches_v4() {
     );
     drop(db);
     drop(rt);
-    let _ = std::fs::remove_file(&work);
 
     let tables = &oracle[ops.len()..];
     let (mut want_chats, mut want_msgs) = (rows_of(&tables[0]), rows_of(&tables[1]));

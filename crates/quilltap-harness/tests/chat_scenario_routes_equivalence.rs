@@ -162,10 +162,12 @@ fn env_or_skip(key: &str) -> Option<String> {
     }
 }
 
-fn fresh_db(spec: &Spec, tag: &str) -> Db {
-    let scratch = std::env::temp_dir().join(format!("qt-cs-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
+fn fresh_db(spec: &Spec, tag: &str) -> (Db, tempfile::TempDir) {
+    let scratch_dir = tempfile::Builder::new()
+        .prefix(&format!("qt-cs-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let scratch = scratch_dir.path();
     let main = scratch.join("main.db");
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("chat-scenario-main.db"), &main).unwrap();
@@ -176,7 +178,7 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
         let w = quilltap_core::db::Writer::open_writable(&main, &spec.test_pepper_base64).unwrap();
         quilltap_core::test_support::ensure_p4d171_columns(w.connection());
     }
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
@@ -184,7 +186,8 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
         },
         &spec.test_pepper_base64,
     )
-    .expect("open db")
+    .expect("open db");
+    (db, scratch_dir)
 }
 
 // ---------------------------------------------------------------------------
@@ -695,7 +698,7 @@ fn chat_scenario_routes_match_oracle() {
         ),
     ];
     for c in &resolver_cases {
-        let db = fresh_db(&spec, c.name);
+        let (db, _scratch) = fresh_db(&spec, c.name);
         let f = &c.fields;
         let s = |k: &str| f.get(k).and_then(Value::as_str).map(str::to_string);
         let character_id = c.character_id.map(str::to_string);
@@ -917,7 +920,7 @@ fn chat_scenario_routes_match_oracle() {
         ),
     ];
     for (name, chat_id, body, dump) in &verb_cases {
-        let db = fresh_db(&spec, name);
+        let (db, _scratch) = fresh_db(&spec, name);
         let r = rt.block_on(chat_set_scenario(&db, chat_id, decode(chat_id, body)));
         let (status, out) = status_body(&r);
         let tables = dump.then(
@@ -938,7 +941,7 @@ fn chat_scenario_routes_match_oracle() {
             json!({ "generalScenarioPath": GENERAL_PATH }),
         ),
     ] {
-        let db = fresh_db(&spec, name);
+        let (db, _scratch) = fresh_db(&spec, name);
         rt.block_on(chat_set_scenario(&db, CHAT, decode(CHAT, &body)));
         let r = quilltap_core::services::markdown_transcript::chat_export_markdown(
             &db,
@@ -1048,7 +1051,7 @@ fn chat_update_surface_cannot_reach_scenario_text() {
         return;
     };
     let spec: Spec = serde_json::from_str(&raw).unwrap();
-    let db = fresh_db(&spec, "update_surface_guard");
+    let (db, _scratch) = fresh_db(&spec, "update_surface_guard");
     let before = dump_chat(&db, CHAT);
     let seeded = before
         .get("scenarioText")

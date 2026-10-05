@@ -33,7 +33,7 @@
 import * as fs from 'fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { mkdtempSync, mkdirSync, copyFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 function canonValue(v: unknown): unknown {
@@ -259,6 +259,7 @@ async function main(): Promise<void> {
     }
 
     await closeDatabase();
+    rmSync(scratch, { recursive: true, force: true });
   }
 
   fs.writeFileSync(outPath, lines.join('\n') + '\n');

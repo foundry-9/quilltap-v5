@@ -146,11 +146,14 @@ async fn vault_conv_search_matches_oracle() {
     ];
 
     // One shared fresh copy (the search is read-only on this surface).
-    let pid = std::process::id();
-    let main = std::env::temp_dir().join(format!("qt-vconv-{pid}-main.db"));
-    let mount = std::env::temp_dir().join(format!("qt-vconv-{pid}-mount.db"));
-    let _ = std::fs::remove_file(&main);
-    let _ = std::fs::remove_file(&mount);
+    // A scratch dir removed on drop — with the TRUNCATE-mode `-journal`
+    // files the writable opens leave beside each DB.
+    let scratch = tempfile::Builder::new()
+        .prefix("qt-vconv-")
+        .tempdir()
+        .expect("tempdir");
+    let main = scratch.path().join("main.db");
+    let mount = scratch.path().join("mount.db");
     std::fs::copy(fixtures_dir().join("episodic-recall-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("episodic-recall-mount.db"), &mount).unwrap();
     let db = Db::open(
@@ -345,8 +348,6 @@ async fn vault_conv_search_matches_oracle() {
     );
 
     drop(db);
-    let _ = std::fs::remove_file(&main);
-    let _ = std::fs::remove_file(&mount);
     println!(
         "vault_conv_search_equivalence: {} cases green",
         cases.len() + 4

@@ -705,11 +705,16 @@ async fn context_summary_service_tier3_matches_oracle() {
     }
 
     // Fresh copies so the shared seed fixtures stay pristine.
-    let pid = std::process::id();
-    let work_main = std::env::temp_dir().join(format!("qt-ctxsum-rust-{pid}.db"));
-    let work_mount = std::env::temp_dir().join(format!("qt-ctxsum-rust-mount-{pid}.db"));
-    let _ = std::fs::remove_file(&work_main);
-    let _ = std::fs::remove_file(&work_mount);
+    let work_main_dir = tempfile::Builder::new()
+        .prefix("qt-ctxsum-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work_main = work_main_dir.path().join("ctxsum-rust.db");
+    let work_mount_dir = tempfile::Builder::new()
+        .prefix("qt-ctxsum-rust-mount-")
+        .tempdir()
+        .expect("tempdir");
+    let work_mount = work_mount_dir.path().join("ctxsum-rust-mount.db");
     std::fs::copy(&fixture_main, &work_main).unwrap_or_else(|e| panic!("copy main: {e}"));
     std::fs::copy(&fixture_mount, &work_mount).unwrap_or_else(|e| panic!("copy mount: {e}"));
 
@@ -1062,8 +1067,6 @@ async fn context_summary_service_tier3_matches_oracle() {
     );
 
     drop(db);
-    let _ = std::fs::remove_file(&work_main);
-    let _ = std::fs::remove_file(&work_mount);
     let _ = std::fs::remove_file(&work_ll);
 
     let mut want: Vec<Value> = TABLES
@@ -1152,8 +1155,16 @@ async fn context_summary_service_tier3_matches_oracle() {
     // PRISTINE copy with `chat_settings` dropped, replaying the same canned
     // calls as `fold_queues_background` (same chat, same prompts).
     {
-        let err_main = std::env::temp_dir().join(format!("qt-ctxsum-rust-err-{pid}.db"));
-        let err_mount = std::env::temp_dir().join(format!("qt-ctxsum-rust-err-mount-{pid}.db"));
+        let err_main_dir = tempfile::Builder::new()
+            .prefix("qt-ctxsum-rust-err-")
+            .tempdir()
+            .expect("tempdir");
+        let err_main = err_main_dir.path().join("ctxsum-rust-err.db");
+        let err_mount_dir = tempfile::Builder::new()
+            .prefix("qt-ctxsum-rust-err-mount-")
+            .tempdir()
+            .expect("tempdir");
+        let err_mount = err_mount_dir.path().join("ctxsum-rust-err-mount.db");
         std::fs::copy(&fixture_main, &err_main).unwrap();
         std::fs::copy(&fixture_mount, &err_mount).unwrap();
         let err_db = Db::open(
@@ -1231,7 +1242,5 @@ async fn context_summary_service_tier3_matches_oracle() {
         assert!(hits[0].contains(" error="), "{}", hits[0]);
         assert!(!lines.iter().any(|l| l.contains(&generated)), "{lines:#?}");
         drop(err_db);
-        let _ = std::fs::remove_file(&err_main);
-        let _ = std::fs::remove_file(&err_mount);
     }
 }

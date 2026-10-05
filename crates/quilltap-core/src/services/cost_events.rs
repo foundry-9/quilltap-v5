@@ -240,23 +240,23 @@ mod log_context_tests {
     // fixture DB simply has no `chat_messages`.
 
     /// A main DB with NO `chat_messages` table — every `add_message` fails.
-    fn db_without_chat_messages() -> Db {
-        let dir = std::env::temp_dir().join(format!(
-            "qt-cost-events-log-{}-{}",
-            std::process::id(),
-            uuid::Uuid::new_v4()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        Db::open_main(
-            dir.join("main.db"),
+    /// The scratch dir rides out with the handle — bind it for the test's life.
+    fn db_without_chat_messages() -> (Db, tempfile::TempDir) {
+        let dir = tempfile::Builder::new()
+            .prefix("qt-cost-events-log-")
+            .tempdir()
+            .expect("tempdir");
+        let db = Db::open_main(
+            dir.path().join("main.db"),
             "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
         )
-        .unwrap()
+        .unwrap();
+        (db, dir)
     }
 
     #[test]
     fn a_failed_system_event_write_is_logged_with_v4s_keys() {
-        let db = db_without_chat_messages();
+        let (db, _scratch) = db_without_chat_messages();
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()

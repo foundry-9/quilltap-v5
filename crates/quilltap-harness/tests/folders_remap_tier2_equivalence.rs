@@ -159,9 +159,11 @@ fn folders_remap_tier2_matches_oracle() {
     let mut oracle: Value = serde_json::from_str(oracle_text.trim()).expect("parse oracle dump");
 
     // Fresh copy so the shared seed fixture stays pristine.
-    let work =
-        std::env::temp_dir().join(format!("qt-folders-remap-rust-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    let work_dir = tempfile::Builder::new()
+        .prefix("qt-folders-remap-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = work_dir.path().join("folders-remap-rust.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
     // Run the SAME op sequence through the Rust port, minting our own ids/ts.
@@ -240,8 +242,6 @@ fn folders_remap_tier2_matches_oracle() {
     let mut got = writer
         .dump_table_json("folders", "path")
         .expect("dump folders");
-
-    let _ = std::fs::remove_file(&work);
 
     // One normalization, applied to both dumps.
     normalize(&mut got, "rust");

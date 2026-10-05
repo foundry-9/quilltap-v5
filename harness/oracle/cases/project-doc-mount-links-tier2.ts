@@ -33,6 +33,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import {
   mkdtempSync,
+  rmSync,
   mkdirSync,
   readFileSync,
   copyFileSync,
@@ -67,6 +68,7 @@ async function main(): Promise<void> {
 
   // Work on a fresh copy of the mount-index fixture so the shared seed stays pristine.
   const scratch = mkdtempSync(join(tmpdir(), 'qt-pdml-oracle-'));
+  process.on('exit', () => rmSync(scratch, { recursive: true, force: true }));
   mkdirSync(join(scratch, 'data'), { recursive: true });
   const work = join(scratch, 'pdml-mount-index-work.db');
   copyFileSync(fixture, work);

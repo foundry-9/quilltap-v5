@@ -238,20 +238,22 @@ fn status_body(r: &Response) -> (u16, Value) {
     }
 }
 
-fn fresh_db(spec: &Spec, tag: &str) -> Db {
+fn fresh_db(spec: &Spec, tag: &str) -> ScratchDb {
     fresh_db_inner(spec, tag, false)
 }
 
 /// The at-cadence resolve's variant: also copies the committed EMPTY llm-logs
 /// partition so the fold + episode SUMMARIZATION rows land somewhere diffable.
-fn fresh_db_with_llm_logs(spec: &Spec, tag: &str) -> Db {
+fn fresh_db_with_llm_logs(spec: &Spec, tag: &str) -> ScratchDb {
     fresh_db_inner(spec, tag, true)
 }
 
-fn fresh_db_inner(spec: &Spec, tag: &str, llm_logs: bool) -> Db {
-    let scratch = std::env::temp_dir().join(format!("qt-ci-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
+fn fresh_db_inner(spec: &Spec, tag: &str, llm_logs: bool) -> ScratchDb {
+    let scratch_dir = tempfile::Builder::new()
+        .prefix(&format!("qt-ci-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let scratch = scratch_dir.path().to_path_buf();
     let main = scratch.join("main.db");
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("courier-images-main.db"), &main).unwrap();
@@ -271,7 +273,7 @@ fn fresh_db_inner(spec: &Spec, tag: &str, llm_logs: bool) -> Db {
         let w = quilltap_core::db::Writer::open_writable(&main, &spec.test_pepper_base64).unwrap();
         quilltap_core::test_support::ensure_p4d171_columns(w.connection());
     }
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
@@ -279,7 +281,26 @@ fn fresh_db_inner(spec: &Spec, tag: &str, llm_logs: bool) -> Db {
         },
         &spec.test_pepper_base64,
     )
-    .expect("open db")
+    .expect("open db");
+    ScratchDb {
+        db,
+        _dir: scratch_dir,
+    }
+}
+
+/// A scratch [`Db`] plus the temp dir holding its files: the dir (and every
+/// file SQLite wrote beside them) is removed when this drops. Derefs to the
+/// `Db`, so call sites read exactly as before.
+struct ScratchDb {
+    db: Db,
+    _dir: tempfile::TempDir,
+}
+
+impl std::ops::Deref for ScratchDb {
+    type Target = Db;
+    fn deref(&self) -> &Db {
+        &self.db
+    }
 }
 
 /// The persisted message row (or null) + the chat's settle flags, mirroring the

@@ -146,15 +146,17 @@ fn env_or_skip(key: &str) -> Option<String> {
     }
 }
 
-fn fresh_db(spec: &Spec, tag: &str) -> Db {
-    let scratch = std::env::temp_dir().join(format!("qt-cast-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
+fn fresh_db(spec: &Spec, tag: &str) -> (Db, tempfile::TempDir) {
+    let scratch_dir = tempfile::Builder::new()
+        .prefix(&format!("qt-cast-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let scratch = scratch_dir.path();
     let main = scratch.join("main.db");
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("chat-cast-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("chat-cast-mount.db"), &mount).unwrap();
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
@@ -162,7 +164,8 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
         },
         &spec.test_pepper_base64,
     )
-    .expect("open db")
+    .expect("open db");
+    (db, scratch_dir)
 }
 
 // ---------------------------------------------------------------------------
@@ -684,7 +687,7 @@ fn chat_cast_routes_match_oracle() {
 
         // ── ?action=add-participant ───────────────────────────────────────
         let mut add = |tag: &str, name: &str, chat: &str, bag: Value, dump: bool| {
-            let db = fresh_db(&spec, tag);
+            let (db, _scratch) = fresh_db(&spec, tag);
             let data = add_data(bag);
             let r = rt.block_on(chat_cast::chat_add_participant(
                 &db,
@@ -854,7 +857,7 @@ fn chat_cast_routes_match_oracle() {
         // The planted arms (the oracle's `plantedAddCase` — each plant mirrors
         // the oracle's repository write; see `plant`).
         let mut planted = |tag: &str, name: &str, chat: &str, plants: &[Plant], bag: Value| {
-            let db = fresh_db(&spec, tag);
+            let (db, _scratch) = fresh_db(&spec, tag);
             for p in plants {
                 rt.block_on(plant(&db, &spec, *p));
             }
@@ -918,7 +921,7 @@ fn chat_cast_routes_match_oracle() {
 
         // ── ?action=update-participant ────────────────────────────────────
         let mut upd = |tag: &str, name: &str, chat: &str, bag: Value, dump: bool| {
-            let db = fresh_db(&spec, tag);
+            let (db, _scratch) = fresh_db(&spec, tag);
             let data = update_data(bag);
             let r = rt.block_on(chat_cast::chat_update_participant(&db, chat, &data));
             let tables = dump.then(|| cast_tables(&db, chat));
@@ -1156,7 +1159,7 @@ fn chat_cast_routes_match_oracle() {
                           seed: Option<(&str, Vec<&str>)>,
                           bag: Value,
                           dump: bool| {
-            let db = fresh_db(&spec, tag);
+            let (db, _scratch) = fresh_db(&spec, tag);
             if let Some((pid, ids)) = seed {
                 let (chat_s, pid_s, ids_v): (String, String, Vec<String>) = (
                     chat.to_string(),
@@ -1281,7 +1284,7 @@ fn chat_cast_routes_match_oracle() {
 
         // ── ?action=remove-participant ────────────────────────────────────
         let mut rem = |tag: &str, name: &str, chat: &str, participant: &str, dump: bool| {
-            let db = fresh_db(&spec, tag);
+            let (db, _scratch) = fresh_db(&spec, tag);
             let r = rt.block_on(chat_cast::chat_remove_participant(&db, chat, participant));
             let tables = dump.then(|| cast_tables(&db, chat));
             check(name, &r, tables);
@@ -1319,7 +1322,7 @@ fn chat_cast_routes_match_oracle() {
 
         // ── ?action=rebuild-system-prompt ─────────────────────────────────
         let mut rb = |tag: &str, name: &str, chat: &str, participant: &str, dump: bool| {
-            let db = fresh_db(&spec, tag);
+            let (db, _scratch) = fresh_db(&spec, tag);
             let r = rt.block_on(chat_cast::chat_rebuild_system_prompt(
                 &db,
                 chat,
@@ -1342,17 +1345,17 @@ fn chat_cast_routes_match_oracle() {
 
         // ── the avatar-override family ────────────────────────────────────
         {
-            let db = fresh_db(&spec, "v1");
+            let (db, _scratch) = fresh_db(&spec, "v1");
             let r = chat_cast::chat_get_avatars(&db, &spec.user_id, &chat_main);
             check("get_avatars", &r, None);
         }
         {
-            let db = fresh_db(&spec, "v2");
+            let (db, _scratch) = fresh_db(&spec, "v2");
             let r = chat_cast::chat_get_avatars(&db, &spec.user_id, &missing);
             check("get_avatars_chat_missing", &r, None);
         }
         let mut set_avatar = |tag: &str, name: &str, character: &str, image: &str, dump: bool| {
-            let db = fresh_db(&spec, tag);
+            let (db, _scratch) = fresh_db(&spec, tag);
             let r = rt.block_on(chat_cast::chat_set_avatar(
                 &db, &chat_main, character, image,
             ));
@@ -1376,7 +1379,7 @@ fn chat_cast_routes_match_oracle() {
             false,
         );
         let mut remove_avatar = |tag: &str, name: &str, character: &str, dump: bool| {
-            let db = fresh_db(&spec, tag);
+            let (db, _scratch) = fresh_db(&spec, tag);
             let r = rt.block_on(chat_cast::chat_remove_avatar(&db, &chat_main, character));
             let tables = dump.then(|| json!({ "overrides": dump_avatar_overrides(&db) }));
             check(name, &r, tables);
@@ -1385,7 +1388,7 @@ fn chat_cast_routes_match_oracle() {
         remove_avatar("v8", "remove_avatar_no_override", &id("dora"), true);
         remove_avatar("v9", "remove_avatar_character_missing", &missing, false);
         let mut toggle = |tag: &str, name: &str, chat: &str, dump: bool| {
-            let db = fresh_db(&spec, tag);
+            let (db, _scratch) = fresh_db(&spec, tag);
             let r = rt.block_on(chat_cast::chat_toggle_avatar_generation(
                 &db,
                 &spec.user_id,
@@ -1413,7 +1416,7 @@ fn chat_cast_routes_match_oracle() {
                        add: Option<Value>,
                        rm: Option<&str>,
                        dump: bool| {
-            let db = fresh_db(&spec, tag);
+            let (db, _scratch) = fresh_db(&spec, tag);
             let r = rt.block_on(salon::chat_update(
                 &db,
                 &spec.user_id,
@@ -1623,7 +1626,7 @@ fn captured_add(
     bag: Value,
 ) -> (Response, Vec<String>, Value) {
     let spec = load_spec();
-    let db = fresh_db(&spec, tag);
+    let (db, _scratch) = fresh_db(&spec, tag);
     let chat = spec.ids[chat_key].clone();
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -1774,7 +1777,7 @@ fn a_poisoned_trigger_cannot_fail_the_join() {
     // success. v4's own join WARN is unreachable outside a mock and is not
     // ported (see `refresh_avatar_for_arriving_character`).
     let spec = load_spec();
-    let db = fresh_db(&spec, "log5");
+    let (db, _scratch) = fresh_db(&spec, "log5");
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -1817,7 +1820,7 @@ fn an_override_profile_that_is_gone_warns_and_falls_back() {
         trigger_avatar_generation, AvatarGenerationParams, AvatarGenerationResult,
     };
     let spec = load_spec();
-    let db = fresh_db(&spec, "log6");
+    let (db, _scratch) = fresh_db(&spec, "log6");
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -1870,13 +1873,15 @@ fn an_override_profile_that_is_gone_warns_and_falls_back() {
 /// A `Db` over the cast fixture's main partition ONLY: every mount-index read
 /// answers `PartitionUnavailable`, which is what makes the default-outfit
 /// resolve fail (the join's outfit-failure arms).
-fn main_only_db(spec: &Spec, tag: &str) -> Db {
-    let scratch = std::env::temp_dir().join(format!("qt-cast-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
+fn main_only_db(spec: &Spec, tag: &str) -> (Db, tempfile::TempDir) {
+    let scratch_dir = tempfile::Builder::new()
+        .prefix(&format!("qt-cast-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let scratch = scratch_dir.path();
     let main = scratch.join("main.db");
     std::fs::copy(fixtures_dir().join("chat-cast-main.db"), &main).unwrap();
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main,
             mount_index: None,
@@ -1884,7 +1889,8 @@ fn main_only_db(spec: &Spec, tag: &str) -> Db {
         },
         &spec.test_pepper_base64,
     )
-    .expect("open main-only db")
+    .expect("open main-only db");
+    (db, scratch_dir)
 }
 
 #[test]
@@ -1903,7 +1909,7 @@ fn the_outfit_failure_line_is_error_with_mode_on_both_arms() {
     let character = spec.ids["dora"].clone();
 
     for (tag, mode) in [("of-default", "default"), ("of-llm", "llm_choose")] {
-        let db = main_only_db(&spec, tag);
+        let (db, _scratch) = main_only_db(&spec, tag);
         let selection = json!({ "characterId": character, "mode": mode });
         let ((), lines) = quilltap_core::test_support::captured_with(|| {
             rt.block_on(
@@ -1930,7 +1936,7 @@ fn the_outfit_failure_line_is_error_with_mode_on_both_arms() {
     }
 
     // Silence leg: a working default resolve logs no failure line at all.
-    let db = fresh_db(&spec, "of-quiet");
+    let (db, _scratch) = fresh_db(&spec, "of-quiet");
     let selection = json!({ "characterId": character, "mode": "default" });
     let ((), lines) = quilltap_core::test_support::captured_with(|| {
         rt.block_on(

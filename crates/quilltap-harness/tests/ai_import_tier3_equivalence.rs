@@ -386,12 +386,13 @@ impl GeneratorsWizardDriver for TestDriver {
     }
 }
 
-fn fresh_pair(spec: &Spec, tag: &str) -> (Db, PathBuf) {
-    let scratch = std::env::temp_dir().join(format!("qt-imp-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
-    let main = scratch.join("main.db");
-    let mount = scratch.join("mount.db");
+fn fresh_pair(spec: &Spec, tag: &str) -> (Db, tempfile::TempDir) {
+    let scratch = tempfile::Builder::new()
+        .prefix(&format!("qt-imp-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let main = scratch.path().join("main.db");
+    let mount = scratch.path().join("mount.db");
     std::fs::copy(fixtures_dir().join("character-generators-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("character-generators-mount.db"), &mount).unwrap();
     // A fresh llm-logs partition per case (the §3 unification review of the
@@ -400,7 +401,7 @@ fn fresh_pair(spec: &Spec, tag: &str) -> (Db, PathBuf) {
     // arguments — which is impossible with the `None` this family used to
     // pass (the v5 leg was a harness-side derivation from the scripted
     // provider, so it never observed the port). P4.85's shape.
-    let llm_logs = scratch.join("llmlogs.db");
+    let llm_logs = scratch.path().join("llmlogs.db");
     common::materialize_llm_logs(&llm_logs, &spec.test_pepper_base64);
     let db = Db::open(
         DbPaths {
@@ -839,7 +840,7 @@ fn run_case(spec: &Spec, corpus: &Corpus, c: &Case) -> Value {
 
     drop(driver);
     drop(db);
-    let _ = std::fs::remove_dir_all(&scratch);
+    drop(scratch);
     json!({
         "name": c.name,
         "status": status,

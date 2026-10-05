@@ -115,11 +115,16 @@ fn metadata_vault_roundtrip_matches_oracle() {
     .expect("parse oracle");
 
     // Fresh copies so the shared baked fixtures stay pristine.
-    let pid = std::process::id();
-    let main_work = std::env::temp_dir().join(format!("qt-metaroundtrip-main-{pid}.db"));
-    let mount_work = std::env::temp_dir().join(format!("qt-metaroundtrip-mount-{pid}.db"));
-    let _ = std::fs::remove_file(&main_work);
-    let _ = std::fs::remove_file(&mount_work);
+    let main_work_scratch = tempfile::Builder::new()
+        .prefix("qt-metaroundtrip-main-")
+        .tempdir()
+        .expect("tempdir");
+    let main_work = main_work_scratch.path().join("main_work.db");
+    let mount_work_scratch = tempfile::Builder::new()
+        .prefix("qt-metaroundtrip-mount-")
+        .tempdir()
+        .expect("tempdir");
+    let mount_work = mount_work_scratch.path().join("mount_work.db");
     std::fs::copy(&main_fixture, &main_work).unwrap_or_else(|e| panic!("copy main: {e}"));
     std::fs::copy(&mount_fixture, &mount_work).unwrap_or_else(|e| panic!("copy mount: {e}"));
 
@@ -173,9 +178,6 @@ fn metadata_vault_roundtrip_matches_oracle() {
             file_content,
         });
     }
-
-    let _ = std::fs::remove_file(&main_work);
-    let _ = std::fs::remove_file(&mount_work);
 
     assert_eq!(
         got.len(),

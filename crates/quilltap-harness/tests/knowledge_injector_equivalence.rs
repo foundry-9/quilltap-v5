@@ -131,11 +131,11 @@ async fn knowledge_injector_matches_oracle() {
         std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("read oracle: {e}"));
 
     // Fresh copy so the shared fixture stays pristine.
-    let work = std::env::temp_dir().join(format!(
-        "qt-knowledge-injector-rust-{}.db",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_file(&work);
+    let work_scratch = tempfile::Builder::new()
+        .prefix("qt-knowledge-injector-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = work_scratch.path().join("work.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
     let mut provider = CannedEmbeddingProvider::new();
@@ -217,6 +217,5 @@ async fn knowledge_injector_matches_oracle() {
     }
 
     drop(db);
-    let _ = std::fs::remove_file(&work);
     eprintln!("OK: knowledge-injector read-differential matched oracle.");
 }

@@ -165,16 +165,17 @@ fn http_for(kind: ErrorKind) -> i64 {
 }
 
 /// Open a fresh Db over a copy of the committed fixture.
-fn fresh_db(spec: &Spec, tag: &str) -> Db {
-    let scratch =
-        std::env::temp_dir().join(format!("qt-char-actions-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
+fn fresh_db(spec: &Spec, tag: &str) -> (Db, tempfile::TempDir) {
+    let scratch_dir = tempfile::Builder::new()
+        .prefix(&format!("qt-char-actions-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let scratch = scratch_dir.path();
     let main = scratch.join("main.db");
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("characters-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("characters-mount.db"), &mount).unwrap();
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
@@ -182,7 +183,8 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
         },
         &spec.test_pepper_base64,
     )
-    .expect("open db")
+    .expect("open db");
+    (db, scratch_dir)
 }
 
 #[test]
@@ -243,22 +245,22 @@ fn characters_actions_match_oracle() {
     };
 
     {
-        let db = fresh_db(&spec, "favorite");
+        let (db, _scratch) = fresh_db(&spec, "favorite");
         let r = rt.block_on(characters::character_favorite(&db, &uid, ARIA));
         run_success("favorite", r, &db);
     }
     {
-        let db = fresh_db(&spec, "tcb");
+        let (db, _scratch) = fresh_db(&spec, "tcb");
         let r = rt.block_on(characters::character_toggle_controlled_by(&db, &uid, ARIA));
         run_success("toggle_controlled_by", r, &db);
     }
     {
-        let db = fresh_db(&spec, "tc");
+        let (db, _scratch) = fresh_db(&spec, "tc");
         let r = rt.block_on(characters::character_toggle_carina(&db, &uid, ARIA));
         run_success("toggle_carina", r, &db);
     }
     {
-        let db = fresh_db(&spec, "spv");
+        let (db, _scratch) = fresh_db(&spec, "spv");
         let r = rt.block_on(characters::character_set_default_partner(
             &db,
             &uid,
@@ -268,29 +270,29 @@ fn characters_actions_match_oracle() {
         run_success("set_partner_valid", r, &db);
     }
     {
-        let db = fresh_db(&spec, "spc");
+        let (db, _scratch) = fresh_db(&spec, "spc");
         let r = rt.block_on(characters::character_set_default_partner(
             &db, &uid, ARIA, None,
         ));
         run_success("set_partner_clear", r, &db);
     }
     {
-        let db = fresh_db(&spec, "avset");
+        let (db, _scratch) = fresh_db(&spec, "avset");
         let r = rt.block_on(characters::character_avatar(&db, &uid, ARIA, Some(DAX_IMG)));
         run_success("avatar_set", r, &db);
     }
     {
-        let db = fresh_db(&spec, "avclr");
+        let (db, _scratch) = fresh_db(&spec, "avclr");
         let r = rt.block_on(characters::character_avatar(&db, &uid, ARIA, None));
         run_success("avatar_clear", r, &db);
     }
     {
-        let db = fresh_db(&spec, "addtag");
+        let (db, _scratch) = fresh_db(&spec, "addtag");
         let r = rt.block_on(characters::character_add_tag(&db, &uid, ARIA, TAG_MYSTERY));
         run_success("add_tag", r, &db);
     }
     {
-        let db = fresh_db(&spec, "rmtag");
+        let (db, _scratch) = fresh_db(&spec, "rmtag");
         let r = rt.block_on(characters::character_remove_tag(
             &db,
             &uid,
@@ -328,7 +330,7 @@ fn characters_actions_match_oracle() {
     };
 
     {
-        let db = fresh_db(&spec, "llm_fail");
+        let (db, _scratch) = fresh_db(&spec, "llm_fail");
         let resp = rt.block_on(characters::character_set_default_partner(
             &db,
             &uid,
@@ -338,7 +340,7 @@ fn characters_actions_match_oracle() {
         run_error("set_partner_llm_fail", resp);
     }
     {
-        let db = fresh_db(&spec, "self_fail");
+        let (db, _scratch) = fresh_db(&spec, "self_fail");
         let resp = rt.block_on(characters::character_set_default_partner(
             &db,
             &uid,

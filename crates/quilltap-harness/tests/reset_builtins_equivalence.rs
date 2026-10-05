@@ -127,11 +127,14 @@ fn reset_builtins_tier2_matches_oracle() {
     )
     .expect("parse oracle");
 
-    let pid = std::process::id();
-    let main_work = std::env::temp_dir().join(format!("qt-reset-main-{pid}.db"));
-    let mount_work = std::env::temp_dir().join(format!("qt-reset-mount-{pid}.db"));
-    let _ = std::fs::remove_file(&main_work);
-    let _ = std::fs::remove_file(&mount_work);
+    // A scratch dir removed on drop — it also takes the TRUNCATE-mode
+    // `-journal` files the writable opens leave beside each DB.
+    let scratch = tempfile::Builder::new()
+        .prefix("qt-reset-")
+        .tempdir()
+        .expect("tempdir");
+    let main_work = scratch.path().join("main.db");
+    let mount_work = scratch.path().join("mount.db");
     std::fs::copy(&main_fixture, &main_work).expect("copy main");
     std::fs::copy(&mount_fixture, &mount_work).expect("copy mount");
 
@@ -261,7 +264,5 @@ fn reset_builtins_tier2_matches_oracle() {
         );
     }
 
-    let _ = std::fs::remove_file(&main_work);
-    let _ = std::fs::remove_file(&mount_work);
     eprintln!("OK: reset_builtins matched oracle (result shape + post-state chars/memories).");
 }

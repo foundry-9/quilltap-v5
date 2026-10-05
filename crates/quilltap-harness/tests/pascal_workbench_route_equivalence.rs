@@ -87,14 +87,28 @@ fn corpus_path() -> PathBuf {
         .join("../../harness/oracle/fixtures/workbench-route-cases.json")
 }
 
-fn open(case: &str, profile: bool) -> Db {
-    let scratch =
-        std::env::temp_dir().join(format!("qt-workbench-route-{}-{case}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
-    let main = scratch.join("main.db");
-    let mount = scratch.join("mount.db");
-    let llm_logs = scratch.join("llm-logs.db");
+/// A fresh Db over a private scratch dir; the dir is deleted when this drops
+/// (the `Db` field drops first).
+struct ScratchDb {
+    db: Db,
+    _dir: tempfile::TempDir,
+}
+
+impl std::ops::Deref for ScratchDb {
+    type Target = Db;
+    fn deref(&self) -> &Db {
+        &self.db
+    }
+}
+
+fn open(case: &str, profile: bool) -> ScratchDb {
+    let scratch = tempfile::Builder::new()
+        .prefix(&format!("qt-workbench-route-{case}-"))
+        .tempdir()
+        .expect("tempdir");
+    let main = scratch.path().join("main.db");
+    let mount = scratch.path().join("mount.db");
+    let llm_logs = scratch.path().join("llm-logs.db");
     std::fs::copy(fixtures_dir().join("workbench-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("workbench-mount.db"), &mount).unwrap();
     // A fresh llm-logs partition per case (P4.6bd): the live consult's
@@ -103,7 +117,7 @@ fn open(case: &str, profile: bool) -> Db {
     if profile {
         insert_consult_profile(&main);
     }
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
@@ -111,7 +125,8 @@ fn open(case: &str, profile: bool) -> Db {
         },
         PEPPER,
     )
-    .expect("open db")
+    .expect("open db");
+    ScratchDb { db, _dir: scratch }
 }
 
 /// The one profile a `profile: true` case inserts — field-for-field the

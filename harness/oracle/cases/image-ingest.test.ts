@@ -42,7 +42,7 @@
 import * as fs from 'fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { mkdtempSync, mkdirSync, copyFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 interface SpecOp {
@@ -243,6 +243,7 @@ describe('image-ingest oracle', () => {
     await closeDatabase();
 
     fs.writeFileSync(outPath, lines.join('\n') + '\n');
+    rmSync(scratch, { recursive: true, force: true });
     expect(lines.length).toBe(spec.ops.length + 1);
   });
 });

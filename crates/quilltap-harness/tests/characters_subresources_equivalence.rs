@@ -107,16 +107,17 @@ fn response_data(r: &Response) -> Value {
         .unwrap_or(Value::Null)
 }
 
-fn fresh_db(spec: &Spec, tag: &str) -> Db {
-    let scratch =
-        std::env::temp_dir().join(format!("qt-char-subres-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
+fn fresh_db(spec: &Spec, tag: &str) -> (Db, tempfile::TempDir) {
+    let scratch_dir = tempfile::Builder::new()
+        .prefix(&format!("qt-char-subres-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let scratch = scratch_dir.path();
     let main = scratch.join("main.db");
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("characters-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("characters-mount.db"), &mount).unwrap();
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
@@ -124,7 +125,8 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
         },
         &spec.test_pepper_base64,
     )
-    .expect("open db")
+    .expect("open db");
+    (db, scratch_dir)
 }
 
 /// Resolve a baked sub-item id by name off Aria's overlaid character.
@@ -209,7 +211,7 @@ fn characters_subresources_match_oracle() {
     };
 
     {
-        let db = fresh_db(&spec, "pc");
+        let (db, _scratch) = fresh_db(&spec, "pc");
         let r = rt.block_on(characters::character_prompt_create(
             &db,
             &uid,
@@ -221,7 +223,7 @@ fn characters_subresources_match_oracle() {
         check("prompt_create", r, &mut failed);
     }
     {
-        let db = fresh_db(&spec, "pu");
+        let (db, _scratch) = fresh_db(&spec, "pu");
         let id = resolve_sub_id(&db, "systemPrompts", "name", "Backup");
         let r = rt.block_on(characters::character_prompt_update(
             &db,
@@ -235,7 +237,7 @@ fn characters_subresources_match_oracle() {
         check("prompt_update", r, &mut failed);
     }
     {
-        let db = fresh_db(&spec, "pd");
+        let (db, _scratch) = fresh_db(&spec, "pd");
         let id = resolve_sub_id(&db, "systemPrompts", "name", "Backup");
         let r = rt.block_on(characters::character_prompt_delete(&db, &uid, ARIA, &id));
         check("prompt_delete", r, &mut failed);
@@ -247,7 +249,7 @@ fn characters_subresources_match_oracle() {
         // is the readback: promoting `Backup` via `{isDefault: true}` moves the
         // COLUMN onto it as well as the flags. INPUTS identical to
         // `characters-subresources.test.ts`'s `prompt_update_promotes`.
-        let db = fresh_db(&spec, "pup");
+        let (db, _scratch) = fresh_db(&spec, "pup");
         let id = resolve_sub_id(&db, "systemPrompts", "name", "Backup");
         let r = rt.block_on(characters::character_prompt_update(
             &db,
@@ -300,7 +302,7 @@ fn characters_subresources_match_oracle() {
         }
     }
     {
-        let db = fresh_db(&spec, "sc");
+        let (db, _scratch) = fresh_db(&spec, "sc");
         let r = rt.block_on(characters::character_scenario_create(
             &db,
             &uid,
@@ -312,7 +314,7 @@ fn characters_subresources_match_oracle() {
         check("scenario_create", r, &mut failed);
     }
     {
-        let db = fresh_db(&spec, "su");
+        let (db, _scratch) = fresh_db(&spec, "su");
         let id = resolve_sub_id(&db, "scenarios", "title", "Prologue");
         let r = rt.block_on(characters::character_scenario_update(
             &db,
@@ -326,13 +328,13 @@ fn characters_subresources_match_oracle() {
         check("scenario_update", r, &mut failed);
     }
     {
-        let db = fresh_db(&spec, "sd");
+        let (db, _scratch) = fresh_db(&spec, "sd");
         let id = resolve_sub_id(&db, "scenarios", "title", "Interlude");
         let r = rt.block_on(characters::character_scenario_delete(&db, &uid, ARIA, &id));
         check("scenario_delete", r, &mut failed);
     }
     {
-        let db = fresh_db(&spec, "pue");
+        let (db, _scratch) = fresh_db(&spec, "pue");
         let r = rt.block_on(characters::character_plugin_data_upsert(
             &db,
             &uid,
@@ -343,7 +345,7 @@ fn characters_subresources_match_oracle() {
         check("plugin_upsert_existing", r, &mut failed);
     }
     {
-        let db = fresh_db(&spec, "pun");
+        let (db, _scratch) = fresh_db(&spec, "pun");
         let r = rt.block_on(characters::character_plugin_data_upsert(
             &db,
             &uid,
@@ -354,7 +356,7 @@ fn characters_subresources_match_oracle() {
         check("plugin_upsert_new", r, &mut failed);
     }
     {
-        let db = fresh_db(&spec, "pdel");
+        let (db, _scratch) = fresh_db(&spec, "pdel");
         let r = rt.block_on(characters::character_plugin_data_delete(
             &db,
             &uid,
@@ -372,7 +374,7 @@ fn characters_subresources_match_oracle() {
     // and v4's `updateScenario` genuinely DOES echo `archived: false` on a
     // restore (measured, not reasoned about).
     {
-        let db = fresh_db(&spec, "sc_arch");
+        let (db, _scratch) = fresh_db(&spec, "sc_arch");
         let r = rt.block_on(characters::character_scenario_create(
             &db,
             &uid,
@@ -384,7 +386,7 @@ fn characters_subresources_match_oracle() {
         check("scenario_create_archived", r, &mut failed);
     }
     {
-        let db = fresh_db(&spec, "sc_act");
+        let (db, _scratch) = fresh_db(&spec, "sc_act");
         let r = rt.block_on(characters::character_scenario_create(
             &db,
             &uid,
@@ -421,7 +423,7 @@ fn characters_subresources_match_oracle() {
             Some("Untouched flag."),
         ),
     ] {
-        let db = fresh_db(&spec, tag);
+        let (db, _scratch) = fresh_db(&spec, tag);
         let id = resolve_sub_id(&db, "scenarios", "title", "Prologue");
         if let Some(pre) = pre_archived {
             let _ = rt.block_on(characters::character_scenario_update(
@@ -446,7 +448,7 @@ fn characters_subresources_match_oracle() {
     // Option is what lets the Rust side even EXPRESS this arm (a plain
     // `Option<bool>` collapses null into "absent" and silently preserves).
     {
-        let db = fresh_db(&spec, "sc_null");
+        let (db, _scratch) = fresh_db(&spec, "sc_null");
         let r = rt.block_on(characters::character_scenario_create(
             &db,
             &uid,
@@ -458,7 +460,7 @@ fn characters_subresources_match_oracle() {
         check("scenario_create_null_archived", r, &mut failed);
     }
     {
-        let db = fresh_db(&spec, "su_null");
+        let (db, _scratch) = fresh_db(&spec, "su_null");
         let id = resolve_sub_id(&db, "scenarios", "title", "Prologue");
         let r = rt.block_on(characters::character_scenario_update(
             &db,
@@ -483,7 +485,7 @@ fn characters_subresources_match_oracle() {
     // timestamps (minted by the document write) are blanked. The round trip:
     // the returned id must be LISTED in the character's readback, on both sides.
     {
-        let db = fresh_db(&spec, "sc_proj");
+        let (db, _scratch) = fresh_db(&spec, "sc_proj");
         let r = rt.block_on(characters::character_scenario_create(
             &db,
             &uid,

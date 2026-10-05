@@ -278,8 +278,11 @@ fn conversation_chunks_tier2_matches_oracle() {
     let mut oracle = oracle.expect("oracle emitted no dump line — regenerate");
 
     // Work on a fresh copy of the seed fixture so the shared file stays pristine.
-    let work = std::env::temp_dir().join(format!("qt-cc-rust-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    let work_dir = tempfile::Builder::new()
+        .prefix("qt-cc-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = work_dir.path().join("cc-rust.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
     // Run the SAME op sequence through the Rust port.
@@ -356,8 +359,6 @@ fn conversation_chunks_tier2_matches_oracle() {
     let mut got = writer
         .dump_table_json("conversation_chunks", "id")
         .expect("dump conversation_chunks");
-
-    let _ = std::fs::remove_file(&work);
 
     normalize(&mut got, "rust", &pinned);
     normalize(&mut oracle, "oracle", &pinned);

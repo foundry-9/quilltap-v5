@@ -58,7 +58,7 @@
 import * as fs from 'fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { mkdtempSync, mkdirSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import type { z } from 'zod';
 
@@ -107,6 +107,7 @@ async function main(): Promise<void> {
   }
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-sd-migrate-'));
+  process.on('exit', () => rmSync(scratch, { recursive: true, force: true }));
   mkdirSync(join(scratch, 'data'), { recursive: true });
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
   process.env.SQLITE_PATH = mainOut;

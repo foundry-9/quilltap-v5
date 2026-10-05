@@ -230,11 +230,12 @@ fn characters_provision_tier2_matches_oracle() {
     )
     .expect("parse oracle dump");
 
-    let pid = std::process::id();
-    let main_work = std::env::temp_dir().join(format!("qt-charprov-main-rust-{pid}.db"));
-    let mount_work = std::env::temp_dir().join(format!("qt-charprov-mount-rust-{pid}.db"));
-    let _ = std::fs::remove_file(&main_work);
-    let _ = std::fs::remove_file(&mount_work);
+    let scratch_dir = tempfile::Builder::new()
+        .prefix("qt-charprov-")
+        .tempdir()
+        .expect("tempdir");
+    let main_work = scratch_dir.path().join("qt-charprov-main-rust.db");
+    let mount_work = scratch_dir.path().join("qt-charprov-mount-rust.db");
     std::fs::copy(&main_fixture, &main_work).unwrap_or_else(|e| panic!("copy main: {e}"));
     std::fs::copy(&mount_fixture, &mount_work).unwrap_or_else(|e| panic!("copy mount: {e}"));
 

@@ -238,11 +238,11 @@ fn run_venue(venue: &str, fixture: &str, spec: &Spec, oracle: &Oracle) {
         "oracle line out of step with the venue"
     );
 
-    let work = std::env::temp_dir().join(format!(
-        "qt-chsearch-rust-{venue}-{}.db",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_file(&work);
+    let scratch_dir = tempfile::Builder::new()
+        .prefix(&format!("qt-chsearch-rust-{venue}-"))
+        .tempdir()
+        .expect("tempdir");
+    let work = scratch_dir.path().join("qt-chsearch-rust.db");
     std::fs::copy(fixture, &work).unwrap_or_else(|e| panic!("copy {venue} fixture: {e}"));
 
     let writer = Writer::open_writable(&work, &spec.test_pepper_base64)
@@ -427,11 +427,11 @@ fn run_poisoned(fixture: &str, spec: &Spec, oracle: &PoisonedOracle) {
         oracle.poisoned_reads.len(),
         "poisoned: read count: spec vs oracle"
     );
-    let work = std::env::temp_dir().join(format!(
-        "qt-chsearch-rust-poisoned-{}.db",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_file(&work);
+    let scratch_dir = tempfile::Builder::new()
+        .prefix("qt-chsearch-rust-poisoned-")
+        .tempdir()
+        .expect("tempdir");
+    let work = scratch_dir.path().join("qt-chsearch-rust-poisoned.db");
     std::fs::copy(fixture, &work).unwrap_or_else(|e| panic!("copy poisoned fixture: {e}"));
     let writer = Writer::open_writable(&work, &spec.test_pepper_base64)
         .unwrap_or_else(|e| panic!("open poisoned fixture copy: {e}"));

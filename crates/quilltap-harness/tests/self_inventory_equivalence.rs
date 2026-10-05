@@ -158,14 +158,15 @@ async fn self_inventory_matches_oracle() {
         .expect("oracle quilltapVersion")
         .to_string();
 
-    // Copy the three fixtures to a private working set.
-    let pid = std::process::id();
-    let work_main = std::env::temp_dir().join(format!("qt-selfinv-rust-main-{pid}.db"));
-    let work_mount = std::env::temp_dir().join(format!("qt-selfinv-rust-mount-{pid}.db"));
-    let work_llm = std::env::temp_dir().join(format!("qt-selfinv-rust-llm-{pid}.db"));
-    for w in [&work_main, &work_mount, &work_llm] {
-        let _ = std::fs::remove_file(w);
-    }
+    // Copy the three fixtures to a private working set (a scratch dir removed
+    // on drop).
+    let scratch = tempfile::Builder::new()
+        .prefix("qt-selfinv-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work_main = scratch.path().join("main.db");
+    let work_mount = scratch.path().join("mount.db");
+    let work_llm = scratch.path().join("llm.db");
     std::fs::copy(&fx_main, &work_main).unwrap_or_else(|e| panic!("copy main: {e}"));
     std::fs::copy(&fx_mount, &work_mount).unwrap_or_else(|e| panic!("copy mount: {e}"));
     std::fs::copy(&fx_llm, &work_llm).unwrap_or_else(|e| panic!("copy llm: {e}"));

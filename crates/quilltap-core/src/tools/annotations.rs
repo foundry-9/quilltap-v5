@@ -522,18 +522,31 @@ pub(crate) mod log_tests {
     pub(crate) const OTHER_CHAT: &str = "00000000-0000-4000-8000-0000000000c2";
     pub(crate) const NOW: &str = "2026-09-28T12:00:00.000Z";
 
+    /// The fixture `Db` plus the scratch dir it lives in; the dir is removed
+    /// when this drops (the `Db` field drops first). Derefs to `Db`, so the
+    /// sharing tests' `&db` call sites are unchanged.
+    pub(crate) struct ScratchDb {
+        db: Db,
+        _dir: tempfile::TempDir,
+    }
+
+    impl std::ops::Deref for ScratchDb {
+        type Target = Db;
+        fn deref(&self) -> &Db {
+            &self.db
+        }
+    }
+
     /// A fresh-schema main DB: Friday, a two-message chat she sits in, and a
     /// chat she does not.
-    pub(crate) fn db() -> Db {
+    pub(crate) fn db() -> ScratchDb {
         install();
-        let dir = std::env::temp_dir().join(format!(
-            "qt-scriptorium-tools-{}-{}",
-            std::process::id(),
-            uuid::Uuid::new_v4()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = tempfile::Builder::new()
+            .prefix("qt-scriptorium-tools-")
+            .tempdir()
+            .expect("tempdir");
         let db = Db::open_main(
-            dir.join("main.db"),
+            dir.path().join("main.db"),
             "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
         )
         .unwrap();
@@ -591,7 +604,7 @@ pub(crate) mod log_tests {
             Ok(())
         })
         .unwrap();
-        db
+        ScratchDb { db, _dir: dir }
     }
 
     pub(crate) fn drop_annotations(db: &Db) {

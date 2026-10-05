@@ -96,15 +96,30 @@ fn dump_memories(db: &Db) -> Value {
     .unwrap()
 }
 
-fn open_fresh(mode: &str) -> Db {
-    let scratch = std::env::temp_dir().join(format!("qt-dedup-{mode}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
-    let main = scratch.join("main.db");
-    let mount = scratch.join("mount.db");
+/// A fresh Db over a private scratch dir; the dir is deleted when this drops
+/// (the `Db` field drops first).
+struct ScratchDb {
+    db: Db,
+    _dir: tempfile::TempDir,
+}
+
+impl std::ops::Deref for ScratchDb {
+    type Target = Db;
+    fn deref(&self) -> &Db {
+        &self.db
+    }
+}
+
+fn open_fresh(mode: &str) -> ScratchDb {
+    let scratch = tempfile::Builder::new()
+        .prefix(&format!("qt-dedup-{mode}-"))
+        .tempdir()
+        .expect("tempdir");
+    let main = scratch.path().join("main.db");
+    let mount = scratch.path().join("mount.db");
     std::fs::copy(fixtures_dir().join("embedding-profiles-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("embedding-profiles-mount.db"), &mount).unwrap();
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
@@ -112,7 +127,8 @@ fn open_fresh(mode: &str) -> Db {
         },
         PEPPER,
     )
-    .expect("open db")
+    .expect("open db");
+    ScratchDb { db, _dir: scratch }
 }
 
 #[test]

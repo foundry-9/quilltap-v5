@@ -82,15 +82,18 @@ fn env_or_skip(key: &str) -> Option<String> {
     }
 }
 
-fn fresh_db(spec: &Spec, tag: &str) -> Db {
-    let scratch = std::env::temp_dir().join(format!("qt-sr-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
-    let main = scratch.join("main.db");
-    let mount = scratch.join("mount.db");
+/// A fixture copy in a scratch dir; the caller keeps the `TempDir` alive past
+/// the `Db` (dropping it removes the dir).
+fn fresh_db(spec: &Spec, tag: &str) -> (Db, tempfile::TempDir) {
+    let scratch = tempfile::Builder::new()
+        .prefix(&format!("qt-sr-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let main = scratch.path().join("main.db");
+    let mount = scratch.path().join("mount.db");
     std::fs::copy(fixtures_dir().join("chat-dialogs-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("chat-dialogs-mount.db"), &mount).unwrap();
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
@@ -98,7 +101,8 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
         },
         &spec.test_pepper_base64,
     )
-    .expect("open db")
+    .expect("open db");
+    (db, scratch)
 }
 
 /// P4.109's plant — byte-identical to the oracle case's.
@@ -529,7 +533,7 @@ fn search_replace_matches_oracle() {
 
     let log_buf = install_global_capture();
     for c in cases {
-        let db = fresh_db(&spec, c.name);
+        let (db, _scratch) = fresh_db(&spec, c.name);
         if c.poison {
             rt.block_on(db.write(|w| {
                 w.main().connection().execute_batch(POISON_SQL)?;

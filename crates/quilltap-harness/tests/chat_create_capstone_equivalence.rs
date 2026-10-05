@@ -700,10 +700,11 @@ fn chat_create_capstone_matches_oracle() {
             .unwrap_or_else(|| panic!("oracle missing case {}", c.name));
 
         // Fresh fixture copy.
-        let scratch =
-            std::env::temp_dir().join(format!("qt-cc-harness-{}-{}", std::process::id(), c.name));
-        let _ = std::fs::remove_dir_all(&scratch);
-        std::fs::create_dir_all(&scratch).expect("scratch");
+        let scratch_dir = tempfile::Builder::new()
+            .prefix(&format!("qt-cc-harness-{}-", c.name))
+            .tempdir()
+            .expect("scratch");
+        let scratch = scratch_dir.path();
         let main_work = scratch.join("main.db");
         let mount_work = scratch.join("mount.db");
         let llm_work = scratch.join("llm.db");
@@ -1029,7 +1030,7 @@ fn chat_create_capstone_matches_oracle() {
             drop(main_w);
             drop(mount_w);
             drop(llm_w);
-            let _ = std::fs::remove_dir_all(&scratch);
+            drop(scratch_dir);
             continue;
         }
 
@@ -1135,7 +1136,7 @@ fn chat_create_capstone_matches_oracle() {
         drop(main_w);
         drop(mount_w);
         drop(llm_w);
-        let _ = std::fs::remove_dir_all(&scratch);
+        drop(scratch_dir);
 
         // --- Compare each section independently (isolates the DTO-shape seam
         // from the load-bearing persisted-state + frame proofs). ---
@@ -1412,13 +1413,11 @@ fn p4_81_refused_create_emits_no_progress_frame() {
     )
     .expect("parse spec");
 
-    let scratch = std::env::temp_dir().join(format!(
-        "qt-cc-nowire-{}-{}",
-        std::process::id(),
-        "p4_81_refused_create_emits_no_progress_frame"
-    ));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).expect("scratch dir");
+    let scratch_dir = tempfile::Builder::new()
+        .prefix("qt-cc-nowire-p4_81_refused_create_emits_no_progress_frame-")
+        .tempdir()
+        .expect("scratch dir");
+    let scratch = scratch_dir.path().to_path_buf();
     // `ChatCreateSpine::run_create` opens the partitions by their LITERAL
     // filenames under `data_dir` (`spine.rs::open("quilltap.db")` etc.) — not
     // arbitrary paths, unlike the engine-level `Db::open` above.
@@ -1484,5 +1483,5 @@ fn p4_81_refused_create_emits_no_progress_frame() {
         }
     }
 
-    let _ = std::fs::remove_dir_all(&scratch);
+    drop(scratch_dir);
 }

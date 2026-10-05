@@ -90,6 +90,7 @@ async function main(): Promise<void> {
   if (!outPath) throw new Error('QT_ORACLE_OUT must point at the NDJSON file to write');
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-sbpool-oracle-'));
+  scratchDirs.push(scratch);
   mkdirSync(join(scratch, 'data'), { recursive: true });
 
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
@@ -228,4 +229,10 @@ async function main(): Promise<void> {
 
 test('scenario-builder mount-pool oracle', async () => {
   await main();
+});
+
+// Remove the OS-temp scratch dir(s) once the oracle has written its NDJSON.
+const scratchDirs: string[] = [];
+afterAll(() => {
+  for (const d of scratchDirs) rmSync(d, { recursive: true, force: true });
 });

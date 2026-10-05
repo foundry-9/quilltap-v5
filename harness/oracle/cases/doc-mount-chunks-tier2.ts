@@ -48,6 +48,7 @@ import {
   readFileSync,
   copyFileSync,
   existsSync,
+  rmSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { canonicalizeRows } from '../lib/tier2.js';
@@ -78,6 +79,7 @@ async function main(): Promise<void> {
 
   // Work on a fresh copy of the mount-index fixture so the shared seed stays pristine.
   const scratch = mkdtempSync(join(tmpdir(), 'qt-dmc-oracle-'));
+  process.on('exit', () => rmSync(scratch, { recursive: true, force: true }));
   mkdirSync(join(scratch, 'data'), { recursive: true });
   const work = join(scratch, 'dmc-mount-index-work.db');
   copyFileSync(fixture, work);

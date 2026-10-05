@@ -145,12 +145,12 @@ fn standing_instructions_matches_oracle() {
     )
     .expect("parse spec");
 
-    let pid = std::process::id();
-    let scratch = std::env::temp_dir().join(format!("qt-si-rust-{pid}"));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).expect("scratch");
-    let main_work = scratch.join("si-main.db");
-    let mount_work = scratch.join("si-mount.db");
+    let scratch = tempfile::Builder::new()
+        .prefix("qt-si-rust-")
+        .tempdir()
+        .expect("scratch");
+    let main_work = scratch.path().join("si-main.db");
+    let mount_work = scratch.path().join("si-mount.db");
     std::fs::copy(&main_fixture, &main_work).unwrap_or_else(|e| panic!("copy main: {e}"));
     std::fs::copy(&mount_fixture, &mount_work).unwrap_or_else(|e| panic!("copy mount: {e}"));
 

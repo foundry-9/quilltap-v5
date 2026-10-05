@@ -535,27 +535,22 @@ fn env_or_skip(key: &str) -> Option<String> {
         }
     }
 }
-fn cleanup(main: &Path, mount: &Path) {
-    for p in [main, mount] {
-        for suffix in ["", "-journal", "-wal", "-shm"] {
-            let _ = std::fs::remove_file(format!("{}{suffix}", p.display()));
-        }
-    }
-}
-fn fresh_copy(main_fixture: &str, mount_fixture: &str, tag: &str) -> (PathBuf, PathBuf) {
-    let dir = std::env::temp_dir();
-    let main_work = dir.join(format!(
-        "qt-imggenroute-main-{}-{tag}.db",
-        std::process::id()
-    ));
-    let mount_work = dir.join(format!(
-        "qt-imggenroute-mount-{}-{tag}.db",
-        std::process::id()
-    ));
-    cleanup(&main_work, &mount_work);
+/// A per-case scratch dir holding the two working copies (and their journal
+/// sidecars); it is deleted when the returned `TempDir` drops.
+fn fresh_copy(
+    main_fixture: &str,
+    mount_fixture: &str,
+    tag: &str,
+) -> (tempfile::TempDir, PathBuf, PathBuf) {
+    let dir = tempfile::Builder::new()
+        .prefix(&format!("qt-imggenroute-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let main_work = dir.path().join("main.db");
+    let mount_work = dir.path().join("mount.db");
     std::fs::copy(main_fixture, &main_work).unwrap_or_else(|e| panic!("copy main: {e}"));
     std::fs::copy(mount_fixture, &mount_work).unwrap_or_else(|e| panic!("copy mount: {e}"));
-    (main_work, mount_work)
+    (dir, main_work, mount_work)
 }
 
 // ===========================================================================
@@ -837,11 +832,11 @@ fn image_generate_route_matches_oracle() {
 
     let mut failed: Vec<String> = Vec::new();
     for case in &cases {
-        let (main_work, mount_work) = fresh_copy(&main_fixture, &mount_fixture, case.name);
+        let (_scratch, main_work, mount_work) =
+            fresh_copy(&main_fixture, &mount_fixture, case.name);
         // A fresh per-case llm-logs partition for the handler's fire-and-forget
         // IMAGE_GENERATION row (never diffed here; kept so the write succeeds).
         let ll_work = main_work.with_file_name(format!("imggenroute-ll-{}.db", case.name));
-        let _ = std::fs::remove_file(&ll_work);
         common::materialize_llm_logs(&ll_work, &spec.test_pepper_base64);
 
         let db = Db::open(
@@ -916,8 +911,6 @@ fn image_generate_route_matches_oracle() {
         }
 
         drop(db);
-        cleanup(&main_work, &mount_work);
-        let _ = std::fs::remove_file(&ll_work);
     }
 
     // The ONE-list rule, made executable: every oracle row must have a Rust

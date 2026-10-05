@@ -227,8 +227,13 @@ fn vault_wardrobe_write_matches_oracle() {
 
     let store_id = "57c0de00-0000-4000-8000-0000000000c1";
 
-    let work = std::env::temp_dir().join(format!("qt-vww-rust-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    // A scratch dir removed on drop — with the TRUNCATE-mode `-journal`
+    // the writable open leaves beside the DB.
+    let scratch = tempfile::Builder::new()
+        .prefix("qt-vww-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = scratch.path().join("work.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
     let writer = Writer::open_writable(&work, &spec.test_pepper_base64)
         .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
@@ -251,7 +256,6 @@ fn vault_wardrobe_write_matches_oracle() {
                 .unwrap_or_else(|e| panic!("dump {}: {e}", s.table))
         })
         .collect();
-    let _ = std::fs::remove_file(&work);
 
     let mut want: Vec<Value> = TABLES
         .iter()

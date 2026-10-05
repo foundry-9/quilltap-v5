@@ -314,18 +314,19 @@ impl GeneratorsWizardDriver for TestDriver {
     }
 }
 
-fn fresh_pair(spec: &Spec, tag: &str) -> (Db, PathBuf) {
-    let scratch = std::env::temp_dir().join(format!("qt-wiz-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
-    let main = scratch.join("main.db");
-    let mount = scratch.join("mount.db");
+fn fresh_pair(spec: &Spec, tag: &str) -> (Db, tempfile::TempDir) {
+    let scratch = tempfile::Builder::new()
+        .prefix(&format!("qt-wiz-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let main = scratch.path().join("main.db");
+    let mount = scratch.path().join("mount.db");
     std::fs::copy(fixtures_dir().join("character-generators-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("character-generators-mount.db"), &mount).unwrap();
     // A fresh llm-logs partition per case: item 10 compares what each runner's
     // `log_llm_call` wrote against the oracle's own per-case delta, which is
     // impossible with the `None` this family used to pass.
-    let llm_logs = scratch.join("llmlogs.db");
+    let llm_logs = scratch.path().join("llmlogs.db");
     common::materialize_llm_logs(&llm_logs, &spec.test_pepper_base64);
     let db = Db::open(
         DbPaths {
@@ -549,7 +550,7 @@ fn run_case(spec: &Spec, c: &Case) -> Value {
     let counts = llm_log_counts(&db);
     drop(driver);
     drop(db);
-    let _ = std::fs::remove_dir_all(&scratch);
+    drop(scratch);
     json!({
         "name": c.name,
         "status": status,

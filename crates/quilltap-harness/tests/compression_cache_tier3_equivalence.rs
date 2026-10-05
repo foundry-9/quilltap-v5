@@ -186,8 +186,11 @@ fn compression_cache_tier3_matches_oracle() {
         }
     }
 
-    let work = std::env::temp_dir().join(format!("qt-compcache-rust-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    let work_dir = tempfile::Builder::new()
+        .prefix("qt-compcache-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = work_dir.path().join("compcache-rust.db");
     std::fs::copy(&fixture, &work).expect("copy fixture");
 
     let db = Db::open_main(&work, &spec.test_pepper_base64).expect("open fixture");
@@ -315,7 +318,6 @@ fn compression_cache_tier3_matches_oracle() {
         }
     }
     drop(db);
-    let _ = std::fs::remove_file(&work);
 
     assert_eq!(got_ops.len(), want_ops.len(), "op count");
     for (i, ((gk, gc, gv), (wk, wc, wraw))) in got_ops.iter().zip(want_ops.iter()).enumerate() {

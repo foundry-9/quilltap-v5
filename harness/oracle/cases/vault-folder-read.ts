@@ -19,7 +19,7 @@
 
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { readFileSync, existsSync, mkdtempSync, mkdirSync, copyFileSync } from 'node:fs';
+import { readFileSync, existsSync, mkdtempSync, rmSync, mkdirSync, copyFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 interface Query {
@@ -44,6 +44,7 @@ async function main(): Promise<void> {
   }
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-vault-folder-read-oracle-'));
+  process.on('exit', () => rmSync(scratch, { recursive: true, force: true }));
   mkdirSync(join(scratch, 'data'), { recursive: true });
   const work = join(scratch, 'vault-folder-read-mount-index-work.db');
   copyFileSync(fixture, work);

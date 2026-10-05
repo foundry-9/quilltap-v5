@@ -98,15 +98,17 @@ fn fixtures_dir() -> PathBuf {
 }
 
 /// A fresh per-case COPY of the committed pair, opened.
-fn fresh_db(spec: &Spec, tag: &str) -> Db {
-    let scratch = std::env::temp_dir().join(format!("qt-rs-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
+fn fresh_db(spec: &Spec, tag: &str) -> (Db, tempfile::TempDir) {
+    let scratch_dir = tempfile::Builder::new()
+        .prefix(&format!("qt-rs-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let scratch = scratch_dir.path();
     let main = scratch.join("main.db");
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("chat-admin-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("chat-admin-mount.db"), &mount).unwrap();
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
@@ -114,7 +116,8 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
         },
         &spec.test_pepper_base64,
     )
-    .expect("open db")
+    .expect("open db");
+    (db, scratch_dir)
 }
 
 /// The oracle's widen (guarded like v4's `addColumnIfMissing`) then its plants,
@@ -361,7 +364,7 @@ fn chat_rebuild_summary_matches_oracle() {
         let name = want["name"].as_str().unwrap();
         let chat_id = want["chatId"].as_str().unwrap();
         let calls = want["calls"].as_u64().unwrap_or(1);
-        let db = fresh_db(&spec, name);
+        let (db, _scratch) = fresh_db(&spec, name);
         widen_and_plant(
             &rt,
             &db,

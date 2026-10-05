@@ -263,8 +263,11 @@ fn doc_blob_matches_oracle() {
         .expect("oracle missing the P4.104 image pass (line 3) — regenerate");
 
     // Copy the fixtures and open two writers (both connections held together).
-    let scratch = std::env::temp_dir().join(format!("qt-dblob-harness-{}", std::process::id()));
-    std::fs::create_dir_all(&scratch).expect("scratch dir");
+    let scratch_dir = tempfile::Builder::new()
+        .prefix("qt-dblob-harness-")
+        .tempdir()
+        .expect("tempdir");
+    let scratch = scratch_dir.path().to_path_buf();
     let work_main = scratch.join("dblob-main.db");
     let work_mount = scratch.join("dblob-mount.db");
     let _ = std::fs::remove_file(&work_main);

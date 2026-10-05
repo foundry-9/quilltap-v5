@@ -73,12 +73,12 @@ fn spec_path() -> PathBuf {
 
 /// Open a FRESH copy of the fixture per case — every case starts from the same
 /// room, exactly as the oracle's `beforeEach` rebuilds its mocks.
-fn fresh_db(fixture: &str, pepper: &str, tag: &str) -> (Db, PathBuf) {
-    let scratch =
-        std::env::temp_dir().join(format!("qt-informs-routes-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
-    let main = scratch.join("main.db");
+fn fresh_db(fixture: &str, pepper: &str, tag: &str) -> (Db, tempfile::TempDir) {
+    let scratch = tempfile::Builder::new()
+        .prefix(&format!("qt-informs-routes-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let main = scratch.path().join("main.db");
     std::fs::copy(fixture, &main).expect("copy fixture");
     let db = Db::open(
         DbPaths {

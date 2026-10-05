@@ -249,8 +249,11 @@ fn doc_ui_matches_oracle() {
     let (oracle_ops, oracle_dumps) = parse_oracle(&oracle_text);
 
     // Copy the fixtures and open two writers (both connections held together).
-    let scratch = std::env::temp_dir().join(format!("qt-dui-harness-{}", std::process::id()));
-    std::fs::create_dir_all(&scratch).expect("scratch dir");
+    let scratch_dir = tempfile::Builder::new()
+        .prefix("qt-dui-harness-")
+        .tempdir()
+        .expect("tempdir");
+    let scratch = scratch_dir.path().to_path_buf();
     let work_main = scratch.join("dui-main.db");
     let work_mount = scratch.join("dui-mount.db");
     let _ = std::fs::remove_file(&work_main);

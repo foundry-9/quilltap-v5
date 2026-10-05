@@ -26,7 +26,7 @@
 import * as fs from 'fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { mkdtempSync, mkdirSync, copyFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 // Canonicalize a raw SQLite cell the way the Rust harness's dump_table_json_conn
@@ -169,6 +169,7 @@ async function main(): Promise<void> {
     }
 
     await closeDatabase();
+    rmSync(scratch, { recursive: true, force: true });
 
     lines.push(JSON.stringify({ label: c.label, resultJson, formatted, chatRow }));
   }

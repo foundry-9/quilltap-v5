@@ -155,6 +155,7 @@ async function main(): Promise<void> {
   void createHash;
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-dblob-oracle-'));
+  try {
   mkdirSync(join(scratch, 'data'), { recursive: true });
 
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
@@ -311,6 +312,9 @@ async function main(): Promise<void> {
 
   fs.writeFileSync(outPath, outLines.join('\n') + '\n');
   process.stderr.write(`doc-blob oracle wrote ${outPath} (${spec.ops.length} ops)\n`);
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
 }
 
 /** The P4.104 image pass's op — shared with the Rust family verbatim. */

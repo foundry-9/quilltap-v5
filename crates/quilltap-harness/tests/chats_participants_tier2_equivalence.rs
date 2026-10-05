@@ -227,8 +227,11 @@ fn chats_participants_tier2_matches_oracle() {
     )
     .expect("parse oracle dump");
 
-    let work = std::env::temp_dir().join(format!("qt-chatsparts-rust-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    let scratch_dir = tempfile::Builder::new()
+        .prefix("qt-chatsparts-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = scratch_dir.path().join("qt-chatsparts-rust.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
     let writer = Writer::open_writable(&work, &spec.test_pepper_base64)

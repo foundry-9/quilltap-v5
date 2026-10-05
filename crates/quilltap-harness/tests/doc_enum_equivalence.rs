@@ -240,8 +240,11 @@ fn doc_enum_matches_oracle() {
     );
 
     // Copy the fixtures and open two writers (both connections held together).
-    let scratch = std::env::temp_dir().join(format!("qt-den-harness-{}", std::process::id()));
-    std::fs::create_dir_all(&scratch).expect("scratch dir");
+    let scratch_dir = tempfile::Builder::new()
+        .prefix("qt-den-harness-")
+        .tempdir()
+        .expect("tempdir");
+    let scratch = scratch_dir.path().to_path_buf();
     let work_main = scratch.join("den-main.db");
     let work_mount = scratch.join("den-mount.db");
     let _ = std::fs::remove_file(&work_main);

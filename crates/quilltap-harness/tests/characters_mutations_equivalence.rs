@@ -182,15 +182,17 @@ fn response_data(r: &Response) -> Value {
     v.get("data").cloned().unwrap_or(Value::Null)
 }
 
-fn fresh_db(spec: &Spec, tag: &str) -> Db {
-    let scratch = std::env::temp_dir().join(format!("qt-char-mut-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
+fn fresh_db(spec: &Spec, tag: &str) -> (Db, tempfile::TempDir) {
+    let scratch_dir = tempfile::Builder::new()
+        .prefix(&format!("qt-char-mut-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let scratch = scratch_dir.path();
     let main = scratch.join("main.db");
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("characters-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("characters-mount.db"), &mount).unwrap();
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
@@ -198,7 +200,8 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
         },
         &spec.test_pepper_base64,
     )
-    .expect("open db")
+    .expect("open db");
+    (db, scratch_dir)
 }
 
 /// The case input bodies — kept identical to `characters-mutations.test.ts`.
@@ -611,12 +614,12 @@ fn characters_mutations_match_oracle() {
     };
 
     {
-        let db = fresh_db(&spec, "create_full");
+        let (db, _scratch) = fresh_db(&spec, "create_full");
         let r = rt.block_on(characters::character_create(&db, &uid, create_full_body()));
         run("create_full", r);
     }
     {
-        let db = fresh_db(&spec, "create_min");
+        let (db, _scratch) = fresh_db(&spec, "create_min");
         let r = rt.block_on(characters::character_create(
             &db,
             &uid,
@@ -625,12 +628,12 @@ fn characters_mutations_match_oracle() {
         run("create_minimal", r);
     }
     {
-        let db = fresh_db(&spec, "quick");
+        let (db, _scratch) = fresh_db(&spec, "quick");
         let r = rt.block_on(characters::character_quick_create(&db, &uid, "Quill"));
         run("quick_create", r);
     }
     {
-        let db = fresh_db(&spec, "upd_mgd");
+        let (db, _scratch) = fresh_db(&spec, "upd_mgd");
         let r = rt.block_on(characters::character_update(
             &db,
             &uid,
@@ -640,7 +643,7 @@ fn characters_mutations_match_oracle() {
         run("update_managed", r);
     }
     {
-        let db = fresh_db(&spec, "upd_slim");
+        let (db, _scratch) = fresh_db(&spec, "upd_slim");
         let r = rt.block_on(characters::character_update(
             &db,
             &uid,
@@ -653,7 +656,7 @@ fn characters_mutations_match_oracle() {
         // P4.6bh: canChooseOutfit PUT → vault properties.json round-trip. The
         // overlay-reload echo proves the allowlist + write-overlay route + read
         // hydration end-to-end.
-        let db = fresh_db(&spec, "upd_choutfit");
+        let (db, _scratch) = fresh_db(&spec, "upd_choutfit");
         let r = rt.block_on(characters::character_update(
             &db,
             &uid,
@@ -665,7 +668,7 @@ fn characters_mutations_match_oracle() {
     {
         // P4.6bh (blissful-einstein): the wardrobe-permission tri-states persist
         // through PUT (previously stripped before update()).
-        let db = fresh_db(&spec, "upd_wperm");
+        let (db, _scratch) = fresh_db(&spec, "upd_wperm");
         let r = rt.block_on(characters::character_update(
             &db,
             &uid,
@@ -684,7 +687,7 @@ fn characters_mutations_match_oracle() {
         // Instead diff the GET readback — both sides omit a null column there —
         // proving canDressThemselves cleared to null while canCreateOutfits (never
         // touched by the second PUT) stayed true.
-        let db = fresh_db(&spec, "upd_clear");
+        let (db, _scratch) = fresh_db(&spec, "upd_clear");
         rt.block_on(characters::character_update(
             &db,
             &uid,
@@ -712,7 +715,7 @@ fn characters_mutations_match_oracle() {
         }
     }
     {
-        let db = fresh_db(&spec, "wc");
+        let (db, _scratch) = fresh_db(&spec, "wc");
         let r = rt.block_on(characters::character_wardrobe_create(
             &db,
             &uid,
@@ -722,13 +725,13 @@ fn characters_mutations_match_oracle() {
         run("wardrobe_create", r);
     }
     {
-        let db = fresh_db(&spec, "wg");
+        let (db, _scratch) = fresh_db(&spec, "wg");
         let iid = discover_item_id(&db, ARIA, "Flight Jacket");
         let r = characters::character_wardrobe_get(&db, &uid, ARIA, &iid);
         run("wardrobe_get", r);
     }
     {
-        let db = fresh_db(&spec, "wu");
+        let (db, _scratch) = fresh_db(&spec, "wu");
         let iid = discover_item_id(&db, ARIA, "Flight Jacket");
         let r = rt.block_on(characters::character_wardrobe_update(
             &db,
@@ -752,7 +755,7 @@ fn characters_mutations_match_oracle() {
             json!({ "archived": false }),
         ),
     ] {
-        let db = fresh_db(&spec, tag);
+        let (db, _scratch) = fresh_db(&spec, tag);
         let iid = discover_item_id(&db, ARIA, "Flight Jacket");
         let r = rt.block_on(characters::character_wardrobe_update(
             &db, &uid, ARIA, &iid, body,
@@ -763,7 +766,7 @@ fn characters_mutations_match_oracle() {
         // A present non-boolean `archived` fails v4's Zod parse, which the route
         // does NOT catch → the middleware's flat `Validation error` 400.
         let name = "wardrobe_update_archived_null_is_a_validation_error";
-        let db = fresh_db(&spec, "wu_null");
+        let (db, _scratch) = fresh_db(&spec, "wu_null");
         let iid = discover_item_id(&db, ARIA, "Flight Jacket");
         let r = rt.block_on(characters::character_wardrobe_update(
             &db,
@@ -785,20 +788,20 @@ fn characters_mutations_match_oracle() {
         }
     }
     {
-        let db = fresh_db(&spec, "wd");
+        let (db, _scratch) = fresh_db(&spec, "wd");
         let iid = discover_item_id(&db, ARIA, "Goggles");
         let r = rt.block_on(characters::character_wardrobe_delete(&db, &uid, ARIA, &iid));
         run("wardrobe_delete", r);
     }
     {
-        let db = fresh_db(&spec, "depget");
+        let (db, _scratch) = fresh_db(&spec, "depget");
         run(
             "depiction_get_empty",
             characters::character_depiction_guidelines(&db, &uid, ARIA),
         );
     }
     {
-        let db = fresh_db(&spec, "depput");
+        let (db, _scratch) = fresh_db(&spec, "depput");
         let r = rt.block_on(characters::character_depiction_guidelines_update(
             &db,
             &uid,
@@ -814,7 +817,7 @@ fn characters_mutations_match_oracle() {
         }
     }
     {
-        let db = fresh_db(&spec, "depclr");
+        let (db, _scratch) = fresh_db(&spec, "depclr");
         let r = rt.block_on(characters::character_depiction_guidelines_update(
             &db, &uid, ARIA, "   ",
         ));
@@ -827,29 +830,29 @@ fn characters_mutations_match_oracle() {
         }
     }
     {
-        let db = fresh_db(&spec, "tl");
+        let (db, _scratch) = fresh_db(&spec, "tl");
         run("tag_list", characters::tag_list(&db, &uid, None));
     }
     {
-        let db = fresh_db(&spec, "tg");
+        let (db, _scratch) = fresh_db(&spec, "tg");
         run("tag_get", characters::tag_get(&db, &uid, ADVENTURE));
     }
     {
-        let db = fresh_db(&spec, "tcn");
+        let (db, _scratch) = fresh_db(&spec, "tcn");
         run(
             "tag_create_new",
             rt.block_on(characters::tag_create(&db, &uid, "Voyage")),
         );
     }
     {
-        let db = fresh_db(&spec, "tcd");
+        let (db, _scratch) = fresh_db(&spec, "tcd");
         run(
             "tag_create_dedup",
             rt.block_on(characters::tag_create(&db, &uid, "adventure")),
         );
     }
     {
-        let db = fresh_db(&spec, "tu");
+        let (db, _scratch) = fresh_db(&spec, "tu");
         run(
             "tag_update",
             rt.block_on(characters::tag_update(
@@ -861,7 +864,7 @@ fn characters_mutations_match_oracle() {
         );
     }
     {
-        let db = fresh_db(&spec, "tdel");
+        let (db, _scratch) = fresh_db(&spec, "tdel");
         let r = rt.block_on(characters::tag_delete(&db, &uid, ADVENTURE));
         run("tag_delete", r);
         // Verify the multi-entity fan-out: diff all six taggable tables + the
@@ -883,7 +886,7 @@ fn characters_mutations_match_oracle() {
         // P4.6i: ST import (JSON leg). Diff the slim create echo AND the overlay
         // readback of the created character (proving the ST-derived vault fields
         // round-tripped). Minted ids/timestamps blanked by `norm`.
-        let db = fresh_db(&spec, "stimport");
+        let (db, _scratch) = fresh_db(&spec, "stimport");
         let card = json!({
             "spec": "chara_card_v2",
             "spec_version": "2.0",
@@ -942,7 +945,7 @@ fn characters_mutations_match_oracle() {
         // A fixed keptAt (matching the oracle's frozen Date) makes the minted path
         // + kept-image markdown deterministic; only the link id is minted (blanked).
         const FIXED_KEPT_AT: &str = "2026-04-01T12:00:00.000Z";
-        let db = fresh_db(&spec, "photosave");
+        let (db, _scratch) = fresh_db(&spec, "photosave");
         let source_link = discover_photo_link_id(&db, ARIA, "images/avatar.webp");
         let saved: Value = rt
             .block_on(db.write(move |writers| {
@@ -1026,7 +1029,7 @@ fn characters_mutations_match_oracle() {
             ),
         ];
         for (case, raw) in &body_cases {
-            let db = fresh_db(&spec, case);
+            let (db, _scratch) = fresh_db(&spec, case);
             let source_link = discover_photo_link_id(&db, ARIA, "images/avatar.webp");
             let body: Value = serde_json::from_str(
                 &serde_json::to_string(raw)
@@ -1103,7 +1106,7 @@ fn characters_mutations_match_oracle() {
         // P4.6i: remove Aria's avatar from the gallery. Diff the {deleted,fileGC}
         // body AND the GC-table dump (links/files/blobs + defaultImageId) — all
         // baked ids, so no remap.
-        let db = fresh_db(&spec, "photorm");
+        let (db, _scratch) = fresh_db(&spec, "photorm");
         let link_id = discover_photo_link_id(&db, ARIA, "images/avatar.webp");
         let r = rt.block_on(characters::character_photo_remove(
             &db, &uid, ARIA, &link_id,
@@ -1127,7 +1130,7 @@ fn characters_mutations_match_oracle() {
         // REPOSITORY level exactly as the oracle drives v4's: the PUT route's
         // Zod schema strips `archivedAt`, so neither side can reach the
         // sanctioned unarchive through HTTP.
-        let db = fresh_db(&spec, "arch_guard");
+        let (db, _scratch) = fresh_db(&spec, "arch_guard");
         let patches: Vec<Value> = vec![
             json!({ "name": "Renamed While Archived" }),
             json!({ "description": "A vault-managed edit." }),
@@ -1203,7 +1206,7 @@ fn characters_mutations_match_oracle() {
         // P4.D63 — the wardrobe write refusal. A `None` mount here would send
         // the caller down the legacy DB write path and silently mutate the
         // tombstone's wardrobe, so this must be an ERROR, not an empty result.
-        let db = fresh_db(&spec, "arch_ward");
+        let (db, _scratch) = fresh_db(&spec, "arch_ward");
         let outcome = db
             .write_blocking(|ws| {
                 let main = ws.main().connection();
@@ -1409,7 +1412,7 @@ fn characters_mutations_match_oracle() {
         ];
 
         for (name, target, sends, extra_body, compare) in arms {
-            let db = fresh_db(&spec, name);
+            let (db, _scratch) = fresh_db(&spec, name);
             let value = match sends {
                 Sends::Named(pn) => Value::String(resolve_prompt(&db, target, pn)),
                 Sends::Literal(id) => Value::String(id.to_string()),
@@ -1503,7 +1506,7 @@ fn characters_mutations_match_oracle() {
         // P4.6i: cascade-delete Aria (cascadeChats + cascadeImages). Diff the
         // {success,deletedChats,deletedImages,deletedMemories} body AND the full
         // cascade-table dump (baked ids → no remap).
-        let db = fresh_db(&spec, "cascade");
+        let (db, _scratch) = fresh_db(&spec, "cascade");
         let r = rt.block_on(characters::character_delete(&db, &uid, ARIA, true, true));
         run("character_delete_cascade", r);
         let got = dump_cascade_tables(&db);

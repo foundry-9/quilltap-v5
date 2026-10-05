@@ -54,6 +54,7 @@ describe('help-doc-sync: the shipped tree', () => {
     }
 
     const scratch = fs.mkdtempSync(join(tmpdir(), 'qt-help-tree-oracle-'));
+    try {
     fs.mkdirSync(join(scratch, 'data'), { recursive: true });
     const workMain = join(scratch, 'tree-main.db');
 
@@ -173,5 +174,8 @@ describe('help-doc-sync: the shipped tree', () => {
       JSON.stringify({ kind: 'tree', count: docs.length, walkOrder, docs, chunks, jobs }) + '\n',
     );
     process.stderr.write(`help-tree-sync oracle wrote ${outPath} (${docs.length} docs, ${chunks.length} chunks)\n`);
+    } finally {
+      fs.rmSync(scratch, { recursive: true, force: true });
+    }
   });
 });

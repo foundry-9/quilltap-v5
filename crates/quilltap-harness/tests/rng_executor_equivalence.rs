@@ -91,12 +91,12 @@ fn rng_executor_matches_oracle() {
 
     // Copy the fixture DBs to a scratch dir (the executor is read-only, but open
     // a copy per convention).
-    let scratch = std::env::temp_dir().join(format!("qt-rng-harness-{}", std::process::id()));
-    std::fs::create_dir_all(&scratch).expect("scratch dir");
-    let work_main = scratch.join("rng-main.db");
-    let work_mount = scratch.join("rng-mount.db");
-    let _ = std::fs::remove_file(&work_main);
-    let _ = std::fs::remove_file(&work_mount);
+    let scratch = tempfile::Builder::new()
+        .prefix("qt-rng-harness-")
+        .tempdir()
+        .expect("scratch dir");
+    let work_main = scratch.path().join("rng-main.db");
+    let work_mount = scratch.path().join("rng-mount.db");
     std::fs::copy(&fixture_main, &work_main).expect("copy main fixture");
     std::fs::copy(&fixture_mount, &work_mount).expect("copy mount fixture");
 
@@ -149,7 +149,6 @@ fn rng_executor_matches_oracle() {
     }
 
     drop(db);
-    let _ = std::fs::remove_dir_all(&scratch);
     eprintln!(
         "OK: rng-executor matched oracle ({} cases).",
         spec.cases.len()

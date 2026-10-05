@@ -96,9 +96,11 @@ fn recent_conversations_block_matches_oracle() {
     let text = std::fs::read_to_string(&oracle_path)
         .unwrap_or_else(|e| panic!("read oracle {oracle_path}: {e}"));
 
-    let pid = std::process::id();
-    let work = std::env::temp_dir().join(format!("qt-recent-convs-rust-{pid}.db"));
-    let _ = std::fs::remove_file(&work);
+    let work_scratch = tempfile::Builder::new()
+        .prefix("qt-recent-convs-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = work_scratch.path().join("work.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
     let writer = Writer::open_writable(&work, &spec.test_pepper_base64)
         .unwrap_or_else(|e| panic!("open: {e}"));
@@ -153,7 +155,6 @@ fn recent_conversations_block_matches_oracle() {
          must survive the read's `contextSummary IS NOT NULL` filter"
     );
 
-    let _ = std::fs::remove_file(&work);
     eprintln!("OK: recent-conversations block matched oracle ({count} calls).");
 }
 

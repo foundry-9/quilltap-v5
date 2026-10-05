@@ -70,7 +70,7 @@
 import * as fs from 'fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { mkdtempSync, mkdirSync, copyFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 
 // ── The zone GUARD (see the header) ──────────────────────────────────────────
 // This file cannot SET the zone: `jest-environment-node` hands the test a deep
@@ -185,6 +185,7 @@ async function main(): Promise<void> {
 
   // Copies — the handler deletes rows, and the committed fixture stays pristine.
   const scratch = mkdtempSync(join(tmpdir(), 'qt-llc-oracle-'));
+  scratchDirs.push(scratch);
   mkdirSync(join(scratch, 'data'), { recursive: true });
   const workMain = join(scratch, 'llc-main.db');
   const workLogs = join(scratch, 'llc-llmlogs.db');
@@ -323,4 +324,10 @@ async function main(): Promise<void> {
 
 test('llm-log-cleanup jobs tier-2 oracle', async () => {
   await main();
+});
+
+// Remove the OS-temp scratch dir(s) once the oracle has written its NDJSON.
+const scratchDirs: string[] = [];
+afterAll(() => {
+  for (const d of scratchDirs) rmSync(d, { recursive: true, force: true });
 });

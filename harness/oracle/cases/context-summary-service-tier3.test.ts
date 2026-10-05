@@ -162,6 +162,7 @@ async function main(): Promise<void> {
   if (!outPath) throw new Error('QT_ORACLE_OUT must point at the NDJSON file to write');
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-ctxsum-oracle-'));
+  try {
   mkdirSync(join(scratch, 'data'), { recursive: true });
   const work = join(scratch, 'ctxsum-work.db');
   const workMount = join(scratch, 'ctxsum-work-mount.db');
@@ -581,6 +582,9 @@ async function main(): Promise<void> {
 
   fs.writeFileSync(outPath, lines.join('\n') + '\n');
   process.stderr.write(`context-summary-service oracle wrote ${outPath}\n`);
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
 }
 
 test('context-summary-service tier-3 oracle', async () => {

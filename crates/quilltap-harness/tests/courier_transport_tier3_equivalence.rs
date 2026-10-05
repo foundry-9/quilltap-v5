@@ -183,8 +183,11 @@ fn courier_transport_tier3_matches_oracle() {
     }
 
     // Copy the fixture DBs to a scratch dir.
-    let scratch = std::env::temp_dir().join(format!("qt-cour-harness-{}", std::process::id()));
-    std::fs::create_dir_all(&scratch).expect("scratch dir");
+    let scratch_dir = tempfile::Builder::new()
+        .prefix("qt-cour-harness-")
+        .tempdir()
+        .expect("tempdir");
+    let scratch = scratch_dir.path().to_path_buf();
     let work_main = scratch.join("cour-main.db");
     let work_mount = scratch.join("cour-mount.db");
     let _ = std::fs::remove_file(&work_main);

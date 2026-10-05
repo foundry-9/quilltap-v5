@@ -75,10 +75,12 @@ fn fixtures_dir() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../quilltap-web/tests/fixtures")
 }
 
-fn fresh_db(tag: &str) -> Db {
-    let scratch = std::env::temp_dir().join(format!("qt-p4120-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
+fn fresh_db(tag: &str) -> (Db, tempfile::TempDir) {
+    let scratch_dir = tempfile::Builder::new()
+        .prefix(&format!("qt-p4120-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let scratch = scratch_dir.path();
     let main = scratch.join("main.db");
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("files-main.db"), &main).unwrap();
@@ -88,7 +90,7 @@ fn fresh_db(tag: &str) -> Db {
         quilltap_core::test_support::ensure_p4d171_columns(w.connection());
         quilltap_core::test_support::ensure_p4d182_columns(w.connection());
     }
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
@@ -96,7 +98,8 @@ fn fresh_db(tag: &str) -> Db {
         },
         PEPPER,
     )
-    .expect("open db")
+    .expect("open db");
+    (db, scratch_dir)
 }
 
 fn codec() -> Arc<dyn quilltap_core::services::file_storage::PixelCodec> {
@@ -296,7 +299,7 @@ fn the_fire_set_equals_v4s() {
         ),
     ];
     for (name, chat, filename, ct, body, res, cfid, expect) in cases {
-        let db = fresh_db(name);
+        let (db, _scratch) = fresh_db(name);
         let q = arm_queue();
         let resp = run(
             &rt,
@@ -330,7 +333,7 @@ fn the_fire_set_equals_v4s() {
 fn a_sha_dedup_upload_does_not_fire() {
     let rt = rt();
     let driver = Arc::new(RecordingDescribe::default());
-    let db = fresh_db("dedup");
+    let (db, _scratch) = fresh_db("dedup");
     let q = arm_queue();
     let up = || Upload {
         chat: CHAT_G,
@@ -358,7 +361,7 @@ fn a_sha_dedup_upload_does_not_fire() {
 fn the_spawned_call_is_v4s_and_persists_the_description() {
     let rt = rt();
     let driver = Arc::new(RecordingDescribe::default());
-    let db = fresh_db("call");
+    let (db, _scratch) = fresh_db("call");
     let q = arm_queue();
     let resp = run(
         &rt,
@@ -419,7 +422,7 @@ fn read_description(db: &Db, id: &str) -> Option<String> {
 fn an_err_from_the_module_logs_v4s_warn() {
     let rt = rt();
     let driver = Arc::new(RecordingDescribe::default());
-    let db = fresh_db("warn");
+    let (db, _scratch) = fresh_db("warn");
     let q = arm_queue();
     let resp = run(
         &rt,
@@ -481,7 +484,7 @@ fn an_err_from_the_module_logs_v4s_warn() {
     );
 
     // Silence leg: the same task over an INTACT db logs no such warn.
-    let db2 = fresh_db("warn-silent");
+    let (db2, _scratch) = fresh_db("warn-silent");
     let q2 = arm_queue();
     let _ = run(
         &rt,
@@ -520,7 +523,7 @@ fn an_err_from_the_module_logs_v4s_warn() {
 fn a_missing_files_row_read_is_a_not_found_skip_not_the_warn() {
     let rt = rt();
     let driver = Arc::new(RecordingDescribe::default());
-    let db = fresh_db("not-found");
+    let (db, _scratch) = fresh_db("not-found");
     let q = arm_queue();
     let resp = run(
         &rt,
@@ -584,7 +587,7 @@ fn an_unarmed_engine_skips_the_fire_with_a_debug_line() {
     let driver = Arc::new(RecordingDescribe::default());
 
     disarm_background_spawner_for_current_thread();
-    let db = fresh_db("unarmed");
+    let (db, _scratch) = fresh_db("unarmed");
     let (resp, logs) = captured_with(|| {
         run(
             &rt,
@@ -610,7 +613,7 @@ fn an_unarmed_engine_skips_the_fire_with_a_debug_line() {
     assert!(skip[0].starts_with("DEBUG "), "{}", skip[0]);
 
     // No seams at all (the differential families' posture): also a clean skip.
-    let db = fresh_db("noseams");
+    let (db, _scratch) = fresh_db("noseams");
     let (resp, logs) = captured_with(|| {
         run(
             &rt,

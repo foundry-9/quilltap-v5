@@ -53,7 +53,7 @@
 //! NULL as "not configured" and dropped that user from the daily sweep forever.
 //!
 //! ⚠️ Every leg MUTATES its databases (cleanup deletes, the enqueuer inserts),
-//! so all three work on /tmp copies keyed by pid AND leg — the committed
+//! so all three work on private per-leg scratch copies — the committed
 //! fixtures stay pristine and no two legs collide (D32's cross-family hazard).
 //!
 //! Rebuilding the COMMITTED fixture is a DELIBERATE act, never part of a regen
@@ -169,24 +169,26 @@ fn load_spec() -> (Spec, Value) {
     (spec, json)
 }
 
-/// Fresh copies of the committed seeds, keyed by pid AND leg so concurrent legs
-/// never share a file and the committed fixtures stay pristine.
-fn copy_fixtures(leg: &str) -> (PathBuf, PathBuf) {
-    let pid = std::process::id();
+/// Fresh copies of the committed seeds in a private per-leg scratch dir, so
+/// concurrent legs never share a file and the committed fixtures stay pristine.
+/// The dir (with the journal sidecars) is deleted when the returned `TempDir`
+/// drops.
+fn copy_fixtures(leg: &str) -> (tempfile::TempDir, PathBuf, PathBuf) {
     let slug: String = leg
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
         .collect();
-    let main = std::env::temp_dir().join(format!("qt-llc-main-rust-{slug}-{pid}.db"));
-    let logs = std::env::temp_dir().join(format!("qt-llc-llmlogs-rust-{slug}-{pid}.db"));
-    for p in [&main, &logs] {
-        let _ = std::fs::remove_file(p);
-    }
+    let dir = tempfile::Builder::new()
+        .prefix(&format!("qt-llc-rust-{slug}-"))
+        .tempdir()
+        .expect("tempdir");
+    let main = dir.path().join("main.db");
+    let logs = dir.path().join("llmlogs.db");
     std::fs::copy(fixtures_dir().join("llm-log-cleanup-main.db"), &main)
         .unwrap_or_else(|e| panic!("copy main fixture: {e}"));
     std::fs::copy(fixtures_dir().join("llm-log-cleanup-llmlogs.db"), &logs)
         .unwrap_or_else(|e| panic!("copy llm-logs fixture: {e}"));
-    (main, logs)
+    (dir, main, logs)
 }
 
 #[derive(Debug, PartialEq)]
@@ -292,7 +294,7 @@ async fn run_handler_leg(env_var: &str, leg: &str) {
         "{env_var}: oracle processed a different job set than the corpus — regenerate"
     );
 
-    let (work_main, work_logs) = copy_fixtures(leg);
+    let (_scratch, work_main, work_logs) = copy_fixtures(leg);
     let db = Db::open(
         DbPaths {
             main: work_main.clone(),
@@ -382,8 +384,6 @@ async fn run_handler_leg(env_var: &str, leg: &str) {
         .read_llm_logs(|conn| dump_table_json_conn(conn, "llm_logs", "id"))
         .expect("dump llm_logs");
     drop(db);
-    let _ = std::fs::remove_file(&work_main);
-    let _ = std::fs::remove_file(&work_logs);
 
     let mut want_jobs = take_table(&oracle, "background_jobs");
     let want_logs = take_table(&oracle, "llm_logs");
@@ -481,7 +481,7 @@ async fn llm_log_cleanup_enqueue_matches_oracle() {
     let want_users = summary["usersProcessed"].as_u64().unwrap() as usize;
     let want_jobs = summary["jobsEnqueued"].as_u64().unwrap() as usize;
 
-    let (work_main, work_logs) = copy_fixtures("enqueue");
+    let (_scratch, work_main, work_logs) = copy_fixtures("enqueue");
     let db = Db::open(
         DbPaths {
             main: work_main.clone(),
@@ -506,8 +506,6 @@ async fn llm_log_cleanup_enqueue_matches_oracle() {
         .read_main(|conn| dump_table_json_conn(conn, "background_jobs", "id"))
         .expect("dump background_jobs");
     drop(db);
-    let _ = std::fs::remove_file(&work_main);
-    let _ = std::fs::remove_file(&work_logs);
 
     let mut want = take_table(&oracle, "background_jobs");
 

@@ -113,8 +113,11 @@ fn danger_scan_matches_oracle() {
         std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("read oracle: {e}"));
 
     // Copy the fixture (the scan writes).
-    let work = std::env::temp_dir().join(format!("qt-danger-scan-rust-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    let work_dir = tempfile::Builder::new()
+        .prefix("qt-danger-scan-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = work_dir.path().join("danger-scan-rust.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
     let db = Db::open_main(&work, &spec.test_pepper_base64)
@@ -181,7 +184,6 @@ fn danger_scan_matches_oracle() {
     }
 
     drop(db);
-    let _ = std::fs::remove_file(&work);
     eprintln!(
         "OK: danger scan matched v4 ({} users, {} enqueued, {} job rows).",
         users_processed,

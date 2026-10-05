@@ -186,9 +186,13 @@ fn vector_indices_tier2_matches_oracle() {
         std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("read oracle: {e}"));
 
     // Fresh copy so the shared seed fixture stays pristine.
-    let work =
-        std::env::temp_dir().join(format!("qt-vector-indices-rust-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    // A scratch dir removed on drop — with the TRUNCATE-mode `-journal`
+    // the writable open leaves beside the DB.
+    let scratch = tempfile::Builder::new()
+        .prefix("qt-vector-indices-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = scratch.path().join("work.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
     // Run the SAME op sequence through the Rust port, minting our own timestamps.
@@ -260,7 +264,6 @@ fn vector_indices_tier2_matches_oracle() {
     let mut got_entries = writer
         .dump_table_json("vector_entries", "embedding")
         .expect("dump vector_entries");
-    let _ = std::fs::remove_file(&work);
 
     let mut want_meta = oracle_table(&oracle_text, "vector_indices");
     let mut want_entries = oracle_table(&oracle_text, "vector_entries");

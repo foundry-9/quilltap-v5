@@ -158,6 +158,9 @@ async function main(): Promise<void> {
     }
     const out = join(outDir, 'restore-archive-compact.zip');
     copyFileSync(zipPath, out);
+    // createBackup leaves its zip in a private mkdtemp dir the caller owns;
+    // remove it as v4's download handler does (`system/backup/[id]/route.ts`).
+    rmSync(dirname(zipPath), { recursive: true, force: true });
     process.stderr.write(`  restore-archive-compact.zip  ${fs.statSync(out).size} bytes\n`);
   } finally {
     await closeDatabase();

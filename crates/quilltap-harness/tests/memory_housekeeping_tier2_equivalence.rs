@@ -216,11 +216,11 @@ async fn memory_housekeeping_tier2_matches_oracle() {
     let oracle_text =
         std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("read oracle: {e}"));
 
-    let work = std::env::temp_dir().join(format!(
-        "qt-mem-housekeeping-rust-{}.db",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_file(&work);
+    let work_scratch = tempfile::Builder::new()
+        .prefix("qt-mem-housekeeping-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = work_scratch.path().join("work.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
     let db = Db::open_main(&work, &spec.test_pepper_base64)
@@ -254,7 +254,6 @@ async fn memory_housekeeping_tier2_matches_oracle() {
         })
         .collect();
     drop(db);
-    let _ = std::fs::remove_file(&work);
 
     // Results: months placeholdered on both sides, everything else exact.
     let mut got_results = Value::Array(got_results);

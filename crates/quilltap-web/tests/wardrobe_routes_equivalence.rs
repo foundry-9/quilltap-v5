@@ -113,15 +113,17 @@ fn env_or_skip(key: &str) -> Option<String> {
 }
 
 /// A fresh two-partition `Db` over a private copy of the committed fixture.
-fn fresh_db(tag: &str) -> Db {
-    let scratch = std::env::temp_dir().join(format!("qt-wroutes-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
-    let main = scratch.join("main.db");
-    let mount = scratch.join("mount.db");
+/// The scratch dir rides out with the handle — bind it for the test's life.
+fn fresh_db(tag: &str) -> (Db, tempfile::TempDir) {
+    let scratch = tempfile::Builder::new()
+        .prefix(&format!("qt-wroutes-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let main = scratch.path().join("main.db");
+    let mount = scratch.path().join("mount.db");
     std::fs::copy(fixtures_dir().join("wardrobe-routes-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("wardrobe-routes-mount.db"), &mount).unwrap();
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
@@ -129,7 +131,8 @@ fn fresh_db(tag: &str) -> Db {
         },
         TEST_PEPPER,
     )
-    .expect("open db")
+    .expect("open db");
+    (db, scratch)
 }
 
 /// The canned preview render — replays the oracle's captured post-transcode
@@ -442,7 +445,7 @@ async fn wardrobe_routes_equivalence() {
     let mut checks = 0usize;
 
     for case in &spec.cases {
-        let db = fresh_db(&case.name);
+        let (db, _scratch) = fresh_db(&case.name);
         let body = case.body.clone().unwrap_or(Value::Null);
         let resp = match case.kind.as_str() {
             "wardrobeList" => wardrobe_list(&db, case.include_archived.unwrap_or(false)),

@@ -430,10 +430,11 @@ fn doc_fs_matches_oracle() {
         std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("read oracle: {e}"));
     let (oracle_ops, oracle_dumps) = parse_oracle(&oracle_text);
 
-    let pid = std::process::id();
-    let scratch_raw = std::env::temp_dir().join(format!("qt-dfs-rust-{pid}"));
-    let _ = std::fs::remove_dir_all(&scratch_raw);
-    std::fs::create_dir_all(&scratch_raw).unwrap();
+    let scratch_raw_dir = tempfile::Builder::new()
+        .prefix("qt-dfs-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let scratch_raw = scratch_raw_dir.path().to_path_buf();
     let root = std::fs::canonicalize(&scratch_raw).unwrap();
     let fs_mount_base = materialize_tree(
         &root,

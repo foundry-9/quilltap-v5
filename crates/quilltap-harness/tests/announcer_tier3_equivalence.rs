@@ -110,10 +110,12 @@ fn env_or_skip(key: &str) -> Option<String> {
     }
 }
 
-fn fresh_db(spec: &Spec, tag: &str) -> Db {
-    let scratch = std::env::temp_dir().join(format!("qt-ann-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
+fn fresh_db(spec: &Spec, tag: &str) -> (Db, tempfile::TempDir) {
+    let scratch_dir = tempfile::Builder::new()
+        .prefix(&format!("qt-ann-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let scratch = scratch_dir.path();
     let main = scratch.join("main.db");
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("post-office-main.db"), &main).unwrap();
@@ -130,7 +132,7 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
         let w = quilltap_core::db::Writer::open_writable(&main, &spec.test_pepper_base64).unwrap();
         quilltap_core::test_support::ensure_p4d171_columns(w.connection());
     }
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
@@ -138,7 +140,8 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
         },
         &spec.test_pepper_base64,
     )
-    .expect("open db")
+    .expect("open db");
+    (db, scratch_dir)
 }
 
 /// Wraps the canned provider and records each call the way the oracle's mock
@@ -479,7 +482,7 @@ fn announcer_tier3_matches_oracle() {
         // oracle mocks `logLLMCall` away to match.
         let executor = CheapLlmTaskExecutor::new();
 
-        let db = fresh_db(&spec, case.name);
+        let (db, _scratch) = fresh_db(&spec, case.name);
         let character = db
             .read_main(|main| {
                 db.read_mount_index(|mount| {

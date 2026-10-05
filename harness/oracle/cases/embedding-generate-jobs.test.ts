@@ -113,6 +113,7 @@ async function main(): Promise<void> {
   if (!outPath) throw new Error('QT_ORACLE_OUT must point at the NDJSON file to write');
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-eg-oracle-'));
+  try {
   mkdirSync(join(scratch, 'data'), { recursive: true });
   const workMain = join(scratch, 'eg-main.db');
   const workMount = join(scratch, 'eg-mount.db');
@@ -323,6 +324,9 @@ async function main(): Promise<void> {
 
   fs.writeFileSync(outPath, lines.join('\n') + '\n');
   process.stderr.write(`embedding-generate oracle wrote ${outPath}\n`);
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
 }
 
 test('embedding-generate jobs tier-3 oracle', async () => {

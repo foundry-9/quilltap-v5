@@ -124,14 +124,11 @@ fn danger_trigger_gate_chain_matches_oracle() {
         // A fresh copy of the committed fixture per case — the real `chats` DDL
         // (a reduced hand-rolled one would silently drift from the reader's
         // 60-column SELECT) plus the `background_jobs` table the enqueue writes.
-        let scratch = std::env::temp_dir().join(format!(
-            "qt-danger-trigger-{}-{}",
-            std::process::id(),
-            case.name
-        ));
-        let _ = std::fs::remove_dir_all(&scratch);
-        std::fs::create_dir_all(&scratch).unwrap();
-        let main = scratch.join("main.db");
+        let scratch = tempfile::Builder::new()
+            .prefix(&format!("qt-danger-trigger-{}-", case.name))
+            .tempdir()
+            .expect("tempdir");
+        let main = scratch.path().join("main.db");
         std::fs::copy(fixtures_dir().join("chat-scenario-main.db"), &main).unwrap();
         let db = Db::open(
             DbPaths {
@@ -224,7 +221,7 @@ fn danger_trigger_gate_chain_matches_oracle() {
             })
             .expect("read background_jobs");
         drop(db);
-        let _ = std::fs::remove_dir_all(&scratch);
+        drop(scratch);
 
         let got: Vec<EnqueueCall> = rows
             .into_iter()

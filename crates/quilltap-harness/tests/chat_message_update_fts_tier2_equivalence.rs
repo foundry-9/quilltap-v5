@@ -194,11 +194,11 @@ fn chat_message_update_fts_tier2_matches_oracle() {
     )
     .expect("parse oracle dump");
 
-    let work = std::env::temp_dir().join(format!(
-        "qt-chatmsgupdatefts-rust-{}.db",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_file(&work);
+    let scratch_dir = tempfile::Builder::new()
+        .prefix("qt-chatmsgupdatefts-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = scratch_dir.path().join("qt-chatmsgupdatefts-rust.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
     let writer = Writer::open_writable(&work, &spec.test_pepper_base64)
         .unwrap_or_else(|e| panic!("open fixture copy: {e}"));

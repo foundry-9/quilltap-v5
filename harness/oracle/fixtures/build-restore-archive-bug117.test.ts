@@ -352,6 +352,9 @@ async function main(): Promise<void> {
       const { createBackup } = await import('@/lib/backup/backup-service');
       const { zipPath } = await createBackup(spec.userId);
       copyFileSync(zipPath, join(outDir, 'restore-archive-bug117.zip'));
+      // createBackup leaves its zip in a private mkdtemp dir the caller owns;
+      // remove it as v4's download handler does (`system/backup/[id]/route.ts`).
+      rmSync(dirname(zipPath), { recursive: true, force: true });
     } finally {
       await closeInstance();
     }

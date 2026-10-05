@@ -1169,14 +1169,13 @@ mod dogfood_divergence_tests {
     // The 32-byte all-`testpepper` base64 used across the core write tests.
     const TEST_PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
 
-    fn test_db() -> Db {
-        let dir = std::env::temp_dir().join(format!(
-            "qt-almanack-ledgers-{}-{}",
-            std::process::id(),
-            uuid::Uuid::new_v4()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        let db = Db::open_main(dir.join("main.db"), TEST_PEPPER).unwrap();
+    /// The scratch dir rides out with the handle — bind it for the test's life.
+    fn test_db() -> (Db, tempfile::TempDir) {
+        let dir = tempfile::Builder::new()
+            .prefix("qt-almanack-ledgers-")
+            .tempdir()
+            .expect("tempdir");
+        let db = Db::open_main(dir.path().join("main.db"), TEST_PEPPER).unwrap();
         db.write_blocking(|writers| {
             writers.main().connection().execute_batch(
                 "CREATE TABLE chats (
@@ -1195,7 +1194,7 @@ mod dogfood_divergence_tests {
             Ok(())
         })
         .unwrap();
-        db
+        (db, dir)
     }
 
     fn exec(db: &Db, sql: &str) {
@@ -1213,7 +1212,7 @@ mod dogfood_divergence_tests {
     /// (it would emit two separate `{1, chats:1}` rows).
     #[test]
     fn participant_histogram_rolls_up_by_cast_size() {
-        let db = test_db();
+        let (db, _scratch) = test_db();
         exec(
             &db,
             r#"INSERT INTO chats (id, userId, participants) VALUES
@@ -1242,7 +1241,7 @@ mod dogfood_divergence_tests {
     /// coreWhisper is unchanged — it counts explicit overrides only.
     #[test]
     fn dress_outfit_counts_are_effective_permission() {
-        let db = test_db();
+        let (db, _scratch) = test_db();
         exec(
             &db,
             r#"INSERT INTO characters (id, userId, canDressThemselves, canCreateOutfits, coreWhisperEnabled) VALUES

@@ -398,12 +398,14 @@ async fn precompute_matches_oracle() {
         assert_eq!(case.name, oracle.name, "case order mismatch");
         let name = &case.name;
 
-        // Fresh copies (the search bumps lastAccessedAt).
-        let pid = std::process::id();
-        let main = std::env::temp_dir().join(format!("qt-precompute-{pid}-{name}-main.db"));
-        let mount = std::env::temp_dir().join(format!("qt-precompute-{pid}-{name}-mount.db"));
-        let _ = std::fs::remove_file(&main);
-        let _ = std::fs::remove_file(&mount);
+        // Fresh copies (the search bumps lastAccessedAt), in a per-case scratch
+        // dir deleted (journals included) when it drops at the end of the case.
+        let scratch = tempfile::Builder::new()
+            .prefix(&format!("qt-precompute-{name}-"))
+            .tempdir()
+            .expect("tempdir");
+        let main = scratch.path().join("main.db");
+        let mount = scratch.path().join("mount.db");
         std::fs::copy(fixtures_dir().join("episodic-recall-main.db"), &main).unwrap();
         std::fs::copy(fixtures_dir().join("episodic-recall-mount.db"), &mount).unwrap();
 
@@ -541,8 +543,6 @@ async fn precompute_matches_oracle() {
         println!("precompute_equivalence: {name} OK");
 
         drop(db);
-        let _ = std::fs::remove_file(&main);
-        let _ = std::fs::remove_file(&mount);
     }
     println!("precompute_equivalence: {} cases green", oracle_rows.len());
 }

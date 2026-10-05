@@ -82,6 +82,7 @@ async function main(): Promise<void> {
   if (!outPath) throw new Error('QT_ORACLE_OUT must point at the NDJSON file to write');
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-danger-routing-oracle-'));
+  try {
   mkdirSync(join(scratch, 'data'), { recursive: true });
   const work = join(scratch, 'routing-work.db');
   copyFileSync(fixture, work);
@@ -237,6 +238,9 @@ async function main(): Promise<void> {
   await closeDatabase();
   fs.writeFileSync(outPath, lines.join('\n') + '\n');
   process.stderr.write(`danger-routing oracle wrote ${outPath}\n`);
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
 }
 
 test('danger-routing oracle', async () => {

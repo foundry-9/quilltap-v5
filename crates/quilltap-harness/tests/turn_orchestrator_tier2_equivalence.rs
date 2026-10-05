@@ -136,11 +136,14 @@ async fn turn_orchestrator_tier2_matches_oracle() {
     let oracle_results = oracle["results"].as_array().expect("oracle results array");
 
     // Fresh copies so the shared seed fixtures stay pristine.
-    let pid = std::process::id();
-    let work_main = std::env::temp_dir().join(format!("qt-turnorch-rust-main-{pid}.db"));
-    let work_mount = std::env::temp_dir().join(format!("qt-turnorch-rust-mount-{pid}.db"));
-    let _ = std::fs::remove_file(&work_main);
-    let _ = std::fs::remove_file(&work_mount);
+    // A scratch dir removed on drop — with the TRUNCATE-mode `-journal`
+    // files the writable opens leave beside each DB.
+    let scratch = tempfile::Builder::new()
+        .prefix("qt-turnorch-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work_main = scratch.path().join("main.db");
+    let work_mount = scratch.path().join("mount.db");
     std::fs::copy(&fixture, &work_main).unwrap_or_else(|e| panic!("copy main fixture: {e}"));
     std::fs::copy(&fixture_mount, &work_mount)
         .unwrap_or_else(|e| panic!("copy mount fixture: {e}"));
@@ -246,9 +249,6 @@ async fn turn_orchestrator_tier2_matches_oracle() {
         .read_main(|conn| dump_table_json_conn(conn, "chats", "id"))
         .expect("dump chats");
     let oracle_dump = &oracle["dump"];
-
-    let _ = std::fs::remove_file(&work_main);
-    let _ = std::fs::remove_file(&work_mount);
 
     assert_eq!(got_dump["table"], oracle_dump["table"], "table name");
     assert_eq!(

@@ -26,7 +26,7 @@
 
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { mkdtempSync, mkdirSync, readFileSync, copyFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, readFileSync, copyFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 interface Spec {
@@ -49,6 +49,7 @@ async function main(): Promise<void> {
   }
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-help-sync-oracle-'));
+  process.on('exit', () => rmSync(scratch, { recursive: true, force: true }));
   mkdirSync(join(scratch, 'data'), { recursive: true });
   const workMain = join(scratch, 'help-sync-main.db');
   copyFileSync(fixtureMain, workMain);

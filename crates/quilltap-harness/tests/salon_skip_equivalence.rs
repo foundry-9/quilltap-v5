@@ -243,12 +243,12 @@ fn salon_skip_matches_oracle() {
 
     // Open a fresh fixture copy; seed if requested; run the skip; dump.
     let run = |case: &str, seed: bool| -> (Value, Value, Value) {
-        let scratch =
-            std::env::temp_dir().join(format!("qt-salon-skip-{}-{}", std::process::id(), case));
-        let _ = std::fs::remove_dir_all(&scratch);
-        std::fs::create_dir_all(&scratch).unwrap();
-        let main = scratch.join("main.db");
-        let mount = scratch.join("mount.db");
+        let scratch = tempfile::Builder::new()
+            .prefix(&format!("qt-salon-skip-{case}-"))
+            .tempdir()
+            .expect("tempdir");
+        let main = scratch.path().join("main.db");
+        let mount = scratch.path().join("mount.db");
         std::fs::copy(fixtures_dir().join("salon-main.db"), &main).unwrap();
         std::fs::copy(fixtures_dir().join("salon-mount.db"), &mount).unwrap();
         let db = Db::open(
@@ -292,7 +292,6 @@ fn salon_skip_matches_oracle() {
             .read_main(|conn| dump_table_json_conn(conn, "chat_messages", "id"))
             .unwrap();
         drop(db);
-        let _ = std::fs::remove_dir_all(&scratch);
         (body, chats, msgs)
     };
 

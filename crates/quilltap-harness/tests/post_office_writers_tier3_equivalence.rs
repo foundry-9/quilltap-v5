@@ -677,11 +677,16 @@ async fn post_office_writers_tier3_matches_oracle() {
     .expect("parse oracle dump");
 
     // Fresh copies so the shared seed fixtures stay pristine.
-    let pid = std::process::id();
-    let main_work = std::env::temp_dir().join(format!("qt-pow-main-rust-{pid}.db"));
-    let mount_work = std::env::temp_dir().join(format!("qt-pow-mount-rust-{pid}.db"));
-    let _ = std::fs::remove_file(&main_work);
-    let _ = std::fs::remove_file(&mount_work);
+    let main_work_scratch = tempfile::Builder::new()
+        .prefix("qt-pow-main-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let main_work = main_work_scratch.path().join("main_work.db");
+    let mount_work_scratch = tempfile::Builder::new()
+        .prefix("qt-pow-mount-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let mount_work = mount_work_scratch.path().join("mount_work.db");
     std::fs::copy(&main_fixture, &main_work).unwrap_or_else(|e| panic!("copy main: {e}"));
     std::fs::copy(&mount_fixture, &mount_work).unwrap_or_else(|e| panic!("copy mount: {e}"));
 
@@ -756,8 +761,6 @@ async fn post_office_writers_tier3_matches_oracle() {
         .read_main(|conn| dump_table_json_conn(conn, "chats", "id"))
         .expect("dump chats");
     drop(db);
-    let _ = std::fs::remove_file(&main_work);
-    let _ = std::fs::remove_file(&mount_work);
 
     let mut oracle_messages = oracle
         .get("chatMessages")

@@ -120,11 +120,13 @@ fn seed_avatars_tier2_matches_oracle() {
     let qtap = std::fs::read_to_string(qtap_path()).expect("read committed .qtap");
     let export = parse_export_file(&qtap).expect("parse .qtap");
 
-    let pid = std::process::id();
-    let main_work = std::env::temp_dir().join(format!("qt-seed-avatars-main-{pid}.db"));
-    let mount_work = std::env::temp_dir().join(format!("qt-seed-avatars-mount-{pid}.db"));
-    let _ = std::fs::remove_file(&main_work);
-    let _ = std::fs::remove_file(&mount_work);
+    // A scratch dir removed on drop (with the TRUNCATE-mode `-journal` files).
+    let scratch = tempfile::Builder::new()
+        .prefix("qt-seed-avatars-")
+        .tempdir()
+        .expect("tempdir");
+    let main_work = scratch.path().join("main.db");
+    let mount_work = scratch.path().join("mount.db");
     std::fs::copy(&main_fixture, &main_work).expect("copy main");
     std::fs::copy(&mount_fixture, &mount_work).expect("copy mount");
 
@@ -243,7 +245,5 @@ fn seed_avatars_tier2_matches_oracle() {
     assert_eq!(oracle["secondRunLinkCounts"]["riya"], Value::from(1));
     assert_eq!(oracle["secondRunDefaultImageIdStable"], Value::Bool(true));
 
-    let _ = std::fs::remove_file(&main_work);
-    let _ = std::fs::remove_file(&mount_work);
     eprintln!("OK: seed_avatars matched oracle (2 deterministic WebP blobs + idempotency).");
 }

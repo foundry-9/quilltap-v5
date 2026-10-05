@@ -133,8 +133,11 @@ fn help_docs_tier2_matches_oracle() {
     let oracle: Value = serde_json::from_str(oracle_text.trim()).expect("parse oracle dump");
 
     // Work on a fresh copy of the seed fixture so the shared file stays pristine.
-    let work = std::env::temp_dir().join(format!("qt-hd-rust-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    let work_dir = tempfile::Builder::new()
+        .prefix("qt-hd-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = work_dir.path().join("hd-rust.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
     // Run the SAME op sequence through the Rust port.
@@ -191,8 +194,6 @@ fn help_docs_tier2_matches_oracle() {
     let got = writer
         .dump_table_json("help_docs", "id")
         .expect("dump help_docs");
-
-    let _ = std::fs::remove_file(&work);
 
     // Structural diff: table + columns + rows must match (ignore the oracle's
     // "case" label). assert_eq on serde_json::Value is order-independent for

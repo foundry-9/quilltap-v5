@@ -222,11 +222,11 @@ fn speaker_names_match_oracle() {
     )
     .expect("parse oracle");
 
-    let work = std::env::temp_dir().join(format!(
-        "qt-speaker-names-main-rust-{}.db",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_file(&work);
+    let scratch = tempfile::Builder::new()
+        .prefix("qt-speaker-names-main-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = scratch.path().join("main.db");
     std::fs::copy(&main_fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
     let main = Writer::open_writable(&work, &spec.test_pepper_base64)
         .unwrap_or_else(|e| panic!("open fixture: {e}"));
@@ -366,7 +366,7 @@ fn speaker_names_match_oracle() {
 
     drop(reads);
     drop(main);
-    let _ = std::fs::remove_file(&work);
+    drop(scratch);
     eprintln!(
         "OK: speaker names matched oracle ({} cases, {} probes, {} name pairs, {} character reads, {} labels).",
         oracle.cases.len(),

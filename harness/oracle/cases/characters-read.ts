@@ -24,7 +24,7 @@
 
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { mkdtempSync, mkdirSync, readFileSync, copyFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 interface Query {
@@ -54,6 +54,7 @@ async function main(): Promise<void> {
   }
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-charread-oracle-'));
+  process.on('exit', () => rmSync(scratch, { recursive: true, force: true }));
   mkdirSync(join(scratch, 'data'), { recursive: true });
   const mainWork = join(scratch, 'charread-main-work.db');
   const mountWork = join(scratch, 'charread-mount-work.db');

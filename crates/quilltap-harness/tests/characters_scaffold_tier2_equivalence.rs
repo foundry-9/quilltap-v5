@@ -188,9 +188,11 @@ fn characters_scaffold_tier2_matches_oracle() {
     .expect("parse oracle dump");
 
     // Fresh copy so the shared seed fixture stays pristine.
-    let pid = std::process::id();
-    let mount_work = std::env::temp_dir().join(format!("qt-scaffold-mount-rust-{pid}.db"));
-    let _ = std::fs::remove_file(&mount_work);
+    let scratch_dir = tempfile::Builder::new()
+        .prefix("qt-scaffold-mount-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let mount_work = scratch_dir.path().join("qt-scaffold-mount-rust.db");
     std::fs::copy(&mount_fixture, &mount_work).unwrap_or_else(|e| panic!("copy mount: {e}"));
 
     let mount = Writer::open_writable(&mount_work, &spec.test_pepper_base64)

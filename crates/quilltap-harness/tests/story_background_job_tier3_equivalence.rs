@@ -1007,7 +1007,10 @@ fn story_background_job_matches_oracle() {
 
         drop(db);
         cleanup(&main_work, &mount_work);
-        let _ = std::fs::remove_file(&ll_work);
+        // With the TRUNCATE-mode `-journal` the writable open leaves beside it.
+        for suffix in ["", "-journal", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", ll_work.display()));
+        }
     }
 
     // [97b25fc53] The drape's floor: the three `conceal_*` chats flag their

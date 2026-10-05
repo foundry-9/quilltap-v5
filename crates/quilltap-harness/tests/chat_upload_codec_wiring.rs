@@ -122,10 +122,14 @@ fn fixtures_dir() -> PathBuf {
 
 /// A scratch instance seeded from the committed images fixture (it carries a
 /// chat and a provisioned Quilltap Uploads store, which the chat-upload path
-/// writes into).
-fn scratch_instance(tag: &str) -> PathBuf {
-    let base = std::env::temp_dir().join(format!("qt-codec-wire-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&base);
+/// writes into). The returned `TempDir` owns the instance root — keep it alive
+/// as long as anything (an engine) uses the path.
+fn scratch_instance(tag: &str) -> (PathBuf, tempfile::TempDir) {
+    let scratch = tempfile::Builder::new()
+        .prefix(&format!("qt-codec-wire-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let base = scratch.path().to_path_buf();
     let data = base.join("data");
     std::fs::create_dir_all(&data).unwrap();
     std::fs::copy(
@@ -149,12 +153,12 @@ fn scratch_instance(tag: &str) -> PathBuf {
         // `generationKey` on every one.
         quilltap_core::test_support::ensure_p4d182_columns(w.connection());
     }
-    base
+    (base, scratch)
 }
 
 #[tokio::test]
 async fn the_chat_upload_arm_reaches_for_the_host_codec() {
-    let base = scratch_instance("upload");
+    let (base, _scratch) = scratch_instance("upload");
     let engine = CoreEngine::boot(
         CoreConfig {
             base_dir: base.clone(),
@@ -174,7 +178,7 @@ async fn the_chat_upload_arm_reaches_for_the_host_codec() {
         "NoopAssembler carries no backup host; the assembly below supplies one"
     );
 
-    let base2 = scratch_instance("wired");
+    let (base2, _scratch2) = scratch_instance("wired");
     let engine = boot_with_codec(&base2);
     assert!(
         engine.qtap_pixel_codec().is_some(),
@@ -342,7 +346,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 /// empty upload. (Its first form compared the constant with itself.)
 #[test]
 fn the_fixture_owner_is_the_single_user() {
-    let base = scratch_instance("owner");
+    let (base, _scratch) = scratch_instance("owner");
     let db = quilltap_core::db::runtime::Db::open(
         quilltap_core::db::runtime::DbPaths {
             main: base.join("data").join("quilltap.db"),

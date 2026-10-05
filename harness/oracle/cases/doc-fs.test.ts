@@ -202,6 +202,7 @@ async function main(): Promise<void> {
   // CANONICAL scratch root so on-disk realpaths share a stable prefix with the
   // fs-mount basePath.
   const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'qt-dfs-oracle-')));
+  try {
   mkdirSync(join(scratch, 'data'), { recursive: true });
   const fsMountBase = materializeTree(scratch, spec.legacyProjectId, spec.closedLegacyProjectId);
 
@@ -366,6 +367,9 @@ async function main(): Promise<void> {
 
   fs.writeFileSync(outPath, outLines.join('\n') + '\n');
   process.stderr.write(`doc-fs oracle wrote ${outPath} (${spec.ops.length} ops)\n`);
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
 }
 
 test('doc-fs oracle', async () => {

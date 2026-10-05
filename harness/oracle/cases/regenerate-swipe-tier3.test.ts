@@ -53,7 +53,7 @@
 import * as fs from 'fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { mkdtempSync, mkdirSync, copyFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { pinDraws } from '../lib/pinned-draws';
 
@@ -113,6 +113,7 @@ async function main(): Promise<void> {
   if (!outPath) throw new Error('QT_ORACLE_OUT must point at the NDJSON file to write');
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-regen-oracle-'));
+  scratchDirs.push(scratch);
   mkdirSync(join(scratch, 'data'), { recursive: true });
   const workMain = join(scratch, 'regen-main.db');
   const workMount = join(scratch, 'regen-mount.db');
@@ -445,4 +446,10 @@ async function main(): Promise<void> {
 
 test('regenerate-swipe tier-3 oracle', async () => {
   await main();
+});
+
+// Remove the OS-temp scratch dir(s) once the oracle has written its NDJSON.
+const scratchDirs: string[] = [];
+afterAll(() => {
+  for (const d of scratchDirs) rmSync(d, { recursive: true, force: true });
 });

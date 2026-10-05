@@ -345,12 +345,12 @@ fn subprompts_prompt_matches_oracle() {
         let want = oracle
             .get(name)
             .unwrap_or_else(|| panic!("oracle missing {name}"));
-        let scratch =
-            std::env::temp_dir().join(format!("qt-spp-rust-{}-{name}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&scratch);
-        std::fs::create_dir_all(&scratch).unwrap();
-        let main_work = scratch.join("main.db");
-        let mount_work = scratch.join("mount.db");
+        let scratch = tempfile::Builder::new()
+            .prefix(&format!("qt-spp-rust-{name}-"))
+            .tempdir()
+            .expect("tempdir");
+        let main_work = scratch.path().join("main.db");
+        let mount_work = scratch.path().join("mount.db");
         std::fs::copy(&main_fixture, &main_work).unwrap();
         std::fs::copy(&mount_fixture, &mount_work).unwrap();
         let main_w =
@@ -409,7 +409,7 @@ fn subprompts_prompt_matches_oracle() {
             eprintln!("[{name}] OK");
         }
         drop((main_w, mount_w));
-        let _ = std::fs::remove_dir_all(&scratch);
+        drop(scratch);
     }
     // The block must actually be measured somewhere (a stale oracle / a
     // vacuous corpus cannot pass by simply carrying no block anywhere).

@@ -1800,18 +1800,18 @@ mod log_context_tests {
         }
     }
 
-    fn test_db() -> Db {
-        let dir = std::env::temp_dir().join(format!(
-            "qt-file-fallback-log-{}-{}",
-            std::process::id(),
-            uuid::Uuid::new_v4()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        Db::open_main(
-            dir.join("main.db"),
+    /// The scratch dir rides out with the handle — bind it for the test's life.
+    fn test_db() -> (Db, tempfile::TempDir) {
+        let dir = tempfile::Builder::new()
+            .prefix("qt-file-fallback-log-")
+            .tempdir()
+            .expect("tempdir");
+        let db = Db::open_main(
+            dir.path().join("main.db"),
             "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
         )
-        .unwrap()
+        .unwrap();
+        (db, dir)
     }
 
     /// v4 `:214` — the transport-vs-flag disagreement, on the pure predicate.
@@ -1857,7 +1857,7 @@ mod log_context_tests {
     /// P4.74; v4 carries `primaryProfileId` and `error`.
     #[test]
     fn the_chain_build_refusal_line_carries_v4s_keys() {
-        let db = test_db();
+        let (db, _scratch) = test_db();
         let provider = UnusedProvider;
         let transcoder = NotConfiguredTranscoder;
         let deps = FallbackDeps {
@@ -1915,7 +1915,7 @@ mod log_context_tests {
     #[test]
     fn the_vision_fallback_logs_why_there_is_no_desk() {
         use crate::test_support::captured_with;
-        let db = test_db();
+        let (db, _scratch) = test_db();
         // The re-dumped fresh `chat_settings` table with no row for the user:
         // v4's `findByUserId` answers null, the policy reads the defaults (on
         // duty, no desk) — so the source is `default`.

@@ -332,18 +332,19 @@ impl GeneratorsDetailDriver for TestDriver {
     }
 }
 
-fn fresh_pair(spec: &Spec, tag: &str) -> (Db, PathBuf) {
-    let scratch = std::env::temp_dir().join(format!("qt-opt-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
-    let main = scratch.join("main.db");
-    let mount = scratch.join("mount.db");
+fn fresh_pair(spec: &Spec, tag: &str) -> (Db, tempfile::TempDir) {
+    let scratch = tempfile::Builder::new()
+        .prefix(&format!("qt-opt-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let main = scratch.path().join("main.db");
+    let mount = scratch.path().join("mount.db");
     std::fs::copy(fixtures_dir().join("character-generators-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("character-generators-mount.db"), &mount).unwrap();
     // A fresh llm-logs partition per case: item 10 compares what each runner's
     // `log_llm_call` wrote against the oracle's own per-case delta, which is
     // impossible with the `None` this family used to pass.
-    let llm_logs = scratch.join("llmlogs.db");
+    let llm_logs = scratch.path().join("llmlogs.db");
     common::materialize_llm_logs(&llm_logs, &spec.test_pepper_base64);
     let db = Db::open(
         DbPaths {
@@ -641,7 +642,7 @@ fn run_case(spec: &Spec, corpus: &Corpus, c: &Case) -> Value {
 
     drop(driver);
     drop(db);
-    let _ = std::fs::remove_dir_all(&scratch);
+    drop(scratch);
 
     json!({
         "name": c.name,
@@ -839,7 +840,7 @@ fn the_optimizer_route_starting_line_carries_v4s_bag() {
         assert!(line.contains(&field), "missing {field} in {line}");
     }
     drop(db);
-    let _ = std::fs::remove_dir_all(&scratch);
+    drop(scratch);
 
     // A body that DOES set them: the same line, carrying the real values.
     let (db, scratch) = fresh_pair(&spec, "route_line_explicit");
@@ -873,7 +874,7 @@ fn the_optimizer_route_starting_line_carries_v4s_bag() {
         assert!(line.contains(field), "missing {field} in {line}");
     }
     drop(db);
-    let _ = std::fs::remove_dir_all(&scratch);
+    drop(scratch);
 
     // --- the SILENCE half: v4's two gates both come BEFORE the line. ---
     for (tag, character, profile) in [
@@ -904,6 +905,6 @@ fn the_optimizer_route_starting_line_carries_v4s_bag() {
             "{tag}: v4 refuses before it announces: {lines:#?}"
         );
         drop(db);
-        let _ = std::fs::remove_dir_all(&scratch);
+        drop(scratch);
     }
 }

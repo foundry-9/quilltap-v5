@@ -126,8 +126,11 @@ async fn help_tools_match_oracle() {
     assert_eq!(spec.submit_ops.len(), oracle.submit.len());
 
     // Fresh copy so the shared seed fixture stays pristine.
-    let work = std::env::temp_dir().join(format!("qt-help-rust-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    let work_dir = tempfile::Builder::new()
+        .prefix("qt-help-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = work_dir.path().join("help-rust.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
     let db = Db::open_main(&work, &spec.test_pepper_base64)
         .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
@@ -167,7 +170,6 @@ async fn help_tools_match_oracle() {
         );
     }
 
-    let _ = std::fs::remove_file(&work);
     eprintln!(
         "OK: help-tools matched oracle ({} settings, {} navigate, {} submit).",
         spec.settings_ops.len(),

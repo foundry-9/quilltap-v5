@@ -96,19 +96,33 @@ fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../quilltap-web/tests/fixtures")
 }
 
-fn fresh_db(tag: &str) -> Db {
-    let scratch = std::env::temp_dir().join(format!("qt-sysimport-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
-    let main = scratch.join("main.db");
-    let mount = scratch.join("mount.db");
+/// A fixture copy in a scratch dir removed on drop (the `Db` drops first).
+struct ScratchDb {
+    db: Db,
+    _dir: tempfile::TempDir,
+}
+
+impl std::ops::Deref for ScratchDb {
+    type Target = Db;
+    fn deref(&self) -> &Db {
+        &self.db
+    }
+}
+
+fn fresh_db(tag: &str) -> ScratchDb {
+    let scratch = tempfile::Builder::new()
+        .prefix(&format!("qt-sysimport-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let main = scratch.path().join("main.db");
+    let mount = scratch.path().join("mount.db");
     std::fs::copy(fixtures_dir().join("system-data-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("system-data-mount.db"), &mount).unwrap();
     // P4.111 widened the committed `system-data-main.db` to carry the
     // P4.D171 and P4.D182 columns natively (`pragma_table_info` proof:
     // P4.117 lane record) — the `ensure_p4d171_columns`/`ensure_p4d182_
     // columns` heals that used to run here are now dead and removed.
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
@@ -116,7 +130,8 @@ fn fresh_db(tag: &str) -> Db {
         },
         TEST_PEPPER,
     )
-    .expect("open db")
+    .expect("open db");
+    ScratchDb { db, _dir: scratch }
 }
 
 /// [P4.48] The in-database failures the planted-preview arms stage. Both run on

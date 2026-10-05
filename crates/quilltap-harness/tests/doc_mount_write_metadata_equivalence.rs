@@ -345,8 +345,11 @@ fn doc_mount_write_metadata_matches_oracle() {
         std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("cannot read oracle: {e}"));
     let oracle: Value = serde_json::from_str(oracle_text.trim()).expect("parse oracle dump");
 
-    let work = std::env::temp_dir().join(format!("qt-dmwm-rust-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    let work_dir = tempfile::Builder::new()
+        .prefix("qt-dmwm-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = work_dir.path().join("dmwm-rust.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
     let writer = Writer::open_writable(&work, &spec.test_pepper_base64)
@@ -577,7 +580,6 @@ fn doc_mount_write_metadata_matches_oracle() {
         quilltap_core::db::dump_table_json_conn(conn, "doc_mount_blobs", "sha256").expect("blobs"),
     ];
     drop(writer);
-    let _ = std::fs::remove_file(&work);
 
     let keys = ["files", "documents", "links", "chunks", "blobs"];
     let mut theirs: [Value; TABLE_COUNT] = std::array::from_fn(|i| oracle[keys[i]].clone());

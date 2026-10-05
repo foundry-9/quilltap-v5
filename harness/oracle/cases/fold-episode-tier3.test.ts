@@ -139,6 +139,7 @@ async function main(): Promise<void> {
   if (!outPath) throw new Error('QT_ORACLE_OUT must point at the NDJSON file to write');
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-fold-episode-oracle-'));
+  try {
   mkdirSync(join(scratch, 'data'), { recursive: true });
   const workMain = join(scratch, 'fold-episode-main.db');
   const workMount = join(scratch, 'fold-episode-mount.db');
@@ -344,6 +345,9 @@ async function main(): Promise<void> {
 
   fs.writeFileSync(outPath, lines.join('\n') + '\n');
   process.stderr.write(`fold-episode oracle wrote ${outPath}\n`);
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
 }
 
 test('fold-episode tier-3 oracle', async () => {

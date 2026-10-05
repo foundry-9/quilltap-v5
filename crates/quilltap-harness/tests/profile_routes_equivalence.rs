@@ -43,15 +43,30 @@ fn spec_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../harness/oracle/fixtures/profile-web.json")
 }
 
-fn fresh_db(tag: &str) -> Db {
-    let scratch = std::env::temp_dir().join(format!("qt-profile-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
-    let main = scratch.join("main.db");
-    let mount = scratch.join("mount.db");
+/// A fresh Db over a private scratch dir; the dir is deleted when this drops
+/// (the `Db` field drops first).
+struct ScratchDb {
+    db: Db,
+    _dir: tempfile::TempDir,
+}
+
+impl std::ops::Deref for ScratchDb {
+    type Target = Db;
+    fn deref(&self) -> &Db {
+        &self.db
+    }
+}
+
+fn fresh_db(tag: &str) -> ScratchDb {
+    let scratch = tempfile::Builder::new()
+        .prefix(&format!("qt-profile-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let main = scratch.path().join("main.db");
+    let mount = scratch.path().join("mount.db");
     std::fs::copy(fixtures_dir().join("profile-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("profile-mount.db"), &mount).unwrap();
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
@@ -59,7 +74,8 @@ fn fresh_db(tag: &str) -> Db {
         },
         TEST_PEPPER,
     )
-    .expect("open db")
+    .expect("open db");
+    ScratchDb { db, _dir: scratch }
 }
 
 fn status_of(kind: ErrorKind) -> u16 {

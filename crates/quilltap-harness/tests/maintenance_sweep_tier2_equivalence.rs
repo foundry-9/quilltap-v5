@@ -86,11 +86,16 @@ fn maintenance_sweep_matches_oracle() {
     );
 
     // Copy both fixtures to a private working pair (both sides mutate the copy).
-    let pid = std::process::id();
-    let main_work = std::env::temp_dir().join(format!("qt-maint-main-rust-{pid}.db"));
-    let mount_work = std::env::temp_dir().join(format!("qt-maint-mount-rust-{pid}.db"));
-    let _ = std::fs::remove_file(&main_work);
-    let _ = std::fs::remove_file(&mount_work);
+    let main_work_scratch = tempfile::Builder::new()
+        .prefix("qt-maint-main-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let main_work = main_work_scratch.path().join("main_work.db");
+    let mount_work_scratch = tempfile::Builder::new()
+        .prefix("qt-maint-mount-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let mount_work = mount_work_scratch.path().join("mount_work.db");
     std::fs::copy(&main_fixture, &main_work).unwrap_or_else(|e| panic!("copy main: {e}"));
     std::fs::copy(&mount_fixture, &mount_work).unwrap_or_else(|e| panic!("copy mount: {e}"));
 
@@ -188,8 +193,6 @@ fn maintenance_sweep_matches_oracle() {
         "mount links diverged"
     );
 
-    let _ = std::fs::remove_file(&main_work);
-    let _ = std::fs::remove_file(&mount_work);
     eprintln!(
         "OK: collapse_stale_chat_assets matched v4 (deleted {}, {} files survive).",
         summary.files_deleted,

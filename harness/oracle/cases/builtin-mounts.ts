@@ -21,7 +21,7 @@
  */
 
 import Database from 'better-sqlite3';
-import { mkdtempSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -51,6 +51,7 @@ async function main(): Promise<void> {
   }
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-builtin-mounts-oracle-'));
+  process.on('exit', () => rmSync(scratch, { recursive: true, force: true }));
   mkdirSync(join(scratch, 'data'), { recursive: true });
   const mainPath = join(scratch, 'quilltap.db');
   const miPath = join(scratch, 'data', 'quilltap-mount-index.db');

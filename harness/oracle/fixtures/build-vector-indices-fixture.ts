@@ -46,6 +46,7 @@ async function main(): Promise<void> {
   // Throwaway data dir absorbs v4's operational scaffolding (instance lock,
   // startup physical backup, sibling DBs). The MAIN db lands at SQLITE_PATH.
   const scratch = mkdtempSync(join(tmpdir(), 'qt-vector-indices-build-'));
+  process.on('exit', () => rmSync(scratch, { recursive: true, force: true }));
   mkdirSync(join(scratch, 'data'), { recursive: true });
 
   // Env MUST be set before importing v4 config/manager modules.

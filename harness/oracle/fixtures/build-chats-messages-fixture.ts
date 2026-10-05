@@ -42,6 +42,7 @@ async function main(): Promise<void> {
   }
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-chatsmsg-fixture-build-'));
+  process.on('exit', () => rmSync(scratch, { recursive: true, force: true }));
   mkdirSync(join(scratch, 'data'), { recursive: true });
 
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;

@@ -322,13 +322,13 @@ fn first_diff(a: &Value, b: &Value) -> String {
     out
 }
 
-fn open_fresh(spec: &Spec, tag: &str) -> (Db, PathBuf) {
-    let scratch =
-        std::env::temp_dir().join(format!("qt-avatar-rolls-{}-{tag}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
-    let main = scratch.join("main.db");
-    let mount = scratch.join("mount.db");
+fn open_fresh(spec: &Spec, tag: &str) -> (Db, tempfile::TempDir) {
+    let scratch = tempfile::Builder::new()
+        .prefix(&format!("qt-avatar-rolls-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let main = scratch.path().join("main.db");
+    let mount = scratch.path().join("mount.db");
     std::fs::copy(fixtures_dir().join("avatar-rolls-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("avatar-rolls-mount.db"), &mount).unwrap();
     let db = Db::open(
@@ -459,7 +459,7 @@ fn avatar_rolls_match_oracle() {
     };
 
     let mut got_rows: Vec<(String, Value)> = Vec::new();
-    let mut scratches: Vec<PathBuf> = Vec::new();
+    let mut scratches: Vec<tempfile::TempDir> = Vec::new();
 
     // ---- the read cases (no census; one shared fresh copy is enough) --------
     {
@@ -622,9 +622,7 @@ fn avatar_rolls_match_oracle() {
         scratches.push(scratch);
     }
 
-    for s in &scratches {
-        let _ = std::fs::remove_dir_all(s);
-    }
+    drop(scratches);
 
     let mut failed = Vec::new();
     for (name, got) in &got_rows {
@@ -719,7 +717,7 @@ fn key_order_pin() {
         .cloned()
         .collect();
     drop(db);
-    let _ = std::fs::remove_dir_all(&scratch);
+    drop(scratch);
 
     assert_eq!(got, want, "the AvatarRollEntry key order moved");
     eprintln!(
@@ -737,11 +735,12 @@ fn key_order_pin() {
 #[test]
 fn the_three_avatar_rolls_log_lines_fire_with_v4s_fields() {
     let spec: Spec = serde_json::from_str(&std::fs::read_to_string(spec_path()).unwrap()).unwrap();
-    let scratch = std::env::temp_dir().join(format!("qt-avatar-rolls-logs-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
-    let main_p = scratch.join("main.db");
-    let mount_p = scratch.join("mount.db");
+    let scratch = tempfile::Builder::new()
+        .prefix("qt-avatar-rolls-logs-")
+        .tempdir()
+        .expect("tempdir");
+    let main_p = scratch.path().join("main.db");
+    let mount_p = scratch.path().join("mount.db");
     std::fs::copy(fixtures_dir().join("avatar-rolls-main.db"), &main_p).unwrap();
     std::fs::copy(fixtures_dir().join("avatar-rolls-mount.db"), &mount_p).unwrap();
     let main_w =
@@ -826,5 +825,5 @@ fn the_three_avatar_rolls_log_lines_fire_with_v4s_fields() {
 
     drop(main_w);
     drop(mount_w);
-    let _ = std::fs::remove_dir_all(&scratch);
+    drop(scratch);
 }

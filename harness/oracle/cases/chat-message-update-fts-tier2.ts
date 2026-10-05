@@ -29,7 +29,7 @@
 
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { mkdtempSync, mkdirSync, readFileSync, copyFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { canonicalizeRows } from '../lib/tier2.js';
 
@@ -72,6 +72,7 @@ async function main(): Promise<void> {
   }
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-chatmsgupdatefts-oracle-'));
+  process.on('exit', () => rmSync(scratch, { recursive: true, force: true }));
   mkdirSync(join(scratch, 'data'), { recursive: true });
   const work = join(scratch, 'chatmsgupdatefts-work.db');
   copyFileSync(fixture, work);

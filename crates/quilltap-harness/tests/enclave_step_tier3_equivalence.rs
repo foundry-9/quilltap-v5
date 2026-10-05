@@ -439,9 +439,11 @@ fn enclave_step_tier3_matches_oracle() {
     }
 
     // Copy the fixture DBs to a scratch dir.
-    let scratch =
-        std::env::temp_dir().join(format!("qt-enclave-step-harness-{}", std::process::id()));
-    std::fs::create_dir_all(&scratch).expect("scratch dir");
+    let scratch_dir = tempfile::Builder::new()
+        .prefix("qt-enclave-step-harness-")
+        .tempdir()
+        .expect("tempdir");
+    let scratch = scratch_dir.path().to_path_buf();
     let work_main = scratch.join("main.db");
     let work_mount = scratch.join("mount.db");
     let work_ll = scratch.join("llm-logs.db");
@@ -652,7 +654,6 @@ fn enclave_step_tier3_matches_oracle() {
     assert_table_eq("llm_logs", &got_logs, &want_logs);
 
     drop(db);
-    let _ = std::fs::remove_dir_all(&scratch);
 }
 
 // ---------------------------------------------------------------------------

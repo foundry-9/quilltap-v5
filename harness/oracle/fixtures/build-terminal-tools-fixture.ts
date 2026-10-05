@@ -80,6 +80,7 @@ async function main(): Promise<void> {
   mkdirSync(scrollbackDir, { recursive: true });
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-termtools-fixture-build-'));
+  process.on('exit', () => rmSync(scratch, { recursive: true, force: true }));
   mkdirSync(join(scratch, 'data'), { recursive: true });
 
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;

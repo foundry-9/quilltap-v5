@@ -929,9 +929,11 @@ async fn primary_stream_tier3_matches_oracle() {
     );
 
     // Fresh copy so the seed fixture stays pristine.
-    let work =
-        std::env::temp_dir().join(format!("qt-primary-stream-rust-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    let work_scratch = tempfile::Builder::new()
+        .prefix("qt-primary-stream-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = work_scratch.path().join("work.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
     let provider = QueuedStreamingProvider::from_oracle(&oracle_canned).with_markers(
@@ -943,11 +945,11 @@ async fn primary_stream_tier3_matches_oracle() {
 
     // W4.11b: attach a fresh llm-logs partition so the primary + failover
     // CHAT_MESSAGE `logLLMCall` rows land somewhere we can dump.
-    let ll_work = std::env::temp_dir().join(format!(
-        "qt-primary-stream-rust-ll-{}.db",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_file(&ll_work);
+    let ll_work_scratch = tempfile::Builder::new()
+        .prefix("qt-primary-stream-rust-ll-")
+        .tempdir()
+        .expect("tempdir");
+    let ll_work = ll_work_scratch.path().join("ll_work.db");
     common::materialize_llm_logs(&ll_work, &spec.test_pepper_base64);
     let db = Db::open(
         DbPaths {
@@ -1577,8 +1579,6 @@ async fn primary_stream_tier3_matches_oracle() {
         .expect("dump chat_informs");
     let got_logs = common::dump_llm_logs(&db);
     drop(db);
-    let _ = std::fs::remove_file(&work);
-    let _ = std::fs::remove_file(&ll_work);
 
     let mut want_msgs = oracle_tables
         .remove("chat_messages")

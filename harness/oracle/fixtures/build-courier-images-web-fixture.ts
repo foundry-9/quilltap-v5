@@ -162,6 +162,7 @@ async function main(): Promise<void> {
   if (existsSync(mainOut + '.meta.json')) rmSync(mainOut + '.meta.json');
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-ci-fixture-'));
+  process.on('exit', () => rmSync(scratch, { recursive: true, force: true }));
   mkdirSync(join(scratch, 'data'), { recursive: true });
 
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;

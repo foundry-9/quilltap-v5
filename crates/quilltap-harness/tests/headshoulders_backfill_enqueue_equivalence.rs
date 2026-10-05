@@ -89,15 +89,20 @@ fn env_or_skip(key: &str) -> Option<String> {
 /// cannot see it, so every log comparand would be vacuously empty. Driving the
 /// connections directly is both the closer shape and the only one whose lines
 /// are observable.
-fn fresh_pair(tag: &str) -> (Writer, Writer) {
-    let scratch = std::env::temp_dir().join(format!("qt-hs-enq-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
-    let main = scratch.join("main.db");
-    let mount = scratch.join("mount.db");
+///
+/// The returned `TempDir` holds both copies and must outlive the writers (bind
+/// it FIRST so it drops last); dropping it removes the scratch dir.
+fn fresh_pair(tag: &str) -> (tempfile::TempDir, Writer, Writer) {
+    let scratch = tempfile::Builder::new()
+        .prefix(&format!("qt-hs-enq-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let main = scratch.path().join("main.db");
+    let mount = scratch.path().join("mount.db");
     std::fs::copy(fixtures_dir().join("headshoulders-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("headshoulders-mount.db"), &mount).unwrap();
     (
+        scratch,
         Writer::open_writable(&main, TEST_PEPPER).expect("open main writer"),
         Writer::open_writable(&mount, TEST_PEPPER).expect("open mount writer"),
     )
@@ -234,7 +239,7 @@ fn headshoulders_backfill_enqueue_matches_oracle() {
     let mut failed: Vec<String> = Vec::new();
 
     for (name, preset, runs) in CASES {
-        let (main_w, mount_w) = fresh_pair(name);
+        let (_scratch, main_w, mount_w) = fresh_pair(name);
         let main = main_w.connection();
         let mount = mount_w.connection();
         if let Some(value) = preset {

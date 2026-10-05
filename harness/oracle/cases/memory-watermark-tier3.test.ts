@@ -30,7 +30,7 @@
 import * as fs from 'fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { mkdtempSync, mkdirSync, copyFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 function canonValue(v: unknown): unknown {
@@ -88,6 +88,7 @@ async function main(): Promise<void> {
   if (!outPath) throw new Error('QT_ORACLE_OUT must point at the NDJSON file to write');
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-memory-watermark-oracle-'));
+  scratchDirs.push(scratch);
   mkdirSync(join(scratch, 'data'), { recursive: true });
   const work = join(scratch, 'watermark-work.db');
   copyFileSync(fixture, work);
@@ -203,4 +204,10 @@ async function main(): Promise<void> {
 
 test('memory-watermark tier-3 oracle', async () => {
   await main();
+});
+
+// Remove the OS-temp scratch dir(s) once the oracle has written its NDJSON.
+const scratchDirs: string[] = [];
+afterAll(() => {
+  for (const d of scratchDirs) rmSync(d, { recursive: true, force: true });
 });

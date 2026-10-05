@@ -129,9 +129,11 @@ fn conversation_summaries_regen_matches_oracle() {
     let oracle: Value =
         serde_json::from_str(std::fs::read_to_string(&oracle_path).unwrap().trim()).unwrap();
 
-    let scratch = std::env::temp_dir().join(format!("qt-csr-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
+    let scratch_dir = tempfile::Builder::new()
+        .prefix("qt-csr-")
+        .tempdir()
+        .expect("tempdir");
+    let scratch = scratch_dir.path().to_path_buf();
     let main = scratch.join("main.db");
     let mount = scratch.join("mount.db");
     std::fs::copy(
@@ -275,7 +277,6 @@ fn conversation_summaries_regen_matches_oracle() {
         &summary_placements(&oracle["points"], &oracle["links"]),
     );
 
-    let _ = std::fs::remove_dir_all(&scratch);
     assert!(
         !failed,
         "conversation-summaries-regen differential mismatched"

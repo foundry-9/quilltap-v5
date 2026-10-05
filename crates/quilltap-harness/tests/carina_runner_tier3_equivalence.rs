@@ -399,9 +399,11 @@ fn carina_runner_tier3_matches_oracle() {
     let mut oracle_messages = oracle_messages.expect("oracle chat_messages table");
 
     // Copy the fixture + open a Db (main-only; the runner never touches siblings).
-    let work =
-        std::env::temp_dir().join(format!("qt-carina-runner-rust-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    let scratch_dir = tempfile::Builder::new()
+        .prefix("qt-carina-runner-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = scratch_dir.path().join("qt-carina-runner-rust.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
     let db = Db::open(DbPaths::main_only(&work), &spec.test_pepper_base64)

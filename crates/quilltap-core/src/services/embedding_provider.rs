@@ -633,16 +633,16 @@ mod tests {
     use crate::services::activity_kinds::ActivityKind;
 
     /// An in-memory-style Db over a temp file with the tables the provider
-    /// reads, seeded through the writer.
-    async fn test_db(tag: &str) -> Db {
-        let path = std::env::temp_dir().join(format!(
-            "qt-embed-provider-test-{tag}-{}.db",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_file(&path);
+    /// reads, seeded through the writer. The scratch dir rides out with the
+    /// handle — bind it for the test's life.
+    async fn test_db(tag: &str) -> (Db, tempfile::TempDir) {
+        let dir = tempfile::Builder::new()
+            .prefix(&format!("qt-embed-provider-test-{tag}-"))
+            .tempdir()
+            .expect("tempdir");
         let db = Db::open(
             DbPaths {
-                main: path,
+                main: dir.path().join("main.db"),
                 mount_index: None,
                 llm_logs: None,
             },
@@ -665,7 +665,7 @@ mod tests {
         })
         .await
         .expect("create tables");
-        db
+        (db, dir)
     }
 
     async fn seed_profile(
@@ -725,7 +725,7 @@ mod tests {
 
     #[tokio::test]
     async fn no_profile_configured() {
-        let db = test_db("none").await;
+        let (db, _scratch) = test_db("none").await;
         let provider = ApiEmbeddingProvider::new(db, CannedWireTransport::new());
         let err = provider
             .generate_for_user("hi", "u-no-profiles", None)
@@ -737,7 +737,7 @@ mod tests {
 
     #[tokio::test]
     async fn explicit_missing_falls_back_to_default() {
-        let db = test_db("fallback").await;
+        let (db, _scratch) = test_db("fallback").await;
         seed_profile(&db, "ep-default", "u1", "OPENAI", Some("ak-1"), None, true).await;
         seed_api_key(&db, "ak-1", "u1", "sk-test").await;
         let transport = CannedWireTransport::new().with_response(
@@ -804,7 +804,7 @@ mod tests {
         // (the drop also zeroes, so this test leaves no residue either).
         let _activity = crate::services::activity_registry::ActivityTestGuard::new();
         use crate::model::embedding::{EmbeddingPriority, EmbeddingProvider};
-        let db = test_db("activity-span").await;
+        let (db, _scratch) = test_db("activity-span").await;
         seed_profile(&db, "ep-default", "u1", "OPENAI", Some("ak-1"), None, true).await;
         seed_api_key(&db, "ak-1", "u1", "sk-test").await;
 
@@ -833,7 +833,7 @@ mod tests {
 
     #[tokio::test]
     async fn requires_api_key_gate() {
-        let db = test_db("nokey").await;
+        let (db, _scratch) = test_db("nokey").await;
         // apiKeyId points at a missing row.
         seed_profile(&db, "ep-1", "u1", "OPENAI", Some("ak-missing"), None, false).await;
         // apiKeyId NULL.
@@ -861,7 +861,7 @@ mod tests {
             .unwrap();
         let (err, lines) = crate::test_support::captured_with(|| {
             rt.block_on(async {
-                let db = test_db("corrupt-key").await;
+                let (db, _scratch) = test_db("corrupt-key").await;
                 seed_profile(&db, "ep-1", "u1", "OPENAI", Some("ak-bad"), None, false).await;
                 db.write(|ws| {
                     crate::db::fallback::test_plants::plant_api_key(
@@ -895,7 +895,7 @@ mod tests {
 
     #[tokio::test]
     async fn unknown_provider_plain_error() {
-        let db = test_db("unknown").await;
+        let (db, _scratch) = test_db("unknown").await;
         seed_profile(&db, "ep-1", "u1", "MYSTERY", None, None, false).await;
         let provider = ApiEmbeddingProvider::new(db, CannedWireTransport::new());
         let err = provider
@@ -909,7 +909,7 @@ mod tests {
 
     #[tokio::test]
     async fn embeddings_incapable_provider_plain_error() {
-        let db = test_db("nocap").await;
+        let (db, _scratch) = test_db("nocap").await;
         // ANTHROPIC exists in the registry but declares embeddings: false.
         seed_profile(&db, "ep-1", "u1", "ANTHROPIC", None, None, false).await;
         let provider = ApiEmbeddingProvider::new(db, CannedWireTransport::new());
@@ -926,7 +926,7 @@ mod tests {
 
     #[tokio::test]
     async fn openai_non_2xx_plain_error_message() {
-        let db = test_db("429").await;
+        let (db, _scratch) = test_db("429").await;
         seed_profile(&db, "ep-1", "u1", "OPENAI", Some("ak-1"), None, false).await;
         seed_api_key(&db, "ak-1", "u1", "sk-test").await;
         let transport = CannedWireTransport::new().with_response(
@@ -953,7 +953,7 @@ mod tests {
     /// re-derives on the next call; a successful one is served from cache.
     #[tokio::test]
     async fn ollama_num_ctx_caches_only_derived() {
-        let db = test_db("numctx").await;
+        let (db, _scratch) = test_db("numctx").await;
         seed_profile(
             &db,
             "ep-1",

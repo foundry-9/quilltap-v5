@@ -270,11 +270,16 @@ async fn enclave_lifecycle_tier2_matches_oracle() {
     .expect("parse oracle dump");
 
     // Fresh copies so the shared seed fixtures stay pristine.
-    let pid = std::process::id();
-    let work_main = std::env::temp_dir().join(format!("qt-enclave-rust-main-{pid}.db"));
-    let work_mount = std::env::temp_dir().join(format!("qt-enclave-rust-mount-{pid}.db"));
-    let _ = std::fs::remove_file(&work_main);
-    let _ = std::fs::remove_file(&work_mount);
+    let work_main_dir = tempfile::Builder::new()
+        .prefix("qt-enclave-rust-main-")
+        .tempdir()
+        .expect("tempdir");
+    let work_main = work_main_dir.path().join("enclave-rust-main.db");
+    let work_mount_dir = tempfile::Builder::new()
+        .prefix("qt-enclave-rust-mount-")
+        .tempdir()
+        .expect("tempdir");
+    let work_mount = work_mount_dir.path().join("enclave-rust-mount.db");
     std::fs::copy(&fixture, &work_main).unwrap_or_else(|e| panic!("copy main fixture: {e}"));
     std::fs::copy(&fixture_mount, &work_mount)
         .unwrap_or_else(|e| panic!("copy mount fixture: {e}"));
@@ -464,9 +469,6 @@ async fn enclave_lifecycle_tier2_matches_oracle() {
             .expect("dump chat_messages"),
     });
     let mut oracle_dumps = oracle["dumps"].clone();
-
-    let _ = std::fs::remove_file(&work_main);
-    let _ = std::fs::remove_file(&work_mount);
 
     // ------------------------------------------------------------------
     // Normalization (identical on both sides)

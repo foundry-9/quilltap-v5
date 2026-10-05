@@ -224,6 +224,7 @@ async function main(): Promise<void> {
   if (!outPath) throw new Error('QT_ORACLE_OUT missing');
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-build-context-oracle-'));
+  try {
   mkdirSync(join(scratch, 'data'), { recursive: true });
   const workMain = join(scratch, 'bc-main.db');
   const workMount = join(scratch, 'bc-mount.db');
@@ -621,6 +622,9 @@ async function main(): Promise<void> {
   await closeDatabase();
   fs.writeFileSync(outPath, lines.join('\n') + '\n');
   process.stderr.write(`build-context oracle wrote ${outPath}\n`);
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
 }
 
 test('build-context tier-3 oracle', async () => {

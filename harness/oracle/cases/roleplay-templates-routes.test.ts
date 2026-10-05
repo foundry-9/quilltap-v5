@@ -178,6 +178,7 @@ async function main(): Promise<void> {
   if (!STANDARD || !QUILLTAP_RP) throw new Error(`built-in ids unresolved: ${JSON.stringify(builtins)}`);
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-rt-oracle-'));
+  scratchDirs.push(scratch);
   mkdirSync(join(scratch, 'data'), { recursive: true });
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
   process.env.QUILLTAP_DATA_DIR = scratch;
@@ -382,4 +383,10 @@ async function main(): Promise<void> {
 
 test('roleplay-templates-routes oracle', async () => {
   await main();
+});
+
+// Remove the OS-temp scratch dir(s) once the oracle has written its NDJSON.
+const scratchDirs: string[] = [];
+afterAll(() => {
+  for (const d of scratchDirs) rmSync(d, { recursive: true, force: true });
 });

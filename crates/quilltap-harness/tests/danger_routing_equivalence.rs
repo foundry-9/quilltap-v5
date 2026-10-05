@@ -322,9 +322,11 @@ fn danger_routing_matches_oracle() {
     };
     let mut log_rows = 0usize;
 
-    let work =
-        std::env::temp_dir().join(format!("qt-danger-routing-rust-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    let work_dir = tempfile::Builder::new()
+        .prefix("qt-danger-routing-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = work_dir.path().join("danger-routing-rust.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
     let db = Db::open_main(&work, &spec.test_pepper_base64)
         .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
@@ -505,7 +507,6 @@ fn danger_routing_matches_oracle() {
     }
 
     drop(db);
-    let _ = std::fs::remove_file(&work);
 
     // Corpus floors: every kind driven, and the lines genuinely compared.
     assert!(spec.text_understudy_cases.len() >= 12 && spec.image_understudy_cases.len() >= 7);

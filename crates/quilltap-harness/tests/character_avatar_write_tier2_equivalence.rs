@@ -55,15 +55,17 @@ fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../quilltap-web/tests/fixtures")
 }
 
-fn fresh_db(spec: &Spec) -> Db {
-    let scratch = std::env::temp_dir().join(format!("qt-avatar-write-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
+fn fresh_db(spec: &Spec) -> (Db, tempfile::TempDir) {
+    let scratch_dir = tempfile::Builder::new()
+        .prefix("qt-avatar-write-")
+        .tempdir()
+        .expect("tempdir");
+    let scratch = scratch_dir.path();
     let main = scratch.join("main.db");
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("characters-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("characters-mount.db"), &mount).unwrap();
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
@@ -71,7 +73,8 @@ fn fresh_db(spec: &Spec) -> Db {
         },
         &spec.test_pepper_base64,
     )
-    .expect("open db")
+    .expect("open db");
+    (db, scratch_dir)
 }
 
 /// Blank the seam `sha256` in each link object.
@@ -121,7 +124,7 @@ fn avatar_write_matches_oracle() {
     };
 
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let db = fresh_db(&spec);
+    let (db, _scratch) = fresh_db(&spec);
 
     // Drive the main-avatar write with the host codec.
     let written = rt

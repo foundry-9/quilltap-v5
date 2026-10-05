@@ -269,10 +269,12 @@ fn status_body(r: &Response) -> (u16, Value) {
 // Fixture + dumps
 // ===========================================================================
 
-fn fresh_db(spec: &Spec, tag: &str) -> Db {
-    let scratch = std::env::temp_dir().join(format!("qt-af-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
+fn fresh_db(spec: &Spec, tag: &str) -> (Db, tempfile::TempDir) {
+    let scratch_dir = tempfile::Builder::new()
+        .prefix(&format!("qt-af-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let scratch = scratch_dir.path();
     let main = scratch.join("main.db");
     let mount = scratch.join("mount.db");
     let ll = scratch.join("llm-logs.db");
@@ -295,7 +297,7 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
             )
             .unwrap();
     }
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
@@ -303,7 +305,8 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
         },
         &spec.test_pepper_base64,
     )
-    .expect("open db")
+    .expect("open db");
+    (db, scratch_dir)
 }
 
 /// The chat's message events over the oracle's projection.
@@ -576,7 +579,7 @@ fn attach_mount_file_matches_oracle() {
             spec.user_id.as_str(),
         ),
     ] {
-        let db = fresh_db(&spec, tag);
+        let (db, _scratch) = fresh_db(&spec, tag);
         let describe: Arc<dyn ImageDescribeDriver> = Arc::new(TestDescribeRunner {
             db: db.clone(),
             user_id: user.to_string(),
@@ -629,7 +632,7 @@ fn attach_mount_file_matches_oracle() {
         ),
         ("attach_missing_relative_path", "norel", CHAT, mp, ""),
     ] {
-        let db = fresh_db(&spec, tag);
+        let (db, _scratch) = fresh_db(&spec, tag);
         let describe: Arc<dyn ImageDescribeDriver> = Arc::new(TestDescribeRunner {
             db: db.clone(),
             user_id: spec.user_id.clone(),
@@ -647,7 +650,7 @@ fn attach_mount_file_matches_oracle() {
 
     // ── Double attach: two announcements, ONE `files` entry on the read-back ─
     {
-        let db = fresh_db(&spec, "twice");
+        let (db, _scratch) = fresh_db(&spec, "twice");
         let describe: Arc<dyn ImageDescribeDriver> = Arc::new(TestDescribeRunner {
             db: db.clone(),
             user_id: spec.user_id.clone(),
@@ -697,7 +700,7 @@ fn attach_without_describe_driver_still_succeeds() {
         &std::fs::read_to_string(fixtures_dir().join("attach-file-main.db.meta.json")).unwrap(),
     )
     .unwrap();
-    let db = fresh_db(&spec, "nodriver");
+    let (db, _scratch) = fresh_db(&spec, "nodriver");
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -795,7 +798,7 @@ fn a_second_attach_of_a_twinned_blob_does_not_re_run_vision() {
         &std::fs::read_to_string(fixtures_dir().join("attach-file-main.db.meta.json")).unwrap(),
     )
     .unwrap();
-    let db = fresh_db(&spec, "twinvision");
+    let (db, _scratch) = fresh_db(&spec, "twinvision");
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()

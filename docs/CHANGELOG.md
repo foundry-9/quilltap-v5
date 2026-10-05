@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-05 — test: stop the qt-* scratch leaks at the source — oracle cases remove their tmpdir scratch, Rust tests hold a tempfile::TempDir
+
+_Versions: core 0.0.1209, host 0.0.182, web 0.0.220._
+
+Follow-up to `tmp-sweep.sh`: fixes the leaks it was cleaning up after. Oracle cases and harness tests created `qt-*` scratch under `$TMPDIR` (Node `tmpdir()`, Rust `temp_dir()`) and never removed it, about 8,000 entries a day.
+
+Oracle side, 460 files under `harness/oracle/`. Plain tsx scripts (cases, fixture builders, `provision/`, the three `.mjs` cases) register `process.on('exit', () => rmSync(scratch, …))` right after their `mkdtempSync`, so cleanup runs after the NDJSON or fixture is written, on both `process.exit` paths. Jest cases remove scratch in a `finally` after the NDJSON write and DB close, or in an `afterAll` over a `scratchDirs` list. Loops that make a dir per case remove each one when the case ends. Many files already removed an inner `work` dir but never the outer `scratch`; the census caught those too, so this covers about 460 files, not the ~180 that had no `rmSync` at all. The eight cases and builders that call v4's real `createBackup` now delete the zip's private `quilltap-backup-*` directory once they have read or copied the zip, as v4's download handler does. No recipe output path is under a removed dir.
+
+Rust side: 260 test files and 9 `#[cfg(test)]` modules in core, host and web. Scratch dirs and work DBs now live in a `tempfile::TempDir` that keeps its `qt-…` prefix. Helpers that build a `Db` over the dir return the `TempDir` (as a tuple, or a small `ScratchDb` wrapper with `Deref<Target = Db>`), so it drops after the handles. This also fixes a second, quieter leak. Tests that `remove_file`d their work `.db` left the TRUNCATE-mode `.db-journal` behind, and several sidecar DBs carried no `qt-` prefix (`story-ll-*`, `cs-ll-*`, `avatar-ll-*`, `imggen-ll-*`), so `tmp-sweep.sh` never matched them. The diagnostic `qt-*-got/want-*.json` dumps written only on a failed row diff are kept on purpose.
+
+Production backup temp dirs were checked against v4 and need no change. A failed create removes its dir, and a download or an expired entry removes the zip and its dir. Restore's extract dir is removed by `ExtractedBackup`'s `Drop`, on every arm v4 cleans and also when unzip fails, where v4 leaks it. A backup created and never downloaded survives a process exit in both v4 and v5, since the pending map is in memory.
+
+Verified: fmt and clippy clean (plain and `native-transport`). The recipe sweep ran 12 families covering every edit shape (carina_query, mail_carina_tools, state_sql_tools, whisper_tool, chat_settings_voice_mode_ensure, qtap_import, system_backup, subprompts_prompt_tier2, precompute, provisioning, chat_cast_routes, pascal_workbench_route): 12 ok, zero `SKIP:` lines, and no new `qt-*`, `quilltap-*` or `*-ll-*` entry left in `$TMPDIR`. Every edited TS file parses, and `tsc` shows the same semantic error set as HEAD with module resolution excluded. `cargo test --workspace` (no oracle env vars) ran 669 binaries: 4,347 passed, 0 failed, 3 ignored. That run also left nothing new in `$TMPDIR`. `tmp-sweep.sh`'s header now says it is the backstop.
+
 #### 2026-10-05 — chore(scripts): add tmp-sweep.sh — clear jest's never-evicted cache and the qt-* scratch tests leak into $TMPDIR; /cleanup, /setupphase and /unify run it
 
 _No crate versions bumped._

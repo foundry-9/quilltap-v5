@@ -553,12 +553,14 @@ fn wardrobe_transfers_tier2_matches_oracle() {
             .get(&name)
             .unwrap_or_else(|| panic!("oracle missing scenario {name}"));
 
-        // Fresh copies so the shared seed fixtures stay pristine.
-        let pid = std::process::id();
-        let main_work = std::env::temp_dir().join(format!("qt-wtr-main-rust-{pid}-{name}.db"));
-        let mount_work = std::env::temp_dir().join(format!("qt-wtr-mount-rust-{pid}-{name}.db"));
-        let _ = std::fs::remove_file(&main_work);
-        let _ = std::fs::remove_file(&mount_work);
+        // Fresh copies so the shared seed fixtures stay pristine (in a scratch
+        // dir removed on drop, `-journal` files and all).
+        let scratch = tempfile::Builder::new()
+            .prefix(&format!("qt-wtr-rust-{name}-"))
+            .tempdir()
+            .expect("tempdir");
+        let main_work = scratch.path().join("main.db");
+        let mount_work = scratch.path().join("mount.db");
         std::fs::copy(&main_fixture, &main_work).unwrap_or_else(|e| panic!("copy main: {e}"));
         std::fs::copy(&mount_fixture, &mount_work).unwrap_or_else(|e| panic!("copy mount: {e}"));
 
@@ -728,8 +730,7 @@ fn wardrobe_transfers_tier2_matches_oracle() {
             .collect();
         drop(main);
         drop(mount);
-        let _ = std::fs::remove_file(&main_work);
-        let _ = std::fs::remove_file(&mount_work);
+        drop(scratch);
 
         let mut wanted: Vec<Value> = TABLES
             .iter()
@@ -765,11 +766,12 @@ fn wardrobe_transfers_tier2_matches_oracle() {
         let want = oracle_by_name
             .get("__destinations")
             .expect("oracle missing the __destinations row");
-        let pid = std::process::id();
-        let main_work = std::env::temp_dir().join(format!("qt-wtr-main-rust-{pid}-dest.db"));
-        let mount_work = std::env::temp_dir().join(format!("qt-wtr-mount-rust-{pid}-dest.db"));
-        let _ = std::fs::remove_file(&main_work);
-        let _ = std::fs::remove_file(&mount_work);
+        let scratch = tempfile::Builder::new()
+            .prefix("qt-wtr-rust-dest-")
+            .tempdir()
+            .expect("tempdir");
+        let main_work = scratch.path().join("main.db");
+        let mount_work = scratch.path().join("mount.db");
         std::fs::copy(&main_fixture, &main_work).unwrap();
         std::fs::copy(&mount_fixture, &mount_work).unwrap();
         let main = Writer::open_writable(&main_work, &spec.test_pepper_base64).unwrap();
@@ -783,8 +785,7 @@ fn wardrobe_transfers_tier2_matches_oracle() {
         );
         drop(main);
         drop(mount);
-        let _ = std::fs::remove_file(&main_work);
-        let _ = std::fs::remove_file(&mount_work);
+        drop(scratch);
     }
 
     eprintln!(

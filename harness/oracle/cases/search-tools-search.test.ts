@@ -26,7 +26,7 @@
 import * as fs from 'fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { mkdtempSync, mkdirSync, copyFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 interface Spec {
@@ -310,6 +310,7 @@ async function main(): Promise<void> {
     // Let fire-and-forget promises settle before closing.
     await new Promise((resolve) => setTimeout(resolve, 50));
     await closeDatabase();
+    rmSync(scratch, { recursive: true, force: true });
 
     lines.push(JSON.stringify({ label: c.label, resultJson, formatted, ...extra }));
   }

@@ -28,7 +28,7 @@
 
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { mkdtempSync, mkdirSync, readFileSync, copyFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, readFileSync, copyFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 const METADATA_JSON_PATH = 'metadata.json';
@@ -57,6 +57,7 @@ async function main(): Promise<void> {
   }
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-metadata-roundtrip-oracle-'));
+  process.on('exit', () => rmSync(scratch, { recursive: true, force: true }));
   mkdirSync(join(scratch, 'data'), { recursive: true });
   const mainWork = join(scratch, 'metadata-roundtrip-main-work.db');
   const mountWork = join(scratch, 'metadata-roundtrip-mount-work.db');

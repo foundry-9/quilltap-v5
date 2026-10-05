@@ -172,8 +172,11 @@ fn cheap_llm_fallback_matches_oracle() {
         .expect("claude")
         .to_string();
 
-    let work = std::env::temp_dir().join(format!("qt-cheap-fallback-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    let work_dir = tempfile::Builder::new()
+        .prefix("qt-cheap-fallback-")
+        .tempdir()
+        .expect("tempdir");
+    let work = work_dir.path().join("cheap-fallback.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
     // The SAME wiring statements the oracle applied, in the same order.
@@ -283,8 +286,6 @@ fn cheap_llm_fallback_matches_oracle() {
             ));
         }
     }
-
-    let _ = std::fs::remove_file(&work);
 
     assert!(
         failed.is_empty(),

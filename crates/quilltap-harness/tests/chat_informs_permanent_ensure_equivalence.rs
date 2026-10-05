@@ -94,8 +94,11 @@ fn the_boot_ensure_matches_v4s_migration() {
         "the oracle must have RUN the migration (a baseline-shape input), or the diff is vacuous"
     );
 
-    let work = std::env::temp_dir().join(format!("qt-inform-ensure-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    let scratch_dir = tempfile::Builder::new()
+        .prefix("qt-inform-ensure-")
+        .tempdir()
+        .expect("tempdir");
+    let work = scratch_dir.path().join("qt-inform-ensure.db");
     std::fs::copy(&fixture, &work).unwrap();
     let writer = Writer::open_writable(&work, &spec_pepper()).unwrap();
     let conn = writer.connection();

@@ -39,14 +39,29 @@ fn env_or_skip(key: &str) -> Option<String> {
     }
 }
 
+/// A fresh Db over a private scratch copy; the scratch dir is deleted when
+/// this drops (the `Db` field drops first).
+struct ScratchDb {
+    db: Db,
+    _dir: tempfile::TempDir,
+}
+
+impl std::ops::Deref for ScratchDb {
+    type Target = Db;
+    fn deref(&self) -> &Db {
+        &self.db
+    }
+}
+
 /// A fresh Db over a private copy of the fixture. `store` picks the main file:
 /// the provisioned one, or the pointer-less `nostore` sibling.
-fn fresh_db(tag: &str, store: &str) -> Db {
-    let scratch = std::env::temp_dir().join(format!("qt-aes-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
-    let main = scratch.join("main.db");
-    let mount = scratch.join("mount.db");
+fn fresh_db(tag: &str, store: &str) -> ScratchDb {
+    let scratch = tempfile::Builder::new()
+        .prefix(&format!("qt-aes-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let main = scratch.path().join("main.db");
+    let mount = scratch.path().join("mount.db");
     let main_fixture = if store == "nostore" {
         "inspector-nostore-main.db"
     } else {
@@ -54,7 +69,7 @@ fn fresh_db(tag: &str, store: &str) -> Db {
     };
     std::fs::copy(fixtures_dir().join(main_fixture), &main).unwrap();
     std::fs::copy(fixtures_dir().join("inspector-mount.db"), &mount).unwrap();
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
@@ -62,7 +77,8 @@ fn fresh_db(tag: &str, store: &str) -> Db {
         },
         TEST_PEPPER,
     )
-    .expect("open db")
+    .expect("open db");
+    ScratchDb { db, _dir: scratch }
 }
 
 fn status_of(kind: ErrorKind) -> u16 {

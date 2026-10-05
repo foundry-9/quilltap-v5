@@ -720,11 +720,11 @@ fn danger_manual_flip_matches_oracle() {
     }
     assert_eq!(want_ops.len(), spec.ops.len(), "one oracle row per op");
 
-    let work = std::env::temp_dir().join(format!(
-        "qt-danger-manual-flip-rust-{}.db",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_file(&work);
+    let work_dir = tempfile::Builder::new()
+        .prefix("qt-danger-manual-flip-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = work_dir.path().join("danger-manual-flip-rust.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -809,7 +809,6 @@ fn danger_manual_flip_matches_oracle() {
         .read_main(|c| dump_table_json_conn(c, "chat_messages", "chatId"))
         .expect("dump chat_messages");
     drop(db);
-    let _ = std::fs::remove_file(&work);
 
     let mut got_rows: Vec<Value> = got_dump
         .get_mut("rows")

@@ -222,12 +222,12 @@ fn wardrobe_tools_match_oracle() {
     let (oracle_returns, oracle_readback) = parse_oracle(&oracle_text);
 
     // Copy the fixtures and open two writers (both connections held together).
-    let scratch = std::env::temp_dir().join(format!("qt-wt-harness-{}", std::process::id()));
-    std::fs::create_dir_all(&scratch).expect("scratch dir");
-    let work_main = scratch.join("wt-main.db");
-    let work_mount = scratch.join("wt-mount.db");
-    let _ = std::fs::remove_file(&work_main);
-    let _ = std::fs::remove_file(&work_mount);
+    let scratch = tempfile::Builder::new()
+        .prefix("qt-wt-harness-")
+        .tempdir()
+        .expect("scratch dir");
+    let work_main = scratch.path().join("wt-main.db");
+    let work_mount = scratch.path().join("wt-mount.db");
     std::fs::copy(&fixture_main, &work_main).expect("copy main fixture");
     std::fs::copy(&fixture_mount, &work_mount).expect("copy mount fixture");
 
@@ -317,8 +317,7 @@ fn wardrobe_tools_match_oracle() {
 
     drop(main);
     drop(mount);
-    let _ = std::fs::remove_file(&work_main);
-    let _ = std::fs::remove_file(&work_mount);
+    drop(scratch);
 
     eprintln!(
         "OK: wardrobe tools matched oracle ({} ops + read-back).",

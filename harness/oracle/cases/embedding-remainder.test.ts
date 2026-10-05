@@ -170,6 +170,7 @@ async function main(): Promise<void> {
   }
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-er-oracle-'));
+  try {
   mkdirSync(join(scratch, 'data'), { recursive: true });
   const workMain = join(scratch, 'er-main.db');
   const workMount = join(scratch, 'er-mount.db');
@@ -393,6 +394,9 @@ async function main(): Promise<void> {
 
   fs.writeFileSync(outPath, lines.join('\n') + '\n');
   process.stderr.write(`embedding-remainder oracle wrote ${outPath}\n`);
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
 }
 
 test('embedding-remainder tier-3 oracle', async () => {

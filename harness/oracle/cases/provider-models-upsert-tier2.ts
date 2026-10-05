@@ -36,6 +36,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import {
   mkdtempSync,
+  rmSync,
   mkdirSync,
   readFileSync,
   copyFileSync,
@@ -68,6 +69,7 @@ async function main(): Promise<void> {
 
   // Work on a fresh copy so the shared seed fixture stays pristine.
   const scratch = mkdtempSync(join(tmpdir(), 'qt-pm-upsert-oracle-'));
+  process.on('exit', () => rmSync(scratch, { recursive: true, force: true }));
   mkdirSync(join(scratch, 'data'), { recursive: true });
   const work = join(scratch, 'pm-upsert-work.db');
   copyFileSync(fixture, work);

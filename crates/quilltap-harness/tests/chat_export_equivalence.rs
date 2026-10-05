@@ -61,10 +61,12 @@ fn env_or_skip(key: &str) -> Option<String> {
     }
 }
 
-fn fresh_db(spec: &Spec, tag: &str) -> Db {
-    let scratch = std::env::temp_dir().join(format!("qt-cdx-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
+fn fresh_db(spec: &Spec, tag: &str) -> (Db, tempfile::TempDir) {
+    let scratch_dir = tempfile::Builder::new()
+        .prefix(&format!("qt-cdx-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let scratch = scratch_dir.path();
     let main = scratch.join("main.db");
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("chat-dialogs-main.db"), &main).unwrap();
@@ -83,7 +85,7 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
         )
         .expect("ensure the cycle-order column on the vintage fixture");
     }
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
@@ -91,7 +93,8 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
         },
         &spec.test_pepper_base64,
     )
-    .expect("open db")
+    .expect("open db");
+    (db, scratch_dir)
 }
 
 /// P4.106 item 6 — the oracle's `plantInform`, cell for cell, on the per-run
@@ -313,7 +316,7 @@ fn chat_export_matches_oracle() {
         ("export_no_character", NOCHAR_CHAT),
         ("export_chat_missing", MISSING_ID),
     ] {
-        let db = fresh_db(&spec, name);
+        let (db, _scratch) = fresh_db(&spec, name);
         let r = quilltap_core::services::chat_export::chat_export(&db, &spec.user_id, chat);
         check(name, &r);
     }
@@ -323,7 +326,7 @@ fn chat_export_matches_oracle() {
         ("export_with_inform", false),
         ("export_markdown_with_inform", true),
     ] {
-        let db = fresh_db(&spec, name);
+        let (db, _scratch) = fresh_db(&spec, name);
         plant_inform(&db, EXPORT_CHAT);
         let r = if markdown {
             quilltap_core::services::markdown_transcript::chat_export_markdown(
@@ -346,7 +349,7 @@ fn chat_export_matches_oracle() {
         ("export_markdown_empty", NOCHAR_CHAT),
         ("export_markdown_chat_missing", MISSING_ID),
     ] {
-        let db = fresh_db(&spec, name);
+        let (db, _scratch) = fresh_db(&spec, name);
         let r = quilltap_core::services::markdown_transcript::chat_export_markdown(
             &db,
             &spec.user_id,
@@ -362,7 +365,7 @@ fn chat_export_matches_oracle() {
         ("outfit_summary_empty", EXPORT_CHAT),
         ("outfit_summary_chat_missing", MISSING_ID),
     ] {
-        let db = fresh_db(&spec, name);
+        let (db, _scratch) = fresh_db(&spec, name);
         let r = quilltap_core::api::chat_outfits::chat_outfit_summary(&db, chat);
         check(name, &r);
     }
@@ -373,7 +376,7 @@ fn chat_export_matches_oracle() {
         ("group_stores_empty", TOOLS_CHAT_BARE),
         ("group_stores_chat_missing", MISSING_ID),
     ] {
-        let db = fresh_db(&spec, name);
+        let (db, _scratch) = fresh_db(&spec, name);
         let r = quilltap_core::api::chat_media::chat_group_stores(&db, chat);
         check(name, &r);
     }

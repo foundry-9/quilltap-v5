@@ -464,13 +464,11 @@ fn chat_continuation_matches_oracle() {
             .get(&c.name)
             .unwrap_or_else(|| panic!("oracle has no row for {}", c.name));
 
-        let scratch = std::env::temp_dir().join(format!(
-            "qt-continuation-harness-{}-{}",
-            std::process::id(),
-            c.name
-        ));
-        let _ = std::fs::remove_dir_all(&scratch);
-        std::fs::create_dir_all(&scratch).expect("scratch");
+        let scratch_dir = tempfile::Builder::new()
+            .prefix(&format!("qt-continuation-harness-{}-", c.name))
+            .tempdir()
+            .expect("scratch");
+        let scratch = scratch_dir.path();
         let main_work = scratch.join("main.db");
         let mount_work = scratch.join("mount.db");
         std::fs::copy(&fixture_main, &main_work).expect("copy main");
@@ -771,7 +769,7 @@ fn chat_continuation_matches_oracle() {
         assert_eq!(g, w, "chat_continuation mismatch for {}", c.name);
 
         drop(db);
-        let _ = std::fs::remove_dir_all(&scratch);
+        drop(scratch_dir);
     }
 
     // Shape guard: a corpus that silently loses an arm must not read as green.

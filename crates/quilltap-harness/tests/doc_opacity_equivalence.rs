@@ -434,8 +434,11 @@ fn doc_opacity_matches_oracle() {
         spec.ops.len()
     );
 
-    let scratch = std::env::temp_dir().join(format!("qt-dopa-harness-{}", std::process::id()));
-    std::fs::create_dir_all(&scratch).expect("scratch dir");
+    let scratch_dir = tempfile::Builder::new()
+        .prefix("qt-dopa-harness-")
+        .tempdir()
+        .expect("tempdir");
+    let scratch = scratch_dir.path().to_path_buf();
     let work_main = scratch.join("dopa-main.db");
     let work_mount = scratch.join("dopa-mount.db");
     let _ = std::fs::remove_file(&work_main);

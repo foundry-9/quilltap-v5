@@ -98,8 +98,13 @@ fn vault_wardrobe_read_matches_oracle() {
     );
 
     // Fresh copy so the shared seed fixture stays pristine.
-    let work = std::env::temp_dir().join(format!("qt-vwr-rust-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    // A scratch dir removed on drop — with the TRUNCATE-mode `-journal`
+    // the writable open leaves beside the DB.
+    let scratch = tempfile::Builder::new()
+        .prefix("qt-vwr-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = scratch.path().join("work.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
     let writer = Writer::open_writable(&work, &spec.test_pepper_base64)
         .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
@@ -124,7 +129,6 @@ fn vault_wardrobe_read_matches_oracle() {
         );
     }
 
-    let _ = std::fs::remove_file(&work);
     eprintln!(
         "OK: vault wardrobe read matched oracle on {} cases.",
         spec.cases.len()

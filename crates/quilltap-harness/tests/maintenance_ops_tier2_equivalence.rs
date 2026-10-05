@@ -109,17 +109,24 @@ fn maintenance_ops_match_oracle() {
         std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("read oracle: {e}"));
 
     // Private working copies + this side's transcript files.
-    let pid = std::process::id();
-    let main_work = std::env::temp_dir().join(format!("qt-maint-ops-main-rust-{pid}.db"));
-    let mount_work = std::env::temp_dir().join(format!("qt-maint-ops-mount-rust-{pid}.db"));
-    let _ = std::fs::remove_file(&main_work);
-    let _ = std::fs::remove_file(&mount_work);
+    let main_work_scratch = tempfile::Builder::new()
+        .prefix("qt-maint-ops-main-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let main_work = main_work_scratch.path().join("main_work.db");
+    let mount_work_scratch = tempfile::Builder::new()
+        .prefix("qt-maint-ops-mount-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let mount_work = mount_work_scratch.path().join("mount_work.db");
     std::fs::copy(&main_fixture, &main_work).unwrap_or_else(|e| panic!("copy main: {e}"));
     std::fs::copy(&mount_fixture, &mount_work).unwrap_or_else(|e| panic!("copy mount: {e}"));
 
-    let transcripts_dir = std::env::temp_dir().join(format!("qt-maint-ops-transcripts-{pid}"));
-    let _ = std::fs::remove_dir_all(&transcripts_dir);
-    std::fs::create_dir_all(&transcripts_dir).unwrap();
+    let transcripts_dir_scratch = tempfile::Builder::new()
+        .prefix("qt-maint-ops-transcripts-")
+        .tempdir()
+        .expect("tempdir");
+    let transcripts_dir = transcripts_dir_scratch.path().to_path_buf();
     let default_transcript = transcripts_dir.join("a0000000-0000-4000-8000-0000000000d1.log");
     std::fs::write(&default_transcript, "old default-path transcript\n").unwrap();
     let explicit = std::path::PathBuf::from(&spec.explicit_transcript_path);
@@ -148,8 +155,11 @@ fn maintenance_ops_match_oracle() {
     // (the local backend base). Mirrors the oracle case: a LIVE entry (its fileId
     // f1000000… has a `files` row in the fixture → survives), an ORPHAN (f2000000…
     // has none → deleted), and a GARBAGE name (unparseable → skipped).
-    let files_dir = std::env::temp_dir().join(format!("qt-maint-ops-files-{pid}"));
-    let _ = std::fs::remove_dir_all(&files_dir);
+    let files_dir_scratch = tempfile::Builder::new()
+        .prefix("qt-maint-ops-files-")
+        .tempdir()
+        .expect("tempdir");
+    let files_dir = files_dir_scratch.path().to_path_buf();
     let thumbs_dir = files_dir.join("_thumbnails");
     std::fs::create_dir_all(&thumbs_dir).unwrap();
     std::fs::write(
@@ -286,9 +296,6 @@ fn maintenance_ops_match_oracle() {
     );
 
     drop(db);
-    let _ = std::fs::remove_file(&main_work);
-    let _ = std::fs::remove_file(&mount_work);
-    let _ = std::fs::remove_dir_all(&transcripts_dir);
     eprintln!(
         "OK: maintenance pass matched v4 (jobs {}/{}, orphans {}, terminals {}/{}).",
         summary.jobs_completed,

@@ -203,10 +203,11 @@ fn tool_build_matches_oracle() {
     }
 
     // Copy the fixture to scratch and open it.
-    let scratch = std::env::temp_dir().join(format!("qt-tool-build-{}", std::process::id()));
-    std::fs::create_dir_all(&scratch).expect("scratch");
-    let work = scratch.join("tb.db");
-    let _ = std::fs::remove_file(&work);
+    let scratch = tempfile::Builder::new()
+        .prefix("qt-tool-build-")
+        .tempdir()
+        .expect("scratch");
+    let work = scratch.path().join("tb.db");
     std::fs::copy(&fixture, &work).expect("copy fixture");
     let db = Db::open(
         DbPaths {
@@ -348,7 +349,7 @@ fn tool_build_matches_oracle() {
     }
 
     drop(db);
-    let _ = std::fs::remove_dir_all(&scratch);
+    drop(scratch);
 
     assert!(failures.is_empty(), "\n{}", failures.join("\n"));
     assert_eq!(mail_only_rows, 1, "the P4.124 INFO pin ran");

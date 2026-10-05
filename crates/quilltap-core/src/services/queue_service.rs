@@ -1395,15 +1395,15 @@ mod activity_snapshot_tests {
     use crate::services::activity_registry::{begin_activity, ActivityTestGuard};
 
     /// A temp `Db` carrying just the `background_jobs` columns these reads touch.
-    async fn test_db(tag: &str) -> Db {
-        let path = std::env::temp_dir().join(format!(
-            "qt-activity-snapshot-{tag}-{}.db",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_file(&path);
+    /// The scratch dir rides out with the handle — bind it for the test's life.
+    async fn test_db(tag: &str) -> (Db, tempfile::TempDir) {
+        let dir = tempfile::Builder::new()
+            .prefix(&format!("qt-activity-snapshot-{tag}-"))
+            .tempdir()
+            .expect("tempdir");
         let db = Db::open(
             DbPaths {
-                main: path,
+                main: dir.path().join("main.db"),
                 mount_index: None,
                 llm_logs: None,
             },
@@ -1424,7 +1424,7 @@ mod activity_snapshot_tests {
         })
         .await
         .expect("create tables");
-        db
+        (db, dir)
     }
 
     async fn seed_job(db: &Db, id: &str, user: &str, job_type: &str, status: &str) {
@@ -1459,7 +1459,7 @@ mod activity_snapshot_tests {
     #[tokio::test]
     async fn active_counts_by_kind_folds_types_and_skips_the_uncounted() {
         let _g = ActivityTestGuard::new();
-        let db = test_db("bykind").await;
+        let (db, _scratch) = test_db("bykind").await;
         seed_job(&db, "j1", "u1", "MEMORY_EXTRACTION", "PENDING").await;
         seed_job(&db, "j2", "u1", "MEMORY_HOUSEKEEPING", "PROCESSING").await;
         seed_job(&db, "j3", "u1", "EMBEDDING_GENERATE", "PENDING").await;
@@ -1488,7 +1488,7 @@ mod activity_snapshot_tests {
     #[tokio::test]
     async fn the_snapshot_merges_inline_registry_counts_with_job_rows() {
         let _g = ActivityTestGuard::new();
-        let db = test_db("merge").await;
+        let (db, _scratch) = test_db("merge").await;
         seed_job(&db, "j1", "u1", "EMBEDDING_GENERATE", "PENDING").await;
 
         let before = get_activity_snapshot(&db, Some("u1")).await.unwrap();
@@ -1516,7 +1516,7 @@ mod activity_snapshot_tests {
     #[tokio::test(start_paused = true)]
     async fn the_snapshot_started_totals_come_from_the_registry() {
         let _g = ActivityTestGuard::new();
-        let db = test_db("started").await;
+        let (db, _scratch) = test_db("started").await;
         seed_job(&db, "j1", "u1", "TITLE_UPDATE", "PENDING").await;
 
         assert_eq!(
@@ -1658,13 +1658,15 @@ mod avatar_enqueue_tests {
     use super::*;
     use crate::db::runtime::DbPaths;
 
-    async fn test_db(tag: &str) -> Db {
-        let path =
-            std::env::temp_dir().join(format!("qt-avatar-enqueue-{tag}-{}.db", std::process::id()));
-        let _ = std::fs::remove_file(&path);
+    /// The scratch dir rides out with the handle — bind it for the test's life.
+    async fn test_db(tag: &str) -> (Db, tempfile::TempDir) {
+        let dir = tempfile::Builder::new()
+            .prefix(&format!("qt-avatar-enqueue-{tag}-"))
+            .tempdir()
+            .expect("tempdir");
         let db = Db::open(
             DbPaths {
-                main: path,
+                main: dir.path().join("main.db"),
                 mount_index: None,
                 llm_logs: None,
             },
@@ -1685,7 +1687,7 @@ mod avatar_enqueue_tests {
         })
         .await
         .expect("create tables");
-        db
+        (db, dir)
     }
 
     async fn payload_of(db: &Db, job_id: &str) -> Value {
@@ -1710,7 +1712,7 @@ mod avatar_enqueue_tests {
     /// without this a deleted `payload.insert` would leave every test green.
     #[tokio::test]
     async fn the_manual_reroll_writes_force_true_and_the_automatic_trigger_writes_no_key() {
-        let db = test_db("force").await;
+        let (db, _scratch) = test_db("force").await;
         let (manual, _) =
             enqueue_character_avatar_generation(&db, "u1", "chat-a", "ch1", "p1", None, true)
                 .await

@@ -580,6 +580,7 @@ async function main(): Promise<void> {
   if (!outPath) throw new Error('QT_ORACLE_OUT must point at the NDJSON file to write');
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-ci-oracle-'));
+  try {
   mkdirSync(join(scratch, 'data'), { recursive: true });
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
   process.env.QUILLTAP_DATA_DIR = scratch;
@@ -825,6 +826,9 @@ async function main(): Promise<void> {
   }
   fs.writeFileSync(outPath, outLines.join('\n') + '\n');
   process.stderr.write(`courier-images-routes oracle wrote ${outPath} (${outLines.length} cases)\n`);
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
 }
 
 test('courier-images-routes oracle', async () => {

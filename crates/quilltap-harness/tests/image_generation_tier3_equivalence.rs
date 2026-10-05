@@ -556,28 +556,22 @@ fn role_of(s: &str) -> CompletionRole {
     CompletionRole::from_v4_wire(s).unwrap_or_else(|| panic!("unknown role {}", s))
 }
 
-fn fresh_copy(main_fixture: &str, mount_fixture: &str, tag: &str) -> (PathBuf, PathBuf) {
-    let dir = std::env::temp_dir();
-    let main_work = dir.join(format!(
-        "qt-imggen-main-rust-{}-{tag}.db",
-        std::process::id()
-    ));
-    let mount_work = dir.join(format!(
-        "qt-imggen-mount-rust-{}-{tag}.db",
-        std::process::id()
-    ));
-    cleanup(&main_work, &mount_work);
+/// A per-case scratch dir holding the two working copies (and their journal
+/// sidecars); it is deleted when the returned `TempDir` drops.
+fn fresh_copy(
+    main_fixture: &str,
+    mount_fixture: &str,
+    tag: &str,
+) -> (tempfile::TempDir, PathBuf, PathBuf) {
+    let dir = tempfile::Builder::new()
+        .prefix(&format!("qt-imggen-rust-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let main_work = dir.path().join("main.db");
+    let mount_work = dir.path().join("mount.db");
     std::fs::copy(main_fixture, &main_work).unwrap_or_else(|e| panic!("copy main: {e}"));
     std::fs::copy(mount_fixture, &mount_work).unwrap_or_else(|e| panic!("copy mount: {e}"));
-    (main_work, mount_work)
-}
-
-fn cleanup(main: &Path, mount: &Path) {
-    for p in [main, mount] {
-        for suffix in ["", "-journal", "-wal", "-shm"] {
-            let _ = std::fs::remove_file(format!("{}{suffix}", p.display()));
-        }
-    }
+    (dir, main_work, mount_work)
 }
 
 /// Delete the Lantern instance_settings pointer on a copied fixture (the
@@ -941,7 +935,7 @@ fn image_generation_matches_oracle() {
 
     for label in chat_keys {
         let case = &spec.chats[label];
-        let (main_work, mount_work) = fresh_copy(&main_fixture, &mount_fixture, label);
+        let (_scratch, main_work, mount_work) = fresh_copy(&main_fixture, &mount_fixture, label);
         if case.clear_lantern {
             drop_lantern_pointer(&main_work, &spec.test_pepper_base64);
         }
@@ -957,7 +951,6 @@ fn image_generation_matches_oracle() {
         // W4.10b: a fresh per-case llm-logs partition for the IMAGE_GENERATION +
         // cheap-task `logLLMCall` rows.
         let ll_work = main_work.with_file_name(format!("imggen-ll-{label}.db"));
-        let _ = std::fs::remove_file(&ll_work);
         common::materialize_llm_logs(&ll_work, &spec.test_pepper_base64);
 
         let db = Db::open(
@@ -1201,8 +1194,6 @@ fn image_generation_matches_oracle() {
         );
 
         drop(db);
-        cleanup(&main_work, &mount_work);
-        let _ = std::fs::remove_file(&ll_work);
     }
 
     eprintln!("OK: image-generation differential matched the oracle across all cases.");

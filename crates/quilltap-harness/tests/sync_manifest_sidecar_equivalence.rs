@@ -114,9 +114,11 @@ fn sync_manifest_and_sidecar_match_oracle() {
     let text = std::fs::read_to_string(&oracle_path)
         .unwrap_or_else(|e| panic!("cannot read oracle {oracle_path}: {e}"));
 
-    let scratch = std::env::temp_dir().join(format!("qt-sync-manifest-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).expect("scratch dir");
+    let scratch_dir = tempfile::Builder::new()
+        .prefix("qt-sync-manifest-")
+        .tempdir()
+        .expect("scratch dir");
+    let scratch = scratch_dir.path();
 
     let mut mismatches: Vec<String> = Vec::new();
     let mut seen: BTreeMap<&str, usize> = BTreeMap::new();
@@ -311,7 +313,7 @@ fn sync_manifest_and_sidecar_match_oracle() {
         }
     }
 
-    let _ = std::fs::remove_dir_all(&scratch);
+    drop(scratch_dir);
 
     assert!(
         mismatches.is_empty(),

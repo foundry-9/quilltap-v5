@@ -371,19 +371,19 @@ async fn danger_gatekeeper_tier3_matches_oracle() {
 
     let oracle_llm_logs = oracle_llm_logs.expect("oracle emitted no llmlogs row");
 
-    let work = std::env::temp_dir().join(format!(
-        "qt-danger-gatekeeper-rust-{}.db",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_file(&work);
+    let work_dir = tempfile::Builder::new()
+        .prefix("qt-danger-gatekeeper-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = work_dir.path().join("danger-gatekeeper-rust.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
     // W4.10b: attach a fresh llm-logs partition so the classify path's
     // DANGER_CLASSIFICATION `logLLMCall` lands rows we can dump.
-    let ll_work = std::env::temp_dir().join(format!(
-        "qt-danger-gatekeeper-rust-ll-{}.db",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_file(&ll_work);
+    let ll_work_dir = tempfile::Builder::new()
+        .prefix("qt-danger-gatekeeper-rust-ll-")
+        .tempdir()
+        .expect("tempdir");
+    let ll_work = ll_work_dir.path().join("danger-gatekeeper-rust-ll.db");
     common::materialize_llm_logs(&ll_work, &spec.test_pepper_base64);
     let db = Db::open(
         DbPaths {
@@ -505,8 +505,6 @@ async fn danger_gatekeeper_tier3_matches_oracle() {
     let want_logs = oracle_llm_logs;
 
     drop(db);
-    let _ = std::fs::remove_file(&work);
-    let _ = std::fs::remove_file(&ll_work);
 
     assert_eq!(
         got_logs,

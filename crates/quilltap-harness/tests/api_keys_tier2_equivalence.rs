@@ -226,8 +226,11 @@ fn api_keys_tier2_matches_oracle() {
     let mut reds: Vec<String> = Vec::new();
     let mut warns: Vec<String> = Vec::new();
 
-    let work = std::env::temp_dir().join(format!("qt-api-keys-rust-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    let scratch_dir = tempfile::Builder::new()
+        .prefix("qt-api-keys-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = scratch_dir.path().join("qt-api-keys-rust.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
     let writer = Writer::open_writable(&work, &spec.test_pepper_base64)

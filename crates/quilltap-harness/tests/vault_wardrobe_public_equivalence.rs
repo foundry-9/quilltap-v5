@@ -235,11 +235,14 @@ fn vault_wardrobe_public_matches_oracle() {
         "oracle op count != corpus"
     );
 
-    let pid = std::process::id();
-    let main_work = std::env::temp_dir().join(format!("qt-wpub-main-rust-{pid}.db"));
-    let mount_work = std::env::temp_dir().join(format!("qt-wpub-mount-rust-{pid}.db"));
-    let _ = std::fs::remove_file(&main_work);
-    let _ = std::fs::remove_file(&mount_work);
+    // A scratch dir removed on drop — with the TRUNCATE-mode `-journal`
+    // files the writable opens leave beside each DB.
+    let scratch = tempfile::Builder::new()
+        .prefix("qt-wpub-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let main_work = scratch.path().join("main.db");
+    let mount_work = scratch.path().join("mount.db");
     std::fs::copy(&main_fixture, &main_work).unwrap_or_else(|e| panic!("copy main: {e}"));
     std::fs::copy(&mount_fixture, &mount_work).unwrap_or_else(|e| panic!("copy mount: {e}"));
 
@@ -317,8 +320,6 @@ fn vault_wardrobe_public_matches_oracle() {
     }
     drop(main);
     drop(mount);
-    let _ = std::fs::remove_file(&main_work);
-    let _ = std::fs::remove_file(&mount_work);
 
     for (i, want) in want_results.iter().enumerate() {
         let mut got = got_results[i].clone();

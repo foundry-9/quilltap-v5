@@ -238,13 +238,27 @@ fn norm_rounded(v: &Value) -> String {
     serde_json::to_string_pretty(&sorted(&v)).unwrap()
 }
 
-fn fresh_db(spec: &Spec, tag: &str) -> Db {
-    let scratch =
-        std::env::temp_dir().join(format!("qt-mem-routes-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
-    let main = scratch.join("main.db");
-    let mount = scratch.join("mount.db");
+/// A fresh Db over a private scratch dir; the dir is deleted when this drops
+/// (the `Db` field drops first).
+struct ScratchDb {
+    db: Db,
+    _dir: tempfile::TempDir,
+}
+
+impl std::ops::Deref for ScratchDb {
+    type Target = Db;
+    fn deref(&self) -> &Db {
+        &self.db
+    }
+}
+
+fn fresh_db(spec: &Spec, tag: &str) -> ScratchDb {
+    let scratch = tempfile::Builder::new()
+        .prefix(&format!("qt-mem-routes-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let main = scratch.path().join("main.db");
+    let mount = scratch.path().join("mount.db");
     std::fs::copy(fixtures_dir().join("memories-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("memories-mount.db"), &mount).unwrap();
     // P4.88: the committed pair predates the two `78b381a96`-round columns, and
@@ -260,7 +274,7 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
             .expect("open the fixture copy writable to heal it");
         quilltap_core::test_support::ensure_p4d171_columns(w.connection());
     }
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
@@ -268,7 +282,8 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
         },
         &spec.test_pepper_base64,
     )
-    .expect("open db")
+    .expect("open db");
+    ScratchDb { db, _dir: scratch }
 }
 
 /// P4.D95: seed `instance_settings['memoryRecall']` through the REAL writer —

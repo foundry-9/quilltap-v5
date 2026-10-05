@@ -203,16 +203,18 @@ fn env_or_skip(key: &str) -> Option<String> {
     }
 }
 
-fn fresh_db(spec: &Spec, tag: &str) -> Db {
+fn fresh_db(spec: &Spec, tag: &str) -> (Db, tempfile::TempDir) {
     fresh_db_planted(spec, tag, &[])
 }
 
 /// [`fresh_db`] plus raw SQL planted on the copy after the open (after the
 /// [`WIDEN`], which every case gets).
-fn fresh_db_planted(spec: &Spec, tag: &str, plant: &[&str]) -> Db {
-    let scratch = std::env::temp_dir().join(format!("qt-ca-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
+fn fresh_db_planted(spec: &Spec, tag: &str, plant: &[&str]) -> (Db, tempfile::TempDir) {
+    let scratch_dir = tempfile::Builder::new()
+        .prefix(&format!("qt-ca-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let scratch = scratch_dir.path();
     let main = scratch.join("main.db");
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("chat-admin-main.db"), &main).unwrap();
@@ -253,7 +255,7 @@ fn fresh_db_planted(spec: &Spec, tag: &str, plant: &[&str]) -> Db {
         Ok(())
     }))
     .expect("widen + plant");
-    db
+    (db, scratch_dir)
 }
 
 // ---------------------------------------------------------------------------
@@ -701,7 +703,7 @@ fn chat_admin_routes_match_oracle() {
         ("add_tag_unknown_tag", CHAT, MISSING_ID, false),
         ("add_tag_chat_missing", MISSING_ID, TAG_B, false),
     ] {
-        let db = fresh_db(&spec, name);
+        let (db, _scratch) = fresh_db(&spec, name);
         let r = rt.block_on(chat_admin::chat_add_tag(&db, chat, tag));
         let tables = dump.then(|| json!({ "chat": dump_chat(&db, CHAT) }));
         check(name, &r, tables);
@@ -713,7 +715,7 @@ fn chat_admin_routes_match_oracle() {
         ("remove_tag_absent", TAG_B),
         ("remove_tag_unknown_id", MISSING_ID),
     ] {
-        let db = fresh_db(&spec, name);
+        let (db, _scratch) = fresh_db(&spec, name);
         let r = rt.block_on(chat_admin::chat_remove_tag(&db, CHAT, tag));
         check(name, &r, Some(json!({ "chat": dump_chat(&db, CHAT) })));
     }
@@ -727,7 +729,7 @@ fn chat_admin_routes_match_oracle() {
         ),
         ("update_tool_settings_empty", vec![], vec![]),
     ] {
-        let db = fresh_db(&spec, name);
+        let (db, _scratch) = fresh_db(&spec, name);
         let r = rt.block_on(chat_admin::chat_update_tool_settings(
             &db, CHAT, tools, groups,
         ));
@@ -744,7 +746,7 @@ fn chat_admin_routes_match_oracle() {
         ("toggle_agent_mode_null", CHAT, Some(None), true),
         ("toggle_agent_mode_chat_missing", MISSING_ID, None, false),
     ] {
-        let db = fresh_db(&spec, name);
+        let (db, _scratch) = fresh_db(&spec, name);
         let r = rt.block_on(chat_admin::chat_toggle_agent_mode(
             &db,
             &spec.user_id,
@@ -757,7 +759,7 @@ fn chat_admin_routes_match_oracle() {
 
     // ── ?action=reclassify-danger ───────────────────────────────────────────
     {
-        let db = fresh_db(&spec, "reclassify_danger");
+        let (db, _scratch) = fresh_db(&spec, "reclassify_danger");
         let r = rt.block_on(chat_admin::chat_reclassify_danger(&db, &spec.user_id, CHAT));
         check(
             "reclassify_danger",
@@ -769,7 +771,7 @@ fn chat_admin_routes_match_oracle() {
         );
     }
     {
-        let db = fresh_db(&spec, "reclassify_danger_dedupe");
+        let (db, _scratch) = fresh_db(&spec, "reclassify_danger_dedupe");
         let first = rt.block_on(chat_admin::chat_reclassify_danger(&db, &spec.user_id, CHAT));
         let second = rt.block_on(chat_admin::chat_reclassify_danger(&db, &spec.user_id, CHAT));
         let same = job_id(&first) == job_id(&second);
@@ -784,7 +786,7 @@ fn chat_admin_routes_match_oracle() {
         );
     }
     {
-        let db = fresh_db(&spec, "reclassify_danger_no_profile");
+        let (db, _scratch) = fresh_db(&spec, "reclassify_danger_no_profile");
         let r = rt.block_on(chat_admin::chat_reclassify_danger(
             &db,
             &spec.user_id,
@@ -802,7 +804,7 @@ fn chat_admin_routes_match_oracle() {
 
     // ── ?action=render-conversation ─────────────────────────────────────────
     {
-        let db = fresh_db(&spec, "render_conversation");
+        let (db, _scratch) = fresh_db(&spec, "render_conversation");
         let r = rt.block_on(chat_admin::chat_render_conversation(
             &db,
             &spec.user_id,
@@ -818,7 +820,7 @@ fn chat_admin_routes_match_oracle() {
         );
     }
     {
-        let db = fresh_db(&spec, "render_conversation_dedupe");
+        let (db, _scratch) = fresh_db(&spec, "render_conversation_dedupe");
         let first = rt.block_on(chat_admin::chat_render_conversation(
             &db,
             &spec.user_id,
@@ -841,7 +843,7 @@ fn chat_admin_routes_match_oracle() {
         );
     }
     {
-        let db = fresh_db(&spec, "render_conversation_chat_missing");
+        let (db, _scratch) = fresh_db(&spec, "render_conversation_chat_missing");
         let r = rt.block_on(chat_admin::chat_render_conversation(
             &db,
             &spec.user_id,
@@ -904,7 +906,7 @@ fn chat_admin_routes_match_oracle() {
             false,
         ),
     ] {
-        let db = fresh_db(&spec, name);
+        let (db, _scratch) = fresh_db(&spec, name);
         let r = rt.block_on(chat_admin::chat_bulk_reattribute(
             &db, CHAT, src, target, role,
         ));
@@ -952,7 +954,7 @@ fn chat_admin_routes_match_oracle() {
         ("rng_bad_kind", json!(1), None, None, false),
         ("rng_bad_rolls", json!(20), Some(0), None, false),
     ] {
-        let db = fresh_db(&spec, name);
+        let (db, _scratch) = fresh_db(&spec, name);
         let mut rng = FixedBytes::new(spec.rng_byte_stream.clone());
         let r = rt.block_on(chat_rng::chat_rng(
             &db,
@@ -971,7 +973,7 @@ fn chat_admin_routes_match_oracle() {
         check(name, &r, tables);
     }
     {
-        let db = fresh_db(&spec, "rng_chat_missing");
+        let (db, _scratch) = fresh_db(&spec, "rng_chat_missing");
         let mut rng = FixedBytes::new(spec.rng_byte_stream.clone());
         let r = rt.block_on(chat_rng::chat_rng(
             &db,
@@ -1062,7 +1064,7 @@ fn chat_admin_routes_match_oracle() {
         ),
         ("run_tool_empty_name", "", json!({}), None, None, false),
     ] {
-        let db = fresh_db(&spec, name);
+        let (db, _scratch) = fresh_db(&spec, name);
         let runner = ErasedToolRunner(BuiltInToolRunner::new(db.clone(), fixture_env()));
         let r = rt.block_on(chat_run_tool::chat_run_tool(
             &db,
@@ -1081,7 +1083,7 @@ fn chat_admin_routes_match_oracle() {
         check(name, &r, tables);
     }
     {
-        let db = fresh_db(&spec, "run_tool_chat_missing");
+        let (db, _scratch) = fresh_db(&spec, "run_tool_chat_missing");
         let runner = ErasedToolRunner(BuiltInToolRunner::new(db.clone(), fixture_env()));
         let r = rt.block_on(chat_run_tool::chat_run_tool(
             &db,
@@ -1149,7 +1151,7 @@ fn chat_admin_routes_match_oracle() {
             false,
         ),
     ] {
-        let db = fresh_db(&spec, name);
+        let (db, _scratch) = fresh_db(&spec, name);
         let r = rt.block_on(chat_merge::chat_merge_conversation(
             &db,
             &spec.user_id,
@@ -1206,7 +1208,7 @@ fn chat_admin_routes_match_oracle() {
             eprintln!("[{name}] PLANT DRIFT: oracle {emitted:?} vs {plant:?}");
             failed_plant.push(format!("{name}_plant"));
         }
-        let db = fresh_db_planted(&spec, name, &plant);
+        let (db, _scratch) = fresh_db_planted(&spec, name, &plant);
         let r = rt.block_on(chat_admin::chat_rebuild_summary(
             &db,
             &spec.user_id,

@@ -753,12 +753,12 @@ fn subprompts_routes_match_oracle() {
         let want = oracle
             .get(name)
             .unwrap_or_else(|| panic!("oracle missing {name}"));
-        let scratch =
-            std::env::temp_dir().join(format!("qt-spr-rust-{}-{name}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&scratch);
-        std::fs::create_dir_all(&scratch).unwrap();
-        let main_work = scratch.join("main.db");
-        let mount_work = scratch.join("mount.db");
+        let scratch = tempfile::Builder::new()
+            .prefix(&format!("qt-spr-rust-{name}-"))
+            .tempdir()
+            .expect("tempdir");
+        let main_work = scratch.path().join("main.db");
+        let mount_work = scratch.path().join("mount.db");
         std::fs::copy(fixtures_dir().join("subprompts-main.db"), &main_work).unwrap();
         std::fs::copy(fixtures_dir().join("subprompts-mount.db"), &mount_work).unwrap();
         let db = Db::open(
@@ -848,7 +848,7 @@ fn subprompts_routes_match_oracle() {
             }
         );
         drop(db);
-        let _ = std::fs::remove_dir_all(&scratch);
+        drop(scratch);
     }
     assert!(
         failed.is_empty(),

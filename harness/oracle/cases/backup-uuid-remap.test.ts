@@ -199,6 +199,9 @@ async function collectWide(
     const { createBackup } = await import('@/lib/backup/backup-service');
     const { zipPath } = await createBackup(spec.userId);
     execFileSync('unzip', ['-q', '-o', zipPath, '-d', extractDir], { maxBuffer: 64 * 1024 * 1024 });
+    // createBackup leaves its zip in a private mkdtemp dir the caller owns;
+    // remove it as v4's download handler does (`system/backup/[id]/route.ts`).
+    rmSync(dirname(zipPath), { recursive: true, force: true });
     const roots = fs
       .readdirSync(extractDir, { withFileTypes: true })
       .filter((e) => e.isDirectory() && e.name.startsWith('quilltap-backup-'));

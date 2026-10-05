@@ -120,15 +120,17 @@ fn env_or_skip(key: &str) -> Option<String> {
 }
 
 /// A fresh two-partition `Db` over a private copy of the committed fixture.
-fn fresh_db(tag: &str) -> Db {
-    let scratch = std::env::temp_dir().join(format!("qt-photos-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
-    let main = scratch.join("main.db");
-    let mount = scratch.join("mount.db");
+/// The scratch dir rides out with the handle — bind it for the test's life.
+fn fresh_db(tag: &str) -> (Db, tempfile::TempDir) {
+    let scratch = tempfile::Builder::new()
+        .prefix(&format!("qt-photos-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let main = scratch.path().join("main.db");
+    let mount = scratch.path().join("mount.db");
     std::fs::copy(fixtures_dir().join("photos-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("photos-mount.db"), &mount).unwrap();
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
@@ -136,7 +138,8 @@ fn fresh_db(tag: &str) -> Db {
         },
         TEST_PEPPER,
     )
-    .expect("open db")
+    .expect("open db");
+    (db, scratch)
 }
 
 /// The canned model boundary — the same table the oracle's
@@ -512,7 +515,7 @@ async fn photos_routes_equivalence() {
         .await
     }
 
-    let db = fresh_db("list");
+    let (db, _scratch) = fresh_db("list");
     let default = list(&db, &provider, user, None, None, None, None).await;
     check(&oracle, "list_default", &default, &mut failed);
     check_key_order(&oracle, &default, &mut failed);
@@ -643,7 +646,7 @@ async fn photos_routes_equivalence() {
             None,
         ),
     ] {
-        let db = fresh_db(name);
+        let (db, _scratch) = fresh_db(name);
         if name == "save_real_png" {
             plant_real_png(&db, user).await;
         }
@@ -708,7 +711,7 @@ async fn photos_routes_equivalence() {
             "00000000-0000-4000-8000-000000000bad".to_string(),
         ),
     ] {
-        let db = fresh_db(name);
+        let (db, _scratch) = fresh_db(name);
         let resp = photo_gallery_entry_remove(&db, id).await;
         check(&oracle, name, &resp, &mut failed);
     }

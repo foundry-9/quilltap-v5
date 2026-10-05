@@ -335,11 +335,12 @@ fn characters_create_tier2_matches_oracle() {
         serde_json::from_value(spec.character.clone()).expect("parse vault character data");
 
     // Fresh copies so the shared seed fixtures stay pristine.
-    let pid = std::process::id();
-    let main_work = std::env::temp_dir().join(format!("qt-charcreate-main-rust-{pid}.db"));
-    let mount_work = std::env::temp_dir().join(format!("qt-charcreate-mount-rust-{pid}.db"));
-    let _ = std::fs::remove_file(&main_work);
-    let _ = std::fs::remove_file(&mount_work);
+    let scratch_dir = tempfile::Builder::new()
+        .prefix("qt-charcreate-")
+        .tempdir()
+        .expect("tempdir");
+    let main_work = scratch_dir.path().join("qt-charcreate-main-rust.db");
+    let mount_work = scratch_dir.path().join("qt-charcreate-mount-rust.db");
     std::fs::copy(&main_fixture, &main_work).unwrap_or_else(|e| panic!("copy main: {e}"));
     std::fs::copy(&mount_fixture, &mount_work).unwrap_or_else(|e| panic!("copy mount: {e}"));
 

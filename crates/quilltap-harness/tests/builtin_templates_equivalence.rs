@@ -138,12 +138,11 @@ fn builtin_templates_matches_oracle() {
             .unwrap_or_else(|| panic!("oracle missing state {}", state.name));
 
         // Fresh encrypted main DB with just the roleplay_templates table.
-        let work = std::env::temp_dir().join(format!(
-            "qt-builtin-tmpl-{}-{}.db",
-            std::process::id(),
-            state.name
-        ));
-        let _ = std::fs::remove_file(&work);
+        let scratch_dir = tempfile::Builder::new()
+            .prefix(&format!("qt-builtin-tmpl-{}-", state.name))
+            .tempdir()
+            .expect("tempdir");
+        let work = scratch_dir.path().join("qt-builtin-tmpl.db");
         let writer = Writer::open_writable(&work, &spec.test_pepper_base64).expect("open work db");
         writer.connection().execute_batch(&ddl).expect("create ddl");
 

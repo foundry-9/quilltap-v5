@@ -137,22 +137,18 @@ fn assert_idf_close(got: &[Vec<f64>], want: &[Vec<f64>]) {
     }
 }
 
-fn open_fixture_copy(spec: &Spec, tag: &str) -> Db {
+fn open_fixture_copy(spec: &Spec, tag: &str) -> ScratchDb {
     let main_fixture = std::env::var("QT_FIXTURE_REFIT_MAIN").expect("QT_FIXTURE_REFIT_MAIN");
     let mount_fixture = std::env::var("QT_FIXTURE_REFIT_MOUNT").expect("QT_FIXTURE_REFIT_MOUNT");
-    let main_work = std::env::temp_dir().join(format!(
-        "qt-refit-rust-{tag}-{}-main.db",
-        std::process::id()
-    ));
-    let mount_work = std::env::temp_dir().join(format!(
-        "qt-refit-rust-{tag}-{}-mount.db",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_file(&main_work);
-    let _ = std::fs::remove_file(&mount_work);
+    let scratch_dir = tempfile::Builder::new()
+        .prefix(&format!("qt-refit-rust-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let main_work = scratch_dir.path().join("main.db");
+    let mount_work = scratch_dir.path().join("mount.db");
     std::fs::copy(&main_fixture, &main_work).expect("copy main fixture");
     std::fs::copy(&mount_fixture, &mount_work).expect("copy mount fixture");
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main: main_work,
             mount_index: Some(mount_work),
@@ -160,7 +156,26 @@ fn open_fixture_copy(spec: &Spec, tag: &str) -> Db {
         },
         &spec.test_pepper_base64,
     )
-    .expect("open fixture copy")
+    .expect("open fixture copy");
+    ScratchDb {
+        db,
+        _dir: scratch_dir,
+    }
+}
+
+/// A scratch [`Db`] plus the temp dir holding its files: the dir (and every
+/// file SQLite wrote beside them) is removed when this drops. Derefs to the
+/// `Db`, so call sites read exactly as before.
+struct ScratchDb {
+    db: Db,
+    _dir: tempfile::TempDir,
+}
+
+impl std::ops::Deref for ScratchDb {
+    type Target = Db;
+    fn deref(&self) -> &Db {
+        &self.db
+    }
 }
 
 #[tokio::test]

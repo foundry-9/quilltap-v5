@@ -396,11 +396,16 @@ fn groups_tier2_matches_oracle() {
     .expect("parse oracle dump");
 
     // Fresh copies so the shared seed fixtures stay pristine.
-    let pid = std::process::id();
-    let main_work = std::env::temp_dir().join(format!("qt-groups-main-rust-{pid}.db"));
-    let mount_work = std::env::temp_dir().join(format!("qt-groups-mount-rust-{pid}.db"));
-    let _ = std::fs::remove_file(&main_work);
-    let _ = std::fs::remove_file(&mount_work);
+    let main_work_dir = tempfile::Builder::new()
+        .prefix("qt-groups-main-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let main_work = main_work_dir.path().join("groups-main-rust.db");
+    let mount_work_dir = tempfile::Builder::new()
+        .prefix("qt-groups-mount-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let mount_work = mount_work_dir.path().join("groups-mount-rust.db");
     std::fs::copy(&main_fixture, &main_work).unwrap_or_else(|e| panic!("copy main: {e}"));
     std::fs::copy(&mount_fixture, &mount_work).unwrap_or_else(|e| panic!("copy mount: {e}"));
 
@@ -502,8 +507,6 @@ fn groups_tier2_matches_oracle() {
             }
         })
         .collect();
-    let _ = std::fs::remove_file(&main_work);
-    let _ = std::fs::remove_file(&mount_work);
 
     let mut want: Vec<Value> = TABLES
         .iter()
@@ -667,11 +670,16 @@ fn groups_keystone_throw_vs_drop() {
         return;
     };
 
-    let pid = std::process::id();
-    let main_work = std::env::temp_dir().join(format!("qt-groups-keystone-main-{pid}.db"));
-    let mount_work = std::env::temp_dir().join(format!("qt-groups-keystone-mount-{pid}.db"));
-    let _ = std::fs::remove_file(&main_work);
-    let _ = std::fs::remove_file(&mount_work);
+    let main_work_dir = tempfile::Builder::new()
+        .prefix("qt-groups-keystone-main-")
+        .tempdir()
+        .expect("tempdir");
+    let main_work = main_work_dir.path().join("groups-keystone-main.db");
+    let mount_work_dir = tempfile::Builder::new()
+        .prefix("qt-groups-keystone-mount-")
+        .tempdir()
+        .expect("tempdir");
+    let mount_work = mount_work_dir.path().join("groups-keystone-mount.db");
     std::fs::copy(&main_fixture, &main_work).unwrap();
     std::fs::copy(&mount_fixture, &mount_work).unwrap();
 
@@ -704,7 +712,5 @@ fn groups_keystone_throw_vs_drop() {
         "find_all should drop the storeless group"
     );
 
-    let _ = std::fs::remove_file(&main_work);
-    let _ = std::fs::remove_file(&mount_work);
     eprintln!("OK: groups keystone throw-vs-drop asymmetry holds.");
 }

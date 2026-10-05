@@ -241,9 +241,11 @@ async fn ariel_writers_tier3_matches_oracle() {
     .expect("parse oracle dump");
 
     // A fresh copy so the shared seed fixture stays pristine.
-    let pid = std::process::id();
-    let main_work = std::env::temp_dir().join(format!("qt-ariel-main-rust-{pid}.db"));
-    let _ = std::fs::remove_file(&main_work);
+    let scratch_dir = tempfile::Builder::new()
+        .prefix("qt-ariel-main-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let main_work = scratch_dir.path().join("qt-ariel-main-rust.db");
     std::fs::copy(&main_fixture, &main_work).unwrap_or_else(|e| panic!("copy main: {e}"));
 
     let db = Db::open(

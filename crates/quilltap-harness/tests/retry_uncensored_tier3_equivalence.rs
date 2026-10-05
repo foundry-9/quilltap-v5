@@ -508,11 +508,12 @@ fn retry_uncensored_matches_v4() {
         .collect();
     let api_keys = CannedApiKeys(keys);
 
-    let scratch =
-        std::env::temp_dir().join(format!("qt-retry-uncensored-rust-{}", std::process::id()));
-    std::fs::create_dir_all(&scratch).expect("scratch");
-    let work_main = scratch.join("main.db");
-    let work_mount = scratch.join("mount.db");
+    let scratch = tempfile::Builder::new()
+        .prefix("qt-retry-uncensored-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work_main = scratch.path().join("main.db");
+    let work_mount = scratch.path().join("mount.db");
     std::fs::copy(&fixture_main, &work_main).expect("copy main");
     std::fs::copy(&fixture_mount, &work_mount).expect("copy mount");
     let rt = tokio::runtime::Builder::new_current_thread()

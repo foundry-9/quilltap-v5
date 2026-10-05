@@ -116,8 +116,11 @@ fn group_character_members_tier2_matches_oracle() {
     let oracle: Value = serde_json::from_str(oracle_text.trim()).expect("parse oracle dump");
 
     // Work on a fresh copy of the seed fixture so the shared file stays pristine.
-    let work = std::env::temp_dir().join(format!("qt-gcm-rust-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    let work_dir = tempfile::Builder::new()
+        .prefix("qt-gcm-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = work_dir.path().join("gcm-rust.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
     // Run the SAME op sequence through the Rust port. The Writer opens the
@@ -165,8 +168,6 @@ fn group_character_members_tier2_matches_oracle() {
     let got = writer
         .dump_table_json("group_character_members", "id")
         .expect("dump group_character_members");
-
-    let _ = std::fs::remove_file(&work);
 
     // Structural diff: table + columns + rows must match (ignore the oracle's
     // "case" label).

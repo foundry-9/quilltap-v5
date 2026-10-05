@@ -239,11 +239,14 @@ async fn tool_dispatch_matches_oracle() {
     assert_eq!(spec.ops.len(), oracle.ops.len(), "op count: spec vs oracle");
 
     // Fresh copies of the seed fixtures (both DBs).
-    let pid = std::process::id();
-    let work_main = std::env::temp_dir().join(format!("qt-tooldispatch-rust-{pid}-main.db"));
-    let work_mount = std::env::temp_dir().join(format!("qt-tooldispatch-rust-{pid}-mount.db"));
-    let _ = std::fs::remove_file(&work_main);
-    let _ = std::fs::remove_file(&work_mount);
+    // A scratch dir removed on drop — with the TRUNCATE-mode `-journal`
+    // files the writable opens leave beside each DB.
+    let scratch = tempfile::Builder::new()
+        .prefix("qt-tooldispatch-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work_main = scratch.path().join("main.db");
+    let work_mount = scratch.path().join("mount.db");
     std::fs::copy(&fixture, &work_main).unwrap_or_else(|e| panic!("copy main: {e}"));
     std::fs::copy(&fixture_mount, &work_mount).unwrap_or_else(|e| panic!("copy mount: {e}"));
 
@@ -328,8 +331,6 @@ async fn tool_dispatch_matches_oracle() {
         "conversation_annotations dump diverged"
     );
 
-    let _ = std::fs::remove_file(&work_main);
-    let _ = std::fs::remove_file(&work_mount);
     eprintln!(
         "OK: tool-dispatch end-to-end matched oracle ({} ops, dispatch + handlers + harness).",
         spec.ops.len()

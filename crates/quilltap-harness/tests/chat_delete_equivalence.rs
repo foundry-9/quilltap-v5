@@ -143,10 +143,12 @@ fn env_or_skip(key: &str) -> Option<String> {
     }
 }
 
-fn fresh_db(spec: &Spec, tag: &str) -> Db {
-    let scratch = std::env::temp_dir().join(format!("qt-cd-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
+fn fresh_db(spec: &Spec, tag: &str) -> (Db, tempfile::TempDir) {
+    let scratch_dir = tempfile::Builder::new()
+        .prefix(&format!("qt-cd-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let scratch = scratch_dir.path();
     let main = scratch.join("main.db");
     let mount = scratch.join("mount.db");
     let llm = scratch.join("llmlogs.db");
@@ -159,7 +161,7 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
         let w = quilltap_core::db::Writer::open_writable(&main, &spec.test_pepper_base64).unwrap();
         quilltap_core::test_support::ensure_p4d171_columns(w.connection());
     }
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
@@ -167,7 +169,8 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
         },
         &spec.test_pepper_base64,
     )
-    .expect("open db")
+    .expect("open db");
+    (db, scratch_dir)
 }
 
 // ---------------------------------------------------------------------------
@@ -690,7 +693,7 @@ fn chat_delete_matches_oracle() {
 
     for c in &cases {
         driven.insert(c.name.to_string());
-        let db = fresh_db(&spec, c.name);
+        let (db, _scratch) = fresh_db(&spec, c.name);
         let (status, body) = drive(&rt, &db, c.chat_id, c.action, c.body.as_ref());
         let mut tables = census(&db, &spec);
 
@@ -833,7 +836,7 @@ fn chat_delete_log_lines() {
     };
 
     // --- the happy delete: both `Chat deleted` lines + the per-vault debug ---
-    let db = fresh_db(&spec, "log_delete");
+    let (db, _scratch) = fresh_db(&spec, "log_delete");
     let lines = quilltap_core::test_support::captured(|| {
         rt.block_on(chat_delete_dispatch(
             &db,
@@ -886,7 +889,7 @@ fn chat_delete_log_lines() {
     );
 
     // --- the SILENCE half: a 404 delete announces nothing at all ---
-    let db = fresh_db(&spec, "log_missing");
+    let (db, _scratch) = fresh_db(&spec, "log_missing");
     let lines = quilltap_core::test_support::captured(|| {
         rt.block_on(chat_delete_dispatch(
             &db,
@@ -906,7 +909,7 @@ fn chat_delete_log_lines() {
     //     vault store` when the hydrated read throws for a dangling pointer),
     //     and the delete still announces itself. The §3 unification review
     //     found this arm SILENT in v5; the warn is ported and pinned here.
-    let db = fresh_db(&spec, "log_broken");
+    let (db, _scratch) = fresh_db(&spec, "log_broken");
     let lines = quilltap_core::test_support::captured(|| {
         rt.block_on(chat_delete_dispatch(
             &db,
@@ -961,7 +964,7 @@ fn stop_impersonate_log_line() {
     let has = |lines: &[String], s: &str| lines.iter().any(|l| l.contains(s));
 
     // --- the success arm: exactly one line, at info, with v4's three fields ---
-    let db = fresh_db(&spec, "log_stop_imp");
+    let (db, _scratch) = fresh_db(&spec, "log_stop_imp");
     let (response, lines) = quilltap_core::test_support::captured_with(|| {
         rt.block_on(chat_delete_dispatch(
             &db,
@@ -991,7 +994,7 @@ fn stop_impersonate_log_line() {
 
     // --- the SILENCE half. Without it, a line moved above the write passes. ---
     // A 404 chat: v4 returns before `removeImpersonation`.
-    let db = fresh_db(&spec, "log_stop_imp_404");
+    let (db, _scratch) = fresh_db(&spec, "log_stop_imp_404");
     let lines = quilltap_core::test_support::captured(|| {
         rt.block_on(chat_delete_dispatch(
             &db,
@@ -1006,7 +1009,7 @@ fn stop_impersonate_log_line() {
     );
 
     // A participant that is not on the chat: the 404 lands before the write too.
-    let db = fresh_db(&spec, "log_stop_imp_noseat");
+    let (db, _scratch) = fresh_db(&spec, "log_stop_imp_noseat");
     let lines = quilltap_core::test_support::captured(|| {
         rt.block_on(chat_delete_dispatch(
             &db,
@@ -1023,7 +1026,7 @@ fn stop_impersonate_log_line() {
     // A dangling `newConnectionProfileId`: v4 404s BETWEEN the impersonation
     // write and the log line, so the state moved but nothing is announced —
     // the arm that pins the line's position after the profile branch.
-    let db = fresh_db(&spec, "log_stop_imp_badprofile");
+    let (db, _scratch) = fresh_db(&spec, "log_stop_imp_badprofile");
     let lines = quilltap_core::test_support::captured(|| {
         rt.block_on(chat_delete_dispatch(
             &db,

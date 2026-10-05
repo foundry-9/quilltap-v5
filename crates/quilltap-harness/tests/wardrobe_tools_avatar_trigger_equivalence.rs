@@ -116,13 +116,17 @@ fn env_or_skip(key: &str) -> Option<String> {
     }
 }
 
-fn open_copy(main: &str, mount: &str, pepper: &str, label: &str) -> (Db, PathBuf, PathBuf) {
-    let scratch = std::env::temp_dir().join(format!("qt-wta-{}-{label}", std::process::id()));
-    std::fs::create_dir_all(&scratch).expect("scratch");
-    let (m, mo) = (scratch.join("main.db"), scratch.join("mount.db"));
-    for p in [&m, &mo] {
-        let _ = std::fs::remove_file(p);
-    }
+/// A fixture copy in a scratch dir; dropping the returned `TempDir` (after
+/// the `Db`) removes it, `-journal` files and all.
+fn open_copy(main: &str, mount: &str, pepper: &str, label: &str) -> (Db, tempfile::TempDir) {
+    let scratch = tempfile::Builder::new()
+        .prefix(&format!("qt-wta-{label}-"))
+        .tempdir()
+        .expect("scratch");
+    let (m, mo) = (
+        scratch.path().join("main.db"),
+        scratch.path().join("mount.db"),
+    );
     std::fs::copy(main, &m).expect("copy main");
     std::fs::copy(mount, &mo).expect("copy mount");
     let db = Db::open(
@@ -134,15 +138,7 @@ fn open_copy(main: &str, mount: &str, pepper: &str, label: &str) -> (Db, PathBuf
         pepper,
     )
     .expect("open two-db");
-    (db, m, mo)
-}
-
-fn cleanup(paths: &[&PathBuf]) {
-    for p in paths {
-        for s in ["", "-journal", "-wal", "-shm"] {
-            let _ = std::fs::remove_file(format!("{}{s}", p.display()));
-        }
-    }
+    (db, scratch)
 }
 
 fn runner(db: &Db) -> BuiltInToolRunner {
@@ -248,7 +244,7 @@ fn wardrobe_tools_avatar_trigger_matches_oracle() {
     );
     assert_eq!(o_scen.len(), av.scenarios.len(), "oracle scenario count");
 
-    let (db, m, mo) = open_copy(&fx_main, &fx_mount, &base.pepper, "main");
+    let (db, scratch) = open_copy(&fx_main, &fx_mount, &base.pepper, "main");
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -346,7 +342,7 @@ fn wardrobe_tools_avatar_trigger_matches_oracle() {
 
     drop(tools);
     drop(db);
-    cleanup(&[&m, &mo]);
+    drop(scratch);
     eprintln!(
         "OK: wardrobe-tool avatar trigger matched oracle ({} scenarios, {total} jobs).",
         av.scenarios.len()
@@ -423,7 +419,7 @@ fn trigger_read_failures_take_v4_fallback_arms() {
         .unwrap();
 
     // Silence leg: an intact fixture queues with none of the repository lines.
-    let (db, m, mo) = open_copy(&fx_main, &fx_mount, &base.pepper, "fb-ok");
+    let (db, scratch) = open_copy(&fx_main, &fx_mount, &base.pepper, "fb-ok");
     let (r, lines) = quilltap_core::test_support::captured_with(|| {
         rt.block_on(trigger_avatar_generation(&db, &params(&base, &chat)))
     });
@@ -435,10 +431,10 @@ fn trigger_read_failures_take_v4_fallback_arms() {
         "{lines:#?}"
     );
     drop(db);
-    cleanup(&[&m, &mo]);
+    drop(scratch);
 
     // chats table gone → v4's `findById` answers null (+ ERROR) → chat-not-found.
-    let (db, m, mo) = open_copy(&fx_main, &fx_mount, &base.pepper, "fb-chats");
+    let (db, scratch) = open_copy(&fx_main, &fx_mount, &base.pepper, "fb-chats");
     drop_tables(&db, &rt, &["chats"]);
     let (r, lines) = quilltap_core::test_support::captured_with(|| {
         rt.block_on(trigger_avatar_generation(&db, &params(&base, &chat)))
@@ -455,11 +451,11 @@ fn trigger_read_failures_take_v4_fallback_arms() {
         "no catch WARN: {lines:#?}"
     );
     drop(db);
-    cleanup(&[&m, &mo]);
+    drop(scratch);
 
     // image_profiles gone → the override lookup, then `findAll`, both fall back:
     // the override WARN, both repository ERRORs, and `no-image-profile`.
-    let (db, m, mo) = open_copy(&fx_main, &fx_mount, &base.pepper, "fb-profiles");
+    let (db, scratch) = open_copy(&fx_main, &fx_mount, &base.pepper, "fb-profiles");
     drop_tables(&db, &rt, &["image_profiles"]);
     let mut p = params(&base, &chat);
     p.image_profile_id_override = Some(profile_id.clone());
@@ -490,10 +486,10 @@ fn trigger_read_failures_take_v4_fallback_arms() {
         "no catch WARN: {lines:#?}"
     );
     drop(db);
-    cleanup(&[&m, &mo]);
+    drop(scratch);
 
     // The catch keeps its ONE reachable leg: the enqueue's own write failing.
-    let (db, m, mo) = open_copy(&fx_main, &fx_mount, &base.pepper, "fb-enqueue");
+    let (db, scratch) = open_copy(&fx_main, &fx_mount, &base.pepper, "fb-enqueue");
     drop_tables(&db, &rt, &["background_jobs"]);
     let (r, lines) = quilltap_core::test_support::captured_with(|| {
         rt.block_on(trigger_avatar_generation(&db, &params(&base, &chat)))
@@ -508,5 +504,5 @@ fn trigger_read_failures_take_v4_fallback_arms() {
         "{l}"
     );
     drop(db);
-    cleanup(&[&m, &mo]);
+    drop(scratch);
 }

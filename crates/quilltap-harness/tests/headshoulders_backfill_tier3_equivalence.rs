@@ -151,17 +151,19 @@ fn env_or_skip(key: &str) -> Option<String> {
     }
 }
 
-fn fresh_db(tag: &str) -> Db {
-    let scratch = std::env::temp_dir().join(format!("qt-hs-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
+fn fresh_db(tag: &str) -> ScratchDb {
+    let scratch_dir = tempfile::Builder::new()
+        .prefix(&format!("qt-hs-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let scratch = scratch_dir.path().to_path_buf();
     let main = scratch.join("main.db");
     let mount = scratch.join("mount.db");
     let llm_logs = scratch.join("llm-logs.db");
     std::fs::copy(fixtures_dir().join("headshoulders-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("headshoulders-mount.db"), &mount).unwrap();
     common::materialize_llm_logs(&llm_logs, TEST_PEPPER);
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
@@ -169,7 +171,26 @@ fn fresh_db(tag: &str) -> Db {
         },
         TEST_PEPPER,
     )
-    .expect("open db")
+    .expect("open db");
+    ScratchDb {
+        db,
+        _dir: scratch_dir,
+    }
+}
+
+/// A scratch [`Db`] plus the temp dir holding its files: the dir (and every
+/// file SQLite wrote beside them) is removed when this drops. Derefs to the
+/// `Db`, so call sites read exactly as before.
+struct ScratchDb {
+    db: Db,
+    _dir: tempfile::TempDir,
+}
+
+impl std::ops::Deref for ScratchDb {
+    type Target = Db;
+    fn deref(&self) -> &Db {
+        &self.db
+    }
 }
 
 /// The canned answer, built from the spec recipe exactly as the oracle's

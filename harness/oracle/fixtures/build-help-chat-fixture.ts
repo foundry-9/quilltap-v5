@@ -237,6 +237,7 @@ async function main(): Promise<void> {
   if (existsSync(metaOut)) rmSync(metaOut);
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-help-chat-fixture-'));
+  process.on('exit', () => rmSync(scratch, { recursive: true, force: true }));
   mkdirSync(join(scratch, 'data'), { recursive: true });
 
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;

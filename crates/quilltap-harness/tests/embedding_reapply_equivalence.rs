@@ -82,9 +82,11 @@ fn embedding_reapply_matches_oracle() {
     let oracle: Value =
         serde_json::from_str(std::fs::read_to_string(&oracle_path).unwrap().trim()).unwrap();
 
-    let scratch = std::env::temp_dir().join(format!("qt-ep-reapply-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
+    let scratch_dir = tempfile::Builder::new()
+        .prefix("qt-ep-reapply-")
+        .tempdir()
+        .expect("tempdir");
+    let scratch = scratch_dir.path().to_path_buf();
     let main = scratch.join("main.db");
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("embedding-profiles-main.db"), &main).unwrap();
@@ -181,7 +183,6 @@ fn embedding_reapply_matches_oracle() {
     );
     assert!(result.backup_path.is_some(), "main backup must be taken");
 
-    let _ = std::fs::remove_dir_all(&scratch);
     assert!(!failed, "reapply differential mismatched");
     eprintln!("OK: embedding_reapply matched oracle (all tables byte-identical).");
 }

@@ -210,6 +210,7 @@ async function main(): Promise<void> {
   if (!outPath) throw new Error('QT_ORACLE_OUT must point at the NDJSON file to write');
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-doc-oracle-'));
+  try {
   mkdirSync(join(scratch, 'data'), { recursive: true });
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
   process.env.QUILLTAP_DATA_DIR = scratch;
@@ -530,6 +531,9 @@ async function main(): Promise<void> {
   }
   fs.writeFileSync(outPath, results.map((r) => JSON.stringify(r)).join('\n') + '\n');
   process.stderr.write(`wrote ${results.length} documents-route oracle rows to ${outPath}\n`);
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
 }
 
 // Jest needs a test to invoke; the "oracle" is the side effect (the NDJSON).

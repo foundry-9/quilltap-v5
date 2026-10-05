@@ -151,16 +151,17 @@ fn response_data(r: &Response) -> Value {
     v.get("data").cloned().unwrap_or(Value::Null)
 }
 
-fn fresh_db(spec: &Spec, tag: &str) -> Db {
-    let scratch =
-        std::env::temp_dir().join(format!("qt-auto-routes-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
+fn fresh_db(spec: &Spec, tag: &str) -> (Db, tempfile::TempDir) {
+    let scratch_dir = tempfile::Builder::new()
+        .prefix(&format!("qt-auto-routes-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let scratch = scratch_dir.path();
     let main = scratch.join("main.db");
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("autonomous-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("autonomous-mount.db"), &mount).unwrap();
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
@@ -168,7 +169,8 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
         },
         &spec.test_pepper_base64,
     )
-    .expect("open db")
+    .expect("open db");
+    (db, scratch_dir)
 }
 
 /// Raw dump of the autonomous columns of one chat row (matches the oracle's raw
@@ -360,7 +362,7 @@ fn autonomous_rooms_routes_match_oracle() {
 
     // --- Listing ---
     {
-        let db = fresh_db(&spec, "list");
+        let (db, _scratch) = fresh_db(&spec, "list");
         check_body(
             "listing",
             &autonomous_rooms::system_autonomous_rooms(&db, &uid_a),
@@ -368,7 +370,7 @@ fn autonomous_rooms_routes_match_oracle() {
         );
     }
     {
-        let db = fresh_db(&spec, "listb");
+        let (db, _scratch) = fresh_db(&spec, "listb");
         check_body(
             "listing_user_b",
             &autonomous_rooms::system_autonomous_rooms(&db, &uid_b),
@@ -377,7 +379,7 @@ fn autonomous_rooms_routes_match_oracle() {
     }
     // --- Status ---
     {
-        let db = fresh_db(&spec, "str");
+        let (db, _scratch) = fresh_db(&spec, "str");
         check_body(
             "status_running",
             &autonomous_rooms::autonomous_room_status(&db, ROOM_RUNNING),
@@ -385,7 +387,7 @@ fn autonomous_rooms_routes_match_oracle() {
         );
     }
     {
-        let db = fresh_db(&spec, "sti");
+        let (db, _scratch) = fresh_db(&spec, "sti");
         check_body(
             "status_idle",
             &autonomous_rooms::autonomous_room_status(&db, ROOM_IDLE),
@@ -393,7 +395,7 @@ fn autonomous_rooms_routes_match_oracle() {
         );
     }
     {
-        let db = fresh_db(&spec, "stm");
+        let (db, _scratch) = fresh_db(&spec, "stm");
         check_error(
             "status_missing",
             &autonomous_rooms::autonomous_room_status(&db, MISSING),
@@ -401,7 +403,7 @@ fn autonomous_rooms_routes_match_oracle() {
         );
     }
     {
-        let db = fresh_db(&spec, "stn");
+        let (db, _scratch) = fresh_db(&spec, "stn");
         check_error(
             "status_non_autonomous",
             &autonomous_rooms::autonomous_room_status(&db, CHAT_SALON),
@@ -410,7 +412,7 @@ fn autonomous_rooms_routes_match_oracle() {
     }
     // --- Start ---
     {
-        let db = fresh_db(&spec, "sti2");
+        let (db, _scratch) = fresh_db(&spec, "sti2");
         let resp = rt.block_on(autonomous_rooms::autonomous_room_start(
             &db, &uid_a, ROOM_IDLE, "UTC",
         ));
@@ -423,7 +425,7 @@ fn autonomous_rooms_routes_match_oracle() {
         );
     }
     {
-        let db = fresh_db(&spec, "star");
+        let (db, _scratch) = fresh_db(&spec, "star");
         check_error(
             "start_already_running",
             &rt.block_on(autonomous_rooms::autonomous_room_start(
@@ -437,7 +439,7 @@ fn autonomous_rooms_routes_match_oracle() {
     }
     // --- Pause ---
     {
-        let db = fresh_db(&spec, "pau");
+        let (db, _scratch) = fresh_db(&spec, "pau");
         let resp = rt.block_on(autonomous_rooms::autonomous_room_pause(
             &db,
             ROOM_RUNNING,
@@ -452,7 +454,7 @@ fn autonomous_rooms_routes_match_oracle() {
         );
     }
     {
-        let db = fresh_db(&spec, "paun");
+        let (db, _scratch) = fresh_db(&spec, "paun");
         check_error(
             "pause_non_autonomous",
             &rt.block_on(autonomous_rooms::autonomous_room_pause(
@@ -462,7 +464,7 @@ fn autonomous_rooms_routes_match_oracle() {
         );
     }
     {
-        let db = fresh_db(&spec, "paum");
+        let (db, _scratch) = fresh_db(&spec, "paum");
         check_error(
             "pause_missing",
             &rt.block_on(autonomous_rooms::autonomous_room_pause(&db, MISSING, "UTC")),
@@ -471,7 +473,7 @@ fn autonomous_rooms_routes_match_oracle() {
     }
     // --- Stop ---
     {
-        let db = fresh_db(&spec, "sto");
+        let (db, _scratch) = fresh_db(&spec, "sto");
         let resp = rt.block_on(autonomous_rooms::autonomous_room_stop(
             &db,
             ROOM_RUNNING,
@@ -487,7 +489,7 @@ fn autonomous_rooms_routes_match_oracle() {
     }
     // --- Resume ---
     {
-        let db = fresh_db(&spec, "resp");
+        let (db, _scratch) = fresh_db(&spec, "resp");
         let resp = rt.block_on(autonomous_rooms::autonomous_room_resume(
             &db,
             &uid_a,
@@ -503,7 +505,7 @@ fn autonomous_rooms_routes_match_oracle() {
         );
     }
     {
-        let db = fresh_db(&spec, "resi");
+        let (db, _scratch) = fresh_db(&spec, "resi");
         let resp = rt.block_on(autonomous_rooms::autonomous_room_resume(
             &db, &uid_a, ROOM_IDLE, "UTC",
         ));
@@ -522,7 +524,7 @@ fn autonomous_rooms_routes_match_oracle() {
         ))
     };
     {
-        let db = fresh_db(&spec, "ucap");
+        let (db, _scratch) = fresh_db(&spec, "ucap");
         let resp = upd(
             &db,
             &uid_a,
@@ -542,7 +544,7 @@ fn autonomous_rooms_routes_match_oracle() {
         );
     }
     {
-        let db = fresh_db(&spec, "uclr");
+        let (db, _scratch) = fresh_db(&spec, "uclr");
         let resp = upd(&db, &uid_a, ROOM_RUNNING, json!({ "budgetMaxTurns": null }));
         check_body("update_clear_cap", &resp, &mut failed);
         check_tables_blanked(
@@ -553,7 +555,7 @@ fn autonomous_rooms_routes_match_oracle() {
         );
     }
     {
-        let db = fresh_db(&spec, "ucrs");
+        let (db, _scratch) = fresh_db(&spec, "ucrs");
         let resp = upd(
             &db,
             &uid_a,
@@ -569,7 +571,7 @@ fn autonomous_rooms_routes_match_oracle() {
         );
     }
     {
-        let db = fresh_db(&spec, "ucrc");
+        let (db, _scratch) = fresh_db(&spec, "ucrc");
         let resp = upd(&db, &uid_a, ROOM_RUNNING, json!({ "scheduleCron": null }));
         check_body("update_cron_clear", &resp, &mut failed);
         check_tables_blanked(
@@ -580,7 +582,7 @@ fn autonomous_rooms_routes_match_oracle() {
         );
     }
     {
-        let db = fresh_db(&spec, "utit");
+        let (db, _scratch) = fresh_db(&spec, "utit");
         let resp = upd(
             &db,
             &uid_a,
@@ -596,7 +598,7 @@ fn autonomous_rooms_routes_match_oracle() {
         );
     }
     {
-        let db = fresh_db(&spec, "uinv");
+        let (db, _scratch) = fresh_db(&spec, "uinv");
         check_error(
             "update_invalid_cron",
             &upd(
@@ -635,7 +637,7 @@ fn autonomous_rooms_routes_match_oracle() {
             json!({ "title": "x".repeat(400) }),
         ),
     ] {
-        let db = fresh_db(&spec, name);
+        let (db, _scratch) = fresh_db(&spec, name);
         check_error(name, &upd(&db, &uid_a, ROOM_IDLE, patch), &mut failed);
     }
     // Zod ≥ 4.5.4 (v4 `6e1a64ea6`) measures the `.max(300)` in CODE POINTS once
@@ -644,7 +646,7 @@ fn autonomous_rooms_routes_match_oracle() {
     // was `update_invalid_title_astral`, a 400 row pinning Zod 4.4.3's UTF-16
     // rule; the `d883a5ee1` unification's neutrality sweep moved it.
     {
-        let db = fresh_db(&spec, "utaw");
+        let (db, _scratch) = fresh_db(&spec, "utaw");
         let resp = upd(&db, &uid_a, ROOM_IDLE, json!({ "title": "😀".repeat(151) }));
         check_body("update_title_astral_within_max", &resp, &mut failed);
         check_tables_blanked(
@@ -659,7 +661,7 @@ fn autonomous_rooms_routes_match_oracle() {
         // so the row dump is a real keep-current measurement — the valid
         // `budgetMaxTurns` riding alongside the invalid `runVisibility` must
         // not land either.
-        let db = fresh_db(&spec, "uinvw");
+        let (db, _scratch) = fresh_db(&spec, "uinvw");
         let name = "update_invalid_writes_nothing";
         check_error(
             name,
@@ -679,7 +681,7 @@ fn autonomous_rooms_routes_match_oracle() {
         );
     }
     {
-        let db = fresh_db(&spec, "unon");
+        let (db, _scratch) = fresh_db(&spec, "unon");
         check_error(
             "update_non_autonomous",
             &upd(&db, &uid_a, CHAT_SALON, json!({ "budgetMaxTurns": 5 })),
@@ -687,7 +689,7 @@ fn autonomous_rooms_routes_match_oracle() {
         );
     }
     {
-        let db = fresh_db(&spec, "umis");
+        let (db, _scratch) = fresh_db(&spec, "umis");
         check_error(
             "update_missing",
             &upd(&db, &uid_a, MISSING, json!({ "budgetMaxTurns": 5 })),
@@ -695,7 +697,7 @@ fn autonomous_rooms_routes_match_oracle() {
         );
     }
     {
-        let db = fresh_db(&spec, "uclf");
+        let (db, _scratch) = fresh_db(&spec, "uclf");
         let resp = upd(
             &db,
             &uid_a,
@@ -711,7 +713,7 @@ fn autonomous_rooms_routes_match_oracle() {
         );
     }
     {
-        let db = fresh_db(&spec, "uclt");
+        let (db, _scratch) = fresh_db(&spec, "uclt");
         let resp = upd(
             &db,
             &uid_b,

@@ -78,6 +78,7 @@ async function main(): Promise<void> {
   // startup physical backup, sibling llm-logs / mount-index DBs). A unique dir
   // per run avoids stale-lock collisions. The MAIN db still lands at SQLITE_PATH.
   const scratch = mkdtempSync(join(tmpdir(), 'qt-fl-fixture-build-'));
+  process.on('exit', () => rmSync(scratch, { recursive: true, force: true }));
   // v4 nests its working files under `<dataDir>/data/` (instance lock, sibling
   // DBs). Pre-create it so `acquireInstanceLock` can open the lock file.
   mkdirSync(join(scratch, 'data'), { recursive: true });

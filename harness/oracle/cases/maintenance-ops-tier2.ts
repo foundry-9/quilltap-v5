@@ -58,6 +58,7 @@ async function main(): Promise<void> {
   }
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-maint-ops-oracle-'));
+  process.on('exit', () => rmSync(scratch, { recursive: true, force: true }));
   mkdirSync(join(scratch, 'data'), { recursive: true });
   const workMain = join(scratch, 'maint-ops-main.db');
   const workMount = join(scratch, 'maint-ops-mount.db');

@@ -132,9 +132,11 @@ fn chats_read_matches_oracle() {
     )
     .expect("parse oracle dump");
 
-    let pid = std::process::id();
-    let work = std::env::temp_dir().join(format!("qt-chatsread-rust-{pid}.db"));
-    let _ = std::fs::remove_file(&work);
+    let scratch_dir = tempfile::Builder::new()
+        .prefix("qt-chatsread-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = scratch_dir.path().join("qt-chatsread-rust.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
     let writer = Writer::open_writable(&work, &spec.test_pepper_base64)

@@ -146,11 +146,16 @@ async fn participant_resolver_tier2_matches_oracle() {
     .expect("parse oracle dump");
     let oracle_results = oracle["results"].as_array().expect("oracle results array");
 
-    let pid = std::process::id();
-    let work_main = std::env::temp_dir().join(format!("qt-partres-rust-main-{pid}.db"));
-    let work_mount = std::env::temp_dir().join(format!("qt-partres-rust-mount-{pid}.db"));
-    let _ = std::fs::remove_file(&work_main);
-    let _ = std::fs::remove_file(&work_mount);
+    let work_main_scratch = tempfile::Builder::new()
+        .prefix("qt-partres-rust-main-")
+        .tempdir()
+        .expect("tempdir");
+    let work_main = work_main_scratch.path().join("work_main.db");
+    let work_mount_scratch = tempfile::Builder::new()
+        .prefix("qt-partres-rust-mount-")
+        .tempdir()
+        .expect("tempdir");
+    let work_mount = work_mount_scratch.path().join("work_mount.db");
     std::fs::copy(&fixture, &work_main).unwrap_or_else(|e| panic!("copy main fixture: {e}"));
     std::fs::copy(&fixture_mount, &work_mount)
         .unwrap_or_else(|e| panic!("copy mount fixture: {e}"));
@@ -267,9 +272,6 @@ async fn participant_resolver_tier2_matches_oracle() {
         .read_main(|conn| dump_table_json_conn(conn, "chats", "id"))
         .expect("dump chats");
     let oracle_dump = &oracle["dump"];
-
-    let _ = std::fs::remove_file(&work_main);
-    let _ = std::fs::remove_file(&work_mount);
 
     assert_eq!(got_dump["table"], oracle_dump["table"], "table name");
     assert_eq!(

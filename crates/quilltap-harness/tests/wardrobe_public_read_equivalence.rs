@@ -105,11 +105,14 @@ fn wardrobe_public_read_matches_oracle() {
     );
 
     // Fresh copies so the shared seed fixtures stay pristine.
-    let pid = std::process::id();
-    let main_work = std::env::temp_dir().join(format!("qt-wpr-main-rust-{pid}.db"));
-    let mount_work = std::env::temp_dir().join(format!("qt-wpr-mount-rust-{pid}.db"));
-    let _ = std::fs::remove_file(&main_work);
-    let _ = std::fs::remove_file(&mount_work);
+    // A scratch dir removed on drop — with the TRUNCATE-mode `-journal`
+    // files the writable opens leave beside each DB.
+    let scratch = tempfile::Builder::new()
+        .prefix("qt-wpr-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let main_work = scratch.path().join("main.db");
+    let mount_work = scratch.path().join("mount.db");
     std::fs::copy(&main_fixture, &main_work).unwrap_or_else(|e| panic!("copy main: {e}"));
     std::fs::copy(&mount_fixture, &mount_work).unwrap_or_else(|e| panic!("copy mount: {e}"));
 
@@ -161,8 +164,6 @@ fn wardrobe_public_read_matches_oracle() {
 
     drop(main);
     drop(mount);
-    let _ = std::fs::remove_file(&main_work);
-    let _ = std::fs::remove_file(&mount_work);
 
     let labels = [
         "findByCharacterId(false)",

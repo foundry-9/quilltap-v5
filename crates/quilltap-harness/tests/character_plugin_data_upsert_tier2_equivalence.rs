@@ -148,8 +148,11 @@ fn character_plugin_data_upsert_tier2_matches_oracle() {
     let mut oracle: Value = serde_json::from_str(oracle_text.trim()).expect("parse oracle dump");
 
     // Fresh copy so the shared seed fixture stays pristine.
-    let work = std::env::temp_dir().join(format!("qt-cpd-upsert-rust-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    let scratch_dir = tempfile::Builder::new()
+        .prefix("qt-cpd-upsert-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = scratch_dir.path().join("qt-cpd-upsert-rust.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
     // Run the SAME upsert sequence through the Rust port, minting our own

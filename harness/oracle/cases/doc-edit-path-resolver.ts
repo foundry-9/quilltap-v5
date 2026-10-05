@@ -25,6 +25,7 @@ import {
   realpathSync,
   writeFileSync,
   symlinkSync,
+  rmSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 
@@ -88,6 +89,7 @@ async function main(): Promise<void> {
   // returns share a stable prefix with the fs-mount basePath, and the sentinel
   // rewrite below is exact on both sides.
   const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'qt-dpr-oracle-')));
+  process.on('exit', () => rmSync(scratch, { recursive: true, force: true }));
   mkdirSync(join(scratch, 'data'), { recursive: true });
   const mainWork = join(scratch, 'dpr-main-work.db');
   const mountWork = join(scratch, 'dpr-mount-work.db');

@@ -286,6 +286,7 @@ describe('help-doc-sync: ensureHelpDocsSynced', () => {
       (logger as unknown as { info: unknown }).info = realInfo;
       await closeDatabase();
       process.chdir(V4_ROOT);
+      fs.rmSync(scratch, { recursive: true, force: true });
     }
 
     fs.writeFileSync(outPath, lines.join('\n') + '\n');

@@ -482,12 +482,12 @@ fn group_wardrobe_routes_match_oracle() {
             .unwrap_or_else(|| panic!("oracle missing case {name}"));
 
         // Fresh copies so the shared seed fixtures stay pristine.
-        let pid = std::process::id();
-        let scratch = std::env::temp_dir().join(format!("qt-gw-rust-{pid}-{name}"));
-        let _ = std::fs::remove_dir_all(&scratch);
-        std::fs::create_dir_all(&scratch).unwrap();
-        let main_work = scratch.join("main.db");
-        let mount_work = scratch.join("mount.db");
+        let scratch = tempfile::Builder::new()
+            .prefix(&format!("qt-gw-rust-{name}-"))
+            .tempdir()
+            .expect("tempdir");
+        let main_work = scratch.path().join("main.db");
+        let mount_work = scratch.path().join("mount.db");
         std::fs::copy(&main_fixture, &main_work).unwrap_or_else(|e| panic!("copy main: {e}"));
         std::fs::copy(&mount_fixture, &mount_work).unwrap_or_else(|e| panic!("copy mount: {e}"));
 
@@ -611,7 +611,7 @@ fn group_wardrobe_routes_match_oracle() {
             );
         }
 
-        let _ = std::fs::remove_dir_all(&scratch);
+        drop(scratch);
     }
 
     eprintln!(

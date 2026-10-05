@@ -302,9 +302,11 @@ fn memories_read_matches_oracle() {
     )
     .expect("parse oracle dump");
 
-    let pid = std::process::id();
-    let work = std::env::temp_dir().join(format!("qt-memread-rust-{pid}.db"));
-    let _ = std::fs::remove_file(&work);
+    let work_scratch = tempfile::Builder::new()
+        .prefix("qt-memread-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = work_scratch.path().join("work.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
     let writer = Writer::open_writable(&work, &spec.test_pepper_base64)
@@ -342,7 +344,6 @@ fn memories_read_matches_oracle() {
         );
     }
 
-    let _ = std::fs::remove_file(&work);
     eprintln!(
         "OK: memories read matched oracle ({} queries).",
         queries.len()

@@ -114,6 +114,7 @@ async function main(): Promise<void> {
   // lands on disk under `<dataDir>/files`, and its realpath must share the
   // prefix the sentinel replaces.
   const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'qt-pra-oracle-')));
+  scratchDirs.push(scratch);
   mkdirSync(join(scratch, 'data'), { recursive: true });
   // `files/_general` exists up front (the doc-fs tree): with TWO missing levels
   // v4's `safeRealpath` re-attaches the segments in the wrong order and the
@@ -410,4 +411,10 @@ async function main(): Promise<void> {
 
 test('project-roster-access oracle', async () => {
   await main();
+});
+
+// Remove the OS-temp scratch dir(s) once the oracle has written its NDJSON.
+const scratchDirs: string[] = [];
+afterAll(() => {
+  for (const d of scratchDirs) rmSync(d, { recursive: true, force: true });
 });

@@ -363,8 +363,13 @@ fn tool_execution_tier2_matches_oracle() {
     )
     .expect("parse oracle dump");
 
-    let work = std::env::temp_dir().join(format!("qt-toolexec-rust-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    // A scratch dir removed on drop — with the TRUNCATE-mode `-journal`
+    // the writable open leaves beside the DB.
+    let scratch = tempfile::Builder::new()
+        .prefix("qt-toolexec-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = scratch.path().join("work.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
     let writer = Writer::open_writable(&work, &spec.test_pepper_base64)
@@ -423,7 +428,6 @@ fn tool_execution_tier2_matches_oracle() {
         .expect("dump chat_messages");
     let mut got_chats = writer.dump_table_json("chats", "id").expect("dump chats");
     let mut got_files = writer.dump_table_json("files", "id").expect("dump files");
-    let _ = std::fs::remove_file(&work);
 
     // P4.D228: the chosen `createdAt` landed on exactly one row, on BOTH sides
     // (a normalizer that placeholdered it would make the arm vacuous).

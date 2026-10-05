@@ -284,8 +284,11 @@ fn doc_mount_file_links_tier2_matches_oracle() {
     let oracle: Value = serde_json::from_str(oracle_text.trim()).expect("parse oracle dump");
 
     // Fresh copy so the shared seed fixture stays pristine.
-    let work = std::env::temp_dir().join(format!("qt-dmfl-rust-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    let work_dir = tempfile::Builder::new()
+        .prefix("qt-dmfl-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = work_dir.path().join("dmfl-rust.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
     // Run the SAME op sequence through the Rust port (minting our own ids/ts).
@@ -375,7 +378,6 @@ fn doc_mount_file_links_tier2_matches_oracle() {
                 .unwrap_or_else(|e| panic!("dump {}: {e}", TABLES[i].table))
         }
     });
-    let _ = std::fs::remove_file(&work);
 
     let mut want: [Value; TABLE_COUNT] = std::array::from_fn(|i| {
         oracle

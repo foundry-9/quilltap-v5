@@ -72,6 +72,7 @@ async function main(): Promise<void> {
   if (!oracleOut) throw new Error('QT_ORACLE_PROVISION must point at the JSON to write');
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-provision-oracle-'));
+  process.on('exit', () => rmSync(scratch, { recursive: true, force: true }));
   mkdirSync(join(scratch, 'data'), { recursive: true });
   const mainPath = join(scratch, 'quilltap.db');
   // The mount-index sits under `data/` so `SQLITE_MOUNT_INDEX_PATH` (the manager)

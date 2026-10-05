@@ -55,17 +55,30 @@ fn env_or_skip(key: &str) -> Option<String> {
     }
 }
 
+/// A fixture copy in a scratch dir removed on drop (the `Db` drops first).
+struct ScratchDb {
+    db: Db,
+    _dir: tempfile::TempDir,
+}
+
+impl std::ops::Deref for ScratchDb {
+    type Target = Db;
+    fn deref(&self) -> &Db {
+        &self.db
+    }
+}
+
 /// A fresh two-partition Db over a private copy of the committed fixture.
-fn fresh_db(tag: &str, seq: usize) -> Db {
-    let scratch =
-        std::env::temp_dir().join(format!("qt-tr-{}-{}-{}", tag, seq, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
-    let main = scratch.join("main.db");
-    let mount = scratch.join("mount.db");
+fn fresh_db(tag: &str, seq: usize) -> ScratchDb {
+    let scratch = tempfile::Builder::new()
+        .prefix(&format!("qt-tr-{tag}-{seq}-"))
+        .tempdir()
+        .expect("tempdir");
+    let main = scratch.path().join("main.db");
+    let mount = scratch.path().join("mount.db");
     std::fs::copy(fixtures_dir().join("text-replacements-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("text-replacements-mount.db"), &mount).unwrap();
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
@@ -73,7 +86,8 @@ fn fresh_db(tag: &str, seq: usize) -> Db {
         },
         TEST_PEPPER,
     )
-    .expect("open db")
+    .expect("open db");
+    ScratchDb { db, _dir: scratch }
 }
 
 // ── JSON canonicalization ──────────────────────────────────────────────────

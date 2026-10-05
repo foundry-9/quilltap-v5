@@ -368,11 +368,16 @@ fn projects_tier2_matches_oracle() {
     )
     .expect("parse oracle dump");
 
-    let pid = std::process::id();
-    let main_work = std::env::temp_dir().join(format!("qt-projects-main-rust-{pid}.db"));
-    let mount_work = std::env::temp_dir().join(format!("qt-projects-mount-rust-{pid}.db"));
-    let _ = std::fs::remove_file(&main_work);
-    let _ = std::fs::remove_file(&mount_work);
+    let main_work_scratch = tempfile::Builder::new()
+        .prefix("qt-projects-main-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let main_work = main_work_scratch.path().join("main_work.db");
+    let mount_work_scratch = tempfile::Builder::new()
+        .prefix("qt-projects-mount-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let mount_work = mount_work_scratch.path().join("mount_work.db");
     std::fs::copy(&main_fixture, &main_work).unwrap_or_else(|e| panic!("copy main: {e}"));
     std::fs::copy(&mount_fixture, &mount_work).unwrap_or_else(|e| panic!("copy mount: {e}"));
 
@@ -466,8 +471,6 @@ fn projects_tier2_matches_oracle() {
                 .unwrap_or_else(|e| panic!("dump {}: {e}", s.table))
         })
         .collect();
-    let _ = std::fs::remove_file(&main_work);
-    let _ = std::fs::remove_file(&mount_work);
 
     let mut want: Vec<Value> = TABLES
         .iter()

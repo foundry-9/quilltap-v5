@@ -254,9 +254,11 @@ fn image_failover_matches_v4() {
         .collect();
     let api_keys = CannedApiKeys(keys.clone());
 
-    let work =
-        std::env::temp_dir().join(format!("qt-image-failover-rust-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    let work_scratch = tempfile::Builder::new()
+        .prefix("qt-image-failover-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = work_scratch.path().join("work.db");
     std::fs::copy(&fixture, &work).expect("copy fixture");
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -492,7 +494,6 @@ fn image_failover_matches_v4() {
         .expect("dump chat_messages");
     drop(db);
     drop(rt);
-    let _ = std::fs::remove_file(&work);
 
     assert!(
         failed.is_empty(),

@@ -910,7 +910,11 @@ fn a(c: &Connection) -> Result<(), DbError> {
 mod tests { fn t() { links.find_by_mount_point_id(x)?; } }
 "#,
     ));
-    let tmp = std::env::temp_dir().join(format!("qt-census-synth-{}.rs", std::process::id()));
+    let tmp_dir = tempfile::Builder::new()
+        .prefix("qt-census-synth-")
+        .tempdir()
+        .expect("tempdir");
+    let tmp = tmp_dir.path().join("census-synth.rs");
     std::fs::write(&tmp, &code).unwrap();
     // scan_file strips relative to crates/, so call the pieces directly.
     let bytes = code.as_bytes();
@@ -944,7 +948,6 @@ mod tests { fn t() { links.find_by_mount_point_id(x)?; } }
             ));
         }
     }
-    let _ = std::fs::remove_file(&tmp);
     let names: Vec<(&str, &str)> = found.iter().map(|(_, m, c)| (m.as_str(), *c)).collect();
     assert_eq!(
         names,

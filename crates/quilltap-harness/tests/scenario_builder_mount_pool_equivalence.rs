@@ -367,10 +367,12 @@ fn scenario_builder_mount_pool_matches_oracle() {
         "the eight mount-pool.test.ts shapes must all be armed"
     );
 
-    let scratch = std::env::temp_dir().join(format!("qt-sbpool-harness-{}", std::process::id()));
-    std::fs::create_dir_all(&scratch).expect("scratch dir");
-    let work_main = scratch.join("main.db");
-    let work_mount = scratch.join("mount.db");
+    let scratch = tempfile::Builder::new()
+        .prefix("qt-sbpool-harness-")
+        .tempdir()
+        .expect("scratch dir");
+    let work_main = scratch.path().join("main.db");
+    let work_mount = scratch.path().join("mount.db");
     std::fs::copy(&fixture_main, &work_main).expect("copy main");
     std::fs::copy(&fixture_mount, &work_mount).expect("copy mount");
     let main_w = Writer::open_writable(&work_main, &spec.test_pepper_base64).expect("open main");
@@ -593,7 +595,7 @@ fn scenario_builder_mount_pool_matches_oracle() {
     }
     drop(main_w);
     drop(mount_w);
-    let _ = std::fs::remove_dir_all(&scratch);
+    drop(scratch);
     eprintln!("scenario_builder_mount_pool: {arms} arms");
     assert!(saw_archived_line, "no arm pins the archived-member DEBUG");
     assert!(

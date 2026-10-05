@@ -152,8 +152,11 @@ fn provider_models_upsert_tier2_matches_oracle() {
     let mut oracle: Value = serde_json::from_str(oracle_text.trim()).expect("parse oracle dump");
 
     // Fresh copy so the shared seed fixture stays pristine.
-    let work = std::env::temp_dir().join(format!("qt-pm-upsert-rust-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    let work_scratch = tempfile::Builder::new()
+        .prefix("qt-pm-upsert-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = work_scratch.path().join("work.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
     // Run the SAME upsert sequence through the Rust port, minting our own
@@ -182,8 +185,6 @@ fn provider_models_upsert_tier2_matches_oracle() {
     let mut got = writer
         .dump_table_json("provider_models", "modelId")
         .expect("dump provider_models");
-
-    let _ = std::fs::remove_file(&work);
 
     // One normalization, applied to both dumps.
     normalize(&mut got, "rust");

@@ -70,9 +70,11 @@ fn cold_chunk_reembed_matches_oracle() {
     let oracle_text =
         std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("read oracle: {e}"));
 
-    let pid = std::process::id();
-    let work = std::env::temp_dir().join(format!("qt-cold-reembed-rust-{pid}.db"));
-    let _ = std::fs::remove_file(&work);
+    let work_dir = tempfile::Builder::new()
+        .prefix("qt-cold-reembed-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = work_dir.path().join("cold-reembed-rust.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
     let db = Db::open(

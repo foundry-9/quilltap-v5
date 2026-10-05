@@ -101,8 +101,11 @@ fn ensure_character_metadata_file_matches_oracle() {
     .expect("parse oracle");
 
     // Fresh copy so the shared seed fixture stays pristine (ensure WRITES to it).
-    let work = std::env::temp_dir().join(format!("qt-ensure-meta-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    let work_dir = tempfile::Builder::new()
+        .prefix("qt-ensure-meta-")
+        .tempdir()
+        .expect("tempdir");
+    let work = work_dir.path().join("ensure-meta.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
     let writer = Writer::open_writable(&work, &spec.test_pepper_base64)
         .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
@@ -120,8 +123,6 @@ fn ensure_character_metadata_file_matches_oracle() {
             file_content,
         });
     }
-
-    let _ = std::fs::remove_file(&work);
 
     assert_eq!(got.len(), oracle.rows.len(), "store count diverged");
     for (g, w) in got.iter().zip(oracle.rows.iter()) {

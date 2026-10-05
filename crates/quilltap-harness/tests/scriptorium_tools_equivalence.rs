@@ -163,9 +163,11 @@ async fn scriptorium_tools_matches_oracle() {
     assert_eq!(spec.ops.len(), oracle.ops.len(), "op count: spec vs oracle");
 
     // Work on a fresh copy of the seed fixture.
-    let pid = std::process::id();
-    let work = std::env::temp_dir().join(format!("qt-scriptorium-rust-{pid}.db"));
-    let _ = std::fs::remove_file(&work);
+    let scratch = tempfile::Builder::new()
+        .prefix("qt-scriptorium-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = scratch.path().join("work.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
     let db = Db::open_main(&work, &spec.test_pepper_base64).unwrap_or_else(|e| panic!("open: {e}"));
@@ -257,9 +259,9 @@ async fn scriptorium_tools_matches_oracle() {
     let n = got_norm["rows"].as_array().map(|a| a.len()).unwrap_or(0);
     assert!(n > 0, "dump looks empty");
 
-    // Drop the Db (closes the writer thread) before removing the file.
+    // Drop the Db (closes the writer thread) before removing the scratch dir.
     drop(db);
-    let _ = std::fs::remove_file(&work);
+    drop(scratch);
     eprintln!(
         "OK: scriptorium tools matched oracle ({} ops, {n} annotation rows).",
         spec.ops.len()

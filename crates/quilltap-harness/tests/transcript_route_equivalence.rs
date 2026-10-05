@@ -68,13 +68,13 @@ enum Plant {
 
 /// A fresh Db over a copy of the committed fixture, healed and planted exactly
 /// as the oracle heals and plants its own copy.
-fn venue(spec: &Spec, tag: &str, plant: Plant) -> (PathBuf, Db) {
-    let scratch =
-        std::env::temp_dir().join(format!("qt-transcript-route-{}-{tag}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
-    let main = scratch.join("main.db");
-    let mount = scratch.join("mount.db");
+fn venue(spec: &Spec, tag: &str, plant: Plant) -> (tempfile::TempDir, Db) {
+    let scratch = tempfile::Builder::new()
+        .prefix(&format!("qt-transcript-route-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let main = scratch.path().join("main.db");
+    let mount = scratch.path().join("mount.db");
     std::fs::copy(fixtures_dir().join("salon-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("salon-mount.db"), &mount).unwrap();
     {
@@ -310,7 +310,7 @@ fn transcript_route_matches_oracle() {
             Leg::Listing => chat_transcript::chat_message_events(&db, uid, chat_id),
         };
         drop(db);
-        let _ = std::fs::remove_dir_all(&scratch);
+        drop(scratch);
 
         let (status, body) = as_http(&got);
         let want = oracle

@@ -85,11 +85,16 @@ fn identity_compiler_matches_oracle() {
         .map(|l| serde_json::from_str::<Value>(l).expect("oracle line parses"))
         .collect();
 
-    let pid = std::process::id();
-    let main_work = std::env::temp_dir().join(format!("qt-idc-main-rust-{pid}.db"));
-    let mount_work = std::env::temp_dir().join(format!("qt-idc-mount-rust-{pid}.db"));
-    let _ = std::fs::remove_file(&main_work);
-    let _ = std::fs::remove_file(&mount_work);
+    let main_work_dir = tempfile::Builder::new()
+        .prefix("qt-idc-main-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let main_work = main_work_dir.path().join("idc-main-rust.db");
+    let mount_work_dir = tempfile::Builder::new()
+        .prefix("qt-idc-mount-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let mount_work = mount_work_dir.path().join("idc-mount-rust.db");
     std::fs::copy(&main_fixture, &main_work).unwrap_or_else(|e| panic!("copy main: {e}"));
     std::fs::copy(&mount_fixture, &mount_work).unwrap_or_else(|e| panic!("copy mount: {e}"));
 

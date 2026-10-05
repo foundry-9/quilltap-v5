@@ -202,11 +202,11 @@ async fn memory_watermark_tier3_matches_oracle() {
     let oracle_text =
         std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("read oracle: {e}"));
 
-    let work = std::env::temp_dir().join(format!(
-        "qt-memory-watermark-rust-{}.db",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_file(&work);
+    let work_scratch = tempfile::Builder::new()
+        .prefix("qt-memory-watermark-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = work_scratch.path().join("work.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
     let mut provider = CannedEmbeddingProvider::new();
@@ -256,7 +256,6 @@ async fn memory_watermark_tier3_matches_oracle() {
         })
         .collect();
     drop(db);
-    let _ = std::fs::remove_file(&work);
 
     let mut want: Vec<Value> = TABLES
         .iter()

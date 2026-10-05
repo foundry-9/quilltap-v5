@@ -61,6 +61,7 @@ async function main(): Promise<void> {
   // startup physical backups, the THROWAWAY main + mount-index DBs). A unique dir
   // per run avoids stale-lock collisions. The LLM-LOGS db lands at QT_FIXTURE_OUT.
   const scratch = mkdtempSync(join(tmpdir(), 'qt-ll-fixture-build-'));
+  process.on('exit', () => rmSync(scratch, { recursive: true, force: true }));
   mkdirSync(join(scratch, 'data'), { recursive: true });
 
   // Env MUST be set before importing v4 config/manager modules.

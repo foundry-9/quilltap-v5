@@ -143,9 +143,11 @@ fn characters_reads_match_oracle() {
     }
 
     let uid = &spec.user_id;
-    let scratch = std::env::temp_dir().join(format!("qt-characters-reads-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
+    let scratch_dir = tempfile::Builder::new()
+        .prefix("qt-characters-reads-")
+        .tempdir()
+        .expect("tempdir");
+    let scratch = scratch_dir.path();
     let main = scratch.join("main.db");
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("characters-main.db"), &main).unwrap();
@@ -687,7 +689,7 @@ fn characters_reads_match_oracle() {
         }
         push(name, response_data(&resp));
     }
-    let _ = std::fs::remove_dir_all(&scratch);
+    drop(scratch_dir);
 
     // Normalize the read-time-minted physicalDescription timestamps on the detail.
     for (name, got, want) in cases.iter_mut() {

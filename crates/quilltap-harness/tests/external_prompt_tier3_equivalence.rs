@@ -303,22 +303,23 @@ fn canned_for(oracle: &OracleRow, reply: &Reply) -> CannedCompletionProvider {
     canned
 }
 
-fn fresh_pair(tag: &str) -> (Db, PathBuf, String) {
+fn fresh_pair(tag: &str) -> (Db, tempfile::TempDir, String) {
     let spec: Spec = serde_json::from_str(
         &std::fs::read_to_string(oracle_dir().join("characters.json")).unwrap(),
     )
     .unwrap();
-    let scratch = std::env::temp_dir().join(format!("qt-ep-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
-    let main = scratch.join("main.db");
-    let mount = scratch.join("mount.db");
+    let scratch = tempfile::Builder::new()
+        .prefix(&format!("qt-ep-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let main = scratch.path().join("main.db");
+    let mount = scratch.path().join("mount.db");
     std::fs::copy(fixtures_dir().join("characters-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("characters-mount.db"), &mount).unwrap();
     // A fresh llm-logs partition per case: item 10 compares what each runner's
     // `log_llm_call` wrote against the oracle's own per-case delta, which is
     // impossible with the `None` this family used to pass.
-    let llm_logs = scratch.join("llmlogs.db");
+    let llm_logs = scratch.path().join("llmlogs.db");
     common::materialize_llm_logs(&llm_logs, &spec.test_pepper_base64);
     let db = Db::open(
         DbPaths {
@@ -564,7 +565,7 @@ async fn external_prompt_matches_oracle() {
         let counts = llm_log_counts(&db);
         drop(driver);
         drop(db);
-        let _ = std::fs::remove_dir_all(&scratch);
+        drop(scratch);
 
         let got = normalize(json!({
             "name": case.name, "status": status, "body": body,
@@ -655,7 +656,7 @@ fn the_external_prompt_route_starting_line_carries_v4s_bag() {
         "v4's bag carries neither id: {line}"
     );
     drop(db);
-    let _ = std::fs::remove_dir_all(&scratch);
+    drop(scratch);
 
     // --- the SILENCE half: the 404 and the Zod parse both precede the line. ---
     for (tag, character, max_tokens) in [
@@ -681,6 +682,6 @@ fn the_external_prompt_route_starting_line_carries_v4s_bag() {
             "{tag}: v4 refuses before it announces: {lines:#?}"
         );
         drop(db);
-        let _ = std::fs::remove_dir_all(&scratch);
+        drop(scratch);
     }
 }

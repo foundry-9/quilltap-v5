@@ -98,8 +98,11 @@ fn memory_delete_tier2_matches_oracle() {
         std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("read oracle: {e}"));
     let mut oracle: Value = serde_json::from_str(oracle_text.trim()).expect("parse oracle dump");
 
-    let work = std::env::temp_dir().join(format!("qt-mem-delete-rust-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    let work_scratch = tempfile::Builder::new()
+        .prefix("qt-mem-delete-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = work_scratch.path().join("work.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
     let writer = Writer::open_writable(&work, &spec.test_pepper_base64)
@@ -122,8 +125,6 @@ fn memory_delete_tier2_matches_oracle() {
     let mut got = writer
         .dump_table_json("memories", "id")
         .expect("dump memories");
-
-    let _ = std::fs::remove_file(&work);
 
     normalize(&mut got, &spec.seed_timestamp, "rust");
     normalize(&mut oracle, &spec.seed_timestamp, "oracle");

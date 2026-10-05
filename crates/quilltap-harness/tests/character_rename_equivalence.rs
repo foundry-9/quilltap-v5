@@ -279,16 +279,17 @@ fn to_status_body(r: Response) -> (i64, Value) {
     }
 }
 
-fn fresh_pair(tag: &str) -> (Db, PathBuf, String) {
+fn fresh_pair(tag: &str) -> (Db, tempfile::TempDir, String) {
     let spec: Spec = serde_json::from_str(
         &std::fs::read_to_string(oracle_dir().join("characters.json")).unwrap(),
     )
     .unwrap();
-    let scratch = std::env::temp_dir().join(format!("qt-rename-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
-    let main = scratch.join("main.db");
-    let mount = scratch.join("mount.db");
+    let scratch = tempfile::Builder::new()
+        .prefix(&format!("qt-rename-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let main = scratch.path().join("main.db");
+    let mount = scratch.path().join("mount.db");
     std::fs::copy(fixtures_dir().join("characters-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("characters-mount.db"), &mount).unwrap();
     let db = Db::open(
@@ -457,7 +458,7 @@ async fn character_rename_matches_oracle() {
         let (status, body) = to_status_body(drive(&db, &user_id, case).await);
         let (character, memories, chats, messages, jobs) = census(&db, &case.character_id);
         drop(db);
-        let _ = std::fs::remove_dir_all(&scratch);
+        drop(scratch);
 
         let got = normalize(json!({
             "name": case.name,

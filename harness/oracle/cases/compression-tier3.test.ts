@@ -131,6 +131,7 @@ async function main(): Promise<void> {
 
   // Fresh throwaway DBs (main + mount-index) + a fresh llm-logs DB we read back.
   const scratch = mkdtempSync(join(tmpdir(), 'qt-compression-oracle-'));
+  try {
   mkdirSync(join(scratch, 'data'), { recursive: true });
   process.env.ENCRYPTION_MASTER_PEPPER = TEST_PEPPER_BASE64;
   process.env.SQLITE_PATH = join(scratch, 'data', 'main.db');
@@ -284,6 +285,9 @@ async function main(): Promise<void> {
 
   fs.writeFileSync(outPath, lines.join('\n') + '\n');
   process.stderr.write(`compression oracle wrote ${outPath} (${rows.length} llm_logs rows)\n`);
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
 }
 
 test('compression tier-3 oracle', async () => {

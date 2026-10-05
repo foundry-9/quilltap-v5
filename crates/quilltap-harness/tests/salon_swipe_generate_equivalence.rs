@@ -427,12 +427,12 @@ fn salon_swipe_generate_matches_oracle() {
         let executor = CheapLlmTaskExecutor::new();
 
         // Fresh fixture copy per case.
-        let scratch =
-            std::env::temp_dir().join(format!("qt-salon-swipe-{}-{}", std::process::id(), name));
-        let _ = std::fs::remove_dir_all(&scratch);
-        std::fs::create_dir_all(&scratch).unwrap();
-        let main = scratch.join("main.db");
-        let mount = scratch.join("mount.db");
+        let scratch = tempfile::Builder::new()
+            .prefix(&format!("qt-salon-swipe-{name}-"))
+            .tempdir()
+            .expect("tempdir");
+        let main = scratch.path().join("main.db");
+        let mount = scratch.path().join("mount.db");
         std::fs::copy(fixtures_dir().join("salon-main.db"), &main).unwrap();
         std::fs::copy(fixtures_dir().join("salon-mount.db"), &mount).unwrap();
         // P4.D171: the committed `salon-{main,mount}.db` predates the two
@@ -494,7 +494,7 @@ fn salon_swipe_generate_matches_oracle() {
             })
             .unwrap();
         drop(db);
-        let _ = std::fs::remove_dir_all(&scratch);
+        drop(scratch);
 
         // Body: v4 error `{ error }` vs v5 `{ kind, message }`; the happy body is
         // `{ message: {...} }` — normalize the swipe id + group there too.

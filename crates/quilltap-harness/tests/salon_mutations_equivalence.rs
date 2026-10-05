@@ -274,12 +274,12 @@ fn salon_mutations_match_oracle() {
     // chat_informs rows — only for the P4.106 plant cases).
     let run = |case: &str, f: &dyn Fn(&Db) -> Response| -> (Value, Value, Value, Option<Value>) {
         let plant = PLANT_CASES.contains(&case);
-        let scratch =
-            std::env::temp_dir().join(format!("qt-salon-mut-{}-{}", std::process::id(), case));
-        let _ = std::fs::remove_dir_all(&scratch);
-        std::fs::create_dir_all(&scratch).unwrap();
-        let main = scratch.join("main.db");
-        let mount = scratch.join("mount.db");
+        let scratch = tempfile::Builder::new()
+            .prefix(&format!("qt-salon-mut-{case}-"))
+            .tempdir()
+            .expect("tempdir");
+        let main = scratch.path().join("main.db");
+        let mount = scratch.path().join("mount.db");
         std::fs::copy(fixtures_dir().join("salon-main.db"), &main).unwrap();
         std::fs::copy(fixtures_dir().join("salon-mount.db"), &mount).unwrap();
         // P4.D171: the committed `salon-{main,mount}.db` predates the two
@@ -333,7 +333,6 @@ fn salon_mutations_match_oracle() {
                 .unwrap()
         });
         drop(db);
-        let _ = std::fs::remove_dir_all(&scratch);
         (body, chats, msgs, informs)
     };
 

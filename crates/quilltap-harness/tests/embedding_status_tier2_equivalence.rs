@@ -318,8 +318,11 @@ fn embedding_status_tier2_matches_oracle() {
     );
 
     // Work on a fresh copy of the seed fixture so the shared file stays pristine.
-    let work = std::env::temp_dir().join(format!("qt-es-rust-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    let work_dir = tempfile::Builder::new()
+        .prefix("qt-es-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = work_dir.path().join("es-rust.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
     // Run the SAME op sequence through the Rust port.
@@ -417,8 +420,6 @@ fn embedding_status_tier2_matches_oracle() {
     let mut got = writer
         .dump_table_json("embedding_status", "id")
         .expect("dump embedding_status");
-
-    let _ = std::fs::remove_file(&work);
 
     // One normalization (placeholder the minted columns + natural-key sort),
     // applied to both dumps.

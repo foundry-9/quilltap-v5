@@ -174,8 +174,13 @@ fn tfidf_vocabulary_tier2_matches_oracle() {
     let mut oracle: Value = serde_json::from_str(oracle_text.trim()).expect("parse oracle dump");
 
     // Work on a fresh copy of the seed fixture so the shared file stays pristine.
-    let work = std::env::temp_dir().join(format!("qt-tv-rust-{}.db", std::process::id()));
-    let _ = std::fs::remove_file(&work);
+    // A scratch dir removed on drop — with the TRUNCATE-mode `-journal`
+    // the writable open leaves beside the DB.
+    let scratch = tempfile::Builder::new()
+        .prefix("qt-tv-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let work = scratch.path().join("work.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
     // Run the SAME op sequence through the Rust port.
@@ -233,8 +238,6 @@ fn tfidf_vocabulary_tier2_matches_oracle() {
     let mut got = writer
         .dump_table_json("tfidf_vocabularies", "id")
         .expect("dump tfidf_vocabularies");
-
-    let _ = std::fs::remove_file(&work);
 
     // One normalization (placeholder the minted updatedAt), applied to both dumps.
     normalize(&mut got, "rust");

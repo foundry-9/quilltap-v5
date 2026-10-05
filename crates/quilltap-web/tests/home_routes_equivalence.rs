@@ -70,15 +70,17 @@ fn env_or_skip(key: &str) -> Option<String> {
 }
 
 /// A fresh two-partition Db over a private copy of the committed fixture.
-fn fresh_db(tag: &str) -> Db {
-    let scratch = std::env::temp_dir().join(format!("qt-home-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).unwrap();
-    let main = scratch.join("main.db");
-    let mount = scratch.join("mount.db");
+/// The scratch dir rides out with the handle — bind it for the test's life.
+fn fresh_db(tag: &str) -> (Db, tempfile::TempDir) {
+    let scratch = tempfile::Builder::new()
+        .prefix(&format!("qt-home-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let main = scratch.path().join("main.db");
+    let mount = scratch.path().join("mount.db");
     std::fs::copy(fixtures_dir().join("home-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("home-mount.db"), &mount).unwrap();
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
@@ -86,7 +88,8 @@ fn fresh_db(tag: &str) -> Db {
         },
         TEST_PEPPER,
     )
-    .expect("open db")
+    .expect("open db");
+    (db, scratch)
 }
 
 /// Replay one oracle mutation (the same raw SQL the oracle ran on ITS copy).
@@ -281,20 +284,20 @@ fn home_routes_match_oracle() {
     // richest full payload (both avatar kinds, tags, the dangling participant,
     // the omit-vs-null splits, all three project sources).
     {
-        let db = fresh_db("route_primary");
+        let (db, _scratch) = fresh_db("route_primary");
         let resp = system_home(&db, &spec.user_id, None);
         check(&oracle, "route_primary", &resp, &mut failed);
         check_key_order(&oracle_raw, "route_primary", &resp, &mut failed);
     }
     {
-        let db = fresh_db("route_empty");
+        let (db, _scratch) = fresh_db("route_empty");
         let resp = system_home(&db, &spec.empty_user_id, None);
         check(&oracle, "route_empty_user", &resp, &mut failed);
     }
 
     // ── The displayName ladder + the scoping split, service-level ──
     let service = |name: &str, user: &str, fallback: Option<&str>, failed: &mut Vec<String>| {
-        let db = fresh_db(name);
+        let (db, _scratch) = fresh_db(name);
         let resp = system_home(&db, user, fallback);
         check(&oracle, name, &resp, failed);
     };
@@ -332,7 +335,7 @@ fn home_routes_match_oracle() {
 
     // ── The mutation cases: replay the oracle's raw SQL, then read ──
     let mutated = |name: &str, sql: &'static str, params: Vec<String>, failed: &mut Vec<String>| {
-        let db = fresh_db(name);
+        let (db, _scratch) = fresh_db(name);
         mutate(&db, sql, params);
         let resp = system_home(&db, &spec.user_id, None);
         check(&oracle, name, &resp, failed);

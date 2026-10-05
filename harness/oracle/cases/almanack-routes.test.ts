@@ -260,6 +260,7 @@ async function main(): Promise<void> {
   if (!outPath) throw new Error('QT_ORACLE_OUT must point at the NDJSON file to write');
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-almanack-oracle-'));
+  try {
   mkdirSync(join(scratch, 'data', 'backups'), { recursive: true });
   for (const b of spec.backups) {
     writeFileSync(join(scratch, 'data', 'backups', b.filename), Buffer.alloc(b.sizeBytes, 0x51));
@@ -397,6 +398,9 @@ async function main(): Promise<void> {
 
   fs.writeFileSync(outPath, lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
   process.stderr.write(`almanack oracle wrote ${outPath} (${lines.length} cases)\n`);
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
 }
 
 test('almanack-routes oracle', async () => {

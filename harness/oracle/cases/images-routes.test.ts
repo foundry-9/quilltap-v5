@@ -695,6 +695,7 @@ async function main(): Promise<void> {
   const spec = JSON.parse(readFileSync(specPath, 'utf8')) as Spec;
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-images-routes-oracle-'));
+  scratchDirs.push(scratch);
   mkdirSync(join(scratch, 'data'), { recursive: true });
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
   process.env.QUILLTAP_DATA_DIR = scratch;
@@ -716,4 +717,10 @@ async function main(): Promise<void> {
 
 test('images-routes oracle', async () => {
   await main();
+});
+
+// Remove the OS-temp scratch dir(s) once the oracle has written its NDJSON.
+const scratchDirs: string[] = [];
+afterAll(() => {
+  for (const d of scratchDirs) rmSync(d, { recursive: true, force: true });
 });

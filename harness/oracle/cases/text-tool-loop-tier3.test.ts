@@ -36,7 +36,7 @@
 import * as fs from 'fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { mkdtempSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
 
@@ -133,6 +133,7 @@ async function main(): Promise<void> {
   // CHAT_MESSAGE `logLLMCall` lands rows to dump/diff (the pass itself writes
   // nothing to main).
   const scratch = mkdtempSync(join(tmpdir(), 'qt-ttl-oracle-'));
+  scratchDirs.push(scratch);
   mkdirSync(join(scratch, 'data'), { recursive: true });
   process.env.ENCRYPTION_MASTER_PEPPER = 'dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=';
   process.env.SQLITE_PATH = join(scratch, 'ttl-main.db');
@@ -397,4 +398,10 @@ async function main(): Promise<void> {
 
 test('text-tool-loop tier-3 oracle', async () => {
   await main();
+});
+
+// Remove the OS-temp scratch dir(s) once the oracle has written its NDJSON.
+const scratchDirs: string[] = [];
+afterAll(() => {
+  for (const d of scratchDirs) rmSync(d, { recursive: true, force: true });
 });

@@ -132,13 +132,14 @@ fn doc_edit_path_resolver_matches_oracle() {
         oracle.insert(format!("{}:{}", row.kind, row.id), row.result);
     }
 
-    let pid = std::process::id();
     // CANONICAL scratch root (macOS /var → /private/var) so the fs-mount basePath
     // and the paths safeRealpath returns share a stable prefix for the sentinel
     // rewrite. Mirrors the oracle's `realpathSync(mkdtempSync(...))`.
-    let scratch_raw = std::env::temp_dir().join(format!("qt-dpr-rust-{pid}"));
-    let _ = std::fs::remove_dir_all(&scratch_raw);
-    std::fs::create_dir_all(&scratch_raw).unwrap();
+    let scratch_raw_dir = tempfile::Builder::new()
+        .prefix("qt-dpr-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let scratch_raw = scratch_raw_dir.path().to_path_buf();
     let root = std::fs::canonicalize(&scratch_raw).unwrap();
     let fs_mount_base = materialize_tree(&root, &spec.legacy_project_id);
     let files_dir = root.join("files");

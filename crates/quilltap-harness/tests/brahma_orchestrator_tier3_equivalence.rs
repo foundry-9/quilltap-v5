@@ -436,11 +436,12 @@ async fn brahma_orchestrator_tier3_matches_oracle() {
     }
 
     // Fresh copies so the committed seed stays pristine.
-    let pid = std::process::id();
-    let work_main = std::env::temp_dir().join(format!("qt-brahma-orch-main-{pid}.db"));
-    let work_mount = std::env::temp_dir().join(format!("qt-brahma-orch-mount-{pid}.db"));
-    let _ = std::fs::remove_file(&work_main);
-    let _ = std::fs::remove_file(&work_mount);
+    let scratch_dir = tempfile::Builder::new()
+        .prefix("qt-brahma-orch-")
+        .tempdir()
+        .expect("tempdir");
+    let work_main = scratch_dir.path().join("qt-brahma-orch-main.db");
+    let work_mount = scratch_dir.path().join("qt-brahma-orch-mount.db");
     std::fs::copy(fixtures_dir().join("brahma-main.db"), &work_main).unwrap();
     std::fs::copy(fixtures_dir().join("brahma-mount.db"), &work_mount).unwrap();
 

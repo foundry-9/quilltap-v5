@@ -387,22 +387,19 @@ fn env_or_skip(key: &str) -> Option<String> {
     }
 }
 
-fn fresh_copy(main_fixture: &str, mount_fixture: &str) -> (PathBuf, PathBuf) {
-    let dir = std::env::temp_dir();
-    let main_work = dir.join(format!("qt-fa-main-rust-{}.db", std::process::id()));
-    let mount_work = dir.join(format!("qt-fa-mount-rust-{}.db", std::process::id()));
-    cleanup(&main_work, &mount_work);
+/// Fresh copies of the two fixtures in a private temp dir. The returned
+/// `TempDir` must outlive every handle on the copies; dropping it removes the
+/// dir along with every `-journal`/`-wal`/`-shm` sidecar SQLite wrote there.
+fn fresh_copy(main_fixture: &str, mount_fixture: &str) -> (tempfile::TempDir, PathBuf, PathBuf) {
+    let dir = tempfile::Builder::new()
+        .prefix("qt-fa-rust-")
+        .tempdir()
+        .expect("tempdir");
+    let main_work = dir.path().join("fa-main-rust.db");
+    let mount_work = dir.path().join("fa-mount-rust.db");
     std::fs::copy(main_fixture, &main_work).unwrap_or_else(|e| panic!("copy main: {e}"));
     std::fs::copy(mount_fixture, &mount_work).unwrap_or_else(|e| panic!("copy mount: {e}"));
-    (main_work, mount_work)
-}
-
-fn cleanup(main: &Path, mount: &Path) {
-    for p in [main, mount] {
-        for suffix in ["", "-journal", "-wal", "-shm"] {
-            let _ = std::fs::remove_file(format!("{}{suffix}", p.display()));
-        }
-    }
+    (dir, main_work, mount_work)
 }
 
 // ===========================================================================
@@ -575,7 +572,7 @@ fn file_attachment_matches_oracle() {
     }
     let transcoder = transcoder;
 
-    let (main_work, mount_work) = fresh_copy(&main_fixture, &mount_fixture);
+    let (_scratch, main_work, mount_work) = fresh_copy(&main_fixture, &mount_fixture);
     let db = Db::open(
         DbPaths {
             main: main_work.clone(),
@@ -1320,6 +1317,5 @@ fn file_attachment_matches_oracle() {
     provider.assert_matches(&expected_sampling, "image-description fallback");
 
     drop(db);
-    cleanup(&main_work, &mount_work);
     eprintln!("OK: file-attachment differential matched the oracle across all cases.");
 }
