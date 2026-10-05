@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-05 — docs(porting): P4.D253 lane record — bug 177 landed, bug 178 ratified NO-PORT
+
+_Docs-only change._
+
+Appends the P4.D253 lane record to `status-log.md` (red-first counts at both pins, the four mutation proofs, the gate, the regen recipe, the bug-178 ratification sentence for the ledger) and marks the order LANE COMPLETE. Tier 2 item 7 is recorded as not stageable (the tier-3 oracles read only a committed fixture pair this lane may not rebuild); item 8 as unreachable.
+
 #### 2026-10-05 — fix(core): bug 177 — the PDF arm reads through the converter seam first, with v4's three new lines and the first tier-1 family over extractFileContent (P4.D253)
 
 _Versions: core 0.0.1206._

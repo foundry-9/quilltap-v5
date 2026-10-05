@@ -165157,3 +165157,180 @@ new project with no colour writing `"color": null, "icon": null` and the
 home row carrying `color: null`; a group-editor save with the colour cleared
 writing `"color": null`; a `.qtap` import of a group with `"color": 5`
 refused with `Failed to import group` (this round's fix 4).
+
+## P4.D253 — bug 177 ported WHOLE (the PDF arm through the converter seam) + bug 178 RATIFIED NO-PORT — LANE COMPLETE (lane `claude/pdf-extraction-converter-bug-16d2ac`, 2026-10-05)
+
+**Probe.** The drift ledger's §2 probe PASSED at lane start and before both
+regen batches (v4 on `main` at `07b8f0209`, tree clean, `07b8f0209..main`
+and `1a2b2164c..bugfix` empty). Pins: `/tmp/qt-v4-pin-p4d253-07b8f0209`
+(`4.10.0-dev.111`, `grep -c convertPdfBufferToText` = 3) and
+`/tmp/qt-v4-pin-p4d253-52d6e7ecd` (`4.10.0-dev.109`, = 0), each verified by
+`rev-parse` + `ls -ld`, the three symlink classes in place.
+
+### Landed (Tier 1, all six items)
+
+1. **Red-first, before the arm moved** (the seam guard added, the arm
+   untouched; the corpus then had 22 cases): the new family against the
+   TARGET oracle — **15 red comparands over 22 cases**: all 10 PDF rows'
+   `lines` (v5's old fieldless WARN where v4 emits the new WARN `{size}` and
+   the DEBUG `{size, chars}`), and 5 PDF `result`s (`pdf_parsed_text`,
+   `pdf_parsed_padded`, `pdf_parsed_truncated` — v4 parses; `pdf_no_text`,
+   `pdf_empty_buffer` — the retired error string). The 12 non-PDF rows GREEN
+   (the neutrality half). Against the BASELINE oracle: **20 reds** — every
+   PDF row's result AND lines, because v4 at `52d6e7ecd` answers `success:
+   false`, `Failed to extract PDF content`, with the ERROR `Error extracting
+   PDF content` `{ error: 'pdfParse is not a function' }` on all ten
+   (`parserCalls: 0` — the 2.x module object is not callable). That oracle is
+   the measurement that the module header's premise was false. The 12
+   non-PDF rows are byte-identical across the two pins (`diff` of the
+   filtered NDJSON).
+2. **The arm** (`file_content.rs`): `pdf_text_extractor()` (the scripted
+   thread-local, else `default_text_extractor()` in place — no threading, no
+   new parameter; `wizard.rs`/`ai_import.rs` call sites untouched) →
+   `js_trim` → empty → WARN `pdf-parse found no text, using native fallback
+   extraction` `size` → `extract_pdf_text_fallback` (not re-trimmed, as v4)
+   → empty → `Failed to extract PDF content (no text found)` → DEBUG
+   `Extracted PDF content` `size` `chars` (= `utf16_len`, v4's
+   `content.length`) → the truncation unchanged. Both retired strings gone:
+   `grep -rn "pdf-parse not available\|pdf-parse unavailable" crates/
+   harness/` is EMPTY. The three lines capture-pinned in
+   `generators::file_content::tests` (5 tests, `global_capture` — level,
+   target, message, field names and bare integer values, incl. a UTF-16
+   `chars=7` over `Café 🐝`). The `RefusingTextExtractor`'s stderr line now
+   fires on every PDF the production seam sees — the loud refusal naming
+   P4.6y, unchanged.
+3. **The tier-1 family.** NEW `harness/oracle/cases/file-content-extractor.
+   test.ts` + `file-content-extractor-corpus.json` (23 cases — the 20 the
+   order lists plus `no_storage_key`, `pdf_parsed_padded` (the trim),
+   `pdf_parsed_multibyte` (UTF-16 `chars`), `pdf_fallback_mixed_dedup`; the
+   multibyte row was added after the red-first run). The mocks: a
+   self-contained root-logger recorder whose `child` carries its bindings;
+   `createServiceLogger` → a `converterLines` recorder; `downloadFile` → the
+   case bytes / a rejection; `pdf-parse` mocked at its RESOLVED path from the
+   checkout (plus the bare name, virtual) — `parserCalls` proves the mock
+   fired on every PDF row with bytes. NEW `crates/quilltap-harness/tests/
+   file_content_extractor_equivalence.rs`, three tests:
+   `scripted_seam_matches_v4_on_every_row` (result + lines exact; the failed
+   download's `error` by presence — the mock's raw rejection vs v5's
+   v4-wrapped message), `production_seam_diverges_only_where_pdf_parse_
+   finds_text` (the four parsed-text rows asserted as the NAMED divergence —
+   v5's refusing seam → the fallback → `(no text found)` + the WARN; every
+   other row equal), `converter_warns_are_v4_only_on_exactly_the_named_rows`.
+   The scripted extractor sits behind the thread-scoped
+   `ScriptedTextExtractorGuard` (`#[cfg(any(test, feature =
+   "test-support"))]`; the thread-local is always `None` in production).
+4. **The header rewritten** to the divergence as it now is, the family's two
+   assertions named, the `a434c715b` finding carried.
+5. **`ai_import.rs`'s comment** rewritten (the arm is no longer v5-only).
+6. **Bug 178 NO-PORT-RATIFIED** on the file list: `git show a434c715b
+   --stat` — `next.config.js` (`serverExternalPackages += 'pdf-parse'`,
+   `outputFileTracingIncludes += pdf-parse/**, pdfjs-dist/**`) is a
+   Next/webpack packaging fix; v5 has no bundler and no `pdfjs-dist`. The
+   row's other riders (`README.md`, `docs/CHANGELOG.md`, three version
+   stamps, `package-lock.json`) NO-PORT; the `docs/v4/` bug files are
+   P4.D251's (§R.7). **For the ledger:** `a434c715b` →
+   `ABSORBED(P4.D253)` (bug 177) + `NO-PORT-RATIFIED(P4.D253)` (bug 178 —
+   `next.config.js` only; v5 has no bundler).
+
+### Tier 2
+
+7. **NOT LANDED — measured unstageable.** Both tier-3 oracles
+   (`character-wizard-tier3`, `ai-import-tier3`) un-mock the storage manager
+   and read REAL bytes, but only from the committed `character-generators-
+   {main,mount}.db` pair (and no corpus names a PDF — `grep -c` 0 in all
+   three fixture JSONs). A PDF `document` source needs a new file + blob in
+   that pair, which §R.6 forbids this lane. Coverage stays with the tier-1
+   family.
+8. **UNREACHABLE, recorded.** v4's outer catch (`Error extracting PDF
+   content` → `Failed to extract PDF content`): nothing in v5's arm can fail
+   (the seam answers a `String`; the fallback is a pure scrape), so it is not
+   ported; carried as a comment on `extract_pdf_content`. (In v4 itself it is
+   effectively unreachable since `a434c715b` — the converter swallows every
+   throw.)
+
+### Tier 3 (deferrals, unchanged)
+
+9. The production pdf/docx extractor — DEFERRED (P4.6y); the seam's refusal
+   is the loud arm.
+10. v4's converter WARNs (`PDF buffer is empty`, `Failed to extract text
+    from PDF buffer` under `MountIndex:PdfConverter`) — not ported (v5's seam
+    does not reproduce the converter); PINNED by the family to exactly the
+    rows that carry them (`pdf_throw_then_fallback`,
+    `pdf_fallback_mixed_dedup`, `pdf_empty_buffer`), so a future extractor
+    port inherits the list.
+
+### Mutation proofs (string-edit, restored by file backup, `cmp` clean)
+
+- M1 drop the `js_trim` → `pdf_parsed_padded` + `pdf_whitespace_then_
+  fallback_literal` red (result + lines).
+- M2 `chars = content.len()` (bytes) → `pdf_parsed_multibyte: lines` red.
+- M3 drop the WARN's `size` → the seven fallback rows' lines red.
+- M4 ignore the scripted seam → the four parsed-text rows red.
+
+### Gate
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean in BOTH feature sets (default and `--features
+  quilltap-core/native-transport`); `cargo build --release --workspace`
+  clean (exit 0, no warnings).
+- `cargo test --workspace --no-fail-fast` on commit `5a0839a9a`
+  (`CARGO_INCREMENTAL=0`, env block: `QT_ORACLE_FILE_CONTENT_EXTRACTOR`,
+  `QT_ORACLE_CHARACTER_WIZARD`, `QT_ORACLE_AI_IMPORT`, `QT_V4_CHECKOUT` =
+  `QT_V4_ROOT` = the `07b8f0209` pin, Node 24 on `PATH`): **667 binaries /
+  4,328 passed / 0 failed / 3 ignored, exit 0.** The three families RAN by
+  duration: `file_content_extractor_equivalence` 3/3 (0.12 s),
+  `character_wizard_tier3_equivalence` 1/1 (0.20 s), `ai_import_tier3_
+  equivalence` 1/1 (0.69 s). (`help_tree_equivalence` reported ok in 0.00 s
+  — a SKIP for want of its oracle var, not a run; it is P4.D251's to move.)
+- Sweep driver: `--run file_content_extractor_equivalence --v4
+  /tmp/qt-v4-pin-p4d253-07b8f0209` OK, 23 rows, `cmp`-identical to the lane
+  regen; neutrality `--run character_wizard_tier3_equivalence` from the
+  TARGET pin OK, and `--run ai_import_tier3_equivalence` from the BASELINE
+  pin OK (at the target it reds by design on its per-baseline
+  `V4_APP_VERSION` stamp — §S.2's unifier bump; no corpus of either carries
+  a PDF, so the arm is neutral to both). `recipe_sweep.py --self-test` exit 0.
+- §R.12 censuses (inside the workspace run): `chat_settings_column_sites_
+  guard` 1/1 UNMOVED, `dispatch_wrong_type_census` 14/14 (451 UNMOVED — no
+  verb, no `*_id`), `tri_state_edges_share_the_decoder` 11/11,
+  `fallback_home_guard` 2/2, `spelling_guard` 1/1, `help_tree_embed_guard`
+  1/1 (129), `provider_sdk_version_guard` 3/3 and `builtin_prompt_templates_
+  guard` 2/2 and `qtap_schema_embed_guard` 2/2 against the pin.
+- Ownership: `git diff main --stat` touches only `generators/{file_content,
+  ai_import}.rs`, `quilltap-core/Cargo.toml`, `Cargo.lock`, the two new
+  harness/oracle files + the corpus, `docs/CHANGELOG.md`, `status-log.md`,
+  this order's header; `git diff main -- apps/web/ help/ docs/v4/
+  services/mount_index/` EMPTY; `wizard.rs` untouched (resolved in place).
+- Version: core 0.0.1205 → **0.0.1206** (one bump; harness frozen).
+
+### Regen recipe (the family's own header — canonical)
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+cd <pin>     # /tmp/qt-v4-pin-<order>-07b8f0209
+TMPO=/tmp/qt-file-content-extractor-oracle; rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
+cp $V5W/harness/oracle/cases/file-content-extractor.test.ts "$TMPO/cases/"
+cp $V5W/harness/oracle/cases/file-content-extractor-corpus.json "$TMPO/cases/"
+rm -f /tmp/oracle-file-content-extractor.ndjson
+QT_ORACLE_OUT=/tmp/oracle-file-content-extractor.ndjson \
+  PATH=$N:$PATH $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- "file-content-extractor.test"
+QT_ORACLE_FILE_CONTENT_EXTRACTOR=/tmp/oracle-file-content-extractor.ndjson \
+  cargo test -p quilltap-harness --test file_content_extractor_equivalence -- --nocapture
+```
+
+Or `python3 harness/tools/recipe_sweep.py --run file_content_extractor_equivalence --v4 <pin> --v5w <worktree> --force`.
+
+### Fixtures
+
+None committed changed; no pair touched. Delivered: the corpus JSON. No
+other oracle is invalidated (the three tier-3 corpora carry no PDF).
+
+### Upstream candidates (§R.14)
+
+None.
+
+### 💸 for the dogfood pass
+
+Summon From Lore / the AI Wizard given a real PDF on the Friday copy: the
+WARN with `size`, the fallback text used (the seam refuses), or `(no text
+found)` on a scanned PDF — and the stderr refusal naming P4.6y once per PDF.
