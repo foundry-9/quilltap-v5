@@ -534,8 +534,14 @@ pub struct FeatureConfigInfo {
     pub auto_housekeeping: AutoHousekeepingConfig,
     pub text_replacements: TextReplacementsConfig,
     pub composer_spellcheck: bool,
-    /// v4 4.10 `686954937` — the impersonated-line voice-rewrite gate.
-    pub impersonation_voice_rewrite: bool,
+    /// v4 `07b8f0209` (P4.D251) — the impersonated-line voice MODE
+    /// (`'off' | 'ask' | 'always'` in v4's TS type). Carried as the RAW string
+    /// rather than the enum, because v4's type is erased at runtime: the
+    /// collector reads `chatSettings?.impersonationVoiceMode ?? 'off'` off the
+    /// row without validating it, and the renderer's `LABELS[mode] ?? mode`
+    /// prints an unknown value as itself — an arm the `almanack_render`
+    /// family's `voice_mode_unknown` variant measures.
+    pub impersonation_voice_mode: String,
     pub auto_scroll_on_response_complete: bool,
     pub image_description_profile_configured: bool,
     /// v4 `uncensoredVisionProfileConfigured` (`3b463d6b1` — was

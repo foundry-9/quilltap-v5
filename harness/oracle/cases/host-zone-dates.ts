@@ -108,11 +108,13 @@ out({ op: 'suparnaLlmContext', label: 'all', result: buildSuparnaMailLLMContext(
 
 out({ op: 'formatWebSearchResults', label: 'all', result: formatWebSearchResults(corpus.searchResults as never) });
 
-// The Almanack: v4's own fixture (with the field its helper omits — see
+// The Almanack: v4's own fixture (which carries `impersonationVoiceMode:
+// 'ask'` since `07b8f0209`; this planting takes the OTHER polarity, `'off'`,
+// so the two Almanack oracles disagree on the label line — see
 // `almanack-render.test.ts`) and the corpus's dates planted in every
 // date-rendering slot the fixture populates.
 const data = makeAlmanackFixture();
-data.featureConfig.impersonationVoiceRewrite = false;
+data.featureConfig.impersonationVoiceMode = 'off';
 const a = corpus.almanackDates;
 data.generatedAt = a.generatedAt;
 data.migrationState.lastMigrationAt = a.lastMigrationAt;

@@ -46,21 +46,26 @@ function clone(data: AlmanackReportData): AlmanackReportData {
 }
 
 /**
- * v4's fixture helper, with the one field `686954937` forgot to add to it.
+ * v4's fixture helper, verbatim.
  *
- * That commit added `FeatureConfigInfo.impersonationVoiceRewrite` to the
- * interface, `defaultFeatureConfig()`, `collectFeatureConfig` and the renderer —
- * but not to `__tests__/helpers/almanack/fixture.ts`, so v4's own fixture is
- * missing a field its own interface declares required and v4's render test only
- * ever renders `yesNo(undefined)` → `No`. Filling it here keeps the data a
- * faithful `AlmanackReportData` (so the port's model round-trips it) and lets
- * `base` / `all_empty` take opposite polarities, which is what makes the new
- * render line discriminating. A v4-side gap worth filing; recorded in the
- * P4.D179 lane record.
+ * P4.D179 used to fill `FeatureConfigInfo.impersonationVoiceRewrite` here,
+ * because `686954937` added that field to the interface, `defaultFeatureConfig()`,
+ * `collectFeatureConfig` and the renderer but NOT to
+ * `__tests__/helpers/almanack/fixture.ts`. That v4-side gap is CLOSED at
+ * `07b8f0209`: the fixture now carries `impersonationVoiceMode: 'ask'`
+ * (`fixture.ts:313`), so nothing is filled in any more — `base` renders v4's
+ * own value and the variants below move it (P4.D251, §R.14: the recorder's
+ * comment is updated, nothing is filed).
  */
 function fixture(): AlmanackReportData {
   const d = makeAlmanackFixture();
-  d.featureConfig.impersonationVoiceRewrite = false;
+  if (d.featureConfig.impersonationVoiceMode !== 'ask') {
+    throw new Error(
+      `v4's Almanack fixture no longer sets impersonationVoiceMode: 'ask' (got ${JSON.stringify(
+        d.featureConfig.impersonationVoiceMode,
+      )}) — re-measure the recorder's polarity choice`,
+    );
+  }
   return d;
 }
 
@@ -73,23 +78,14 @@ function variants(): Variant[] {
   return [
     // 1. v4's fixture verbatim — every section populated.
     //
-    // P4.D179 exception: v4's `686954937` added
-    // `FeatureConfigInfo.impersonationVoiceRewrite` to the interface, the
-    // default, the collector and the renderer but NOT to
-    // `__tests__/helpers/almanack/fixture.ts` — so v4's own fixture is missing a
-    // field its own interface declares required, and its render test exercises
-    // only the falsy arm (`yesNo(undefined)` → `No`). We supply the key
-    // explicitly, TRUE here and FALSE in `all_empty`, so both polarities of the
-    // new render line are measured and the port's model round-trips a field
-    // v4's fixture would otherwise leave absent. (A v4-side gap worth filing;
-    // recorded in the P4.D179 lane record.)
+    // P4.D251 (v4 `07b8f0209`): the fixture itself now carries
+    // `impersonationVoiceMode: 'ask'`, so `base` renders the middle label
+    // (`Ask each time`); `all_empty` takes `'off'` (`Never`) and
+    // `voice_mode_unknown` below takes a value outside the enum, which the
+    // renderer prints RAW (`IMPERSONATION_VOICE_MODE_LABELS[mode] ?? mode`).
     {
       name: 'base',
-      build: () => {
-        const d = fixture();
-        d.featureConfig.impersonationVoiceRewrite = true;
-        return d;
-      },
+      build: () => fixture(),
     },
 
     // 2. Every collection empty and every count zero: the `*None*` /
@@ -102,7 +98,7 @@ function variants(): Variant[] {
       name: 'all_empty',
       build: () => {
         const d = clone(fixture());
-        d.featureConfig.impersonationVoiceRewrite = false;
+        d.featureConfig.impersonationVoiceMode = 'off';
         d.runtimeEnvironment.electronShellVersion = null;
         d.runtimeEnvironment.shellCapabilities = [];
         d.databaseSecurity.databases = [];
@@ -435,6 +431,19 @@ function variants(): Variant[] {
         d.migrationState.lastMigrationAt = '2026-08-04 23:59:59.500';
         d.instanceSettings.lastMaintenanceSweepAt = '2026-08-01 00:00:00';
         d.apiKeyUsage = d.apiKeyUsage.map(p => ({ ...p, lastUsed: '2026-07-31 12:30:45' }));
+        return d;
+      },
+    },
+    // 9. P4.D251 (v4 `07b8f0209`): a stored mode OUTSIDE the enum. v4's
+    //    `IMPERSONATION_VOICE_MODE_LABELS[mode] ?? mode` renders the raw value,
+    //    so the label map's fallback arm is measured rather than assumed. The
+    //    cast is deliberate — the TS type is the three-literal union, the
+    //    runtime value is whatever the row carried.
+    {
+      name: 'voice_mode_unknown',
+      build: () => {
+        const d = clone(fixture());
+        (d.featureConfig as { impersonationVoiceMode: string }).impersonationVoiceMode = 'maybe';
         return d;
       },
     },

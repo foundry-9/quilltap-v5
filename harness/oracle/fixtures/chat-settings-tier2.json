@@ -237,7 +237,7 @@
         "composerSpellcheck": false,
         "composerEmoji": false,
         "composerUnicode": true,
-        "impersonationVoiceRewrite": false,
+        "impersonationVoiceMode": "off",
         "textReplacementsEnabled": false,
         "autoScrollOnResponseComplete": true,
         "agentModeSettings": {
@@ -329,7 +329,7 @@
         "composerSpellcheck": false,
         "composerEmoji": true,
         "composerUnicode": false,
-        "impersonationVoiceRewrite": true,
+        "impersonationVoiceMode": "ask",
         "textReplacementsEnabled": false,
         "autoScrollOnResponseComplete": true,
         "timezone": "Europe/London",
@@ -456,7 +456,7 @@
         "composerSpellcheck": false,
         "composerEmoji": false,
         "composerUnicode": false,
-        "impersonationVoiceRewrite": false,
+        "impersonationVoiceMode": "off",
         "textReplacementsEnabled": false,
         "autoScrollOnResponseComplete": true,
         "agentModeSettings": {

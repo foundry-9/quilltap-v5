@@ -60,11 +60,14 @@
 //!     default; v4 applies the Zod default during `validate`, so a row created
 //!     without it stores `256`. The corpus supplies it explicitly. Bound as
 //!     `i64`.
-//!   - **nine boolean columns** → INTEGER 0/1 (`i64::from(bool)`):
+//!   - **eight boolean columns** → INTEGER 0/1 (`i64::from(bool)`):
 //!     `autoDetectRng`, `customTools`, `compositionModeDefault`,
 //!     `composerSpellcheck`, `composerEmoji`, `composerUnicode`,
-//!     `impersonationVoiceRewrite`, `textReplacementsEnabled`,
-//!     `autoScrollOnResponseComplete`.
+//!     `textReplacementsEnabled`, `autoScrollOnResponseComplete`.
+//!   - **one plain-enum TEXT column**, `impersonationVoiceMode`
+//!     (`'off'` / `'ask'` / `'always'`, v4 `07b8f0209` — it REPLACED the
+//!     boolean `impersonationVoiceRewrite` at the same position; P4.D251),
+//!     bound as the enum's string.
 //!
 //! ### Nested JSON key-order discipline (the load-bearing detail)
 //!
@@ -772,18 +775,22 @@ pub struct ChatSettingsCreate {
     /// same reason as `composer_emoji`.
     #[serde(default = "smart_typography_default_true")]
     pub composer_unicode: bool,
-    /// v4 4.10 `686954937` — the impersonated-line voice-rewrite gate
-    /// (schema-ordered between `composerUnicode` and
-    /// `textReplacementsEnabled`).
+    /// v4 `07b8f0209` (P4.D251) — the impersonated-line voice MODE
+    /// (`ImpersonationVoiceModeEnum.default('off')`, schema-ordered between
+    /// `composerUnicode` and `textReplacementsEnabled`, where the 4.10-dev
+    /// boolean `impersonationVoiceRewrite` it REPLACED used to sit).
     ///
     /// Defaulted for the same reason as the two 4.8.2 booleans above — this
-    /// deserialize is also restore's input, and an archive taken before 4.10
-    /// simply has no such key; v4's restore parses through
-    /// `ChatSettingsSchema`, where the Zod default fills it. Unlike its
-    /// neighbours the default is **false** (`z.boolean().default(false)`,
-    /// settings.types.ts:646), so `bool::default()` is the faithful filler.
+    /// deserialize is also restore's input, and an archive taken before the
+    /// column simply has no such key; v4's restore parses through
+    /// `ChatSettingsSchema`, where the Zod default fills it. An archive that
+    /// still carries the RETIRED key is translated BEFORE it reaches here
+    /// (`services::impersonation_voice_legacy`, run by the restore); unknown
+    /// keys are then dropped by serde exactly as v4's schema strips them —
+    /// so a bag carrying ONLY the old key lands `'off'`, which is why the
+    /// restore's translation is load-bearing (pinned below).
     #[serde(default)]
-    pub impersonation_voice_rewrite: bool,
+    pub impersonation_voice_mode: ImpersonationVoiceMode,
     pub text_replacements_enabled: bool,
     pub auto_scroll_on_response_complete: bool,
     pub agent_mode_settings: AgentModeSettings,
@@ -812,6 +819,45 @@ pub struct ChatSettingsCreate {
     /// Nullable string TEXT; `None` => SQL NULL.
     #[serde(default)]
     pub timezone: Option<String>,
+}
+
+/// v4 `ImpersonationVoiceModeEnum = z.enum(['off', 'ask', 'always'])`
+/// (`settings.types.ts:333`, `07b8f0209`) — what happens to a line typed while
+/// impersonating a character: `off` posts it as typed; `ask` opens the review
+/// dialog with the draft and NO model call; `always` opens it and restates at
+/// once. Stored as its lowercase string; the column default is `'off'`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ImpersonationVoiceMode {
+    #[default]
+    Off,
+    Ask,
+    Always,
+}
+
+impl ImpersonationVoiceMode {
+    /// `ImpersonationVoiceModeEnum.options`, in v4's declaration order — the
+    /// list the settings PUT's refusal sentence joins with `', '`.
+    pub const VALUES: [&'static str; 3] = ["off", "ask", "always"];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Ask => "ask",
+            Self::Always => "always",
+        }
+    }
+
+    /// The enum member for a string, `None` for anything else (`safeParse`'s
+    /// failure arm — no coercion, no case folding).
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "off" => Some(Self::Off),
+            "ask" => Some(Self::Ask),
+            "always" => Some(Self::Always),
+            _ => None,
+        }
+    }
 }
 
 /// Pinned id + timestamps (v4's `CreateOptions`).
@@ -848,7 +894,7 @@ pub struct ChatSettingsUpdate {
     pub composer_spellcheck: Option<bool>,
     pub composer_emoji: Option<bool>,
     pub composer_unicode: Option<bool>,
-    pub impersonation_voice_rewrite: Option<bool>,
+    pub impersonation_voice_mode: Option<ImpersonationVoiceMode>,
     pub text_replacements_enabled: Option<bool>,
     pub auto_scroll_on_response_complete: Option<bool>,
     pub answer_confirmation_settings: Option<AnswerConfirmationSettings>,
@@ -944,7 +990,8 @@ impl<'c> ChatSettingsRepository<'c> {
         let composer_spellcheck = i64::from(data.composer_spellcheck);
         let composer_emoji = i64::from(data.composer_emoji);
         let composer_unicode = i64::from(data.composer_unicode);
-        let impersonation_voice_rewrite = i64::from(data.impersonation_voice_rewrite);
+        // The enum binds as its TEXT spelling (v4 stores the Zod enum's string).
+        let impersonation_voice_mode = data.impersonation_voice_mode.as_str();
         let text_replacements_enabled = i64::from(data.text_replacements_enabled);
         let auto_scroll_on_response_complete = i64::from(data.auto_scroll_on_response_complete);
 
@@ -982,7 +1029,7 @@ impl<'c> ChatSettingsRepository<'c> {
                 ("composerSpellcheck", &composer_spellcheck),
                 ("composerEmoji", &composer_emoji),
                 ("composerUnicode", &composer_unicode),
-                ("impersonationVoiceRewrite", &impersonation_voice_rewrite),
+                ("impersonationVoiceMode", &impersonation_voice_mode),
                 ("textReplacementsEnabled", &text_replacements_enabled),
                 (
                     "autoScrollOnResponseComplete",
@@ -1099,9 +1146,9 @@ impl<'c> ChatSettingsRepository<'c> {
             assignments.push(format!("composerUnicode = ?{}", values.len() + 1));
             values.push(Box::new(i64::from(composer_unicode)));
         }
-        if let Some(impersonation_voice_rewrite) = patch.impersonation_voice_rewrite {
-            assignments.push(format!("impersonationVoiceRewrite = ?{}", values.len() + 1));
-            values.push(Box::new(i64::from(impersonation_voice_rewrite)));
+        if let Some(impersonation_voice_mode) = patch.impersonation_voice_mode {
+            assignments.push(format!("impersonationVoiceMode = ?{}", values.len() + 1));
+            values.push(Box::new(impersonation_voice_mode.as_str().to_string()));
         }
         if let Some(text_replacements_enabled) = patch.text_replacements_enabled {
             assignments.push(format!("textReplacementsEnabled = ?{}", values.len() + 1));
@@ -1264,7 +1311,7 @@ pub fn find_by_user_id(
             "composerSpellcheck",
             "composerEmoji",
             "composerUnicode",
-            "impersonationVoiceRewrite",
+            "impersonationVoiceMode",
             "textReplacementsEnabled",
             "autoScrollOnResponseComplete",
             "agentModeSettings",
@@ -1403,15 +1450,21 @@ pub fn find_by_user_id(
                     "composerUnicode".into(),
                     Value::Bool(r.get::<_, Option<i64>>(23)?.is_none_or(|v| v == 1)),
                 );
-                // P4.D179 (v4 `686954937`), the same tolerance shape as its
-                // P4.D73 neighbours above — with the default the OTHER WAY
-                // ROUND. `impersonationVoiceRewrite` is
-                // `z.boolean().default(false)` (settings.types.ts:646), so an
-                // absent column must surface as `false`, and a stored 0 and an
-                // absent column agree. (`is_some_and`, not `is_none_or`.)
+                // P4.D251 (v4 `07b8f0209`): the voice MODE, a TEXT enum where
+                // its P4.D179 predecessor was a boolean. v4 reads `SELECT *`
+                // and `ImpersonationVoiceModeEnum.default('off')` fills the
+                // `undefined` a NULL (or absent — a pre-ensure instance)
+                // column becomes, so both surface as `'off'` (measured at the
+                // pin). A stored string OUTSIDE the enum is NOT defaulted:
+                // v4's `validate` throws and the fallback read drops the
+                // whole row — checked once the row is built (below), so the
+                // raw cell is carried through here.
                 obj.insert(
-                    "impersonationVoiceRewrite".into(),
-                    Value::Bool(r.get::<_, Option<i64>>(24)?.is_some_and(|v| v == 1)),
+                    "impersonationVoiceMode".into(),
+                    Value::String(
+                        r.get::<_, Option<String>>(24)?
+                            .unwrap_or_else(|| "off".to_string()),
+                    ),
                 );
                 obj.insert(
                     "textReplacementsEnabled".into(),
@@ -1482,6 +1535,41 @@ pub fn find_by_user_id(
             rusqlite::Error::QueryReturnedNoRows => Ok(None),
             other => Err(other),
         })?;
+    // v4 `findOneByFilter` → `validate` (`ChatSettingsSchema.parse`) on the
+    // hydrated row. The ONE column v5 can store a value v4's schema refuses is
+    // the voice mode (every other enum/JSON column is parsed at the write, and
+    // the booleans/numbers read through fixed coercions): a stored string
+    // outside `off` / `ask` / `always` makes v4 log `Data validation failed`
+    // (the ZodError's `invalid_value` issue) and then, through the fallback
+    // `safeQuery`, `Error finding entity by filter` with the same bytes, and
+    // answer `null` — the row is DROPPED, not defaulted (measured at the
+    // `07b8f0209` pin, P4.D251). v5 does the same here; the GET then runs
+    // v4's "no row" arm (recorded divergence: v4's `updateForUser` re-reads
+    // through the same validating read and CREATES a second row; v5's
+    // existence check is a raw `SELECT id`, so it answers 500 — a state no
+    // writer on either side can produce, pinned at the repository level only).
+    if let Some(row) = row {
+        if let Some(mode) = row.get("impersonationVoiceMode").and_then(Value::as_str) {
+            if ImpersonationVoiceMode::parse(mode).is_none() {
+                let issues = [crate::api::zod_issues::ZodIssue::invalid_value(
+                    &ImpersonationVoiceMode::VALUES,
+                    vec![Value::String("impersonationVoiceMode".into())],
+                )];
+                let error = crate::api::zod_issues::zod_error_message(&issues);
+                tracing::error!(
+                    target: "quilltap::db",
+                    collection = "chat_settings",
+                    error = %error,
+                    "Data validation failed"
+                );
+                return Ok(crate::db::fallback::find_one_by_filter_or_none(
+                    "chat_settings",
+                    || Err(DbError::Internal(error.clone())),
+                ));
+            }
+        }
+        return Ok(Some(row));
+    }
     Ok(row)
 }
 
@@ -1825,7 +1913,7 @@ mod tests {
                 contextCompressionSettings TEXT, llmLoggingSettings TEXT, \
                 autoDetectRng INTEGER, customTools INTEGER, compositionModeDefault INTEGER, \
                 composerSpellcheck INTEGER, composerEmoji INTEGER, \
-                composerUnicode INTEGER, impersonationVoiceRewrite INTEGER, \
+                composerUnicode INTEGER, impersonationVoiceMode TEXT, \
                 textReplacementsEnabled INTEGER, \
                 autoScrollOnResponseComplete INTEGER, agentModeSettings TEXT, \
                 coreWhisper TEXT, thinkingDisplay TEXT, answerConfirmationSettings TEXT, \
@@ -1930,7 +2018,7 @@ mod tests {
                 contextCompressionSettings TEXT, llmLoggingSettings TEXT, \
                 autoDetectRng INTEGER, compositionModeDefault INTEGER, \
                 composerSpellcheck INTEGER, composerEmoji INTEGER, \
-                composerUnicode INTEGER, impersonationVoiceRewrite INTEGER, \
+                composerUnicode INTEGER, impersonationVoiceMode TEXT, \
                 textReplacementsEnabled INTEGER, \
                 autoScrollOnResponseComplete INTEGER, agentModeSettings TEXT, \
                 coreWhisper TEXT, thinkingDisplay TEXT, answerConfirmationSettings TEXT, \
@@ -2011,13 +2099,12 @@ mod tests {
             row["smartTypographySettings"],
             serde_json::json!({"displayQuotes": false, "dashes": true, "ellipsis": true})
         );
-        // P4.D179: this table also predates 4.10, so the same tolerance runs
-        // for `impersonationVoiceRewrite` — with the opposite default. An
-        // `is_none_or` here (the shape its three neighbours use) would answer
-        // `true` and silently arm the rehearsal on every un-ensured instance.
+        // P4.D251: this table also predates the voice column, so the same
+        // tolerance runs for `impersonationVoiceMode` — v4's Zod default is
+        // the string `'off'`, never the truthy side its three neighbours take.
         assert_eq!(
-            row["impersonationVoiceRewrite"],
-            serde_json::Value::Bool(false)
+            row["impersonationVoiceMode"],
+            serde_json::Value::String("off".into())
         );
         // The columns either side still land on their own stored values — the
         // positional extraction did not slip.
@@ -2123,5 +2210,110 @@ mod tests {
         assert_eq!(row["cheapLLMSettings"]["strategy"], "PROVIDER_CHEAPEST");
         // …and the Concierge's own settings are there, whole.
         assert_eq!(row["conciergeSettings"]["enabled"], true);
+    }
+
+    /// P4.D251 (v4 `07b8f0209`): a NULL `impersonationVoiceMode` cell reads
+    /// `'off'` (v4's `.default('off')` over its NULL→`undefined`
+    /// deserializer — measured at the pin), and a stored value OUTSIDE the
+    /// enum is NOT defaulted: the row is DROPPED with v4's two ERROR lines,
+    /// `Data validation failed` then `Error finding entity by filter`, each
+    /// carrying the ZodError's `invalid_value` bytes (measured: v4's
+    /// `findByUserId` answers `null` on a stored `'maybe'`).
+    #[test]
+    fn find_by_user_id_voice_mode_null_reads_off_and_an_unknown_value_drops_the_row() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE chat_settings (\
+                id TEXT PRIMARY KEY, userId TEXT, avatarDisplayMode TEXT, \
+                avatarDisplayStyle TEXT, tagStyles TEXT, cheapLLMSettings TEXT, \
+                imageDescriptionProfileId TEXT, \
+                defaultRoleplayTemplateId TEXT, themePreference TEXT, sidebarWidth REAL, \
+                defaultTimestampConfig TEXT, memoryCascadePreferences TEXT, \
+                autoHousekeepingSettings TEXT, memoryExtractionLimits TEXT, \
+                autonomousRoomSettings TEXT, tokenDisplaySettings TEXT, \
+                contextCompressionSettings TEXT, llmLoggingSettings TEXT, \
+                autoDetectRng INTEGER, customTools INTEGER, compositionModeDefault INTEGER, \
+                composerSpellcheck INTEGER, composerEmoji INTEGER, composerUnicode INTEGER, \
+                impersonationVoiceMode TEXT DEFAULT 'off', textReplacementsEnabled INTEGER, \
+                autoScrollOnResponseComplete INTEGER, agentModeSettings TEXT, \
+                coreWhisper TEXT, thinkingDisplay TEXT, answerConfirmationSettings TEXT, \
+                smartTypographySettings TEXT, storyBackgroundsSettings TEXT, \
+                conciergeSettings TEXT, autoLockSettings TEXT, timezone TEXT, \
+                createdAt TEXT, updatedAt TEXT);",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO chat_settings (id, userId, avatarDisplayMode, avatarDisplayStyle, \
+             tagStyles, cheapLLMSettings, autoDetectRng, customTools, compositionModeDefault, \
+             composerSpellcheck, impersonationVoiceMode, textReplacementsEnabled, \
+             autoScrollOnResponseComplete, createdAt, updatedAt) VALUES ('s1', 'u1', 'ALWAYS', \
+             'CIRCULAR', '{}', '{\"strategy\":\"PROVIDER_CHEAPEST\",\"fallbackToLocal\":true,\
+             \"embeddingProvider\":\"OPENAI\"}', 1, 1, 0, 0, NULL, 1, 0, \
+             '2026-10-05T00:00:00.000Z', '2026-10-05T00:00:00.000Z')",
+            [],
+        )
+        .unwrap();
+        let row = find_by_user_id(&conn, "u1").unwrap().expect("row");
+        assert_eq!(row["impersonationVoiceMode"], serde_json::json!("off"));
+
+        for stored in ["ask", "always"] {
+            conn.execute(
+                "UPDATE chat_settings SET impersonationVoiceMode = ?1 WHERE id = 's1'",
+                [stored],
+            )
+            .unwrap();
+            let row = find_by_user_id(&conn, "u1").unwrap().expect("row");
+            assert_eq!(row["impersonationVoiceMode"], serde_json::json!(stored));
+        }
+
+        conn.execute(
+            "UPDATE chat_settings SET impersonationVoiceMode = 'maybe' WHERE id = 's1'",
+            [],
+        )
+        .unwrap();
+        let (got, lines) =
+            crate::test_support::captured_with(|| find_by_user_id(&conn, "u1").unwrap());
+        assert!(got.is_none(), "v4 drops the row it cannot validate");
+        let zod = "[\n  {\n    \"code\": \"invalid_value\",\n    \"values\": [\n      \"off\",\n      \"ask\",\n      \"always\"\n    ],\n    \"path\": [\n      \"impersonationVoiceMode\"\n    ],\n    \"message\": \"Invalid option: expected one of \\\"off\\\"|\\\"ask\\\"|\\\"always\\\"\"\n  }\n]";
+        assert_eq!(
+            lines,
+            vec![
+                format!("ERROR quilltap::db Data validation failed collection=chat_settings error={zod}"),
+                format!("ERROR quilltap::db Error finding entity by filter collection=chat_settings error={zod}"),
+            ],
+            "{lines:#?}"
+        );
+    }
+
+    /// P4.D251 Tier 2 item 14: `ChatSettingsCreate` ignores unknown keys, so
+    /// a restore bag carrying ONLY the retired `impersonationVoiceRewrite`
+    /// deserializes and lands `'off'` — the restore's legacy translation
+    /// (`services::impersonation_voice_legacy`) is the only thing standing
+    /// between a pre-round backup and a silent `'off'`; it is what makes a
+    /// stored `true` come back as `'ask'`.
+    #[test]
+    fn chat_settings_create_drops_the_retired_key_and_defaults_the_mode() {
+        // The tier-2 corpus's first create op is a full v4 create bag.
+        let spec: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../harness/oracle/fixtures/chat-settings-tier2.json"
+        ))
+        .unwrap();
+        let mut bag = spec["ops"][0]["data"].clone();
+        let obj = bag.as_object_mut().unwrap();
+        assert_eq!(
+            obj.get("impersonationVoiceMode"),
+            Some(&serde_json::json!("off"))
+        );
+        obj.remove("impersonationVoiceMode");
+        obj.insert("impersonationVoiceRewrite".into(), serde_json::json!(true));
+        let create: ChatSettingsCreate = serde_json::from_value(bag.clone()).unwrap();
+        assert_eq!(create.impersonation_voice_mode, ImpersonationVoiceMode::Off);
+
+        let translated =
+            crate::services::impersonation_voice_legacy::with_impersonation_voice_mode_from_legacy(
+                &bag,
+            );
+        let create: ChatSettingsCreate = serde_json::from_value(translated.into_owned()).unwrap();
+        assert_eq!(create.impersonation_voice_mode, ImpersonationVoiceMode::Ask);
     }
 }

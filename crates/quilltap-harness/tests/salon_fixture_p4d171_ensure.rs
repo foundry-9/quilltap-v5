@@ -46,7 +46,10 @@
 //! v4 `1fefadb9a` with v4's real `compareSchemas`), so the committed pair now
 //! carries `chats.cycleOrderParticipantIds` and `chat_messages.routeTrail`
 //! — along with `connection_profiles.fallbackProfileId`/`allowTierFallback`,
-//! `chat_settings.impersonationVoiceRewrite` and `files.generationKey`.
+//! `chat_settings.impersonationVoiceRewrite` and `files.generationKey` (the
+//! voice column since NARROWED by P4.D251 through v4's own
+//! `impersonation-voice-mode-v1` migration: the pair now carries
+//! `chat_settings.impersonationVoiceMode` and the boolean is gone).
 //!
 //! Two consequences, both MEASURED rather than reasoned:
 //!

@@ -603,22 +603,25 @@ describe('settings-routes oracle', () => {
         smartTypographySettings: { displayQuotes: true, dashes: true, ellipsis: false },
       },
     },
-    // ---- P4.D179 (v4 686954937): the impersonated-line voice-rewrite gate ----
-    // `impersonationVoiceRewrite` is the first `chat_settings` boolean whose Zod
-    // default is FALSE. The GET arm below pins key PRESENCE and the seeded value
-    // — NOT the absent-column read tolerance: user A's row is built by v4's own
-    // repo at the pin, so the column is present with `0` on both sides and an
-    // `is_none_or` read would answer `false` here too (the `f4ad2c8d1` §3
-    // review's correction). The tolerance is pinned by the unit test
-    // `find_by_user_id_defaults_the_composer_columns_when_absent` and by the web
-    // arm that drops the column before boot. The PUT arms are v4's manual
-    // `typeof !== 'undefined'` → `typeof !== 'boolean'` guard (route.ts:213-219),
-    // whose fixed sentence the route's `includes('Invalid') ? 400 : 500` split
-    // turns into a 400 — NOT a Zod envelope, so the body is the sentence alone.
+    // ---- P4.D251 (v4 07b8f0209): the impersonated-line voice MODE ----
+    // `impersonationVoiceMode` ('off' / 'ask' / 'always') REPLACED the P4.D179
+    // boolean `impersonationVoiceRewrite` at the same schema position. The GET
+    // arm pins key PRESENCE and the seeded value `'off'` — NOT the absent-column
+    // read tolerance: user A's row is built by v4's own repo at the pin, so the
+    // column is present on both sides (the tolerance is pinned by the
+    // `chat_settings.rs` unit tests and by the web arm that drops the column
+    // before boot). The PUT arms are v4's `typeof !== 'undefined'` guard →
+    // `ImpersonationVoiceModeEnum.safeParse` (route.ts:236-243), whose fixed
+    // sentence `Invalid impersonationVoiceMode value (must be one of off, ask,
+    // always)` the route's `includes('Invalid') ? 400 : 500` split turns into a
+    // 400 — NOT a Zod envelope, so the body is the sentence alone. The RETIRED
+    // key is no longer destructured by the PUT at all (route.ts:393, 427), so a
+    // body carrying it falls into the unknown-key silence: 200, the row
+    // unchanged (§R.4(c) — NOT the retired-Concierge 400 arm).
     {
-      // The GET default. v4's repository seeds `impersonationVoiceRewrite:
-      // false` (chat-settings.repository.ts:223); user A's row was written by
-      // that repo, so the key must be present and false on both sides.
+      // The GET default. v4's repository seeds `impersonationVoiceMode: 'off'`
+      // (chat-settings.repository.ts:211); user A's row was written by that
+      // repo, so the key must be present and 'off' on both sides.
       name: 's_get_impersonation_voice_default',
       family: 'impersonation_voice',
       user: 'A',
@@ -627,51 +630,50 @@ describe('settings-routes oracle', () => {
       url: 'http://x/api/v1/settings/chat',
     },
     {
-      // The positive arm — the PUT's own response IS the echo (v4 returns the
-      // updated settings object), so one case pins the write and the read-back.
-      name: 's_put_impersonation_voice_true',
+      // The three positive arms — the PUT's own response IS the echo (v4
+      // returns the updated settings object), so each pins the write and the
+      // read-back.
+      name: 's_put_impersonation_voice_ask',
       family: 'impersonation_voice',
       user: 'A',
       route: 'settingsChat',
       method: 'PUT',
       url: 'http://x/api/v1/settings/chat',
-      body: { impersonationVoiceRewrite: true },
+      body: { impersonationVoiceMode: 'ask' },
     },
     {
-      // Explicit `false` — NOT a no-op for the guard (`typeof false !==
-      // 'undefined'`), so the assignment runs and the column is written 0.
-      name: 's_put_impersonation_voice_false',
+      name: 's_put_impersonation_voice_always',
       family: 'impersonation_voice',
       user: 'A',
       route: 'settingsChat',
       method: 'PUT',
       url: 'http://x/api/v1/settings/chat',
-      body: { impersonationVoiceRewrite: false },
+      body: { impersonationVoiceMode: 'always' },
     },
     {
-      // Wrong type — a string.
-      name: 's_put_impersonation_voice_wrong_type',
+      // Explicit 'off' — NOT a no-op for the guard (`typeof 'off' !==
+      // 'undefined'`), so the assignment runs and the column is written.
+      name: 's_put_impersonation_voice_off',
       family: 'impersonation_voice',
       user: 'A',
       route: 'settingsChat',
       method: 'PUT',
       url: 'http://x/api/v1/settings/chat',
-      body: { impersonationVoiceRewrite: 'yes' },
+      body: { impersonationVoiceMode: 'off' },
     },
     {
-      // Wrong type — a number. JS `1` is truthy but `typeof 1 !== 'boolean'`,
-      // so it refuses rather than coercing.
-      name: 's_put_impersonation_voice_number',
+      // A string outside the enum.
+      name: 's_put_impersonation_voice_wrong_value',
       family: 'impersonation_voice',
       user: 'A',
       route: 'settingsChat',
       method: 'PUT',
       url: 'http://x/api/v1/settings/chat',
-      body: { impersonationVoiceRewrite: 1 },
+      body: { impersonationVoiceMode: 'yes' },
     },
     {
       // An EXPLICIT null — `typeof null !== 'undefined'`, so the arm RUNS and
-      // the boolean guard refuses. This is the arm a transport that collapses
+      // `safeParse(null)` refuses. This is the arm a transport that collapses
       // present-null to absent would silently turn into a 200 + silent keep;
       // the v5 dispatch carries the raw settings bag for exactly this reason.
       name: 's_put_impersonation_voice_null',
@@ -680,7 +682,41 @@ describe('settings-routes oracle', () => {
       route: 'settingsChat',
       method: 'PUT',
       url: 'http://x/api/v1/settings/chat',
-      body: { impersonationVoiceRewrite: null },
+      body: { impersonationVoiceMode: null },
+    },
+    {
+      // Wrong type — a number.
+      name: 's_put_impersonation_voice_number',
+      family: 'impersonation_voice',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { impersonationVoiceMode: 1 },
+    },
+    {
+      // The OLD TYPE — a boolean. The row that proves the boolean is gone: a
+      // client still sending `true` under the NEW key is refused like any
+      // other non-member.
+      name: 's_put_impersonation_voice_boolean',
+      family: 'impersonation_voice',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { impersonationVoiceMode: true },
+    },
+    {
+      // The RETIRED key, any value: v4's PUT no longer destructures it, so the
+      // body falls into the unknown-key silence — 200, the echo is the row
+      // UNCHANGED (still 'off' on a fresh copy), nothing written.
+      name: 's_put_impersonation_voice_retired_key',
+      family: 'impersonation_voice',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { impersonationVoiceRewrite: true },
     },
     {
       // The CREATE branch (user B has no settings row) — proves the repository
@@ -692,7 +728,7 @@ describe('settings-routes oracle', () => {
       route: 'settingsChat',
       method: 'PUT',
       url: 'http://x/api/v1/settings/chat',
-      body: { impersonationVoiceRewrite: true },
+      body: { impersonationVoiceMode: 'ask' },
     },
     // ---- P4.47 (A): the three sibling Zod-collapse arms ----
     // The D73 bank. `smartTypographySettings` above proved the machinery: a

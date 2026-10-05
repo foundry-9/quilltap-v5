@@ -145,6 +145,20 @@ pub const SINGLE_USER_ID: &str = "ffffffff-ffff-ffff-ffff-ffffffffffff";
 /// shapes disagree; the migration's is re-homed as
 /// `db::chat_informs_permanent_repair`, this one is `CHAT_INFORMS_TABLE_DDL`).
 /// The seed is UNMOVED at this pin (`cmp`-identical).
+///
+/// `07b8f0209` (P4.D251 — D23 re-dump #5, v4 "Impersonated-line voice: three
+/// modes, no model call until asked", migration `impersonation-voice-mode-v1`;
+/// run FROM the pin, 2026-10-05): EXACTLY one line moves, as measured.
+/// `chat_settings`'s `"impersonationVoiceRewrite" INTEGER DEFAULT 0` (the
+/// `686954937` boolean, P4.D179) is REPLACED in place by
+/// `"impersonationVoiceMode" TEXT DEFAULT 'off'` — generateDDL's spelling of
+/// `ImpersonationVoiceModeEnum.default('off')`, at the same position between
+/// `composerUnicode` and `textReplacementsEnabled`; the mount-index and
+/// llm-logs partitions `cmp`-identical. ONE shape this time: v4's migration
+/// (`addColumnIfMissing(…, "TEXT DEFAULT 'off'")`, re-homed as
+/// `db::chat_settings_impersonation_voice_mode_repair`, which REPLACES the
+/// P4.D179 ensure) spells the same clause, differing only in position
+/// (appended). The seed MOVED with it (below).
 static FRESH_SCHEMA_JSON: &str = include_str!("fresh_schema.json");
 
 /// The captured `chat_settings` seed row's columns (all but the minted
@@ -163,6 +177,10 @@ static FRESH_SCHEMA_JSON: &str = include_str!("fresh_schema.json");
 /// and `customClassificationPrompt` present as `null` (the repository's default
 /// row is the resolver's constant, not the schema's `.default()` literal, so the
 /// seeded bytes and the DDL DEFAULT genuinely differ). Measured, not predicted.
+/// `07b8f0209` (P4.D251): the seed row's `"impersonationVoiceRewrite": 0`
+/// becomes `"impersonationVoiceMode": "off"` (the column entry AND the value
+/// move together) — v4's repository default `impersonationVoiceMode: 'off'`
+/// (`chat-settings.repository.ts:211`), as captured; nothing else moved.
 static CHAT_SETTINGS_SEED_JSON: &str = include_str!("chat_settings_seed.json");
 
 #[derive(Deserialize)]

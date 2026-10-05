@@ -37,12 +37,20 @@ const ADOPTED_BOOLEAN_COLUMNS: &[&str] = &[
     // P4.D73 (v4 4.8.2)
     "composerEmoji",
     "composerUnicode",
-    // P4.D179 (v4 4.10 `686954937`)
-    "impersonationVoiceRewrite",
     // pre-existing
     "textReplacementsEnabled",
     "autoScrollOnResponseComplete",
 ];
+
+/// The plain-enum TEXT columns adopted the same way — the same six regions,
+/// bound as a string rather than an `i64`. P4.D251 (v4 `07b8f0209`):
+/// `impersonationVoiceMode` REPLACED the P4.D179 boolean
+/// `impersonationVoiceRewrite` (which left the boolean list above with it —
+/// the old name must appear in NO region now, pinned below).
+const ADOPTED_TEXT_COLUMNS: &[&str] = &["impersonationVoiceMode"];
+
+/// Columns v4 RETIRED whose name must no longer reach any census region.
+const RETIRED_COLUMNS: &[&str] = &["impersonationVoiceRewrite"];
 
 fn source() -> String {
     let path =
@@ -94,7 +102,7 @@ fn every_adopted_column_reaches_all_six_sites() {
     );
 
     let mut missing: Vec<String> = Vec::new();
-    for col in ADOPTED_BOOLEAN_COLUMNS {
+    for col in ADOPTED_BOOLEAN_COLUMNS.iter().chain(ADOPTED_TEXT_COLUMNS) {
         let quoted = format!("\"{col}\"");
         // The UPDATE builder spells the column inside a `format!` SQL fragment
         // (`"composerUnicode = ?{}"`), so the quoted-name needle would never
@@ -126,20 +134,38 @@ fn every_adopted_column_reaches_all_six_sites() {
         missing.join("\n  ")
     );
 
+    // A retired column must be gone from every region (a lingering INSERT entry
+    // or assignment would name a column v4's migration DROPPED).
+    for col in RETIRED_COLUMNS {
+        for (region_name, body) in [
+            ("the INSERT column list", insert),
+            ("the UPDATE assignment builder", update),
+            ("the tolerant SELECT + read", read),
+        ] {
+            let n = body.matches(&format!("\"{col}\"")).count()
+                + body.matches(&format!("{col} = ?")).count();
+            assert_eq!(n, 0, "retired column {col} still named in {region_name}");
+        }
+    }
+
     // The struct + patch fields are the two sites the quoted-name census cannot
     // see (they are snake_case Rust identifiers), so they get their own pin for
-    // the column this guard was written for.
+    // the column this guard was written for — the TEXT enum since P4.D251.
     assert!(
-        src.contains("pub impersonation_voice_rewrite: bool,"),
+        src.contains("pub impersonation_voice_mode: ImpersonationVoiceMode,"),
         "the ChatSettingsCreate field is missing"
     );
     assert!(
-        src.contains("pub impersonation_voice_rewrite: Option<bool>,"),
+        src.contains("pub impersonation_voice_mode: Option<ImpersonationVoiceMode>,"),
         "the ChatSettingsUpdate patch field is missing"
+    );
+    assert!(
+        !src.contains("impersonation_voice_rewrite"),
+        "the retired boolean's Rust field lingers"
     );
 
     eprintln!(
         "OK: {} adopted columns reach every census region.",
-        ADOPTED_BOOLEAN_COLUMNS.len()
+        ADOPTED_BOOLEAN_COLUMNS.len() + ADOPTED_TEXT_COLUMNS.len()
     );
 }

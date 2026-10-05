@@ -15,10 +15,12 @@
 //! case and so collapsed to invented sentences; the family reaches five Zod
 //! issue codes and pins the cheap-LLM ordering, whose parse happens in the
 //! repo's whole-object validate rather than at the route), and P4.D179
-//! (`impersonation_voice` — v4 4.10 `686954937`'s
-//! `chat_settings.impersonationVoiceRewrite`: the GET default, both PUT
-//! polarities, the create branch, and the three refusal arms incl. an EXPLICIT
-//! `null`, whose 400 body is v4's fixed sentence rather than a Zod envelope),
+//! (`impersonation_voice` — v4 `07b8f0209`'s `chat_settings.impersonationVoiceMode`,
+//! which REPLACED 4.10 `686954937`'s boolean at P4.D251: the GET default
+//! `'off'`, the three positive PUTs, the create branch, four refusal arms — a
+//! string outside the enum, an EXPLICIT `null`, a number and the OLD boolean
+//! type — whose 400 body is v4's fixed sentence rather than a Zod envelope,
+//! and the RETIRED key ignored: 200 with the row unchanged),
 //! and P4.D85
 //! (`connection_profile_tags` — v4 Bug 74's `get-tags` / `add-tag` /
 //! `remove-tag`, over a fixture whose OPENAI profile finally carries tags: an
@@ -607,14 +609,17 @@ fn settings_routes_match_v4() {
         composer_settings_cases >= 10,
         "expected >= 10 composer_settings cases, got {composer_settings_cases} — regenerate the oracle"
     );
-    // P4.D179: the 4.10 `impersonationVoiceRewrite` key. Same stale-oracle
-    // guard as its neighbours. (These rows pin key presence, both PUT polarities
-    // and the three refusals; the FALSE-default read tolerance is pinned by the
-    // `chat_settings.rs` unit test and the web arm that drops the column, not
-    // here — the corpus row's column is present on both sides.)
+    // P4.D251 (2026-10-05): the `impersonationVoiceMode` enum that replaced
+    // P4.D179's boolean — the family was RE-SHAPED (the seven boolean rows
+    // deleted, not kept: v4 no longer has the boolean), so the floor moved
+    // 7 → 10. Same stale-oracle guard as its neighbours. (These rows pin key
+    // presence, the three members, the four refusals and the retired-key
+    // silence; the `'off'` read tolerance for an absent/NULL column is pinned
+    // by the `chat_settings.rs` unit tests and the web arm that drops the
+    // column, not here — the corpus row's column is present on both sides.)
     assert!(
-        impersonation_voice_cases >= 7,
-        "expected >= 7 impersonation_voice cases, got {impersonation_voice_cases} — regenerate the oracle"
+        impersonation_voice_cases >= 10,
+        "expected >= 10 impersonation_voice cases, got {impersonation_voice_cases} — regenerate the oracle"
     );
     // P4.47 (A): the three sibling Zod arms
     // (`answerConfirmationSettings` / `cheapLLMSettings` /

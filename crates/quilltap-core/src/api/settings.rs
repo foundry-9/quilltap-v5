@@ -1007,25 +1007,40 @@ fn build_settings_assignments(
             bool_field(v, "Invalid composerUnicode value (must be boolean)")?,
         ));
     }
-    // P4.D179 (v4 4.10 `686954937`) — the impersonated-line voice-rewrite gate,
-    // at v4's own schema-ordered position after `composerUnicode`
-    // (route.ts:213-219). Same `typeof x !== 'boolean'` guard, same sentence
-    // bytes; the route's `includes('Invalid') ? 400 : 500` split makes it a 400.
-    // `obj.get` sees an EXPLICIT null as present, which is v4's semantics
-    // exactly (`typeof null !== 'undefined'`, so the arm runs and refuses) —
-    // pinned by the corpus's `s_put_impersonation_voice_null` row and at the
-    // web wire. v4's trailing `logger.debug('[Settings v1] impersonationVoiceRewrite
-    // updated', …)` (route.ts:218) is NOT ported — the sibling scalar arms'
-    // debug lines (`autoScrollOnResponseComplete`, route.ts:231) are equally
-    // unported here; recorded NO-PORT at the `f4ad2c8d1` unification rather
-    // than porting one arm's line and not its neighbours'.
-    if let Some(v) = obj.get("impersonationVoiceRewrite") {
+    // P4.D251 (v4 `07b8f0209`) — the impersonated-line voice MODE, at v4's own
+    // schema-ordered position after `composerUnicode` (route.ts:236-243), where
+    // P4.D179's boolean arm stood. v4: `typeof x !== 'undefined'` →
+    // `ImpersonationVoiceModeEnum.safeParse(x)`; a failure throws `Invalid
+    // impersonationVoiceMode value (must be one of off, ask, always)` (the
+    // `.options.join(', ')` renders exactly that), which the route's
+    // `includes('Invalid') ? 400 : 500` split makes a 400 with the sentence
+    // alone — NOT a Zod envelope. `obj.get` sees an EXPLICIT null as present,
+    // which is v4's semantics exactly (`typeof null !== 'undefined'`, so the
+    // arm runs and `safeParse(null)` refuses); a boolean — the OLD type — is
+    // refused the same way. The RETIRED key `impersonationVoiceRewrite` is no
+    // longer destructured by v4's PUT at all (route.ts:393, 427), so a body
+    // carrying it falls into the unknown-key silence: 200, the row unchanged,
+    // no line at any level (§R.4(c) — never the retired-Concierge 400 arm
+    // above, which applies to its own three keys only). v4's trailing
+    // `logger.debug('[Settings v1] impersonationVoiceMode updated', { userId,
+    // impersonationVoiceMode })` (route.ts:242) is NOT ported — the sibling
+    // scalar arms' debug lines (`autoScrollOnResponseComplete`, route.ts:254)
+    // are equally unported here; the P4.D179 NO-PORT ruling for the boolean's
+    // line carries over to the mode's, rather than porting one arm's line and
+    // not its neighbours'.
+    if let Some(v) = obj.get("impersonationVoiceMode") {
+        let mode = v
+            .as_str()
+            .and_then(chat_settings::ImpersonationVoiceMode::parse)
+            .ok_or_else(|| {
+                format!(
+                    "Invalid impersonationVoiceMode value (must be one of {})",
+                    chat_settings::ImpersonationVoiceMode::VALUES.join(", ")
+                )
+            })?;
         out.push((
-            "impersonationVoiceRewrite",
-            bool_field(
-                v,
-                "Invalid impersonationVoiceRewrite value (must be boolean)",
-            )?,
+            "impersonationVoiceMode",
+            Col::Text(mode.as_str().to_string()),
         ));
     }
     if let Some(v) = obj.get("textReplacementsEnabled") {
@@ -3302,5 +3317,98 @@ mod tests {
             lines.iter().all(|l| !l.contains("retired Concierge")),
             "{lines:#?}"
         );
+    }
+
+    /// P4.D251 (v4 `07b8f0209`, §R.4(c)): the RETIRED `impersonationVoiceRewrite`
+    /// key is no longer read by v4's PUT at all, so a body carrying it is
+    /// IGNORED — 200, the row unchanged, and NO line at any level (it is not
+    /// one of the retired-Concierge keys the WARN+400 arm above refuses). The
+    /// capture asserts SILENCE, not merely the status.
+    #[test]
+    fn a_retired_voice_key_put_is_ignored_in_silence() {
+        use crate::test_support::captured_with;
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open_main(
+            dir.path().join("main.db"),
+            "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+        )
+        .unwrap();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        // The fresh `chat_settings` DDL (D23 re-dump #5), so the GET can seed
+        // v4's default row.
+        let fresh: serde_json::Value =
+            serde_json::from_str(include_str!("../services/provisioning/fresh_schema.json"))
+                .unwrap();
+        let ddl = fresh["main"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find_map(|s| {
+                s.as_str()
+                    .filter(|s| s.starts_with("CREATE TABLE \"chat_settings\""))
+            })
+            .unwrap()
+            .to_string();
+        rt.block_on(db.write(move |w| {
+            w.main()
+                .connection()
+                .execute_batch(&ddl)
+                .map_err(Into::into)
+        }))
+        .unwrap();
+        // The first GET seeds the row and answers v4's CREATE-return shape
+        // (`defaultRoleplayTemplateId: null` present); the second is the read
+        // shape the PUT's echo is compared against.
+        match rt.block_on(chat_settings_get(&db, "u1")) {
+            Response::ChatSettings(v) => {
+                assert_eq!(v["impersonationVoiceMode"], serde_json::json!("off"))
+            }
+            other => panic!("expected the seeded row, got {other:?}"),
+        }
+        let before = match rt.block_on(chat_settings_get(&db, "u1")) {
+            Response::ChatSettings(v) => v,
+            other => panic!("expected the read row, got {other:?}"),
+        };
+
+        let body = serde_json::json!({ "impersonationVoiceRewrite": true });
+        let (resp, lines) = captured_with(|| rt.block_on(chat_settings_update(&db, "u1", &body)));
+        let after = match resp {
+            Response::ChatSettings(v) => v,
+            other => panic!("expected 200 with the echo, got {other:?}"),
+        };
+        assert!(
+            lines.is_empty(),
+            "the retired key must be ignored in silence: {lines:#?}"
+        );
+        assert!(
+            after.get("impersonationVoiceRewrite").is_none(),
+            "never emitted"
+        );
+        // Only the write clock moved (v4's `updateForUser` always stamps it).
+        let strip = |mut v: serde_json::Value| {
+            v.as_object_mut().unwrap().remove("updatedAt");
+            v
+        };
+        assert_eq!(strip(after), strip(before), "the row is unchanged");
+
+        // …and the NEW key's refusal sentence, for the three shapes the wire
+        // family also pins: an explicit null, the old boolean type, a stranger.
+        for bad in [
+            serde_json::json!(null),
+            serde_json::json!(true),
+            serde_json::json!("on"),
+        ] {
+            let body = serde_json::json!({ "impersonationVoiceMode": bad });
+            match rt.block_on(chat_settings_update(&db, "u1", &body)) {
+                Response::Error(e) => assert_eq!(
+                    e.message,
+                    "Invalid impersonationVoiceMode value (must be one of off, ask, always)"
+                ),
+                other => panic!("expected the 400 for {bad}, got {other:?}"),
+            }
+        }
     }
 }

@@ -37,8 +37,8 @@ use std::path::{Path, PathBuf};
 use quilltap_core::db::chat_settings::{
     AgentModeSettings, AnswerConfirmationSettings, AutoHousekeepingSettings, AutoLockSettings,
     AutonomousRoomSettings, ChatSettingsCreate, ChatSettingsUpdate, CheapLlmSettings,
-    ContextCompressionSettings, CoreWhisperSettings, CreateOptions, LlmLoggingSettings,
-    MemoryCascadePreferences, MemoryExtractionLimits, SmartTypographySettings,
+    ContextCompressionSettings, CoreWhisperSettings, CreateOptions, ImpersonationVoiceMode,
+    LlmLoggingSettings, MemoryCascadePreferences, MemoryExtractionLimits, SmartTypographySettings,
     StoryBackgroundsSettings, ThemePreference, ThinkingDisplaySettings, TimestampConfig,
     TokenDisplaySettings,
 };
@@ -108,9 +108,10 @@ struct CreateData {
     composer_spellcheck: bool,
     composer_emoji: bool,
     composer_unicode: bool,
-    /// P4.D179 (v4 4.10 `686954937`). The spec's `#[serde(default)]`-free
-    /// shape means every create op in `chat-settings-tier2.ts` must name it.
-    impersonation_voice_rewrite: bool,
+    /// P4.D251 (v4 `07b8f0209`): the voice MODE that replaced P4.D179's
+    /// boolean. The spec's `#[serde(default)]`-free shape means every create
+    /// op in `chat-settings-tier2.json` must name it.
+    impersonation_voice_mode: ImpersonationVoiceMode,
     text_replacements_enabled: bool,
     auto_scroll_on_response_complete: bool,
     agent_mode_settings: AgentModeSettings,
@@ -173,7 +174,7 @@ struct UpdateData {
     #[serde(default)]
     composer_unicode: Option<bool>,
     #[serde(default)]
-    impersonation_voice_rewrite: Option<bool>,
+    impersonation_voice_mode: Option<ImpersonationVoiceMode>,
     #[serde(default)]
     text_replacements_enabled: Option<bool>,
     #[serde(default)]
@@ -261,7 +262,7 @@ fn chat_settings_tier2_matches_oracle() {
                             composer_spellcheck: data.composer_spellcheck,
                             composer_emoji: data.composer_emoji,
                             composer_unicode: data.composer_unicode,
-                            impersonation_voice_rewrite: data.impersonation_voice_rewrite,
+                            impersonation_voice_mode: data.impersonation_voice_mode,
                             text_replacements_enabled: data.text_replacements_enabled,
                             auto_scroll_on_response_complete: data.auto_scroll_on_response_complete,
                             agent_mode_settings: data.agent_mode_settings,
@@ -303,7 +304,7 @@ fn chat_settings_tier2_matches_oracle() {
                                 composer_spellcheck: data.composer_spellcheck,
                                 composer_emoji: data.composer_emoji,
                                 composer_unicode: data.composer_unicode,
-                                impersonation_voice_rewrite: data.impersonation_voice_rewrite,
+                                impersonation_voice_mode: data.impersonation_voice_mode,
                                 text_replacements_enabled: data.text_replacements_enabled,
                                 auto_scroll_on_response_complete: data
                                     .auto_scroll_on_response_complete,

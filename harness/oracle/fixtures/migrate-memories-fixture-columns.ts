@@ -280,6 +280,41 @@
  *   oracle case plants columns into needs the same check: grep the cases
  *   for `ADD COLUMN` over the pair before applying.)
  *
+ * ## The P4.D251 NARROWING (v4 `07b8f0209`, 2026-10-05 — the P4.D235 direction)
+ *
+ * v4 REPLACED `chat_settings.impersonationVoiceRewrite INTEGER DEFAULT 0` (the
+ * P4.D179 row below) with `impersonationVoiceMode TEXT DEFAULT 'off'` through
+ * `impersonation-voice-mode-v1` (ADD the mode, translate rows still at the
+ * default `1 → 'ask'` / else `'off'`, DROP the old column). The P4.D179 row
+ * STAYS in the column table: it is step one for a pair that lacks BOTH columns
+ * (v4's `dependsOn`), and the column table is not applied in `--module` mode
+ * anyway. A pair that carries the old column takes the mode migration through
+ * the module arm, from the TARGET pin:
+ *   cd /tmp/qt-v4-pin-p4d251-07b8f0209
+ *   $N/node --import tsx $W/harness/oracle/fixtures/migrate-memories-fixture-columns.ts \
+ *     --module migrations/scripts/impersonation-voice-mode.ts#impersonationVoiceModeMigration \
+ *     [--report-only] $F/<the seventeen *-main.db below>
+ * `--report-only` over every committed `*-main.db` (49 files) answered `WOULD
+ * RUN` for 22 and `not needed` for 27 — but `shouldRun` fires for ANY
+ * chat_settings table lacking the mode column, so the lane measured the
+ * column sets directly (a read-only better-sqlite3 census, every known test
+ * pepper): SEVENTEEN pairs carried the OLD column (every row `0`) and were
+ * narrowed — `almanack`, `attach-file`, `autonomous`, `chat-admin`,
+ * `chat-delete`, `chat-dialogs`, `cost-background`, `courier-images`,
+ * `embedding-remainder`, `episodic-recall`, `help-chat`, `images`,
+ * `in-scene-voiced`, `memories`, `pascal-run-custom` (0 rows), `salon`,
+ * `system-data` — each `+RAN … (Added 1 column(s); translated N settings
+ * row(s); dropped 1 legacy column(s))`, zero `.db-journal` residue, the re-run
+ * `--report-only` answering `not needed` for all seventeen; FIVE pairs carry
+ * NEITHER column and were deliberately left alone per the round's §R.6 (only
+ * pairs carrying the old column narrow): `chat-scenario`, `chat-send`,
+ * `headshoulders`, `llm-log-cleanup`, `salon-long` — v5's read tolerates the
+ * absent column as `'off'`, v4's `.default('off')` does the same. The
+ * `migration-vintage/` trio (its own pepper, built by replay) ALSO carries the
+ * old column; it is healed on its scratch copy by `restore_vintage_state`'s
+ * mirror-boot idiom, never rewritten. Readers of the seventeen: the lane
+ * record in `status-log.md` lists every family re-run.
+ *
  * ## The module-running arm (`--module`, P4.D226)
  *
  * `--module <file>#<exportName>` (repeatable, in the order given) switches the

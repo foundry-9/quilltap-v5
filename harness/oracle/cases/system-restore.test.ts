@@ -294,6 +294,19 @@ const RESTORE_CASES: Array<{
     recordRepoLogs: true,
   },
 
+  // ── P4.D251 (`07b8f0209`): a backup that still carries the voice toggle ──
+  //
+  // `restore-archive-voice-legacy.zip` is `restore-archive.zip` with FIVE
+  // settings-row clones beside the original: the retired boolean as `true`,
+  // `false` and the INTEGER `1`, the boolean beside an explicit `'always'`,
+  // and a current record carrying only the mode. `restore.ts:404-413` chains
+  // `withImpersonationVoiceModeFromLegacy` after the Concierge translation
+  // (`true`/`1` → `'ask'`, else `'off'`, an explicit mode kept, a current
+  // record returned as the same reference). Every other committed archive's
+  // settings row carries NEITHER key, so none of them can see the chain.
+  // Built by `fixtures/derive-restore-archive-voice-legacy.py`.
+  { name: 'restore_voice_legacy_replace', archive: 'restore-archive-voice-legacy.zip' },
+
   // ── P4.D126 (`e000d6bfc`, bug 103): the columns an older archive predates ─
   //
   // `restore-archive-legacy-profiles.zip` is the ONE archive that can see the

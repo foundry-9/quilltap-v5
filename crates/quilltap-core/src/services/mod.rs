@@ -114,6 +114,7 @@ pub mod image_job_common;
 pub mod image_job_storage;
 pub mod image_profile_resolution;
 pub mod image_scene_tasks;
+pub mod impersonation_voice_legacy;
 pub mod inform_block;
 pub mod initial_greeting;
 pub mod job_runner;

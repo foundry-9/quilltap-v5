@@ -156,6 +156,18 @@ fn format_date_time(iso: Option<&str>, zone: &TimeZone) -> String {
     }
 }
 
+/// v4 `IMPERSONATION_VOICE_MODE_LABELS` (`render.ts:41-45`, `07b8f0209`) with
+/// its `?? mode` fallback: `off` → `Never`, `ask` → `Ask each time`, `always`
+/// → `Always restate`, anything else rendered RAW.
+fn impersonation_voice_mode_label(mode: &str) -> &str {
+    match mode {
+        "off" => "Never",
+        "ask" => "Ask each time",
+        "always" => "Always restate",
+        other => other,
+    }
+}
+
 fn yes_no(value: bool) -> &'static str {
     if value {
         "Yes"
@@ -1160,7 +1172,7 @@ pub fn render_almanack_markdown(data: &AlmanackReportData, zone: &TimeZone) -> S
     ));
     push!(format!(
         "- **Impersonated Lines in Character Voice**: {}",
-        yes_no(fc.impersonation_voice_rewrite)
+        impersonation_voice_mode_label(&fc.impersonation_voice_mode)
     ));
     push!(format!(
         "- **Auto-Scroll on Response Complete**: {}",

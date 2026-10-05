@@ -918,6 +918,13 @@ fn archive_for(name: &str) -> &'static str {
         // with serde's sentence (`classify_restore_serde_arm`). Built by
         // `harness/oracle/fixtures/derive-restore-archive-chat-serde-arm.py`.
         "restore_chat_serde_arm_replace" => "restore-archive-chat-serde-arm.zip",
+        // P4.D251 (v4 `07b8f0209`): `restore-archive.zip` plus five settings-row
+        // clones carrying the retired `impersonationVoiceRewrite` boolean in
+        // its shapes (true / false / 1 / beside an explicit 'always') and one
+        // current record — the restore's legacy voice translation, which no
+        // other committed archive can see. Built by
+        // `harness/oracle/fixtures/derive-restore-archive-voice-legacy.py`.
+        "restore_voice_legacy_replace" => "restore-archive-voice-legacy.zip",
         "restore_legacy_archive" => "restore-archive-legacy.zip",
         "restore_minimal" => "restore-archive-minimal.zip",
         "restore_new_account" => "restore-archive.zip",
@@ -1321,15 +1328,17 @@ fn system_restore_state_equivalence() {
     // carries, stripped on the way in). 19 + 1 = 20: P4.D226's legacy
     // Concierge arm (the three states derived from the legacy pair). 20 + 1 =
     // 21: P4.130's refused-chat arm (a `conciergeMode` outside the enum). 21 +
-    // 1 = 22: P4.143's serde-arm plant (a numeric `scenarioText`).
+    // 1 = 22: P4.143's serde-arm plant (a numeric `scenarioText`). 22 + 1 =
+    // 23: P4.D251's voice-legacy arm (the retired `impersonationVoiceRewrite`
+    // boolean in its shapes, translated on restore).
     assert_eq!(
-        seen, 22,
-        "expected all twenty-two restore cases in the oracle (ten + the #58 orphan-links arm \
+        seen, 23,
+        "expected all twenty-three restore cases in the oracle (ten + the #58 orphan-links arm \
          + P4.D46's two compact arms + P4.D126's bug-103 legacy-profiles arm \
          + P4.D145's bug-114 duplicate-folders arm + P4.D152's bug-117 arm \
          + P4.D158's two bag-key arms + P4.D208's bug-158 arm \
          + P4.D226's legacy-Concierge arm + P4.130's refused-chat arm \
-         + P4.143's serde-arm plant)"
+         + P4.143's serde-arm plant + P4.D251's voice-legacy arm)"
     );
     assert!(
         failures.is_empty(),

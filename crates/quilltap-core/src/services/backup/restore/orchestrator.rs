@@ -871,20 +871,7 @@ fn restore_on_writer(
             crate::services::backup::uuid_remap::backup_has_unmoderated_chats(&data.chats);
         for raw_row in &data.chat_settings {
             let translated =
-                crate::services::dangerous_content::legacy_concierge_settings::with_concierge_settings_from_legacy(
-                    raw_row,
-                    backup_has_unmoderated_chats,
-                );
-            // v4 `settings !== rawSettings` — the translation returns the
-            // record untouched when it already carried a truthy object.
-            if &translated != raw_row {
-                tracing::debug!(
-                    target: "quilltap::restore",
-                    settings_id = %id_of(raw_row),
-                    backup_has_unmoderated_chats,
-                    "Translated pre-4.10 Concierge settings for restore"
-                );
-            }
+                translate_restored_chat_settings(raw_row, backup_has_unmoderated_chats);
             let row = &translated;
             let create: crate::db::chat_settings::ChatSettingsCreate =
                 match serde_json::from_value(row.clone()) {
@@ -2248,6 +2235,148 @@ mod restored_inform_tests {
         let mut old = row.clone();
         old.as_object_mut().unwrap().remove("permanent");
         assert!(!restored_inform(&old, "NOW".into()).permanent);
+    }
+}
+
+/// The two legacy translations v4's restore chains over a `chat_settings`
+/// row before `create` (`restore.ts:393-413`): the Concierge one first
+/// (`3b463d6b1`, #76), THEN — on its output — the retired impersonated-line
+/// voice toggle (`07b8f0209`, P4.D251). Each logs its DEBUG only when it
+/// changed the record (v4 compares references; v5 compares the value / the
+/// `Cow` variant), with `settingsId` read off the RAW row both times.
+fn translate_restored_chat_settings(raw_row: &Value, backup_has_unmoderated_chats: bool) -> Value {
+    let concierge_translated =
+        crate::services::dangerous_content::legacy_concierge_settings::with_concierge_settings_from_legacy(
+            raw_row,
+            backup_has_unmoderated_chats,
+        );
+    // v4 `conciergeTranslated !== rawSettings` — the translation returns the
+    // record untouched when it already carried a truthy object.
+    if &concierge_translated != raw_row {
+        tracing::debug!(
+            target: "quilltap::restore",
+            settings_id = %id_of(raw_row),
+            backup_has_unmoderated_chats,
+            "Translated pre-4.10 Concierge settings for restore"
+        );
+    }
+    // A 4.10-dev backup carries the retired on/off `impersonationVoiceRewrite`
+    // — and so does a v5 backup taken before this round, since the backup
+    // carries `find_by_user_id`'s whole row. Translate it the way v4 does
+    // (`true`/`1` → `'ask'`, an explicit mode kept), or `ChatSettingsCreate`
+    // would silently drop the unknown key and land `'off'`.
+    match crate::services::impersonation_voice_legacy::with_impersonation_voice_mode_from_legacy(
+        &concierge_translated,
+    ) {
+        std::borrow::Cow::Borrowed(_) => concierge_translated,
+        std::borrow::Cow::Owned(settings) => {
+            // Read outside the macro: `tracing` shadows `Value` inside it.
+            let mode = settings
+                .get("impersonationVoiceMode")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            tracing::debug!(
+                target: "quilltap::restore",
+                settings_id = %id_of(raw_row),
+                impersonation_voice_mode = %mode,
+                "Translated the retired impersonated-line voice toggle for restore"
+            );
+            settings
+        }
+    }
+}
+
+#[cfg(test)]
+mod restored_chat_settings_translation_tests {
+    //! P4.D251: the voice-toggle translation's DEBUG line is CAPTURE-PINNED —
+    //! its bytes on a legacy record, its silence on a current one (the
+    //! `round-52d6e7ecd-unification` lesson: a literal in a differential is
+    //! not a capture pin). The `system_restore_state` family proves the
+    //! restored ROWS against v4 over `restore-archive-voice-legacy.zip`.
+    use super::*;
+    use serde_json::json;
+
+    /// A current record (no legacy Concierge keys, a truthy `conciergeSettings`,
+    /// no retired voice key) → NO line from either translation.
+    fn current() -> Value {
+        json!({
+            "id": "ab000000-0000-4000-8000-000000000001",
+            "userId": "u1",
+            "conciergeSettings": { "enabled": true },
+            "impersonationVoiceMode": "ask",
+            "createdAt": "2026-01-01T00:00:00.000Z"
+        })
+    }
+
+    #[test]
+    fn a_legacy_toggle_is_translated_with_v4s_debug_line_in_v4s_field_order() {
+        let mut row = current();
+        let obj = row.as_object_mut().unwrap();
+        obj.remove("impersonationVoiceMode");
+        obj.insert("impersonationVoiceRewrite".into(), json!(true));
+        let (out, lines) =
+            crate::test_support::captured_with(|| translate_restored_chat_settings(&row, false));
+        assert_eq!(out["impersonationVoiceMode"], json!("ask"));
+        assert!(out.get("impersonationVoiceRewrite").is_none());
+        assert_eq!(
+            lines,
+            vec![
+                "DEBUG quilltap::restore Translated the retired impersonated-line voice toggle for restore \
+                 settings_id=ab000000-0000-4000-8000-000000000001 impersonation_voice_mode=ask"
+                    .to_string()
+            ],
+            "{lines:#?}"
+        );
+    }
+
+    #[test]
+    fn an_explicit_mode_beside_the_toggle_wins_and_the_line_reports_it() {
+        let mut row = current();
+        row.as_object_mut()
+            .unwrap()
+            .insert("impersonationVoiceRewrite".into(), json!(1));
+        row["impersonationVoiceMode"] = json!("always");
+        let (out, lines) =
+            crate::test_support::captured_with(|| translate_restored_chat_settings(&row, false));
+        assert_eq!(out["impersonationVoiceMode"], json!("always"));
+        assert_eq!(lines.len(), 1, "{lines:#?}");
+        assert!(
+            lines[0].ends_with("impersonation_voice_mode=always"),
+            "{}",
+            lines[0]
+        );
+    }
+
+    #[test]
+    fn a_current_record_is_returned_untouched_in_silence() {
+        let row = current();
+        let (out, lines) =
+            crate::test_support::captured_with(|| translate_restored_chat_settings(&row, false));
+        assert_eq!(out, row);
+        assert!(lines.is_empty(), "{lines:#?}");
+    }
+
+    /// The order of the chain: a pre-4.10 record (legacy Concierge keys AND the
+    /// retired toggle) logs the Concierge line FIRST, then the voice line.
+    #[test]
+    fn the_concierge_translation_runs_first() {
+        let row = json!({
+            "id": "ab000000-0000-4000-8000-000000000002",
+            "userId": "u1",
+            "dangerousContentSettings": { "mode": "OFF" },
+            "impersonationVoiceRewrite": false,
+            "createdAt": "2026-01-01T00:00:00.000Z"
+        });
+        let (out, lines) =
+            crate::test_support::captured_with(|| translate_restored_chat_settings(&row, false));
+        assert!(out.get("conciergeSettings").is_some());
+        assert_eq!(out["impersonationVoiceMode"], json!("off"));
+        assert_eq!(lines.len(), 2, "{lines:#?}");
+        assert!(lines[0].starts_with(
+            "DEBUG quilltap::restore Translated pre-4.10 Concierge settings for restore"
+        ));
+        assert!(lines[1].starts_with("DEBUG quilltap::restore Translated the retired impersonated-line voice toggle for restore"));
     }
 }
 

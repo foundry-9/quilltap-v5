@@ -1299,19 +1299,27 @@ fn seed_built_ins(db: &Db) -> Result<EnsureFailures, String> {
                 main,
             )?;
             // === end P4.D73 ===
-            // === P4.D179 (v4 `686954937`, migration
-            // `add-impersonation-voice-rewrite-field-v1`) ===
-            // The `chat_settings.impersonationVoiceRewrite` column, re-homed
-            // from v4's migration runner for the same reason as its P4.D73
-            // neighbours above, and load-bearing in the same way: the read
-            // tolerates absence with v4's Zod default (`false`) and the write
-            // is a plain `UPDATE … SET impersonationVoiceRewrite = ?`, so
-            // without this the toggle would 500 on an existing instance. An
-            // exact no-op on the SHARED Friday instance, which v4's own
-            // migration already moved.
-            quilltap_core::db::chat_settings_impersonation_voice_repair::
-                ensure_chat_settings_impersonation_voice_column(main)?;
-            // === end P4.D179 ===
+            // === P4.D251 (v4 `07b8f0209`, migration `impersonation-voice-mode-v1`)
+            // — REPLACES the P4.D179 `add-impersonation-voice-rewrite-field-v1`
+            // ensure that stood here ===
+            // `chat_settings.impersonationVoiceMode` (TEXT off/ask/always)
+            // replaced the 4.10-dev boolean `impersonationVoiceRewrite` in
+            // place: add the mode when absent, translate rows still at the
+            // default from the retired column (1 → 'ask'), DROP the retired
+            // column. Re-homed from v4's migration runner for the same reason
+            // as its P4.D73 neighbours above, and load-bearing in the same way
+            // (the read tolerates absence with v4's Zod default `'off'`; the
+            // write is a plain `UPDATE … SET impersonationVoiceMode = ?`). The
+            // OLD ensure had to go, not merely be followed: kept, it would
+            // re-ADD the column v4's migration dropped on the SHARED Friday
+            // instance and ping-pong with v4 (§R.13); this ensure's
+            // both-columns arm heals exactly that file. v4's `dependsOn` is
+            // satisfied by construction — an instance with NEITHER column lands
+            // on the same shape as v4's two migrations in sequence (proven by
+            // `chat_settings_voice_mode_ensure_equivalence`'s mode (B)).
+            quilltap_core::db::chat_settings_impersonation_voice_mode_repair::
+                ensure_chat_settings_impersonation_voice_mode(main)?;
+            // === end P4.D251 ===
             // === P4.D79 (v4 `23af7146`, migration
             // `add-profile-multi-character-prefill-field-v1`) ===
             // The `connection_profiles.multiCharacterPrefill` column, re-homed
