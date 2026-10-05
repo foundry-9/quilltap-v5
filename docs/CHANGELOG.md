@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-05 — docs(porting): the P4.D251 lane record — the voice-mode server half landed; the order marked LANE COMPLETE
+
+_Docs-only change._
+
+Appends the P4.D251 lane record to `status-log.md` (the pre-edit measurements — one DDL shape, v4's drop-the-row read on an out-of-enum stored mode; the six red-first counts on the unported tree; the fourteen units; the seventeen narrowed pairs with every reader re-run; the gate: 668 binaries / 4,336 passed / 1 failed (the standing `search_replace`) / 3 ignored, the two-regen `cmp` of the neutral families, the release build) and marks the order's Status header LANE COMPLETE with the branch name.
+
 #### 2026-10-05 — chore(vendor): re-vendor help/chat-settings-composer.md, help/impersonation-voice.md and seven docs/v4 paths from v4 07b8f0209 (P4.D251, both drift commits)
 
 _No crate versions bumped._

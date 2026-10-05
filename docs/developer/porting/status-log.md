@@ -165158,6 +165158,331 @@ home row carrying `color: null`; a group-editor save with the colour cleared
 writing `"color": null`; a `.qtap` import of a group with `"color": 5`
 refused with `Failed to import group` (this round's fix 4).
 
+## P4.D251 — the impersonated-line voice MODE, SERVER half (v4 `07b8f0209`), lane record (2026-10-05)
+
+Branch `claude/p4-d251-impersonation-voice-schema-9f667c`, cut from `main`
+`9f47034c3`. Target pin `/tmp/qt-v4-pin-p4d251-07b8f0209` (`4.10.0-dev.111`),
+baseline pin `/tmp/qt-v4-pin-p4d251-52d6e7ecd` (`4.10.0-dev.109`), both built
+per ledger §5.1 with the three symlink classes; the markers verified (the
+migration + legacy modules exist at the target and not at the baseline).
+
+### The probe
+PASS at lane start and before every regen batch (v4 on `main` at
+`07b8f0209`, tree CLEAN, `07b8f0209..main` and `1a2b2164c..bugfix` EMPTY);
+never a STOP.
+
+### Pre-edit measurements (survey items 1 and 6, at the pin)
+- **ONE DDL shape.** generateDDL spells `ImpersonationVoiceModeEnum.default('off')`
+  as `"impersonationVoiceMode" TEXT DEFAULT 'off'`; the migration's
+  `addColumnIfMissing(…, "TEXT DEFAULT 'off'")` renders the same clause —
+  unlike P4.D249's `NOT NULL` pair. Only the POSITION differs (schema order vs
+  appended), which the tolerant positional read absorbs.
+- **The repository read on a stored value outside the enum** (v4's REAL
+  `ChatSettingsRepository` driven at the pin over a scratch instance): a NULL
+  cell reads `'off'` (the Zod default over the NULL→`undefined`
+  deserializer); a stored `'maybe'` makes `validate` throw — v4 logs
+  `Data validation failed` (`collection: chat_settings`, `error` = the
+  ZodError's `invalid_value` issue, `JSON.stringify(issues, null, 2)`) then,
+  through the fallback `safeQuery`, `Error finding entity by filter` with the
+  same bytes — and `findByUserId` answers **`null`: the row is DROPPED, not
+  defaulted**. v4's GET then runs `updateForUser`, whose existence check is
+  the SAME validating read, so it CREATES a second row for the user. v5 pins
+  the repository half exactly (both ERROR lines, `Ok(None)`); the GET-level
+  consequence is a RECORDED DIVERGENCE: v5's `update_for_user` existence check
+  is a raw `SELECT id`, so it answers 500 (`chat settings write failed to
+  persist`) where v4 mints a second row. No writer on either side can store
+  the value (both validate at the write), so the state is unreachable in
+  production; pinned at the repository level only
+  (`find_by_user_id_voice_mode_null_reads_off_and_an_unknown_value_drops_the_row`).
+- **The column census over every committed fixture DB** (a read-only
+  better-sqlite3 probe, every known test pepper): 17 pairs carried the OLD
+  column (every row `0`); 5 carried NEITHER (`chat-scenario`, `chat-send`,
+  `headshoulders`, `llm-log-cleanup`, `salon-long`); the `migration-vintage`
+  trio (its own pepper) carries the OLD column with a
+  `add-impersonation-voice-rewrite-field-v1` ledger row.
+
+### RED-FIRST (Tier 1 item 1) — on the UNPORTED tree (`9f47034c3`, a scratch worktree), every oracle regenerated at the target pin
+- (a) `settings_routes_equivalence` (the corpus re-shaped 7 → 10 rows): RED,
+  fail-fast on the FIRST case `s_default_inject` (the GET body carries
+  `impersonationVoiceRewrite: false` where v4 answers `impersonationVoiceMode:
+  "off"`); the fresh NDJSON carries the new key 30 times.
+- (b) `provisioning_equivalence`: RED on the main-partition schema (the one
+  `chat_settings` line); `grep` of the fresh oracle: `impersonationVoiceMode` ×2.
+- (c) `almanack_render_equivalence`: RED at `base` — `missing field
+  impersonationVoiceRewrite` (v4's data no longer round-trips the old model);
+  the fresh NDJSON carries `Ask each time` ×7.
+- (d) `chat_settings_tier2_equivalence`: RED — `no such column:
+  impersonationVoiceRewrite` on the update op (the fixture built at the pin
+  carries the mode column; v5's UPDATE named the boolean).
+- (e) the ensure differential against the P4.D179 ensure (the new harness test
+  with its import pointed at the old module, a throwaway file in the scratch
+  worktree): RED in mode (a) — `no such column: impersonationVoiceMode` (the
+  old ensure leaves the old column and never adds the new one; modes (b)/(c)
+  unreachable past the fail-fast, the oracle carries all three).
+- (f) `impersonation_voice_legacy_equivalence`: red by construction (no v5
+  module; the test did not compile on the unported tree).
+- (g) `host_zone_dates_equivalence`: RED in all three zones (the model
+  round-trip, `missing field impersonationVoiceRewrite`).
+- ⚠ A first sweep's cargo stage compiled the lane's half-edited core and
+  reported `E0432` for all five — an artifact, not a measurement
+  (`editing-source-while-a-sweep-runs`); the honest run above was made in a
+  scratch worktree at the unported commit with a cloned `target/`.
+
+### Units
+1. **D23 re-dump #5 + the seed** (from the pin): EXACTLY one `main` line
+   moves — `chat_settings`'s `"impersonationVoiceRewrite" INTEGER DEFAULT 0` →
+   `"impersonationVoiceMode" TEXT DEFAULT 'off'` at the same position;
+   mount-index and llm-logs `cmp`-identical; the seed's column entry and
+   value move together (`0` → `"off"`). Dated note in `provisioning/mod.rs`.
+   No `chat_settings` DDL literal outside `src/db/` (the two host-test
+   literals name neither voice column). `provisioning_equivalence` 3/3 at the
+   pin.
+2. **The boot ensure** `db/chat_settings_impersonation_voice_mode_repair.rs`
+   REPLACES `db/chat_settings_impersonation_voice_repair.rs` (DELETED, its
+   `mod.rs` line gone, the `host.rs` call swapped in place under a `=== P4.D251
+   ===` fence). ADD when absent, SELECT + per-row UPDATE over v4's exact
+   predicate through the pure translation, DROP; ONE transaction (recorded
+   divergence — v4 runs statement by statement; the atomic pass is the safer
+   superset); `VoiceModeEnsureOutcome` for tests only. Unit tests: absent
+   table no-op; neither column → mode appended, rows `'off'`; old 1/0/NULL →
+   ask/off/off, old gone; both present with `'always'` beside old `1` → left
+   alone, `'off'`+1 → ask, NULL+0 → off; a migrated table and a second run
+   exact no-ops (`sqlite_master.sql` byte-equal); a posed DROP failure (a VIEW
+   naming the column) rolls the ADD back; the ADD's bytes = v4's migration =
+   generateDDL's clause in the committed `fresh_schema.json`; SQLite ≥ 3.35
+   (3.53.2 linked). **NO-PORT (the fourth recording):** the migration INFO,
+   two DEBUGs, ERROR, the `migrations_state` row, the prettify label.
+3. **The ensure DIFFERENTIAL** — NEW `chat-settings-voice-mode-ensure.ts` +
+   `chat_settings_voice_mode_ensure_equivalence.rs`: three base files built at
+   the pin from v4's OWN generateDDL minus the mode line, the retired column
+   added back through the add-field migration's exact ALTER where the mode
+   calls for it ((a) old-only, rows 1/0/NULL/1; (b) neither; (c) both, old
+   LAST, rows (1,'always')/(1,'off')/(0,NULL)/(1,'ask')); v4's REAL modules
+   through `runV4Migrations` in registered order (add-field reports `not
+   needed` in (a)/(c), `+RAN` in (b); the mode migration `+RAN` in all three —
+   asserted so the diff cannot be vacuous). `PRAGMA table_info` (38 columns,
+   the mode LAST), `sqlite_master.sql` (`…"updatedAt" TEXT NOT NULL\n,
+   "impersonationVoiceMode" TEXT DEFAULT 'off')` — the ALTER/DROP text SQLite
+   stores) and every row's `(id, mode)` **byte-equal in all three modes**;
+   v5's outcome (4 backfilled / 0 / 2) asserted beside them.
+4. **The data layer** (`db/chat_settings.rs`): `ImpersonationVoiceMode`
+   (`Off`/`Ask`/`Always`, `rename_all = "lowercase"`, `Default = Off`,
+   `VALUES`, `as_str`, `parse`); the six sites moved (create `serde(default)`,
+   patch `Option<_>`, INSERT bind as TEXT, UPDATE assignment, the tolerant
+   list, the read); NULL/absent → `'off'`; an out-of-enum string → the two
+   ERROR lines through `db::fallback::find_one_by_filter_or_none` + `Ok(None)`
+   (measured, above); the module doc's column list; the two test DDLs; the
+   P4.D179 tolerance test re-aimed; Tier 2 item 14 pinned
+   (`chat_settings_create_drops_the_retired_key_and_defaults_the_mode` — a bag
+   with ONLY the old key lands `'off'`; translated, `'ask'`). Census
+   `chat_settings_column_sites_guard`: `ADOPTED_TEXT_COLUMNS =
+   ["impersonationVoiceMode"]` over the same regions, the old name REMOVED
+   from the boolean list and pinned ABSENT from every region
+   (`RETIRED_COLUMNS`), the struct/patch pins moved to the enum. `chat_
+   settings_tier2` corpus three rows → the mode (`true` → `"ask"` — the
+   corpus's intent was "on", and `'ask'` is what v4's own migration makes of
+   it); the harness spec structs carry the enum; 2 rows matched at the pin.
+5. **The pure translation** — NEW `services/impersonation_voice_legacy.rs`
+   (the home picked: `services/chat/` does not exist). `impersonation_voice_
+   mode_from_legacy(&Value)`: `Bool(true)` or a JSON number whose `f64` is
+   exactly `1.0` → `Ask`, else `Off` (JS `=== 1` has one number type; serde's
+   `1` and `1.0` are both `'ask'` — the oracle's `one_point_zero` row).
+   `with_impersonation_voice_mode_from_legacy(&Value) -> Cow` — `Borrowed`
+   = v4's same reference (no KEY), `Owned` = translated: the old key
+   `shift_remove`d, the mode = an existing non-`null` mode (JS `??`) else the
+   translation, **in v4's key order — an existing mode keeps its slot, a new
+   one is APPENDED last** (measured at the pin, `key_true_mode_always` vs
+   `key_true_no_mode`; `preserve_order`'s `insert` has exactly those two
+   behaviours). NEW tier-1 family `impersonation-voice-legacy.ts` →
+   `impersonation_voice_legacy_equivalence.rs`: 10 scalar + 6 record rows,
+   `same` compared as the `Cow` variant, records as JSON with key order —
+   16/16 at the pin. The oracle spells `undefined` as `{"undefined": true}`;
+   the Rust side maps it to a present `null` (JSON's nearest; both `'off'`).
+6. **The settings PUT** (`api/settings.rs`): the enum arm at the same
+   position — `as_str` + `parse`, else `Invalid impersonationVoiceMode value
+   (must be one of off, ask, always)` (`VALUES.join(", ")`); an explicit
+   `null`, a number, a boolean (the OLD type) all refuse; the retired key
+   IGNORED — `a_retired_voice_key_put_is_ignored_in_silence` captures
+   SILENCE (no line at any level), 200, the row unchanged bar `updatedAt`;
+   the NO-PORT comment rewritten for the new debug line (its neighbours'
+   lines are still unported: the only `[Settings v1]` lines in the file are
+   the Concierge pair). `settings-routes.test.ts`'s family RE-SHAPED (the
+   seven boolean rows deleted): GET `'off'`; PUT ask/always/off; PUT `'yes'`
+   / `null` / `1` / `true` → 400 with the sentence; PUT `{impersonationVoiceRewrite: true}`
+   → 200 unchanged; user B fresh → `'ask'`; the count guard `>= 10`;
+   `settings_routes_equivalence` green at the pin (the family's 10 rows
+   present).
+7. **The Almanack**: `types.rs` carries the mode as a RAW `String` (not the
+   enum — v4's TS type is erased at runtime and the renderer's `?? mode` arm
+   prints an unknown value as itself, which the `voice_mode_unknown` variant
+   measures; a deliberate deviation from the order's "→ the enum" wording,
+   forced by the raw arm); `phase3_ledgers.rs` default `"off"` and
+   `jstr(…, "off")`; `render.rs` `impersonation_voice_mode_label` (`Never` /
+   `Ask each time` / `Always restate` / raw). Recorders: `almanack-render.test.ts`'s
+   gap-fill RETIRED (v4's fixture now sets `'ask'` itself — the comment
+   rewritten per §R.14, a guard throws if that ever changes), `base` = v4's
+   `'ask'`, `all_empty` = `'off'`, NEW `voice_mode_unknown` = `'maybe'`
+   (`EXPECTED_CASES` 8 → 9); `host-zone-dates.ts` plants `'off'`.
+   `almanack_render` 9/9 byte-identical, `almanack_tier2` ok,
+   `host_zone_dates` 3/3 at the pin. **Mutation:** `"Ask each time"` →
+   `"Ask each timeX"` reddens `almanack_render` at `base` alone; restored by
+   file backup (0 occurrences after).
+8. **The restore** (`orchestrator.rs`): the inline block extracted as
+   `translate_restored_chat_settings(raw_row, backup_has_unmoderated_chats)`
+   — the Concierge translation first (its line unchanged), THEN the voice
+   translation on its output, the DEBUG `Translated the retired
+   impersonated-line voice toggle for restore` (`settings_id` from the RAW
+   row, `impersonation_voice_mode`; target `quilltap::restore`) only on the
+   `Owned` arm. **Capture-pinned** (`restored_chat_settings_translation_tests`):
+   the line's bytes in v4's field order; the explicit-mode case reporting
+   `always`; SILENCE on a current record; the chain order (Concierge line
+   first, then the voice line) on a pre-4.10 record. NEW
+   `restore-archive-voice-legacy.zip` (`derive-restore-archive-voice-legacy.py`
+   from `restore-archive.zip`: five settings-row clones under fixed ids —
+   `true`, `false`, the INTEGER `1`, `true` beside `'always'`, a current
+   `'ask'` — `counts.chatSettings` 1 → 6) as `restore_voice_legacy_replace`
+   on both sides; `system_restore_state` **OK: 45 tables row-for-row** (the
+   case guard 22 → 23).
+9. **The backup carriers**: `system_backup` regenerated from the pin over
+   the narrowed `system-data-main.db` (the staged settings JSON carries
+   `impersonationVoiceMode` ×4, the old key ×0) — green; `backup_uuid_remap`
+   re-recorded by hand per its header (the sweep refuses its in-repo corpus
+   write by design): the committed corpus moves ONE line (`false` → `"off"`,
+   as v4's own backup of the narrowed pair writes it), the hash pin
+   re-sealed, green.
+10. **Fixtures narrowed** (§R.6): `--report-only` with the module over every
+    committed `*-main.db` (49): `WOULD RUN` ×22 (every table lacking the
+    mode column — `shouldRun`'s add arm), `not needed` ×27; the column census
+    decided the list — the SEVENTEEN carrying the OLD column were applied
+    from the pin (`almanack`, `attach-file`, `autonomous`, `chat-admin`,
+    `chat-delete`, `chat-dialogs`, `cost-background`, `courier-images`,
+    `embedding-remainder`, `episodic-recall`, `help-chat`, `images`,
+    `in-scene-voiced`, `memories`, `pascal-run-custom`, `salon`,
+    `system-data`; each `+RAN … translated N row(s); dropped 1 legacy
+    column(s)`, N = its row count, every row `0` → `'off'`); zero journal
+    residue; the re-run `--report-only` `not needed` ×17; the post-narrow
+    census `old=false mode=true` on all seventeen. The FIVE neither-column
+    pairs were deliberately NOT narrowed (§R.6 names only pairs carrying the
+    old column; v5 reads the absent column as `'off'`, v4 defaults the same).
+    The `migration-vintage` trio keeps the old column (built by replay, its
+    own pepper); `restore_vintage_state` stays GREEN unchanged — the restore's
+    `tolerant_insert` drops the unknown mode column on that un-ensured copy,
+    which is the pre-existing behaviour for any un-booted vintage table
+    (no handoff needed; the file is outside this lane's Ownership and was
+    not touched). The migrator's header carries the measurement and the
+    recipe; the P4.D179 column row STAYS (step one for a pair lacking both).
+    **Every reader of a narrowed pair re-run from the pin by name** (the
+    sweep `--run-all --families …`, 53 families): 49 `ok` —
+    almanack_tier2, announcer_tier3, attach_mount_file, autonomous_rooms_routes,
+    chat_admin_routes, chat_delete, chat_export, chat_rebuild_summary,
+    chat_regenerate_title_tier3, cost_background_routes, courier_images_routes,
+    embedding_remainder, files_body_guards, help_chat_orchestrator_tier3,
+    help_chats_routes, help_docs_routes, help_section_size, help_tree,
+    images_generate_route, images_routes, in_scene_voiced_tier3,
+    memories_routes, message_reattribute, outfit_llm_choose_tier3,
+    pascal_custom_tools_route, pascal_definition_reader,
+    pascal_run_custom_handler, precompute, qtap_schema_validate,
+    query_param_semantics, recall_replay, restore_vintage_state,
+    salon_mutations, salon_reads, salon_skip, salon_swipe_generate,
+    system_backup, system_body_guards, system_delete_data, system_export,
+    system_import, system_import_state, system_jobs_collection,
+    system_jobs_routes, system_restore, title_update_tier3, tools_inventory,
+    transcript_route, vault_conv_search; `search_replace` = the standing red;
+    `system_restore_state` red only on its case-count guard (fixed, green by
+    name); `salon_fixture_p4d171_ensure` nothing_to_run (a committed corpus —
+    its one test is the ignored fixture step; run by name: ok);
+    `backup_uuid_remap` refused_repo_write (run by hand, above). The web
+    readers (`web_search_runner_wire`, `pascal_build_tools_roster`,
+    `images_edge_routes`, `images_generate_dispatch_wire`,
+    `lantern_loader_transcoder_wiring`, `chat_upload_codec_wiring`,
+    `help_web_routes`, `messages_swipe_sse_route`, `action_dispatch_edges`)
+    run inside the workspace gate below.
+11. **The web venue** (`chat_settings_composer_web_routes.rs`): the P4.D179
+    test re-shaped — the instance planted in the Friday shape (old column
+    `1`, no mode) → boot → the mode column present and the old one DROPPED,
+    the GET reads `'ask'`, a PUT round-trips `'always'`, `null`/`1`/`'yes'`/
+    `true` → 400 with the sentence, the retired key → 200 unchanged; Tier 2
+    item 13 as a second test — the ping-pong shape (mode `'ask'` then the old
+    column `1` appended LAST) healed at boot: old gone, mode untouched,
+    `sqlite_master.sql` clean, a second ensure pass an exact no-op. 3/3.
+12. **Vendored trees** (§R.7): the two help pages byte-copied (129 → 129,
+    both count literals unmoved — `grep '\b129\b'` finds the same two homes),
+    the seven `docs/v4/` paths from BOTH commits (`fixed/` 176 → 178), the
+    residual `packages-quilltap-README.md` alone; `help_tree_equivalence`,
+    `help_section_size_equivalence` green from the pin, `help_tree_embed_guard`
+    green.
+13. **Neutral regens** (§R.4(b)): `memories_routes`, `in_scene_voiced_tier3`,
+    `announcer_tier3` regenerated from the pin — green, and NONE of the three
+    NDJSONs carries either voice key (grep 0/0); the two-regen `cmp` is
+    recorded under the gate below.
+14. **Census guards (§R.12):** `chat_settings_column_sites_guard` MOVED (the
+    TEXT list + the retired-name pin), `dispatch_wrong_type_census` 451
+    UNMOVED, `help_tree_embed_guard` 129, `spelling_guard`,
+    `fallback_home_guard`, `tri_state_edges_share_the_decoder` — in the gate.
+    `recipe_sweep.py --self-test` — in the gate section.
+
+### Deferred loudly
+- v4's migration INFO / two DEBUG / ERROR lines, its `migrations_state`
+  row, the prettify label — NO-PORT (the deferred runner; the fourth
+  recording, in the ensure's header).
+- The settings PUT's new `[Settings v1] impersonationVoiceMode updated`
+  debug — NO-PORT with its unported neighbours (the P4.D179 ruling carried
+  over; named in the arm's comment).
+- v4's `docs/developer/*` prose beyond the seven mirrored paths — none moved.
+- The GET-level second-row divergence on an out-of-enum stored mode
+  (above) — recorded, not ported; unreachable by any writer.
+
+### Gotchas worth a memory note
+- **Editing core while a sweep runs** turned five regen+test runs into
+  `E0432` reds (the regens themselves were fine); the measurement had to be
+  re-made in a scratch worktree at the unported commit (`git worktree add` +
+  `cp -cR target`, ~1 min warm).
+- **zsh does not word-split `$MOD`** — `--module <spec>` passed as ONE word
+  made the migrator treat it as a fixture path (`Cannot open database because
+  the directory does not exist`); nothing was touched, but the first apply
+  pass silently did nothing. Quote the two words separately.
+- **`tracing` shadows `Value` inside its macros** (the memory note's trap,
+  hit again): `Value::as_str` in a `tracing::debug!` field resolved to the
+  trait; read the field into a local first.
+- A read-only better-sqlite3 probe of a WAL-mode fixture leaves `-wal`/`-shm`
+  residue beside a committed `.db` (the vintage trio) — delete it before
+  staging.
+
+### Gate (P4.D251 lane, on `673bc35c9`)
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean in BOTH feature sets (default, `quilltap-core/
+  native-transport`); `cargo build --workspace` (via the check and the test
+  builds) clean; the release build — see below.
+- `cargo test --workspace --no-fail-fast` with the lane's harvested env block
+  (162 vars: every family the reader sweep and the red-first sweep
+  regenerated at the pin, the two new families, the uuid-remap oracle,
+  `QT_V4_CHECKOUT` + `QT_V4_ROOT` at the pin): **668 test binaries / 4,336
+  passed / 1 failed / 3 ignored** — the one red `search_replace_equivalence`,
+  the standing red (pre-existing on `main`, in the round's expected trio);
+  `ariel_writers_tier3` / `memory_processor_tier3` SKIP without their vars
+  (not in this lane's block). Every round family confirmed RUN by name with
+  `--nocapture` earlier in the lane (the `OK …` lines in the chain logs:
+  settings_routes, provisioning 3/3, almanack_render 9 cases,
+  chat_settings_tier2 2 rows, host_zone_dates 3/3, the ensure 3 modes, the
+  legacy 16 rows, system_restore_state 23 cases, backup_uuid_remap, system_
+  backup, the census guards, the web venue 3/3, `host_help_docs_boot`,
+  `dispatch_wrong_type_census` 451 UNMOVED, `tri_state_edges_share_the_decoder`,
+  `fallback_home_guard`). (A first fail-fast run stopped at the standing red
+  after 446 binaries / 3,705 / 1 — superseded by the `--no-fail-fast` run.)
+- The reader sweep from the pin (53 families): 49 ok, the standing
+  `search_replace`, the restore-state count guard (fixed, green by name),
+  `salon_fixture_p4d171_ensure` nothing_to_run (green by name),
+  `backup_uuid_remap` refused_repo_write (run by hand, green). Artifact
+  `/tmp/p4d251/reader-sweep.json`.
+- `recipe_sweep.py --self-test`: see the chain line below.
+- **Neutral two-regen `cmp`** (§R.4(b)): `in_scene_voiced_tier3` and `announcer_tier3` byte-IDENTICAL across two regens at the pin (no moved byte — no STOP); `memories_routes` differs on exactly two rows (`create_insert`'s minted memory id + `createdAt`/`updatedAt`, `update`'s `updatedAt`) — the recorded same-pin nondeterminism class (minted ids / clocks, the P4.D189 finding), every one a field the family normalizes; neither regen carries either voice key (grep 0). `recipe_sweep.py --self-test`: 0 failures.
+- Release build: `cargo build --release` clean (3 m 44 s).
+- Versions: core 0.0.1206, host 0.0.181, web 0.0.218; harness frozen
+  0.0.1110; cli / tauri / SPA untouched. `git diff main -- apps/web/` EMPTY;
+  every touched path inside the Ownership table.
+- Lane `target/` deleted at close; the two pins (`/tmp/qt-v4-pin-p4d251-*`),
+  `/tmp/p4d251/`, and the sweep's `/tmp` oracle outputs left for the unifier.
+
 ## P4.D253 — bug 177 ported WHOLE (the PDF arm through the converter seam) + bug 178 RATIFIED NO-PORT — LANE COMPLETE (lane `claude/pdf-extraction-converter-bug-16d2ac`, 2026-10-05)
 
 **Probe.** The drift ledger's §2 probe PASSED at lane start and before both
