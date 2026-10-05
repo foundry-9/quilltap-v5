@@ -30,19 +30,20 @@ import { BASE_URL, E2E_PASSPHRASE } from './support/env';
 let stateBackendReady = false;
 
 /**
- * ACTIVATE-AT-UNIFY (P4.D181 §R.8): the In Their Own Words toggle writes
- * `impersonationVoiceRewrite`, a `chat_settings` column the SIBLING server lane
- * P4.D179 adds. Until that lands the PUT is refused by the settings route's own
- * validation, so the round-trip cannot be walked.
+ * ACTIVATE-AT-UNIFY (P4.D252 §R.10): the In Their Own Words card is three
+ * radios writing `impersonationVoiceMode` (v4 `07b8f0209`), the `chat_settings`
+ * column the SIBLING server lane P4.D251 puts in place of the retired boolean
+ * `impersonationVoiceRewrite`. On this lane's own branch the server still
+ * speaks the boolean, so the round trip cannot be walked.
  *
  * A NAMED CONSTANT, deliberately, never a capability probe: an unknown settings
  * key is not an "unknown variant" the way a missing verb is — the update arrives
  * at a DEFINED verb and is simply dropped or refused, so a probe would read as
  * "ready" against a server that cannot store it (`round-plan-takeaways`). The
- * unifier flips this to `true`; activating a beat is its first execution, so
- * expect gesture fixes.
+ * unifier flips this to `true` (§S.1); activating a re-shaped beat is its first
+ * execution under the new shape, so expect gesture fixes.
  */
-const P4D179_SERVER_LANDED = true;
+const P4D251_SERVER_LANDED = false;
 
 test.beforeAll(async () => {
   try {
@@ -222,14 +223,17 @@ test.describe('P4.6an — the Chat-tab settings cards', () => {
 
 /**
  * P4.D181 — In Their Own Words joins the Composer card (v4 `686954937`,
- * `ChatTabContent.tsx:107-111`), LAST, after the unicode toggle. The same scalar
- * round trip the Auto-Scroll beat walks, against the real server.
+ * `ChatTabContent.tsx:97-106` at `07b8f0209`), LAST, after the unicode toggle;
+ * since `07b8f0209` (P4.D252) it is a three-way MODE. The radio round trip
+ * against the real server.
  */
-test.describe('P4.D181 — the In Their Own Words toggle', () => {
-  test('Composer → Impersonated lines: toggle → reload → persisted', async ({ page }) => {
+test.describe('P4.D181 / P4.D252 — the In Their Own Words mode', () => {
+  test('Composer → Impersonated lines: pick a different mode → reload → persisted', async ({
+    page,
+  }) => {
     test.skip(
-      !P4D179_SERVER_LANDED,
-      'awaits P4.D179: the chat_settings.impersonationVoiceRewrite column + its route arm',
+      !P4D251_SERVER_LANDED,
+      'awaits P4.D251: the chat_settings.impersonationVoiceMode column + its route arm',
     );
     await page.goto('/salon');
     await maybeUnlock(page);
@@ -237,8 +241,10 @@ test.describe('P4.D181 — the In Their Own Words toggle', () => {
 
     const card = page.locator('qt-impersonation-voice-settings');
     await expect(card).toBeVisible({ timeout: 15_000 });
-    // v4's heading and the first clause of its copy, on the live screen.
-    await expect(card).toContainText("Impersonated lines in the character's own words");
+    // v4's legend and the first clause of its copy, on the live screen.
+    await expect(card.locator('legend')).toContainText(
+      "Impersonated lines in the character's own words",
+    );
     await expect(card).toContainText('before a syllable reaches the room');
 
     // It sits AFTER the unicode toggle inside the one Composer card (v4's order).
@@ -250,28 +256,34 @@ test.describe('P4.D181 — the In Their Own Words toggle', () => {
       'qt-impersonation-voice-settings',
     );
 
-    const box = card.locator('input[type="checkbox"]');
-    // v4's default when unset is FALSE — but the shared instance may have been
-    // left ON by a sibling beat that died mid-flow, so the round trip is
-    // measured RELATIVE to whatever the row holds now (the activated beat's
-    // first full-suite run at the `f4ad2c8d1` unification found it checked).
-    const initial = await box.isChecked();
+    // Three radios, v4's order, exactly one lit.
+    const radios = card.locator('input[type="radio"][name="impersonationVoiceMode"]');
+    await expect(radios).toHaveCount(3);
+    expect(await radios.evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value))).toEqual(
+      ['off', 'ask', 'always'],
+    );
+    const checked = card.locator('input[type="radio"]:checked');
+    await expect(checked).toHaveCount(1);
+    // v4's default when unset is 'off' — but the shared instance may have been
+    // left elsewhere by a sibling beat that died mid-flow, so the round trip is
+    // measured RELATIVE to whatever the row holds now.
+    const initial = await checked.getAttribute('value');
+    const target = initial === 'ask' ? 'always' : 'ask';
 
-    const saved = waitForSave(page, 'impersonationVoiceRewrite');
-    await box.setChecked(!initial);
+    const saved = waitForSave(page, 'impersonationVoiceMode');
+    await card.locator(`input[type="radio"][value="${target}"]`).check();
     await saved;
 
     await page.goto('/settings?tab=chat&section=composer-spellcheck');
-    const after = page.locator('qt-impersonation-voice-settings input[type="checkbox"]');
-    if (initial) {
-      await expect(after).not.toBeChecked({ timeout: 15_000 });
-    } else {
-      await expect(after).toBeChecked({ timeout: 15_000 });
-    }
+    const after = page.locator('qt-impersonation-voice-settings');
+    await expect(after.locator(`input[type="radio"][value="${target}"]`)).toBeChecked({
+      timeout: 15_000,
+    });
+    await expect(after.locator('input[type="radio"]:checked')).toHaveCount(1);
 
     // Leave the shared instance as we found it — later beats read this row.
-    const back = waitForSave(page, 'impersonationVoiceRewrite');
-    await after.setChecked(initial);
+    const back = waitForSave(page, 'impersonationVoiceMode');
+    await after.locator(`input[type="radio"][value="${initial}"]`).check();
     await back;
   });
 });

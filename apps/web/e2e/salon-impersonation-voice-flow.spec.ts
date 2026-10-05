@@ -7,36 +7,47 @@ import { startMockLlm, type MockLlm } from './support/mock-llm';
 import { openSidebarSection } from './support/sidebar';
 
 /**
- * P4.D181 — In Their Own Words, end to end (v4 `686954937`).
+ * P4.D181 — In Their Own Words, end to end (v4 `686954937`), re-shaped by
+ * P4.D252 for v4 `07b8f0209`'s three-way mode.
  *
  * The operator takes a character's seat with Impersonate, types a line, and it
- * does NOT post: the draft is stashed, the review dialog opens on it, and the
- * seat's own model restates it. Every exit that is not a Send leaves the draft
- * exactly where it was — that invariant is the whole reason the composer stopped
- * clearing itself on emit (unit 3), and it is what this beat exists to prove
- * against a real browser, a real binary and a real stream.
+ * does NOT post: the draft is stashed and the review dialog opens on it. Under
+ * `always` the seat's own model restates it at once; under `ask` the dialog
+ * waits on the draft and NO model is called until the operator presses Restate.
+ * Every exit that is not a Send leaves the draft exactly where it was — that
+ * invariant is the whole reason the composer stopped clearing itself on emit
+ * (P4.D181 unit 3), and it is what this beat exists to prove against a real
+ * browser, a real binary and a real stream.
  *
  * ORDERING: rides the shared global-setup server, so the filename must sort after
  * `aa-foundation.spec.ts` ('sa' > 'aa') and before the `zz…` destructives.
  *
- * ⚠ **ACTIVATE-AT-UNIFY behind {@link P4D180_SERVER_LANDED} and
- * {@link P4D179_SERVER_LANDED}.** The dialog dispatches
- * `chatImpersonationVoicePreview`, which the SIBLING lane P4.D180 defines, and
- * arming the gate needs the `impersonationVoiceRewrite` column P4.D179 adds. Both
- * are NAMED CONSTANTS, never capability probes (`round-plan-takeaways`): a
- * DEFINED verb defeats a probe, and an unknown settings key is not an "unknown
- * variant" the way a missing verb is. The unifier flips them; activating a beat is
- * its FIRST execution, so expect gesture fixes — the likely ones are noted inline.
+ * ⚠ **ACTIVATE-AT-UNIFY behind {@link P4D251_SERVER_LANDED}.** The three radios
+ * write `impersonationVoiceMode`, the `chat_settings` column the SIBLING lane
+ * P4.D251 puts in place of the retired boolean `impersonationVoiceRewrite`; on
+ * this lane's own branch the server still speaks the boolean, so a live run
+ * would fail for the right reason. A NAMED CONSTANT, never a capability probe
+ * (`round-plan-takeaways`): an unknown settings key reaches a DEFINED verb, so a
+ * probe would read "ready" against a server that cannot store it. The unifier
+ * flips it (§S.1); activating a re-shaped beat is its first execution under the
+ * new shape, so expect gesture fixes.
  *
  * **Real-spend guard.** Nothing here can reach a live model: the e2e instance
  * carries no API keys, and the fixture's OPENAI_COMPATIBLE profile is rewritten by
  * global setup to the mock below, which is what answers the rehearsal.
  */
 
-/** @see the header — P4.D180 defines `chatImpersonationVoicePreview`. */
-const P4D180_SERVER_LANDED = true;
-/** @see the header — P4.D179 adds `chat_settings.impersonationVoiceRewrite`. */
-const P4D179_SERVER_LANDED = true;
+/** @see the header — P4.D251 replaces the boolean column with `impersonationVoiceMode`. */
+const P4D251_SERVER_LANDED = false;
+const PARKED = 'awaits P4.D251: the chat_settings.impersonationVoiceMode column + its route arm';
+
+type VoiceMode = 'off' | 'ask' | 'always';
+/** v4's radio labels (`ImpersonationVoiceSettings.tsx:11-31`). */
+const MODE_LABEL: Record<VoiceMode, string> = {
+  off: 'Never',
+  ask: 'Ask each time',
+  always: 'Always restate',
+};
 
 /** What the mock restates every draft as — distinct from anything a human types. */
 const REHEARSED = 'Indeed, sir. The matter is entirely in hand.';
@@ -52,19 +63,50 @@ async function maybeUnlock(page: Page): Promise<void> {
   }
 }
 
-/** Flip the instance setting through the UI, as an operator would. */
-async function setVoiceRewrite(page: Page, on: boolean): Promise<void> {
+/** Pick the instance mode through the UI, as an operator would: the radio by its label. */
+async function setVoiceMode(page: Page, mode: VoiceMode): Promise<void> {
   await page.goto('/settings?tab=chat&section=composer-spellcheck');
-  const box = page.locator('qt-impersonation-voice-settings input[type="checkbox"]');
-  await expect(box).toBeVisible({ timeout: 15_000 });
-  if ((await box.isChecked()) === on) return;
+  const row = page
+    .locator('qt-impersonation-voice-settings label.qt-settings-toggle-row')
+    .filter({
+      has: page.locator('.font-medium', { hasText: new RegExp(`^${MODE_LABEL[mode]}$`) }),
+    });
+  const radio = row.locator('input[type="radio"]');
+  await expect(radio).toBeVisible({ timeout: 15_000 });
+  if (await radio.isChecked()) return;
   const saved = page.waitForResponse(
     (r) =>
       r.url().includes('/api/dispatch') &&
-      (r.request().postData() ?? '').includes('impersonationVoiceRewrite'),
+      (r.request().postData() ?? '').includes('impersonationVoiceMode'),
   );
-  await box.setChecked(on);
+  await radio.check();
   await saved;
+}
+
+/** v4's portrait cue for each armed mode (`SpeakingAsAvatar.tsx:21-39`). */
+function portraitCue(mode: 'ask' | 'always', name: string): string {
+  return mode === 'always'
+    ? `Speaking as ${name} — your draft goes to ${name} to say in their own words first`
+    : `Speaking as ${name} — your draft opens for review; send it as written or have ${name} restate it`;
+}
+
+/**
+ * Count the page's `chatImpersonationVoicePreview` dispatches — the ONE call a
+ * rehearsal spends. The mock LLM keeps no request log, and the SPA's own
+ * dispatch is the instrument closest to the decision anyway: no preview
+ * dispatch, no model call.
+ */
+function countPreviews(page: Page): () => number {
+  let n = 0;
+  page.on('request', (req) => {
+    if (
+      req.url().includes('/api/dispatch') &&
+      (req.postData() ?? '').includes('chatImpersonationVoicePreview')
+    ) {
+      n += 1;
+    }
+  });
+  return () => n;
 }
 
 /** Raw dispatch against the real axum server (the `chat-delete-flow` idiom). */
@@ -185,10 +227,10 @@ async function typeAndEnter(page: Page, text: string): Promise<void> {
  * Make the composer speak as `name` with In Their Own Words ARMED again (the
  * portrait's title carries the cue) after the rotation has moved off the seat.
  */
-async function retakeSeat(page: Page, name: string): Promise<void> {
+async function retakeSeat(page: Page, name: string, mode: 'ask' | 'always'): Promise<void> {
   await waitForFloor(page);
   const portrait = page.locator('.qt-speaking-as-avatar');
-  const armed = `Speaking as ${name} — your draft goes to ${name} to say in their own words first`;
+  const armed = portraitCue(mode, name);
   if ((await portrait.getAttribute('title')) === armed) return;
   // The rotation has moved the composer onto the owner persona (no Skip banner
   // there — the banner is an impersonated seat's). The operator's route back is
@@ -226,17 +268,14 @@ test.describe('P4.D181 — In Their Own Words, the full round trip', () => {
     await mock?.close();
   });
 
-  test('a typed line is stashed, reviewed, and posted in the character’s own words', async ({
+  test('always: a typed line is stashed, restated at once, reviewed, and posted in the character’s own words', async ({
     page,
   }) => {
-    test.skip(
-      !P4D179_SERVER_LANDED || !P4D180_SERVER_LANDED,
-      'awaits P4.D179 (the impersonationVoiceRewrite column) and P4.D180 (the chatImpersonationVoicePreview verb)',
-    );
+    test.skip(!P4D251_SERVER_LANDED, PARKED);
 
     await page.goto('/salon');
     await maybeUnlock(page);
-    await setVoiceRewrite(page, true);
+    await setVoiceMode(page, 'always');
     const chatId = await openGroupExpedition(page);
     await pinTitle(chatId, 'Group Expedition');
     const name = await impersonateSeat(page, 'Aria');
@@ -247,11 +286,9 @@ test.describe('P4.D181 — In Their Own Words, the full round trip', () => {
       // inside the portrait, bottom-right, which needs BOTH its own
       // `position: absolute` and the wrapper's `position: relative`.
       const portrait = page.locator('.qt-speaking-as-avatar');
-      await expect(portrait).toHaveAttribute(
-        'title',
-        `Speaking as ${name} — your draft goes to ${name} to say in their own words first`,
-        { timeout: 15_000 },
-      );
+      await expect(portrait).toHaveAttribute('title', portraitCue('always', name), {
+        timeout: 15_000,
+      });
       const badge = portrait.locator('.qt-speaking-as-avatar-voice-badge');
       await expect(badge).toBeVisible({ timeout: 15_000 });
       expect(await badge.evaluate((el) => getComputedStyle(el).position)).toBe('absolute');
@@ -316,7 +353,7 @@ test.describe('P4.D181 — In Their Own Words, the full round trip', () => {
       // gets Aria's seat back from the participant card (release + Speak as),
       // so the beat does the same until the portrait's title says the gate is
       // armed for Aria again.
-      await retakeSeat(page, name);
+      await retakeSeat(page, name, 'always');
       const SECOND = 'And have the charts brought up.';
       await typeAndEnter(page, SECOND);
       await expect(dialog(page)).toBeVisible({ timeout: 15_000 });
@@ -335,21 +372,91 @@ test.describe('P4.D181 — In Their Own Words, the full round trip', () => {
       await waitForFloor(page);
       await openSidebarSection(page, 'Participants');
       await stopImpersonating(page, name);
-      await setVoiceRewrite(page, false);
+      await setVoiceMode(page, 'off');
+    }
+  });
+
+  test('ask: the dialog opens on the draft with NO model call; Restate is the one call, and Send posts it', async ({
+    page,
+  }) => {
+    test.skip(!P4D251_SERVER_LANDED, PARKED);
+
+    const previews = countPreviews(page);
+    await page.goto('/salon');
+    await maybeUnlock(page);
+    await setVoiceMode(page, 'ask');
+    const chatId = await openGroupExpedition(page);
+    await pinTitle(chatId, 'Group Expedition');
+    const name = await impersonateSeat(page, 'Aria');
+    try {
+      // The portrait and the Send button say the SAME thing, through v4's one
+      // `voiceRehearsalTitle`.
+      await expect(page.locator('.qt-speaking-as-avatar')).toHaveAttribute(
+        'title',
+        portraitCue('ask', name),
+        { timeout: 15_000 },
+      );
+      await waitForFloor(page);
+      await expect(page.locator('.qt-chat-composer-send')).toHaveAttribute(
+        'title',
+        `Opens your draft for review — send it as written or have ${name} restate it`,
+      );
+
+      const DRAFT = 'Ask the purser for the manifest.';
+      await typeAndEnter(page, DRAFT);
+
+      // The dialog opens on the draft, in its DRAFT state: Send as written is
+      // the primary door, Restate sits beside it, and there is no proposal.
+      await expect(dialog(page)).toBeVisible({ timeout: 15_000 });
+      await expect(dialog(page).locator('[aria-label="Your draft"]')).toContainText(DRAFT, {
+        timeout: 15_000,
+      });
+      const asWritten = dialog(page).getByRole('button', { name: 'Send as written' });
+      await expect(asWritten).toHaveClass(/qt-button-primary/);
+      await expect(
+        dialog(page).getByRole('button', { name: 'Restate in their voice' }),
+      ).toBeVisible();
+      await expect(dialog(page).getByRole('button', { name: 'Send', exact: true })).toHaveCount(0);
+      await expect(dialog(page).locator(`[aria-label="What ${name} will say"]`)).toHaveCount(0);
+      await expect(dialog(page)).toContainText(
+        `Sending as written posts your words under ${name}'s name exactly as typed`,
+      );
+      // NO model was called to open it — the point of `ask`. Measured after the
+      // dialog has rendered, so a call made on open would already be counted.
+      expect(previews()).toBe(0);
+      expect(await newestBubble(page)).not.toContain(DRAFT);
+
+      // Restate is the ONE call, and it brings the proposal.
+      await dialog(page).getByRole('button', { name: 'Restate in their voice' }).click();
+      await expect(dialog(page).locator(`[aria-label="What ${name} will say"]`)).toContainText(
+        REHEARSED,
+        { timeout: 20_000 },
+      );
+      expect(previews()).toBe(1);
+
+      // Send posts the proposal.
+      await dialog(page).getByRole('button', { name: 'Send', exact: true }).click();
+      await expect(dialog(page)).toHaveCount(0, { timeout: 15_000 });
+      await expect
+        .poll(async () => await newestBubble(page), { timeout: 20_000 })
+        .toContain(REHEARSED);
+      expect(previews()).toBe(1);
+    } finally {
+      await waitForFloor(page);
+      await openSidebarSection(page, 'Participants');
+      await stopImpersonating(page, name);
+      await setVoiceMode(page, 'off');
     }
   });
 
   test('an attachment-only send is never rehearsed, and the setting off lets a line straight through', async ({
     page,
   }) => {
-    test.skip(
-      !P4D179_SERVER_LANDED || !P4D180_SERVER_LANDED,
-      'awaits P4.D179 (the impersonationVoiceRewrite column) and P4.D180 (the chatImpersonationVoicePreview verb)',
-    );
+    test.skip(!P4D251_SERVER_LANDED, PARKED);
 
     await page.goto('/salon');
     await maybeUnlock(page);
-    await setVoiceRewrite(page, true);
+    await setVoiceMode(page, 'always');
     const chatId = await openGroupExpedition(page);
     await pinTitle(chatId, 'Group Expedition');
     const name = await impersonateSeat(page, 'Aria');
@@ -381,7 +488,7 @@ test.describe('P4.D181 — In Their Own Words, the full round trip', () => {
       await expect(page.locator('.qt-chat-attachment-chip')).toHaveCount(0, { timeout: 20_000 });
 
       // Rule 1: turn the setting off and a plain typed line posts with no dialog.
-      await setVoiceRewrite(page, false);
+      await setVoiceMode(page, 'off');
       await page.goto(`/salon/${chatId}`);
       await expect(page.locator('.qt-chat-messages-list')).toBeVisible({ timeout: 15_000 });
       const STRAIGHT = 'Straight to the room, if you please.';
@@ -394,7 +501,7 @@ test.describe('P4.D181 — In Their Own Words, the full round trip', () => {
       await waitForFloor(page);
       await openSidebarSection(page, 'Participants');
       await stopImpersonating(page, name);
-      await setVoiceRewrite(page, false);
+      await setVoiceMode(page, 'off');
     }
   });
 });

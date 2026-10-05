@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-05 — test(e2e): the two In Their Own Words beats re-shaped for the three-way mode and PARKED behind P4D251_SERVER_LANDED (P4.D252 Tier 1 item 7)
+
+_Versions: SPA 0.5.804._
+
+`salon-impersonation-voice-flow.spec.ts`: `setVoiceRewrite` becomes `setVoiceMode(page, mode)`, which picks the radio by its label and waits on a dispatch carrying `impersonationVoiceMode`. The existing round-trip beat runs under `always` (the eager call the mock answers) and the attachment-only beat arms with `always` before switching to `off`. A new `ask` beat checks the portrait and Send titles, that the dialog opens on the draft with Send as written as the primary button and no proposal panel, that no `chatImpersonationVoicePreview` dispatch was made on open, that Restate makes exactly one and brings the proposal, and that Send posts it. Every beat restores `off` at its end. `settings-chat-cards-flow.spec.ts`'s P4.D181 block becomes the radio round trip (three radios in v4's order, pick a different mode, reload, assert, restore). Both files park behind `const P4D251_SERVER_LANDED = false` — on this branch the server still speaks the boolean — for the unifier to flip (§S.1); the retired `P4D179`/`P4D180` constants are gone.
+
 #### 2026-10-05 — feat(spa): the impersonated-line voice becomes three modes — ask opens the dialog with no model call, Restate is the one call, pickers only drop a stale proposal (P4.D252, v4 07b8f0209)
 
 _Versions: SPA 0.5.803._
