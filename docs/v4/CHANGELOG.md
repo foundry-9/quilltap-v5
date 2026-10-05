@@ -4,6 +4,36 @@
 
 ### 4.10-dev
 
+#### Impersonated-line voice: three modes, no model call until asked
+
+- The impersonated-line voice setting is now three-way: `chat_settings.impersonationVoiceMode`
+  (`'off'` / `'ask'` / `'always'`, default `'off'`), replacing the boolean
+  `impersonationVoiceRewrite`. Settings shows it as Never / Ask each time / Always restate.
+- `ask`: an impersonated line opens the review dialog on the draft only. No model is called until
+  the user presses "Restate in their voice". "Send as written" is the primary button, and
+  Cmd/Ctrl+Enter in the draft sends as written. `always` keeps the old behavior: the restatement
+  starts when the dialog opens.
+- Changing the voice or system-prompt picker in the dialog no longer re-runs the restatement. It
+  clears the stale proposal and waits for Restate.
+- Migration `impersonation-voice-mode-v1` maps the old column (1 → `'ask'`, otherwise `'off'`) and
+  drops it. Backups that still carry the boolean are translated on restore
+  (`withImpersonationVoiceModeFromLegacy`, `lib/chat/impersonation-voice-legacy.ts`).
+- `PUT /api/v1/settings/chat` takes `impersonationVoiceMode` and rejects any other value. The
+  composer portrait and Send-button tooltips describe the active mode. The Almanack reports the mode.
+
+#### Fix bugs 177 and 178: PDF text extraction
+
+- Bug 177: `extractPdfContent` (`lib/services/file-content-extractor.ts`) called `pdf-parse` as
+  the 1.x function, but 2.x exports a `PDFParse` class, so every PDF source given to Summon From
+  Lore or the AI character wizard was skipped with only a warning (since 2.7.0). It now reads
+  through `convertPdfBufferToText`, the single `pdf-parse` caller, and falls back to the regex
+  extractor when that finds no text.
+- Bug 178: packaged builds (Docker, Electron tarball) logged `DOMMatrix is not defined` for every
+  PDF and extracted no text. Webpack bundled `pdf-parse` / `pdfjs-dist` and replaced
+  `import.meta.url` with the CI runner's path, so `pdfjs-dist` could not load `@napi-rs/canvas` to
+  polyfill `DOMMatrix`. `pdf-parse` is now in `serverExternalPackages`, and `pdf-parse` and
+  `pdfjs-dist` are in `outputFileTracingIncludes`.
+
 #### Inform: standing (per-chat) informs
 
 - The Inform dialog has a "Keep it standing in this chat" checkbox, off by default. A standing

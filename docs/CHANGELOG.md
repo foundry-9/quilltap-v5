@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-05 — chore(vendor): re-vendor help/chat-settings-composer.md, help/impersonation-voice.md and seven docs/v4 paths from v4 07b8f0209 (P4.D251, both drift commits)
+
+_No crate versions bumped._
+
+Byte-copies from the `07b8f0209` pin: the two help pages the voice-mode commit edited (the tree stays at 129 files; both count literals unmoved) and the `docs/v4/` mirror for BOTH drift commits — `CHANGELOG.md`, `developer/API.md`, `developer/DDL.md`, `developer/features/complete/impersonation-voice-rewrite.md` (from `07b8f0209`) and `developer/bugs.md` plus the new `developer/bugs/fixed/bug-177-pdf-parse-v1-call.md` and `bug-178-pdf-domatrix-build-path.md` (from `a434c715b`; the `fixed/` dir 176 → 178). The residual after the copy is `packages-quilltap-README.md` alone. `help_tree_equivalence`, `help_section_size_equivalence` and `help_tree_embed_guard` are green against the pin.
+
 #### 2026-10-05 — feat(core,host,web): the impersonated-line voice becomes a three-state mode — `chat_settings.impersonationVoiceMode` replaces the boolean in place, v4's `impersonation-voice-mode-v1` re-homed as the boot ensure that supersedes the P4.D179 one, the retired toggle translated on restore, the committed pairs narrowed (P4.D251, v4 `07b8f0209`)
 
 _Versions: core 0.0.1206, host 0.0.181, web 0.0.218._
