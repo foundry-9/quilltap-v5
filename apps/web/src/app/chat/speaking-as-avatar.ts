@@ -1,7 +1,31 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
+import type { ImpersonationVoiceMode } from '../core/core-contract';
 import { Icon } from '../ui/icon';
 import { injectImagesHidden } from './hidden-image/images-hidden';
+
+/** An armed In Their Own Words mode — what a send from this seat will do. */
+export type VoiceRehearsalCue = Exclude<ImpersonationVoiceMode, 'off'>;
+
+/**
+ * The one wording of the cue, shared by the portrait and the Send button so
+ * the two can never describe different behaviour (v4
+ * `SpeakingAsAvatar.tsx:21-39`, `07b8f0209` — this file is its v4 home too).
+ */
+export function voiceRehearsalTitle(
+  cue: VoiceRehearsalCue,
+  name: string,
+  where: 'portrait' | 'send',
+): string {
+  if (cue === 'always') {
+    return where === 'portrait'
+      ? `Speaking as ${name} — your draft goes to ${name} to say in their own words first`
+      : `Sends your draft to ${name} to say in their own words first`;
+  }
+  return where === 'portrait'
+    ? `Speaking as ${name} — your draft opens for review; send it as written or have ${name} restate it`
+    : `Opens your draft for review — send it as written or have ${name} restate it`;
+}
 
 /**
  * SpeakingAsAvatar — a persistent cue, seated inside the composer directly to
@@ -49,12 +73,12 @@ export class SpeakingAsAvatar {
   /** Bright when the human may type now; dimmed to near-dark while a reply streams. */
   readonly canType = input(false);
   /**
-   * True when In Their Own Words is armed for this seat — a typed line goes to
-   * the character for a restatement you review before it posts. Purely a cue:
-   * the badge says what will happen, it does not make it happen (v4
-   * `SpeakingAsAvatar.tsx`'s `voiceRehearsal`, `686954937`).
+   * The armed In Their Own Words mode for this seat, or null — a typed line
+   * opens the review dialog before it posts. Purely a cue: the badge says what
+   * will happen, it does not make it happen (v4 `SpeakingAsAvatar.tsx`'s
+   * `voiceRehearsal`, `686954937`; a cue, not a boolean, since `07b8f0209`).
    */
-  readonly voiceRehearsal = input(false);
+  readonly voiceRehearsal = input<VoiceRehearsalCue | null>(null);
 
   private readonly imagesHidden = injectImagesHidden();
   /**
@@ -70,13 +94,14 @@ export class SpeakingAsAvatar {
    * someone else. The `aria-label` below is deliberately UNCHANGED — v4 leaves
    * it alone, and the badge itself is `aria-hidden`.
    */
-  protected readonly titleText = computed(() =>
-    this.voiceRehearsal()
-      ? `Speaking as ${this.name()} — your draft goes to ${this.name()} to say in their own words first`
+  protected readonly titleText = computed(() => {
+    const cue = this.voiceRehearsal();
+    return cue
+      ? voiceRehearsalTitle(cue, this.name(), 'portrait')
       : this.canType()
         ? `Speaking as ${this.name()}`
-        : `Speaking as ${this.name()} — waiting for the room`,
-  );
+        : `Speaking as ${this.name()} — waiting for the room`;
+  });
   protected readonly ariaLabel = computed(() =>
     this.canType()
       ? `Speaking as ${this.name()}`

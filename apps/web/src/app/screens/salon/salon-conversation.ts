@@ -122,7 +122,12 @@ import {
   type RenderingPattern,
 } from '../../chat/render/roleplay-rendering';
 import { fetchRoleplayTemplate } from '../settings/templates/templates.api';
-import type { NarrationDelimiters, TemplateDelimiter } from '../../core/core-contract';
+import type {
+  ImpersonationVoiceMode,
+  NarrationDelimiters,
+  TemplateDelimiter,
+} from '../../core/core-contract';
+import type { VoiceRehearsalCue } from '../../chat/speaking-as-avatar';
 import {
   addToQueue,
   createInitialTurnState,
@@ -494,7 +499,7 @@ interface CascadePrompt {
         [disabled]="regeneration.isRegenerating()"
         [chatId]="chatId()!"
         [speakingAs]="speakingAsSeat()"
-        [voiceRehearsalArmed]="impersonationVoiceArmed()"
+        [voiceRehearsal]="impersonationVoiceCue()"
         [hasActiveCharacters]="hasAnyActiveCharacter()"
         [informParticipantNames]="informParticipantNames()"
         [terminalActive]="terminalActive()"
@@ -637,6 +642,9 @@ interface CascadePrompt {
          as v4's is: the profiles read and the scroll-into-view both run once per
          rehearsal. -->
     @if (impersonationVoice.isOpen() && impersonationVoice.target(); as seat) {
+      <!-- v4 ChatModals.tsx:385: the dialog never sees 'idle' (bound through a
+           @let so the template checker can narrow it). -->
+      @let voiceStage = impersonationVoice.stage();
       <qt-impersonation-voice-dialog
         [characterName]="seat.characterName"
         [characterTitle]="seat.characterTitle ?? null"
@@ -647,14 +655,14 @@ interface CascadePrompt {
         [selectedSystemPromptId]="seat.selectedSystemPromptId ?? null"
         [seed]="impersonationVoice.seed()"
         [proposal]="impersonationVoice.proposal()"
-        [generating]="impersonationVoice.generating()"
+        [stage]="voiceStage === 'idle' ? 'draft' : voiceStage"
         [profileOverride]="impersonationVoice.profileOverride()"
         [systemPromptOverride]="impersonationVoice.systemPromptOverride()"
         (seedChange)="impersonationVoice.setSeed($event)"
         (proposalChange)="impersonationVoice.setProposal($event)"
         (send)="impersonationVoice.send($event)"
         (sendAsWritten)="impersonationVoice.sendAsWritten()"
-        (regenerate)="impersonationVoice.regenerate()"
+        (restate)="impersonationVoice.restate()"
         (changeProfile)="impersonationVoice.changeProfile($event)"
         (changeSystemPrompt)="impersonationVoice.changeSystemPrompt($event)"
         (editOriginal)="impersonationVoice.editOriginal()"
@@ -2493,25 +2501,35 @@ export class SalonConversation {
     };
   });
 
-  /** v4 `chatSettings?.impersonationVoiceRewrite ?? false` (`SalonView.tsx:583`). */
-  protected readonly impersonationVoiceEnabled = computed(
-    () => this.settings()?.impersonationVoiceRewrite ?? false,
+  /**
+   * In Their Own Words: when the instance setting is not 'off' and the composer
+   * will attribute this message to a seat the human is *impersonating*, the
+   * draft opens in a review dialog first — under 'ask' it waits for the
+   * operator to send it as written or ask for a restatement; under 'always' the
+   * character's own model starts restating it at once. Owner-persona seats are
+   * deliberately out of scope. v4 `chatSettings?.impersonationVoiceMode ??
+   * 'off'` (`SalonView.tsx:616-622`, `07b8f0209`).
+   */
+  protected readonly impersonationVoiceMode = computed<ImpersonationVoiceMode>(
+    () => this.settings()?.impersonationVoiceMode ?? 'off',
   );
 
   /**
-   * Armed for the current seat — the TEXT-FREE half of the gate, which drives the
-   * composer's informational cue only (v4 `SalonView.tsx:613-620`). The
-   * text-dependent half is checked at submit time by `intercept`.
+   * Armed for the current seat (the mode, or null) — the TEXT-FREE half of the
+   * gate, which drives the composer's informational cue only (v4
+   * `SalonView.tsx:648-658`). The text-dependent half is checked at submit time
+   * by `intercept`.
    */
-  protected readonly impersonationVoiceArmed = computed(() => {
+  protected readonly impersonationVoiceCue = computed<VoiceRehearsalCue | null>(() => {
+    const mode = this.impersonationVoiceMode();
     const seat = this.speakingSeat();
-    return Boolean(
-      this.impersonationVoiceEnabled() &&
-        seat &&
-        seat.type === 'CHARACTER' &&
-        seat.controlledBy !== 'user' &&
-        this.impersonatingIds().includes(seat.id),
-    );
+    return mode !== 'off' &&
+      seat &&
+      seat.type === 'CHARACTER' &&
+      seat.controlledBy !== 'user' &&
+      this.impersonatingIds().includes(seat.id)
+      ? mode
+      : null;
   });
 
   /**
@@ -3522,7 +3540,7 @@ export class SalonConversation {
         text: payload.content,
         seat: this.rehearsalSeat(),
         seatTarget: this.rehearsalTarget(),
-        enabled: this.impersonationVoiceEnabled(),
+        mode: this.impersonationVoiceMode(),
         impersonatingParticipantIds: this.impersonatingIds(),
         fileIds: payload.fileIds,
         attachments: payload.attachments,

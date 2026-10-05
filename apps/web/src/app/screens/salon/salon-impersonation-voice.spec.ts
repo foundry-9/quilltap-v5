@@ -56,6 +56,10 @@ beforeAll(() => {
  * v4's equivalent lives in `SalonView.tsx:1615-1642` (the `onSubmit` that returns
  * when `intercept` answers true) and in the fact that v4's composer clears
  * nothing at all — only `sendMessage` does.
+ *
+ * The rig's default mode is `always` (the eager open these were written
+ * against); the `ask` arm and the mode plumbing (v4 `07b8f0209`, `SalonView.tsx:
+ * 616-622, 648-658, 1700, 1760`) have their own block at the end.
  */
 
 beforeAll(() => {
@@ -151,7 +155,7 @@ interface Rig {
 }
 
 async function rig(
-  settings: Partial<ChatSettingsDto> = { impersonationVoiceRewrite: true },
+  settings: Partial<ChatSettingsDto> = { impersonationVoiceMode: 'always' },
 ): Promise<Rig> {
   const sends: Record<string, unknown>[] = [];
   const previews: Record<string, unknown>[] = [];
@@ -281,7 +285,7 @@ describe('SalonConversation — the In Their Own Words intercept', () => {
   });
 
   it('the setting OFF lets the submit through untouched', async () => {
-    const r = await rig({ impersonationVoiceRewrite: false });
+    const r = await rig({ impersonationVoiceMode: 'off' });
     const cleared = vi.spyOn(r.composer, 'clearAfterSend');
     typeAndSubmit(r, 'Tell him I accept.');
     await settle(r.fixture);
@@ -292,7 +296,7 @@ describe('SalonConversation — the In Their Own Words intercept', () => {
     expect(cleared).toHaveBeenCalledTimes(1);
   });
 
-  it('an UNSET setting is off (v4 `?? false`)', async () => {
+  it("an UNSET setting is off (v4 `?? 'off'`)", async () => {
     const r = await rig({});
     typeAndSubmit(r, 'Tell him I accept.');
     await settle(r.fixture);
@@ -375,14 +379,92 @@ describe('SalonConversation — the In Their Own Words intercept', () => {
   it('the armed cue follows the setting, the seat and the overlay', async () => {
     const r = await rig();
     const host = r.fixture.componentInstance as unknown as {
-      impersonationVoiceArmed(): boolean;
+      impersonationVoiceCue(): string | null;
       impersonatingLocal: { set(v: string[]): void };
     };
-    expect(host.impersonationVoiceArmed()).toBe(true);
+    expect(host.impersonationVoiceCue()).toBe('always');
     // Drop the seat out of the overlay and the cue goes dark, with no text
     // anywhere in the decision.
     host.impersonatingLocal.set([]);
     r.fixture.detectChanges();
-    expect(host.impersonationVoiceArmed()).toBe(false);
+    expect(host.impersonationVoiceCue()).toBeNull();
+  });
+});
+
+describe('SalonConversation — the impersonated-line voice MODE (v4 07b8f0209)', () => {
+  it('ask: the submit is taken over, the dialog opens on the draft, and NO model is called', async () => {
+    const r = await rig({ impersonationVoiceMode: 'ask' });
+    typeAndSubmit(r, 'Tell him I accept.');
+    await settle(r.fixture);
+
+    expect(r.sends).toEqual([]);
+    expect(r.voice.isOpen()).toBe(true);
+    expect(r.voice.stage()).toBe('draft');
+    expect(r.previews).toEqual([]);
+    // The dialog the Salon mounted is in its draft state: Send as written is
+    // the primary door, and there is no Send.
+    const footer = Array.from(
+      (r.fixture.nativeElement as HTMLElement).querySelectorAll(
+        'qt-impersonation-voice-dialog [qt-modal-footer] button',
+      ),
+    ).map((b) => (b.textContent ?? '').trim());
+    expect(footer).toEqual([
+      'Cancel',
+      'Edit original',
+      'Restate in their voice',
+      'Send as written',
+    ]);
+  });
+
+  it('ask: Restate is the one call, and Send then posts the proposal', async () => {
+    const r = await rig({ impersonationVoiceMode: 'ask' });
+    typeAndSubmit(r, 'Tell him I accept.');
+    await settle(r.fixture);
+    r.voice.restate();
+    await settle(r.fixture);
+    expect(r.previews).toHaveLength(1);
+    expect(r.voice.stage()).toBe('review');
+    r.voice.send(r.voice.proposal());
+    await settle(r.fixture);
+    expect(r.sends.map((s) => s['content'])).toEqual(['Very good, sir. I shall see to it.']);
+  });
+
+  it('ask: Send as written posts the draft and the model is never called', async () => {
+    const r = await rig({ impersonationVoiceMode: 'ask' });
+    typeAndSubmit(r, 'Tell him I accept.');
+    await settle(r.fixture);
+    r.voice.sendAsWritten();
+    await settle(r.fixture);
+    expect(r.sends.map((s) => s['content'])).toEqual(['Tell him I accept.']);
+    expect(r.previews).toEqual([]);
+  });
+
+  it('the cue IS the mode — ask, always, or null when off', async () => {
+    for (const [mode, cue] of [
+      ['ask', 'ask'],
+      ['always', 'always'],
+      ['off', null],
+    ] as const) {
+      const r = await rig({ impersonationVoiceMode: mode });
+      const host = r.fixture.componentInstance as unknown as {
+        impersonationVoiceCue(): string | null;
+      };
+      expect(host.impersonationVoiceCue()).toBe(cue);
+      TestBed.resetTestingModule();
+    }
+  });
+
+  it('the cue reaches the composer as its `voiceRehearsal` input', async () => {
+    const r = await rig({ impersonationVoiceMode: 'ask' });
+    expect(r.composer.voiceRehearsal()).toBe('ask');
+  });
+
+  it('the intercept receives the mode, not a boolean', async () => {
+    const r = await rig({ impersonationVoiceMode: 'ask' });
+    const spy = vi.spyOn(r.voice, 'intercept');
+    typeAndSubmit(r, 'Tell him I accept.');
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0][0].mode).toBe('ask');
+    expect('enabled' in spy.mock.calls[0][0]).toBe(false);
   });
 });

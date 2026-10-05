@@ -131,7 +131,7 @@ interface SettingsHost {
   textReplacementsEnabled(): boolean;
   composerSpellcheck(): boolean;
   llmLoggingEnabled(): boolean;
-  impersonationVoiceArmed(): boolean;
+  impersonationVoiceCue(): 'ask' | 'always' | null;
 }
 
 interface Rig {
@@ -230,14 +230,14 @@ describe('SalonConversation — every chat setting it reads is LIVE (v4 bug 134)
       composerSpellcheck: true,
       textReplacementsEnabled: true,
       storyBackgroundsSettings: { enabled: false },
-      impersonationVoiceRewrite: false,
+      impersonationVoiceMode: 'off',
     } as Partial<ChatSettingsDto>);
 
     expect(r.host.llmLoggingEnabled()).toBe(true);
     expect(r.host.composerSpellcheck()).toBe(true);
     expect(r.host.textReplacementsEnabled()).toBe(true);
     expect(r.host.storyBackgroundsEnabled()).toBe(false);
-    expect(r.host.impersonationVoiceArmed()).toBe(false);
+    expect(r.host.impersonationVoiceCue()).toBeNull();
 
     const chatGetsBefore = r.types.filter((t) => t === 'chatGet').length;
 
@@ -251,7 +251,7 @@ describe('SalonConversation — every chat setting it reads is LIVE (v4 bug 134)
       composerSpellcheck: false,
       textReplacementsEnabled: false,
       storyBackgroundsSettings: { enabled: true },
-      impersonationVoiceRewrite: true,
+      impersonationVoiceMode: 'ask',
     } as ChatSettingsDto);
     await settle(r.fixture);
 
@@ -259,7 +259,7 @@ describe('SalonConversation — every chat setting it reads is LIVE (v4 bug 134)
     expect(r.host.composerSpellcheck()).toBe(false);
     expect(r.host.textReplacementsEnabled()).toBe(false);
     expect(r.host.storyBackgroundsEnabled()).toBe(true);
-    expect(r.host.impersonationVoiceArmed()).toBe(true);
+    expect(r.host.impersonationVoiceCue()).toBe('ask');
 
     // The chat itself was never refetched: a live setting must not disturb a
     // stream (v4's own verification note).
@@ -282,16 +282,16 @@ describe('SalonConversation — every chat setting it reads is LIVE (v4 bug 134)
   });
 
   it('a settings-card SAVE reaches the open Salon (the write side)', async () => {
-    const r = await rig({ impersonationVoiceRewrite: false } as Partial<ChatSettingsDto>);
-    expect(r.host.impersonationVoiceArmed()).toBe(false);
+    const r = await rig({ impersonationVoiceMode: 'off' } as Partial<ChatSettingsDto>);
+    expect(r.host.impersonationVoiceCue()).toBeNull();
 
     // Exactly what `ChatSettingsCard.save` does: PUT, then seed the shared key
     // from the echo.
-    const updated = await updateChatSettings(r.core, { impersonationVoiceRewrite: true });
+    const updated = await updateChatSettings(r.core, { impersonationVoiceMode: 'always' });
     r.client.setQueryData(chatSettingsKeys.all, updated);
     await settle(r.fixture);
 
-    expect(r.host.impersonationVoiceArmed()).toBe(true);
+    expect(r.host.impersonationVoiceCue()).toBe('always');
   });
 
   it('the Salon reads the SHARED key, not a second spelling of it', async () => {

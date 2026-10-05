@@ -1,21 +1,27 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 
 import { CoreClient } from '../../core/core-client';
-import type { MessageAttachment } from '../../core/core-contract';
+import type { ImpersonationVoiceMode, MessageAttachment } from '../../core/core-contract';
 import { ToastService } from '../../ui/toast.service';
 import { shouldRehearseImpersonatedLine, type RehearsalSeat } from './gate';
 import { previewImpersonationVoice } from './impersonation-voice.api';
 
 /**
  * In Their Own Words — the Salon-scoped state machine behind the review dialog
- * (v4 `app/salon/[id]/hooks/useImpersonationVoice.ts`, `686954937`).
+ * (v4 `app/salon/[id]/hooks/useImpersonationVoice.ts`, `686954937`; the three
+ * modes and the `draft` stage from `07b8f0209`).
  *
- * When the instance setting is on and the seat the composer will attribute the
- * message to is one the human is *impersonating* (the Bug 44 overlay, not an
- * owner seat), the draft does not go straight to the chat. It is stashed, the
- * review dialog opens, and the seat's own model restates it in the character's
- * voice. Nothing reaches the chat until the operator chooses — and every exit
- * from the dialog that does not send leaves the draft exactly where it was.
+ * When the instance setting is not `off` and the seat the composer will
+ * attribute the message to is one the human is *impersonating* (the Bug 44
+ * overlay, not an owner seat), the draft does not go straight to the chat. It
+ * is stashed and the review dialog opens. Under `ask` the dialog waits on the
+ * draft alone — no model is called until the operator asks for a restatement —
+ * and under `always` the seat's own model starts restating it at once. Nothing
+ * reaches the chat until the operator chooses, and every exit from the dialog
+ * that does not send leaves the draft exactly where it was.
+ *
+ * Only an explicit Restate / Regenerate press (or opening under `always`) ever
+ * spends a model call; changing a picker just drops a stale proposal.
  *
  * **Provided at the Salon component**, never `providedIn: 'root'` — it holds one
  * chat's in-flight submit, and a root singleton would also reach the NG0201
@@ -56,7 +62,13 @@ export interface RehearsalTarget {
   selectedSystemPromptId?: string | null;
 }
 
-export type RehearsalStage = 'idle' | 'generating' | 'review';
+/**
+ * `draft` — open on the operator's words, no restatement requested (or the one
+ * on screen was dropped by a picker change). `generating` / `review` — a
+ * restatement is in flight / on screen (possibly empty after a failure). (v4
+ * `ImpersonationVoiceStage`, `useImpersonationVoice.ts:92-97`.)
+ */
+export type ImpersonationVoiceStage = 'idle' | 'draft' | 'generating' | 'review';
 
 /** The submit the gate took over, held verbatim until it sends or is discarded. */
 export interface PendingSend {
@@ -87,7 +99,7 @@ export interface InterceptArgs {
   text: string;
   seat: RehearsalSeat | null;
   seatTarget: RehearsalTarget | null;
-  enabled: boolean;
+  mode: ImpersonationVoiceMode;
   impersonatingParticipantIds: readonly string[];
   fileIds: string[];
   attachments: MessageAttachment[];
@@ -101,7 +113,7 @@ export class ImpersonationVoiceState {
 
   private readonly pending = signal<PendingSend | null>(null);
   readonly target = signal<RehearsalTarget | null>(null);
-  readonly stage = signal<RehearsalStage>('idle');
+  readonly stage = signal<ImpersonationVoiceStage>('idle');
   readonly proposal = signal('');
   readonly profileOverride = signal<string | null>(null);
   readonly systemPromptOverride = signal<string | null>(null);
@@ -147,7 +159,7 @@ export class ImpersonationVoiceState {
       args.text.trim().length === 0 && (args.fileIds.length > 0 || args.pending.length > 0);
 
     const armed = shouldRehearseImpersonatedLine({
-      enabled: args.enabled,
+      mode: args.mode,
       seat: args.seat,
       impersonatingParticipantIds: args.impersonatingParticipantIds,
       text: args.text,
@@ -171,7 +183,13 @@ export class ImpersonationVoiceState {
     this.profileOverride.set(null);
     this.systemPromptOverride.set(null);
     this.resolvedVoice.set(null);
-    void this.runPreview(args.text, null, null, args.seatTarget.participantId);
+    if (args.mode === 'always') {
+      void this.runPreview(args.text, null, null, args.seatTarget.participantId);
+    } else {
+      // `ask`: the operator speaks for the character unless they say
+      // otherwise, so no model is called until they press Restate.
+      this.stage.set('draft');
+    }
     return true;
   }
 
@@ -242,13 +260,14 @@ export class ImpersonationVoiceState {
   }
 
   /**
-   * The draft the operator can see right now — an edit in the dialog is kept, so
-   * a later "Send as written" sends what they are looking at.
+   * Restate (first time) or Regenerate (again) — the only operator action that
+   * spends a model call. Uses the draft the operator can see right now, so an
+   * edit in the dialog is carried into the attempt.
    */
-  regenerate(): void {
+  restate(): void {
     const stash = this.pending();
     const target = this.target();
-    if (!target || !stash) return;
+    if (!target || !stash || stash.seed.trim().length === 0) return;
     void this.runPreview(
       stash.seed,
       this.profileOverride(),
@@ -257,21 +276,25 @@ export class ImpersonationVoiceState {
     );
   }
 
-  /** Changing a picker drops the proposal and re-runs on the current draft. */
+  /**
+   * A picker change makes any proposal on screen stale: drop it and wait for
+   * the operator to ask again, rather than spending a call they did not request.
+   */
+  private dropStaleProposal(): void {
+    this.proposal.set('');
+    // The voice the last call reported is no longer the one that would speak.
+    this.resolvedVoice.set(null);
+    this.stage.set('draft');
+  }
+
   changeProfile(profileId: string | null): void {
     this.profileOverride.set(profileId);
-    const stash = this.pending();
-    const target = this.target();
-    if (!target || !stash) return;
-    void this.runPreview(stash.seed, profileId, this.systemPromptOverride(), target.participantId);
+    this.dropStaleProposal();
   }
 
   changeSystemPrompt(systemPromptId: string | null): void {
     this.systemPromptOverride.set(systemPromptId);
-    const stash = this.pending();
-    const target = this.target();
-    if (!target || !stash) return;
-    void this.runPreview(stash.seed, this.profileOverride(), systemPromptId, target.participantId);
+    this.dropStaleProposal();
   }
 
   /** Back to the composer — the draft is still in the editor, untouched. */

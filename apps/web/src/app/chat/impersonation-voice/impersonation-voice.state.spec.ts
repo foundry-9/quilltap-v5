@@ -15,6 +15,11 @@ import {
  * The In Their Own Words state machine (v4 `useImpersonationVoice`). Every
  * transition v4's hook makes, plus the bypass latch's three-stage life (set by a
  * dialog send → consumed by the next intercept → cleared on every close).
+ *
+ * The rig's default mode is `always` — the eager open these older blocks were
+ * written against (v4 `07b8f0209` kept it as that mode). The `ask` mode and the
+ * picker rule have their own block below, transcribed from v4's NEW
+ * `__tests__/unit/app/salon/hooks/useImpersonationVoice.flow.test.ts`.
  */
 
 const SEAT_ID = 'seat-evangeline';
@@ -34,7 +39,7 @@ function interceptArgs(over: Partial<InterceptArgs> = {}): InterceptArgs {
     text: 'I tell him I will take the job.',
     seat: { id: SEAT_ID, type: 'CHARACTER', controlledBy: 'llm' },
     seatTarget: TARGET,
-    enabled: true,
+    mode: 'always',
     impersonatingParticipantIds: [SEAT_ID],
     fileIds: [],
     attachments: [],
@@ -151,7 +156,7 @@ describe('ImpersonationVoiceState.intercept', () => {
 
   it('declines and changes nothing when the gate says no', () => {
     const r = rig();
-    expect(r.state.intercept(interceptArgs({ enabled: false }))).toBe(false);
+    expect(r.state.intercept(interceptArgs({ mode: 'off' }))).toBe(false);
     expect(r.state.isOpen()).toBe(false);
     expect(r.dispatched).toEqual([]);
   });
@@ -235,8 +240,8 @@ describe('ImpersonationVoiceState — the failed preview', () => {
   });
 });
 
-describe('ImpersonationVoiceState — the re-runs', () => {
-  it('regenerate re-runs on the LIVE draft with the current overrides', async () => {
+describe('ImpersonationVoiceState — Restate, and the pickers that only drop', () => {
+  it('restate re-runs on the LIVE draft with the current overrides', async () => {
     const r = rig();
     r.state.intercept(interceptArgs());
     await flush();
@@ -244,7 +249,7 @@ describe('ImpersonationVoiceState — the re-runs', () => {
     r.state.changeSystemPrompt('sp-2');
     await flush();
     r.dispatched.length = 0;
-    r.state.regenerate();
+    r.state.restate();
     await flush();
     expect(r.dispatched).toEqual([
       {
@@ -257,40 +262,155 @@ describe('ImpersonationVoiceState — the re-runs', () => {
     ]);
   });
 
-  it('changing the profile drops the proposal and re-runs', async () => {
+  it('changing the profile drops the proposal and the resolved voice, and calls NOTHING', async () => {
     const r = rig();
     r.state.intercept(interceptArgs());
     await flush();
     expect(r.state.proposal()).not.toBe('');
+    expect(r.state.resolvedVoice()).not.toBeNull();
 
     r.state.changeProfile('p-2');
-    // Synchronously: generating, and the old proposal is gone.
-    expect(r.state.stage()).toBe('generating');
+    // Synchronously: back to the draft, and the stale proposal is gone (v4
+    // `dropStaleProposal`, `useImpersonationVoice.ts:326-336`).
+    expect(r.state.stage()).toBe('draft');
     expect(r.state.proposal()).toBe('');
-    await flush();
+    expect(r.state.resolvedVoice()).toBeNull();
     expect(r.state.profileOverride()).toBe('p-2');
-    expect(r.dispatched[1]['connectionProfileId']).toBe('p-2');
+    await flush();
+    expect(r.dispatched).toHaveLength(1);
   });
 
-  it('clearing the profile back to "their own voice" OMITS the key again', async () => {
+  it('changing the system prompt drops the proposal the same way', async () => {
+    const r = rig();
+    r.state.intercept(interceptArgs());
+    await flush();
+    r.state.changeSystemPrompt('sp-2');
+    expect(r.state.stage()).toBe('draft');
+    expect(r.state.proposal()).toBe('');
+    expect(r.state.resolvedVoice()).toBeNull();
+    expect(r.state.systemPromptOverride()).toBe('sp-2');
+    await flush();
+    expect(r.dispatched).toHaveLength(1);
+  });
+
+  it('clearing the profile back to "their own voice" OMITS the key on the next Restate', async () => {
     const r = rig();
     r.state.intercept(interceptArgs());
     await flush();
     r.state.changeProfile('p-2');
+    r.state.restate();
     await flush();
     r.state.changeProfile(null);
+    r.state.restate();
     await flush();
     expect(r.state.profileOverride()).toBeNull();
+    expect(r.dispatched).toHaveLength(3);
+    expect(r.dispatched[1]['connectionProfileId']).toBe('p-2');
     expect('connectionProfileId' in r.dispatched[2]).toBe(false);
   });
 
-  it('a re-run with no open rehearsal does nothing', async () => {
+  it('restate refuses an empty draft (v4 `stash.seed.trim().length === 0`, `:321`)', async () => {
     const r = rig();
-    r.state.regenerate();
+    r.state.intercept(interceptArgs({ mode: 'ask' }));
+    r.state.setSeed('   ');
+    r.state.restate();
+    await flush();
+    expect(r.dispatched).toEqual([]);
+    expect(r.state.stage()).toBe('draft');
+  });
+
+  it('a Restate or a picker change with no open rehearsal does nothing', async () => {
+    const r = rig();
+    r.state.restate();
     r.state.changeProfile('p-2');
     r.state.changeSystemPrompt('sp-2');
     await flush();
     expect(r.dispatched).toEqual([]);
+  });
+});
+
+/**
+ * When the dialog spends a model call — transcribed case for case from v4's NEW
+ * `__tests__/unit/app/salon/hooks/useImpersonationVoice.flow.test.ts`
+ * (`07b8f0209`, 134 lines, six `it`s in v4's order and with v4's names). v4
+ * counts `fetch` calls whose URL carries `action=impersonation-voice-preview`;
+ * v5 dispatches, so the count is of `chatImpersonationVoicePreview` dispatches.
+ * v4's `sendMessage.mock.calls[0][1]` (the content) is v5's `sendFinal` `final`.
+ */
+describe('ImpersonationVoiceState — model calls (v4 useImpersonationVoice.flow.test.ts)', () => {
+  const DRAFT = 'I tell him I will take the job.';
+  const previews = (r: Rig) =>
+    r.dispatched.filter((d) => d['type'] === 'chatImpersonationVoicePreview');
+
+  it('off: does not take the submit over', () => {
+    const r = rig();
+    expect(r.state.intercept(interceptArgs({ mode: 'off' }))).toBe(false);
+    expect(r.state.isOpen()).toBe(false);
+    expect(previews(r)).toHaveLength(0);
+  });
+
+  it('ask: opens on the draft and calls no model', async () => {
+    const r = rig();
+    expect(r.state.intercept(interceptArgs({ mode: 'ask' }))).toBe(true);
+    expect(r.state.isOpen()).toBe(true);
+    expect(r.state.stage()).toBe('draft');
+    expect(r.state.seed()).toBe(DRAFT);
+    await flush();
+    expect(previews(r)).toHaveLength(0);
+  });
+
+  it('ask: Send as written posts the draft without ever calling a model', async () => {
+    const r = rig();
+    r.state.intercept(interceptArgs({ mode: 'ask' }));
+    r.state.sendAsWritten();
+    expect(r.sent).toHaveLength(1);
+    expect(r.sent[0].final).toBe(DRAFT);
+    expect(r.state.isOpen()).toBe(false);
+    await flush();
+    expect(previews(r)).toHaveLength(0);
+  });
+
+  it('ask: Restate is what calls the model', async () => {
+    const r = rig();
+    r.state.intercept(interceptArgs({ mode: 'ask' }));
+    r.state.restate();
+    await flush();
+    expect(r.state.stage()).toBe('review');
+    expect(previews(r)).toHaveLength(1);
+    expect(r.state.proposal()).toBe('I shall take the position, sir.');
+  });
+
+  it('always: starts the restatement as the dialog opens', async () => {
+    const r = rig();
+    r.state.intercept(interceptArgs({ mode: 'always' }));
+    await flush();
+    expect(r.state.stage()).toBe('review');
+    expect(previews(r)).toHaveLength(1);
+  });
+
+  it('a picker change drops the proposal and does not re-run', async () => {
+    const r = rig();
+    r.state.intercept(interceptArgs({ mode: 'always' }));
+    await flush();
+    expect(r.state.stage()).toBe('review');
+
+    r.state.changeProfile('profile-2');
+    expect(r.state.stage()).toBe('draft');
+    expect(r.state.proposal()).toBe('');
+    expect(r.state.profileOverride()).toBe('profile-2');
+
+    r.state.changeSystemPrompt('prompt-2');
+    expect(r.state.stage()).toBe('draft');
+    await flush();
+    expect(previews(r)).toHaveLength(1);
+
+    r.state.restate();
+    await flush();
+    expect(r.state.stage()).toBe('review');
+    const calls = previews(r);
+    expect(calls).toHaveLength(2);
+    expect(calls[1]['connectionProfileId']).toBe('profile-2');
+    expect(calls[1]['systemPromptId']).toBe('prompt-2');
   });
 });
 

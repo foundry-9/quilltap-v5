@@ -45,7 +45,11 @@ import { CustomToolsPopup } from './custom-tools-popup';
 import { RngDropdown, type RngPendingResult } from './rng-dropdown';
 import { FileConflictDialog } from './file-conflict-dialog';
 import { PendingInformChips } from './pending-inform-chips';
-import { SpeakingAsAvatar } from './speaking-as-avatar';
+import {
+  SpeakingAsAvatar,
+  voiceRehearsalTitle,
+  type VoiceRehearsalCue,
+} from './speaking-as-avatar';
 import { ToastService } from '../ui/toast.service';
 
 /**
@@ -295,7 +299,7 @@ export interface PendingToolResultChip extends RngPendingResult {
               [name]="seat.name"
               [avatarUrl]="seat.avatarUrl"
               [canType]="canType()"
-              [voiceRehearsal]="voiceRehearsalArmed()"
+              [voiceRehearsal]="voiceRehearsal()"
             />
           </div>
         }
@@ -625,13 +629,13 @@ export class ChatComposer implements OnInit {
    */
   readonly speakingAs = input<SpeakingAsSeat | null>(null);
   /**
-   * In Their Own Words is armed for the speaking-as seat: a typed line will be
-   * handed to that character to restate, for review, before it posts.
-   * Informational only — the gate itself lives in the Salon's
-   * `ImpersonationVoiceState` (v4 `ChatComposer.tsx`'s `voiceRehearsalArmed`,
-   * `686954937`).
+   * In Their Own Words is armed for the speaking-as seat: a typed line opens
+   * the review dialog before it posts — waiting on the operator (`ask`) or
+   * restating at once (`always`). Null when not armed. Informational only —
+   * the gate itself lives in the Salon's `ImpersonationVoiceState` (v4
+   * `ChatComposer.tsx:122-128`'s `voiceRehearsal`, `07b8f0209`).
    */
-  readonly voiceRehearsalArmed = input(false);
+  readonly voiceRehearsal = input<VoiceRehearsalCue | null>(null);
   /**
    * The active roleplay template's delimiter entries and narration characters,
    * for the formatting toolbar's delimiter section (v4 passes
@@ -763,8 +767,9 @@ export class ChatComposer implements OnInit {
   });
 
   /**
-   * v4's four-arm ladder (`ChatComposer.tsx:505-514`), in v4's order. v4's third
-   * test is `streaming || waitingForResponse` WITHOUT its `sending` flag; v5 has
+   * v4's four-arm ladder (`ChatComposer.tsx:544-554` at `07b8f0209`), in v4's
+   * order. v4's third test is `streaming || waitingForResponse` WITHOUT its
+   * `sending` flag; v5 has
    * no separate `sending` and folds streaming + waiting into the one `busy`
    * input, which is the same signal `canType` already stands on.
    */
@@ -772,9 +777,8 @@ export class ChatComposer implements OnInit {
     if (!this.hasActiveCharacters()) return 'Add a character to start chatting';
     if (this.busy()) return 'Generating...';
     const seat = this.speakingAs();
-    if (this.voiceRehearsalArmed() && seat) {
-      return `Sends your draft to ${seat.name} to say in their own words first`;
-    }
+    const cue = this.voiceRehearsal();
+    if (cue && seat) return voiceRehearsalTitle(cue, seat.name, 'send');
     return 'Send message';
   });
 

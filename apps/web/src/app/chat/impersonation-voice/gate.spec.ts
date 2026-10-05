@@ -5,9 +5,11 @@ import { shouldRehearseImpersonatedLine, type ShouldRehearseArgs } from './gate'
 /**
  * The In Their Own Words gate (`shouldRehearseImpersonatedLine`) — the parity
  * spec, transcribed 1:1 from v4's
- * `app/salon/[id]/hooks/__tests__/useImpersonationVoice.test.ts` at `f4ad2c8d1`
- * (its `describe('shouldRehearseImpersonatedLine')` block: twelve `it`s in
- * v4's order, with v4's names and v4's fixture builder).
+ * `app/salon/[id]/hooks/__tests__/useImpersonationVoice.test.ts` at `07b8f0209`
+ * (its `describe('shouldRehearseImpersonatedLine')` block: fourteen `it`s in
+ * v4's order, with v4's names and v4's fixture builder — `07b8f0209` re-keyed
+ * the builder on `mode: 'ask'` (`:23`) and grew rule 1 from one case to three,
+ * `:60-71`, when the boolean became the three-way mode).
  *
  * v4's file also carries a `describe('every chat setting the Salon reads is
  * LIVE')` that `readFileSync`s two source files. A vitest spec cannot read
@@ -20,7 +22,7 @@ const IMPERSONATED = 'seat-evangeline';
 
 function args(over: Partial<ShouldRehearseArgs> = {}): ShouldRehearseArgs {
   return {
-    enabled: true,
+    mode: 'ask',
     seat: { id: IMPERSONATED, type: 'CHARACTER', controlledBy: 'llm' },
     impersonatingParticipantIds: [IMPERSONATED],
     text: 'I tell him I will take the job.',
@@ -36,8 +38,16 @@ describe('shouldRehearseImpersonatedLine', () => {
   });
 
   describe('rule 1 — the instance setting', () => {
-    it('never fires when the setting is off', () => {
-      expect(shouldRehearseImpersonatedLine(args({ enabled: false }))).toBe(false);
+    it('never fires when the mode is off', () => {
+      expect(shouldRehearseImpersonatedLine(args({ mode: 'off' }))).toBe(false);
+    });
+
+    it('fires under ask (the dialog opens, but no model is called yet)', () => {
+      expect(shouldRehearseImpersonatedLine(args({ mode: 'ask' }))).toBe(true);
+    });
+
+    it('fires under always', () => {
+      expect(shouldRehearseImpersonatedLine(args({ mode: 'always' }))).toBe(true);
     });
   });
 

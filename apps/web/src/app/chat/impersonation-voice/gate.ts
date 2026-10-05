@@ -1,8 +1,14 @@
+import type { ImpersonationVoiceMode } from '../../core/core-contract';
 import { parseCarinaQuery } from '../carina-parser';
 
 /**
  * In Their Own Words — the pure gate (v4
- * `app/salon/[id]/hooks/useImpersonationVoice.ts:23-70`).
+ * `app/salon/[id]/hooks/useImpersonationVoice.ts:29-77` at `07b8f0209`).
+ *
+ * Since `07b8f0209` the instance setting is a three-way mode, and the first rule
+ * asks only whether it is `off`: `ask` and `always` both take the submit over —
+ * they differ in whether the dialog then calls a model at once, which is the
+ * state machine's business, not the gate's.
  *
  * Five rules decide whether a composer submit becomes a rehearsal. Four of them
  * are about staying out of the way: an owner seat has no voice of its own to
@@ -21,8 +27,8 @@ export interface RehearsalSeat {
 }
 
 export interface ShouldRehearseArgs {
-  /** `chatSettings.impersonationVoiceRewrite`. */
-  enabled: boolean;
+  /** `chatSettings.impersonationVoiceMode`. */
+  mode: ImpersonationVoiceMode;
   /** The seat the composer will attribute this message to (`speakingSeat`). */
   seat: RehearsalSeat | null;
   impersonatingParticipantIds: readonly string[];
@@ -47,14 +53,14 @@ export interface ShouldRehearseArgs {
  * mutation that proves the corpus cannot see it).
  */
 export function shouldRehearseImpersonatedLine({
-  enabled,
+  mode,
   seat,
   impersonatingParticipantIds,
   text,
   hasAttachmentsOnly,
   bypassOnce,
 }: ShouldRehearseArgs): boolean {
-  if (!enabled) return false;
+  if (mode === 'off') return false;
   if (bypassOnce) return false;
   if (!seat) return false;
   if (seat.type !== 'CHARACTER') return false;

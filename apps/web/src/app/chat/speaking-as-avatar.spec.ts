@@ -3,7 +3,11 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { describe, expect, it } from 'vitest';
 
 import { IMAGES_HIDDEN } from './hidden-image/images-hidden';
-import { SpeakingAsAvatar } from './speaking-as-avatar';
+import {
+  SpeakingAsAvatar,
+  voiceRehearsalTitle,
+  type VoiceRehearsalCue,
+} from './speaking-as-avatar';
 
 /**
  * Client port of v4 `__tests__/unit/app/salon/SpeakingAsAvatar.test.tsx`. Covers
@@ -66,15 +70,17 @@ describe('SpeakingAsAvatar', () => {
 });
 
 /**
- * The In Their Own Words cue (v4 `686954937`): an armed seat wears a quill badge
- * and says, in its title, what a typed line will actually do. The `aria-label` is
- * deliberately UNCHANGED — v4 leaves it alone and marks the badge `aria-hidden`.
+ * The In Their Own Words cue (v4 `686954937`, made a MODE by `07b8f0209`): an
+ * armed seat wears a quill badge and says, in its title, what a typed line will
+ * actually do — which since `07b8f0209` depends on WHICH mode is armed. The
+ * `aria-label` is deliberately UNCHANGED — v4 leaves it alone and marks the badge
+ * `aria-hidden`.
  */
 describe('SpeakingAsAvatar — the voice-rehearsal cue', () => {
   function render(inputs: {
     name: string;
     canType: boolean;
-    voiceRehearsal?: boolean;
+    voiceRehearsal?: VoiceRehearsalCue | null;
   }): { fixture: ComponentFixture<SpeakingAsAvatar>; cue: HTMLElement } {
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({ imports: [SpeakingAsAvatar] });
@@ -89,29 +95,67 @@ describe('SpeakingAsAvatar — the voice-rehearsal cue', () => {
   }
 
   it('draws no badge when the feature is not armed', () => {
-    const { cue } = render({ name: 'Charlie', canType: true });
-    expect(cue.querySelector('.qt-speaking-as-avatar-voice-badge')).toBeNull();
+    expect(
+      render({ name: 'Charlie', canType: true }).cue.querySelector(
+        '.qt-speaking-as-avatar-voice-badge',
+      ),
+    ).toBeNull();
+    expect(
+      render({ name: 'Charlie', canType: true, voiceRehearsal: null }).cue.querySelector(
+        '.qt-speaking-as-avatar-voice-badge',
+      ),
+    ).toBeNull();
   });
 
-  it('draws the quill badge, hidden from assistive tech, when armed', () => {
-    const { cue } = render({ name: 'Charlie', canType: true, voiceRehearsal: true });
-    const badge = cue.querySelector('.qt-speaking-as-avatar-voice-badge');
-    expect(badge).not.toBeNull();
-    expect(badge?.getAttribute('aria-hidden')).toBe('true');
-    // v5's icons are CSS masks on a `data-icon` span, not inline SVG.
-    expect(badge?.querySelector('[data-icon="thinking"]')).not.toBeNull();
-  });
+  for (const mode of ['ask', 'always'] as const) {
+    it(`draws the quill badge, hidden from assistive tech, when armed (${mode})`, () => {
+      const { cue } = render({ name: 'Charlie', canType: true, voiceRehearsal: mode });
+      const badge = cue.querySelector('.qt-speaking-as-avatar-voice-badge');
+      expect(badge).not.toBeNull();
+      expect(badge?.getAttribute('aria-hidden')).toBe('true');
+      // v5's icons are CSS masks on a `data-icon` span, not inline SVG.
+      expect(badge?.querySelector('[data-icon="thinking"]')).not.toBeNull();
+    });
 
-  it('says what the send will do, outranking BOTH of the other titles', () => {
-    const armed = 'Speaking as Charlie — your draft goes to Charlie to say in their own words first';
-    expect(render({ name: 'Charlie', canType: true, voiceRehearsal: true }).cue.getAttribute('title')).toBe(armed);
+    it(`leaves the aria-label alone (${mode}; v4 does not touch it)`, () => {
+      expect(
+        render({ name: 'Charlie', canType: true, voiceRehearsal: mode }).cue.getAttribute(
+          'aria-label',
+        ),
+      ).toBe('Speaking as Charlie');
+      expect(
+        render({ name: 'Charlie', canType: false, voiceRehearsal: mode }).cue.getAttribute(
+          'aria-label',
+        ),
+      ).toBe('Speaking as Charlie, waiting for the room');
+    });
+  }
+
+  it('always: says the draft goes to the character, outranking BOTH other titles', () => {
+    const armed =
+      'Speaking as Charlie — your draft goes to Charlie to say in their own words first';
+    expect(
+      render({ name: 'Charlie', canType: true, voiceRehearsal: 'always' }).cue.getAttribute(
+        'title',
+      ),
+    ).toBe(armed);
     // …even when the floor is not the human's.
-    expect(render({ name: 'Charlie', canType: false, voiceRehearsal: true }).cue.getAttribute('title')).toBe(armed);
+    expect(
+      render({ name: 'Charlie', canType: false, voiceRehearsal: 'always' }).cue.getAttribute(
+        'title',
+      ),
+    ).toBe(armed);
   });
 
-  it('leaves the aria-label alone (v4 does not touch it)', () => {
-    const { cue } = render({ name: 'Charlie', canType: true, voiceRehearsal: true });
-    expect(cue.getAttribute('aria-label')).toBe('Speaking as Charlie');
+  it('ask: says the draft opens for review, outranking BOTH other titles', () => {
+    const armed =
+      'Speaking as Charlie — your draft opens for review; send it as written or have Charlie restate it';
+    expect(
+      render({ name: 'Charlie', canType: true, voiceRehearsal: 'ask' }).cue.getAttribute('title'),
+    ).toBe(armed);
+    expect(
+      render({ name: 'Charlie', canType: false, voiceRehearsal: 'ask' }).cue.getAttribute('title'),
+    ).toBe(armed);
   });
 
   /**
@@ -131,6 +175,36 @@ describe('SpeakingAsAvatar — the voice-rehearsal cue', () => {
    * the `salon-impersonation-voice-flow` beat, which is the only place a
    * computed style means anything.
    */
+});
+
+/**
+ * The ONE wording of the cue, shared by the portrait and the Send button (v4
+ * `SpeakingAsAvatar.tsx:21-39`, `07b8f0209`) — its four strings, byte for byte.
+ */
+describe('voiceRehearsalTitle', () => {
+  it('always / portrait', () => {
+    expect(voiceRehearsalTitle('always', 'Evangeline', 'portrait')).toBe(
+      'Speaking as Evangeline — your draft goes to Evangeline to say in their own words first',
+    );
+  });
+
+  it('always / send', () => {
+    expect(voiceRehearsalTitle('always', 'Evangeline', 'send')).toBe(
+      'Sends your draft to Evangeline to say in their own words first',
+    );
+  });
+
+  it('ask / portrait', () => {
+    expect(voiceRehearsalTitle('ask', 'Evangeline', 'portrait')).toBe(
+      'Speaking as Evangeline — your draft opens for review; send it as written or have Evangeline restate it',
+    );
+  });
+
+  it('ask / send', () => {
+    expect(voiceRehearsalTitle('ask', 'Evangeline', 'send')).toBe(
+      'Opens your draft for review — send it as written or have Evangeline restate it',
+    );
+  });
 });
 
 /**

@@ -23,18 +23,25 @@ import { VoiceRewriteReviewPanel } from './voice-rewrite-review-panel';
 /**
  * `qt-impersonation-voice-dialog` — In Their Own Words, the review dialog for an
  * impersonated seat's line (v4 `components/chat/ImpersonationVoiceDialog.tsx`,
- * `686954937`).
+ * `686954937`; the `draft` stage and its footer from `07b8f0209`).
  *
- * The operator typed a line while wearing a character's seat; this is where they
- * read it back in that character's voice before it posts. Nothing has reached the
- * chat yet, and nothing will until a footer button says so: **Send** posts the
- * proposal (edited or not), **Regenerate** asks again, **Edit original** returns
- * to the composer with the draft intact, **Send as written** posts the operator's
- * own words, and **Cancel** changes nothing.
+ * The operator typed a line while wearing a character's seat. Nothing has
+ * reached the chat yet, and nothing will until a footer button says so.
  *
- * The last two are never disabled once a preview has FAILED — a dead provider
- * must not trap a draft. (They ARE disabled while one is in flight; the failed
- * preview leaves `generating` false, which is what keeps them reachable.)
+ * It opens in one of two states. In the **draft** state (the `ask` mode, or
+ * after a picker change drops a stale proposal) no model has been called: the
+ * operator is presumed to be speaking for the character, so **Send as
+ * written** is the primary action (and Cmd/Ctrl+Enter in the draft), and
+ * **Restate in their voice** is the one button that spends a call. Once a
+ * restatement is in flight or on screen (`always` opens straight into it),
+ * **Send** posts the proposal (edited or not) and **Regenerate** asks again.
+ * **Edit original** returns to the composer with the draft intact, and
+ * **Cancel** changes nothing.
+ *
+ * Send as written and Edit original are never disabled once a preview has
+ * failed — a dead provider must not trap a draft. (They ARE disabled while one
+ * is in flight; the failed preview lands in `review`, which is what keeps them
+ * reachable.)
  *
  * **Two recorded divergences from v4's component:**
  *
@@ -62,7 +69,7 @@ import { VoiceRewriteReviewPanel } from './voice-rewrite-review-panel';
       [closeOnBackdrop]="!generating()"
       (close)="onDialogClose()"
     >
-      <!-- Seat header (v4 :150-172) -->
+      <!-- Seat header (v4 :184-204) -->
       <div class="mb-4 flex items-center gap-3">
         @if (avatarUrl() && !imagesHidden()) {
           <img
@@ -88,8 +95,8 @@ import { VoiceRewriteReviewPanel } from './voice-rewrite-review-panel';
         </div>
       </div>
 
-      <!-- The operator's draft (v4 :174-185) -->
-      <div class="mb-4">
+      <!-- The operator's draft (v4 :206-216) -->
+      <div class="mb-4" (keydown)="onSeedKeyDown($event)">
         <label class="block text-sm qt-text-primary mb-2">Your draft</label>
         <qt-markdown-field
           [value]="seed()"
@@ -100,8 +107,8 @@ import { VoiceRewriteReviewPanel } from './voice-rewrite-review-panel';
         />
       </div>
 
-      <!-- Voice pickers — changing either re-runs on the current draft (v4 :187-232) -->
-      <div class="mb-4 space-y-3">
+      <!-- Voice pickers — changing either drops a stale proposal; nothing re-runs until asked. (v4 :218-262) -->
+      <div #pickers class="mb-4 space-y-3">
         <div>
           <label for="impersonation-voice-profile" class="block text-sm qt-text-primary mb-2">
             How should they say it?
@@ -140,21 +147,29 @@ import { VoiceRewriteReviewPanel } from './voice-rewrite-review-panel';
         }
       </div>
 
-      <!-- The proposal (v4 :234-247) -->
-      <div #proposalBox (keydown)="onProposalKeyDown($event)">
-        <qt-voice-rewrite-review-panel
-          [characterName]="characterName()"
-          [generating]="generating()"
-          [value]="proposal()"
-          [ariaLabel]="proposalAriaLabel()"
-          (valueChange)="proposalChange.emit($event)"
-        />
-        @if (!generating() && proposal().trim().length === 0) {
-          <div class="qt-text-xs mt-2">
-            Nothing came back. Send your own words as written, or go back and rewrite them.
-          </div>
-        }
-      </div>
+      <!-- The proposal — absent until a restatement is asked for. (v4 :264-287) -->
+      @if (isDraft()) {
+        <div class="qt-text-xs">
+          Sending as written posts your words under {{ characterName() }}'s name exactly as typed
+          (Cmd/Ctrl+Enter). Ask for a restatement only if you want {{ characterName() }} to put it
+          in their own voice first.
+        </div>
+      } @else {
+        <div #proposalBox (keydown)="onProposalKeyDown($event)">
+          <qt-voice-rewrite-review-panel
+            [characterName]="characterName()"
+            [generating]="generating()"
+            [value]="proposal()"
+            [ariaLabel]="proposalAriaLabel()"
+            (valueChange)="proposalChange.emit($event)"
+          />
+          @if (!generating() && proposal().trim().length === 0) {
+            <div class="qt-text-xs mt-2">
+              Nothing came back. Send your own words as written, or go back and rewrite them.
+            </div>
+          }
+        </div>
+      }
 
       <div qt-modal-footer class="flex items-center justify-end gap-2 flex-wrap">
         <button
@@ -173,30 +188,49 @@ import { VoiceRewriteReviewPanel } from './voice-rewrite-review-panel';
         >
           Edit original
         </button>
-        <button
-          type="button"
-          class="qt-button qt-button-secondary"
-          [disabled]="generating()"
-          (click)="sendAsWritten.emit()"
-        >
-          Send as written
-        </button>
-        <button
-          type="button"
-          class="qt-button qt-button-secondary"
-          [disabled]="generating() || seed().trim().length === 0"
-          (click)="regenerate.emit()"
-        >
-          Regenerate
-        </button>
-        <button
-          type="button"
-          class="qt-button qt-button-primary"
-          [disabled]="!canSend()"
-          (click)="send.emit(proposal())"
-        >
-          {{ generating() ? 'Rehearsing…' : 'Send' }}
-        </button>
+        @if (isDraft()) {
+          <button
+            type="button"
+            class="qt-button qt-button-secondary"
+            [disabled]="!hasDraft()"
+            (click)="restate.emit()"
+          >
+            Restate in their voice
+          </button>
+          <button
+            type="button"
+            class="qt-button qt-button-primary"
+            [disabled]="!hasDraft()"
+            (click)="sendAsWritten.emit()"
+          >
+            Send as written
+          </button>
+        } @else {
+          <button
+            type="button"
+            class="qt-button qt-button-secondary"
+            [disabled]="generating() || !hasDraft()"
+            (click)="sendAsWritten.emit()"
+          >
+            Send as written
+          </button>
+          <button
+            type="button"
+            class="qt-button qt-button-secondary"
+            [disabled]="generating() || !hasDraft()"
+            (click)="restate.emit()"
+          >
+            Regenerate
+          </button>
+          <button
+            type="button"
+            class="qt-button qt-button-primary"
+            [disabled]="!canSend()"
+            (click)="send.emit(proposal())"
+          >
+            {{ generating() ? 'Rehearsing…' : 'Send' }}
+          </button>
+        }
       </div>
     </qt-modal>
   `,
@@ -223,7 +257,12 @@ export class ImpersonationVoiceDialog {
   /** The operator's draft. Editable here; the service owns the text. */
   readonly seed = input('');
   readonly proposal = input('');
-  readonly generating = input(false);
+  /**
+   * `draft` — no restatement requested; `generating` / `review` — one is in
+   * flight / on screen (v4 `:56-57`). The host maps the service's `idle` to
+   * `draft`, as v4's `ChatModals` does.
+   */
+  readonly stage = input.required<'draft' | 'generating' | 'review'>();
   readonly profileOverride = input<string | null>(null);
   readonly systemPromptOverride = input<string | null>(null);
 
@@ -231,13 +270,16 @@ export class ImpersonationVoiceDialog {
   readonly proposalChange = output<string>();
   readonly send = output<string>();
   readonly sendAsWritten = output<void>();
-  readonly regenerate = output<void>();
+  /** Restate (from the draft state) or Regenerate (from review) — the only call-spending action. */
+  readonly restate = output<void>();
   readonly changeProfile = output<string | null>();
   readonly changeSystemPrompt = output<string | null>();
   readonly editOriginal = output<void>();
   readonly cancel = output<void>();
 
   private readonly proposalBox = viewChild<ElementRef<HTMLElement>>('proposalBox');
+  /** Always rendered — the controlled-select effect's door to the document (the proposal box is absent in the draft). */
+  private readonly pickers = viewChild<ElementRef<HTMLElement>>('pickers');
   private readonly profileSelect = computed(() => this.profileOverride() ?? '');
   private readonly promptSelect = computed(
     () => this.systemPromptOverride() ?? this.selectedSystemPromptId() ?? '',
@@ -268,19 +310,30 @@ export class ImpersonationVoiceDialog {
   protected readonly initial = computed(() => (this.characterName()[0] ?? '?').toUpperCase());
   protected readonly proposalAriaLabel = computed(() => `What ${this.characterName()} will say`);
   protected readonly showPromptPicker = computed(() => this.systemPrompts().length > 1);
+  protected readonly generating = computed(() => this.stage() === 'generating');
+  protected readonly isDraft = computed(() => this.stage() === 'draft');
   protected readonly canSend = computed(
     () => !this.generating() && this.proposal().trim().length > 0,
   );
+  /** v4 `:133`. */
+  protected readonly hasDraft = computed(() => this.seed().trim().length > 0);
 
-  /** v4 `:118-121` — null when the server named neither. */
+  /**
+   * v4 `:135-144` — null when neither is known. Before a restatement, name the
+   * voice the picker has chosen; after one, the voice the server actually used.
+   */
   protected readonly voiceLine = computed(() => {
-    const profile = this.profileName();
-    const model = this.modelName();
-    if (!profile && !model) return null;
-    return model ? `Spoken through ${profile} — ${model}` : `Spoken through ${profile}`;
+    const isDraft = this.isDraft();
+    const override = this.profileOverride();
+    const picked = isDraft && override ? this.profiles().find((p) => p.id === override) : null;
+    const name = picked ? picked.name : this.profileName();
+    const model = picked ? picked.modelName : this.modelName();
+    if (!name && !model) return null;
+    const verb = isDraft ? 'Would be spoken through' : 'Spoken through';
+    return model ? `${verb} ${name} — ${model}` : `${verb} ${name}`;
   });
 
-  /** v4's `Their own voice{profileName ? ` (${profileName})` : ''}` (`:203`). */
+  /** v4's `Their own voice{profileName ? ` (${profileName})` : ''}` (`:231`). */
   protected readonly ownVoiceSuffix = computed(() =>
     this.profileName() ? ` (${this.profileName()})` : '',
   );
@@ -288,7 +341,7 @@ export class ImpersonationVoiceDialog {
   constructor() {
     // Bring the proposal into view the moment it arrives. On a short screen the
     // draft and the pickers can push it below the fold, and a review dialog that
-    // opens with its answer off-screen is not reviewing anything (v4 `:88-94`,
+    // opens with its answer off-screen is not reviewing anything (v4 `:102-108`,
     // an effect keyed on `generating` — including the FIRST render, where v4's
     // effect also fires because it has no "changed" guard).
     afterRenderEffect(() => {
@@ -315,7 +368,7 @@ export class ImpersonationVoiceDialog {
       this.profiles();
       this.systemPrompts();
       untracked(() => {
-        const host = this.proposalBox()?.nativeElement.ownerDocument;
+        const host = this.pickers()?.nativeElement.ownerDocument;
         const profileEl = host?.getElementById('impersonation-voice-profile');
         if (profileEl instanceof HTMLSelectElement) profileEl.value = profile;
         const promptEl = host?.getElementById('impersonation-voice-prompt');
@@ -324,7 +377,7 @@ export class ImpersonationVoiceDialog {
     });
   }
 
-  /** v4 `onClose={generating ? () => {} : onCancel}` (`:136`). */
+  /** v4 `onClose={generating ? () => {} : onCancel}` (`:171`). */
   protected onDialogClose(): void {
     if (this.generating()) return;
     this.cancel.emit();
@@ -338,11 +391,27 @@ export class ImpersonationVoiceDialog {
     this.changeSystemPrompt.emit(value || null);
   }
 
-  /** v4 `handleProposalKeyDown` (`:123-132`) — Cmd/Ctrl+Enter sends. */
+  /** v4 `handleProposalKeyDown` (`:146-154`) — Cmd/Ctrl+Enter sends. */
   protected onProposalKeyDown(event: KeyboardEvent): void {
     if ((event.metaKey || event.ctrlKey) && event.key === 'Enter' && this.canSend()) {
       event.preventDefault();
       this.send.emit(this.proposal());
+    }
+  }
+
+  /**
+   * v4 `handleSeedKeyDown` (`:156-166`). Speaking for the character is the
+   * presumption, so the draft's own shortcut passes it through untouched.
+   */
+  protected onSeedKeyDown(event: KeyboardEvent): void {
+    if (
+      (event.metaKey || event.ctrlKey) &&
+      event.key === 'Enter' &&
+      !this.generating() &&
+      this.hasDraft()
+    ) {
+      event.preventDefault();
+      this.sendAsWritten.emit();
     }
   }
 }

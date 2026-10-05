@@ -3803,6 +3803,21 @@ export interface ConciergeSettingsDto {
   preScreen: ConciergePreScreenSettingsDto;
 }
 
+/**
+ * What happens to a line typed while impersonating a character (the Salon's
+ * Impersonate button — the `chat.impersonatingParticipantIds` overlay) — v4
+ * `lib/schemas/settings.types.ts` `ImpersonationVoiceModeEnum` (`07b8f0209`),
+ * hand-rolled here because the SPA has no zod:
+ *
+ * - `off`    — it posts as typed; no dialog.
+ * - `ask`    — the review dialog opens with the draft and no model call; the
+ *              operator chooses to send it as written or have it restated.
+ * - `always` — the review dialog opens and the restatement starts at once.
+ *
+ * Never applies to a `controlledBy: 'user'` seat.
+ */
+export type ImpersonationVoiceMode = 'off' | 'ask' | 'always';
+
 export interface ChatSettingsDto {
   avatarDisplayMode: 'ALWAYS' | 'GROUP_ONLY' | 'NEVER';
   avatarDisplayStyle: 'CIRCULAR' | 'RECTANGULAR';
@@ -3824,11 +3839,14 @@ export interface ChatSettingsDto {
   // P4.D230 OUT-OF-MANDATE — end of hunk.
   autoScrollOnResponseComplete?: boolean;
   /**
-   * Whether a line typed while impersonating a character is first restated by
-   * that character's own model, for review, before it posts (v4 `686954937`,
-   * `components/settings/chat-settings/types.ts:95-96`). Default false.
+   * What happens to a line typed while impersonating a character: posts as
+   * typed ('off'), opens the review dialog without a model call ('ask'), or
+   * opens it and restates at once ('always') (v4 `07b8f0209`,
+   * `components/settings/chat-settings/types.ts:100-101`). Default `'off'` —
+   * an absent key reads as off, v4's Zod default. Replaced `686954937`'s
+   * 4.10-dev boolean, which the SPA never sends (the server ignores it).
    */
-  impersonationVoiceRewrite?: boolean;
+  impersonationVoiceMode?: ImpersonationVoiceMode;
   /** The composer text-replacement master switch (v4 default true). */
   textReplacementsEnabled?: boolean;
   [key: string]: unknown;

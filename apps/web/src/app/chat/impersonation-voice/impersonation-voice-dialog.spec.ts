@@ -13,6 +13,12 @@ import { ImpersonationVoiceDialog } from './impersonation-voice-dialog';
  * `components/chat/ImpersonationVoiceDialog.tsx`) — every string, control,
  * disabled rule and order in §A, plus the two rules the feature exists for: the
  * two doors that survive a failed preview, and Cmd/Ctrl+Enter.
+ *
+ * Since v4 `07b8f0209` the dialog has a `stage` (`draft` / `generating` /
+ * `review`) in place of a `generating` flag, and two footers. `mount` defaults
+ * to `draft`, as v4's own `renderDialog` does; the review-state blocks pass
+ * `stage: 'review'`. The draft-state block is transcribed from v4's NEW
+ * `__tests__/unit/components/chat/ImpersonationVoiceDialog.test.tsx`.
  */
 
 const PROFILES = {
@@ -56,6 +62,7 @@ async function mount(
   });
   const fixture = TestBed.createComponent(ImpersonationVoiceDialog);
   fixture.componentRef.setInput('characterName', 'Evangeline');
+  fixture.componentRef.setInput('stage', 'draft');
   for (const [k, v] of Object.entries(over)) fixture.componentRef.setInput(k, v);
   fixture.detectChanges();
   for (let i = 0; i < 6; i++) {
@@ -87,6 +94,7 @@ describe('ImpersonationVoiceDialog — the frame', () => {
 
   it('names the seat, its title, and the voice it was spoken through', async () => {
     const f = await mount({
+      stage: 'review',
       characterTitle: 'the Aeronaut',
       profileName: 'Her own desk',
       modelName: 'gpt-seat',
@@ -98,7 +106,7 @@ describe('ImpersonationVoiceDialog — the frame', () => {
   });
 
   it('drops the model half when only the profile is known', async () => {
-    const f = await mount({ profileName: 'Her own desk' });
+    const f = await mount({ stage: 'review', profileName: 'Her own desk' });
     // Read the line itself: the profile picker's own options carry em dashes.
     const line = Array.from((f.nativeElement as HTMLElement).querySelectorAll('.qt-text-xs')).find(
       (el) => (el.textContent ?? '').includes('Spoken through'),
@@ -107,8 +115,53 @@ describe('ImpersonationVoiceDialog — the frame', () => {
   });
 
   it('shows no voice line at all when neither is known', async () => {
-    const f = await mount();
+    const f = await mount({ stage: 'review' });
     expect((f.nativeElement as HTMLElement).textContent).not.toContain('Spoken through');
+    const g = await mount();
+    expect((g.nativeElement as HTMLElement).textContent).not.toContain('spoken through');
+  });
+
+  /**
+   * v4 `ImpersonationVoiceDialog.tsx:135-144`: before a restatement the line
+   * names the voice the PICKER has chosen ("Would be spoken through"); after
+   * one, the voice the server actually used.
+   */
+  it('in the draft, says "Would be spoken through" the seat’s own voice', async () => {
+    const f = await mount({ profileName: 'Her own desk', modelName: 'gpt-seat' });
+    expect((f.nativeElement as HTMLElement).textContent).toContain(
+      'Would be spoken through Her own desk — gpt-seat',
+    );
+  });
+
+  it('in the draft, names the PICKED profile and its model over the seat’s own', async () => {
+    const f = await mount({
+      profileName: 'Her own desk',
+      modelName: 'gpt-seat',
+      profileOverride: 'p-2',
+    });
+    expect((f.nativeElement as HTMLElement).textContent).toContain(
+      'Would be spoken through A borrowed voice — grok-2',
+    );
+  });
+
+  it('in review, the picked profile is NOT read — the server’s answer is', async () => {
+    const f = await mount({
+      stage: 'review',
+      proposal: 'x',
+      profileName: 'Her own desk',
+      modelName: 'gpt-seat',
+      profileOverride: 'p-2',
+    });
+    const text = (f.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('Spoken through Her own desk — gpt-seat');
+    expect(text).not.toContain('Would be spoken through');
+  });
+
+  it('the verb follows the stage while generating too ("Spoken through")', async () => {
+    const f = await mount({ stage: 'generating', profileName: 'Her own desk' });
+    const text = (f.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('Spoken through Her own desk');
+    expect(text).not.toContain('Would be spoken through');
   });
 
   it('falls back to the initial when there is no portrait', async () => {
@@ -119,9 +172,198 @@ describe('ImpersonationVoiceDialog — the frame', () => {
   });
 });
 
-describe('ImpersonationVoiceDialog — the five doors, in v4’s order', () => {
+/**
+ * The draft state — nothing has been sent to a model. Transcribed case for case
+ * from v4 `ImpersonationVoiceDialog.test.tsx:76-122` (`07b8f0209`), with v4's
+ * names; v4 finds buttons by role + accessible name, v5 by the footer's
+ * trimmed text (the same thing for a text-only button).
+ */
+describe('ImpersonationVoiceDialog — the draft state (v4 ImpersonationVoiceDialog.test.tsx)', () => {
+  function seedBox(f: ComponentFixture<ImpersonationVoiceDialog>): HTMLElement {
+    // v4 fires keyDown on the editor (`getByLabelText('Your draft')`) and lets
+    // it bubble to the wrapper's `onKeyDown`; v5 does the same from the field.
+    return (f.nativeElement as HTMLElement).querySelector('[aria-label="Your draft"]')!;
+  }
+  function pressIn(el: HTMLElement, init: KeyboardEventInit): boolean {
+    const ev = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      bubbles: true,
+      cancelable: true,
+      ...init,
+    });
+    el.dispatchEvent(ev);
+    return ev.defaultPrevented;
+  }
+
+  it('offers Send as written and Restate, and neither Send nor Regenerate', async () => {
+    const f = await mount({ seed: 'I tell him I will take the job.' });
+    const labels = buttons(f).map((b) => (b.textContent ?? '').trim());
+    expect(labels).toContain('Send as written');
+    expect(labels).toContain('Restate in their voice');
+    expect(labels).not.toContain('Send');
+    expect(labels).not.toContain('Regenerate');
+    expect(
+      (f.nativeElement as HTMLElement).querySelector('[aria-label="What Evangeline will say"]'),
+    ).toBeNull();
+  });
+
+  it('makes Send as written the primary action', async () => {
+    const f = await mount({ seed: 'I tell him I will take the job.' });
+    expect(button(f, 'Send as written').className).toContain('qt-button-primary');
+    expect(button(f, 'Restate in their voice').className).toContain('qt-button-secondary');
+  });
+
+  it('sends as written on click', async () => {
+    const f = await mount({ seed: 'I tell him I will take the job.' });
+    const seen: string[] = [];
+    f.componentInstance.sendAsWritten.subscribe(() => seen.push('asWritten'));
+    f.componentInstance.restate.subscribe(() => seen.push('restate'));
+    button(f, 'Send as written').click();
+    expect(seen).toEqual(['asWritten']);
+  });
+
+  it('asks for a restatement only when Restate is pressed', async () => {
+    const f = await mount({ seed: 'I tell him I will take the job.' });
+    const seen: string[] = [];
+    f.componentInstance.sendAsWritten.subscribe(() => seen.push('asWritten'));
+    f.componentInstance.restate.subscribe(() => seen.push('restate'));
+    button(f, 'Restate in their voice').click();
+    expect(seen).toEqual(['restate']);
+  });
+
+  it('sends as written on Cmd/Ctrl+Enter in the draft', async () => {
+    const f = await mount({ seed: 'I tell him I will take the job.' });
+    const seen: string[] = [];
+    f.componentInstance.sendAsWritten.subscribe(() => seen.push('asWritten'));
+    f.componentInstance.restate.subscribe(() => seen.push('restate'));
+    expect(pressIn(seedBox(f), { metaKey: true })).toBe(true);
+    expect(seen).toEqual(['asWritten']);
+    pressIn(seedBox(f), { ctrlKey: true });
+    expect(seen).toEqual(['asWritten', 'asWritten']);
+  });
+
+  it('cannot send or restate an empty draft', async () => {
+    const f = await mount({ seed: '   ' });
+    expect(button(f, 'Send as written').disabled).toBe(true);
+    expect(button(f, 'Restate in their voice').disabled).toBe(true);
+    const seen: string[] = [];
+    f.componentInstance.sendAsWritten.subscribe(() => seen.push('asWritten'));
+    pressIn(seedBox(f), { metaKey: true });
+    expect(seen).toEqual([]);
+  });
+
+  // v5 additions over v4's block: the order, the bare Enter, the review arm of
+  // the draft shortcut, and the note.
+  it('carries v4’s four draft buttons, in v4’s order (`:291-326`)', async () => {
+    const f = await mount({ seed: 'a draft' });
+    expect(buttons(f).map((b) => (b.textContent ?? '').trim())).toEqual([
+      'Cancel',
+      'Edit original',
+      'Restate in their voice',
+      'Send as written',
+    ]);
+    expect(buttons(f).map((b) => b.disabled)).toEqual([false, false, false, false]);
+  });
+
+  it('a bare Enter in the draft never sends', async () => {
+    const f = await mount({ seed: 'a draft' });
+    const seen: string[] = [];
+    f.componentInstance.sendAsWritten.subscribe(() => seen.push('asWritten'));
+    // (The editor itself consumes a bare Enter as a line break, so whether the
+    // event was default-prevented says nothing about the dialog.)
+    pressIn(seedBox(f), {});
+    expect(seen).toEqual([]);
+  });
+
+  it('Cmd/Ctrl+Enter in the draft is refused while a restatement is in flight', async () => {
+    const f = await mount({ stage: 'generating', seed: 'a draft' });
+    const seen: string[] = [];
+    f.componentInstance.sendAsWritten.subscribe(() => seen.push('asWritten'));
+    pressIn(seedBox(f), { metaKey: true });
+    expect(seen).toEqual([]);
+  });
+
+  it('Cmd/Ctrl+Enter in the draft still sends as written in review (`!generating && hasDraft`)', async () => {
+    const f = await mount({ stage: 'review', seed: 'a draft', proposal: 'a proposal' });
+    const seen: string[] = [];
+    f.componentInstance.sendAsWritten.subscribe(() => seen.push('asWritten'));
+    f.componentInstance.send.subscribe((v) => seen.push(`send:${v}`));
+    pressIn(seedBox(f), { metaKey: true });
+    expect(seen).toEqual(['asWritten']);
+  });
+
+  it('says what the two choices do, in v4’s words (`:264-270`)', async () => {
+    const f = await mount({ seed: 'a draft' });
+    const note = Array.from((f.nativeElement as HTMLElement).querySelectorAll('.qt-text-xs')).find(
+      (el) => (el.textContent ?? '').includes('Sending as written'),
+    );
+    expect((note?.textContent ?? '').replace(/\s+/g, ' ').trim()).toBe(
+      "Sending as written posts your words under Evangeline's name exactly as typed " +
+        '(Cmd/Ctrl+Enter). Ask for a restatement only if you want Evangeline to put it in ' +
+        'their own voice first.',
+    );
+    expect((f.nativeElement as HTMLElement).textContent).not.toContain('Nothing came back.');
+  });
+
+  it('the note is gone once a restatement is asked for', async () => {
+    const f = await mount({ stage: 'review', seed: 'a draft', proposal: 'x' });
+    expect((f.nativeElement as HTMLElement).textContent).not.toContain('Sending as written posts');
+  });
+});
+
+describe('ImpersonationVoiceDialog — the review state, in v4’s order', () => {
+  it('offers Send, Regenerate and Send as written (v4 `:124-131`)', async () => {
+    const f = await mount({
+      stage: 'review',
+      seed: 'a draft',
+      proposal: 'Very well. I shall take it.',
+    });
+    const labels = buttons(f).map((b) => (b.textContent ?? '').trim());
+    expect(labels).toContain('Send');
+    expect(labels).toContain('Regenerate');
+    expect(labels).toContain('Send as written');
+    expect(labels).not.toContain('Restate in their voice');
+  });
+
+  it('Send posts the proposal; Regenerate asks again (v4 `:133-139`)', async () => {
+    const f = await mount({
+      stage: 'review',
+      seed: 'a draft',
+      proposal: 'Very well. I shall take it.',
+    });
+    const sent: string[] = [];
+    let restated = 0;
+    f.componentInstance.send.subscribe((v) => sent.push(v));
+    f.componentInstance.restate.subscribe(() => (restated += 1));
+    button(f, 'Send').click();
+    expect(sent).toEqual(['Very well. I shall take it.']);
+    button(f, 'Regenerate').click();
+    expect(restated).toBe(1);
+  });
+
+  it('keeps Send as written open after a failed restatement (v4 `:141-145`)', async () => {
+    const f = await mount({
+      stage: 'review',
+      seed: 'I tell him I will take the job.',
+      proposal: '',
+    });
+    expect(button(f, 'Send').disabled).toBe(true);
+    expect(button(f, 'Send as written').disabled).toBe(false);
+  });
+
+  it('wears v4’s classes: only Send is primary', async () => {
+    const f = await mount({ stage: 'review', seed: 'a draft', proposal: 'a proposal' });
+    expect(buttons(f).map((b) => b.classList.contains('qt-button-primary'))).toEqual([
+      false,
+      false,
+      false,
+      false,
+      true,
+    ]);
+  });
+
   it('carries exactly v4’s five buttons, in v4’s order', async () => {
-    const f = await mount({ proposal: 'a proposal' });
+    const f = await mount({ stage: 'review', proposal: 'a proposal' });
     expect(buttons(f).map((b) => (b.textContent ?? '').trim())).toEqual([
       'Cancel',
       'Edit original',
@@ -132,15 +374,15 @@ describe('ImpersonationVoiceDialog — the five doors, in v4’s order', () => {
   });
 
   it('disables every door while a preview is in flight, and relabels Send', async () => {
-    const f = await mount({ generating: true, seed: 'a draft', proposal: 'stale' });
+    const f = await mount({ stage: 'generating', seed: 'a draft', proposal: 'stale' });
     expect(buttons(f).map((b) => b.disabled)).toEqual([true, true, true, true, true]);
     expect(button(f, 'Rehearsing…')).toBeTruthy();
   });
 
   it('a FAILED preview leaves Send as written and Edit original reachable', async () => {
-    // The failure lands as `generating: false` with an empty proposal — a dead
+    // The failure lands as `stage: 'review'` with an empty proposal — a dead
     // provider must never trap a draft behind a dialog with nothing to press.
-    const f = await mount({ generating: false, proposal: '', seed: 'my own words' });
+    const f = await mount({ stage: 'review', proposal: '', seed: 'my own words' });
     expect(button(f, 'Send as written').disabled).toBe(false);
     expect(button(f, 'Edit original').disabled).toBe(false);
     expect(button(f, 'Cancel').disabled).toBe(false);
@@ -149,24 +391,26 @@ describe('ImpersonationVoiceDialog — the five doors, in v4’s order', () => {
   });
 
   it('names the empty proposal out loud', async () => {
-    const f = await mount({ generating: false, proposal: '   ' });
+    const f = await mount({ stage: 'review', proposal: '   ' });
     expect((f.nativeElement as HTMLElement).textContent).toContain(
       'Nothing came back. Send your own words as written, or go back and rewrite them.',
     );
   });
 
   it('says nothing about an empty proposal while one is still in flight', async () => {
-    const f = await mount({ generating: true, proposal: '' });
+    const f = await mount({ stage: 'generating', proposal: '' });
     expect((f.nativeElement as HTMLElement).textContent).not.toContain('Nothing came back.');
   });
 
-  it('Regenerate is refused on a blank draft', async () => {
-    const f = await mount({ seed: '   ', proposal: 'x' });
+  it('Regenerate AND Send as written are refused on a blank draft (`generating || !hasDraft`)', async () => {
+    const f = await mount({ stage: 'review', seed: '   ', proposal: 'x' });
     expect(button(f, 'Regenerate').disabled).toBe(true);
+    expect(button(f, 'Send as written').disabled).toBe(true);
+    expect(button(f, 'Send').disabled).toBe(false);
   });
 
   it('Send emits the proposal', async () => {
-    const f = await mount({ proposal: 'I shall take the position.' });
+    const f = await mount({ stage: 'review', proposal: 'I shall take the position.' });
     const seen: string[] = [];
     f.componentInstance.send.subscribe((v) => seen.push(v));
     button(f, 'Send').click();
@@ -174,21 +418,21 @@ describe('ImpersonationVoiceDialog — the five doors, in v4’s order', () => {
   });
 
   it('the other four doors emit their own events', async () => {
-    const f = await mount({ seed: 'a draft', proposal: 'a proposal' });
+    const f = await mount({ stage: 'review', seed: 'a draft', proposal: 'a proposal' });
     const seen: string[] = [];
     f.componentInstance.cancel.subscribe(() => seen.push('cancel'));
     f.componentInstance.editOriginal.subscribe(() => seen.push('edit'));
     f.componentInstance.sendAsWritten.subscribe(() => seen.push('asWritten'));
-    f.componentInstance.regenerate.subscribe(() => seen.push('regenerate'));
+    f.componentInstance.restate.subscribe(() => seen.push('restate'));
     button(f, 'Cancel').click();
     button(f, 'Edit original').click();
     button(f, 'Send as written').click();
     button(f, 'Regenerate').click();
-    expect(seen).toEqual(['cancel', 'edit', 'asWritten', 'regenerate']);
+    expect(seen).toEqual(['cancel', 'edit', 'asWritten', 'restate']);
   });
 });
 
-describe('ImpersonationVoiceDialog — Cmd/Ctrl+Enter', () => {
+describe('ImpersonationVoiceDialog — Cmd/Ctrl+Enter in the proposal', () => {
   function press(f: ComponentFixture<ImpersonationVoiceDialog>, init: KeyboardEventInit): boolean {
     const box = (f.nativeElement as HTMLElement).querySelector(
       'qt-voice-rewrite-review-panel',
@@ -204,7 +448,7 @@ describe('ImpersonationVoiceDialog — Cmd/Ctrl+Enter', () => {
   }
 
   it('sends on Cmd+Enter', async () => {
-    const f = await mount({ proposal: 'ready' });
+    const f = await mount({ stage: 'review', proposal: 'ready' });
     const seen: string[] = [];
     f.componentInstance.send.subscribe((v) => seen.push(v));
     expect(press(f, { metaKey: true })).toBe(true);
@@ -212,7 +456,7 @@ describe('ImpersonationVoiceDialog — Cmd/Ctrl+Enter', () => {
   });
 
   it('sends on Ctrl+Enter', async () => {
-    const f = await mount({ proposal: 'ready' });
+    const f = await mount({ stage: 'review', proposal: 'ready' });
     const seen: string[] = [];
     f.componentInstance.send.subscribe((v) => seen.push(v));
     press(f, { ctrlKey: true });
@@ -220,7 +464,7 @@ describe('ImpersonationVoiceDialog — Cmd/Ctrl+Enter', () => {
   });
 
   it('a bare Enter never sends', async () => {
-    const f = await mount({ proposal: 'ready' });
+    const f = await mount({ stage: 'review', proposal: 'ready' });
     const seen: string[] = [];
     f.componentInstance.send.subscribe((v) => seen.push(v));
     expect(press(f, {})).toBe(false);
@@ -228,7 +472,7 @@ describe('ImpersonationVoiceDialog — Cmd/Ctrl+Enter', () => {
   });
 
   it('does not send when Send itself is refused', async () => {
-    const f = await mount({ proposal: '   ' });
+    const f = await mount({ stage: 'review', proposal: '   ' });
     const seen: string[] = [];
     f.componentInstance.send.subscribe((v) => seen.push(v));
     press(f, { metaKey: true });
@@ -278,9 +522,12 @@ describe('ImpersonationVoiceDialog — the pickers', () => {
   it('re-applies the override on the render that fills the list (the controlled-select rule)', async () => {
     // A profile chosen by the SERVICE (a re-run started from Regenerate, say)
     // must show on the control; a naive one-time binding loses it because the
-    // options do not exist on the first render.
+    // options do not exist on the first render. Run in BOTH stages: the draft
+    // has no proposal panel, so the effect cannot lean on it for a document.
     const f = await mount({ profileOverride: 'p-2' });
     expect(select(f, 'impersonation-voice-profile')!.value).toBe('p-2');
+    const g = await mount({ stage: 'review', proposal: 'x', profileOverride: 'p-2' });
+    expect(select(g, 'impersonation-voice-profile')!.value).toBe('p-2');
   });
 
   // `removing-a-select-option-makes-a-spec-vacuous`: assert the select's
@@ -322,7 +569,7 @@ describe('ImpersonationVoiceDialog — the pickers', () => {
 
   it('both pickers are frozen while a preview is in flight', async () => {
     const f = await mount({
-      generating: true,
+      stage: 'generating',
       systemPrompts: [
         { id: 's-1', name: 'Plain' },
         { id: 's-2', name: 'Florid' },
@@ -364,21 +611,21 @@ describe('ImpersonationVoiceDialog — the draft and the proposal', () => {
   });
 
   it('labels the proposal panel for this character', async () => {
-    const f = await mount({ proposal: 'a proposal' });
+    const f = await mount({ stage: 'review', proposal: 'a proposal' });
     const el = f.nativeElement as HTMLElement;
     expect(el.textContent).toContain('What Evangeline will say');
     expect(el.querySelector('[aria-label="What Evangeline will say"]')).not.toBeNull();
   });
 
   it('shows the quill in place of the proposal while generating', async () => {
-    const f = await mount({ generating: true });
+    const f = await mount({ stage: 'generating' });
     const el = f.nativeElement as HTMLElement;
     expect(el.textContent).toContain('Generating in character…');
     expect(el.querySelector('[aria-label="What Evangeline will say"]')).toBeNull();
   });
 
   it('the backdrop cannot dismiss a dialog mid-preview', async () => {
-    const f = await mount({ generating: true });
+    const f = await mount({ stage: 'generating' });
     const seen: string[] = [];
     f.componentInstance.cancel.subscribe(() => seen.push('cancel'));
     (f.nativeElement as HTMLElement).querySelector<HTMLElement>('.qt-dialog-overlay')!.click();
@@ -386,7 +633,7 @@ describe('ImpersonationVoiceDialog — the draft and the proposal', () => {
   });
 
   it('…but does dismiss one at rest, as Cancel would', async () => {
-    const f = await mount({ proposal: 'a proposal' });
+    const f = await mount({ stage: 'review', proposal: 'a proposal' });
     const seen: string[] = [];
     f.componentInstance.cancel.subscribe(() => seen.push('cancel'));
     (f.nativeElement as HTMLElement).querySelector<HTMLElement>('.qt-dialog-overlay')!.click();

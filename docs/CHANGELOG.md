@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-05 — feat(spa): the impersonated-line voice becomes three modes — ask opens the dialog with no model call, Restate is the one call, pickers only drop a stale proposal (P4.D252, v4 07b8f0209)
+
+_Versions: SPA 0.5.803._
+
+The SPA half of v4 `07b8f0209`. The chat setting is now `impersonationVoiceMode: 'off' | 'ask' | 'always'` (a hand-rolled union in `core-contract.ts`; an absent key reads as `'off'`), and the boolean is gone from the SPA. The gate fires on any mode but `off`. The state machine gains a `draft` stage: under `ask` the review dialog opens on the operator's draft without dispatching `chatImpersonationVoicePreview`; under `always` it starts the restatement at once as before. `regenerate` becomes `restate` (refused on an empty draft), and changing either picker now clears the proposal and the resolved voice and returns to `draft` without a new call. The dialog takes `stage` instead of `generating`: in `draft` it shows v4's two-sentence note and a footer of Cancel / Edit original / Restate in their voice / Send as written (primary), and Cmd/Ctrl+Enter in the draft sends it as written; in review the old footer stays, with Send as written now also disabled on an empty draft. The voice line reads "Would be spoken through" the picked profile before a restatement. The portrait badge and the Send button share one `voiceRehearsalTitle(cue, name, where)` with v4's four strings; the Salon passes the mode (or null) as the cue and maps the service's `idle` to `draft` for the dialog. The Composer card is a fieldset with v4's legend, reworded paragraph and three radios (Never / Ask each time / Always restate) saving `{ impersonationVoiceMode }` only; a refused save re-lights the stored radio. Specs transcribed case for case from v4's three new or re-shaped client specs plus the gate's three mode cases; eight mutation proofs each redden their named tests. SPA 467 files / 8,879 tests, lint and build clean.
+
 #### 2026-10-05 — docs(porting): the P4.D251 lane record — the voice-mode server half landed; the order marked LANE COMPLETE
 
 _Docs-only change._

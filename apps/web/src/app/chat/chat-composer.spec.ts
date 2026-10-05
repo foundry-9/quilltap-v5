@@ -700,9 +700,10 @@ describe('ChatComposer — the Post Office gutter entries (v4 ComposerGutterTool
 
 /**
  * The In Their Own Words cue on the composer (v4 `686954937`,
- * `ChatComposer.tsx:505-514`): the Send button's title ladder and the quill
- * badge on the speaking-as portrait. Informational only — the gate lives in the
- * Salon's `ImpersonationVoiceState`.
+ * `ChatComposer.tsx:505-514`; a MODE since `07b8f0209`, `:552-553`): the Send
+ * button's title ladder and the quill badge on the speaking-as portrait, both
+ * worded by the ONE `voiceRehearsalTitle`. Informational only — the gate lives
+ * in the Salon's `ImpersonationVoiceState`.
  */
 describe('ChatComposer — the voice-rehearsal cue', () => {
   afterEach(() => {
@@ -721,21 +722,27 @@ describe('ChatComposer — the voice-rehearsal cue', () => {
     const fixture = render();
     fixture.componentRef.setInput('hasActiveCharacters', true);
     fixture.componentRef.setInput('speakingAs', { name: 'Evangeline', avatarUrl: null });
-    fixture.componentRef.setInput('voiceRehearsalArmed', true);
+    fixture.componentRef.setInput('voiceRehearsal', 'always');
     for (const [k, v] of Object.entries(over)) fixture.componentRef.setInput(k, v);
     fixture.detectChanges();
     await settle(fixture);
     return fixture;
   }
 
-  it("names the seat the draft will go to, in v4's exact sentence", async () => {
+  it("always: names the seat the draft will go to, in v4's exact sentence", async () => {
     expect(sendTitle(await armed())).toBe(
       'Sends your draft to Evangeline to say in their own words first',
     );
   });
 
+  it("ask: says the draft opens for review, in v4's exact sentence", async () => {
+    expect(sendTitle(await armed({ voiceRehearsal: 'ask' }))).toBe(
+      'Opens your draft for review — send it as written or have Evangeline restate it',
+    );
+  });
+
   it('falls back to "Send message" when the feature is not armed', async () => {
-    expect(sendTitle(await armed({ voiceRehearsalArmed: false }))).toBe('Send message');
+    expect(sendTitle(await armed({ voiceRehearsal: null }))).toBe('Send message');
   });
 
   it('falls back when armed but there is no seat to name (v4 `armed && speakingAs`)', async () => {
@@ -773,8 +780,32 @@ describe('ChatComposer — the voice-rehearsal cue', () => {
   });
 
   it('…and leaves the portrait bare when it is not armed', async () => {
-    const fixture = await armed({ voiceRehearsalArmed: false });
+    const fixture = await armed({ voiceRehearsal: null });
     expect(fixture.nativeElement.querySelector('.qt-speaking-as-avatar-voice-badge')).toBeNull();
+  });
+
+  it('passes the MODE through, so the portrait and Send say the same thing', async () => {
+    const fixture = await armed({ voiceRehearsal: 'ask' });
+    const cue = fixture.nativeElement.querySelector('.qt-speaking-as-avatar') as HTMLElement;
+    expect(cue.getAttribute('title')).toBe(
+      'Speaking as Evangeline — your draft opens for review; send it as written or have Evangeline restate it',
+    );
+  });
+
+  /**
+   * P4.D252 Tier 2 item 10: v4 leaves the badge's `aria-hidden` and the
+   * avatar's `aria-label` alone under every cue — the cue lives in the title.
+   */
+  it("leaves the badge's aria-hidden and the avatar's aria-label unmoved by the cue", async () => {
+    for (const mode of ['ask', 'always', null] as const) {
+      TestBed.resetTestingModule();
+      const fixture = await armed({ voiceRehearsal: mode });
+      const cue = fixture.nativeElement.querySelector('.qt-speaking-as-avatar') as HTMLElement;
+      expect(cue.getAttribute('aria-label')).toBe('Speaking as Evangeline');
+      const badge = cue.querySelector('.qt-speaking-as-avatar-voice-badge');
+      if (mode) expect(badge?.getAttribute('aria-hidden')).toBe('true');
+      else expect(badge).toBeNull();
+    }
   });
 });
 
