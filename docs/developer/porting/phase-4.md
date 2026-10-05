@@ -7124,6 +7124,173 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
+## The `07b8f0209` follow-ups + restore round (P4.147 ∥ P4.148 ∥ P4.149 ∥ P4.150 ∥ P4.151 ∥ P4.152) — ORDERED 2026-10-05
+
+**Baseline `07b8f0209`; v4 AT the baseline at the planning probe (HEAD
+`07b8f0209`, `origin/main` agreeing after `git fetch --all`, tree CLEAN,
+`bugfix` `1a2b2164c` and `release` `8fbf2afe0` unmoved); the ledger's §3 is
+EMPTY, so this round absorbs NO drift row and the baseline does NOT move at
+its unification; the regen rule is NO PIN REQUIRED, but every lane pins
+regardless (`/tmp/qt-v4-pin-<order>-07b8f0209`).** The round the
+`07b8f0209` unification named as NEXT item 2 — the follow-ups smalls round
+(its own OPEN items plus the `52d6e7ecd` and `e5c6bd0c0` unifications' lists,
+which chain back to the P4.139–P4.144 and P4.D245–P4.D248 OPEN items) —
+PLUS the three dogfood orders the 2026-10-05 walk proposed (#141 + #142 as
+ONE restore order, #140 as a smalls order). **Six fresh read-only surveys**
+(`work-orders/surveys/2026-10-05-07b8f0209-followups/`, committed with the
+orders; Opus agents, one per lane) measured the scope first and overturned
+a dozen recorded premises — the orders follow the measurements, not the
+paragraphs that named the items (each order's §R.4 and Survey-verified
+section carries its corrections). Six lanes, disjoint ownership, two
+shared contracts (C1: the ONE `fold_properties` home P4.148 delivers and
+P4.147's twin folds onto; C2: the base-repository create-failure log home
+P4.149 delivers and P4.148's import twin folds onto — both the P4.139/P4.142
+"lane-local twin + §S fold" pattern, no pick-order dependency). `api/
+types.rs` and `api/engine.rs` are FROZEN; `db/mod.rs` moves for P4.148
+alone; `db/chat_informs.rs` is split production (P4.149) / test module
+(the unifier, §S.3); `services/chat_create.rs` + `chat_enrichment.rs` are
+split by named hunk (P4.150 only).
+
+- **P4.147 — the restore order (dogfood #141 + #142 + the restore riders;
+  core + harness; the most capable tier):** `work-orders/p4.147-restore-
+  archive-store-pointers-uploads-fresh-target.md` — a `replace` restore
+  keeps every character on the ARCHIVE's vault and every project/group on
+  its archive store (the pointer PRESERVED at phases 6 / 13 / 13a whenever
+  the archive carries that store, no fresh store minted — Shape A; ONE new
+  pub slim-linked create on `StoreBackedRepository`), the archive's
+  built-in pointers pre-applied after 22a so the files phase resolves
+  Uploads to the archive's store on a fresh or re-minted target; both
+  RULED divergences pinned both ways (`FRESH_STORE_RESIDUAL` on the RAW
+  dumps before normalization; `FRESH_TARGET_UPLOADS` on three new
+  no-alignment cases), the fallback arms convergent, the §7 acceptance
+  invariants v5-only; riders — the whole project/group property bag on the
+  fallback arm (P4.146 item 13), the inform `permanent` arm CONVERGED on
+  v4's Zod skip with v4's two lines (P4.D249), P4.143 item 14's two restore
+  halves + the `sqlite error:` tail on every `warn_row!`; two NEW derived
+  archives, ONE `system-restore` regen; the writer and `uuid_remap`
+  untouched. Rulings at planning: Shape A; `replace` only (new-account a
+  named follow-up); pre-apply only pointers naming a restored store;
+  converge the inform arm.
+- **P4.148 — dogfood #140 + the projects/groups data-layer smalls (core +
+  harness; Opus):** `work-orders/p4.148-import-warning-text-projects-
+  groups-data-layer.md` — every `.qtap` import warning's BARE tail through
+  ONE import helper over `db::fallback::error_text` at the ~53 pre-stringify
+  + ~20 push sites (the prefix enters by TWO routes), a NEW `import_warning_
+  text_guard` census, the `system_import_state` engine mask LIFTED
+  red-first (six cases); the project import VALIDATING before it writes
+  (the measured write-before-validate TRAP, reproduced red-first);
+  `parse_properties` carrying v4's hex / 50-code-point / UUID / ON-OFF rules
+  at EVERY site with the ZodError bytes (ONE new regex constructor in
+  `api/zod_issues.rs`; the Friday copy's bags counted first); the
+  `fold_properties` (contract C1) and `double_option` (NEW `db/serde_
+  tristate.rs`) homes; the SIX missing `z.uuid()` gates, the GET's `[Projects
+  v1]` error line, the Scenarios-folder WARN in v4's order, the `tags`
+  coercion, the missing-character roster arm, the 201 pins; P4.143's import
+  DB-error arm through the C2 twin (`fallback_home_guard` RED by design by
+  ONE offender until §S.1a); the twelve snake_case WARN fields. Rulings:
+  the Zod half closes for PROPERTIES only (the nine serde rows stay
+  recorded); tighten reads too; fix the TRAP at the import site.
+- **P4.149 — the repository-fallback class, round 3 (core + harness; the
+  most capable tier):** `work-orders/p4.149-repository-fallbacks-round3-
+  rethrow-homes-profile-drop-held-sites.md` — v4's base RETHROW lines
+  (`Error deleting/creating/updating entity` — log-and-propagate, NOT
+  fallbacks; the survey's headline correction) as `db::fallback` homes
+  with the chat-informs bulk wraps above them; the BLOB-named profile
+  DROPPED per row as v4's `validateSafe` does (42 callers move; the title
+  job completes); the strict scope honoured by every importer-reachable
+  home through strict-aware SIBLINGS + a scripted reachability pass;
+  `list_chats`' first read + the chat PUT's project gate (`api/salon.rs`,
+  error arms only) as v4's fallback reads; option (iii) on the 23 held
+  sites (#10, #21, #12 converted; twenty re-classed `strict-by-ruling
+  (write-path)`; #13/#22/#8 candidate filings); the sync ruling WRITTEN UP
+  for the human, not ruled; P4.D245's 6b/6c (the collector made
+  infallible) and P4.144's memory-repository lines; the two standing-order
+  corpus rows (B1) folded in so `chat_informs_tier2` has ONE owner.
+- **P4.150 — host boot + model-layer + chat-create key smalls (core + host
+  + web + harness; Opus):** `work-orders/p4.150-host-boot-model-layer-
+  chat-create-key-smalls.md` — the four `doc_mount_points` ALTER self-heals
+  with v4's four INFO lines IN `builtin_mounts.rs` (the `points-pre-alter`
+  recorded divergence RETIRED red-first, proven two-sided); the collapse's
+  ONE line with `durationMs` (the host's v5-only summary DELETED); the two
+  guards honouring `QT_V4_CHECKOUT`; the extractor's caller-neutral
+  `refusal_notice`; Google's `No parts found in Google response candidate`
+  WARN on both paths through a real-SDK `.recorded` row; the
+  `transport_kind` / send-side `policy` asserts (D3 = the P4.151 survey's
+  F2/F3, ONE owner); the greeting's corrupt-key pin in `chat_create.rs`'s
+  own module + the two hand-wraps folded; `ProductionSpineFactory::new`
+  taking the display zone as a REQUIRED argument with a `TimeZone::get(`
+  hunt in the zone census. Rulings: port only the four per-boot ALTERs
+  (`alignDocMountPointsSchema` NO-PORT); the structural pass's position a
+  recorded divergence; the five dead wrappers wait for the human.
+- **P4.151 — harness / test-craft smalls (harness + oracle + fixtures
+  only, ZERO core hunks; Opus):** `work-orders/p4.151-harness-test-craft-
+  smalls-zod-rows-ensure-cells-google-wire-pdf-pair.md` — v4's real
+  `ChatSettingsSchema` over a stored `'maybe'` + six siblings in
+  `repository-zod-messages.ts` (the unit literal made oracle-backed); TEXT
+  / REAL / BLOB / `'1'` legacy cells in the voice-mode ensure corpus with
+  `typeof()` compared first (SQLite's INTEGER affinity is the trap); the
+  swipe-dedup row in `regenerate_swipe_tier3`; the four-mode informs
+  ensure differential; a NEW `chat_informs_in_force_census` on the shared
+  lexer (the old core test deleted by the unifier, §S.3); the Google
+  `.wire` row under a rewritten `assert_catch_lines` (moved here from
+  P4.150's list); the wizard caller's KEY recorded (moved here from
+  P4.150's list); a PDF `document` case in both wizard corpora under a
+  scripted converter on both sides over the REBUILT `character-generators-
+  *` pair (this lane ALONE; nine readers by name; §S.4). Rulings: the
+  parity design is the whole proof; rebuild the pair; omit the BLOB-mode
+  row; a recorded note closes B5.
+- **P4.152 — Angular SPA smalls (Angular only; Opus):** `work-orders/
+  p4.152-spa-smalls-project-detail-toasts-picker-refocus-greeting-wait.md`
+  — the NINE project-detail handlers (four files) that toast the server's
+  message made v4's three-way branch with v4's fixed sentence each (four
+  currently show v4's CATCH fallback — a cases table copied from the
+  Characters card's, RED on `main` first); the picker refocus on
+  re-expand via `afterRenderEffect`; the standing-inform beat's greeting
+  wait as a `chatGet` poll + the `Send message` wait; the hover guard; the
+  three recorded v5 additions stated in doc comments. Rulings: the `tags`
+  coercion is P4.148's; the banner and the unlink toast stay; the
+  network-failure toast is NO-PORT by the transport convention; the two
+  intermittents get a counter line only.
+
+**Fences:** `services/backup/restore/**` + `db/store_backed.rs` P4.147;
+`services/quilltap_import/**`, `db/{projects,groups,document_store_
+overlay}.rs`, NEW `db/serde_tristate.rs` + `db/mod.rs`, `services/mount_
+index/sync/types.rs` (one line), `api/projects.rs`, `api/zod_issues.rs`
+P4.148; `db/fallback.rs` + the named repository homes + `services/fold_
+episode_pass.rs` + `chat_override.rs` + the `api/salon.rs` / `api/chat_
+informs.rs` / `api/chat_cast.rs` / `file_storage.rs` carve-outs P4.149;
+`crates/quilltap-host/**`, `builtin_mounts.rs`, `converters.rs`, `model/**`,
+the `chat_create.rs` / `chat_enrichment.rs` named hunks P4.150;
+harness-only P4.151 (the `character-generators-*` rebuild); `apps/web/**`
+P4.152; the backup writer, `uuid_remap*`, `api/types.rs`, `api/engine.rs`,
+`harness/tools/recipe_sweep.py`, `help/**`, `docs/v4/**` for NOBODY.
+**Execution:** six branches cut from `main` at the orders' commit;
+worktree per lane, the five Rust lanes cloning main's warmed `target/`
+(`cp -cR`); P4.147 + P4.149 the most capable tier, the other four Opus;
+every Rust lane announces sweeps (one at a time); at most two workspace
+gates at once; one Playwright run at a time (P4.152 only); cherry-pick
+order **P4.149 → P4.148 → P4.147 → P4.150 → P4.151 → P4.152**; the unifier
+runs the two §S.1 folds, deletes the old in-force census test (§S.3),
+regenerates the rebuilt pair's nine readers (§S.4), recounts versions
+(core bumped by FOUR lanes), lands the §S.7 handoffs (incl. the plain
+`GroupsRepository::create` deletion if dead), moves #140/#141/#142 to
+FIXED and strikes the standing notes, and lists the candidate v4 filings
+(#141, #142, the sync walker hazard, #13/#22/#8) for the human.
+**Rulings made at planning for the human to confirm or overrule before
+the lanes launch** (each order's "Rulings made at planning" section):
+P4.147 R-A…R-G, P4.148 R-A…R-G, P4.149 R-A…R-G (R-D explicitly NOT ruled —
+the sync paragraph is written for the human), P4.150 R-A…R-H, P4.151
+R-A…R-G, P4.152 R-A…R-E. **Deliberately left out:** a drift catch-up
+(none — v4 AT the baseline); the owed dogfood pass (it runs AFTER this
+round on the restored copy — the standing queue plus the six lanes' 💸
+rows); the sync applier ruling and the five dead API-key wrappers (human
+calls, written up, not ordered); P4.143 Tier 3 item 12's generated
+schema-shape table (its own order); the 40-delete / 19-line census and
+the 19 absent `[Projects v1]` lines (census orders of their own); the
+new-account restore preserve and the built-in re-provisioning (named
+follow-ups of P4.147); a deflake lane for the two Playwright intermittents
+(counters only).
+
 ## The `07b8f0209` two-commit drift catch-up round (P4.D251 ∥ P4.D252 ∥ P4.D253) — UNIFIED 2026-10-05 (ordered 2026-10-04)
 **UNIFIED on main (2026-10-05) — ALL THREE LANES LANDED; the oracle baseline
 MOVES `52d6e7ecd` → `07b8f0209` and the drift ledger's §3 is EMPTY (v4 AT

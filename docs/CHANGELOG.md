@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-05 — docs(porting): order the 07b8f0209 follow-ups + restore round — six lanes (P4.147–P4.152) with six fresh surveys
+
+_Docs-only change._
+
+Work orders for the round the `07b8f0209` unification named next: the restore order for dogfood #141/#142 (a `replace` restore keeps every character, project and group on the store the archive restored, and resolves Quilltap Uploads to the archive's store on a fresh target) with the restore riders (P4.147); dogfood #140's import-warning tails plus the projects/groups data-layer smalls — the property-bag rules, the six missing uuid gates, the import validating before it writes (P4.148); the repository-fallback class, round 3 — v4's rethrow lines, the corrupt-profile row drop, the strict scope, the held write-path sites re-classed (P4.149); the host-boot, model-layer and chat-create key smalls — the `doc_mount_points` self-heals, the collapse line, the Google empty-candidate warning, the spine factory's required display zone (P4.150); the harness/test-craft smalls with zero core hunks (P4.151); and the SPA's project-detail toasts, picker refocus and greeting wait (P4.152). No drift row is absorbed; the baseline stays `07b8f0209`.
+
+- Six read-only surveys under `docs/developer/porting/work-orders/surveys/2026-10-05-07b8f0209-followups/` measured the scope first and overturned a dozen recorded premises (v4 shares both restore findings; `Error deleting entity` is a rethrow line, not a fallback; the chat GET/list `relativePath` item and `is_timeout_failure` were already closed; the project import half-writes a refused project); the orders follow the measurements.
+- One shared §R/§S/Ownership/contracts block spliced byte-identically into all six orders (md5 recorded in the commit message); two shared contracts carried verbatim in both orders of each pair (the `fold_properties` home P4.148 delivers for P4.147; the create-failure log home P4.149 delivers for P4.148).
+- Every ruling the surveys asked for is made at planning as the planner's call, listed in each order for the human to confirm or overrule before the lanes launch; the sync applier ruling and the five dead API-key wrappers are written up, not ordered.
+- `phase-4.md` gains the round's ORDERED section (lanes, fences, cherry-pick order, rulings, what was left out).
+
 #### 2026-10-05 — docs(dogfood): the 52d6e7ecd + 07b8f0209 dogfood pass — 28 rows, all PASS; two restore defects found (#141, #142)
 
 _Docs-only change._
