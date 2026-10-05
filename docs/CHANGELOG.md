@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-05 — fix(core): bug 177 — the PDF arm reads through the converter seam first, with v4's three new lines and the first tier-1 family over extractFileContent (P4.D253)
+
+_Versions: core 0.0.1206._
+
+Ports v4 `a434c715b` (bug 177). `generators::file_content::extract_pdf_content` now reads through the `DocumentTextExtractor` seam first (resolved in place with `default_text_extractor()`), trims the answer, and falls back to the regex scrape only when that is empty. The fallback is announced with v4's WARN `pdf-parse found no text, using native fallback extraction` (`size`), failure is `Failed to extract PDF content (no text found)`, and success logs v4's DEBUG `Extracted PDF content` (`size`, `chars` in UTF-16 units). The two old strings (`pdf-parse not available…` and `(pdf-parse unavailable and fallback extractor found no text)`) are gone. The seam's production default still refuses (P4.6y), so v5 matches v4 on every PDF where pdf-parse finds no text and differs only where it finds text. The module header said v4 extracted through pdf-parse; that was false before `a434c715b` (v4 failed every PDF with `pdfParse is not a function`). The header and the `ai_import.rs` comment that relied on it are rewritten. A thread-scoped `ScriptedTextExtractorGuard` lets tests script the seam.
+
+New tier-1 family `file_content_extractor_equivalence` drives v4's real `extractFileContent` (jest case `harness/oracle/cases/file-content-extractor.test.ts`, 23-case corpus beside it) with storage and `pdf-parse` mocked per case, and compares the result and the extractor's log lines exactly. It also pins the production-seam divergence on the four parsed-text rows and the converter WARNs v5 does not reproduce. Red-first against the unported arm: 15 reds at `07b8f0209`, 20 at `52d6e7ecd`. Bug 178 (`next.config.js` packaging) is NO-PORT.
+
 #### 2026-10-04 — docs(orders): the `07b8f0209` two-commit drift catch-up round — P4.D251 ∥ P4.D252 ∥ P4.D253 ordered; both ledger rows marked ORDERED
 
 _Docs-only change._

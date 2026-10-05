@@ -10,13 +10,34 @@
 //!
 //! ## Recorded divergence — PDFs
 //!
-//! v4 tries `require('pdf-parse')` first and only runs its own regex fallback
-//! (`extractPdfTextFallback`) when the module is absent. `pdf-parse` IS
-//! installed in v4's checkout at the pin, so a real v4 extracts PDF text
-//! through it; v5 carries no PDF parser and always runs v4's fallback. For a
-//! `.pdf` source the two sides can therefore differ in the extracted text —
-//! never in the shape (`success` + `contentType: 'text'` + the truncation). No
-//! committed fixture carries a PDF; recorded, not pinned.
+//! v4 reads a PDF through `convertPdfBufferToText` (`lib/mount-index/
+//! converters/pdf-converter.ts`, pdf-parse 2.x) FIRST and runs its own regex
+//! fallback (`extractPdfTextFallback`) only when that answers no text — empty,
+//! whitespace, a throw, or an empty buffer, all of which the converter turns
+//! into `''`. v5 reads through the same seam ([`DocumentTextExtractor`],
+//! resolved in place by [`default_text_extractor`]), whose production default
+//! REFUSES (the pdf/docx extractor is deferred by P4.6y — the refusal prints
+//! one stderr line per PDF naming that order). So the two sides take the SAME
+//! fallback arm, with the same bytes, the same lines and the same result,
+//! whenever pdf-parse finds nothing — and differ ONLY where pdf-parse finds
+//! text: there v4 answers the parsed text and v5 answers the fallback's scrape
+//! of the same bytes (often nothing, so `(no text found)`).
+//!
+//! Pinned both ways by `file_content_extractor_equivalence` (the first family
+//! over this module): `scripted_seam_matches_v4_on_every_row` scripts the seam
+//! identically to v4's mocked `pdf-parse` and compares every row exactly;
+//! `production_seam_diverges_only_where_pdf_parse_finds_text` runs the
+//! production seam and asserts the divergence on exactly the four
+//! parsed-text rows.
+//!
+//! **The premise this header used to rest on was false** (`a434c715b`, v4 bug
+//! 177): before that commit v4 called pdf-parse 2.x's `PDFParse` class as the
+//! 1.x function, threw `pdfParse is not a function` into its catch, and FAILED
+//! EVERY PDF (`Failed to extract PDF content`) — while v5 always ran the
+//! fallback. The family's oracle at the old baseline `52d6e7ecd` records
+//! exactly that on all eleven PDF rows.
+//!
+//! [`DocumentTextExtractor`]: crate::services::mount_index::converters::DocumentTextExtractor
 
 use std::sync::OnceLock;
 
@@ -27,6 +48,7 @@ use crate::db::files::{FileEntry, FileFull};
 use crate::db::runtime::Db;
 use crate::format_bytes::format_bytes;
 use crate::services::file_storage::{download_file, StorageBackend};
+use crate::services::mount_index::converters::{default_text_extractor, SharedTextExtractor};
 
 /// v4 `ExtractedContent`.
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -257,19 +279,79 @@ pub fn extract_pdf_text_fallback(buffer: &[u8]) -> String {
     js_trim(&deduped.join("\n")).to_string()
 }
 
-/// v4 `extractPdfContent` — the fallback arm only (module header).
-fn extract_pdf_content(buffer: &[u8]) -> ExtractedContent {
-    tracing::warn!(
-        target: "quilltap::file_content_extractor",
-        "pdf-parse not available, using native fallback extraction"
-    );
-    let fallback = extract_pdf_text_fallback(buffer);
-    if fallback.is_empty() {
-        return ExtractedContent::failure(
-            "Failed to extract PDF content (pdf-parse unavailable and fallback extractor found no text)",
-        );
+std::thread_local! {
+    /// The differential's twin of v4's mocked `pdf-parse` (P4.D253): armed only
+    /// through [`ScriptedTextExtractorGuard`]; `None` always in production, so
+    /// [`pdf_text_extractor`] answers the seam's default.
+    static SCRIPTED_TEXT_EXTRACTOR: std::cell::RefCell<Option<SharedTextExtractor>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// The extractor the PDF arm reads through: this thread's scripted one when a
+/// test armed it, else [`default_text_extractor`] resolved in place (the
+/// `api/mount_files.rs` idiom — nothing threads an extractor here).
+fn pdf_text_extractor() -> SharedTextExtractor {
+    SCRIPTED_TEXT_EXTRACTOR
+        .with(|s| s.borrow().clone())
+        .unwrap_or_else(default_text_extractor)
+}
+
+/// Arms a scripted [`crate::services::mount_index::converters::DocumentTextExtractor`]
+/// for the PDF arm on THIS thread until dropped (the thread-scoped seam — a
+/// process-global one would leak into every parallel test reaching a PDF).
+#[cfg(any(test, feature = "test-support"))]
+pub struct ScriptedTextExtractorGuard(Option<SharedTextExtractor>);
+
+#[cfg(any(test, feature = "test-support"))]
+impl ScriptedTextExtractorGuard {
+    pub fn install(extractor: SharedTextExtractor) -> Self {
+        ScriptedTextExtractorGuard(
+            SCRIPTED_TEXT_EXTRACTOR.with(|s| s.borrow_mut().replace(extractor)),
+        )
     }
-    let mut content = fallback;
+}
+
+#[cfg(any(test, feature = "test-support"))]
+impl Drop for ScriptedTextExtractorGuard {
+    fn drop(&mut self) {
+        let previous = self.0.take();
+        SCRIPTED_TEXT_EXTRACTOR.with(|s| *s.borrow_mut() = previous);
+    }
+}
+
+/// v4 `extractPdfContent` (`a434c715b`): the converter seam first, trimmed
+/// (v4 `(await convertPdfBufferToText(buffer)).trim()` — the converter answers
+/// `''` on any failure, so a throw and an empty buffer arrive here as `''`);
+/// the regex fallback only when that is empty, announced with the buffer's
+/// size; failure only when BOTH find nothing; success announced with `size` +
+/// `chars` (v4 `content.length`, UTF-16 units); then the truncation. v4 does
+/// NOT re-trim the fallback's answer (it trims itself).
+///
+/// v4 wraps the arm in a `try/catch` (`Error extracting PDF content` →
+/// `Failed to extract PDF content`); nothing here can fail — the seam answers
+/// a `String` and the fallback is a pure scrape — so that arm is UNREACHABLE
+/// in v5 (and, since `a434c715b`, practically in v4: the converter swallows
+/// every throw). Recorded, not ported.
+fn extract_pdf_content(buffer: &[u8]) -> ExtractedContent {
+    let extractor = pdf_text_extractor();
+    let mut content = crate::jsstr::js_trim(&extractor.extract(buffer, "pdf")).to_string();
+    if content.is_empty() {
+        tracing::warn!(
+            target: "quilltap::file_content_extractor",
+            size = buffer.len(),
+            "pdf-parse found no text, using native fallback extraction"
+        );
+        content = extract_pdf_text_fallback(buffer);
+    }
+    if content.is_empty() {
+        return ExtractedContent::failure("Failed to extract PDF content (no text found)");
+    }
+    tracing::debug!(
+        target: "quilltap::file_content_extractor",
+        size = buffer.len(),
+        chars = utf16_len(&content),
+        "Extracted PDF content"
+    );
     let mut truncated = false;
     if utf16_len(&content) > MAX_CONTENT_LENGTH {
         content = utf16_prefix(&content, MAX_CONTENT_LENGTH);
@@ -391,5 +473,94 @@ pub fn extract_file_content(
         language: None,
         error: None,
         truncated: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::*;
+    use crate::services::mount_index::converters::DocumentTextExtractor;
+    use crate::test_support::global_capture;
+
+    /// The scripted converter (v4's mocked `pdf-parse`): answers its text.
+    struct Scripted(&'static str);
+    impl DocumentTextExtractor for Scripted {
+        fn extract(&self, _bytes: &[u8], _file_type: &str) -> String {
+            self.0.to_string()
+        }
+    }
+
+    fn run(converter: &'static str, bytes: &[u8]) -> (ExtractedContent, Vec<String>) {
+        let _guard = ScriptedTextExtractorGuard::install(Arc::new(Scripted(converter)));
+        global_capture::capture(|| extract_pdf_content(bytes))
+    }
+
+    const WARN: &str = "WARN quilltap::file_content_extractor pdf-parse found no text, using native fallback extraction";
+    const DEBUG: &str = "DEBUG quilltap::file_content_extractor Extracted PDF content";
+
+    #[test]
+    fn converter_text_is_trimmed_and_announced_with_size_and_utf16_chars() {
+        let bytes = b"%PDF-1.4 not really parsed here";
+        let (out, lines) = run("\n  Caf\u{e9} \u{1f41d}  \n", bytes);
+        assert_eq!(out.content.as_deref(), Some("Caf\u{e9} \u{1f41d}"));
+        assert!(out.success);
+        assert_eq!(out.truncated, Some(false));
+        // `chars` is v4's `content.length` — UTF-16 units (the bee is two),
+        // never bytes (8) or scalars (6).
+        assert_eq!(lines, vec![format!("{DEBUG} size=31 chars=7")]);
+    }
+
+    #[test]
+    fn empty_converter_answer_takes_the_announced_fallback() {
+        let bytes = b"BT (Fallback lore line) Tj ET";
+        let (out, lines) = run("   ", bytes);
+        assert_eq!(out.content.as_deref(), Some("Fallback lore line"));
+        assert_eq!(
+            lines,
+            vec![
+                format!("{WARN} size=29"),
+                format!("{DEBUG} size=29 chars=18")
+            ]
+        );
+    }
+
+    #[test]
+    fn nothing_found_by_either_reader_fails_with_v4s_sentence() {
+        let (out, lines) = run("", b"%PDF-1.4 junk");
+        assert_eq!(
+            out,
+            ExtractedContent::failure("Failed to extract PDF content (no text found)")
+        );
+        // The WARN fires; the success DEBUG does not.
+        assert_eq!(lines, vec![format!("{WARN} size=13")]);
+    }
+
+    #[test]
+    fn chars_counts_before_the_truncation() {
+        let long: &'static str = Box::leak("x".repeat(60_000).into_boxed_str());
+        let (out, lines) = run(long, b"%PDF");
+        assert_eq!(out.truncated, Some(true));
+        assert_eq!(
+            out.content.as_deref().map(str::len),
+            Some(MAX_CONTENT_LENGTH)
+        );
+        assert_eq!(lines, vec![format!("{DEBUG} size=4 chars=60000")]);
+    }
+
+    #[test]
+    fn the_production_seam_refuses_so_the_fallback_runs() {
+        // No guard: `default_text_extractor()` (P4.6y's refusal) answers `''`.
+        let (out, lines) =
+            global_capture::capture(|| extract_pdf_content(b"BT (Recovered text) Tj ET"));
+        assert_eq!(out.content.as_deref(), Some("Recovered text"));
+        assert_eq!(
+            lines,
+            vec![
+                format!("{WARN} size=25"),
+                format!("{DEBUG} size=25 chars=14")
+            ]
+        );
     }
 }

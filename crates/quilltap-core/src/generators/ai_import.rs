@@ -1010,11 +1010,13 @@ pub fn restamp_structural_fields(data: &mut Value, now: &str) -> i64 {
 //   system at all — providers are native, resolved through the manifest
 //   registry — so there is nothing to initialize and nothing to fail. A
 //   NO-COUNTERPART, recorded here with v4's line rather than invented.
-// * v5's own `pdf-parse not available, using native fallback extraction`
-//   warn (`generators::file_content::extract_pdf_content`) is v5-ONLY and
-//   deliberately KEPT: it names a real v5 refusal (there is no `pdf-parse`
-//   in the tree, so the native fallback extractor always runs), which v4
-//   only reaches when its optional dependency is absent.
+// * The PDF arm (`generators::file_content::extract_pdf_content`) is no
+//   longer v5-only (v4 `a434c715b`, bug 177): both sides read through the
+//   converter seam first and announce the regex fallback with v4's WARN
+//   `pdf-parse found no text, using native fallback extraction` `{ size }`.
+//   The one divergence is the seam's — v5's production extractor refuses
+//   (P4.6y), so where pdf-parse would find text v5 runs the fallback — named
+//   and pinned by `file_content_extractor_equivalence`.
 //
 // ## The `validation` / `repair` steps (P4.86)
 //
