@@ -7124,7 +7124,63 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
-## The `07b8f0209` two-commit drift catch-up round (P4.D251 ∥ P4.D252 ∥ P4.D253) — ORDERED 2026-10-04
+## The `07b8f0209` two-commit drift catch-up round (P4.D251 ∥ P4.D252 ∥ P4.D253) — UNIFIED 2026-10-05 (ordered 2026-10-04)
+**UNIFIED on main (2026-10-05) — ALL THREE LANES LANDED; the oracle baseline
+MOVES `52d6e7ecd` → `07b8f0209` and the drift ledger's §3 is EMPTY (v4 AT
+the baseline, clean, at both probes) — the regen rule is NO PIN REQUIRED.**
+Round record: `status-log.md` → "The `07b8f0209` two-commit drift catch-up
+round — UNIFICATION record (2026-10-05)"; each order's **Unification:**
+paragraph lists exactly what stays OPEN. **The §3 review (three parallel
+readers + the unifier's own read of the core hunks) found NO production
+defect against v4 in any lane and no blocking finding — the fifteenth
+such round — but one real SPA timing defect and five tests that could
+not fail, all fixed on the unify branch:** the settings card's radio resync
+(P4.D252's one v5 addition) also ran after a SUCCESSFUL save, while the
+query's `data()` still held the old mode, re-lighting the old radio for a
+macrotask and racing Playwright's `.check()` (now refusal-only, pinned red
+on the old code); P4.D253's corpus fed every parsed-text row bytes the
+fallback cannot read, so a fallback-FIRST port — bug 177 inverted — passed
+everything (a precedence row + a JS-whitespace row, mutation-proven on
+both sides); the beats' "Send posts it" passed with nothing posted (the
+mock answers every call with the same text — now a persisted USER line is
+required); the Almanack's `Always restate` was never compared; the
+ping-pong web test planted the value the translation also yields; the
+legacy family's float row re-drove the integer arm; the settings `'off'`
+write and retired-key silence ran over a row already `'off'` (a
+`plantVoiceMode` seam on both sides). Wires: both beats flipped LIVE (8/8
+alone, first run), `ai_import_tier3`'s stamp → `4.10.0-dev.111`, the core
+recount. Gate: fmt/clippy (both feature sets)/release clean; the full sweep from the pin 584 ok / 3 standing / 3 refused of 590 (no lane- or unifier-caused red); Tier R 271/0;
+`cargo test --workspace` 669 binaries / 4,343 / 4 (three standing + one env-block artifact, green in the sweep) / 3 ignored, zero SKIP; SPA 467 files / 8,880, lint + build clean; full Playwright **360
+passed / 0 failed / 6 skipped (11.6 m)** — the six skips the standing parks.
+Versions: core 0.0.1208, host 0.0.181, web 0.0.219, SPA 0.5.805; harness
+frozen 0.0.1110; cli 0.0.29, tauri 0.0.9 unchanged.
+
+**NEXT (in order):**
+1. **The owed dogfood pass** — this round's 💸 rows (the first v5 boot on
+   the standing Friday copy translating its ONE `impersonationVoiceRewrite
+   = 1` row to `'ask'` and DROPPING the column — measured at the
+   unification, the second boot a no-op; the Almanack reading `Ask each
+   time`; a pre-round backup restored to `'ask'` with the debug line; the
+   PUT's refusals on the wire and the retired key's silent 200; the `ask`
+   portrait tooltip, an impersonated line opening the dialog with NO
+   `VOICE_REWRITE` row, Restate writing exactly one, Cmd/Ctrl+Enter posting
+   the draft verbatim, `always` restoring the eager call, the three radios;
+   Summon From Lore / the AI Wizard on a real PDF — the WARN with `size`,
+   the fallback text, the stderr refusal) PLUS the `52d6e7ecd` round's still
+   owed rows (the standing inform end to end, the first boot ALTERing
+   `chat_informs.permanent`, the carriers, LUC Ranch's toggle, the null
+   colours, the refused `"color": 5`) and the standing queue.
+2. **A follow-ups smalls round** — the `52d6e7ecd` NEXT item 3's list
+   (unchanged, by name above) plus this round's OPEN items: a
+   `repository-zod-messages.ts` row running v4's real `ChatSettingsSchema`
+   over a stored `'maybe'` (the unit test's Zod bytes are a measured
+   literal); TEXT/REAL legacy cells in the ensure differential;
+   `RefusingTextExtractor`'s stderr wording at the PDF caller (it says the
+   file "will be bookkept as extraction-failed" — false there, the fallback
+   runs); a PDF `document` case in the wizard / ai-import tier-3 corpora
+   (needs the `character-generators-*` pair rebuilt with a PDF).
+3. **A drift catch-up when v4 moves** — `/driftcheck` first.
+
 
 **Baseline `52d6e7ecd`; v4 `main` HEAD `07b8f0209` at the planning probe —
 TWO commits past the baseline (`a434c715b`, bugs 177/178 — PDF text

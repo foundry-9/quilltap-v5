@@ -1560,9 +1560,36 @@ records THERE. Update this summary only when a phase or round completes.
   **Next: the `a434c715b` bug-177/178 catch-up, the owed dogfood pass, then
   the follow-ups smalls round** — `phase-4.md`. Round record:
   `status-log.md`.
-- **Oracle baseline: `52d6e7ecd` (2026-10-03, v4 main — "Inform: standing
-  (per-chat) informs", `4.10.0-dev.109`), adopted at the `52d6e7ecd`
-  round's unification (2026-10-04).**
+- **The `07b8f0209` two-commit drift catch-up round (P4.D251 ∥ P4.D252 ∥
+  P4.D253): UNIFIED on main (2026-10-05) — ALL THREE LANDED; the oracle
+  baseline MOVES to `07b8f0209` and the ledger's §3 is EMPTY (v4 AT the
+  baseline, clean).** Bug 177 absorbed (the PDF arm reads the
+  `DocumentTextExtractor` seam FIRST with v4's three lines, under the first
+  tier-1 family over `extractFileContent` — the old header's premise was
+  false: pre-fix v4 failed EVERY PDF); bug 178 NO-PORT-RATIFIED. The
+  impersonated-line voice is a three-state mode end to end: the FIFTH D23
+  re-dump (`impersonationVoiceRewrite` → `impersonationVoiceMode TEXT DEFAULT
+  'off'` in place), v4's `impersonation-voice-mode-v1` re-homed as a boot
+  ensure that REPLACES the P4.D179 one (kept, it would ping-pong a shared
+  instance with v4) and is differentially compared in three shapes, the PUT's
+  enum arm with the retired key ignored, the Almanack's labels, the restore's
+  legacy translation, 17 pairs narrowed; the SPA's `ask` draft stage with NO
+  model call, Restate, the three-radio card, both beats LIVE. **The §3 review
+  (three readers + the unifier): no blocking finding — the fifteenth such
+  round — but one real SPA defect and five tests that could not fail, all
+  fixed:** the settings radios re-lit the OLD mode for a macrotask after every
+  successful save (a Playwright `.check()` race); P4.D253's corpus could not
+  tell converter-first from fallback-first (bug 177 itself — now a precedence
+  row, mutation-proven); "Send posts it" passed with nothing posted; `Always
+  restate` never compared; the ping-pong plant matched the translation; the
+  legacy float row re-drove the integer arm. Gate: the round record. Versions:
+  core 0.0.1208, host 0.0.181, web 0.0.219, SPA 0.5.805. **Next: the owed
+  dogfood pass (the Friday copy's first boot translates its toggle `1` →
+  `'ask'` — measured), then the follow-ups smalls round** — `phase-4.md`.
+  Round record: `status-log.md`.
+- **Oracle baseline: `07b8f0209` (2026-10-04, v4 main — "Impersonated-line
+  voice: three modes, no model call until asked", `4.10.0-dev.111`), adopted
+  at the `07b8f0209` round's unification (2026-10-05).**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting

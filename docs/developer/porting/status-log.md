@@ -165843,3 +165843,173 @@ the eager call, the three radios' descriptions.
   (it counts the SPA's own `/api/dispatch` posts — a Tauri-only path would not
   show, but e2e is the web transport).
 - No fixture changed; no oracle authored; no handoff to another lane.
+
+## The `07b8f0209` two-commit drift catch-up round — UNIFICATION record (2026-10-05)
+
+**P4.D251 ∥ P4.D252 ∥ P4.D253 — ALL THREE LANES LANDED; the oracle baseline
+MOVES `52d6e7ecd` → `07b8f0209`; the drift ledger's §3 is EMPTY (v4 AT the
+baseline, tree clean, at both probes), so the regen rule is NO PIN
+REQUIRED.** Branch `unify/07b8f0209` from `main` `9f47034c3`; picks in the
+planned order P4.D253 (2) → P4.D251 (3) → P4.D252 (3) = 8 commits, then the
+wires (`9d6fb0e69`) and the review fixes (`a36fd46f7`). Every conflict an
+append-only doc: `docs/CHANGELOG.md` twice (union, newest first) and
+`status-log.md` twice (union; the P4.D251 record landed above P4.D253's —
+same date, left as resolved). Core's `Cargo.toml` did NOT conflict — both
+Rust lanes bumped 0.0.1205 → 0.0.1206 from the same base and git merged the
+identical line silently; the recount to 0.0.1207 rode the wire commit
+(the same-number trap, caught by reading the version rather than the
+conflict list). Bug 177 absorbed, bug 178 NO-PORT-RATIFIED, the
+impersonated-line voice is a three-state mode end to end.
+
+### The §2 probe
+
+PASSED at the start and at the close (branch `main`, tree CLEAN, HEAD
+`07b8f0209`, `07b8f0209..main` and `1a2b2164c..bugfix` empty, `origin/main`
+agreeing after `git fetch --all`). One detached pin,
+`/tmp/qt-v4-pin-unify-07b8f0209` (`rev-parse` = `07b8f0209`;
+`4.10.0-dev.111`; the three symlink classes), served every regen and the
+full sweep; the P4.D253 baseline re-measure used the lane's surviving
+`/tmp/qt-v4-pin-p4d251-52d6e7ecd`.
+
+### Delivered scope, verified against the orders
+
+- **P4.D253:** Tier 1 items 1–6 landed as ordered (the arm through the seam,
+  resolved in place; v4's three lines capture-pinned; the header's false
+  premise rewritten; the first tier-1 family over v4's real
+  `extractFileContent`; bug 178 ratified). Tier 2 item 7 NOT landed —
+  measured unstageable (the tier-3 oracles read only the committed
+  `character-generators-*` pair, which carries no PDF, and §R.6 forbade
+  rebuilding it) — OPEN by name; item 8 recorded UNREACHABLE. The lane's
+  docs commit wrote "LANE COMPLETE" as a SECOND status line under a stale
+  OPEN one — folded at unification.
+- **P4.D251:** Tier 1 items 1–12 and Tier 2 items 13–15 landed; the Almanack
+  field is a raw `String` rather than the ordered enum (measured: v4's
+  renderer prints an unknown value raw — the right call); the GET-level
+  second-row behaviour on an out-of-enum stored mode is a recorded divergence
+  (unreachable by any writer). 17 committed pairs narrowed through v4's real
+  migration; five neither-column pairs deliberately left (v5 reads the absent
+  column as `'off'`).
+- **P4.D252:** Tier 1 items 1–8 and Tier 2 items 9–10 landed; the two beats
+  parked as ordered and flipped here.
+
+### What the §3 review found (three parallel readers — P4.D252's SPA, P4.D253's PDF port, P4.D251's differentials — each against v4's real code at `07b8f0209`; plus the unifier's own read of P4.D251's core hunks: the ensure, the data layer, the PUT, the restore chain, the legacy module, the Almanack)
+
+**NO production defect against v4 in any lane and no blocking finding — the
+fifteenth such round. One real SPA timing defect and five tests that could
+not fail, all fixed in ONE `fix(unify)` commit (`a36fd46f7`), each with a
+test; the one that would have shipped a user-visible defect first:**
+
+1. **P4.D252 — the settings radios flickered on every SUCCESSFUL save.** The
+   lane's one v5 addition (a resync of the radios to the stored mode after a
+   save, so a REFUSED save does not leave the clicked radio lit — React's
+   controlled `checked` does that for free) also ran on success, when the
+   query's `data()` still held the OLD mode: `setQueryData` reaches the
+   observer through `notifyManager`'s `setTimeout(0)`. So the resync re-lit
+   the old radio for a macrotask, and both e2e helpers pick radios with
+   Playwright's `.check()`, which throws if the state did not change — a
+   latent flake against a fast local server. Caught by the SPA reader reading
+   the query library's scheduler. Now refusal-only; a new spec reads the DOM
+   the instant `onChange` resolves (no `settle()`) — RED on the old code
+   (`1 failed | 11 passed`), green on the fix.
+2. **P4.D253 — the corpus could not tell converter-first from fallback-first,
+   which is bug 177 itself.** Every parsed-text row fed bytes the regex
+   fallback cannot read, so a port preferring the fallback passed every unit
+   and differential test. Added `pdf_parsed_wins_over_fallback` (converter
+   text over fallback-readable bytes — v4 answers the converter's) and
+   `pdf_parsed_js_whitespace` (U+FEFF trimmed, U+0085 kept — v4's real
+   `.trim()`, confirmed by the oracle) with matching core unit tests; the
+   production-seam test now pins the NON-empty scrape on the first. Mutation
+   (fallback-first): the new unit test, the scripted family (on the new row)
+   and the production-seam family all RED; restored. The headers' "all eleven
+   PDF rows" fail at the baseline was never measured — re-measured over the
+   25-case corpus at `52d6e7ecd`: 13 of 13 carry `pdfParse is not a
+   function`. Nits fixed: the jest filter anchored (`'cases/file-content-
+   extractor\.test\.ts$'`), the red-report clip cut on a char boundary,
+   `jsstr::utf16_len` reused, the dropped `module` binding documented.
+3. **P4.D252 — "Send posts the proposal" passed with nothing posted.** The
+   mock answers EVERY completion with the same text, so the newest bubble
+   already read it (an LLM seat's earlier reply). Both voice beats now also
+   require one NEW persisted USER line carrying the proposal (`chatGet`) —
+   green LIVE on the first run, which also settles that an impersonated line
+   persists as role `USER`.
+4. **P4.D251 — the `Always restate` label was never compared.** `base`
+   renders `ask`, `all_empty` `off`; a typo in the third arm stayed green.
+   NEW `voice_mode_always` variant (`EXPECTED_CASES` 9 → 10), regenerated
+   from the pin.
+5. **P4.D251 — the ping-pong web test could not see v4's predicate.** It
+   planted `'ask'` beside old `1`, and `1` translates to `'ask'`, so an ensure
+   ignoring `IS NULL OR = 'off'` passed. Plants `'always'` now (the
+   differential's mode (c) already covered it at tier 1).
+6. **P4.D251 — the legacy family's float row re-drove the integer arm**
+   (`JSON.stringify(1.0)` is `1`, which serde reads as an integer) and the
+   null-mode `??` was driven only with legacy `false` (where "null → default
+   off" and "null → fall to legacy" agree). The Rust side now feeds
+   `1.0_f64` for `one_point_zero` (after checking the oracle saw the number
+   1); `key_true_mode_null` joins the corpus (v4: `'ask'`, the slot kept);
+   label SETS replace the count floors.
+7. **P4.D251 — `settings_routes`' explicit `'off'` write and retired-key
+   silence ran over a row already `'off'`.** A `plantVoiceMode` seam on both
+   sides (a raw UPDATE before the case) puts both over `'always'`; the
+   `false` and `''` refusals join (the Shared contract's list); 10 → 12 rows.
+   The ensure differential cross-checks v4's `translated N` against v5's
+   backfill in modes (a)/(c) and documents why (b) differs. Three stale
+   comments corrected (the legacy case's key-order note, the two "web arm
+   drops the column" tolerance claims).
+
+**Refuted premise, recorded (no change):** the Shared contract's item 3 says
+the server's sentence is appended "the way `ChatSettingsCard.save` already
+appends it" — `save` shows the failure string ALONE (on main too).
+
+**Recorded, not fixed (the follow-ups smalls round):** no oracle row runs
+v4's real `ChatSettingsSchema` over a stored `'maybe'` (the unit test's Zod
+bytes are a measured literal); the ensure corpus drives only INTEGER/NULL
+legacy cells; `RefusingTextExtractor`'s stderr wording is false at the PDF
+caller; P4.D253's Tier 2 item 7. And by construction, not a gap: v5 has no
+`/api/v1/settings/chat` REST route, so the orders' "REST and dispatch" is
+dispatch + handler-level.
+
+### The unification wires
+
+- **§S.1 — both beats flipped LIVE** (`P4D251_SERVER_LANDED = true`): run by
+  FILE first, alone on 4319 — **8 passed (1.1 m)** on the first run, the new
+  USER-line proof included — then inside the full suite.
+- **§S.2 — the full sweep from the pin** (`recipe_sweep.py --run-all --v4
+  /tmp/qt-v4-pin-unify-07b8f0209`): **584 ok / 3 run_failed / 1 refused_repo_write / 2 refused_non_extractable of 590** — the three reds EXACTLY the standing rows (`ariel_writers_tier3`, `memory_processor_tier3`, `search_replace`), the refusals by design (`backup_uuid_remap`, `avatar_rolls_routes`, `generator_sse_wire`); **no red a lane or the unification caused**; every round family `ok` by name (`file_content_extractor`, `impersonation_voice_legacy`, `chat_settings_voice_mode_ensure`, `settings_routes`, `chat_settings_tier2`, `provisioning`, `almanack_render` / `almanack_tier2` / `host_zone_dates`, `system_backup` / `system_restore_state`, `help_tree` and kin, `ai_import_tier3` at its new stamp, `character_wizard_tier3`, `memories_routes` / `in_scene_voiced_tier3` / `announcer_tier3` (the neutral three), `chat_settings_column_sites_guard`, `qtap_schema_embed_guard`). **Tier R (`cli_differential`) 271 cases / 0 failures**. `ai_import_tier3`'s
+  `V4_APP_VERSION` moved to `4.10.0-dev.111` BEFORE the sweep. Artifact
+  `harness/tools/sweep-results/2026-10-05-07b8f0209-unify.json`. The seven
+  review-touched families were also regenerated from the pin and run first
+  (7/7 ok: `almanack_render` 10 cases, `settings_routes` 12 voice rows,
+  `impersonation_voice_legacy` 10 + 7, `file_content_extractor` 3/3 over 25,
+  the ensure 3 modes, `almanack_tier2`, `host_zone_dates`).
+- **The workspace suite:** (`QT_V4_CHECKOUT=<pin> QT_V4_ROOT=<pin> TZ=UTC cargo test --workspace --no-fail-fast` with the 758-variable env block harvested from every family's run stage — the same 8 dup-valued names withheld): **669 test binaries / 4,343 passed / 4 failed / 3 ignored, zero `SKIP:` lines.** The four: the three standing families (`ariel_writers_tier3`, `memory_processor_tier3`, `search_replace`) and the recorded env-block artifact `doc_mount_files_tier2` (`ok` in the sweep from the pin). `backup_uuid_remap` passed INSIDE the suite this time (P4.D251 re-recorded its corpus). Every round family confirmed RUN by name with a non-zero result (`file_content_extractor` 3/3, `impersonation_voice_legacy`, `chat_settings_voice_mode_ensure`, `settings_routes`, `almanack_render`, `system_restore_state` 2/2, `chat_settings_composer_web_routes` 3/3, `host_help_docs_boot` 2/2, `chat_settings_column_sites_guard`, `dispatch_wrong_type_census` 14/14 — 451 UNMOVED, `cli_differential`). ⚠ The FIRST workspace run died on errno 28 (the disk full — jest's `$TMPDIR/jest_dz` haste-map cache had grown to ~81 GB over many sweeps); with the human's approval the cache was deleted and `/cleanup` swept main's `target/` (43.36 GiB, every chain step green, no amalgamation unit removed), then the suite re-ran clean.
+- **§S.3 — the version recount:** core 0.0.1205 + 1 (P4.D253) + 1 (P4.D251)
+  = 0.0.1207 at the wire, + 1 for the review fixes = **0.0.1208**; host
+  **0.0.181** (P4.D251); web 0.0.218 (P4.D251) + 1 (the review's web test) =
+  **0.0.219**; SPA 0.5.804 (P4.D252) + 1 = **0.5.805**; harness frozen
+  0.0.1110; cli 0.0.29, tauri 0.0.9 unchanged.
+- **§S.4 — the ledger:** baseline → `07b8f0209`; both rows retired to §6
+  (`a434c715b` ABSORBED(P4.D253) + NO-PORT-RATIFIED(P4.D253); `07b8f0209`
+  ABSORBED(P4.D251, P4.D252)); §1 restated (FIFTH D23 re-dump, the P4.D179
+  ensure RETIRED, the Friday copy RE-MEASURED: ONLY the old column, ONE row
+  at `1`, v4's add-field ledger row but not the mode migration's — the first
+  v5 boot translates it to `'ask'` and drops the column).
+- **§S.5 — docs:** CLAUDE.md's Status bullet, `phase-4.md`'s UNIFIED + NEXT,
+  this record, each order's Unification paragraph; `docs/v4/` residual
+  `packages-quilltap-README.md` only.
+- **§S.6 — handoffs:** none recorded by any lane.
+
+### SPA
+
+`npm run lint` clean (956 `qt-*` classes); `npm test` **467 files / 8,879**
+on the wire commit, **467 files / 8,880** after the review fixes; `npm run
+build` clean. Full Playwright on the fix commit's release build: **360
+passed / 0 failed / 6 skipped (11.6 m)** — the six skips the standing parks;
+no intermittent fired.
+
+### 💸 for the dogfood pass
+
+The three lanes' lists (in each lane record) — headline: the first v5 boot
+on the Friday copy turning its `impersonationVoiceRewrite = 1` into `'ask'`
+and dropping the column (measured present at the unification), then the
+`ask` dialog opening with NO `VOICE_REWRITE` row and Restate writing exactly
+one; a real PDF through Summon From Lore / the AI Wizard.

@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-05 — docs(porting): unify the 07b8f0209 two-commit drift catch-up round — all three lanes landed; the baseline moves to 07b8f0209; the review's findings fixed
+
+_Docs-only change._
+
+Unifies P4.D253 (bug 177: the PDF arm reads the `DocumentTextExtractor` seam first; bug 178 NO-PORT), P4.D251 (the impersonated-line voice mode, server half: D23 re-dump #5, the re-homed `impersonation-voice-mode-v1` boot ensure replacing the P4.D179 one, the PUT, the Almanack, the restore translation, 17 pairs narrowed, `help/` + `docs/v4/`) and P4.D252 (the SPA half: the `ask` draft stage with no model call, Restate, the three-radio card). The oracle baseline moves to `07b8f0209`; the drift ledger's §3 is empty and the regen rule is NO PIN REQUIRED. The review found no production defect against v4; its fixes (an SPA radio flicker and five tests that could not fail) are in the `fix(unify)` entry below. Wires: both parked beats flipped live, `ai_import_tier3`'s stamp moved, the core version recounted. Gate: fmt and clippy (both feature sets) clean, release build clean; the full sweep from the pin 584 ok / 3 standing reds / 3 refused by design of 590; Tier R 271/0; `cargo test --workspace` 669 binaries / 4,343 passed / 4 failed (the three standing reds and one recorded env-block artifact) / 3 ignored, no `SKIP:` lines; SPA 467 files / 8,880 tests, lint and build clean; full Playwright 360 passed / 0 failed / 6 skipped. Mid-gate the disk filled (jest's haste-map cache, ~81 GB); the cache was deleted with the human's approval and `/cleanup` swept 43.36 GiB from `target/`. Final versions: core 0.0.1208, host 0.0.181, web 0.0.219, SPA 0.5.805; harness 0.0.1110, cli 0.0.29, tauri 0.0.9 unchanged.
+
 #### 2026-10-05 — fix(unify): the `07b8f0209` round's review findings — the PDF converter's precedence over a readable fallback pinned, the settings radios no longer flicker on a successful save, Send proven to post, the Almanack's third label and the voice-mode predicate compared at last
 
 _Versions: core 0.0.1208, web 0.0.219, SPA 0.5.805._
