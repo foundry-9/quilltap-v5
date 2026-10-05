@@ -1587,6 +1587,27 @@ records THERE. Update this summary only when a phase or round completes.
   dogfood pass (the Friday copy's first boot translates its toggle `1` →
   `'ask'` — measured), then the follow-ups smalls round** — `phase-4.md`.
   Round record: `status-log.md`.
+- **The two-round dogfood pass RAN (2026-10-05, agent-driven, on the Friday
+  copy) — 28 rows, 28 PASS, ZERO v5 defects in the rounds' surfaces; the
+  restore row surfaced TWO restore defects v4 shares (ruling: FIX v5).**
+  Walk doc: `dogfood-walks/2026-10-05-standing-informs-voice-mode-pdf-pass.md`;
+  record in `status-log.md`. v4 had already migrated the live instance past
+  both rounds, so the boot ensures were proven as exact NO-OPS. ⭐ The `ask`
+  draft stage on a real Salon turn: zero `VOICE_REWRITE` rows until Restate,
+  exactly one after, none on a picker change, Cmd+Enter posting verbatim;
+  `always` eager, `never` direct. ⭐ A standing inform delivered on two real
+  turns (absent from the non-target's request), carried on a swipe,
+  withdrawn, refusing `permanent: null` on both transports, surviving a
+  `.qtap` round trip and a restore. ⭐ LUC Ranch's toggle moved ONE line.
+  ⭐ A PDF through the converter seam's fallback on the wizard and Summon
+  From Lore. ⭐ A planted retired-key backup restored as `'ask'`.
+  **ORDER-PENDING #141 (high):** a `replace` restore orphans every
+  character's (and project's, group's) archive store behind a fresh one —
+  Friday's 805-link vault unreferenced, 144 stores from 77. **#142:** the
+  files phase resolves Uploads through the TARGET's pointer, so a restore
+  into a fresh instance loses every project-less file. #140 import-warning
+  tails (smalls); #138/#139 v4-faithful. ⚠ **Walk rule:** launch the dogfood
+  server with the 2-hour background limit — 30 minutes killed a restore.
 - **Oracle baseline: `07b8f0209` (2026-10-04, v4 main — "Impersonated-line
   voice: three modes, no model call until asked", `4.10.0-dev.111`), adopted
   at the `07b8f0209` round's unification (2026-10-05).**

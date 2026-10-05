@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-05 — docs(dogfood): the 52d6e7ecd + 07b8f0209 dogfood pass — 28 rows, all PASS; two restore defects found (#141, #142)
+
+_Docs-only change._
+
+Agent-driven walk on the Friday copy over the standing-informs round (P4.D249, P4.D250, P4.146) and the voice-mode/PDF round (P4.D251, P4.D252, P4.D253). All 28 rows passed with no v5 defects in those surfaces. v4 had already migrated the live instance, so both boot ensures were verified as no-ops.
+
+Five findings filed in `dogfood-findings.md`. #141 (high): a `replace` restore leaves every character, project and group pointing at a freshly provisioned store while the archive's real store is restored beside it unreferenced. #142: the restore's files phase resolves the Uploads store through the target's pointer, so a restore into a fresh instance drops every project-less file. Both are shared with v4 and fall under the fix-don't-match restore ruling; one order is proposed. #140 (import-warning error text) is queued for the smalls round. #138 (swipes write no LLM log row) and #139 (duplicate-import phantom ids) are v4-faithful.
+
 #### 2026-10-05 — test: stop the qt-* scratch leaks at the source — oracle cases remove their tmpdir scratch, Rust tests hold a tempfile::TempDir
 
 _Versions: core 0.0.1209, host 0.0.182, web 0.0.220._

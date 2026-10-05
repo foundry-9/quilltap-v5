@@ -166013,3 +166013,93 @@ on the Friday copy turning its `impersonationVoiceRewrite = 1` into `'ask'`
 and dropping the column (measured present at the unification), then the
 `ask` dialog opening with NO `VOICE_REWRITE` row and Restate writing exactly
 one; a real PDF through Summon From Lore / the AI Wizard.
+
+## Dogfood pass — the `52d6e7ecd` standing-informs round + the `07b8f0209` voice-mode / PDF round: the boot no-ops, the three-way voice mode and its `ask` draft stage, standing informs end to end, `properties.json` nulls, PDF extraction through the converter seam, the backup/restore carriers (2026-10-05)
+
+**Walk doc:** `dogfood-walks/2026-10-05-standing-informs-voice-mode-pdf-pass.md`.
+**28 rows: 28 PASS. Zero v5 defects in the two rounds' surfaces. FIVE
+findings filed: #138 and #139 v4-faithful (candidate v4 notes), #140 a small
+wire-text divergence (ORDER-PENDING, smalls), and — surfaced by the restore
+row, OUTSIDE the rounds — #141 and #142, two restore defects v4 shares that
+the 2026-08-03 ruling says v5 FIXES (ORDER-PENDING, one order; #141 high).**
+Three boots plus one killed mid-restore; zero panics.
+
+Orders covered: P4.D249 ∥ P4.D250 ∥ P4.146 (the `52d6e7ecd` round) and
+P4.D251 ∥ P4.D252 ∥ P4.D253 (the `07b8f0209` round). The ledger's §2 probe
+PASSED at walk start (v4 AT `07b8f0209`, clean, §3 EMPTY).
+
+### Pre-walk measurement (ledger §5.5 again)
+v4 had already booted the live instance past both rounds' migrations:
+`impersonation-voice-mode-v1` at 2026-10-05T04:23Z (the toggle `1` already
+`'ask'`, the old column gone) and `add-chat-informs-permanent-v1` at
+2026-10-04T02:31Z (35 one-shot rows). Both banked "first v5 boot translates /
+ALTERs" proofs were gone from the copy, so A became the orders' other arm:
+both ensures exact NO-OPS on a v4-migrated copy (`sqlite_master.sql` md5s
+unmoved across two boots).
+
+### Proven live
+- **P4.D251 + P4.D252 ⭐.** The Composer card's three radios byte-identical
+  to v4 (`Ask each time` checked); the Almanack's line `Impersonated Lines in
+  Character Voice: Ask each time`; dispatch refusing `null`/`true`/`"on"` with
+  v4's sentence and the retired key answering 200 unchanged. In a real Salon
+  test chat (Friday impersonated): the `ask` cue on the portrait and Send;
+  Send opened the dialog on the DRAFT with **zero** `VOICE_REWRITE` rows;
+  Restate wrote exactly ONE; a picker change dropped the proposal and wrote
+  none; Cmd+Enter posted the draft verbatim under Friday's seat. `Always
+  restate` held through a 20 ms poll (no flicker — the unification's radio
+  fix) and opened straight into one eager call; `Never` posted directly.
+- **P4.D249 + P4.D250 ⭐.** The checkbox and v4's flipped guidance tail; the
+  standing toast, chip label, hover and × title by name; a subset inform
+  (Laura only) delivered on two consecutive real turns as its own system
+  block, `consumedAt` stamped once and unmoved, ABSENT from Friday's request;
+  carried on a swipe (`standing=1` at the build); withdrawn whole
+  (`removed=1 … record_deleted=false`); `permanent: null` refused on dispatch
+  AND REST; a `.qtap` export + re-import keeping `permanent = 1`; a backup +
+  `replace` restore keeping it.
+- **P4.146 ⭐.** LUC Ranch's 598-byte `properties.json` changed in exactly
+  ONE line on the Allow-Any-Character toggle, its eight `null`s intact and on
+  the wire; a new project writing `"color": null, "icon": null` (home row
+  too); a group colour cleared to `"color": null`; a `color: 5` group import
+  refused `Failed to import group`.
+- **P4.D253 ⭐.** A generated text PDF through the AI Wizard: the seam's
+  stderr refusal once, v4's WARN `pdf-parse found no text, using native
+  fallback extraction size=862`, DEBUG `Extracted PDF content size=862
+  chars=555`, the text in both `CHARACTER_WIZARD` requests; an image-only PDF
+  failing `Failed to extract PDF content (no text found)` with no LLM call;
+  Summon From Lore over the same PDF (six `AI_IMPORT` calls, the dossier's
+  details in the result).
+- **The restore translation.** A backup whose chat settings were planted
+  with the retired `impersonationVoiceRewrite: true` restored as `'ask'`
+  with DEBUG `Translated the retired impersonated-line voice toggle for
+  restore … impersonation_voice_mode=ask`.
+
+### Findings
+- **#141 (high; v4 shares; FIX v5; ORDER-PENDING):** a `replace` restore
+  orphans every character's vault — phase 6's create provisions a fresh
+  vault (Friday: 12 files) and the archive's real one (805 links: photos,
+  wardrobe, mail, summaries) lands beside it unreferenced; projects and
+  groups likewise. 144 stores from a 77-store archive.
+- **#142 (v4 shares; FIX v5; ORDER-PENDING):** the files phase resolves the
+  Uploads store through the TARGET's pointer, restored only at 22o — a
+  restore into any instance whose pointer differs (a fresh one; here a
+  reboot between two restores re-minted it) fails every project-less file.
+- **#140 (ORDER-PENDING, smalls):** `.qtap` import warnings carry v5's error
+  tail (`sqlite error: …`, serde text) where v4's is the bare message / the
+  ZodError.
+- **#139 (v4-faithful):** a `duplicate` import of a still-present chat loses
+  its messages and informs (v4's phantom-id quirk, reproduced on purpose).
+- **#138 (v4-faithful):** a swipe writes no `llm_logs` row.
+
+### Instrument notes
+The dogfood server MUST run with the 2-hour background limit — the default
+30 minutes killed it mid-restore (recovered by a second `replace` restore).
+The Browser pane went hidden mid-walk; from C5 on, gestures were
+script-dispatched clicks on the real controls. Recorded divergences seen
+firing live, not findings: the V8 `JSON.parse` twin's serde fallback inside
+a legal value (AI import), the seam's "bookkept as extraction-failed" stderr
+wording (OPEN for the smalls round).
+
+### Still owed
+The standing queue (Lantern budget, a real token-limit turn, the four planted
+proofs, dedup/summaries, the Brahma deep query, #101, the compression
+re-measure); the restore order's acceptance walk (#141/#142).
