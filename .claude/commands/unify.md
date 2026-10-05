@@ -147,8 +147,15 @@ work is a commit of its own.
   branches and the temp branch. Check for agent child worktrees that were
   subsumed. Worktree targets are large (tens of GB) — confirm the space
   came back.
-- Remove /tmp oracle artifacts, fixture mirrors, stale `test-results/`, and
-  any debug servers.
+- Run `scripts/tmp-sweep.sh` once every lane worktree is gone and no gate is
+  running: it removes jest's cache (`$TMPDIR/jest_*`, never evicted by jest;
+  it reached ~81 GB) and the `qt-*` / `quilltap-backup*` scratch dirs the
+  round's tests and oracles leaked. Those live in `$TMPDIR`
+  (`/var/folders/…/T/` — what Node's `tmpdir()` and Rust's `temp_dir()`
+  return), not `/tmp`; a `/tmp`-only cleanup missed ~36 GB of them. Report
+  its reclaimed line.
+- Remove the remaining `/tmp` oracle artifacts (`oracle-*.ndjson`, fixture
+  mirrors), stale `test-results/`, and any debug servers.
 - Update the round's memory note (what landed, what's OPEN, new gotchas,
   **and what the §3 review caught — the finding shapes are the reusable
   part**) and its MEMORY.md index line.

@@ -103,7 +103,11 @@ your final report:
   <your-worktree>/Cargo.toml`). Yours only — never a sibling lane's.
 - Delete any scratch build output you created outside the worktree
   (oracle regen scratch dirs, copied instance fixtures, `/tmp` release
-  builds). Committed fixtures and NDJSON oracles stay, obviously.
+  builds). Committed fixtures and NDJSON oracles stay, obviously. Oracle
+  and test scratch made with Node's `tmpdir()` / Rust's `temp_dir()` lands
+  in `$TMPDIR`, not `/tmp`. **Do not run `scripts/tmp-sweep.sh` from a
+  lane** — sibling lanes' jest runs and scratch dirs are live; `/unify` and
+  `/setupphase` run it when the tree is quiet.
 - Leave the worktree and branch themselves intact — `/unify` consumes
   and removes them.
 

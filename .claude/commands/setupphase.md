@@ -123,6 +123,10 @@ scripts/cargo-sweep.sh file
 ```
 
 - Record `df -h ~` and `du -sh target` before and after.
+- Run `scripts/tmp-sweep.sh` first (foreground, before the chain): it
+  clears jest's cache and the `qt-*` scratch the last round's gates leaked
+  into `$TMPDIR` — tens of GB that would otherwise follow the lanes into
+  their gates. Report its reclaimed line beside the `df` numbers.
 - Don't start it while anything else is building in main's tree, and don't
   start lanes until it finishes — a lane cloning a half-built target starts
   cold anyway.

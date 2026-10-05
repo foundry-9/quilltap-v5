@@ -1,5 +1,5 @@
 ---
-description: Build the release binary exactly as /dogfood needs it, then cargo-sweep main's target/ so only current artifacts survive — the release build plus (by default) the dev/test/clippy set the lanes clone
+description: Build the release binary exactly as /dogfood needs it, then cargo-sweep main's target/ so only current artifacts survive — the release build plus (by default) the dev/test/clippy set the lanes clone — and sweep the temp dir (jest's cache, leaked qt-* scratch)
 argument-hint: [--release-only]
 ---
 
@@ -34,6 +34,17 @@ session" true. Never `cargo clean`, never `rm -rf target/`, never a bare
   `target/release/quilltap-web` open — sweeping replaces the file, the process
   keeps its inode. Mention it in the report; don't kill it.
 - Record `df -h ~` and `du -sh target` before.
+
+## 1a. Sweep the temp dir
+
+Run `scripts/tmp-sweep.sh` (foreground; seconds to a few minutes). Read its
+header first. It deletes jest's cache (`$TMPDIR/jest_*` — v4's jest oracles
+never evict it, and it reached ~81 GB) and the `qt-*` / `quilltap-backup*`
+scratch dirs tests and oracles leak into `$TMPDIR` and `/tmp`, age-gated at
+120 minutes. Node's `tmpdir()` and Rust's `temp_dir()` are `$TMPDIR`
+(`/var/folders/…/T/`), **not** `/tmp` — that is where the weight is. If it
+prints `jest cache: SKIPPED`, a jest run is alive somewhere; say so in the
+report rather than killing it. Keep its output for the report.
 
 ## 2. Stamp → build → dry run → sweep
 
@@ -75,6 +86,8 @@ With `--release-only`, drop the three `CARGO_INCREMENTAL=0` lines. Rules:
 
 ## 3. Report
 
+- The temp sweep's lines: whether jest's cache went (and its size if the
+  dry run was taken), how many scratch entries went, the space reclaimed.
 - Exit status of each step (from the log, not the notification alone).
 - `df -h ~` and `du -sh target` after, and the space reclaimed.
 - A summary of the dry run: how many units removed, by profile

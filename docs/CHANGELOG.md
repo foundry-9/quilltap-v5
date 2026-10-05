@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-05 — chore(scripts): add tmp-sweep.sh — clear jest's never-evicted cache and the qt-* scratch tests leak into $TMPDIR; /cleanup, /setupphase and /unify run it
+
+_No crate versions bumped._
+
+Jest's cache (`$TMPDIR/jest_dz`) had grown to ~81 GB: jest never evicts, and its entries are keyed by source path, which our pinned-worktree and mirror regens change every run, so the cache was effectively write-only. Separately, about 180 oracle cases and several harness tests create `qt-*` scratch dirs with Node's `tmpdir()` / Rust's `temp_dir()` and never remove them. Both resolve to `$TMPDIR` (`/var/folders/…/T/`), not `/tmp`, so `/unify`'s "/tmp oracle artifacts" cleanup never reached them: 84,633 entries had accumulated since 2026-09-24.
+
+New `scripts/tmp-sweep.sh` removes `$TMPDIR/jest_*` (skipped while a node jest process is running) and the `qt-*` / `quilltap-backup*` entries in `$TMPDIR` and `/tmp` older than `--min-age` minutes (default 120). `-n` is a dry run. `/cleanup` (new step 1a), `/setupphase` step 6 and `/unify` step 7 now run it; `/carryout` tells lanes not to, since sibling lanes' jest runs and scratch are live. First run reclaimed 12.4 GB (the dry run's `du` estimate of 34.2 GB double-counted APFS-cloned fixture copies). The leaking cases themselves are not fixed here.
+
 #### 2026-10-05 — docs(porting): unify the 07b8f0209 two-commit drift catch-up round — all three lanes landed; the baseline moves to 07b8f0209; the review's findings fixed
 
 _Docs-only change._
