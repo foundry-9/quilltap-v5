@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-05 — docs(porting): P4.D252 lane record — the impersonated-line voice mode, SPA half; the order marked LANE COMPLETE
+
+_Docs-only change._
+
+The lane record for P4.D252 appended to `status-log.md`: the §2 probe, the red-first (32 TypeScript errors against the unported tree), the two units with each asserted string's v4 file:line, the eight mutation proofs, the grep gate, and the gate results (SPA 467 files / 8,879 tests; Rust fmt/clippy clean in both feature sets, `cargo test --workspace` 666 binaries / 4,320 / 0 / 3 ignored; full Playwright 349 passed / 7 failed / 10 skipped with every red green by file alone). The order's Status header reads LANE COMPLETE with the branch and commits.
+
 #### 2026-10-05 — test(e2e): the two In Their Own Words beats re-shaped for the three-way mode and PARKED behind P4D251_SERVER_LANDED (P4.D252 Tier 1 item 7)
 
 _Versions: SPA 0.5.804._

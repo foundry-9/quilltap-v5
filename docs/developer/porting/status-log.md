@@ -165659,3 +165659,187 @@ None.
 Summon From Lore / the AI Wizard given a real PDF on the Friday copy: the
 WARN with `size`, the fallback text used (the seam refuses), or `(no text
 found)` on a scanned PDF — and the stderr refusal naming P4.6y once per PDF.
+
+## P4.D252 — `07b8f0209`'s impersonated-line voice MODE, SPA half — LANE record (lane `claude/p4-d252-impersonation-voice-mode-60babf`, 2026-10-05)
+
+**The §2 probe PASSED at lane start:** v4 on `main` at `07b8f0209`, tree
+clean, `07b8f0209..main` and `1a2b2164c..bugfix` both empty. This lane runs
+no oracle and no recorder (none was predicted, none was needed): every v4
+string was read with `git show 07b8f0209:<path>`.
+
+**Red-first.** The re-shaped specs were written before any source edit and
+run against the unported tree: **32 TypeScript errors** (`mode` unknown on
+`ShouldRehearseArgs` / `InterceptArgs`, no `restate` on the service or the
+dialog, no `voiceRehearsalTitle` / `VoiceRehearsalCue` export, no
+`voiceRehearsal` on the composer, the retired key on the settings card) —
+the SPA's red-first is a compile red because `ng test --include` compiles
+the whole tree. The behaviour is then pinned by the mutation proofs below.
+
+### Unit 1 — the port (SPA 0.5.803, `4cef19614`)
+
+One commit, because the contract key and the gate args are shared types
+(`ng-test-include-still-compiles-the-whole-tree`).
+
+- **Contract** (`core-contract.ts`): `export type ImpersonationVoiceMode =
+  'off' | 'ask' | 'always'` (v4 `lib/schemas/settings.types.ts`
+  `ImpersonationVoiceModeEnum`, hand-rolled — no zod in the SPA) and
+  `impersonationVoiceMode?:` in place of the boolean (v4
+  `components/settings/chat-settings/types.ts:100-101`).
+- **Gate** (`gate.ts`): `mode` for `enabled`, `if (mode === 'off') return
+  false` first, the other rules and their order unchanged (v4
+  `useImpersonationVoice.ts:36-38, 57-66`). Spec: v4's three rule-1 cases
+  verbatim (`useImpersonationVoice.test.ts:60-71`), the builder re-keyed on
+  `mode: 'ask'` (`:23`); 14 `it`s.
+- **State machine** (`impersonation-voice.state.ts`):
+  `ImpersonationVoiceStage` with `draft` and v4's doc (`:92-97`);
+  `InterceptArgs.mode`; `intercept` runs the preview only under `always`,
+  else `stage.set('draft')` with v4's why-comment (`:257-266`); `regenerate`
+  → `restate` with the empty-draft guard (`:314-324`); a private
+  `dropStaleProposal` (`:326-336`) called by both picker handlers and nothing
+  else; the header doc re-worded to v4's. One v4-faithful quirk kept: a
+  picker change with no open rehearsal still sets `stage` to `draft` (v4's
+  `dropStaleProposal` is unconditional); nothing renders it and the next
+  `intercept` resets it. Spec: v4's NEW `useImpersonationVoice.flow.test.ts`
+  transcribed case for case (six `it`s, v4's names; v4 counts `fetch` calls
+  with `action=impersonation-voice-preview`, v5 counts
+  `chatImpersonationVoicePreview` dispatches), plus restate-on-the-live-draft,
+  both pickers dropping without a call, the omit-key-on-null Restate, and the
+  empty-draft refusal. The older blocks run under `mode: 'always'`.
+- **Dialog** (`impersonation-voice-dialog.ts`): `stage =
+  input.required<'draft'|'generating'|'review'>()` with `generating` /
+  `isDraft` / `hasDraft` computeds (v4 `:56-57, 95-96, 133`); the voice line
+  with v4's `picked` lookup over the profiles query and the "Would be spoken
+  through" verb (`:135-144`); the draft wrapper's `(keydown)` →
+  `onSeedKeyDown` (`:156-166, 207`); under `isDraft` the one `qt-text-xs`
+  note (`:264-270`) else the proposal panel + "Nothing came back"; the two
+  footers with v4's classes, labels, disabled rules and order (`:291-354`);
+  `regenerate` output → `restate`. **A latent v5 dependency found and
+  fixed:** the controlled-select effect reached the document through the
+  proposal box's `ownerDocument`, which no longer exists in the draft — it
+  now goes through an always-rendered `#pickers` ref (the controlled-select
+  spec runs in BOTH stages). Spec: v4's NEW `ImpersonationVoiceDialog.test.tsx`
+  transcribed (six draft-state + three review-state `it`s, v4's names) plus
+  the draft footer's order, the bare-Enter / in-flight / review arms of the
+  draft shortcut, the note's bytes, and the verb per stage (draft, picked,
+  review, generating). `mount` defaults to `draft` as v4's `renderDialog` does.
+- **Cue** (`speaking-as-avatar.ts`, v4's home): `VoiceRehearsalCue` +
+  `voiceRehearsalTitle(cue, name, where)` with the four strings (v4
+  `SpeakingAsAvatar.tsx:21-39`); the input is `VoiceRehearsalCue | null`.
+  `chat-composer.ts`: the input `voiceRehearsal` and the Send title through
+  the helper (v4 `ChatComposer.tsx:552-553`). `salon-conversation.ts`, the
+  four sites: `impersonationVoiceMode` (`?? 'off'`, v4 `SalonView.tsx:
+  616-622`), `impersonationVoiceCue` (mode or null, `:648-658`),
+  `[voiceRehearsal]` (`:1700`), `mode:` in the intercept (`:1760`), and the
+  dialog's `[stage]` mapping `idle` → `draft` (v4 `ChatModals.tsx:385`) +
+  `(restate)` (`:390`). **Template note:** the mapping is bound through
+  `@let voiceStage = impersonationVoice.stage()` — the template checker does
+  not narrow a second signal read, so v4's literal expression fails TS2322.
+- **Settings card** (`impersonation-voice-settings.ts`): `<fieldset>`,
+  `legend.qt-settings-section-heading`, v4's reworded paragraph, three
+  `label.qt-settings-toggle-row` radios (`name="impersonationVoiceMode"`,
+  `qt-radio mt-1`) with v4's `MODES` bytes and order (`:11-71`); `mode`
+  computed (`?? 'off'`, `:38`); `onChange` saves `{ impersonationVoiceMode }`
+  with the unchanged failure string (`useChatSettings.ts:431-442`).
+  **`qt-radio` MEASURED present** in v5 (`_interactive.css` / `_variables.css`,
+  already used by seven components) — no stylesheet change. **One v5
+  addition:** after a save the radios are re-synced to the stored mode,
+  because Angular writes `[checked]` only when the mode CHANGES — without it a
+  refused save left the clicked radio lit over an unmoved setting (React's
+  controlled `checked` does this for free). Pinned and mutation-proven. Spec:
+  v4's re-shaped `ImpersonationVoiceSettings.test.tsx` transcribed (six
+  `it`s), plus the exact payloads, the retired key never sent, the
+  no-change pick, the dogfood-#6 alert, the resync, and every byte of the
+  structure and copy.
+- **Salon specs:** `salon-impersonation-voice.spec.ts` defaults to `always`
+  and gains a mode block (the `ask` open with no preview and the draft footer
+  in the mounted dialog; Restate then Send; Send as written with no call; the
+  cue per mode; the cue on the composer input; the intercept receiving `mode`
+  and no `enabled`). `salon-settings-live.spec.ts`'s structural pins read
+  `impersonationVoiceCue()` over `impersonationVoiceMode` (v4's own `:45` hunk
+  moved its pin to `chatSettings?.impersonationVoiceMode`). `chat-tab.spec.ts`
+  needed no change (the card is still last).
+- **Tier 2 item 10 landed:** a `chat-composer.spec.ts` arm that the badge's
+  `aria-hidden` and the avatar's `aria-label` are unmoved under `ask`,
+  `always` and null.
+- **Tier 2 item 9 re-checked:** v4's `FloatingDialog` geometry at the pin is
+  unmoved (`storageKey="quilltap:impersonation-voice-geometry"`, 640×720, min
+  420×460); the m6 row (a) stands, no new row.
+
+**Mutation proofs** (string edit, backup-restored, each anchor asserted
+unique; the four spec files run by `--include`):
+
+| # | Mutation | Reddens |
+| --- | --- | --- |
+| M1 | `intercept` previews under `ask` too | the 7 `ask` tests (state flow ×3, Salon mode ×3, the empty-draft Restate) |
+| M2 | `changeProfile` re-runs instead of dropping | 4 picker tests |
+| M3 | Restate's empty-draft guard removed | `restate refuses an empty draft` |
+| M4 | the draft shortcut ignores `generating` | `…refused while a restatement is in flight` |
+| M5 | the voice-line verb fixed to "Spoken through" | the 2 draft verb tests |
+| M6 | the radio resync removed | `a refused save leaves the STORED mode lit…` |
+| M7 | the gate's first rule on `ask` instead of `off` | 14 tests across gate / state / Salon |
+| M8 | the Salon maps `draft` to `review` | the Salon `ask` footer test |
+
+### Unit 2 — the beats re-shaped and PARKED (SPA 0.5.804, `e3bd9fb12`)
+
+`salon-impersonation-voice-flow.spec.ts`: `setVoiceMode(page, mode)` picks
+the radio by label and waits on a dispatch carrying `impersonationVoiceMode`;
+the round-trip beat runs under `always`; the attachment-only beat arms with
+`always`; a NEW `ask` beat asserts both titles, the draft-state dialog
+(Send as written primary, no Send, no proposal, the note), ZERO
+`chatImpersonationVoicePreview` dispatches on open, exactly one after
+Restate, and Send posting the proposal. The mock LLM keeps no request log
+and `e2e/support/**` is off-limits, so the instrument is a `page.on('request')`
+counter over the SPA's own dispatches. `settings-chat-cards-flow.spec.ts`'s
+P4.D181 block is the radio round trip relative to the row's current mode.
+Both files park behind `const P4D251_SERVER_LANDED = false`; the retired
+`P4D179`/`P4D180` constants are deleted. **Not run live on this branch**
+(§R.10 — the server here still speaks the boolean); §S.1 flips and runs them.
+
+### The grep gate
+
+`voiceRehearsalArmed|impersonationVoiceRewrite` over `apps/web/src`: EMPTY
+(exit 1); `enabled` survives in no gate arg. Over `apps/web/e2e`: the two
+parked files' header comments only.
+
+### Gate
+
+`npm run lint` (incl. `check-qt-classes`, 956 classes) clean; `npm test`
+**467 files / 8,879 tests / 0 failed** (base 8,828); `npm run build` clean.
+`git diff main -- crates/ help/ docs/v4/ harness/` EMPTY.
+
+**Rust gate** (no crate touched; run per `commit.md` §5, `CARGO_INCREMENTAL=0`,
+from an APFS clone of main's `target/`): `cargo fmt --all --check` clean;
+`cargo clippy --workspace --all-targets -- -D warnings` clean in BOTH feature
+sets; `cargo build --release` clean; `cargo test --workspace` **666 binaries /
+4,320 passed / 0 failed / 3 ignored** with no env block (this lane moves no
+differential family, so no recipe var applies). The §R.12 census guards are
+the Rust lanes'; this lane's census is `npm run lint` (above).
+
+**Full Playwright** (one run, 4319 announced, the worktree's release bins):
+**349 passed / 7 failed / 10 skipped (13.6 m)**. The 10 skips are the six
+standing parks + this lane's four parked beats (three in
+`salon-impersonation-voice-flow`, one in `settings-chat-cards-flow`). The 7
+reds are the documented Salon-streaming timing cluster in five files this lane
+does not touch, each re-run by FILE alone afterwards, one at a time, all
+green: `salon-regenerate-stream-flow` 3/3 (2.2 m), `salon-roleplay-template-flow`
+2/2 (56 s), `salon-streaming-avatar-flow` 2/2 (58 s), `salon-thinking-indicator`
+1/1 (1.5 m), `salon-transcript-subscribed-read` 2/2 (1.1 m).
+
+### 💸 for the dogfood pass
+
+As the order lists: the `ask` portrait tooltip on the Friday copy, an
+impersonated line opening the dialog with NO `VOICE_REWRITE` row, Restate
+writing exactly one, a picker change after a review writing none,
+Cmd/Ctrl+Enter in the draft posting the draft verbatim, `always` restoring
+the eager call, the three radios' descriptions.
+
+### For the unifier
+
+- §S.1: flip `P4D251_SERVER_LANDED` to `true` in BOTH
+  `e2e/salon-impersonation-voice-flow.spec.ts` and
+  `e2e/settings-chat-cards-flow.spec.ts`; run each file alone first. Likely
+  gesture fixes on first live run: `setVoiceMode`'s label filter (an exact
+  `.font-medium` regex) and the `ask` beat's `page.on('request')` counter
+  (it counts the SPA's own `/api/dispatch` posts — a Tauri-only path would not
+  show, but e2e is the web transport).
+- No fixture changed; no oracle authored; no handoff to another lane.
