@@ -24,29 +24,27 @@ probe verifies against._
   `52d6e7ecd` standing-informs drift catch-up round was unified, all three
   lanes (P4.D249 ∥ P4.D250 ∥ P4.146, 2026-10-04). CLAUDE.md's Status bullet
   agrees.
-- **Checked:** 2026-10-04 early morning (`/unify`, `git fetch --all` first;
-  the §2 probe PASSED against the previous §1 — HEAD, tree and both logs
-  unchanged). Previous check: 2026-10-03 late night (`/driftcheck`,
-  recorded `a434c715b`).
-- **v4 `main` HEAD at check: `a434c715b`** ("Fix bugs 177 and 178: PDF text
-  extraction", 2026-10-03 22:28, `4.10.0-dev.110`) — ONE commit past the
-  baseline. Now PUSHED: `main...origin/main` is `0 0` (the previous §1's
-  "LOCAL ONLY" note is retired).
+- **Checked:** 2026-10-04 late night (`/driftcheck`, `git fetch --all`
+  first; the §2 probe FAILED against the previous §1 — `a434c715b..main`
+  showed one new commit). Previous check: 2026-10-04 early morning
+  (`/unify`, recorded `a434c715b`).
+- **v4 `main` HEAD at check: `07b8f0209`** ("Impersonated-line voice: three
+  modes, no model call until asked", 2026-10-04 22:43, `4.10.0-dev.111`) —
+  TWO commits past the baseline. PUSHED: `main...origin/main` is `0 0`.
 - **v4 `bugfix` tip at check:** `1a2b2164c` ("bugfix: started 4.9.2 bug
-  branch"), UNMOVED; `1a2b2164c..bugfix` and `..origin/bugfix` empty (the
-  `main..bugfix -- lib/ app/ packages/` content list is the historical
-  lineage only, unchanged). **`release` tip:** `8fbf2afe0` ("release:
-  4.9.2"), UNMOVED; still no `release: 4.10.0` squash.
+  branch"), UNMOVED; `1a2b2164c..bugfix` and `..origin/bugfix` empty.
+  **`release` tip:** `8fbf2afe0` ("release: 4.9.2"), UNMOVED; still no
+  `release: 4.10.0` squash.
 - **Checkout at check:** branch **`main`**, tree **CLEAN**.
-- **Verdict: DRIFT PENDING — 1 commit** (§3: `a434c715b`, PORT (small) + a
-  NO-PORT? half, UNPROCESSED).
+- **Verdict: DRIFT PENDING — 2 commits** (§3: `a434c715b`, PORT (small) + a
+  NO-PORT? half; `07b8f0209`, PORT with a schema move — both UNPROCESSED).
 - **Regen rule: PIN REQUIRED** — HEAD is past the baseline; every regen pins
   at `52d6e7ecd` (§5.1). Point every live-checkout guard at the pin too
-  (`QT_V4_CHECKOUT` AND `QT_V4_ROOT`) — although `a434c715b` touches no
-  `help/`, no schema, no prompt and no provider SDK, so
-  `qtap_schema_embed_guard`, the help guards, `builtin_prompt_templates_
-  guard` and `provider_sdk_version_guard` read GREEN against HEAD as well
-  (measured at the unification's gate).
+  (`QT_V4_CHECKOUT` AND `QT_V4_ROOT`). ⚠ **Unlike `a434c715b`, `07b8f0209`
+  moves `help/` (two pages) and the `chat_settings` DDL**, so the help
+  guards (`help_tree_equivalence` and kin) and any live-schema reader now go
+  RED against HEAD by design — run them only against the pin until the
+  catch-up round absorbs it.
 - **Live-checkout guards at the baseline:** `builtin_prompt_templates_guard`,
   `provider_sdk_version_guard`, `qtap_schema_embed_guard` GREEN against the
   pin at the unification (the schema literal re-vendored to 97,324 bytes by
@@ -62,7 +60,13 @@ probe verifies against._
   DEFAULT 0`, appended — the two v4 shapes disagree and BOTH are carried,
   the P4.D78 / P4.D171 class). `chat_informs` is NOT one of P4.D248's 11
   structural tables (measured; `table_shape_equivalence` neutral).
-  `a434c715b` moves no DDL.
+  `a434c715b` moves no DDL. **`07b8f0209` DOES** — `chat_settings.
+  impersonationVoiceRewrite INTEGER DEFAULT 0` is REPLACED (same schema
+  position) by `impersonationVoiceMode TEXT DEFAULT 'off'`; its catch-up
+  owes the FIFTH D23 re-dump from the pin at that commit, and v4's
+  `impersonation-voice-mode-v1` (ADD + translate + DROP) re-homed as a boot
+  ensure — the two shapes disagree on position again (generateDDL in schema
+  order vs the migration's appended ADD).
 - **Real-instance note (measured 2026-10-03, still true at the move):** the
   standing dogfood copy (`~/qt-dogfood-friday`, rsynced before v4 ran the
   dirty tree) has NO `add-chat-informs-permanent-v1` ledger row — its
@@ -72,12 +76,29 @@ probe verifies against._
   copy of live Friday may already carry the column from v4's migration; v5
   then reads it as v4 does. v4's `migrations_state` row is NOT written by
   v5 (the deferred runner; the `chats_cycle_order_repair.rs` precedent).
+- **Real-instance note for `07b8f0209` (reasoned 2026-10-04, NOT
+  measured):** live Friday has had `impersonationVoiceRewrite = 1` since
+  before the 2026-09-15 walk (which measured 17 rehearsals), so v4's next boot on it runs
+  `impersonation-voice-mode-v1` — the row becomes `'ask'` and the old column
+  is DROPPED. **A Friday copy taken after that boot meets v5's baseline boot
+  ensure `db::chat_settings_impersonation_voice_repair`, which ADDs
+  `impersonationVoiceRewrite` back (default 0)** — no boot failure, but v5
+  then reads the setting as OFF where v4 says `'ask'`, writes a v4-retired
+  column into the copy, and v4 would re-run its migration on that file
+  (translating nothing — the row is already `'ask'` — then dropping the
+  column again). Not a blocker like the `renderedMarkdown` drop was, but a
+  dogfood on a fresh copy before the catch-up lands will show the toggle
+  off; measure the copy's `chat_settings` columns + `migrations_state`
+  first (§5.5).
 - **`help/**`:** whole at `52d6e7ecd` (129 files; `help/inform.md`
   re-vendored by P4.D249; `a434c715b` edits none). **`docs/v4/`:** CURRENT
   at `52d6e7ecd` (the five paths P4.D249 re-vendored; residual only
   `packages-quilltap-README.md`); `a434c715b` edits `docs/developer/bugs.md`
   + adds `bugs/fixed/bug-177-…md` and `bug-178-…md` — the bugs mirror, for
-  its catch-up.
+  its catch-up. `07b8f0209` edits `help/chat-settings-composer.md` +
+  `help/impersonation-voice.md` (count stays 129) and, in the mirror,
+  `developer/API.md`, `developer/DDL.md`,
+  `developer/features/complete/impersonation-voice-rewrite.md`.
 - **Standing deferrals unchanged:** the three text-compression migrations,
   the image re-encode migration and the stored-`renderedMarkdown`
   reclamation stay DEFERRED as reclamation; the animated-input ruling is
@@ -127,6 +148,7 @@ when absorbed/ratified.
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
 | `a434c715b` | 2026-10-03 | Fix bugs 177 and 178: PDF text extraction | **PORT** (small; bug 177's half) + **NO-PORT?** (bug 178's half). Not a CONVERGENCE (v4-only provenance, no v5 filing) | `generators::file_content` (v4 `lib/services/file-content-extractor.ts`, ported whole in `p4.9k` / P4.9K2 — the AI Wizard's `document` source and Summon From Lore's `sourceFileIds`; status-log "`generators::file_content`"), and v5's mount-index `DocumentTextExtractor` seam (`services/mount_index/converters.rs`, the refusing default answering `''` — v5's stand-in for v4's `convertPdfBufferToText`; the production pdf/docx impl a standing deferral). **Bug 177 hunks (`lib/`):** `extractPdfContent` now reads `(await convertPdfBufferToText(buffer)).trim()` FIRST and falls to `extractPdfTextFallback` only when that is empty, with a NEW warn `pdf-parse found no text, using native fallback extraction` `{ size }`; the failure error becomes `Failed to extract PDF content (no text found)`; a NEW debug `Extracted PDF content` `{ size, chars }` on success; the old `pdf-parse not available…` warn and `(pdf-parse unavailable and fallback extractor found no text)` error are GONE; truncation unchanged. **v5 measured NOT to have bug 177's symptom** — it never called `pdf-parse` and always ran the fallback (`file_content.rs:261`), so v5 extracted the regex-fallback text where real v4 FAILED every PDF since 2.7.0. **But v5's module-header "Recorded divergence — PDFs" (`file_content.rs:11-19`, mirrored in status-log) rests on a FALSE premise** ("a real v4 extracts PDF text through it" — it threw `pdfParse is not a function`); after the fix the divergence becomes TRUE as written only where v4's converter finds text; with v5's refusing extractor (`''`) the two sides now take the SAME fallback arm, differing only in v5's stale warn text (no `size` field), stale error string, and the absent debug line. Likely order: route `extract_pdf_content` through the `DocumentTextExtractor` seam (v4's single-converter shape), adopt the three log/error strings, rewrite the recorded divergence; check what `convertPdfBufferToText` answers inside the jest oracle at the target pin before claiming tier-3 parity (v4's new test mocks `pdf-parse` with the 2.x shape). No committed fixture carries a PDF (status-log). **Bug 178 hunks:** `next.config.js` only (`serverExternalPackages += 'pdf-parse'`, `outputFileTracingIncludes` for `pdf-parse` + `pdfjs-dist`) — a webpack/Next packaging fix; v5 has no webpack bundle and no `pdfjs-dist` server path → NO-PORT? (ratify on the file list). **Riders:** `__tests__/unit/lib/services/file-content-extractor-pdf.test.ts` (new, test-only — the order's reference shapes); `docs/developer/bugs.md` + `bugs/fixed/bug-177-…md` + `bug-178-…md` (re-vendor the `docs/v4/developer/bugs/` mirror); `docs/CHANGELOG.md`, `README.md`, the three version stamps (NO-PORT). Recorded LOCAL ONLY at the 2026-10-03 check; PUSHED by the 2026-10-04 unification probe. | UNPROCESSED |
+| `07b8f0209` | 2026-10-04 | Impersonated-line voice: three modes, no model call until asked | **PORT** (schema move + server + SPA + help). Not a CONVERGENCE (no bug number; a v4-originated feature change). Not a v5 filing | **In Their Own Words**, ported whole in the `686954937` + `f4ad2c8d1` catch-up: P4.D179 (server substrate — the `chat_settings` column, the boot ensure `db/chat_settings_impersonation_voice_repair.rs` + its `host.rs` call, `db/chat_settings.rs` read/write/`updateForUser`, the settings route's `bool_field` arm in `api/settings.rs`, the Almanack `FeatureConfigInfo` field in `almanack/{types,phase3_ledgers,render}.rs`, `fresh_schema.json` + `chat_settings_seed.json`), P4.D180 (the rehearsal — `impersonation-voice-preview`; **UNCHANGED by this commit**: no hunk touches the preview action or its server gate), P4.D181 (the SPA — `chat/impersonation-voice/gate.ts`, `screens/settings/chat/impersonation-voice-settings.ts`, `screens/salon/salon-conversation.ts`, `core-contract.ts`). **Hunks (`lib/` + `app/api/`):** `ImpersonationVoiceModeEnum = z.enum(['off','ask','always'])` replaces `impersonationVoiceRewrite: z.boolean().default(false)` at the SAME `ChatSettingsSchema` position (`.default('off')`); the settings PUT validates via `safeParse` with the NEW error `Invalid impersonationVoiceMode value (must be one of off, ask, always)` and the NEW debug `[Settings v1] impersonationVoiceMode updated` `{ userId, impersonationVoiceMode }` — **the old key is no longer read by the PUT at all** (a body still sending `impersonationVoiceRewrite` is silently ignored, not 400); the repo's create default `'off'`; the Almanack field → the mode, rendered through `IMPERSONATION_VOICE_MODE_LABELS` (`Never` / `Ask each time` / `Always restate`, unknown → the raw value); NEW pure `lib/chat/impersonation-voice-legacy.ts` (`true`/`1` → `'ask'`, else `'off'`; `withImpersonationVoiceModeFromLegacy` returns the SAME reference when the key is absent, else drops it and keeps an existing mode via `??`); restore chains it AFTER the Concierge legacy translation with a NEW debug `Translated the retired impersonated-line voice toggle for restore` `{ settingsId, impersonationVoiceMode }` (v5 home: `services/backup/restore/orchestrator.rs:885`'s sibling); NEW migration `impersonation-voice-mode-v1` (`dependsOn` the add-field migration; `shouldRun` = new column missing OR old present; `addColumnIfMissing(… "TEXT DEFAULT 'off'")`, backfill ONLY rows whose mode `IS NULL OR = 'off'`, one debug per row + a candidates debug, `DROP COLUMN`, INFO `Replaced the impersonated-line voice toggle with a three-state mode` with three counts, ERROR on failure; `prettify.ts` label "Teaching the prompter to wait until called upon…"). **Schema:** the FIFTH D23 re-dump (one column swapped, same position) + the migration re-homed as a boot ensure REPLACING/following the P4.D179 add-field ensure (two DDL shapes — the P4.D249 class); the committed fixture pairs carrying `impersonationVoiceRewrite` (`chat-settings-tier2.json`, `uuid-remap-corpus.json`, `migrate-memories-fixture-columns.ts`, the `salon_fixture_p4d171_ensure` family) NARROW through v4's real migration (the P4.D235 direction). Census rows will move: `chat_settings_column_sites_guard`. **Client hunks (SPA):** the gate's `enabled` → `mode` (`mode === 'off'` returns false); a NEW `draft` stage — under `ask` the dialog opens with NO preview call, under `always` it calls at once (the old behaviour); a picker change drops a stale proposal and waits for Restate (no re-run); "Send as written" primary + Cmd/Ctrl+Enter; the settings card a three-radio `fieldset` with v4's three labels + descriptions (strings in the hunk); `SpeakingAsAvatar`'s `voiceRehearsalTitle(cue, name, 'send')` replacing the one tooltip string; `ChatModals` / `SalonView` plumbing. **Riders:** `help/chat-settings-composer.md` + `help/impersonation-voice.md` (re-vendor, 129 stays 129); `docs/developer/{API,DDL}.md` + `features/complete/impersonation-voice-rewrite.md` (the `docs/v4/` mirror); five test files (NO-PORT, reference shapes — `impersonation-voice-mode.test.ts` is the migration's spec, `useImpersonationVoice.flow.test.ts` + `ImpersonationVoiceDialog.test.tsx` the SPA's); the Almanack test fixture + snapshot; `.claude/commands/update-documentation.md`, `README.md`, `docs/CHANGELOG.md`, the three version stamps (NO-PORT). **Real data:** see §1's real-instance note — v5's baseline ensure re-ADDs the dropped column on a post-migration copy. | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 

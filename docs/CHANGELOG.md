@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-04 — docs(porting): record v4 drift at 07b8f0209 — the impersonated-line voice becomes three modes
+
+_Docs-only change._
+
+`/driftcheck` after v4 landed `07b8f0209` (`4.10.0-dev.111`). The drift ledger's §1 now records two commits past the `52d6e7ecd` baseline (`a434c715b`, still unprocessed, and `07b8f0209`), both pushed, `bugfix` and `release` unmoved, the checkout clean on `main`; the regen rule stays PIN REQUIRED, and the help guards and live-schema readers now go red against HEAD by design. New §3 row for `07b8f0209`, classified PORT from its hunks: `chat_settings.impersonationVoiceRewrite` (boolean) is replaced by `impersonationVoiceMode` (`off`/`ask`/`always`) through a new migration that translates 1 to `ask` and drops the old column, with a restore translation, new settings-route validation and log lines, Almanack labels, a three-way settings card, an `ask` mode that opens the review dialog without a model call, and two help pages. It intersects P4.D179/D180/D181 (In Their Own Words) and needs the fifth D23 re-dump plus narrowed fixtures. §1 also notes that v5's baseline boot ensure would re-add the dropped column on a Friday copy taken after v4's next boot.
+
 #### 2026-10-04 — docs(porting): unify the 52d6e7ecd standing-informs drift catch-up round — all three lanes landed; the baseline moves to 52d6e7ecd; dogfood #136 fixed; the review's findings fixed
 
 _Docs-only change._
