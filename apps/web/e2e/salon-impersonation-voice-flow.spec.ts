@@ -38,7 +38,7 @@ import { openSidebarSection } from './support/sidebar';
  */
 
 /** @see the header — P4.D251 replaces the boolean column with `impersonationVoiceMode`. */
-const P4D251_SERVER_LANDED = false;
+const P4D251_SERVER_LANDED = true;
 const PARKED = 'awaits P4.D251: the chat_settings.impersonationVoiceMode column + its route arm';
 
 type VoiceMode = 'off' | 'ask' | 'always';

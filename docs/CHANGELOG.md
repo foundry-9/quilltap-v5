@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-05 — test(unify): the `07b8f0209` round's wires — the two In Their Own Words beats flip LIVE, `ai_import_tier3`'s per-baseline stamp moves to `4.10.0-dev.111`, the core version recounted
+
+_Versions: core 0.0.1207._
+
+Unifier wires for P4.D251 ∥ P4.D252 ∥ P4.D253 (§S.1–§S.3). `P4D251_SERVER_LANDED` flips to `true` in `e2e/salon-impersonation-voice-flow.spec.ts` and `e2e/settings-chat-cards-flow.spec.ts`, so the three-way beats run against the server half on the union. `ai_import_tier3_equivalence`'s `V4_APP_VERSION` moves to `4.10.0-dev.111` with the baseline (it reds by design at every move). Both Rust lanes bumped core to 0.0.1206 from the same base; the union recounts it to 0.0.1207.
+
 #### 2026-10-05 — docs(porting): P4.D252 lane record — the impersonated-line voice mode, SPA half; the order marked LANE COMPLETE
 
 _Docs-only change._

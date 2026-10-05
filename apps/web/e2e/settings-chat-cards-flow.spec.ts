@@ -43,7 +43,7 @@ let stateBackendReady = false;
  * unifier flips this to `true` (§S.1); activating a re-shaped beat is its first
  * execution under the new shape, so expect gesture fixes.
  */
-const P4D251_SERVER_LANDED = false;
+const P4D251_SERVER_LANDED = true;
 
 test.beforeAll(async () => {
   try {
