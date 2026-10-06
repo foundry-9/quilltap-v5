@@ -83,13 +83,22 @@ interface ReadOp {
   kind: 'read';
   label: string;
 }
+/**
+ * P4.148: read expecting the overlay to refuse (a planted bag v4's
+ * `GroupPropertiesSchema` rejects); the thrown message joins `errors`.
+ */
+interface ReadExpectErrorOp {
+  kind: 'readExpectError';
+  label: string;
+}
 type Op =
   | CreateOp
   | UpdateOp
   | PlantPropertiesOp
   | DeletePropertiesOp
   | UpdateExpectErrorOp
-  | ReadOp;
+  | ReadOp
+  | ReadExpectErrorOp;
 
 interface Spec {
   testPepperBase64: string;
@@ -183,6 +192,16 @@ async function main(): Promise<void> {
         if (!found) throw new Error(`read: group ${op.label} not found`);
         const { id: _id, officialMountPointId: _mp, createdAt: _c, updatedAt: _u, ...entity } = found;
         reads.push({ label: op.label, entity });
+        break;
+      }
+      case 'readExpectError': {
+        let message: string | null = null;
+        try {
+          await repos.groups.findById(id());
+        } catch (err) {
+          message = err instanceof Error ? err.message : String(err);
+        }
+        errors.push({ label: op.label, message });
         break;
       }
       case 'updateExpectError': {

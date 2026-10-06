@@ -166577,3 +166577,68 @@ with a unit test of the absent / `null` / value triple;
 repointed. Neutral: `projects_tier2` 1/0, `groups_tier2` 2/0 at the pin, the
 sync unit tests 7/0. `api/types.rs` / `api/memories.rs`' private copies stay
 (FROZEN — Tier 3 item 21).
+
+### Unit 3 — `parse_properties` carries v4's rules (Tier 1 item 4, R-B)
+
+- **The rules** (`api/zod_issues.rs`): `zod_group_properties_issues` /
+  `zod_project_properties_issues` walk v4's two property schemas key by key
+  in schema order (hex colour → `invalid_regex`; icon ≤ 50 CODE POINTS →
+  `too_big`; uuid roster elements at `[key, i]` and the four nullable ids →
+  `invalid_uuid`; `answerConfirmationOverride` ON/OFF → `invalid_value` with
+  no type gate (a `5` is `invalid_value`, measured); `allowAnyCharacter` /
+  the two arrays: `null` is `invalid_type` (a `.default` replaces only
+  `undefined`); `backgroundDisplayMode: null` → `invalid_value
+  [latest_chat, theme]` (the preprocess maps `null` → `undefined`, the enum
+  fails — measured); a non-object bag → ONE `invalid_type object` at `[]`).
+  Both `parse_properties` run them first and answer `zod_error_message`.
+- **ONE new constructor**, `ZodIssue::invalid_regex` — **key order measured
+  at the pin** (zod 4.6.5, the header recipe): `origin, code, format,
+  pattern, path, message` = the existing `InvalidFormat` variant,
+  `format: "regex"`, `pattern` the source with slashes, message `Invalid
+  string: must match pattern /^#(?:[0-9a-fA-F]{3}){1,2}$/`; a render-table
+  row pins it. `zod_issues_home_guard` gains the needle and the home's count
+  5 → 6 (8 definitions in 3 files).
+- **`zod_hex_color_ok`** is the ONE predicate; `api/groups.rs:225`'s private
+  `is_valid_hex_color` (+ `within`) is OUTSIDE this lane — **§S handoff**:
+  repoint it to `crate::api::zod_issues::zod_hex_color_ok` (byte-identical
+  rule).
+- **The write path's prefix:** `serialize_properties` (`properties parse: `)
+  and the RMW seed (`props seed parse: `) now carry the parse's message bare —
+  v4's `JSON.stringify(config.parseProperties(x))` throws the ZodError
+  itself (measured: the corpus's `updateExpectError` arms on `color: "red"`
+  and a non-uuid roster answer the bare `[ … ]`).
+- **Proof:** `projects-tier2.json` + `groups-tier2.json` grew refusal cells
+  through v4's REAL overlay (`plantProperties` + a NEW `readExpectError` op
+  on both oracles and both families): projects 9 planted refusals + a
+  control read at every rule's edge (50 emoji, the nil uuid, `OFF`, `#ABC`)
+  + 2 refused updates; groups 6 + control + 1. The families' tail mask now
+  keeps a ZodError tail (`[`-led) VERBATIM; only the V8-vs-serde JSON-parse
+  wording stays elided. **Red-first on unported core at the pin: projects
+  12 of 13 refusal cells differ (3 where v5 ACCEPTED the bag), groups 8 of 9
+  (4 accepted)**; green after. The sanity counts moved (groups 9 → 11 rows,
+  20 files, 44 links; projects 11 → 13).
+- **R-B, the Friday measurement (read-only, `quilltap db --json` on
+  `~/qt-dogfood-friday`, the release CLI): 12 bags — 8 projects, 4 groups —
+  0 invalid** under v4's real `XPropertiesSchema` (the extracts deleted
+  after). Not a STOP.
+- ⚠ **§R.10(j) STOP — five `quilltap-core --lib` tests RED on this branch,
+  all in files OUTSIDE the lane** (test fixtures whose roster holds a
+  non-uuid id, which v4 — and now v5 — refuses on read):
+  `project_roster_access::tests::{roster_gated_project_id_withholds_the_id_
+  off_the_roster, rostered_admitted_stranger_refused_allow_any_admits_
+  everyone}` (`project_roster_access.rs:158`, roster `["ada"]`, the id at
+  :208, :218, :247, :266), `wardrobe_tiers::tests::the_project_tier_is_
+  served_on_roster_and_to_the_operator_off_roster` (`wardrobe_tiers.rs:265`,
+  `["c-on"]`, also :232 doc, :322), `doc_edit::path_resolver::tests::
+  {project_scope_resolves_for_a_rostered_character_and_logs_no_refusal,
+  the_collector_withholds_the_project_tier_off_roster_and_logs_the_debug}`
+  (`doc_edit/path_resolver.rs:1335`, `["c-on"]`, also :1330 doc, :1390,
+  :1505, :1597 — P4.149's file). **The hunk for the unifier (§S):** replace
+  each fixture character id with a well-formed uuid (e.g. `ada` →
+  `aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa`, `c-on` →
+  `cccccccc-cccc-4ccc-8ccc-cccccccccccc`) at every listed use, including the
+  expected `characterId=…` debug text. No production change. A tree-wide
+  grep found no other non-uuid roster fixture (the two in `api/projects.rs`
+  / `projects_routes_equivalence.rs` are intended refusals).
+- Also fixed in-lane: `db/projects.rs`'s own `find_by_ids` test stored
+  `color: "red"` → `#ff0000`.

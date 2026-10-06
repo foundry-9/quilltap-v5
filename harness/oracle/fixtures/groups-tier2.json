@@ -198,6 +198,100 @@
       "$comment": "[P4.146] (e) A read of a bag with both keys ABSENT stays absent.",
       "kind": "read",
       "label": "beta"
+    },
+    {
+      "$comment": "[P4.148] (R-B) v4's GroupPropertiesSchema rules on the READ overlay: each planted bag is refused with `properties.json unparseable: <ZodError.message>` (hex colour, 50 code-point icon, a wrong type, a non-object). Compared VERBATIM since P4.148.",
+      "kind": "create",
+      "label": "kappa",
+      "input": {
+        "name": "Kappa",
+        "state": {},
+        "color": "#123456"
+      }
+    },
+    {
+      "kind": "plantProperties",
+      "label": "kappa",
+      "content": "{\n  \"color\": 5,\n  \"icon\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"\n}"
+    },
+    {
+      "kind": "readExpectError",
+      "label": "kappa"
+    },
+    {
+      "kind": "plantProperties",
+      "label": "kappa",
+      "content": "{\n  \"color\": \"red\"\n}"
+    },
+    {
+      "kind": "readExpectError",
+      "label": "kappa"
+    },
+    {
+      "kind": "plantProperties",
+      "label": "kappa",
+      "content": "{\n  \"icon\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"\n}"
+    },
+    {
+      "kind": "readExpectError",
+      "label": "kappa"
+    },
+    {
+      "kind": "plantProperties",
+      "label": "kappa",
+      "content": "{\n  \"color\": \"#12345\"\n}"
+    },
+    {
+      "kind": "readExpectError",
+      "label": "kappa"
+    },
+    {
+      "kind": "plantProperties",
+      "label": "kappa",
+      "content": "\"str\""
+    },
+    {
+      "kind": "readExpectError",
+      "label": "kappa"
+    },
+    {
+      "kind": "plantProperties",
+      "label": "kappa",
+      "content": "null"
+    },
+    {
+      "kind": "readExpectError",
+      "label": "kappa"
+    },
+    {
+      "$comment": "[P4.148] The control: 50 emoji (100 UTF-16 units) and a 6-digit mixed-case hex read back whole.",
+      "kind": "plantProperties",
+      "label": "kappa",
+      "content": "{\n  \"color\": \"#AbCdEf\",\n  \"icon\": \"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"\n}"
+    },
+    {
+      "kind": "read",
+      "label": "kappa"
+    },
+    {
+      "$comment": "[P4.148] The write path: a colour patch v4's rules refuse.",
+      "kind": "create",
+      "label": "lambda",
+      "input": {
+        "name": "Lambda",
+        "state": {}
+      }
+    },
+    {
+      "kind": "updateExpectError",
+      "label": "lambda",
+      "patch": {
+        "color": "red"
+      }
+    },
+    {
+      "kind": "read",
+      "label": "lambda"
     }
   ]
 }

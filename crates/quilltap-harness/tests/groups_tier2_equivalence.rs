@@ -99,6 +99,10 @@ enum Op {
     #[serde(rename = "deleteProperties")]
     DeleteProperties { label: String },
     /// Run the update expecting a refusal; the message is recorded and diffed.
+    /// P4.148: read expecting the overlay's refusal (a planted bag v4's
+    /// `GroupPropertiesSchema` rejects); the message joins `errors`.
+    #[serde(rename = "readExpectError")]
+    ReadExpectError { label: String },
     #[serde(rename = "updateExpectError")]
     UpdateExpectError {
         label: String,
@@ -331,6 +335,13 @@ fn normalize_error_message(message: &str, id_map: &HashMap<String, String>, side
             !out[head_end..].trim().is_empty(),
             "{side}: empty parse detail in {out:?}"
         );
+        // [P4.148] A ZodError tail (`JSON.stringify(issues, null, 2)` — it
+        // opens with `[`) is SCHEMA bytes both sides must agree on since
+        // `parse_properties` carries v4's rules: compared VERBATIM. Only the
+        // JSON-parse wording (V8 vs serde) stays elided.
+        if out[head_end..].starts_with('[') {
+            return out;
+        }
         out.truncate(head_end);
         out.push_str("<parse-detail>");
     }
@@ -449,6 +460,16 @@ fn groups_tier2_matches_oracle() {
                         .find_by_id(&lookup_id(&id_by_label, label))
                         .unwrap_or_else(|e| panic!("read {label}: {e}"));
                     got_reads.push(read_entity(label, found));
+                }
+                Op::ReadExpectError { label } => {
+                    let id = id_by_label
+                        .get(label)
+                        .unwrap_or_else(|| panic!("op references unknown label {label}"));
+                    let message = match repo.find_by_id(id) {
+                        Ok(_) => Value::Null,
+                        Err(e) => Value::String(e.to_string()),
+                    };
+                    got_errors.push(json!({ "label": label, "message": message }));
                 }
                 Op::UpdateExpectError { label, patch } => {
                     let id = id_by_label
@@ -569,20 +590,26 @@ fn groups_tier2_matches_oracle() {
         got[i]["rows"].as_array().unwrap().clone()
     };
     // P4.146 adds four (zeta/eta/theta/iota — the null-preservation arms).
-    assert_eq!(rows("groups").len(), 9, "9 group rows");
-    assert_eq!(rows("points").len(), 9, "9 mount-point rows");
+    // P4.148 adds two (kappa — the planted refusal cells, ending on a valid
+    // bag — and lambda, the refused update).
+    assert_eq!(rows("groups").len(), 11, "11 group rows");
+    assert_eq!(rows("points").len(), 11, "11 mount-point rows");
     // 11, not 15: v4 `40319484` collects the content row every store rewrite
     // abandons (`gcOrphanedFileRow`), so the four orphans the old corpus counted
     // are gone on both sides.
-    assert_eq!(rows("files").len(), 19, "19 deduped file rows");
+    assert_eq!(rows("files").len(), 20, "20 deduped file rows");
     assert_eq!(
         rows("documents").len(),
-        19,
-        "19 document rows (each collected orphan took its payload)"
+        20,
+        "20 document rows (each collected orphan took its payload)"
     );
-    assert_eq!(rows("links").len(), 36, "36 link rows (9 stores × 4 files)");
+    assert_eq!(
+        rows("links").len(),
+        44,
+        "44 link rows (11 stores × 4 files)"
+    );
     assert_eq!(rows("folders").len(), 0, "0 folders (all files top-level)");
-    assert_eq!(rows("groupLinks").len(), 9, "9 group→store links");
+    assert_eq!(rows("groupLinks").len(), 11, "11 group→store links");
 
     // The properties read-modify-write PRESERVED the untouched `icon` while
     // changing `color` (Alpha's final properties.json).

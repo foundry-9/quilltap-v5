@@ -14,7 +14,8 @@
 //!
 //! This walks `crates/quilltap-core/src` and holds every `fn invalid_type` /
 //! `fn invalid_uuid` / `fn invalid_value` / `fn invalid_enum` /
-//! `fn invalid_literal` / `fn invalid_int_type` DEFINITION against the census
+//! `fn invalid_literal` / `fn invalid_int_type` / `fn invalid_regex` DEFINITION
+//! against the census
 //! below. **The census IS the arithmetic:** the ONE home plus the Tier-3
 //! remainder P4.101 deliberately did not converge.
 //!
@@ -45,9 +46,11 @@ use std::path::PathBuf;
 
 /// `(repo-relative path, expected constructor definitions, why)`.
 ///
-/// **Arithmetic:** 5 (the home's own `invalid_*` constructors, associated
-/// functions on `ZodIssue`) + 1 (`pascal/custom_tool_types.rs`) + 1
-/// (`progressions/schema.rs`) = **7 definitions in 3 files**, measured down
+/// **Arithmetic:** 6 (the home's own `invalid_*` constructors, associated
+/// functions on `ZodIssue` — P4.148 added `invalid_regex`, moving the home
+/// 5 → 6) + 1 (`pascal/custom_tool_types.rs`) + 1
+/// (`progressions/schema.rs`) = **8 definitions in 3 files** (7 before
+/// P4.148), measured down
 /// from **17 in 9 files** at `main` `57fd1680` (`generators_detail` 2,
 /// `generators_wizard` 3, `prompt_templates` 1, `settings` 3, `subprompts` 1,
 /// `lora_validation` 1, `pascal` 1, `progressions` 1, `chat_create` 4).
@@ -55,11 +58,11 @@ use std::path::PathBuf;
 const CONSTRUCTOR_CENSUS: &[(&str, usize, &str)] = &[
     (
         "crates/quilltap-core/src/api/zod_issues.rs",
-        5,
+        6,
         "THE HOME — `invalid_type`, `invalid_int_type`, `invalid_value`, \
-         `invalid_literal` and `invalid_uuid` (their `too_*` siblings are not \
-         in the needle list). Every route family's issue bag is built from \
-         these.",
+         `invalid_literal`, `invalid_uuid` and (P4.148) `invalid_regex` \
+         (their `too_*` siblings are not in the needle list). Every route \
+         family's issue bag is built from these.",
     ),
     (
         "crates/quilltap-core/src/pascal/custom_tool_types.rs",
@@ -133,6 +136,9 @@ const CONSTRUCTOR_NEEDLES: &[&str] = &[
     "fn invalid_value(",
     "fn invalid_enum(",
     "fn invalid_literal(",
+    // P4.148: the `invalid_format`/regex issue (`HexColorSchema`) — the
+    // home's sixth constructor; a second definition anywhere is red.
+    "fn invalid_regex(",
 ];
 
 /// The `parsedType` spellings the tree has used.

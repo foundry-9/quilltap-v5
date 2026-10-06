@@ -64,9 +64,17 @@ impl StoreEntity for GroupEntity {
         &["color", "icon"]
     }
 
+    /// v4 `GroupPropertiesSchema.parse` — the ONE chokepoint every group bag
+    /// passes through (overlay read, write overlay, create, import, restore).
+    /// [P4.148] v4's rules run FIRST and a refusal is the `ZodError.message`
+    /// bytes (`JSON.stringify(issues, null, 2)`) — the hex colour, the 50
+    /// code-point icon, a wrong type — where v5 used to accept `"red"` and
+    /// answer a wrong type with serde's sentence. The typed decode after it
+    /// cannot fail on a bag the rules passed.
     fn parse_properties(value: &Value) -> Result<GroupProperties, String> {
-        if !value.is_object() {
-            return Err(format!("expected a JSON object, got: {value}"));
+        let issues = crate::api::zod_issues::zod_group_properties_issues(value);
+        if !issues.is_empty() {
+            return Err(crate::api::zod_issues::zod_error_message(&issues));
         }
         serde_json::from_value(value.clone()).map_err(|e| e.to_string())
     }

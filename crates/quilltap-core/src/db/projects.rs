@@ -206,9 +206,16 @@ impl StoreEntity for ProjectEntity {
     /// is why [`normalize_background_display_mode`] applied here covers v4's
     /// whole claim in one place: "Writes route through the same parse, so a
     /// pre-4.9 .qtap import or backup restore lands on a valid value."
+    ///
+    /// [P4.148] v4's rules run FIRST (`zod_project_properties_issues` — the
+    /// hex colour, the 50 code-point icon, the uuid roster and four ids, the
+    /// ON/OFF override, every type), and a refusal is the `ZodError.message`
+    /// bytes, at every site — read included (v4 refuses a stored invalid bag
+    /// with `properties.json unparseable: …` → 503, ruling R-B).
     fn parse_properties(value: &Value) -> Result<ProjectProperties, String> {
-        if !value.is_object() {
-            return Err(format!("expected a JSON object, got: {value}"));
+        let issues = crate::api::zod_issues::zod_project_properties_issues(value);
+        if !issues.is_empty() {
+            return Err(crate::api::zod_issues::zod_error_message(&issues));
         }
         // [70505745a] `z.preprocess(normalizeBackgroundDisplayMode, z.enum([…]))`.
         // Rewritten only when the key is PRESENT and non-null: an absent key is
@@ -628,7 +635,7 @@ mod find_by_ids_tests {
             .unwrap();
             conn.execute(
                 "INSERT INTO doc_mount_documents (id, fileId, content) \
-                 VALUES (?1 || '-d', ?1 || '-f', '{\"color\":\"red\"}')",
+                 VALUES (?1 || '-d', ?1 || '-f', '{\"color\":\"#ff0000\"}')",
                 params![mp],
             )
             .unwrap();
@@ -673,7 +680,7 @@ mod find_by_ids_tests {
         assert_eq!(rows[0]["name"], Value::from("One"));
         // The store's own bytes win: `color` comes from `properties.json`, and the
         // schema defaults are materialized alongside it.
-        assert_eq!(rows[0]["color"], Value::from("red"));
+        assert_eq!(rows[0]["color"], Value::from("#ff0000"));
         assert_eq!(rows[0]["allowAnyCharacter"], Value::from(false));
         assert_eq!(rows[0]["backgroundDisplayMode"], Value::from("theme"));
         // …the same entity `find_by_id` hydrates one at a time.

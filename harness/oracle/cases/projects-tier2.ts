@@ -50,7 +50,9 @@ interface Op {
     | 'deleteProperties'
     | 'updateExpectError'
     // P4.146 (dogfood #136): record the hydrated entity.
-    | 'read';
+    | 'read'
+    // P4.148: read expecting the overlay's refusal (a bag v4's rules reject).
+    | 'readExpectError';
   label: string;
   input?: Record<string, unknown>;
   patch?: Record<string, unknown>;
@@ -152,6 +154,16 @@ async function main(): Promise<void> {
         if (!found) throw new Error(`read: project ${op.label} not found`);
         const { id: _id, officialMountPointId: _mp, createdAt: _c, updatedAt: _u, ...entity } = found;
         reads.push({ label: op.label, entity });
+        break;
+      }
+      case 'readExpectError': {
+        let message: string | null = null;
+        try {
+          await repos.projects.findById(id());
+        } catch (err) {
+          message = err instanceof Error ? err.message : String(err);
+        }
+        errors.push({ label: op.label, message });
         break;
       }
       case 'updateExpectError': {

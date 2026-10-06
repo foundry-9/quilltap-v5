@@ -90,6 +90,18 @@ _Versions: core 0.0.1210._
 - The inform cancel's line moves from the api handler (wrong target, snake-case field, `sqlite error:` prefix) to the repository; the seat-removal `Could not drop pending informs` WARN is retired (unreachable in v4 — the DEBUG fires with `dropped_informs=0` instead).
 - `log_chat_create_validation_failure` folds its two `Error creating entity` copies onto the home.
 - `chat_informs_tier2_equivalence` gains a BEFORE DELETE trigger plant with per-op captured lines (red-first: v5 propagated where v4 answers 0) and two standing rows inserted out of posting order (the P4.151 survey's B1, mutation-proven); `fallback_home_guard` holds five more literals.
+#### 2026-10-05 — fix(db): project and group property bags follow v4's schema rules and refuse with its Zod bytes (P4.148)
+
+_Versions: core 0.0.1212._
+
+`GroupEntity::parse_properties` and `ProjectEntity::parse_properties` now apply v4's `GroupPropertiesSchema` / `ProjectPropertiesSchema` rules before decoding, at every site that parses a bag (overlay read, create, update, import, restore). A refusal is the `ZodError.message` bytes v4 produces.
+
+- Rules added: hex colour (`#rgb` / `#rrggbb`), icon at most 50 code points, uuid format on `characterRoster` entries and the four nullable id fields, `ON`/`OFF` for `answerConfirmationOverride`, `null` refused for the defaulted keys, and every wrong type. Before this, v5 accepted `color: "red"` and answered a wrong type with serde's sentence.
+- `api/zod_issues.rs` gains `ZodIssue::invalid_regex` (key order measured at zod 4.6.5), `zod_hex_color_ok`, `zod_group_properties_issues` and `zod_project_properties_issues`. `zod_issues_home_guard` counts the new constructor (home 5 → 6).
+- The write path's `properties parse: ` / `props seed parse: ` prefixes are gone; the refusal message is bare, as v4's.
+- `projects-tier2` / `groups-tier2` corpora gain refusal cells recorded through v4's real overlay (a new `readExpectError` op) plus refused-update and edge-case control arms. ZodError tails are now compared verbatim; only JSON-parse wording stays elided. On unported main, 12 of 13 project cells and 8 of 9 group cells were red.
+- Measured on the Friday copy (read-only): 0 invalid bags among 8 projects and 4 groups.
+
 #### 2026-10-05 — refactor(db): double_option moves to its neutral home db/serde_tristate.rs (P4.148)
 
 _Versions: core 0.0.1211._

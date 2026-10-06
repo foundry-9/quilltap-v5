@@ -42,6 +42,7 @@
 //! show("invalid_value/enum",    z.object({ a: z.enum(["x","y"]) }),  { a: "z" });
 //! show("invalid_value/literal", z.object({ a: z.literal("C") }),     { a: "n" });
 //! show("invalid_format/uuid",   z.object({ a: z.uuid() }),           { a: "n" });
+//! show("invalid_format/regex", z.object({ a: z.string().regex(/^#(?:[0-9a-fA-F]{3}){1,2}$/) }), { a: "red" }); // P4.148, at 07b8f0209
 //! show("too_small/string",      z.object({ a: z.string().min(1) }),  { a: "" });
 //! show("too_big/string",        z.object({ a: z.string().max(2) }),  { a: "abcd" });
 //! show("too_small/number",      z.object({ a: z.number().min(0) }),  { a: -1 });
@@ -271,6 +272,23 @@ impl ZodIssue {
             pattern: ZOD_UUID_PATTERN,
             path,
             message: "Invalid UUID".to_string(),
+        }
+    }
+
+    /// [P4.148] A `z.string().regex(re)` miss — the SAME `invalid_format` key
+    /// order as the uuid issue (`origin, code, format, pattern, path,
+    /// message`), `format: "regex"`, the source pattern echoed with its
+    /// slashes, and Zod's sentence `Invalid string: must match pattern <re>`.
+    /// Measured at zod 4.6.5 (the `07b8f0209` pin) over
+    /// `z.string().regex(/^#(?:[0-9a-fA-F]{3}){1,2}$/)` and `"red"`.
+    pub fn invalid_regex(pattern: &'static str, path: Vec<Value>) -> Self {
+        Self::InvalidFormat {
+            origin: "string",
+            code: "invalid_format",
+            format: "regex",
+            pattern,
+            path,
+            message: format!("Invalid string: must match pattern {pattern}"),
         }
     }
 
@@ -545,6 +563,157 @@ pub fn zod_uuid_ok(s: &str) -> bool {
         }
     }
     matches!(b[14], b'1'..=b'8') && matches!(b[19], b'8' | b'9' | b'a' | b'b' | b'A' | b'B')
+}
+
+/// v4 `HexColorSchema` (`lib/schemas/common.types.ts:77`) — its regex source,
+/// verbatim, as Zod echoes it into the issue's `pattern`.
+pub const ZOD_HEX_COLOR_PATTERN: &str = "/^#(?:[0-9a-fA-F]{3}){1,2}$/";
+
+/// `true` when `s` matches [`ZOD_HEX_COLOR_PATTERN`] — `#rgb` or `#rrggbb`.
+/// The pattern is anchored (`^`/`$`, no `m` flag), so it is a whole-string
+/// match; its classes are ASCII-only, so a byte walk is exact. The ONE
+/// predicate for v4's hex colour (P4.148; `api/groups.rs` still keeps a private
+/// twin — a recorded §S handoff, that file being outside the lane).
+pub fn zod_hex_color_ok(s: &str) -> bool {
+    let Some(rest) = s.strip_prefix('#') else {
+        return false;
+    };
+    (rest.len() == 3 || rest.len() == 6) && rest.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// One `X.nullable().optional()` string field: absent and `null` pass, a
+/// non-string is `invalid_type`, a string is handed to `check` (which pushes
+/// its own issue).
+fn nullable_string_issues(
+    bag: &serde_json::Map<String, Value>,
+    k: &str,
+    issues: &mut Vec<ZodIssue>,
+    check: impl Fn(&str) -> Option<ZodIssue>,
+) {
+    match bag.get(k) {
+        None | Some(Value::Null) => {}
+        Some(Value::String(v)) => issues.extend(check(v)),
+        got => issues.push(ZodIssue::invalid_type("string", vec![key(k)], got)),
+    }
+}
+
+/// The colour + icon pair both property schemas declare, in schema order:
+/// `color: HexColorSchema.nullable().optional()`, `icon:
+/// z.string().max(50).nullable().optional()` (CODE POINTS — `jsstr::
+/// zod_len_max_ok`).
+fn color_icon_issues(bag: &serde_json::Map<String, Value>, issues: &mut Vec<ZodIssue>) {
+    nullable_string_issues(bag, "color", issues, |v| {
+        (!zod_hex_color_ok(v))
+            .then(|| ZodIssue::invalid_regex(ZOD_HEX_COLOR_PATTERN, vec![key("color")]))
+    });
+    nullable_string_issues(bag, "icon", issues, |v| {
+        (!crate::jsstr::zod_len_max_ok(v, 50))
+            .then(|| ZodIssue::too_big_string(json!(50), vec![key("icon")]))
+    });
+}
+
+/// v4 `GroupPropertiesSchema` (`lib/schemas/group.types.ts:43-46`) over a raw
+/// `properties.json` bag — zod's issue list in zod's order (empty = the bag
+/// parses). A non-object is ONE `invalid_type` at `path: []`. Unknown keys are
+/// stripped by `z.object`, never an issue. The ONE rule set every v5 site runs
+/// through `GroupEntity::parse_properties` (P4.148 — v4 `parseProperties` at
+/// every overlay site, `document-store-overlay.ts:160,295,316,384,389`).
+pub fn zod_group_properties_issues(bag: &Value) -> Vec<ZodIssue> {
+    let Some(obj) = bag.as_object() else {
+        return vec![ZodIssue::invalid_type("object", vec![], Some(bag))];
+    };
+    let mut issues = Vec::new();
+    color_icon_issues(obj, &mut issues);
+    issues
+}
+
+/// v4 `ProjectPropertiesSchema` (`lib/schemas/project.types.ts:62-119`) over a
+/// raw `properties.json` bag, in schema order — the sixteen keys:
+///
+/// - `allowAnyCharacter: z.boolean().default(false)` — absent defaults; `null`
+///   or a non-boolean is `invalid_type` (a default replaces `undefined` only);
+/// - `characterRoster: z.array(UUIDSchema).default([])` — a non-array (incl.
+///   `null`) is `invalid_type array`; each element a uuid, its issue at
+///   `[key, index]` (a non-string element `invalid_type string`);
+/// - `color` / `icon` — [`color_icon_issues`];
+/// - `defaultDisabledTools` / `defaultDisabledToolGroups: z.array(z.string())
+///   .default([])`;
+/// - the four `z.boolean().nullable().optional()` flags;
+/// - `defaultImageProfileId`, `defaultRoleplayTemplateId`,
+///   `staticBackgroundImageId`, `storyBackgroundImageId:
+///   UUIDSchema.nullable().optional()`;
+/// - `answerConfirmationOverride: z.enum(['ON','OFF']).nullable().optional()`
+///   — an enum has no separate type gate, so a number is `invalid_value` too;
+/// - `backgroundDisplayMode: z.preprocess(normalizeBackgroundDisplayMode,
+///   z.enum(['latest_chat','theme'])).default('theme')` — absent defaults
+///   (the default short-circuits ahead of the preprocess); `null`
+///   preprocesses to `undefined` and FAILS the enum (`invalid_value`); every
+///   other value normalizes to a member (measured at the pin: `5` → `theme`).
+///
+/// Measured against v4's REAL schema at `07b8f0209` (the `projects-tier2`
+/// corpus's `propertyRefusals` cells).
+pub fn zod_project_properties_issues(bag: &Value) -> Vec<ZodIssue> {
+    let Some(obj) = bag.as_object() else {
+        return vec![ZodIssue::invalid_type("object", vec![], Some(bag))];
+    };
+    let mut issues = Vec::new();
+    let boolean_default = |k: &str, issues: &mut Vec<ZodIssue>| match obj.get(k) {
+        None | Some(Value::Bool(_)) => {}
+        got => issues.push(ZodIssue::invalid_type("boolean", vec![key(k)], got)),
+    };
+    let nullable_boolean = |k: &str, issues: &mut Vec<ZodIssue>| match obj.get(k) {
+        None | Some(Value::Null) | Some(Value::Bool(_)) => {}
+        got => issues.push(ZodIssue::invalid_type("boolean", vec![key(k)], got)),
+    };
+    let string_array = |k: &str, uuid: bool, issues: &mut Vec<ZodIssue>| match obj.get(k) {
+        None => {}
+        Some(Value::Array(items)) => {
+            for (i, item) in items.iter().enumerate() {
+                let path = vec![key(k), json!(i)];
+                match item {
+                    Value::String(v) if uuid && !zod_uuid_ok(v) => {
+                        issues.push(ZodIssue::invalid_uuid(path))
+                    }
+                    Value::String(_) => {}
+                    got => issues.push(ZodIssue::invalid_type("string", path, Some(got))),
+                }
+            }
+        }
+        got => issues.push(ZodIssue::invalid_type("array", vec![key(k)], got)),
+    };
+    let nullable_uuid = |k: &str, issues: &mut Vec<ZodIssue>| {
+        nullable_string_issues(obj, k, issues, |v| {
+            (!zod_uuid_ok(v)).then(|| ZodIssue::invalid_uuid(vec![key(k)]))
+        })
+    };
+    boolean_default("allowAnyCharacter", &mut issues);
+    string_array("characterRoster", true, &mut issues);
+    color_icon_issues(obj, &mut issues);
+    string_array("defaultDisabledTools", false, &mut issues);
+    string_array("defaultDisabledToolGroups", false, &mut issues);
+    nullable_boolean("defaultAgentModeEnabled", &mut issues);
+    nullable_boolean("defaultAvatarGenerationEnabled", &mut issues);
+    nullable_uuid("defaultImageProfileId", &mut issues);
+    nullable_uuid("defaultRoleplayTemplateId", &mut issues);
+    nullable_boolean("defaultAlertCharactersOfLanternImages", &mut issues);
+    match obj.get("answerConfirmationOverride") {
+        None | Some(Value::Null) => {}
+        Some(Value::String(v)) if v == "ON" || v == "OFF" => {}
+        Some(_) => issues.push(ZodIssue::invalid_value(
+            &["ON", "OFF"],
+            vec![key("answerConfirmationOverride")],
+        )),
+    }
+    nullable_boolean("storyBackgroundsEnabled", &mut issues);
+    nullable_uuid("staticBackgroundImageId", &mut issues);
+    nullable_uuid("storyBackgroundImageId", &mut issues);
+    if let Some(Value::Null) = obj.get("backgroundDisplayMode") {
+        issues.push(ZodIssue::invalid_value(
+            &["latest_chat", "theme"],
+            vec![key("backgroundDisplayMode")],
+        ));
+    }
+    issues
 }
 
 /// v4 `GroupSchema` (`lib/schemas/group.types.ts`) over a raw `groups` row —
@@ -1247,6 +1416,11 @@ mod tests {
                 "invalid_format/uuid",
                 ZodIssue::invalid_uuid(vec![key("a")]),
                 r#"{"origin":"string","code":"invalid_format","format":"uuid","pattern":"/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/","path":["a"],"message":"Invalid UUID"}"#,
+            ),
+            (
+                "invalid_format/regex",
+                ZodIssue::invalid_regex(ZOD_HEX_COLOR_PATTERN, vec![key("a")]),
+                r#"{"origin":"string","code":"invalid_format","format":"regex","pattern":"/^#(?:[0-9a-fA-F]{3}){1,2}$/","path":["a"],"message":"Invalid string: must match pattern /^#(?:[0-9a-fA-F]{3}){1,2}$/"}"#,
             ),
             (
                 "too_small/string",

@@ -254,6 +254,136 @@
       "$comment": "[P4.146] (e) A read of a bag whose nullable keys are ABSENT: they stay absent on the read wire (Beta's five-default bag).",
       "kind": "read",
       "label": "beta"
+    },
+    {
+      "$comment": "[P4.148] (R-B) v4's ProjectPropertiesSchema rules on the READ overlay: each planted bag is refused with `properties.json unparseable: <ZodError.message>` — the hex colour, the 50 code-point icon, the uuid roster + ids, the ON/OFF enum (no type gate), a non-object, a defaulted key's null. The tail is compared VERBATIM since P4.148.",
+      "kind": "create",
+      "label": "mu",
+      "input": {
+        "name": "Mu",
+        "state": {},
+        "color": "#123456"
+      }
+    },
+    {
+      "kind": "plantProperties",
+      "label": "mu",
+      "content": "{\n  \"color\": 5,\n  \"icon\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"\n}"
+    },
+    {
+      "kind": "readExpectError",
+      "label": "mu"
+    },
+    {
+      "kind": "plantProperties",
+      "label": "mu",
+      "content": "{\n  \"color\": \"red\"\n}"
+    },
+    {
+      "kind": "readExpectError",
+      "label": "mu"
+    },
+    {
+      "kind": "plantProperties",
+      "label": "mu",
+      "content": "{\n  \"allowAnyCharacter\": \"x\",\n  \"characterRoster\": [\n    \"n\",\n    5\n  ],\n  \"color\": 5,\n  \"icon\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\n  \"defaultDisabledTools\": [\n    1\n  ],\n  \"defaultAgentModeEnabled\": \"x\",\n  \"defaultImageProfileId\": \"n\",\n  \"answerConfirmationOverride\": \"on\",\n  \"staticBackgroundImageId\": 5,\n  \"storyBackgroundImageId\": \"q\"\n}"
+    },
+    {
+      "kind": "readExpectError",
+      "label": "mu"
+    },
+    {
+      "kind": "plantProperties",
+      "label": "mu",
+      "content": "{\n  \"characterRoster\": null\n}"
+    },
+    {
+      "kind": "readExpectError",
+      "label": "mu"
+    },
+    {
+      "kind": "plantProperties",
+      "label": "mu",
+      "content": "{\n  \"backgroundDisplayMode\": null\n}"
+    },
+    {
+      "kind": "readExpectError",
+      "label": "mu"
+    },
+    {
+      "kind": "plantProperties",
+      "label": "mu",
+      "content": "{\n  \"answerConfirmationOverride\": 5\n}"
+    },
+    {
+      "kind": "readExpectError",
+      "label": "mu"
+    },
+    {
+      "kind": "plantProperties",
+      "label": "mu",
+      "content": "[]"
+    },
+    {
+      "kind": "readExpectError",
+      "label": "mu"
+    },
+    {
+      "kind": "plantProperties",
+      "label": "mu",
+      "content": "{\n  \"characterRoster\": [\n    \"11111111-1111-4111-8111-111111111111\",\n    7\n  ],\n  \"defaultRoleplayTemplateId\": \"not-a-uuid\"\n}"
+    },
+    {
+      "kind": "readExpectError",
+      "label": "mu"
+    },
+    {
+      "kind": "plantProperties",
+      "label": "mu",
+      "content": "{\n  \"allowAnyCharacter\": null,\n  \"defaultDisabledToolGroups\": \"x\"\n}"
+    },
+    {
+      "kind": "readExpectError",
+      "label": "mu"
+    },
+    {
+      "$comment": "[P4.148] The control: a bag at every rule's edge (50 emoji = 50 code points / 100 UTF-16 units, the nil uuid, `OFF`, a 3-digit upper-case hex) reads back whole.",
+      "kind": "plantProperties",
+      "label": "mu",
+      "content": "{\n  \"color\": \"#ABC\",\n  \"icon\": \"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\n  \"defaultImageProfileId\": \"00000000-0000-0000-0000-000000000000\",\n  \"answerConfirmationOverride\": \"OFF\"\n}"
+    },
+    {
+      "kind": "read",
+      "label": "mu"
+    },
+    {
+      "$comment": "[P4.148] The write path: a patch carrying a value v4's rules refuse.",
+      "kind": "create",
+      "label": "nu",
+      "input": {
+        "name": "Nu",
+        "state": {}
+      }
+    },
+    {
+      "kind": "updateExpectError",
+      "label": "nu",
+      "patch": {
+        "color": "red"
+      }
+    },
+    {
+      "kind": "updateExpectError",
+      "label": "nu",
+      "patch": {
+        "characterRoster": [
+          "not-a-uuid"
+        ]
+      }
+    },
+    {
+      "kind": "read",
+      "label": "nu"
     }
   ]
 }

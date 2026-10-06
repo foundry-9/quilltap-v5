@@ -105,6 +105,10 @@ enum Op {
     #[serde(rename = "deleteProperties")]
     DeleteProperties { label: String },
     /// Run the update expecting a refusal; the message is recorded and diffed.
+    /// P4.148: read expecting the overlay's refusal (a planted bag v4's
+    /// `ProjectPropertiesSchema` rejects); the message joins `errors`.
+    #[serde(rename = "readExpectError")]
+    ReadExpectError { label: String },
     #[serde(rename = "updateExpectError")]
     UpdateExpectError {
         label: String,
@@ -281,6 +285,13 @@ fn normalize_error_message(message: &str, id_map: &HashMap<String, String>, side
             !out[head_end..].trim().is_empty(),
             "{side}: empty parse detail in {out:?}"
         );
+        // [P4.148] A ZodError tail (`JSON.stringify(issues, null, 2)` — it
+        // opens with `[`) is SCHEMA bytes both sides must agree on since
+        // `parse_properties` carries v4's rules: compared VERBATIM. Only the
+        // JSON-parse wording (V8 vs serde) stays elided.
+        if out[head_end..].starts_with('[') {
+            return out;
+        }
         out.truncate(head_end);
         out.push_str("<parse-detail>");
     }
@@ -424,6 +435,13 @@ fn projects_tier2_matches_oracle() {
                         .unwrap_or_else(|e| panic!("read {label}: {e}"));
                     got_reads.push(read_entity(label, found));
                 }
+                Op::ReadExpectError { label } => {
+                    let message = match repo.find_by_id(&lookup_id(&id_by_label, label)) {
+                        Ok(_) => Value::Null,
+                        Err(e) => Value::String(e.to_string()),
+                    };
+                    got_errors.push(json!({ "label": label, "message": message }));
+                }
                 Op::UpdateExpectError { label, patch } => {
                     let message = match repo.update(&lookup(&id_by_label, label), patch) {
                         Ok(_) => Value::Null,
@@ -535,9 +553,11 @@ fn projects_tier2_matches_oracle() {
     // Eta (the null-seed arm) and Theta (the planted key-less bag) are the
     // seventh and eighth.
     // [P4.146] Iota, Kappa and Lambda (the null-preservation arms) make eleven.
-    assert_eq!(rows("projects").len(), 11, "11 project rows");
-    assert_eq!(rows("points").len(), 11, "11 mount-point rows");
-    assert_eq!(rows("projectLinks").len(), 11, "11 project→store links");
+    // P4.148 adds two (mu — the planted refusal cells — and nu, the refused
+    // updates).
+    assert_eq!(rows("projects").len(), 13, "13 project rows");
+    assert_eq!(rows("points").len(), 13, "13 mount-point rows");
+    assert_eq!(rows("projectLinks").len(), 13, "13 project→store links");
 
     // The minimal project's properties.json = the five materialized defaults,
     // in schema order, with backgroundDisplayMode 'theme' (Beta after the

@@ -614,9 +614,15 @@ pub fn read_properties<E: StoreEntity>(
 
 /// Serialize the property bag the way v4 does: `JSON.stringify(parse(x), null, 2)`
 /// — re-parse through the typed struct (key order + strip extras), 2-space pretty.
+///
+/// [P4.148] A refusal is the parse's own message, bare — v4's
+/// `JSON.stringify(config.parseProperties(x), null, 2)` throws the ZodError
+/// itself (`writeManagedFields` on create, the RMW write on update), so its
+/// `.message` IS `JSON.stringify(issues, null, 2)` with no prefix (measured at
+/// `07b8f0209`: the tier-2 `updateExpectError` arms on a `color: "red"`
+/// patch). v5 used to prepend `properties parse: `.
 fn serialize_properties<E: StoreEntity>(value: &Value) -> Result<String, OverlayError> {
-    let props = E::parse_properties(value)
-        .map_err(|d| OverlayError::Db(DbError::Internal(format!("properties parse: {d}"))))?;
+    let props = E::parse_properties(value).map_err(|d| OverlayError::Db(DbError::Internal(d)))?;
     serde_json::to_string_pretty(&props)
         .map_err(|e| OverlayError::Db(DbError::Internal(format!("properties serialize: {e}"))))
 }
@@ -728,9 +734,10 @@ pub fn apply_write_overlay<E: StoreEntity>(
                     .map_err(|e| OverlayError::Db(DbError::Internal(format!("props seed: {e}"))))?,
                 None => {
                     let entity_value = Value::Object(entity.clone());
-                    let parsed = E::parse_properties(&entity_value).map_err(|d| {
-                        OverlayError::Db(DbError::Internal(format!("props seed parse: {d}")))
-                    })?;
+                    // [P4.148] Bare, as v4's `config.parseProperties(entity)`
+                    // throws it (see `serialize_properties`).
+                    let parsed = E::parse_properties(&entity_value)
+                        .map_err(|d| OverlayError::Db(DbError::Internal(d)))?;
                     serde_json::to_value(&parsed).map_err(|e| {
                         OverlayError::Db(DbError::Internal(format!("props seed: {e}")))
                     })?
