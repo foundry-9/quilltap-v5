@@ -333,6 +333,34 @@ impl<'c> ChatInformsRepository<'c> {
     // ========================================================================
     // Reads
     // ========================================================================
+    //
+    // P4.156: every read is v4's TWO-layer fallback (`chat-informs.repository.
+    // ts:87-183`) — the method's own `safeQuery(…, [])` around the base
+    // `findByFilter`, itself a fallback. Outside the strict scope a failed SELECT
+    // logs the INNER `Error finding entities by filter` and answers `Ok([])`
+    // (the outer line is unreachable); inside it both lines log
+    // `strictFailures=true` and the `Err` propagates. The signatures still
+    // answer `Result`, because the strict callers (the `.qtap` export, the
+    // importer, the restore) must see the failure.
+
+    /// The base `findByFilter` over one `WHERE` — the raw SELECT, through the
+    /// strict-aware inner home.
+    fn select_where(
+        &self,
+        clause: &str,
+        args: &[&dyn rusqlite::ToSql],
+    ) -> Result<Vec<ChatInformRow>, DbError> {
+        super::fallback::find_by_filter_strict_aware("chat_informs", || {
+            let sql = format!("{SELECT_COLUMNS} WHERE {clause}");
+            let mut stmt = self.conn.prepare(&sql)?;
+            let rows = stmt.query_map(args, row_from)?;
+            let mut out = Vec::new();
+            for r in rows {
+                out.push(r?);
+            }
+            Ok(out)
+        })
+    }
 
     /// v4 `findPendingForParticipant` — every row still in force for one seat,
     /// in delivery order: standing rows (whether or not they have been
@@ -343,25 +371,25 @@ impl<'c> ChatInformsRepository<'c> {
         chat_id: &str,
         participant_id: &str,
     ) -> Result<Vec<ChatInformRow>, DbError> {
-        let sql = format!("{SELECT_COLUMNS} WHERE chatId = ?1 AND participantId = ?2");
-        let mut stmt = self.conn.prepare(&sql)?;
-        let rows = stmt.query_map(params![chat_id, participant_id], row_from)?;
-        let mut out: Vec<ChatInformRow> = Vec::new();
-        for r in rows {
-            let r = r?;
-            if is_inform_in_force(&r) {
-                out.push(r);
-            }
-        }
-        out.sort_by(by_delivery_order);
-        Ok(out)
+        super::fallback::pending_informs_for_participant_or_empty(chat_id, participant_id, || {
+            let mut out: Vec<ChatInformRow> = self
+                .select_where(
+                    "chatId = ?1 AND participantId = ?2",
+                    params![chat_id, participant_id],
+                )?
+                .into_iter()
+                .filter(is_inform_in_force)
+                .collect();
+            out.sort_by(by_delivery_order);
+            Ok(out)
+        })
     }
 
     /// v4 `findConsumedByMessages` — the swipe re-apply set: rows this seat
     /// already consumed on any of `message_ids`. A swipe re-rolls the line a
     /// message was, so it must see exactly the informs that generation saw and
     /// no others. An empty list answers `[]` without touching the database
-    /// (v4's own early return).
+    /// (v4's own early return, BEFORE its `safeQuery`).
     pub fn find_consumed_by_messages(
         &self,
         chat_id: &str,
@@ -371,23 +399,29 @@ impl<'c> ChatInformsRepository<'c> {
         if message_ids.is_empty() {
             return Ok(Vec::new());
         }
-        let wanted: std::collections::HashSet<&str> =
-            message_ids.iter().map(String::as_str).collect();
-        let sql = format!("{SELECT_COLUMNS} WHERE chatId = ?1 AND participantId = ?2");
-        let mut stmt = self.conn.prepare(&sql)?;
-        let rows = stmt.query_map(params![chat_id, participant_id], row_from)?;
-        let mut out: Vec<ChatInformRow> = Vec::new();
-        for r in rows {
-            let r = r?;
-            if r.consumed_by_message_id
-                .as_deref()
-                .is_some_and(|m| wanted.contains(m))
-            {
-                out.push(r);
-            }
-        }
-        out.sort_by(by_delivery_order);
-        Ok(out)
+        super::fallback::informs_consumed_by_messages_or_empty(
+            chat_id,
+            participant_id,
+            message_ids.len(),
+            || {
+                let wanted: std::collections::HashSet<&str> =
+                    message_ids.iter().map(String::as_str).collect();
+                let mut out: Vec<ChatInformRow> = self
+                    .select_where(
+                        "chatId = ?1 AND participantId = ?2",
+                        params![chat_id, participant_id],
+                    )?
+                    .into_iter()
+                    .filter(|r| {
+                        r.consumed_by_message_id
+                            .as_deref()
+                            .is_some_and(|m| wanted.contains(m))
+                    })
+                    .collect();
+                out.sort_by(by_delivery_order);
+                Ok(out)
+            },
+        )
     }
 
     /// v4 `findPendingBatches` — the chat's rows still in force folded back into
@@ -403,63 +437,51 @@ impl<'c> ChatInformsRepository<'c> {
     /// insertion order — reproduced here by pushing into a `Vec` and keeping a
     /// side index, rather than by taking a new crate dependency).
     pub fn find_pending_batches(&self, chat_id: &str) -> Result<Vec<PendingInformBatch>, DbError> {
-        let sql = format!("{SELECT_COLUMNS} WHERE chatId = ?1");
-        let mut stmt = self.conn.prepare(&sql)?;
-        let rows = stmt.query_map(params![chat_id], row_from)?;
-        let mut pending: Vec<ChatInformRow> = Vec::new();
-        for r in rows {
-            let r = r?;
-            if is_inform_in_force(&r) {
-                pending.push(r);
-            }
-        }
-        pending.sort_by(by_posting_order);
+        super::fallback::pending_inform_batches_or_empty(chat_id, || {
+            let mut pending: Vec<ChatInformRow> = self
+                .select_where("chatId = ?1", params![chat_id])?
+                .into_iter()
+                .filter(is_inform_in_force)
+                .collect();
+            pending.sort_by(by_posting_order);
 
-        let mut batches: Vec<PendingInformBatch> = Vec::new();
-        let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-        for row in pending {
-            if let Some(&at) = seen.get(&row.batch_id) {
-                batches[at].pending_participant_ids.push(row.participant_id);
-                continue;
+            let mut batches: Vec<PendingInformBatch> = Vec::new();
+            let mut seen: std::collections::HashMap<String, usize> =
+                std::collections::HashMap::new();
+            for row in pending {
+                if let Some(&at) = seen.get(&row.batch_id) {
+                    batches[at].pending_participant_ids.push(row.participant_id);
+                    continue;
+                }
+                seen.insert(row.batch_id.clone(), batches.len());
+                batches.push(PendingInformBatch {
+                    batch_id: row.batch_id,
+                    content_markdown: row.content_markdown,
+                    created_at: row.created_at,
+                    record_message_id: row.record_message_id,
+                    permanent: row.permanent,
+                    pending_participant_ids: vec![row.participant_id],
+                });
             }
-            seen.insert(row.batch_id.clone(), batches.len());
-            batches.push(PendingInformBatch {
-                batch_id: row.batch_id,
-                content_markdown: row.content_markdown,
-                created_at: row.created_at,
-                record_message_id: row.record_message_id,
-                permanent: row.permanent,
-                pending_participant_ids: vec![row.participant_id],
-            });
-        }
-        Ok(batches)
+            Ok(batches)
+        })
     }
 
     /// v4 `findByChatId` — every row for a chat, consumed included. Export and
     /// backup read this. No sort: v4's `findByFilter` applies none, so the rows
     /// come back in rowid order (insertion order).
     pub fn find_by_chat_id(&self, chat_id: &str) -> Result<Vec<ChatInformRow>, DbError> {
-        let sql = format!("{SELECT_COLUMNS} WHERE chatId = ?1");
-        let mut stmt = self.conn.prepare(&sql)?;
-        let rows = stmt.query_map(params![chat_id], row_from)?;
-        let mut out = Vec::new();
-        for r in rows {
-            out.push(r?);
-        }
-        Ok(out)
+        super::fallback::informs_by_chat_id_or_empty(chat_id, || {
+            self.select_where("chatId = ?1", params![chat_id])
+        })
     }
 
     /// v4 `findByBatchId` — every row of one batch, consumed included. Unsorted
     /// for the same reason as [`Self::find_by_chat_id`].
     pub fn find_by_batch_id(&self, batch_id: &str) -> Result<Vec<ChatInformRow>, DbError> {
-        let sql = format!("{SELECT_COLUMNS} WHERE batchId = ?1");
-        let mut stmt = self.conn.prepare(&sql)?;
-        let rows = stmt.query_map(params![batch_id], row_from)?;
-        let mut out = Vec::new();
-        for r in rows {
-            out.push(r?);
-        }
-        Ok(out)
+        super::fallback::informs_by_batch_id_or_empty(batch_id, || {
+            self.select_where("batchId = ?1", params![batch_id])
+        })
     }
 
     // ========================================================================
@@ -531,6 +553,13 @@ impl<'c> ChatInformsRepository<'c> {
                 consumed_at: None,
                 consumed_by_message_id: None,
             };
+            // P4.156: `createBatch` calls v4's pass-through `create` → `_create`,
+            // a RETHROW `safeQuery`: the failed row logs the base `Error creating
+            // entity` (C2's bytes, `strictFailures` inside the scope) and the
+            // batch THROWS — `createBatch` has no wrap of its own. The public
+            // [`Self::create`] stays silent: its import / restore callers log
+            // the base line themselves (the restore's arm; the importer's is a
+            // recorded handoff).
             self.create(&ChatInformCreate {
                 id: row.id.clone(),
                 chat_id: row.chat_id.clone(),
@@ -543,7 +572,8 @@ impl<'c> ChatInformsRepository<'c> {
                 updated_at: row.updated_at.clone(),
                 consumed_at: None,
                 consumed_by_message_id: None,
-            })?;
+            })
+            .inspect_err(|e| super::fallback::log_create_failure("chat_informs", e))?;
             created.push(row);
         }
 
@@ -574,29 +604,61 @@ impl<'c> ChatInformsRepository<'c> {
         if ids.is_empty() {
             return Ok(0);
         }
-        let now = crate::clock::now_iso();
-        let mut count = 0usize;
-        for id in ids {
-            // v4's `_update` finds the row first and answers null when absent;
-            // the row count is the same signal.
-            let changed = self.conn.execute(
-                "UPDATE chat_informs SET consumedAt = ?1, consumedByMessageId = ?2, \
-                   updatedAt = ?3 WHERE id = ?4",
-                params![now, message_id, now, id],
-            )?;
-            if changed > 0 {
-                count += 1;
+        // P4.156: v4's 4-argument FALLBACK (`:238-268`) around a loop of
+        // `update` → `_update`, measured at `94fbb1ae3`: a failed UPDATE logs
+        // the base `Error updating entity` and RETHROWS, so the first failed row
+        // ends the loop and the wrap logs `Error marking informs consumed` and
+        // answers `Ok(0)` (strict-aware, through the home). `_update` reads the
+        // row FIRST through the fallback `findById`: a failed read logs `Error
+        // finding entity by ID` and answers `null` → not counted, the loop goes
+        // on (its `Entity not found for update` WARN is unported — P4.149's
+        // Ruling R-A).
+        super::fallback::informs_marked_consumed_or_zero(ids, message_id, || {
+            let now = crate::clock::now_iso();
+            let mut count = 0usize;
+            for id in ids {
+                let found = super::fallback::find_by_id_or_none("chat_informs", id, || {
+                    self.conn
+                        .query_row(
+                            "SELECT id FROM chat_informs WHERE id = ?1",
+                            params![id],
+                            |r| r.get::<_, String>(0),
+                        )
+                        .map(Some)
+                        .or_else(|e| match e {
+                            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                            other => Err(other.into()),
+                        })
+                });
+                if found.is_none() {
+                    continue;
+                }
+                let changed = self
+                    .conn
+                    .execute(
+                        "UPDATE chat_informs SET consumedAt = ?1, consumedByMessageId = ?2, \
+                           updatedAt = ?3 WHERE id = ?4",
+                        params![now, message_id, now, id],
+                    )
+                    .map_err(|e| {
+                        let error = DbError::from(e);
+                        super::fallback::log_update_failure("chat_informs", id, &error);
+                        error
+                    })?;
+                if changed > 0 {
+                    count += 1;
+                }
             }
-        }
-        tracing::debug!(
-            target: "quilltap::db",
-            collection = "chat_informs",
-            ids = ?ids,
-            messageId = message_id,
-            count,
-            "Informs marked consumed",
-        );
-        Ok(count)
+            tracing::debug!(
+                target: "quilltap::db",
+                collection = "chat_informs",
+                ids = ?ids,
+                messageId = message_id,
+                count,
+                "Informs marked consumed",
+            );
+            Ok(count)
+        })
     }
 
     /// v4 `deletePendingByBatch` — cancel: drop every row still in force — the
@@ -618,9 +680,10 @@ impl<'c> ChatInformsRepository<'c> {
     /// into the wrap's line).
     pub fn delete_pending_by_batch(&self, batch_id: &str) -> Result<usize, DbError> {
         super::fallback::pending_informs_by_batch_deleted_or_zero(batch_id, || {
-            let rows = super::fallback::find_by_filter_or_empty("chat_informs", || {
-                self.find_by_batch_id(batch_id)
-            });
+            // P4.156: the read is v4's own fallback method — `Ok([])` with the
+            // filter line outside the strict scope, its two strict lines and
+            // the `Err` inside it (then this wrap's line).
+            let rows = self.find_by_batch_id(batch_id)?;
             let mut count = 0usize;
             for row in rows {
                 if !is_inform_in_force(&row) {
@@ -658,9 +721,7 @@ impl<'c> ChatInformsRepository<'c> {
             || {
                 // The read is v4's fallback (`:87-100` over `findByFilter`), as
                 // `delete_pending_by_batch`'s above.
-                let pending = super::fallback::find_by_filter_or_empty("chat_informs", || {
-                    self.find_pending_for_participant(chat_id, participant_id)
-                });
+                let pending = self.find_pending_for_participant(chat_id, participant_id)?;
                 let mut count = 0usize;
                 for row in pending {
                     if self.delete_one(&row.id)? {
@@ -693,6 +754,9 @@ impl<'c> ChatInformsRepository<'c> {
     /// (`chats.rs`) logs its own v5-only WARN. Its row deletes still log v4's
     /// base line.
     pub fn delete_by_chat_id(&self, chat_id: &str) -> Result<usize, DbError> {
+        // P4.156: v4's `findByChatId` is a fallback — a failed read answers `[]`
+        // with the filter line, so the cascade deletes nothing and answers 0
+        // (measured); only a strict-scope caller sees the `Err`.
         let rows = self.find_by_chat_id(chat_id)?;
         let mut count = 0usize;
         for row in rows {

@@ -168473,3 +168473,102 @@ ran them with outputs under `/tmp/p4d254/out/`.
 
 **Versions at close:** core 0.0.1236; SPA 0.5.811; host/web/cli/tauri
 unchanged; harness frozen 0.0.1110.
+## P4.156 — the repository-fallback class, round 4 (lane `claude/repository-fallbacks-chat-gate-a1621a`, pin `94fbb1ae3`)
+
+- **§R.2 probe at lane start: PASS** (branch `main`, HEAD `94fbb1ae3`, both
+  logs empty, tree clean); lane pin `/tmp/qt-v4-pin-p4156-94fbb1ae3`
+  (`rev-parse` = `94fbb1ae3…`, `4.10.0-dev.112`), the three symlink classes.
+  Re-probed before every regen batch: PASS each time.
+- **R-A (the 5c sync ruling) is NOT taken here:** P4.149's written-up Option B
+  (strict sync, the walker hazard filed upstream) stands for the human;
+  nothing under `services/mount_index/sync/**` or `sync_engine_equivalence` is
+  touched.
+
+### P4.156 unit 1 — the chat-informs surface (core 0.0.1236)
+
+**R-D — the chat-informs repository, fn by fn** (measured through a
+`Logger.prototype` spy on v4's REAL `ChatInformsRepository` at `94fbb1ae3`,
+each op planted on the tier-2 copy):
+
+| v4 method | v4 shape | v5 now |
+|---|---|---|
+| `create` (`:61`) | pass-through `_create` — RETHROW `Error creating entity` | `create` stays silent (its import/restore callers log the base line themselves — the restore does; the importer's is a HANDOFF below); `create_batch`'s rows log it |
+| `update` (`:68`) / `delete` (`:72`) | pass-through `_update` / `_delete` — RETHROW | `delete_one` logs the base line (P4.149); the consume's per-row UPDATE logs `Error updating entity` |
+| `findPendingForParticipant` (`:87`) | fallback over fallback `findByFilter` | inner line + `[]`; strict: inner + outer (`chatId, participantId`), propagate |
+| `findConsumedByMessages` (`:107`) | same; `[]` before the `safeQuery` on an empty list | same (`messageCount`) |
+| `findPendingBatches` (`:135`) | same | same |
+| `findByChatId` (`:166`) | same | same |
+| `findByBatchId` (`:176`) | same | same |
+| `createBatch` (`:194`) | NO wrap — `_create` rethrows, the batch throws | base line on the failed row, `Err` |
+| `markConsumed` (`:238`) | fallback `0` around `update` → `_update` (`findById` fallback first, then a RETHROWING UPDATE) | per-row `find_by_id_or_none` (a failed read skips the row, loop continues), `Error updating entity` on a failed UPDATE, then `Error marking informs consumed {collection, idsJson, messageId}` → `Ok(0)`; strict-aware |
+| `deletePendingByBatch` (`:271`) / `deletePendingForParticipant` (`:294`) | fallback `0` over the fallback reads | the reads are now the repository's own (strict propagates into the wrap's line) |
+| `deleteByChatId` (`:317`) | fallback `0` | the read falls back (`[]` → 0, measured); the row deletes still PROPAGATE (P4.149's ruling — on v5 it IS the cascade, no FK) |
+
+**R-B — #145's two v5-only ERROR lines, measured:** `:254` / `:428` wrapped
+`chats_read::find_by_id`, which in v4 is `_findById` — a FALLBACK — so both
+lines are DELETED: the read goes through `find_by_id_or_none("chats")` and a
+failure answers v4's 404. `:368` wrapped `create_batch`, which v4 ALSO throws
+on (no wrap) — RE-HOMED: the repository logs `Error creating entity` through
+the home (on the writer thread) and the route answers v4's middleware 500
+`Internal server error` with no line of its own (the middleware's `Unhandled
+route error` stays unported — the `chat_delete` precedent). **Also measured:**
+the cancel's WARN `Could not delete inform record message` (`:583`) is
+UNREACHABLE on a database failure in v4 — `deleteMessagesByIds` is a
+standalone fallback `safeQuery(…, 0)` (`chats-messages.ops.ts:633-686`,
+measured: `Failed to delete messages from chat {chatId, count: 1, error}`, NO
+collection) — so the WARN is gone and the call reads through the new home
+`messages_deleted_or_zero`. The route now logs v4's four reachable lines.
+
+**R-C:** every `[Chats v1]` line on v4's keys (`chatId`, `batchId`,
+`targetCount`, `anyConsumed`, `recordDeleted`; `batches`/`dropped`/`removed`/
+`permanent`/`audience` unchanged); the `Inform posted` `…Json` riders stay.
+The unit pins at `api/chat_informs.rs` moved with the keys and gained
+silence legs for the snake names.
+
+**R-H:** contract C2's strict rendering is committed — `chat_informs_tier2`'s
+two `createBatch` ops under a BEFORE INSERT plant (one strict: `Error
+creating entity … strictFailures=true`, LAST), plus strict variants of every
+read, the consume and the cancel.
+
+**Red-first on unported `main` against the oracle at `94fbb1ae3`:**
+`chat_informs_tier2` — 16 of the 16 new captured ops logged differently, 8
+answered differently (the `deleteMessagesByIds` and id-rename arms were added
+after the port and proven by mutation instead); `chat_informs_routes` — 12 of
+22 cases diverged and both plant cases missed v4's chat-read line. Mutations
+after the port, each RED: the consume's per-row `findById` skipped (1 op), the
+strict sibling never propagating (6 ops logged + 6 answered), the create's
+base line dropped (2 ops), the record delete's home replaced by a bare
+`unwrap_or(0)` (the new unit pin).
+
+**Oracles authored / regenerated (recipes):**
+- tier-2: `cd /tmp/qt-v4-pin-p4156-94fbb1ae3 &&
+  QT_FIXTURE_OUT=/tmp/p4156/qt-chat-informs-fixture.db npx tsx
+  $V5W/harness/oracle/fixtures/build-chat-informs-fixture.ts &&
+  QT_FIXTURE_CHAT_INFORMS=/tmp/p4156/qt-chat-informs-fixture.db npx tsx
+  $V5W/harness/oracle/cases/chat-informs-tier2.ts >
+  /tmp/p4156/oracle-chat-informs.ndjson` (Node 24 on `PATH`) — 62 ops.
+- routes: the case copied to `/tmp/p4156/informs-oracle/cases/`, then from the
+  pin `QT_ORACLE_OUT=/tmp/p4156/oracle-chat-informs-routes.ndjson TZ=UTC npx
+  jest --silent --watchman=false --testTimeout=120000 --roots "$PWD" --roots
+  /tmp/p4156/informs-oracle/cases -- "chat-informs-routes\.test\.ts$"` — 27 cases.
+
+**HANDOFF (unifier) — `Error marking informs consumed`:**
+`services/message_finalizer.rs:1066-1080` (no lane's file this round) still
+logs a caller-side copy of v4's repository line under `quilltap::inform`; the
+repository now logs it (through `db::fallback::informs_marked_consumed_or_zero`,
+on the writer thread) and answers `Ok(0)`, so that arm fires only on a writer
+failure. The hunk: replace the `match … { Ok(n) => n, Err(e) => { tracing::error!(…) ; 0 } }`
+with `crate::db::fallback::informs_marked_consumed_or_zero(&inform_row_ids,
+&assistant_message_id, || outcome).unwrap_or(0)` over the awaited write, then
+add `"Error marking informs consumed"` to `fallback_home_guard`'s
+`HOME_MESSAGES`. **And `orchestrator_tier3_equivalence.rs:2710-2736`** (a
+§R.13 family) asserts that caller-thread line on
+`inform_consume_fails_on_a_poisoned_row`: after this lane the poisoned
+consume is logged by the repository on the WRITER thread, which the
+thread-scoped capture cannot see — re-aim the assertion to "no caller-side
+line" (the line itself is pinned byte-for-byte in `chat_informs_tier2`).
+**HANDOFF (P4.155 / unifier) — the importer's inform create:**
+`services/quilltap_import/mod.rs:1691` logs nothing on a failed
+`ChatInformsRepository::create`, where v4's `_create` logs `Error creating
+entity … strictFailures=true` (the importer runs strict) — one
+`log_create_failure("chat_informs", &e)` in that `Err` arm.

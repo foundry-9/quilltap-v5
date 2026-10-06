@@ -17,6 +17,13 @@
  * drop a BEFORE DELETE trigger so the bulk deletes' 4-argument fallback wraps
  * are reached on the REAL repository.
  *
+ * P4.156: `execSql` runs a raw plant (a column RENAME, a BEFORE INSERT / UPDATE
+ * trigger) so every READ fails the way v4's base `findByFilter` catches, and
+ * `markConsumed` / `createBatch` reach their rethrow lines; an op marked
+ * `strict` runs inside v4's REAL `withStrictRepositoryFailures` (contract C2's
+ * strict rendering, R-H). An op that THROWS records `{ threw: message }` as its
+ * result instead of aborting the run.
+ *
  * MINTED VALUES: `createBatch` mints a `batchId`, one `id` per target, and the
  * timestamps; `markConsumed` mints `consumedAt`/`updatedAt`. Nothing is pinned on
  * those ops, so this case emits everything RAW and the harness applies one
@@ -55,6 +62,10 @@ interface Op {
   ids?: string[];
   messageId?: string;
   captureLogs?: boolean;
+  /** P4.156: a raw statement (a column RENAME / a trigger plant) both sides run. */
+  sql?: string;
+  /** P4.156 (R-H): run the op inside v4's `withStrictRepositoryFailures`. */
+  strict?: boolean;
 }
 
 interface Spec {
@@ -92,8 +103,15 @@ async function main(): Promise<void> {
     '@/lib/database/repositories/chat-informs.repository'
   );
 
+  const { withStrictRepositoryFailures } = await import(
+    '@/lib/database/repositories/strict-failures'
+  );
+
   await initializeDatabase();
   const repo = new ChatInformsRepository();
+  // P4.156 (#145): the cancel's record-delete leg, on v4's REAL chats repository.
+  const { ChatsRepository } = await import('@/lib/database/repositories/chats.repository');
+  const chats = new ChatsRepository();
 
   const reads: Array<{ kind: string; label: string; result: unknown; logs?: unknown[] }> = [];
 
@@ -125,10 +143,13 @@ async function main(): Promise<void> {
     "CREATE TRIGGER qt_plant_no_delete BEFORE DELETE ON chat_informs " +
     "BEGIN SELECT RAISE(ABORT, 'planted delete failure'); END";
 
-  for (const op of spec.ops) {
+  const runOp = async (op: Op): Promise<unknown> => {
     let result: unknown;
-    opLogs = op.captureLogs ? [] : null;
     switch (op.kind) {
+      case 'execSql':
+        await rawQuery(op.sql!);
+        result = null;
+        break;
       case 'plantDeleteFailure':
         await rawQuery(PLANT);
         result = null;
@@ -176,11 +197,27 @@ async function main(): Promise<void> {
       case 'deletePendingForParticipant':
         result = await repo.deletePendingForParticipant(op.chatId!, op.participantId!);
         break;
+      case 'deleteMessagesByIds':
+        result = await chats.deleteMessagesByIds(op.chatId!, op.messageIds!);
+        break;
       case 'deleteByChatId':
         result = await repo.deleteByChatId(op.chatId!);
         break;
       default:
         throw new Error(`unknown op kind: ${op.kind}`);
+    }
+    return result;
+  };
+
+  for (const op of spec.ops) {
+    let result: unknown;
+    opLogs = op.captureLogs ? [] : null;
+    try {
+      result = op.strict
+        ? await withStrictRepositoryFailures(() => runOp(op))
+        : await runOp(op);
+    } catch (err) {
+      result = { threw: err instanceof Error ? err.message : String(err) };
     }
     reads.push({
       kind: op.kind,

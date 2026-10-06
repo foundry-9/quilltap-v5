@@ -453,6 +453,222 @@
     {
       "kind": "dropPlant",
       "label": "P4.149: drop the trigger \u2014 the final dump shows the three planted-on rows survived"
+    },
+    {
+      "kind": "execSql",
+      "label": "P4.156: plant \u2014 rename chat_informs.chatId, so every read that filters on it fails (v4's base `findByFilter` catches; the table exists, the lazy ensure is satisfied)",
+      "sql": "ALTER TABLE chat_informs RENAME COLUMN \"chatId\" TO \"chatId_x\""
+    },
+    {
+      "kind": "findPendingForParticipant",
+      "label": "P4.156: a failed in-force read \u2014 v4's INNER `findByFilter` line, `[]`; the outer `Error finding pending informs for participant` is unreachable",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "participantId": "aaaaaaaa-0000-4000-8000-000000000001",
+      "captureLogs": true
+    },
+    {
+      "kind": "findConsumedByMessages",
+      "label": "P4.156: a failed swipe re-apply read \u2014 the filter line, `[]`",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "participantId": "aaaaaaaa-0000-4000-8000-000000000001",
+      "messageIds": [
+        "ee000000-0000-4000-8000-000000000201"
+      ],
+      "captureLogs": true
+    },
+    {
+      "kind": "findPendingBatches",
+      "label": "P4.156: a failed batch fold \u2014 the filter line, `[]`",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "captureLogs": true
+    },
+    {
+      "kind": "findByChatId",
+      "label": "P4.156: a failed chat read \u2014 the filter line, `[]`",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "captureLogs": true
+    },
+    {
+      "kind": "deleteByChatId",
+      "label": "P4.156: the cascade over a failed read \u2014 v4's `findByChatId` falls back, so the loop runs zero times and answers 0 with the filter line only",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "captureLogs": true
+    },
+    {
+      "kind": "findPendingForParticipant",
+      "label": "P4.156 (R-H): the same read inside the strict scope \u2014 the filter line, then the OUTER line, each `strictFailures: true`, and it THROWS",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "participantId": "aaaaaaaa-0000-4000-8000-000000000001",
+      "captureLogs": true,
+      "strict": true
+    },
+    {
+      "kind": "findConsumedByMessages",
+      "label": "P4.156 (R-H): strict \u2014 filter line, outer line (`messageCount`), throws",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "participantId": "aaaaaaaa-0000-4000-8000-000000000001",
+      "messageIds": [
+        "ee000000-0000-4000-8000-000000000201"
+      ],
+      "captureLogs": true,
+      "strict": true
+    },
+    {
+      "kind": "findPendingBatches",
+      "label": "P4.156 (R-H): strict \u2014 filter line, outer line, throws",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "captureLogs": true,
+      "strict": true
+    },
+    {
+      "kind": "findByChatId",
+      "label": "P4.156 (R-H): strict \u2014 filter line, outer line, throws",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "captureLogs": true,
+      "strict": true
+    },
+    {
+      "kind": "execSql",
+      "label": "P4.156: restore chat_informs.chatId",
+      "sql": "ALTER TABLE chat_informs RENAME COLUMN \"chatId_x\" TO \"chatId\""
+    },
+    {
+      "kind": "execSql",
+      "label": "P4.156: plant \u2014 rename chat_informs.batchId",
+      "sql": "ALTER TABLE chat_informs RENAME COLUMN \"batchId\" TO \"batchId_x\""
+    },
+    {
+      "kind": "findByBatchId",
+      "label": "P4.156: a failed batch read \u2014 the filter line, `[]`",
+      "batchId": "b1111111-0000-4000-8000-000000000001",
+      "captureLogs": true
+    },
+    {
+      "kind": "findByBatchId",
+      "label": "P4.156 (R-H): strict \u2014 filter line, outer `Error finding informs by batch ID`, throws",
+      "batchId": "b1111111-0000-4000-8000-000000000001",
+      "captureLogs": true,
+      "strict": true
+    },
+    {
+      "kind": "deletePendingByBatch",
+      "label": "P4.156 (R-H): cancel inside the strict scope over a failed read \u2014 the filter line, `findByBatchId`'s outer line, then the cancel wrap's own, each strict, and it throws",
+      "batchId": "b1111111-0000-4000-8000-000000000001",
+      "captureLogs": true,
+      "strict": true
+    },
+    {
+      "kind": "execSql",
+      "label": "P4.156: restore chat_informs.batchId",
+      "sql": "ALTER TABLE chat_informs RENAME COLUMN \"batchId_x\" TO \"batchId\""
+    },
+    {
+      "kind": "execSql",
+      "label": "P4.156: plant \u2014 a BEFORE UPDATE trigger, so `_update`'s findById still reads and only the UPDATE fails",
+      "sql": "CREATE TRIGGER qt_plant_no_update BEFORE UPDATE ON chat_informs BEGIN SELECT RAISE(ABORT, 'planted update failure'); END"
+    },
+    {
+      "kind": "markConsumed",
+      "label": "P4.156: a failed consume \u2014 the base `Error updating entity` (rethrow) for the FIRST id, then `markConsumed`'s own fallback line, answering 0",
+      "ids": [
+        "aa000000-0000-4000-8000-000000000001",
+        "aa000000-0000-4000-8000-000000000002"
+      ],
+      "messageId": "ee000000-0000-4000-8000-000000000209",
+      "captureLogs": true
+    },
+    {
+      "kind": "markConsumed",
+      "label": "P4.156 (R-H): the same consume inside the strict scope \u2014 both lines `strictFailures: true`, and it throws",
+      "ids": [
+        "aa000000-0000-4000-8000-000000000001",
+        "aa000000-0000-4000-8000-000000000002"
+      ],
+      "messageId": "ee000000-0000-4000-8000-000000000209",
+      "captureLogs": true,
+      "strict": true
+    },
+    {
+      "kind": "execSql",
+      "label": "P4.156: drop the update plant",
+      "sql": "DROP TRIGGER qt_plant_no_update"
+    },
+    {
+      "kind": "execSql",
+      "label": "P4.156: plant \u2014 rename chat_informs.id, so `_update`'s OWN `findById` fails before any UPDATE",
+      "sql": "ALTER TABLE chat_informs RENAME COLUMN \"id\" TO \"id_x\""
+    },
+    {
+      "kind": "markConsumed",
+      "label": "P4.156: a consume whose per-row read fails \u2014 `findById` is a fallback, so each row logs `Error finding entity by ID`, is skipped, and the loop GOES ON; no update line, no wrap line, 0",
+      "ids": [
+        "aa000000-0000-4000-8000-000000000001",
+        "aa000000-0000-4000-8000-000000000002"
+      ],
+      "messageId": "ee000000-0000-4000-8000-000000000209",
+      "captureLogs": true
+    },
+    {
+      "kind": "execSql",
+      "label": "P4.156: restore chat_informs.id",
+      "sql": "ALTER TABLE chat_informs RENAME COLUMN \"id_x\" TO \"id\""
+    },
+    {
+      "kind": "execSql",
+      "label": "P4.156: plant \u2014 a BEFORE INSERT trigger, so the batch's first `_create` fails",
+      "sql": "CREATE TRIGGER qt_plant_no_insert BEFORE INSERT ON chat_informs BEGIN SELECT RAISE(ABORT, 'planted insert failure'); END"
+    },
+    {
+      "kind": "createBatch",
+      "contentMarkdown": "P4.156: a passage the insert plant refuses",
+      "label": "P4.156: a failed batch \u2014 the base `Error creating entity` (rethrow); `createBatch` has no wrap, so it THROWS",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "participantIds": [
+        "aaaaaaaa-0000-4000-8000-000000000001"
+      ],
+      "recordMessageId": null,
+      "captureLogs": true
+    },
+    {
+      "kind": "createBatch",
+      "contentMarkdown": "P4.156: a passage the insert plant refuses",
+      "label": "P4.156 (R-H): contract C2's strict rendering, committed \u2014 the same create inside the strict scope, `strictFailures: true` LAST",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "participantIds": [
+        "aaaaaaaa-0000-4000-8000-000000000001"
+      ],
+      "recordMessageId": null,
+      "captureLogs": true,
+      "strict": true
+    },
+    {
+      "kind": "execSql",
+      "label": "P4.156: drop the insert plant",
+      "sql": "DROP TRIGGER qt_plant_no_insert"
+    },
+    {
+      "kind": "execSql",
+      "label": "P4.156 (#145): plant a record message in the route room \u2014 the cancel's record-delete leg (`chats.deleteMessagesByIds`) needs a row for its trigger to fire on",
+      "sql": "INSERT INTO chat_messages (id, chatId, type, role, content, createdAt) VALUES ('d0000000-0000-4000-8000-0000000001ff', '3f1c9f4a-1111-4a2b-9c3d-000000000001', 'message', 'SYSTEM', 'P4.156 inform record', '2026-01-01T00:00:00.000Z')"
+    },
+    {
+      "kind": "execSql",
+      "label": "P4.156 (#145): plant \u2014 a BEFORE DELETE trigger on chat_messages",
+      "sql": "CREATE TRIGGER qt_plant_no_message_delete BEFORE DELETE ON chat_messages BEGIN SELECT RAISE(ABORT, 'planted message delete failure'); END"
+    },
+    {
+      "kind": "deleteMessagesByIds",
+      "label": "P4.156 (#145): the record delete fails \u2014 `deleteMessagesByIds` is a FALLBACK (`chats-messages.ops.ts:633-686`, standalone `safeQuery(\u2026, 0)`, no collection): ERROR `Failed to delete messages from chat {chatId, count, error}` and 0, so the cancel's WARN `Could not delete inform record message` is unreachable on a database failure",
+      "chatId": "3f1c9f4a-1111-4a2b-9c3d-000000000001",
+      "messageIds": [
+        "d0000000-0000-4000-8000-0000000001ff"
+      ],
+      "captureLogs": true
+    },
+    {
+      "kind": "execSql",
+      "label": "P4.156 (#145): drop the message-delete plant",
+      "sql": "DROP TRIGGER qt_plant_no_message_delete"
     }
   ],
   "routes": {
@@ -532,5 +748,5 @@
   },
   "standingChatId": "33333333-3333-4333-8333-333333333333",
   "_commentStanding": "P4.D249 (v4 52d6e7ecd) \u2014 the standing-inform corpus, in its own chat so the P4.D205 ops above read unchanged. Posting order is A(T0) < B(T1) < C(T2) < D(T3) < E(T4); the standing rows (C, D, E) are posted AFTER the one-shots, so delivery order (standing first) and posting order (createdAt) disagree and both comparators are observable. C and E are DELIVERED standing rows: still in force, never in the batch-delete's spared set, and taken by seat removal. P4.149 (the P4.151 survey's B1): two more standing rows for p1, INSERTED LAST \u2014 F posted at T1.5 (before C, so insertion order and posting order disagree among standing rows) and G at D's createdAt with an id that sorts BEFORE D's (the id tiebreak against insertion order). Both are pending and both go with the p1 seat removal.",
-  "_commentCaptureLogs": "P4.149: an op marked captureLogs records the ERROR/WARN lines it logged (v4: a Logger.prototype spy on the REAL repository; v5: the thread-scoped capture rig), compared byte-for-byte with v4's backend-only `SQLite <op> error` line dropped (unported, the standing convention). Ops 15/16/23/25 are the healthy-delete silence legs; the two ops after the plant are the arm."
+  "_commentCaptureLogs": "P4.149: an op marked captureLogs records the ERROR/WARN lines it logged (v4: a Logger.prototype spy on the REAL repository; v5: the thread-scoped capture rig), compared byte-for-byte with v4's backend-only `SQLite <op> error` line dropped (unported, the standing convention). Ops 15/16/23/25 are the healthy-delete silence legs; the two ops after the plant are the arm. P4.156: the ops after op 30 are the repository-fallback round 4 — `execSql` plants (column RENAMEs, BEFORE INSERT/UPDATE triggers) reaching every read, `markConsumed`, `createBatch` and the cancel's record delete; an op marked `strict` runs inside `withStrictRepositoryFailures` (R-H), and an op that throws records `{threw: message}`."
 }

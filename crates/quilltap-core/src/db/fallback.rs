@@ -87,13 +87,44 @@ pub fn find_by_filter_or_empty<T>(
     read: impl FnOnce() -> Result<Vec<T>, DbError>,
 ) -> Vec<T> {
     read().unwrap_or_else(|error| {
-        tracing::error!(
-            target: "quilltap::db",
-            collection = collection,
-            error = %error_text(&error),
-            "Error finding entities by filter"
-        );
+        log_find_by_filter_failure(collection, &error, false);
         Vec::new()
+    })
+}
+
+/// The ONE emitter of `Error finding entities by filter` (both the plain twin
+/// and [`find_by_filter_strict_aware`] log through it).
+fn log_find_by_filter_failure(collection: &str, error: &DbError, strict: bool) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = collection,
+        error = %error_text(error),
+        strictFailures = strict.then_some(true),
+        "Error finding entities by filter"
+    );
+}
+
+/// P4.156 — [`find_by_filter_or_empty`] for a repository whose OWN methods are
+/// reached from inside the strict scope (the chat-informs repository: the
+/// `.qtap` export's `findByChatId`, the importer, the restore). v4's
+/// `findByFilter` is a fallback `safeQuery`, and EVERY fallback `safeQuery`
+/// honours `withStrictRepositoryFailures` (`safe-query.ts:57-71`): outside the
+/// scope the line and `Ok([])`; inside it the line gains `strictFailures=true`
+/// and the `Err` propagates to the method's own (outer) `safeQuery`. A SIBLING,
+/// not a changed twin — the plain twin answers a bare `Vec` to dozens of
+/// callers no strict scope reaches.
+pub fn find_by_filter_strict_aware<T>(
+    collection: &'static str,
+    read: impl FnOnce() -> Result<Vec<T>, DbError>,
+) -> Result<Vec<T>, DbError> {
+    read().or_else(|error| {
+        let strict = strict_repository_failures_active();
+        log_find_by_filter_failure(collection, &error, strict);
+        if strict {
+            Err(error)
+        } else {
+            Ok(Vec::new())
+        }
     })
 }
 
@@ -799,6 +830,189 @@ pub fn pending_informs_for_participant_deleted_or_zero(
 }
 // === end P4.149 (rethrow lines + the inform wraps) ===
 
+// === P4.156 — the chat-informs repository's remaining 4-argument FALLBACK
+// wraps (`chat-informs.repository.ts:87-183, 238-268`), measured one by one at
+// `94fbb1ae3` through a `Logger.prototype` spy on the REAL repository
+// (`chat_informs_tier2_equivalence`). Each read method is `safeQuery(…, [])`
+// around the base `findByFilter` — itself a fallback — so OUTSIDE the strict
+// scope the INNER line answers first ([`find_by_filter_strict_aware`]) and
+// these five outer lines are unreachable; INSIDE it the inner rethrows and the
+// outer line follows, both `strictFailures=true`, and the `Err` propagates.
+// `markConsumed`'s wrap is reachable always: its body's `_update` RETHROWS.
+// Every context in v4's key order after the injected `collection`. ===
+
+/// The five outer read wraps share one shape: log (strict-aware) and propagate
+/// inside the scope, `Ok([])` outside it. `log` emits the method's own line.
+fn inform_read_wrap<T>(
+    read: impl FnOnce() -> Result<Vec<T>, DbError>,
+    log: impl FnOnce(&DbError, Option<bool>),
+) -> Result<Vec<T>, DbError> {
+    read().or_else(|error| {
+        let strict = strict_repository_failures_active();
+        log(&error, strict.then_some(true));
+        if strict {
+            Err(error)
+        } else {
+            Ok(Vec::new())
+        }
+    })
+}
+
+/// v4 `chatInforms.findPendingForParticipant` (`:87-100`): ERROR `Error finding
+/// pending informs for participant {collection, chatId, participantId, error}`.
+pub fn pending_informs_for_participant_or_empty<T>(
+    chat_id: &str,
+    participant_id: &str,
+    read: impl FnOnce() -> Result<Vec<T>, DbError>,
+) -> Result<Vec<T>, DbError> {
+    inform_read_wrap(read, |error, strict| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "chat_informs",
+            chatId = %chat_id,
+            participantId = %participant_id,
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error finding pending informs for participant"
+        );
+    })
+}
+
+/// v4 `chatInforms.findConsumedByMessages` (`:107-129`): ERROR `Error finding
+/// informs consumed by messages {collection, chatId, participantId,
+/// messageCount, error}` — `messageCount` is `messageIds.length`.
+pub fn informs_consumed_by_messages_or_empty<T>(
+    chat_id: &str,
+    participant_id: &str,
+    message_count: usize,
+    read: impl FnOnce() -> Result<Vec<T>, DbError>,
+) -> Result<Vec<T>, DbError> {
+    inform_read_wrap(read, |error, strict| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "chat_informs",
+            chatId = %chat_id,
+            participantId = %participant_id,
+            messageCount = message_count,
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error finding informs consumed by messages"
+        );
+    })
+}
+
+/// v4 `chatInforms.findPendingBatches` (`:135-163`): ERROR `Error finding
+/// pending inform batches {collection, chatId, error}`.
+pub fn pending_inform_batches_or_empty<T>(
+    chat_id: &str,
+    read: impl FnOnce() -> Result<Vec<T>, DbError>,
+) -> Result<Vec<T>, DbError> {
+    inform_read_wrap(read, |error, strict| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "chat_informs",
+            chatId = %chat_id,
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error finding pending inform batches"
+        );
+    })
+}
+
+/// v4 `chatInforms.findByChatId` (`:166-173`): ERROR `Error finding informs by
+/// chat ID {collection, chatId, error}`.
+pub fn informs_by_chat_id_or_empty<T>(
+    chat_id: &str,
+    read: impl FnOnce() -> Result<Vec<T>, DbError>,
+) -> Result<Vec<T>, DbError> {
+    inform_read_wrap(read, |error, strict| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "chat_informs",
+            chatId = %chat_id,
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error finding informs by chat ID"
+        );
+    })
+}
+
+/// v4 `chatInforms.findByBatchId` (`:176-183`): ERROR `Error finding informs by
+/// batch ID {collection, batchId, error}`.
+pub fn informs_by_batch_id_or_empty<T>(
+    batch_id: &str,
+    read: impl FnOnce() -> Result<Vec<T>, DbError>,
+) -> Result<Vec<T>, DbError> {
+    inform_read_wrap(read, |error, strict| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "chat_informs",
+            batchId = %batch_id,
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error finding informs by batch ID"
+        );
+    })
+}
+
+/// v4 `chatInforms.markConsumed` (`:238-268`): a 4-argument FALLBACK around a
+/// loop of rethrowing `_update`s, so the FIRST failed row ends the loop — its
+/// base [`log_update_failure`] line first — and this one follows: ERROR `Error
+/// marking informs consumed {collection, ids, messageId, error}` → `Ok(0)`;
+/// strict-aware. `ids` is an ARRAY, so it rides the file layer's `…Json`
+/// convention (`idsJson`, the compact JSON v4's line carries).
+pub fn informs_marked_consumed_or_zero(
+    ids: &[String],
+    message_id: &str,
+    write: impl FnOnce() -> Result<usize, DbError>,
+) -> Result<usize, DbError> {
+    write().or_else(|error| {
+        let strict = strict_repository_failures_active();
+        let ids_json = serde_json::to_string(ids).unwrap_or_else(|_| "[]".to_string());
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "chat_informs",
+            idsJson = ids_json.as_str(),
+            messageId = %message_id,
+            error = %error_text(&error),
+            strictFailures = strict.then_some(true),
+            "Error marking informs consumed"
+        );
+        if strict {
+            Err(error)
+        } else {
+            Ok(0)
+        }
+    })
+}
+
+/// v4 `chats.deleteMessagesByIds` as its callers see it (`chats-messages.ops.ts:
+/// 633-686`): the STANDALONE `safeQuery(…, 'Failed to delete messages from
+/// chat', { chatId, count: messageIds.length }, 0)` — no repository wrapper, so
+/// NO injected `collection` — logs ERROR `{chatId, count, error}` and answers
+/// `0` (measured at `94fbb1ae3`, `chat_informs_tier2_equivalence`). Which is why
+/// the Inform cancel's own WARN `Could not delete inform record message`
+/// (`inform.ts:228-237`) is unreachable on a database failure (dogfood #145).
+/// The CALLER passes the whole write's result (a writer-thread failure lands
+/// here once, as v4's `getCollection()` inside the same `safeQuery`).
+pub fn messages_deleted_or_zero(
+    chat_id: &str,
+    count: usize,
+    delete: impl FnOnce() -> Result<i64, DbError>,
+) -> i64 {
+    delete().unwrap_or_else(|error| {
+        tracing::error!(
+            target: "quilltap::db",
+            chatId = %chat_id,
+            count = count,
+            error = %error_text(&error),
+            "Failed to delete messages from chat"
+        );
+        0
+    })
+}
+// === end P4.156 (the chat-informs wraps) ===
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1358,6 +1572,101 @@ mod tests {
                 "ERROR quilltap::db Error deleting pending informs for participant collection=chat_informs chatId=c-1 participantId=p-1 error=posed strictFailures=true".to_string(),
             ]
         );
+    }
+
+    /// P4.156 — the strict-aware filter sibling: `Ok([])` + the plain bytes
+    /// outside the scope, `strictFailures=true` + the `Err` inside it, silence
+    /// on success; the plain twin's bytes unchanged through the shared emitter.
+    #[test]
+    fn the_strict_aware_filter_sibling_honours_the_scope() {
+        let (got, lines) = crate::test_support::captured_with(|| {
+            (
+                find_by_filter_strict_aware::<i32>("chat_informs", || Err(posed())).unwrap(),
+                with_strict_repository_failures(|| {
+                    find_by_filter_strict_aware::<i32>("chat_informs", || Err(posed()))
+                })
+                .is_err(),
+                find_by_filter_strict_aware("chat_informs", || Ok(vec![1])).unwrap(),
+                find_by_filter_or_empty::<i32>("chat_informs", || Err(posed())),
+            )
+        });
+        assert_eq!(got, (vec![], true, vec![1], vec![]));
+        assert_eq!(
+            lines,
+            vec![
+                "ERROR quilltap::db Error finding entities by filter collection=chat_informs error=posed".to_string(),
+                "ERROR quilltap::db Error finding entities by filter collection=chat_informs error=posed strictFailures=true".to_string(),
+                "ERROR quilltap::db Error finding entities by filter collection=chat_informs error=posed".to_string(),
+            ]
+        );
+    }
+
+    /// P4.156 — the five chat-informs outer read wraps (their bytes in v4's key
+    /// order, `strictFailures=true` LAST and the `Err` inside the scope,
+    /// `Ok([])` outside it) and the consume wrap (`idsJson`, `Ok(0)`).
+    #[test]
+    fn the_chat_informs_wraps_log_v4s_lines() {
+        let (got, lines) = crate::test_support::captured_with(|| {
+            with_strict_repository_failures(|| {
+                [
+                    pending_informs_for_participant_or_empty::<i32>("c-1", "p-1", || Err(posed()))
+                        .is_err(),
+                    informs_consumed_by_messages_or_empty::<i32>("c-1", "p-1", 2, || Err(posed()))
+                        .is_err(),
+                    pending_inform_batches_or_empty::<i32>("c-1", || Err(posed())).is_err(),
+                    informs_by_chat_id_or_empty::<i32>("c-1", || Err(posed())).is_err(),
+                    informs_by_batch_id_or_empty::<i32>("b-1", || Err(posed())).is_err(),
+                ]
+            })
+        });
+        assert_eq!(got, [true; 5]);
+        assert_eq!(
+            lines,
+            vec![
+                "ERROR quilltap::db Error finding pending informs for participant collection=chat_informs chatId=c-1 participantId=p-1 error=posed strictFailures=true".to_string(),
+                "ERROR quilltap::db Error finding informs consumed by messages collection=chat_informs chatId=c-1 participantId=p-1 messageCount=2 error=posed strictFailures=true".to_string(),
+                "ERROR quilltap::db Error finding pending inform batches collection=chat_informs chatId=c-1 error=posed strictFailures=true".to_string(),
+                "ERROR quilltap::db Error finding informs by chat ID collection=chat_informs chatId=c-1 error=posed strictFailures=true".to_string(),
+                "ERROR quilltap::db Error finding informs by batch ID collection=chat_informs batchId=b-1 error=posed strictFailures=true".to_string(),
+            ]
+        );
+        let ids = vec!["i-1".to_string(), "i-2".to_string()];
+        let (got, lines) = crate::test_support::captured_with(|| {
+            (
+                informs_marked_consumed_or_zero(&ids, "m-1", || Err(posed())).unwrap(),
+                with_strict_repository_failures(|| {
+                    informs_marked_consumed_or_zero(&ids, "m-1", || Err(posed()))
+                })
+                .is_err(),
+                pending_inform_batches_or_empty::<i32>("c-1", || Err(posed())).unwrap(),
+            )
+        });
+        assert_eq!(got, (0, true, vec![]));
+        assert_eq!(
+            lines,
+            vec![
+                r#"ERROR quilltap::db Error marking informs consumed collection=chat_informs idsJson=["i-1","i-2"] messageId=m-1 error=posed"#.to_string(),
+                r#"ERROR quilltap::db Error marking informs consumed collection=chat_informs idsJson=["i-1","i-2"] messageId=m-1 error=posed strictFailures=true"#.to_string(),
+                "ERROR quilltap::db Error finding pending inform batches collection=chat_informs chatId=c-1 error=posed".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn the_chat_informs_wraps_are_silent_on_success() {
+        let ids = vec!["i-1".to_string()];
+        let (got, lines) = crate::test_support::captured_with(|| {
+            (
+                pending_informs_for_participant_or_empty("c", "p", || Ok(vec![1])).unwrap(),
+                informs_consumed_by_messages_or_empty("c", "p", 1, || Ok(vec![2])).unwrap(),
+                pending_inform_batches_or_empty("c", || Ok(vec![3])).unwrap(),
+                informs_by_chat_id_or_empty("c", || Ok(vec![4])).unwrap(),
+                informs_by_batch_id_or_empty("b", || Ok(vec![5])).unwrap(),
+                informs_marked_consumed_or_zero(&ids, "m", || Ok(1)).unwrap(),
+            )
+        });
+        assert_eq!(got, (vec![1], vec![2], vec![3], vec![4], vec![5], 1));
+        assert!(lines.is_empty(), "{lines:?}");
     }
 }
 

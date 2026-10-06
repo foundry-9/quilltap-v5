@@ -57,6 +57,24 @@
 //! dropped (unported by standing convention). Red-first on unported `main`: the
 //! cancel PROPAGATED `planted delete failure` where v4 answers 0.
 //!
+//! **P4.156** (the repository-fallback class, round 4) grew it a third time:
+//! every READ the routes call is reached through a planted column RENAME
+//! (`chatId`, `batchId`, then `id` for `_update`'s own `findById`), each once
+//! outside the strict scope (v4's INNER `findByFilter` line, `[]`) and once
+//! inside it (R-H — the inner line + the method's OUTER line, both
+//! `strictFailures: true`, and the op THROWS, recorded as `{threw}`);
+//! `markConsumed` under a BEFORE UPDATE plant (the base `Error updating
+//! entity` + its own fallback line → 0), `createBatch` under a BEFORE INSERT
+//! plant (the base `Error creating entity`, then it throws — contract C2's
+//! strict rendering committed, as the order's R-H asks), and the Inform
+//! cancel's record-delete leg (`chats.deleteMessagesByIds`, v4's standalone
+//! fallback — dogfood #145). Red-first on unported `main` at `94fbb1ae3`: 16 of
+//! the 16 new captured ops logged differently and 8 answered differently; three
+//! mutations (the per-row `findById`, the strict sibling's propagation, the
+//! create's base line) each red. v4's SQL double-quotes identifiers, so a
+//! renamed column's message carries the quotes and a hint v5's does not —
+//! [`normalize_v4_sqlite`] maps one onto the other.
+//!
 //! Generate the oracle output + fixture (Node 24, from the TARGET-pinned v4
 //! worktree — §R.3 PIN REQUIRED):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
@@ -114,12 +132,48 @@ struct Op {
     /// P4.149: record the ERROR/WARN lines this op logs (see [`v4_line`]).
     #[serde(default, rename = "captureLogs")]
     capture_logs: bool,
+    /// P4.156: the raw plant an `execSql` op runs (a column RENAME, a trigger).
+    #[serde(default)]
+    sql: Option<String>,
+    /// P4.156 (R-H): run the op inside the strict repository scope.
+    #[serde(default)]
+    strict: bool,
 }
 
 /// P4.149 — v4's backend-only lines (`backends/sqlite/backend.ts`), which v5
 /// does not port by standing convention (the search families'
 /// `UNPORTED_BACKEND_LINES`): dropped from the oracle's captured lines.
-const UNPORTED_BACKEND_LINES: &[&str] = &["SQLite deleteOne error"];
+const UNPORTED_BACKEND_LINES: &[&str] = &[
+    "SQLite deleteOne error",
+    // P4.156: the read / update / insert plants' backend lines.
+    "SQLite find error",
+    "SQLite updateOne error",
+    "SQLite insertOne error",
+    "SQLite findOne error",
+    // Not a backend line: `_update`'s not-found WARN, unported by P4.149's
+    // Ruling R-A (with `Entity created` / `Entity deleted`).
+    "Entity not found for update",
+];
+
+/// P4.156 — one failure, two SQL texts: v4's query builder double-quotes every
+/// identifier, so a renamed column reaches SQLite's "double-quoted string"
+/// fallback and its message carries the quotes and a hint (`no such column:
+/// "chatId" - should this be a string literal in single-quotes?`); v5's SQL
+/// names the column bare (`no such column: chatId`). The v4 text is mapped onto
+/// v5's before the compare — the column NAME stays compared.
+fn normalize_v4_sqlite(text: &str) -> String {
+    const HINT: &str = " - should this be a string literal in single-quotes?";
+    match (
+        text.strip_prefix("no such column: \""),
+        text.strip_suffix(HINT),
+    ) {
+        (Some(_), Some(head)) => head
+            .replacen("no such column: \"", "no such column: ", 1)
+            .trim_end_matches('"')
+            .to_string(),
+        _ => text.to_string(),
+    }
+}
 
 /// P4.149 — the planted delete failure (the oracle's `PLANT`, byte-identical):
 /// a BEFORE DELETE trigger, so the selects inside the bulk deletes still
@@ -139,9 +193,16 @@ fn v4_line(line: &Value) -> String {
     );
     for pair in line["fields"].as_array().expect("fields") {
         let key = pair[0].as_str().expect("field key");
-        let value = match &pair[1] {
-            Value::String(s) => s.clone(),
-            other => other.to_string(),
+        let (key, value) = match &pair[1] {
+            Value::String(s) if key == "error" => (key.to_string(), normalize_v4_sqlite(s)),
+            Value::String(s) => (key.to_string(), s.clone()),
+            // P4.156: an array / object field is the file layer's `…Json`
+            // convention on v5 (the callsite serializes; the capture rig sees
+            // the RAW field, so the suffixed key and the compact JSON).
+            other @ (Value::Array(_) | Value::Object(_)) => {
+                (format!("{key}Json"), other.to_string())
+            }
+            other => (key.to_string(), other.to_string()),
         };
         out.push_str(&format!(" {key}={value}"));
     }
@@ -372,8 +433,18 @@ fn chat_informs_tier2_matches_oracle() {
     {
         let repo = writer.chat_informs();
         for op in &spec.ops {
-            let (result, lines) =
-                quilltap_core::test_support::captured_with(|| match op.kind.as_str() {
+            // P4.156: every op answers `Result<Value, DbError>`; an `Err` is the
+            // oracle's `{ threw: message }` (v4's op threw — a strict-scope
+            // read, a failed create). `execSql` runs a raw plant.
+            let run = || -> Result<Value, quilltap_core::db::DbError> {
+                Ok(match op.kind.as_str() {
+                    "execSql" => {
+                        writer
+                            .connection()
+                            .execute_batch(op.sql.as_deref().expect("execSql needs sql"))
+                            .expect("plant");
+                        Value::Null
+                    }
                     "plantDeleteFailure" => {
                         writer.connection().execute_batch(PLANT).expect("plant");
                         Value::Null
@@ -389,8 +460,7 @@ fn chat_informs_tier2_matches_oracle() {
                         repo.find_pending_for_participant(
                             op.chat_id.as_deref().unwrap(),
                             op.participant_id.as_deref().unwrap(),
-                        )
-                        .expect("find_pending_for_participant")
+                        )?
                         .iter()
                         .map(row_json)
                         .collect(),
@@ -400,15 +470,13 @@ fn chat_informs_tier2_matches_oracle() {
                             op.chat_id.as_deref().unwrap(),
                             op.participant_id.as_deref().unwrap(),
                             op.message_ids.as_deref().unwrap(),
-                        )
-                        .expect("find_consumed_by_messages")
+                        )?
                         .iter()
                         .map(row_json)
                         .collect(),
                     ),
                     "findPendingBatches" => Value::Array(
-                        repo.find_pending_batches(op.chat_id.as_deref().unwrap())
-                            .expect("find_pending_batches")
+                        repo.find_pending_batches(op.chat_id.as_deref().unwrap())?
                             .iter()
                             .map(|b| {
                                 json!({
@@ -423,15 +491,13 @@ fn chat_informs_tier2_matches_oracle() {
                             .collect(),
                     ),
                     "findByChatId" => Value::Array(
-                        repo.find_by_chat_id(op.chat_id.as_deref().unwrap())
-                            .expect("find_by_chat_id")
+                        repo.find_by_chat_id(op.chat_id.as_deref().unwrap())?
                             .iter()
                             .map(row_json)
                             .collect(),
                     ),
                     "findByBatchId" => Value::Array(
-                        repo.find_by_batch_id(op.batch_id.as_deref().unwrap())
-                            .expect("find_by_batch_id")
+                        repo.find_by_batch_id(op.batch_id.as_deref().unwrap())?
                             .iter()
                             .map(row_json)
                             .collect(),
@@ -444,36 +510,51 @@ fn chat_informs_tier2_matches_oracle() {
                             op.record_message_id.as_deref(),
                             // v4 `params.permanent === true`.
                             op.permanent == Some(true),
-                        )
-                        .expect("create_batch")
+                        )?
                         .iter()
                         .map(created_row_json)
                         .collect(),
                     ),
-                    "markConsumed" => Value::from(
-                        repo.mark_consumed(
-                            op.ids.as_deref().unwrap(),
-                            op.message_id.as_deref().unwrap(),
-                        )
-                        .expect("mark_consumed"),
-                    ),
-                    "deletePendingByBatch" => Value::from(
-                        repo.delete_pending_by_batch(op.batch_id.as_deref().unwrap())
-                            .expect("delete_pending_by_batch"),
-                    ),
-                    "deletePendingForParticipant" => Value::from(
-                        repo.delete_pending_for_participant(
+                    "markConsumed" => Value::from(repo.mark_consumed(
+                        op.ids.as_deref().unwrap(),
+                        op.message_id.as_deref().unwrap(),
+                    )?),
+                    "deletePendingByBatch" => {
+                        Value::from(repo.delete_pending_by_batch(op.batch_id.as_deref().unwrap())?)
+                    }
+                    "deletePendingForParticipant" => {
+                        Value::from(repo.delete_pending_for_participant(
                             op.chat_id.as_deref().unwrap(),
                             op.participant_id.as_deref().unwrap(),
-                        )
-                        .expect("delete_pending_for_participant"),
-                    ),
-                    "deleteByChatId" => Value::from(
-                        repo.delete_by_chat_id(op.chat_id.as_deref().unwrap())
-                            .expect("delete_by_chat_id"),
-                    ),
+                        )?)
+                    }
+                    // P4.156 (#145): the cancel's record-delete leg, through the
+                    // home the route reads it through.
+                    "deleteMessagesByIds" => {
+                        let chat = op.chat_id.as_deref().unwrap();
+                        let ids = op.message_ids.as_deref().unwrap();
+                        Value::from(quilltap_core::db::fallback::messages_deleted_or_zero(
+                            chat,
+                            ids.len(),
+                            || writer.chat_messages().delete_messages_by_ids(chat, ids),
+                        ))
+                    }
+                    "deleteByChatId" => {
+                        Value::from(repo.delete_by_chat_id(op.chat_id.as_deref().unwrap())?)
+                    }
                     other => panic!("unknown op kind: {other}"),
-                });
+                })
+            };
+            let (result, lines) = quilltap_core::test_support::captured_with(|| {
+                let outcome = if op.strict {
+                    quilltap_core::db::fallback::with_strict_repository_failures(run)
+                } else {
+                    run()
+                };
+                outcome.unwrap_or_else(
+                    |e| json!({ "threw": quilltap_core::db::fallback::error_text(&e) }),
+                )
+            });
             let mut read = json!({ "kind": op.kind, "label": op.label, "result": result });
             if op.capture_logs {
                 let logged: Vec<Value> = lines
@@ -521,6 +602,7 @@ fn chat_informs_tier2_matches_oracle() {
     // every id they carry is a committed spec value.
     let mut log_ops = 0usize;
     let mut arm_lines = 0usize;
+    let mut log_fails: Vec<String> = Vec::new();
     for (g, w) in got["reads"]
         .as_array_mut()
         .expect("rust reads")
@@ -554,19 +636,35 @@ fn chat_informs_tier2_matches_oracle() {
             .map(|l| l.as_str().expect("line").to_string())
             .collect();
         arm_lines += want_lines.len();
-        assert_eq!(
-            got_lines,
-            want_lines,
-            "logged lines diverged for `{}` — {}",
-            w["kind"].as_str().unwrap_or("?"),
-            w["label"].as_str().unwrap_or("")
-        );
+        // P4.156: every diverging op is collected and reported together, so a
+        // red run states its whole red count (the order's red-first record).
+        if got_lines != want_lines {
+            log_fails.push(format!(
+                "logged lines diverged for `{}` — {}\n  rust:   {got_lines:?}\n  oracle: {want_lines:?}",
+                w["kind"].as_str().unwrap_or("?"),
+                w["label"].as_str().unwrap_or("")
+            ));
+        }
     }
     assert_eq!(
         (log_ops, arm_lines),
-        (6, 4),
-        "P4.149: six captured ops (four silence legs + the two planted arms, two lines each)"
+        (24, 32),
+        "P4.149: six captured ops (four silence legs + the two planted delete arms, two lines \
+         each); P4.156: eighteen more — five failed reads (one filter line each), four strict \
+         reads (filter + outer), the batch read twice and the strict cancel (1 + 2 + 3), the \
+         failed consume twice (2 + 2), the failed create twice (1 + 1); the consume whose \
+         per-row read fails (one `Error finding entity by ID` per id); the failed record \
+         delete (its fallback line)"
     );
+
+    // P4.156: an op that threw on v4 records `{ threw: message }`; the message
+    // is the same SQLite failure in v4's quoted-identifier text.
+    for w in want["reads"].as_array_mut().expect("oracle reads") {
+        if let Some(t) = w["result"].get_mut("threw") {
+            let n = normalize_v4_sqlite(t.as_str().expect("threw is a string"));
+            *t = Value::String(n);
+        }
+    }
 
     // Per-op read diff first: a mismatch names the method and v4's own label.
     let got_reads = got["reads"].as_array().expect("rust reads");
@@ -576,17 +674,37 @@ fn chat_informs_tier2_matches_oracle() {
         want_reads.len(),
         "read-op count diverged (the corpus changed under one side)"
     );
+    let mut read_fails: Vec<String> = Vec::new();
     for (g, w) in got_reads.iter().zip(want_reads.iter()) {
-        assert_eq!(
-            g["result"],
-            w["result"],
-            "read result diverged for `{}` — {}\n  rust:   {}\n  oracle: {}",
-            w["kind"].as_str().unwrap_or("?"),
-            w["label"].as_str().unwrap_or(""),
-            g["result"],
-            w["result"],
-        );
+        if g["result"] != w["result"] {
+            read_fails.push(format!(
+                "read result diverged for `{}` — {}\n  rust:   {}\n  oracle: {}",
+                w["kind"].as_str().unwrap_or("?"),
+                w["label"].as_str().unwrap_or(""),
+                g["result"],
+                w["result"],
+            ));
+        }
     }
+    assert!(
+        log_fails.is_empty() && read_fails.is_empty(),
+        "{} op(s) logged differently and {} op(s) answered differently:\n{}\n{}",
+        log_fails.len(),
+        read_fails.len(),
+        log_fails.join("\n"),
+        read_fails.join("\n")
+    );
+    let threw = got["reads"]
+        .as_array()
+        .expect("rust reads")
+        .iter()
+        .filter(|r| r["result"].get("threw").is_some())
+        .count();
+    assert_eq!(
+        threw, 9,
+        "P4.156: the nine strict / create ops must THROW on v5 as on v4 (the five strict reads, \
+         the strict cancel, the strict consume, both creates)"
+    );
 
     assert_eq!(got["dump"]["table"], want["dump"]["table"], "table name");
     assert_eq!(

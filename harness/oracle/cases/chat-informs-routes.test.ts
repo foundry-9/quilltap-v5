@@ -23,6 +23,18 @@
  * three Zod refusals (`null`, a string, a number), a standing batch listed,
  * and a standing batch cancelled whole.
  *
+ * P4.156 (dogfood #145): every case also emits `logs` — the `[Chats v1]` lines
+ * the handler logged, read off the MOCKED logger (`{level, message, fields}`,
+ * the context in v4's key order) — so the route's own lines are a comparand
+ * (v4 logs FIVE, none of them an error line). And three failure cases: a chat
+ * read that failed (v4's `findById` is a fallback `_findById`, so the handler
+ * sees `null` — posed here as the mock answering `null`, the value v4's REAL
+ * repository answers on a failed read) for the POST and the GET, and a batch
+ * write that THROWS (`createBatch` has no wrap: `_create` rethrows) — turned
+ * into v4's 500 by the route middleware's catch (`handleRouteError`,
+ * `lib/api/middleware/context.ts:206-207`: `serverError('Internal server
+ * error')`, the REAL `serverError` applied here).
+ *
  * Run (Node 24, from a TARGET-pinned v4 worktree — cp to a /tmp mirror, because
  * jest ignores `.claude/` paths):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
@@ -61,7 +73,8 @@ const {
 const { postInformRecord } = require('@/lib/services/announcer/writer')
 const { resolveAnnouncementAudience } = require('@/lib/services/announcer/audience')
 const { publishRealtime } = require('@/lib/realtime/bus')
-const { validationError } = require('@/lib/api/responses')
+const { validationError, serverError } = require('@/lib/api/responses')
+const { logger } = require('@/lib/logger')
 
 const CHAT_ID = '3f1c9f4a-1111-4a2b-9c3d-000000000001'
 const OTHER_CHAT = '3f1c9f4a-1111-4a2b-9c3d-000000000002'
@@ -122,8 +135,12 @@ async function read(res: any): Promise<{ status: number; body: unknown }> {
   return { status: res.status, body: await res.json() }
 }
 
+let currentLogs: () => unknown = () => []
+
 function emit(label: string, payload: Record<string, unknown>): void {
-  outLines.push(JSON.stringify({ case: 'chat-informs-routes', label, ...payload }))
+  outLines.push(
+    JSON.stringify({ case: 'chat-informs-routes', label, ...payload, logs: currentLogs() }),
+  )
 }
 
 describe('chats [id] inform actions — oracle', () => {
@@ -131,6 +148,7 @@ describe('chats [id] inform actions — oracle', () => {
 
   beforeEach(() => {
     jest.clearAllMocks()
+    currentLogs = logs
     postInformRecord.mockResolvedValue({ id: RECORD_ID, type: 'message' })
     resolveAnnouncementAudience.mockImplementation(
       async (_chatId: string, requested: string[] | null) => ({
@@ -198,6 +216,25 @@ describe('chats [id] inform actions — oracle', () => {
           : null,
       realtimePublished: publishRealtime.mock.calls.length > 0,
     }
+  }
+
+  /** P4.156: the handler's `[Chats v1]` lines, in emission order across levels. */
+  function logs() {
+    const out: Array<{ level: string; message: string; fields: Array<[string, unknown]>; order: number }> = []
+    for (const level of ['error', 'warn', 'info', 'debug'] as const) {
+      const fn = logger[level] as jest.Mock
+      fn.mock.calls.forEach((call: unknown[], i: number) => {
+        const message = String(call[0])
+        if (!message.startsWith('[Chats v1]')) return
+        out.push({
+          level,
+          message,
+          fields: Object.entries((call[1] as Record<string, unknown>) ?? {}),
+          order: fn.mock.invocationCallOrder[i],
+        })
+      })
+    }
+    return out.sort((a, b) => a.order - b.order).map(({ order: _o, ...rest }) => rest)
   }
 
   // ---- POST ?action=inform -------------------------------------------------
@@ -322,6 +359,39 @@ describe('chats [id] inform actions — oracle', () => {
       ...(await read(res)),
       calls: calls(),
     })
+  })
+
+  // ---- P4.156: the failure arms (dogfood #145) -----------------------------
+
+  it('a failed chat read is the fallback null — 404, no route line', async () => {
+    ctx.repos.chats.findById.mockResolvedValue(null)
+    const res = await handleInform(
+      makeRequest({ contentMarkdown: BODY, targetParticipantIds: null }),
+      CHAT_ID,
+      ctx,
+    )
+    emit('inform: a failed chat read answers 404', { ...(await read(res)), calls: calls() })
+  })
+
+  it('a batch write that throws is the middleware 500, no route line', async () => {
+    ctx.repos.chatInforms.createBatch.mockRejectedValue(new Error('planted insert failure'))
+    let res: any
+    try {
+      res = await handleInform(
+        makeRequest({ contentMarkdown: BODY, targetParticipantIds: null }),
+        CHAT_ID,
+        ctx,
+      )
+    } catch {
+      res = serverError('Internal server error')
+    }
+    emit('inform: a failed batch write answers 500', { ...(await read(res)), calls: calls() })
+  })
+
+  it('a failed chat read under the list is the fallback null — 404', async () => {
+    ctx.repos.chats.findById.mockResolvedValue(null)
+    const res = await handleGetInforms(CHAT_ID, ctx)
+    emit('informs: a failed chat read answers 404', { ...(await read(res)), calls: calls() })
   })
 
   // ---- GET ?action=informs -------------------------------------------------

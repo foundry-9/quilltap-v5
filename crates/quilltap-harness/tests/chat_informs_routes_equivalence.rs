@@ -40,6 +40,18 @@
 //! `batchId` and the record message id are minted on both sides, so both are
 //! tokenized before the diff; every other byte is compared exactly.
 //!
+//! **P4.156 (dogfood #145)** adds a THIRD comparand, the route's own
+//! `[Chats v1]` lines (v4's off the mocked logger; v5's off the thread-scoped
+//! capture, target dropped), and three failure arms: a failed chat read on the
+//! POST and the GET (v4's `_findById` is a fallback — `null` → 404 — posed on
+//! the oracle as the mock's `null`, planted for real on v5 as a renamed
+//! `chats.id`, with v4's `Error finding entity by ID` asserted on v5's side),
+//! and a batch write that throws (`createBatch` has no wrap → the middleware's
+//! 500 `Internal server error`, the REAL `serverError` applied). Red-first on
+//! unported `main` at `94fbb1ae3`: 12 of 22 cases diverged (every logging case
+//! on the snake-case keys, the three arms on the v5-only 500s) and both plant
+//! cases missed v4's chat-read line.
+//!
 //! Generate the oracle (Node 24, from a TARGET-pinned v4 worktree; jest ignores
 //! `.claude/` paths, so the case is copied to a /tmp mirror first):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
@@ -120,6 +132,37 @@ struct Tokens {
 }
 
 impl Tokens {
+    /// Every uuid-shaped run inside `s` not in the known set, tokenized in
+    /// order (the same first-seen map as whole-string ids).
+    fn tokenize_embedded(&mut self, s: &str) -> String {
+        let b = s.as_bytes();
+        let shaped = |w: &[u8]| {
+            w.iter().enumerate().all(|(i, c)| match i {
+                8 | 13 | 18 | 23 => *c == b'-',
+                _ => c.is_ascii_hexdigit(),
+            })
+        };
+        let mut out = String::new();
+        let mut i = 0;
+        while i < b.len() {
+            if i + 36 <= b.len() && shaped(&b[i..i + 36]) {
+                let id = &s[i..i + 36];
+                if self.known.contains(id) {
+                    out.push_str(id);
+                } else {
+                    let next = format!("ID_{}", self.map.len());
+                    out.push_str(&self.map.entry(id.to_string()).or_insert(next).clone());
+                }
+                i += 36;
+            } else {
+                let ch = s[i..].chars().next().unwrap();
+                out.push(ch);
+                i += ch.len_utf8();
+            }
+        }
+        out
+    }
+
     fn walk(&mut self, v: &mut Value) {
         match v {
             Value::String(s) => {
@@ -137,6 +180,9 @@ impl Tokens {
                     let next = format!("ID_{}", self.map.len());
                     let t = self.map.entry(s.clone()).or_insert(next).clone();
                     *v = Value::String(t);
+                } else if !is_uuid && s.len() > 36 {
+                    // P4.156: a rendered log line carries minted ids INSIDE it.
+                    *v = Value::String(self.tokenize_embedded(s));
                 }
             }
             Value::Array(a) => a.iter_mut().for_each(|x| self.walk(x)),
@@ -213,17 +259,32 @@ fn chat_informs_routes_match_oracle() {
     .collect();
 
     let mut checked = 0usize;
-    let mut compare = |label: &str, status: u16, body: Value, effects: Value| {
+    let mut failures: Vec<String> = Vec::new();
+    let mut home_fails: Vec<String> = Vec::new();
+    // P4.156: `effects` is `None` for a case whose v4 calls the v5 state cannot
+    // mirror (a write that THREW leaves no rows to read the call off); `lines`
+    // is the case's thread-scoped capture, compared on the route's own
+    // `[Chats v1]` lines (dogfood #145).
+    let mut compare = |label: &str,
+                       status: u16,
+                       body: Value,
+                       effects: Option<Value>,
+                       lines: &[String]| {
         let want = by_label
             .get(label)
             .unwrap_or_else(|| panic!("oracle has no case labelled `{label}`"));
 
-        let mut got =
-            json!({ "status": status, "body": collapse_message(body), "effects": effects });
+        let mut got = json!({
+            "status": status,
+            "body": collapse_message(body),
+            "effects": effects.clone().unwrap_or(Value::Null),
+            "logs": route_lines(lines),
+        });
         let mut exp = json!({
             "status": want["status"],
             "body": collapse_message(want["body"].clone()),
-            "effects": oracle_effects(&want["calls"]),
+            "effects": if effects.is_some() { oracle_effects(&want["calls"]) } else { Value::Null },
+            "logs": v4_route_lines(&want["logs"]),
         });
         let mut t1 = Tokens {
             known: known.clone(),
@@ -235,10 +296,12 @@ fn chat_informs_routes_match_oracle() {
         };
         t1.walk(&mut got);
         t2.walk(&mut exp);
-        assert_eq!(
-            got, exp,
-            "[{label}] diverged from v4\n  rust:   {got}\n  oracle: {exp}"
-        );
+        // P4.156: collected, so a red run states its whole red count.
+        if got != exp {
+            failures.push(format!(
+                "[{label}] diverged from v4\n  rust:   {got}\n  oracle: {exp}"
+            ));
+        }
         checked += 1;
     };
 
@@ -246,15 +309,23 @@ fn chat_informs_routes_match_oracle() {
 
     {
         let (db, _s) = fresh_db(&fixture, &pepper, "inform404");
-        let resp = rt.block_on(chat_informs::chat_inform(
-            &db,
-            &missing_chat,
-            &Some(Some(json!(body))),
-            &Some(None),
-            &None,
-        ));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(chat_informs::chat_inform(
+                &db,
+                &missing_chat,
+                &Some(Some(json!(body))),
+                &Some(None),
+                &None,
+            ))
+        });
         let (st, b) = body_of(&resp);
-        compare("inform: 404s when the chat is gone", st, b, effects_none());
+        compare(
+            "inform: 404s when the chat is gone",
+            st,
+            b,
+            Some(effects_none()),
+            &lines,
+        );
     }
 
     for (label, targets) in [
@@ -274,16 +345,18 @@ fn chat_informs_routes_match_oracle() {
         } else {
             Some(Some(targets.clone()))
         };
-        let resp = rt.block_on(chat_informs::chat_inform(
-            &db,
-            &chat,
-            &Some(Some(json!(body))),
-            &t,
-            &None,
-        ));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(chat_informs::chat_inform(
+                &db,
+                &chat,
+                &Some(Some(json!(body))),
+                &t,
+                &None,
+            ))
+        });
         let (st, b) = body_of(&resp);
         let eff = observed_effects(&db, &chat, b["batchId"].as_str());
-        compare(label, st, b, eff);
+        compare(label, st, b, Some(eff), &lines);
     }
 
     for (label, targets) in [
@@ -295,67 +368,101 @@ fn chat_informs_routes_match_oracle() {
         // as an UNKNOWN target. Measuring it would pin the mock.
     ] {
         let (db, _s) = fresh_db(&fixture, &pepper, "inform_400");
-        let resp = rt.block_on(chat_informs::chat_inform(
-            &db,
-            &chat,
-            &Some(Some(json!(body))),
-            &Some(Some(targets)),
-            &None,
-        ));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(chat_informs::chat_inform(
+                &db,
+                &chat,
+                &Some(Some(json!(body))),
+                &Some(Some(targets)),
+                &None,
+            ))
+        });
         let (st, b) = body_of(&resp);
         // A refusal creates nothing, so there is no batch to scope to.
-        compare(label, st, b, effects_none());
+        compare(label, st, b, Some(effects_none()), &lines);
     }
 
     {
         // A room with nobody an LLM speaks for: the departed + user seats only.
         let (db, _s) = fresh_db(&fixture, &pepper, "inform_noseat");
         strip_llm_seats(&db, &chat, &[alice.clone(), bob.clone()]);
-        let resp = rt.block_on(chat_informs::chat_inform(
-            &db,
-            &chat,
-            &Some(Some(json!(body))),
-            &Some(None),
-            &None,
-        ));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(chat_informs::chat_inform(
+                &db,
+                &chat,
+                &Some(Some(json!(body))),
+                &Some(None),
+                &None,
+            ))
+        });
         let (st, b) = body_of(&resp);
-        compare("inform: 400 when no LLM seat exists", st, b, effects_none());
+        compare(
+            "inform: 400 when no LLM seat exists",
+            st,
+            b,
+            Some(effects_none()),
+            &lines,
+        );
     }
 
     {
         let (db, _s) = fresh_db(&fixture, &pepper, "inform_trim");
-        let resp = rt.block_on(chat_informs::chat_inform(
-            &db,
-            &chat,
-            &Some(Some(json!(format!("  {body}  \n")))),
-            &Some(None),
-            &None,
-        ));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(chat_informs::chat_inform(
+                &db,
+                &chat,
+                &Some(Some(json!(format!("  {body}  \n")))),
+                &Some(None),
+                &None,
+            ))
+        });
         let (st, b) = body_of(&resp);
         let eff = observed_effects(&db, &chat, b["batchId"].as_str());
-        compare("inform: the body is trimmed for the rows", st, b, eff);
+        compare(
+            "inform: the body is trimmed for the rows",
+            st,
+            b,
+            Some(eff),
+            &lines,
+        );
     }
 
     // ---- GET ?action=informs ------------------------------------------------
 
     {
         let (db, _s) = fresh_db(&fixture, &pepper, "informs404");
-        let resp = rt.block_on(chat_informs::chat_informs_list(&db, &missing_chat));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(chat_informs::chat_informs_list(&db, &missing_chat))
+        });
         let (st, b) = body_of(&resp);
-        compare("informs: 404s when the chat is gone", st, b, effects_none());
+        compare(
+            "informs: 404s when the chat is gone",
+            st,
+            b,
+            Some(effects_none()),
+            &lines,
+        );
     }
 
     // ---- POST ?action=cancel-inform -----------------------------------------
 
     {
         let (db, _s) = fresh_db(&fixture, &pepper, "cancel404");
-        let resp = rt.block_on(chat_informs::chat_inform_cancel(
-            &db,
-            &chat,
-            &Some(Some(json!("3f1c9f4a-1111-4a2b-9c3d-0000000000aa"))),
-        ));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(chat_informs::chat_inform_cancel(
+                &db,
+                &chat,
+                &Some(Some(json!("3f1c9f4a-1111-4a2b-9c3d-0000000000aa"))),
+            ))
+        });
         let (st, b) = body_of(&resp);
-        compare("cancel: 404 on an unknown batch", st, b, effects_none());
+        compare(
+            "cancel: 404 on an unknown batch",
+            st,
+            b,
+            Some(effects_none()),
+            &lines,
+        );
     }
 
     // ---- GET ?action=informs, over the room's OWN pending rows ---------------
@@ -367,13 +474,16 @@ fn chat_informs_routes_match_oracle() {
     // (same fold, no filtering), so it is not seeded twice.
     {
         let (db, _s) = fresh_db(&fixture, &pepper, "informs_list");
-        let resp = rt.block_on(chat_informs::chat_informs_list(&db, &chat));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(chat_informs::chat_informs_list(&db, &chat))
+        });
         let (st, b) = body_of(&resp);
         compare(
             "informs: departed seats filtered, empty batch dropped",
             st,
             b,
-            effects_none(),
+            Some(effects_none()),
+            &lines,
         );
     }
 
@@ -381,17 +491,20 @@ fn chat_informs_routes_match_oracle() {
     {
         let (db, _s) = fresh_db(&fixture, &pepper, "cancel_foreign");
         let foreign = r["foreignBatchId"].as_str().unwrap().to_string();
-        let resp = rt.block_on(chat_informs::chat_inform_cancel(
-            &db,
-            &chat,
-            &Some(Some(json!(foreign))),
-        ));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(chat_informs::chat_inform_cancel(
+                &db,
+                &chat,
+                &Some(Some(json!(foreign))),
+            ))
+        });
         let (st, b) = body_of(&resp);
         compare(
             "cancel: 400 on another conversation\u{2019}s batch",
             st,
             b,
-            effects_none(),
+            Some(effects_none()),
+            &lines,
         );
     }
 
@@ -402,16 +515,18 @@ fn chat_informs_routes_match_oracle() {
         ("inform: an explicit permanent false", json!(false)),
     ] {
         let (db, _s) = fresh_db(&fixture, &pepper, "inform_standing");
-        let resp = rt.block_on(chat_informs::chat_inform(
-            &db,
-            &chat,
-            &Some(Some(json!(body))),
-            &Some(Some(json!([alice]))),
-            &Some(Some(flag)),
-        ));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(chat_informs::chat_inform(
+                &db,
+                &chat,
+                &Some(Some(json!(body))),
+                &Some(Some(json!([alice]))),
+                &Some(Some(flag)),
+            ))
+        });
         let (st, b) = body_of(&resp);
         let eff = observed_effects(&db, &chat, b["batchId"].as_str());
-        compare(label, st, b, eff);
+        compare(label, st, b, Some(eff), &lines);
     }
 
     for (label, raw) in [
@@ -431,13 +546,15 @@ fn chat_informs_routes_match_oracle() {
         // message rows around the refusal (the `52d6e7ecd` unification's
         // review catch).
         let before = row_counts(&db, &chat);
-        let resp = rt.block_on(chat_informs::chat_inform(
-            &db,
-            &chat,
-            &Some(Some(json!(body))),
-            &Some(None),
-            &Some(raw),
-        ));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(chat_informs::chat_inform(
+                &db,
+                &chat,
+                &Some(Some(json!(body))),
+                &Some(None),
+                &Some(raw),
+            ))
+        });
         let (st, b) = match &resp {
             // v4's `validationError(zodError)` — `{ error, details }`.
             Response::Error(e) if e.kind == quilltap_core::api::types::ErrorKind::BadRequest => (
@@ -451,7 +568,7 @@ fn chat_informs_routes_match_oracle() {
             before,
             "{label}: a Zod refusal writes no inform row and no Host record"
         );
-        compare(label, st, b, effects_none());
+        compare(label, st, b, Some(effects_none()), &lines);
     }
 
     {
@@ -468,9 +585,17 @@ fn chat_informs_routes_match_oracle() {
                 standing_row("aa000000-0000-4000-8000-0000000000b2", &chat, &bob, false),
             ],
         );
-        let resp = rt.block_on(chat_informs::chat_informs_list(&db, &chat));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(chat_informs::chat_informs_list(&db, &chat))
+        });
         let (st, b) = body_of(&resp);
-        compare("informs: a standing batch", st, b, effects_none());
+        compare(
+            "informs: a standing batch",
+            st,
+            b,
+            Some(effects_none()),
+            &lines,
+        );
     }
 
     {
@@ -483,20 +608,181 @@ fn chat_informs_routes_match_oracle() {
                 standing_row("aa000000-0000-4000-8000-0000000000b2", &chat, &bob, false),
             ],
         );
-        let resp = rt.block_on(chat_informs::chat_inform_cancel(
-            &db,
-            &chat,
-            &Some(Some(json!(STANDING_BATCH))),
-        ));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(chat_informs::chat_inform_cancel(
+                &db,
+                &chat,
+                &Some(Some(json!(STANDING_BATCH))),
+            ))
+        });
         let (st, b) = body_of(&resp);
-        compare("cancel: a standing batch goes whole", st, b, effects_none());
+        compare(
+            "cancel: a standing batch goes whole",
+            st,
+            b,
+            Some(effects_none()),
+            &lines,
+        );
+    }
+
+    // ---- P4.156: the failure arms (dogfood #145) ----------------------------
+    //
+    // v4's chat read is `_findById`, a FALLBACK: a failed read logs `Error
+    // finding entity by ID` and the handler sees `null` → 404 (the oracle poses
+    // the `null` its real repository answers). v5's plant is real: the copy's
+    // `chats.id` renamed, so `chats_read::find_by_id` fails. Before P4.156 v5
+    // answered 500 and logged its own `[Chats v1] Error posting inform` /
+    // `Error listing informs` — lines v4 has no counterpart for.
+    for (label, list) in [
+        ("inform: a failed chat read answers 404", false),
+        ("informs: a failed chat read answers 404", true),
+    ] {
+        let (db, _s) = fresh_db(&fixture, &pepper, "chat_read_plant");
+        db.write_blocking(|w| {
+            w.main()
+                .connection()
+                .execute_batch(r#"ALTER TABLE chats RENAME COLUMN "id" TO "id_x""#)?;
+            Ok(())
+        })
+        .expect("plant the renamed chats.id");
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            if list {
+                rt.block_on(chat_informs::chat_informs_list(&db, &chat))
+            } else {
+                rt.block_on(chat_informs::chat_inform(
+                    &db,
+                    &chat,
+                    &Some(Some(json!(body))),
+                    &Some(None),
+                    &None,
+                ))
+            }
+        });
+        // v4's REAL line for the read (the oracle's mock cannot log it) — the
+        // home's bytes, once, on the caller thread.
+        let homes: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("Error finding entity by ID"))
+            .collect();
+        let want_home = format!(
+            "ERROR quilltap::db Error finding entity by ID collection=chats id={chat} error=no such column: id"
+        );
+        if homes != vec![&want_home] {
+            home_fails.push(format!(
+                "{label}: the chat read must log v4's fallback line once: {lines:#?}"
+            ));
+        }
+        let (st, b) = body_of(&resp);
+        compare(label, st, b, Some(effects_none()), &lines);
+    }
+
+    // `createBatch` has NO wrap: `_create` rethrows, so v4's handler throws and
+    // the route middleware answers 500 `Internal server error`. The record is
+    // posted FIRST (v4's order), so the v4 calls show a written record and a
+    // `createBatch` call the v5 state has no rows for — effects are not
+    // compared; the record row is counted instead.
+    {
+        let (db, _s) = fresh_db(&fixture, &pepper, "batch_write_plant");
+        db.write_blocking(|w| {
+            w.main().connection().execute_batch(
+                "CREATE TRIGGER qt_plant_no_insert BEFORE INSERT ON chat_informs \
+                 BEGIN SELECT RAISE(ABORT, 'planted insert failure'); END",
+            )?;
+            Ok(())
+        })
+        .expect("plant the insert failure");
+        let before = row_counts(&db, &chat);
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(chat_informs::chat_inform(
+                &db,
+                &chat,
+                &Some(Some(json!(body))),
+                &Some(None),
+                &None,
+            ))
+        });
+        assert_eq!(
+            row_counts(&db, &chat),
+            (before.0, before.1 + 1),
+            "the record is posted before the batch write fails, and no inform row lands"
+        );
+        let (st, b) = body_of(&resp);
+        compare(
+            "inform: a failed batch write answers 500",
+            st,
+            b,
+            None,
+            &lines,
+        );
     }
 
     assert!(
-        checked >= 19,
-        "expected at least nineteen route cases to run; ran {checked}"
+        failures.is_empty() && home_fails.is_empty(),
+        "{} of {checked} route case(s) diverged from v4, and {} plant case(s) missed v4's \
+         chat-read line:\n{}\n{}",
+        failures.len(),
+        home_fails.len(),
+        failures.join("\n"),
+        home_fails.join("\n")
+    );
+    assert!(
+        checked >= 22,
+        "expected at least twenty-two route cases to run; ran {checked}"
     );
     eprintln!("OK: chat_informs routes matched oracle ({checked} cases).");
+}
+
+/// P4.156 — the route's own lines as v5's capture rendered them, `"<LEVEL>
+/// <target> <message> k=v …"`, reduced to `"<LEVEL> <message> k=v …"` (v4's
+/// mocked logger has no target) and filtered to the `[Chats v1]` sentences —
+/// a repository line beneath the handler (`quilltap::db`) is not the route's.
+fn route_lines(lines: &[String]) -> Value {
+    Value::Array(
+        lines
+            .iter()
+            .filter(|l| l.contains(" [Chats v1] "))
+            .map(|l| {
+                let mut parts = l.splitn(3, ' ');
+                let level = parts.next().unwrap_or_default();
+                let _target = parts.next();
+                Value::String(format!("{level} {}", parts.next().unwrap_or_default()))
+            })
+            .collect(),
+    )
+}
+
+/// v4's mocked-logger calls rendered the same way. The `Inform posted` line's
+/// two ids ride v5's file-layer `…Json` convention (a JSON string or `null`),
+/// so they render as `batchIdJson="…"` / `recordMessageIdJson=null`; every
+/// other string renders bare, numbers and booleans as JSON.
+fn v4_route_lines(logs: &Value) -> Value {
+    let Some(arr) = logs.as_array() else {
+        return Value::Array(Vec::new());
+    };
+    Value::Array(
+        arr.iter()
+            .map(|l| {
+                let message = l["message"].as_str().unwrap_or_default();
+                let mut out = format!(
+                    "{} {message}",
+                    l["level"].as_str().unwrap_or_default().to_ascii_uppercase()
+                );
+                for pair in l["fields"].as_array().into_iter().flatten() {
+                    let key = pair[0].as_str().unwrap_or_default();
+                    let json_rider = message == "[Chats v1] Inform posted"
+                        && (key == "batchId" || key == "recordMessageId");
+                    let rendered = match (&pair[1], json_rider) {
+                        (v, true) => format!("{key}Json={v}"),
+                        (Value::String(s), false) => format!("{key}={s}"),
+                        (v, false) => format!("{key}={v}"),
+                    };
+                    out.push(' ');
+                    out.push_str(&rendered);
+                }
+                Value::String(out)
+            })
+            .collect(),
+    )
 }
 
 /// Collapse the response body's `message` to its IDENTITY.

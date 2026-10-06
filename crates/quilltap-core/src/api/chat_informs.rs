@@ -246,14 +246,16 @@ pub async fn chat_inform(
             Err(issues) => return Response::validation_error(issues),
         };
 
-    let cid = chat_id.to_string();
-    let chat = match db.read_main(move |c| crate::db::chats_read::find_by_id(c, &cid)) {
-        Ok(Some(chat)) => chat,
-        Ok(None) => return Response::error(ErrorKind::NotFound, "Chat not found"),
-        Err(e) => {
-            tracing::error!(chat_id = %chat_id, error = %e, "[Chats v1] Error posting inform");
-            return Response::error(ErrorKind::Internal, "Failed to post inform");
-        }
+    // v4 `repos.chats.findById` is `_findById`, a FALLBACK read: a failed read
+    // logs `Error finding entity by ID` and answers `null`, so the handler's
+    // own 404 answers it (P4.156, dogfood #145 — v5 had answered 500 under a
+    // v5-only `[Chats v1] Error posting inform`; v4's `inform.ts` has no error
+    // line at all). The home wraps the whole `read_main` (v4's
+    // `getCollection()` runs inside the same `safeQuery`).
+    let Some(chat) = crate::db::fallback::find_by_id_or_none("chats", chat_id, || {
+        db.read_main(|c| crate::db::chats_read::find_by_id(c, chat_id))
+    }) else {
+        return Response::error(ErrorKind::NotFound, "Chat not found");
     };
 
     let participants = participants_of(&chat);
@@ -334,8 +336,8 @@ pub async fn chat_inform(
         // A lost record must not cost the operator the batch — the informs still
         // deliver; only the transcript's note of them is missing.
         tracing::warn!(
-            chat_id = %chat_id,
-            target_count = participant_ids.len(),
+            chatId = %chat_id,
+            targetCount = participant_ids.len(),
             "[Chats v1] Inform record could not be posted — continuing",
         );
     }
@@ -364,10 +366,14 @@ pub async fn chat_inform(
         .await
     {
         Ok(rows) => rows,
-        Err(e) => {
-            tracing::error!(chat_id = %chat_id, error = %e, "[Chats v1] Error posting inform");
-            return Response::error(ErrorKind::Internal, "Failed to post inform");
-        }
+        // v4's `createBatch` has no wrap: the failed row's `_create` logs the
+        // base `Error creating entity` (the repository's, through the home, on
+        // the writer thread) and RETHROWS, so the handler throws and the route
+        // middleware answers 500 `Internal server error` (`context.ts:206-207`;
+        // its `Unhandled route error` line is unported, the `chat_delete`
+        // precedent). P4.156: v5's own `[Chats v1] Error posting inform` is gone
+        // — re-homed onto the repository's line.
+        Err(_) => return Response::error(ErrorKind::Internal, "Internal server error"),
     };
 
     let batch_id: Value = rows
@@ -389,9 +395,9 @@ pub async fn chat_inform(
         None => "null".to_string(),
     };
     tracing::info!(
-        chat_id = %chat_id,
+        chatId = %chat_id,
         batchIdJson = batch_id_json.as_str(),
-        target_count = participant_ids.len(),
+        targetCount = participant_ids.len(),
         audience = if record_targets.is_some() { "whisper" } else { "public" },
         recordMessageIdJson = record_message_id_json.as_str(),
         permanent,
@@ -420,14 +426,12 @@ pub async fn chat_inform(
 /// v4 answers with a plain `NextResponse.json({ batches })` — NOT its `success`
 /// envelope.
 pub async fn chat_informs_list(db: &Db, chat_id: &str) -> Response {
-    let cid = chat_id.to_string();
-    let chat = match db.read_main(move |c| crate::db::chats_read::find_by_id(c, &cid)) {
-        Ok(Some(chat)) => chat,
-        Ok(None) => return Response::error(ErrorKind::NotFound, "Chat not found"),
-        Err(e) => {
-            tracing::error!(chat_id = %chat_id, error = %e, "[Chats v1] Error listing informs");
-            return Response::error(ErrorKind::Internal, "Failed to list informs");
-        }
+    // The fallback chat read, as [`chat_inform`]'s (P4.156 — the v5-only
+    // `[Chats v1] Error listing informs` 500 is gone).
+    let Some(chat) = crate::db::fallback::find_by_id_or_none("chats", chat_id, || {
+        db.read_main(|c| crate::db::chats_read::find_by_id(c, chat_id))
+    }) else {
+        return Response::error(ErrorKind::NotFound, "Chat not found");
     };
 
     let current: std::collections::HashSet<String> = participants_of(&chat)
@@ -440,6 +444,8 @@ pub async fn chat_informs_list(db: &Db, chat_id: &str) -> Response {
     // v4 `findPendingBatches` reads through `findByFilter`, whose own
     // `safeQuery` logs `Error finding entities by filter` and answers `[]`
     // first (the outer `Error finding pending inform batches` is unreachable).
+    // The repository answers that itself (P4.156); this home catches only a
+    // failure of the pool checkout around it.
     let all = crate::db::fallback::find_by_filter_or_empty("chat_informs", || {
         db.read_main(move |c| {
             crate::db::chat_informs::ChatInformsRepository::new(c).find_pending_batches(&cid2)
@@ -478,7 +484,7 @@ pub async fn chat_informs_list(db: &Db, chat_id: &str) -> Response {
         .collect();
 
     tracing::debug!(
-        chat_id = %chat_id,
+        chatId = %chat_id,
         batches = batches.len(),
         dropped = total - batches.len(),
         "[Chats v1] Pending informs listed",
@@ -562,28 +568,23 @@ pub async fn chat_inform_cancel(
         if let Some(record_id) = &record_message_id {
             let cid = chat_id.to_string();
             let rid = record_id.clone();
-            match db
+            let outcome = db
                 .write(move |writers| {
                     writers
                         .main()
                         .chat_messages()
                         .delete_messages_by_ids(&cid, &[rid])
                 })
-                .await
-            {
-                Ok(deleted) => record_deleted = deleted > 0,
-                Err(e) => {
-                    // The rows are already gone; a surviving record is untidy,
-                    // not broken.
-                    tracing::warn!(
-                        chat_id = %chat_id,
-                        batch_id = %batch,
-                        record_message_id = %record_id,
-                        error = %e,
-                        "[Chats v1] Could not delete inform record message",
-                    );
-                }
-            }
+                .await;
+            // v4 `deleteMessagesByIds` is a FALLBACK `safeQuery(…, 0)`
+            // (`chats-messages.ops.ts:633-686`): a failed delete logs `Failed to
+            // delete messages from chat` and answers 0, so the handler's own
+            // try/catch — WARN `Could not delete inform record message` — is
+            // unreachable on a database failure (measured, P4.156 / dogfood
+            // #145; v5 had logged that WARN as the failure's only line). The
+            // rows are already gone; a surviving record is untidy, not broken.
+            record_deleted =
+                crate::db::fallback::messages_deleted_or_zero(chat_id, 1, || outcome) > 0;
         }
     }
 
@@ -595,12 +596,12 @@ pub async fn chat_inform_cancel(
     );
 
     tracing::debug!(
-        chat_id = %chat_id,
-        batch_id = %batch,
+        chatId = %chat_id,
+        batchId = %batch,
         removed,
-        any_consumed,
+        anyConsumed = any_consumed,
         permanent,
-        record_deleted,
+        recordDeleted = record_deleted,
         "[Chats v1] Inform cancelled",
     );
 
@@ -963,10 +964,121 @@ mod safe_query_and_log_tests {
         }
         let l = line(&lines, "[Chats v1] Inform cancelled");
         assert!(l.starts_with("DEBUG"), "{l}");
-        let any = l.find("any_consumed=true").expect(l);
+        // P4.156 (#145): v4's camelCase keys (the snake-case pin was a pin on
+        // the defect).
+        let any = l.find("anyConsumed=true").expect(l);
         let perm = l.find("permanent=true").expect(l);
-        let rec = l.find("record_deleted=false").expect(l);
+        let rec = l.find("recordDeleted=false").expect(l);
+        assert!(
+            l.contains(&format!("chatId={CHAT}")) && l.contains("batchId="),
+            "{l}"
+        );
+        assert!(
+            !l.contains("any_consumed") && !l.contains("record_deleted") && !l.contains("chat_id"),
+            "{l}"
+        );
         assert!(any < perm && perm < rec, "v4's field order: {l}");
+    }
+
+    /// P4.156 (dogfood #145): the record delete is v4's FALLBACK
+    /// `deleteMessagesByIds` — a failed delete logs `Failed to delete messages
+    /// from chat {chatId, count, error}` (no collection: the standalone
+    /// `safeQuery`) and answers 0, so the cancel still answers 200 with
+    /// `recordDeleted: false` and v4's WARN `Could not delete inform record
+    /// message` never fires (v5 had logged it as the failure's only line).
+    #[test]
+    fn a_refused_record_delete_logs_v4s_fallback_line_not_the_warn() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let (_dir, db) = provisioned("e");
+        rt.block_on(seed_chat(&db));
+        let posted = match rt.block_on(chat_inform(
+            &db,
+            CHAT,
+            &Some(Some(json!("The lamps are lit."))),
+            &Some(None),
+            &None,
+        )) {
+            Response::ChatInform(v) => v,
+            other => panic!("{other:?}"),
+        };
+        let batch = posted["batchId"].as_str().unwrap().to_string();
+        rt.block_on(db.write(|w| {
+            w.main().connection().execute_batch(
+                "CREATE TRIGGER no_message_delete BEFORE DELETE ON chat_messages \
+                 BEGIN SELECT RAISE(ABORT, 'the record delete is refused'); END",
+            )?;
+            Ok(())
+        }))
+        .unwrap();
+
+        let (resp, lines) =
+            captured_with(|| rt.block_on(chat_inform_cancel(&db, CHAT, &Some(Some(json!(batch))))));
+        match resp {
+            Response::ChatInformCancelled(v) => {
+                assert_eq!(v["removed"], json!(2), "{v}");
+                assert_eq!(v["recordDeleted"], json!(false), "{v}");
+            }
+            other => panic!("expected v4's 200, got {other:?}"),
+        }
+        let homes: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("Failed to delete messages from chat"))
+            .collect();
+        assert_eq!(
+            homes,
+            vec![&format!(
+                "ERROR quilltap::db Failed to delete messages from chat chatId={CHAT} count=1 error=the record delete is refused"
+            )],
+            "{lines:#?}"
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("Could not delete inform record message")),
+            "v4's WARN is unreachable on a database failure: {lines:#?}"
+        );
+    }
+
+    /// P4.156 (dogfood #145): a chat read that FAILS is v4's fallback `null` —
+    /// 404 on both verbs with v4's base line, and no v5-only `[Chats v1]`
+    /// error line.
+    #[test]
+    fn a_failed_chat_read_is_v4s_404_not_a_500() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let (_dir, db) = provisioned("f");
+        rt.block_on(seed_chat(&db));
+        rt.block_on(db.write(|w| {
+            w.main()
+                .connection()
+                .execute_batch(r#"ALTER TABLE chats RENAME COLUMN "id" TO "id_x""#)?;
+            Ok(())
+        }))
+        .unwrap();
+        let (resps, lines) = captured_with(|| {
+            (
+                rt.block_on(chat_inform(
+                    &db,
+                    CHAT,
+                    &Some(Some(json!("x"))),
+                    &Some(None),
+                    &None,
+                )),
+                rt.block_on(chat_informs_list(&db, CHAT)),
+            )
+        });
+        for resp in [resps.0, resps.1] {
+            match resp {
+                Response::Error(e) => {
+                    assert!(matches!(e.kind, ErrorKind::NotFound), "{e:?}");
+                    assert_eq!(e.message, "Chat not found");
+                }
+                other => panic!("expected v4's 404, got {other:?}"),
+            }
+        }
+        let line = format!(
+            "ERROR quilltap::db Error finding entity by ID collection=chats id={CHAT} error=no such column: id"
+        );
+        assert_eq!(lines, vec![line.clone(), line], "{lines:#?}");
     }
 
     #[test]
@@ -1009,7 +1121,9 @@ mod safe_query_and_log_tests {
         // UNQUOTED — unlike the two `…Json` fields above, whose quotes are the
         // JSON's own and are the point of the assertions.
         assert!(
-            l.contains("audience=public") && l.contains("target_count=2"),
+            l.contains("audience=public")
+                && l.contains("targetCount=2")
+                && l.contains(&format!("chatId={CHAT}")),
             "both eligible seats were covered, so the record is public: {l}"
         );
         // P4.D249: v4 adds `permanent` LAST to the line — after
@@ -1039,7 +1153,10 @@ mod safe_query_and_log_tests {
         // The silence leg: the two ids never reach the wire under their old
         // spellings, which rendered `"\"uuid\""` and the literal string `null`.
         assert!(
-            !l.contains("batch_id=") && !l.contains("record_message_id="),
+            !l.contains("batch_id=")
+                && !l.contains("record_message_id=")
+                && !l.contains("target_count=")
+                && !l.contains("chat_id="),
             "the pre-fix field names must be gone: {l}"
         );
     }

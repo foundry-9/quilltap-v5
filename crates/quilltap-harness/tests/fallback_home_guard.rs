@@ -86,6 +86,23 @@ const HOME_MESSAGES: &[&str] = &[
     // (`dedicated-db.repository.ts:242-251`), carried by the strict-aware
     // joined-links sibling.
     "Dedicated database unavailable; answering with the fallback",
+    // P4.156: the chat-informs repository's five outer read wraps
+    // (`chat-informs.repository.ts:87-183` — reachable only inside the strict
+    // scope; outside it the inner `findByFilter` line answers first).
+    // `Error marking informs consumed` (`:238-268`) is emitted by the home too
+    // but NOT listed yet: `services/message_finalizer.rs` (no lane's file this
+    // round) still carries a caller-side copy under `quilltap::inform` — the
+    // recorded P4.156 HANDOFF folds it onto
+    // `db::fallback::informs_marked_consumed_or_zero` and adds the literal here.
+    "Error finding pending informs for participant",
+    "Error finding informs consumed by messages",
+    "Error finding pending inform batches",
+    "Error finding informs by chat ID",
+    "Error finding informs by batch ID",
+    // P4.156 (dogfood #145): v4's `deleteMessagesByIds` fallback
+    // (`chats-messages.ops.ts:633-686`, the standalone `safeQuery` — no
+    // collection), the Inform cancel's record-delete leg.
+    "Failed to delete messages from chat",
 ];
 
 const HOME: &str = "db/fallback.rs";
