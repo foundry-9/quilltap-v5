@@ -456,6 +456,17 @@ const OVERRIDES: &[(&str, &str, &str, &str)] = &[
         "find_by_mount_point_and_path",
         "no-v4-counterpart",
     ),
+    // The same unification's review fix: the backfill matches a vault's
+    // `Prompts/` / `Scenarios/` entries by the NAME the reader parses, so it
+    // lists both folders first (`vault_read_overlay::vault_entry_names`) —
+    // the same v5-only question, read inside the STRICT scope so a failed
+    // listing fails the backfill instead of duplicating every entry.
+    (
+        "quilltap-core/src/db/vault_read_overlay.rs",
+        "vault_entry_names",
+        "find_many_by_mount_points_in_folder_or_empty",
+        "no-v4-counterpart",
+    ),
 ];
 
 fn classify(
@@ -663,6 +674,8 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/db/vault_read_overlay.rs", "load_vault_file_maps", "find_many_by_mount_points_and_path_or_empty", "converted"),
     ("quilltap-core/src/db/vault_read_overlay.rs", "load_vault_file_maps", "find_many_by_mount_points_in_folder_or_empty", "converted"),
     ("quilltap-core/src/db/vault_read_overlay.rs", "load_vault_file_maps", "find_many_by_mount_points_in_folder_or_empty", "converted"),
+    ("quilltap-core/src/db/vault_read_overlay.rs", "vault_entry_names", "find_many_by_mount_points_in_folder_or_empty", "no-v4-counterpart"),
+    ("quilltap-core/src/db/vault_read_overlay.rs", "vault_entry_names", "find_many_by_mount_points_in_folder_or_empty", "no-v4-counterpart"),
     ("quilltap-core/src/db/vault_read_overlay.rs", "read_character_vault_wardrobe", "find_many_by_mount_points_in_folder_or_empty", "converted"),
     ("quilltap-core/src/db/vault_read_overlay.rs", "read_character_vault_wardrobe", "find_many_by_mount_points_and_path_or_empty", "converted"),
     ("quilltap-core/src/db/vault_wardrobe_write.rs", "project_array_into_vault_folder", "find_many_by_mount_points_in_folder_or_empty", "converted"),
@@ -811,8 +824,9 @@ fn the_class_counts_are_pinned() {
 /// no-v4-counterpart, strict-by-ruling, strict-by-ruling(write-path), fallback-in-v4),
 /// with the arithmetic:
 ///
-/// - **158 direct call sites in all** = 83 + 14 + 19 + 0 + 13 + 3 + 1 + 20 + 5
-///   (156 + P4.158's two backfill reads).
+/// - **160 direct call sites in all** = 83 + 14 + 19 + 0 + 13 + 5 + 1 + 20 + 5
+///   (156 + P4.158's two backfill reads + the unification's two
+///   `vault_entry_names` folder listings).
 ///   P4.149: +1 internal (the strict-aware path-read sibling's closure over
 ///   its propagating sibling, `doc_mount_file_links.rs`); 3 held → converted
 ///   (5d #10/#12/#21); the other 20 held re-classed `strict-by-ruling(write-
@@ -859,10 +873,11 @@ fn the_class_counts_are_pinned() {
 ///   `.unwrap_or_else` / `let Ok … else` at the site: `api/characters` 1,
 ///   `chat_gallery` 1, `aesthetics` 1, `memory_processor` 1, `file_ops::link_file`
 ///   1, `doc_edit/blob` 1, `doc_edit/shared` 5, `tools/photo` 2.
-/// - **no-v4-counterpart 3** = `write_database_document`'s stored-mtime re-read
+/// - **no-v4-counterpart 5** = `write_database_document`'s stored-mtime re-read
 ///   + P4.158's two preserve-arm backfill reads (`character_vault::
 ///   backfill_character_vault_managed_files`, `restore::orchestrator::
-///   backfill_official_store`) (see [`OVERRIDES`]).
+///   backfill_official_store`) + the backfill's two folder listings
+///   (`vault_read_overlay::vault_entry_names`) (see [`OVERRIDES`]).
 /// - **strict-by-ruling 1** = `qtap_export/records.rs` `stream_one_store` (G5):
 ///   held strict under the 2026-08-03 backup/export ruling — v4 exports a broken
 ///   store EMPTY ([`OVERRIDES`]).
@@ -886,7 +901,7 @@ const COUNTS: (
     usize,
     usize,
     usize,
-) = (83, 14, 19, 0, 13, 3, 1, 20, 5);
+) = (83, 14, 19, 0, 13, 5, 1, 20, 5);
 
 /// P4.142 §S.4 — reads HANDED to P4.144 this round, recorded as documentation:
 /// the fold-episode pass's two memory reads (`services/fold_episode_pass.rs` —
