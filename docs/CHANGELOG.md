@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-06 — docs(porting): driftcheck — v4 one commit past `07b8f0209` (`94fbb1ae3`, the inform block moves to a trailing section under a vouching header); PIN REQUIRED
+
+_Docs-only change._
+
+- `drift-ledger.md` §1 rewritten: v4 `main` at `94fbb1ae3` (`4.10.0-dev.112`), `bugfix` and `release` unmoved, checkout on `main` and clean. Verdict DRIFT PENDING — 1 commit; regen rule PIN REQUIRED at `07b8f0209`.
+- §3 gains one UNPROCESSED PORT row: v4 adds `INFORM_BLOCK_HEADER` to the inform block, moves it out of the system prefix into the trailing context sections (after recall, mail and progressions; before the turn-skip instruction; and into the trailing-only user message on chained/continue/autonomous/swipe turns), and adds one debug line. Hits P4.D205 / P4.D249's `services/inform_block.rs` and `services/build_context.rs`; `help/inform.md` and three `docs/v4/` paths re-vendor. Not a convergence.
+- The ordered P4.153–P4.158 round touches none of these surfaces, but its lanes' §2 probe now fails.
+
 #### 2026-10-06 — docs(porting): order the `07b8f0209` fresh-instance-indexes + follow-ups smalls round — P4.153 ∥ P4.154 ∥ P4.155 ∥ P4.156 ∥ P4.157 ∥ P4.158
 
 _Docs-only change._

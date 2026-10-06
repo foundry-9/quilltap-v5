@@ -26,26 +26,31 @@ probe verifies against._
   absorbed are retired to §6: `a434c715b` ABSORBED(P4.D253) for bug 177 +
   NO-PORT-RATIFIED(P4.D253) for bug 178; `07b8f0209` ABSORBED(P4.D251,
   P4.D252). CLAUDE.md's Status bullet agrees.
-- **Checked:** 2026-10-05 (`/unify` of the `07b8f0209` follow-ups + restore
-  round — P4.147–P4.152 — main-checkout session; `git fetch --all` first).
-  The §2 probe PASSED at the unification's start AND at its close: HEAD
-  `07b8f0209`, both logs empty, `origin/main` agreeing, tree CLEAN. No drift
-  row absorbed; the baseline STAYS. Every regen of the unification ran from
-  the detached pin `/tmp/qt-v4-pin-unify-07b8f0209` (§5.1; the lanes had
-  removed theirs). Previous check: 2026-10-05 (`/unify` of the `07b8f0209`
-  round) and 2026-10-04 late night (`/driftcheck`, recorded `07b8f0209`).
-- **v4 `main` HEAD at check: `07b8f0209`** — AT the baseline; `origin/main`
-  agrees.
+- **Checked:** 2026-10-06 (`/driftcheck`, main-checkout session; `git fetch
+  --all` first). Previous checks: 2026-10-05 (`/unify` of the `07b8f0209`
+  follow-ups + restore round — the §2 probe PASSED at its start and close,
+  every regen from `/tmp/qt-v4-pin-unify-07b8f0209`) and 2026-10-05 (`/unify`
+  of the `07b8f0209` round).
+- **v4 `main` HEAD at check: `94fbb1ae3`** ("Inform: deliver as a trailing
+  section, under a vouching header", 2026-10-06 09:01, `4.10.0-dev.112`) —
+  ONE commit past the baseline; `origin/main` agrees.
 - **v4 `bugfix` tip at check:** `1a2b2164c` ("bugfix: started 4.9.2 bug
   branch"), UNMOVED; `1a2b2164c..bugfix` and `..origin/bugfix` empty.
   **`release` tip:** `8fbf2afe0` ("release: 4.9.2"), UNMOVED; still no
   `release: 4.10.0` squash.
 - **Checkout at check:** branch **`main`**, tree **CLEAN**.
-- **Verdict: AT BASELINE — 0 commits** (§3 EMPTY).
-- **Regen rule: NO PIN REQUIRED** — HEAD is the baseline and the tree is
-  clean. A pin is still the cheap total proof; the unification used one.
-  SDKs unmoved across the round (`git diff 52d6e7ecd 07b8f0209 -- plugins/
-  package.json packages/` moved only the version stamps).
+- **Verdict: DRIFT PENDING — 1 commit** (§3: `94fbb1ae3`, PORT).
+- **Regen rule: PIN REQUIRED at `07b8f0209`** — HEAD is past the baseline
+  (§5.1). Every oracle that builds a context with an inform in it
+  (`inform-block`, `build_context_tier3`, `orchestrator_tier3`,
+  `regenerate_swipe_tier3`, the tool-loop families) records the NEW
+  placement and header from the live checkout. SDKs unmoved
+  (`git diff 07b8f0209 94fbb1ae3 -- plugins/ packages/` = the version stamp
+  only). **The ordered P4.153–P4.158 round** (written against `07b8f0209`
+  the same morning) touches NONE of the commit's surfaces (no order names
+  `build_context`, `inform_block`, `context-manager` or `inform-block`), but
+  its lanes' §2 probe will now FAIL — they STOP unless the human waives the
+  probe for the round with every regen pinned, as the `89fcc3c0d` round did.
 - **Live-checkout guards at the baseline:** `builtin_prompt_templates_guard`,
   `provider_sdk_version_guard`, `qtap_schema_embed_guard`, and the help
   guards (`help_tree_equivalence` and kin — `07b8f0209` moved two pages,
@@ -139,6 +144,7 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
+| `94fbb1ae3` | 2026-10-06 | Inform: deliver as a trailing section, under a vouching header | **PORT** | **The prompt-path inform block, ported by P4.D205 (`f45a517a9` round) + P4.D249 (standing informs, `52d6e7ecd` round).** Shipped hunks: (1) `lib/chat/context/inform-block.ts` — new exported `INFORM_BLOCK_HEADER` (two concatenated sentences, byte-exact from the post-commit file) and `content` becomes `` `${HEADER}\n\n${bodies.join(SEPARATOR)}` `` — v5 `services/inform_block.rs::assemble_inform_block` (`:215`) still joins bare; the header now counts in the budget reservation automatically (`estimateTokens(informBlock)+4`, v5 `build_context.rs:3054`). (2) `lib/chat/context-manager.ts` — the `role: 'system'` push after identity reinforcement is DELETED (v5 `build_context.rs:3287-3310`, the P4.D205 block, carries v4's PRE-fix comment verbatim); the block is pushed into `trailingContextSections` AFTER recall / mail / progressions and BEFORE `turnSkipInstruction`; the no-new-user-message branch's condition gains `\|\| informBlock` and `trailingOnly` becomes `[anchor, progressions, informBlock, turnSkip]` (v5 `:3859`, the P4.D242 scene-note list) — so a chained/continue/autonomous/swipe turn with ONLY an inform now gets a trailing user message it never had; (3) a NEW `logger.debug('[Inform] Delivering inform block as a trailing context section', {chatId, participantId, onNewUserMessage, rowIds})` fired whenever the block is non-null, BEFORE the branch. Comment-only: `components/chat/InformDialog.tsx` (no SPA string moves — v5 `apps/web/src/app/chat/inform-dialog.ts` needs at most a comment). `help/inform.md` re-vendor (one page modified; the tree stays 129 files — `help_tree_equivalence` reddens against the LIVE checkout, green against the pin). `docs/v4/` mirror: `CHANGELOG.md`, `developer/PROMPT_ARCHITECTURE.md`, `developer/features/salon-inform.md`. Tests-only: two v4 jest files (the oracle's expected placement). NOT in the commit: no schema, no `chat-informs.repository.ts`, no consumption/finalizer change, no `regenerate-swipe.service.ts` hunk (the swipe reaches the trailing-only branch through `buildContext`), no `docs/developer/bugs.md` entry — **not a CONVERGENCE** (no port filing involved). Expect the tier-1 `inform_block_equivalence` and every tier-3 family with an inform case to go RED at the new pin by design. Real-data note: prompted by a standing inform on Friday that was delivered but disbelieved — the next dogfood can re-run that exact inform. | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
