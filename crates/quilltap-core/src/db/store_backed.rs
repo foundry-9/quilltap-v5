@@ -156,14 +156,21 @@ impl<'c, E: StoreEntity> StoreBackedRepository<'c, E> {
     /// `restore.ts:315-345`; a RULED v5 divergence, `system_restore_state`'s
     /// `FRESH_STORE_RESIDUAL`). Until 22a runs, the row's FK names a store that
     /// does not exist yet — nothing between reads it.
+    ///
+    /// The slim INSERT and the pointer UPDATE run under ONE transaction
+    /// (P4.158 R-D): a failing second statement must not leave a pointer-less
+    /// slim row the restore then reports as refused. (Main partition only —
+    /// nothing here touches the store.)
     pub fn create_slim_linked(
         &self,
         name: &str,
         opts: &StoreCreateOptions,
         mount_point_id: &str,
     ) -> Result<String, DbError> {
+        let tx = self.main.unchecked_transaction()?;
         let (id, _) = self.create_slim(name, opts)?;
         self.set_official_mount_point_id(&id, mount_point_id)?;
+        tx.commit()?;
         Ok(id)
     }
 
@@ -502,5 +509,70 @@ mod find_by_ids_tests {
             .find_by_ids(&[])
             .unwrap()
             .is_empty());
+    }
+}
+
+#[cfg(test)]
+mod create_order_tests {
+    //! P4.158 R-D / R-E — the two create paths leave NOTHING behind when they
+    //! fail, over a real provisioned instance (a temp COPY, never live data).
+    use super::*;
+    use crate::db::projects::ProjectEntity;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    fn instance() -> (tempfile::TempDir, crate::db::Writer, crate::db::Writer) {
+        let dir = tempfile::tempdir().unwrap();
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER).unwrap();
+        let main =
+            crate::db::Writer::open_writable(&dir.path().join("quilltap.db"), PEPPER).unwrap();
+        let mount =
+            crate::db::Writer::open_writable(&dir.path().join("quilltap-mount-index.db"), PEPPER)
+                .unwrap();
+        (dir, main, mount)
+    }
+
+    fn count(conn: &Connection, table: &str) -> i64 {
+        conn.query_row(&format!("SELECT COUNT(*) FROM \"{table}\""), [], |r| {
+            r.get(0)
+        })
+        .unwrap()
+    }
+
+    fn pinned(id: &str) -> StoreCreateOptions {
+        StoreCreateOptions {
+            id: Some(id.to_string()),
+            created_at: None,
+            updated_at: None,
+        }
+    }
+
+    /// R-D: the restore's preserve-arm create is two statements (the slim
+    /// INSERT, then the pointer UPDATE). A failing SECOND statement — planted
+    /// as a `BEFORE UPDATE` trigger on the slim table — must leave no slim row
+    /// behind (the two run under one transaction).
+    #[test]
+    fn create_slim_linked_is_atomic() {
+        let (_dir, main, mount) = instance();
+        main.connection()
+            .execute_batch(
+                "CREATE TRIGGER planted_pointer_failure BEFORE UPDATE ON projects \
+                 BEGIN SELECT RAISE(ABORT, 'planted second-statement failure'); END;",
+            )
+            .unwrap();
+        let repo =
+            StoreBackedRepository::<ProjectEntity>::new(main.connection(), mount.connection());
+        let err = repo
+            .create_slim_linked("The Voyage", &pinned("p-atomic"), "mp-archived")
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("planted second-statement failure"),
+            "{err}"
+        );
+        assert_eq!(
+            count(main.connection(), "projects"),
+            0,
+            "no half-written slim row"
+        );
     }
 }

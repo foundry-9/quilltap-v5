@@ -169098,3 +169098,14 @@ unported `main`.
   `summary.warnings` line (`Failed to complete the archived store for …`) —
   no corpus reaches it.
 - Family 33/33; `restore_vintage_state` 6/6.
+
+### Unit 4 — R-D: `create_slim_linked` under one transaction (core 0.0.1239)
+
+- The slim INSERT and the pointer UPDATE now run in `unchecked_transaction`
+  (the restore's writer holds no outer transaction — `write_database_document`
+  already opens its own on the same connection).
+- **Red-first:** unit `store_backed::create_order_tests::create_slim_linked_is_atomic`
+  over a provisioned temp instance (a COPY — `provision_fresh_instance` in a
+  tempdir) with a planted `BEFORE UPDATE ON projects` trigger raising on the
+  second statement: 1 slim row left before, 0 after. No v4 counterpart (v4
+  never preserves), so the pin is v5-alone.

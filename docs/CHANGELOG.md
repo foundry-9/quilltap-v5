@@ -115,6 +115,13 @@ _Versions: core 0.0.1236._
 - A refused create logs v4's three ERRORs before the per-item WARN: `Data validation failed`, `Error creating project entity` / `Error creating group entity` (the store-backed base overrides `createErrorMessage()`, so this is not the base `Error creating entity`), and `Error creating project` / `Error creating group` with the payload's `name`. Measured against v4 at `94fbb1ae3`; the order's "the base pair through `log_create_failure`" was wrong. The two `safeQuery` lines live in a lane-local `db::document_store_overlay::log_refused_store_create` until `db::fallback` grows homes for them (handoff to P4.156).
 - Every per-item import WARN (`Failed to import tag`, `…project`, `…group`, `…chat`, `…character`, `…wardrobe item`, `…prompt template`, `…roleplay template`, `…folder`, `…file`, `…memory`, the three profile lines) renders the item's id through one `id_field` helper: an absent id omits the field (winston drops `undefined`) instead of logging an empty `fileId=`.
 - Harness: `system-import-execute.test.ts` records the refused project/group creates' repository lines, grows each property-refusal payload by five whole-entity rows, and adds `execute_idless_files` and `execute_idless_refused_inserts` (planted INSERT-refusing triggers on `memories` and `prompt_templates`); `system_import_state` parses the new lines (a key-aware field split, since `name=` carries spaces) and pins the counts (50 cases; 37 WARN-compared cases with 8 lines; 5 repository-line cases). Red-first on unported core: 20 differences.
+#### 2026-10-06 — fix(db): the restore's preserve-arm slim create runs its two statements under one transaction (P4.158 R-D)
+
+_Versions: core 0.0.1239._
+
+- `StoreBackedRepository::create_slim_linked` (the restore's preserve arm for projects and groups) inserted the slim row and then set its store pointer as two separate statements; a failing second statement left a pointer-less slim row behind. Both now run in one transaction.
+- New unit test `create_slim_linked_is_atomic` over a provisioned temp instance, with a planted `BEFORE UPDATE` trigger failing the second statement: red first (1 slim row left), now 0.
+
 #### 2026-10-06 — fix(restore): complete a preserved store from the archived row when it lacks a managed file (P4.158 R-A)
 
 _Versions: core 0.0.1238._
