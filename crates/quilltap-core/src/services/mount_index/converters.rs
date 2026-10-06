@@ -9,10 +9,13 @@
 //!   text-native buffers return the RAW utf-8 text (NO frontmatter/syntax
 //!   strip) — reindex chunks raw text while the fs scan chunks stripped text.
 //! - `pdf` / `docx`: the [`DocumentTextExtractor`] seam. v4's converters NEVER
-//!   throw — any failure returns `''` — so the refusing default routes through
-//!   exactly v4's empty-text bookkeeping arms ("extractor returned empty text" /
-//!   "Converter produced no text" / scan `empty`), keeping the observable DB
-//!   state v4-shaped while the refusal itself is loud (stderr, once per file).
+//!   throw — any failure returns `''` — so the refusing default answers `''`
+//!   and each CALLER takes its own empty-text arm: a Scriptorium pipeline
+//!   bookkeeps v4's ("extractor returned empty text" / "Converter produced no
+//!   text" / scan `empty`), keeping the observable DB state v4-shaped, while a
+//!   document read (`generators::file_content`) falls back to its native PDF
+//!   scrape. The refusal itself is loud (stderr, once per file) and — having no
+//!   caller context — names both outcomes ([`refusal_notice`]).
 
 use std::sync::Arc;
 
@@ -29,17 +32,28 @@ pub trait DocumentTextExtractor: Send + Sync {
 }
 
 /// The default extractor: refuses loudly (stderr names the deferring order) and
-/// returns `''`, which the call sites bookkeep exactly like v4's
-/// converter-produced-no-text arms — never a silent skip.
+/// returns `''`, which each caller handles exactly as v4 handles a converter
+/// that produced no text — never a silent skip.
 pub struct RefusingTextExtractor;
+
+/// The refusal's stderr line. v4 has no such line (its converters work); this
+/// is v5's own notice. The trait method carries no caller context, so the
+/// sentence is caller-NEUTRAL: it names both outcomes rather than claiming the
+/// file "will be bookkept as extraction-failed", which is false at the
+/// `generators::file_content` caller, where the native fallback runs (P4.150 B,
+/// the P4.D253 OPEN item).
+pub(crate) fn refusal_notice(file_type: &str) -> String {
+    format!(
+        "DocumentTextExtractor unavailable — refusing {file_type} text extraction \
+         (the production pdf/docx extractor is deferred by work order P4.6y); \
+         returning no text — a Scriptorium scan records the file as \
+         extraction-failed, and a document read falls back to its native text scrape"
+    )
+}
 
 impl DocumentTextExtractor for RefusingTextExtractor {
     fn extract(&self, _bytes: &[u8], file_type: &str) -> String {
-        eprintln!(
-            "DocumentTextExtractor unavailable — refusing {file_type} text extraction \
-             (the production pdf/docx extractor is deferred by work order P4.6y); \
-             the file will be bookkept as extraction-failed, not silently skipped"
-        );
+        eprintln!("{}", refusal_notice(file_type));
         String::new()
     }
 }
@@ -365,6 +379,25 @@ pub fn convert_buffer_to_plain_text(
 
 #[cfg(test)]
 mod tests {
+    use super::refusal_notice;
+
+    /// P4.150 B: the notice names BOTH outcomes and never claims the file
+    /// "will be bookkept" unqualified — that was false at the file-content
+    /// caller, where the native fallback runs.
+    #[test]
+    fn the_refusal_notice_is_caller_neutral() {
+        let n = refusal_notice("pdf");
+        assert_eq!(
+            n,
+            "DocumentTextExtractor unavailable — refusing pdf text extraction \
+             (the production pdf/docx extractor is deferred by work order P4.6y); \
+             returning no text — a Scriptorium scan records the file as \
+             extraction-failed, and a document read falls back to its native text scrape"
+        );
+        assert!(!n.contains("bookkept"));
+        assert!(!n.contains("will be"));
+    }
+
     use super::*;
 
     #[test]

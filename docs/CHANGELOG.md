@@ -196,6 +196,12 @@ P4.147. Two restore defects v4 shares, fixed on the restore side under the backu
 - Restore warnings render SQLite failures as the bare message (no `sqlite error:` prefix); the chat-create DB arm and the chat-document arm log v4's WARN lines. Proven on a real SQLite error by a column-rename plant case.
 - New derived archives `restore-archive-bag-nulls.zip` and `restore-archive-informs.zip`, plus their derive scripts. The `system-restore` oracle grows to 29 restore cases and gains `recordLogs` and `renameColumns`. A v5-only acceptance test checks the #141/#142 result against the archive.
 - `restore_vintage_state`'s raw-SQLite detector matched the removed prefix; it now matches SQLite's own wording. That surfaced a pre-existing General-tier legacy-fold FK failure, now pinned by name in `KNOWN_RAW_SQLITE`.
+#### 2026-10-05 — fix(mount-index): the refusing text extractor's stderr notice is caller-neutral, behind refusal_notice
+
+_Versions: core 0.0.1210._
+
+P4.150 B (the P4.D253 OPEN item). `RefusingTextExtractor`'s stderr notice said the file "will be bookkept as extraction-failed", which is false at the `generators::file_content` caller, where the native PDF scrape runs. The trait method has no caller context, so the line is now caller-neutral and names both outcomes; its text lives behind `pub(crate) fn refusal_notice(file_type)` with a unit pin (exact bytes, no "bookkept" claim). v4 has no such line — this is v5's own notice. Module and struct docs reworded to match. No behaviour change.
+
 #### 2026-10-05 — test(harness): the two schema guards read QT_V4_CHECKOUT first, QT_V4_ROOT as the alias
 
 _No crate versions bumped._
