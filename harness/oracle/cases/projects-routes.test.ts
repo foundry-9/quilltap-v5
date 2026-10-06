@@ -995,6 +995,30 @@ async function main(): Promise<void> {
         return respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${IOTA}`), p(IOTA)));
       },
     },
+    // P4.155 (R-C): v4's OTHER two `char.tags || []` sites — the roster list
+    // (`roster.ts:38`) and the list-chats participants (`chats.ts:69`) — over
+    // the same NULL `tags` cell. Both read `[]`; v5's `unwrap_or([])` kept the
+    // NULL (an absent key only), red-first.
+    {
+      name: 'list_characters_null_tags',
+      run: async () => {
+        const { rawQuery } = await import('@/lib/database/manager');
+        await rawQuery('UPDATE "characters" SET "tags" = NULL WHERE "id" = ?', [ARIA]);
+        return respond(
+          await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${IOTA}?action=list-characters`), p(IOTA)),
+        );
+      },
+    },
+    {
+      name: 'list_chats_null_tags',
+      run: async () => {
+        const { rawQuery } = await import('@/lib/database/manager');
+        await rawQuery('UPDATE "characters" SET "tags" = NULL WHERE "id" = ?', [ARIA]);
+        return respond(
+          await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${IOTA}?action=list-chats`), p(IOTA)),
+        );
+      },
+    },
     // P4.148 (order item 11): a roster naming a well-formed uuid with no
     // character behind it — `_count.characters` is the RAW roster length (2),
     // the enriched roster and list-characters carry the one real member.

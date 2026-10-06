@@ -398,15 +398,7 @@ fn enrich_project(
             "defaultImage".into(),
             serde_json::to_value(default_image).unwrap_or(Value::Null),
         );
-        // v4 `tags: char.tags || []` — a stored `null` (or any falsy value)
-        // reads as `[]`, not only an absent key (P4.148, R-F).
-        let tags = match char.get("tags") {
-            Some(Value::Null) | Some(Value::Bool(false)) | None => json!([]),
-            Some(Value::String(s)) if s.is_empty() => json!([]),
-            Some(Value::Number(n)) if n.as_f64() == Some(0.0) => json!([]),
-            Some(v) => v.clone(),
-        };
-        entry.insert("tags".into(), tags);
+        entry.insert("tags".into(), char_tags_or_empty(&char));
         entry.insert("chatCount".into(), json!(chat_count));
         enriched_roster.push(Value::Object(entry));
     }
@@ -665,6 +657,25 @@ pub async fn project_delete(db: &Db, project_id: &str) -> Response {
 // Roster (v4 roster.ts) — hand-rolled via projects.update (quirk 14).
 // ===========================================================================
 
+/// v4's `tags: char.tags || []` — the ONE rule at its three project sites
+/// (`project-crud.ts:53` the enriched roster, `roster.ts:38` the roster list,
+/// `chats.ts:69` the list-chats participants; P4.155, R-C). JS `||`: a FALSY
+/// value (absent, `null`, `false`, `""`, `0`) reads `[]`; anything truthy is
+/// kept AS IS — a non-array string survives, as it does in v4 (the order's
+/// "non-array → `[]`" paraphrase was wrong; the hunks are `||`). Two sites
+/// used to read `unwrap_or([])`, which kept a stored `null` — unreachable in
+/// practice (the hydrated character materializes a NULL `tags` cell as `[]`,
+/// measured on all three routes' `*_null_tags` rows), so the fold is the one
+/// rule, not a behaviour change.
+fn char_tags_or_empty(char: &Value) -> Value {
+    match char.get("tags") {
+        None | Some(Value::Null) | Some(Value::Bool(false)) => json!([]),
+        Some(Value::String(s)) if s.is_empty() => json!([]),
+        Some(Value::Number(n)) if n.as_f64() == Some(0.0) => json!([]),
+        Some(v) => v.clone(),
+    }
+}
+
 /// v4 `handleListCharacters`: roster → `{id,name,tags}`, null-filtered. Body
 /// `{ characters, count }`.
 pub fn project_character_list(db: &Db, project_id: &str) -> Response {
@@ -680,7 +691,7 @@ pub fn project_character_list(db: &Db, project_id: &str) -> Response {
                 chars.push(json!({
                     "id": char.get("id").cloned().unwrap_or(Value::Null),
                     "name": char.get("name").cloned().unwrap_or(Value::Null),
-                    "tags": char.get("tags").cloned().unwrap_or(json!([])),
+                    "tags": char_tags_or_empty(&char),
                 }));
             }
         }
@@ -865,7 +876,7 @@ pub fn project_chat_list(
                         "id": p.get("id").cloned().unwrap_or(Value::Null),
                         "name": char.get("name").cloned().unwrap_or(Value::Null),
                         "defaultImage": serde_json::to_value(default_image).unwrap_or(Value::Null),
-                        "tags": char.get("tags").cloned().unwrap_or(json!([])),
+                        "tags": char_tags_or_empty(&char),
                     }));
                 }
             }

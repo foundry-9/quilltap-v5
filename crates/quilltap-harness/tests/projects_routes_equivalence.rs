@@ -441,6 +441,12 @@ fn projects_routes_match_oracle() {
     // lives at the web edge, not in `Response`, so the pin is "v4 says 201 and
     // v5 answered a non-`Error` variant" — at EVERY success-create row (the
     // `:1302` 200 precedent), held whole by the census after the run.
+    //
+    // [P4.155 Tier 2 item 7] ⚠ RECORDED TRANSPORT DIVERGENCE: v5 has NO REST
+    // route for projects — every project op reaches the core through the
+    // engine dispatch (`api/engine.rs` → `projects::project_*`), whose success
+    // reply is always HTTP 200. So where v4 answers 201, v5's wire answers 200.
+    // This pin asserts v4's status only; it is not a claim that v5 says 201.
     let pinned_201: std::cell::RefCell<std::collections::BTreeSet<String>> = Default::default();
     let pin_201 = |name: &str, resp: &Response, failed: &mut Vec<String>| {
         assert_eq!(
@@ -1839,6 +1845,26 @@ fn projects_routes_match_oracle() {
             false,
             &mut failed,
         );
+    }
+    // P4.155 (R-C): v4's other two `char.tags || []` sites over the same NULL
+    // cell — the roster list and the list-chats participants. Red-first: v5's
+    // `unwrap_or([])` kept the NULL.
+    for (name, tag) in [
+        ("list_characters_null_tags", "lc_null_tags"),
+        ("list_chats_null_tags", "lch_null_tags"),
+    ] {
+        let db = fresh_db(&spec, tag);
+        mutate(
+            &db,
+            "UPDATE characters SET tags = NULL WHERE id = ?1",
+            vec![ARIA.to_string()],
+        );
+        let got = if name == "list_characters_null_tags" {
+            projects::project_character_list(&db, IOTA)
+        } else {
+            projects::project_chat_list(&db, IOTA, None, None)
+        };
+        check(name, &response_data(&got), false, &mut failed);
     }
 
     // P4.148 (item 11): a roster naming a well-formed uuid with no character —

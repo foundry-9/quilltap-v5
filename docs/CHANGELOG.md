@@ -73,6 +73,13 @@ _Versions: core 0.0.1236._
 - `db/fallback.rs`: new homes `find_by_filter_strict_aware`, the five chat-informs outer read wraps, `informs_marked_consumed_or_zero`, `messages_deleted_or_zero`; one emitter for `Error finding entities by filter`.
 - `api/chat_informs.rs`: a failed chat read answers 404 (was 500 + `Error posting inform` / `Error listing informs`); a failed batch write answers 500 `Internal server error` with no route line; the record delete reads through v4's `deleteMessagesByIds` fallback (its `Could not delete inform record message` WARN is unreachable on a database failure, so it is gone); every `[Chats v1]` line uses v4's camelCase keys.
 - Harness: `chat_informs_tier2` grows 31 ops (column-rename and trigger plants, strict-scope ops, thrown results); `chat_informs_routes` compares the route's own log lines and gains three failure cases; `fallback_home_guard` +6 messages.
+#### 2026-10-06 — refactor(projects): one `char.tags || []` rule at the three project sites (P4.155)
+
+_Versions: core 0.0.1239._
+
+- `api::projects` reads a roster character's `tags` through one `char_tags_or_empty`, v4's `char.tags || []` (falsy reads `[]`, anything truthy is kept), at the enriched roster, the roster list and the list-chats participants. Two sites had `unwrap_or([])`, which kept a `null`.
+- No behavior change in practice: the hydrated character already turns a NULL `tags` cell into `[]`. New `list_characters_null_tags` and `list_chats_null_tags` rows in `projects-routes.test.ts` / `projects_routes_equivalence` were green before the fold and stay green (regression pins). The order's "non-array → `[]`" was a paraphrase; v4's sites are `||`.
+
 #### 2026-10-06 — refactor(zod): the two `is_zod_uuid` copies delegate to `zod_uuid_ok`; the uuid predicates censused (P4.155)
 
 _Versions: core 0.0.1238._
