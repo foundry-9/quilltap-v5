@@ -308,6 +308,12 @@ Harness-only (P4.151 A2). The voice-mode ensure differential's mode (a) gains fo
 _No crate versions bumped._
 
 Harness-only (P4.151 A1). `repository_zod_messages` gains a `chatSettings` schema: v4's real `ChatSettingsSchema` over a minimal row plus a stored `impersonationVoiceMode` (absent, `ask`, `always`, `maybe`, `''`, `Off`, `'1'`), diffed against v5's real `db::chat_settings::find_by_user_id` over a `chat_settings` table built from `fresh_schema.json`. The Zod bytes in `chat_settings.rs`'s unit test are now oracle-backed: reordering `ImpersonationVoiceMode::VALUES` reddens the four refused rows and the unit test together. The family now covers 58 rows. No version moves.
+#### 2026-10-05 — test(e2e): the standing-inform beat waits for the saved greeting and the Send button, not a streamed-text count
+
+_Versions: SPA 0.5.808._
+
+The standing-inform Salon beat waited for the greeting by counting the streamed reply text, which can resolve before the greeting turn settles. It now polls the chat until the greeting's assistant row is saved, then waits for the composer's Send button (shown only when the room is no longer speaking). Test-only; no app behavior changes.
+
 #### 2026-10-05 — fix(spa): the project Characters card refocuses its search on re-expand, as v4's remount does
 
 _Versions: SPA 0.5.807._

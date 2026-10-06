@@ -167822,3 +167822,19 @@ sentence in the catch-fallback slot (v4's catch reads `…roleplay template` /
 - Gate: `npm run lint` + `npm run build` + `npm test` 467 / 8,889. SPA
   0.5.807.
 
+### Unit 3 — the standing-inform beat's greeting wait (Tier 1 item 3)
+
+`e2e/salon-inform-flow.spec.ts`: the greeting wait's `toHaveCount(1)` on
+the streamed `MOCK_LLM_REPLY` replaced by (1) an `expect.poll` over the
+beat's own raw `dispatch({ type: 'chatGet', chatId })` until an `ASSISTANT`
+row containing `MOCK_LLM_REPLY` is SAVED (the consumption beat's poll shape,
+30 s), then (2) `getByRole('button', { name: 'Send message' })` visible
+(15 s) — the composer renders Send only while `busy()` is false (busy shows
+`Stop generating`), so its PRESENCE is the client-ready proof (a
+`toHaveCount(0)` on Stop would resolve on its first poll). A hardening: no
+mutation can red the race on a fast machine. **By file, alone: 3/3 — 5
+passed each (1.4 m, 1.2 m, 1.3 m), the standing beat LIVE (not skipped).**
+The no-user-seat room's post-greeting chain stays NOT MEASURED; the `.some`
+poll tolerates either answer, and the Send wait resolved on every run.
+SPA 0.5.808.
+

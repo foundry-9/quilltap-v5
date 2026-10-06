@@ -318,8 +318,29 @@ test.describe('P4.D206 — Inform, the word out of character', () => {
       await page.goto(`/salon/${chatId}`);
       await expect(page.locator('.qt-chat-messages-list')).toBeVisible({ timeout: 15_000 });
       // The greeting turn the create drew must settle before anything else, or
-      // the send below meets the "still speaking" refusal.
-      await expect(page.getByText(MOCK_LLM_REPLY)).toHaveCount(1, { timeout: 30_000 });
+      // the send below meets the "still speaking" refusal. A count of the
+      // STREAMED text can resolve before the turn settles, so wait on server
+      // truth first — the greeting's ASSISTANT row SAVED (`chatGet`, the poll
+      // shape the consumption beat below uses) — then on client truth: the
+      // composer back to `Send message`, which it renders only while `busy()`
+      // is false (busy shows `Stop generating` in its place). Assert the
+      // PRESENCE of Send — a `toHaveCount(0)` on Stop would resolve on its
+      // first poll.
+      await expect
+        .poll(
+          async () => {
+            const chat = (await dispatch({ type: 'chatGet', chatId }))['chat'] as
+              { messages?: Array<{ role: string; content?: string }> } | undefined;
+            return (chat?.messages ?? []).some(
+              (m) => m.role === 'ASSISTANT' && (m.content ?? '').includes(MOCK_LLM_REPLY),
+            );
+          },
+          { timeout: 30_000 },
+        )
+        .toBe(true);
+      await expect(page.getByRole('button', { name: 'Send message' })).toBeVisible({
+        timeout: 15_000,
+      });
 
       // Post a standing inform to the one seat: tick the box, and the guidance
       // paragraph's tail follows it.
