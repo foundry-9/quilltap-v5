@@ -1,0 +1,6 @@
+// P4.157 R-E evasion fixture — the column REBOUND first, then tested under
+// another name.
+pub fn pending(r: &ChatInformRow) -> bool {
+    let delivered = r.consumed_at.as_ref();
+    r.permanent || delivered.is_none()
+}

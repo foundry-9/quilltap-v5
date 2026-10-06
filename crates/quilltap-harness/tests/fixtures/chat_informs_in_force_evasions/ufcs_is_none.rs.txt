@@ -1,0 +1,4 @@
+// P4.157 R-E evasion fixture — the presence test through its PATH form.
+pub fn pending(r: &ChatInformRow) -> bool {
+    r.permanent || Option::is_none(&r.consumed_at)
+}

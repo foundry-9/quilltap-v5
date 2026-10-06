@@ -1,0 +1,8 @@
+// P4.157 R-E evasion fixture — a `match` on the column open-codes the
+// in-force predicate without one `.is_none()` the old regex arm could see.
+pub fn pending(r: &ChatInformRow) -> bool {
+    match r.consumed_at {
+        None => true,
+        Some(_) => r.permanent,
+    }
+}

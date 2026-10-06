@@ -169563,3 +169563,23 @@ harness is frozen at `0.0.1110`).
 - Mutation (reverted): `collapse_duplicate_avatar_rolls` returning
   `AlreadyCompleted` before its body → the arm RED at its `the lone roll is
   keyed` assert. Green after: the arm + `a_clean_collapse_logs_v4s_one_success_line`.
+
+### Unit B4 / R-E — the in-force census's code arm by token (Tier 1 item 4)
+- Red-first: the new `the_census_trips_on_every_committed_evasion` over the
+  OLD regex `code_count` → RED, `the census misses: ["match.rs.txt",
+  "matches_macro.rs.txt", "rebinding.rs.txt", "ufcs_is_none.rs.txt"]` (4/4).
+- The token census counts six forms (method through zero-arg adapters; `==`/`!=
+  None` either side; `matches!`; `::is_none(` and kin; `match` scrutinee;
+  refutable `let`) over `consumed_at` + `let` rebindings (to a fixpoint).
+  Field initializers and shorthand init are not mentions. A first draft let the
+  adapter loop swallow `.is_none()` itself (the method form read 0) — caught by
+  the matcher rows, fixed.
+- Production re-measured: `db/chat_informs.rs` 1 → **2** — `row_to_json`'s
+  `if let Some(v) = &r.consumed_at` (omit-when-absent, v4's parsed row has no
+  `consumedAt` key on NULL), invisible to the regex. Allowed with that reason;
+  `inform_block.rs` 1 and `api/chat_informs.rs` 1 unchanged; the home-body
+  check (exactly one inside `is_inform_in_force`) holds.
+- Known limit recorded AGAIN (Tier 3 item 11): the allow-list is a per-file
+  COUNT; a rebinding through a destructuring pattern (`let Row { consumed_at:
+  c, .. } = r`) or a function argument is not tracked.
+- Gate: 4/4 tests ok; clippy `-p quilltap-harness --tests` clean.

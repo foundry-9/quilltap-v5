@@ -1,0 +1,4 @@
+// P4.157 R-E evasion fixture — `matches!` over the column.
+pub fn pending(r: &ChatInformRow) -> bool {
+    r.permanent || matches!(r.consumed_at, None)
+}

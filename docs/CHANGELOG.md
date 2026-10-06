@@ -228,6 +228,14 @@ The overlay's find-by-id / list hydration (`hydrate_one`) now renders a `propert
 _Versions: core 0.0.1236._
 
 `v8_json_parse_message` is now a full V8 `JsonParser` walk over UTF-16 units instead of a start-of-input check. It reproduces V8's fixed templates for failures inside a value (`Expected property name or '}' in JSON at position N (line L column C)`, the comma/bracket/colon/double-quoted-key messages, unterminated strings, bad escapes and control characters, the number errors, trailing input), the `\r` and `\r\n` line rule, and the special whole-source strings (`"undefined" is not valid JSON` and kin, which the old twin misworded). It answers `None` only where V8 accepts the text. New tier-1 family `v8_json_parse_message_equivalence` over a 149-row corpus recorded with Node 24.13.1 (`harness/oracle/cases/v8-json-parse-messages.ts`); 103 of 145 rows were red on the old twin. The family also pins, both ways, the three shapes serde refuses but V8 accepts (the callers' remaining serde fallback). `text_http_errors` gains `ok_json_missing_comma` on all ten providers (V8's sentence now reaches `sdk_response_shape`'s body parse; 15 divergences red on the old twin) and the Google stream-path `content.text` row.
+#### 2026-10-06 — test(harness): the in-force census's code arm becomes a token-level census over six forms + rebindings, with four committed evasion fixtures (P4.157 R-E)
+
+_Harness-only change (no crate source; no version moves — the harness is frozen)._
+
+- `chat_informs_in_force_census.rs`: the regex code arm (method form and `== None` only) replaced by a tokenizer over the shared lexer's `code_only` view counting the method form through zero-arg adapters, `== None` / `!= None` either side, `matches!`, the path form (`Option::is_none(&…)`), a `match` scrutinee and a refutable `let` — over `consumed_at` and every name a `let` rebinds it to.
+- NEW `tests/fixtures/chat_informs_in_force_evasions/{match,matches_macro,ufcs_is_none,rebinding}.rs.txt`, each counted exactly once by a new test; all four counted ZERO under the old arm (measured red first).
+- The home file's allowed count moves 1 → 2: the token census now sees `row_to_json`'s `if let Some(v) = &r.consumed_at` (omit an absent key, as v4's parsed row does) — a serialization question, not an in-force one. The home-body check still pins exactly one test inside `is_inform_in_force`. The per-file COUNT allow-list remains a known limit.
+
 #### 2026-10-06 — test(host): the no-victims collapse arm plants ONE explicit roll instead of `split_once`-cutting the two-roll statement (P4.157 R-I)
 
 _Test-only change (no crate source; no version moves)._
