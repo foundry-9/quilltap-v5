@@ -25,6 +25,15 @@
  *     thrown:{message, code?, errorCode?, providerReason?, status?}|null }
  *   (P4.D225 widened `thrown` from a string and retired `isModeration`.)
  *
+ * `pluginWarnLog` (P4.154, a `dialect` row only, present when the plugin logged
+ * a WARN while the row ran): `[{ plugin, message, context, undefinedKeys }]`,
+ * through the host-bridge logger global every plugin's `createPluginLogger`
+ * consults (`globalThis.__quilltap_logger_factory` — `record-text-errors.mjs`'s
+ * bridge). `context` is the plugin's context bag as JSON carries it (an
+ * `undefined` value drops out); `undefinedKeys` names the keys the plugin
+ * PASSED as `undefined` — the ones v4's winston omits from the line (the
+ * Gemini safety WARN's `finishReason` / `blockReason`).
+ *
  * Line shape (kind:'models' — the `ca22ec45` keyed model discovery): drives the
  * plugin's REAL `getAvailableModels(apiKey?)` over a SEQUENCE of canned wire
  * responses, capturing every request the plugin (or its SDK) made:
@@ -69,6 +78,32 @@ function thrownFields(e) {
   if (status !== undefined) out.status = status;
   return out;
 }
+
+// The per-row WARN-level plugin log (see the header). `null` between rows;
+// installed BEFORE any plugin is imported, since a plugin's logger resolves the
+// factory when it is built.
+let pluginWarnSink = null;
+function captureLogger(prefix, baseContext = {}) {
+  const noop = () => {};
+  return {
+    debug: noop,
+    info: noop,
+    warn: (m, c) => {
+      if (pluginWarnSink) {
+        const context = { ...baseContext, ...(c ?? {}) };
+        pluginWarnSink.push({
+          plugin: prefix,
+          message: m,
+          context,
+          undefinedKeys: Object.keys(context).filter((k) => context[k] === undefined),
+        });
+      }
+    },
+    error: noop,
+    child: (extra) => captureLogger(prefix, { ...baseContext, ...extra }),
+  };
+}
+globalThis.__quilltap_logger_factory = (pluginName) => captureLogger(pluginName);
 
 const PROVIDERS = {
   openai: {
@@ -786,6 +821,7 @@ async function main() {
     let outcome = 'ok';
     let images = null;
     let thrown = null;
+    pluginWarnSink = [];
     try {
       const inst = await spec.make();
       const params = { ...c.params };
@@ -797,6 +833,8 @@ async function main() {
     } finally {
       globalThis.fetch = origFetch;
     }
+    const warnLog = pluginWarnSink;
+    pluginWarnSink = null;
 
     // Mode: fetch-style providers parse the status themselves (always 'wire');
     // SDK providers parse only 2xx bodies, a non-2xx being the SDK throw.
@@ -819,6 +857,7 @@ async function main() {
         outcome,
         images,
         thrown,
+        ...(warnLog.length > 0 ? { pluginWarnLog: warnLog } : {}),
       })
     );
   }

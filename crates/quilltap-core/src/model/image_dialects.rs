@@ -997,13 +997,16 @@ fn parse_gemini(data: &Value) -> Result<ImageGenResponse, ImageGenError> {
                 .map(crate::pascal::js_value::to_js_string)
                 .unwrap_or_default();
             // Hoisted: inside `tracing::warn!` the macro's own `Value` trait
-            // shadows `serde_json::Value`.
+            // shadows `serde_json::Value`. v4 passes both keys camelCase and
+            // either may be `undefined` — winston drops an undefined key, and a
+            // `None` field records nothing, so the absent one is OMITTED
+            // (P4.154, §R.5; recorded through the real plugin's logger).
             let logged_finish = finish_reason.and_then(serde_json::Value::as_str);
             let logged_block = block_reason.and_then(serde_json::Value::as_str);
             tracing::warn!(
                 context = "GoogleImagenProvider.generateWithGemini",
-                finish_reason = logged_finish,
-                block_reason = logged_block,
+                finishReason = logged_finish,
+                blockReason = logged_block,
                 "Gemini withheld the image on safety grounds"
             );
             let suffix = if text_response.is_empty() {
@@ -2604,7 +2607,37 @@ mod tests {
         assert_eq!(
             lines,
             vec![
-                "WARN quilltap_core::model::image_dialects Gemini withheld the image on safety grounds context=GoogleImagenProvider.generateWithGemini finish_reason=IMAGE_SAFETY block_reason=SAFETY"
+                "WARN quilltap_core::model::image_dialects Gemini withheld the image on safety grounds context=GoogleImagenProvider.generateWithGemini finishReason=IMAGE_SAFETY blockReason=SAFETY"
+                    .to_string()
+            ]
+        );
+
+        // P4.154 (§R.5): v4's keys are camelCase and winston DROPS an
+        // `undefined` one — a prompt block with no candidate logs
+        // `blockReason` alone, a withheld candidate with no prompt feedback
+        // logs `finishReason` alone.
+        let blocked_only = WireResponse::new(200, r#"{"promptFeedback":{"blockReason":"SAFETY"}}"#);
+        let (_, lines) = crate::test_support::captured_with(|| {
+            parse_image_response("GOOGLE", &p, &blocked_only).unwrap_err()
+        });
+        assert_eq!(
+            lines,
+            vec![
+                "WARN quilltap_core::model::image_dialects Gemini withheld the image on safety grounds context=GoogleImagenProvider.generateWithGemini blockReason=SAFETY"
+                    .to_string()
+            ]
+        );
+        let withheld_only = WireResponse::new(
+            200,
+            r#"{"candidates":[{"finishReason":"PROHIBITED_CONTENT"}]}"#,
+        );
+        let (_, lines) = crate::test_support::captured_with(|| {
+            parse_image_response("GOOGLE", &p, &withheld_only).unwrap_err()
+        });
+        assert_eq!(
+            lines,
+            vec![
+                "WARN quilltap_core::model::image_dialects Gemini withheld the image on safety grounds context=GoogleImagenProvider.generateWithGemini finishReason=PROHIBITED_CONTENT"
                     .to_string()
             ]
         );

@@ -199,6 +199,12 @@ _No crate versions bumped._
 - NEW `harness/oracle/provision/migrations-first.ts`: builds v4's instance the way its real boot does (the real `MigrationRunner` first, then the repository pass).
 - NEW `harness/oracle/provision/dump-migration-indexes.ts` → NEW `crates/quilltap-core/src/services/provisioning/migration_indexes.json` (main 50 / mount-index 5 / llm-logs 5; leaves out names `fresh_schema.json` already has, except the one the migration makes UNIQUE where generateDDL does not, and the legacy `wardrobe_items` index). Its real-boot cross-check found zero differences.
 - `dump-fresh-schema.ts`: header note points at the sibling dumper.
+#### 2026-10-06 — fix(core): the Gemini image safety WARN logs v4's camelCase `finishReason` / `blockReason`, omitting the undefined one (P4.154 unit 3)
+
+_Versions: core 0.0.1238._
+
+`Gemini withheld the image on safety grounds` logged `finish_reason=` / `block_reason=`; it now uses v4's keys, and the reason v4 passes as `undefined` stays off the line (a prompt block alone logs only `blockReason=`). The image recorder gains a plugin-logger WARN bridge (`pluginWarnLog`, with `undefinedKeys`), the image corpus is regenerated from the pin (every other byte identical), and `image_dialects_equivalence` compares the safety WARN against v4's real plugin on all three arms, both ways. The unit pin that asserted the snake_case keys moved.
+
 #### 2026-10-06 — fix(core): a document store's unparseable `properties.json` reads V8's sentence, as v4 logs it (P4.154 unit 2, dogfood #146)
 
 _Versions: core 0.0.1237._

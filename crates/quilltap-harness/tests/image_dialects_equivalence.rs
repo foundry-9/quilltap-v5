@@ -21,6 +21,14 @@
 //! `isImageModerationError` at `8bd080267`, and the classifier's own
 //! equivalence lives in `refusal_classify_equivalence`.
 //!
+//! **P4.154: the Gemini safety WARN.** The recorder now bridges every
+//! plugin's logger (`pluginWarnLog` on a `dialect` row); for the pure-parse
+//! rows the family compares v5's `Gemini withheld the image on safety grounds`
+//! line against v4's BOTH ways — present on exactly v4's three rows, under
+//! v4's camelCase `finishReason` / `blockReason`, with the key the plugin
+//! passed as `undefined` omitted. The other WARNs the bridge now records are
+//! NOT compared (out of P4.154's scope; a named follow-up).
+//!
 //! The fixture is committed (no env var); regenerate with
 //! `harness/oracle/providers/regenerate-image-fixtures.sh`.
 //!
@@ -42,6 +50,7 @@ use quilltap_core::model::image_dialects::{
 };
 use quilltap_core::model::wire::{CannedWireTransport, WireResponse};
 use quilltap_core::services::dangerous_content::refusal::code_string;
+use quilltap_core::test_support::captured_with;
 use serde_json::{Map, Value};
 
 fn corpus_path() -> PathBuf {
@@ -171,6 +180,8 @@ fn image_dialects_match_v4() {
     let mut openai_cases: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut sdk_throw_rows = 0usize;
     let mut typed_rows = 0usize;
+    let mut gemini_safety_cases: std::collections::BTreeSet<String> =
+        std::collections::BTreeSet::new();
 
     for line in text.lines() {
         if line.trim().is_empty() {
@@ -280,7 +291,20 @@ fn image_dialects_match_v4() {
             check_download_row(&row, &provider, &params, &resp, &built);
             continue;
         }
-        let parsed = parse_image_response(&provider, &params, &resp);
+        let (parsed, v5_lines) = captured_with(|| parse_image_response(&provider, &params, &resp));
+        // P4.154 (§R.5): the Gemini safety WARN against the line v4's REAL
+        // plugin logged (the recorder's `pluginWarnLog` bridge), both ways — v5
+        // logs it on exactly the rows v4 does, under v4's camelCase keys, with
+        // the key v4 passed as `undefined` OMITTED (winston drops it).
+        let v5_safety: Vec<String> = v5_lines
+            .into_iter()
+            .filter(|l| l.contains(GEMINI_SAFETY_WARN))
+            .collect();
+        let v4_safety = v4_warn_lines(&row, GEMINI_SAFETY_WARN);
+        assert_eq!(v5_safety, v4_safety, "{label}: the Gemini safety WARN");
+        if !v4_safety.is_empty() {
+            gemini_safety_cases.insert(case.to_string());
+        }
         match row["outcome"].as_str().unwrap() {
             "ok" => {
                 let got = parsed.unwrap_or_else(|e| panic!("{label}: expected ok, got err {e}"));
@@ -311,6 +335,18 @@ fn image_dialects_match_v4() {
     for p in ["OPENAI", "GOOGLE", "GROK", "OPENROUTER", "Z_AI"] {
         assert!(providers.contains(p), "corpus missing provider {p}");
     }
+    // P4.154: the three arms of the Gemini safety WARN — `finishReason` alone
+    // (`blockReason` undefined), `blockReason` alone (`finishReason`
+    // undefined), and both — each recorded through the real plugin's logger.
+    assert_eq!(
+        gemini_safety_cases.into_iter().collect::<Vec<_>>(),
+        [
+            "gemini_block_and_finish",
+            "gemini_block_reason",
+            "gemini_image_safety_finish"
+        ],
+        "the Gemini safety WARN rows"
+    );
 
     // `d8d2890ee` coverage floor. A green run over a corpus that lost these
     // rows would measure nothing: each names one arm of the OpenAI rewrite
@@ -396,6 +432,42 @@ fn image_dialects_match_v4() {
             "corpus missing the {required} contract arm"
         );
     }
+}
+
+/// v4's Gemini no-image safety WARN (`image-provider.ts:185`).
+const GEMINI_SAFETY_WARN: &str = "Gemini withheld the image on safety grounds";
+
+/// The WARN lines v4's plugin logged on `row` with `message`, rendered as v5's
+/// capture layer renders the port's line (target `image_dialects`; v4's context
+/// keys in v4's order, a string unquoted). A key the plugin passed as
+/// `undefined` is absent from the recorded JSON — and named in `undefinedKeys`,
+/// which must never reach the line.
+fn v4_warn_lines(row: &Value, message: &str) -> Vec<String> {
+    let Some(log) = row.get("pluginWarnLog").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    log.iter()
+        .filter(|w| w["message"].as_str() == Some(message))
+        .map(|w| {
+            let ctx = w["context"].as_object().expect("a context bag");
+            let undefined: Vec<&str> = w["undefinedKeys"]
+                .as_array()
+                .map(|a| a.iter().filter_map(Value::as_str).collect())
+                .unwrap_or_default();
+            let fields: Vec<String> = ctx
+                .iter()
+                .filter(|(k, _)| !undefined.contains(&k.as_str()))
+                .map(|(k, v)| match v {
+                    Value::String(s) => format!("{k}={s}"),
+                    other => format!("{k}={other}"),
+                })
+                .collect();
+            format!(
+                "WARN quilltap_core::model::image_dialects {message} {}",
+                fields.join(" ")
+            )
+        })
+        .collect()
 }
 
 /// Drive a recorded z-ai `generateImage` row through the WHOLE composed

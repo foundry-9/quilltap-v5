@@ -18,6 +18,11 @@
 //! recorded divergence class — pinned below by count so a corpus change that
 //! adds or loses such a row is seen.
 //!
+//! A second test, `overlay_parse_failure_reads_v8s_sentence` (dogfood #146),
+//! plants every V8-REFUSED row as a project's `properties.json` and reads it
+//! through the REAL document-store overlay: the detail is v4's `properties.json
+//! unparseable: ` + the recorded message.
+//!
 //! Generate the oracle output (from the v4 checkout, or the pinned worktree
 //! while v4 HEAD is past the baseline; the case imports nothing from v4 — the
 //! Node is the instrument):
