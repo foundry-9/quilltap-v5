@@ -167702,3 +167702,48 @@ every sweep since. No family work.
   `NODE_OPTIONS=--experimental-vm-modules` for the two generator oracles.
 - **Builder header comment** (`build-character-generators-fixture.ts` "four
   blobs" → five): outside this lane's ownership.
+
+### Gate — P4.151's lane gate (harness/test-craft smalls), run on the lane branch at `d5e28b823` (2026-10-05)
+The ledger's §2 probe PASSED immediately before (branch `main`, HEAD
+`07b8f0209`, both logs empty, tree clean). Disk 98 GB free (the human freed
+space after a hold at 13 GB). All steps `CARGO_INCREMENTAL=0`, one background
+script, logs under `/tmp/p4151/gate/`.
+- `cargo fmt --all --check` clean; `recipe_sweep.py --self-test` 0 failures.
+- `cargo clippy --workspace --all-targets -- -D warnings` rc 0; the same with
+  `--features quilltap-core/native-transport` rc 0.
+- `cargo test --workspace --no-fail-fast` with `QT_V4_CHECKOUT` = `QT_V4_ROOT` =
+  the pin and the lane block (`QT_ORACLE_REPOSITORY_ZOD_MESSAGES`,
+  `QT_ORACLE_VOICE_MODE_ENSURE` + `QT_FIXTURE_VOICE_MODE_ENSURE_DIR`,
+  `QT_ORACLE_INFORM_ENSURE` + `QT_FIXTURE_INFORM_ENSURE_DIR`,
+  `QT_ORACLE_CHARACTER_WIZARD`, `QT_ORACLE_AI_IMPORT`,
+  `QT_ORACLE_CHARACTER_OPTIMIZER`, all under `/tmp/p4151/`): **670 test
+  binaries / 4,350 passed / 0 failed / 3 ignored**, rc 0 — none of the
+  standing env-block artifacts fired this run. `quilltap-core --lib` 3,060 / 0
+  (the OLD census test `the_in_force_predicate_is_never_open_coded` still
+  present and green, for §S.3); `dispatch_wrong_type_census` 14 / 0 (451
+  UNMOVED).
+- Every touched family confirmed RUN (re-run by name with `--nocapture`, no
+  `SKIP:`): `repository_zod_messages` (58 rows), `chat_settings_voice_mode_
+  ensure` (a/b/c), `chat_informs_permanent_ensure` (a/b/c/d),
+  `chat_informs_in_force_census` (3/3), `stream_decoders` + `streaming_composer`
+  (google 7 cases), `character_wizard_tier3` (40 cases, 3 PDF rows, keys
+  80/4/1), `ai_import_tier3` (41 cases), `character_optimizer_tier3` (28).
+  `regenerate_swipe_tier3` by name with `TZ=UTC` (its header's requirement;
+  kept out of the workspace block): 2/2.
+- Guards with the pin: `spelling_guard`, `fallback_home_guard`,
+  `builtin_prompt_templates_guard`, `provider_sdk_version_guard`,
+  `qtap_schema_embed_guard` GREEN; `help_tree_equivalence` GREEN through the
+  sweep driver (`--run help_tree_equivalence --v4 <pin> --force` — its
+  oracle-backed test SKIPs without `QT_ORACLE_HELP_TREE`).
+- `chat_informs_routes_equivalence` re-run NEUTRAL through the sweep driver
+  from the pin (regen + run end to end, 1/1).
+- `npm ci` + `npm run build` in `apps/web` (liveness only; no SPA edit): rc 0.
+- **No version moves on any commit** (no core/host/web/cli/tauri file
+  touched; `quilltap-harness` frozen). No non-version `Cargo.toml` delta.
+- Fixtures changed: `crates/quilltap-web/tests/fixtures/character-generators-
+  {main,mount}.db` (REBUILT — invalidates the three generator oracles; nine
+  readers re-run green here, §S.4 on the union); `character-generators.json`,
+  `character-wizard-tier3.json`, `ai-import-tier3.json`,
+  `regenerate-swipe-tier3.json` (invalidates `regenerate_swipe_tier3`'s
+  oracle + built fixture), `streams/google_parts/{cases.json,
+  google.recorded.ndjson, google-incomplete-tail.wire}`.

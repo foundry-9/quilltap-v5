@@ -255,6 +255,12 @@ P4.150 B (the P4.D253 OPEN item). `RefusingTextExtractor`'s stderr notice said t
 _No crate versions bumped._
 
 P4.150 A4. `qtap_schema_embed_guard` and `public_schemas_vendor_guard` now locate the v4 checkout through `QT_V4_CHECKOUT` first (the variable every pinned gate exports and the three other live-checkout guards read), keeping `QT_V4_ROOT` as a legacy alias, then `$HOME/source/quilltap-server`. A pinned gate no longer compares these two against a dirty live checkout. The precedence is a pure `locate_v4_root` with a unit pin in each file; both guards green against the `07b8f0209` pin with only `QT_V4_CHECKOUT` set, and both SKIP on an empty directory (proving the variable is read).
+#### 2026-10-05 — docs(porting): P4.151 lane gate recorded; the order marked LANE COMPLETE
+
+_Docs-only change._
+
+The P4.151 lane gate ran green on the lane branch from the `07b8f0209` pin: fmt, clippy (both feature sets), `cargo test --workspace` (670 binaries, 4,350 passed, 0 failed) with the lane's oracle variables set, the swipe family by name under `TZ=UTC`, the live-checkout guards, `chat_informs_routes_equivalence` and `help_tree_equivalence` through the sweep driver, and the SPA build. The order's status header now reads LANE COMPLETE with the branch name.
+
 #### 2026-10-05 — docs(porting): P4.151 lane record — B5 acknowledged, the B1 / F2 / F3 / E handoffs and the Tier 3 deferrals recorded
 
 _Docs-only change._
