@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-06 — docs(spa): the Inform dialog's doc comment says where the passage lands now (P4.D254, v4 `94fbb1ae3`)
+
+_Versions: SPA 0.5.811._
+
+- `apps/web/src/app/chat/inform-dialog.ts`: the class comment no longer says "a system block" — each target receives the passage verbatim, under one vouching header, as the last context section of their next generation (v4's `InformDialog.tsx` wording). No user-facing string moves.
+
 #### 2026-10-06 — chore(vendor): re-vendor help/inform.md and three docs/v4 paths from v4 94fbb1ae3 (P4.D254)
 
 _No crate versions bumped._

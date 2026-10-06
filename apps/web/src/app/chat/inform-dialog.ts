@@ -36,11 +36,13 @@ export interface InformAudienceCandidate {
 
 /**
  * The Inform dialog — a quiet word out of character (v4
- * `components/chat/InformDialog.tsx`, `e7d77bb60`).
+ * `components/chat/InformDialog.tsx`, `e7d77bb60`; delivery wording per
+ * `94fbb1ae3`).
  *
  * The operator picks one, several or every LLM-controlled seat and writes a
- * short second-person passage. Each target receives it verbatim as a system
- * block on their next generation, and then it is consumed — unless the operator
+ * short second-person passage. Each target receives it verbatim (under one
+ * vouching header) as the last context section of their next generation, and
+ * then it is consumed — unless the operator
  * ticks **Keep it standing in this chat**, which delivers it on every turn those
  * seats take in this conversation until withdrawn from the chip (v4
  * `52d6e7ecd`). Off by default. Nothing here is ever spoken aloud; the
