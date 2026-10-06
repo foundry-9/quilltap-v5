@@ -255,6 +255,12 @@ P4.150 B (the P4.D253 OPEN item). `RefusingTextExtractor`'s stderr notice said t
 _No crate versions bumped._
 
 P4.150 A4. `qtap_schema_embed_guard` and `public_schemas_vendor_guard` now locate the v4 checkout through `QT_V4_CHECKOUT` first (the variable every pinned gate exports and the three other live-checkout guards read), keeping `QT_V4_ROOT` as a legacy alias, then `$HOME/source/quilltap-server`. A pinned gate no longer compares these two against a dirty live checkout. The precedence is a pure `locate_v4_root` with a unit pin in each file; both guards green against the `07b8f0209` pin with only `QT_V4_CHECKOUT` set, and both SKIP on an empty directory (proving the variable is read).
+#### 2026-10-05 — docs(porting): P4.151 lane record — B5 acknowledged, the B1 / F2 / F3 / E handoffs and the Tier 3 deferrals recorded
+
+_Docs-only change._
+
+The P4.151 lane record gains: the B5 record gap (no red-first counts for `primary_stream_tier3` / `system_import_state` in P4.D249's record) acknowledged as not reconstructable and closed; the handoffs to P4.149 (the two standing-order rows in `chat-informs-tier2.json`) and P4.150 (the `text_http_errors` transport-kind and send-policy asserts; the `host_zone_sites_census` `TimeZone::get(` hunt); and the deferrals (the writer-unreachable BLOB voice-mode row, a real-`pdf-parse` oracle row that needs `--experimental-vm-modules`, a stale builder header comment).
+
 #### 2026-10-05 — test(harness): add PDF document rows to the wizard and AI-import tier-3 corpora, pin the wizard's per-leg API key, rebuild the character-generators pair (P4.151 D)
 
 _No crate versions bumped._

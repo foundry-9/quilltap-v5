@@ -167671,3 +167671,34 @@ tree clean). Regen staging: `/tmp/p4151/`. **No version moves on any commit**
 - **§S.4:** the unifier regenerates the three oracles and re-runs all nine
   readers by name on the union (the pair's vault ids remint on any rebuild;
   nobody else rebuilt the pair this round).
+
+### B5 — the `primary_stream_tier3` / `system_import_state` red-first counts (R-E)
+Record gap ACKNOWLEDGED and CLOSED by this note: P4.D249's lane record carries
+no red-first count for those two families. It cannot be reconstructed (it
+would mean running them at `e5c6bd0c0` against a tree that no longer matches
+the lane's); both ran `ok` from the pin in the `52d6e7ecd` unified sweep and in
+every sweep since. No family work.
+
+### Handoffs (recorded; NOT done here)
+- **B1 → P4.149 (R-F):** the two standing-order rows in
+  `chat-informs-tier2.json` (F at `00:01:30` inserted last; G with D's
+  `createdAt` and an id sorting before `…d1`) — so `chat_informs_tier2` has ONE
+  owner this round. This lane did not touch that file (its two cases read it
+  for the pepper only).
+- **F2 / F3 → P4.150 (R-G):** `text_http_errors_equivalence`'s
+  `transport_kind.is_none()` on the 2xx shape-guard rows and the send-path
+  `policy.timeout` record — P4.150's D3. This lane only COPIED
+  `render_value` / the `render_v4_line` rule into `streaming_composer_equivalence`
+  and did not edit `text_http_errors_equivalence.rs`.
+- **E → P4.150 (R-A):** `host_zone_sites_census`'s `TimeZone::get(` hunt.
+
+### Tier 3 deferrals (recorded, never silent)
+- **The BLOB-in-mode A1 row (R-D):** omitted — no writer on either side can
+  store a BLOB in `impersonationVoiceMode`; v5's check is `as_str()`-gated, so
+  it would pass v5 and drop the row on v4. Named in both A1 file headers.
+- **`host_zone_sites_census`'s `TimeZone::get(` hunt:** P4.150's.
+- **Tier 2 item 10 (a real-`pdf-parse` row):** measured unrunnable under the
+  family's jest invocation (unit D above); wants a ruling on
+  `NODE_OPTIONS=--experimental-vm-modules` for the two generator oracles.
+- **Builder header comment** (`build-character-generators-fixture.ts` "four
+  blobs" → five): outside this lane's ownership.
