@@ -26,12 +26,14 @@ probe verifies against._
   absorbed are retired to §6: `a434c715b` ABSORBED(P4.D253) for bug 177 +
   NO-PORT-RATIFIED(P4.D253) for bug 178; `07b8f0209` ABSORBED(P4.D251,
   P4.D252). CLAUDE.md's Status bullet agrees.
-- **Checked:** 2026-10-05 (`/unify` of the `07b8f0209` round, main-checkout
-  session; `git fetch --all` first). The §2 probe PASSED at the
-  unification's start AND at its close: HEAD `07b8f0209`, both logs empty,
-  `origin/main` agreeing, tree CLEAN. Every regen of the unification ran
-  from the detached pin `/tmp/qt-v4-pin-unify-07b8f0209` (§5.1). Previous
-  check: 2026-10-04 late night (`/driftcheck`, recorded `07b8f0209`).
+- **Checked:** 2026-10-05 (`/unify` of the `07b8f0209` follow-ups + restore
+  round — P4.147–P4.152 — main-checkout session; `git fetch --all` first).
+  The §2 probe PASSED at the unification's start AND at its close: HEAD
+  `07b8f0209`, both logs empty, `origin/main` agreeing, tree CLEAN. No drift
+  row absorbed; the baseline STAYS. Every regen of the unification ran from
+  the detached pin `/tmp/qt-v4-pin-unify-07b8f0209` (§5.1; the lanes had
+  removed theirs). Previous check: 2026-10-05 (`/unify` of the `07b8f0209`
+  round) and 2026-10-04 late night (`/driftcheck`, recorded `07b8f0209`).
 - **v4 `main` HEAD at check: `07b8f0209`** — AT the baseline; `origin/main`
   agrees.
 - **v4 `bugfix` tip at check:** `1a2b2164c` ("bugfix: started 4.9.2 bug

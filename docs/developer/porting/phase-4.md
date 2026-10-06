@@ -7124,7 +7124,107 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
-## The `07b8f0209` follow-ups + restore round (P4.147 ∥ P4.148 ∥ P4.149 ∥ P4.150 ∥ P4.151 ∥ P4.152) — ORDERED 2026-10-05
+## The `07b8f0209` follow-ups + restore round (P4.147 ∥ P4.148 ∥ P4.149 ∥ P4.150 ∥ P4.151 ∥ P4.152) — UNIFIED 2026-10-05 (ordered 2026-10-05)
+**UNIFIED on main (2026-10-05) — ALL SIX LANES LANDED; the oracle baseline
+STAYS `07b8f0209` (no drift row absorbed) and the drift ledger's §3 is EMPTY
+(v4 AT the baseline, clean, at both probes) — the regen rule stays NO PIN
+REQUIRED.** Round record: `status-log.md` → "The `07b8f0209` follow-ups +
+restore round — UNIFICATION record (2026-10-05)"; each order's
+**Unification:** paragraph lists exactly what stays OPEN. Dogfood #140 /
+#141 / #142 FIXED (`dogfood-findings.md`). **The §3 review (six parallel
+readers, one per lane, + the unifier's own read) found ONE BLOCKING,
+lane-introduced data-loss regression against v4 and eleven should-fixes,
+all fixed on the unify branch (`f66946b44`), each with a test:** P4.148's
+validate-before-write parsed the RAW bag ahead of v4's create seed
+(`allowAnyCharacter ?? true` / `characterRoster ?? []` — `??` takes `null`),
+so a `.qtap` project carrying an explicit `null` that v4 imports OPEN was
+dropped — now ONE `db::projects::parse_create_properties` at the import and
+both restore arms, a sound null-roster item in the oracle (red on the
+whole-state diff before the fix) and a unit pin; P4.149's `list_chats`
+fallback turned ONE corrupt row into an EMPTY list where v4 drops the row
+and lists the rest (a per-row `validateSafe` twin, unit-pinned; the error
+bytes a recorded divergence); the inform bulk-delete wraps logged the
+wrap's line on a READ failure where v4's base `findByFilter` fallback logs
+the filter line + a `count: 0` DEBUG; the profile drop missed `modelClass`;
+the restore's preserve arm skipped v4's whole-row validation and four
+sites still rendered `sqlite error:`; the fold pass had inlined a duplicate
+of a helper it left dead; seven more import WARN lines carried snake_case
+keys; the projects route kept its own hex twin; the import guard caught
+only the original spelling (`{e:?}` / `{e}.` / a bare `format!("{e}")`
+passed); a route test's hand-baked MINTED prompt id matched nothing in
+either pair, so "reaches the transport" passed on the not-found arm; the
+in-force census's SQL arm was blind to a `\`-continued literal; v4's ONE
+`onTableEnsured` had been split so a failed ALTER still ran the repair;
+`finishReason: null` logged where genai omits it; the SPA's comments named
+the wrong differing handlers. Wires (`7cc5f08e7`): the two §S.1 folds + a
+NEW `log_chat_create_wrap_failure` home (three hand copies of `Failed to
+create chat` folded), the restore's repository lines (`RESTORE_REPO_LINE_
+HANDOFF` folded into `RESTORE_LOG_LINES`), the four chat-informs DEBUG
+lines on v4's camelCase keys, the old in-file census deleted, the five
+fixture rosters re-keyed, the plain `GroupsRepository::create` retired, the
+generators pair's nine readers regenerated. Gate: fmt/clippy (both feature sets)/release clean on the final tree; the full sweep from the pin 586 ok / 3 standing / 3 refused of 592 (no lane- or unifier-caused red; every round family ok by name); Tier R 271/0; `cargo test --workspace` 671 binaries / 4,377 / 6 (the three standing + two env-block artifacts, each ok in the sweep) / 3 ignored, zero SKIP; SPA 467 files / 8,889, lint + build clean; full Playwright **353 passed / 7 failed / 6 skipped (12.9 m)** — the six skips the standing parks; the seven reds EXACTLY the recorded Salon-streaming timing cluster in five untouched spec files (`salon-regenerate-stream-flow`, `salon-roleplay-template-flow` ×2, `salon-streaming-avatar-flow` ×2, `salon-thinking-indicator` — the P4.d17 quill, `salon-transcript-subscribed-read`), each re-run by FILE alone afterwards, one invocation at a time: **3/3, 2/2, 2/2, 1/1, 2/2 — all green**; P4.152's two touched files (`projects-flow`, `salon-inform-flow`, the standing beat LIVE) green in the full run. The `salon-regenerate-stream-flow` counter: red in the full suite, 3/3 by file (6 of 10 by-file runs green since 2026-09-30). Versions: core 0.0.1234, host 0.0.185, web 0.0.222, SPA 0.5.809; harness frozen 0.0.1110; cli 0.0.29, tauri 0.0.9 unchanged.
+
+**NEXT (in order):**
+1. **The owed dogfood pass** — this round's 💸 rows: a `replace` restore of a
+   fresh Friday-copy backup into the copy AND into a freshly provisioned
+   instance (77 stores, Friday on the 805-link vault, zero Uploads warnings;
+   the ten character-archive bundles + `hinge-log.md` in the archive's
+   Uploads store), a planted malformed `permanent` row skipped with v4's
+   bytes + WARN, a restored project keeping its `icon` on the fallback arm;
+   a `duplicate` `.qtap` import reading the bare `UNIQUE constraint
+   failed: …`, a `color: "red"` group / `color: 5` project refused with v4's
+   Zod bytes and NO half-written store, a project carrying
+   `allowAnyCharacter: null` imported OPEN, a project GET on a corrupt store
+   logging `[Projects v1] Error fetching project`, a non-uuid `characterId`
+   on add-character answering v4's 400 envelope; a BLOB planted in
+   `connection_profiles.name` (or `modelClass`) — the title job completes,
+   the list drops ONE row with v4's two lines, a backup omits it;
+   `chats.userId` renamed on a copy → `listChats` 200 `[]` with the filter
+   line, a BLOB `title` → the list minus one chat with the two validation
+   lines; a chat moved onto a project with a corrupt store → 503 v4's body;
+   an inform batch cancelled under a planted BEFORE DELETE trigger →
+   `removed: 0` with `Error deleting entity` then the wrap's line, under a
+   renamed `batchId` → the filter line + `count=0`; a fold over a planted
+   episode-write failure; a Friday copy with `doc_mount_points` planted
+   pre-ALTER booting with the four `Migrated doc_mount_points: added …
+   column` lines; the collapse's ONE line with `durationMs`; a posed Google
+   answer with a parts-less candidate; the nine project-detail toasts
+   reading v4's sentences on a posed 400; the Characters card re-expanded
+   with the picker open and the search focused. Plus the standing queue
+   (the Lantern budget, a real token-limit turn, the four planted proofs,
+   dedup/summaries, the Brahma deep query, #101, the compression
+   re-measure).
+2. **The follow-ups smalls round** from this unification's OPEN items (each
+   order's **Unification:** paragraph), headlined by the three the human
+   should RULE first: (a) P4.147's preserve-arm completeness guard — a
+   restored vault present but missing a managed file restores that field
+   blank where v4 projects the inline value into a fresh vault (backfill the
+   missing files from the row after the mount family, or refuse the
+   preserve and fall back? — needs a damaged-store fixture); (b) P4.151's
+   Tier 2 item 10 — a real-`pdf-parse` row needs `NODE_OPTIONS=
+   --experimental-vm-modules` for the two generator oracles (changes the
+   whole oracle run's module semantics); (c) P4.149's 5c sync ruling (Option
+   B recommended: strict sync, the walker hazard filed upstream) and its
+   candidate v4 filings #13/#22/#8; P4.150's five dead API-key wrappers
+   (the human's "delete"). Then the code items: the refused project/group
+   import's three absent repository ERRORs and the whole-entity validation
+   v4's `_create` runs (name 1–100, description ≤ 2000, …); the fold pass's
+   three unreached reads (a plant arm each); the chat-informs reads that
+   still propagate where v4 falls back (Tier 3 item 14's census);
+   `image_dialects.rs:2607`'s snake-case Google image keys; the
+   `content.text` rule in two places + the stream-path `.recorded` row;
+   `locate_v4_root` ×5; the `tags` coercion at v4's other two sites and
+   `FieldRule`'s uuid twin; the import's empty `fileId=` on id-less items;
+   B4's evadable code arm / B3's NULL `permanent` mode-(d) row / A1's second
+   line against v4; `restore_compact_fresh_replace` under `REPLAY_DEDUPE`;
+   the duplicate-archived-id and two-claimants edges; 22a-ter's position;
+   the chat PUT gate's mount-side `Db` 404 (measure v4); Mira's
+   `defaultSystemPromptId` dangling in the rebuilt `character-generators`
+   pair (the spec bakes it; the vault's prompt ids are minted) and the
+   optimizer spec's other baked ids.
+3. **A drift catch-up when v4 moves** (`/driftcheck` first — v4 was AT the
+   baseline at both of this unification's probes).
+
 
 **Baseline `07b8f0209`; v4 AT the baseline at the planning probe (HEAD
 `07b8f0209`, `origin/main` agreeing after `git fetch --all`, tree CLEAN,

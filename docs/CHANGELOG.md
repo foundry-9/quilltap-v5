@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-05 — docs(porting): unify the `07b8f0209` follow-ups + restore round — all six lanes landed; the baseline stays `07b8f0209`; the review's findings fixed
+
+_Docs-only change._
+
+Unifies P4.147 (dogfood #141/#142: a `replace` restore keeps every entity on the archive's store, Uploads resolves to the archive's store on a fresh target, the restore riders), P4.148 (dogfood #140 + the projects/groups data layer), P4.149 (the repository-fallback class, round 3), P4.150 (host boot + model layer + chat-create key smalls), P4.151 (harness/test-craft smalls, zero core hunks) and P4.152 (the SPA's project-detail toasts, picker refocus, greeting wait) onto main. No drift absorbed — the ledger's §3 is EMPTY and the baseline stays `07b8f0209`.
+
+- The round record in `status-log.md` (the §2 probe, the delivered scope per order, the wires, the §3 review's findings — one BLOCKING, lane-introduced regression and eleven should-fixes, all fixed — and the gate); each order's status header UNIFIED with its **Unification:** paragraph naming what stays OPEN; `phase-4.md`'s round section UNIFIED with the NEXT list; the drift ledger's §1 Checked line; CLAUDE.md's Status bullet.
+- `dogfood-findings.md`: rows #140 / #141 / #142 → FIXED; the 2026-10-05 standing notes 0 and 1 struck; the 2026-10-03 BLOB-profile note CLOSED by P4.149; the 2026-10-02 `l.relativePath` note CLOSED (already closed by P4.142, measured).
+- Gate: Gate: fmt/clippy (both feature sets)/release clean on the final tree; the full sweep from the pin 586 ok / 3 standing / 3 refused of 592 (no lane- or unifier-caused red; every round family ok by name); Tier R 271/0; `cargo test --workspace` 671 binaries / 4,377 / 6 (the three standing + two env-block artifacts, each ok in the sweep) / 3 ignored, zero SKIP; SPA 467 files / 8,889, lint + build clean; full Playwright **353 passed / 7 failed / 6 skipped (12.9 m)** — the six skips the standing parks; the seven reds EXACTLY the recorded Salon-streaming timing cluster in five untouched spec files (`salon-regenerate-stream-flow`, `salon-roleplay-template-flow` ×2, `salon-streaming-avatar-flow` ×2, `salon-thinking-indicator` — the P4.d17 quill, `salon-transcript-subscribed-read`), each re-run by FILE alone afterwards, one invocation at a time: **3/3, 2/2, 2/2, 1/1, 2/2 — all green**; P4.152's two touched files (`projects-flow`, `salon-inform-flow`, the standing beat LIVE) green in the full run. The `salon-regenerate-stream-flow` counter: red in the full suite, 3/3 by file (6 of 10 by-file runs green since 2026-09-30). Versions: core 0.0.1234, host 0.0.185, web 0.0.222, SPA 0.5.809; harness frozen 0.0.1110; cli 0.0.29, tauri 0.0.9 unchanged.
+
 #### 2026-10-05 — fix(unify): the `07b8f0209` follow-ups round's review findings — the import validates through v4's CREATE-time parse, the chat list drops a corrupt row instead of emptying, the inform wraps take the base read fallback, the profile drop covers `modelClass`, the restore validates on both arms and loses its last `sqlite error:` tails, the heal is one closure
 
 _Versions: core 0.0.1234, web 0.0.222, SPA 0.5.809._
@@ -119,6 +129,7 @@ _Versions: core 0.0.1210._
 - The inform cancel's line moves from the api handler (wrong target, snake-case field, `sqlite error:` prefix) to the repository; the seat-removal `Could not drop pending informs` WARN is retired (unreachable in v4 — the DEBUG fires with `dropped_informs=0` instead).
 - `log_chat_create_validation_failure` folds its two `Error creating entity` copies onto the home.
 - `chat_informs_tier2_equivalence` gains a BEFORE DELETE trigger plant with per-op captured lines (red-first: v5 propagated where v4 answers 0) and two standing rows inserted out of posting order (the P4.151 survey's B1, mutation-proven); `fallback_home_guard` holds five more literals.
+
 #### 2026-10-05 — docs(porting): P4.148 lane record — gate, handoffs, deferrals; the order marked lane-complete
 
 _Docs-only change._
@@ -206,6 +217,7 @@ Every per-item `.qtap` import warning that ends in a database error now carries 
 - The `Import failed:` catch and `ImportError::Db`'s `Display` render the same way.
 - New harness census `import_warning_text_guard`: refuses `map_err` closures built on `to_string()`, an `err_msg` built on it, and a warning literal interpolating a raw `{e}`. 103 offenders on unported main, 0 on the branch.
 - `system_import_state` no longer masks the quoted families' tails to `<ENGINE>`; six cases were red on the prefix on unported main and are green now.
+
 #### 2026-10-05 — docs(porting): P4.147 lane complete — the gate record and the order's status
 
 _Docs-only change._
@@ -225,6 +237,7 @@ P4.147. Two restore defects v4 shares, fixed on the restore side under the backu
 - Restore warnings render SQLite failures as the bare message (no `sqlite error:` prefix); the chat-create DB arm and the chat-document arm log v4's WARN lines. Proven on a real SQLite error by a column-rename plant case.
 - New derived archives `restore-archive-bag-nulls.zip` and `restore-archive-informs.zip`, plus their derive scripts. The `system-restore` oracle grows to 29 restore cases and gains `recordLogs` and `renameColumns`. A v5-only acceptance test checks the #141/#142 result against the archive.
 - `restore_vintage_state`'s raw-SQLite detector matched the removed prefix; it now matches SQLite's own wording. That surfaced a pre-existing General-tier legacy-fold FK failure, now pinned by name in `KNOWN_RAW_SQLITE`.
+
 #### 2026-10-05 — docs(porting): P4.150 lane record — host boot, model-layer and chat-create key smalls
 
 _Docs-only change._
@@ -284,6 +297,7 @@ P4.150 B (the P4.D253 OPEN item). `RefusingTextExtractor`'s stderr notice said t
 _No crate versions bumped._
 
 P4.150 A4. `qtap_schema_embed_guard` and `public_schemas_vendor_guard` now locate the v4 checkout through `QT_V4_CHECKOUT` first (the variable every pinned gate exports and the three other live-checkout guards read), keeping `QT_V4_ROOT` as a legacy alias, then `$HOME/source/quilltap-server`. A pinned gate no longer compares these two against a dirty live checkout. The precedence is a pure `locate_v4_root` with a unit pin in each file; both guards green against the `07b8f0209` pin with only `QT_V4_CHECKOUT` set, and both SKIP on an empty directory (proving the variable is read).
+
 #### 2026-10-05 — docs(porting): P4.151 lane gate recorded; the order marked LANE COMPLETE
 
 _Docs-only change._
@@ -337,6 +351,7 @@ Harness-only (P4.151 A2). The voice-mode ensure differential's mode (a) gains fo
 _No crate versions bumped._
 
 Harness-only (P4.151 A1). `repository_zod_messages` gains a `chatSettings` schema: v4's real `ChatSettingsSchema` over a minimal row plus a stored `impersonationVoiceMode` (absent, `ask`, `always`, `maybe`, `''`, `Off`, `'1'`), diffed against v5's real `db::chat_settings::find_by_user_id` over a `chat_settings` table built from `fresh_schema.json`. The Zod bytes in `chat_settings.rs`'s unit test are now oracle-backed: reordering `ImpersonationVoiceMode::VALUES` reddens the four refused rows and the unit test together. The family now covers 58 rows. No version moves.
+
 #### 2026-10-05 — docs(porting): P4.152 lane record — SPA smalls gate, watch counters, corrections
 
 _Docs-only change._

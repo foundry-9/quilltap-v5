@@ -1608,6 +1608,49 @@ records THERE. Update this summary only when a phase or round completes.
   into a fresh instance loses every project-less file. #140 import-warning
   tails (smalls); #138/#139 v4-faithful. ⚠ **Walk rule:** launch the dogfood
   server with the 2-hour background limit — 30 minutes killed a restore.
+- **The `07b8f0209` follow-ups + restore round (P4.147 ∥ P4.148 ∥ P4.149 ∥
+  P4.150 ∥ P4.151 ∥ P4.152): UNIFIED on main (2026-10-05) — ALL SIX LANES
+  LANDED; the oracle baseline STAYS `07b8f0209` (no drift absorbed; §3
+  EMPTY, v4 AT the baseline at both probes).** The three dogfood orders of
+  the 2026-10-05 walk + the follow-ups smalls: **#141 + #142 FIXED** — a
+  `replace` restore keeps every character on the ARCHIVE's vault and every
+  project/group on its archive store (Shape A preserve-at-create, pinned
+  both ways as `FRESH_STORE_RESIDUAL` over 20 cases), and the archive's
+  built-in pointers are pre-applied after 22a so Uploads resolves to the
+  archive's store on a fresh target (`FRESH_TARGET_UPLOADS`); the inform
+  `permanent` arm CONVERGED; **#140 FIXED** — every `.qtap` import warning
+  carries v4's BARE tail under a NEW `import_warning_text_guard` (103
+  offenders on unported main → 0), the project import validates BEFORE it
+  writes, `parse_properties` carries v4's hex / 50-code-point / uuid /
+  ON-OFF rules with the ZodError bytes, the six `z.uuid()` gates; the
+  repository-fallback class round 3 (v4's RETHROW lines as homes, the
+  BLOB-named profile DROPPED per row, the chat PUT gate + `list_chats` as
+  fallback reads, three held sites converted + twenty re-classed); the
+  `doc_mount_points` four-ALTER heal with v4's lines, the collapse's ONE
+  line, Google's `No parts found` WARN + the `content.text` fallback
+  (measured REACHABLE), the display zone a REQUIRED spine argument; the
+  harness smalls (v4's real `ChatSettingsSchema` over stored modes, the
+  four-mode informs ensure, the Google `.wire` row, PDF rows under a
+  scripted converter over the REBUILT generators pair); the nine
+  project-detail toasts on v4's sentences, the picker refocus
+  (`afterRenderEffect` — a plain `effect` focuses before the projected node
+  re-attaches, measured). **The §3 review (six parallel readers): ONE
+  BLOCKING, lane-introduced regression — the import's new pre-validate ran
+  on the RAW bag ahead of v4's create seed (`allowAnyCharacter ?? true`),
+  so a project carrying `null` that v4 imports OPEN was DROPPED — fixed
+  through v4's seeded create-time parse at the import and both restore
+  arms, red-first in the oracle; eleven should-fixes with it** (`list_chats`
+  emptying on one corrupt row where v4 drops the row; the inform wraps'
+  read-failure line; `modelClass` off the profile drop; the preserve arm
+  unvalidated + four `sqlite error:` tails; a dead duplicated helper; seven
+  more snake_case import lines; a route test's hand-baked MINTED id passing
+  on the not-found arm; a census blind to `\`-continued SQL; v4's one
+  `onTableEnsured` split in two). Gate: fmt/clippy (both feature sets)/release clean on the final tree; the full sweep from the pin 586 ok / 3 standing / 3 refused of 592 (no lane- or unifier-caused red; every round family ok by name); Tier R 271/0; `cargo test --workspace` 671 binaries / 4,377 / 6 (the three standing + two env-block artifacts, each ok in the sweep) / 3 ignored, zero SKIP; SPA 467 files / 8,889, lint + build clean; full Playwright **353 passed / 7 failed / 6 skipped (12.9 m)** — the six skips the standing parks; the seven reds EXACTLY the recorded Salon-streaming timing cluster in five untouched spec files (`salon-regenerate-stream-flow`, `salon-roleplay-template-flow` ×2, `salon-streaming-avatar-flow` ×2, `salon-thinking-indicator` — the P4.d17 quill, `salon-transcript-subscribed-read`), each re-run by FILE alone afterwards, one invocation at a time: **3/3, 2/2, 2/2, 1/1, 2/2 — all green**; P4.152's two touched files (`projects-flow`, `salon-inform-flow`, the standing beat LIVE) green in the full run. The `salon-regenerate-stream-flow` counter: red in the full suite, 3/3 by file (6 of 10 by-file runs green since 2026-09-30). Versions: core 0.0.1234, host 0.0.185, web 0.0.222, SPA 0.5.809; harness frozen 0.0.1110; cli 0.0.29, tauri 0.0.9 unchanged. 💸 the dogfood queue gains
+  the six lanes' rows (phase-4.md NEXT 1). **Next: the owed dogfood pass,
+  then the follow-ups smalls round (three human rulings first: the
+  preserve arm's completeness guard, the `pdf-parse` vm-modules row, the
+  sync ruling), then a drift catch-up when v4 moves** — `phase-4.md`. Round
+  record: `status-log.md`.
 - **Oracle baseline: `07b8f0209` (2026-10-04, v4 main — "Impersonated-line
   voice: three modes, no model call until asked", `4.10.0-dev.111`), adopted
   at the `07b8f0209` round's unification (2026-10-05).**

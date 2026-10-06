@@ -166521,6 +166521,7 @@ re-measure); the restore order's acceptance walk (#141/#142).
   BEFORE DELETE trigger → `removed: 0` with `Error deleting entity` then the
   wrap's line; a fold over a planted episode-write failure → the create chain
   and the fold continuing.
+
 ## P4.148 — dogfood #140 + the projects/groups data-layer smalls (lane `claude/p4-148-import-warning-text-a0ba3e`)
 
 Ordered 2026-10-05 (`work-orders/p4.148-import-warning-text-projects-groups-data-layer.md`).
@@ -166877,6 +166878,7 @@ A `duplicate` `.qtap` import on the Friday copy whose warnings read the bare
 project refused with v4's Zod bytes and NO half-written store; a project GET
 on a corrupt store logging `[Projects v1] Error fetching project`; a
 non-uuid `characterId` on add-character answering v4's 400 envelope.
+
 ## P4.147 — dogfood #141 + #142: a `replace` restore keeps every entity on the archive's store, Uploads resolves to the archive's store on a fresh target, + the restore riders — LANE record (2026-10-05)
 
 Branch `claude/archive-store-pointers-uploads-7af18a` (cut from `main`
@@ -167216,6 +167218,7 @@ divergence outside this order, recorded.
 - `npm run build` (apps/web, after `npm ci`) exit 0 — liveness only, no SPA edit.
 - Versions: core 0.0.1209 → **0.0.1210** (one bump); harness frozen; no
   non-version `Cargo.toml` delta. Status: **LANE COMPLETE**.
+
 ## P4.150 — host boot + model-layer + chat-create key smalls — LANE record (2026-10-05)
 
 Branch `claude/host-boot-model-layer-chat-0be300` (worktree
@@ -167428,6 +167431,7 @@ non-version `Cargo.toml` delta.
   harness reader). `GooglePartsDecoder::new(bool)` is unchanged.
 - `emit_google_no_candidates` is RENAMED (`emit_google_extract_text_warns`);
   no caller outside `model/`.
+
 ## P4.151 — harness / test-craft smalls (ZERO core hunks) — LANE record (lane `claude/work-orders-p4-151-harness-b9b168`, 2026-10-05)
 
 Pin `/tmp/qt-v4-pin-p4151-07b8f0209` (`git rev-parse HEAD` = `07b8f0209574…`,
@@ -167747,6 +167751,7 @@ script, logs under `/tmp/p4151/gate/`.
   `regenerate-swipe-tier3.json` (invalidates `regenerate_swipe_tier3`'s
   oracle + built fixture), `streams/google_parts/{cases.json,
   google.recorded.ndjson, google-incomplete-tail.wire}`.
+
 ## P4.152 — Angular SPA smalls: project-detail toasts, picker refocus, greeting wait (lane `claude/spa-smalls-project-detail-toasts-f55407`)
 
 Lane start 2026-10-05: the drift ledger's §2 probe PASSED (v4 checkout on
@@ -167890,3 +167895,312 @@ SPA 0.5.808.
   node (measured live, mutation B); `afterRenderEffect` is the timing that
   works.
 
+## The `07b8f0209` follow-ups + restore round — UNIFICATION record (2026-10-05)
+
+**P4.147 ∥ P4.148 ∥ P4.149 ∥ P4.150 ∥ P4.151 ∥ P4.152 — ALL SIX LANES
+LANDED; the oracle baseline STAYS `07b8f0209` (no drift row absorbed — the
+ledger's §3 is EMPTY, v4 AT the baseline, tree clean, at both probes), so the
+regen rule stays NO PIN REQUIRED.** Branch `unify/07b8f0209-followups` from
+`main` `43dc35601`; picks in the planned order P4.149 (9) → P4.148 (10) →
+P4.147 (2) → P4.150 (9) → P4.151 (9) → P4.152 (4) = 43 commits, then the
+wires (`7cc5f08e7`), the review fixes (`f66946b44`) and the docs. Every
+conflict an accumulator: core's `Cargo.toml` + `Cargo.lock` at every
+version-bumping pick (resolved by a one-per-pick bump with the lock synced
+from every workspace `Cargo.toml` — P4.150's host/web bumps ride the lock
+too), `docs/CHANGELOG.md` at every pick and `status-log.md` at six (union,
+ours-then-theirs; the blank line each union swallowed at the seam restored
+at the docs step). No source file conflicted — the six lanes' 147 owned
+files are byte-identical to their lane trees on the union (verified per
+lane with `git diff <lane> HEAD -- <files>`). Versions by the §S.5 recount:
+core 0.0.1209 + 1 + 9 + 8 + 5 = **0.0.1232**, host 0.0.185, web 0.0.221,
+SPA 0.5.808; harness frozen at 0.0.1110.
+
+### The §2 probe
+
+PASSED at the start and at the close (branch `main`, tree CLEAN, HEAD
+`07b8f0209`, `07b8f0209..main` and `1a2b2164c..bugfix` empty, `origin/main`
+agreeing after `git fetch --all`; `release` `8fbf2afe0` unmoved). One
+detached pin, `/tmp/qt-v4-pin-unify-07b8f0209` (`rev-parse` = `07b8f0209`;
+`4.10.0-dev.111`; the three symlink classes — the lanes had removed theirs),
+served every regen and the full sweep.
+
+### Delivered scope, verified against the orders
+
+- **P4.147 (restore):** Tier 1 items 1–6 and Tier 2 items 13–14 landed as
+  ordered (Shape A preserve-at-create at phases 6/13/13a over a NEW
+  `create_slim_linked`; the 22a-ter pre-apply of the archive's built-in
+  pointers, `replace` only; `FRESH_STORE_RESIDUAL` 77 rows across 20 cases
+  + `FRESH_TARGET_UPLOADS` pinned both ways; the property-bag rider; the
+  inform `permanent` arm CONVERGED with v4's three lines; the `sqlite error:`
+  tail off the macros); Tier 2 item 12 measured UNREACHABLE; Tier 3 items
+  15–18 deferred by name. ONE code commit, deliberately. Its
+  `RESTORE_REPO_LINE_HANDOFF` pin (v4's repository lines beneath the chat /
+  chat-document / inform refusals, absent on the branch by design) was the
+  round's one cross-lane handoff — wired here (below).
+- **P4.148 (import + projects/groups data layer):** Tier 1 items 1–16 and
+  Tier 2 items 17–18 landed; Tier 3 deferred by name. Its §R.10(j) STOP
+  (five out-of-lane unit fixtures with non-uuid roster ids, red on the lane)
+  landed here as the handoff said. `fallback_home_guard` was GREEN on the
+  lane (the order predicted red-by-one — `Error creating entity` was not yet
+  a home message there) and RED by exactly one on the union until §S.1a.
+- **P4.149 (fallbacks, round 3):** Tier 1 items 1–11 whole; Tier 2 item 12
+  written up for the human (the sync ruling — "leave for later"), item 13
+  measured not on the per-row path; Tier 3 14–18 by name. C2 measured and
+  delivered; the two standing-order corpus rows (B1) folded in.
+- **P4.150 (host boot + model + chat-create):** every Tier 1 and Tier 2
+  item; R-G measured (`content.text` REACHABLE through the real SDK —
+  ported); the five dead API-key wrappers await the human's "delete"; the
+  structural pass's log position a recorded divergence.
+- **P4.151 (harness smalls, ZERO core hunks — verified: nothing under any
+  crate's `src/`):** Tier 1 items 1–9 + Tier 2 item 11; item 10 (a real
+  `pdf-parse` row) measured unrunnable under the family's jest invocation
+  (`--experimental-vm-modules`), deferred for a ruling; the
+  `character-generators-*` pair REBUILT with all nine readers green.
+- **P4.152 (SPA smalls):** Tier 1 items 1–5 + Tier 2 item 6; the two e2e
+  beats LIVE; the lane's workspace suite was deliberately NOT run (an empty
+  `crates/` diff, 12 GB free at the time) — the union's gate covers it.
+
+### The wires (`7cc5f08e7`)
+
+- **§S.1a** — P4.148's C2 twin `log_chat_create_db_failure` deleted; its
+  call site logs through P4.149's `db::fallback::log_create_failure` AND a
+  NEW home beside it, `log_chat_create_wrap_failure` (v4
+  `chats.repository.ts:280`'s own wrap, `{collection: chats, error,
+  strictFailures?}`) — the line had THREE hand copies on the union (the
+  twin, the Concierge validation refusal in `chat_override.rs`, and the
+  restore's DB arm this round wires), all folded; `HOME_MESSAGES` 31 → 32.
+- **§S.1b** — P4.147's `fold_properties_local` deleted; both restore callers
+  on `db::document_store_overlay::fold_properties`.
+- **§S.3** — the old in-file census `the_in_force_predicate_is_never_open_
+  coded` deleted (P4.151's `chat_informs_in_force_census` is the one);
+  P4.149's handoff (b) landed — the chat-informs repository's FOUR DEBUG
+  lines (not two: `Inform batch created`, `Informs marked consumed`, the two
+  bulk deletes) carry v4's camelCase keys (`chat-informs.repository.ts:
+  218-307`), and the module's pin that had frozen the snake_case shape now
+  pins v4's.
+- **§S.7 (P4.147's handoff)** — the restore's chat DB arm logs
+  `Error creating entity` + `Failed to create chat`; the chat-document arm
+  `Error creating entity` (`chat_documents`); the inform refusal `Data
+  validation failed` + `Error creating entity` (`chat_informs`, the
+  ZodError's message on both) — v4's lines as the fresh oracle recorded
+  them (6 on `restore_informs_replace`, 5 on `restore_sqlite_tail_replace`,
+  no `strictFailures` — the restore runs outside the scope on both sides);
+  the pin folded into `RESTORE_LOG_LINES`, `system_restore_state` green by
+  name.
+- **§S.7 (P4.148's handoffs)** — the five fixture rosters re-keyed on
+  well-formed uuids (`project_roster_access.rs`, `wardrobe_tiers.rs`,
+  `doc_edit/path_resolver.rs`; `quilltap-core --lib` 3,073 / 0 after);
+  `api/groups.rs`'s private hex twin folded onto `zod_hex_color_ok`; the
+  plain `GroupsRepository::create` + `GroupCreateInput`'s two dead
+  `color`/`icon` fields + the `debug_assert!` DELETED (zero production
+  callers on the union; the two overlay tests and the groups tier-2 family
+  moved onto `create_with_properties`, the "absent stays absent" test now
+  passing an absent-colour bag).
+- **§S.4** — the three generator oracles regenerated over the rebuilt pair
+  and the nine readers run by name on the union; the builder's "four blobs"
+  header comment → five.
+- Also at unification: the P4.150 reviewer's two byte fixes (v4's ONE
+  `onTableEnsured` — the four ALTERs and the collision repair in ONE
+  closure, so a failed ALTER skips the repair and logs ONE ensure line; a
+  JSON `null` `finishReason` omitted as genai 1.52.0's `candidateFromMldev`
+  omits it) and the P4.152 reviewer's doc fixes (two comments and two spec
+  headers that named the wrong handlers as differing; the chats section's
+  missing R-D note; a v4 line cite).
+
+### What the §3 review found (six parallel readers, one per lane, each against v4's real code at the pin — plus the unifier's own read of the restore, the heal and the folds)
+
+**ONE BLOCKING defect — a lane-introduced data-loss regression against v4 —
+and eleven should-fixes, all fixed in `f66946b44` with a test each; no
+overclaim survived. The one that would have shipped first:**
+
+1. **P4.148 — the `.qtap` import refused projects v4 imports.** The lane's
+   validate-before-write ran `parse_properties` on the RAW folded bag, but
+   v4's `prepareCreateData` seeds `allowAnyCharacter ?? true` /
+   `characterRoster ?? []` BEFORE `_create` validates
+   (`projects.repository.ts:55-63`) — JS `??` takes `null` too — and v5's own
+   `ProjectsRepository::create` seeds the same way (`seed_create_properties`).
+   So a bundle project carrying an explicit `null` on either key, which v4
+   and unported `main` import OPEN, was DROPPED with a ZodError warning. The
+   restore's fallback arm (P4.147 item 8) had the same gap. Fixed: ONE
+   `db::projects::parse_create_properties` (seed, then parse) at the import
+   and at both restore arms; `execute_project_property_refusals` gains a
+   sound `Project Null Roster Defaults` item on both sides (regenerated from
+   the pin — RED on the whole-state diff before the fix) with the
+   non-vacuity block counting its stores; unit pin
+   `a_null_roster_default_is_seeded_on_import_not_refused` (the stored bag
+   reads `true` / `[]`).
+2. **P4.149 — `list_chats` turned ONE corrupt row into an EMPTY list.** The
+   lane's `find_by_filter_or_empty` wrapped `chats_read::run`, which
+   propagates a per-row marshal error, so one BLOB cell answered 200
+   `{chats: []}` where v4's `findByFilter` drops that row per `validateSafe`
+   and lists the rest (`base.repository.ts:283-298`) — and where v5 had at
+   least answered a visible 500. Fixed: `find_by_user_id` reads through a
+   `run_dropping_invalid_rows` that skips the row with v4's `Data validation
+   failed` ERROR + `Safe validation failed` WARN (`collection: chats`) and
+   propagates only a whole-query failure; unit-pinned (a BLOB `title`: one
+   chat kept, two lines; a renamed column: `Err`). ⚠ Recorded divergence:
+   the `error` is rusqlite's sentence where v4 renders the ZodError's (v5
+   validates no chat row — the memories read's class).
+3. **P4.149 — the chat-informs bulk deletes logged the WRONG line on a read
+   failure.** Both wraps let the read propagate into the wrap's `Error
+   deleting pending informs …` line, where v4's reads sit on the base
+   `findByFilter` FALLBACK: the filter line, an empty loop, the DEBUG with
+   `count: 0`. The corpus was one-mode (a BEFORE DELETE plant, no read
+   plant). Fixed inside the wraps; unit-pinned on a renamed `batchId`
+   (the filter line + `count=0`, no wrap line, both deletes).
+4. **P4.149 — the per-row profile drop missed `modelClass`** (`profile.types.
+   ts:120`, `z.string().nullable().optional()` — the same shape as `baseUrl`,
+   which it did cover; select index 17). A BLOB there still failed the whole
+   list, title job, backup and export. Fixed (four columns; the column
+   doc re-derived).
+5. **P4.147 — the preserve arm skipped v4's whole-row validation.** v4's
+   `_create` validates every restored project / group whether or not the
+   archive carries its store; the lane parsed the bag only on the fallback
+   arm (the character arm decoded both). Fixed: both arms parse first (the
+   projects through the seeded create-time parse), nothing written on a
+   refusal; and the projects/groups preserve now requires `storeType:
+   'documents'` as the character arm requires `'character'` (the reviewer's
+   asymmetry nit).
+6. **P4.147 — the `sqlite error:` tail was only PARTLY removed, with the
+   record claiming "every hand-written warning".** Four sites still
+   rendered a `DbError` through `Display` (the folder, vector-entries,
+   text-replacement-rule and compact-reindex warnings + the latter's WARN).
+   Fixed through `warn_text()` (a `TrrError` impl added).
+7. **P4.149 — item 9's fold-pass fragment read was an inlined DUPLICATE of
+   `memories_read::find_by_character_and_source_message_ids_or_empty`,
+   which it left with zero production callers**, and the widened comparand
+   could not see the filter line it would log (`Error finding entities by
+   filter` absent from `DB_MESSAGES` on both sides). Fixed: the helper is
+   the read again (the checkout failure still caught by the outer home);
+   the message added on both sides and the family regenerated. ⚠ Still
+   OPEN by name: no arm reaches any of the three fold-pass reads.
+8. **P4.148 — SEVEN more import WARN lines carried snake_case keys** (the
+   order's "twelve" came from a survey that missed `mod.rs`'s; the lane
+   edited four of their `error =` fields and left the names): the
+   embedding-enqueue line (also missing v4's leading `userId`), the two
+   read-chat lines, the two inform lines, the two group lines. Fixed to
+   v4's bytes (`execute.ts:377,738,757,766,857,880`).
+9. **P4.148 — "ONE hex predicate" was false inside the lane's own file:**
+   `api/projects.rs`'s `is_hex_color` was a byte-identical twin. Folded.
+10. **P4.148 — `import_warning_text_guard` caught only the original
+    spelling of the bug:** `{e:?}`, a tail after the brace (`{e}.`) and
+    `map_err(|e| format!("{e}"))` all passed. Widened (the last placeholder
+    anywhere, a `:` spec is Debug, a bare `format!("{e}")` in a `map_err`),
+    three self-test rows; a positional `{}` stays outside the literal's
+    reach by construction (recorded). `MAIN_OFFENDERS` re-measured on
+    main's extract: 103 (unchanged — the widened rules find no extra offender on main's extract).
+11. **P4.151 — a reader DID hard-code a minted id, and the lane's "no reader
+    does" was based on NDJSON diffs, never a grep.** `characters_generators_
+    routes.rs`'s `DEFAULT_PROMPT` (`41c13f30…`) is a vault prompt id
+    (`stableUuidFromString("prompt:<mountPointId>:<path>")`, re-minted on
+    every rebuild) that matched NOTHING in either pair, so step 7's "the
+    driver reaches the transport" passed on the `System prompt not found`
+    arm. Fixed: the id is read off the live character; the step also
+    refuses that sentence.
+12. **P4.151 — the in-force census's SQL arm was blind to a `\`-continued
+    literal** (the house style for multi-line SQL): `consumedAt \⏎ IS NULL`
+    passed. Fixed: continuations joined before matching, `ISNULL`/`NOTNULL`
+    added, matcher rows for both.
+13. **P4.150 — v4's ONE `onTableEnsured` split in two**, so a failed ALTER
+    still ran the collision repair and could log a second ensure line.
+    Fixed (one closure, v4's order). Also the `finishReason: null` byte.
+14. **P4.152 — two doc comments and two spec headers named the wrong
+    handlers as "the ones that differ"** (every handler but Lantern's
+    differs); the chats section lacked the R-D note. Fixed (docs only — the
+    tables were right, 9/9 red on main as claimed).
+15. **P4.149 — the `[Chats v1] Pending informs dropped with removed seat`
+    DEBUG** (a block the lane rewrote) kept snake_case keys; v4
+    `participants.ts:629-631`. Fixed. A misplaced doc comment in
+    `system_backup_equivalence.rs` moved back onto `plant_informs`.
+
+**Recorded, not fixed — each OPEN by name on its order (the next smalls
+round):** P4.147: the preserve arm trusts the archived store's contents (a
+vault present but missing a managed file restores that field blank where
+v4 projects the row's inline value into a fresh vault — every committed
+archive carries them; needs a damaged-store fixture + a ruling: backfill or
+refuse), `restore_compact_fresh_replace`'s `REPLAY_DEDUPE` switching off
+most of that case's diff, a duplicate archived store id resolved
+differently by the map (last) and 22a (first), two entities claiming one
+archived store (both preserved), 22a-ter after the whole mount family (22f-
+bis's General-tier fold still resolves the target's pointer), the log
+comparand's sorted fields, `create_slim_linked`'s two statements outside a
+transaction (as `create`). P4.148: the refused project/group import arm
+logs none of v4's three repository ERRORs (`Data validation failed`, `Error
+creating entity`, `Error creating project|group`); the import validates
+only the properties bag where v4's `_create` validates the WHOLE entity
+(name 1–100, description ≤ 2000, …) — pre-existing; the 201 pins assert
+v4's status (v5 is dispatch-only, every success 200); the `tags` coercion
+at one of v4's three sites; id-less items log an empty `fileId=` where v4
+drops the field; `sync/types.rs` lost its "why" for the three-state. P4.149:
+the chat-informs reads still propagate where v4 falls back (Tier 3 item
+14's scope); `joined_file_links_strict_aware`'s `PartitionUnavailable` arm
+unreachable in production; the chat PUT gate's mount-side `Db` error
+answering 404 where v4 likely 503s (low confidence, unmeasured); 6c's
+operator-arm line a hand-written literal; C2's strict rendering measured
+by a scratch script, no committed strict family. P4.150: the `content.text`
+rule in two places (`response_parse` + `plugin_catch_log`); no `.recorded`
+row for the stream-path `content.text` fallback; `locate_v4_root` copied
+into five guards; `image_dialects.rs:2607`'s `finish_reason=`/`block_reason=`
+snake keys on a module target (v4 `image-provider.ts:185-189` camelCase).
+P4.151: B4's code arm evadable by `match`/`matches!`/a rebinding (per-file
+counts); B3 cannot see a NULL `permanent` backfill in mode (d); A2's
+`typeofs` comparand agrees with itself (the pinned list is the guard); A1's
+second ERROR line checked against v5's first; D's fallback rows count
+scripts, not outcomes, and v4's PDF log lines are filtered out.
+
+### The gate
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean, AND with `--features quilltap-core/native-transport`
+  clean (both re-run on the final tree `f66946b44`); `cargo build --release`
+  clean.
+- **The full sweep from the pin** (`recipe_sweep.py --run-all --v4
+  /tmp/qt-v4-pin-unify-07b8f0209`, on `f66946b44`): **586 ok / 3 run_failed /
+  1 refused_repo_write / 2 refused_non_extractable of 592** — the three reds
+  EXACTLY the standing rows (`ariel_writers_tier3`, `memory_processor_tier3`,
+  `search_replace`); the refusals the standing three (`backup_uuid_remap`'s
+  repo write, `avatar_rolls_routes`, `generator_sse_wire`); no lane- or
+  unifier-caused red. Every round family RAN and is ok by name, incl. the
+  re-aimed `system_restore_state` (the folded handoff), `system_import_state`
+  (the new null-roster item), `fold_episode_tier3` (the widened comparand),
+  `chat_informs_tier2` / `_routes` / `_permanent_ensure`, the three generator
+  families over the rebuilt pair, `regenerate_swipe_tier3` (its `TZ=UTC`
+  recipe), `table_shape`, `avatar_rolls_collapse_heal`, `help_tree`; the
+  two NEW families (`import_warning_text_guard`, `chat_informs_in_force_
+  census`) counted. **Tier R (`cli_differential`): 271 cases / 0 failures.**
+- **The workspace suite** (`QT_V4_CHECKOUT=<pin> QT_V4_ROOT=<pin> TZ=UTC
+  cargo test --workspace --no-fail-fast` with the 710-variable env block
+  harvested from every family's run stage, six dup-valued names withheld):
+  **671 test binaries / 4,377 passed / 6 failed / 3 ignored, zero `SKIP:`
+  lines.** The six: the three standing families and two env-block artifacts
+  (`doc_mount_files_tier2` — a withheld fixture path; `embedding_refit_
+  tier3` ×2 — `QT_FIXTURE_REFIT_MOUNT` absent from the harvest), each `ok`
+  in the sweep above. `quilltap-core --lib` 3,073 / 0 (the five re-keyed
+  fixtures, the deleted census, the re-aimed DEBUG pin, the new import,
+  chat-list and inform-wrap pins); the web crate's 28 binaries incl.
+  `dispatch_wrong_type_census` (451 unmoved), `tri_state_edges_share_the_
+  decoder`, `characters_generators_routes` (the live prompt id); the host's
+  21 incl. `host_boot_hardness` (the one-closure heal). The guards by name:
+  `fallback_home_guard` (32 messages), `import_warning_text_guard` (0
+  offenders; `MAIN_OFFENDERS` 103 re-measured on main's extract under the
+  widened rules), `chat_informs_in_force_census` 3/3, `zod_issues_home_
+  guard` (home 6), `doc_mount_fallback_sites_census` (83,14,19,0,13,1,1,20,
+  5), `api_key_read_sites_census`, `host_zone_sites_census` 6/6,
+  `spelling_guard`, `text_http_errors_equivalence` (886 rows).
+  `recipe_sweep.py --self-test` exit 0.
+- **SPA:** `npm run lint` + `npm run build` + `npm test` — **467 files /
+  8,889 tests, 0 failed** (after the comment fixes). **Full Playwright:**
+  **353 passed / 7 failed / 6 skipped (12.9 m)** — the six skips the standing parks; the seven reds EXACTLY the recorded Salon-streaming timing cluster in five untouched spec files (`salon-regenerate-stream-flow`, `salon-roleplay-template-flow` ×2, `salon-streaming-avatar-flow` ×2, `salon-thinking-indicator` — the P4.d17 quill, `salon-transcript-subscribed-read`), each re-run by FILE alone afterwards, one invocation at a time: **3/3, 2/2, 2/2, 1/1, 2/2 — all green**; P4.152's two touched files (`projects-flow`, `salon-inform-flow`, the standing beat LIVE) green in the full run. The `salon-regenerate-stream-flow` counter: red in the full suite, 3/3 by file (6 of 10 by-file runs green since 2026-09-30).
+- **Versions:** core 0.0.1234 (0.0.1232 by the §S.5 recount + the wires +
+  the fixes), host 0.0.185, web 0.0.222, cli 0.0.29, tauri 0.0.9 unchanged,
+  SPA 0.5.809; harness frozen 0.0.1110.
+
+### 💸 for the next `/dogfood`
+
+The six lanes' rows, listed in `phase-4.md` NEXT 1 — headlined by the
+`replace` restore of a fresh Friday-copy backup into the copy AND into a
+freshly provisioned instance (77 stores, Friday on the 805-link vault, zero
+Uploads warnings), a `.qtap` import whose warnings read v4's bare tails and
+whose `allowAnyCharacter: null` project imports OPEN, a BLOB-named profile
+dropped per row with the title job completing, the four `doc_mount_points`
+ALTERs on a planted pre-ALTER copy, the nine project-detail toasts.
