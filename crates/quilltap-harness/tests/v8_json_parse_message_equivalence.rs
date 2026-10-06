@@ -156,3 +156,117 @@ fn v8_json_parse_message_matches_node() {
         lossy.len()
     );
 }
+
+/// v4's overlay detail for a `properties.json` that does not parse
+/// (`document-store-overlay.ts:158-168`): `properties.json unparseable:
+/// ${err.message}` — `err` being V8's `JSON.parse` `SyntaxError`.
+const UNPARSEABLE: &str = "properties.json unparseable: ";
+
+/// The overlay inputs V8 ACCEPTS that serde refuses (dogfood #146's recorded
+/// fallback): v4 parses the file and hydrates on, v5's overlay refuses it with
+/// serde's own text. Both-ways: `(corpus row id, v5's whole detail)`; a serde
+/// or v4 move trips it by name.
+const OVERLAY_SERDE_FALLBACK: &[(&str, &str)] = &[(
+    "ok-number-past-f64",
+    "properties.json unparseable: number out of range at line 1 column 10",
+)];
+
+/// The three tables the overlay's batch read joins (the shape its SELECT
+/// names — `document_store_overlay.rs`' own test schema), with ONE store
+/// `mp-1` whose `properties.json` is `content`.
+fn planted_mount(content: &str) -> rusqlite::Connection {
+    let conn = rusqlite::Connection::open_in_memory().unwrap();
+    conn.execute_batch(
+        "CREATE TABLE doc_mount_file_links (id TEXT, mountPointId TEXT, relativePath TEXT, fileId TEXT);
+         CREATE TABLE doc_mount_documents (fileId TEXT, content TEXT);
+         CREATE TABLE doc_mount_files (id TEXT);
+         INSERT INTO doc_mount_file_links VALUES ('f0', 'mp-1', 'properties.json', 'f0');
+         INSERT INTO doc_mount_files VALUES ('f0');",
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO doc_mount_documents VALUES ('f0', ?1)",
+        [content],
+    )
+    .unwrap();
+    conn
+}
+
+/// v5's overlay detail for a project whose `properties.json` is `content`
+/// (the REAL `apply_overlay_one`, the find-by-id read the walk's D4 hit).
+fn overlay_detail(content: &str) -> String {
+    use quilltap_core::db::document_store_overlay::{apply_overlay_one, OverlayError};
+    use quilltap_core::db::projects::ProjectEntity;
+    let mount = planted_mount(content);
+    let row: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_value(serde_json::json!({
+            "id": "p-1",
+            "officialMountPointId": "mp-1",
+        }))
+        .unwrap();
+    match apply_overlay_one::<ProjectEntity>(&mount, Some(row)) {
+        Err(OverlayError::Unavailable { detail, .. }) => detail,
+        other => panic!("{content:?}: expected the store-unavailable refusal, got {other:?}"),
+    }
+}
+
+/// P4.154 — dogfood #146: the document-store overlay's parse-failure detail
+/// is V8's sentence. Every corpus row V8 REFUSES is planted as a project's
+/// `properties.json` and read through the real overlay; the detail must be
+/// v4's prefix + the V8 message RECORDED for that exact input (the walk's D4
+/// `{` reads `Expected property name or '}' in JSON at position 1 (line 1
+/// column 2)`). The rows V8 accepts but serde refuses are the named
+/// [`OVERLAY_SERDE_FALLBACK`].
+#[test]
+fn overlay_parse_failure_reads_v8s_sentence() {
+    let Ok(path) = std::env::var("QT_ORACLE_V8_JSON_PARSE_MESSAGES") else {
+        eprintln!(
+            "SKIP: overlay_parse_failure_reads_v8s_sentence: set QT_ORACLE_V8_JSON_PARSE_MESSAGES \
+             to run the differential"
+        );
+        return;
+    };
+    let text = std::fs::read_to_string(&path).expect("oracle ndjson");
+    let rows: Vec<Row> = text
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| serde_json::from_str(l).expect("oracle line"))
+        .filter(|r: &Row| r.kind == "parse")
+        .collect();
+
+    let mut diverged = Vec::new();
+    let mut refused = 0usize;
+    for row in &rows {
+        let Some(message) = &row.message else {
+            continue;
+        };
+        refused += 1;
+        let want = format!("{UNPARSEABLE}{message}");
+        let got = overlay_detail(&row.input);
+        if got != want {
+            diverged.push(format!("  {}:\n    v5 {got:?}\n    v4 {want:?}", row.id));
+        }
+    }
+    assert!(
+        diverged.is_empty(),
+        "the overlay's parse-failure detail diverged from v4 on {}/{refused} rows:\n{}",
+        diverged.len(),
+        diverged.join("\n")
+    );
+    assert!(refused >= 100, "too few V8-refused rows ({refused})");
+
+    // The walk's D4 row by name, so a corpus edit cannot lose it silently.
+    let d4 = rows.iter().find(|r| r.id == "lbrace").expect("the `{` row");
+    assert_eq!(
+        overlay_detail(&d4.input),
+        format!("{UNPARSEABLE}{}", d4.message.as_deref().unwrap())
+    );
+
+    // The recorded fallback, both ways.
+    for (id, v5_detail) in OVERLAY_SERDE_FALLBACK {
+        let row = rows.iter().find(|r| r.id == *id).expect("fallback row");
+        assert!(row.message.is_none(), "{id}: V8 must ACCEPT it");
+        assert_eq!(overlay_detail(&row.input), *v5_detail, "{id}");
+    }
+    eprintln!("overlay parse-failure detail: {refused} V8-refused rows matched");
+}

@@ -199,6 +199,12 @@ _No crate versions bumped._
 - NEW `harness/oracle/provision/migrations-first.ts`: builds v4's instance the way its real boot does (the real `MigrationRunner` first, then the repository pass).
 - NEW `harness/oracle/provision/dump-migration-indexes.ts` → NEW `crates/quilltap-core/src/services/provisioning/migration_indexes.json` (main 50 / mount-index 5 / llm-logs 5; leaves out names `fresh_schema.json` already has, except the one the migration makes UNIQUE where generateDDL does not, and the legacy `wardrobe_items` index). Its real-boot cross-check found zero differences.
 - `dump-fresh-schema.ts`: header note points at the sibling dumper.
+#### 2026-10-06 — fix(core): a document store's unparseable `properties.json` reads V8's sentence, as v4 logs it (P4.154 unit 2, dogfood #146)
+
+_Versions: core 0.0.1237._
+
+The overlay's find-by-id / list hydration (`hydrate_one`) now renders a `properties.json` parse failure through the V8 twin: a store holding `{` reads `properties.json unparseable: Expected property name or '}' in JSON at position 1 (line 1 column 2)` instead of serde's `EOF while parsing an object at line 1 column 1`. Serde's text survives only where V8 accepts what serde refuses (a number past f64), pinned both ways. New test `overlay_parse_failure_reads_v8s_sentence` drives the real overlay over all 136 V8-refused corpus rows (136/136 red before). The write path's `read_properties` pre-read has the same defect and is handed off (outside this order's hunk scope).
+
 #### 2026-10-06 — feat(core): the V8 `JSON.parse` twin learns every failure template V8 has, measured on real Node (P4.154 unit 1, dogfood #146 prerequisite)
 
 _Versions: core 0.0.1236._

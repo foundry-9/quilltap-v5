@@ -324,11 +324,15 @@ fn hydrate_one<E: StoreEntity>(
             ))
         }
     };
+    // v4 `${err.message}` is V8's `JSON.parse` text (dogfood #146, P4.154);
+    // serde's own only where V8 accepts what serde refuses — RECORDED.
     let props_value: Value = serde_json::from_str(props_raw).map_err(|e| {
+        let detail = crate::generators::optimizer::v8_json_parse_message(props_raw)
+            .unwrap_or_else(|| e.to_string());
         OverlayError::unavailable::<E>(
             id,
             Some(mount_id),
-            format!("properties.json unparseable: {e}"),
+            format!("properties.json unparseable: {detail}"),
         )
     })?;
     let properties = E::parse_properties(&props_value).map_err(|detail| {
