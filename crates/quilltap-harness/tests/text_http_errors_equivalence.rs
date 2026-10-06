@@ -532,6 +532,11 @@ struct PosedTransport {
     calls: AtomicUsize,
     /// The URL of the last request the composer handed over.
     url: Mutex<String>,
+    /// The `TransportPolicy.timeout` the composer handed over on the last call
+    /// — BOTH arms record it (P4.150 D3: `execute` used to ignore `policy`, so
+    /// the row's `requestTimeoutMs` reaching the NON-streaming transport was
+    /// unproven).
+    timeout: Mutex<Option<std::time::Duration>>,
 }
 
 impl PosedTransport {
@@ -540,6 +545,7 @@ impl PosedTransport {
             posed,
             calls: AtomicUsize::new(0),
             url: Mutex::new(String::new()),
+            timeout: Mutex::new(None),
         }
     }
 
@@ -547,9 +553,14 @@ impl PosedTransport {
         self.url.lock().unwrap().clone()
     }
 
-    fn saw(&self, request: &TransportRequest) {
+    fn seen_timeout(&self) -> Option<std::time::Duration> {
+        *self.timeout.lock().unwrap()
+    }
+
+    fn saw(&self, request: &TransportRequest, policy: &TransportPolicy) {
         self.calls.fetch_add(1, Ordering::SeqCst);
         *self.url.lock().unwrap() = request.url.clone();
+        *self.timeout.lock().unwrap() = Some(policy.timeout);
     }
 }
 
@@ -565,9 +576,9 @@ impl ProviderTransport for PosedTransport {
     fn execute<'a>(
         &'a self,
         request: &'a TransportRequest,
-        _policy: &'a TransportPolicy,
+        policy: &'a TransportPolicy,
     ) -> BoxFuture<'a, Result<TransportResponse, TransportError>> {
-        self.saw(request);
+        self.saw(request, policy);
         let out = match &self.posed {
             Posed::Http { status, body } => Err(TransportError::http(*status, body)),
             Posed::Connect => Err(TransportError::connect(posed_connect_failure(&request.url))),
@@ -585,7 +596,7 @@ impl ProviderTransport for PosedTransport {
         request: &'a TransportRequest,
         policy: &'a TransportPolicy,
     ) -> BoxFuture<'a, Result<tokio::sync::mpsc::Receiver<StreamBytes>, TransportError>> {
-        self.saw(request);
+        self.saw(request, policy);
         let posed = self.posed.clone();
         let url = request.url.clone();
         // The streaming arm's deadline is the time-to-headers budget — the
@@ -689,6 +700,8 @@ struct V5Outcome {
     calls: usize,
     /// The URL the transport was handed (the status-less rows' message pin).
     url: String,
+    /// The policy budget the transport was handed (P4.150 D3).
+    timeout: Option<std::time::Duration>,
     /// Every tracing line the call emitted (the pre-stream arm and the whole
     /// completion path run on the caller thread; the pump logs under the
     /// caller's dispatcher).
@@ -748,6 +761,7 @@ fn run_stream(rt: &tokio::runtime::Runtime, row: &Row, spec: &CaseSpec) -> V5Out
         error,
         calls: provider.transport_ref().calls.load(Ordering::SeqCst),
         url: provider.transport_ref().seen_url(),
+        timeout: provider.transport_ref().seen_timeout(),
         lines,
     }
 }
@@ -755,6 +769,14 @@ fn run_stream(rt: &tokio::runtime::Runtime, row: &Row, spec: &CaseSpec) -> V5Out
 fn run_send(rt: &tokio::runtime::Runtime, row: &Row, spec: &CaseSpec, vision: bool) -> V5Outcome {
     let transport = PosedTransport::new(Posed::for_row(row, spec));
     let params = completion_params(row, spec, vision);
+    // The production send composition's policy (`WireCompletionProvider` —
+    // the row's `requestTimeoutMs` as THIS call's budget), not the process
+    // default the family handed over before P4.150 D3.
+    let policy = quilltap_host::spine::completion_send_policy(
+        &TransportPolicy::default(),
+        &row.provider,
+        &params,
+    );
     let (result, lines) = captured_with(|| {
         rt.block_on(execute_completion(
             &transport,
@@ -762,7 +784,7 @@ fn run_send(rt: &tokio::runtime::Runtime, row: &Row, spec: &CaseSpec, vision: bo
             None,
             "",
             &params,
-            &TransportPolicy::default(),
+            &policy,
             "Quilltap/test",
             None,
             None,
@@ -783,6 +805,7 @@ fn run_send(rt: &tokio::runtime::Runtime, row: &Row, spec: &CaseSpec, vision: bo
         error,
         calls: transport.calls.load(Ordering::SeqCst),
         url: transport.seen_url(),
+        timeout: transport.seen_timeout(),
         lines,
     }
 }
@@ -1133,6 +1156,15 @@ fn text_http_errors_match_v4s_real_plugins() {
                         "{}: v5's message must stay the transport's bytes (§S.5)",
                         label(row)
                     );
+                    // P4.150 D3: an HTTP failure carries the `Http` kind (every
+                    // `TransportError` maps through `.with_transport(kind, …)`)
+                    // — asserted only for Connect/Timeout before.
+                    assert_eq!(
+                        e.transport_kind,
+                        Some(TransportErrorKind::Http),
+                        "{}: the transport kind",
+                        label(row)
+                    );
                 }
                 Posed::Connect | Posed::Timeout => {
                     // v5's message stays the transport's own (RULED at P4.128
@@ -1164,9 +1196,29 @@ fn text_http_errors_match_v4s_real_plugins() {
                         label(row)
                     );
                 }
-                Posed::Ok2xx(_) => {}
+                // P4.150 D3: a thrown 2xx (a parse failure) is NOT a transport
+                // failure — no kind, or `is_timeout_failure` / the `network`
+                // trigger could read it as one.
+                Posed::Ok2xx(_) => assert_eq!(
+                    e.transport_kind,
+                    None,
+                    "{}: a 2xx parse error carries no transport kind",
+                    label(row)
+                ),
             }
         }
+        // P4.150 D3: the policy budget the transport saw, on BOTH arms — the
+        // row's `requestTimeoutMs` where it carries one, else the default.
+        let want_budget = spec.request_timeout_ms.map_or_else(
+            || TransportPolicy::default().timeout,
+            |ms| std::time::Duration::from_millis(ms as u64),
+        );
+        assert_eq!(
+            v5.timeout,
+            Some(want_budget),
+            "{}: the transport policy's timeout",
+            label(row)
+        );
         if posed.is_statusless() {
             statusless_rows += 1;
         } else {

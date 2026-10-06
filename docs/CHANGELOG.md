@@ -196,6 +196,12 @@ P4.147. Two restore defects v4 shares, fixed on the restore side under the backu
 - Restore warnings render SQLite failures as the bare message (no `sqlite error:` prefix); the chat-create DB arm and the chat-document arm log v4's WARN lines. Proven on a real SQLite error by a column-rename plant case.
 - New derived archives `restore-archive-bag-nulls.zip` and `restore-archive-informs.zip`, plus their derive scripts. The `system-restore` oracle grows to 29 restore cases and gains `recordLogs` and `renameColumns`. A v5-only acceptance test checks the #141/#142 result against the archive.
 - `restore_vintage_state`'s raw-SQLite detector matched the removed prefix; it now matches SQLite's own wording. That surfaced a pre-existing General-tier legacy-fold FK failure, now pinned by name in `KNOWN_RAW_SQLITE`.
+#### 2026-10-05 — test(harness): text_http_errors asserts the Http kind, no kind on a 2xx throw, and the send-side budget through the production policy
+
+_Versions: host 0.0.185._
+
+P4.150 D3 (P4.141's OPEN proof gaps). `text_http_errors_equivalence` now asserts three things it never could fail on: an HTTP-status row's error carries `transport_kind == Some(Http)`; a thrown 2xx (the SDK-shape guard's parse throw) carries `None`; and the transport saw the right `TransportPolicy.timeout` on BOTH arms — the row's `requestTimeoutMs` on the hang rows, the default elsewhere (`PosedTransport::execute` used to ignore `policy`). The first run of the budget assert found that the family drove the send path with the process-default policy, bypassing the composition production uses, so the send-side budget was unproven. That composition (in the host's `WireCompletionProvider`) is now a named `pub fn completion_send_policy`, unchanged in behaviour, and the family drives it. Mutation-proven: dropping `with_transport` on the completion error path, putting a kind on the 2xx shape-guard throw, and dropping `with_request_budget` from `completion_send_policy` each redden the family.
+
 #### 2026-10-05 — fix(boot): heal a pre-ALTER doc_mount_points with v4's four column self-heals and lines; pin the structural pass's log position
 
 _Versions: core 0.0.1213._

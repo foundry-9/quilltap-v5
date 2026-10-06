@@ -288,6 +288,35 @@ impl<K: ProviderKeySource> WireCompletionProvider<K> {
     }
 }
 
+/// The transport policy ONE non-streaming send runs under — the composition
+/// [`WireCompletionProvider`] applies before handing off to `execute_completion`
+/// (pub so `text_http_errors_equivalence` drives the production composition,
+/// P4.150 D3 — the harness had passed the process default and so never proved
+/// the row's `requestTimeoutMs` reached the send transport).
+///
+/// P4.D42 (v4 `74ec93b5`): the caller's per-request budget becomes THIS call's
+/// transport policy — a ceiling on one attempt, retries off. The process-wide
+/// policy stands when the caller named none. This is the only per-call path;
+/// the field never reaches a request body (v4 same). P4.D83 (v4 `d89babc4`): a
+/// provider that offers a per-profile budget (Ollama's
+/// `request_timeout_seconds`) supplies the DEFAULT, and the caller's ceiling
+/// still wins — v4's `buildRequestAbortSignal(params,
+/// resolveProfileTimeoutMs(params))` in the same order. Non-streaming, so this
+/// bounds the whole exchange (module header).
+pub fn completion_send_policy(
+    base: &quilltap_core::model::transport::TransportPolicy,
+    provider: &str,
+    params: &CompletionParams,
+) -> quilltap_core::model::transport::TransportPolicy {
+    base.with_provider_default_timeout(
+        quilltap_core::model::request_builder::provider_profile_timeout_ms(
+            provider,
+            params.profile_parameters.as_ref(),
+        ),
+    )
+    .with_request_budget(params.request_timeout_ms)
+}
+
 impl<K: ProviderKeySource> WireCompletionProvider<K> {
     /// The shared send body — `send_message` passes no anchor;
     /// `send_message_with_anchor` (P4.D106, bug 95) threads the caller's
@@ -302,24 +331,7 @@ impl<K: ProviderKeySource> WireCompletionProvider<K> {
         params: &CompletionParams,
         attachment_anchor_index: Option<usize>,
     ) -> Result<CompletionResponse, CompletionError> {
-        // P4.D42 (v4 `74ec93b5`): the caller's per-request budget becomes THIS
-        // call's transport policy — a ceiling on one attempt, retries off. The
-        // process-wide policy stands when the caller named none. This is the only
-        // per-call path; the field never reaches a request body (v4 same).
-        // P4.D83 (v4 `d89babc4`): a provider that offers a per-profile budget
-        // (Ollama's `request_timeout_seconds`) supplies the DEFAULT, and the
-        // caller's ceiling still wins — v4's `buildRequestAbortSignal(params,
-        // resolveProfileTimeoutMs(params))` in the same order. Non-streaming, so
-        // this bounds the whole exchange (module header).
-        let policy = self
-            .policy
-            .with_provider_default_timeout(
-                quilltap_core::model::request_builder::provider_profile_timeout_ms(
-                    provider,
-                    params.profile_parameters.as_ref(),
-                ),
-            )
-            .with_request_budget(params.request_timeout_ms);
+        let policy = completion_send_policy(&self.policy, provider, params);
         quilltap_core::model::completion_provider::execute_completion_with_anchor(
             &self.transport,
             provider,
