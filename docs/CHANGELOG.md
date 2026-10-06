@@ -173,6 +173,17 @@ _Versions: core 0.0.1236._
 - The restore's preserve arm (P4.147) let two entities keep one archived store when both pointed at it. Now the first entity to claim a store keeps it (characters, then projects, then groups, each in archive row order); a later claimant takes the fresh-store arm, as v4 does for every entity, and logs a v5-only WARN `Archived store already claimed by an earlier entity; falling back to a fresh store` (`entity`, `entityId`, `mountPointId`, `claimedBy`) on `quilltap::restore`.
 - The archived-store map kept the LAST row for a duplicated `doc_mount_points` id while 22a's primary key keeps the FIRST; a duplicate typed `documents` dropped Lorian off her own vault. The map now keeps the first row per id.
 - Two new derived archives (`restore-archive-two-claimants.zip`, `restore-archive-dup-store-id.zip`, built by new derive scripts that md5-check `restore-archive.zip`) and two `system_restore_state` cases. Red first on unported core: 12 and 8 failures. The harness's `FRESH_STORE_RESIDUAL` carve now applies first-claim-wins too, and every case now reads the process-global log capture: the claim WARN is pinned on the two-claimants case and must be silent on every other.
+#### 2026-10-06 — fix(provisioning): a fresh instance carries v4's migration-created index family; the provisioning differential builds v4 migrations-first (P4.153, dogfood #149)
+
+_Versions: core 0.0.1236, host 0.0.186._
+
+- `provision_fresh_instance` replays `migration_indexes.json` after each partition's `fresh_schema.json` statements, in the same transaction, skipping `fresh_schema.json`'s copy of a name the artifact carries, so `idx_doc_mount_folders_mp_path` is UNIQUE as on every v4 instance (ruled 2026-10-06). `ProvisionError::Artifact` names the new file. Module docs updated.
+- `build-provision-oracle.ts` builds v4's fresh instance through the real `MigrationRunner` first (the three by-hand `provision-*-mount` calls are gone; the runner ran them). It also emits `indexes`, `columns` and the runner's report.
+- `provisioning_equivalence`: the table text is compared against the committed `fresh_schema.json`. The column SET per table is compared against v4's. The index set is compared by name and SQL against v4's real first boot (both families). Named both-ways tables cover `ORACLE_ONLY_TABLES` (9), `TABLE_COLUMN_ASYMMETRY` (7 rows), `ORACLE_ONLY_INDEXES` (1) and `SHARED_NAME_SQL` (16 `ASC`). The seed rows drop the recorded asymmetric columns. Red-first on `main`: the index arm failed by exactly 59.
+- NEW `crates/quilltap-host/tests/host_boot_fresh_indexes.rs` (8 arms, all red before the change): `setup` + one boot carries every promised index; the first boot creates none and a second changes nothing in `sqlite_master`; the per-message `get_messages` read, the last-played read and `find_pending_for_participant` plan through their indexes; the five UNIQUE indexes (incl. the folders `mp_path` one) refuse duplicates via the raw repository `create` with v4's measured SQLite bytes.
+- `phase-4.md` D23: one amendment paragraph (both index families; the second artifact's re-dump rule; the runner stays deferred).
+- `services/api_key_service.rs` test plant: each planted connection profile is named after its id. Two shared one name, which the new UNIQUE `idx_connection_profiles_userId_name` refuses (3 core unit tests red until then).
+
 #### 2026-10-06 — feat(provisioning): measure a real v4 first boot's indexes and dump v4's migration-created index family (P4.153, dogfood #149)
 
 _No crate versions bumped._

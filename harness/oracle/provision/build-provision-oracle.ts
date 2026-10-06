@@ -1,16 +1,19 @@
 /**
  * Provisioning differential oracle (P4.4 unit 1, the provisioning proof).
  *
- * Builds a v4 FRESH instance the tier-2-fixture way — v4's real repositories
- * create the generateDDL schema across all three partitions on first access,
- * then v4's real `getOrCreateSingleUser` + the seed-embedding-profile path write
+ * Builds a v4 FRESH instance the way v4's REAL first boot does (P4.153 —
+ * `migrations-first.ts`: v4's real `MigrationRunner` over an empty data dir,
+ * then the repositories' first-access `ensureCollection` pass), then v4's real `getOrCreateSingleUser` + the seed-embedding-profile path write
  * the deterministic first-boot seed (the sample-content import + roleplay
  * templates + built-in mount stores are the P4.4 named deferrals) — and emits:
  *
- *   - QT_ORACLE_PROVISION (JSON): `{ schema: {main, mountIndex, llmLogs},
- *     seed: { users, chatSettings, embeddingProfile } }`. The schema is the LIVE
- *     `sqlite_master` (so the differential catches v4 drift, not just replay
- *     fidelity); the seed rows have their minted id/createdAt/updatedAt stripped
+ *   - QT_ORACLE_PROVISION (JSON): `{ schema, indexes, columns, migrations,
+ *     seed, seeded }`. `schema` is the LIVE `sqlite_master` (tables now in the
+ *     MIGRATION text, which v5 deliberately does not reproduce — P4.153 R-A);
+ *     `indexes` is every named index per partition `{name, tbl_name, sql}` (both
+ *     v4 families, the comparand of the index arm); `columns` is each table's
+ *     sorted column names (the table arm compares column SETS); `migrations`
+ *     is the runner's run/skipped/deferred/failed report; the seed rows have their minted id/createdAt/updatedAt stripped
  *     (the harness compares the deterministic remainder).
  *   - QT_V4_FRESH_OUT (dir): the three encrypted v4-fresh `.db` files, so the
  *     Rust differential can prove a v4-built instance opens under the v5 engine
@@ -29,14 +32,9 @@ import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, existsSync, rmSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const TEST_PEPPER = '3q2+796tvu/erb7v3q2+796tvu/erb7v3q2+796tvu8=';
-const SINGLE_USER_ID = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
+import { buildMigrationsFirst, indexRows, migrationsFirstEnv } from './migrations-first';
 
-const INSTANCE_SETTINGS_DDL =
-  'CREATE TABLE IF NOT EXISTS "instance_settings" (\n' +
-  '  "key" TEXT PRIMARY KEY,\n' +
-  '  "value" TEXT NOT NULL\n' +
-  ')';
+const SINGLE_USER_ID = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
 
 interface SchemaRow {
   type: string;
@@ -74,47 +72,24 @@ async function main(): Promise<void> {
   const scratch = mkdtempSync(join(tmpdir(), 'qt-provision-oracle-'));
   process.on('exit', () => rmSync(scratch, { recursive: true, force: true }));
   mkdirSync(join(scratch, 'data'), { recursive: true });
-  const mainPath = join(scratch, 'quilltap.db');
-  // The mount-index sits under `data/` so `SQLITE_MOUNT_INDEX_PATH` (the manager)
-  // and `getMountIndexDatabasePath()` (the mount-provisioning migrations) resolve
-  // to the SAME file — otherwise the migrations would write a different db than
-  // the manager reads.
-  const miPath = join(scratch, 'data', 'quilltap-mount-index.db');
-  const llPath = join(scratch, 'quilltap-llm-logs.db');
+  // P4.153: the real-boot layout — all three partitions under `data/`, so the
+  // manager and the mount-provisioning migrations (which open
+  // `getMountIndexDatabasePath()` themselves) resolve to the SAME files.
+  migrationsFirstEnv(scratch);
+  const mainPath = process.env.SQLITE_PATH as string;
+  const miPath = process.env.SQLITE_MOUNT_INDEX_PATH as string;
+  const llPath = process.env.SQLITE_LLM_LOGS_PATH as string;
 
-  process.env.ENCRYPTION_MASTER_PEPPER = TEST_PEPPER;
-  process.env.SQLITE_PATH = mainPath;
-  process.env.SQLITE_MOUNT_INDEX_PATH = miPath;
-  process.env.SQLITE_LLM_LOGS_PATH = llPath;
-  process.env.QUILLTAP_DATA_DIR = scratch;
-  delete process.env.SQLITE_WAL_MODE;
-  process.env.LOG_LEVEL = 'error';
-
-  const { initializeDatabase, rawQuery, closeDatabase } = await import('@/lib/database/manager');
+  // P4.153 (dogfood #149): v4's fresh instance is built the way its REAL first
+  // boot builds it — `MigrationRunner.runMigrations()` FIRST (PHASE 1), then the
+  // repositories' `ensureCollection` pass. Before P4.153 this oracle drove the
+  // repositories alone, so its `sqlite_master` was the generateDDL surface and
+  // the migration-created index family (`idx_chat_messages_chatId`, …) was
+  // invisible to the differential.
+  const report = await buildMigrationsFirst();
+  const { closeDatabase } = await import('@/lib/database/manager');
   const { getRepositories } = await import('@/lib/repositories/factory');
-
-  await initializeDatabase();
-  await rawQuery(INSTANCE_SETTINGS_DDL);
-
-  const repos = getRepositories() as Record<string, unknown>;
-  const skip = new Set(['wardrobe']);
-  for (const [key, repo] of Object.entries(repos)) {
-    if (skip.has(key)) continue;
-    const r = repo as { count?: () => Promise<number>; findAll?: () => Promise<unknown[]> };
-    try {
-      if (typeof r.count === 'function') await r.count();
-      else if (typeof r.findAll === 'function') await r.findAll();
-    } catch {
-      /* vault-only / no table — not part of a fresh schema */
-    }
-  }
-  // Secondary tables (multi-table / hand-written repos with no base count).
-  const anyRepos = repos as Record<string, any>;
-  const zero = '00000000-0000-0000-0000-000000000000';
-  await anyRepos.chats?.getMessageCount(zero);
-  await anyRepos.connections?.getApiKeysByUserId(zero);
-  await anyRepos.vectorIndices?.findMetaByCharacterId(zero);
-  await anyRepos.docMountBlobs?.findByFileId(zero);
+  const anyRepos = getRepositories() as Record<string, any>;
 
   // --- the deterministic first-boot seed ---
   // v4's `users.create` (called with no options.id) MINTS an id, so a single
@@ -131,24 +106,12 @@ async function main(): Promise<void> {
     prepareSeedEmbeddingProfile(getSeedEmbeddingProfiles()[0], SINGLE_USER_ID),
   );
 
-  // --- P4.4u3 families 1 & 2: built-in roleplay templates + mount stores ---
-  // v4's every-startup `seedBuiltInTemplates` (a repo op through the manager) and
-  // the three mount-provisioning migrations' `run()` (they read/write the settings
-  // pointers via getSQLiteDatabase and open their own mount-index connection at
-  // getMountIndexDatabasePath, aligned above with SQLITE_MOUNT_INDEX_PATH).
+  // --- P4.4u3 family 1: built-in roleplay templates ---
+  // v4's every-startup `seedBuiltInTemplates` (a repo op through the manager).
+  // Family 2 (the three built-in mount stores) needs no by-hand call any more:
+  // the three `provision-*-mount` migrations ran inside the runner above, as on
+  // a real first boot.
   await anyRepos.roleplayTemplates.seedBuiltInTemplates();
-  const { provisionLanternBackgroundsMountMigration } = await import(
-    '@/migrations/scripts/provision-lantern-backgrounds-mount'
-  );
-  const { provisionUserUploadsMountMigration } = await import(
-    '@/migrations/scripts/provision-user-uploads-mount'
-  );
-  const { provisionGeneralMountMigration } = await import(
-    '@/migrations/scripts/provision-general-mount'
-  );
-  await provisionLanternBackgroundsMountMigration.run();
-  await provisionUserUploadsMountMigration.run();
-  await provisionGeneralMountMigration.run();
 
   const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
   const { getRawMountIndexDatabase } = await import(
@@ -160,6 +123,32 @@ async function main(): Promise<void> {
     main: dumpPartition(getRawDatabase()),
     mountIndex: dumpPartition(getRawMountIndexDatabase()),
     llmLogs: dumpPartition(getRawLLMLogsDatabase()),
+  };
+  // P4.153: every named index per partition (name, table, SQL) and every
+  // table's column-name list — the Rust side compares the index family by name
+  // + SQL and the tables by column SET (the TABLE text is the migration's here,
+  // the generateDDL one in v5 — the recorded asymmetry the order's R-A keeps).
+  const columnsOf = (db: import('better-sqlite3').Database) => {
+    const out: Record<string, string[]> = {};
+    const tables = db
+      .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`)
+      .all() as { name: string }[];
+    for (const { name } of tables.sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      out[name] = (db.prepare(`PRAGMA table_info("${name}")`).all() as { name: string }[])
+        .map((c) => c.name)
+        .sort();
+    }
+    return out;
+  };
+  const indexes = {
+    main: indexRows(getRawDatabase()),
+    mountIndex: indexRows(getRawMountIndexDatabase()),
+    llmLogs: indexRows(getRawLLMLogsDatabase()),
+  };
+  const columns = {
+    main: columnsOf(getRawDatabase()),
+    mountIndex: columnsOf(getRawMountIndexDatabase()),
+    llmLogs: columnsOf(getRawLLMLogsDatabase()),
   };
 
   const main = getRawDatabase();
@@ -199,7 +188,7 @@ async function main(): Promise<void> {
     instanceSettings: dumpRawTable(main, 'instance_settings'),
   };
 
-  writeFileSync(oracleOut, JSON.stringify({ schema, seed, seeded }, null, 2));
+  writeFileSync(oracleOut, JSON.stringify({ schema, indexes, columns, migrations: report, seed, seeded }, null, 2));
 
   await closeDatabase();
 
@@ -220,7 +209,8 @@ async function main(): Promise<void> {
 
   process.stderr.write(
     `provision oracle: main=${schema.main.length} mount-index=${schema.mountIndex.length} ` +
-      `llm-logs=${schema.llmLogs.length} DDL; seed rows: users/chat_settings/embedding → ${oracleOut}\n`,
+      `llm-logs=${schema.llmLogs.length} DDL; migrations run=${report.migrationsRun} ` +
+      `skipped=${report.migrationsSkipped} deferred=[${report.deferred.join(', ')}]; seed rows: users/chat_settings/embedding → ${oracleOut}\n`,
   );
   process.exit(0);
 }

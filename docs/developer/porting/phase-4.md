@@ -367,6 +367,33 @@ boundary; streaming only on `Event`; the `Db` ownership model; enclave
   tenth (`help_settings`'s independent projection) was caught only by a
   sibling lane's differential at unification.
 
+  **Amended 2026-10-06 by P4.153 (dogfood #149) — the schema v5 follows
+  is the generateDDL TABLE surface plus BOTH of v4's index families.** A
+  real v4 first boot runs its migrations BEFORE any repository, and those
+  migrations make a second index family (`idx_chat_messages_chatId`,
+  `idx_memories_*`, the UNIQUE `idx_connection_profiles_userId_name`, …)
+  that `generateDDL` never emits, so a v5 instance provisioned from
+  `fresh_schema.json` alone lacked it and a restore into one scanned
+  `chat_messages` per message. That family now lives in a SECOND committed
+  artifact, `provisioning/migration_indexes.json`, dumped — never
+  hand-written — by `harness/oracle/provision/dump-migration-indexes.ts`
+  from v4's REAL `MigrationRunner` over an empty data dir (every index
+  `fresh_schema.json` does not already name, on a table it creates, plus
+  any shared name the migration makes UNIQUE where generateDDL does not;
+  ruled 2026-10-06, for `idx_doc_mount_folders_mp_path`), and replayed by
+  the provisioner after each partition's `fresh_schema.json` statements,
+  with `fresh_schema.json`'s copy of a shared name skipped. It follows the same rule: re-dumped when v4 moves it, and
+  `provisioning_equivalence` (whose oracle now builds v4's instance
+  migrations-first) goes red on the moved names first. The TABLE text
+  stays the generateDDL one, and P4.153 found that the column SETS differ
+  too, which is more than the "same column set" this paragraph's premise
+  assumed: a real first boot's `characters` / `projects` / `groups` are the
+  slim store-backed rows, and several tables keep legacy columns. These
+  differences are pinned both ways in the differential's
+  `TABLE_COLUMN_ASYMMETRY`. The migration runner and its `migrations_state`
+  ledger stay deferred: v5 replays the END STATE of the index family, not
+  the migrations.
+
 ### The v4-validator ruling (2026-07-17)
 
 - **D24 — v4's tool validators discard the parse; the fix goes into v4

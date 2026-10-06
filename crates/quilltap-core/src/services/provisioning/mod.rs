@@ -21,6 +21,14 @@
 //!   schema — a byte-for-byte match with a migration-accumulated instance would
 //!   require porting the migration runner, a tracked deferral, unnecessary for
 //!   correctness.)
+//! - **Both v4 index families** (P4.153, dogfood #149): the generateDDL indexes
+//!   above PLUS the ones v4's MIGRATIONS make on every first boot before any
+//!   repository runs ([`MIGRATION_INDEXES_JSON`], dumped from v4's real
+//!   `MigrationRunner`) — so a fresh instance plans `chat_messages`,
+//!   `memories`, `chats`, … reads the way a migrated v4 instance does, and the
+//!   UNIQUE ones refuse what v4 refuses. The boot's own index ensures
+//!   (`idx_files_generationKey`, `idx_folders_userId_projectId_path`, …) find
+//!   theirs already made.
 //! - **Seed rows** (v4's deterministic first-boot seed, minus the deferred
 //!   sample-content import): the single user (v4 `getOrCreateSingleUser`), its
 //!   default chat settings, and the default `Built-in TF-IDF` embedding profile
@@ -183,6 +191,38 @@ static FRESH_SCHEMA_JSON: &str = include_str!("fresh_schema.json");
 /// (`chat-settings.repository.ts:211`), as captured; nothing else moved.
 static CHAT_SETTINGS_SEED_JSON: &str = include_str!("chat_settings_seed.json");
 
+/// P4.153 (dogfood #149): v4's OTHER index family — the one its MIGRATIONS
+/// make in PHASE 1 of every first boot, before any repository runs
+/// (`idx_chat_messages_chatId`, `idx_chats_projectId`, `idx_memories_*`, the
+/// UNIQUE `idx_connection_profiles_userId_name` / `idx_chat_documents_unique` /
+/// `idx_group_character_members_group_char` / …). [`FRESH_SCHEMA_JSON`] is the
+/// generateDDL surface and carries none of them, so until P4.153 a fresh v5
+/// instance scanned `chat_messages` once per restored message (2 h 26 m
+/// against 9 m into a migrated copy).
+///
+/// Dumped — never hand-written (D23) — by
+/// `harness/oracle/provision/dump-migration-indexes.ts`, which runs v4's REAL
+/// `MigrationRunner` over an empty data dir and keeps every index
+/// `fresh_schema.json` does not already name, on a table `fresh_schema.json`
+/// creates (the legacy `wardrobe_items` one is left out). A name both families
+/// make keeps the generateDDL copy — EXCEPT where v4's migration makes it
+/// UNIQUE and generateDDL does not (`idx_doc_mount_folders_mp_path`): the dump
+/// carries the UNIQUE one and [`exec_ddl`] skips the plain copy, so a fresh
+/// instance refuses a duplicate `(mountPointId, path)` folder row as every v4
+/// instance does (ruled 2026-10-06; v5's own `builtin_mounts` ensure already
+/// asked for UNIQUE, a silent no-op behind the plain copy until then). The file's `source` block names the v4
+/// commit. Statements are `sqlite_master` text — no `IF NOT EXISTS` — so they
+/// replay on a FRESH file only, which [`provision_fresh_instance`] enforces.
+///
+/// Re-dump register (append): `94fbb1ae3` (P4.153 — first dump: main 50 /
+/// mount-index 5 (incl. the UNIQUE `idx_doc_mount_folders_mp_path`) /
+/// llm-logs 5, cross-checked name-and-SQL against a REAL
+/// `tsx server.ts` first boot at the same pin, zero differences).
+static MIGRATION_INDEXES_JSON: &str = include_str!("migration_indexes.json");
+
+/// One artifact's statements per partition (`fresh_schema.json` and
+/// `migration_indexes.json` share the shape; the latter's `source` block is
+/// ignored).
 #[derive(Deserialize)]
 struct FreshSchema {
     main: Vec<String>,
@@ -289,11 +329,13 @@ pub fn provision_fresh_instance(data_dir: &Path, pepper_b64: &str) -> Result<(),
 
     let schema: FreshSchema = serde_json::from_str(FRESH_SCHEMA_JSON)
         .map_err(|e| ProvisionError::Artifact(format!("fresh_schema.json: {e}")))?;
+    let migration_indexes: FreshSchema = serde_json::from_str(MIGRATION_INDEXES_JSON)
+        .map_err(|e| ProvisionError::Artifact(format!("migration_indexes.json: {e}")))?;
 
     // Main partition: schema + seed rows + the built-in roleplay templates
     // (family 1, main-only).
     let main = Writer::open_writable(&data_dir.join("quilltap.db"), pepper_b64)?;
-    exec_ddl(main.connection(), &schema.main)?;
+    exec_ddl(main.connection(), &schema.main, &migration_indexes.main)?;
     seed_main(&main)?;
     builtin_templates::seed_built_in_templates(main.connection())?;
 
@@ -301,28 +343,64 @@ pub fn provision_fresh_instance(data_dir: &Path, pepper_b64: &str) -> Result<(),
     // — which span both partitions (pointers in main, rows/folders here). Kept
     // open alongside `main` so the provisioner can write both.
     let mount_index = Writer::open_writable(&data_dir.join("quilltap-mount-index.db"), pepper_b64)?;
-    exec_ddl(mount_index.connection(), &schema.mount_index)?;
+    exec_ddl(
+        mount_index.connection(),
+        &schema.mount_index,
+        &migration_indexes.mount_index,
+    )?;
     builtin_mounts::ensure_builtin_mounts(main.connection(), mount_index.connection())?;
     drop(mount_index);
     drop(main);
 
     // llm-logs sibling: schema only.
     let llm_logs = Writer::open_writable(&data_dir.join("quilltap-llm-logs.db"), pepper_b64)?;
-    exec_ddl(llm_logs.connection(), &schema.llm_logs)?;
+    exec_ddl(
+        llm_logs.connection(),
+        &schema.llm_logs,
+        &migration_indexes.llm_logs,
+    )?;
     drop(llm_logs);
 
     Ok(())
 }
 
-/// Replay one partition's DDL in a single transaction (tables then indexes, the
-/// order the dumper emits — always valid).
-fn exec_ddl(conn: &Connection, statements: &[String]) -> Result<(), ProvisionError> {
+/// Replay one partition's DDL in a single transaction: `fresh_schema.json`'s
+/// statements (tables then indexes, the order the dumper emits) and then
+/// `migration_indexes.json`'s (indexes on those tables).
+///
+/// A name BOTH artifacts carry is the migration's: the dumper keeps a shared
+/// name only where v4's migration makes it UNIQUE and generateDDL does not
+/// (`idx_doc_mount_folders_mp_path` — a real v4 boot runs its migrations first,
+/// so the UNIQUE index is the one every v4 instance has; ruled 2026-10-06), so
+/// the generateDDL copy of that name is skipped here. Every other name is in
+/// exactly one artifact, and their relative order is immaterial.
+fn exec_ddl(
+    conn: &Connection,
+    fresh: &[String],
+    migration: &[String],
+) -> Result<(), ProvisionError> {
+    let migration_names: std::collections::HashSet<&str> =
+        migration.iter().filter_map(|sql| index_name(sql)).collect();
     let tx = conn.unchecked_transaction()?;
-    for sql in statements {
+    for sql in fresh
+        .iter()
+        .filter(|sql| index_name(sql).is_none_or(|n| !migration_names.contains(n)))
+        .chain(migration)
+    {
         tx.execute_batch(sql)?;
     }
     tx.commit()?;
     Ok(())
+}
+
+/// The index a `CREATE [UNIQUE] INDEX [IF NOT EXISTS] name …` statement makes
+/// (quotes stripped); `None` for anything else.
+fn index_name(sql: &str) -> Option<&str> {
+    let rest = sql.strip_prefix("CREATE ")?;
+    let rest = rest.strip_prefix("UNIQUE ").unwrap_or(rest);
+    let rest = rest.strip_prefix("INDEX ")?;
+    let rest = rest.strip_prefix("IF NOT EXISTS ").unwrap_or(rest);
+    rest.split([' ', '(']).next().map(|n| n.trim_matches('"'))
 }
 
 /// Seed the main partition: the single user, its chat settings, and the default

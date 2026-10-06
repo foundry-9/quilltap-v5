@@ -5,9 +5,17 @@
 //! templates + built-in mount stores are the P4.4 named deferrals) AND that the
 //! two engines are cross-compatible:
 //!
-//!   1. **Schema byte-exact** — v5's `sqlite_master` (per partition) equals v4's
-//!      LIVE generateDDL schema (so the diff catches v4 drift, not just v5 replay
-//!      fidelity).
+//!   1. **Schema** (P4.153 — the oracle builds v4's instance the way its REAL
+//!      first boot does: v4's `MigrationRunner` FIRST, then the repositories'
+//!      `ensureCollection` pass — `harness/oracle/provision/migrations-first.ts`):
+//!      (a) v5's TABLE text is byte-exact against the committed generateDDL dump
+//!      `fresh_schema.json` (the migration-built text is the asymmetry the
+//!      order's R-A keeps); (b) every table's column SET equals v4's, modulo the
+//!      named both-ways `ORACLE_ONLY_TABLES` / `TABLE_COLUMN_ASYMMETRY` rows;
+//!      (c) v5's index set per partition EQUALS v4's real first boot's — BOTH
+//!      families, name for name, SQL byte-equal — modulo `ORACLE_ONLY_INDEXES`
+//!      and the `SHARED_NAME_SQL` classes. Red-first on `main` before P4.153:
+//!      (c) failed by exactly the migration family's 59 names.
 //!   2. **Seed rows** — the single user, its chat settings, and the default
 //!      embedding profile match (minted id/timestamps normalized).
 //!   3. **Cross-compat, v5 reads v4** — a real v4-built instance opens under the
@@ -43,6 +51,12 @@
 //!   QT_DBKEY_V5_FIXTURE=/tmp/qt-v5-dbkey \
 //!     $N/npx tsx ~/source/quilltap-v5/harness/oracle/provision/verify-dbkey-crosscompat.ts
 //!
+//! The provisioner's second artifact, `migration_indexes.json`, is NOT
+//! regenerated here (it is committed, D23); re-dump it with
+//! `harness/oracle/provision/dump-migration-indexes.ts` (recipe in its header)
+//! when v4 moves the migration family — this family then goes red on the moved
+//! names first.
+//!
 //! Skips (does not fail) when `QT_ORACLE_PROVISION` is unset — the standing
 //! gated-differential discipline.
 
@@ -57,6 +71,13 @@ use serde_json::{json, Map, Value};
 /// The test pepper the oracle keys its instance with — the v5-provisioned
 /// instance must use the same one so v4 can open it (cross-compat #4).
 const TEST_PEPPER: &str = "3q2+796tvu/erb7v3q2+796tvu/erb7v3q2+796tvu8=";
+
+/// The two committed provisioning artifacts (the core replays both): the
+/// generateDDL surface and — P4.153 — the migration-created index family.
+const FRESH_SCHEMA_JSON: &str =
+    include_str!("../../quilltap-core/src/services/provisioning/fresh_schema.json");
+const MIGRATION_INDEXES_JSON: &str =
+    include_str!("../../quilltap-core/src/services/provisioning/migration_indexes.json");
 
 /// Dump one partition's `sqlite_master` the way the oracle does: CREATE TABLE
 /// statements (by name) then CREATE INDEX statements (by name).
@@ -254,32 +275,71 @@ fn provisioning_matches_v4_fresh_instance() {
     let mi = Writer::open_writable(&data.join("quilltap-mount-index.db"), TEST_PEPPER).unwrap();
     let ll = Writer::open_writable(&data.join("quilltap-llm-logs.db"), TEST_PEPPER).unwrap();
 
-    // --- (1) schema byte-exact, per partition ---
-    let want_schema = &oracle["schema"];
+    // --- (1a) TABLES: v5 replays the generateDDL surface verbatim ---
+    // P4.153 R-A: the oracle now builds v4's instance migrations-first, so its
+    // TABLE text is the MIGRATION's (`SQLITE_TABLES` + ALTERs) — a different
+    // `CREATE TABLE` for the same columns, which v5 deliberately does not
+    // reproduce (every tier-2 fixture shares v5's shape). The text arm is
+    // re-aimed at the committed `fresh_schema.json`; the column SETS are
+    // compared against the oracle below.
+    let fresh: Value = serde_json::from_str(FRESH_SCHEMA_JSON).unwrap();
     for (part, conn) in [
         ("main", main.connection()),
         ("mountIndex", mi.connection()),
         ("llmLogs", ll.connection()),
     ] {
-        let got = dump_schema(conn);
-        let expected: Vec<String> = want_schema[part]
+        let got: Vec<String> = dump_schema(conn)
+            .into_iter()
+            .filter(|sql| sql.starts_with("CREATE TABLE"))
+            .collect();
+        let expected: Vec<String> = fresh[part]
             .as_array()
             .unwrap()
             .iter()
             .map(|v| v.as_str().unwrap().to_string())
+            .filter(|sql| sql.starts_with("CREATE TABLE"))
             .collect();
-        assert_eq!(got, expected, "schema mismatch in partition {part}");
+        assert_eq!(got, expected, "table DDL mismatch in partition {part}");
     }
 
+    // --- (1b) TABLES: the column SET per table equals v4's real first boot ---
+    assert_table_columns(
+        &oracle,
+        &[
+            ("main", main.connection()),
+            ("mountIndex", mi.connection()),
+            ("llmLogs", ll.connection()),
+        ],
+    );
+
+    // --- (1c) INDEXES: both v4 families, by name + SQL ---
+    assert_index_families(
+        &oracle,
+        &[
+            ("main", main.connection()),
+            ("mountIndex", mi.connection()),
+            ("llmLogs", ll.connection()),
+        ],
+    );
+
     // --- (2) seed rows ---
+    // P4.153: v4's rows now live in its MIGRATION-built tables, so each side
+    // drops the columns only it has — exactly the TABLE_COLUMN_ASYMMETRY rows
+    // the column arm above already pinned both ways — before the compare.
     let want = &oracle["seed"];
+    let v4_row = |table: &str, v: &Value| without_asymmetric(table, "v4", v);
+    let v5_row = |table: &str, v: Value| without_asymmetric(table, "v5", &v);
     // users: keep id (fixed SINGLE_USER_ID), strip timestamps.
     let got_user = row_to_json(
         main.connection(),
         &format!("SELECT * FROM users WHERE id = '{SINGLE_USER_ID}'"),
         &["createdAt", "updatedAt"],
     );
-    assert_eq!(got_user, want["users"], "users seed mismatch");
+    assert_eq!(
+        v5_row("users", got_user),
+        v4_row("users", &want["users"]),
+        "users seed mismatch"
+    );
 
     // chat_settings: strip id/userId/timestamps (the deterministic remainder).
     let got_settings = row_to_json(
@@ -288,7 +348,8 @@ fn provisioning_matches_v4_fresh_instance() {
         &["id", "userId", "createdAt", "updatedAt"],
     );
     assert_eq!(
-        got_settings, want["chatSettings"],
+        v5_row("chat_settings", got_settings),
+        v4_row("chat_settings", &want["chatSettings"]),
         "chat_settings seed mismatch"
     );
 
@@ -298,7 +359,11 @@ fn provisioning_matches_v4_fresh_instance() {
         "SELECT * FROM embedding_profiles WHERE provider = 'BUILTIN'",
         &["id", "createdAt", "updatedAt"],
     );
-    assert_eq!(got_ep, want["embeddingProfile"], "embedding seed mismatch");
+    assert_eq!(
+        v5_row("embedding_profiles", got_ep),
+        v4_row("embedding_profiles", &want["embeddingProfile"]),
+        "embedding seed mismatch"
+    );
 
     // --- (2b) P4.4u3 seeded tables: built-in roleplay templates + mount stores ---
     // A fresh v5 instance must carry the SAME seeds as a fresh-v4-with-migrations
@@ -532,4 +597,391 @@ fn assert_v5_reads_v4(v4_dir: &Path) {
         .unwrap()
         .expect("v4 default embedding profile reads under v5");
     assert_eq!(ep.provider, "BUILTIN");
+}
+
+// ───────────────────────── P4.153: the index + column arms ─────────────────────────
+
+/// Tables v4's real first boot makes that a freshly PROVISIONED v5 instance
+/// (no boot yet) does not (P4.153 R-A: v5's TABLE surface is the generateDDL
+/// one). Both-ways: a row whose table v5 starts provisioning, or v4 stops
+/// creating, trips the arm.
+const ORACLE_ONLY_TABLES: &[(&str, &str, &str)] = &[
+    (
+        "main",
+        "chat_messages_fts",
+        "FTS5 — v5 makes it at boot (db::chat_message_fts)",
+    ),
+    ("main", "chat_messages_fts_config", "FTS5 shadow table"),
+    ("main", "chat_messages_fts_data", "FTS5 shadow table"),
+    ("main", "chat_messages_fts_docsize", "FTS5 shadow table"),
+    ("main", "chat_messages_fts_idx", "FTS5 shadow table"),
+    (
+        "main",
+        "chat_messages_fts_map",
+        "FTS5 rowid map — v5 makes it at boot",
+    ),
+    (
+        "main",
+        "migrations_state",
+        "v4's migration ledger — the runner stays deferred",
+    ),
+    (
+        "main",
+        "migrations_metadata",
+        "v4's migration ledger metadata — deferred with it",
+    ),
+    (
+        "main",
+        "wardrobe_items",
+        "legacy table only sqlite-initial-schema-v1 still makes",
+    ),
+];
+
+/// Per-table column asymmetries between v4's MIGRATION-built table (a real
+/// first boot) and v5's generateDDL one: `(partition, table, side, columns,
+/// why)`, `side` naming the side that HAS the columns. P4.153 measured that the
+/// order's R-A premise ("the SAME column set") is FALSE on a real first boot —
+/// recorded here, not closed (R-A keeps the generateDDL TABLE surface; v4's
+/// repositories are column-name-addressed and every v5 read already runs on
+/// the migration shape of the Friday copy). Both-ways, per column.
+const TABLE_COLUMN_ASYMMETRY: &[(&str, &str, &str, &[&str], &str)] = &[
+    (
+        "main",
+        "characters",
+        "v5",
+        &[
+            "aliases",
+            "canChooseOutfit",
+            "description",
+            "exampleDialogues",
+            "firstMessage",
+            "identity",
+            "manifesto",
+            "metadata",
+            "personality",
+            "physicalDescription",
+            "pronouns",
+            "scenarios",
+            "systemPrompts",
+            "talkativeness",
+            "title",
+        ],
+        "v4 `cutover-characters-to-vault` slims the row to the vault-backed shape",
+    ),
+    (
+        "main",
+        "projects",
+        "v5",
+        &[
+            "allowAnyCharacter",
+            "answerConfirmationOverride",
+            "backgroundDisplayMode",
+            "characterRoster",
+            "color",
+            "defaultAgentModeEnabled",
+            "defaultAlertCharactersOfLanternImages",
+            "defaultAvatarGenerationEnabled",
+            "defaultDisabledToolGroups",
+            "defaultDisabledTools",
+            "defaultImageProfileId",
+            "defaultRoleplayTemplateId",
+            "description",
+            "icon",
+            "instructions",
+            "state",
+            "staticBackgroundImageId",
+            "storyBackgroundImageId",
+            "storyBackgroundsEnabled",
+        ],
+        "v4 `cutover-projects-to-store` slims the row to the store-backed shape",
+    ),
+    (
+        "main",
+        "groups",
+        "v5",
+        &["color", "description", "icon", "instructions", "state"],
+        "v4 `create-groups-table` makes the store-backed slim row",
+    ),
+    (
+        "main",
+        "chat_settings",
+        "v5",
+        &["timezone"],
+        "a generateDDL column no v4 migration adds",
+    ),
+    (
+        "main",
+        "chat_settings",
+        "v4",
+        &[
+            "dangerousContentSettings",
+            "memoryExtractionConcurrency",
+            "uncensoredImageDescriptionProfileId",
+        ],
+        "migration columns v4 dropped from its schema but never from the table",
+    ),
+    (
+        "main",
+        "chats",
+        "v4",
+        &[
+            "lastModerationRefusalAt",
+            "moderationRefusalCount",
+            "transcriptVersion",
+        ],
+        "schema-absent migration columns — v5 adds them at boot (repairs)",
+    ),
+    (
+        "main",
+        "users",
+        "v4",
+        &["backupCodes", "totp", "totpAttempts", "trustedDevices"],
+        "legacy auth columns sqlite-initial-schema-v1 still makes",
+    ),
+];
+
+/// Index names v4's real first boot carries that a v5 instance does not, with
+/// the reason. Both-ways.
+const ORACLE_ONLY_INDEXES: &[(&str, &str, &str)] = &[(
+    "main",
+    "idx_wardrobe_items_character",
+    "on the legacy wardrobe_items table v5 never makes (ORACLE_ONLY_TABLES)",
+)];
+
+/// Names BOTH v4 families create, where the MIGRATION's text (which a real v4
+/// boot keeps — it runs first, and generateDDL's `IF NOT EXISTS` is then a
+/// no-op) differs from the generateDDL copy v5 keeps (the order's R-D).
+/// `(partition, name, class)`; the class names the ONE textual difference.
+/// Both-ways: a converged row trips the arm.
+///
+/// `ASC` (16): generateDDL writes `("userId" ASC)`, the migration `("userId")`
+/// — the same index (ASC is SQLite's default), so v5 keeps the generateDDL
+/// copy. The one shared name whose difference is SEMANTIC is NOT here:
+/// `idx_doc_mount_folders_mp_path` is UNIQUE in v4's migrations
+/// (`provision-*-mount`, `convert-project-files-to-document-stores`) and plain
+/// in the repository's `onTableEnsured`; a real v4 boot keeps the migration's,
+/// and since the human's 2026-10-06 ruling so does v5 (`migration_indexes.json`
+/// carries it, the provisioner skips the plain copy), so it must match
+/// byte-for-byte above. Before that ruling it sat here as a `UNIQUE` row.
+const SHARED_NAME_SQL: &[(&str, &str, &str)] = &[
+    ("main", "idx_api_keys_userId", "ASC"),
+    ("main", "idx_background_jobs_userId", "ASC"),
+    ("main", "idx_characters_userId", "ASC"),
+    ("main", "idx_chats_userId", "ASC"),
+    ("main", "idx_connection_profiles_userId", "ASC"),
+    ("main", "idx_embedding_profiles_userId", "ASC"),
+    ("main", "idx_embedding_status_userId", "ASC"),
+    ("main", "idx_files_userId", "ASC"),
+    ("main", "idx_folders_userId", "ASC"),
+    ("main", "idx_image_profiles_userId", "ASC"),
+    ("main", "idx_plugin_configs_userId", "ASC"),
+    ("main", "idx_prompt_templates_userId", "ASC"),
+    ("main", "idx_roleplay_templates_userId", "ASC"),
+    ("main", "idx_tags_userId", "ASC"),
+    ("main", "idx_tfidf_vocabularies_userId", "ASC"),
+    ("llmLogs", "idx_llm_logs_userId", "ASC"),
+];
+
+/// `row` without the main-partition columns [`TABLE_COLUMN_ASYMMETRY`] says only
+/// `side` has on `table` (a seed row compared across the two table shapes).
+fn without_asymmetric(table: &str, side: &str, row: &Value) -> Value {
+    let mut out = row.as_object().expect("seed row object").clone();
+    for (p, t, s, cols, _) in TABLE_COLUMN_ASYMMETRY {
+        if *p == "main" && *t == table && *s == side {
+            for c in *cols {
+                out.remove(*c);
+            }
+        }
+    }
+    Value::Object(out)
+}
+
+fn table_columns(conn: &Connection) -> std::collections::BTreeMap<String, Vec<String>> {
+    let mut tables: Vec<String> = conn
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    tables.sort();
+    tables
+        .into_iter()
+        .map(|t| {
+            let mut cols: Vec<String> = conn
+                .prepare(&format!("PRAGMA table_info(\"{t}\")"))
+                .unwrap()
+                .query_map([], |r| r.get::<_, String>(1))
+                .unwrap()
+                .map(Result::unwrap)
+                .collect();
+            cols.sort();
+            (t, cols)
+        })
+        .collect()
+}
+
+/// The column SET of every table equals v4's real first boot's, modulo the two
+/// named tables above.
+fn assert_table_columns(oracle: &Value, parts: &[(&str, &Connection)]) {
+    let mut problems = Vec::new();
+    let mut seen_tables = std::collections::BTreeSet::new();
+    let mut seen_cols = std::collections::BTreeSet::new();
+    for (part, conn) in parts {
+        let ours = table_columns(conn);
+        let theirs = oracle["columns"][*part]
+            .as_object()
+            .expect("oracle columns");
+        for (table, cols) in theirs {
+            let Some(mine) = ours.get(table) else {
+                if ORACLE_ONLY_TABLES
+                    .iter()
+                    .any(|(p, t, _)| p == part && t == table)
+                {
+                    seen_tables.insert((part.to_string(), table.clone()));
+                } else {
+                    problems.push(format!("{part}: v4 has table {table}, v5 does not"));
+                }
+                continue;
+            };
+            let theirs: std::collections::BTreeSet<&str> = cols
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|c| c.as_str().unwrap())
+                .collect();
+            let mine: std::collections::BTreeSet<&str> = mine.iter().map(String::as_str).collect();
+            for (col, side, missing) in theirs
+                .difference(&mine)
+                .map(|c| (*c, "v4", "v5"))
+                .chain(mine.difference(&theirs).map(|c| (*c, "v5", "v4")))
+            {
+                if TABLE_COLUMN_ASYMMETRY.iter().any(|(p, t, s, cs, _)| {
+                    p == part && t == table && *s == side && cs.contains(&col)
+                }) {
+                    seen_cols.insert((part.to_string(), table.clone(), col.to_string()));
+                } else {
+                    problems.push(format!(
+                        "{part}.{table}.{col}: {side} has it, {missing} does not"
+                    ));
+                }
+            }
+        }
+        for table in ours.keys() {
+            if !theirs.contains_key(table) {
+                problems.push(format!("{part}: v5 has table {table}, v4 does not"));
+            }
+        }
+    }
+    for (p, t, why) in ORACLE_ONLY_TABLES {
+        if !seen_tables.contains(&(p.to_string(), t.to_string())) {
+            problems.push(format!("stale ORACLE_ONLY_TABLES row {p}.{t} ({why})"));
+        }
+    }
+    for (p, t, s, cs, why) in TABLE_COLUMN_ASYMMETRY {
+        for c in *cs {
+            if !seen_cols.contains(&(p.to_string(), t.to_string(), c.to_string())) {
+                problems.push(format!(
+                    "stale TABLE_COLUMN_ASYMMETRY row {p}.{t}.{c} ({s}: {why})"
+                ));
+            }
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "column-set arm:\n{}",
+        problems.join("\n")
+    );
+}
+
+/// `(name, sql)` of every named index in one partition.
+fn index_sql(conn: &Connection) -> std::collections::BTreeMap<String, String> {
+    conn.prepare(
+        "SELECT name, sql FROM sqlite_master \
+         WHERE type = 'index' AND sql IS NOT NULL AND name NOT LIKE 'sqlite_%'",
+    )
+    .unwrap()
+    .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+    .unwrap()
+    .map(Result::unwrap)
+    .collect()
+}
+
+/// v5's index set per partition EQUALS a real v4 first boot's (both families),
+/// name for name, and each statement is byte-equal — modulo the named tables.
+fn assert_index_families(oracle: &Value, parts: &[(&str, &Connection)]) {
+    let mut problems = Vec::new();
+    let mut seen_only = std::collections::BTreeSet::new();
+    let mut seen_shared = std::collections::BTreeSet::new();
+    let mut migration_family = 0usize;
+    let artifact: Value = serde_json::from_str(MIGRATION_INDEXES_JSON).unwrap();
+    for (part, conn) in parts {
+        let ours = index_sql(conn);
+        let theirs: std::collections::BTreeMap<String, String> = oracle["indexes"][*part]
+            .as_array()
+            .expect("oracle indexes (regenerate build-provision-oracle.ts)")
+            .iter()
+            .map(|r| {
+                (
+                    r["name"].as_str().unwrap().to_string(),
+                    r["sql"].as_str().unwrap().to_string(),
+                )
+            })
+            .collect();
+        migration_family += artifact[*part].as_array().unwrap().len();
+        for (name, sql) in &theirs {
+            match ours.get(name) {
+                None if ORACLE_ONLY_INDEXES
+                    .iter()
+                    .any(|(p, n, _)| p == part && n == name) =>
+                {
+                    seen_only.insert((part.to_string(), name.clone()));
+                }
+                None => problems.push(format!("{part}: v4 has index {name}, v5 does not — {sql}")),
+                Some(mine) if mine == sql => {}
+                Some(mine) => match SHARED_NAME_SQL
+                    .iter()
+                    .find(|(p, n, _)| p == part && n == name)
+                {
+                    Some((_, _, class)) => {
+                        let explained = match *class {
+                            "ASC" => mine.replace(" ASC)", ")") == *sql,
+                            other => panic!("unknown SHARED_NAME_SQL class {other}"),
+                        };
+                        if explained {
+                            seen_shared.insert((part.to_string(), name.clone()));
+                        } else {
+                            problems.push(format!(
+                                "{part}: {name} differs beyond its {class} class — v4 {sql} | v5 {mine}"
+                            ));
+                        }
+                    }
+                    None => problems.push(format!("{part}: {name} differs — v4 {sql} | v5 {mine}")),
+                },
+            }
+        }
+        for name in ours.keys() {
+            if !theirs.contains_key(name) {
+                problems.push(format!(
+                    "{part}: v5 has index {name}, v4's first boot does not"
+                ));
+            }
+        }
+    }
+    for (p, n, why) in ORACLE_ONLY_INDEXES {
+        if !seen_only.contains(&(p.to_string(), n.to_string())) {
+            problems.push(format!("stale ORACLE_ONLY_INDEXES row {p}.{n} ({why})"));
+        }
+    }
+    for (p, n, class) in SHARED_NAME_SQL {
+        if !seen_shared.contains(&(p.to_string(), n.to_string())) {
+            problems.push(format!("stale SHARED_NAME_SQL row {p}.{n} ({class})"));
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "index arm ({} problem(s); the migration family is {migration_family}):\n{}",
+        problems.len(),
+        problems.join("\n")
+    );
 }

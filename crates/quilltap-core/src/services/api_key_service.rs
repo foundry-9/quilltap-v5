@@ -519,7 +519,9 @@ pub(crate) mod test_instance {
         (dir, db)
     }
 
-    /// Plant a connection profile owned by [`USER`].
+    /// Plant a connection profile owned by [`USER`]. Named after its id: a
+    /// fresh instance carries v4's UNIQUE `idx_connection_profiles_userId_name`
+    /// since P4.153, so two plants sharing one name would be refused.
     pub(crate) fn plant_connection_profile(
         conn: &Connection,
         id: &str,
@@ -528,7 +530,7 @@ pub(crate) mod test_instance {
     ) {
         conn.execute(
             "INSERT INTO connection_profiles (id, userId, name, provider, modelName, apiKeyId, \
-             createdAt, updatedAt) VALUES (?1, ?2, 'P4.139 probe', ?3, 'm', ?4, ?5, ?5)",
+             createdAt, updatedAt) VALUES (?1, ?2, 'P4.139 probe ' || ?1, ?3, 'm', ?4, ?5, ?5)",
             rusqlite::params![id, USER, provider, api_key_id, NOW],
         )
         .unwrap();
