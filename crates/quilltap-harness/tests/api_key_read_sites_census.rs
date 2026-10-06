@@ -313,8 +313,6 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/services/api_key_service.rs", "get_all_api_keys", "get_api_keys_by_user_id", "wrapper-no-caller"),
     ("quilltap-core/src/services/api_key_service.rs", "find_api_key_by_id_scoped", "find_by_id_and_user_id", "wrapper-no-caller"),
     ("quilltap-core/src/services/carina_query.rs", "carina_api_key", "find_by_id", "home"),
-    ("quilltap-core/src/services/chat_create.rs", "auto_generate_first_message", "find_by_id", "home"),
-    ("quilltap-core/src/services/chat_enrichment.rs", "get_connection_profile", "find_by_id", "home"),
     ("quilltap-core/src/services/orchestrator.rs", "build_pricing_context", "find_by_id_and_user_id", "recorded-divergence"),
 ];
 
@@ -365,14 +363,15 @@ fn the_class_counts_are_pinned() {
 /// (home, internal, no-v4-counterpart, wrapper-no-caller, recorded-divergence,
 /// fallback-in-v4), with the arithmetic:
 ///
-/// - 10 raw call sites = 4 + 2 + 1 + 2 + 1 + 0. Every OTHER v5 key read goes
+/// - 8 raw call sites = 2 + 2 + 1 + 2 + 1 + 0. Every OTHER v5 key read goes
 ///   through `api_key_service`'s helpers and is not a raw call at all.
-/// - **home 4** — the sites that call the `db::fallback` home DIRECTLY: Carina's
-///   `carina_api_key` (P4.140's file, already home since P4.136), the
-///   greeting's key read and the chat-enrichment summary's (both deliberately
-///   over the home, not the helper, so their files' `api_keys` imports — outside
-///   P4.139's named hunks — stay used) — and the by-user-id helper's body,
-///   folded onto `find_api_keys_by_user_id_or_empty` at unification (§S.1).
+/// - **home 2** — the sites that call the `db::fallback` home DIRECTLY: Carina's
+///   `carina_api_key` (P4.140's file, already home since P4.136) and the
+///   by-user-id helper's body, folded onto `find_api_keys_by_user_id_or_empty`
+///   at unification (§S.1). The greeting's key read and the chat-enrichment
+///   summary's were hand-wraps of the home (kept so their files' `api_keys`
+///   imports stayed used, outside P4.139's named hunks) until P4.150 folded
+///   both onto `read_api_key` — identical bodies; home 4 → 2.
 /// - **internal 2** — the two read helpers' bodies.
 /// - **no-v4-counterpart 1**, **wrapper-no-caller 2**, **recorded-divergence 1**
 ///   — see [`OVERRIDES`].
@@ -383,7 +382,7 @@ fn the_class_counts_are_pinned() {
 ///   unscoped label read — made scoped this lane) and `provider_routing.rs`'s
 ///   two (read through a local `find_api_key_or_none` wrapper the scanner does
 ///   not know — folded onto `read_api_key_scoped` this lane).
-const COUNTS: (usize, usize, usize, usize, usize, usize) = (4, 2, 1, 2, 1, 0);
+const COUNTS: (usize, usize, usize, usize, usize, usize) = (2, 2, 1, 2, 1, 0);
 
 /// No bare-name escape hatch: a `use …::api_keys::{find_by_id, …}` import would
 /// let a raw read slip past the `api_keys::` anchor.

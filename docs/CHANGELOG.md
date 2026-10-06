@@ -196,6 +196,12 @@ P4.147. Two restore defects v4 shares, fixed on the restore side under the backu
 - Restore warnings render SQLite failures as the bare message (no `sqlite error:` prefix); the chat-create DB arm and the chat-document arm log v4's WARN lines. Proven on a real SQLite error by a column-rename plant case.
 - New derived archives `restore-archive-bag-nulls.zip` and `restore-archive-informs.zip`, plus their derive scripts. The `system-restore` oracle grows to 29 restore cases and gains `recordLogs` and `renameColumns`. A v5-only acceptance test checks the #141/#142 result against the archive.
 - `restore_vintage_state`'s raw-SQLite detector matched the removed prefix; it now matches SQLite's own wording. That surfaced a pre-existing General-tier legacy-fold FK failure, now pinned by name in `KNOWN_RAW_SQLITE`.
+#### 2026-10-05 — refactor(chat-create): fold the greeting's and enrichment's key reads onto read_api_key; pin the greeting's corrupt-key ERROR-before-WARN
+
+_Versions: core 0.0.1211._
+
+P4.150 C1 + C4 (P4.139's OPEN items). The greeting (`auto_generate_first_message`) and the chat-enrichment profile summary read the API key through hand-written wraps of `db::fallback::find_api_key_by_id_or_none`; both now call `api_key_service::read_api_key`, which has the identical body (the files' now-unused `api_keys` imports dropped). `api_key_read_sites_census` loses the two rows: home 4 -> 2, 10 raw sites -> 8 (red-first: 2 failing tests before the fold). The greeting's corrupt-key behaviour already matched v4; it now has its pin in `chat_create.rs`'s own test module (P4.139's handoff named `initial_greeting_equivalence`, which is DB-free): an unreadable key row logs v4's `Error finding API key by ID` ERROR before the `[Chats v1] Connection profile is missing its API key` WARN and ends the greeting with no provider call; a readable key says neither line. Mutation-proven (a raw `find_by_id(..).ok().flatten()` drops the ERROR and reddens it).
+
 #### 2026-10-05 — refactor(host): ProductionSpineFactory::new takes the display zone as a required argument; the zone census hunts TimeZone::get(
 
 _Versions: host 0.0.183, web 0.0.221._

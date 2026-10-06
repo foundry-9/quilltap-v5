@@ -31,11 +31,11 @@ use serde_json::Value;
 use crate::db::doc_mount_file_links::{DocMountFileLinksRepository, LinkWithContent};
 use crate::db::files::FileEntry;
 use crate::db::projects::ProjectsRepository;
-use crate::db::{
-    api_keys, chats_messages_read, connection_profiles, conversation_chunks, image_profiles,
-    memories_read, tags, DbError,
-};
 use crate::db::{characters_read, files};
+use crate::db::{
+    chats_messages_read, connection_profiles, conversation_chunks, image_profiles, memories_read,
+    tags, DbError,
+};
 use crate::photos::resolve_character_avatar::{
     build_legacy_file_url, build_mount_file_url, resolve_character_avatar,
 };
@@ -457,11 +457,7 @@ pub fn get_connection_profile(
     // a read error logs its line and is `apiKey: null` — the profile is still
     // returned (P4.139; v5's `?` had failed the whole enriched-chat read).
     let api_key = s(&profile, "apiKeyId")
-        .and_then(|api_key_id| {
-            crate::db::fallback::find_api_key_by_id_or_none(&api_key_id, || {
-                api_keys::find_by_id(conn, &api_key_id)
-            })
-        })
+        .and_then(|api_key_id| crate::services::api_key_service::read_api_key(conn, &api_key_id))
         .map(|key| ApiKeySummary {
             id: key.id,
             provider: key.provider,

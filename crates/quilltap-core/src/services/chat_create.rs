@@ -37,8 +37,8 @@ use crate::db::document_store_overlay::OverlayError;
 use crate::db::projects::ProjectsRepository;
 use crate::db::runtime::Db;
 use crate::db::{
-    api_keys, characters_read, chat_settings, chats_read, connection_profiles, image_profiles,
-    wardrobe_read, DbError,
+    characters_read, chat_settings, chats_read, connection_profiles, image_profiles, wardrobe_read,
+    DbError,
 };
 use crate::enclave::cron;
 use crate::enclave::lifecycle::{self, LifecycleDeps, StartManualRunResult};
@@ -2499,9 +2499,7 @@ where
         // P4.139: through the fallback home — a read error now logs v4's
         // `Error finding API key by ID` BEFORE the WARN below (`route.ts:
         // 700-706`: the repository line, then `!storedKey`'s WARN).
-        match crate::db::fallback::find_api_key_by_id_or_none(api_key_id, || {
-            api_keys::find_by_id(main, api_key_id)
-        }) {
+        match crate::services::api_key_service::read_api_key(main, api_key_id) {
             Some(k) => api_key = k.key_value,
             // P4.90: v4 `app/api/v1/chats/route.ts:647` warns here and returns
             // `NO_GREETING`; v5 returned silently. The `_` arm covers BOTH a
@@ -4507,6 +4505,111 @@ mod tests {
             line.contains("context=autoGenerateFirstMessage"),
             "in:\n{line}"
         );
+    }
+
+    /// P4.150 C1 (P4.139's orphaned handoff — the handoff named
+    /// `initial_greeting_equivalence`, which is DB-free and cannot plant a
+    /// row): an UNREADABLE key row. v4 `app/api/v1/chats/route.ts:698-705`
+    /// reads it through `findApiKeyById`, a 4-arg fallback `safeQuery`
+    /// (`connection-profiles.repository.ts:249-266`): the repository's ERROR
+    /// `Error finding API key by ID {collection, keyId, error}` FIRST, then
+    /// `!storedKey`'s WARN, then `NO_GREETING`. The silence leg: the same
+    /// profile over a READABLE key says neither line and greets.
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_corrupt_api_key_row_logs_the_repository_line_before_the_warn() {
+        const CORRUPT_KEY: &str = "a0000150-0000-4000-8000-0000000000bd";
+        const HEALTHY_KEY: &str = "a0000150-0000-4000-8000-00000000000c";
+        let repository_line = format!(
+            "ERROR quilltap::db Error finding API key by ID collection=connection_profiles \
+             keyId={CORRUPT_KEY} error=Invalid column type Blob at index: 4, name: key_value"
+        );
+
+        // Firing leg.
+        let (_d, db, w) = ladder_venue(false);
+        crate::db::fallback::test_plants::plant_api_key(
+            w.connection(),
+            CORRUPT_KEY,
+            SINGLE_USER_ID,
+            true,
+        );
+        w.connection()
+            .execute(
+                "UPDATE connection_profiles SET apiKeyId = ?2 WHERE id = ?1",
+                rusqlite::params![OWN_CP, CORRUPT_KEY],
+            )
+            .unwrap();
+        let streaming = PosedByModel::default()
+            .with("claude-sonnet-4-5", vec![Posed::Answer("Never asked.", 4)]);
+        let logs = fresh_logs();
+        let greeting = run_ladder(
+            &db,
+            w.connection(),
+            &streaming,
+            &NoApiKeys,
+            false,
+            LADDER_CHAT,
+            logs.clone(),
+        )
+        .await;
+        assert_eq!(greeting.content, "", "the scripted greeting takes over");
+        assert!(streaming.calls().is_empty(), "no provider call");
+        let captured = logs.lock().unwrap().clone();
+        let error_at = captured
+            .iter()
+            .position(|l| *l == repository_line)
+            .unwrap_or_else(|| panic!("the repository line; captured:\n{}", captured.join("\n")));
+        assert_eq!(
+            captured
+                .iter()
+                .filter(|l| l.contains("Error finding API key by ID"))
+                .count(),
+            1,
+            "exactly one repository line"
+        );
+        let warn = one_at(
+            &captured,
+            "WARN",
+            "[Chats v1] Connection profile is missing its API key",
+        );
+        let warn_at = captured.iter().position(|l| l == warn).unwrap();
+        assert!(
+            error_at < warn_at,
+            "v4's order: the repository line, then the WARN"
+        );
+
+        // Silence leg: a readable key — neither line, and the greeting runs.
+        let (_d2, db2, w2) = ladder_venue(false);
+        crate::db::fallback::test_plants::plant_api_key(
+            w2.connection(),
+            HEALTHY_KEY,
+            SINGLE_USER_ID,
+            false,
+        );
+        w2.connection()
+            .execute(
+                "UPDATE connection_profiles SET apiKeyId = ?2 WHERE id = ?1",
+                rusqlite::params![OWN_CP, HEALTHY_KEY],
+            )
+            .unwrap();
+        let streaming = PosedByModel::default().with(
+            "claude-sonnet-4-5",
+            vec![Posed::Answer("The wood remembers you.", 5)],
+        );
+        let logs = fresh_logs();
+        let greeting = run_ladder(
+            &db2,
+            w2.connection(),
+            &streaming,
+            &NoApiKeys,
+            false,
+            LADDER_CHAT,
+            logs.clone(),
+        )
+        .await;
+        assert_eq!(greeting.content, "The wood remembers you.");
+        let captured = logs.lock().unwrap().clone();
+        no_line_with(&captured, "Error finding API key by ID");
+        no_line_with(&captured, "Connection profile is missing its API key");
     }
 
     /// The silence leg for `:647` AND for the whole attempt-2/attempt-4 set: a
