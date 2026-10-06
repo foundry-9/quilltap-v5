@@ -1706,6 +1706,21 @@ records THERE. Update this summary only when a phase or round completes.
   instance restore timing; Friday's disbelieved inform), then the follow-ups
   round (the index family on pre-round instances first)** — `phase-4.md`.
   Round record: `status-log.md`.
+- **The `94fbb1ae3` smalls-round dogfood pass RAN (2026-10-06 evening,
+  agent-driven, on the Friday copy + planted clones + three fresh instances)
+  — 19 rows, all terminal; ZERO defects in the round's surfaces, THREE
+  pre-existing divergences ORDER-PENDING.** Walk doc:
+  `dogfood-walks/2026-10-06-inform-trailing-indexes-restore-backfill-pass.md`;
+  record in `status-log.md`. ⭐ `94fbb1ae3`'s motivating case flipped on one
+  transcript: the standing Tessarium inform rides the final user message
+  under the vouching header and Abigail now believes it. ⭐ **#149 closed
+  live:** a fresh `setup` instance carries the migration index family and the
+  1.28 GB restore into it took **7 m 17 s** (2 h 26 m before). ⭐ P4.158's
+  backfill, store-claim fallback and parsed-name matching on a real archive;
+  #145/#146 closed live. **#150 (high):** a corrupt sibling DB stops v5's boot
+  where v4 boots DEGRADED. **#151:** v4's middleware ERROR for a
+  store-unavailable 503 never logged. **#152:** an import writes a memory v4's
+  `MemorySchema` refuses. **Still owed:** the standing queue.
 - **Oracle baseline: `94fbb1ae3` (2026-10-06, v4 main — "Inform: deliver as
   a trailing section, under a vouching header", `4.10.0-dev.112`), adopted
   at the `94fbb1ae3` smalls round's unification (2026-10-06).**

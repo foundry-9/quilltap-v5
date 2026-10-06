@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-06 — docs(porting): dogfood pass — the `94fbb1ae3` smalls round (19 rows, zero round defects; #150–#152 ORDER-PENDING)
+
+_Docs-only change._
+
+Agent-driven walk on a copy of Friday, four planted clones and three fresh instances. Proven live: the standing inform delivered as the final trailing section under v4's vouching header (the character now accepts it); the `[Inform] Delivering` and `Inform cancelled` lines with camelCase keys (#145); V8's `JSON.parse` sentence on a corrupt project store (#146); the 101-character project-name refusal with v4's three ERRORs; the Google `content.text` stream fallback; the restore backfill, the store-claim fallback and parsed-name prompt/scenario matching on a real 1.28 GB archive; a legacy shared wardrobe row restored into the archive's General; a fresh instance carrying the migration index family, with the same archive restored in 7 m 17 s (2 h 26 m before, #149).
+
+New findings, none fixable in place: #150 (high) — a sibling database that cannot be opened stops the boot, where v4 boots degraded; #151 — v4's context-middleware ERROR for a store-unavailable 503 is never logged; #152 — a `.qtap` import writes a memory v4's `MemorySchema` refuses. Recorded in `dogfood-findings.md` (rows + standing notes), the walk doc, `status-log.md`, and CLAUDE.md's Status.
+
 #### 2026-10-06 — docs(porting): unify the `94fbb1ae3` fresh-instance-indexes + follow-ups smalls round — all seven lanes landed; the baseline moves to `94fbb1ae3`; the review's findings fixed
 
 _Versions: core 0.0.1242, host 0.0.187, SPA 0.5.811._

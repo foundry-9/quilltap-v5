@@ -169964,3 +169964,83 @@ a `.qtap` import refused with three ERRORs; Foundry-9's `properties.json` set
 to `{` → V8's sentence on BOTH the read and the write path; a posed Gemini
 `blockReason`-only refusal; a duplicate connection-profile name refused on a
 fresh instance.
+
+## Dogfood pass — the `94fbb1ae3` fresh-instance-indexes + follow-ups smalls round: the inform as a trailing section, the repository fallbacks and import refusals on planted clones, the restore backfill and store claims, the fresh-instance indexes and restore timing (2026-10-06 evening)
+
+**Walk doc:** `dogfood-walks/2026-10-06-inform-trailing-indexes-restore-backfill-pass.md`.
+**19 CLAUDE rows, every one terminal: 15 PASS, 1 PASS with a log-text
+finding (C4 → #151), 1 FAIL (C6 → #152), 2 BLOCKED (C3 by #150; C7 — no
+seam: the Gemini image dialect hardcodes its host); the two HUMAN
+standing-queue rows DEFERRED-TO-HUMAN. ZERO defects in the round's own
+surfaces; three pre-existing port divergences found, all ORDER-PENDING (none
+fixable in place); no code commit.** Main copy plus four planted APFS clones
+plus three fresh instances; zero panics.
+
+Orders covered: P4.D254 ∥ P4.153 ∥ P4.154 ∥ P4.155 ∥ P4.156 ∥ P4.157 ∥
+P4.158. The ledger's §2 probe PASSED at walk start (v4 AT `94fbb1ae3`, clean,
+§3 EMPTY; `origin/main` agreeing after `git fetch --all`).
+
+### Proven live
+- **`94fbb1ae3` / P4.D254 on its own motivating case.** The copy held no
+  standing inform (v4 had delivered the morning's Tessarium passage as a
+  one-shot), so it was re-posted standing through the Salon dialog. Abigail's
+  turn carried `INFORM_BLOCK_HEADER` + the passage in the FINAL user message,
+  after recall and the progressions block, before the turn-skip note, never in
+  the system message — and she believed it ("Tessarium, because it holds a
+  finish and it's stronger than what I have on"), where the same transcript
+  holds v4's morning reply ("Nobody's told me that, and I'd know"). The
+  `[Inform] Delivering …` line in `combined.log` with camelCase keys and
+  `rowIds` an array; a continue-mode nudge carried the block in a
+  trailing-only user message (after the scene note); the chip's withdraw
+  logged `Inform cancelled` with camelCase keys (#145 closed live).
+- **P4.156 / P4.154 / P4.155 on planted clones:** a renamed
+  `chat_informs.chatId` → `chatInformsList` 200 `[]` with the bare filter
+  ERROR and no `Error listing informs`; a renamed `chats.id` → both inform
+  verbs 404 after `Error finding entity by ID`; Foundry-9's `properties.json`
+  = `{` → V8's `Expected property name or '}' in JSON at position 1 (line 1
+  column 2)` on the read path (#146 closed live); a 101-character project name
+  refused with zod's `too_big` bytes and v4's three ERRORs before the WARN,
+  76 stores unmoved.
+- **The Google `content.text` stream fallback** delivered a posed text with
+  v4's `No parts found…` WARN — once the posed model was a THINKING name (the
+  fallback's v4 gate; a non-thinking name correctly came back empty).
+- **P4.158 on a real 1.28 GB archive** (8 m 29 s into the clone): Duane's
+  `personality.md` stripped from the ARCHIVE → one `Backfilled a managed file
+  …` WARN and the archived text read back; Xavier's renamed prompt and
+  re-filed scenario restored with NO duplicate beside them (the unification's
+  parsed-name fix); Owen pointed at Gary's vault → the claim WARN naming Gary
+  and a fresh vault. Three more backfills fired on REAL data — `manifesto.md`
+  for three pre-manifesto vaults whose rows carry `null` — writing `''`
+  exactly as v4's projection does (`managed-fields.ts:271`). A legacy SHARED
+  wardrobe row (planted on a tiny archive — Friday has none) landed in the
+  restored General (R-C's pre-applied pointer).
+- **P4.153 / #149 closed live:** a freshly `setup` instance carries 99 / 24 / 7
+  secondary indexes (the migrated copy 98 / 26 / 7; every name difference is
+  instance history; `idx_doc_mount_folders_mp_path` UNIQUE as ruled); a
+  duplicate profile name → 409 with `idx_connection_profiles_userId_name`
+  UNIQUE present; the same archive restored into it in **7 m 17 s** (2 h 26 m
+  on the morning walk); a reboot created and dropped nothing (`cmp`-identical
+  index dumps), zero WARN/ERROR.
+
+### Findings
+- **#150 — ORDER-PENDING (high):** a sibling database (mount-index or
+  llm-logs) that cannot be opened stops v5's boot (`database open failed:
+  sqlite error: file is not a database`); v4 retries three times and boots
+  DEGRADED without the partition (`mount-index-client.ts:102-149`, the
+  llm-logs twin, the integrity-check arm). v5's `PartitionUnavailable`
+  machinery is reachable only for a path-less instance.
+- **#151 — ORDER-PENDING (smalls):** v4's context middleware logs ERROR
+  `[PUT /api/v1/projects/…] Project document store unavailable {projectId,
+  officialMountPointId}` (and the group / character-vault twins) for every
+  store-unavailable 503 (`context.ts:176-205`); v5 answers the 503 body
+  silently.
+- **#152 — ORDER-PENDING:** a `.qtap` import wrote a memory with
+  `importance: 5` and `kind: "bogus-kind"`; v4's `MemorySchema` refuses it in
+  `_create` and the import WARNs and skips. P4.155's R-B covered projects and
+  groups only.
+
+### Still owed
+The standing queue (the Lantern per-turn budget, a real token-limit turn, the
+four planted proofs, dedup/summaries, the Brahma deep query, #101, the
+compression re-measure); #150's re-run of C3 once it lands; the restore
+census counted against a v4 log of the same restore.
