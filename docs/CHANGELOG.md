@@ -255,6 +255,12 @@ P4.150 B (the P4.D253 OPEN item). `RefusingTextExtractor`'s stderr notice said t
 _No crate versions bumped._
 
 P4.150 A4. `qtap_schema_embed_guard` and `public_schemas_vendor_guard` now locate the v4 checkout through `QT_V4_CHECKOUT` first (the variable every pinned gate exports and the three other live-checkout guards read), keeping `QT_V4_ROOT` as a legacy alias, then `$HOME/source/quilltap-server`. A pinned gate no longer compares these two against a dirty live checkout. The precedence is a pure `locate_v4_root` with a unit pin in each file; both guards green against the `07b8f0209` pin with only `QT_V4_CHECKOUT` set, and both SKIP on an empty directory (proving the variable is read).
+#### 2026-10-05 — test(harness): pin the swipe-dedup standing inform at tier 3 in regenerate_swipe (P4.151 B2)
+
+_No crate versions bumped._
+
+Harness-only (P4.151 B2). `regenerate-swipe-tier3.json` gains a standing inform in the ungrouped chat whose first delivery is the swiped message itself, so it is both re-applied and in force. The family asserts that v4's recorded request carries it exactly once, ahead of the one re-applied line, and the `chat_informs` row floor moves 7 → 8. Dropping the dedup filter in `merge_for_swipe` now fails the family (no canned stream matches the doubled request); before, the filter was never exercised at tier 3. No version moves.
+
 #### 2026-10-05 — test(harness): drive the voice-mode ensure with TEXT / REAL / BLOB legacy cells and compare their storage class first (P4.151 A2)
 
 _No crate versions bumped._

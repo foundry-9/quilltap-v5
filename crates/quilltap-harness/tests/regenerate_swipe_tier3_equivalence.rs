@@ -421,6 +421,32 @@ fn run_corpus(label: &str, emit_progress: bool) -> Option<[Value; 5]> {
                  The sibling swipe read this.\n\n---\n\nThe target line read this."),
             "the standing row must lead the grouped swipe's re-applied block"
         );
+        // P4.151 B2: the swipe-dedup case at tier 3 — a STANDING row whose
+        // first delivery IS the swiped message sits in both the consumed set
+        // and the seat's in-force set; v4's `mergeForSwipe` carries it ONCE,
+        // ahead of the re-applied line. A dropped `seen` filter doubles it,
+        // which misses v4's canned key (the key is the request).
+        let standing = "Standing: the lighthouse keeps its own hours.";
+        let ungrouped: Vec<&&str> = requests
+            .iter()
+            .filter(|c| c.contains("The only line this target read."))
+            .collect();
+        assert_eq!(
+            ungrouped.len(),
+            1,
+            "exactly one request carries the ungrouped swipe's block"
+        );
+        assert_eq!(
+            ungrouped[0].matches(standing).count(),
+            1,
+            "the dedup: the standing row first delivered by the swiped message rides ONCE"
+        );
+        assert!(
+            ungrouped[0].contains(&format!(
+                "{standing}\n\n---\n\nThe only line this target read."
+            )),
+            "the standing row must lead the ungrouped swipe's re-applied block"
+        );
     }
 
     let scratch =
@@ -689,8 +715,9 @@ fn run_corpus(label: &str, emit_progress: bool) -> Option<[Value; 5]> {
     assert_rows_eq("chat_informs", &got_informs, &want_informs);
     {
         let rows = got_informs["rows"].as_array().expect("chat_informs rows");
-        // Seven since P4.D249: the standing row a swipe now carries too.
-        assert_eq!(rows.len(), 7, "the planted chat_informs rows went missing");
+        // Seven since P4.D249 (the standing row a swipe now carries too);
+        // eight since P4.151 B2 (the swipe-dedup standing row).
+        assert_eq!(rows.len(), 8, "the planted chat_informs rows went missing");
         for r in rows {
             assert_eq!(
                 r["updatedAt"], r["createdAt"],

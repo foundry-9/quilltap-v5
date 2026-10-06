@@ -167478,3 +167478,25 @@ tree clean). Regen staging: `/tmp/p4151/`. **No version moves on any commit**
   three survive by construction — rows s1..s4 are INTEGER/NULL only.
 - Recipe: `cd /tmp/qt-v4-pin-p4151-07b8f0209 && QT_FIXTURE_OUT_DIR=/tmp/p4151/voice-mode npx tsx $V5W/harness/oracle/cases/chat-settings-voice-mode-ensure.ts > /tmp/p4151/oracle-voice-mode-ensure.ndjson`
   (Node 24); `QT_ORACLE_VOICE_MODE_ENSURE=… QT_FIXTURE_VOICE_MODE_ENSURE_DIR=/tmp/p4151/voice-mode cargo test -p quilltap-harness --test chat_settings_voice_mode_ensure_equivalence`.
+
+### Unit B2 — the swipe-dedup standing row in `regenerate_swipe_tier3`
+- `regenerate-swipe-tier3.json` `informs` gains `aa0c0008` (`permanent: true`,
+  chat `aa000006`, seat `aa0a0006`, createdAt `…05.700Z`,
+  `consumedByMessageId` = `aa060001-…-000000000601`, the swiped message), text
+  `Standing: the lighthouse keeps its own hours.`
+- Rust: the request carrying `The only line this target read.` is unique, holds
+  the standing text exactly ONCE, and carries
+  `{standing}\n\n---\n\nThe only line this target read.`; the `chat_informs`
+  floor 7 → 8 (the new row joins the "a swipe never writes" comparand).
+- Green at the pin (2/2 tests; the oracle NDJSON carries the standing text in
+  2 lines — the canned request and the `chat_informs` dump).
+- **Mutation:** `merge_for_swipe` with the `seen` filter dropped →
+  BOTH tests RED (`inform_reapply_target_only unexpected error: no canned stream
+  registered … 4 message(s)` — the doubled passage misses v4's key). On the
+  pre-B2 corpus it survives (no standing row was ever in the consumed set).
+  Reverted (zero core hunks).
+- Recipe: the file header's (TMPO mirror `/tmp/p4151/regen-oracle`, builder →
+  `/tmp/p4151/regen-{main,mount}.db`, jest with `TZ=UTC`), run from the pin.
+  The builder's `Failed to bump transcript version … no such column` ERROR line
+  is pre-existing builder noise (the builder's tables predate the column), not
+  this unit's.

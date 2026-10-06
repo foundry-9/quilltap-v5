@@ -720,6 +720,18 @@
       "consumedByMessageId": "aa0f0005-0000-4000-8000-0000000000f5",
       "permanent": true,
       "_comment": "P4.D249 (v4 52d6e7ecd): a STANDING row, posted LAST and first delivered by a message OUTSIDE the swipe group — v4 now reads the seat's in-force set on a swipe too, so it rides the re-roll anyway, AHEAD of the re-applied rows."
+    },
+    {
+      "id": "aa0c0008-0000-4000-8000-000000000008",
+      "chatId": "aa000006-0000-4000-8000-000000000006",
+      "batchId": "aa0d0008-0000-4000-8000-000000000008",
+      "participantId": "aa0a0006-0000-4000-8000-0000000000a6",
+      "contentMarkdown": "Standing: the lighthouse keeps its own hours.",
+      "createdAt": "2026-01-02T03:04:05.700Z",
+      "consumedAt": "2026-01-02T03:04:07.000Z",
+      "consumedByMessageId": "aa060001-0000-4000-8000-000000000601",
+      "permanent": true,
+      "_comment": "P4.151 B2: a STANDING row whose first delivery IS the swiped message, so it sits in BOTH the consumed-by-the-group set and the seat's in-force set — mergeForSwipe must carry it ONCE (the standing rows first, then the re-applied rows minus the standing ids). The ungrouped target's request carries it exactly once, ahead of the one re-applied line."
     }
   ]
 }
