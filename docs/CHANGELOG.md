@@ -228,6 +228,12 @@ The overlay's find-by-id / list hydration (`hydrate_one`) now renders a `propert
 _Versions: core 0.0.1236._
 
 `v8_json_parse_message` is now a full V8 `JsonParser` walk over UTF-16 units instead of a start-of-input check. It reproduces V8's fixed templates for failures inside a value (`Expected property name or '}' in JSON at position N (line L column C)`, the comma/bracket/colon/double-quoted-key messages, unterminated strings, bad escapes and control characters, the number errors, trailing input), the `\r` and `\r\n` line rule, and the special whole-source strings (`"undefined" is not valid JSON` and kin, which the old twin misworded). It answers `None` only where V8 accepts the text. New tier-1 family `v8_json_parse_message_equivalence` over a 149-row corpus recorded with Node 24.13.1 (`harness/oracle/cases/v8-json-parse-messages.ts`); 103 of 145 rows were red on the old twin. The family also pins, both ways, the three shapes serde refuses but V8 accepts (the callers' remaining serde fallback). `text_http_errors` gains `ok_json_missing_comma` on all ten providers (V8's sentence now reaches `sdk_response_shape`'s body parse; 15 divergences red on the old twin) and the Google stream-path `content.text` row.
+#### 2026-10-06 — test(host): the no-victims collapse arm plants ONE explicit roll instead of `split_once`-cutting the two-roll statement (P4.157 R-I)
+
+_Test-only change (no crate source; no version moves)._
+
+- `host_boot_hardness.rs`'s `the_collapses_no_victims_exit_logs_no_summary` built its plant by cutting `TWO_AVATAR_ROLLS` at the first `"), "`; it now plants the new `ONE_AVATAR_ROLL` const, the explicit-row shape every other arm uses. No behaviour change; the arm still reds when the collapse pass is disabled (mutation-proven).
+
 #### 2026-10-06 — test(harness): ONE `common::v4_root` for the five live-checkout guards (P4.157 R-H)
 
 _Harness-only change (no crate source; no version moves — the harness is frozen)._

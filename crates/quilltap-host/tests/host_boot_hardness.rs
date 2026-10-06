@@ -958,6 +958,18 @@ const TWO_AVATAR_ROLLS: &str = "INSERT INTO files \
         'GENERATED', 'IMAGE', 'Friday in her study', 'flux-dev', 'files/roll-new.webp', \
         '2026-06-01T00:00:00.000Z', '2026-06-01T00:00:00.000Z');";
 
+/// The no-victims plant: [`TWO_AVATAR_ROLLS`]'s older row alone, as an
+/// explicit row (P4.157 R-I — it used to be cut out of that statement with a
+/// `split_once("), ")`, which silently became a different plant if the row
+/// list's punctuation moved).
+const ONE_AVATAR_ROLL: &str = "INSERT INTO files \
+       (id, userId, sha256, originalFilename, mimeType, size, source, category, \
+        generationPrompt, generationModel, storageKey, createdAt, updatedAt) \
+     VALUES \
+       ('roll-old', 'user-1', 'ab', 'avatar_Friday_roll-old.webp', 'image/webp', 12, \
+        'GENERATED', 'IMAGE', 'Friday in her study', 'flux-dev', 'files/roll-old.webp', \
+        '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');";
+
 /// The two rolls' `(id, generationKey)` and whether the collapse's ledger row
 /// exists, read off the main partition after the boot.
 fn collapse_readback(data: &Path) -> (Vec<(String, Option<String>)>, bool) {
@@ -1263,11 +1275,7 @@ async fn a_clean_collapse_logs_v4s_one_success_line() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn the_collapses_no_victims_exit_logs_no_summary() {
     let _serial = SERIAL.lock().await;
-    let one_roll = TWO_AVATAR_ROLLS
-        .split_once("), ")
-        .map(|(head, _)| format!("{head});"))
-        .unwrap();
-    let booted = boot_planted(Substrate::Fresh, &[(MAIN, &one_roll)]).await;
+    let booted = boot_planted(Substrate::Fresh, &[(MAIN, ONE_AVATAR_ROLL)]).await;
     booted.host();
     booted.assert_silent("Collapsed duplicate avatar rolls");
     booted.assert_silent("into one image per configuration");

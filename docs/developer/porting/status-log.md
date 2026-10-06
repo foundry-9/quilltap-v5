@@ -169553,3 +169553,13 @@ harness is frozen at `0.0.1110`).
   now SKIP naming `/nonexistent-p4157` — before, they ignored `QT_V4_ROOT` and
   compared against the live checkout. Green at the pin (`QT_V4_CHECKOUT` +
   `QT_V4_ROOT` = the TARGET pin): 2 + 3 + 1 + 3 + 2 tests ok.
+
+### Unit R-I — the `split_once` plant (Tier 2 item 8)
+- The test lives in `crates/quilltap-host/tests/host_boot_hardness.rs`, NOT
+  `host_boot_avatar_rolls_collapse.rs` as the order's R-I / ownership row name
+  it (`grep -rn the_collapses_no_victims_exit_logs_no_summary crates/` — one
+  hit). No lane owns `host_boot_hardness.rs` this round; the hunk is that ONE
+  test plus a new `ONE_AVATAR_ROLL` const beside `TWO_AVATAR_ROLLS`.
+- Mutation (reverted): `collapse_duplicate_avatar_rolls` returning
+  `AlreadyCompleted` before its body → the arm RED at its `the lone roll is
+  keyed` assert. Green after: the arm + `a_clean_collapse_logs_v4s_one_success_line`.
