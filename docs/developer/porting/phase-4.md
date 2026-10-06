@@ -7151,7 +7151,71 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
-## The `07b8f0209` fresh-instance-indexes + follow-ups smalls round + the `94fbb1ae3` drift catch-up (P4.D254 ∥ P4.153 ∥ P4.154 ∥ P4.155 ∥ P4.156 ∥ P4.157 ∥ P4.158) — ORDERED 2026-10-06, AMENDED 2026-10-06
+## The `07b8f0209` fresh-instance-indexes + follow-ups smalls round + the `94fbb1ae3` drift catch-up (P4.D254 ∥ P4.153 ∥ P4.154 ∥ P4.155 ∥ P4.156 ∥ P4.157 ∥ P4.158) — UNIFIED 2026-10-06 (ordered and amended 2026-10-06)
+
+**UNIFIED on main (2026-10-06) — ALL SEVEN LANES LANDED; the oracle baseline
+MOVES `07b8f0209` → `94fbb1ae3`** (the ledger's one §3 row
+ABSORBED(P4.D254); §3 EMPTY; v4 AT the baseline at both probes — NO PIN
+REQUIRED). Round record: `status-log.md` → "The `94fbb1ae3`
+fresh-instance-indexes + follow-ups smalls round — UNIFICATION record"; each
+order's **Unification:** paragraph lists exactly what stays OPEN. Dogfood
+#145 / #146 / #149 FIXED. **The §3 review (six parallel readers + the
+unifier's own reads): ONE BLOCKING lane defect, ONE false claim, ONE
+planning gap — all fixed with tests:** P4.158's completeness backfill matched
+`Prompts/` / `Scenarios/` entries by PROJECTED path, so a renamed prompt or a
+heading-titled scenario was written AGAIN on every `replace` restore (a second
+default prompt) — now matched by parsed name (`ab752bc12`, red-first unit
+pin); P4.154's "no V8 failure shape without a template remains" was false —
+two classes (a broken literal's token type, an escape above U+00FF) recorded
+on real Node and fixed (`a694913f5`, red-first 8 + 8); P4.153's re-aim left
+nothing comparing v5's tables with v4's LIVE generateDDL, so D23's tripwire
+could not fire — NEW (1d) arm, required, mutation-proven (`c3623a962`). Every
+recorded HANDOFF landed (the inform-consume line on its home — the
+preserved-partial path's silent `unwrap_or(0)` with it; §S.1's store-create
+homes; the census rows; `read_properties` through the twin with three
+families' elisions lifted; the restore precondition; the importer's inform
+line) EXCEPT §S.2's whole-row inform validator, deferred by name. Gate: the
+full sweep from the pin 587 ok / 3 standing / 3 refused of 593; Tier R 271/0
+(in the sweep and inside the suite); `cargo test --workspace` 673 binaries /
+4,408 / 6 (the three standing, the recorded `doc_mount_files_tier2`
+artifact, and the unifier's own census catch — classified, 4/4) / 3 ignored,
+zero SKIP; SPA 467 / 8,889, lint + build clean; full Playwright 359 / 2 / 6 (12.7 m) — both reds green by file alone (the voice `ask` beat 3/3; the recorded `salon-regenerate-stream-flow` intermittent 2/3 with a different beat, then 3/3). Versions: core
+0.0.1242, host 0.0.187, SPA 0.5.811; web 0.0.222, cli 0.0.29, tauri 0.0.9;
+harness frozen 0.0.1110.
+
+**NEXT (in order):**
+1. **The owed dogfood pass** — this round's 💸 rows (the round record lists
+   them), headlined by P4.153's acceptance measurement (the 1.27 GB Friday
+   archive `replace`-restored into a freshly `setup` instance — 2 h 26 m
+   before) and `94fbb1ae3`'s own motivating case (the standing inform on
+   Friday re-posted: header + passage as the LAST trailing section, the reply
+   no longer disbelieving it); then a restore over a vault with a renamed
+   prompt and a heading-titled scenario (NO duplicate), the V8 sentence on
+   both overlay paths, the three refused-import ERRORs. Plus the standing
+   queue (the Lantern budget, a real token-limit turn, the four planted
+   proofs, dedup/summaries, the Brahma deep query, #101, the compression
+   re-measure).
+2. **A follow-ups round** from this unification's OPEN items (each order's
+   **Unification:** paragraph), headlined by: (a) the index family on
+   instances provisioned BEFORE this round — a boot ensure replaying
+   `migration_indexes.json` with `IF NOT EXISTS`, guarded by duplicate
+   pre-checks for the five UNIQUE indexes (its own order; correctness, not
+   only speed); (b) the restore's validation gaps — §S.2's whole-row
+   `ChatInformSchema` twin and the project/group whole-entity validation
+   (P4.155's R-B), ONE derived archive + differential; R-E's
+   `createExpectError` twin; (c) the three shape-only `is_uuid` gates
+   (`chat_post_office`, `chat_scenario`, `chat_participants`) onto
+   `zod_uuid_ok`, each surface's oracle re-run; (d) the restore backfill's
+   untested managed files and the log census's key ORDER; (e) the smalls
+   (the V8 twin to a neutral home, the `Consumed informs …` keys, the
+   `read_properties` ERROR line's keys + label, the 23 uncompared plugin
+   WARN rows, the third Google parts join, the census adapter limit).
+   Rulings for the human FIRST: P4.156's R-E (a test seam inside the fold
+   pass for two unit-pinned lines, or leave them); the 5c sync ruling and the
+   five dead API-key wrappers (standing).
+3. **A drift catch-up when v4 moves** (`/driftcheck` first — v4 was AT the
+   baseline at both of this unification's probes).
+
 
 **AMENDMENT (2026-10-06, before any lane launched):** `/driftcheck` recorded
 v4 `94fbb1ae3` ("Inform: deliver as a trailing section, under a vouching

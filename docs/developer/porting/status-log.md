@@ -169779,3 +169779,186 @@ harness is frozen at `0.0.1110`).
   optimizer after P4.154's v8 change) and run the FIVE pair readers by name;
   `regenerate_swipe_tier3` and `help_tree_equivalence` re-run at the TARGET on
   the union (§S.7) — `regenerate_swipe_tier3` no longer needs `TZ=UTC`.
+
+## The `94fbb1ae3` fresh-instance-indexes + follow-ups smalls round — UNIFICATION record (2026-10-06)
+
+**P4.D254 ∥ P4.156 ∥ P4.155 ∥ P4.158 ∥ P4.153 ∥ P4.154 ∥ P4.157 — ALL SEVEN
+LANDED; the oracle baseline MOVES `07b8f0209` → `94fbb1ae3`** (the ledger's
+one §3 row ABSORBED(P4.D254)). Branch `unify/94fbb1ae3-smalls`, cherry-picked
+in the ordered sequence (40 lane commits; conflicts only in `CHANGELOG.md` /
+`status-log.md` — union-merged, each lane record verified intact and
+contiguous — and the version files, recounted). The §2 probe PASSED at the
+start (v4 `main` HEAD `94fbb1ae3`, tree clean, both logs empty) and at the
+close (re-run before the fast-forward: branch `main`, HEAD `94fbb1ae3`, tree clean, `94fbb1ae3..main` and `1a2b2164c..bugfix` empty after `git fetch --all`). Every regen from `/tmp/qt-v4-pin-unify-94fbb1ae3`
+(`4.10.0-dev.112`, the three symlink classes, verified by `rev-parse` +
+`ls -ld`).
+
+### The §3 review (six parallel readers + the unifier's own reads)
+
+**ONE BLOCKING defect in lane code, fixed (`ab752bc12`) — the one that would
+have shipped:** P4.158's preserve-arm completeness backfill decided a
+`Prompts/` / `Scenarios/` entry was missing by its PROJECTED path
+(`sanitize(name).md`). The archived row's arrays are read off whatever files
+the vault holds — a prompt's name is its frontmatter `name`, a scenario's
+title falls back to its first `# heading` — so a renamed prompt or a
+hand-written `Scenarios/beach.md` was written AGAIN on every `replace`
+restore: a duplicate scenario under a second stable id, and for a renamed
+default prompt a SECOND default, with a false "Backfilled …" WARN. Every
+committed archive uses projection names, so no corpus could see it; the first
+Friday-copy restore would have. The backfill now matches entries by the
+name/title the vault reader parses (`vault_read_overlay::vault_entry_names`,
+strict — a failed listing fails the backfill into its one warning rather than
+reading as an empty folder). Pinned v5-alone (v4 never preserves):
+`backfill_tests::a_vault_entry_under_its_own_file_name_is_not_duplicated`,
+RED with the name filters removed, green after.
+
+**ONE false claim, fixed (`a694913f5`):** P4.154 recorded "no V8 failure
+shape without a fixed template remains (item 9 EMPTY by measurement)". An
+independent fuzz (the twin translated to JS, 500k random inputs against real
+Node 24.13.1) found two classes the corpus never posed: V8's `ScanLiteral`
+reports a broken literal's TOKEN TYPE (`t1` / `t-` / `{"a":nul1}` →
+`Unexpected number in JSON at position N …`, `[fals"]` → `Unexpected string
+…`), and an escape of a unit above U+00FF is V8's context-window token, not
+`Bad escaped character` (`"\’"` — a model escaping a curly quote on the
+`parseLLMJson` path). Nine recorded rows added; RED-FIRST 8 + 8 on the lane's
+twin; green after (159 rows / 3 lossy; the overlay pin 145 rows).
+
+**ONE planning gap, fixed (`c3623a962`):** P4.153's order re-aimed
+`provisioning_equivalence`'s (1a) at the COMMITTED `fresh_schema.json` and
+made (1b) compare column SETS, so nothing compared v5's table surface with
+v4's LIVE generateDDL any more — CLAUDE.md's D23 tripwire ("a red
+`provisioning_equivalence` after a drift check") could not fire; a v4 change
+to a column's type, DEFAULT, NOT NULL or position would have passed green.
+NEW arm (1d): the recipe re-runs `dump-fresh-schema.ts` into
+`QT_FRESH_SCHEMA_LIVE` (REQUIRED — no silent skip) and the committed dump
+must equal it. Mutation-proven: one `DEFAULT 0` → `DEFAULT 1` in the live
+dump reddens (1d); the unset variable panics with the recipe.
+
+**The union's own reds — every recorded HANDOFF nobody else could take, all
+landed (`a69dc8bdf`, `c4bc0bbe2`, `7b657aa23`):** `orchestrator_tier3`'s
+poisoned-consume assertion (P4.156's `mark_consumed` now logs on the WRITER
+thread and answers `Ok(0)`; the finalizer's caller-side copy folded onto
+`informs_marked_consumed_or_zero`, the assertion re-aimed) — and with it the
+preserved-partial path's SILENT `.unwrap_or(0)` (a writer failure now logs
+v4's line); `system_restore_state`'s "pre-index" precondition
+(`AlreadyIndexed` on a fresh target since P4.153); the doc-mount census's two
+backfill reads (`no-v4-counterpart`, 156 → 158); §S.1's two store-create
+homes; the importer's failed inform create logging `Error creating entity`;
+`read_properties` through the V8 twin with the three families'
+`<parse-detail>` elisions LIFTED (green from the pin, tails verbatim).
+
+**Should-fixes landed:** P4.155's two `*_null_tags` comments claimed
+red-first where its own record measured them GREEN on unported core; two
+stale "own system block" module docs (`db/chat_informs.rs`,
+`api/chat_informs.rs` — the lane's handoff named one); `host.rs`'s
+"fresh_schema.json does not carry it" comment; `optimizer.rs`'s stale
+divergence bullet; the web fixture doc's blob count.
+
+**Recorded, not fixed (each order's Unification paragraph):** the §S.2 whole-row inform validator for the
+restore (NOT landed — it needs a derived archive + differential; the restore
+still checks `permanent` only); the restore's project/group arms validate the
+BAG only where v4's `_create` validates the whole entity (P4.155's R-B; a
+pre-existing divergence); R-E's differential twin (a `createExpectError` op in
+`projects-tier2`); instances provisioned BEFORE this round never gain the
+migration index family (no boot backfill — a follow-up order); the backfill's
+other managed files untested (only `description.md` is exercised); the restore
+log census compares key SETS, not ORDER (serde `Map` equality — `Restore
+operation completed` logs `warningCount` before `summary` where v4 logs
+`summary` first, forced by the capture parser's `…Json`-to-end rule); three
+shape-only `is_uuid` gates (`chat_post_office`, `chat_scenario`,
+`chat_participants`) accept ids `z.uuid()` refuses; the V8 twin's home
+(`generators::optimizer`, imported by the db layer); the two `Consumed informs
+…` DEBUG lines' snake_case keys; P4.156's R-E reads (a ruling). Each order's
+**Unification:** paragraph lists its own.
+
+### Wires and §S
+
+- §S.1 (P4.155 → P4.156): the two store-create homes, the lane-local copy
+  repointed, `fallback_home_guard` +4 (`a69dc8bdf`).
+- §S.2 (P4.158 → P4.156): NOT landed (above) — deferred loudly, not coded
+  untested.
+- §S.3: the rebuilt `character-generators-*` pair's five readers + the three
+  generator oracles regenerated on the union AFTER both V8-twin changes — all
+  `ok` in the full sweep.
+- §S.4: `provisioning_equivalence` (both arms + the new (1d)),
+  `host_boot_fresh_indexes` 8/8, `system_restore_state` 3/3 over a target
+  carrying the index family — no row change.
+- §S.5: versions recounted — core 0.0.1242 (highest lane 0.0.1241, +1), host
+  0.0.187 (P4.153's 0.0.186, +1 — the `host.rs` comment), SPA 0.5.811
+  (P4.D254); web 0.0.222, cli 0.0.29, tauri 0.0.9 unchanged; harness frozen
+  0.0.1110.
+- §S.6: #145 / #146 / #149 → FIXED in `dogfood-findings.md`, the 2026-10-06
+  standing notes struck; the candidate v4 filings below.
+- §S.7: every §R.13 family green at the target on the union; `help/` 129
+  files md5-identical to the pin; the ledger moved (§1 baseline `94fbb1ae3`,
+  §3 EMPTY, the row in §6).
+- The workspace gate's own catch (`e902b9ace`): the backfill fix's two new
+  folder listings were unclassified in `doc_mount_fallback_sites_census` (2
+  of 4 red) — classified `no-v4-counterpart` (counts 3 → 5, 158 → 160).
+
+### The gate
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean, AND with `--features quilltap-core/native-transport`;
+  `cargo build --release` clean.
+- **The full sweep from the pin** (`recipe_sweep.py --run-all --v4
+  /tmp/qt-v4-pin-unify-94fbb1ae3`): **587 ok / 3 run_failed / 1
+  refused_repo_write / 2 refused_non_extractable of 593** — the reds EXACTLY
+  the standing three (`ariel_writers_tier3`, `memory_processor_tier3`,
+  `search_replace`), the refusals the standing three (`backup_uuid_remap`,
+  `avatar_rolls_routes`, `generator_sse_wire`); no lane- or unifier-caused
+  red. Every round family `ok` by name (the eight §R.13 families, the
+  chat-informs three, `fold_episode_tier3`, `salon_mutations`,
+  `system_import_state`, `system_restore_state`, `provisioning_equivalence`,
+  the V8 family, the three generator families, the projects/groups four,
+  `repository_zod_messages`, `chat_settings_voice_mode_ensure`,
+  `file_content_extractor`, the guards and censuses). **Tier R
+  (`cli_differential`): 271 cases / 0 failures** — in the sweep AND inside
+  the workspace suite (the harvested `QT_NODE=$N/node` literal replaced by
+  the real path, clearing the recorded env-block artifact).
+- **The workspace suite** (`QT_V4_CHECKOUT=QT_V4_ROOT=<pin> TZ=UTC
+  CARGO_INCREMENTAL=0 cargo test --workspace --no-fail-fast` with the
+  763-variable env block harvested from every family's run stage, eight
+  dup-valued names withheld): **673 test binaries / 4,408 passed / 6 failed /
+  3 ignored, zero `SKIP:` lines.** The six: the three standing families; the
+  recorded env-block artifact `doc_mount_files_tier2` (`ok` in the sweep);
+  and `doc_mount_fallback_sites_census` ×2 — the unifier's own backfill fix,
+  classified (above) and 4/4 green by name. Confirmed RUN by name:
+  `text_http_errors` (897 rows), `image_dialects`, `restore_vintage_state`
+  6/6, `host_boot_fresh_indexes` 8/8, the V8 family 2/2,
+  `provisioning_equivalence` 3/3 (with `QT_FRESH_SCHEMA_LIVE`),
+  `system_restore_state` 3/3, `orchestrator_tier3`, `fallback_home_guard`,
+  `zod_issues_home_guard` 4/4, `chat_informs_in_force_census` 4/4,
+  `host_boot_hardness` 26/26, `characters_generators_routes`;
+  `quilltap-core --lib` 3,103 / 0 (incl. the new backfill pin).
+  `recipe_sweep.py --self-test` 0 failures.
+- **SPA:** `npm run lint` + `npm test` (**467 files / 8,889, 0 failed**) +
+  `npm run build` clean. full Playwright **359 passed / 2 failed / 6 skipped (12.7 m)** — the six skips the standing parks; the two reds re-run by FILE alone afterwards, one invocation at a time: `salon-impersonation-voice-flow` (its `ask` beat timed out waiting for the posted line's bubble) **3/3 alone**; `salon-regenerate-stream-flow`, the recorded intermittent, **2/3 alone with a DIFFERENT beat red** (the status strip never cleared) **then 3/3** — the full run's red beat (the new line lands) green both times, and the spec touches no inform. The `salon-regenerate-stream-flow` counter: 7 of 12 by-file runs green since 2026-09-30.
+
+### Candidate v4 filings (the human files)
+
+- P4.153: a real v4 first boot logs ~2,400 ERRORs — the sample-content seed
+  races a not-yet-ensured `doc_mount_files` (`no such table` ×30; the two
+  sample characters are NOT created).
+- P4.158: 22f prepares its blob INSERT OUTSIDE the per-blob `try`
+  (`restore.ts:692`) — one unpreparable statement aborts the whole restore;
+  22f-bis files a shared legacy archetype into the target's WIPED General
+  (`GENERAL_POINTER_PREAPPLY`).
+
+### 💸 for the next `/dogfood`
+
+The seven lanes' rows (each lane record's 💸 block), headlined by P4.153's
+acceptance measurement — the 1.27 GB Friday archive `replace`-restored into a
+freshly `setup` instance (2 h 26 m before) and that instance's `sqlite_master`
+diffed against the migrated copy; then: a standing inform re-posted on the
+Friday copy (the header + passage as the LAST trailing section; the reply no
+longer disbelieving it — `94fbb1ae3`'s own motivating case) and a chained
+inform-only turn; the `[Inform] Delivering …` line with camelCase keys; a
+Friday-copy backup with one managed file removed from one vault AND a renamed
+prompt / heading-titled scenario in another, `replace`-restored (one
+`Backfilled …` WARN, NO duplicate entry); two characters on one vault → the
+second on a fresh vault with the claim WARN; a 101-character project name in
+a `.qtap` import refused with three ERRORs; Foundry-9's `properties.json` set
+to `{` → V8's sentence on BOTH the read and the write path; a posed Gemini
+`blockReason`-only refusal; a duplicate connection-profile name refused on a
+fresh instance.

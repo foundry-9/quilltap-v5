@@ -19,48 +19,58 @@ write it** — a lane that finds the probe failing STOPs and reports instead.
 _Updated only by `/driftcheck` and `/unify`. Every field here is what the §2
 probe verifies against._
 
-- **Oracle baseline: `07b8f0209`**: "Impersonated-line voice: three modes,
-  no model call until asked" (v4 main, 2026-10-04 22:43, `4.10.0-dev.111`),
-  adopted when the `07b8f0209` two-commit drift catch-up round was unified,
-  all three lanes (P4.D251 ∥ P4.D252 ∥ P4.D253, 2026-10-05). Both rows it
-  absorbed are retired to §6: `a434c715b` ABSORBED(P4.D253) for bug 177 +
-  NO-PORT-RATIFIED(P4.D253) for bug 178; `07b8f0209` ABSORBED(P4.D251,
-  P4.D252). CLAUDE.md's Status bullet agrees.
-- **Checked:** 2026-10-06 (`/driftcheck`, main-checkout session; `git fetch
-  --all` first). Previous checks: 2026-10-05 (`/unify` of the `07b8f0209`
-  follow-ups + restore round — the §2 probe PASSED at its start and close,
-  every regen from `/tmp/qt-v4-pin-unify-07b8f0209`) and 2026-10-05 (`/unify`
-  of the `07b8f0209` round).
-- **v4 `main` HEAD at check: `94fbb1ae3`** ("Inform: deliver as a trailing
-  section, under a vouching header", 2026-10-06 09:01, `4.10.0-dev.112`) —
-  ONE commit past the baseline; `origin/main` agrees.
+- **Oracle baseline: `94fbb1ae3`**: "Inform: deliver as a trailing
+  section, under a vouching header" (v4 main, 2026-10-06 09:01,
+  `4.10.0-dev.112`), adopted when the `94fbb1ae3` fresh-instance-indexes +
+  follow-ups smalls round was unified, all seven lanes (P4.D254 ∥ P4.153 ∥
+  P4.154 ∥ P4.155 ∥ P4.156 ∥ P4.157 ∥ P4.158, 2026-10-06). The one row it
+  absorbed is retired to §6: `94fbb1ae3` ABSORBED(P4.D254). CLAUDE.md's
+  Status bullet agrees.
+- **Checked:** 2026-10-06 (`/unify` of the `94fbb1ae3` smalls round,
+  main-checkout session; `git fetch --all` first) — the §2 probe PASSED at
+  its start and close, every regen from `/tmp/qt-v4-pin-unify-94fbb1ae3`.
+  Previous checks: 2026-10-06 (`/driftcheck`, which recorded `94fbb1ae3`)
+  and 2026-10-05 (`/unify` of the `07b8f0209` follow-ups + restore round).
+- **v4 `main` HEAD at check: `94fbb1ae3`** — AT the baseline; `origin/main`
+  agrees.
 - **v4 `bugfix` tip at check:** `1a2b2164c` ("bugfix: started 4.9.2 bug
   branch"), UNMOVED; `1a2b2164c..bugfix` and `..origin/bugfix` empty.
   **`release` tip:** `8fbf2afe0` ("release: 4.9.2"), UNMOVED; still no
   `release: 4.10.0` squash.
 - **Checkout at check:** branch **`main`**, tree **CLEAN**.
-- **Verdict: DRIFT PENDING — 1 commit** (§3: `94fbb1ae3`, PORT).
-- **Regen rule: PIN REQUIRED at `07b8f0209`** — HEAD is past the baseline
-  (§5.1). Every oracle that builds a context with an inform in it
-  (`inform-block`, `build_context_tier3`, `orchestrator_tier3`,
-  `regenerate_swipe_tier3`, the tool-loop families) records the NEW
-  placement and header from the live checkout. SDKs unmoved
-  (`git diff 07b8f0209 94fbb1ae3 -- plugins/ packages/` = the version stamp
-  only). **The P4.153–P4.158 round** (ordered against `07b8f0209` the same
-  morning) touches NONE of the commit's surfaces; `/setupphase` AMENDED it
-  (2026-10-06, before any lane launched) — P4.D254 added as a seventh lane
-  for this row, every lane's pin moved to the TARGET `94fbb1ae3`, the
-  baseline to move at the unification. (Correction to this check's first
-  write-up: the lanes' §2 probe reads THIS section's HEAD, so it passes at
-  `94fbb1ae3`; what had gone stale was the orders' own §R.2 text, now
-  rewritten.)
+- **Verdict: CURRENT — 0 commits** (§3 EMPTY).
+- **Regen rule: NO PIN REQUIRED** — v4 HEAD is AT the baseline and the tree
+  is clean (§5.1); a lane pins regardless when it wants a stable tree.
+  **New since this round:** `provisioning_equivalence` REQUIRES
+  `QT_FRESH_SCHEMA_LIVE` (a live `dump-fresh-schema.ts` run from the v4
+  tree, arm (1d) — the D23 generateDDL tripwire, restored at the
+  unification); a red there after a drift check is v4 drift — RE-DUMP
+  `fresh_schema.json`, never "fix" v5 back.
 - **Live-checkout guards at the baseline:** `builtin_prompt_templates_guard`,
-  `provider_sdk_version_guard`, `qtap_schema_embed_guard`, and the help
-  guards (`help_tree_equivalence` and kin — `07b8f0209` moved two pages,
-  re-vendored by P4.D251) GREEN against the pin at the unification.
+  `provider_sdk_version_guard`, `qtap_schema_embed_guard`,
+  `public_schemas_vendor_guard`, and the help guards (`help_tree_equivalence`
+  and kin — `94fbb1ae3` moved `help/inform.md`, re-vendored by P4.D254; 129
+  files md5-identical to the pin) GREEN against the pin at the unification.
+  Since P4.157 the five resolve the v4 tree through ONE `common::v4_root()`
+  (`QT_V4_CHECKOUT`, then `QT_V4_ROOT`, then the default checkout).
 - **The workspace gate at the baseline:** the round record in
   `status-log.md` has the counts.
-- **Schema state:** `fresh_schema.json` is the FIFTH D23 re-dump (P4.D251,
+- **Schema state (`94fbb1ae3`):** `fresh_schema.json` UNMOVED by
+  `94fbb1ae3` (no schema hunk) — and since the unification the (1d) arm
+  PROVES it equals v4's live generateDDL dump. **NEW committed artifact
+  (P4.153, dogfood #149): `services/provisioning/migration_indexes.json`** —
+  v4's MIGRATION-created index family (main 50 / mount-index 5 / llm-logs 5),
+  dumped through v4's REAL `MigrationRunner` over an empty data dir
+  (`dump-migration-indexes.ts`, D23: never hand-written) and replayed by
+  `provision_fresh_instance` after each partition's generateDDL statements;
+  `idx_doc_mount_folders_mp_path` is provisioned UNIQUE (v4's migration
+  shape — the human's ruling, 2026-10-06), skipping generateDDL's plain copy
+  of that one shared name. Re-dump it when v4 moves a migration that creates
+  an index; `provisioning_equivalence` (1c) reddens on the moved names first.
+  Instances provisioned BEFORE the round lack the family (no boot backfill —
+  a named follow-up). The paragraph below is the `07b8f0209` state, still
+  current for the table text:
+  `fresh_schema.json` is the FIFTH D23 re-dump (P4.D251,
   from the `07b8f0209` pin — EXACTLY one line moved: `chat_settings`'s
   `"impersonationVoiceRewrite" INTEGER DEFAULT 0` REPLACED in place by
   `"impersonationVoiceMode" TEXT DEFAULT 'off'`; the seed's column + value
@@ -91,9 +101,12 @@ probe verifies against._
   A LATER copy of live Friday may already be migrated by v4 — then v5's
   ensure is an exact no-op. The copy's `chat_informs` still lacks
   `permanent` (the `52d6e7ecd` round's note: the first v5 boot ALTERs it in).
-- **`help/**`:** whole at `07b8f0209` (129 files; P4.D251 re-vendored
-  `help/chat-settings-composer.md` + `help/impersonation-voice.md`).
-  **`docs/v4/`:** CURRENT at `07b8f0209` (P4.D251 re-vendored the seven
+- **`help/**`:** whole at `94fbb1ae3` (129 files; P4.D254 re-vendored
+  `help/inform.md`; before it P4.D251 `help/chat-settings-composer.md` +
+  `help/impersonation-voice.md`).
+  **`docs/v4/`:** CURRENT at `94fbb1ae3` (P4.D254 re-vendored `CHANGELOG.md`,
+  `developer/PROMPT_ARCHITECTURE.md`, `developer/features/salon-inform.md`;
+  before it P4.D251 the seven
   paths of both commits — `CHANGELOG.md`, `developer/API.md`,
   `developer/DDL.md`, `developer/features/complete/impersonation-voice-
   rewrite.md`, `developer/bugs.md`, `developer/bugs/fixed/bug-177-…` and
@@ -147,7 +160,6 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-| `94fbb1ae3` | 2026-10-06 | Inform: deliver as a trailing section, under a vouching header | **PORT** | **The prompt-path inform block, ported by P4.D205 (`f45a517a9` round) + P4.D249 (standing informs, `52d6e7ecd` round).** Shipped hunks: (1) `lib/chat/context/inform-block.ts` — new exported `INFORM_BLOCK_HEADER` (two concatenated sentences, byte-exact from the post-commit file) and `content` becomes `` `${HEADER}\n\n${bodies.join(SEPARATOR)}` `` — v5 `services/inform_block.rs::assemble_inform_block` (`:215`) still joins bare; the header now counts in the budget reservation automatically (`estimateTokens(informBlock)+4`, v5 `build_context.rs:3054`). (2) `lib/chat/context-manager.ts` — the `role: 'system'` push after identity reinforcement is DELETED (v5 `build_context.rs:3287-3310`, the P4.D205 block, carries v4's PRE-fix comment verbatim); the block is pushed into `trailingContextSections` AFTER recall / mail / progressions and BEFORE `turnSkipInstruction`; the no-new-user-message branch's condition gains `\|\| informBlock` and `trailingOnly` becomes `[anchor, progressions, informBlock, turnSkip]` (v5 `:3859`, the P4.D242 scene-note list) — so a chained/continue/autonomous/swipe turn with ONLY an inform now gets a trailing user message it never had; (3) a NEW `logger.debug('[Inform] Delivering inform block as a trailing context section', {chatId, participantId, onNewUserMessage, rowIds})` fired whenever the block is non-null, BEFORE the branch. Comment-only: `components/chat/InformDialog.tsx` (no SPA string moves — v5 `apps/web/src/app/chat/inform-dialog.ts` needs at most a comment). `help/inform.md` re-vendor (one page modified; the tree stays 129 files — `help_tree_equivalence` reddens against the LIVE checkout, green against the pin). `docs/v4/` mirror: `CHANGELOG.md`, `developer/PROMPT_ARCHITECTURE.md`, `developer/features/salon-inform.md`. Tests-only: two v4 jest files (the oracle's expected placement). NOT in the commit: no schema, no `chat-informs.repository.ts`, no consumption/finalizer change, no `regenerate-swipe.service.ts` hunk (the swipe reaches the trailing-only branch through `buildContext`), no `docs/developer/bugs.md` entry — **not a CONVERGENCE** (no port filing involved). Expect the tier-1 `inform_block_equivalence` and every tier-3 family with an inform case to go RED at the new pin by design. Real-data note: prompted by a standing inform on Friday that was delivered but disbelieved — the next dogfood can re-run that exact inform. | **ORDERED(P4.D254)** (2026-10-06 — the seventh lane of the amended `07b8f0209` smalls round; target pin `94fbb1ae3`) |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
@@ -301,6 +313,20 @@ don't silently swap it in.
 
 ## §6 History
 
+- **The `94fbb1ae3` fresh-instance-indexes + follow-ups smalls round
+  (2026-10-06, baseline `07b8f0209` → `94fbb1ae3`; P4.D254 ∥ P4.153 ∥ P4.154
+  ∥ P4.155 ∥ P4.156 ∥ P4.157 ∥ P4.158):** `94fbb1ae3` (the inform block as a
+  trailing context section under ONE vouching header + a new debug line)
+  ABSORBED(P4.D254 — `INFORM_BLOCK_HEADER` byte-exact against v4's exported
+  constant; the system push deleted, the block pushed after recall / mail /
+  progressions and before the turn-skip note, the trailing-only branch's
+  condition and list grown; the `[Inform] Delivering …` debug line
+  capture-pinned per op against v4's patched logger; the two existing
+  `[Inform]` lines onto camelCase; `build_context_tier3` grown by six ops,
+  mutation-proven six ways; `help/inform.md` + three `docs/v4/` paths
+  re-vendored; the SPA dialog's doc comment). Round record: `status-log.md`
+  → "The `94fbb1ae3` fresh-instance-indexes + follow-ups smalls round —
+  UNIFICATION record".
 - **The `07b8f0209` two-commit drift catch-up round (2026-10-05, baseline
   `52d6e7ecd` → `07b8f0209`; P4.D251 ∥ P4.D252 ∥ P4.D253):** `a434c715b`
   (bugs 177/178, PDF text extraction) ABSORBED(P4.D253) for bug 177 — the

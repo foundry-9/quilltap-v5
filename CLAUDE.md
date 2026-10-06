@@ -1672,9 +1672,43 @@ records THERE. Update this summary only when a phase or round completes.
   one took 2 h 26 m against 9 m; measure a real v4 first boot FIRST (standing
   note). #145/#146 smalls; #148 v4-faithful. **Still owed:** the standing
   queue.
-- **Oracle baseline: `07b8f0209` (2026-10-04, v4 main — "Impersonated-line
-  voice: three modes, no model call until asked", `4.10.0-dev.111`), adopted
-  at the `07b8f0209` round's unification (2026-10-05).**
+- **The `94fbb1ae3` fresh-instance-indexes + follow-ups smalls round
+  (P4.D254 ∥ P4.153 ∥ P4.154 ∥ P4.155 ∥ P4.156 ∥ P4.157 ∥ P4.158): UNIFIED on
+  main (2026-10-06) — ALL SEVEN LANDED; the oracle baseline MOVES to
+  `94fbb1ae3` and the ledger's §3 is EMPTY (v4 AT the baseline, clean).**
+  `94fbb1ae3` absorbed (P4.D254): the inform block under v4's ONE vouching
+  header as a TRAILING context section (after recall / mail / progressions,
+  before the turn-skip note; the trailing-only message on chained turns), the
+  new `[Inform] Delivering …` line capture-pinned per op. **Dogfood #149
+  FIXED** (P4.153): a real v4 first boot measured, v4's MIGRATION-created
+  index family dumped through its real `MigrationRunner` into a committed
+  `migration_indexes.json` (D23) and replayed at provisioning
+  (`idx_doc_mount_folders_mp_path` UNIQUE, the human's ruling);
+  **#146** (P4.154 — the V8 `JSON.parse` twin rewritten from V8's parser,
+  every template recorded on Node 24.13.1); **#145** (P4.156 — the inform
+  surface on v4's fallback shape and keys); the import's whole-entity
+  refusal with v4's three lines (P4.155); eight restore smalls incl. the
+  preserve-arm completeness backfill and a 63-line log census (P4.158); the
+  generators pair rebuilt + one `v4_root()` (P4.157). **The §3 review (six
+  readers): ONE BLOCKING lane defect, ONE false claim, ONE planning gap — all
+  fixed with tests:** the backfill matched prompts/scenarios by PROJECTED
+  path, so a renamed prompt or heading-titled scenario was written AGAIN on
+  every `replace` restore (a second default prompt) — now by parsed name;
+  P4.154's "no V8 shape left" was false (two classes found by fuzzing real
+  Node, recorded, fixed); P4.153's re-aim left nothing comparing v5's tables
+  with v4's LIVE generateDDL — `provisioning_equivalence` (1d) now REQUIRES
+  `QT_FRESH_SCHEMA_LIVE` and restores D23's tripwire. Every HANDOFF landed
+  bar §S.2's whole-row inform validator (deferred by name). Gate: sweep 587
+  ok / 3 standing / 3 refused of 593; Tier R 271/0; 673 binaries / 4,408 / 6
+  (standing + one env artifact + the unifier's census catch, fixed) / 3
+  ignored, zero SKIP; SPA 467 / 8,889; full Playwright 359 / 2 / 6 (12.7 m) — both reds green by file alone (the voice `ask` beat 3/3; the recorded `salon-regenerate-stream-flow` intermittent 2/3 with a different beat, then 3/3). Versions: core 0.0.1242,
+  host 0.0.187, SPA 0.5.811. **Next: the owed dogfood pass (the fresh-
+  instance restore timing; Friday's disbelieved inform), then the follow-ups
+  round (the index family on pre-round instances first)** — `phase-4.md`.
+  Round record: `status-log.md`.
+- **Oracle baseline: `94fbb1ae3` (2026-10-06, v4 main — "Inform: deliver as
+  a trailing section, under a vouching header", `4.10.0-dev.112`), adopted
+  at the `94fbb1ae3` smalls round's unification (2026-10-06).**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting
