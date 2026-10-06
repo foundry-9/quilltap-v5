@@ -786,10 +786,10 @@ Respond with a JSON array of suggestion objects (may be empty)."#,
 // ## Recorded divergences
 //
 // * A JSON parse failure's `error` text is V8's `JSON.parse` wording in v4.
-//   [`v8_json_parse_message`] reproduces the measured "unexpected token" and
-//   "unexpected end" arms (the shapes a prose answer produces); every other
-//   arm (a malformed token INSIDE a value, an unterminated string, trailing
-//   garbage after a valid value) falls back to serde's own message.
+//   [`v8_json_parse_message`] reproduces every V8 template (P4.154, measured
+//   on Node 24.13.1 by `v8_json_parse_message_equivalence`); serde's own text
+//   survives only where V8 ACCEPTS what serde refuses (a number past f64, a
+//   lone-surrogate escape, nesting past serde's 128 levels).
 // * `memory.createdAt` that fails to parse ranks as JS `NaN` (dropped by the
 //   weight threshold) — modelled by dropping the row; the repos never mint
 //   such a value.
@@ -1036,6 +1036,14 @@ pub fn v8_json_parse_message(text: &str) -> Option<String> {
                                     }
                                 }
                             }
+                            // V8 classifies the escaped unit through its
+                            // one-byte table: above U+00FF it is no escape
+                            // candidate at all, so the failure is the plain
+                            // context-window token (`"\’"` → `Unexpected token
+                            // '’', …`), not `Bad escaped character` (the
+                            // `94fbb1ae3` smalls unification, measured on Node
+                            // 24.13.1: rows `escape-of-*`).
+                            Some(u) if u > 0xff => return Err(self.token(self.pos)),
                             Some(_) => return Err(self.at("Bad escaped character in JSON")),
                         }
                     }
@@ -1083,13 +1091,23 @@ pub fn v8_json_parse_message(text: &str) -> Option<String> {
             Ok(())
         }
 
-        /// `ScanLiteral`: the first mismatching unit is the token.
+        /// `ScanLiteral`: the first mismatching unit is the token — and V8
+        /// reports its TOKEN TYPE, so a digit or `-` reads `Unexpected number`
+        /// and a `"` reads `Unexpected string`, each positional; anything else
+        /// is the context-window token (the `94fbb1ae3` smalls unification,
+        /// measured on Node 24.13.1: rows `literal-broken-by-*`).
         fn literal(&mut self, keyword: &str) -> Result<(), String> {
             for k in keyword.encode_utf16().skip(1) {
                 self.pos += 1;
                 match self.peek() {
                     None => return Err(EOS.to_string()),
-                    Some(u) if u != k => return Err(self.token(self.pos)),
+                    Some(u) if u != k => {
+                        return Err(match u {
+                            0x30..=0x39 | 0x2d => self.at("Unexpected number in JSON"),
+                            0x22 => self.at("Unexpected string in JSON"),
+                            _ => self.token(self.pos),
+                        })
+                    }
                     Some(_) => {}
                 }
             }

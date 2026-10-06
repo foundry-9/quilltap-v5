@@ -96,6 +96,14 @@ const inputs: Array<[string, string]> = [
   ['missing-colon-eos-ws', '{"a"   '],
   ['bad-literal-value', '{"a":tru}'],
   ['bad-literal-value-x', '{"a":trux}'],
+  // The `94fbb1ae3` smalls unification's review (an independent fuzz against
+  // real Node found these two classes the lane's corpus missed): V8's
+  // `ScanLiteral` reports the mismatching unit's TOKEN TYPE — a digit or `-`
+  // reads `Unexpected number`, a `"` reads `Unexpected string` …
+  ['literal-broken-by-digit', 't1'],
+  ['literal-broken-by-minus', 't-'],
+  ['literal-broken-by-digit-in-value', '{"a":nul1}'],
+  ['literal-broken-by-quote', '[fals"]'],
   ['bare-word-value', '{"a":x}'],
   ['extra-rbrace', '{"a":1}}'],
   ['obj-then-rbrack', '{"a":1]'],
@@ -124,6 +132,15 @@ const inputs: Array<[string, string]> = [
   ['unterminated-key', '{"ab'],
   ['bad-escape', '"a\\x"'],
   ['bad-escape-at-end', '"a\\'],
+  // … and an escape of a unit above U+00FF is not `Bad escaped character`
+  // but the context-window token (a model escaping a curly quote, `\’`, is
+  // the realistic source on the `parseLLMJson` path); Latin-1 still reads
+  // `Bad escaped character`.
+  ['escape-of-latin1', '"\\é"'],
+  ['escape-of-u0100', '"\\Ā"'],
+  ['escape-of-curly-quote', '{"a":"\\’hi\\’"}'],
+  ['escape-of-u2028', '"\\\u2028"'],
+  ['escape-of-astral', '"\\😀"'],
   ['bad-unicode-escape', '"\\u12G4"'],
   ['short-unicode-escape', '"\\u12"'],
   ['control-char-newline', '"a\nb"'],

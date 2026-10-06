@@ -58,7 +58,13 @@ fn yes() -> bool {
 
 /// The rows whose V8 message carries a lone surrogate (the recorded lossy
 /// class). A v4/Node change that moves the corpus trips this by name.
-const LONE_SURROGATE_ROWS: &[&str] = &["astral-bare-token", "astral-value-token"];
+const LONE_SURROGATE_ROWS: &[&str] = &[
+    // The `94fbb1ae3` smalls unification: an escaped astral character — V8's
+    // token is the lone high surrogate. (Corpus order.)
+    "escape-of-astral",
+    "astral-bare-token",
+    "astral-value-token",
+];
 
 /// The rows V8 ACCEPTS that serde REFUSES — the twin's whole `None` scope once
 /// a caller has a serde failure in hand, so the callers' fallback to serde's
