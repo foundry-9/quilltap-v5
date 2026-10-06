@@ -166811,3 +166811,69 @@ Mutation: reverting `projectId` → `project_id` reddens the entities pin.
   warns_with_v4s_fields` (the `NoMount` arm; silence leg).
 - Observed, not ordered: v5's `Failed to resolve default embedding profile
   after import` lacks v4's leading `userId` field (`execute.ts:347`).
+
+### Gate — P4.148's lane gate (`claude/p4-148-import-warning-text-a0ba3e`), run from the `07b8f0209` pin
+
+- §2 probe PASSED at lane start and again before the gate (branch `main`,
+  HEAD `07b8f0209`, both logs empty, tree clean). Every oracle regenerated
+  from `/tmp/qt-v4-pin-p4148-07b8f0209` into lane-private `/tmp/p4148/`.
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` AND `--features quilltap-core/native-transport` clean.
+- `cargo test --workspace --no-fail-fast` (`CARGO_INCREMENTAL=0`,
+  `QT_V4_CHECKOUT`/`QT_V4_ROOT` = the pin, Node 24 on `PATH`, the lane's
+  14-var env block): **670 test binaries / 4,351 passed / 5 failed / 3
+  ignored, zero `SKIP:` lines.** The five reds are EXACTLY unit 3's
+  §R.10(j) STOP (the out-of-lane unit fixtures with non-uuid rosters in
+  `project_roster_access.rs`, `wardrobe_tiers.rs`, `doc_edit/
+  path_resolver.rs`). Confirmed RUN and green by name: `system_import_state`
+  (48 cases), `projects_routes_equivalence`, `groups_routes_equivalence`,
+  `projects_tier2_equivalence`, `groups_tier2_equivalence`,
+  `import_warning_text_guard` (NEW), `zod_issues_home_guard` (home 6),
+  `fallback_home_guard` (green here — red by one only on the union until
+  §S.1a), `qtap_import_equivalence`, `system_import_equivalence`,
+  `project_background_display_mode_equivalence`, `system_restore_state` (RUN
+  only — P4.147's), `dispatch_wrong_type_census` (14/0, 451 unmoved),
+  `tri_state_edges_share_the_decoder` (11/0), `spelling_guard`,
+  `builtin_prompt_templates_guard`, `provider_sdk_version_guard`,
+  `qtap_schema_embed_guard`, `help_tree_equivalence`, `cli_differential`.
+- `recipe_sweep.py --self-test` exit 0; `npm run build` in `apps/web` green
+  (liveness; no SPA edit).
+- **Versions:** core 0.0.1209 → **0.0.1218** (nine bumps, one per core
+  commit); harness frozen; nothing else moves.
+
+### Handoffs for the unifier (§S)
+
+1. **§S.1a** — fold `log_chat_create_db_failure`'s first line onto P4.149's
+   `db::fallback::log_create_failure` (keep the `Failed to create chat` line);
+   `fallback_home_guard` then green.
+2. **§S.1b** — P4.147's `fold_properties_local` → `db::document_store_overlay::
+   fold_properties` (delivered here).
+3. **§R.10(j) STOP (unit 3)** — the five out-of-lane fixture hunks (non-uuid
+   roster ids → uuids) in `project_roster_access.rs`, `wardrobe_tiers.rs`,
+   `doc_edit/path_resolver.rs` (P4.149's file); exact lines in unit 3.
+4. **`api/groups.rs:225`** — repoint the private `is_valid_hex_color` onto
+   `api::zod_issues::zod_hex_color_ok` (outside this lane).
+5. **§S.7** — the plain `GroupsRepository::create` + the two dead
+   `GroupCreateInput` fields + this lane's `debug_assert!`, once P4.147's
+   restore leaves zero production callers.
+6. **`zod_issues_home_guard`** moved by ONE (home 5 → 6), as §S.6 expects.
+
+### Named deferrals (Tier 3, recorded)
+
+The nine `SERDE_ARM_DIVERGENCES` rows + the message/character serde arms
+(P4.143 Tier 3 item 12's generated schema-shape table); the 19 absent
+`[Projects v1]` lines (a census order) — plus the three repository /
+folder-paths ERRORs v4 logs on the Scenarios-ensure arm; `api/types.rs` /
+`api/memories.rs`' private `double_option` copies (frozen files);
+`StoreBackedRepository::create`'s validate-before-insert order (P4.147's
+file); the chat PUT's project gate (P4.149's); the `Import failed:` mask
+(no reachable DB-tail oracle row); v5's `Failed to resolve default embedding
+profile after import` missing v4's `userId`.
+
+### 💸 for the next `/dogfood`
+
+A `duplicate` `.qtap` import on the Friday copy whose warnings read the bare
+`UNIQUE constraint failed: …`; a `color: "red"` group and a `color: 5`
+project refused with v4's Zod bytes and NO half-written store; a project GET
+on a corrupt store logging `[Projects v1] Error fetching project`; a
+non-uuid `characterId` on add-character answering v4's 400 envelope.

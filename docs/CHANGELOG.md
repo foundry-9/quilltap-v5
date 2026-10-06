@@ -90,6 +90,12 @@ _Versions: core 0.0.1210._
 - The inform cancel's line moves from the api handler (wrong target, snake-case field, `sqlite error:` prefix) to the repository; the seat-removal `Could not drop pending informs` WARN is retired (unreachable in v4 — the DEBUG fires with `dropped_informs=0` instead).
 - `log_chat_create_validation_failure` folds its two `Error creating entity` copies onto the home.
 - `chat_informs_tier2_equivalence` gains a BEFORE DELETE trigger plant with per-op captured lines (red-first: v5 propagated where v4 answers 0) and two standing rows inserted out of posting order (the P4.151 survey's B1, mutation-proven); `fallback_home_guard` holds five more literals.
+#### 2026-10-05 — docs(porting): P4.148 lane record — gate, handoffs, deferrals; the order marked lane-complete
+
+_Docs-only change._
+
+Appended the P4.148 gate record to `status-log.md`: the workspace suite at the `07b8f0209` pin (670 binaries, 4,351 passed, 5 failed). The five failures are unit-test fixtures in files outside the lane that hold non-uuid roster ids, which v4's rules now refuse; the hunks are recorded for the unifier. The record also lists the unifier handoffs, the named Tier 3 deferrals and the dogfood rows. The order's status header is set to lane-complete.
+
 #### 2026-10-05 — fix(import): nine import WARN lines v4 logs and v5 lacked (P4.148)
 
 _Versions: core 0.0.1218._
