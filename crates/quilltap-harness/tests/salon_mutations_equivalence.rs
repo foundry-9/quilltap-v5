@@ -203,6 +203,17 @@ fn project_plant(case: &str) -> Option<&'static str> {
     match case {
         "chat_update_project_db_error" => Some("dbError"),
         "chat_update_project_store_corrupt" => Some("storeCorrupt"),
+        // P4.156 (R-F): the gate's MOUNT side, measured — a renamed
+        // `doc_mount_file_links.relativePath` fails the store's four document
+        // reads (each a fallback `[]` with its own line) → the store reads as
+        // missing → the middleware's 503; a renamed `doc_mount_points.id` is
+        // never read on this path → 200.
+        "chat_update_project_mount_links_error" => Some("mountLinks"),
+        "chat_update_project_mount_points_error" => Some("mountPoints"),
+        // …and a mount-index database that cannot be ACQUIRED (v4's client
+        // closed; v5's read-pool checkout failing): v4's quiet `withRawDb` arm,
+        // four DEBUGs, the store missing → 503. v5 had answered 404.
+        "chat_update_project_mount_unavailable" => Some("mountUnavailable"),
         _ => None,
     }
 }
@@ -247,6 +258,53 @@ fn normalise_error(line: &str) -> String {
         Some(i) => format!("{} error=<error>", &line[..i]),
         None => line.to_string(),
     }
+}
+
+/// P4.156 (R-F) — a RECORDED divergence of ORDER only, on the project store's
+/// four overlay reads under a broken mount index (each logs `Error finding
+/// documents by mount point IDs and path`): v4 issues them through ONE
+/// `Promise.all` over `[properties, description, instructions, state]`
+/// (`document-store-overlay.ts:124-146`), and the keystone's read settles LAST
+/// (its first `withRawDb` awaits the lazy table ensure the other three find
+/// done); v5 reads the four in declaration order. Same four lines, same bytes,
+/// a microtask artifact — pinned both ways so a move on either side trips, and
+/// the lines then compared as a set. The overlay itself (`db/
+/// document_store_overlay.rs`) is not this lane's file.
+const OVERLAY_READ_ORDER: &[(&str, [&str; 4], [&str; 4])] = &[(
+    "chat_update_project_mount_links_error",
+    [
+        "description.md",
+        "instructions.md",
+        "state.json",
+        "properties.json",
+    ],
+    [
+        "properties.json",
+        "description.md",
+        "instructions.md",
+        "state.json",
+    ],
+)];
+
+fn overlay_read_order(case: &str) -> Option<(Vec<String>, Vec<String>)> {
+    OVERLAY_READ_ORDER
+        .iter()
+        .find(|(c, _, _)| *c == case)
+        .map(|(_, v4, v5)| {
+            (
+                v4.iter().map(|s| s.to_string()).collect(),
+                v5.iter().map(|s| s.to_string()).collect(),
+            )
+        })
+}
+
+/// The `relativePath=` of each line, in order.
+fn relative_paths(lines: &[String]) -> Vec<String> {
+    lines
+        .iter()
+        .filter_map(|l| l.split(" relativePath=").nth(1))
+        .map(|rest| rest.split(' ').next().unwrap_or_default().to_string())
+        .collect()
 }
 
 fn inform_plant() -> Vec<ChatInformCreate> {
@@ -389,6 +447,28 @@ fn salon_mutations_match_oracle() {
                     Ok(())
                 })
                 .expect("plant the renamed projects.id"),
+            // The checkout plant: the mount FILE swapped for a non-database
+            // after open. The writer keeps its handle on the old inode; every
+            // read-pool open of the path now fails.
+            Some("mountUnavailable") => {
+                let swap = scratch.path().join("mount.db.swap");
+                std::fs::write(&swap, b"not a mount-index database").unwrap();
+                std::fs::rename(&swap, scratch.path().join("mount.db")).unwrap();
+            }
+            Some(plant @ ("mountLinks" | "mountPoints")) => db
+                .write_blocking(move |w| {
+                    let sql = if plant == "mountLinks" {
+                        r#"ALTER TABLE "doc_mount_file_links" RENAME COLUMN "relativePath" TO "relativePath_x""#
+                    } else {
+                        r#"ALTER TABLE "doc_mount_points" RENAME COLUMN "id" TO "id_x""#
+                    };
+                    w.mount_index()
+                        .expect("fixture has a mount-index partition")
+                        .connection()
+                        .execute_batch(sql)?;
+                    Ok(())
+                })
+                .expect("plant the renamed mount-index column"),
             Some(_) => db
                 .write_blocking(|w| {
                     let mp: String = w.main().connection().query_row(
@@ -571,6 +651,51 @@ fn salon_mutations_match_oracle() {
         ),
         (
             "chat_update_project_store_corrupt",
+            Box::new(|db: &Db| {
+                rt.block_on(salon::chat_update(
+                    db,
+                    &uid,
+                    GROUP,
+                    &serde_json::json!({ "projectId": SKYHAVEN }),
+                    None,
+                    None,
+                    None,
+                    None,
+                ))
+            }),
+        ),
+        (
+            "chat_update_project_mount_links_error",
+            Box::new(|db: &Db| {
+                rt.block_on(salon::chat_update(
+                    db,
+                    &uid,
+                    GROUP,
+                    &serde_json::json!({ "projectId": SKYHAVEN }),
+                    None,
+                    None,
+                    None,
+                    None,
+                ))
+            }),
+        ),
+        (
+            "chat_update_project_mount_unavailable",
+            Box::new(|db: &Db| {
+                rt.block_on(salon::chat_update(
+                    db,
+                    &uid,
+                    GROUP,
+                    &serde_json::json!({ "projectId": SKYHAVEN }),
+                    None,
+                    None,
+                    None,
+                    None,
+                ))
+            }),
+        ),
+        (
+            "chat_update_project_mount_points_error",
             Box::new(|db: &Db| {
                 rt.block_on(salon::chat_update(
                     db,
@@ -908,11 +1033,35 @@ fn salon_mutations_match_oracle() {
                 .filter(|l| !is_unported_v4_line(l["message"].as_str().unwrap_or("")))
                 .map(render_v4_line)
                 .collect();
-            let got_lines: Vec<String> = got_lines
+            // P4.156 (R-F): the unavailable-mount case's lines are v4's quiet
+            // DEBUGs, recorded for that case alone.
+            let debug_too = project_plant(name) == Some("mountUnavailable");
+            let mut got_lines: Vec<String> = got_lines
                 .iter()
-                .filter(|l| l.starts_with("ERROR ") || l.starts_with("WARN "))
+                .filter(|l| {
+                    l.starts_with("ERROR ")
+                        || l.starts_with("WARN ")
+                        || (debug_too && l.starts_with("DEBUG quilltap::db Dedicated database"))
+                })
                 .map(|l| normalise_error(l))
                 .collect();
+            let mut want_lines = want_lines;
+            if let Some((v4_order, v5_order)) = overlay_read_order(name) {
+                // The recorded ORDER divergence, pinned both ways (a convergence
+                // on either side trips it), then compared as a set.
+                assert_eq!(
+                    relative_paths(&want_lines),
+                    v4_order,
+                    "[{name}] v4's overlay read order moved — retire OVERLAY_READ_ORDER"
+                );
+                assert_eq!(
+                    relative_paths(&got_lines),
+                    v5_order,
+                    "[{name}] v5's overlay read order moved — retire OVERLAY_READ_ORDER"
+                );
+                want_lines.sort();
+                got_lines.sort();
+            }
             if got_lines != want_lines {
                 eprintln!("[{name}] LINE MISMATCH:\n got {got_lines:#?}\n want {want_lines:#?}");
                 failed.push(format!("{name}/lines"));

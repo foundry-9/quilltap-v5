@@ -61,7 +61,11 @@ interface CaseSpec {
    * `applyOverlayOne` throws → the middleware's 503 (`context.ts:176-185`).
    * Either case records the ERROR/WARN lines v4 logged (`logs`).
    */
-  projectPlant?: 'dbError' | 'storeCorrupt';
+  projectPlant?: 'dbError' | 'storeCorrupt' | 'mountDbError' | 'mountUnavailable';
+  /** P4.156 (R-F): with `projectPlant: 'mountDbError'`, the MOUNT-INDEX column
+   * renamed on the copy (v4's own raw mount-index handle, after
+   * `initializeDatabase()`) — the plant the project store's reads fail on. */
+  renameMountColumn?: { table: string; from: string; to: string };
 }
 
 /** P4.149: the fixture's one project (`salon.json`'s `projects[0]`). */
@@ -208,6 +212,22 @@ async function runCase(
   if (c.projectPlant === 'dbError') {
     getRawDatabase()!.prepare('ALTER TABLE projects RENAME COLUMN id TO id_x').run();
   }
+  if (c.projectPlant === 'mountDbError') {
+    const { getRawMountIndexDatabase } = await import(
+      '@/lib/database/backends/sqlite/mount-index-client'
+    );
+    const midb = getRawMountIndexDatabase();
+    if (!midb) throw new Error('raw mount-index handle unavailable');
+    const { table, from, to } = c.renameMountColumn!;
+    midb.exec(`ALTER TABLE "${table}" RENAME COLUMN "${from}" TO "${to}"`);
+  }
+  // P4.156 (R-F): the mount-index database cannot be ACQUIRED — v4's
+  // `withRawDb` then answers every overlay read its fallback QUIETLY (a DEBUG,
+  // `dedicated-db.repository.ts:242-251`). Closing the client is v4's own way
+  // to that state; v5's twin is a read-pool checkout that fails.
+  if (c.projectPlant === 'mountUnavailable') {
+    closeMountIndexSQLiteClient();
+  }
   if (c.projectPlant === 'storeCorrupt') {
     const rows = getRawDatabase()!
       .prepare('SELECT officialMountPointId AS mp FROM projects WHERE id = ?')
@@ -223,7 +243,13 @@ async function runCase(
   const restoreLogger: Array<() => void> = [];
   if (c.projectPlant) {
     const { Logger } = await import('@/lib/logger');
-    for (const level of ['error', 'warn'] as const) {
+    // P4.156 (R-F): the unavailable-mount case's lines are DEBUGs (v4's quiet
+    // `withRawDb` arm), so that case records `debug` too.
+    const levels =
+      c.projectPlant === 'mountUnavailable'
+        ? (['error', 'warn', 'debug'] as const)
+        : (['error', 'warn'] as const);
+    for (const level of levels) {
       const original = Logger.prototype[level];
       Logger.prototype[level] = function (
         this: unknown,
@@ -376,6 +402,12 @@ async function main(): Promise<void> {
     // P4.149 (Ruling R-F): the project gate's two failure arms.
     { name: 'chat_update_project_db_error', method: 'chatPut', url: cbase, paramId: GROUP, body: { chat: { projectId: SKYHAVEN } }, projectPlant: 'dbError' },
     { name: 'chat_update_project_store_corrupt', method: 'chatPut', url: cbase, paramId: GROUP, body: { chat: { projectId: SKYHAVEN } }, projectPlant: 'storeCorrupt' },
+    // P4.156 (R-F): the gate's MOUNT side under a broken mount index — the
+    // store's document read (`doc_mount_file_links.relativePath`) and its mount
+    // point row (`doc_mount_points.id`) each renamed on the copy.
+    { name: 'chat_update_project_mount_links_error', method: 'chatPut', url: cbase, paramId: GROUP, body: { chat: { projectId: SKYHAVEN } }, projectPlant: 'mountDbError', renameMountColumn: { table: 'doc_mount_file_links', from: 'relativePath', to: 'relativePath_x' } },
+    { name: 'chat_update_project_mount_unavailable', method: 'chatPut', url: cbase, paramId: GROUP, body: { chat: { projectId: SKYHAVEN } }, projectPlant: 'mountUnavailable' },
+    { name: 'chat_update_project_mount_points_error', method: 'chatPut', url: cbase, paramId: GROUP, body: { chat: { projectId: SKYHAVEN } }, projectPlant: 'mountDbError', renameMountColumn: { table: 'doc_mount_points', from: 'id', to: 'id_x' } },
     // P4.d13 (episodic spine, tier 2): the timelineMode PUT accept arm —
     // z.enum(['realtime','narrative']).nullish(). Set, explicit-null clear,
     // and the invalid-enum parse failure (whatever the route yields for a

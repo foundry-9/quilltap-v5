@@ -168572,3 +168572,52 @@ line" (the line itself is pinned byte-for-byte in `chat_informs_tier2`).
 `ChatInformsRepository::create`, where v4's `_create` logs `Error creating
 entity … strictFailures=true` (the importer runs strict) — one
 `log_create_failure("chat_informs", &e)` in that `Err` arm.
+
+### P4.156 unit 2 — the chat PUT gate's mount side, measured (core 0.0.1237)
+
+**R-F, measured at `94fbb1ae3` through v4's REAL `PUT /api/v1/chats/[id]`
+(`salon-mutations.test.ts`), three plants on the case's copy:**
+
+| plant | v4 | v5 before | v5 now |
+|---|---|---|---|
+| `doc_mount_file_links.relativePath` renamed (the store's four document reads fail) | 503 `Project document store unavailable`; four `Error finding documents by mount point IDs and path` ERRORs | 503, the same four lines — **already matched** | unchanged |
+| `doc_mount_points.id` renamed | 200 (the table is not read on this path) | 200 — matched | unchanged |
+| the mount-index database cannot be ACQUIRED (v4: the client closed; v5: the read-pool checkout fails — the mount file swapped after open) | 503; four DEBUG `Dedicated database unavailable; answering with the fallback {collection: doc_mount_documents, dbTarget: mountIndex, error}` | **404** + `Error finding entity by ID {collection: projects}` | **503** + v4's four DEBUGs |
+
+So the planner's expectation (a 503 through `context.ts:176-185`) holds for
+the one arm v5 had wrong — and it was not "the mount-side `Db` error" of a
+broken column (v5 already answered 503 there) but the CHECKOUT failure,
+which v5 had folded into the slim read's 404. The port: the gate's
+`read_mount_index` failure is split from the main read's; the slim row is
+read first (v4's `_findById` runs before the overlay — absent → 404), then
+the four quiet DEBUGs (one per overlay file, through the new emitter
+`db::fallback::log_mount_index_unavailable`, which the strict-aware
+joined-links sibling now shares) and the 503. Red-first on unported `main`:
+the case red on status, 503 wire body, lines, and body copy (4 facets);
+mutation (the DEBUG loop dropped) → red on lines.
+
+**Recorded divergence (ORDER only), pinned both ways:** under the
+broken-link plant v4's four overlay lines settle `description, instructions,
+state, properties` (one `Promise.all`, the keystone's read settles last
+behind its lazy table ensure) where v5 reads `properties` first —
+`OVERLAY_READ_ORDER` in `salon_mutations_equivalence.rs`; the lines are then
+compared as a set. The overlay (`db/document_store_overlay.rs`) is P4.155's
+file this round — no hunk proposed (a microtask artifact, not behaviour).
+
+**Ownership note:** the order names `salon_reads_equivalence.rs` +
+`salon-reads.test.ts` for "the gate arm", but the chat PUT's project-gate
+arms live in `salon_mutations_equivalence.rs` + `salon-mutations.test.ts`
+(P4.149 put them there; `salon-reads` drives GETs only). No lane owns those
+two files this round; this lane edited them (the three cases, the plant
+plumbing, the debug-level spy for the one case) and left `salon_reads`
+untouched. **Regen recipe** (from the pin, Node 24 on `PATH`):
+`TMPO=/tmp/p4156/salon-mutations-oracle; mkdir -p $TMPO/{cases,fixtures,lib};
+cp $V5W/harness/oracle/cases/salon-mutations.test.ts $TMPO/cases/; cp
+$V5W/harness/oracle/lib/p4d171-columns.ts $TMPO/lib/; cp
+$V5W/harness/oracle/fixtures/salon.json $TMPO/fixtures/; cd
+/tmp/qt-v4-pin-p4156-94fbb1ae3 &&
+QT_FIXTURE_SALON_MAIN=$V5W/crates/quilltap-web/tests/fixtures/salon-main.db
+QT_FIXTURE_SALON_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/salon-mount.db
+QT_ORACLE_OUT=/tmp/p4156/oracle-salon-mutations.ndjson npx jest --silent
+--watchman=false --testTimeout=120000 --roots "$PWD" --roots "$TMPO/cases" --
+salon-mutations` (36 cases); run with `QT_ORACLE_SALON_MUTATIONS`.

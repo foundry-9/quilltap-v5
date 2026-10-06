@@ -198,13 +198,7 @@ pub fn joined_file_links_strict_aware<T>(
     match read() {
         Ok(rows) => Ok(rows),
         Err(error @ DbError::PartitionUnavailable(_)) => {
-            tracing::debug!(
-                target: "quilltap::db",
-                collection = "doc_mount_file_links",
-                dbTarget = "mountIndex",
-                error = %error_text(&error),
-                "Dedicated database unavailable; answering with the fallback"
-            );
+            log_mount_index_unavailable("doc_mount_file_links", &error);
             Ok(Vec::new())
         }
         Err(error) => {
@@ -217,6 +211,23 @@ pub fn joined_file_links_strict_aware<T>(
             }
         }
     }
+}
+
+/// The ONE emitter of v4's quiet `withRawDb` arm (`dedicated-db.repository.ts:
+/// 242-251`): the mount-index database could not be acquired, so the read
+/// answers its fallback with a DEBUG `Dedicated database unavailable; answering
+/// with the fallback {collection, dbTarget: mountIndex, error}` — never an
+/// ERROR, strict scope or not. `collection` is the repository the read belongs
+/// to. `pub` since P4.156: the chat PUT's project gate stands in for v4's
+/// overlay reads when its mount-index checkout fails (`api/salon.rs`).
+pub fn log_mount_index_unavailable(collection: &str, error: &DbError) {
+    tracing::debug!(
+        target: "quilltap::db",
+        collection = collection,
+        dbTarget = "mountIndex",
+        error = %error_text(error),
+        "Dedicated database unavailable; answering with the fallback"
+    );
 }
 
 /// v4 `docMountDocuments.findByMountPointAndPath` as its callers see it: a

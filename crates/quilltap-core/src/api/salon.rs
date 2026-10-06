@@ -1622,19 +1622,72 @@ pub async fn chat_update(
             // store → the route middleware's contextful 503
             // (`context.ts:176-185`). v5 had answered a slim read error 500 and
             // accepted a move onto a broken store.
+            //
+            // P4.156 (R-F, measured at `94fbb1ae3` through the real route): the
+            // MOUNT side never answers 404 in v4. A failed overlay read (a
+            // broken mount-index column) is the fallback `[]` with its line, so
+            // the store reads as missing → 503 (v5 already matched); and a
+            // mount-index database that cannot be ACQUIRED is `withRawDb`'s
+            // QUIET arm — one DEBUG per overlay file read (four), the same
+            // `[]`, the same 503. v5 had folded that checkout failure into the
+            // slim read's 404. The slim row is still read FIRST (v4's
+            // `_findById` runs before the overlay): absent → 404.
             use crate::db::document_store_overlay::OverlayError;
             let read = db.read_main(|main| {
-                db.read_mount_index(|mount| {
+                Ok(db.read_mount_index(|mount| {
                     Ok(crate::db::projects::ProjectsRepository::new(main, mount).find_by_id(id))
-                })
+                }))
             });
             let project = match read {
-                Ok(Ok(found)) => found,
-                Ok(Err(unavailable @ OverlayError::Unavailable { .. })) => {
+                Ok(Ok(Ok(found))) => found,
+                Ok(Ok(Err(unavailable @ OverlayError::Unavailable { .. }))) => {
                     return super::types::db_error_response(unavailable.into_db())
                 }
-                Ok(Err(OverlayError::Db(e))) | Err(e) => {
+                Ok(Ok(Err(OverlayError::Db(e)))) | Err(e) => {
                     crate::db::fallback::find_by_id_or_none("projects", id, || Err(e))
+                }
+                Ok(Err(mount_error)) => {
+                    let slim = crate::db::fallback::find_by_id_or_none("projects", id, || {
+                        db.read_main(|main| {
+                            main.query_row(
+                                "SELECT officialMountPointId FROM projects WHERE id = ?1",
+                                [id],
+                                |r| r.get::<_, Option<String>>(0),
+                            )
+                            .map(Some)
+                            .or_else(|e| match e {
+                                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                                other => Err(other.into()),
+                            })
+                        })
+                    });
+                    match slim {
+                        None => None,
+                        Some(mount_point_id) => {
+                            if mount_point_id.is_some() {
+                                // v4's `loadStoreFiles`: one read per overlay file.
+                                for _ in crate::db::document_store_overlay::ALL_OVERLAY_PATHS {
+                                    crate::db::fallback::log_mount_index_unavailable(
+                                        "doc_mount_documents",
+                                        &mount_error,
+                                    );
+                                }
+                            }
+                            return super::types::db_error_response(
+                                OverlayError::Unavailable {
+                                    entity_label: "project",
+                                    id: id.to_string(),
+                                    detail: if mount_point_id.is_some() {
+                                        "properties.json missing".to_string()
+                                    } else {
+                                        "officialMountPointId is null".to_string()
+                                    },
+                                    mount_point_id,
+                                }
+                                .into_db(),
+                            );
+                        }
+                    }
                 }
             };
             if project.is_none() {
