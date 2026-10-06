@@ -723,7 +723,9 @@ mod backfill_tests {
             "the renamed default prompt must not be written again: {written:?}"
         );
         assert!(
-            !written.iter().any(|p| p == "Scenarios/A Day at the Beach.md"),
+            !written
+                .iter()
+                .any(|p| p == "Scenarios/A Day at the Beach.md"),
             "the heading-titled scenario must not be written again: {written:?}"
         );
         assert!(
@@ -736,6 +738,10 @@ mod backfill_tests {
         )
         .unwrap();
         assert_eq!(prompts.len(), 1, "one prompt, still: {prompts:?}");
-        assert_eq!(scenarios.len(), 2, "the hand-written + the backfilled: {scenarios:?}");
+        assert_eq!(
+            scenarios.len(),
+            2,
+            "the hand-written + the backfilled: {scenarios:?}"
+        );
     }
 }

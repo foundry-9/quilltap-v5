@@ -307,7 +307,10 @@ fn provisioning_matches_v4_fresh_instance() {
     let committed: Value = serde_json::from_str(FRESH_SCHEMA_JSON).unwrap();
     for part in ["main", "mountIndex", "llmLogs"] {
         let want = live[part].as_array().expect("live partition");
-        assert!(!want.is_empty(), "(1d) live {part} dump is EMPTY — a failed regen");
+        assert!(
+            !want.is_empty(),
+            "(1d) live {part} dump is EMPTY — a failed regen"
+        );
         let got = committed[part].as_array().expect("committed partition");
         let only_live: Vec<&Value> = want.iter().filter(|s| !got.contains(s)).collect();
         let only_committed: Vec<&Value> = got.iter().filter(|s| !want.contains(s)).collect();
