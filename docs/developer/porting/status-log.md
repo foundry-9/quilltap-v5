@@ -167500,3 +167500,25 @@ tree clean). Regen staging: `/tmp/p4151/`. **No version moves on any commit**
   The builder's `Failed to bump transcript version … no such column` ERROR line
   is pre-existing builder noise (the builder's tables predate the column), not
   this unit's.
+
+### Unit B3 — the four-mode `chat_informs.permanent` ensure differential
+- Re-shaped into P4.D251's multi-mode template: `QT_FIXTURE_OUT_DIR` holds
+  `inform-ensure-{a,b,c,d}.db`; four NDJSON lines. (a) baseline (`+RAN …
+  Added 1 column(s)`); (b) no `chat_informs` (one unrelated table) → `not
+  needed`, `sql: null`; (c) (a)'s file after one v4 run, migrated again → `not
+  needed`; (d) generateDDL-current (the nullable schema-order `permanent`
+  kept) → `not needed`. Rust: v4's report pinned per mode, the pre-ensure
+  shape asserted per mode, the three comparands per mode, and for (b)/(c)/(d)
+  the whole snapshot unchanged by v5's ensure. Env var renamed
+  `QT_FIXTURE_INFORM_ENSURE` → `QT_FIXTURE_INFORM_ENSURE_DIR` (header recipe
+  updated; `recipe_sweep.py --show` renders it; `--self-test` 0 failures).
+  No repair-module hunk.
+- Green at the pin (a/c/d: 11 columns, 3 rows; b: 0/0).
+- **Mutations (each reverted):** table gate dropped → RED on (b) (`no such
+  table: chat_informs`); column gate dropped → RED on (c) (`duplicate column
+  name: permanent`); `PERMANENT_DECL` changed → RED on (a) (`PRAGMA
+  table_info`). Before B3 only the third reddened the family.
+- Recipe: `cd /tmp/qt-v4-pin-p4151-07b8f0209 && QT_FIXTURE_OUT_DIR=/tmp/p4151/inform-ensure npx tsx $V5W/harness/oracle/cases/chat-informs-permanent-ensure.ts > /tmp/p4151/oracle-inform-ensure.ndjson`;
+  `QT_ORACLE_INFORM_ENSURE=… QT_FIXTURE_INFORM_ENSURE_DIR=/tmp/p4151/inform-ensure cargo test -p quilltap-harness --test chat_informs_permanent_ensure_equivalence`.
+- The case still reads `chat-informs-tier2.json` for the pepper only (P4.149's
+  file; not edited).
