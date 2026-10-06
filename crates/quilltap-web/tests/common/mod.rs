@@ -431,7 +431,7 @@ pub fn materialize_in_scene_voiced_instance() -> tempfile::TempDir {
 /// P4.9K1 unit 5: materialize an instance dir from the committed
 /// `character-generators-*` pair (two characters — Mira, vaulted and rich, and
 /// Nix, bare — two connection profiles pointing at `http://127.0.0.1:1`, a
-/// default embedding profile, an uploads mount with four blob-backed files,
+/// default embedding profile, an uploads mount with six blob-backed files,
 /// ten memories with a 4-dim vector index; built by
 /// `harness/oracle/fixtures/build-character-generators-fixture.ts` from v4's
 /// own repositories at the pin; the fixture owner `FIXTURE_USER` is rewritten
