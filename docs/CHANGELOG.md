@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-06 — chore(vendor): re-vendor help/inform.md and three docs/v4 paths from v4 94fbb1ae3 (P4.D254)
+
+_No crate versions bumped._
+
+- Byte-copies from the pin: `help/inform.md` (the tree stays 129 files, md5-identical to v4 at `94fbb1ae3`), `docs/v4/CHANGELOG.md`, `docs/v4/developer/PROMPT_ARCHITECTURE.md`, `docs/v4/developer/features/salon-inform.md`.
+
 #### 2026-10-06 — feat(core): the inform block opens with v4's vouching header and rides the trailing context sections (P4.D254, v4 `94fbb1ae3`)
 
 _Versions: core 0.0.1236._
