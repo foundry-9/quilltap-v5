@@ -167216,3 +167216,215 @@ divergence outside this order, recorded.
 - `npm run build` (apps/web, after `npm ci`) exit 0 — liveness only, no SPA edit.
 - Versions: core 0.0.1209 → **0.0.1210** (one bump); harness frozen; no
   non-version `Cargo.toml` delta. Status: **LANE COMPLETE**.
+## P4.150 — host boot + model-layer + chat-create key smalls — LANE record (2026-10-05)
+
+Branch `claude/host-boot-model-layer-chat-0be300` (worktree
+`.claude/worktrees/host-boot-model-layer-chat-0be300`), cut from `main`
+`43dc35601`. Pin `/tmp/qt-v4-pin-p4150-07b8f0209` (detached at `07b8f0209`,
+`4.10.0-dev.111`, the three node_modules symlink classes). The ledger's §2
+probe passed at lane start and before each of the four regen batches (branch
+`main`, HEAD `07b8f0209`, both logs empty, tree clean). No v4 change ported;
+the baseline does not move.
+
+### Units (one commit each)
+
+- **A4 — the two guards' locator** (harness only). `qtap_schema_embed_guard`
+  and `public_schemas_vendor_guard` read `QT_V4_CHECKOUT` first, `QT_V4_ROOT`
+  as the alias, then `$HOME/source/quilltap-server`, through a pure
+  `locate_v4_root` with a precedence unit pin in each file. Both GREEN against
+  the pin with ONLY `QT_V4_CHECKOUT` set; both SKIP with `QT_V4_CHECKOUT` at an
+  empty directory (the variable is read — at the baseline they ignored it).
+- **B — `refusal_notice`.** The extractor's stderr line is caller-neutral
+  ("returning no text — a Scriptorium scan records the file as
+  extraction-failed, and a document read falls back to its native text
+  scrape") behind `pub(crate) fn refusal_notice`, unit-pinned (exact bytes; no
+  "bookkept", no "will be"). v4 has no such line.
+- **E — the display zone as a REQUIRED argument** (R-H).
+  `ProductionSpineFactory::new(base_dir, version, tz, display_zone)`; the UTC
+  default and `with_display_zone` deleted; the one production caller and the
+  test callers (host ×2 files; web ×6 files / 7 calls — the survey said "web
+  ×7", which is the call count) pass their config's zone.
+  `host_zone_sites_census` gains the `TimeZone::get(` hunt with
+  `NAME_ZONE_ALLOWED` (seven core files) + the host's one (`spine.rs`
+  `js_local_offset_minutes`). **Red-first: exactly 8 reds** with an empty
+  allow-list. **Mutation:** a `TimeZone::get(` added to `format_time.rs` and to
+  host `spine.rs` each reddened it. The host `spine.rs` UTC allowance 2 → 1.
+  The `HOST_SITES` needles now compare with whitespace removed on both sides
+  (rustfmt wraps the four-argument call; every existing row still passes at
+  its count).
+- **C1 + C4 — the chat-create key hunks** (R-F; only the named hunks + ONE
+  test). The greeting's and the enrichment summary's hand-wraps of
+  `find_api_key_by_id_or_none` fold onto `api_key_service::read_api_key`
+  (identical bodies); each file's now-unused `api_keys` import dropped (the
+  one-line consequence of the fold — no other line in either file moved).
+  `api_key_read_sites_census`: home 4 → 2, 10 raw sites → 8 (**red-first: 2
+  failing tests** with the rows removed before the fold). C1's pin
+  `a_corrupt_api_key_row_logs_the_repository_line_before_the_warn` in
+  `chat_create.rs`'s own test module: a BLOB-`key_value` key row (P4.139's
+  `test_plants::plant_api_key`) logs v4's `Error finding API key by ID
+  collection=connection_profiles keyId=… error=Invalid column type Blob at
+  index: 4, name: key_value` BEFORE the `[Chats v1] Connection profile is
+  missing its API key` WARN, no provider call; the silence leg (a readable
+  key) says neither and greets. **Mutation:** a raw
+  `find_by_id(..).ok().flatten()` reddens it.
+- **A2 — the collapse line** (R-D). Core's `Collapsed duplicate avatar rolls`
+  gains `durationMs` (last field, `Instant` from the pass start = v4's
+  `Date.now() - startTime`); the host's `log_collapse_ran` (the v5-only
+  snake_case `… into one image per configuration`) DELETED at both call sites.
+  `avatar_rolls_collapse_heal_equivalence`: `durationMs` presence + integer
+  type on both shapers (`'integer'`). **Red-first at the pin:** the oracle
+  carries it on 16 summary lines, v5 on none (first scenario red).
+  `host_boot_hardness`: `COLLAPSED_TWO_ROLLS` re-aimed at core's bytes
+  (`INFO quilltap::migration … messagesChanged=0 durationMs=<n>` — an integer
+  `durationMs` normalized to `<n>` at capture); two new arms —
+  `a_clean_collapse_logs_v4s_one_success_line` and
+  `the_collapses_no_victims_exit_logs_no_summary` — **both red on the old
+  `host.rs`** (measured by swapping it back in).
+- **A1 — the `doc_mount_points` heal** (R-A, R-B). ONE new `lazy_ensure` in
+  `services/builtin_mounts.rs` just before the name-collision repair, running
+  `ensure_doc_mount_points_columns` (a private fn in the same file — no new
+  `db/` file): one `table_info` read, then v4's four guarded ALTERs in v4's
+  order with v4's INFO `Migrated doc_mount_points: added <col> column` (target
+  `quilltap::db`, no fields). `table_shape_equivalence`: `points-pre-alter`
+  RETIRED from `EXPECTED_DIVERGENCES` to a parity row; four plants added (each
+  remaining column; all four dropped out of order) — 13 → 17 plants; every
+  plant compares the `Migrated …` lines through a `Logger.prototype.info` spy
+  in `table-shape.ts` (two-sided; the other twelve plants are the silence
+  legs). **Red-first at the pin: 5 plants red on BOTH the problems and the
+  lines (10 failures).** `host_boot_hardness`:
+  `a_pre_alter_mount_points_table_is_healed_with_v4s_four_lines_and_boots`
+  (four lines in v4's order, then the sound-table DEBUG, `structure` empty;
+  the reboot silent) — **mutation-proven** (heal disabled → red); `Migrated
+  doc_mount_points` joins the healthy-boot silence sweep.
+- **A3 — a recorded log-order divergence** (R-C). **The divergence row:** v4's
+  PHASE 3.1 `verifyStructuralTables` (`instrumentation.ts:569-582`) logs
+  BEFORE 3.3b (the reaper), 3.4/3.4c (scenarios folder, `state.json` seed),
+  3.6 and 3.65; v5 runs the pass after `seed_built_ins`, so its ERRORs log
+  AFTER those lines; the recorded problems are identical (the pass is
+  read-only). Pinned by
+  `the_structural_pass_logs_after_the_seed_steps_a_recorded_divergence`
+  (`STATE_SEEDED` before the per-problem ERROR before the summary) — a move to
+  v4's position reds it, by design.
+- **D3 — the transport asserts** (harness). `PosedTransport` records the
+  policy timeout on BOTH arms; HTTP rows assert `Some(Http)`; a thrown 2xx
+  asserts `None`; every row asserts the budget (the row's `requestTimeoutMs`,
+  else the default). **The budget assert's first run found the family drove
+  the send path with the PROCESS DEFAULT** (300 s where the hang row asked for
+  50 ms): the per-call composition lives in the host's `WireCompletionProvider`,
+  which the family bypassed — the send-side budget was unproven. The
+  composition is now `pub fn quilltap_host::spine::completion_send_policy`
+  (behaviour unchanged) and the family drives it. **Mutation-proven ×3:**
+  dropping `with_transport` on the completion error path (Http assert red);
+  a kind on the 2xx shape-guard throw (the 2xx assert red — the `response
+  parse:` arm SURVIVED, since no 2xx row reaches it; the real site is
+  `v4_send_shape_error`'s throw); dropping `with_request_budget` from
+  `completion_send_policy` (the budget assert red). The order's "posed slow
+  2xx" is read as this budget assert: a posed transport enforcing its own
+  deadline would prove nothing about core.
+- **D2 — Google's `No parts found` WARN** (R-G). **R-G MEASURED through the
+  REAL `@google/genai` 1.52.0** (verified under the pin's plugin
+  `node_modules`): `candidates[0].content.text` is REACHABLE — the SDK keeps
+  the key and v4 answers `"Hidden on content."` — so the fallback is PORTED
+  (`parse_google`, and the stream's terminal extract).
+  `emit_google_no_candidates` → `emit_google_extract_text_warns(site, model,
+  body)` (target by site: `completion_provider` / `streaming_provider`); both
+  WARNs fire on the send path and on a thinking model's empty stream (v4
+  `provider.ts:847-850`); the decoder gets the model via
+  `DecoderSelection::Google { model }` + `GooglePartsDecoder::with_model_name`
+  (the `new(bool)` signature unchanged — P4.151's `stream_decoders` calls it).
+  The two `Google blocked the prompt` lines (send + streaming), which the new
+  stream row exposed, now carry v4's `blockReason` on the composer targets
+  (were `block_reason` on module targets — a pre-existing mismatch no row
+  had seen). `text_http_errors`: six GOOGLE-only cases (four `send`, two
+  `stream`) recorded at the pin — 880 → 886 rows, **the 880 existing rows
+  byte-identical** (`cmp`); **red-first: all six red on the WARN lines**; the
+  family now compares v4's `okResult.content` on every answered row (61
+  match). **Mutation-proven:** the fallback disabled reddens the content row;
+  the stream WARNs disabled redden both stream rows. Tier 2 item 12 (the
+  stream path's `No candidates` WARN as a `.recorded` row) LANDED through
+  this corpus (`ok_google_stream_no_candidates`), not P4.151's `.wire` corpus.
+
+### C3 — the five dead wrappers (Tier 2 item 11; NOT deleted — R-E)
+`services/api_key_service.rs`: `get_all_api_keys`, `find_api_key_by_id_scoped`,
+`update_api_key_scoped`, `delete_api_key_scoped`, `record_api_key_usage_scoped`.
+Grep over `crates/**/*.rs` excluding the definitions: ZERO production
+callers — `find_api_key_by_id_scoped` is called only by the three mutators
+(`:441,:455,:469`) and the file's tests (`:1014-1045`); the three mutators
+only by those tests; `get_all_api_keys` only named in the census. Deletion
+awaits the human's "delete" (Tier 3 item 13).
+
+### Deferrals (Tier 3, recorded)
+13 the five wrappers (human call); 14 `alignDocMountPointsSchema`'s 14 columns
++ the three `doc_mount_file_links` policy columns — NO-PORT (ledger-gated);
+15 moving the structural pass — the A3 divergence above; 16 the Google
+`.wire` row + `assert_catch_lines` — P4.151's; 17 the wizard key pin —
+P4.151's.
+
+### Gate — P4.150's lane gate on `claude/host-boot-model-layer-chat-0be300`
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` AND `--features quilltap-core/native-transport` clean.
+- The pinned sweep (`recipe_sweep.py --run-all --v4
+  /tmp/qt-v4-pin-p4150-07b8f0209`): **14/14 ok, zero SKIP** — the touched
+  `table_shape_equivalence` and `avatar_rolls_collapse_heal_equivalence`, and
+  the NEUTRAL `file_content_extractor_equivalence`,
+  `initial_greeting_equivalence`, `chat_create_capstone_equivalence`,
+  `character_wizard_tier3_equivalence` (P4.151's — run only),
+  `primary_stream_tier3_equivalence`, `cheap_llm_fallback_equivalence`,
+  `scriptorium_tools_equivalence`, `doc_mount_{documents,points,files,
+  folders}_tier2_equivalence`, `doc_mount_write_metadata_equivalence`.
+- `stream_decoders_equivalence` + `streaming_composer_equivalence` (P4.151's
+  — run only): 5/5 + 5/5.
+- `QT_V4_CHECKOUT=QT_V4_ROOT=/tmp/qt-v4-pin-p4150-07b8f0209
+  CARGO_INCREMENTAL=0 cargo test --workspace --no-fail-fast` with
+  `QT_ORACLE_TABLE_SHAPE` + `QT_ORACLE_AVATAR_COLLAPSE` (fresh from the pin):
+  **669 test binaries / 4,355 passed / 0 failed / 3 ignored**. Confirmed RUN
+  by name: `table_shape_equivalence` 6/6, `avatar_rolls_collapse_heal_
+  equivalence` 1/1, `host_boot_hardness` 26/26, `text_http_errors_
+  equivalence` 1/1, `host_zone_sites_census` 6/6, `api_key_read_sites_census`
+  5/5, both schema guards 3/3, `dispatch_wrong_type_census` 14/14 (451
+  unmoved), `spelling_guard`, `fallback_home_guard`,
+  `builtin_prompt_templates_guard`, `provider_sdk_version_guard`,
+  `help_tree_equivalence` — all green; the host crate's whole set and the web
+  crate's seven spine tests green.
+- `recipe_sweep.py --self-test` exit 0; `npm run build` (apps/web) clean as a
+  liveness check (no SPA edit).
+
+### 💸 for the dogfood pass
+A Friday copy with `doc_mount_points` planted pre-ALTER booting with the four
+`Migrated doc_mount_points: added … column` lines and `/health` `structure`
+healthy; the collapse's ONE line with `durationMs` on a copy with planted
+duplicate rolls (and nothing on a lone roll); a posed Google answer with a
+parts-less candidate logging `No parts found…` (and a `content.text` answer
+coming through); the boot's structural ERRORs at v5's recorded position.
+
+### Fixtures / oracles changed
+- `harness/oracle/fixtures/table-shape-spec.json` (+4 plants, one flipped) +
+  `harness/oracle/cases/table-shape.ts` (the spy; `infos` on plant rows).
+  Readers: `table_shape_equivalence` only. Regen (sweep driver):
+  `python3 harness/tools/recipe_sweep.py --run table_shape_equivalence --v4
+  /tmp/qt-v4-pin-p4150-07b8f0209 --v5w <ABS worktree> --force` (Node 24).
+- `harness/oracle/cases/avatar-rolls-collapse-heal.test.ts` (the shaper's
+  `durationMs`). Readers: `avatar_rolls_collapse_heal_equivalence` only.
+  Regen: the same driver, `--run avatar_rolls_collapse_heal_equivalence`.
+- `harness/oracle/fixtures/text-http-errors/{cases.json,
+  text-http-errors.recorded.ndjson}` (+6 Google rows; committed corpus).
+  Readers: `text_http_errors_equivalence`, `record-text-errors.mjs`. Regen:
+  `PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH TZ=UTC
+  V4=/tmp/qt-v4-pin-p4150-07b8f0209 bash
+  harness/oracle/providers/regenerate-text-errors.sh`.
+- No committed DB pair touched.
+
+### Versions
+core 0.0.1209 → 0.0.1214 (+5: B, C1/C4, A2, A1, D2); host 0.0.182 → 0.0.185
+(+3: E, A2, D3); web 0.0.220 → 0.0.221 (+1: E). harness frozen. No
+non-version `Cargo.toml` delta.
+
+### For the unifier
+- core is bumped by four lanes this round (§S.5 recount).
+- Every `ProductionSpineFactory::new` caller is updated on this branch; a
+  sibling lane adding a NEW caller fails to compile on the union until it
+  passes a zone (the point of R-H).
+- `DecoderSelection::Google` grew a `model` field (core-internal enum; no
+  harness reader). `GooglePartsDecoder::new(bool)` is unchanged.
+- `emit_google_no_candidates` is RENAMED (`emit_google_extract_text_warns`);
+  no caller outside `model/`.

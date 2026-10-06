@@ -196,6 +196,12 @@ P4.147. Two restore defects v4 shares, fixed on the restore side under the backu
 - Restore warnings render SQLite failures as the bare message (no `sqlite error:` prefix); the chat-create DB arm and the chat-document arm log v4's WARN lines. Proven on a real SQLite error by a column-rename plant case.
 - New derived archives `restore-archive-bag-nulls.zip` and `restore-archive-informs.zip`, plus their derive scripts. The `system-restore` oracle grows to 29 restore cases and gains `recordLogs` and `renameColumns`. A v5-only acceptance test checks the #141/#142 result against the archive.
 - `restore_vintage_state`'s raw-SQLite detector matched the removed prefix; it now matches SQLite's own wording. That surfaced a pre-existing General-tier legacy-fold FK failure, now pinned by name in `KNOWN_RAW_SQLITE`.
+#### 2026-10-05 — docs(porting): P4.150 lane record — host boot, model-layer and chat-create key smalls
+
+_Docs-only change._
+
+P4.150's lane record appended to `status-log.md` (units, red-first counts, the A3 log-order divergence row, R-G's reachability measurement, the five dead wrappers by name, the gate, the dogfood rows, the regen recipes); the order's status header set to LANE COMPLETE.
+
 #### 2026-10-05 — fix(model): Google's No parts found WARN on send and thinking-stream paths, the content.text fallback, and v4's blockReason bytes
 
 _Versions: core 0.0.1214._
