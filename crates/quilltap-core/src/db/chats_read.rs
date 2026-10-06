@@ -396,9 +396,14 @@ pub fn find_by_id_or_none(conn: &Connection, id: &str) -> Option<Value> {
     super::fallback::find_by_id_or_none("chats", id, || find_by_id(conn, id))
 }
 
-/// Find all chats (v4 `findAll`).
+/// Find all chats (v4 `findAll`). v4's `_findAll` runs the same per-row
+/// `validateSafe` as `findByFilter` (`base.repository.ts:263-278`), so a
+/// corrupt row is DROPPED with the two lines and the rest answered — dogfood
+/// #144: a strict read here turned one BLOB `title` into a 500 on every
+/// project GET, the export preview and the backup, where v4 answers without
+/// that chat.
 pub fn find_all(conn: &Connection) -> Result<Vec<Value>, DbError> {
-    run(conn, "", &[])
+    run_dropping_invalid_rows(conn, "", &[])
 }
 
 /// Find chats by user id (v4 `findByUserId`).
@@ -740,8 +745,8 @@ mod alignment_census {
     /// rest (`base.repository.ts:283-298`); the user's chat list reads through
     /// that shape, so one corrupt row costs ONE chat, not the list (and not a
     /// 500). The `07b8f0209` follow-ups unification.
-    #[test]
-    fn the_user_list_drops_a_corrupt_row_with_v4s_two_lines_and_keeps_the_rest() {
+    /// `c1` readable, `c2` with a BLOB `title` — both owned by `u1`.
+    fn two_chats_one_corrupt() -> rusqlite::Connection {
         let schema: serde_json::Value =
             serde_json::from_str(FRESH_SCHEMA).expect("fresh_schema.json parses");
         let ddl = schema["main"]
@@ -763,6 +768,36 @@ mod alignment_census {
         }
         conn.execute("UPDATE \"chats\" SET title = X'00' WHERE id = 'c2'", [])
             .unwrap();
+        conn
+    }
+
+    #[test]
+    fn find_all_drops_a_corrupt_row_with_v4s_two_lines_and_keeps_the_rest() {
+        let conn = two_chats_one_corrupt();
+        let (rows, lines) = crate::test_support::captured_with(|| super::find_all(&conn));
+        let rows = rows.unwrap();
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(rows[0]["id"], "c1");
+        let v4: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("validation failed"))
+            .collect();
+        assert_eq!(v4.len(), 2, "{lines:#?}");
+        assert!(
+            v4[0].starts_with("ERROR quilltap::db Data validation failed collection=chats"),
+            "{}",
+            v4[0]
+        );
+        assert!(
+            v4[1].starts_with("WARN quilltap::db Safe validation failed collection=chats"),
+            "{}",
+            v4[1]
+        );
+    }
+
+    #[test]
+    fn the_user_list_drops_a_corrupt_row_with_v4s_two_lines_and_keeps_the_rest() {
+        let conn = two_chats_one_corrupt();
         let (rows, lines) =
             crate::test_support::captured_with(|| super::find_by_user_id(&conn, "u1"));
         let rows = rows.unwrap();

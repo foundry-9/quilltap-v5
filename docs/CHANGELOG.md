@@ -12,6 +12,15 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-06 — fix(core): `chats_read::find_all` drops an unreadable chat row as v4's `_findAll` does, and the render-reconcile scan WARN logs SQLite's bare sentence (dogfood #144, #147)
+
+_Versions: core 0.0.1235._
+
+Two fixes from the 2026-10-06 dogfood walk's planted clones.
+
+- **#144:** one chat row with a BLOB `title` made every project GET answer 500 (`enrich_project` reads all chats through `find_all`, which failed the whole read), even for projects that did not hold that chat. v4's `_findAll` (`base.repository.ts:263-278`) runs `validateSafe` per row and drops a failing one. `find_all` now goes through the same `run_dropping_invalid_rows` that `find_by_user_id` got at the last unification (v4's two lines, the row dropped, a whole-query failure still propagates). This covers its ten other callers too: the export preview and `.qtap` export, the backup collect, the project-info tool, maintenance, the enclave lifecycle, the chat-cache collapse and the outfits read. Unit pin `find_all_drops_a_corrupt_row_with_v4s_two_lines_and_keeps_the_rest` (red first). Live: the clone's LUC Ranch GET 200 with `_count.chats` one lower.
+- **#147:** `Failed to scan for incomplete conversations; skipping reconciliation` logged `error=sqlite error: …`; v4 logs `err.message`. Now through `db::fallback::error_text`; `missing_tables_return_zeros` captures the WARN (red first).
+
 #### 2026-10-06 — fix(spa): a refused project-detail setting puts its select back, as v4's controlled select does (dogfood #143)
 
 _Versions: SPA 0.5.810._

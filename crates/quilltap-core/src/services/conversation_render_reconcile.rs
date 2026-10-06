@@ -203,9 +203,11 @@ pub fn reconcile_conversation_rendering(main: &Connection) -> ReconcileResult {
     let rows = match scan(main, &default_profile_id) {
         Ok(rows) => rows,
         Err(e) => {
+            // v4 logs `err.message` — SQLite's bare sentence, never `DbError`'s
+            // `sqlite error: ` Display (dogfood #147, the #137/#140 class).
             tracing::warn!(
                 target: "quilltap::boot",
-                error = %e,
+                error = %crate::db::fallback::error_text(&e),
                 "Failed to scan for incomplete conversations; skipping reconciliation",
             );
             return result;
@@ -430,10 +432,16 @@ mod tests {
     #[test]
     fn missing_tables_return_zeros() {
         let conn = Connection::open_in_memory().unwrap();
-        assert_eq!(
-            reconcile_conversation_rendering(&conn),
-            ReconcileResult::default()
-        );
+        let (result, lines) =
+            crate::test_support::captured_with(|| reconcile_conversation_rendering(&conn));
+        assert_eq!(result, ReconcileResult::default());
+        // v4's `err.message`: the bare SQLite sentence (dogfood #147).
+        let warn = lines
+            .iter()
+            .find(|l| l.contains("Failed to scan for incomplete conversations"))
+            .unwrap_or_else(|| panic!("{lines:#?}"));
+        assert!(warn.contains("error=no such table: "), "{warn}");
+        assert!(!warn.contains("sqlite error"), "{warn}");
     }
 
     /// v4 `f7f3d7bf0` INVERTED v4 `a0243abd` ("enqueues a render for a stale
