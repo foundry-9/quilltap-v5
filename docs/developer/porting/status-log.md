@@ -169217,3 +169217,105 @@ harness compares them on every case.
   v4 reads `SELECT *`; v5's chat-settings insert tolerates a missing column.
   None is reachable on a real schema; none is this lane's file.
 - Family 34/34; `restore_vintage_state` 6/6; `system_restore_equivalence` 1/1.
+
+### Lane close — P4.158
+
+**Versions at close:** core `0.0.1241` (from `0.0.1235`: six core commits,
++1 each — R-B, R-C, R-A, R-D, R-E, R-G/H); harness unbumped (frozen
+`0.0.1110`); no other crate moved.
+
+**Tier 1:** items 1–7 LANDED (R-A backfill, R-B claims + one id truth, R-C
+22a-ter MOVED, R-D atomic slim-linked create, R-E validate-first create,
+R-F compact-fresh narrowed, R-G census). **Tier 2:** item 8 (R-H) LANDED
+(with R-G); item 9 — the `=== 1` integer decode the order cites at
+`db/chat_informs.rs:265` (P4.156's file; at this branch's base that line is
+`row_from`'s NULL → `false` read of `permanent`) stays as P4.147 Tier 3 item
+17 recorded it, unreachable from either writer; not re-measured here, no
+hunk. **Tier 3 deferred by name:**
+item 10, the `new-account` preserve (its own order); item 11,
+re-provisioning a built-in the archive lacks (its own order); item 13, the
+two v4 filings for #141/#142's v4 halves (the human's).
+
+**HANDOFFs**
+
+- **(P4.156 — `crates/quilltap-harness/tests/doc_mount_fallback_sites_census.rs`)**
+  the census measures this lane's two new document-store reads and is RED on
+  this branch by design until the union (`the_class_counts_are_pinned`,
+  `every_document_store_read_site_is_classified`; the only two reds in the
+  lane's workspace gate). Both reads are v5-only — v4 never preserves, so it
+  never asks "does the archived store already hold this managed file" — so
+  their class is `no-v4-counterpart`, not the `fallback-in-v4` the classifier
+  guesses from the `?`. The hunk: two `OVERRIDES` entries
+  `("quilltap-core/src/db/character_vault.rs", "backfill_character_vault_managed_files", "find_by_mount_point_and_path", "no-v4-counterpart")`
+  and
+  `("quilltap-core/src/services/backup/restore/orchestrator.rs", "backfill_official_store", "find_by_mount_point_and_path", "no-v4-counterpart")`,
+  the same two rows in `EXPECTED` (sorted position), and the
+  `no-v4-counterpart` count 1 → 3 in `the_class_counts_are_pinned` (+ its doc
+  line). A propagated read error there fails the backfill into its one
+  warning, so the propagation is intended.
+- **(§R.10(b), §S.2 — P4.156, `db/chat_informs.rs`)** the whole-row inform
+  validator for the restore's 22i-ii arm. The restore checks `permanent`
+  only (P4.147); v4's `ChatInformSchema` (`lib/schemas/chat-inform.types.ts
+  :28-66`) also refuses: `id`, `chatId`, `batchId`, `participantId` —
+  `UUIDSchema`; `contentMarkdown` — `z.string()`; `recordMessageId` and
+  `consumedByMessageId` — `UUIDSchema.nullable().optional()`; `consumedAt` —
+  `TimestampSchema.nullable().optional()`; `createdAt`/`updatedAt` are
+  minted by the restore, not read. One `pub fn` returning v4's
+  `ZodError.message` for the row (field order as listed) lets `restored_inform`
+  call it in place of its `permanent`-only check.
+- **(P4.155 — `harness/oracle/cases/projects-tier2.ts` +
+  `projects_tier2_equivalence.rs`)** a `createExpectError` op for R-E's
+  differential twin (detail in Unit 5).
+- **(§R.10(d), §S.4)** `system_restore_state` regenerated on this branch
+  WITHOUT P4.153's index set; on the union it re-runs over a target that
+  carries it (a row change is a FINDING).
+
+**Gate (this branch, pin `94fbb1ae3`):** the ledger's §2 probe passed at lane
+start and before every regen batch; `cargo fmt --all --check` clean; `cargo
+clippy --workspace --all-targets -- -D warnings` and with `--features
+quilltap-core/native-transport` clean; `cargo test --workspace --no-fail-fast`
+(`CARGO_INCREMENTAL=0`, `QT_V4_CHECKOUT`/`QT_V4_ROOT` at the pin, the lane's
+oracle vars) **671 binaries / 4,387 passed / 2 failed / 3 ignored** — the two
+reds the census HANDOFF above; `system_restore_state` 3/3 (34 cases),
+`restore_vintage_state` 6/6, `system_restore_equivalence` 1/1, the four
+projects/groups families, `spelling_guard`, `fallback_home_guard`,
+`builtin_prompt_templates_guard`, `provider_sdk_version_guard`,
+`help_tree_equivalence` all RAN and passed. Run by hand from the pin with
+lane-private staging (the recipes' shared `/tmp` names are sibling lanes'
+too): `system_import_state` (49 cases), `backup_uuid_remap_equivalence` (25;
+its regenerated corpus byte-identical to the committed
+`uuid-remap-corpus.json`), `system_backup_equivalence` (5),
+`system_import_equivalence` (30) — all green. `recipe_sweep.py --self-test`
+0 failures; `npm run build` (apps/web, liveness, no SPA edit) clean.
+
+**Fixtures:** FOUR new derived archives under
+`crates/quilltap-web/tests/fixtures/restore-archives/` — `damaged-store`,
+`two-claimants`, `dup-store-id` (the order's three) and `general-pointer`
+(R-C's own derive, the fourth); each built by its
+`harness/oracle/fixtures/derive-restore-archive-*.py`, which md5-checks its
+source before and after. No committed archive or `.db` pair changed; only
+`system_restore_state`'s oracle reads the new zips.
+
+**Regen recipe (`system_restore_state`)** — from a pin at the target, the
+canonical header's recipe with lane-private paths:
+`cp harness/oracle/cases/system-restore.test.ts $TMPO/cases/; cd $PIN;
+QT_RESTORE_ARCHIVES=$V5W/crates/quilltap-web/tests/fixtures/restore-archives
+QT_ORACLE_OUT=$OUT npx jest --silent --watchman=false --testTimeout=1200000
+--roots "$PWD" --roots "$TMPO/cases" -- system-restore` (Node 24), then
+`QT_ORACLE_SYSTEM_RESTORE=$OUT cargo test -p quilltap-harness --test
+system_restore_state`. 40 NDJSON lines (6 preview + 34 restore).
+
+**💸 for the dogfood pass:** a Friday-copy backup with one managed file
+removed from one vault, `replace`-restored — the character reads the archived
+value and the vault keeps every other file, with one `Backfilled a managed
+file …` WARN; two characters pointed at one vault → the second on a fresh
+vault with the `Archived store already claimed …` WARN; a legacy shared
+outfit preset restored into a fresh instance lands in the restored General;
+the census lines on a real archive (the `Starting` / `Restore operation
+completed` pair, every per-row WARN) counted against v4's log of the same
+restore.
+
+**Candidate v4 filings (the human's):** 22f's blob INSERT prepared outside
+the per-blob `try` (`restore.ts:692` — one unpreparable statement aborts the
+whole restore); 22f-bis filing a shared archetype into the target's wiped
+General (`GENERAL_POINTER_PREAPPLY`).

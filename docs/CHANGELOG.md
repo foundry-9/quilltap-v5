@@ -115,6 +115,12 @@ _Versions: core 0.0.1236._
 - A refused create logs v4's three ERRORs before the per-item WARN: `Data validation failed`, `Error creating project entity` / `Error creating group entity` (the store-backed base overrides `createErrorMessage()`, so this is not the base `Error creating entity`), and `Error creating project` / `Error creating group` with the payload's `name`. Measured against v4 at `94fbb1ae3`; the order's "the base pair through `log_create_failure`" was wrong. The two `safeQuery` lines live in a lane-local `db::document_store_overlay::log_refused_store_create` until `db::fallback` grows homes for them (handoff to P4.156).
 - Every per-item import WARN (`Failed to import tag`, `…project`, `…group`, `…chat`, `…character`, `…wardrobe item`, `…prompt template`, `…roleplay template`, `…folder`, `…file`, `…memory`, the three profile lines) renders the item's id through one `id_field` helper: an absent id omits the field (winston drops `undefined`) instead of logging an empty `fileId=`.
 - Harness: `system-import-execute.test.ts` records the refused project/group creates' repository lines, grows each property-refusal payload by five whole-entity rows, and adds `execute_idless_files` and `execute_idless_refused_inserts` (planted INSERT-refusing triggers on `memories` and `prompt_templates`); `system_import_state` parses the new lines (a key-aware field split, since `name=` carries spaces) and pins the counts (50 cases; 37 WARN-compared cases with 8 lines; 5 repository-line cases). Red-first on unported core: 20 differences.
+#### 2026-10-06 — docs(porting): close the P4.158 restore-smalls lane — status header, lane record, handoffs
+
+_Docs-only change._
+
+- Work order P4.158 marked LANE COMPLETE with its branch. The `status-log.md` lane record gains its close: versions, the Tier 2/3 outcomes, three handoffs (the doc-mount read census rows and the inform-row validator to P4.156, the refused-create differential op to P4.155), the gate counts, the new fixtures, the regen recipe, the dogfood rows and two candidate v4 filings.
+
 #### 2026-10-06 — fix(restore): log every line v4's restore logs, at its level, with its fields; the restored memory checks its character first; the wardrobe refusals read v4's messages (P4.158 R-G, R-H)
 
 _Versions: core 0.0.1241._
