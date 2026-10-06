@@ -18,7 +18,7 @@
 //! runs.
 //!
 //! Run standalone:
-//!   QT_V4_ROOT=~/source/quilltap-server \
+//!   QT_V4_CHECKOUT=~/source/quilltap-server \
 //!     cargo test -p quilltap-harness --test public_schemas_vendor_guard -- --nocapture
 //!
 //! ⚠ Against the LIVE checkout this is green only while v4 sits at the file
@@ -65,12 +65,53 @@ fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
+/// The v4 checkout this guard compares against. `QT_V4_CHECKOUT` FIRST — the
+/// variable every pinned gate exports and the three other live-checkout guards
+/// read (`zod_version_guard`, `builtin_prompt_templates_guard`,
+/// `provider_sdk_version_guard`) — so a pinned gate never silently compares
+/// against a dirty live checkout (it did at the `e5c6bd0c0` unification).
+/// `QT_V4_ROOT` stays as the legacy alias; then `$HOME/source/quilltap-server`
+/// when it exists (P4.150).
 fn v4_root() -> Option<PathBuf> {
-    if let Ok(p) = std::env::var("QT_V4_ROOT") {
+    locate_v4_root(
+        std::env::var("QT_V4_CHECKOUT").ok().as_deref(),
+        std::env::var("QT_V4_ROOT").ok().as_deref(),
+        std::env::var("HOME").ok().as_deref(),
+    )
+}
+
+/// The pure precedence rule behind [`v4_root`] — a non-empty `checkout`, then a
+/// non-empty `root`, then `<home>/source/quilltap-server` if it is a directory.
+fn locate_v4_root(
+    checkout: Option<&str>,
+    root: Option<&str>,
+    home: Option<&str>,
+) -> Option<PathBuf> {
+    if let Some(p) = checkout.filter(|p| !p.is_empty()) {
         return Some(PathBuf::from(p));
     }
-    let default = PathBuf::from(std::env::var("HOME").ok()?).join("source/quilltap-server");
+    if let Some(p) = root.filter(|p| !p.is_empty()) {
+        return Some(PathBuf::from(p));
+    }
+    let default = PathBuf::from(home?).join("source/quilltap-server");
     default.is_dir().then_some(default)
+}
+
+#[test]
+fn the_v4_locator_reads_qt_v4_checkout_before_its_qt_v4_root_alias() {
+    assert_eq!(
+        locate_v4_root(Some("/pin"), Some("/alias"), None),
+        Some(PathBuf::from("/pin"))
+    );
+    assert_eq!(
+        locate_v4_root(Some(""), Some("/alias"), None),
+        Some(PathBuf::from("/alias"))
+    );
+    assert_eq!(
+        locate_v4_root(None, Some("/alias"), None),
+        Some(PathBuf::from("/alias"))
+    );
+    assert_eq!(locate_v4_root(None, Some(""), Some("/no/such/home")), None);
 }
 
 #[test]
@@ -119,7 +160,7 @@ fn the_vendored_schemas_are_self_consistent() {
 #[test]
 fn the_vendored_schemas_equal_the_v4_checkouts() {
     let Some(v4) = v4_root() else {
-        eprintln!("SKIP: no v4 checkout (set QT_V4_ROOT).");
+        eprintln!("SKIP: no v4 checkout (set QT_V4_CHECKOUT).");
         return;
     };
     let root = repo_root();
