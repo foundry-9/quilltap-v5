@@ -101,15 +101,14 @@ fn projects_v1_lines(lines: &[String]) -> Vec<String> {
 /// [P4.148] v4's `[Projects v1]` records (`withLogs`: `{level, message,
 /// fields, error}`) against v5's captured lines: each side rendered as
 /// `<LEVEL> quilltap_core::api::projects <message> k=v …`, v5's `error=` tail
-/// split off and compared to v4's `error` separately — VERBATIM, except the
-/// JSON-parse wording after `properties.json unparseable: ` (V8 vs serde, the
-/// standing seam). `Err` names the first difference.
+/// split off and compared to v4's `error` separately — VERBATIM (the
+/// JSON-parse wording too, since the `94fbb1ae3` smalls unification). `Err`
+/// names the first difference.
 fn compare_projects_v1(v4: &Value, v5: &[String]) -> Result<(), String> {
-    const MARK: &str = "properties.json unparseable: ";
-    let elide = |e: &str| match e.find(MARK) {
-        Some(i) => format!("{}<parse-detail>", &e[..i + MARK.len()]),
-        None => e.to_string(),
-    };
+    // The `94fbb1ae3` smalls unification: the JSON-parse tail after
+    // `properties.json unparseable: ` is compared VERBATIM — both overlay
+    // paths render V8's sentence through the measured twin (P4.154).
+    let elide = |e: &str| e.to_string();
     let want: Vec<(String, Option<String>)> = v4
         .as_array()
         .cloned()

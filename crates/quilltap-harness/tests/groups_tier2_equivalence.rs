@@ -35,8 +35,9 @@
 //! (the unchanged post-state IS the "wrote nothing" proof); Epsilon's file is
 //! DELETED, the one arm that may seed defaults from the slim row. The thrown
 //! messages are recorded oracle-side into an `errors` array and diffed here, ids
-//! remapped through each side's own token map and only the parse-detail tail
-//! elided (see `UNPARSEABLE_MARKER`).
+//! remapped through each side's own token map and compared verbatim (the
+//! parse-detail tail too, since the `94fbb1ae3` smalls unification — see
+//! `UNPARSEABLE_MARKER`).
 //!
 //! Since P4.146 (dogfood #136) it also banks the explicit-`null` arms of the
 //! `.nullable().optional()` keys — a planted v4 bag carrying `null`s through a
@@ -310,16 +311,15 @@ fn normalize_all(dumps: &mut [Value]) -> HashMap<String, String> {
     id_map
 }
 
-/// The one seam the thrown messages cannot cross: the parse detail. v4's tail is
-/// V8's `JSON.parse` text or a Zod issue array; v5's is serde's. Everything up to
-/// and including `properties.json unparseable: ` IS compared byte-for-byte (that
-/// is v4's `ProjectStoreUnavailableError`/`GroupStoreUnavailableError` message,
-/// ids remapped); the tail is replaced with a placeholder and separately asserted
-/// non-empty on both sides. This is the standing "`is not valid JSON:` wording"
-/// seam, not a normalization of convenience.
+/// The parse detail after `properties.json unparseable: `. v4's tail is V8's
+/// `JSON.parse` text or a Zod issue array. It was ELIDED while v5's write path
+/// rendered serde's text; since the `94fbb1ae3` smalls unification both
+/// overlay paths render V8's sentence through the measured twin (P4.154) and
+/// the tail is compared byte-for-byte — this marker now only guards that the
+/// tail is non-empty on both sides.
 const UNPARSEABLE_MARKER: &str = "properties.json unparseable: ";
 
-/// Remap minted ids to the shared tokens, then elide the parse-detail tail.
+/// Remap minted ids to the shared tokens; assert any parse-detail tail non-empty.
 /// Panics if a message claims `unparseable` with an empty detail (which would
 /// make the placeholder hide a real difference).
 fn normalize_error_message(message: &str, id_map: &HashMap<String, String>, side: &str) -> String {
@@ -335,15 +335,13 @@ fn normalize_error_message(message: &str, id_map: &HashMap<String, String>, side
             !out[head_end..].trim().is_empty(),
             "{side}: empty parse detail in {out:?}"
         );
-        // [P4.148] A ZodError tail (`JSON.stringify(issues, null, 2)` — it
-        // opens with `[`) is SCHEMA bytes both sides must agree on since
-        // `parse_properties` carries v4's rules: compared VERBATIM. Only the
-        // JSON-parse wording (V8 vs serde) stays elided.
-        if out[head_end..].starts_with('[') {
-            return out;
-        }
-        out.truncate(head_end);
-        out.push_str("<parse-detail>");
+        // [P4.148] A ZodError tail (`JSON.stringify(issues, null, 2)`) is
+        // SCHEMA bytes both sides agree on since `parse_properties` carries
+        // v4's rules; since the `94fbb1ae3` smalls unification the JSON-parse
+        // tail is compared VERBATIM too — `read_properties` and `hydrate_one`
+        // both render V8's `JSON.parse` sentence through the measured twin
+        // (P4.154). Elide again only if a V8-accepts / serde-refuses plant is
+        // ever added.
     }
     out
 }
@@ -541,7 +539,7 @@ fn groups_tier2_matches_oracle() {
     let want_id_map = normalize_all(&mut want);
 
     // The P4.D29 refusal arms: v4's thrown message vs v5's, ids remapped through
-    // each side's OWN first-seen map and only the parse-detail tail elided.
+    // each side's OWN first-seen map; the parse-detail tail compared verbatim.
     let got_errs = normalize_errors(&Value::Array(got_errors.clone()), &got_id_map, "rust");
     let want_errs = normalize_errors(
         oracle

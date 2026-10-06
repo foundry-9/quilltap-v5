@@ -586,6 +586,12 @@ pub fn read_properties<E: StoreEntity>(
         return Ok(None);
     };
     let value: Value = serde_json::from_str(&content).map_err(|e| {
+        // v4 renders `err.message` — V8's `JSON.parse` sentence — in both the
+        // line and the detail (`document-store-overlay.ts:294-306`), as the
+        // read path's `hydrate_one` does (P4.154, dogfood #146); serde's own
+        // text survives only where V8 would ACCEPT the bag.
+        let e = crate::generators::optimizer::v8_json_parse_message(&content)
+            .unwrap_or_else(|| e.to_string());
         tracing::error!(
             entity = E::entity_label(),
             entity_id,
