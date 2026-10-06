@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-06 — docs(porting): order the `07b8f0209` fresh-instance-indexes + follow-ups smalls round — P4.153 ∥ P4.154 ∥ P4.155 ∥ P4.156 ∥ P4.157 ∥ P4.158
+
+_Docs-only change._
+
+Six work orders for the round the `07b8f0209` follow-ups unification named as NEXT item 2, plus the 2026-10-06 dogfood walk's three items. v4 AT the baseline (the ledger's §2 probe passed; §3 EMPTY) — no drift absorbed, the baseline does not move.
+
+- `work-orders/p4.153-fresh-instance-secondary-indexes-provisioning.md` — dogfood #149: the measurement of a REAL v4 first boot first, then the migration-created index family re-dumped through v4's real `MigrationRunner` into a second committed artifact, replayed at provisioning; `provisioning_equivalence` grows a migrations-first index arm; a host boot test.
+- `work-orders/p4.154-log-text-serde-smalls-v8-twin-overlay-gemini-keys-content-text.md` — dogfood #146 (the v8 twin grown by measurement under a new tier-1 family), the Gemini WARN's camelCase keys, one `content.text` rule.
+- `work-orders/p4.155-import-projects-groups-data-layer-smalls-round2.md` — P4.148's OPEN items (the base pair through the existing home; whole-entity validation; `tags`; the uuid twins; id-less fields).
+- `work-orders/p4.156-repository-fallbacks-round4-chat-informs-fold-pass-chat-put-gate.md` — dogfood #145 + P4.149's OPEN items (the chat-informs repository fn by fn; the fold pass's plant arms; the chat PUT gate measured).
+- `work-orders/p4.157-harness-test-craft-smalls-round2-generators-pair-baked-ids-v4-root-helper.md` — P4.151's OPEN items + the baked-id census; the pair rebuilt once; zero core hunks.
+- `work-orders/p4.158-restore-smalls-completeness-guard-store-claims-phase-warns.md` — P4.147's OPEN items (the completeness guard backfills; store claims; the per-phase WARN census).
+- `phase-4.md`: the round section (fences, execution, the five rulings for the human, what was left out). `dogfood-findings.md`: #145/#146/#149 → ORDERED; the 2026-10-06 standing notes struck.
+
 #### 2026-10-06 — docs(porting): the `07b8f0209` follow-ups + restore dogfood pass — 21 rows, #143/#144/#147 fixed, #149 ordered
 
 _Docs-only change._

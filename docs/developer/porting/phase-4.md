@@ -7124,6 +7124,179 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
+## The `07b8f0209` fresh-instance-indexes + follow-ups smalls round (P4.153 ∥ P4.154 ∥ P4.155 ∥ P4.156 ∥ P4.157 ∥ P4.158) — ORDERED 2026-10-06
+
+**Baseline `07b8f0209`; v4 AT the baseline at the planning probe (HEAD
+`07b8f0209`, `origin/main` agreeing after `git fetch --all`, tree CLEAN,
+`bugfix` `1a2b2164c` and `release` `8fbf2afe0` unmoved); the ledger's §3 is
+EMPTY, so this round absorbs NO drift row and the baseline does NOT move at
+its unification; the regen rule is NO PIN REQUIRED, but every lane pins
+regardless (`/tmp/qt-v4-pin-<order>-07b8f0209`).** The round the
+`07b8f0209` follow-ups + restore unification named as NEXT item 2 (the
+follow-ups smalls round from the six orders' OPEN items) PLUS the three
+items the 2026-10-06 dogfood walk proposed (finding **#149** as ONE
+provisioning order, high; **#145** and **#146** as smalls rows). **The
+planning survey measured the scope from the hunks and corrected five
+recorded premises** (every order's §R.4): (a) #149 is NOT "indexes v4's
+generateDDL has and v5 forgot" — v4 has TWO index families, generateDDL's
+(71 statements, ALL already in `fresh_schema.json`) and the
+MIGRATION-created one (`sqlite-initial-schema.ts`'s 55 + 32 later scripts
++ the `onTableEnsured` hooks) which v4's real first boot builds in PHASE 1
+before any repository runs — and `provisioning_equivalence` cannot see it
+because its oracle builds v4's fresh instance THROUGH THE REPOSITORIES;
+(b) the v8 twin ALREADY exists and ALREADY falls through on #146's `{`
+shape (its doc comment declares inside-a-value failures out of scope), so
+routing alone changes nothing — the twin must grow by measurement; (c) the
+`[Chats v1]` lines are nine, not eight, and v4's `inform.ts` has NO error
+line (its reads are fallback reads); (d) P4.148's "three absent repository
+ERRORs" are TWO lines from ONE existing home — neither projects nor groups
+overrides `createErrorMessage()`; (e) the five dead API-key wrappers stay
+out of every lane. Six lanes, disjoint ownership, ONE shared contract (C1
+— the `db::fallback` homes P4.155 may call), four named handoff seams
+(§R.10). No lane edits `apps/web/**` (P4.152's OPEN items are counters and
+one not-measured wait — no lane justified).
+
+- **P4.153 — fresh-instance secondary indexes (#149; core + host +
+  harness; the most capable tier):** `work-orders/p4.153-fresh-instance-
+  secondary-indexes-provisioning.md` — the MEASUREMENT first (a REAL `tsx
+  server.ts` boot at the pin on an empty `QUILLTAP_DATA_DIR` with the env
+  pepper — `needs-vault-storage` does not lock — and `sqlite_master` of
+  all three partitions, committed as a survey record); a NEW
+  `dump-migration-indexes.ts` driving v4's REAL `MigrationRunner` over its
+  REAL registry on an empty dir and diffing against the generateDDL set →
+  a SECOND committed artifact `migration_indexes.json` (D23: never
+  hand-written) replayed by `provision_fresh_instance` after each
+  partition's `fresh_schema.json`; `provisioning_equivalence`'s oracle
+  rebuilt the migrations-first way (the runner BEFORE the repositories)
+  with a NEW index-set arm RED-FIRST by the dump's count, the TABLE text
+  still compared against the generateDDL dump (R-A: the accepted
+  asymmetry stays — re-dumping tables from a migrations-first boot would
+  move v5's fresh instances away from every committed fixture's shape);
+  a NEW `host_boot_fresh_indexes` test (`setup` + ONE boot carries every
+  index of both families; a second boot creates NOTHING; `EXPLAIN QUERY
+  PLAN` of the per-chat message read names its index — red: `SCAN`); the
+  UNIQUE four (`idx_chat_documents_unique`, `idx_connection_profiles_
+  userId_name` on `lower(trim("name"))`, `idx_group_character_members_
+  group_char`, `idx_project_doc_mount_links_proj_mp`) pinned by refusal
+  bytes or measured guard + presence; the 32 later scripts' `shouldRun`
+  measured against a v5-provisioned file (a script that would FAIL there
+  is a finding); the D23 paragraph amended in ONE paragraph. Rulings
+  R-A…R-G.
+- **P4.154 — log-text + serde smalls (#146 + P4.150's nits; core +
+  harness; Opus):** `work-orders/p4.154-log-text-serde-smalls-v8-twin-
+  overlay-gemini-keys-content-text.md` — `v8_json_parse_message` grown by
+  MEASUREMENT on real Node 24.13.1 under a NEW tier-1 family
+  (`v8-json-parse-messages.ts` → `v8_json_parse_message_equivalence`; the
+  inside-a-value templates `Expected property name or '}' …`, `Expected ','
+  or '}' …`, `Unterminated string …` as the recording says; the doc
+  comment's `None` scope shrunk to the measured remainder; the fixed-row
+  table re-recorded under the pin); #146's overlay hunk ONE `map_err`
+  through the twin with the surviving serde shapes a both-ways row on a
+  planted `{`; the Gemini safety WARN under v4's `finishReason` /
+  `blockReason` with `undefined` OMITTED (the `:2607` snake_case pin moved;
+  the camelCase row recorded through the real plugin's logger); ONE
+  `google_candidate_text` rule for the `content.text` fallback with the
+  STREAM-path `.recorded` row or its recorded impossibility. Rulings
+  R-A…R-E.
+- **P4.155 — import + projects/groups data-layer smalls, round 2 (P4.148's
+  OPEN; core + harness; Opus):** `work-orders/p4.155-import-projects-
+  groups-data-layer-smalls-round2.md` — the refused project/group import
+  arm logging EXACTLY v4's base pair (`Data validation failed` + `Error
+  creating entity`) through the EXISTING `log_create_failure` home (C1 —
+  measured: no subclass line exists); the import validating the WHOLE
+  entity as v4's `_create` does, through ONE `parse_create_entity` per
+  kind over v4's REAL schema bounds (recorded, never typed; the corpus
+  grows one refusing row per bound, red-first on the whole-state diff);
+  `tags` through ONE `coerce_tags` at v4's three sites; the two
+  `is_zod_uuid` twins folded onto `zod_uuid_ok`; id-less items omitting
+  the `…Id=` field as winston does; the embedding-profile WARN's `userId`.
+  Rulings R-A…R-F.
+- **P4.156 — the repository-fallback class, round 4 (#145 + P4.149's
+  OPEN; core + harness; the most capable tier):** `work-orders/p4.156-
+  repository-fallbacks-round4-chat-informs-fold-pass-chat-put-gate.md` —
+  the nine `[Chats v1]` lines onto v4's camelCase keys with the two
+  v5-only ERROR lines measured against v4's fallback reads and DELETED or
+  RE-HOMED (v4's route has no error line); the chat-informs repository's
+  thirteen fns made v4's fallback/throw shape fn by fn with `create` /
+  `mark_consumed`'s lines; the fold pass's three pool-failure reads each
+  REACHED by a plant arm in `fold_episode_tier3`; the chat PUT gate's
+  mount-side `Db` error MEASURED against v4 through the real route and
+  ported; the memory repository's five hand-written outer lines folded
+  onto the home; C2's strict-rendering row committed. The 5c sync ruling
+  NOT taken (R-A — it stays written up for the human). Rulings R-A…R-H.
+- **P4.157 — harness / test-craft smalls, round 2 (P4.151's OPEN + the
+  unification's named harness remainders; harness + fixtures only, ZERO
+  core hunks; Opus):** `work-orders/p4.157-harness-test-craft-smalls-
+  round2-generators-pair-baked-ids-v4-root-helper.md` — the baked-id
+  census over the generator readers with every minted id read off the
+  LIVE instance (the `DEFAULT_PROMPT` precedent), the pair's BUILDER fixed
+  for Mira's dangling `defaultSystemPromptId` and the `character-
+  generators-*` pair rebuilt ONCE (this lane alone; nine readers by name);
+  A1's second ERROR line against v4; B3's NULL-`permanent` row through a
+  NULL-writing seed (the `get::<_, i64>` panic retired); B4's code arm
+  closed on the shared census lexer with three evasion fixtures; D's PDF
+  rows counting OUTCOMES with v4's two PDF lines un-filtered;
+  `regenerate_swipe_tier3` without `TZ=UTC` through the explicit-zone seam
+  (or a recorded handoff); ONE `v4_root()` helper in `tests/common` for the
+  five guards; the `split_once` plant. Ruling R-A: the real-`pdf-parse`
+  row stays unrunnable — NO `--experimental-vm-modules`. Rulings R-A…R-I.
+- **P4.158 — restore smalls (P4.147's OPEN; core + harness; the most
+  capable tier):** `work-orders/p4.158-restore-smalls-completeness-guard-
+  store-claims-phase-warns.md` — the preserve arm's completeness guard
+  BACKFILLS a missing managed file from the archived row's inline value
+  after the mount family (R-A; a derived damaged-store archive; the
+  `PRESERVE_BACKFILL` both-ways row — v4 cannot reach the state); two
+  claimants → first claim wins with a RECORDED v5-only WARN; a duplicate
+  archived id → ONE truth at 22a; 22a-ter's position proven or moved by a
+  derived case; `create_slim_linked` under one transaction (red-first on a
+  planted second-statement failure); `StoreBackedRepository::create`
+  validating before it inserts (P4.148 Tier 3 item 22, now this lane's
+  file); `restore_compact_fresh_replace` narrowed out of `REPLAY_DEDUPE`
+  table by table with reasons; the per-phase WARN census (the "~38") with
+  every reachable arm ported; `WardrobePublicError`'s message bytes.
+  Rulings R-A…R-H.
+
+**Fences:** `services/provisioning/**` + NEW `migration_indexes.json` +
+`provisioning_equivalence.rs` + NEW `host_boot_fresh_indexes.rs` P4.153;
+`db/document_store_overlay.rs:327-333` ONLY + `generators/optimizer.rs`
+(the twin + its table) + `model/{image_dialects,response_parse,plugin_
+catch_log}.rs` + the NEW v8 family P4.154; `services/quilltap_import/**`,
+`db/{projects,groups}.rs`, the REST of `db/document_store_overlay.rs`,
+`api/projects.rs`, `api/zod_issues.rs`, the two `is_zod_uuid` hunks
+P4.155; `api/chat_informs.rs`, `db/{chat_informs,fallback,memories}.rs`,
+`services/fold_episode_pass.rs`, the `api/salon.rs` PUT-gate hunk P4.156;
+harness-only + the `character-generators-*` pair P4.157; `services/backup/
+restore/**` + `db/store_backed.rs` WHOLE P4.158; `fresh_schema.json`
+(never hand-edited), `services/api_key_service.rs:405-475`, `services/
+mount_index/sync/**`, `api/types.rs`, `api/memories.rs`, `crates/quilltap-
+host/src/**` (P4.153's boot hunks are HANDOFFS), `apps/web/**` for NOBODY.
+**Execution:** six branches cut from `main` at the orders' commit;
+worktree per lane, every lane cloning main's warmed `target/` (`cp -cR`);
+P4.153 + P4.156 + P4.158 the most capable tier, P4.154 + P4.155 + P4.157
+Opus; every lane announces sweeps (one at a time); at most two workspace
+gates at once; no Playwright run by any lane (the unifier's full run
+only); cherry-pick order **P4.156 → P4.155 → P4.158 → P4.153 → P4.154 →
+P4.157**; the unifier lands the §S.1/§S.2 handoffs, regenerates the
+rebuilt pair's nine readers and `character_optimizer_tier3` after P4.154,
+runs `provisioning_equivalence` + `host_boot_fresh_indexes` +
+`system_restore_state` on the union (§S.4), recounts versions (core by
+FIVE lanes, host by P4.153), moves #145/#146/#149 to FIXED, and lists the
+candidate v4 filings. **Rulings made at planning for the human to confirm
+or overrule before the lanes launch** (§R.11; each order's "Rulings made
+at planning" section): P4.153 R-A (the index family ADDED; the table text
+stays generateDDL's), P4.158 R-A (the completeness guard BACKFILLS),
+P4.156 R-A (5c NOT taken), P4.157 R-A (no `--experimental-vm-modules`),
+P4.154 R-A (the v8 twin grows only by measurement). **Deliberately left
+out:** a drift catch-up (none — v4 AT the baseline); the owed dogfood pass
+(it runs AFTER this round — the six lanes' 💸 rows, headlined by P4.153's
+acceptance measurement: the 1.27 GB archive restored into a fresh
+instance); the five dead API-key wrappers and the 5c sync ruling (human
+calls, written up); the 40-delete / 19-outer-line census and the 19
+absent `[Projects v1]` lines (census orders of their own); P4.143 Tier 3
+item 12's generated schema-shape table (its own order); the `new-account`
+restore preserve and the built-in re-provisioning (P4.147 items 15/16 —
+their own order); an SPA lane (nothing justified one).
+
 ## The `07b8f0209` follow-ups + restore round (P4.147 ∥ P4.148 ∥ P4.149 ∥ P4.150 ∥ P4.151 ∥ P4.152) — UNIFIED 2026-10-05 (ordered 2026-10-05)
 **UNIFIED on main (2026-10-05) — ALL SIX LANES LANDED; the oracle baseline
 STAYS `07b8f0209` (no drift row absorbed) and the drift ledger's §3 is EMPTY
