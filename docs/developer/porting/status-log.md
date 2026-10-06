@@ -169319,3 +169319,175 @@ restore.
 the per-blob `try` (`restore.ts:692` — one unpreparable statement aborts the
 whole restore); 22f-bis filing a shared archetype into the target's wiped
 General (`GENERAL_POINTER_PREAPPLY`).
+## P4.153 — fresh-instance secondary indexes (dogfood #149) — LANE record (lane `claude/fresh-instance-secondary-indexes-0cb549`, 2026-10-06)
+
+Lane start: the drift ledger's §2 probe PASSED (v4 on `main`, HEAD
+`94fbb1ae3`, `94fbb1ae3..main` and `1a2b2164c..bugfix` empty, tree clean),
+re-run and passing before every regen batch. Pin `/tmp/qt-v4-pin-p4153-94fbb1ae3`
+(`git rev-parse` = `94fbb1ae3…`, `package.json` `4.10.0-dev.112`). No §R.13
+family run, so no second pin.
+
+### The measurement (Tier 1 item 1) — `work-orders/surveys/2026-10-06-p4.153-v4-first-boot-indexes.md`
+
+A REAL `tsx server.ts` first boot at the pin on an empty data dir (R-B):
+**122 migrations run / 88 skipped, none deferred, none failed**;
+`SQLite schema migration completed {tablesCreated: 30, indexesCreated: 55}`.
+Named indexes: main 83 / mount-index 23 / llm-logs 7. **The migration family
+(not in `fresh_schema.json`, on a table v5 creates): main 50 / mount-index 4 /
+llm-logs 5 = 59.** On unported `main`, `setup` + ONE host boot lacked **56**
+(**main 47 / mount-index 4 / llm-logs 5** — the walk's 46/6/5 CORRECTED; the
+boot already made `idx_files_generationKey`,
+`idx_folders_userId_projectId_path`, `idx_help_doc_chunks_docId`). The
+runner-driven dumper vs the real boot: **zero differences**.
+
+⚠ Instrument note: Turbopack refuses a SYMLINKED root `node_modules` in the
+pin (`Symlink [project]/node_modules is invalid, it points out of the
+filesystem root`). A real `server.ts` boot from a pin needs the two
+`node_modules` symlinks replaced by APFS clones (`cp -cR`, 11 s). tsx-only
+oracles are unaffected.
+
+### Findings (the order's survey was wrong on four counts)
+
+1. **`idx_doc_mount_folders_mp_path` is UNIQUE on a real v4 instance, plain on
+   a fresh v5 one.** The migrations (`provision-*-mount`,
+   `convert-project-files-to-document-stores`) make it UNIQUE, the repository's
+   `onTableEnsured` plain, and v4's boot keeps the migration's. **RULED by the
+   human mid-lane (2026-10-06): "make the folders mp_path index UNIQUE to match
+   v4".** Landed without a hand-written index. The dumper carries a shared name
+   whose migration text is UNIQUE where generateDDL's is not (exactly this one),
+   and the provisioner skips `fresh_schema.json`'s copy of any name the artifact
+   carries. The artifact is therefore mount-index **5**. v5's own
+   `builtin_mounts.rs:258` already asked for `CREATE UNIQUE INDEX IF NOT EXISTS`
+   there, a silent no-op behind the plain copy.
+2. **UNIQUE in the family: five, not the order's four.**
+   `idx_project_doc_mount_links_proj_mp` is NOT on a fresh v4 instance
+   (`convert-project-files-to-document-stores`'s `shouldRun` is false on an
+   empty data dir). `idx_group_doc_mount_links_group_mount` is, and so is
+   `idx_folders_userId_projectId_path`.
+3. **R-A's "the SAME column set" is FALSE on a real first boot.** `characters`
+   −15 / `projects` −19 / `groups` −5 (the slim store-backed rows),
+   `chat_settings` keeps 3 dropped columns and lacks `timezone`, `chats` has the
+   3 columns v5 adds at boot, and `users` keeps 4 legacy auth columns. Recorded,
+   not closed, as `TABLE_COLUMN_ASYMMETRY` (both ways). R-A's TABLE ruling is
+   unchanged.
+4. **R-C's boot-made list was too generous.** The three `chat_informs` indexes
+   are NOT made by v5's boot on a fresh instance (`ensure_chat_informs_table`
+   fires only when the TABLE is absent), so `find_pending_for_participant` had
+   no index on a fresh v5 instance.
+5. (outside the lane) A real v4 first boot logs ~2,400 ERROR lines unrelated to
+   indexes. The sample-content seed races a not-yet-ensured `doc_mount_files`
+   (`no such table: doc_mount_files` ×30; the two sample characters are NOT
+   created). **Candidate v4 note** (a first-boot ordering race).
+
+### Units
+
+- **Commit 1** (`feat(provisioning)`): the record; NEW
+  `harness/oracle/provision/migrations-first.ts` (the shared real-boot build);
+  NEW `dump-migration-indexes.ts` → NEW `provisioning/migration_indexes.json`
+  (60 statements: main 50 / mount-index 5 / llm-logs 5); one sentence in
+  `dump-fresh-schema.ts`'s NOTE.
+- **Commit 2** (`fix(provisioning)`): `provision_fresh_instance` replays the
+  artifact after each partition's `fresh_schema.json` statements in the same
+  transaction (skipping a shared name's generateDDL copy).
+  `build-provision-oracle.ts` builds migrations-first (the three by-hand
+  `provision-*-mount` `run()`s retired — the runner ran them) and emits
+  `indexes`, `columns` and `migrations`. `provisioning_equivalence` gains the
+  (1a) table-text arm (re-aimed at the committed `fresh_schema.json`), the (1b)
+  column-set arm and the (1c) index arm, with named both-ways tables:
+  `ORACLE_ONLY_TABLES` 9, `TABLE_COLUMN_ASYMMETRY` 7 rows,
+  `ORACLE_ONLY_INDEXES` 1 (`idx_wardrobe_items_character`), `SHARED_NAME_SQL`
+  16 (`ASC`-only). The seed compare drops the recorded asymmetric columns. NEW
+  `crates/quilltap-host/tests/host_boot_fresh_indexes.rs` (8 arms). D23 amended
+  in ONE paragraph. Tier 2 item 9: the `services/api_key_service.rs` test plant
+  names each profile after its id.
+
+### Red-first (§R.7)
+
+- `provisioning_equivalence` (1c) on `main`: **failed by exactly 59** (the
+  family's count) once the named tables held; 77 before they were filled (+1
+  wardrobe, +17 shared-name texts).
+- `host_boot_fresh_indexes` on `main`'s provisioner: **7 of 7 arms red** (56
+  missing; the first boot created 3; `get_messages` planned `SCAN chat_messages
+  USING INDEX idx_chat_messages_createdAt`; all four UNIQUE duplicates
+  ACCEPTED). The ruled 8th arm
+  (`idx_doc_mount_folders_mp_path_refuses_a_duplicate_path`) was red on the
+  pre-ruling artifact (ACCEPTED) and green after.
+- UNIQUE-five outcomes (R-E): each has an above-SQLite guard on v5's ordinary
+  path, as on v4's (the profile create's 409; `add_member` / `link` /
+  `open_document` find first). So each arm drives the RAW repository `create`
+  (the restore / importer writer) twice and asserts v4's SQLite bytes, measured
+  through better-sqlite3-multiple-ciphers on a copy of the real-boot instance:
+  `chat_documents.chatId, …mountPoint`; `index
+  'idx_connection_profiles_userId_name'` (the trimmed, case-folded duplicate);
+  `group_character_members.groupId, …characterId`;
+  `group_doc_mount_links.groupId, …mountPointId`;
+  `doc_mount_folders.mountPointId, doc_mount_folders.path`.
+  `idx_folders_userId_projectId_path` was already boot-made: no new arm.
+- Tier 2 item 9: three core unit tests (`api::images::api_key_read_tests::…`,
+  `services::api_key_service::tests::the_chat_enrichments_…`,
+  `services::chat_participants::api_key_read_tests::…`) went RED on the UNIQUE
+  profile-name index (their plant gave two profiles one name, which v4
+  refuses). Re-aimed and green.
+
+### Item 11 — v4's runner over a v5-provisioned copy
+
+Success: 29 run / 181 skipped, nothing failed or deferred, **no index
+changed**, ONE added (`idx_wardrobe_items_character`, on the legacy table it
+creates). Of the 31 index-creating scripts, 4 RAN (the legacy wardrobe chain +
+an `IF NOT EXISTS` no-op) and 27 skipped. The per-script table is in the record.
+No finding.
+
+### HANDOFF (§R.10(d), §S.4)
+
+`crates/quilltap-harness/tests/system_restore_state.rs:1258-1264` (P4.158's
+file) asserts a freshly provisioned target is "pre-index"
+(`CollapseOutcome::Ran { .. }`) before it builds
+`idx_folders_userId_projectId_path` itself. With P4.153 the provisioner makes
+that index up front, as v4's real boot does. **The hunk: accept
+`CollapseOutcome::Ran { .. } | CollapseOutcome::AlreadyIndexed`.** Measured on
+this branch with the hunk applied locally (not committed): **3/3, every case
+45 tables diffed row-for-row, zero row changes** (incl.
+`restore_duplicate_folders_replace`). Without it the family is red on this
+branch and on the union.
+
+### Gate
+
+- fmt clean; clippy clean on both feature sets.
+- `cargo test --workspace --no-fail-fast` (lane env block, pin paths):
+  **672 binaries / 4,391 passed / 1 failed / 3 ignored, zero `SKIP:` lines**.
+  The one red, `api::chat_informs::safe_query_and_log_tests::the_posted_inform_line_renders_both_ids_as_json`
+  (an EMPTY capture — the known tracing interest-cache race; P4.156's file),
+  is green by name and 3× in its module.
+- `provisioning_equivalence` through the sweep driver from the pin: 3/3, plus
+  `verify-v5-provisioned.ts` (v4 reads the v5 instance carrying the family) and
+  both dbkey legs OK.
+- NEUTRAL sweep (announced, one sweep): `table_shape_equivalence`,
+  `restore_vintage_state`, `system_import_state` and `files_routes_equivalence`
+  ok; `system_restore_state` red ONLY on the HANDOFF precondition above.
+- `host_boot`, `host_boot_hardness`, every `host_boot_*`,
+  `folders_chokepoint_wiring_guard`, `dispatch_wrong_type_census`,
+  `spelling_guard`, `fallback_home_guard`, `builtin_prompt_templates_guard`,
+  `provider_sdk_version_guard`, `qtap_schema_embed_guard` green in the
+  workspace run. `recipe_sweep.py --self-test`: 0 failures. SPA `npm run build`
+  exit 0.
+
+### Regen recipes
+
+- The artifact (committed; re-dump when v4 moves the family), from the pin:
+  `V5W=…; cd $PIN; QT_FRESH_SCHEMA=$V5W/crates/quilltap-core/src/services/provisioning/fresh_schema.json QT_MIGRATION_INDEXES_OUT=$V5W/crates/quilltap-core/src/services/provisioning/migration_indexes.json [QT_REAL_BOOT_MASTER=<real-boot dump>] $N/npx tsx $V5W/harness/oracle/provision/dump-migration-indexes.ts`.
+- `provisioning_equivalence`: unchanged recipe (its header; the sweep driver
+  runs it as is); the oracle builds migrations-first internally.
+
+### 💸 for the dogfood pass
+
+The 1.27 GB Friday archive `replace`-restored into a freshly `setup` v5
+instance (the acceptance timing — 2 h 26 m before); that instance's
+`sqlite_master` diffed by name against the migrated copy (expect only Friday's
+history-only indexes, e.g. `idx_project_doc_mount_links_proj_mp`); a duplicate
+connection-profile name refused on a fresh instance; the first boot's log
+creating no index the provisioner made.
+
+### Versions at close
+
+core 0.0.1236, host 0.0.186 (harness frozen 0.0.1110; web/cli/tauri/SPA
+unchanged).

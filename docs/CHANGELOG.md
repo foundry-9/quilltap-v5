@@ -173,6 +173,13 @@ _Versions: core 0.0.1236._
 - The restore's preserve arm (P4.147) let two entities keep one archived store when both pointed at it. Now the first entity to claim a store keeps it (characters, then projects, then groups, each in archive row order); a later claimant takes the fresh-store arm, as v4 does for every entity, and logs a v5-only WARN `Archived store already claimed by an earlier entity; falling back to a fresh store` (`entity`, `entityId`, `mountPointId`, `claimedBy`) on `quilltap::restore`.
 - The archived-store map kept the LAST row for a duplicated `doc_mount_points` id while 22a's primary key keeps the FIRST; a duplicate typed `documents` dropped Lorian off her own vault. The map now keeps the first row per id.
 - Two new derived archives (`restore-archive-two-claimants.zip`, `restore-archive-dup-store-id.zip`, built by new derive scripts that md5-check `restore-archive.zip`) and two `system_restore_state` cases. Red first on unported core: 12 and 8 failures. The harness's `FRESH_STORE_RESIDUAL` carve now applies first-claim-wins too, and every case now reads the process-global log capture: the claim WARN is pinned on the two-claimants case and must be silent on every other.
+#### 2026-10-06 — docs(porting): the P4.153 lane record — fresh-instance secondary indexes (dogfood #149)
+
+_Docs-only change._
+
+- `status-log.md`: the P4.153 lane record (the measurement's headline numbers, the four survey corrections, the mid-lane UNIQUE ruling, every red-first count, item 11, one `HANDOFF:` for `system_restore_state.rs`'s pre-index precondition, the gate, the 💸 rows).
+- The P4.153 order's status header → LANE COMPLETE.
+
 #### 2026-10-06 — fix(provisioning): a fresh instance carries v4's migration-created index family; the provisioning differential builds v4 migrations-first (P4.153, dogfood #149)
 
 _Versions: core 0.0.1236, host 0.0.186._
