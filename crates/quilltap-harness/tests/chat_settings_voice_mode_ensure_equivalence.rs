@@ -12,10 +12,12 @@
 //!       plus (P4.151 A2) one row per remaining storage class — `'true'` TEXT,
 //!       `1.5` REAL, a BLOB, and `'1'` which the column's INTEGER affinity
 //!       stores as INTEGER 1 — so `cell_to_json`'s TEXT / REAL / BLOB arms are
-//!       each driven against v4. The storage class is a COMPARAND: the oracle
-//!       emits `typeof()` of every retired cell from the base file before any
-//!       migration, and this test asserts the same set on its copy before the
-//!       ensure, so no row can silently fall into the INTEGER arm;
+//!       each driven against v4. The storage class is pinned ID-BOUND against
+//!       the `typeof()` v4 RECORDED for every retired cell on the base file
+//!       before any migration, with the mode v4 translated each row to
+//!       (P4.157 A2 — the earlier check re-read the same file on this side,
+//!       so it could not fail), so no row can silently fall into the INTEGER
+//!       arm;
 //!   (b) NEITHER column — v4 runs add-field THEN mode, v5 runs its ONE ensure;
 //!   (c) BOTH present with the old one appended LAST (the ping-pong shape),
 //!       rows (old 1, 'always') / (1, 'off') / (0, NULL) / (1, 'ask').
@@ -216,39 +218,66 @@ fn the_boot_ensure_matches_v4s_migration_in_three_starting_shapes() {
         let writer = Writer::open_writable(&work, &spec_pepper()).unwrap();
         let conn = writer.connection();
         let before = column_names(conn);
+        // P4.157 A2: the storage class per row, ID-BOUND and asserted against
+        // the classes v4 RECORDED on the base file (`typeofs`) — never against
+        // v5's own read of its copy of that same file, which could not differ
+        // (the comparand P4.151 shipped agreed with itself). Each row also
+        // pins the mode v4's migration translated it to, so a class that moves
+        // is caught with the arm it would reach.
         let want_typeofs = oracle["typeofs"].as_array().expect("typeofs");
+        let recorded: Vec<(&str, &str)> = want_typeofs
+            .iter()
+            .map(|t| (t["id"].as_str().unwrap(), t["t"].as_str().unwrap()))
+            .collect();
         if before.iter().any(|c| c == "impersonationVoiceRewrite") {
-            let mut stmt = conn
-                .prepare(
-                    "SELECT id, typeof(\"impersonationVoiceRewrite\") AS t FROM chat_settings ORDER BY id",
-                )
-                .unwrap();
-            let got: Vec<Value> = stmt
-                .query_map([], |r| {
-                    Ok(json!({"id": r.get::<_, String>(0)?, "t": r.get::<_, String>(1)?}))
-                })
-                .unwrap()
-                .map(|r| r.unwrap())
-                .collect();
-            assert_eq!(
-                &got, want_typeofs,
-                "[{mode}] the retired cells' storage classes before the ensure"
+            assert!(
+                !recorded.is_empty(),
+                "[{mode}] v4 recorded no typeofs for a retired column"
             );
         } else {
             assert!(
-                want_typeofs.is_empty(),
+                recorded.is_empty(),
                 "[{mode}] no retired column, no typeofs"
             );
         }
         if mode == "a" {
-            let classes: Vec<&str> = want_typeofs
+            const CLASSES: &[(&str, &str, &str)] = &[
+                ("s1", "integer", "ask"),
+                ("s2", "integer", "off"),
+                ("s3", "null", "off"),
+                ("s4", "integer", "ask"),
+                ("s5", "text", "off"),
+                ("s6", "real", "off"),
+                ("s7", "blob", "off"),
+                ("s8", "integer", "ask"),
+            ];
+            assert_eq!(
+                recorded,
+                CLASSES
+                    .iter()
+                    .map(|(id, t, _)| (*id, *t))
+                    .collect::<Vec<_>>(),
+                "[a] v4's recorded storage class per row (P4.151 A2): s1..s8 cover every \
+                 class; s8's '1' is coerced to INTEGER"
+            );
+            let v4_modes: Vec<(&str, &str)> = oracle["rows"]
+                .as_array()
+                .unwrap()
                 .iter()
-                .map(|t| t["t"].as_str().unwrap())
+                .map(|r| {
+                    (
+                        r["id"].as_str().unwrap(),
+                        r["impersonationVoiceMode"].as_str().unwrap_or("<null>"),
+                    )
+                })
                 .collect();
             assert_eq!(
-                classes,
-                ["integer", "integer", "null", "integer", "text", "real", "blob", "integer"],
-                "[a] s1..s8 cover every storage class (P4.151 A2); s8's '1' is coerced to INTEGER"
+                v4_modes,
+                CLASSES
+                    .iter()
+                    .map(|(id, _, m)| (*id, *m))
+                    .collect::<Vec<_>>(),
+                "[a] the mode v4's migration translated each class to"
             );
         }
         match mode {

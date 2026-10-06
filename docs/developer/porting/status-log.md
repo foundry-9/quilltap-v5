@@ -169713,3 +169713,26 @@ harness is frozen at `0.0.1110`).
   HANDOFF. The `.ts` case header (`regenerate-swipe-tier3.test.ts`, not this
   lane's file) carries no `TZ` line (grep: none).
 - For the unifier: the family can join the workspace env block (no `TZ`).
+
+### Unit A2 — the `typeofs` comparand that agreed with itself (Tier 2 item 9)
+- **What was wrong, exactly:** the oracle records `typeof()` per retired cell
+  on the BASE file; the Rust side copied that same file and re-read
+  `typeof()` — byte-identical storage, so `got == want` could not fail from
+  any v5 change. The guard that mattered was the class LIST, read from v4's
+  `typeofs` but without ids.
+- **Now:** the self-agreeing re-read is DELETED; mode (a) pins an id-bound
+  `(id, class, v4-translated mode)` table — s1 integer→ask, s2 integer→off,
+  s3 null→off, s4 integer→ask, s5 text→off, s6 real→off, s7 blob→off, s8
+  integer→ask — asserted against v4's recorded `typeofs` AND v4's migrated
+  rows; (b)/(c) assert v4 recorded typeofs exactly when the retired column
+  exists.
+- **Honest scope:** this removes a check of nothing and binds the corpus guard
+  to ids; it adds no v5-reachable red. v5's per-class behaviour is (still)
+  carried by the `rows` comparand, which P4.151 mutation-proved on all three
+  non-INTEGER arms (`Text`/`Real`/`Blob` → each RED).
+- Green at the TARGET pin (regenerated: `QT_FIXTURE_OUT_DIR=/tmp/p4157/voice
+  npx tsx $V5W/harness/oracle/cases/chat-settings-voice-mode-ensure.ts >
+  /tmp/p4157/oracle-voice-mode-ensure.ndjson`): a 8 rows, b 2, c 4.
+- Ownership note: `chat_settings_voice_mode_ensure_equivalence.rs` is not in
+  the order's Ownership row for P4.157 (an omission — Tier 2 item 9 is this
+  order's), and no other lane owns it this round.
