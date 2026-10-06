@@ -15,7 +15,11 @@
 //!      (c) v5's index set per partition EQUALS v4's real first boot's — BOTH
 //!      families, name for name, SQL byte-equal — modulo `ORACLE_ONLY_INDEXES`
 //!      and the `SHARED_NAME_SQL` classes. Red-first on `main` before P4.153:
-//!      (c) failed by exactly the migration family's 59 names.
+//!      (c) failed by exactly the migration family's 59 names. (d) — the D23
+//!      tripwire (the `94fbb1ae3` smalls unification): the committed
+//!      `fresh_schema.json` equals a LIVE `dump-fresh-schema.ts` run from the
+//!      v4 tree (`QT_FRESH_SCHEMA_LIVE`, required), so v4 moving a table's
+//!      generateDDL text reddens this family as D23 promises.
 //!   2. **Seed rows** — the single user, its chat settings, and the default
 //!      embedding profile match (minted id/timestamps normalized).
 //!   3. **Cross-compat, v5 reads v4** — a real v4-built instance opens under the
@@ -32,6 +36,8 @@
 //!     $N/npx tsx ~/source/quilltap-v5/harness/oracle/provision/build-provision-oracle.ts
 //!   QT_DBKEY_V4_OUT=/tmp/qt-v4-dbkey \
 //!     $N/npx tsx ~/source/quilltap-v5/harness/oracle/provision/verify-dbkey-crosscompat.ts
+//!   QT_SCHEMA_OUT=/tmp/qt-fresh-schema-live.json \
+//!     $N/npx tsx ~/source/quilltap-v5/harness/oracle/provision/dump-fresh-schema.ts
 //!
 //! Run the differential:
 //!   QT_ORACLE_PROVISION=/tmp/oracle-provision.json \
@@ -39,6 +45,7 @@
 //!   QT_V5_PROVISION_OUT=/tmp/qt-v5-provisioned \
 //!   QT_DBKEY_V4_FIXTURE=/tmp/qt-v4-dbkey \
 //!   QT_DBKEY_V5_OUT=/tmp/qt-v5-dbkey \
+//!   QT_FRESH_SCHEMA_LIVE=/tmp/qt-fresh-schema-live.json \
 //!     cargo test -p quilltap-harness --test provisioning_equivalence -- --nocapture
 //!
 //! Then prove v4 reads the v5 outputs. These two legs MUST run from the v4
@@ -274,6 +281,43 @@ fn provisioning_matches_v4_fresh_instance() {
     let main = Writer::open_writable(&data.join("quilltap.db"), TEST_PEPPER).unwrap();
     let mi = Writer::open_writable(&data.join("quilltap-mount-index.db"), TEST_PEPPER).unwrap();
     let ll = Writer::open_writable(&data.join("quilltap-llm-logs.db"), TEST_PEPPER).unwrap();
+
+    // --- (1d) THE D23 TRIPWIRE: the committed generateDDL dump IS v4's live one ---
+    // The `94fbb1ae3` smalls unification (review of P4.153): once (1a) was
+    // re-aimed at the COMMITTED `fresh_schema.json` and (1b) compared column
+    // SETS only, nothing compared v5's table surface with v4's LIVE
+    // `generateDDL` any more — a v4 change to a column's type, DEFAULT, NOT
+    // NULL or position would have passed green, and D23's "a red
+    // `provisioning_equivalence` after a drift check" could never fire. The
+    // recipe now re-runs `dump-fresh-schema.ts` from the v4 tree into
+    // `QT_FRESH_SCHEMA_LIVE`; this arm requires it (no silent skip) and
+    // demands the committed artifact equal it statement for statement. A red
+    // here is v4 drift: RE-DUMP `fresh_schema.json` (never hand-edit, never
+    // "fix" v5 back).
+    let live_path = opt_env("QT_FRESH_SCHEMA_LIVE").unwrap_or_else(|| {
+        panic!(
+            "QT_FRESH_SCHEMA_LIVE is required with QT_ORACLE_PROVISION: run \
+             harness/oracle/provision/dump-fresh-schema.ts from the v4 tree into it \
+             (see header) — it is the D23 generateDDL tripwire"
+        )
+    });
+    let live: Value =
+        serde_json::from_str(&std::fs::read_to_string(&live_path).expect("read live dump"))
+            .expect("parse live dump");
+    let committed: Value = serde_json::from_str(FRESH_SCHEMA_JSON).unwrap();
+    for part in ["main", "mountIndex", "llmLogs"] {
+        let want = live[part].as_array().expect("live partition");
+        assert!(!want.is_empty(), "(1d) live {part} dump is EMPTY — a failed regen");
+        let got = committed[part].as_array().expect("committed partition");
+        let only_live: Vec<&Value> = want.iter().filter(|s| !got.contains(s)).collect();
+        let only_committed: Vec<&Value> = got.iter().filter(|s| !want.contains(s)).collect();
+        assert!(
+            only_live.is_empty() && only_committed.is_empty() && want == got,
+            "(1d) {part}: the committed fresh_schema.json differs from v4's LIVE generateDDL \
+             (v4 drift — RE-DUMP it, D23).\n  only in v4's live dump: {only_live:#?}\n  \
+             only in the committed dump: {only_committed:#?}"
+        );
+    }
 
     // --- (1a) TABLES: v5 replays the generateDDL surface verbatim ---
     // P4.153 R-A: the oracle now builds v4's instance migrations-first, so its
