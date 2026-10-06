@@ -229,7 +229,7 @@ mod tests {
     /// MAIN: the fresh-schema tables (so `chats_read` finds every column it
     /// selects), a `chats` row (`chat-1` → `p-1`), a project-less `chat-np`, and
     /// the slim `projects` row for `p-1` (store `r-1`); MOUNT: the project link
-    /// and the overlay join with `r-1`'s `properties.json` (roster `[c-on]`,
+    /// and the overlay join with `r-1`'s `properties.json` (roster `[cccccccc-cccc-4ccc-8ccc-cccccccccccc]`,
     /// Allow Any OFF). The `group_character_members` table is empty so the group
     /// tier is `[]`.
     fn fixture() -> (Connection, Connection) {
@@ -262,7 +262,7 @@ mod tests {
                    CREATE TABLE doc_mount_documents (id TEXT PRIMARY KEY NOT NULL, fileId TEXT NOT NULL, content TEXT);
                    CREATE TABLE doc_mount_file_links (id TEXT PRIMARY KEY NOT NULL, fileId TEXT NOT NULL, mountPointId TEXT NOT NULL, relativePath TEXT NOT NULL);
                    INSERT INTO doc_mount_files VALUES ('f-1');
-                   INSERT INTO doc_mount_documents VALUES ('d-1','f-1','{"allowAnyCharacter":false,"characterRoster":["c-on"]}');
+                   INSERT INTO doc_mount_documents VALUES ('d-1','f-1','{"allowAnyCharacter":false,"characterRoster":["cccccccc-cccc-4ccc-8ccc-cccccccccccc"]}');
                    INSERT INTO doc_mount_file_links VALUES ('fl-1','f-1','r-1','properties.json');"#,
             )
             .unwrap();
@@ -319,7 +319,13 @@ mod tests {
     #[test]
     fn the_project_tier_is_served_on_roster_and_to_the_operator_off_roster() {
         let (main, mount) = fixture();
-        let (on, lines) = tiers(&main, &mount, "chat-1", "c-on", false);
+        let (on, lines) = tiers(
+            &main,
+            &mount,
+            "chat-1",
+            "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+            false,
+        );
         assert_eq!(on.project_mount_point_ids, vec!["r-1".to_string()]);
         assert!(
             !lines.iter().any(|l| l.contains("wardrobe withheld")),

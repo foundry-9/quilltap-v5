@@ -694,6 +694,23 @@ pub fn log_create_failure(collection: &str, error: &DbError) {
     );
 }
 
+/// v4 `chats.repository.ts:280`'s own `safeQuery` wrap ABOVE the base `_create`
+/// — ERROR `Failed to create chat {collection: chats, error, strictFailures?}`,
+/// logged right after [`log_create_failure`]'s line by every chat-creating
+/// caller v4 routes through `repos.chats.create` (the Concierge validation
+/// refusal, the `.qtap` import, the restore). Logs only — the caller keeps
+/// propagating (the import and the restore skip that chat). ONE home since the
+/// `07b8f0209` follow-ups unification (three hand copies before it).
+pub fn log_chat_create_wrap_failure(error: &DbError) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "chats",
+        error = %error_text(error),
+        strictFailures = strict_repository_failures_active().then_some(true),
+        "Failed to create chat"
+    );
+}
+
 /// v4 `_update`'s rethrow line: ERROR `Error updating entity {collection, id,
 /// error, strictFailures?}`. Logs only — the caller keeps propagating `error`.
 pub fn log_update_failure(collection: &str, id: &str, error: &DbError) {

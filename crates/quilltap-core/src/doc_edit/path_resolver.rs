@@ -1335,12 +1335,12 @@ mod tests {
     // ---- P4.D245 (v4 `9753d0eb2`): the project roster as a tool-access gate ----
 
     /// [`warn_fixture`] with `p-1` CLOSED: `allowAnyCharacter: false`, roster
-    /// `[c-on]` — `c-on` admitted, everyone else refused.
+    /// `[cccccccc-cccc-4ccc-8ccc-cccccccccccc]` — `cccccccc-cccc-4ccc-8ccc-cccccccccccc` admitted, everyone else refused.
     fn roster_fixture() -> (rusqlite::Connection, rusqlite::Connection) {
         let (main, mount) = warn_fixture();
         mount
             .execute_batch(
-                r#"UPDATE doc_mount_documents SET content = '{"allowAnyCharacter":false,"characterRoster":["c-on"]}' WHERE id = 'd-1';"#,
+                r#"UPDATE doc_mount_documents SET content = '{"allowAnyCharacter":false,"characterRoster":["cccccccc-cccc-4ccc-8ccc-cccccccccccc"]}' WHERE id = 'd-1';"#,
             )
             .unwrap();
         (main, mount)
@@ -1395,7 +1395,7 @@ mod tests {
         let (main, mount) = roster_fixture();
         let ctx = PathResolutionContext {
             project_id: Some("p-1".to_string()),
-            character_id: Some("c-on".to_string()),
+            character_id: Some("cccccccc-cccc-4ccc-8ccc-cccccccccccc".to_string()),
             ..Default::default()
         };
         let (out, lines) = crate::test_support::captured_with(|| {
@@ -1510,7 +1510,7 @@ mod tests {
 
         let on = PathResolutionContext {
             project_id: Some("p-1".to_string()),
-            character_id: Some("c-on".to_string()),
+            character_id: Some("cccccccc-cccc-4ccc-8ccc-cccccccccccc".to_string()),
             ..Default::default()
         };
         let (ids, lines) = crate::test_support::captured_with(|| {
@@ -1649,7 +1649,7 @@ mod tests {
         // `None` and `Some("")` alike — v4's `!context.projectId`.
         for project_id in [None, Some(String::new())] {
             let ctx = PathResolutionContext {
-                character_id: Some("c-on".to_string()),
+                character_id: Some("cccccccc-cccc-4ccc-8ccc-cccccccccccc".to_string()),
                 project_id,
                 ..Default::default()
             };

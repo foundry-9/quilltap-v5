@@ -73,6 +73,11 @@ const HOME_MESSAGES: &[&str] = &[
     // (`chat-informs.repository.ts:271-313`). "Repository-layer lines", not
     // only fallback lines: the rethrow homes log and hand the error back.
     "Error creating entity",
+    // The `07b8f0209` follow-ups unification: the chats repository's own wrap
+    // above the base `_create` (`chats.repository.ts:280`) — three hand copies
+    // (the Concierge validation refusal, the `.qtap` import's C2 twin, the
+    // restore's DB arm) folded onto ONE home.
+    "Failed to create chat",
     "Error updating entity",
     "Error deleting entity",
     "Error deleting pending informs by batch",

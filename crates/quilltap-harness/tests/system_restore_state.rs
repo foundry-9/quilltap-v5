@@ -4017,16 +4017,12 @@ const RESTORE_LOG_LINES: &[&str] = &[
     "Restored chat informs",
     "Failed to restore chat",
     "Failed to restore chat document",
-];
-
-/// [P4.147] The REPOSITORY-level lines v4 logs on the same failures (the
-/// validation ERROR, `_create`'s rethrowing `safeQuery`, the chats
-/// repository's own) — the base-repository create-failure family whose ONE
-/// home is P4.149's `db::fallback::log_create_failure` (Shared contract C2,
-/// not on this branch). Pinned BOTH ways as a named handoff: v4 emits them, v5
-/// does not yet; the unifier wires the restore's three arms onto the home
-/// (§S.7) and this pin then fires — fold it into `RESTORE_LOG_LINES`.
-const RESTORE_REPO_LINE_HANDOFF: &[&str] = &[
+    // The REPOSITORY-level lines v4 logs beneath those refusals — the
+    // validation ERROR, `_create`'s rethrowing `safeQuery`, the chats
+    // repository's own wrap — through P4.149's `db::fallback` homes (Shared
+    // contract C2). Wired at the `07b8f0209` follow-ups unification (§S.7):
+    // 6 on `restore_informs_replace` (3 × validation + base), 5 on
+    // `restore_sqlite_tail_replace` (2 chats × base + wrap, 1 chat document).
     "Data validation failed",
     "Error creating entity",
     "Failed to create chat",
@@ -4111,32 +4107,11 @@ fn compare_restore_logs(
             "[{name}] the restore's log lines differ\n  rust:   {g:?}\n  oracle: {w:?}"
         ));
     }
-    let (gh, wh) = (
-        v5_log_records(got_lines, RESTORE_REPO_LINE_HANDOFF),
-        v4_log_records(want, RESTORE_REPO_LINE_HANDOFF),
-    );
-    if wh.is_empty() {
-        failures.push(format!(
-            "[{name}] RESTORE_REPO_LINE_HANDOFF: v4 logged none of the repository lines — the \
-             pin is vacuous"
-        ));
-    }
-    if !gh.is_empty() {
-        failures.push(format!(
-            "[{name}] RESTORE_REPO_LINE_HANDOFF: v5 now logs the repository lines ({gh:?}) — \
-             the §S.7 wire landed; fold the pin into RESTORE_LOG_LINES"
-        ));
-    }
     if failures
         .iter()
         .all(|f| !f.starts_with(&format!("[{name}] the restore's log")))
     {
-        println!(
-            "  logs {name}: {} restore-level line(s) byte-equal; {} repository line(s) v4-only \
-             (the C2 handoff)",
-            g.len(),
-            wh.len()
-        );
+        println!("  logs {name}: {} line(s) byte-equal", g.len());
     }
 }
 

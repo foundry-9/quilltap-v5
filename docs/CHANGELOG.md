@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-05 — test(unify): the `07b8f0209` follow-ups round's wires — the two §S.1 folds, the chats-create wrap home, the restore's repository lines, the in-force census handoff, the fixture rosters, the plain group create retired
+
+_Versions: core 0.0.1233._
+
+Unifier wires for P4.147 ∥ P4.148 ∥ P4.149 ∥ P4.150 ∥ P4.151 ∥ P4.152 (§S.1, §S.3, §S.4, §S.7).
+
+- **§S.1a / C2:** P4.148's lane-local `log_chat_create_db_failure` is deleted; the import's chat DB arm logs through P4.149's `db::fallback::log_create_failure` and a NEW home beside it, `log_chat_create_wrap_failure` — v4 `chats.repository.ts:280`'s own wrap, `Failed to create chat {collection: chats, error, strictFailures?}`. The line had three hand copies on the union (the import twin, the Concierge validation refusal in `chat_override.rs`, the restore's DB arm wired below); all fold onto the home. `fallback_home_guard`'s `HOME_MESSAGES` 31 → 32.
+- **§S.1b / C1:** P4.147's `fold_properties_local` is deleted; both restore callers use `db::document_store_overlay::fold_properties`.
+- **§S.7, P4.147's `RESTORE_REPO_LINE_HANDOFF`:** the restore's chat DB arm logs `Error creating entity` + `Failed to create chat`; the chat-document arm `Error creating entity` (`chat_documents`); the inform refusal `Data validation failed` + `Error creating entity` (`chat_informs`, the ZodError's message on both) — v4's lines as the oracle regenerated from the pin records them (6 on `restore_informs_replace`, 5 on `restore_sqlite_tail_replace`; no `strictFailures`, the restore runs outside the scope on both sides). The handoff pin folds into `RESTORE_LOG_LINES`.
+- **§S.3 + P4.149's handoff (b):** the old in-file census `the_in_force_predicate_is_never_open_coded` is deleted (P4.151's `chat_informs_in_force_census` is the one); the chat-informs repository's four DEBUG lines (`Inform batch created`, `Informs marked consumed`, the two bulk deletes) carry v4's camelCase keys (`chat-informs.repository.ts:218-307`) and the module's pin asserts them.
+- **§S.7, P4.148's handoffs:** the five out-of-lane unit fixtures' rosters hold well-formed uuids (`project_roster_access.rs`, `wardrobe_tiers.rs`, `doc_edit/path_resolver.rs`); `api/groups.rs`'s private hex predicate folds onto `zod_issues::zod_hex_color_ok`; the plain `GroupsRepository::create`, `GroupCreateInput`'s two dead `color`/`icon` fields and the `debug_assert!` are deleted (zero production callers once the restore moved onto `create_with_properties`; the two overlay tests and the groups tier-2 family follow).
+- **§S.4:** the `build-character-generators-fixture.ts` header says five blobs.
+
 #### 2026-10-05 — docs(porting): close the P4.149 repository-fallbacks lane — gate record and status header
 
 _Docs-only change._

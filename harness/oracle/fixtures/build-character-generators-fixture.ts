@@ -13,7 +13,7 @@
  *     "Vision Mock" that does — the wizard's primary/vision split,
  *   - one DEFAULT embedding profile (so v4's `isEmbeddingAvailable` is true
  *     and the optimizer's semantic-search arm is reachable),
- *   - an "Uploads" database-backed mount point holding four blobs, each also a
+ *   - an "Uploads" database-backed mount point holding five blobs, each also a
  *     legacy `files` row whose `storageKey` is the `mount-blob:` key — the
  *     shape `fileStorageManager.downloadFile` and v5's `download_file` both
  *     read WITHOUT a disk tree: two text files (a `.md` and a `.txt` — the
@@ -268,7 +268,7 @@ async function main(): Promise<void> {
     } as never);
   }
 
-  // 4. The Uploads store + its four blobs, each mirrored as a legacy `files`
+  // 4. The Uploads store + its five blobs, each mirrored as a legacy `files`
   //    row pointing at the mount-blob key (the shape the byte layer reads).
   await repos.docMountPoints.create(
     {

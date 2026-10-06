@@ -1110,8 +1110,6 @@ mod null_preservation_tests {
                     description: None,
                     instructions: None,
                     state: json!({}),
-                    color: None,
-                    icon: None,
                 },
                 &crate::db::groups::GroupProperties {
                     color: Some(None),
@@ -1135,17 +1133,19 @@ mod null_preservation_tests {
             stored(&mount, &mp).0,
             "{\n  \"color\": null,\n  \"icon\": \"gear\"\n}"
         );
-        // The plain create leaves an absent colour absent (the restore + harness
-        // callers' contract, unchanged).
+        // A bag with an ABSENT colour leaves it absent (not `null`) — the
+        // restore's fallback arm and the harness rely on absent staying absent.
         let plain = repo
-            .create(
+            .create_with_properties(
                 &GroupCreateInput {
                     name: "Plain".into(),
                     description: None,
                     instructions: None,
                     state: json!({}),
+                },
+                &crate::db::groups::GroupProperties {
                     color: None,
-                    icon: Some("star".into()),
+                    icon: Some(Some("star".into())),
                 },
                 &GroupCreateOptions::default(),
             )

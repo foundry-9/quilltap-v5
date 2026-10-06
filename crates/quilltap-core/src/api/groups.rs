@@ -219,19 +219,6 @@ const DESCRIPTION_MAX: usize = 2000;
 const INSTRUCTIONS_MAX: usize = 10_000;
 const ICON_MAX: usize = 50;
 
-/// `z.string().regex(/^#(?:[0-9a-fA-F]{3}){1,2}$/)` — `#rgb` or `#rrggbb`. The
-/// regex is unanchored-by-nothing (`^`/`$` present, no `m` flag), so it is a
-/// whole-string match; JS `\d`-free, ASCII-only classes, so a byte walk is exact.
-fn is_valid_hex_color(v: &str) -> bool {
-    let Some(rest) = v.strip_prefix('#') else {
-        return false;
-    };
-    if rest.len() != 3 && rest.len() != 6 {
-        return false;
-    }
-    rest.bytes().all(|b| b.is_ascii_hexdigit())
-}
-
 /// `z.string().max(N)` on a value already known to be a string.
 fn within(v: &str, max: usize) -> bool {
     // Zod ≥ 4.5.4 counts code points once the UTF-16 length overflows (v4
@@ -275,7 +262,7 @@ fn parse_update_group(patch: &Map<String, Value>) -> Result<Map<String, Value>, 
             &(|v: &str| within(v, DESCRIPTION_MAX)) as &dyn Fn(&str) -> bool,
         ),
         ("instructions", &|v: &str| within(v, INSTRUCTIONS_MAX)),
-        ("color", &is_valid_hex_color),
+        ("color", &crate::api::zod_issues::zod_hex_color_ok),
         ("icon", &|v: &str| within(v, ICON_MAX)),
     ] {
         if let Some(v) = parse_nullable_string(patch, key, check)? {
@@ -310,7 +297,7 @@ pub async fn group_create(
     let bad = |v: &Option<String>, ok: &dyn Fn(&str) -> bool| matches!(v, Some(s) if !ok(s));
     if bad(&description, &|v| within(v, DESCRIPTION_MAX))
         || bad(&instructions, &|v| within(v, INSTRUCTIONS_MAX))
-        || bad(&color, &is_valid_hex_color)
+        || bad(&color, &crate::api::zod_issues::zod_hex_color_ok)
         || bad(&icon, &|v| within(v, ICON_MAX))
     {
         return bad_request(VALIDATION_ERROR);
@@ -320,8 +307,6 @@ pub async fn group_create(
         description: or_null(description.as_deref()),
         instructions: or_null(instructions.as_deref()),
         state: json!({}),
-        color: None,
-        icon: None,
     };
     // v4 `groups/route.ts:89-90` `color: validatedData.color || null, icon: …
     // || null` — an absent or `null` colour/icon, or an empty icon, is STORED as

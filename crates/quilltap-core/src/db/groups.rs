@@ -110,11 +110,6 @@ pub struct GroupCreateInput {
     /// Arbitrary JSON (`null`/absent → `{}`). Kept `{}`/single-key in the corpus
     /// (the open-JSON multi-key order seam).
     pub state: Value,
-    /// A value, or absent from `properties.json`. A caller that must store v4's
-    /// explicit `null` (the create route's `|| null`, a bundle's `null`) passes a
-    /// three-state bag to [`GroupsRepository::create_with_properties`] instead.
-    pub color: Option<String>,
-    pub icon: Option<String>,
 }
 
 /// The groups repository — a thin wrapper over the generic store-backed base.
@@ -130,40 +125,13 @@ impl<'c> GroupsRepository<'c> {
     }
 
     /// Create a group, provision its store, and return the overlaid entity. The
-    /// input's `color`/`icon` are written as a value or left absent.
-    pub fn create(
-        &self,
-        input: &GroupCreateInput,
-        opts: &GroupCreateOptions,
-    ) -> Result<Value, OverlayError> {
-        let properties = GroupProperties {
-            color: input.color.clone().map(Some),
-            icon: input.icon.clone().map(Some),
-        };
-        self.create_from_bag(input, &properties, opts)
-    }
-
-    /// [`Self::create`] with the `properties.json` bag given whole, so an explicit
-    /// `null` survives (v4 `writeManagedFields(parseProperties(entity))`). The
-    /// bag SUPERSEDES `input.color`/`input.icon`, which are not read — so a
-    /// caller passing them has a bug: [P4.148 2(c)] a `debug_assert!` says so
-    /// (both production callers, the group route and the `.qtap` import, pass
-    /// `None`). Deleting the two dead fields with the plain [`Self::create`]
-    /// is a recorded follow-up once the restore moves onto this fn.
+    /// `properties.json` bag is given WHOLE, so an explicit `null` survives (v4
+    /// `writeManagedFields(parseProperties(entity))`) and an absent key stays
+    /// absent. The ONE create since the `07b8f0209` follow-ups unification:
+    /// the value-or-absent `create` and `GroupCreateInput`'s `color`/`icon`
+    /// fields were deleted once the restore (P4.147) joined the group route and
+    /// the `.qtap` import on this fn (P4.148 2(c), §S.7).
     pub fn create_with_properties(
-        &self,
-        input: &GroupCreateInput,
-        properties: &GroupProperties,
-        opts: &GroupCreateOptions,
-    ) -> Result<Value, OverlayError> {
-        debug_assert!(
-            input.color.is_none() && input.icon.is_none(),
-            "create_with_properties ignores input.color/input.icon — pass them in the bag"
-        );
-        self.create_from_bag(input, properties, opts)
-    }
-
-    fn create_from_bag(
         &self,
         input: &GroupCreateInput,
         properties: &GroupProperties,

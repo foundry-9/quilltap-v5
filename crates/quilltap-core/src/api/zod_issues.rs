@@ -572,8 +572,8 @@ pub const ZOD_HEX_COLOR_PATTERN: &str = "/^#(?:[0-9a-fA-F]{3}){1,2}$/";
 /// `true` when `s` matches [`ZOD_HEX_COLOR_PATTERN`] — `#rgb` or `#rrggbb`.
 /// The pattern is anchored (`^`/`$`, no `m` flag), so it is a whole-string
 /// match; its classes are ASCII-only, so a byte walk is exact. The ONE
-/// predicate for v4's hex colour (P4.148; `api/groups.rs` still keeps a private
-/// twin — a recorded §S handoff, that file being outside the lane).
+/// predicate for v4's hex colour (P4.148; `api/groups.rs`'s private twin was
+/// folded onto it at the `07b8f0209` follow-ups unification).
 pub fn zod_hex_color_ok(s: &str) -> bool {
     let Some(rest) = s.strip_prefix('#') else {
         return false;

@@ -610,6 +610,13 @@ fn restore_on_writer(
                 &create,
                 &copts!(id.clone(), crate::db::chats::CreateOptions),
             ) {
+                // v4's two repository ERRORs beneath the catch (`_create`'s
+                // rethrowing `safeQuery`, then `chats.repository.ts:280`'s own
+                // wrap), each `{collection: chats, error: <bare>}` — the restore
+                // runs OUTSIDE the strict scope on both sides, so no
+                // `strictFailures` (measured on `restore_sqlite_tail_replace`).
+                crate::db::fallback::log_create_failure("chats", &e);
+                crate::db::fallback::log_chat_create_wrap_failure(&e);
                 let error = e.warn_text();
                 w.push(format!("Failed to restore chat \"{title}\": {error}"));
                 tracing::warn!(chatId = %id, error = %error, "Failed to restore chat");
@@ -857,7 +864,10 @@ fn restore_on_writer(
                 );
                 continue;
             }
-            let properties = fold_properties_local(p, ProjectEntity::property_keys());
+            let properties = crate::db::document_store_overlay::fold_properties(
+                p,
+                ProjectEntity::property_keys(),
+            );
             if let Err(e) = ProjectEntity::parse_properties(&properties) {
                 w.push(format!("{label}: {e}"));
                 continue;
@@ -891,10 +901,12 @@ fn restore_on_writer(
                 );
                 continue;
             }
-            let properties = match GroupEntity::parse_properties(&fold_properties_local(
-                g,
-                GroupEntity::property_keys(),
-            )) {
+            let properties = match GroupEntity::parse_properties(
+                &crate::db::document_store_overlay::fold_properties(
+                    g,
+                    GroupEntity::property_keys(),
+                ),
+            ) {
                 Ok(bag) => bag,
                 Err(e) => {
                     w.push(format!("{label}: {e}"));
@@ -906,8 +918,6 @@ fn restore_on_writer(
                 description: os(g, "description"),
                 instructions: os(g, "instructions"),
                 state: obj(g, "state", serde_json::json!({})),
-                color: None,
-                icon: None,
             };
             warn_row!(
                 w,
@@ -1279,6 +1289,9 @@ fn restore_on_writer(
             ) {
                 Ok(_) => c.chat_documents += 1,
                 Err(e) => {
+                    // v4's base `_create` rethrow line (the chat-documents
+                    // repository has no wrap of its own — `create` is `_create`).
+                    crate::db::fallback::log_create_failure("chat_documents", &e);
                     let error = e.warn_text();
                     w.push(format!("Failed to restore chat document: {error}"));
                     tracing::warn!(
@@ -1314,8 +1327,30 @@ fn restore_on_writer(
     {
         let repo = crate::db::chat_informs::ChatInformsRepository::new(main);
         for inform in &data.chat_informs {
-            let outcome = restored_inform(inform, crate::clock::now_iso())
-                .and_then(|create| repo.create(&create).map_err(|e| e.warn_text()));
+            let outcome = match restored_inform(inform, crate::clock::now_iso()) {
+                // v4's `validate` throws inside `_create`'s rethrowing
+                // `safeQuery`: ERROR `Data validation failed {collection, error}`
+                // then the base line, both carrying the ZodError's message
+                // (`extractErrorMessage`); no per-repository wrap (`create` is
+                // `_create`). Measured on `restore_informs_replace`.
+                Err(zod) => {
+                    tracing::error!(
+                        target: "quilltap::db",
+                        collection = "chat_informs",
+                        error = %zod,
+                        "Data validation failed"
+                    );
+                    crate::db::fallback::log_create_failure(
+                        "chat_informs",
+                        &crate::db::DbError::Internal(zod.clone()),
+                    );
+                    Err(zod)
+                }
+                Ok(create) => repo.create(&create).map_err(|e| {
+                    crate::db::fallback::log_create_failure("chat_informs", &e);
+                    e.warn_text()
+                }),
+            };
             match outcome {
                 Ok(_) => c.chat_informs += 1,
                 Err(error) => {
@@ -2716,28 +2751,6 @@ fn json_text_of(row: &Value, key: &str) -> String {
         Some(other) => other.to_string(),
         None => "[]".to_string(),
     }
-}
-
-/// v4's project / group row carries its non-managed properties inline; the
-/// store-backed create takes them as ONE `properties` bag. Copies each listed
-/// key PRESENT on `raw` — an explicit `null` included, since v4's
-/// `.nullable().optional()` keys keep it — into a fresh object (P4.147 item 8;
-/// the old six-key `project_properties` dropped ten of a project's sixteen).
-///
-/// A lane-local twin of the importer's `fold_properties` (Shared contract C1,
-/// body identical); the unifier replaces this body with the call to P4.148's
-/// one home and deletes the marker.
-// §S.1 fold → db::document_store_overlay::fold_properties
-fn fold_properties_local(raw: &Value, keys: &[&str]) -> Value {
-    let mut bag = serde_json::Map::new();
-    if let Some(obj) = raw.as_object() {
-        for k in keys {
-            if let Some(v) = obj.get(*k) {
-                bag.insert((*k).to_string(), v.clone());
-            }
-        }
-    }
-    Value::Object(bag)
 }
 
 fn table_exists(conn: &Connection, table: &str) -> bool {

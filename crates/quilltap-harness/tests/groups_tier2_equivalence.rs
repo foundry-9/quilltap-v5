@@ -492,8 +492,6 @@ fn groups_tier2_matches_oracle() {
                                     .state
                                     .clone()
                                     .unwrap_or_else(|| Value::Object(Map::new())),
-                                color: None,
-                                icon: None,
                             },
                             &GroupProperties {
                                 color: input.color.clone(),

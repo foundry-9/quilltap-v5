@@ -161,8 +161,9 @@ pub struct ChatInformRow {
 /// v4 `isInformInForce` — whether a row is still owed: a standing row always
 /// is, a one-shot row until its seat's turn consumes it. **The one definition
 /// every reader and deleter of "what is still owed" goes through** — nothing
-/// else in this module may open-code it (pinned by
-/// `the_in_force_predicate_is_never_open_coded`).
+/// else in this module — or anywhere in the production tree — may open-code
+/// it (pinned by the harness's `chat_informs_in_force_census`, which reads
+/// the whole production zone on the shared lexer, SQL literals included).
 pub fn is_inform_in_force(row: &ChatInformRow) -> bool {
     row.permanent || row.consumed_at.is_none()
 }
@@ -549,10 +550,10 @@ impl<'c> ChatInformsRepository<'c> {
         tracing::debug!(
             target: "quilltap::db",
             collection = "chat_informs",
-            chat_id,
-            batch_id,
-            target_count = created.len(),
-            record_message_id,
+            chatId = chat_id,
+            batchId = batch_id,
+            targetCount = created.len(),
+            recordMessageId = record_message_id,
             permanent,
             "Inform batch created",
         );
@@ -591,7 +592,7 @@ impl<'c> ChatInformsRepository<'c> {
             target: "quilltap::db",
             collection = "chat_informs",
             ids = ?ids,
-            message_id,
+            messageId = message_id,
             count,
             "Informs marked consumed",
         );
@@ -624,7 +625,7 @@ impl<'c> ChatInformsRepository<'c> {
             tracing::debug!(
                 target: "quilltap::db",
                 collection = "chat_informs",
-                batch_id,
+                batchId = batch_id,
                 count,
                 "Pending informs deleted by batch",
             );
@@ -657,8 +658,8 @@ impl<'c> ChatInformsRepository<'c> {
                 tracing::debug!(
                     target: "quilltap::db",
                     collection = "chat_informs",
-                    chat_id,
-                    participant_id,
+                    chatId = chat_id,
+                    participantId = participant_id,
                     count,
                     "Pending informs deleted for participant",
                 );
@@ -762,29 +763,6 @@ mod tests {
         assert_eq!(main, ours);
     }
 
-    /// Item 19's census: the in-force predicate lives in ONE function. A read
-    /// or delete that open-codes `consumed_at.is_none()` / `.is_some()` is the
-    /// drift class `52d6e7ecd` closed in v4.
-    #[test]
-    fn the_in_force_predicate_is_never_open_coded() {
-        let src = include_str!("chat_informs.rs");
-        let prod = src.split("#[cfg(test)]").next().unwrap();
-        let needle_none = concat!("consumed_at", ".is_none()");
-        let needle_some = concat!("consumed_at", ".is_some()");
-        assert_eq!(
-            prod.matches(needle_none).count(),
-            1,
-            "only is_inform_in_force"
-        );
-        assert_eq!(prod.matches(needle_some).count(), 0);
-        let home = prod.find("pub fn is_inform_in_force").unwrap();
-        let at = prod.find(needle_none).unwrap();
-        assert!(
-            at > home && at < home + 120,
-            "the one use is inside the predicate"
-        );
-    }
-
     #[test]
     fn the_seat_read_puts_standing_first_and_keeps_a_delivered_standing_row() {
         let c = conn();
@@ -872,7 +850,10 @@ mod tests {
     /// Item 9's capture pin (the P4.D249 lane recorded it without writing it):
     /// v4's `Inform batch created` debug carries `permanent` LAST, after
     /// `recordMessageId`; and item 18's `Pending informs deleted by batch`
-    /// carries v4's `{collection, batchId, count}`.
+    /// carries v4's `{collection, batchId, count}`. The keys are v4's
+    /// camelCase (`chat-informs.repository.ts:218-307`) since the `07b8f0209`
+    /// follow-ups unification — the four DEBUG lines had carried snake_case,
+    /// and this pin had frozen it.
     #[test]
     fn the_two_repository_debug_lines_carry_v4s_fields_in_order() {
         arm_global_callsites();
@@ -880,7 +861,7 @@ mod tests {
         let repo = ChatInformsRepository::new(&c);
         let seats = vec!["p1".to_string(), "p2".to_string()];
         // A `Some` record id: tracing records an `Option` field only when it is
-        // `Some`, so with `None` the line simply lacks `record_message_id` where
+        // `Some`, so with `None` the line simply lacks `recordMessageId` where
         // v4 logs `recordMessageId: null` — a pre-existing (P4.D205) shape on
         // every v5 line that carries an `Option`, recorded, not this pin's
         // subject. The ORDER is what `52d6e7ecd` moved (`permanent` LAST).
@@ -901,15 +882,15 @@ mod tests {
             keys,
             [
                 "collection",
-                "chat_id",
-                "batch_id",
-                "target_count",
-                "record_message_id",
+                "chatId",
+                "batchId",
+                "targetCount",
+                "recordMessageId",
                 "permanent"
             ],
             "{created}"
         );
-        assert!(created.contains("target_count=2"), "{created}");
+        assert!(created.contains("targetCount=2"), "{created}");
         assert!(created.contains("permanent=true"), "{created}");
 
         let batch = rows[0].batch_id.clone();
@@ -925,7 +906,7 @@ mod tests {
             .split_whitespace()
             .filter_map(|tok| tok.split_once('=').map(|(k, _)| k))
             .collect();
-        assert_eq!(keys, ["collection", "batch_id", "count"], "{deleted}");
+        assert_eq!(keys, ["collection", "batchId", "count"], "{deleted}");
         assert!(deleted.contains("count=2"), "{deleted}");
     }
 

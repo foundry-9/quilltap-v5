@@ -155,7 +155,8 @@ mod tests {
         conn
     }
 
-    const CLOSED: &str = r#"{"allowAnyCharacter":false,"characterRoster":["ada"]}"#;
+    const CLOSED: &str =
+        r#"{"allowAnyCharacter":false,"characterRoster":["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]}"#;
     const OPEN: &str = r#"{"allowAnyCharacter":true,"characterRoster":[]}"#;
 
     fn world() -> (Connection, Connection) {
@@ -204,8 +205,14 @@ mod tests {
     #[test]
     fn rostered_admitted_stranger_refused_allow_any_admits_everyone() {
         let (main, mount) = world();
-        let (on, lines) =
-            captured_with(|| project_roster_admits(&main, &mount, Some("p-closed"), Some("ada")));
+        let (on, lines) = captured_with(|| {
+            project_roster_admits(
+                &main,
+                &mount,
+                Some("p-closed"),
+                Some("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+            )
+        });
         assert!(on);
         let d = debug_lines(&lines);
         assert_eq!(d.len(), 1, "{lines:?}");
@@ -215,7 +222,9 @@ mod tests {
             d[0]
         );
         assert!(
-            d[0].contains("projectId=p-closed characterId=ada allowed=true"),
+            d[0].contains(
+                "projectId=p-closed characterId=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa allowed=true"
+            ),
             "{}",
             d[0]
         );
@@ -244,7 +253,13 @@ mod tests {
     fn roster_gated_project_id_withholds_the_id_off_the_roster() {
         let (main, mount) = world();
         assert_eq!(
-            roster_gated_project_id(&main, &mount, Some("p-closed"), Some("ada")).as_deref(),
+            roster_gated_project_id(
+                &main,
+                &mount,
+                Some("p-closed"),
+                Some("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+            )
+            .as_deref(),
             Some("p-closed")
         );
         assert_eq!(
@@ -262,8 +277,14 @@ mod tests {
         // v4: `findById` → null → `false`, no error line (the project is simply
         // not there); only the chokepoint's own DEBUG.
         let (main, mount) = world();
-        let (admits, lines) =
-            captured_with(|| project_roster_admits(&main, &mount, Some("p-ghost"), Some("ada")));
+        let (admits, lines) = captured_with(|| {
+            project_roster_admits(
+                &main,
+                &mount,
+                Some("p-ghost"),
+                Some("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+            )
+        });
         assert!(!admits);
         assert_eq!(lines.len(), 1, "{lines:?}");
         assert!(lines[0].contains("allowed=false"), "{}", lines[0]);
