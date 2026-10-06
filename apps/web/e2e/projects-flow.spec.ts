@@ -356,6 +356,11 @@ test.describe('P4.6l — Projects vertical (list → detail → toggle → renam
     // Visible AT REST — `toBeVisible` ignores opacity, so the CSS is the proof.
     const removeAria = card.getByRole('button', { name: 'Remove Aria from roster' });
     await expect(removeAria).toBeVisible();
+    // Park the pointer off every tile first: `group-hover:opacity-100` would
+    // read 1 if a layout shift left a tile under it (never seen red — a
+    // hardening; the button is never keyboard-focused here, so `focus:`
+    // cannot fire either).
+    await page.mouse.move(0, 0);
     await expect(removeAria).toHaveCSS('opacity', '0.6');
 
     // The picker: focused on open; live non-roster characters only.
@@ -398,6 +403,18 @@ test.describe('P4.6l — Projects vertical (list → detail → toggle → renam
     await card.getByRole('button', { name: 'Done', exact: true }).click();
     await card.getByRole('button', { name: 'Add character', exact: true }).click();
     await expect(search).toHaveValue('');
+    await expect(search).toBeFocused();
+
+    // Collapse and re-expand with the picker open: v4 unmounts the body on a
+    // collapse and remounts it on re-expand, so `autoFocus` lands in the
+    // search again. v5's input is projected content the collapse only
+    // detaches — this pins the re-expand edge (the header click leaves focus
+    // on the header button, so a focus here was moved by the card).
+    await header.click();
+    await expect(header).toHaveAttribute('aria-expanded', 'false');
+    await header.click();
+    await expect(header).toHaveAttribute('aria-expanded', 'true');
+    await expect(search).toBeVisible();
     await expect(search).toBeFocused();
 
     // Allow Any ON: v4's toast, the open subtitle, the explainer, no picker.

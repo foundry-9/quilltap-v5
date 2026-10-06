@@ -308,6 +308,14 @@ Harness-only (P4.151 A2). The voice-mode ensure differential's mode (a) gains fo
 _No crate versions bumped._
 
 Harness-only (P4.151 A1). `repository_zod_messages` gains a `chatSettings` schema: v4's real `ChatSettingsSchema` over a minimal row plus a stored `impersonationVoiceMode` (absent, `ask`, `always`, `maybe`, `''`, `Off`, `'1'`), diffed against v5's real `db::chat_settings::find_by_user_id` over a `chat_settings` table built from `fresh_schema.json`. The Zod bytes in `chat_settings.rs`'s unit test are now oracle-backed: reordering `ImpersonationVoiceMode::VALUES` reddens the four refused rows and the unit test together. The family now covers 58 rows. No version moves.
+#### 2026-10-05 — fix(spa): the project Characters card refocuses its search on re-expand, as v4's remount does
+
+_Versions: SPA 0.5.807._
+
+Collapsing and re-expanding the Characters card with the add-character picker open now puts focus back in the search box. v4 unmounts the card body on collapse and its `autoFocus` fires again on re-expand; v5's search input is projected content the collapse only detaches, so the old focus effect never re-ran. The focus now runs after render, reading the card's open state, the picker's open state and the input, so it fires on every edge v4 remounts on.
+
+- The projects e2e walk gains a collapse → re-expand → focused step (red with the old effect, and red with a plain effect over the same signals — it focuses the still-detached node), and parks the pointer before its at-rest opacity check.
+
 #### 2026-10-05 — fix(spa): project-detail failure toasts read v4's fixed sentence per handler, never the server's message
 
 _Versions: SPA 0.5.806._

@@ -3,8 +3,8 @@ import {
   Component,
   ElementRef,
   OnInit,
+  afterRenderEffect,
   computed,
-  effect,
   inject,
   input,
   signal,
@@ -271,12 +271,23 @@ export class ProjectCharactersCard implements OnInit {
   }));
 
   constructor() {
-    // v4 `autoFocus` on the search box. React focuses it as it mounts; the
-    // signal `viewChild` resolves on the render that creates it, so this effect
-    // is the same moment (`wardrobe/outfit-quick-pick.ts`'s precedent — a bare
-    // `autofocus` attribute does nothing on a node inserted after load).
-    effect(() => {
-      this.searchInput()?.nativeElement.focus();
+    // v4 `autoFocus` on the search box (`CharactersCard.tsx:177-185`). React
+    // focuses it as it MOUNTS, and v4 mounts it on three edges: the picker
+    // opening, the roster becoming editable, and the card re-expanding (v4's
+    // body is `{expanded && (…)}`, so a collapse unmounts it). v5's input is
+    // PROJECTED content: the collapsible's `@if` only detaches it, so a
+    // collapse → re-expand leaves the same node and the same `viewChild`
+    // value — an effect over `searchInput()` alone never re-fires. Reading
+    // `expanded()` and `pickerOpen()` too covers the re-expand edge, and
+    // `afterRenderEffect` runs once the render has re-inserted the projected
+    // node (a component `effect` runs BEFORE the child collapsible's view
+    // re-attaches it, so its `.focus()` lands on a detached node). A bare
+    // `autofocus` attribute does nothing on a node inserted after load.
+    afterRenderEffect(() => {
+      const input = this.searchInput();
+      if (this.expanded() && this.pickerOpen() && input) {
+        input.nativeElement.focus();
+      }
     });
   }
 

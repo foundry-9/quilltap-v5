@@ -167798,3 +167798,27 @@ sentence in the catch-fallback slot (v4's catch reads `…roleplay template` /
 - **Gate:** `npm run lint` + `npm run build` + `npm test` — 467 files /
   8,889 tests, all green. SPA 0.5.806.
 
+### Unit 2 — the picker refocus + the hover guard (Tier 1 items 2 + 4)
+
+- `project-characters-card.ts`: the `effect` over `searchInput()` replaced
+  by an `afterRenderEffect` reading `expanded()`, `pickerOpen()` and
+  `searchInput()`, focusing when all three hold — v4's three mount edges of
+  the `autoFocus` input (`CharactersCard.tsx:126` `{expanded && (`, `:117`
+  the picker, `:106` the roster-editable flip).
+- `e2e/projects-flow.spec.ts`: after the REOPEN assertion, header click →
+  `aria-expanded="false"` → header click → `"true"` → search visible →
+  `toBeFocused()`; and `page.mouse.move(0, 0)` before the at-rest
+  `toHaveCSS('opacity', '0.6')` (a hardening — never seen red).
+- **Mutations (each a full by-file run, restored after):** (A) `main`'s
+  effect (`searchInput()` only) → 1 failed / 5 passed, red at `:418` (the
+  new re-expand `toBeFocused`) — the RED-on-main proof; (B) a plain
+  `effect` reading the SAME three signals → 1 failed / 5 passed, red at
+  `:418` too. **The survey's NOT-MEASURED claim is now MEASURED: a component
+  `effect` focuses before the projected node is re-attached, so only the
+  after-render timing works.**
+- **By file, alone (ports 4319/4325 free; reusing main's release
+  `quilltap-web`/`quilltap`, built after the last `crates/*/src` commit
+  `c0dcf9f6b`): 3/3 — 6 passed each (1.0 m, 1.6 m, 1.0 m).**
+- Gate: `npm run lint` + `npm run build` + `npm test` 467 / 8,889. SPA
+  0.5.807.
+
