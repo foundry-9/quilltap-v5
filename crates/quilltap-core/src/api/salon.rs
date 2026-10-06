@@ -1611,11 +1611,31 @@ pub async fn chat_update(
     }
     if let Some(v) = chat_bag.get("projectId") {
         if let Some(id) = v.as_str() {
-            let id = id.to_string();
-            match db.read_main(move |conn| row_exists(conn, "projects", &id)) {
-                Ok(true) => {}
-                Ok(false) => return not_found("Project"),
-                Err(e) => return internal(e),
+            // P4.149 (Ruling R-F): v4 reads `repos.projects.findById` — the
+            // STORE-BACKED read (`helpers.ts:504-509`), not a slim existence
+            // probe. Its `_findById` is a fallback (a failed slim read — the
+            // pool checkout included — logs `Error finding entity by ID` and
+            // answers `null` → 404), and `applyOverlayOne` THROWS on a broken
+            // store → the route middleware's contextful 503
+            // (`context.ts:176-185`). v5 had answered a slim read error 500 and
+            // accepted a move onto a broken store.
+            use crate::db::document_store_overlay::OverlayError;
+            let read = db.read_main(|main| {
+                db.read_mount_index(|mount| {
+                    Ok(crate::db::projects::ProjectsRepository::new(main, mount).find_by_id(id))
+                })
+            });
+            let project = match read {
+                Ok(Ok(found)) => found,
+                Ok(Err(unavailable @ OverlayError::Unavailable { .. })) => {
+                    return super::types::db_error_response(unavailable.into_db())
+                }
+                Ok(Err(OverlayError::Db(e))) | Err(e) => {
+                    crate::db::fallback::find_by_id_or_none("projects", id, || Err(e))
+                }
+            };
+            if project.is_none() {
+                return not_found("Project");
             }
             // v4 `helpers.ts:511-512` (`9753d0eb2`): "Moving a chat into a
             // project never edits the roster — it is a hand-curated access list

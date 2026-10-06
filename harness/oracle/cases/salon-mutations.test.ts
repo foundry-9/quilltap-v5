@@ -51,7 +51,21 @@ interface CaseSpec {
   /** P4.106 item 5: plant the three `chat_informs` rows below on the copy
    * (through v4's REAL repository) and dump the table. */
   plantInforms?: boolean;
+  /**
+   * P4.149 (Ruling R-F): the chat PUT's project gate (`helpers.ts:504-509`,
+   * `repos.projects.findById`, store-backed). `dbError` renames the slim
+   * `projects.id` column on the copy, so `_findById`'s fallback read fails
+   * (ERROR `Error finding entity by ID {collection: projects, id, error}` →
+   * `null` → 404 `Project not found`); `storeCorrupt` writes `properties.json`
+   * = `{` into the project's store (the `get_store_corrupt` recipe), so
+   * `applyOverlayOne` throws → the middleware's 503 (`context.ts:176-185`).
+   * Either case records the ERROR/WARN lines v4 logged (`logs`).
+   */
+  projectPlant?: 'dbError' | 'storeCorrupt';
 }
+
+/** P4.149: the fixture's one project (`salon.json`'s `projects[0]`). */
+const SKYHAVEN = '70000002-0000-4000-8000-000000000001';
 
 /**
  * P4.106 item 5 — the participant-removal rows' plant: a PENDING and a
@@ -191,6 +205,41 @@ async function runCase(
     }
   }
 
+  if (c.projectPlant === 'dbError') {
+    getRawDatabase()!.prepare('ALTER TABLE projects RENAME COLUMN id TO id_x').run();
+  }
+  if (c.projectPlant === 'storeCorrupt') {
+    const rows = getRawDatabase()!
+      .prepare('SELECT officialMountPointId AS mp FROM projects WHERE id = ?')
+      .all(SKYHAVEN) as Array<{ mp: string | null }>;
+    const mp = rows[0]?.mp;
+    if (!mp) throw new Error('Skyhaven has no officialMountPointId');
+    const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
+    await writeDatabaseDocument(mp, 'properties.json', '{');
+  }
+  // P4.149: the lines a plant case logs, off the `Logger` prototype (root and
+  // children alike), restored in `finally`.
+  const logs: Array<{ level: string; message: string; context: unknown }> = [];
+  const restoreLogger: Array<() => void> = [];
+  if (c.projectPlant) {
+    const { Logger } = await import('@/lib/logger');
+    for (const level of ['error', 'warn'] as const) {
+      const original = Logger.prototype[level];
+      Logger.prototype[level] = function (
+        this: unknown,
+        message: string,
+        context?: Record<string, unknown>,
+        ...rest: unknown[]
+      ) {
+        logs.push({ level, message, context: JSON.parse(JSON.stringify(context ?? {})) });
+        return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+      } as never;
+      restoreLogger.push(() => {
+        Logger.prototype[level] = original;
+      });
+    }
+  }
+
   try {
     const params = { params: Promise.resolve({ id: c.paramId }) };
     let response: { status: number; json: () => Promise<unknown> };
@@ -237,8 +286,9 @@ async function runCase(
       });
       tables[t.key] = { table: t.table, columns, rows };
     }
-    return { name: c.name, status, body, tables };
+    return { name: c.name, status, body, tables, ...(c.projectPlant ? { logs } : {}) };
   } finally {
+    for (const restore of restoreLogger) restore();
     Math.random = origRandom;
     await closeDatabase();
     closeMountIndexSQLiteClient();
@@ -323,6 +373,9 @@ async function main(): Promise<void> {
     // that doesn't resolve.
     { name: 'chat_update_roleplay_404', method: 'chatPut', url: cbase, paramId: GROUP, body: { chat: { roleplayTemplateId: '99999999-9999-4999-8999-999999999999' } } },
     { name: 'chat_update_project_404', method: 'chatPut', url: cbase, paramId: GROUP, body: { chat: { projectId: '99999999-9999-4999-8999-999999999999' } } },
+    // P4.149 (Ruling R-F): the project gate's two failure arms.
+    { name: 'chat_update_project_db_error', method: 'chatPut', url: cbase, paramId: GROUP, body: { chat: { projectId: SKYHAVEN } }, projectPlant: 'dbError' },
+    { name: 'chat_update_project_store_corrupt', method: 'chatPut', url: cbase, paramId: GROUP, body: { chat: { projectId: SKYHAVEN } }, projectPlant: 'storeCorrupt' },
     // P4.d13 (episodic spine, tier 2): the timelineMode PUT accept arm —
     // z.enum(['realtime','narrative']).nullish(). Set, explicit-null clear,
     // and the invalid-enum parse failure (whatever the route yields for a

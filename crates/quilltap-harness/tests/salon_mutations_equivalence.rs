@@ -193,6 +193,62 @@ const PLANT_CASES: [&str; 2] = [
     "remove_participant_bag_keeps_informs",
 ];
 
+/// P4.149 (Ruling R-F) — the chat PUT project gate's two failure arms, each a
+/// plant on the case's copy (the oracle's `projectPlant`): `dbError` renames the
+/// slim `projects.id` column (the fallback `_findById` fails → v4's `Error
+/// finding entity by ID` → `null` → 404); `storeCorrupt` writes `properties.json`
+/// = `{` into the project's store (the `get_store_corrupt` recipe → the
+/// middleware's 503).
+fn project_plant(case: &str) -> Option<&'static str> {
+    match case {
+        "chat_update_project_db_error" => Some("dbError"),
+        "chat_update_project_store_corrupt" => Some("storeCorrupt"),
+        _ => None,
+    }
+}
+
+/// The fixture's one project (`salon.json`'s `projects[0]`).
+const SKYHAVEN: &str = "70000002-0000-4000-8000-000000000001";
+
+/// v4's lines a plant case may log that v5 does not port, by standing
+/// convention: the backend's `SQLite findOne error` and the route middleware's
+/// own `[<METHOD> <path>] Project document store unavailable` line (no v5 503
+/// arm logs it — the envelope family records the class).
+fn is_unported_v4_line(message: &str) -> bool {
+    message == "SQLite findOne error" || message.ends_with("] Project document store unavailable")
+}
+
+/// A v4 line as v5's capture renders it, the `error` value normalized: v4's
+/// SQL quotes identifiers (`no such column: "id" - should this be a string
+/// literal …`) where v5's does not (`no such column: id`) — the same failure in
+/// two SQL texts.
+fn render_v4_line(v: &Value) -> String {
+    let mut out = format!(
+        "{} quilltap::db {}",
+        v["level"].as_str().unwrap().to_uppercase(),
+        v["message"].as_str().unwrap()
+    );
+    for (k, val) in v["context"].as_object().unwrap() {
+        let val = if k == "error" {
+            "<error>".to_string()
+        } else {
+            val.as_str()
+                .map(str::to_string)
+                .unwrap_or_else(|| val.to_string())
+        };
+        out.push_str(&format!(" {k}={val}"));
+    }
+    out
+}
+
+/// A v5 ERROR/WARN line with everything after ` error=` replaced.
+fn normalise_error(line: &str) -> String {
+    match line.find(" error=") {
+        Some(i) => format!("{} error=<error>", &line[..i]),
+        None => line.to_string(),
+    }
+}
+
 fn inform_plant() -> Vec<ChatInformCreate> {
     [
         (
@@ -272,7 +328,10 @@ fn salon_mutations_match_oracle() {
 
     // Run one case over a fresh fixture copy; return (body, chats_rows, msgs_rows,
     // chat_informs rows — only for the P4.106 plant cases).
-    let run = |case: &str, f: &dyn Fn(&Db) -> Response| -> (Value, Value, Value, Option<Value>) {
+    #[allow(clippy::type_complexity)]
+    let run = |case: &str,
+               f: &dyn Fn(&Db) -> Response|
+     -> (Value, Value, Value, Option<Value>, Response, Vec<String>) {
         let plant = PLANT_CASES.contains(&case);
         let scratch = tempfile::Builder::new()
             .prefix(&format!("qt-salon-mut-{case}-"))
@@ -321,7 +380,36 @@ fn salon_mutations_match_oracle() {
             })
             .expect("plant chat_informs on the fixture copy");
         }
-        let body = response_data(&f(&db));
+        match project_plant(case) {
+            Some("dbError") => db
+                .write_blocking(|w| {
+                    w.main()
+                        .connection()
+                        .execute_batch("ALTER TABLE projects RENAME COLUMN id TO id_x")?;
+                    Ok(())
+                })
+                .expect("plant the renamed projects.id"),
+            Some(_) => db
+                .write_blocking(|w| {
+                    let mp: String = w.main().connection().query_row(
+                        "SELECT officialMountPointId FROM projects WHERE id = ?1",
+                        [SKYHAVEN],
+                        |r| r.get(0),
+                    )?;
+                    let mount = w
+                        .mount_index()
+                        .expect("fixture has a mount-index partition");
+                    quilltap_core::db::doc_mount_file_links::DocMountFileLinksRepository::new(
+                        mount.connection(),
+                    )
+                    .write_database_document(&mp, "properties.json", "{")?;
+                    Ok(())
+                })
+                .expect("plant the corrupt properties.json"),
+            None => {}
+        }
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| f(&db));
+        let body = response_data(&resp);
         let chats = db
             .read_main(|conn| dump_table_json_conn(conn, "chats", "id"))
             .unwrap();
@@ -333,7 +421,7 @@ fn salon_mutations_match_oracle() {
                 .unwrap()
         });
         drop(db);
-        (body, chats, msgs, informs)
+        (body, chats, msgs, informs, resp, lines)
     };
 
     // (name, run closure)
@@ -460,6 +548,36 @@ fn salon_mutations_match_oracle() {
                     &serde_json::json!({ "roleplayTemplateId": "99999999-9999-4999-8999-999999999999" }),
                     None, // conciergeState (P4.D141) — its own cases below
                     // P4.9E1A: the bag's three participant families (unused here).
+                    None,
+                    None,
+                    None,
+                ))
+            }),
+        ),
+        (
+            "chat_update_project_db_error",
+            Box::new(|db: &Db| {
+                rt.block_on(salon::chat_update(
+                    db,
+                    &uid,
+                    GROUP,
+                    &serde_json::json!({ "projectId": SKYHAVEN }),
+                    None,
+                    None,
+                    None,
+                    None,
+                ))
+            }),
+        ),
+        (
+            "chat_update_project_store_corrupt",
+            Box::new(|db: &Db| {
+                rt.block_on(salon::chat_update(
+                    db,
+                    &uid,
+                    GROUP,
+                    &serde_json::json!({ "projectId": SKYHAVEN }),
+                    None,
                     None,
                     None,
                     None,
@@ -749,7 +867,57 @@ fn salon_mutations_match_oracle() {
     let mut failed = Vec::new();
     for (name, f) in &cases {
         let want = &oracle[*name];
-        let (got_body, got_chats, got_msgs, got_informs) = run(name, f.as_ref());
+        let (got_body, got_chats, got_msgs, got_informs, got_resp, got_lines) =
+            run(name, f.as_ref());
+        // P4.149 (Ruling R-F): the project-gate plants also diff the STATUS (the
+        // body diff below reads the error copy only), the 503's whole wire body,
+        // and the repository lines (v4's backend + middleware lines dropped,
+        // `error=` normalized).
+        if project_plant(name).is_some() {
+            let want_status = want["status"].as_i64().expect("oracle status");
+            let got_status = match &got_resp {
+                Response::Error(e) => match e.kind {
+                    quilltap_core::api::types::ErrorKind::NotFound => 404,
+                    quilltap_core::api::types::ErrorKind::Unavailable => 503,
+                    quilltap_core::api::types::ErrorKind::BadRequest => 400,
+                    _ => 500,
+                },
+                _ => 200,
+            };
+            if got_status != want_status {
+                eprintln!("[{name}] STATUS MISMATCH: got {got_status} / want {want_status}");
+                failed.push(format!("{name}/status"));
+            }
+            if want_status == 503 {
+                let got_wire = match &got_resp {
+                    Response::Error(e) => e.unavailable_wire_body(),
+                    _ => None,
+                };
+                if got_wire.as_ref() != Some(&want["body"]) {
+                    eprintln!(
+                        "[{name}] 503 BODY MISMATCH: got {got_wire:?} / want {}",
+                        want["body"]
+                    );
+                    failed.push(format!("{name}/wire"));
+                }
+            }
+            let want_lines: Vec<String> = want["logs"]
+                .as_array()
+                .expect("oracle logs")
+                .iter()
+                .filter(|l| !is_unported_v4_line(l["message"].as_str().unwrap_or("")))
+                .map(render_v4_line)
+                .collect();
+            let got_lines: Vec<String> = got_lines
+                .iter()
+                .filter(|l| l.starts_with("ERROR ") || l.starts_with("WARN "))
+                .map(|l| normalise_error(l))
+                .collect();
+            if got_lines != want_lines {
+                eprintln!("[{name}] LINE MISMATCH:\n got {got_lines:#?}\n want {want_lines:#?}");
+                failed.push(format!("{name}/lines"));
+            }
+        }
         // Body: v4 error responses are `{ error: msg }`; the v5 typed shape is
         // `{ kind, message }`. Compare the copy when the oracle body is an error.
         if let Some(err) = want["body"].get("error").and_then(Value::as_str) {

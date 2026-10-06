@@ -166199,3 +166199,31 @@ re-measure); the restore order's acceptance walk (#141/#142).
 - Regen (pin, Node 24, jest `/tmp` mirror): `title-update-tier3.test.ts` →
   `QT_ORACLE_TITLE_UPDATE`; `system-backup.test.ts` →
   `QT_ORACLE_SYSTEM_BACKUP` (recipes in each file's header).
+
+### P4.149 unit 3 — the chat PUT's project gate (Ruling R-F; core 0.0.1212)
+
+- **v4 measured** (`salon-mutations.test.ts`, two new `projectPlant` cases on
+  the fixture's one project, Skyhaven): `dbError` (`ALTER TABLE projects
+  RENAME COLUMN id TO id_x`) → 404 `{"error":"Project not found"}` + ERROR
+  `Error finding entity by ID {collection: projects, id, error}` (beneath it the
+  unported backend `SQLite findOne error`); `storeCorrupt` (`properties.json` =
+  `{`) → 503 `{"error":"Project document store unavailable","projectId":…}` +
+  the middleware's own `[<METHOD> <path>] Project document store unavailable
+  {projectId, officialMountPointId}` (unported: no v5 503 arm logs it — the
+  standing envelope class; recorded). The two `error` tails differ by SQL text
+  (v4 double-quotes identifiers: `no such column: "id" - should this be a
+  string literal in single-quotes?`) — normalized in the comparand.
+- **Port** (`api/salon.rs`, the gate's arm only, no signature): the store-backed
+  `ProjectsRepository::find_by_id` over both partitions; `OverlayError::
+  Unavailable` → `db_error_response` (503); `OverlayError::Db` or a pool `Err` →
+  `fallback::find_by_id_or_none("projects", …)` (the line) → 404. A MISSING
+  `projects` table now logs the line and 404s where v4's lazy `ensureCollection`
+  heals it silently (unreachable on a booted v5 instance; recorded).
+- **Family:** `salon_mutations_equivalence` (the chat PUT family — named by the
+  order, not in the ownership row, owned by no sibling; edited on the same
+  footing as the human's 2026-10-05 call on the held-site files). The two plant
+  cases additionally diff status, the 503 wire body and the repository lines.
+  **Red-first:** `db_error` 500 `sqlite error: no such column: id` vs 404, no
+  line; `store_corrupt` 200 with `chats.projectId` WRITTEN vs 503. Green after.
+- Regen: `salon-mutations.test.ts` (jest `/tmp` mirror + `lib/p4d171-columns.ts`)
+  → `QT_ORACLE_SALON_MUTATIONS`.

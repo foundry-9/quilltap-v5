@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-05 — fix(api): the chat PUT's project gate reads the store-backed project as v4 does — 404 on a read error, 503 on a broken store (P4.149 unit 3)
+
+_Versions: core 0.0.1212._
+
+Moving a chat into a project checked only that a slim `projects` row existed, so a database read error answered 500 and a project whose document store was broken accepted the move. v4 reads `repos.projects.findById` — the store-backed read: a failed slim read logs `Error finding entity by ID {collection: projects, id}` and answers 404 `Project not found`; a broken store throws to the route middleware's 503 `{"error":"Project document store unavailable","projectId":…}`. v5 now does both (Ruling R-F).
+
+- `salon_mutations_equivalence` gains two plant cases on both sides (a renamed `projects.id`; a corrupt `properties.json` in the project's store), diffing status, the 503 wire body and the repository lines — red-first: 500 vs 404, and 200 (the move written) vs 503.
+
 #### 2026-10-05 — fix(db): a connection profile with a BLOB in a plain-string column is dropped from the profile lists as v4 drops it (P4.149 unit 2)
 
 _Versions: core 0.0.1211._
