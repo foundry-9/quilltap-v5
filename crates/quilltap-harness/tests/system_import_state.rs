@@ -1517,7 +1517,8 @@ fn system_import_execute_state_equivalence() {
     // `execute_embedding_provider_enum` (item 8) arms (43 + 2 = 45).
     // …+ P4.148's `execute_project_property_refusals` and
     // `execute_group_property_refusals` arms (45 + 2 = 47).
-    assert_eq!(ran, 47, "expected 47 cases, ran {ran}");
+    // …+ P4.148's `execute_chat_create_db_failure` (C2) arm (47 + 1 = 48).
+    assert_eq!(ran, 48, "expected 48 cases, ran {ran}");
     // [P4.148] The property-refusal arms are non-vacuous only if v4 really
     // refused every bad item with a ZodError tail AND wrote nothing for it,
     // while the sound item landed — so the whole-state equality above is the
@@ -1801,10 +1802,13 @@ fn system_import_execute_state_equivalence() {
     );
     // [P4.143 Tier 2 item 10] Both chat refusal arms compared their
     // repository lines (`execute_concierge_bogus` byte for byte,
-    // `execute_concierge_serde_arm` through its table row).
+    // `execute_concierge_serde_arm` through its table row) — and, since
+    // P4.148, the DB-error arm (`execute_chat_create_db_failure`: a SQLite
+    // throw AFTER validation — `Error creating entity` + `Failed to create
+    // chat` with `strictFailures`, NO `Data validation failed`; C2).
     assert_eq!(
         REPO_LOG_CASES.load(Ordering::SeqCst),
-        2,
+        3,
         "cases that compared the refused chat create's repository lines"
     );
     assert_eq!(
@@ -2142,6 +2146,15 @@ fn run_execute_case(
                      would be a no-op and the arm vacuous"
                 );
             }
+            // [P4.148] Every `chats` INSERT refused by SQLite AFTER the row
+            // validated — the import's chat-create DB-error arm (C2).
+            "refuse-chat-inserts" => conn
+                .connection()
+                .execute_batch(
+                    "CREATE TRIGGER qt_p4148_no_chats BEFORE INSERT ON chats BEGIN \
+                     SELECT RAISE(ABORT, 'planted: chat inserts refused'); END",
+                )
+                .expect("prep: refuse chat inserts"),
             other => panic!("[{name}] unknown prep {other}"),
         }
     }

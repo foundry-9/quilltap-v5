@@ -1949,9 +1949,12 @@ function executePreppedCase(
     | 'drop-embedding-profiles'
     | 'builtin-default-profile'
     | 'orphan-project-store'
-    | 'unvalidatable-tag',
+    | 'unvalidatable-tag'
+    | 'refuse-chat-inserts',
   payload: (spec: Spec) => Promise<unknown> | unknown,
   options: Record<string, unknown>,
+  // [P4.148] Record the repository lines too (`withRepoLogs`).
+  recordRepoLogs = false,
 ) {
   return {
     name,
@@ -1993,13 +1996,25 @@ function executePreppedCase(
               'TAG_2 and the arm would be vacuous',
           );
         }
+      } else if (prep === 'refuse-chat-inserts') {
+        // [P4.148 → P4.143's OPEN import DB-error arm] Every `chats` INSERT
+        // fails with a SQLite error AFTER the row validated: `_create`'s
+        // rethrowing `safeQuery` logs `Error creating entity`, the repository's
+        // own wrap `Failed to create chat`, and the importer's per-chat catch
+        // the `Failed to import chat` WARN — NO `Data validation failed`.
+        db.exec(
+          "CREATE TRIGGER qt_p4148_no_chats BEFORE INSERT ON chats BEGIN SELECT RAISE(ABORT, 'planted: chat inserts refused'); END",
+        );
       } else {
         db.exec(`UPDATE "embedding_profiles" SET "provider" = 'BUILTIN'`);
       }
       const exportData = await payload(spec);
       const preState = dumpAll();
       const { executeImport } = await import('@/lib/import/quilltap-import/execute');
-      const result = await executeImport(spec.userId, exportData as never, options as never);
+      const run = () => executeImport(spec.userId, exportData as never, options as never);
+      const { out: result, repoLogs } = recordRepoLogs
+        ? await withRepoLogs(run)
+        : { out: await run(), repoLogs: undefined };
       await settle();
       return {
         kind: 'execute_prepped',
@@ -2009,6 +2024,7 @@ function executePreppedCase(
         result,
         preState,
         state: dumpAll(),
+        ...(repoLogs ? { repoLogs } : {}),
       };
     },
   };
@@ -2172,6 +2188,17 @@ async function main(): Promise<void> {
       () => conciergeBogusPayload(chatsInformsPayload),
       { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
       // [P4.143 Tier 2 item 10] v4's three repository ERRORs + the WARN.
+      true,
+    ),
+    // [P4.148] The import's chat-create DB-error arm (P4.143 OPEN; Shared
+    // contract C2): a VALID chat whose INSERT SQLite refuses (a planted
+    // trigger). v4's repository lines on a SQLite throw, recorded.
+    executePreppedCase(
+      'execute_chat_create_db_failure',
+      'refuse-chat-inserts',
+      () =>
+        conciergeBogusPayload(chatsInformsPayload, [[4, { title: 'Refused Insert' }]]),
+      { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
       true,
     ),
     // P4.130 Tier 2 item 10: a chat whose Concierge columns PASS but another

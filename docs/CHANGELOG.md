@@ -90,6 +90,15 @@ _Versions: core 0.0.1210._
 - The inform cancel's line moves from the api handler (wrong target, snake-case field, `sqlite error:` prefix) to the repository; the seat-removal `Could not drop pending informs` WARN is retired (unreachable in v4 — the DEBUG fires with `dropped_informs=0` instead).
 - `log_chat_create_validation_failure` folds its two `Error creating entity` copies onto the home.
 - `chat_informs_tier2_equivalence` gains a BEFORE DELETE trigger plant with per-op captured lines (red-first: v5 propagated where v4 answers 0) and two standing rows inserted out of posting order (the P4.151 survey's B1, mutation-proven); `fallback_home_guard` holds five more literals.
+#### 2026-10-05 — fix(import): a chat whose INSERT SQLite refuses logs v4's two repository lines (P4.148)
+
+_Versions: core 0.0.1215._
+
+When a `.qtap` import's chat create fails on a SQLite error after the chat passed validation, v5 now logs v4's two repository ERRORs before the per-chat WARN: `Error creating entity` and `Failed to create chat`, each with `collection: chats`, the bare error, and `strictFailures: true` (the import runs in the strict scope). Before, v5 logged only the WARN.
+
+- The lines come from a lane-local `log_chat_create_db_failure` in `services/quilltap_import/entities.rs`, marked to fold onto P4.149's `db::fallback::log_create_failure` home at unification.
+- New `system_import_state` case `execute_chat_create_db_failure`: a planted trigger refuses every `chats` INSERT on both sides; v4's lines are recorded through the oracle's repository-log spy and compared in order. v4 logs no `Data validation failed` on this arm. Removing the twin turns the case red.
+
 #### 2026-10-05 — fix(projects): v4's uuid gate on the six add/remove actions, its GET and Scenarios log lines, and 201 pins (P4.148)
 
 _Versions: core 0.0.1214._

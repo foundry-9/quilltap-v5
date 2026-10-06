@@ -823,8 +823,57 @@ fn create_chat(
             updated_at: now,
         },
     )
-    .map_err(|e| super::item_error_text(&e))?;
+    .map_err(|e| {
+        log_chat_create_db_failure(&e);
+        super::item_error_text(&e)
+    })?;
     Ok(id)
+}
+
+/// v4's repository lines when `repos.chats.create` fails on a SQLite throw
+/// AFTER the row validated (P4.143's OPEN import DB-error arm; Shared contract
+/// C2): `_create`'s rethrowing `safeQuery` logs ERROR `Error creating entity`
+/// and `chats.repository.ts`'s own wrap ERROR `Failed to create chat` — each
+/// `{collection: 'chats', error: <bare message>}`, with `strictFailures: true`
+/// LAST inside `withStrictRepositoryFailures` (the import's scope) — then the
+/// importer's per-chat WARN (`Failed to import chat`, already logged by the
+/// caller). NO `Data validation failed` on this arm. Measured at `07b8f0209`
+/// through the oracle's `refuse-chat-inserts` plant
+/// (`execute_chat_create_db_failure`).
+///
+/// §S.1 fold → db::fallback::log_create_failure (the first line; P4.149's
+/// home) — this lane-local twin carries v4's bytes until the unifier folds it.
+fn log_chat_create_db_failure(error: &DbError) {
+    let error = super::item_error_text(error);
+    if crate::db::fallback::strict_repository_failures_active() {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "chats",
+            error = %error,
+            strictFailures = true,
+            "Error creating entity"
+        );
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "chats",
+            error = %error,
+            strictFailures = true,
+            "Failed to create chat"
+        );
+    } else {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "chats",
+            error = %error,
+            "Error creating entity"
+        );
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "chats",
+            error = %error,
+            "Failed to create chat"
+        );
+    }
 }
 
 #[cfg(test)]

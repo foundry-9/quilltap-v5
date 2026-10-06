@@ -166717,3 +166717,32 @@ sync unit tests 7/0. `api/types.rs` / `api/memories.rs`' private copies stay
   six gates (adds `404 Character`/`Chat`/`File`, removes `200` + the remove
   INFO), and the Scenarios lines red; the tags + roster rows green
   (recorded above).
+
+### Unit 6 — P4.143's import DB-error arm through the C2 twin (Tier 1 item 12)
+
+- **Measured at the pin** (NEW `execute_chat_create_db_failure`, kind
+  `execute_prepped`, prep `refuse-chat-inserts` — a trigger
+  `BEFORE INSERT ON chats … RAISE(ABORT, 'planted: chat inserts refused')`
+  on both copies; one VALID chat from `conciergeBogusPayload`): v4 logs
+  ERROR `Error creating entity {collection: chats, error, strictFailures:
+  true}`, ERROR `Failed to create chat {collection, error, strictFailures:
+  true}`, then WARN `Failed to import chat {chatId, error}` — **NO `Data
+  validation failed`**; the warning `Failed to import chat "Refused Insert":
+  planted: chat inserts refused`. (A trigger, not the order's "preserveIds +
+  a planted chat row": a planted row is found by the existence read and the
+  chat is SKIPPED, or the preflight refuses — neither reaches `_create`.)
+- **The twin** (`log_chat_create_db_failure` in `services/quilltap_import/
+  entities.rs`, called on the `repo.create` error): the two ERRORs on
+  `quilltap::db` with the bare error and `strictFailures = true` LAST under
+  `strict_repository_failures_active()`; marked `// §S.1 fold →
+  db::fallback::log_create_failure`. Compared through the existing
+  `repoLogs` comparand (`REPO_LOG_CASES` 2 → 3; the family 48 cases).
+  **Mutation-proven:** removing the call leaves v5 with the WARN alone (`v5 1
+  vs v4 3`).
+- **`fallback_home_guard`: GREEN on this branch, measured** — not red by one
+  as the order predicted: `Error creating entity` is not yet a
+  `HOME_MESSAGES` entry here (P4.149 adds it with C2). On the UNION it is
+  red by exactly ONE offender (this twin's literal; `chat_override.rs`'s two
+  fold onto the home in P4.149's own commit) until §S.1a folds the twin —
+  both ERROR lines, since C2's home carries only the first, the unifier
+  keeps the `Failed to create chat` line beside the call.
