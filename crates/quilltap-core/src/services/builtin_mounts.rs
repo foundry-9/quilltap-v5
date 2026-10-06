@@ -301,14 +301,14 @@ fn ensure_mount_index_tables(
     lazy_ensure(failures, &["doc_mount_file_links"], &mut collected, || {
         mount_index_case_repair::ensure_link_nocase_unique_index(mount_index)
     })?;
-    // v4 `doc-mount-points.repository.ts`'s `onTableEnsured`: four guarded
-    // ALTER self-heals, then the name-collision repair below (P4.150). Its own
-    // sub-step for the cadence reason the link-group pair records above (v4's
-    // one `try` logs ONE ensure line for the pair).
+    // v4 `doc-mount-points.repository.ts:37-68`'s ONE `onTableEnsured`: the
+    // four guarded ALTER self-heals (P4.150), THEN the name-collision repair —
+    // one closure, as v4's one method, so a failed ALTER skips the repair (v4
+    // never renames collision rows on a table it could not heal) and logs ONE
+    // ensure line. The `07b8f0209` follow-ups unification folded the lane's
+    // two sub-steps into this shape.
     lazy_ensure(failures, &["doc_mount_points"], &mut collected, || {
-        ensure_doc_mount_points_columns(mount_index)
-    })?;
-    lazy_ensure(failures, &["doc_mount_points"], &mut collected, || {
+        ensure_doc_mount_points_columns(mount_index)?;
         mount_index_case_repair::repair_mount_point_name_collisions(mount_index).map(|_| ())
     })?;
     // Step 2 — collect the backlog of content rows abandoned by

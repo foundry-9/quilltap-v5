@@ -281,6 +281,7 @@ async function main(): Promise<void> {
     'Memory not found for deletion',
     'Memory does not belong to character',
     'Error finding entity by ID',
+    'Error finding entities by filter',
   ]);
   let runSink: Array<{ level: string; message: string; context: unknown }> | null = null;
   for (const level of ['error', 'warn', 'info', 'debug'] as const) {

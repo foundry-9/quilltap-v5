@@ -267,8 +267,9 @@ export class ProjectImageGenerationCard {
    * v4's handlers each throw a FIXED sentence on a non-OK response and never
    * read the body (`refusal`), then catch `err instanceof Error ? err.message
    * : <catch fallback>` (`fallback`) — so a refusal toasts `refusal`, never
-   * the server's message, and the two sentences differ for avatar generation
-   * and the background mode. The plain-`Error` arm is v4's fetch reject; v5's
+   * the server's message, and the two sentences differ for avatar generation,
+   * the background mode and the image profile (v4 `:190/:197`) — only the
+   * Lantern announcement's agree. The plain-`Error` arm is v4's fetch reject; v5's
    * transports never take it (a network failure reaches here as a
    * `CoreDispatchError` carrying v5's `Connection lost…` sentence, so it
    * toasts `refusal` where v4 shows the browser's `Failed to fetch` — NO-PORT

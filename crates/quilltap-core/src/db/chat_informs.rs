@@ -605,14 +605,22 @@ impl<'c> ChatInformsRepository<'c> {
     /// one-shot passage keeps its row, so a later swipe of that turn still
     /// re-applies it.
     ///
-    /// P4.149: v4's 4-argument FALLBACK `safeQuery` — a failed read or row
-    /// delete logs v4's lines (the base `Error deleting entity`, then the wrap's
-    /// own) and answers `Ok(0)` through
+    /// P4.149: v4's 4-argument FALLBACK `safeQuery` — a failed row delete logs
+    /// v4's lines (the base `Error deleting entity`, then the wrap's own) and
+    /// answers `Ok(0)` through
     /// [`super::fallback::pending_informs_by_batch_deleted_or_zero`]; it
-    /// propagates only inside the strict scope.
+    /// propagates only inside the strict scope. A failed READ never reaches
+    /// the wrap: v4's `findByBatchId` sits on the base `findByFilter` FALLBACK
+    /// (`chat-informs.repository.ts:176-183` → `base.repository.ts:283-298`),
+    /// which logs `Error finding entities by filter` and answers `[]`, so the
+    /// loop runs zero times and the DEBUG fires with `count: 0` (the
+    /// `07b8f0209` follow-ups unification — the lane had let the read propagate
+    /// into the wrap's line).
     pub fn delete_pending_by_batch(&self, batch_id: &str) -> Result<usize, DbError> {
         super::fallback::pending_informs_by_batch_deleted_or_zero(batch_id, || {
-            let rows = self.find_by_batch_id(batch_id)?;
+            let rows = super::fallback::find_by_filter_or_empty("chat_informs", || {
+                self.find_by_batch_id(batch_id)
+            });
             let mut count = 0usize;
             for row in rows {
                 if !is_inform_in_force(&row) {
@@ -648,7 +656,11 @@ impl<'c> ChatInformsRepository<'c> {
             chat_id,
             participant_id,
             || {
-                let pending = self.find_pending_for_participant(chat_id, participant_id)?;
+                // The read is v4's fallback (`:87-100` over `findByFilter`), as
+                // `delete_pending_by_batch`'s above.
+                let pending = super::fallback::find_by_filter_or_empty("chat_informs", || {
+                    self.find_pending_for_participant(chat_id, participant_id)
+                });
                 let mut count = 0usize;
                 for row in pending {
                     if self.delete_one(&row.id)? {
@@ -908,6 +920,59 @@ mod tests {
             .collect();
         assert_eq!(keys, ["collection", "batchId", "count"], "{deleted}");
         assert!(deleted.contains("count=2"), "{deleted}");
+    }
+
+    /// A failed READ inside the bulk deletes takes v4's base `findByFilter`
+    /// fallback: the filter line, an empty loop, the DEBUG with `count=0`, and
+    /// NOT the wrap's `Error deleting pending informs …` line (measured against
+    /// `chat-informs.repository.ts:87-100,176-183` + `base.repository.ts:283-298`
+    /// at the `07b8f0209` follow-ups unification).
+    #[test]
+    fn a_failed_read_inside_the_bulk_deletes_takes_the_filter_fallback_not_the_wrap() {
+        arm_global_callsites();
+        let c = conn();
+        c.execute_batch("ALTER TABLE chat_informs RENAME COLUMN batchId TO batchId_x")
+            .unwrap();
+        let repo = ChatInformsRepository::new(&c);
+        let (by_batch, lines) =
+            crate::test_support::captured_with(|| repo.delete_pending_by_batch("b1"));
+        assert_eq!(by_batch.unwrap(), 0);
+        let filter = lines
+            .iter()
+            .find(|l| l.contains("Error finding entities by filter"))
+            .unwrap_or_else(|| panic!("{lines:#?}"));
+        assert!(
+            filter.starts_with("ERROR quilltap::db Error finding entities by filter collection=chat_informs error=no such column: batchId"),
+            "{filter}"
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("Pending informs deleted by batch") && l.contains("count=0")),
+            "{lines:#?}"
+        );
+        assert!(
+            lines
+                .iter()
+                .all(|l| !l.contains("Error deleting pending informs")),
+            "the wrap's line is v4-unreachable on a read failure: {lines:#?}"
+        );
+        let (for_seat, lines) =
+            crate::test_support::captured_with(|| repo.delete_pending_for_participant("c1", "p1"));
+        assert_eq!(for_seat.unwrap(), 0);
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("Error finding entities by filter"))
+                && lines
+                    .iter()
+                    .any(|l| l.contains("Pending informs deleted for participant")
+                        && l.contains("count=0"))
+                && lines
+                    .iter()
+                    .all(|l| !l.contains("Error deleting pending informs")),
+            "{lines:#?}"
+        );
     }
 
     #[test]

@@ -404,15 +404,17 @@ async fn write_episode_for_character<E: EmbeddingProvider>(
     // P4.149: the home wraps the whole `read_main` (a checkout failure had
     // answered `[]` SILENTLY); an empty id list still reads nothing.
     let ids = write.window_message_ids;
-    let fragments = if ids.is_empty() {
-        Vec::new()
-    } else {
-        crate::db::fallback::find_by_filter_or_empty("memories", || {
-            db.read_main(|conn| {
-                memories_read::find_by_character_and_source_message_ids(conn, character_id, ids)
-            })
+    let fragments = crate::db::fallback::find_by_filter_or_empty("memories", || {
+        db.read_main(|conn| {
+            Ok(
+                memories_read::find_by_character_and_source_message_ids_or_empty(
+                    conn,
+                    character_id,
+                    ids,
+                ),
+            )
         })
-    };
+    });
     let fragment_ids: Vec<String> = fragments
         .iter()
         .filter_map(|f| f.get("id").and_then(Value::as_str).map(str::to_string))

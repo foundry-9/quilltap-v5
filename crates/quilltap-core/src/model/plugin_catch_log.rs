@@ -458,7 +458,10 @@ pub fn emit_google_extract_text_warns(
     if has_parts {
         return None;
     }
-    match first.get("finishReason") {
+    // genai 1.52.0's `candidateFromMldev` copies `finishReason` only when it
+    // is `!= null`, so an explicit JSON `null` is as absent as a missing key —
+    // v4's line omits the field either way.
+    match first.get("finishReason").filter(|v| !v.is_null()) {
         Some(reason) => {
             let reason = crate::pascal::js_value::to_js_string(reason);
             google_extract_warn!(

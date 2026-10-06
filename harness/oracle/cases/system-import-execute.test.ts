@@ -1395,7 +1395,15 @@ function propertyRefusalsPayload(
     item(2, `${noun} Named Colour`, { color: 'red' }),
     item(3, `${noun} Long Icon`, { icon: 'x'.repeat(51) }),
     ...(kind === 'projects'
-      ? [item(4, `${noun} Bad Image Profile`, { defaultImageProfileId: 'not-a-uuid' })]
+      ? [
+          item(4, `${noun} Bad Image Profile`, { defaultImageProfileId: 'not-a-uuid' }),
+          // The `07b8f0209` follow-ups unification: v4's `prepareCreateData`
+          // seeds `allowAnyCharacter ?? true` / `characterRoster ?? []` BEFORE
+          // `_create` validates, so an explicit `null` on either key is
+          // imported OPEN — a SOUND item, not a refusal (P4.148's import had
+          // parsed the raw bag and refused it).
+          item(8, `${noun} Null Roster Defaults`, { allowAnyCharacter: null, characterRoster: null }),
+        ]
       : []),
     item(9, `${noun} Sound`, { color: '#a1b2c3', icon: 'compass' }),
   ];

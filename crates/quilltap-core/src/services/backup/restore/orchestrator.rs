@@ -226,6 +226,15 @@ impl WarnText for crate::db::vault_wardrobe_public::WardrobePublicError {
     }
 }
 
+impl WarnText for crate::db::text_replacement_rules::TrrError {
+    fn warn_text(&self) -> String {
+        match self {
+            crate::db::text_replacement_rules::TrrError::Db(e) => e.warn_text(),
+            other => other.to_string(),
+        }
+    }
+}
+
 impl WarnText for String {
     fn warn_text(&self) -> String {
         self.clone()
@@ -846,8 +855,12 @@ fn restore_on_writer(
         use crate::db::document_store_overlay::StoreEntity;
         use crate::db::groups::GroupEntity;
         use crate::db::projects::ProjectEntity;
+        // A project's / group's official store is a `storeType: 'documents'`
+        // store, as a character's is a `'character'` vault (phase 6) — a pointer
+        // at any other kind takes the fallback arm.
         let archived_store = |row: &Value| {
-            os(row, "officialMountPointId").filter(|id| archived_stores.contains_key(id))
+            os(row, "officialMountPointId")
+                .filter(|id| archived_stores.get(id).map(String::as_str) == Some("documents"))
         };
 
         let projects = crate::db::projects::ProjectsRepository::new(main, mount);
@@ -855,6 +868,18 @@ fn restore_on_writer(
             crate::db::store_backed::StoreBackedRepository::<ProjectEntity>::new(main, mount);
         for p in &data.projects {
             let label = format!("Failed to restore project \"{}\"", s(p, "name"));
+            // v4's `_create` validates the WHOLE entity on both of v5's arms
+            // (`store-backed.repository.ts:142-144`) after its create seed
+            // (`parse_create_properties`), so a bag v4's schema refuses skips
+            // the project on the preserve arm too, with nothing written.
+            let properties = crate::db::document_store_overlay::fold_properties(
+                p,
+                ProjectEntity::property_keys(),
+            );
+            if let Err(e) = crate::db::projects::parse_create_properties(&properties) {
+                w.push(format!("{label}: {e}"));
+                continue;
+            }
             if let Some(store) = archived_store(p) {
                 warn_row!(
                     w,
@@ -862,14 +887,6 @@ fn restore_on_writer(
                     label,
                     slim_projects.create_slim_linked(&s(p, "name"), &store_opts(id_of(p)), &store)
                 );
-                continue;
-            }
-            let properties = crate::db::document_store_overlay::fold_properties(
-                p,
-                ProjectEntity::property_keys(),
-            );
-            if let Err(e) = ProjectEntity::parse_properties(&properties) {
-                w.push(format!("{label}: {e}"));
                 continue;
             }
             let input = crate::db::projects::ProjectCreateInput {
@@ -892,15 +909,8 @@ fn restore_on_writer(
             crate::db::store_backed::StoreBackedRepository::<GroupEntity>::new(main, mount);
         for g in &data.groups {
             let label = format!("Failed to restore group \"{}\"", s(g, "name"));
-            if let Some(store) = archived_store(g) {
-                warn_row!(
-                    w,
-                    c.groups,
-                    label,
-                    slim_groups.create_slim_linked(&s(g, "name"), &store_opts(id_of(g)), &store)
-                );
-                continue;
-            }
+            // Validated on both arms, as the projects above (v4's groups have
+            // no create seed).
             let properties = match GroupEntity::parse_properties(
                 &crate::db::document_store_overlay::fold_properties(
                     g,
@@ -913,6 +923,15 @@ fn restore_on_writer(
                     continue;
                 }
             };
+            if let Some(store) = archived_store(g) {
+                warn_row!(
+                    w,
+                    c.groups,
+                    label,
+                    slim_groups.create_slim_linked(&s(g, "name"), &store_opts(id_of(g)), &store)
+                );
+                continue;
+            }
             let input = crate::db::groups::GroupCreateInput {
                 name: s(g, "name"),
                 description: os(g, "description"),
@@ -1098,8 +1117,9 @@ fn restore_on_writer(
                     continue;
                 }
                 Err(e) => w.push(format!(
-                    "Failed to restore folder \"{}\": {e}",
-                    s(f, "name")
+                    "Failed to restore folder \"{}\": {}",
+                    s(f, "name"),
+                    e.warn_text()
                 )),
             }
         }
@@ -1394,7 +1414,10 @@ fn restore_on_writer(
                 .collect();
             match repo.add_entries(&entries) {
                 Ok(()) => c.vector_entries = entries.len(),
-                Err(e) => w.push(format!("Failed to restore vector entries: {e}")),
+                Err(e) => w.push(format!(
+                    "Failed to restore vector entries: {}",
+                    e.warn_text()
+                )),
             }
         }
     }
@@ -1507,7 +1530,10 @@ fn restore_on_writer(
                 // v4 `:723` — `TextReplacementRuleConflictError` is `continue`d
                 // with a debug log and NO warning; every other error warns.
                 Err(crate::db::text_replacement_rules::TrrError::Conflict { .. }) => {}
-                Err(e) => w.push(format!("Failed to restore text replacement rule: {e}")),
+                Err(e) => w.push(format!(
+                    "Failed to restore text replacement rule: {}",
+                    e.warn_text()
+                )),
             }
         }
     }
@@ -1576,10 +1602,11 @@ fn restore_on_writer(
                     .to_string(),
             ),
             Err(e) => {
+                let error = e.warn_text();
                 w.push(format!(
-                    "Failed to queue re-indexing after compact restore: {e}"
+                    "Failed to queue re-indexing after compact restore: {error}"
                 ));
-                tracing::warn!(error = %e, "Failed to enqueue reindex after compact restore");
+                tracing::warn!(error = %error, "Failed to enqueue reindex after compact restore");
             }
         }
     }

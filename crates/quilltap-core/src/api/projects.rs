@@ -512,15 +512,6 @@ const PROJECT_UPDATE_SCHEMA: &[(&str, FieldRule, bool)] = &[
     ),
 ];
 
-/// v4's hex-colour regex, `/^#(?:[0-9a-fA-F]{3}){1,2}$/` — `#abc` or `#abcdef`,
-/// nothing between and nothing longer.
-fn is_hex_color(s: &str) -> bool {
-    let Some(rest) = s.strip_prefix('#') else {
-        return false;
-    };
-    matches!(rest.len(), 3 | 6) && rest.bytes().all(|b| b.is_ascii_hexdigit())
-}
-
 fn field_value_ok(rule: &FieldRule, v: &Value) -> bool {
     match rule {
         FieldRule::Bool => v.is_boolean(),
@@ -529,7 +520,9 @@ fn field_value_ok(rule: &FieldRule, v: &Value) -> bool {
         FieldRule::Str(min, max) => v.as_str().is_some_and(|s| {
             crate::jsstr::zod_len_min_ok(s, *min) && crate::jsstr::zod_len_max_ok(s, *max)
         }),
-        FieldRule::Color => v.as_str().is_some_and(is_hex_color),
+        FieldRule::Color => v
+            .as_str()
+            .is_some_and(crate::api::zod_issues::zod_hex_color_ok),
         FieldRule::Uuid => v.as_str().is_some_and(super::chat_outfits::is_zod_uuid),
         FieldRule::Enum(members) => v.as_str().is_some_and(|s| members.contains(&s)),
         FieldRule::UuidArray => v.as_array().is_some_and(|a| {

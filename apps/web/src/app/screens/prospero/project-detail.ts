@@ -400,7 +400,7 @@ export class ProjectDetailScreen {
    * leave this action's failure with no feedback at all — toast it too, for
    * consistency with its siblings in this same component (the same call the
    * group editor made in P4.29 unit 5). A recorded v5 ADDITION — v4:
-   * never toasts (`useProjectDocumentStores.ts:82-99` `unlinkStore` returns
+   * never toasts (`useProjectDocumentStores.ts:84-100` `unlinkStore` returns
    * `false` and logs to the console); it stays (ruled 2026-10-05).
    */
   protected async onUnlinkStore(mountPointId: string): Promise<void> {

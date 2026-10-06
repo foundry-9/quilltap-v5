@@ -30,8 +30,6 @@ use serde_json::{json, Value};
 const MIRA: &str = "a2000002-0000-4000-8000-000000000001";
 /// The OPENAI_COMPATIBLE profile at `http://127.0.0.1:1/v1`.
 const PROFILE: &str = "c0000002-0000-4000-8000-000000000001";
-/// Mira's default system prompt.
-const DEFAULT_PROMPT: &str = "41c13f30-6ddb-8763-9fc8-eec33620c6ac";
 const MISSING: &str = "00000000-0000-4000-8000-00000000dead";
 
 fn parse_frames(sse: &str) -> Vec<Value> {
@@ -197,11 +195,36 @@ async fn the_generator_actions_resolve_over_the_live_assembly() {
     //    …and the DRIVER IS WIRED: a valid request reaches the provider (the
     //    socket refuses) and answers v4's 500 with the transport's message —
     //    NOT the engine's not-assembled 503.
+    //    Mira's default prompt id is MINTED per fixture build (a vault prompt's
+    //    id is `stableUuidFromString("prompt:<mountPointId>:<path>")`), so it
+    //    is read off the live character — a baked id matched nothing after
+    //    P4.151's rebuild and the step passed on the not-found arm (caught at
+    //    the `07b8f0209` follow-ups unification).
+    //    (The REST GET serves `?action=export` only; reads go over dispatch.)
+    let mira: Value = client
+        .post(format!("http://{addr}/api/dispatch"))
+        .json(&json!({ "type": "characterGet", "characterId": MIRA }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let default_prompt = mira["data"]["character"]["systemPrompts"][0]["id"]
+        .as_str()
+        .unwrap_or_else(|| {
+            panic!(
+                "Mira's prompts: {} (default pointer {})",
+                mira["data"]["character"]["systemPrompts"],
+                mira["data"]["character"]["defaultSystemPromptId"]
+            )
+        })
+        .to_string();
     let resp = client
         .post(url(MIRA, "generate-external-prompt"))
         .json(&json!({
             "connectionProfileId": PROFILE,
-            "systemPromptId": DEFAULT_PROMPT,
+            "systemPromptId": default_prompt,
             "maxTokens": 1000,
         }))
         .send()
@@ -214,6 +237,10 @@ async fn the_generator_actions_resolve_over_the_live_assembly() {
     assert!(
         !err.contains("GeneratorsDetailDriver"),
         "the host driver is not wired: {err}"
+    );
+    assert!(
+        !err.contains("System prompt not found"),
+        "the prompt id never reached the provider: {err}"
     );
 
     // 8. optimize-stream — a refusal before the first frame answers JSON…

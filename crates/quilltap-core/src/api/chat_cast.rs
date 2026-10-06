@@ -665,10 +665,11 @@ pub async fn chat_remove_participant(db: &Db, chat_id: &str, participant_id: &st
             || deleted,
         )
         .unwrap_or(0);
+        // v4 `participants.ts:629-631` `{chatId, participantId, droppedInforms}`.
         tracing::debug!(
-            chat_id = %chat_id,
-            participant_id = %participant_id,
-            dropped_informs,
+            chatId = %chat_id,
+            participantId = %participant_id,
+            droppedInforms = dropped_informs,
             "[Chats v1] Pending informs dropped with removed seat",
         );
     }

@@ -193,7 +193,11 @@ export class ProjectChatsSection {
    * v4 `useProjectChats.ts:88-105` — toast only, no inline surface. A refusal
    * is v4's FIXED `Failed to remove chat` (v4 throws it on a non-OK response
    * and never reads the body); a plain `Error` (v4's fetch reject) its own
-   * message; anything else the catch's fallback (the same sentence).
+   * message; anything else the catch's fallback (the same sentence). v5's
+   * transports never take the plain-`Error` arm: a network failure reaches
+   * here as a `CoreDispatchError`, so it toasts the fixed sentence where v4
+   * shows the browser's `Failed to fetch` (NO-PORT by v5's transport
+   * convention, recorded — P4.152 R-D).
    */
   protected async onRemove(chatId: string): Promise<void> {
     try {

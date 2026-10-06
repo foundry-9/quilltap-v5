@@ -1277,8 +1277,12 @@ fn enqueue_imported_memory_embeddings(
             Ok(false) => {}
             // v4 warns to the logger and continues — no `warnings` entry.
             Err(e) => {
-                tracing::warn!(memory_id = %memory_id, error = %item_error_text(&e),
-                    "Failed to enqueue embedding job for imported memory");
+                tracing::warn!(
+                    userId = %user_id,
+                    memoryId = %memory_id,
+                    error = %item_error_text(&e),
+                    "Failed to enqueue embedding job for imported memory"
+                );
             }
         }
     }
@@ -1622,7 +1626,7 @@ fn import_body(
                         // carries on with the EMPTY sets (so every row drops).
                         Ok(None) => {}
                         Err(e) => tracing::warn!(
-                            chat_id = %remapped_chat_id,
+                            chatId = %remapped_chat_id,
                             error = %item_error_text(&e),
                             "Failed to read chat while importing informs",
                         ),
@@ -1648,7 +1652,7 @@ fn import_body(
                             }
                         }
                         Err(e) => tracing::warn!(
-                            chat_id = %remapped_chat_id,
+                            chatId = %remapped_chat_id,
                             error = %item_error_text(&e),
                             "Failed to read chat while importing informs",
                         ),
@@ -1662,8 +1666,8 @@ fn import_body(
                     informs_dropped += 1;
                     warnings.push(format!("Dropped an imported inform: {reason}"));
                     tracing::warn!(
-                        inform_id,
-                        chat_id = %remapped_chat_id,
+                        informId = inform_id,
+                        chatId = %remapped_chat_id,
                         reason = %reason,
                         "Dropped imported inform with an unresolvable reference",
                     );
@@ -1678,9 +1682,9 @@ fn import_body(
                             .and_then(Value::as_str)
                             .unwrap_or("");
                         tracing::warn!(
-                            inform_id,
-                            chat_id = %remapped_chat_id,
-                            consumed_by_message_id,
+                            informId = inform_id,
+                            chatId = %remapped_chat_id,
+                            consumedByMessageId = consumed_by_message_id,
                             "Imported inform lost its consumedByMessageId",
                         );
                     }
@@ -1786,8 +1790,8 @@ fn import_body(
                     {
                         // v4: logged, no warnings entry.
                         tracing::warn!(
-                            group_id = %remapped_group_id,
-                            character_id = %remapped_character_id,
+                            groupId = %remapped_group_id,
+                            characterId = %remapped_character_id,
                             error = %item_error_text(&e),
                             "Failed to add group member"
                         );
@@ -1807,8 +1811,8 @@ fn import_body(
                     };
                     if let Err(e) = links_repo.link(&remapped_group_id, remapped_mount_point_id) {
                         tracing::warn!(
-                            group_id = %remapped_group_id,
-                            mount_point_id = %remapped_mount_point_id,
+                            groupId = %remapped_group_id,
+                            mountPointId = %remapped_mount_point_id,
                             error = %item_error_text(&e),
                             "Failed to link document store to group"
                         );

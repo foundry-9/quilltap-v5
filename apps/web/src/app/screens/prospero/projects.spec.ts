@@ -1264,8 +1264,10 @@ describe('ProjectImageGenerationCard', () => {
    * v4 `useProjectDetail.ts` at `07b8f0209`: each handler throws a FIXED
    * sentence on a non-OK response (the body is never read) and catches
    * `err instanceof Error ? err.message : '<catch fallback>'`. Avatar
-   * generation and the background mode throw a sentence that is NOT their
-   * catch fallback (`…avatar generation setting`, `…background display mode`).
+   * generation, the background mode and the image profile throw a sentence
+   * that is NOT their catch fallback (`…avatar generation setting`,
+   * `…background display mode`, `…default image profile` — v4 `:190/:197`);
+   * only the Lantern announcement's two agree.
    */
   const imageHandlers: { label: string; value: string; thrown: string; fallback: string }[] = [
     // v4 `:158-180` handleSaveAvatarGeneration — thrown != catch fallback.

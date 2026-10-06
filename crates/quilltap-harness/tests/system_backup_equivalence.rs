@@ -217,9 +217,6 @@ fn open_fixture(scratch: &Path) -> Db {
     .expect("open fixture db")
 }
 
-/// P4.106 item 6 — the oracle's `plantInforms`, cell for cell: a PENDING and a
-/// CONSUMED row on each of the user's first two chats (sorted by id), on the
-/// per-run COPY only.
 /// P4.149: the oracle's `BLOB_PROFILE_ID`.
 const BLOB_PROFILE_ID: &str = "c0ffee00-0000-4000-8000-0000000000b2";
 
@@ -247,6 +244,9 @@ fn plant_blob_profile(db: &Db) {
     .expect("plant the BLOB-named profile");
 }
 
+/// P4.106 item 6 — the oracle's `plantInforms`, cell for cell: a PENDING and a
+/// CONSUMED row on each of the user's first two chats (sorted by id), on the
+/// per-run COPY only.
 fn plant_informs(db: &Db) {
     use quilltap_core::db::chat_informs::{ChatInformCreate, ChatInformsRepository};
     db.write_blocking(|w| {

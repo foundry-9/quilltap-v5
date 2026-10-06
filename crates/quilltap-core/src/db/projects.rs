@@ -494,6 +494,23 @@ fn seed_create_properties(properties: &Value) -> Value {
     Value::Object(bag)
 }
 
+/// v4's CREATE-time validation, as `prepareCreateData` → `_create`'s
+/// `validate` runs it (`projects.repository.ts:55-63`, `store-backed.
+/// repository.ts:142-144`): the two roster defaults are seeded FIRST
+/// (`allowAnyCharacter ?? true`, `characterRoster ?? []` — JS `??` takes
+/// `null` too), THEN the whole bag is parsed. A caller that must refuse a bag
+/// BEFORE writing anything (the `.qtap` import, the restore) validates
+/// through THIS, never through `parse_properties` on the raw bag — the
+/// `07b8f0209` follow-ups unification caught P4.148's import refusing a
+/// project carrying `allowAnyCharacter: null` that v4 (and [`ProjectsRepository
+/// ::create`], which seeds the same way) imports OPEN. `Err` is v4's
+/// `ZodError.message` bytes.
+pub fn parse_create_properties(properties: &Value) -> Result<ProjectProperties, String> {
+    <ProjectEntity as crate::db::document_store_overlay::StoreEntity>::parse_properties(
+        &seed_create_properties(properties),
+    )
+}
+
 /// Read `characterRoster` off a hydrated project (absent/non-array → empty).
 fn roster_of(project: &Value) -> Vec<String> {
     project

@@ -101,14 +101,42 @@ const KNOWN_BARE: &[&str] = &["text", "msg", "reason"];
 
 /// Rule 3: a warning literal whose trailing inline argument is not known-bare.
 fn bad_warning_literal(body: &str) -> Option<String> {
+    // A literal that is NOTHING but one placeholder — `format!("{e}")` — is a
+    // whole error rendered raw, wherever it sits (a `map_err` body included).
+    if body.starts_with('{') && body.ends_with('}') && body.matches('{').count() == 1 {
+        let arg = body[1..body.len() - 1]
+            .split_once(':')
+            .map_or(&body[1..body.len() - 1], |(name, _)| name);
+        if !arg.is_empty()
+            && arg.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+            && !KNOWN_BARE.contains(&arg)
+        {
+            return Some(arg.to_string());
+        }
+        return None;
+    }
     let is_warning = body.starts_with("Failed to ")
         || body.starts_with("Import failed: ")
         || body.contains("restore hard link");
-    if !is_warning || !body.ends_with('}') {
+    if !is_warning {
         return None;
     }
+    // The LAST placeholder ENDS the sentence — bar trailing punctuation, so
+    // `{e}.` is still the error rendered raw (`{name} during reset` is a
+    // subject, not an error); a `:?` / `:#?` spec is Debug, never bare. A
+    // positional `{}` carries its argument outside the literal and cannot be
+    // judged here (the `item_error_text(&e)` shape IS the good one).
     let open = body.rfind('{')?;
-    let arg = &body[open + 1..body.len() - 1];
+    let close = open + body[open..].find('}')?;
+    if !body[close + 1..]
+        .chars()
+        .all(|c| matches!(c, '.' | ')' | ']' | '!'))
+    {
+        return None;
+    }
+    let arg = body[open + 1..close]
+        .split_once(':')
+        .map_or(&body[open + 1..close], |(name, _)| name);
     if arg.is_empty() || !arg.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
         return None;
     }
@@ -138,6 +166,10 @@ fn offenders_in(dir: &std::path::Path) -> Vec<String> {
         let zone = production_zone(&src);
         let code = code_only(&zone);
         for body in map_err_bodies(&code) {
+            // `to_string()` on the error renders a `DbError` through `Display`
+            // (the only bare shape is the helper). A `map_err(|e| format!("{e}"))`
+            // is the same render, but `code_only` blanks literals, so rule 3
+            // catches it as the bare literal `{e}` instead.
             if body.contains(".to_string()") {
                 let squashed: String = body.split_whitespace().collect::<Vec<_>>().join(" ");
                 out.push(format!("{name}: map_err({squashed})"));
@@ -191,10 +223,14 @@ fn every_import_warning_renders_db_errors_through_the_helper() {
 fn the_rules_fire_on_their_shapes_and_nowhere_else() {
     let src = r#"
 fn a() -> Result<(), String> { repo.read().map_err(|e| e.to_string())?; Ok(()) }
+fn a2() -> Result<(), String> { repo.read().map_err(|e| format!("{e}"))?; Ok(()) }
+fn d2() { warnings.push(format!("Failed to import tag \"{name}\": {e:?}")); }
+fn d3() { warnings.push(format!("Failed to import tag \"{name}\": {e}.")); }
 fn b() -> Result<(), String> { repo.read().map_err(|e| DbError::Internal(e.to_string()))?; Ok(()) }
 fn c() -> Result<(), String> { repo.read().map_err(|e| super::item_error_text(&e))?; Ok(()) }
 fn err_msg(e: DbError) -> String { e.to_string() }
 fn d() { warnings.push(format!("Failed to import tag \"{name}\": {e}")); }
+fn d4() { warnings.push(format!("Failed to delete {name} during reset")); }
 fn e() { warnings.push(format!("Failed to import tag \"{name}\": {text}")); }
 fn f() { warnings.push(format!("Failed to import tag \"{name}\": {}", item_error_text(&e))); }
 // warnings.push(format!("Failed to import memory: {e}"));
@@ -215,5 +251,7 @@ mod tests {
         .into_iter()
         .filter_map(|l| bad_warning_literal(l.trim_matches('"')))
         .collect();
-    assert_eq!(bad, vec!["e".to_string()], "{bad:?}");
+    // `a2`'s bare `{e}` literal, `d2` (`{e:?}`), `d3` (`{e}.`) and `d` — never
+    // `d4`'s mid-sentence `{name}`, `e`'s known-bare `{text}` or `f`'s `{}`.
+    assert_eq!(bad, vec!["e".to_string(); 4], "{bad:?}");
 }

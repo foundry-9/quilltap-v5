@@ -403,7 +403,54 @@ pub fn find_all(conn: &Connection) -> Result<Vec<Value>, DbError> {
 
 /// Find chats by user id (v4 `findByUserId`).
 pub fn find_by_user_id(conn: &Connection, user_id: &str) -> Result<Vec<Value>, DbError> {
-    run(conn, "WHERE userId = ?1", &[&user_id])
+    run_dropping_invalid_rows(conn, "WHERE userId = ?1", &[&user_id])
+}
+
+/// [`run`] with v4 `findByFilter`'s per-row `validateSafe`
+/// (`base.repository.ts:283-298`): a row whose cells cannot be read into the
+/// chat shape (a BLOB in a text column, a NULL in a required one) is DROPPED
+/// with v4's two lines — ERROR `Data validation failed {collection, error}`
+/// then WARN `Safe validation failed {collection, error}` — and the rest of
+/// the list is answered; only a whole-query failure propagates (to the
+/// caller's `find_by_filter_or_empty`). The `07b8f0209` follow-ups
+/// unification: P4.149's `list_chats` fallback had turned one corrupt row
+/// into an EMPTY list. ⚠ Recorded divergence: `error` is rusqlite's sentence
+/// where v4 renders the ZodError's — v5 validates no chat row (the memories
+/// read's class, P4.149 Tier 3).
+fn run_dropping_invalid_rows(
+    conn: &Connection,
+    tail: &str,
+    params: &[&dyn rusqlite::ToSql],
+) -> Result<Vec<Value>, DbError> {
+    let sql = format!("SELECT {ALL_COLUMNS} FROM chats {tail}");
+    let mut stmt = conn.prepare(sql.trim())?;
+    let mut rows = stmt.query(params)?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        match marshal_row(row) {
+            Ok(v) => out.push(v),
+            Err(
+                e @ (rusqlite::Error::InvalidColumnType(..)
+                | rusqlite::Error::FromSqlConversionFailure(..)),
+            ) => {
+                let error = e.to_string();
+                tracing::error!(
+                    target: "quilltap::db",
+                    collection = "chats",
+                    error = %error,
+                    "Data validation failed"
+                );
+                tracing::warn!(
+                    target: "quilltap::db",
+                    collection = "chats",
+                    error = %error,
+                    "Safe validation failed"
+                );
+            }
+            Err(e) => return Err(e.into()),
+        }
+    }
+    Ok(out)
 }
 
 /// Find chats that include a character as a participant (v4 `findByCharacterId` —
@@ -689,6 +736,59 @@ mod alignment_census {
     /// runs on v4's side only). The row reads identically, the dropped column
     /// never surfaces, and keeping it in `ALL_COLUMNS` (the order's M9) fails
     /// the fresh read outright.
+    /// v4 `findByFilter` drops a row its `validateSafe` refuses and lists the
+    /// rest (`base.repository.ts:283-298`); the user's chat list reads through
+    /// that shape, so one corrupt row costs ONE chat, not the list (and not a
+    /// 500). The `07b8f0209` follow-ups unification.
+    #[test]
+    fn the_user_list_drops_a_corrupt_row_with_v4s_two_lines_and_keeps_the_rest() {
+        let schema: serde_json::Value =
+            serde_json::from_str(FRESH_SCHEMA).expect("fresh_schema.json parses");
+        let ddl = schema["main"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .find(|s| s.starts_with("CREATE TABLE \"chats\" ("))
+            .unwrap();
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(ddl).unwrap();
+        for id in ["c1", "c2"] {
+            conn.execute(
+                "INSERT INTO \"chats\" (id, userId, title, createdAt, updatedAt) \
+                 VALUES (?1, 'u1', 'fine', '2026-09-26T00:00:00.000Z', '2026-09-26T00:00:00.000Z')",
+                [id],
+            )
+            .unwrap();
+        }
+        conn.execute("UPDATE \"chats\" SET title = X'00' WHERE id = 'c2'", [])
+            .unwrap();
+        let (rows, lines) =
+            crate::test_support::captured_with(|| super::find_by_user_id(&conn, "u1"));
+        let rows = rows.unwrap();
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(rows[0]["id"], "c1");
+        let v4: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("validation failed"))
+            .collect();
+        assert_eq!(v4.len(), 2, "{lines:#?}");
+        assert!(
+            v4[0].starts_with("ERROR quilltap::db Data validation failed collection=chats error=Invalid column type Blob at index: 3, name: title"),
+            "{}",
+            v4[0]
+        );
+        assert!(
+            v4[1].starts_with("WARN quilltap::db Safe validation failed collection=chats error=Invalid column type Blob"),
+            "{}",
+            v4[1]
+        );
+        // A whole-query failure still propagates (the caller's fallback home).
+        conn.execute_batch("ALTER TABLE \"chats\" RENAME COLUMN userId TO userId_x")
+            .unwrap();
+        assert!(super::find_by_user_id(&conn, "u1").is_err());
+    }
+
     #[test]
     fn a_chat_reads_the_same_with_or_without_the_dropped_override_column() {
         let schema: serde_json::Value =

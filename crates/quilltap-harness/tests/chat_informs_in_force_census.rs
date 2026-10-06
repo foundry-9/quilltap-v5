@@ -110,7 +110,18 @@ fn code_presence_tests() -> Regex {
 }
 
 fn sql_null_tests() -> Regex {
-    Regex::new(r#"(?i)\bconsumedAt\\?"?\s+IS\s+(NOT\s+)?NULL\b"#).unwrap()
+    // `IS [NOT] NULL`, SQLite's postfix `ISNULL` / `NOTNULL` too.
+    Regex::new(r#"(?i)\bconsumedAt\\?"?\s+(?:IS\s*(?:NOT\s*)?NULL|NOTNULL)\b"#).unwrap()
+}
+
+/// A raw source literal with Rust's `\`-newline continuations (the house
+/// style for multi-line SQL) joined back into one line, so the SQL arm sees
+/// `consumedAt \<newline>    IS NULL` as the one clause it is.
+fn joined_literal(lit: &str) -> String {
+    Regex::new(r"\\\n\s*")
+        .unwrap()
+        .replace_all(lit, " ")
+        .into_owned()
 }
 
 /// Count the code arm's matches in one production zone.
@@ -188,7 +199,7 @@ fn no_production_sql_tests_consumed_at_against_null() {
         .flat_map(|(p, z)| {
             string_literals(z)
                 .into_iter()
-                .filter(|l| re.is_match(l))
+                .filter(|l| re.is_match(&joined_literal(l)))
                 .map(move |l| format!("{p}: {}", l.chars().take(160).collect::<String>()))
                 .collect::<Vec<_>>()
         })
@@ -230,8 +241,19 @@ fn the_matchers_see_every_shape() {
         "SELECT * FROM chat_informs WHERE consumedAt IS NULL",
         "WHERE \"consumedAt\" is not null",
         "WHERE \\\"consumedAt\\\" IS NULL",
+        "WHERE consumedAt ISNULL",
+        "WHERE consumedAt NOTNULL",
     ] {
         assert!(sql_null_tests().is_match(hit), "{hit}");
+    }
+    for hit in [
+        "WHERE participantId = ?1 AND consumedAt \\\n           IS NULL",
+        "WHERE consumedAt IS \\\n    NOT NULL",
+    ] {
+        assert!(
+            sql_null_tests().is_match(&joined_literal(hit)),
+            "a `\\`-continued literal: {hit}"
+        );
     }
     for miss in [
         "UPDATE chat_informs SET consumedAt = ?1",

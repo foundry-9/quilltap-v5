@@ -1559,14 +1559,25 @@ fn system_import_execute_state_equivalence() {
     // while the sound item landed — so the whole-state equality above is the
     // TRAP's proof (v5 used to half-write each refused project: 6 `projects`
     // rows vs v4's 2, 11 stores vs 7, measured red-first at `07b8f0209`).
-    for (case_name, table, noun, refused) in [
+    // The projects case ALSO carries a sound item whose two roster keys are
+    // explicit `null`s — v4 seeds them before it validates (`prepareCreateData`),
+    // so it lands too; the unported P4.148 import refused it (caught at the
+    // `07b8f0209` follow-ups unification, red-first on the whole-state diff).
+    for (case_name, table, noun, refused, sound) in [
         (
             "execute_project_property_refusals",
             "projects",
             "project",
             4usize,
+            &["Project Sound", "Project Null Roster Defaults"][..],
         ),
-        ("execute_group_property_refusals", "groups", "group", 3usize),
+        (
+            "execute_group_property_refusals",
+            "groups",
+            "group",
+            3usize,
+            &["Group Sound"][..],
+        ),
     ] {
         let case = cases
             .iter()
@@ -1580,11 +1591,11 @@ fn system_import_execute_state_equivalence() {
             .collect();
         let cap = format!("{}{}", noun[..1].to_uppercase(), &noun[1..]);
         assert!(
-            names.contains(&format!("{cap} Sound").as_str())
+            sound.iter().all(|s| names.contains(s))
                 && !names
                     .iter()
-                    .any(|n| n.starts_with(&cap) && *n != format!("{cap} Sound")),
-            "{case_name}: v4 must land only the sound {noun}: {names:?}"
+                    .any(|n| n.starts_with(&cap) && !sound.contains(n)),
+            "{case_name}: v4 must land exactly the sound {noun}(s) {sound:?}: {names:?}"
         );
         let pre_mps = case["preState"]["mountIndex"]["doc_mount_points"]
             .as_array()
@@ -1594,8 +1605,8 @@ fn system_import_execute_state_equivalence() {
             .map_or(0, Vec::len);
         assert_eq!(
             mps,
-            pre_mps + 1,
-            "{case_name}: one store, the sound {noun}'s"
+            pre_mps + sound.len(),
+            "{case_name}: one store per sound {noun}"
         );
         let head = format!("Failed to import {noun} \"");
         let tails: Vec<&str> = case["result"]["warnings"]

@@ -960,11 +960,17 @@ pub fn find_by_user_id(
 }
 
 /// The plain `z.string()` columns of v4's `ConnectionProfileSchema`
-/// (`lib/schemas/profile.types.ts:42-…`) by their [`cp_select_columns`]
+/// (`lib/schemas/profile.types.ts:45,70,71,120`) by their [`cp_select_columns`]
 /// index, in SCHEMA order: `name`, `baseUrl` (`.nullable().optional()`),
-/// `modelName`. A BLOB in any of them fails `z.string()` with ONE
-/// `invalid_type` issue and no length check.
-const PLAIN_STRING_COLUMNS: [(usize, &str); 3] = [(2, "name"), (7, "baseUrl"), (8, "modelName")];
+/// `modelName`, `modelClass` (`.nullable().optional()`; index 17 — after the
+/// head's sixteen and `multiCharacterPrefill`). A BLOB in any of them fails
+/// `z.string()` with ONE `invalid_type` issue and no length check.
+const PLAIN_STRING_COLUMNS: [(usize, &str); 4] = [
+    (2, "name"),
+    (7, "baseUrl"),
+    (8, "modelName"),
+    (17, "modelClass"),
+];
 
 /// v4 `findByFilter` / `_findAll`'s per-row `validateSafe` for the one corrupt
 /// shape this port reproduces (P4.149, dogfood standing note 2026-10-03 item

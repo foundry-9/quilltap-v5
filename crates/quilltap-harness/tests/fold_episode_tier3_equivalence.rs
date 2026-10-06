@@ -208,6 +208,7 @@ const DB_MESSAGES: &[&str] = &[
     "Memory not found for deletion",
     "Memory does not belong to character",
     "Error finding entity by ID",
+    "Error finding entities by filter",
 ];
 const DB_TARGET: &str = "quilltap::db";
 

@@ -200,8 +200,9 @@ describe('ProjectModelBehaviorCard — the Default Tool Settings row (P4.9E4B)',
  * sentence on a non-OK response (the body is never read) and catches
  * `err instanceof Error ? err.message : '<catch fallback>'`. So a refusal
  * toasts the THROWN sentence, a plain `Error` its own message, and anything
- * else the catch fallback. Two of the three handlers here (agent mode, answer
- * confirmation) throw a sentence that is NOT their catch fallback — the rows
+ * else the catch fallback. All three handlers here throw a sentence that is
+ * NOT their catch fallback (agent mode and answer confirmation gain
+ * `setting`; the roleplay template drops `default`, v4 `:211/:218`) — the rows
  * that were red when the refusal leaked into the catch's `fallback` slot.
  */
 describe('ProjectModelBehaviorCard — failure toasts (v4 three-way branch)', () => {

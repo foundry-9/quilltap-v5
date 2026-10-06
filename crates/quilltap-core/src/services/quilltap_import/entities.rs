@@ -516,10 +516,11 @@ fn create_project(
     // left a row and a store with no `properties.json` — refused on every
     // later read. The refusal is the bare ZodError message, so the per-item
     // warning reads v4's bytes. (`StoreBackedRepository::create`'s own order
-    // is a named follow-up — that file is not this lane's.)
-    <projects::ProjectEntity as crate::db::document_store_overlay::StoreEntity>::parse_properties(
-        &properties,
-    )?;
+    // is a named follow-up — that file is not this lane's.) The parse is the
+    // CREATE-time one — v4 seeds the two roster defaults before it validates,
+    // so `allowAnyCharacter: null` / `characterRoster: null` import OPEN, not
+    // refused (caught at the `07b8f0209` follow-ups unification).
+    projects::parse_create_properties(&properties)?;
     let input = projects::ProjectCreateInput {
         name: name_override.unwrap_or_else(|| display_name(raw)),
         description: opt_str_field(raw, "description"),
@@ -1163,6 +1164,38 @@ mod group_null_import_tests {
                 "{kind}: {quiet:?}"
             );
         }
+    }
+
+    /// v4 seeds the two roster defaults BEFORE `_create` validates
+    /// (`projects.repository.ts:55-63` `prepareCreateData`), so a bundle
+    /// project carrying `allowAnyCharacter: null` / `characterRoster: null`
+    /// imports OPEN with the seeded values on disk — never a refusal. Caught at
+    /// the `07b8f0209` follow-ups unification: the import's validate-before-
+    /// write had parsed the RAW bag and refused the project (data loss).
+    #[test]
+    fn a_null_roster_default_is_seeded_on_import_not_refused() {
+        let (main, mount) = conns();
+        let opts = ImportOptions::seed_defaults();
+        let raw = json!({
+            "id": "p-src-null", "name": "Nulled Roster", "state": {},
+            "allowAnyCharacter": null, "characterRoster": null,
+        });
+        let mut warnings = Vec::new();
+        let mut id_map = IdMap::default();
+        let counts =
+            import_projects(&main, &mount, &[raw], &opts, &mut id_map, &mut warnings).unwrap();
+        assert_eq!((counts.imported, counts.skipped), (1, 0), "{warnings:?}");
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let mp: String = main
+            .query_row(
+                "SELECT officialMountPointId FROM projects WHERE name = 'Nulled Roster'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let bag: Value = serde_json::from_str(&stored_properties(&mount, &mp)).unwrap();
+        assert_eq!(bag["allowAnyCharacter"], json!(true), "{bag}");
+        assert_eq!(bag["characterRoster"], json!([]), "{bag}");
     }
 
     #[test]
