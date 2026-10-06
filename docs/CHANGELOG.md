@@ -90,6 +90,16 @@ _Versions: core 0.0.1210._
 - The inform cancel's line moves from the api handler (wrong target, snake-case field, `sqlite error:` prefix) to the repository; the seat-removal `Could not drop pending informs` WARN is retired (unreachable in v4 — the DEBUG fires with `dropped_informs=0` instead).
 - `log_chat_create_validation_failure` folds its two `Error creating entity` copies onto the home.
 - `chat_informs_tier2_equivalence` gains a BEFORE DELETE trigger plant with per-op captured lines (red-first: v5 propagated where v4 answers 0) and two standing rows inserted out of posting order (the P4.151 survey's B1, mutation-proven); `fallback_home_guard` holds five more literals.
+#### 2026-10-05 — fix(projects): v4's uuid gate on the six add/remove actions, its GET and Scenarios log lines, and 201 pins (P4.148)
+
+_Versions: core 0.0.1214._
+
+- The six project add/remove actions (character, chat, file) now refuse a malformed id with v4's `400 {error: "Validation error", details: [invalid_format/uuid]}`, checked after the project's existence as v4 does. Before, adds answered `404 Character/Chat/File` and removes answered `200` and wrote.
+- The project GET's failure line now reads `[Projects v1] Error fetching project` with `projectId` and the bare error, replacing the v5-only `project GET failed`.
+- A failed Scenarios/ folder ensure on project create now logs v4's WARN `[Projects v1] Failed to ensure project Scenarios folder on create` after the `Project created` INFO, instead of being dropped.
+- The enriched roster's `tags` follows v4's `char.tags || []`.
+- `projects_routes_equivalence` gains the six 400 rows (body and `details`, with a silence leg), the GET line capture, a Scenarios-ensure plant (a trigger refusing folder inserts), a NULL-tags row and a missing-roster-member row. Both routes families now assert v4's 201 at every success-create row and check that every 201 row is pinned. `groups_routes_equivalence`'s `create_null_colour` row decodes the wire `null` through the `Request` enum.
+
 #### 2026-10-05 — fix(import): a refused .qtap project writes nothing; fold_properties moves to the overlay home (P4.148)
 
 _Versions: core 0.0.1213._

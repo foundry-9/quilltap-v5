@@ -340,6 +340,23 @@ fn groups_routes_match_oracle() {
             eprintln!("[{name}] OK.");
         }
     };
+    // [P4.148 item 14] v4 answers a create with 201; v5's status lives at the
+    // web edge, so the pin is "v4 says 201 and v5 answered a non-`Error`
+    // variant" — at every success-create row, held whole by the census at the
+    // end (the projects family's twin).
+    let pinned_201: std::cell::RefCell<std::collections::BTreeSet<String>> = Default::default();
+    let pin_201 = |name: &str, resp: &Response, failed: &mut Vec<String>| {
+        assert_eq!(
+            oracle[name]["status"].as_i64(),
+            Some(201),
+            "{name}: v4's status"
+        );
+        if matches!(resp, Response::Error(_)) {
+            eprintln!("[{name}] v4 answered 201, v5 an Error");
+            failed.push(format!("{name}_201"));
+        }
+        pinned_201.borrow_mut().insert(name.to_string());
+    };
     let check_tables = |name: &str, got: &Value, failed: &mut Vec<String>| {
         let want = &oracle[name]["tables"];
         if norm(got) != norm(want) {
@@ -498,6 +515,7 @@ fn groups_routes_match_oracle() {
             Some("#abcdef".into()),
             Some("gear".into()),
         ));
+        pin_201("create", &resp, &mut failed);
         let got = response_data(&resp);
         let want = &oracle["create"]["body"];
         if norm_blanked(&got) != norm_blanked(want) {
@@ -529,6 +547,7 @@ fn groups_routes_match_oracle() {
             Some("gear".into()),
         ));
         check_blanked("create_with_instructions", &resp, &mut failed);
+        pin_201("create_with_instructions", &resp, &mut failed);
     }
     {
         // `validatedData.instructions || null` on CREATE — `''` → null.
@@ -546,6 +565,11 @@ fn groups_routes_match_oracle() {
             &resp,
             &mut failed,
         );
+        pin_201(
+            "create_empty_instructions_normalizes_to_null",
+            &resp,
+            &mut failed,
+        );
     }
     {
         // `.min(1)` is on the RAW string: `"   "` is length 3 and PASSES.
@@ -559,6 +583,7 @@ fn groups_routes_match_oracle() {
             Some("gear".into()),
         ));
         check_blanked("create_whitespace_name_passes", &resp, &mut failed);
+        pin_201("create_whitespace_name_passes", &resp, &mut failed);
     }
     {
         let db = fresh_db(&spec, "create_empty_name");
@@ -595,6 +620,7 @@ fn groups_routes_match_oracle() {
             Some("gear".into()),
         ));
         check_blanked("create_instructions_at_cap_ok", &resp, &mut failed);
+        pin_201("create_instructions_at_cap_ok", &resp, &mut failed);
     }
     {
         // A non-string `instructions` never reaches the handler on the typed
@@ -728,15 +754,50 @@ fn groups_routes_match_oracle() {
         ("create_empty_icon", "cei", "Nu", "n", Some(String::new())),
     ] {
         let db = fresh_db(&spec, tag);
-        let resp = rt.block_on(groups::group_create(
-            &db,
-            group_name.into(),
-            Some(desc.into()),
-            None,
-            None,
-            icon,
-        ));
+        let resp = if name == "create_null_colour" {
+            // [P4.148 item 15] The wire `null` itself, decoded through the
+            // `Request` enum (the edge's exact decode — the
+            // `character_rename_equivalence` precedent) and dispatched, not a
+            // hand-built `None`: `color: null` must decode to the same input
+            // as absent, which v4's `|| null` then stores as `null`.
+            let wire = json!({
+                "type": "groupCreate",
+                "name": group_name,
+                "description": desc,
+                "color": null,
+            });
+            let req: Request = serde_json::from_value(wire).expect("decodes through Request");
+            let Request::GroupCreate {
+                name: n,
+                description,
+                instructions,
+                color,
+                icon: i,
+            } = req
+            else {
+                panic!("{name}: decoded to the wrong variant");
+            };
+            assert_eq!(color, None, "{name}: a wire null decodes as no colour");
+            rt.block_on(groups::group_create(
+                &db,
+                n,
+                description,
+                instructions,
+                color,
+                i,
+            ))
+        } else {
+            rt.block_on(groups::group_create(
+                &db,
+                group_name.into(),
+                Some(desc.into()),
+                None,
+                None,
+                icon,
+            ))
+        };
         check_blanked(name, &resp, &mut failed);
+        pin_201(name, &resp, &mut failed);
         let group = &response_data(&resp)["group"];
         assert_eq!(
             group.get("color"),
@@ -836,6 +897,7 @@ fn groups_routes_match_oracle() {
         let db = fresh_db(&spec, "mlink");
         let resp = rt.block_on(groups::group_mount_point_link(&db, GAMMA, GAMMA_EXTRA_MP));
         check("mount_link", &response_data(&resp), &mut failed);
+        pin_201("mount_link", &resp, &mut failed);
     }
     {
         let db = fresh_db(&spec, "munlink");
@@ -918,5 +980,18 @@ fn groups_routes_match_oracle() {
         }
     }
 
+    // Every row v4 answered 201 was pinned.
+    let mut want_201: Vec<&String> = oracle
+        .iter()
+        .filter(|(_, r)| r["status"].as_i64() == Some(201))
+        .map(|(n, _)| n)
+        .collect();
+    want_201.sort();
+    let got_201 = pinned_201.borrow();
+    assert_eq!(
+        got_201.iter().collect::<Vec<_>>(),
+        want_201,
+        "every 201 row pinned"
+    );
     assert!(failed.is_empty(), "groups-routes FAILED: {failed:?}");
 }

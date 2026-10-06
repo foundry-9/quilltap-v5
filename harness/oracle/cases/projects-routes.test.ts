@@ -55,6 +55,8 @@ const ENSEMBLE = 'aa000000-0000-4000-8000-000000000002';
 const BG_FILE = 'f0000001-0000-4000-8000-000000000001'; // legacy image, projectId null
 const LAMBDA_FILE_1 = 'f0000002-0000-4000-8000-000000000002'; // projectId = Lambda
 const MISSING_FILE = 'f0000009-0000-4000-8000-000000000009';
+/** P4.148: a well-formed character uuid with no row behind it. */
+const MISSING_CHARACTER = 'a1000000-0000-4000-8000-0000000000ff';
 
 function mockRequest(url: string, body?: unknown): unknown {
   return {
@@ -171,6 +173,60 @@ async function withLinksPlant(
   }
   const out = await call();
   return { ...out, logs };
+}
+
+/**
+ * P4.148 — record every INFO/WARN/ERROR the call logs off the `Logger`
+ * prototype as `{level, message, fields, error}`: `fields` are the context's
+ * string/number/boolean values in key order (`module`/`error` omitted), and
+ * `error` the line's error message — a context `error` string, or the Error
+ * passed as the third argument (`logger.error(msg, ctx, err)`). No plant.
+ */
+async function withLogs(
+  call: () => Promise<{ status: number; body: unknown }>,
+): Promise<{ status: number; body: unknown; logs: unknown }> {
+  const { Logger } = await import('@/lib/logger');
+  const logs: Array<Record<string, unknown>> = [];
+  const originals = {
+    info: Logger.prototype.info,
+    warn: Logger.prototype.warn,
+    error: Logger.prototype.error,
+  };
+  for (const level of ['info', 'warn', 'error'] as const) {
+    const original = originals[level];
+    Logger.prototype[level] = function (
+      this: unknown,
+      message: string,
+      context?: Record<string, unknown>,
+      ...rest: unknown[]
+    ) {
+      const fields: Array<[string, string]> = [];
+      for (const [k, v] of Object.entries(context ?? {})) {
+        if (k === 'module' || k === 'error') continue;
+        if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+          fields.push([k, String(v)]);
+        }
+      }
+      const ctxError = context?.error;
+      const third = rest[0];
+      const error =
+        typeof ctxError === 'string'
+          ? ctxError
+          : third instanceof Error
+            ? third.message
+            : null;
+      logs.push({ level, message, fields, error });
+      return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+    } as never;
+  }
+  try {
+    const out = await call();
+    return { ...out, logs };
+  } finally {
+    Logger.prototype.info = originals.info;
+    Logger.prototype.warn = originals.warn;
+    Logger.prototype.error = originals.error;
+  }
 }
 
 async function loadRoute(path: string): Promise<Record<string, (...a: unknown[]) => Promise<unknown>>> {
@@ -828,7 +884,10 @@ async function main(): Promise<void> {
         if (!mp) throw new Error('iota has no officialMountPointId');
         const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
         await writeDatabaseDocument(mp, 'properties.json', '{');
-        return respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${IOTA}`), p(IOTA)));
+        // P4.148: the catch's `[Projects v1] Error fetching project` line.
+        return withLogs(async () =>
+          respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${IOTA}`), p(IOTA))),
+        );
       },
     },
     {
@@ -876,6 +935,84 @@ async function main(): Promise<void> {
         );
         const { status, body } = await respond(r);
         return { status, body, tables: await dumpProjectTables() };
+      },
+    },
+    // ---- P4.148 (P4.D246 item 16): v4's `z.uuid()` gate on the six
+    // add/remove bodies, AFTER the project's existence check. A malformed id
+    // answers `400 {error: 'Validation error', details: [invalid_format/uuid]}`
+    // and the handler logs nothing (its INFO follows the write).
+    ...([
+      ['add_character_bad_uuid', 'POST', 'add-character', 'characterId'],
+      ['remove_character_bad_uuid', 'DELETE', 'remove-character', 'characterId'],
+      ['add_chat_bad_uuid', 'POST', 'add-chat', 'chatId'],
+      ['remove_chat_bad_uuid', 'DELETE', 'remove-chat', 'chatId'],
+      ['add_file_bad_uuid', 'POST', 'add-file', 'fileId'],
+      ['remove_file_bad_uuid', 'DELETE', 'remove-file', 'fileId'],
+    ] as const).map(([name, method, action, field]) => ({
+      name,
+      run: async () =>
+        withLogs(async () =>
+          respond(
+            await (await loadRoute(idRoute))[method](
+              mockRequest(`${B}/${KAPPA}?action=${action}`, { [field]: 'not-a-uuid' }),
+              p(KAPPA),
+            ),
+          ),
+        ),
+    })),
+    // P4.148 (order item 9): the Scenarios/ ensure FAILING on create. A
+    // trigger planted on this case's copy refuses every `doc_mount_folders`
+    // INSERT, so the create lands (a project store has no folders) and the
+    // best-effort ensure throws — v4 logs INFO `Project created` THEN WARN
+    // `Failed to ensure project Scenarios folder on create {projectId, error}`.
+    {
+      name: 'create_scenarios_ensure_fails',
+      run: async () => {
+        const { getRawMountIndexDatabase } = await import(
+          '@/lib/database/backends/sqlite/mount-index-client'
+        );
+        const midb = getRawMountIndexDatabase();
+        if (!midb) throw new Error('raw mount-index handle unavailable');
+        midb.exec(
+          "CREATE TRIGGER qt_p4148_no_folders BEFORE INSERT ON doc_mount_folders BEGIN SELECT RAISE(ABORT, 'planted: folder inserts refused'); END",
+        );
+        return withLogs(async () =>
+          respond(
+            await (await loadRoute('@/app/api/v1/projects/route')).POST(
+              mockRequest(B, { name: 'Tau', color: '#abcdef', icon: 'rocket' }),
+            ),
+          ),
+        );
+      },
+    },
+    // P4.148 (R-F, order item 10): a roster member whose `tags` cell is NULL
+    // reads `tags: []` on the enriched roster (v4 `char.tags || []`).
+    {
+      name: 'get_iota_null_tags',
+      run: async () => {
+        const { rawQuery } = await import('@/lib/database/manager');
+        await rawQuery('UPDATE "characters" SET "tags" = NULL WHERE "id" = ?', [ARIA]);
+        return respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${IOTA}`), p(IOTA)));
+      },
+    },
+    // P4.148 (order item 11): a roster naming a well-formed uuid with no
+    // character behind it — `_count.characters` is the RAW roster length (2),
+    // the enriched roster and list-characters carry the one real member.
+    {
+      name: 'roster_missing_character',
+      run: async () => {
+        const mod = await loadRoute(idRoute);
+        const put = await respond(
+          await mod.PUT(
+            mockRequest(`${B}/${IOTA}`, { characterRoster: [ARIA, MISSING_CHARACTER] }),
+            p(IOTA),
+          ),
+        );
+        const get = await respond(await mod.GET(mockRequest(`${B}/${IOTA}`), p(IOTA)));
+        const list = await respond(
+          await mod.GET(mockRequest(`${B}/${IOTA}?action=list-characters`), p(IOTA)),
+        );
+        return { status: get.status, body: { put: put.body, get: get.body, list: list.body } };
       },
     },
   ];

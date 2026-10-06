@@ -166667,3 +166667,53 @@ sync unit tests 7/0. `api/types.rs` / `api/memories.rs`' private copies stay
 - **`system_import_state`: 47 cases** (45 + 2), green; a non-vacuity block
   asserts v4 landed only each case's sound item, exactly one new store, and
   one ZodError-tailed warning per refusal (4 projects, 3 groups).
+
+### Unit 5 — the projects routes (Tier 1 items 7–11, 14, 15(e))
+
+- **The six `z.uuid()` gates** through ONE `uuid_gate(field, value)` in
+  `api/projects.rs` (`zod_uuid_ok` + `Response::validation_error(
+  zod_issue_details(..))`), at v4's position — AFTER the project 404. Six new
+  oracle rows (`*_bad_uuid`, `characterId`/`chatId`/`fileId: 'not-a-uuid'`
+  on KAPPA) with a NEW `withLogs` recorder; the Rust rows compare status,
+  `error` AND `details`, plus a silence leg (no `[Projects v1]` line; v4
+  logged nothing either). The remove handlers' `Ok(bool)` closures became
+  `Ok(Result<(), Response>)` so the gate can answer.
+- **The GET's line** — `[Projects v1] Error fetching project` `projectId`
+  + `error = %error_text(&e)` (the `chat_get_failed` hoisting precedent);
+  `get_store_corrupt` captures it and compares through a NEW
+  `compare_projects_v1` (level + message + fields verbatim, the `error` value
+  verbatim bar the V8-vs-serde JSON-parse tail) and asserts no `sqlite
+  error:` anywhere.
+- **The Scenarios WARN — REACHABLE, measured:** a trigger planted on both
+  copies (`BEFORE INSERT ON doc_mount_folders … RAISE(ABORT, 'planted:
+  folder inserts refused')`) lets the create land (a project store holds no
+  folders) and fails the ensure; v4 logs INFO `Project created` THEN WARN
+  `[Projects v1] Failed to ensure project Scenarios folder on create
+  {projectId, error: 'planted: folder inserts refused'}` and answers 201. v5's
+  writer closure now returns `(project, Option<DbError>)` and warns after
+  the INFO with the bare error. (v4 also logs three repository/folder-paths
+  ERRORs on that arm — `SQLite insertOne error`, `Error creating entity`,
+  `Failed to create or find folder segment` — not `[Projects v1]` lines;
+  outside this order, recorded.)
+- **R-F `tags`:** `enrich_project` emits `char.tags || []` (null / false / 0
+  / `""` → `[]`). **Measured: NOT red-first** — `characters_read::find_by_id`
+  already maps a NULL `tags` cell to `[]` (`array_or_empty`,
+  `characters_read.rs:201`), as v4's Zod `.default([])` does, so the
+  `get_iota_null_tags` row is a regression pin and the coercion is v4's
+  defence carried for parity.
+- **The missing-character roster arm** (`roster_missing_character`: PUT
+  `[ARIA, a1000000-…-0000000000ff]`, GET, list-characters):
+  `_count.characters == 2`, one entry — **green on `main` too** (v5's
+  `continue` already matched v4's `filter(Boolean)`); a pin for a path no
+  row exercised.
+- **The 201 pins (item 14), both routes families:** a `pin_201` at every
+  success-create row (projects 14 rows incl. `wardrobe_create`,
+  `mount_link` and the new Scenarios row; groups 9) + a census asserting the
+  pinned set EQUALS the oracle's 201 set.
+- **Item 15(e):** `groups_routes_equivalence`'s `create_null_colour` decodes
+  `{"type":"groupCreate",…,"color":null}` through `Request` and dispatches
+  (asserting the wire `null` decodes to `None`).
+- **Red-first, main's `api/projects.rs` against the pin:** the GET line, all
+  six gates (adds `404 Character`/`Chat`/`File`, removes `200` + the remove
+  INFO), and the Scenarios lines red; the tags + roster rows green
+  (recorded above).

@@ -280,16 +280,22 @@ pub async fn project_create(db: &Db, body: Value) -> Response {
             .create(&input, &ProjectCreateOptions::default())
             .map_err(overlay_to_db)?;
         // Best-effort Scenarios/ folder ensure (v4 non-fatal try/catch; projects
-        // ensure only Scenarios/, no Knowledge/).
-        if let Some(mp) = project.get("officialMountPointId").and_then(Value::as_str) {
-            let links = crate::db::doc_mount_file_links::DocMountFileLinksRepository::new(mount);
-            let _ = links.ensure_folder_path(mp, "Scenarios");
-        }
-        Ok(project)
+        // ensure only Scenarios/, no Knowledge/). [P4.148] Its failure is
+        // RETURNED rather than dropped, so the WARN below lands after the INFO
+        // in v4's order without moving the ensure out of the writer.
+        let ensure_error = project
+            .get("officialMountPointId")
+            .and_then(Value::as_str)
+            .and_then(|mp| {
+                crate::db::doc_mount_file_links::DocMountFileLinksRepository::new(mount)
+                    .ensure_folder_path(mp, "Scenarios")
+                    .err()
+            });
+        Ok((project, ensure_error))
     })
     .await;
     match out {
-        Ok(project) => {
+        Ok((project, ensure_error)) => {
             // v4 `projects/route.ts:82-85`: `logger.info('[Projects v1] Project
             // created', { projectId: project.id, name: project.name })` — after
             // the create, before the best-effort Scenarios/ ensure's own catch.
@@ -300,6 +306,16 @@ pub async fn project_create(db: &Db, body: Value) -> Response {
                 name = %project_name,
                 "[Projects v1] Project created"
             );
+            // v4 `projects/route.ts:95-99`: the ensure's catch, AFTER the INFO —
+            // `logger.warn('[Projects v1] Failed to ensure project Scenarios
+            // folder on create', { projectId, error: ensureError.message })`.
+            if let Some(e) = ensure_error {
+                tracing::warn!(
+                    projectId = %project_id,
+                    error = %crate::db::fallback::error_text(&e),
+                    "[Projects v1] Failed to ensure project Scenarios folder on create"
+                );
+            }
             Response::Project(json!({ "project": project }))
         }
         Err(e) => db_error_response(e),
@@ -382,10 +398,15 @@ fn enrich_project(
             "defaultImage".into(),
             serde_json::to_value(default_image).unwrap_or(Value::Null),
         );
-        entry.insert(
-            "tags".into(),
-            char.get("tags").cloned().unwrap_or(json!([])),
-        );
+        // v4 `tags: char.tags || []` — a stored `null` (or any falsy value)
+        // reads as `[]`, not only an absent key (P4.148, R-F).
+        let tags = match char.get("tags") {
+            Some(Value::Null) | Some(Value::Bool(false)) | None => json!([]),
+            Some(Value::String(s)) if s.is_empty() => json!([]),
+            Some(Value::Number(n)) if n.as_f64() == Some(0.0) => json!([]),
+            Some(v) => v.clone(),
+        };
+        entry.insert("tags".into(), tags);
         entry.insert("chatCount".into(), json!(chat_count));
         enriched_roster.push(Value::Object(entry));
     }
@@ -416,8 +437,16 @@ pub fn project_get(db: &Db, project_id: &str) -> Response {
         // store-unavailable 503 never fires on the project GET (the routes
         // differential's `get_store_corrupt` arm pins this: 500 + this exact
         // body, unlike the PUT, which propagates and answers the 503).
+        // [P4.148] v4's catch line, verbatim: `logger.error('[Projects v1]
+        // Error fetching project', { projectId }, error)` — the Error as the
+        // third argument rides as the file layer's hoisted `error` field (the
+        // `chat_get_failed` precedent in `api/salon.rs`), its BARE message.
         Err(e) => {
-            tracing::error!(error = %e, "project GET failed");
+            tracing::error!(
+                projectId = %project_id,
+                error = %crate::db::fallback::error_text(&e),
+                "[Projects v1] Error fetching project"
+            );
             internal("Failed to fetch project")
         }
     }
@@ -674,6 +703,23 @@ pub fn project_character_list(db: &Db, project_id: &str) -> Response {
     }
 }
 
+/// [P4.148] v4's `z.uuid()` gate on the six roster / chat / file add-remove
+/// bodies (`app/api/v1/projects/[id]/schemas.ts:26-48` — `characterId`,
+/// `chatId`, `fileId: z.uuid()`), run where v4 runs it: AFTER the project's
+/// existence check (`repos.projects.findById` → 404 `Project` first), then
+/// `xSchema.parse(body)`, whose uncaught ZodError the middleware answers as
+/// `400 {error: 'Validation error', details: [issue]}` (`context.ts:166-167`).
+/// A NON-string id never gets here — the dispatch decode refuses it (the
+/// `dispatch_wrong_type_census` class).
+fn uuid_gate(field: &str, value: &str) -> Option<Response> {
+    use crate::api::zod_issues::{key, zod_issue_details, zod_uuid_ok, ZodIssue};
+    (!zod_uuid_ok(value)).then(|| {
+        Response::validation_error(zod_issue_details(&[ZodIssue::invalid_uuid(vec![key(
+            field,
+        )])]))
+    })
+}
+
 /// v4 `handleAddCharacter`: ownership('Project') → `characters.findById` (missing
 /// → `notFound('Character')`) → idempotent add (no write if already present).
 pub async fn project_character_add(db: &Db, project_id: &str, character_id: &str) -> Response {
@@ -684,6 +730,9 @@ pub async fn project_character_add(db: &Db, project_id: &str, character_id: &str
         let Some(project) = repo.find_by_id(&pid).map_err(overlay_to_db)? else {
             return Ok(Err(not_found("Project")));
         };
+        if let Some(refusal) = uuid_gate("characterId", &cid) {
+            return Ok(Err(refusal));
+        }
         let Some(character) = characters_read::find_by_id(main, mount, &cid)? else {
             return Ok(Err(not_found("Character")));
         };
@@ -733,8 +782,11 @@ pub async fn project_character_remove(db: &Db, project_id: &str, character_id: &
     let out = with_both_conns(db, move |main, mount| {
         let repo = ProjectsRepository::new(main, mount);
         let Some(project) = repo.find_by_id(&pid).map_err(overlay_to_db)? else {
-            return Ok(false);
+            return Ok(Err(not_found("Project")));
         };
+        if let Some(refusal) = uuid_gate("characterId", &cid) {
+            return Ok(Err(refusal));
+        }
         let roster: Vec<String> = roster_of(&project)
             .into_iter()
             .filter(|c| c != &cid)
@@ -745,11 +797,11 @@ pub async fn project_character_remove(db: &Db, project_id: &str, character_id: &
             Value::Array(roster.into_iter().map(Value::String).collect()),
         );
         repo.update(&pid, &patch).map_err(overlay_to_db)?;
-        Ok(true)
+        Ok(Ok(()))
     })
     .await;
     match out {
-        Ok(true) => {
+        Ok(Ok(())) => {
             // v4 `roster.ts:113`: `logger.info('[Projects v1] Character removed
             // from project', { projectId, characterId })` — after the
             // always-written update.
@@ -760,7 +812,7 @@ pub async fn project_character_remove(db: &Db, project_id: &str, character_id: &
             );
             Response::Project(json!({ "success": true }))
         }
-        Ok(false) => not_found("Project"),
+        Ok(Err(r)) => r,
         Err(e) => db_error_response(e),
     }
 }
@@ -894,6 +946,9 @@ pub async fn project_chat_add(db: &Db, project_id: &str, chat_id: &str) -> Respo
         if repo.find_by_id(&pid).map_err(overlay_to_db)?.is_none() {
             return Ok(Err(not_found("Project")));
         }
+        if let Some(refusal) = uuid_gate("chatId", &cid) {
+            return Ok(Err(refusal));
+        }
         if chats_read::find_by_id(main, &cid)?.is_none() {
             return Ok(Err(not_found("Chat")));
         }
@@ -919,18 +974,21 @@ pub async fn project_chat_remove(db: &Db, project_id: &str, chat_id: &str) -> Re
     let out = with_both_conns(db, move |main, mount| {
         let repo = ProjectsRepository::new(main, mount);
         if repo.find_by_id(&pid).map_err(overlay_to_db)?.is_none() {
-            return Ok(false);
+            return Ok(Err(not_found("Project")));
+        }
+        if let Some(refusal) = uuid_gate("chatId", &cid) {
+            return Ok(Err(refusal));
         }
         main.execute(
             "UPDATE chats SET projectId = NULL WHERE id = ?1",
             rusqlite::params![cid],
         )?;
-        Ok(true)
+        Ok(Ok(()))
     })
     .await;
     match out {
-        Ok(true) => Response::Project(json!({ "success": true })),
-        Ok(false) => not_found("Project"),
+        Ok(Ok(())) => Response::Project(json!({ "success": true })),
+        Ok(Err(r)) => r,
         Err(e) => db_error_response(e),
     }
 }
@@ -1993,6 +2051,9 @@ pub async fn project_file_add(db: &Db, project_id: &str, file_id: &str) -> Respo
         if repo.find_by_id(&pid).map_err(overlay_to_db)?.is_none() {
             return Ok(Err(not_found("Project")));
         }
+        if let Some(refusal) = uuid_gate("fileId", &fid) {
+            return Ok(Err(refusal));
+        }
         let files = FilesRepository::new(main);
         if files.find_by_id(&fid)?.is_none() {
             return Ok(Err(not_found("File")));
@@ -2024,6 +2085,9 @@ pub async fn project_file_remove(db: &Db, project_id: &str, file_id: &str) -> Re
         let repo = ProjectsRepository::new(main, mount);
         if repo.find_by_id(&pid).map_err(overlay_to_db)?.is_none() {
             return Ok(Err(not_found("Project")));
+        }
+        if let Some(refusal) = uuid_gate("fileId", &fid) {
+            return Ok(Err(refusal));
         }
         FilesRepository::new(main).clear_project_id(&fid)?;
         Ok(Ok(()))

@@ -39,6 +39,8 @@ const ENSEMBLE: &str = "aa000000-0000-4000-8000-000000000002";
 const BG_FILE: &str = "f0000001-0000-4000-8000-000000000001";
 const LAMBDA_FILE_1: &str = "f0000002-0000-4000-8000-000000000002";
 const MISSING_FILE: &str = "f0000009-0000-4000-8000-000000000009";
+/// P4.148: a well-formed character uuid with no row behind it.
+const MISSING_CHARACTER: &str = "a1000000-0000-4000-8000-0000000000ff";
 
 fn http_for(kind: ErrorKind) -> i64 {
     match kind {
@@ -94,6 +96,58 @@ fn projects_v1_lines(lines: &[String]) -> Vec<String> {
         .filter(|l| l.contains("[Projects v1]"))
         .cloned()
         .collect()
+}
+
+/// [P4.148] v4's `[Projects v1]` records (`withLogs`: `{level, message,
+/// fields, error}`) against v5's captured lines: each side rendered as
+/// `<LEVEL> quilltap_core::api::projects <message> k=v …`, v5's `error=` tail
+/// split off and compared to v4's `error` separately — VERBATIM, except the
+/// JSON-parse wording after `properties.json unparseable: ` (V8 vs serde, the
+/// standing seam). `Err` names the first difference.
+fn compare_projects_v1(v4: &Value, v5: &[String]) -> Result<(), String> {
+    const MARK: &str = "properties.json unparseable: ";
+    let elide = |e: &str| match e.find(MARK) {
+        Some(i) => format!("{}<parse-detail>", &e[..i + MARK.len()]),
+        None => e.to_string(),
+    };
+    let want: Vec<(String, Option<String>)> = v4
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .iter()
+        .filter(|r| {
+            r["message"]
+                .as_str()
+                .is_some_and(|m| m.contains("[Projects v1]"))
+        })
+        .map(|r| {
+            let mut line = format!(
+                "{} quilltap_core::api::projects {}",
+                r["level"].as_str().unwrap_or_default().to_uppercase(),
+                r["message"].as_str().unwrap_or_default()
+            );
+            for pair in r["fields"].as_array().cloned().unwrap_or_default() {
+                line.push_str(&format!(
+                    " {}={}",
+                    pair[0].as_str().unwrap_or_default(),
+                    pair[1].as_str().unwrap_or_default()
+                ));
+            }
+            (line, r["error"].as_str().map(elide))
+        })
+        .collect();
+    let got: Vec<(String, Option<String>)> = projects_v1_lines(v5)
+        .iter()
+        .map(|l| match l.find(" error=") {
+            Some(i) => (l[..i].to_string(), Some(elide(&l[i + " error=".len()..]))),
+            None => (l.clone(), None),
+        })
+        .collect();
+    if got == want {
+        Ok(())
+    } else {
+        Err(format!("\n  rust:   {got:?}\n  oracle: {want:?}"))
+    }
 }
 
 fn canon_numbers(v: &mut Value) {
@@ -383,6 +437,27 @@ fn projects_routes_match_oracle() {
         }
     };
 
+    // [P4.148 item 14] v4 answers a create with `created(...)` = 201; v5's status
+    // lives at the web edge, not in `Response`, so the pin is "v4 says 201 and
+    // v5 answered a non-`Error` variant" — at EVERY success-create row (the
+    // `:1302` 200 precedent), held whole by the census after the run.
+    let pinned_201: std::cell::RefCell<std::collections::BTreeSet<String>> = Default::default();
+    let pin_201 = |name: &str, resp: &Response, failed: &mut Vec<String>| {
+        assert_eq!(
+            oracle[name]["status"].as_i64(),
+            Some(201),
+            "{name}: v4's status"
+        );
+        if matches!(resp, Response::Error(_)) {
+            eprintln!(
+                "[{name}] v4 answered 201, v5 an Error: {:?}",
+                response_data(resp)
+            );
+            failed.push(format!("{name}_201"));
+        }
+        pinned_201.borrow_mut().insert(name.to_string());
+    };
+
     // --- Reads ---
     {
         let db = fresh_db(&spec, "list");
@@ -620,6 +695,7 @@ fn projects_routes_match_oracle() {
             json!({ "name": "Mu", "description": "A new project", "allowAnyCharacter": true, "characterRoster": [ARIA], "color": "#abcdef", "icon": "rocket" }),
         ));
         check("create", &response_data(&resp), true, &mut failed);
+        pin_201("create", &resp, &mut failed);
     }
     // ---- P4.D114 / v4 bug 98 (`c93ec7ff`) ----
     // v4's create schema moved into `schemas.ts` and the four presentational
@@ -659,6 +735,7 @@ fn projects_routes_match_oracle() {
         let db = fresh_db(&spec, tag);
         let resp = rt.block_on(projects::project_create(&db, body));
         check(name, &response_data(&resp), true, &mut failed);
+        pin_201(name, &resp, &mut failed);
     }
     // ---- P4.146 (dogfood #136): the `|| null` arm, compared whole ----
     // Siblings of the value-arm rows (`create`, `create_blank_description`,
@@ -689,6 +766,7 @@ fn projects_routes_match_oracle() {
         let db = fresh_db(&spec, tag);
         let resp = rt.block_on(projects::project_create(&db, body));
         check(name, &response_data(&resp), true, &mut failed);
+        pin_201(name, &resp, &mut failed);
         assert_eq!(
             response_data(&resp)["project"].get("icon"),
             Some(&Value::Null),
@@ -750,6 +828,7 @@ fn projects_routes_match_oracle() {
             true,
             &mut failed,
         );
+        pin_201("create_null_color_and_icon", &resp, &mut failed);
         let project = &response_data(&resp)["project"];
         assert_eq!(
             project.get("color"),
@@ -789,6 +868,7 @@ fn projects_routes_match_oracle() {
             created[0]
         );
         check(name, &response_data(&resp), true, &mut failed);
+        pin_201(name, &resp, &mut failed);
         assert_eq!(
             response_data(&resp)["project"].get("color"),
             Some(&Value::Null),
@@ -1105,6 +1185,7 @@ fn projects_routes_match_oracle() {
             GAMMA_EXTRA_MP,
         ));
         check("mount_link", &response_data(&resp), true, &mut failed);
+        pin_201("mount_link", &resp, &mut failed);
     }
     {
         let db = fresh_db(&spec, "mu");
@@ -1145,6 +1226,7 @@ fn projects_routes_match_oracle() {
             json!({ "title": "Rain Boots", "description": "For puddles.", "imagePrompt": "yellow rubber boots", "types": ["footwear"], "isDefault": false }),
         ));
         check("wardrobe_create", &response_data(&resp), true, &mut failed);
+        pin_201("wardrobe_create", &resp, &mut failed);
     }
     {
         // update mints a fresh updatedAt (both sides) → blank.
@@ -1434,7 +1516,18 @@ fn projects_routes_match_oracle() {
         let db = fresh_db(&spec, "corrupt_get");
         plant_corrupt(&db);
         let want = &oracle["get_store_corrupt"];
-        match projects::project_get(&db, IOTA) {
+        let (resp, lines) =
+            quilltap_core::test_support::captured_with(|| projects::project_get(&db, IOTA));
+        // [P4.148] The catch's line, in v4's bytes (was `project GET failed`).
+        if let Err(diff) = compare_projects_v1(&want["logs"], &lines) {
+            eprintln!("[get_store_corrupt] [Projects v1] lines MISMATCH:{diff}");
+            failed.push("get_store_corrupt_line".into());
+        }
+        assert!(
+            !lines.iter().any(|l| l.contains("sqlite error:")),
+            "get_store_corrupt: the error field is the BARE message: {lines:?}"
+        );
+        match resp {
             Response::Error(e) => {
                 let got_status = http_for(e.kind);
                 let got_body = serde_json::to_string(&json!({ "error": e.message })).unwrap();
@@ -1601,6 +1694,193 @@ fn projects_routes_match_oracle() {
             "{name}: the write must have LANDED before the enrichment failed"
         );
     }
+
+    // ---- P4.148 (P4.D246 item 16): the six `z.uuid()` gates, after the
+    // project's existence check. Body AND `details` compared; silence leg: no
+    // `[Projects v1]` line (each handler's INFO follows its write).
+    for name in [
+        "add_character_bad_uuid",
+        "remove_character_bad_uuid",
+        "add_chat_bad_uuid",
+        "remove_chat_bad_uuid",
+        "add_file_bad_uuid",
+        "remove_file_bad_uuid",
+    ] {
+        let db = fresh_db(&spec, name);
+        let bad = "not-a-uuid";
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(async {
+                match name {
+                    "add_character_bad_uuid" => {
+                        projects::project_character_add(&db, KAPPA, bad).await
+                    }
+                    "remove_character_bad_uuid" => {
+                        projects::project_character_remove(&db, KAPPA, bad).await
+                    }
+                    "add_chat_bad_uuid" => projects::project_chat_add(&db, KAPPA, bad).await,
+                    "remove_chat_bad_uuid" => projects::project_chat_remove(&db, KAPPA, bad).await,
+                    "add_file_bad_uuid" => projects::project_file_add(&db, KAPPA, bad).await,
+                    _ => projects::project_file_remove(&db, KAPPA, bad).await,
+                }
+            })
+        });
+        let want = &oracle[name];
+        assert_eq!(want["status"].as_i64(), Some(400), "{name}: v4's status");
+        match &resp {
+            Response::Error(e) => {
+                let got = json!({
+                    "error": e.message,
+                    "details": e.details.as_deref().cloned().unwrap_or(Value::Null),
+                });
+                if http_for(e.kind) != 400 || norm(&got) != norm(&want["body"]) {
+                    eprintln!(
+                        "[{name}] MISMATCH:\n{}",
+                        first_diff(&norm(&got), &norm(&want["body"]))
+                    );
+                    failed.push(name.to_string());
+                } else {
+                    eprintln!("[{name}] OK (400).");
+                }
+            }
+            other => {
+                eprintln!("[{name}] expected the 400, got {:?}", response_data(other));
+                failed.push(format!("{name}_not_error"));
+            }
+        }
+        // The silence leg — a failure, not a panic, so a red run names every
+        // gate it reaches.
+        if !projects_v1_lines(&lines).is_empty() {
+            eprintln!("[{name}] a refusal logged [Projects v1]: {lines:?}");
+            failed.push(format!("{name}_silence"));
+        }
+        assert_eq!(
+            want["logs"].as_array().map(Vec::len),
+            Some(0),
+            "{name}: v4 logged nothing either"
+        );
+    }
+
+    // P4.148 (item 9): the Scenarios/ ensure failing on create — a trigger
+    // refusing every `doc_mount_folders` INSERT, planted on both copies. v4:
+    // INFO `Project created`, THEN WARN `Failed to ensure project Scenarios
+    // folder on create {projectId, error}`, the 201 still answered.
+    {
+        let name = "create_scenarios_ensure_fails";
+        let db = fresh_db(&spec, "cs_ensure");
+        db.write_blocking(|ws| {
+            ws.mount_index()
+                .expect("mount present")
+                .connection()
+                .execute_batch(
+                    "CREATE TRIGGER qt_p4148_no_folders BEFORE INSERT ON doc_mount_folders \
+                 BEGIN SELECT RAISE(ABORT, 'planted: folder inserts refused'); END",
+                )?;
+            Ok(())
+        })
+        .expect("plant the folder trigger");
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(projects::project_create(
+                &db,
+                json!({ "name": "Tau", "color": "#abcdef", "icon": "rocket" }),
+            ))
+        });
+        assert_eq!(
+            oracle[name]["status"].as_i64(),
+            Some(201),
+            "{name}: v4's status"
+        );
+        pin_201(name, &resp, &mut failed);
+        check(name, &response_data(&resp), true, &mut failed);
+        // The project id is minted on each side — compare with it blanked.
+        let blank_id = |l: String| match l.find("projectId=") {
+            Some(i) => {
+                let end = l[i..].find(' ').map_or(l.len(), |e| i + e);
+                format!("{}projectId=<id>{}", &l[..i], &l[end..])
+            }
+            None => l,
+        };
+        let v4_logs: Vec<Value> = oracle[name]["logs"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|mut r| {
+                if let Some(fields) = r["fields"].as_array_mut() {
+                    for f in fields.iter_mut() {
+                        if f[0] == "projectId" {
+                            f[1] = json!("<id>");
+                        }
+                    }
+                }
+                r
+            })
+            .collect();
+        let v5_lines: Vec<String> = lines.into_iter().map(blank_id).collect();
+        if let Err(diff) = compare_projects_v1(&Value::Array(v4_logs), &v5_lines) {
+            eprintln!("[{name}] [Projects v1] lines MISMATCH:{diff}");
+            failed.push(format!("{name}_lines"));
+        } else {
+            eprintln!("[{name}] lines OK.");
+        }
+    }
+
+    // P4.148 (R-F, item 10): a roster member's NULL `tags` cell reads `[]`.
+    {
+        let name = "get_iota_null_tags";
+        let db = fresh_db(&spec, "null_tags");
+        mutate(
+            &db,
+            "UPDATE characters SET tags = NULL WHERE id = ?1",
+            vec![ARIA.to_string()],
+        );
+        check(
+            name,
+            &response_data(&projects::project_get(&db, IOTA)),
+            false,
+            &mut failed,
+        );
+    }
+
+    // P4.148 (item 11): a roster naming a well-formed uuid with no character —
+    // `_count.characters` stays the raw length (2); the enriched roster and
+    // list-characters carry the one real member.
+    {
+        let name = "roster_missing_character";
+        let db = fresh_db(&spec, "roster_missing");
+        let put = rt.block_on(projects::project_update(
+            &db,
+            IOTA,
+            json!({ "characterRoster": [ARIA, MISSING_CHARACTER] }),
+        ));
+        let get = projects::project_get(&db, IOTA);
+        let list = projects::project_character_list(&db, IOTA);
+        let got = json!({
+            "put": response_data(&put),
+            "get": response_data(&get),
+            "list": response_data(&list),
+        });
+        check(name, &got, true, &mut failed);
+        assert_eq!(
+            oracle[name]["body"]["get"]["project"]["_count"]["characters"],
+            json!(2),
+            "{name}: v4 counts the raw roster"
+        );
+    }
+
+    // Every row v4 answered 201 was pinned (a new success-create row that
+    // skipped `pin_201` reddens here).
+    let mut want_201: Vec<&String> = oracle
+        .iter()
+        .filter(|(_, r)| r["status"].as_i64() == Some(201))
+        .map(|(n, _)| n)
+        .collect();
+    want_201.sort();
+    let got_201 = pinned_201.borrow();
+    assert_eq!(
+        got_201.iter().collect::<Vec<_>>(),
+        want_201,
+        "every 201 row pinned"
+    );
 
     assert!(failed.is_empty(), "projects-routes FAILED: {failed:?}");
 }
