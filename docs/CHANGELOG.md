@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-06 — docs(porting): amend the `07b8f0209` smalls round with the `94fbb1ae3` drift catch-up — P4.D254 added as a seventh lane; every pin moves to the target
+
+_Docs-only change._
+
+- NEW `work-orders/p4.d254-inform-trailing-section-vouching-header.md`: v4's `INFORM_BLOCK_HEADER` on the inform block, the block moved from the system prefix into the trailing context sections (and the trailing-only message, which an inform alone now triggers), v4's new `[Inform]` debug line, the two existing `[Inform]` lines onto camelCase keys, `help/inform.md` and three `docs/v4/` paths re-vendored, the SPA dialog's doc comment. Rulings R-A…R-C.
+- P4.153–P4.158: the shared §R/§S/Ownership blocks rewritten identically in all seven orders — the target and every pin move to `94fbb1ae3` (PIN REQUIRED), the baseline moves at unification (§S.7), the cherry-pick order starts with P4.D254, a new §R.13 names the families the commit reddens by design (other lanes run those from a second `07b8f0209` pin), §R.10(e) keeps `regenerate_swipe_tier3_equivalence.rs` and `help_tree_equivalence.rs` with P4.157. Titles, regen-rule bullets and gate pin lines moved; nothing else changed.
+- `phase-4.md`: the round section retitled and amended. `drift-ledger.md`: the `94fbb1ae3` row → `ORDERED(P4.D254)`; §1's note on the lanes' probe corrected (the probe reads §1's HEAD, so it passes).
+
 #### 2026-10-06 — docs(porting): driftcheck — v4 one commit past `07b8f0209` (`94fbb1ae3`, the inform block moves to a trailing section under a vouching header); PIN REQUIRED
 
 _Docs-only change._

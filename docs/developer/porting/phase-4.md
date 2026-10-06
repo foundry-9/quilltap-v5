@@ -7124,7 +7124,34 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
-## The `07b8f0209` fresh-instance-indexes + follow-ups smalls round (P4.153 ∥ P4.154 ∥ P4.155 ∥ P4.156 ∥ P4.157 ∥ P4.158) — ORDERED 2026-10-06
+## The `07b8f0209` fresh-instance-indexes + follow-ups smalls round + the `94fbb1ae3` drift catch-up (P4.D254 ∥ P4.153 ∥ P4.154 ∥ P4.155 ∥ P4.156 ∥ P4.157 ∥ P4.158) — ORDERED 2026-10-06, AMENDED 2026-10-06
+
+**AMENDMENT (2026-10-06, before any lane launched):** `/driftcheck` recorded
+v4 `94fbb1ae3` ("Inform: deliver as a trailing section, under a vouching
+header", `4.10.0-dev.112`) — ONE PORT row on P4.D205/P4.D249's inform block.
+Drift debt clears before new scope, so it joins this round as a SEVENTH lane,
+**P4.D254**, rather than a round of its own: it touches none of the six
+original orders' v4 files (their surveys hold at the target). The round's
+TARGET and every lane's pin move to `94fbb1ae3` (PIN REQUIRED), the baseline
+MOVES to `94fbb1ae3` at the unification, and a NEW §R.13 names the families
+the commit reddens by design (P4.D254 turns them green; any other lane that
+runs one uses a second `07b8f0209` pin). The six orders' §R/§S/Ownership
+blocks were rewritten identically (byte-identical across all seven), their
+title/preamble/gate pin lines moved; nothing else in them changed. The
+paragraph below is the original planning record (pre-amendment).
+
+- **P4.D254 — the `94fbb1ae3` drift catch-up (core + harness + one SPA
+  comment; Opus):** `work-orders/p4.d254-inform-trailing-section-vouching-
+  header.md` — v4's `INFORM_BLOCK_HEADER` (byte-exact) on the assembled
+  block; the block OUT of the system prefix and INTO the trailing sections
+  (after recall/mail/progressions, before the turn-skip note; into the
+  trailing-only message on chained/continue/autonomous/swipe turns, which an
+  inform alone now triggers); v4's new `[Inform] Delivering …` debug line
+  with its capture pin; `build_context_tier3` grown red-first (an
+  inform-only trailing turn; inform vs turn-skip; recall before inform; the
+  four-element trailing-only order); the two existing `[Inform]` lines onto
+  camelCase (R-A); `help/inform.md` + three `docs/v4/` paths re-vendored; the
+  SPA dialog's doc comment. Rulings R-A…R-C.
 
 **Baseline `07b8f0209`; v4 AT the baseline at the planning probe (HEAD
 `07b8f0209`, `origin/main` agreeing after `git fetch --all`, tree CLEAN,
@@ -7270,24 +7297,30 @@ restore/**` + `db/store_backed.rs` WHOLE P4.158; `fresh_schema.json`
 (never hand-edited), `services/api_key_service.rs:405-475`, `services/
 mount_index/sync/**`, `api/types.rs`, `api/memories.rs`, `crates/quilltap-
 host/src/**` (P4.153's boot hunks are HANDOFFS), `apps/web/**` for NOBODY.
-**Execution:** six branches cut from `main` at the orders' commit;
+**P4.D254 fences (the amendment):** `services/inform_block.rs` WHOLE + the
+P4.D205 hunks of `services/build_context.rs` + `help/inform.md` + the three
+`docs/v4/` paths + the `inform-dialog.ts` comment + `inform_block_*` +
+`build_context_tier3_*` P4.D254; `regenerate_swipe_tier3_equivalence.rs` and
+`help_tree_equivalence.rs` stay P4.157's (§R.10(e)).
+**Execution:** seven branches cut from `main` at the amendment's commit;
 worktree per lane, every lane cloning main's warmed `target/` (`cp -cR`);
-P4.153 + P4.156 + P4.158 the most capable tier, P4.154 + P4.155 + P4.157
-Opus; every lane announces sweeps (one at a time); at most two workspace
+P4.153 + P4.156 + P4.158 the most capable tier, P4.D254 + P4.154 + P4.155 +
+P4.157 Opus; every lane announces sweeps (one at a time); at most two workspace
 gates at once; no Playwright run by any lane (the unifier's full run
-only); cherry-pick order **P4.156 → P4.155 → P4.158 → P4.153 → P4.154 →
-P4.157**; the unifier lands the §S.1/§S.2 handoffs, regenerates the
+only); cherry-pick order **P4.D254 → P4.156 → P4.155 → P4.158 → P4.153 →
+P4.154 → P4.157**; the gate from a `94fbb1ae3` pin; the baseline MOVES to
+`94fbb1ae3` (§S.7); the unifier lands the §S.1/§S.2 handoffs, regenerates the
 rebuilt pair's nine readers and `character_optimizer_tier3` after P4.154,
 runs `provisioning_equivalence` + `host_boot_fresh_indexes` +
 `system_restore_state` on the union (§S.4), recounts versions (core by
-FIVE lanes, host by P4.153), moves #145/#146/#149 to FIXED, and lists the
+SIX lanes, host by P4.153, SPA by P4.D254), moves #145/#146/#149 to FIXED, and lists the
 candidate v4 filings. **Rulings made at planning for the human to confirm
 or overrule before the lanes launch** (§R.11; each order's "Rulings made
 at planning" section): P4.153 R-A (the index family ADDED; the table text
 stays generateDDL's), P4.158 R-A (the completeness guard BACKFILLS),
 P4.156 R-A (5c NOT taken), P4.157 R-A (no `--experimental-vm-modules`),
 P4.154 R-A (the v8 twin grows only by measurement). **Deliberately left
-out:** a drift catch-up (none — v4 AT the baseline); the owed dogfood pass
+out:** (the drift catch-up is now IN — P4.D254); the owed dogfood pass
 (it runs AFTER this round — the six lanes' 💸 rows, headlined by P4.153's
 acceptance measurement: the 1.27 GB archive restored into a fresh
 instance); the five dead API-key wrappers and the 5c sync ruling (human
