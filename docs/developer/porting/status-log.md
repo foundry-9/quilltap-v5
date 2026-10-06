@@ -168701,3 +168701,67 @@ the two `QT_FIXTURE_FOLD_EPISODE_*`.
   smalls round, by name. No core change is predicted, but none is proven
   either: P4.149 pinned the arm by unit only (its record: "the v4-driven
   `doc_edit_path_resolver_equivalence` is not this lane's file").
+
+### P4.156 lane close (2026-10-06)
+
+- **Gate:** `cargo fmt --all --check` clean; `cargo clippy --workspace
+  --all-targets -- -D warnings` and the same with `--features
+  quilltap-core/native-transport` clean; `cargo test --workspace
+  --no-fail-fast` with the lane's env block (`QT_V4_CHECKOUT` = `QT_V4_ROOT` =
+  the pin; the tier-2, routes, salon-mutations and fold-episode oracles +
+  fixtures from `/tmp/p4156/`) — **671 binaries / 4,390 passed / 0 failed / 3
+  ignored**. `recipe_sweep.py --self-test` 0 failures. SPA `npm run build`
+  green (no SPA edit).
+- **The sweep from the pin** (`--v4 /tmp/qt-v4-pin-p4156-94fbb1ae3`, 13
+  families): 12 ok — `chat_informs_tier2`, `chat_informs_routes`,
+  `salon_mutations`, `fold_episode_tier3`, NEUTRAL `title_update_tier3`,
+  `tiered_mount_pool`, `system_restore_state`, `system_import_state` (both
+  RUN only), `salon_reads`, `chat_informs_permanent_ensure`, `chat_export`,
+  `system_backup`; 1 red — `build_context_tier3`, on the inform block's
+  PLACEMENT only (a §R.13 family, red at the target by design until P4.D254 is
+  on the union — not a finding). The censuses (`doc_mount_fallback_sites_
+  census`, `api_key_read_sites_census`), `fallback_home_guard`,
+  `spelling_guard`, `builtin_prompt_templates_guard`,
+  `provider_sdk_version_guard` and `help_tree_equivalence` ran inside the
+  workspace suite, green. **Not measured:** `orchestrator_tier3` (the HANDOFF
+  above predicts its `inform_consume_fails_on_a_poisoned_row` assertion goes
+  red once `mark_consumed` answers `Ok(0)` on the writer thread; it is a
+  §R.13 family whose oracle this lane did not regenerate).
+- **Versions at close:** core **0.0.1239** (four bumps: 1236–1239); host,
+  web, cli, tauri, SPA unchanged; harness frozen.
+- **Fixtures changed:** none committed-binary. Spec JSONs grown:
+  `harness/oracle/fixtures/chat-informs-tier2.json` (31 ops — read by
+  `chat_informs_tier2`, `chat_informs_routes` (its `routes` block, unchanged)
+  and `chat_informs_permanent_ensure` (seed only, unchanged) — the latter two
+  re-run green), `harness/oracle/fixtures/fold-episode-tier3.json` (one run —
+  read by `fold_episode_tier3` only).
+- **Deferred, by name:** R-E's fragment read and episode re-read (a ruling:
+  a test seam inside the pass on both sides, or leave them unit-pinned);
+  Tier 2 item 8 (6c's operator-arm line captured — `doc_edit_path_resolver_
+  equivalence` + `doc-edit-path-resolver.ts`, outside this lane's
+  ownership); Tier 3: 9 — the 5c sync ruling stays the human's (Option B,
+  strict sync; candidate v4 filings #13/#22/#8 re-listed); 10 — the
+  40-delete / 19-outer-line census of the whole data layer, its own order;
+  11 — the seven `find_enabled_for_docedit()` callers, re-counted at the
+  lane's head: `pascal/roster.rs:564` (match), `pascal/workbench.rs:429`
+  (`?`), `tools/search.rs:642` (`?`), `documents/mod.rs:664` (`?`),
+  `photos/user_gallery_service.rs:132` (`?`), `doc_edit/uri_producers.rs:156`
+  (`if let Ok` — silent), `services/embedding_reindex_job.rs:552` (plus the
+  converted `doc_edit/path_resolver.rs:431`); 12 — the importer-reachable
+  non-strict reads on the vault-provisioning path (P4.149 unit 7's list:
+  `database_store::write_database_document`'s path read, `reindex_file::
+  reindex_inner`'s two reads, `doc_mount_file_links::delete_database_
+  document`'s path read + `delete_with_gc_or_false`). Also left: the other
+  callers of `chats_messages::delete_messages_by_ids` still propagate (only
+  the Inform cancel reads through `messages_deleted_or_zero`); the four
+  pre-existing `Informs marked consumed` / … DEBUG lines keep `ids = ?`
+  Debug rendering (not moved this round).
+- **💸 for the dogfood pass:** the `Inform cancelled` DEBUG reading
+  `chatId=… batchId=… removed=… anyConsumed=… permanent=… recordDeleted=…`
+  in `combined.log`; a renamed `chat_informs.chatId` on a clone → the inform
+  list answering `[]` with `Error finding entities by filter` and no `Error
+  listing informs`; a renamed `chats.id` → the inform POST/GET answering 404
+  with v4's `Error finding entity by ID`; a chat moved onto a project while the
+  mount-index file is unreadable answering 503 with four DEBUG `Dedicated
+  database unavailable` lines.
+- **Pins removed at close:** `/tmp/qt-v4-pin-p4156-94fbb1ae3`.
