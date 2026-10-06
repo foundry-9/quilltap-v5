@@ -91,6 +91,9 @@ pub struct GooglePartsDecoder {
     /// genai's own buffer, for its end-of-stream refusal (P4.141).
     tail: GenaiTail,
     is_thinking_model: bool,
+    /// The call's model — v4's `modelName` on `extractTextFromResponse`'s
+    /// WARNs (P4.150 D2); `""` until [`Self::with_model_name`].
+    model_name: String,
     total_streamed_content: String,
     reasoning: String,
     saw_reasoning: bool,
@@ -111,6 +114,7 @@ impl GooglePartsDecoder {
             sse: SseParser::new(),
             tail: GenaiTail::default(),
             is_thinking_model,
+            model_name: String::new(),
             total_streamed_content: String::new(),
             reasoning: String::new(),
             saw_reasoning: false,
@@ -118,6 +122,13 @@ impl GooglePartsDecoder {
             prompt_feedback: None,
             done_emitted: false,
         }
+    }
+
+    /// The call's model name for the terminal `extractTextFromResponse`
+    /// WARNs (chainable; the streaming composer sets it — P4.150 D2).
+    pub fn with_model_name(mut self, model: impl Into<String>) -> Self {
+        self.model_name = model.into();
+        self
     }
 
     /// v4 `withBlockReason` (`8bd080267`): fold a blocked prompt's
@@ -141,9 +152,13 @@ impl GooglePartsDecoder {
         }
         let block_reason = block_reason.expect("truthy");
         let logged = crate::pascal::js_value::to_js_string(&block_reason);
+        // v4 `provider.ts:241-244`: `{context, blockReason}` on the plugin
+        // logger — filed under the streaming composer's target, the family's
+        // (P4.150 D2: was `block_reason` on this module's target).
         tracing::warn!(
+            target: "quilltap::model::streaming_provider",
             context = "GoogleProvider.streamMessage",
-            block_reason = %logged,
+            blockReason = %logged,
             "Google blocked the prompt (streaming)"
         );
         let Value::Object(mut obj) = raw else {
@@ -283,9 +298,23 @@ impl GooglePartsDecoder {
                 .unwrap_or(0)
         };
 
+        // v4 `provider.ts:847-850`: a thinking model that streamed no visible
+        // text runs `extractTextFromResponse` over the last chunk — the SDK
+        // `.text` first, then (P4.150 D2) its two WARNs and the `content.text`
+        // fallback, BEFORE the block fold below logs (v4's order).
         let final_content = match &self.last_response {
             Some(resp) if self.is_thinking_model && self.total_streamed_content.is_empty() => {
-                Self::extract_text(resp)
+                let text = Self::extract_text(resp);
+                if text.is_empty() {
+                    crate::model::plugin_catch_log::emit_google_extract_text_warns(
+                        crate::model::plugin_catch_log::GoogleExtractSite::Stream,
+                        &self.model_name,
+                        resp,
+                    )
+                    .unwrap_or_default()
+                } else {
+                    text
+                }
             }
             _ => String::new(),
         };
@@ -436,7 +465,7 @@ mod tests {
         );
         assert_eq!(
             lines,
-            vec!["WARN quilltap_core::model::decoders::google_parts Google blocked the prompt (streaming) context=GoogleProvider.streamMessage block_reason=SAFETY".to_string()]
+            vec!["WARN quilltap::model::streaming_provider Google blocked the prompt (streaming) context=GoogleProvider.streamMessage blockReason=SAFETY".to_string()]
         );
 
         let plain = b"data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Hi\"}]},\"finishReason\":\"STOP\"}]}\n\n";

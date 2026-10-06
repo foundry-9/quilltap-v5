@@ -196,6 +196,16 @@ P4.147. Two restore defects v4 shares, fixed on the restore side under the backu
 - Restore warnings render SQLite failures as the bare message (no `sqlite error:` prefix); the chat-create DB arm and the chat-document arm log v4's WARN lines. Proven on a real SQLite error by a column-rename plant case.
 - New derived archives `restore-archive-bag-nulls.zip` and `restore-archive-informs.zip`, plus their derive scripts. The `system-restore` oracle grows to 29 restore cases and gains `recordLogs` and `renameColumns`. A v5-only acceptance test checks the #141/#142 result against the archive.
 - `restore_vintage_state`'s raw-SQLite detector matched the removed prefix; it now matches SQLite's own wording. That surfaced a pre-existing General-tier legacy-fold FK failure, now pinned by name in `KNOWN_RAW_SQLITE`.
+#### 2026-10-05 — fix(model): Google's No parts found WARN on send and thinking-stream paths, the content.text fallback, and v4's blockReason bytes
+
+_Versions: core 0.0.1214._
+
+P4.150 D2 (P4.141's OPEN item). v5 now logs v4 Google `extractTextFromResponse`'s `No parts found in Google response candidate` WARN (`{context, modelName, finishReason}`, `finishReason` omitted when absent) when the first candidate has no non-empty `content.parts`, on both paths: every non-streaming send, and a thinking model's stream that produced no visible text (v4 `provider.ts:847-850`). The stream path also gains the already-ported `No candidates found in Google response` WARN it lacked. `emit_google_no_candidates` became `emit_google_extract_text_warns(site, model, body)` (the target follows the site); the decoder learns the model name through `DecoderSelection::Google { model }` and `GooglePartsDecoder::with_model_name`.
+
+R-G measured through the real `@google/genai` 1.52.0 at the pin: `candidates[0].content.text` is REACHABLE (the SDK keeps the key; v4 answers it), so `parse_google` and the stream's terminal extract now fall back to it. The two `Google blocked the prompt` lines (send and streaming), exposed by the new rows, now carry v4's `blockReason` field and the composer targets (were `block_reason` on module targets).
+
+`text_http_errors_equivalence`: six GOOGLE-only cases recorded through the real SDK at the `07b8f0209` pin (880 -> 886 rows; the 880 existing rows byte-identical), red-first on the WARN lines for all six; every answered row now compares v4's `okResult.content` (61 rows match). Mutation-proven: disabling the `content.text` fallback reddens the content comparand, and disabling the stream-side WARNs reddens two stream rows.
+
 #### 2026-10-05 — test(harness): text_http_errors asserts the Http kind, no kind on a 2xx throw, and the send-side budget through the production policy
 
 _Versions: host 0.0.185._

@@ -954,6 +954,21 @@ pub fn parse_google(response: &Value) -> NonStreamingResponse {
                 out.push_str(t);
             }
         }
+        // v4 `extractTextFromResponse` `:283-285`: a first candidate with no
+        // parts answers its `content.text` when truthy — MEASURED reachable
+        // through the real `@google/genai` 1.52.0, which keeps the unknown
+        // key (P4.150 D2, `text_http_errors`' `ok_google_candidate_content_text`).
+        // Its `No parts…` WARN is `plugin_catch_log`'s, at the send site.
+        if parts.is_empty() {
+            if let Some(t) = first
+                .get("content")
+                .and_then(|c| c.get("text"))
+                .and_then(Value::as_str)
+                .filter(|t| !t.is_empty())
+            {
+                out.push_str(t);
+            }
+        }
         out
     };
 

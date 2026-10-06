@@ -110,9 +110,12 @@ pub enum DecoderSelection {
         grok: bool,
     },
     Anthropic,
-    /// `thinking` = v4 `isThinkingModel(params.model)`.
+    /// `thinking` = v4 `isThinkingModel(params.model)`; `model` is the call's
+    /// model, v4's `modelName` on the terminal `extractTextFromResponse` WARNs
+    /// (P4.150 D2).
     Google {
         thinking: bool,
+        model: String,
     },
     /// Carries the call's model as the decoder's default-model echo.
     Ollama {
@@ -148,6 +151,7 @@ pub fn decoder_selection(provider: &str, model: &str) -> Option<DecoderSelection
         ManifestDecoder::AnthropicSse => DecoderSelection::Anthropic,
         ManifestDecoder::GoogleParts => DecoderSelection::Google {
             thinking: google::is_thinking_model(model),
+            model: model.to_string(),
         },
         ManifestDecoder::OllamaNdjson => DecoderSelection::Ollama {
             model: model.to_string(),
@@ -164,7 +168,9 @@ fn build_decoder(selection: DecoderSelection) -> Box<dyn StreamDecoder + Send> {
         DecoderSelection::ResponsesApi { grok: false } => Box::new(ResponsesApiSseDecoder::new()),
         DecoderSelection::ResponsesApi { grok: true } => Box::new(ResponsesApiSseDecoder::grok()),
         DecoderSelection::Anthropic => Box::new(AnthropicSseDecoder::new()),
-        DecoderSelection::Google { thinking } => Box::new(GooglePartsDecoder::new(thinking)),
+        DecoderSelection::Google { thinking, model } => {
+            Box::new(GooglePartsDecoder::new(thinking).with_model_name(model))
+        }
         DecoderSelection::Ollama { model } => Box::new(OllamaNdjsonDecoder::new(model)),
     }
 }
@@ -874,11 +880,17 @@ mod tests {
         // Google carries the thinking-model predicate over the call's model.
         assert_eq!(
             decoder_selection("GOOGLE", "gemini-3-pro-preview"),
-            Some(DecoderSelection::Google { thinking: true })
+            Some(DecoderSelection::Google {
+                thinking: true,
+                model: "gemini-3-pro-preview".to_string()
+            })
         );
         assert_eq!(
             decoder_selection("GOOGLE", "gemini-2.0-flash"),
-            Some(DecoderSelection::Google { thinking: false })
+            Some(DecoderSelection::Google {
+                thinking: false,
+                model: "gemini-2.0-flash".to_string()
+            })
         );
         assert_eq!(
             decoder_selection("OLLAMA", "llama3.2"),

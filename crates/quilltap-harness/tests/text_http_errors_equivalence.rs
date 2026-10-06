@@ -60,6 +60,16 @@
 //!   compared on a status-less row (the 2026-07-23 provider-I/O ruling — the
 //!   SDKs' retries are the transport's, not the port's contract).
 //!
+//! P4.150 widened it again: six GOOGLE-only 2xx cases (one mode each, through
+//! the real `@google/genai` 1.52.0) for `extractTextFromResponse`'s `No parts
+//! found in Google response candidate` WARN on both paths, the stream path's
+//! `No candidates…` WARN, and the `content.text` fallback — measured REACHABLE
+//! (the SDK keeps the key); every answered row now compares v4's
+//! `okResult.content`; an HTTP row asserts the `Http` kind, a thrown 2xx
+//! asserts NO kind; and both transport arms record the policy budget, which
+//! must be the row's `requestTimeoutMs` (the send path through the production
+//! `quilltap_host::spine::completion_send_policy`).
+//!
 //! Regenerate the oracle (Node 24, from a PINNED v4 worktree — ledger §5.1;
 //! the corpus is committed, so this is only needed when the SDKs or plugins
 //! move):
@@ -151,6 +161,10 @@ struct Row {
     /// P4.141: the WARN lines (same bridge, no third argument).
     #[serde(rename = "pluginWarnLog", default)]
     plugin_warn_log: Vec<PluginLine>,
+    /// What v4 answered on an `ok` row (`{content}` for a send, `{chunks,
+    /// content}` for a stream) — P4.150 D2 compares the CONTENT.
+    #[serde(rename = "okResult", default)]
+    ok_result: Option<Value>,
 }
 
 #[derive(Deserialize)]
@@ -702,6 +716,9 @@ struct V5Outcome {
     url: String,
     /// The policy budget the transport was handed (P4.150 D3).
     timeout: Option<std::time::Duration>,
+    /// The answered content on an `Ok` (a send's `content`; a stream's chunk
+    /// contents concatenated) — P4.150 D2.
+    content: Option<String>,
     /// Every tracing line the call emitted (the pre-stream arm and the whole
     /// completion path run on the caller thread; the pump logs under the
     /// caller's dispatcher).
@@ -743,6 +760,13 @@ fn run_stream(rt: &tokio::runtime::Runtime, row: &Row, spec: &CaseSpec) -> V5Out
             label(row)
         );
     }
+    let content = items.iter().all(Result::is_ok).then(|| {
+        items
+            .iter()
+            .filter_map(|i| i.as_ref().ok())
+            .map(|c| c.content.as_str())
+            .collect::<String>()
+    });
     let error = items
         .into_iter()
         .find_map(Result::err)
@@ -762,6 +786,7 @@ fn run_stream(rt: &tokio::runtime::Runtime, row: &Row, spec: &CaseSpec) -> V5Out
         calls: provider.transport_ref().calls.load(Ordering::SeqCst),
         url: provider.transport_ref().seen_url(),
         timeout: provider.transport_ref().seen_timeout(),
+        content,
         lines,
     }
 }
@@ -790,6 +815,7 @@ fn run_send(rt: &tokio::runtime::Runtime, row: &Row, spec: &CaseSpec, vision: bo
             None,
         ))
     });
+    let content = result.as_ref().ok().map(|r| r.content.clone());
     let error = result.err().map(|err: CompletionError| {
         // The cheap path's hand-over (`cheap_llm_exec.rs`).
         let trigger =
@@ -806,6 +832,7 @@ fn run_send(rt: &tokio::runtime::Runtime, row: &Row, spec: &CaseSpec, vision: bo
         calls: transport.calls.load(Ordering::SeqCst),
         url: transport.seen_url(),
         timeout: transport.seen_timeout(),
+        content,
         lines,
     }
 }
@@ -861,7 +888,20 @@ fn diff_row(row: &Row, posed: &Posed, v5: &V5Outcome) -> Vec<(&'static str, Stri
             ));
             return out;
         }
-        (false, None) => return out,
+        (false, None) => {
+            // P4.150 D2: what v4 ANSWERED — the content (the `content.text`
+            // fallback's comparand; every other answered row its silence leg).
+            let want = row
+                .ok_result
+                .as_ref()
+                .and_then(|r| r.get("content"))
+                .and_then(Value::as_str)
+                .unwrap_or_else(|| panic!("{}: an ok row carries okResult.content", label(row)));
+            if v5.content.as_deref() != Some(want) {
+                out.push(("content", format!("v4 {want:?} | v5 {:?}", v5.content)));
+            }
+            return out;
+        }
         (true, Some(_)) => {}
     }
     let v5e = v5.error.as_ref().expect("both threw");
@@ -1122,10 +1162,11 @@ fn text_http_errors_match_v4s_real_plugins() {
     // 22 rows, the two GOOGLE-only rows × 2 modes, the two status-less cases ×
     // 20 rows (nine providers × 2 modes + OpenRouter's two raw modes — the
     // SDK modes skipped, the recorder's `modes` override), and the five 2xx
-    // cases × 22 rows.
+    // cases × 22 rows; plus (P4.150 D2) six GOOGLE-only 2xx cases × ONE mode
+    // each (the recorder's `modes` override): four `send`, two `stream`.
     assert_eq!(
         rows.len(),
-        33 * 22 + 2 * 2 + 2 * 20 + 5 * 22,
+        33 * 22 + 2 * 2 + 2 * 20 + 5 * 22 + 6,
         "corpus row count; regenerate the corpus"
     );
 
@@ -1275,8 +1316,9 @@ fn text_http_errors_match_v4s_real_plugins() {
     // v4 answered (did not throw) on 55 rows: the openai-SDK streams, the
     // OpenRouter raw stream, Anthropic's / Ollama's zero-chunk streams and
     // Google's empty-body stream over the 2xx cases, and Google / Ollama /
-    // OpenRouter-raw's sends over the JSON shapes.
-    assert_eq!(ok_rows, 55, "v4's answered rows");
+    // OpenRouter-raw's sends over the JSON shapes — plus (P4.150 D2) all six
+    // GOOGLE-only 2xx rows.
+    assert_eq!(ok_rows, 61, "v4's answered rows");
     let unported_missing: Vec<&(&str, &str, &str)> = UNPORTED_PLUGIN_WARN_LINES
         .iter()
         .filter(|(p, m, msg)| {

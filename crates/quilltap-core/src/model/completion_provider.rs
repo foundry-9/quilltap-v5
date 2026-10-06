@@ -312,15 +312,25 @@ pub fn execute_completion_with_anchor<'a, T: ProviderTransport + ?Sized>(
         let parsed = parse_for_provider_ex(provider, &json, openrouter_vision);
         // v4 Google `sendMessage` (`8bd080267`): a blocked prompt WARNs with the
         // model it was sent to; the parse already reads the block reason as the
-        // finish reason. P4.141: `extractTextFromResponse` runs first, and
-        // WARNs when the answer carries no candidates at all.
+        // finish reason. P4.141: `extractTextFromResponse` runs first — its two
+        // WARNs (no candidates; P4.150 D2: no parts, then `content.text` as the
+        // answer when the candidate carries it).
         if provider == "GOOGLE" {
-            crate::model::plugin_catch_log::emit_google_no_candidates(&params.model, &json);
+            // The `content.text` answer is `parse_google`'s (above).
+            let _ = crate::model::plugin_catch_log::emit_google_extract_text_warns(
+                crate::model::plugin_catch_log::GoogleExtractSite::Send,
+                &params.model,
+                &json,
+            );
             if let Some(block_reason) = crate::model::response_parse::google_block_reason(&json) {
+                // v4 `provider.ts:625-629`: `{context, model, blockReason}` on
+                // the plugin logger (P4.150 D2 — was `block_reason` on the
+                // module target).
                 tracing::warn!(
+                    target: "quilltap::model::completion_provider",
                     context = "GoogleProvider.sendMessage",
                     model = %params.model,
-                    block_reason = %block_reason,
+                    blockReason = %block_reason,
                     "Google blocked the prompt"
                 );
             }
@@ -870,7 +880,7 @@ mod tests {
             warns,
             vec![
                 &"WARN quilltap::model::completion_provider No candidates found in Google response context=GoogleProvider.extractTextFromResponse modelName=gemini-2.5-flash blockReason=SAFETY".to_string(),
-                &"WARN quilltap_core::model::completion_provider Google blocked the prompt context=GoogleProvider.sendMessage model=gemini-2.5-flash block_reason=SAFETY".to_string(),
+                &"WARN quilltap::model::completion_provider Google blocked the prompt context=GoogleProvider.sendMessage model=gemini-2.5-flash blockReason=SAFETY".to_string(),
             ]
         );
 

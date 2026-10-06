@@ -381,36 +381,106 @@ impl PluginCatchLog {
     }
 }
 
-/// v4 Google `extractTextFromResponse`'s WARN (`provider.ts:265-269`), logged
-/// when a 2xx `generateContent` answer carries no non-empty `candidates`
-/// array (the SDK's `text` getter is then `undefined`, so the plugin falls
-/// through to the candidates check): `{context, modelName, blockReason}` —
-/// `blockReason` is `response?.promptFeedback?.blockReason`, OMITTED when
-/// absent (an `undefined` context value never reaches the line).
-pub fn emit_google_no_candidates(model: &str, body: &serde_json::Value) {
-    let has_candidates = body
+/// Which v4 call reached `extractTextFromResponse` — the line's TARGET (v4
+/// logs both through the one plugin logger; v5 files each under the composer
+/// that ran it, the family's two model targets).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GoogleExtractSite {
+    /// `sendMessage` (`provider.ts:618`) — every non-streaming send.
+    Send,
+    /// `streamMessage` (`provider.ts:847-850`) — ONLY a thinking model that
+    /// streamed no visible text, over the last chunk.
+    Stream,
+}
+
+macro_rules! google_extract_warn {
+    ($site:expr, $($rest:tt)*) => {
+        match $site {
+            GoogleExtractSite::Send => tracing::warn!(
+                target: "quilltap::model::completion_provider", $($rest)*
+            ),
+            GoogleExtractSite::Stream => tracing::warn!(
+                target: "quilltap::model::streaming_provider", $($rest)*
+            ),
+        }
+    };
+}
+
+/// v4 Google `extractTextFromResponse` (`provider.ts:255-305`) — its two
+/// WARNs, in v4's order, and the text it answers:
+///
+/// 1. the SDK's `.text` getter first: a first candidate with a NON-EMPTY
+///    `content.parts` array answers without a line (the parts concat, or the
+///    parts loop — neither logs);
+/// 2. no non-empty `candidates` array → WARN `No candidates found in Google
+///    response` `{context, modelName, blockReason}` (`:265-269`) → `''`;
+/// 3. `candidates[0].content.parts` missing / non-array / empty → WARN `No
+///    parts found in Google response candidate` `{context, modelName,
+///    finishReason}` (`:276-280`, P4.150 D2), then `content.text` when truthy
+///    (`:283-285` — MEASURED reachable through the real `@google/genai`
+///    1.52.0: the SDK keeps the unknown `content.text` key), else `''`.
+///
+/// An `undefined` context value never reaches v4's line, so `blockReason` /
+/// `finishReason` are OMITTED when absent. Returns the step-3 fallback text
+/// (`Some` only there) for the caller's content.
+pub fn emit_google_extract_text_warns(
+    site: GoogleExtractSite,
+    model: &str,
+    body: &serde_json::Value,
+) -> Option<String> {
+    let first = body
         .get("candidates")
         .and_then(serde_json::Value::as_array)
-        .is_some_and(|c| !c.is_empty());
-    if has_candidates {
-        return;
+        .and_then(|c| c.first());
+    let Some(first) = first else {
+        match crate::model::response_parse::google_block_reason(body) {
+            Some(reason) => google_extract_warn!(
+                site,
+                context = "GoogleProvider.extractTextFromResponse",
+                modelName = %model,
+                blockReason = %reason,
+                "No candidates found in Google response"
+            ),
+            None => google_extract_warn!(
+                site,
+                context = "GoogleProvider.extractTextFromResponse",
+                modelName = %model,
+                "No candidates found in Google response"
+            ),
+        }
+        return None;
+    };
+    let content = first.get("content");
+    let has_parts = content
+        .and_then(|c| c.get("parts"))
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|p| !p.is_empty());
+    if has_parts {
+        return None;
     }
-    let block_reason = crate::model::response_parse::google_block_reason(body);
-    match block_reason {
-        Some(reason) => tracing::warn!(
-            target: "quilltap::model::completion_provider",
+    match first.get("finishReason") {
+        Some(reason) => {
+            let reason = crate::pascal::js_value::to_js_string(reason);
+            google_extract_warn!(
+                site,
+                context = "GoogleProvider.extractTextFromResponse",
+                modelName = %model,
+                finishReason = %reason,
+                "No parts found in Google response candidate"
+            )
+        }
+        None => google_extract_warn!(
+            site,
             context = "GoogleProvider.extractTextFromResponse",
             modelName = %model,
-            blockReason = %reason,
-            "No candidates found in Google response"
-        ),
-        None => tracing::warn!(
-            target: "quilltap::model::completion_provider",
-            context = "GoogleProvider.extractTextFromResponse",
-            modelName = %model,
-            "No candidates found in Google response"
+            "No parts found in Google response candidate"
         ),
     }
+    content
+        .and_then(|c| c.get("text"))
+        .and_then(serde_json::Value::as_str)
+        .filter(|t| !t.is_empty())
+        .map(str::to_string)
 }
 
 #[cfg(test)]
@@ -668,26 +738,65 @@ mod tests {
         );
     }
 
-    /// v4 Google `extractTextFromResponse`'s WARN: only with no non-empty
-    /// `candidates`; `blockReason` present only when the body carries one.
+    /// v4 Google `extractTextFromResponse`'s two WARNs, in its order: `No
+    /// candidates…` with no non-empty `candidates` (`blockReason` only when the
+    /// body carries one); `No parts…` when the first candidate has no
+    /// non-empty `content.parts` (`finishReason` only when present), answering
+    /// `content.text` when truthy (P4.150 D2); silence once parts exist; and
+    /// the target follows the site.
     #[test]
-    fn google_no_candidates_warn() {
-        let lines = captured(|| {
-            emit_google_no_candidates("gemini-2.5-flash", &serde_json::json!({}));
-            emit_google_no_candidates(
-                "gemini-2.5-flash",
-                &serde_json::json!({"candidates": [], "promptFeedback": {"blockReason": "SAFETY"}}),
-            );
-            emit_google_no_candidates("gemini-2.5-flash", &serde_json::json!({"candidates": {}}));
-            // Silence: a candidate is present.
-            emit_google_no_candidates("gemini-2.5-flash", &serde_json::json!({"candidates": [{}]}));
+    fn google_extract_text_warns() {
+        use GoogleExtractSite::{Send, Stream};
+        let m = "gemini-2.5-flash";
+        let (texts, lines) = crate::test_support::captured_with(|| {
+            vec![
+                emit_google_extract_text_warns(Send, m, &serde_json::json!({})),
+                emit_google_extract_text_warns(
+                    Send,
+                    m,
+                    &serde_json::json!({"candidates": [], "promptFeedback": {"blockReason": "SAFETY"}}),
+                ),
+                emit_google_extract_text_warns(Send, m, &serde_json::json!({"candidates": {}})),
+                emit_google_extract_text_warns(Send, m, &serde_json::json!({"candidates": [{}]})),
+                emit_google_extract_text_warns(
+                    Send,
+                    m,
+                    &serde_json::json!({"candidates": [{"finishReason": "MAX_TOKENS", "content": {"parts": []}}]}),
+                ),
+                emit_google_extract_text_warns(
+                    Stream,
+                    m,
+                    &serde_json::json!({"candidates": [{"finishReason": "STOP", "content": {"role": "model", "text": "On content."}}]}),
+                ),
+                // Silence: the first candidate carries parts (even thought-only).
+                emit_google_extract_text_warns(
+                    Send,
+                    m,
+                    &serde_json::json!({"candidates": [{"content": {"parts": [{"text": "x", "thought": true}]}}]}),
+                ),
+            ]
         });
+        assert_eq!(
+            texts,
+            [
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some("On content.".to_string()),
+                None
+            ]
+        );
         assert_eq!(
             lines,
             [
                 "WARN quilltap::model::completion_provider No candidates found in Google response context=GoogleProvider.extractTextFromResponse modelName=gemini-2.5-flash",
                 "WARN quilltap::model::completion_provider No candidates found in Google response context=GoogleProvider.extractTextFromResponse modelName=gemini-2.5-flash blockReason=SAFETY",
                 "WARN quilltap::model::completion_provider No candidates found in Google response context=GoogleProvider.extractTextFromResponse modelName=gemini-2.5-flash",
+                "WARN quilltap::model::completion_provider No parts found in Google response candidate context=GoogleProvider.extractTextFromResponse modelName=gemini-2.5-flash",
+                "WARN quilltap::model::completion_provider No parts found in Google response candidate context=GoogleProvider.extractTextFromResponse modelName=gemini-2.5-flash finishReason=MAX_TOKENS",
+                "WARN quilltap::model::streaming_provider No parts found in Google response candidate context=GoogleProvider.extractTextFromResponse modelName=gemini-2.5-flash finishReason=STOP",
             ]
         );
     }

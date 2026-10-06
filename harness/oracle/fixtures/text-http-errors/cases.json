@@ -785,5 +785,95 @@
       "openrouter",
       "ollama"
     ]
+  },
+  {
+    "case": "ok_google_candidate_no_parts",
+    "status": 200,
+    "statusText": "OK",
+    "contentType": "application/json",
+    "body": "{\"candidates\":[{\"finishReason\":\"MAX_TOKENS\",\"content\":{\"role\":\"model\"}}]}",
+    "providers": [
+      "google"
+    ],
+    "modes": {
+      "google": [
+        "send"
+      ]
+    }
+  },
+  {
+    "case": "ok_google_candidate_no_content",
+    "status": 200,
+    "statusText": "OK",
+    "contentType": "application/json",
+    "body": "{\"candidates\":[{\"index\":0}]}",
+    "providers": [
+      "google"
+    ],
+    "modes": {
+      "google": [
+        "send"
+      ]
+    }
+  },
+  {
+    "case": "ok_google_candidate_empty_parts",
+    "status": 200,
+    "statusText": "OK",
+    "contentType": "application/json",
+    "body": "{\"candidates\":[{\"finishReason\":\"SAFETY\",\"content\":{\"role\":\"model\",\"parts\":[]}}]}",
+    "providers": [
+      "google"
+    ],
+    "modes": {
+      "google": [
+        "send"
+      ]
+    }
+  },
+  {
+    "case": "ok_google_candidate_content_text",
+    "status": 200,
+    "statusText": "OK",
+    "contentType": "application/json",
+    "body": "{\"candidates\":[{\"finishReason\":\"STOP\",\"content\":{\"role\":\"model\",\"text\":\"Hidden on content.\"}}]}",
+    "providers": [
+      "google"
+    ],
+    "modes": {
+      "google": [
+        "send"
+      ]
+    }
+  },
+  {
+    "case": "ok_google_stream_candidate_no_parts",
+    "status": 200,
+    "statusText": "OK",
+    "contentType": "text/event-stream",
+    "body": "data: {\"candidates\":[{\"finishReason\":\"MAX_TOKENS\",\"content\":{\"role\":\"model\"}}]}\r\n\r\n",
+    "providers": [
+      "google"
+    ],
+    "modes": {
+      "google": [
+        "stream"
+      ]
+    }
+  },
+  {
+    "case": "ok_google_stream_no_candidates",
+    "status": 200,
+    "statusText": "OK",
+    "contentType": "text/event-stream",
+    "body": "data: {\"promptFeedback\":{\"blockReason\":\"SAFETY\"}}\r\n\r\n",
+    "providers": [
+      "google"
+    ],
+    "modes": {
+      "google": [
+        "stream"
+      ]
+    }
   }
 ]
