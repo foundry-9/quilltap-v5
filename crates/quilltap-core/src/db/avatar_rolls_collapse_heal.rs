@@ -762,6 +762,8 @@ fn stamp(main: &Connection, now_iso: &str, outcome: &CollapseOutcome) -> Result<
 
 /// v4's `run()` body. Separated from the gate so the gate reads as the gate.
 fn run_pass(main: &Connection, mount: Option<&Connection>) -> Result<CollapseOutcome, DbError> {
+    // v4 `run()`'s `startTime` — the summary line's `durationMs` (P4.150).
+    let started = std::time::Instant::now();
     // Opened before grouping: which rolls are off-limits decides who can be a
     // victim, not merely what gets deleted.
     let protected = protected_blob_ids(main, mount)?;
@@ -991,6 +993,9 @@ fn run_pass(main: &Connection, mount: Option<&Connection>) -> Result<CollapseOut
             chatsChanged = *chats_changed,
             charactersChanged = *characters_changed,
             messagesChanged = *messages_changed,
+            // v4's last field: `Date.now() - startTime` (P4.150 — the host's
+            // v5-only snake_case summary line is gone; this is the ONE line).
+            durationMs = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
             "Collapsed duplicate avatar rolls"
         );
     }

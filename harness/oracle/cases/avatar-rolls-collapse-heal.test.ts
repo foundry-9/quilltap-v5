@@ -468,6 +468,11 @@ function shapeLogs(calls: LogCall[]) {
     albumCopiesKept: c.context.albumCopiesKept ?? null,
     unexplainedCount: c.context.unexplainedCount ?? null,
     fileIds: c.context.fileIds ?? null,
+    // P4.150: the summary's `durationMs` (v4's last field) is a wall-clock
+    // measurement — compared by PRESENCE and type, never value.
+    durationMs: Number.isInteger(c.context.durationMs)
+      ? 'integer'
+      : (c.context.durationMs ?? null),
   }));
 }
 

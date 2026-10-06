@@ -505,6 +505,12 @@ fn shape_line(line: &str) -> Option<Value> {
         "albumCopiesKept": field("albumCopiesKept"),
         "unexplainedCount": field("unexplainedCount"),
         "fileIds": json_field("fileIdsJson"),
+        // P4.150: the summary's `durationMs` is a wall-clock measurement —
+        // compared by PRESENCE and type (the oracle's `'integer'`), never value.
+        "durationMs": match field("durationMs") {
+            Value::Number(n) if n.is_i64() => Value::from("integer"),
+            other => other,
+        },
     }))
 }
 

@@ -164,7 +164,12 @@ async fn boot_planted(substrate: Substrate, plants: &[(&str, &str)]) -> Booted {
 async fn boot_dir(dir: tempfile::TempDir, data: PathBuf) -> Booted {
     capture().lock().unwrap().clear();
     let result = Host::start(config(dir.path())).map_err(|e| e.to_string());
-    let lines = capture().lock().unwrap().clone();
+    let lines = capture()
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|l| normalize_duration(l))
+        .collect();
     if let Ok(host) = &result {
         match host.core().dispatch(Request::Health).await {
             Response::Health(h) => assert!(h.ready, "the boot finished but is not ready"),
@@ -921,6 +926,19 @@ fn deferred_pass_lines(error: &str) -> [String; 3] {
 /// v4 `deferResumable`'s WARN (`migrations/index.ts:73-81` at `e5c6bd0c0`).
 const DEFERRED: &str = "WARN quilltap::boot Resumable migration deferred to the next boot; continuing startup context=migrations.runMigrations migrationId=collapse-duplicate-avatar-rolls-v1";
 
+/// The collapse summary's `durationMs` (v4's last field, P4.150) is a wall
+/// clock: an INTEGER value is rewritten to `<n>` so the line stays an exact
+/// comparand; anything else (absent, non-integer) is left for the exact assert
+/// to reject.
+fn normalize_duration(line: &str) -> String {
+    match line.rsplit_once(" durationMs=") {
+        Some((head, ms)) if !ms.is_empty() && ms.bytes().all(|b| b.is_ascii_digit()) => {
+            format!("{head} durationMs=<n>")
+        }
+        _ => line.to_string(),
+    }
+}
+
 impl Booted {
     /// Each of `lines` exactly once, in that order.
     fn assert_lines_in_order(&self, lines: &[String]) {
@@ -1143,10 +1161,51 @@ async fn a_failed_collapse_ledger_write_is_deferred() {
     assert!(!ledger, "a NotApplicable gate stamps nothing");
 }
 
-/// The collapse's success INFO for [`TWO_AVATAR_ROLLS`] (v5's own bytes —
-/// v4's `Collapsed duplicate avatar rolls` + camelCase bag is a pre-existing
-/// divergence, deferred by name to a smalls round).
-const COLLAPSED_TWO_ROLLS: &str = "INFO quilltap::boot Collapsed duplicate avatar rolls into one image per configuration avatar_rows=2 configurations=1 rows_keyed=1 victims_deleted=1 protected_kept=0 album_copies_kept=0 blobs_deleted=0 chats_changed=0 characters_changed=0 messages_changed=0";
+/// P4.150 A2 — the collapse's success line is v4's ONE line, from core, with
+/// `durationMs` (`collapse-duplicate-avatar-rolls-v1.ts:617-629`): a clean
+/// pass over [`TWO_AVATAR_ROLLS`] logs [`COLLAPSED_TWO_ROLLS`] exactly once and
+/// NOT the host's retired v5-only `… into one image per configuration` line.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_clean_collapse_logs_v4s_one_success_line() {
+    let _serial = SERIAL.lock().await;
+    let booted = boot_planted(Substrate::Fresh, &[(MAIN, TWO_AVATAR_ROLLS)]).await;
+    booted.host();
+    booted.assert_line(COLLAPSED_TWO_ROLLS);
+    booted.assert_silent("into one image per configuration");
+    let (rows, ledger) = collapse_readback(&booted.data);
+    assert_eq!(rows.len(), 1, "the victim was deleted: {rows:?}");
+    assert!(ledger, "the completed pass stamps the ledger");
+}
+
+/// P4.150 A2 — the no-victims exit (one unkeyed roll: keyed, nothing to
+/// collapse) logs NO summary, as v4's early return (`:434-446`) logs none; the
+/// host's retired summary fired here too. The pass still ran: the roll is
+/// keyed and the ledger stamped.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_collapses_no_victims_exit_logs_no_summary() {
+    let _serial = SERIAL.lock().await;
+    let one_roll = TWO_AVATAR_ROLLS
+        .split_once("), ")
+        .map(|(head, _)| format!("{head});"))
+        .unwrap();
+    let booted = boot_planted(Substrate::Fresh, &[(MAIN, &one_roll)]).await;
+    booted.host();
+    booted.assert_silent("Collapsed duplicate avatar rolls");
+    booted.assert_silent("into one image per configuration");
+    let (rows, ledger) = collapse_readback(&booted.data);
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert_eq!(rows[0].0, "roll-old");
+    assert!(rows[0].1.is_some(), "the lone roll is keyed");
+    assert!(ledger, "the no-victims pass still stamps the ledger");
+}
+
+/// The collapse's success INFO for [`TWO_AVATAR_ROLLS`] — v4's ONE line
+/// (`collapse-duplicate-avatar-rolls-v1.ts:617-629`), emitted by core with
+/// v4's camelCase bag and `durationMs` last (an integer, normalized to `<n>` by
+/// [`normalize_duration`]). P4.150 deleted the host's v5-only snake_case
+/// summary (`… into one image per configuration`), which also fired on the
+/// no-victims exit where v4 logs nothing.
+const COLLAPSED_TWO_ROLLS: &str = "INFO quilltap::migration Collapsed duplicate avatar rolls context=migration.collapse-duplicate-avatar-rolls configurations=1 rowsKeyed=1 victimsDeleted=1 protectedKept=0 albumCopiesKept=0 blobsDeleted=0 chatsChanged=0 charactersChanged=0 messagesChanged=0 durationMs=<n>";
 
 /// The ledger-gate divergence's CADENCE (ruled 2026-10-01: v5 KEEPS its
 /// per-boot ensures; v4 bug 176). v5 re-runs every structural ensure on EVERY

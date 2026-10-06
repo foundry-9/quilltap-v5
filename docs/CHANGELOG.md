@@ -196,6 +196,12 @@ P4.147. Two restore defects v4 shares, fixed on the restore side under the backu
 - Restore warnings render SQLite failures as the bare message (no `sqlite error:` prefix); the chat-create DB arm and the chat-document arm log v4's WARN lines. Proven on a real SQLite error by a column-rename plant case.
 - New derived archives `restore-archive-bag-nulls.zip` and `restore-archive-informs.zip`, plus their derive scripts. The `system-restore` oracle grows to 29 restore cases and gains `recordLogs` and `renameColumns`. A v5-only acceptance test checks the #141/#142 result against the archive.
 - `restore_vintage_state`'s raw-SQLite detector matched the removed prefix; it now matches SQLite's own wording. That surfaced a pre-existing General-tier legacy-fold FK failure, now pinned by name in `KNOWN_RAW_SQLITE`.
+#### 2026-10-05 — fix(boot): the avatar-roll collapse logs v4's one success line with durationMs; the host's v5-only summary is deleted
+
+_Versions: core 0.0.1212, host 0.0.184._
+
+P4.150 A2 (P4.D248 Tier 3 item 20). The avatar-roll collapse now reports ONE success line, v4's: core's existing `Collapsed duplicate avatar rolls` (target `quilltap::migration`, v4's camelCase bag) gains `durationMs` as its last field, measured from the pass start like v4's `Date.now() - startTime`. The host's v5-only `Collapsed duplicate avatar rolls into one image per configuration` snake_case line (`log_collapse_ran`) is deleted; it also fired on the no-victims exit, where v4 logs nothing. `avatar_rolls_collapse_heal_equivalence` compares `durationMs` by presence and type on both sides (red-first at the `07b8f0209` pin: the oracle carries it on 16 summary lines, v5 on none). `host_boot_hardness`: `COLLAPSED_TWO_ROLLS` re-aimed at core's bytes (`durationMs` normalized to `<n>`), plus two new arms — a clean collapse logs the one line and not the retired one, and the no-victims exit logs no summary while still keying the roll and stamping the ledger (both red on the old `host.rs`).
+
 #### 2026-10-05 — refactor(chat-create): fold the greeting's and enrichment's key reads onto read_api_key; pin the greeting's corrupt-key ERROR-before-WARN
 
 _Versions: core 0.0.1211._

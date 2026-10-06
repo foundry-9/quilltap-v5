@@ -1787,7 +1787,12 @@ fn seed_built_ins(db: &Db) -> Result<EnsureFailures, String> {
                     Some(mount_index),
                     &quilltap_core::clock::now_iso(),
                 ) {
-                    Ok(outcome) => log_collapse_ran(&outcome),
+                    // v4's ONE success line (`Collapsed duplicate avatar rolls`,
+                    // with `durationMs`) is core's, emitted inside the pass
+                    // before the ledger write; the early (no-victims) exit logs
+                    // nothing, as v4's (P4.150 — the host's v5-only snake_case
+                    // summary is gone).
+                    Ok(_) => {}
                     // A failed `shouldRun` read is v4's runner SKIP arm, not a
                     // failed pass: the runner logs this line and boots on
                     // (`migrations/index.ts:162-179` at `e5c6bd0c0`). It is the one v4 line on
@@ -1819,8 +1824,9 @@ fn seed_built_ins(db: &Db) -> Result<EnsureFailures, String> {
                         );
                         log_collapse_deferred();
                     }
-                    Err(CollapseError::Stamp { outcome, error }) => {
-                        log_collapse_ran(&outcome);
+                    // Core's success line already logged, before the stamp —
+                    // v4's order (the migration's `run()`, then the runner).
+                    Err(CollapseError::Stamp { error, .. }) => {
                         tracing::error!(
                             target: "quilltap::boot",
                             context = "migrations.runMigrations",
@@ -2025,45 +2031,6 @@ fn verify_structural_tables_at_boot(db: &Db, ensure_failures: &EnsureFailures) -
             );
             Vec::new()
         }
-    }
-}
-
-/// The avatar-roll collapse's success line (P4.D184), shared by the clean arm
-/// and the `Stamp` arm, which still logs it first: v4 logs it inside the
-/// migration's `run()`, before the runner records anything. Silent for every
-/// outcome but `Ran`.
-fn log_collapse_ran(outcome: &quilltap_core::db::avatar_rolls_collapse_heal::CollapseOutcome) {
-    if let quilltap_core::db::avatar_rolls_collapse_heal::CollapseOutcome::Ran {
-        avatar_rows,
-        configurations,
-        rows_keyed,
-        victims_deleted,
-        protected_kept,
-        album_copies_kept,
-        blobs_deleted,
-        chats_changed,
-        characters_changed,
-        messages_changed,
-    } = *outcome
-    {
-        tracing::info!(
-            target: "quilltap::boot",
-            avatar_rows,
-            configurations,
-            rows_keyed,
-            victims_deleted,
-            // [`23abc1ba1`] What the pass KEPT, alongside what it
-            // collapsed: a portrait held back, and a victim whose
-            // bytes stayed because the operator had kept that
-            // plate in a character's album.
-            protected_kept,
-            album_copies_kept,
-            blobs_deleted,
-            chats_changed,
-            characters_changed,
-            messages_changed,
-            "Collapsed duplicate avatar rolls into one image per configuration"
-        );
     }
 }
 
