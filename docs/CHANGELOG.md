@@ -37,6 +37,13 @@ _Versions: core 0.0.1236._
 - `services/inform_block.rs`: NEW `INFORM_BLOCK_HEADER` (v4's bytes); `assemble_inform_block` returns the header, one blank line, then the passages. The empty-is-absent arms are unchanged, so the header never rides alone. The two existing `[Inform]` debug lines log v4's camelCase `chatId` / `participantId` (they logged snake_case; the unit pins move with them). Module docs carry v4's new "frames the text once, only to vouch for it" rule.
 - `services/build_context.rs`: the block is no longer a system message after the identity reminder. It rides the new user message's trailing sections after progressions and before the turn-skip note, and the trailing-only user message (scene note, progressions, inform, turn-skip) on chained/continue/autonomous/swipe turns — a turn whose only trailing content is an inform now gets that message. NEW debug line `[Inform] Delivering inform block as a trailing context section` (`chatId`, `participantId`, `onNewUserMessage` from the same binding the branch tests, `rowIds` via `rowIdsJson`). The token reservation and the prompt-cache versions are unchanged.
 - Harness: `inform_block_equivalence` pins the header against v4's exported constant. `build_context_tier3` renames `inform_one_pending_slots_after_identity_reminder` → `inform_one_pending_rides_the_trailing_sections`, adds six `inform_trailing_*` ops (each red on unported `main`, the order ops mutation-proven), and compares v4's new debug line per op through a new `informLog` oracle row (block-less ops are the silence leg). Unseated `messagesWithParticipants` rows are now allowed in the corpus.
+#### 2026-10-06 — refactor(core): the memories repository's five wrap lines fold onto `db::fallback`; the fold pass's chat read gets its plant arm (P4.156 unit 3, R-G + R-E)
+
+_Versions: core 0.0.1238._
+
+- `db/memories.rs`: `Error creating memory`, `Error updating memory`, `Error deleting memory`, `Error updating memory for character` and `Error deleting memory for character` are emitted by five new `db::fallback` homes instead of hand copies. Bytes unchanged.
+- Harness: `fold_episode_tier3` gains a `chat_read_fail` run (`chats.id` renamed for that run only), pinning v4's `Error finding entity by ID` on the pass's first read; `fallback_home_guard` +5 messages. The pass's fragment read and episode re-read are not reachable by a plant (each runs between two of the pass's own memory writes, and every column their queries name is one the gate's insert also names) — recorded, not ported.
+
 #### 2026-10-06 — fix(core): the chat PUT's project gate answers v4's 503 when the mount index cannot be acquired (P4.156 unit 2, R-F)
 
 _Versions: core 0.0.1237._

@@ -68,6 +68,22 @@
 //! counted Bram's refused back-link) and the `memories` table. The one
 //! `#[test]` fail-fasts on `episode_pass`.
 //!
+//! P4.156 (R-E): a sixth run, `chat_read_fail`, renames `chats.id` for that
+//! run only (applied before the pass, restored after, on both sides): v4's
+//! `chats.findById` is the fallback `_findById` — `Error finding entity by ID
+//! {collection: chats, id}` and `null` — so the pass returns its empty result
+//! before the episode call. Mutation-proven (the read put back to a silent
+//! `.ok().flatten()` reds this run's lines). The pass's OTHER two reads (the
+//! fragment `findByCharacterAndSourceMessageIds`, the episode re-read) cannot
+//! be reached by a plant: each runs between two of the pass's own `memories`
+//! writes, and every column their SELECTs name is one the gate's INSERT names
+//! too, so any rename / trigger fails the WRITE first (measured; recorded in
+//! the lane record). P4.156 (R-G): the five memories wrap lines are folded onto
+//! `db::fallback` homes with bytes unchanged — this family is their pin
+//! (a field swap in `log_memory_create_failure` reds `episode_write_fail`).
+//! v4's quoted-identifier SQLite text is mapped onto v5's
+//! ([`normalize_v4_sqlite`]).
+//!
 //! Generate the fixtures + oracle output (Node 24, from the v4 checkout — the
 //! CASES run from a `/tmp` mirror because jest ignores `.claude/` paths):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; W=<v5 worktree> ; M=/tmp/qt-d14-oracle
@@ -131,6 +147,16 @@ struct RunW {
     project_id: Option<String>,
     in_autonomous_room: bool,
     window_messages: Vec<WindowMessageW>,
+    /// P4.156 (R-E): a main-db column renamed for this run only.
+    #[serde(default)]
+    rename_main_column: Option<RenameW>,
+}
+
+#[derive(Deserialize)]
+struct RenameW {
+    table: String,
+    from: String,
+    to: String,
 }
 
 #[derive(Deserialize)]
@@ -266,6 +292,7 @@ fn render_db_line(line: &Value, known: &str) -> String {
     if let Some(ctx) = line["context"].as_object() {
         for (k, v) in ctx {
             let rendered = match v {
+                Value::String(s) if k == "error" => normalize_v4_sqlite(s),
                 Value::String(s) => s.clone(),
                 other => other.to_string(),
             };
@@ -273,6 +300,21 @@ fn render_db_line(line: &Value, known: &str) -> String {
         }
     }
     mask_minted_ids(&out, known)
+}
+
+/// P4.156 — one failure, two SQL texts: v4's query builder double-quotes every
+/// identifier, so a renamed column's message carries the quotes and SQLite's
+/// hint (`no such column: "id" - should this be a string literal in
+/// single-quotes?`); v5's SQL names it bare (`no such column: id`).
+fn normalize_v4_sqlite(text: &str) -> String {
+    const HINT: &str = " - should this be a string literal in single-quotes?";
+    match text
+        .strip_suffix(HINT)
+        .and_then(|head| head.strip_prefix("no such column: \""))
+    {
+        Some(quoted) => format!("no such column: {}", quoted.trim_end_matches('"')),
+        None => text.to_string(),
+    }
 }
 
 /// Replace every 36-char UUID in `line` that does not occur in `known` (the
@@ -608,6 +650,15 @@ async fn fold_episode_tier3_matches_oracle() {
             project_id: run.project_id.clone(),
             in_autonomous_room: run.in_autonomous_room,
         };
+        if let Some(r) = &run.rename_main_column {
+            let sql = format!(
+                r#"ALTER TABLE "{}" RENAME COLUMN "{}" TO "{}""#,
+                r.table, r.from, r.to
+            );
+            db.write(move |w| Ok(w.main().connection().execute_batch(&sql)?))
+                .await
+                .expect("plant the renamed column");
+        }
         let (result, captured) = all_threads::capture(run_fold_episode_pass(
             &db,
             &completion,
@@ -652,6 +703,15 @@ async fn fold_episode_tier3_matches_oracle() {
             "{}: the [FoldEpisodePass] lines diverge (level, target, message, field order)",
             run.name
         );
+        if let Some(r) = &run.rename_main_column {
+            let sql = format!(
+                r#"ALTER TABLE "{}" RENAME COLUMN "{}" TO "{}""#,
+                r.table, r.to, r.from
+            );
+            db.write(move |w| Ok(w.main().connection().execute_batch(&sql)?))
+                .await
+                .expect("restore the renamed column");
+        }
     }
     assert_eq!(
         oracle_logs.len(),

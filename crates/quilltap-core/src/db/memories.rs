@@ -168,14 +168,7 @@ impl<'c> MemoriesRepository<'c> {
     pub fn create(&self, data: &MemCreate, opts: &CreateOptions) -> Result<(), DbError> {
         self.create_row(data, opts).inspect_err(|e| {
             super::fallback::log_create_failure("memories", e);
-            tracing::error!(
-                target: "quilltap::db",
-                collection = "memories",
-                characterId = %data.character_id,
-                error = %super::fallback::error_text(e),
-                strictFailures = super::fallback::strict_repository_failures_active().then_some(true),
-                "Error creating memory"
-            );
+            super::fallback::log_memory_create_failure(&data.character_id, e);
         })
     }
 
@@ -249,14 +242,7 @@ impl<'c> MemoriesRepository<'c> {
         }
         self.update_row(id, patch).inspect_err(|e| {
             super::fallback::log_update_failure("memories", id, e);
-            tracing::error!(
-                target: "quilltap::db",
-                collection = "memories",
-                memoryId = %id,
-                error = %super::fallback::error_text(e),
-                strictFailures = super::fallback::strict_repository_failures_active().then_some(true),
-                "Error updating memory"
-            );
+            super::fallback::log_memory_update_failure(id, e);
         })
     }
 
@@ -365,14 +351,7 @@ impl<'c> MemoriesRepository<'c> {
             .map_err(|e| {
                 let e = DbError::from(e);
                 super::fallback::log_delete_failure("memories", id, &e);
-                tracing::error!(
-                    target: "quilltap::db",
-                    collection = "memories",
-                    memoryId = %id,
-                    error = %super::fallback::error_text(&e),
-                    strictFailures = super::fallback::strict_repository_failures_active().then_some(true),
-                    "Error deleting memory"
-                );
+                super::fallback::log_memory_delete_failure(id, &e);
                 e
             })
     }
@@ -419,15 +398,7 @@ impl<'c> MemoriesRepository<'c> {
             Some(_) => {}
         }
         self.update(memory_id, patch).inspect_err(|e| {
-            tracing::error!(
-                target: "quilltap::db",
-                collection = "memories",
-                characterId = %character_id,
-                memoryId = %memory_id,
-                error = %super::fallback::error_text(e),
-                strictFailures = super::fallback::strict_repository_failures_active().then_some(true),
-                "Error updating memory for character"
-            );
+            super::fallback::log_memory_update_for_character_failure(character_id, memory_id, e);
         })
     }
 
@@ -466,15 +437,7 @@ impl<'c> MemoriesRepository<'c> {
             Some(_) => {}
         }
         self.delete(memory_id).inspect_err(|e| {
-            tracing::error!(
-                target: "quilltap::db",
-                collection = "memories",
-                characterId = %character_id,
-                memoryId = %memory_id,
-                error = %super::fallback::error_text(e),
-                strictFailures = super::fallback::strict_repository_failures_active().then_some(true),
-                "Error deleting memory for character"
-            );
+            super::fallback::log_memory_delete_for_character_failure(character_id, memory_id, e);
         })
     }
 

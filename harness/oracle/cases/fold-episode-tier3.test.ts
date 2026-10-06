@@ -97,6 +97,10 @@ interface RunSpec {
   episodeResponse: string;
   /** P4.144: when set, `sendMessage` records the key and THROWS this message. */
   fail?: string;
+  /** P4.156 (R-E): a MAIN-db column renamed for this run only (raw handle,
+   * applied before the pass and restored after) — the plant a fallback read
+   * fails on. */
+  renameMainColumn?: { table: string; from: string; to: string };
   usage: Usage;
   windowMessages: Array<{
     id: string;
@@ -317,6 +321,10 @@ async function main(): Promise<void> {
   const lines: string[] = [];
   for (const run of spec.runs) {
     currentRun = run;
+    if (run.renameMainColumn) {
+      const { table, from, to } = run.renameMainColumn;
+      await rawQuery(`ALTER TABLE "${table}" RENAME COLUMN "${from}" TO "${to}"`);
+    }
     runSink = [];
     const result = await runFoldEpisodePass({
       chatId: run.chatId,
@@ -330,6 +338,10 @@ async function main(): Promise<void> {
     lines.push(JSON.stringify({ kind: 'result', run: run.name, result }));
     lines.push(JSON.stringify({ kind: 'logs', run: run.name, lines: runSink }));
     runSink = null;
+    if (run.renameMainColumn) {
+      const { table, from, to } = run.renameMainColumn;
+      await rawQuery(`ALTER TABLE "${table}" RENAME COLUMN "${to}" TO "${from}"`);
+    }
   }
   currentRun = null;
 

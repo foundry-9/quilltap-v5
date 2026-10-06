@@ -103,6 +103,14 @@ const HOME_MESSAGES: &[&str] = &[
     // (`chats-messages.ops.ts:633-686`, the standalone `safeQuery` — no
     // collection), the Inform cancel's record-delete leg.
     "Failed to delete messages from chat",
+    // P4.156 (R-G): the memories repository's five own RETHROW wraps
+    // (`memories.repository.ts:418-522`), folded from hand copies in
+    // `db/memories.rs`.
+    "Error creating memory",
+    "Error updating memory",
+    "Error deleting memory",
+    "Error updating memory for character",
+    "Error deleting memory for character",
 ];
 
 const HOME: &str = "db/fallback.rs";

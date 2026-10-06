@@ -369,6 +369,34 @@
           "createdAt": "2026-07-18T22:09:00.000Z"
         }
       ]
+    },
+    {
+      "name": "chat_read_fail",
+      "_comment": "P4.156 (R-E): the pass's FIRST read fails — `chats.id` renamed for this run only (applied before it, restored after, on both sides). v4's `repos.chats.findById` is `_findById`, a fallback: `Error finding entity by ID {collection: chats, id}` and `null`, so the pass returns its empty result before the episode call (no canned key is recorded).",
+      "renameMainColumn": {
+        "table": "chats",
+        "from": "id",
+        "to": "id_x"
+      },
+      "chatId": "1c000000-0000-4000-8000-00000000c0e1",
+      "timelineMode": "realtime",
+      "projectId": null,
+      "inAutonomousRoom": false,
+      "episodeResponse": "[]",
+      "usage": {
+        "promptTokens": 1,
+        "completionTokens": 1,
+        "totalTokens": 2
+      },
+      "windowMessages": [
+        {
+          "id": "e6000000-0000-4000-8000-0000000000f1",
+          "role": "USER",
+          "content": "The lamps flicker in the Salon.",
+          "participantId": null,
+          "createdAt": "2026-07-15T21:00:00.000Z"
+        }
+      ]
     }
   ],
   "profile": {

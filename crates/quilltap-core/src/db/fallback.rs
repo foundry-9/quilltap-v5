@@ -841,6 +841,87 @@ pub fn pending_informs_for_participant_deleted_or_zero(
 }
 // === end P4.149 (rethrow lines + the inform wraps) ===
 
+// === P4.156 (R-G) — the memories repository's own RETHROW wraps
+// (`memories.repository.ts:418-522`), each a 3-argument `safeQuery` ABOVE the
+// base `_create` / `_update` / `_delete` (whose lines log first, through
+// [`log_create_failure`] / [`log_update_failure`] / [`log_delete_failure`]):
+// ERROR, `{collection: memories, …context, error, strictFailures?}`, then the
+// error propagates. Five hand copies in `db/memories.rs` folded here, bytes
+// unchanged (P4.149 measured them through `fold_episode_tier3`). Log only. ===
+
+/// `memories.create`'s wrap: `Error creating memory {collection, characterId}`.
+pub fn log_memory_create_failure(character_id: &str, error: &DbError) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "memories",
+        characterId = %character_id,
+        error = %error_text(error),
+        strictFailures = strict_repository_failures_active().then_some(true),
+        "Error creating memory"
+    );
+}
+
+/// `memories.update`'s wrap: `Error updating memory {collection, memoryId}`.
+pub fn log_memory_update_failure(memory_id: &str, error: &DbError) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "memories",
+        memoryId = %memory_id,
+        error = %error_text(error),
+        strictFailures = strict_repository_failures_active().then_some(true),
+        "Error updating memory"
+    );
+}
+
+/// `memories.delete`'s wrap: `Error deleting memory {collection, memoryId}`.
+pub fn log_memory_delete_failure(memory_id: &str, error: &DbError) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "memories",
+        memoryId = %memory_id,
+        error = %error_text(error),
+        strictFailures = strict_repository_failures_active().then_some(true),
+        "Error deleting memory"
+    );
+}
+
+/// `memories.updateForCharacter`'s outer wrap: `Error updating memory for
+/// character {collection, characterId, memoryId}` (beneath the two update lines).
+pub fn log_memory_update_for_character_failure(
+    character_id: &str,
+    memory_id: &str,
+    error: &DbError,
+) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "memories",
+        characterId = %character_id,
+        memoryId = %memory_id,
+        error = %error_text(error),
+        strictFailures = strict_repository_failures_active().then_some(true),
+        "Error updating memory for character"
+    );
+}
+
+/// `memories.deleteForCharacter`'s outer wrap: `Error deleting memory for
+/// character {collection, characterId, memoryId}`.
+pub fn log_memory_delete_for_character_failure(
+    character_id: &str,
+    memory_id: &str,
+    error: &DbError,
+) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "memories",
+        characterId = %character_id,
+        memoryId = %memory_id,
+        error = %error_text(error),
+        strictFailures = strict_repository_failures_active().then_some(true),
+        "Error deleting memory for character"
+    );
+}
+// === end P4.156 (R-G) ===
+
 // === P4.156 — the chat-informs repository's remaining 4-argument FALLBACK
 // wraps (`chat-informs.repository.ts:87-183, 238-268`), measured one by one at
 // `94fbb1ae3` through a `Logger.prototype` spy on the REAL repository
@@ -1659,6 +1740,32 @@ mod tests {
                 r#"ERROR quilltap::db Error marking informs consumed collection=chat_informs idsJson=["i-1","i-2"] messageId=m-1 error=posed"#.to_string(),
                 r#"ERROR quilltap::db Error marking informs consumed collection=chat_informs idsJson=["i-1","i-2"] messageId=m-1 error=posed strictFailures=true"#.to_string(),
                 "ERROR quilltap::db Error finding pending inform batches collection=chat_informs chatId=c-1 error=posed".to_string(),
+            ]
+        );
+    }
+
+    /// P4.156 (R-G) — the five memories wraps: v4's bytes (`collection`
+    /// first, the context in v4's order, the bare `error`), `strictFailures`
+    /// LAST inside the scope only.
+    #[test]
+    fn the_five_memory_wraps_log_v4s_lines() {
+        let ((), lines) = crate::test_support::captured_with(|| {
+            log_memory_create_failure("ch-1", &posed());
+            log_memory_update_failure("m-1", &posed());
+            log_memory_delete_failure("m-1", &posed());
+            log_memory_update_for_character_failure("ch-1", "m-1", &posed());
+            with_strict_repository_failures(|| {
+                log_memory_delete_for_character_failure("ch-1", "m-1", &posed());
+            });
+        });
+        assert_eq!(
+            lines,
+            vec![
+                "ERROR quilltap::db Error creating memory collection=memories characterId=ch-1 error=posed".to_string(),
+                "ERROR quilltap::db Error updating memory collection=memories memoryId=m-1 error=posed".to_string(),
+                "ERROR quilltap::db Error deleting memory collection=memories memoryId=m-1 error=posed".to_string(),
+                "ERROR quilltap::db Error updating memory for character collection=memories characterId=ch-1 memoryId=m-1 error=posed".to_string(),
+                "ERROR quilltap::db Error deleting memory for character collection=memories characterId=ch-1 memoryId=m-1 error=posed strictFailures=true".to_string(),
             ]
         );
     }

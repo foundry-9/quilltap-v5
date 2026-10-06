@@ -168621,3 +168621,57 @@ QT_FIXTURE_SALON_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/salon-mount.db
 QT_ORACLE_OUT=/tmp/p4156/oracle-salon-mutations.ndjson npx jest --silent
 --watchman=false --testTimeout=120000 --roots "$PWD" --roots "$TMPO/cases" --
 salon-mutations` (36 cases); run with `QT_ORACLE_SALON_MUTATIONS`.
+
+### P4.156 unit 3 — the memory lines onto the home; the fold pass's plant arm (core 0.0.1238)
+
+**R-G:** P4.149's OPEN named "five outer lines that repeat the strict
+expression by hand" — they are the memories repository's own 3-argument
+RETHROW wraps (`memories.repository.ts:418-522`) at `db/memories.rs` `create`
+(`Error creating memory {collection, characterId}`), `update` (`Error updating
+memory {collection, memoryId}`), `delete` (`Error deleting memory`),
+`update_for_character` and `delete_for_character` (`… for character
+{collection, characterId, memoryId}`). Each is now one `db::fallback` home
+(`log_memory_{create,update,delete,update_for_character,delete_for_character}
+_failure`), bytes unchanged, unit-pinned (incl. the strict leg);
+`fallback_home_guard` +5. The four ownership WARNs (`Memory not found for
+update / deletion`, `Memory does not belong to character`) are not fallback
+or rethrow lines and stay where they are. Neutral families: `fold_episode_
+tier3` (the only family that reaches the five — grep over the harness),
+regenerated from the pin, green; a field swap in the create home reds
+`episode_write_fail`.
+
+**R-E — the fold pass's three reads (all on the homes since P4.149):**
+- `chats.findById` (`fold_episode_pass.rs:160`) — **ARM LANDED**: the new
+  `chat_read_fail` run renames `chats.id` for that run only (both sides apply
+  it before the pass and restore it after). v4 at `94fbb1ae3`: `Error finding
+  entity by ID {collection: chats, id, error}`, result `{0, 0, 0}`, no episode
+  call. v5 green; mutation (the read back to a silent `.ok().flatten()`) red
+  on the run's lines.
+- the fragment read (`:407`, `findByCharacterAndSourceMessageIds` →
+  `findByFilter`) and the episode re-read (`:440`, `findById`) — **NOT
+  REACHABLE BY A PLANT, measured:** each runs AFTER the gate has written that
+  character's episode memory, and every column their SELECTs name
+  (`characterId`, `sourceMessageId`, `id`) is one the gate's own INSERT /
+  link UPDATE names too, so a rename fails the write first (the per-character
+  catch, `Failed to write episode for character`) and a trigger cannot fail a
+  SELECT. v4 and v5 differ in topology (v5 reads on a pooled read connection,
+  v4 on its one connection), so a pool-level plant has no v4 twin either.
+  Reaching them needs a test seam inside the pass on both sides (a v4
+  method wrap that renames-and-restores around the real call, a v5
+  thread-scoped hook before the read) — **deferred loudly; for the human to
+  rule** whether a production-code seam is wanted for two lines whose homes
+  are already unit-pinned. The `[]`-answering inner SELECT arm of the fragment
+  read is `memories_read::find_by_character_and_source_message_ids_or_empty`
+  (the home), unit-pinned since P4.149.
+
+**Regen recipe** (from the pin, Node 24 on `PATH`): `M=/tmp/p4156/fold-oracle;
+rm -rf $M && mkdir -p $M && cp -R $V5W/harness/oracle/* $M/; cd
+/tmp/qt-v4-pin-p4156-94fbb1ae3 && QT_FIXTURE_OUT=/tmp/p4156/fold-main.db
+QT_FIXTURE_MOUNT_OUT=/tmp/p4156/fold-mount.db npx tsx
+$V5W/harness/oracle/fixtures/build-fold-episode-fixture.ts &&
+QT_FIXTURE_FOLD_EPISODE_MAIN=/tmp/p4156/fold-main.db
+QT_FIXTURE_FOLD_EPISODE_MOUNT=/tmp/p4156/fold-mount.db
+QT_ORACLE_OUT=/tmp/p4156/oracle-fold-episode.ndjson npx jest --silent
+--watchman=false --testTimeout=120000 --roots "$PWD" --roots "$M/cases" --
+fold-episode-tier3` (6 runs); run with `QT_ORACLE_FOLD_EPISODE` +
+the two `QT_FIXTURE_FOLD_EPISODE_*`.
