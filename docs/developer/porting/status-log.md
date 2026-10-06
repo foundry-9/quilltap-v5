@@ -166642,3 +166642,28 @@ sync unit tests 7/0. `api/types.rs` / `api/memories.rs`' private copies stay
   / `projects_routes_equivalence.rs` are intended refusals).
 - Also fixed in-lane: `db/projects.rs`'s own `find_by_ids` test stored
   `color: "red"` → `#ff0000`.
+
+### Unit 4 — the project import validates before it writes + the `fold_properties` home (Tier 1 items 3, 5; R-C; Shared contract C1)
+
+- **The TRAP reproduced red-first** (NEW payload-built `execute_project_
+  property_refusals` — `color: 5`, `color: "red"`, a 51-code-point `icon`, a
+  non-uuid `defaultImageProfileId`, + one sound project): with unit 3's rules
+  in and the import unfixed, v5 wrote **6 `projects` rows vs v4's 2 and 11
+  stores vs 7** — every refused project half-written (slim row + store, no
+  usable `properties.json`) while the WARNINGS already agreed. On unported
+  `main` the case was red on the result body too, and the sibling
+  `execute_group_property_refusals` (`color: 5`, `"red"`, a 51-cp icon + one
+  sound group) red on the body and on the extra groups `main` ACCEPTED.
+- **The fix (R-C, at the import call site):** `create_project` folds, then
+  `ProjectEntity::parse_properties` the bag BEFORE `repo.create`; an `Err`
+  is the per-item `Failed to import project "…": <ZodError bytes>` with
+  nothing written. `StoreBackedRepository::create`'s own order stays a NAMED
+  follow-up (Tier 3 item 22 — `store_backed.rs` is P4.147's).
+- **C1 delivered:** `fold_properties` MOVED verbatim (body + signature
+  unchanged, doc comment kept and extended) to `db::document_store_overlay::
+  fold_properties`; the importer's two callers repointed. Neutral:
+  `qtap_import_equivalence`, `system_import_equivalence`, the import unit
+  tests (51/0).
+- **`system_import_state`: 47 cases** (45 + 2), green; a non-vacuity block
+  asserts v4 landed only each case's sound item, exactly one new store, and
+  one ZodError-tailed warning per refusal (4 projects, 3 groups).

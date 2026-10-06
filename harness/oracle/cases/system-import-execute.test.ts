@@ -1362,6 +1362,58 @@ function malformedItemsPayload(): { manifest: unknown; data: Record<string, unkn
 }
 
 /**
+ * [P4.148 → dogfood #140] Projects / groups whose PROPERTY BAG v4's schema
+ * refuses — each item carries exactly one bad property, so the per-item
+ * warning's tail is v4's `ZodError.message` for that one rule:
+ *
+ * - `color: 5` — `invalid_type` (expected string);
+ * - `color: 'red'` — `HexColorSchema`'s regex (`invalid_format` / `regex`);
+ * - a 51-code-point `icon` — `too_big` (50, counted in code points);
+ * - (projects) `defaultImageProfileId: 'not-a-uuid'` — `invalid_format` / `uuid`.
+ *
+ * plus one SOUND item, so the import provably carries on past the refusals.
+ * v4's `_create` validates the WHOLE entity before any write
+ * (`store-backed.repository.ts:143-144`), so a refused project leaves NOTHING
+ * — no `projects` row, no store. v5 used to INSERT the slim row and provision
+ * the store before `write_managed_fields` parsed the bag (the TRAP, P4.148
+ * survey §1c), half-writing every refused project.
+ */
+function propertyRefusalsPayload(
+  kind: 'projects' | 'groups',
+): { manifest: unknown; data: Record<string, unknown> } {
+  const prefix = kind === 'projects' ? 'ee' : 'ef';
+  const noun = kind === 'projects' ? 'Project' : 'Group';
+  const item = (n: number, name: string, extra: Record<string, unknown>) => ({
+    id: `${prefix}000000-0000-4000-8000-00000000000${n}`,
+    name,
+    description: `${name} description`,
+    state: {},
+    ...extra,
+  });
+  const items = [
+    item(1, `${noun} Numeric Colour`, { color: 5 }),
+    item(2, `${noun} Named Colour`, { color: 'red' }),
+    item(3, `${noun} Long Icon`, { icon: 'x'.repeat(51) }),
+    ...(kind === 'projects'
+      ? [item(4, `${noun} Bad Image Profile`, { defaultImageProfileId: 'not-a-uuid' })]
+      : []),
+    item(9, `${noun} Sound`, { color: '#a1b2c3', icon: 'compass' }),
+  ];
+  return {
+    manifest: {
+      format: 'quilltap-export',
+      version: '1.0',
+      exportType: 'all',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      appVersion: '4.0.0',
+      settings: { includeMemories: false, scope: 'all', selectedIds: [] },
+      counts: {},
+    },
+    data: { [kind]: items },
+  };
+}
+
+/**
  * [P4.63 → v4 bug 105 → P4.D131] The bug-105 regression-guard payload: one
  * connection profile whose `provider` is not a string, followed by one image
  * profile that is perfectly sound.
@@ -2409,6 +2461,18 @@ async function main(): Promise<void> {
     // [P4.D91 → bug 79] The five per-item arms that only LOGGED until v4
     // `275cd7bc`. Every item fails; the result must name each one.
     executeCase('execute_named_item_failures', () => malformedItemsPayload(), {
+      conflictStrategy: 'skip',
+      includeMemories: false,
+      includeRelatedEntities: false,
+    }),
+    // [P4.148 → dogfood #140] The property-bag refusals — see
+    // `propertyRefusalsPayload`. The project case is the TRAP's red-first.
+    executeCase('execute_project_property_refusals', () => propertyRefusalsPayload('projects'), {
+      conflictStrategy: 'skip',
+      includeMemories: false,
+      includeRelatedEntities: false,
+    }),
+    executeCase('execute_group_property_refusals', () => propertyRefusalsPayload('groups'), {
       conflictStrategy: 'skip',
       includeMemories: false,
       includeRelatedEntities: false,

@@ -90,6 +90,15 @@ _Versions: core 0.0.1210._
 - The inform cancel's line moves from the api handler (wrong target, snake-case field, `sqlite error:` prefix) to the repository; the seat-removal `Could not drop pending informs` WARN is retired (unreachable in v4 — the DEBUG fires with `dropped_informs=0` instead).
 - `log_chat_create_validation_failure` folds its two `Error creating entity` copies onto the home.
 - `chat_informs_tier2_equivalence` gains a BEFORE DELETE trigger plant with per-op captured lines (red-first: v5 propagated where v4 answers 0) and two standing rows inserted out of posting order (the P4.151 survey's B1, mutation-proven); `fallback_home_guard` holds five more literals.
+#### 2026-10-05 — fix(import): a refused .qtap project writes nothing; fold_properties moves to the overlay home (P4.148)
+
+_Versions: core 0.0.1213._
+
+The `.qtap` project import now validates the project's property bag before it writes anything, as v4's `_create` does and as the group import already did. Before this, a bundle project with `color: 5` or `color: "red"` left a `projects` row and a document store with no `properties.json`, which every later read refused.
+
+- `fold_properties` moved unchanged to `db::document_store_overlay::fold_properties` (the shared home the restore's twin folds onto at unification); the importer calls it from there.
+- New `system_import_state` cases `execute_project_property_refusals` and `execute_group_property_refusals`, built from payloads in the oracle: each refused item gets v4's ZodError tail and leaves no row and no store; the sound item lands. On unported main both were red (v5 had 6 project rows vs v4's 2, 11 stores vs 7). The family now runs 47 cases and asserts the cases are non-vacuous.
+
 #### 2026-10-05 — fix(db): project and group property bags follow v4's schema rules and refuse with its Zod bytes (P4.148)
 
 _Versions: core 0.0.1212._

@@ -18,7 +18,7 @@
 
 use rusqlite::Connection;
 use serde::Deserialize;
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 
 use super::{ConflictStrategy, IdMap, ImportOptions};
 use crate::db::chats::{ChatCreate, ChatsRepository};
@@ -414,22 +414,6 @@ fn create_template(
 // Projects and groups (store-backed; create provisions a fresh official store)
 // ===========================================================================
 
-/// Fold a hydrated flat project/group payload into the store-backed create
-/// shape: `description`/`instructions`/`state` become their own fields and the
-/// listed property keys become the `properties` bag (absent keys get their
-/// schema defaults from `parse_properties`, mirroring Zod).
-fn fold_properties(raw: &Value, keys: &[&str]) -> Value {
-    let mut bag = Map::new();
-    if let Some(obj) = raw.as_object() {
-        for k in keys {
-            if let Some(v) = obj.get(*k) {
-                bag.insert((*k).to_string(), v.clone());
-            }
-        }
-    }
-    Value::Object(bag)
-}
-
 fn opt_str_field(raw: &Value, key: &str) -> Option<String> {
     raw.get(key).and_then(Value::as_str).map(|s| s.to_string())
 }
@@ -519,15 +503,29 @@ fn create_project(
     options: &ImportOptions,
     source_id: &str,
 ) -> Result<String, String> {
+    let properties = crate::db::document_store_overlay::fold_properties(
+        raw,
+        <projects::ProjectEntity as crate::db::document_store_overlay::StoreEntity>::property_keys(
+        ),
+    );
+    // [P4.148 → the TRAP] Validate the bag BEFORE anything is written, as v4's
+    // `_create` validates the whole entity first (`store-backed.repository.ts:
+    // 143-144`) and `create_group` below already does. `repo.create` used to
+    // INSERT the slim row and provision the store before `write_managed_fields`
+    // parsed the bag, so a refused project (`color: 5`, `color: "red"`, …)
+    // left a row and a store with no `properties.json` — refused on every
+    // later read. The refusal is the bare ZodError message, so the per-item
+    // warning reads v4's bytes. (`StoreBackedRepository::create`'s own order
+    // is a named follow-up — that file is not this lane's.)
+    <projects::ProjectEntity as crate::db::document_store_overlay::StoreEntity>::parse_properties(
+        &properties,
+    )?;
     let input = projects::ProjectCreateInput {
         name: name_override.unwrap_or_else(|| display_name(raw)),
         description: opt_str_field(raw, "description"),
         instructions: opt_str_field(raw, "instructions"),
         state: raw.get("state").cloned().unwrap_or_else(|| json!({})),
-        properties: fold_properties(
-            raw,
-            <projects::ProjectEntity as crate::db::document_store_overlay::StoreEntity>::property_keys(),
-        ),
+        properties,
     };
     let created = repo
         .create(&input, &store_create_options(options, source_id))
@@ -630,7 +628,7 @@ fn create_group(
     // (P4.146's lane had dropped the value and imported the group; the
     // `52d6e7ecd` unification's review measured v4 and corrected it).
     let properties = <groups::GroupEntity as crate::db::document_store_overlay::StoreEntity>::parse_properties(
-        &fold_properties(
+        &crate::db::document_store_overlay::fold_properties(
             raw,
             <groups::GroupEntity as crate::db::document_store_overlay::StoreEntity>::property_keys(),
         ),

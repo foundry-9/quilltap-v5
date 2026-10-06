@@ -1515,7 +1515,67 @@ fn system_import_execute_state_equivalence() {
     // arms (41 + 2 = 43).
     // …+ P4.143's `execute_duplicate_malformed_profiles` (Tier 2 item 7) and
     // `execute_embedding_provider_enum` (item 8) arms (43 + 2 = 45).
-    assert_eq!(ran, 45, "expected 45 cases, ran {ran}");
+    // …+ P4.148's `execute_project_property_refusals` and
+    // `execute_group_property_refusals` arms (45 + 2 = 47).
+    assert_eq!(ran, 47, "expected 47 cases, ran {ran}");
+    // [P4.148] The property-refusal arms are non-vacuous only if v4 really
+    // refused every bad item with a ZodError tail AND wrote nothing for it,
+    // while the sound item landed — so the whole-state equality above is the
+    // TRAP's proof (v5 used to half-write each refused project: 6 `projects`
+    // rows vs v4's 2, 11 stores vs 7, measured red-first at `07b8f0209`).
+    for (case_name, table, noun, refused) in [
+        (
+            "execute_project_property_refusals",
+            "projects",
+            "project",
+            4usize,
+        ),
+        ("execute_group_property_refusals", "groups", "group", 3usize),
+    ] {
+        let case = cases
+            .iter()
+            .find(|c| c["name"] == case_name)
+            .unwrap_or_else(|| panic!("the oracle is missing `{case_name}` — regenerate it"));
+        let names: Vec<&str> = case["state"]["main"][table]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|r| r["name"].as_str())
+            .collect();
+        let cap = format!("{}{}", noun[..1].to_uppercase(), &noun[1..]);
+        assert!(
+            names.contains(&format!("{cap} Sound").as_str())
+                && !names
+                    .iter()
+                    .any(|n| n.starts_with(&cap) && *n != format!("{cap} Sound")),
+            "{case_name}: v4 must land only the sound {noun}: {names:?}"
+        );
+        let pre_mps = case["preState"]["mountIndex"]["doc_mount_points"]
+            .as_array()
+            .map_or(0, Vec::len);
+        let mps = case["state"]["mountIndex"]["doc_mount_points"]
+            .as_array()
+            .map_or(0, Vec::len);
+        assert_eq!(
+            mps,
+            pre_mps + 1,
+            "{case_name}: one store, the sound {noun}'s"
+        );
+        let head = format!("Failed to import {noun} \"");
+        let tails: Vec<&str> = case["result"]["warnings"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .filter(|w| w.starts_with(&head))
+            .filter_map(|w| w.split_once("\": ").map(|(_, t)| t))
+            .collect();
+        assert_eq!(tails.len(), refused, "{case_name}: one warning per refusal");
+        assert!(
+            tails.iter().all(|t| is_zod_error_message(t)),
+            "{case_name}: every tail is a ZodError message: {tails:?}"
+        );
+    }
     // [P4.130] The refused-chat arm is non-vacuous only if v4 really refused
     // the bogus chat with its ZodError bytes AND landed the neighbour: the
     // bogus chat is ABSENT from v4's end-state, the neighbour PRESENT, and

@@ -612,6 +612,29 @@ pub fn read_properties<E: StoreEntity>(
     Ok(Some(parsed))
 }
 
+/// Fold a hydrated flat project/group payload into the store-backed create
+/// shape: `description`/`instructions`/`state` become their own fields and the
+/// listed property keys become the `properties` bag (absent keys get their
+/// schema defaults from `parse_properties`, mirroring Zod).
+///
+/// An explicit `null` on a listed key is carried INTO the bag (it is a value
+/// v4's `.nullable().optional()` keeps); an absent key stays absent.
+///
+/// The ONE home (P4.148, Shared contract C1 of the `07b8f0209` follow-ups
+/// round): moved verbatim from the `.qtap` importer, which still calls it for
+/// both store-backed kinds; the restore's twin folds onto it at unification.
+pub fn fold_properties(raw: &Value, keys: &[&str]) -> Value {
+    let mut bag = Map::new();
+    if let Some(obj) = raw.as_object() {
+        for k in keys {
+            if let Some(v) = obj.get(*k) {
+                bag.insert((*k).to_string(), v.clone());
+            }
+        }
+    }
+    Value::Object(bag)
+}
+
 /// Serialize the property bag the way v4 does: `JSON.stringify(parse(x), null, 2)`
 /// — re-parse through the typed struct (key order + strip extras), 2-space pretty.
 ///
