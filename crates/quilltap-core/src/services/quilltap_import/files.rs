@@ -130,7 +130,7 @@ fn import_folders(
             warnings.push(format!("Failed to import folder \"{path}\": {text}"));
             // v4 `import-files.ts:93` (P4.148 Tier 2 item 17).
             tracing::warn!(
-                folderId = %id_of(folder),
+                folderId = super::id_field(folder),
                 path = %path,
                 error = %text,
                 "Failed to import folder"
@@ -399,7 +399,7 @@ pub(super) fn import_files(
                     "Failed to import file \"{original_filename}\": {text}"
                 ));
                 // v4 `import-files.ts:292` (P4.148 Tier 2 item 17).
-                tracing::warn!(fileId = %id_of(file), error = %text, "Failed to import file");
+                tracing::warn!(fileId = super::id_field(file), error = %text, "Failed to import file");
                 skipped += 1;
             }
         }

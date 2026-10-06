@@ -189,7 +189,7 @@ pub(super) fn import_tags(
                 super::item_error_text(&e)
             ));
             // v4 `import-entities.ts:73-82`: `{ tagId, error }` (camelCase).
-            tracing::warn!(tagId = %source_id, error = %super::item_error_text(&e), "Failed to import tag");
+            tracing::warn!(tagId = super::id_field(raw), error = %super::item_error_text(&e), "Failed to import tag");
         }
     }
     Ok(Counts {
@@ -368,7 +368,7 @@ pub(super) fn import_roleplay_templates(
                 super::item_error_text(&e)
             ));
             // v4 `import-entities.ts:171-180`: `{ templateId, error }`.
-            tracing::warn!(templateId = %source_id, error = %super::item_error_text(&e), "Failed to import roleplay template");
+            tracing::warn!(templateId = super::id_field(raw), error = %super::item_error_text(&e), "Failed to import roleplay template");
         }
     }
     Ok(Counts {
@@ -486,7 +486,7 @@ pub(super) fn import_projects(
         })();
         if let Err(text) = out {
             warnings.push(format!("Failed to import project \"{name}\": {text}"));
-            tracing::warn!(projectId = %source_id, error = %text, "Failed to import project");
+            tracing::warn!(projectId = super::id_field(raw), error = %text, "Failed to import project");
         }
     }
     Ok(Counts {
@@ -496,6 +496,27 @@ pub(super) fn import_projects(
     })
 }
 
+/// The create payload v4's importers hand the store-backed `create`: the
+/// bundle item minus `id` / `createdAt` / `updatedAt` / `officialMountPointId`
+/// (`import-entities.ts:221,231,280,290` — the destructure), with the
+/// `duplicate` arm's rename applied. What `_create` validates WHOLE.
+fn store_create_payload(raw: &Value, name_override: Option<&str>) -> Value {
+    let mut entity = raw.as_object().cloned().unwrap_or_default();
+    for k in ["id", "createdAt", "updatedAt", "officialMountPointId"] {
+        entity.remove(k);
+    }
+    if let Some(name) = name_override {
+        entity.insert("name".into(), Value::String(name.to_string()));
+    }
+    Value::Object(entity)
+}
+
+/// The id a store-backed import create claims — the source id under
+/// `preserveIds` ([`store_create_options`]'s fork), else none (it mints).
+fn claimed_store_id<'a>(options: &ImportOptions, source_id: &'a str) -> Option<&'a str> {
+    (options.preserve_ids && !source_id.is_empty()).then_some(source_id)
+}
+
 fn create_project(
     repo: &projects::ProjectsRepository,
     raw: &Value,
@@ -503,29 +524,36 @@ fn create_project(
     options: &ImportOptions,
     source_id: &str,
 ) -> Result<String, String> {
+    // [P4.148 → the TRAP] Validate BEFORE anything is written, as v4's
+    // `_create` validates first (`store-backed.repository.ts:143-144`).
+    // `repo.create` used to INSERT the slim row and provision the store before
+    // `write_managed_fields` parsed the bag, so a refused project half-wrote a
+    // row and a store. (`StoreBackedRepository::create`'s own order is
+    // P4.158's file.) [P4.155, R-B] The WHOLE entity, as `_create` validates
+    // it — the row keys (`name` 1–100, `description` ≤ 2000, `instructions` ≤
+    // 10000, `state` a record) and the bag seeded by `prepareCreateData`
+    // (`allowAnyCharacter: null` / `characterRoster: null` import OPEN) — so
+    // an over-long name no longer imports. [P4.155, R-A] A refusal logs v4's
+    // three repository ERRORs before the per-item WARN.
+    let entity = store_create_payload(raw, name_override.as_deref());
+    if let Err(zod) = projects::parse_create_entity(&entity, claimed_store_id(options, source_id)) {
+        crate::db::document_store_overlay::log_refused_store_create(
+            crate::db::document_store_overlay::StoreKind::Project,
+            entity.get("name"),
+            &zod,
+        );
+        return Err(zod);
+    }
     let properties = crate::db::document_store_overlay::fold_properties(
-        raw,
+        &entity,
         <projects::ProjectEntity as crate::db::document_store_overlay::StoreEntity>::property_keys(
         ),
     );
-    // [P4.148 → the TRAP] Validate the bag BEFORE anything is written, as v4's
-    // `_create` validates the whole entity first (`store-backed.repository.ts:
-    // 143-144`) and `create_group` below already does. `repo.create` used to
-    // INSERT the slim row and provision the store before `write_managed_fields`
-    // parsed the bag, so a refused project (`color: 5`, `color: "red"`, …)
-    // left a row and a store with no `properties.json` — refused on every
-    // later read. The refusal is the bare ZodError message, so the per-item
-    // warning reads v4's bytes. (`StoreBackedRepository::create`'s own order
-    // is a named follow-up — that file is not this lane's.) The parse is the
-    // CREATE-time one — v4 seeds the two roster defaults before it validates,
-    // so `allowAnyCharacter: null` / `characterRoster: null` import OPEN, not
-    // refused (caught at the `07b8f0209` follow-ups unification).
-    projects::parse_create_properties(&properties)?;
     let input = projects::ProjectCreateInput {
-        name: name_override.unwrap_or_else(|| display_name(raw)),
-        description: opt_str_field(raw, "description"),
-        instructions: opt_str_field(raw, "instructions"),
-        state: raw.get("state").cloned().unwrap_or_else(|| json!({})),
+        name: display_name(&entity),
+        description: opt_str_field(&entity, "description"),
+        instructions: opt_str_field(&entity, "instructions"),
+        state: entity.get("state").cloned().unwrap_or_else(|| json!({})),
         properties,
     };
     let created = repo
@@ -592,7 +620,7 @@ pub(super) fn import_groups(
         })();
         if let Err(text) = out {
             warnings.push(format!("Failed to import group \"{name}\": {text}"));
-            tracing::warn!(groupId = %source_id, error = %text, "Failed to import group");
+            tracing::warn!(groupId = super::id_field(raw), error = %text, "Failed to import group");
         }
     }
     Ok(Counts {
@@ -609,12 +637,6 @@ fn create_group(
     options: &ImportOptions,
     source_id: &str,
 ) -> Result<String, String> {
-    let input = groups::GroupCreateInput {
-        name: name_override.unwrap_or_else(|| display_name(raw)),
-        description: opt_str_field(raw, "description"),
-        instructions: opt_str_field(raw, "instructions"),
-        state: raw.get("state").cloned().unwrap_or_else(|| json!({})),
-    };
     // v4 spreads the bundle entity into `repos.groups.create` →
     // `_create` validates it against `GroupSchema` (which spreads
     // `GroupPropertiesSchema.shape`) → `writeManagedFields(parseProperties(entity))`
@@ -626,12 +648,27 @@ fn create_group(
     // skips the group — the same fold-then-parse the project import runs
     // (P4.146's lane had dropped the value and imported the group; the
     // `52d6e7ecd` unification's review measured v4 and corrected it).
-    let properties = <groups::GroupEntity as crate::db::document_store_overlay::StoreEntity>::parse_properties(
-        &crate::db::document_store_overlay::fold_properties(
-            raw,
-            <groups::GroupEntity as crate::db::document_store_overlay::StoreEntity>::property_keys(),
-        ),
-    )?;
+    // [P4.155, R-B / R-A] The WHOLE `GroupSchema` entity is validated, as for
+    // projects, and a refusal logs v4's three repository ERRORs.
+    let entity = store_create_payload(raw, name_override.as_deref());
+    let properties =
+        match groups::parse_create_entity(&entity, claimed_store_id(options, source_id)) {
+            Ok(properties) => properties,
+            Err(zod) => {
+                crate::db::document_store_overlay::log_refused_store_create(
+                    crate::db::document_store_overlay::StoreKind::Group,
+                    entity.get("name"),
+                    &zod,
+                );
+                return Err(zod);
+            }
+        };
+    let input = groups::GroupCreateInput {
+        name: display_name(&entity),
+        description: opt_str_field(&entity, "description"),
+        instructions: opt_str_field(&entity, "instructions"),
+        state: entity.get("state").cloned().unwrap_or_else(|| json!({})),
+    };
     let created = repo
         .create_with_properties(
             &input,
@@ -748,7 +785,7 @@ pub(super) fn import_chats(
         if let Err(text) = out {
             warnings.push(format!("Failed to import chat \"{title}\": {text}"));
             // v4's `{ chatId, error }` (camelCase, P4.143 item 9).
-            tracing::warn!(chatId = %source_id, error = %text, "Failed to import chat");
+            tracing::warn!(chatId = super::id_field(raw), error = %text, "Failed to import chat");
         }
     }
     Ok(Counts {

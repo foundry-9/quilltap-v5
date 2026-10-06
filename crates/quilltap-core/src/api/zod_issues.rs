@@ -740,7 +740,18 @@ pub fn zod_project_properties_issues(bag: &Value) -> Vec<ZodIssue> {
 pub fn zod_group_issues(row: &serde_json::Map<String, Value>) -> Vec<ZodIssue> {
     let mut issues = Vec::new();
     zod_uuid_issues(row, "id", false, &mut issues);
-    match row.get("name") {
+    zod_entity_name_issues(row.get("name"), &mut issues);
+    zod_uuid_issues(row, "officialMountPointId", true, &mut issues);
+    zod_timestamp_issues(row, "createdAt", &mut issues);
+    zod_timestamp_issues(row, "updatedAt", &mut issues);
+    issues
+}
+
+/// The store-backed row schemas' `name: z.string().min(1).max(100)` (v4
+/// `GroupRowSchema` / `ProjectRowSchema`) — Unicode CODE POINTS (zod ≥ 4.5's
+/// `util.codePointLength`, P4.130).
+fn zod_entity_name_issues(got: Option<&Value>, issues: &mut Vec<ZodIssue>) {
+    match got {
         Some(Value::String(n)) => {
             if !crate::jsstr::zod_len_min_ok(n, 1) {
                 issues.push(ZodIssue::too_small_string(json!(1), vec![key("name")]));
@@ -763,9 +774,53 @@ pub fn zod_group_issues(row: &serde_json::Map<String, Value>) -> Vec<ZodIssue> {
             }
         }
     }
-    zod_uuid_issues(row, "officialMountPointId", true, &mut issues);
-    zod_timestamp_issues(row, "createdAt", &mut issues);
-    zod_timestamp_issues(row, "updatedAt", &mut issues);
+}
+
+/// v4 `ProjectSchema` / `GroupSchema`'s OWN keys (`lib/schemas/project.
+/// types.ts:129-161`, `group.types.ts:58-89` — identical for both kinds) over
+/// the entity the store-backed `create` hands `_create` to validate:
+/// `{...prepareCreateData(data), officialMountPointId: null, id, createdAt,
+/// updatedAt}` (`store-backed.repository.ts:136-144`, `base.repository.ts:
+/// 350-368`). In schema order, AHEAD of the spread property bag's issues
+/// ([`zod_project_properties_issues`] / [`zod_group_properties_issues`], which
+/// the caller appends — `ProjectRowSchema.extend({…, ...PropertiesSchema.
+/// shape})` keeps that order):
+///
+/// - `id: UUIDSchema` — `id` is the id the create will claim (`options.id ||
+///   generateId()`), checked only when the caller claims one (a minted id
+///   always passes);
+/// - `name: z.string().min(1).max(100)` ([`zod_entity_name_issues`]);
+/// - `officialMountPointId` — always `null` on create; `createdAt` /
+///   `updatedAt` — always fresh stamps: no issue possible, not checked;
+/// - `description: z.string().max(2000).nullable().optional()`;
+/// - `instructions: z.string().max(10000).nullable().optional()`;
+/// - `state: JsonSchema.default({})` — `z.record(z.string(), z.unknown())`:
+///   absent defaults; anything but a plain object (`null`, an array, a
+///   string) is `invalid_type` `expected record`.
+///
+/// Measured against v4's REAL schemas at `94fbb1ae3` (P4.155 — the
+/// `system_import_state` property-refusal arms' whole-entity rows).
+pub fn zod_store_entity_issues(
+    entity: &serde_json::Map<String, Value>,
+    claimed_id: Option<&str>,
+) -> Vec<ZodIssue> {
+    let mut issues = Vec::new();
+    if let Some(id) = claimed_id {
+        if !zod_uuid_ok(id) {
+            issues.push(ZodIssue::invalid_uuid(vec![key("id")]));
+        }
+    }
+    zod_entity_name_issues(entity.get("name"), &mut issues);
+    for (k, max) in [("description", 2000), ("instructions", 10000)] {
+        nullable_string_issues(entity, k, &mut issues, |v| {
+            (!crate::jsstr::zod_len_max_ok(v, max))
+                .then(|| ZodIssue::too_big_string(json!(max), vec![key(k)]))
+        });
+    }
+    match entity.get("state") {
+        None | Some(Value::Object(_)) => {}
+        got => issues.push(ZodIssue::invalid_type("record", vec![key("state")], got)),
+    }
     issues
 }
 

@@ -112,6 +112,36 @@ pub struct GroupCreateInput {
     pub state: Value,
 }
 
+/// v4's WHOLE-entity create validation for a group (P4.155, ruling R-B): the
+/// `GroupSchema` row keys ([`zod_store_entity_issues`](crate::api::zod_issues::
+/// zod_store_entity_issues) — `id`, `name` 1–100 code points, `description` ≤
+/// 2000, `instructions` ≤ 10000, `state` a record) THEN the spread property
+/// bag, in schema order (`group.types.ts:58-89`). No create-time seed —
+/// `groups.repository.ts` overrides no `prepareCreateData`. `entity` is the
+/// create payload as v4's importer hands it (the bundle item minus `id` /
+/// `createdAt` / `updatedAt` / `officialMountPointId`, any rename applied);
+/// `claimed_id` the id the create claims (`None` when it mints). `Err` is
+/// v4's `ZodError.message`; `Ok` the parsed bag, ready for
+/// [`GroupsRepository::create_with_properties`].
+pub fn parse_create_entity(
+    entity: &Value,
+    claimed_id: Option<&str>,
+) -> Result<GroupProperties, String> {
+    let bag = crate::db::document_store_overlay::fold_properties(
+        entity,
+        <GroupEntity as StoreEntity>::property_keys(),
+    );
+    let mut issues = crate::api::zod_issues::zod_store_entity_issues(
+        entity.as_object().unwrap_or(&Map::new()),
+        claimed_id,
+    );
+    issues.extend(crate::api::zod_issues::zod_group_properties_issues(&bag));
+    if !issues.is_empty() {
+        return Err(crate::api::zod_issues::zod_error_message(&issues));
+    }
+    <GroupEntity as StoreEntity>::parse_properties(&bag)
+}
+
 /// The groups repository — a thin wrapper over the generic store-backed base.
 pub struct GroupsRepository<'c> {
     inner: StoreBackedRepository<'c, GroupEntity>,

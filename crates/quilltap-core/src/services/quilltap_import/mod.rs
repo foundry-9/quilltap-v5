@@ -445,6 +445,21 @@ pub(crate) fn id_of(item: &Value) -> String {
         .to_string()
 }
 
+/// `item.id` as v4's per-item WARN carries it (`{ fileId: file.id, error }`
+/// and its twelve siblings): `None` when the key is ABSENT — winston drops an
+/// `undefined` field, so the line carries no `…Id=` at all (P4.155, ruling
+/// R-E; §R.5), where `%id_of(item)` rendered an empty `fileId=`. A present
+/// value renders as winston prints it — a string bare, anything else its JSON
+/// text (`null`, `5`). The ONE rendering every importer's per-item WARN uses.
+pub(crate) fn id_field(item: &Value) -> Option<tracing::field::DisplayValue<String>> {
+    item.get("id").map(|v| {
+        tracing::field::display(match v {
+            Value::String(s) => s.clone(),
+            other => other.to_string(),
+        })
+    })
+}
+
 /// v4 `parseExportFile` + `validateExportFormat` (`validation.ts`) — parse the
 /// legacy monolithic JSON and hard-pin `format`/`version`. Diverges only to sniff
 /// and loudly refuse the NDJSON serialization (the seed path's entrance never
@@ -2628,5 +2643,68 @@ mod import_warn_pins {
         );
         let (main, mount) = conns(false);
         assert_eq!(run_all(&main, &mount), Vec::<String>::new(), "silence leg");
+    }
+
+    /// [P4.155, R-E] The same planted refusals over ID-LESS items: v4's
+    /// `{ templateId: template.id, … }` is `undefined`, which winston drops, so
+    /// the line carries no `templateId=` / `folderId=` / `memoryId=` at all
+    /// (v5 used to render each empty). A JSON `null` id is a VALUE — winston
+    /// prints it. (`fileId` is measured against v4 by `system_import_state`'s
+    /// `execute_idless_files`; `memoryId` / `templateId` by
+    /// `execute_idless_refused_inserts`.)
+    #[test]
+    fn an_id_less_item_omits_the_id_field() {
+        let (main, mount) = conns(true);
+        let opts = ImportOptions::seed_defaults();
+        let mut id_maps = IdMaps::default();
+        id_maps.characters.set("c-src".into(), "c-new".into());
+        let mut w = Vec::new();
+        let ((), lines) = crate::test_support::captured_with(|| {
+            configuration::import_prompt_templates(
+                &main,
+                "u1",
+                &[json!({ "name": "T", "content": "c" })],
+                &opts,
+                &mut w,
+            )
+            .unwrap();
+            files::import_files(
+                &main,
+                &mount,
+                &crate::services::file_storage::NotConfiguredPixelCodec,
+                "u1",
+                &[],
+                &[
+                    json!({ "path": "/A", "name": "A" }),
+                    json!({ "id": null, "path": "/B", "name": "B" }),
+                ],
+                &opts,
+                &id_maps,
+                &mut w,
+            )
+            .unwrap();
+            memories::import_memories(
+                &main,
+                &[json!({ "characterId": "c-src", "content": "x", "summary": "x" })],
+                &opts,
+                &id_maps,
+                &mut w,
+            )
+            .unwrap();
+        });
+        const E: &str = "error=planted: inserts refused";
+        let p = "WARN quilltap_core::services::quilltap_import";
+        assert_eq!(
+            lines
+                .into_iter()
+                .filter(|l| l.starts_with("WARN "))
+                .collect::<Vec<_>>(),
+            vec![
+                format!("{p}::configuration Failed to import prompt template {E}"),
+                format!("{p}::files Failed to import folder path=/A {E}"),
+                format!("{p}::files Failed to import folder folderId=null path=/B {E}"),
+                format!("{p}::memories Failed to import memory {E}"),
+            ]
+        );
     }
 }

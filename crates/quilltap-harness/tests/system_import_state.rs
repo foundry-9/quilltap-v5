@@ -779,18 +779,44 @@ fn classify_serde_arms(
 // ── [P4.143 Tier 2 item 10] the refused chat create's repository lines ──────
 
 /// The messages v4's refused chat create logs (its oracle's
-/// `REPO_LOG_MESSAGES`): the THREE repository ERRORs and the per-chat WARN.
+/// `REPO_LOG_MESSAGES`): the THREE repository ERRORs and the per-chat WARN —
+/// and, since P4.155 (R-A), the refused project / group create's three
+/// ERRORs (`Data validation failed`, the store-backed `_create` override's
+/// `Error creating {label} entity`, the store-backed `create` wrap's `Error
+/// creating {label}`) and its per-item WARN.
 const REPO_LOG_MESSAGES: &[&str] = &[
     "Data validation failed",
     "Error creating entity",
     "Failed to create chat",
     "Failed to import chat",
+    "Error creating project entity",
+    "Error creating group entity",
+    "Error creating project",
+    "Error creating group",
+    "Failed to import project",
+    "Failed to import group",
 ];
+
+/// The [`REPO_LOG_MESSAGES`] entry `rest` starts with — the LONGEST match, so
+/// `Error creating project entity …` is never read as `Error creating
+/// project` with a stray `entity` token.
+fn repo_log_message(rest: &str) -> Option<&'static str> {
+    REPO_LOG_MESSAGES
+        .iter()
+        .copied()
+        .filter(|m| rest.starts_with(&format!("{m} ")))
+        .max_by_key(|m| m.len())
+}
+
+/// The context keys a recorded repository line may carry ahead of `error`, in
+/// the oracle's key list. A value runs to the next known key — `name=` carries
+/// the project's name, spaces and all (`%` renders it unquoted).
+const REPO_LOG_KEYS: &[&str] = &["collection", "chatId", "name", "projectId", "groupId"];
 
 /// v5's captured lines (`LEVEL target message k=v …`, the `CaptureLayer`
 /// shape) projected onto the oracle's `{level, message, collection, chatId,
-/// error}` record. `error` is every line's LAST field, so it runs to the end
-/// of the line (a ZodError message spans many).
+/// name, projectId, groupId, error}` record. `error` is every line's LAST
+/// field, so it runs to the end of the line (a ZodError message spans many).
 fn v5_repo_logs(lines: &[String]) -> Vec<Value> {
     let mut out = Vec::new();
     for line in lines {
@@ -799,21 +825,23 @@ fn v5_repo_logs(lines: &[String]) -> Vec<Value> {
         else {
             continue;
         };
-        let Some(message) = REPO_LOG_MESSAGES
-            .iter()
-            .find(|m| rest.starts_with(&format!("{m} ")))
-        else {
+        let Some(message) = repo_log_message(rest) else {
             continue;
         };
-        let fields = &rest[message.len() + 1..];
+        let fields = &rest[message.len()..];
         let mut rec = serde_json::Map::new();
         rec.insert("level".into(), json!(level.to_lowercase()));
         rec.insert("message".into(), json!(message));
-        let (head, error) = fields.split_once("error=").unwrap_or((fields, ""));
-        for kv in head.split_whitespace() {
-            if let Some((k, v)) = kv.split_once('=') {
-                rec.insert(k.to_string(), json!(v));
-            }
+        let (head, error) = fields.split_once(" error=").unwrap_or((fields, ""));
+        let mut starts: Vec<(usize, &str)> = REPO_LOG_KEYS
+            .iter()
+            .filter_map(|k| head.find(&format!(" {k}=")).map(|i| (i, *k)))
+            .collect();
+        starts.sort();
+        for (n, (i, k)) in starts.iter().enumerate() {
+            let from = i + k.len() + 2;
+            let to = starts.get(n + 1).map_or(head.len(), |(j, _)| *j);
+            rec.insert(k.to_string(), json!(&head[from..to]));
         }
         rec.insert("error".into(), json!(error));
         out.push(Value::Object(rec));
@@ -852,14 +880,11 @@ fn compare_repo_logs(
     for l in got_lines {
         let is_strict = l.ends_with(" strictFailures=true");
         let line = l.strip_suffix(" strictFailures=true").unwrap_or(l);
-        if let Some(message) = REPO_LOG_MESSAGES
-            .iter()
-            .find(|m| line.contains(&format!(" {m} ")))
-        {
-            if is_strict != strict_lines.contains(message) {
+        if let Some(message) = line.splitn(3, ' ').nth(2).and_then(repo_log_message) {
+            if is_strict != strict_lines.contains(&message) {
                 failures.push(format!(
                     "[{name}] v5 `strictFailures` on {message:?}: {is_strict}, expected {}",
-                    strict_lines.contains(message)
+                    strict_lines.contains(&message)
                 ));
             }
         }
@@ -1553,7 +1578,9 @@ fn system_import_execute_state_equivalence() {
     // …+ P4.148's `execute_project_property_refusals` and
     // `execute_group_property_refusals` arms (45 + 2 = 47).
     // …+ P4.148's `execute_chat_create_db_failure` (C2) arm (47 + 1 = 48).
-    assert_eq!(ran, 48, "expected 48 cases, ran {ran}");
+    // …+ P4.155's two id-less arms (R-E) — `execute_idless_files` and
+    // `execute_idless_refused_inserts` (48 + 2 = 50).
+    assert_eq!(ran, 50, "expected 50 cases, ran {ran}");
     // [P4.148] The property-refusal arms are non-vacuous only if v4 really
     // refused every bad item with a ZodError tail AND wrote nothing for it,
     // while the sound item landed — so the whole-state equality above is the
@@ -1568,14 +1595,14 @@ fn system_import_execute_state_equivalence() {
             "execute_project_property_refusals",
             "projects",
             "project",
-            4usize,
+            9usize,
             &["Project Sound", "Project Null Roster Defaults"][..],
         ),
         (
             "execute_group_property_refusals",
             "groups",
             "group",
-            3usize,
+            8usize,
             &["Group Sound"][..],
         ),
     ] {
@@ -1618,6 +1645,34 @@ fn system_import_execute_state_equivalence() {
             .filter_map(|w| w.split_once("\": ").map(|(_, t)| t))
             .collect();
         assert_eq!(tails.len(), refused, "{case_name}: one warning per refusal");
+        // [P4.155 R-A] Non-vacuity of the repository-line compare: v4 logged
+        // FOUR lines per refusal, in this order — `validate`'s, the
+        // store-backed `_create` override's, the store-backed `create`
+        // wrap's, then the importer's WARN. (Measured at `94fbb1ae3`: the
+        // order's "the base pair through `log_create_failure`" was wrong —
+        // the store-backed base overrides `createErrorMessage()`.)
+        let messages: Vec<&str> = case["repoLogs"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|l| l["message"].as_str())
+            .collect();
+        let per_refusal = [
+            "Data validation failed".to_string(),
+            format!("Error creating {noun} entity"),
+            format!("Error creating {noun}"),
+            format!("Failed to import {noun}"),
+        ];
+        assert_eq!(
+            messages,
+            per_refusal
+                .iter()
+                .cycle()
+                .take(4 * refused)
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            "{case_name}: v4's repository lines per refusal"
+        );
         assert!(
             tails.iter().all(|t| is_zod_error_message(t)),
             "{case_name}: every tail is a ZodError message: {tails:?}"
@@ -1858,20 +1913,26 @@ fn system_import_execute_state_equivalence() {
     // `execute_memories_no_profile`'s `Imported memories left unembedded`; the
     // other cases are silence legs. (The other seven lines fire on no oracle
     // case; their unit pins live beside them in `services::quilltap_import`.)
+    // [P4.155 R-E] …+ the two id-less arms (37): `execute_idless_files` fires
+    // one `Failed to import file` with NO `fileId`, and
+    // `execute_idless_refused_inserts` three `Failed to import memory` (one
+    // id-less) and two `Failed to import prompt template` (one id-less) —
+    // 2 + 1 + 5 = 8 lines.
     assert_eq!(
         IMPORT_WARN_CASES.load(Ordering::SeqCst),
-        35,
+        37,
         "cases comparing the import WARNs"
     );
     assert_eq!(
         IMPORT_WARNS_FIRED.load(Ordering::SeqCst),
-        2,
+        8,
         "v4 import WARN lines fired"
     );
+    // [P4.155 R-A] …+ the two property-refusal arms (5).
     assert_eq!(
         REPO_LOG_CASES.load(Ordering::SeqCst),
-        3,
-        "cases that compared the refused chat create's repository lines"
+        5,
+        "cases that compared a refused create's repository lines"
     );
     assert_eq!(
         SERDE_ARM_DIVERGENCES.len(),
@@ -2217,6 +2278,18 @@ fn run_execute_case(
                      SELECT RAISE(ABORT, 'planted: chat inserts refused'); END",
                 )
                 .expect("prep: refuse chat inserts"),
+            // [P4.155 R-E] Every `memories` / `prompt_templates` INSERT refused,
+            // so each payload item — one of each kind WITH an id, one WITHOUT
+            // — lands in its importer's per-item WARN.
+            "refuse-idless-inserts" => conn
+                .connection()
+                .execute_batch(
+                    "CREATE TRIGGER qt_p4155_no_memories BEFORE INSERT ON memories BEGIN \
+                     SELECT RAISE(ABORT, 'planted: memory inserts refused'); END; \
+                     CREATE TRIGGER qt_p4155_no_templates BEFORE INSERT ON prompt_templates \
+                     BEGIN SELECT RAISE(ABORT, 'planted: template inserts refused'); END",
+                )
+                .expect("prep: refuse id-less inserts"),
             other => panic!("[{name}] unknown prep {other}"),
         }
     }
@@ -2310,8 +2383,17 @@ fn run_execute_case(
             &repo_lines,
             serde,
             // `executeImport` runs inside `withStrictRepositoryFailures`
-            // (`execute.ts:425-431`): the two `safeQuery`-born lines carry it.
-            &["Error creating entity", "Failed to create chat"],
+            // (`execute.ts:425-431`): every `safeQuery`-born line carries it —
+            // the chat create's two, and the refused project / group create's
+            // `_create` + store-backed `create` pair (P4.155, R-A).
+            &[
+                "Error creating entity",
+                "Failed to create chat",
+                "Error creating project entity",
+                "Error creating group entity",
+                "Error creating project",
+                "Error creating group",
+            ],
             failures,
         );
         REPO_LOG_CASES.fetch_add(1, Ordering::SeqCst);

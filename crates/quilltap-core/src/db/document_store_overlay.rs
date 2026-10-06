@@ -784,6 +784,96 @@ pub fn apply_write_overlay<E: StoreEntity>(
     Ok(db_patch)
 }
 
+/// The store-backed kinds a refused create can name — v4's `entityLabel`
+/// (`'Project'` / `'Group'`), whose lower-case form every create line carries.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StoreKind {
+    Project,
+    Group,
+}
+
+/// v4's THREE repository ERRORs when a store-backed create's `validate`
+/// refuses the entity (P4.155, ruling R-A — measured at `94fbb1ae3` through
+/// the `system_import_state` property-refusal arms), in v4's order:
+///
+/// 1. `base.repository.ts:130-141` `validate` — `Data validation failed
+///    {collection, error}`;
+/// 2. `_create`'s rethrowing `safeQuery` under the STORE-BACKED override of
+///    `createErrorMessage()` (`store-backed.repository.ts:234-236`) —
+///    `Error creating {label} entity {collection, error, strictFailures?}`
+///    (NOT the base `Error creating entity`, so NOT [`log_create_failure`](
+///    crate::db::fallback::log_create_failure) — the order's "the base pair"
+///    was wrong: the override is in the shared base, not in
+///    `projects.repository.ts` / `groups.repository.ts`, where the planning
+///    grep looked);
+/// 3. the store-backed `create`'s OWN `safeQuery` (`store-backed.repository.
+///    ts:130-175`) — `Error creating {label} {collection, name, error,
+///    strictFailures?}`, `name` the create payload's (omitted when absent, as
+///    winston drops `undefined`).
+///
+/// `strictFailures` rides the two `safeQuery`-born lines inside the import's
+/// strict scope, as the homes read it. Logs only — the caller keeps
+/// propagating `zod`.
+// HANDOFF(P4.156): lines 2 and 3 want `db::fallback` homes beside
+// `log_create_failure` (contract C1 lets this lane call the existing homes
+// only); the unifier folds this fn onto them (§S.1).
+pub fn log_refused_store_create(kind: StoreKind, name: Option<&Value>, zod: &str) {
+    let strict = crate::db::fallback::strict_repository_failures_active().then_some(true);
+    let name = name.map(|v| match v {
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
+    });
+    let name = name.as_deref().map(tracing::field::display);
+    match kind {
+        StoreKind::Project => {
+            tracing::error!(
+                target: "quilltap::db",
+                collection = "projects",
+                error = %zod,
+                "Data validation failed"
+            );
+            tracing::error!(
+                target: "quilltap::db",
+                collection = "projects",
+                error = %zod,
+                strictFailures = strict,
+                "Error creating project entity"
+            );
+            tracing::error!(
+                target: "quilltap::db",
+                collection = "projects",
+                name = name,
+                error = %zod,
+                strictFailures = strict,
+                "Error creating project"
+            );
+        }
+        StoreKind::Group => {
+            tracing::error!(
+                target: "quilltap::db",
+                collection = "groups",
+                error = %zod,
+                "Data validation failed"
+            );
+            tracing::error!(
+                target: "quilltap::db",
+                collection = "groups",
+                error = %zod,
+                strictFailures = strict,
+                "Error creating group entity"
+            );
+            tracing::error!(
+                target: "quilltap::db",
+                collection = "groups",
+                name = name,
+                error = %zod,
+                strictFailures = strict,
+                "Error creating group"
+            );
+        }
+    }
+}
+
 #[cfg(test)]
 mod drop_line_tests {
     use super::*;
@@ -1153,5 +1243,66 @@ mod null_preservation_tests {
         let mp = plain["officialMountPointId"].as_str().unwrap();
         assert_eq!(stored(&mount, mp).0, "{\n  \"icon\": \"star\"\n}");
         assert!(plain.get("color").is_none());
+    }
+}
+
+/// [P4.155, R-A] Pins on [`log_refused_store_create`]: v4's three lines in
+/// v4's order and field order, `strictFailures` on the two `safeQuery`-born
+/// lines inside the strict scope only, `name` OMITTED when the payload has
+/// none (winston drops `undefined`), nothing logged otherwise.
+#[cfg(test)]
+mod refused_create_line_tests {
+    use super::*;
+    use serde_json::json;
+
+    const T: &str = "ERROR quilltap::db";
+
+    #[test]
+    fn a_refused_project_logs_v4s_three_lines_in_order() {
+        let lines = crate::test_support::captured(|| {
+            crate::db::fallback::with_strict_repository_failures(|| {
+                log_refused_store_create(StoreKind::Project, Some(&json!("Long Name")), "Z")
+            })
+        });
+        assert_eq!(
+            lines,
+            vec![
+                format!("{T} Data validation failed collection=projects error=Z"),
+                format!(
+                    "{T} Error creating project entity collection=projects error=Z \
+                     strictFailures=true"
+                ),
+                format!(
+                    "{T} Error creating project collection=projects name=Long Name error=Z \
+                     strictFailures=true"
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_refused_group_outside_the_strict_scope_and_without_a_name() {
+        let lines =
+            crate::test_support::captured(|| log_refused_store_create(StoreKind::Group, None, "Z"));
+        assert_eq!(
+            lines,
+            vec![
+                format!("{T} Data validation failed collection=groups error=Z"),
+                format!("{T} Error creating group entity collection=groups error=Z"),
+                format!("{T} Error creating group collection=groups error=Z"),
+            ]
+        );
+    }
+
+    /// A non-string `name` renders as v4's winston would print the value.
+    #[test]
+    fn a_numeric_name_renders_its_value() {
+        let lines = crate::test_support::captured(|| {
+            log_refused_store_create(StoreKind::Group, Some(&json!(42)), "Z")
+        });
+        assert_eq!(
+            lines[2],
+            format!("{T} Error creating group collection=groups name=42 error=Z")
+        );
     }
 }

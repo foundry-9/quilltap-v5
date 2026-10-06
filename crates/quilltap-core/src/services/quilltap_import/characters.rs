@@ -365,7 +365,7 @@ pub(super) fn import_characters(
             // v4 wraps each character in a try that pushes to warnings and
             // continues.
             warnings.push(format!("Failed to import character \"{name}\": {text}"));
-            tracing::warn!(characterId = %source_id, error = %text, "Failed to import character");
+            tracing::warn!(characterId = super::id_field(raw_character), error = %text, "Failed to import character");
         }
     }
 
@@ -566,7 +566,7 @@ fn import_character_wardrobe_items(
                     "Failed to import wardrobe item \"{title}\": {text}"
                 ));
                 tracing::warn!(
-                    wardrobeItemId = %super::id_of(item),
+                    wardrobeItemId = super::id_field(item),
                     characterId = %new_character_id,
                     error = %text,
                     "Failed to import wardrobe item"

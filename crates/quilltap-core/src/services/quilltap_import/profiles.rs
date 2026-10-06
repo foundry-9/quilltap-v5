@@ -229,7 +229,7 @@ pub(super) fn import_connection_profiles(
                 super::item_error_text(&e)
             ));
             // v4 `import-profiles.ts:116-125`: `{ profileId: rawProfile.id, error }`.
-            tracing::warn!(profileId = %source_id, error = %super::item_error_text(&e), "Failed to import connection profile");
+            tracing::warn!(profileId = super::id_field(raw_profile), error = %super::item_error_text(&e), "Failed to import connection profile");
         }
     }
 
@@ -412,7 +412,7 @@ pub(super) fn import_image_profiles(
                 super::item_error_text(&e)
             ));
             // v4 `import-profiles.ts:181-190`: `{ profileId, error }`.
-            tracing::warn!(profileId = %source_id, error = %super::item_error_text(&e), "Failed to import image profile");
+            tracing::warn!(profileId = super::id_field(raw), error = %super::item_error_text(&e), "Failed to import image profile");
         }
     }
     Ok(Counts { imported, skipped })
@@ -526,7 +526,7 @@ pub(super) fn import_embedding_profiles(
                 super::item_error_text(&e)
             ));
             // v4 `import-profiles.ts:246-255`: `{ profileId, error }`.
-            tracing::warn!(profileId = %source_id, error = %super::item_error_text(&e), "Failed to import embedding profile");
+            tracing::warn!(profileId = super::id_field(raw), error = %super::item_error_text(&e), "Failed to import embedding profile");
         }
     }
     Ok(Counts { imported, skipped })

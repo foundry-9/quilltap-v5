@@ -109,7 +109,7 @@ pub(super) fn import_prompt_templates(
                 ));
                 // v4 `import-configuration.ts:78` (P4.148 Tier 2 item 17).
                 tracing::warn!(
-                    templateId = %super::id_of(template),
+                    templateId = super::id_field(template),
                     error = %text,
                     "Failed to import prompt template"
                 );

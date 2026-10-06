@@ -1361,6 +1361,57 @@ function malformedItemsPayload(): { manifest: unknown; data: Record<string, unkn
   };
 }
 
+/** Deep copy with the `id` key removed — v4 reads the absent id as `undefined`. */
+function withoutId<T>(item: T): T {
+  const copy = JSON.parse(JSON.stringify(item)) as Record<string, unknown>;
+  delete copy.id;
+  return copy as T;
+}
+
+/**
+ * [P4.155 R-E] The `refuse-idless-inserts` payload: the merged characters (so
+ * every memory's character maps under `skip`), the merged memories with the
+ * FIRST one's id removed, and the merged prompt template twice under fresh
+ * names (an existing name would skip before the create) — one with its id,
+ * one without.
+ */
+function idlessRefusedPayload(merged: {
+  manifest: unknown;
+  data: Record<string, unknown[]>;
+}): { manifest: unknown; data: Record<string, unknown[]> } {
+  const memories = JSON.parse(JSON.stringify(merged.data.memories ?? [])) as unknown[];
+  if (memories.length < 2) throw new Error('idless payload needs two merged memories');
+  memories[0] = withoutId(memories[0]);
+  const template = (merged.data.promptTemplates ?? [])[0] as Record<string, unknown> | undefined;
+  if (!template) throw new Error('idless payload needs a merged prompt template');
+  return {
+    manifest: merged.manifest,
+    data: {
+      characters: merged.data.characters ?? [],
+      memories,
+      promptTemplates: [
+        { ...template, name: 'Idless Template With Id' },
+        withoutId({ ...template, name: 'Idless Template Without Id' }),
+      ],
+    },
+  };
+}
+
+/**
+ * [P4.155 R-E] The cross-instance files payload (whose `atlas-plates.bin`
+ * fails: its project has no store) with that ONE file's id removed — v4's
+ * `Failed to import file` WARN then carries no `fileId`.
+ */
+function idlessFilesPayload(filesPayload: unknown): unknown {
+  const p = JSON.parse(JSON.stringify(rewriteIds(filesPayload))) as {
+    data: { files: Array<Record<string, unknown>> };
+  };
+  const i = p.data.files.findIndex((f) => f.originalFilename === 'atlas-plates.bin');
+  if (i < 0) throw new Error('idless files payload: atlas-plates.bin is gone');
+  p.data.files[i] = withoutId(p.data.files[i]);
+  return p;
+}
+
 /**
  * [P4.148 → dogfood #140] Projects / groups whose PROPERTY BAG v4's schema
  * refuses — each item carries exactly one bad property, so the per-item
@@ -1384,7 +1435,7 @@ function propertyRefusalsPayload(
   const prefix = kind === 'projects' ? 'ee' : 'ef';
   const noun = kind === 'projects' ? 'Project' : 'Group';
   const item = (n: number, name: string, extra: Record<string, unknown>) => ({
-    id: `${prefix}000000-0000-4000-8000-00000000000${n}`,
+    id: `${prefix}000000-0000-4000-8000-0000000000${String(n).padStart(2, '0')}`,
     name,
     description: `${name} description`,
     state: {},
@@ -1405,6 +1456,19 @@ function propertyRefusalsPayload(
           item(8, `${noun} Null Roster Defaults`, { allowAnyCharacter: null, characterRoster: null }),
         ]
       : []),
+    // [P4.155 R-B] The WHOLE-entity refusals: v4's `_create` validates the
+    // full `ProjectSchema` / `GroupSchema` (`name: z.string().min(1).max(100)`
+    // — code points; `description: z.string().max(2000).nullable().optional()`;
+    // `instructions: z.string().max(10000).nullable().optional()`; `state:
+    // JsonSchema.default({})` — a string-keyed record), not only the property
+    // bag. v5 used to validate the bag alone, so each of these imported.
+    item(5, `${noun} Long Name `.padEnd(101, 'n'), {}),
+    item(6, `${noun} Long Description`, { description: 'd'.repeat(2001) }),
+    item(7, `${noun} Numeric Instructions`, { instructions: 42 }),
+    item(10, `${noun} Array State`, { state: [] }),
+    // Two sections at once: the row key's issue precedes the bag's (schema
+    // order — `ProjectRowSchema.extend({…, ...PropertiesSchema.shape})`).
+    item(11, `${noun} Long Name And Colour `.padEnd(101, 'm'), { color: 5 }),
     item(9, `${noun} Sound`, { color: '#a1b2c3', icon: 'compass' }),
   ];
   return {
@@ -1675,6 +1739,18 @@ const REPO_LOG_MESSAGES = new Set([
   'Error creating entity',
   'Failed to create chat',
   'Failed to import chat',
+  // [P4.155 R-A] The refused project / group create, measured at `94fbb1ae3`:
+  // `validate`'s line, then `_create`'s rethrowing `safeQuery` under the
+  // STORE-BACKED override of `createErrorMessage()` (`Error creating ${label}
+  // entity` — NOT the base `Error creating entity`), then the store-backed
+  // `create`'s OWN `safeQuery` (`Error creating ${label}` with `{collection,
+  // name}`), then the importer's per-item WARN.
+  'Error creating project entity',
+  'Error creating group entity',
+  'Error creating project',
+  'Error creating group',
+  'Failed to import project',
+  'Failed to import group',
 ]);
 
 /**
@@ -1702,7 +1778,7 @@ async function withRepoLogs<T>(
     ) {
       if (REPO_LOG_MESSAGES.has(message)) {
         const line: Record<string, unknown> = { level, message };
-        for (const key of ['collection', 'chatId', 'error', 'strictFailures']) {
+        for (const key of ['collection', 'chatId', 'name', 'projectId', 'groupId', 'error', 'strictFailures']) {
           if (context && key in context) {
             const v = context[key];
             line[key] = v instanceof Error ? v.message : v;
@@ -2008,7 +2084,8 @@ function executePreppedCase(
     | 'builtin-default-profile'
     | 'orphan-project-store'
     | 'unvalidatable-tag'
-    | 'refuse-chat-inserts',
+    | 'refuse-chat-inserts'
+    | 'refuse-idless-inserts',
   payload: (spec: Spec) => Promise<unknown> | unknown,
   options: Record<string, unknown>,
   // [P4.148] Record the repository lines too (`withRepoLogs`).
@@ -2062,6 +2139,20 @@ function executePreppedCase(
         // the `Failed to import chat` WARN — NO `Data validation failed`.
         db.exec(
           "CREATE TRIGGER qt_p4148_no_chats BEFORE INSERT ON chats BEGIN SELECT RAISE(ABORT, 'planted: chat inserts refused'); END",
+        );
+      } else if (prep === 'refuse-idless-inserts') {
+        // [P4.155 R-E] Every `memories` / `prompt_templates` INSERT fails AFTER
+        // the row validated, so each item lands in its importer's per-item
+        // catch — the one way to drive those WARNs on BOTH sides (v5's two
+        // importers coerce where v4's schemas refuse, so a malformed item
+        // would measure a different gap). The payload carries one item of each
+        // kind WITH an id and one WITHOUT: winston drops the `undefined`
+        // `memoryId` / `templateId`, so the id-less WARN has no such field.
+        db.exec(
+          "CREATE TRIGGER qt_p4155_no_memories BEFORE INSERT ON memories BEGIN SELECT RAISE(ABORT, 'planted: memory inserts refused'); END",
+        );
+        db.exec(
+          "CREATE TRIGGER qt_p4155_no_templates BEFORE INSERT ON prompt_templates BEGIN SELECT RAISE(ABORT, 'planted: template inserts refused'); END",
         );
       } else {
         db.exec(`UPDATE "embedding_profiles" SET "provider" = 'BUILTIN'`);
@@ -2491,6 +2582,20 @@ async function main(): Promise<void> {
       includeMemories: false,
       includeRelatedEntities: false,
     }),
+    // [P4.155 R-E] The same failing file, id-less.
+    executeCase('execute_idless_files', () => idlessFilesPayload(filesPayload), {
+      conflictStrategy: 'skip',
+      includeMemories: false,
+      includeRelatedEntities: false,
+    }),
+    // [P4.155 R-E] A memory and a prompt template, each with and without an
+    // id, every INSERT refused.
+    executePreppedCase(
+      'execute_idless_refused_inserts',
+      'refuse-idless-inserts',
+      () => idlessRefusedPayload(mergedPayload),
+      { conflictStrategy: 'skip', includeMemories: true, includeRelatedEntities: false },
+    ),
     // [P4.D46] The embedding-enqueue bail-out arms: a characters+memories slice
     // of the merged payload, imported after a named fixture mutation. `skip`
     // keeps the character rows still (memories always insert), so the state
@@ -2556,16 +2661,19 @@ async function main(): Promise<void> {
     }),
     // [P4.148 → dogfood #140] The property-bag refusals — see
     // `propertyRefusalsPayload`. The project case is the TRAP's red-first.
-    executeCase('execute_project_property_refusals', () => propertyRefusalsPayload('projects'), {
-      conflictStrategy: 'skip',
-      includeMemories: false,
-      includeRelatedEntities: false,
-    }),
-    executeCase('execute_group_property_refusals', () => propertyRefusalsPayload('groups'), {
-      conflictStrategy: 'skip',
-      includeMemories: false,
-      includeRelatedEntities: false,
-    }),
+    // [P4.155 R-A] …and their repository lines, recorded (`withRepoLogs`).
+    executeCase(
+      'execute_project_property_refusals',
+      () => propertyRefusalsPayload('projects'),
+      { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
+      true,
+    ),
+    executeCase(
+      'execute_group_property_refusals',
+      () => propertyRefusalsPayload('groups'),
+      { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
+      true,
+    ),
     // [P4.63 → v4 bug 105 → P4.D131] The named-and-skipped regression guard
     // (a plain equality since v4 converged at `679e450e3`) — see
     // `bug105SeedAbortPayload`.

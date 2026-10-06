@@ -511,6 +511,41 @@ pub fn parse_create_properties(properties: &Value) -> Result<ProjectProperties, 
     )
 }
 
+/// v4's WHOLE-entity create validation (P4.155, ruling R-B): `_create`
+/// validates the full `ProjectSchema` — the row's own keys (`id`, `name`
+/// 1–100 code points, `description` ≤ 2000, `instructions` ≤ 10000, `state` a
+/// record) THEN the spread property bag, seeded first by `prepareCreateData`
+/// (`projects.repository.ts:55-63`, `store-backed.repository.ts:136-144`,
+/// `base.repository.ts:350-368`). `entity` is the create payload as v4's
+/// importer hands it — the bundle item minus `id` / `createdAt` / `updatedAt`
+/// / `officialMountPointId`, any rename applied — and `claimed_id` the id the
+/// create claims (`None` when it mints one). `Err` is v4's `ZodError.message`
+/// over ALL the issues, in schema order (the row keys' issues, then the
+/// bag's); `Ok` is the parsed, seeded bag.
+///
+/// The import calls THIS before anything is written (P4.148's
+/// validate-before-write, widened from the bag to the whole row); the
+/// restore's two arms still call [`parse_create_properties`] — a named
+/// handoff (P4.158's file).
+pub fn parse_create_entity(
+    entity: &Value,
+    claimed_id: Option<&str>,
+) -> Result<ProjectProperties, String> {
+    let bag = seed_create_properties(&crate::db::document_store_overlay::fold_properties(
+        entity,
+        <ProjectEntity as crate::db::document_store_overlay::StoreEntity>::property_keys(),
+    ));
+    let mut issues = crate::api::zod_issues::zod_store_entity_issues(
+        entity.as_object().unwrap_or(&Map::new()),
+        claimed_id,
+    );
+    issues.extend(crate::api::zod_issues::zod_project_properties_issues(&bag));
+    if !issues.is_empty() {
+        return Err(crate::api::zod_issues::zod_error_message(&issues));
+    }
+    parse_create_properties(&bag)
+}
+
 /// Read `characterRoster` off a hydrated project (absent/non-array → empty).
 fn roster_of(project: &Value) -> Vec<String> {
     project
