@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-05 — chore(db): the memory repository's logging wrappers use inspect_err (P4.149 unit 8)
+
+_Versions: core 0.0.1217._
+
+Clippy's `manual_inspect` on the four memory-repository wrappers unit 6 added (`create`, `update`, `update_for_character`, `delete_for_character`): `map_err(|e| { log; e })` → `inspect_err(|e| log)`. No behavior change; the memory unit pins and `fold_episode_tier3_equivalence` re-run green.
+
 #### 2026-10-05 — fix(db): the importer-reachable store link read honours the strict scope, and three low-hazard held sites read through v4's fallbacks (P4.149 unit 7)
 
 _Versions: core 0.0.1216._
