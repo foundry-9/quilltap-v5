@@ -199,6 +199,12 @@ _No crate versions bumped._
 - NEW `harness/oracle/provision/migrations-first.ts`: builds v4's instance the way its real boot does (the real `MigrationRunner` first, then the repository pass).
 - NEW `harness/oracle/provision/dump-migration-indexes.ts` → NEW `crates/quilltap-core/src/services/provisioning/migration_indexes.json` (main 50 / mount-index 5 / llm-logs 5; leaves out names `fresh_schema.json` already has, except the one the migration makes UNIQUE where generateDDL does not, and the legacy `wardrobe_items` index). Its real-boot cross-check found zero differences.
 - `dump-fresh-schema.ts`: header note points at the sibling dumper.
+#### 2026-10-06 — docs(porting): close the P4.154 lane — record, handoffs, status header
+
+_Docs-only change._
+
+The P4.154 lane record (red-first counts, fixtures changed, regen recipes, gate, the two HANDOFFs) and the order's status header set to LANE COMPLETE.
+
 #### 2026-10-06 — refactor(core): Google's `content.text` fallback decided in ONE place (P4.154 unit 4)
 
 _Versions: core 0.0.1239._
