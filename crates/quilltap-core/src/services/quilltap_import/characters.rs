@@ -548,19 +548,29 @@ fn import_character_wardrobe_items(
             Ok(_) => {}
             // Per-item failure → warning + continue (v4). `NoMount` would mean the
             // freshly-provisioned vault didn't resolve — surface it as a warning.
-            Err(WardrobePublicError::NoMount) => {
+            // v4's per-item catch pushes AND warns `{wardrobeItemId,
+            // characterId, error}` (`import-characters.ts:331-340`; P4.148
+            // Tier 2 item 17) — one tail for both.
+            Err(e) => {
+                let text = match e {
+                    // v4's throw (`wardrobe.repository.ts:346`), not the v5
+                    // sentence this arm used to push (P4.148).
+                    WardrobePublicError::NoMount => format!(
+                        "Cannot create wardrobe item: {}",
+                        crate::db::vault_wardrobe_public::NO_MOUNT_MESSAGE
+                    ),
+                    WardrobePublicError::Cycle(msg) => msg,
+                    WardrobePublicError::Db(e) => super::item_error_text(&e),
+                };
                 warnings.push(format!(
-                    "Failed to import wardrobe item \"{title}\": character has no wardrobe vault"
+                    "Failed to import wardrobe item \"{title}\": {text}"
                 ));
-            }
-            Err(WardrobePublicError::Cycle(msg)) => {
-                warnings.push(format!("Failed to import wardrobe item \"{title}\": {msg}"));
-            }
-            Err(WardrobePublicError::Db(e)) => {
-                warnings.push(format!(
-                    "Failed to import wardrobe item \"{title}\": {}",
-                    super::item_error_text(&e)
-                ));
+                tracing::warn!(
+                    wardrobeItemId = %super::id_of(item),
+                    characterId = %new_character_id,
+                    error = %text,
+                    "Failed to import wardrobe item"
+                );
             }
         }
     }
@@ -659,6 +669,45 @@ mod warn_field_tests {
             head,
             format!("{T} Failed to import character characterId=src-char")
         );
+    }
+
+    /// [P4.148 Tier 2 item 17] `Failed to import wardrobe item` — v4's
+    /// `{wardrobeItemId, characterId, error}` (`import-characters.ts:336`),
+    /// absent in v5 before. A character with no vault takes the `NoMount` arm,
+    /// whose tail is now v4's own throw (`wardrobe.repository.ts:346`) where it
+    /// was a v5 sentence (survey row 3). Silence leg: no items, no line.
+    #[test]
+    fn a_failed_wardrobe_item_warns_with_v4s_fields() {
+        let (main, mount) = conns();
+        let mut warnings = Vec::new();
+        let raw = json!({ "wardrobeItems": [
+            { "id": "w-src", "characterId": "c-src", "title": "Hat", "types": ["accessories"] }
+        ] });
+        let ((), lines) = crate::test_support::captured_with(|| {
+            import_character_wardrobe_items(&main, &mount, &raw, "c-new", &mut warnings)
+        });
+        let warns: Vec<&String> = lines.iter().filter(|l| l.starts_with("WARN ")).collect();
+        assert_eq!(
+            warns,
+            vec![&format!(
+                "{T} Failed to import wardrobe item wardrobeItemId=w-src characterId=c-new \
+                 error=Cannot create wardrobe item: no Character Vault or Quilltap General mount \
+                 is available. Wardrobe items are stored exclusively in the document store."
+            )],
+            "{lines:?}"
+        );
+        assert_eq!(
+            warnings,
+            vec![
+                "Failed to import wardrobe item \"Hat\": Cannot create wardrobe item: no Character \
+                 Vault or Quilltap General mount is available. Wardrobe items are stored \
+                 exclusively in the document store."
+            ]
+        );
+        let ((), quiet) = crate::test_support::captured_with(|| {
+            import_character_wardrobe_items(&main, &mount, &json!({}), "c-new", &mut Vec::new())
+        });
+        assert!(quiet.iter().all(|l| !l.starts_with("WARN ")), "{quiet:?}");
     }
 
     /// [P4.148 item 13] `Failed to import plugin data` carries v4's

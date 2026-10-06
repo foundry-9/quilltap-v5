@@ -156,10 +156,10 @@ pub(super) fn import_memories(
                 imported += 1;
             }
             Err(e) => {
-                warnings.push(format!(
-                    "Failed to import memory: {}",
-                    super::item_error_text(&e)
-                ));
+                let text = super::item_error_text(&e);
+                warnings.push(format!("Failed to import memory: {text}"));
+                // v4 `import-entities.ts:518` (P4.148 Tier 2 item 17).
+                tracing::warn!(memoryId = %source_id, error = %text, "Failed to import memory");
                 skipped += 1;
             }
         }

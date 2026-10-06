@@ -1713,6 +1713,52 @@ async function withRepoLogs<T>(
   }
 }
 
+/**
+ * [P4.148 Tier 2 item 17] The nine per-item / post-pass WARNs v5 had no twin
+ * for, recorded on EVERY execute case as `"<message> k=v …"` strings — the
+ * context's keys in v4's order (`module` dropped), an Error rendered as its
+ * message — so the Rust side compares its captured lines byte for byte, and
+ * every case where none fires is a silence leg.
+ */
+const IMPORT_WARN_MESSAGES = new Set([
+  'Failed to import wardrobe item',
+  'Failed to import prompt template',
+  'Failed to import provider model',
+  'Failed to import plugin config',
+  'Failed to import instance setting',
+  'Failed to import folder',
+  'Failed to import file',
+  'Failed to import memory',
+  'Imported memories left unembedded',
+]);
+
+async function withImportWarns<T>(body: () => Promise<T>): Promise<{ out: T; importWarns: string[] }> {
+  const { Logger } = await import('@/lib/logger');
+  const importWarns: string[] = [];
+  const original = Logger.prototype.warn;
+  Logger.prototype.warn = function (
+    this: unknown,
+    message: string,
+    context?: Record<string, unknown>,
+    ...rest: unknown[]
+  ) {
+    if (IMPORT_WARN_MESSAGES.has(message)) {
+      let line = message;
+      for (const [k, v] of Object.entries(context ?? {})) {
+        if (k === 'module' || v === undefined) continue;
+        line += ` ${k}=${v instanceof Error ? v.message : String(v)}`;
+      }
+      importWarns.push(line);
+    }
+    return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+  } as never;
+  try {
+    return { out: await body(), importWarns };
+  } finally {
+    Logger.prototype.warn = original;
+  }
+}
+
 function executeCase(
   name: string,
   payload: (spec: Spec) => Promise<unknown> | unknown,
@@ -1728,9 +1774,12 @@ function executeCase(
       const preState = dumpAll();
       const { executeImport } = await import('@/lib/import/quilltap-import/execute');
       const run = () => executeImport(spec.userId, exportData as never, options as never);
-      const { out: result, repoLogs } = recordRepoLogs
-        ? await withRepoLogs(run)
-        : { out: await run(), repoLogs: undefined };
+      const {
+        out: { out: result, repoLogs },
+        importWarns,
+      } = await withImportWarns(async () =>
+        recordRepoLogs ? await withRepoLogs(run) : { out: await run(), repoLogs: undefined },
+      );
       await settle();
       return {
         kind: 'execute',
@@ -1740,6 +1789,7 @@ function executeCase(
         preState,
         state: dumpAll(),
         ...(repoLogs ? { repoLogs } : {}),
+        importWarns,
       };
     },
   };
@@ -2012,11 +2062,15 @@ function executePreppedCase(
       const preState = dumpAll();
       const { executeImport } = await import('@/lib/import/quilltap-import/execute');
       const run = () => executeImport(spec.userId, exportData as never, options as never);
-      const { out: result, repoLogs } = recordRepoLogs
-        ? await withRepoLogs(run)
-        : { out: await run(), repoLogs: undefined };
+      const {
+        out: { out: result, repoLogs },
+        importWarns,
+      } = await withImportWarns(async () =>
+        recordRepoLogs ? await withRepoLogs(run) : { out: await run(), repoLogs: undefined },
+      );
       await settle();
       return {
+        importWarns,
         kind: 'execute_prepped',
         prep,
         exportData,

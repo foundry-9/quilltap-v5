@@ -90,6 +90,16 @@ _Versions: core 0.0.1210._
 - The inform cancel's line moves from the api handler (wrong target, snake-case field, `sqlite error:` prefix) to the repository; the seat-removal `Could not drop pending informs` WARN is retired (unreachable in v4 — the DEBUG fires with `dropped_informs=0` instead).
 - `log_chat_create_validation_failure` folds its two `Error creating entity` copies onto the home.
 - `chat_informs_tier2_equivalence` gains a BEFORE DELETE trigger plant with per-op captured lines (red-first: v5 propagated where v4 answers 0) and two standing rows inserted out of posting order (the P4.151 survey's B1, mutation-proven); `fallback_home_guard` holds five more literals.
+#### 2026-10-05 — fix(import): nine import WARN lines v4 logs and v5 lacked (P4.148)
+
+_Versions: core 0.0.1218._
+
+The `.qtap` import now logs v4's WARN, with v4's fields in v4's order, for nine failure paths that only pushed a warning before: wardrobe item, prompt template, provider model, plugin config, instance setting, files folder, file, memory, and `Imported memories left unembedded` (`userId`, `memoryCount`, `reason`).
+
+- A wardrobe item refused for lack of a vault now carries v4's own message (`Cannot create wardrobe item: no Character Vault or Quilltap General mount is available. …`) instead of a v5-only sentence.
+- `system_import_state` records these nine messages on every execute case through v4's logger and compares v5's captured lines verbatim (35 cases; two fire, the rest are silence legs). Both firing cases were red on unported main.
+- Unit pins cover the seven lines no oracle case reaches; planted triggers force the failures and an un-planted run checks silence.
+
 #### 2026-10-05 — chore(db): create_with_properties asserts it is not handed a colour/icon it ignores; the capture rig's doc matches its output (P4.148)
 
 _Versions: core 0.0.1217._

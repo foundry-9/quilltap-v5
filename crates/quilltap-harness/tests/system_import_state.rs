@@ -922,6 +922,41 @@ fn compare_repo_logs(
     }
 }
 
+/// [P4.148 Tier 2 item 17] The nine WARNs v4's import logs that v5 had no twin
+/// for (the oracle's `IMPORT_WARN_MESSAGES`), each `"<message> k=v …"`.
+const IMPORT_WARN_MESSAGES: &[&str] = &[
+    "Failed to import wardrobe item",
+    "Failed to import prompt template",
+    "Failed to import provider model",
+    "Failed to import plugin config",
+    "Failed to import instance setting",
+    "Failed to import folder",
+    "Failed to import file",
+    "Failed to import memory",
+    "Imported memories left unembedded",
+];
+
+/// v5's captured WARN lines (`WARN <target> <message> k=v …`) for those
+/// messages, with the level and target dropped — the oracle's string shape.
+fn v5_import_warns(lines: &[String]) -> Vec<String> {
+    lines
+        .iter()
+        .filter_map(|l| {
+            let rest = l.strip_prefix("WARN ")?;
+            let (_target, rest) = rest.split_once(' ')?;
+            IMPORT_WARN_MESSAGES
+                .iter()
+                .any(|m| rest == *m || rest.starts_with(&format!("{m} ")))
+                .then(|| rest.to_string())
+        })
+        .collect()
+}
+
+/// How many cases compared the nine import WARNs, and how many lines v4 fired
+/// across them — asserted after the run (non-vacuity: the two firing cases).
+static IMPORT_WARN_CASES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static IMPORT_WARNS_FIRED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
 /// How many cases compared `repoLogs` — asserted after the run (the two chat
 /// refusal arms), so the pin cannot go vacuous by an oracle that stopped
 /// recording.
@@ -1806,6 +1841,22 @@ fn system_import_execute_state_equivalence() {
     // P4.148, the DB-error arm (`execute_chat_create_db_failure`: a SQLite
     // throw AFTER validation — `Error creating entity` + `Failed to create
     // chat` with `strictFailures`, NO `Data validation failed`; C2).
+    // [P4.148 Tier 2 item 17] The nine import WARNs compared on every execute
+    // case (35 at `07b8f0209`); v4 fires two lines across them —
+    // `execute_files_cross_instance`'s `Failed to import file` and
+    // `execute_memories_no_profile`'s `Imported memories left unembedded`; the
+    // other cases are silence legs. (The other seven lines fire on no oracle
+    // case; their unit pins live beside them in `services::quilltap_import`.)
+    assert_eq!(
+        IMPORT_WARN_CASES.load(Ordering::SeqCst),
+        35,
+        "cases comparing the import WARNs"
+    );
+    assert_eq!(
+        IMPORT_WARNS_FIRED.load(Ordering::SeqCst),
+        2,
+        "v4 import WARN lines fired"
+    );
     assert_eq!(
         REPO_LOG_CASES.load(Ordering::SeqCst),
         3,
@@ -2195,6 +2246,10 @@ fn run_execute_case(
     // runs on the WRITER thread (a thread-scoped subscriber on the test thread
     // would see nothing); `execute_import` is synchronous there.
     let capture_repo_logs = case.get("repoLogs").is_some();
+    // [P4.148 Tier 2 item 17] Every execute case records v4's nine
+    // `IMPORT_WARN_MESSAGES` lines — capture v5's for the same compare.
+    let capture_import_warns = case.get("importWarns").is_some();
+    let capture = capture_repo_logs || capture_import_warns;
     let db = open_db(&scratch);
     let (results, repo_lines) = db
         .write_blocking(move |ws| {
@@ -2223,7 +2278,7 @@ fn run_execute_case(
                 }
                 Ok(out)
             };
-            if capture_repo_logs {
+            if capture {
                 let (out, lines) = quilltap_core::test_support::captured_with(run_all);
                 Ok((out?, lines))
             } else {
@@ -2249,6 +2304,22 @@ fn run_execute_case(
             failures,
         );
         REPO_LOG_CASES.fetch_add(1, Ordering::SeqCst);
+    }
+    if capture_import_warns {
+        let want: Vec<String> = case["importWarns"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|w| w.as_str().map(str::to_string))
+            .collect();
+        let got = v5_import_warns(&repo_lines);
+        if got != want {
+            failures.push(format!(
+                "[{name}] the nine import WARN lines differ\n  rust:   {got:?}\n  oracle: {want:?}"
+            ));
+        }
+        IMPORT_WARN_CASES.fetch_add(1, Ordering::SeqCst);
+        IMPORT_WARNS_FIRED.fetch_add(want.len(), Ordering::SeqCst);
     }
     drop(db);
 

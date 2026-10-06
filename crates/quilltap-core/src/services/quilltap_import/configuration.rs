@@ -103,10 +103,16 @@ pub(super) fn import_prompt_templates(
             Ok(true) => imported += 1,
             Ok(false) => skipped += 1,
             Err(e) => {
+                let text = super::item_error_text(&e);
                 warnings.push(format!(
-                    "Failed to import prompt template \"{name}\": {}",
-                    super::item_error_text(&e)
+                    "Failed to import prompt template \"{name}\": {text}"
                 ));
+                // v4 `import-configuration.ts:78` (P4.148 Tier 2 item 17).
+                tracing::warn!(
+                    templateId = %super::id_of(template),
+                    error = %text,
+                    "Failed to import prompt template"
+                );
             }
         }
     }
@@ -149,10 +155,12 @@ pub(super) fn import_provider_models(
         match out {
             Ok(_) => imported += 1,
             Err(e) => {
+                let text = super::item_error_text(&e);
                 warnings.push(format!(
-                    "Failed to import provider model \"{model_id}\": {}",
-                    super::item_error_text(&e)
+                    "Failed to import provider model \"{model_id}\": {text}"
                 ));
+                // v4 `import-configuration.ts:119` (P4.148 Tier 2 item 17).
+                tracing::warn!(modelId = %model_id, error = %text, "Failed to import provider model");
                 skipped += 1;
             }
         }
@@ -206,10 +214,12 @@ pub(super) fn import_plugin_configs(
                 }
             }
             Err(e) => {
+                let text = super::item_error_text(&e);
                 warnings.push(format!(
-                    "Failed to import plugin config for \"{plugin_name}\": {}",
-                    super::item_error_text(&e)
+                    "Failed to import plugin config for \"{plugin_name}\": {text}"
                 ));
+                // v4 `import-configuration.ts:178` (P4.148 Tier 2 item 17).
+                tracing::warn!(pluginName = %plugin_name, error = %text, "Failed to import plugin config");
                 skipped += 1;
             }
         }
@@ -237,10 +247,12 @@ pub(super) fn import_instance_settings(
         {
             Ok(()) => imported += 1,
             Err(e) => {
+                let text = super::item_error_text(&e);
                 warnings.push(format!(
-                    "Failed to import instance setting \"{key}\": {}",
-                    super::item_error_text(&e)
+                    "Failed to import instance setting \"{key}\": {text}"
                 ));
+                // v4 `import-configuration.ts:219` (P4.148 Tier 2 item 17).
+                tracing::warn!(key = %key, error = %text, "Failed to import instance setting");
                 skipped += 1;
             }
         }

@@ -166779,3 +166779,35 @@ Mutation: reverting `projectId` → `project_id` reddens the entities pin.
   and records the `%` / `?` sigil rendering. Doc only.
 - Neutral: `groups_tier2`, `groups_routes`, the `groups` + import unit tests
   (54/0).
+
+### Unit 9 — the nine absent import WARN lines (Tier 2 item 17, R-E)
+
+- **The lines**, each with v4's fields in v4's order, the `error` bare (via
+  `item_error_text`): `Failed to import wardrobe item {wardrobeItemId,
+  characterId, error}`, `… prompt template {templateId}`, `… provider model
+  {modelId}`, `… plugin config {pluginName}`, `… instance setting {key}`,
+  `… folder {folderId, path}` (the FILES importer's — v4 logs none for the
+  document-store folder), `… file {fileId}`, `… memory {memoryId}`, and
+  `Imported memories left unembedded {userId, memoryCount, reason}` (before
+  the push, as v4's).
+- **The wardrobe `NoMount` arm's tail** is now v4's throw (`Cannot create
+  wardrobe item: ` + `NO_MOUNT_MESSAGE`, `wardrobe.repository.ts:346`) where
+  v5 pushed its own `character has no wardrobe vault` (survey row 3; the
+  three arms folded into one match feeding both the push and the WARN).
+- **Differential:** the oracle records the nine messages on EVERY `execute` /
+  `execute_prepped` case through `Logger.prototype.warn` as `"<message>
+  k=v …"` (`importWarns`); `system_import_state` captures v5's lines on those
+  cases and compares them verbatim. **35 cases compared; v4 fires TWO lines**
+  (`execute_files_cross_instance` — `Failed to import file fileId=… error=
+  Failed to upload file 'atlas-plates.bin': Project … has no linked …` — and
+  `execute_memories_no_profile` — `Imported memories left unembedded
+  userId=… memoryCount=3 reason=…`); every other case is a silence leg.
+  Asserted (35 / 2). **Red-first on unported core: exactly those two cases.**
+- **Unit pins** for the seven lines no oracle case reaches:
+  `quilltap_import::import_warn_pins::the_seven_unreached_import_warns_carry_
+  v4s_fields` (six lines through planted `BEFORE INSERT … RAISE(ABORT,
+  'planted: inserts refused')` triggers on a fresh-schema copy; an un-planted
+  run is silent) and `characters::warn_field_tests::a_failed_wardrobe_item_
+  warns_with_v4s_fields` (the `NoMount` arm; silence leg).
+- Observed, not ordered: v5's `Failed to resolve default embedding profile
+  after import` lacks v4's leading `userId` field (`execute.ts:347`).

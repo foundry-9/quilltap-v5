@@ -1189,6 +1189,14 @@ fn enqueue_imported_memory_embeddings(
     let (profile_id, provider) = match profile {
         Some((id, provider)) => (id, provider),
         None => {
+            // v4 `execute.ts:354` (P4.148 Tier 2 item 17): the WARN precedes the
+            // push, `{userId, memoryCount, reason}`.
+            tracing::warn!(
+                userId = %user_id,
+                memoryCount = memory_refs.len(),
+                reason = "no default embedding profile is configured",
+                "Imported memories left unembedded"
+            );
             warnings.push(format!(
                 "{} memories were imported without embeddings because no default \
                  embedding profile is configured; they will be indexed once one is.",
@@ -2491,5 +2499,130 @@ mod tests {
                 .any(|l| l.contains("Failed to get messages for chat")),
             "the informs pass read through the SWALLOWING get_messages; lines: {lines:#?}"
         );
+    }
+}
+
+/// [P4.148 Tier 2 item 17] Unit pins for the seven absent-v4 WARN lines no
+/// `system_import_state` case reaches (that family compares the other two —
+/// `Failed to import file`, `Imported memories left unembedded` — against v4 on
+/// every execute case). Fields and their order are v4's
+/// (`import-configuration.ts:78,119,178,219`, `import-files.ts:93`,
+/// `import-entities.ts:518`, `import-characters.ts:336`); the failure is a
+/// planted trigger refusing every INSERT, so the `error` is SQLite's bare
+/// sentence. Each line fires once; an un-planted run fires none.
+#[cfg(test)]
+mod import_warn_pins {
+    use super::*;
+    use rusqlite::Connection;
+    use serde_json::json;
+
+    fn conns(planted: bool) -> (Connection, Connection) {
+        let schema: Value =
+            serde_json::from_str(include_str!("../provisioning/fresh_schema.json")).unwrap();
+        let open = |part: &str| {
+            let conn = Connection::open_in_memory().unwrap();
+            for ddl in schema[part].as_array().unwrap() {
+                conn.execute_batch(ddl.as_str().unwrap()).unwrap();
+            }
+            conn
+        };
+        let main = open("main");
+        if planted {
+            for t in [
+                "prompt_templates",
+                "provider_models",
+                "plugin_configs",
+                "instance_settings",
+                "folders",
+                "memories",
+            ] {
+                main.execute_batch(&format!(
+                    "CREATE TRIGGER qt_no_{t} BEFORE INSERT ON \"{t}\" \
+                     BEGIN SELECT RAISE(ABORT, 'planted: inserts refused'); END"
+                ))
+                .unwrap();
+            }
+        }
+        (main, open("mountIndex"))
+    }
+
+    fn run_all(main: &Connection, mount: &Connection) -> Vec<String> {
+        let opts = ImportOptions::seed_defaults();
+        let mut id_maps = IdMaps::default();
+        id_maps.characters.set("c-src".into(), "c-new".into());
+        let mut w = Vec::new();
+        let ((), lines) = crate::test_support::captured_with(|| {
+            configuration::import_prompt_templates(
+                main,
+                "u1",
+                &[json!({ "id": "pt-src", "name": "T", "content": "c" })],
+                &opts,
+                &mut w,
+            )
+            .unwrap();
+            configuration::import_provider_models(
+                main,
+                &[json!({ "provider": "OPENAI", "modelId": "m-1", "displayName": "M" })],
+                &mut w,
+            )
+            .unwrap();
+            configuration::import_plugin_configs(
+                main,
+                "u1",
+                &[json!({ "pluginName": "qtap-plugin-x", "config": {} })],
+                &mut w,
+            )
+            .unwrap();
+            configuration::import_instance_settings(
+                main,
+                &[json!({ "key": "k", "value": "v" })],
+                &mut w,
+            )
+            .unwrap();
+            files::import_files(
+                main,
+                mount,
+                &crate::services::file_storage::NotConfiguredPixelCodec,
+                "u1",
+                &[],
+                &[json!({ "id": "fo-src", "path": "/A", "name": "A" })],
+                &opts,
+                &id_maps,
+                &mut w,
+            )
+            .unwrap();
+            memories::import_memories(
+                main,
+                &[json!({ "id": "m-src", "characterId": "c-src", "content": "x", "summary": "x" })],
+                &opts,
+                &id_maps,
+                &mut w,
+            )
+            .unwrap();
+        });
+        lines
+            .into_iter()
+            .filter(|l| l.starts_with("WARN "))
+            .collect()
+    }
+
+    #[test]
+    fn the_seven_unreached_import_warns_carry_v4s_fields() {
+        let (main, mount) = conns(true);
+        const E: &str = "error=planted: inserts refused";
+        let p = "WARN quilltap_core::services::quilltap_import";
+        assert_eq!(
+            run_all(&main, &mount),
+            vec![
+                format!("{p}::configuration Failed to import prompt template templateId=pt-src {E}"),
+                format!("{p}::configuration Failed to import provider model modelId=m-1 {E}"),
+                format!("{p}::configuration Failed to import plugin config pluginName=qtap-plugin-x {E}"),
+                format!("{p}::configuration Failed to import instance setting key=k {E}"),
+                format!("{p}::files Failed to import folder folderId=fo-src path=/A {E}"),
+                format!("{p}::memories Failed to import memory memoryId=m-src {E}"),
+            ]
+        );
+        let (main, mount) = conns(false);
+        assert_eq!(run_all(&main, &mount), Vec::<String>::new(), "silence leg");
     }
 }

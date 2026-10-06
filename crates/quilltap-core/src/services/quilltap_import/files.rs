@@ -126,10 +126,15 @@ fn import_folders(
             Ok(())
         })();
         if let Err(e) = out {
-            warnings.push(format!(
-                "Failed to import folder \"{path}\": {}",
-                err_msg(e)
-            ));
+            let text = err_msg(e);
+            warnings.push(format!("Failed to import folder \"{path}\": {text}"));
+            // v4 `import-files.ts:93` (P4.148 Tier 2 item 17).
+            tracing::warn!(
+                folderId = %id_of(folder),
+                path = %path,
+                error = %text,
+                "Failed to import folder"
+            );
         }
     }
 
@@ -393,6 +398,8 @@ pub(super) fn import_files(
                 warnings.push(format!(
                     "Failed to import file \"{original_filename}\": {text}"
                 ));
+                // v4 `import-files.ts:292` (P4.148 Tier 2 item 17).
+                tracing::warn!(fileId = %id_of(file), error = %text, "Failed to import file");
                 skipped += 1;
             }
         }
