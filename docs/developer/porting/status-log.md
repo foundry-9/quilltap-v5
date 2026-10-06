@@ -167587,3 +167587,87 @@ tree clean). Regen staging: `/tmp/p4151/`. **No version moves on any commit**
   GREEN; the OLD assert over the NEW corpus PANICS at the `baseUrl` unwrap.
 - Recipe (google line only): `cd /tmp/qt-v4-pin-p4151-07b8f0209/plugins/dist/qtap-plugin-google && npx tsx --tsconfig "$V4/tsconfig.json" "$V5W/harness/oracle/providers/record-stream-fixtures.mjs" --v4 "$V4" --provider google --cases "$V5W/harness/oracle/fixtures/streams/google_parts/cases.json" --fixtures-dir "$V5W/harness/oracle/fixtures/streams/google_parts" --out "$V5W/harness/oracle/fixtures/streams/google_parts/google.recorded.ndjson"`
   (Node 24, `V4` = the pin). Both families read the committed NDJSON (no env).
+
+### Unit D — the PDF `document` case + the wizard caller KEY pin + the REBUILT `character-generators-*` pair
+- **The PDF.** A hand-built, valid single-page PDF (`/tmp/p4151/mkpdf.py`, 713
+  bytes; uncompressed content stream with two `(…) Tj` lines) added to
+  `character-generators.json` as `f0000002-…-000000000015` `uploads/lore.pdf`
+  (`application/pdf`, `DOCUMENT`, `hexBody`; the `$comment` says five files).
+  No builder change (`hexBody` already carries arbitrary bytes). ⚠ The
+  builder's own header still says "four blobs" — `build-character-generators-
+  fixture.ts` is outside this lane's ownership; a one-word comment fix for the
+  unifier or a later smalls lane.
+- **The rebuild (R-C).** `character-generators-{main,mount}.db` rebuilt from the
+  pin (`node --import tsx build-character-generators-fixture.ts` → "2
+  characters, 5 files, 10 memories"); main 237,568 → 233,472 B, mount 192,512 →
+  196,608 B. **Baseline first:** all nine readers regenerated + run GREEN on the
+  OLD pair at the pin before anything moved. **Neutral rebuild:** with the
+  corpora unchanged, the three oracles regenerated over the rebuilt pair and
+  every reader GREEN (the NDJSON moved only by reminted vault ids — wizard 3,
+  ai-import 25, optimizer 20 rows; no reader hard-codes a minted id).
+- **The scripted converter, both sides (R-B).** The wizard and ai-import
+  oracle cases `jest.doMock('@/lib/mount-index/converters/pdf-converter')` so
+  `convertPdfBufferToText` answers the case's `pdfConverter` (throws when a
+  case reaches it unscripted), keep `extractPdfContent` + its fallback REAL,
+  and emit `pdfConverterCalls`; the Rust families install
+  `ScriptedTextExtractorGuard` with a counting `ScriptedPdfConverter` per case
+  (both are current-thread runtimes blocked on the test thread, so the
+  thread-local seam reaches `extract_file_content` — measured by the rows
+  passing and by the mutations below) and compare `pdfConverterCalls`.
+  Wizard rows: `stream_document_pdf_converter_text` (the converter answers the
+  EXACT text v4's real `pdf-parse` produced for this PDF, measured — incl. its
+  `-- 1 of 1 --` page marker, which the fallback can never produce: the
+  precedence row), `stream_document_pdf_converter_empty_falls_back` (`''`),
+  `json_document_pdf_converter_whitespace_falls_back` (`" \n\t "`, trimmed to
+  `''`; the non-streaming twin). AI-import rows:
+  `source_file_pdf_converter_text`, `source_file_pdf_converter_empty_falls_back`
+  (Summon From Lore's full path — Tier 2 item 11 LANDED: the corpus takes
+  `sourceFileIds`). Floors: wizard `pdf_rows >= 3` (`>= 2` via the fallback),
+  ai-import `pdf_rows >= 2`, each with exactly one converter call.
+- **The wizard caller KEY pin (P4.139 C2).** The oracle records
+  `sendMessage`'s second argument as `apiKey`; the Rust `ScriptedProvider` now
+  implements `send_message_keyed` (the wizard's leg) recording `api_key`
+  (`send_message` records `null`), and `normalize` NO LONGER strips `apiKey`.
+  Each call's key is asserted to be its own profile's (OPENAI_COMPATIBLE →
+  `sk-synthetic-mock-key`, OPENAI → `sk-synthetic-vision-key`), with floors
+  80 Local Mock / 4 Vision Mock keyed calls and ≥ 1 run using BOTH keys.
+- Green at the pin: wizard 40 cases / 84 calls / 3 PDF rows; ai-import 41
+  cases / 202 calls (the ajv-vs-jsonschema count tables UNMOVED — the PDF
+  rows add no divergent count); optimizer 28 cases; both web route tests.
+- **Mutations (each reverted; zero core hunks):** the vision leg kept on the
+  PRIMARY's key (`vision_api_key = key` dropped in `generators/wizard.rs`) →
+  wizard RED on `stream_gallery_vision_fallback` + `stream_vision_call_throws`
+  (`apiKey` mock vs vision — invisible while the family stripped the key);
+  the guard NOT armed (the arm's absence) → wizard RED on the 3 PDF rows,
+  ai-import RED on the 2; fallback-first in `extract_pdf_content` → wizard RED
+  on the 3, ai-import on the 2 (the text row's prompt, the empty rows'
+  `pdfConverterCalls` 0 ≠ 1).
+- **The NINE readers, re-run by name on this branch (all GREEN, final state):**
+  `character_wizard_tier3_equivalence`, `ai_import_tier3_equivalence`,
+  `character_optimizer_tier3_equivalence` (+ its `the_optimizer_route_
+  starting_line_carries_v4s_bag`), `crates/quilltap-web/tests/common/mod.rs`
+  (`materialize_generators_instance`) via `generators_wizard_routes` and
+  `characters_generators_routes` (1/1 each), the three oracle cases
+  (`character-wizard-tier3`, `ai-import-tier3`, `character-optimizer-tier3`
+  regenerated from the pin, 40 / 41 / 28 lines), and the optimizer spec
+  (`character-optimizer-tier3.json`, read by its case). Tooling references
+  (`migrate-memories-fixture-columns.ts:227`, a recipe line) are not readers.
+- **Tier 2 item 10 (a real-`pdf-parse` row) — NOT LANDED, measured.** Under
+  the family's jest invocation at the pin, `pdf-parse` LOADS but `getText()`
+  fails: `Setting up fake worker failed: "A dynamic import callback was
+  invoked without --experimental-vm-modules"` (so v4's real converter answers
+  `''` and takes the fallback — an accidental parity, not a pdf-parse proof).
+  With `NODE_OPTIONS=--experimental-vm-modules` it parses the PDF (the text the
+  scripted rows now use). That flag would change the WHOLE oracle run's module
+  semantics and the committed recipe, which R-B does not license — deferred
+  for a ruling.
+- Regen recipe (each family's header, unchanged): stage the case + spec +
+  corpus in a `/tmp` mirror (this lane: `/tmp/p4151/cg-oracle-<short>`), `cd`
+  the pin, `QT_FIXTURE_CG_MAIN=$V5W/crates/quilltap-web/tests/fixtures/character-generators-main.db
+  QT_FIXTURE_CG_MOUNT=…-mount.db QT_ORACLE_OUT=… npx jest --silent
+  --watchman=false --testTimeout=300000 --roots "$PWD" --roots "$TMPO/cases"
+  -- <case>`; run with `QT_ORACLE_CHARACTER_WIZARD` / `QT_ORACLE_AI_IMPORT` /
+  `QT_ORACLE_CHARACTER_OPTIMIZER`. Rebuild: the builder header's recipe.
+- **§S.4:** the unifier regenerates the three oracles and re-runs all nine
+  readers by name on the union (the pair's vault ids remint on any rebuild;
+  nobody else rebuilt the pair this round).

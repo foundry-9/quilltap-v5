@@ -17,9 +17,21 @@
 //!     context prompt, the field prompts and the image bytes are the unit;
 //!   * the `[CharacterWizard]` log lines (level + message + context).
 //!
-//! Not compared: the api key v4 hands `sendMessage` and the `CHARACTER_WIZARD`
-//! `llm_logs` rows (no llm-logs partition on either side). The dispatch's
-//! `{ terminal }` payload is asserted against the last drained frame.
+//! P4.151 D (P4.139 C2): every recorded call ALSO carries `apiKey` — v4's
+//! `sendMessage(params, apiKey)` second argument, v5's
+//! `send_message_keyed(…, api_key, …)` — so the primary call and the vision
+//! call are pinned to their OWN profile's key (the fixture's two keys differ).
+//! And a PDF `document` source runs under a SCRIPTED converter on both sides
+//! (v4: `convertPdfBufferToText` doMocked to the case's `pdfConverter`; v5:
+//! `ScriptedTextExtractorGuard` armed with the same script — this family is a
+//! current-thread runtime blocked on the test thread, so the thread-local seam
+//! reaches `extract_file_content`), with the number of converter calls a
+//! comparand: parity of the converter-first precedence and of the regex
+//! fallback, never v4's real `pdf-parse` (it cannot run under this jest
+//! invocation — measured, recorded in the P4.151 lane record).
+//!
+//! The dispatch's `{ terminal }` payload is asserted against the last drained
+//! frame.
 //!
 //! Regenerate the oracle (Node 24, from the v4 checkout — see the .ts header):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
@@ -53,6 +65,7 @@ use quilltap_core::api::generators_wizard::{
 };
 use quilltap_core::api::types::{ErrorKind, Event, Response};
 use quilltap_core::db::runtime::{Db, DbPaths};
+use quilltap_core::generators::file_content::ScriptedTextExtractorGuard;
 use quilltap_core::generators::wizard::{
     run_character_wizard, run_character_wizard_streaming, OnProgress, WizardResult,
 };
@@ -61,6 +74,7 @@ use quilltap_core::model::completion::{
     CompletionResponse,
 };
 use quilltap_core::services::file_storage::StorageBackend;
+use quilltap_core::services::mount_index::converters::DocumentTextExtractor;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use tokio::sync::broadcast;
@@ -94,6 +108,9 @@ struct Case {
     action: String,
     body: Value,
     calls: Vec<CallSpec>,
+    /// P4.151 D: the scripted PDF converter answer (absent = no script).
+    #[serde(default, rename = "pdfConverter")]
+    pdf_converter: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -115,6 +132,8 @@ struct OracleRow {
     log_lines: Vec<Value>,
     /// P4.85 item 10 — `{type: count}`, zeroes dropped.
     llm_log_counts: Value,
+    /// P4.151 D — how many times the PDF converter was reached.
+    pdf_converter_calls: u64,
 }
 
 fn oracle_dir() -> PathBuf {
@@ -176,6 +195,23 @@ impl StorageBackend for NoDiskBackend {
     }
 }
 
+/// P4.151 D: v5's twin of the oracle's doMocked `convertPdfBufferToText` —
+/// answers the case's script and counts the calls. With no script it answers
+/// `''` (the refusing default's answer), where v4's mock throws: a case that
+/// reaches a PDF unscripted diverges loudly instead of passing by accident.
+struct ScriptedPdfConverter {
+    script: Option<String>,
+    calls: Arc<std::sync::atomic::AtomicU64>,
+}
+
+impl DocumentTextExtractor for ScriptedPdfConverter {
+    fn extract(&self, _bytes: &[u8], file_type: &str) -> String {
+        assert_eq!(file_type, "pdf", "only the PDF arm reaches the converter");
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.script.clone().unwrap_or_default()
+    }
+}
+
 /// The model seam: scripted BY CALL INDEX (the oracle's shape), recording
 /// every request as the oracle records it — attachments as
 /// `{id, filename, mimeType, data}`.
@@ -191,6 +227,31 @@ impl CompletionProvider for ScriptedProvider {
         &self,
         provider: &str,
         base_url: Option<&str>,
+        params: &CompletionParams,
+    ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + Send {
+        self.answer(provider, base_url, None, params)
+    }
+
+    /// P4.151 D (P4.139 C2): the profile-bound leg the wizard actually takes —
+    /// the key is recorded where v4's recorder puts `sendMessage`'s second
+    /// argument.
+    fn send_message_keyed(
+        &self,
+        provider: &str,
+        base_url: Option<&str>,
+        api_key: &str,
+        params: &CompletionParams,
+    ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + Send {
+        self.answer(provider, base_url, Some(api_key), params)
+    }
+}
+
+impl ScriptedProvider {
+    fn answer(
+        &self,
+        provider: &str,
+        base_url: Option<&str>,
+        api_key: Option<&str>,
         params: &CompletionParams,
     ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + Send {
         let messages: Vec<Value> = params
@@ -215,6 +276,7 @@ impl CompletionProvider for ScriptedProvider {
         }
         self.calls.lock().unwrap().push(json!({
             "provider": provider,
+            "apiKey": api_key,
             "baseUrl": base_url,
             "model": params.model,
             "temperature": params.temperature,
@@ -451,13 +513,6 @@ fn canon_numbers(v: &mut Value) {
 
 fn normalize(mut v: Value) -> String {
     canon_numbers(&mut v);
-    if let Some(calls) = v.get_mut("calls").and_then(Value::as_array_mut) {
-        for c in calls {
-            if let Some(o) = c.as_object_mut() {
-                o.remove("apiKey");
-            }
-        }
-    }
     serde_json::to_string_pretty(&sorted(&v)).unwrap()
 }
 
@@ -505,6 +560,11 @@ fn run_case(spec: &Spec, c: &Case) -> Value {
         .build()
         .unwrap();
     let streaming = c.action == "ai-wizard-stream";
+    let pdf_calls = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let _pdf_guard = ScriptedTextExtractorGuard::install(Arc::new(ScriptedPdfConverter {
+        script: c.pdf_converter.clone(),
+        calls: pdf_calls.clone(),
+    }));
     let (response, lines) = quilltap_core::test_support::captured_with(|| {
         rt.block_on(async {
             if streaming {
@@ -559,6 +619,7 @@ fn run_case(spec: &Spec, c: &Case) -> Value {
         "calls": calls,
         "logLines": log_lines,
         "llmLogCounts": counts,
+        "pdfConverterCalls": pdf_calls.load(std::sync::atomic::Ordering::SeqCst),
     })
 }
 
@@ -599,6 +660,10 @@ fn character_wizard_matches_oracle() {
     let mut failed: Vec<String> = Vec::new();
     let (mut model_calls, mut frames, mut vision_calls, mut zod_rows, mut json_rows) =
         (0usize, 0usize, 0usize, 0usize, 0usize);
+    // P4.151 D: the key pin and the PDF rows must still be ASKED.
+    let (mut primary_keyed, mut vision_keyed, mut pdf_rows, mut pdf_fallback_rows) =
+        (0usize, 0usize, 0usize, 0usize);
+    let mut split_key_rows = 0usize;
     for c in &corpus.cases {
         let want_row = &oracle[&c.name];
         assert_raw_sse_decodes_to_events(&c.name, want_row.raw_sse.as_deref(), &want_row.events);
@@ -617,6 +682,48 @@ fn character_wizard_matches_oracle() {
         if want_row.status == 400 {
             zod_rows += 1;
         }
+        // Each fixture profile has its own provider, so a call's provider names
+        // the profile whose key it must carry.
+        let mut case_keys = BTreeSet::new();
+        for call in &want_row.calls {
+            let want_key = match call["provider"].as_str() {
+                Some("OPENAI_COMPATIBLE") => "sk-synthetic-mock-key",
+                Some("OPENAI") => "sk-synthetic-vision-key",
+                other => panic!("{}: unexpected provider {other:?}", c.name),
+            };
+            assert_eq!(
+                call["apiKey"].as_str(),
+                Some(want_key),
+                "{}: a {} call must carry its own profile's key",
+                c.name,
+                call["provider"]
+            );
+            if want_key == "sk-synthetic-mock-key" {
+                primary_keyed += 1;
+            } else {
+                vision_keyed += 1;
+            }
+            case_keys.insert(want_key);
+        }
+        // The C2 shape: a blind primary + a vision profile in ONE run, each
+        // leg on its own key.
+        if case_keys.len() == 2 {
+            split_key_rows += 1;
+        }
+        if want_row.pdf_converter_calls > 0 {
+            assert_eq!(
+                want_row.pdf_converter_calls, 1,
+                "{}: one PDF source, one converter call",
+                c.name
+            );
+            pdf_rows += 1;
+            if c.pdf_converter
+                .as_deref()
+                .is_some_and(|t| t.trim().is_empty())
+            {
+                pdf_fallback_rows += 1;
+            }
+        }
         if c.action == "ai-wizard" && want_row.status == 200 {
             json_rows += 1;
         }
@@ -628,6 +735,7 @@ fn character_wizard_matches_oracle() {
             "calls": want_row.calls,
             "logLines": want_row.log_lines,
             "llmLogCounts": want_row.llm_log_counts,
+            "pdfConverterCalls": want_row.pdf_converter_calls,
         });
         let (g, w) = (normalize(got), normalize(want));
         if g != w {
@@ -654,8 +762,17 @@ fn character_wizard_matches_oracle() {
         json_rows >= 3,
         "the oracle recorded only {json_rows} non-streaming results"
     );
+    assert!(
+        primary_keyed >= 60 && vision_keyed >= 3 && split_key_rows >= 1,
+        "the key pin must still be asked: {primary_keyed} Local-Mock-keyed, {vision_keyed} \
+         Vision-Mock-keyed calls, {split_key_rows} run(s) using both keys"
+    );
+    assert!(
+        pdf_rows >= 3 && pdf_fallback_rows >= 2,
+        "the PDF document rows must still be asked: {pdf_rows} rows ({pdf_fallback_rows} via the fallback)"
+    );
     eprintln!(
-        "character_wizard_tier3_equivalence: {} cases, {model_calls} model calls ({vision_calls} vision), {frames} frames, {zod_rows} Zod refusals",
+        "character_wizard_tier3_equivalence: {} cases, {model_calls} model calls ({vision_calls} vision; keys {primary_keyed} Local Mock / {vision_keyed} Vision Mock, {split_key_rows} split-key runs), {frames} frames, {zod_rows} Zod refusals, {pdf_rows} PDF rows",
         corpus.cases.len()
     );
     assert!(

@@ -24,6 +24,11 @@
  *   - `@/lib/startup` `isPluginSystemInitialized` → true; the provider registry
  *     is REAL (`initializeProviderRegistry` over the dist plugins).
  *   - `ensureProcessorRunning` no-op'd.
+ *   - P4.151 D: `@/lib/mount-index/converters/pdf-converter`
+ *     `convertPdfBufferToText` → the case's `pdfConverter` script (v5 arms the
+ *     same script through `ScriptedTextExtractorGuard`); the count of converter
+ *     calls is a comparand (`pdfConverterCalls`). Each recorded call also
+ *     carries `apiKey` — `sendMessage`'s second argument (P4.139 C2).
  * `fileStorageManager.downloadFile`, `extractFileContent`,
  * P4.85 item 9: each row also carries `rawSse` — the response body VERBATIM,
  * beside the decoded `events`, so the K0 re-framer's framing is diffed rather
@@ -69,6 +74,14 @@ interface CaseSpec {
   action: 'ai-wizard' | 'ai-wizard-stream';
   body: unknown;
   calls: CallSpec[];
+  /**
+   * P4.151 D: what the PDF converter (`convertPdfBufferToText`, the one
+   * `pdf-parse` caller) answers for this case. v5 arms the SAME script on its
+   * `DocumentTextExtractor` seam (`ScriptedTextExtractorGuard`). A case that
+   * reaches the converter without one throws — loud on v4's side, a fallback
+   * mismatch on v5's.
+   */
+  pdfConverter?: string;
 }
 
 interface Corpus {
@@ -84,6 +97,8 @@ interface RecordedAttachment {
 
 interface CannedCall {
   provider: string;
+  /** P4.151 D (P4.139 C2): `sendMessage`'s second argument — the profile's key. */
+  apiKey: string | null;
   baseUrl: string | null;
   model: string;
   temperature: number | null;
@@ -173,6 +188,26 @@ async function runCase(
     return { __esModule: true, ...actual, ensureProcessorRunning: () => undefined };
   });
 
+  // P4.151 D: the PDF converter, scripted per case (the real `pdf-parse`
+  // cannot run under this jest invocation — measured: its pdfjs fake worker
+  // needs `--experimental-vm-modules`). `extractPdfContent`, its fallback and
+  // its log lines stay REAL.
+  let pdfConverterCalls = 0;
+  jest.doMock('@/lib/mount-index/converters/pdf-converter', () => {
+    const actual = jest.requireActual('@/lib/mount-index/converters/pdf-converter');
+    return {
+      __esModule: true,
+      ...actual,
+      convertPdfBufferToText: async () => {
+        pdfConverterCalls += 1;
+        if (c.pdfConverter === undefined) {
+          throw new Error(`case ${c.name} reached the PDF converter with no script`);
+        }
+        return c.pdfConverter;
+      },
+    };
+  });
+
   // The model seam: scripted by call index, recording every request.
   const calls: CannedCall[] = [];
   let callIndex = 0;
@@ -182,7 +217,8 @@ async function runCase(
       __esModule: true,
       ...actual,
       createLLMProvider: async (provider: string, baseUrl?: string) => ({
-        sendMessage: async (params: {
+        sendMessage: async (
+          params: {
           model: string;
           messages: Array<{
             role: string;
@@ -192,9 +228,12 @@ async function runCase(
           temperature?: number;
           maxTokens?: number;
           profileParameters?: unknown;
-        }) => {
+          },
+          apiKey?: string,
+        ) => {
           calls.push({
             provider,
+            apiKey: apiKey ?? null,
             baseUrl: baseUrl ?? null,
             model: params.model,
             temperature: params.temperature ?? null,
@@ -313,7 +352,18 @@ async function runCase(
       body = await response.json();
     }
     const llmLogCounts = llmLogDelta(llmLogsBefore, await llmLogTotals());
-    return { name: c.name, action: c.action, status, body, rawSse, events, calls, logLines, llmLogCounts };
+    return {
+      name: c.name,
+      action: c.action,
+      status,
+      body,
+      rawSse,
+      events,
+      calls,
+      logLines,
+      llmLogCounts,
+      pdfConverterCalls,
+    };
   } finally {
     for (const spy of spies) spy.mockRestore();
     await closeDatabase();

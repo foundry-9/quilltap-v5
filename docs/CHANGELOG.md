@@ -255,6 +255,12 @@ P4.150 B (the P4.D253 OPEN item). `RefusingTextExtractor`'s stderr notice said t
 _No crate versions bumped._
 
 P4.150 A4. `qtap_schema_embed_guard` and `public_schemas_vendor_guard` now locate the v4 checkout through `QT_V4_CHECKOUT` first (the variable every pinned gate exports and the three other live-checkout guards read), keeping `QT_V4_ROOT` as a legacy alias, then `$HOME/source/quilltap-server`. A pinned gate no longer compares these two against a dirty live checkout. The precedence is a pure `locate_v4_root` with a unit pin in each file; both guards green against the `07b8f0209` pin with only `QT_V4_CHECKOUT` set, and both SKIP on an empty directory (proving the variable is read).
+#### 2026-10-05 — test(harness): add PDF document rows to the wizard and AI-import tier-3 corpora, pin the wizard's per-leg API key, rebuild the character-generators pair (P4.151 D)
+
+_No crate versions bumped._
+
+Harness and fixtures only (P4.151 D). The `character-generators` fixture spec gains a fifth upload: a small real text PDF (`lore.pdf`, uncompressed content stream). The committed `character-generators-{main,mount}.db` pair is rebuilt from v4's own repositories at `07b8f0209`, which remints the vault ids. The AI Wizard corpus gains three PDF `document` rows and the AI Import corpus gains two PDF source-file rows. Both sides use a scripted PDF converter: v4 mocks `convertPdfBufferToText`, v5 arms `ScriptedTextExtractorGuard`, and the converter call count is compared. That covers the converter-first precedence, using the text v4's real `pdf-parse` produces for this file, and the fallback on an empty or whitespace answer. The wizard family also records and compares the API key each model call carries (v4's `sendMessage` second argument), so the primary and vision legs are each pinned to their own profile's key; previously the key was stripped. All nine readers of the pair were re-run green by name. No version moves.
+
 #### 2026-10-05 — test(harness): commit the Google incomplete-tail stream row and select catch lines by target (P4.151 C)
 
 _No crate versions bumped._

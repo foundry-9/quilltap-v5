@@ -714,6 +714,63 @@
         2
       ],
       "calls": []
+    },
+    {
+      "name": "stream_document_pdf_converter_text",
+      "$comment": "P4.151 D: a PDF document source; the converter answers the text v4's REAL pdf-parse produced for this file (measured outside this jest run), so the converter's text — not the regex fallback's — reaches the prompt. The precedence row: the fallback could ALSO read this PDF, and its text differs (no `-- 1 of 1 --`).",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "document",
+        "documentId": "f0000002-0000-4000-8000-000000000015",
+        "characterName": "Mira",
+        "background": "",
+        "fieldsToGenerate": [
+          "identity"
+        ]
+      },
+      "pdfConverter": "Mira Lanternwright, keeper of the Saltmere harbor lights.\nShe trims every wick at dusk and logs the tide in a green ledger.\n\n-- 1 of 1 --\n\n",
+      "calls": [
+        "Mira trims the wicks at dusk."
+      ]
+    },
+    {
+      "name": "stream_document_pdf_converter_empty_falls_back",
+      "$comment": "P4.151 D: the converter answers '' (what v4's `convertPdfBufferToText` answers on any failure, and what v5's refusing default answers): both sides run the native regex fallback over the uncompressed content stream.",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "document",
+        "documentId": "f0000002-0000-4000-8000-000000000015",
+        "characterName": "Mira",
+        "background": "",
+        "fieldsToGenerate": [
+          "title"
+        ]
+      },
+      "pdfConverter": "",
+      "calls": [
+        "The Wick-Trimmer"
+      ]
+    },
+    {
+      "name": "json_document_pdf_converter_whitespace_falls_back",
+      "$comment": "P4.151 D: a whitespace-only converter answer is `.trim()`med to '' and so also takes the fallback (the non-streaming twin).",
+      "action": "ai-wizard",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "document",
+        "documentId": "f0000002-0000-4000-8000-000000000015",
+        "characterName": "Mira",
+        "background": "",
+        "fieldsToGenerate": [
+          "manifesto"
+        ]
+      },
+      "pdfConverter": " \n\t ",
+      "calls": [
+        "You keep the harbor lit."
+      ]
     }
   ]
 }

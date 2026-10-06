@@ -58,6 +58,12 @@ interface CaseSpec {
   name: string;
   body: unknown;
   calls: CallSpec[];
+  /**
+   * P4.151 D: what the PDF converter (`convertPdfBufferToText`) answers for
+   * this case; v5 arms the same script through `ScriptedTextExtractorGuard`.
+   * Reaching the converter without one throws.
+   */
+  pdfConverter?: string;
 }
 
 interface Corpus {
@@ -165,6 +171,26 @@ async function runCase(
   jest.doMock('@/lib/background-jobs/processor', () => {
     const actual = jest.requireActual('@/lib/background-jobs/processor');
     return { __esModule: true, ...actual, ensureProcessorRunning: () => undefined };
+  });
+
+  // P4.151 D: the PDF converter, scripted per case (the real `pdf-parse`
+  // cannot run under this jest invocation — measured: its pdfjs fake worker
+  // needs `--experimental-vm-modules`). `extractPdfContent`, its fallback and
+  // its log lines stay REAL; the call count is a comparand.
+  let pdfConverterCalls = 0;
+  jest.doMock('@/lib/mount-index/converters/pdf-converter', () => {
+    const actual = jest.requireActual('@/lib/mount-index/converters/pdf-converter');
+    return {
+      __esModule: true,
+      ...actual,
+      convertPdfBufferToText: async () => {
+        pdfConverterCalls += 1;
+        if (c.pdfConverter === undefined) {
+          throw new Error(`case ${c.name} reached the PDF converter with no script`);
+        }
+        return c.pdfConverter;
+      },
+    };
   });
 
   const calls: CannedCall[] = [];
@@ -306,7 +332,17 @@ async function runCase(
       body = await response.json();
     }
     unfreezeClock();
-    return { name: c.name, status, body, rawSse, events, calls, logLines, llmLogCalls };
+    return {
+      name: c.name,
+      status,
+      body,
+      rawSse,
+      events,
+      calls,
+      logLines,
+      llmLogCalls,
+      pdfConverterCalls,
+    };
   } finally {
     unfreezeClock();
     for (const spy of spies) spy.mockRestore();

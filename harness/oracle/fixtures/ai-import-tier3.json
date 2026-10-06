@@ -679,6 +679,46 @@
         "sourceFileIds": 5
       },
       "calls": []
+    },
+    {
+      "name": "source_file_pdf_converter_text",
+      "$comment": "P4.151 D: Summon From Lore over a PDF source file, the converter answering the text v4's REAL pdf-parse produced for it (measured outside this jest run) \u2014 the converter's text, not the fallback's, reaches the source material (the fallback could ALSO read this PDF and answers differently).",
+      "body": {
+        "profileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceFileIds": [
+          "f0000002-0000-4000-8000-000000000015"
+        ]
+      },
+      "pdfConverter": "Mira Lanternwright, keeper of the Saltmere harbor lights.\nShe trims every wick at dusk and logs the tide in a green ledger.\n\n-- 1 of 1 --\n\n",
+      "calls": [
+        "{\"name\":\"Mira Lanternwright\",\"title\":\"The Harbor Keeper\",\"identity\":\"Mira keeps the lanterns of Saltmere.\",\"description\":\"She hums while she works.\",\"manifesto\":\"You keep the lanterns lit.\",\"personality\":\"You fear deep water.\",\"scenario\":\"The harbor at dusk.\"}",
+        "{\"firstMessage\":\"*She looks up.* Evening.\",\"exampleDialogues\":\"{{char}}: Hm.\\n{{user}}: Hi.\"}",
+        "[{\"name\":\"Main\",\"content\":\"You are Mira.\",\"isDefault\":true},{\"name\":\"Terse\",\"content\":\"Few words.\",\"isDefault\":false}]",
+        "{\"headAndShouldersPrompt\":\"weathered face, grey eyes\",\"shortPrompt\":\"grey eyes, white hair\",\"mediumPrompt\":\"m\",\"longPrompt\":\"l\",\"completePrompt\":\"c\",\"fullDescription\":\"## Overview\\nSmall.\"}",
+        "[{\"title\":\"Lantern Coat\",\"description\":\"An oilskin coat.\",\"types\":[\"top\"],\"isDefault\":true},{\"title\":\"Harbor Kit\",\"description\":\"The rig.\",\"types\":[\"top\"],\"components\":[\"lantern coat\"],\"replace\":true}]",
+        "{\"pronouns\":{\"subject\":\"she\",\"object\":\"her\",\"possessive\":\"hers\"},\"aliases\":[\"Keeper\"]}",
+        "[{\"content\":\"Lit the lamps in the storm.\",\"summary\":\"Storm lamps.\",\"keywords\":[\"storm\"],\"importance\":0.9},{\"content\":\"Pays in stories.\",\"summary\":\"Stories.\",\"keywords\":[],\"importance\":1.4}]"
+      ]
+    },
+    {
+      "name": "source_file_pdf_converter_empty_falls_back",
+      "$comment": "P4.151 D: the converter answers '' (v4's answer on any converter failure; v5's refusing default's answer): both sides scrape the uncompressed content stream with the native fallback.",
+      "body": {
+        "profileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceFileIds": [
+          "f0000002-0000-4000-8000-000000000015"
+        ]
+      },
+      "pdfConverter": "",
+      "calls": [
+        "{\"name\":\"Mira Lanternwright\",\"title\":\"The Harbor Keeper\",\"identity\":\"Mira keeps the lanterns of Saltmere.\",\"description\":\"She hums while she works.\",\"manifesto\":\"You keep the lanterns lit.\",\"personality\":\"You fear deep water.\",\"scenario\":\"The harbor at dusk.\"}",
+        "{\"firstMessage\":\"*She looks up.* Evening.\",\"exampleDialogues\":\"{{char}}: Hm.\\n{{user}}: Hi.\"}",
+        "[{\"name\":\"Main\",\"content\":\"You are Mira.\",\"isDefault\":true},{\"name\":\"Terse\",\"content\":\"Few words.\",\"isDefault\":false}]",
+        "{\"headAndShouldersPrompt\":\"weathered face, grey eyes\",\"shortPrompt\":\"grey eyes, white hair\",\"mediumPrompt\":\"m\",\"longPrompt\":\"l\",\"completePrompt\":\"c\",\"fullDescription\":\"## Overview\\nSmall.\"}",
+        "[{\"title\":\"Lantern Coat\",\"description\":\"An oilskin coat.\",\"types\":[\"top\"],\"isDefault\":true},{\"title\":\"Harbor Kit\",\"description\":\"The rig.\",\"types\":[\"top\"],\"components\":[\"lantern coat\"],\"replace\":true}]",
+        "{\"pronouns\":{\"subject\":\"she\",\"object\":\"her\",\"possessive\":\"hers\"},\"aliases\":[\"Keeper\"]}",
+        "[{\"content\":\"Lit the lamps in the storm.\",\"summary\":\"Storm lamps.\",\"keywords\":[\"storm\"],\"importance\":0.9},{\"content\":\"Pays in stories.\",\"summary\":\"Stories.\",\"keywords\":[],\"importance\":1.4}]"
+      ]
     }
   ]
 }

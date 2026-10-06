@@ -94,12 +94,14 @@ use quilltap_core::api::generators_wizard::{
 use quilltap_core::api::types::{ErrorKind, Event, Response};
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::generators::ai_import::run_ai_import_streaming;
+use quilltap_core::generators::file_content::ScriptedTextExtractorGuard;
 use quilltap_core::generators::wizard::{OnProgress, WizardResult};
 use quilltap_core::model::completion::{
     CannedCompletionProvider, CompletionError, CompletionParams, CompletionProvider,
     CompletionResponse,
 };
 use quilltap_core::services::file_storage::StorageBackend;
+use quilltap_core::services::mount_index::converters::DocumentTextExtractor;
 use regex::Regex;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -202,6 +204,9 @@ struct Case {
     name: String,
     body: Value,
     calls: Vec<CallSpec>,
+    /// P4.151 D: the scripted PDF converter answer (absent = no script).
+    #[serde(default, rename = "pdfConverter")]
+    pdf_converter: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -225,6 +230,25 @@ struct OracleRow {
     log_lines: Vec<Value>,
     /// v4's REAL `logLLMCall` arguments, recorded (P4.86 tier-2 item 10).
     llm_log_calls: Vec<Value>,
+    /// P4.151 D — how many times the PDF converter was reached.
+    pdf_converter_calls: u64,
+}
+
+/// P4.151 D: v5's twin of the oracle's doMocked `convertPdfBufferToText` —
+/// answers the case's script and counts the calls. With no script it answers
+/// `''` (the refusing default's answer) where v4's mock throws, so an
+/// unscripted PDF diverges loudly.
+struct ScriptedPdfConverter {
+    script: Option<String>,
+    calls: Arc<std::sync::atomic::AtomicU64>,
+}
+
+impl DocumentTextExtractor for ScriptedPdfConverter {
+    fn extract(&self, _bytes: &[u8], file_type: &str) -> String {
+        assert_eq!(file_type, "pdf", "only the PDF arm reaches the converter");
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.script.clone().unwrap_or_default()
+    }
 }
 
 fn oracle_dir() -> PathBuf {
@@ -734,6 +758,13 @@ fn run_case(spec: &Spec, corpus: &Corpus, c: &Case) -> Value {
         .enable_all()
         .build()
         .unwrap();
+    // The thread-local seam: this family blocks a current-thread runtime on the
+    // test thread, so the guard reaches `extract_file_content`.
+    let pdf_calls = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let _pdf_guard = ScriptedTextExtractorGuard::install(Arc::new(ScriptedPdfConverter {
+        script: c.pdf_converter.clone(),
+        calls: pdf_calls.clone(),
+    }));
     let (response, lines) = quilltap_core::test_support::captured_with(|| {
         rt.block_on(ai_import_stream(
             Some(&driver),
@@ -850,6 +881,7 @@ fn run_case(spec: &Spec, corpus: &Corpus, c: &Case) -> Value {
         "calls": calls,
         "logLines": log_lines,
         "llmLogCalls": llm_log_calls,
+        "pdfConverterCalls": pdf_calls.load(std::sync::atomic::Ordering::SeqCst),
     })
 }
 
@@ -889,6 +921,7 @@ fn ai_import_matches_oracle() {
 
     let mut failed: Vec<String> = Vec::new();
     let (mut v4_counts, mut v5_counts): (Vec<String>, Vec<String>) = (Vec::new(), Vec::new());
+    let mut pdf_rows = 0usize;
     let (mut model_calls, mut frames, mut validated, mut refusals, mut fatal) =
         (0usize, 0usize, 0usize, 0usize, 0usize);
     let (mut repair_attempts, mut repair_successes) = (0usize, 0usize);
@@ -940,7 +973,16 @@ fn ai_import_matches_oracle() {
             "calls": want_row.calls,
             "logLines": want_row.log_lines,
             "llmLogCalls": want_row.llm_log_calls,
+            "pdfConverterCalls": want_row.pdf_converter_calls,
         });
+        if want_row.pdf_converter_calls > 0 {
+            assert_eq!(
+                want_row.pdf_converter_calls, 1,
+                "{}: one PDF, one call",
+                c.name
+            );
+            pdf_rows += 1;
+        }
         let ((g, g_reached), (w, w_reached)) = (
             normalize(got, "v5", &c.name, &mut v5_counts),
             normalize(want, "v4", &c.name, &mut v4_counts),
@@ -995,6 +1037,10 @@ fn ai_import_matches_oracle() {
         "the oracle recorded only {refusals} route refusals"
     );
     assert!(fatal >= 4, "the oracle recorded only {fatal} fatal runs");
+    assert!(
+        pdf_rows >= 2,
+        "the PDF source-file rows must still be asked ({pdf_rows}) — P4.151 D"
+    );
     eprintln!(
         "ai_import_tier3_equivalence: {} cases, {model_calls} model calls, {frames} frames, \
          {validated} validations passed, {repair_attempts} repair attempts \
