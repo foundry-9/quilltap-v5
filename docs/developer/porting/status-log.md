@@ -166567,3 +166567,13 @@ survey Q7).
 - **Neutral, run at the pin:** `qtap_import_equivalence` (warnings verbatim)
   ok, `system_import_equivalence` ok, `project_background_display_mode_
   equivalence` ok, `quilltap-core --lib quilltap_import` 44/0.
+
+### Unit 2 — `double_option`'s neutral home (Tier 1 item 6, R-G)
+
+NEW `db/serde_tristate.rs` (+ ONE `pub mod` line in `db/mod.rs`) holds the fn
+with a unit test of the absent / `null` / value triple;
+`services/mount_index/sync/types.rs` replaces its fn by ONE `pub use` line;
+`db/groups.rs`, `db/projects.rs`, `groups_tier2_equivalence.rs:72`
+repointed. Neutral: `projects_tier2` 1/0, `groups_tier2` 2/0 at the pin, the
+sync unit tests 7/0. `api/types.rs` / `api/memories.rs`' private copies stay
+(FROZEN — Tier 3 item 21).

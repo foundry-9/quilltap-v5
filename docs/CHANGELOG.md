@@ -90,6 +90,12 @@ _Versions: core 0.0.1210._
 - The inform cancel's line moves from the api handler (wrong target, snake-case field, `sqlite error:` prefix) to the repository; the seat-removal `Could not drop pending informs` WARN is retired (unreachable in v4 — the DEBUG fires with `dropped_informs=0` instead).
 - `log_chat_create_validation_failure` folds its two `Error creating entity` copies onto the home.
 - `chat_informs_tier2_equivalence` gains a BEFORE DELETE trigger plant with per-op captured lines (red-first: v5 propagated where v4 answers 0) and two standing rows inserted out of posting order (the P4.151 survey's B1, mutation-proven); `fallback_home_guard` holds five more literals.
+#### 2026-10-05 — refactor(db): double_option moves to its neutral home db/serde_tristate.rs (P4.148)
+
+_Versions: core 0.0.1211._
+
+The serde three-state decoder (absent / `null` / value) that the `groups` and `projects` property bags use now lives in the new `db/serde_tristate.rs`, so the `db` layer no longer imports from `services::mount_index::sync::types`. The sync module keeps compiling through a `pub use`; `db/groups.rs`, `db/projects.rs` and `groups_tier2_equivalence` import the new path. A unit test pins the three states. No behavior change: `projects_tier2` / `groups_tier2` and the sync unit tests pass unchanged at the pin. The private copies in `api/types.rs` and `api/memories.rs` stay (those files were frozen this round).
+
 #### 2026-10-05 — fix(import): .qtap import warnings carry the bare SQLite sentence, not "sqlite error:" (dogfood #140, P4.148)
 
 _Versions: core 0.0.1210._

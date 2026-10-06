@@ -19,9 +19,9 @@ use serde_json::{Map, Value};
 
 use super::document_store_overlay::{ManagedFields, OverlayError, StoreEntity};
 use super::group_doc_mount_links::GroupDocMountLinksRepository;
+use super::serde_tristate::double_option;
 use super::store_backed::StoreBackedRepository;
 use super::DbError;
-use crate::services::mount_index::sync::types::double_option;
 
 pub use super::store_backed::StoreCreateOptions as GroupCreateOptions;
 

@@ -13,24 +13,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-/// serde double-option: on an `Option<Option<T>>` field this decodes an ABSENT
-/// key to `None`, an explicit `null` to `Some(None)`, and a value to
-/// `Some(Some(v))` — the null-vs-absent distinction serde's default `Option`
-/// collapses.
-///
-/// v4 writes `createdAt: null` into a manifest entry (a file neither side can
-/// date) and OMITS the key for a `touch` on a platform that cannot set a
-/// birthtime, and the two mean different things to the next run. Without this
-/// the round trip silently turns the first into the second.
-/// (`api::types` keeps a private twin for the dispatch tri-states; this is the
-/// sync family's, since that one is not exported.)
-pub fn double_option<'de, T, D>(de: D) -> Result<Option<Option<T>>, D::Error>
-where
-    T: Deserialize<'de>,
-    D: serde::Deserializer<'de>,
-{
-    Deserialize::deserialize(de).map(Some)
-}
+pub use crate::db::serde_tristate::double_option;
 
 /// Hex-encoded SHA-256 of raw bytes — v4 `sha256OfBuffer` (`lib/utils/sha256.ts`).
 ///

@@ -68,8 +68,8 @@ use quilltap_core::db::groups::{
     find_official_mount_point_id_raw, GroupCreateInput, GroupCreateOptions, GroupProperties,
     GroupsRepository,
 };
+use quilltap_core::db::serde_tristate::double_option;
 use quilltap_core::db::Writer;
-use quilltap_core::services::mount_index::sync::types::double_option;
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
