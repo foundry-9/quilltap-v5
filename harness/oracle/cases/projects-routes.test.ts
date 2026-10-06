@@ -997,8 +997,9 @@ async function main(): Promise<void> {
     },
     // P4.155 (R-C): v4's OTHER two `char.tags || []` sites — the roster list
     // (`roster.ts:38`) and the list-chats participants (`chats.ts:69`) — over
-    // the same NULL `tags` cell. Both read `[]`; v5's `unwrap_or([])` kept the
-    // NULL (an absent key only), red-first.
+    // the same NULL `tags` cell. Both read `[]`. REGRESSION PINS, not
+    // red-first: they were GREEN on unported core, because v5's character read
+    // materializes a NULL `tags` cell as `[]` before any of the three sites.
     {
       name: 'list_characters_null_tags',
       run: async () => {

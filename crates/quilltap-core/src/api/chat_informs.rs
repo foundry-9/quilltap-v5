@@ -2,8 +2,9 @@
 //! `app/api/v1/chats/[id]/actions/inform.ts` + `schemas.ts:249-258`).
 //!
 //! An out-of-character passage the operator hands to one or more LLM-controlled
-//! seats. Each target receives it verbatim as its own system block on their next
-//! generation, and it is then consumed for them.
+//! seats. Each target receives it verbatim, under one vouching header, as a
+//! trailing context section of their next generation (v4 `94fbb1ae3`,
+//! P4.D254), and it is then consumed for them.
 //!
 //! The transcript keeps a record — a Host message carrying exactly what was
 //! typed, public when everyone was targeted and whispered to the targets

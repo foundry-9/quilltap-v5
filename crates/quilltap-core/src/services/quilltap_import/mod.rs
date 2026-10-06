@@ -1712,6 +1712,11 @@ fn import_body(
                     match crate::db::chat_informs::ChatInformsRepository::new(main).create(&data) {
                         Ok(()) => informs_imported += 1,
                         Err(e) => {
+                            // v4 `globalRepos.chatInforms.create` → `_create`'s
+                            // RETHROW line (`base.repository.ts:321`) before
+                            // the importer's catch; v5's repository `create`
+                            // leaves that line to its callers (P4.156).
+                            crate::db::fallback::log_create_failure("chat_informs", &e);
                             informs_dropped += 1;
                             warnings
                                 .push(format!("Failed to import inform: {}", item_error_text(&e)));

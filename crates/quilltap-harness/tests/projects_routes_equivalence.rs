@@ -1847,8 +1847,9 @@ fn projects_routes_match_oracle() {
         );
     }
     // P4.155 (R-C): v4's other two `char.tags || []` sites over the same NULL
-    // cell — the roster list and the list-chats participants. Red-first: v5's
-    // `unwrap_or([])` kept the NULL.
+    // cell — the roster list and the list-chats participants. REGRESSION
+    // PINS, not red-first: GREEN on unported core (measured), since
+    // `characters_read` materializes a NULL `tags` cell as `[]` first.
     for (name, tag) in [
         ("list_characters_null_tags", "lc_null_tags"),
         ("list_chats_null_tags", "lch_null_tags"),

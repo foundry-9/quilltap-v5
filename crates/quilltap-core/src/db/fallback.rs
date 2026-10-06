@@ -19,7 +19,7 @@
 //! differentials map it (`danger_routing_equivalence`'s `Repository →
 //! quilltap::db`); every emitter of these two lines uses it.
 
-use super::document_store_overlay::OverlayError;
+use super::document_store_overlay::{OverlayError, StoreKind};
 use super::DbError;
 
 /// The `error` field's bytes: v4 logs `extractErrorMessage(error)` — the
@@ -749,6 +749,64 @@ pub fn log_create_failure(collection: &str, error: &DbError) {
         strictFailures = strict_repository_failures_active().then_some(true),
         "Error creating entity"
     );
+}
+
+/// v4's STORE-BACKED override of `createErrorMessage()`
+/// (`store-backed.repository.ts:234-236`): `_create`'s rethrowing `safeQuery`
+/// logs ERROR `Error creating {project|group} entity {collection, error,
+/// strictFailures?}` — NOT the base [`log_create_failure`] sentence (P4.155
+/// measured it at `94fbb1ae3`; neither `projects.repository.ts` nor
+/// `groups.repository.ts` overrides it, the shared store-backed base does).
+/// `error` is the already-rendered text (the refused import passes the
+/// ZodError message). Logs only — the caller keeps propagating. Folded here
+/// from P4.155's lane-local copy at the `94fbb1ae3` smalls unification (§S.1).
+pub fn log_store_entity_create_failure(kind: StoreKind, error: &str) {
+    let strict = strict_repository_failures_active().then_some(true);
+    match kind {
+        StoreKind::Project => tracing::error!(
+            target: "quilltap::db",
+            collection = "projects",
+            error = %error,
+            strictFailures = strict,
+            "Error creating project entity"
+        ),
+        StoreKind::Group => tracing::error!(
+            target: "quilltap::db",
+            collection = "groups",
+            error = %error,
+            strictFailures = strict,
+            "Error creating group entity"
+        ),
+    }
+}
+
+/// v4's store-backed `create`'s OWN `safeQuery` wrap (`store-backed.
+/// repository.ts:130-175`), one level ABOVE [`log_store_entity_create_failure`]:
+/// ERROR `Error creating {project|group} {collection, name, error,
+/// strictFailures?}`, `name` the create payload's — omitted when absent, as
+/// winston drops `undefined`; a non-string name renders as its JSON text.
+/// Logs only. Folded from P4.155's lane-local copy (§S.1).
+pub fn log_store_create_failure(kind: StoreKind, name: Option<&str>, error: &str) {
+    let strict = strict_repository_failures_active().then_some(true);
+    let name = name.map(tracing::field::display);
+    match kind {
+        StoreKind::Project => tracing::error!(
+            target: "quilltap::db",
+            collection = "projects",
+            name = name,
+            error = %error,
+            strictFailures = strict,
+            "Error creating project"
+        ),
+        StoreKind::Group => tracing::error!(
+            target: "quilltap::db",
+            collection = "groups",
+            name = name,
+            error = %error,
+            strictFailures = strict,
+            "Error creating group"
+        ),
+    }
 }
 
 /// v4 `chats.repository.ts:280`'s own `safeQuery` wrap ABOVE the base `_create`

@@ -2707,8 +2707,16 @@ fn orchestrator_tier3_matches_oracle() {
             "the poisoned row must stay pending: {poisoned}"
         );
     }
-    // …and v5's line for it, at v4's level and wording (`safeQuery`'s error
-    // message is `'Error marking informs consumed'`), on that call ONLY.
+    // …and v5's line for it. Since P4.156 the line is v4's REPOSITORY line
+    // (`chat-informs.repository.ts:238-268` — `safeQuery`'s message `'Error
+    // marking informs consumed'`), logged through
+    // `db::fallback::informs_marked_consumed_or_zero` on the WRITER thread,
+    // which this thread-scoped capture cannot see; its bytes, level and
+    // strict leg are pinned against v4 in `chat_informs_tier2_equivalence`
+    // (the poisoned-UPDATE ops) and in the home's own unit pins. What THIS
+    // family pins is that the finalizer no longer logs a caller-side copy on
+    // any of the four calls — the pre-P4.156 `quilltap::inform` duplicate is
+    // gone (the poisoned call's rows above prove the consume still failed).
     for name in [
         "inform_consume_fails_on_a_poisoned_row",
         "inform_consumed_by_saved_turn",
@@ -2720,21 +2728,10 @@ fn orchestrator_tier3_matches_oracle() {
             .iter()
             .filter(|l| l.contains("Error marking informs consumed"))
             .collect();
-        if name == "inform_consume_fails_on_a_poisoned_row" {
-            assert_eq!(hits.len(), 1, "{name}: one failed-consume line: {lines:#?}");
-            assert!(
-                hits[0].starts_with("ERROR quilltap::inform"),
-                "{name}: v4's safeQuery logs at ERROR: {}",
-                hits[0]
-            );
-            assert!(
-                hits[0].contains("P4.106 poisoned inform row"),
-                "{name}: the trigger's error must ride the line: {}",
-                hits[0]
-            );
-        } else {
-            assert!(hits.is_empty(), "{name}: no failed-consume line: {hits:?}");
-        }
+        assert!(
+            hits.is_empty(),
+            "{name}: no caller-side failed-consume line (the repository logs it on the writer thread): {hits:?}"
+        );
     }
 
     // --- P4.D186 tier 2: the held result's SHAPE, read off the jobs it did not

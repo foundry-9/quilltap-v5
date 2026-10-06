@@ -828,15 +828,24 @@ impl PreservePartialOnError {
             let preserved_message_id = self.pre_generated_assistant_message_id.clone();
             let log_message_id = preserved_message_id.clone();
             let log_chat_id = self.chat_id.clone();
-            let consumed = db
+            // v4's `markConsumed` is a `safeQuery(…, 0)` fallback; the
+            // repository carries it (P4.156) and the same home wraps the
+            // awaited write, so a writer failure logs v4's line rather than
+            // vanishing into a bare `unwrap_or(0)`.
+            let outcome = db
                 .write(move |writers| {
                     writers
                         .main()
                         .chat_informs()
                         .mark_consumed(&ids, &preserved_message_id)
                 })
-                .await
-                .unwrap_or(0);
+                .await;
+            let consumed = crate::db::fallback::informs_marked_consumed_or_zero(
+                &self.inform_row_ids,
+                &log_message_id,
+                || outcome,
+            )
+            .unwrap_or(0);
             tracing::debug!(
                 target: "quilltap::inform",
                 chat_id = %log_chat_id,

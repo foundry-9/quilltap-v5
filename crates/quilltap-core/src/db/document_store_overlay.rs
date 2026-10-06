@@ -817,65 +817,27 @@ pub enum StoreKind {
 ///
 /// `strictFailures` rides the two `safeQuery`-born lines inside the import's
 /// strict scope, as the homes read it. Logs only — the caller keeps
-/// propagating `zod`.
-// HANDOFF(P4.156): lines 2 and 3 want `db::fallback` homes beside
-// `log_create_failure` (contract C1 lets this lane call the existing homes
-// only); the unifier folds this fn onto them (§S.1).
+/// propagating `zod`. Lines 2 and 3 live in their `db::fallback` homes
+/// ([`log_store_entity_create_failure`](crate::db::fallback::log_store_entity_create_failure),
+/// [`log_store_create_failure`](crate::db::fallback::log_store_create_failure)),
+/// folded at the `94fbb1ae3` smalls unification (§S.1).
 pub fn log_refused_store_create(kind: StoreKind, name: Option<&Value>, zod: &str) {
-    let strict = crate::db::fallback::strict_repository_failures_active().then_some(true);
     let name = name.map(|v| match v {
         Value::String(s) => s.clone(),
         other => other.to_string(),
     });
-    let name = name.as_deref().map(tracing::field::display);
-    match kind {
-        StoreKind::Project => {
-            tracing::error!(
-                target: "quilltap::db",
-                collection = "projects",
-                error = %zod,
-                "Data validation failed"
-            );
-            tracing::error!(
-                target: "quilltap::db",
-                collection = "projects",
-                error = %zod,
-                strictFailures = strict,
-                "Error creating project entity"
-            );
-            tracing::error!(
-                target: "quilltap::db",
-                collection = "projects",
-                name = name,
-                error = %zod,
-                strictFailures = strict,
-                "Error creating project"
-            );
-        }
-        StoreKind::Group => {
-            tracing::error!(
-                target: "quilltap::db",
-                collection = "groups",
-                error = %zod,
-                "Data validation failed"
-            );
-            tracing::error!(
-                target: "quilltap::db",
-                collection = "groups",
-                error = %zod,
-                strictFailures = strict,
-                "Error creating group entity"
-            );
-            tracing::error!(
-                target: "quilltap::db",
-                collection = "groups",
-                name = name,
-                error = %zod,
-                strictFailures = strict,
-                "Error creating group"
-            );
-        }
-    }
+    let collection = match kind {
+        StoreKind::Project => "projects",
+        StoreKind::Group => "groups",
+    };
+    tracing::error!(
+        target: "quilltap::db",
+        collection = collection,
+        error = %zod,
+        "Data validation failed"
+    );
+    crate::db::fallback::log_store_entity_create_failure(kind, zod);
+    crate::db::fallback::log_store_create_failure(kind, name.as_deref(), zod);
 }
 
 #[cfg(test)]

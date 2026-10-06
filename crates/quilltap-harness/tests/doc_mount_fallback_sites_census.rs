@@ -438,6 +438,24 @@ const OVERRIDES: &[(&str, &str, &str, &str)] = &[
         "find_content_and_mtime_by_mount_point_and_path",
         "no-v4-counterpart",
     ),
+    // P4.158 (R-A, the restore's preserve-arm completeness guard): "does the
+    // archived store already hold this managed file?" — a v5-only question (v4
+    // never preserves an archived store, so it never asks). A propagated read
+    // error fails the backfill into its one `summary.warnings` line, which is
+    // intended. Landed from P4.158's recorded HANDOFF at the `94fbb1ae3` smalls
+    // unification.
+    (
+        "quilltap-core/src/db/character_vault.rs",
+        "backfill_character_vault_managed_files",
+        "find_by_mount_point_and_path",
+        "no-v4-counterpart",
+    ),
+    (
+        "quilltap-core/src/services/backup/restore/orchestrator.rs",
+        "backfill_official_store",
+        "find_by_mount_point_and_path",
+        "no-v4-counterpart",
+    ),
 ];
 
 fn classify(
@@ -597,6 +615,7 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/api/scenarios.rs", "rename_op", "find_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/api/scenarios.rs", "rename_op", "find_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/db/character_vault.rs", "ensure_character_metadata_file", "find_by_mount_point_and_path", "strict-by-ruling(write-path)"),
+    ("quilltap-core/src/db/character_vault.rs", "backfill_character_vault_managed_files", "find_by_mount_point_and_path", "no-v4-counterpart"),
     ("quilltap-core/src/db/database_store.rs", "read_database_document", "find_content_and_mtime_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/db/database_store.rs", "write_database_document", "find_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/db/database_store.rs", "write_database_document", "find_content_and_mtime_by_mount_point_and_path", "no-v4-counterpart"),
@@ -658,6 +677,7 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/photos/user_gallery_service.rs", "list_user_gallery", "find_by_mount_point_id_or_empty", "converted"),
     ("quilltap-core/src/photos/user_gallery_service.rs", "remove_from_user_gallery", "delete_with_gc", "strict-by-ruling(write-path)"),
     ("quilltap-core/src/services/aesthetics.rs", "read_store_file_internal", "find_by_mount_point_and_path", "swallowed-by-other-means"),
+    ("quilltap-core/src/services/backup/restore/orchestrator.rs", "backfill_official_store", "find_by_mount_point_and_path", "no-v4-counterpart"),
     ("quilltap-core/src/services/character_archive/service.rs", "prune_vault", "find_by_mount_point_id", "strict-by-ruling(write-path)"),
     ("quilltap-core/src/services/character_archive/service.rs", "prune_vault", "find_ids_by_link_id_or_empty", "converted"),
     ("quilltap-core/src/services/character_archive/service.rs", "prune_vault", "delete_with_gc", "strict-by-ruling(write-path)"),
@@ -791,7 +811,8 @@ fn the_class_counts_are_pinned() {
 /// no-v4-counterpart, strict-by-ruling, strict-by-ruling(write-path), fallback-in-v4),
 /// with the arithmetic:
 ///
-/// - **156 direct call sites in all** = 83 + 14 + 19 + 0 + 13 + 1 + 1 + 20 + 5.
+/// - **158 direct call sites in all** = 83 + 14 + 19 + 0 + 13 + 3 + 1 + 20 + 5
+///   (156 + P4.158's two backfill reads).
 ///   P4.149: +1 internal (the strict-aware path-read sibling's closure over
 ///   its propagating sibling, `doc_mount_file_links.rs`); 3 held → converted
 ///   (5d #10/#12/#21); the other 20 held re-classed `strict-by-ruling(write-
@@ -838,8 +859,10 @@ fn the_class_counts_are_pinned() {
 ///   `.unwrap_or_else` / `let Ok … else` at the site: `api/characters` 1,
 ///   `chat_gallery` 1, `aesthetics` 1, `memory_processor` 1, `file_ops::link_file`
 ///   1, `doc_edit/blob` 1, `doc_edit/shared` 5, `tools/photo` 2.
-/// - **no-v4-counterpart 1** = `write_database_document`'s stored-mtime re-read
-///   (see [`OVERRIDES`]).
+/// - **no-v4-counterpart 3** = `write_database_document`'s stored-mtime re-read
+///   + P4.158's two preserve-arm backfill reads (`character_vault::
+///   backfill_character_vault_managed_files`, `restore::orchestrator::
+///   backfill_official_store`) (see [`OVERRIDES`]).
 /// - **strict-by-ruling 1** = `qtap_export/records.rs` `stream_one_store` (G5):
 ///   held strict under the 2026-08-03 backup/export ruling — v4 exports a broken
 ///   store EMPTY ([`OVERRIDES`]).
@@ -863,7 +886,7 @@ const COUNTS: (
     usize,
     usize,
     usize,
-) = (83, 14, 19, 0, 13, 1, 1, 20, 5);
+) = (83, 14, 19, 0, 13, 3, 1, 20, 5);
 
 /// P4.142 §S.4 — reads HANDED to P4.144 this round, recorded as documentation:
 /// the fold-episode pass's two memory reads (`services/fold_episode_pass.rs` —

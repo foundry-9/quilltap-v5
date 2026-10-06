@@ -1054,32 +1054,31 @@ where
         let ids = inform_row_ids.clone();
         let consume_message_id = assistant_message_id.clone();
         // v4 wraps `markConsumed` in `safeQuery(..., 0)`
-        // (`chat-informs.repository.ts:218-245`), so a failed consume LOGS at
+        // (`chat-informs.repository.ts:238-268`), so a failed consume LOGS at
         // error level and answers 0 — finalization CONTINUES. Propagating here
         // instead would abandon the turn after the assistant row is already
         // saved (events unsent, the turn chain never resumed) for a bookkeeping
         // write, which is strictly worse than the rows staying pending.
-        let consumed = match db
+        //
+        // Since P4.156 the REPOSITORY carries that wrap (on the writer thread,
+        // through `db::fallback::informs_marked_consumed_or_zero`) and answers
+        // `Ok(0)` itself; the same home wraps the awaited write here so a
+        // WRITER failure (v4's `getCollection()` throwing inside the same
+        // `safeQuery`) logs v4's one line too, never a caller-side copy.
+        let outcome = db
             .write(move |writers| {
                 writers
                     .main()
                     .chat_informs()
                     .mark_consumed(&ids, &consume_message_id)
             })
-            .await
-        {
-            Ok(n) => n,
-            Err(e) => {
-                tracing::error!(
-                    target: "quilltap::inform",
-                    ids = ?inform_row_ids,
-                    message_id = %assistant_message_id,
-                    error = %e,
-                    "Error marking informs consumed",
-                );
-                0
-            }
-        };
+            .await;
+        let consumed = crate::db::fallback::informs_marked_consumed_or_zero(
+            &inform_row_ids,
+            &assistant_message_id,
+            || outcome,
+        )
+        .unwrap_or(0);
         tracing::debug!(
             target: "quilltap::inform",
             chat_id = %chat_id,

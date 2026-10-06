@@ -89,11 +89,11 @@ const HOME_MESSAGES: &[&str] = &[
     // P4.156: the chat-informs repository's five outer read wraps
     // (`chat-informs.repository.ts:87-183` — reachable only inside the strict
     // scope; outside it the inner `findByFilter` line answers first).
-    // `Error marking informs consumed` (`:238-268`) is emitted by the home too
-    // but NOT listed yet: `services/message_finalizer.rs` (no lane's file this
-    // round) still carries a caller-side copy under `quilltap::inform` — the
-    // recorded P4.156 HANDOFF folds it onto
-    // `db::fallback::informs_marked_consumed_or_zero` and adds the literal here.
+    // `Error marking informs consumed` (`:238-268`) — the finalizer's and the
+    // preserved-partial path's caller-side copies folded onto
+    // `db::fallback::informs_marked_consumed_or_zero` at the `94fbb1ae3`
+    // smalls unification (P4.156's recorded HANDOFF).
+    "Error marking informs consumed",
     "Error finding pending informs for participant",
     "Error finding informs consumed by messages",
     "Error finding pending inform batches",
@@ -111,6 +111,14 @@ const HOME_MESSAGES: &[&str] = &[
     "Error deleting memory",
     "Error updating memory for character",
     "Error deleting memory for character",
+    // P4.155 → §S.1 (the `94fbb1ae3` smalls unification): the store-backed
+    // `_create` override's line and the store-backed `create` wrap's line
+    // (`store-backed.repository.ts:130-175, 234-236`), folded from the
+    // import's lane-local copy.
+    "Error creating project entity",
+    "Error creating group entity",
+    "Error creating project",
+    "Error creating group",
 ];
 
 const HOME: &str = "db/fallback.rs";

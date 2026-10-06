@@ -3,8 +3,9 @@
 //! `chat_informs` table behind the Salon's **Inform** action.
 //!
 //! An *inform* is an out-of-character passage the operator hands to one or more
-//! LLM-controlled seats: delivered verbatim as its own system block on each
-//! target's next generation, and consumed once that turn produces a *persisted*
+//! LLM-controlled seats: delivered verbatim, under one vouching header, as a
+//! trailing context section of each target's next generation (v4 `94fbb1ae3`,
+//! P4.D254), and consumed once that turn produces a *persisted*
 //! assistant message.
 //!
 //! ## One row per (batch × target)
