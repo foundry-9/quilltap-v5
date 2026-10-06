@@ -167522,3 +167522,33 @@ tree clean). Regen staging: `/tmp/p4151/`. **No version moves on any commit**
   `QT_ORACLE_INFORM_ENSURE=… QT_FIXTURE_INFORM_ENSURE_DIR=/tmp/p4151/inform-ensure cargo test -p quilltap-harness --test chat_informs_permanent_ensure_equivalence`.
 - The case still reads `chat-informs-tier2.json` for the pepper only (P4.149's
   file; not edited).
+
+### Unit B4 — `chat_informs_in_force_census` on the shared lexer
+- NEW `crates/quilltap-harness/tests/chat_informs_in_force_census.rs`
+  (`mod source_census;`), over every production `.rs` file of core / web /
+  host / cli / tauri (`production_zone`, never `split`):
+  (i) CODE — in whitespace-stripped `code_only(production_zone)`, a regex over
+  `consumed_at` presence tests (`.is_none(` / `.is_some(` / `_or` / `_and`,
+  through `.as_ref()` / `.as_deref()`, `== None` / `!= None`); the allow-list
+  IS the file set: the home `db/chat_informs.rs` (1, asserted inside
+  `is_inform_in_force`'s body), `services/inform_block.rs` (1, v4
+  `inform-block.ts:137`), `api/chat_informs.rs` (1, v4
+  `actions/inform.ts:219`) — keyed on the predicate, never line numbers;
+  (ii) SQL — any `string_literals(production_zone)` literal matching
+  `consumedAt IS [NOT] NULL` (quoted or not): allowed 0. A third test pins the
+  matchers (every shape; a comment is not a call; a line-broken chain is).
+- Green on this branch (3/3).
+- **Mutations (each reverted; zero core hunks):** M1 `AND (permanent = 1 OR
+  consumedAt IS NULL)` added to `find_pending_for_participant`'s SQL → (ii)
+  RED, the OLD in-file test GREEN (the item's own point). M2
+  `find_pending_batches` open-codes `r.permanent || r.consumed_at.is_none()` →
+  (i) RED (old test also red). M3 a production COMMENT naming
+  `consumed_at.is_none()` in `db/chat_informs.rs` → new census GREEN, old test
+  RED (it counts comments). M4 an open-coded fn appended to
+  `services/inform_block.rs`'s production zone → (i) RED, old test GREEN (it
+  scans only its own file).
+- **§S.3 handoff — the old test the UNIFIER deletes:**
+  `crates/quilltap-core/src/db/chat_informs.rs`, `#[cfg(test)] mod tests`,
+  fn **`the_in_force_predicate_is_never_open_coded`** (still present and green
+  on this branch; this lane touches no core file). Then run
+  `quilltap-core --lib` + this census.

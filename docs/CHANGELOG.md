@@ -255,6 +255,12 @@ P4.150 B (the P4.D253 OPEN item). `RefusingTextExtractor`'s stderr notice said t
 _No crate versions bumped._
 
 P4.150 A4. `qtap_schema_embed_guard` and `public_schemas_vendor_guard` now locate the v4 checkout through `QT_V4_CHECKOUT` first (the variable every pinned gate exports and the three other live-checkout guards read), keeping `QT_V4_ROOT` as a legacy alias, then `$HOME/source/quilltap-server`. A pinned gate no longer compares these two against a dirty live checkout. The precedence is a pure `locate_v4_root` with a unit pin in each file; both guards green against the `07b8f0209` pin with only `QT_V4_CHECKOUT` set, and both SKIP on an empty directory (proving the variable is read).
+#### 2026-10-05 — test(harness): move the chat-informs in-force census onto the shared lexer with a SQL arm (P4.151 B4)
+
+_No crate versions bumped._
+
+Harness-only (P4.151 B4). New `chat_informs_in_force_census` built on the shared `source_census` lexer. It scans the production code of core, web, host, cli, and tauri, and fails on (i) any `consumed_at` presence test outside the home `is_inform_in_force` and the two delivery checks that mirror v4 (`inform_block.rs` "never delivered", the cancel's "ever delivered"), and (ii) any SQL literal that tests `consumedAt` against `NULL`. Comments do not count, line breaks inside a chain do, and the matchers have their own test. It replaces the narrow in-file test `db::chat_informs::tests::the_in_force_predicate_is_never_open_coded`. That test stays in core for now; the unifier deletes it once this census is on main. No version moves.
+
 #### 2026-10-05 — test(harness): make the chat_informs.permanent ensure differential four-mode (P4.151 B3)
 
 _No crate versions bumped._
