@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-05 — fix(api): the chat list's first read falls back to an empty list as v4's does (P4.149 unit 4)
+
+_Versions: core 0.0.1213._
+
+`list_chats` answered 500 `Failed to fetch chats` when its first read (the user's chats) failed. v4's `chats.findByUserId` is `findByFilter`, a fallback read: it logs `Error finding entities by filter {collection: chats}` and answers `[]`, so the list route answers 200 `{chats: []}`. v5 now reads through `db::fallback::find_by_filter_or_empty`, the pool checkout included (P4.142's open item).
+
+- `salon_reads_equivalence` gains `list_main_plant` on both sides (`chats.userId` renamed on the main copy) — red-first: 500 with `[Chats v1] Error listing chats` vs 200 `[]` with the filter line; v4's backend `SQLite find error` joins the excluded-line table.
+
 #### 2026-10-05 — fix(api): the chat PUT's project gate reads the store-backed project as v4 does — 404 on a read error, 503 on a broken store (P4.149 unit 3)
 
 _Versions: core 0.0.1212._

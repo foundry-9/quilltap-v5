@@ -125,11 +125,14 @@ pub fn list_chats(
     limit: Option<i64>,
     include_autonomous: bool,
 ) -> Response {
-    let user_id_owned = user_id.to_string();
-    let all = match db.read_main(move |conn| chats_read::find_by_user_id(conn, &user_id_owned)) {
-        Ok(v) => v,
-        Err(e) => return list_chats_failed(e),
-    };
+    // P4.149 (item 5b): v4's `chats.findByUserId` is `findByFilter({ userId })`
+    // — a FALLBACK (`base.repository.ts:283-298`): a failed read, the pool
+    // checkout included, logs `Error finding entities by filter` and answers
+    // `[]`, so `handleList` answers 200 `{chats: []}` and its own catch is never
+    // reached by this read (v5 had answered 500 `Failed to fetch chats`).
+    let all = crate::db::fallback::find_by_filter_or_empty("chats", || {
+        db.read_main(|conn| chats_read::find_by_user_id(conn, user_id))
+    });
 
     // v4's chatType filter: salon + legacy-null kept; help/brahma dropped;
     // autonomous only when includeAutonomous OR runVisibility ∈ {household, open}.

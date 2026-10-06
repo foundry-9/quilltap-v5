@@ -94,6 +94,11 @@ interface CaseSpec {
    * before the route import) — the plant every vault-overlay batch read fails
    * on. A RENAME survives `ensureTable` (P4.131). */
   renameMountColumn?: { table: string; from: string; to: string };
+  /** P4.149 (item 5b): the same RENAME on the MAIN copy (v4's own raw main
+   * handle) — `list_main_plant` renames `chats.userId`, the column
+   * `findByUserId` → `findByFilter({ userId })` names in its WHERE. Implies the
+   * log spy. */
+  renameMainColumn?: { table: string; from: string; to: string };
   /** P4.142: record every ERROR/WARN v4 logs while the ROUTE runs (the
    * `chats-messages-ops-tier2.ts` `Logger.prototype` spy recipe) as
    * `{level, message, fields}` — context keys in v4's order, `module` and
@@ -288,8 +293,15 @@ async function runCase(
     const { table, from, to } = c.renameMountColumn;
     midb.exec(`ALTER TABLE "${table}" RENAME COLUMN "${from}" TO "${to}"`);
   }
+  if (c.renameMainColumn) {
+    const { getRawDatabase } = await import('@/lib/database/backends/sqlite');
+    const mdb = getRawDatabase();
+    if (!mdb) throw new Error('raw main handle unavailable');
+    const { table, from, to } = c.renameMainColumn;
+    mdb.exec(`ALTER TABLE "${table}" RENAME COLUMN "${from}" TO "${to}"`);
+  }
   let logs: Array<Record<string, unknown>> | null = null;
-  if (c.renameMountColumn || c.recordLogs) {
+  if (c.renameMountColumn || c.renameMainColumn || c.recordLogs) {
     const { Logger } = await import('@/lib/logger');
     for (const level of ['error', 'warn'] as const) {
       const original = Logger.prototype[level];
@@ -544,6 +556,16 @@ async function main(): Promise<void> {
       kind: 'list',
       url: 'http://localhost/api/v1/chats',
       renameMountColumn: { table: 'doc_mount_file_links', from: 'relativePath', to: 'relativePath_x' },
+    },
+    // P4.149 (item 5b): `listChats`' FIRST read under a broken main table —
+    // `chats.userId` renamed. v4's `findByUserId` is `findByFilter`, a
+    // fallback: ERROR `Error finding entities by filter {collection: chats}` →
+    // `[]` → 200 `{chats: []}`; the route's own catch is never reached.
+    {
+      name: 'list_main_plant',
+      kind: 'list',
+      url: 'http://localhost/api/v1/chats',
+      renameMainColumn: { table: 'chats', from: 'userId', to: 'userId_x' },
     },
     {
       name: 'get_solo_mount_plant',

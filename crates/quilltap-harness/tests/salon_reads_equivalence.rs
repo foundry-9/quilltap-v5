@@ -194,6 +194,8 @@ const PLANT_COMPARED: &[(&str, &str)] = &[
         "quilltap::db",
     ),
     ("Error querying joined file links", "quilltap::db"),
+    // P4.149 (item 5b): `listChats`' first read (`findByUserId` → `findByFilter`).
+    ("Error finding entities by filter", "quilltap::db"),
     (
         "Dropping character from list — vault unavailable",
         "quilltap_core::db::vault_read_overlay",
@@ -221,13 +223,21 @@ const PLANT_COMPARED: &[(&str, &str)] = &[
 ];
 
 /// v4 lines NOT compared, each with why — a v4 line in neither table fails.
-const PLANT_EXCLUDED: &[(&str, &str)] = &[(
-    "Failed to ensure doc_mount_file_links table in mount index database",
-    "v4's LAZY `ensureTable` tripping on the renamed column at the mail \
-     listing's first links access; v5 runs the same repairs once per BOOT — \
-     P4.134's recorded cadence divergence (pinned both ways in \
-     `mail_carina_tools_equivalence`); v5 must log it ZERO times here",
-)];
+const PLANT_EXCLUDED: &[(&str, &str)] = &[
+    (
+        "Failed to ensure doc_mount_file_links table in mount index database",
+        "v4's LAZY `ensureTable` tripping on the renamed column at the mail \
+         listing's first links access; v5 runs the same repairs once per BOOT — \
+         P4.134's recorded cadence divergence (pinned both ways in \
+         `mail_carina_tools_equivalence`); v5 must log it ZERO times here",
+    ),
+    (
+        "SQLite find error",
+        "v4's BACKEND line beneath every failed `collection.find` (P4.149's \
+         `list_main_plant`); unported by standing convention (the search \
+         families' `UNPORTED_BACKEND_LINES`)",
+    ),
+];
 
 #[derive(Deserialize, Debug)]
 struct PlantLog {
@@ -368,6 +378,17 @@ fn error_body(r: &Response) -> Value {
 /// heals + `transcriptVersion = 7` the shared copy gets), with `plant` — a raw
 /// `ALTER TABLE` — run on the MOUNT-INDEX copy first.
 fn fresh_db(pepper: &str, tag: &str, plant: Option<&str>) -> (tempfile::TempDir, Db) {
+    fresh_db_with(pepper, tag, plant, None)
+}
+
+/// [`fresh_db`] with an optional raw `ALTER TABLE` on the MAIN copy too (P4.149
+/// item 5b — the oracle's `renameMainColumn`), run after the vintage heals.
+fn fresh_db_with(
+    pepper: &str,
+    tag: &str,
+    plant: Option<&str>,
+    main_plant: Option<&str>,
+) -> (tempfile::TempDir, Db) {
     let scratch = tempfile::Builder::new()
         .prefix(&format!("qt-salon-reads-{tag}-"))
         .tempdir()
@@ -389,6 +410,11 @@ fn fresh_db(pepper: &str, tag: &str, plant: Option<&str>) -> (tempfile::TempDir,
         w.connection()
             .execute("UPDATE \"chats\" SET \"transcriptVersion\" = 7", [])
             .unwrap();
+        if let Some(sql) = main_plant {
+            w.connection()
+                .execute_batch(sql)
+                .expect("plant on the main copy");
+        }
     }
     if let Some(sql) = plant {
         let w = quilltap_core::db::Writer::open_writable(&mount, pepper).unwrap();
@@ -814,6 +840,43 @@ fn salon_reads_match_oracle() {
         drop(dir);
         let rec = &oracle[name];
         let (status, want_status) = (status_of(&resp), rec["status"].as_i64().unwrap());
+        if status != want_status {
+            eprintln!("[{name}] STATUS MISMATCH: v5 {status} v4 {want_status} — {resp:?}");
+            failed.push(format!("{name}:status"));
+        } else if norm(&response_data(&resp)) != norm(&rec["body"]["chats"]) {
+            let (g, w) = (norm(&response_data(&resp)), norm(&rec["body"]["chats"]));
+            eprintln!("[{name}] BODY MISMATCH:\n{}", first_diff(&g, &w));
+            failed.push(format!("{name}:body"));
+        } else {
+            eprintln!("[{name}] OK ({status}).");
+        }
+        if let Err(e) = assert_plant_lines(name, &plant_logs(name), &lines, None) {
+            eprintln!("[{name}] LINES: {e}");
+            failed.push(format!("{name}:lines"));
+        }
+    }
+    // P4.149 (item 5b): `listChats`' first read under a renamed `chats.userId`
+    // — v4's `findByFilter` fallback answers `[]` and the route 200s.
+    {
+        let name = "list_main_plant";
+        let (dir, pdb) = fresh_db_with(
+            &spec.test_pepper_base64,
+            "list-main-plant",
+            None,
+            Some("ALTER TABLE \"chats\" RENAME COLUMN \"userId\" TO \"userId_x\""),
+        );
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            salon::list_chats(&pdb, uid, &[], None, false)
+        });
+        drop(pdb);
+        drop(dir);
+        let rec = &oracle[name];
+        let (status, want_status) = (status_of(&resp), rec["status"].as_i64().unwrap());
+        assert_eq!(
+            (want_status, &rec["body"]),
+            (200, &serde_json::json!({ "chats": [] })),
+            "[{name}] v4 no longer answers 200 `[]` — the arm measures nothing"
+        );
         if status != want_status {
             eprintln!("[{name}] STATUS MISMATCH: v5 {status} v4 {want_status} — {resp:?}");
             failed.push(format!("{name}:status"));

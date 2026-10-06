@@ -166227,3 +166227,19 @@ re-measure); the restore order's acceptance walk (#141/#142).
   line; `store_corrupt` 200 with `chats.projectId` WRITTEN vs 503. Green after.
 - Regen: `salon-mutations.test.ts` (jest `/tmp` mirror + `lib/p4d171-columns.ts`)
   → `QT_ORACLE_SALON_MUTATIONS`.
+
+### P4.149 unit 4 — `list_chats`' first read (item 5b; core 0.0.1213)
+
+- **v4 measured** (`salon-reads.test.ts`'s new `renameMainColumn` key +
+  `list_main_plant`, `chats.userId` → `userId_x` on the MAIN copy): 200
+  `{"chats":[]}` + ERROR `Error finding entities by filter {collection: chats}`
+  (beneath it the backend's `SQLite find error {table: chats}` — unported,
+  added to `PLANT_EXCLUDED` with its reason). The survey's prediction HELD
+  (v4's lazy `ensureCollection` does not re-add a renamed column).
+- **Port:** `api/salon.rs` `list_chats` — the first read through
+  `find_by_filter_or_empty("chats", || db.read_main(…))` (the `chat_get`
+  precedent: the pool checkout inside the home). `list_chats_failed` keeps its
+  one other caller (the enrichment arm).
+- **Red-first:** 500 + `[Chats v1] Error listing chats` vs 200 `[]` + the
+  filter line. Green after; the family's other plant cases unchanged.
+- Regen: `salon-reads.test.ts` (jest `/tmp` mirror) → `QT_ORACLE_SALON_READS`.
