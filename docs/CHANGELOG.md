@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-06 — docs(porting): the `07b8f0209` follow-ups + restore dogfood pass — 21 rows, #143/#144/#147 fixed, #149 ordered
+
+_Docs-only change._
+
+The agent-driven dogfood pass over P4.147–P4.152 on the Friday copy, two planted clones and a fresh instance.
+
+- Walk doc `dogfood-walks/2026-10-06-followups-restore-imports-fallbacks-pass.md` (every row terminal).
+- `dogfood-findings.md`: rows #143–#149; a standing note ordering #149 (fresh-instance indexes, measure v4's real first boot first) and folding #145/#146 into the next smalls round.
+- `status-log.md`: the pass's record. CLAUDE.md: the pass's status bullet.
+
 #### 2026-10-06 — fix(core): `chats_read::find_all` drops an unreadable chat row as v4's `_findAll` does, and the render-reconcile scan WARN logs SQLite's bare sentence (dogfood #144, #147)
 
 _Versions: core 0.0.1235._

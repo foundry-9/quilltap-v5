@@ -1651,6 +1651,27 @@ records THERE. Update this summary only when a phase or round completes.
   preserve arm's completeness guard, the `pdf-parse` vm-modules row, the
   sync ruling), then a drift catch-up when v4 moves** — `phase-4.md`. Round
   record: `status-log.md`.
+- **The `07b8f0209` follow-ups + restore dogfood pass RAN (2026-10-06,
+  agent-driven, on the Friday copy + planted clones + a fresh instance) — 21
+  rows, all terminal; TWO v5 defects FIXED in place, ONE high-severity gap
+  ORDER-PENDING.** Walk doc:
+  `dogfood-walks/2026-10-06-followups-restore-imports-fallbacks-pass.md`;
+  record in `status-log.md`. ⭐ **#141 + #142 closed live:** a `replace`
+  restore of a fresh 1.27 GB backup kept all 77 store ids and every entity's
+  pointer (Friday on her 807-link vault), and a restore into a freshly `setup`
+  instance adopted the archive's Uploads store with zero Uploads warnings.
+  Also live: #140's bare import tails + Zod refusals with no half-written
+  store, the nine project-detail toasts, the refocus, P4.149's fallbacks on
+  planted clones, P4.150's four ALTER lines + the ONE collapse line + Google's
+  `No parts found`. **FIXED:** #143 (a refused project-detail select kept
+  showing the refused value; SPA 0.5.810) and #144 (one unreadable chat row
+  made EVERY project GET answer 500 — `chats_read::find_all` now drops it as
+  v4's `_findAll` does; core 0.0.1235) + #147 (a log prefix). **#149
+  ORDER-PENDING (high):** a v5-provisioned instance carries NONE of the 57
+  secondary indexes a migrated v4 instance has (four UNIQUE) — a restore into
+  one took 2 h 26 m against 9 m; measure a real v4 first boot FIRST (standing
+  note). #145/#146 smalls; #148 v4-faithful. **Still owed:** the standing
+  queue.
 - **Oracle baseline: `07b8f0209` (2026-10-04, v4 main — "Impersonated-line
   voice: three modes, no model call until asked", `4.10.0-dev.111`), adopted
   at the `07b8f0209` round's unification (2026-10-05).**

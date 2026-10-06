@@ -168204,3 +168204,88 @@ Uploads warnings), a `.qtap` import whose warnings read v4's bare tails and
 whose `allowAnyCharacter: null` project imports OPEN, a BLOB-named profile
 dropped per row with the title job completing, the four `doc_mount_points`
 ALTERs on a planted pre-ALTER copy, the nine project-detail toasts.
+
+## Dogfood pass — the `07b8f0209` follow-ups + restore round: imports, the project-detail toasts, the repository fallbacks on planted clones, the boot heals, the restore into the copy and into a fresh instance (2026-10-06)
+
+**Walk doc:** `dogfood-walks/2026-10-06-followups-restore-imports-fallbacks-pass.md`.
+**21 rows, every one terminal (D7 folded into F4): 19 PASS, two FAIL →
+FIXED in place (C2 #143, D3 #144), and #147 fixed riding D2's PASS. Two fix commits
+pushed (`b6a52aeb3` SPA 0.5.810; `28b056b8f` core 0.0.1235). ONE
+high-severity provisioning gap found and ORDER-PENDING (#149), two log-text
+divergences for the smalls round (#145, #146), one v4-faithful note (#148).**
+Main copy plus two planted APFS-clone instances plus one fresh instance;
+zero panics.
+
+Orders covered: P4.147 ∥ P4.148 ∥ P4.149 ∥ P4.150 ∥ P4.151 ∥ P4.152. The
+ledger's §2 probe PASSED at walk start (v4 AT `07b8f0209`, clean, §3 EMPTY;
+`origin/main` agreeing after `git fetch --all`).
+
+### Proven live
+- **#140 closed (P4.148):** a `duplicate` `.qtap` import's warnings read the
+  bare `UNIQUE constraint failed: chat_messages.id`; a `color: "red"` group and
+  a `color: 5` project refused with v4's `JSON.stringify(issues, null, 2)`
+  bytes and NO store written (76 → 76); a project carrying
+  `allowAnyCharacter: null` imported OPEN (the unification's blocking fix);
+  `projectCharacterAdd` with a non-uuid id → v4's Zod 400 envelope.
+- **P4.152:** the Characters card's search refocused after a collapse and
+  re-expand with the picker open; the nine project-detail handlers each
+  toasted v4's fixed sentence under a posed 400 (never the server's message).
+- **P4.149 on planted clones:** a BLOB `connection_profiles.name` dropped from
+  the list with v4's two lines (`received Float32Array`); `chats.userId`
+  renamed → `listChats` 200 `[]` with the filter line; a corrupt project store
+  → the GET's 500 + `[Projects v1] Error fetching project` and the chat move's
+  503 with v4's body; a standing-inform cancel under a `BEFORE DELETE` trigger
+  → `removed: 0` with `Error deleting entity` then the wrap's line; a renamed
+  `batchId` → v4's real arm (404 `Inform batch not found` after the filter
+  line — `findByBatchId` precedes the wrap on both sides).
+- **P4.150 on a planted clone:** the four `Migrated doc_mount_points: added …
+  column` lines, `/health` `structure` healthy; v4's collapse ledger row
+  removed and a roll unkeyed → ONE `Collapsed duplicate avatar rolls … durationMs=892`
+  (bug 143's seven protected portraits kept); a posed parts-less Google
+  candidate → v4's `No parts found in Google response candidate … finishReason=STOP`
+  (the profile `baseUrl` reaches the Google transport).
+- **#141 + #142 closed (P4.147):** a `replace` restore of a fresh 1.27 GB
+  Friday-copy backup kept all 77 store ids, every character's vault pointer
+  (Friday on her 807-link vault), every project/group pointer (LUC Ranch on
+  `50369598…`) and the archive's Uploads id, with zero Uploads warnings; the
+  same archive (planted) restored into a freshly `setup` instance adopted the
+  archive's Uploads store (ten bundles + `hinge-log.md` there, all
+  downloading); the store-less project restored on the fallback arm with its
+  `icon`/`color`; two malformed `permanent` rows skipped with v4's ZodError
+  bytes + WARN (`Restored chat informs total=35 restored=33`).
+
+### Found and fixed
+- **#143 (SPA):** a refused project-detail select kept showing the refused
+  value — v4's selects are controlled, v5's `[selected]` bindings never
+  re-ran. Both cards now restore the select in the `catch`; the seven handler
+  tables assert it (red 7/7 before); a new `projects-flow` e2e beat with a
+  routed 400 (file 7/7). Gate: SPA 467 files / 8,889, build clean.
+- **#144 (core):** one unreadable chat row made EVERY project GET answer 500
+  — `chats_read::find_all` read strictly where v4's `_findAll` drops the row;
+  now through `run_dropping_invalid_rows` (ten other callers with it). Red-first
+  unit pin; live re-run 200 with `_count.chats` one lower.
+- **#147 (core):** the render-reconcile scan WARN's `sqlite error: ` prefix.
+- Gate for the core commit: fmt, clippy `--workspace --all-targets` clean;
+  `cargo test -p quilltap-core` 3,097 / 0; the nine harness families whose
+  path reads `find_all` (`projects_routes`, `system_backup`, `system_export`,
+  `chats_outfits_tier2`, `collapse_stale_chat_caches_tier2`,
+  `enclave_lifecycle_tier2`, `maintenance_ops_tier2`, `maintenance_sweep_tier2`,
+  `backup_mount_index_coercion`) regenerated from the pin through the sweep
+  driver: 9/9 ok. (`backup_uuid_remap` is refused by the driver by design.)
+
+### Filed
+- **#149 — ORDER-PENDING, high:** a v5-provisioned instance has none of the
+  57 secondary indexes a migrated v4 instance carries (four UNIQUE); the
+  fresh-target restore took 2 h 26 m against 9 m. Measure a real v4 first
+  boot first (standing note).
+- **#145 / #146 — smalls:** the inform lines' snake_case keys; the overlay's
+  serde parse detail.
+- **#148 — v4-faithful:** F1's 28 file warnings (kept bundles re-ingested then
+  refused; 18 dangling legacy project-file keys v4 also 404s).
+
+### Instrument notes
+`recipe_sweep.py` needs `--v5w ~/source/quilltap-v5` (the real path's space
+broke every regen on the first attempt — a memory note); zsh's `set -- $x`
+does not word-split, so a three-server launch loop started nothing and its
+wait loop had to be stopped by task id. The REST project / chat / chat-settings
+PUTs remain dispatch-only in v5 (405), as recorded on 2026-10-05.
