@@ -168765,3 +168765,239 @@ the two `QT_FIXTURE_FOLD_EPISODE_*`.
   mount-index file is unreadable answering 503 with four DEBUG `Dedicated
   database unavailable` lines.
 - **Pins removed at close:** `/tmp/qt-v4-pin-p4156-94fbb1ae3`.
+## P4.155 — the `.qtap` import + projects/groups data-layer smalls, round 2 (lane `claude/import-projects-groups-data-24cc6b`, pin `94fbb1ae3`)
+
+Ordered 2026-10-06 (`work-orders/p4.155-import-projects-groups-data-layer-smalls-round2.md`).
+Pin `/tmp/qt-v4-pin-p4155-94fbb1ae3` (detached `94fbb1ae3`, `4.10.0-dev.112`,
+`rev-parse` + `ls -ld` verified; the three symlink classes — root, `packages/
+quilltap`, all 15 `plugins/dist/*/node_modules`). The ledger's §2 probe PASSED
+at lane start and before every regen batch (branch `main`, HEAD `94fbb1ae3`,
+both logs empty, tree clean). No second (`07b8f0209`) pin was needed — this
+lane runs no §R.13 family. Every oracle regenerated into lane-private
+`/tmp/p4155/` from the pin, one family per invocation. Baseline: unported
+`main` was GREEN on `system_import_state` against the target pin's oracle
+before any edit.
+
+### What the order's survey got wrong (measured, §R.4)
+
+- **R-A's "exactly the base pair through `log_create_failure`" is false — and
+  so was P4.148's "three, incl. `Error creating entity`".** v4's refused
+  project / group create logs THREE ERRORs, none of them the base sentence:
+  `Data validation failed {collection, error}` (`validate`), `Error creating
+  project entity` / `Error creating group entity {collection, error,
+  strictFailures}` (`_create`'s rethrowing `safeQuery` under the STORE-BACKED
+  override of `createErrorMessage()`, `store-backed.repository.ts:234-236` —
+  the planning grep looked only in `projects.repository.ts` /
+  `groups.repository.ts`), and `Error creating project` / `Error creating
+  group {collection, name, error, strictFailures}` (the store-backed
+  `create`'s OWN `safeQuery`, `:130-175`), then the importer's WARN. Measured
+  through the oracle's `Logger.prototype` spy at `94fbb1ae3`: 4 lines per
+  refusal, in that order. None has a `db::fallback` home → HANDOFF (below).
+- **R-C's "a non-array `tags` → `[]`" is false.** All three v4 sites are
+  `char.tags || []` (`project-crud.ts:53`, `roster.ts:38`, `chats.ts:69`): a
+  FALSY value reads `[]`, a truthy non-array is KEPT. And the divergence the
+  order targeted is UNREACHABLE: v5's character read materializes a NULL
+  `tags` cell as `[]`, so `unwrap_or([])` never saw a `null` (measured: the two
+  new `*_null_tags` rows were GREEN on unported core). The fold is ONE rule,
+  not a behaviour change; the rows are neutral regression pins.
+- **R-E:** memories and prompt templates cannot be driven to FAIL identically
+  through a malformed item (v5's importers coerce where v4's schemas refuse —
+  a separate pre-existing gap), so the corpus drives them through planted
+  INSERT-refusing triggers instead (the `refuse-chat-inserts` shape).
+
+### Unit 1 — the refused project/group import arm: whole-entity validation + v4's repository lines + id-less WARN fields (Tier 1 items 1, 2, 5)
+
+- **Oracle growth (`system-import-execute.test.ts`):** `REPO_LOG_MESSAGES`
+  gains the six project/group messages and the spy keeps `name` /
+  `projectId` / `groupId`; both property-refusal cases record `repoLogs`;
+  each payload grows SIX refusing rows — a 101-code-point `name`, a
+  2001-character `description`, a numeric `instructions`, an array `state`,
+  and a row refusing in TWO sections at once (long name + `color: 5`, which
+  measured the cross-section issue order: the row key's issue precedes the
+  bag's) — projects 4 → 9 refusals, groups 3 → 8; and two NEW cases:
+  `execute_idless_files` (the cross-instance failing `atlas-plates.bin`, its
+  `id` removed) and `execute_idless_refused_inserts` (prep
+  `refuse-idless-inserts`: triggers refusing every `memories` /
+  `prompt_templates` INSERT; three memories, the first id-less; a prompt
+  template under two fresh names, one id-less). Every existing case's
+  `repoLogs` / `importWarns` / `result` byte-identical to the pre-growth
+  regen bar minted ids (measured).
+- **Red-first, measured on unported core at the pin: 20 differences** (on
+  the corpus BEFORE the two-section row was added — 8 / 7 refusals) — the
+  project case imported 6 where v4 imported 2 (7 `projects` rows vs 3, the
+  stores/links/documents/chunks following), the group case 5 vs 1; the
+  repository lines 4 vs v4's 32 and 3 vs 28 (v5 logged the WARN alone); both
+  id-less arms rendered `fileId=` / `memoryId=` / `templateId=` empty (3
+  lines). The two-section row was added AFTER the port (to measure v4's
+  cross-section issue order rather than assume it) and was not separately
+  measured red; on unported core it would refuse with the bag's issue alone
+  where v4 names both (by reading, not run).
+- **The port:** `api::zod_issues::zod_store_entity_issues` (the row keys of
+  `ProjectSchema` / `GroupSchema`, identical for both kinds: claimed `id`,
+  `name` via the group rule's name check — moved into ONE
+  `zod_entity_name_issues` both use — `description` ≤ 2000, `instructions` ≤
+  10000 code points, `state` a record); `db::projects::parse_create_entity`
+  (row issues + `zod_project_properties_issues` over the SEEDED bag, then
+  `parse_create_properties`) and `db::groups::parse_create_entity` (no seed —
+  groups override no `prepareCreateData`); the importer builds v4's create
+  payload (`store_create_payload`: the item minus `id`/`createdAt`/
+  `updatedAt`/`officialMountPointId`, the `duplicate` rename applied) and
+  validates it BEFORE any write. The refusal logs through the lane-local
+  `db::document_store_overlay::log_refused_store_create(StoreKind, name,
+  zod)` — v4's three lines on `quilltap::db`, `strictFailures` on the two
+  `safeQuery` lines inside the strict scope, `name` omitted when absent.
+  `services::quilltap_import::id_field` renders every per-item WARN's id
+  (14 sites in 7 files): absent → omitted; a string bare; any other value its
+  JSON text (a `null` id is a VALUE winston prints).
+- **Pins:** `refused_create_line_tests` (three: v4's order and fields under
+  the strict scope; outside it with no name; a numeric name);
+  `import_warn_pins::an_id_less_item_omits_the_id_field` (prompt template,
+  folder — absent AND `null` — and memory; the folder is the one kind no
+  oracle case drives); `system_import_state` asserts v4 logged exactly
+  `[validate, … entity, … wrap, WARN] × refusals` per case (non-vacuity) and
+  the counts (50 cases; 37 WARN-compared cases, 8 lines; 5 repository-line
+  cases). Its line parser became key-aware (`name=` carries spaces) and
+  matches the LONGEST message (`Error creating project entity` begins with
+  `Error creating project`).
+- **Green after** on the fresh pin regen (`oracle-import-3`).
+
+### Unit 2 — the embedding-profile WARN's `userId` (Tier 1 item 6)
+
+`Failed to resolve default embedding profile after import` carries v4's
+`{userId, error}` (`execute.ts:347`). Capture pin
+`import_warn_pins::the_profile_resolve_failure_carries_v4s_user_id` (a
+dropped `embedding_profiles` table; the following `Imported memories left
+unembedded` line; the silence leg) — **measured RED with the field removed**
+(`left: […after import error=no such table…]`), green with it.
+
+### Unit 3 — ONE uuid predicate (Tier 1 item 4)
+
+- **Measured before the fold:** the two `is_zod_uuid` copies
+  (`api/chat_outfits.rs`, `services/file_storage.rs`) against
+  `zod_issues::zod_uuid_ok` over **1,291 inputs** (every byte at the version
+  nibble × eight variant nibbles, the nil/max forms in both cases, short,
+  long, non-hex, non-ASCII) — all three agree (a scratch test, deleted). No
+  twin differed, so no finding-first.
+- **The fold:** both are one-line delegations (kept as names — ~25 callers in
+  files this lane does not own, incl. the FROZEN `api/memories.rs`, import
+  them). Their existing unit tables stay green.
+- **`zod_issues_home_guard`:** a NEW uuid-predicate census (9 definitions in
+  9 files, each with its why) + `the_two_is_zod_uuid_names_delegate_to_the_
+  home` — **RED on the unported copies** (`must delegate … not
+  hand-match`), green after.
+- **⚠ FINDING (not this lane's files — a named follow-up):**
+  `api/chat_post_office.rs:104`, `services/chat_scenario.rs:76` and
+  `services/chat_participants.rs:124` each define `is_uuid` documented as
+  `z.uuid()` ("unconstrained beyond the shape") but check ONLY the 8-4-4-4-12
+  shape. Zod's `uuid()` constrains the version (`1-8`) and variant
+  (`89abAB`) nibbles (`ZOD_UUID_PATTERN`), so those three gates accept ids v4
+  refuses (e.g. `…-0000-9000-c000-…`). Pinned in the census as findings; a
+  convergence there needs each surface's oracle re-run. (`vault_overlay.rs`'s
+  regex is the exact zod pattern; `system_backup.rs` / `ai_import.rs` are
+  v4's OWN shape regexes, correctly not zod.)
+
+### Unit 4 — `tags` through ONE rule (Tier 1 item 3)
+
+`api::projects::char_tags_or_empty` — v4's `char.tags || []` — at all three
+sites (`project-crud.ts:53`, `roster.ts:38`, `chats.ts:69`). Two new oracle
+rows (`list_characters_null_tags`, `list_chats_null_tags`, the NULL-cell
+plant beside P4.148's `get_iota_null_tags`) recorded `[]` through v4's real
+handlers. **NOT red-first — unreachable, measured:** both rows were GREEN on
+unported core, because `characters_read` materializes a NULL `tags` cell as
+`[]` before any of the three sites reads it. The fold is structural (one
+rule); the rows are regression pins, honestly labelled.
+
+### Unit 5 — Tier 2 (items 7, 8)
+
+The `pin_201` comments in both routes families name the recorded transport
+divergence (measured: no REST route for projects or groups in
+`quilltap-web`; every op through the engine dispatch, success 200).
+`services/mount_index/sync/types.rs`: the `double_option` re-export regains
+the three-state "why" P4.148's move dropped. ⚠ Ownership note: that file is
+not in this order's Ownership row though Tier 2 item 8 names it; no other
+lane owns it — one doc-comment hunk, recorded here for the unifier.
+
+### HANDOFFs
+
+- **HANDOFF → P4.156 (§R.10(a), §S.1):** `db/fallback.rs` grows TWO homes
+  beside `log_create_failure`: `Error creating {project|group} entity
+  {collection, error, strictFailures?}` (the store-backed `_create` override)
+  and `Error creating {project|group} {collection, name, error,
+  strictFailures?}` (the store-backed `create` wrap). The lane-local
+  `db::document_store_overlay::log_refused_store_create` (marked
+  `// HANDOFF(P4.156)`) then calls them, plus `Data validation failed` inline
+  as every other site logs it; `fallback_home_guard`'s `HOME_MESSAGES` gains
+  the two sentences. Re-run `system_import_state`, `import_warning_text_guard`,
+  `fallback_home_guard` by name.
+- **HANDOFF → P4.158 (R-B):** the restore's two project/group create arms
+  still validate through `parse_create_properties` (the bag) — the whole-entity
+  fn's signature DIFFERS (`parse_create_entity(entity: &Value, claimed_id:
+  Option<&str>)`, the payload minus `id`/`createdAt`/`updatedAt`/
+  `officialMountPointId`). Repointing them is P4.158's `orchestrator.rs`;
+  `orchestrator.rs` untouched here.
+- **Not ported (named):** the import's NON-validation `repo.create` failure
+  (a DB / store-provisioning error) still logs no repository lines — v4 logs
+  `Error creating project` (and `… entity` when `_create` itself throws) there
+  too; `StoreBackedRepository::create` (P4.158's file) is the natural home.
+  A nameless bundle item's per-item warning reads `""` where v4 interpolates
+  `"undefined"` (`${project.name}`), and the `duplicate` rename likewise —
+  pre-existing, not in this order.
+
+### Tier 3 — deferred by name (unchanged)
+
+9 the nine `SERDE_ARM_DIVERGENCES` rows + the schema-shape table; 10 the 19
+absent `[Projects v1]` lines + the three Scenarios-ensure repository ERRORs;
+11 the frozen `double_option` copies; 12 the `Import failed:` mask.
+
+### 💸 for the dogfood pass
+
+- a `.qtap` import carrying a 101-character project name: refused with v4's
+  ZodError bytes and THREE ERROR lines (`Data validation failed`, `Error
+  creating project entity`, `Error creating project name=…`) before the WARN;
+- an id-less memory / file item's WARN with no `memoryId=` / `fileId=`;
+- (the order's `tags: "x"` row is moot — v4 keeps a truthy non-array, and a
+  NULL cell never reaches the sites.)
+
+### The gate
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -D warnings` clean AND with `--features quilltap-core/native-transport`.
+- **The sweep** (announced; `--v4 /tmp/qt-v4-pin-p4155-94fbb1ae3`, the
+  spaceless `--v5w`): **20 ok / 1 run_failed of 21** — `system_import_state`,
+  `system_import_equivalence`, `qtap_import_equivalence`, both routes, both
+  tier-2, `project_background_display_mode`, `import_warning_text_guard`,
+  `zod_issues_home_guard`, `fallback_home_guard` + `system_restore_state`
+  (RUN only), and the twin-fold neutrals (`chats_outfits_tier2`,
+  `files_routes`, `files_tier2`, `images_routes`, `settings_routes`,
+  `memories_routes`, `help_chats_routes`, `brahma_console_routes`). The one red
+  is `search_replace_equivalence` — the STANDING red recorded at every
+  unification since `52d6e7ecd` (its recorded `missing_action` arm: v4 now
+  answers `Unknown action: `), not this lane's.
+- **Workspace:** `QT_V4_CHECKOUT=QT_V4_ROOT=<pin> CARGO_INCREMENTAL=0 cargo
+  test --workspace --no-fail-fast` with the lane's two oracle vars
+  (`QT_ORACLE_SYSTEM_IMPORT_EXECUTE`, `QT_ORACLE_PROJECTS_ROUTES`, lane-private
+  paths): **671 test binaries / 4,391 passed / 0 failed / 3 ignored**, every
+  touched family and pin confirmed RUN by name; `spelling_guard`,
+  `fallback_home_guard`, `builtin_prompt_templates_guard`,
+  `provider_sdk_version_guard`, `help_tree_equivalence` green (the last
+  green at the target even though §R.13 predicted red — recorded, not
+  investigated: not this lane's). ⚠ Machine-share note: the lane's wait loop
+  counted each sibling gate twice (shell + cargo), hit its 2-hour bound, and
+  started while sibling gates were still running — more than §R.9's two.
+- `recipe_sweep.py --self-test` exits 0; `npm run build` (apps/web, liveness,
+  no SPA edit) clean.
+
+### Versions at close
+
+core **0.0.1240** (5 commits: 1236 → 1240); harness frozen 0.0.1110; host,
+web, cli, tauri, SPA unchanged.
+
+### Regen recipes (lane-private staging; canonical headers unchanged)
+
+- `system-import-execute`: the case header's recipe from the pin worktree
+  (`cd /tmp/qt-v4-pin-…`, the `system-data-*` fixture vars,
+  `QT_ORACLE_OUT=<file>`) → `QT_ORACLE_SYSTEM_IMPORT_EXECUTE`.
+- `projects-routes`: the case header's recipe (the `groups-projects-*`
+  fixture vars) → `QT_ORACLE_PROJECTS_ROUTES`.
+- No fixture changed; no committed pair rebuilt; no oracle invalidated for
+  another family.

@@ -73,6 +73,12 @@ _Versions: core 0.0.1236._
 - `db/fallback.rs`: new homes `find_by_filter_strict_aware`, the five chat-informs outer read wraps, `informs_marked_consumed_or_zero`, `messages_deleted_or_zero`; one emitter for `Error finding entities by filter`.
 - `api/chat_informs.rs`: a failed chat read answers 404 (was 500 + `Error posting inform` / `Error listing informs`); a failed batch write answers 500 `Internal server error` with no route line; the record delete reads through v4's `deleteMessagesByIds` fallback (its `Could not delete inform record message` WARN is unreachable on a database failure, so it is gone); every `[Chats v1]` line uses v4's camelCase keys.
 - Harness: `chat_informs_tier2` grows 31 ops (column-rename and trigger plants, strict-scope ops, thrown results); `chat_informs_routes` compares the route's own log lines and gains three failure cases; `fallback_home_guard` +6 messages.
+#### 2026-10-06 — docs(porting): the P4.155 lane record — the import + projects/groups smalls round 2
+
+_Docs-only change._
+
+- `status-log.md`: the P4.155 lane record (red-first counts, the three-line R-A measurement, the unreachable R-C red, the uuid finding, the HANDOFFs to P4.156 and P4.158, the gate). The work order's status header set to LANE COMPLETE.
+
 #### 2026-10-06 — docs(core): the 201 pins name v5's dispatch-only 200; `sync/types.rs` gets its three-state note back (P4.155)
 
 _Versions: core 0.0.1240._
