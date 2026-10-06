@@ -17,7 +17,10 @@
  * so the generateDDL surface captured here is a valid, v4-compatible schema; a
  * byte-for-byte match with a migration-accumulated instance would require
  * porting the migration runner (a tracked deferral, unnecessary for
- * correctness).
+ * correctness). The INDEXES those migrations make are NOT covered by that
+ * defence (they change plans and, for the UNIQUE ones, writes), so they are
+ * dumped separately by the sibling `dump-migration-indexes.ts` (P4.153) and
+ * provisioned on top of this surface.
  *
  * Output: JSON `{ main: string[], mountIndex: string[], llmLogs: string[] }` —
  * per partition, CREATE TABLE statements (ordered by name) then CREATE INDEX
