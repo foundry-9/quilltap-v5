@@ -46,7 +46,8 @@ use super::doc_mount_points::{
     CreateOptions as DmpCreateOptions, DmpCreate, DocMountPointsRepository,
 };
 use super::vault_character_write::{
-    write_character_vault_managed_fields, CharacterVaultWriteInput,
+    render_physical_prompts_json, render_properties_json, write_character_vault_managed_fields,
+    CharacterVaultWriteInput,
 };
 use super::DbError;
 
@@ -486,6 +487,104 @@ pub fn create_character_with_options(
     ensure_character_vault(main, mount, &id, &name, vault, None)?;
 
     Ok(id)
+}
+
+/// P4.158 (ruling R-A) — complete a PRESERVED vault from the archived row.
+///
+/// The restore's preserve arm (P4.147, dogfood #141) keeps a character on the
+/// vault the archive carries rather than projecting into a fresh one, as v4's
+/// create does. A damaged archive can carry a vault that LACKS a managed file;
+/// left alone, the restored character reads that field blank where v4's fresh
+/// projection (`characters.repository.ts:262-296`) would have read the row's
+/// inline value. So, after the mount family has restored the vault's rows,
+/// every managed file [`write_character_vault_managed_fields`] would project
+/// and the vault does NOT hold is written from `vault` — and nothing else: a
+/// file the vault already carries is the archive's and wins.
+///
+/// The set and the bytes are the projection's, in its order: `properties.json`,
+/// `metadata.json` (only for a non-null fact sheet — its anti-clobber guard),
+/// the five markdown fields (`""` when absent), the physical pair (only with a
+/// physical description), then one `Prompts/` / `Scenarios/` file per entry
+/// (never swept — the folder's other files are the archive's). Returns the
+/// relative paths written.
+pub fn backfill_character_vault_managed_files(
+    mount: &Connection,
+    mount_point_id: &str,
+    vault: &CharacterVaultWriteInput,
+) -> Result<Vec<String>, DbError> {
+    let mut files: Vec<(String, String)> = vec![(
+        "properties.json".to_string(),
+        render_properties_json(
+            vault.pronouns.as_ref(),
+            &vault.aliases,
+            vault.title.as_deref(),
+            vault.first_message.as_deref(),
+            vault.talkativeness.unwrap_or(0.5),
+            vault.can_choose_outfit.unwrap_or(false),
+        ),
+    )];
+    if let Some(metadata) = vault.metadata.as_ref().filter(|m| !m.is_null()) {
+        files.push((
+            METADATA_JSON_PATH.to_string(),
+            serde_json::to_string_pretty(metadata)
+                .expect("metadata.json serialization is infallible"),
+        ));
+    }
+    for (path, value) in [
+        ("identity.md", vault.identity.as_deref()),
+        ("description.md", vault.description.as_deref()),
+        ("manifesto.md", vault.manifesto.as_deref()),
+        ("personality.md", vault.personality.as_deref()),
+        ("example-dialogues.md", vault.example_dialogues.as_deref()),
+    ] {
+        files.push((path.to_string(), value.unwrap_or("").to_string()));
+    }
+    if let Some(physical) = vault.physical_description.as_ref() {
+        files.push((
+            "physical-description.md".to_string(),
+            physical.full_description.clone().unwrap_or_default(),
+        ));
+        files.push((
+            "physical-prompts.json".to_string(),
+            render_physical_prompts_json(Some(physical)),
+        ));
+    }
+    for p in &vault.system_prompts {
+        files.push((
+            format!(
+                "Prompts/{}.md",
+                crate::vault_overlay::sanitize_file_name(&p.name)
+            ),
+            crate::vault_overlay::build_system_prompt_file(&p.name, p.is_default, &p.content),
+        ));
+    }
+    for sc in &vault.scenarios {
+        files.push((
+            format!(
+                "Scenarios/{}.md",
+                crate::vault_overlay::sanitize_file_name(&sc.title)
+            ),
+            crate::vault_overlay::build_scenario_file(
+                &sc.title,
+                &sc.content,
+                sc.description.as_deref(),
+                sc.archived,
+            ),
+        ));
+    }
+    let links = DocMountFileLinksRepository::new(mount);
+    let mut written = Vec::new();
+    for (path, content) in files {
+        if links
+            .find_by_mount_point_and_path(mount_point_id, &path)?
+            .is_some()
+        {
+            continue;
+        }
+        links.write_database_document(mount_point_id, &path, &content)?;
+        written.push(path);
+    }
+    Ok(written)
 }
 
 #[cfg(test)]

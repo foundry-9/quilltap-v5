@@ -1344,6 +1344,15 @@ fn system_restore_state_equivalence() {
                 summary_carve.shared_content = shared > 0;
             }
         }
+        // [P4.158 R-A] the backfilled managed files, both ways.
+        summary_carve.preserve_backfill = assert_preserve_backfill(
+            name,
+            &zip,
+            &host.temp_dir(),
+            &got_state,
+            &want_owned,
+            &mut failures,
+        );
         carve_fresh_target_uploads(
             name,
             &zip,
@@ -1394,7 +1403,7 @@ fn system_restore_state_equivalence() {
             compare_restore_logs(name, &case["logs"], &lines, &mut failures);
             restore_log_cases += 1;
         }
-        // [P4.158 R-B] the v5-only claim WARN, on every case.
+        // [P4.158 R-A/R-B] the v5-only claim + backfill WARNs, on every case.
         assert_claimed_store_warns(name, &lines, &mut failures);
 
         // [P4.147 item 8] the fallback arm's whole property bag, by name.
@@ -1455,15 +1464,15 @@ fn system_restore_state_equivalence() {
     // three fresh-target arms (#142), the bag-nulls arm, the informs arm and
     // the SQLite-tail plant.
     assert_eq!(
-        seen, 32,
-        "expected all thirty-two restore cases in the oracle (ten + the #58 orphan-links arm \
+        seen, 33,
+        "expected all thirty-three restore cases in the oracle (ten + the #58 orphan-links arm \
          + P4.D46's two compact arms + P4.D126's bug-103 legacy-profiles arm \
          + P4.D145's bug-114 duplicate-folders arm + P4.D152's bug-117 arm \
          + P4.D158's two bag-key arms + P4.D208's bug-158 arm \
          + P4.D226's legacy-Concierge arm + P4.130's refused-chat arm \
          + P4.143's serde-arm plant + P4.D251's voice-legacy arm \
          + P4.147's three fresh-target arms, bag-nulls, informs and SQLite-tail arms \
-         + P4.158's two-claimants, dup-store-id and general-pointer arms)"
+         + P4.158's damaged-store, two-claimants, dup-store-id and general-pointer arms)"
     );
     // [P4.147] Every ruled #141 case actually carved (red-first measured, then
     // both directions held) — the arm cannot go vacuous.
@@ -3758,7 +3767,7 @@ fn carve_fresh_store_residual(
 /// every `replace` case whose archive carries a store some entity points at
 /// (measured, P4.147). A case falling out of the count is the carve going
 /// vacuous.
-const FRESH_STORE_CARVED_CASES: usize = 23;
+const FRESH_STORE_CARVED_CASES: usize = 24;
 
 /// The `summary` adjustments a ruled carve makes: v5 leads v4's `files`
 /// counter by `files_lead`, and these v4 warnings are the divergence itself.
@@ -3768,6 +3777,8 @@ struct SummaryCarve {
     drop_v4_warnings: Vec<String>,
     /// [`FRESH_STORE_SHARED_CONTENT`] applies on this case.
     shared_content: bool,
+    /// [`PRESERVE_BACKFILL`] applies on this case.
+    preserve_backfill: bool,
 }
 
 /// The two content tables a [`carve_fresh_stores`] that kept a SHARED content
@@ -4037,6 +4048,143 @@ fn classify_message_serde_arm(
     (carve(got), carve(want))
 }
 
+/// ## ⚠ THE RULED R-A DIVERGENCE — `PRESERVE_BACKFILL` (P4.158, 2026-10-06)
+///
+/// A preserved store (P4.147's #141 preserve arm) can be INCOMPLETE — an
+/// archive whose vault lacks a managed file (`restore-archive-damaged-store
+/// .zip` drops `description.md` from Lorian's vault and from the project and
+/// group stores). v4 cannot reach the state: it never preserves, it projects
+/// every managed field from the archived row into a FRESH store, so each
+/// description comes back from the row. v5 keeps the archive's store and,
+/// since R-A, BACKFILLS each missing managed file from the same row after the
+/// mount family — so the restored entity reads what the archive's row said
+/// (refusing the preserve instead would lose the store's OTHER files).
+///
+/// Each entry is `(case, [(table, entity id, store id, path)])`. Both ways on
+/// the dumps: **both** sides carry the file on the archive's store holding the
+/// archived row's `description` (v4's after the #141 carve re-homed its fresh
+/// projection — so a v4 that stops projecting fails here too); **v5**'s link is
+/// written AFTER the archive's own links (a backfill), **v4**'s BEFORE them (the
+/// phase-6/13 projection) — the insertion-order difference this divergence IS,
+/// so [`PRESERVE_BACKFILL_TABLES`] then compare order-insensitively (every value
+/// still compared).
+/// `(table, entity id, store id, path)`.
+type BackfillEntry = (&'static str, &'static str, &'static str, &'static str);
+
+const PRESERVE_BACKFILL: &[(&str, &[BackfillEntry])] = &[(
+    "restore_damaged_store_replace",
+    &[
+        (
+            "characters",
+            "a1000000-0000-4000-8000-000000000001",
+            "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "description.md",
+        ),
+        (
+            "projects",
+            "a3000000-0000-4000-8000-000000000001",
+            "5c17e916-5f79-4cca-a134-ec09c05924e9",
+            "description.md",
+        ),
+        (
+            "groups",
+            "a2000000-0000-4000-8000-000000000001",
+            "60a8194d-f8ea-4540-af77-5e13e7ed0e9b",
+            "description.md",
+        ),
+    ],
+)];
+
+/// The four tables a backfill writes into, compared order-insensitively on a
+/// [`PRESERVE_BACKFILL`] case.
+const PRESERVE_BACKFILL_TABLES: &[&str] = &[
+    "doc_mount_file_links",
+    "doc_mount_chunks",
+    "doc_mount_files",
+    "doc_mount_documents",
+];
+
+/// The `(rowid position, content)` of the link at `(store, path)` on one side.
+fn store_file(dump: &Value, store: &str, path: &str) -> Option<(usize, Option<String>)> {
+    let links = rows_of(dump, "mountIndex", "doc_mount_file_links");
+    let (i, link) = links.iter().enumerate().find(|(_, l)| {
+        str_at(l, "mountPointId") == Some(store) && str_at(l, "relativePath") == Some(path)
+    })?;
+    let content = str_at(link, "fileId").and_then(|f| {
+        rows_of(dump, "mountIndex", "doc_mount_documents")
+            .iter()
+            .find(|d| str_at(d, "fileId") == Some(f))
+            .and_then(|d| str_at(d, "content").map(str::to_string))
+    });
+    Some((i, content))
+}
+
+fn assert_preserve_backfill(
+    name: &str,
+    zip: &Path,
+    temp_root: &Path,
+    got: &BTreeMap<String, BTreeMap<String, Vec<Value>>>,
+    want: &Value,
+    failures: &mut Vec<String>,
+) -> bool {
+    let Some((_, entries)) = PRESERVE_BACKFILL.iter().find(|(c, _)| *c == name) else {
+        return false;
+    };
+    let extracted = quilltap_core::services::backup::restore::parse_backup_zip(zip, temp_root)
+        .expect("parse archive for its rows");
+    let d = &extracted.data;
+    let a = archive_stores(zip, temp_root);
+    let got_v = serde_json::to_value(got).expect("dump serializes");
+    for (table, id, store, path) in *entries {
+        let rows = match *table {
+            "characters" => &d.characters,
+            "projects" => &d.projects,
+            _ => &d.groups,
+        };
+        let archived = rows
+            .iter()
+            .find(|r| str_at(r, "id") == Some(id))
+            .and_then(|r| str_at(r, "description"))
+            .map(str::to_string);
+        // The store's links in the archive, so "before/after 22d" is measured
+        // against the archive's own first link on that store.
+        let first_archive_link = |dump: &Value| {
+            rows_of(dump, "mountIndex", "doc_mount_file_links")
+                .iter()
+                .position(|l| {
+                    str_at(l, "mountPointId") == Some(store)
+                        && str_at(l, "id").is_some_and(|i| a.link_ids.contains(i))
+                })
+        };
+        for (side, dump, written_after) in [("v5", &got_v, true), ("v4", want, false)] {
+            match (store_file(dump, store, path), first_archive_link(dump)) {
+                (Some((i, content)), Some(first)) => {
+                    if content != archived {
+                        failures.push(format!(
+                            "[{name}] PRESERVE_BACKFILL ({side}): {table} {id} {path} on {store} \
+                             reads {content:?}, the archived row says {archived:?}"
+                        ));
+                    }
+                    if (i > first) != written_after {
+                        failures.push(format!(
+                            "[{name}] PRESERVE_BACKFILL ({side}): {table} {id} {path} sits at \
+                             rowid slot {i}, the archive's first link at {first} — expected it \
+                             {} the archive's links",
+                            if written_after { "after" } else { "before" }
+                        ));
+                    }
+                }
+                (file, first) => failures.push(format!(
+                    "[{name}] PRESERVE_BACKFILL ({side}): {table} {id} has no {path} on {store} \
+                     ({file:?}, first archived link {first:?}) — the backfill (v5) / the fresh \
+                     projection (v4) did not land it"
+                )),
+            }
+        }
+    }
+    true
+}
+
 /// ## ⚠ THE RULED R-C DIVERGENCE — `GENERAL_POINTER_PREAPPLY` (P4.158, 2026-10-06)
 ///
 /// 22f-bis files a SHARED legacy wardrobe item (`characterId: null`) in
@@ -4190,21 +4338,51 @@ const CLAIMED_STORE_WARNS: &[(&str, &[&str])] = &[(
     ],
 )];
 
+/// ## [P4.158 R-A] The v5-only backfill WARN — pinned, with its silence leg
+///
+/// One line per managed file [`PRESERVE_BACKFILL`]'s completeness pass wrote.
+/// v4 never preserves, so it never backfills and has no line: RECORDED v5-only.
+const BACKFILL_WARN: &str =
+    "WARN quilltap::restore Backfilled a managed file the archived store was missing";
+const BACKFILL_WARNS: &[(&str, &[&str])] = &[(
+    "restore_damaged_store_replace",
+    &[
+        "entity=character entityId=a1000000-0000-4000-8000-000000000001 \
+         mountPointId=aff3114e-ed90-4d5b-99c1-ef3fa20203fc relativePath=description.md",
+        "entity=project entityId=a3000000-0000-4000-8000-000000000001 \
+         mountPointId=5c17e916-5f79-4cca-a134-ec09c05924e9 relativePath=description.md",
+        "entity=group entityId=a2000000-0000-4000-8000-000000000001 \
+         mountPointId=60a8194d-f8ea-4540-af77-5e13e7ed0e9b relativePath=description.md",
+    ],
+)];
+
+/// Every v5-only restore line, each `(its prefix, the cases that log it with
+/// their field tails)`; every case not listed must log none of it.
+/// `(case, the field tails it logs)`.
+type V5OnlyCases = &'static [(&'static str, &'static [&'static str])];
+
+const V5_ONLY_RESTORE_LINES: &[(&str, V5OnlyCases)] = &[
+    (CLAIMED_STORE_WARN, CLAIMED_STORE_WARNS),
+    (BACKFILL_WARN, BACKFILL_WARNS),
+];
+
 fn assert_claimed_store_warns(name: &str, lines: &[String], failures: &mut Vec<String>) {
-    let got: Vec<&str> = lines
-        .iter()
-        .filter_map(|l| l.strip_prefix(CLAIMED_STORE_WARN))
-        .map(str::trim_start)
-        .collect();
-    let want: Vec<&str> = CLAIMED_STORE_WARNS
-        .iter()
-        .find(|(c, _)| *c == name)
-        .map(|(_, w)| w.to_vec())
-        .unwrap_or_default();
-    if got != want {
-        failures.push(format!(
-            "[{name}] the v5-only claim WARN: got {got:?}, expected {want:?}"
-        ));
+    for (prefix, cases) in V5_ONLY_RESTORE_LINES {
+        let got: Vec<&str> = lines
+            .iter()
+            .filter_map(|l| l.strip_prefix(*prefix))
+            .map(str::trim_start)
+            .collect();
+        let want: Vec<&str> = cases
+            .iter()
+            .find(|(c, _)| *c == name)
+            .map(|(_, w)| w.to_vec())
+            .unwrap_or_default();
+        if got != want {
+            failures.push(format!(
+                "[{name}] the v5-only line {prefix:?}: got {got:?}, expected {want:?}"
+            ));
+        }
     }
 }
 
@@ -4740,9 +4918,11 @@ fn compare_case(
             let wnt = n_want.value(&Value::Array(w_rows.clone()));
             // [P4.147] A shared content row the #141 carve kept: same rows,
             // compared under a canonical order (see FRESH_STORE_SHARED_CONTENT).
-            if summary_carve.shared_content
+            if ((summary_carve.shared_content
+                && FRESH_STORE_SHARED_CONTENT.contains(&table.as_str()))
+                || (summary_carve.preserve_backfill
+                    && PRESERVE_BACKFILL_TABLES.contains(&table.as_str())))
                 && partition == "mountIndex"
-                && FRESH_STORE_SHARED_CONTENT.contains(&table.as_str())
                 && !residual.contains(table.as_str())
             {
                 let cg = normalize_canonically(&g_rows, &literals, &shas_got);
@@ -4756,7 +4936,7 @@ fn compare_case(
                         .unwrap_or_else(|| format!(" row count {} vs {}", cg.len(), cw.len()));
                     failures.push(format!(
                         "[{name}] mountIndex.{table} differs (canonical order — \
-                         FRESH_STORE_SHARED_CONTENT){detail}"
+                         FRESH_STORE_SHARED_CONTENT / PRESERVE_BACKFILL){detail}"
                     ));
                 }
                 continue;

@@ -562,6 +562,9 @@ fn restore_on_writer(
     // fresh-store arm with a v5-only WARN (`system_restore_state`'s
     // `CLAIMED_STORE_WARNS`; v4 cannot reach the state, so it has no line).
     let mut claims = StoreClaims::default();
+    // The entities the preserve arm kept on an archived store, for the
+    // completeness pass after the mount family (P4.158 R-A).
+    let mut preserved: Vec<PreservedStore> = Vec::new();
 
     // ── 6. Characters (vault-backed) ─────────────────────────────────────────
     //
@@ -570,18 +573,21 @@ fn restore_on_writer(
     if let Some(mount) = mount {
         for ch in &data.characters {
             let name = s(ch, "name");
-            warn_only!(
-                w,
-                format!("Failed to restore character \"{name}\""),
-                restore_one_character(
-                    main,
-                    mount,
-                    target_user_id,
-                    ch,
-                    &archived_stores,
-                    &mut claims
-                )
-            );
+            match restore_one_character(
+                main,
+                mount,
+                target_user_id,
+                ch,
+                &archived_stores,
+                &mut claims,
+            ) {
+                Ok(Some(vault)) => preserved.push(PreservedStore::new("character", ch, vault)),
+                Ok(None) => {}
+                Err(e) => w.push(format!(
+                    "Failed to restore character \"{name}\": {}",
+                    e.warn_text()
+                )),
+            }
         }
     } else if !data.characters.is_empty() {
         w.push("Characters were not restored — mount-index database is unavailable".to_string());
@@ -914,12 +920,14 @@ fn restore_on_writer(
                 continue;
             }
             if let Some(store) = archived_store(p, "project") {
-                warn_row!(
-                    w,
-                    c.projects,
-                    label,
-                    slim_projects.create_slim_linked(&s(p, "name"), &store_opts(id_of(p)), &store)
-                );
+                match slim_projects.create_slim_linked(&s(p, "name"), &store_opts(id_of(p)), &store)
+                {
+                    Ok(_) => {
+                        c.projects += 1;
+                        preserved.push(PreservedStore::new("project", p, store));
+                    }
+                    Err(e) => w.push(format!("{label}: {}", e.warn_text())),
+                }
                 continue;
             }
             let input = crate::db::projects::ProjectCreateInput {
@@ -957,12 +965,13 @@ fn restore_on_writer(
                 }
             };
             if let Some(store) = archived_store(g, "group") {
-                warn_row!(
-                    w,
-                    c.groups,
-                    label,
-                    slim_groups.create_slim_linked(&s(g, "name"), &store_opts(id_of(g)), &store)
-                );
+                match slim_groups.create_slim_linked(&s(g, "name"), &store_opts(id_of(g)), &store) {
+                    Ok(_) => {
+                        c.groups += 1;
+                        preserved.push(PreservedStore::new("group", g, store));
+                    }
+                    Err(e) => w.push(format!("{label}: {}", e.warn_text())),
+                }
                 continue;
             }
             let input = crate::db::groups::GroupCreateInput {
@@ -1229,6 +1238,14 @@ fn restore_on_writer(
             &mut c,
             &mut w,
         );
+        // ── 22h-iii. The preserve arm's completeness pass (P4.158 R-A) ───────
+        //
+        // Every preserved store now holds whatever the archive restored into
+        // it. One that LACKS a managed file is completed from the archived
+        // row — see `backfill_preserved_store`.
+        for p in &preserved {
+            backfill_preserved_store(mount, p, &mut w);
+        }
     } else {
         w.push(
             "Document stores were not restored — mount-index database is unavailable".to_string(),
@@ -2443,7 +2460,8 @@ fn restore_one_file(
 /// `repos.characters.create` does), and projects the managed fields into it.
 ///
 /// The vault fields are decoded on BOTH arms, so a row v4's schema would refuse
-/// is refused on either.
+/// is refused on either. Answers the vault id when the preserve arm kept it
+/// (for the R-A completeness pass), `None` on the fresh arm.
 fn restore_one_character(
     main: &Connection,
     mount: &Connection,
@@ -2451,7 +2469,7 @@ fn restore_one_character(
     ch: &Value,
     archived_stores: &std::collections::HashMap<String, String>,
     claims: &mut StoreClaims,
-) -> Result<(), DbError> {
+) -> Result<Option<String>, DbError> {
     let slim = crate::db::characters::CharacterCreate {
         user_id: target_user_id.to_string(),
         name: s(ch, "name"),
@@ -2492,13 +2510,14 @@ fn restore_one_character(
         .filter(|vault| claims.claim(vault, "character", &opts.id))
     {
         let slim = crate::db::characters::CharacterCreate {
-            character_document_mount_point_id: Some(vault_id),
+            character_document_mount_point_id: Some(vault_id.clone()),
             ..slim
         };
-        return crate::db::characters::CharactersRepository::new(main).create(&slim, &opts);
+        crate::db::characters::CharactersRepository::new(main).create(&slim, &opts)?;
+        return Ok(Some(vault_id));
     }
     crate::db::character_vault::create_character_with_options(main, mount, &slim, &vault, &opts)
-        .map(|_| ())
+        .map(|_| None)
 }
 
 /// Phases 23 and 24 — recursive copy of every subdirectory of `src` into `dest`,
@@ -2551,6 +2570,141 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> std::io::Result<()> {
 // ─────────────────────────────────────────────────────────────────────────────
 // Small shared helpers
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// One entity the preserve arm kept on an archived store (P4.158 R-A).
+struct PreservedStore {
+    /// `character` / `project` / `group` — the WARN's `entity` field.
+    entity: &'static str,
+    entity_id: String,
+    store: String,
+    /// The archived row, the backfill's source.
+    row: Value,
+}
+
+impl PreservedStore {
+    fn new(entity: &'static str, row: &Value, store: String) -> Self {
+        Self {
+            entity,
+            entity_id: id_of(row),
+            store,
+            row: row.clone(),
+        }
+    }
+}
+
+/// ## ⚠ RULED DIVERGENCE (P4.158 R-A, 2026-10-06) — a preserved store is
+/// ## COMPLETED from the archived row
+///
+/// The preserve arm (P4.147) keeps an entity on the store the archive carries
+/// and projects nothing, trusting the archive to restore the store whole. A
+/// damaged archive can carry a store that LACKS a managed file; left alone, the
+/// restored entity reads that field blank, where v4 — which never preserves,
+/// it projects every managed field from the archived row into a FRESH store
+/// (`characters.repository.ts:262-296`, `store-backed.repository.ts:156`) —
+/// reads the row's value. Refusing the preserve instead would lose the store's
+/// OTHER files (the reason #141 exists), so each MISSING managed file is
+/// written from the row, through the same write path the projection uses (so
+/// it is chunked on write like the projection's), and a file the store
+/// carries is never touched.
+///
+/// The managed sets are the projections': a vault's is
+/// [`crate::db::character_vault::backfill_character_vault_managed_files`]'s; a
+/// project's / group's official store holds `properties.json` (the bag through
+/// the create-time parse, the fallback arm's bytes), `description.md`,
+/// `instructions.md` (`""` when absent) and `state.json` (v4
+/// `writeManagedFields`). Each file written logs a v5-only WARN (v4 cannot
+/// reach the state); a write that fails is one warning and the entity keeps
+/// what the archive gave it. `system_restore_state` pins it both ways
+/// (`PRESERVE_BACKFILL`, `BACKFILL_WARNS`).
+fn backfill_preserved_store(mount: &Connection, p: &PreservedStore, w: &mut Vec<String>) {
+    let written = match p.entity {
+        "character" => serde_json::from_value::<
+            crate::db::vault_character_write::CharacterVaultWriteInput,
+        >(p.row.clone())
+        .map_err(|e| DbError::Internal(format!("character vault fields: {e}")))
+        .and_then(|vault| {
+            crate::db::character_vault::backfill_character_vault_managed_files(
+                mount, &p.store, &vault,
+            )
+        }),
+        _ => backfill_official_store(mount, p),
+    };
+    match written {
+        Ok(paths) => {
+            for path in paths {
+                tracing::warn!(
+                    target: "quilltap::restore",
+                    entity = p.entity,
+                    entityId = %p.entity_id,
+                    mountPointId = %p.store,
+                    relativePath = %path,
+                    "Backfilled a managed file the archived store was missing"
+                );
+            }
+        }
+        Err(e) => w.push(format!(
+            "Failed to complete the archived store for {} \"{}\": {}",
+            p.entity,
+            s(&p.row, "name"),
+            e.warn_text()
+        )),
+    }
+}
+
+/// [`backfill_preserved_store`]'s project / group half: the four files v4's
+/// `writeManagedFields` projects, each only where the store lacks it.
+fn backfill_official_store(mount: &Connection, p: &PreservedStore) -> Result<Vec<String>, DbError> {
+    use crate::db::document_store_overlay::{fold_properties, StoreEntity};
+    let internal = |e: String| DbError::Internal(e);
+    let pretty = |v: serde_json::Result<String>| v.map_err(|e| internal(e.to_string()));
+    let properties = match p.entity {
+        "project" => pretty(serde_json::to_string_pretty(
+            &crate::db::projects::parse_create_properties(&fold_properties(
+                &p.row,
+                crate::db::projects::ProjectEntity::property_keys(),
+            ))
+            .map_err(internal)?,
+        ))?,
+        _ => pretty(serde_json::to_string_pretty(
+            &crate::db::groups::GroupEntity::parse_properties(&fold_properties(
+                &p.row,
+                crate::db::groups::GroupEntity::property_keys(),
+            ))
+            .map_err(internal)?,
+        ))?,
+    };
+    let state = obj(&p.row, "state", serde_json::json!({}));
+    let state = if state.is_null() {
+        "{}".to_string()
+    } else {
+        pretty(serde_json::to_string_pretty(&state))?
+    };
+    let files = [
+        ("properties.json", properties),
+        (
+            "description.md",
+            os(&p.row, "description").unwrap_or_default(),
+        ),
+        (
+            "instructions.md",
+            os(&p.row, "instructions").unwrap_or_default(),
+        ),
+        ("state.json", state),
+    ];
+    let links = crate::db::doc_mount_file_links::DocMountFileLinksRepository::new(mount);
+    let mut written = Vec::new();
+    for (path, content) in files {
+        if links
+            .find_by_mount_point_and_path(&p.store, path)?
+            .is_some()
+        {
+            continue;
+        }
+        links.write_database_document(&p.store, path, &content)?;
+        written.push(path.to_string());
+    }
+    Ok(written)
+}
 
 /// The archived stores the preserve arm has handed out so far (P4.158, ruling
 /// R-B): store id → the entity that claimed it first.

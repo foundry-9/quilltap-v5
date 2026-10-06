@@ -452,6 +452,17 @@ const RESTORE_CASES: Array<{
     ],
   },
 
+  // ── P4.158 item 1 (ruling R-A): a preserved store missing a managed file ──
+  //
+  // `restore-archive-damaged-store.zip` is `restore-archive.zip` with
+  // `description.md` removed from Lorian's vault, the project store and the
+  // group store. v4 never preserves — it projects every managed field into a
+  // FRESH store, so each description comes back from the archived row; v5
+  // keeps the archive's store and BACKFILLS the missing file from the same row
+  // (`PRESERVE_BACKFILL`). Built by `fixtures/derive-restore-archive-damaged-
+  // store.py`.
+  { name: 'restore_damaged_store_replace', archive: 'restore-archive-damaged-store.zip' },
+
   // ── P4.158 item 2 (ruling R-B): two entities claiming one archived store ──
   //
   // `restore-archive-two-claimants.zip` points Riya at Lorian's vault and the

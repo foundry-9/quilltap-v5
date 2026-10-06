@@ -169062,3 +169062,39 @@ unported `main`.
   store is chunked (one chunk, `chunkCount: 1`), v4's chunk-on-write skips a
   missing store (`reindex-file.ts:71-72`).
 - `restore_vintage_state` 6/6 (neutral). Family 32/32.
+
+### Unit 3 — R-A: the preserve arm's completeness guard BACKFILLS (core 0.0.1238)
+
+- Derived `restore-archive-damaged-store.zip` (`restore-archive.zip`, md5
+  checked): `description.md` removed — with its chunks and the content rows
+  only it referenced — from Lorian's vault, the project store and the group
+  store (the three entities whose rows carry a non-empty `description`).
+- **Red-first on unported core:** 7 failures (the three `PRESERVE_BACKFILL`
+  v5 assertions + four content tables); before the harness assertion
+  existed the case was already red on the same four tables (measured at lane
+  start, 4 failures).
+- **The managed sets, measured at the pin:** a vault's is v4's
+  `writeCharacterVaultManagedFields` projection
+  (`characters.repository.ts:262-296` → `ensureCharacterVault`); a project's
+  / group's is `writeManagedFields` (`store-backed.repository.ts:156`) —
+  `properties.json`, `description.md`, `instructions.md`, `state.json`.
+  Backfill writes ONLY a missing file (one `find_by_mount_point_and_path` per
+  path), never sweeps a `Prompts/`/`Scenarios/` folder, and goes through
+  `write_database_document`, so chunk-on-write gives it the chunk v4's
+  projection gets (the four tables compare equal under canonical order).
+- **The one vault-side helper (named per the order's Ownership):**
+  `db/character_vault.rs::backfill_character_vault_managed_files`; the store
+  half is orchestrator-local (`backfill_official_store`).
+- **Pinned both ways (`PRESERVE_BACKFILL`):** both sides hold each file with
+  the archived value (v4's after the #141 carve re-homes its fresh
+  projection); v5's link after the archive's first link on that store, v4's
+  before it — the insertion-order difference the divergence is.
+- **The backfill WARN — v5-only, RECORDED:** `WARN quilltap::restore
+  Backfilled a managed file the archived store was missing entity=…
+  entityId=… mountPointId=… relativePath=…` (v4 never preserves, so it never
+  backfills). Pinned on the damaged-store case (three lines), silent on every
+  other case (`BACKFILL_WARNS`, beside `CLAIMED_STORE_WARNS` in
+  `V5_ONLY_RESTORE_LINES`). A failed backfill write pushes one v5-only
+  `summary.warnings` line (`Failed to complete the archived store for …`) —
+  no corpus reaches it.
+- Family 33/33; `restore_vintage_state` 6/6.
