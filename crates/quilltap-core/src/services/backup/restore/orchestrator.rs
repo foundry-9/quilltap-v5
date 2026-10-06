@@ -1225,6 +1225,7 @@ fn restore_on_writer(
             data,
             &extracted.data,
             &root_path,
+            replace_mode.then_some(&archived_stores),
             &mut c,
             &mut w,
         );
@@ -1234,47 +1235,9 @@ fn restore_on_writer(
         );
     }
 
-    // ── 22a-ter. The archive's built-in pointers, pre-applied (P4.147, #142) ──
-    //
-    // ## ⚠ RULED DIVERGENCE (P4.147, 2026-10-05) — Uploads resolves to the
-    // ## ARCHIVE's store before the files phase reads it
-    //
-    // The files phase resolves Quilltap Uploads through
-    // `instance_settings.userUploadsMountPointId` — the TARGET's, which the
-    // `replace` wipe deliberately leaves alone and 22o only overwrites LAST. On a
-    // freshly provisioned target (the disaster-recovery case), or one whose
-    // Uploads store was re-minted, that pointer names the target's own,
-    // now-wiped store, so every project-less file the restore must replay failed
-    // `Quilltap Uploads mount has not been provisioned` and 22o then pointed at
-    // the restored store, which never got the bytes (dogfood #142 — 11 files on
-    // the copy; v4 shares it, `restore.ts:508-512,569-576`).
-    //
-    // So each built-in pointer the archive carries is written NOW, with 22o's
-    // exact upsert, when its RAW value names a store 22a just restored (ruling
-    // R-C). A JSON-quoted value — 15 of the 19 committed archives carry the
-    // General/Lantern pointers that way — names no store and is left for 22o, as
-    // is any pointer to a store the archive lacks (re-provisioning a missing
-    // built-in is a named follow-up). 22o rewrites the same value afterwards and
-    // still counts it once. A failed write here is left for 22o, which retries
-    // it with the same statement and reports it. `replace` only (ruling R-B).
-    // `system_restore_state` pins it both ways (`FRESH_TARGET_UPLOADS`).
-    if let (true, Some(mount)) = (replace_mode, mount) {
-        let points = crate::db::doc_mount_points::DocMountPointsRepository::new(mount);
-        for key in crate::services::backup::uuid_remap::MOUNT_POINT_SETTING_KEYS {
-            let Some(row) = data.instance_settings.iter().find(|r| s(r, "key") == key) else {
-                continue;
-            };
-            let value = s(row, "value");
-            if !archived_stores.contains_key(&value) || !points.exists(&value).unwrap_or(false) {
-                continue;
-            }
-            let _ = main.execute(
-                "INSERT INTO \"instance_settings\" (\"key\", \"value\") VALUES (?1, ?2) \
-                 ON CONFLICT(\"key\") DO UPDATE SET \"value\" = excluded.\"value\"",
-                rusqlite::params![key, value],
-            );
-        }
-    }
+    // ── 22a-ter — MOVED (P4.158 R-C). The archive's built-in pointers are now
+    // pre-applied INSIDE `restore_mount_family`, right after 22a — see
+    // `preapply_builtin_pointers` for the ruling and why the slot moved.
 
     // ── 5 (moved). Files — bytes from the extracted tree into the mount stores ─
     //
@@ -1737,12 +1700,14 @@ fn id_set(rows: &[Value]) -> std::collections::HashSet<String> {
     rows.iter().map(id_of).collect()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn restore_mount_family(
     main: &Connection,
     mount: &Connection,
     data: &crate::services::backup::BackupData,
     original: &crate::services::backup::BackupData,
     root_path: &Path,
+    archived_stores: Option<&std::collections::HashMap<String, String>>,
     c: &mut Counters,
     w: &mut Vec<String>,
 ) {
@@ -1832,6 +1797,12 @@ fn restore_mount_family(
                 )
             );
         }
+    }
+
+    // 22a-ter. The archive's built-in pointers — `replace` only (`None` in
+    // `new-account`, ruling R-B of P4.147).
+    if let Some(archived_stores) = archived_stores {
+        preapply_builtin_pointers(main, mount, data, archived_stores);
     }
 
     // 22b. Folders — sorted by path length so parents precede children (`:446`).
@@ -2160,6 +2131,67 @@ fn restore_mount_family(
                 )
             );
         }
+    }
+}
+
+/// ## 22a-ter — the archive's built-in pointers, pre-applied (P4.147, #142)
+///
+/// ### ⚠ RULED DIVERGENCE (P4.147, 2026-10-05) — Uploads resolves to the
+/// ### ARCHIVE's store before the files phase reads it
+///
+/// The files phase resolves Quilltap Uploads through
+/// `instance_settings.userUploadsMountPointId` — the TARGET's, which the
+/// `replace` wipe deliberately leaves alone and 22o only overwrites LAST. On a
+/// freshly provisioned target (the disaster-recovery case), or one whose
+/// Uploads store was re-minted, that pointer names the target's own,
+/// now-wiped store, so every project-less file the restore must replay failed
+/// `Quilltap Uploads mount has not been provisioned` and 22o then pointed at
+/// the restored store, which never got the bytes (dogfood #142 — 11 files on
+/// the copy; v4 shares it, `restore.ts:508-512,569-576`).
+///
+/// So each built-in pointer the archive carries is written NOW, with 22o's
+/// exact upsert, when its RAW value names a store 22a just restored (ruling
+/// R-C). A JSON-quoted value — 15 of the 19 committed archives carry the
+/// General/Lantern pointers that way — names no store and is left for 22o, as
+/// is any pointer to a store the archive lacks (re-provisioning a missing
+/// built-in is a named follow-up). 22o rewrites the same value afterwards and
+/// still counts it once. A failed write here is left for 22o, which retries
+/// it with the same statement and reports it. `replace` only (ruling R-B).
+/// `system_restore_state` pins it both ways (`FRESH_TARGET_UPLOADS`).
+///
+/// ### ⚠ RULED DIVERGENCE (P4.158 R-C, 2026-10-06) — the slot moved to right
+/// ### after 22a
+///
+/// It used to run after the WHOLE mount family, which left 22f-bis reading the
+/// TARGET's General pointer: a SHARED legacy wardrobe item (`characterId:
+/// null`) was filed — with a `Wardrobe` folder — in the target's own,
+/// now-wiped General store, while 22a-ter and 22o then pointed the instance at
+/// the archive's General, so the item was unreachable. v4 shares it (its 22o
+/// runs last; measured on v4's own dump of
+/// `restore_general_pointer_fresh_replace`). Nothing between 22a and 22f-bis
+/// reads a built-in pointer, so the only change the move makes is that 22f-bis
+/// resolves the General the instance will come out pointing at.
+/// `system_restore_state` pins it both ways (`GENERAL_POINTER_PREAPPLY`).
+fn preapply_builtin_pointers(
+    main: &Connection,
+    mount: &Connection,
+    data: &crate::services::backup::BackupData,
+    archived_stores: &std::collections::HashMap<String, String>,
+) {
+    let points = crate::db::doc_mount_points::DocMountPointsRepository::new(mount);
+    for key in crate::services::backup::uuid_remap::MOUNT_POINT_SETTING_KEYS {
+        let Some(row) = data.instance_settings.iter().find(|r| s(r, "key") == key) else {
+            continue;
+        };
+        let value = s(row, "value");
+        if !archived_stores.contains_key(&value) || !points.exists(&value).unwrap_or(false) {
+            continue;
+        }
+        let _ = main.execute(
+            "INSERT INTO \"instance_settings\" (\"key\", \"value\") VALUES (?1, ?2) \
+             ON CONFLICT(\"key\") DO UPDATE SET \"value\" = excluded.\"value\"",
+            rusqlite::params![key, value],
+        );
     }
 }
 

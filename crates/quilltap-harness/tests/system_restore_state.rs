@@ -1355,6 +1355,8 @@ fn system_restore_state_equivalence() {
             &mut summary_carve,
             &mut failures,
         );
+        // [P4.158 R-C] the shared legacy archetype's General store.
+        carve_general_pointer_preapply(name, &mut got_state, &mut want_owned, &mut failures);
         let want_state = &want_owned;
 
         // v5 alone: the restored memory graph must be internally closed. Run for
@@ -1453,15 +1455,15 @@ fn system_restore_state_equivalence() {
     // three fresh-target arms (#142), the bag-nulls arm, the informs arm and
     // the SQLite-tail plant.
     assert_eq!(
-        seen, 31,
-        "expected all thirty-one restore cases in the oracle (ten + the #58 orphan-links arm \
+        seen, 32,
+        "expected all thirty-two restore cases in the oracle (ten + the #58 orphan-links arm \
          + P4.D46's two compact arms + P4.D126's bug-103 legacy-profiles arm \
          + P4.D145's bug-114 duplicate-folders arm + P4.D152's bug-117 arm \
          + P4.D158's two bag-key arms + P4.D208's bug-158 arm \
          + P4.D226's legacy-Concierge arm + P4.130's refused-chat arm \
          + P4.143's serde-arm plant + P4.D251's voice-legacy arm \
          + P4.147's three fresh-target arms, bag-nulls, informs and SQLite-tail arms \
-         + P4.158's two-claimants and dup-store-id arms)"
+         + P4.158's two-claimants, dup-store-id and general-pointer arms)"
     );
     // [P4.147] Every ruled #141 case actually carved (red-first measured, then
     // both directions held) — the arm cannot go vacuous.
@@ -3756,7 +3758,7 @@ fn carve_fresh_store_residual(
 /// every `replace` case whose archive carries a store some entity points at
 /// (measured, P4.147). A case falling out of the count is the carve going
 /// vacuous.
-const FRESH_STORE_CARVED_CASES: usize = 22;
+const FRESH_STORE_CARVED_CASES: usize = 23;
 
 /// The `summary` adjustments a ruled carve makes: v5 leads v4's `files`
 /// counter by `files_lead`, and these v4 warnings are the divergence itself.
@@ -4033,6 +4035,138 @@ fn classify_message_serde_arm(
         out
     };
     (carve(got), carve(want))
+}
+
+/// ## ⚠ THE RULED R-C DIVERGENCE — `GENERAL_POINTER_PREAPPLY` (P4.158, 2026-10-06)
+///
+/// 22f-bis files a SHARED legacy wardrobe item (`characterId: null`) in
+/// Quilltap General, resolved through `instance_settings.generalMountPointId`.
+/// v4 restores the pointers LAST (22o), so on a target whose General is not
+/// the archive's — any fresh instance: a minted id, wiped by the `replace`
+/// delete — it writes the archetype (and a `Wardrobe` folder) into a store
+/// that no longer exists, while the instance comes out pointing at the
+/// archive's General: the item is unreachable. Measured on v4's own dump of
+/// `restore_general_pointer_fresh_replace` (P4.158 R-C: the condition the
+/// ruling named). v5 shared it until 22a-ter moved to right after 22a.
+///
+/// Each entry is `(case, the archetype's relative path)`. Both ways on the RAW
+/// dumps: **v5** — the link sits on the store the restored
+/// `generalMountPointId` names, and that store exists; **v4** — the link sits
+/// on a store that is NOT the restored pointer and does not exist (if v4 ever
+/// lands it on its restored General, it has converged — retire the entry).
+/// Then every v4 mount-index row keyed by that dangling store is re-homed onto
+/// v4's restored General, so the remainder diffs row for row.
+const GENERAL_POINTER_PREAPPLY: &[(&str, &str)] = &[(
+    "restore_general_pointer_fresh_replace",
+    "Wardrobe/The Shared Greatcoat.md",
+)];
+
+fn general_pointer(dump: &Value) -> Option<String> {
+    rows_of(dump, "main", "instance_settings")
+        .iter()
+        .find(|r| str_at(r, "key") == Some("generalMountPointId"))
+        .and_then(|r| str_at(r, "value").map(str::to_string))
+}
+
+fn link_store(dump: &Value, path: &str) -> Option<String> {
+    rows_of(dump, "mountIndex", "doc_mount_file_links")
+        .iter()
+        .find(|l| str_at(l, "relativePath") == Some(path))
+        .and_then(|l| str_at(l, "mountPointId").map(str::to_string))
+}
+
+fn carve_general_pointer_preapply(
+    name: &str,
+    got: &mut BTreeMap<String, BTreeMap<String, Vec<Value>>>,
+    want: &mut Value,
+    failures: &mut Vec<String>,
+) {
+    let Some((_, path)) = GENERAL_POINTER_PREAPPLY.iter().find(|(c, _)| *c == name) else {
+        return;
+    };
+    let got_v = serde_json::to_value(&*got).expect("dump serializes");
+    let (g_general, g_store) = (general_pointer(&got_v), link_store(&got_v, path));
+    if g_general.is_none()
+        || g_store != g_general
+        || !g_store.as_deref().is_some_and(|s| point_exists(&got_v, s))
+    {
+        failures.push(format!(
+            "[{name}] GENERAL_POINTER_PREAPPLY (v5): {path:?} on store {g_store:?}, the restored \
+             generalMountPointId is {g_general:?} — the archetype must land in the General the \
+             instance comes out pointing at"
+        ));
+    }
+    let (w_general, w_store) = (general_pointer(want), link_store(want, path));
+    let (Some(w_general), Some(dangling)) = (w_general, w_store) else {
+        failures.push(format!(
+            "[{name}] GENERAL_POINTER_PREAPPLY (v4): no restored General pointer or no {path:?} link"
+        ));
+        return;
+    };
+    if dangling == w_general || point_exists(want, &dangling) {
+        failures.push(format!(
+            "[{name}] GENERAL_POINTER_PREAPPLY (v4): {path:?} is on {dangling}, which v4's \
+             restored pointer names or which exists — v4 has converged; retire the entry"
+        ));
+        return;
+    }
+    // The archetype's chunk: v4's chunk-on-write gates on the store EXISTING
+    // (`reindex-file.ts:71-72` — `docMountPoints.findById`, then
+    // `mountType === 'database'`), so its dangling write gets none and its link
+    // reads `chunkCount: 0`; v5's lands in a live store and is chunked. Asserted
+    // both ways, then v5's chunk rows are carved and its count set to v4's.
+    let link_id = |dump: &Value| {
+        rows_of(dump, "mountIndex", "doc_mount_file_links")
+            .iter()
+            .find(|l| str_at(l, "relativePath") == Some(path))
+            .and_then(|l| str_at(l, "id").map(str::to_string))
+    };
+    let chunks_of = |dump: &Value, link: &Option<String>| {
+        rows_of(dump, "mountIndex", "doc_mount_chunks")
+            .iter()
+            .filter(|c| link.is_some() && str_at(c, "linkId") == link.as_deref())
+            .count()
+    };
+    let (g_link, w_link) = (link_id(&got_v), link_id(want));
+    let (g_chunks, w_chunks) = (chunks_of(&got_v, &g_link), chunks_of(want, &w_link));
+    if g_chunks == 0 || w_chunks != 0 {
+        failures.push(format!(
+            "[{name}] GENERAL_POINTER_PREAPPLY: the archetype's chunks — v5 {g_chunks} (expected \
+             >0, a live store), v4 {w_chunks} (expected 0, a missing store)"
+        ));
+    }
+    let mut got_v = got_v;
+    retain_rows(&mut got_v, "mountIndex", "doc_mount_chunks", |c| {
+        g_link.is_none() || str_at(c, "linkId") != g_link.as_deref()
+    });
+    if let Some(row) = got_v["mountIndex"]["doc_mount_file_links"]
+        .as_array_mut()
+        .and_then(|rows| {
+            rows.iter_mut()
+                .find(|l| str_at(l, "relativePath") == Some(path))
+        })
+    {
+        row["chunkCount"] = json!(0);
+    }
+    *got = serde_json::from_value(got_v).expect("dump round-trips");
+
+    let mut moved = 0usize;
+    for table in [
+        "doc_mount_folders",
+        "doc_mount_file_links",
+        "doc_mount_chunks",
+    ] {
+        let Some(rows) = want["mountIndex"][table].as_array_mut() else {
+            continue;
+        };
+        for r in rows.iter_mut() {
+            if str_at(r, "mountPointId") == Some(dangling.as_str()) {
+                r["mountPointId"] = json!(w_general);
+                moved += 1;
+            }
+        }
+    }
+    println!("  general-pointer {name}: {moved} v4 row(s) re-homed from {dangling}");
 }
 
 /// ## [P4.158 R-B] The v5-only claim WARN — pinned, with its silence leg

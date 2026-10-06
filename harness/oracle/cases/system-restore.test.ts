@@ -469,6 +469,15 @@ const RESTORE_CASES: Array<{
   // `fixtures/derive-restore-archive-dup-store-id.py`.
   { name: 'restore_dup_store_id_replace', archive: 'restore-archive-dup-store-id.zip' },
 
+
+  // ── P4.158 item 3 (ruling R-C): a shared legacy item vs the General pointer ─
+  //
+  // `restore-archive-general-pointer.zip` is `restore-archive-gen2.zip` plus
+  // ONE shared (`characterId: null`) outfit preset, restored into a FRESH
+  // target whose General pointer names the target's own (wiped) store. 22f-bis
+  // files the archetype in Quilltap General through that pointer. Built by
+  // `fixtures/derive-restore-archive-general-pointer.py`.
+  { name: 'restore_general_pointer_fresh_replace', archive: 'restore-archive-general-pointer.zip' },
 ];
 
 /** jest.setup stubs the file-storage manager; the restore file phase IS the

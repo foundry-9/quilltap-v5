@@ -169037,3 +169037,28 @@ unported `main`.
   every other case (`CLAIMED_STORE_WARNS`; every case now reads the
   process-global capture).
 - Family after the fix: 31/31 green.
+
+### Unit 2 — R-C: 22a-ter moves to right after 22a (core 0.0.1237)
+
+- **The ruling's condition, measured:** derived
+  `restore-archive-general-pointer.zip` (`restore-archive-gen2.zip`, md5
+  `c98e63dc…` checked, plus ONE shared outfit preset in a new
+  `data/outfit-presets.json`; a FOURTH derived archive beyond the order's
+  Fixtures list of three — the ruling itself asks for this derive, and no
+  committed archive carries both a bare General pointer/store and a shared
+  legacy item). On v4's own dump of `restore_general_pointer_fresh_replace`
+  the archetype and a `Wardrobe` folder sit on `generalMountPointId`'s
+  PRE-restore value — the fresh target's General, wiped by the `replace`
+  delete — while the restored pointer names the archive's `7d2a92e2…`. A row
+  lands in the wrong store, so 22a-ter MOVED (now
+  `preapply_builtin_pointers`, called inside `restore_mount_family` right
+  after 22a; `replace` only).
+- **Red-first on unported core:** 3 failures (the v5-side assertion + two
+  tables).
+- **Pinned both ways (`GENERAL_POINTER_PREAPPLY`):** v5 files the item on
+  the restored General (which exists); v4 on a store that does not exist —
+  retire if v4 converges. v4's dangling rows are re-homed for the diff. A
+  second effect, found by the diff and pinned with it: v5's write into a LIVE
+  store is chunked (one chunk, `chunkCount: 1`), v4's chunk-on-write skips a
+  missing store (`reindex-file.ts:71-72`).
+- `restore_vintage_state` 6/6 (neutral). Family 32/32.
