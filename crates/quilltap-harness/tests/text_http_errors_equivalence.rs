@@ -1163,10 +1163,14 @@ fn text_http_errors_match_v4s_real_plugins() {
     // 20 rows (nine providers × 2 modes + OpenRouter's two raw modes — the
     // SDK modes skipped, the recorder's `modes` override), and the five 2xx
     // cases × 22 rows; plus (P4.150 D2) six GOOGLE-only 2xx cases × ONE mode
-    // each (the recorder's `modes` override): four `send`, two `stream`.
+    // each (the recorder's `modes` override): four `send`, two `stream`;
+    // plus (P4.154) the GOOGLE stream-path `content.text` row and
+    // `ok_json_missing_comma` × ONE send mode on each of the ten providers
+    // (OpenRouter's raw `send_vision`) — V8's inside-a-value template on
+    // `sdk_response_shape`'s body parse.
     assert_eq!(
         rows.len(),
-        33 * 22 + 2 * 2 + 2 * 20 + 5 * 22 + 6,
+        33 * 22 + 2 * 2 + 2 * 20 + 5 * 22 + 6 + 1 + 10,
         "corpus row count; regenerate the corpus"
     );
 
@@ -1317,8 +1321,9 @@ fn text_http_errors_match_v4s_real_plugins() {
     // OpenRouter raw stream, Anthropic's / Ollama's zero-chunk streams and
     // Google's empty-body stream over the 2xx cases, and Google / Ollama /
     // OpenRouter-raw's sends over the JSON shapes — plus (P4.150 D2) all six
-    // GOOGLE-only 2xx rows.
-    assert_eq!(ok_rows, 61, "v4's answered rows");
+    // GOOGLE-only 2xx rows, and (P4.154) the GOOGLE stream-path
+    // `content.text` row — the SDK keeps the key on a streamed chunk too.
+    assert_eq!(ok_rows, 62, "v4's answered rows");
     let unported_missing: Vec<&(&str, &str, &str)> = UNPORTED_PLUGIN_WARN_LINES
         .iter()
         .filter(|(p, m, msg)| {
@@ -1364,9 +1369,11 @@ fn text_http_errors_match_v4s_real_plugins() {
     // v4 logged 546 plugin ERROR lines across the corpus; this counts the
     // ones on rows whose lines MATCH (a mismatching row is a "lines"
     // divergence): every one but the six GOOGLE lines of the three pinned
-    // content-type approximations (P4.141 — 210 before its units landed).
+    // content-type approximations (P4.141 — 210 before its units landed);
+    // P4.154's `ok_json_missing_comma` adds five (OpenAI-compatible, DeepSeek,
+    // NanoGPT, Google, Ollama log their catch line on it).
     assert_eq!(
-        catch_lines, 540,
+        catch_lines, 545,
         "v4's plugin ERROR lines diffed and matched"
     );
 }

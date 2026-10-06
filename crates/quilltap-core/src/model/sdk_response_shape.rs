@@ -44,10 +44,13 @@
 //!
 //! Recorded divergences (the walk stops where they begin — each answers
 //! whatever v5's total parser makes of the body):
-//! - a `JSON.parse` failure INSIDE a value that starts legally (`{"a":`):
-//!   `v8_json_parse_message` answers `None` and serde's own text stands in;
-//!   so do the inputs serde rejects and V8 accepts (a lone `\ud800` escape,
-//!   nesting past serde's 128-level limit);
+//! - the inputs serde rejects and V8 accepts (a number past f64, a lone
+//!   `\ud800` escape, nesting past serde's 128-level limit): v4's plugin
+//!   reads the parsed body on, v5 answers serde's own text — the twin's whole
+//!   `None` scope since P4.154 taught it every V8 failure template (a failure
+//!   INSIDE a value that starts legally — `{"choices":[] "x":1}` — now reads
+//!   V8's `Expected ',' or '}' after property value in JSON at position 14
+//!   (line 1 column 15)`, the `ok_json_missing_comma` rows);
 //! - the SDK's content-type branch: a 2xx `text/plain` body is handed to the
 //!   plugin as a STRING (`openai/internal/parse.js:49-50`); the transport keeps
 //!   no headers, so every 2xx is read as JSON (the `google_json_as_text_plain`
@@ -221,10 +224,9 @@ fn anthropic_chain(body: &Js<'_>) -> Result<(), String> {
     Ok(())
 }
 
-/// V8's `JSON.parse` text for a body that is not JSON — or, where
-/// [`v8_json_parse_message`](crate::generators::optimizer::v8_json_parse_message)
-/// does not reproduce V8 (a failure inside a value that starts legally),
-/// serde's own text: a RECORDED divergence (the module doc).
+/// V8's `JSON.parse` text for a body that is not JSON — or, where V8 ACCEPTS
+/// what serde refused ([`v8_json_parse_message`](crate::generators::optimizer::v8_json_parse_message)
+/// answers `None`), serde's own text: a RECORDED divergence (the module doc).
 fn json_parse_failure(body: &[u8], serde_error: &serde_json::Error) -> String {
     crate::generators::optimizer::v8_json_parse_message(&String::from_utf8_lossy(body))
         .unwrap_or_else(|| serde_error.to_string())
@@ -454,14 +456,21 @@ mod tests {
         }
     }
 
-    /// RECORDED divergence: a failure INSIDE a value that starts legally is
-    /// one `v8_json_parse_message` does not reproduce — serde's own text
-    /// stands in (V8 would say `Expected property name or '}' in JSON at
-    /// position 1 (line 1 column 2)`).
+    /// P4.154: a failure INSIDE a value that starts legally reads V8's
+    /// template (the `bare-key` row of the recorded
+    /// `v8-json-parse-messages` corpus) — before P4.154 serde's `key must be a
+    /// string at line 1 column 2` stood in. What still falls back to serde is
+    /// a body V8 ACCEPTS (a number past f64 is `Infinity` to V8): v4's plugin
+    /// reads on, v5 answers serde's refusal — the RECORDED divergence.
     #[test]
-    fn an_in_value_parse_failure_falls_back_to_serdes_text() {
-        let got = g("DEEPSEEK", "{x").expect("throws");
-        assert_eq!(got, "key must be a string at line 1 column 2");
+    fn an_in_value_parse_failure_reads_v8s_template() {
+        let got = g("DEEPSEEK", "{a:1}").expect("throws");
+        assert_eq!(
+            got,
+            "Expected property name or '}' in JSON at position 1 (line 1 column 2)"
+        );
+        let got = g("DEEPSEEK", r#"{"a":1e400}"#).expect("serde refuses");
+        assert_eq!(got, "number out of range at line 1 column 10");
     }
 
     #[test]

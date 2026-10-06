@@ -199,6 +199,11 @@ _No crate versions bumped._
 - NEW `harness/oracle/provision/migrations-first.ts`: builds v4's instance the way its real boot does (the real `MigrationRunner` first, then the repository pass).
 - NEW `harness/oracle/provision/dump-migration-indexes.ts` → NEW `crates/quilltap-core/src/services/provisioning/migration_indexes.json` (main 50 / mount-index 5 / llm-logs 5; leaves out names `fresh_schema.json` already has, except the one the migration makes UNIQUE where generateDDL does not, and the legacy `wardrobe_items` index). Its real-boot cross-check found zero differences.
 - `dump-fresh-schema.ts`: header note points at the sibling dumper.
+#### 2026-10-06 — feat(core): the V8 `JSON.parse` twin learns every failure template V8 has, measured on real Node (P4.154 unit 1, dogfood #146 prerequisite)
+
+_Versions: core 0.0.1236._
+
+`v8_json_parse_message` is now a full V8 `JsonParser` walk over UTF-16 units instead of a start-of-input check. It reproduces V8's fixed templates for failures inside a value (`Expected property name or '}' in JSON at position N (line L column C)`, the comma/bracket/colon/double-quoted-key messages, unterminated strings, bad escapes and control characters, the number errors, trailing input), the `\r` and `\r\n` line rule, and the special whole-source strings (`"undefined" is not valid JSON` and kin, which the old twin misworded). It answers `None` only where V8 accepts the text. New tier-1 family `v8_json_parse_message_equivalence` over a 149-row corpus recorded with Node 24.13.1 (`harness/oracle/cases/v8-json-parse-messages.ts`); 103 of 145 rows were red on the old twin. The family also pins, both ways, the three shapes serde refuses but V8 accepts (the callers' remaining serde fallback). `text_http_errors` gains `ok_json_missing_comma` on all ten providers (V8's sentence now reaches `sdk_response_shape`'s body parse; 15 divergences red on the old twin) and the Google stream-path `content.text` row.
 
 #### 2026-10-06 — docs(porting): amend the `07b8f0209` smalls round with the `94fbb1ae3` drift catch-up — P4.D254 added as a seventh lane; every pin moves to the target
 

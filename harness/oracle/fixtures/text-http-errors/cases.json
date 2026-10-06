@@ -787,6 +787,57 @@
     ]
   },
   {
+    "case": "ok_json_missing_comma",
+    "status": 200,
+    "statusText": "OK",
+    "contentType": "application/json",
+    "body": "{\"choices\":[] \"x\":1}",
+    "providers": [
+      "openai",
+      "openai-compatible",
+      "deepseek",
+      "nanogpt",
+      "z-ai",
+      "grok",
+      "anthropic",
+      "google",
+      "openrouter",
+      "ollama"
+    ],
+    "modes": {
+      "openai": [
+        "send"
+      ],
+      "openai-compatible": [
+        "send"
+      ],
+      "deepseek": [
+        "send"
+      ],
+      "nanogpt": [
+        "send"
+      ],
+      "z-ai": [
+        "send"
+      ],
+      "grok": [
+        "send"
+      ],
+      "anthropic": [
+        "send"
+      ],
+      "google": [
+        "send"
+      ],
+      "openrouter": [
+        "send_vision"
+      ],
+      "ollama": [
+        "send"
+      ]
+    }
+  },
+  {
     "case": "ok_google_candidate_no_parts",
     "status": 200,
     "statusText": "OK",
@@ -867,6 +918,21 @@
     "statusText": "OK",
     "contentType": "text/event-stream",
     "body": "data: {\"promptFeedback\":{\"blockReason\":\"SAFETY\"}}\r\n\r\n",
+    "providers": [
+      "google"
+    ],
+    "modes": {
+      "google": [
+        "stream"
+      ]
+    }
+  },
+  {
+    "case": "ok_google_stream_candidate_content_text",
+    "status": 200,
+    "statusText": "OK",
+    "contentType": "text/event-stream",
+    "body": "data: {\"candidates\":[{\"finishReason\":\"STOP\",\"content\":{\"role\":\"model\",\"text\":\"Hidden on content.\"}}]}\r\n\r\n",
     "providers": [
       "google"
     ],
