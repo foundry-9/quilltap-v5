@@ -167552,3 +167552,38 @@ tree clean). Regen staging: `/tmp/p4151/`. **No version moves on any commit**
   fn **`the_in_force_predicate_is_never_open_coded`** (still present and green
   on this branch; this lane touches no core file). Then run
   `quilltap-core --lib` + this census.
+
+### Unit C — the `google-incomplete-tail` `.wire` row + `assert_catch_lines` widened
+- NEW `harness/oracle/fixtures/streams/google_parts/google-incomplete-tail.wire`
+  (`data: {"candidates":[…"Hello"…]}\n\n` + an undelimited
+  `{"candidates":[…" from Gemini"…]` with no closing bracket or newline,
+  modelled on `google-basic.wire`'s events) + its `cases.json` entry
+  (`gemini-2.5-flash`, appended by hand to keep the file's formatting).
+  Re-recorded ONLY the google line of `regenerate-stream-fixtures.sh` from the
+  pin (genai `1.52.0` verified under the pin's plugin `node_modules`):
+  `google.recorded.ndjson` 6 → 7 rows, the six old rows byte-identical (diff),
+  the new row equal in content to P4.141's recorded row (`chunks: [Hello]`,
+  thrown `Incomplete JSON segment at the end`, `provider-error`, one
+  `Error streaming from Google Gemini API` line with `{context, model, error}`
+  and top-level `error: null`).
+- `streaming_composer_equivalence::assert_catch_lines` rewritten: v5 lines
+  selected by `starts_with("ERROR quilltap::model::streaming_provider ")`; v4's
+  line rendered generically (message, every `context` key in order via a copied
+  `render_value`, then ` error=` only when `error` is a string); no `baseUrl`
+  unwrap. `text_http_errors_equivalence.rs` NOT edited (P4.150's). The widened
+  filter surfaced NO unrelated ERROR line on any existing row (all five
+  decoders green).
+- Green: `stream_decoders_equivalence` 5/5 (google_parts 7 cases);
+  `streaming_composer_equivalence` 5/5 (google 7 × 2 chunkings; chat-completions
+  87, responses 37, ollama 10, anthropic 3 — unchanged counts).
+- **Mutations (each reverted; zero core hunks):** M9 the tail check at
+  `google_parts.rs` disabled → `google_parts_matches_v4` RED (`oracle errored
+  but Rust did not`) AND `composer_google_parts_matches_v4` RED (no catch
+  line); the Google stream message altered in `plugin_catch_log.rs` → composer
+  RED on the new row (it could not be compared before); a stray catch emit on
+  every clean `finish()` → composer RED on `google-basic` (the silence leg).
+  **The "could not fail", measured:** the same stray mutation with the OLD
+  `assert_catch_lines` over the OLD six-row corpus → `composer_google_parts`
+  GREEN; the OLD assert over the NEW corpus PANICS at the `baseUrl` unwrap.
+- Recipe (google line only): `cd /tmp/qt-v4-pin-p4151-07b8f0209/plugins/dist/qtap-plugin-google && npx tsx --tsconfig "$V4/tsconfig.json" "$V5W/harness/oracle/providers/record-stream-fixtures.mjs" --v4 "$V4" --provider google --cases "$V5W/harness/oracle/fixtures/streams/google_parts/cases.json" --fixtures-dir "$V5W/harness/oracle/fixtures/streams/google_parts" --out "$V5W/harness/oracle/fixtures/streams/google_parts/google.recorded.ndjson"`
+  (Node 24, `V4` = the pin). Both families read the committed NDJSON (no env).

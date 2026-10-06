@@ -54,5 +54,14 @@
     "model": "gemini-2.5-flash",
     "isThinkingModel": false,
     "temperature": 0.7
+  },
+  {
+    "decoder": "google_parts",
+    "provider": "google",
+    "case": "google-incomplete-tail",
+    "wire": "google-incomplete-tail.wire",
+    "model": "gemini-2.5-flash",
+    "isThinkingModel": false,
+    "temperature": 0.7
   }
 ]

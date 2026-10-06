@@ -374,27 +374,39 @@ fn assert_matches(
     }
 }
 
-/// P4.122 item 6 — the plugin catch line (`… API error in streamMessage`),
-/// which the pump logs at its mid-stream arms: the captured lines naming it
+/// P4.122 item 6 — the plugin catch line, which the pump logs at its
+/// mid-stream arms: the captured ERROR lines at the streaming-provider target
 /// must be exactly v4's recorded `pluginErrorLog`, field for field — so every
-/// OPENAI_COMPATIBLE / DEEPSEEK / NANOGPT throw logs ONE line, and every other
-/// row (Z.AI, the Responses plugins, OpenRouter, a clean stream) logs none.
+/// OPENAI_COMPATIBLE / DEEPSEEK / NANOGPT throw logs ONE `… API error in
+/// streamMessage` line, a Google tail throw logs ONE `Error streaming from
+/// Google Gemini API` line, and every other row (Z.AI, the Responses plugins,
+/// OpenRouter, a clean stream) logs none.
+///
+/// P4.151 C: selected by LEVEL + TARGET, not by the substring `"API error in
+/// streamMessage"` — the old filter could not see a Google catch line at all,
+/// so the six clean Google rows' silence leg could not fail, and a Google
+/// erroring row PANICKED on the `baseUrl` unwrap instead of comparing. v4's
+/// line is rendered provider-neutrally, the rule copied from
+/// `text_http_errors_equivalence.rs` (`render_v4_line`, not edited there):
+/// the message, then every `context` key in v4's order (`preserve_order`),
+/// then the logger's third-argument `error` when it is a string.
 fn assert_catch_lines(oracle: &OracleCase, chunking: &str, lines: &[String]) {
-    let got: Vec<&String> = lines
-        .iter()
-        .filter(|l| l.contains("API error in streamMessage"))
-        .collect();
+    const PREFIX: &str = "ERROR quilltap::model::streaming_provider ";
+    let got: Vec<&String> = lines.iter().filter(|l| l.starts_with(PREFIX)).collect();
     let want: Vec<String> = oracle
         .plugin_error_log
         .iter()
         .map(|e| {
-            format!(
-                "ERROR quilltap::model::streaming_provider {} context={} baseUrl={} error={}",
-                e["message"].as_str().unwrap(),
-                e["context"]["context"].as_str().unwrap(),
-                e["context"]["baseUrl"].as_str().unwrap(),
-                e["error"].as_str().unwrap(),
-            )
+            let mut out = format!("{PREFIX}{}", e["message"].as_str().unwrap());
+            if let Some(ctx) = e["context"].as_object() {
+                for (k, v) in ctx {
+                    out.push_str(&format!(" {k}={}", render_value(v)));
+                }
+            }
+            if let Some(err) = e["error"].as_str() {
+                out.push_str(&format!(" error={err}"));
+            }
+            out
         })
         .collect();
     assert_eq!(
@@ -405,6 +417,16 @@ fn assert_catch_lines(oracle: &OracleCase, chunking: &str, lines: &[String]) {
         oracle.case,
         chunking
     );
+}
+
+/// A v4 context value as the capture renders a `%`-sigil field: a string
+/// unquoted, anything else as its JSON text (copied from
+/// `text_http_errors_equivalence.rs`'s `render_value`).
+fn render_value(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
+    }
 }
 
 /// Whole-buffer + byte-at-a-time (SSE wires).

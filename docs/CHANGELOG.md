@@ -255,6 +255,12 @@ P4.150 B (the P4.D253 OPEN item). `RefusingTextExtractor`'s stderr notice said t
 _No crate versions bumped._
 
 P4.150 A4. `qtap_schema_embed_guard` and `public_schemas_vendor_guard` now locate the v4 checkout through `QT_V4_CHECKOUT` first (the variable every pinned gate exports and the three other live-checkout guards read), keeping `QT_V4_ROOT` as a legacy alias, then `$HOME/source/quilltap-server`. A pinned gate no longer compares these two against a dirty live checkout. The precedence is a pure `locate_v4_root` with a unit pin in each file; both guards green against the `07b8f0209` pin with only `QT_V4_CHECKOUT` set, and both SKIP on an empty directory (proving the variable is read).
+#### 2026-10-05 — test(harness): commit the Google incomplete-tail stream row and select catch lines by target (P4.151 C)
+
+_No crate versions bumped._
+
+Harness and fixtures only (P4.151 C). The Google stream corpus gains `google-incomplete-tail`: a stream that yields `Hello` and then ends inside an undelimited JSON segment, recorded through v4's real genai 1.52.0 plugin at `07b8f0209` (only the google line of the regen script re-run; the six existing rows are byte-identical). `streaming_composer_equivalence`'s `assert_catch_lines` now selects ERROR lines by the streaming-provider target instead of the substring "API error in streamMessage", and renders v4's recorded line provider-neutrally (message, every context key in order, then `error`), the rule copied from `text_http_errors_equivalence`. Before, a Google catch line was invisible to the filter, so the clean Google rows' silence check could not fail, and a Google error row panicked on a `baseUrl` unwrap. No version moves.
+
 #### 2026-10-05 — test(harness): move the chat-informs in-force census onto the shared lexer with a SQL arm (P4.151 B4)
 
 _No crate versions bumped._
