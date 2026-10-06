@@ -255,6 +255,12 @@ P4.150 B (the P4.D253 OPEN item). `RefusingTextExtractor`'s stderr notice said t
 _No crate versions bumped._
 
 P4.150 A4. `qtap_schema_embed_guard` and `public_schemas_vendor_guard` now locate the v4 checkout through `QT_V4_CHECKOUT` first (the variable every pinned gate exports and the three other live-checkout guards read), keeping `QT_V4_ROOT` as a legacy alias, then `$HOME/source/quilltap-server`. A pinned gate no longer compares these two against a dirty live checkout. The precedence is a pure `locate_v4_root` with a unit pin in each file; both guards green against the `07b8f0209` pin with only `QT_V4_CHECKOUT` set, and both SKIP on an empty directory (proving the variable is read).
+#### 2026-10-05 — test(harness): drive the voice-mode ensure with TEXT / REAL / BLOB legacy cells and compare their storage class first (P4.151 A2)
+
+_No crate versions bumped._
+
+Harness-only (P4.151 A2). The voice-mode ensure differential's mode (a) gains four rows, one per remaining storage class of the retired `impersonationVoiceRewrite` cell: `'true'` (TEXT), `1.5` (REAL), a one-byte BLOB, and `'1'` (stored as INTEGER 1 by the column's INTEGER affinity). The oracle now emits `typeof()` of every retired cell from the base file before migrating, and the Rust side asserts the same classes on its copy before running the ensure, so a row cannot silently land in the INTEGER arm. Mutating `cell_to_json`'s TEXT, REAL, or BLOB arm now fails the family; the old corpus held only INTEGER and NULL cells. Backfill count 4 → 8. No version moves.
+
 #### 2026-10-05 — test(harness): run v4's real ChatSettingsSchema over stored voice modes in repository_zod_messages (P4.151 A1)
 
 _No crate versions bumped._

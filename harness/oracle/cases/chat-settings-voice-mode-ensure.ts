@@ -16,7 +16,9 @@
  *
  *   (A) the old column present, the new absent — a v4 4.10-dev instance that
  *       has not yet booted at `07b8f0209` (live Friday's shape, §R.13); rows
- *       1 / 0 / NULL / 1, so the backfill count is 4 and the `'ask'` count 2.
+ *       1 / 0 / NULL / 1, then (P4.151 A2) `'true'` (TEXT) / `1.5` (REAL) /
+ *       a one-byte Buffer (BLOB) / `'1'` (coerced to INTEGER 1 by the column's
+ *       affinity), so the backfill count is 8 and the `'ask'` count 3.
  *   (B) NEITHER column — an instance older than the toggle; v4 runs BOTH
  *       migrations in registration order (`dependsOn`), v5 runs its ONE
  *       ensure. The final shape must agree: the mode appended alone.
@@ -33,7 +35,9 @@
  * chat-settings spec's test pepper); v4's migrations run on a COPY. The Rust
  * side runs v5's ensure on its own copy of the same file.
  *
- * Output (three NDJSON lines, one per mode): the migration report, `PRAGMA
+ * Output (three NDJSON lines, one per mode): the migration report, the
+ * BASE file's `typeof("impersonationVoiceRewrite")` per row (`typeofs`; empty
+ * where the column is absent), `PRAGMA
  * table_info`, the table's `sqlite_master.sql`, and every row's
  * `(id, impersonationVoiceMode)`.
  *
@@ -145,6 +149,15 @@ async function main(): Promise<void> {
       row('s2', ', impersonationVoiceRewrite', ', ?', [0]);
       row('s3', ', impersonationVoiceRewrite', ', ?', [null]);
       row('s4', ', impersonationVoiceRewrite', ', ?', [1]);
+      // P4.151 A2: one row per remaining storage class. The old column is
+      // `INTEGER DEFAULT 0`, so INTEGER affinity coerces numeric text and
+      // integral reals to INTEGER — only non-numeric TEXT stays TEXT and only a
+      // non-integral REAL stays REAL. `typeofs` below makes the class a
+      // comparand, so no row can silently fall into the INTEGER arm.
+      row('s5', ', impersonationVoiceRewrite', ', ?', ['true']); // TEXT → 'off'
+      row('s6', ', impersonationVoiceRewrite', ', ?', [1.5]); // REAL → 'off'
+      row('s7', ', impersonationVoiceRewrite', ', ?', [Buffer.from([1])]); // BLOB → 'off'
+      row('s8', ', impersonationVoiceRewrite', ', ?', ['1']); // affinity → INTEGER 1 → 'ask'
     } else if (mode === 'b') {
       row('s1', '', '', []);
       row('s2', '', '', []);
@@ -158,6 +171,18 @@ async function main(): Promise<void> {
       row('s3', ', impersonationVoiceRewrite, impersonationVoiceMode', ', ?, ?', [0, null]);
       row('s4', ', impersonationVoiceRewrite, impersonationVoiceMode', ', ?, ?', [1, 'ask']);
     }
+    // The storage class of every retired cell BEFORE any migration (P4.151
+    // A2) — the Rust side asserts the same set on its copy of this file.
+    const hasOld = (
+      base.prepare('PRAGMA table_info("chat_settings")').all() as Array<{ name: string }>
+    ).some((c) => c.name === 'impersonationVoiceRewrite');
+    const typeofs = hasOld
+      ? base
+          .prepare(
+            'SELECT id, typeof("impersonationVoiceRewrite") AS t FROM chat_settings ORDER BY id'
+          )
+          .all()
+      : [];
     base.close();
 
     // 3. v4's migrations on a COPY.
@@ -185,7 +210,15 @@ async function main(): Promise<void> {
     rmSync(workDir, { recursive: true, force: true });
 
     process.stdout.write(
-      JSON.stringify({ case: 'chat-settings-voice-mode-ensure', mode, report, tableInfo, sql, rows }) + '\n'
+      JSON.stringify({
+        case: 'chat-settings-voice-mode-ensure',
+        mode,
+        report,
+        typeofs,
+        tableInfo,
+        sql,
+        rows,
+      }) + '\n'
     );
   }
   process.exit(0);

@@ -167459,3 +167459,22 @@ tree clean). Regen staging: `/tmp/p4151/`. **No version moves on any commit**
   `as_str()`-gated), recorded in both file headers.
 - Recipe: `cd /tmp/qt-v4-pin-p4151-07b8f0209 && PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH npx tsx $V5W/harness/oracle/cases/repository-zod-messages.ts > /tmp/p4151/oracle-repository-zod-messages.ndjson`;
   `QT_ORACLE_REPOSITORY_ZOD_MESSAGES=… cargo test -p quilltap-harness --test repository_zod_messages_equivalence`.
+
+### Unit A2 — TEXT / REAL / BLOB legacy cells in the voice-mode ensure corpus
+- Mode (a) grows `s5` `'true'` (TEXT → `'off'`), `s6` `1.5` (REAL → `'off'`),
+  `s7` `Buffer.from([1])` (BLOB → `'off'`), `s8` `'1'` (INTEGER affinity →
+  INTEGER 1 → `'ask'`). v4's report: `translated 8`; `expected("a")`
+  `rows_backfilled` 4 → 8. `cell_to_json` needed no hunk (survey §A2 stands).
+- The storage class is a comparand: the oracle emits `typeofs` (`SELECT id,
+  typeof("impersonationVoiceRewrite")` on the BASE file before any migration);
+  Rust asserts the same list on its copy before the ensure, and pins mode (a)'s
+  classes to `integer,integer,null,integer,text,real,blob,integer`. Measured:
+  `'1'` IS coerced to INTEGER (the survey's prediction held).
+- Green at the pin (a: 8 rows, b: 2, c: 4; 38 columns each).
+- **Mutations (each reverted; zero core hunks):** (i) `Sql::Text(_) =>
+  Value::from(1)` → RED (s5 reads `'ask'`); (ii) `Sql::Real(f) =>
+  Value::from(f.trunc())` → RED (s6); (iii) `Sql::Blob(_) => Value::from(1)`
+  (split out of the `Null | Blob` arm) → RED (s7). On the pre-A2 corpus all
+  three survive by construction — rows s1..s4 are INTEGER/NULL only.
+- Recipe: `cd /tmp/qt-v4-pin-p4151-07b8f0209 && QT_FIXTURE_OUT_DIR=/tmp/p4151/voice-mode npx tsx $V5W/harness/oracle/cases/chat-settings-voice-mode-ensure.ts > /tmp/p4151/oracle-voice-mode-ensure.ndjson`
+  (Node 24); `QT_ORACLE_VOICE_MODE_ENSURE=… QT_FIXTURE_VOICE_MODE_ENSURE_DIR=/tmp/p4151/voice-mode cargo test -p quilltap-harness --test chat_settings_voice_mode_ensure_equivalence`.
