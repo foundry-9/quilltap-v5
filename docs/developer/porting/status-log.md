@@ -167747,3 +167747,54 @@ script, logs under `/tmp/p4151/gate/`.
   `regenerate-swipe-tier3.json` (invalidates `regenerate_swipe_tier3`'s
   oracle + built fixture), `streams/google_parts/{cases.json,
   google.recorded.ndjson, google-incomplete-tail.wire}`.
+## P4.152 — Angular SPA smalls: project-detail toasts, picker refocus, greeting wait (lane `claude/spa-smalls-project-detail-toasts-f55407`)
+
+Lane start 2026-10-05: the drift ledger's §2 probe PASSED (v4 checkout on
+`main`, HEAD `07b8f0209`, `07b8f0209..main` and `1a2b2164c..bugfix` both
+empty, tree clean). No oracle regen (SPA-only; v4's strings read with `git
+show 07b8f0209:<path>`).
+
+### Unit 1 — the nine project-detail handlers (Tier 1 item 1; R-B, R-C, R-D)
+
+v4 at the pin (`app/prospero/[id]/hooks/useProjectDetail.ts`,
+`useProjectChats.ts`): each handler throws a FIXED sentence on a non-OK
+response (body never read) and catches `err instanceof Error ? err.message :
+<catch fallback>`. v5 now branches `CoreDispatchError → thrown`, `Error →
+message`, else `catch fallback` — the Characters card's P4.D247 shape.
+
+| # | v5 handler | v4 handler (lines) | v4 thrown (refusal toast) | v4 catch fallback |
+|---|---|---|---|---|
+| H1 | `project-detail.ts` `save()` | `handleSave` `:64-86` | `Failed to update project` | `Failed to update project` |
+| H2 | model-behavior `onAgentMode` | `handleSaveAgentMode` `:110-132` | `Failed to update agent mode setting` ⚑ | `Failed to update agent mode` |
+| H3 | model-behavior `onAnswerConfirmation` | `:134-156` | `Failed to update answer confirmation setting` ⚑ | `Failed to update answer confirmation` |
+| H4 | model-behavior `onRoleplayTemplate` | `:203-222` | `Failed to update default roleplay template` | `Failed to update roleplay template` |
+| H5 | image-gen `onAvatar` | `:158-180` | `Failed to update avatar generation setting` ⚑ | `Failed to update avatar generation` |
+| H6 | image-gen `onAnnounce` | `:224-246` | `Failed to update Lantern image announcement setting` | (same) |
+| H7 | image-gen `onBackground` | `:248-269` | `Failed to update background display mode` ⚑ | `Failed to update background mode` |
+| H8 | image-gen `onImageProfile` | `:182-201` | `Failed to update default image profile` | `Failed to update image profile` |
+| H9 | chats-section `onRemove` | `useProjectChats.ts:88-105` | `Failed to remove chat` | `Failed to remove chat` |
+
+⚑ = the four where v5's old fallback was v4's CATCH fallback, not the
+sentence v4 shows on a refusal. H4 and H8 additionally carried v4's thrown
+sentence in the catch-fallback slot (v4's catch reads `…roleplay template` /
+`…image profile`) — corrected with them; the non-`Error` row pins both.
+
+- **Proof:** nine vitest cases tables (refusal / `Error` / non-`Error` per
+  handler) — H1 + H5–H8 in `projects.spec.ts`, H2–H4 in
+  `project-model-behavior-card.spec.ts`, H9 in
+  `project-chats-section.spec.ts`. **RED on `main`: 9 of 9 tests** (every
+  one on its refusal row, toasting the stub's server message `boom`); GREEN
+  on the branch (the three files 68/68).
+- **Mutation:** H7's refusal swapped for its catch fallback (`…background
+  mode`) → exactly the Story Backgrounds table red (1 failed / 56 passed);
+  restored.
+- **Recorded v5 additions (doc comments):** R-B the chats section's inline
+  load-error banner (v4: silent on both load paths); R-C `onUnlinkStore`'s
+  toast (v4: `unlinkStore` never toasts); R-D a network failure / unreadable
+  body reaches the card as a `CoreDispatchError` carrying v5's transport
+  sentence, so the fixed-sentence handlers show v4's fixed sentence where v4
+  shows `Failed to fetch` (NO-PORT by v5's transport convention), and add
+  shows the transport sentence.
+- **Gate:** `npm run lint` + `npm run build` + `npm test` — 467 files /
+  8,889 tests, all green. SPA 0.5.806.
+

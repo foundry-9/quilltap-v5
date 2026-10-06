@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, input, signal } f
 import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../../../core/core-client';
+import { CoreDispatchError } from '../../../core/core-contract';
 import type { ImageProfileDto, ProjectDetail } from '../../../core/core-contract';
 import { CollapsibleCard } from '../../../ui/collapsible-card';
 import { ToastService } from '../../../ui/toast.service';
@@ -196,7 +197,7 @@ export class ProjectImageGenerationCard {
     }
   });
 
-  /** v4 `useProjectDetail.ts:155-177`. */
+  /** v4 `useProjectDetail.ts:158-180`. */
   protected onAvatar(event: Event): void {
     const v = (event.target as HTMLSelectElement).value;
     const enabled = v === 'inherit' ? null : v === 'enabled';
@@ -207,11 +208,12 @@ export class ProjectImageGenerationCard {
         : enabled
           ? 'Avatar generation enabled by default for project'
           : 'Avatar generation disabled by default for project',
+      'Failed to update avatar generation setting',
       'Failed to update avatar generation',
     );
   }
 
-  /** v4 `useProjectDetail.ts:221-243`. */
+  /** v4 `useProjectDetail.ts:224-246`. */
   protected onAnnounce(event: Event): void {
     const v = (event.target as HTMLSelectElement).value;
     const enabled = v === 'inherit' ? null : v === 'enabled';
@@ -223,10 +225,11 @@ export class ProjectImageGenerationCard {
           ? 'Lantern image announcements enabled by default for project'
           : 'Lantern image announcements disabled by default for project',
       'Failed to update Lantern image announcement setting',
+      'Failed to update Lantern image announcement setting',
     );
   }
 
-  /** v4 `useProjectDetail.ts:245-268`. */
+  /** v4 `useProjectDetail.ts:248-269`. */
   protected onBackground(event: Event): void {
     const v = (event.target as HTMLSelectElement).value as BackgroundMode;
     // Typed over the contract's union, as v4's `Record<BackgroundDisplayMode,
@@ -239,11 +242,12 @@ export class ProjectImageGenerationCard {
     void this.save(
       { backgroundDisplayMode: v },
       `Background set to ${modeLabels[v]}`,
+      'Failed to update background display mode',
       'Failed to update background mode',
     );
   }
 
-  /** v4 `useProjectDetail.ts:179-198`. */
+  /** v4 `useProjectDetail.ts:182-201`. */
   protected async onImageProfile(event: Event): Promise<void> {
     const v = (event.target as HTMLSelectElement).value;
     this.savingProfile.set(true);
@@ -252,15 +256,28 @@ export class ProjectImageGenerationCard {
         { defaultImageProfileId: v || null },
         v ? 'Default image profile set for project' : 'Image profile set to inherit from global',
         'Failed to update default image profile',
+        'Failed to update image profile',
       );
     } finally {
       this.savingProfile.set(false);
     }
   }
 
+  /**
+   * v4's handlers each throw a FIXED sentence on a non-OK response and never
+   * read the body (`refusal`), then catch `err instanceof Error ? err.message
+   * : <catch fallback>` (`fallback`) — so a refusal toasts `refusal`, never
+   * the server's message, and the two sentences differ for avatar generation
+   * and the background mode. The plain-`Error` arm is v4's fetch reject; v5's
+   * transports never take it (a network failure reaches here as a
+   * `CoreDispatchError` carrying v5's `Connection lost…` sentence, so it
+   * toasts `refusal` where v4 shows the browser's `Failed to fetch` — NO-PORT
+   * by v5's transport convention, recorded).
+   */
   private async save(
     patch: Record<string, unknown>,
     successMsg: string,
+    refusal: string,
     fallback: string,
   ): Promise<void> {
     try {
@@ -268,7 +285,9 @@ export class ProjectImageGenerationCard {
       await this.queryClient.invalidateQueries({ queryKey: projectKeys.detail(this.project().id) });
       this.toasts.showSuccess(successMsg);
     } catch (err) {
-      this.toasts.showError(err instanceof Error ? err.message : fallback);
+      this.toasts.showError(
+        err instanceof CoreDispatchError ? refusal : err instanceof Error ? err.message : fallback,
+      );
     }
   }
 }

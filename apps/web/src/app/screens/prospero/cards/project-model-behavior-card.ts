@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, input, signal } f
 import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../../../core/core-client';
+import { CoreDispatchError } from '../../../core/core-contract';
 import type { ProjectDetail, RoleplayTemplateDto } from '../../../core/core-contract';
 import { CollapsibleCard } from '../../../ui/collapsible-card';
 import { ToastService } from '../../../ui/toast.service';
@@ -202,7 +203,7 @@ export class ProjectModelBehaviorCard {
     () => this.project().answerConfirmationOverride ?? 'inherit',
   );
 
-  /** v4 `useProjectDetail.ts:107-129`. */
+  /** v4 `useProjectDetail.ts:110-132`. */
   protected async onAgentMode(event: Event): Promise<void> {
     const value = (event.target as HTMLSelectElement).value;
     const enabled = value === 'inherit' ? null : value === 'enabled';
@@ -213,11 +214,12 @@ export class ProjectModelBehaviorCard {
         : enabled
           ? 'Agent mode enabled by default for project'
           : 'Agent mode disabled by default for project',
+      'Failed to update agent mode setting',
       'Failed to update agent mode',
     );
   }
 
-  /** v4 `useProjectDetail.ts:131-153`. */
+  /** v4 `useProjectDetail.ts:134-156`. */
   protected async onAnswerConfirmation(event: Event): Promise<void> {
     const value = (event.target as HTMLSelectElement).value;
     const override = value === 'inherit' ? null : (value as 'ON' | 'OFF');
@@ -228,11 +230,12 @@ export class ProjectModelBehaviorCard {
         : override === 'ON'
           ? 'Answer confirmation enabled by default for project'
           : 'Answer confirmation disabled by default for project',
+      'Failed to update answer confirmation setting',
       'Failed to update answer confirmation',
     );
   }
 
-  /** v4 `useProjectDetail.ts:200-219`. */
+  /** v4 `useProjectDetail.ts:203-222`. */
   protected async onRoleplayTemplate(event: Event): Promise<void> {
     const value = (event.target as HTMLSelectElement).value;
     this.savingTemplate.set(true);
@@ -243,15 +246,28 @@ export class ProjectModelBehaviorCard {
           ? 'Default roleplay template set for project'
           : 'Roleplay template set to inherit from global',
         'Failed to update default roleplay template',
+        'Failed to update roleplay template',
       );
     } finally {
       this.savingTemplate.set(false);
     }
   }
 
+  /**
+   * v4's handlers each throw a FIXED sentence on a non-OK response and never
+   * read the body (`refusal`), then catch `err instanceof Error ? err.message
+   * : <catch fallback>` (`fallback`) — so a refusal toasts `refusal`, never
+   * the server's message, and the two sentences differ for agent mode and
+   * answer confirmation. The plain-`Error` arm is v4's fetch reject; v5's
+   * transports never take it (a network failure reaches here as a
+   * `CoreDispatchError` carrying v5's `Connection lost…` sentence, so it
+   * toasts `refusal` where v4 shows the browser's `Failed to fetch` — NO-PORT
+   * by v5's transport convention, recorded).
+   */
   private async save(
     patch: Record<string, unknown>,
     successMsg: string,
+    refusal: string,
     fallback: string,
   ): Promise<void> {
     try {
@@ -259,7 +275,9 @@ export class ProjectModelBehaviorCard {
       await this.queryClient.invalidateQueries({ queryKey: projectKeys.detail(this.project().id) });
       this.toasts.showSuccess(successMsg);
     } catch (err) {
-      this.toasts.showError(err instanceof Error ? err.message : fallback);
+      this.toasts.showError(
+        err instanceof CoreDispatchError ? refusal : err instanceof Error ? err.message : fallback,
+      );
     }
   }
 }

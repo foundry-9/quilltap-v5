@@ -308,6 +308,14 @@ Harness-only (P4.151 A2). The voice-mode ensure differential's mode (a) gains fo
 _No crate versions bumped._
 
 Harness-only (P4.151 A1). `repository_zod_messages` gains a `chatSettings` schema: v4's real `ChatSettingsSchema` over a minimal row plus a stored `impersonationVoiceMode` (absent, `ask`, `always`, `maybe`, `''`, `Off`, `'1'`), diffed against v5's real `db::chat_settings::find_by_user_id` over a `chat_settings` table built from `fresh_schema.json`. The Zod bytes in `chat_settings.rs`'s unit test are now oracle-backed: reordering `ImpersonationVoiceMode::VALUES` reddens the four refused rows and the unit test together. The family now covers 58 rows. No version moves.
+#### 2026-10-05 — fix(spa): project-detail failure toasts read v4's fixed sentence per handler, never the server's message
+
+_Versions: SPA 0.5.806._
+
+Nine project-detail actions toasted the server's refusal text where v4 shows its own fixed sentence: the header save, the three Model Behavior selects (agent mode, answer confirmation, default roleplay template), the four Image Generation selects (avatar generation, default image profile, Lantern announcements, story backgrounds), and removing a chat from a project. Each now follows v4's three-way rule — a refused request shows v4's fixed sentence, a thrown error its own message, anything else v4's catch fallback. In four of them (agent mode, answer confirmation, avatar generation, background mode) v4's fixed sentence differs from its catch fallback, and v5 had been carrying the catch fallback; the default roleplay template and image profile fallbacks also move to v4's wording.
+
+- Comments now record the three deliberate v5 additions: the chats section's inline load-error banner (v4 is silent), the unlink-store toast (v4 never toasts), and a network failure reading the fixed sentence (v4 shows the browser's `Failed to fetch`).
+- New vitest cases tables (nine handlers × refusal / Error / non-Error), red on the previous build for all nine.
 
 #### 2026-10-05 — docs(porting): order the 07b8f0209 follow-ups + restore round — six lanes (P4.147–P4.152) with six fresh surveys
 

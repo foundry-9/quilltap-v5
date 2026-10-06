@@ -15,6 +15,7 @@ import { map } from 'rxjs';
 import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../../core/core-client';
+import { CoreDispatchError } from '../../core/core-contract';
 import { WORKSPACE_BACKDROP_REGISTRY, WORKSPACE_TAB_ID } from '../../workspace/workspace-contract';
 import type {
   DocumentStoreSummary,
@@ -362,7 +363,15 @@ export class ProjectDetailScreen {
     this.isEditing.set(false);
   }
 
-  /** v4 `useProjectDetail.ts:63-85` — toast only, no inline surface. */
+  /**
+   * v4 `useProjectDetail.ts:64-86` — toast only, no inline surface. A refusal
+   * is v4's FIXED `Failed to update project` (v4 throws it on a non-OK
+   * response and never reads the body); a plain `Error` (v4's fetch reject)
+   * its own message; anything else the catch's fallback. v5's transports
+   * hand a network failure over as a `CoreDispatchError`, so it reads the
+   * fixed sentence where v4 shows the browser's `Failed to fetch` (NO-PORT by
+   * v5's transport convention).
+   */
   protected async save(): Promise<void> {
     const form = this.editForm();
     try {
@@ -375,7 +384,13 @@ export class ProjectDetailScreen {
       await this.queryClient.invalidateQueries({ queryKey: projectKeys.detail(this.id()) });
       this.toasts.showSuccess('Project updated!');
     } catch (err) {
-      this.toasts.showError(err instanceof Error ? err.message : 'Failed to update project');
+      this.toasts.showError(
+        err instanceof CoreDispatchError
+          ? 'Failed to update project'
+          : err instanceof Error
+            ? err.message
+            : 'Failed to update project',
+      );
     }
   }
 
@@ -384,7 +399,9 @@ export class ProjectDetailScreen {
    * hook), but retiring the shared `saveError` banner above would otherwise
    * leave this action's failure with no feedback at all — toast it too, for
    * consistency with its siblings in this same component (the same call the
-   * group editor made in P4.29 unit 5).
+   * group editor made in P4.29 unit 5). A recorded v5 ADDITION — v4:
+   * never toasts (`useProjectDocumentStores.ts:82-99` `unlinkStore` returns
+   * `false` and logs to the console); it stays (ruled 2026-10-05).
    */
   protected async onUnlinkStore(mountPointId: string): Promise<void> {
     this.storeUnlinking.set(mountPointId);

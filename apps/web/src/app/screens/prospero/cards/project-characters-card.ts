@@ -348,7 +348,14 @@ export class ProjectCharactersCard implements OnInit {
    * v4 `useProjectDetail.ts:88-108` — toast only, no inline surface. A refusal
    * is v4's FIXED `Failed to update project` (v4 throws it on a non-OK
    * response and never reads the body); a thrown `Error` (v4's fetch reject)
-   * its own message; anything else the catch's fallback.
+   * its own message; anything else the catch's fallback. v5's transports
+   * never take the plain-`Error` arm: a network failure or an unreadable body
+   * reaches here as a `CoreDispatchError` carrying v5's own sentence
+   * (`Connection lost…` / `…unreadable response…`), so it toasts the fixed
+   * sentence where v4 shows the browser's `Failed to fetch` — NO-PORT by v5's
+   * transport convention (one synthetic sentence per transport failure,
+   * app-wide). `addCharacter` below shows that transport sentence instead,
+   * since it reads the refusal's message as v4 reads `data?.error`.
    */
   protected async toggleAllowAny(): Promise<void> {
     try {

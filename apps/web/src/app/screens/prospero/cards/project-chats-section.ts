@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, input, signal } f
 import { RouterLink } from '@angular/router';
 
 import { CoreClient } from '../../../core/core-client';
+import { CoreDispatchError } from '../../../core/core-contract';
 import type { EnrichedChatSummary } from '../../../core/core-contract';
 import { QuickHideService } from '../../../quick-hide/quick-hide.service';
 import { ErrorAlert } from '../../../ui/error-alert';
@@ -130,6 +131,12 @@ export class ProjectChatsSection {
   protected readonly offset = signal(0);
   protected readonly loading = signal(true);
   protected readonly loadingMore = signal(false);
+  /**
+   * The inline load-error banner (first page and "Load more") is a recorded
+   * v5 ADDITION — v4: silent on both paths (`useProjectChats.ts:46-86` only
+   * sets state `if (res.ok)` and sends a reject to the console). It stays
+   * (ruled 2026-10-05); the remove action below toasts as v4 does.
+   */
   protected readonly error = signal<string | null>(null);
 
   protected readonly hasMore = computed(() => this.chats().length < this.total());
@@ -182,7 +189,12 @@ export class ProjectChatsSection {
     }
   }
 
-  /** v4 `useProjectChats.ts:88-105` — toast only, no inline surface. */
+  /**
+   * v4 `useProjectChats.ts:88-105` — toast only, no inline surface. A refusal
+   * is v4's FIXED `Failed to remove chat` (v4 throws it on a non-OK response
+   * and never reads the body); a plain `Error` (v4's fetch reject) its own
+   * message; anything else the catch's fallback (the same sentence).
+   */
   protected async onRemove(chatId: string): Promise<void> {
     try {
       await removeProjectChat(this.core, this.projectId(), chatId);
@@ -190,7 +202,13 @@ export class ProjectChatsSection {
       this.total.update((t) => Math.max(0, t - 1));
       this.toasts.showSuccess('Chat removed from project');
     } catch (err) {
-      this.toasts.showError(err instanceof Error ? err.message : 'Failed to remove chat');
+      this.toasts.showError(
+        err instanceof CoreDispatchError
+          ? 'Failed to remove chat'
+          : err instanceof Error
+            ? err.message
+            : 'Failed to remove chat',
+      );
     }
   }
 }

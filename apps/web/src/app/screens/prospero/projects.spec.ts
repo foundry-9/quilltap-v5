@@ -1123,6 +1123,43 @@ describe('ProjectDetailScreen', () => {
   });
 
   /**
+   * v4 `useProjectDetail.ts:64-86` (`handleSave`) at `07b8f0209`: a non-OK
+   * response throws the FIXED `Failed to update project` (the body is never
+   * read); the catch toasts `err.message`, else the same sentence.
+   */
+  it("header save errors: a refusal is v4's fixed sentence, a thrown Error its message, else the fallback", async () => {
+    const cases: [unknown, string][] = [
+      [new CoreDispatchError({ kind: 'not-found', message: 'boom' }), 'Failed to update project'],
+      [new Error('network down'), 'network down'],
+      ['not an error', 'Failed to update project'],
+    ];
+    for (const [thrown, expected] of cases) {
+      TestBed.resetTestingModule();
+      const handler = baseHandler();
+      const fixture = await render({
+        dispatchData: (async (req: DispatchReq) => {
+          if (req.type === 'projectUpdate') throw thrown;
+          return (handler(req) ?? {}) as Record<string, unknown>;
+        }) as CoreClient['dispatchData'],
+      });
+      (
+        [...fixture.nativeElement.querySelectorAll('button')].find(
+          (b: HTMLButtonElement) => b.textContent?.trim() === 'Edit',
+        ) as HTMLButtonElement
+      ).click();
+      await settle(fixture);
+      (
+        [...fixture.nativeElement.querySelectorAll('button')].find(
+          (b: HTMLButtonElement) => b.textContent?.trim() === 'Save',
+        ) as HTMLButtonElement
+      ).click();
+      await settle(fixture);
+      expect(fixture.nativeElement.querySelector('qt-error-alert')).toBeNull();
+      expect(toasts()).toEqual([{ type: 'error', message: expected }]);
+    }
+  });
+
+  /**
    * P4.D90: the `prospero` tab-activation entry sweeps the whole `['projects']`
    * prefix, which includes this screen's `projects.detail` read. v4 needed an
    * `isEditing` guard on its re-activation refresh because `fetchProject`
@@ -1222,6 +1259,75 @@ describe('ProjectImageGenerationCard', () => {
     expect(fixture.nativeElement.querySelector('.qt-alert-error')).toBeNull();
     expect(toasts()).toEqual([{ type: 'error', message: 'bg fail' }]);
   });
+
+  /**
+   * v4 `useProjectDetail.ts` at `07b8f0209`: each handler throws a FIXED
+   * sentence on a non-OK response (the body is never read) and catches
+   * `err instanceof Error ? err.message : '<catch fallback>'`. Avatar
+   * generation and the background mode throw a sentence that is NOT their
+   * catch fallback (`…avatar generation setting`, `…background display mode`).
+   */
+  const imageHandlers: { label: string; value: string; thrown: string; fallback: string }[] = [
+    // v4 `:158-180` handleSaveAvatarGeneration — thrown != catch fallback.
+    {
+      label: 'Avatar Generation',
+      value: 'enabled',
+      thrown: 'Failed to update avatar generation setting',
+      fallback: 'Failed to update avatar generation',
+    },
+    // v4 `:182-201` handleSaveDefaultImageProfile.
+    {
+      label: 'Default Image Profile',
+      value: '',
+      thrown: 'Failed to update default image profile',
+      fallback: 'Failed to update image profile',
+    },
+    // v4 `:224-246` handleSaveAlertCharactersOfLanternImages — one sentence both ways.
+    {
+      label: 'Announce Lantern Images',
+      value: 'enabled',
+      thrown: 'Failed to update Lantern image announcement setting',
+      fallback: 'Failed to update Lantern image announcement setting',
+    },
+    // v4 `:248-269` handleSaveBackgroundDisplayMode — thrown != catch fallback.
+    {
+      label: 'Story Backgrounds',
+      value: 'latest_chat',
+      thrown: 'Failed to update background display mode',
+      fallback: 'Failed to update background mode',
+    },
+  ];
+
+  for (const h of imageHandlers) {
+    it(`${h.label}: a refusal is v4's fixed sentence, a thrown Error its message, else the catch fallback`, async () => {
+      const cases: [unknown, string][] = [
+        [new CoreDispatchError({ kind: 'not-found', message: 'boom' }), h.thrown],
+        [new Error('network down'), 'network down'],
+        ['not an error', h.fallback],
+      ];
+      for (const [thrown, expected] of cases) {
+        TestBed.resetTestingModule();
+        const fixture = await render(
+          {
+            dispatchData: (async (req: DispatchReq) => {
+              if (req.type === 'projectUpdate') throw thrown;
+              if (req.type === 'projectAestheticGet') return { content: '' };
+              return {};
+            }) as CoreClient['dispatchData'],
+          },
+          project(),
+        );
+        const select = fixture.nativeElement.querySelector(
+          `select[aria-label="${h.label}"]`,
+        ) as HTMLSelectElement;
+        select.value = h.value;
+        select.dispatchEvent(new Event('change'));
+        await settle(fixture);
+        expect(fixture.nativeElement.querySelector('.qt-alert-error')).toBeNull();
+        expect(toasts()).toEqual([{ type: 'error', message: expected }]);
+      }
+    });
+  }
 
   it('offers only the two modes that survived 4.9, with their hints (P4.D146, v4 70505745a)', async () => {
     // 'project' read a field only the Latest chat path ever wrote and 'static'

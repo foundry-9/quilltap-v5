@@ -3,6 +3,7 @@ import { provideRouter } from '@angular/router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../../core/core-client';
+import { CoreDispatchError } from '../../../core/core-contract';
 import type { EnrichedChatSummary } from '../../../core/core-contract';
 import { ToastService } from '../../../ui/toast.service';
 import { ProjectChatsSection } from './project-chats-section';
@@ -86,7 +87,7 @@ describe('ProjectChatsSection toasts', () => {
     expect(fixture.nativeElement.textContent).not.toContain('the ledger');
   });
 
-  it('toasts the server message on a failed remove, with no inline banner change', async () => {
+  it("toasts a thrown Error's own message on a failed remove, with no inline banner change", async () => {
     const fixture = await render(stubClient('projectChatRemove'));
     const removeBtn = fixture.nativeElement.querySelector(
       'button[aria-label="Remove from project"]',
@@ -97,5 +98,36 @@ describe('ProjectChatsSection toasts', () => {
     expect(toasts()).toEqual([{ type: 'error', message: 'the ledger will not let go' }]);
     // The chat stays in the list (it was never removed).
     expect(fixture.nativeElement.textContent).toContain('An Evening at Sea');
+  });
+
+  /**
+   * v4 `useProjectChats.ts:88-105` at `07b8f0209`: a non-OK response throws
+   * the FIXED `Failed to remove chat` (the body is never read), so a refusal
+   * toasts that sentence, never the server's message.
+   */
+  it("remove errors: a refusal is v4's fixed sentence, a thrown Error its message, else the fallback", async () => {
+    const cases: [unknown, string][] = [
+      [new CoreDispatchError({ kind: 'not-found', message: 'boom' }), 'Failed to remove chat'],
+      [new Error('network down'), 'network down'],
+      ['not an error', 'Failed to remove chat'],
+    ];
+    for (const [thrown, expected] of cases) {
+      TestBed.resetTestingModule();
+      const fixture = await render({
+        dispatchData: (async (req: { type: string }) => {
+          if (req.type === 'projectChatRemove') throw thrown;
+          if (req.type === 'projectChatList') return { chats: [chat()], total: 1 };
+          return {};
+        }) as CoreClient['dispatchData'],
+      });
+      (
+        fixture.nativeElement.querySelector(
+          'button[aria-label="Remove from project"]',
+        ) as HTMLButtonElement
+      ).click();
+      await settle(fixture);
+      expect(toasts()).toEqual([{ type: 'error', message: expected }]);
+      expect(fixture.nativeElement.textContent).toContain('An Evening at Sea');
+    }
   });
 });

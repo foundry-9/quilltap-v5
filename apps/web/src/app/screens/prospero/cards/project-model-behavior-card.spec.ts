@@ -4,7 +4,9 @@ import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-exper
 import { describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../../core/core-client';
+import { CoreDispatchError } from '../../../core/core-contract';
 import type { ProjectDetail, RoleplayTemplateDto } from '../../../core/core-contract';
+import { ToastService } from '../../../ui/toast.service';
 import { ProjectToolSettingsModal } from '../project-tool-settings-modal';
 import { ProjectModelBehaviorCard } from './project-model-behavior-card';
 
@@ -191,4 +193,87 @@ describe('ProjectModelBehaviorCard — the Default Tool Settings row (P4.9E4B)',
     await settle(fixture);
     expect(fixture.nativeElement.textContent).toContain('2 tools disabled');
   });
+});
+
+/**
+ * v4 `useProjectDetail.ts` at `07b8f0209` — each handler throws a FIXED
+ * sentence on a non-OK response (the body is never read) and catches
+ * `err instanceof Error ? err.message : '<catch fallback>'`. So a refusal
+ * toasts the THROWN sentence, a plain `Error` its own message, and anything
+ * else the catch fallback. Two of the three handlers here (agent mode, answer
+ * confirmation) throw a sentence that is NOT their catch fallback — the rows
+ * that were red when the refusal leaked into the catch's `fallback` slot.
+ */
+describe('ProjectModelBehaviorCard — failure toasts (v4 three-way branch)', () => {
+  const handlers: { label: string; value: string; thrown: string; fallback: string }[] = [
+    // v4 `:110-132` handleSaveAgentMode — thrown != catch fallback.
+    {
+      label: 'Agent Mode',
+      value: 'enabled',
+      thrown: 'Failed to update agent mode setting',
+      fallback: 'Failed to update agent mode',
+    },
+    // v4 `:134-156` handleSaveAnswerConfirmationOverride — thrown != catch fallback.
+    {
+      label: 'Answer Confirmation',
+      value: 'ON',
+      thrown: 'Failed to update answer confirmation setting',
+      fallback: 'Failed to update answer confirmation',
+    },
+    // v4 `:203-222` handleSaveDefaultRoleplayTemplate.
+    {
+      label: 'Default Roleplay Template',
+      value: 't1',
+      thrown: 'Failed to update default roleplay template',
+      fallback: 'Failed to update roleplay template',
+    },
+  ];
+
+  for (const h of handlers) {
+    it(`${h.label}: a refusal is v4's fixed sentence, a thrown Error its message, else the catch fallback`, async () => {
+      const cases: [unknown, string][] = [
+        [new CoreDispatchError({ kind: 'not-found', message: 'boom' }), h.thrown],
+        [new Error('network down'), 'network down'],
+        ['not an error', h.fallback],
+      ];
+      for (const [thrown, expected] of cases) {
+        TestBed.resetTestingModule();
+        TestBed.configureTestingModule({
+          imports: [ProjectModelBehaviorCard],
+          providers: [
+            provideTanStackQuery(new QueryClient()),
+            {
+              provide: CoreClient,
+              useValue: {
+                dispatchData: (async (req: { type: string }) => {
+                  if (req.type === 'projectUpdate') throw thrown;
+                  if (req.type === 'roleplayTemplateList') return [tmpl('t1', 'Epic')];
+                  return {};
+                }) as unknown as CoreClient['dispatchData'],
+              },
+            },
+          ],
+        });
+        const fixture = TestBed.createComponent(ProjectModelBehaviorCard);
+        fixture.componentRef.setInput('project', project({}));
+        fixture.componentRef.setInput('defaultOpen', true);
+        fixture.detectChanges();
+        await settle(fixture);
+
+        const select = fixture.nativeElement.querySelector(
+          `select[aria-label="${h.label}"]`,
+        ) as HTMLSelectElement;
+        select.value = h.value;
+        select.dispatchEvent(new Event('change'));
+        await settle(fixture);
+
+        expect(fixture.nativeElement.querySelector('.qt-alert-error')).toBeNull();
+        expect(
+          TestBed.inject(ToastService)
+            .toasts()
+            .map((t) => ({ type: t.type, message: t.message })),
+        ).toEqual([{ type: 'error', message: expected }]);
+      }
+    });
+  }
 });
