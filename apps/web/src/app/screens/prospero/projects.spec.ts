@@ -1269,18 +1269,28 @@ describe('ProjectImageGenerationCard', () => {
    * `…background display mode`, `…default image profile` — v4 `:190/:197`);
    * only the Lantern announcement's two agree.
    */
-  const imageHandlers: { label: string; value: string; thrown: string; fallback: string }[] = [
+  // `stored` is what the select shows for `project()` — where every failure
+  // must leave it (dogfood #143: v4's controlled select snaps back).
+  const imageHandlers: {
+    label: string;
+    value: string;
+    stored: string;
+    thrown: string;
+    fallback: string;
+  }[] = [
     // v4 `:158-180` handleSaveAvatarGeneration — thrown != catch fallback.
     {
       label: 'Avatar Generation',
       value: 'enabled',
+      stored: 'inherit',
       thrown: 'Failed to update avatar generation setting',
       fallback: 'Failed to update avatar generation',
     },
     // v4 `:182-201` handleSaveDefaultImageProfile.
     {
       label: 'Default Image Profile',
-      value: '',
+      value: 'ip1',
+      stored: '',
       thrown: 'Failed to update default image profile',
       fallback: 'Failed to update image profile',
     },
@@ -1288,6 +1298,7 @@ describe('ProjectImageGenerationCard', () => {
     {
       label: 'Announce Lantern Images',
       value: 'enabled',
+      stored: 'inherit',
       thrown: 'Failed to update Lantern image announcement setting',
       fallback: 'Failed to update Lantern image announcement setting',
     },
@@ -1295,6 +1306,7 @@ describe('ProjectImageGenerationCard', () => {
     {
       label: 'Story Backgrounds',
       value: 'latest_chat',
+      stored: 'theme',
       thrown: 'Failed to update background display mode',
       fallback: 'Failed to update background mode',
     },
@@ -1314,6 +1326,9 @@ describe('ProjectImageGenerationCard', () => {
             dispatchData: (async (req: DispatchReq) => {
               if (req.type === 'projectUpdate') throw thrown;
               if (req.type === 'projectAestheticGet') return { content: '' };
+              if (req.type === 'imageProfileList') {
+                return { profiles: [{ id: 'ip1', name: 'Flare', provider: 'OPENAI', modelName: 'm' }] };
+              }
               return {};
             }) as CoreClient['dispatchData'],
           },
@@ -1323,10 +1338,14 @@ describe('ProjectImageGenerationCard', () => {
           `select[aria-label="${h.label}"]`,
         ) as HTMLSelectElement;
         select.value = h.value;
+        // The chosen option must exist, or the revert assertion below is vacuous.
+        expect(select.value).toBe(h.value);
         select.dispatchEvent(new Event('change'));
         await settle(fixture);
         expect(fixture.nativeElement.querySelector('.qt-alert-error')).toBeNull();
         expect(toasts()).toEqual([{ type: 'error', message: expected }]);
+        // The refused choice does not stay on screen (dogfood #143).
+        expect(select.value).toBe(h.stored);
       }
     });
   }

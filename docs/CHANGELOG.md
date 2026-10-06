@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-06 — fix(spa): a refused project-detail setting puts its select back, as v4's controlled select does (dogfood #143)
+
+_Versions: SPA 0.5.810._
+
+Dogfood #143 (the 2026-10-06 walk, C2). Under a refused `projectUpdate`, each of the seven Model Behavior / Image Generation selects toasted v4's sentence but kept showing the refused option, so the page misreported the stored setting until a reload. v4's selects are controlled by `project`, which a failed save never sets, so React snaps them back; v5's `[selected]` bindings read a `computed` that does not change on failure, so Angular never touched the DOM.
+
+- `project-model-behavior-card.ts` / `project-image-generation-card.ts`: `save()` takes the select and its stored-value signal and restores the value in the `catch`.
+- Unit: the seven handler tables assert the select's value after every refusal arm, with a guard that the chosen option exists (red on the old code, 7 of 7).
+- e2e: `projects-flow.spec.ts` gains "a refused Model Behavior save toasts v4 and puts the select back" (a routed 400 on `projectUpdate`, the real `selectOption` gesture); the file 7/7.
+
 #### 2026-10-05 — docs(porting): unify the `07b8f0209` follow-ups + restore round — all six lanes landed; the baseline stays `07b8f0209`; the review's findings fixed
 
 _Docs-only change._

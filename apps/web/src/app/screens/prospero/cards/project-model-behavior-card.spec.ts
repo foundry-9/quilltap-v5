@@ -206,11 +206,20 @@ describe('ProjectModelBehaviorCard — the Default Tool Settings row (P4.9E4B)',
  * that were red when the refusal leaked into the catch's `fallback` slot.
  */
 describe('ProjectModelBehaviorCard — failure toasts (v4 three-way branch)', () => {
-  const handlers: { label: string; value: string; thrown: string; fallback: string }[] = [
+  // `stored` is what the select shows for `project({})` — where every failure
+  // must leave it (dogfood #143: v4's controlled select snaps back).
+  const handlers: {
+    label: string;
+    value: string;
+    stored: string;
+    thrown: string;
+    fallback: string;
+  }[] = [
     // v4 `:110-132` handleSaveAgentMode — thrown != catch fallback.
     {
       label: 'Agent Mode',
       value: 'enabled',
+      stored: 'inherit',
       thrown: 'Failed to update agent mode setting',
       fallback: 'Failed to update agent mode',
     },
@@ -218,6 +227,7 @@ describe('ProjectModelBehaviorCard — failure toasts (v4 three-way branch)', ()
     {
       label: 'Answer Confirmation',
       value: 'ON',
+      stored: 'inherit',
       thrown: 'Failed to update answer confirmation setting',
       fallback: 'Failed to update answer confirmation',
     },
@@ -225,6 +235,7 @@ describe('ProjectModelBehaviorCard — failure toasts (v4 three-way branch)', ()
     {
       label: 'Default Roleplay Template',
       value: 't1',
+      stored: '',
       thrown: 'Failed to update default roleplay template',
       fallback: 'Failed to update roleplay template',
     },
@@ -265,6 +276,8 @@ describe('ProjectModelBehaviorCard — failure toasts (v4 three-way branch)', ()
           `select[aria-label="${h.label}"]`,
         ) as HTMLSelectElement;
         select.value = h.value;
+        // The chosen option must exist, or the revert assertion below is vacuous.
+        expect(select.value).toBe(h.value);
         select.dispatchEvent(new Event('change'));
         await settle(fixture);
 
@@ -274,6 +287,8 @@ describe('ProjectModelBehaviorCard — failure toasts (v4 three-way branch)', ()
             .toasts()
             .map((t) => ({ type: t.type, message: t.message })),
         ).toEqual([{ type: 'error', message: expected }]);
+        // The refused choice does not stay on screen (dogfood #143).
+        expect(select.value).toBe(h.stored);
       }
     });
   }

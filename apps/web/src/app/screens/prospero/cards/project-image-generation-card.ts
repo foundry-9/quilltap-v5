@@ -199,7 +199,8 @@ export class ProjectImageGenerationCard {
 
   /** v4 `useProjectDetail.ts:158-180`. */
   protected onAvatar(event: Event): void {
-    const v = (event.target as HTMLSelectElement).value;
+    const select = event.target as HTMLSelectElement;
+    const v = select.value;
     const enabled = v === 'inherit' ? null : v === 'enabled';
     void this.save(
       { defaultAvatarGenerationEnabled: enabled },
@@ -210,12 +211,15 @@ export class ProjectImageGenerationCard {
           : 'Avatar generation disabled by default for project',
       'Failed to update avatar generation setting',
       'Failed to update avatar generation',
+      select,
+      this.avatarValue,
     );
   }
 
   /** v4 `useProjectDetail.ts:224-246`. */
   protected onAnnounce(event: Event): void {
-    const v = (event.target as HTMLSelectElement).value;
+    const select = event.target as HTMLSelectElement;
+    const v = select.value;
     const enabled = v === 'inherit' ? null : v === 'enabled';
     void this.save(
       { defaultAlertCharactersOfLanternImages: enabled },
@@ -226,12 +230,15 @@ export class ProjectImageGenerationCard {
           : 'Lantern image announcements disabled by default for project',
       'Failed to update Lantern image announcement setting',
       'Failed to update Lantern image announcement setting',
+      select,
+      this.announceValue,
     );
   }
 
   /** v4 `useProjectDetail.ts:248-269`. */
   protected onBackground(event: Event): void {
-    const v = (event.target as HTMLSelectElement).value as BackgroundMode;
+    const select = event.target as HTMLSelectElement;
+    const v = select.value as BackgroundMode;
     // Typed over the contract's union, as v4's `Record<BackgroundDisplayMode,
     // string>` is: retiring a mode there is a compile error here, never a
     // `Background set to undefined` toast (unification review, 2026-09-02).
@@ -244,12 +251,15 @@ export class ProjectImageGenerationCard {
       `Background set to ${modeLabels[v]}`,
       'Failed to update background display mode',
       'Failed to update background mode',
+      select,
+      this.backgroundValue,
     );
   }
 
   /** v4 `useProjectDetail.ts:182-201`. */
   protected async onImageProfile(event: Event): Promise<void> {
-    const v = (event.target as HTMLSelectElement).value;
+    const select = event.target as HTMLSelectElement;
+    const v = select.value;
     this.savingProfile.set(true);
     try {
       await this.save(
@@ -257,6 +267,8 @@ export class ProjectImageGenerationCard {
         v ? 'Default image profile set for project' : 'Image profile set to inherit from global',
         'Failed to update default image profile',
         'Failed to update image profile',
+        select,
+        this.imageProfileValue,
       );
     } finally {
       this.savingProfile.set(false);
@@ -280,12 +292,20 @@ export class ProjectImageGenerationCard {
     successMsg: string,
     refusal: string,
     fallback: string,
+    select: HTMLSelectElement,
+    saved: () => string,
   ): Promise<void> {
     try {
       await updateProject(this.core, this.project().id, patch);
       await this.queryClient.invalidateQueries({ queryKey: projectKeys.detail(this.project().id) });
       this.toasts.showSuccess(successMsg);
     } catch (err) {
+      // v4's selects are CONTROLLED by `project`, which a failed save never
+      // sets, so React snaps the select back to the stored value. Angular's
+      // `[selected]` bindings never re-run (their value did not change), so
+      // the DOM would keep showing the choice the server refused (dogfood
+      // #143) — put it back by hand.
+      select.value = saved();
       this.toasts.showError(
         err instanceof CoreDispatchError ? refusal : err instanceof Error ? err.message : fallback,
       );

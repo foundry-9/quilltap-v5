@@ -205,7 +205,8 @@ export class ProjectModelBehaviorCard {
 
   /** v4 `useProjectDetail.ts:110-132`. */
   protected async onAgentMode(event: Event): Promise<void> {
-    const value = (event.target as HTMLSelectElement).value;
+    const select = event.target as HTMLSelectElement;
+    const value = select.value;
     const enabled = value === 'inherit' ? null : value === 'enabled';
     await this.save(
       { defaultAgentModeEnabled: enabled },
@@ -216,12 +217,15 @@ export class ProjectModelBehaviorCard {
           : 'Agent mode disabled by default for project',
       'Failed to update agent mode setting',
       'Failed to update agent mode',
+      select,
+      this.agentModeValue,
     );
   }
 
   /** v4 `useProjectDetail.ts:134-156`. */
   protected async onAnswerConfirmation(event: Event): Promise<void> {
-    const value = (event.target as HTMLSelectElement).value;
+    const select = event.target as HTMLSelectElement;
+    const value = select.value;
     const override = value === 'inherit' ? null : (value as 'ON' | 'OFF');
     await this.save(
       { answerConfirmationOverride: override },
@@ -232,12 +236,15 @@ export class ProjectModelBehaviorCard {
           : 'Answer confirmation disabled by default for project',
       'Failed to update answer confirmation setting',
       'Failed to update answer confirmation',
+      select,
+      this.answerConfirmationValue,
     );
   }
 
   /** v4 `useProjectDetail.ts:203-222`. */
   protected async onRoleplayTemplate(event: Event): Promise<void> {
-    const value = (event.target as HTMLSelectElement).value;
+    const select = event.target as HTMLSelectElement;
+    const value = select.value;
     this.savingTemplate.set(true);
     try {
       await this.save(
@@ -247,6 +254,8 @@ export class ProjectModelBehaviorCard {
           : 'Roleplay template set to inherit from global',
         'Failed to update default roleplay template',
         'Failed to update roleplay template',
+        select,
+        this.roleplayTemplateValue,
       );
     } finally {
       this.savingTemplate.set(false);
@@ -270,12 +279,20 @@ export class ProjectModelBehaviorCard {
     successMsg: string,
     refusal: string,
     fallback: string,
+    select: HTMLSelectElement,
+    saved: () => string,
   ): Promise<void> {
     try {
       await updateProject(this.core, this.project().id, patch);
       await this.queryClient.invalidateQueries({ queryKey: projectKeys.detail(this.project().id) });
       this.toasts.showSuccess(successMsg);
     } catch (err) {
+      // v4's selects are CONTROLLED by `project`, which a failed save never
+      // sets, so React snaps the select back to the stored value. Angular's
+      // `[selected]` bindings never re-run (their value did not change), so
+      // the DOM would keep showing the choice the server refused (dogfood
+      // #143) — put it back by hand.
+      select.value = saved();
       this.toasts.showError(
         err instanceof CoreDispatchError ? refusal : err instanceof Error ? err.message : fallback,
       );

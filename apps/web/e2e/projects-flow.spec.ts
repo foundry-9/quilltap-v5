@@ -255,6 +255,52 @@ test.describe('P4.6l — Projects vertical (list → detail → toggle → renam
     await expect(reloaded).toHaveValue(value!, { timeout: 10_000 });
   });
 
+  // Dogfood #143 — a project-detail select whose save the server refuses must
+  // snap back to the stored value (v4's selects are controlled by `project`,
+  // which a failed save never sets). The real gesture: pick a new option.
+  test('a refused Model Behavior save toasts v4 and puts the select back', async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.goto(`${PROJ_BASE_URL}/prospero`);
+    await unlockIfLocked(page);
+
+    const projectCards = page.locator('qt-project-card');
+    await expect(projectCards.first()).toBeVisible({ timeout: 10_000 });
+    await projectCards.first().getByRole('link', { name: 'Open' }).click();
+    await expect(page).toHaveURL(/\/prospero\/[^/]+$/);
+
+    const card = page.locator('qt-project-model-behavior-card');
+    await expect(card).toBeVisible({ timeout: 10_000 });
+    const agentMode = card.getByLabel('Agent Mode');
+    if (!(await agentMode.isVisible().catch(() => false))) {
+      await card.getByRole('button', { name: /Model Behavior/ }).click();
+    }
+    await expect(agentMode).toBeEnabled({ timeout: 10_000 });
+    const stored = await agentMode.inputValue();
+    const other = stored === 'disabled' ? 'enabled' : 'disabled';
+
+    // Refuse THIS verb only; every other dispatch goes through.
+    await page.route('**/api/dispatch', async (route) => {
+      const body = route.request().postDataJSON() as { type?: string } | null;
+      if (body?.type !== 'projectUpdate') {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 400,
+        contentType: 'application/json',
+        body: JSON.stringify({ type: 'error', data: { kind: 'bad-request', message: 'boom' } }),
+      });
+    });
+
+    await agentMode.selectOption(other);
+    const toast = page
+      .locator('[role="toast-container"] > div')
+      .filter({ hasText: 'Failed to update agent mode setting' });
+    await expect(toast).toBeVisible({ timeout: 10_000 });
+    await expect(agentMode).toHaveValue(stored);
+    await page.unroute('**/api/dispatch');
+  });
+
   // P4.9E4B — Default Tool Settings (the Model Behavior card's Configure). The
   // row was a disabled affordance until now; the write is `projectToolSettings
   // Update`, live on main since P4.9E3B's Prospero server slice, and the read-back
