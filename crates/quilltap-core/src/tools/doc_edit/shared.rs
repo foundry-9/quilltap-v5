@@ -726,10 +726,9 @@ pub fn get_accessible_mount_points(
         mount_pool,
     } = query;
     // v4 `getAccessibleMountPoints` passes NO `operatorOverride` into the
-    // collector (an enumeration is never the operator's "look everywhere"), so
-    // the collector's only fallible arm — the operator's `findEnabled` read — is
-    // never taken here and the `Err` below is unreachable; an empty set is the
-    // honest rendering of a path that cannot be entered.
+    // collector (an enumeration is never the operator's "look everywhere"). The
+    // collector is infallible (P4.149 — its one fallible arm, the operator's
+    // `findEnabled`, is v4's fallback read), so there is no `Err` to default.
     let ids = crate::doc_edit::path_resolver::collect_accessible_mount_point_ids(
         main,
         mount,
@@ -742,8 +741,7 @@ pub fn get_accessible_mount_points(
             operator_override: false,
             mount_pool: mount_pool.cloned(),
         },
-    )
-    .unwrap_or_default();
+    );
     enabled_accessible_mount_points(mount, ids)
 }
 

@@ -348,5 +348,35 @@
       "groupId": "d8231000-0000-4000-8000-0000000000b6",
       "note": "P4.124: one good link + one link whose cells all DECODE but whose mountPointId is not a uuid (version nibble 0): v4's findByFilter validateSafe()s it out against GroupDocMountLinkSchema — [official, good link]; v5 ports the same per-row Zod shape"
     }
+  ],
+  "$projectTierComment": "P4.149 (items 6a/6b): v4's two project-tier helpers driven directly AFTER the matrix and the group helper arms, each failure arm over a column RENAME on the work copy that only its read's WHERE names, restored before the next arm. Both reads are fallback safeQuerys in v4, so the helpers' own catches ('Project mount lookup failed' / 'Project mount lookup for chat failed') never fire: the reachable lines are 'Error finding entities by filter {collection: project_doc_mount_links}' and 'Error finding entity by ID {collection: chats, id}', each answering [].",
+  "projectTierArms": [
+    {
+      "id": "project_ids_healthy",
+      "helper": "project",
+      "arg": "d8000000-0000-4000-8000-000000000002"
+    },
+    {
+      "id": "project_ids_links_unreadable",
+      "helper": "project",
+      "arg": "d8000000-0000-4000-8000-000000000002",
+      "plant": {
+        "db": "mount",
+        "table": "project_doc_mount_links",
+        "from": "projectId",
+        "to": "projectId_x"
+      }
+    },
+    {
+      "id": "project_ids_for_chat_chat_unreadable",
+      "helper": "chat",
+      "arg": "c4a70000-0000-4000-8000-000000000001",
+      "plant": {
+        "db": "main",
+        "table": "chats",
+        "from": "id",
+        "to": "id_x"
+      }
+    }
   ]
 }

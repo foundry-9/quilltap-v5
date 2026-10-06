@@ -67,7 +67,39 @@ struct Spec {
     helper_plants: Vec<HelperPlant>,
     #[serde(rename = "helperArms")]
     helper_arms: Vec<HelperArm>,
+    /// P4.149 (items 6a/6b): the two project-tier helpers' arms.
+    #[serde(rename = "projectTierArms")]
+    project_tier_arms: Vec<ProjectTierArm>,
 }
+
+#[derive(Deserialize)]
+struct ProjectTierArm {
+    id: String,
+    helper: String,
+    arg: String,
+    #[serde(default)]
+    plant: Option<RenamePlant>,
+}
+
+#[derive(Deserialize)]
+struct RenamePlant {
+    db: String,
+    table: String,
+    from: String,
+    to: String,
+}
+
+/// One v4 line on a project-tier arm (`error` omitted on the oracle side).
+#[derive(Deserialize)]
+struct ArmLog {
+    level: String,
+    message: String,
+    fields: Vec<(String, String)>,
+}
+
+/// v4's backend-only lines (`backends/sqlite/backend.ts`), unported by
+/// standing convention (the search families' `UNPORTED_BACKEND_LINES`).
+const UNPORTED_BACKEND_LINES: &[&str] = &["SQLite find error", "SQLite findOne error"];
 
 #[derive(Deserialize)]
 struct HelperPlant {
@@ -83,7 +115,8 @@ struct HelperArm {
     group_id: String,
 }
 
-/// A matrix row carries `pool`; a P4.D231 helper row carries `ids`.
+/// A matrix row carries `pool`; a P4.D231 helper row carries `ids`; a P4.149
+/// project-tier row carries `ids` + `logs` under `projectTier: true`.
 #[derive(Deserialize)]
 struct Row {
     id: String,
@@ -91,6 +124,10 @@ struct Row {
     pool: Option<Value>,
     #[serde(default)]
     ids: Option<Value>,
+    #[serde(default, rename = "projectTier")]
+    project_tier: bool,
+    #[serde(default)]
+    logs: Option<Vec<ArmLog>>,
 }
 
 // P4.D231's `LINK_ROW_DIVERGENCE` pin (`helper_unreadable_link_row`: v4
@@ -132,12 +169,23 @@ fn tiered_mount_pool_matches_oracle() {
 
     let mut oracle: HashMap<String, Value> = HashMap::new();
     let mut helper_oracle: HashMap<String, Value> = HashMap::new();
+    let mut project_tier_oracle: HashMap<String, (Value, Vec<ArmLog>)> = HashMap::new();
     for line in std::fs::read_to_string(&oracle_path)
         .unwrap_or_else(|e| panic!("read oracle: {e}"))
         .lines()
         .filter(|l| !l.trim().is_empty())
     {
         let row: Row = serde_json::from_str(line).expect("oracle line parses");
+        if row.project_tier {
+            project_tier_oracle.insert(
+                row.id,
+                (
+                    row.ids.expect("a project-tier row carries ids"),
+                    row.logs.expect("a project-tier row carries logs"),
+                ),
+            );
+            continue;
+        }
         match (row.pool, row.ids) {
             (Some(pool), None) => {
                 oracle.insert(row.id, pool);
@@ -315,6 +363,107 @@ fn tiered_mount_pool_matches_oracle() {
         helper_failures.is_empty(),
         "resolve_mount_point_ids_for_group differs:\n{}",
         helper_failures.join("\n")
+    );
+
+    // P4.149 (items 6a/6b) — the project-tier helpers, AFTER everything above
+    // (the oracle's order). v4 creates `chats` lazily on its first access; the
+    // fixture has none, so the same table's statements from the D23 dump run
+    // here. Each failure arm's RENAME is restored before the next arm.
+    let fresh: Value = serde_json::from_str(include_str!(
+        "../../quilltap-core/src/services/provisioning/fresh_schema.json"
+    ))
+    .expect("fresh_schema.json");
+    let chats_ddl: Vec<&str> = fresh["main"]
+        .as_array()
+        .expect("main DDL list")
+        .iter()
+        .filter_map(Value::as_str)
+        .filter(|d| d.starts_with("CREATE TABLE \"chats\" (") || d.contains(" ON \"chats\" "))
+        .collect();
+    assert!(
+        !chats_ddl.is_empty(),
+        "the D23 dump carries the chats table"
+    );
+    for ddl in chats_ddl {
+        main.execute_batch(ddl)
+            .unwrap_or_else(|e| panic!("chats DDL `{ddl}`: {e}"));
+    }
+    assert_eq!(
+        project_tier_oracle.len(),
+        spec.project_tier_arms.len(),
+        "project-tier arm count — regenerate from THIS tree's case (P4.149)"
+    );
+    let mut tier_failures: Vec<String> = Vec::new();
+    for arm in &spec.project_tier_arms {
+        let rename = |from: &str, to: &str| {
+            if let Some(p) = &arm.plant {
+                let conn = if p.db == "main" { main } else { mount };
+                conn.execute_batch(&format!(
+                    "ALTER TABLE \"{}\" RENAME COLUMN \"{from}\" TO \"{to}\"",
+                    p.table
+                ))
+                .unwrap_or_else(|e| panic!("{}: rename: {e}", arm.id));
+            }
+        };
+        if let Some(p) = &arm.plant {
+            rename(&p.from, &p.to);
+        }
+        let (ids, lines) =
+            quilltap_core::test_support::captured_with(|| match arm.helper.as_str() {
+                "project" => {
+                    quilltap_core::tools::wardrobe_shared::resolve_project_mount_point_ids(
+                        mount,
+                        Some(&arm.arg),
+                    )
+                }
+                "chat" => {
+                    quilltap_core::tools::wardrobe_shared::resolve_project_mount_point_ids_for_chat(
+                        main, mount, &arm.arg,
+                    )
+                }
+                other => panic!("unknown project-tier helper {other}"),
+            });
+        if let Some(p) = &arm.plant {
+            rename(&p.to, &p.from);
+        }
+        let (want_ids, want_logs) = &project_tier_oracle[&arm.id];
+        let got_ids = serde_json::to_value(&ids).unwrap();
+        if &got_ids != want_ids {
+            tier_failures.push(format!(
+                "{}: ids\n  v4: {want_ids}\n  v5: {got_ids}",
+                arm.id
+            ));
+        }
+        let want_lines: Vec<String> = want_logs
+            .iter()
+            .filter(|l| !UNPORTED_BACKEND_LINES.contains(&l.message.as_str()))
+            .map(|l| {
+                let mut line = format!("{} quilltap::db {}", l.level.to_uppercase(), l.message);
+                for (k, v) in &l.fields {
+                    line.push_str(&format!(" {k}={v}"));
+                }
+                line
+            })
+            .collect();
+        let got_lines: Vec<String> = lines
+            .iter()
+            .filter(|l| l.starts_with("ERROR ") || l.starts_with("WARN "))
+            .map(|l| match l.find(" error=") {
+                Some(i) => l[..i].to_string(),
+                None => l.clone(),
+            })
+            .collect();
+        if got_lines != want_lines {
+            tier_failures.push(format!(
+                "{}: lines\n  v4: {want_lines:?}\n  v5: {got_lines:?}",
+                arm.id
+            ));
+        }
+    }
+    assert!(
+        tier_failures.is_empty(),
+        "the project-tier helpers differ:\n{}",
+        tier_failures.join("\n")
     );
     eprintln!(
         "tiered_mount_pool: {} cases matched the oracle.",

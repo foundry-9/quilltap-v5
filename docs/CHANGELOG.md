@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-05 — fix(tools): the project-tier helpers and the doc-edit collector read through v4's fallbacks (P4.149 unit 5)
+
+_Versions: core 0.0.1214._
+
+Three reads in the project-tier / doc-edit path swallowed or mis-reported a failed read where v4 logs its repository line and answers an empty set (P4.D245's open items 6a–6c).
+
+- `resolve_project_mount_point_ids` reads the project links through `find_by_filter_or_empty` — v4's reachable `Error finding entities by filter {collection: project_doc_mount_links}` (the repository's own `Error finding links by project ID` and the helper's `Project mount lookup failed` are unreachable in v4).
+- `resolve_project_mount_point_ids_for_chat` reads the chat through `find_by_id_or_none` (`Error finding entity by ID {collection: chats}`); v5 had swallowed the error silently.
+- `collect_accessible_mount_point_ids` is now infallible, as v4's is: the operator arm's enabled-stores read falls back to `[]` with v4's line, so the resolver refuses with `No document stores accessible in this context` instead of the read error's text; the enumeration's `.unwrap_or_default()` is gone.
+- `tiered_mount_pool_equivalence` gains three project-tier arms on both sides (a healthy leg, a renamed `project_doc_mount_links.projectId`, a renamed `chats.id`) — red-first on both lines; a unit pin covers the collector's operator arm.
+
 #### 2026-10-05 — fix(api): the chat list's first read falls back to an empty list as v4's does (P4.149 unit 4)
 
 _Versions: core 0.0.1213._

@@ -47,6 +47,13 @@ interface Spec {
   fakeMountPointId: string;
   helperPlants: Array<{ db: 'main' | 'mount'; sql: string; params: Array<string | null> }>;
   helperArms: Array<{ id: string; groupId: string }>;
+  /** P4.149: the two project-tier helpers, each arm optionally over a RENAME. */
+  projectTierArms: Array<{
+    id: string;
+    helper: 'project' | 'chat';
+    arg: string;
+    plant?: { db: 'main' | 'mount'; table: string; from: string; to: string };
+  }>;
 }
 
 async function main(): Promise<void> {
@@ -100,6 +107,10 @@ async function main(): Promise<void> {
   const resolveMountPointIdsForGroup = tieredModule.resolveMountPointIdsForGroup as
     | ((groupId: string) => Promise<string[]>)
     | undefined;
+  const { resolveProjectMountPointIds, resolveProjectMountPointIdsForChat } = tieredModule as unknown as {
+    resolveProjectMountPointIds: (projectId: string) => Promise<string[]>;
+    resolveProjectMountPointIdsForChat: (chatId: string) => Promise<string[]>;
+  };
 
   await initializeDatabase();
 
@@ -131,6 +142,62 @@ async function main(): Promise<void> {
   if (resolveMountPointIdsForGroup) {
     for (const h of spec.helperArms) {
       rows.push({ id: h.id, helper: true, ids: await resolveMountPointIdsForGroup(h.groupId) });
+    }
+  }
+
+  // P4.149 (items 6a/6b): the project-tier helpers, AFTER everything above
+  // (each repository's lazy ensure has already run, so a rename trips only the
+  // read under test), every ERROR/WARN recorded off the `Logger` prototype —
+  // `{level, message, fields}`, `error` omitted (each driver's own sentence).
+  {
+    const { Logger } = await import('@/lib/logger');
+    let armLogs: Array<{ level: string; message: string; fields: Array<[string, string]> }> | null =
+      null;
+    for (const level of ['error', 'warn'] as const) {
+      const original = Logger.prototype[level];
+      Logger.prototype[level] = function (
+        this: unknown,
+        message: string,
+        context?: Record<string, unknown>,
+        ...rest: unknown[]
+      ) {
+        if (armLogs) {
+          const fields: Array<[string, string]> = [];
+          for (const [k, v] of Object.entries(context ?? {})) {
+            if (k === 'error') continue;
+            fields.push([k, String(v)]);
+          }
+          armLogs.push({ level, message, fields });
+        }
+        return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+      } as never;
+    }
+    const { getRawDatabase } = await import('@/lib/database/backends/sqlite');
+    const { getRawMountIndexDatabase } = await import(
+      '@/lib/database/backends/sqlite/mount-index-client'
+    );
+    // The fixture carries no `chats` table: v4's chats repository creates it
+    // lazily (`ensureCollection`, generateDDL) on its first access — a miss read
+    // here, BEFORE the spy arms, so the chat arm's rename trips only its read.
+    // The Rust side runs the same table's statements from the D23 dump.
+    const { getRepositories } = await import('@/lib/repositories/factory');
+    await getRepositories().chats.findById('00000000-0000-4000-8000-000000000000');
+    for (const arm of spec.projectTierArms) {
+      const raw = arm.plant ? (arm.plant.db === 'main' ? getRawDatabase() : getRawMountIndexDatabase()) : null;
+      if (arm.plant) {
+        if (!raw) throw new Error(`raw ${arm.plant.db} handle unavailable`);
+        raw.exec(`ALTER TABLE "${arm.plant.table}" RENAME COLUMN "${arm.plant.from}" TO "${arm.plant.to}"`);
+      }
+      armLogs = [];
+      const ids =
+        arm.helper === 'project'
+          ? await resolveProjectMountPointIds(arm.arg)
+          : await resolveProjectMountPointIdsForChat(arm.arg);
+      rows.push({ id: arm.id, projectTier: true, ids, logs: armLogs });
+      armLogs = null;
+      if (arm.plant && raw) {
+        raw.exec(`ALTER TABLE "${arm.plant.table}" RENAME COLUMN "${arm.plant.to}" TO "${arm.plant.from}"`);
+      }
     }
   }
 

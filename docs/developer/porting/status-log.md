@@ -166243,3 +166243,41 @@ re-measure); the restore order's acceptance walk (#141/#142).
 - **Red-first:** 500 + `[Chats v1] Error listing chats` vs 200 `[]` + the
   filter line. Green after; the family's other plant cases unchanged.
 - Regen: `salon-reads.test.ts` (jest `/tmp` mirror) → `QT_ORACLE_SALON_READS`.
+
+### P4.149 unit 5 — 6a/6b/6c, the project-tier helpers + the infallible collector (core 0.0.1214)
+
+- **v4 measured** (`tiered-mount-pool.ts`'s new `projectTierArms`, run AFTER
+  the matrix and the group helper arms so every repository's lazy ensure has
+  already run; `chats` created first by a miss read — v4's lazy
+  `ensureCollection` — and on v5 from the D23 dump's statements):
+  `project_ids_healthy` → the project's stores, no line;
+  `project_ids_links_unreadable` (`project_doc_mount_links.projectId` renamed)
+  → `[]` + `Error finding entities by filter {collection:
+  project_doc_mount_links}`; `project_ids_for_chat_chat_unreadable` (`chats.id`
+  renamed) → `[]` + `Error finding entity by ID {collection: chats, id}`. The
+  helpers' own catch WARNs never fire (fallback reads beneath them); v4's
+  backend `SQLite find(One) error` lines are dropped (unported).
+- **Port:** `tools/wardrobe_shared.rs` — 6a through `find_by_filter_or_empty`
+  (no new literal; the doc comments corrected to the reachable line), 6b
+  through `find_by_id_or_none`. `doc_edit/path_resolver.rs` —
+  `collect_accessible_mount_point_ids` returns `Vec<String>`, the operator arm
+  through `find_by_filter_or_empty("doc_mount_points", …)`; `:602`'s
+  `.map_err(…)?` and the five test `.unwrap()`s gone; `tools/doc_edit/
+  shared.rs`'s `.unwrap_or_default()` gone.
+- **Red-first:** the tiered family's two failure arms — ids equal (`[]` both),
+  v5 logged NOTHING. 6c's proof is a unit capture pin
+  (`a_failed_operator_read_resolves_against_an_empty_set_as_v4_does`: the line,
+  `[]`, and the resolver's `No document stores accessible in this context`
+  where the old `?` surfaced `sqlite error: no such column: enabled`) — the
+  v4-driven `doc_edit_path_resolver_equivalence` is not this lane's file.
+- **R-G (Tier 3 item 17, NAMED for the next round):** seven other
+  `find_enabled_for_docedit()` production callers — `pascal/workbench.rs:429`
+  (`?`), `pascal/roster.rs:564` (match), `tools/search.rs:642` (`?`),
+  `documents/mod.rs:664` (`?`), `doc_edit/uri_producers.rs:156` (`if let Ok` —
+  silent), `photos/user_gallery_service.rs:132` (`?`),
+  `services/embedding_reindex_job.rs:552`; plus `enabled_accessible_mount_
+  points`' silent per-id `if let Ok(Some(..))` over `find_by_id_for_docedit`
+  (13 call sites of that read repo-wide). Not converted blind.
+- Regen (pin, Node 24, `node --import tsx`): `build-tiered-mount-pool-
+  fixture.ts` then `tiered-mount-pool.ts` → `QT_ORACLE_TMP` +
+  `QT_FIXTURE_TMP_MAIN/MOUNT`.

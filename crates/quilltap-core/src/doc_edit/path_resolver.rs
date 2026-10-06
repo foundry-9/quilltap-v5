@@ -414,13 +414,22 @@ fn resolve_general_path(
 /// as v4's `getAccessibleMountPoints` does, instead of carrying a hand-copy of
 /// the covenant arm — so a rule added here (the roster gate) reaches listing and
 /// resolution alike and the two can never disagree about a store.
+///
+/// INFALLIBLE since P4.149 (P4.D245 item 6c), as v4's is: the operator arm's
+/// `docMountPoints.findEnabled()` is a fallback (`Error finding enabled mount
+/// points` wraps `findByFilter`, whose own line answers first — `Error finding
+/// entities by filter {collection: doc_mount_points}` → `[]`), so a failed read
+/// resolves against an EMPTY set (`No document stores accessible in this
+/// context`) where v5's `?` had surfaced the read error as the refusal's text.
 pub(crate) fn collect_accessible_mount_point_ids(
     main: &Connection,
     mount: &Connection,
     context: &PathResolutionContext,
-) -> Result<Vec<String>, DbError> {
+) -> Vec<String> {
     if context.operator_override {
-        let rows = DocMountPointsRepository::new(mount).find_enabled_for_docedit()?;
+        let rows = crate::db::fallback::find_by_filter_or_empty("doc_mount_points", || {
+            DocMountPointsRepository::new(mount).find_enabled_for_docedit()
+        });
         let mut ids: Vec<String> = Vec::new();
         for r in rows {
             if !ids.contains(&r.id) {
@@ -433,7 +442,7 @@ pub(crate) fn collect_accessible_mount_point_ids(
             count = ids.len(),
             "Path resolver: operator override — all enabled stores accessible"
         );
-        return Ok(ids);
+        return ids;
     }
 
     // A pre-built pool (Scenario Builder) is the accessible set, verbatim. The
@@ -441,7 +450,7 @@ pub(crate) fn collect_accessible_mount_point_ids(
     // v4 `d1c06cd9d` — AFTER the operator arm, BEFORE the covenant: the pool is
     // not subject to the opacity covenant (the caller built it).
     if let Some(pool) = &context.mount_pool {
-        return Ok(prebuilt_pool_accessible_ids(pool));
+        return prebuilt_pool_accessible_ids(pool);
     }
 
     // The opacity covenant subtracts the two vault tiers and nothing else. The
@@ -486,14 +495,14 @@ pub(crate) fn collect_accessible_mount_point_ids(
             include_participants: vaults_visible,
         },
     );
-    Ok(flatten_tier_pool(
+    flatten_tier_pool(
         &pool,
         FlattenOptions {
             include_participants: vaults_visible,
             include_character_tier: vaults_visible,
             ..Default::default()
         },
-    ))
+    )
 }
 
 /// The pre-built-pool arm of v4 `collectAccessibleMountPointIds` (`d1c06cd9d`):
@@ -599,8 +608,7 @@ fn resolve_document_store_path(
     }
 
     let repo = DocMountPointsRepository::new(mount);
-    let accessible_ids = collect_accessible_mount_point_ids(main, mount, context)
-        .map_err(|e| ResolveError::path(PathErrorCode::AccessDenied, e.to_string()))?;
+    let accessible_ids = collect_accessible_mount_point_ids(main, mount, context);
 
     if accessible_ids.is_empty() {
         return Err(ResolveError::path(
@@ -1485,7 +1493,7 @@ mod tests {
             ..Default::default()
         };
         let (ids, lines) = crate::test_support::captured_with(|| {
-            collect_accessible_mount_point_ids(&main, &mount, &off).unwrap()
+            collect_accessible_mount_point_ids(&main, &mount, &off)
         });
         assert!(!ids.contains(&"r-1".to_string()), "withheld: {ids:?}");
         let dbg = lines
@@ -1506,7 +1514,7 @@ mod tests {
             ..Default::default()
         };
         let (ids, lines) = crate::test_support::captured_with(|| {
-            collect_accessible_mount_point_ids(&main, &mount, &on).unwrap()
+            collect_accessible_mount_point_ids(&main, &mount, &on)
         });
         assert!(ids.contains(&"r-1".to_string()), "admitted: {ids:?}");
         assert!(
@@ -1534,7 +1542,7 @@ mod tests {
             },
         ] {
             let (_ids, lines) = crate::test_support::captured_with(|| {
-                collect_accessible_mount_point_ids(&main, &mount, &ctx).unwrap()
+                collect_accessible_mount_point_ids(&main, &mount, &ctx)
             });
             assert!(
                 !lines
@@ -1542,6 +1550,53 @@ mod tests {
                     .any(|l| l.contains("[ProjectRoster]") || l.contains("project tier withheld")),
                 "{ctx:?}: {lines:?}"
             );
+        }
+    }
+
+    /// P4.149 (P4.D245 item 6c): the operator arm's enabled-stores read is v4's
+    /// FALLBACK (`findEnabled` → `findByFilter`): a failed read logs `Error
+    /// finding entities by filter {collection: doc_mount_points}` and the
+    /// collector answers `[]`, so the resolver refuses with v4's empty-set
+    /// sentence — never the read error's text (v5's old `?`).
+    #[test]
+    fn a_failed_operator_read_resolves_against_an_empty_set_as_v4_does() {
+        let (main, mount) = roster_fixture();
+        mount
+            .execute_batch("ALTER TABLE doc_mount_points RENAME COLUMN enabled TO enabled_x")
+            .unwrap();
+        let operator = PathResolutionContext {
+            operator_override: true,
+            mount_point: Some("anything".to_string()),
+            ..Default::default()
+        };
+        let (ids, lines) = crate::test_support::captured_with(|| {
+            collect_accessible_mount_point_ids(&main, &mount, &operator)
+        });
+        assert!(ids.is_empty(), "{ids:?}");
+        assert_eq!(
+            lines
+                .iter()
+                .filter(|l| l.starts_with("ERROR") || l.starts_with("WARN"))
+                .cloned()
+                .collect::<Vec<_>>(),
+            vec!["ERROR quilltap::db Error finding entities by filter collection=doc_mount_points error=no such column: enabled".to_string()]
+        );
+        let (out, _) = crate::test_support::captured_with(|| {
+            resolve_doc_edit_path(
+                &main,
+                &mount,
+                DocEditScope::DocumentStore,
+                Some("plan.md"),
+                &operator,
+                None,
+            )
+        });
+        match out {
+            Err(ResolveError::Path { code, message }) => {
+                assert_eq!(code, PathErrorCode::AccessDenied);
+                assert_eq!(message, "No document stores accessible in this context");
+            }
+            other => panic!("expected v4's empty-set refusal, got {other:?}"),
         }
     }
 
@@ -1555,7 +1610,7 @@ mod tests {
             ..Default::default()
         };
         let (ids, lines) = crate::test_support::captured_with(|| {
-            collect_accessible_mount_point_ids(&main, &mount, &operator).unwrap()
+            collect_accessible_mount_point_ids(&main, &mount, &operator)
         });
         assert!(ids.contains(&"r-1".to_string()), "{ids:?}");
         assert!(
@@ -1576,7 +1631,7 @@ mod tests {
             ..Default::default()
         };
         let (ids, lines) = crate::test_support::captured_with(|| {
-            collect_accessible_mount_point_ids(&main, &mount, &pool).unwrap()
+            collect_accessible_mount_point_ids(&main, &mount, &pool)
         });
         assert!(ids.contains(&"r-1".to_string()), "{ids:?}");
         assert!(

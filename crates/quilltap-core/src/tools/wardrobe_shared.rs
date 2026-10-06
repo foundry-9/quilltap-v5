@@ -37,8 +37,15 @@ use crate::wardrobe_tiers::SharedWardrobeTiers;
 
 /// v4 `resolveProjectMountPointIds(projectId)` — the project tier for a project
 /// id the caller already holds: its linked document stores. `[]` for a
-/// project-less caller or any lookup failure (v4 catches → `[]`). `mount` reads
+/// project-less caller or a failed lookup. `mount` reads
 /// `project_doc_mount_links`.
+///
+/// P4.149 (P4.D245 item 14's second half): the REACHABLE v4 line on a failed
+/// read is the base `findByFilter`'s `Error finding entities by filter
+/// {collection: project_doc_mount_links}` — `findByProjectId`'s own `safeQuery`
+/// (`Error finding links by project ID`) wraps that fallback and can never
+/// fire, and so can never the helper's `Project mount lookup failed` catch
+/// (measured through `tiered_mount_pool_equivalence`). No new home literal.
 ///
 /// The sibling of [`resolve_project_mount_point_ids_for_chat`], which is this
 /// function plus the chat→project lookup. Chat-start outfit resolution reaches
@@ -51,23 +58,30 @@ pub fn resolve_project_mount_point_ids(
     let Some(project_id) = project_id.filter(|s| !s.is_empty()) else {
         return Vec::new();
     };
-    ProjectDocMountLinksRepository::new(mount)
-        .find_by_project_id(project_id)
-        .unwrap_or_default()
+    crate::db::fallback::find_by_filter_or_empty("project_doc_mount_links", || {
+        ProjectDocMountLinksRepository::new(mount).find_by_project_id(project_id)
+    })
 }
 
 /// v4 `resolveProjectMountPointIdsForChat(chatId)` — the project tier for a chat:
 /// load the chat, then its project's linked stores. `[]` for a project-less chat
-/// or any lookup failure (v4 catches → `[]`). `main` reads `chats`, `mount` reads
+/// or a failed lookup. `main` reads `chats`, `mount` reads
 /// `project_doc_mount_links`.
+///
+/// P4.149 (P4.D245 item 18): v4's `repos.chats.findById` is the fallback
+/// `_findById` — a failed read logs `Error finding entity by ID {collection:
+/// chats, id}` and answers `null` → `[]`; the helper's own `Project mount
+/// lookup for chat failed` catch is unreachable. v5 had swallowed the `Err`
+/// silently.
 pub fn resolve_project_mount_point_ids_for_chat(
     main: &Connection,
     mount: &Connection,
     chat_id: &str,
 ) -> Vec<String> {
-    let chat = match chats_read::find_by_id(main, chat_id) {
-        Ok(Some(c)) => c,
-        _ => return Vec::new(),
+    let Some(chat) = crate::db::fallback::find_by_id_or_none("chats", chat_id, || {
+        chats_read::find_by_id(main, chat_id)
+    }) else {
+        return Vec::new();
     };
     resolve_project_mount_point_ids(mount, chat.get("projectId").and_then(Value::as_str))
 }
