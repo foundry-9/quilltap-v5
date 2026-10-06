@@ -295,41 +295,12 @@ pub(crate) fn received(v: Option<&Value>) -> String {
     }
 }
 
-/// Zod 4's UUID format check (`z.uuid()` — RFC-9562-shaped: version 1–8,
-/// variant 8/9/a/b; the all-zero nil and all-f max UUIDs also pass).
+/// Zod 4's UUID format check (`z.uuid()`) — a delegation to the ONE home,
+/// [`zod_uuid_ok`](crate::api::zod_issues::zod_uuid_ok) (P4.155, R-D: this was
+/// a full hand copy, measured identical to the home over 1,291 inputs before
+/// the fold). Kept as a name because ~20 callers import it from here.
 pub(crate) fn is_zod_uuid(s: &str) -> bool {
-    let b = s.as_bytes();
-    if b.len() != 36 {
-        return false;
-    }
-    if s == "00000000-0000-0000-0000-000000000000" || s == "ffffffff-ffff-ffff-ffff-ffffffffffff" {
-        return true;
-    }
-    for (i, c) in b.iter().enumerate() {
-        match i {
-            8 | 13 | 18 | 23 => {
-                if *c != b'-' {
-                    return false;
-                }
-            }
-            14 => {
-                if !matches!(*c, b'1'..=b'8') {
-                    return false;
-                }
-            }
-            19 => {
-                if !matches!(*c, b'8' | b'9' | b'a' | b'b' | b'A' | b'B') {
-                    return false;
-                }
-            }
-            _ => {
-                if !c.is_ascii_hexdigit() {
-                    return false;
-                }
-            }
-        }
-    }
-    true
+    crate::api::zod_issues::zod_uuid_ok(s)
 }
 
 /// The enum-issue message. Zod 4's default for `z.enum` carries NO

@@ -354,3 +354,135 @@ fn the_parsed_type_word_has_one_home_plus_its_recorded_remainder() {
         failures.join("\n  ")
     );
 }
+
+/// [P4.155, ruling R-D] The `z.uuid()` predicate. **Arithmetic:** the home
+/// (`zod_uuid_ok`, hand-matching v4 zod's own `uuid()` pattern) + the two
+/// `is_zod_uuid` names the tree's ~25 callers import, now ONE-LINE
+/// DELEGATIONS to the home ([`the_two_is_zod_uuid_names_delegate_to_the_home`]
+/// holds their bodies) + the recorded remainder below = **9 definitions in 9
+/// files**. Before P4.155 the two `is_zod_uuid`s were full hand copies —
+/// measured byte-identical to the home over 1,291 inputs (every byte at the
+/// version nibble × eight variant nibbles, the nil / max forms in both cases,
+/// short, long, non-hex, non-ASCII) before the fold.
+const UUID_PREDICATE_CENSUS: &[(&str, usize, &str)] = &[
+    (
+        "crates/quilltap-core/src/api/zod_issues.rs",
+        1,
+        "THE HOME — `zod_uuid_ok`, v4 zod's `uuid()` pattern (version `1-8`, \
+         variant `89abAB`, the nil and max literals).",
+    ),
+    (
+        "crates/quilltap-core/src/api/chat_outfits.rs",
+        1,
+        "`is_zod_uuid` — a DELEGATION to the home (P4.155); kept as a name \
+         because ~20 callers across files this lane does not own import it.",
+    ),
+    (
+        "crates/quilltap-core/src/services/file_storage.rs",
+        1,
+        "`is_zod_uuid` — a DELEGATION to the home (P4.155), the files / images \
+         callers' import path.",
+    ),
+    (
+        "crates/quilltap-core/src/vault_overlay.rs",
+        1,
+        "`is_uuid` — the SAME zod pattern as a compiled `Regex` (equivalent; \
+         not folded — outside P4.155's ownership; a named follow-up).",
+    ),
+    (
+        "crates/quilltap-core/src/api/chat_post_office.rs",
+        1,
+        "⚠ FINDING (P4.155): `is_uuid` claims `z.uuid()` but checks the \
+         8-4-4-4-12 SHAPE only — zod constrains the version and variant \
+         nibbles, so v5 accepts ids v4 refuses. Outside P4.155's ownership; \
+         recorded as a named follow-up, not folded.",
+    ),
+    (
+        "crates/quilltap-core/src/services/chat_scenario.rs",
+        1,
+        "⚠ FINDING (P4.155): the same shape-only `z.uuid()` claim as \
+         `chat_post_office.rs`. Named follow-up.",
+    ),
+    (
+        "crates/quilltap-core/src/services/chat_participants.rs",
+        1,
+        "⚠ FINDING (P4.155): the same shape-only `z.uuid()` claim (its doc \
+         cites `chat_post_office.rs`'s idiom). Named follow-up.",
+    ),
+    (
+        "crates/quilltap-core/src/api/system_backup.rs",
+        1,
+        "NOT zod — v4's own `UUID_REGEX` (`system/restore/route.ts:35`, \
+         shape-only by v4's design).",
+    ),
+    (
+        "crates/quilltap-core/src/generators/ai_import.rs",
+        1,
+        "NOT zod — v4's `UUID_RE` (`restampStructuralFields`, case-insensitive \
+         shape, no nibble check by v4's design).",
+    ),
+];
+
+/// The uuid-predicate spellings the tree uses.
+const UUID_PREDICATE_NEEDLES: &[&str] = &[
+    "fn zod_uuid_ok(",
+    "fn is_zod_uuid(",
+    "fn is_uuid(",
+    "fn is_valid_uuid(",
+];
+
+#[test]
+fn the_uuid_predicate_has_one_home_plus_its_recorded_remainder() {
+    let failures = walk_and_check(
+        UUID_PREDICATE_CENSUS,
+        UUID_PREDICATE_NEEDLES,
+        "uuid predicate",
+        "v4 zod's `uuid()` lives at `crate::api::zod_issues::zod_uuid_ok`. \
+         Call it; a different v4 regex wants its source named in the census \
+         (P4.155).",
+    );
+    assert!(
+        failures.is_empty(),
+        "the uuid predicate is regrowing:\n  {}",
+        failures.join("\n  ")
+    );
+}
+
+/// [P4.155, R-D] The two `is_zod_uuid` names are DELEGATIONS: each body
+/// calls the home and hand-matches nothing (no `as_bytes`). Red on unported
+/// `main`, where both were full copies.
+#[test]
+fn the_two_is_zod_uuid_names_delegate_to_the_home() {
+    let root = repo_root();
+    for rel in [
+        "crates/quilltap-core/src/api/chat_outfits.rs",
+        "crates/quilltap-core/src/services/file_storage.rs",
+    ] {
+        let text = std::fs::read_to_string(root.join(rel)).expect("read");
+        let start = text
+            .find("fn is_zod_uuid(")
+            .unwrap_or_else(|| panic!("{rel}: `is_zod_uuid` is gone — update the census"));
+        let open = start + text[start..].find('{').expect("a body");
+        let mut depth = 0i32;
+        let mut end = open;
+        for (i, c) in text[open..].char_indices() {
+            match c {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = open + i;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let body = &text[open..=end];
+        assert!(
+            body.contains("zod_uuid_ok(") && !body.contains("as_bytes"),
+            "{rel}: `is_zod_uuid` must delegate to `zod_issues::zod_uuid_ok`, \
+             not hand-match:\n{body}"
+        );
+    }
+}
