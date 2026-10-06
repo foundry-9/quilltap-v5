@@ -169618,3 +169618,79 @@ harness is frozen at `0.0.1110`).
 - Recipe unchanged in shape (`npx tsx … repository-zod-messages.ts >
   /tmp/…ndjson` from the pin); staged at `/tmp/p4157/oracle-repository-zod-messages.ndjson`
   (58 rows).
+
+### Units R-B + R-F — the `character-generators` pair rebuilt ONCE (Tier 1 items 1 and 5)
+- **The defect, measured on the committed pair (via v4's real repos at the
+  pin):** Mira's `defaultSystemPromptId` = `652af5b0-c63e-41bc-88c3-00908435f59e`;
+  her vault's prompts are `88e3679d…` (Default) and `89a63a77…` (Terse). The
+  builder baked `addSystemPrompt`'s return — a TRANSIENT id the vault then
+  re-mints from the prompt's path. (The scenario default happened to agree:
+  `addScenario` returned the vault's id.) Fixed: both defaults resolved by
+  name/title off `findById` after the sub-arrays are written, refusing a miss.
+  Rebuilt pair: Mira's pointer `d45b7dd4…` = her Default prompt.
+- **New md5s (for the next `/dogfood`'s fixture notes):** main
+  `d2e0440b29096d7f8369f6d39ade36bc` (was `e9b70445…`), mount
+  `99bba06c621eeb716255cbda5f25f6f5` (was `9ae62374…`). Six blobs (was five):
+  `scan.pdf` (`f0000002-…-016`, 283 bytes, an empty content stream) added for
+  the PDF arm's `refused` outcome.
+- **The baked-id census (R-B):** `grep -nE '[0-9a-f]{8}-[0-9a-f]{4}-'
+  crates/quilltap-web/tests/*.rs crates/quilltap-harness/tests/*generator*.rs
+  crates/quilltap-harness/tests/*wizard*.rs crates/quilltap-harness/tests/*optimizer*.rs`
+  → 165 lines, 96 distinct ids; in the generator / wizard / optimizer files
+  only pinned ids (`a2000002-…-001` ×2, `c0000002-…-001` ×3, `00000000-…-dead`
+  ×3). NONE of the rebuilt pair's minted ids (prompts `d45b7dd4`/`7e07d8ca`,
+  scenarios `b51e4559`/`8c49eacb`, vaults `a4433fbb`/`415831b9`, wardrobe
+  `f69b365a`/`f7241a03`) nor the old ones (`652af5b0`, `88e3679d`,
+  `41c13f30`) appear. The three generator corpora + cases carry only pinned
+  ids (plus the pinned FIXTURE_USER `e18e05bc…`). The ONE baked-id class
+  found was the optimizer corpus's: `subId`s `41c13f30` (Default),
+  `d686e052` (Harbor), `19fa04df` (Lantern Coat) — and `$comment` naming
+  three more — all stale since P4.151's rebuild.
+- **Readers, measured:** FIVE, not nine — `character_wizard_tier3`,
+  `ai_import_tier3`, `character_optimizer_tier3` (harness) +
+  `characters_generators_routes`, `generators_wizard_routes` (web, via
+  `common::materialize_generators_instance`). `chat_informs_routes` and the
+  host tests do NOT read the pair (`grep -rl character-generators crates/*/tests`).
+- **Red-first:**
+  - `characters_generators_routes` (now drives Mira's DEFAULT POINTER and
+    refuses one naming none of her prompts) on the OLD pair → RED: `System
+    prompt not found: Mira's default pointer "652af5b0-…" names none of her
+    prompts [{"id":"88e3679d-…`. Green on the rebuilt pair.
+  - The optimizer coherence check (every `subId` a canned answer names must be
+    an id v4 showed the model in that call), applied to the OLD corpus + an
+    oracle regenerated from it at the pin over the OLD pair
+    (`/tmp/p4157/oracle-optimizer-old.ndjson`): **13 of 13** `subId`s never
+    shown → RED. With `{{systemPrompt|scenario|wardrobe:<name>}}` placeholders
+    resolved off the live character on both sides: green, `sub_ids_checked >= 3`.
+  - R-F: the OLD wizard counter classified a row by its converter SCRIPT
+    (`trim().is_empty()` → "fallback"); over the new corpus it would count
+    `stream_document_pdf_scan_refused` as a third fallback where v4's lines say
+    `refused`. Outcomes from v4's lines: wizard converter 1 / fallback 2 /
+    refused 1; ai-import converter 1 / fallback 1 / refused 1.
+- **v4's PDF lines need NO placeholder:** v5's captured `size` / `chars`
+  equal v4's (713/137, 713/288, 283) — the lines are compared whole.
+- **R-A (ruled at planning) recorded** in both generator case files beside the
+  scripted converter: the real-`pdf-parse` row stays unrunnable; no
+  `--experimental-vm-modules`.
+- **`ai_import_tier3`'s `V4_APP_VERSION`** moved `4.10.0-dev.111` →
+  `4.10.0-dev.112`: the family regenerates at the TARGET (its `done` frame's
+  manifest stamps the checkout's version), and the target becomes the baseline
+  at this round's unification — the stamp the unifier would otherwise move.
+- **Not edited (out of ownership, a doc nit for the unifier):**
+  `crates/quilltap-web/tests/common/mod.rs:434`'s "an uploads mount with four
+  blob-backed files" (six now; it was already stale at five).
+- Gate (on this branch, the TARGET pin, lane-private oracles):
+  `character_wizard_tier3` 41 cases ok (4 PDF rows), `ai_import_tier3` 42 ok,
+  `character_optimizer_tier3` 28 ok + the route-line pin; web
+  `characters_generators_routes` 1/1, `generators_wizard_routes` 1/1; clippy
+  `-p quilltap-harness -p quilltap-web -p quilltap-host --tests` clean.
+- **Recipe (each its OWN jest invocation, from `/tmp/qt-v4-pin-p4157-94fbb1ae3`,
+  Node 24):** the builder — `QT_FIXTURE_CG_MAIN=$V5W/crates/quilltap-web/tests/fixtures/character-generators-main.db
+  QT_FIXTURE_CG_MOUNT=…-mount.db node --import tsx $V5W/harness/oracle/fixtures/build-character-generators-fixture.ts`;
+  then per family (`character-wizard-tier3`, `character-optimizer-tier3`,
+  `ai-import-tier3`) the header recipe with `QT_ORACLE_OUT=/tmp/p4157/oracle-<tag>.ndjson`
+  (`/tmp/p4157/regen-gen.sh`); run with `QT_ORACLE_CHARACTER_WIZARD` /
+  `QT_ORACLE_CHARACTER_OPTIMIZER` / `QT_ORACLE_AI_IMPORT`.
+- **§S.3 for the unifier:** regenerate the three oracles on the union (after
+  P4.154's v8-twin change for the optimizer, §R.10(c)) and run the five
+  readers by name.

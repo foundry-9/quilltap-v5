@@ -30,6 +30,15 @@
 //! fallback, never v4's real `pdf-parse` (it cannot run under this jest
 //! invocation — measured, recorded in the P4.151 lane record).
 //!
+//! P4.157 R-F: the PDF arm's v4 lines (`pdf-parse found no text, using native
+//! fallback extraction {size}`, `Extracted PDF content {size, chars}`, the
+//! catch's `Error extracting PDF content`) are captured UN-filtered on both
+//! sides (`pdfLines`, `common::pdf_lines_from_capture`) and the row's OUTCOME
+//! they imply (`converter` / `fallback` / `refused`, `common::pdf_outcome`) is a
+//! comparand; PDF rows are counted by that outcome, never by the converter
+//! script the corpus wrote. `scan.pdf` (no text anywhere) carries the
+//! `refused` row.
+//!
 //! The dispatch's `{ terminal }` payload is asserted against the last drained
 //! frame.
 //!
@@ -55,7 +64,7 @@
 //! the baseline — the sweep driver's job (`recipe_sweep.py --run
 //! character_wizard_tier3_equivalence --v4 <pin>`), never a path baked in here.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -134,6 +143,9 @@ struct OracleRow {
     llm_log_counts: Value,
     /// P4.151 D — how many times the PDF converter was reached.
     pdf_converter_calls: u64,
+    /// P4.157 R-F — v4's PDF-arm lines, un-filtered, and the outcome they imply.
+    pdf_lines: Vec<Value>,
+    pdf_outcome: Option<String>,
 }
 
 fn oracle_dir() -> PathBuf {
@@ -606,6 +618,7 @@ fn run_case(spec: &Spec, c: &Case) -> Value {
         .filter(|l| l.contains("[CharacterWizard]"))
         .map(|l| parse_log_line(l))
         .collect();
+    let pdf_lines = common::pdf_lines_from_capture(&lines);
     let calls = completion.calls.lock().unwrap().clone();
     let counts = llm_log_counts(&db);
     drop(driver);
@@ -620,6 +633,8 @@ fn run_case(spec: &Spec, c: &Case) -> Value {
         "logLines": log_lines,
         "llmLogCounts": counts,
         "pdfConverterCalls": pdf_calls.load(std::sync::atomic::Ordering::SeqCst),
+        "pdfLines": pdf_lines,
+        "pdfOutcome": common::pdf_outcome(&pdf_lines),
     })
 }
 
@@ -661,8 +676,10 @@ fn character_wizard_matches_oracle() {
     let (mut model_calls, mut frames, mut vision_calls, mut zod_rows, mut json_rows) =
         (0usize, 0usize, 0usize, 0usize, 0usize);
     // P4.151 D: the key pin and the PDF rows must still be ASKED.
-    let (mut primary_keyed, mut vision_keyed, mut pdf_rows, mut pdf_fallback_rows) =
-        (0usize, 0usize, 0usize, 0usize);
+    let (mut primary_keyed, mut vision_keyed, mut pdf_rows) = (0usize, 0usize, 0usize);
+    // P4.157 R-F: PDF rows counted by the OUTCOME v4's lines imply, never by
+    // the converter script the corpus wrote.
+    let mut pdf_outcomes: BTreeMap<String, usize> = BTreeMap::new();
     let mut split_key_rows = 0usize;
     for c in &corpus.cases {
         let want_row = &oracle[&c.name];
@@ -717,12 +734,11 @@ fn character_wizard_matches_oracle() {
                 c.name
             );
             pdf_rows += 1;
-            if c.pdf_converter
-                .as_deref()
-                .is_some_and(|t| t.trim().is_empty())
-            {
-                pdf_fallback_rows += 1;
-            }
+            let outcome = want_row
+                .pdf_outcome
+                .clone()
+                .unwrap_or_else(|| panic!("{}: a PDF row with no outcome line", c.name));
+            *pdf_outcomes.entry(outcome).or_default() += 1;
         }
         if c.action == "ai-wizard" && want_row.status == 200 {
             json_rows += 1;
@@ -736,6 +752,8 @@ fn character_wizard_matches_oracle() {
             "logLines": want_row.log_lines,
             "llmLogCounts": want_row.llm_log_counts,
             "pdfConverterCalls": want_row.pdf_converter_calls,
+            "pdfLines": want_row.pdf_lines,
+            "pdfOutcome": want_row.pdf_outcome,
         });
         let (g, w) = (normalize(got), normalize(want));
         if g != w {
@@ -767,9 +785,13 @@ fn character_wizard_matches_oracle() {
         "the key pin must still be asked: {primary_keyed} Local-Mock-keyed, {vision_keyed} \
          Vision-Mock-keyed calls, {split_key_rows} run(s) using both keys"
     );
+    let outcome = |k: &str| pdf_outcomes.get(k).copied().unwrap_or(0);
     assert!(
-        pdf_rows >= 3 && pdf_fallback_rows >= 2,
-        "the PDF document rows must still be asked: {pdf_rows} rows ({pdf_fallback_rows} via the fallback)"
+        pdf_rows >= 4
+            && outcome("converter") >= 1
+            && outcome("fallback") >= 2
+            && outcome("refused") >= 1,
+        "the PDF document rows must still reach every outcome: {pdf_rows} rows, {pdf_outcomes:?}"
     );
     eprintln!(
         "character_wizard_tier3_equivalence: {} cases, {model_calls} model calls ({vision_calls} vision; keys {primary_keyed} Local Mock / {vision_keyed} Vision Mock, {split_key_rows} split-key runs), {frames} frames, {zod_rows} Zod refusals, {pdf_rows} PDF rows",

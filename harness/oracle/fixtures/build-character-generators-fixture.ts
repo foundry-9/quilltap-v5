@@ -13,15 +13,18 @@
  *     "Vision Mock" that does — the wizard's primary/vision split,
  *   - one DEFAULT embedding profile (so v4's `isEmbeddingAvailable` is true
  *     and the optimizer's semantic-search arm is reachable),
- *   - an "Uploads" database-backed mount point holding five blobs, each also a
+ *   - an "Uploads" database-backed mount point holding six blobs, each also a
  *     legacy `files` row whose `storageKey` is the `mount-blob:` key — the
  *     shape `fileStorageManager.downloadFile` and v5's `download_file` both
  *     read WITHOUT a disk tree: two text files (a `.md` and a `.txt` — the
  *     wizard's `document` source / the import's `sourceFileIds`), one PNG (the
  *     `gallery`/`upload` source), one opaque binary (the extractor's
- *     `[Binary file: …]` placeholder arm),
+ *     `[Binary file: …]` placeholder arm), and two PDFs — `lore.pdf` (an
+ *     uncompressed text stream, P4.151 D) and `scan.pdf` (an empty content
+ *     stream, no text anywhere: the PDF arm's `refused` outcome, P4.157 R-F),
  *   - Mira — a rich character: every prose field, aliases, pronouns, 2 system
- *     prompts (1 default), 2 scenarios (1 default), 2 wardrobe items, a
+ *     prompts (1 default — `defaultSystemPromptId` read off the LIVE vault,
+ *     P4.157 R-B), 2 scenarios (1 default), 2 wardrobe items, a
  *     physical description, and TEN memories: eight about herself with
  *     `reinforcementCount >= 2` (one of them created a year earlier for the
  *     date-window arms; one with NO vector entry so the semantic-search arm
@@ -350,18 +353,38 @@ async function main(): Promise<void> {
       { id: c.id, createdAt: TS, updatedAt: TS } as never,
     );
 
-    let defaultSystemPromptId: string | undefined;
     for (const sp of c.systemPrompts ?? []) {
-      const created = await repos.characters.addSystemPrompt(c.id, {
+      await repos.characters.addSystemPrompt(c.id, {
         name: sp.name, content: sp.content, isDefault: sp.isDefault,
       } as never);
-      if (sp.makeDefault && created) defaultSystemPromptId = created.id;
     }
-    let defaultScenarioId: string | undefined;
     for (const sc of c.scenarios ?? []) {
-      const created = await repos.characters.addScenario(c.id, { title: sc.title, content: sc.content });
-      if (sc.makeDefault && created) defaultScenarioId = created.id;
+      await repos.characters.addScenario(c.id, { title: sc.title, content: sc.content });
     }
+    // P4.157 R-B: the default ids come off the LIVE character, never off the
+    // `add*` return. `addSystemPrompt` answers the TRANSIENT id it minted, and
+    // the vault then re-mints every prompt's id from its path
+    // (`stableUuidFromString("prompt:<mountPointId>:<path>")`), so the
+    // returned id names a prompt the vault never carries — P4.151's rebuilt
+    // pair baked exactly that into Mira's `defaultSystemPromptId` (a dangling
+    // pointer every reader then read). Resolved by NAME / TITLE, refusing a miss.
+    const live = (await repos.characters.findById(c.id)) as {
+      systemPrompts?: Array<{ id: string; name: string }>;
+      scenarios?: Array<{ id: string; title: string }>;
+    } | null;
+    const byName = <T extends { id: string }>(items: T[] | undefined, key: (t: T) => string, want: string, what: string): string => {
+      const hit = (items ?? []).find((t) => key(t) === want);
+      if (!hit) throw new Error(`${c.name}: ${what} "${want}" not found on the live character`);
+      return hit.id;
+    };
+    const defaultPromptSpec = (c.systemPrompts ?? []).find((sp) => sp.makeDefault);
+    const defaultSystemPromptId = defaultPromptSpec
+      ? byName(live?.systemPrompts, (p) => p.name, defaultPromptSpec.name, 'System prompt')
+      : undefined;
+    const defaultScenarioSpec = (c.scenarios ?? []).find((sc) => sc.makeDefault);
+    const defaultScenarioId = defaultScenarioSpec
+      ? byName(live?.scenarios, (sc) => sc.title, defaultScenarioSpec.title, 'Scenario')
+      : undefined;
     for (const w of c.wardrobe ?? []) {
       await repos.wardrobe.create({
         characterId: c.id,

@@ -116,6 +116,29 @@ function unfreezeClock(): void {
   (globalThis as { Date: unknown }).Date = RealDate;
 }
 
+/**
+ * P4.157 R-F: the PDF arm's two lines (`file-content-extractor.ts:175,189`)
+ * and its catch, recorded UN-filtered — the per-row OUTCOME is derived from
+ * them identically on both sides: `converter` (the converter's text was used —
+ * `Extracted PDF content` with no fallback WARN), `fallback` (the WARN, then
+ * `Extracted`), `refused` (the WARN and no `Extracted` — `Failed to extract PDF
+ * content (no text found)`), `error` (the catch), or `null` (no PDF reached).
+ */
+const PDF_MESSAGES = [
+  'pdf-parse found no text, using native fallback extraction',
+  'Extracted PDF content',
+  'Error extracting PDF content',
+];
+function pdfOutcome(lines: Array<{ message: string }>): string | null {
+  const has = (m: string) => lines.some((l) => l.message === m);
+  if (has('Error extracting PDF content')) return 'error';
+  const warned = has(PDF_MESSAGES[0]);
+  const extracted = has('Extracted PDF content');
+  if (!warned && !extracted) return null;
+  if (!warned) return 'converter';
+  return extracted ? 'fallback' : 'refused';
+}
+
 async function runCase(
   spec: Spec,
   corpus: Corpus,
@@ -177,6 +200,12 @@ async function runCase(
   // cannot run under this jest invocation — measured: its pdfjs fake worker
   // needs `--experimental-vm-modules`). `extractPdfContent`, its fallback and
   // its log lines stay REAL; the call count is a comparand.
+  // RULED (P4.157 R-A, 2026-10-06): the real-`pdf-parse` row stays
+  // UNRUNNABLE here — `NODE_OPTIONS=--experimental-vm-modules` would change
+  // the module semantics of every other case in this run (and of the fixture
+  // builder), so it is never added. The scripted converter on both sides is the
+  // whole proof of the seam (the P4.D198 precedent); the production converter
+  // stays the standing deferral.
   let pdfConverterCalls = 0;
   jest.doMock('@/lib/mount-index/converters/pdf-converter', () => {
     const actual = jest.requireActual('@/lib/mount-index/converters/pdf-converter');
@@ -250,6 +279,7 @@ async function runCase(
   });
 
   const logLines: Array<{ level: string; message: string; context: unknown }> = [];
+  const pdfLines: Array<{ level: string; message: string; context: unknown }> = [];
 
   const work = mkdtempSync(join(scratch, 'imp-'));
   const mainWork = join(work, 'main.db');
@@ -284,6 +314,9 @@ async function runCase(
       ((message: string, context?: unknown, err?: unknown) => {
         if (typeof message === 'string' && message.startsWith('[AIImport]')) {
           logLines.push({ level, message, context: context ?? null });
+        }
+        if (typeof message === 'string' && PDF_MESSAGES.includes(message)) {
+          pdfLines.push({ level, message, context: context ?? null });
         }
         return original.call(loggerModule.logger, message, context, err);
       }) as never,
@@ -342,6 +375,8 @@ async function runCase(
       logLines,
       llmLogCalls,
       pdfConverterCalls,
+      pdfLines,
+      pdfOutcome: pdfOutcome(pdfLines),
     };
   } finally {
     unfreezeClock();

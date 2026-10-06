@@ -719,6 +719,26 @@
         "{\"pronouns\":{\"subject\":\"she\",\"object\":\"her\",\"possessive\":\"hers\"},\"aliases\":[\"Keeper\"]}",
         "[{\"content\":\"Lit the lamps in the storm.\",\"summary\":\"Storm lamps.\",\"keywords\":[\"storm\"],\"importance\":0.9},{\"content\":\"Pays in stories.\",\"summary\":\"Stories.\",\"keywords\":[],\"importance\":1.4}]"
       ]
+    },
+    {
+      "name": "source_file_pdf_scan_refused",
+      "$comment": "P4.157 R-F: Summon From Lore over a PDF with NO text anywhere (`scan.pdf` \u2014 an empty content stream): the converter answers '' and the native fallback finds nothing, so the extractor REFUSES \u2014 the `refused` outcome, on both sides.",
+      "body": {
+        "profileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceFileIds": [
+          "f0000002-0000-4000-8000-000000000016"
+        ]
+      },
+      "pdfConverter": "",
+      "calls": [
+        "{\"name\":\"Mira Lanternwright\",\"title\":\"The Harbor Keeper\",\"identity\":\"Mira keeps the lanterns of Saltmere.\",\"description\":\"She hums while she works.\",\"manifesto\":\"You keep the lanterns lit.\",\"personality\":\"You fear deep water.\",\"scenario\":\"The harbor at dusk.\"}",
+        "{\"firstMessage\":\"*She looks up.* Evening.\",\"exampleDialogues\":\"{{char}}: Hm.\\n{{user}}: Hi.\"}",
+        "[{\"name\":\"Main\",\"content\":\"You are Mira.\",\"isDefault\":true},{\"name\":\"Terse\",\"content\":\"Few words.\",\"isDefault\":false}]",
+        "{\"headAndShouldersPrompt\":\"weathered face, grey eyes\",\"shortPrompt\":\"grey eyes, white hair\",\"mediumPrompt\":\"m\",\"longPrompt\":\"l\",\"completePrompt\":\"c\",\"fullDescription\":\"## Overview\\nSmall.\"}",
+        "[{\"title\":\"Lantern Coat\",\"description\":\"An oilskin coat.\",\"types\":[\"top\"],\"isDefault\":true},{\"title\":\"Harbor Kit\",\"description\":\"The rig.\",\"types\":[\"top\"],\"components\":[\"lantern coat\"],\"replace\":true}]",
+        "{\"pronouns\":{\"subject\":\"she\",\"object\":\"her\",\"possessive\":\"hers\"},\"aliases\":[\"Keeper\"]}",
+        "[{\"content\":\"Lit the lamps in the storm.\",\"summary\":\"Storm lamps.\",\"keywords\":[\"storm\"],\"importance\":0.9},{\"content\":\"Pays in stories.\",\"summary\":\"Stories.\",\"keywords\":[],\"importance\":1.4}]"
+      ]
     }
   ]
 }

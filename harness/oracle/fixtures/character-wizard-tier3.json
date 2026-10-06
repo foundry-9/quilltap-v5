@@ -754,6 +754,25 @@
       ]
     },
     {
+      "name": "stream_document_pdf_scan_refused",
+      "$comment": "P4.157 R-F: a PDF with NO text anywhere (`scan.pdf` — an empty content stream): the converter answers '' and the native fallback finds nothing either, so the PDF arm REFUSES (`Failed to extract PDF content (no text found)`) — the `refused` outcome, on both sides.",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "document",
+        "documentId": "f0000002-0000-4000-8000-000000000016",
+        "characterName": "Mira",
+        "background": "",
+        "fieldsToGenerate": [
+          "title"
+        ]
+      },
+      "pdfConverter": "",
+      "calls": [
+        "The Wick-Trimmer"
+      ]
+    },
+    {
       "name": "json_document_pdf_converter_whitespace_falls_back",
       "$comment": "P4.151 D: a whitespace-only converter answer is `.trim()`med to '' and so also takes the fallback (the non-streaming twin).",
       "action": "ai-wizard",

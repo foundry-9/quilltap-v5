@@ -3,6 +3,15 @@
 //! `ai-import-stream` → `lib/services/ai-import.service.ts`) vs v4's REAL
 //! route, the model boundary canned on both sides and the clock frozen.
 //!
+//! P4.157 R-F: the PDF arm's v4 lines (`pdf-parse found no text, using native
+//! fallback extraction {size}`, `Extracted PDF content {size, chars}`, the
+//! catch's `Error extracting PDF content`) are captured UN-filtered on both
+//! sides (`pdfLines`, `common::pdf_lines_from_capture`) and the row's OUTCOME
+//! they imply (`converter` / `fallback` / `refused`, `common::pdf_outcome`) is a
+//! comparand; PDF rows are counted by that outcome, never by the converter
+//! script the corpus wrote. `scan.pdf` (no text anywhere) carries the
+//! `refused` row.
+//!
 //! Both sides run every corpus case on a FRESH copy of the committed
 //! `character-generators-{main,mount}.db` pair and diff the route's two 400s,
 //! the WHOLE frame trace (the `done` frame's assembled `QuilltapExport` and
@@ -83,7 +92,7 @@
 
 mod common;
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -114,7 +123,7 @@ const V5_APP_VERSION: &str = "0.0.0-harness";
 /// into the manifest. v4 bumps it on EVERY commit, so this constant moves with
 /// every regen — that is by design: the assert proves the stamp reached the
 /// manifest on both sides before the value is normalized away.
-const V4_APP_VERSION: &str = "4.10.0-dev.111"; // v4 `07b8f0209` (the oracle baseline; moves with every baseline move)
+const V4_APP_VERSION: &str = "4.10.0-dev.112"; // v4 `94fbb1ae3` (the oracle baseline at this round's unification — P4.157 regenerates this family at the target; moves with every baseline move)
 
 /// Every engine-dependent count v4 (ajv) puts on the wire, in encounter order.
 /// See the module header: the entries that differ from [`V5_VALIDATION_COUNTS`]
@@ -232,6 +241,9 @@ struct OracleRow {
     llm_log_calls: Vec<Value>,
     /// P4.151 D — how many times the PDF converter was reached.
     pdf_converter_calls: u64,
+    /// P4.157 R-F — v4's PDF-arm lines, un-filtered, and the outcome they imply.
+    pdf_lines: Vec<Value>,
+    pdf_outcome: Option<String>,
 }
 
 /// P4.151 D: v5's twin of the oracle's doMocked `convertPdfBufferToText` —
@@ -800,6 +812,7 @@ fn run_case(spec: &Spec, corpus: &Corpus, c: &Case) -> Value {
         .filter(|l| l.contains("[AIImport]"))
         .map(|l| parse_log_line(l))
         .collect();
+    let pdf_lines = common::pdf_lines_from_capture(&lines);
     let calls = completion.calls.lock().unwrap().clone();
     // v4's SSE framing, re-created from v5's OWN event stream: `data:
     // ${JSON.stringify(event)}\n\n` per frame, nothing else, nothing after
@@ -882,6 +895,8 @@ fn run_case(spec: &Spec, corpus: &Corpus, c: &Case) -> Value {
         "logLines": log_lines,
         "llmLogCalls": llm_log_calls,
         "pdfConverterCalls": pdf_calls.load(std::sync::atomic::Ordering::SeqCst),
+        "pdfLines": pdf_lines,
+        "pdfOutcome": common::pdf_outcome(&pdf_lines),
     })
 }
 
@@ -922,6 +937,8 @@ fn ai_import_matches_oracle() {
     let mut failed: Vec<String> = Vec::new();
     let (mut v4_counts, mut v5_counts): (Vec<String>, Vec<String>) = (Vec::new(), Vec::new());
     let mut pdf_rows = 0usize;
+    // P4.157 R-F: PDF rows counted by the OUTCOME v4's lines imply.
+    let mut pdf_outcomes: BTreeMap<String, usize> = BTreeMap::new();
     let (mut model_calls, mut frames, mut validated, mut refusals, mut fatal) =
         (0usize, 0usize, 0usize, 0usize, 0usize);
     let (mut repair_attempts, mut repair_successes) = (0usize, 0usize);
@@ -974,6 +991,8 @@ fn ai_import_matches_oracle() {
             "logLines": want_row.log_lines,
             "llmLogCalls": want_row.llm_log_calls,
             "pdfConverterCalls": want_row.pdf_converter_calls,
+            "pdfLines": want_row.pdf_lines,
+            "pdfOutcome": want_row.pdf_outcome,
         });
         if want_row.pdf_converter_calls > 0 {
             assert_eq!(
@@ -982,6 +1001,11 @@ fn ai_import_matches_oracle() {
                 c.name
             );
             pdf_rows += 1;
+            let outcome = want_row
+                .pdf_outcome
+                .clone()
+                .unwrap_or_else(|| panic!("{}: a PDF row with no outcome line", c.name));
+            *pdf_outcomes.entry(outcome).or_default() += 1;
         }
         let ((g, g_reached), (w, w_reached)) = (
             normalize(got, "v5", &c.name, &mut v5_counts),
@@ -1037,9 +1061,14 @@ fn ai_import_matches_oracle() {
         "the oracle recorded only {refusals} route refusals"
     );
     assert!(fatal >= 4, "the oracle recorded only {fatal} fatal runs");
+    let outcome = |k: &str| pdf_outcomes.get(k).copied().unwrap_or(0);
     assert!(
-        pdf_rows >= 2,
-        "the PDF source-file rows must still be asked ({pdf_rows}) — P4.151 D"
+        pdf_rows >= 3
+            && outcome("converter") >= 1
+            && outcome("fallback") >= 1
+            && outcome("refused") >= 1,
+        "the PDF source-file rows must still reach every outcome ({pdf_rows} rows, \
+         {pdf_outcomes:?}) — P4.151 D, P4.157 R-F"
     );
     eprintln!(
         "ai_import_tier3_equivalence: {} cases, {model_calls} model calls, {frames} frames, \

@@ -27,6 +27,11 @@
  *     the memory-weight decay, `Date.now()` durations).
  *   - `ensureProcessorRunning` no-op'd (no jobs on this path).
  *
+ * P4.157 R-B: the corpus never bakes a minted sub-item id — a canned answer's
+ * `{{systemPrompt|scenario|wardrobe:<name>}}` is resolved per case off the
+ * LIVE `placeholderCharacterId` (`findById` + `wardrobe.findByCharacterId`)
+ * on the fresh pair copy, refusing a miss with `<Kind> not found: <name>`.
+ *
  * P4.85 item 9: each row also carries `rawSse` — the response body VERBATIM,
  * beside the decoded `events`, so the K0 re-framer's framing is diffed rather
  * than thrown away by the decode. Item 10: `llmLogCounts` is the per-case DELTA
@@ -79,6 +84,7 @@ interface CaseSpec {
 
 interface Corpus {
   frozenNowMs: number;
+  placeholderCharacterId: string;
   analysis: string;
   subSteps: Record<string, string>;
   cases: CaseSpec[];
@@ -93,6 +99,26 @@ interface CannedCall {
   cacheKey: string | null;
   profileParameters: unknown;
   messages: Array<{ role: string; content: string }>;
+}
+
+/**
+ * P4.157 R-B: a canned answer names an existing sub-item by NAME —
+ * `{{systemPrompt:<name>}}`, `{{scenario:<title>}}`, `{{wardrobe:<title>}}` —
+ * never by a minted id (every id P4.151's rebuild re-minted had gone stale in
+ * this corpus). Resolved per case off the LIVE character on the fresh pair
+ * copy; a miss throws `<Kind> not found: <name>`.
+ */
+const PLACEHOLDER = /\{\{(systemPrompt|scenario|wardrobe):([^}]+)\}\}/g;
+type LiveIds = Record<'systemPrompt' | 'scenario' | 'wardrobe', Record<string, string>>;
+function resolvePlaceholders(text: string, live: LiveIds): string {
+  return text.replace(PLACEHOLDER, (_m, kind: keyof LiveIds, name: string) => {
+    const id = live[kind][name];
+    if (!id) {
+      const label = { systemPrompt: 'System prompt', scenario: 'Scenario', wardrobe: 'Wardrobe item' }[kind];
+      throw new Error(`${label} not found: ${name}`);
+    }
+    return id;
+  });
 }
 
 /** Resolve a scripted call: a named corpus block, a literal JSON string, or an object. */
@@ -225,6 +251,8 @@ async function runCase(
   // The model seam: scripted by call index, recording every request.
   const calls: CannedCall[] = [];
   let callIndex = 0;
+  // Filled off the live character once the pair copy is open (below).
+  let live: LiveIds = { systemPrompt: {}, scenario: {}, wardrobe: {} };
   jest.doMock('@/lib/llm', () => {
     const actual = jest.requireActual('@/lib/llm');
     return {
@@ -254,7 +282,8 @@ async function runCase(
           if (scripted === undefined) throw new Error(`no scripted call #${callIndex - 1} for case ${c.name}`);
           const r = resolveCall(corpus, scripted);
           if (r.throws !== undefined) throw new Error(r.throws);
-          return { content: r.content, usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } };
+          const content = r.content === undefined ? undefined : resolvePlaceholders(r.content, live);
+          return { content, usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } };
         },
       }),
     };
@@ -291,6 +320,20 @@ async function runCase(
 
   await initializeDatabase();
   const repos = getRepositories();
+  {
+    const who = corpus.placeholderCharacterId;
+    const character = (await repos.characters.findById(who)) as {
+      systemPrompts?: Array<{ id: string; name: string }>;
+      scenarios?: Array<{ id: string; title: string }>;
+    } | null;
+    if (!character) throw new Error(`Character not found: ${who}`);
+    const wardrobe = (await repos.wardrobe.findByCharacterId(who)) as Array<{ id: string; title: string }>;
+    live = {
+      systemPrompt: Object.fromEntries((character.systemPrompts ?? []).map((p) => [p.name, p.id])),
+      scenario: Object.fromEntries((character.scenarios ?? []).map((sc) => [sc.title, sc.id])),
+      wardrobe: Object.fromEntries(wardrobe.map((w) => [w.title, w.id])),
+    };
+  }
   const llmLogsBefore = await llmLogTotals();
 
   const loggerModule = (await import('@/lib/logger')) as { logger: Record<string, (...a: unknown[]) => unknown> };

@@ -210,13 +210,22 @@ async fn the_generator_actions_resolve_over_the_live_assembly() {
         .json()
         .await
         .unwrap();
-    let default_prompt = mira["data"]["character"]["systemPrompts"][0]["id"]
+    // P4.157 R-B: the id is Mira's DEFAULT POINTER, and it must name a prompt
+    // her vault carries — P4.151's rebuilt pair baked the builder's transient
+    // `addSystemPrompt` id there (a dangling pointer), and reading
+    // `systemPrompts[0]` instead hid it.
+    let prompts = &mira["data"]["character"]["systemPrompts"];
+    let default_prompt = mira["data"]["character"]["defaultSystemPromptId"]
         .as_str()
+        .filter(|id| {
+            prompts
+                .as_array()
+                .is_some_and(|ps| ps.iter().any(|p| p["id"].as_str() == Some(*id)))
+        })
         .unwrap_or_else(|| {
             panic!(
-                "Mira's prompts: {} (default pointer {})",
-                mira["data"]["character"]["systemPrompts"],
-                mira["data"]["character"]["defaultSystemPromptId"]
+                "System prompt not found: Mira's default pointer {} names none of her prompts {}",
+                mira["data"]["character"]["defaultSystemPromptId"], prompts
             )
         })
         .to_string();

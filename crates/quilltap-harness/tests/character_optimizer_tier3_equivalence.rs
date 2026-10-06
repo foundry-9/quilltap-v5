@@ -21,6 +21,15 @@
 //!     context bag — captured by the shared tracing rig on this side and by a
 //!     `logger` spy on v4's; the two bug-119 containment lines among them.
 //!
+//! P4.157 R-B: the corpus bakes NO minted sub-item id. A canned answer names an
+//! existing prompt / scenario / wardrobe item as `{{systemPrompt:<name>}}` /
+//! `{{scenario:<title>}}` / `{{wardrobe:<title>}}`, resolved per case on BOTH
+//! sides off the LIVE character on the fresh pair copy (a miss refuses with
+//! `<Kind> not found: <name>`), and every `subId` a canned answer names must be
+//! an id v4 SHOWED the model in that same call — P4.151's rebuild had re-minted
+//! all three ids the corpus baked, so 13 of 13 `subId`s matched nothing the
+//! model was shown and both sides agreed on the stale text.
+//!
 //! Not compared: the api key v4 hands `sendMessage` and the two
 //! `CHARACTER_OPTIMIZER` `llm_logs` rows (the committed pair carries no
 //! llm-logs partition on either side) — recorded in the lane record. The
@@ -116,6 +125,7 @@ struct Case {
 #[serde(rename_all = "camelCase")]
 struct Corpus {
     frozen_now_ms: i64,
+    placeholder_character_id: String,
     analysis: String,
     sub_steps: HashMap<String, String>,
     cases: Vec<Case>,
@@ -191,6 +201,71 @@ fn resolve_call(corpus: &Corpus, c: &CallSpec) -> (Option<String>, Option<String
         }
         CallSpec::Shaped { content, throws } => (content.clone(), throws.clone()),
     }
+}
+
+/// **P4.157 R-B — the corpus never bakes a minted sub-item id.** A canned
+/// answer names an existing sub-item as `{{systemPrompt:<name>}}` /
+/// `{{scenario:<title>}}` / `{{wardrobe:<title>}}`; this resolves them off the
+/// LIVE character on the case's fresh pair copy (the oracle does the same over
+/// v4's `findById` + `wardrobe.findByCharacterId`) and REFUSES a miss with
+/// `<Kind> not found: <name>`.
+fn live_ids(db: &Db, character_id: &str) -> HashMap<(String, String), String> {
+    let cid = character_id.to_string();
+    let (character, wardrobe) = db
+        .read_main(move |main| {
+            db.read_mount_index(move |mount| {
+                let character = characters_read::find_by_id(main, mount, &cid)?
+                    .unwrap_or_else(|| panic!("Character not found: {cid}"));
+                let docs =
+                    quilltap_core::db::doc_mount_documents::DocMountDocumentsRepository::new(mount);
+                let wardrobe = quilltap_core::db::wardrobe_read::find_by_character_id(
+                    main, &docs, &cid, false,
+                )?;
+                Ok((character, wardrobe))
+            })
+        })
+        .expect("live sub-item read");
+    let mut out = HashMap::new();
+    let mut take = |kind: &str, items: &Value, key: &str| {
+        for item in items.as_array().into_iter().flatten() {
+            if let (Some(name), Some(id)) = (item[key].as_str(), item["id"].as_str()) {
+                out.insert((kind.to_string(), name.to_string()), id.to_string());
+            }
+        }
+    };
+    take("systemPrompt", &character["systemPrompts"], "name");
+    take("scenario", &character["scenarios"], "title");
+    take("wardrobe", &Value::Array(wardrobe), "title");
+    out
+}
+
+fn resolve_placeholders(text: &str, live: &HashMap<(String, String), String>) -> String {
+    let re = regex::Regex::new(r"\{\{(systemPrompt|scenario|wardrobe):([^}]+)\}\}").unwrap();
+    re.replace_all(text, |c: &regex::Captures| {
+        let (kind, name) = (&c[1], &c[2]);
+        live.get(&(kind.to_string(), name.to_string()))
+            .cloned()
+            .unwrap_or_else(|| {
+                let label = match kind {
+                    "systemPrompt" => "System prompt",
+                    "scenario" => "Scenario",
+                    _ => "Wardrobe item",
+                };
+                panic!("{label} not found: {name}")
+            })
+    })
+    .into_owned()
+}
+
+/// Every uuid a canned answer names as a `subId` (the answer is model JSON).
+fn answer_sub_ids(answer: &str) -> Vec<String> {
+    regex::Regex::new(
+        r#""subId"\s*:\s*"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})""#,
+    )
+    .unwrap()
+    .captures_iter(answer)
+    .map(|c| c[1].to_string())
+    .collect()
 }
 
 /// The model seam: scripted BY CALL INDEX (the oracle's shape), recording
@@ -563,8 +638,16 @@ fn first_diff(got: &str, want: &str) -> String {
 /// so the thread-scoped rig sees every line).
 fn run_case(spec: &Spec, corpus: &Corpus, c: &Case) -> Value {
     let (db, scratch) = fresh_pair(spec, &c.name);
+    let live = live_ids(&db, &corpus.placeholder_character_id);
     let completion = Arc::new(ScriptedProvider {
-        script: c.calls.iter().map(|s| resolve_call(corpus, s)).collect(),
+        script: c
+            .calls
+            .iter()
+            .map(|s| {
+                let (content, throws) = resolve_call(corpus, s);
+                (content.map(|t| resolve_placeholders(&t, &live)), throws)
+            })
+            .collect(),
         next: Mutex::new(0),
         calls: Mutex::new(Vec::new()),
         case: c.name.clone(),
@@ -696,10 +779,39 @@ fn character_optimizer_matches_oracle() {
     let mut frames = 0usize;
     let mut files = 0usize;
     let mut log_rows = 0usize;
+    let mut sub_ids_checked = 0usize;
     for c in &corpus.cases {
         let want_row = &oracle[&c.name];
         assert_raw_sse_decodes_to_events(&c.name, want_row.raw_sse.as_deref(), &want_row.events);
         let got = run_case(&spec, &corpus, c);
+        // P4.157 R-B: every `subId` a canned answer names must be an id v4
+        // SHOWED the model in that same call (the prompt lists each sub-item's
+        // `subId="<id>"`) — a baked id that went stale matches nothing there.
+        let live = {
+            let (db, _scratch) = fresh_pair(&spec, &format!("{}-live", c.name));
+            live_ids(&db, &corpus.placeholder_character_id)
+        };
+        for (idx, call) in c.calls.iter().enumerate() {
+            let (Some(answer), _) = resolve_call(&corpus, call) else {
+                continue;
+            };
+            let answer = resolve_placeholders(&answer, &live);
+            let shown = want_row
+                .calls
+                .get(idx)
+                .map(|v| v["messages"].to_string())
+                .unwrap_or_default();
+            for id in answer_sub_ids(&answer) {
+                sub_ids_checked += 1;
+                if !shown.contains(&id) {
+                    failed.push(format!(
+                        "{}: call #{idx}'s canned answer names subId {id}, which v4 never \
+                         showed the model in that call",
+                        c.name
+                    ));
+                }
+            }
+        }
         model_calls += want_row.calls.len();
         frames += want_row.events.len();
         files += want_row.suggestions_files.len();
@@ -735,6 +847,10 @@ fn character_optimizer_matches_oracle() {
     assert!(
         log_rows >= 50,
         "the oracle recorded only {log_rows} log lines"
+    );
+    assert!(
+        sub_ids_checked >= 3,
+        "the corpus must still name existing sub-items ({sub_ids_checked} subIds checked)"
     );
     let bug119 = oracle
         .values()

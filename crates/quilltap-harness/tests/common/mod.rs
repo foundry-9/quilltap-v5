@@ -412,3 +412,61 @@ pub fn locate_v4_root(
 /// What a guard's `SKIP:` names when [`v4_root`] found nothing — the default
 /// location, for the human reading the notice.
 pub const V4_DEFAULT_CHECKOUT: &str = "$HOME/source/quilltap-server";
+
+/// The PDF arm's v4 lines (`file-content-extractor.ts:175,189` and its catch at
+/// `:204`) — P4.157 R-F: the generator families compare them UN-filtered and
+/// count rows by the OUTCOME they imply, never by the converter script.
+pub const PDF_MESSAGES: &[&str] = &[
+    "pdf-parse found no text, using native fallback extraction",
+    "Extracted PDF content",
+    "Error extracting PDF content",
+];
+
+/// v5's captured PDF lines as the oracle records v4's: `{level, message,
+/// context}` — the tracing fields (`size=…`, `chars=…`) parsed back into the
+/// context object (integers as numbers), in field order.
+pub fn pdf_lines_from_capture(lines: &[String]) -> Vec<Value> {
+    let target = " quilltap::file_content_extractor ";
+    lines
+        .iter()
+        .filter_map(|l| {
+            let at = l.find(target)?;
+            let level = l[..at].to_lowercase();
+            let rest = &l[at + target.len()..];
+            let message = PDF_MESSAGES
+                .iter()
+                .find(|m| rest == **m || rest.starts_with(&format!("{m} ")))?;
+            let mut context = Map::new();
+            for kv in rest[message.len()..].split_whitespace() {
+                let (k, v) = kv.split_once('=').unwrap_or((kv, ""));
+                let v = v
+                    .parse::<i64>()
+                    .map(Value::from)
+                    .unwrap_or_else(|_| Value::String(v.to_string()));
+                context.insert(k.to_string(), v);
+            }
+            Some(serde_json::json!({
+                "level": level,
+                "message": message,
+                "context": if context.is_empty() { Value::Null } else { Value::Object(context) },
+            }))
+        })
+        .collect()
+}
+
+/// The PDF arm's outcome implied by its lines — the oracle's `pdfOutcome`,
+/// rule for rule: `converter` (extracted, no fallback WARN), `fallback` (the
+/// WARN, then extracted), `refused` (the WARN, nothing extracted), `error` (the
+/// catch), `None` (no PDF reached).
+pub fn pdf_outcome(lines: &[Value]) -> Option<&'static str> {
+    let has = |m: &str| lines.iter().any(|l| l["message"] == m);
+    if has(PDF_MESSAGES[2]) {
+        return Some("error");
+    }
+    match (has(PDF_MESSAGES[0]), has(PDF_MESSAGES[1])) {
+        (false, false) => None,
+        (false, true) => Some("converter"),
+        (true, true) => Some("fallback"),
+        (true, false) => Some("refused"),
+    }
+}

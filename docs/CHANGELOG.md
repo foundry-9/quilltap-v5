@@ -228,6 +228,17 @@ The overlay's find-by-id / list hydration (`hydrate_one`) now renders a `propert
 _Versions: core 0.0.1236._
 
 `v8_json_parse_message` is now a full V8 `JsonParser` walk over UTF-16 units instead of a start-of-input check. It reproduces V8's fixed templates for failures inside a value (`Expected property name or '}' in JSON at position N (line L column C)`, the comma/bracket/colon/double-quoted-key messages, unterminated strings, bad escapes and control characters, the number errors, trailing input), the `\r` and `\r\n` line rule, and the special whole-source strings (`"undefined" is not valid JSON` and kin, which the old twin misworded). It answers `None` only where V8 accepts the text. New tier-1 family `v8_json_parse_message_equivalence` over a 149-row corpus recorded with Node 24.13.1 (`harness/oracle/cases/v8-json-parse-messages.ts`); 103 of 145 rows were red on the old twin. The family also pins, both ways, the three shapes serde refuses but V8 accepts (the callers' remaining serde fallback). `text_http_errors` gains `ok_json_missing_comma` on all ten providers (V8's sentence now reaches `sdk_response_shape`'s body parse; 15 divergences red on the old twin) and the Google stream-path `content.text` row.
+#### 2026-10-06 — test(harness): the `character-generators` pair rebuilt ONCE — Mira's default prompt read off the live vault, the optimizer corpus's baked ids replaced by live-resolved names, the generator families' PDF rows counted by outcome with v4's two PDF lines compared (P4.157 R-B, R-F)
+
+_Harness + fixtures only (no crate source; no version moves — the harness is frozen)._
+
+- Builder (`build-character-generators-fixture.ts`): Mira's `defaultSystemPromptId` / `defaultScenarioId` are read off the LIVE character by name/title after the sub-arrays are written — `addSystemPrompt` returns a transient id the vault re-mints, so the previous pair carried a dangling pointer. A sixth blob, `scan.pdf` (an empty content stream — no text for the converter or the fallback), gives the PDF arm its `refused` outcome. Pair rebuilt at `94fbb1ae3`: main `d2e0440b29096d7f8369f6d39ade36bc`, mount `99bba06c621eeb716255cbda5f25f6f5`.
+- `characters_generators_routes.rs` drives `generate-external-prompt` with Mira's DEFAULT POINTER and refuses one that names none of her prompts (red on the old pair: `652af5b0…` vs `88e3679d…`).
+- Optimizer corpus: no minted id baked — canned answers name `{{systemPrompt|scenario|wardrobe:<name>}}`, resolved per case off the live character on both sides (a miss refuses `<Kind> not found`), and every `subId` a canned answer names must be one v4 showed the model in that call (13 of 13 were stale on the old corpus).
+- Wizard / ai-import: v4's `pdf-parse found no text…` / `Extracted PDF content` / `Error extracting PDF content` lines captured un-filtered on both sides with the OUTCOME they imply (`converter` / `fallback` / `refused`) as a comparand; PDF rows counted by outcome, not by converter script; one `scan.pdf` refused row each. v5's lines equal v4's bytes, `size` included.
+- R-A recorded in both case files: the real-`pdf-parse` row stays unrunnable; no `--experimental-vm-modules`.
+- `ai_import_tier3`'s `V4_APP_VERSION` → `4.10.0-dev.112` (the family is regenerated at the target, which becomes the baseline at this round's unification).
+
 #### 2026-10-06 — test(harness): `repository_zod_messages` compares v5's BOTH chat-settings ERROR lines against v4's own (P4.157 R-C)
 
 _Harness-only change (no crate source; no version moves — the harness is frozen)._
