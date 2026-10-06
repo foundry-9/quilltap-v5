@@ -191,6 +191,21 @@ fn log_joined_file_links_failure(where_clause: &str, error: &DbError, strict: bo
 /// `acquireDb()` failure answers the fallback QUIETLY, strict or not, with a
 /// DEBUG (`dedicated-db.repository.ts:242-251`) — v5's
 /// [`DbError::PartitionUnavailable`] (the mount-index partition not open).
+///
+/// **That arm is UNREACHABLE in production** (P4.156 Tier 2 item 7, measured
+/// over every caller): the one caller,
+/// `DocMountFileLinksRepository::find_by_mount_point_and_path_or_none_strict_aware`
+/// (reached only from `file_storage::store_mount_blob`), runs its closure over
+/// a `&Connection` it already HOLDS — the mount writer acquired upstream — and
+/// a rusqlite read over a held connection cannot answer `PartitionUnavailable`,
+/// which only `Db::read_mount_index` (and its llm-logs twin) mint, before any
+/// connection exists. v5's partition-acquire failure therefore surfaces
+/// upstream of this home; v4's acquire-inside-the-read shape has no v5
+/// counterpart at this site. The arm stays (it is v4's shape, and a caller that
+/// hands in a `read_mount_index` result would reach it) and is unit-pinned by
+/// its posed error; where a mount checkout CAN fail inside the read — the chat
+/// PUT's project gate (`api/salon.rs`) — the same DEBUG is logged through
+/// [`log_mount_index_unavailable`].
 pub fn joined_file_links_strict_aware<T>(
     where_clause: &str,
     read: impl FnOnce() -> Result<Vec<T>, DbError>,

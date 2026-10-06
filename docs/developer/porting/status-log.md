@@ -168675,3 +168675,29 @@ QT_ORACLE_OUT=/tmp/p4156/oracle-fold-episode.ndjson npx jest --silent
 --watchman=false --testTimeout=120000 --roots "$PWD" --roots "$M/cases" --
 fold-episode-tier3` (6 runs); run with `QT_ORACLE_FOLD_EPISODE` +
 the two `QT_FIXTURE_FOLD_EPISODE_*`.
+
+### P4.156 Tier 2 — items 7 and 8 (core 0.0.1239)
+
+- **Item 7 — `joined_file_links_strict_aware`'s `PartitionUnavailable` arm:
+  UNREACHABLE, recorded in its doc comment with the measured reason.** Its
+  one caller (`find_by_mount_point_and_path_or_none_strict_aware`, reached
+  only from `file_storage::store_mount_blob`) runs the closure over a
+  `&Connection` it already holds; `PartitionUnavailable` is minted only by
+  `Db::read_mount_index` / `read_llm_logs`, before a connection exists, so
+  v5's acquire failure surfaces upstream (the importer's `w.mount_index()`).
+  Kept as v4's shape, unit-pinned on its posed error. (Where a mount
+  checkout CAN fail inside a read — the chat PUT gate, unit 2 — the same
+  DEBUG now fires through `log_mount_index_unavailable`.)
+- **Item 8 — 6c's operator-arm line as a captured line: DEFERRED (loud).**
+  The literal is the expected line in `doc_edit/path_resolver.rs`'s unit pin
+  `a_failed_operator_read_resolves_against_an_empty_set_as_v4_does`
+  (`ERROR quilltap::db Error finding entities by filter
+  collection=doc_mount_points error=no such column: enabled`), never captured
+  from v4. Capturing it needs a plant arm in
+  `doc_edit_path_resolver_equivalence.rs` + `harness/oracle/cases/
+  doc-edit-path-resolver.ts` (a `doc_mount_points.enabled` rename on the
+  mount copy, the operator-override context, a `Logger.prototype` spy) —
+  neither file is in this lane's Ownership table, so it is left for the next
+  smalls round, by name. No core change is predicted, but none is proven
+  either: P4.149 pinned the arm by unit only (its record: "the v4-driven
+  `doc_edit_path_resolver_equivalence` is not this lane's file").
