@@ -76,9 +76,37 @@
     },
     {
       "name": "points-pre-alter",
-      "divergence": true,
-      "why": "v4's doc_mount_points ensure ADDs totalSizeBytes back (one of its four ALTER self-heals); v5 has no twin and reports the column missing",
+      "why": "v4's doc_mount_points ensure (onTableEnsured) ADDs totalSizeBytes back with its INFO line and reports the table sound; v5 runs the same four guarded ALTERs as a lazy ensure before the name-collision repair (P4.150 — was a pinned divergence)",
       "mount": ["ALTER TABLE doc_mount_points DROP COLUMN totalSizeBytes"],
+      "llm": []
+    },
+    {
+      "name": "points-pre-alter-conversion-status",
+      "why": "the second of v4's four self-heals",
+      "mount": ["ALTER TABLE doc_mount_points DROP COLUMN conversionStatus"],
+      "llm": []
+    },
+    {
+      "name": "points-pre-alter-conversion-error",
+      "why": "the third of v4's four self-heals (the one nullable column)",
+      "mount": ["ALTER TABLE doc_mount_points DROP COLUMN conversionError"],
+      "llm": []
+    },
+    {
+      "name": "points-pre-alter-store-type",
+      "why": "the fourth of v4's four self-heals",
+      "mount": ["ALTER TABLE doc_mount_points DROP COLUMN storeType"],
+      "llm": []
+    },
+    {
+      "name": "points-pre-alter-all-four",
+      "why": "all four dropped (in a different order): v4's four INFO lines in ITS order — totalSizeBytes, conversionStatus, conversionError, storeType",
+      "mount": [
+        "ALTER TABLE doc_mount_points DROP COLUMN storeType",
+        "ALTER TABLE doc_mount_points DROP COLUMN conversionError",
+        "ALTER TABLE doc_mount_points DROP COLUMN totalSizeBytes",
+        "ALTER TABLE doc_mount_points DROP COLUMN conversionStatus"
+      ],
       "llm": []
     },
     {

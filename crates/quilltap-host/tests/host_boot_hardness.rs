@@ -304,6 +304,9 @@ const GUARDED_MESSAGES: &[&str] = &[
     "Migration failed",
     "Migration threw an exception",
     "Resumable migration deferred",
+    // P4.150: the `doc_mount_points` self-heals' INFO — never on a current
+    // table (the pre-ALTER arm's reboot is the strong leg).
+    "Migrated doc_mount_points",
 ];
 
 /// The silence leg: a healthy fresh instance logs none of the guarded lines,
@@ -378,6 +381,82 @@ async fn a_renamed_chunk_heading_column_is_a_structural_problem_and_boots() {
     booted.assert_silent("Failed to ensure doc_mount_chunks");
     booted.assert_tool_folder_restored();
     booted.assert_line(STATE_SEEDED);
+}
+
+/// P4.150 A1 — a `doc_mount_points` predating v4's four column self-heals
+/// (`doc-mount-points.repository.ts:37-62`, `onTableEnsured`). v4 ADDs each
+/// back with its INFO line (root logger, no fields) and then reports the table
+/// SOUND; v5 used to report `degraded`. The plant drops all four in a
+/// different order — the lines come in v4's order. The reboot is the silence
+/// leg on a now-current table.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_pre_alter_mount_points_table_is_healed_with_v4s_four_lines_and_boots() {
+    let _serial = SERIAL.lock().await;
+    let booted = boot_planted(
+        Substrate::Fresh,
+        &[
+            (MOUNT, DELETE_MARKERS),
+            (
+                MOUNT,
+                "ALTER TABLE doc_mount_points DROP COLUMN storeType;\
+                 ALTER TABLE doc_mount_points DROP COLUMN conversionError;\
+                 ALTER TABLE doc_mount_points DROP COLUMN totalSizeBytes;\
+                 ALTER TABLE doc_mount_points DROP COLUMN conversionStatus;",
+            ),
+        ],
+    )
+    .await;
+    booted.host();
+    booted.assert_lines_in_order(&[
+        "INFO quilltap::db Migrated doc_mount_points: added totalSizeBytes column".to_string(),
+        "INFO quilltap::db Migrated doc_mount_points: added conversionStatus column".to_string(),
+        "INFO quilltap::db Migrated doc_mount_points: added conversionError column".to_string(),
+        "INFO quilltap::db Migrated doc_mount_points: added storeType column".to_string(),
+        STRUCTURE_VERIFIED.to_string(),
+    ]);
+    booted.assert_structural(&[]);
+    booted.assert_silent("Structural table check failed");
+    booted.assert_silent("Failed to ensure doc_mount_points");
+    booted.assert_tool_folder_restored();
+    booted.assert_line(STATE_SEEDED);
+
+    let booted = booted.reboot().await;
+    booted.host();
+    booted.assert_silent("Migrated doc_mount_points");
+    booted.assert_structural(&[]);
+}
+
+/// P4.150 A3 — a RECORDED log-order divergence (R-C), pinned both ways. v4's
+/// PHASE 3.1 structural pass (`instrumentation.ts:569-582`) runs BEFORE 3.3b
+/// (the store reaper), 3.4/3.4c (the scenarios folder + the general
+/// `state.json` seed), 3.6 and 3.65; v5 runs it AFTER `seed_built_ins`, which
+/// holds all of those, so its ERRORs log AFTER their lines. The problems
+/// recorded are identical (the pass is read-only). Moving it would split the
+/// seed closure in two and peel the reaper out of the built-in mounts' ensure
+/// — log order only, not ported. This arm pins v5's position: the re-seeded
+/// `state.json` line (v4 3.4c) BEFORE the pass's ERROR (v4 3.1). Were the pass
+/// moved to v4's position, this order assert reds — the deliberate tripwire.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_structural_pass_logs_after_the_seed_steps_a_recorded_divergence() {
+    let _serial = SERIAL.lock().await;
+    let booted = boot_planted(
+        Substrate::Fresh,
+        &[
+            (MOUNT, DELETE_MARKERS),
+            (
+                MOUNT,
+                "ALTER TABLE doc_mount_chunks RENAME COLUMN headingContext TO headingContext_x",
+            ),
+        ],
+    )
+    .await;
+    let problem = "table doc_mount_chunks is missing column headingContext";
+    booted.assert_structural(&[problem]);
+    booted.assert_lines_in_order(&[
+        STATE_SEEDED.to_string(),
+        structural_line("docMountChunks", problem),
+        damaged_line(1),
+    ]);
 }
 
 /// P4.D248 — an `llm_logs` column (the LLM-logs partition, v4's container

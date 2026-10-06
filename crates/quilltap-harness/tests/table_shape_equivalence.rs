@@ -23,8 +23,11 @@
 //!   - `plant` — v4's REAL pass (a fresh container per plant) over that
 //!     substrate with each spec plant, replayed through v5's real boot pieces
 //!     in boot order (the built-in mounts' lazy ensures + their collector, the
-//!     absent-table creation, the pass). Ten plants agree exactly; three are
-//!     pinned divergences both ways ([`EXPECTED_DIVERGENCES`]).
+//!     absent-table creation, the pass). Fifteen plants agree exactly; two are
+//!     pinned divergences both ways ([`EXPECTED_DIVERGENCES`]). Each plant also
+//!     compares the `Migrated doc_mount_points: added <col> column` INFO lines
+//!     (P4.150 — v4's four `onTableEnsured` self-heals; a `Logger.prototype`
+//!     spy on v4's side, the thread-scoped capture on v5's).
 //!
 //! Red-first (P4.D248's lane record): this binary did not compile on `main`
 //! (no `db::table_shape`), and the case FAILS TO IMPORT at the baseline pin
@@ -286,17 +289,9 @@ const EXPECTED_DIVERGENCES: &[(&str, Problems, Problems)] = &[
         )],
         &[("docMountChunks", "doc_mount_chunks is a view, not a table")],
     ),
-    // v4's `doc_mount_points` ensure ADDs four columns back
-    // (`doc-mount-points.repository.ts`'s `onTableEnsured`); v5 has no twin of
-    // those self-heals (deferred by name), so the column is reported.
-    (
-        "points-pre-alter",
-        &[],
-        &[(
-            "docMountPoints",
-            "table doc_mount_points is missing column totalSizeBytes",
-        )],
-    ),
+    // (`points-pre-alter` was pinned here until P4.150 ported v4's four
+    // `doc_mount_points` ALTER self-heals — now a parity row, with the
+    // `Migrated …` INFO lines compared beside the problems.)
 ];
 
 /// Every spec plant over v4's own substrate, through v5's REAL boot pieces in
@@ -315,7 +310,7 @@ fn every_plant_reports_what_v4s_pass_reports() {
     let Some(rows) = rows() else { return };
     let substrate = of_kind(&rows, "substrate");
     let plants = of_kind(&rows, "plant");
-    assert_eq!(plants.len(), 13, "plant rows");
+    assert_eq!(plants.len(), 17, "plant rows");
     let mut failures = Vec::new();
     let mut divergences_seen = 0;
     for r in &plants {
@@ -347,9 +342,34 @@ fn every_plant_reports_what_v4s_pass_reports() {
             llm.execute_batch(&sql).unwrap();
         }
 
-        let mut collected =
+        let (collected, lines) = quilltap_core::test_support::captured_with(|| {
             ensure_builtin_mounts_with(&main, &mount, LazyRepairFailures::LogAndContinue)
-                .unwrap_or_else(|e| panic!("{name}: the built-in mounts failed: {e}"));
+        });
+        let mut collected =
+            collected.unwrap_or_else(|e| panic!("{name}: the built-in mounts failed: {e}"));
+        // P4.150: the `Migrated …` INFO lines the ensures logged, in order — v4's
+        // `Logger.prototype.info` spy on its side (root logger, NO fields; the
+        // v5 line is the repository target's, `quilltap::db`). Every other
+        // plant is this comparison's silence leg.
+        let v5_infos: Vec<String> = lines
+            .iter()
+            .filter(|l| l.contains(" Migrated "))
+            .cloned()
+            .collect();
+        let v4_infos: Vec<String> = r["infos"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{name}: the row carries no `infos` (regenerate)"))
+            .iter()
+            .map(|i| {
+                assert!(i["context"].is_null(), "{name}: v4's line grew fields: {i}");
+                format!("INFO quilltap::db {}", i["message"].as_str().unwrap())
+            })
+            .collect();
+        if v5_infos != v4_infos {
+            failures.push(format!(
+                "{name}: the Migrated lines moved: v5 {v5_infos:?} != v4 {v4_infos:?}"
+            ));
+        }
         create_missing_structural_tables(Some(&mount), Some(&llm), &mut collected);
         let got: Vec<(String, String)> = verify_structural_tables(&collected, |t| {
             let conn = match t.partition {

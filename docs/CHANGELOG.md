@@ -196,6 +196,14 @@ P4.147. Two restore defects v4 shares, fixed on the restore side under the backu
 - Restore warnings render SQLite failures as the bare message (no `sqlite error:` prefix); the chat-create DB arm and the chat-document arm log v4's WARN lines. Proven on a real SQLite error by a column-rename plant case.
 - New derived archives `restore-archive-bag-nulls.zip` and `restore-archive-informs.zip`, plus their derive scripts. The `system-restore` oracle grows to 29 restore cases and gains `recordLogs` and `renameColumns`. A v5-only acceptance test checks the #141/#142 result against the archive.
 - `restore_vintage_state`'s raw-SQLite detector matched the removed prefix; it now matches SQLite's own wording. That surfaced a pre-existing General-tier legacy-fold FK failure, now pinned by name in `KNOWN_RAW_SQLITE`.
+#### 2026-10-05 — fix(boot): heal a pre-ALTER doc_mount_points with v4's four column self-heals and lines; pin the structural pass's log position
+
+_Versions: core 0.0.1213._
+
+P4.150 A1 + A3 (P4.D248 Tier 3 item 18 and its unification's log-order note). The boot now runs v4's four `doc_mount_points` column self-heals (`doc-mount-points.repository.ts` `onTableEnsured`): one `table_info` read, then `totalSizeBytes`, `conversionStatus`, `conversionError`, `storeType` each ADDed if absent, in v4's order, with v4's INFO line `Migrated doc_mount_points: added <col> column` (no fields). It is one new lazy ensure in `services/builtin_mounts.rs`, just before the name-collision repair (v4's order). A pre-ALTER table is healed and reported sound where v5 reported it `degraded`. `alignDocMountPointsSchema`'s silent 14-column set and the three `doc_mount_file_links` policy columns stay NO-PORT (ledger-gated migrations).
+
+`table_shape_equivalence`: the `points-pre-alter` divergence retired to a parity row, four plants added (each remaining column, and all four dropped out of order), and every plant now compares the `Migrated …` lines through a `Logger.prototype` spy in `table-shape.ts` (13 -> 17 plants; red-first at the `07b8f0209` pin: 5 plants red on both the problems and the lines). `host_boot_hardness`: a pre-ALTER arm (the four lines in v4's order, then the sound-table DEBUG; the reboot is silent; mutation-proven) and a silence entry in the healthy-boot sweep. A3 stays a recorded divergence (log order only): a new arm pins v5's position — the structural pass's ERRORs log after the `state.json` seed, where v4's PHASE 3.1 logs before 3.3b/3.4c/3.6/3.65.
+
 #### 2026-10-05 — fix(boot): the avatar-roll collapse logs v4's one success line with durationMs; the host's v5-only summary is deleted
 
 _Versions: core 0.0.1212, host 0.0.184._

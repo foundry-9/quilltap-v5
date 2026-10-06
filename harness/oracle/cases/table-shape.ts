@@ -23,7 +23,8 @@
  *     empty database (the dump v5 replays every plant on);
  *   - `plant` — each spec plant applied to that substrate, then a FRESH container
  *     (every `tableEnsured` memo false, as at boot) verified in order: the
- *     problems v4's pass would record.
+ *     problems v4's pass would record, and (P4.150) every `Migrated …` INFO
+ *     the ensures logged on the way, in order (a `Logger.prototype` spy).
  *
  * The `help_doc_chunks in main database:` template is NOT driven here: the
  * help-chunks repository's `getCollection` connects the configured main backend,
@@ -47,6 +48,7 @@ import { AbstractDedicatedDbRepository } from '@/lib/database/repositories/dedic
 import { createRepositories } from '@/lib/database/repositories';
 import { requireMountIndexDb } from '@/lib/database/backends/sqlite/mount-index-guard';
 import { requireLLMLogsDb } from '@/lib/database/backends/sqlite/llm-logs-guard';
+import { logger } from '@/lib/logger';
 
 // The root package aliases better-sqlite3-multiple-ciphers as better-sqlite3;
 // require the real binding by absolute path (an in-memory DB needs no cipher).
@@ -89,6 +91,20 @@ console.debug = (...args: unknown[]) => console.error(...args);
 void realLog;
 
 const g = globalThis as unknown as Record<string, unknown>;
+
+// P4.150: v4's `Logger.prototype.info` spy — the `Migrated doc_mount_points:
+// added <col> column` lines the `doc_mount_points` ensure (`onTableEnsured`)
+// logs as it heals a pre-ALTER table. Every logger (the root and each child)
+// shares the prototype; the real method still runs (to stderr, above).
+const infos: Array<{ message: string; context: unknown }> = [];
+{
+  const proto = Object.getPrototypeOf(logger) as { info: (m: string, c?: unknown) => void };
+  const realInfo = proto.info;
+  proto.info = function (this: unknown, message: string, context?: unknown) {
+    if (message.startsWith('Migrated ')) infos.push({ message, context: context ?? null });
+    return realInfo.call(this, message, context);
+  };
+}
 
 function queryOf(db: Db): ShapeQuery {
   return <R>(sql: string, params: unknown[]) => db.prepare(sql).all(...params) as R[];
@@ -265,6 +281,7 @@ async function main(): Promise<void> {
     for (const s of plant.mount) mount.exec(s);
     for (const s of plant.llm) llm.exec(s);
     setDedicated(mount, llm);
+    infos.length = 0;
     const repos = createRepositories() as unknown as Record<string, any>;
     const problems: Array<{ repository: string; problem: string }> = [];
     for (const key of dedicated) {
@@ -274,7 +291,13 @@ async function main(): Promise<void> {
     mount.close();
     llm.close();
     setDedicated(null, null);
-    out({ kind: 'plant', name: plant.name, divergence: plant.divergence ?? false, problems });
+    out({
+      kind: 'plant',
+      name: plant.name,
+      divergence: plant.divergence ?? false,
+      problems,
+      infos: [...infos],
+    });
   }
 }
 

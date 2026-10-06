@@ -190,6 +190,43 @@ fn lazy_ensure(
     }
 }
 
+/// v4's four `doc_mount_points` column self-heals
+/// (`doc-mount-points.repository.ts:37-62`, `onTableEnsured`, run on every
+/// boot since `e5c6bd0c0`'s PHASE 3.1 pass ensures each table): ONE
+/// `table_info` read, then each absent column ADDed in v4's order with v4's
+/// INFO line (root logger, no fields). A table predating any of the four is
+/// healed and then reported SOUND, where v5 used to report it `degraded`.
+///
+/// NOT ported (P4.150 R-A, recorded): `alignDocMountPointsSchema`'s silent
+/// 14-column set and `alignDocMountFileLinksSchema`'s three policy columns
+/// (`migrations/lib/mount-index-schema.ts`) — ledger-gated provisioning
+/// migrations every v4-booted instance has already run, not per-boot code.
+fn ensure_doc_mount_points_columns(db: &Connection) -> Result<(), DbError> {
+    let columns: Vec<String> = {
+        let mut stmt = db.prepare("PRAGMA table_info(\"doc_mount_points\")")?;
+        let names = stmt.query_map([], |row| row.get::<_, String>(1))?;
+        names.collect::<Result<_, _>>()?
+    };
+    let has = |name: &str| columns.iter().any(|c| c == name);
+    for (column, definition) in [
+        ("totalSizeBytes", "INTEGER NOT NULL DEFAULT 0"),
+        ("conversionStatus", "TEXT NOT NULL DEFAULT 'idle'"),
+        ("conversionError", "TEXT DEFAULT NULL"),
+        ("storeType", "TEXT NOT NULL DEFAULT 'documents'"),
+    ] {
+        if !has(column) {
+            db.execute_batch(&format!(
+                "ALTER TABLE \"doc_mount_points\" ADD COLUMN \"{column}\" {definition}"
+            ))?;
+            tracing::info!(
+                target: "quilltap::db",
+                "Migrated doc_mount_points: added {column} column"
+            );
+        }
+    }
+    Ok(())
+}
+
 /// v4 migration `ensureMountIndexTables` — `CREATE TABLE IF NOT EXISTS` the two
 /// tables the provisioner writes, plus the folder-path index. Verbatim from the
 /// migrations' `TABLE_DDL`. A no-op whenever the tables already exist (the
@@ -263,6 +300,13 @@ fn ensure_mount_index_tables(
     )?;
     lazy_ensure(failures, &["doc_mount_file_links"], &mut collected, || {
         mount_index_case_repair::ensure_link_nocase_unique_index(mount_index)
+    })?;
+    // v4 `doc-mount-points.repository.ts`'s `onTableEnsured`: four guarded
+    // ALTER self-heals, then the name-collision repair below (P4.150). Its own
+    // sub-step for the cadence reason the link-group pair records above (v4's
+    // one `try` logs ONE ensure line for the pair).
+    lazy_ensure(failures, &["doc_mount_points"], &mut collected, || {
+        ensure_doc_mount_points_columns(mount_index)
     })?;
     lazy_ensure(failures, &["doc_mount_points"], &mut collected, || {
         mount_index_case_repair::repair_mount_point_name_collisions(mount_index).map(|_| ())
