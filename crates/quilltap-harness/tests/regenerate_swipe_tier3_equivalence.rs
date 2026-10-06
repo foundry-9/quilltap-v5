@@ -51,9 +51,16 @@
 //! own invariant as a pin: the same corpus with an INERT emitter writes what
 //! v4's narrated run wrote, byte for byte.
 //!
-//! **TZ=UTC is REQUIRED since P4.d26** (the distill TODAY line renders in the
-//! SERVER-LOCAL zone, and the harness pins `server_tz` to "UTC"), so the pin below
-//! is load-bearing, not decoration.
+//! **No `TZ` is needed (P4.157 R-G, measured 2026-10-06).** The distill TODAY
+//! line renders in the SERVER zone, and since P4.127 that zone is an explicit
+//! argument on BOTH sides: this test passes `server_tz: Some("UTC")` and
+//! `display_zone: TimeZone::UTC` (never the process env), and v4's own
+//! `jest.config.ts` sets `process.env.TZ = 'UTC'` before any test file loads.
+//! Measured green with `TZ` UNSET on both the regen and the run, and the Rust
+//! side green under `TZ=Pacific/Pago_Pago` (UTC−11 — the frozen
+//! `2026-01-02T04:04:05Z` falls on Jan 1 there) and `TZ=Pacific/Kiritimati`
+//! against an oracle regenerated under UTC. P4.d26's requirement predated
+//! P4.127's threading; the family now runs inside the workspace block.
 //!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout; jest ignores
 //! `.claude/` paths, so the case is staged in a /tmp mirror). ⚠ The FIXTURE and
@@ -70,14 +77,13 @@
 //!   QT_FIXTURE_OUT=/tmp/qt-regen-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-regen-mount.db \
 //!     $N/npx tsx $V5W/harness/oracle/fixtures/build-regenerate-swipe-fixture.ts
 //!   QT_FIXTURE_REGEN_MAIN=/tmp/qt-regen-main.db QT_FIXTURE_REGEN_MOUNT=/tmp/qt-regen-mount.db \
-//!   TZ=UTC QT_ORACLE_OUT=/tmp/oracle-regenerate-swipe.ndjson \
+//!   QT_ORACLE_OUT=/tmp/oracle-regenerate-swipe.ndjson \
 //!     $N/npx jest --silent --watchman=false --testTimeout=120000 \
 //!       --roots "$PWD" --roots "$TMPO/cases" -- regenerate-swipe-tier3
-//! Run (`TZ=UTC` is load-bearing — see above; `--test-threads=1` because the
-//! neutrality test runs the corpus twice):
+//! Run (`--test-threads=1` because the neutrality test runs the corpus twice):
 //!   QT_ORACLE_REGEN=/tmp/oracle-regenerate-swipe.ndjson \
 //!   QT_FIXTURE_REGEN_MAIN=/tmp/qt-regen-main.db QT_FIXTURE_REGEN_MOUNT=/tmp/qt-regen-mount.db \
-//!   TZ=UTC cargo test -p quilltap-harness --test regenerate_swipe_tier3_equivalence \
+//!   cargo test -p quilltap-harness --test regenerate_swipe_tier3_equivalence \
 //!     -- --test-threads=1
 
 mod sampling_capture;

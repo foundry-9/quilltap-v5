@@ -228,6 +228,12 @@ The overlay's find-by-id / list hydration (`hydrate_one`) now renders a `propert
 _Versions: core 0.0.1236._
 
 `v8_json_parse_message` is now a full V8 `JsonParser` walk over UTF-16 units instead of a start-of-input check. It reproduces V8's fixed templates for failures inside a value (`Expected property name or '}' in JSON at position N (line L column C)`, the comma/bracket/colon/double-quoted-key messages, unterminated strings, bad escapes and control characters, the number errors, trailing input), the `\r` and `\r\n` line rule, and the special whole-source strings (`"undefined" is not valid JSON` and kin, which the old twin misworded). It answers `None` only where V8 accepts the text. New tier-1 family `v8_json_parse_message_equivalence` over a 149-row corpus recorded with Node 24.13.1 (`harness/oracle/cases/v8-json-parse-messages.ts`); 103 of 145 rows were red on the old twin. The family also pins, both ways, the three shapes serde refuses but V8 accepts (the callers' remaining serde fallback). `text_http_errors` gains `ok_json_missing_comma` on all ten providers (V8's sentence now reaches `sdk_response_shape`'s body parse; 15 divergences red on the old twin) and the Google stream-path `content.text` row.
+#### 2026-10-06 — test(harness): `regenerate_swipe_tier3` drops its stale `TZ=UTC` requirement (P4.157 R-G)
+
+_Harness-only change (doc header + recipe; no crate source; no version moves)._
+
+- Measured: the family is zone-independent on both sides — the Rust side passes `server_tz: Some("UTC")` / `display_zone: TimeZone::UTC` explicitly since P4.127, and v4's `jest.config.ts` sets `process.env.TZ = 'UTC'` itself. Green with `TZ` unset on the regen and the run, and under `TZ=Pacific/Pago_Pago` (a date flip for the frozen clock) and `TZ=Pacific/Kiritimati`. The header's "TZ=UTC is REQUIRED" and both recipe `TZ=UTC` prefixes removed; no `src/` hunk needed.
+
 #### 2026-10-06 — test(harness): the `character-generators` pair rebuilt ONCE — Mira's default prompt read off the live vault, the optimizer corpus's baked ids replaced by live-resolved names, the generator families' PDF rows counted by outcome with v4's two PDF lines compared (P4.157 R-B, R-F)
 
 _Harness + fixtures only (no crate source; no version moves — the harness is frozen)._

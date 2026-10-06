@@ -169694,3 +169694,22 @@ harness is frozen at `0.0.1110`).
 - **§S.3 for the unifier:** regenerate the three oracles on the union (after
   P4.154's v8-twin change for the optimizer, §R.10(c)) and run the five
   readers by name.
+
+### Unit R-G — `regenerate_swipe_tier3` without `TZ=UTC` (Tier 2 item 7)
+- §R.13 family: fixture + oracle regenerated from the SECOND pin
+  `/tmp/qt-v4-pin-p4157-07b8f0209` (`4.10.0-dev.111`), 40 rows.
+- **The predicted red did NOT reproduce — measured, not argued:** on unported
+  `main`, with `TZ` UNSET (machine zone CDT) the family is green (2/2); green
+  too under `TZ=Pacific/Pago_Pago` (UTC−11: the frozen `2026-01-02T04:04:05Z`
+  is Jan 1 local — a date flip) and `TZ=Pacific/Kiritimati` (UTC+14), against
+  the `TZ=UTC` oracle; and an oracle regenerated with `TZ` unset is green
+  against a `TZ`-less run. Why: P4.127 already threads the zone — the Rust side
+  passes `server_tz: Some("UTC")` / `display_zone: TimeZone::UTC` (`:592-594`)
+  and core reads no ambient zone; v4's `jest.config.ts:11` sets
+  `process.env.TZ = 'UTC'` before any test file loads, so the jest oracle is
+  UTC whatever the caller exports. The `TZ=UTC` note (P4.d26) predated P4.127.
+- The fix is the header + recipe (`TZ=UTC` removed from the regen and run
+  lines; the sweep driver's `--show` now carries no `TZ`). No `src/` hunk, no
+  HANDOFF. The `.ts` case header (`regenerate-swipe-tier3.test.ts`, not this
+  lane's file) carries no `TZ` line (grep: none).
+- For the unifier: the family can join the workspace env block (no `TZ`).
