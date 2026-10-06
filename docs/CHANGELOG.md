@@ -73,6 +73,13 @@ _Versions: core 0.0.1236._
 - `db/fallback.rs`: new homes `find_by_filter_strict_aware`, the five chat-informs outer read wraps, `informs_marked_consumed_or_zero`, `messages_deleted_or_zero`; one emitter for `Error finding entities by filter`.
 - `api/chat_informs.rs`: a failed chat read answers 404 (was 500 + `Error posting inform` / `Error listing informs`); a failed batch write answers 500 `Internal server error` with no route line; the record delete reads through v4's `deleteMessagesByIds` fallback (its `Could not delete inform record message` WARN is unreachable on a database failure, so it is gone); every `[Chats v1]` line uses v4's camelCase keys.
 - Harness: `chat_informs_tier2` grows 31 ops (column-rename and trigger plants, strict-scope ops, thrown results); `chat_informs_routes` compares the route's own log lines and gains three failure cases; `fallback_home_guard` +6 messages.
+#### 2026-10-06 — docs(core): the 201 pins name v5's dispatch-only 200; `sync/types.rs` gets its three-state note back (P4.155)
+
+_Versions: core 0.0.1240._
+
+- `groups_routes_equivalence` (and, in the previous commit, `projects_routes_equivalence`): the `pin_201` comments now say outright that v5 has no REST route for projects or groups (every op goes through the engine dispatch, success = 200), so the pins assert v4's 201 only.
+- `services/mount_index/sync/types.rs`: the `double_option` re-export gets back the doc comment P4.148's move dropped (why the sync manifest needs absent vs `null`).
+
 #### 2026-10-06 — refactor(projects): one `char.tags || []` rule at the three project sites (P4.155)
 
 _Versions: core 0.0.1239._

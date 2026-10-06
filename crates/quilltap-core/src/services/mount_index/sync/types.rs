@@ -13,6 +13,13 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+/// serde double-option, re-exported from its neutral home: on an
+/// `Option<Option<T>>` field an ABSENT key decodes to `None`, an explicit
+/// `null` to `Some(None)`. The sync family needs the three states because v4
+/// writes `createdAt: null` into a manifest entry (a file neither side can
+/// date) and OMITS the key for a `touch` on a platform that cannot set a
+/// birthtime — two different meanings to the next run, which serde's plain
+/// `Option` would collapse (the "why" P4.148's move dropped; restored P4.155).
 pub use crate::db::serde_tristate::double_option;
 
 /// Hex-encoded SHA-256 of raw bytes — v4 `sha256OfBuffer` (`lib/utils/sha256.ts`).

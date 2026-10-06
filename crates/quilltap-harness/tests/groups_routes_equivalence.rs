@@ -344,6 +344,11 @@ fn groups_routes_match_oracle() {
     // web edge, so the pin is "v4 says 201 and v5 answered a non-`Error`
     // variant" — at every success-create row, held whole by the census at the
     // end (the projects family's twin).
+    //
+    // [P4.155 Tier 2 item 7] ⚠ RECORDED TRANSPORT DIVERGENCE: v5 has NO REST
+    // route for groups — every group op reaches the core through the engine
+    // dispatch, whose success reply is always HTTP 200. Where v4 answers 201,
+    // v5's wire answers 200; this pin asserts v4's status only.
     let pinned_201: std::cell::RefCell<std::collections::BTreeSet<String>> = Default::default();
     let pin_201 = |name: &str, resp: &Response, failed: &mut Vec<String>| {
         assert_eq!(
