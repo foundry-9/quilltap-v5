@@ -175,6 +175,7 @@ async fn serve_production(base: &std::path::Path) -> std::net::SocketAddr {
             base_dir,
             c.version.clone(),
             c.tz.clone(),
+            c.display_zone.clone(),
         )));
         c
     })

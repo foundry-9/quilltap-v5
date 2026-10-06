@@ -54,7 +54,12 @@ async fn the_generator_actions_resolve_over_the_live_assembly() {
     let (addr, _state) = common::serve_instance(base.path(), move |mut c| {
         c.terminal = false;
         c.spine = Some(std::sync::Arc::new(
-            quilltap_host::ProductionSpineFactory::new(base_dir, c.version.clone(), c.tz.clone()),
+            quilltap_host::ProductionSpineFactory::new(
+                base_dir,
+                c.version.clone(),
+                c.tz.clone(),
+                c.display_zone.clone(),
+            ),
         ));
         c
     })

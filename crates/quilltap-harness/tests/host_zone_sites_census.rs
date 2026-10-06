@@ -151,11 +151,12 @@ const HOST_SITES: &[(&str, &str, usize, &str)] = &[
     ),
     (
         "crates/quilltap-web/src/lib.rs",
-        ".with_display_zone(config.display_zone.clone())",
+        "ProductionSpineFactory::new(base_dir, version, tz, config.display_zone.clone()",
         1,
         "`production_host_config` (shared by the HTTP binary and the Tauri \
-         shell) hands the ONE read to the spine factory — dropped, every spine \
-         would render the factory's UTC default",
+         shell) hands the ONE read to the spine factory — a REQUIRED argument \
+         since P4.150 (the factory's UTC default is gone), so this pins that \
+         the argument is the host's read and not a stand-in",
     ),
 ];
 
@@ -319,6 +320,58 @@ const UTC_ARITHMETIC_ALLOWED: &[(&str, usize, &str)] = &[
     ),
 ];
 
+/// `(path, production `TimeZone::get(` uses, why the NAME it resolves is a
+/// calendar or story zone and not a display surface re-deriving the host zone)`.
+/// P4.150 (the P4.140 OPEN item): the hunts above see an ambient read and a
+/// hard-coded `TimeZone::UTC`, but not a display surface rebuilding a zone
+/// from the `tz` NAME — the shape P4.127's `display_zone_named` had, and the
+/// one that renders UTC under a POSIX `TZ` rule. Every production
+/// `TimeZone::get(` is listed here with its reason; a new one is red until it
+/// says why it is not a display zone. (The host crate's one is pinned in
+/// `host_injection_points_carry_the_host_zone`.)
+const NAME_ZONE_ALLOWED: &[(&str, usize, &str)] = &[
+    (
+        "chat_timestamp.rs",
+        1,
+        "`zone_offset_seconds` — the chat's STORY timezone (v4 \
+         `getDatePartsInTimezone`), the sole TZDB call of the timestamp family",
+    ),
+    (
+        "day_references.rs",
+        1,
+        "`resolve_day_reference` — the chat zone a \"today\"/\"yesterday\" reference \
+         resolves in (calendar math)",
+    ),
+    (
+        "db/llm_logs.rs",
+        1,
+        "`llm_log_retention_cutoff_iso` — the retention cutoff's local-midnight \
+         calendar (the LLM-log cleanup's `tz` NAME, P4.140 Tier 3 residue)",
+    ),
+    (
+        "enclave/cron.rs",
+        1,
+        "`try_next_occurrence` — cron's schedule zone (the tick and the manual \
+         autonomous routes must agree)",
+    ),
+    (
+        "enclave/step.rs",
+        1,
+        "`last_local_midnight_iso` — the autonomous run's day boundary (calendar)",
+    ),
+    (
+        "progressions/engine.rs",
+        1,
+        "`format_instant_en_us` — the STORY zone NAME, falling back to the PASSED \
+         host display VALUE (P4.140 Tier 3 residue)",
+    ),
+    (
+        "services/memory_recap/distill.rs",
+        1,
+        "`local_date_stamp` — the distill's `server_tz` calendar date",
+    ),
+];
+
 fn production_code(rel: &str) -> String {
     let path = core_src_root().join(rel);
     let src = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {rel}: {e}"));
@@ -426,6 +479,29 @@ fn host_zone_sites_census() {
         );
     }
 
+    // (2c) No display zone re-derived from a NAME (P4.150): every production
+    // `TimeZone::get(` resolves a calendar or story zone and is named in
+    // NAME_ZONE_ALLOWED. Collected, so a red names every file at once.
+    let name_reds: Vec<String> = files
+        .iter()
+        .filter_map(|(rel, code)| {
+            let got = count(code, "TimeZone::get(");
+            let want = NAME_ZONE_ALLOWED
+                .iter()
+                .find(|(r, _, _)| r == rel)
+                .map_or(0, |(_, n, _)| *n);
+            (got != want)
+                .then(|| format!("{rel}: {got} production `TimeZone::get(`, {want} allowed"))
+        })
+        .collect();
+    assert!(
+        name_reds.is_empty(),
+        "a production `TimeZone::get(` resolves a zone from a NAME — a display surface takes \
+         the threaded VALUE (P4.140); a calendar/story-zone read is named in NAME_ZONE_ALLOWED \
+         with its reason:\n{}",
+        name_reds.join("\n")
+    );
+
     // (2) No display zone hard-coded to UTC in production code.
     for (rel, code) in &files {
         let got = count(code, "TimeZone::UTC");
@@ -456,9 +532,15 @@ fn host_injection_points_carry_the_host_zone() {
     for (rel, needle, want, why) in HOST_SITES {
         let src =
             std::fs::read_to_string(repo.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
-        let code = code_only(&production_zone(&src));
+        // Compared with ALL whitespace removed on both sides (P4.150), so a
+        // needle that rustfmt wraps across lines — the factory's four-argument
+        // call — is still one needle.
+        let code: String = code_only(&production_zone(&src))
+            .split_whitespace()
+            .collect();
+        let flat: String = needle.split_whitespace().collect();
         assert_eq!(
-            code.matches(needle).count(),
+            code.matches(flat.as_str()).count(),
             *want,
             "{rel}: `{needle}` must appear {want}x in production code — {why}"
         );
@@ -504,21 +586,30 @@ fn host_injection_points_carry_the_host_zone() {
                 );
             }
             // The host crate hard-codes UTC nowhere for display (the core's
-            // own allowances are `UTC_ALLOWED`); its two production
-            // `TimeZone::UTC`s are both in `spine.rs`: `js_local_offset_minutes`
+            // own allowances are `UTC_ALLOWED`); its ONE production
+            // `TimeZone::UTC` is in `spine.rs`: `js_local_offset_minutes`
             // falling back for an unparseable NAME (a calendar offset lookup,
             // not a display default — the census once called it "the cron
-            // parser"; cron parses inside core) and `ProductionSpineFactory::
-            // new`'s test default, which production overrides with
-            // `with_display_zone` (the `quilltap-web` row above). The
-            // `HostAssembler` fill pinned above is the line this guards.
+            // parser"; cron parses inside core). `ProductionSpineFactory::new`
+            // had a second — a UTC default production overrode with
+            // `with_display_zone` — until P4.150 made the zone a REQUIRED
+            // argument (the `quilltap-web` row above). The `HostAssembler`
+            // fill pinned above is the line this guards.
             if dir == "crates/quilltap-host/src" {
+                // P4.150: nor re-derives one from the `tz` NAME — the ONE
+                // `TimeZone::get(` is `js_local_offset_minutes` (a calendar
+                // offset lookup for the NAME, the same function as the UTC
+                // fallback below).
+                let named = code.matches("TimeZone::get(").count();
+                let want_named = usize::from(rel == "crates/quilltap-host/src/spine.rs");
+                assert_eq!(
+                    named, want_named,
+                    "{rel}: {named} production `TimeZone::get(` uses, {want_named} allowed — a \
+                     display surface takes `HostConfig.display_zone`, never a zone rebuilt from \
+                     the `tz` NAME"
+                );
                 let utc = code.matches("TimeZone::UTC").count();
-                let want = if rel == "crates/quilltap-host/src/spine.rs" {
-                    2
-                } else {
-                    0
-                };
+                let want = usize::from(rel == "crates/quilltap-host/src/spine.rs");
                 assert_eq!(
                     utc, want,
                     "{rel}: {utc} production `TimeZone::UTC` uses, {want} allowed"

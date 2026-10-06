@@ -283,6 +283,7 @@ async fn avatar_roll_routes_match_oracle() {
                     base_dir,
                     c.version.clone(),
                     c.tz.clone(),
+                    c.display_zone.clone(),
                 ),
             ));
             c
@@ -341,7 +342,12 @@ async fn a_roll_whose_bytes_cannot_be_read_answers_500_not_400() {
     let (addr, _state) = common::serve_instance(base.path(), move |mut c| {
         c.terminal = false;
         c.spine = Some(std::sync::Arc::new(
-            quilltap_host::ProductionSpineFactory::new(base_dir, c.version.clone(), c.tz.clone()),
+            quilltap_host::ProductionSpineFactory::new(
+                base_dir,
+                c.version.clone(),
+                c.tz.clone(),
+                c.display_zone.clone(),
+            ),
         ));
         c
     })

@@ -108,6 +108,7 @@ fn quiet_config(base: &Path, with_spine: bool) -> HostConfig {
             base.to_path_buf(),
             "0.0.0-test".to_string(),
             "UTC".to_string(),
+            config.display_zone.clone(),
         )));
     }
     config

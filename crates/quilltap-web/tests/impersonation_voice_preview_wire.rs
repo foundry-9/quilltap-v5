@@ -78,7 +78,12 @@ async fn the_rehearsal_runs_over_the_live_assembly_and_logs_its_call() {
         // The PRODUCTION spine, as every deployment shell boots it — without
         // this the driver arrives `None` and the arm answers its refusal.
         c.spine = Some(std::sync::Arc::new(
-            quilltap_host::ProductionSpineFactory::new(base_dir, c.version.clone(), c.tz.clone()),
+            quilltap_host::ProductionSpineFactory::new(
+                base_dir,
+                c.version.clone(),
+                c.tz.clone(),
+                c.display_zone.clone(),
+            ),
         ));
         c
     })

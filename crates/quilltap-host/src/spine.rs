@@ -3675,10 +3675,10 @@ pub struct ProductionSpineFactory {
     pub io: ProviderIo,
     pub version: String,
     pub tz: String,
-    /// The host's DISPLAY zone VALUE (P4.140) every built spine renders in.
-    /// [`Self::new`] defaults it to UTC (the `BuiltInToolRunner` precedent —
-    /// a test factory renders the differentials' zone); production sets it
-    /// with [`Self::with_display_zone`] from `HostConfig.display_zone`.
+    /// The host's DISPLAY zone VALUE (P4.140) every built spine renders in —
+    /// a REQUIRED argument of [`Self::new`] (P4.150): production passes
+    /// `HostConfig.display_zone`, the ONE read, and a test names its zone. The
+    /// former UTC default let a future caller forget the zone silently.
     pub display_zone: TimeZone,
     /// The instance root; the disk file store lives at `<base>/files`
     /// (v4 `getFilesDir()`), the docs dir feeds `self_inventory`.
@@ -3689,25 +3689,18 @@ pub struct ProductionSpineFactory {
 }
 
 impl ProductionSpineFactory {
-    pub fn new(base_dir: PathBuf, version: String, tz: String) -> Self {
+    pub fn new(base_dir: PathBuf, version: String, tz: String, display_zone: TimeZone) -> Self {
         let io = ProviderIo::new(&version);
         let pricing = Arc::new(io.pricing_fetcher());
         Self {
             io,
             version,
             tz,
-            display_zone: TimeZone::UTC,
+            display_zone,
             base_dir,
             docs_dir: None,
             pricing,
         }
-    }
-
-    /// The host's display zone VALUE (chainable) — production passes
-    /// `HostConfig.display_zone`, the ONE read.
-    pub fn with_display_zone(mut self, zone: TimeZone) -> Self {
-        self.display_zone = zone;
-        self
     }
 }
 

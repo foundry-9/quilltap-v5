@@ -196,6 +196,12 @@ P4.147. Two restore defects v4 shares, fixed on the restore side under the backu
 - Restore warnings render SQLite failures as the bare message (no `sqlite error:` prefix); the chat-create DB arm and the chat-document arm log v4's WARN lines. Proven on a real SQLite error by a column-rename plant case.
 - New derived archives `restore-archive-bag-nulls.zip` and `restore-archive-informs.zip`, plus their derive scripts. The `system-restore` oracle grows to 29 restore cases and gains `recordLogs` and `renameColumns`. A v5-only acceptance test checks the #141/#142 result against the archive.
 - `restore_vintage_state`'s raw-SQLite detector matched the removed prefix; it now matches SQLite's own wording. That surfaced a pre-existing General-tier legacy-fold FK failure, now pinned by name in `KNOWN_RAW_SQLITE`.
+#### 2026-10-05 — refactor(host): ProductionSpineFactory::new takes the display zone as a required argument; the zone census hunts TimeZone::get(
+
+_Versions: host 0.0.183, web 0.0.221._
+
+P4.150 E (the P4.140 OPEN item). `ProductionSpineFactory::new` now takes the display zone as a REQUIRED fourth argument; the UTC default and `with_display_zone` are deleted, so no caller can forget the zone silently. The one production caller (`production_host_config`) passes `HostConfig.display_zone`; the eight test callers (host x2, web x6 files / 7 calls) pass their config's zone. `host_zone_sites_census` gains a `TimeZone::get(` hunt: every production site that resolves a zone from a NAME is listed in `NAME_ZONE_ALLOWED` with its reason (seven core files, each a calendar or story-zone read) plus the one host site (`js_local_offset_minutes`). Red-first with an empty allow-list: exactly 8 reds. Mutation-proven: a `TimeZone::get(` added to `format_time.rs` and to `spine.rs` each reddens it. The host `spine.rs` `TimeZone::UTC` allowance drops 2 -> 1, and the host-site needles now compare with whitespace removed so the wrapped four-argument call stays one needle.
+
 #### 2026-10-05 — fix(mount-index): the refusing text extractor's stderr notice is caller-neutral, behind refusal_notice
 
 _Versions: core 0.0.1210._
