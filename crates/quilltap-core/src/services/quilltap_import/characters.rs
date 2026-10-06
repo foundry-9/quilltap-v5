@@ -251,7 +251,7 @@ pub(super) fn import_characters(
             // (cross-instance).
             let existing_id: Option<String> =
                 match characters_read::find_by_id_raw(main, &source_id)
-                    .map_err(|e| e.to_string())?
+                    .map_err(|e| super::item_error_text(&e))?
                 {
                     Some(_) => Some(source_id.clone()),
                     None => existing_by_name
@@ -290,7 +290,7 @@ pub(super) fn import_characters(
                             .set(source_id.clone(), existing_id.clone());
                         CharactersRepository::new(main)
                             .delete(&existing_id)
-                            .map_err(|e| e.to_string())?;
+                            .map_err(|e| super::item_error_text(&e))?;
                         // Remove from the name map so we don't re-match.
                         existing_by_name.retain(|(n, _)| *n != name.to_lowercase());
                     }
@@ -314,13 +314,13 @@ pub(super) fn import_characters(
             // Build the slim row + the vault-managed inputs from the (migrated)
             // character, then create end-to-end. `create_character` mints a fresh
             // id (v4's `repos.characters.create` strips the source id).
-            let slim: ImportedSlim =
-                serde_json::from_value(character.clone()).map_err(|e| e.to_string())?;
+            let slim: ImportedSlim = serde_json::from_value(character.clone())
+                .map_err(|e| super::serde_error_text(&e))?;
             // Deserializing the WHOLE character threads `metadata` through the
             // round-trip: `CharacterVaultWriteInput` carries the fact sheet, so
             // `create_character` projects it into `metadata.json`.
-            let vault: CharacterVaultWriteInput =
-                serde_json::from_value(character.clone()).map_err(|e| e.to_string())?;
+            let vault: CharacterVaultWriteInput = serde_json::from_value(character.clone())
+                .map_err(|e| super::serde_error_text(&e))?;
 
             // v4 `01e481f6`: under `preserveIds` the PLAIN create claims the
             // bundle's own character id (`create(createData, { id })`) — but
@@ -347,7 +347,7 @@ pub(super) fn import_characters(
                     updated_at: now,
                 },
             )
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| super::item_error_text(&e))?;
             id_maps.characters.set(source_id.clone(), new_id.clone());
             remember_bundle_vault(id_maps, &character, &new_id);
 
@@ -361,11 +361,11 @@ pub(super) fn import_characters(
             imported += 1;
             Ok(())
         })();
-        if let Err(e) = out {
+        if let Err(text) = out {
             // v4 wraps each character in a try that pushes to warnings and
             // continues.
-            warnings.push(format!("Failed to import character \"{name}\": {e}"));
-            tracing::warn!(character_id = %source_id, error = %e, "Failed to import character");
+            warnings.push(format!("Failed to import character \"{name}\": {text}"));
+            tracing::warn!(character_id = %source_id, error = %text, "Failed to import character");
         }
     }
 
@@ -557,7 +557,10 @@ fn import_character_wardrobe_items(
                 warnings.push(format!("Failed to import wardrobe item \"{title}\": {msg}"));
             }
             Err(WardrobePublicError::Db(e)) => {
-                warnings.push(format!("Failed to import wardrobe item \"{title}\": {e}"));
+                warnings.push(format!(
+                    "Failed to import wardrobe item \"{title}\": {}",
+                    super::item_error_text(&e)
+                ));
             }
         }
     }
@@ -582,9 +585,10 @@ fn import_character_plugin_data(
     for (plugin_name, data) in plugin_data {
         if let Err(e) = repo.upsert(new_character_id, plugin_name, data.clone()) {
             warnings.push(format!(
-                "Failed to import plugin data for \"{plugin_name}\": {e}"
+                "Failed to import plugin data for \"{plugin_name}\": {}",
+                super::item_error_text(&e)
             ));
-            tracing::warn!(plugin_name = %plugin_name, character_id = %new_character_id, error = %e,
+            tracing::warn!(plugin_name = %plugin_name, character_id = %new_character_id, error = %super::item_error_text(&e),
                 "Failed to import plugin data");
         }
     }

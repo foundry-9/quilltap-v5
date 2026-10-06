@@ -252,7 +252,7 @@ impl std::fmt::Display for ImportError {
                 write!(f, "Unsupported version: {got}. Only 1.0 is supported.")
             }
             ImportError::MissingData => write!(f, "Missing or invalid data section"),
-            ImportError::Db(e) => write!(f, "Import failed: {e}"),
+            ImportError::Db(e) => write!(f, "Import failed: {}", item_error_text(e)),
         }
     }
 }
@@ -396,6 +396,47 @@ pub(super) fn warning_display_name(raw: &Value) -> String {
     }
 }
 
+/// The tail of a per-item import warning (and its `error` log field) for a
+/// [`DbError`] — v4's `error instanceof Error ? error.message : String(error)`,
+/// which for a SQLite throw is the driver's BARE sentence (`UNIQUE constraint
+/// failed: chat_messages.id`). `DbError::Sqlite`'s `Display` prefixes it with
+/// `sqlite error: `; [`crate::db::fallback::error_text`] strips exactly that
+/// and leaves every other variant as it was (dogfood #140, P4.148).
+///
+/// EVERY `DbError → String` conversion in this directory goes through here —
+/// the early `.map_err(…)` that stringifies a read for a later push as much as
+/// the push itself (half the class was pre-stringified, so fixing the push
+/// sites alone would have left it). `import_warning_text_guard` in the harness
+/// refuses the untyped `map_err(|e| e.to_string())` that used to carry the
+/// prefix.
+pub(super) fn item_error_text(e: &DbError) -> String {
+    crate::db::fallback::error_text(e)
+}
+
+/// [`item_error_text`] for the store-backed repositories' [`OverlayError`]:
+/// its `Db` arm carries a `DbError` (and so, on a SQLite failure, the prefix);
+/// its `Unavailable` arm is already v4's sentence (`Project … has no usable
+/// document store …`).
+///
+/// [`OverlayError`]: crate::db::document_store_overlay::OverlayError
+pub(super) fn overlay_error_text(e: &crate::db::document_store_overlay::OverlayError) -> String {
+    match e {
+        crate::db::document_store_overlay::OverlayError::Db(d) => item_error_text(d),
+        other => other.to_string(),
+    }
+}
+
+/// The serde arm's tail: a typed decode of a bundle item failed. serde's own
+/// sentence carries no prefix, so it is already "bare" — but it is NOT v4's
+/// text (v4 refuses at its repository's Zod `validate`, so its tail is the
+/// ZodError message). That is the recorded serde-vs-Zod class
+/// (`SERDE_ARM_DIVERGENCES` in `system_import_state`, P4.143 Tier 3 item 12);
+/// naming the conversion keeps it countable rather than hiding it in an
+/// untyped `to_string()`.
+pub(super) fn serde_error_text(e: &serde_json::Error) -> String {
+    e.to_string()
+}
+
 /// `item.id` as a string (v4 reads it untyped; absent → `""`).
 pub(crate) fn id_of(item: &Value) -> String {
     item.get("id")
@@ -415,7 +456,7 @@ pub fn parse_export_file(json_string: &str) -> Result<QuilltapExport, ImportErro
         if json_string.contains("qtap-ndjson") {
             ImportError::Ndjson
         } else {
-            ImportError::ParseJson(e.to_string())
+            ImportError::ParseJson(serde_error_text(&e))
         }
     })?;
     validate_export_format(&data)?;
@@ -792,57 +833,57 @@ fn preflight_preserve_ids(
                     //    the broken store. Same rationale: the seat's
                     //    existence is not the vault's health.
                     let e = crate::db::characters_read::find_by_id_raw(main, id)
-                        .map_err(|e| e.to_string())?
+                        .map_err(|e| item_error_text(&e))?
                         .is_some();
                     (e, target_character.as_deref() == Some(id.as_str()))
                 }
                 Kind::Tag => (
                     crate::db::tags::find_full_by_id(main, id)
-                        .map_err(|e| e.to_string())?
+                        .map_err(|e| item_error_text(&e))?
                         .is_some(),
                     false,
                 ),
                 Kind::ConnectionProfile => (
                     crate::db::connection_profiles::find_by_id(main, id)
-                        .map_err(|e| e.to_string())?
+                        .map_err(|e| item_error_text(&e))?
                         .is_some(),
                     false,
                 ),
                 Kind::ImageProfile => (
                     crate::db::image_profiles::find_by_id(main, id)
-                        .map_err(|e| e.to_string())?
+                        .map_err(|e| item_error_text(&e))?
                         .is_some(),
                     false,
                 ),
                 Kind::EmbeddingProfile => (
                     crate::db::embedding_profiles::find_full_json_by_id(main, id)
-                        .map_err(|e| e.to_string())?
+                        .map_err(|e| item_error_text(&e))?
                         .is_some(),
                     false,
                 ),
                 Kind::RoleplayTemplate => (
                     crate::db::roleplay_templates::find_full_json_by_id(main, id)
-                        .map_err(|e| e.to_string())?
+                        .map_err(|e| item_error_text(&e))?
                         .is_some(),
                     false,
                 ),
                 Kind::Project => (
                     crate::db::projects::ProjectsRepository::new(main, mount)
                         .find_by_id(id)
-                        .map_err(|e| e.to_string())?
+                        .map_err(|e| overlay_error_text(&e))?
                         .is_some(),
                     false,
                 ),
                 Kind::Group => (
                     crate::db::groups::GroupsRepository::new(main, mount)
                         .find_by_id(id)
-                        .map_err(|e| e.to_string())?
+                        .map_err(|e| overlay_error_text(&e))?
                         .is_some(),
                     false,
                 ),
                 Kind::Chat => (
                     crate::db::chats_read::find_by_id(main, id)
-                        .map_err(|e| e.to_string())?
+                        .map_err(|e| item_error_text(&e))?
                         .is_some(),
                     false,
                 ),
@@ -851,7 +892,7 @@ fn preflight_preserve_ids(
                     // partial restore being re-run); another character's memory
                     // refuses.
                     let row = crate::db::memories_read::find_by_id(main, id)
-                        .map_err(|e| e.to_string())?;
+                        .map_err(|e| item_error_text(&e))?;
                     let owner = row
                         .as_ref()
                         .and_then(|m| m.get("characterId").and_then(Value::as_str))
@@ -864,19 +905,21 @@ fn preflight_preserve_ids(
                 Kind::DocumentStore => (
                     crate::db::doc_mount_points::DocMountPointsRepository::new(mount)
                         .find_full_json_by_id(id)
-                        .map_err(|e| e.to_string())?
+                        .map_err(|e| item_error_text(&e))?
                         .is_some(),
                     is_target_vault(Some(id)),
                 ),
                 Kind::File => (
                     crate::db::files::FilesRepository::new(main)
                         .find_by_id(id)
-                        .map_err(|e| e.to_string())?
+                        .map_err(|e| item_error_text(&e))?
                         .is_some(),
                     false,
                 ),
                 Kind::DocumentStoreFolder => {
-                    let folder = folders_repo.find_by_id(id).map_err(|e| e.to_string())?;
+                    let folder = folders_repo
+                        .find_by_id(id)
+                        .map_err(|e| item_error_text(&e))?;
                     let skippable =
                         is_target_vault(folder.as_ref().map(|f| f.mount_point_id.as_str()));
                     (folder.is_some(), skippable)
@@ -899,7 +942,7 @@ fn preflight_preserve_ids(
                     // > refuses.
                     let existing = links_repo
                         .find_content_row_by_id(id)
-                        .map_err(|e| e.to_string())?;
+                        .map_err(|e| item_error_text(&e))?;
                     let carried_sha = lookup(&carried_content_sha, id);
                     let skippable = match (&existing, &carried_sha) {
                         (Some(row), Some(sha)) if &row.sha256 == sha => true,
@@ -910,7 +953,7 @@ fn preflight_preserve_ids(
                 Kind::DocumentStoreLink => {
                     let link = links_repo
                         .find_link_row_by_id(id)
-                        .map_err(|e| e.to_string())?;
+                        .map_err(|e| item_error_text(&e))?;
                     let skippable =
                         is_target_vault(link.as_ref().map(|l| l.mount_point_id.as_str()));
                     (link.is_some(), skippable)
@@ -920,7 +963,7 @@ fn preflight_preserve_ids(
                     // row is 1:1 with its content row, which `linkBlobContent`
                     // resolves by sha256 before reusing whatever blob row
                     // already hangs off it.
-                    let blob = blobs_repo.find_by_id(id).map_err(|e| e.to_string())?;
+                    let blob = blobs_repo.find_by_id(id).map_err(|e| item_error_text(&e))?;
                     match blob {
                         None => (false, false),
                         Some(b) => {
@@ -1072,8 +1115,12 @@ fn execute_import_strict(
             imported_character_ids: id_maps.characters.values(),
         }),
         Err(e) => {
-            // v4's catch: success:false with the error appended to warnings.
-            warnings.push(format!("Import failed: {e}"));
+            // v4's catch: success:false with the error appended to warnings —
+            // `error.message`, so a SQLite failure's BARE sentence (P4.148
+            // Tier 2 item 18: no `sqlite error: ` prefix; every other
+            // `DbError` variant, incl. the V8-shaped `Cannot read properties`
+            // Internal sentence, is unchanged by the helper).
+            warnings.push(format!("Import failed: {}", item_error_text(&e)));
             Ok(ImportResult {
                 success: false,
                 imported,
@@ -1222,7 +1269,7 @@ fn enqueue_imported_memory_embeddings(
             Ok(false) => {}
             // v4 warns to the logger and continues — no `warnings` entry.
             Err(e) => {
-                tracing::warn!(memory_id = %memory_id, error = %e,
+                tracing::warn!(memory_id = %memory_id, error = %item_error_text(&e),
                     "Failed to enqueue embedding job for imported memory");
             }
         }
@@ -1453,7 +1500,10 @@ fn import_body(
             );
             match out {
                 Ok(()) => annotations_imported += 1,
-                Err(e) => warnings.push(format!("Failed to import conversation annotation: {e}")),
+                Err(e) => warnings.push(format!(
+                    "Failed to import conversation annotation: {}",
+                    item_error_text(&e)
+                )),
             }
         }
         imported.conversation_annotations = Some(annotations_imported);
@@ -1503,7 +1553,10 @@ fn import_body(
             );
             match out {
                 Ok(()) => chat_docs_imported += 1,
-                Err(e) => warnings.push(format!("Failed to import chat document: {e}")),
+                Err(e) => warnings.push(format!(
+                    "Failed to import chat document: {}",
+                    item_error_text(&e)
+                )),
             }
         }
         imported.chat_documents = Some(chat_docs_imported);
@@ -1562,7 +1615,7 @@ fn import_body(
                         Ok(None) => {}
                         Err(e) => tracing::warn!(
                             chat_id = %remapped_chat_id,
-                            error = %e,
+                            error = %item_error_text(&e),
                             "Failed to read chat while importing informs",
                         ),
                     }
@@ -1588,7 +1641,7 @@ fn import_body(
                         }
                         Err(e) => tracing::warn!(
                             chat_id = %remapped_chat_id,
-                            error = %e,
+                            error = %item_error_text(&e),
                             "Failed to read chat while importing informs",
                         ),
                     }
@@ -1627,7 +1680,8 @@ fn import_body(
                         Ok(()) => informs_imported += 1,
                         Err(e) => {
                             informs_dropped += 1;
-                            warnings.push(format!("Failed to import inform: {e}"));
+                            warnings
+                                .push(format!("Failed to import inform: {}", item_error_text(&e)));
                         }
                     }
                 }
@@ -1726,7 +1780,7 @@ fn import_body(
                         tracing::warn!(
                             group_id = %remapped_group_id,
                             character_id = %remapped_character_id,
-                            error = %e,
+                            error = %item_error_text(&e),
                             "Failed to add group member"
                         );
                     }
@@ -1747,7 +1801,7 @@ fn import_body(
                         tracing::warn!(
                             group_id = %remapped_group_id,
                             mount_point_id = %remapped_mount_point_id,
-                            error = %e,
+                            error = %item_error_text(&e),
                             "Failed to link document store to group"
                         );
                     }

@@ -225,10 +225,11 @@ pub(super) fn import_connection_profiles(
         })();
         if let Err(e) = out {
             warnings.push(format!(
-                "Failed to import connection profile \"{name}\": {e}"
+                "Failed to import connection profile \"{name}\": {}",
+                super::item_error_text(&e)
             ));
             // v4 `import-profiles.ts:116-125`: `{ profileId: rawProfile.id, error }`.
-            tracing::warn!(profileId = %source_id, error = %e, "Failed to import connection profile");
+            tracing::warn!(profileId = %source_id, error = %super::item_error_text(&e), "Failed to import connection profile");
         }
     }
 
@@ -244,7 +245,7 @@ pub(super) fn import_connection_profiles(
 /// WARN with no `profileId`.
 fn parse_connection_profile(raw: &Value) -> Result<ImportedConnectionProfile, DbError> {
     serde_json::from_value::<ImportedConnectionProfile>(raw.clone())
-        .map_err(|e| DbError::Internal(e.to_string()))
+        .map_err(|e| DbError::Internal(super::serde_error_text(&e)))
 }
 
 fn create_connection_profile(
@@ -388,7 +389,7 @@ pub(super) fn import_image_profiles(
                         // `validate` throws into the per-item catch, which NAMES
                         // the item — this arm used to drop it with no warning.
                         let p = serde_json::from_value::<ImportedImageProfile>(raw.clone())
-                            .map_err(|e| DbError::Internal(e.to_string()))?;
+                            .map_err(|e| DbError::Internal(super::serde_error_text(&e)))?;
                         let name = format!("{} (imported)", p.name);
                         create_image_profile(options, &source_id, &repo, user_id, p, name)?;
                         imported += 1;
@@ -398,7 +399,7 @@ pub(super) fn import_image_profiles(
             }
             // P4.143 item 9: refused → the per-item catch (warning + WARN).
             let p = serde_json::from_value::<ImportedImageProfile>(raw.clone())
-                .map_err(|e| DbError::Internal(e.to_string()))?;
+                .map_err(|e| DbError::Internal(super::serde_error_text(&e)))?;
             let name = p.name.clone();
             let new_id = create_image_profile(options, &source_id, &repo, user_id, p, name)?;
             id_map.set(source_id.clone(), new_id);
@@ -406,9 +407,12 @@ pub(super) fn import_image_profiles(
             Ok(())
         })();
         if let Err(e) = out {
-            warnings.push(format!("Failed to import image profile \"{name}\": {e}"));
+            warnings.push(format!(
+                "Failed to import image profile \"{name}\": {}",
+                super::item_error_text(&e)
+            ));
             // v4 `import-profiles.ts:181-190`: `{ profileId, error }`.
-            tracing::warn!(profileId = %source_id, error = %e, "Failed to import image profile");
+            tracing::warn!(profileId = %source_id, error = %super::item_error_text(&e), "Failed to import image profile");
         }
     }
     Ok(Counts { imported, skipped })
@@ -518,10 +522,11 @@ pub(super) fn import_embedding_profiles(
         })();
         if let Err(e) = out {
             warnings.push(format!(
-                "Failed to import embedding profile \"{name}\": {e}"
+                "Failed to import embedding profile \"{name}\": {}",
+                super::item_error_text(&e)
             ));
             // v4 `import-profiles.ts:246-255`: `{ profileId, error }`.
-            tracing::warn!(profileId = %source_id, error = %e, "Failed to import embedding profile");
+            tracing::warn!(profileId = %source_id, error = %super::item_error_text(&e), "Failed to import embedding profile");
         }
     }
     Ok(Counts { imported, skipped })
@@ -546,7 +551,7 @@ const EMBEDDING_PROFILE_PROVIDERS: [&str; 5] =
 fn parse_embedding_profile(raw: &Value) -> Result<ImportedEmbeddingProfile, String> {
     use crate::api::zod_issues::{key, zod_error_message, ZodIssue};
     let p = serde_json::from_value::<ImportedEmbeddingProfile>(raw.clone())
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| super::serde_error_text(&e))?;
     if !EMBEDDING_PROFILE_PROVIDERS.contains(&p.provider.as_str()) {
         return Err(zod_error_message(&[ZodIssue::invalid_value(
             &EMBEDDING_PROFILE_PROVIDERS,

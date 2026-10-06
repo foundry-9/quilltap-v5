@@ -268,8 +268,11 @@ pub(super) fn import_document_stores(
             Ok(())
         })();
         if let Err(e) = out {
-            warnings.push(format!("Failed to import mount point \"{mp_name}\": {e}"));
-            tracing::warn!(name = %mp_name, error = %e, "Failed to import mount point");
+            warnings.push(format!(
+                "Failed to import mount point \"{mp_name}\": {}",
+                super::item_error_text(&e)
+            ));
+            tracing::warn!(name = %mp_name, error = %super::item_error_text(&e), "Failed to import mount point");
         }
     }
 
@@ -382,7 +385,10 @@ pub(super) fn import_document_stores(
                 );
                 counts.folders += 1;
             }
-            Err(e) => warnings.push(format!("Failed to import folder \"{path}\": {e}")),
+            Err(e) => warnings.push(format!(
+                "Failed to import folder \"{path}\": {}",
+                super::item_error_text(&e)
+            )),
         }
     }
 
@@ -508,7 +514,8 @@ pub(super) fn import_document_stores(
                 counts.documents += 1;
             }
             Err(e) => warnings.push(format!(
-                "Failed to import document \"{relative_path}\": {e}"
+                "Failed to import document \"{relative_path}\": {}",
+                super::item_error_text(&e)
             )),
         }
     }
@@ -523,7 +530,8 @@ pub(super) fn import_document_stores(
         for member_id in rest {
             if let Err(e) = links_repo.bind_link_group(anchor, member_id) {
                 warnings.push(format!(
-                    "Failed to restore hard link for group \"{exported_group_id}\": {e}"
+                    "Failed to restore hard link for group \"{exported_group_id}\": {}",
+                    super::item_error_text(&e)
                 ));
             }
         }
@@ -601,7 +609,7 @@ pub(super) fn import_document_stores(
                     },
                     &carried,
                 )
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| super::item_error_text(&e))?;
             created_link_id = Some(created.link_id.clone());
             // P4.6BK's escalation is DISCHARGED: `original_file_name` /
             // `original_mime_type` are `Option<String>` on `CreateBlobInput`
@@ -632,7 +640,7 @@ pub(super) fn import_document_stores(
                         // rows this import had already written.
                         &created.link_id,
                     )
-                    .map_err(|e| e.to_string())?;
+                    .map_err(|e| super::item_error_text(&e))?;
             }
             counts.blobs += 1;
             Ok(())
@@ -642,8 +650,8 @@ pub(super) fn import_document_stores(
                 .doc_mount_file_links
                 .set(carried_link_id.clone(), created.clone());
         }
-        if let Err(e) = out {
-            warnings.push(format!("Failed to import blob \"{relative_path}\": {e}"));
+        if let Err(text) = out {
+            warnings.push(format!("Failed to import blob \"{relative_path}\": {text}"));
         }
     }
 
@@ -691,7 +699,8 @@ pub(super) fn import_document_stores(
                 counts.project_links += 1;
             }
             Err(e) => warnings.push(format!(
-                "Failed to link project {target_project_id} to mount point {target_mount_id}: {e}"
+                "Failed to link project {target_project_id} to mount point {target_mount_id}: {}",
+                super::item_error_text(&e)
             )),
         }
     }

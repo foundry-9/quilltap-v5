@@ -156,7 +156,10 @@ pub(super) fn import_memories(
                 imported += 1;
             }
             Err(e) => {
-                warnings.push(format!("Failed to import memory: {e}"));
+                warnings.push(format!(
+                    "Failed to import memory: {}",
+                    super::item_error_text(&e)
+                ));
                 skipped += 1;
             }
         }

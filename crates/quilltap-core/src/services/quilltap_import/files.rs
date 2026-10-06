@@ -45,8 +45,12 @@ fn os(v: &Value, key: &str) -> Option<String> {
 /// `error.message` is carried verbatim with no error-type prefix in front of
 /// it. (Before P4.50 these sentences rode in `DbError::Key`, whose `Display`
 /// prepended "key derivation failed:"; this function existed to strip it.)
+///
+/// [P4.148 → dogfood #140] A `DbError::Sqlite` from the file repository is
+/// still rendered bare — through [`super::item_error_text`] — so a constraint
+/// failure reads as SQLite's own sentence, as v4's `error.message` does.
 fn err_msg(e: DbError) -> String {
-    e.to_string()
+    super::item_error_text(&e)
 }
 
 fn sa(v: &Value, key: &str) -> Vec<String> {
@@ -385,9 +389,9 @@ pub(super) fn import_files(
         match out {
             Ok(true) => imported += 1,
             Ok(false) => skipped += 1,
-            Err(e) => {
+            Err(text) => {
                 warnings.push(format!(
-                    "Failed to import file \"{original_filename}\": {e}"
+                    "Failed to import file \"{original_filename}\": {text}"
                 ));
                 skipped += 1;
             }

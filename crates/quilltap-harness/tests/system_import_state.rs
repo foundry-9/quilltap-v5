@@ -21,9 +21,12 @@
 //! sides at the same walk positions, so their labels line up; the
 //! `duplicate` case additionally pins that they dangle).
 //!
-//! Engine-authored sentences inside `warnings` (SQLite constraint text, Zod's
-//! union error) are masked after their deterministic prefixes — the standing
-//! parser-wording seam; every other warning is compared verbatim.
+//! Every per-item warning is compared VERBATIM, SQLite constraint tails and
+//! ZodError tails included (P4.148 lifted the `<ENGINE>` mask the quoted
+//! families carried — dogfood #140). What stays masked: the `Import failed:`
+//! / preflight-wrapper engine tails and the colon families (no oracle row
+//! reaches those); the serde-vs-Zod rows are carved, each pinned both ways,
+//! by `SERDE_ARM_DIVERGENCES`.
 //!
 //! ## [P4.33 → bug 11] The former import divergences — CONVERGED
 //!
@@ -119,7 +122,7 @@
 //! (v4's `insertOne` names `allowTierFallback` first, because its Zod default
 //! makes the key always present; v5's `create` names `fallbackProfileId`, or
 //! `multiCharacterPrefill` when the document carries the key) and the
-//! `QUOTED_FAMILIES` mask below folded both to
+//! (since-retired) `QUOTED_FAMILIES` mask folded both to
 //! `Failed to import connection profile "<name>": <ENGINE>` — so even the
 //! sentences agreed while nothing was measured.
 //!
@@ -600,28 +603,6 @@ impl Normalizer {
 
 // ── warning masking (the engine-wording seam) ───────────────────────────────
 
-/// Warning families whose subject is quoted: keep through the `": ` delimiter,
-/// mask the engine sentence after it.
-const QUOTED_FAMILIES: &[&str] = &[
-    "Failed to import folder \"",
-    "Failed to import document \"",
-    "Failed to import blob \"",
-    "Failed to import mount point \"",
-    "Failed to import character \"",
-    "Failed to import chat \"",
-    "Failed to import project \"",
-    "Failed to import group \"",
-    "Failed to import wardrobe item \"",
-    "Failed to import plugin data for \"",
-    "Failed to import message in chat \"",
-    // [P4.D91 → bug 79] The five arms that only logged before v4 `275cd7bc`.
-    "Failed to import tag \"",
-    "Failed to import roleplay template \"",
-    "Failed to import connection profile \"",
-    "Failed to import image profile \"",
-    "Failed to import embedding profile \"",
-];
-
 /// Colon-delimited families: keep the prefix, mask the rest.
 const COLON_FAMILIES: &[&str] = &[
     "Failed to import memory: ",
@@ -970,7 +951,7 @@ fn mask_warning(w: &str) -> String {
     // [P4.D91 → bug 79] The preflight's refusal wrapper. Its tail is the
     // preflight's own message, which is deterministic for a collision and for
     // the store-unavailable sentence — both are compared VERBATIM. Anything
-    // else is an engine sentence and masks like the families below.
+    // else is an engine sentence and is masked.
     if let Some(rest) = w.strip_prefix("Import refused before anything was written: ") {
         if rest.starts_with("Preserve IDs collision for ") || rest.contains("has no usable") {
             return w.to_string();
@@ -984,35 +965,24 @@ fn mask_warning(w: &str) -> String {
         let _ = rest;
         return "Import failed: <ENGINE>".to_string();
     }
-    for family in QUOTED_FAMILIES {
-        if let Some(rest) = w.strip_prefix(family) {
-            if let Some(cut) = rest.find("\": ") {
-                // [P4.130 → P4.143] The exception: a tail that IS a
-                // `ZodError` message (a JSON array of Zod issues — v4's
-                // `JSON.stringify(issues, null, 2)`) is not an engine sentence
-                // but schema bytes both sides must agree on, so it stays
-                // VERBATIM — in EVERY quoted family. P4.130 had scoped it to
-                // the chat head; P4.143 measured what widening does: v4's tag /
-                // roleplay-template / three profile refusals are ZodError tails
-                // too, and the six warnings where v5 answers its own serde
-                // sentence instead are carved by `SERDE_ARM_DIVERGENCES` (each
-                // row pinned both ways), not hidden here. What stays masked is
-                // the genuine engine text (SQLite constraint sentences).
-                if is_zod_error_message(&rest[cut + 3..]) {
-                    return w.to_string();
-                }
-                return format!("{family}{}\": <ENGINE>", &rest[..cut]);
-            }
-        }
-    }
+    // [P4.148 → dogfood #140] The quoted families (`Failed to import folder
+    // "…": `, `… message in chat "…": `, the five P4.D91 arms, …) and
+    // `Failed to link project … to mount point …: ` are compared VERBATIM —
+    // the `<ENGINE>` mask that used to fold their tails is GONE. v5's import
+    // renders every `DbError` through `item_error_text` (the bare SQLite
+    // sentence, as v4's `error.message`), and both engines run v4's DDL, so
+    // the constraint sentences agree byte for byte; a ZodError tail was
+    // already kept verbatim (P4.143). Red-first on unported `main` at
+    // `07b8f0209`: the six cases carrying a SQLite tail
+    // (`execute_skip_all`, `execute_overwrite_all`, `execute_duplicate_all`,
+    // `execute_cross_instance_skip`, `route_replace_remap`,
+    // `execute_chats_informs_duplicate`) on the `sqlite error: ` prefix.
+    // `SERDE_ARM_DIVERGENCES` still carves the serde-vs-Zod rows. The colon
+    // families below stay masked: no oracle row reaches one, so lifting them
+    // would prove nothing.
     for family in COLON_FAMILIES {
         if w.starts_with(family) {
             return format!("{family}<ENGINE>");
-        }
-    }
-    if w.starts_with("Failed to link project ") {
-        if let Some(cut) = w.rfind(": ") {
-            return format!("{}: <ENGINE>", &w[..cut]);
         }
     }
     w.to_string()

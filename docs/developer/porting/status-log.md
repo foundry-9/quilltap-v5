@@ -166521,3 +166521,49 @@ re-measure); the restore order's acceptance walk (#141/#142).
   BEFORE DELETE trigger → `removed: 0` with `Error deleting entity` then the
   wrap's line; a fold over a planted episode-write failure → the create chain
   and the fold continuing.
+## P4.148 — dogfood #140 + the projects/groups data-layer smalls (lane `claude/p4-148-import-warning-text-a0ba3e`)
+
+Ordered 2026-10-05 (`work-orders/p4.148-import-warning-text-projects-groups-data-layer.md`).
+Pin `/tmp/qt-v4-pin-p4148-07b8f0209` (detached `07b8f0209`, `4.10.0-dev.111`,
+`rev-parse` + `ls -ld` verified); the ledger's §2 probe PASSED at lane start
+(branch `main`, HEAD `07b8f0209`, both logs empty, tree clean). Every oracle
+regenerated into lane-private `/tmp/p4148/` from that pin, one family per
+invocation (the cached `system-import-execute` NDJSON was NOT trusted —
+survey Q7).
+
+### Unit 1 — the import's error-text helper + `import_warning_text_guard` (Tier 1 items 1, 2, 18)
+
+- **Red-first, measured on unported `main` at the pin before any core source
+  moved:** with `system_import_state`'s quoted-family `<ENGINE>` mask (and the
+  `Failed to link project` arm) LIFTED, EXACTLY the six predicted cases went
+  red — `execute_skip_all`, `execute_overwrite_all`, `execute_duplicate_all`,
+  `execute_cross_instance_skip`, `execute_chats_informs_duplicate`,
+  `route_replace_remap` — all on the `sqlite error: ` prefix (53 folder-index
+  + 4 `chat_messages.id` warnings). Green after.
+- **The helpers** (`services/quilltap_import/mod.rs`): `item_error_text(&DbError)`
+  over `db::fallback::error_text` (called, never edited), `overlay_error_text`
+  (`OverlayError::Db` → the same; `Unavailable` already v4's sentence), and
+  `serde_error_text` — which names the serde arm (the recorded
+  `SERDE_ARM_DIVERGENCES` class) instead of hiding it in an untyped
+  `to_string()`. The typed signatures make the COMPILER sort each site: every
+  `.map_err(|e| e.to_string())` was rewritten to `item_error_text` first and
+  the type errors named the 12 overlay / 4 serde sites. `files.rs` `err_msg`
+  routes through the helper (one line, five sites); the String-typed tails
+  (already rendered upstream) bind as `text`; every DbError push + its
+  `error` log field renders through the helper.
+- **Item 18:** the `Import failed:` catch and `ImportError::Db`'s `Display`
+  use the helper. The harness keeps masking `Import failed:` — no oracle row
+  reaches a DB tail there (recorded, not lifted).
+- **`import_warning_text_guard` (NEW):** three rules over the production zone
+  of `services/quilltap_import/*.rs` minus `seed*.rs` — a `map_err(…)` body
+  calling `.to_string()`, an `fn err_msg` built on it, a warning literal
+  (`Failed to …`, `…restore hard link…`, `Import failed:`) interpolating an
+  inline identifier other than the known-bare `{text}` / `{msg}` /
+  `{reason}`. **Measured on an extract of unported `main` (`43dc35601`):
+  103 offenders** (64 `map_err` + 1 `err_msg` + 38 literals), pinned as
+  `MAIN_OFFENDERS` and asserted whenever `QT_IMPORT_WARNING_GUARD_DIR` names
+  such an extract; **0 on the branch**. A rules self-test pins each shape and
+  the test-module / comment exclusions.
+- **Neutral, run at the pin:** `qtap_import_equivalence` (warnings verbatim)
+  ok, `system_import_equivalence` ok, `project_background_display_mode_
+  equivalence` ok, `quilltap-core --lib quilltap_import` 44/0.

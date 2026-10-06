@@ -126,7 +126,7 @@ pub(super) fn import_tags(
                         // catch below (v4's shape) — the same warning, plus v4's
                         // WARN `Failed to import tag {tagId, error}`.
                         let t = serde_json::from_value::<ImportedTag>(raw.clone())
-                            .map_err(|e| DbError::Internal(e.to_string()))?;
+                            .map_err(|e| DbError::Internal(super::serde_error_text(&e)))?;
                         // v4: name `${name} (imported)`, nameLower
                         // `${nameLower || name.toLowerCase()} (imported)` — the
                         // create's own `(nameLower || name).toLowerCase()` then
@@ -163,7 +163,7 @@ pub(super) fn import_tags(
             }
             // P4.143 item 9: refused → the per-item catch (warning + WARN).
             let t = serde_json::from_value::<ImportedTag>(raw.clone())
-                .map_err(|e| DbError::Internal(e.to_string()))?;
+                .map_err(|e| DbError::Internal(super::serde_error_text(&e)))?;
             let (id, now) = mint_or_preserve(options, &source_id);
             repo.create(
                 &tags::TagCreate {
@@ -184,9 +184,12 @@ pub(super) fn import_tags(
             Ok(())
         })();
         if let Err(e) = out {
-            warnings.push(format!("Failed to import tag \"{name}\": {e}"));
+            warnings.push(format!(
+                "Failed to import tag \"{name}\": {}",
+                super::item_error_text(&e)
+            ));
             // v4 `import-entities.ts:73-82`: `{ tagId, error }` (camelCase).
-            tracing::warn!(tagId = %source_id, error = %e, "Failed to import tag");
+            tracing::warn!(tagId = %source_id, error = %super::item_error_text(&e), "Failed to import tag");
         }
     }
     Ok(Counts {
@@ -342,7 +345,7 @@ pub(super) fn import_roleplay_templates(
                         id_map.set(source_id.clone(), phantom);
                         // P4.143 item 9: refused → the per-item catch (warning + WARN).
                         let t = serde_json::from_value::<ImportedTemplate>(migrated.clone())
-                            .map_err(|e| DbError::Internal(e.to_string()))?;
+                            .map_err(|e| DbError::Internal(super::serde_error_text(&e)))?;
                         let name = format!("{} (imported)", t.name);
                         create_template(&repo, user_id, t, name, options, DUPLICATE_MINTS)?;
                         imported += 1;
@@ -352,7 +355,7 @@ pub(super) fn import_roleplay_templates(
             }
             // P4.143 item 9: refused → the per-item catch (warning + WARN).
             let t = serde_json::from_value::<ImportedTemplate>(migrated)
-                .map_err(|e| DbError::Internal(e.to_string()))?;
+                .map_err(|e| DbError::Internal(super::serde_error_text(&e)))?;
             let name = t.name.clone();
             let new_id = create_template(&repo, user_id, t, name, options, &source_id)?;
             id_map.set(source_id.clone(), new_id);
@@ -361,10 +364,11 @@ pub(super) fn import_roleplay_templates(
         })();
         if let Err(e) = out {
             warnings.push(format!(
-                "Failed to import roleplay template \"{name}\": {e}"
+                "Failed to import roleplay template \"{name}\": {}",
+                super::item_error_text(&e)
             ));
             // v4 `import-entities.ts:171-180`: `{ templateId, error }`.
-            tracing::warn!(templateId = %source_id, error = %e, "Failed to import roleplay template");
+            tracing::warn!(templateId = %source_id, error = %super::item_error_text(&e), "Failed to import roleplay template");
         }
     }
     Ok(Counts {
@@ -462,7 +466,9 @@ pub(super) fn import_projects(
             // per-item `catch` turns it into the `Failed to import project "…"`
             // warning below. Propagating both legs matches v4 on the overlay
             // one and is the ruled divergence on the read one.
-            let existing = repo.find_by_id(&source_id).map_err(|e| e.to_string())?;
+            let existing = repo
+                .find_by_id(&source_id)
+                .map_err(|e| super::overlay_error_text(&e))?;
             if existing.is_some() {
                 match options.conflict_strategy {
                     ConflictStrategy::Skip => {
@@ -471,7 +477,8 @@ pub(super) fn import_projects(
                         return Ok(());
                     }
                     ConflictStrategy::Overwrite => {
-                        repo.delete(&source_id).map_err(|e| e.to_string())?;
+                        repo.delete(&source_id)
+                            .map_err(|e| super::item_error_text(&e))?;
                     }
                     ConflictStrategy::Duplicate => {
                         let phantom = uuid::Uuid::new_v4().to_string();
@@ -493,9 +500,9 @@ pub(super) fn import_projects(
             imported += 1;
             Ok(())
         })();
-        if let Err(e) = out {
-            warnings.push(format!("Failed to import project \"{name}\": {e}"));
-            tracing::warn!(project_id = %source_id, error = %e, "Failed to import project");
+        if let Err(text) = out {
+            warnings.push(format!("Failed to import project \"{name}\": {text}"));
+            tracing::warn!(project_id = %source_id, error = %text, "Failed to import project");
         }
     }
     Ok(Counts {
@@ -524,7 +531,7 @@ fn create_project(
     };
     let created = repo
         .create(&input, &store_create_options(options, source_id))
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| super::overlay_error_text(&e))?;
     Ok(created
         .get("id")
         .and_then(Value::as_str)
@@ -550,7 +557,9 @@ pub(super) fn import_groups(
         let name = display_name(raw);
         let out: Result<(), String> = (|| {
             // [P4.48] See `import_projects` — same two legs, same disposition.
-            let existing = repo.find_by_id(&source_id).map_err(|e| e.to_string())?;
+            let existing = repo
+                .find_by_id(&source_id)
+                .map_err(|e| super::overlay_error_text(&e))?;
             if existing.is_some() {
                 match options.conflict_strategy {
                     ConflictStrategy::Skip => {
@@ -559,7 +568,8 @@ pub(super) fn import_groups(
                         return Ok(());
                     }
                     ConflictStrategy::Overwrite => {
-                        repo.delete(&source_id).map_err(|e| e.to_string())?;
+                        repo.delete(&source_id)
+                            .map_err(|e| super::item_error_text(&e))?;
                     }
                     ConflictStrategy::Duplicate => {
                         let phantom = uuid::Uuid::new_v4().to_string();
@@ -581,9 +591,9 @@ pub(super) fn import_groups(
             imported += 1;
             Ok(())
         })();
-        if let Err(e) = out {
-            warnings.push(format!("Failed to import group \"{name}\": {e}"));
-            tracing::warn!(group_id = %source_id, error = %e, "Failed to import group");
+        if let Err(text) = out {
+            warnings.push(format!("Failed to import group \"{name}\": {text}"));
+            tracing::warn!(group_id = %source_id, error = %text, "Failed to import group");
         }
     }
     Ok(Counts {
@@ -631,7 +641,7 @@ fn create_group(
             &properties,
             &store_create_options(options, source_id),
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| super::overlay_error_text(&e))?;
     Ok(created
         .get("id")
         .and_then(Value::as_str)
@@ -671,7 +681,8 @@ pub(super) fn import_chats(
             .unwrap_or_default()
             .to_string();
         let out: Result<(), String> = (|| {
-            let existing = chats_read::find_by_id(main, &source_id).map_err(|e| e.to_string())?;
+            let existing =
+                chats_read::find_by_id(main, &source_id).map_err(|e| super::item_error_text(&e))?;
             let mut title_override: Option<String> = None;
             if existing.is_some() {
                 match options.conflict_strategy {
@@ -683,7 +694,8 @@ pub(super) fn import_chats(
                     ConflictStrategy::Overwrite => {
                         // v4 passes { syncVaults: false } — the plain row+messages
                         // delete, no vault-summary sweep.
-                        repo.delete(&source_id).map_err(|e| e.to_string())?;
+                        repo.delete(&source_id)
+                            .map_err(|e| super::item_error_text(&e))?;
                     }
                     ConflictStrategy::Duplicate => {
                         // Phantom-map quirk: the map records this minted id, the
@@ -721,21 +733,25 @@ pub(super) fn import_chats(
                     match serde_json::from_value::<ChatEventInput>(message.clone()) {
                         Ok(event) => match messages_repo.add_message(&new_chat_id, &event) {
                             Ok(()) => messages += 1,
-                            Err(e) => warnings
-                                .push(format!("Failed to import message in chat \"{title}\": {e}")),
+                            Err(e) => warnings.push(format!(
+                                "Failed to import message in chat \"{title}\": {}",
+                                super::item_error_text(&e)
+                            )),
                         },
-                        Err(e) => warnings
-                            .push(format!("Failed to import message in chat \"{title}\": {e}")),
+                        Err(e) => warnings.push(format!(
+                            "Failed to import message in chat \"{title}\": {}",
+                            super::serde_error_text(&e)
+                        )),
                     }
                 }
             }
             imported += 1;
             Ok(())
         })();
-        if let Err(e) = out {
-            warnings.push(format!("Failed to import chat \"{title}\": {e}"));
+        if let Err(text) = out {
+            warnings.push(format!("Failed to import chat \"{title}\": {text}"));
             // v4's `{ chatId, error }` (camelCase, P4.143 item 9).
-            tracing::warn!(chatId = %source_id, error = %e, "Failed to import chat");
+            tracing::warn!(chatId = %source_id, error = %text, "Failed to import chat");
         }
     }
     Ok(Counts {
@@ -786,7 +802,7 @@ fn create_chat(
         return Err(zod);
     }
     let mut create: ChatCreate = serde_json::from_value(obj).map_err(|e| {
-        let e = e.to_string();
+        let e = super::serde_error_text(&e);
         crate::services::dangerous_content::chat_override::log_chat_create_validation_failure(&e);
         e
     })?;
@@ -809,7 +825,7 @@ fn create_chat(
             updated_at: now,
         },
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| super::item_error_text(&e))?;
     Ok(id)
 }
 

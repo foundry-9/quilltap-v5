@@ -103,7 +103,10 @@ pub(super) fn import_prompt_templates(
             Ok(true) => imported += 1,
             Ok(false) => skipped += 1,
             Err(e) => {
-                warnings.push(format!("Failed to import prompt template \"{name}\": {e}"));
+                warnings.push(format!(
+                    "Failed to import prompt template \"{name}\": {}",
+                    super::item_error_text(&e)
+                ));
             }
         }
     }
@@ -147,7 +150,8 @@ pub(super) fn import_provider_models(
             Ok(_) => imported += 1,
             Err(e) => {
                 warnings.push(format!(
-                    "Failed to import provider model \"{model_id}\": {e}"
+                    "Failed to import provider model \"{model_id}\": {}",
+                    super::item_error_text(&e)
                 ));
                 skipped += 1;
             }
@@ -203,7 +207,8 @@ pub(super) fn import_plugin_configs(
             }
             Err(e) => {
                 warnings.push(format!(
-                    "Failed to import plugin config for \"{plugin_name}\": {e}"
+                    "Failed to import plugin config for \"{plugin_name}\": {}",
+                    super::item_error_text(&e)
                 ));
                 skipped += 1;
             }
@@ -232,7 +237,10 @@ pub(super) fn import_instance_settings(
         {
             Ok(()) => imported += 1,
             Err(e) => {
-                warnings.push(format!("Failed to import instance setting \"{key}\": {e}"));
+                warnings.push(format!(
+                    "Failed to import instance setting \"{key}\": {}",
+                    super::item_error_text(&e)
+                ));
                 skipped += 1;
             }
         }

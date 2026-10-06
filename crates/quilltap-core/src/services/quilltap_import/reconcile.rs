@@ -94,9 +94,9 @@ fn discard_scaffold_vault(
         // v4 reads the scaffold BEFORE deleting it — the name handback needs it.
         let scaffold = points
             .find_full_json_by_id(scaffold_mount_id)
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| super::item_error_text(&e))?;
         crate::api::mount_points::cascade_delete(mount, scaffold_mount_id)
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| super::item_error_text(&e))?;
         tracing::debug!(
             character_id,
             scaffold_mount_id,
@@ -112,8 +112,8 @@ fn discard_scaffold_vault(
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_string();
-        let all_stores =
-            crate::db::doc_mount_points::find_all_full_json(mount).map_err(|e| e.to_string())?;
+        let all_stores = crate::db::doc_mount_points::find_all_full_json(mount)
+            .map_err(|e| super::item_error_text(&e))?;
         // v4: *"The scaffold itself never counts as holding the name — we just
         // deleted it, and a read served from a stale cache would otherwise block
         // the rename forever."*
@@ -144,16 +144,16 @@ fn discard_scaffold_vault(
                             ..Default::default()
                         },
                     )
-                    .map_err(|e| e.to_string())?;
+                    .map_err(|e| super::item_error_text(&e))?;
             }
         }
         Ok(())
     })();
-    if let Err(e) = out {
+    if let Err(text) = out {
         warnings.push(format!(
-            "Failed to remove the placeholder vault for an imported character: {e}"
+            "Failed to remove the placeholder vault for an imported character: {text}"
         ));
-        tracing::warn!(character_id, scaffold_mount_id, error = %e, "Failed to discard scaffold vault");
+        tracing::warn!(character_id, scaffold_mount_id, error = %text, "Failed to discard scaffold vault");
     }
 }
 
@@ -175,8 +175,8 @@ pub(super) fn reconcile_relationships(
             continue;
         }
         let out: Result<(), String> = (|| {
-            let Some(character) =
-                characters_read::find_by_id(main, mount, new_id).map_err(|e| e.to_string())?
+            let Some(character) = characters_read::find_by_id(main, mount, new_id)
+                .map_err(|e| super::item_error_text(&e))?
             else {
                 return Ok(());
             };
@@ -275,7 +275,7 @@ pub(super) fn reconcile_relationships(
                     has_updates = true;
                 } else if files_repo
                     .find_by_id(default_image_id)
-                    .map_err(|e| e.to_string())?
+                    .map_err(|e| super::item_error_text(&e))?
                     .is_none()
                 {
                     warnings.push(format!(
@@ -308,7 +308,7 @@ pub(super) fn reconcile_relationships(
                     }
                     if files_repo
                         .find_by_id(&override_entry.image_id)
-                        .map_err(|e| e.to_string())?
+                        .map_err(|e| super::item_error_text(&e))?
                         .is_some()
                     {
                         remapped.push(override_entry.clone());
@@ -337,7 +337,7 @@ pub(super) fn reconcile_relationships(
                 patch.updated_at = crate::clock::now_iso();
                 CharactersRepository::new(main)
                     .update(new_id, &patch)
-                    .map_err(|e| e.to_string())?;
+                    .map_err(|e| super::item_error_text(&e))?;
                 // ⚠ v5 lane-boundary workaround (the `document_stores.rs`
                 // `originalFileName` precedent). `CharacterUpdate` cannot
                 // express "clear this nullable column" — `default_image_id` is
@@ -352,7 +352,7 @@ pub(super) fn reconcile_relationships(
                         "UPDATE characters SET defaultImageId = NULL WHERE id = ?1",
                         rusqlite::params![new_id],
                     )
-                    .map_err(|e| crate::db::DbError::from(e).to_string())?;
+                    .map_err(|e| super::item_error_text(&crate::db::DbError::from(e)))?;
                 }
             }
 
@@ -365,16 +365,19 @@ pub(super) fn reconcile_relationships(
             }
             Ok(())
         })();
-        if let Err(e) = out {
-            warnings.push(format!("Failed to reconcile character relationships: {e}"));
-            tracing::warn!(character_id = %new_id, error = %e, "Failed to reconcile character");
+        if let Err(text) = out {
+            warnings.push(format!(
+                "Failed to reconcile character relationships: {text}"
+            ));
+            tracing::warn!(character_id = %new_id, error = %text, "Failed to reconcile character");
         }
     }
 
     // ── Chats ──────────────────────────────────────────────────────────────
     for (_backup_id, new_id) in id_maps.chats.iter() {
         let out: Result<(), String> = (|| {
-            let Some(chat) = chats_read::find_by_id(main, new_id).map_err(|e| e.to_string())?
+            let Some(chat) =
+                chats_read::find_by_id(main, new_id).map_err(|e| super::item_error_text(&e))?
             else {
                 return Ok(());
             };
@@ -388,7 +391,7 @@ pub(super) fn reconcile_relationships(
                 if !parts.is_empty() {
                     let mut participants: Vec<ChatParticipant> =
                         serde_json::from_value(Value::Array(parts.clone()))
-                            .map_err(|e| e.to_string())?;
+                            .map_err(|e| super::serde_error_text(&e))?;
                     for p in &mut participants {
                         if !p.character_id.is_empty() {
                             if let Some(new_char) = id_maps.characters.get(&p.character_id) {
@@ -441,13 +444,13 @@ pub(super) fn reconcile_relationships(
                 // passes one — reconcile does not.
                 ChatsRepository::new(main)
                     .update(new_id, &patch)
-                    .map_err(|e| e.to_string())?;
+                    .map_err(|e| super::item_error_text(&e))?;
             }
             Ok(())
         })();
-        if let Err(e) = out {
-            warnings.push(format!("Failed to reconcile chat relationships: {e}"));
-            tracing::warn!(chat_id = %new_id, error = %e, "Failed to reconcile chat");
+        if let Err(text) = out {
+            warnings.push(format!("Failed to reconcile chat relationships: {text}"));
+            tracing::warn!(chat_id = %new_id, error = %text, "Failed to reconcile chat");
         }
     }
 
@@ -455,7 +458,10 @@ pub(super) fn reconcile_relationships(
     for (_backup_id, new_id) in id_maps.projects.iter() {
         let out: Result<(), String> = (|| {
             let repo = projects::ProjectsRepository::new(main, mount);
-            let Some(project) = repo.find_by_id(new_id).map_err(|e| e.to_string())? else {
+            let Some(project) = repo
+                .find_by_id(new_id)
+                .map_err(|e| super::overlay_error_text(&e))?
+            else {
                 return Ok(());
             };
 
@@ -490,21 +496,22 @@ pub(super) fn reconcile_relationships(
             }
 
             if !patch.is_empty() {
-                repo.update(new_id, &patch).map_err(|e| e.to_string())?;
+                repo.update(new_id, &patch)
+                    .map_err(|e| super::overlay_error_text(&e))?;
             }
             Ok(())
         })();
-        if let Err(e) = out {
-            warnings.push(format!("Failed to reconcile project relationships: {e}"));
-            tracing::warn!(project_id = %new_id, error = %e, "Failed to reconcile project");
+        if let Err(text) = out {
+            warnings.push(format!("Failed to reconcile project relationships: {text}"));
+            tracing::warn!(project_id = %new_id, error = %text, "Failed to reconcile project");
         }
     }
 
     // ── Connection profiles (tags + the fallback understudy) ───────────────
     for (_backup_id, new_id) in id_maps.connection_profiles.iter() {
         let out: Result<(), String> = (|| {
-            let Some(profile) =
-                connection_profiles::find_by_id(main, new_id).map_err(|e| e.to_string())?
+            let Some(profile) = connection_profiles::find_by_id(main, new_id)
+                .map_err(|e| super::item_error_text(&e))?
             else {
                 return Ok(());
             };
@@ -542,15 +549,15 @@ pub(super) fn reconcile_relationships(
             if touched {
                 connection_profiles::ConnectionProfilesRepository::new(main)
                     .update(new_id, &patch)
-                    .map_err(|e| e.to_string())?;
+                    .map_err(|e| super::item_error_text(&e))?;
             }
             Ok(())
         })();
-        if let Err(e) = out {
+        if let Err(text) = out {
             warnings.push(format!(
-                "Failed to reconcile connection profile relationships: {e}"
+                "Failed to reconcile connection profile relationships: {text}"
             ));
-            tracing::warn!(profile_id = %new_id, error = %e, "Failed to reconcile connection profile");
+            tracing::warn!(profile_id = %new_id, error = %text, "Failed to reconcile connection profile");
         }
     }
 
@@ -558,7 +565,7 @@ pub(super) fn reconcile_relationships(
     for (_backup_id, new_id) in id_maps.image_profiles.iter() {
         let out: Result<(), String> = (|| {
             let Some(profile) =
-                image_profiles::find_by_id(main, new_id).map_err(|e| e.to_string())?
+                image_profiles::find_by_id(main, new_id).map_err(|e| super::item_error_text(&e))?
             else {
                 return Ok(());
             };
@@ -573,16 +580,16 @@ pub(super) fn reconcile_relationships(
                     };
                     image_profiles::ImageProfilesRepository::new(main)
                         .update(new_id, &patch)
-                        .map_err(|e| e.to_string())?;
+                        .map_err(|e| super::item_error_text(&e))?;
                 }
             }
             Ok(())
         })();
-        if let Err(e) = out {
+        if let Err(text) = out {
             warnings.push(format!(
-                "Failed to reconcile image profile relationships: {e}"
+                "Failed to reconcile image profile relationships: {text}"
             ));
-            tracing::warn!(profile_id = %new_id, error = %e, "Failed to reconcile image profile");
+            tracing::warn!(profile_id = %new_id, error = %text, "Failed to reconcile image profile");
         }
     }
 
@@ -590,7 +597,7 @@ pub(super) fn reconcile_relationships(
     for (_backup_id, new_id) in id_maps.embedding_profiles.iter() {
         let out: Result<(), String> = (|| {
             let Some(profile) = embedding_profiles::find_full_json_by_id(main, new_id)
-                .map_err(|e| e.to_string())?
+                .map_err(|e| super::item_error_text(&e))?
             else {
                 return Ok(());
             };
@@ -605,16 +612,16 @@ pub(super) fn reconcile_relationships(
                     };
                     embedding_profiles::EmbeddingProfilesRepository::new(main)
                         .update(new_id, &patch)
-                        .map_err(|e| e.to_string())?;
+                        .map_err(|e| super::item_error_text(&e))?;
                 }
             }
             Ok(())
         })();
-        if let Err(e) = out {
+        if let Err(text) = out {
             warnings.push(format!(
-                "Failed to reconcile embedding profile relationships: {e}"
+                "Failed to reconcile embedding profile relationships: {text}"
             ));
-            tracing::warn!(profile_id = %new_id, error = %e, "Failed to reconcile embedding profile");
+            tracing::warn!(profile_id = %new_id, error = %text, "Failed to reconcile embedding profile");
         }
     }
 
@@ -622,7 +629,7 @@ pub(super) fn reconcile_relationships(
     for (_backup_id, new_id) in id_maps.roleplay_templates.iter() {
         let out: Result<(), String> = (|| {
             let Some(template) = roleplay_templates::find_full_json_by_id(main, new_id)
-                .map_err(|e| e.to_string())?
+                .map_err(|e| super::item_error_text(&e))?
             else {
                 return Ok(());
             };
@@ -637,16 +644,16 @@ pub(super) fn reconcile_relationships(
                     };
                     RoleplayTemplatesRepository::new(main)
                         .update(new_id, &patch)
-                        .map_err(|e| e.to_string())?;
+                        .map_err(|e| super::item_error_text(&e))?;
                 }
             }
             Ok(())
         })();
-        if let Err(e) = out {
+        if let Err(text) = out {
             warnings.push(format!(
-                "Failed to reconcile roleplay template relationships: {e}"
+                "Failed to reconcile roleplay template relationships: {text}"
             ));
-            tracing::warn!(template_id = %new_id, error = %e, "Failed to reconcile roleplay template");
+            tracing::warn!(template_id = %new_id, error = %text, "Failed to reconcile roleplay template");
         }
     }
 }

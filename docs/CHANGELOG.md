@@ -90,6 +90,16 @@ _Versions: core 0.0.1210._
 - The inform cancel's line moves from the api handler (wrong target, snake-case field, `sqlite error:` prefix) to the repository; the seat-removal `Could not drop pending informs` WARN is retired (unreachable in v4 — the DEBUG fires with `dropped_informs=0` instead).
 - `log_chat_create_validation_failure` folds its two `Error creating entity` copies onto the home.
 - `chat_informs_tier2_equivalence` gains a BEFORE DELETE trigger plant with per-op captured lines (red-first: v5 propagated where v4 answers 0) and two standing rows inserted out of posting order (the P4.151 survey's B1, mutation-proven); `fallback_home_guard` holds five more literals.
+#### 2026-10-05 — fix(import): .qtap import warnings carry the bare SQLite sentence, not "sqlite error:" (dogfood #140, P4.148)
+
+_Versions: core 0.0.1210._
+
+Every per-item `.qtap` import warning that ends in a database error now carries SQLite's own sentence (`UNIQUE constraint failed: chat_messages.id`), matching v4's `error.message`, instead of v5's `sqlite error: …` rendering.
+
+- New `item_error_text` / `overlay_error_text` helpers in `services/quilltap_import/mod.rs` call `db::fallback::error_text`; every `DbError → String` conversion in the import directory goes through them — the early `.map_err(…)` stringifications as well as the push sites and the matching `error` log fields. `serde_error_text` names the serde arm (the recorded serde-vs-Zod divergence) instead of an untyped `to_string()`.
+- The `Import failed:` catch and `ImportError::Db`'s `Display` render the same way.
+- New harness census `import_warning_text_guard`: refuses `map_err` closures built on `to_string()`, an `err_msg` built on it, and a warning literal interpolating a raw `{e}`. 103 offenders on unported main, 0 on the branch.
+- `system_import_state` no longer masks the quoted families' tails to `<ENGINE>`; six cases were red on the prefix on unported main and are green now.
 
 #### 2026-10-05 — docs(porting): order the 07b8f0209 follow-ups + restore round — six lanes (P4.147–P4.152) with six fresh surveys
 
