@@ -979,6 +979,18 @@ fn archive_for(name: &str) -> &'static str {
         // [P4.147 item 10(a)+(c)] the full archive into a column-renamed
         // target — see `renamed_columns`.
         "restore_sqlite_tail_replace" => "restore-archive.zip",
+        // [P4.158 item 1, R-A] three preserved stores each missing
+        // `description.md` — `derive-restore-archive-damaged-store.py`.
+        "restore_damaged_store_replace" => "restore-archive-damaged-store.zip",
+        // [P4.158 item 2, R-B] a second claimant on Lorian's vault and on the
+        // project's store — `derive-restore-archive-two-claimants.py`.
+        "restore_two_claimants_replace" => "restore-archive-two-claimants.zip",
+        // [P4.158 item 2, R-B] Lorian's vault id duplicated as a `documents`
+        // row — `derive-restore-archive-dup-store-id.py`.
+        "restore_dup_store_id_replace" => "restore-archive-dup-store-id.zip",
+        // [P4.158 item 3, R-C] gen2 plus one shared legacy preset, into a fresh
+        // target — `derive-restore-archive-general-pointer.py`.
+        "restore_general_pointer_fresh_replace" => "restore-archive-general-pointer.zip",
         other => panic!("unknown restore case {other}"),
     }
 }
@@ -1288,14 +1300,14 @@ fn system_restore_state_equivalence() {
         compare_baseline(name, &got_pre, &case["preState"], &mut failures);
         let db = reopen_instance(&instance);
 
-        // [P4.143 Tier 2 item 10] A case whose oracle recorded the refused chat
-        // create's repository lines starts from an EMPTY process-global buffer
-        // (the restore's chat creates log on the WRITER thread).
-        let repo_buf = case.get("repoLogs").or_else(|| case.get("logs")).map(|_| {
+        // [P4.143 Tier 2 item 10] Every case starts from an EMPTY process-global
+        // buffer (the restore logs on the WRITER thread). Since P4.158 every
+        // case reads it — the v5-only claim WARN is pinned on all of them.
+        let log_buf = {
             let buf = global_capture();
             buf.lock().unwrap().clear();
             buf
-        });
+        };
         let summary = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
@@ -1367,22 +1379,21 @@ fn system_restore_state_equivalence() {
         );
 
         // [P4.143 Tier 2 item 10] the refused chat create's repository lines.
-        if let Some(buf) = repo_buf {
-            let lines = std::mem::take(&mut *buf.lock().unwrap());
-            if case.get("repoLogs").is_some() {
-                let serde =
-                    (name == SERDE_ROOM_CASE).then_some(("scenarioText", SERDE_ROOM_V5_PREFIX));
-                // Restore runs OUTSIDE `withStrictRepositoryFailures`: no line
-                // carries `strictFailures` on v4 either.
-                compare_repo_logs(name, &case["repoLogs"], &lines, serde, &[], &mut failures);
-                repo_log_cases += 1;
-            } else {
-                // [P4.147] the restore-level lines byte for byte; the
-                // repository-level ones pinned as the named handoff.
-                compare_restore_logs(name, &case["logs"], &lines, &mut failures);
-                restore_log_cases += 1;
-            }
+        let lines = std::mem::take(&mut *log_buf.lock().unwrap());
+        if case.get("repoLogs").is_some() {
+            let serde = (name == SERDE_ROOM_CASE).then_some(("scenarioText", SERDE_ROOM_V5_PREFIX));
+            // Restore runs OUTSIDE `withStrictRepositoryFailures`: no line
+            // carries `strictFailures` on v4 either.
+            compare_repo_logs(name, &case["repoLogs"], &lines, serde, &[], &mut failures);
+            repo_log_cases += 1;
+        } else if case.get("logs").is_some() {
+            // [P4.147] the restore-level lines byte for byte; the
+            // repository-level ones pinned as the named handoff.
+            compare_restore_logs(name, &case["logs"], &lines, &mut failures);
+            restore_log_cases += 1;
         }
+        // [P4.158 R-B] the v5-only claim WARN, on every case.
+        assert_claimed_store_warns(name, &lines, &mut failures);
 
         // [P4.147 item 8] the fallback arm's whole property bag, by name.
         assert_bag_nulls_survive(
@@ -1442,14 +1453,15 @@ fn system_restore_state_equivalence() {
     // three fresh-target arms (#142), the bag-nulls arm, the informs arm and
     // the SQLite-tail plant.
     assert_eq!(
-        seen, 29,
-        "expected all twenty-nine restore cases in the oracle (ten + the #58 orphan-links arm \
+        seen, 31,
+        "expected all thirty-one restore cases in the oracle (ten + the #58 orphan-links arm \
          + P4.D46's two compact arms + P4.D126's bug-103 legacy-profiles arm \
          + P4.D145's bug-114 duplicate-folders arm + P4.D152's bug-117 arm \
          + P4.D158's two bag-key arms + P4.D208's bug-158 arm \
          + P4.D226's legacy-Concierge arm + P4.130's refused-chat arm \
          + P4.143's serde-arm plant + P4.D251's voice-legacy arm \
-         + P4.147's three fresh-target arms, bag-nulls, informs and SQLite-tail arms)"
+         + P4.147's three fresh-target arms, bag-nulls, informs and SQLite-tail arms \
+         + P4.158's two-claimants and dup-store-id arms)"
     );
     // [P4.147] Every ruled #141 case actually carved (red-first measured, then
     // both directions held) — the arm cannot go vacuous.
@@ -3536,6 +3548,13 @@ fn carve_fresh_store_residual(
     let got_v = serde_json::to_value(&*got).expect("dump serializes");
     let mut carve: BTreeMap<String, String> = BTreeMap::new();
     let mut preserved = 0usize;
+    // [P4.158 R-B] First claim wins: `a.pointers` is in phase order
+    // (characters 6, projects 13, groups 13a — `POINTER_COLUMNS`) then the
+    // archive's row order, so the first entity to name a store keeps it and a
+    // later one is expected on the fallback arm, on BOTH sides (v4 mints for
+    // everyone). Claims are counted only for entities that restored on both
+    // sides, as v5 counts only the ones that reached the preserve check.
+    let mut claimed: HashSet<String> = HashSet::new();
     for (table, column, id, archived) in &a.pointers {
         let (g, w) = (
             pointer_on(&got_v, table, column, id),
@@ -3546,7 +3565,11 @@ fn carve_fresh_store_residual(
         let (Some(g), Some(w)) = (g, w) else {
             continue;
         };
-        match archived.as_ref().filter(|p| a.point_ids.contains(*p)) {
+        let first_claim = archived
+            .as_ref()
+            .filter(|p| a.point_ids.contains(*p))
+            .filter(|p| claimed.insert((*p).clone()));
+        match first_claim {
             Some(archived) => {
                 preserved += 1;
                 if g.as_deref() != Some(archived.as_str()) {
@@ -3587,7 +3610,9 @@ fn carve_fresh_store_residual(
                 }
             }
             None => {
-                // The fallback arm: both sides minted a store, neither carved.
+                // The fallback arm: both sides minted a store, neither carved —
+                // an archived pointer the archive does not carry, or (R-B) one
+                // an earlier entity already claimed.
                 for (side, p, dump) in [("v5", &g, &got_v), ("v4", &w, &*want)] {
                     let ok = p
                         .as_ref()
@@ -3595,8 +3620,8 @@ fn carve_fresh_store_residual(
                     if !ok {
                         failures.push(format!(
                             "[{name}] FRESH_STORE_RESIDUAL fallback arm ({side}): {table} {id} \
-                             (archived pointer {archived:?}, not in the archive) points at \
-                             {p:?} — both sides must mint it a fresh store"
+                             (archived pointer {archived:?}, not in the archive or already \
+                             claimed) points at {p:?} — both sides must mint it a fresh store"
                         ));
                     }
                 }
@@ -3731,7 +3756,7 @@ fn carve_fresh_store_residual(
 /// every `replace` case whose archive carries a store some entity points at
 /// (measured, P4.147). A case falling out of the count is the carve going
 /// vacuous.
-const FRESH_STORE_CARVED_CASES: usize = 20;
+const FRESH_STORE_CARVED_CASES: usize = 22;
 
 /// The `summary` adjustments a ruled carve makes: v5 leads v4's `files`
 /// counter by `files_lead`, and these v4 warnings are the divergence itself.
@@ -4008,6 +4033,45 @@ fn classify_message_serde_arm(
         out
     };
     (carve(got), carve(want))
+}
+
+/// ## [P4.158 R-B] The v5-only claim WARN — pinned, with its silence leg
+///
+/// v4 cannot reach a second claimant: its create drops every archived pointer
+/// and mints a fresh store (`characters.repository.ts:253`,
+/// `store-backed.repository.ts:137`), so it logs nothing a v5 line could match
+/// — this is a RECORDED v5-only line. Each entry is `(case, [the line's fields
+/// after the message, in order])`; every case NOT listed must log none.
+const CLAIMED_STORE_WARN: &str =
+    "WARN quilltap::restore Archived store already claimed by an earlier entity; falling back to a fresh store";
+const CLAIMED_STORE_WARNS: &[(&str, &[&str])] = &[(
+    "restore_two_claimants_replace",
+    &[
+        "entity=character entityId=a1000000-0000-4000-8000-000000000002 \
+         mountPointId=aff3114e-ed90-4d5b-99c1-ef3fa20203fc \
+         claimedBy=a1000000-0000-4000-8000-000000000001",
+        "entity=group entityId=a2000000-0000-4000-8000-000000000001 \
+         mountPointId=5c17e916-5f79-4cca-a134-ec09c05924e9 \
+         claimedBy=a3000000-0000-4000-8000-000000000001",
+    ],
+)];
+
+fn assert_claimed_store_warns(name: &str, lines: &[String], failures: &mut Vec<String>) {
+    let got: Vec<&str> = lines
+        .iter()
+        .filter_map(|l| l.strip_prefix(CLAIMED_STORE_WARN))
+        .map(str::trim_start)
+        .collect();
+    let want: Vec<&str> = CLAIMED_STORE_WARNS
+        .iter()
+        .find(|(c, _)| *c == name)
+        .map(|(_, w)| w.to_vec())
+        .unwrap_or_default();
+    if got != want {
+        failures.push(format!(
+            "[{name}] the v5-only claim WARN: got {got:?}, expected {want:?}"
+        ));
+    }
 }
 
 /// [P4.147] The restore-level lines this lane ported — compared to v4's

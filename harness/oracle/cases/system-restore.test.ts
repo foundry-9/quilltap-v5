@@ -451,6 +451,24 @@ const RESTORE_CASES: Array<{
       'Restored chat informs',
     ],
   },
+
+  // ── P4.158 item 2 (ruling R-B): two entities claiming one archived store ──
+  //
+  // `restore-archive-two-claimants.zip` points Riya at Lorian's vault and the
+  // group at the project's store. v4 mints a fresh store for every entity;
+  // v5's first claimant keeps the archived store and the second takes the
+  // v4-convergent fresh arm. Built by `fixtures/derive-restore-archive-two-
+  // claimants.py`.
+  { name: 'restore_two_claimants_replace', archive: 'restore-archive-two-claimants.zip' },
+
+  // ── P4.158 item 2 (ruling R-B): a duplicated archived store id ───────────
+  //
+  // `restore-archive-dup-store-id.zip` appends a second `doc_mount_points` row
+  // carrying Lorian's vault id as a `documents` store. 22a keeps the FIRST row
+  // on both sides and refuses the duplicate on its primary key. Built by
+  // `fixtures/derive-restore-archive-dup-store-id.py`.
+  { name: 'restore_dup_store_id_replace', archive: 'restore-archive-dup-store-id.zip' },
+
 ];
 
 /** jest.setup stubs the file-storage manager; the restore file phase IS the

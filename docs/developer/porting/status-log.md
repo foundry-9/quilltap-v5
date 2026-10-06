@@ -169001,3 +169001,39 @@ web, cli, tauri, SPA unchanged.
   fixture vars) → `QT_ORACLE_PROJECTS_ROUTES`.
 - No fixture changed; no committed pair rebuilt; no oracle invalidated for
   another family.
+## P4.158 — restore smalls (P4.147's OPEN remainder) — lane record
+
+Lane branch `claude/restore-smalls-completeness-guard-193bdb`; v4 pin
+`/tmp/qt-v4-pin-p4158-94fbb1ae3` at the TARGET `94fbb1ae3` (`4.10.0-dev.112`,
+verified by `rev-parse` and `ls -ld`). The ledger's §2 probe passed at lane
+start and before every regen batch. Baseline measured first: the unchanged
+`system_restore_state` family regenerated from the pin, 29/29 green on
+unported `main`.
+
+### Unit 1 — R-B: first claim wins; the map agrees with 22a (core 0.0.1236)
+
+- Two derived archives from `restore-archive.zip` (md5
+  `6b076003…` checked before and after): `two-claimants` (Riya →
+  Lorian's vault; the group → the project's store) and `dup-store-id`
+  (a second `doc_mount_points` row carrying Lorian's vault id typed
+  `documents`).
+- **Red-first on unported core:** `restore_two_claimants_replace` 12
+  failures (once the harness carve learned first-claim-wins — before that
+  edit the case was GREEN, because the carve itself treated every claimant
+  as preservable), `restore_dup_store_id_replace` 8.
+- **The duplicate id, one truth:** the map now keeps the FIRST raw row per
+  id — the row 22a's primary key keeps (both sides refuse the duplicate with
+  `UNIQUE constraint failed: doc_mount_points.id`, compared in
+  `summary.warnings`). Chosen over "rebuild the map from 22a's created ids"
+  because the preserve check runs at phase 6, before 22a. Bounded edge,
+  unchanged from P4.147: if 22a fails to create the first row for another
+  reason, the preserved pointer dangles.
+- **The claim WARN — v5-only, RECORDED:** v4 cannot reach a second claimant
+  (its create drops every archived pointer, `characters.repository.ts:253`,
+  `store-backed.repository.ts:137`), so it has no line.
+  `WARN quilltap::restore Archived store already claimed by an earlier
+  entity; falling back to a fresh store entity=… entityId=… mountPointId=…
+  claimedBy=…` — pinned on the two-claimants case (two lines), silent on
+  every other case (`CLAIMED_STORE_WARNS`; every case now reads the
+  process-global capture).
+- Family after the fix: 31/31 green.

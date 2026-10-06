@@ -530,14 +530,38 @@ fn restore_on_writer(
     //
     // Keyed by the archive's RAW rows, exactly as 22a will create them.
     // `system_restore_state` pins it both ways (`FRESH_STORE_RESIDUAL`).
+    //
+    // ## One truth for a duplicated id (P4.158, ruling R-B)
+    //
+    // An archive can carry two `doc_mount_points` rows under one id. 22a
+    // creates them in order and the primary key keeps the FIRST, refusing the
+    // second (`UNIQUE constraint failed: doc_mount_points.id` — on v4 too). A
+    // plain `collect()` kept the LAST, so the map could call a store by a type
+    // 22a never restored it as (`restore-archive-dup-store-id.zip`: Lorian's
+    // vault id duplicated as a `documents` row dropped her onto a fresh vault).
+    // The map now keeps the first row per id — still keyed by the raw rows,
+    // now agreeing with 22a on which one is real.
     let archived_stores: std::collections::HashMap<String, String> = if replace_mode {
-        data.doc_mount_points
-            .iter()
-            .map(|mp| (id_of(mp), str_or(mp, "storeType", "documents")))
-            .collect()
+        let mut map = std::collections::HashMap::new();
+        for mp in &data.doc_mount_points {
+            map.entry(id_of(mp))
+                .or_insert_with(|| str_or(mp, "storeType", "documents"));
+        }
+        map
     } else {
         std::collections::HashMap::new()
     };
+    // ## First claim wins (P4.158, ruling R-B)
+    //
+    // Nothing stops two archived entities naming ONE store (a hand-edited or
+    // damaged archive). Preserving both would cross-link unrelated content —
+    // the very thing v4's create refuses by always minting fresh
+    // (`characters.repository.ts:253`). So the first entity to claim a store
+    // keeps it — phase order (characters 6, projects 13, groups 13a), then the
+    // archive's row order — and a later claimant takes the v4-convergent
+    // fresh-store arm with a v5-only WARN (`system_restore_state`'s
+    // `CLAIMED_STORE_WARNS`; v4 cannot reach the state, so it has no line).
+    let mut claims = StoreClaims::default();
 
     // ── 6. Characters (vault-backed) ─────────────────────────────────────────
     //
@@ -549,7 +573,14 @@ fn restore_on_writer(
             warn_only!(
                 w,
                 format!("Failed to restore character \"{name}\""),
-                restore_one_character(main, mount, target_user_id, ch, &archived_stores)
+                restore_one_character(
+                    main,
+                    mount,
+                    target_user_id,
+                    ch,
+                    &archived_stores,
+                    &mut claims
+                )
             );
         }
     } else if !data.characters.is_empty() {
@@ -857,10 +888,12 @@ fn restore_on_writer(
         use crate::db::projects::ProjectEntity;
         // A project's / group's official store is a `storeType: 'documents'`
         // store, as a character's is a `'character'` vault (phase 6) — a pointer
-        // at any other kind takes the fallback arm.
-        let archived_store = |row: &Value| {
+        // at any other kind takes the fallback arm, as does one an earlier
+        // entity already claimed (R-B).
+        let mut archived_store = |row: &Value, entity: &'static str| {
             os(row, "officialMountPointId")
                 .filter(|id| archived_stores.get(id).map(String::as_str) == Some("documents"))
+                .filter(|store| claims.claim(store, entity, &id_of(row)))
         };
 
         let projects = crate::db::projects::ProjectsRepository::new(main, mount);
@@ -880,7 +913,7 @@ fn restore_on_writer(
                 w.push(format!("{label}: {e}"));
                 continue;
             }
-            if let Some(store) = archived_store(p) {
+            if let Some(store) = archived_store(p, "project") {
                 warn_row!(
                     w,
                     c.projects,
@@ -923,7 +956,7 @@ fn restore_on_writer(
                     continue;
                 }
             };
-            if let Some(store) = archived_store(g) {
+            if let Some(store) = archived_store(g, "group") {
                 warn_row!(
                     w,
                     c.groups,
@@ -2385,6 +2418,7 @@ fn restore_one_character(
     target_user_id: &str,
     ch: &Value,
     archived_stores: &std::collections::HashMap<String, String>,
+    claims: &mut StoreClaims,
 ) -> Result<(), DbError> {
     let slim = crate::db::characters::CharacterCreate {
         user_id: target_user_id.to_string(),
@@ -2423,6 +2457,7 @@ fn restore_one_character(
     };
     if let Some(vault_id) = os(ch, "characterDocumentMountPointId")
         .filter(|id| archived_stores.get(id).map(String::as_str) == Some("character"))
+        .filter(|vault| claims.claim(vault, "character", &opts.id))
     {
         let slim = crate::db::characters::CharacterCreate {
             character_document_mount_point_id: Some(vault_id),
@@ -2484,6 +2519,36 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> std::io::Result<()> {
 // ─────────────────────────────────────────────────────────────────────────────
 // Small shared helpers
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// The archived stores the preserve arm has handed out so far (P4.158, ruling
+/// R-B): store id → the entity that claimed it first.
+#[derive(Default)]
+struct StoreClaims(std::collections::HashMap<String, String>);
+
+impl StoreClaims {
+    /// Claim `store` for `entity_id`; `true` when it was free. A taken store
+    /// logs the v5-only WARN naming both claimants and answers `false`, so the
+    /// caller takes the fresh-store arm.
+    fn claim(&mut self, store: &str, entity: &'static str, entity_id: &str) -> bool {
+        match self.0.get(store) {
+            None => {
+                self.0.insert(store.to_string(), entity_id.to_string());
+                true
+            }
+            Some(first) => {
+                tracing::warn!(
+                    target: "quilltap::restore",
+                    entity,
+                    entityId = %entity_id,
+                    mountPointId = %store,
+                    claimedBy = %first,
+                    "Archived store already claimed by an earlier entity; falling back to a fresh store"
+                );
+                false
+            }
+        }
+    }
+}
 
 fn store_opts(id: String) -> crate::db::store_backed::StoreCreateOptions {
     crate::db::store_backed::StoreCreateOptions {
