@@ -1,18 +1,24 @@
 //! The inform block — the one reader of `chat_informs` on the prompt path
-//! (P4.D205, porting v4 `lib/chat/context/inform-block.ts` from `e7d77bb60`).
+//! (P4.D205, porting v4 `lib/chat/context/inform-block.ts` from `e7d77bb60`;
+//! P4.D254 moved it to v4 `94fbb1ae3`'s header and trailing placement).
 //!
 //! An **inform** is an out-of-character passage the operator hands to a seat:
-//! something the character now knows or notices, delivered verbatim as its own
-//! system block on that seat's next generation, and consumed once the turn
-//! produces a persisted assistant message.
+//! something the character now knows or notices, delivered as a trailing
+//! section of that seat's next generation — the last thing the model reads
+//! before it answers — and consumed once the turn produces a persisted
+//! assistant message.
 //!
 //! Two rules give this module its whole shape, and both are v4's, carried over
 //! with its reasoning intact.
 //!
-//! **It never frames the text.** The block is exactly what the operator typed —
-//! no preamble, no "do not mention this", no Host voice, for transparent and
-//! opaque characters alike. Several pending passages join with a `---` rule and
-//! nothing else. Anything more would be the House speaking over the operator.
+//! **It frames the text once, and only to vouch for it** (v4 `94fbb1ae3`). The
+//! operator's words go through verbatim, under a single fixed header
+//! ([`INFORM_BLOCK_HEADER`]) telling the character the passages are true,
+//! already known, and outrank an older memory that disagrees. A bare sentence
+//! buried in the prompt read as ambient noise: a character who recalled a
+//! contradicting memory simply disbelieved it. There is still no "do not
+//! mention this" and no Host voice, for transparent and opaque characters
+//! alike, and several passages join with a `---` rule and nothing else.
 //!
 //! **It never writes.** Selection and consumption are deliberately separate:
 //! building a context is not evidence that anything was delivered, and a
@@ -43,10 +49,19 @@ use crate::db::runtime::Db;
 /// The separator between stacked passages. Nothing else joins them.
 pub const INFORM_BLOCK_SEPARATOR: &str = "\n\n---\n\n";
 
+/// The one line of framing the block carries, ahead of the operator's passages
+/// (v4 `INFORM_BLOCK_HEADER`, `94fbb1ae3`). Second person: it is read inside the
+/// character's own prompt. It vouches for the passages and nothing more — it
+/// neither hides them nor tells the character what to do with them. Pinned
+/// byte-for-byte against v4's exported constant by `inform_block_equivalence`.
+pub const INFORM_BLOCK_HEADER: &str = "Things you now know, as of this moment — true in this story, and already known to you. \
+     Where any of it conflicts with an older memory or something in your records, this is the current truth:";
+
 /// The assembled block plus the rows it carried.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct InformBlock {
-    /// The assembled system block, or `None` when there is nothing to deliver.
+    /// The assembled section (header + passages), or `None` when there is
+    /// nothing to deliver.
     pub content: Option<String>,
     /// The rows this block carried that the finalizer should consume: every
     /// one-shot row, and any standing row not yet delivered. **Empty on a
@@ -113,8 +128,8 @@ pub fn build_inform_block(
     if rows.is_empty() {
         tracing::debug!(
             target: "quilltap::inform",
-            chat_id,
-            participant_id,
+            chatId = chat_id,
+            participantId = participant_id,
             pending = 0,
             reapplied = 0,
             standing = 0,
@@ -128,8 +143,8 @@ pub fn build_inform_block(
         let counts = inform_counts(&rows, is_swipe);
         tracing::debug!(
             target: "quilltap::inform",
-            chat_id,
-            participant_id,
+            chatId = chat_id,
+            participantId = participant_id,
             pending = counts.pending,
             reapplied = counts.reapplied,
             standing = counts.standing,
@@ -212,7 +227,13 @@ pub fn assemble_inform_block(
         return InformBlock::default();
     }
     InformBlock {
-        content: Some(bodies.join(INFORM_BLOCK_SEPARATOR)),
+        // v4 `94fbb1ae3`: the header, ONE blank line, then the passages. The
+        // empty-is-absent arms above return before this, so the header never
+        // appears alone.
+        content: Some(format!(
+            "{INFORM_BLOCK_HEADER}\n\n{}",
+            bodies.join(INFORM_BLOCK_SEPARATOR)
+        )),
         // A swipe never consumes: the caller ignores these, but returning an
         // empty list makes that impossible to get wrong by accident. Off a
         // swipe, a standing row already delivered is left out so its
@@ -312,6 +333,10 @@ mod tests {
         (l, fields)
     }
 
+    /// P4.D254 R-A: the keys are v4's camelCase `chatId` / `participantId`
+    /// (`inform-block.ts:116-122, 136-143`) — the snake_case pins these tests
+    /// carried until then were pins on the defect.
+    ///
     /// The order's items 9–10 asked for capture pins on the two debug lines;
     /// the P4.D249 lane pinned v4's field order against LITERALS inside the
     /// differential and never captured v5's own lines (the `52d6e7ecd`
@@ -341,8 +366,8 @@ mod tests {
         assert_eq!(
             fields,
             [
-                "chat_id",
-                "participant_id",
+                "chatId",
+                "participantId",
                 "pending",
                 "reapplied",
                 "standing",
@@ -388,8 +413,8 @@ mod tests {
         assert_eq!(
             fields,
             [
-                "chat_id",
-                "participant_id",
+                "chatId",
+                "participantId",
                 "pending",
                 "reapplied",
                 "standing",
@@ -416,8 +441,8 @@ mod tests {
         assert_eq!(
             fields,
             [
-                "chat_id",
-                "participant_id",
+                "chatId",
+                "participantId",
                 "pending",
                 "reapplied",
                 "standing"
@@ -425,6 +450,35 @@ mod tests {
             "{l}"
         );
         assert!(l.contains("standing=0"), "{l}");
+    }
+
+    /// P4.D254 (v4 `94fbb1ae3`): the header leads the block, ONE blank line
+    /// before the passages; the all-whitespace arm stays absent, so the header
+    /// is never delivered alone.
+    #[test]
+    fn the_header_leads_the_block_and_never_rides_alone() {
+        let row = |id: &str, body: &str| crate::db::chat_informs::ChatInformRow {
+            id: id.into(),
+            chat_id: "c1".into(),
+            batch_id: format!("b-{id}"),
+            participant_id: "p1".into(),
+            content_markdown: body.into(),
+            record_message_id: None,
+            permanent: false,
+            created_at: "2024-01-01T00:00:00.000Z".into(),
+            updated_at: "2024-01-01T00:00:00.000Z".into(),
+            consumed_at: None,
+            consumed_by_message_id: None,
+        };
+        let block = assemble_inform_block(&[row("r1", " One. "), row("r2", "Two.")], false);
+        assert_eq!(
+            block.content.as_deref(),
+            Some(format!("{INFORM_BLOCK_HEADER}\n\nOne.{INFORM_BLOCK_SEPARATOR}Two.").as_str())
+        );
+        assert_eq!(
+            assemble_inform_block(&[row("r3", " \n\t ")], false),
+            InformBlock::default()
+        );
     }
 
     #[test]

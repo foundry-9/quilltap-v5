@@ -7,6 +7,10 @@
  * whose WRITE methods record any call. That is v4's own test seam, used here
  * against v4's real module rather than transcribing v4's test file.
  *
+ * Two constant rows lead the output: `inform-block-separator` and (P4.D254, v4
+ * `94fbb1ae3`) `inform-block-header` — v4's exported constants, so the Rust
+ * constants are pinned against v4's values, not a transcription.
+ *
  * Each row emits:
  *   - `content` / `rowIds` — the module's answer;
  *   - `calledMethod` — the FIRST read it made (kept for continuity; since
@@ -68,7 +72,7 @@ async function main(): Promise<void> {
 
   process.env.LOG_LEVEL = 'error';
 
-  const { buildInformBlock, INFORM_BLOCK_SEPARATOR } = await import(
+  const { buildInformBlock, INFORM_BLOCK_SEPARATOR, INFORM_BLOCK_HEADER } = await import(
     '@/lib/chat/context/inform-block'
   );
 
@@ -93,6 +97,14 @@ async function main(): Promise<void> {
     JSON.stringify({
       case: 'inform-block-separator',
       separator: INFORM_BLOCK_SEPARATOR,
+    })
+  );
+  // P4.D254 (v4 `94fbb1ae3`): the one vouching header every built block now
+  // opens with, emitted from v4's exported constant for the same reason.
+  out.push(
+    JSON.stringify({
+      case: 'inform-block-header',
+      header: INFORM_BLOCK_HEADER,
     })
   );
 

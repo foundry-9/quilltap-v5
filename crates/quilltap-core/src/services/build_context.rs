@@ -3032,7 +3032,9 @@ where
     // history must not be packed into space those will occupy.
     //
     // === P4.D205 (v4 `e7d77bb60`, `context-manager.ts:1972-1983`) ===
-    // The inform block is the one sanctioned turn-variable system block. It is
+    // === P4.D254 (v4 `94fbb1ae3`, `context-manager.ts:1986-1997`) ===
+    // The inform block rides the trailing context sections (see the new-user-
+    // message assembly below), not the system prefix. It is
     // read HERE rather than at assembly so its tokens are spoken for before the
     // history selection spends what is left: an operator's passage is short, but
     // a budget that cannot see it is how bytes get onto the wire under a clean
@@ -3283,36 +3285,6 @@ where
         name: None,
         cache_control: None,
     });
-    // === P4.D205 (v4 `e7d77bb60`, `context-manager.ts:2127-2133`) ===
-    // The inform block, between system block 2 (identity reinforcement) and
-    // system block 3 (compressed history).
-    //
-    // It sits here, after the static prefix (blocks 1 and 2) and before the
-    // compressed history, because blocks 1 and 2 are the cacheable region: the
-    // Anthropic plugin puts its `cache_control` breakpoint on the FIRST system
-    // block only, OpenAI-style prefix caching is unaffected by anything after an
-    // unchanged prefix, and local providers fold the leading system run into one
-    // message. To the model, that is exactly "after the system prompt".
-    //
-    // Nothing is pushed when there is nothing to deliver — the conditional, not
-    // an empty string, is what keeps a turn without informs byte-identical and
-    // the cache-determinism golden intact. Neither the identity-stack builder
-    // version nor the prompt-cache structure version moves: the block is
-    // conditional, not structural.
-    if let Some(block) = &inform_block {
-        context_messages.push(ContextMessage {
-            role: "system",
-            content: block.clone(),
-            metadata: Some(ContextMessageMetadata {
-                is_injected: Some(true),
-                ..Default::default()
-            }),
-            thought_signature: None,
-            name: None,
-            cache_control: None,
-        });
-    }
-    // === end P4.D205 ===
     // Block 3.
     if let Some(block) = &compressed_history_block {
         context_messages.push(ContextMessage {
@@ -3766,6 +3738,39 @@ where
         )
     };
 
+    // === P4.D254 (v4 `94fbb1ae3`, `context-manager.ts:2701-2719`) ===
+    // The inform block — the operator's passages for this seat, under the one
+    // vouching header `assemble_inform_block` puts on them — goes in the trailing
+    // sections below, after recalled memories and the progressions report, so it
+    // is the last thing about the world the model reads before it answers, and a
+    // recalled memory that contradicts it comes before it, not after. It used to
+    // sit as a bare system block after the identity reminder, where a long
+    // history buried it and a weaker model disbelieved it outright.
+    //
+    // Trailing, it never touches the cacheable prefix, and it is delivered on
+    // continue / chained / autonomous turns as well (the trailing-only branch),
+    // as it always was. Empty-is-absent: with nothing owed, nothing is added.
+    // Neither the identity-stack builder version nor the prompt-cache structure
+    // version moves (v4 bumps neither).
+    //
+    // `onNewUserMessage` is v4's `!!newUserMessage` — the SAME binding the
+    // branch below tests, so `Some("")` logs `false` and takes the
+    // trailing-only branch (P4.137). `rowIds` is an array: the `…Json`
+    // file-layer convention renders it as v4 logs it.
+    // A block exists only when there is a responding seat (the read above is
+    // gated on it), so v4's `respondingParticipant?.id` is always defined here.
+    if let (Some(_), Some(rp)) = (&inform_block, &input.responding_participant) {
+        tracing::debug!(
+            target: "quilltap::inform",
+            chatId = %input.chat.id,
+            participantId = %rp.id,
+            onNewUserMessage = new_user_message.is_some(),
+            rowIdsJson = %serde_json::to_string(&inform_block_result.row_ids).unwrap_or_default(),
+            "[Inform] Delivering inform block as a trailing context section",
+        );
+    }
+    // === end P4.D254 ===
+
     // New user message with trailing recall / core / mail context.
     let mut messages_included = selected_messages.len();
     if let Some(new_user_message) = new_user_message {
@@ -3816,9 +3821,19 @@ where
         // op carries unalerted mail, so `suparna_mail_llm_context` is empty in
         // every row and swapping those two pushes is invisible. Closing it needs
         // a fixture op with mail AND progressions on one character; recorded
-        // rather than claimed.
+        // rather than claimed. P4.D254 extends the gap to the INFORM block
+        // pushed below: its order against progressions, recall and the turn-skip
+        // note is pinned (`inform_trailing_*`), against the mail it is not.
         if !progressions_llm_context.is_empty() {
             trailing.push(progressions_llm_context.clone());
+        }
+        // P4.D254 (v4 `94fbb1ae3`): the inform block, after progressions and
+        // before the turn-skip note. Its position relative to the SUPARṆĀ MAIL
+        // inherits the measured gap above (no corpus op carries unalerted mail
+        // and an inform on one seat); relative to recall, progressions and the
+        // turn-skip note it is pinned by the `inform_trailing_*` ops.
+        if let Some(block) = &inform_block {
+            trailing.push(block.clone());
         }
         if !turn_skip_instruction.is_empty() {
             trailing.push(turn_skip_instruction.clone());
@@ -3848,9 +3863,11 @@ where
     } else if !user_narration_anchor.is_empty()
         || !turn_skip_instruction.is_empty()
         || !progressions_llm_context.is_empty()
+        || inform_block.is_some()
     {
         // Chained / continue turns carry no new user message, so neither the
-        // note nor the progressions report can ride as a trailing section above.
+        // note, the progressions report nor the inform block (P4.D254, v4
+        // `94fbb1ae3`) can ride as a trailing section above.
         // Push them as their own trailing user message (same off-scene/timestamp
         // pattern) so the model sees them this turn, IN THE SAME ORDER they
         // would have taken there. Anthropic 4.6+ rejects role=assistant tails,
@@ -3859,6 +3876,7 @@ where
         let trailing_only: Vec<String> = [
             user_narration_anchor,
             progressions_llm_context,
+            inform_block.clone().unwrap_or_default(),
             turn_skip_instruction,
         ]
         .into_iter()

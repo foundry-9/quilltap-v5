@@ -32,6 +32,13 @@
 //! The separator constant is pinned from v4's exported `INFORM_BLOCK_SEPARATOR`,
 //! so the Rust constant is compared against v4's value, not a transcription.
 //!
+//! **P4.D254 (v4 `94fbb1ae3`)** gives every built block ONE vouching header
+//! (`INFORM_BLOCK_HEADER`, `\n\n` before the passages; the empty-is-absent
+//! arms unchanged), pinned the same way from v4's exported constant. Red-first
+//! at the target pin: unported `main` diverged on the first built case (`the
+//! pending passage, verbatim, …` — content without the header); the target
+//! oracle carries the header on all 13 built cases.
+//!
 //! Generate the oracle (Node 24, from the TARGET-pinned v4 worktree):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   cd ~/source/quilltap-server
@@ -45,7 +52,8 @@ use std::path::{Path, PathBuf};
 
 use quilltap_core::db::chat_informs::ChatInformRow;
 use quilltap_core::services::inform_block::{
-    assemble_inform_block, inform_counts, is_swipe_request, merge_for_swipe, INFORM_BLOCK_SEPARATOR,
+    assemble_inform_block, inform_counts, is_swipe_request, merge_for_swipe, INFORM_BLOCK_HEADER,
+    INFORM_BLOCK_SEPARATOR,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -148,6 +156,16 @@ fn inform_block_matches_oracle() {
         sep_row["separator"].as_str().expect("separator string"),
         INFORM_BLOCK_SEPARATOR,
         "INFORM_BLOCK_SEPARATOR diverged from v4's exported constant"
+    );
+    // P4.D254: the header, compared against v4's exported constant.
+    let header_row = rows
+        .iter()
+        .find(|r| r["case"] == "inform-block-header")
+        .expect("oracle carries the header row — regenerate it at `94fbb1ae3` or later");
+    assert_eq!(
+        header_row["header"].as_str().expect("header string"),
+        INFORM_BLOCK_HEADER,
+        "INFORM_BLOCK_HEADER diverged from v4's exported constant"
     );
 
     let case_rows: Vec<&Value> = rows

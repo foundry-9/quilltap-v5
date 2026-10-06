@@ -33,6 +33,23 @@
 //! minted ids and `createdAt` are dropped and the rows sort by
 //! `(systemKind, content)`.
 //!
+//! P4.D254 (v4 `94fbb1ae3`) moves the inform block out of the system prefix
+//! into the TRAILING context sections — after core whisper, recall, mail and
+//! progressions, before the turn-skip note, and into the trailing-only user
+//! message on a turn with no new user message (an inform alone now triggers
+//! it) — under v4's one vouching header. The misnamed
+//! `inform_one_pending_slots_after_identity_reminder` op is renamed
+//! `inform_one_pending_rides_the_trailing_sections`, and six `inform_trailing_*`
+//! ops pin each moved behaviour (inform-only chained turn; `newUserMessage:
+//! ''`; inform before turn-skip; recall before inform; progressions → inform →
+//! turn-skip; the four-section trailing-only order), each mutation-proven. A
+//! THIRD oracle row per op (`informLog`) carries v4's new `[Inform] Delivering
+//! inform block as a trailing context section` debug lines; the Rust side
+//! captures `build_context`'s own through `global_capture` and compares level,
+//! target, message, key order and values (`rowIds` parsed from `rowIdsJson`),
+//! with every block-less op the silence leg. The Suparṇā-mail-vs-inform order
+//! stays a MEASURED GAP (no op carries unalerted mail; see `build_context.rs`).
+//!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout). `TZ=UTC` is
 //! REQUIRED on BOTH stages — this is a distill-transitive family (the P4.d26
 //! rule): the retrospective-recall signature ring stamps its window bounds
@@ -78,6 +95,7 @@ use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use quilltap_core::services::memory_recap::distill::{DistillTimeRange, DistilledSearch};
 use quilltap_core::services::memory_service::SemanticSearchResult;
 use quilltap_core::system_prompt::{Character as SysChar, UserCharacter};
+use quilltap_core::test_support::global_capture;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 
@@ -281,7 +299,10 @@ struct SpecMwp {
     id: String,
     role: String,
     content: String,
-    participant_id: String,
+    /// Absent on an unseated operator's row (P4.D254's single-seat ops) —
+    /// v4's `participantId` is then `undefined`, and so `None` here.
+    #[serde(default)]
+    participant_id: Option<String>,
     created_at: String,
     #[serde(default)]
     target_participant_ids: Option<Vec<String>>,
@@ -516,6 +537,9 @@ async fn build_context_tier3_matches_oracle() {
     let mut oracle_canned: Vec<CannedRowW> = Vec::new();
     let mut oracle_whispers: std::collections::HashMap<String, Value> =
         std::collections::HashMap::new();
+    // P4.D254: v4's `[Inform] Delivering …` debug lines, per op.
+    let mut oracle_inform_logs: std::collections::HashMap<String, Value> =
+        std::collections::HashMap::new();
     for line in oracle_text.lines() {
         let line = line.trim();
         if line.is_empty() {
@@ -535,6 +559,10 @@ async fn build_context_tier3_matches_oracle() {
                         "recallHistory": v["recallHistory"].clone(),
                     }),
                 );
+            }
+            Some("informLog") => {
+                oracle_inform_logs
+                    .insert(v["op"].as_str().unwrap().to_string(), v["lines"].clone());
             }
             Some("canned") => oracle_canned.push(serde_json::from_value(v).expect("parse canned")),
             other => panic!("unknown oracle row kind {other:?}"),
@@ -615,6 +643,7 @@ async fn build_context_tier3_matches_oracle() {
         profile_parameters: None,
     };
 
+    let mut inform_lines_seen = 0usize;
     for (op, (oracle_op, oracle_result)) in spec.ops.iter().zip(&oracle_results) {
         assert_eq!(&op.name, oracle_op, "op order mismatch");
 
@@ -737,7 +766,7 @@ async fn build_context_tier3_matches_oracle() {
                         id: Some(m.id.clone()),
                         role: m.role.clone(),
                         content: m.content.clone(),
-                        participant_id: Some(m.participant_id.clone()),
+                        participant_id: m.participant_id.clone(),
                         thought_signature: None,
                         created_at: Some(m.created_at.clone()),
                         target_participant_ids: m.target_participant_ids.clone(),
@@ -1066,9 +1095,25 @@ async fn build_context_tier3_matches_oracle() {
                 });
         }
         inform_read_counter::reset();
-        let built = build_context(&db, &embedding, &completion, &executor, &seams, &input)
-            .await
-            .unwrap_or_else(|e| panic!("{}: build_context failed: {e}", op.name));
+        // P4.D254: every line `build_context` logs on this (current-thread)
+        // runtime, through the process-global rig — tracing's `Interest` cache
+        // makes a thread-scoped subscriber unreliable for a callsite other code
+        // reaches first.
+        let (built, lines) = global_capture::capture_async(build_context(
+            &db,
+            &embedding,
+            &completion,
+            &executor,
+            &seams,
+            &input,
+        ))
+        .await;
+        let built = built.unwrap_or_else(|e| panic!("{}: build_context failed: {e}", op.name));
+        let want_inform_log = oracle_inform_logs
+            .get(&op.name)
+            .unwrap_or_else(|| panic!("{}: no 'informLog' oracle row — regenerate", op.name));
+        assert_inform_delivery_lines(&op.name, &lines, want_inform_log);
+        inform_lines_seen += want_inform_log.as_array().map_or(0, Vec::len);
         if let Some(prior) = prior_chat_type {
             set_chat_type(&db, &spec.chat.id, prior).await;
         }
@@ -1179,10 +1224,78 @@ async fn build_context_tier3_matches_oracle() {
         spec.ops.len(),
         "whisper-row count mismatch — regenerate the oracle NDJSON"
     );
+    // P4.D254: the capture pin is non-vacuous — v4 logged the line on at least
+    // the seven ops that carry a block (the silence leg is every other op).
+    assert!(
+        inform_lines_seen >= 7,
+        "only {inform_lines_seen} `[Inform] Delivering` lines in the oracle — the \
+         capture seam broke"
+    );
 
     drop(db);
     let _ = std::fs::remove_file(&work_main);
     let _ = std::fs::remove_file(&work_mount);
+}
+
+/// P4.D254 (v4 `94fbb1ae3`, `context-manager.ts:2711-2718`): the `[Inform]
+/// Delivering inform block as a trailing context section` debug line, compared
+/// against v4's per op — level, target, message, and every field in v4's order
+/// (`chatId`, `participantId`, `onNewUserMessage`, `rowIds`). `rowIds` is an
+/// array, so v5 logs it as `rowIdsJson` (the `…Json` file-layer convention) and
+/// it is compared PARSED. An op where v4 logged nothing is the silence leg:
+/// v5 must log nothing either.
+fn assert_inform_delivery_lines(op: &str, lines: &[String], want: &Value) {
+    const MSG: &str = "[Inform] Delivering inform block as a trailing context section";
+    let got: Vec<&String> = lines.iter().filter(|l| l.contains(MSG)).collect();
+    let want = want.as_array().expect("informLog lines array");
+    assert_eq!(
+        got.len(),
+        want.len(),
+        "{op}: `{MSG}` lines (v5 {got:#?}, v4 {want:#?})"
+    );
+    for (g, w) in got.iter().zip(want) {
+        assert_eq!(w["message"], MSG, "{op}");
+        assert!(
+            g.starts_with(&format!("DEBUG quilltap::inform {MSG} ")),
+            "{op}: level/target/message: {g}"
+        );
+        let rest = &g[format!("DEBUG quilltap::inform {MSG} ").len()..];
+        // `key=value` pairs split on spaces: no value can hold one (ids never
+        // do, and `serde_json::to_string` is compact).
+        let fields: Vec<(&str, &str)> = rest
+            .split(' ')
+            .map(|kv| {
+                kv.split_once('=')
+                    .unwrap_or_else(|| panic!("{op}: bad field {kv:?}"))
+            })
+            .collect();
+        let keys: Vec<&str> = fields.iter().map(|(k, _)| *k).collect();
+        assert_eq!(
+            keys,
+            ["chatId", "participantId", "onNewUserMessage", "rowIdsJson"],
+            "{op}: {g}"
+        );
+        let wf = w["fields"].as_object().expect("fields object");
+        let want_keys: Vec<&str> = wf.keys().map(String::as_str).collect();
+        assert_eq!(
+            want_keys,
+            ["chatId", "participantId", "onNewUserMessage", "rowIds"],
+            "{op}: v4's key order moved"
+        );
+        assert_eq!(Some(fields[0].1), wf["chatId"].as_str(), "{op}: chatId");
+        assert_eq!(
+            Some(fields[1].1),
+            wf["participantId"].as_str(),
+            "{op}: participantId"
+        );
+        assert_eq!(
+            fields[2].1.parse::<bool>().ok(),
+            wf["onNewUserMessage"].as_bool(),
+            "{op}: onNewUserMessage"
+        );
+        let got_ids: Value = serde_json::from_str(fields[3].1).expect("rowIdsJson parses");
+        assert_eq!(got_ids, wf["rowIds"], "{op}: rowIds");
+    }
 }
 
 /// The model context limit v4's `getModelContextLimit('ANTHROPIC', 'claude-test')`

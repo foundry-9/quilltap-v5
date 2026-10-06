@@ -1928,7 +1928,7 @@
       "timestampMode": null
     },
     {
-      "name": "inform_one_pending_slots_after_identity_reminder",
+      "name": "inform_one_pending_rides_the_trailing_sections",
       "characterId": "ca000000-0000-4000-8000-0000000000a1",
       "newUserMessage": "Bea, tell Ada about the bees.",
       "existingMessages": [
@@ -2314,6 +2314,462 @@
       "skipMemories": true,
       "compressionEnabled": false,
       "timestampMode": null
+    },
+    {
+      "name": "inform_trailing_only_chained_turn",
+      "_comment": "P4.D254 (v4 `94fbb1ae3`) Tier 1 item 4(a): a chained turn whose ONLY trailing content is an inform (no scene note, no progressions, no turn-skip) \u2014 v4 now pushes a trailing-only user message carrying the block; pre-port v5 pushed a system block and no trailing message.",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Welcome to the salon, everyone."
+        },
+        {
+          "role": "assistant",
+          "content": "Delighted to be here among the engines."
+        },
+        {
+          "role": "assistant",
+          "content": "I have been sketching card loops all morning."
+        }
+      ],
+      "respondingParticipantId": "ba000000-0000-4000-8000-0000000000fc",
+      "activeUserParticipantId": "ba000000-0000-4000-8000-0000000000f3",
+      "participants": [
+        {
+          "id": "ba000000-0000-4000-8000-0000000000fc",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f2",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a2",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f3",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a3",
+          "controlledBy": "user",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+      ],
+      "messagesWithParticipants": [
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e1",
+          "role": "USER",
+          "content": "Welcome to the salon, everyone.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:00:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e2",
+          "role": "ASSISTANT",
+          "content": "Delighted to be here among the engines.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-02T00:01:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e3",
+          "role": "ASSISTANT",
+          "content": "I have been sketching card loops all morning.",
+          "participantId": "ba000000-0000-4000-8000-0000000000fc",
+          "createdAt": "2024-01-02T00:02:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e4",
+          "role": "USER",
+          "content": "A private aside meant only for Bea.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:03:00.000Z",
+          "targetParticipantIds": [
+            "ba000000-0000-4000-8000-0000000000f2"
+          ]
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e5",
+          "role": "USER",
+          "content": "A whisper meant for Ada alone.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:04:00.000Z",
+          "targetParticipantIds": [
+            "ba000000-0000-4000-8000-0000000000fc"
+          ]
+        }
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null
+    },
+    {
+      "name": "inform_trailing_empty_new_user_message",
+      "_comment": "P4.D254: the same seat with `newUserMessage: ''` \u2014 v4's `!!newUserMessage` is false, so the block takes the trailing-only branch and the debug line logs `onNewUserMessage: false` (P4.137's empty-message rule).",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Welcome to the salon, everyone."
+        },
+        {
+          "role": "assistant",
+          "content": "Delighted to be here among the engines."
+        },
+        {
+          "role": "assistant",
+          "content": "I have been sketching card loops all morning."
+        }
+      ],
+      "respondingParticipantId": "ba000000-0000-4000-8000-0000000000fc",
+      "activeUserParticipantId": "ba000000-0000-4000-8000-0000000000f3",
+      "participants": [
+        {
+          "id": "ba000000-0000-4000-8000-0000000000fc",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f2",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a2",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f3",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a3",
+          "controlledBy": "user",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+      ],
+      "messagesWithParticipants": [
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e1",
+          "role": "USER",
+          "content": "Welcome to the salon, everyone.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:00:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e2",
+          "role": "ASSISTANT",
+          "content": "Delighted to be here among the engines.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-02T00:01:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e3",
+          "role": "ASSISTANT",
+          "content": "I have been sketching card loops all morning.",
+          "participantId": "ba000000-0000-4000-8000-0000000000fc",
+          "createdAt": "2024-01-02T00:02:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e4",
+          "role": "USER",
+          "content": "A private aside meant only for Bea.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:03:00.000Z",
+          "targetParticipantIds": [
+            "ba000000-0000-4000-8000-0000000000f2"
+          ]
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e5",
+          "role": "USER",
+          "content": "A whisper meant for Ada alone.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:04:00.000Z",
+          "targetParticipantIds": [
+            "ba000000-0000-4000-8000-0000000000fc"
+          ]
+        }
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null
+    },
+    {
+      "name": "inform_trailing_before_turn_skip_on_new_user_message",
+      "_comment": "P4.D254 item 4(b): inform + turn-skip on a new user message \u2014 the block rides BEFORE the turn-skip note.",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "Bea, tell Ada about the bees.",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Welcome to the salon, everyone."
+        },
+        {
+          "role": "assistant",
+          "content": "Delighted to be here among the engines."
+        },
+        {
+          "role": "assistant",
+          "content": "I have been sketching card loops all morning."
+        }
+      ],
+      "respondingParticipantId": "ba000000-0000-4000-8000-0000000000fd",
+      "activeUserParticipantId": "ba000000-0000-4000-8000-0000000000f3",
+      "participants": [
+        {
+          "id": "ba000000-0000-4000-8000-0000000000fd",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f2",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a2",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f3",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a3",
+          "controlledBy": "user",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+      ],
+      "messagesWithParticipants": [
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e1",
+          "role": "USER",
+          "content": "Welcome to the salon, everyone.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:00:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e2",
+          "role": "ASSISTANT",
+          "content": "Delighted to be here among the engines.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-02T00:01:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e3",
+          "role": "ASSISTANT",
+          "content": "I have been sketching card loops all morning.",
+          "participantId": "ba000000-0000-4000-8000-0000000000fd",
+          "createdAt": "2024-01-02T00:02:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e4",
+          "role": "USER",
+          "content": "A private aside meant only for Bea.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:03:00.000Z",
+          "targetParticipantIds": [
+            "ba000000-0000-4000-8000-0000000000f2"
+          ]
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e5",
+          "role": "USER",
+          "content": "A whisper meant for Ada alone.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:04:00.000Z",
+          "targetParticipantIds": [
+            "ba000000-0000-4000-8000-0000000000fd"
+          ]
+        }
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "turnSkip": {
+        "offerSkip": true,
+        "recentlyAddressed": false,
+        "characterName": "Ada"
+      }
+    },
+    {
+      "name": "inform_trailing_after_recall_on_new_user_message",
+      "_comment": "P4.D254 item 4(c): recalled memories + an inform on a new user message, one LLM seat \u2014 the recall comes BEFORE the inform (v4's stated point: a contradicting recalled memory is read first, the vouched inform last).",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "How does the analytical engine work?",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "I'm curious about your engines."
+        }
+      ],
+      "skipMemories": false,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "respondingParticipantId": "ba000000-0000-4000-8000-0000000000fe",
+      "activeUserParticipantId": null,
+      "participants": [
+        {
+          "id": "ba000000-0000-4000-8000-0000000000fe",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+      ],
+      "messagesWithParticipants": [
+        {
+          "id": "e2540000-0000-4000-8000-000000000001",
+          "role": "USER",
+          "content": "I'm curious about your engines.",
+          "createdAt": "2024-01-02T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "name": "inform_trailing_between_progressions_and_turn_skip",
+      "_comment": "P4.D254 item 4(b)+(d) on the new-user branch: progressions, then the inform, then the turn-skip note \u2014 v4's `trailingContextSections` order.",
+      "characterId": "ca000000-0000-4000-8000-0000000000a3",
+      "newUserMessage": "What is your condition?",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Hello."
+        },
+        {
+          "role": "assistant",
+          "content": "Well met."
+        }
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "turnSkip": {
+        "offerSkip": true,
+        "recentlyAddressed": false,
+        "characterName": "Charlie"
+      },
+      "respondingParticipantId": "ba000000-0000-4000-8000-0000000000ff",
+      "activeUserParticipantId": null,
+      "participants": [
+        {
+          "id": "ba000000-0000-4000-8000-0000000000ff",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a3",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+      ],
+      "messagesWithParticipants": [
+        {
+          "id": "e2540000-0000-4000-8000-000000000011",
+          "role": "USER",
+          "content": "Hello.",
+          "createdAt": "2024-01-02T00:00:00.000Z"
+        },
+        {
+          "id": "e2540000-0000-4000-8000-000000000012",
+          "role": "ASSISTANT",
+          "content": "Well met.",
+          "participantId": "ba000000-0000-4000-8000-0000000000ff",
+          "createdAt": "2024-01-02T00:01:00.000Z"
+        }
+      ]
+    },
+    {
+      "name": "inform_trailing_only_four_sections_in_order",
+      "_comment": "P4.D254 item 4(d): the trailing-only message with all four sections \u2014 v4's order [scene note, progressions, inform, turn-skip].",
+      "characterId": "ca000000-0000-4000-8000-0000000000a3",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "((The engine stalls.))"
+        },
+        {
+          "role": "assistant",
+          "content": "The engine is running fine."
+        }
+      ],
+      "respondingParticipantId": "ba000000-0000-4000-8000-0000000004b4",
+      "activeUserParticipantId": "ba000000-0000-4000-8000-0000000004a5",
+      "participants": [
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a1",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000004b4",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a3",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a5",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a2",
+          "controlledBy": "user",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+      ],
+      "messagesWithParticipants": [
+        {
+          "id": "e4300000-0000-4000-8000-000000000001",
+          "role": "USER",
+          "content": "((The engine stalls.))",
+          "participantId": "ba000000-0000-4000-8000-0000000004a5",
+          "createdAt": "2024-06-15T11:00:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000002",
+          "role": "ASSISTANT",
+          "content": "The engine is running fine.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:01:00.000Z"
+        }
+      ],
+      "humanTurnMessageIds": [
+        "e4300000-0000-4000-8000-000000000001"
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "turnSkip": {
+        "offerSkip": true,
+        "recentlyAddressed": false,
+        "characterName": "Charlie"
+      }
     },
     {
       "name": "bug172_scan_salon_room_excludes_persona",
@@ -4109,6 +4565,41 @@
       "batchId": "bb000000-0000-4000-8000-0000000000bc",
       "participantId": "ba000000-0000-4000-8000-0000000000fb",
       "contentMarkdown": "Bystander passage.",
+      "createdAt": "2024-01-02T00:05:00.000Z"
+    },
+    {
+      "id": "1f000000-0000-4000-8000-0000000000d1",
+      "batchId": "bb000000-0000-4000-8000-0000000002d1",
+      "participantId": "ba000000-0000-4000-8000-0000000000fc",
+      "contentMarkdown": "The kettle in the scullery has boiled dry.",
+      "createdAt": "2024-01-02T00:05:00.000Z"
+    },
+    {
+      "id": "1f000000-0000-4000-8000-0000000000d2",
+      "batchId": "bb000000-0000-4000-8000-0000000002d2",
+      "participantId": "ba000000-0000-4000-8000-0000000000fd",
+      "contentMarkdown": "Bea has already left for the apiary.",
+      "createdAt": "2024-01-02T00:05:00.000Z"
+    },
+    {
+      "id": "1f000000-0000-4000-8000-0000000000d3",
+      "batchId": "bb000000-0000-4000-8000-0000000002d3",
+      "participantId": "ba000000-0000-4000-8000-0000000000fe",
+      "contentMarkdown": "The analytical engine was dismantled last spring.",
+      "createdAt": "2024-01-02T00:05:00.000Z"
+    },
+    {
+      "id": "1f000000-0000-4000-8000-0000000000d4",
+      "batchId": "bb000000-0000-4000-8000-0000000002d4",
+      "participantId": "ba000000-0000-4000-8000-0000000000ff",
+      "contentMarkdown": "Your fever broke an hour ago.",
+      "createdAt": "2024-01-02T00:05:00.000Z"
+    },
+    {
+      "id": "1f000000-0000-4000-8000-0000000000d5",
+      "batchId": "bb000000-0000-4000-8000-0000000002d5",
+      "participantId": "ba000000-0000-4000-8000-0000000004b4",
+      "contentMarkdown": "The engine has, in fact, stalled.",
       "createdAt": "2024-01-02T00:05:00.000Z"
     }
   ]

@@ -48,6 +48,12 @@
  * guard's ring. Minted ids and `createdAt` are dropped; the rows are sorted by
  * `(systemKind, content)`.
  *
+ * P4.D254 (v4 `94fbb1ae3`) adds a THIRD row per op (`kind: 'informLog'`):
+ * every `[Inform] Delivering inform block as a trailing context section` debug
+ * line `buildContext` logged during the op, with its fields — captured by
+ * patching the logger singleton's `debug` (the `inform-block.ts` case's seam).
+ * An empty list is the silence leg: no block, no line.
+ *
  * Runs under v4's JEST (real-DB-under-jest: resetModules + doMock past
  * jest.setup's global mocks; cipher driver by absolute path). Needs
  * `--watchman=false` with the v5 --roots. Node 24.
@@ -345,6 +351,18 @@ async function main(): Promise<void> {
   const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
   const { getRepositories } = await import('@/lib/repositories/factory');
   const { buildContext } = await import('@/lib/chat/context-manager');
+  // P4.D254: capture the new `[Inform] Delivering …` line off the SAME logger
+  // singleton `context-manager.ts` imports (this module registry generation).
+  const { logger } = await import('@/lib/logger');
+  let informLog: Array<{ message: string; fields: Record<string, unknown> }> = [];
+  const priorDebug = (logger as unknown as { debug: (...a: unknown[]) => unknown }).debug;
+  (logger as unknown as { debug: unknown }).debug = (message: string, fields?: unknown) => {
+    if (typeof message === 'string' && message.startsWith('[Inform] Delivering')) {
+      // Through JSON, so an `undefined` field drops out as winston drops it.
+      informLog.push(JSON.parse(JSON.stringify({ message, fields: fields ?? {} })));
+    }
+    return priorDebug.call(logger, message, fields);
+  };
   // P4.D50: buildContext reads `instance_settings['taboo']` itself; the op seed
   // goes through v4's real setter (normalization included).
   const { setTabooSettings } = await import('@/lib/instance-settings');
@@ -563,8 +581,10 @@ async function main(): Promise<void> {
       } as never);
     }
 
+    informLog = [];
     const result = await buildContext(options as never);
     lines.push(JSON.stringify({ kind: 'result', op: op.name, result }));
+    lines.push(JSON.stringify({ kind: 'informLog', op: op.name, lines: informLog }));
 
     // P4.d15: the Commonplace-Book whisper ROWS this op left behind + the
     // recall-history column it persisted. Minted ids and `createdAt` are dropped
