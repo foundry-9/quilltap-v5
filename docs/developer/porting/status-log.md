@@ -166764,3 +166764,18 @@ case_ids` (a `color: "red"` item → the ZodError tail; a sound item silent),
 `characters::warn_field_tests::{a_failed_character_warns_with_v4s_character_
 id, a_failed_plugin_upsert_warns_with_v4s_fields_and_a_bare_error}`.
 Mutation: reverting `projectId` → `project_id` reddens the entities pin.
+
+### Unit 8 — 2(c) + the `FieldVisitor` doc (Tier 1 items 15(c), 16)
+
+- **2(c), option (i) (R-D):** `create_with_properties` `debug_assert!`s
+  `input.color.is_none() && input.icon.is_none()`. The plain `create` used
+  to DELEGATE to it with the colour/icon set, so the assert would have fired
+  on every plain create — the shared body moved into a private
+  `create_from_bag` both call. Deleting the plain `create` + the two dead
+  `GroupCreateInput` fields stays §S.7's (P4.147 owns its only production
+  caller).
+- **Item 16:** `test_support.rs`'s `FieldVisitor` doc comment now reads
+  `"<LEVEL> <target> <message> <field>=<value> …"` (message first, unquoted)
+  and records the `%` / `?` sigil rendering. Doc only.
+- Neutral: `groups_tier2`, `groups_routes`, the `groups` + import unit tests
+  (54/0).

@@ -140,13 +140,30 @@ impl<'c> GroupsRepository<'c> {
             color: input.color.clone().map(Some),
             icon: input.icon.clone().map(Some),
         };
-        self.create_with_properties(input, &properties, opts)
+        self.create_from_bag(input, &properties, opts)
     }
 
     /// [`Self::create`] with the `properties.json` bag given whole, so an explicit
     /// `null` survives (v4 `writeManagedFields(parseProperties(entity))`). The
-    /// bag SUPERSEDES `input.color`/`input.icon`, which are not read.
+    /// bag SUPERSEDES `input.color`/`input.icon`, which are not read — so a
+    /// caller passing them has a bug: [P4.148 2(c)] a `debug_assert!` says so
+    /// (both production callers, the group route and the `.qtap` import, pass
+    /// `None`). Deleting the two dead fields with the plain [`Self::create`]
+    /// is a recorded follow-up once the restore moves onto this fn.
     pub fn create_with_properties(
+        &self,
+        input: &GroupCreateInput,
+        properties: &GroupProperties,
+        opts: &GroupCreateOptions,
+    ) -> Result<Value, OverlayError> {
+        debug_assert!(
+            input.color.is_none() && input.icon.is_none(),
+            "create_with_properties ignores input.color/input.icon — pass them in the bag"
+        );
+        self.create_from_bag(input, properties, opts)
+    }
+
+    fn create_from_bag(
         &self,
         input: &GroupCreateInput,
         properties: &GroupProperties,

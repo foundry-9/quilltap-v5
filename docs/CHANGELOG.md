@@ -90,6 +90,13 @@ _Versions: core 0.0.1210._
 - The inform cancel's line moves from the api handler (wrong target, snake-case field, `sqlite error:` prefix) to the repository; the seat-removal `Could not drop pending informs` WARN is retired (unreachable in v4 — the DEBUG fires with `dropped_informs=0` instead).
 - `log_chat_create_validation_failure` folds its two `Error creating entity` copies onto the home.
 - `chat_informs_tier2_equivalence` gains a BEFORE DELETE trigger plant with per-op captured lines (red-first: v5 propagated where v4 answers 0) and two standing rows inserted out of posting order (the P4.151 survey's B1, mutation-proven); `fallback_home_guard` holds five more literals.
+#### 2026-10-05 — chore(db): create_with_properties asserts it is not handed a colour/icon it ignores; the capture rig's doc matches its output (P4.148)
+
+_Versions: core 0.0.1217._
+
+- `GroupsRepository::create_with_properties` takes the property bag whole and ignores `input.color` / `input.icon`; a `debug_assert!` now flags a caller that sets them. Both production callers pass `None`. The plain `create` goes through a private helper, so it is unaffected.
+- `test_support::FieldVisitor`'s doc comment now describes the line the rig actually renders: the message first and unquoted, then the fields in callsite order.
+
 #### 2026-10-05 — fix(import): the twelve import WARN lines use v4's camelCase field names (P4.148)
 
 _Versions: core 0.0.1216._

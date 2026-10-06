@@ -41,13 +41,19 @@
 use std::sync::{Arc, Mutex};
 
 /// Captures one tracing event's level, target, and fields as one line:
-/// `"<LEVEL> <target> <field>=<value> … "<message debug>""`.
+/// `"<LEVEL> <target> <message> <field>=<value> …"` — the MESSAGE first and
+/// UNQUOTED (the macro records `message` first, and the `Debug` of its
+/// `fmt::Arguments` carries no quotes), then each field in callsite order.
+/// (P4.148: this comment used to show the message last and quoted — it never
+/// rendered that way.)
 ///
 /// `record_str`/`record_u64`/`record_i64`/`record_f64`/`record_bool` all
 /// format the value via `Display` (no quotes); `record_debug` formats via
 /// `Debug`, with the `message` field's rendering carrying no leading `=`
 /// (`tracing`'s own convention: the format-args message is the line's
-/// narration, not a `key=value` pair). This is the exact union of what the
+/// narration, not a `key=value` pair). A `%`-sigil field reaches
+/// `record_debug` wrapped in `DisplayValue`, so it renders unquoted too; a
+/// `?`-sigil `&str` renders quoted. This is the exact union of what the
 /// 18 sites this replaces implemented — a site that only ever logged `&str`
 /// and debug-formatted fields still gets byte-identical output, because
 /// `tracing::field::Visit`'s own default methods for the untyped variants
