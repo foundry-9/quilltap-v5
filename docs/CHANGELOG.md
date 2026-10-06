@@ -12,6 +12,15 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-05 — fix(db): the importer-reachable store link read honours the strict scope, and three low-hazard held sites read through v4's fallbacks (P4.149 unit 7)
+
+_Versions: core 0.0.1216._
+
+- `db::fallback::joined_file_links_strict_aware` and `find_by_mount_point_and_path_or_none_strict_aware`: inside the import's strict scope a failed joined-links read now logs v4's line with `strictFailures=true` and fails the store, as v4's strict import does; outside it answers nothing, and an unavailable mount-index partition answers quietly with v4's DEBUG. `store_mount_blob` (reached by the importer's file writes) takes it; the plain twin and its callers are unchanged.
+- Three held write-path sites converted to v4's fallback reads with capture pins (Ruling R-E): `prune_empty_folders`' folder read (a failed read prunes nothing), `remove_mount_file`'s delete (swallowed and still counted), and `source_exists_or_throw`'s link read (a failed read is "no link"; on a filesystem mount the move leaves a stale source link until the next rescan, as in v4).
+- `doc_mount_fallback_sites_census`: the other twenty held sites are re-classed `strict-by-ruling(write-path)` with each hazard kept as the row's reason; the `_or_none_strict_aware` suffix joins the twins; counts recounted (83, 14, 19, 0, 13, 1, 1, 20, 5).
+- `fallback_home_guard` holds v4's `Dedicated database unavailable; answering with the fallback` line.
+
 #### 2026-10-05 — fix(db): the memory repository logs v4's rethrow and ownership lines, and a failed owner read no longer stops the fold (P4.149 unit 6)
 
 _Versions: core 0.0.1215._

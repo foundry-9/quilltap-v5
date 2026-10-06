@@ -166329,3 +166329,106 @@ re-measure); the restore order's acceptance walk (#141/#142).
 - Regen (pin, Node 24, jest `/tmp` mirror): `build-fold-episode-fixture.ts`
   then `fold-episode-tier3.test.ts` → `QT_ORACLE_FOLD_EPISODE` +
   `QT_FIXTURE_FOLD_EPISODE_MAIN/MOUNT`.
+
+### P4.149 unit 7 — item 4 (the strict-aware sibling) + 5d (Ruling R-E) + the census (core 0.0.1216)
+
+- **Item 4.** `fallback::joined_file_links_strict_aware` (the joined-links
+  line through ONE private emitter shared with the plain twin, so the guard's
+  exactly-once rule holds; `strictFailures` LAST under the scope; v4's quiet
+  `withRawDb` `acquireDb()` arm carried as `DbError::PartitionUnavailable` →
+  DEBUG `Dedicated database unavailable; answering with the fallback
+  {collection, dbTarget: mountIndex, error}` → `Ok([])`, strict or not — that
+  literal joins `HOME_MESSAGES`, 30 → 31) and
+  `DocMountFileLinksRepository::find_by_mount_point_and_path_or_none_strict_
+  aware`; `services/file_storage.rs`'s `:1164` carve-out takes it with `?`.
+  **Caller pin, red-first:** `store_mount_blob_honours_the_strict_scope_at_
+  the_link_read` — under `with_strict_repository_failures` over a provisioned
+  store with `doc_mount_file_links.conversionStatus` renamed, the store fails
+  with ONE joined-links line ending `strictFailures=true`; on the reverted
+  site the line lacked the field (the twin answered `None` and the store went
+  on to fail later at the write). ⚠ P4.142's `originalMimeType` isolating
+  plant does NOT reach this read: the blobs collision probe before it selects
+  `l.originalMimeType` too (measured) — `conversionStatus` is named by the
+  links join only. The v4-side leg (a two-sided import plant) is
+  `system_import_*`'s, P4.148's family — not driven here (recorded).
+- **The importer reachability pass** (survey Q7; scratch script — an
+  over-approximating name-resolved call graph of `crates/quilltap-core/src`,
+  test modules stripped, comments/strings blanked, BFS from `execute_import`
+  + `preview_import`, names defined in more than TWO places NOT followed —
+  77 such cut names, `new`/`get`/`create`/`find_by_id`/… — so the list is
+  COMPLETE UP TO THAT CUT; 854 fns reached). Every home/twin call it reaches,
+  with its chain checked by hand:
+  - **honours the scope (no change):** the overlay batch homes under
+    `read_character_vault_wardrobe` (wardrobe import) and
+    `project_array_into_vault_folder` (`ensure_character_vault` ←
+    `create_character_with_options` ← `import_characters`);
+    `log_chat_create_validation_failure` (`create_chat` ← `import_chats`);
+  - **converted here:** `store_mount_blob` ← `write_project_file_to_mount_
+    store` ← `import_files`;
+  - **REAL and NOT honouring the scope — NAMED for the next round** (all on
+    the character-vault provisioning path the import drives:
+    `ensure_character_vault` ← `create_character_with_options` ←
+    `import_characters`): `database_store::write_database_document`'s path
+    read (`find_by_mount_point_and_path_or_none`, via
+    `ensure_character_metadata_file`), `reindex_file::reindex_inner`'s two
+    reads (`find_by_mount_point_and_path_or_none`, `find_content_and_mtime_…
+    _or_none`, via `reindex_after_database_write`), and
+    `doc_mount_file_links::delete_database_document`'s path read +
+    `delete_with_gc_or_false` (via `project_array_into_vault_folder`) — each a
+    signature change on a shared store fn (a `Result` twin per site), outside
+    this order's one-line carve-out;
+  - **collision artifacts (not importer-reachable, verified):**
+    `memories::update_for_character` (`cascade_delete` — `api::mount_points`
+    vs `memory_service`), `tiered_mount_pool::resolve_mount_point_ids_for_
+    group` / `group_doc_mount_links::find_by_group_id` /
+    `database_store::list_database_files` / `read_file::read_mount_file_bytes_
+    conn` (all through `find_full_by_id` ← `preview_import_strict` resolving
+    to a provider request builder).
+- **5d (Ruling R-E, option (iii)).** Converted with capture pins: **#10**
+  `character_archive::prune_empty_folders` → the folders twin (a failed read
+  prunes NOTHING; `a_failed_folder_read_prunes_nothing_with_v4s_line`);
+  **#21** `scanner::remove_mount_file`'s delete → `delete_with_gc_or_false`,
+  answering `true` as v4's does (`a_failed_remove_delete_logs_v4s_line_and_
+  still_counts`); **#12** `file_ops::source_exists_or_throw` → the path twin
+  (`a_failed_source_read_is_no_link_and_leaves_a_stale_link_on_a_filesystem_
+  mount` — a database mount answers `Source not found`; a filesystem mount
+  answers WITHOUT a `link_id`, the stale-link consequence, by name). These
+  three files sit outside the ownership row; the human ruled (2026-10-05,
+  this lane) to edit them as item 10's named carve-outs. **Re-classed
+  `strict-by-ruling(write-path)` (20 rows), each hazard kept as its row
+  comment:** `character_vault::ensure_character_metadata_file`,
+  `document_store_overlay::read_properties`, `vault_character_update::read_
+  current_properties`, `avatar_rolls_service::delete_avatar_roll`,
+  `character_gallery_service::remove_from_character_gallery`,
+  `save_image_to_album::find_existing_photos_link_by_sha`,
+  `user_gallery_service::remove_from_user_gallery`, `prune_vault` ×3 (two
+  survivor reads + the delete), `file_storage::delete_mount_blob_conn`,
+  `file_ops::{dest_exists, delete_at_source ×2, delete_at_dest ×2,
+  move_file}`, `folder_ops::move_folder`, `general_state::ensure_general_
+  state_file`, `store_file::store_mount_file`. **Candidate v4 filings (the
+  human files):** #13 `destExists` (a failed read skips DEST_EXISTS → a
+  silent overwrite), #22 `storeMountFile`'s concurrency read (a concurrent
+  edit silently overwritten), #8 `pruneVault`'s survivors read (`undead = 0`
+  → every non-Wardrobe folder row deleted, success reported).
+- **Census** (`doc_mount_fallback_sites_census`): `_or_none_strict_aware`
+  joins `TWIN_SUFFIXES`; the measured diff before the recount was EXACTLY the
+  two predicted rows (the sibling's internal row; `store_mount_blob`'s method
+  name); counts (80,13,19,0,13,1,1,23,5) → **(83,14,19,0,13,1,1,20,5)**; the
+  `HANDED` rows' doc updated (P4.144 converted, P4.149 hoisted the homes).
+- **5c (R-D) — the sync ruling, NOT ruled this round** (the human, 2026-10-05:
+  "leave for later"); the paragraph for the human: v4's `walkStore` reads
+  through fallbacks, so a failed store read is an EMPTY store and the planner
+  (`propagateDeletes` defaults true) plans `removal('disk', …)` for every
+  unchanged base entry — a failed store read in v4 plans deleting the
+  operator's whole disk side, with no degraded-index guard. **Option A**
+  (follow v4: the walker + the applier's five reads take twins) reproduces
+  that hazard. **Option B (recommended)**: strict sync — the walker, the five
+  reads and a strict sibling for the rmdir propagate, the run fails before
+  planning; recorded as a deliberate divergence of bug 79's kind, pinned
+  both ways in `sync_engine_equivalence` with a rename-plant case, and the
+  walker hazard filed upstream (not yet filed — no `walkStore` /
+  `propagateDeletes` hit in v4's `docs/developer/bugs/`). Under B there is no
+  core change to the applier's reads; the work is the rmdir's strict sibling,
+  the census's 5 `fallback-in-v4` rows → `strict-by-ruling`, the both-ways
+  pin and the filing. `services/mount_index/sync/**` and
+  `sync_engine_equivalence` untouched this round.

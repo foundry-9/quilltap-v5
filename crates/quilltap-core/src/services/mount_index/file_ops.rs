@@ -163,7 +163,13 @@ fn source_exists_or_throw(
     relative_path: &str,
 ) -> Result<SourceInfo, MountFileError> {
     let links = DocMountFileLinksRepository::new(conn);
-    if let Some(link) = links.find_by_mount_point_and_path(&mp.id, relative_path)? {
+    // P4.149 (5d #12, Ruling R-E — borderline, converted): v4's
+    // `findByMountPointAndPath` is a FALLBACK (`file-ops.ts:112`), so a failed
+    // read is "no link": a database mount answers `Source not found`, and a
+    // FILESYSTEM mount falls through to the on-disk probe with NO `link_id` —
+    // the disk move then happens and the source link is never deleted (a stale
+    // row until the next rescan). v4's consequence, carried; pinned by name.
+    if let Some(link) = links.find_by_mount_point_and_path_or_none(&mp.id, relative_path) {
         return Ok(SourceInfo {
             absolute_path: if mp.is_filesystem_mount() {
                 Some(resolve_fs_absolute(
@@ -1209,6 +1215,49 @@ mod g3_fallback_tests {
             Err(MountFileError::FileOp(e)) => assert_eq!(e.code, FileOpErrorCode::VerifyFailed),
             other => panic!("expected VERIFY_FAILED, got {other:?}"),
         }
+        assert_eq!(lines, vec![PATH_LINE.to_string()]);
+    }
+
+    /// P4.149 (5d #12, Ruling R-E): the source probe's link read is v4's
+    /// FALLBACK (`file-ops.ts:112`) — a failed read is "no link", with v4's line.
+    /// A database mount then answers `Source not found`; a FILESYSTEM mount falls
+    /// through to the on-disk probe and answers WITHOUT a `link_id`, so the move
+    /// renames on disk and never deletes the source link (the stale-link
+    /// consequence, pinned by name — it heals on the next rescan).
+    #[test]
+    fn a_failed_source_read_is_no_link_and_leaves_a_stale_link_on_a_filesystem_mount() {
+        let dir = tempfile::tempdir().unwrap();
+        let (w, mp) = store(&dir);
+        plant_links(&w);
+        let (got, lines) = crate::test_support::captured_with(|| {
+            source_exists_or_throw(w.connection(), &mp, "notes/a.md")
+        });
+        match got {
+            Err(MountFileError::FileOp(e)) => {
+                assert_eq!(e.code, FileOpErrorCode::SourceNotFound);
+                assert_eq!(e.message, "Source not found: notes/a.md");
+            }
+            other => panic!("expected SOURCE_NOT_FOUND, got {:?}", other.err()),
+        }
+        assert_eq!(lines, vec![PATH_LINE.to_string()]);
+
+        let disk = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(disk.path().join("notes")).unwrap();
+        std::fs::write(disk.path().join("notes/a.md"), b"hello").unwrap();
+        let fs_mount = crate::db::doc_mount_points::MountServiceInfo {
+            mount_type: "filesystem".to_string(),
+            base_path: Some(disk.path().to_string_lossy().into_owned()),
+            ..mp.clone()
+        };
+        let (got, lines) = crate::test_support::captured_with(|| {
+            source_exists_or_throw(w.connection(), &fs_mount, "notes/a.md")
+        });
+        let info = got.unwrap_or_else(|e| panic!("the disk probe answers: {e:?}"));
+        assert!(
+            info.link_id.is_none() && info.file_id.is_none(),
+            "stale-link consequence: no source link to delete"
+        );
+        assert_eq!(info.size_bytes, 5);
         assert_eq!(lines, vec![PATH_LINE.to_string()]);
     }
 }

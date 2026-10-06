@@ -130,15 +130,62 @@ pub fn joined_file_links_or_empty<T>(
     read: impl FnOnce() -> Result<Vec<T>, DbError>,
 ) -> Vec<T> {
     read().unwrap_or_else(|error| {
-        tracing::error!(
-            target: "quilltap::db",
-            collection = "doc_mount_file_links",
-            whereClause = %where_clause,
-            error = %error_text(&error),
-            "Error querying joined file links"
-        );
+        log_joined_file_links_failure(where_clause, &error, false);
         Vec::new()
     })
+}
+
+/// The ONE emitter of `Error querying joined file links` (both the plain twin
+/// and [`joined_file_links_strict_aware`] log through it).
+fn log_joined_file_links_failure(where_clause: &str, error: &DbError, strict: bool) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "doc_mount_file_links",
+        whereClause = %where_clause,
+        error = %error_text(error),
+        strictFailures = strict.then_some(true),
+        "Error querying joined file links"
+    );
+}
+
+/// P4.149 (item 4) — [`joined_file_links_or_empty`] for a caller the importer
+/// reaches: v4's `queryJoined` is a fallback `withRawDb`, and EVERY fallback
+/// `safeQuery` honours `withStrictRepositoryFailures` (`safe-query.ts:57-71`),
+/// so inside the scope the line gains `strictFailures=true` and the `Err`
+/// propagates (the import fails, as v4's does); outside it answers `Ok([])`.
+/// A SIBLING, not a changed twin — the plain twin has 7 callers and its
+/// 32-caller path-read wrapper answers a bare `Option` (survey §4).
+///
+/// v4's one arm that does NOT honour the scope is carried too: `withRawDb`'s
+/// `acquireDb()` failure answers the fallback QUIETLY, strict or not, with a
+/// DEBUG (`dedicated-db.repository.ts:242-251`) — v5's
+/// [`DbError::PartitionUnavailable`] (the mount-index partition not open).
+pub fn joined_file_links_strict_aware<T>(
+    where_clause: &str,
+    read: impl FnOnce() -> Result<Vec<T>, DbError>,
+) -> Result<Vec<T>, DbError> {
+    match read() {
+        Ok(rows) => Ok(rows),
+        Err(error @ DbError::PartitionUnavailable(_)) => {
+            tracing::debug!(
+                target: "quilltap::db",
+                collection = "doc_mount_file_links",
+                dbTarget = "mountIndex",
+                error = %error_text(&error),
+                "Dedicated database unavailable; answering with the fallback"
+            );
+            Ok(Vec::new())
+        }
+        Err(error) => {
+            let strict = strict_repository_failures_active();
+            log_joined_file_links_failure(where_clause, &error, strict);
+            if strict {
+                Err(error)
+            } else {
+                Ok(Vec::new())
+            }
+        }
+    }
 }
 
 /// v4 `docMountDocuments.findByMountPointAndPath` as its callers see it: a
@@ -1181,6 +1228,44 @@ mod tests {
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].key_value, "synthetic-k-ok");
         assert!(lines.is_empty(), "{lines:?}");
+    }
+
+    /// P4.149 (item 4) — the strict-aware joined-links sibling: `Ok([])` + the
+    /// line outside the scope, the line + `strictFailures=true` + the `Err`
+    /// inside it, and v4's QUIET unavailable-partition arm (a DEBUG, `Ok([])`,
+    /// strict or not); the plain twin's bytes unchanged.
+    #[test]
+    fn the_strict_aware_joined_links_sibling_honours_the_scope() {
+        let unavailable =
+            || DbError::PartitionUnavailable(crate::write_partition::WriteDbTarget::MountIndex);
+        let (got, lines) = crate::test_support::captured_with(|| {
+            (
+                joined_file_links_strict_aware::<i32>("WHERE l.id = ?", || Err(posed())).unwrap(),
+                with_strict_repository_failures(|| {
+                    joined_file_links_strict_aware::<i32>("WHERE l.id = ?", || Err(posed()))
+                })
+                .is_err(),
+                with_strict_repository_failures(|| {
+                    joined_file_links_strict_aware::<i32>("WHERE l.id = ?", || Err(unavailable()))
+                })
+                .unwrap(),
+                joined_file_links_strict_aware("WHERE l.id = ?", || Ok(vec![7])).unwrap(),
+                joined_file_links_or_empty::<i32>("WHERE l.id = ?", || Err(posed())),
+            )
+        });
+        assert_eq!(got, (vec![], true, vec![], vec![7], vec![]));
+        assert_eq!(
+            lines,
+            vec![
+                "ERROR quilltap::db Error querying joined file links collection=doc_mount_file_links whereClause=WHERE l.id = ? error=posed".to_string(),
+                "ERROR quilltap::db Error querying joined file links collection=doc_mount_file_links whereClause=WHERE l.id = ? error=posed strictFailures=true".to_string(),
+                format!(
+                    "DEBUG quilltap::db Dedicated database unavailable; answering with the fallback collection=doc_mount_file_links dbTarget=mountIndex error={}",
+                    unavailable()
+                ),
+                "ERROR quilltap::db Error querying joined file links collection=doc_mount_file_links whereClause=WHERE l.id = ? error=posed".to_string(),
+            ]
+        );
     }
 
     /// P4.149 — the three base RETHROW lines in contract C2's measured bytes

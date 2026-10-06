@@ -77,6 +77,10 @@ const HOME_MESSAGES: &[&str] = &[
     "Error deleting entity",
     "Error deleting pending informs by batch",
     "Error deleting pending informs for participant",
+    // P4.149 (item 4): v4's QUIET unavailable-database arm of `withRawDb`
+    // (`dedicated-db.repository.ts:242-251`), carried by the strict-aware
+    // joined-links sibling.
+    "Dedicated database unavailable; answering with the fallback",
 ];
 
 const HOME: &str = "db/fallback.rs";

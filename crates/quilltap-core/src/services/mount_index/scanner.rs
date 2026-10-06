@@ -246,14 +246,16 @@ pub fn remove_mount_file(
 ) -> Result<bool, DbError> {
     let links = DocMountFileLinksRepository::new(conn);
     // v4 `scanner.ts:255-259`: the fallback path read — `null` → `false` (not
-    // counted). The delete below stays propagating: held pending a ruling
-    // (P4.142 G3 — a swallowed delete would count a removal that did not
-    // happen).
+    // counted).
     let Some(existing) = links.find_by_mount_point_and_path_or_none(mount_point_id, relative_path)
     else {
         return Ok(false);
     };
-    links.delete_with_gc(&existing.id)?;
+    // P4.149 (5d #21, Ruling R-E): v4's `deleteWithGC` is a FALLBACK
+    // (`scanner.ts:261`) and `removeMountFile` answers `true` regardless — a
+    // swallowed delete is over-counted in `filesDeleted`, a reporting-only
+    // divergence the next scan heals (the stale link is found again).
+    let _ = links.delete_with_gc_or_false(&existing.id);
     Ok(true)
 }
 
@@ -624,6 +626,34 @@ mod g2g3_fallback_tests {
         });
         assert!(!got.unwrap());
         assert_eq!(lines, vec![PATH_LINE.to_string()]);
+    }
+
+    /// P4.149 (5d #21, Ruling R-E): `removeMountFile`'s `deleteWithGC` is a
+    /// FALLBACK (`scanner.ts:261`) and the function answers `true` regardless —
+    /// a swallowed delete logs v4's line and is COUNTED (over-counted in
+    /// `filesDeleted`; the next scan finds the link again).
+    #[test]
+    fn a_failed_remove_delete_logs_v4s_line_and_still_counts() {
+        let dir = tempfile::tempdir().unwrap();
+        let (w, mp) = store(&dir);
+        w.connection()
+            .execute_batch(
+                "CREATE TRIGGER qt_no_link_delete BEFORE DELETE ON doc_mount_file_links \
+                 BEGIN SELECT RAISE(ABORT, 'planted'); END",
+            )
+            .unwrap();
+        let (got, lines) = crate::test_support::captured_with(|| {
+            remove_mount_file(w.connection(), &mp.id, "notes/a.md")
+        });
+        assert!(got.unwrap(), "v4 answers true after a swallowed delete");
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(
+            lines[0].starts_with(
+                "ERROR quilltap::db Error deleting file link with GC collection=doc_mount_file_links linkId="
+            ) && lines[0].ends_with(" error=planted"),
+            "{}",
+            lines[0]
+        );
     }
 
     /// P4.142 G3: `rescanDatabaseMountPoint`'s link read (v4 `database-store.ts:

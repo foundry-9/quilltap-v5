@@ -1159,9 +1159,12 @@ pub fn store_mount_blob(
     // stale chunks first (v4 store-file.ts; under unique-suffix an existing
     // LINK at a blob-free path can still collide — e.g. a text document there).
     // v4 `store-file.ts:276-279`: the fallback path read (`null` → no chunk
-    // delete → the upsert) — P4.142 G2.
-    if let Some(existing) =
-        links.find_by_mount_point_and_path_or_none(input.mount_point_id, &final_path)
+    // delete → the upsert) — P4.142 G2. P4.149 (item 4): the importer reaches
+    // this read (`write_project_file_to_mount_store` /
+    // `write_user_upload_to_mount_store`), and v4's strict import RETHROWS a
+    // failed `queryJoined` — so the strict-aware sibling.
+    if let Some(existing) = links
+        .find_by_mount_point_and_path_or_none_strict_aware(input.mount_point_id, &final_path)?
     {
         links.delete_chunks_by_link_id(&existing.id)?;
     }
@@ -2302,6 +2305,59 @@ mod tests {
             })
             .unwrap();
         assert_eq!(remaining, 0);
+    }
+
+    /// P4.149 (item 4): `store_mount_blob`'s same-path link read is reached by
+    /// the importer, so inside the strict scope a failed read PROPAGATES with
+    /// v4's line + `strictFailures=true` (v4's strict import fails there); the
+    /// plain twin had answered `None` silently and the store went on to the
+    /// write. Plant: a rename only the LINKS join names (`doc_mount_file_links.
+    /// conversionStatus`) — the blobs collision probe before it selects
+    /// `l.originalMimeType` too (measured: P4.142's `originalMimeType` plant
+    /// fails that probe first, so it cannot reach this read).
+    #[test]
+    fn store_mount_blob_honours_the_strict_scope_at_the_link_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let pepper = "cXVpbGx0YXAtdGVzdC1wZXBwZXItMzItYnl0ZXMhIQ==";
+        crate::services::provisioning::provision_fresh_instance(dir.path(), pepper).unwrap();
+        let w =
+            crate::db::Writer::open_writable(&dir.path().join("quilltap-mount-index.db"), pepper)
+                .unwrap();
+        let mount = w.connection();
+        mount
+            .execute_batch(
+                "INSERT INTO doc_mount_points (id, name, mountType, storeType, createdAt, updatedAt) \
+                 VALUES ('mp-1', 'Store', 'database', 'documents', '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z'); \
+                 ALTER TABLE doc_mount_file_links RENAME COLUMN conversionStatus TO conversionStatus_x;",
+            )
+            .unwrap();
+        let input = StoreMountBlobInput {
+            mount_point_id: "mp-1",
+            relative_path: "a.png",
+            data: b"png-bytes",
+            original_mime_type: "image/png",
+            original_file_name: "a.png",
+            description: None,
+            transcode_images: false,
+        };
+        let (got, lines) = crate::test_support::captured_with(|| {
+            crate::db::fallback::with_strict_repository_failures(|| {
+                store_mount_blob(mount, &NotConfiguredPixelCodec, &input)
+            })
+        });
+        assert!(got.is_err(), "the strict read must fail the store");
+        let joined: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("Error querying joined file links"))
+            .collect();
+        assert_eq!(joined.len(), 1, "{lines:?}");
+        assert!(
+            joined[0].starts_with(
+                "ERROR quilltap::db Error querying joined file links collection=doc_mount_file_links whereClause=WHERE l.mountPointId = ? AND LOWER(l.relativePath) = LOWER(?) error="
+            ) && joined[0].ends_with(" strictFailures=true"),
+            "{}",
+            joined[0]
+        );
     }
 
     /// Dogfood finding #16: on a REAL instance the `project_doc_mount_links`

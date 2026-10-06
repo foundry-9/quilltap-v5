@@ -1897,6 +1897,26 @@ impl<'c> DocMountFileLinksRepository<'c> {
         .next()
     }
 
+    /// P4.149 (item 4) — [`Self::find_by_mount_point_and_path_or_none`] for a
+    /// caller the importer reaches (`file_storage::store_mount_blob`): the same
+    /// line through [`super::fallback::joined_file_links_strict_aware`], so
+    /// inside the strict scope a failed read PROPAGATES (v4's strict import
+    /// fails) where the plain twin answers `None`.
+    pub fn find_by_mount_point_and_path_or_none_strict_aware(
+        &self,
+        mount_point_id: &str,
+        relative_path: &str,
+    ) -> Result<Option<LinkRow>, DbError> {
+        super::fallback::joined_file_links_strict_aware(
+            "WHERE l.mountPointId = ? AND LOWER(l.relativePath) = LOWER(?)",
+            || {
+                self.find_by_mount_point_and_path(mount_point_id, relative_path)
+                    .map(|found| found.into_iter().collect())
+            },
+        )
+        .map(|rows| rows.into_iter().next())
+    }
+
     /// v4's FALLBACK `deleteWithGC`, as its callers see it: a failed delete logs
     /// `Error deleting file link with GC` and answers `false` (v4's
     /// `{ fileId: null, fileGC: false }`).

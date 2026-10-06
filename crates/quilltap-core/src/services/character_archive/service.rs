@@ -1446,7 +1446,11 @@ fn prune_empty_folders(
     let wardrobe_folder = &wardrobe_prefix[..wardrobe_prefix.len() - 1];
 
     let folders_repo = DocMountFoldersRepository::new(mount);
-    let folders = folders_repo.find_by_mount_point_id(mount_point_id)?;
+    // P4.149 (5d #10, Ruling R-E): v4's `docMountFolders.findByMountPointId` is
+    // a FALLBACK read (`archive-service.ts:895`): a failed read logs v4's line
+    // and prunes NOTHING — safe on its own (the destructive arm is
+    // `prune_vault`'s survivors read, held `strict-by-ruling(write-path)`).
+    let folders = folders_repo.find_by_mount_point_id_or_empty(mount_point_id);
     for folder in folders {
         let folder_path = folder.path.to_lowercase();
         if folder_path.is_empty()
@@ -1522,4 +1526,58 @@ async fn update_character_patch(
     })
     .await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod p4149_prune_folders_tests {
+    use super::*;
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    /// P4.149 (5d #10, Ruling R-E): `pruneEmptyFolders`' folder read is v4's
+    /// FALLBACK (`archive-service.ts:895`) — a failed read logs v4's line and
+    /// prunes NOTHING (every folder row survives), never an `Err`.
+    #[test]
+    fn a_failed_folder_read_prunes_nothing_with_v4s_line() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER).unwrap();
+        let w =
+            crate::db::Writer::open_writable(&dir.path().join("quilltap-mount-index.db"), PEPPER)
+                .unwrap();
+        let mount = w.connection();
+        let mp: String = mount
+            .query_row(
+                "SELECT id FROM doc_mount_points WHERE mountType = 'database' LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        crate::db::doc_mount_file_links::DocMountFileLinksRepository::new(mount)
+            .ensure_folder_path(&mp, "Mail")
+            .unwrap();
+        let before: i64 = mount
+            .query_row("SELECT COUNT(*) FROM doc_mount_folders", [], |r| r.get(0))
+            .unwrap();
+        assert!(before >= 1, "the plant needs a prunable folder");
+        mount
+            .execute_batch(
+                "ALTER TABLE doc_mount_folders RENAME COLUMN mountPointId TO mountPointId_x",
+            )
+            .unwrap();
+        let (got, lines) = crate::test_support::captured_with(|| {
+            prune_empty_folders(mount, &mp, &[], "Wardrobe/")
+        });
+        assert!(got.is_ok(), "{got:?}");
+        let after: i64 = mount
+            .query_row("SELECT COUNT(*) FROM doc_mount_folders", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(after, before, "a failed read prunes nothing");
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(
+            lines[0].starts_with(
+                "ERROR quilltap::db Error finding entities by filter collection=doc_mount_folders error="
+            ),
+            "{}",
+            lines[0]
+        );
+    }
 }
