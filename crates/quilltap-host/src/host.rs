@@ -1478,11 +1478,13 @@ fn seed_built_ins(db: &Db) -> Result<EnsureFailures, String> {
             // `migrations_state` row here would claim a completion v4
             // never claims for this migration. See the module header.
             //
-            // This ALSO covers fresh instances. v4's `generateDDL` cannot
-            // express a COALESCE index, so `fresh_schema.json` correctly
-            // does not carry it (no D23 re-dump) — and `assemble` runs
-            // this chain on EVERY open, including the first one after
-            // provisioning.
+            // v4's `generateDDL` cannot express a COALESCE index, so
+            // `fresh_schema.json` correctly does not carry it (no D23
+            // re-dump); since P4.153 (dogfood #149) the provisioner replays
+            // v4's MIGRATION-created index family (`migration_indexes.json`),
+            // which does — so a fresh instance answers `AlreadyIndexed` here,
+            // and this pass still covers every instance provisioned before
+            // that (`assemble` runs this chain on EVERY open).
             if let quilltap_core::db::folders_unique_path_repair::CollapseOutcome::Ran {
                 scanned,
                 surviving,

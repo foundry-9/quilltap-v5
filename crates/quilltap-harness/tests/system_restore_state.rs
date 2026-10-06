@@ -1500,10 +1500,13 @@ fn system_restore_state_equivalence() {
         drop(db);
         // [P4.D145] Give the target the bug-114 unique index before the
         // baseline is dumped, exactly as v4's oracle runs its own migration at
-        // the same point. `generateDDL` cannot express a COALESCE index, so a
-        // freshly-provisioned target is pre-index by construction and the quiet
-        // drop arm would be silently unreachable; both apps really do boot
-        // (v4's migration runner / v5's boot ensure) before anyone restores.
+        // the same point; both apps really do boot (v4's migration runner /
+        // v5's boot ensure) before anyone restores. `generateDDL` cannot
+        // express a COALESCE index, but since P4.153 (dogfood #149) the
+        // provisioner replays v4's MIGRATION-created index family
+        // (`migration_indexes.json`), which carries it — so a fresh target is
+        // already indexed (`AlreadyIndexed`), as a real v4 first boot leaves
+        // it; a target that predates P4.153 still runs the collapse (`Ran`).
         if collapses_folders(name) {
             let w = quilltap_core::db::Writer::open_writable(
                 &instance.join("quilltap.db"),
@@ -1520,8 +1523,9 @@ fn system_restore_state_equivalence() {
                 matches!(
                     outcome,
                     quilltap_core::db::folders_unique_path_repair::CollapseOutcome::Ran { .. }
+                        | quilltap_core::db::folders_unique_path_repair::CollapseOutcome::AlreadyIndexed
                 ),
-                "[{name}] a fresh target must be pre-index — got {outcome:?}"
+                "[{name}] a fresh target must come out indexed — got {outcome:?}"
             );
         }
         if aligns_uploads_pointer(name) {
