@@ -546,22 +546,16 @@ pub async fn chat_inform_cancel(
 
     let b2 = batch.clone();
     // `deletePendingByBatch` is `safeQuery(..., 0)` too
-    // (`chat-informs.repository.ts:250-270`): a failed delete LOGS and answers
-    // 0, and v4's handler carries on to its 200 with `removed: 0`.
-    let removed = match db
+    // (`chat-informs.repository.ts:271-291`): a failed delete LOGS and answers
+    // 0, and v4's handler carries on to its 200 with `removed: 0`. P4.149: the
+    // repository answers through the ONE home (v4's target, fields and bare
+    // error); a failure of the write itself — v4's `getCollection()` inside the
+    // same `safeQuery` — lands on the same home here, once.
+    let deleted = db
         .write(move |writers| writers.main().chat_informs().delete_pending_by_batch(&b2))
-        .await
-    {
-        Ok(n) => n,
-        Err(e) => {
-            tracing::error!(
-                batch_id = %batch,
-                error = %e,
-                "Error deleting pending informs by batch",
-            );
-            0
-        }
-    };
+        .await;
+    let removed = crate::db::fallback::pending_informs_by_batch_deleted_or_zero(&batch, || deleted)
+        .unwrap_or(0);
 
     let mut record_deleted = false;
     if !any_consumed {
@@ -915,8 +909,17 @@ mod safe_query_and_log_tests {
             }
             other => panic!("expected v4's 200, got {other:?}"),
         }
-        let l = line(&lines, "Error deleting pending informs by batch");
-        assert!(l.starts_with("ERROR"), "{l}");
+        // P4.149: the line is the REPOSITORY's now (v4's 4-argument wrap, through
+        // `db::fallback`, with v4's target/fields/bare error — pinned byte-for-
+        // byte in `chat_informs_tier2_equivalence` and `db::fallback`'s unit),
+        // and it fires on the WRITER thread, which answers `Ok(0)`: the handler's
+        // own arm is silent, so the line is logged ONCE, not twice.
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("Error deleting pending informs by batch")),
+            "the caller-thread copy is gone: {lines:?}"
+        );
     }
 
     /// P4.D249 (v4 `52d6e7ecd`): a standing batch is withdrawn whole — the

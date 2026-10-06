@@ -166103,3 +166103,64 @@ wording (OPEN for the smalls round).
 The standing queue (Lantern budget, a real token-limit turn, the four planted
 proofs, dedup/summaries, the Brahma deep query, #101, the compression
 re-measure); the restore order's acceptance walk (#141/#142).
+
+## P4.149 — the repository-fallback class, round 3 (lane `claude/repository-fallbacks-round-3-8a3e05`, pin `07b8f0209`)
+
+### P4.149 unit 1 — the rethrow homes + the chat-informs wraps (core 0.0.1210)
+
+- **§R.2 probe at lane start: PASS** (branch `main`, HEAD `07b8f0209`, both
+  logs empty, tree clean); lane pin `/tmp/qt-v4-pin-p4149-07b8f0209`
+  (`rev-parse` = `07b8f0209`, `4.10.0-dev.111`), three symlink classes.
+- **C2 measured** (a `Logger.prototype` spy on v4's REAL
+  `ChatInformsRepository`, scratch script, a UNIQUE collision for create and
+  BEFORE UPDATE/DELETE triggers for update/delete, each also inside
+  `withStrictRepositoryFailures`):
+  `Error creating entity {collection, error}`, `Error updating entity
+  {collection, id, error}`, `Error deleting entity {collection, id, error}`,
+  each `+ strictFailures: true` LAST inside the strict scope; and beneath each
+  a backend line `SQLite insertOne|updateOne|deleteOne error {table, error}`
+  (unported by standing convention — `UNPORTED_BACKEND_LINES`). The C2 twin
+  P4.148 lands (`collection: chats`, bare `error`, `strictFailures: true`)
+  matches the measured create shape — no alignment needed at the fold.
+- **Homes:** `log_create_failure` / `log_update_failure` /
+  `log_delete_failure` (log only, never swallow) and
+  `pending_informs_by_batch_deleted_or_zero` /
+  `pending_informs_for_participant_deleted_or_zero` (`Ok(0)`, strict-aware —
+  the batch-home precedent). `HOME_MESSAGES` 25 → 30.
+- `chat_informs.rs` production fns: a private `delete_one` (the pass-through
+  `_delete`) logs the base line; the two bulk deletes sit inside their wraps.
+  `delete_by_chat_id` keeps PROPAGATING (no v4 production caller — v4's FK
+  cascades; on v5 it IS the cascade) but its rows log the base line. The two
+  repository DEBUG lines keep their snake-case `batch_id`/`chat_id`/
+  `participant_id` fields: the module's `#[cfg(test)]` pin (not this lane's)
+  asserts exactly those keys — **a recorded handoff for the unifier (§S.3
+  edits that module): v4 logs `batchId`/`chatId`/`participantId`.**
+- `api/chat_informs.rs`: the handler's own line (module target, `batch_id`,
+  `sqlite error:` prefix) replaced by the home over the `db.write` result —
+  the repository answers `Ok(0)`, so the line is logged ONCE, on the writer
+  thread; its unit test (`a_broken_pending_delete_still_answers_200_with_
+  removed_zero`) now asserts the caller-thread copy is GONE (the bytes are
+  pinned in the tier-2 family and `db::fallback`'s units). `api/chat_cast.rs`:
+  the `Could not drop pending informs for removed seat` WARN retired —
+  unreachable in v4 (measured: the wrap answers 0, the DEBUG fires with
+  `droppedInforms: 0`).
+- Contract C2 fold: `log_chat_create_validation_failure`'s two `Error
+  creating entity` copies → `log_create_failure("chats", …)` in the same
+  commit; `fallback_home_guard` GREEN on this branch.
+- **Proof:** `chat_informs_tier2_equivalence` + `chat-informs-tier2.ts` — a
+  `plantDeleteFailure`/`dropPlant` op pair (BEFORE DELETE trigger) and
+  `captureLogs` per op (v4: `Logger.prototype` spy; v5: `captured_with`),
+  compared as whole strings with v4's backend line dropped. **Red-first on
+  unported core:** op 28 (the planted cancel) PANICKED `delete_pending_by_
+  batch: Sqlite(… "planted delete failure")` where v4 answers 0. Green after:
+  31 read ops, 12 final rows, 6 captured ops (4 silence legs + 2 arms, two
+  lines each). The spec gained the P4.151 survey's B1 rows (F posted before C
+  and inserted last; G tied with D, smaller id) — mutation-proven: a
+  `by_delivery_order` answering `Equal` for two standing rows reddens op 18.
+  Re-run from the pin by the sweep driver: `chat_informs_tier2`,
+  `chat_informs_routes` (19 cases), `chat_informs_permanent_ensure` — all OK.
+- Regen recipe (pin, Node 24): `QT_FIXTURE_OUT=/tmp/p4149/qt-chat-informs-
+  fixture.db npx tsx $V5W/harness/oracle/fixtures/build-chat-informs-
+  fixture.ts`, then `QT_FIXTURE_CHAT_INFORMS=… npx tsx $V5W/harness/oracle/
+  cases/chat-informs-tier2.ts > /tmp/p4149/oracle-chat-informs.ndjson`; run
+  with `QT_ORACLE_CHAT_INFORMS` + `QT_FIXTURE_CHAT_INFORMS`.

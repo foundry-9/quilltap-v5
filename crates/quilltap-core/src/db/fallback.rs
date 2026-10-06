@@ -620,6 +620,121 @@ pub fn find_api_keys_by_user_id_or_empty(
 }
 // === end P4.142 ===
 
+// === P4.149 — v4's base-repository RETHROW lines and the per-repository
+// fallback wraps above them. `_create` / `_update` / `_delete`
+// (`base.repository.ts:350-447`) are 3-argument `safeQuery`s: a failure logs
+// ERROR and RETHROWS — "log and propagate", never a fallback — with
+// `strictFailures: true` appended inside the strict scope (`safe-query.ts:
+// 57-71`). The FALLBACK sits one layer up, in a repository method that wraps
+// the call in its own 4-argument `safeQuery`. Measured through a
+// `Logger.prototype` spy on the REAL `ChatInformsRepository` at `07b8f0209`
+// (contract C2): `{collection, error}` on create, `{collection, id, error}` on
+// update and delete, `strictFailures` LAST. v4's backend line beneath each
+// (`SQLite insertOne error {table, error}`, …) is unported by standing
+// convention; so are the success INFOs (`Entity created`, `Entity deleted`) and
+// the not-found WARNs (Ruling R-A). ===
+
+/// v4 `_create`'s rethrow line, `createErrorMessage()`'s default sentence
+/// (`base.repository.ts:320-322`): ERROR `Error creating entity {collection,
+/// error, strictFailures?}`. Logs only — the caller keeps propagating `error`.
+pub fn log_create_failure(collection: &str, error: &DbError) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = collection,
+        error = %error_text(error),
+        strictFailures = strict_repository_failures_active().then_some(true),
+        "Error creating entity"
+    );
+}
+
+/// v4 `_update`'s rethrow line: ERROR `Error updating entity {collection, id,
+/// error, strictFailures?}`. Logs only — the caller keeps propagating `error`.
+pub fn log_update_failure(collection: &str, id: &str, error: &DbError) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = collection,
+        id = %id,
+        error = %error_text(error),
+        strictFailures = strict_repository_failures_active().then_some(true),
+        "Error updating entity"
+    );
+}
+
+/// v4 `_delete`'s rethrow line: ERROR `Error deleting entity {collection, id,
+/// error, strictFailures?}`. Logs only — the caller keeps propagating `error`.
+pub fn log_delete_failure(collection: &str, id: &str, error: &DbError) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = collection,
+        id = %id,
+        error = %error_text(error),
+        strictFailures = strict_repository_failures_active().then_some(true),
+        "Error deleting entity"
+    );
+}
+
+/// v4 `chatInforms.deletePendingByBatch` as its callers see it
+/// (`chat-informs.repository.ts:271-291`): a 4-argument FALLBACK `safeQuery`
+/// over a loop of pass-through `_delete`s, so `delete()`'s `Err` (already
+/// logged by [`log_delete_failure`] — the FIRST failed row ends the loop) logs
+/// ERROR `Error deleting pending informs by batch {collection, batchId, error}`
+/// and answers `Ok(0)`. Inside [`with_strict_repository_failures`] the line
+/// gains `strictFailures=true` and the `Err` propagates.
+pub fn pending_informs_by_batch_deleted_or_zero(
+    batch_id: &str,
+    delete: impl FnOnce() -> Result<usize, DbError>,
+) -> Result<usize, DbError> {
+    delete().or_else(|error| {
+        let strict = strict_repository_failures_active();
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "chat_informs",
+            batchId = %batch_id,
+            error = %error_text(&error),
+            strictFailures = strict.then_some(true),
+            "Error deleting pending informs by batch"
+        );
+        if strict {
+            Err(error)
+        } else {
+            Ok(0)
+        }
+    })
+}
+
+/// v4 `chatInforms.deletePendingForParticipant` as its callers see it
+/// (`chat-informs.repository.ts:294-313`): the same shape as
+/// [`pending_informs_by_batch_deleted_or_zero`] — ERROR `Error deleting
+/// pending informs for participant {collection, chatId, participantId, error}`
+/// → `Ok(0)`, strict-aware. With it, v4's route-level `Could not drop pending
+/// informs for removed seat` WARN (`participants.ts:625-638`) is unreachable on
+/// a database failure: the DEBUG `Pending informs dropped with removed seat`
+/// fires with `droppedInforms: 0` instead.
+pub fn pending_informs_for_participant_deleted_or_zero(
+    chat_id: &str,
+    participant_id: &str,
+    delete: impl FnOnce() -> Result<usize, DbError>,
+) -> Result<usize, DbError> {
+    delete().or_else(|error| {
+        let strict = strict_repository_failures_active();
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "chat_informs",
+            chatId = %chat_id,
+            participantId = %participant_id,
+            error = %error_text(&error),
+            strictFailures = strict.then_some(true),
+            "Error deleting pending informs for participant"
+        );
+        if strict {
+            Err(error)
+        } else {
+            Ok(0)
+        }
+    })
+}
+// === end P4.149 (rethrow lines + the inform wraps) ===
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1066,6 +1181,81 @@ mod tests {
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].key_value, "synthetic-k-ok");
         assert!(lines.is_empty(), "{lines:?}");
+    }
+
+    /// P4.149 — the three base RETHROW lines in contract C2's measured bytes
+    /// (`{collection, [id], error}`, `strictFailures=true` LAST inside the
+    /// strict scope), rendered bare from a real SQLite failure.
+    #[test]
+    fn the_three_rethrow_lines_carry_c2s_measured_fields() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        let sqlite = || {
+            DbError::from(
+                conn.execute_batch("SELECT 1 FROM no_such_table")
+                    .unwrap_err(),
+            )
+        };
+        let ((), lines) = crate::test_support::captured_with(|| {
+            log_create_failure("chat_informs", &sqlite());
+            log_update_failure("chat_informs", "i-1", &sqlite());
+            log_delete_failure("chat_informs", "i-1", &sqlite());
+            with_strict_repository_failures(|| {
+                log_create_failure("chats", &posed());
+                log_update_failure("memories", "m-1", &posed());
+                log_delete_failure("chat_informs", "i-2", &posed());
+            });
+        });
+        assert_eq!(
+            lines,
+            vec![
+                "ERROR quilltap::db Error creating entity collection=chat_informs error=no such table: no_such_table".to_string(),
+                "ERROR quilltap::db Error updating entity collection=chat_informs id=i-1 error=no such table: no_such_table".to_string(),
+                "ERROR quilltap::db Error deleting entity collection=chat_informs id=i-1 error=no such table: no_such_table".to_string(),
+                "ERROR quilltap::db Error creating entity collection=chats error=posed strictFailures=true".to_string(),
+                "ERROR quilltap::db Error updating entity collection=memories id=m-1 error=posed strictFailures=true".to_string(),
+                "ERROR quilltap::db Error deleting entity collection=chat_informs id=i-2 error=posed strictFailures=true".to_string(),
+            ]
+        );
+    }
+
+    /// P4.149 — the two chat-informs wraps: v4's line + `Ok(0)` outside the
+    /// strict scope, the line + the `Err` inside it, silence on success.
+    #[test]
+    fn the_two_inform_wraps_answer_zero_or_propagate_under_strict() {
+        let (got, lines) = crate::test_support::captured_with(|| {
+            (
+                pending_informs_by_batch_deleted_or_zero("b-1", || Err(posed())).unwrap(),
+                pending_informs_for_participant_deleted_or_zero("c-1", "p-1", || Err(posed()))
+                    .unwrap(),
+                pending_informs_by_batch_deleted_or_zero("b-1", || Ok(2)).unwrap(),
+                pending_informs_for_participant_deleted_or_zero("c-1", "p-1", || Ok(3)).unwrap(),
+            )
+        });
+        assert_eq!(got, (0, 0, 2, 3));
+        assert_eq!(
+            lines,
+            vec![
+                "ERROR quilltap::db Error deleting pending informs by batch collection=chat_informs batchId=b-1 error=posed".to_string(),
+                "ERROR quilltap::db Error deleting pending informs for participant collection=chat_informs chatId=c-1 participantId=p-1 error=posed".to_string(),
+            ]
+        );
+        let (got, lines) = crate::test_support::captured_with(|| {
+            with_strict_repository_failures(|| {
+                (
+                    pending_informs_by_batch_deleted_or_zero("b-1", || Err(posed())),
+                    pending_informs_for_participant_deleted_or_zero("c-1", "p-1", || Err(posed())),
+                )
+            })
+        });
+        assert!(matches!(got.0, Err(DbError::Internal(ref m)) if m == "posed"));
+        assert!(matches!(got.1, Err(DbError::Internal(ref m)) if m == "posed"));
+        assert_eq!(
+            lines,
+            vec![
+                "ERROR quilltap::db Error deleting pending informs by batch collection=chat_informs batchId=b-1 error=posed strictFailures=true".to_string(),
+                "ERROR quilltap::db Error deleting pending informs for participant collection=chat_informs chatId=c-1 participantId=p-1 error=posed strictFailures=true".to_string(),
+            ]
+        );
     }
 }
 

@@ -603,25 +603,33 @@ impl<'c> ChatInformsRepository<'c> {
     /// (withdrawing it is the only way it ends). A seat that already consumed a
     /// one-shot passage keeps its row, so a later swipe of that turn still
     /// re-applies it.
+    ///
+    /// P4.149: v4's 4-argument FALLBACK `safeQuery` — a failed read or row
+    /// delete logs v4's lines (the base `Error deleting entity`, then the wrap's
+    /// own) and answers `Ok(0)` through
+    /// [`super::fallback::pending_informs_by_batch_deleted_or_zero`]; it
+    /// propagates only inside the strict scope.
     pub fn delete_pending_by_batch(&self, batch_id: &str) -> Result<usize, DbError> {
-        let rows = self.find_by_batch_id(batch_id)?;
-        let mut count = 0usize;
-        for row in rows {
-            if !is_inform_in_force(&row) {
-                continue;
+        super::fallback::pending_informs_by_batch_deleted_or_zero(batch_id, || {
+            let rows = self.find_by_batch_id(batch_id)?;
+            let mut count = 0usize;
+            for row in rows {
+                if !is_inform_in_force(&row) {
+                    continue;
+                }
+                if self.delete_one(&row.id)? {
+                    count += 1;
+                }
             }
-            count += self
-                .conn
-                .execute("DELETE FROM chat_informs WHERE id = ?1", params![row.id])?;
-        }
-        tracing::debug!(
-            target: "quilltap::db",
-            collection = "chat_informs",
-            batch_id,
-            count,
-            "Pending informs deleted by batch",
-        );
-        Ok(count)
+            tracing::debug!(
+                target: "quilltap::db",
+                collection = "chat_informs",
+                batch_id,
+                count,
+                "Pending informs deleted by batch",
+            );
+            Ok(count)
+        })
     }
 
     /// v4 `deletePendingForParticipant` — a seat has left the chat: it can never
@@ -634,22 +642,29 @@ impl<'c> ChatInformsRepository<'c> {
         chat_id: &str,
         participant_id: &str,
     ) -> Result<usize, DbError> {
-        let pending = self.find_pending_for_participant(chat_id, participant_id)?;
-        let mut count = 0usize;
-        for row in pending {
-            count += self
-                .conn
-                .execute("DELETE FROM chat_informs WHERE id = ?1", params![row.id])?;
-        }
-        tracing::debug!(
-            target: "quilltap::db",
-            collection = "chat_informs",
+        // P4.149: v4's 4-argument FALLBACK wrap, as `delete_pending_by_batch`.
+        super::fallback::pending_informs_for_participant_deleted_or_zero(
             chat_id,
             participant_id,
-            count,
-            "Pending informs deleted for participant",
-        );
-        Ok(count)
+            || {
+                let pending = self.find_pending_for_participant(chat_id, participant_id)?;
+                let mut count = 0usize;
+                for row in pending {
+                    if self.delete_one(&row.id)? {
+                        count += 1;
+                    }
+                }
+                tracing::debug!(
+                    target: "quilltap::db",
+                    collection = "chat_informs",
+                    chat_id,
+                    participant_id,
+                    count,
+                    "Pending informs deleted for participant",
+                );
+                Ok(count)
+            },
+        )
     }
 
     /// v4 `deleteByChatId` — every row for a chat, consumed included.
@@ -658,15 +673,37 @@ impl<'c> ChatInformsRepository<'c> {
     /// cascade**: the generateDDL surface v5 follows carries no foreign key (see
     /// the module header), so the chat-delete path must call this or the rows
     /// outlive their chat.
+    ///
+    /// P4.149: v4 wraps this in a fallback too (`Error deleting informs by chat
+    /// ID` → `0`), but NO v4 production code calls it (the FK cascades), so it
+    /// keeps PROPAGATING: on v5 it is the cascade, and its one caller
+    /// (`chats.rs`) logs its own v5-only WARN. Its row deletes still log v4's
+    /// base line.
     pub fn delete_by_chat_id(&self, chat_id: &str) -> Result<usize, DbError> {
         let rows = self.find_by_chat_id(chat_id)?;
         let mut count = 0usize;
         for row in rows {
-            count += self
-                .conn
-                .execute("DELETE FROM chat_informs WHERE id = ?1", params![row.id])?;
+            if self.delete_one(&row.id)? {
+                count += 1;
+            }
         }
         Ok(count)
+    }
+
+    /// v4 `delete` — a pass-through `_delete` (`chat-informs.repository.ts:72`):
+    /// a failed DELETE logs the base rethrow line ([`super::fallback::
+    /// log_delete_failure`]) and propagates; a miss answers `false` (v4's `Entity
+    /// not found for deletion` WARN and the `Entity deleted` INFO are not ported
+    /// — Ruling R-A).
+    fn delete_one(&self, id: &str) -> Result<bool, DbError> {
+        self.conn
+            .execute("DELETE FROM chat_informs WHERE id = ?1", params![id])
+            .map(|n| n > 0)
+            .map_err(|e| {
+                let error = DbError::from(e);
+                super::fallback::log_delete_failure("chat_informs", id, &error);
+                error
+            })
     }
 }
 

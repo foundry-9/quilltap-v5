@@ -1,4 +1,5 @@
-//! `db::fallback` is the ONE home for v4's repository-layer fallback lines
+//! `db::fallback` is the ONE home for v4's repository-layer fallback lines (and,
+//! since P4.149, the base repository's RETHROW lines — logged, then handed back)
 //! (CLAUDE.md §R.6 of every round since the `97b25fc53` follow-ups
 //! unification, which found three hand-copies of one v4 line under three
 //! tracing targets; the `97b25fc53` smalls unification found seven more of
@@ -66,6 +67,16 @@ const HOME_MESSAGES: &[&str] = &[
     // (`projects.repository.ts:186-206` `canCharacterParticipate`'s own
     // `safeQuery`); the inner arm reuses `Error finding entity by ID`.
     "Error checking character participation",
+    // P4.149: v4's base-repository RETHROW lines (`base.repository.ts:350-447`
+    // — log and PROPAGATE, never a fallback; contract C2 measured the fields)
+    // and the two chat-informs 4-argument fallback wraps above `_delete`
+    // (`chat-informs.repository.ts:271-313`). "Repository-layer lines", not
+    // only fallback lines: the rethrow homes log and hand the error back.
+    "Error creating entity",
+    "Error updating entity",
+    "Error deleting entity",
+    "Error deleting pending informs by batch",
+    "Error deleting pending informs for participant",
 ];
 
 const HOME: &str = "db/fallback.rs";

@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-05 — fix(db): v4's base-repository rethrow lines get one home, and the two chat-informs bulk deletes answer 0 with v4's lines (P4.149 unit 1)
+
+_Versions: core 0.0.1210._
+
+`db::fallback` gains v4's three base-repository RETHROW lines (`Error creating entity`, `Error updating entity`, `Error deleting entity` — logged, then the error is handed back, with `strictFailures=true` inside the strict scope) and the two chat-informs 4-argument fallback wraps (`Error deleting pending informs by batch` / `… for participant`, answering 0 and propagating only under the strict scope). Field order measured through a logger spy on v4's real repository (contract C2).
+
+- `chat_informs`' bulk deletes route each row through a private `delete_one` that logs the base line, inside the wraps; a planted delete failure now answers `removed: 0` with v4's two lines where v5 had propagated the error.
+- The inform cancel's line moves from the api handler (wrong target, snake-case field, `sqlite error:` prefix) to the repository; the seat-removal `Could not drop pending informs` WARN is retired (unreachable in v4 — the DEBUG fires with `dropped_informs=0` instead).
+- `log_chat_create_validation_failure` folds its two `Error creating entity` copies onto the home.
+- `chat_informs_tier2_equivalence` gains a BEFORE DELETE trigger plant with per-op captured lines (red-first: v5 propagated where v4 answers 0) and two standing rows inserted out of posting order (the P4.151 survey's B1, mutation-proven); `fallback_home_guard` holds five more literals.
+
 #### 2026-10-05 — docs(porting): order the 07b8f0209 follow-ups + restore round — six lanes (P4.147–P4.152) with six fresh surveys
 
 _Docs-only change._

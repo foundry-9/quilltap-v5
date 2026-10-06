@@ -44,6 +44,19 @@
 //! rows. Red-first measured from the oracle at both pins: 16 of 27 read
 //! results move between `e5c6bd0c0` and `52d6e7ecd`.
 //!
+//! **P4.149** grew it twice. (1) The P4.151 survey's B1: two standing rows
+//! for p1 inserted LAST — F posted before C, G tied with D on `createdAt` with a
+//! smaller id — so the posting-order leg AMONG standing rows is observable here
+//! (mutation-proven: `by_delivery_order` answering `Equal` for two standing rows
+//! reddens op 18). (2) The repository-fallback arm: a BEFORE DELETE trigger
+//! planted mid-corpus (reads still succeed, every row delete fails), then a
+//! cancel and a seat removal. v4 answers `0` with its base rethrow line `Error
+//! deleting entity` and the 4-argument wrap's own line; ops marked
+//! `captureLogs` compare their ERROR/WARN lines as whole strings (field order
+//! and the bare `error` included), with v4's backend `SQLite deleteOne error`
+//! dropped (unported by standing convention). Red-first on unported `main`: the
+//! cancel PROPAGATED `planted delete failure` where v4 answers 0.
+//!
 //! Generate the oracle output + fixture (Node 24, from the TARGET-pinned v4
 //! worktree — §R.3 PIN REQUIRED):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
@@ -98,6 +111,41 @@ struct Op {
     ids: Option<Vec<String>>,
     #[serde(default, rename = "messageId")]
     message_id: Option<String>,
+    /// P4.149: record the ERROR/WARN lines this op logs (see [`v4_line`]).
+    #[serde(default, rename = "captureLogs")]
+    capture_logs: bool,
+}
+
+/// P4.149 — v4's backend-only lines (`backends/sqlite/backend.ts`), which v5
+/// does not port by standing convention (the search families'
+/// `UNPORTED_BACKEND_LINES`): dropped from the oracle's captured lines.
+const UNPORTED_BACKEND_LINES: &[&str] = &["SQLite deleteOne error"];
+
+/// P4.149 — the planted delete failure (the oracle's `PLANT`, byte-identical):
+/// a BEFORE DELETE trigger, so the selects inside the bulk deletes still
+/// succeed and only the row delete fails.
+const PLANT: &str = "CREATE TRIGGER qt_plant_no_delete BEFORE DELETE ON chat_informs \
+                     BEGIN SELECT RAISE(ABORT, 'planted delete failure'); END";
+
+/// One v4 line as the oracle recorded it (`{level, message, fields: [[k, v]…]}`,
+/// the context in v4's own key order), rendered the way v5's capture rig renders
+/// a `quilltap::db` event: `"<LEVEL> quilltap::db <message> k=v …"` — so the two
+/// sides compare as whole strings, field ORDER and the bare `error` included.
+fn v4_line(line: &Value) -> String {
+    let level = line["level"].as_str().expect("level").to_ascii_uppercase();
+    let mut out = format!(
+        "{level} quilltap::db {}",
+        line["message"].as_str().expect("message")
+    );
+    for pair in line["fields"].as_array().expect("fields") {
+        let key = pair[0].as_str().expect("field key");
+        let value = match &pair[1] {
+            Value::String(s) => s.clone(),
+            other => other.to_string(),
+        };
+        out.push_str(&format!(" {key}={value}"));
+    }
+    out
 }
 
 fn spec_path() -> PathBuf {
@@ -324,97 +372,118 @@ fn chat_informs_tier2_matches_oracle() {
     {
         let repo = writer.chat_informs();
         for op in &spec.ops {
-            let result: Value = match op.kind.as_str() {
-                "findPendingForParticipant" => Value::Array(
-                    repo.find_pending_for_participant(
-                        op.chat_id.as_deref().unwrap(),
-                        op.participant_id.as_deref().unwrap(),
-                    )
-                    .expect("find_pending_for_participant")
-                    .iter()
-                    .map(row_json)
-                    .collect(),
-                ),
-                "findConsumedByMessages" => Value::Array(
-                    repo.find_consumed_by_messages(
-                        op.chat_id.as_deref().unwrap(),
-                        op.participant_id.as_deref().unwrap(),
-                        op.message_ids.as_deref().unwrap(),
-                    )
-                    .expect("find_consumed_by_messages")
-                    .iter()
-                    .map(row_json)
-                    .collect(),
-                ),
-                "findPendingBatches" => Value::Array(
-                    repo.find_pending_batches(op.chat_id.as_deref().unwrap())
-                        .expect("find_pending_batches")
+            let (result, lines) =
+                quilltap_core::test_support::captured_with(|| match op.kind.as_str() {
+                    "plantDeleteFailure" => {
+                        writer.connection().execute_batch(PLANT).expect("plant");
+                        Value::Null
+                    }
+                    "dropPlant" => {
+                        writer
+                            .connection()
+                            .execute_batch("DROP TRIGGER qt_plant_no_delete")
+                            .expect("drop plant");
+                        Value::Null
+                    }
+                    "findPendingForParticipant" => Value::Array(
+                        repo.find_pending_for_participant(
+                            op.chat_id.as_deref().unwrap(),
+                            op.participant_id.as_deref().unwrap(),
+                        )
+                        .expect("find_pending_for_participant")
                         .iter()
-                        .map(|b| {
-                            json!({
-                                "batchId": b.batch_id,
-                                "contentMarkdown": b.content_markdown,
-                                "createdAt": b.created_at,
-                                "recordMessageId": b.record_message_id,
-                                "permanent": b.permanent,
-                                "pendingParticipantIds": b.pending_participant_ids,
+                        .map(row_json)
+                        .collect(),
+                    ),
+                    "findConsumedByMessages" => Value::Array(
+                        repo.find_consumed_by_messages(
+                            op.chat_id.as_deref().unwrap(),
+                            op.participant_id.as_deref().unwrap(),
+                            op.message_ids.as_deref().unwrap(),
+                        )
+                        .expect("find_consumed_by_messages")
+                        .iter()
+                        .map(row_json)
+                        .collect(),
+                    ),
+                    "findPendingBatches" => Value::Array(
+                        repo.find_pending_batches(op.chat_id.as_deref().unwrap())
+                            .expect("find_pending_batches")
+                            .iter()
+                            .map(|b| {
+                                json!({
+                                    "batchId": b.batch_id,
+                                    "contentMarkdown": b.content_markdown,
+                                    "createdAt": b.created_at,
+                                    "recordMessageId": b.record_message_id,
+                                    "permanent": b.permanent,
+                                    "pendingParticipantIds": b.pending_participant_ids,
+                                })
                             })
-                        })
-                        .collect(),
-                ),
-                "findByChatId" => Value::Array(
-                    repo.find_by_chat_id(op.chat_id.as_deref().unwrap())
-                        .expect("find_by_chat_id")
+                            .collect(),
+                    ),
+                    "findByChatId" => Value::Array(
+                        repo.find_by_chat_id(op.chat_id.as_deref().unwrap())
+                            .expect("find_by_chat_id")
+                            .iter()
+                            .map(row_json)
+                            .collect(),
+                    ),
+                    "findByBatchId" => Value::Array(
+                        repo.find_by_batch_id(op.batch_id.as_deref().unwrap())
+                            .expect("find_by_batch_id")
+                            .iter()
+                            .map(row_json)
+                            .collect(),
+                    ),
+                    "createBatch" => Value::Array(
+                        repo.create_batch(
+                            op.chat_id.as_deref().unwrap(),
+                            op.content_markdown.as_deref().unwrap(),
+                            op.participant_ids.as_deref().unwrap(),
+                            op.record_message_id.as_deref(),
+                            // v4 `params.permanent === true`.
+                            op.permanent == Some(true),
+                        )
+                        .expect("create_batch")
                         .iter()
-                        .map(row_json)
+                        .map(created_row_json)
                         .collect(),
-                ),
-                "findByBatchId" => Value::Array(
-                    repo.find_by_batch_id(op.batch_id.as_deref().unwrap())
-                        .expect("find_by_batch_id")
-                        .iter()
-                        .map(row_json)
-                        .collect(),
-                ),
-                "createBatch" => Value::Array(
-                    repo.create_batch(
-                        op.chat_id.as_deref().unwrap(),
-                        op.content_markdown.as_deref().unwrap(),
-                        op.participant_ids.as_deref().unwrap(),
-                        op.record_message_id.as_deref(),
-                        // v4 `params.permanent === true`.
-                        op.permanent == Some(true),
-                    )
-                    .expect("create_batch")
-                    .iter()
-                    .map(created_row_json)
-                    .collect(),
-                ),
-                "markConsumed" => Value::from(
-                    repo.mark_consumed(
-                        op.ids.as_deref().unwrap(),
-                        op.message_id.as_deref().unwrap(),
-                    )
-                    .expect("mark_consumed"),
-                ),
-                "deletePendingByBatch" => Value::from(
-                    repo.delete_pending_by_batch(op.batch_id.as_deref().unwrap())
-                        .expect("delete_pending_by_batch"),
-                ),
-                "deletePendingForParticipant" => Value::from(
-                    repo.delete_pending_for_participant(
-                        op.chat_id.as_deref().unwrap(),
-                        op.participant_id.as_deref().unwrap(),
-                    )
-                    .expect("delete_pending_for_participant"),
-                ),
-                "deleteByChatId" => Value::from(
-                    repo.delete_by_chat_id(op.chat_id.as_deref().unwrap())
-                        .expect("delete_by_chat_id"),
-                ),
-                other => panic!("unknown op kind: {other}"),
-            };
-            reads.push(json!({ "kind": op.kind, "label": op.label, "result": result }));
+                    ),
+                    "markConsumed" => Value::from(
+                        repo.mark_consumed(
+                            op.ids.as_deref().unwrap(),
+                            op.message_id.as_deref().unwrap(),
+                        )
+                        .expect("mark_consumed"),
+                    ),
+                    "deletePendingByBatch" => Value::from(
+                        repo.delete_pending_by_batch(op.batch_id.as_deref().unwrap())
+                            .expect("delete_pending_by_batch"),
+                    ),
+                    "deletePendingForParticipant" => Value::from(
+                        repo.delete_pending_for_participant(
+                            op.chat_id.as_deref().unwrap(),
+                            op.participant_id.as_deref().unwrap(),
+                        )
+                        .expect("delete_pending_for_participant"),
+                    ),
+                    "deleteByChatId" => Value::from(
+                        repo.delete_by_chat_id(op.chat_id.as_deref().unwrap())
+                            .expect("delete_by_chat_id"),
+                    ),
+                    other => panic!("unknown op kind: {other}"),
+                });
+            let mut read = json!({ "kind": op.kind, "label": op.label, "result": result });
+            if op.capture_logs {
+                let logged: Vec<Value> = lines
+                    .into_iter()
+                    .filter(|l| l.starts_with("ERROR ") || l.starts_with("WARN "))
+                    .map(Value::from)
+                    .collect();
+                read["logs"] = Value::Array(logged);
+            }
+            reads.push(read);
         }
     }
 
@@ -445,6 +514,59 @@ fn chat_informs_tier2_matches_oracle() {
         minted: HashMap::new(),
     };
     n_want.walk(&mut want);
+
+    // P4.149 — the captured lines, per op, before the result diff: the planted
+    // delete failure's three-line shape (v4's backend line dropped) and the
+    // healthy deletes' silence. Taken out of BOTH sides before normalization —
+    // every id they carry is a committed spec value.
+    let mut log_ops = 0usize;
+    let mut arm_lines = 0usize;
+    for (g, w) in got["reads"]
+        .as_array_mut()
+        .expect("rust reads")
+        .iter_mut()
+        .zip(
+            want["reads"]
+                .as_array_mut()
+                .expect("oracle reads")
+                .iter_mut(),
+        )
+    {
+        let w_logs = w.as_object_mut().and_then(|o| o.remove("logs"));
+        let g_logs = g.as_object_mut().and_then(|o| o.remove("logs"));
+        let Some(w_logs) = w_logs else {
+            assert!(g_logs.is_none(), "rust captured an op the oracle did not");
+            continue;
+        };
+        log_ops += 1;
+        let want_lines: Vec<String> = w_logs
+            .as_array()
+            .expect("oracle logs")
+            .iter()
+            .filter(|l| !UNPORTED_BACKEND_LINES.contains(&l["message"].as_str().unwrap_or("")))
+            .map(v4_line)
+            .collect();
+        let got_lines: Vec<String> = g_logs
+            .expect("rust logs")
+            .as_array()
+            .expect("rust logs array")
+            .iter()
+            .map(|l| l.as_str().expect("line").to_string())
+            .collect();
+        arm_lines += want_lines.len();
+        assert_eq!(
+            got_lines,
+            want_lines,
+            "logged lines diverged for `{}` — {}",
+            w["kind"].as_str().unwrap_or("?"),
+            w["label"].as_str().unwrap_or("")
+        );
+    }
+    assert_eq!(
+        (log_ops, arm_lines),
+        (6, 4),
+        "P4.149: six captured ops (four silence legs + the two planted arms, two lines each)"
+    );
 
     // Per-op read diff first: a mismatch names the method and v4's own label.
     let got_reads = got["reads"].as_array().expect("rust reads");

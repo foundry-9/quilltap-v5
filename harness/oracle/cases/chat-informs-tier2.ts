@@ -12,6 +12,11 @@
  *     `markConsumed` return counts, which land here too.
  *   - **`dump`** — the final table state, canonically shaped.
  *
+ * P4.149: an op marked `captureLogs` also records the ERROR/WARN lines v4
+ * logged while it ran (a `Logger.prototype` spy), and two op kinds plant and
+ * drop a BEFORE DELETE trigger so the bulk deletes' 4-argument fallback wraps
+ * are reached on the REAL repository.
+ *
  * MINTED VALUES: `createBatch` mints a `batchId`, one `id` per target, and the
  * timestamps; `markConsumed` mints `consumedAt`/`updatedAt`. Nothing is pinned on
  * those ops, so this case emits everything RAW and the harness applies one
@@ -49,6 +54,7 @@ interface Op {
   permanent?: boolean;
   ids?: string[];
   messageId?: string;
+  captureLogs?: boolean;
 }
 
 interface Spec {
@@ -89,11 +95,48 @@ async function main(): Promise<void> {
   await initializeDatabase();
   const repo = new ChatInformsRepository();
 
-  const reads: Array<{ kind: string; label: string; result: unknown }> = [];
+  const reads: Array<{ kind: string; label: string; result: unknown; logs?: unknown[] }> = [];
+
+  // P4.149 — the ERROR/WARN lines an op marked `captureLogs` logged, recorded off
+  // the `Logger` prototype (singleton and children alike, before the level
+  // check) with the context in v4's own key order: `safeQuery` builds
+  // `{ collection, ...context, error, strictFailures? }`. The backend's own
+  // `SQLite <op> error {table, error}` line is v5-unported by standing
+  // convention (`UNPORTED_BACKEND_LINES` in the search families) and is dropped
+  // by the harness, not here — this records everything v4 logs.
+  let opLogs: Array<{ level: string; message: string; fields: Array<[string, unknown]> }> | null =
+    null;
+  const { Logger } = await import('@/lib/logger');
+  for (const level of ['error', 'warn'] as const) {
+    const original = Logger.prototype[level];
+    Logger.prototype[level] = function (
+      this: unknown,
+      message: string,
+      context?: Record<string, unknown>,
+      ...rest: unknown[]
+    ) {
+      opLogs?.push({ level, message, fields: Object.entries(context ?? {}) });
+      return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+    } as never;
+  }
+  // P4.149 — the planted delete failure: a BEFORE DELETE trigger, so the
+  // selects inside the bulk deletes still succeed and only `_delete` throws.
+  const PLANT =
+    "CREATE TRIGGER qt_plant_no_delete BEFORE DELETE ON chat_informs " +
+    "BEGIN SELECT RAISE(ABORT, 'planted delete failure'); END";
 
   for (const op of spec.ops) {
     let result: unknown;
+    opLogs = op.captureLogs ? [] : null;
     switch (op.kind) {
+      case 'plantDeleteFailure':
+        await rawQuery(PLANT);
+        result = null;
+        break;
+      case 'dropPlant':
+        await rawQuery('DROP TRIGGER qt_plant_no_delete');
+        result = null;
+        break;
       case 'findPendingForParticipant':
         result = await repo.findPendingForParticipant(op.chatId!, op.participantId!);
         break;
@@ -139,7 +182,13 @@ async function main(): Promise<void> {
       default:
         throw new Error(`unknown op kind: ${op.kind}`);
     }
-    reads.push({ kind: op.kind, label: op.label, result });
+    reads.push({
+      kind: op.kind,
+      label: op.label,
+      result,
+      ...(opLogs === null ? {} : { logs: opLogs }),
+    });
+    opLogs = null;
   }
 
   // Final state, RAW through v4's own connected backend.

@@ -388,14 +388,13 @@ pub fn log_chat_create_validation_failure(zod_message: &str) {
         error = %zod_message,
         "Data validation failed"
     );
+    // P4.149 (contract C2): the base `_create` rethrow line through its ONE
+    // home, which reads the strict scope itself.
+    crate::db::fallback::log_create_failure(
+        "chats",
+        &crate::db::DbError::Internal(zod_message.to_string()),
+    );
     if crate::db::fallback::strict_repository_failures_active() {
-        tracing::error!(
-            target: "quilltap::db",
-            collection = "chats",
-            error = %zod_message,
-            strictFailures = true,
-            "Error creating entity"
-        );
         tracing::error!(
             target: "quilltap::db",
             collection = "chats",
@@ -404,12 +403,6 @@ pub fn log_chat_create_validation_failure(zod_message: &str) {
             "Failed to create chat"
         );
     } else {
-        tracing::error!(
-            target: "quilltap::db",
-            collection = "chats",
-            error = %zod_message,
-            "Error creating entity"
-        );
         tracing::error!(
             target: "quilltap::db",
             collection = "chats",

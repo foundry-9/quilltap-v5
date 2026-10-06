@@ -216,6 +216,32 @@
       "updatedAt": "2026-02-01T00:08:00.000Z",
       "consumedAt": "2026-02-01T00:08:00.000Z",
       "consumedByMessageId": "ee000000-0000-4000-8000-000000000300"
+    },
+    {
+      "id": "5a000000-0000-4000-8000-0000000000f1",
+      "chatId": "33333333-3333-4333-8333-333333333333",
+      "batchId": "5b000000-0000-4000-8000-0000000000f1",
+      "participantId": "aaaaaaaa-0000-4000-8000-000000000001",
+      "contentMarkdown": "standing corpus: standing posted earliest, inserted last",
+      "recordMessageId": null,
+      "permanent": true,
+      "createdAt": "2026-02-01T00:01:30.000Z",
+      "updatedAt": "2026-02-01T00:01:30.000Z",
+      "consumedAt": null,
+      "consumedByMessageId": null
+    },
+    {
+      "id": "5a000000-0000-4000-8000-0000000000d0",
+      "chatId": "33333333-3333-4333-8333-333333333333",
+      "batchId": "5b000000-0000-4000-8000-0000000000d0",
+      "participantId": "aaaaaaaa-0000-4000-8000-000000000001",
+      "contentMarkdown": "standing corpus: standing tied with D, smaller id",
+      "recordMessageId": null,
+      "permanent": true,
+      "createdAt": "2026-02-01T00:03:00.000Z",
+      "updatedAt": "2026-02-01T00:03:00.000Z",
+      "consumedAt": null,
+      "consumedByMessageId": null
     }
   ],
   "ops": [
@@ -328,13 +354,15 @@
     {
       "kind": "deletePendingByBatch",
       "label": "a wholly pending batch goes",
-      "batchId": "b2222222-0000-4000-8000-000000000002"
+      "batchId": "b2222222-0000-4000-8000-000000000002",
+      "captureLogs": true
     },
     {
       "kind": "deletePendingForParticipant",
       "label": "a seat leaves the chat \u2014 only its PENDING rows go",
       "chatId": "11111111-1111-4111-8111-111111111111",
-      "participantId": "aaaaaaaa-0000-4000-8000-000000000002"
+      "participantId": "aaaaaaaa-0000-4000-8000-000000000002",
+      "captureLogs": true
     },
     {
       "kind": "deleteByChatId",
@@ -385,7 +413,8 @@
     {
       "kind": "deletePendingByBatch",
       "label": "P4.D249: cancel withdraws a standing batch WHOLE \u2014 the delivered row with the undelivered one",
-      "batchId": "5b000000-0000-4000-8000-0000000000c1"
+      "batchId": "5b000000-0000-4000-8000-0000000000c1",
+      "captureLogs": true
     },
     {
       "kind": "deletePendingByBatch",
@@ -396,12 +425,34 @@
       "kind": "deletePendingForParticipant",
       "label": "P4.D249: seat removal now takes the seat's DELIVERED standing row too (no code hunk \u2014 inherited)",
       "chatId": "33333333-3333-4333-8333-333333333333",
-      "participantId": "aaaaaaaa-0000-4000-8000-000000000001"
+      "participantId": "aaaaaaaa-0000-4000-8000-000000000001",
+      "captureLogs": true
     },
     {
       "kind": "findByChatId",
       "label": "P4.D249: what is left \u2014 the consumed one-shot and the two created posts",
       "chatId": "33333333-3333-4333-8333-333333333333"
+    },
+    {
+      "kind": "plantDeleteFailure",
+      "label": "P4.149: plant a BEFORE DELETE trigger \u2014 reads still succeed, every DELETE on chat_informs fails"
+    },
+    {
+      "kind": "deletePendingByBatch",
+      "label": "P4.149: a failed row delete under cancel \u2014 v4's base `Error deleting entity` (rethrow), then the 4-argument wrap's own line, answering 0",
+      "batchId": "3f1c9f4a-1111-4a2b-9c3d-00000000000e",
+      "captureLogs": true
+    },
+    {
+      "kind": "deletePendingForParticipant",
+      "label": "P4.149: a failed row delete under seat removal \u2014 the FIRST failure leaves the loop, so ONE entity line then the wrap's line, answering 0",
+      "chatId": "3f1c9f4a-1111-4a2b-9c3d-000000000001",
+      "participantId": "3f1c9f4a-1111-4a2b-9c3d-00000000000d",
+      "captureLogs": true
+    },
+    {
+      "kind": "dropPlant",
+      "label": "P4.149: drop the trigger \u2014 the final dump shows the three planted-on rows survived"
     }
   ],
   "routes": {
@@ -480,5 +531,6 @@
     "foreignBatchId": "b1111111-0000-4000-8000-000000000001"
   },
   "standingChatId": "33333333-3333-4333-8333-333333333333",
-  "_commentStanding": "P4.D249 (v4 52d6e7ecd) \u2014 the standing-inform corpus, in its own chat so the P4.D205 ops above read unchanged. Posting order is A(T0) < B(T1) < C(T2) < D(T3) < E(T4); the standing rows (C, D, E) are posted AFTER the one-shots, so delivery order (standing first) and posting order (createdAt) disagree and both comparators are observable. C and E are DELIVERED standing rows: still in force, never in the batch-delete's spared set, and taken by seat removal."
+  "_commentStanding": "P4.D249 (v4 52d6e7ecd) \u2014 the standing-inform corpus, in its own chat so the P4.D205 ops above read unchanged. Posting order is A(T0) < B(T1) < C(T2) < D(T3) < E(T4); the standing rows (C, D, E) are posted AFTER the one-shots, so delivery order (standing first) and posting order (createdAt) disagree and both comparators are observable. C and E are DELIVERED standing rows: still in force, never in the batch-delete's spared set, and taken by seat removal. P4.149 (the P4.151 survey's B1): two more standing rows for p1, INSERTED LAST \u2014 F posted at T1.5 (before C, so insertion order and posting order disagree among standing rows) and G at D's createdAt with an id that sorts BEFORE D's (the id tiebreak against insertion order). Both are pending and both go with the p1 seat removal.",
+  "_commentCaptureLogs": "P4.149: an op marked captureLogs records the ERROR/WARN lines it logged (v4: a Logger.prototype spy on the REAL repository; v5: the thread-scoped capture rig), compared byte-for-byte with v4's backend-only `SQLite <op> error` line dropped (unported, the standing convention). Ops 15/16/23/25 are the healthy-delete silence legs; the two ops after the plant are the arm."
 }

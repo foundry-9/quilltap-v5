@@ -642,32 +642,35 @@ pub async fn chat_remove_participant(db: &Db, chat_id: &str, participant_id: &st
     // also reaches. So removing a seat through the PUT bag leaves its informs
     // alone, and reproducing that means putting the drop here.
     //
-    // **Never allowed to break the removal itself** — the seat is already gone,
-    // and v4 wraps this in a try/catch that only warns.
+    // **Never allowed to break the removal itself** — the seat is already gone.
+    // v4 wraps this in a try/catch that only warns, but P4.149 measured that
+    // catch UNREACHABLE on a database failure: `deletePendingForParticipant` is
+    // a 4-argument fallback `safeQuery` answering 0 (the repository logs v4's
+    // lines through `db::fallback`), so the DEBUG fires with
+    // `dropped_informs=0` instead. v4's WARN is retired; a failure of the write
+    // itself lands on the same home, once.
     {
         let cid = chat_id.to_string();
         let pid = participant_id.to_string();
-        match db
+        let deleted = db
             .write(move |w| {
                 w.main()
                     .chat_informs()
                     .delete_pending_for_participant(&cid, &pid)
             })
-            .await
-        {
-            Ok(dropped_informs) => tracing::debug!(
-                chat_id = %chat_id,
-                participant_id = %participant_id,
-                dropped_informs,
-                "[Chats v1] Pending informs dropped with removed seat",
-            ),
-            Err(e) => tracing::warn!(
-                chat_id = %chat_id,
-                participant_id = %participant_id,
-                error = %e,
-                "[Chats v1] Could not drop pending informs for removed seat",
-            ),
-        }
+            .await;
+        let dropped_informs = crate::db::fallback::pending_informs_for_participant_deleted_or_zero(
+            chat_id,
+            participant_id,
+            || deleted,
+        )
+        .unwrap_or(0);
+        tracing::debug!(
+            chat_id = %chat_id,
+            participant_id = %participant_id,
+            dropped_informs,
+            "[Chats v1] Pending informs dropped with removed seat",
+        );
     }
     // === end P4.D205 ===
 
