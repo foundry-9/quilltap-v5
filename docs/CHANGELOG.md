@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-06 — docs(porting): P4.D254 lane record — the `94fbb1ae3` inform catch-up LANE COMPLETE
+
+_Docs-only change._
+
+- `status-log.md`: the P4.D254 lane record (red-first set by name, seven mutations, the gate, the 💸 rows, one doc-only HANDOFF to P4.156). The work order's status header → LANE COMPLETE.
+
 #### 2026-10-06 — docs(spa): the Inform dialog's doc comment says where the passage lands now (P4.D254, v4 `94fbb1ae3`)
 
 _Versions: SPA 0.5.811._

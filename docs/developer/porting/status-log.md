@@ -168289,3 +168289,187 @@ broke every regen on the first attempt — a memory note); zsh's `set -- $x`
 does not word-split, so a three-server launch loop started nothing and its
 wait loop had to be stopped by task id. The REST project / chat / chat-settings
 PUTs remain dispatch-only in v5 (405), as recorded on 2026-10-05.
+
+## P4.D254 — the `94fbb1ae3` inform catch-up: the vouching header + the trailing placement — LANE COMPLETE (lane `claude/trailing-section-vouching-header-ddcac5`, 2026-10-06)
+
+**Probe.** The drift ledger's §2 probe PASSED at lane start and before each
+regen batch (v4 on `main` at `94fbb1ae3`, tree clean, `94fbb1ae3..main` and
+`1a2b2164c..bugfix` empty; ONE worktree — the checkout — before the pin was
+added). Pin: `/tmp/qt-v4-pin-p4d254-94fbb1ae3` (`4.10.0-dev.112`), verified
+by `rev-parse` + `ls -ld`, the three symlink classes in place (root,
+`packages/quilltap`, the 15 `plugins/dist/*/node_modules`). Every regen went
+to a LANE-PRIVATE `/tmp/p4d254/out/` (not the sweep driver's shared
+`/tmp/oracle-*` paths — six lanes share the machine), one family per
+invocation, under Node 24.13.1.
+
+### Red-first (Tier 1 item 1) — the §R.13 prediction, measured
+
+Every family regenerated from the pin and run against UNPORTED `main`
+(`7f4b05a19`, core 0.0.1235):
+
+| family | unported `main` at the target | why |
+|---|---|---|
+| `inform_block_equivalence` | **RED** — first divergence `the pending passage, verbatim, with no framing of any kind` (content without the header); the target oracle carries the header on all 13 built cases | the header |
+| `build_context_tier3_equivalence` | **RED** — first divergence `inform_one_pending_slots_after_identity_reminder` (the op this lane renames); the target oracle carried the block on 3 of the 5 old `inform_*` ops | placement + header |
+| `regenerate_swipe_tier3_equivalence` | **RED, 2 of 2 tests** — `no canned stream registered for call` on `inform_reapply_whole_group` (the canned stream is keyed by the REQUEST, so the moved block misses the key) | placement + header |
+| `orchestrator_tier3_equivalence` | **RED** — `event trace mismatch for inform_consumed_by_saved_turn` | placement + header |
+| `help_tree_equivalence` | **RED** — `help-tree content oracle FAILED: ["docs", "chunks"]` | `help/inform.md` |
+| `primary_stream_tier3_equivalence` | GREEN — **predicted, never compared the bytes**: its `inform_mid_error_*` ops pin only `chat_informs` rows + the call's `informRowIds`, never request content (`grep -c 'Things you now know'` = 0 in its fresh NDJSON) | — |
+| `help_tree_embed_guard`, `host_help_docs_boot` | GREEN — they count pages, and the count does not move (129) | — |
+
+Silent-stale-pass checks (ledger §5.2): `grep -c 'Things you now know'` in
+the fresh NDJSONs — inform-block 14 (13 built cases + the header row),
+build-context 9 (after the corpus growth; 3 before), regenerate-swipe 2,
+orchestrator 4.
+
+### Landed (Tier 1 — all seven items; Tier 2 — all three; Tier 3 — both recorded)
+
+2. **The header.** `pub const INFORM_BLOCK_HEADER` in
+   `services/inform_block.rs` (v4's two literals joined with their one space;
+   the em dash; the colon); `assemble_inform_block` returns
+   `"{HEADER}\n\n{passages joined by the separator}"` — the ONE content site,
+   so the swipe merge gets it for free; both empty-is-absent arms unchanged
+   (a unit test pins the header never riding alone). The tier-1 case emits
+   `inform-block-header` from v4's exported constant; the test byte-compares
+   it. `inform_block_equivalence` GREEN.
+3. **The placement** (`services/build_context.rs`, the P4.D205 hunks only).
+   The system push after the identity reminder is DELETED with its comment;
+   the reservation comment reworded (the read + `inform_tokens` unchanged —
+   the header now counts inside the block, as in v4); the block pushed into
+   `trailing` after progressions and before the turn-skip note; the
+   trailing-only condition gains `|| inform_block.is_some()` and the list
+   becomes `[anchor, progressions, inform, turn-skip]`. v4's new *why*
+   comment carried. **R-C held:** no prompt-cache or identity-stack version
+   moves, and `inform_seat_owed_nothing_adds_nothing` stayed GREEN
+   throughout.
+4. **Corpus growth.** R-B: `inform_one_pending_slots_after_identity_reminder`
+   → `inform_one_pending_rides_the_trailing_sections` (shape unchanged; both
+   sides read the name from the one JSON). Six NEW ops, five new planted
+   inform rows (seats `…fc`/`…fd`/`…fe`/`…ff`/`…4b4`), all recorded through
+   v4's REAL `buildContext`; each carries the header, so each is red on
+   unported `main` by construction (pre-port v5 has no header anywhere):
+   (a) `inform_trailing_only_chained_turn` — inform the ONLY trailing
+   content; (a') `inform_trailing_empty_new_user_message` — the same seat
+   with `newUserMessage: ''` (trailing-only branch, `onNewUserMessage:
+   false`); (b) `inform_trailing_before_turn_skip_on_new_user_message`;
+   (c) `inform_trailing_after_recall_on_new_user_message` (one LLM seat,
+   memories ON); (b+d, new-user branch)
+   `inform_trailing_between_progressions_and_turn_skip`; (d)
+   `inform_trailing_only_four_sections_in_order` (scene note, progressions,
+   inform, turn-skip). The single-seat ops plant an UNSEATED operator row,
+   so the Rust spec's `SpecMwp.participant_id` became `Option<String>` (v4's
+   `undefined`). **Mutation-proven** (each mutation applied to
+   `build_context.rs`, the family re-run, the source restored):
+   M1b inform moved before progressions → RED
+   `inform_trailing_between_progressions_and_turn_skip`; M2 inform after
+   turn-skip (new-user branch) → RED
+   `inform_trailing_before_turn_skip_on_new_user_message`; M3 the
+   trailing-only condition loses its inform arm → RED
+   `inform_trailing_only_chained_turn`; M4 `onNewUserMessage` from the RAW
+   input → RED `inform_trailing_empty_new_user_message: onNewUserMessage`
+   (left `true`, right `false`); M5 inform after turn-skip (trailing-only) →
+   RED `inform_trailing_only_four_sections_in_order`; M6 inform moved before
+   recall → RED `inform_trailing_after_recall_on_new_user_message`. (A first
+   M1 that DUPLICATED rather than moved the push reddened only the renamed
+   op — recorded as not an order proof and replaced by M1b.)
+5. **The debug line.** `tracing::debug!` target `quilltap::inform`,
+   `[Inform] Delivering inform block as a trailing context section`, keys
+   `chatId`, `participantId`, `onNewUserMessage` (the SAME
+   `new_user_message` binding the branch tests — `Some("")` logs `false`),
+   `rowIdsJson` (the `…Json` file-layer convention), at v4's position (after
+   the scene note and turn-skip note are built, before the branch), only
+   when the block is `Some` (and so a responding seat exists — v4's
+   `respondingParticipant?.id` is always defined there). **Capture pin
+   against v4, per op:** the bc case patches the logger singleton's `debug`
+   (the `inform-block.ts` case's seam) and emits a THIRD row per op,
+   `informLog`; the Rust side wraps `build_context` in
+   `global_capture::capture_async` and compares level, target, message, key
+   order (v4's `chatId, participantId, onNewUserMessage, rowIds`) and every
+   value (`rowIds` parsed). The silence leg is every block-less op (58 of
+   67): v4 logged nothing and v5 must log nothing. 9 lines compared, incl.
+   the swipe's `rowIds: []`; a guard asserts ≥ 7 so a broken seam cannot
+   pass vacuously.
+6. **The re-vendor.** `help/inform.md`, `docs/v4/CHANGELOG.md`,
+   `docs/v4/developer/PROMPT_ARCHITECTURE.md`,
+   `docs/v4/developer/features/salon-inform.md` byte-copied from the pin
+   (all four were byte-identical to `07b8f0209` before the copy); the
+   vendored `help/` tree md5-identical to the pin's, 129 files.
+   `help_tree_equivalence`, `help_tree_embed_guard`, `host_help_docs_boot`
+   GREEN at the target.
+7. **The re-runs.** `regenerate_swipe_tier3` (2/2), `orchestrator_tier3`,
+   `primary_stream_tier3` (2/2) regenerated at the target and GREEN by name
+   with **ZERO test-file edits** — no HANDOFF to P4.157 or the unifier.
+8. **R-A.** The two existing `[Inform]` lines log `chatId` /
+   `participantId`; the three unit pins in `inform_block.rs` moved with them
+   (the snake_case asserts were pins on the defect). The tier-1 case already
+   compared v4's key order against literals; v5's own lines are pinned by
+   the unit captures (the tier-1 seam drives `assemble_inform_block`, which
+   does not log).
+9. **Module docs** carry v4's new two-rule wording (it frames the text once,
+   only to vouch for it; it never writes), naming `94fbb1ae3`;
+   `InformBlock::content`'s doc says "section (header + passages)".
+10. **The SPA comment.** `inform-dialog.ts`'s class doc says what v4's
+    `InformDialog.tsx` now says; SPA 0.5.811; `npm run build` exit 0, `npm
+    test` 467 files / 8,889 passed (the inform-dialog spec among them).
+11. **Tier 3 — the mail order:** NOT pinned (no op carries unalerted
+    Suparṇā mail and an inform on one seat); P4.D168's MEASURED GAP comment
+    in `build_context.rs` extended to name the inform. Recorded, not
+    claimed.
+12. **Tier 3 — the live proof** is 💸 below.
+
+### HANDOFF
+
+- **P4.156 (doc-only):** `crates/quilltap-core/src/db/chat_informs.rs:6`'s
+  module doc still says an inform is "delivered verbatim as its own system
+  block on each" seat's next generation — stale since `94fbb1ae3`. The
+  file is P4.156's this round; the exact hunk: "delivered verbatim as its
+  own system block" → "delivered verbatim, under one vouching header, as a
+  trailing context section". No behaviour, no test.
+
+### Fixtures and oracles
+
+- `harness/oracle/fixtures/build-context-tier3.json`: six ops + five inform
+  rows added, one op renamed. Read only by `build_context_tier3` (its fixture
+  builder writes a `/tmp` pair — no committed `.db` moves). Its oracle MUST be
+  regenerated from `94fbb1ae3` or later (an older v4 has no `informLog` and
+  places the block in the prefix).
+- `harness/oracle/cases/inform-block.ts`: emits the header row — regenerate
+  from `94fbb1ae3` or later (an older oracle fails on the missing row, loud).
+- No committed `.db` pair touched; no other family's oracle invalidated.
+
+**Regen recipes** (the committed headers are canonical): `inform_block_
+equivalence.rs:30-45` and `build_context_tier3_equivalence.rs`'s header,
+run from the TARGET pin with Node 24 (`TZ=UTC` on both bc stages); the lane
+ran them with outputs under `/tmp/p4d254/out/`.
+
+### 💸 for the dogfood pass
+
+- A standing inform on the Friday copy re-posted: the request log shows the
+  header and the passage as the LAST trailing section, and the reply no
+  longer disbelieves it.
+- A chained multi-character turn carrying only an inform: the trailing user
+  message present in the logged request.
+- The `[Inform] Delivering …` line in `combined.log` with camelCase keys and
+  `rowIds` as an array.
+
+### Gate
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean, AND with `--features quilltap-core/native-transport`.
+- Every §R.13 family at the target pin, by name: `inform_block_equivalence`
+  1/1, `build_context_tier3_equivalence` 1/1, `regenerate_swipe_tier3_
+  equivalence` 2/2, `orchestrator_tier3_equivalence` 1/1, `primary_stream_
+  tier3_equivalence` 2/2, `help_tree_equivalence` 1/1, `help_tree_embed_
+  guard` 1/1, `host_help_docs_boot` 2/2 — all with `QT_V4_CHECKOUT` /
+  `QT_V4_ROOT` at the pin.
+- `recipe_sweep.py --self-test` exit 0.
+- `cargo test --workspace` (`CARGO_INCREMENTAL=0`, the lane's env block):
+  the first run stopped at `quilltap-tauri`'s `menu_contract` — SIGTERM, not
+  an assertion (a harness-free muda menu test) — after 591 binaries / 4,137
+  passed / 0 failed; that binary GREEN alone; the re-run with
+  `--no-fail-fast`: **671 binaries / 4,385 passed / 0 failed / 3 ignored**,
+  exit 0, every family above confirmed RUN by its `Running` line.
+- SPA: `npm run build` exit 0; `npm test` 467 files / 8,889 passed.
+
+**Versions at close:** core 0.0.1236; SPA 0.5.811; host/web/cli/tauri
+unchanged; harness frozen 0.0.1110.
