@@ -14,7 +14,9 @@
 //!   (c) ALREADY MIGRATED — (a)'s file after one v4 run; the column gate answers
 //!       `not needed`, nothing moves;
 //!   (d) GENERATEDDL-CURRENT — the schema-order nullable `permanent` a fresh v4
-//!       creates; `not needed`, left alone.
+//!       creates, with ONE row's cell set to NULL after the seed (P4.157 R-D);
+//!       `not needed`, left alone — the NULL stays NULL on both sides (v4
+//!       MEASURED at `94fbb1ae3`: no backfill, no COALESCE).
 //!
 //! The oracle runs v4's own migration module through
 //! `harness/oracle/lib/v4-migrations.ts` on a copy; this test runs
@@ -22,7 +24,8 @@
 //! mode, each byte-exact: `PRAGMA table_info` (name / type / notnull / default /
 //! pk, column order included — the ALTER appends), the table's
 //! `sqlite_master.sql` (`null` when absent), and every row's stored
-//! `permanent` (no backfill: every existing row 0). v4's report is asserted per
+//! `permanent` (no backfill: every existing row 0, and (d)'s planted NULL
+//! read back as `null`). v4's report is asserted per
 //! mode (`+RAN` only in (a)), so a mode cannot silently become vacuous.
 //!
 //! Generate (Node 24, from the TARGET-pinned v4 checkout):
@@ -82,7 +85,9 @@ fn snapshot(conn: &rusqlite::Connection) -> (Value, Value, Value) {
             .prepare("SELECT id, permanent FROM chat_informs ORDER BY id")
             .unwrap();
         stmt.query_map([], |r| {
-            Ok(json!({ "id": r.get::<_, String>(0)?, "permanent": r.get::<_, i64>(1)? }))
+            // `Option` — mode (d)'s nullable column carries a NULL cell
+            // (P4.157 R-D); an `i64` read panicked on it.
+            Ok(json!({ "id": r.get::<_, String>(0)?, "permanent": r.get::<_, Option<i64>>(1)? }))
         })
         .unwrap()
         .map(|r| r.unwrap())
@@ -175,6 +180,22 @@ fn the_boot_ensure_matches_v4s_migration_in_four_starting_shapes() {
             rows, oracle["rows"],
             "[{mode}] stored permanent per row (no backfill)"
         );
+        if mode == "d" {
+            // The planted NULL survives on BOTH sides — the ensure neither
+            // backfills nor rewrites it (P4.157 R-D, measured on v4).
+            let nulls = |v: &Value| {
+                v.as_array()
+                    .unwrap()
+                    .iter()
+                    .filter(|r| r["permanent"].is_null())
+                    .count()
+            };
+            assert_eq!(
+                (nulls(&rows), nulls(&oracle["rows"])),
+                (1, 1),
+                "[d] the planted NULL `permanent`"
+            );
+        }
         if let Some(before) = unchanged {
             assert_eq!(
                 before,

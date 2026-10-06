@@ -169583,3 +169583,18 @@ harness is frozen at `0.0.1110`).
   COUNT; a rebinding through a destructuring pattern (`let Row { consumed_at:
   c, .. } = r`) or a function argument is not tracked.
 - Gate: 4/4 tests ok; clippy `-p quilltap-harness --tests` clean.
+
+### Unit B3 / R-D — a NULL `permanent` in mode (d) (Tier 1 item 3)
+- The oracle's mode (d) runs `UPDATE chat_informs SET permanent = NULL WHERE
+  id = 'i3'` after the seed (the base file both sides copy). v4 MEASURED at
+  `94fbb1ae3`: report `add-chat-informs-permanent-v1 not needed`; rows `i1 0,
+  i2 0, i3 null` — no backfill, no COALESCE, no NOT NULL ALTER (the column
+  gate short-circuits before any write).
+- Red-first on the unrepaired reader: modes a–c OK, then
+  `InvalidColumnType(1, "permanent", Null)` panic at the snapshot's
+  `get::<_, i64>` (the panic the order predicted). Repaired: `Option<i64>`, and
+  a (d)-only pin that exactly one NULL survives on both sides. Green 4/4 modes.
+- Recipe (from the TARGET pin, Node 24): `cd /tmp/qt-v4-pin-p4157-94fbb1ae3 &&
+  QT_FIXTURE_OUT_DIR=/tmp/p4157/ensure npx tsx $V5W/harness/oracle/cases/chat-informs-permanent-ensure.ts
+  > /tmp/p4157/oracle-inform-ensure.ndjson`; `QT_ORACLE_INFORM_ENSURE=… QT_FIXTURE_INFORM_ENSURE_DIR=/tmp/p4157/ensure
+  cargo test -p quilltap-harness --test chat_informs_permanent_ensure_equivalence`.

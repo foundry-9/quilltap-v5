@@ -20,8 +20,10 @@
  *   (c) ALREADY MIGRATED — (a)'s file after one v4 run, migrated again; v4's
  *       column gate answers `not needed` and nothing moves.
  *   (d) GENERATEDDL-CURRENT — the table as a fresh v4 creates it (the
- *       schema-order nullable `"permanent" INTEGER DEFAULT 0` line kept); v4
- *       answers `not needed` and the table is left alone.
+ *       schema-order nullable `"permanent" INTEGER DEFAULT 0` line kept), with
+ *       ONE row's `permanent` set to NULL after the seed (P4.157 R-D — the
+ *       nullable column's one shape no insert produces); v4 answers `not
+ *       needed`, the table is left alone, and the NULL is what it reads back.
  *
  * Each base file is written under `QT_FIXTURE_OUT_DIR` as
  * `inform-ensure-<a|b|c|d>.db` (encrypted with the chat-informs spec's test
@@ -142,6 +144,11 @@ async function main(): Promise<void> {
     } else {
       base.exec(currentDdl);
       seed(base);
+      // P4.157 R-D: the schema-order column is NULLABLE (generateDDL's
+      // `"permanent" INTEGER DEFAULT 0`, no NOT NULL), so a NULL cell is a
+      // legal shape here and the one the ensure's backfill question turns on.
+      // The seed alone never writes one (the DEFAULT fills every insert).
+      base.prepare("UPDATE chat_informs SET permanent = NULL WHERE id = 'i3'").run();
     }
     base.close();
     if (mode === 'c') {

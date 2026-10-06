@@ -228,6 +228,13 @@ The overlay's find-by-id / list hydration (`hydrate_one`) now renders a `propert
 _Versions: core 0.0.1236._
 
 `v8_json_parse_message` is now a full V8 `JsonParser` walk over UTF-16 units instead of a start-of-input check. It reproduces V8's fixed templates for failures inside a value (`Expected property name or '}' in JSON at position N (line L column C)`, the comma/bracket/colon/double-quoted-key messages, unterminated strings, bad escapes and control characters, the number errors, trailing input), the `\r` and `\r\n` line rule, and the special whole-source strings (`"undefined" is not valid JSON` and kin, which the old twin misworded). It answers `None` only where V8 accepts the text. New tier-1 family `v8_json_parse_message_equivalence` over a 149-row corpus recorded with Node 24.13.1 (`harness/oracle/cases/v8-json-parse-messages.ts`); 103 of 145 rows were red on the old twin. The family also pins, both ways, the three shapes serde refuses but V8 accepts (the callers' remaining serde fallback). `text_http_errors` gains `ok_json_missing_comma` on all ten providers (V8's sentence now reaches `sdk_response_shape`'s body parse; 15 divergences red on the old twin) and the Google stream-path `content.text` row.
+#### 2026-10-06 — test(harness): the informs ensure differential's mode (d) plants a NULL `permanent` on both sides (P4.157 R-D)
+
+_Harness-only change (no crate source; no version moves — the harness is frozen)._
+
+- `chat-informs-permanent-ensure.ts`: mode (d) — the generateDDL-current nullable column — sets one seed row's `permanent` to NULL after the seed, the one shape no insert produces. v4 measured at `94fbb1ae3`: `not needed`, no backfill, the NULL stays.
+- `chat_informs_permanent_ensure_equivalence.rs` reads `permanent` as `Option<i64>` (its `i64` read panicked on the NULL — the red on the unrepaired reader) and pins one NULL on both sides in (d).
+
 #### 2026-10-06 — test(harness): the in-force census's code arm becomes a token-level census over six forms + rebindings, with four committed evasion fixtures (P4.157 R-E)
 
 _Harness-only change (no crate source; no version moves — the harness is frozen)._
