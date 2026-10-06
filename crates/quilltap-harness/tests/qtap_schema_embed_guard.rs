@@ -15,10 +15,11 @@
 //!   QT_V4_CHECKOUT=~/source/quilltap-server \
 //!     cargo test -p quilltap-harness --test qtap_schema_embed_guard -- --nocapture
 
-use std::path::PathBuf;
-
 use quilltap_core::generators::qtap_schema::{validate_qtap_export, QTAP_EXPORT_SCHEMA_JSON};
 use serde_json::{json, Value};
+
+// P4.157 R-H: the ONE v4-checkout locator (`common::v4_root`).
+mod common;
 
 /// The vendored size at v4 `78b381a96` (P4.D171 — the route-trail message
 /// field, `5841a8c62`; was 89,769 at `2f4254b42`). 93,384 at `31436bae4`
@@ -39,55 +40,6 @@ use serde_json::{json, Value};
 /// boolean, default false) after `recordMessageId`, and `consumedAt` /
 /// `consumedByMessageId` gaining their first-delivery descriptions.
 const VENDORED_BYTES: usize = 97_324;
-
-/// The v4 checkout this guard compares against. `QT_V4_CHECKOUT` FIRST — the
-/// variable every pinned gate exports and the three other live-checkout guards
-/// read (`zod_version_guard`, `builtin_prompt_templates_guard`,
-/// `provider_sdk_version_guard`) — so a pinned gate never silently compares
-/// against a dirty live checkout (it did at the `e5c6bd0c0` unification).
-/// `QT_V4_ROOT` stays as the legacy alias; then `$HOME/source/quilltap-server`
-/// when it exists (P4.150).
-fn v4_root() -> Option<PathBuf> {
-    locate_v4_root(
-        std::env::var("QT_V4_CHECKOUT").ok().as_deref(),
-        std::env::var("QT_V4_ROOT").ok().as_deref(),
-        std::env::var("HOME").ok().as_deref(),
-    )
-}
-
-/// The pure precedence rule behind [`v4_root`] — a non-empty `checkout`, then a
-/// non-empty `root`, then `<home>/source/quilltap-server` if it is a directory.
-fn locate_v4_root(
-    checkout: Option<&str>,
-    root: Option<&str>,
-    home: Option<&str>,
-) -> Option<PathBuf> {
-    if let Some(p) = checkout.filter(|p| !p.is_empty()) {
-        return Some(PathBuf::from(p));
-    }
-    if let Some(p) = root.filter(|p| !p.is_empty()) {
-        return Some(PathBuf::from(p));
-    }
-    let default = PathBuf::from(home?).join("source/quilltap-server");
-    default.is_dir().then_some(default)
-}
-
-#[test]
-fn the_v4_locator_reads_qt_v4_checkout_before_its_qt_v4_root_alias() {
-    assert_eq!(
-        locate_v4_root(Some("/pin"), Some("/alias"), None),
-        Some(PathBuf::from("/pin"))
-    );
-    assert_eq!(
-        locate_v4_root(Some(""), Some("/alias"), None),
-        Some(PathBuf::from("/alias"))
-    );
-    assert_eq!(
-        locate_v4_root(None, Some("/alias"), None),
-        Some(PathBuf::from("/alias"))
-    );
-    assert_eq!(locate_v4_root(None, Some(""), Some("/no/such/home")), None);
-}
 
 #[test]
 fn the_embedded_schema_is_self_consistent() {
@@ -130,7 +82,7 @@ fn the_embedded_schema_is_self_consistent() {
 
 #[test]
 fn the_embedded_schema_equals_the_v4_checkouts() {
-    let Some(root) = v4_root() else {
+    let Some(root) = common::v4_root() else {
         eprintln!("SKIP: no v4 checkout (set QT_V4_CHECKOUT).");
         return;
     };

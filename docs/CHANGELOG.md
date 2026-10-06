@@ -228,6 +228,12 @@ The overlay's find-by-id / list hydration (`hydrate_one`) now renders a `propert
 _Versions: core 0.0.1236._
 
 `v8_json_parse_message` is now a full V8 `JsonParser` walk over UTF-16 units instead of a start-of-input check. It reproduces V8's fixed templates for failures inside a value (`Expected property name or '}' in JSON at position N (line L column C)`, the comma/bracket/colon/double-quoted-key messages, unterminated strings, bad escapes and control characters, the number errors, trailing input), the `\r` and `\r\n` line rule, and the special whole-source strings (`"undefined" is not valid JSON` and kin, which the old twin misworded). It answers `None` only where V8 accepts the text. New tier-1 family `v8_json_parse_message_equivalence` over a 149-row corpus recorded with Node 24.13.1 (`harness/oracle/cases/v8-json-parse-messages.ts`); 103 of 145 rows were red on the old twin. The family also pins, both ways, the three shapes serde refuses but V8 accepts (the callers' remaining serde fallback). `text_http_errors` gains `ok_json_missing_comma` on all ten providers (V8's sentence now reaches `sdk_response_shape`'s body parse; 15 divergences red on the old twin) and the Google stream-path `content.text` row.
+#### 2026-10-06 — test(harness): ONE `common::v4_root` for the five live-checkout guards (P4.157 R-H)
+
+_Harness-only change (no crate source; no version moves — the harness is frozen)._
+
+- `tests/common/mod.rs` gains `v4_root()` + the pure `locate_v4_root()` (`QT_V4_CHECKOUT` → `QT_V4_ROOT` → `$HOME/source/quilltap-server`) and `V4_DEFAULT_CHECKOUT`.
+- `public_schemas_vendor_guard` and `qtap_schema_embed_guard` drop their copies of `v4_root` + `locate_v4_root`; `builtin_prompt_templates_guard`, `provider_sdk_version_guard` and `zod_version_guard` drop their `v4_checkout()` (which read `QT_V4_CHECKOUT` alone, so a gate exporting only `QT_V4_ROOT` compared against the live checkout). The locator's precedence test stays once, in `public_schemas_vendor_guard`. Every `SKIP:` sentence unchanged. `help_tree_equivalence` reads no v4 tree (oracle NDJSON only) — nothing to fold.
 
 #### 2026-10-06 — docs(porting): amend the `07b8f0209` smalls round with the `94fbb1ae3` drift catch-up — P4.D254 added as a seventh lane; every pin moves to the target
 

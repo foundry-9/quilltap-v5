@@ -25,7 +25,8 @@
 //! the assertion is on the resulting list, so a name that ever broke that
 //! agreement would show up as an order mismatch rather than pass silently.
 //!
-//! The locator is `QT_V4_CHECKOUT` (default `$HOME/source/quilltap-server`, the
+//! The locator is the shared `common::v4_root` (`QT_V4_CHECKOUT`, then the
+//! `QT_V4_ROOT` alias, then `$HOME/source/quilltap-server`, the
 //! convention every recipe header uses). An absent checkout prints a loud
 //! `SKIP:` — a machine without the v4 tree must not fail here — and never a
 //! silent pass. A checkout whose prompts have MOVED is a FAIL, never a skip.
@@ -42,17 +43,10 @@ use std::path::PathBuf;
 
 use quilltap_core::services::builtin_prompt_templates::catalogue;
 
-const PLUGIN_ID: &str = "default-system-prompts";
+// P4.157 R-H: the ONE v4-checkout locator (`common::v4_root`).
+mod common;
 
-fn v4_checkout() -> PathBuf {
-    match std::env::var("QT_V4_CHECKOUT") {
-        Ok(v) if !v.is_empty() => PathBuf::from(v),
-        _ => {
-            let home = std::env::var("HOME").expect("HOME must be set to locate the v4 checkout");
-            PathBuf::from(home).join("source/quilltap-server")
-        }
-    }
-}
+const PLUGIN_ID: &str = "default-system-prompts";
 
 /// v4 `parsePromptFilename` (the plugin's own helper), verbatim.
 fn parse_prompt_filename(base_name: &str) -> (String, String) {
@@ -78,7 +72,7 @@ fn display_name(model_hint: &str, category: &str) -> String {
 
 #[test]
 fn the_vendored_catalogue_equals_v4s_shipped_prompts() {
-    let checkout = v4_checkout();
+    let checkout = common::v4_root().unwrap_or_else(|| PathBuf::from(common::V4_DEFAULT_CHECKOUT));
     let prompts_dir = checkout.join(format!("plugins/dist/qtap-plugin-{PLUGIN_ID}/prompts"));
     if !prompts_dir.is_dir() {
         println!(

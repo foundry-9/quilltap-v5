@@ -169533,3 +169533,23 @@ unchanged).
 - **HANDOFFs:** (1) P4.155 / unifier — `read_properties` through the twin, then lift the `<parse-detail>` elision in `projects_tier2` / `groups_tier2` / `projects_routes` (unit 2's record; MEASURED green locally); (2) unifier — the stale `optimizer.rs:789-792` module comment (unit 1's record). Named follow-ups: the 23 other recorded plugin WARNs in the image corpus; the decoder's third parts-join copy (`decoders/google_parts.rs::extract_text`); the read_properties ERROR line's snake_case key + missing `${Label}` prefix.
 - **💸 for the dogfood pass:** Foundry-9's `properties.json` overwritten with `{` on a clone → the WARN reads `Expected property name or '}' in JSON at position 1 (line 1 column 2)` on the READ path (the write path waits on HANDOFF 1); a posed Gemini image refusal carrying only `promptFeedback.blockReason` → `blockReason=SAFETY` with no `finishReason=`; a posed Google stream answer carrying `content.text` → the text delivered plus `No parts found…`.
 - **Versions at close:** core **0.0.1239** (+4: 1236/1237/1238/1239); harness frozen 0.0.1110; host/web/cli/tauri/SPA unchanged.
+## P4.157 — harness / test-craft smalls, round 2 (lane `claude/harness-test-craft-smalls-r2-0b997b`, 2026-10-06)
+
+Pins: `/tmp/qt-v4-pin-p4157-94fbb1ae3` (the TARGET, `4.10.0-dev.112`) and, for
+the §R.13 families, `/tmp/qt-v4-pin-p4157-07b8f0209` (`4.10.0-dev.111`). §2
+probe PASSED at lane start (branch `main`, HEAD `94fbb1ae3`, both logs empty,
+tree clean). ZERO hunks under any crate's `src/`; no version moves (the
+harness is frozen at `0.0.1110`).
+
+### Unit R-H — ONE `common::v4_root` (Tier 1 item 6)
+- `tests/common/mod.rs`: `v4_root()` / `locate_v4_root()` /
+  `V4_DEFAULT_CHECKOUT`. The two `locate_v4_root` copies and three
+  `v4_checkout()` copies deleted; the precedence test kept once
+  (`public_schemas_vendor_guard`). SKIP sentences unchanged.
+- Measured: `help_tree_equivalence` does not resolve a v4 tree at all (it reads
+  `QT_ORACLE_HELP_TREE`), so it does not join.
+- Red-first (the blindness): with `QT_V4_CHECKOUT` unset and
+  `QT_V4_ROOT=/nonexistent-p4157`, the three former `v4_checkout()` guards
+  now SKIP naming `/nonexistent-p4157` — before, they ignored `QT_V4_ROOT` and
+  compared against the live checkout. Green at the pin (`QT_V4_CHECKOUT` +
+  `QT_V4_ROOT` = the TARGET pin): 2 + 3 + 1 + 3 + 2 tests ok.

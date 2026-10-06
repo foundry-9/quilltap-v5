@@ -48,7 +48,8 @@
 //! stamps: `v24.13.1` ×290 (260 + 8 `x-stainless-runtime-version`, 22
 //! `gl-node/`). (`google_parts.rs` cites `@google/genai@1.52.0` too.)
 //!
-//! Locator: `QT_V4_CHECKOUT` (default `$HOME/source/quilltap-server`). An
+//! Locator: the shared `common::v4_root` (`QT_V4_CHECKOUT`, then the
+//! `QT_V4_ROOT` alias, then `$HOME/source/quilltap-server`). An
 //! absent checkout prints a loud `SKIP:`; a moved version is a FAIL.
 //!
 //! No recipe stage — this reads installed `package.json`s and committed
@@ -58,6 +59,9 @@
 //!   cargo test -p quilltap-harness --test provider_sdk_version_guard
 
 use std::path::{Path, PathBuf};
+
+// P4.157 R-H: the ONE v4-checkout locator (`common::v4_root`).
+mod common;
 
 /// `openai` — the Stainless `x-stainless-package-version` on every
 /// non-anthropic OpenAI-shaped request.
@@ -82,16 +86,6 @@ const SDKS: [(&str, &str); 4] = [
     ("@google/genai", RECORDED_GOOGLE_GENAI_SDK),
     ("@openrouter/sdk", RECORDED_OPENROUTER_SDK),
 ];
-
-fn v4_checkout() -> PathBuf {
-    match std::env::var("QT_V4_CHECKOUT") {
-        Ok(v) if !v.is_empty() => PathBuf::from(v),
-        _ => {
-            let home = std::env::var("HOME").expect("HOME must be set to locate the v4 checkout");
-            PathBuf::from(home).join("source/quilltap-server")
-        }
-    }
-}
 
 fn package_version(pkg_json: &Path) -> String {
     let text = std::fs::read_to_string(pkg_json)
@@ -123,7 +117,7 @@ fn install_locations(checkout: &Path) -> Vec<PathBuf> {
 
 #[test]
 fn every_installed_provider_sdk_matches_the_recorded_version() {
-    let checkout = v4_checkout();
+    let checkout = common::v4_root().unwrap_or_else(|| PathBuf::from(common::V4_DEFAULT_CHECKOUT));
     if !checkout.is_dir() {
         println!(
             "SKIP: no v4 checkout at {} (set QT_V4_CHECKOUT) — cannot verify the installed \

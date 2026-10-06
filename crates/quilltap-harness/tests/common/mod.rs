@@ -9,7 +9,7 @@
 //! uses a different subset of the helpers.
 #![allow(dead_code)]
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::db::Writer;
@@ -371,3 +371,44 @@ pub fn dump_pascal_stores(db: &Db, chat_id: &str, group_id: &str, characters: [&
     })
     .expect("store dump reads")
 }
+
+/// The v4 checkout a live-checkout guard compares against — ONE home for the
+/// five guards that used to carry it (`public_schemas_vendor_guard` and
+/// `qtap_schema_embed_guard`'s `v4_root` + `locate_v4_root`;
+/// `builtin_prompt_templates_guard`, `provider_sdk_version_guard` and
+/// `zod_version_guard`'s `v4_checkout`, which read `QT_V4_CHECKOUT` alone).
+///
+/// `QT_V4_CHECKOUT` FIRST — the variable every pinned gate exports — so a
+/// pinned gate never silently compares against a dirty live checkout (it did
+/// at the `e5c6bd0c0` unification); `QT_V4_ROOT` as the legacy alias; then
+/// `$HOME/source/quilltap-server` when it exists (P4.150's rule, P4.157 R-H).
+/// `None` = no checkout on this machine: each guard prints its own `SKIP:`.
+pub fn v4_root() -> Option<PathBuf> {
+    locate_v4_root(
+        std::env::var("QT_V4_CHECKOUT").ok().as_deref(),
+        std::env::var("QT_V4_ROOT").ok().as_deref(),
+        std::env::var("HOME").ok().as_deref(),
+    )
+}
+
+/// The pure precedence rule behind [`v4_root`] — a non-empty `checkout`, then
+/// a non-empty `root`, then `<home>/source/quilltap-server` if it is a
+/// directory. Pinned by `public_schemas_vendor_guard`'s locator test.
+pub fn locate_v4_root(
+    checkout: Option<&str>,
+    root: Option<&str>,
+    home: Option<&str>,
+) -> Option<PathBuf> {
+    if let Some(p) = checkout.filter(|p| !p.is_empty()) {
+        return Some(PathBuf::from(p));
+    }
+    if let Some(p) = root.filter(|p| !p.is_empty()) {
+        return Some(PathBuf::from(p));
+    }
+    let default = PathBuf::from(home?).join("source/quilltap-server");
+    default.is_dir().then_some(default)
+}
+
+/// What a guard's `SKIP:` names when [`v4_root`] found nothing — the default
+/// location, for the human reading the notice.
+pub const V4_DEFAULT_CHECKOUT: &str = "$HOME/source/quilltap-server";

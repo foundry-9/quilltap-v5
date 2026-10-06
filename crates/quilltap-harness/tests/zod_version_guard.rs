@@ -16,7 +16,8 @@
 //! version recorded below, so the obligation is visible at ordering time
 //! instead of discovered mid-round.
 //!
-//! The locator is `QT_V4_CHECKOUT` (default `$HOME/source/quilltap-server`,
+//! The locator is the shared `common::v4_root` (`QT_V4_CHECKOUT`, then the
+//! `QT_V4_ROOT` alias, then `$HOME/source/quilltap-server`,
 //! the convention every recipe header uses). An absent checkout directory
 //! prints a loud `SKIP:` line, since a CI box with no v4 checkout must not
 //! fail here, and never a silent pass. A checkout whose `zod` has moved is a
@@ -38,6 +39,9 @@
 //!   cargo test -p quilltap-harness --test zod_version_guard
 
 use std::path::PathBuf;
+
+// P4.157 R-H: the ONE v4-checkout locator (`common::v4_root`).
+mod common;
 
 /// v4's installed `zod`, measured 2026-09-21 from the `f45a517a9` pin
 /// (`node -p "require('./node_modules/zod/package.json').version"` — `4.6.5`,
@@ -91,16 +95,6 @@ use std::path::PathBuf;
 /// .ndjson`, 362 rows) and all nine provider recorders' corpora.
 const RECORDED_ZOD_VERSION: &str = "4.6.5";
 
-fn v4_checkout() -> PathBuf {
-    match std::env::var("QT_V4_CHECKOUT") {
-        Ok(v) if !v.is_empty() => PathBuf::from(v),
-        _ => {
-            let home = std::env::var("HOME").expect("HOME must be set to locate the v4 checkout");
-            PathBuf::from(home).join("source/quilltap-server")
-        }
-    }
-}
-
 /// Read `<checkout>/node_modules/zod/package.json`'s `"version"` field
 /// without pulling in a JSON dependency this test alone would need — the
 /// field is a short quoted string near the top of a small, well-formed file.
@@ -117,7 +111,7 @@ fn installed_zod_version(pkg_json: &std::path::Path) -> String {
 
 #[test]
 fn v4s_installed_zod_matches_the_recorded_version() {
-    let checkout = v4_checkout();
+    let checkout = common::v4_root().unwrap_or_else(|| PathBuf::from(common::V4_DEFAULT_CHECKOUT));
     if !checkout.is_dir() {
         println!(
             "SKIP: no v4 checkout at {} (set QT_V4_CHECKOUT) — cannot verify the installed \
