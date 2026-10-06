@@ -187,10 +187,118 @@ struct CannedRowW {
 // P4.144: the `[FoldEpisodePass]` log-line comparand.
 // ---------------------------------------------------------------------------
 
-use quilltap_core::test_support::global_capture;
-
 const LINE_MARK: &str = "[FoldEpisodePass]";
 const PASS_TARGET: &str = "quilltap_core::services::fold_episode_pass";
+
+/// P4.149 (item 7): the memory REPOSITORY's lines the pass reaches — the
+/// oracle's `DB_MESSAGES`, byte-identical — compared beside the pass's own.
+/// They fire inside `db.write`, on the WRITER thread, which the thread-scoped
+/// rigs cannot see; this binary holds ONE test, so [`all_threads`] captures
+/// every thread's events while armed.
+const DB_MESSAGES: &[&str] = &[
+    "Error creating entity",
+    "Error creating memory",
+    "Error updating entity",
+    "Error updating memory",
+    "Error updating memory for character",
+    "Error deleting entity",
+    "Error deleting memory",
+    "Error deleting memory for character",
+    "Memory not found for update",
+    "Memory not found for deletion",
+    "Memory does not belong to character",
+    "Error finding entity by ID",
+];
+const DB_TARGET: &str = "quilltap::db";
+
+/// P4.149: a process-global capture of EVERY thread's events while armed,
+/// rendered by core's `FieldVisitor` (the `captured` line shape). Safe only
+/// because this test binary holds a single test — nothing else runs while a
+/// pass is armed.
+mod all_threads {
+    use std::sync::Mutex;
+
+    static BUF: Mutex<Option<Vec<String>>> = Mutex::new(None);
+
+    struct Layer;
+
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Layer {
+        fn on_event(
+            &self,
+            event: &tracing::Event<'_>,
+            _ctx: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            let mut guard = BUF.lock().unwrap();
+            let Some(buf) = guard.as_mut() else { return };
+            let meta = event.metadata();
+            let mut visitor = quilltap_core::test_support::FieldVisitor(format!(
+                "{} {}",
+                meta.level(),
+                meta.target()
+            ));
+            event.record(&mut visitor);
+            buf.push(visitor.0);
+        }
+    }
+
+    pub fn install() {
+        use tracing_subscriber::layer::SubscriberExt;
+        tracing::subscriber::set_global_default(tracing_subscriber::registry().with(Layer))
+            .expect("this binary's one global subscriber");
+    }
+
+    pub async fn capture<T>(f: impl std::future::Future<Output = T>) -> (T, Vec<String>) {
+        *BUF.lock().unwrap() = Some(Vec::new());
+        let out = f.await;
+        let lines = BUF.lock().unwrap().take().expect("armed");
+        (out, lines)
+    }
+}
+
+/// A v4 repository line rendered under `quilltap::db`, every UUID that is not
+/// a committed spec value replaced by `<id>` (the episode rows are minted per
+/// side).
+fn render_db_line(line: &Value, known: &str) -> String {
+    let level = line["level"].as_str().expect("level").to_uppercase();
+    let message = line["message"].as_str().expect("message");
+    let mut out = format!("{level} {DB_TARGET} {message}");
+    if let Some(ctx) = line["context"].as_object() {
+        for (k, v) in ctx {
+            let rendered = match v {
+                Value::String(s) => s.clone(),
+                other => other.to_string(),
+            };
+            out.push_str(&format!(" {k}={rendered}"));
+        }
+    }
+    mask_minted_ids(&out, known)
+}
+
+/// Replace every 36-char UUID in `line` that does not occur in `known` (the
+/// spec text) with `<id>`.
+fn mask_minted_ids(line: &str, known: &str) -> String {
+    let bytes = line.as_bytes();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        if i + 36 <= bytes.len() && line.is_char_boundary(i) && line.is_char_boundary(i + 36) {
+            let cand = &line[i..i + 36];
+            let is_uuid = cand.bytes().enumerate().all(|(j, c)| match j {
+                8 | 13 | 18 | 23 => c == b'-',
+                _ => c.is_ascii_hexdigit(),
+            });
+            if is_uuid {
+                out.push_str(if known.contains(cand) { cand } else { "<id>" });
+                i += 36;
+                continue;
+            }
+        }
+        let ch = line[i..].chars().next().unwrap();
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    out
+}
 
 /// One oracle line rendered as `global_capture` renders a v5 event: `<LEVEL>
 /// <target> <message>` then ` key=value` per context field in v4's key order
@@ -348,6 +456,9 @@ async fn fold_episode_tier3_matches_oracle() {
         std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("read oracle: {e}"));
 
     let mut oracle_results: Vec<(String, Value)> = Vec::new();
+    // P4.149: the spec's text — every UUID in it is a committed value; any
+    // other UUID in a compared line was minted at run time (masked `<id>`).
+    let spec_text = std::fs::read_to_string(spec_path()).expect("spec text");
     let mut oracle_logs: HashMap<String, Vec<String>> = HashMap::new();
     let mut oracle_canned: Vec<CannedRowW> = Vec::new();
     let mut oracle_tables: HashMap<String, Value> = HashMap::new();
@@ -366,7 +477,16 @@ async fn fold_episode_tier3_matches_oracle() {
                     .as_array()
                     .expect("oracle logs row has a lines array")
                     .iter()
-                    .map(render_oracle_line)
+                    .map(|l| {
+                        if l["message"]
+                            .as_str()
+                            .is_some_and(|m| m.starts_with(LINE_MARK))
+                        {
+                            mask_minted_ids(&render_oracle_line(l), &spec_text)
+                        } else {
+                            render_db_line(l, &spec_text)
+                        }
+                    })
                     .collect();
                 oracle_logs.insert(v["run"].as_str().unwrap().to_string(), rendered);
             }
@@ -464,8 +584,8 @@ async fn fold_episode_tier3_matches_oracle() {
     // pre-existing `cheap_llm_exec` deferral, and the oracle's fold pass writes
     // no llm_logs rows this test diffs.
     let executor = CheapLlmTaskExecutor::new();
-    // Before the first callsite is reached (the capture rig's contract).
-    global_capture::install();
+    // Before the first callsite is reached (P4.149: the all-threads rig).
+    all_threads::install();
 
     for (run, (oracle_name, oracle_result)) in spec.runs.iter().zip(oracle_results) {
         assert_eq!(run.name, oracle_name, "run order mismatch");
@@ -487,7 +607,7 @@ async fn fold_episode_tier3_matches_oracle() {
             project_id: run.project_id.clone(),
             in_autonomous_room: run.in_autonomous_room,
         };
-        let (result, captured) = global_capture::capture_async(run_fold_episode_pass(
+        let (result, captured) = all_threads::capture(run_fold_episode_pass(
             &db,
             &completion,
             &embedding,
@@ -503,9 +623,25 @@ async fn fold_episode_tier3_matches_oracle() {
         });
         assert_eq!(got, oracle_result, "{}: result object diverges", run.name);
 
+        let is_db_line = |l: &str| {
+            l.split_once(' ')
+                .map(|(_, rest)| rest)
+                .and_then(|rest| rest.strip_prefix(DB_TARGET))
+                .and_then(|rest| rest.strip_prefix(' '))
+                .is_some_and(|msg| {
+                    DB_MESSAGES.iter().any(|m| {
+                        msg.strip_prefix(m)
+                            .is_some_and(|tail| tail.is_empty() || tail.starts_with(' '))
+                    })
+                })
+        };
         let got_lines: Vec<String> = captured
             .into_iter()
-            .filter(|l| l.contains(LINE_MARK))
+            .filter(|l| {
+                (l.starts_with("ERROR ") || l.starts_with("WARN ") || l.contains(LINE_MARK))
+                    && (l.contains(LINE_MARK) || is_db_line(l))
+            })
+            .map(|l| mask_minted_ids(&l, &spec_text))
             .collect();
         let want_lines = oracle_logs
             .get(&run.name)

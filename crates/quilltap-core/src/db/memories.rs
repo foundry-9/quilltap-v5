@@ -160,7 +160,27 @@ impl<'c> MemoriesRepository<'c> {
     /// `create` — insert with pinned id + timestamps. Embedding → Float32 LE BLOB
     /// (`None`/empty → NULL); JSON-array columns → compact JSON text; the three
     /// numeric columns bind `f64`.
+    ///
+    /// P4.149: a failure logs v4's two RETHROW lines — the base `_create`'s
+    /// `Error creating entity` (through `db::fallback`) then the repository's
+    /// own `Error creating memory {collection, characterId}`
+    /// (`memories.repository.ts:418-430`) — and propagates.
     pub fn create(&self, data: &MemCreate, opts: &CreateOptions) -> Result<(), DbError> {
+        self.create_row(data, opts).map_err(|e| {
+            super::fallback::log_create_failure("memories", &e);
+            tracing::error!(
+                target: "quilltap::db",
+                collection = "memories",
+                characterId = %data.character_id,
+                error = %super::fallback::error_text(&e),
+                strictFailures = super::fallback::strict_repository_failures_active().then_some(true),
+                "Error creating memory"
+            );
+            e
+        })
+    }
+
+    fn create_row(&self, data: &MemCreate, opts: &CreateOptions) -> Result<(), DbError> {
         let embedding_blob: Option<Vec<u8>> = match &data.embedding {
             Some(v) if !v.is_empty() => Some(float32_to_blob(v)),
             _ => None,
@@ -214,10 +234,35 @@ impl<'c> MemoriesRepository<'c> {
     /// matched (v4's `_update` "not found → null"). id / createdAt / the
     /// `embedding` BLOB are never touched; each `Some` field sets its column;
     /// `updatedAt` is always set (override or minted).
+    ///
+    /// P4.149: v4's `_update` reads the row first through the FALLBACK
+    /// `findById` — a failed read logs `Error finding entity by ID` and answers
+    /// `null` → `Ok(false)` (its `Entity not found for update` WARN is not
+    /// ported — Ruling R-A); a failed WRITE logs the base `Error updating entity`
+    /// then the repository's `Error updating memory {collection, memoryId}`
+    /// (`:437-447`) and propagates.
     pub fn update(&self, id: &str, patch: &MemUpdate) -> Result<bool, DbError> {
-        if !self.row_exists(id)? {
+        let exists = super::fallback::find_by_id_or_none("memories", id, || {
+            self.row_exists(id).map(|found| found.then_some(()))
+        });
+        if exists.is_none() {
             return Ok(false);
         }
+        self.update_row(id, patch).map_err(|e| {
+            super::fallback::log_update_failure("memories", id, &e);
+            tracing::error!(
+                target: "quilltap::db",
+                collection = "memories",
+                memoryId = %id,
+                error = %super::fallback::error_text(&e),
+                strictFailures = super::fallback::strict_repository_failures_active().then_some(true),
+                "Error updating memory"
+            );
+            e
+        })
+    }
+
+    fn update_row(&self, id: &str, patch: &MemUpdate) -> Result<bool, DbError> {
         let mut assignments: Vec<String> = Vec::new();
         let mut values: Vec<Box<dyn ToSql>> = Vec::new();
 
@@ -311,37 +356,130 @@ impl<'c> MemoriesRepository<'c> {
     }
 
     /// `delete` — returns `Ok(false)` when no row matched.
+    ///
+    /// P4.149: a failure logs the base `Error deleting entity` then the
+    /// repository's `Error deleting memory {collection, memoryId}`
+    /// (`memories.repository.ts:486-497`) and propagates.
     pub fn delete(&self, id: &str) -> Result<bool, DbError> {
-        let n = self
-            .conn
-            .execute("DELETE FROM memories WHERE id = ?1", params![id])?;
-        Ok(n > 0)
+        self.conn
+            .execute("DELETE FROM memories WHERE id = ?1", params![id])
+            .map(|n| n > 0)
+            .map_err(|e| {
+                let e = DbError::from(e);
+                super::fallback::log_delete_failure("memories", id, &e);
+                tracing::error!(
+                    target: "quilltap::db",
+                    collection = "memories",
+                    memoryId = %id,
+                    error = %super::fallback::error_text(&e),
+                    strictFailures = super::fallback::strict_repository_failures_active().then_some(true),
+                    "Error deleting memory"
+                );
+                e
+            })
     }
 
     /// `updateForCharacter` — update only if the memory exists AND belongs to
     /// `character_id` (else a no-op returning `Ok(false)`).
+    ///
+    /// P4.149 (P4.144 item 11): v4's ownership read is the FALLBACK `findById`
+    /// (`memories.repository.ts:454-478`), so a failed read logs `Error finding
+    /// entity by ID {collection: memories, id}`, answers `null` and takes the
+    /// not-found arm — WARN `Memory not found for update {memoryId, characterId}`
+    /// and `Ok(false)`: the caller CONTINUES (v5's `?` had stopped the fold's
+    /// character). An owner mismatch WARNs `Memory does not belong to character
+    /// {characterId, memoryId}`. A failed update adds the outer RETHROW line
+    /// `Error updating memory for character {collection, characterId,
+    /// memoryId}` beneath [`Self::update`]'s two and propagates.
     pub fn update_for_character(
         &self,
         character_id: &str,
         memory_id: &str,
         patch: &MemUpdate,
     ) -> Result<bool, DbError> {
-        if self.character_id_of(memory_id)?.as_deref() != Some(character_id) {
-            return Ok(false);
+        match super::fallback::find_by_id_or_none("memories", memory_id, || {
+            self.character_id_of(memory_id)
+        }) {
+            None => {
+                tracing::warn!(
+                    target: "quilltap::db",
+                    memoryId = %memory_id,
+                    characterId = %character_id,
+                    "Memory not found for update"
+                );
+                return Ok(false);
+            }
+            Some(owner) if owner != character_id => {
+                tracing::warn!(
+                    target: "quilltap::db",
+                    characterId = %character_id,
+                    memoryId = %memory_id,
+                    "Memory does not belong to character"
+                );
+                return Ok(false);
+            }
+            Some(_) => {}
         }
-        self.update(memory_id, patch)
+        self.update(memory_id, patch).map_err(|e| {
+            tracing::error!(
+                target: "quilltap::db",
+                collection = "memories",
+                characterId = %character_id,
+                memoryId = %memory_id,
+                error = %super::fallback::error_text(&e),
+                strictFailures = super::fallback::strict_repository_failures_active().then_some(true),
+                "Error updating memory for character"
+            );
+            e
+        })
     }
 
     /// `deleteForCharacter` — delete only if owned by `character_id`.
+    ///
+    /// P4.149: v4's shape as [`Self::update_for_character`]
+    /// (`memories.repository.ts:503-522`) — `Memory not found for deletion
+    /// {memoryId, characterId}` / `Memory does not belong to character`, and the
+    /// outer `Error deleting memory for character` on a failed delete.
     pub fn delete_for_character(
         &self,
         character_id: &str,
         memory_id: &str,
     ) -> Result<bool, DbError> {
-        if self.character_id_of(memory_id)?.as_deref() != Some(character_id) {
-            return Ok(false);
+        match super::fallback::find_by_id_or_none("memories", memory_id, || {
+            self.character_id_of(memory_id)
+        }) {
+            None => {
+                tracing::warn!(
+                    target: "quilltap::db",
+                    memoryId = %memory_id,
+                    characterId = %character_id,
+                    "Memory not found for deletion"
+                );
+                return Ok(false);
+            }
+            Some(owner) if owner != character_id => {
+                tracing::warn!(
+                    target: "quilltap::db",
+                    characterId = %character_id,
+                    memoryId = %memory_id,
+                    "Memory does not belong to character"
+                );
+                return Ok(false);
+            }
+            Some(_) => {}
         }
-        self.delete(memory_id)
+        self.delete(memory_id).map_err(|e| {
+            tracing::error!(
+                target: "quilltap::db",
+                collection = "memories",
+                characterId = %character_id,
+                memoryId = %memory_id,
+                error = %super::fallback::error_text(&e),
+                strictFailures = super::fallback::strict_repository_failures_active().then_some(true),
+                "Error deleting memory for character"
+            );
+            e
+        })
     }
 
     /// `bulkDelete` — `deleteMany({ characterId, id: { $in } })`; empty → 0.
@@ -1302,5 +1440,90 @@ mod tests {
                 "{lines:?}"
             );
         }
+    }
+
+    /// P4.149 (P4.144 item 11): a failed OWNER read is v4's fallback `findById`
+    /// — `Error finding entity by ID` then `Memory not found for update`, and
+    /// `Ok(false)`: the caller CONTINUES (v5's `?` had stopped it). A missing row
+    /// WARNs alone; a foreign owner WARNs `Memory does not belong to character`;
+    /// the owner's own update is silent.
+    #[test]
+    fn update_for_character_continues_past_a_failed_owner_read_with_v4s_lines() {
+        let (_d, w) = seed(&[("m-1", "c-1", &[]), ("m-2", "c-2", &[])]);
+        let repo = w.memories();
+        let patch = MemUpdate {
+            related_memory_ids: Some(vec!["x".to_string()]),
+            ..Default::default()
+        };
+        // The owner read fails on a BLOB `characterId` (v4's `validate` refuses it
+        // the same way; v5 reads the cell as text and fails).
+        w.connection()
+            .execute(
+                "UPDATE memories SET characterId = x'00000000' WHERE id = 'm-2'",
+                [],
+            )
+            .unwrap();
+        let mut got = Vec::new();
+        let lines = captured(|| {
+            got.push(repo.update_for_character("c-1", "m-1", &patch).unwrap());
+            got.push(repo.update_for_character("c-1", "m-2", &patch).unwrap());
+            got.push(repo.update_for_character("c-1", "m-gone", &patch).unwrap());
+            got.push(repo.delete_for_character("c-9", "m-1").unwrap());
+            got.push(repo.delete_for_character("c-1", "m-gone").unwrap());
+        });
+        assert_eq!(got, [true, false, false, false, false]);
+        let lines: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.starts_with("ERROR") || l.starts_with("WARN"))
+            .collect();
+        assert_eq!(
+            lines,
+            [
+                "ERROR quilltap::db Error finding entity by ID collection=memories id=m-2 error=Invalid column type Blob at index: 0, name: characterId",
+                "WARN quilltap::db Memory not found for update memoryId=m-2 characterId=c-1",
+                "WARN quilltap::db Memory not found for update memoryId=m-gone characterId=c-1",
+                "WARN quilltap::db Memory does not belong to character characterId=c-9 memoryId=m-1",
+                "WARN quilltap::db Memory not found for deletion memoryId=m-gone characterId=c-1",
+            ]
+        );
+    }
+
+    /// P4.149: a failed WRITE under `update_for_character` / `delete_for_character`
+    /// logs v4's three rethrow lines in order and propagates.
+    #[test]
+    fn a_failed_write_logs_the_three_rethrow_lines_and_propagates() {
+        let (_d, w) = seed(&[("m-1", "c-1", &[])]);
+        let repo = w.memories();
+        w.connection()
+            .execute_batch(
+                "CREATE TRIGGER no_update BEFORE UPDATE ON memories BEGIN SELECT RAISE(ABORT, 'planted'); END;\
+                 CREATE TRIGGER no_delete BEFORE DELETE ON memories BEGIN SELECT RAISE(ABORT, 'planted'); END;",
+            )
+            .unwrap();
+        let patch = MemUpdate {
+            summary: Some("s".to_string()),
+            ..Default::default()
+        };
+        let mut errs = Vec::new();
+        let lines = captured(|| {
+            errs.push(repo.update_for_character("c-1", "m-1", &patch).is_err());
+            errs.push(repo.delete_for_character("c-1", "m-1").is_err());
+        });
+        assert_eq!(errs, [true, true]);
+        let lines: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.starts_with("ERROR") || l.starts_with("WARN"))
+            .collect();
+        assert_eq!(
+            lines,
+            [
+                "ERROR quilltap::db Error updating entity collection=memories id=m-1 error=planted",
+                "ERROR quilltap::db Error updating memory collection=memories memoryId=m-1 error=planted",
+                "ERROR quilltap::db Error updating memory for character collection=memories characterId=c-1 memoryId=m-1 error=planted",
+                "ERROR quilltap::db Error deleting entity collection=memories id=m-1 error=planted",
+                "ERROR quilltap::db Error deleting memory collection=memories memoryId=m-1 error=planted",
+                "ERROR quilltap::db Error deleting memory for character collection=memories characterId=c-1 memoryId=m-1 error=planted",
+            ]
+        );
     }
 }

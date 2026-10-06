@@ -166281,3 +166281,51 @@ re-measure); the restore order's acceptance walk (#141/#142).
 - Regen (pin, Node 24, `node --import tsx`): `build-tiered-mount-pool-
   fixture.ts` then `tiered-mount-pool.ts` → `QT_ORACLE_TMP` +
   `QT_FIXTURE_TMP_MAIN/MOUNT`.
+
+### P4.149 unit 6 — item 7, the memory repository's lines + the fold pass's silent reads (core 0.0.1215)
+
+- **v4 measured** (`fold-episode-tier3.test.ts`'s spy widened to the
+  repository's `DB_MESSAGES` — the base rethrow trio, the per-repository wraps,
+  the ownership WARNs and `Error finding entity by ID`): `episode_write_fail` →
+  `Error creating entity {collection: memories, error}` + `Error creating
+  memory {collection, characterId, error}`; `episode_link_fail` → `Error
+  updating entity {collection, id}` → `Error updating memory {collection,
+  memoryId}` → `Error updating memory for character {collection, characterId,
+  memoryId}` for the episode's link AND again for Bram's fragment back-link;
+  the other three runs silent. Error bytes identical both sides (the trigger
+  messages).
+- **Port** (`db/memories.rs`): `create` / `update` / `delete` split into
+  public logging wrappers over private row fns; `update`'s existence read and
+  the two `…for_character` owner reads through `find_by_id_or_none("memories",
+  …)`; v4's `Memory not found for update|deletion {memoryId, characterId}` and
+  `Memory does not belong to character {characterId, memoryId}` WARNs (no
+  `collection` — v4 calls the logger directly); the outer `…for character`
+  rethrow lines. The per-repository outer lines are LOCAL literals (not home
+  messages — the guard restricts `HOME_MESSAGES` only). `update`'s v4 `Entity
+  not found for update` WARN and every success INFO stay unported (R-A).
+  `services/fold_episode_pass.rs`: the three homes hoisted outside
+  `read_main` (`find_by_id_or_none("chats")`, `find_by_filter_or_empty
+  ("memories")` with the empty-id early return kept, `find_by_id_or_none
+  ("memories")` for the re-read).
+- **Capture:** the repository lines fire inside `db.write` on the WRITER
+  thread, which neither thread-scoped rig sees; the fold binary holds ONE test,
+  so it now installs a local all-threads layer (`all_threads`, core's
+  `FieldVisitor` rendering) in place of `global_capture`, and the comparand
+  masks every UUID absent from the spec text (`<id>` — the episode rows are
+  minted per side). **Red-first:** `episode_write_fail`'s two create lines
+  absent on unported core. Green after: results + lines + 3 tables.
+- **Owner-read "continues":** pinned by unit
+  (`update_for_character_continues_past_a_failed_owner_read_with_v4s_lines` —
+  a BLOB `characterId`, the find line + the not-found WARN, `Ok(false)`; plus
+  the missing-row, foreign-owner and delete arms) rather than a tier-3 plant:
+  every plant that fails the owner read in v4 also fails the fragment read
+  that precedes it (`validateSafe` drops the row), so the fold cannot reach
+  the arm through a fixture without validating memory rows v5 does not
+  validate. `a_failed_write_logs_the_three_rethrow_lines_and_propagates` pins
+  both write chains.
+- **Neutrality to run in the gate:** `memory_gate`, `memories_tier2`,
+  `memories_routes`, `memory_pipeline_jobs_tier3` (the gate's
+  `update_for_character({embedding})` passes the same wrapper).
+- Regen (pin, Node 24, jest `/tmp` mirror): `build-fold-episode-fixture.ts`
+  then `fold-episode-tier3.test.ts` → `QT_ORACLE_FOLD_EPISODE` +
+  `QT_FIXTURE_FOLD_EPISODE_MAIN/MOUNT`.

@@ -265,6 +265,23 @@ async function main(): Promise<void> {
   const { Logger } = await import('@/lib/logger');
 
   // P4.144: capture v4's own `[FoldEpisodePass]` lines per run (see header).
+  // P4.149 (item 7): + the memory REPOSITORY's lines the pass reaches — the
+  // base rethrow lines, the per-repository wraps, the ownership WARNs and the
+  // fallback `findById` line — at their own level, in emission order.
+  const DB_MESSAGES = new Set([
+    'Error creating entity',
+    'Error creating memory',
+    'Error updating entity',
+    'Error updating memory',
+    'Error updating memory for character',
+    'Error deleting entity',
+    'Error deleting memory',
+    'Error deleting memory for character',
+    'Memory not found for update',
+    'Memory not found for deletion',
+    'Memory does not belong to character',
+    'Error finding entity by ID',
+  ]);
   let runSink: Array<{ level: string; message: string; context: unknown }> | null = null;
   for (const level of ['error', 'warn', 'info', 'debug'] as const) {
     const original = (Logger.prototype as unknown as Record<string, (...a: unknown[]) => void>)[level];
@@ -274,7 +291,11 @@ async function main(): Promise<void> {
       context?: Record<string, unknown>,
       ...rest: unknown[]
     ) {
-      if (runSink && typeof message === 'string' && message.startsWith('[FoldEpisodePass]')) {
+      if (
+        runSink &&
+        typeof message === 'string' &&
+        (message.startsWith('[FoldEpisodePass]') || DB_MESSAGES.has(message))
+      ) {
         runSink.push({ level, message, context: JSON.parse(JSON.stringify(context ?? {})) });
       }
       return original.call(this, message, context, ...rest);

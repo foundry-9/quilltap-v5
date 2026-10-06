@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-05 — fix(db): the memory repository logs v4's rethrow and ownership lines, and a failed owner read no longer stops the fold (P4.149 unit 6)
+
+_Versions: core 0.0.1215._
+
+The memory repository's writes now log what v4's do on failure: `create` logs `Error creating entity` then `Error creating memory`, `update` logs `Error updating entity` then `Error updating memory`, `delete` logs `Error deleting entity` then `Error deleting memory`, and the two `…ForCharacter` wraps add their own outer line — every one propagating the error as before (P4.144's open item 11).
+
+- `update_for_character` / `delete_for_character` read the owner through v4's fallback `findById`: a failed read logs `Error finding entity by ID` and the not-found WARN (`Memory not found for update` / `… for deletion`) and answers `false`, so the fold pass carries on with the character where v5 had stopped it; an owner mismatch WARNs `Memory does not belong to character`. `update` itself reads existence through the same fallback.
+- The fold pass's chat read, fragment read and episode re-read hoist their homes outside `read_main`, so a pool-checkout failure logs v4's line instead of answering silently.
+- `fold_episode_tier3_equivalence` widens its comparand to the repository's lines on every run (an all-threads capture — they fire on the writer thread), red-first on the planted create and link failures; two unit pins cover the owner-read and write-failure chains.
+
 #### 2026-10-05 — fix(tools): the project-tier helpers and the doc-edit collector read through v4's fallbacks (P4.149 unit 5)
 
 _Versions: core 0.0.1214._

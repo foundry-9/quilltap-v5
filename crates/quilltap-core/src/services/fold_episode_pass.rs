@@ -154,11 +154,12 @@ pub async fn run_fold_episode_pass<C: CompletionProvider, E: EmbeddingProvider>(
 
     // v4 `repos.chats.findById` is `_findById`, a FALLBACK read: a failed read
     // logs `Error finding entity by ID` and answers `null`, which takes the
-    // `if (!chat) return result` arm.
-    let chat_id = input.chat_id.clone();
-    let Ok(Some(chat)) =
-        db.read_main(move |conn| Ok(chats_read::find_by_id_or_none(conn, &chat_id)))
-    else {
+    // `if (!chat) return result` arm. P4.149: the home wraps the WHOLE
+    // `read_main` (v4's `getCollection()` runs inside the same `safeQuery`), so
+    // a pool-checkout failure logs the line too — it had answered silently.
+    let Some(chat) = crate::db::fallback::find_by_id_or_none("chats", &input.chat_id, || {
+        db.read_main(|conn| chats_read::find_by_id(conn, &input.chat_id))
+    }) else {
         return result;
     };
     let participants: Vec<Value> = chat
@@ -400,13 +401,18 @@ async fn write_episode_for_character<E: EmbeddingProvider>(
     // which then takes the `fragmentIds.length === 0` arm. A pool checkout
     // failure answers `[]` too (v4's `getCollection()` runs inside the same
     // fallback `safeQuery`), never this character's catch.
-    let cid = character_id.to_string();
-    let ids = write.window_message_ids.to_vec();
-    let fragments = db
-        .read_main(move |conn| {
-            Ok(memories_read::find_by_character_and_source_message_ids_or_empty(conn, &cid, &ids))
+    // P4.149: the home wraps the whole `read_main` (a checkout failure had
+    // answered `[]` SILENTLY); an empty id list still reads nothing.
+    let ids = write.window_message_ids;
+    let fragments = if ids.is_empty() {
+        Vec::new()
+    } else {
+        crate::db::fallback::find_by_filter_or_empty("memories", || {
+            db.read_main(|conn| {
+                memories_read::find_by_character_and_source_message_ids(conn, character_id, ids)
+            })
         })
-        .unwrap_or_default();
+    };
     let fragment_ids: Vec<String> = fragments
         .iter()
         .filter_map(|f| f.get("id").and_then(Value::as_str).map(str::to_string))
@@ -427,15 +433,14 @@ async fn write_episode_for_character<E: EmbeddingProvider>(
     let mut episode_links: Vec<String> = match outcome.action {
         GateAction::InsertRelated => outcome.related_memory_ids.clone(),
         GateAction::Insert => Vec::new(),
-        _ => {
-            let mid = memory_id.clone();
-            db.read_main(move |conn| memories_read::find_by_id(conn, &mid))
-                .ok()
-                .flatten()
-                .as_ref()
-                .map(related_ids)
-                .unwrap_or_default()
-        }
+        // P4.149: the re-read through v4's fallback `findById` line (it had
+        // answered `[]` silently on a failed read).
+        _ => crate::db::fallback::find_by_id_or_none("memories", &memory_id, || {
+            db.read_main(|conn| memories_read::find_by_id(conn, &memory_id))
+        })
+        .as_ref()
+        .map(related_ids)
+        .unwrap_or_default(),
     };
     let mut episode_links_changed = false;
     for fragment_id in &fragment_ids {
