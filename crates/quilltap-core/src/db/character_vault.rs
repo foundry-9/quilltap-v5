@@ -505,8 +505,16 @@ pub fn create_character_with_options(
 /// `metadata.json` (only for a non-null fact sheet — its anti-clobber guard),
 /// the five markdown fields (`""` when absent), the physical pair (only with a
 /// physical description), then one `Prompts/` / `Scenarios/` file per entry
-/// (never swept — the folder's other files are the archive's). Returns the
-/// relative paths written.
+/// the vault does not ALREADY yield by name / title (never swept — the
+/// folder's other files are the archive's). The array entries are matched by
+/// the NAME the vault reader parses, not by the projected path: the archived
+/// row's arrays were read off whatever files the vault holds, and a renamed
+/// prompt or a hand-written scenario titled by its `# heading` lives at a path
+/// the projection would never choose — a path check alone duplicated it (and,
+/// for a renamed default prompt, minted a second default). Caught by the
+/// `94fbb1ae3` smalls unification's review; pinned by
+/// `backfill_tests::a_vault_entry_under_its_own_file_name_is_not_duplicated`.
+/// Returns the relative paths written.
 pub fn backfill_character_vault_managed_files(
     mount: &Connection,
     mount_point_id: &str,
@@ -549,7 +557,15 @@ pub fn backfill_character_vault_managed_files(
             render_physical_prompts_json(Some(physical)),
         ));
     }
-    for p in &vault.system_prompts {
+    let (present_prompts, present_scenarios) = super::vault_read_overlay::vault_entry_names(
+        &DocMountDocumentsRepository::new(mount),
+        mount_point_id,
+    )?;
+    for p in vault
+        .system_prompts
+        .iter()
+        .filter(|p| !present_prompts.contains(&p.name))
+    {
         files.push((
             format!(
                 "Prompts/{}.md",
@@ -558,7 +574,11 @@ pub fn backfill_character_vault_managed_files(
             crate::vault_overlay::build_system_prompt_file(&p.name, p.is_default, &p.content),
         ));
     }
-    for sc in &vault.scenarios {
+    for sc in vault
+        .scenarios
+        .iter()
+        .filter(|sc| !present_scenarios.contains(&sc.title))
+    {
         files.push((
             format!(
                 "Scenarios/{}.md",
@@ -640,5 +660,82 @@ mod tests {
         })
         .unwrap();
         assert_eq!(pretty, PHYSICAL_PROMPTS_JSON_DEFAULT);
+    }
+}
+
+#[cfg(test)]
+mod backfill_tests {
+    //! The `94fbb1ae3` smalls unification — the restore's preserve-arm
+    //! backfill over a real provisioned instance (a temp COPY, never live
+    //! data). v4 never preserves an archived vault, so it can never reach this
+    //! state: the pin is v5-alone, as P4.158's R-D/R-E pins are.
+    use super::*;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+    const MP: &str = "mp-preserved-vault";
+
+    /// A renamed default prompt (`Prompts/renamed-file.md`, frontmatter `name:
+    /// Default`) and a hand-written scenario titled by its `# heading`
+    /// (`Scenarios/beach.md`) are the vault's own entries under file names the
+    /// projection would never choose. The archived row's arrays name them by
+    /// what the vault reader parsed, so the backfill must find them by NAME
+    /// and write nothing for them — while a genuinely missing entry is still
+    /// completed. Before the fix the path check wrote both again (a second
+    /// default prompt, a duplicate scenario).
+    #[test]
+    fn a_vault_entry_under_its_own_file_name_is_not_duplicated() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER).unwrap();
+        let mount =
+            crate::db::Writer::open_writable(&dir.path().join("quilltap-mount-index.db"), PEPPER)
+                .unwrap();
+        let conn = mount.connection();
+        let links = DocMountFileLinksRepository::new(conn);
+        links
+            .write_database_document(
+                MP,
+                "Prompts/renamed-file.md",
+                &crate::vault_overlay::build_system_prompt_file("Default", true, "Be kind."),
+            )
+            .unwrap();
+        links
+            .write_database_document(
+                MP,
+                "Scenarios/beach.md",
+                "# A Day at the Beach\n\nSand, and a great deal of it.\n",
+            )
+            .unwrap();
+
+        let vault: CharacterVaultWriteInput = serde_json::from_value(serde_json::json!({
+            "systemPrompts": [
+                {"name": "Default", "isDefault": true, "content": "Be kind."}
+            ],
+            "scenarios": [
+                {"title": "A Day at the Beach", "content": "Sand, and a great deal of it."},
+                {"title": "Missing One", "content": "Lost in the archive."}
+            ]
+        }))
+        .unwrap();
+        let written = backfill_character_vault_managed_files(conn, MP, &vault).unwrap();
+
+        assert!(
+            !written.iter().any(|p| p.starts_with("Prompts/")),
+            "the renamed default prompt must not be written again: {written:?}"
+        );
+        assert!(
+            !written.iter().any(|p| p == "Scenarios/A Day at the Beach.md"),
+            "the heading-titled scenario must not be written again: {written:?}"
+        );
+        assert!(
+            written.iter().any(|p| p == "Scenarios/Missing One.md"),
+            "a genuinely missing entry is still completed: {written:?}"
+        );
+        let (prompts, scenarios) = super::super::vault_read_overlay::vault_entry_names(
+            &DocMountDocumentsRepository::new(conn),
+            MP,
+        )
+        .unwrap();
+        assert_eq!(prompts.len(), 1, "one prompt, still: {prompts:?}");
+        assert_eq!(scenarios.len(), 2, "the hand-written + the backfilled: {scenarios:?}");
     }
 }

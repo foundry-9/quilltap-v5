@@ -167,6 +167,38 @@ pub fn load_vault_file_maps(
     })
 }
 
+/// The prompt NAMES and scenario TITLES a vault's `Prompts/` / `Scenarios/`
+/// folders yield, parsed exactly as [`hydrate_one`]'s read does
+/// ([`parse_prompt_file`] / [`parse_scenario_file`] over the same folder
+/// listing). The restore's preserve-arm backfill asks it which archived
+/// entries the vault already carries: a vault file's name is NOT its
+/// projected path (a renamed prompt, a hand-written scenario titled by its
+/// `# heading`), so a path check alone would write a duplicate. Reads inside
+/// the strict scope — a failed listing PROPAGATES (the backfill fails into its
+/// one warning) rather than reading as an empty folder and duplicating every
+/// entry.
+pub fn vault_entry_names(
+    repo: &DocMountDocumentsRepository,
+    mount_point_id: &str,
+) -> Result<(HashSet<String>, HashSet<String>), DbError> {
+    let ids = [mount_point_id.to_string()];
+    super::fallback::with_strict_repository_failures(|| {
+        let prompts = repo
+            .find_many_by_mount_points_in_folder_or_empty(&ids, PROMPTS_FOLDER, ".md")?
+            .iter()
+            .filter_map(|d| parse_prompt_file(&vault_doc(d)))
+            .map(|p| p.name)
+            .collect();
+        let scenarios = repo
+            .find_many_by_mount_points_in_folder_or_empty(&ids, SCENARIOS_FOLDER, ".md")?
+            .iter()
+            .filter_map(|d| parse_scenario_file(&vault_doc(d)))
+            .map(|s| s.title)
+            .collect();
+        Ok((prompts, scenarios))
+    })
+}
+
 /// A character is subject to overlay iff `characterDocumentMountPointId` is truthy
 /// (v4 `hasLinkedVault` = `!!id` — a non-null, non-empty string).
 fn linked_mount_id(obj: &Map<String, Value>) -> Option<&str> {
