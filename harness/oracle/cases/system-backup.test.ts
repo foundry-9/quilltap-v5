@@ -149,6 +149,32 @@ interface CaseSpec {
   compact?: boolean;
   /** P4.106 item 6: plant `chat_informs` rows on the copy before the backup. */
   plantInforms?: boolean;
+  /**
+   * P4.149 (Ruling R-C): clone the user's first connection profile (by id) with
+   * a BLOB `name` before the backup. v4's `connections.findAll()` runs
+   * `validateSafe` per row, so the clone is DROPPED from
+   * `data/connection-profiles.json` and the manifest count — the archive is
+   * byte-identical to `backup_full`'s.
+   */
+  plantBlobProfile?: boolean;
+}
+
+/** P4.149: the BLOB-named clone's id (both sides plant these statements). */
+const BLOB_PROFILE_ID = 'c0ffee00-0000-4000-8000-0000000000b2';
+
+async function plantBlobProfile(userId: string): Promise<void> {
+  const { rawQuery } = await import('@/lib/database/manager');
+  await rawQuery(
+    'CREATE TEMP TABLE qt_blob_profile AS SELECT * FROM connection_profiles ' +
+      'WHERE userId = ? ORDER BY id LIMIT 1',
+    [userId],
+  );
+  await rawQuery(
+    "UPDATE qt_blob_profile SET id = ?, name = x'4a554e4b', isDefault = 0",
+    [BLOB_PROFILE_ID],
+  );
+  await rawQuery('INSERT INTO connection_profiles SELECT * FROM qt_blob_profile');
+  await rawQuery('DROP TABLE qt_blob_profile');
 }
 
 /**
@@ -208,6 +234,9 @@ const CASES: CaseSpec[] = [
   // pending and consumed alike (v4 `backup-service.ts:233-236` reads every
   // row of every chat) — and the manifest's `chatInforms` count.
   { name: 'backup_with_informs', seedFileBytes: true, plantInforms: true },
+  // P4.149 (Ruling R-C): a BLOB-named profile is DROPPED by the collect, as
+  // `validateSafe` drops it on every v4 path (the strict scope never reaches it).
+  { name: 'backup_with_blob_profile', seedFileBytes: true, plantBlobProfile: true },
 ];
 
 async function runCase(
@@ -247,6 +276,7 @@ async function runCase(
   );
   await initializeDatabase();
   if (c.plantInforms) await plantInforms(spec.userId);
+  if (c.plantBlobProfile) await plantBlobProfile(spec.userId);
 
   const extractDir = mkdtempSync(join(scratchRoot, 'ex-'));
   try {

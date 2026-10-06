@@ -220,6 +220,33 @@ fn open_fixture(scratch: &Path) -> Db {
 /// P4.106 item 6 — the oracle's `plantInforms`, cell for cell: a PENDING and a
 /// CONSUMED row on each of the user's first two chats (sorted by id), on the
 /// per-run COPY only.
+/// P4.149: the oracle's `BLOB_PROFILE_ID`.
+const BLOB_PROFILE_ID: &str = "c0ffee00-0000-4000-8000-0000000000b2";
+
+/// P4.149: the oracle's `plantBlobProfile`, statement for statement.
+fn plant_blob_profile(db: &Db) {
+    db.write_blocking(|w| {
+        let c = w.main().connection();
+        c.execute(
+            "CREATE TEMP TABLE qt_blob_profile AS SELECT * FROM connection_profiles \
+             WHERE userId = ?1 ORDER BY id LIMIT 1",
+            [USER],
+        )?;
+        c.execute(
+            "UPDATE qt_blob_profile SET id = ?1, name = x'4a554e4b', isDefault = 0",
+            [BLOB_PROFILE_ID],
+        )?;
+        let n = c.execute(
+            "INSERT INTO connection_profiles SELECT * FROM qt_blob_profile",
+            [],
+        )?;
+        assert_eq!(n, 1, "the plant must clone one profile");
+        c.execute_batch("DROP TABLE qt_blob_profile")?;
+        Ok(())
+    })
+    .expect("plant the BLOB-named profile");
+}
+
 fn plant_informs(db: &Db) {
     use quilltap_core::db::chat_informs::{ChatInformCreate, ChatInformsRepository};
     db.write_blocking(|w| {
@@ -473,8 +500,10 @@ fn system_backup_equivalence() {
     let mut failures = Vec::new();
     for case in &cases {
         let name = case["name"].as_str().unwrap();
-        let seed_file_bytes =
-            name == "backup_full" || name == "backup_compact" || name == "backup_with_informs";
+        let seed_file_bytes = name == "backup_full"
+            || name == "backup_compact"
+            || name == "backup_with_informs"
+            || name == "backup_with_blob_profile";
         // [P4.D46] `backup_compact` runs the same projection with the compact
         // flag: memory embeddings nulled, the six derived embedding data files
         // ABSENT from the tree (asserted below and by the oracle tree diff),
@@ -485,6 +514,9 @@ fn system_backup_equivalence() {
         let db = open_fixture(&scratch.root);
         if name == "backup_with_informs" {
             plant_informs(&db);
+        }
+        if name == "backup_with_blob_profile" {
+            plant_blob_profile(&db);
         }
 
         // The oracle seeds the user file's bytes into its data dir for the
@@ -589,6 +621,28 @@ fn system_backup_equivalence() {
                 manifest["counts"]["chatInforms"],
                 Value::from(4),
                 "[{name}] the manifest's chatInforms count"
+            );
+        }
+
+        // P4.149 (Ruling R-C) — non-vacuity for the plant: the clone IS in the
+        // table, and NOT in the staged `data/connection-profiles.json` (v4's
+        // `validateSafe` drop). The tree diff below compares the bytes to v4's.
+        if name == "backup_with_blob_profile" {
+            let in_table: i64 = db
+                .read_main(|c| {
+                    Ok(c.query_row(
+                        "SELECT COUNT(*) FROM connection_profiles WHERE id = ?1",
+                        [BLOB_PROFILE_ID],
+                        |r| r.get(0),
+                    )?)
+                })
+                .expect("count the plant");
+            assert_eq!(in_table, 1, "[{name}] the BLOB-named clone must be planted");
+            let text = std::fs::read_to_string(staging.join("data/connection-profiles.json"))
+                .expect("data/connection-profiles.json staged");
+            assert!(
+                !text.contains(BLOB_PROFILE_ID),
+                "[{name}] the BLOB-named profile must be dropped from the archive"
             );
         }
 

@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-05 — fix(db): a connection profile with a BLOB in a plain-string column is dropped from the profile lists as v4 drops it (P4.149 unit 2)
+
+_Versions: core 0.0.1211._
+
+`connection_profiles::find_by_user_id` and `find_all` failed the whole list on one row whose `name` (or `baseUrl` / `modelName`) cell was a BLOB, so a `TITLE_UPDATE` job, the settings list and the backup collect all failed (dogfood standing note 2026-10-03, item 2). v4's `findByFilter` / `_findAll` run `validateSafe` per row: the row is dropped with ERROR `Data validation failed` and WARN `Safe validation failed`, both carrying the ZodError, and the list answers without it. v5 now does the same, rendering the ZodError through `api::zod_issues`. Every other read failure still propagates, including a BLOB in any other column.
+
+- `title_update_tier3_equivalence` gains `blob_named_profile_dropped` (a second profile for the job's user with a BLOB name): v4's two lines byte-for-byte and the job completing; the validation lines are compared on every case (silence elsewhere).
+- `system_backup_equivalence` gains `backup_with_blob_profile` on both sides (Ruling R-C: the collect drops the row as v4 does — red-first, the unported collect failed outright).
+- `find_default` is NOT on this path (v4 reads it through `findOneByFilter`, a whole-read fallback) and is unchanged.
+
 #### 2026-10-05 — fix(db): v4's base-repository rethrow lines get one home, and the two chat-informs bulk deletes answer 0 with v4's lines (P4.149 unit 1)
 
 _Versions: core 0.0.1210._

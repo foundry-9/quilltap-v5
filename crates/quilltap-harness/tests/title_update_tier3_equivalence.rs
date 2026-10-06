@@ -631,6 +631,19 @@ fn title_update_matches_oracle() {
             false,
             "",
         ),
+        // ── P4.149 (dogfood standing note 2026-10-03, item 2): a SECOND profile
+        // for the job's user whose `name` is a BLOB. v4's `findByUserId` drops it
+        // per row (`validateSafe`: ERROR `Data validation failed` + WARN `Safe
+        // validation failed`) and the job completes; unported v5 failed the
+        // whole list read, so the job failed.
+        (
+            "blob_named_profile_dropped",
+            &spec.chat_title_id,
+            &spec.user_enabled_id,
+            None,
+            false,
+            "",
+        ),
     ];
     let now_iso = quilltap_core::clock::iso_from_unix_ms(spec.frozen_now_ms);
     // Shape, not a hand-written count: every oracle row is driven, and only those.
@@ -671,6 +684,9 @@ fn title_update_matches_oracle() {
         }
         if name == "corrupt_key_logs_and_refuses" {
             corrupt_bound_key(&rt, &db);
+        }
+        if name == "blob_named_profile_dropped" {
+            plant_blob_named_profile(&rt, &db, &spec.connection_profile_id);
         }
         // P4.136: the committed fixture PREDATES `api_keys`. v4's key read
         // heals that lazily (`getApiKeysCollection` → `ensureCollection`) and
@@ -714,6 +730,38 @@ fn title_update_matches_oracle() {
         });
 
         let want = &oracle[name];
+        // P4.149: the per-row validation lines, on EVERY case (silence on all
+        // but the BLOB-named plant) — whole strings, the ZodError bytes
+        // included (v5 renders them through `api::zod_issues`).
+        let want_validation: Vec<String> = want["validationLines"]
+            .as_array()
+            .unwrap_or_else(|| {
+                panic!("[{name}] oracle carries no validationLines — regenerate from THIS tree's case (P4.149)")
+            })
+            .iter()
+            .map(render_v4_validation_line)
+            .collect();
+        if name == "blob_named_profile_dropped" {
+            assert_eq!(
+                want_validation.len(),
+                2,
+                "[{name}] v4 no longer drops the BLOB-named row with its two lines — the arm measures nothing"
+            );
+        }
+        let got_validation: Vec<String> = lines
+            .iter()
+            .filter(|l| {
+                l.contains(" quilltap::db ") && VALIDATION_LINES.iter().any(|m| l.contains(m))
+            })
+            .cloned()
+            .collect();
+        if got_validation != want_validation {
+            eprintln!(
+                "[{name}] VALIDATION-LINE MISMATCH:\n got {got_validation:#?}\n want {want_validation:#?}"
+            );
+            failed.push(name.to_string());
+            continue;
+        }
         // The throw arms: diff the message v4 threw.
         let want_threw = want["threw"].as_str();
         let got_threw = outcome.as_ref().err().map(String::as_str);
@@ -1606,6 +1654,53 @@ fn normalise_error(line: &str) -> String {
         Some(i) => format!("{} error=<error>", &line[..i]),
         None => line.to_string(),
     }
+}
+
+/// P4.149: the oracle's `VALIDATION_LINES` — v4's per-row `validate` /
+/// `validateSafe` lines (`base.repository.ts:131-157`).
+const VALIDATION_LINES: [&str; 2] = ["Data validation failed", "Safe validation failed"];
+
+/// A v4 validation line rendered as v5's capture renders it, the `error`
+/// (the `ZodError.message`) kept WHOLE — v5 renders the same bytes.
+fn render_v4_validation_line(v: &Value) -> String {
+    let mut out = format!(
+        "{} quilltap::db {}",
+        v["level"].as_str().unwrap().to_uppercase(),
+        v["message"].as_str().unwrap()
+    );
+    for (k, val) in v["bag"].as_object().unwrap() {
+        let val = val
+            .as_str()
+            .map(str::to_string)
+            .unwrap_or_else(|| val.to_string());
+        out.push_str(&format!(" {k}={val}"));
+    }
+    out
+}
+
+/// P4.149: the oracle's `plantBlobNamedProfile`, statement for statement — the
+/// job's profile cloned under `c0ffee00-…b1`, `name` a BLOB, `isDefault` off.
+fn plant_blob_named_profile(rt: &tokio::runtime::Runtime, db: &Db, profile_id: &str) {
+    let pid = profile_id.to_string();
+    rt.block_on(db.write(move |w| {
+        let c = w.main().connection();
+        c.execute(
+            "CREATE TEMP TABLE qt_blob_profile AS SELECT * FROM connection_profiles WHERE id = ?1",
+            [&pid],
+        )?;
+        c.execute(
+            "UPDATE qt_blob_profile SET id = ?1, name = x'4a554e4b', isDefault = 0",
+            ["c0ffee00-0000-4000-8000-0000000000b1"],
+        )?;
+        let n = c.execute(
+            "INSERT INTO connection_profiles SELECT * FROM qt_blob_profile",
+            [],
+        )?;
+        assert_eq!(n, 1, "the plant must clone exactly the job's profile");
+        c.execute_batch("DROP TABLE qt_blob_profile")?;
+        Ok(())
+    }))
+    .expect("plant the BLOB-named profile");
 }
 
 /// P4.136: the oracle's `corrupt` plant — the bound key's `key_value` made a

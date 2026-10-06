@@ -166164,3 +166164,38 @@ re-measure); the restore order's acceptance walk (#141/#142).
   fixture.ts`, then `QT_FIXTURE_CHAT_INFORMS=… npx tsx $V5W/harness/oracle/
   cases/chat-informs-tier2.ts > /tmp/p4149/oracle-chat-informs.ndjson`; run
   with `QT_ORACLE_CHAT_INFORMS` + `QT_FIXTURE_CHAT_INFORMS`.
+
+### P4.149 unit 2 — the BLOB-named profile dropped per row (core 0.0.1211)
+
+- **v4 measured** (`title_update_tier3`'s new `blob_named_profile_dropped`,
+  the job's profile cloned under `c0ffee00-…b1` with `name = x'4a554e4b'`):
+  ONE `Data validation failed {collection: connection_profiles, error}` ERROR
+  + ONE `Safe validation failed {collection, error}` WARN, `error` the
+  ZodError `[{"expected":"string","code":"invalid_type","path":["name"],
+  "message":"Invalid input: expected string, received Float32Array"}]`
+  (pretty, two-space) on both; the job COMPLETES with `normal_renamed`'s
+  state. No `ZodIssue` constructor was missing (no P4.148 handoff).
+- **Port:** `collect_validated_rows` under `find_by_user_id` + `find_all`:
+  a row whose FIRST failing cell is a BLOB in one of the three plain
+  `z.string()` columns (`name`, `baseUrl`, `modelName`) and whose every BLOB
+  sits in those columns is dropped with v4's two lines (issues in schema
+  order; the cell rendered by `groups::zod_row_cell`); anything else
+  propagates as before. **Red-first:** the family's validation-line
+  comparand (`got []`, the job failing) and `system_backup_equivalence`'s
+  new `backup_with_blob_profile` (both sides plant the clone; the unported
+  collect PANICKED at `collect_user_data(...).expect("collect")`); green
+  after: 9/9 title cases, 5/5 backup cases (51 entries, the clone absent).
+- **Tier 2 item 13 — `find_default` measured NOT identical:** v4's
+  `findDefault` is `findOneByFilter` (`validate` throws inside a FALLBACK
+  `safeQuery` → `Data validation failed` + `Error finding entity by filter`
+  → `null`), a whole-read fallback, not a per-row drop; unchanged, recorded.
+- **Tier 3 item 16 (named):** v5's `marshal_cp_row` validates no enum, uuid
+  or JSON shape, so a row v4's Zod refuses for any other reason is still
+  KEPT, and a BLOB outside the three columns still fails the read (pinned by
+  `a_blob_outside_the_plain_string_columns_still_fails_the_read`). Also
+  observed, not ordered: `find_by_id` on a BLOB-named row logs `Error
+  finding entity by ID` with rusqlite's sentence where v4 logs `Data
+  validation failed` first and the ZodError on both (walk row C5's shape).
+- Regen (pin, Node 24, jest `/tmp` mirror): `title-update-tier3.test.ts` →
+  `QT_ORACLE_TITLE_UPDATE`; `system-backup.test.ts` →
+  `QT_ORACLE_SYSTEM_BACKUP` (recipes in each file's header).

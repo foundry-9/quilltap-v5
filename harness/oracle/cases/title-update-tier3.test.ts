@@ -141,6 +141,18 @@ interface CaseSpec {
    * lifted case records the repository's API-key / profile lines (`dbLines`).
    */
   liftKeyMock?: 'bound' | 'none' | 'corrupt';
+  /**
+   * P4.149 (dogfood standing note 2026-10-03, item 2): a SECOND connection
+   * profile for the job's user — a clone of the job's profile with a fresh id,
+   * `isDefault` off and `name` a BLOB (`x'4a554e4b'`). v4's
+   * `findByUserId` → `findByFilter` runs `validateSafe` per row: the backend
+   * hydrates the BLOB to a `Float32Array`, `ConnectionProfileSchema.name`'s
+   * `z.string()` refuses it, `validate` logs ERROR `Data validation failed`
+   * and throws, `validateSafe` logs WARN `Safe validation failed` and DROPS the
+   * row — the list answers without it and the job carries on. The case records
+   * those two lines (`validationLines`, the bag as logged).
+   */
+  blobNamedProfile?: boolean;
 }
 
 /** The hand rename `midFlightRename` plants (both sides write these bytes). */
@@ -354,6 +366,8 @@ function buildCases(): CaseSpec[] {
     // P4.136: the bound key's row is corrupt — v4's fallback read logs its
     // line and answers `null`, which is `no_key_refuses`'s throw.
     { name: 'corrupt_key_logs_and_refuses', chat: (s) => s.chatTitleId, liftKeyMock: 'corrupt' },
+    // P4.149: a BLOB-named second profile is DROPPED per row; the job completes.
+    { name: 'blob_named_profile_dropped', chat: (s) => s.chatTitleId, blobNamedProfile: true },
   ];
 }
 
@@ -498,6 +512,30 @@ async function plantBoundKey(spec: Spec, userId: string): Promise<void> {
   ]);
 }
 
+/** P4.149: the BLOB-named clone's id (both sides plant these statements). */
+const BLOB_PROFILE_ID = 'c0ffee00-0000-4000-8000-0000000000b1';
+
+/**
+ * P4.149: clone the job's profile under {@link BLOB_PROFILE_ID} with `name` a
+ * BLOB and `isDefault` off, through raw SQL on the case's DB copy.
+ */
+async function plantBlobNamedProfile(spec: Spec): Promise<void> {
+  const { rawQuery } = await import('@/lib/database/manager');
+  await rawQuery(
+    'CREATE TEMP TABLE qt_blob_profile AS SELECT * FROM connection_profiles WHERE id = ?',
+    [spec.connectionProfileId],
+  );
+  await rawQuery(
+    "UPDATE qt_blob_profile SET id = ?, name = x'4a554e4b', isDefault = 0",
+    [BLOB_PROFILE_ID],
+  );
+  await rawQuery('INSERT INTO connection_profiles SELECT * FROM qt_blob_profile');
+  await rawQuery('DROP TABLE qt_blob_profile');
+}
+
+/** P4.149: v4's per-row validation lines (`base.repository.ts:131-157`). */
+const VALIDATION_LINES = new Set(['Data validation failed', 'Safe validation failed']);
+
 const KEY_TABLE_DDL =
   'CREATE TABLE IF NOT EXISTS api_keys (id TEXT PRIMARY KEY, userId TEXT NOT NULL, ' +
   'label TEXT NOT NULL, provider TEXT NOT NULL, key_value TEXT NOT NULL, ' +
@@ -595,15 +633,31 @@ async function runCase(
       const { rawQuery } = await import('@/lib/database/manager');
       await rawQuery(`UPDATE api_keys SET key_value = x'00000000' WHERE id = ?`, [KEY_BOUND_ID]);
     }
+    if (c.blobNamedProfile) {
+      await plantBlobNamedProfile(spec);
+    }
     // P4.136: record the key resolution's repository lines (this registry
     // generation's root logger — the one `safe-query.ts` imported).
     const dbLines: Array<{ level: string; message: string; bag: unknown }> = [];
+    // P4.149: + the per-row validation lines, at their own level (the base
+    // repository logs through the same root logger).
+    const validationLines: Array<{ level: string; message: string; bag: unknown }> = [];
     const { logger } = await import('@/lib/logger');
     const errorSpy = jest
       .spyOn(logger, 'error')
       .mockImplementation(((message: string, bag?: Record<string, unknown>) => {
         if (KEY_READ_LINES.has(message)) {
           dbLines.push({ level: 'error', message, bag: JSON.parse(JSON.stringify(bag ?? {})) });
+        }
+        if (VALIDATION_LINES.has(message)) {
+          validationLines.push({ level: 'error', message, bag: JSON.parse(JSON.stringify(bag ?? {})) });
+        }
+      }) as never);
+    const warnSpy = jest
+      .spyOn(logger, 'warn')
+      .mockImplementation(((message: string, bag?: Record<string, unknown>) => {
+        if (VALIDATION_LINES.has(message)) {
+          validationLines.push({ level: 'warn', message, bag: JSON.parse(JSON.stringify(bag ?? {})) });
         }
       }) as never);
     const currentInterchange = c.currentInterchange ?? 5;
@@ -634,6 +688,7 @@ async function runCase(
       threw = e instanceof Error ? e.message : String(e);
     } finally {
       errorSpy.mockRestore();
+      warnSpy.mockRestore();
     }
 
     return {
@@ -642,6 +697,9 @@ async function runCase(
       ...(c.expectThrow ? {} : { state: await dumpState(chatId) }),
       // P4.133: only the lifted cases see a real key (the others the mock's).
       ...(c.liftKeyMock ? { sentKeys, dbLines } : {}),
+      // P4.149: every case records the validation lines (silence everywhere
+      // but the BLOB-named plant).
+      validationLines,
     };
   } finally {
     global.Date = RealDate;

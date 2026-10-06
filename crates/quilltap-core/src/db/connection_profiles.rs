@@ -907,17 +907,16 @@ pub fn find_by_id(conn: &Connection, id: &str) -> Result<Option<serde_json::Valu
 /// v4 `repos.connections.findAll()` — every profile, in insertion (rowid) order,
 /// matching v4's `collection.find({})` with no sort. Used by the dangerous-content
 /// provider-routing scan for `isDangerousCompatible` profiles.
+///
+/// P4.149: a row v4's `validateSafe` would refuse for a BLOB in a plain-string
+/// column is DROPPED with v4's two lines ([`collect_validated_rows`]).
 pub fn find_all(conn: &Connection) -> Result<Vec<serde_json::Value>, DbError> {
     let mut stmt = conn.prepare(&format!(
         "SELECT {} FROM connection_profiles",
         cp_select_columns(conn)
     ))?;
-    let rows = stmt.query_map([], marshal_cp_row)?;
-    let mut out = Vec::new();
-    for r in rows {
-        out.push(r?);
-    }
-    Ok(out)
+    let rows = collect_validated_rows(stmt.query([])?)?;
+    Ok(rows)
 }
 
 /// v4 `repos.connections.findDefault(userId)` — the user's default profile
@@ -956,10 +955,182 @@ pub fn find_by_user_id(
         "SELECT {} FROM connection_profiles WHERE userId = ?1",
         cp_select_columns(conn)
     ))?;
-    let rows = stmt.query_map(params![user_id], marshal_cp_row)?;
+    let rows = collect_validated_rows(stmt.query(params![user_id])?)?;
+    Ok(rows)
+}
+
+/// The plain `z.string()` columns of v4's `ConnectionProfileSchema`
+/// (`lib/schemas/profile.types.ts:42-…`) by their [`cp_select_columns`]
+/// index, in SCHEMA order: `name`, `baseUrl` (`.nullable().optional()`),
+/// `modelName`. A BLOB in any of them fails `z.string()` with ONE
+/// `invalid_type` issue and no length check.
+const PLAIN_STRING_COLUMNS: [(usize, &str); 3] = [(2, "name"), (7, "baseUrl"), (8, "modelName")];
+
+/// v4 `findByFilter` / `_findAll`'s per-row `validateSafe` for the one corrupt
+/// shape this port reproduces (P4.149, dogfood standing note 2026-10-03 item
+/// 2 — Ruling R-C): a BLOB in a plain-string column. v4's backend hydrates the
+/// BLOB to a `Float32Array` (`received Float32Array`, the
+/// [`crate::db::groups::zod_row_cell`] rendering), `validate` logs ERROR `Data
+/// validation failed {collection, error}` and throws, `validateSafe` logs WARN
+/// `Safe validation failed {collection, error}` and DROPS the row — the list
+/// answers without it (`base.repository.ts:131-157,263-298`). The strict scope
+/// does not reach `validateSafe` in v4, so every caller — the backup collect,
+/// the `.qtap` export and import included — sees the drop.
+///
+/// ⚠ Scope, recorded: v5's [`marshal_cp_row`] validates no enum, uuid or JSON
+/// shape, so a row v4's Zod refuses for any OTHER reason is still KEPT here
+/// (Tier 3 deferral), and a row whose BLOB sits in any other column still fails
+/// the read as before ([`blob_string_cell_issues`] answers `None`).
+fn collect_validated_rows(mut rows: rusqlite::Rows<'_>) -> Result<Vec<serde_json::Value>, DbError> {
     let mut out = Vec::new();
-    for r in rows {
-        out.push(r?);
+    while let Some(row) = rows.next()? {
+        match marshal_cp_row(row) {
+            Ok(v) => out.push(v),
+            // Only when the FIRST failing cell is itself a plain-string BLOB:
+            // a row that fails on anything else (a NULL in a required column, a
+            // BLOB elsewhere) is not a shape this port renders, and propagates.
+            Err(e @ rusqlite::Error::InvalidColumnType(idx, _, rusqlite::types::Type::Blob))
+                if PLAIN_STRING_COLUMNS.iter().any(|(i, _)| *i == idx) =>
+            {
+                let Some(issues) = blob_string_cell_issues(row) else {
+                    return Err(e.into());
+                };
+                let error = crate::api::zod_issues::zod_error_message(&issues);
+                tracing::error!(
+                    target: "quilltap::db",
+                    collection = "connection_profiles",
+                    error = %error,
+                    "Data validation failed"
+                );
+                tracing::warn!(
+                    target: "quilltap::db",
+                    collection = "connection_profiles",
+                    error = %error,
+                    "Safe validation failed"
+                );
+            }
+            Err(e) => return Err(e.into()),
+        }
     }
     Ok(out)
+}
+
+/// The Zod issues for a row whose ONLY BLOB cells sit in
+/// [`PLAIN_STRING_COLUMNS`]; `None` when any other column holds a BLOB (v5
+/// cannot render that row's issue list) or no BLOB is found at all.
+fn blob_string_cell_issues(
+    row: &rusqlite::Row<'_>,
+) -> Option<Vec<crate::api::zod_issues::ZodIssue>> {
+    use crate::api::zod_issues::{key, ZodIssue};
+    use rusqlite::types::ValueRef;
+    let count = row.as_ref().column_count();
+    let mut issues = Vec::new();
+    for i in 0..count {
+        let cell = row.get_ref(i).ok()?;
+        if !matches!(cell, ValueRef::Blob(_)) {
+            continue;
+        }
+        let (_, column) = PLAIN_STRING_COLUMNS.iter().find(|(idx, _)| *idx == i)?;
+        issues.push(ZodIssue::invalid_type(
+            "string",
+            vec![key(column)],
+            crate::db::groups::zod_row_cell(cell).as_ref(),
+        ));
+    }
+    (!issues.is_empty()).then_some(issues)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const DDL: &str = "CREATE TABLE connection_profiles (\
+        id TEXT PRIMARY KEY, userId TEXT, name TEXT, provider TEXT, \
+        transport TEXT, courierDeltaMode INTEGER, apiKeyId TEXT, \
+        baseUrl TEXT, modelName TEXT, parameters TEXT, isDefault INTEGER, \
+        isCheap INTEGER, allowWebSearch INTEGER, useNativeWebSearch INTEGER, \
+        allowToolUse INTEGER, pseudoToolMode TEXT, \
+        \"multiCharacterPrefill\" INTEGER, modelClass TEXT, \
+        maxContext REAL, maxTokens REAL, isDangerousCompatible INTEGER, \
+        supportsImageUpload INTEGER, tags TEXT, sortIndex REAL, \
+        totalTokens REAL, totalPromptTokens REAL, totalCompletionTokens REAL, \
+        messageCount REAL, createdAt TEXT, updatedAt TEXT, \
+        \"fallbackProfileId\" TEXT, \"allowTierFallback\" INTEGER DEFAULT 0);";
+
+    /// One profile for `u-1`; `name` / `provider` are SQL expressions so a
+    /// BLOB can be planted in either.
+    fn plant(conn: &Connection, id: &str, name: &str, provider: &str) {
+        conn.execute(
+            &format!(
+                "INSERT INTO connection_profiles (id, userId, name, provider, transport, \
+                 courierDeltaMode, modelName, parameters, isDefault, isCheap, allowWebSearch, \
+                 useNativeWebSearch, allowToolUse, pseudoToolMode, isDangerousCompatible, \
+                 supportsImageUpload, sortIndex, totalTokens, totalPromptTokens, \
+                 totalCompletionTokens, messageCount, createdAt, updatedAt) \
+                 VALUES (?1, 'u-1', {name}, {provider}, 'api', 1, 'm', '{{}}', 0, 0, 0, 0, 1, \
+                 'auto', 0, 0, 0, 0, 0, 0, 0, '2026-01-01T00:00:00.000Z', \
+                 '2026-01-01T00:00:00.000Z')"
+            ),
+            [id],
+        )
+        .unwrap();
+    }
+
+    fn conn() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(DDL).unwrap();
+        conn
+    }
+
+    /// P4.149: a BLOB `name` is DROPPED per row with v4's two lines — the
+    /// ZodError's bytes on both — and the list answers the healthy rows, on
+    /// both list reads; a healthy table logs nothing.
+    #[test]
+    fn a_blob_named_row_is_dropped_with_v4s_two_lines() {
+        let c = conn();
+        plant(&c, "p-ok", "'Healthy'", "'OPENAI'");
+        plant(&c, "p-blob", "x'4a554e4b'", "'OPENAI'");
+        plant(&c, "p-ok2", "'Also healthy'", "'OPENAI'");
+        let ((by_user, all), lines) = crate::test_support::captured_with(|| {
+            (find_by_user_id(&c, "u-1").unwrap(), find_all(&c).unwrap())
+        });
+        let ids = |v: &[serde_json::Value]| {
+            v.iter()
+                .map(|p| p["id"].as_str().unwrap().to_string())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ids(&by_user), ["p-ok", "p-ok2"]);
+        assert_eq!(ids(&all), ["p-ok", "p-ok2"]);
+        let zod = "[\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"name\"\n    ],\n    \"message\": \"Invalid input: expected string, received Float32Array\"\n  }\n]";
+        let pair = [
+            format!("ERROR quilltap::db Data validation failed collection=connection_profiles error={zod}"),
+            format!("WARN quilltap::db Safe validation failed collection=connection_profiles error={zod}"),
+        ];
+        assert_eq!(lines, [pair.clone(), pair].concat());
+
+        let healthy = conn();
+        plant(&healthy, "p-ok", "'Healthy'", "'OPENAI'");
+        let (got, lines) =
+            crate::test_support::captured_with(|| find_by_user_id(&healthy, "u-1").unwrap());
+        assert_eq!(ids(&got), ["p-ok"]);
+        assert!(lines.is_empty(), "{lines:?}");
+    }
+
+    /// A BLOB outside the plain-string columns is not a shape this port renders
+    /// (an enum column's issue differs): the read still FAILS, as before.
+    #[test]
+    fn a_blob_outside_the_plain_string_columns_still_fails_the_read() {
+        let c = conn();
+        plant(&c, "p-ok", "'Healthy'", "'OPENAI'");
+        plant(&c, "p-blob", "'Named'", "x'4a554e4b'");
+        let (got, lines) = crate::test_support::captured_with(|| find_by_user_id(&c, "u-1"));
+        assert!(
+            matches!(
+                got,
+                Err(DbError::Sqlite(rusqlite::Error::InvalidColumnType(3, _, _)))
+            ),
+            "{got:?}"
+        );
+        assert!(lines.is_empty(), "{lines:?}");
+    }
 }
