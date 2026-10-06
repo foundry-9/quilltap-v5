@@ -166432,3 +166432,92 @@ re-measure); the restore order's acceptance walk (#141/#142).
   the census's 5 `fallback-in-v4` rows → `strict-by-ruling`, the both-ways
   pin and the filing. `services/mount_index/sync/**` and
   `sync_engine_equivalence` untouched this round.
+
+### P4.149 Gate — the P4.149 repository-fallbacks lane closes on its own branch (LANE COMPLETE 2026-10-05)
+
+- **§R.2 probe** PASSED at lane start and before every regen batch (branch
+  `main`, HEAD `07b8f0209`, both logs empty, tree clean).
+- **fmt** clean; **clippy** clean with and without
+  `quilltap-core/native-transport` (unit 8 fixed four `manual_inspect`s unit 6
+  introduced).
+- **Sweep** (announced; `recipe_sweep.py --run-all --families …` from the lane
+  pin): **40/40 ok**, zero SKIP — the seven touched families plus
+  `chat_informs_{routes,permanent_ensure,remap}`, `chat_cast_routes`,
+  `inform_block`, `cost_background_routes`, `retry_uncensored_tier3`,
+  `system_import_{state,equivalence}` (RUN only — P4.148's), `doc_edit_path_
+  resolver`, `project_roster_access`, `memories_{tier2,routes}`,
+  `memory_{gate_tier3,pipeline_jobs_tier3,cascade_tier2,delete_tier2,
+  housekeeping_tier2}`, `carina_memory_extraction_tier3`, `connection_
+  profiles_tier2`, `connection_profile_legacy_fields`, `cheap_llm_{selection,
+  fallback}`, `character_archive_tier2`, `doc_mount_{file_links,folders,
+  files}_tier2`, `mount_read`, `sync_engine` (neutral — untouched),
+  `build_context_tier3`, `orchestrator_tier3`, `state_cascade`, `chats_
+  participants_tier2`. Results: `/tmp/p4149/sweep-results.json` (deleted at
+  lane close).
+- **`cargo test --workspace --no-fail-fast`** (`CARGO_INCREMENTAL=0`,
+  `QT_V4_CHECKOUT`/`QT_V4_ROOT` at the pin, the seven families' oracle vars at
+  REAL `/tmp/p4149/…` paths): **670 binaries / 4,359 passed / 0 failed / 3
+  ignored**. The seven families + the guards re-run by name with
+  `--nocapture`: every one RAN (no `SKIP:` line) — `chat_informs_tier2`,
+  `title_update_tier3`, `system_backup`, `salon_mutations`, `salon_reads`,
+  `tiered_mount_pool`, `fold_episode_tier3`, `fallback_home_guard` (31
+  messages), `doc_mount_fallback_sites_census` (83,14,19,0,13,1,1,20,5),
+  `api_key_read_sites_census` + `get_messages_caller_census` (unmoved),
+  `spelling_guard`, `builtin_prompt_templates_guard`, `provider_sdk_version_
+  guard`, `qtap_schema_embed_guard`; `help_tree_equivalence` through the
+  sweep driver (129 docs / 746 chunks); `dispatch_wrong_type_census` 14/14
+  (451 UNMOVED); `recipe_sweep.py --self-test` exit 0.
+- **SPA liveness:** `npm ci` + `npm run build` in `apps/web` — OK (no SPA
+  edit).
+- **Versions:** core 0.0.1209 → **0.0.1217** (+8, one per commit); harness
+  frozen; host/web/cli/tauri unmoved. No non-version `Cargo.toml` delta.
+- **Landed:** Tier 1 items 1–11 WHOLE; Tier 2 item 12 (5c written up — the
+  human ruled "leave for later"; `sync_engine_equivalence` untouched) and
+  item 13 (`find_default` measured NOT on the per-row path — unchanged).
+- **Tier 3, deferred by name:** 14 — the 40-delete / 19-outer-line census
+  (R-B; only the chat-informs rows and the memory repository's create/update/
+  delete adopted the rethrow homes); 15 — the base repository's SUCCESS INFOs
+  and the `Entity not found for update|deletion` WARNs (R-A; the memory
+  ownership WARNs ARE ported); 16 — v5's missing `ConnectionProfileSchema`
+  enum/uuid/JSON validation (a BLOB outside `name`/`baseUrl`/`modelName`
+  still fails the read, pinned); 17 — R-G's adjacents (unit 5's record:
+  seven `find_enabled_for_docedit()` callers + the silent per-id skip over
+  13 `find_by_id_for_docedit` sites); 18 — no `ZodIssue` constructor was
+  needed (no P4.148 handoff). Also NAMED: the importer-reachable non-strict
+  reads the reachability pass found on the vault-provisioning path (unit 7's
+  list); the memories read's `Data validation failed` line (v5 validates no
+  memory row); v4's `Error deleting informs by chat ID` wrap (no v4 production
+  caller — v5's `delete_by_chat_id` stays propagating); the unported
+  middleware `[<METHOD> <path>] Project document store unavailable` line;
+  v4's backend `SQLite <op> error` lines (standing convention).
+- **Handoffs for the unifier (§S):** (a) C2 measured — P4.148's twin
+  (`collection: chats`, bare `error`, `strictFailures: true`) matches v4's
+  create line exactly; fold it onto `db::fallback::log_create_failure`.
+  (b) §S.3 — `db/chat_informs.rs`'s test module pins the two repository
+  DEBUG lines' SNAKE-CASE keys (`batch_id`, …) where v4 logs `batchId` /
+  `chatId` / `participantId`; the lane left both the lines and the pin
+  (the module is the unifier's). (c) Ownership notes: `services/
+  character_archive/service.rs`, `services/mount_index/{scanner,file_ops}.rs`
+  (5d, the human's ruling), `crates/quilltap-harness/tests/salon_mutations_
+  equivalence.rs` + `harness/oracle/cases/salon-mutations.test.ts` (the chat
+  PUT family R-F names), `system_backup_equivalence.rs` +
+  `system-backup.test.ts` (R-C's in-case plant), `tiered-mount-pool.json`
+  (the family's spec), `api/chat_informs.rs`'s one unit test (it pinned the
+  moved line) — edited outside the ownership row as the order's own named
+  proofs; no sibling owns any of them.
+- **Fixtures:** no committed `.db` pair rebuilt. Spec JSONs changed:
+  `harness/oracle/fixtures/chat-informs-tier2.json` (B1 rows + plant ops —
+  its readers `chat_informs_{tier2,routes,permanent_ensure}` re-run green)
+  and `tiered-mount-pool.json` (the `projectTierArms` key — its fixture
+  builder ignores it). Oracle cases changed: `chat-informs-tier2.ts`,
+  `title-update-tier3.test.ts`, `system-backup.test.ts`,
+  `salon-mutations.test.ts`, `salon-reads.test.ts`, `tiered-mount-pool.ts`,
+  `fold-episode-tier3.test.ts` — every one regenerated at the pin.
+- **💸 for the dogfood pass:** a BLOB planted in `connection_profiles.name`
+  on the Friday copy — the title job completes, the list drops ONE row with
+  v4's two lines, a backup omits it; `chats.userId` renamed on a copy →
+  `listChats` 200 `[]` with the filter line; a chat moved onto a project with
+  a corrupt store → 503 v4's body; an inform batch cancelled under a planted
+  BEFORE DELETE trigger → `removed: 0` with `Error deleting entity` then the
+  wrap's line; a fold over a planted episode-write failure → the create chain
+  and the fold continuing.

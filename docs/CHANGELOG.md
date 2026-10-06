@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-05 — docs(porting): close the P4.149 repository-fallbacks lane — gate record and status header
+
+_Docs-only change._
+
+The P4.149 lane record's gate section (sweep 40/40, workspace 670 binaries / 4,359 / 0 / 3 ignored, guards and censuses green, SPA build OK), its Tier 3 deferrals and unifier handoffs, and the order's status header set to LANE COMPLETE.
+
 #### 2026-10-05 — chore(db): the memory repository's logging wrappers use inspect_err (P4.149 unit 8)
 
 _Versions: core 0.0.1217._
