@@ -169132,3 +169132,22 @@ unported `main`.
   mount-index are unchanged — the differential twin of this unit's pin. No
   family drives a refused store-backed create today (the restore and the
   import both validate first), so until then the order is pinned v5-side.
+
+### Unit 6 — R-F: `restore_compact_fresh_replace` narrowed (harness only)
+
+- **Measured with the carve lifted:** `summary.warnings` and every summary
+  counter EQUAL (the fresh target's portrait never reaches v4's file phase,
+  so v4 has no `restored/` race and no folder collision); five tables
+  different — four by the ruled >3 MB phantom (`main.files` storageKey/sha256,
+  one extra `doc_mount_blobs` / `doc_mount_files` / `doc_mount_file_links`
+  row in "Project Files: The Voyage"), and `doc_mount_folders` (rust 17 vs
+  oracle 16) because `FRESH_TARGET_UPLOADS`' carve (P4.147) removed v5's
+  replayed portrait rows but not the `restored` folder that replay created —
+  a carve gap, not a v5 difference (no FINDING).
+- `REPLAY_DEDUPE_NARROWED` (per-case tables + reason); the case keeps
+  `assert_replay_dedupe`'s both-ways check and the compact `doc_mount_points`
+  rollup mask, and gets its folders, warnings and summary counters back
+  under diff. **Red-first:** 1 failure (folders) with the narrowing alone;
+  green once the carve also drops a carved link's folder that no surviving
+  link uses and the archive does not carry. The other `REPLAY_DEDUPE` cases
+  are unchanged (still the five-table list, `REPLAY_DEDUPE_TABLES`).

@@ -387,6 +387,41 @@ const REPLAY_DEDUPE_TABLES: &[(&str, &str)] = &[
 /// and folders than v5 because its replay got to their paths first.
 const REPLAY_DEDUPE_SUMMARY_KEYS: &[&str] = &["docMountFolders", "docMountFileLinks"];
 
+/// ## [P4.158 R-F] A [`REPLAY_DEDUPE`] case NARROWED to the tables that differ
+///
+/// `restore_compact_fresh_replace` (P4.147) joined the list wholesale, "most of
+/// its diff off". Measured at P4.158 with the carve lifted: its warnings and
+/// every summary counter already compare EQUAL — the fresh target's portrait
+/// never reaches v4's file phase (`FRESH_TARGET_UPLOADS`), so v4 never races
+/// into `restored/` and has no folder collision to report — and of the five
+/// tables only FOUR carry the divergence, each for the same reason: the
+/// over-3 MB phantom copy v4 re-ingests of the carried `atlas-plates.bin` into the PROJECT
+/// store (one extra `doc_mount_blobs`, `doc_mount_files` and
+/// `doc_mount_file_links` row, and `main.files`' `storageKey` / `sha256`
+/// naming the phantom instead of the archive's blob). `doc_mount_folders`
+/// differed only because `FRESH_TARGET_UPLOADS`' carve left behind the
+/// `restored` folder v5's portrait replay created — a carve gap, fixed there —
+/// so it comes back under diff, and the case's warnings and summary keys with
+/// it. `assert_replay_dedupe` still holds the case both ways.
+const REPLAY_DEDUPE_NARROWED: &[(&str, &[(&str, &str)])] = &[(
+    "restore_compact_fresh_replace",
+    &[
+        ("main", "files"),
+        ("mountIndex", "doc_mount_blobs"),
+        ("mountIndex", "doc_mount_files"),
+        ("mountIndex", "doc_mount_file_links"),
+    ],
+)];
+
+/// The tables [`REPLAY_DEDUPE`] carves on `name`.
+fn replay_dedupe_tables(name: &str) -> &'static [(&'static str, &'static str)] {
+    REPLAY_DEDUPE_NARROWED
+        .iter()
+        .find(|(c, _)| *c == name)
+        .map(|(_, t)| *t)
+        .unwrap_or(REPLAY_DEDUPE_TABLES)
+}
+
 fn archives_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../quilltap-web/tests/fixtures/restore-archives")
@@ -3949,11 +3984,36 @@ fn carve_fresh_target_uploads(
         })
         .filter_map(|l| str_at(l, "id").map(str::to_string))
         .collect();
+    // [P4.158 R-F] the folders those links sat in (the replay's `restored/`)
+    // go with them when nothing else uses them and the archive does not carry
+    // them — on a fresh target v4's replay never runs, so it never makes one.
+    let extracted = quilltap_core::services::backup::restore::parse_backup_zip(zip, temp_root)
+        .expect("parse archive for its folders");
+    let archive_folders: HashSet<String> = extracted
+        .data
+        .doc_mount_folders
+        .iter()
+        .filter_map(|f| str_at(f, "id").map(str::to_string))
+        .collect();
+    let link_folders: HashSet<String> = rows_of(&got_v, "mountIndex", "doc_mount_file_links")
+        .iter()
+        .filter(|l| str_at(l, "id").is_some_and(|i| link_ids.contains(i)))
+        .filter_map(|l| str_at(l, "folderId").map(str::to_string))
+        .collect();
     retain_rows(&mut got_v, "main", "files", |r| {
         !str_at(r, "originalFilename").is_some_and(|f| files.contains(&f))
     });
     retain_rows(&mut got_v, "mountIndex", "doc_mount_file_links", |r| {
         !str_at(r, "id").is_some_and(|i| link_ids.contains(i))
+    });
+    let used_folders: HashSet<String> = rows_of(&got_v, "mountIndex", "doc_mount_file_links")
+        .iter()
+        .filter_map(|l| str_at(l, "folderId").map(str::to_string))
+        .collect();
+    retain_rows(&mut got_v, "mountIndex", "doc_mount_folders", |r| {
+        !str_at(r, "id").is_some_and(|i| {
+            link_folders.contains(i) && !used_folders.contains(i) && !archive_folders.contains(i)
+        })
     });
     retain_rows(&mut got_v, "mountIndex", "doc_mount_chunks", |r| {
         !str_at(r, "linkId").is_some_and(|i| link_ids.contains(i))
@@ -4649,6 +4709,8 @@ fn compare_case(
     // `files`, `docMountPoints` and `docMountFileLinks` used to be excluded here
     // as divergent. They are compared like the rest now.
     let dedupe = REPLAY_DEDUPE.contains(&name);
+    // [P4.158 R-F] a narrowed dedupe case compares its warnings and summary.
+    let narrowed = REPLAY_DEDUPE_NARROWED.iter().any(|(c, _)| *c == name);
     let got_summary = serde_json::to_value(summary).expect("summary serializes");
     let want_summary = &case["summary"];
     for (k, gv) in got_summary.as_object().unwrap() {
@@ -4692,12 +4754,12 @@ fn compare_case(
                 // [P4.147 item 10(b)] the message replay's serde arm, likewise.
                 let (g, w) = classify_message_serde_arm(name, gv, wv, failures);
                 compare_warnings(name, &g, &w, failures);
-            } else if !dedupe {
+            } else if !dedupe || narrowed {
                 compare_warnings(name, gv, wv, failures);
             }
             continue;
         }
-        if dedupe && REPLAY_DEDUPE_SUMMARY_KEYS.contains(&k.as_str()) {
+        if dedupe && !narrowed && REPLAY_DEDUPE_SUMMARY_KEYS.contains(&k.as_str()) {
             continue;
         }
         // The #58 orphan case's three doc-store counters ARE the divergence:
@@ -4857,7 +4919,8 @@ fn compare_case(
             // The ruled dedupe divergence: these five hold different rows by
             // design. `assert_replay_dedupe` above states exactly how, in both
             // directions, instead of diffing them.
-            if dedupe && REPLAY_DEDUPE_TABLES.contains(&(partition.as_str(), table.as_str())) {
+            if dedupe && replay_dedupe_tables(name).contains(&(partition.as_str(), table.as_str()))
+            {
                 continue;
             }
             // [P4.D46] On the compact cases the SAME ruled divergence reaches

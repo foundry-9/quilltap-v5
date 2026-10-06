@@ -115,6 +115,13 @@ _Versions: core 0.0.1236._
 - A refused create logs v4's three ERRORs before the per-item WARN: `Data validation failed`, `Error creating project entity` / `Error creating group entity` (the store-backed base overrides `createErrorMessage()`, so this is not the base `Error creating entity`), and `Error creating project` / `Error creating group` with the payload's `name`. Measured against v4 at `94fbb1ae3`; the order's "the base pair through `log_create_failure`" was wrong. The two `safeQuery` lines live in a lane-local `db::document_store_overlay::log_refused_store_create` until `db::fallback` grows homes for them (handoff to P4.156).
 - Every per-item import WARN (`Failed to import tag`, `…project`, `…group`, `…chat`, `…character`, `…wardrobe item`, `…prompt template`, `…roleplay template`, `…folder`, `…file`, `…memory`, the three profile lines) renders the item's id through one `id_field` helper: an absent id omits the field (winston drops `undefined`) instead of logging an empty `fileId=`.
 - Harness: `system-import-execute.test.ts` records the refused project/group creates' repository lines, grows each property-refusal payload by five whole-entity rows, and adds `execute_idless_files` and `execute_idless_refused_inserts` (planted INSERT-refusing triggers on `memories` and `prompt_templates`); `system_import_state` parses the new lines (a key-aware field split, since `name=` carries spaces) and pins the counts (50 cases; 37 WARN-compared cases with 8 lines; 5 repository-line cases). Red-first on unported core: 20 differences.
+#### 2026-10-06 — test(restore): narrow `restore_compact_fresh_replace`'s replay-dedupe carve to the four tables that differ (P4.158 R-F)
+
+_No crate versions bumped._
+
+- `restore_compact_fresh_replace` sat in `REPLAY_DEDUPE` wholesale, with five tables, its warnings and two summary counters out of the diff. Measured with the carve lifted: the warnings and every counter compare equal, and four tables (`main.files`, `doc_mount_blobs`, `doc_mount_files`, `doc_mount_file_links`) carry v4's >3 MB phantom re-ingest. `doc_mount_folders` differed only because the `FRESH_TARGET_UPLOADS` carve left v5's replayed `restored` folder behind.
+- New `REPLAY_DEDUPE_NARROWED` (per-case table list, with the reason); the case's folders, warnings and summary counters are compared again. The `FRESH_TARGET_UPLOADS` carve now also removes the folder the carved links sat in when no other link uses it and the archive does not carry it. Red first: 1 failure (the folder table), then green.
+
 #### 2026-10-06 — fix(db): the store-backed create validates the property bag before it inserts anything (P4.158 R-E)
 
 _Versions: core 0.0.1240._
