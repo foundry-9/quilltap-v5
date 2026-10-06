@@ -166746,3 +166746,21 @@ sync unit tests 7/0. `api/types.rs` / `api/memories.rs`' private copies stay
   fold onto the home in P4.149's own commit) until §S.1a folds the twin —
   both ERROR lines, since C2's home carries only the first, the unifier
   keeps the `Failed to create chat` line beside the call.
+
+### Unit 7 — the twelve snake_case WARN fields (Tier 1 item 13)
+
+Renamed to v4's camelCase in v4's field order (read off the pin's
+`import-characters.ts:209,375`, `import-entities.ts:244,309`,
+`reconcile.ts:153,341,425,477,522,547,572,598`): `characterId`,
+`pluginName`+`characterId`, `projectId`, `groupId`,
+`characterId`+`scaffoldMountId`, `chatId`, `profileId` ×3, `templateId`.
+Capture pins (`captured_with`, the exact `<LEVEL> <target> <message>
+<field>=<value>` head, the `error=` tail asserted bare): `reconcile::tests::
+reconcile_warns_carry_v4s_camel_case_fields_and_bare_errors` (all eight
+reconcile-side lines in one run over two empty in-memory partitions — every
+first read fails `no such table: …` — + an empty-map silence leg),
+`entities::group_null_import_tests::project_and_group_warns_carry_v4s_camel_
+case_ids` (a `color: "red"` item → the ZodError tail; a sound item silent),
+`characters::warn_field_tests::{a_failed_character_warns_with_v4s_character_
+id, a_failed_plugin_upsert_warns_with_v4s_fields_and_a_bare_error}`.
+Mutation: reverting `projectId` → `project_id` reddens the entities pin.

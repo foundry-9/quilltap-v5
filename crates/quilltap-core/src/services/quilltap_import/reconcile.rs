@@ -153,7 +153,7 @@ fn discard_scaffold_vault(
         warnings.push(format!(
             "Failed to remove the placeholder vault for an imported character: {text}"
         ));
-        tracing::warn!(character_id, scaffold_mount_id, error = %text, "Failed to discard scaffold vault");
+        tracing::warn!(characterId = %character_id, scaffoldMountId = %scaffold_mount_id, error = %text, "Failed to discard scaffold vault");
     }
 }
 
@@ -369,7 +369,7 @@ pub(super) fn reconcile_relationships(
             warnings.push(format!(
                 "Failed to reconcile character relationships: {text}"
             ));
-            tracing::warn!(character_id = %new_id, error = %text, "Failed to reconcile character");
+            tracing::warn!(characterId = %new_id, error = %text, "Failed to reconcile character");
         }
     }
 
@@ -450,7 +450,7 @@ pub(super) fn reconcile_relationships(
         })();
         if let Err(text) = out {
             warnings.push(format!("Failed to reconcile chat relationships: {text}"));
-            tracing::warn!(chat_id = %new_id, error = %text, "Failed to reconcile chat");
+            tracing::warn!(chatId = %new_id, error = %text, "Failed to reconcile chat");
         }
     }
 
@@ -503,7 +503,7 @@ pub(super) fn reconcile_relationships(
         })();
         if let Err(text) = out {
             warnings.push(format!("Failed to reconcile project relationships: {text}"));
-            tracing::warn!(project_id = %new_id, error = %text, "Failed to reconcile project");
+            tracing::warn!(projectId = %new_id, error = %text, "Failed to reconcile project");
         }
     }
 
@@ -557,7 +557,7 @@ pub(super) fn reconcile_relationships(
             warnings.push(format!(
                 "Failed to reconcile connection profile relationships: {text}"
             ));
-            tracing::warn!(profile_id = %new_id, error = %text, "Failed to reconcile connection profile");
+            tracing::warn!(profileId = %new_id, error = %text, "Failed to reconcile connection profile");
         }
     }
 
@@ -589,7 +589,7 @@ pub(super) fn reconcile_relationships(
             warnings.push(format!(
                 "Failed to reconcile image profile relationships: {text}"
             ));
-            tracing::warn!(profile_id = %new_id, error = %text, "Failed to reconcile image profile");
+            tracing::warn!(profileId = %new_id, error = %text, "Failed to reconcile image profile");
         }
     }
 
@@ -621,7 +621,7 @@ pub(super) fn reconcile_relationships(
             warnings.push(format!(
                 "Failed to reconcile embedding profile relationships: {text}"
             ));
-            tracing::warn!(profile_id = %new_id, error = %text, "Failed to reconcile embedding profile");
+            tracing::warn!(profileId = %new_id, error = %text, "Failed to reconcile embedding profile");
         }
     }
 
@@ -653,7 +653,7 @@ pub(super) fn reconcile_relationships(
             warnings.push(format!(
                 "Failed to reconcile roleplay template relationships: {text}"
             ));
-            tracing::warn!(template_id = %new_id, error = %text, "Failed to reconcile roleplay template");
+            tracing::warn!(templateId = %new_id, error = %text, "Failed to reconcile roleplay template");
         }
     }
 }
@@ -662,6 +662,70 @@ pub(super) fn reconcile_relationships(
 mod tests {
     use super::*;
     use crate::services::quilltap_import::IdMap;
+
+    /// [P4.148 item 13] The eight reconcile-pass WARN lines carry v4's
+    /// camelCase fields (`reconcile.ts:153-598` — `characterId`,
+    /// `scaffoldMountId`, `chatId`, `projectId`, `profileId`, `templateId`),
+    /// in v4's order, then the BARE error (no `sqlite error: ` — dogfood
+    /// #140). Two empty in-memory partitions make every first read fail with
+    /// `no such table: …`, so each loop warns exactly once.
+    #[test]
+    fn reconcile_warns_carry_v4s_camel_case_fields_and_bare_errors() {
+        let main = Connection::open_in_memory().unwrap();
+        let mount = Connection::open_in_memory().unwrap();
+        let mut id_maps = IdMaps::default();
+        let one = |k: &str, v: &str| {
+            let mut m = IdMap::default();
+            m.set(k.into(), v.into());
+            m
+        };
+        id_maps.characters = one("c-old", "c-new");
+        id_maps.chats = one("ch-old", "ch-new");
+        id_maps.projects = one("p-old", "p-new");
+        id_maps.connection_profiles = one("cp-old", "cp-new");
+        id_maps.image_profiles = one("ip-old", "ip-new");
+        id_maps.embedding_profiles = one("ep-old", "ep-new");
+        id_maps.roleplay_templates = one("rt-old", "rt-new");
+        let mut warnings = Vec::new();
+        let ((), lines) = crate::test_support::captured_with(|| {
+            discard_scaffold_vault(&mount, "mp-scaffold", "mp-vault", "c-new", &mut warnings);
+            reconcile_relationships(&main, &mount, &id_maps, &mut warnings);
+        });
+        let warns: Vec<&String> = lines.iter().filter(|l| l.starts_with("WARN ")).collect();
+        const T: &str = "WARN quilltap_core::services::quilltap_import::reconcile";
+        let heads: Vec<String> = warns
+            .iter()
+            .map(|l| l.split(" error=").next().unwrap().to_string())
+            .collect();
+        assert_eq!(
+            heads,
+            vec![
+                format!("{T} Failed to discard scaffold vault characterId=c-new scaffoldMountId=mp-scaffold"),
+                format!("{T} Failed to reconcile character characterId=c-new"),
+                format!("{T} Failed to reconcile chat chatId=ch-new"),
+                format!("{T} Failed to reconcile project projectId=p-new"),
+                format!("{T} Failed to reconcile connection profile profileId=cp-new"),
+                format!("{T} Failed to reconcile image profile profileId=ip-new"),
+                format!("{T} Failed to reconcile embedding profile profileId=ep-new"),
+                format!("{T} Failed to reconcile roleplay template templateId=rt-new"),
+            ],
+            "{lines:#?}"
+        );
+        for w in &warns {
+            let error = w.split(" error=").nth(1).unwrap_or_default();
+            assert!(error.starts_with("no such table: "), "bare error: {w}");
+        }
+        assert_eq!(warnings.len(), 8, "{warnings:?}");
+        assert!(
+            warnings.iter().all(|w| !w.contains("sqlite error:")),
+            "{warnings:?}"
+        );
+        // Silence leg: an empty id map reconciles nothing and warns nothing.
+        let ((), quiet) = crate::test_support::captured_with(|| {
+            reconcile_relationships(&main, &mount, &IdMaps::default(), &mut Vec::new());
+        });
+        assert!(quiet.iter().all(|l| !l.starts_with("WARN ")), "{quiet:?}");
+    }
 
     /// The `connection_profiles` shape the reconcile pass reads and writes —
     /// the CpCreate INSERT's column list, in the MIGRATED (appended) order the

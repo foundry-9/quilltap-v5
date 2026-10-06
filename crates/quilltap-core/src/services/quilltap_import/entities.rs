@@ -486,7 +486,7 @@ pub(super) fn import_projects(
         })();
         if let Err(text) = out {
             warnings.push(format!("Failed to import project \"{name}\": {text}"));
-            tracing::warn!(project_id = %source_id, error = %text, "Failed to import project");
+            tracing::warn!(projectId = %source_id, error = %text, "Failed to import project");
         }
     }
     Ok(Counts {
@@ -591,7 +591,7 @@ pub(super) fn import_groups(
         })();
         if let Err(text) = out {
             warnings.push(format!("Failed to import group \"{name}\": {text}"));
-            tracing::warn!(group_id = %source_id, error = %text, "Failed to import group");
+            tracing::warn!(groupId = %source_id, error = %text, "Failed to import group");
         }
     }
     Ok(Counts {
@@ -1134,6 +1134,75 @@ mod group_null_import_tests {
                 |r| r.get(0),
             )
             .unwrap()
+    }
+
+    /// [P4.148 item 13] The project / group per-item WARNs carry v4's
+    /// camelCase id field (`import-entities.ts:244,309` — `projectId`,
+    /// `groupId`), then the bare error (here a ZodError message: `color:
+    /// "red"` fails `HexColorSchema`). Silence leg: a sound item warns nothing.
+    #[test]
+    fn project_and_group_warns_carry_v4s_camel_case_ids() {
+        let (main, mount) = conns();
+        let opts = ImportOptions::seed_defaults();
+        let bad = |id: &str| json!({ "id": id, "name": "Red", "state": {}, "color": "red" });
+        let good = |id: &str| json!({ "id": id, "name": "Fine", "state": {}, "color": "#abc" });
+        const T: &str = "WARN quilltap_core::services::quilltap_import::entities";
+        for (kind, field, run) in [
+            (
+                "project",
+                "projectId",
+                import_projects
+                    as fn(
+                        &Connection,
+                        &Connection,
+                        &[Value],
+                        &ImportOptions,
+                        &mut IdMap,
+                        &mut Vec<String>,
+                    ) -> Result<Counts, DbError>,
+            ),
+            ("group", "groupId", import_groups),
+        ] {
+            let mut warnings = Vec::new();
+            let (out, lines) = crate::test_support::captured_with(|| {
+                run(
+                    &main,
+                    &mount,
+                    &[bad("src-bad")],
+                    &opts,
+                    &mut IdMap::default(),
+                    &mut warnings,
+                )
+            });
+            out.unwrap();
+            let warns: Vec<&String> = lines.iter().filter(|l| l.starts_with("WARN ")).collect();
+            assert_eq!(warns.len(), 1, "{kind}: {lines:?}");
+            let (head, error) = warns[0].split_once(" error=").unwrap();
+            assert_eq!(
+                head,
+                format!("{T} Failed to import {kind} {field}=src-bad"),
+                "{kind}"
+            );
+            assert!(
+                error.starts_with('[') && error.contains("\"regex\""),
+                "{kind}: {error}"
+            );
+            let (out, quiet) = crate::test_support::captured_with(|| {
+                run(
+                    &main,
+                    &mount,
+                    &[good("src-good")],
+                    &opts,
+                    &mut IdMap::default(),
+                    &mut Vec::new(),
+                )
+            });
+            out.unwrap();
+            assert!(
+                quiet.iter().all(|l| !l.starts_with("WARN ")),
+                "{kind}: {quiet:?}"
+            );
+        }
     }
 
     #[test]

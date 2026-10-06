@@ -90,6 +90,14 @@ _Versions: core 0.0.1210._
 - The inform cancel's line moves from the api handler (wrong target, snake-case field, `sqlite error:` prefix) to the repository; the seat-removal `Could not drop pending informs` WARN is retired (unreachable in v4 — the DEBUG fires with `dropped_informs=0` instead).
 - `log_chat_create_validation_failure` folds its two `Error creating entity` copies onto the home.
 - `chat_informs_tier2_equivalence` gains a BEFORE DELETE trigger plant with per-op captured lines (red-first: v5 propagated where v4 answers 0) and two standing rows inserted out of posting order (the P4.151 survey's B1, mutation-proven); `fallback_home_guard` holds five more literals.
+#### 2026-10-05 — fix(import): the twelve import WARN lines use v4's camelCase field names (P4.148)
+
+_Versions: core 0.0.1216._
+
+Twelve `.qtap` import WARN lines logged snake_case fields where v4 logs camelCase. They now read `characterId`, `pluginName`, `projectId`, `groupId`, `scaffoldMountId`, `chatId`, `profileId` and `templateId`, in v4's order, followed by the bare error. Affected lines: `Failed to import character`, `Failed to import plugin data`, `Failed to import project`, `Failed to import group`, `Failed to discard scaffold vault`, and the seven `Failed to reconcile …` lines.
+
+Four new unit tests capture each line through the thread-scoped capture rig and assert the exact text up to the error, that the error is bare, and that a sound item logs nothing.
+
 #### 2026-10-05 — fix(import): a chat whose INSERT SQLite refuses logs v4's two repository lines (P4.148)
 
 _Versions: core 0.0.1215._

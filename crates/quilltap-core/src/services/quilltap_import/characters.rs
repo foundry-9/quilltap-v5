@@ -365,7 +365,7 @@ pub(super) fn import_characters(
             // v4 wraps each character in a try that pushes to warnings and
             // continues.
             warnings.push(format!("Failed to import character \"{name}\": {text}"));
-            tracing::warn!(character_id = %source_id, error = %text, "Failed to import character");
+            tracing::warn!(characterId = %source_id, error = %text, "Failed to import character");
         }
     }
 
@@ -588,7 +588,7 @@ fn import_character_plugin_data(
                 "Failed to import plugin data for \"{plugin_name}\": {}",
                 super::item_error_text(&e)
             ));
-            tracing::warn!(plugin_name = %plugin_name, character_id = %new_character_id, error = %super::item_error_text(&e),
+            tracing::warn!(pluginName = %plugin_name, characterId = %new_character_id, error = %super::item_error_text(&e),
                 "Failed to import plugin data");
         }
     }
@@ -612,4 +612,82 @@ fn str_array(obj: &Value, key: &str) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod warn_field_tests {
+    use super::*;
+
+    fn conns() -> (Connection, Connection) {
+        let schema: Value =
+            serde_json::from_str(include_str!("../provisioning/fresh_schema.json")).unwrap();
+        let open = |part: &str| {
+            let conn = Connection::open_in_memory().unwrap();
+            for ddl in schema[part].as_array().unwrap() {
+                conn.execute_batch(ddl.as_str().unwrap()).unwrap();
+            }
+            conn
+        };
+        (open("main"), open("mountIndex"))
+    }
+
+    const T: &str = "WARN quilltap_core::services::quilltap_import::characters";
+
+    /// [P4.148 item 13] `Failed to import character` carries v4's
+    /// `characterId` (`import-characters.ts:209`), then the error (here
+    /// serde's sentence — the recorded serde-vs-Zod arm).
+    #[test]
+    fn a_failed_character_warns_with_v4s_character_id() {
+        let (main, mount) = conns();
+        let mut warnings = Vec::new();
+        let (out, lines) = crate::test_support::captured_with(|| {
+            import_characters(
+                &main,
+                &mount,
+                "u1",
+                &[json!({ "id": "src-char", "name": "Broken", "systemPrompts": 42 })],
+                &ImportOptions::seed_defaults(),
+                &mut IdMaps::default(),
+                &mut warnings,
+            )
+        });
+        out.unwrap();
+        let warns: Vec<&String> = lines.iter().filter(|l| l.starts_with("WARN ")).collect();
+        assert_eq!(warns.len(), 1, "{lines:?}");
+        let (head, _) = warns[0].split_once(" error=").unwrap();
+        assert_eq!(
+            head,
+            format!("{T} Failed to import character characterId=src-char")
+        );
+    }
+
+    /// [P4.148 item 13] `Failed to import plugin data` carries v4's
+    /// `pluginName` then `characterId` (`import-characters.ts:375`), then the
+    /// BARE SQLite sentence. Silence leg: no `pluginData`, no line.
+    #[test]
+    fn a_failed_plugin_upsert_warns_with_v4s_fields_and_a_bare_error() {
+        let main = Connection::open_in_memory().unwrap();
+        let mut warnings = Vec::new();
+        let ((), lines) = crate::test_support::captured_with(|| {
+            import_character_plugin_data(
+                &main,
+                &json!({ "pluginData": { "qtap-plugin-x": { "k": 1 } } }),
+                "c-new",
+                &mut warnings,
+            )
+        });
+        let warns: Vec<&String> = lines.iter().filter(|l| l.starts_with("WARN ")).collect();
+        assert_eq!(warns.len(), 1, "{lines:?}");
+        let (head, error) = warns[0].split_once(" error=").unwrap();
+        assert_eq!(
+            head,
+            format!("{T} Failed to import plugin data pluginName=qtap-plugin-x characterId=c-new")
+        );
+        assert!(error.starts_with("no such table: "), "bare: {error}");
+        assert!(!warnings[0].contains("sqlite error:"), "{warnings:?}");
+        let ((), quiet) = crate::test_support::captured_with(|| {
+            import_character_plugin_data(&main, &json!({}), "c-new", &mut Vec::new())
+        });
+        assert!(quiet.iter().all(|l| !l.starts_with("WARN ")), "{quiet:?}");
+    }
 }
