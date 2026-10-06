@@ -825,7 +825,7 @@ fn the_class_counts_are_pinned() {
 /// with the arithmetic:
 ///
 /// - **160 direct call sites in all** = 83 + 14 + 19 + 0 + 13 + 5 + 1 + 20 + 5
-///   (156 + P4.158's two backfill reads + the unification's two
+///   (156, P4.158's two backfill reads, and the unification's two
 ///   `vault_entry_names` folder listings).
 ///   P4.149: +1 internal (the strict-aware path-read sibling's closure over
 ///   its propagating sibling, `doc_mount_file_links.rs`); 3 held → converted
@@ -873,10 +873,10 @@ fn the_class_counts_are_pinned() {
 ///   `.unwrap_or_else` / `let Ok … else` at the site: `api/characters` 1,
 ///   `chat_gallery` 1, `aesthetics` 1, `memory_processor` 1, `file_ops::link_file`
 ///   1, `doc_edit/blob` 1, `doc_edit/shared` 5, `tools/photo` 2.
-/// - **no-v4-counterpart 5** = `write_database_document`'s stored-mtime re-read
-///   + P4.158's two preserve-arm backfill reads (`character_vault::
+/// - **no-v4-counterpart 5** = `write_database_document`'s stored-mtime
+///   re-read, P4.158's two preserve-arm backfill reads (`character_vault::
 ///   backfill_character_vault_managed_files`, `restore::orchestrator::
-///   backfill_official_store`) + the backfill's two folder listings
+///   backfill_official_store`) and the backfill's two folder listings
 ///   (`vault_read_overlay::vault_entry_names`) (see [`OVERRIDES`]).
 /// - **strict-by-ruling 1** = `qtap_export/records.rs` `stream_one_store` (G5):
 ///   held strict under the 2026-08-03 backup/export ruling — v4 exports a broken

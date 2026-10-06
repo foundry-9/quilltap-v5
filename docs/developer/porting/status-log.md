@@ -169899,7 +169899,9 @@ shape-only `is_uuid` gates (`chat_post_office`, `chat_scenario`,
 ### The gate
 
 - `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
-  -- -D warnings` clean, AND with `--features quilltap-core/native-transport`;
+  -- -D warnings` clean, AND with `--features quilltap-core/native-transport`
+  — both RE-RUN on the final tree (the first pass predated the census
+  commit, whose doc list `clippy::doc_lazy_continuation` then caught; fixed);
   `cargo build --release` clean.
 - **The full sweep from the pin** (`recipe_sweep.py --run-all --v4
   /tmp/qt-v4-pin-unify-94fbb1ae3`): **587 ok / 3 run_failed / 1
