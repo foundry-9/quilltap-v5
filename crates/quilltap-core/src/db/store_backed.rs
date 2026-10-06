@@ -256,12 +256,22 @@ impl<'c, E: StoreEntity> StoreBackedRepository<'c, E> {
     /// Create the entity, provision its official store, populate the four overlay
     /// files from `fields`, and return the overlaid entity (v4 `create` — the
     /// 5-step sequence). Fails hard if the store can't be provisioned.
+    ///
+    /// The property bag is validated BEFORE the slim INSERT (P4.158 R-E): v4's
+    /// `_create` runs `validate` on the WHOLE entity and only then
+    /// `insertOne` (`base.repository.ts:368-370`), so a bag its schema refuses
+    /// leaves nothing — no slim row, no provisioned store. v5 parsed the bag
+    /// only when writing `properties.json`, after both; the same parse, with
+    /// the same error, now runs first (and again at the write, which can no
+    /// longer refuse).
     pub fn create(
         &self,
         name: &str,
         fields: &ManagedFields,
         opts: &StoreCreateOptions,
     ) -> Result<Value, OverlayError> {
+        E::parse_properties(&fields.properties)
+            .map_err(|d| OverlayError::Db(DbError::Internal(d)))?;
         let (id, name) = self.create_slim(name, opts)?;
         let ensured =
             ensure_official_store::<E>(self.main, self.mount, &id, &name)?.ok_or_else(|| {
@@ -573,6 +583,42 @@ mod create_order_tests {
             count(main.connection(), "projects"),
             0,
             "no half-written slim row"
+        );
+    }
+
+    /// R-E: v4's `_create` validates the WHOLE entity before its INSERT
+    /// (`base.repository.ts:368-370`), so a bag v4's schema refuses leaves
+    /// nothing — no slim row, no provisioned store, no store file.
+    #[test]
+    fn create_validates_the_bag_before_any_write() {
+        let (_dir, main, mount) = instance();
+        let (points, links) = (
+            count(mount.connection(), "doc_mount_points"),
+            count(mount.connection(), "doc_mount_file_links"),
+        );
+        let repo =
+            StoreBackedRepository::<ProjectEntity>::new(main.connection(), mount.connection());
+        let refused = repo.create(
+            "The Voyage",
+            &ManagedFields {
+                properties: serde_json::json!({ "allowAnyCharacter": "yes" }),
+                description: None,
+                instructions: None,
+                state: serde_json::json!({}),
+            },
+            &pinned("p-refused"),
+        );
+        assert!(refused.is_err(), "the bag must be refused: {refused:?}");
+        assert_eq!(count(main.connection(), "projects"), 0, "no slim row");
+        assert_eq!(
+            count(mount.connection(), "doc_mount_points"),
+            points,
+            "no store"
+        );
+        assert_eq!(
+            count(mount.connection(), "doc_mount_file_links"),
+            links,
+            "no store file"
         );
     }
 }

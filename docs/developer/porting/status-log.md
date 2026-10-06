@@ -169109,3 +169109,26 @@ unported `main`.
   tempdir) with a planted `BEFORE UPDATE ON projects` trigger raising on the
   second statement: 1 slim row left before, 0 after. No v4 counterpart (v4
   never preserves), so the pin is v5-alone.
+
+### Unit 5 — R-E: the store-backed create validates before it inserts (core 0.0.1240)
+
+- `E::parse_properties` (the parse `write_managed_fields` already ran, same
+  `OverlayError::Db(Internal)` mapping) now runs BEFORE `create_slim`, as v4's
+  `_create` runs `validate` before `insertOne` (`base.repository.ts:368-370`).
+  The write-time parse stays (it can no longer refuse).
+- **Red-first:** unit `create_validates_the_bag_before_any_write` (a bag with
+  `allowAnyCharacter: "yes"`, refused by the project parse): 1 slim row (and a
+  provisioned store) before, nothing after.
+- **Neutral, regenerated from the pin with LANE-PRIVATE staging** (the recipes'
+  shared `/tmp/qt-projects-*` / `/tmp/qt-groups-*` paths belong to P4.155's
+  runs of the same families, so the sweep driver was not used): 
+  `projects_tier2_equivalence` 1/1, `groups_tier2_equivalence` 2/2,
+  `projects_routes_equivalence` (97 cases) 1/1, `groups_routes_equivalence`
+  (45 cases) 1/1 — no SKIP.
+- **HANDOFF (P4.155, `harness/oracle/cases/projects-tier2.ts` +
+  `projects_tier2_equivalence.rs`):** a `createExpectError` op driving
+  `repos.projects.create` with a refused bag (e.g. `allowAnyCharacter: "yes"`),
+  asserting v4's thrown message and that the `projects` table and the
+  mount-index are unchanged — the differential twin of this unit's pin. No
+  family drives a refused store-backed create today (the restore and the
+  import both validate first), so until then the order is pinned v5-side.

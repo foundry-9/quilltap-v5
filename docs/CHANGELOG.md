@@ -115,6 +115,13 @@ _Versions: core 0.0.1236._
 - A refused create logs v4's three ERRORs before the per-item WARN: `Data validation failed`, `Error creating project entity` / `Error creating group entity` (the store-backed base overrides `createErrorMessage()`, so this is not the base `Error creating entity`), and `Error creating project` / `Error creating group` with the payload's `name`. Measured against v4 at `94fbb1ae3`; the order's "the base pair through `log_create_failure`" was wrong. The two `safeQuery` lines live in a lane-local `db::document_store_overlay::log_refused_store_create` until `db::fallback` grows homes for them (handoff to P4.156).
 - Every per-item import WARN (`Failed to import tag`, `…project`, `…group`, `…chat`, `…character`, `…wardrobe item`, `…prompt template`, `…roleplay template`, `…folder`, `…file`, `…memory`, the three profile lines) renders the item's id through one `id_field` helper: an absent id omits the field (winston drops `undefined`) instead of logging an empty `fileId=`.
 - Harness: `system-import-execute.test.ts` records the refused project/group creates' repository lines, grows each property-refusal payload by five whole-entity rows, and adds `execute_idless_files` and `execute_idless_refused_inserts` (planted INSERT-refusing triggers on `memories` and `prompt_templates`); `system_import_state` parses the new lines (a key-aware field split, since `name=` carries spaces) and pins the counts (50 cases; 37 WARN-compared cases with 8 lines; 5 repository-line cases). Red-first on unported core: 20 differences.
+#### 2026-10-06 — fix(db): the store-backed create validates the property bag before it inserts anything (P4.158 R-E)
+
+_Versions: core 0.0.1240._
+
+- `StoreBackedRepository::create` (projects, groups) inserted the slim row and provisioned the official store before parsing the property bag, so a bag the schema refuses left a slim row and a store behind. v4's `_create` validates the whole entity before its insert (`base.repository.ts:368-370`). The same parse, with the same error, now runs first.
+- New unit test `create_validates_the_bag_before_any_write` over a provisioned temp instance: red first (1 slim row left), now no slim row, no store, no store file. `projects_tier2`, `groups_tier2`, `projects_routes`, `groups_routes` regenerated from the pin: green (neutral). The differential case for a refused create belongs in `projects-tier2.ts` (P4.155's file) and is recorded as a handoff.
+
 #### 2026-10-06 — fix(db): the restore's preserve-arm slim create runs its two statements under one transaction (P4.158 R-D)
 
 _Versions: core 0.0.1239._
