@@ -73,6 +73,12 @@ _Versions: core 0.0.1236._
 - `db/fallback.rs`: new homes `find_by_filter_strict_aware`, the five chat-informs outer read wraps, `informs_marked_consumed_or_zero`, `messages_deleted_or_zero`; one emitter for `Error finding entities by filter`.
 - `api/chat_informs.rs`: a failed chat read answers 404 (was 500 + `Error posting inform` / `Error listing informs`); a failed batch write answers 500 `Internal server error` with no route line; the record delete reads through v4's `deleteMessagesByIds` fallback (its `Could not delete inform record message` WARN is unreachable on a database failure, so it is gone); every `[Chats v1]` line uses v4's camelCase keys.
 - Harness: `chat_informs_tier2` grows 31 ops (column-rename and trigger plants, strict-scope ops, thrown results); `chat_informs_routes` compares the route's own log lines and gains three failure cases; `fallback_home_guard` +6 messages.
+#### 2026-10-06 — fix(import): `Failed to resolve default embedding profile after import` carries v4's `userId` (P4.155)
+
+_Versions: core 0.0.1237._
+
+- The WARN logged when the post-import embedding-profile read fails now carries `{userId, error}` as v4's `execute.ts:347` does; v5 had logged `error` alone. Capture-pinned on a dropped `embedding_profiles` table, with the silence leg (no default profile → only the `Imported memories left unembedded` line).
+
 #### 2026-10-06 — fix(import): a refused project/group import validates the whole entity and logs v4's three repository lines; id-less items omit the id field (P4.155)
 
 _Versions: core 0.0.1236._

@@ -1192,7 +1192,13 @@ fn enqueue_imported_memory_embeddings(
         .map(Some)
         .unwrap_or_else(|e| {
             if !matches!(e, rusqlite::Error::QueryReturnedNoRows) {
-                tracing::warn!(error = %e, "Failed to resolve default embedding profile after import");
+                // v4 `execute.ts:347` — `{ userId, error }` (P4.155, R-F: v5
+                // had dropped `userId`).
+                tracing::warn!(
+                    userId = %user_id,
+                    error = %e,
+                    "Failed to resolve default embedding profile after import"
+                );
             }
             None
         });
@@ -2643,6 +2649,46 @@ mod import_warn_pins {
         );
         let (main, mount) = conns(false);
         assert_eq!(run_all(&main, &mount), Vec::<String>::new(), "silence leg");
+    }
+
+    /// [P4.155, R-F] `Failed to resolve default embedding profile after import`
+    /// carries v4's `{ userId, error }` (`execute.ts:347`) — v5 had dropped
+    /// `userId`. The read failure is a missing `embedding_profiles` table; the
+    /// no-profile WARN follows, as in v4 (the caught arm leaves `profile`
+    /// null). Silence leg: a readable table with no default profile logs only
+    /// the second line.
+    #[test]
+    fn the_profile_resolve_failure_carries_v4s_user_id() {
+        let refs = vec![("m-1".to_string(), "c-1".to_string())];
+        let run = |main: &Connection| {
+            let mut w = Vec::new();
+            let ((), lines) = crate::test_support::captured_with(|| {
+                enqueue_imported_memory_embeddings(main, "u1", &refs, &mut w)
+            });
+            lines
+                .into_iter()
+                .filter(|l| l.starts_with("WARN "))
+                .collect::<Vec<_>>()
+        };
+        let p = "WARN quilltap_core::services::quilltap_import";
+        let unembedded = format!(
+            "{p} Imported memories left unembedded userId=u1 memoryCount=1 \
+             reason=no default embedding profile is configured"
+        );
+        let (main, _mount) = conns(false);
+        main.execute_batch("DROP TABLE embedding_profiles").unwrap();
+        assert_eq!(
+            run(&main),
+            vec![
+                format!(
+                    "{p} Failed to resolve default embedding profile after import userId=u1 \
+                     error=no such table: embedding_profiles"
+                ),
+                unembedded.clone(),
+            ]
+        );
+        let (main, _mount) = conns(false);
+        assert_eq!(run(&main), vec![unembedded], "silence leg");
     }
 
     /// [P4.155, R-E] The same planted refusals over ID-LESS items: v4's
