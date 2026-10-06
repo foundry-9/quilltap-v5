@@ -228,6 +228,12 @@ The overlay's find-by-id / list hydration (`hydrate_one`) now renders a `propert
 _Versions: core 0.0.1236._
 
 `v8_json_parse_message` is now a full V8 `JsonParser` walk over UTF-16 units instead of a start-of-input check. It reproduces V8's fixed templates for failures inside a value (`Expected property name or '}' in JSON at position N (line L column C)`, the comma/bracket/colon/double-quoted-key messages, unterminated strings, bad escapes and control characters, the number errors, trailing input), the `\r` and `\r\n` line rule, and the special whole-source strings (`"undefined" is not valid JSON` and kin, which the old twin misworded). It answers `None` only where V8 accepts the text. New tier-1 family `v8_json_parse_message_equivalence` over a 149-row corpus recorded with Node 24.13.1 (`harness/oracle/cases/v8-json-parse-messages.ts`); 103 of 145 rows were red on the old twin. The family also pins, both ways, the three shapes serde refuses but V8 accepts (the callers' remaining serde fallback). `text_http_errors` gains `ok_json_missing_comma` on all ten providers (V8's sentence now reaches `sdk_response_shape`'s body parse; 15 divergences red on the old twin) and the Google stream-path `content.text` row.
+#### 2026-10-06 — docs(porting): P4.157 lane complete — gate record, order status
+
+_Docs-only change._
+
+- `status-log.md`: the P4.157 gate (670 binaries / 4,383 / 0 / 3 ignored; one externally SIGTERM'd binary green alone), the env block, the corrected pointer for item D, the unifier's §S.3 / §S.7 notes. The order's status header → LANE COMPLETE.
+
 #### 2026-10-06 — test(harness): the voice-mode ensure's storage-class check is pinned id-bound against v4's recorded `typeofs`, not v5's re-read of the same file (P4.157 A2)
 
 _Harness-only change (no crate source; no version moves — the harness is frozen)._

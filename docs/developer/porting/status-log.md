@@ -169736,3 +169736,46 @@ harness is frozen at `0.0.1110`).
 - Ownership note: `chat_settings_voice_mode_ensure_equivalence.rs` is not in
   the order's Ownership row for P4.157 (an omission — Tier 2 item 9 is this
   order's), and no other lane owns it this round.
+
+### P4.157 — the gate, and what the unifier needs
+- fmt clean; `cargo clippy --workspace --all-targets -- -D warnings` clean AND
+  with `--features quilltap-core/native-transport` clean.
+- `cargo test --workspace --no-fail-fast` (`CARGO_INCREMENTAL=0`,
+  `QT_V4_CHECKOUT`/`QT_V4_ROOT` = the TARGET pin, the lane env block below):
+  **670 test binaries / 4,383 passed / 0 failed / 3 ignored**; exit 101 from
+  ONE binary killed by an external SIGTERM with no output
+  (`characters_actions_equivalence`) — green alone afterwards (1/1). Every
+  touched family confirmed RUN by name, zero `SKIP` in each:
+  `chat_informs_permanent_ensure` 1, `repository_zod_messages` 1,
+  `character_wizard_tier3` 1, `ai_import_tier3` 1, `character_optimizer_tier3`
+  2, `regenerate_swipe_tier3` 2 (NO `TZ`), `chat_settings_voice_mode_ensure` 1,
+  `file_content_extractor` 3 (NEUTRAL, regenerated at the target),
+  `help_tree_equivalence` 1 (from the `07b8f0209` pin, §R.13),
+  `chat_informs_in_force_census` 4, the five guards (2/3/1/3/2),
+  `spelling_guard` 1, `fallback_home_guard` 2, `host_boot_hardness` 26,
+  web `characters_generators_routes` 1, `generators_wizard_routes` 1.
+- Env block: `QT_ORACLE_INFORM_ENSURE` + `QT_FIXTURE_INFORM_ENSURE_DIR`,
+  `QT_ORACLE_REPOSITORY_ZOD_MESSAGES`, `QT_ORACLE_CHARACTER_WIZARD`,
+  `QT_ORACLE_CHARACTER_OPTIMIZER`, `QT_ORACLE_AI_IMPORT`, `QT_ORACLE_REGEN` +
+  `QT_FIXTURE_REGEN_MAIN`/`_MOUNT`, `QT_ORACLE_VOICE_MODE_ENSURE` +
+  `QT_FIXTURE_VOICE_MODE_ENSURE_DIR`, `QT_ORACLE_FILE_CONTENT_EXTRACTOR`,
+  `QT_ORACLE_HELP_TREE` (all under `/tmp/p4157/`).
+- `recipe_sweep.py --self-test`: 0 failures. SPA `npm run build`: clean (no SPA
+  edit). ⚠ Gate trap recorded: `quilltap-tauri`'s `generate_context!` needs
+  `apps/web/dist/quilltap/browser` to EXIST at compile time — deleting the SPA
+  build output mid-gate failed the first workspace run at compile.
+- **Versions: none move** (harness frozen at `0.0.1110`; ZERO hunks under any
+  `crates/*/src/` or `apps/`).
+- **Item D's pointer, corrected:** the order's survey names
+  `file_content_extractor_equivalence.rs` for D; the defect lives in the
+  generator families (P4.151's D is the PDF `document` case there). The
+  extractor family already compares v4's two PDF lines whole and counts no
+  scripts — NO hunk there; run NEUTRAL (3/3).
+- **No HANDOFF.** No ruled divergence added. v4 findings: none.
+- **Tier 3:** item 10 (real `pdf-parse`) — RULED unrunnable (R-A), recorded in
+  both generator case files; item 11 (per-file COUNT allow-list) — recorded
+  again under B4; item 12 — landed by P4.150, nothing here.
+- **Unifier (§S.3):** regenerate the three generator oracles on the union (the
+  optimizer after P4.154's v8 change) and run the FIVE pair readers by name;
+  `regenerate_swipe_tier3` and `help_tree_equivalence` re-run at the TARGET on
+  the union (§S.7) — `regenerate_swipe_tier3` no longer needs `TZ=UTC`.
