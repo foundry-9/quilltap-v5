@@ -450,12 +450,7 @@ pub fn emit_google_extract_text_warns(
         }
         return None;
     };
-    let content = first.get("content");
-    let has_parts = content
-        .and_then(|c| c.get("parts"))
-        .and_then(serde_json::Value::as_array)
-        .is_some_and(|p| !p.is_empty());
-    if has_parts {
+    if crate::model::response_parse::google_candidate_parts(first).is_some() {
         return None;
     }
     // genai 1.52.0's `candidateFromMldev` copies `finishReason` only when it
@@ -479,11 +474,8 @@ pub fn emit_google_extract_text_warns(
             "No parts found in Google response candidate"
         ),
     }
-    content
-        .and_then(|c| c.get("text"))
-        .and_then(serde_json::Value::as_str)
-        .filter(|t| !t.is_empty())
-        .map(str::to_string)
+    // The `content.text` rule's one home (P4.154).
+    Some(crate::model::response_parse::google_candidate_text(first)).filter(|t| !t.is_empty())
 }
 
 #[cfg(test)]

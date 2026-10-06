@@ -199,6 +199,12 @@ _No crate versions bumped._
 - NEW `harness/oracle/provision/migrations-first.ts`: builds v4's instance the way its real boot does (the real `MigrationRunner` first, then the repository pass).
 - NEW `harness/oracle/provision/dump-migration-indexes.ts` → NEW `crates/quilltap-core/src/services/provisioning/migration_indexes.json` (main 50 / mount-index 5 / llm-logs 5; leaves out names `fresh_schema.json` already has, except the one the migration makes UNIQUE where generateDDL does not, and the legacy `wardrobe_items` index). Its real-boot cross-check found zero differences.
 - `dump-fresh-schema.ts`: header note points at the sibling dumper.
+#### 2026-10-06 — refactor(core): Google's `content.text` fallback decided in ONE place (P4.154 unit 4)
+
+_Versions: core 0.0.1239._
+
+`parse_google` and the `extractTextFromResponse` WARN pass (`plugin_catch_log`) each encoded "parts joined, else `content.text` when truthy, else empty". Both now call `response_parse::google_candidate_text` (with `google_candidate_parts` for the non-empty-parts test). No behavior change. The Google stream-path `content.text` row added in unit 1 proves the SDK keeps the key on a streamed chunk too; mutating the shared rule's `content.text` read turns both the send and the stream rows red.
+
 #### 2026-10-06 — fix(core): the Gemini image safety WARN logs v4's camelCase `finishReason` / `blockReason`, omitting the undefined one (P4.154 unit 3)
 
 _Versions: core 0.0.1238._

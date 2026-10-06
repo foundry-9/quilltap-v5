@@ -938,38 +938,13 @@ pub fn parse_google(response: &Value) -> NonStreamingResponse {
         .cloned()
         .unwrap_or_default();
 
-    // content: concat non-thought, non-functionCall text parts (the `.text` getter
-    // equivalent). v4 tries `response.text` first — reproduced by the parts concat.
+    // content: v4 tries `response.text` first, then the first candidate's text
+    // (`google_candidate_text` — the parts concat, else `content.text`). Its
+    // `No parts…` WARN is `plugin_catch_log`'s, at the send site.
     let content = if let Some(t) = response.get("text").and_then(Value::as_str) {
         t.to_string()
     } else {
-        let mut out = String::new();
-        for p in &parts {
-            if p.get("functionCall").is_some()
-                || p.get("thought").and_then(Value::as_bool) == Some(true)
-            {
-                continue;
-            }
-            if let Some(t) = p.get("text").and_then(Value::as_str) {
-                out.push_str(t);
-            }
-        }
-        // v4 `extractTextFromResponse` `:283-285`: a first candidate with no
-        // parts answers its `content.text` when truthy — MEASURED reachable
-        // through the real `@google/genai` 1.52.0, which keeps the unknown
-        // key (P4.150 D2, `text_http_errors`' `ok_google_candidate_content_text`).
-        // Its `No parts…` WARN is `plugin_catch_log`'s, at the send site.
-        if parts.is_empty() {
-            if let Some(t) = first
-                .get("content")
-                .and_then(|c| c.get("text"))
-                .and_then(Value::as_str)
-                .filter(|t| !t.is_empty())
-            {
-                out.push_str(t);
-            }
-        }
-        out
+        google_candidate_text(&first)
     };
 
     // reasoning: concat thought-part text.
@@ -1040,6 +1015,52 @@ pub fn parse_google(response: &Value) -> NonStreamingResponse {
         cache_usage,
         // v4 `raw = { ...JSON.parse(JSON.stringify(response)), functionCalls }`.
         raw: build_google_raw(response),
+    }
+}
+
+/// A Google candidate's `content.parts` when it is a NON-EMPTY array — the
+/// condition on which v4's `extractTextFromResponse` reads parts (the SDK's
+/// `.text` getter) rather than WARNing `No parts found…` and falling back to
+/// `content.text` (`provider.ts:272-285`).
+pub(crate) fn google_candidate_parts(candidate: &Value) -> Option<&Vec<Value>> {
+    candidate
+        .get("content")
+        .and_then(|c| c.get("parts"))
+        .and_then(Value::as_array)
+        .filter(|p| !p.is_empty())
+}
+
+/// The text v4's Google `extractTextFromResponse` answers from a candidate —
+/// the ONE home of the rule (P4.154; `parse_google` and `plugin_catch_log`'s
+/// WARN pass both read it): a non-empty `content.parts` array → its non-thought,
+/// non-`functionCall` text parts joined (the SDK `.text` getter's concat);
+/// else `content.text` when truthy (`:283-285`); else `''`. The `content.text`
+/// arm is MEASURED reachable through the real `@google/genai` 1.52.0 on BOTH
+/// paths — the SDK keeps the unknown key on a `send` body (P4.150 D2,
+/// `text_http_errors`' `ok_google_candidate_content_text`) and on a streamed
+/// chunk (P4.154, `ok_google_stream_candidate_content_text`).
+pub(crate) fn google_candidate_text(candidate: &Value) -> String {
+    match google_candidate_parts(candidate) {
+        Some(parts) => {
+            let mut out = String::new();
+            for p in parts {
+                if p.get("functionCall").is_some()
+                    || p.get("thought").and_then(Value::as_bool) == Some(true)
+                {
+                    continue;
+                }
+                if let Some(t) = p.get("text").and_then(Value::as_str) {
+                    out.push_str(t);
+                }
+            }
+            out
+        }
+        None => candidate
+            .get("content")
+            .and_then(|c| c.get("text"))
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
     }
 }
 
