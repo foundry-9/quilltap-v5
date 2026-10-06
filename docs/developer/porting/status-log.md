@@ -166877,3 +166877,312 @@ A `duplicate` `.qtap` import on the Friday copy whose warnings read the bare
 project refused with v4's Zod bytes and NO half-written store; a project GET
 on a corrupt store logging `[Projects v1] Error fetching project`; a
 non-uuid `characterId` on add-character answering v4's 400 envelope.
+## P4.147 — dogfood #141 + #142: a `replace` restore keeps every entity on the archive's store, Uploads resolves to the archive's store on a fresh target, + the restore riders — LANE record (2026-10-05)
+
+Branch `claude/archive-store-pointers-uploads-7af18a` (cut from `main`
+`43dc35601`, the commit that landed the orders). Pin
+`/tmp/qt-v4-pin-p4147-07b8f0209` (HEAD `07b8f0209`, `4.10.0-dev.111`, the three
+symlink classes). The ledger's §2 probe PASSED at lane start and before both
+regen batches and the sweep (branch `main`, HEAD `07b8f0209`, both logs empty,
+tree clean). Ports NO v4 change — fixes two restore defects v4 SHARES under
+`backup-restore-fix-dont-match`, pins each both ways, and lands the riders.
+Rulings R-A … R-G applied as ordered; none was overturned by measurement.
+
+**One code commit, deliberately.** Every pin rides ONE oracle regen and ONE
+harness file (`system_restore_state.rs`), and the full workspace gate is ~1 h
+of a machine six lanes share; splitting the five items into five gated
+commits would have re-run that gate five times over intermediate states no
+one will ever check out. The items are separated below instead.
+
+### Fixtures — two NEW derived archives (no committed archive touched)
+
+- `harness/oracle/fixtures/derive-restore-archive-bag-nulls.py` →
+  `restore-archive-bag-nulls.zip` (md5 `aa5ec8ec…`): the project store
+  `5c17e916-…` and group store `60a8194d-…` REMOVED with everything keyed by
+  them (folders, 8 links, 6 chunks, 3 content rows + their documents, both
+  link rows — referentially whole, no #58 orphan), the project row widened to
+  all 16 `ProjectPropertiesSchema` keys (five explicit `null`s; `icon: "⛵"`,
+  `defaultImageProfileId` = the archive's own image profile,
+  `answerConfirmationOverride: "ON"`, `defaultAvatarGenerationEnabled: true`,
+  `storyBackgroundsEnabled: false`), the group `color: null, icon: "⚙"`;
+  manifest counts follow.
+- `harness/oracle/fixtures/derive-restore-archive-informs.py` →
+  `restore-archive-informs.zip` (md5 `bc88cf1c…`): `data/chat-informs.json`
+  appended — seven rows on chat c…0001's seat (`permanent` true / false /
+  absent / null / `"true"` / `1`, and one consumed by d1…0002) — plus ONE
+  planted message (`content: 5`) on chat c…0002 for item 10(b); manifest
+  `chatInforms: 7`, `messages: 3`.
+- Both scripts assert `restore-archive.zip`'s md5
+  (`6b076003bacf8db22c1bf8440fac09d6`) before AND after the derive — it is
+  unchanged. Every other committed `restore-archive*.zip` is untouched. The
+  two new zips are read ONLY by `system_restore_state` + the oracle case.
+
+### The oracle — six new cases (29 restore cases, 35 lines)
+
+`harness/oracle/cases/system-restore.test.ts`: `restore_uploads_fresh_replace`,
+`restore_compact_fresh_replace`, `restore_gen2_fresh_replace` (#142 — the
+existing archives, NO pointer alignment), `restore_bag_nulls_replace`,
+`restore_informs_replace` (records `logs`), `restore_sqlite_tail_replace`
+(`renameColumns` plant: `chats.rightPaneVerticalSplit` and
+`chat_documents.displayTitle` renamed on the TARGET before the baseline —
+P4.131's shape; records `logs`). Two new harness-side mechanisms:
+`recordLogs` (`withLogs`: `withRepoLogs` widened to a caller-chosen message
+list at EVERY level incl. debug, recorded before the level filter) and
+`renameColumns`. Regen recipe (the committed header's, via the driver):
+
+```
+python3 harness/tools/recipe_sweep.py --v5w <worktree> --v4 /tmp/qt-v4-pin-p4147-07b8f0209 --force --run system_restore_state
+```
+
+i.e. `QT_RESTORE_ARCHIVES=$V5W/crates/quilltap-web/tests/fixtures/restore-archives
+QT_ORACLE_OUT=<out> npx jest … --roots "$PWD" --roots "$TMPO/cases" --
+system-restore` from the pin under Node 24 (the jest `/tmp` mirror). TWO regens
+ran (the second after the SQLite-tail case's `recordLogs` grew the inform
+phase's two messages — the WARN's silence leg and the DEBUG firing with zero
+counts on an inform-less archive); `rm -f` first each time, the builder's last
+line `wrote … (35 cases)`, `grep -c` of the six new case ids in the fresh NDJSON
+= 6.
+
+**What v4's real restore recorded:** the two Uploads warnings on the fresh
+uploads/compact targets (none on gen2 — both its files are carried, so neither
+side asks the bridge); the three `Failed to restore inform: <ZodError>` warnings
+with their bytes (`invalid_type`, `["permanent"]`, `received null` / `string` /
+`number`) + WARN `Failed to restore chat inform {informId, error}` ×3 + DEBUG
+`Restored chat informs {total: 7, restored: 4}`; the repository lines beneath
+each refusal (`Data validation failed` + `Error creating entity`, collection
+`chat_informs`); the message's ZodError — ONE `invalid_union` whose `errors`
+hold all three members' issues, the message member's `["content"]` type miss
+first; on the SQLite plant the BARE sentences `table chats has no column named
+rightPaneVerticalSplit` / `table chat_documents has no column named
+displayTitle` in the warnings and in WARN `Failed to restore chat {chatId,
+error}` ×2 + WARN `Failed to restore chat document {chatDocumentId, error}`,
+beneath `Error creating entity` + `Failed to create chat` (chats) and `Error
+creating entity` (chat_documents).
+
+### Red-first — unported `main` against the oracle at the pin
+
+`system_restore_state_equivalence` on main's core: **315 differences**
+(310 against the second regen), of which **`FRESH_STORE_RESIDUAL (v5)` 77
+across 20 cases** (every `replace` case whose archive carries a pointed store —
+the order said 17; measured 20 = the 14 store-carrying committed `replace`
+cases + the 6 new ones), **`FRESH_TARGET_UPLOADS (v5)` 4** (2 each on the
+uploads/compact fresh cases) + `summary.files` ×2 + the two cases'
+`summary.warnings`, **BAG-NULLS (v5) 11** (the 10 dropped project values +
+the group's `null` colour → absent), **INFORMS (v5) 1** + `summary.chatInforms
+7 vs 4` + the three missing Zod warnings, **the restore's log lines** ×2 (no
+WARN/DEBUG at all), and the SQLite plant's warnings carrying `sqlite error:`.
+The fallback arms (`restore_minimal`, `restore_legacy_profiles_replace`, Riya
+in `restore_orphan_links_replace`, the bag-nulls project/group) were GREEN on
+main as convergence pins. `a_replace_restore_lands_every_entity_on_the_archives_stores`
+RED on main's core (8 stores for the archive's 4). Measured by restoring main's
+`orchestrator.rs` + `store_backed.rs` over the finished tree and re-running
+both families (then restoring the lane's), so the harness under test was the
+final one.
+
+### Item 1–3 — #141, preserve-at-create (Shape A, R-A, R-B) — core
+
+- `orchestrator.rs`: the archived-store map (`id → storeType`, from the
+  archive's RAW `doc_mount_points` rows, `replace` mode only) before phase 6,
+  with the ruled-divergence comment (incl. the phase-6 → 22a window where an FK
+  names a store that does not exist yet; nothing in 7–22 reads a vault).
+- Phase 6 `restore_one_character`: a pointer naming an archived
+  `storeType: 'character'` store → the slim row written through
+  `CharactersRepository::create` WITH the FK and no vault provisioned; otherwise
+  `create_character_with_options` unchanged. The vault fields are decoded on
+  BOTH arms (a row v4's schema refuses is refused on either).
+- Phases 13/13a: a pointer naming an archived store → `StoreBackedRepository::
+  create_slim_linked` (NEW, `db/store_backed.rs` — the slim row + the FK,
+  nothing provisioned, linked or overlaid); otherwise today's `create` with the
+  whole-bag rider (item 8). The `:728-732` comment rewritten (it misdescribed
+  the differential — the normalizer labels by ORIGIN).
+
+### Item 4 — #142, the 22a-ter pre-apply (R-C) — core
+
+After `restore_mount_family`, before the files phase: each
+`MOUNT_POINT_SETTING_KEYS` key the archive carries whose RAW value names an
+archived store that exists after 22a is upserted with 22o's exact SQL (a
+JSON-quoted value never matches — 15 of 19 committed archives — and is left to
+22o; a write failure is left to 22o, which retries and reports). `replace`
+only. The phase-5 marker's broken premise ("which is exactly what the surviving
+pointer expects") rewritten.
+
+### Items 5 + 6 — the both-ways pins (harness)
+
+- **`FRESH_STORE_RESIDUAL`**, on the RAW dumps before normalization: per entity
+  whose archived pointer names an archived store, v5's pointer IS the
+  archive's; v4's is NOT, names a store v4 minted (one per entity), and that
+  store is carved — with what v4 wrote into it LATER **re-homed** onto the
+  archive's store, because v5 writes it there: 22f-bis's legacy wardrobe fold
+  (`restore_legacy_archive`) and compact's >3 MB phantom re-ingest (which lands
+  in v4's FRESH project store — without the re-home the carve swallowed it and
+  `REPLAY_DEDUPE`'s convergence tripwire fired falsely on
+  `restore_compact_replace`). Provisioning = a fresh-store link at a path the
+  archive's store also carries, written before 22d (rowid order); a later
+  colliding write must be named in **`FRESH_STORE_FOLD_COLLISIONS`** (one
+  entry: the legacy archive's vault already carries `Wardrobe/Travelling
+  Coat.md`, so v5's fold — through v4's own `createAtLocation`, which
+  re-projects the WHOLE wardrobe — lands at `Travelling Coat-1.md` and
+  re-touches the archived item: its `lastModified` + one chunk; all asserted
+  both ways, then carved). A content row a carved link SHARED with a surviving
+  link (sha-keyed, global) keeps v4's earlier rowid, so on those cases
+  `doc_mount_files` / `doc_mount_documents` compare under canonical order
+  (`FRESH_STORE_SHARED_CONTENT` — `restore_orphan_links_replace` 4 rows,
+  `restore_bag_nulls_replace` 2). The fallback arm is asserted CONVERGENT on
+  both sides (a minted store, nothing carved). `FRESH_STORE_CARVED_CASES = 20`
+  pins the arm against going vacuous.
+- **`FRESH_TARGET_UPLOADS`**: `restore_uploads_fresh_replace` / `restore_compact_fresh_replace`
+  → `portrait.png`; `restore_gen2_fresh_replace` → none (the fresh-target
+  convergence control). v4 warns exactly once per file and writes no row; v5
+  warns nowhere, writes each row on `mount-blob:<archive Uploads id>:…`, and
+  ends with the pointer naming that existing store; v5's replayed rows then
+  carved and `summary.files` led by exactly N. The three ALIGNED cases asserted
+  as controls (zero Uploads warnings on both sides). `restore_compact_fresh_replace`
+  joins `REPLAY_DEDUPE` (+ the compact pair's `doc_mount_points` rollup mask):
+  its phantom is the project-bound file, untouched by #142.
+- **The §7 acceptance invariants, v5 alone, never SKIP** —
+  `a_replace_restore_lands_every_entity_on_the_archives_stores` over
+  `restore-archive.zip` and `restore-archive-uploads.zip` into fresh targets:
+  store count = the archive's; names = the archive's multiset; all four
+  entities on the archive's store with its link count (Lorian 11 / Riya 9 /
+  project 4 / group 4 — asserted); zero Uploads warnings + both project-less
+  files on the archive's Uploads id + the pointer resolving (uploads archive);
+  no store unreferenced.
+
+### Item 7 (Tier 2 item 14) — the kept-bundle collision arm
+
+Folded into the acceptance test: the uploads run seeds a target-side
+`files` row of category `ARCHIVE` named `portrait.png` (kept by the default
+wipe). After the restore it survives untouched; the restored `portrait.png`
+lands at `restored/portrait.png` in the ARCHIVE's Uploads store; Uploads paths
+are unique; nothing in the restored store claims the bundle's blob id. Measured
+mechanism: the wipe truncates the mount index, so a kept bundle keeps its
+`files` row and no link — there is no store path to collide with by
+construction.
+
+### Item 8 — the property-bag rider (P4.146 item 13)
+
+`project_properties` (six keys) deleted; `fold_properties_local` — the C1
+lane-local twin, body IDENTICAL to the importer's, marked `// §S.1 fold →
+db::document_store_overlay::fold_properties` — folds the project bag over
+`ProjectEntity::property_keys()` and the group bag over
+`GroupEntity::property_keys()`; each is parsed through the entity's
+`parse_properties` BEFORE any row is written (an `Err` → `Failed to restore
+project/group "…": <e>`, no slim row left behind); groups go through
+`create_with_properties`. `assert_bag_nulls_survive` checks both sides' fresh
+`properties.json` against the archive's bag through the entity's own parse
+(which keeps every `null` and applies the read normalizations both sides apply —
+the archive's pre-4.9 `backgroundDisplayMode: "project"` reads `"theme"` on
+BOTH). Green after; the table diff compares the store documents row for row.
+
+### Item 9 — the inform rider, CONVERGED (R-D)
+
+`restored_inform` now returns `Result`: absent → `false`, a JSON boolean
+honoured, any other value → `Err(v4's ZodError.message)` built with
+`api::zod_issues::ZodIssue::invalid_type` + `zod_error_message` (no new
+constructor). The phase warns `Failed to restore inform: <bytes>`, WARNs
+`Failed to restore chat inform {informId, error}` and DEBUGs `Restored chat
+informs {total, restored}` — byte-equal to v4's recorded lines (firing legs on
+the informs case; on the SQLite plant the WARN's silence and the DEBUG with
+zeros). Unit test `a_malformed_flag_is_refused_with_v4s_zod_bytes` carries the
+three RECORDED byte strings. `assert_informs_restored` pins rows 01/02/03/07
+(permanent 1/0/0/0, the consumed row's message) on BOTH sides; the case is
+excluded BY NAME from `assert_pre_410_archive_restores_no_informs`. A plain
+equality now — no divergence.
+
+### Item 10 — P4.143 item 14's restore halves (R-F)
+
+- (a) The chat create's DB-error arm warns with the bare message AND WARNs
+  `Failed to restore chat {chatId, error}` (it logged nothing before).
+- (b) **The message serde arm stays a RECORDED divergence, pinned both ways**
+  (`MESSAGE_SERDE_CASE`): v4's tail is ONE `invalid_union` carrying every
+  union member's nested issues; `api/zod_issues.rs`' `zod_chat_event_issues`
+  answers the collapsed union with `errors: []` (its own doc: not v4's
+  `ZodError.message`, P4.143 Tier 3 item 13), so the bytes cannot be produced
+  without P4.143 item 12's schema-shape table. v5's tail starts with `invalid
+  type: integer \`5\`, expected a string`. VANISHED / WRONG SHAPE guarded like
+  the chat serde room.
+- (c) **The `sqlite error:` tail** — `warn_row!` / `warn_only!` and every
+  hand-written warning in the file render through a private `WarnText` trait:
+  `DbError` → `db::fallback::error_text` (call only), `OverlayError::Db` →
+  likewise, `WardrobePublicError::Db` → likewise. Proven on a REAL SQLite arm
+  red-first by `restore_sqlite_tail_replace` (the two chat warnings + the chat
+  document warning were `…: sqlite error: table … has no column named …`).
+  v4's chat-document WARN ported with it.
+- **Handoff, pinned both ways (`RESTORE_REPO_LINE_HANDOFF`)**: the
+  REPOSITORY lines v4 logs beneath those refusals (`Data validation failed`,
+  `Error creating entity`, `Failed to create chat` — 6 on the informs case, 5
+  on the SQLite plant) are absent on v5. Their ONE home is P4.149's
+  `db::fallback::log_create_failure` (Shared contract C2), not on this branch.
+  §S.7: on the union, the chat create's DB arm calls `log_create_failure
+  ("chats", &e)` + the `Failed to create chat` line (P4.148's twin shape), the
+  chat-document arm `log_create_failure("chat_documents", &e)`, and the inform
+  refusal the validation + create pair (`chat_informs`) — then this pin fires
+  and folds into `RESTORE_LOG_LINES`.
+
+### `restore_vintage_state` (item 13 + a vacuity the lane created and closed)
+
+- The `:451-455` comment rewritten for the new rule.
+- ⚠ **`raw_sqlite_warnings` keyed on the `sqlite error` PREFIX**, which item
+  10(c) removes by design — so `no_restore_phase_names_a_column_a_migrated_table_lacks`
+  would have gone silently vacuous. Caught when the dropped-column tripwire
+  went red; the detector now matches SQLite's own vocabulary
+  (`SQLITE_SENTENCES`), the tripwire proving it sees a planted sentence.
+- ⚠ **That surfaced a PRE-EXISTING v5 defect** (measured present on main's
+  core): `restore-archive-legacy.zip`'s General-tier legacy fold ("The Empty
+  Ensemble", `characterId: null`) writes through the target's DANGLING
+  `generalMountPointId` after the wipe — on the vintage target the link FK
+  refuses it; on a generateDDL target it lands an ORPHAN link silently (v4
+  too; `system_restore_state` agrees both sides). It was invisible because the
+  warning rendered `WardrobePublicError`'s DEBUG form. Pinned BY NAME in
+  `KNOWN_RAW_SQLITE` (must fire; retire when fixed). Its fix is Tier 3 item 16
+  (re-provisioning a built-in the archive lacks). Candidate finding for the
+  next order.
+
+### Tier 2 item 12 — the safety net: RECORDED UNREACHABLE (measured)
+
+v5's 22a cannot fail per store on a fresh target: `DmpCreate` binds every
+column from `s()` / `str_or()` defaults (no NOT NULL can fire), there is no
+per-row validation, and a duplicate archived id leaves the FIRST row as the
+store (so the preserved pointer still resolves). Only a DB-level failure (disk,
+lock) could leave a preserved FK dangling. No hunk; v4's 22a can fail on a Zod
+refusal (e.g. a bogus `mountType`) where v5's never validates — a pre-existing
+divergence outside this order, recorded.
+
+### Deferred, loudly (Tier 3 + the measured follow-ups)
+
+- 15: `new-account` mode preserve (R-B) — the store pointers translated in the
+  orchestrator; a ruling + its own order.
+- 16: re-provisioning a built-in the archive lacks (R-C) — would move ~14
+  convergent cases and needs 22o to skip dangling built-in keys; now also the
+  fix for `KNOWN_RAW_SQLITE`'s General-tier fold.
+- 17: the `=== 1` integer decode in `db/chat_informs.rs:265` — unreachable
+  from either writer; stays recorded.
+- 18: the two v4 filings — the human's (R-G). **Candidate v4 filings, measured
+  reproduction:** (#141) `restore.ts:192-201,315-345` + `characters.repository
+  .ts:262-296`: restore `restore-archive.zip` in `replace` mode into any
+  target — every character/project/group ends on a freshly minted store (4
+  fresh stores beside the archive's 4; 78 rows on the oracle's dump); (#142)
+  `restore.ts:508-512,569-576`: restore `restore-archive-uploads.zip` into a
+  freshly provisioned target with no pointer alignment — `Failed to restore
+  file "portrait.png": Quilltap Uploads mount has not been provisioned`, and
+  22o then points at the restored store the bytes never reached.
+- The ~38 other per-phase WARN lines v4's catches emit (`moduleLogger.warn(
+  'Failed to restore tag' …)` and kin — 44 in `restore.ts`, 6 in v5 after this
+  lane) are a class gap; this lane ported the three its cases measure (chat,
+  chat document, chat inform).
+- `WardrobePublicError::{NoMount, Cycle}` still render their DEBUG form in the
+  22f-bis warning (unmeasured — no corpus reaches them).
+- Other `ChatInformSchema` fields (uuids, timestamps) are not validated on
+  restore — only `permanent`, per R-D's scope.
+
+### 💸 for the dogfood pass
+
+- A `replace` restore of a fresh Friday-copy backup into the copy: 77 stores
+  from the 77-store archive, Friday on the 805-link vault, LUC Ranch on
+  `50369598…`, zero `Uploads mount has not been provisioned` warnings.
+- The same restore into a FRESHLY provisioned instance (disaster recovery):
+  the ten character-archive bundles + `hinge-log.md` in the archive's Uploads
+  store.
+- A planted malformed `permanent` row skipped with v4's bytes + the WARN.
+- A restored project keeping its `icon` on the fallback arm (a backup whose
+  project store was deleted).

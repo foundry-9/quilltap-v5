@@ -366,6 +366,10 @@ const REPLAY_DEDUPE: &[&str] = &[
     // fails to dedup it and phantoms a doc-store copy, in BOTH modes.
     "restore_compact_replace",
     "restore_compact_new_account",
+    // [P4.147] the same archive into a FRESH target: the >3 MB phantom is the
+    // project-bound file, which never touches the Uploads pointer, so #142's
+    // fix leaves it exactly as `restore_compact_replace` has it.
+    "restore_compact_fresh_replace",
 ];
 
 /// The tables [`REPLAY_DEDUPE`] makes incomparable row for row on its cases:
@@ -960,6 +964,21 @@ fn archive_for(name: &str) -> &'static str {
         "restore_bag_keys_replace" | "restore_bag_keys_new_account" => {
             "restore-archive-bag-keys.zip"
         }
+        // [P4.147, dogfood #142] the three archives that carry their own
+        // Quilltap Uploads store, restored into a fresh target with NO pointer
+        // alignment — see `FRESH_TARGET_UPLOADS`.
+        "restore_uploads_fresh_replace" => "restore-archive-uploads.zip",
+        "restore_compact_fresh_replace" => "restore-archive-compact.zip",
+        "restore_gen2_fresh_replace" => "restore-archive-gen2.zip",
+        // [P4.147 item 8] the fallback arm's whole property bag — built by
+        // `harness/oracle/fixtures/derive-restore-archive-bag-nulls.py`.
+        "restore_bag_nulls_replace" => "restore-archive-bag-nulls.zip",
+        // [P4.147 items 9 + 10(b)] seven archived informs + one malformed
+        // message — `derive-restore-archive-informs.py`.
+        "restore_informs_replace" => "restore-archive-informs.zip",
+        // [P4.147 item 10(a)+(c)] the full archive into a column-renamed
+        // target — see `renamed_columns`.
+        "restore_sqlite_tail_replace" => "restore-archive.zip",
         other => panic!("unknown restore case {other}"),
     }
 }
@@ -1004,6 +1023,25 @@ fn aligns_uploads_pointer(name: &str) -> bool {
         name,
         "restore_uploads_replace" | "restore_gen2_replace" | "restore_compact_replace"
     )
+}
+
+/// [P4.147 item 10(c)] The main-partition columns this case RENAMES on the
+/// target before the baseline (`(table, from, to)`) — mirrors the oracle's
+/// `renameColumns` exactly. The P4.131 plant shape: every restore insert into
+/// the table then fails on SQLite's own `table … has no column named …`, so
+/// the restore's per-row catches are reached with a REAL database error.
+fn renamed_columns(name: &str) -> &'static [(&'static str, &'static str, &'static str)] {
+    match name {
+        "restore_sqlite_tail_replace" => &[
+            (
+                "chats",
+                "rightPaneVerticalSplit",
+                "rightPaneVerticalSplitPlanted",
+            ),
+            ("chat_documents", "displayTitle", "displayTitlePlanted"),
+        ],
+        _ => &[],
+    }
 }
 
 /// ## P4.D31 — the memory-id contract, asserted on v5 ALONE
@@ -1175,6 +1213,8 @@ fn system_restore_state_equivalence() {
     let mut failures: Vec<String> = Vec::new();
     let mut seen = 0usize;
     let mut repo_log_cases = 0usize;
+    let mut restore_log_cases = 0usize;
+    let mut fresh_store_carved = 0usize;
 
     for case in &cases {
         let name = case["name"].as_str().unwrap();
@@ -1228,6 +1268,22 @@ fn system_restore_state_equivalence() {
         if aligns_uploads_pointer(name) {
             align_uploads_pointer(&instance, &zip, &host.temp_dir());
         }
+        // [P4.147 item 10(c)] the column-rename plant, before the baseline —
+        // exactly where the oracle runs its own `ALTER TABLE … RENAME COLUMN`.
+        if !renamed_columns(name).is_empty() {
+            let w = quilltap_core::db::Writer::open_writable(
+                &instance.join("quilltap.db"),
+                TEST_PEPPER,
+            )
+            .expect("open target to plant the column renames");
+            for (table, from, to) in renamed_columns(name) {
+                w.connection()
+                    .execute_batch(&format!(
+                        "ALTER TABLE \"{table}\" RENAME COLUMN \"{from}\" TO \"{to}\""
+                    ))
+                    .expect("plant the column rename");
+            }
+        }
         let got_pre = read_state(&instance);
         compare_baseline(name, &got_pre, &case["preState"], &mut failures);
         let db = reopen_instance(&instance);
@@ -1235,7 +1291,7 @@ fn system_restore_state_equivalence() {
         // [P4.143 Tier 2 item 10] A case whose oracle recorded the refused chat
         // create's repository lines starts from an EMPTY process-global buffer
         // (the restore's chat creates log on the WRITER thread).
-        let repo_buf = case.get("repoLogs").map(|_| {
+        let repo_buf = case.get("repoLogs").or_else(|| case.get("logs")).map(|_| {
             let buf = global_capture();
             buf.lock().unwrap().clear();
             buf
@@ -1256,8 +1312,38 @@ fn system_restore_state_equivalence() {
 
         // Dump AFTER dropping the Db so every writer transaction has committed.
         drop(db);
-        let got_state = read_state(&instance);
-        let want_state = &case["state"];
+        let mut got_state = read_state(&instance);
+        let mut want_owned = case["state"].clone();
+
+        // [P4.147] The two ruled divergences, asserted both ways on the RAW
+        // dumps and then carved — BEFORE any normalization, so the
+        // `<minted-N>` first-encounter labels of the remaining rows line up.
+        let mut summary_carve = SummaryCarve::default();
+        if mode_for(name) == RestoreMode::Replace {
+            if let Some(shared) = carve_fresh_store_residual(
+                name,
+                &zip,
+                &host.temp_dir(),
+                &mut got_state,
+                &mut want_owned,
+                &mut failures,
+            ) {
+                fresh_store_carved += 1;
+                summary_carve.shared_content = shared > 0;
+            }
+        }
+        carve_fresh_target_uploads(
+            name,
+            &zip,
+            &host.temp_dir(),
+            &summary,
+            &case["summary"],
+            &mut got_state,
+            &want_owned,
+            &mut summary_carve,
+            &mut failures,
+        );
+        let want_state = &want_owned;
 
         // v5 alone: the restored memory graph must be internally closed. Run for
         // EVERY case, not just the memory-graph ones — the other archives' edge
@@ -1283,12 +1369,33 @@ fn system_restore_state_equivalence() {
         // [P4.143 Tier 2 item 10] the refused chat create's repository lines.
         if let Some(buf) = repo_buf {
             let lines = std::mem::take(&mut *buf.lock().unwrap());
-            let serde = (name == SERDE_ROOM_CASE).then_some(("scenarioText", SERDE_ROOM_V5_PREFIX));
-            // Restore runs OUTSIDE `withStrictRepositoryFailures`: no line
-            // carries `strictFailures` on v4 either.
-            compare_repo_logs(name, &case["repoLogs"], &lines, serde, &[], &mut failures);
-            repo_log_cases += 1;
+            if case.get("repoLogs").is_some() {
+                let serde =
+                    (name == SERDE_ROOM_CASE).then_some(("scenarioText", SERDE_ROOM_V5_PREFIX));
+                // Restore runs OUTSIDE `withStrictRepositoryFailures`: no line
+                // carries `strictFailures` on v4 either.
+                compare_repo_logs(name, &case["repoLogs"], &lines, serde, &[], &mut failures);
+                repo_log_cases += 1;
+            } else {
+                // [P4.147] the restore-level lines byte for byte; the
+                // repository-level ones pinned as the named handoff.
+                compare_restore_logs(name, &case["logs"], &lines, &mut failures);
+                restore_log_cases += 1;
+            }
         }
+
+        // [P4.147 item 8] the fallback arm's whole property bag, by name.
+        assert_bag_nulls_survive(
+            name,
+            &zip,
+            &host.temp_dir(),
+            &got_state,
+            want_state,
+            &mut failures,
+        );
+
+        // [P4.147 item 9] the archived informs, by name.
+        assert_informs_restored(name, &got_state, want_state, &mut failures);
 
         // [P4.143 item 2] the serde-arm plant, by name.
         assert_serde_room_skipped(
@@ -1315,6 +1422,7 @@ fn system_restore_state_equivalence() {
             name,
             &summary,
             case,
+            &summary_carve,
             &got_state,
             want_state,
             literals,
@@ -1330,15 +1438,24 @@ fn system_restore_state_equivalence() {
     // 21: P4.130's refused-chat arm (a `conciergeMode` outside the enum). 21 +
     // 1 = 22: P4.143's serde-arm plant (a numeric `scenarioText`). 22 + 1 =
     // 23: P4.D251's voice-legacy arm (the retired `impersonationVoiceRewrite`
-    // boolean in its shapes, translated on restore).
+    // boolean in its shapes, translated on restore). 23 + 6 = 29: P4.147's
+    // three fresh-target arms (#142), the bag-nulls arm, the informs arm and
+    // the SQLite-tail plant.
     assert_eq!(
-        seen, 23,
-        "expected all twenty-three restore cases in the oracle (ten + the #58 orphan-links arm \
+        seen, 29,
+        "expected all twenty-nine restore cases in the oracle (ten + the #58 orphan-links arm \
          + P4.D46's two compact arms + P4.D126's bug-103 legacy-profiles arm \
          + P4.D145's bug-114 duplicate-folders arm + P4.D152's bug-117 arm \
          + P4.D158's two bag-key arms + P4.D208's bug-158 arm \
          + P4.D226's legacy-Concierge arm + P4.130's refused-chat arm \
-         + P4.143's serde-arm plant + P4.D251's voice-legacy arm)"
+         + P4.143's serde-arm plant + P4.D251's voice-legacy arm \
+         + P4.147's three fresh-target arms, bag-nulls, informs and SQLite-tail arms)"
+    );
+    // [P4.147] Every ruled #141 case actually carved (red-first measured, then
+    // both directions held) — the arm cannot go vacuous.
+    assert_eq!(
+        fresh_store_carved, FRESH_STORE_CARVED_CASES,
+        "replace cases whose v4 dump carried a #141 fresh store to carve"
     );
     assert!(
         failures.is_empty(),
@@ -1351,6 +1468,11 @@ fn system_restore_state_equivalence() {
     assert_eq!(
         repo_log_cases, 2,
         "cases that compared the refused chat create's repository lines"
+    );
+    // [P4.147] the informs arm and the SQLite-tail plant compared their lines.
+    assert_eq!(
+        restore_log_cases, 2,
+        "cases that compared P4.147's restore log lines"
     );
 }
 
@@ -1715,6 +1837,10 @@ fn assert_pre_410_archive_restores_no_informs(
     want: &Value,
     failures: &mut Vec<String>,
 ) {
+    // [P4.147 item 9] the ONE archive that does carry informs.
+    if name == INFORMS_CASE {
+        return;
+    }
     match got.get("main").and_then(|t| t.get("chat_informs")) {
         None => failures.push(format!(
             "[{name}] v5's restored target has no chat_informs table"
@@ -1801,6 +1927,265 @@ fn compare_baseline(
                 ));
             }
         }
+    }
+}
+
+/// ## [P4.147] The #141 + #142 acceptance measure, on v5 ALONE
+///
+/// The oracle family above proves v5 diverges from v4 exactly as ruled. This
+/// proves the RESULT is what dogfood #141/#142 asked for, against the archive
+/// itself — no oracle, so it runs unconditionally and can never SKIP (the
+/// `preview_writes_nothing` precedent). A `replace` restore into a FRESHLY
+/// provisioned target (the disaster-recovery shape: every built-in pointer
+/// names the target's own, wiped store) must leave:
+///
+/// 1. exactly the archive's stores — `COUNT(doc_mount_points)` equal to the
+///    archive's, no store minted for an entity the archive carries a store for;
+/// 2. no duplicate store names beyond the archive's own;
+/// 3. every character / project / group on the store the ARCHIVE names, with
+///    the archive's link count behind it (Lorian 11, Riya 9, project 4, group 4
+///    on `restore-archive.zip` — the "Friday on her 805-link vault" analog);
+/// 4. (an archive carrying its own Uploads store) ZERO `Quilltap Uploads mount
+///    has not been provisioned` warnings, and every restored project-less file
+///    on `mount-blob:<the archive's Uploads id>:…`;
+/// 5. `userUploadsMountPointId` naming the archive's store, and that store
+///    existing;
+/// 6. no store unreferenced by an entity pointer, a built-in pointer or an
+///    archive id.
+///
+/// Plus Tier 2 item 14: a target-side archived-character bundle (`files`, category
+/// `ARCHIVE`, kept by the default wipe) named like a restored file — the two
+/// must not collide: the bundle survives untouched, the restored file lands in
+/// the archive's Uploads store at its own unique path.
+#[test]
+fn a_replace_restore_lands_every_entity_on_the_archives_stores() {
+    const KEPT_BUNDLE: &str = "a8000000-0000-4000-8000-000000000001";
+    for archive in ["restore-archive.zip", "restore-archive-uploads.zip"] {
+        let scratch = fresh_scratch(&format!("acceptance-{archive}"));
+        let instance = scratch.root.join("instance");
+        let db = fresh_instance(&instance);
+        let host = TestHost {
+            root: scratch.root.clone(),
+        };
+        std::fs::create_dir_all(host.temp_dir()).unwrap();
+        let zip = archives_dir().join(archive);
+        let carries_uploads = archive == "restore-archive-uploads.zip";
+        drop(db);
+        if carries_uploads {
+            let w = quilltap_core::db::Writer::open_writable(
+                &instance.join("quilltap.db"),
+                TEST_PEPPER,
+            )
+            .unwrap();
+            quilltap_core::db::files::FilesRepository::new(w.connection())
+                .create(
+                    &quilltap_core::db::files::FileCreate {
+                        user_id: SINGLE_USER_ID.to_string(),
+                        sha256: "a".repeat(64),
+                        original_filename: "portrait.png".into(),
+                        mime_type: "application/octet-stream".into(),
+                        size: 3.0,
+                        width: None,
+                        height: None,
+                        is_plain_text: None,
+                        linked_to: vec![],
+                        source: "UPLOADED".into(),
+                        category: "ARCHIVE".into(),
+                        generation_prompt: None,
+                        generation_model: None,
+                        generation_revised_prompt: None,
+                        generation_key: None,
+                        description: None,
+                        tags: vec![],
+                        project_id: None,
+                        folder_path: None,
+                        storage_key: Some(format!("mount-blob:{}:{}", "0".repeat(36), KEPT_BUNDLE)),
+                        file_status: "ok".into(),
+                    },
+                    &quilltap_core::db::files::CreateOptions {
+                        id: KEPT_BUNDLE.into(),
+                        created_at: "2026-10-05T00:00:00.000Z".into(),
+                        updated_at: "2026-10-05T00:00:00.000Z".into(),
+                    },
+                )
+                .expect("seed the kept bundle");
+        }
+        let db = reopen_instance(&instance);
+        let summary = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(restore(
+                &db,
+                &host,
+                &zip,
+                RestoreMode::Replace,
+                SINGLE_USER_ID,
+                Default::default(),
+            ))
+            .expect("restore succeeded");
+        drop(db);
+        let got = serde_json::to_value(read_state(&instance)).unwrap();
+        let a = archive_stores(&zip, &host.temp_dir());
+        let ctx = |msg: String| format!("[{archive}] {msg}");
+
+        // 1 + 2.
+        let points = rows_of(&got, "mountIndex", "doc_mount_points");
+        assert_eq!(
+            points.len(),
+            a.point_ids.len(),
+            "{}",
+            ctx("store count must equal the archive's".into())
+        );
+        let mut names: BTreeMap<String, usize> = BTreeMap::new();
+        for p in points {
+            *names
+                .entry(str_at(p, "name").unwrap_or("").trim().to_lowercase())
+                .or_insert(0) += 1;
+        }
+        let mut archive_names: BTreeMap<String, usize> = BTreeMap::new();
+        for n in &a.point_names {
+            *archive_names.entry(n.trim().to_lowercase()).or_insert(0) += 1;
+        }
+        assert_eq!(names, archive_names, "{}", ctx("store names".into()));
+
+        // 3.
+        let mut checked = 0;
+        for (table, column, id, archived) in &a.pointers {
+            let Some(archived) = archived.as_ref().filter(|p| a.point_ids.contains(*p)) else {
+                continue;
+            };
+            let pointer = pointer_on(&got, table, column, id).flatten();
+            assert_eq!(
+                pointer.as_deref(),
+                Some(archived.as_str()),
+                "{}",
+                ctx(format!("{table} {id} must point at the archive's store"))
+            );
+            let links = rows_of(&got, "mountIndex", "doc_mount_file_links")
+                .iter()
+                .filter(|l| str_at(l, "mountPointId") == Some(archived.as_str()))
+                .count();
+            assert_eq!(
+                links,
+                a.links_per_point.get(archived).copied().unwrap_or(0),
+                "{}",
+                ctx(format!(
+                    "{table} {id}'s store must carry the archive's links"
+                ))
+            );
+            checked += 1;
+        }
+        assert_eq!(checked, 4, "{}", ctx("all four entities checked".into()));
+        if archive == "restore-archive.zip" {
+            let count = |mp: &str| a.links_per_point.get(mp).copied().unwrap_or(0);
+            assert_eq!(
+                (
+                    count("aff3114e-ed90-4d5b-99c1-ef3fa20203fc"),
+                    count("f6b22d51-85e5-4bee-a053-262dd965962f"),
+                    count("5c17e916-5f79-4cca-a134-ec09c05924e9"),
+                    count("60a8194d-f8ea-4540-af77-5e13e7ed0e9b"),
+                ),
+                (11, 9, 4, 4),
+                "the survey's measured link counts"
+            );
+        }
+
+        // 4 + 5 (+ item 14).
+        let settings = |k: &str| {
+            rows_of(&got, "main", "instance_settings")
+                .iter()
+                .find(|r| str_at(r, "key") == Some(k))
+                .and_then(|r| str_at(r, "value").map(str::to_string))
+        };
+        if carries_uploads {
+            let uploads = a.settings["userUploadsMountPointId"].clone();
+            assert!(
+                summary
+                    .warnings
+                    .iter()
+                    .all(|w| !w.contains(UPLOADS_UNPROVISIONED)),
+                "{}",
+                ctx(format!("no Uploads warning: {:?}", summary.warnings))
+            );
+            assert_eq!(settings("userUploadsMountPointId"), Some(uploads.clone()));
+            assert!(point_exists(&got, &uploads));
+            let files = rows_of(&got, "main", "files");
+            let restored: Vec<&Value> = files
+                .iter()
+                .filter(|f| str_at(f, "id") != Some(KEPT_BUNDLE) && f["projectId"].is_null())
+                .collect();
+            assert_eq!(
+                restored.len(),
+                2,
+                "{}",
+                ctx("both project-less files restored".into())
+            );
+            for f in restored {
+                assert!(
+                    str_at(f, "storageKey")
+                        .is_some_and(|k| k.starts_with(&format!("mount-blob:{uploads}:"))),
+                    "{}",
+                    ctx(format!("{f} must live on the archive's Uploads store"))
+                );
+            }
+            let kept = files
+                .iter()
+                .find(|f| str_at(f, "id") == Some(KEPT_BUNDLE))
+                .expect("the kept bundle survives the wipe");
+            assert_eq!(str_at(kept, "category"), Some("ARCHIVE"));
+            let uploads_paths: Vec<String> = rows_of(&got, "mountIndex", "doc_mount_file_links")
+                .iter()
+                .filter(|l| str_at(l, "mountPointId") == Some(uploads.as_str()))
+                .filter_map(|l| str_at(l, "relativePath").map(str::to_lowercase))
+                .collect();
+            let unique: HashSet<&String> = uploads_paths.iter().collect();
+            assert_eq!(
+                unique.len(),
+                uploads_paths.len(),
+                "{}",
+                ctx("Uploads paths unique".into())
+            );
+            assert!(
+                uploads_paths.iter().any(|p| p == "restored/portrait.png"),
+                "{}",
+                ctx(format!(
+                    "the restored portrait.png must be linked: {uploads_paths:?}"
+                ))
+            );
+            assert!(
+                !rows_of(&got, "mountIndex", "doc_mount_blobs")
+                    .iter()
+                    .any(|b| str_at(b, "id") == Some(KEPT_BUNDLE)),
+                "{}",
+                ctx("nothing in the restored store claims the kept bundle's blob id".into())
+            );
+        }
+
+        // 6.
+        let mut referenced: HashSet<String> = a.point_ids.clone();
+        for (table, column, id, _) in &a.pointers {
+            if let Some(Some(p)) = pointer_on(&got, table, column, id) {
+                referenced.insert(p);
+            }
+        }
+        for key in quilltap_core::services::backup::uuid_remap::MOUNT_POINT_SETTING_KEYS {
+            if let Some(v) = settings(key) {
+                referenced.insert(v);
+            }
+        }
+        for p in points {
+            let id = str_at(p, "id").unwrap_or("");
+            assert!(
+                referenced.contains(id),
+                "{}",
+                ctx(format!("store {id} is referenced by nothing — an orphan"))
+            );
+        }
+        println!(
+            "OK acceptance {archive}: {} stores, {checked} entities on the archive's stores",
+            points.len()
+        );
     }
 }
 
@@ -2765,11 +3150,1142 @@ fn assert_orphan_warnings(name: &str, gv: &Value, wv: &Value, failures: &mut Vec
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// P4.147 — dogfood #141 + #142, the property-bag / inform / SQLite-tail riders
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// The three entity pointers a restore can preserve: `(table, column)`.
+const POINTER_COLUMNS: &[(&str, &str)] = &[
+    ("characters", "characterDocumentMountPointId"),
+    ("projects", "officialMountPointId"),
+    ("groups", "officialMountPointId"),
+];
+
+/// The archive's store facts — read off the archive itself, never off either
+/// side's dump.
+struct ArchiveStores {
+    point_ids: HashSet<String>,
+    point_names: Vec<String>,
+    /// `(table, column, entity id, the archived pointer)`.
+    pointers: Vec<(&'static str, &'static str, String, Option<String>)>,
+    links_per_point: BTreeMap<String, usize>,
+    link_ids: HashSet<String>,
+    settings: BTreeMap<String, String>,
+}
+
+fn archive_stores(zip: &Path, temp_root: &Path) -> ArchiveStores {
+    let extracted = quilltap_core::services::backup::restore::parse_backup_zip(zip, temp_root)
+        .expect("parse archive for its stores");
+    let d = &extracted.data;
+    let id = |v: &Value| {
+        v.get("id")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    };
+    let mut pointers = Vec::new();
+    for (table, column) in POINTER_COLUMNS {
+        let rows = match *table {
+            "characters" => &d.characters,
+            "projects" => &d.projects,
+            _ => &d.groups,
+        };
+        for row in rows {
+            pointers.push((
+                *table,
+                *column,
+                id(row),
+                row.get(*column).and_then(Value::as_str).map(str::to_string),
+            ));
+        }
+    }
+    let mut links_per_point = BTreeMap::new();
+    for l in &d.doc_mount_file_links {
+        if let Some(mp) = l.get("mountPointId").and_then(Value::as_str) {
+            *links_per_point.entry(mp.to_string()).or_insert(0) += 1;
+        }
+    }
+    ArchiveStores {
+        point_ids: d.doc_mount_points.iter().map(id).collect(),
+        point_names: d
+            .doc_mount_points
+            .iter()
+            .filter_map(|p| p.get("name").and_then(Value::as_str).map(str::to_string))
+            .collect(),
+        pointers,
+        links_per_point,
+        link_ids: d.doc_mount_file_links.iter().map(id).collect(),
+        settings: d
+            .instance_settings
+            .iter()
+            .filter_map(|r| {
+                Some((
+                    r.get("key")?.as_str()?.to_string(),
+                    r.get("value")?.as_str()?.to_string(),
+                ))
+            })
+            .collect(),
+    }
+}
+
+fn str_at<'a>(row: &'a Value, key: &str) -> Option<&'a str> {
+    row.get(key).and_then(Value::as_str)
+}
+
+fn rows_of<'a>(dump: &'a Value, partition: &str, table: &str) -> &'a [Value] {
+    dump.get(partition)
+        .and_then(|p| p.get(table))
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or(&[])
+}
+
+/// Keep only the rows `keep` accepts; returns how many went.
+fn retain_rows(
+    dump: &mut Value,
+    partition: &str,
+    table: &str,
+    keep: impl Fn(&Value) -> bool,
+) -> usize {
+    let Some(rows) = dump
+        .get_mut(partition)
+        .and_then(|p| p.get_mut(table))
+        .and_then(Value::as_array_mut)
+    else {
+        return 0;
+    };
+    let before = rows.len();
+    rows.retain(|r| keep(r));
+    before - rows.len()
+}
+
+/// What [`carve_fresh_stores`] did to one side's dump.
+#[derive(Default)]
+struct CarveOutcome {
+    removed: usize,
+    rehomed: usize,
+    /// Content rows a carved link referenced that SURVIVE because another link
+    /// (outside the carved stores) shares them — see [`carve_fresh_stores`].
+    shared_content: usize,
+    /// Re-homed links given v5's uniquified path (`FRESH_STORE_FOLD_COLLISIONS`).
+    renamed: usize,
+    /// Post-22d colliding paths no `FRESH_STORE_FOLD_COLLISIONS` entry names.
+    unlisted_collisions: Vec<String>,
+}
+
+/// ## The legacy fold, landing on the ARCHIVE's vault — part of #141's ruling
+///
+/// 22f-bis folds a legacy archive's outfit presets into wardrobe items through
+/// the character's CURRENT vault. On v4 that is the fresh one, where the item's
+/// path is free. On v5 it is the archive's own vault — and
+/// `restore-archive-legacy.zip`'s vault ALREADY carries `Wardrobe/Travelling
+/// Coat.md` (the fixture is a modern archive plus `outfit-presets.json`), so
+/// the wardrobe create uniquifies the fold to `Travelling Coat-1.md`, exactly
+/// as v4's own create would on a vault that held it. Same document, another
+/// path. Each entry is `(case, the path v4 wrote, the path v5 wrote)`: v4's
+/// re-homed link takes v5's path so its content stays under diff, and both
+/// directions are asserted (the entry must be USED on v4's side, and v5 must
+/// carry the renamed link).
+const FRESH_STORE_FOLD_COLLISIONS: &[(&str, &str, &str)] = &[(
+    "restore_legacy_archive",
+    "Wardrobe/Travelling Coat.md",
+    "Wardrobe/Travelling Coat-1.md",
+)];
+
+/// Carve v4's #141 fresh stores (`fresh → archive`, keyed by the fresh store's
+/// id) out of its dump, re-homing what v4 wrote into a fresh store that the
+/// archive's own store does not carry.
+///
+/// A fresh store holds two kinds of rows. Its PROVISIONING (the vault scaffold
+/// and the managed-field projection at phase 6, a project/group store's four
+/// files at 13/13a) sits at relative paths the archive's own store also
+/// carries — those rows are the divergence, and go. What v4 wrote into it LATER
+/// through the entity's pointer sits at paths the archive's store does NOT
+/// carry: 22f-bis's legacy wardrobe items (`restore_legacy_archive`), and the
+/// compact archive's >3 MB phantom re-ingest (`REPLAY_DEDUPE`). v5 writes those
+/// into the archive's store, so they are RE-HOMED — `mountPointId` (and a
+/// folder id, by path) rewritten to the archive's store — and stay under diff.
+///
+/// The store row, its `project_/group_doc_mount_links` row, its carved links'
+/// chunks, and the content rows (`doc_mount_files`, their documents and blobs)
+/// no surviving link references all go. A content row a carved link shared
+/// with a SURVIVING link stays (`doc_mount_files` is global and sha-keyed: a
+/// later store's identical file reuses v4's earlier row) — it keeps its v4
+/// rowid, earlier than v5's own copy, which is why those two tables then
+/// compare order-insensitively on that case ([`FRESH_STORE_SHARED_CONTENT`]).
+fn carve_fresh_stores(
+    dump: &mut Value,
+    fresh_to_archive: &BTreeMap<String, String>,
+    archive_link_ids: &HashSet<String>,
+    collisions: &[(&str, &str)],
+) -> CarveOutcome {
+    let mut out = CarveOutcome::default();
+    if fresh_to_archive.is_empty() {
+        return out;
+    }
+    let fresh = |r: &Value| str_at(r, "mountPointId").and_then(|m| fresh_to_archive.get(m));
+    let key = |p: &str| p.to_lowercase();
+
+    // Folders first: a fresh folder whose path the archive's store carries maps
+    // onto that folder; any other is re-homed with its id.
+    let folders = rows_of(dump, "mountIndex", "doc_mount_folders").to_vec();
+    let mut archive_folder: BTreeMap<(String, String), String> = BTreeMap::new();
+    for f in &folders {
+        if let (Some(mp), Some(path), Some(id)) = (
+            str_at(f, "mountPointId"),
+            str_at(f, "path"),
+            str_at(f, "id"),
+        ) {
+            if fresh_to_archive.values().any(|a| a == mp) {
+                archive_folder.insert((mp.to_string(), key(path)), id.to_string());
+            }
+        }
+    }
+    let mut folder_map: BTreeMap<String, String> = BTreeMap::new();
+    let mut rehome_folders: HashSet<String> = HashSet::new();
+    for f in &folders {
+        let (Some(archive), Some(id)) = (fresh(f), str_at(f, "id")) else {
+            continue;
+        };
+        match archive_folder.get(&(archive.clone(), key(str_at(f, "path").unwrap_or("")))) {
+            Some(twin) => {
+                folder_map.insert(id.to_string(), twin.clone());
+            }
+            None => {
+                rehome_folders.insert(id.to_string());
+            }
+        }
+    }
+
+    // Links: a path the archive's store carries, written BEFORE 22d restored the
+    // archive's links (rowid order), is provisioning — carved. Any other is
+    // re-homed; one written AFTER 22d at a path the archive's store also
+    // carries collides there on v5, which uniquifies it — the named
+    // `FRESH_STORE_FOLD_COLLISIONS` rewrite.
+    let links = rows_of(dump, "mountIndex", "doc_mount_file_links").to_vec();
+    let first_archive_link = links
+        .iter()
+        .position(|l| str_at(l, "id").is_some_and(|i| archive_link_ids.contains(i)));
+    let mut renames: BTreeMap<String, String> = BTreeMap::new();
+    let mut archive_paths: HashSet<(String, String)> = HashSet::new();
+    for l in &links {
+        if let (Some(mp), Some(path)) = (str_at(l, "mountPointId"), str_at(l, "relativePath")) {
+            if fresh_to_archive.values().any(|a| a == mp) {
+                archive_paths.insert((mp.to_string(), key(path)));
+            }
+        }
+    }
+    let mut gone_links: HashSet<String> = HashSet::new();
+    let mut rehome_links: BTreeMap<String, String> = BTreeMap::new();
+    let mut gone_link_files: HashSet<String> = HashSet::new();
+    for (i, l) in links.iter().enumerate() {
+        let (Some(archive), Some(id)) = (fresh(l), str_at(l, "id")) else {
+            continue;
+        };
+        let raw_path = str_at(l, "relativePath").unwrap_or("");
+        let collides = archive_paths.contains(&(archive.clone(), key(raw_path)));
+        let after_22d = first_archive_link.is_some_and(|f| i > f);
+        if !collides {
+            rehome_links.insert(id.to_string(), archive.clone());
+        } else if after_22d {
+            match collisions.iter().find(|(from, _)| *from == raw_path) {
+                Some((_, to)) => {
+                    rehome_links.insert(id.to_string(), archive.clone());
+                    renames.insert(id.to_string(), (*to).to_string());
+                }
+                None => out.unlisted_collisions.push(raw_path.to_string()),
+            }
+        } else {
+            gone_links.insert(id.to_string());
+            if let Some(f) = str_at(l, "fileId") {
+                gone_link_files.insert(f.to_string());
+            }
+        }
+    }
+
+    let ids: HashSet<String> = fresh_to_archive.keys().cloned().collect();
+    let in_ids = |r: &Value, k: &str| str_at(r, k).is_some_and(|v| ids.contains(v));
+    out.removed += retain_rows(dump, "mountIndex", "doc_mount_points", |r| !in_ids(r, "id"));
+    out.removed += retain_rows(dump, "mountIndex", "doc_mount_folders", |r| {
+        !in_ids(r, "mountPointId") || str_at(r, "id").is_some_and(|i| rehome_folders.contains(i))
+    });
+    out.removed += retain_rows(dump, "mountIndex", "doc_mount_file_links", |r| {
+        !str_at(r, "id").is_some_and(|i| gone_links.contains(i))
+    });
+    out.removed += retain_rows(dump, "mountIndex", "doc_mount_chunks", |r| {
+        !(str_at(r, "linkId").is_some_and(|l| gone_links.contains(l))
+            || (in_ids(r, "mountPointId")
+                && !str_at(r, "linkId").is_some_and(|l| rehome_links.contains_key(l))))
+    });
+    out.removed += retain_rows(dump, "mountIndex", "project_doc_mount_links", |r| {
+        !in_ids(r, "mountPointId")
+    });
+    out.removed += retain_rows(dump, "mountIndex", "group_doc_mount_links", |r| {
+        !in_ids(r, "mountPointId")
+    });
+
+    // Re-home what survives in a fresh store.
+    let remap_folder = |v: &Value| -> Value {
+        match v.as_str().and_then(|f| folder_map.get(f)) {
+            Some(twin) => json!(twin),
+            None => v.clone(),
+        }
+    };
+    for table in [
+        "doc_mount_folders",
+        "doc_mount_file_links",
+        "doc_mount_chunks",
+    ] {
+        let Some(rows) = dump["mountIndex"][table].as_array_mut() else {
+            continue;
+        };
+        for r in rows.iter_mut() {
+            let Some(archive) = str_at(r, "mountPointId").and_then(|m| fresh_to_archive.get(m))
+            else {
+                continue;
+            };
+            r["mountPointId"] = json!(archive);
+            out.rehomed += 1;
+            if let Some(to) = str_at(r, "id").and_then(|i| renames.get(i)).cloned() {
+                let file_name = to.rsplit('/').next().unwrap_or(&to).to_string();
+                r["relativePath"] = json!(to);
+                r["fileName"] = json!(file_name);
+                out.renamed += 1;
+            }
+            for k in ["folderId", "parentId"] {
+                if let Some(v) = r.get(k).cloned() {
+                    r[k] = remap_folder(&v);
+                }
+            }
+        }
+    }
+
+    let still_used: HashSet<String> = rows_of(dump, "mountIndex", "doc_mount_file_links")
+        .iter()
+        .filter_map(|l| str_at(l, "fileId").map(str::to_string))
+        .collect();
+    out.shared_content = gone_link_files.intersection(&still_used).count();
+    let gone_files: HashSet<String> = gone_link_files.difference(&still_used).cloned().collect();
+    let in_gone = |r: &Value, k: &str| str_at(r, k).is_some_and(|v| gone_files.contains(v));
+    out.removed += retain_rows(dump, "mountIndex", "doc_mount_files", |r| !in_gone(r, "id"));
+    out.removed += retain_rows(dump, "mountIndex", "doc_mount_documents", |r| {
+        !in_gone(r, "fileId")
+    });
+    out.removed += retain_rows(dump, "mountIndex", "doc_mount_blobs", |r| {
+        !in_gone(r, "fileId")
+    });
+    out
+}
+
+/// One entity's pointer on one side's dump.
+fn pointer_on(dump: &Value, table: &str, column: &str, id: &str) -> Option<Option<String>> {
+    rows_of(dump, "main", table)
+        .iter()
+        .find(|r| str_at(r, "id") == Some(id))
+        .map(|r| str_at(r, column).map(str::to_string))
+}
+
+fn point_exists(dump: &Value, id: &str) -> bool {
+    rows_of(dump, "mountIndex", "doc_mount_points")
+        .iter()
+        .any(|r| str_at(r, "id") == Some(id))
+}
+
+/// ## ⚠ THE RULED #141 DIVERGENCE — `FRESH_STORE_RESIDUAL` (P4.147, 2026-10-05)
+///
+/// v4 restores every character, project and group through its CREATE path,
+/// which drops the archived `characterDocumentMountPointId` /
+/// `officialMountPointId` and provisions a FRESH vault / official store
+/// (`characters.repository.ts:262-296`, `restore.ts:315-345`); 22a then
+/// restores the archive's own store under its archived id beside it, orphaned.
+/// So every `replace` restore of an archive that carries a pointed store lands
+/// TWO stores for the entity and points it at the empty one (dogfood #141:
+/// 144 stores from a 77-store archive, Friday's pointer on a 12-file vault
+/// while her real 805-link one sat orphaned).
+///
+/// Under the standing backup/restore ruling (`backup-restore-fix-dont-match`,
+/// 2026-08-03) v5 FIXES it on the READ side (Shape A, preserve-at-create): when
+/// the archive carries the pointed store, the entity's slim row keeps the
+/// pointer and no fresh store is minted. `replace` mode only (ruling R-B).
+///
+/// Asserted BOTH ways on the RAW dumps, per entity whose archived pointer names
+/// an archived store:
+///
+/// - **v5:** the pointer IS the archive's. (So nothing is carved from v5.)
+/// - **v4:** the pointer is NOT the archive's and names a store v4 minted; that
+///   store and every mount-index row keyed by it are carved from v4's dump and
+///   v4's pointer cell is set to the archive's, so the remainder diffs row for
+///   row. **If v4 ever preserves, the v4 direction fires — retire the carve.**
+///
+/// The FALLBACK arm stays v4-convergent and is pinned as such: an entity whose
+/// archived pointer is absent or names a store the archive does not carry
+/// (`restore_minimal`, `restore_legacy_profiles_replace`, Riya in
+/// `restore_orphan_links_replace`, the project and group in
+/// `restore_bag_nulls_replace`) is carved on NEITHER side, and both sides must
+/// have minted it a store. Returns `Some(shared content rows kept)` when v4's
+/// dump was carved.
+fn carve_fresh_store_residual(
+    name: &str,
+    zip: &Path,
+    temp_root: &Path,
+    got: &mut BTreeMap<String, BTreeMap<String, Vec<Value>>>,
+    want: &mut Value,
+    failures: &mut Vec<String>,
+) -> Option<usize> {
+    let a = archive_stores(zip, temp_root);
+    let got_v = serde_json::to_value(&*got).expect("dump serializes");
+    let mut carve: BTreeMap<String, String> = BTreeMap::new();
+    let mut preserved = 0usize;
+    for (table, column, id, archived) in &a.pointers {
+        let (g, w) = (
+            pointer_on(&got_v, table, column, id),
+            pointer_on(want, table, column, id),
+        );
+        // An entity that did not restore on a side (a refused row) has no
+        // pointer to judge; the row diff reports its absence.
+        let (Some(g), Some(w)) = (g, w) else {
+            continue;
+        };
+        match archived.as_ref().filter(|p| a.point_ids.contains(*p)) {
+            Some(archived) => {
+                preserved += 1;
+                if g.as_deref() != Some(archived.as_str()) {
+                    failures.push(format!(
+                        "[{name}] FRESH_STORE_RESIDUAL (v5): {table} {id} points at {g:?}, but \
+                         the archive restored its store {archived} — the #141 preserve arm did \
+                         not hold"
+                    ));
+                }
+                match w {
+                    Some(w) if w == *archived => failures.push(format!(
+                        "[{name}] FRESH_STORE_RESIDUAL (v4): {table} {id} now keeps the \
+                         archive's store {archived} — v4 has fixed #141; retire the carve"
+                    )),
+                    Some(w) if !point_exists(want, &w) => failures.push(format!(
+                        "[{name}] FRESH_STORE_RESIDUAL (v4): {table} {id} points at {w}, which \
+                         names no store on v4's side — not the ruled shape"
+                    )),
+                    Some(w) => {
+                        if carve.insert(w.clone(), archived.clone()).is_some() {
+                            failures.push(format!(
+                                "[{name}] FRESH_STORE_RESIDUAL (v4): two entities share the \
+                                 fresh store {w}"
+                            ));
+                        }
+                    }
+                    None => failures.push(format!(
+                        "[{name}] FRESH_STORE_RESIDUAL (v4): {table} {id} has NO pointer — not \
+                         the ruled shape"
+                    )),
+                }
+                // Point v4's cell at the archive's store so the remainder diffs.
+                if let Some(row) = want["main"][*table]
+                    .as_array_mut()
+                    .and_then(|rows| rows.iter_mut().find(|r| str_at(r, "id") == Some(id)))
+                {
+                    row[*column] = json!(archived);
+                }
+            }
+            None => {
+                // The fallback arm: both sides minted a store, neither carved.
+                for (side, p, dump) in [("v5", &g, &got_v), ("v4", &w, &*want)] {
+                    let ok = p
+                        .as_ref()
+                        .is_some_and(|p| !a.point_ids.contains(p) && point_exists(dump, p));
+                    if !ok {
+                        failures.push(format!(
+                            "[{name}] FRESH_STORE_RESIDUAL fallback arm ({side}): {table} {id} \
+                             (archived pointer {archived:?}, not in the archive) points at \
+                             {p:?} — both sides must mint it a fresh store"
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    if preserved > 0 && carve.len() != preserved {
+        failures.push(format!(
+            "[{name}] FRESH_STORE_RESIDUAL (v4): {preserved} preservable entities but {} fresh \
+             store(s) to carve — every one must get its own",
+            carve.len()
+        ));
+    }
+    let collisions: Vec<(&str, &str)> = FRESH_STORE_FOLD_COLLISIONS
+        .iter()
+        .filter(|(c, _, _)| *c == name)
+        .map(|(_, from, to)| (*from, *to))
+        .collect();
+    let outcome = carve_fresh_stores(want, &carve, &a.link_ids, &collisions);
+    if !outcome.unlisted_collisions.is_empty() {
+        failures.push(format!(
+            "[{name}] FRESH_STORE_RESIDUAL (v4): fresh-store link(s) written after 22d at a path \
+             the archive's store also carries, with no FRESH_STORE_FOLD_COLLISIONS entry: {:?}",
+            outcome.unlisted_collisions
+        ));
+    }
+    if outcome.renamed != collisions.len() {
+        failures.push(format!(
+            "[{name}] FRESH_STORE_FOLD_COLLISIONS: {} entr(ies) for this case, {} used on v4's \
+             side — a stale entry",
+            collisions.len(),
+            outcome.renamed
+        ));
+    }
+    let mut got_v = got_v;
+    for (from, to) in &collisions {
+        let on_v5 = rows_of(&got_v, "mountIndex", "doc_mount_file_links")
+            .iter()
+            .any(|l| str_at(l, "relativePath") == Some(to));
+        if !on_v5 {
+            failures.push(format!(
+                "[{name}] FRESH_STORE_FOLD_COLLISIONS (v5): no link at {to:?} — the fold no \
+                 longer collides on the archive's vault; retire the entry"
+            ));
+        }
+        // The fold re-projects the vault's WHOLE wardrobe (v4's own
+        // `createAtLocation`), so on v5 the archive's item already at `from` is
+        // rewritten too: its link's `lastModified` takes the write clock and
+        // chunk-on-write adds one chunk for it ahead of 22g's archived chunk.
+        // Both asserted, then carved, so the rest of the link and every other
+        // chunk stay under diff.
+        let archive_link = rows_of(&got_v, "mountIndex", "doc_mount_file_links")
+            .iter()
+            .find(|l| {
+                str_at(l, "relativePath") == Some(from)
+                    && str_at(l, "id").is_some_and(|i| a.link_ids.contains(i))
+            })
+            .and_then(|l| str_at(l, "id").map(str::to_string));
+        let v4_modified = archive_link.as_ref().and_then(|id| {
+            rows_of(want, "mountIndex", "doc_mount_file_links")
+                .iter()
+                .find(|l| str_at(l, "id") == Some(id))
+                .map(|l| l["lastModified"].clone())
+        });
+        let (Some(link), Some(v4_modified)) = (archive_link, v4_modified) else {
+            failures.push(format!(
+                "[{name}] FRESH_STORE_FOLD_COLLISIONS: no archived link at {from:?} on both sides"
+            ));
+            continue;
+        };
+        let chunk_ids: HashSet<String> = rows_of(&got_v, "mountIndex", "doc_mount_chunks")
+            .iter()
+            .filter(|c| str_at(c, "linkId") == Some(link.as_str()))
+            .filter_map(|c| str_at(c, "id").map(str::to_string))
+            .collect();
+        let archived_chunks: HashSet<String> = rows_of(want, "mountIndex", "doc_mount_chunks")
+            .iter()
+            .filter(|c| str_at(c, "linkId") == Some(link.as_str()))
+            .filter_map(|c| str_at(c, "id").map(str::to_string))
+            .collect();
+        let extra: HashSet<String> = chunk_ids.difference(&archived_chunks).cloned().collect();
+        if extra.len() != 1 {
+            failures.push(format!(
+                "[{name}] FRESH_STORE_FOLD_COLLISIONS (v5): {} re-projection chunk(s) on the \
+                 archived {from:?}, expected exactly 1",
+                extra.len()
+            ));
+        }
+        retain_rows(&mut got_v, "mountIndex", "doc_mount_chunks", |c| {
+            !str_at(c, "id").is_some_and(|i| extra.contains(i))
+        });
+        if let Some(row) = got_v["mountIndex"]["doc_mount_file_links"]
+            .as_array_mut()
+            .and_then(|rows| {
+                rows.iter_mut()
+                    .find(|l| str_at(l, "id") == Some(link.as_str()))
+            })
+        {
+            if row["lastModified"] == v4_modified {
+                failures.push(format!(
+                    "[{name}] FRESH_STORE_FOLD_COLLISIONS (v5): the archived {from:?} kept its \
+                     lastModified — the fold no longer re-projects it; narrow the entry"
+                ));
+            }
+            row["lastModified"] = v4_modified;
+        }
+    }
+    if !collisions.is_empty() {
+        *got = serde_json::from_value(got_v).expect("dump round-trips");
+    }
+    if !carve.is_empty() && outcome.removed < carve.len() {
+        failures.push(format!(
+            "[{name}] FRESH_STORE_RESIDUAL (v4): carved only {} row(s) for {} store(s)",
+            outcome.removed,
+            carve.len()
+        ));
+    }
+    if !carve.is_empty() {
+        println!(
+            "  carve {name}: {} fresh store(s), {} row(s) carved, {} re-homed, {} shared \
+             content row(s) kept",
+            carve.len(),
+            outcome.removed,
+            outcome.rehomed,
+            outcome.shared_content
+        );
+    }
+    (!carve.is_empty()).then_some(outcome.shared_content)
+}
+
+/// The `replace` cases whose v4 dump carries a #141 fresh store to carve —
+/// every `replace` case whose archive carries a store some entity points at
+/// (measured, P4.147). A case falling out of the count is the carve going
+/// vacuous.
+const FRESH_STORE_CARVED_CASES: usize = 20;
+
+/// The `summary` adjustments a ruled carve makes: v5 leads v4's `files`
+/// counter by `files_lead`, and these v4 warnings are the divergence itself.
+#[derive(Default)]
+struct SummaryCarve {
+    files_lead: i64,
+    drop_v4_warnings: Vec<String>,
+    /// [`FRESH_STORE_SHARED_CONTENT`] applies on this case.
+    shared_content: bool,
+}
+
+/// The two content tables a [`carve_fresh_stores`] that kept a SHARED content
+/// row compares order-insensitively (canonical labelling, every value still
+/// compared): v4's fresh store created that row first, so it keeps an earlier
+/// rowid than v5's own later copy — the same row, another insertion slot.
+/// Part of `FRESH_STORE_RESIDUAL`, not a divergence of its own.
+const FRESH_STORE_SHARED_CONTENT: &[&str] = &["doc_mount_files", "doc_mount_documents"];
+
+const UPLOADS_UNPROVISIONED: &str = "Quilltap Uploads mount has not been provisioned";
+
+/// ## ⚠ THE RULED #142 DIVERGENCE — `FRESH_TARGET_UPLOADS` (P4.147, 2026-10-05)
+///
+/// The files phase resolves Quilltap Uploads through the TARGET's
+/// `instance_settings.userUploadsMountPointId`, which the `replace` wipe leaves
+/// alone and 22o only overwrites LAST. On a FRESH target (or one whose Uploads
+/// store was re-minted) that pointer names the target's own, now-wiped store,
+/// so every project-less file the restore must replay fails `Quilltap Uploads
+/// mount has not been provisioned` — on v4 too (`restore.ts:508-512,569-576`).
+/// v5 (ruling R-C) pre-applies the archive's built-in pointers right after 22a
+/// when they name a store 22a restored, so those files land in the ARCHIVE's
+/// Uploads store.
+///
+/// Each entry is `(case, the project-less files only the fix restores)`.
+/// `restore_gen2_fresh_replace` carries NONE (both its files are carried by the
+/// archive's own store rows, so neither side ever asks the bridge): it is the
+/// fresh-target convergence control. The three ALIGNED cases are the other
+/// controls — the fix is a no-op there, and both sides must carry zero Uploads
+/// warnings.
+///
+/// Both ways on the raw dumps: **v4** warns exactly once per file and writes no
+/// `files` row for it (if v4 restores one, it has fixed #142 — retire the
+/// entry); **v5** warns NOWHERE, writes each row on `mount-blob:<the archive's
+/// Uploads id>:…`, and ends with `userUploadsMountPointId` naming that existing
+/// store. Then v5's rows for those files (the `files` row, its blob, its link,
+/// the content row nothing else references) are carved and the summary moves by
+/// exactly the files' count.
+const FRESH_TARGET_UPLOADS: &[(&str, &[&str])] = &[
+    ("restore_uploads_fresh_replace", &["portrait.png"]),
+    ("restore_compact_fresh_replace", &["portrait.png"]),
+    ("restore_gen2_fresh_replace", &[]),
+];
+
+fn uploads_warnings(warnings: &Value) -> Vec<String> {
+    warnings
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(Value::as_str)
+                .filter(|w| w.contains(UPLOADS_UNPROVISIONED))
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn carve_fresh_target_uploads(
+    name: &str,
+    zip: &Path,
+    temp_root: &Path,
+    summary: &RestoreSummary,
+    want_summary: &Value,
+    got: &mut BTreeMap<String, BTreeMap<String, Vec<Value>>>,
+    want: &Value,
+    carve: &mut SummaryCarve,
+    failures: &mut Vec<String>,
+) {
+    let got_warnings = json!(summary.warnings);
+    if aligns_uploads_pointer(name) {
+        // The aligned controls: the pre-apply rewrites the value the target
+        // already holds, so neither side may warn.
+        for (side, w) in [("v5", &got_warnings), ("v4", &want_summary["warnings"])] {
+            let hits = uploads_warnings(w);
+            if !hits.is_empty() {
+                failures.push(format!(
+                    "[{name}] FRESH_TARGET_UPLOADS aligned control ({side}): {hits:?}"
+                ));
+            }
+        }
+        return;
+    }
+    let Some((_, files)) = FRESH_TARGET_UPLOADS.iter().find(|(c, _)| *c == name) else {
+        return;
+    };
+    let a = archive_stores(zip, temp_root);
+    let uploads = a
+        .settings
+        .get("userUploadsMountPointId")
+        .cloned()
+        .unwrap_or_else(|| panic!("{name}: the archive carries no Uploads pointer"));
+    let mut got_v = serde_json::to_value(&*got).expect("dump serializes");
+
+    // v4: one warning per file, no row.
+    let v4_hits = uploads_warnings(&want_summary["warnings"]);
+    let expected: Vec<String> = files
+        .iter()
+        .map(|f| format!("Failed to restore file \"{f}\": {UPLOADS_UNPROVISIONED}"))
+        .collect();
+    if v4_hits != expected {
+        failures.push(format!(
+            "[{name}] FRESH_TARGET_UPLOADS (v4): Uploads warnings {v4_hits:?}, expected \
+             {expected:?} — if v4 restores them now it has fixed #142; retire the entry"
+        ));
+    }
+    let v4_files = rows_of(want, "main", "files");
+    for f in *files {
+        if v4_files
+            .iter()
+            .any(|r| str_at(r, "originalFilename") == Some(f))
+        {
+            failures.push(format!(
+                "[{name}] FRESH_TARGET_UPLOADS (v4): v4 restored {f:?} — #142 fixed upstream; \
+                 retire the entry"
+            ));
+        }
+    }
+
+    // v5: no warning, every row on the archive's Uploads store, the pointer
+    // resolving.
+    let v5_hits = uploads_warnings(&got_warnings);
+    if !v5_hits.is_empty() {
+        failures.push(format!(
+            "[{name}] FRESH_TARGET_UPLOADS (v5): {v5_hits:?} — the archive's Uploads pointer \
+             was not pre-applied before the files phase"
+        ));
+    }
+    let v5_pointer = rows_of(&got_v, "main", "instance_settings")
+        .iter()
+        .find(|r| str_at(r, "key") == Some("userUploadsMountPointId"))
+        .and_then(|r| str_at(r, "value").map(str::to_string));
+    if v5_pointer.as_deref() != Some(uploads.as_str()) || !point_exists(&got_v, &uploads) {
+        failures.push(format!(
+            "[{name}] FRESH_TARGET_UPLOADS (v5): userUploadsMountPointId {v5_pointer:?} must be \
+             the archive's {uploads} AND name an existing store"
+        ));
+    }
+    let prefix = format!("mount-blob:{uploads}:");
+    let mut blob_ids: HashSet<String> = HashSet::new();
+    for f in *files {
+        let row = rows_of(&got_v, "main", "files")
+            .iter()
+            .find(|r| str_at(r, "originalFilename") == Some(f));
+        match row.and_then(|r| str_at(r, "storageKey")) {
+            Some(key) if key.starts_with(&prefix) => {
+                blob_ids.insert(key[prefix.len()..].to_string());
+            }
+            other => failures.push(format!(
+                "[{name}] FRESH_TARGET_UPLOADS (v5): {f:?} restored with storageKey {other:?}, \
+                 expected one on the archive's Uploads store ({prefix}…)"
+            )),
+        }
+    }
+
+    // Carve v5's replayed rows: the `files` rows, their blobs, the content rows
+    // the blobs hang off, every link to those content rows in the Uploads store,
+    // and the links' chunks.
+    let content_ids: HashSet<String> = rows_of(&got_v, "mountIndex", "doc_mount_blobs")
+        .iter()
+        .filter(|b| str_at(b, "id").is_some_and(|i| blob_ids.contains(i)))
+        .filter_map(|b| str_at(b, "fileId").map(str::to_string))
+        .collect();
+    let link_ids: HashSet<String> = rows_of(&got_v, "mountIndex", "doc_mount_file_links")
+        .iter()
+        .filter(|l| {
+            str_at(l, "mountPointId") == Some(uploads.as_str())
+                && str_at(l, "fileId").is_some_and(|f| content_ids.contains(f))
+        })
+        .filter_map(|l| str_at(l, "id").map(str::to_string))
+        .collect();
+    retain_rows(&mut got_v, "main", "files", |r| {
+        !str_at(r, "originalFilename").is_some_and(|f| files.contains(&f))
+    });
+    retain_rows(&mut got_v, "mountIndex", "doc_mount_file_links", |r| {
+        !str_at(r, "id").is_some_and(|i| link_ids.contains(i))
+    });
+    retain_rows(&mut got_v, "mountIndex", "doc_mount_chunks", |r| {
+        !str_at(r, "linkId").is_some_and(|i| link_ids.contains(i))
+    });
+    let still_used: HashSet<String> = rows_of(&got_v, "mountIndex", "doc_mount_file_links")
+        .iter()
+        .filter_map(|l| str_at(l, "fileId").map(str::to_string))
+        .collect();
+    let gone: HashSet<String> = content_ids.difference(&still_used).cloned().collect();
+    retain_rows(&mut got_v, "mountIndex", "doc_mount_blobs", |r| {
+        !str_at(r, "id").is_some_and(|i| blob_ids.contains(i))
+    });
+    retain_rows(&mut got_v, "mountIndex", "doc_mount_files", |r| {
+        !str_at(r, "id").is_some_and(|i| gone.contains(i))
+    });
+    retain_rows(&mut got_v, "mountIndex", "doc_mount_documents", |r| {
+        !str_at(r, "fileId").is_some_and(|i| gone.contains(i))
+    });
+    *got = serde_json::from_value(got_v).expect("dump round-trips");
+    carve.files_lead = files.len() as i64;
+    carve.drop_v4_warnings = v4_hits;
+}
+
+/// ## [P4.147 item 10(b)] The message replay's serde arm — a RECORDED divergence
+///
+/// `restore-archive-informs.zip`'s chat c…0002 ("Quiet Interlude") carries one
+/// message whose `content` is the NUMBER 5. v4's `addMessage` refuses it with
+/// the ZodError of `ChatEventSchema` — a plain `z.union`, so the message is ONE
+/// `invalid_union` issue whose `errors` hold every member's nested issues
+/// (measured: the message member's `["content"]` type miss first). v5's typed
+/// decode refuses it with serde's sentence. Both SKIP it with `Failed to
+/// restore message in chat "Quiet Interlude": …`; only the tail differs.
+///
+/// **Why it stays a divergence:** `api/zod_issues.rs`'s
+/// `zod_chat_event_issues` answers the collapsed union with `errors: []` —
+/// sufficient for v4's WARN projection, NOT v4's `ZodError.message` (P4.143
+/// Tier 3 item 13; the schema-shape generator is P4.143 item 12). So v5 cannot
+/// produce these bytes without that table, and this pins the difference by
+/// name instead: VANISHED if the tails agree, WRONG SHAPE unless v4's tail is a
+/// Zod message whose first issue is an `invalid_union` with the `["content"]`
+/// type miss first, and v5's starts with [`MESSAGE_SERDE_V5_PREFIX`].
+const MESSAGE_SERDE_CASE: &str = "restore_informs_replace";
+const MESSAGE_SERDE_HEAD: &str = "Failed to restore message in chat \"Quiet Interlude\": ";
+const MESSAGE_SERDE_V5_PREFIX: &str = "invalid type: integer `5`, expected a string";
+
+fn classify_message_serde_arm(
+    name: &str,
+    got: &Value,
+    want: &Value,
+    failures: &mut Vec<String>,
+) -> (Value, Value) {
+    let tail_of = |warnings: &Value| -> Option<String> {
+        warnings
+            .as_array()?
+            .iter()
+            .filter_map(Value::as_str)
+            .find_map(|w| w.strip_prefix(MESSAGE_SERDE_HEAD).map(str::to_string))
+    };
+    let is_v4_shape = |tail: &str| {
+        is_zod_error_message(tail)
+            && serde_json::from_str::<Value>(tail).ok().is_some_and(|v| {
+                v[0]["code"] == "invalid_union"
+                    && v[0]["path"] == json!([])
+                    && v[0]["errors"][0][0]["path"] == json!(["content"])
+            })
+    };
+    let (g, w) = (tail_of(got), tail_of(want));
+    match (&g, &w) {
+        (Some(g), Some(w)) if g == w => failures.push(format!(
+            "[{name}] the message serde-arm divergence VANISHED — both sides say {g:?}; retire \
+             the pin"
+        )),
+        (Some(g), Some(w)) if is_v4_shape(w) && g.starts_with(MESSAGE_SERDE_V5_PREFIX) => {}
+        _ => failures.push(format!(
+            "[{name}] the message serde-arm divergence has the WRONG SHAPE\n  rust:   {g:?}\n  \
+             oracle: {w:?}"
+        )),
+    }
+    let carve = |warnings: &Value| -> Value {
+        let mut out = warnings.clone();
+        if let Some(ws) = out.as_array_mut() {
+            for w in ws.iter_mut() {
+                if w.as_str()
+                    .is_some_and(|s| s.starts_with(MESSAGE_SERDE_HEAD))
+                {
+                    *w = json!(format!("{MESSAGE_SERDE_HEAD}<SERDE-ARM-DIVERGENCE>"));
+                }
+            }
+        }
+        out
+    };
+    (carve(got), carve(want))
+}
+
+/// [P4.147] The restore-level lines this lane ported — compared to v4's
+/// recorded `logs` byte for byte, in order (level, message, every field).
+const RESTORE_LOG_LINES: &[&str] = &[
+    "Failed to restore chat inform",
+    "Restored chat informs",
+    "Failed to restore chat",
+    "Failed to restore chat document",
+];
+
+/// [P4.147] The REPOSITORY-level lines v4 logs on the same failures (the
+/// validation ERROR, `_create`'s rethrowing `safeQuery`, the chats
+/// repository's own) — the base-repository create-failure family whose ONE
+/// home is P4.149's `db::fallback::log_create_failure` (Shared contract C2,
+/// not on this branch). Pinned BOTH ways as a named handoff: v4 emits them, v5
+/// does not yet; the unifier wires the restore's three arms onto the home
+/// (§S.7) and this pin then fires — fold it into `RESTORE_LOG_LINES`.
+const RESTORE_REPO_LINE_HANDOFF: &[&str] = &[
+    "Data validation failed",
+    "Error creating entity",
+    "Failed to create chat",
+];
+
+/// v5's captured lines (`LEVEL target message k=v …`) whose message is in
+/// `messages`, as `{level, message, <fields>}` records — `error` runs to the
+/// end of the line (a ZodError spans many).
+fn v5_log_records(lines: &[String], messages: &[&str]) -> Vec<Value> {
+    let mut out = Vec::new();
+    for line in lines {
+        let mut parts = line.splitn(3, ' ');
+        let (Some(level), Some(_target), Some(rest)) = (parts.next(), parts.next(), parts.next())
+        else {
+            continue;
+        };
+        let Some(message) = messages
+            .iter()
+            .filter(|m| rest == **m || rest.starts_with(&format!("{m} ")))
+            .max_by_key(|m| m.len())
+        else {
+            continue;
+        };
+        let fields = rest[message.len()..].trim_start();
+        let mut rec = Map::new();
+        rec.insert("level".into(), json!(level.to_lowercase()));
+        rec.insert("message".into(), json!(message));
+        let (head, error) = match fields.split_once("error=") {
+            Some((h, e)) => (h, Some(e)),
+            None => (fields, None),
+        };
+        for kv in head.split_whitespace() {
+            if let Some((k, v)) = kv.split_once('=') {
+                rec.insert(k.to_string(), json!(v));
+            }
+        }
+        if let Some(e) = error {
+            rec.insert("error".into(), json!(e));
+        }
+        out.push(Value::Object(rec));
+    }
+    out
+}
+
+/// v4's recorded `logs` with every field rendered as v5's capture renders it
+/// (a number's `Display`, a string bare).
+fn v4_log_records(want: &[Value], messages: &[&str]) -> Vec<Value> {
+    want.iter()
+        .filter(|l| str_at(l, "message").is_some_and(|m| messages.contains(&m)))
+        .map(|l| {
+            let mut rec = Map::new();
+            for (k, v) in l.as_object().into_iter().flatten() {
+                let s = match v {
+                    Value::String(s) => s.clone(),
+                    other => other.to_string(),
+                };
+                rec.insert(k.clone(), json!(s));
+            }
+            Value::Object(rec)
+        })
+        .collect()
+}
+
+fn compare_restore_logs(
+    name: &str,
+    want: &Value,
+    got_lines: &[String],
+    failures: &mut Vec<String>,
+) {
+    let Some(want) = want.as_array() else {
+        failures.push(format!(
+            "[{name}] the oracle carries no `logs` — regenerate it"
+        ));
+        return;
+    };
+    let (g, w) = (
+        v5_log_records(got_lines, RESTORE_LOG_LINES),
+        v4_log_records(want, RESTORE_LOG_LINES),
+    );
+    if g != w {
+        failures.push(format!(
+            "[{name}] the restore's log lines differ\n  rust:   {g:?}\n  oracle: {w:?}"
+        ));
+    }
+    let (gh, wh) = (
+        v5_log_records(got_lines, RESTORE_REPO_LINE_HANDOFF),
+        v4_log_records(want, RESTORE_REPO_LINE_HANDOFF),
+    );
+    if wh.is_empty() {
+        failures.push(format!(
+            "[{name}] RESTORE_REPO_LINE_HANDOFF: v4 logged none of the repository lines — the \
+             pin is vacuous"
+        ));
+    }
+    if !gh.is_empty() {
+        failures.push(format!(
+            "[{name}] RESTORE_REPO_LINE_HANDOFF: v5 now logs the repository lines ({gh:?}) — \
+             the §S.7 wire landed; fold the pin into RESTORE_LOG_LINES"
+        ));
+    }
+    if failures
+        .iter()
+        .all(|f| !f.starts_with(&format!("[{name}] the restore's log")))
+    {
+        println!(
+            "  logs {name}: {} restore-level line(s) byte-equal; {} repository line(s) v4-only \
+             (the C2 handoff)",
+            g.len(),
+            wh.len()
+        );
+    }
+}
+
+/// [P4.147 item 8] **The fallback arm's whole property bag**, asserted
+/// within-tree on BOTH sides (so a two-sided loss cannot pass as agreement).
+/// `restore-archive-bag-nulls.zip` drops the project and group stores, so each
+/// takes the fresh-store arm; the fresh store's `properties.json` must carry
+/// every bag key the archive row carries, explicit `null`s included — v5's old
+/// `project_properties` copied SIX of the project's sixteen, and the group's
+/// value-or-absent create dropped `color: null`.
+fn assert_bag_nulls_survive(
+    name: &str,
+    zip: &Path,
+    temp_root: &Path,
+    got: &BTreeMap<String, BTreeMap<String, Vec<Value>>>,
+    want: &Value,
+    failures: &mut Vec<String>,
+) {
+    if name != "restore_bag_nulls_replace" {
+        return;
+    }
+    use quilltap_core::db::document_store_overlay::StoreEntity;
+    let extracted = quilltap_core::services::backup::restore::parse_backup_zip(zip, temp_root)
+        .expect("parse archive for its bags");
+    let got_v = serde_json::to_value(got).expect("dump serializes");
+    use quilltap_core::db::groups::GroupEntity;
+    use quilltap_core::db::projects::ProjectEntity;
+    // The bag each side must hold: the archived row's bag keys through the
+    // entity's own parse — which keeps every explicit `null` and applies the
+    // read-side normalizations v4's Zod applies too (a pre-4.9
+    // `backgroundDisplayMode: "project"` reads as `"theme"` on both sides).
+    let parsed = |table: &str, raw: &Value, keys: &[&str]| -> Value {
+        let bag: Map<String, Value> = keys
+            .iter()
+            .filter_map(|k| raw.get(*k).map(|v| ((*k).to_string(), v.clone())))
+            .collect();
+        let bag = Value::Object(bag);
+        match table {
+            "projects" => serde_json::to_value(ProjectEntity::parse_properties(&bag).unwrap()),
+            _ => serde_json::to_value(GroupEntity::parse_properties(&bag).unwrap()),
+        }
+        .unwrap()
+    };
+    let entities: [(&str, &Value, &[&str]); 2] = [
+        (
+            "projects",
+            &extracted.data.projects[0],
+            ProjectEntity::property_keys(),
+        ),
+        (
+            "groups",
+            &extracted.data.groups[0],
+            GroupEntity::property_keys(),
+        ),
+    ];
+    for (table, archived, keys) in entities {
+        let expected = parsed(table, archived, keys);
+        let id = str_at(archived, "id").unwrap();
+        let carried = keys.iter().filter(|k| archived.get(**k).is_some()).count();
+        if carried != keys.len() {
+            failures.push(format!(
+                "[{name}] BAG-NULLS fixture: the archived {table} row carries {carried} of {} \
+                 bag keys — rebuild the derived archive",
+                keys.len()
+            ));
+        }
+        for (side, dump) in [("v5", &got_v), ("v4", want)] {
+            let bag = pointer_on(dump, table, "officialMountPointId", id)
+                .flatten()
+                .and_then(|mp| {
+                    let link = rows_of(dump, "mountIndex", "doc_mount_file_links")
+                        .iter()
+                        .find(|l| {
+                            str_at(l, "mountPointId") == Some(mp.as_str())
+                                && str_at(l, "relativePath") == Some("properties.json")
+                        })?;
+                    let file = str_at(link, "fileId")?;
+                    let doc = rows_of(dump, "mountIndex", "doc_mount_documents")
+                        .iter()
+                        .find(|d| str_at(d, "fileId") == Some(file))?;
+                    serde_json::from_str::<Value>(str_at(doc, "content")?).ok()
+                });
+            let Some(bag) = bag else {
+                failures.push(format!(
+                    "[{name}] BAG-NULLS ({side}): {table} {id} has no readable properties.json"
+                ));
+                continue;
+            };
+            for k in keys {
+                if bag.get(*k).is_none() || bag.get(*k) != expected.get(*k) {
+                    failures.push(format!(
+                        "[{name}] BAG-NULLS ({side}): {table}.{k} = {:?}, the archive's bag \
+                         parses to {:?}",
+                        bag.get(*k),
+                        expected.get(*k)
+                    ));
+                }
+            }
+        }
+    }
+}
+
+/// [P4.147 item 9] **The archived informs, by name** — v4's `ChatInformSchema`
+/// keeps `true` / `false` / absent (→ `false`) and the consumed row, and
+/// REFUSES `null` / `"true"` / `1`; v5 converged on that (ruling R-D). Both
+/// sides must land exactly rows 01/02/03/07 with `permanent` 1/0/0/0 and the
+/// consumed row's message id, and neither may land 04/05/06.
+const INFORMS_CASE: &str = "restore_informs_replace";
+
+fn assert_informs_restored(
+    name: &str,
+    got: &BTreeMap<String, BTreeMap<String, Vec<Value>>>,
+    want: &Value,
+    failures: &mut Vec<String>,
+) {
+    if name != INFORMS_CASE {
+        return;
+    }
+    let got_v = serde_json::to_value(got).expect("dump serializes");
+    let expected = json!([
+        ["a9000000-0000-4000-8000-000000000001", 1, null],
+        ["a9000000-0000-4000-8000-000000000002", 0, null],
+        ["a9000000-0000-4000-8000-000000000003", 0, null],
+        [
+            "a9000000-0000-4000-8000-000000000007",
+            0,
+            "d1000000-0000-4000-8000-000000000002"
+        ],
+    ]);
+    for (side, dump) in [("v5", &got_v), ("v4", want)] {
+        let mut rows: Vec<Value> = rows_of(dump, "main", "chat_informs")
+            .iter()
+            .map(|r| json!([r["id"], r["permanent"], r["consumedByMessageId"]]))
+            .collect();
+        rows.sort_by_key(|r| r[0].as_str().unwrap_or("").to_string());
+        if Value::Array(rows.clone()) != expected {
+            failures.push(format!(
+                "[{name}] INFORMS ({side}): restored {rows:?}, expected {expected}"
+            ));
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn compare_case(
     name: &str,
     summary: &RestoreSummary,
     case: &Value,
+    summary_carve: &SummaryCarve,
     got: &BTreeMap<String, BTreeMap<String, Vec<Value>>>,
     want: &Value,
     literals: HashSet<String>,
@@ -2786,7 +4302,30 @@ fn compare_case(
     let want_summary = &case["summary"];
     for (k, gv) in got_summary.as_object().unwrap() {
         let wv = &want_summary[k];
+        // [P4.147] `FRESH_TARGET_UPLOADS`: v5 restores exactly the carved
+        // files more than v4 does (asserted both ways in the carve).
+        if k == "files" && summary_carve.files_lead != 0 {
+            let (g, w) = (gv.as_i64().unwrap_or(-1), wv.as_i64().unwrap_or(-1));
+            if g != w + summary_carve.files_lead {
+                failures.push(format!(
+                    "[{name}] summary.files: rust {g} vs oracle {w} — expected rust to lead by \
+                     exactly {} (FRESH_TARGET_UPLOADS)",
+                    summary_carve.files_lead
+                ));
+            }
+            continue;
+        }
         if k == "warnings" {
+            // [P4.147] the v4 warnings that ARE the #142 divergence.
+            let mut wv = wv.clone();
+            if let Some(ws) = wv.as_array_mut() {
+                for drop in &summary_carve.drop_v4_warnings {
+                    if let Some(i) = ws.iter().position(|w| w.as_str() == Some(drop.as_str())) {
+                        ws.remove(i);
+                    }
+                }
+            }
+            let wv = &wv;
             // The dedupe cases' warnings ARE the divergence — v4 reports its own
             // refused rows and v5 reports nothing. Asserted, not diffed. The
             // orphan case's warnings are likewise the #58 divergence: v5 adds
@@ -2797,6 +4336,10 @@ fn compare_case(
                 // [P4.143 item 2] the serde arm's ONE warning is a recorded
                 // divergence — classified and carved, then the rest verbatim.
                 let (g, w) = classify_restore_serde_arm(name, gv, wv, failures);
+                compare_warnings(name, &g, &w, failures);
+            } else if name == MESSAGE_SERDE_CASE {
+                // [P4.147 item 10(b)] the message replay's serde arm, likewise.
+                let (g, w) = classify_message_serde_arm(name, gv, wv, failures);
                 compare_warnings(name, &g, &w, failures);
             } else if !dedupe {
                 compare_warnings(name, gv, wv, failures);
@@ -2976,7 +4519,9 @@ fn compare_case(
             // mask is deliberately confined to the compact pair.
             if matches!(
                 name,
-                "restore_compact_replace" | "restore_compact_new_account"
+                "restore_compact_replace"
+                    | "restore_compact_new_account"
+                    | "restore_compact_fresh_replace"
             ) && partition == "mountIndex"
                 && table == "doc_mount_points"
             {
@@ -3020,6 +4565,29 @@ fn compare_case(
             }
             let g = n_got.value(&Value::Array(g_rows.clone()));
             let wnt = n_want.value(&Value::Array(w_rows.clone()));
+            // [P4.147] A shared content row the #141 carve kept: same rows,
+            // compared under a canonical order (see FRESH_STORE_SHARED_CONTENT).
+            if summary_carve.shared_content
+                && partition == "mountIndex"
+                && FRESH_STORE_SHARED_CONTENT.contains(&table.as_str())
+                && !residual.contains(table.as_str())
+            {
+                let cg = normalize_canonically(&g_rows, &literals, &shas_got);
+                let cw = normalize_canonically(&w_rows, &literals, &shas_want);
+                if cg != cw {
+                    let detail = cg
+                        .iter()
+                        .zip(cw.iter())
+                        .find(|(a, b)| a != b)
+                        .map(|(a, b)| format!("\n    rust:   {a}\n    oracle: {b}"))
+                        .unwrap_or_else(|| format!(" row count {} vs {}", cg.len(), cw.len()));
+                    failures.push(format!(
+                        "[{name}] mountIndex.{table} differs (canonical order — \
+                         FRESH_STORE_SHARED_CONTENT){detail}"
+                    ));
+                }
+                continue;
+            }
             // The documented phase-order residual: same rows, different
             // insertion order. Asserted in both directions instead of diffed.
             if partition == "mountIndex" && residual.contains(table.as_str()) {

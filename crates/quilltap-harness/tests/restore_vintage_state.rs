@@ -235,10 +235,26 @@ fn constraint_warnings(warnings: &[String]) -> Vec<&String> {
 /// migration chain authored and require that **no** raw SQLite sentence reaches
 /// the operator. Every phase that names a column the vintage table does not have
 /// says so here, by name, in the assertion's message.
+///
+/// ⚠ Since P4.147 (item 10(c)) a restore warning carries the BARE SQLite
+/// sentence, as v4's `error.message` does — the `sqlite error: ` prefix this
+/// used to key on is gone by design, so matching it alone went silently vacuous.
+/// It now matches SQLite's own vocabulary, and the tripwire below
+/// (`a_column_a_migration_never_added_still_loses_that_collection`) is what
+/// proves it still sees a planted sentence.
+const SQLITE_SENTENCES: &[&str] = &[
+    "sqlite error",
+    "no such column",
+    "has no column named",
+    "no such table",
+    "constraint failed",
+    "datatype mismatch",
+];
+
 fn raw_sqlite_warnings(warnings: &[String]) -> Vec<&String> {
     warnings
         .iter()
-        .filter(|w| w.contains("sqlite error"))
+        .filter(|w| SQLITE_SENTENCES.iter().any(|s| w.contains(s)))
         .collect()
 }
 
@@ -279,11 +295,49 @@ fn no_restore_phase_names_a_column_a_migrated_table_lacks() {
             ("newacct", RestoreMode::NewAccount),
         ] {
             let tag = format!("{}-{suffix}", archive.trim_end_matches(".zip"));
-            let (_scratch, _instance, warnings, _links) = run_restore(&tag, archive, mode);
+            let (_scratch, _instance, mut warnings, _links) = run_restore(&tag, archive, mode);
+            let known = KNOWN_RAW_SQLITE
+                .iter()
+                .filter(|(a, m, _)| *a == archive && *m == suffix)
+                .map(|(_, _, w)| *w);
+            for w in known {
+                let Some(i) = warnings.iter().position(|x| x == w) else {
+                    panic!(
+                        "[{archive} / {suffix}] KNOWN_RAW_SQLITE entry {w:?} no longer fires — \
+                         the General-tier fold is fixed; retire the entry"
+                    );
+                };
+                warnings.remove(i);
+            }
             assert_no_raw_sqlite(&format!("{archive} / {suffix}"), &warnings);
         }
     }
 }
+
+/// ## ⚠ A PRE-EXISTING v5 defect, surfaced by P4.147 — pinned, not hidden
+///
+/// `restore-archive-legacy.zip` folds a legacy outfit preset whose
+/// `characterId` is `null` ("The Empty Ensemble") into the Quilltap GENERAL
+/// tier at 22f-bis, through `instance_settings.generalMountPointId`. A `replace`
+/// wipe has just removed every store and this archive carries no General store
+/// (its pointer is JSON-quoted and names nothing), so the pointer dangles and
+/// the migration-vintage target's `doc_mount_file_links` FK refuses the link
+/// (on a `generateDDL` target the same write lands an ORPHAN link silently, on
+/// v4 too — `system_restore_state` sees both sides agree).
+///
+/// It was here before P4.147 and invisible: the warning rendered
+/// `WardrobePublicError`'s DEBUG form (`Db(Sqlite(SqliteFailure(…)))`), which
+/// never contained the `sqlite error` text this survey used to key on.
+/// P4.147's bare-message rendering (item 10(c)) turned it into SQLite's own
+/// sentence, the widened detector saw it, and it is pinned here BY NAME so it
+/// cannot vanish or grow unnoticed. Its fix is the #142 family's named
+/// follow-up — re-provisioning a built-in the archive lacks (ruling R-C,
+/// P4.147 Tier 3 item 16). `(archive, mode, the exact warning)`.
+const KNOWN_RAW_SQLITE: &[(&str, &str, &str)] = &[(
+    "restore-archive-legacy.zip",
+    "replace",
+    "Failed to restore wardrobe item \"The Empty Ensemble\": FOREIGN KEY constraint failed",
+)];
 
 /// ## ⚠ KNOWN GAP — a tripwire, and the sensitivity proof for the survey above
 ///
@@ -451,9 +505,11 @@ fn orphaned_doc_store_rows_are_skipped_by_name_not_by_constraint() {
 
     // Every non-orphan link landed: the archive holds 28 links and the builder
     // orphaned 9 of them, so 19 must survive. The SUMMARY counter is the
-    // measure, not the table count — restore also provisions each restored
-    // character's vault and each project's/group's official store, and those
-    // mint links of their own.
+    // measure, not the table count — a character / project / group whose store
+    // the archive does NOT carry (here: the one whose vault the builder
+    // deleted) still gets a freshly provisioned store at restore, and that
+    // store mints links of its own. (Since P4.147 an entity whose store the
+    // archive DOES carry keeps it and mints nothing — dogfood #141.)
     assert_eq!(
         links_restored, 19,
         "the links whose store IS in the archive must all restore"

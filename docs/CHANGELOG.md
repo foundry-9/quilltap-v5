@@ -177,6 +177,19 @@ Every per-item `.qtap` import warning that ends in a database error now carries 
 - The `Import failed:` catch and `ImportError::Db`'s `Display` render the same way.
 - New harness census `import_warning_text_guard`: refuses `map_err` closures built on `to_string()`, an `err_msg` built on it, and a warning literal interpolating a raw `{e}`. 103 offenders on unported main, 0 on the branch.
 - `system_import_state` no longer masks the quoted families' tails to `<ENGINE>`; six cases were red on the prefix on unported main and are green now.
+#### 2026-10-05 — fix(restore): a replace restore keeps every entity on the archive's store and resolves Uploads to the archive's store on a fresh target (dogfood #141, #142) + the restore riders
+
+_Versions: core 0.0.1210._
+
+P4.147. Two restore defects v4 shares, fixed on the restore side under the backup/restore "fix v4, don't match it" ruling and pinned both ways in `system_restore_state`; the writer and the UUID remapper are unchanged.
+
+- #141: in `replace` mode a character, project or group whose pointed store is in the archive now keeps that pointer, and no fresh vault or official store is minted beside the archive's. Characters go through `CharactersRepository::create` with the pointer; projects and groups go through a new `StoreBackedRepository::create_slim_linked`. When the archive carries no such store, the create path runs as before (v4-convergent). Pinned as `FRESH_STORE_RESIDUAL` (+ `FRESH_STORE_FOLD_COLLISIONS`, `FRESH_STORE_SHARED_CONTENT`) over 20 cases.
+- #142: after 22a, each built-in pointer (Uploads / Lantern / General) whose raw archived value names a restored store is written before the files phase, so project-less files land in the archive's Uploads store on a fresh or re-minted target. JSON-quoted values are left for 22o. Pinned as `FRESH_TARGET_UPLOADS` over three new fresh-target cases.
+- The fallback arm writes the whole project/group property bag (all 16 project keys, explicit nulls kept; groups through `create_with_properties`), parsed before any row is written. `fold_properties_local` is the lane-local twin of P4.148's home (§S.1).
+- A malformed archived inform `permanent` (`null`, `"true"`, `1`) is now refused with v4's ZodError bytes and v4's `Failed to restore chat inform` WARN; the phase logs v4's `Restored chat informs` DEBUG. This converges on v4.
+- Restore warnings render SQLite failures as the bare message (no `sqlite error:` prefix); the chat-create DB arm and the chat-document arm log v4's WARN lines. Proven on a real SQLite error by a column-rename plant case.
+- New derived archives `restore-archive-bag-nulls.zip` and `restore-archive-informs.zip`, plus their derive scripts. The `system-restore` oracle grows to 29 restore cases and gains `recordLogs` and `renameColumns`. A v5-only acceptance test checks the #141/#142 result against the archive.
+- `restore_vintage_state`'s raw-SQLite detector matched the removed prefix; it now matches SQLite's own wording. That surfaced a pre-existing General-tier legacy-fold FK failure, now pinned by name in `KNOWN_RAW_SQLITE`.
 
 #### 2026-10-05 — docs(porting): order the 07b8f0209 follow-ups + restore round — six lanes (P4.147–P4.152) with six fresh surveys
 

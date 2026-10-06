@@ -172,7 +172,7 @@ macro_rules! copts {
 macro_rules! warn_only {
     ($warnings:expr, $label:expr, $body:expr) => {
         if let Err(e) = $body {
-            $warnings.push(format!("{}: {}", $label, e));
+            $warnings.push(format!("{}: {}", $label, WarnText::warn_text(&e)));
         }
     };
 }
@@ -183,9 +183,53 @@ macro_rules! warn_row {
     ($warnings:expr, $counter:expr, $label:expr, $body:expr) => {
         match $body {
             Ok(_) => $counter += 1,
-            Err(e) => $warnings.push(format!("{}: {}", $label, e)),
+            Err(e) => $warnings.push(format!("{}: {}", $label, WarnText::warn_text(&e))),
         }
     };
+}
+
+/// How a per-row failure renders in `summary.warnings`: v4's catches write
+/// `error.message`, which for a SQLite failure is the driver's BARE sentence
+/// (`table chats has no column named …`). `DbError`'s `Display` prefixes it
+/// with `sqlite error: ` (a v5 convention for a propagated error), so every
+/// warning goes through [`crate::db::fallback::error_text`] instead (P4.147
+/// item 10(c) — the #137 / #140 class, proven on a real SQLite arm by
+/// `system_restore_state`'s `restore_sqlite_tail_replace` plant).
+trait WarnText {
+    fn warn_text(&self) -> String;
+}
+
+impl WarnText for DbError {
+    fn warn_text(&self) -> String {
+        crate::db::fallback::error_text(self)
+    }
+}
+
+impl WarnText for crate::db::document_store_overlay::OverlayError {
+    fn warn_text(&self) -> String {
+        match self {
+            crate::db::document_store_overlay::OverlayError::Db(e) => e.warn_text(),
+            other => other.to_string(),
+        }
+    }
+}
+
+/// A storage failure renders its bare message like every other phase; the two
+/// wardrobe-specific refusals keep their `Debug` form (unmeasured against v4 —
+/// no corpus reaches them; recorded in P4.147's lane record).
+impl WarnText for crate::db::vault_wardrobe_public::WardrobePublicError {
+    fn warn_text(&self) -> String {
+        match self {
+            crate::db::vault_wardrobe_public::WardrobePublicError::Db(e) => e.warn_text(),
+            other => format!("{other:?}"),
+        }
+    }
+}
+
+impl WarnText for String {
+    fn warn_text(&self) -> String {
+        self.clone()
+    }
 }
 
 /// The whole restore, on the writer thread — one place holding all three
@@ -207,6 +251,8 @@ fn restore_on_writer(
     // keyed by). They are the same object in `replace` mode and diverge in
     // `new-account`, where only the former is remapped.
     let data: &crate::services::backup::BackupData = remapped.as_ref().unwrap_or(&extracted.data);
+    // `remapped` is `Some` exactly in `new-account` mode.
+    let replace_mode = remapped.is_none();
 
     let main = ws.main().connection();
     let mount = ws.mount_index().map(|w| w.connection());
@@ -423,9 +469,13 @@ fn restore_on_writer(
     //
     // The fix is the smallest one that satisfies the real dependency: files run
     // after the doc-store family (22a restores the mount points, including the
-    // built-ins, with their archive ids — which is exactly what the surviving
-    // `instance_settings` pointer expects) and therefore also after projects and
-    // groups (13/13a). **No write changed, only when it happens** — and v4's own
+    // built-ins, with their archive ids) and therefore also after projects and
+    // groups (13/13a). This used to add "which is exactly what the surviving
+    // `instance_settings` pointer expects" — true only when the target's
+    // pointer already names the archive's Uploads store (your own backup onto
+    // your own instance). On a fresh or re-minted target it does not (dogfood
+    // #142), so 22a-ter now pre-applies the archive's built-in pointers before
+    // this phase reads them — see that step. **No write changed, only when it happens** — and v4's own
     // comment calls this list "dependency order" (`restore.ts:65`), so this is
     // v4's stated intent, applied.
     //
@@ -445,14 +495,52 @@ fn restore_on_writer(
     // file-replay dedupe". Aligning the two phase orders fails
     // `system_restore_state` deliberately.
 
+    // ── The archived-store map (P4.147, dogfood #141) ────────────────────────
+    //
+    // ## ⚠ RULED DIVERGENCE (P4.147, 2026-10-05) — a restored entity keeps the
+    // ## store the archive restores
+    //
+    // v4 restores every character (6), project (13) and group (13a) through its
+    // CREATE path, which drops the archived `characterDocumentMountPointId` /
+    // `officialMountPointId` and provisions a FRESH vault / official store
+    // (`characters.repository.ts:262-296`, `restore.ts:315-345`); 22a then
+    // restores the archive's real store under its archived id BESIDE it,
+    // orphaned. Measured on the dogfood copy (#141): 144 stores from a 77-store
+    // archive, Friday's pointer on a 12-file vault while her 805-link one sat
+    // unreferenced. Under the standing backup/restore ruling (v5 fixes v4's bugs
+    // on the READ side) a `replace` restore now PRESERVES the pointer whenever
+    // the archive carries the pointed store — a character's must be a
+    // `storeType: 'character'` vault — and mints nothing (Shape A,
+    // preserve-at-create). Between here and 22a such a row carries an FK to a
+    // store that does not exist yet; nothing in phases 7–22 reads a vault (22f-bis
+    // runs after 22a, inside the mount family). Otherwise — no stores in the
+    // archive, or a pointer naming a store it does not carry — the create path
+    // runs unchanged and stays v4-convergent. `replace` only (ruling R-B): in
+    // `new-account` mode the store pointers are never remapped, so preserving
+    // would need its own translation and its own ruling.
+    //
+    // Keyed by the archive's RAW rows, exactly as 22a will create them.
+    // `system_restore_state` pins it both ways (`FRESH_STORE_RESIDUAL`).
+    let archived_stores: std::collections::HashMap<String, String> = if replace_mode {
+        data.doc_mount_points
+            .iter()
+            .map(|mp| (id_of(mp), str_or(mp, "storeType", "documents")))
+            .collect()
+    } else {
+        std::collections::HashMap::new()
+    };
+
     // ── 6. Characters (vault-backed) ─────────────────────────────────────────
+    //
+    // The vault is preserved when the archive carries it (see the map above);
+    // otherwise `create` provisions a fresh one, as v4 always does.
     if let Some(mount) = mount {
         for ch in &data.characters {
             let name = s(ch, "name");
             warn_only!(
                 w,
                 format!("Failed to restore character \"{name}\""),
-                restore_one_character(main, mount, target_user_id, ch)
+                restore_one_character(main, mount, target_user_id, ch, &archived_stores)
             );
         }
     } else if !data.characters.is_empty() {
@@ -515,11 +603,16 @@ fn restore_on_writer(
             // cleared those rows will not run again — so it is corrected on the
             // way in. The scenario itself is untouched.
             crate::services::scenario_seeded_summary::strip_scenario_seeded_summary(&mut create);
+            // The DB-error arm is the same per-chat catch (v4 `:241-243`): the
+            // warning AND the WARN, both with the bare message (P4.147 item
+            // 10(a) — this arm logged nothing and rendered `sqlite error: …`).
             if let Err(e) = chats.create(
                 &create,
                 &copts!(id.clone(), crate::db::chats::CreateOptions),
             ) {
-                w.push(format!("Failed to restore chat \"{title}\": {e}"));
+                let error = e.warn_text();
+                w.push(format!("Failed to restore chat \"{title}\": {error}"));
+                tracing::warn!(chatId = %id, error = %error, "Failed to restore chat");
                 continue;
             }
             for message in chat
@@ -540,7 +633,8 @@ fn restore_on_writer(
                 match messages.add_message(&id, &event) {
                     Ok(()) => c.messages += 1,
                     Err(e) => w.push(format!(
-                        "Failed to restore message in chat \"{title}\": {e}"
+                        "Failed to restore message in chat \"{title}\": {}",
+                        e.warn_text()
                     )),
                 }
             }
@@ -577,7 +671,8 @@ fn restore_on_writer(
                 .map(|_| ());
             if let Err(e) = restamp {
                 w.push(format!(
-                    "Failed to restore last-activity date for chat \"{title}\": {e}"
+                    "Failed to restore last-activity date for chat \"{title}\": {}",
+                    e.warn_text()
                 ));
             }
         }
@@ -725,44 +820,100 @@ fn restore_on_writer(
 
     // ── 13 / 13a. Projects and groups (store-backed) ─────────────────────────
     //
-    // Both `create`s DISCARD the incoming `officialMountPointId` and provision a
-    // fresh store, writing the hydrated description/instructions/state/properties
-    // into it (v4 `:306-311`). The archive's own store rows still restore at 22a
-    // with their original ids; the pointer is the thing that moves, which is why
-    // the differential normalizes exactly those two columns and nothing else.
+    // **The preserve arm (P4.147 — see the archived-store map above):** when the
+    // archived `officialMountPointId` names a store the archive carries, the slim
+    // row is written with that pointer and NOTHING is provisioned — the store,
+    // its `properties.json` / `description.md` / … and its
+    // `project_/group_doc_mount_links` row all restore under their archived ids
+    // at 22a–22h.
+    //
+    // **Otherwise (v4-convergent):** `create` provisions a fresh store and writes
+    // the hydrated description/instructions/state and the WHOLE property bag into
+    // it (v4 `:315-345` hands `create` the whole row; P4.147 item 8 — the old
+    // six-key copy dropped ten project values, and a group's `null` colour landed
+    // absent). The bag is parsed BEFORE any row is written, so a value v4's
+    // schema would refuse skips the entity with no slim row left behind. In the
+    // differential the minted store ids are labelled by ORIGIN (an id the archive
+    // does not carry), not by column.
     if let Some(mount) = mount {
+        use crate::db::document_store_overlay::StoreEntity;
+        use crate::db::groups::GroupEntity;
+        use crate::db::projects::ProjectEntity;
+        let archived_store = |row: &Value| {
+            os(row, "officialMountPointId").filter(|id| archived_stores.contains_key(id))
+        };
+
         let projects = crate::db::projects::ProjectsRepository::new(main, mount);
+        let slim_projects =
+            crate::db::store_backed::StoreBackedRepository::<ProjectEntity>::new(main, mount);
         for p in &data.projects {
+            let label = format!("Failed to restore project \"{}\"", s(p, "name"));
+            if let Some(store) = archived_store(p) {
+                warn_row!(
+                    w,
+                    c.projects,
+                    label,
+                    slim_projects.create_slim_linked(&s(p, "name"), &store_opts(id_of(p)), &store)
+                );
+                continue;
+            }
+            let properties = fold_properties_local(p, ProjectEntity::property_keys());
+            if let Err(e) = ProjectEntity::parse_properties(&properties) {
+                w.push(format!("{label}: {e}"));
+                continue;
+            }
             let input = crate::db::projects::ProjectCreateInput {
                 name: s(p, "name"),
                 description: os(p, "description"),
                 instructions: os(p, "instructions"),
                 state: obj(p, "state", serde_json::json!({})),
-                properties: project_properties(p),
+                properties,
             };
             warn_row!(
                 w,
                 c.projects,
-                format!("Failed to restore project \"{}\"", s(p, "name")),
+                label,
                 projects.create(&input, &store_opts(id_of(p)))
             );
         }
 
         let groups = crate::db::groups::GroupsRepository::new(main, mount);
+        let slim_groups =
+            crate::db::store_backed::StoreBackedRepository::<GroupEntity>::new(main, mount);
         for g in &data.groups {
+            let label = format!("Failed to restore group \"{}\"", s(g, "name"));
+            if let Some(store) = archived_store(g) {
+                warn_row!(
+                    w,
+                    c.groups,
+                    label,
+                    slim_groups.create_slim_linked(&s(g, "name"), &store_opts(id_of(g)), &store)
+                );
+                continue;
+            }
+            let properties = match GroupEntity::parse_properties(&fold_properties_local(
+                g,
+                GroupEntity::property_keys(),
+            )) {
+                Ok(bag) => bag,
+                Err(e) => {
+                    w.push(format!("{label}: {e}"));
+                    continue;
+                }
+            };
             let input = crate::db::groups::GroupCreateInput {
                 name: s(g, "name"),
                 description: os(g, "description"),
                 instructions: os(g, "instructions"),
                 state: obj(g, "state", serde_json::json!({})),
-                color: os(g, "color"),
-                icon: os(g, "icon"),
+                color: None,
+                icon: None,
             };
             warn_row!(
                 w,
                 c.groups,
-                format!("Failed to restore group \"{}\"", s(g, "name")),
-                groups.create(&input, &store_opts(id_of(g)))
+                label,
+                groups.create_with_properties(&input, &properties, &store_opts(id_of(g)))
             );
         }
     } else {
@@ -1020,6 +1171,48 @@ fn restore_on_writer(
         );
     }
 
+    // ── 22a-ter. The archive's built-in pointers, pre-applied (P4.147, #142) ──
+    //
+    // ## ⚠ RULED DIVERGENCE (P4.147, 2026-10-05) — Uploads resolves to the
+    // ## ARCHIVE's store before the files phase reads it
+    //
+    // The files phase resolves Quilltap Uploads through
+    // `instance_settings.userUploadsMountPointId` — the TARGET's, which the
+    // `replace` wipe deliberately leaves alone and 22o only overwrites LAST. On a
+    // freshly provisioned target (the disaster-recovery case), or one whose
+    // Uploads store was re-minted, that pointer names the target's own,
+    // now-wiped store, so every project-less file the restore must replay failed
+    // `Quilltap Uploads mount has not been provisioned` and 22o then pointed at
+    // the restored store, which never got the bytes (dogfood #142 — 11 files on
+    // the copy; v4 shares it, `restore.ts:508-512,569-576`).
+    //
+    // So each built-in pointer the archive carries is written NOW, with 22o's
+    // exact upsert, when its RAW value names a store 22a just restored (ruling
+    // R-C). A JSON-quoted value — 15 of the 19 committed archives carry the
+    // General/Lantern pointers that way — names no store and is left for 22o, as
+    // is any pointer to a store the archive lacks (re-provisioning a missing
+    // built-in is a named follow-up). 22o rewrites the same value afterwards and
+    // still counts it once. A failed write here is left for 22o, which retries
+    // it with the same statement and reports it. `replace` only (ruling R-B).
+    // `system_restore_state` pins it both ways (`FRESH_TARGET_UPLOADS`).
+    if let (true, Some(mount)) = (replace_mode, mount) {
+        let points = crate::db::doc_mount_points::DocMountPointsRepository::new(mount);
+        for key in crate::services::backup::uuid_remap::MOUNT_POINT_SETTING_KEYS {
+            let Some(row) = data.instance_settings.iter().find(|r| s(r, "key") == key) else {
+                continue;
+            };
+            let value = s(row, "value");
+            if !archived_stores.contains_key(&value) || !points.exists(&value).unwrap_or(false) {
+                continue;
+            }
+            let _ = main.execute(
+                "INSERT INTO \"instance_settings\" (\"key\", \"value\") VALUES (?1, ?2) \
+                 ON CONFLICT(\"key\") DO UPDATE SET \"value\" = excluded.\"value\"",
+                rusqlite::params![key, value],
+            );
+        }
+    }
+
     // ── 5 (moved). Files — bytes from the extracted tree into the mount stores ─
     //
     // Runs here rather than fifth; the reasoning is at the phase-5 marker above.
@@ -1078,15 +1271,23 @@ fn restore_on_writer(
                 display_title: os(cd, "displayTitle"),
                 is_active: b(cd, "isActive", true),
             };
-            warn_row!(
-                w,
-                c.chat_documents,
-                "Failed to restore chat document".to_string(),
-                repo.create(
-                    &create,
-                    &copts!(id_of(cd), crate::db::chat_documents::CreateOptions),
-                )
-            );
+            // v4's catch WARNs as well as warning (`restore.ts:802-804`).
+            let id = id_of(cd);
+            match repo.create(
+                &create,
+                &copts!(id.clone(), crate::db::chat_documents::CreateOptions),
+            ) {
+                Ok(_) => c.chat_documents += 1,
+                Err(e) => {
+                    let error = e.warn_text();
+                    w.push(format!("Failed to restore chat document: {error}"));
+                    tracing::warn!(
+                        chatDocumentId = %id,
+                        error = %error,
+                        "Failed to restore chat document"
+                    );
+                }
+            }
         }
     }
 
@@ -1103,17 +1304,35 @@ fn restore_on_writer(
     // `{ id: inform.id }` as its create options, so the restored row is minted
     // fresh clocks. (The IMPORT path is the opposite — it preserves nothing and
     // mints a new id as well.)
+    //
+    // v4 hands the row to `chatInforms.create`, whose `ChatInformSchema` parse
+    // REFUSES a malformed `permanent` (`null`, `"true"`, `1` …): the per-row
+    // catch warns with the ZodError's message and WARNs `Failed to restore chat
+    // inform {informId, error}`, and the phase ends with a DEBUG summary. v5
+    // converges on all three (P4.147 item 9, ruling R-D — v5 used to read any
+    // non-boolean as a one-shot, silently demoting a standing inform).
     {
         let repo = crate::db::chat_informs::ChatInformsRepository::new(main);
         for inform in &data.chat_informs {
-            let create = restored_inform(inform, crate::clock::now_iso());
-            warn_row!(
-                w,
-                c.chat_informs,
-                "Failed to restore inform".to_string(),
-                repo.create(&create)
-            );
+            let outcome = restored_inform(inform, crate::clock::now_iso())
+                .and_then(|create| repo.create(&create).map_err(|e| e.warn_text()));
+            match outcome {
+                Ok(_) => c.chat_informs += 1,
+                Err(error) => {
+                    w.push(format!("Failed to restore inform: {error}"));
+                    tracing::warn!(
+                        informId = %id_of(inform),
+                        error = %error,
+                        "Failed to restore chat inform"
+                    );
+                }
+            }
         }
+        tracing::debug!(
+            total = data.chat_informs.len(),
+            restored = c.chat_informs,
+            "Restored chat informs"
+        );
     }
 
     // ── 22j. Vector index metas + entries (main partition) ───────────────────
@@ -1725,7 +1944,8 @@ fn restore_mount_family(
             ) {
                 Ok(_) => c.wardrobe_items += 1,
                 Err(e) => w.push(format!(
-                    "Failed to restore wardrobe item \"{title}\": {e:?}"
+                    "Failed to restore wardrobe item \"{title}\": {}",
+                    e.warn_text()
                 )),
             }
         }
@@ -2082,14 +2302,27 @@ fn restore_one_file(
     )
 }
 
-/// Phase 6's body for one character (v4 `:200`). `repos.characters.create`
-/// inserts the slim row, provisions a FRESH vault (dropping any incoming
-/// `characterDocumentMountPointId`), and projects the managed fields into it.
+/// Phase 6's body for one character (v4 `:200`).
+///
+/// **The preserve arm (P4.147, a ruled divergence):** when the archived
+/// `characterDocumentMountPointId` names a `storeType: 'character'` store the
+/// archive carries (`archived_stores`, `replace` mode only), the slim row is
+/// written WITH that pointer and no vault is provisioned — the archive's own
+/// vault, its files and their projected managed fields restore under their
+/// archived ids at 22a–22g.
+///
+/// **Otherwise (v4-convergent):** `create_character_with_options` inserts the
+/// slim row, provisions a FRESH vault (dropping any incoming pointer, as v4's
+/// `repos.characters.create` does), and projects the managed fields into it.
+///
+/// The vault fields are decoded on BOTH arms, so a row v4's schema would refuse
+/// is refused on either.
 fn restore_one_character(
     main: &Connection,
     mount: &Connection,
     target_user_id: &str,
     ch: &Value,
+    archived_stores: &std::collections::HashMap<String, String>,
 ) -> Result<(), DbError> {
     let slim = crate::db::characters::CharacterCreate {
         user_id: target_user_id.to_string(),
@@ -2121,18 +2354,22 @@ fn restore_one_character(
     let vault: crate::db::vault_character_write::CharacterVaultWriteInput =
         serde_json::from_value(ch.clone())
             .map_err(|e| DbError::Internal(format!("character vault fields: {e}")))?;
-    crate::db::character_vault::create_character_with_options(
-        main,
-        mount,
-        &slim,
-        &vault,
-        &crate::db::characters::CreateOptions {
-            id: id_of(ch),
-            created_at: now(),
-            updated_at: now(),
-        },
-    )
-    .map(|_| ())
+    let opts = crate::db::characters::CreateOptions {
+        id: id_of(ch),
+        created_at: now(),
+        updated_at: now(),
+    };
+    if let Some(vault_id) = os(ch, "characterDocumentMountPointId")
+        .filter(|id| archived_stores.get(id).map(String::as_str) == Some("character"))
+    {
+        let slim = crate::db::characters::CharacterCreate {
+            character_document_mount_point_id: Some(vault_id),
+            ..slim
+        };
+        return crate::db::characters::CharactersRepository::new(main).create(&slim, &opts);
+    }
+    crate::db::character_vault::create_character_with_options(main, mount, &slim, &vault, &opts)
+        .map(|_| ())
 }
 
 /// Phases 23 and 24 — recursive copy of every subdirectory of `src` into `dest`,
@@ -2199,20 +2436,41 @@ fn store_opts(id: String) -> crate::db::store_backed::StoreCreateOptions {
 /// flag carried. v4 spreads the archived row into `create`, where
 /// `ChatInformSchema.permanent: z.boolean().default(false)` fills an absent
 /// key, so a pre-standing archive restores every row as a one-shot.
-fn restored_inform(inform: &Value, now: String) -> crate::db::chat_informs::ChatInformCreate {
-    crate::db::chat_informs::ChatInformCreate {
+///
+/// That same schema REFUSES any other non-boolean (`null`, `"true"`, `1` …):
+/// `Err` carries v4's `ZodError.message` (P4.147 item 9 — the bytes recorded
+/// through `system_restore_state`'s informs arm). Only `permanent` is checked
+/// here; the row's other columns go to `create` as before.
+fn restored_inform(
+    inform: &Value,
+    now: String,
+) -> Result<crate::db::chat_informs::ChatInformCreate, String> {
+    let permanent = match inform.get("permanent") {
+        None => false,
+        Some(Value::Bool(b)) => *b,
+        Some(other) => {
+            return Err(crate::api::zod_issues::zod_error_message(&[
+                crate::api::zod_issues::ZodIssue::invalid_type(
+                    "boolean",
+                    vec![Value::String("permanent".into())],
+                    Some(other),
+                ),
+            ]))
+        }
+    };
+    Ok(crate::db::chat_informs::ChatInformCreate {
         id: id_of(inform),
         chat_id: s(inform, "chatId"),
         batch_id: s(inform, "batchId"),
         participant_id: s(inform, "participantId"),
         content_markdown: s(inform, "contentMarkdown"),
         record_message_id: os(inform, "recordMessageId"),
-        permanent: b(inform, "permanent", false),
+        permanent,
         created_at: now.clone(),
         updated_at: now,
         consumed_at: os(inform, "consumedAt"),
         consumed_by_message_id: os(inform, "consumedByMessageId"),
-    }
+    })
 }
 
 #[cfg(test)]
@@ -2229,12 +2487,37 @@ mod restored_inform_tests {
             "contentMarkdown": "x", "permanent": true,
             "createdAt": "2026-01-01T00:00:00.000Z", "updatedAt": "2026-01-01T00:00:00.000Z"
         });
-        let got = restored_inform(&row, "NOW".into());
+        let got = restored_inform(&row, "NOW".into()).unwrap();
         assert!(got.permanent);
         assert_eq!((got.id.as_str(), got.created_at.as_str()), ("i1", "NOW"));
         let mut old = row.clone();
         old.as_object_mut().unwrap().remove("permanent");
-        assert!(!restored_inform(&old, "NOW".into()).permanent);
+        assert!(!restored_inform(&old, "NOW".into()).unwrap().permanent);
+        let mut one_shot = row.clone();
+        one_shot["permanent"] = json!(false);
+        assert!(!restored_inform(&one_shot, "NOW".into()).unwrap().permanent);
+    }
+
+    /// P4.147 item 9 (ruling R-D): a malformed flag is REFUSED with v4's
+    /// `ZodError.message` — the bytes `system_restore_state`'s informs arm
+    /// recorded through v4's real `ChatInformSchema`.
+    #[test]
+    fn a_malformed_flag_is_refused_with_v4s_zod_bytes() {
+        for (v, received) in [
+            (json!(null), "null"),
+            (json!("true"), "string"),
+            (json!(1), "number"),
+        ] {
+            let row = json!({ "id": "i1", "permanent": v });
+            assert_eq!(
+                restored_inform(&row, "NOW".into()).unwrap_err(),
+                format!(
+                    "[\n  {{\n    \"expected\": \"boolean\",\n    \"code\": \"invalid_type\",\n    \
+                     \"path\": [\n      \"permanent\"\n    ],\n    \"message\": \"Invalid input: \
+                     expected boolean, received {received}\"\n  }}\n]"
+                )
+            );
+        }
     }
 }
 
@@ -2435,23 +2718,26 @@ fn json_text_of(row: &Value, key: &str) -> String {
     }
 }
 
-/// v4's project row carries its non-managed properties inline; the store-backed
-/// create takes them as one `properties` object.
-fn project_properties(p: &Value) -> Value {
-    let mut m = serde_json::Map::new();
-    for k in [
-        "allowAnyCharacter",
-        "characterRoster",
-        "color",
-        "defaultDisabledTools",
-        "defaultDisabledToolGroups",
-        "backgroundDisplayMode",
-    ] {
-        if let Some(v) = p.get(k) {
-            m.insert(k.to_string(), v.clone());
+/// v4's project / group row carries its non-managed properties inline; the
+/// store-backed create takes them as ONE `properties` bag. Copies each listed
+/// key PRESENT on `raw` — an explicit `null` included, since v4's
+/// `.nullable().optional()` keys keep it — into a fresh object (P4.147 item 8;
+/// the old six-key `project_properties` dropped ten of a project's sixteen).
+///
+/// A lane-local twin of the importer's `fold_properties` (Shared contract C1,
+/// body identical); the unifier replaces this body with the call to P4.148's
+/// one home and deletes the marker.
+// §S.1 fold → db::document_store_overlay::fold_properties
+fn fold_properties_local(raw: &Value, keys: &[&str]) -> Value {
+    let mut bag = serde_json::Map::new();
+    if let Some(obj) = raw.as_object() {
+        for k in keys {
+            if let Some(v) = obj.get(*k) {
+                bag.insert((*k).to_string(), v.clone());
+            }
         }
     }
-    Value::Object(m)
+    Value::Object(bag)
 }
 
 fn table_exists(conn: &Connection, table: &str) -> bool {

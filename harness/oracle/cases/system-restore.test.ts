@@ -132,6 +132,17 @@ const RESTORE_CASES: Array<{
    * ERRORs + the per-chat WARN (`withRepoLogs`) and emit them as `repoLogs`.
    */
   recordRepoLogs?: boolean;
+  /**
+   * [P4.147] Record every line whose message is in this list, at ANY level
+   * (debug included — `withLogs`), and emit them as `logs`.
+   */
+  recordLogs?: string[];
+  /**
+   * [P4.147 item 10(c)] Rename these main-partition columns on the TARGET
+   * before the baseline is dumped (`[table, from, to]`) — the P4.131 plant
+   * shape, so ONE restore insert per table fails on a real SQLite error.
+   */
+  renameColumns?: Array<[string, string, string]>;
 }> = [
   { name: 'restore_replace', archive: 'restore-archive.zip' },
   { name: 'restore_legacy_archive', archive: 'restore-archive-legacy.zip' },
@@ -372,6 +383,74 @@ const RESTORE_CASES: Array<{
   // leave a bag key behind.
   { name: 'restore_bag_keys_replace', archive: 'restore-archive-bag-keys.zip' },
   { name: 'restore_bag_keys_new_account', archive: 'restore-archive-bag-keys.zip', mode: 'new-account' },
+
+  // ── P4.147 (dogfood #142): a FRESH target, no pointer alignment ──────────
+  //
+  // The three archives that carry their own Quilltap Uploads store, restored
+  // into a freshly provisioned target whose built-in pointers name the
+  // TARGET's own (wiped) stores — the disaster-recovery shape. v4 resolves
+  // Uploads through the target's surviving pointer, misses, and warns
+  // `Quilltap Uploads mount has not been provisioned` for each project-less
+  // file it would have to replay; v5 (the P4.147 ruled divergence) pre-applies
+  // the archive's built-in pointers after 22a and restores them into the
+  // ARCHIVE's store. The aligned twins above stay the convergent controls.
+  { name: 'restore_uploads_fresh_replace', archive: 'restore-archive-uploads.zip' },
+  { name: 'restore_compact_fresh_replace', archive: 'restore-archive-compact.zip' },
+  { name: 'restore_gen2_fresh_replace', archive: 'restore-archive-gen2.zip' },
+
+  // ── P4.147 item 8 (P4.146 item 13): the fallback arm's property bags ─────
+  //
+  // `restore-archive-bag-nulls.zip` drops the project and group STORES, so
+  // both entities take the fresh-store fallback arm, and widens the project
+  // to all sixteen property keys (explicit nulls among them) and the group to
+  // `color: null, icon: "⚙"`. Built by
+  // `fixtures/derive-restore-archive-bag-nulls.py`.
+  { name: 'restore_bag_nulls_replace', archive: 'restore-archive-bag-nulls.zip' },
+
+  // ── P4.147 items 9 + 10(b): the archived informs + a malformed message ──
+  //
+  // `restore-archive-informs.zip` carries seven inform rows (`permanent`
+  // true / false / absent / null / "true" / 1, one consumed) and one message
+  // whose `content` is a number. v4's `ChatInformSchema` refuses the three
+  // malformed flags; the restore's WARN + DEBUG lines are recorded. Built by
+  // `fixtures/derive-restore-archive-informs.py`.
+  {
+    name: 'restore_informs_replace',
+    archive: 'restore-archive-informs.zip',
+    recordLogs: [
+      'Failed to restore chat inform',
+      'Restored chat informs',
+      'Data validation failed',
+      'Error creating entity',
+    ],
+  },
+
+  // ── P4.147 item 10(a)+(c): a real SQLite error on two restore inserts ────
+  //
+  // `restore-archive.zip` into a target whose `chats.rightPaneVerticalSplit`
+  // and `chat_documents.displayTitle` columns were RENAMED after provisioning
+  // (the P4.131 plant shape): every chat create and every chat-document create
+  // fails on SQLite's own `table … has no column named …`, so the per-chat
+  // catch (its warning + WARN) and the 22i per-row catch are both reached with
+  // a real database error rather than a validation one.
+  {
+    name: 'restore_sqlite_tail_replace',
+    archive: 'restore-archive.zip',
+    renameColumns: [
+      ['chats', 'rightPaneVerticalSplit', 'rightPaneVerticalSplitPlanted'],
+      ['chat_documents', 'displayTitle', 'displayTitlePlanted'],
+    ],
+    recordLogs: [
+      'Error creating entity',
+      'Failed to create chat',
+      'Failed to restore chat',
+      'Failed to restore chat document',
+      // The inform phase's two lines on an archive with NO informs: the WARN's
+      // silence leg, and the DEBUG summary firing with zero counts.
+      'Failed to restore chat inform',
+      'Restored chat informs',
+    ],
+  },
 ];
 
 /** jest.setup stubs the file-storage manager; the restore file phase IS the
@@ -514,6 +593,63 @@ async function withRepoLogs<T>(
   }
 }
 
+/**
+ * [P4.147] The context keys a recorded line carries, in this order. An Error
+ * value is recorded as its `message` (what v4's `error.message` renders).
+ */
+const LOG_KEYS = [
+  'collection',
+  'chatId',
+  'chatDocumentId',
+  'informId',
+  'total',
+  'restored',
+  'error',
+  'strictFailures',
+];
+
+/**
+ * [P4.147] `withRepoLogs` widened to a caller-chosen message list and every
+ * level (the restore's `Restored chat informs` is a DEBUG line) — recorded
+ * before the level filter, so `LOG_LEVEL=error` does not hide it.
+ */
+async function withLogs<T>(
+  messages: string[],
+  body: () => Promise<T>,
+): Promise<{ out: T; logs: Array<Record<string, unknown>> }> {
+  const logs: Array<Record<string, unknown>> = [];
+  const wanted = new Set(messages);
+  const { Logger } = await import('@/lib/logger');
+  const levels = ['error', 'warn', 'info', 'debug'] as const;
+  const originals = Object.fromEntries(levels.map((l) => [l, Logger.prototype[l]]));
+  for (const level of levels) {
+    const original = originals[level];
+    Logger.prototype[level] = function (
+      this: unknown,
+      message: string,
+      context?: Record<string, unknown>,
+      ...rest: unknown[]
+    ) {
+      if (wanted.has(message)) {
+        const line: Record<string, unknown> = { level, message };
+        for (const key of LOG_KEYS) {
+          if (context && key in context) {
+            const v = context[key];
+            line[key] = v instanceof Error ? v.message : v;
+          }
+        }
+        logs.push(line);
+      }
+      return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+    } as never;
+  }
+  try {
+    return { out: await body(), logs };
+  } finally {
+    for (const level of levels) Logger.prototype[level] = originals[level] as never;
+  }
+}
+
 async function runRestoreCase(
   c: {
     name: string;
@@ -522,6 +658,8 @@ async function runRestoreCase(
     alignUploadsPointer?: boolean;
     collapseFolders?: boolean;
     recordRepoLogs?: boolean;
+    recordLogs?: string[];
+    renameColumns?: Array<[string, string, string]>;
   },
   archives: string,
   scratchRoot: string,
@@ -654,6 +792,12 @@ async function runRestoreCase(
       );
     }
 
+    // [P4.147 item 10(c)] The column-rename plant, before the baseline so
+    // both sides' baselines describe the same (planted) target.
+    for (const [table, from, to] of c.renameColumns ?? []) {
+      await rawQuery(`ALTER TABLE "${table}" RENAME COLUMN "${from}" TO "${to}"`);
+    }
+
     const preState = dumpAll();
 
     const { restore } = await import('@/lib/backup/restore/restore');
@@ -662,9 +806,16 @@ async function runRestoreCase(
         mode: c.mode ?? 'replace',
         targetUserId: SINGLE_USER_ID,
       });
-    const { out: summary, repoLogs } = c.recordRepoLogs
-      ? await withRepoLogs(run)
-      : { out: await run(), repoLogs: undefined };
+    let summary: unknown;
+    let repoLogs: Array<Record<string, unknown>> | undefined;
+    let logs: Array<Record<string, unknown>> | undefined;
+    if (c.recordRepoLogs) {
+      ({ out: summary, repoLogs } = await withRepoLogs(run));
+    } else if (c.recordLogs) {
+      ({ out: summary, logs } = await withLogs(c.recordLogs, run));
+    } else {
+      summary = await run();
+    }
 
     return {
       name: c.name,
@@ -672,6 +823,7 @@ async function runRestoreCase(
       preState,
       state: dumpAll(),
       ...(repoLogs ? { repoLogs } : {}),
+      ...(logs ? { logs } : {}),
     };
   } finally {
     await closeDatabase();

@@ -144,6 +144,29 @@ impl<'c, E: StoreEntity> StoreBackedRepository<'c, E> {
         Ok(())
     }
 
+    /// P4.147 (dogfood #141) — the restore's PRESERVE arm: insert the slim row and
+    /// point it at `mount_point_id`, provisioning, linking and overlaying
+    /// NOTHING. Returns the row's id.
+    ///
+    /// For a `replace` restore whose archive carries this entity's official
+    /// store: that store, its files (`properties.json`, `description.md`, …) and
+    /// its `project_/group_doc_mount_links` row are all restored under their
+    /// archived ids later in the same restore (22a–22h), so [`Self::create`]'s
+    /// fresh store would only orphan the real one (v4 shares the defect —
+    /// `restore.ts:315-345`; a RULED v5 divergence, `system_restore_state`'s
+    /// `FRESH_STORE_RESIDUAL`). Until 22a runs, the row's FK names a store that
+    /// does not exist yet — nothing between reads it.
+    pub fn create_slim_linked(
+        &self,
+        name: &str,
+        opts: &StoreCreateOptions,
+        mount_point_id: &str,
+    ) -> Result<String, DbError> {
+        let (id, _) = self.create_slim(name, opts)?;
+        self.set_official_mount_point_id(&id, mount_point_id)?;
+        Ok(id)
+    }
+
     /// Insert the slim row with a NULL FK (v4 store-aware `_create`). Mints id +
     /// timestamps unless pinned. Returns the created `(id, name)`.
     fn create_slim(
