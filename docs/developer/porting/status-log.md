@@ -169598,3 +169598,23 @@ harness is frozen at `0.0.1110`).
   QT_FIXTURE_OUT_DIR=/tmp/p4157/ensure npx tsx $V5W/harness/oracle/cases/chat-informs-permanent-ensure.ts
   > /tmp/p4157/oracle-inform-ensure.ndjson`; `QT_ORACLE_INFORM_ENSURE=… QT_FIXTURE_INFORM_ENSURE_DIR=/tmp/p4157/ensure
   cargo test -p quilltap-harness --test chat_informs_permanent_ensure_equivalence`.
+
+### Unit A1 / R-C — the second ERROR line against v4 (Tier 1 item 2)
+- The oracle drives v4's REAL `ChatSettingsRepository.findByUserId` per
+  `chatSettings` row (the `getCollection` storage seam answers the row as v4's
+  collection hydrates it; a `Logger.prototype` spy records every call). v4
+  MEASURED at `94fbb1ae3`: refused rows log EXACTLY two ERRORs — `Data
+  validation failed {collection, error}` then `Error finding entity by filter
+  {collection, error}` (`findOneByFilter`'s fallback `safeQuery`; the outer
+  `Error finding chat settings by user ID` never fires because the inner
+  fallback answers `null`); accepted rows log nothing.
+- v5's lines are now compared WHOLE against v4's rendered lines; a count pin
+  requires v4's two lines on all four refused rows. The bytes AGREE — no
+  finding, no HANDOFF.
+- The comparand bites (the mutation it was blind to): the NDJSON's second
+  message rewritten to `Error finding chat settings by user ID` (a simulated
+  v4 change) → RED, `4 row(s) differ`; the old test read only v4's `message`
+  and its own literal, so it stayed green under the same edit.
+- Recipe unchanged in shape (`npx tsx … repository-zod-messages.ts >
+  /tmp/…ndjson` from the pin); staged at `/tmp/p4157/oracle-repository-zod-messages.ndjson`
+  (58 rows).

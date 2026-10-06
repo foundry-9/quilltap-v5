@@ -23,9 +23,13 @@
 //! `quilltap_core::db::chat_settings::find_by_user_id` over a `chat_settings`
 //! table built from the D23 dump (`fresh_schema.json`), the mode planted by a
 //! raw UPDATE as the core unit test does. v5's `message` is the `error=` tail
-//! of the captured `Data validation failed` ERROR; the second line (`Error
-//! finding entity by filter`) must carry the same bytes, and an accepted row
-//! must read back with zero lines. This makes the Zod literal in
+//! of the captured `Data validation failed` ERROR, and BOTH captured lines are
+//! compared against v4's OWN two (P4.157 R-C — v4's real
+//! `ChatSettingsRepository.findByUserId` over the row, through a
+//! `Logger.prototype` spy: `Data validation failed` then the fallback
+//! `safeQuery`'s `Error finding entity by filter`, level + message + context
+//! in v4's key order); an accepted row must read back with zero lines on
+//! both sides. This makes the Zod literal in
 //! `chat_settings.rs`'s unit test
 //! (`find_by_user_id_voice_mode_null_reads_off_and_an_unknown_value_drops_the_row`)
 //! oracle-backed: reorder `ImpersonationVoiceMode::VALUES` or change
@@ -67,8 +71,12 @@ fn chat_settings_ddl() -> String {
 }
 
 /// v5's REAL `find_by_user_id` over the row, the mode planted raw. Answers
-/// `(message, issues)` — `(None, None)` when the row reads back with no line.
-fn v5_chat_settings(id: &str, row: &Map<String, Value>) -> (Option<String>, Option<String>) {
+/// `(message, issues, lines)` — the captured lines whole; `(None, None, [])`
+/// when the row reads back with no line.
+fn v5_chat_settings(
+    id: &str,
+    row: &Map<String, Value>,
+) -> (Option<String>, Option<String>, Vec<String>) {
     let conn = rusqlite::Connection::open_in_memory().unwrap();
     conn.execute_batch(&chat_settings_ddl()).unwrap();
     let user_id = row["userId"].as_str().unwrap();
@@ -109,30 +117,44 @@ fn v5_chat_settings(id: &str, row: &Map<String, Value>) -> (Option<String>, Opti
         quilltap_core::db::chat_settings::find_by_user_id(&conn, user_id).unwrap()
     });
     if let Some(read) = got {
-        assert!(lines.is_empty(), "{id}: an accepted row logged {lines:#?}");
         let want_mode = planted.unwrap_or("off");
         assert_eq!(
             read["impersonationVoiceMode"],
             Value::String(want_mode.into()),
             "{id}: the accepted row's mode"
         );
-        return (None, None);
+        return (None, None, lines);
     }
     let first = "ERROR quilltap::db Data validation failed collection=chat_settings error=";
-    let second =
-        "ERROR quilltap::db Error finding entity by filter collection=chat_settings error=";
-    assert_eq!(lines.len(), 2, "{id}: v4's two ERROR lines, got {lines:#?}");
-    let message = lines[0]
-        .strip_prefix(first)
-        .unwrap_or_else(|| panic!("{id}: first line {:?}", lines[0]))
+    let message = lines
+        .first()
+        .and_then(|l| l.strip_prefix(first))
+        .unwrap_or_else(|| panic!("{id}: first line {lines:#?}"))
         .to_string();
-    assert_eq!(
-        lines[1],
-        format!("{second}{message}"),
-        "{id}: the fallback line carries the same bytes"
-    );
     let issues = serde_json::from_str::<Value>(&message).unwrap().to_string();
-    (Some(message), Some(issues))
+    (Some(message), Some(issues), lines)
+}
+
+/// v4's recorded logger call (`{level, message, context}`, P4.157 R-C) as the
+/// capture rig renders v5's: `<LEVEL> quilltap::db <message> k=v …`, the
+/// context's keys in v4's order. The target is v5's (`db::fallback`'s home);
+/// everything after it is v4's.
+fn render_v4_line(line: &Value) -> String {
+    let mut out = format!(
+        "{} quilltap::db {}",
+        line["level"].as_str().expect("level").to_uppercase(),
+        line["message"].as_str().expect("message")
+    );
+    if let Some(ctx) = line["context"].as_object() {
+        for (k, v) in ctx {
+            let v = match v {
+                Value::String(s) => s.clone(),
+                other => other.to_string(),
+            };
+            out.push_str(&format!(" {k}={v}"));
+        }
+    }
+    out
 }
 
 /// The corpus's `Float32Array` marker → this crate's.
@@ -171,6 +193,7 @@ fn repository_zod_messages_match_oracle() {
         (false, false, false, false);
     let mut chat_messages = 0usize;
     let (mut settings_messages, mut settings_ok) = (0usize, 0usize);
+    let mut settings_two_line_rows = 0usize;
 
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         rows += 1;
@@ -226,7 +249,26 @@ fn repository_zod_messages_match_oracle() {
                 } else {
                     settings_ok += 1;
                 }
-                v5_chat_settings(id, &row)
+                let (m, i, lines) = v5_chat_settings(id, &row);
+                // P4.157 R-C: BOTH lines against v4's own (recorded through
+                // its real `ChatSettingsRepository.findByUserId`) — the second
+                // used to be checked only against v5's first.
+                let want_lines: Vec<String> = want["lines"]
+                    .as_array()
+                    .unwrap_or_else(|| panic!("{id}: the oracle row carries no `lines`"))
+                    .iter()
+                    .map(render_v4_line)
+                    .collect();
+                if want_message.is_some() {
+                    settings_two_line_rows += usize::from(want_lines.len() == 2);
+                }
+                if lines != want_lines {
+                    failures.push(format!(
+                        "{id}: LINES differ\n  v4: {want_lines:#?}\n  v5: {lines:#?}"
+                    ));
+                    continue;
+                }
+                (m, i)
             }
             other => panic!("{id}: unknown schema {other}"),
         };
@@ -259,6 +301,10 @@ fn repository_zod_messages_match_oracle() {
         (4, 3),
         "the chatSettings rows: four refused modes ('maybe', '', 'Off', '1') + three \
          accepted (absent → 'off', 'ask', 'always') — P4.151 A1"
+    );
+    assert_eq!(
+        settings_two_line_rows, 4,
+        "v4 logged its two ERROR lines on each refused chatSettings row (P4.157 R-C)"
     );
     assert!(
         failures.is_empty(),

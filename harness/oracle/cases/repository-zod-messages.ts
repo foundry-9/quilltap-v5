@@ -52,6 +52,8 @@ import { GroupSchema } from '@/lib/schemas/group.types';
 import { GroupDocMountLinkSchema } from '@/lib/schemas/mount-index.types';
 import { ChatMetadataBaseSchema } from '@/lib/schemas/chat.types';
 import { ChatSettingsSchema } from '@/lib/schemas/settings.types';
+import { logger } from '@/lib/logger';
+import { ChatSettingsRepository } from '@/lib/database/repositories/chat-settings.repository';
 
 type Row = Record<string, unknown>;
 
@@ -208,13 +210,53 @@ const materialize = (r: Row): Row => {
   return out;
 };
 
-for (const [id, schema, row] of rows) {
-  const r = SCHEMAS[schema].safeParse(materialize(row));
-  if (r.success) {
-    process.stdout.write(JSON.stringify({ id, schema, row, ok: true }) + '\n');
-  } else {
-    process.stdout.write(
-      JSON.stringify({ id, schema, row, message: r.error.message, issues: r.error.issues }) + '\n',
-    );
+// P4.157 R-C: v4's OWN two ERROR lines for a refused `chatSettings` row —
+// `Data validation failed` (`base.repository.ts` `validate`) then the fallback
+// `safeQuery`'s `Error finding entity by filter` (`findOneByFilter`) — recorded
+// through v4's REAL `ChatSettingsRepository.findByUserId` with a
+// `Logger.prototype` spy, so the Rust side compares v5's SECOND line against
+// v4's second (it compared it against v5's own first). The storage read is the
+// one seam: `getCollection` answers a collection whose `findOne` hands back the
+// row as v4's SQLite collection hydrates it (an ABSENT key = a NULL cell).
+const logged: Array<{ level: string; message: string; context: unknown }> = [];
+{
+  const proto = Object.getPrototypeOf(logger) as Record<string, (m: string, c?: unknown) => void>;
+  for (const level of ['error', 'warn', 'info', 'debug']) {
+    proto[level] = function (message: string, context?: unknown) {
+      logged.push({ level, message, context: context ?? null });
+    };
   }
 }
+
+async function v4SettingsLines(row: Row): Promise<unknown[]> {
+  logged.length = 0;
+  const repo = new ChatSettingsRepository();
+  (repo as unknown as { getCollection: () => Promise<unknown> }).getCollection = async () => ({
+    findOne: async () => materialize(row),
+  });
+  await repo.findByUserId(row.userId as string);
+  return logged.splice(0);
+}
+
+async function main(): Promise<void> {
+  for (const [id, schema, row] of rows) {
+    const r = SCHEMAS[schema].safeParse(materialize(row));
+    const lines = schema === 'chatSettings' ? { lines: await v4SettingsLines(row) } : {};
+    if (r.success) {
+      process.stdout.write(JSON.stringify({ id, schema, row, ok: true, ...lines }) + '\n');
+    } else {
+      process.stdout.write(
+        JSON.stringify({ id, schema, row, message: r.error.message, issues: r.error.issues, ...lines }) +
+          '\n',
+      );
+    }
+  }
+}
+
+main().then(
+  () => process.exit(0),
+  (err) => {
+    process.stderr.write(`repository-zod-messages oracle failed: ${err?.stack ?? err}\n`);
+    process.exit(1);
+  },
+);
