@@ -169151,3 +169151,69 @@ unported `main`.
   green once the carve also drops a carved link's folder that no surviving
   link uses and the archive does not carry. The other `REPLAY_DEDUPE` cases
   are unchanged (still the five-table list, `REPLAY_DEDUPE_TABLES`).
+
+### Unit 7 — R-G: the per-phase log census, and R-H (core 0.0.1241)
+
+One commit for both: R-H's red arm is the census plant's 22f-bis line.
+
+**The census source, counted at the pin:** `lib/backup/restore/restore.ts`
+has 63 `moduleLogger` sites (44 warn, 5 info, 14 debug, 0 error), every
+message distinct (the order's "~38" was P4.147's estimate). The oracle now
+records all 63 (plus the three repository-level lines on the two cases P4.147
+wired them on), every context key in winston's order, on EVERY case; the
+harness compares them on every case.
+
+| class | lines (v4 `restore.ts` line) |
+|---|---|
+| **v5 had, right** (6) | Failed to restore chat (243), chat document (804), chat inform (821), Restored chat informs (824), themes-index.json (1022), Failed to enqueue reindex (1072) |
+| **v5 had, WRONG — fixed** (4) | Seeded connection-profile columns (135: fired on any seeded column, snake_case, three extra fields → v4's condition `multiCharacterPrefill`/`supportsImageUpload` absent, v4's four fields); Translated pre-4.10 Concierge settings (399) and the voice toggle (409): `settings_id`/`backup_has_unmoderated_chats`/`impersonation_voice_mode` → camelCase (the unit pins moved with them); Skipped duplicate folder row (437): `folder_id` → `folderId` |
+| **lacked → PORTED, oracle-pinned** (43) | Starting (75), tag (114), connection profile (154), image profile (165), embedding profile (176), character (199), memory (265), prompt template (282), roleplay template (298), provider model (311), project (325), group (343), LLM log (360), plugin config (382), chat settings (420), folder (444), character plugin data (471), annotation (484), doc mount point (504), file (615), doc mount folder (632), doc mount file (645), file link (660), document (673), blob (715), wardrobe item (736), chunk (750), project link (763), group link (777), group member (791), vector meta (838), vector entries batch (856), conversation chunk (874), tfidf (890), embedding status (906), text rule (930), Restored text rules (934), No npm dir (990), No themes dir (1034), All entities restored (1037), Queued re-index (1051), reconcile complete (1088), completed (1165) |
+| **lacked → PORTED, not reachable in the corpus** (10) | Renamed connection profile (144 — needs two archived profiles sharing a name, or a merge restore; no committed archive); Skipping LLM logs — degraded (350 — v5 reaches it only with NO llm partition; the family opens all three); Skipping duplicate text replacement rule (923 — `replace` truncates the table, a fresh `new-account` target has none); instance setting (952 — deliberately unplanted: every built-in pointer read uses the table); Restored npm plugin / Failed npm plugin / Restored npm plugins (974/977/983) and theme bundle / Failed / Restored themes (1011/1014/1028) — no archive carries a bundle and the family's host declares no plugin/theme directory: the six copy lines are CAPTURE-PINNED by three new orchestrator unit tests (`host_copy_log_tests`), with the hostless silence leg |
+
+- **Red-first:** the regenerated oracle against the pre-census orchestrator
+  (HEAD's file copied over the ported one, the harness unchanged): 35
+  failures across all 34 cases. Green after.
+- **The plant (`restore_phase_warns_replace`):** `restore-archive-legacy.zip`
+  into a target with one written column renamed in each phase's table across
+  the three partitions (P4.147 item 10(c)'s idiom, widened by a
+  per-partition `renameColumnsIn`), plus `plantSqlIn`: `BEFORE INSERT`
+  triggers on `chat_settings` (v5's insert is `tolerant_insert` — it drops a
+  column the table lacks, so a rename cannot reach its catch), `characters`
+  and `vector_indices` (v5's vault resolver and `save_meta` pre-read NAMED
+  columns where v4 selects `*`, so a rename trips v5's read first), and the
+  target's `generalMountPointId` deleted (so the shared legacy preset takes
+  the no-mount arm instead of a vault write into the wiped General store,
+  whose statement order — v4 folder first, v5 content row first — is not this
+  order's surface). Every per-row catch in the table above but the
+  instance-settings one fires on both sides.
+- **FINDING, fixed:** v4 restores memories through the USER-SCOPED
+  repository, whose `create` refuses a memory whose character is not the
+  target user's (`user-scoped.ts:310-311`); v5 went straight to the insert.
+  Reached only when the memory's character failed to restore (the plant).
+  Now `character_owned_by` precedes the create.
+- **R-H:** `WardrobePublicError::NoMount` renders `Cannot create wardrobe item:
+  no Character Vault or Quilltap General mount is available. Wardrobe items
+  are stored exclusively in the document store.` (v4 `wardrobe.repository.ts
+  :345-348` — the restore only creates), `Cycle(msg)` its message (v4's own
+  bytes already). Red on the plant (both legacy presets, `NoMount`).
+- **Harness, recorded:** the census compares the files phase's lines as their
+  own subsequence (the 2026-07-26 phase-order ruling — first visible here,
+  where 22b–22h also warn), and `summary.warnings` the same way; a UUID the
+  archive does not carry is labelled `<minted>` (the family's origin rule);
+  the dedupe-collision, fresh-target-Uploads and serde-arm lines are carved
+  as their warnings are; `Restore operation completed`'s `summary` and
+  `warningCount` are each checked against that side's own returned summary,
+  then dropped. The binary's three tests now take one lock (they share the
+  process-global capture — the acceptance test's lines landed in the
+  family's buffer).
+- **Candidate v4 filing:** 22f prepares its blob INSERT OUTSIDE the per-blob
+  `try` (`restore.ts:692`), so a blob table that cannot take the statement
+  throws the whole restore instead of warning per blob (measured: the first
+  plant draft renamed `doc_mount_blobs.storedMimeType` and v4's restore
+  aborted). The plant does not touch that table; the blob WARN is reached
+  instead through a FOREIGN KEY failure (its content row's plant).
+- **Recorded divergences, schema-damage-only:** v5's plugin-config upsert,
+  `save_meta` and the wardrobe vault resolver pre-read named columns where
+  v4 reads `SELECT *`; v5's chat-settings insert tolerates a missing column.
+  None is reachable on a real schema; none is this lane's file.
+- Family 34/34; `restore_vintage_state` 6/6; `system_restore_equivalence` 1/1.

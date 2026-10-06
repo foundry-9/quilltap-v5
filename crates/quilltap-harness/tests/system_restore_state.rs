@@ -1026,6 +1026,9 @@ fn archive_for(name: &str) -> &'static str {
         // [P4.158 item 3, R-C] gen2 plus one shared legacy preset, into a fresh
         // target — `derive-restore-archive-general-pointer.py`.
         "restore_general_pointer_fresh_replace" => "restore-archive-general-pointer.zip",
+        // [P4.158 R-G + R-H] every phase's per-row catch, planted — see
+        // `renamed_columns_in`.
+        "restore_phase_warns_replace" => "restore-archive-legacy.zip",
         other => panic!("unknown restore case {other}"),
     }
 }
@@ -1091,6 +1094,209 @@ fn renamed_columns(name: &str) -> &'static [(&'static str, &'static str, &'stati
     }
 }
 
+/// [P4.158 R-G] The per-partition column-rename plant (`(partition file, table,
+/// from, to)`) — mirrors the oracle's `renameColumnsIn` exactly: ONE written
+/// column renamed in every phase's table, so each restore insert there fails on
+/// SQLite's own error and the per-row catch (warning + WARN) is reached.
+const PHASE_WARNS_PLANT: &[(&str, &str, &str, &str)] = &[
+    ("quilltap.db", "tags", "nameLower", "nameLowerPlanted"),
+    (
+        "quilltap.db",
+        "connection_profiles",
+        "sortIndex",
+        "sortIndexPlanted",
+    ),
+    ("quilltap.db", "image_profiles", "tags", "tagsPlanted"),
+    ("quilltap.db", "embedding_profiles", "tags", "tagsPlanted"),
+    (
+        "quilltap.db",
+        "memories",
+        "reinforcedImportance",
+        "reinforcedImportancePlanted",
+    ),
+    (
+        "quilltap.db",
+        "prompt_templates",
+        "content",
+        "contentPlanted",
+    ),
+    (
+        "quilltap.db",
+        "roleplay_templates",
+        "narrationDelimiters",
+        "narrationDelimitersPlanted",
+    ),
+    (
+        "quilltap.db",
+        "provider_models",
+        "experimental",
+        "experimentalPlanted",
+    ),
+    (
+        "quilltap.db",
+        "projects",
+        "officialMountPointId",
+        "officialMountPointIdPlanted",
+    ),
+    (
+        "quilltap.db",
+        "groups",
+        "officialMountPointId",
+        "officialMountPointIdPlanted",
+    ),
+    ("quilltap.db", "plugin_configs", "enabled", "enabledPlanted"),
+    ("quilltap.db", "folders", "path", "pathPlanted"),
+    (
+        "quilltap.db",
+        "character_plugin_data",
+        "data",
+        "dataPlanted",
+    ),
+    (
+        "quilltap.db",
+        "conversation_annotations",
+        "characterName",
+        "characterNamePlanted",
+    ),
+    (
+        "quilltap.db",
+        "vector_entries",
+        "embedding",
+        "embeddingPlanted",
+    ),
+    (
+        "quilltap.db",
+        "conversation_chunks",
+        "participantNames",
+        "participantNamesPlanted",
+    ),
+    (
+        "quilltap.db",
+        "tfidf_vocabularies",
+        "includeBigrams",
+        "includeBigramsPlanted",
+    ),
+    (
+        "quilltap.db",
+        "embedding_status",
+        "embeddedAt",
+        "embeddedAtPlanted",
+    ),
+    (
+        "quilltap.db",
+        "text_replacement_rules",
+        "sortOrder",
+        "sortOrderPlanted",
+    ),
+    (
+        "quilltap-mount-index.db",
+        "doc_mount_points",
+        "conversionError",
+        "conversionErrorPlanted",
+    ),
+    (
+        "quilltap-mount-index.db",
+        "doc_mount_folders",
+        "parentId",
+        "parentIdPlanted",
+    ),
+    (
+        "quilltap-mount-index.db",
+        "doc_mount_files",
+        "fileType",
+        "fileTypePlanted",
+    ),
+    (
+        "quilltap-mount-index.db",
+        "doc_mount_file_links",
+        "description",
+        "descriptionPlanted",
+    ),
+    (
+        "quilltap-mount-index.db",
+        "doc_mount_documents",
+        "plainTextLength",
+        "plainTextLengthPlanted",
+    ),
+    (
+        "quilltap-mount-index.db",
+        "doc_mount_chunks",
+        "headingContext",
+        "headingContextPlanted",
+    ),
+    (
+        "quilltap-mount-index.db",
+        "project_doc_mount_links",
+        "projectId",
+        "projectIdPlanted",
+    ),
+    (
+        "quilltap-mount-index.db",
+        "group_doc_mount_links",
+        "groupId",
+        "groupIdPlanted",
+    ),
+    (
+        "quilltap-mount-index.db",
+        "group_character_members",
+        "characterId",
+        "characterIdPlanted",
+    ),
+    (
+        "quilltap-llm-logs.db",
+        "llm_logs",
+        "provider",
+        "providerPlanted",
+    ),
+];
+
+fn renamed_columns_in(
+    name: &str,
+) -> &'static [(&'static str, &'static str, &'static str, &'static str)] {
+    match name {
+        "restore_phase_warns_replace" => PHASE_WARNS_PLANT,
+        _ => &[],
+    }
+}
+
+/// [P4.158 R-G] Raw SQL planted on a partition — mirrors the oracle's
+/// `plantSqlIn`. v5's chat-settings insert drops a column the table lacks
+/// (`tolerant_insert`), so its catch is reached by a trigger, not a rename.
+fn plant_sql_in(name: &str) -> &'static [(&'static str, &'static str)] {
+    match name {
+        "restore_phase_warns_replace" => &[
+            (
+                "quilltap.db",
+                "CREATE TRIGGER \"planted_chat_settings_failure\" BEFORE INSERT ON \"chat_settings\" \
+                 BEGIN SELECT RAISE(ABORT, 'planted chat settings failure'); END",
+            ),
+            // Characters by trigger as well: v5's vault resolvers read NAMED
+            // columns, so a rename would break 22f-bis's reads (v4's are
+            // `SELECT *`) and miss R-H's no-mount arm.
+            (
+                "quilltap.db",
+                "CREATE TRIGGER \"planted_characters_failure\" BEFORE INSERT ON \"characters\" \
+                 BEGIN SELECT RAISE(ABORT, 'planted characters failure'); END",
+            ),
+            // No General pointer on the target: the SHARED legacy preset takes
+            // 22f-bis's no-mount arm too (R-H) instead of a vault write into
+            // the target's wiped General store.
+            (
+                "quilltap.db",
+                "DELETE FROM \"instance_settings\" WHERE \"key\" = 'generalMountPointId'",
+            ),
+            // `save_meta` pre-reads every named meta column (v4's lookup does
+            // not), so a rename would trip the read first.
+            (
+                "quilltap.db",
+                "CREATE TRIGGER \"planted_vector_meta_failure\" BEFORE INSERT ON \"vector_indices\" \
+                 BEGIN SELECT RAISE(ABORT, 'planted vector index meta failure'); END",
+            ),
+        ],
+        _ => &[],
+    }
+}
+
 /// ## P4.D31 — the memory-id contract, asserted on v5 ALONE
 ///
 /// The row-for-row diff above already says "v5 restores the memories v4
@@ -1120,6 +1326,11 @@ fn assert_memory_graph_intact(
     got: &BTreeMap<String, BTreeMap<String, Vec<Value>>>,
     failures: &mut Vec<String>,
 ) {
+    // [P4.158 R-G] the phase plant refuses every memory on BOTH sides (its
+    // characters never restore); the census and the row diff cover it.
+    if name == "restore_phase_warns_replace" {
+        return;
+    }
     let extracted = quilltap_core::services::backup::restore::parse_backup_zip(zip, temp_root)
         .expect("parse archive for its memories");
     let archived = &extracted.data.memories;
@@ -1252,6 +1463,7 @@ fn fresh_instance(dir: &Path) -> Db {
 
 #[test]
 fn system_restore_state_equivalence() {
+    let _serial = serial();
     let Some(cases) = read_cases() else {
         eprintln!("SKIP: QT_ORACLE_SYSTEM_RESTORE unset");
         return;
@@ -1330,6 +1542,23 @@ fn system_restore_state_equivalence() {
                     ))
                     .expect("plant the column rename");
             }
+        }
+        // [P4.158 R-G] the per-partition plant, at the same point.
+        for (file, table, from, to) in renamed_columns_in(name) {
+            let w = quilltap_core::db::Writer::open_writable(&instance.join(file), TEST_PEPPER)
+                .expect("open a target partition to plant a column rename");
+            w.connection()
+                .execute_batch(&format!(
+                    "ALTER TABLE \"{table}\" RENAME COLUMN \"{from}\" TO \"{to}\""
+                ))
+                .expect("plant the column rename");
+        }
+        for (file, sql) in plant_sql_in(name) {
+            let w = quilltap_core::db::Writer::open_writable(&instance.join(file), TEST_PEPPER)
+                .expect("open a target partition to plant a trigger");
+            w.connection()
+                .execute_batch(sql)
+                .expect("plant the trigger");
         }
         let got_pre = read_state(&instance);
         compare_baseline(name, &got_pre, &case["preState"], &mut failures);
@@ -1432,12 +1661,20 @@ fn system_restore_state_equivalence() {
             // carries `strictFailures` on v4 either.
             compare_repo_logs(name, &case["repoLogs"], &lines, serde, &[], &mut failures);
             repo_log_cases += 1;
-        } else if case.get("logs").is_some() {
-            // [P4.147] the restore-level lines byte for byte; the
-            // repository-level ones pinned as the named handoff.
-            compare_restore_logs(name, &case["logs"], &lines, &mut failures);
-            restore_log_cases += 1;
         }
+        // [P4.147 → P4.158 R-G] the restore's own lines (the whole census) on
+        // EVERY case, byte for byte.
+        compare_restore_logs(
+            name,
+            &case["logs"],
+            &lines,
+            &summary,
+            &case["summary"],
+            &summary_carve,
+            &archive_literals(&zip, &host.temp_dir()),
+            &mut failures,
+        );
+        restore_log_cases += 1;
         // [P4.158 R-A/R-B] the v5-only claim + backfill WARNs, on every case.
         assert_claimed_store_warns(name, &lines, &mut failures);
 
@@ -1499,15 +1736,15 @@ fn system_restore_state_equivalence() {
     // three fresh-target arms (#142), the bag-nulls arm, the informs arm and
     // the SQLite-tail plant.
     assert_eq!(
-        seen, 33,
-        "expected all thirty-three restore cases in the oracle (ten + the #58 orphan-links arm \
+        seen, 34,
+        "expected all thirty-four restore cases in the oracle (ten + the #58 orphan-links arm \
          + P4.D46's two compact arms + P4.D126's bug-103 legacy-profiles arm \
          + P4.D145's bug-114 duplicate-folders arm + P4.D152's bug-117 arm \
          + P4.D158's two bag-key arms + P4.D208's bug-158 arm \
          + P4.D226's legacy-Concierge arm + P4.130's refused-chat arm \
          + P4.143's serde-arm plant + P4.D251's voice-legacy arm \
          + P4.147's three fresh-target arms, bag-nulls, informs and SQLite-tail arms \
-         + P4.158's damaged-store, two-claimants, dup-store-id and general-pointer arms)"
+         + P4.158's damaged-store, two-claimants, dup-store-id, general-pointer and phase-warns arms)"
     );
     // [P4.147] Every ruled #141 case actually carved (red-first measured, then
     // both directions held) — the arm cannot go vacuous.
@@ -1527,10 +1764,10 @@ fn system_restore_state_equivalence() {
         repo_log_cases, 2,
         "cases that compared the refused chat create's repository lines"
     );
-    // [P4.147] the informs arm and the SQLite-tail plant compared their lines.
+    // [P4.158 R-G] every case compared the census.
     assert_eq!(
-        restore_log_cases, 2,
-        "cases that compared P4.147's restore log lines"
+        restore_log_cases, seen,
+        "cases that compared the restore's log census (every case, P4.158 R-G)"
     );
 }
 
@@ -1735,6 +1972,14 @@ fn is_zod_error_message(tail: &str) -> bool {
                         && i.get("message").is_some_and(Value::is_string)
                 })
         })
+}
+
+/// [P4.158 R-G] The binary's three tests run one at a time: every case reads
+/// the process-global capture below, and the acceptance test restores the same
+/// archives — run beside the family, its lines landed in the family's buffer.
+fn serial() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(|p| p.into_inner())
 }
 
 /// A PROCESS-GLOBAL capture (the `search_replace_equivalence` precedent): the
@@ -2017,6 +2262,7 @@ fn compare_baseline(
 /// the archive's Uploads store at its own unique path.
 #[test]
 fn a_replace_restore_lands_every_entity_on_the_archives_stores() {
+    let _serial = serial();
     const KEPT_BUNDLE: &str = "a8000000-0000-4000-8000-000000000001";
     for archive in ["restore-archive.zip", "restore-archive-uploads.zip"] {
         let scratch = fresh_scratch(&format!("acceptance-{archive}"));
@@ -2266,6 +2512,7 @@ fn a_replace_restore_lands_every_entity_on_the_archives_stores() {
 /// never silently skip for a missing env var.
 #[test]
 fn preview_writes_nothing() {
+    let _serial = serial();
     let scratch = fresh_scratch("preview-readonly");
     let instance = scratch.root.join("instance");
     let db = fresh_instance(&instance);
@@ -2386,12 +2633,32 @@ fn compare_warnings(name: &str, got: &Value, want: &Value, failures: &mut Vec<St
             })
             .unwrap_or_default()
     };
-    let (g, w) = (strings(got), strings(want));
+    let (g, w) = (
+        files_phase_last(strings(got), |s: &String| is_files_phase_warning(s)),
+        files_phase_last(strings(want), |s: &String| is_files_phase_warning(s)),
+    );
     if g != w {
         failures.push(format!(
             "[{name}] summary.warnings differ\n  rust:   {g:?}\n  oracle: {w:?}"
         ));
     }
+}
+
+/// ## [P4.158 R-G] The ruled files-phase slot, in the warnings and the census
+///
+/// v4 runs its files phase at `22a-bis` (after 22a, before 22b); v5 after the
+/// WHOLE doc-store family — RULED 2026-07-26, see [`PHASE_ORDER_RESIDUAL`]. So
+/// on a case where both the files phase and a 22b–22h phase warn (first seen
+/// on `restore_phase_warns_replace`), the files phase's entries sit at
+/// different points. They are compared as their own subsequence (moved to the
+/// end, order kept, on both sides); every other entry keeps its order.
+fn files_phase_last<T>(items: Vec<T>, is_files_phase: impl Fn(&T) -> bool) -> Vec<T> {
+    let (files, rest): (Vec<T>, Vec<T>) = items.into_iter().partition(|i| is_files_phase(i));
+    rest.into_iter().chain(files).collect()
+}
+
+fn is_files_phase_warning(w: &str) -> bool {
+    w.starts_with("Failed to restore file \"") || w.starts_with("File not found in backup: ")
 }
 
 /// ## [P4.D152] bug 117 — `files.sha256` must name the bytes actually stored
@@ -4446,27 +4713,97 @@ fn assert_claimed_store_warns(name: &str, lines: &[String], failures: &mut Vec<S
     }
 }
 
-/// [P4.147] The restore-level lines this lane ported — compared to v4's
-/// recorded `logs` byte for byte, in order (level, message, every field).
-const RESTORE_LOG_LINES: &[&str] = &[
-    "Failed to restore chat inform",
-    "Restored chat informs",
+/// ## [P4.158 R-G] The restore's log census — every `moduleLogger` line of
+/// ## v4's `restore.ts`, on every case
+///
+/// All 63 sites (44 warn, 5 info, 14 debug — each message distinct), recorded
+/// by the oracle on every case with every context key. v5 must log the same
+/// lines, in the same order, with the same fields (an Error recorded as its
+/// message; an object / array through the `…Json` file-layer convention).
+/// The P4.158 lane record holds the census table: which arms v5 had, which it
+/// lacked (ported), and which are unreachable in v5 (named, with the reason).
+const RESTORE_TS_MESSAGES: &[&str] = &[
+    "All entities restored with preserved IDs - no reconciliation needed",
+    "Failed to enqueue reindex after compact restore",
+    "Failed to restore LLM log",
+    "Failed to restore character",
+    "Failed to restore character plugin data",
     "Failed to restore chat",
     "Failed to restore chat document",
-    // The REPOSITORY-level lines v4 logs beneath those refusals — the
-    // validation ERROR, `_create`'s rethrowing `safeQuery`, the chats
-    // repository's own wrap — through P4.149's `db::fallback` homes (Shared
-    // contract C2). Wired at the `07b8f0209` follow-ups unification (§S.7):
-    // 6 on `restore_informs_replace` (3 × validation + base), 5 on
-    // `restore_sqlite_tail_replace` (2 chats × base + wrap, 1 chat document).
+    "Failed to restore chat inform",
+    "Failed to restore chat settings",
+    "Failed to restore connection profile",
+    "Failed to restore conversation annotation",
+    "Failed to restore conversation chunk",
+    "Failed to restore doc mount blob",
+    "Failed to restore doc mount chunk",
+    "Failed to restore doc mount document",
+    "Failed to restore doc mount file",
+    "Failed to restore doc mount file link",
+    "Failed to restore doc mount folder",
+    "Failed to restore doc mount point",
+    "Failed to restore embedding profile",
+    "Failed to restore embedding status",
+    "Failed to restore file",
+    "Failed to restore folder",
+    "Failed to restore group",
+    "Failed to restore group character member",
+    "Failed to restore group doc mount link",
+    "Failed to restore image profile",
+    "Failed to restore instance setting",
+    "Failed to restore memory",
+    "Failed to restore npm plugin",
+    "Failed to restore plugin config",
+    "Failed to restore project",
+    "Failed to restore project doc mount link",
+    "Failed to restore prompt template",
+    "Failed to restore provider model",
+    "Failed to restore roleplay template",
+    "Failed to restore tag",
+    "Failed to restore text replacement rule",
+    "Failed to restore tfidf vocabulary",
+    "Failed to restore theme bundle",
+    "Failed to restore themes-index.json",
+    "Failed to restore vector entries batch",
+    "Failed to restore vector index meta",
+    "Failed to restore wardrobe item",
+    "No npm plugins directory in backup",
+    "No themes directory in backup",
+    "Post-restore embedding reconcile complete",
+    "Queued full re-index for compact backup restore",
+    "Renamed connection profile on restore to avoid name collision",
+    "Restore operation completed",
+    "Restored chat informs",
+    "Restored npm plugin",
+    "Restored npm plugins",
+    "Restored text replacement rules",
+    "Restored theme bundle",
+    "Restored user-installed theme bundles",
+    "Seeded connection-profile columns the archive predates",
+    "Skipped duplicate folder row during restore",
+    "Skipping LLM logs restore — logs database is in degraded mode",
+    "Skipping duplicate text replacement rule on restore",
+    "Starting restore operation",
+    "Translated pre-4.10 Concierge settings for restore",
+    "Translated the retired impersonated-line voice toggle for restore",
+];
+
+/// The repository-level lines (validation, `_create`'s rethrow, the chats
+/// wrap) beneath a refused restore create — compared on the two cases P4.147
+/// wired them on (through P4.149's `db::fallback` homes).
+const REPO_LEVEL_MESSAGES: &[&str] = &[
     "Data validation failed",
     "Error creating entity",
     "Failed to create chat",
 ];
+const REPO_LEVEL_CASES: &[&str] = &["restore_informs_replace", "restore_sqlite_tail_replace"];
 
 /// v5's captured lines (`LEVEL target message k=v …`) whose message is in
-/// `messages`, as `{level, message, <fields>}` records — `error` runs to the
-/// end of the line (a ZodError spans many).
+/// `messages`, as `{level, message, <fields>}` records. A field boundary is a
+/// space followed by `name=`; `error` and every `…Json` field run to the end
+/// of the line (v5 logs them LAST — a ZodError or a JSON object can hold
+/// anything), and a `…Json` field is stored under its v4 name with its JSON
+/// re-rendered compactly, as the oracle renders an object.
 fn v5_log_records(lines: &[String], messages: &[&str]) -> Vec<Value> {
     let mut out = Vec::new();
     for line in lines {
@@ -4482,29 +4819,56 @@ fn v5_log_records(lines: &[String], messages: &[&str]) -> Vec<Value> {
         else {
             continue;
         };
-        let fields = rest[message.len()..].trim_start();
         let mut rec = Map::new();
         rec.insert("level".into(), json!(level.to_lowercase()));
         rec.insert("message".into(), json!(message));
-        let (head, error) = match fields.split_once("error=") {
-            Some((h, e)) => (h, Some(e)),
-            None => (fields, None),
-        };
-        for kv in head.split_whitespace() {
-            if let Some((k, v)) = kv.split_once('=') {
-                rec.insert(k.to_string(), json!(v));
+        let mut fields = rest[message.len()..].trim_start();
+        while !fields.is_empty() {
+            let Some((key, value_and_rest)) = fields.split_once('=') else {
+                break;
+            };
+            let to_end = key == "error" || key.ends_with("Json");
+            let (value, next) = if to_end {
+                (value_and_rest, "")
+            } else {
+                match find_field_boundary(value_and_rest) {
+                    Some(i) => (&value_and_rest[..i], value_and_rest[i + 1..].trim_start()),
+                    None => (value_and_rest, ""),
+                }
+            };
+            match key.strip_suffix("Json") {
+                Some(name) => {
+                    let v = serde_json::from_str::<Value>(value)
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|_| value.to_string());
+                    rec.insert(name.to_string(), json!(v));
+                }
+                None => {
+                    rec.insert(key.to_string(), json!(value));
+                }
             }
-        }
-        if let Some(e) = error {
-            rec.insert("error".into(), json!(e));
+            fields = next;
         }
         out.push(Value::Object(rec));
     }
     out
 }
 
+/// The index of the space that starts the next ` name=` field, if any.
+fn find_field_boundary(s: &str) -> Option<usize> {
+    s.char_indices()
+        .filter(|(_, c)| *c == ' ')
+        .map(|(i, _)| i)
+        .find(|&i| {
+            let tail = &s[i + 1..];
+            tail.split_once('=').is_some_and(|(k, _)| {
+                !k.is_empty() && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+            })
+        })
+}
+
 /// v4's recorded `logs` with every field rendered as v5's capture renders it
-/// (a number's `Display`, a string bare).
+/// (a string bare; a number, boolean, null or object as its compact JSON).
 fn v4_log_records(want: &[Value], messages: &[&str]) -> Vec<Value> {
     want.iter()
         .filter(|l| str_at(l, "message").is_some_and(|m| messages.contains(&m)))
@@ -4522,10 +4886,15 @@ fn v4_log_records(want: &[Value], messages: &[&str]) -> Vec<Value> {
         .collect()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn compare_restore_logs(
     name: &str,
     want: &Value,
     got_lines: &[String],
+    got_summary: &RestoreSummary,
+    want_summary: &Value,
+    carve: &SummaryCarve,
+    literals: &HashSet<String>,
     failures: &mut Vec<String>,
 ) {
     let Some(want) = want.as_array() else {
@@ -4534,20 +4903,110 @@ fn compare_restore_logs(
         ));
         return;
     };
-    let (g, w) = (
-        v5_log_records(got_lines, RESTORE_LOG_LINES),
-        v4_log_records(want, RESTORE_LOG_LINES),
-    );
-    if g != w {
-        failures.push(format!(
-            "[{name}] the restore's log lines differ\n  rust:   {g:?}\n  oracle: {w:?}"
-        ));
+    let mut messages: Vec<&str> = RESTORE_TS_MESSAGES.to_vec();
+    if REPO_LEVEL_CASES.contains(&name) {
+        messages.extend_from_slice(REPO_LEVEL_MESSAGES);
     }
-    if failures
-        .iter()
-        .all(|f| !f.starts_with(&format!("[{name}] the restore's log")))
-    {
-        println!("  logs {name}: {} line(s) byte-equal", g.len());
+    let (mut g, mut w) = (
+        v5_log_records(got_lines, &messages),
+        v4_log_records(want, &messages),
+    );
+    // `Restore operation completed` carries the whole summary and its warning
+    // count: each side must log ITS OWN returned summary (the summaries
+    // themselves are compared — carves and all — by `compare_case`), then both
+    // fields leave the line diff.
+    let got_summary_v = serde_json::to_value(got_summary).expect("summary serializes");
+    for (side, recs, summary) in [("v5", &mut g, &got_summary_v), ("v4", &mut w, want_summary)] {
+        for r in recs.iter_mut() {
+            if r["message"] != "Restore operation completed" {
+                continue;
+            }
+            let logged = r
+                .get("summary")
+                .and_then(Value::as_str)
+                .and_then(|s| serde_json::from_str::<Value>(s).ok());
+            if logged.as_ref() != Some(summary) {
+                failures.push(format!(
+                    "[{name}] `Restore operation completed` ({side}) logs a summary that is not \
+                     the one the restore returned"
+                ));
+            }
+            let n = summary["warnings"].as_array().map(Vec::len).unwrap_or(0);
+            if r.get("warningCount").and_then(Value::as_str) != Some(n.to_string().as_str()) {
+                failures.push(format!(
+                    "[{name}] `Restore operation completed` ({side}) warningCount {:?}, its \
+                     summary carries {n}",
+                    r.get("warningCount")
+                ));
+            }
+            if let Some(o) = r.as_object_mut() {
+                o.remove("summary");
+                o.remove("warningCount");
+            }
+        }
+    }
+    // The ruled divergences whose v4 warnings are carved from the summary
+    // carry a WARN line each: the same lines leave v4's side.
+    let dedupe =
+        REPLAY_DEDUPE.contains(&name) && !REPLAY_DEDUPE_NARROWED.iter().any(|(c, _)| *c == name);
+    w.retain(|r| {
+        let m = r["message"].as_str().unwrap_or("");
+        let e = r["error"].as_str().unwrap_or("");
+        !(dedupe
+            && (m == "Failed to restore doc mount folder"
+                || m == "Failed to restore doc mount file link"))
+            && !(carve.files_lead != 0
+                && m == "Failed to restore file"
+                && e == UPLOADS_UNPROVISIONED)
+    });
+    // [P4.143 item 2] the serde arm's chat: v4's ZodError vs v5's serde
+    // sentence (pinned by shape in `compare_repo_logs`) — the tail leaves.
+    if name == SERDE_ROOM_CASE {
+        for r in g.iter_mut().chain(w.iter_mut()) {
+            if r["message"] == "Failed to restore chat"
+                && r["chatId"] == "c1000000-0000-4000-8000-000000000006"
+            {
+                r["error"] = json!("<SERDE-ARM-DIVERGENCE>");
+            }
+        }
+    }
+    // The ruled files-phase slot (see `files_phase_last`).
+    let (mut g, mut w) = (
+        files_phase_last(g, |r: &Value| r["message"] == "Failed to restore file"),
+        files_phase_last(w, |r: &Value| r["message"] == "Failed to restore file"),
+    );
+    // The family's origin rule: a UUID the archive does not carry was minted
+    // (the `new-account` remap), so it is labelled rather than compared.
+    for r in g.iter_mut().chain(w.iter_mut()) {
+        if let Some(o) = r.as_object_mut() {
+            for v in o.values_mut() {
+                if v.as_str()
+                    .is_some_and(|s| is_uuid(s) && !literals.contains(s))
+                {
+                    *v = json!("<minted>");
+                }
+            }
+        }
+    }
+    if g != w {
+        let detail = g
+            .iter()
+            .zip(w.iter())
+            .enumerate()
+            .find(|(_, (a, b))| a != b)
+            .map(|(i, (a, b))| {
+                format!("first difference at line {i}:\n    rust:   {a}\n    oracle: {b}")
+            })
+            .unwrap_or_else(|| format!("line count: rust {} vs oracle {}", g.len(), w.len()));
+        failures.push(format!(
+            "[{name}] the restore's log census differs — {detail}\n  rust:   {:?}\n  oracle: {:?}",
+            g.iter()
+                .map(|r| r["message"].as_str().unwrap_or(""))
+                .collect::<Vec<_>>(),
+            w.iter()
+                .map(|r| r["message"].as_str().unwrap_or(""))
+                .collect::<Vec<_>>()
+        ));
     }
 }
 

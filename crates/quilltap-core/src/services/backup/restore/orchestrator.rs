@@ -55,6 +55,14 @@ pub enum RestoreMode {
 }
 
 impl RestoreMode {
+    /// v4's `mode` spelling (the census lines' `mode` field).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            RestoreMode::Replace => "replace",
+            RestoreMode::NewAccount => "new-account",
+        }
+    }
+
     /// v4's route guard (`system/restore/route.ts:202`): anything other than the
     /// two spellings is a bad request.
     pub fn parse(mode: &str) -> Option<Self> {
@@ -93,6 +101,13 @@ pub async fn restore(
     target_user_id: &str,
     options: RestoreOptions,
 ) -> Result<RestoreSummary, String> {
+    // v4 `restore.ts:75` — before the archive is even extracted.
+    tracing::info!(
+        target: "quilltap::restore",
+        mode = mode.as_str(),
+        targetUserId = %target_user_id,
+        "Starting restore operation"
+    );
     let mut extracted = parse_backup_zip(zip_path, &host.temp_dir())?;
 
     if mode == RestoreMode::Replace {
@@ -169,21 +184,45 @@ macro_rules! copts {
 /// rather than a counter (tags, the three profile families, characters,
 /// memories): v4 still wraps each in a `try` that pushes one warning and keeps
 /// going, it just never counts the successes.
+///
+/// With a message and fields after the body, the catch also logs v4's
+/// per-phase WARN (P4.158 R-G — `restore.ts`'s `moduleLogger.warn(<msg>,
+/// {<id>, error})`, every phase's own; `error` last, bare, as v4's
+/// `error.message`).
 macro_rules! warn_only {
     ($warnings:expr, $label:expr, $body:expr) => {
         if let Err(e) = $body {
             $warnings.push(format!("{}: {}", $label, WarnText::warn_text(&e)));
         }
     };
+    ($warnings:expr, $label:expr, $body:expr, $msg:literal $(, $k:ident = $v:expr)* $(,)?) => {
+        if let Err(e) = $body {
+            let error = WarnText::warn_text(&e);
+            $warnings.push(format!("{}: {}", $label, error));
+            tracing::warn!(target: "quilltap::restore", $($k = %$v,)* error = %error, $msg);
+        }
+    };
 }
 
 /// The per-row tolerance every phase shares: v4 wraps each entity in a `try`
 /// that pushes one `warnings[]` line and keeps going.
+///
+/// The logging arm is [`warn_only!`]'s.
 macro_rules! warn_row {
     ($warnings:expr, $counter:expr, $label:expr, $body:expr) => {
         match $body {
             Ok(_) => $counter += 1,
             Err(e) => $warnings.push(format!("{}: {}", $label, WarnText::warn_text(&e))),
+        }
+    };
+    ($warnings:expr, $counter:expr, $label:expr, $body:expr, $msg:literal $(, $k:ident = $v:expr)* $(,)?) => {
+        match $body {
+            Ok(_) => $counter += 1,
+            Err(e) => {
+                let error = WarnText::warn_text(&e);
+                $warnings.push(format!("{}: {}", $label, error));
+                tracing::warn!(target: "quilltap::restore", $($k = %$v,)* error = %error, $msg);
+            }
         }
     };
 }
@@ -215,13 +254,21 @@ impl WarnText for crate::db::document_store_overlay::OverlayError {
 }
 
 /// A storage failure renders its bare message like every other phase; the two
-/// wardrobe-specific refusals keep their `Debug` form (unmeasured against v4 —
-/// no corpus reaches them; recorded in P4.147's lane record).
+/// wardrobe-specific refusals render v4's thrown message (P4.158 R-H — they
+/// used to render their `Debug` form, `NoMount` / `Cycle("…")`). The restore
+/// only CREATES, so the no-mount arm is v4's create sentence
+/// (`wardrobe.repository.ts:345-348`, measured on `restore_phase_warns_replace`,
+/// whose legacy preset names a character that did not restore); the cycle arm
+/// already carries v4's own message (`wardrobe-writes.ts:136-139`).
 impl WarnText for crate::db::vault_wardrobe_public::WardrobePublicError {
     fn warn_text(&self) -> String {
+        use crate::db::vault_wardrobe_public::{WardrobePublicError, NO_MOUNT_MESSAGE};
         match self {
-            crate::db::vault_wardrobe_public::WardrobePublicError::Db(e) => e.warn_text(),
-            other => format!("{other:?}"),
+            WardrobePublicError::Db(e) => e.warn_text(),
+            WardrobePublicError::NoMount => {
+                format!("Cannot create wardrobe item: {NO_MOUNT_MESSAGE}")
+            }
+            WardrobePublicError::Cycle(message) => message.clone(),
         }
     }
 }
@@ -292,7 +339,9 @@ fn restore_on_writer(
             warn_only!(
                 w,
                 format!("Failed to restore tag \"{name}\""),
-                repo.create(&create, &copts!(id_of(tag), crate::db::tags::CreateOptions))
+                repo.create(&create, &copts!(id_of(tag), crate::db::tags::CreateOptions)),
+                "Failed to restore tag",
+                tagId = id_of(tag),
             );
         }
     }
@@ -319,19 +368,34 @@ fn restore_on_writer(
             // than by the profile's owner. Seeded BEFORE the unique-name pass,
             // exactly where v4 seeds them.
             let seeded = seed_legacy_connection_profile_fields(p);
-            if seeded.seeded_anything() {
+            // v4 `:131-141`: logged when EITHER of the two 4.9 columns is
+            // absent from the archived record (`=== undefined` — an explicit
+            // `null` is present), with v4's four fields only (P4.158 R-G: v5
+            // used to log on any seeded column, snake_case, with three more).
+            let (absent_prefill, absent_image) = (
+                p.get("multiCharacterPrefill").is_none(),
+                p.get("supportsImageUpload").is_none(),
+            );
+            if absent_prefill || absent_image {
                 tracing::debug!(
-                    profile_id = %id_of(p),
+                    target: "quilltap::restore",
+                    profileId = %id_of(p),
                     provider = %s(p, "provider"),
-                    seeded_multi_character_prefill = seeded.seeded_multi_character_prefill,
-                    seeded_supports_image_upload = seeded.seeded_supports_image_upload,
-                    seeded_fallback_profile_id = seeded.seeded_fallback_profile_id,
-                    seeded_allow_tier_fallback = seeded.seeded_allow_tier_fallback,
-                    dropped_self_reference = seeded.dropped_self_reference,
+                    seededMultiCharacterPrefill = absent_prefill,
+                    seededSupportsImageUpload = absent_image,
                     "Seeded connection-profile columns the archive predates"
                 );
             }
             let unique = make_unique_profile_name(&original, &taken);
+            if unique != original {
+                tracing::debug!(
+                    target: "quilltap::restore",
+                    profileId = %id_of(p),
+                    from = %original,
+                    to = %unique,
+                    "Renamed connection profile on restore to avoid name collision"
+                );
+            }
             taken.insert(normalize_profile_name(&unique));
             let create = crate::db::connection_profiles::CpCreate {
                 user_id: target_user_id.to_string(),
@@ -391,7 +455,9 @@ fn restore_on_writer(
                 repo.create(
                     &create,
                     &copts!(id_of(p), crate::db::connection_profiles::CreateOptions)
-                )
+                ),
+                "Failed to restore connection profile",
+                profileId = id_of(p),
             );
         }
     }
@@ -418,7 +484,9 @@ fn restore_on_writer(
                 repo.create(
                     &create,
                     &copts!(id_of(p), crate::db::image_profiles::CreateOptions)
-                )
+                ),
+                "Failed to restore image profile",
+                profileId = id_of(p),
             );
         }
     }
@@ -446,7 +514,9 @@ fn restore_on_writer(
                 repo.create(
                     &create,
                     &copts!(id_of(p), crate::db::embedding_profiles::CreateOptions)
-                )
+                ),
+                "Failed to restore embedding profile",
+                profileId = id_of(p),
             );
         }
     }
@@ -583,10 +653,16 @@ fn restore_on_writer(
             ) {
                 Ok(Some(vault)) => preserved.push(PreservedStore::new("character", ch, vault)),
                 Ok(None) => {}
-                Err(e) => w.push(format!(
-                    "Failed to restore character \"{name}\": {}",
-                    e.warn_text()
-                )),
+                Err(e) => {
+                    let error = e.warn_text();
+                    w.push(format!("Failed to restore character \"{name}\": {error}"));
+                    tracing::warn!(
+                        target: "quilltap::restore",
+                        characterId = %id_of(ch),
+                        error = %error,
+                        "Failed to restore character"
+                    );
+                }
             }
         }
     } else if !data.characters.is_empty() {
@@ -778,13 +854,27 @@ fn restore_on_writer(
                 related_memory_ids: sa(m, "relatedMemoryIds"),
                 reinforced_importance: n(m, "reinforcedImportance", 0.0),
             };
+            // v4 restores through the USER-SCOPED memories repository, whose
+            // `create` first looks the character up for the target user and
+            // refuses a memory whose character is not there
+            // (`user-scoped.ts:310-311`) — reached when the character itself
+            // failed to restore (P4.158 R-G's plant measured it: v5 went
+            // straight to the insert and failed on a different error).
+            let created = if character_owned_by(main, &create.character_id, target_user_id) {
+                repo.create(
+                    &create,
+                    &copts!(id_of(m), crate::db::memories::CreateOptions),
+                )
+                .map_err(|e| e.warn_text())
+            } else {
+                Err("Character not found or access denied".to_string())
+            };
             warn_only!(
                 w,
                 "Failed to restore memory".to_string(),
-                repo.create(
-                    &create,
-                    &copts!(id_of(m), crate::db::memories::CreateOptions)
-                )
+                created,
+                "Failed to restore memory",
+                memoryId = id_of(m),
             );
         }
     }
@@ -810,7 +900,9 @@ fn restore_on_writer(
                 repo.create(
                     &create,
                     &copts!(new_id(), crate::db::prompt_templates::CreateOptions)
-                )
+                ),
+                "Failed to restore prompt template",
+                templateId = s(t, "id"),
             );
         }
     }
@@ -842,7 +934,9 @@ fn restore_on_writer(
                 repo.create(
                     &create,
                     &copts!(new_id(), crate::db::roleplay_templates::CreateOptions)
-                )
+                ),
+                "Failed to restore roleplay template",
+                templateId = s(t, "id"),
             );
         }
     }
@@ -866,7 +960,9 @@ fn restore_on_writer(
                 w,
                 c.provider_models,
                 format!("Failed to restore provider model \"{}\"", s(m, "modelId")),
-                repo.upsert_model(&create)
+                repo.upsert_model(&create),
+                "Failed to restore provider model",
+                modelId = s(m, "modelId"),
             );
         }
     }
@@ -917,6 +1013,7 @@ fn restore_on_writer(
             );
             if let Err(e) = crate::db::projects::parse_create_properties(&properties) {
                 w.push(format!("{label}: {e}"));
+                project_warn(p, &e);
                 continue;
             }
             if let Some(store) = archived_store(p, "project") {
@@ -926,7 +1023,11 @@ fn restore_on_writer(
                         c.projects += 1;
                         preserved.push(PreservedStore::new("project", p, store));
                     }
-                    Err(e) => w.push(format!("{label}: {}", e.warn_text())),
+                    Err(e) => {
+                        let error = e.warn_text();
+                        w.push(format!("{label}: {error}"));
+                        project_warn(p, &error);
+                    }
                 }
                 continue;
             }
@@ -941,7 +1042,9 @@ fn restore_on_writer(
                 w,
                 c.projects,
                 label,
-                projects.create(&input, &store_opts(id_of(p)))
+                projects.create(&input, &store_opts(id_of(p))),
+                "Failed to restore project",
+                projectId = id_of(p),
             );
         }
 
@@ -961,6 +1064,7 @@ fn restore_on_writer(
                 Ok(bag) => bag,
                 Err(e) => {
                     w.push(format!("{label}: {e}"));
+                    group_warn(g, &e);
                     continue;
                 }
             };
@@ -970,7 +1074,11 @@ fn restore_on_writer(
                         c.groups += 1;
                         preserved.push(PreservedStore::new("group", g, store));
                     }
-                    Err(e) => w.push(format!("{label}: {}", e.warn_text())),
+                    Err(e) => {
+                        let error = e.warn_text();
+                        w.push(format!("{label}: {error}"));
+                        group_warn(g, &error);
+                    }
                 }
                 continue;
             }
@@ -984,7 +1092,9 @@ fn restore_on_writer(
                 w,
                 c.groups,
                 label,
-                groups.create_with_properties(&input, &properties, &store_opts(id_of(g)))
+                groups.create_with_properties(&input, &properties, &store_opts(id_of(g))),
+                "Failed to restore group",
+                groupId = id_of(g),
             );
         }
     } else {
@@ -1000,6 +1110,10 @@ fn restore_on_writer(
     match llm {
         // v4's `isLLMLogsDegraded()` arm (`:326`), with its warning verbatim.
         None if !data.llm_logs.is_empty() => {
+            tracing::warn!(
+                target: "quilltap::restore",
+                "Skipping LLM logs restore — logs database is in degraded mode"
+            );
             w.push(
                 "LLM logs were not restored because the logs database is in degraded mode"
                     .to_string(),
@@ -1023,14 +1137,18 @@ fn restore_on_writer(
                     request: match de_opt(log, "request") {
                         Some(r) => r,
                         None => {
-                            w.push("Failed to restore LLM log: request summary is missing or malformed".to_string());
+                            let error = "request summary is missing or malformed";
+                            w.push(format!("Failed to restore LLM log: {error}"));
+                            tracing::warn!(target: "quilltap::restore", logId = %id_of(log), error = %error, "Failed to restore LLM log");
                             continue;
                         }
                     },
                     response: match de_opt(log, "response") {
                         Some(r) => r,
                         None => {
-                            w.push("Failed to restore LLM log: response summary is missing or malformed".to_string());
+                            let error = "response summary is missing or malformed";
+                            w.push(format!("Failed to restore LLM log: {error}"));
+                            tracing::warn!(target: "quilltap::restore", logId = %id_of(log), error = %error, "Failed to restore LLM log");
                             continue;
                         }
                     },
@@ -1052,7 +1170,9 @@ fn restore_on_writer(
                             created_at: created_at.clone(),
                             updated_at: now(),
                         },
-                    )
+                    ),
+                    "Failed to restore LLM log",
+                    logId = id_of(log),
                 );
             }
         }
@@ -1078,7 +1198,9 @@ fn restore_on_writer(
                     // leaves the stored one untouched, so a plugin the user
                     // had switched off doesn't come back on.
                     cfg.get("enabled").and_then(serde_json::Value::as_bool),
-                )
+                ),
+                "Failed to restore plugin config",
+                pluginName = s(cfg, "pluginName"),
             );
         }
     }
@@ -1100,6 +1222,12 @@ fn restore_on_writer(
                     Ok(v) => v,
                     Err(e) => {
                         w.push(format!("Failed to restore chat settings: {e}"));
+                        tracing::warn!(
+                            target: "quilltap::restore",
+                            settingsId = %id_of(row),
+                            error = %e,
+                            "Failed to restore chat settings"
+                        );
                         continue;
                     }
                 };
@@ -1114,7 +1242,9 @@ fn restore_on_writer(
                         created_at: now(),
                         updated_at: now(),
                     },
-                )
+                ),
+                "Failed to restore chat settings",
+                settingsId = id_of(row),
             );
         }
     }
@@ -1152,17 +1282,25 @@ fn restore_on_writer(
                 Err(e) if crate::db::sqlite_errors::is_unique_constraint_error(&e) => {
                     tracing::debug!(
                         target: "quilltap::restore",
-                        folder_id = %id_of(f),
+                        folderId = %id_of(f),
                         path = %s(f, "path"),
                         "Skipped duplicate folder row during restore",
                     );
                     continue;
                 }
-                Err(e) => w.push(format!(
-                    "Failed to restore folder \"{}\": {}",
-                    s(f, "name"),
-                    e.warn_text()
-                )),
+                Err(e) => {
+                    let error = e.warn_text();
+                    w.push(format!(
+                        "Failed to restore folder \"{}\": {error}",
+                        s(f, "name")
+                    ));
+                    tracing::warn!(
+                        target: "quilltap::restore",
+                        folderId = %id_of(f),
+                        error = %error,
+                        "Failed to restore folder"
+                    );
+                }
             }
         }
     }
@@ -1193,7 +1331,10 @@ fn restore_on_writer(
                         created_at: now(),
                         updated_at: now(),
                     },
-                )
+                ),
+                "Failed to restore character plugin data",
+                cpdId = id_of(cpd),
+                pluginName = s(cpd, "pluginName"),
             );
         }
     }
@@ -1221,7 +1362,9 @@ fn restore_on_writer(
                         created_at: now(),
                         updated_at: now(),
                     },
-                )
+                ),
+                "Failed to restore conversation annotation",
+                annotationId = id_of(a),
             );
         }
     }
@@ -1287,7 +1430,9 @@ fn restore_on_writer(
                         file,
                         &bytes,
                         carried.as_ref()
-                    )
+                    ),
+                    "Failed to restore file",
+                    fileId = id_of(file),
                 ),
                 None => w.push(format!("File not found in backup: {name}")),
             }
@@ -1412,7 +1557,9 @@ fn restore_on_writer(
                 w,
                 c.vector_index_metas,
                 format!("Failed to restore vector index meta for character {character_id}"),
-                repo.save_meta(&character_id, n(meta, "dimensions", 0.0))
+                repo.save_meta(&character_id, n(meta, "dimensions", 0.0)),
+                "Failed to restore vector index meta",
+                characterId = character_id,
             );
         }
         if !data.vector_entries.is_empty() {
@@ -1427,10 +1574,15 @@ fn restore_on_writer(
                 .collect();
             match repo.add_entries(&entries) {
                 Ok(()) => c.vector_entries = entries.len(),
-                Err(e) => w.push(format!(
-                    "Failed to restore vector entries: {}",
-                    e.warn_text()
-                )),
+                Err(e) => {
+                    let error = e.warn_text();
+                    w.push(format!("Failed to restore vector entries: {error}"));
+                    tracing::warn!(
+                        target: "quilltap::restore",
+                        error = %error,
+                        "Failed to restore vector entries batch"
+                    );
+                }
             }
         }
     }
@@ -1458,7 +1610,9 @@ fn restore_on_writer(
                         created_at: now(),
                         updated_at: now(),
                     },
-                )
+                ),
+                "Failed to restore conversation chunk",
+                chunkId = id_of(chunk),
             );
         }
     }
@@ -1487,7 +1641,9 @@ fn restore_on_writer(
                         id: id_of(v),
                         created_at: now(),
                     },
-                )
+                ),
+                "Failed to restore tfidf vocabulary",
+                vocabularyId = id_of(v),
             );
         }
     }
@@ -1515,7 +1671,9 @@ fn restore_on_writer(
                         id: id_of(es),
                         created_at: now(),
                     },
-                )
+                ),
+                "Failed to restore embedding status",
+                statusId = id_of(es),
             );
         }
     }
@@ -1542,12 +1700,32 @@ fn restore_on_writer(
                 Ok(()) => c.text_replacement_rules += 1,
                 // v4 `:723` — `TextReplacementRuleConflictError` is `continue`d
                 // with a debug log and NO warning; every other error warns.
-                Err(crate::db::text_replacement_rules::TrrError::Conflict { .. }) => {}
-                Err(e) => w.push(format!(
-                    "Failed to restore text replacement rule: {}",
-                    e.warn_text()
-                )),
+                Err(crate::db::text_replacement_rules::TrrError::Conflict { .. }) => {
+                    tracing::debug!(
+                        target: "quilltap::restore",
+                        fromText = %create.from_text,
+                        caseSensitive = create.case_sensitive,
+                        "Skipping duplicate text replacement rule on restore"
+                    );
+                }
+                Err(e) => {
+                    let error = e.warn_text();
+                    w.push(format!("Failed to restore text replacement rule: {error}"));
+                    tracing::warn!(
+                        target: "quilltap::restore",
+                        ruleId = %id_of(rule),
+                        error = %error,
+                        "Failed to restore text replacement rule"
+                    );
+                }
             }
+        }
+        if c.text_replacement_rules > 0 {
+            tracing::debug!(
+                target: "quilltap::restore",
+                count = c.text_replacement_rules,
+                "Restored text replacement rules"
+            );
         }
     }
 
@@ -1561,7 +1739,18 @@ fn restore_on_writer(
             rusqlite::params![key, s(row, "value")],
         ) {
             Ok(_) => c.instance_settings += 1,
-            Err(e) => w.push(format!("Failed to restore instance setting \"{key}\": {e}")),
+            Err(e) => {
+                let error = DbError::from(e).warn_text();
+                w.push(format!(
+                    "Failed to restore instance setting \"{key}\": {error}"
+                ));
+                tracing::warn!(
+                    target: "quilltap::restore",
+                    key = %key,
+                    error = %error,
+                    "Failed to restore instance setting"
+                );
+            }
         }
     }
 
@@ -1571,14 +1760,14 @@ fn restore_on_writer(
         &dirs.npm_plugins,
         &[],
         &mut w,
-        "npm plugin",
+        HostCopyKind::NpmPlugin,
     );
     c.user_installed_themes = copy_host_subdirs(
         &root_path.join("themes"),
         &dirs.themes,
         &[".cache"],
         &mut w,
-        "theme bundle",
+        HostCopyKind::ThemeBundle,
     );
     // v4 `:817-825` — `themes-index.json` rides along with the bundles.
     if let Some(themes_dir) = dirs.themes.as_ref() {
@@ -1587,10 +1776,20 @@ fn restore_on_writer(
             let _ = std::fs::create_dir_all(themes_dir);
             if let Err(e) = std::fs::copy(&src, themes_dir.join("themes-index.json")) {
                 // v4 logs and does NOT warn for this one file.
-                tracing::warn!(error = %e, "Failed to restore themes-index.json");
+                tracing::warn!(
+                    target: "quilltap::restore",
+                    error = %e,
+                    "Failed to restore themes-index.json"
+                );
             }
         }
     }
+
+    // v4 `:1037` — said whether or not anything failed.
+    tracing::info!(
+        target: "quilltap::restore",
+        "All entities restored with preserved IDs - no reconciliation needed"
+    );
 
     // ── 24a. Compact archives arrive with no vectors at all (v4 `7189a968`,
     //    `restore.ts:873-907`): memory embeddings are NULL and every derived
@@ -1606,11 +1805,19 @@ fn restore_on_writer(
         .unwrap_or(false)
     {
         match enqueue_compact_reindex(main, target_user_id) {
-            Ok(true) => w.push(
+            Ok(Some(profile_id)) => {
+                tracing::debug!(
+                    target: "quilltap::restore",
+                    targetUserId = %target_user_id,
+                    profileId = %profile_id,
+                    "Queued full re-index for compact backup restore"
+                );
+                w.push(
                 "This was a compact backup, so search indexes were rebuilt rather than restored — search will warm back up as re-indexing completes. Conversation and document chunks are rebuilt as those chats and stores are next touched."
                     .to_string(),
-            ),
-            Ok(false) => w.push(
+                )
+            }
+            Ok(None) => w.push(
                 "This was a compact backup, but no default embedding profile is configured, so search cannot be rebuilt yet. Configure one and re-index from the Commonplace Book."
                     .to_string(),
             ),
@@ -1619,7 +1826,11 @@ fn restore_on_writer(
                 w.push(format!(
                     "Failed to queue re-indexing after compact restore: {error}"
                 ));
-                tracing::warn!(error = %error, "Failed to enqueue reindex after compact restore");
+                tracing::warn!(
+                    target: "quilltap::restore",
+                    error = %error,
+                    "Failed to enqueue reindex after compact restore"
+                );
             }
         }
     }
@@ -1636,6 +1847,27 @@ fn restore_on_writer(
     //    cheap no-op.
     let reconcile =
         crate::services::embedding_dimension_reconcile::reconcile_embedding_dimensions(main, mount);
+    // v4 `:1088-1095`. `skippedReason` is v4's `null` when the pass ran;
+    // `mismatched` an object, through the `…Json` convention (logged last).
+    let mismatched = serde_json::json!({
+        "memories": reconcile.mismatched.memories,
+        "conversationChunks": reconcile.mismatched.conversation_chunks,
+        "helpDocs": reconcile.mismatched.help_docs,
+        "mountChunks": reconcile.mismatched.mount_chunks,
+    })
+    .to_string();
+    tracing::debug!(
+        target: "quilltap::restore",
+        targetDimensions = %reconcile
+            .target_dimensions
+            .map_or_else(|| "null".to_string(), |d| d.to_string()),
+        skippedReason = reconcile.skipped_reason.map_or("null", |r| r.as_str()),
+        vectorEntriesDeleted = reconcile.vector_entries_deleted,
+        vectorIndexMetaFixed = reconcile.vector_index_meta_fixed,
+        reindexEnqueued = reconcile.reindex_enqueued,
+        mismatchedJson = mismatched.as_str(),
+        "Post-restore embedding reconcile complete"
+    );
     if let Some(reason) = reconcile.skipped_reason {
         w.push(format!(
             "Embedding reconcile was skipped after restore ({}); semantic search will be repaired on the next startup.",
@@ -1661,15 +1893,27 @@ fn restore_on_writer(
     // the cleanup fires when `restore` returns — one stack frame later, on every
     // path including a panic. `system_restore_state` asserts the scratch root is
     // empty after every case, which is what actually proves it.
-    c.into_summary(data, w, embedding_reconcile)
+    let summary = c.into_summary(data, w, embedding_reconcile);
+    // v4 `:1165-1170`. `summary` is an object — the `…Json` convention, logged
+    // last; `mode` is v4's spelling.
+    let summary_json = serde_json::to_string(&summary).unwrap_or_default();
+    tracing::info!(
+        target: "quilltap::restore",
+        targetUserId = %target_user_id,
+        mode = if replace_mode { "replace" } else { "new-account" },
+        warningCount = summary.warnings.len(),
+        summaryJson = summary_json.as_str(),
+        "Restore operation completed"
+    );
+    summary
 }
 
 /// v4 24a's enqueue: `getDefaultEmbeddingProfile(targetUserId)` (strict
 /// `findDefault` — no first-row fallback) then
 /// `enqueueEmbeddingReindexAll(userId, {profileId, scope: 'all'})` — plain
 /// enqueue at priority -1, maxAttempts 3, payload key order `{profileId,
-/// scope}`. `Ok(true)` = enqueued, `Ok(false)` = no default profile.
-fn enqueue_compact_reindex(main: &Connection, user_id: &str) -> Result<bool, DbError> {
+/// scope}`. `Ok(Some(profile id))` = enqueued, `Ok(None)` = no default profile.
+fn enqueue_compact_reindex(main: &Connection, user_id: &str) -> Result<Option<String>, DbError> {
     let profile_id: Option<String> = main
         .query_row(
             "SELECT id FROM embedding_profiles WHERE userId = ?1 AND isDefault = 1 LIMIT 1",
@@ -1682,7 +1926,7 @@ fn enqueue_compact_reindex(main: &Connection, user_id: &str) -> Result<bool, DbE
             other => Err(other),
         })?;
     let Some(profile_id) = profile_id else {
-        return Ok(false);
+        return Ok(None);
     };
     let now = now();
     crate::db::background_jobs::BackgroundJobsRepository::new(main).create(
@@ -1690,7 +1934,7 @@ fn enqueue_compact_reindex(main: &Connection, user_id: &str) -> Result<bool, DbE
             user_id: user_id.to_string(),
             job_type: "EMBEDDING_REINDEX_ALL".to_string(),
             status: Some("PENDING".to_string()),
-            payload: serde_json::json!({ "profileId": profile_id, "scope": "all" }),
+            payload: serde_json::json!({ "profileId": &profile_id, "scope": "all" }),
             priority: -1.0,
             attempts: 0.0,
             max_attempts: 3.0,
@@ -1705,7 +1949,7 @@ fn enqueue_compact_reindex(main: &Connection, user_id: &str) -> Result<bool, DbE
             updated_at: now,
         },
     )?;
-    Ok(true)
+    Ok(Some(profile_id))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1811,7 +2055,9 @@ fn restore_mount_family(
                         created_at: now(),
                         updated_at: now(),
                     },
-                )
+                ),
+                "Failed to restore doc mount point",
+                mountPointId = id_of(mp),
             );
         }
     }
@@ -1852,7 +2098,9 @@ fn restore_mount_family(
                         created_at: now(),
                         updated_at: now(),
                     },
-                )
+                ),
+                "Failed to restore doc mount folder",
+                folderId = id_of(f),
             );
         }
     }
@@ -1878,7 +2126,9 @@ fn restore_mount_family(
                         created_at: now(),
                         updated_at: now(),
                     },
-                )
+                ),
+                "Failed to restore doc mount file",
+                fileId = id_of(f),
             );
         }
     }
@@ -1911,7 +2161,9 @@ fn restore_mount_family(
                     "Failed to restore doc-store file link \"{}\"",
                     s(link, "relativePath")
                 ),
-                repo.create_from_row(&coerced, &id_of(link), &now())
+                repo.create_from_row(&coerced, &id_of(link), &now()),
+                "Failed to restore doc mount file link",
+                linkId = id_of(link),
             );
         }
     }
@@ -1944,7 +2196,9 @@ fn restore_mount_family(
                         created_at: now(),
                         updated_at: now(),
                     },
-                )
+                ),
+                "Failed to restore doc mount document",
+                documentId = id_of(d),
             );
         }
     }
@@ -1988,10 +2242,10 @@ fn restore_mount_family(
                     );
                     match res {
                         Ok(_) => c.doc_mount_blobs += 1,
-                        Err(e) => w.push(format!("Failed to restore doc-store blob {id}: {e}")),
+                        Err(e) => blob_failed(w, &id, &DbError::from(e).warn_text()),
                     }
                 }
-                Err(e) => w.push(format!("Failed to restore doc-store blob {id}: {e}")),
+                Err(e) => blob_failed(w, &id, &e.to_string()),
             }
         }
     }
@@ -2026,10 +2280,18 @@ fn restore_mount_family(
                 main, &links, &docs, &stored,
             ) {
                 Ok(_) => c.wardrobe_items += 1,
-                Err(e) => w.push(format!(
-                    "Failed to restore wardrobe item \"{title}\": {}",
-                    e.warn_text()
-                )),
+                Err(e) => {
+                    let error = e.warn_text();
+                    w.push(format!(
+                        "Failed to restore wardrobe item \"{title}\": {error}"
+                    ));
+                    tracing::warn!(
+                        target: "quilltap::restore",
+                        wardrobeItemId = %id_of(item),
+                        error = %error,
+                        "Failed to restore wardrobe item"
+                    );
+                }
             }
         }
     }
@@ -2064,7 +2326,9 @@ fn restore_mount_family(
                         created_at: now(),
                         updated_at: now(),
                     },
-                )
+                ),
+                "Failed to restore doc mount chunk",
+                chunkId = id_of(chunk),
             );
         }
     }
@@ -2095,7 +2359,9 @@ fn restore_mount_family(
                         created_at: now(),
                         updated_at: now(),
                     },
-                )
+                ),
+                "Failed to restore project doc mount link",
+                linkId = id_of(link),
             );
         }
     }
@@ -2123,7 +2389,9 @@ fn restore_mount_family(
                         created_at: now(),
                         updated_at: now(),
                     },
-                )
+                ),
+                "Failed to restore group doc mount link",
+                linkId = id_of(link),
             );
         }
     }
@@ -2145,7 +2413,9 @@ fn restore_mount_family(
                         created_at: now(),
                         updated_at: now(),
                     },
-                )
+                ),
+                "Failed to restore group character member",
+                memberId = id_of(m),
             );
         }
     }
@@ -2520,34 +2790,136 @@ fn restore_one_character(
         .map(|_| None)
 }
 
+/// Which of phases 23 / 24 a [`copy_host_subdirs`] call is: it names the
+/// warning's noun and picks the phase's log lines (v4 `restore.ts:956-1035` —
+/// per bundle copied (debug) or refused (WARN, beside the warning), the
+/// phase's summary (info, only when one landed), and the debug a backup without
+/// the directory gets). `tracing` takes a literal message, hence the branches.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum HostCopyKind {
+    NpmPlugin,
+    ThemeBundle,
+}
+
+impl HostCopyKind {
+    fn label(self) -> &'static str {
+        match self {
+            HostCopyKind::NpmPlugin => "npm plugin",
+            HostCopyKind::ThemeBundle => "theme bundle",
+        }
+    }
+
+    fn log_missing(self) {
+        match self {
+            HostCopyKind::NpmPlugin => {
+                tracing::debug!(target: "quilltap::restore", "No npm plugins directory in backup")
+            }
+            HostCopyKind::ThemeBundle => {
+                tracing::debug!(target: "quilltap::restore", "No themes directory in backup")
+            }
+        }
+    }
+
+    fn log_copied(self, name: &str) {
+        match self {
+            HostCopyKind::NpmPlugin => {
+                tracing::debug!(target: "quilltap::restore", pluginName = %name, "Restored npm plugin")
+            }
+            HostCopyKind::ThemeBundle => {
+                tracing::debug!(target: "quilltap::restore", themeId = %name, "Restored theme bundle")
+            }
+        }
+    }
+
+    fn log_failed(self, name: &str, error: &str) {
+        match self {
+            HostCopyKind::NpmPlugin => tracing::warn!(
+                target: "quilltap::restore",
+                pluginName = %name,
+                error = %error,
+                "Failed to restore npm plugin"
+            ),
+            HostCopyKind::ThemeBundle => tracing::warn!(
+                target: "quilltap::restore",
+                themeId = %name,
+                error = %error,
+                "Failed to restore theme bundle"
+            ),
+        }
+    }
+
+    /// `listed` is every directory entry, copied or not (v4's npm `plugins`).
+    fn log_summary(self, count: usize, listed: &[String]) {
+        match self {
+            HostCopyKind::NpmPlugin => {
+                // `plugins` is an array: the `…Json` file-layer convention.
+                let plugins = serde_json::to_string(listed).unwrap_or_default();
+                tracing::info!(
+                    target: "quilltap::restore",
+                    count,
+                    pluginsJson = plugins.as_str(),
+                    "Restored npm plugins"
+                )
+            }
+            HostCopyKind::ThemeBundle => tracing::info!(
+                target: "quilltap::restore",
+                count,
+                "Restored user-installed theme bundles"
+            ),
+        }
+    }
+}
+
 /// Phases 23 and 24 — recursive copy of every subdirectory of `src` into `dest`,
 /// skipping `skip` names. Returns how many landed; `None` for `dest` (a host with
 /// no such directory) is a documented no-op that reports 0.
+///
+/// v4 reads the backup's directory FIRST and logs the "no directory" debug when
+/// it is absent (`:988-991`, `:1032-1035`) — so does v5, before the host check
+/// (P4.158 R-G: the line fires on every archive without bundles).
 fn copy_host_subdirs(
     src: &Path,
     dest: &Option<std::path::PathBuf>,
     skip: &[&str],
     w: &mut Vec<String>,
-    label: &str,
+    kind: HostCopyKind,
 ) -> usize {
+    let Ok(entries) = std::fs::read_dir(src) else {
+        kind.log_missing();
+        return 0;
+    };
     let Some(dest) = dest else {
         return 0;
     };
-    let Ok(entries) = std::fs::read_dir(src) else {
-        // No such directory in the backup — v4 debug-logs and moves on (`:789`).
-        return 0;
-    };
+    let entries: Vec<std::fs::DirEntry> = entries.flatten().collect();
     let _ = std::fs::create_dir_all(dest);
     let mut n0 = 0usize;
-    for entry in entries.flatten() {
+    for entry in &entries {
         let name = entry.file_name().to_string_lossy().into_owned();
         if !entry.path().is_dir() || skip.contains(&name.as_str()) {
             continue;
         }
         match copy_dir_recursive(&entry.path(), &dest.join(&name)) {
-            Ok(()) => n0 += 1,
-            Err(e) => w.push(format!("Failed to restore {label} \"{name}\": {e}")),
+            Ok(()) => {
+                n0 += 1;
+                kind.log_copied(&name);
+            }
+            Err(e) => {
+                w.push(format!(
+                    "Failed to restore {} \"{name}\": {e}",
+                    kind.label()
+                ));
+                kind.log_failed(&name, &e.to_string());
+            }
         }
+    }
+    if n0 > 0 {
+        let listed: Vec<String> = entries
+            .iter()
+            .filter(|e| e.path().is_dir())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        kind.log_summary(n0, &listed);
     }
     n0
 }
@@ -2570,6 +2942,39 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> std::io::Result<()> {
 // ─────────────────────────────────────────────────────────────────────────────
 // Small shared helpers
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// v4's per-project / per-group catch WARN (`restore.ts:325`, `:343`) for the
+/// arms that refuse before `create` (the bag parse, the preserve arm's slim
+/// write) — the fallback arm's `create` logs it through [`warn_row!`].
+fn project_warn(row: &Value, error: &str) {
+    tracing::warn!(
+        target: "quilltap::restore",
+        projectId = %id_of(row),
+        error = %error,
+        "Failed to restore project"
+    );
+}
+
+fn group_warn(row: &Value, error: &str) {
+    tracing::warn!(
+        target: "quilltap::restore",
+        groupId = %id_of(row),
+        error = %error,
+        "Failed to restore group"
+    );
+}
+
+/// 22f's per-blob catch: the warning and v4's WARN (`restore.ts:714-715`), for
+/// both the bytes read and the raw insert.
+fn blob_failed(w: &mut Vec<String>, id: &str, error: &str) {
+    w.push(format!("Failed to restore doc-store blob {id}: {error}"));
+    tracing::warn!(
+        target: "quilltap::restore",
+        blobId = %id,
+        error = %error,
+        "Failed to restore doc mount blob"
+    );
+}
 
 /// One entity the preserve arm kept on an archived store (P4.158 R-A).
 struct PreservedStore {
@@ -2851,8 +3256,8 @@ fn translate_restored_chat_settings(raw_row: &Value, backup_has_unmoderated_chat
     if &concierge_translated != raw_row {
         tracing::debug!(
             target: "quilltap::restore",
-            settings_id = %id_of(raw_row),
-            backup_has_unmoderated_chats,
+            settingsId = %id_of(raw_row),
+            backupHasUnmoderatedChats = backup_has_unmoderated_chats,
             "Translated pre-4.10 Concierge settings for restore"
         );
     }
@@ -2874,8 +3279,8 @@ fn translate_restored_chat_settings(raw_row: &Value, backup_has_unmoderated_chat
                 .to_string();
             tracing::debug!(
                 target: "quilltap::restore",
-                settings_id = %id_of(raw_row),
-                impersonation_voice_mode = %mode,
+                settingsId = %id_of(raw_row),
+                impersonationVoiceMode = %mode,
                 "Translated the retired impersonated-line voice toggle for restore"
             );
             settings
@@ -2919,7 +3324,7 @@ mod restored_chat_settings_translation_tests {
             lines,
             vec![
                 "DEBUG quilltap::restore Translated the retired impersonated-line voice toggle for restore \
-                 settings_id=ab000000-0000-4000-8000-000000000001 impersonation_voice_mode=ask"
+                 settingsId=ab000000-0000-4000-8000-000000000001 impersonationVoiceMode=ask"
                     .to_string()
             ],
             "{lines:#?}"
@@ -2938,7 +3343,7 @@ mod restored_chat_settings_translation_tests {
         assert_eq!(out["impersonationVoiceMode"], json!("always"));
         assert_eq!(lines.len(), 1, "{lines:#?}");
         assert!(
-            lines[0].ends_with("impersonation_voice_mode=always"),
+            lines[0].ends_with("impersonationVoiceMode=always"),
             "{}",
             lines[0]
         );
@@ -3029,6 +3434,19 @@ fn json_text_of(row: &Value, key: &str) -> String {
         Some(other) => other.to_string(),
         None => "[]".to_string(),
     }
+}
+
+/// v4's user-scoped `charactersRepo.findById(characterId)` as the memories
+/// create uses it: the character exists and belongs to `user_id`. A failed
+/// read answers `false` (v4's `findById` is a fallback read — it logs and
+/// answers `null`).
+fn character_owned_by(main: &Connection, character_id: &str, user_id: &str) -> bool {
+    main.query_row(
+        "SELECT 1 FROM characters WHERE id = ?1 AND userId = ?2",
+        rusqlite::params![character_id, user_id],
+        |_| Ok(()),
+    )
+    .is_ok()
 }
 
 fn table_exists(conn: &Connection, table: &str) -> bool {
@@ -3146,5 +3564,106 @@ impl Counters {
             embedding_reconcile: Some(embedding_reconcile),
             warnings,
         }
+    }
+}
+
+#[cfg(test)]
+mod host_copy_log_tests {
+    //! P4.158 R-G: phases 23/24's lines are unreachable in the restore family
+    //! (no archive carries a bundle, and its host declares no plugin/theme
+    //! directory), so they are capture-pinned here — v4's messages and fields
+    //! (`restore.ts:974-990`, `:1011-1034`), with the silence of a host
+    //! without the directory.
+    use super::*;
+
+    fn tree() -> (tempfile::TempDir, std::path::PathBuf, std::path::PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("src");
+        std::fs::create_dir_all(src.join("qtap-plugin-a")).unwrap();
+        std::fs::write(src.join("qtap-plugin-a").join("index.js"), "x").unwrap();
+        std::fs::write(src.join("README.txt"), "not a bundle").unwrap();
+        let dest = dir.path().join("dest");
+        (dir, src, dest)
+    }
+
+    #[test]
+    fn a_copied_npm_plugin_logs_v4s_debug_and_summary() {
+        let (_dir, src, dest) = tree();
+        let mut w = Vec::new();
+        let (n, lines) = crate::test_support::captured_with(|| {
+            copy_host_subdirs(
+                &src,
+                &Some(dest.clone()),
+                &[],
+                &mut w,
+                HostCopyKind::NpmPlugin,
+            )
+        });
+        assert_eq!(n, 1);
+        assert!(w.is_empty(), "{w:?}");
+        assert_eq!(
+            lines,
+            vec![
+                "DEBUG quilltap::restore Restored npm plugin pluginName=qtap-plugin-a".to_string(),
+                "INFO quilltap::restore Restored npm plugins count=1 pluginsJson=[\"qtap-plugin-a\"]"
+                    .to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_copied_theme_bundle_logs_v4s_debug_and_summary() {
+        let (_dir, src, dest) = tree();
+        let mut w = Vec::new();
+        let (_, lines) = crate::test_support::captured_with(|| {
+            copy_host_subdirs(
+                &src,
+                &Some(dest.clone()),
+                &[],
+                &mut w,
+                HostCopyKind::ThemeBundle,
+            )
+        });
+        assert_eq!(
+            lines,
+            vec![
+                "DEBUG quilltap::restore Restored theme bundle themeId=qtap-plugin-a".to_string(),
+                "INFO quilltap::restore Restored user-installed theme bundles count=1".to_string(),
+            ]
+        );
+    }
+
+    /// No directory in the backup → v4's debug, read BEFORE the host check;
+    /// a host without the directory and a backup WITH one → silence (v5's
+    /// documented no-op).
+    #[test]
+    fn a_missing_directory_logs_and_a_hostless_copy_is_silent() {
+        let (dir, src, _) = tree();
+        let mut w = Vec::new();
+        let (_, lines) = crate::test_support::captured_with(|| {
+            copy_host_subdirs(
+                &dir.path().join("absent"),
+                &None,
+                &[],
+                &mut w,
+                HostCopyKind::NpmPlugin,
+            );
+            copy_host_subdirs(
+                &dir.path().join("absent"),
+                &None,
+                &[],
+                &mut w,
+                HostCopyKind::ThemeBundle,
+            );
+            copy_host_subdirs(&src, &None, &[], &mut w, HostCopyKind::NpmPlugin);
+        });
+        assert_eq!(
+            lines,
+            vec![
+                "DEBUG quilltap::restore No npm plugins directory in backup".to_string(),
+                "DEBUG quilltap::restore No themes directory in backup".to_string(),
+            ]
+        );
+        assert!(w.is_empty());
     }
 }

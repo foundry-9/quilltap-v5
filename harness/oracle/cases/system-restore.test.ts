@@ -128,21 +128,24 @@ const RESTORE_CASES: Array<{
   /** Run `collapse-duplicate-folders-v1` on the TARGET first (see the case). */
   collapseFolders?: boolean;
   /**
-   * [P4.143 Tier 2 item 10] Record the refused chat create's three repository
-   * ERRORs + the per-chat WARN (`withRepoLogs`) and emit them as `repoLogs`.
+   * [P4.143 Tier 2 item 10] Also emit the refused chat create's three
+   * repository ERRORs + the per-chat WARN as `repoLogs` (projected from the
+   * case's `logs` recording since P4.158).
    */
   recordRepoLogs?: boolean;
-  /**
-   * [P4.147] Record every line whose message is in this list, at ANY level
-   * (debug included — `withLogs`), and emit them as `logs`.
-   */
-  recordLogs?: string[];
   /**
    * [P4.147 item 10(c)] Rename these main-partition columns on the TARGET
    * before the baseline is dumped (`[table, from, to]`) — the P4.131 plant
    * shape, so ONE restore insert per table fails on a real SQLite error.
    */
   renameColumns?: Array<[string, string, string]>;
+  /**
+   * [P4.158 R-G] The same plant in ANY partition (`[partition, table, from,
+   * to]`, partition `main` / `mountIndex` / `llmLogs`).
+   */
+  renameColumnsIn?: Array<[string, string, string, string]>;
+  /** [P4.158 R-G] Raw SQL run on a partition (`[partition, sql]`) — a trigger plant. */
+  plantSqlIn?: Array<[string, string]>;
 }> = [
   { name: 'restore_replace', archive: 'restore-archive.zip' },
   { name: 'restore_legacy_archive', archive: 'restore-archive-legacy.zip' },
@@ -417,12 +420,6 @@ const RESTORE_CASES: Array<{
   {
     name: 'restore_informs_replace',
     archive: 'restore-archive-informs.zip',
-    recordLogs: [
-      'Failed to restore chat inform',
-      'Restored chat informs',
-      'Data validation failed',
-      'Error creating entity',
-    ],
   },
 
   // ── P4.147 item 10(a)+(c): a real SQLite error on two restore inserts ────
@@ -440,16 +437,6 @@ const RESTORE_CASES: Array<{
       ['chats', 'rightPaneVerticalSplit', 'rightPaneVerticalSplitPlanted'],
       ['chat_documents', 'displayTitle', 'displayTitlePlanted'],
     ],
-    recordLogs: [
-      'Error creating entity',
-      'Failed to create chat',
-      'Failed to restore chat',
-      'Failed to restore chat document',
-      // The inform phase's two lines on an archive with NO informs: the WARN's
-      // silence leg, and the DEBUG summary firing with zero counts.
-      'Failed to restore chat inform',
-      'Restored chat informs',
-    ],
   },
 
   // ── P4.158 item 1 (ruling R-A): a preserved store missing a managed file ──
@@ -462,6 +449,85 @@ const RESTORE_CASES: Array<{
   // (`PRESERVE_BACKFILL`). Built by `fixtures/derive-restore-archive-damaged-
   // store.py`.
   { name: 'restore_damaged_store_replace', archive: 'restore-archive-damaged-store.zip' },
+
+  // ── P4.158 R-G (+ R-H): every phase's per-row catch, planted ───────────
+  //
+  // `restore-archive-legacy.zip` into a target with ONE written column renamed
+  // in every phase's table, in all three partitions (the P4.131 plant shape,
+  // P4.147 item 10(c)'s idiom widened): each restore insert there fails on
+  // SQLite's own `table … has no column named …`, so the per-row catch — its
+  // `summary.warnings` line AND its `moduleLogger.warn` — is reached with a
+  // real database error on both sides. Characters, projects and groups fail
+  // too, so no store is provisioned and the mount-family tables can be planted
+  // without cascading; the legacy presets then reach 22f-bis's no-mount arm
+  // (R-H — the wardrobe refusal's message bytes). `instance_settings` and
+  // `embedding_profiles` stay unplanted: every built-in pointer read and the
+  // step-25 reconcile read them.
+  {
+    name: 'restore_phase_warns_replace',
+    archive: 'restore-archive-legacy.zip',
+    renameColumnsIn: [
+      ['main', 'tags', 'nameLower', 'nameLowerPlanted'],
+      ['main', 'connection_profiles', 'sortIndex', 'sortIndexPlanted'],
+      ['main', 'image_profiles', 'tags', 'tagsPlanted'],
+      ['main', 'embedding_profiles', 'tags', 'tagsPlanted'],
+      ['main', 'memories', 'reinforcedImportance', 'reinforcedImportancePlanted'],
+      ['main', 'prompt_templates', 'content', 'contentPlanted'],
+      ['main', 'roleplay_templates', 'narrationDelimiters', 'narrationDelimitersPlanted'],
+      ['main', 'provider_models', 'experimental', 'experimentalPlanted'],
+      ['main', 'projects', 'officialMountPointId', 'officialMountPointIdPlanted'],
+      ['main', 'groups', 'officialMountPointId', 'officialMountPointIdPlanted'],
+      ['main', 'plugin_configs', 'enabled', 'enabledPlanted'],
+      ['main', 'folders', 'path', 'pathPlanted'],
+      ['main', 'character_plugin_data', 'data', 'dataPlanted'],
+      ['main', 'conversation_annotations', 'characterName', 'characterNamePlanted'],
+      ['main', 'vector_entries', 'embedding', 'embeddingPlanted'],
+      ['main', 'conversation_chunks', 'participantNames', 'participantNamesPlanted'],
+      ['main', 'tfidf_vocabularies', 'includeBigrams', 'includeBigramsPlanted'],
+      ['main', 'embedding_status', 'embeddedAt', 'embeddedAtPlanted'],
+      ['main', 'text_replacement_rules', 'sortOrder', 'sortOrderPlanted'],
+      ['mountIndex', 'doc_mount_points', 'conversionError', 'conversionErrorPlanted'],
+      ['mountIndex', 'doc_mount_folders', 'parentId', 'parentIdPlanted'],
+      ['mountIndex', 'doc_mount_files', 'fileType', 'fileTypePlanted'],
+      ['mountIndex', 'doc_mount_file_links', 'description', 'descriptionPlanted'],
+      ['mountIndex', 'doc_mount_documents', 'plainTextLength', 'plainTextLengthPlanted'],
+      ['mountIndex', 'doc_mount_chunks', 'headingContext', 'headingContextPlanted'],
+      ['mountIndex', 'project_doc_mount_links', 'projectId', 'projectIdPlanted'],
+      ['mountIndex', 'group_doc_mount_links', 'groupId', 'groupIdPlanted'],
+      ['mountIndex', 'group_character_members', 'characterId', 'characterIdPlanted'],
+      ['llmLogs', 'llm_logs', 'provider', 'providerPlanted'],
+    ],
+    // v5's chat-settings insert DROPS a column the table lacks (its
+    // `tolerant_insert`, for vintage schemas), so a rename cannot reach its
+    // catch — a trigger refuses the insert on both sides instead.
+    // Characters fail by trigger too: v5's vault resolvers read NAMED
+    // character columns, so a rename would break the reads 22f-bis makes (v4's
+    // `findByIdRaw` is `SELECT *`) and miss R-H's no-mount arm.
+    plantSqlIn: [
+      [
+        'main',
+        `CREATE TRIGGER "planted_chat_settings_failure" BEFORE INSERT ON "chat_settings" ` +
+          `BEGIN SELECT RAISE(ABORT, 'planted chat settings failure'); END`,
+      ],
+      [
+        'main',
+        `CREATE TRIGGER "planted_characters_failure" BEFORE INSERT ON "characters" ` +
+          `BEGIN SELECT RAISE(ABORT, 'planted characters failure'); END`,
+      ],
+      // No General pointer on the target: the SHARED legacy preset then takes
+      // 22f-bis's no-mount arm too (R-H), rather than a vault write into the
+      // target's wiped General store, whose internal statement order is not
+      // this order's surface.
+      ['main', `DELETE FROM "instance_settings" WHERE "key" = 'generalMountPointId'`],
+      // v5's `save_meta` pre-reads every named meta column (v4's
+      // `findMetaByCharacterId` does not), so a rename trips the read first.
+      [
+        'main',
+        `CREATE TRIGGER "planted_vector_meta_failure" BEFORE INSERT ON "vector_indices" ` +
+          `BEGIN SELECT RAISE(ABORT, 'planted vector index meta failure'); END`,
+      ],
+    ],
+  },
 
   // ── P4.158 item 2 (ruling R-B): two entities claiming one archived store ──
   //
@@ -592,59 +658,96 @@ const REPO_LOG_MESSAGES = new Set([
 ]);
 
 /**
- * [P4.143 Tier 2 item 10] Run `body` with `Logger.prototype.error/warn`
- * recorded (the `chats-messages-ops-tier2.ts` recipe), imported AFTER this
- * case's `resetModules` so it is the generation `restore` logs through.
+ * [P4.158 R-G] Every message `lib/backup/restore/restore.ts` logs through its
+ * `moduleLogger` — all 63 sites, each message distinct (counted at the pin:
+ * 44 warn, 5 info, 14 debug, 0 error). EVERY restore case records them, at
+ * every level, so the census is compared across the whole corpus.
  */
-async function withRepoLogs<T>(
-  body: () => Promise<T>,
-): Promise<{ out: T; repoLogs: Array<Record<string, unknown>> }> {
-  const repoLogs: Array<Record<string, unknown>> = [];
-  const { Logger } = await import('@/lib/logger');
-  const originals = { error: Logger.prototype.error, warn: Logger.prototype.warn };
-  for (const level of ['error', 'warn'] as const) {
-    const original = originals[level];
-    Logger.prototype[level] = function (
-      this: unknown,
-      message: string,
-      context?: Record<string, unknown>,
-      ...rest: unknown[]
-    ) {
-      if (REPO_LOG_MESSAGES.has(message)) {
-        const line: Record<string, unknown> = { level, message };
-        for (const key of ['collection', 'chatId', 'error', 'strictFailures']) {
-          if (context && key in context) {
-            const v = context[key];
-            line[key] = v instanceof Error ? v.message : v;
-          }
-        }
-        repoLogs.push(line);
-      }
-      return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
-    } as never;
-  }
-  try {
-    return { out: await body(), repoLogs };
-  } finally {
-    Logger.prototype.error = originals.error;
-    Logger.prototype.warn = originals.warn;
-  }
-}
+const RESTORE_TS_MESSAGES = [
+  "All entities restored with preserved IDs - no reconciliation needed",
+  "Failed to enqueue reindex after compact restore",
+  "Failed to restore LLM log",
+  "Failed to restore character",
+  "Failed to restore character plugin data",
+  "Failed to restore chat",
+  "Failed to restore chat document",
+  "Failed to restore chat inform",
+  "Failed to restore chat settings",
+  "Failed to restore connection profile",
+  "Failed to restore conversation annotation",
+  "Failed to restore conversation chunk",
+  "Failed to restore doc mount blob",
+  "Failed to restore doc mount chunk",
+  "Failed to restore doc mount document",
+  "Failed to restore doc mount file",
+  "Failed to restore doc mount file link",
+  "Failed to restore doc mount folder",
+  "Failed to restore doc mount point",
+  "Failed to restore embedding profile",
+  "Failed to restore embedding status",
+  "Failed to restore file",
+  "Failed to restore folder",
+  "Failed to restore group",
+  "Failed to restore group character member",
+  "Failed to restore group doc mount link",
+  "Failed to restore image profile",
+  "Failed to restore instance setting",
+  "Failed to restore memory",
+  "Failed to restore npm plugin",
+  "Failed to restore plugin config",
+  "Failed to restore project",
+  "Failed to restore project doc mount link",
+  "Failed to restore prompt template",
+  "Failed to restore provider model",
+  "Failed to restore roleplay template",
+  "Failed to restore tag",
+  "Failed to restore text replacement rule",
+  "Failed to restore tfidf vocabulary",
+  "Failed to restore theme bundle",
+  "Failed to restore themes-index.json",
+  "Failed to restore vector entries batch",
+  "Failed to restore vector index meta",
+  "Failed to restore wardrobe item",
+  "No npm plugins directory in backup",
+  "No themes directory in backup",
+  "Post-restore embedding reconcile complete",
+  "Queued full re-index for compact backup restore",
+  "Renamed connection profile on restore to avoid name collision",
+  "Restore operation completed",
+  "Restored chat informs",
+  "Restored npm plugin",
+  "Restored npm plugins",
+  "Restored text replacement rules",
+  "Restored theme bundle",
+  "Restored user-installed theme bundles",
+  "Seeded connection-profile columns the archive predates",
+  "Skipped duplicate folder row during restore",
+  "Skipping LLM logs restore — logs database is in degraded mode",
+  "Skipping duplicate text replacement rule on restore",
+  "Starting restore operation",
+  "Translated pre-4.10 Concierge settings for restore",
+  "Translated the retired impersonated-line voice toggle for restore",
+];
 
 /**
- * [P4.147] The context keys a recorded line carries, in this order. An Error
- * value is recorded as its `message` (what v4's `error.message` renders).
+ * [P4.147] The repository-level lines recorded beside them (validation, the
+ * base `_create` rethrow, the chats wrap) — compared on the cases that wired
+ * them (`restore_informs_replace`, `restore_sqlite_tail_replace`).
  */
-const LOG_KEYS = [
-  'collection',
-  'chatId',
-  'chatDocumentId',
-  'informId',
-  'total',
-  'restored',
-  'error',
-  'strictFailures',
-];
+const REPO_LEVEL_MESSAGES = ['Data validation failed', 'Error creating entity', 'Failed to create chat'];
+
+/**
+ * [P4.158 R-G] A recorded line carries EVERY context key, in the context's own
+ * order (winston's), not a fixed list: an Error value is recorded as its
+ * `message` (what v4's `error.message` renders), `undefined` is OMITTED (winston
+ * drops it), and every other value is kept as-is (objects and arrays included).
+ */
+function recordContext(line: Record<string, unknown>, context?: Record<string, unknown>): void {
+  for (const [key, v] of Object.entries(context ?? {})) {
+    if (v === undefined) continue;
+    line[key] = v instanceof Error ? v.message : v;
+  }
+}
 
 /**
  * [P4.147] `withRepoLogs` widened to a caller-chosen message list and every
@@ -670,12 +773,7 @@ async function withLogs<T>(
     ) {
       if (wanted.has(message)) {
         const line: Record<string, unknown> = { level, message };
-        for (const key of LOG_KEYS) {
-          if (context && key in context) {
-            const v = context[key];
-            line[key] = v instanceof Error ? v.message : v;
-          }
-        }
+        recordContext(line, context);
         logs.push(line);
       }
       return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
@@ -696,8 +794,9 @@ async function runRestoreCase(
     alignUploadsPointer?: boolean;
     collapseFolders?: boolean;
     recordRepoLogs?: boolean;
-    recordLogs?: string[];
     renameColumns?: Array<[string, string, string]>;
+    renameColumnsIn?: Array<[string, string, string, string]>;
+    plantSqlIn?: Array<[string, string]>;
   },
   archives: string,
   scratchRoot: string,
@@ -835,6 +934,27 @@ async function runRestoreCase(
     for (const [table, from, to] of c.renameColumns ?? []) {
       await rawQuery(`ALTER TABLE "${table}" RENAME COLUMN "${from}" TO "${to}"`);
     }
+    // [P4.158 R-G] the per-partition plant.
+    {
+      const { getRawDatabase: rawMain } = await import('@/lib/database/backends/sqlite/client');
+      const { getRawMountIndexDatabase: rawMount } = await import(
+        '@/lib/database/backends/sqlite/mount-index-client'
+      );
+      const { getRawLLMLogsDatabase: rawLlm } = await import(
+        '@/lib/database/backends/sqlite/llm-logs-client'
+      );
+      const dbs: Record<string, () => import('better-sqlite3').Database> = {
+        main: rawMain,
+        mountIndex: rawMount,
+        llmLogs: rawLlm,
+      };
+      for (const [partition, table, from, to] of c.renameColumnsIn ?? []) {
+        dbs[partition]().exec(`ALTER TABLE "${table}" RENAME COLUMN "${from}" TO "${to}"`);
+      }
+      for (const [partition, sql] of c.plantSqlIn ?? []) {
+        dbs[partition]().exec(sql);
+      }
+    }
 
     const preState = dumpAll();
 
@@ -846,13 +966,24 @@ async function runRestoreCase(
       });
     let summary: unknown;
     let repoLogs: Array<Record<string, unknown>> | undefined;
-    let logs: Array<Record<string, unknown>> | undefined;
+    let logs: Array<Record<string, unknown>>;
+    // [P4.158 R-G] every case records the census; the refused-chat cases also
+    // emit `repoLogs` (P4.143's shape), projected from the same recording.
+    ({ out: summary, logs } = await withLogs(
+      [...RESTORE_TS_MESSAGES, ...REPO_LEVEL_MESSAGES],
+      run,
+    ));
     if (c.recordRepoLogs) {
-      ({ out: summary, repoLogs } = await withRepoLogs(run));
-    } else if (c.recordLogs) {
-      ({ out: summary, logs } = await withLogs(c.recordLogs, run));
-    } else {
-      summary = await run();
+      repoLogs = logs
+        .filter((l) => REPO_LOG_MESSAGES.has(l.message as string))
+        .filter((l) => l.level === 'error' || l.level === 'warn')
+        .map((l) => {
+          const out: Record<string, unknown> = { level: l.level, message: l.message };
+          for (const key of ['collection', 'chatId', 'error', 'strictFailures']) {
+            if (key in l) out[key] = l[key];
+          }
+          return out;
+        });
     }
 
     return {
@@ -861,7 +992,7 @@ async function runRestoreCase(
       preState,
       state: dumpAll(),
       ...(repoLogs ? { repoLogs } : {}),
-      ...(logs ? { logs } : {}),
+      logs,
     };
   } finally {
     await closeDatabase();
