@@ -167428,3 +167428,34 @@ non-version `Cargo.toml` delta.
   harness reader). `GooglePartsDecoder::new(bool)` is unchanged.
 - `emit_google_no_candidates` is RENAMED (`emit_google_extract_text_warns`);
   no caller outside `model/`.
+## P4.151 — harness / test-craft smalls (ZERO core hunks) — LANE record (lane `claude/work-orders-p4-151-harness-b9b168`, 2026-10-05)
+
+Pin `/tmp/qt-v4-pin-p4151-07b8f0209` (`git rev-parse HEAD` = `07b8f0209574…`,
+`package.json` `4.10.0-dev.111`, the three symlink classes). The ledger's §2
+probe PASSED at lane start (branch `main`, HEAD `07b8f0209`, both logs empty,
+tree clean). Regen staging: `/tmp/p4151/`. **No version moves on any commit**
+(harness/oracle/fixtures only; `quilltap-harness` frozen).
+
+### Unit A1 — `chatSettings` rows in `repository_zod_messages`
+- Oracle: `SETTINGS = {id, userId, createdAt, updatedAt}` under v4's REAL
+  `ChatSettingsSchema`; seven rows — `settings-valid` (mode ABSENT), `-ask`,
+  `-always` (accepted), `-maybe`, `-empty`, `-case` (`'Off'`), `-numeric-text`
+  (`'1'`) (refused). NDJSON 51 → 58 rows.
+- Rust: a `"chatSettings"` arm driving v5's REAL `find_by_user_id` over a
+  `chat_settings` table built from `fresh_schema.json` (never a hand DDL), the
+  core unit test's column set inserted, the mode planted by raw UPDATE (ABSENT
+  = NULL), captured with `test_support::captured_with`; v5's message = the
+  `Data validation failed` `error=` tail, the second line (`Error finding
+  entity by filter`) asserted to carry the same bytes, an accepted row asserted
+  silent and read back with its mode (`off` for NULL). Floors: `rows >= 58`,
+  `(settings_messages, settings_ok) == (4, 3)`.
+- Green at the pin (58 rows, 13 accepted).
+- **Mutation:** `ImpersonationVoiceMode::VALUES` reordered to
+  `["off","always","ask"]` → the four refused rows MESSAGE-differ AND the core
+  unit test `find_by_user_id_voice_mode_null_reads_off_and_an_unknown_value_drops_the_row`
+  fails at its literal (`chat_settings.rs:2278`) — they redden together, so
+  the literal is oracle-backed. Reverted (zero core hunks).
+- R-D: the BLOB-in-mode row OMITTED (writer-unreachable; v5's check is
+  `as_str()`-gated), recorded in both file headers.
+- Recipe: `cd /tmp/qt-v4-pin-p4151-07b8f0209 && PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH npx tsx $V5W/harness/oracle/cases/repository-zod-messages.ts > /tmp/p4151/oracle-repository-zod-messages.ndjson`;
+  `QT_ORACLE_REPOSITORY_ZOD_MESSAGES=… cargo test -p quilltap-harness --test repository_zod_messages_equivalence`.

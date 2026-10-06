@@ -16,7 +16,11 @@
  * - `GroupDocMountLinkSchema` (`lib/schemas/mount-index.types.ts`);
  * - `ChatMetadataBaseSchema` (`lib/schemas/chat.types.ts`; `chats.repository.ts`
  *   — NOT `ChatMetadataSchema`), over a minimal valid chat plus a patch of the
- *   three Concierge enum columns.
+ *   three Concierge enum columns;
+ * - `ChatSettingsSchema` (`lib/schemas/settings.types.ts`;
+ *   `chat-settings.repository.ts`), over a minimal valid row plus a stored
+ *   `impersonationVoiceMode` (P4.151 A1 — the bytes v5's `find_by_user_id`
+ *   logs when it drops a row whose mode is outside the enum).
  *
  * Per row it emits `{id, schema, row, ok: true}` or `{id, schema, row, message,
  * issues}`. A BLOB cell is only expressible here: better-sqlite3 hands it
@@ -47,6 +51,7 @@
 import { GroupSchema } from '@/lib/schemas/group.types';
 import { GroupDocMountLinkSchema } from '@/lib/schemas/mount-index.types';
 import { ChatMetadataBaseSchema } from '@/lib/schemas/chat.types';
+import { ChatSettingsSchema } from '@/lib/schemas/settings.types';
 
 type Row = Record<string, unknown>;
 
@@ -73,6 +78,17 @@ const CHAT: Row = {
   updatedAt: TS,
 };
 
+// P4.151 A1: a minimal valid `ChatSettingsSchema` row — `id`/`userId`
+// (`UUIDSchema`) and the two `TimestampSchema` stamps are the only
+// non-defaulted keys (`tagStyles` defaults `{}`; every other key defaults or
+// is optional).
+const SETTINGS: Row = {
+  id: 'c5000000-0000-4000-8000-0000000000a1',
+  userId: 'a1000000-0000-4000-8000-000000000001',
+  createdAt: TS,
+  updatedAt: TS,
+};
+
 const ABSENT = '<absent>';
 const patch = (base: Row, p: Row): Row => {
   const r: Row = { ...base };
@@ -84,10 +100,13 @@ const patch = (base: Row, p: Row): Row => {
 };
 const f32 = (n: number) => ({ $float32: n });
 
-const rows: Array<[string, 'group' | 'groupDocMountLink' | 'chatMetadataBase', Row]> = [];
+const rows: Array<
+  [string, 'group' | 'groupDocMountLink' | 'chatMetadataBase' | 'chatSettings', Row]
+> = [];
 const group = (id: string, p: Row) => rows.push([id, 'group', patch(GROUP, p)]);
 const link = (id: string, p: Row) => rows.push([id, 'groupDocMountLink', patch(LINK, p)]);
 const chat = (id: string, p: Row) => rows.push([id, 'chatMetadataBase', patch(CHAT, p)]);
+const settings = (id: string, p: Row) => rows.push([id, 'chatSettings', patch(SETTINGS, p)]);
 
 // --- GroupSchema -------------------------------------------------------------
 group('group-valid', {});
@@ -154,10 +173,27 @@ chat('chat-all-three', {
 });
 chat('chat-reason-number', { conciergeModeReason: 5 });
 
+// --- ChatSettingsSchema — the stored voice mode (P4.151 A1) ------------------
+// v5's `db::chat_settings::find_by_user_id` drops a row whose
+// `impersonationVoiceMode` cell is a string outside the enum with v4's two
+// ERROR lines; these rows make the unit test's Zod literal oracle-backed. An
+// ABSENT mode is the NULL cell (v4 reads NULL as `undefined` →
+// `.default('off')`). `'1'` is what the TEXT-affinity column holds for a bound
+// `1`. A BLOB in the mode column is OMITTED (R-D): no writer on either side
+// can store one, and v5's check is `as_str()`-gated.
+settings('settings-valid', {});
+settings('settings-mode-ask', { impersonationVoiceMode: 'ask' });
+settings('settings-mode-always', { impersonationVoiceMode: 'always' });
+settings('settings-mode-maybe', { impersonationVoiceMode: 'maybe' });
+settings('settings-mode-empty', { impersonationVoiceMode: '' });
+settings('settings-mode-case', { impersonationVoiceMode: 'Off' });
+settings('settings-mode-numeric-text', { impersonationVoiceMode: '1' });
+
 const SCHEMAS = {
   group: GroupSchema,
   groupDocMountLink: GroupDocMountLinkSchema,
   chatMetadataBase: ChatMetadataBaseSchema,
+  chatSettings: ChatSettingsSchema,
 } as const;
 
 const materialize = (r: Row): Row => {

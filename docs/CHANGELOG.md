@@ -255,6 +255,11 @@ P4.150 B (the P4.D253 OPEN item). `RefusingTextExtractor`'s stderr notice said t
 _No crate versions bumped._
 
 P4.150 A4. `qtap_schema_embed_guard` and `public_schemas_vendor_guard` now locate the v4 checkout through `QT_V4_CHECKOUT` first (the variable every pinned gate exports and the three other live-checkout guards read), keeping `QT_V4_ROOT` as a legacy alias, then `$HOME/source/quilltap-server`. A pinned gate no longer compares these two against a dirty live checkout. The precedence is a pure `locate_v4_root` with a unit pin in each file; both guards green against the `07b8f0209` pin with only `QT_V4_CHECKOUT` set, and both SKIP on an empty directory (proving the variable is read).
+#### 2026-10-05 — test(harness): run v4's real ChatSettingsSchema over stored voice modes in repository_zod_messages (P4.151 A1)
+
+_No crate versions bumped._
+
+Harness-only (P4.151 A1). `repository_zod_messages` gains a `chatSettings` schema: v4's real `ChatSettingsSchema` over a minimal row plus a stored `impersonationVoiceMode` (absent, `ask`, `always`, `maybe`, `''`, `Off`, `'1'`), diffed against v5's real `db::chat_settings::find_by_user_id` over a `chat_settings` table built from `fresh_schema.json`. The Zod bytes in `chat_settings.rs`'s unit test are now oracle-backed: reordering `ImpersonationVoiceMode::VALUES` reddens the four refused rows and the unit test together. The family now covers 58 rows. No version moves.
 
 #### 2026-10-05 — docs(porting): order the 07b8f0209 follow-ups + restore round — six lanes (P4.147–P4.152) with six fresh surveys
 
