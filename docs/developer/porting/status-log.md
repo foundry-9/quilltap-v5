@@ -167838,3 +167838,55 @@ The no-user-seat room's post-greeting chain stays NOT MEASURED; the `.some`
 poll tolerates either answer, and the Send wait resolved on every run.
 SPA 0.5.808.
 
+### Gate — P4.152's lane close (the SPA smalls lane, branch `claude/spa-smalls-project-detail-toasts-f55407`)
+
+- **Commits:** `851eedb58` (the nine toasts, SPA 0.5.806), `5102b9318` (the
+  refocus + hover guard, 0.5.807), `cc16de057` (the greeting wait, 0.5.808),
+  plus this docs-only lane record (no version moves — commit.md's docs-only
+  rule). `git diff main...HEAD -- crates/` EMPTY.
+- **SPA:** `npm run lint` + `npm run build` + `npm test` — 467 files /
+  8,889 tests, 0 failed (run after units 1 and 2+3).
+- **By file, alone:** `projects-flow` 3/3 (6/6 each), `salon-inform-flow`
+  3/3 (5/5 each, the standing beat LIVE).
+- **Full Playwright, once (13.5 m): 352 passed / 8 failed / 6 skipped** (the
+  six the standing parks). Every red is in a spec this lane did not touch;
+  each re-run by FILE alone, one at a time: `prompt-templates-flow` 2/2 (the
+  `Subprompts` heading not found within 15 s under load — not in the standing
+  list; green alone, a NEW timing-cluster member to watch), `salon-roleplay-
+  template-flow` 2/2, `salon-streaming-avatar-flow` 2/2, `salon-thinking-
+  indicator` 1/1 (the P4.d17 quill), `salon-transcript-subscribed-read` 2/2,
+  `salon-regenerate-stream-flow` 2/3 (the `2/3` swipe counter at `:188`, the
+  named watch item) then 3/3 twice.
+- **Watch counters (R-E):** `salon-regenerate-stream-flow` — red in the full
+  suite, then by file 2/3, 3/3, 3/3 (cumulative since 2026-09-30: 5 of 9
+  by-file runs green); the P4.66 optimistic bubble — did NOT fire this run.
+- **Rust (no `crates/` change; run because the carryout asks):** `cargo fmt
+  --all --check` clean; `cargo clippy --workspace --all-targets -D warnings`
+  clean, AND with `--features quilltap-core/native-transport` clean. `cargo
+  test --workspace` (CARGO_INCREMENTAL=0) stopped fail-fast in `quilltap-core`'s
+  lib binary: 3,059 passed / 1 failed —
+  `services::activity_registry::tests::records_a_blip_once_a_span_outlives_the_threshold`
+  (`activity_counts().summary` read 1, not 0 — a process-global registry
+  read while a parallel test held a span). Green by name (19/19) and the core
+  lib green alone three times (3,052/0 each). A pre-existing ordering
+  intermittent in a file no lane of this round touches — **a NEW standing
+  item for the unifier to watch**. **The rest of the workspace suite was NOT
+  run:** free disk fell to 12 GB while the sibling lanes built, and with an
+  empty `crates/` diff the ~650 remaining binaries are byte-identical to
+  `main`'s; the union's §S.2 gate covers them.
+- **Corrections recorded (order item 7):** the 2026-10-03 standing note's
+  "`Every character is already on the roster.` (e2e-asserted)" is FALSE —
+  vitest only (`projects.spec.ts`), never in `e2e/`. P4.D252's "Still OPEN:
+  nothing" CONFIRMED. Dogfood notes #50, #106, #107 already closed on `main`.
+- **Tier 3, deferred by name:** item 7 the `tags: char.tags || []` coercion
+  — P4.148's (`api/projects.rs`), no SPA hunk (R-A); item 8 a deflake lane
+  for the two intermittents — not justified (R-E).
+- **💸 for the dogfood pass:** on the Friday copy, a project-detail save
+  refused by the server (a posed 400) toasting v4's fixed sentence on each of
+  the nine handlers (H1–H9 above); the Characters card collapsed and
+  re-expanded with the picker open, the search focused.
+- **Memory-worthy:** a component `effect` cannot focus PROJECTED content a
+  child's `@if` re-attaches — it runs before the child's view re-inserts the
+  node (measured live, mutation B); `afterRenderEffect` is the timing that
+  works.
+
