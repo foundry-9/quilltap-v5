@@ -177,6 +177,12 @@ Every per-item `.qtap` import warning that ends in a database error now carries 
 - The `Import failed:` catch and `ImportError::Db`'s `Display` render the same way.
 - New harness census `import_warning_text_guard`: refuses `map_err` closures built on `to_string()`, an `err_msg` built on it, and a warning literal interpolating a raw `{e}`. 103 offenders on unported main, 0 on the branch.
 - `system_import_state` no longer masks the quoted families' tails to `<ENGINE>`; six cases were red on the prefix on unported main and are green now.
+#### 2026-10-05 — docs(porting): P4.147 lane complete — the gate record and the order's status
+
+_Docs-only change._
+
+Appends P4.147's gate record to `status-log.md` (669 binaries, 4,349 passed, 0 failed, from the `07b8f0209` pin) and marks the work order LANE COMPLETE.
+
 #### 2026-10-05 — fix(restore): a replace restore keeps every entity on the archive's store and resolves Uploads to the archive's store on a fresh target (dogfood #141, #142) + the restore riders
 
 _Versions: core 0.0.1210._

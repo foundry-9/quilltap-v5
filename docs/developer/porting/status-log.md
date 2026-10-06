@@ -167186,3 +167186,33 @@ divergence outside this order, recorded.
 - A planted malformed `permanent` row skipped with v4's bytes + the WARN.
 - A restored project keeping its `icon` on the fallback arm (a backup whose
   project store was deleted).
+
+### P4.147's gate — `9799eceb1` from the `07b8f0209` pin (2026-10-05)
+
+- The log's first line names the tree: `HEAD 9799eceb1c538b6bb2a15f69bd17d1871318db17`.
+- `cargo fmt --all --check` 0; `cargo clippy --workspace --all-targets -- -D
+  warnings` 0; the same with `--features quilltap-core/native-transport` 0.
+- `cargo test --workspace --no-fail-fast` (`CARGO_INCREMENTAL=0`,
+  `QT_V4_CHECKOUT`/`QT_V4_ROOT` = the pin, lane-private oracle copies for
+  `QT_ORACLE_SYSTEM_RESTORE`, `_RESTORE_GUARDS`, `_SYSTEM_BACKUP`,
+  `_SYSTEM_IMPORT_EXECUTE`, `_MOUNT_INDEX_COERCION`, `_UUID_REMAP`): **669
+  binaries / 4,349 passed / 0 failed / 3 ignored.** Every family this lane
+  touched RAN with a real duration: `system_restore_state` 3/3 (11.12 s),
+  `restore_vintage_state` 6/6, `system_restore_equivalence`; neutral and green:
+  `system_backup_equivalence`, `backup_uuid_remap_equivalence` (corpus
+  regenerated to scratch, byte-identical to the committed one),
+  `backup_mount_index_coercion_equivalence`, `system_restore_guards_equivalence`,
+  `system_import_state`, `p4_9g6_seam_contract`, `dispatch_wrong_type_census`
+  (`EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE = 451`, unmoved), `spelling_guard`,
+  `fallback_home_guard`, `zod_issues_home_guard`,
+  `builtin_prompt_templates_guard`, `provider_sdk_version_guard`,
+  `qtap_schema_embed_guard`; `help_tree_equivalence` SKIPs without its own
+  oracle inside the suite, so it was run through the sweep driver from the pin
+  (green, 0.78 s).
+- The sweep driver over the ten restore/backup families from the pin: 8 ok, 1
+  `refused_repo_write` (`backup_uuid_remap`, run by hand as above), 1
+  `nothing_to_run` (`p4_9g6_seam_contract`, green in the suite).
+  `recipe_sweep.py --self-test` 0 failures.
+- `npm run build` (apps/web, after `npm ci`) exit 0 — liveness only, no SPA edit.
+- Versions: core 0.0.1209 → **0.0.1210** (one bump); harness frozen; no
+  non-version `Cargo.toml` delta. Status: **LANE COMPLETE**.
