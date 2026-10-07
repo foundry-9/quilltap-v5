@@ -1059,6 +1059,9 @@ async function main(): Promise<void> {
     'remove_file',
     'wardrobe_create',
     'wardrobe_update',
+    // The `94fbb1ae3` boot-hardness unification's review: the archive arm's
+    // line carries v4's conditional `archivedAt` (a minted stamp here).
+    'wardrobe_update_archives',
     'wardrobe_delete',
   ]);
   for (const c of cases) {

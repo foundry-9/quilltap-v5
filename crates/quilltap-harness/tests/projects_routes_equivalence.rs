@@ -1388,18 +1388,32 @@ fn projects_routes_match_oracle() {
     }
     {
         let db = fresh_db(&spec, "w_arch");
-        let resp = rt.block_on(projects::project_wardrobe_update(
-            &db,
-            IOTA,
-            CLOAK,
-            json!({ "archived": true }),
-        ));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(projects::project_wardrobe_update(
+                &db,
+                IOTA,
+                CLOAK,
+                json!({ "archived": true }),
+            ))
+        });
         check(
             "wardrobe_update_archives",
             &response_data(&resp),
             true,
             &mut failed,
         );
+        // The `94fbb1ae3` boot-hardness unification's review: v4's line
+        // appends `archivedAt` whenever the PUT's `archived` changed the
+        // item (`mount-wardrobe-route-factory.ts:357-363`) — the stamp is
+        // minted on each side.
+        if let Err(diff) = compare_projects_v1_masked(
+            &oracle["wardrobe_update_archives"]["logs"],
+            &lines,
+            &["archivedAt"],
+        ) {
+            eprintln!("[wardrobe_update_archives] [Projects v1] lines MISMATCH:{diff}");
+            failed.push("wardrobe_update_archives_projects_v1".into());
+        }
     }
     {
         // The NEW 404, reachable only with `archived` in the body.

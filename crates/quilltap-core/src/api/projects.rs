@@ -1672,6 +1672,9 @@ pub async fn project_wardrobe_update(
                 patch.archived_at = Some(v);
             }
         }
+        // v4's `archivePatch` for the success line: present exactly when the
+        // flag changed the item (`archivedPatch` answers `null` otherwise).
+        let archive_logged = patch.archived_at.clone();
         match update_project_wardrobe_item(main, &links, &docs, &mp, &iid, &patch) {
             // Re-read through the overlay so the echo carries the full null-inclusive
             // shape v4's JS object emits (the WardrobeItem struct serialize skips
@@ -1681,7 +1684,7 @@ pub async fn project_wardrobe_update(
                     .into_iter()
                     .find(|i| i.get("id").and_then(Value::as_str) == Some(iid.as_str()))
                     .unwrap_or(Value::Null);
-                Ok(Ok((mp, item)))
+                Ok(Ok((mp, item, archive_logged)))
             }
             Ok(None) => Ok(Err(not_found("Project wardrobe item"))),
             Err(e) => Ok(Err(wardrobe_err(e))),
@@ -1689,14 +1692,20 @@ pub async fn project_wardrobe_update(
     })
     .await;
     match out {
-        Ok(Ok((mp, item))) => {
-            // P4.163: v4 `mount-wardrobe-route-factory.ts:357`.
+        Ok(Ok((mp, item, archive_logged))) => {
+            // P4.163: v4 `mount-wardrobe-route-factory.ts:357-363` — with
+            // `...(archivePatch !== null && { archivedAt })` appended LAST:
+            // the new stamp, or `null` for an unarchive (the `94fbb1ae3`
+            // boot-hardness unification's review).
             tracing::info!(
                 projectId = %project_id,
                 userId = %SINGLE_USER_ID,
                 mountPointId = %mp,
                 itemId = %item_id,
                 context = "wardrobe",
+                archivedAt = archive_logged
+                    .as_ref()
+                    .map(|v| tracing::field::display(v.as_deref().unwrap_or("null"))),
                 "[Projects v1] Updated project wardrobe item"
             );
             Response::Project(json!({ "wardrobeItem": item }))
