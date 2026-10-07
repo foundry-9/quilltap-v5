@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — docs: trim CLAUDE.md — archive the 2026-09-15→2026-10-03 round bullets to claude-md-status-history.md §4 (verbatim, diff-verified)
+
+_Docs-only change._
+
+Moved 27 Status bullets (the `ffb6b3119` drift catch-up round through the `f6426e196` bug-174 dogfood pass) verbatim into the history file and left one compressed arc bullet. CLAUDE.md 131 KB → 52 KB.
+
 #### 2026-10-06 — docs(porting): dogfood pass — the `94fbb1ae3` smalls round (19 rows, zero round defects; #150–#152 ORDER-PENDING)
 
 _Docs-only change._
