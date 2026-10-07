@@ -171428,3 +171428,133 @@ unifier should record the waiver in the ledger's §1.
   store rows, the replay and the ruled unprovisioned-Uploads arm; the parse
   is ready to call (`parse_create_file`), the derived-archive differential
   is the work.
+
+### Lane close — what landed, what is deferred, the handoffs
+
+**Landed (Tier 1, all seven):** items 1–6 (unit 1: memories + informs on
+both paths, the restore's projects/groups WHOLE, the R-C defaults, the three
+derived archives, the import refusal rows) and item 7 (unit 2: the
+`createExpectError` twin for memories / projects / groups).
+
+**Landed (Tier 2):** item 8 for prompt templates (both paths), library
+folders (both paths), tags (both paths, incl. v4's create-time TypeErrors)
+and file rows (IMPORT only); item 9 (the census by key ORDER + the five
+off-target lines); item 10 (the backfill's other managed files, live + unit,
+and the `PRESERVE_BACKFILL_SHARED_CONTENT` facet); item 11 (the `Broken Tag`
+serde row retired, 9 → 8; the other eight stay with their Tier 3 kinds);
+item 12 measured (below).
+
+**Tier 3 BY NAME (deferred, not silently):**
+- **Chats** (`ChatMetadataBaseSchema` + `ChatParticipantBaseSchema` — ~100
+  keys, the Concierge twin stays as is) on both paths; its serde row stays.
+- **Messages** (R-B: `ChatEventSchema` at the two call sites) — v4's union
+  collapse means a faithful `ZodError.message` needs all THREE members'
+  nested issue lists (`zod_chat_event_issues` answers `errors: []` for the
+  collapsed issue — P4.143 Tier 3 item 13); a partial twin would refuse the
+  right rows with the wrong bytes.
+- **Characters** (`CharacterSchema` — systemPrompts / scenarios /
+  pronouns / physicalDescription nests) on both paths.
+- **Connection / image / embedding profiles** on both paths — their five
+  serde rows stay (`SERDE_ARM_DIVERGENCES`).
+- **Roleplay templates** (`RoleplayTemplateSchema` — the preprocessed
+  `TemplateDelimiterSchema` discriminated union) on both paths; its serde
+  row stays.
+- **The restore's files arm** — `parse_create_file` is ready; the carried
+  store rows / replay / unprovisioned-Uploads ruled arms make the derived
+  archive the work.
+- Character plugin data, conversation annotations, chat documents, provider
+  models, plugin configs (survey §1) — not attempted.
+- Order Tier 3 items 13–16 as written: the production `create` paths and
+  `add_message` itself ungated (memory extraction / manual memory create —
+  `MemorySchema`; the Salon's message write — `ChatEventSchema`; the
+  character wizard — `CharacterSchema`; SPA profile creates — the three
+  profile schemas; the inform post — `ChatInformSchema`); the doc-store
+  family + group members / store links (v4 validation unsurveyed); wardrobe /
+  blobs / instance settings / vectors (NO v4 validation — by design); the
+  restore WARNs' raw `error` object (the oracle renders `.message`).
+
+**Item 12 — `_update` paths measured at the pin (recorded for a later
+order):** import `providerModels.upsertModel` (`import-configuration.ts:
+111`), `pluginConfigs.upsertForUserPlugin` (`:154`),
+`characterPluginData.upsert` (`import-characters.ts:362`),
+`docMountPoints.update` (`import-document-stores.ts:82`), the reconcile
+pass's `docMountPoints` / `characters` / `chats` / `projects` /
+`connections` / `imageProfiles` / `embeddingProfiles` /
+`roleplayTemplates.update` (`reconcile.ts:148-589`); restore
+`chats.update` (`restore.ts:235`), `upsertModel` (`:307`),
+`upsertForUserPlugin` (`:373`). Each `_update` re-validates the merged row
+(`base.repository.ts:404`); none is gated on v5.
+
+**HANDOFFs:**
+- **P4.163 (§S.1 fold, C1 item 3 signatures from their `d1e038fee`):**
+  `quilltap_import::{log_prompt_template_create_wrap_failure,
+  log_folder_create_wrap_failure, log_tag_create_wrap_failure,
+  log_file_create_wrap_failure}` → `db::fallback`; and
+  `quilltap_import::log_refused_create(collection, zod)` — C1 described
+  `log_create_failure` as "the `Data validation failed` + `Error creating
+  entity` pair", but it logs only the second; this helper adds the first
+  (a `log_data_validation_failure` home, or fold into the pair).
+- **The unifier (`db/projects.rs` frozen, §R.10(i)):**
+  `parse_create_entity`'s doc comment (`db/projects.rs` ~:525) still says
+  "the restore's two arms still call `parse_create_properties` — a named
+  handoff" — stale since unit 1; replace with "the import AND the restore
+  call this".
+- **P4.162:** none — `log_refused_store_create` CALLED unchanged.
+- **Drift ledger (the unifier):** v4 `main` moved to `938144eb4` then
+  `7c78abd49` mid-lane — both docs-only (`docs/releases/4.10.0.md`; three
+  wardrobe design specs + `docs/CHANGELOG.md` + `.claude/commands/`); the
+  human waived both in chat for this run; every regen ran from the pin.
+
+**Candidate v4 filings (§S.7):** none new. (R-C was a v5 bug.)
+
+**Recorded-description corrections:** `Data validation failed` never
+carries `strictFailures` (R-D / item 2 said it did); the import overwrites
+`sha256` / `size` / `mimeType` with bridge truth, so the order's
+`sha256 of 63` / `size "big"` file examples are unreachable there; v4's tag
+create throws TypeErrors before `_create` for a non-string name.
+
+**Fixtures changed:** NEW `restore-archive-{memory,inform,entity,kind}-
+refusals.zip` (+ their derive scripts); RE-DERIVED
+`restore-archive-damaged-store.zip` (its script extended). Invalidated
+oracles: `system-restore` (regenerate whole — every case reads the archive
+dir), `system-import-execute`, `repository-zod-messages`,
+`{memories,projects,groups}-tier2`. No `.db` pair, no
+`fresh_schema.json` / `migration_indexes.json` byte moved.
+
+**💸 for the dogfood pass:** the order's list stands, plus — a `.qtap`
+carrying a tag whose `visualStyle.foregroundColor` is `"red"` → `Failed to
+import tag …` in v4's ZodError words; a library folder with an unmapped
+`projectId` → refused; a file row with `category: "VIDEO"` → refused with
+its bytes left in Quilltap Uploads (R-E); a backup restored and its
+`Restore operation completed` line read for v4's key order on
+`quilltap::restore`; a damaged archive (strip a vault's `identity.md`)
+restored → one `Backfilled a managed file …` WARN.
+
+**The lane gate (2026-10-07):** `cargo fmt --all --check` clean; `cargo
+clippy --workspace --all-targets -- -D warnings` AND `--features
+quilltap-core/native-transport` clean; `recipe_sweep.py --self-test` 0
+failures; `cargo test --workspace --no-fail-fast` (`CARGO_INCREMENTAL=0`,
+`QT_V4_CHECKOUT` / `QT_V4_ROOT` at the pin, the lane's oracle env block —
+zod-messages, system-import-execute, system-restore, the three tier-2
+families, qtap-import) at `cc8dd8b19`: **673 binaries / 4,421 passed / 1
+failed / 3 ignored** — the one red `generation_key_travels_as_is_guard` (a
+literal pin on `files.rs`), fixed in `1a374de2f` and re-run green by name
+with `system_import_state` and the import unit tests; fmt + both clippies
+re-run green after the fix. Every touched family RAN by name (zod-messages,
+import, restore, memories / projects / groups tier-2,
+`qtap_import_equivalence` — `lorian-and-riya.qtap` still imports all 42
+memories, no sound row newly refused — `restore_vintage_state` 6/6); the
+live-checkout guards (`builtin_prompt_templates_guard`,
+`provider_sdk_version_guard`, `qtap_schema_embed_guard`,
+`public_schemas_vendor_guard`, `help_tree_equivalence`) and
+`spelling_guard`, `fallback_home_guard`, `zod_issues_home_guard`,
+`import_warning_text_guard`, `folders_chokepoint_wiring_guard` green.
+**Sibling families re-run by name from the pin (one announced sweep):**
+`chat_informs_{routes,tier2,remap}`, `{projects,groups}_routes` — 5/5 ok.
+`npm run build` (apps/web, main's `node_modules` symlinked for the run, no
+SPA edit) green. The lane's FIRST workspace gate was stopped at 360
+binaries: it had read the oracle files this lane then regenerated in
+place, and the source-scanning guards saw later units' working tree
+(`folders_chokepoint_wiring_guard` red there — fixed by `d95d53bce`).
+**Versions at close:** core 0.0.1251 (from 0.0.1242); harness frozen;
+nothing else moved.

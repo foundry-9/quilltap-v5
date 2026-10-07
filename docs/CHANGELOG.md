@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — docs(porting): P4.161 lane record — whole-row validation on import and restore, LANE COMPLETE
+
+_Docs-only change._
+
+The lane's close record in `status-log.md` (what landed across Tier 1 and Tier 2, the Tier 3 deferrals by name — chats, messages, characters, profiles, roleplay templates, the restore's files arm — the HANDOFFs for P4.163's wrap homes and the unifier's stale `db/projects.rs` doc line, item 12's measured `_update` sites, the fixtures changed, the gate), the order's status header set to LANE COMPLETE, and the zod-messages oracle header naming its new schemas.
+
 #### 2026-10-07 — refactor(import): read the avatar cache key under the literal `generation_key_travels_as_is_guard` pins (P4.161 Tier 2)
 
 _Versions: core 0.0.1251._

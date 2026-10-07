@@ -22,6 +22,12 @@
  *   `impersonationVoiceMode` (P4.151 A1 — the bytes v5's `find_by_user_id`
  *   logs when it drops a row whose mode is outside the enum).
  *
+ * - P4.161 (dogfood #152 + the whole-row validation round): `MemorySchema`,
+ *   `ChatInformSchema` (each accepted row also carries v4's PARSED output —
+ *   the schema defaults), `PromptTemplateSchema`, `FolderSchema`, `TagSchema`
+ *   and `FileEntrySchema` — every bound the `.qtap` import / backup restore
+ *   now refuses on is a recorded row here (never typed from the source).
+ *
  * Per row it emits `{id, schema, row, ok: true}` or `{id, schema, row, message,
  * issues}`. A BLOB cell is only expressible here: better-sqlite3 hands it
  * back as a `Buffer`, but v4's SQLite collection hydrates a `Buffer` in a
