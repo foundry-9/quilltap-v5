@@ -170044,3 +170044,300 @@ The standing queue (the Lantern per-turn budget, a real token-limit turn, the
 four planted proofs, dedup/summaries, the Brahma deep query, #101, the
 compression re-measure); #150's re-run of C3 once it lands; the restore
 census counted against a v4 log of the same restore.
+
+## P4.163 — the repository-fallback class, round 5 (lane `claude/repository-fallbacks-round5-e9307c`, pin `94fbb1ae3`, 2026-10-07)
+
+- **§R.2 probe at lane start:** branch `main`, HEAD `94fbb1ae3`, both logs
+  empty; the tree held ONE untracked file, `docs/releases/4.10.0.md` (v4
+  release notes being drafted — outside `lib/`/`app/`/`packages/`/`plugins/`).
+  Mid-lane v4 `main` gained two DOCS-ONLY commits — `938144eb4` (that file,
+  committed) and `7c78abd49` (three wardrobe design specs under `docs/`).
+  **The human waived both in chat ("docs-only … keep the baseline where it is
+  throughout this run")**; the pin stayed `94fbb1ae3` throughout and no
+  `lib/`/`app/`/`packages/`/`plugins/` path was ever dirty. Lane pin
+  `/tmp/qt-v4-pin-p4163-94fbb1ae3` (`rev-parse` = `94fbb1ae3…`,
+  `4.10.0-dev.112`), the three symlink classes; re-probed before every regen
+  batch. **The ledger is NOT updated by this lane** — the unifier records the
+  two docs-only commits.
+- Warm start: `cp -cR` of main's `target/` (49 s); `CARGO_INCREMENTAL=0`.
+
+### Unit 1 — contract C1's homes (core 0.0.1243, commit `d1e038fee` — THE commit the siblings' `HANDOFF(P4.163)` copies fold onto)
+
+**C1 item 1 — `log_partition_unavailable(partition: Partition, collection,
+&DbError)`** (R-C): v4's `withRawDb` DEBUG (`dedicated-db.repository.ts:246`)
+`Dedicated database unavailable; answering with the fallback {collection,
+dbTarget, error}` for EITHER sibling (`dbTarget` = `Partition::db_target()`,
+`mountIndex` / `llmLogs`); a `DbError::PartitionUnavailable` renders v4's
+degraded guard sentence (`Mount index database is in degraded mode`,
+`mount-index-guard.ts:20`; `LLM logs database is in degraded mode`,
+`llm-logs-guard.ts:21`); any other error renders `error_text`.
+`Partition::Main` has no v4 guard — it renders `error_text` (P4.159's local
+copy has `unreachable!()` there; this home's arm wins at the fold, no
+difference in any reachable state). `log_mount_index_unavailable` is now a
+thin wrapper; its one production caller (`api/salon.rs` — the chat PUT's
+project gate) moves its `error` bytes BY CONSTRUCTION from `partition not
+available: mountIndex` to the degraded sentence. **HANDOFF (unifier):**
+P4.159's host C3 arm pins that salon DEBUG at today's bytes and records its
+own flip — it flips on the union.
+**C1 item 2 — `log_partition_structural_unavailable(partition, repository)
+-> String`**: v4's `verifyStructure` string through `table_shape::
+unavailable` (its first caller): exactly `mount index database unavailable:
+Mount index database is in degraded mode` / `LLM logs database unavailable:
+LLM logs database is in degraded mode`; `repository` is not part of v4's
+string (accepted for the caller); logs nothing. Pinned in-crate (P4.159's
+`table_shape_*` degraded rows prove the union).
+**C1 item 3 — the per-kind create wraps**, MEASURED through a
+`Logger.prototype` spy on v4's REAL repositories (NEW oracle case
+`harness/oracle/cases/create-wrap-lines.ts`, NEW family
+`create_wrap_lines_equivalence`, 22 rows — eleven ops, plain AND inside v4's
+real `withStrictRepositoryFailures`). Survey corrections measured:
+`image_profile` and `embedding_profile` carry `{userId, name, provider}` (the
+survey said no fields); `roleplay_template` / `prompt_template` carry
+`{userId, name}`; `file`'s key is `filename` (= `originalFilename`). Homes
+(ERROR, `quilltap::db`, `collection` first, `error` bare, `strictFailures=true`
+from `strict_repository_failures_active()` — no explicit flag parameter; an
+absent context field is OMITTED as winston drops `undefined`, hence the
+`Option<&str>`s):
+
+| home | v4 line |
+|---|---|
+| `log_character_create_failure(&DbError)` | `Data validation failed {collection: characters, error}` (NO `strictFailures` — `validate` logs directly) + `Error creating character entity {collection, error, strictFailures?}` (`characters.repository.ts:352`) |
+| `log_character_create_wrap_failure(user_id, name, &e)` | `Error creating character {collection, userId, name, …}` (`:312`) |
+| `log_connection_profile_create_wrap_failure(user_id, name, provider, &e)` | `Error creating connection profile {collection, userId, name, provider, …}` (`:83`) |
+| `log_image_profile_create_wrap_failure(user_id, name, provider, &e)` | `Error creating image profile {…userId, name, provider}` (`:72`) |
+| `log_embedding_profile_create_wrap_failure(user_id, name, provider, &e)` | `Error creating embedding profile {…userId, name, provider}` (`:90`) |
+| `log_file_create_wrap_failure(user_id, filename, &e)` | `Error creating file {…userId, filename}` (`:148`) |
+| `log_folder_create_wrap_failure(user_id, path, &e)` | `Error creating folder {…userId, path}` (`:51`) |
+| `log_tag_create_wrap_failure(user_id, name, &e)` | `Error creating tag {…userId, name}` (`:86`) |
+| `log_roleplay_template_create_wrap_failure(user_id, name, &e)` | `Error creating roleplay template {…userId, name}` (`:302`) |
+| `log_prompt_template_create_wrap_failure(user_id, name, &e)` | `Error creating prompt template {…userId, name}` (`:261`) |
+| `log_chat_message_add_create_wrap_failure(chat_id, &e)` | `Failed to add message to chat {chatId, error, strictFailures?}` — standalone `safeQuery`, NO collection, NO validation line (`chats-messages.ops.ts:387-446`) |
+
+No v4 twin measured ABSENT — all eleven built. For the non-character kinds
+the caller logs `Data validation failed` itself and then
+`log_create_failure(collection, &e)` (v4 order: validate → `_create` →
+wrap). **Recorded for C1's text:** `log_create_failure` renders ONE line
+(`Error creating entity`), not "the pair" C1 describes — P4.161 measured the
+same and codes a lane-local `log_refused_create` for the pair (its HANDOFF);
+a `log_data_validation_failure` home is a candidate fold (the literal has
+eight scattered emitters today, none in `fallback_home_guard`).
+`fallback_home_guard` +11 messages. Red-first: the family and the homes'
+in-crate pins could not compile on unported main (no homes); the moved
+joined-links pin (`the_strict_aware_joined_links_sibling_honours_the_scope`)
+measured RED at runtime first (`partition not available: mountIndex` vs the
+degraded sentence). Silence legs: in-crate (`log_partition_structural_
+unavailable` logs nothing; the partition DEBUG carries no `strictFailures`
+inside the scope).
+
+### Unit 2 — `mark_consumed` (core 0.0.1244, `9621d6fd0`) — Tier 1 item 6, R-D
+
+Measured through the spy on v4's REAL `ChatInformsRepository.markConsumed`
+(`chat-informs.repository.ts:238-268`): the per-row read is `_update`'s
+`findById` → base `_findById`, a FALLBACK that honours the strict scope AND
+Zod-validates the row. v5 now reads it through NEW home
+`fallback::find_by_id_strict_aware` (`Error finding entity by ID` keeps one
+emitter, `log_find_by_id_failure`): inside the scope the read's line gains
+`strictFailures=true`, `_update`'s `Error updating entity` follows, then the
+wrap's `Error marking informs consumed`, all strict, and the consume THROWS —
+as v4. The `Informs marked consumed` DEBUG now carries `collection`,
+`idsJson` (compact JSON), `messageId`, `count` in v4's order (was `ids=` as a
+Rust `Debug`). Zero rows: v4 returns 0 BEFORE the `safeQuery` — NO line
+(measured: silence leg); an unknown id / every per-row read failed: the
+DEBUG with `count: 0`.
+`chat_informs_tier2` grows a `captureDebug` op flag (the oracle spy gains
+`debug`, gated per op; the Rust filter keeps `DEBUG quilltap::db` lines for
+those ops) on the four consume ops + ONE new strict per-row-failure op. Census
+`(28, 38)` captured ops / lines (was `(24, 32)`); throws 10 (was 9).
+**Red on unported main: 4 ops logged differently, 1 answered differently.**
+**DEFERRED (HANDOFF to the unifier):** the VALIDATING arm — v4's `_findById`
+Zod-parses the row (`Data validation failed` → the entity line → `null`).
+No `ChatInformSchema` twin exists on this branch; P4.161 builds
+`zod_chat_inform_issues` in `zod_issues.rs` (its file). On the union: read
+the full row in `mark_consumed`'s per-row closure, run P4.161's twin, and on
+issues log `Data validation failed {collection: chat_informs, error}` and
+answer `Err` into `find_by_id_strict_aware` (so the entity line follows and
+the row is skipped), plus a planted-invalid-row op in `chat_informs_tier2`.
+`chat_informs_in_force_census` (P4.164's) re-run by name: GREEN, counts
+unchanged — no HANDOFF.
+
+### Unit 3 — the five `delete_messages_by_ids` callers (core 0.0.1245, `c17af140b`) — Tier 1 item 4, R-A
+
+v4's `deleteMessagesByIds` (`chats-messages.ops.ts:633-686`) is a STANDALONE
+4-arg fallback — outside the strict scope it NEVER throws (empty list → 0 with
+no line), so every caller receives `0` and carries on. The measurement table:
+
+| v5 site | v4 site | v4 after a failed delete | v5 before | now |
+|---|---|---|---|---|
+| `api/chat_informs.rs` | `chats/[id]/actions/inform.ts:228` | line, `deleted = 0` | on the home (P4.156) | unchanged |
+| `api/salon.rs` `message_delete` | `messages/[id]/route.ts:196` | line, touch, invalidate, 200 `{success, memoriesDeleted}` | **500** | converted |
+| `services/commonplace_notifications.rs` | `relevant-conversations-refresh.ts:167` | line; WARN unreachable | silent `let _` | converted |
+| `services/context_summary.rs` | `context-summary.ts:490` | line, INFO `removed: 0`, whisper posts | `?` into a silent swallow | converted |
+| `services/courier_transport.rs` `cancel_external_turn` | `chats/[id]/messages/[messageId]/route.ts:271` | line, unpause, `{cancelled: true}` | the whole cancel failed | converted — now TWO writes (delete, then the unpause), as v4's two awaits, so the home logs on the CALLER thread |
+| `services/build_context.rs` `sweep_stale_whispers` | `context-manager.ts:2276` (Core) / `:2566` (Commonplace) | line; both catches unreachable | silent `let _` | converted |
+
+No caller stays `?` — v4 has no propagating twin at any of them. Red-first:
+`salon_reads` `delete_message_main_plant` (NEW case, v4's real `DELETE
+/api/v1/messages/[id]` over a BEFORE DELETE trigger on `chat_messages`; v4
+200 + the line, the backend `SQLite deleteOne error` added to
+`PLANT_EXCLUDED`) — **red: 500 and no line**; NEW
+`delete_messages_callers_census` — a per-file source census (red: five
+bypassers) + a behavioural courier-cancel arm over the salon fixture (red:
+the cancel `Err`). Red measured by reverting the five hunks from a saved
+patch (no stash). **Gotcha (memory-note candidate):** a home called INSIDE a
+`Db::write` closure logs on the WRITER thread, invisible to the thread-scoped
+capture rig — the courier's first draft passed in production terms but its
+pin saw nothing.
+The other four sites' own tier-3 families (`context_summary_*`,
+`courier_transport_tier3`, `build_context_tier3`, `post_office_commonplace`)
+are not this lane's files: re-run by name in the sweep (below), unchanged.
+
+### Unit 4 — the seven `find_enabled_for_docedit()` callers (core 0.0.1246, `2a0eb2ba0`) — Tier 1 item 5, R-A
+
+v4's `docMountPoints.findEnabled()` (`doc-mount-points.repository.ts:99-111`)
+is a fallback around the fallback `findByFilter` — never throws outside the
+strict scope (none of its callers runs inside it): `Error finding entities by
+filter {collection: doc_mount_points}` → `[]`. Every caller converted onto
+`find_by_filter_or_empty("doc_mount_points", …)` (the `path_resolver.rs:431`
+shape):
+
+| v5 site | v4 site | v5 before |
+|---|---|---|
+| `pascal/roster.rs` `list_all_custom_tools` | `pascal/custom-tools.ts:510` | `Err → default`, no line |
+| `pascal/workbench.rs` `list_custom_tool_destinations` | `pascal/workbench.ts:221` | `?` |
+| `tools/search.rs` (operator surface) | `search-scriptorium-handler.ts:162` | `?` |
+| `documents/mod.rs` `list_all_enabled_stores` | `documents/operator-doc-actions.ts:543` | `?` |
+| `photos/user_gallery_service.rs` | `photos/user-gallery-service.ts:276` | `?` |
+| `doc_edit/uri_producers.rs` `collect_ambiguous_store_names` | `doc-edit/uri-producers.ts:158` | `if let Ok`, no line |
+| `services/embedding_reindex_job.rs` `phase_mount_chunks` | `embedding-reindex.ts:291` | `?` — now the WHOLE `read_mount_index` checkout inside the home |
+
+`doc_mount_fallback_sites_census` (mine) gains a per-file census (red: SEVEN
+bypassers) + a behavioural arm — `documents::list_all_enabled_stores` over a
+renamed `doc_mount_points.enabled` answers EMPTY with v4's line (red: the
+listing failed `no such column: enabled`). The existing classified census
+and its COUNTS are unchanged (the method is outside its `METHODS`).
+
+### Unit 5 — the `[Projects v1]` census + port (core 0.0.1247, `d5607dc74`) — Tier 2 item 7, R-E
+
+v4 has 30 sites across 12 files (+ the two factories); v5 had 8 (6 v4-matched
++ the two dressing lines, which v4 logs from the wardrobe factory). The full
+per-site table is in the survey record (Table E). **Ported — 13 success-path
+INFO lines**, each measured by wrapping the existing mutation case in the
+oracle's `withLogs` spy (`projects-routes.test.ts` — a `WITH_LOGS` set wraps
+`delete`, `add_chat`, `remove_chat`, `tool_settings`, `aesthetic_set`,
+`aesthetic_clear`, `mount_link`, `mount_unlink`, `add_file`, `remove_file`,
+`wardrobe_create`, `wardrobe_update`, `wardrobe_delete`) and compared through
+a masked `compare_projects_v1` (`userId` → the engine's single user, as the
+`Project updated` pin states it; minted `linkId` / created `itemId` masked):
+`Project deleted {projectId, userId}`, `Chat added to project` / `Chat removed
+from project {projectId, chatId}`, `File added to project` / `File removed
+from project {projectId, fileId}`, `Mount point linked to project {projectId,
+mountPointId, linkId, userId}`, `Mount point unlinked from project {projectId,
+mountPointId, userId}`, `Default tool settings updated {projectId,
+disabledToolsCount, disabledGroupsCount}`, `Project aesthetic updated
+{projectId, kind, length, deleted, userId}` (`length` = JS-trimmed UTF-16
+length), `Created project wardrobe item {projectId, userId, mountPointId,
+itemId, title, context: wardrobe}`, `Updated project wardrobe item
+{projectId, userId, mountPointId, itemId, context}`, `Deleted project wardrobe
+item {projectId, mountPointId, itemId, context}`. **Red on unported main: 13
+of 13**; every other `projects_routes` case unchanged.
+**Recorded, not ported (next round, by name):** the nine catch-arm ERRORs +
+the list catch (each needs a plant to prove reachability — most route reads
+are fallbacks); the project-scenario lines (`scenarios/route.ts` ×3, the
+scenario-item factory ×7 — driven by `scenarios_routes`, not this lane's
+family); the wardrobe factory's `Cleanup of equipped references had issues`
+WARN (v5's `let _` over `remove_equipped_item_from_all_chats`).
+**The three Scenarios-ensure repository ERRORs (P4.155 Tier 3 item 10),
+MEASURED** on `create_scenarios_ensure_fails`: `SQLite insertOne error`
+(backend, unported by convention), `Error creating entity {collection:
+doc_mount_folders}`, `Failed to create or find folder segment {context:
+folder-paths.ensureFolderPath, mountPointId, segment, path}` — the two
+portable ones belong in `DocMountFileLinksRepository::ensure_folder_path`
+(`db/doc_mount_file_links.rs`, outside this lane's Ownership): next round.
+**#151 spy row:** no `HANDOFF:` from P4.162 reached this lane; nothing landed.
+
+### Unit 6 — the census RECORD (docs) — Tier 2 items 8, 9, 10
+
+`docs/developer/porting/work-orders/surveys/2026-10-07-p4.163-delete-and-outer-line-census.md`:
+Table A — all 73 public `delete*` fns in `db/**` (31 rethrow, 15 plain, 15
+fallback, 7 already-home, 5 no-twin); Table B — 75 production ERROR/WARN
+lines in `db/**` outside the home (64 v4-matched, 11 v5-only); Table C — the
+13 `find_by_id_for_docedit` sites (all fallback-in-v4, all outside this
+lane's files); Table D — the importer-reachable non-strict reads (P4.149
+unit 7's five, by name); Table E — the `[Projects v1]` 30-site census.
+**Conversions from the census this round: NONE** — every fallback-AND-reachable
+row is in a file outside P4.163's Ownership (R-F: the next round's list,
+named in Table A); `chat_informs::delete_by_chat_id` (row 39) is a v4
+fallback with no v4 production caller — stays propagating (P4.156).
+Smalls found: `chats.rs:1389` logs `[Chats] Failed to delete conversation
+annotations for chat` with `chat_id` where v4's line has no prefix and keys
+`chatId`. `api_key_read_sites_census` re-run: GREEN, unchanged.
+
+### Deferrals (loud, by name)
+
+1. `mark_consumed`'s VALIDATING per-row arm — HANDOFF to the unifier onto
+   P4.161's `zod_chat_inform_issues` (above).
+2. The census conversions (Table A's fallback list, Table C's 13 sites, Table
+   D's five reads, Table E's catch arms / scenario lines / cleanup WARN, the
+   two `ensure_folder_path` lines, the `chats.rs:1389` small) — the next
+   round's list (Tier 3 item 11).
+3. P4.156's R-E, the 5c sync ruling (`apply_store.rs:381` is in Table A's
+   list for that reason), the five API-key wrappers — untouched (the human's).
+4. `delete_messages_by_ids` itself — untouched (P4.161's file).
+
+### HANDOFFs
+
+- **Unifier:** P4.159's salon DEBUG pin flips to `Mount index database is in
+  degraded mode` once `log_mount_index_unavailable` is the wrapper (on the
+  union, by construction).
+- **Unifier:** fold P4.159's `log_partition_structural_unavailable` copy
+  (`table_shape.rs`) and P4.161's eleven create-wrap copies onto
+  `d1e038fee`'s homes (§S.1); P4.161's lane-local `log_refused_create` (the
+  `Data validation failed` + `log_create_failure` pair) is a candidate home.
+- **Unifier:** the validating `mark_consumed` arm (Deferral 1).
+- **Unifier (§R.10(h)):** `chat_informs_tier2_equivalence.rs`'s
+  `normalize_v4_sqlite` copy is unchanged by this lane — remove it onto
+  P4.164's `common` home on the union.
+
+### The gate (lane tip `d5607dc74` + this record)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` AND `--features quilltap-core/native-transport` clean.
+- **The sweep from the pin** (announced; `recipe_sweep.py --run-all
+  --families …` over the 44 families the lane's hunks reach — every
+  delete-caller / docedit-caller family, the chat-informs families incl.
+  P4.164's census, the consume path's `orchestrator_tier3` +
+  `primary_stream_tier3`, `salon_*`, `projects_routes`, `scenarios_routes`,
+  `system_import_state` + `system_restore_state`, the Pascal / search /
+  documents / gallery / reindex families, the new `create_wrap_lines`):
+  **44 ok / 0 failed**, no SKIP. `recipe_sweep.py --self-test`: 0 failures.
+- `cargo test --workspace --no-fail-fast` with the lane env block
+  (`QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin; `QT_ORACLE_CREATE_WRAP_LINES`,
+  `QT_ORACLE_CHAT_INFORMS` + `QT_FIXTURE_CHAT_INFORMS`,
+  `QT_ORACLE_SALON_READS`, `QT_ORACLE_PROJECTS_ROUTES` — real paths under
+  `/tmp/p4163/`): **675 test binaries / 4,422 passed / 0 failed / 3
+  ignored, exit 0.** Every touched family and the live-checkout guards
+  (`spelling_guard`, `fallback_home_guard`, `builtin_prompt_templates_guard`,
+  `provider_sdk_version_guard`, `qtap_schema_embed_guard`,
+  `public_schemas_vendor_guard`, `help_tree_equivalence`) confirmed RUN by
+  name. (A first run died in `quilltap-tauri`'s `generate_context!` because
+  the lane had deleted `apps/web/dist` mid-gate — the Tauri crate needs the
+  built SPA at COMPILE time; rebuilt, re-run, green. Memory-note candidate.)
+- `npm run build` (apps/web, liveness, no SPA edit): exit 0.
+
+### 💸 for the dogfood pass
+
+A Friday-copy clone with `doc_mount_points.enabled` renamed → the Workbench
+destinations, the operator search, "look everywhere", the user gallery and the
+embedding reindex answer EMPTY with `Error finding entities by filter
+collection=doc_mount_points` (they had 500ed / failed); a BEFORE DELETE
+trigger on `chat_messages` → a Salon message delete answers 200 with `Failed
+to delete messages from chat`, a courier cancel unpauses the chat; a project
+delete / chat add-remove / file add-remove / mount link-unlink / tool
+settings / aesthetic / wardrobe create-update-delete on the Friday copy → the
+thirteen `[Projects v1]` lines in `combined.log`; a standing inform consumed →
+`Informs marked consumed collection=chat_informs idsJson=[…]`.
+
+### Versions at close
+
+core 0.0.1247; harness frozen 0.0.1110; host / web / cli / tauri / SPA
+unchanged.

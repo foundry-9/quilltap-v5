@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — docs(porting): P4.163 lane record — the delete / outer-line / docedit / `[Projects v1]` census survey; the order marked LANE COMPLETE
+
+_Docs-only change._
+
+New survey record `work-orders/surveys/2026-10-07-p4.163-delete-and-outer-line-census.md`: every public `delete*` repository fn in `db/**` (73) against its v4 twin's shape, every production ERROR/WARN line in `db/**` outside the fallback home (75), the 13 `find_by_id_for_docedit` sites, the importer-reachable non-strict vault reads, and the 30-site `[Projects v1]` census. The next round's conversion list is named there. The lane record (measurement tables, red-first counts, HANDOFFs, deferrals, the gate) is appended to `status-log.md`.
+
 #### 2026-10-07 — feat(projects): thirteen absent `[Projects v1]` success lines ported — delete, chats, files, mount points, tools, aesthetic, wardrobe (P4.163 Tier 2 item 7)
 
 _Versions: core 0.0.1247._
