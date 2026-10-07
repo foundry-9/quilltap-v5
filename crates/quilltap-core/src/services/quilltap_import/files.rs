@@ -141,6 +141,60 @@ fn folder_create_payload(
     Value::Object(item)
 }
 
+/// v4's `_create` validation of a file row (`base.repository.ts:350-368` over
+/// `FileEntrySchema`) — the ONE parse the `.qtap` import runs BEFORE the row
+/// insert and AFTER the bytes land (P4.161 Tier 2, R-E: v4 writes the bytes
+/// first, so a refused row leaves them behind on both apps). `item` is the
+/// create payload; the entity is `{...item, id, createdAt, updatedAt}`.
+/// `Err` is the `ZodError.message`. (The restore's files arm is Tier 3 by
+/// name — P4.161 lane record.)
+pub(crate) fn parse_create_file(
+    item: &Value,
+    claimed_id: Option<&str>,
+) -> Result<crate::db::files::FileCreate, String> {
+    use crate::api::zod_issues::{zod_error_message, zod_file_entry_issues};
+    let mut entity = item.as_object().cloned().unwrap_or_default();
+    let now = crate::clock::now_iso();
+    entity.insert(
+        "id".into(),
+        Value::String(
+            claimed_id
+                .unwrap_or("00000000-0000-0000-0000-000000000000")
+                .into(),
+        ),
+    );
+    entity.insert("createdAt".into(), Value::String(now.clone()));
+    entity.insert("updatedAt".into(), Value::String(now));
+    let issues = zod_file_entry_issues(&entity);
+    if !issues.is_empty() {
+        return Err(zod_error_message(&issues));
+    }
+    let e = Value::Object(entity);
+    Ok(crate::db::files::FileCreate {
+        user_id: s(&e, "userId"),
+        sha256: s(&e, "sha256"),
+        original_filename: s(&e, "originalFilename"),
+        mime_type: s(&e, "mimeType"),
+        size: e.get("size").and_then(Value::as_f64).unwrap_or_default(),
+        width: e.get("width").and_then(Value::as_f64),
+        height: e.get("height").and_then(Value::as_f64),
+        is_plain_text: e.get("isPlainText").and_then(Value::as_bool),
+        linked_to: sa(&e, "linkedTo"),
+        source: s(&e, "source"),
+        category: s(&e, "category"),
+        generation_prompt: os(&e, "generationPrompt"),
+        generation_model: os(&e, "generationModel"),
+        generation_revised_prompt: os(&e, "generationRevisedPrompt"),
+        generation_key: os(&e, "generationKey"),
+        description: os(&e, "description"),
+        tags: sa(&e, "tags"),
+        project_id: os(&e, "projectId"),
+        folder_path: os(&e, "folderPath"),
+        storage_key: os(&e, "storageKey"),
+        file_status: os(&e, "fileStatus").unwrap_or_else(|| "ok".to_string()),
+    })
+}
+
 /// Recreate the folder tree (v4 `importFolders`). Parents come first (the
 /// writer sorts by path length), so a child's `parentFolderId` always resolves
 /// against a folder we have already created — or against one that already
@@ -428,43 +482,74 @@ pub(super) fn import_files(
             .map_err(err_msg)?;
             dropped_links += dropped;
 
-            let tags: Vec<String> = sa(file, "tags")
-                .into_iter()
-                .map(|t| id_maps.tags.get(&t).map(str::to_string).unwrap_or(t))
-                .collect();
+            // v4 `(file.tags ?? []).map((t) => idMaps.tags.get(t) ?? t)` — an
+            // unmapped (or non-string) element is KEPT as it came.
+            let tags: Vec<Value> = file
+                .get("tags")
+                .and_then(Value::as_array)
+                .map(|a| {
+                    a.iter()
+                        .map(|t| match t.as_str().and_then(|t| id_maps.tags.get(t)) {
+                            Some(hit) => Value::String(hit.to_string()),
+                            None => t.clone(),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            // v4 `import-files.ts:262-280`: the raw file minus `id` / stamps /
+            // the bytes and the two transport keys, with the remapped
+            // project / links / tags and the post-bridge truth (`mimeType`,
+            // `size`, `sha256` — bug 117 — `storageKey`); the user-scoped
+            // `create` sets `userId`. `_create` validates the WHOLE row AFTER
+            // the bytes landed (R-E; P4.161 Tier 2 — v5 used to default an
+            // absent `source` / `category` and drop non-string fields).
+            let mut item = file.as_object().cloned().unwrap_or_default();
+            for k in [
+                "id",
+                "createdAt",
+                "updatedAt",
+                "dataBase64",
+                "_sourceStorageKey",
+                "_bytesMissing",
+            ] {
+                item.remove(k);
+            }
+            let set = |item: &mut serde_json::Map<String, Value>, k: &str, v: Value| {
+                item.insert(k.to_string(), v);
+            };
+            set(
+                &mut item,
+                "projectId",
+                project_id.clone().map_or(Value::Null, Value::String),
+            );
+            set(&mut item, "linkedTo", serde_json::json!(kept));
+            set(&mut item, "tags", Value::Array(tags));
+            set(
+                &mut item,
+                "mimeType",
+                Value::String(stored.stored_mime_type.clone()),
+            );
+            set(
+                &mut item,
+                "size",
+                serde_json::json!(stored.size_bytes as f64),
+            );
+            set(&mut item, "sha256", Value::String(stored.sha256.clone()));
+            set(&mut item, "storageKey", Value::String(stored.storage_key()));
+            set(&mut item, "userId", Value::String(user_id.to_string()));
+            let create =
+                parse_create_file(&Value::Object(item.clone()), None).inspect_err(|zod| {
+                    super::log_refused_create("files", zod);
+                    super::log_file_create_wrap_failure(
+                        user_id,
+                        item.get("originalFilename").and_then(Value::as_str),
+                        &DbError::Internal(zod.clone()),
+                    );
+                })?;
 
             repo.create(
-                &crate::db::files::FileCreate {
-                    user_id: user_id.to_string(),
-                    // Post-bridge truth, not what the archive claimed (see the
-                    // module header). `sha256` joined that rule in 4.9.0 (v4
-                    // `0b0617fee`, bug 117): the bridge transcodes bitmaps to
-                    // WebP, and a row carrying the archive's pre-transcode hash
-                    // cannot be joined to the mount blob it points at.
-                    sha256: stored.sha256.clone(),
-                    original_filename: original_filename.clone(),
-                    mime_type: stored.stored_mime_type.clone(),
-                    size: stored.size_bytes as f64,
-                    width: file.get("width").and_then(Value::as_f64),
-                    height: file.get("height").and_then(Value::as_f64),
-                    is_plain_text: file.get("isPlainText").and_then(Value::as_bool),
-                    linked_to: kept,
-                    source: os(file, "source").unwrap_or_else(|| "UPLOADED".to_string()),
-                    category: os(file, "category").unwrap_or_else(|| "DOCUMENT".to_string()),
-                    generation_prompt: os(file, "generationPrompt"),
-                    generation_model: os(file, "generationModel"),
-                    generation_revised_prompt: os(file, "generationRevisedPrompt"),
-                    // The avatar cache key travels AS-IS: never remapped, never derived
-                    // (v4 `7fbf8a55b` — the vendored `qtap-export.schema.json` says so in
-                    // as many words, and nothing on a receiving instance recomputes one).
-                    generation_key: os(file, "generationKey"),
-                    description: os(file, "description"),
-                    tags,
-                    project_id: project_id.clone(),
-                    folder_path: os(file, "folderPath"),
-                    storage_key: Some(stored.storage_key()),
-                    file_status: os(file, "fileStatus").unwrap_or_else(|| "ok".to_string()),
-                },
+                &create,
                 &crate::db::files::CreateOptions {
                     id: uuid::Uuid::new_v4().to_string(),
                     created_at: crate::clock::now_iso(),

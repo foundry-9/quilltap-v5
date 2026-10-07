@@ -171399,3 +171399,32 @@ unifier should record the waiver in the ledger's §1.
   — the tag family's tail is the ZodError now, its user a uuid.
   `import_warning_text_guard` caught a `map_err` with `.to_string()`;
   `TagRefusal::into_text` instead.
+
+### Unit 8 — Tier 2 item 8, file rows on the IMPORT (core 0.0.1250)
+
+- `zod_issues::zod_file_entry_issues` + `ZodIssue::{TooSmallExact,
+  TooBigExact}` (`.length(n)` — `exact: true` after `inclusive`, measured;
+  message `Too small: expected string to have exactly 64 characters`) +
+  `FILE_SOURCE` / `FILE_CATEGORY` / `FILE_STATUS`; 21 recorded `fileEntry`
+  rows. **Measured:** `source` / `category` are REQUIRED enums (absent →
+  `invalid_value`); `fileStatus` `.default('ok').optional()` refuses `null`.
+- Home: `quilltap_import::files::parse_create_file`. Import: v4's payload
+  (`import-files.ts:262-280`) — the raw row minus id / stamps / bytes /
+  transport keys, the remapped project / links, tags `get(t) ?? t` (a
+  non-uuid KEPT), the post-bridge `mimeType` / `size` / `sha256` /
+  `storageKey` — parsed AFTER the bytes land (R-E). The order's `sha256 of
+  63` / `size "big"` examples are UNREACHABLE on the import (bridge truth).
+- **HANDOFF(P4.163):** `quilltap_import::log_file_create_wrap_failure(
+  user_id: &str, filename: Option<&str>, error: &DbError)`.
+- Oracle: `execute_file_refusals` (four copies of `field-notes.txt` +
+  sound; v4 imported 1 / skipped 4; 12 lines; 4 WARNs) — `ran` 55 → 56,
+  `REPO_LOG_CASES` 10 → 11, `IMPORT_WARN_CASES` 42 → 43, fired 24 → 28,
+  `REPO_LOG_KEYS` + `filename`.
+- **Red-first (core at unit 7):** 6 differences (incl. the store's links /
+  folders and the WARN lines). **Pin moved:**
+  `tests::the_callers_codec_reaches_the_file_library_step`'s row gained
+  `source` / `category` (it relied on v5's defaults; v4 refuses it).
+- **Tier 3 by name:** the RESTORE's files arm — entangled with the carried
+  store rows, the replay and the ruled unprovisioned-Uploads arm; the parse
+  is ready to call (`parse_create_file`), the derived-archive differential
+  is the work.

@@ -501,6 +501,24 @@ pub(crate) fn log_tag_create_wrap_failure(user_id: &str, name: Option<&str>, err
     );
 }
 
+/// The files repository's own `safeQuery` wrap (`files.repository.ts:
+/// 130-150`): ERROR `Error creating file {collection, userId, filename,
+/// error, strictFailures?}` — `filename` the payload's `originalFilename`,
+/// omitted when absent. Logs only.
+// HANDOFF(P4.163): C1 item 3's `log_file_create_wrap_failure` — P4.163's
+// measured signature (`d1e038fee`), folded by repoint at §S.1.
+pub(crate) fn log_file_create_wrap_failure(user_id: &str, filename: Option<&str>, error: &DbError) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "files",
+        userId = %user_id,
+        filename = filename.map(tracing::field::display),
+        error = %crate::db::fallback::error_text(error),
+        strictFailures = crate::db::fallback::strict_repository_failures_active().then_some(true),
+        "Error creating file"
+    );
+}
+
 /// [`item_error_text`] for the store-backed repositories' [`OverlayError`]:
 /// its `Db` arm carries a `DbError` (and so, on a SQLite failure, the prefix);
 /// its `Unavailable` arm is already v4's sentence (`Project … has no usable
@@ -2547,6 +2565,10 @@ mod tests {
                 "originalFilename": "pixel.png",
                 "mimeType": "image/png",
                 "size": 70,
+                // REQUIRED by `FileEntrySchema` (P4.161 — v5 used to default
+                // them; v4 refuses a row without either).
+                "source": "UPLOADED",
+                "category": "IMAGE",
                 "dataBase64": PNG_1X1,
             }),
         );

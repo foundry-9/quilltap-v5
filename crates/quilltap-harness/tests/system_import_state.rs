@@ -799,6 +799,7 @@ const REPO_LOG_MESSAGES: &[&str] = &[
     "Error creating prompt template",
     "Error creating folder",
     "Error creating tag",
+    "Error creating file",
 ];
 
 /// The [`REPO_LOG_MESSAGES`] entry `rest` starts with — the LONGEST match, so
@@ -822,6 +823,7 @@ const REPO_LOG_KEYS: &[&str] = &[
     "userId",
     "name",
     "path",
+    "filename",
     "projectId",
     "groupId",
 ];
@@ -1607,7 +1609,45 @@ fn system_import_execute_state_equivalence() {
     // …+ P4.161 Tier 2's `execute_prompt_template_refusals` (52 + 1 = 53).
     // …+ `execute_folder_refusals` (53 + 1 = 54).
     // …+ `execute_tag_refusals` (54 + 1 = 55).
-    assert_eq!(ran, 55, "expected 55 cases, ran {ran}");
+    // …+ `execute_file_refusals` (55 + 1 = 56).
+    assert_eq!(ran, 56, "expected 56 cases, ran {ran}");
+    // [P4.161 Tier 2, R-E] Non-vacuity: v4 refused four file rows AFTER their
+    // bytes landed (three repository ERRORs each, `skipped` counted) and
+    // landed the sound copy; the store contents are the whole-state diff's.
+    {
+        let case = cases
+            .iter()
+            .find(|c| c["name"] == "execute_file_refusals")
+            .expect("the oracle is missing `execute_file_refusals` — regenerate it");
+        assert_eq!(
+            (
+                case["result"]["imported"]["files"].as_i64(),
+                case["result"]["skipped"]["files"].as_i64()
+            ),
+            (Some(1), Some(4)),
+            "v4 imports the sound copy and counts the four refusals skipped (R-F)"
+        );
+        let messages: Vec<&str> = case["repoLogs"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|l| l["message"].as_str())
+            .collect();
+        assert_eq!(
+            messages,
+            [
+                "Data validation failed",
+                "Error creating entity",
+                "Error creating file"
+            ]
+            .iter()
+            .cycle()
+            .take(12)
+            .copied()
+            .collect::<Vec<_>>(),
+            "v4's three repository ERRORs per refused file row"
+        );
+    }
     // [P4.161 Tier 2] Non-vacuity: v4's tag refusals — two Zod refusals
     // (three lines each), three TypeErrors INSIDE `create` (the wrap alone),
     // one in the importer's duplicate arm (no line) — and three landed (the
@@ -2179,12 +2219,12 @@ fn system_import_execute_state_equivalence() {
     // [P4.161 Tier 2] …+ the prompt-template arm (40), four more lines (22).
     assert_eq!(
         IMPORT_WARN_CASES.load(Ordering::SeqCst),
-        42,
+        43,
         "cases comparing the import WARNs"
     );
     assert_eq!(
         IMPORT_WARNS_FIRED.load(Ordering::SeqCst),
-        24,
+        28,
         "v4 import WARN lines fired"
     );
     // [P4.155 R-A] …+ the two property-refusal arms (5).
@@ -2192,7 +2232,7 @@ fn system_import_execute_state_equivalence() {
     // prompt-template arm (8).
     assert_eq!(
         REPO_LOG_CASES.load(Ordering::SeqCst),
-        10,
+        11,
         "cases that compared a refused create's repository lines"
     );
     assert_eq!(
@@ -2661,6 +2701,7 @@ fn run_execute_case(
                 "Error creating prompt template",
                 "Error creating folder",
                 "Error creating tag",
+                "Error creating file",
             ],
             failures,
         );

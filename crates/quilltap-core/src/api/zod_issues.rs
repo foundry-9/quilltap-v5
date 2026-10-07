@@ -178,6 +178,28 @@ pub enum ZodIssue {
         message: String,
     },
     // === end P4.D217 ===
+    /// [P4.161] `z.string().length(n)` — `origin, code, minimum, inclusive,
+    /// exact, path, message` (measured at zod 4.6.5 through
+    /// `FileEntrySchema.sha256`: `exact: true` follows `inclusive`).
+    TooSmallExact {
+        origin: &'static str,
+        code: &'static str,
+        minimum: Value,
+        inclusive: bool,
+        exact: bool,
+        path: Vec<Value>,
+        message: String,
+    },
+    /// The `.length(n)` ceiling — the mirror of [`Self::TooSmallExact`].
+    TooBigExact {
+        origin: &'static str,
+        code: &'static str,
+        maximum: Value,
+        inclusive: bool,
+        exact: bool,
+        path: Vec<Value>,
+        message: String,
+    },
     /// [P4.161] A `z.instanceof(Class)` miss — `code, expected, path, message`
     /// (`code` FIRST, unlike [`Self::InvalidType`]; measured at zod 4.6.5
     /// through `MemorySchema.embedding`'s `Float32Array` / `Buffer` options).
@@ -485,6 +507,32 @@ impl ZodIssue {
         }
     }
 
+    /// [P4.161] `z.string().length(n)` over a string that is too short.
+    pub fn too_small_string_exact(n: usize, path: Vec<Value>) -> Self {
+        Self::TooSmallExact {
+            origin: "string",
+            code: "too_small",
+            minimum: json!(n),
+            inclusive: true,
+            exact: true,
+            path,
+            message: format!("Too small: expected string to have exactly {n} characters"),
+        }
+    }
+
+    /// [P4.161] `z.string().length(n)` over a string that is too long.
+    pub fn too_big_string_exact(n: usize, path: Vec<Value>) -> Self {
+        Self::TooBigExact {
+            origin: "string",
+            code: "too_big",
+            maximum: json!(n),
+            inclusive: true,
+            exact: true,
+            path,
+            message: format!("Too big: expected string to have exactly {n} characters"),
+        }
+    }
+
     /// [P4.161] A `z.instanceof(Class)` miss (see [`Self::InvalidInstance`]).
     pub fn invalid_instance(expected: &'static str, path: Vec<Value>, got: Option<&Value>) -> Self {
         Self::InvalidInstance {
@@ -528,6 +576,8 @@ impl ZodIssue {
             | Self::TooBigInt { path, .. }
             | Self::Custom { path, .. }
             | Self::InvalidInstance { path, .. }
+            | Self::TooSmallExact { path, .. }
+            | Self::TooBigExact { path, .. }
             | Self::InvalidUnion { path, .. } => path,
         }
     }
@@ -545,6 +595,8 @@ impl ZodIssue {
             | Self::TooBigInt { message, .. }
             | Self::Custom { message, .. }
             | Self::InvalidInstance { message, .. }
+            | Self::TooSmallExact { message, .. }
+            | Self::TooBigExact { message, .. }
             | Self::InvalidUnion { message, .. } => message,
         }
     }
@@ -1232,6 +1284,101 @@ pub fn zod_tag_issues(row: &serde_json::Map<String, Value>) -> Vec<ZodIssue> {
     issues
 }
 
+/// v4 `FileSourceEnum` (`lib/schemas/file.types.ts:20`).
+pub const FILE_SOURCE: [&str; 4] = ["UPLOADED", "GENERATED", "IMPORTED", "SYSTEM"];
+/// v4 `FileCategoryEnum` (`file.types.ts:23`).
+pub const FILE_CATEGORY: [&str; 7] = [
+    "IMAGE",
+    "DOCUMENT",
+    "AVATAR",
+    "ATTACHMENT",
+    "EXPORT",
+    "BACKUP",
+    "ARCHIVE",
+];
+/// v4 `FileStatusEnum` (`file.types.ts:25`).
+pub const FILE_STATUS: [&str; 2] = ["ok", "orphaned"];
+
+/// v4 `FileEntrySchema` (`lib/schemas/file.types.ts:33-89`) over the WHOLE
+/// entity `files.create` hands `_create`, in schema key order. `source` /
+/// `category` are REQUIRED enums (no default — an absent one is
+/// `invalid_value`); `fileStatus` is `.default('ok').optional()` (absent
+/// passes, `null` fails); `sha256` `.length(64)`. Recorded through v4's REAL
+/// schema (P4.161 Tier 2).
+pub fn zod_file_entry_issues(row: &serde_json::Map<String, Value>) -> Vec<ZodIssue> {
+    let mut issues = Vec::new();
+    zod_uuid_issues(row, "id", false, &mut issues);
+    zod_uuid_issues(row, "userId", false, &mut issues);
+    match row.get("sha256") {
+        Some(Value::String(h)) if !crate::jsstr::zod_len_min_ok(h, 64) => {
+            issues.push(ZodIssue::too_small_string_exact(64, vec![key("sha256")]))
+        }
+        Some(Value::String(h)) if !crate::jsstr::zod_len_max_ok(h, 64) => {
+            issues.push(ZodIssue::too_big_string_exact(64, vec![key("sha256")]))
+        }
+        Some(Value::String(_)) => {}
+        got => issues.push(ZodIssue::invalid_type("string", vec![key("sha256")], got)),
+    }
+    required_string_issues(row, "originalFilename", &mut issues);
+    required_string_issues(row, "mimeType", &mut issues);
+    if !row.get("size").is_some_and(Value::is_number) {
+        issues.push(ZodIssue::invalid_type(
+            "number",
+            vec![key("size")],
+            row.get("size"),
+        ));
+    }
+    for k in ["width", "height"] {
+        match row.get(k) {
+            None | Some(Value::Null) | Some(Value::Number(_)) => {}
+            got => issues.push(ZodIssue::invalid_type("number", vec![key(k)], got)),
+        }
+    }
+    match row.get("isPlainText") {
+        None | Some(Value::Bool(_)) => {}
+        got => issues.push(ZodIssue::invalid_type(
+            "boolean",
+            vec![key("isPlainText")],
+            got,
+        )),
+    }
+    default_string_array_issues(row, "linkedTo", true, &mut issues);
+    if !row
+        .get("source")
+        .and_then(Value::as_str)
+        .is_some_and(|v| FILE_SOURCE.contains(&v))
+    {
+        issues.push(ZodIssue::invalid_value(&FILE_SOURCE, vec![key("source")]));
+    }
+    if !row
+        .get("category")
+        .and_then(Value::as_str)
+        .is_some_and(|v| FILE_CATEGORY.contains(&v))
+    {
+        issues.push(ZodIssue::invalid_value(
+            &FILE_CATEGORY,
+            vec![key("category")],
+        ));
+    }
+    for k in [
+        "generationPrompt",
+        "generationModel",
+        "generationRevisedPrompt",
+        "generationKey",
+        "description",
+    ] {
+        nullable_plain_string_issues(row, k, &mut issues);
+    }
+    default_string_array_issues(row, "tags", true, &mut issues);
+    zod_uuid_issues(row, "projectId", true, &mut issues);
+    nullable_plain_string_issues(row, "folderPath", &mut issues);
+    nullable_plain_string_issues(row, "storageKey", &mut issues);
+    enum_issues(row, "fileStatus", &FILE_STATUS, false, &mut issues);
+    zod_timestamp_issues(row, "createdAt", &mut issues);
+    zod_timestamp_issues(row, "updatedAt", &mut issues);
+    issues
+}
+
 /// v4 `GroupDocMountLinkSchema` (`lib/schemas/mount-index.types.ts`) — three
 /// required uuids and two timestamps — over a raw `group_doc_mount_links` row
 /// (the shape `findByFilter` `validateSafe()`s row by row). Zod's issue list;
@@ -1457,6 +1604,8 @@ pub fn zod_issue_aborts(issue: &ZodIssue) -> bool {
         | ZodIssue::TooBig { .. }
         | ZodIssue::TooSmallInt { .. }
         | ZodIssue::TooBigInt { .. }
+        | ZodIssue::TooSmallExact { .. }
+        | ZodIssue::TooBigExact { .. }
         | ZodIssue::Custom { .. } => false,
     }
 }

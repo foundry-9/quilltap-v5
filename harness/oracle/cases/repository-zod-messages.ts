@@ -57,6 +57,7 @@ import { ChatInformSchema } from '@/lib/schemas/chat-inform.types';
 import { PromptTemplateSchema } from '@/lib/schemas/template.types';
 import { FolderSchema } from '@/lib/schemas/folder.types';
 import { TagSchema } from '@/lib/schemas/tag.types';
+import { FileEntrySchema } from '@/lib/schemas/file.types';
 import { logger } from '@/lib/logger';
 import { ChatSettingsRepository } from '@/lib/database/repositories/chat-settings.repository';
 
@@ -150,6 +151,20 @@ const TAG: Row = {
   updatedAt: TS,
 };
 
+// P4.161 Tier 2: a minimal valid `FileEntrySchema` row.
+const FILE_ENTRY: Row = {
+  id: 'f1610000-0000-4000-8000-0000000008a1',
+  userId: 'a1000000-0000-4000-8000-000000000001',
+  sha256: 'a'.repeat(64),
+  originalFilename: 'plate.png',
+  mimeType: 'image/png',
+  size: 32,
+  source: 'IMPORTED',
+  category: 'IMAGE',
+  createdAt: TS,
+  updatedAt: TS,
+};
+
 const ABSENT = '<absent>';
 const patch = (base: Row, p: Row): Row => {
   const r: Row = { ...base };
@@ -170,7 +185,8 @@ type SchemaName =
   | 'chatInform'
   | 'promptTemplate'
   | 'folder'
-  | 'tag';
+  | 'tag'
+  | 'fileEntry';
 const rows: Array<[string, SchemaName, Row]> = [];
 const group = (id: string, p: Row) => rows.push([id, 'group', patch(GROUP, p)]);
 const link = (id: string, p: Row) => rows.push([id, 'groupDocMountLink', patch(LINK, p)]);
@@ -180,6 +196,7 @@ const memory = (id: string, p: Row) => rows.push([id, 'memory', patch(MEMORY, p)
 const inform = (id: string, p: Row) => rows.push([id, 'chatInform', patch(INFORM, p)]);
 const folder = (id: string, p: Row) => rows.push([id, 'folder', patch(FOLDER, p)]);
 const tag = (id: string, p: Row) => rows.push([id, 'tag', patch(TAG, p)]);
+const fileEntry = (id: string, p: Row) => rows.push([id, 'fileEntry', patch(FILE_ENTRY, p)]);
 const promptTemplate = (id: string, p: Row) =>
   rows.push([id, 'promptTemplate', patch(PROMPT_TEMPLATE, p)]);
 
@@ -478,6 +495,44 @@ tag('tag-name-lower-null', { nameLower: null });
 tag('tag-quick-hide-yes', { quickHide: 'yes' });
 tag('tag-user-bad', { userId: 'u' });
 
+// --- FileEntrySchema (P4.161 Tier 2) ---------------------------------------
+fileEntry('file-valid', {});
+fileEntry('file-valid-full', {
+  width: 10,
+  height: null,
+  isPlainText: false,
+  linkedTo: ['a1610000-0000-4000-8000-0000000000f1'],
+  generationPrompt: 'p',
+  generationModel: null,
+  generationRevisedPrompt: null,
+  generationKey: 'k',
+  description: null,
+  tags: [],
+  projectId: null,
+  folderPath: '/',
+  storageKey: 'mount-blob:x',
+  fileStatus: 'orphaned',
+});
+fileEntry('file-sha-63', { sha256: 'a'.repeat(63) });
+fileEntry('file-sha-65', { sha256: 'a'.repeat(65) });
+fileEntry('file-sha-number', { sha256: 5 });
+fileEntry('file-original-number', { originalFilename: 5 });
+fileEntry('file-mime-absent', { mimeType: ABSENT });
+fileEntry('file-size-big', { size: 'big' });
+fileEntry('file-width-string', { width: 'x' });
+fileEntry('file-plain-null', { isPlainText: null });
+fileEntry('file-linked-bad', { linkedTo: ['nope'] });
+fileEntry('file-source-absent', { source: ABSENT });
+fileEntry('file-source-bogus', { source: 'STOLEN' });
+fileEntry('file-category-video', { category: 'VIDEO' });
+fileEntry('file-description-number', { description: 5 });
+fileEntry('file-tags-bad', { tags: ['nope'] });
+fileEntry('file-project-bad', { projectId: 'p' });
+fileEntry('file-folder-number', { folderPath: 5 });
+fileEntry('file-status-null', { fileStatus: null });
+fileEntry('file-status-bad', { fileStatus: 'gone' });
+fileEntry('file-multi', { sha256: 'a', category: 'VIDEO', size: 'big', tags: [5] });
+
 const SCHEMAS = {
   group: GroupSchema,
   groupDocMountLink: GroupDocMountLinkSchema,
@@ -488,6 +543,7 @@ const SCHEMAS = {
   promptTemplate: PromptTemplateSchema,
   folder: FolderSchema,
   tag: TagSchema,
+  fileEntry: FileEntrySchema,
 } as const;
 
 // An accepted row's parsed output as JSON — a `Float32Array` embedding as the

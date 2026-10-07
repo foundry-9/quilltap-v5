@@ -1690,6 +1690,46 @@ function tagRefusalsPayload(merged: {
 }
 
 /**
+ * [P4.161 Tier 2, R-E] File rows v4's `FileEntrySchema` refuses at
+ * `files.create` → `_create` — AFTER the bytes landed in the Quilltap Uploads
+ * store (`import-files.ts:235` vs `:266`), so each refused row leaves its
+ * bytes behind on both apps. Copies of the fixture's project-less
+ * `field-notes.txt` (fresh ids and names), one bad key each: `category:
+ * "VIDEO"`, `source` absent (a REQUIRED enum — v5 used to default it), a
+ * non-uuid tag, a numeric `description` — beside a sound copy.
+ */
+function fileRefusalsPayload(files: {
+  manifest: unknown;
+  data: Record<string, unknown[]>;
+}): unknown {
+  const p = JSON.parse(JSON.stringify(files)) as { manifest: unknown; data: Record<string, unknown[]> };
+  const notes = (p.data.files as Array<Record<string, unknown>>).find(
+    (f) => f.originalFilename === 'field-notes.txt',
+  );
+  if (!notes) throw new Error('file refusals payload: field-notes.txt is gone');
+  const item = (n: number, patch: Record<string, unknown>, drop: string[] = []) => {
+    const f: Record<string, unknown> = {
+      ...notes,
+      id: `f1610000-0000-4000-8000-0000000009${String(n).padStart(2, '0')}`,
+      originalFilename: `refusal-${n}.txt`,
+      linkedTo: [],
+      tags: [],
+      ...patch,
+    };
+    for (const k of drop) delete f[k];
+    return f;
+  };
+  p.data.files = [
+    item(1, { category: 'VIDEO' }),
+    item(2, {}, ['source']),
+    item(3, { tags: ['nope'] }),
+    item(4, { description: 5 }),
+    item(5, {}),
+  ];
+  return p;
+}
+
+/**
  * [P4.63 → v4 bug 105 → P4.D131] The bug-105 regression-guard payload: one
  * connection profile whose `provider` is not a string, followed by one image
  * profile that is perfectly sound.
@@ -1968,6 +2008,8 @@ const REPO_LOG_MESSAGES = new Set([
   'Error creating folder',
   // [P4.161 Tier 2] the tags repository's own wrap (`{userId, name}`).
   'Error creating tag',
+  // [P4.161 Tier 2] the files repository's own wrap (`{userId, filename}`).
+  'Error creating file',
 ]);
 
 /**
@@ -2002,6 +2044,7 @@ async function withRepoLogs<T>(
           'userId',
           'name',
           'path',
+          'filename',
           'projectId',
           'groupId',
           'error',
@@ -2933,6 +2976,12 @@ async function main(): Promise<void> {
       'execute_tag_refusals',
       () => tagRefusalsPayload(mergedPayload),
       { conflictStrategy: 'duplicate', includeMemories: false, includeRelatedEntities: false },
+      true,
+    ),
+    executeCase(
+      'execute_file_refusals',
+      () => fileRefusalsPayload(filesPayload),
+      { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
       true,
     ),
     // [P4.63 → v4 bug 105 → P4.D131] The named-and-skipped regression guard

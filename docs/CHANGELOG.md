@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — fix(import): validate file rows whole-row after the bytes land, before the row insert (P4.161 Tier 2)
+
+_Versions: core 0.0.1250._
+
+The `.qtap` import now runs v4's `FileEntrySchema` over the whole file row (`quilltap_import::files::parse_create_file` over a new `zod_file_entry_issues`) AFTER the bytes are written to the store and BEFORE the row insert — v4's order (ruling R-E), so a refused row leaves its bytes behind on both apps. `source` and `category` are required enums in v4 (v5 used to default them to `UPLOADED` / `DOCUMENT`); a non-uuid tag (kept by the remap), a numeric `description`, a bad `fileStatus` are refused. The refusal logs `Data validation failed`, `Error creating entity` and `Error creating file {userId, filename}` (a lane-local copy of P4.163's `log_file_create_wrap_failure`), then the warning, WARN and `skipped`. `sha256` / `size` / `mimeType` are the bridge's post-write values on this path, so they cannot refuse here. New `ZodIssue` variants for `.length(n)` (`exact: true`). 21 recorded `fileEntry` rows; `execute_file_refusals`. Red-first: 6 import differences. The restore's files arm is deferred (Tier 3 by name). One core unit test's file row gained the `source` / `category` it had relied on the defaults for.
+
 #### 2026-10-07 — fix(import,restore): validate tags whole-row before the write, with v4's create-time TypeErrors (P4.161 Tier 2)
 
 _Versions: core 0.0.1249._
