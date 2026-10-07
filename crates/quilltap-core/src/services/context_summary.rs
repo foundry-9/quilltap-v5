@@ -1112,16 +1112,25 @@ async fn sweep_prior_summary_whispers(
         return Ok(0);
     }
 
-    let chat_id_owned = chat_id.to_string();
-    let removed = db
+    // P4.163: v4's `deleteMessagesByIds` is a FALLBACK `safeQuery(…, 0)` — a
+    // failed delete logs `Failed to delete messages from chat {chatId, count}`
+    // and answers 0, so `context-summary.ts:490` logs its sweep INFO with
+    // `removed: 0` and posts the fresh whisper; its catch is unreachable (v5
+    // had propagated the error into the caller's silent swallow).
+    let (chat_id_owned, count) = (chat_id.to_string(), prior_ids.len());
+    let outcome = db
         .write(move |writers| {
             writers
                 .main()
                 .chat_messages()
                 .delete_messages_by_ids(&chat_id_owned, &prior_ids)
         })
-        .await?;
-    Ok(removed)
+        .await;
+    Ok(crate::db::fallback::messages_deleted_or_zero(
+        chat_id,
+        count,
+        || outcome,
+    ))
 }
 
 /// v4 `invalidateContextSummaryIfMessageCovered`: when a conversation message is

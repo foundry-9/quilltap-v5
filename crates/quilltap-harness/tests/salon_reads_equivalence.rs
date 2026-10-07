@@ -220,6 +220,9 @@ const PLANT_COMPARED: &[(&str, &str)] = &[
         "[Chats v1] Error fetching chat",
         "quilltap_core::api::salon",
     ),
+    // P4.163: v4's `deleteMessagesByIds` fallback (the standalone `safeQuery`
+    // — no collection), the Salon message DELETE's one line.
+    ("Failed to delete messages from chat", "quilltap::db"),
 ];
 
 /// v4 lines NOT compared, each with why — a v4 line in neither table fails.
@@ -236,6 +239,11 @@ const PLANT_EXCLUDED: &[(&str, &str)] = &[
         "v4's BACKEND line beneath every failed `collection.find` (P4.149's \
          `list_main_plant`); unported by standing convention (the search \
          families' `UNPORTED_BACKEND_LINES`)",
+    ),
+    (
+        "SQLite deleteOne error",
+        "v4's BACKEND line beneath the failed message delete (P4.163's \
+         `delete_message_main_plant`); unported by the same convention",
     ),
 ];
 
@@ -882,6 +890,56 @@ fn salon_reads_match_oracle() {
             failed.push(format!("{name}:status"));
         } else if norm(&response_data(&resp)) != norm(&rec["body"]["chats"]) {
             let (g, w) = (norm(&response_data(&resp)), norm(&rec["body"]["chats"]));
+            eprintln!("[{name}] BODY MISMATCH:\n{}", first_diff(&g, &w));
+            failed.push(format!("{name}:body"));
+        } else {
+            eprintln!("[{name}] OK ({status}).");
+        }
+        if let Err(e) = assert_plant_lines(name, &plant_logs(name), &lines, None) {
+            eprintln!("[{name}] LINES: {e}");
+            failed.push(format!("{name}:lines"));
+        }
+    }
+    // P4.163 (Tier 1 item 4): the Salon message DELETE over a failed row
+    // delete — v4's fallback line, then the route goes on and answers 200
+    // `{success: true, memoriesDeleted: 0}` (unported main answered 500).
+    {
+        let name = "delete_message_main_plant";
+        let (dir, pdb) = fresh_db_with(
+            &spec.test_pepper_base64,
+            "delete-message-plant",
+            None,
+            Some(
+                "CREATE TRIGGER qt_plant_no_message_delete BEFORE DELETE ON chat_messages \
+                 BEGIN SELECT RAISE(ABORT, 'planted message delete failure'); END",
+            ),
+        );
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(salon::message_delete(
+                &pdb,
+                uid,
+                "d1000000-0000-4000-8000-000000000002",
+                None,
+                false,
+            ))
+        });
+        drop(pdb);
+        drop(dir);
+        let rec = &oracle[name];
+        let (status, want_status) = (status_of(&resp), rec["status"].as_i64().unwrap());
+        assert_eq!(
+            (want_status, &rec["body"]),
+            (
+                200,
+                &serde_json::json!({ "success": true, "memoriesDeleted": 0 })
+            ),
+            "[{name}] v4 no longer answers 200 through the fallback — the arm measures nothing"
+        );
+        if status != want_status {
+            eprintln!("[{name}] STATUS MISMATCH: v5 {status} v4 {want_status} — {resp:?}");
+            failed.push(format!("{name}:status"));
+        } else if norm(&response_data(&resp)) != norm(&rec["body"]) {
+            let (g, w) = (norm(&response_data(&resp)), norm(&rec["body"]));
             eprintln!("[{name}] BODY MISMATCH:\n{}", first_diff(&g, &w));
             failed.push(format!("{name}:body"));
         } else {

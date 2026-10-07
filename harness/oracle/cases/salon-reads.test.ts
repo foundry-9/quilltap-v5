@@ -44,7 +44,9 @@ interface Spec {
 
 interface CaseSpec {
   name: string;
-  kind: 'settings' | 'list' | 'get' | 'listAction';
+  kind: 'settings' | 'list' | 'get' | 'listAction' | 'deleteMessage';
+  /** P4.163: the message a `deleteMessage` case DELETEs (`/api/v1/messages/[id]`). */
+  messageId?: string;
   url: string;
   chatId?: string;
   /** P4.D60 (bug 51): inject live impersonation state into the fresh fixture copy
@@ -105,6 +107,9 @@ interface CaseSpec {
    * `error` omitted, non-primitive values skipped. Implied by
    * `renameMountColumn`. */
   recordLogs?: boolean;
+  /** P4.163: a raw statement run on the MAIN copy through v4's own raw handle
+   * (a BEFORE DELETE trigger — the delete-callers' plant). Implies the log spy. */
+  plantMainSql?: string;
 }
 
 function mockRequest(url: string): unknown {
@@ -300,8 +305,14 @@ async function runCase(
     const { table, from, to } = c.renameMainColumn;
     mdb.exec(`ALTER TABLE "${table}" RENAME COLUMN "${from}" TO "${to}"`);
   }
+  if (c.plantMainSql) {
+    const { getRawDatabase } = await import('@/lib/database/backends/sqlite');
+    const mdb = getRawDatabase();
+    if (!mdb) throw new Error('raw main handle unavailable');
+    mdb.exec(c.plantMainSql);
+  }
   let logs: Array<Record<string, unknown>> | null = null;
-  if (c.renameMountColumn || c.renameMainColumn || c.recordLogs) {
+  if (c.renameMountColumn || c.renameMainColumn || c.recordLogs || c.plantMainSql) {
     const { Logger } = await import('@/lib/logger');
     for (const level of ['error', 'warn'] as const) {
       const original = Logger.prototype[level];
@@ -338,6 +349,14 @@ async function runCase(
       // `ad1c4c37f`), so the action validation is v4's too.
       const { GET } = await import('@/app/api/v1/chats/route');
       response = (await GET(mockRequest(c.url) as never)) as never;
+    } else if (c.kind === 'deleteMessage') {
+      // P4.163: v4's REAL message DELETE (`messages/[id]/route.ts:141-221`).
+      const { DELETE } = await import('@/app/api/v1/messages/[id]/route');
+      const req = mockRequest(c.url) as Record<string, unknown>;
+      req.method = 'DELETE';
+      response = (await DELETE(req as never, {
+        params: Promise.resolve({ id: c.messageId }),
+      } as never)) as never;
     } else {
       const { GET } = await import('@/app/api/v1/chats/[id]/route');
       response = (await GET(mockRequest(c.url) as never, {
@@ -573,6 +592,22 @@ async function main(): Promise<void> {
       url: `http://localhost/api/v1/chats/${soloId}`,
       chatId: soloId,
       renameMountColumn: { table: 'doc_mount_file_links', from: 'relativePath', to: 'relativePath_x' },
+    },
+    // P4.163 (Tier 1 item 4): the Salon message DELETE when the row delete
+    // itself fails — a BEFORE DELETE trigger on `chat_messages`. v4's
+    // `deleteMessagesByIds` is a FALLBACK `safeQuery(…, 0)`
+    // (`chats-messages.ops.ts:633-686`): ERROR `Failed to delete messages from
+    // chat {chatId, count}` and 0, so the route goes on (touch, invalidate) and
+    // answers 200 `{success: true, memoriesDeleted: 0}` — its own catch
+    // (`[Messages API v1] Error deleting message`, 500) is never reached.
+    {
+      name: 'delete_message_main_plant',
+      kind: 'deleteMessage',
+      url: 'http://localhost/api/v1/messages/d1000000-0000-4000-8000-000000000002',
+      messageId: 'd1000000-0000-4000-8000-000000000002',
+      plantMainSql:
+        "CREATE TRIGGER qt_plant_no_message_delete BEFORE DELETE ON chat_messages " +
+        "BEGIN SELECT RAISE(ABORT, 'planted message delete failure'); END",
     },
     // P4.142 Tier 2: the third chat (Vex's vault is UNAVAILABLE in the
     // committed fixture) with NO plant — v4's existing `Failed to fetch chat`

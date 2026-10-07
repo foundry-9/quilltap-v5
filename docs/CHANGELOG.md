@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — fix(chat): the five `delete_messages_by_ids` callers answer through v4's fallback — the Salon DELETE and the courier cancel no longer fail on a failed row delete (P4.163 Tier 1 item 4)
+
+_Versions: core 0.0.1245._
+
+v4's `deleteMessagesByIds` is a fallback `safeQuery`: a failed delete logs `Failed to delete messages from chat {chatId, count}` and answers 0, and every one of its six callers carries on. Measured caller by caller at `94fbb1ae3`, all five v5 callers that bypassed `db::fallback::messages_deleted_or_zero` now go through it: the Salon message DELETE (answered 500, now 200 `{success: true, memoriesDeleted: 0}` after the touch and invalidation, as v4), the courier cancel (failed whole, now unpauses and answers `Cancelled`; its delete and update are now two writes, as v4's two awaits), and the Commonplace relevant-conversations sweep, the context-summary whisper sweep and the build-context whisper sweeps (each had swallowed the failure with no line).
+
+`salon_reads` gains `delete_message_main_plant` against v4's real `DELETE /api/v1/messages/[id]` over a planted BEFORE DELETE trigger (red on unported main: 500 and no line). New `delete_messages_callers_census`: a per-file source census of production callers (red on unported main: five bypassers) and a behavioural courier-cancel arm over the salon fixture.
+
 #### 2026-10-07 — fix(db): `mark_consumed`'s per-row read strict-aware and its `Informs marked consumed` line on v4's keys (P4.163 Tier 1 item 6)
 
 _Versions: core 0.0.1244._

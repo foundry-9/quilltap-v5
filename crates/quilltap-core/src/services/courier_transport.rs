@@ -918,12 +918,23 @@ pub async fn cancel_external_turn(
     }
 
     let now_iso = crate::clock::iso_from_unix_ms(now_ms);
+    // P4.163: v4's `deleteMessagesByIds` is a FALLBACK `safeQuery(…, 0)` — a
+    // failed delete logs `Failed to delete messages from chat {chatId, count}`
+    // and answers 0, so v4's cancel (`chats/[id]/messages/[messageId]/route.ts:
+    // 271`) goes on to unpause the chat and answers `{cancelled: true}`; its
+    // catch is unreachable (v5 had failed the whole cancel). Two writes, as v4's
+    // two awaits — the home logs on THIS thread, not the writer's.
+    let (write_chat_id, doomed) = (chat_id.to_string(), vec![message_id.to_string()]);
+    let outcome = db
+        .write(move |w| {
+            w.main()
+                .chat_messages()
+                .delete_messages_by_ids(&write_chat_id, &doomed)
+        })
+        .await;
+    crate::db::fallback::messages_deleted_or_zero(chat_id, 1, || outcome);
     let write_chat_id = chat_id.to_string();
-    let doomed = vec![message_id.to_string()];
     db.write(move |w| {
-        w.main()
-            .chat_messages()
-            .delete_messages_by_ids(&write_chat_id, &doomed)?;
         w.main().chats().update(
             &write_chat_id,
             &chats::ChatUpdate {

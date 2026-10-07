@@ -1197,18 +1197,18 @@ pub async fn message_delete(
     }
 
     // Delete the messages, touch, invalidate.
+    //
+    // P4.163: v4's `deleteMessagesByIds` is a FALLBACK `safeQuery(…, 0)`
+    // (`chats-messages.ops.ts:633-686`) — a failed delete logs `Failed to delete
+    // messages from chat {chatId, count}` and answers 0, so v4's route
+    // (`messages/[id]/route.ts:196`) goes on to the touch and the invalidation
+    // and answers 200; its own catch is unreachable here (measured,
+    // `salon_reads`' `delete_message_main_plant`; v5 had answered 500).
     let (cid, del) = (chat_id.clone(), ids_to_delete.clone());
-    if let Err(e) = db
-        .write(move |w| {
-            w.main()
-                .chat_messages()
-                .delete_messages_by_ids(&cid, &del)
-                .map(|_| ())
-        })
-        .await
-    {
-        return internal(e);
-    }
+    let outcome = db
+        .write(move |w| w.main().chat_messages().delete_messages_by_ids(&cid, &del))
+        .await;
+    crate::db::fallback::messages_deleted_or_zero(&chat_id, ids_to_delete.len(), || outcome);
     let cid = chat_id.clone();
     if let Err(e) = db
         .write(move |w| {

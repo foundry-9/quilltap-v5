@@ -499,8 +499,12 @@ async fn sweep_prior_relevant_conversation_whispers(
     if stale.is_empty() {
         return;
     }
-    let chat_id_owned = chat_id.to_string();
-    let _ = db
+    // P4.163: v4's `deleteMessagesByIds` is a FALLBACK `safeQuery(…, 0)` — a
+    // failed delete logs `Failed to delete messages from chat {chatId, count}`
+    // and answers 0, so `relevant-conversations-refresh.ts:167`'s own catch
+    // WARN is unreachable (v5 had swallowed the failure silently).
+    let (chat_id_owned, count) = (chat_id.to_string(), stale.len());
+    let outcome = db
         .write(move |writers| {
             writers
                 .main()
@@ -508,4 +512,5 @@ async fn sweep_prior_relevant_conversation_whispers(
                 .delete_messages_by_ids(&chat_id_owned, &stale)
         })
         .await;
+    crate::db::fallback::messages_deleted_or_zero(chat_id, count, || outcome);
 }

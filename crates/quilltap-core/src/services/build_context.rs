@@ -997,14 +997,19 @@ async fn sweep_stale_whispers<F: Fn(&Value) -> bool>(
     if stale.is_empty() {
         return;
     }
-    let cid = chat_id.to_string();
-    let _ = db
+    // P4.163: v4's `deleteMessagesByIds` is a FALLBACK `safeQuery(…, 0)` — a
+    // failed delete logs `Failed to delete messages from chat {chatId, count}`
+    // and answers 0, so the whisper sweeps' own catches (`context-manager.ts:
+    // 2284, 2575`) are unreachable (v5 had swallowed the failure silently).
+    let (cid, count) = (chat_id.to_string(), stale.len());
+    let outcome = db
         .write(move |w| {
             w.main()
                 .chat_messages()
                 .delete_messages_by_ids(&cid, &stale)
         })
         .await;
+    crate::db::fallback::messages_deleted_or_zero(chat_id, count, || outcome);
 }
 
 /// Errors from [`build_context`]. v4 throws on an invalid timezone (aborting the
