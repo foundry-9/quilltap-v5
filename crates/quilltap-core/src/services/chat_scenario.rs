@@ -71,30 +71,6 @@ fn validation_error() -> Response {
     Response::error(ErrorKind::BadRequest, "Validation error")
 }
 
-/// `z.uuid()` — v4 (Zod 4) accepts any RFC 9562 UUID text form: 8-4-4-4-12 hex
-/// with the variant/version nibbles unconstrained beyond the shape it checks.
-fn is_uuid(s: &str) -> bool {
-    let b = s.as_bytes();
-    if b.len() != 36 {
-        return false;
-    }
-    for (i, c) in b.iter().enumerate() {
-        match i {
-            8 | 13 | 18 | 23 => {
-                if *c != b'-' {
-                    return false;
-                }
-            }
-            _ => {
-                if !c.is_ascii_hexdigit() {
-                    return false;
-                }
-            }
-        }
-    }
-    true
-}
-
 /// The six `?action=scenario` body fields, raw. See the module header for why
 /// they are `Value`s rather than typed strings.
 #[derive(Debug, Default, Clone)]
@@ -141,7 +117,8 @@ fn zod_string(v: &Option<Value>, max: Option<usize>) -> Result<Option<String>, (
 fn zod_uuid(v: &Option<Value>) -> Result<Option<String>, ()> {
     match zod_string(v, None)? {
         None => Ok(None),
-        Some(s) if is_uuid(&s) => Ok(Some(s)),
+        // Zod 4's RFC regex, not the bare shape (P4.162).
+        Some(s) if crate::api::zod_issues::zod_uuid_ok(&s) => Ok(Some(s)),
         Some(_) => Err(()),
     }
 }

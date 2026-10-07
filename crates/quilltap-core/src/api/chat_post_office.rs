@@ -49,6 +49,9 @@ use std::sync::Arc;
 use rusqlite::Connection;
 use serde_json::{json, Value};
 
+// `z.uuid()` is Zod 4's RFC 9562 regex, not the bare 8-4-4-4-12 shape — a
+// shape-valid, RFC-invalid id is refused at v4's parse (P4.162).
+use crate::api::zod_issues::zod_uuid_ok;
 use crate::db::character_vault::ensure_character_vault;
 use crate::db::runtime::Db;
 use crate::db::vault_character_write::CharacterVaultWriteInput;
@@ -97,32 +100,6 @@ fn validation_error() -> Response {
 // Zod floors (`app/api/v1/chats/[id]/schemas.ts:193-220`)
 // ===========================================================================
 
-/// `z.uuid()` — v4 (Zod 4) accepts any RFC 9562 UUID text form: 8-4-4-4-12 hex
-/// with the variant/version nibbles unconstrained beyond the shape it checks.
-/// Reproduced as the shape test, which is what every fixture id and every SPA
-/// value exercises.
-fn is_uuid(s: &str) -> bool {
-    let b = s.as_bytes();
-    if b.len() != 36 {
-        return false;
-    }
-    for (i, c) in b.iter().enumerate() {
-        match i {
-            8 | 13 | 18 | 23 => {
-                if *c != b'-' {
-                    return false;
-                }
-            }
-            _ => {
-                if !c.is_ascii_hexdigit() {
-                    return false;
-                }
-            }
-        }
-    }
-    true
-}
-
 /// `z.string().min(1)` — JS string length is UTF-16 code units, but "at least one
 /// unit" and "at least one byte" agree for every string, so a byte check is exact.
 fn min1(s: &str) -> bool {
@@ -161,7 +138,7 @@ fn lower_sender(w: &AnnouncerSenderWire) -> Option<AnnouncerSender> {
             staff_id: (*staff_id).into(),
         }),
         AnnouncerSenderWire::Character { character_id } => {
-            is_uuid(character_id).then(|| AnnouncerSender::Character {
+            zod_uuid_ok(character_id).then(|| AnnouncerSender::Character {
                 character_id: character_id.clone(),
             })
         }
@@ -245,7 +222,7 @@ pub async fn chat_announcement_post(
         return validation_error();
     };
     // `targetParticipantIds: z.array(z.uuid()).nullable().optional()`.
-    if target_participant_ids.is_some_and(|ids| ids.iter().any(|id| !is_uuid(id))) {
+    if target_participant_ids.is_some_and(|ids| ids.iter().any(|id| !zod_uuid_ok(id))) {
         return validation_error();
     }
 
@@ -409,10 +386,10 @@ pub async fn chat_announcement_preview(
 
     // `insertAnnouncementPreviewSchema.parse(body)`.
     if !min1(seed_markdown)
-        || !is_uuid(character_id)
-        || !is_uuid(connection_profile_id)
-        || system_prompt_id.is_some_and(|s| !is_uuid(s))
-        || target_participant_ids.is_some_and(|ids| ids.iter().any(|id| !is_uuid(id)))
+        || !zod_uuid_ok(character_id)
+        || !zod_uuid_ok(connection_profile_id)
+        || system_prompt_id.is_some_and(|s| !zod_uuid_ok(s))
+        || target_participant_ids.is_some_and(|ids| ids.iter().any(|id| !zod_uuid_ok(id)))
     {
         return validation_error();
     }
@@ -623,10 +600,10 @@ pub async fn chat_impersonation_voice_preview(
     };
 
     // `impersonationVoicePreviewSchema.parse(body)`.
-    if !is_uuid(participant_id)
+    if !zod_uuid_ok(participant_id)
         || !min1(seed_markdown)
-        || connection_profile_id.is_some_and(|s| !is_uuid(s))
-        || system_prompt_id.is_some_and(|s| !is_uuid(s))
+        || connection_profile_id.is_some_and(|s| !zod_uuid_ok(s))
+        || system_prompt_id.is_some_and(|s| !zod_uuid_ok(s))
     {
         return validation_error();
     }
@@ -991,8 +968,8 @@ pub async fn chat_send_mail_in_zone(
     };
 
     // `sendMailActionSchema.parse(body)`.
-    if !is_uuid(from_character_id)
-        || !is_uuid(to_character_id)
+    if !zod_uuid_ok(from_character_id)
+        || !zod_uuid_ok(to_character_id)
         || !min1(body_markdown)
         || in_reply_to_path.is_some_and(|p| !min1(p))
     {
@@ -1172,9 +1149,12 @@ mod tests {
 
     #[test]
     fn zod_floors() {
-        assert!(is_uuid("c1000000-0000-4000-8000-000000000001"));
-        assert!(!is_uuid("not-a-uuid"));
-        assert!(!is_uuid(""));
+        assert!(zod_uuid_ok("c1000000-0000-4000-8000-000000000001"));
+        assert!(!zod_uuid_ok("not-a-uuid"));
+        assert!(!zod_uuid_ok(""));
+        // P4.162: shape-valid but RFC-invalid — Zod 4 refuses both.
+        assert!(!zod_uuid_ok("12345678-1234-0234-8234-123456789abc"));
+        assert!(!zod_uuid_ok("12345678-1234-4234-c234-123456789abc"));
         assert!(min1("x"));
         assert!(!min1(""));
         assert!(min1_max120(&"x".repeat(120)));

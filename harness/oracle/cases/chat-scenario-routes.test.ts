@@ -580,6 +580,22 @@ async function main(): Promise<void> {
       groupScenarioPath: GROUP_PATH,
       groupScenarioGroupId: 'nope',
     }),
+    // P4.162: shape-valid, RFC-INVALID ids (version nibble `0`; variant `c`) —
+    // Zod 4's `z.uuid()` is the RFC regex, so both refuse at the parse.
+    refusal('verb_scenario_id_uuid_v0', CHAT, {
+      scenarioId: '12345678-1234-0234-8234-123456789abc',
+    }),
+    refusal('verb_scenario_id_uuid_variant_c', CHAT, {
+      scenarioId: '12345678-1234-4234-c234-123456789abc',
+    }),
+    refusal('verb_group_id_uuid_v0', CHAT, {
+      groupScenarioPath: GROUP_PATH,
+      groupScenarioGroupId: '12345678-1234-0234-8234-123456789abc',
+    }),
+    refusal('verb_group_id_uuid_variant_c', CHAT, {
+      groupScenarioPath: GROUP_PATH,
+      groupScenarioGroupId: '12345678-1234-4234-c234-123456789abc',
+    }),
     refusal('verb_path_too_long', CHAT, { generalScenarioPath: LONG_PATH }),
     refusal('verb_wrong_type_scenario', CHAT, { scenario: 123 }),
     refusal('verb_wrong_type_path', CHAT, { generalScenarioPath: ['a'] }),

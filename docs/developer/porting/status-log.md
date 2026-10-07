@@ -170860,3 +170860,38 @@ this lane (the unifier records the waiver at §S.6).
   `DbError` to 500 `e.to_string()` — a broken vault answers 500 there where
   v4's route (no catch) answers the vault 503 + this ERROR. A small for a
   later order (`db_error_response` is `pub(crate)` in core).
+
+### Unit 2 — the uuid gates onto `zod_uuid_ok` (Tier 1 item 2, R-C)
+
+- **Port:** the shape-only `is_uuid` copies in `api/chat_post_office.rs`,
+  `services/chat_scenario.rs` and `services/chat_participants.rs` (the `pub`
+  one, also called by `api/chat_cast.rs::chat_remove_participant`) DELETED;
+  every gate calls `api::zod_issues::zod_uuid_ok` (Zod 4's RFC regex: version
+  nibble `1-8`, variant `89abAB`, the nil / max literals). The 400 stays
+  `Validation error`; the false doc claim ("Zod 4 accepts any RFC 9562 form
+  with the nibbles unconstrained") is gone with the fn.
+- **Oracle rows (NEW, v4's REAL route handlers at the pin):** the version-`0`
+  id `12345678-1234-0234-8234-123456789abc` and the variant-`c` id
+  `12345678-1234-4234-c234-123456789abc` against every gate site —
+  `post-office-routes.test.ts` (×5 surfaces: `announcement_sender_*`,
+  `announcement_whisper_*`, `preview_*`, `voice_preview_*` — the impersonation
+  voice preview had NO row in this family; it rides the same chat route —
+  `send_mail_*`); `chat-scenario-routes.test.ts` (`verb_scenario_id_*`,
+  `verb_group_id_*`); `chat-cast-routes.test.ts` (`add_character_id_*`,
+  `update_participant_id_*`, `remove_participant_id_*`). v4 answers 400
+  `Validation error` + a Zod `invalid_format` / `format: uuid` issue on all 20.
+  Every new row joins its family's `VALIDATION_DETAILS_GAP` (Tier 3 item 11).
+- **Red-first on unported main (this lane's unit-1 tree):** `post_office_routes`
+  16 failure keys over the 10 new rows (the whisper and send-mail rows already
+  answered 400, but from a later arm with a different body); `chat_scenario_routes`
+  8 keys / 4 rows; `chat_cast_routes` 12 keys / 6 rows. Green after (below).
+- **Not in this order, recorded:** two more shape-only `is_uuid` copies exist —
+  `vault_overlay.rs:287` and `api/system_backup.rs:95` (the upload id). Whether
+  v4's twins are `z.uuid()` is unmeasured; a census item for a later order.
+- **Green after:** `post_office_routes` 1/1, `chat_scenario_routes` 3/3,
+  `chat_cast_routes` 9/9, `chats_participants_tier2` 1/1 (NEUTRAL, regenerated
+  from the pin), core `zod_floors` + `chat_participants` + `chat_scenario`
+  9/9. The cast family's `add_data` helper had `expect`ed a valid bag; it now
+  builds the raw bag on a parse refusal, as the dispatch verb does, so the
+  refusal is answered inside `chat_add_participant` after the chat lookup —
+  v4's order.

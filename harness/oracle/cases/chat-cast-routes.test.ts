@@ -788,6 +788,15 @@ async function main(): Promise<void> {
     removeCase('remove_participant_missing', I.chatMain, { participantId: I.missing }, false),
     removeCase('remove_chat_missing', I.missing, { participantId: I.pCleo }, false),
 
+    // ── P4.162: shape-valid, RFC-INVALID ids (version nibble `0`; variant `c`)
+    // — Zod 4's `z.uuid()` is the RFC regex, so each gate refuses at the parse.
+    addCase('add_character_id_uuid_v0', I.chatMain, { type: 'CHARACTER', characterId: '12345678-1234-0234-8234-123456789abc' }, false),
+    addCase('add_character_id_uuid_variant_c', I.chatMain, { type: 'CHARACTER', characterId: '12345678-1234-4234-c234-123456789abc' }, false),
+    updateCase('update_participant_id_uuid_v0', I.chatMain, { participantId: '12345678-1234-0234-8234-123456789abc', displayOrder: 3 }, false),
+    updateCase('update_participant_id_uuid_variant_c', I.chatMain, { participantId: '12345678-1234-4234-c234-123456789abc', displayOrder: 3 }, false),
+    removeCase('remove_participant_id_uuid_v0', I.chatMain, { participantId: '12345678-1234-0234-8234-123456789abc' }, false),
+    removeCase('remove_participant_id_uuid_variant_c', I.chatMain, { participantId: '12345678-1234-4234-c234-123456789abc' }, false),
+
     // ── ?action=rebuild-system-prompt ─────────────────────────────────────
     rebuildCase('rebuild_ok', I.chatMain, { participantId: I.pBram }),
     rebuildCase('rebuild_user_controlled', I.chatMain, { participantId: I.pAria }, false),

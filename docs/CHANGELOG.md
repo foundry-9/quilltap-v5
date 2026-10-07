@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — fix(core): refuse RFC-invalid uuids at the chat-route gates, as Zod 4 does (P4.162)
+
+_Versions: core 0.0.1244._
+
+The post office (announcement sender and audience, announcement preview, impersonation voice preview, send mail), the scenario verb, and the participant add / update / remove gates checked only the 8-4-4-4-12 shape. Zod 4's `z.uuid()` also requires a version nibble of 1-8 and a variant nibble of 8, 9, a or b, so v4 refuses ids like `12345678-1234-0234-8234-123456789abc` with 400 `Validation error`. The three private shape checks are deleted and every gate calls `zod_issues::zod_uuid_ok`. Twenty new oracle rows across `post_office_routes`, `chat_scenario_routes` and `chat_cast_routes`.
+
 #### 2026-10-07 — fix(web): log v4's context-middleware ERROR for a store-unavailable 503 (P4.162, dogfood #151)
 
 _Versions: core 0.0.1243, web 0.0.223._

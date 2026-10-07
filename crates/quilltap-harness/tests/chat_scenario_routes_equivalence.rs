@@ -87,6 +87,10 @@ const GONE_PATH: &str = "Scenarios/gone.md";
 const VALIDATION_DETAILS_GAP: &[&str] = &[
     "verb_bad_scenario_id",
     "verb_bad_group_id",
+    "verb_scenario_id_uuid_v0",
+    "verb_scenario_id_uuid_variant_c",
+    "verb_group_id_uuid_v0",
+    "verb_group_id_uuid_variant_c",
     "verb_path_too_long",
     "verb_wrong_type_scenario",
     "verb_wrong_type_path",
@@ -884,6 +888,37 @@ fn chat_scenario_routes_match_oracle() {
             "verb_bad_group_id",
             CHAT,
             json!({ "groupScenarioPath": GROUP_PATH, "groupScenarioGroupId": "nope" }),
+            false,
+        ),
+        // P4.162: shape-valid, RFC-INVALID ids — refused by Zod 4's `z.uuid()`.
+        (
+            "verb_scenario_id_uuid_v0",
+            CHAT,
+            json!({ "scenarioId": "12345678-1234-0234-8234-123456789abc" }),
+            false,
+        ),
+        (
+            "verb_scenario_id_uuid_variant_c",
+            CHAT,
+            json!({ "scenarioId": "12345678-1234-4234-c234-123456789abc" }),
+            false,
+        ),
+        (
+            "verb_group_id_uuid_v0",
+            CHAT,
+            json!({
+                "groupScenarioPath": GROUP_PATH,
+                "groupScenarioGroupId": "12345678-1234-0234-8234-123456789abc",
+            }),
+            false,
+        ),
+        (
+            "verb_group_id_uuid_variant_c",
+            CHAT,
+            json!({
+                "groupScenarioPath": GROUP_PATH,
+                "groupScenarioGroupId": "12345678-1234-4234-c234-123456789abc",
+            }),
             false,
         ),
         (

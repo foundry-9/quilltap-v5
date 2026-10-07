@@ -83,6 +83,13 @@ use serde_json::{json, Value};
 
 const SEED_TS: &str = "2026-05-01T00:00:00.000Z";
 const NOW_MS: i64 = 1_777_939_200_000; // 2026-05-05T00:00:00.000Z (the oracle's frozen clock)
+/// P4.162: shape-valid but RFC-INVALID ids (version nibble `0`; variant nibble
+/// `c`). Zod 4's `z.uuid()` is the RFC 9562 regex, so v4 refuses both; the old
+/// shape-only `is_uuid` accepted them. Shared verbatim with the oracle.
+const RFC_INVALID: &[(&str, &str)] = &[
+    ("uuid_v0", "12345678-1234-0234-8234-123456789abc"),
+    ("uuid_variant_c", "12345678-1234-4234-c234-123456789abc"),
+];
 
 /// v4 answers 201; the dispatch boundary answers 200.
 const V4_CREATED_CASES: &[&str] = &[
@@ -105,6 +112,14 @@ const V4_CREATED_CASES: &[&str] = &[
 const VALIDATION_DETAILS_GAP: &[&str] = &[
     "update_invalid_status",
     "update_talkativeness_out_of_range",
+    // P4.162: the RFC-invalid id rows (add / update / remove — each a Zod
+    // `invalid_format` refusal in v4, measured at `94fbb1ae3`).
+    "add_character_id_uuid_v0",
+    "add_character_id_uuid_variant_c",
+    "update_participant_id_uuid_v0",
+    "update_participant_id_uuid_variant_c",
+    "remove_participant_id_uuid_v0",
+    "remove_participant_id_uuid_variant_c",
     // P4.D163: the `selectedSubpromptIds` Zod arms (`.optional()` never
     // `.nullable()`; `.min(1).max(120)` per id; `.max(100)` items).
     "update_subprompts_null_400",
@@ -434,7 +449,18 @@ fn dump_jobs(db: &Db) -> Value {
 // ---------------------------------------------------------------------------
 
 fn add_data(v: Value) -> ParticipantAddData {
-    ParticipantAddData::from_value(&v).expect("valid add bag")
+    // P4.162: a bag the parse refuses (an RFC-invalid `characterId`) becomes a
+    // synthetic bag with the raw id, so the refusal is answered where v4's is —
+    // inside `chat_add_participant`'s `validate`, AFTER the chat lookup — the
+    // dispatch verb's own path (it builds the struct without validating).
+    ParticipantAddData::from_value(&v).unwrap_or(ParticipantAddData {
+        character_id: v
+            .get("characterId")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        ..Default::default()
+    })
 }
 fn update_data(v: Value) -> ParticipantUpdateData {
     // The rejection cases go through the same parser; a parse failure is the
@@ -852,6 +878,16 @@ fn chat_cast_routes_match_oracle() {
             json!({ "type": "CHARACTER", "characterId": id("dora") }),
             false,
         );
+        // P4.162: shape-valid, RFC-INVALID ids — refused by Zod 4's `z.uuid()`.
+        for (tag, bad) in RFC_INVALID {
+            add(
+                &format!("a-rfc-{tag}"),
+                &format!("add_character_id_{tag}"),
+                &chat_main,
+                json!({ "type": "CHARACTER", "characterId": bad }),
+                false,
+            );
+        }
 
         // ── P4.D238 / v4 `04d6c9d52`: the arriving character's avatar ─────
         // The planted arms (the oracle's `plantedAddCase` — each plant mirrors
@@ -1143,6 +1179,15 @@ fn chat_cast_routes_match_oracle() {
             json!({ "participantId": p_bram, "talkativeness": 4 }),
             false,
         );
+        for (tag, bad) in RFC_INVALID {
+            upd(
+                &format!("u-rfc-{tag}"),
+                &format!("update_participant_id_{tag}"),
+                &chat_main,
+                json!({ "participantId": bad, "displayOrder": 3 }),
+                false,
+            );
+        }
 
         // ── P4.D163 / v4 `2f4254b42`: `selectedSubpromptIds` on update ────
         // Driven through the SAME parse the two production entrances use
@@ -1319,6 +1364,15 @@ fn chat_cast_routes_match_oracle() {
             false,
         );
         rem("r6", "remove_chat_missing", &missing, &p_cleo, false);
+        for (tag, bad) in RFC_INVALID {
+            rem(
+                &format!("r-rfc-{tag}"),
+                &format!("remove_participant_id_{tag}"),
+                &chat_main,
+                bad,
+                false,
+            );
+        }
 
         // ── ?action=rebuild-system-prompt ─────────────────────────────────
         let mut rb = |tag: &str, name: &str, chat: &str, participant: &str, dump: bool| {

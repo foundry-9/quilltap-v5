@@ -550,7 +550,8 @@ pub async fn chat_remove_participant(db: &Db, chat_id: &str, participant_id: &st
         Ok(None) => return not_found("Chat"),
         Err(e) => return internal(e),
     };
-    if !crate::services::chat_participants::is_uuid(participant_id) {
+    // `removeParticipantSchema`'s `z.uuid()` — Zod 4's RFC regex (P4.162).
+    if !crate::api::zod_issues::zod_uuid_ok(participant_id) {
         return bad_request(crate::services::chat_participants::VALIDATION_ERROR);
     }
 

@@ -77,6 +77,16 @@ const P_BEA = 'e1000000-0000-4000-8000-000000000002';
 const P_GONE = 'e1000000-0000-4000-8000-000000000005';
 const P_GHOST = 'e1000000-0000-4000-8000-000000000006';
 
+// P4.162: shape-valid (8-4-4-4-12 hex) but RFC-INVALID ids. Zod 4's `z.uuid()`
+// is the RFC 9562 regex (version nibble `1-8`, variant nibble `89abAB`), so v4
+// refuses both; v5's old shape-only `is_uuid` accepted them.
+const UUID_V0 = '12345678-1234-0234-8234-123456789abc';
+const UUID_VARIANT_C = '12345678-1234-4234-c234-123456789abc';
+const RFC_INVALID: ReadonlyArray<readonly [string, string]> = [
+  ['uuid_v0', UUID_V0],
+  ['uuid_variant_c', UUID_VARIANT_C],
+];
+
 // Shared frozen clock (matches NOW_MS in the Rust test).
 const NOW_MS = 1_777_939_200_000; // 2026-05-05T00:00:00.000Z
 
@@ -866,6 +876,63 @@ async function main(): Promise<void> {
           }),
         ),
     },
+    // ── P4.162: every `z.uuid()` gate on this route refuses a shape-valid,
+    // RFC-invalid id (400 `Validation error` + Zod `details`) ───────────────
+    ...RFC_INVALID.flatMap(([tag, bad]): CaseSpec[] => [
+      {
+        name: `announcement_sender_${tag}`,
+        run: async () =>
+          respond(
+            await post(CHAT, 'announcement', {
+              contentMarkdown: 'From an impossible sender.',
+              sender: { kind: 'character', characterId: bad },
+            }),
+          ),
+      },
+      {
+        name: `announcement_whisper_${tag}`,
+        run: async () =>
+          respond(
+            await post(CHAT, 'announcement', {
+              contentMarkdown: 'To an impossible audience.',
+              sender: { kind: 'staff', staffId: 'host' },
+              targetParticipantIds: [bad],
+            }),
+          ),
+      },
+      {
+        name: `preview_${tag}`,
+        run: async () =>
+          respond(
+            await post(CHAT, 'announcement-preview', {
+              seedMarkdown: 'Tell them.',
+              characterId: bad,
+              connectionProfileId: CONN,
+            }),
+          ),
+      },
+      {
+        name: `voice_preview_${tag}`,
+        run: async () =>
+          respond(
+            await post(CHAT, 'impersonation-voice-preview', {
+              participantId: bad,
+              seedMarkdown: 'Say it properly.',
+            }),
+          ),
+      },
+      {
+        name: `send_mail_${tag}`,
+        run: async () =>
+          respond(
+            await post(CHAT, 'send-mail', {
+              fromCharacterId: bad,
+              toCharacterId: BEA,
+              bodyMarkdown: 'From an impossible correspondent.',
+            }),
+          ),
+      },
+    ]),
     // ── P4.D65: the archived-character 400s (the banked P4.D63 unit-4 arms) ──
     // The tombstone is planted per case on the FRESH COPY rather than baked
     // into the committed fixture: nothing else in this family wants an archived

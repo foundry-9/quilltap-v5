@@ -61,6 +61,9 @@ use rusqlite::Connection;
 use serde::Serialize;
 use serde_json::{json, Map, Value};
 
+// `z.uuid()` is Zod 4's RFC 9562 regex, not the bare 8-4-4-4-12 shape — a
+// shape-valid, RFC-invalid id is refused at v4's parse (P4.162).
+use crate::api::zod_issues::zod_uuid_ok;
 use crate::clock::now_iso;
 use crate::db::chats::{ChatUpdate, ChatsRepository};
 use crate::db::chats_messages::{ChatEventInput, SystemEventInput};
@@ -118,30 +121,6 @@ impl From<DbError> for ParticipantError {
 // ===========================================================================
 // The validated field bags (v4 `updateParticipantSchema` / `addParticipantSchema`)
 // ===========================================================================
-
-/// `z.uuid()` — Zod 4 accepts any RFC 9562 text form; reproduced as the shape
-/// test (the same idiom as [`crate::api::chat_post_office`]).
-pub fn is_uuid(s: &str) -> bool {
-    let b = s.as_bytes();
-    if b.len() != 36 {
-        return false;
-    }
-    for (i, c) in b.iter().enumerate() {
-        match i {
-            8 | 13 | 18 | 23 => {
-                if *c != b'-' {
-                    return false;
-                }
-            }
-            _ => {
-                if !c.is_ascii_hexdigit() {
-                    return false;
-                }
-            }
-        }
-    }
-    true
-}
 
 /// v4 `ParticipantStatusEnum` as `updateParticipantSchema` spells it.
 const STATUS_VALUES: [&str; 4] = ["active", "silent", "absent", "removed"];
@@ -214,17 +193,17 @@ impl ParticipantUpdateData {
     /// code runs. `Err` is the whole-parse rejection (v4's 400 `Validation error`).
     pub fn validate(&self) -> Result<(), ParticipantError> {
         let bad = || ParticipantError::new(400, VALIDATION_ERROR);
-        if !is_uuid(&self.participant_id) {
+        if !zod_uuid_ok(&self.participant_id) {
             return Err(bad());
         }
         if let Some(id) = &self.connection_profile_id {
-            if !is_uuid(id) {
+            if !zod_uuid_ok(id) {
                 return Err(bad());
             }
         }
         for opt in [&self.image_profile_id, &self.selected_system_prompt_id] {
             if let Some(Some(id)) = opt {
-                if !is_uuid(id) {
+                if !zod_uuid_ok(id) {
                     return Err(bad());
                 }
             }
@@ -327,16 +306,16 @@ pub struct ParticipantAddData {
 impl ParticipantAddData {
     pub fn validate(&self) -> Result<(), ParticipantError> {
         let bad = || ParticipantError::new(400, VALIDATION_ERROR);
-        if !is_uuid(&self.character_id) {
+        if !zod_uuid_ok(&self.character_id) {
             return Err(bad());
         }
         if let Some(id) = &self.connection_profile_id {
-            if !is_uuid(id) {
+            if !zod_uuid_ok(id) {
                 return Err(bad());
             }
         }
         if let Some(Some(id)) = &self.image_profile_id {
-            if !is_uuid(id) {
+            if !zod_uuid_ok(id) {
                 return Err(bad());
             }
         }

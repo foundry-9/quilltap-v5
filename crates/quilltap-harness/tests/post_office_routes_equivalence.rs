@@ -86,6 +86,13 @@ const P_BEA: &str = "e1000000-0000-4000-8000-000000000002";
 const P_GONE: &str = "e1000000-0000-4000-8000-000000000005";
 const P_GHOST: &str = "e1000000-0000-4000-8000-000000000006";
 const NOW_MS: i64 = 1_777_939_200_000; // 2026-05-05T00:00:00.000Z
+                                       // P4.162: shape-valid but RFC-INVALID ids (version nibble `0`; variant nibble
+                                       // `c`). Zod 4's `z.uuid()` is the RFC 9562 regex, so v4 refuses both; the old
+                                       // shape-only `is_uuid` accepted them. Shared verbatim with the oracle.
+const RFC_INVALID: &[(&str, &str)] = &[
+    ("uuid_v0", "12345678-1234-0234-8234-123456789abc"),
+    ("uuid_variant_c", "12345678-1234-4234-c234-123456789abc"),
+];
 
 /// Cases where v4 answers 201 and the dispatch boundary answers 200 (see the
 /// module header).
@@ -115,6 +122,17 @@ const VALIDATION_DETAILS_GAP: &[&str] = &[
     "announcement_whisper_invalid_uuid",
     "preview_empty_seed",
     "send_mail_empty_body",
+    // P4.162: the RFC-invalid id rows (`RFC_INVALID` × five gates).
+    "announcement_sender_uuid_v0",
+    "announcement_whisper_uuid_v0",
+    "preview_uuid_v0",
+    "voice_preview_uuid_v0",
+    "send_mail_uuid_v0",
+    "announcement_sender_uuid_variant_c",
+    "announcement_whisper_uuid_variant_c",
+    "preview_uuid_variant_c",
+    "voice_preview_uuid_variant_c",
+    "send_mail_uuid_variant_c",
 ];
 
 #[derive(Deserialize)]
@@ -930,6 +948,71 @@ fn post_office_routes_match_oracle() {
         BEA,
         "Into the void.",
     );
+    // ── P4.162: every `z.uuid()` gate refuses a shape-valid, RFC-invalid id ──
+    for (tag, bad) in RFC_INVALID {
+        let db = fresh_db(&spec, &format!("rfc-sender-{tag}"));
+        let r = rt.block_on(chat_post_office::chat_announcement_post(
+            &db,
+            CHAT,
+            "From an impossible sender.",
+            &AnnouncerSenderWire::Character {
+                character_id: bad.to_string(),
+            },
+            None,
+        ));
+        check(&format!("announcement_sender_{tag}"), &r, None);
+
+        let db = fresh_db(&spec, &format!("rfc-whisper-{tag}"));
+        let targets = vec![bad.to_string()];
+        let r = rt.block_on(chat_post_office::chat_announcement_post(
+            &db,
+            CHAT,
+            "To an impossible audience.",
+            &staff(StaffSenderWire::Host),
+            Some(&targets),
+        ));
+        check(&format!("announcement_whisper_{tag}"), &r, None);
+
+        let db = fresh_db(&spec, &format!("rfc-preview-{tag}"));
+        let r = rt.block_on(chat_post_office::chat_announcement_preview(
+            &db,
+            None,
+            "e18e05bc-63e8-4539-8a85-719b7a508850",
+            CHAT,
+            "Tell them.",
+            bad,
+            CONN,
+            None,
+            None,
+        ));
+        check(&format!("preview_{tag}"), &r, None);
+
+        let db = fresh_db(&spec, &format!("rfc-voice-{tag}"));
+        let r = rt.block_on(chat_post_office::chat_impersonation_voice_preview(
+            &db,
+            None,
+            "e18e05bc-63e8-4539-8a85-719b7a508850",
+            CHAT,
+            bad,
+            "Say it properly.",
+            None,
+            None,
+        ));
+        check(&format!("voice_preview_{tag}"), &r, None);
+
+        let db = fresh_db(&spec, &format!("rfc-mail-{tag}"));
+        let r = rt.block_on(chat_post_office::chat_send_mail_in_zone(
+            &db,
+            CHAT,
+            bad,
+            BEA,
+            "From an impossible correspondent.",
+            None,
+            &now_iso,
+            &zone,
+        ));
+        check(&format!("send_mail_{tag}"), &r, None);
+    }
     // ── P4.D65: the archived-character 400s (the banked P4.D63 unit-4 arms) ──
     // The tombstone is planted per case on the FRESH COPY rather than baked
     // into the committed fixture: nothing else in this family wants an archived
