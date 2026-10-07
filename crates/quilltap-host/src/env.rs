@@ -50,7 +50,8 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use quilltap_core::db::runtime::Db;
+use quilltap_core::db::runtime::{Db, PartitionState};
+use quilltap_core::db::table_shape::Partition;
 use quilltap_core::model_context::PricingRow;
 use quilltap_core::provider_manifest::Registry;
 use quilltap_core::services::pricing_fetcher::fallback_pricing;
@@ -220,11 +221,13 @@ pub fn read_changelog(docs_dir: &Path) -> Option<String> {
 // The production SelfInventoryEnv
 // ============================================================================
 
-/// v4 `isMountIndexDegraded()`: the mount-index DB failed to open. Derived
-/// from the assembled `Db` — the mount-index partition being unavailable (or
-/// unreadable) is degraded.
+/// v4 `isMountIndexDegraded()`: the mount-index DB failed to open or its
+/// integrity check (P4.159 — the partition's recorded state). The probe-read
+/// stays: an ABSENT partition (a v5-only state — v4 would have created the
+/// file) and a pool that can no longer open the file read as degraded too.
 pub fn mount_index_degraded(db: &Db) -> bool {
-    db.read_mount_index(|_conn| Ok(())).is_err()
+    db.partition_state(Partition::MountIndex) == PartitionState::Degraded
+        || db.read_mount_index(|_conn| Ok(())).is_err()
 }
 
 /// Build the production `SelfInventoryEnv` for this host (the browser/web

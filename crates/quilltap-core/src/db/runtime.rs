@@ -33,10 +33,50 @@
 //! The read-only opens follow the CLAUDE.md rule: `PRAGMA key` is the first and
 //! only pragma before the first read (no `journal_mode`/`foreign_keys` on a read
 //! path — those would force header writes that race the cipher context).
+//!
+//! ## The sibling open (P4.159, dogfood #150)
+//!
+//! The MAIN database is fatal: v4's `getSQLiteClient` rethrows and its
+//! migrations `process.exit(1)`. A SIBLING — the mount index or the LLM logs —
+//! is not: v4 isolates them precisely so "corruption in the mount index DB can
+//! never threaten characters, chats, messages, or memories"
+//! (`mount-index-client.ts:5-7`). [`Db::open`] opens each present sibling the
+//! way v4's `SQLiteBackend.connect()` does (`backend.ts:571-617` at
+//! `94fbb1ae3`), LLM logs FIRST:
+//!
+//! - the LLM logs in ONE attempt (`llm-logs-client.ts:49-98`), the mount index
+//!   through a four-attempt ladder `[200, 600, 1500]` ms apart
+//!   (`mount-index-client.ts:43-149` — a cold open over an iCloud/VirtioFS
+//!   bind mount can read incomplete page-1 bytes once and succeed a moment
+//!   later). The asymmetry is v4's; the LLM-logs client simply has no ladder.
+//!   The sleeps block the opening thread as v4's `sleepSync` blocks its event
+//!   loop (R-C — v4's constants, no injection seam);
+//! - an opened sibling then runs v4's `quick_check` (`*-protection.ts:44-66`);
+//! - a sibling that failed either step is DEGRADED: [`PartitionState::Degraded`],
+//!   no writer, no read pool. v4 KEEPS the connection after a failed integrity
+//!   check and lets its two guards throw on every use; v5 has no guard layer —
+//!   its `Option<Writer>` / `Option<PartitionPool>` IS the guard — so dropping
+//!   both reaches the same boundary behaviour (every read and write of that
+//!   partition refuses with [`DbError::PartitionUnavailable`]). Ruled R-A.
+//!
+//! DEGRADED is distinct from ABSENT (no path — a v5-only state: v4's `new
+//! Database` on a missing path CREATES the file; recorded, not ported). The
+//! boot's structural pass COUNTS a degraded partition (v4's `<label> database
+//! unavailable: …` per repository, so `/health` answers `degraded`) and skips
+//! an absent one (R4). Collapsing the two would answer a healthy 200 over a
+//! dead mount index (R-B).
+//!
+//! The writable open needs no separate verify probe (R-D): v4's mount-index
+//! client probes `SELECT count(*) FROM sqlite_master` before its pragmas so a
+//! bad page 1 fails there; v5's [`Writer::open_writable`] fails at its
+//! `journal_mode` pragma on the same bytes, and SQLite3MC answers the same
+//! `file is not a database` at both steps (measured through v4's own binding
+//! and pinned by `degraded_sibling_open_equivalence`).
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::Duration;
 
 use rusqlite::{Connection, OpenFlags};
 use tokio::sync::{mpsc, oneshot};
@@ -44,8 +84,34 @@ use tokio::sync::{mpsc, oneshot};
 use crate::dbkey;
 use crate::write_partition::WriteDbTarget;
 
+use super::fallback::error_text;
+use super::table_shape::Partition;
 use super::text_compression;
 use super::{DbError, Writer};
+
+/// The mount index's cold-open ladder (`mount-index-client.ts:43`,
+/// `OPEN_RETRY_BACKOFF_MS`): the sleep after each failed attempt but the last.
+const MOUNT_INDEX_OPEN_BACKOFF_MS: [u64; 3] = [200, 600, 1500];
+
+/// v4's child-logger `module` on each client's and protection module's lines.
+const MOUNT_INDEX_CLIENT: &str = "database:mount-index-client";
+const MOUNT_INDEX_PROTECTION: &str = "database:mount-index-protection";
+const LLM_LOGS_CLIENT: &str = "database:llm-logs-client";
+const LLM_LOGS_PROTECTION: &str = "database:llm-logs-protection";
+
+/// How a sibling partition came out of [`Db::open`] (R-B). The main database
+/// is always `Open` — its failure fails the open.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PartitionState {
+    /// Opened and integrity-checked: a writer and a read pool.
+    Open,
+    /// No file at all (no path) — a v5-only state (v4 creates the file);
+    /// skipped, not counted, by the structural pass.
+    Absent,
+    /// A file that failed v4's open or its `quick_check` — v4's degraded mode.
+    /// No writer, no read pool; COUNTED by the structural pass.
+    Degraded,
+}
 
 /// Max read-only connections kept warm per partition. Beyond this the pool drops
 /// returned connections rather than growing without bound; the next checkout
@@ -121,40 +187,257 @@ pub struct Db {
 struct DbInner {
     reads: ReadPool,
     writes: mpsc::Sender<WriteJob>,
+    mount_index_state: PartitionState,
+    llm_logs_state: PartitionState,
+}
+
+/// One sibling's open: its writer (when `Open`) and its state.
+struct SiblingOpen {
+    writer: Option<Writer>,
+    state: PartitionState,
+}
+
+/// Open one sibling partition the way v4's `connect()` does (see the module
+/// doc): the client's open (the ladder for the mount index, one attempt for
+/// the LLM logs), then the integrity check; either failing leaves it
+/// [`PartitionState::Degraded`] with no writer. `None` is `Absent`, silently.
+fn open_sibling(partition: Partition, path: Option<&Path>, pepper_b64: &str) -> SiblingOpen {
+    let Some(path) = path else {
+        return SiblingOpen {
+            writer: None,
+            state: PartitionState::Absent,
+        };
+    };
+    let writer = match partition {
+        Partition::MountIndex => open_mount_index(path, pepper_b64),
+        Partition::LlmLogs => open_llm_logs(path, pepper_b64),
+        Partition::Main => unreachable!("the main database is not a sibling"),
+    };
+    match writer {
+        Some(writer) if integrity_check_passes(partition, writer.connection()) => SiblingOpen {
+            writer: Some(writer),
+            state: PartitionState::Open,
+        },
+        // R-A: a failed integrity check drops the connection (v4 keeps it and
+        // lets its guards refuse every use — the same boundary behaviour).
+        _ => SiblingOpen {
+            writer: None,
+            state: PartitionState::Degraded,
+        },
+    }
+}
+
+/// v4 `getMountIndexSQLiteClient` (`mount-index-client.ts:102-149`): the
+/// four-attempt ladder, a WARN after each failed attempt but the last, one
+/// ERROR when the budget is spent. `walMode` is v4's config value: v5 never
+/// runs WAL (TRUNCATE journaling, cloud-sync safety), so it is always `false`
+/// — v4's value with `SQLITE_WAL_MODE` unset.
+fn open_mount_index(path: &Path, pepper_b64: &str) -> Option<Writer> {
+    let path_text = path.display().to_string();
+    tracing::info!(
+        target: "quilltap::db",
+        module = MOUNT_INDEX_CLIENT,
+        path = path_text.as_str(),
+        walMode = false,
+        "Initializing mount index database connection"
+    );
+    let max_attempts = MOUNT_INDEX_OPEN_BACKOFF_MS.len() + 1;
+    let mut last_error = String::new();
+    for attempt in 0..max_attempts {
+        match Writer::open_writable(path, pepper_b64) {
+            Ok(writer) => {
+                tracing::info!(
+                    target: "quilltap::db",
+                    module = MOUNT_INDEX_CLIENT,
+                    path = path_text.as_str(),
+                    attempts = attempt + 1,
+                    "Mount index database connection established"
+                );
+                return Some(writer);
+            }
+            Err(error) => {
+                last_error = error_text(&error);
+                if let Some(&backoff) = MOUNT_INDEX_OPEN_BACKOFF_MS.get(attempt) {
+                    tracing::warn!(
+                        target: "quilltap::db",
+                        module = MOUNT_INDEX_CLIENT,
+                        path = path_text.as_str(),
+                        attempt = attempt + 1,
+                        maxAttempts = max_attempts,
+                        backoffMs = backoff,
+                        error = last_error.as_str(),
+                        "Mount index cold-open failed — retrying"
+                    );
+                    thread::sleep(Duration::from_millis(backoff));
+                }
+            }
+        }
+    }
+    tracing::error!(
+        target: "quilltap::db",
+        module = MOUNT_INDEX_CLIENT,
+        path = path_text.as_str(),
+        attempts = max_attempts,
+        error = last_error.as_str(),
+        "Failed to initialize mount index database — entering degraded mode"
+    );
+    None
+}
+
+/// v4 `getLLMLogsSQLiteClient` (`llm-logs-client.ts:49-98`): ONE attempt, no
+/// verify probe, no retry. v4's DEBUG `SQLCipher key set on LLM logs database`
+/// fires once the key pragma has run, BEFORE the pragma that fails on a bad
+/// file — v5's key is the first step of [`Writer::open_writable`] and cannot
+/// fail on an existing file, so the line is logged just ahead of the open.
+fn open_llm_logs(path: &Path, pepper_b64: &str) -> Option<Writer> {
+    let path_text = path.display().to_string();
+    tracing::info!(
+        target: "quilltap::db",
+        module = LLM_LOGS_CLIENT,
+        path = path_text.as_str(),
+        walMode = false,
+        "Initializing LLM logs database connection"
+    );
+    tracing::debug!(
+        target: "quilltap::db",
+        module = LLM_LOGS_CLIENT,
+        "SQLCipher key set on LLM logs database"
+    );
+    match Writer::open_writable(path, pepper_b64) {
+        Ok(writer) => {
+            tracing::info!(
+                target: "quilltap::db",
+                module = LLM_LOGS_CLIENT,
+                path = path_text.as_str(),
+                "LLM logs database connection established"
+            );
+            Some(writer)
+        }
+        Err(error) => {
+            tracing::error!(
+                target: "quilltap::db",
+                module = LLM_LOGS_CLIENT,
+                path = path_text.as_str(),
+                error = error_text(&error).as_str(),
+                "Failed to initialize LLM logs database — entering degraded mode"
+            );
+            None
+        }
+    }
+}
+
+/// v4 `runMountIndexIntegrityCheck` / `runLLMLogsIntegrityCheck`
+/// (`*-protection.ts:44-66`): `pragma('quick_check', { simple: true })` — the
+/// first column of the first row.
+fn integrity_check_passes(partition: Partition, conn: &Connection) -> bool {
+    let outcome = conn
+        .query_row("PRAGMA quick_check", [], |r| r.get::<_, String>(0))
+        .map_err(DbError::from);
+    integrity_verdict(partition, outcome)
+}
+
+/// The integrity check's three arms and their lines: `ok` passes (INFO); any
+/// other result is the FAILED arm (ERROR `{result}`); a throw is the `threw`
+/// arm (ERROR `{error}`). A page-overwrite plant reaches FAILED (SQLite3MC's
+/// page authentication fails the read and `quick_check` REPORTS it — measured);
+/// no plant reaches `threw`, so it is unit-pinned over a stubbed outcome.
+fn integrity_verdict(partition: Partition, outcome: Result<String, DbError>) -> bool {
+    match (partition, outcome) {
+        (Partition::MountIndex, Ok(result)) if result == "ok" => {
+            tracing::info!(
+                target: "quilltap::db",
+                module = MOUNT_INDEX_PROTECTION,
+                "Mount index database integrity check passed"
+            );
+            true
+        }
+        (Partition::MountIndex, Ok(result)) => {
+            tracing::error!(
+                target: "quilltap::db",
+                module = MOUNT_INDEX_PROTECTION,
+                result = result.as_str(),
+                "Mount index database integrity check FAILED — entering degraded mode"
+            );
+            false
+        }
+        (Partition::MountIndex, Err(error)) => {
+            tracing::error!(
+                target: "quilltap::db",
+                module = MOUNT_INDEX_PROTECTION,
+                error = error_text(&error).as_str(),
+                "Mount index database integrity check threw an error — entering degraded mode"
+            );
+            false
+        }
+        (_, Ok(result)) if result == "ok" => {
+            tracing::info!(
+                target: "quilltap::db",
+                module = LLM_LOGS_PROTECTION,
+                "LLM logs database integrity check passed"
+            );
+            true
+        }
+        (_, Ok(result)) => {
+            tracing::error!(
+                target: "quilltap::db",
+                module = LLM_LOGS_PROTECTION,
+                result = result.as_str(),
+                "LLM logs database integrity check FAILED — entering degraded mode"
+            );
+            false
+        }
+        (_, Err(error)) => {
+            tracing::error!(
+                target: "quilltap::db",
+                module = LLM_LOGS_PROTECTION,
+                error = error_text(&error).as_str(),
+                "LLM logs database integrity check threw an error — entering degraded mode"
+            );
+            false
+        }
+    }
 }
 
 impl Db {
     /// Open an instance: RW writers for each present partition (owned by a new
     /// writer thread) plus a matching read pool. `pepper_b64` is the base64 pepper
     /// (as [`dbkey::load_pepper`] yields it).
+    ///
+    /// The main database's failure is this call's error; a sibling's is not —
+    /// it opens DEGRADED (see the module doc and [`Db::partition_state`]).
     pub fn open(paths: DbPaths, pepper_b64: &str) -> Result<Db, DbError> {
         let key_hex =
             dbkey::pepper_b64_to_key_hex(pepper_b64).map_err(|e| DbError::Key(e.to_string()))?;
 
-        // The writer thread's owned set — one RW connection per present partition.
-        let writers = WriterSet {
-            main: Writer::open_writable(&paths.main, pepper_b64)?,
-            mount_index: match &paths.mount_index {
-                Some(p) => Some(Writer::open_writable(p, pepper_b64)?),
-                None => None,
-            },
-            llm_logs: match &paths.llm_logs {
-                Some(p) => Some(Writer::open_writable(p, pepper_b64)?),
-                None => None,
-            },
-        };
+        let main = Writer::open_writable(&paths.main, pepper_b64)?;
+        // v4's `connect()` order: the LLM logs, then the mount index.
+        let llm_logs = open_sibling(Partition::LlmLogs, paths.llm_logs.as_deref(), pepper_b64);
+        let mount_index = open_sibling(
+            Partition::MountIndex,
+            paths.mount_index.as_deref(),
+            pepper_b64,
+        );
 
-        // The read pool — direct, pooled read-only connections per partition.
+        // The read pool — direct, pooled read-only connections per OPEN
+        // partition (a degraded one has none, like an absent one).
+        let pool_for = |path: &Option<PathBuf>, sibling: &SiblingOpen| match path {
+            Some(p) if sibling.state == PartitionState::Open => {
+                Some(PartitionPool::new(p.clone(), key_hex.clone()))
+            }
+            _ => None,
+        };
         let reads = ReadPool {
             main: PartitionPool::new(paths.main.clone(), key_hex.clone()),
-            mount_index: paths
-                .mount_index
-                .as_ref()
-                .map(|p| PartitionPool::new(p.clone(), key_hex.clone())),
-            llm_logs: paths
-                .llm_logs
-                .as_ref()
-                .map(|p| PartitionPool::new(p.clone(), key_hex.clone())),
+            mount_index: pool_for(&paths.mount_index, &mount_index),
+            llm_logs: pool_for(&paths.llm_logs, &llm_logs),
+        };
+        let (mount_index_state, llm_logs_state) = (mount_index.state, llm_logs.state);
+
+        // The writer thread's owned set — one RW connection per open partition.
+        let writers = WriterSet {
+            main,
+            mount_index: mount_index.writer,
+            llm_logs: llm_logs.writer,
         };
 
         let (tx, mut rx) = mpsc::channel::<WriteJob>(WRITE_CHANNEL_CAPACITY);
@@ -173,8 +456,24 @@ impl Db {
             .map_err(|e| DbError::WriterSpawn(e.to_string()))?;
 
         Ok(Db {
-            inner: Arc::new(DbInner { reads, writes: tx }),
+            inner: Arc::new(DbInner {
+                reads,
+                writes: tx,
+                mount_index_state,
+                llm_logs_state,
+            }),
         })
+    }
+
+    /// How `partition` came out of [`Db::open`]: `Open`, `Absent` (no file) or
+    /// `Degraded` (v4's degraded mode — the file failed its open or its
+    /// integrity check). The main database is always `Open`.
+    pub fn partition_state(&self, partition: Partition) -> PartitionState {
+        match partition {
+            Partition::Main => PartitionState::Open,
+            Partition::MountIndex => self.inner.mount_index_state,
+            Partition::LlmLogs => self.inner.llm_logs_state,
+        }
     }
 
     /// Open a main-only instance (no sibling databases).
@@ -233,7 +532,8 @@ impl Db {
     }
 
     /// Run a read against the **mount-index** sibling database. Errors with
-    /// [`DbError::PartitionUnavailable`] if this instance has no mount-index DB.
+    /// [`DbError::PartitionUnavailable`] if this instance has no mount-index DB
+    /// or it opened degraded.
     pub fn read_mount_index<T, F>(&self, f: F) -> Result<T, DbError>
     where
         F: FnOnce(&Connection) -> Result<T, DbError>,
@@ -245,7 +545,8 @@ impl Db {
     }
 
     /// Run a read against the **llm-logs** sibling database. Errors with
-    /// [`DbError::PartitionUnavailable`] if this instance has no llm-logs DB.
+    /// [`DbError::PartitionUnavailable`] if this instance has no llm-logs DB or
+    /// it opened degraded.
     pub fn read_llm_logs<T, F>(&self, f: F) -> Result<T, DbError>
     where
         F: FnOnce(&Connection) -> Result<T, DbError>,
@@ -483,6 +784,107 @@ mod tests {
             })
             .unwrap();
         assert_eq!(write, (-64000, 2), "the writer connection");
+    }
+
+    /// P4.159: v4's integrity check's three arms, over stubbed outcomes — the
+    /// `threw` arm is reached by no plant (a page overwrite is REPORTED by
+    /// `quick_check`, the FAILED arm), so this is its pin. Each arm's line and
+    /// verdict, both partitions.
+    #[test]
+    fn the_integrity_verdict_has_v4s_three_arms() {
+        let cases: [(Partition, Result<String, DbError>, bool, &str); 6] = [
+            (
+                Partition::MountIndex,
+                Ok("ok".to_string()),
+                true,
+                "INFO quilltap::db Mount index database integrity check passed module=database:mount-index-protection",
+            ),
+            (
+                Partition::MountIndex,
+                Ok("*** in database main ***".to_string()),
+                false,
+                "ERROR quilltap::db Mount index database integrity check FAILED — entering degraded mode module=database:mount-index-protection result=*** in database main ***",
+            ),
+            (
+                Partition::MountIndex,
+                Err(DbError::Sqlite(rusqlite::Error::SqliteFailure(
+                    rusqlite::ffi::Error::new(26),
+                    Some("file is not a database".to_string()),
+                ))),
+                false,
+                "ERROR quilltap::db Mount index database integrity check threw an error — entering degraded mode module=database:mount-index-protection error=file is not a database",
+            ),
+            (
+                Partition::LlmLogs,
+                Ok("ok".to_string()),
+                true,
+                "INFO quilltap::db LLM logs database integrity check passed module=database:llm-logs-protection",
+            ),
+            (
+                Partition::LlmLogs,
+                Ok("row 3 missing from index".to_string()),
+                false,
+                "ERROR quilltap::db LLM logs database integrity check FAILED — entering degraded mode module=database:llm-logs-protection result=row 3 missing from index",
+            ),
+            (
+                Partition::LlmLogs,
+                Err(DbError::Sqlite(rusqlite::Error::SqliteFailure(
+                    rusqlite::ffi::Error::new(11),
+                    Some("database disk image is malformed".to_string()),
+                ))),
+                false,
+                "ERROR quilltap::db LLM logs database integrity check threw an error — entering degraded mode module=database:llm-logs-protection error=database disk image is malformed",
+            ),
+        ];
+        for (partition, outcome, want, line) in cases {
+            let (got, lines) =
+                crate::test_support::captured_with(|| integrity_verdict(partition, outcome));
+            assert_eq!(got, want, "{line}");
+            assert_eq!(lines, vec![line.to_string()]);
+        }
+    }
+
+    /// P4.159 (R-B): a garbage sibling opens DEGRADED — no read pool, no
+    /// writer — while a sibling with no path stays ABSENT, and the main
+    /// database is untouched. The LLM logs make ONE attempt (no ladder), so
+    /// this test pays no backoff.
+    #[test]
+    fn a_garbage_sibling_is_degraded_and_a_missing_one_absent() {
+        let (dir, _) = make_db();
+        let llm = dir.path().join("llm.db");
+        std::fs::write(&llm, vec![0x5Au8; 4608]).unwrap();
+        let db = Db::open(
+            DbPaths {
+                main: dir.path().join("main.db"),
+                mount_index: None,
+                llm_logs: Some(llm),
+            },
+            PEPPER,
+        )
+        .unwrap();
+        assert_eq!(db.partition_state(Partition::Main), PartitionState::Open);
+        assert_eq!(
+            db.partition_state(Partition::LlmLogs),
+            PartitionState::Degraded
+        );
+        assert_eq!(
+            db.partition_state(Partition::MountIndex),
+            PartitionState::Absent
+        );
+        assert!(matches!(
+            db.read_llm_logs(|_| Ok(())),
+            Err(DbError::PartitionUnavailable(WriteDbTarget::LlmLogs))
+        ));
+        let has_writer = db
+            .write_blocking(|ws| Ok::<_, DbError>(ws.llm_logs().is_some()))
+            .unwrap();
+        assert!(!has_writer, "a degraded partition holds no writer (R-A)");
+        let n: i64 = db
+            .read_main(|conn| {
+                Ok(conn.query_row("SELECT n FROM counter WHERE id = 'c'", [], |r| r.get(0))?)
+            })
+            .unwrap();
+        assert_eq!(n, 0, "the main database opened as usual");
     }
 
     /// The blocking write API works off the runtime (the harness's `#[test]`

@@ -306,6 +306,25 @@ pub fn unavailable(label: &str, message: &str) -> String {
     format!("{label} database unavailable: {message}")
 }
 
+// HANDOFF(P4.163): C1 item 2's home, coded lane-locally with the contract's
+// EXACT signature — §S.1 folds it onto `db::fallback` (P4.163's file) and
+// repoints the one caller below.
+/// v4 `verifyStructure`'s problem string for a repository whose dedicated
+/// database is DEGRADED: `acquireDb()` throws the partition's guard sentence
+/// (`mount-index-guard.ts:20`, `llm-logs-guard.ts:21`), which
+/// `dedicated-db.repository.ts:176-182` renders through [`unavailable`] with
+/// `DB_LABELS`. Logs nothing — the pass logs the per-problem ERROR itself.
+/// `repository` (C1's signature) is the container key the caller reports
+/// beside the string; the string does not carry it.
+pub fn log_partition_structural_unavailable(partition: Partition, _repository: &str) -> String {
+    let sentence = match partition {
+        Partition::MountIndex => "Mount index database is in degraded mode",
+        Partition::LlmLogs => "LLM logs database is in degraded mode",
+        Partition::Main => unreachable!("the main database is never degraded — its open is fatal"),
+    };
+    unavailable(partition.label(), sentence)
+}
+
 /// v4 `verifyStructure`'s ensure-error form (`dedicated-db.repository.ts:197-199`,
 /// `help-doc-chunks.repository.ts:54`): the ensure — or the shape check after
 /// it — threw.
@@ -492,6 +511,11 @@ pub enum TableRead {
     /// The table's partition file is absent (`None`) — a v5-only state, skipped
     /// and not counted (R4).
     PartitionAbsent,
+    /// The table's partition opened DEGRADED (P4.159, dogfood #150 — v4's
+    /// degraded mode): COUNTED, v4's `<label> database unavailable: <guard
+    /// sentence>` problem, and no `Verified …` DEBUG (v4's `verifyStructure`
+    /// returns before the shape check).
+    PartitionDegraded,
     /// The shape check's answer, or the read's own failure.
     Read(Result<Option<String>, DbError>),
 }
@@ -513,7 +537,8 @@ const PASS_CONTEXT: &str = "startup.verify-structural-tables";
 /// - a collection whose ensure already failed THIS boot reports that failure in
 ///   the ensure form — no shape check, no DEBUG, and never a second ensure;
 /// - otherwise `read` runs the shape check: an absent partition is skipped and
-///   not counted (R4); a read failure is v4's catch, the ensure form; a dedicated
+///   not counted (R4); a DEGRADED partition is counted with v4's unavailable
+///   form (P4.159); a read failure is v4's catch, the ensure form; a dedicated
 ///   table's answer logs v4's DEBUG `Verified dedicated-database table
 ///   structure` `{collection, dbTarget, ok}` (v4's root logger — no `context`;
 ///   `help_doc_chunks` logs none, as v4's own `verifyStructure` there does not);
@@ -536,6 +561,13 @@ pub fn verify_structural_tables(
         } else {
             match read(table) {
                 TableRead::PartitionAbsent => continue,
+                TableRead::PartitionDegraded => {
+                    checked += 1;
+                    Some(log_partition_structural_unavailable(
+                        table.partition,
+                        table.repository,
+                    ))
+                }
                 TableRead::Read(Err(error)) => {
                     checked += 1;
                     Some(ensure_failed(
@@ -624,6 +656,46 @@ mod tests {
                 "no such column: docId"
             ),
             "help_doc_chunks in main database: no such column: docId"
+        );
+    }
+
+    /// C1 item 2's strings — v4's guard sentences under `DB_LABELS` (the
+    /// `degraded` rows of `table_shape_equivalence` compare them against v4's
+    /// REAL guards; this pins the lane-local copy until it folds).
+    #[test]
+    fn a_degraded_partitions_problem_is_v4s_unavailable_form() {
+        assert_eq!(
+            log_partition_structural_unavailable(Partition::MountIndex, "docMountPoints"),
+            "mount index database unavailable: Mount index database is in degraded mode"
+        );
+        assert_eq!(
+            log_partition_structural_unavailable(Partition::LlmLogs, "llmLogs"),
+            "LLM logs database unavailable: LLM logs database is in degraded mode"
+        );
+    }
+
+    /// A degraded partition is COUNTED (`checked`) and reported per table; an
+    /// absent one is skipped (R4) — the two must never collapse (R-B).
+    #[test]
+    fn a_degraded_partition_is_counted_where_an_absent_one_is_skipped() {
+        let (problems, lines) = crate::test_support::captured_with(|| {
+            verify_structural_tables(&EnsureFailures::default(), |t| match t.partition {
+                Partition::LlmLogs => TableRead::PartitionDegraded,
+                Partition::MountIndex => TableRead::PartitionAbsent,
+                Partition::Main => TableRead::Read(Ok(None)),
+            })
+        });
+        assert_eq!(problems.len(), 1);
+        assert_eq!(problems[0].repository, "llmLogs");
+        assert!(
+            lines.iter().any(|l| l.ends_with("checked=2 damaged=1")),
+            "{lines:#?}"
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("Verified dedicated-database")),
+            "{lines:#?}"
         );
     }
 

@@ -24,7 +24,15 @@
  *   - `plant` — each spec plant applied to that substrate, then a FRESH container
  *     (every `tableEnsured` memo false, as at boot) verified in order: the
  *     problems v4's pass would record, and (P4.150) every `Migrated …` INFO
- *     the ensures logged on the way, in order (a `Logger.prototype` spy).
+ *     the ensures logged on the way, in order (a `Logger.prototype` spy);
+ *   - `degraded` (P4.159, dogfood #150) — each spec set of dedicated partitions
+ *     DEGRADED the way v4's client leaves it (`__quilltap<X>Degraded = true`,
+ *     no connection; the others fresh), then a FRESH container verified in
+ *     order: the problems v4's pass would record, each through the REAL
+ *     guard (`<label> database unavailable: <Mount index|LLM logs> database
+ *     is in degraded mode`). The pass's own ERROR lines are compared by the
+ *     `degraded-sibling-open.test.ts` jest case, which drives the REAL
+ *     `verifyStructuralTables` (it needs jest's manager / factory mocks).
  *
  * The `help_doc_chunks in main database:` template is NOT driven here: the
  * help-chunks repository's `getCollection` connects the configured main backend,
@@ -77,6 +85,7 @@ interface Spec {
   shapeCases: string[];
   linksTargets: Array<'mountIndex' | 'llmLogs'>;
   plants: Plant[];
+  degradedTargets: Array<Array<'mountIndex' | 'llmLogs'>>;
 }
 
 type Db = { exec(sql: string): void; prepare(sql: string): { all(...p: unknown[]): unknown[] }; close(): void };
@@ -298,6 +307,25 @@ async function main(): Promise<void> {
       problems,
       infos: [...infos],
     });
+  }
+
+  // ---- degraded partitions (P4.159) -----------------------------------------
+  for (const degradedSet of SPEC.degradedTargets) {
+    const mount: Db | null = degradedSet.includes('mountIndex') ? null : new Database(':memory:');
+    const llm: Db | null = degradedSet.includes('llmLogs') ? null : new Database(':memory:');
+    setDedicated(mount, llm);
+    if (degradedSet.includes('mountIndex')) g.__quilltapMountIndexDegraded = true;
+    if (degradedSet.includes('llmLogs')) g.__quilltapLLMLogsDegraded = true;
+    const repos = createRepositories() as unknown as Record<string, any>;
+    const problems: Array<{ repository: string; problem: string }> = [];
+    for (const key of dedicated) {
+      const problem = await repos[key].verifyStructure();
+      if (problem) problems.push({ repository: key, problem });
+    }
+    mount?.close();
+    llm?.close();
+    setDedicated(null, null);
+    out({ kind: 'degraded', degraded: degradedSet, problems });
   }
 }
 

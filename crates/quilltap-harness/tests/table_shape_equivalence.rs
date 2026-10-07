@@ -27,7 +27,14 @@
 //!     pinned divergences both ways ([`EXPECTED_DIVERGENCES`]). Each plant also
 //!     compares the `Migrated doc_mount_points: added <col> column` INFO lines
 //!     (P4.150 — v4's four `onTableEnsured` self-heals; a `Logger.prototype`
-//!     spy on v4's side, the thread-scoped capture on v5's).
+//!     spy on v4's side, the thread-scoped capture on v5's);
+//!   - `degraded` (P4.159, dogfood #150) — v4's REAL guards over a fresh
+//!     container with one or both dedicated partitions DEGRADED (the client's
+//!     flag set, no connection): the problems in container order, replayed
+//!     through v5's pass with `TableRead::PartitionDegraded` for that
+//!     partition. Red-first (P4.159's lane record): with the arm stubbed to
+//!     today's behaviour (a degraded partition read as ABSENT — skipped, R4)
+//!     v5 recorded ZERO problems for all three rows.
 //!
 //! Red-first (P4.D248's lane record): this binary did not compile on `main`
 //! (no `db::table_shape`), and the case FAILS TO IMPORT at the baseline pin
@@ -495,6 +502,51 @@ fn creating_every_absent_table_reproduces_v4s_substrate() {
         let (got, want) = (dump(conn, t.collection), v4_for(partition, t.collection));
         if got != want {
             failures.push(format!("{}:\n  v5 {got:#?}\n  v4 {want:#?}", t.collection));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// P4.159 (dogfood #150): a DEGRADED partition is COUNTED — each of its
+/// structural tables answers v4's `<label> database unavailable: <guard
+/// sentence>` (`dedicated-db.repository.ts:176-182`), in container order. The
+/// pass's lines are the `degraded_sibling_open_equivalence` differential's.
+#[test]
+fn every_degraded_partition_reports_what_v4s_pass_reports() {
+    use quilltap_core::db::table_shape::{verify_structural_tables, EnsureFailures, TableRead};
+
+    let Some(rows) = rows() else { return };
+    let degraded = of_kind(&rows, "degraded");
+    assert_eq!(degraded.len(), 3, "mount index, LLM logs, both");
+    let mut failures = Vec::new();
+    for r in &degraded {
+        let set = strings(&r["degraded"]);
+        let got: Vec<(String, String)> =
+            verify_structural_tables(&EnsureFailures::default(), |t| {
+                match t.partition {
+                    // v4's rows walk the ten dedicated repositories only.
+                    Partition::Main => TableRead::PartitionAbsent,
+                    p if set.iter().any(|d| d == p.db_target()) => TableRead::PartitionDegraded,
+                    _ => TableRead::Read(Ok(None)),
+                }
+            })
+            .into_iter()
+            .map(|p| (p.repository.to_string(), p.problem))
+            .collect();
+        let v4: Vec<(String, String)> = r["problems"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| {
+                (
+                    p["repository"].as_str().unwrap().to_string(),
+                    p["problem"].as_str().unwrap().to_string(),
+                )
+            })
+            .collect();
+        assert!(!v4.is_empty(), "{set:?}: v4 recorded nothing (regenerate?)");
+        if got != v4 {
+            failures.push(format!("{set:?}:\n  v5 {got:#?}\n  v4 {v4:#?}"));
         }
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));

@@ -142,3 +142,70 @@ async fn two_damaged_tables_pluralize() {
         })
     );
 }
+
+// ============================================================================
+// P4.159 (dogfood #150) — a DEGRADED sibling reaches `/health` through the
+// structural pass alone (v4 `94fbb1ae3`: `app/api/health/route.ts` has no
+// direct degraded-database check; `verifyStructure` answers `<label> database
+// unavailable: <guard sentence>` per repository of that partition). Red-first
+// (P4.159's lane record): on unported `main` both arms answered 503
+// `unhealthy` with `startupPhase: "failed"` — the boot itself died.
+// ============================================================================
+
+/// A fresh instance whose `file` sibling is replaced by the walk's C3 garbage.
+async fn get_health_with_garbage(file: &str) -> (u16, Value) {
+    let base = planted_instance(&[]);
+    let path = base.path().join("data").join(file);
+    let garbage: Vec<u8> = (0..4608usize)
+        .map(|i| ((i * 131 + 17) & 255) as u8)
+        .collect();
+    std::fs::write(&path, garbage).unwrap();
+    let (addr, state) = common::serve_instance(base.path(), |mut c| {
+        c.terminal = false;
+        c
+    })
+    .await;
+    let resp = reqwest::get(format!("http://{addr}/health")).await.unwrap();
+    let status = resp.status().as_u16();
+    let body: Value = resp.json().await.unwrap();
+    let (direct_status, direct_body) = quilltap_web::health::health_parts(&state).await;
+    assert_eq!(direct_status.as_u16(), status, "health_parts status");
+    assert_eq!(
+        direct_body["services"], body["services"],
+        "health_parts services"
+    );
+    drop(base);
+    (status, body)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_degraded_mount_index_answers_503_with_nine_problems() {
+    let (status, body) = get_health_with_garbage(MOUNT).await;
+    assert_eq!(status, 503, "{body}");
+    assert_eq!(body["status"], "degraded");
+    assert_eq!(
+        body["services"]["structure"],
+        json!({
+            "status": "degraded",
+            "message": "9 damaged tables; reads through them answer empty",
+            "problems": vec!["mount index database unavailable: Mount index database is in degraded mode"; 9],
+        })
+    );
+    assert_other_services_healthy(&body);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_degraded_llm_logs_file_answers_503_with_one_problem() {
+    let (status, body) = get_health_with_garbage("quilltap-llm-logs.db").await;
+    assert_eq!(status, 503, "{body}");
+    assert_eq!(body["status"], "degraded");
+    assert_eq!(
+        body["services"]["structure"],
+        json!({
+            "status": "degraded",
+            "message": "1 damaged table; reads through it answer empty",
+            "problems": ["LLM logs database unavailable: LLM logs database is in degraded mode"],
+        })
+    );
+    assert_other_services_healthy(&body);
+}

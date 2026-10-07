@@ -307,6 +307,12 @@ const GUARDED_MESSAGES: &[&str] = &[
     // P4.150: the `doc_mount_points` self-heals' INFO — never on a current
     // table (the pre-ALTER arm's reboot is the strong leg).
     "Migrated doc_mount_points",
+    // P4.159: the degraded sibling open's WARN / ERRORs and the structural
+    // pass's degraded problem — never on a sound instance (the strong legs
+    // are `sound_siblings_log_v4s_open_lines_and_nothing_degraded`).
+    "cold-open failed",
+    "entering degraded mode",
+    "database unavailable:",
 ];
 
 /// The silence leg: a healthy fresh instance logs none of the guarded lines,
@@ -1341,3 +1347,439 @@ async fn the_134_plant_is_re_ensured_and_re_logged_on_every_boot() {
     booted.assert_line(line);
     booted.assert_structural(&[LINK_RELATIVEPATH_PROBLEM]);
 }
+
+// ============================================================================
+// P4.159 (dogfood #150) — the DEGRADED sibling open
+// ============================================================================
+//
+// v4 `94fbb1ae3`: a mount-index or LLM-logs database that cannot be opened —
+// or fails its `quick_check` — leaves that partition DEGRADED and the boot
+// goes on (`backends/sqlite/backend.ts:571-617`; `mount-index-client.ts:102-149`
+// — four attempts, `[200, 600, 1500]` ms apart, a WARN on attempts 1–3 and one
+// ERROR; `llm-logs-client.ts:49-98` — ONE attempt, one ERROR;
+// `*-protection.ts:44-66`). The structural pass then COUNTS each of that
+// partition's repositories as `<label> database unavailable: <guard sentence>`
+// (`dedicated-db.repository.ts:176-182`), so `/api/health` answers `degraded`.
+// The line bytes are the `degraded_sibling_open_equivalence` differential's
+// (v4's REAL clients over the same plants); these arms prove the HOST boots
+// through them and records the problems.
+//
+// Red-first (P4.159's lane record): every arm below that boots a garbage or
+// integrity-planted sibling failed `host()` on unported `main` ("the boot
+// FAILED … engine assembly failed / file is not a database" — the `?` in
+// `Db::open`) or, for the integrity plants, booted SILENT with nothing
+// recorded (no `quick_check` anywhere in v5).
+
+/// The walk's C3 shape: `len` bytes of `(i * 131 + 17) & 255` — the same
+/// pattern the differential's `garbage` rows plant.
+fn garbage_bytes() -> Vec<u8> {
+    (0..4608usize)
+        .map(|i| ((i * 131 + 17) & 255) as u8)
+        .collect()
+}
+
+/// How one sibling file is damaged after provisioning.
+#[derive(Clone, Copy)]
+enum SiblingPlant {
+    /// The whole file replaced by [`garbage_bytes`] (a NEW inode — any handle a
+    /// previous boot holds keeps the old one).
+    Garbage,
+    /// Page 3 (4096-byte pages) overwritten with the garbage pattern: page 1
+    /// is intact, so the open succeeds and `quick_check` answers non-`ok`.
+    Integrity,
+}
+
+fn plant_sibling(path: &Path, plant: SiblingPlant) {
+    let bytes = match plant {
+        SiblingPlant::Garbage => garbage_bytes(),
+        SiblingPlant::Integrity => {
+            let mut bytes = std::fs::read(path).unwrap();
+            assert!(
+                bytes.len() >= 4 * 4096,
+                "{} has {} bytes — too small for a page-3 plant",
+                path.display(),
+                bytes.len()
+            );
+            let g = garbage_bytes();
+            for i in 0..4096 {
+                bytes[2 * 4096 + i] = g[i % g.len()];
+            }
+            bytes
+        }
+    };
+    let swap = path.with_extension("swap");
+    std::fs::write(&swap, bytes).unwrap();
+    std::fs::rename(&swap, path).unwrap();
+}
+
+/// A fresh instance, `main_sql` run on main, then each sibling damaged, then
+/// the real `Host` booted.
+async fn boot_damaged(main_sql: &str, siblings: &[(&str, SiblingPlant)]) -> Booted {
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    provision_fresh_instance(&data, PEPPER).expect("provision");
+    if !main_sql.is_empty() {
+        let w = Writer::open_writable(&data.join(MAIN), PEPPER).unwrap();
+        w.connection().execute_batch(main_sql).unwrap();
+    }
+    for (file, plant) in siblings {
+        plant_sibling(&data.join(file), *plant);
+    }
+    boot_dir(dir, data).await
+}
+
+fn mount_path(b: &Booted) -> String {
+    b.data.join(MOUNT).display().to_string()
+}
+
+fn llm_path(b: &Booted) -> String {
+    b.data.join(LLM).display().to_string()
+}
+
+/// v4's guard sentences through `verifyStructure`'s unavailable form.
+const MOUNT_DEGRADED_PROBLEM: &str =
+    "mount index database unavailable: Mount index database is in degraded mode";
+const LLM_DEGRADED_PROBLEM: &str =
+    "LLM logs database unavailable: LLM logs database is in degraded mode";
+
+/// The nine mount-index repositories in v4's container order.
+const MOUNT_REPOSITORIES: [&str; 9] = [
+    "docMountPoints",
+    "docMountFiles",
+    "docMountFileLinks",
+    "docMountFolders",
+    "docMountChunks",
+    "docMountDocuments",
+    "projectDocMountLinks",
+    "groupDocMountLinks",
+    "groupCharacterMembers",
+];
+
+fn mount_initializing(b: &Booted) -> String {
+    format!(
+        "INFO quilltap::db Initializing mount index database connection module=database:mount-index-client path={} walMode=false",
+        mount_path(b)
+    )
+}
+
+fn llm_initializing(b: &Booted) -> String {
+    format!(
+        "INFO quilltap::db Initializing LLM logs database connection module=database:llm-logs-client path={} walMode=false",
+        llm_path(b)
+    )
+}
+
+fn mount_retry(b: &Booted, attempt: u32, backoff: u32) -> String {
+    format!(
+        "WARN quilltap::db Mount index cold-open failed — retrying module=database:mount-index-client path={} attempt={attempt} maxAttempts=4 backoffMs={backoff} error=file is not a database",
+        mount_path(b)
+    )
+}
+
+fn mount_failed(b: &Booted) -> String {
+    format!(
+        "ERROR quilltap::db Failed to initialize mount index database — entering degraded mode module=database:mount-index-client path={} attempts=4 error=file is not a database",
+        mount_path(b)
+    )
+}
+
+fn llm_failed(b: &Booted) -> String {
+    format!(
+        "ERROR quilltap::db Failed to initialize LLM logs database — entering degraded mode module=database:llm-logs-client path={} error=file is not a database",
+        llm_path(b)
+    )
+}
+
+const MOUNT_PASSED: &str =
+    "INFO quilltap::db Mount index database integrity check passed module=database:mount-index-protection";
+const LLM_PASSED: &str =
+    "INFO quilltap::db LLM logs database integrity check passed module=database:llm-logs-protection";
+
+fn nine_mount_problems() -> Vec<&'static str> {
+    vec![MOUNT_DEGRADED_PROBLEM; 9]
+}
+
+impl Booted {
+    /// The per-problem ERROR for every mount-index repository, in order, then
+    /// the summary.
+    fn assert_mount_degraded_pass(&self, damaged: usize) {
+        let mut lines: Vec<String> = MOUNT_REPOSITORIES
+            .iter()
+            .map(|r| structural_line(r, MOUNT_DEGRADED_PROBLEM))
+            .collect();
+        lines.push(damaged_line(damaged));
+        self.assert_lines_in_order(&lines);
+        // No `Verified …` DEBUG for a table of a degraded partition.
+        for collection in [
+            "doc_mount_points",
+            "doc_mount_files",
+            "doc_mount_file_links",
+            "doc_mount_folders",
+            "doc_mount_chunks",
+            "doc_mount_documents",
+            "project_doc_mount_links",
+            "group_doc_mount_links",
+            "group_character_members",
+        ] {
+            self.assert_silent(&format!(
+                "Verified dedicated-database table structure collection={collection} "
+            ));
+        }
+    }
+}
+
+/// (a) The walk's C3 plant: a garbage mount index. v4's ladder — three WARNs
+/// (`attempt=1..3`, `backoffMs=200/600/1500`) and ONE ERROR (`attempts=4`) —
+/// then the boot CONTINUES with the partition degraded: the nine problems
+/// recorded in container order, no mount-index integrity line, the LLM logs
+/// opened and checked as usual. R-C: the ladder sleeps on the opening thread
+/// (v4's `sleepSync`), ~2.3 s — the boot cannot be faster than that.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_garbage_mount_index_degrades_through_v4s_ladder_and_boots() {
+    let _serial = SERIAL.lock().await;
+    let started = std::time::Instant::now();
+    let booted = boot_damaged("", &[(MOUNT, SiblingPlant::Garbage)]).await;
+    let elapsed = started.elapsed();
+    booted.host();
+    booted.assert_lines_in_order(&[
+        llm_initializing(&booted),
+        LLM_PASSED.to_string(),
+        mount_initializing(&booted),
+        mount_retry(&booted, 1, 200),
+        mount_retry(&booted, 2, 600),
+        mount_retry(&booted, 3, 1500),
+        mount_failed(&booted),
+    ]);
+    booted.assert_silent("Mount index database connection established");
+    booted.assert_silent("Mount index database integrity check");
+    booted.assert_structural(&nine_mount_problems());
+    booted.assert_mount_degraded_pass(9);
+    assert!(
+        elapsed >= std::time::Duration::from_millis(2300),
+        "the ladder's three sleeps (2.3 s) did not run: {elapsed:?}"
+    );
+    eprintln!("garbage mount-index boot: {elapsed:?}");
+
+    // Item 11: the Brahma console's `run_sql` over the DEGRADED partition
+    // answers v4's sentence (`run-sql-handler.ts:271-277`), and the main
+    // database still answers.
+    use quilltap_core::tools::run_sql::{execute_run_sql_tool, RunSqlResult};
+    let db = booted
+        .host()
+        .core()
+        .db()
+        .expect("an unlocked engine has a Db");
+    let refused = execute_run_sql_tool(
+        &db,
+        &serde_json::json!({"sql": "SELECT 1", "database": "mount-index"}),
+        "user-1",
+    )
+    .await;
+    assert_eq!(
+        refused,
+        RunSqlResult::Failure {
+            error: "The mount-index database is not available (uninitialized or degraded)."
+                .to_string()
+        }
+    );
+    let main = execute_run_sql_tool(&db, &serde_json::json!({"sql": "SELECT 1"}), "user-1").await;
+    assert!(main.success(), "{main:?}");
+}
+
+/// (b) A garbage LLM-logs file: v4's ONE attempt (no ladder — the asymmetry,
+/// §S.7's candidate filing) and ONE ERROR; one problem.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_garbage_llm_logs_file_degrades_with_one_error_and_boots() {
+    let _serial = SERIAL.lock().await;
+    let booted = boot_damaged("", &[(LLM, SiblingPlant::Garbage)]).await;
+    booted.host();
+    booted.assert_lines_in_order(&[
+        llm_initializing(&booted),
+        "DEBUG quilltap::db SQLCipher key set on LLM logs database module=database:llm-logs-client"
+            .to_string(),
+        llm_failed(&booted),
+        mount_initializing(&booted),
+        MOUNT_PASSED.to_string(),
+    ]);
+    booted.assert_silent("cold-open failed");
+    booted.assert_silent("LLM logs database connection established");
+    booted.assert_silent("LLM logs database integrity check");
+    booted.assert_structural(&[LLM_DEGRADED_PROBLEM]);
+    booted.assert_lines_in_order(&[
+        structural_line("llmLogs", LLM_DEGRADED_PROBLEM),
+        damaged_line(1),
+    ]);
+    booted.assert_silent("Verified dedicated-database table structure collection=llm_logs ");
+}
+
+/// (c) Both siblings garbage: both degrade, ten problems (LLM logs first —
+/// v4's container order).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn both_garbage_siblings_degrade_and_the_boot_goes_on() {
+    let _serial = SERIAL.lock().await;
+    let booted = boot_damaged(
+        "",
+        &[(MOUNT, SiblingPlant::Garbage), (LLM, SiblingPlant::Garbage)],
+    )
+    .await;
+    booted.host();
+    booted.assert_line(&llm_failed(&booted));
+    booted.assert_line(&mount_failed(&booted));
+    let mut want = vec![LLM_DEGRADED_PROBLEM];
+    want.extend(nine_mount_problems());
+    booted.assert_structural(&want);
+    booted.assert_line(&damaged_line(10));
+}
+
+/// (d) The state does not persist: a second boot over the same garbage walks
+/// the whole ladder again and records the same nine problems.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_second_boot_over_the_same_garbage_degrades_again() {
+    let _serial = SERIAL.lock().await;
+    let booted = boot_damaged("", &[(MOUNT, SiblingPlant::Garbage)]).await;
+    booted.host();
+    booted.assert_line(&mount_failed(&booted));
+    let booted = booted.reboot().await;
+    booted.host();
+    booted.assert_lines_in_order(&[
+        mount_retry(&booted, 1, 200),
+        mount_retry(&booted, 2, 600),
+        mount_retry(&booted, 3, 1500),
+        mount_failed(&booted),
+    ]);
+    booted.assert_structural(&nine_mount_problems());
+}
+
+/// (e) The silence leg: sound siblings log v4's INFO pairs and ONE `integrity
+/// check passed` each — and none of the degraded lines.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sound_siblings_log_v4s_open_lines_and_nothing_degraded() {
+    let _serial = SERIAL.lock().await;
+    let booted = boot_damaged("", &[]).await;
+    booted.host();
+    booted.assert_lines_in_order(&[
+        llm_initializing(&booted),
+        "DEBUG quilltap::db SQLCipher key set on LLM logs database module=database:llm-logs-client"
+            .to_string(),
+        format!(
+            "INFO quilltap::db LLM logs database connection established module=database:llm-logs-client path={}",
+            llm_path(&booted)
+        ),
+        LLM_PASSED.to_string(),
+        mount_initializing(&booted),
+        format!(
+            "INFO quilltap::db Mount index database connection established module=database:mount-index-client path={} attempts=1",
+            mount_path(&booted)
+        ),
+        MOUNT_PASSED.to_string(),
+    ]);
+    for needle in [
+        "cold-open failed",
+        "entering degraded mode",
+        "database unavailable:",
+        "integrity check FAILED",
+        "integrity check threw",
+    ] {
+        booted.assert_silent(needle);
+    }
+    booted.assert_structural(&[]);
+}
+
+/// (f) The integrity plant: page 3 of an otherwise sound sibling overwritten.
+/// The open succeeds; SQLite3MC's page authentication fails the read, which
+/// `quick_check` REPORTS (a non-`ok` result — v4's FAILED arm, measured by the
+/// differential's `integrity` rows; the `threw` arm no plant reaches is
+/// unit-pinned in `db::runtime`). R-A: the partition is dropped to DEGRADED.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn an_integrity_failed_mount_index_degrades_and_boots() {
+    let _serial = SERIAL.lock().await;
+    let booted = boot_damaged("", &[(MOUNT, SiblingPlant::Integrity)]).await;
+    booted.host();
+    let failed: Vec<&String> = booted
+        .lines
+        .iter()
+        .filter(|l| {
+            l.starts_with(
+                "ERROR quilltap::db Mount index database integrity check FAILED — entering degraded mode module=database:mount-index-protection result=*** in database main ***\n",
+            )
+        })
+        .collect();
+    assert_eq!(failed.len(), 1, "captured:\n{}", booted.lines.join("\n"));
+    booted.assert_silent("Mount index database integrity check passed");
+    booted.assert_structural(&nine_mount_problems());
+    booted.assert_mount_degraded_pass(9);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn an_integrity_failed_llm_logs_file_degrades_and_boots() {
+    let _serial = SERIAL.lock().await;
+    let booted = boot_damaged("", &[(LLM, SiblingPlant::Integrity)]).await;
+    booted.host();
+    let failed = booted
+        .lines
+        .iter()
+        .filter(|l| {
+            l.starts_with(
+                "ERROR quilltap::db LLM logs database integrity check FAILED — entering degraded mode module=database:llm-logs-protection result=*** in database main ***\n",
+            )
+        })
+        .count();
+    assert_eq!(failed, 1, "captured:\n{}", booted.lines.join("\n"));
+    booted.assert_silent("LLM logs database integrity check passed");
+    booted.assert_structural(&[LLM_DEGRADED_PROBLEM]);
+}
+
+/// (6) The walk's C3 re-staged: with the mount index DEGRADED, moving a chat
+/// into a project that has a store answers v4's 503 `Project document store
+/// unavailable` (`api/salon.rs`'s P4.156 arm) with v4's four quiet
+/// `withRawDb` DEBUGs. The `error` value is v4's guard sentence ONLY once
+/// P4.163's C1 item 1 (`log_partition_unavailable`) is folded under
+/// `log_mount_index_unavailable` at §S.1 — `db/fallback.rs` is P4.163's file,
+/// so in this lane the DEBUG still renders `DbError`'s Display.
+/// HANDOFF(§S.1): flip [`C3_DEBUG_ERROR`] to `Mount index database is in
+/// degraded mode` when the home folds; that flip is this arm's red-first.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_c3_chat_move_answers_503_over_a_degraded_mount_index() {
+    use quilltap_core::api::types::ErrorKind;
+    let _serial = SERIAL.lock().await;
+    let booted = boot_damaged(
+        "INSERT INTO projects (id, name, officialMountPointId, createdAt, updatedAt) \
+           VALUES ('proj-c3', 'C3', 'mp-c3', '2026-10-07T00:00:00.000Z', '2026-10-07T00:00:00.000Z');\
+         INSERT INTO chats (id, userId, title, createdAt, updatedAt) \
+           VALUES ('chat-c3', 'user-1', 'C3', '2026-10-07T00:00:00.000Z', '2026-10-07T00:00:00.000Z');",
+        &[(MOUNT, SiblingPlant::Garbage)],
+    )
+    .await;
+    let request: Request = serde_json::from_value(serde_json::json!({
+        "type": "chatUpdate",
+        "chatId": "chat-c3",
+        "chat": { "projectId": "proj-c3" },
+    }))
+    .unwrap();
+    capture().lock().unwrap().clear();
+    let response = booted.host().core().dispatch(request).await;
+    let lines = capture().lock().unwrap().clone();
+    match response {
+        Response::Error(e) => {
+            assert_eq!(e.kind, ErrorKind::Unavailable, "{e:?}");
+            assert_eq!(
+                e.unavailable_wire_body(),
+                Some(
+                    serde_json::json!({"error": "Project document store unavailable", "projectId": "proj-c3"})
+                )
+            );
+        }
+        other => panic!("expected the 503, got {other:?}"),
+    }
+    let debug = format!(
+        "DEBUG quilltap::db Dedicated database unavailable; answering with the fallback collection=doc_mount_documents dbTarget=mountIndex error={C3_DEBUG_ERROR}"
+    );
+    let hits = lines.iter().filter(|l| **l == debug).count();
+    assert_eq!(hits, 4, "{debug:?}; captured:\n{}", lines.join("\n"));
+}
+
+/// See the C3 arm: today's `DbError::PartitionUnavailable` Display, until
+/// P4.163's C1 item 1 folds (HANDOFF §S.1 → `Mount index database is in
+/// degraded mode`).
+const C3_DEBUG_ERROR: &str = "partition not available: mountIndex";

@@ -1991,7 +1991,9 @@ fn seed_built_ins(db: &Db) -> Result<EnsureFailures, String> {
 /// v4's PHASE 3.1 (`lib/startup/verify-structural-tables.ts`, `e5c6bd0c0`, bug
 /// 176): check every structural table once, read-only, and answer the
 /// problems for the host's slot. The shape check runs on the read pools (an
-/// absent partition answers `PartitionUnavailable` → skipped, R4); the ensure
+/// absent partition answers `PartitionUnavailable` → skipped, R4; a DEGRADED
+/// one — P4.159, dogfood #150 — is never read: it is counted with v4's
+/// `<label> database unavailable: …` problem per table); the ensure
 /// failures this boot already logged are REUSED, never re-run. The pass logs
 /// v4's lines itself (`table_shape::verify_structural_tables`). v4 wraps the
 /// phase in its own catch (`instrumentation.ts:568-582`): a failure there logs
@@ -1999,6 +2001,7 @@ fn seed_built_ins(db: &Db) -> Result<EnsureFailures, String> {
 /// boot goes on with nothing recorded. The pass returns no error of its own,
 /// so here that arm is a PANIC inside it.
 fn verify_structural_tables_at_boot(db: &Db, ensure_failures: &EnsureFailures) -> Vec<String> {
+    use quilltap_core::db::runtime::PartitionState;
     use quilltap_core::db::table_shape::{
         find_table_shape_problem, verify_structural_tables, Partition, TableRead,
     };
@@ -2006,6 +2009,9 @@ fn verify_structural_tables_at_boot(db: &Db, ensure_failures: &EnsureFailures) -
 
     let pass = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         verify_structural_tables(ensure_failures, |table| {
+            if db.partition_state(table.partition) == PartitionState::Degraded {
+                return TableRead::PartitionDegraded;
+            }
             let (name, fields) = (table.collection, table.fields);
             let read = match table.partition {
                 Partition::Main => db.read_main(|c| find_table_shape_problem(c, name, fields)),

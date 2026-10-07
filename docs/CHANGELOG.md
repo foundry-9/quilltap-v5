@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — fix(db): a sibling database that cannot be opened or fails its integrity check boots DEGRADED instead of stopping the boot (P4.159, dogfood #150)
+
+_Versions: core 0.0.1243, host 0.0.188._
+
+`Db::open` keeps the main database fatal but opens each sibling the way v4's `SQLiteBackend.connect()` does, LLM logs first: the mount index through v4's four-attempt ladder (`[200, 600, 1500]` ms, a WARN `Mount index cold-open failed — retrying` after attempts 1–3, then ERROR `Failed to initialize mount index database — entering degraded mode`), the LLM logs in ONE attempt with one ERROR (v4 has no ladder there), then v4's `quick_check` on each opened sibling (INFO `… integrity check passed`, or ERROR `… integrity check FAILED — entering degraded mode {result}` / `… threw an error …`). A failure leaves the partition in the new `PartitionState::Degraded` — no writer and no read pool, so every read and write refuses with `PartitionUnavailable` (v4 keeps the handle and lets its guards throw; same boundary behaviour, ruled R-A). Degraded stays distinct from Absent (no file): `Db::partition_state` reports it, the structural pass COUNTS a degraded partition with v4's `<label> database unavailable: <guard sentence>` per structural table (new `TableRead::PartitionDegraded`), so `/health` answers 503 `degraded` with nine (mount index) or one (LLM logs) problems while the instance serves on. v4's `Initializing …` / `… connection established` INFO lines and the LLM-logs `SQLCipher key set` DEBUG are ported too. The host's structural pass maps the degraded state; `mount_index_degraded` reads it.
+
+New differential `degraded_sibling_open_equivalence` (v4's REAL clients, integrity checks and `verifyStructuralTables` over garbage / sound / page-corrupted plants, every line and the state compared) and `degraded` rows in `table_shape_equivalence`; nine new host boot arms (both garbage siblings, a reboot, the silence leg, both integrity plants, the C3 chat move's 503, `run_sql` over the degraded partition) and two `/health` arms. `C1 item 2`'s home (`log_partition_structural_unavailable`) is coded lane-locally in `table_shape.rs` for P4.163's fold.
+
 #### 2026-10-07 — docs(porting): P4.163 lane record — the delete / outer-line / docedit / `[Projects v1]` census survey; the order marked LANE COMPLETE
 
 _Docs-only change._
