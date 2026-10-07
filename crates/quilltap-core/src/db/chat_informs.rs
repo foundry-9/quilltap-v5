@@ -614,11 +614,22 @@ impl<'c> ChatInformsRepository<'c> {
         // finding entity by ID` and answers `null` → not counted, the loop goes
         // on (its `Entity not found for update` WARN is unported — P4.149's
         // Ruling R-A).
+        //
+        // P4.163 (R-D): that per-row read is v4's `_findById`, a fallback
+        // `safeQuery` that honours the strict scope — measured at `94fbb1ae3`
+        // (`chat_informs_tier2`, the strict per-row op): inside it the read's
+        // line gains `strictFailures: true` and RETHROWS into `_update`'s
+        // rethrow line, then this wrap's, all strict, and the consume throws.
+        // `_findById` also Zod-validates the row it found (`Data validation
+        // failed` → the same entity line → `null`); v5 reads the id only and
+        // does NOT validate here — no `ChatInformSchema` twin exists on this
+        // branch (P4.161 builds `zod_chat_inform_issues` this round; the
+        // validating arm is a recorded HANDOFF to the unifier).
         super::fallback::informs_marked_consumed_or_zero(ids, message_id, || {
             let now = crate::clock::now_iso();
             let mut count = 0usize;
             for id in ids {
-                let found = super::fallback::find_by_id_or_none("chat_informs", id, || {
+                let found = super::fallback::find_by_id_strict_aware("chat_informs", id, || {
                     self.conn
                         .query_row(
                             "SELECT id FROM chat_informs WHERE id = ?1",
@@ -630,7 +641,10 @@ impl<'c> ChatInformsRepository<'c> {
                             rusqlite::Error::QueryReturnedNoRows => Ok(None),
                             other => Err(other.into()),
                         })
-                });
+                })
+                .inspect_err(|error| {
+                    super::fallback::log_update_failure("chat_informs", id, error);
+                })?;
                 if found.is_none() {
                     continue;
                 }
@@ -650,10 +664,15 @@ impl<'c> ChatInformsRepository<'c> {
                     count += 1;
                 }
             }
+            // v4 `logger.debug('Informs marked consumed', {collection, ids,
+            // messageId, count})` (`:251-256`): `ids` is an ARRAY, so it rides
+            // the file layer's `…Json` convention (P4.163 — it had been a Rust
+            // `Debug` rendering under the bare key).
+            let ids_json = serde_json::to_string(ids).unwrap_or_else(|_| "[]".to_string());
             tracing::debug!(
                 target: "quilltap::db",
                 collection = "chat_informs",
-                ids = ?ids,
+                idsJson = ids_json.as_str(),
                 messageId = message_id,
                 count,
                 "Informs marked consumed",

@@ -48,14 +48,46 @@ pub fn find_by_id_or_none<T>(
     read: impl FnOnce() -> Result<Option<T>, DbError>,
 ) -> Option<T> {
     read().unwrap_or_else(|error| {
-        tracing::error!(
-            target: "quilltap::db",
-            collection = collection,
-            id = %id,
-            error = %error_text(&error),
-            "Error finding entity by ID"
-        );
+        log_find_by_id_failure(collection, id, &error, false);
         None
+    })
+}
+
+/// The ONE emitter of `Error finding entity by ID` (both the plain twin and
+/// [`find_by_id_strict_aware`] log through it).
+fn log_find_by_id_failure(collection: &str, id: &str, error: &DbError, strict: bool) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = collection,
+        id = %id,
+        error = %error_text(error),
+        strictFailures = strict.then_some(true),
+        "Error finding entity by ID"
+    );
+}
+
+/// P4.163 (R-D) — [`find_by_id_or_none`] for a repository whose OWN methods are
+/// reached from inside the strict scope: v4's `_findById` is a fallback
+/// `safeQuery` (`base.repository.ts:247-258`), and EVERY fallback `safeQuery`
+/// honours `withStrictRepositoryFailures` (`safe-query.ts:57-71`) — outside the
+/// scope the line and `Ok(None)`; inside it the line gains
+/// `strictFailures=true` and the `Err` propagates to the caller's own
+/// `safeQuery` (`_update`'s rethrow line, then the method's wrap). A SIBLING,
+/// not a changed twin — the plain twin answers a bare `Option` to callers no
+/// strict scope reaches.
+pub fn find_by_id_strict_aware<T>(
+    collection: &'static str,
+    id: &str,
+    read: impl FnOnce() -> Result<Option<T>, DbError>,
+) -> Result<Option<T>, DbError> {
+    read().or_else(|error| {
+        let strict = strict_repository_failures_active();
+        log_find_by_id_failure(collection, id, &error, strict);
+        if strict {
+            Err(error)
+        } else {
+            Ok(None)
+        }
     })
 }
 

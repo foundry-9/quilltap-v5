@@ -138,6 +138,10 @@ struct Op {
     /// P4.156 (R-H): run the op inside the strict repository scope.
     #[serde(default)]
     strict: bool,
+    /// P4.163: ALSO record this op's DEBUG lines (`Informs marked consumed`
+    /// and the empty-list silence), compared the same way.
+    #[serde(default, rename = "captureDebug")]
+    capture_debug: bool,
 }
 
 /// P4.149 — v4's backend-only lines (`backends/sqlite/backend.ts`), which v5
@@ -556,10 +560,14 @@ fn chat_informs_tier2_matches_oracle() {
                 )
             });
             let mut read = json!({ "kind": op.kind, "label": op.label, "result": result });
-            if op.capture_logs {
+            if op.capture_logs || op.capture_debug {
                 let logged: Vec<Value> = lines
                     .into_iter()
-                    .filter(|l| l.starts_with("ERROR ") || l.starts_with("WARN "))
+                    .filter(|l| {
+                        l.starts_with("ERROR ")
+                            || l.starts_with("WARN ")
+                            || (op.capture_debug && l.starts_with("DEBUG quilltap::db "))
+                    })
                     .map(Value::from)
                     .collect();
                 read["logs"] = Value::Array(logged);
@@ -648,13 +656,16 @@ fn chat_informs_tier2_matches_oracle() {
     }
     assert_eq!(
         (log_ops, arm_lines),
-        (24, 32),
+        (28, 38),
         "P4.149: six captured ops (four silence legs + the two planted delete arms, two lines \
          each); P4.156: eighteen more — five failed reads (one filter line each), four strict \
          reads (filter + outer), the batch read twice and the strict cancel (1 + 2 + 3), the \
          failed consume twice (2 + 2), the failed create twice (1 + 1); the consume whose \
          per-row read fails (one `Error finding entity by ID` per id); the failed record \
-         delete (its fallback line)"
+         delete (its fallback line); P4.163: four `captureDebug` consumes (the healthy one's \
+         `Informs marked consumed`, the empty list's silence, the unknown id's `count: 0`, the \
+         per-row-failure op's `count: 0` DEBUG) and the per-row failure inside the strict \
+         scope (entity + update + wrap, all strict)"
     );
 
     // P4.156: an op that threw on v4 records `{ threw: message }`; the message
@@ -701,9 +712,10 @@ fn chat_informs_tier2_matches_oracle() {
         .filter(|r| r["result"].get("threw").is_some())
         .count();
     assert_eq!(
-        threw, 9,
+        threw, 10,
         "P4.156: the nine strict / create ops must THROW on v5 as on v4 (the five strict reads, \
-         the strict cancel, the strict consume, both creates)"
+         the strict cancel, the strict consume, both creates); P4.163: + the strict consume \
+         whose per-row read fails"
     );
 
     assert_eq!(got["dump"]["table"], want["dump"]["table"], "table name");

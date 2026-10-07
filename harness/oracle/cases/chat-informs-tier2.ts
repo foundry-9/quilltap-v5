@@ -24,6 +24,11 @@
  * strict rendering, R-H). An op that THROWS records `{ threw: message }` as its
  * result instead of aborting the run.
  *
+ * P4.163: an op marked `captureDebug` records its DEBUG lines too (the spy
+ * gains `debug`, gated per op) — `markConsumed`'s `Informs marked consumed
+ * {collection, ids, messageId, count}` and the empty-list early return's
+ * silence.
+ *
  * MINTED VALUES: `createBatch` mints a `batchId`, one `id` per target, and the
  * timestamps; `markConsumed` mints `consumedAt`/`updatedAt`. Nothing is pinned on
  * those ops, so this case emits everything RAW and the harness applies one
@@ -66,6 +71,12 @@ interface Op {
   sql?: string;
   /** P4.156 (R-H): run the op inside v4's `withStrictRepositoryFailures`. */
   strict?: boolean;
+  /**
+   * P4.163: ALSO record the DEBUG lines this op logs (the `Informs marked
+   * consumed` line and its zero-row silence) — only on ops that ask, since
+   * v4's DEBUG traffic elsewhere is not part of any comparand.
+   */
+  captureDebug?: boolean;
 }
 
 interface Spec {
@@ -124,8 +135,9 @@ async function main(): Promise<void> {
   // by the harness, not here — this records everything v4 logs.
   let opLogs: Array<{ level: string; message: string; fields: Array<[string, unknown]> }> | null =
     null;
+  let debugOn = false;
   const { Logger } = await import('@/lib/logger');
-  for (const level of ['error', 'warn'] as const) {
+  for (const level of ['error', 'warn', 'debug'] as const) {
     const original = Logger.prototype[level];
     Logger.prototype[level] = function (
       this: unknown,
@@ -133,7 +145,9 @@ async function main(): Promise<void> {
       context?: Record<string, unknown>,
       ...rest: unknown[]
     ) {
-      opLogs?.push({ level, message, fields: Object.entries(context ?? {}) });
+      if (level !== 'debug' || debugOn) {
+        opLogs?.push({ level, message, fields: Object.entries(context ?? {}) });
+      }
       return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
     } as never;
   }
@@ -211,7 +225,8 @@ async function main(): Promise<void> {
 
   for (const op of spec.ops) {
     let result: unknown;
-    opLogs = op.captureLogs ? [] : null;
+    opLogs = op.captureLogs || op.captureDebug ? [] : null;
+    debugOn = op.captureDebug === true;
     try {
       result = op.strict
         ? await withStrictRepositoryFailures(() => runOp(op))
@@ -226,6 +241,7 @@ async function main(): Promise<void> {
       ...(opLogs === null ? {} : { logs: opLogs }),
     });
     opLogs = null;
+    debugOn = false;
   }
 
   // Final state, RAW through v4's own connected backend.

@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — fix(db): `mark_consumed`'s per-row read strict-aware and its `Informs marked consumed` line on v4's keys (P4.163 Tier 1 item 6)
+
+_Versions: core 0.0.1244._
+
+The chat-informs consume reads each row through v4's `_findById` shape, which honours the strict repository scope: inside it a failed read logs `Error finding entity by ID` with `strictFailures=true`, then `_update`'s `Error updating entity`, then `Error marking informs consumed`, all strict, and the consume fails, as v4's does (v5 had logged the plain line and moved on). New home `db::fallback::find_by_id_strict_aware`; `Error finding entity by ID` keeps one emitter. The `Informs marked consumed` DEBUG now carries `collection`, `idsJson` (compact JSON), `messageId`, `count` in v4's order instead of a Rust `Debug` rendering under `ids`.
+
+`chat_informs_tier2` grows a `captureDebug` op flag (the oracle's spy gains `debug`, gated per op) and one strict per-row-failure op: the healthy consume's DEBUG, the empty list's silence, the unknown id's `count: 0` and both per-row-failure arms are now compared against v4's real repository (28 captured ops / 38 lines; red on unported main: 4 ops logged differently, 1 answered differently). v4's `_findById` also Zod-validates the row; v5 does not yet (no inform schema twin on this branch) — recorded for the unifier.
+
 #### 2026-10-07 — feat(db): the round's new `db::fallback` homes — the partition-unavailable DEBUG for both siblings, the structural `unavailable` string, the per-repository create wraps (P4.163 Tier 1, contract C1)
 
 _Versions: core 0.0.1243._

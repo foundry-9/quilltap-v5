@@ -325,13 +325,15 @@
         "f0000000-0000-4000-8000-00000000000a",
         "00000000-0000-4000-8000-00000000000c"
       ],
-      "messageId": "ee000000-0000-4000-8000-000000000209"
+      "messageId": "ee000000-0000-4000-8000-000000000209",
+      "captureDebug": true
     },
     {
       "kind": "markConsumed",
       "label": "an empty id list is a no-op answering 0",
       "ids": [],
-      "messageId": "ee000000-0000-4000-8000-000000000209"
+      "messageId": "ee000000-0000-4000-8000-000000000209",
+      "captureDebug": true
     },
     {
       "kind": "markConsumed",
@@ -339,7 +341,8 @@
       "ids": [
         "99999999-9999-4999-8999-999999999999"
       ],
-      "messageId": "ee000000-0000-4000-8000-000000000209"
+      "messageId": "ee000000-0000-4000-8000-000000000209",
+      "captureDebug": true
     },
     {
       "kind": "deletePendingByBatch",
@@ -606,7 +609,20 @@
         "aa000000-0000-4000-8000-000000000002"
       ],
       "messageId": "ee000000-0000-4000-8000-000000000209",
-      "captureLogs": true
+      "captureLogs": true,
+      "captureDebug": true
+    },
+    {
+      "kind": "markConsumed",
+      "label": "P4.163 (R-D): the same consume inside the strict scope \u2014 `_update`'s `findById` is a fallback `safeQuery` that honours the scope, so the FIRST row logs `Error finding entity by ID` with `strictFailures: true` and RETHROWS into `_update`'s rethrow line, then `markConsumed`'s wrap, all strict, and the consume throws",
+      "ids": [
+        "aa000000-0000-4000-8000-000000000001",
+        "aa000000-0000-4000-8000-000000000002"
+      ],
+      "messageId": "ee000000-0000-4000-8000-000000000209",
+      "captureLogs": true,
+      "captureDebug": true,
+      "strict": true
     },
     {
       "kind": "execSql",
