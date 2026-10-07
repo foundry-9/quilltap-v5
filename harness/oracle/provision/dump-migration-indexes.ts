@@ -152,8 +152,11 @@ async function main(): Promise<void> {
 
   const v4Commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
   const v4Version = JSON.parse(readFileSync('package.json', 'utf8')).version as string;
-  writeFileSync(
-    out,
+  // Serialized now, WRITTEN only after the cross-check: a dump with findings
+  // goes to `<out>.rejected`, never over the committed artifact (the
+  // `94fbb1ae3` boot-hardness unification's review — the dumper used to write
+  // `out` first and only then exit 1).
+  const body =
     JSON.stringify(
       {
         source: {
@@ -166,8 +169,7 @@ async function main(): Promise<void> {
       },
       null,
       2,
-    ) + '\n',
-  );
+    ) + '\n';
 
   // The real-boot cross-check (R-B: the real boot wins) — required (P4.160 R-F).
   let findings = 0;
@@ -213,12 +215,15 @@ async function main(): Promise<void> {
     lines.push(`real-boot cross-check: ${findings} finding(s)`);
   }
 
+  const target = findings > 0 ? `${out}.rejected` : out;
+  writeFileSync(target, body);
+
   await closeDatabase();
   process.stderr.write(
     `migrations: run=${report.migrationsRun} skipped=${report.migrationsSkipped} ` +
       `deferred=[${report.deferred.join(', ')}] failed=[${report.failed.join(', ')}]\n` +
       lines.join('\n') +
-      `\nwrote ${out} (v4 ${v4Commit} ${v4Version})\n`,
+      `\nwrote ${target} (v4 ${v4Commit} ${v4Version})\n`,
   );
   if (findings > 0) {
     process.stderr.write(

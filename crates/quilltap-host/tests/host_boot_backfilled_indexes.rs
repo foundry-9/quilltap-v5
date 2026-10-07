@@ -343,6 +343,52 @@ async fn one_boot_gives_a_pre_round_instance_a_fresh_instances_sqlite_master() {
     );
 }
 
+/// §S.2 of the `94fbb1ae3` boot-hardness round — the UNION of P4.159 and
+/// P4.160: a pre-round instance whose mount index is GARBAGE boots DEGRADED
+/// (P4.159) and the backfill still runs on the partitions it HAS — main makes
+/// its 47 and the LLM logs their 5 — while the degraded mount index (no writer)
+/// is skipped with no line and no error.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_degraded_mount_index_skips_its_statements_and_the_others_still_backfill() {
+    let _serial = SERIAL.lock().await;
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    derive_pre_round(&data);
+    std::fs::write(data.join(MOUNT), vec![0x5a_u8; 8192]).expect("plant a garbage mount index");
+    let booted = boot_dir(dir, data);
+    booted.host();
+    assert!(
+        !booted.lines_containing("entering degraded mode").is_empty(),
+        "the mount index degraded (P4.159's open); captured:\n{}",
+        booted.lines.join("\n")
+    );
+    booted.assert_line(
+        "INFO quilltap::boot Backfilled migration-created indexes partition=main created=47 skipped=0",
+    );
+    booted.assert_line(
+        "INFO quilltap::boot Backfilled migration-created indexes partition=llmLogs created=5 skipped=0",
+    );
+    for needle in [
+        "partition=mountIndex",
+        "Failed to backfill a migration-created index",
+        "Migration index backfill failed",
+    ] {
+        assert!(
+            booted.lines_containing(needle).is_empty(),
+            "no {needle:?} line over a degraded mount index; captured:\n{}",
+            booted.lines.join("\n")
+        );
+    }
+    let have: BTreeSet<String> = master(&booted.data, MAIN)
+        .into_iter()
+        .filter(|(t, _, _)| t == "index")
+        .map(|(_, n, _)| n)
+        .collect();
+    let missing: Vec<String> = promised("main").into_iter().filter(|n| !have.contains(n)).collect();
+    assert!(missing.is_empty(), "main still lacks {missing:?}");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn the_second_boot_creates_nothing_and_logs_nothing() {
     let _serial = SERIAL.lock().await;

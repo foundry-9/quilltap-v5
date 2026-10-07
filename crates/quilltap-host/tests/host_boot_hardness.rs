@@ -313,6 +313,13 @@ const GUARDED_MESSAGES: &[&str] = &[
     "cold-open failed",
     "entering degraded mode",
     "database unavailable:",
+    // P4.160 (added at the `94fbb1ae3` boot-hardness unification): the index
+    // backfill's v5-only failure / skip lines — never on a fresh instance (the
+    // backfill finds nothing to do there).
+    "Failed to backfill a migration-created index",
+    "Migration index backfill failed",
+    "Migration index backfill could not start",
+    "Skipped a unique index backfill",
 ];
 
 /// The silence leg: a healthy fresh instance logs none of the guarded lines,

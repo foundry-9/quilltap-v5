@@ -2002,10 +2002,13 @@ fn seed_built_ins(db: &Db) -> Result<EnsureFailures, String> {
                     ws.llm_logs().map(|w| w.connection()),
                 )
             {
+                // Distinct from the per-partition `Migration index backfill
+                // failed {partition, error}` — this arm never reached a
+                // partition (the embedded artifact did not parse).
                 tracing::error!(
                     target: "quilltap::boot",
                     error = %e,
-                    "Migration index backfill failed"
+                    "Migration index backfill could not start"
                 );
             }
             // === end P4.160 ===
