@@ -77,6 +77,8 @@
 //! its indexes the same boot. A statement whose `CREATE` (or conversion) fails
 //! is rolled back, logged ERROR `Failed to backfill a migration-created index
 //! {partition, index, error}` (v5-only) and counted; the rest still run. A
+//! UNIQUE statement whose duplicate PRE-CHECK read fails is the same: one
+//! failed statement, never the partition. A
 //! partition whose `sqlite_master` cannot be read at all answers
 //! [`PartitionOutcome::Failed`] after one ERROR `Migration index backfill
 //! failed {partition, error}` and the next partition runs. Neither is a
@@ -237,9 +239,9 @@ fn backfill_partition(
             }
             // Present PLAIN where the artifact is UNIQUE: `mp_path`.
             Some(_) => {
-                if skipped_for_duplicates(conn, name, table, sql)? {
-                    report.skipped_duplicates += 1;
-                    continue;
+                match pre_check(partition, conn, name, table, sql, &mut report) {
+                    PreCheck::Clear => {}
+                    PreCheck::Duplicates | PreCheck::Failed => continue,
                 }
                 let converted = (|| {
                     let tx = conn.unchecked_transaction()?;
@@ -269,8 +271,9 @@ fn backfill_partition(
                         report.created += 1;
                     }
                     Ok(ProfileIndex::Duplicates) => {
-                        skipped_for_duplicates(conn, name, table, sql)?;
-                        report.skipped_duplicates += 1;
+                        // Counts the skip (or, should the re-read itself fail,
+                        // the failure) — the WARN either way is per statement.
+                        pre_check(partition, conn, name, table, sql, &mut report);
                     }
                     Err(e) => {
                         succeeded(partition, name, Err(e), &mut report);
@@ -278,9 +281,11 @@ fn backfill_partition(
                 }
             }
             None => {
-                if want_unique && skipped_for_duplicates(conn, name, table, sql)? {
-                    report.skipped_duplicates += 1;
-                    continue;
+                if want_unique {
+                    match pre_check(partition, conn, name, table, sql, &mut report) {
+                        PreCheck::Clear => {}
+                        PreCheck::Duplicates | PreCheck::Failed => continue,
+                    }
                 }
                 let created = conn.execute_batch(&create).map_err(DbError::from);
                 if succeeded(partition, name, created, &mut report) {
@@ -290,6 +295,39 @@ fn backfill_partition(
         }
     }
     Ok(report)
+}
+
+/// How a UNIQUE statement's duplicate pre-check came out.
+enum PreCheck {
+    /// No collisions — the `CREATE` may run.
+    Clear,
+    /// Rows collide: WARNed and counted in `skipped_duplicates`.
+    Duplicates,
+    /// The pre-check's own read failed (a key column the table lacks, …):
+    /// logged and counted like a failed `CREATE` — ONE statement, never the
+    /// partition (the `94fbb1ae3` boot-hardness unification's §3 review).
+    Failed,
+}
+
+fn pre_check(
+    partition: &'static str,
+    conn: &Connection,
+    index: &str,
+    table: &str,
+    sql: &str,
+    report: &mut PartitionBackfill,
+) -> PreCheck {
+    match skipped_for_duplicates(conn, index, table, sql) {
+        Ok(false) => PreCheck::Clear,
+        Ok(true) => {
+            report.skipped_duplicates += 1;
+            PreCheck::Duplicates
+        }
+        Err(e) => {
+            succeeded(partition, index, Err(e), report);
+            PreCheck::Failed
+        }
+    }
 }
 
 /// `true` on `Ok`; on `Err` logs the v5-only ERROR, counts the failure and
@@ -535,6 +573,34 @@ mod tests {
 
     fn conn() -> Connection {
         Connection::open_in_memory().unwrap()
+    }
+
+    /// The `94fbb1ae3` boot-hardness unification's §3 review: a UNIQUE
+    /// statement whose duplicate PRE-CHECK read fails is ONE failed statement,
+    /// logged and counted like a failed `CREATE`; the partition's later
+    /// statements still run. Red before the fix: the pre-check's `?` ended the
+    /// whole partition. (Reachability, measured: the artifact double-quotes its
+    /// identifiers, so a MISSING column reads as SQLite's double-quoted-string
+    /// fallback and the pre-check succeeds — the arm is reached by a read
+    /// error such as a damaged page. The plant here uses a bare identifier,
+    /// which errors `no such column`, to drive the same arm.)
+    #[test]
+    fn a_failed_duplicate_pre_check_fails_one_statement_not_the_partition() {
+        let c = conn();
+        c.execute_batch(
+            "CREATE TABLE chat_documents (id TEXT, chatId TEXT); \
+             CREATE TABLE chats (id TEXT, updatedAt TEXT);",
+        )
+        .unwrap();
+        let statements = vec![
+            "CREATE UNIQUE INDEX idx_chat_documents_unique ON chat_documents(chatId, mountPoint)"
+                .to_string(),
+            "CREATE INDEX \"idx_chats_updatedAt\" ON \"chats\" (\"updatedAt\")".to_string(),
+        ];
+        let report = backfill_partition("main", &c, &statements)
+            .expect("a statement's failure never fails the partition");
+        assert_eq!(report.failed, 1, "the pre-check failure is counted");
+        assert_eq!(report.created, 1, "the next statement still runs");
     }
 
     #[test]
