@@ -7151,6 +7151,188 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
+## The `94fbb1ae3` boot-hardness + validation + follow-ups round (P4.159 ∥ P4.160 ∥ P4.161 ∥ P4.162 ∥ P4.163 ∥ P4.164) — ORDERED 2026-10-07
+
+**Baseline `94fbb1ae3`; v4 AT the baseline at the planning probe (HEAD
+`94fbb1ae3`, `origin/main` agreeing after `git fetch --all`, tree CLEAN,
+`bugfix` `1a2b2164c` and `release` `8fbf2afe0` unmoved, still no `release:
+4.10.0` squash); the ledger's §3 is EMPTY, so this round absorbs NO drift
+row and the baseline does NOT move at its unification; the regen rule is
+NO PIN REQUIRED, but every lane pins regardless (`/tmp/qt-v4-pin-<order>-
+94fbb1ae3`).** The round the `94fbb1ae3` smalls unification named as NEXT
+item 2 (the follow-ups round from the seven orders' OPEN items) PLUS the
+three dogfood findings the 2026-10-06 evening walk left ORDER-PENDING
+(**#150** high, **#152**, **#151**). **The planning survey (four parallel
+read-only surveys, 2026-10-07) corrected seven recorded premises** (every
+order's §R.4): (a) v4's LLM-logs client has NO retry ladder — only the
+mount-index client does (the standing note's "three retries per sibling"
+is wrong), and a degraded sibling reaches v4's `/health` ONLY through the
+structural pass as nine / one `… database unavailable: … is in degraded
+mode` problems, so ABSENT and DEGRADED must stay distinct states; (b) the
+index backfill cannot be "replay with `IF NOT EXISTS`": a pre-round
+instance carries a PLAIN `idx_doc_mount_folders_mp_path` that `CREATE
+UNIQUE INDEX IF NOT EXISTS` silently no-ops against (a DROP + CREATE UNIQUE
+in ONE transaction), the artifact's UNIQUE set is SIX names not five,
+`idx_project_doc_mount_links_proj_mp` is NOT in it, v4 dedupes before a
+UNIQUE create in exactly two migrations, and the count is 60 statements /
+56 absent + 1 wrong-shaped; (c) v4's `.qtap` import lives at `lib/import/
+quilltap-import/`, no `createExpectError` op exists anywhere, v4 runs NO
+Zod on wardrobe / blobs / instance settings / vectors, the import inform
+failure has NO WARN, messages validate at `addMessage` with no `Data
+validation failed` line, files write bytes BEFORE validating, and v5's
+RESTORE memory defaults diverge from `MemorySchema` (an absent `importance`
+→ 5.0); (d) dogfood **#69 was ported by P4.41 on 2026-08-06** — only its
+findings row and standing note are stale (a §S wire); (e) the `blockReason`
+nit is in `image_dialects.rs`, the backfill tests in `db/character_vault.
+rs`, and FOUR of the 23 uncompared image WARN rows (Imagen) have NO v5 line
+at all; (f) #151's `[METHOD URL]` prefix is a template literal from
+`request.method` + pathname at the context middleware, and v5's error
+`entity` drops the mount id at `into_db`; (g) the five dead API-key
+wrappers, the 5c sync ruling and P4.156's R-E stay the human's. Six lanes,
+disjoint ownership with TWO carved files (`host.rs` by function between
+P4.159 / P4.160; `db/mod.rs` by region between P4.160 / P4.162), ONE shared
+contract (C1 — the `db::fallback` homes P4.163 BUILDS to exact signatures
+for P4.159 / P4.161 to call), nine named handoff seams (§R.10). No lane
+edits `apps/web/**`.
+
+- **P4.159 — the degraded sibling open (#150; core + host + web tests +
+  harness; the most capable tier):** `work-orders/p4.159-degraded-sibling-
+  open-boot-hardness.md` — the per-sibling open (v4's four-attempt ladder
+  with `[200, 600, 1500]` ms and three WARNs for the mount index, ONE
+  attempt for LLM logs, the ERRORs, a `None` writer AND pool), the
+  `quick_check` arm (a failed check DROPS v5's writer — R-A), a
+  `PartitionState` distinguishing Absent from Degraded (R-B), the
+  structural pass COUNTING a degraded partition as v4's nine / one
+  `unavailable` strings so `/health` answers 503 `degraded`, the 14
+  `None`-arm sites censused against v4's guard-throw vs `withRawDb`, six
+  host boot arms + two web arms, a NEW differential driving v4's REAL
+  clients over the same garbage bytes and `table-shape.ts` grown with
+  `degraded` rows. Rulings R-A…R-F.
+- **P4.160 — the migration-index-family boot backfill (P4.153's OPEN;
+  core + host + harness; the most capable tier):** `work-orders/p4.160-
+  migration-index-family-boot-backfill.md` — NEW `db/migration_index_
+  family_repair.rs` replaying the 60 committed statements `IF NOT EXISTS`
+  with `sqlite_master` byte-equal to a fresh provision, the plain `mp_path`
+  converted in ONE transaction, the six UNIQUE names pre-checked with
+  SQLite's NULL semantics, the connection-profile clash resolved by v4's
+  REAL rename-dedupe (ported; a convergence — v4 would run that migration
+  itself) and the other four SKIPPED with a recorded WARN, never a dead
+  boot (R-A — the human's first ruling); presence as the once-only marker
+  (R-B); non-fatal and LAST in `seed_built_ins` (R-C); a NEW host test over
+  a DERIVED pre-round instance (provision → DROP the family → re-plant
+  plain `mp_path` → plant duplicates), a NEW differential (the family arm
+  against the migrations-first oracle; the dedupe arm against v4's REAL
+  `add-connection-profile-unique-name-index-v1`), the real-boot cross-check
+  made REQUIRED (R-F). Rulings R-A…R-F.
+- **P4.161 — whole-row validation on import + restore, the remaining kinds
+  (#152 + §S.2 + P4.155's R-B; core + harness; the most capable tier):**
+  `work-orders/p4.161-import-restore-whole-row-validation-remaining-kinds.
+  md` — `zod_memory_issues` + `zod_chat_inform_issues` recorded through
+  v4's REAL schemas; `parse_create_memory` before the write on BOTH paths
+  with v4's exact line set per path (`strictFailures` on the import's
+  only) and the restore's defaults corrected to `MemorySchema`'s (R-C); the
+  whole-row inform twin on both paths (R-D — two ERRORs, no WARN); the
+  restore's projects / groups validated WHOLE with v4's three ERRORs; three
+  derived refusal archives + the import refusal rows + the `createExpectError`
+  twin; Tier 2 the remaining kinds (chats, messages at the call sites —
+  R-B, characters, profiles, files with v4's write-then-refuse order — R-E,
+  folders, templates), the restore log census by key ORDER (R-G), the
+  backfill's other managed files. Rulings R-A…R-G.
+- **P4.162 — the wire + log-text smalls (#151 + the uuid gates + P4.154's
+  and P4.156's log items; core + web + harness; Opus):** `work-orders/
+  p4.162-wire-log-text-smalls-store-unavailable-errors-uuid-gates.md` —
+  v4's three context-middleware ERRORs at the `dispatch_body` seam (HTTP +
+  Tauri IPC) and the three REST seams with the mount id carried on
+  `StoreUnavailable` (R-A: the transport's real method + pathname, `[<verb>]`
+  over IPC — the human's second ruling; R-B); the four shape-only uuid
+  gates DELETED onto `zod_uuid_ok` with a version-`0` and a variant-`c` row
+  per surface (R-C); `read_properties`' six static sentences + the
+  unported `unreadable` line (R-D); the two `Consumed informs …` lines on
+  camelCase pinned by key order (R-E); the V8 twin to `jsstr` (R-F); the
+  third Google join folded + `blockReason` through `to_js_string`; the
+  Imagen `no usable images` WARN PORTED then all 23 image WARN rows compared
+  (R-G); the chaining WARN on v4's streaming bytes (R-H). Rulings R-A…R-H.
+- **P4.163 — the repository-fallback class, round 5 (P4.156's OPEN + C1;
+  core + harness; Opus):** `work-orders/p4.163-repository-fallbacks-round5-
+  delete-callers-docedit-informs-projects-lines.md` — the round's HOME for
+  new `db::fallback` items: C1's `log_partition_unavailable` (both
+  `dbTarget`s, the degraded sentence) + `log_partition_structural_
+  unavailable` (the dead `table_shape::unavailable`'s first caller) + the
+  per-kind create-wrap homes, built FIRST to exact signatures (R-B) so
+  P4.159's and P4.161's lane-local copies fold by repoint; the five
+  `delete_messages_by_ids` callers and the seven `find_enabled_for_docedit()`
+  callers each MEASURED against v4's own site and converted only where v4
+  falls back (R-A); `mark_consumed`'s per-row read strict-aware (R-D); the
+  `Informs marked consumed` line on `collection`, `idsJson`, `messageId`,
+  `count`; the 30 v4 `[Projects v1]` sites censused against v5's 14 and the
+  absent ones ported through the real routes (R-E); the 40-delete /
+  19-outer-line census as a RECORD (R-F). Rulings R-A…R-F.
+- **P4.164 — harness / test-craft smalls, round 3 (P4.153's + P4.157's
+  OPEN; harness + host TESTS only, ZERO `crates/*/src/**` hunks; Opus):**
+  `work-orders/p4.164-harness-test-craft-smalls-round3.md` — `host_boot_
+  fresh_indexes`' plan arms over the PRODUCTION SQL (R-A — a needed
+  production constant is a HANDOFF, never a hunk), ONE `normalize_v4_sqlite`
+  in `common` (the stricter of the two copies, R-B), `pdf_lines_from_
+  capture` parsing a spaced value, the in-force census following
+  one-argument adapters with three evasion fixtures and its COUNT limit
+  re-measured (R-C). Rulings R-A…R-C.
+
+**Fences:** `db/runtime.rs` + `db/table_shape.rs` + `host.rs`'s
+`verify_structural_tables_at_boot` / `assemble` regions + `env.rs` +
+`host_boot_hardness.rs` + `health_structure.rs` + `table_shape_*` P4.159;
+NEW `db/migration_index_family_repair.rs` + `db/mod.rs`'s ONE `pub mod`
+line + `services/provisioning/mod.rs` + `host.rs`'s ONE fenced call +
+`dump-migration-indexes.ts` P4.160; `zod_issues.rs` + `services/quilltap_
+import/**` + `services/backup/restore/**` + `db/memories.rs` + `db/chats_
+messages.rs` (ONE parse home) + `db/character_vault.rs` + the import /
+restore / zod-messages / tier-2 families + the derived archives P4.161;
+`api/types.rs` + `db/mod.rs`'s `DbError` region + `db/document_store_
+overlay.rs` WHOLE + `characters_read.rs:277-284` + the four uuid-gate files
++ the two consume lines + `generators/optimizer.rs` / `jsstr.rs` +
+`google_parts.rs` + `image_dialects.rs` + `streaming_provider.rs` + the four
+web seams + the three routes families P4.162; `db/fallback.rs` WHOLE +
+`db/chat_informs.rs` WHOLE + the twelve caller sites (ONE hunk each) +
+`api/projects.rs` + the guard / census / chat-informs / projects-routes
+families P4.163; `common/mod.rs` + `fold_episode_tier3` + `chat_informs_in_
+force_census.rs` + `host_boot_fresh_indexes.rs` P4.164; `fresh_schema.json`
++ `migration_indexes.json` (never hand-edited), `services/api_key_service.
+rs:405-475`, `services/mount_index/sync/**`, `services/fold_episode_pass.
+rs`, `services/inform_block.rs`, `help/**`, `docs/v4/**`, `apps/web/**` for
+NOBODY. **Execution:** six branches cut from `main` at this commit;
+worktree per lane, every lane cloning main's warmed `target/` (`cp -cR`);
+P4.159 + P4.160 + P4.161 the most capable tier, P4.162 + P4.163 + P4.164
+Opus; P4.163 commits its C1 homes FIRST so the siblings can name the commit
+their copies fold onto; every lane announces sweeps (one at a time); at most
+two workspace gates at once; no Playwright run by any lane (the unifier's
+full run only); cherry-pick order **P4.163 → P4.159 → P4.160 → P4.162 →
+P4.161 → P4.164**; the gate from a `94fbb1ae3` pin; the baseline STAYS
+(§S.6); the unifier folds the C1 copies (§S.1), builds the two carved files'
+union and runs the host boot tests on it (§S.2), moves #150 / #151 / #152 to
+FIXED and marks #69 FIXED by P4.41 (§S.3), re-runs the import / restore /
+provisioning families on the union (§S.4), recounts versions (core by FIVE
+lanes, host by TWO, web by one or two). **Rulings made at planning for the
+human to confirm or overrule before the lanes launch** (§R.11): P4.160 R-A
+(duplicates under a UNIQUE name: v4's rename-dedupe for profiles, a recorded
+SKIP + WARN for the other four, never a dead boot), P4.162 R-A (#151's
+prefix: the transport's real method + pathname; `[<verb>]` over IPC),
+P4.159 R-A (a failed `quick_check` drops the writer and pool), P4.161 R-A /
+R-B (validation called from import + restore only; messages at the call
+sites, `add_message` ungated), P4.163 R-A (measure-before-convert). **The
+three STANDING human rulings no lane takes:** P4.156's R-E (the fold-pass
+test seam), the 5c sync ruling (Option B written up), the five dead API-key
+wrappers. **Deliberately left out:** a drift catch-up (nothing to absorb —
+v4 AT the baseline); the owed dogfood pass (it ran 2026-10-06 evening; the
+next one runs AFTER this round — the five lanes' 💸 rows, headlined by the
+walk's C3 and C6 re-runs and a pre-round instance's first boot); an SPA
+lane (no OPEN item justified one); the production `create` paths' and
+`add_message`'s own validation (P4.161 Tier 3 by name — a blast-radius
+decision for a later round); v4's absent-sibling CREATE and main's
+non-blocking integrity check (P4.159 Tier 3); a dedupe for the four
+no-dedupe UNIQUEs (P4.160 Tier 3 — a candidate v4 filing); P4.143 Tier 3
+item 12's generated schema-shape table (its own order, still); the `new-
+account` restore preserve + the built-in re-provisioning (P4.147 items
+15/16 — their own order, still).
+
 ## The `07b8f0209` fresh-instance-indexes + follow-ups smalls round + the `94fbb1ae3` drift catch-up (P4.D254 ∥ P4.153 ∥ P4.154 ∥ P4.155 ∥ P4.156 ∥ P4.157 ∥ P4.158) — UNIFIED 2026-10-06 (ordered and amended 2026-10-06)
 
 **UNIFIED on main (2026-10-06) — ALL SEVEN LANES LANDED; the oracle baseline

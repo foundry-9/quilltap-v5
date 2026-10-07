@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — docs(porting): order the `94fbb1ae3` boot-hardness + validation + follow-ups round (P4.159 ∥ P4.160 ∥ P4.161 ∥ P4.162 ∥ P4.163 ∥ P4.164)
+
+_Docs-only change._
+
+Six work orders under `docs/developer/porting/work-orders/`, planned from the drift ledger (§2 probe PASSED: v4 `main` AT `94fbb1ae3`, tree clean, `bugfix` / `release` unmoved — no drift to absorb; the baseline stays), the seven previous orders' OPEN items, and the 2026-10-06 evening walk's three ORDER-PENDING findings. P4.159 — dogfood #150 (high): a sibling database that cannot be opened or fails `quick_check` enters v4's degraded state (the mount-index retry ladder, one attempt for LLM logs, a `None` writer and pool, the structural pass counting it so `/health` answers 503 `degraded`). P4.160 — P4.153's OPEN item: a boot ensure backfilling v4's migration-created index family onto pre-2026-10-06 v5 instances (the plain `mp_path` converted UNIQUE in one transaction; the connection-profile clash resolved by v4's real rename-dedupe; the other UNIQUE duplicates skipped with a WARN — a ruling for the human). P4.161 — dogfood #152 + §S.2 + P4.155's R-B: whole-row Zod validation on `.qtap` import and restore for memories, informs, the restore's projects / groups, then the remaining kinds, with the restore's memory defaults corrected. P4.162 — dogfood #151 (the three context-middleware ERRORs for a store-unavailable 503, with a ruling on the `[METHOD URL]` prefix over dispatch), the four shape-only uuid gates onto `zod_uuid_ok`, and the log-text smalls (`read_properties`, the consume lines, the V8 twin's home, the Google join, the unported Imagen WARN, the chaining WARN). P4.163 — the repository-fallback class round 5 and the round's home for new `db::fallback` items (contract C1). P4.164 — harness / test-craft smalls with zero production hunks.
+
+The planning survey corrected seven recorded premises (each order's §R.4), including: v4's LLM-logs client has no retry ladder; `IF NOT EXISTS` cannot fix the plain `mp_path` index; no `createExpectError` oracle op exists; dogfood #69 was already ported by P4.41 (its findings row is stale — a unifier wire). `phase-4.md` gains the round's planning section; the drift ledger is unchanged (§3 empty, nothing to mark ORDERED).
+
 #### 2026-10-07 — docs: trim CLAUDE.md — archive the 2026-09-15→2026-10-03 round bullets to claude-md-status-history.md §4 (verbatim, diff-verified)
 
 _Docs-only change._
