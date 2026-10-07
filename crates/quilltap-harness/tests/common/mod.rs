@@ -454,6 +454,28 @@ pub fn pdf_lines_from_capture(lines: &[String]) -> Vec<Value> {
         .collect()
 }
 
+/// P4.156 / P4.164 — one failure, two SQL texts: v4's query builder
+/// double-quotes every identifier, so a renamed column reaches SQLite's
+/// "double-quoted string" fallback and its message carries the quotes and a
+/// hint (`no such column: "chatId" - should this be a string literal in
+/// single-quotes?`); v5's SQL names the column bare (`no such column:
+/// chatId`). The v4 text is mapped onto v5's before the compare — the column
+/// NAME stays compared. Rules (each pinned by `common_helpers_selftest`):
+/// BOTH the quoted prefix and the hint are required; the name's closing quote
+/// goes; any other text passes through unchanged. (The two copies this
+/// replaced — `fold_episode_tier3` and `chat_informs_tier2` — were written
+/// differently but measured identical on every input: neither was stricter.)
+pub fn normalize_v4_sqlite(text: &str) -> String {
+    const HINT: &str = " - should this be a string literal in single-quotes?";
+    match text
+        .strip_suffix(HINT)
+        .and_then(|head| head.strip_prefix("no such column: \""))
+    {
+        Some(quoted) => format!("no such column: {}", quoted.trim_end_matches('"')),
+        None => text.to_string(),
+    }
+}
+
 /// The PDF arm's outcome implied by its lines — the oracle's `pdfOutcome`,
 /// rule for rule: `converter` (extracted, no fallback WARN), `fallback` (the
 /// WARN, then extracted), `refused` (the WARN, nothing extracted), `error` (the

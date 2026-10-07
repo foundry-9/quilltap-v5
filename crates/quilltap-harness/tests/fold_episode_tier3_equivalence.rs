@@ -82,7 +82,7 @@
 //! `db::fallback` homes with bytes unchanged — this family is their pin
 //! (a field swap in `log_memory_create_failure` reds `episode_write_fail`).
 //! v4's quoted-identifier SQLite text is mapped onto v5's
-//! ([`normalize_v4_sqlite`]).
+//! ([`normalize_v4_sqlite`], `common`).
 //!
 //! Generate the fixtures + oracle output (Node 24, from the v4 checkout — the
 //! CASES run from a `/tmp` mirror because jest ignores `.claude/` paths):
@@ -103,6 +103,9 @@
 //!   QT_FIXTURE_FOLD_EPISODE_MOUNT=/tmp/qt-fold-episode-mount.db \
 //!     cargo test -p quilltap-harness --test fold_episode_tier3_equivalence
 
+mod common;
+
+use common::normalize_v4_sqlite;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -300,21 +303,6 @@ fn render_db_line(line: &Value, known: &str) -> String {
         }
     }
     mask_minted_ids(&out, known)
-}
-
-/// P4.156 — one failure, two SQL texts: v4's query builder double-quotes every
-/// identifier, so a renamed column's message carries the quotes and SQLite's
-/// hint (`no such column: "id" - should this be a string literal in
-/// single-quotes?`); v5's SQL names it bare (`no such column: id`).
-fn normalize_v4_sqlite(text: &str) -> String {
-    const HINT: &str = " - should this be a string literal in single-quotes?";
-    match text
-        .strip_suffix(HINT)
-        .and_then(|head| head.strip_prefix("no such column: \""))
-    {
-        Some(quoted) => format!("no such column: {}", quoted.trim_end_matches('"')),
-        None => text.to_string(),
-    }
 }
 
 /// Replace every 36-char UUID in `line` that does not occur in `known` (the

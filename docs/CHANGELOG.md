@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — test(harness): one `normalize_v4_sqlite` in `common`, with a self-test binary (P4.164 item 2)
+
+_No crate versions bumped._
+
+Moved `fold_episode_tier3`'s copy into `tests/common/mod.rs`. The second copy (`chat_informs_tier2`) was measured to answer identically on every input; its removal is a handoff to the unifier (that file belongs to P4.163). New `common_helpers_selftest.rs` pins each rule plus a both-ways check against the retired copy.
+
 #### 2026-10-07 — test(host): host_boot_fresh_indexes plans the production SQL, captured by statement trace (P4.164 item 1)
 
 _No crate versions bumped._
