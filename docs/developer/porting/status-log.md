@@ -171309,3 +171309,23 @@ unifier should record the waiver in the ledger's §1.
   `restore_damaged_store_replace` three ways (the row, the WARN table, the
   content diff). Red-first on the re-derived archive with the OLD harness is
   not meaningful (no behaviour changed — this unit adds coverage).
+
+### Unit 5 — Tier 2 item 9, the restore log census by key ORDER (core 0.0.1246)
+
+- Harness (`system_restore_state.rs`): records compared as ordered `[key,
+  value]` pairs (R-G); `Restore operation completed`'s `summary` /
+  `warningCount` keep their POSITIONS (values replaced by a placeholder after
+  each side is checked against its own summary); `v5_log_records` parses a
+  `…Json` value with `serde_json::Deserializer::into_iter` + `byte_offset`
+  and continues past it (the `…Json`-to-end rule retired; `error` still runs
+  to the end); a NEW target check — every captured line whose message is a
+  `RESTORE_TS_MESSAGES` entry must be on `quilltap::restore`.
+- Core (`orchestrator.rs`): `summaryJson` before `warningCount`; the five
+  lines on the default module target (P4.158 OPEN) moved to
+  `quilltap::restore` — the two `Failed to restore chat` WARNs, `Failed to
+  restore chat document`, `Failed to restore chat inform`, `Restored chat
+  informs`.
+- **Red-first (harness at the lane, core at unit 4):** 93 differences —
+  `the restore's log census differs` on the 37 cases logging the completion
+  line + the off-target lines (every case logs `Restored chat informs`).
+  Green after. No other pin referenced the five lines' targets.

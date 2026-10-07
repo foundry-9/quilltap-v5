@@ -697,7 +697,12 @@ fn restore_on_writer(
                     error,
                 );
                 w.push(format!("Failed to restore chat \"{title}\": {error}"));
-                tracing::warn!(chatId = %id, error = %error, "Failed to restore chat");
+                tracing::warn!(
+                    target: "quilltap::restore",
+                    chatId = %id,
+                    error = %error,
+                    "Failed to restore chat"
+                );
             };
             if let Some(zod) =
                 crate::services::dangerous_content::chat_override::concierge_columns_zod_error(
@@ -741,7 +746,12 @@ fn restore_on_writer(
                 crate::db::fallback::log_chat_create_wrap_failure(&e);
                 let error = e.warn_text();
                 w.push(format!("Failed to restore chat \"{title}\": {error}"));
-                tracing::warn!(chatId = %id, error = %error, "Failed to restore chat");
+                tracing::warn!(
+                    target: "quilltap::restore",
+                    chatId = %id,
+                    error = %error,
+                    "Failed to restore chat"
+                );
                 continue;
             }
             for message in chat
@@ -1513,6 +1523,7 @@ fn restore_on_writer(
                     let error = e.warn_text();
                     w.push(format!("Failed to restore chat document: {error}"));
                     tracing::warn!(
+                        target: "quilltap::restore",
                         chatDocumentId = %id,
                         error = %error,
                         "Failed to restore chat document"
@@ -1577,6 +1588,7 @@ fn restore_on_writer(
                 Err(error) => {
                     w.push(format!("Failed to restore inform: {error}"));
                     tracing::warn!(
+                        target: "quilltap::restore",
                         informId = %id_of(inform),
                         error = %error,
                         "Failed to restore chat inform"
@@ -1585,6 +1597,7 @@ fn restore_on_writer(
             }
         }
         tracing::debug!(
+            target: "quilltap::restore",
             total = data.chat_informs.len(),
             restored = c.chat_informs,
             "Restored chat informs"
@@ -1937,15 +1950,16 @@ fn restore_on_writer(
     // path including a panic. `system_restore_state` asserts the scratch root is
     // empty after every case, which is what actually proves it.
     let summary = c.into_summary(data, w, embedding_reconcile);
-    // v4 `:1165-1170`. `summary` is an object — the `…Json` convention, logged
-    // last; `mode` is v4's spelling.
+    // v4 `:1165-1170`, in v4's key order `{targetUserId, mode, summary,
+    // warningCount}` (P4.161 Tier 2 item 9 — the census compares order now).
+    // `summary` is an object — the `…Json` convention; `mode` is v4's spelling.
     let summary_json = serde_json::to_string(&summary).unwrap_or_default();
     tracing::info!(
         target: "quilltap::restore",
         targetUserId = %target_user_id,
         mode = if replace_mode { "replace" } else { "new-account" },
-        warningCount = summary.warnings.len(),
         summaryJson = summary_json.as_str(),
+        warningCount = summary.warnings.len(),
         "Restore operation completed"
     );
     summary

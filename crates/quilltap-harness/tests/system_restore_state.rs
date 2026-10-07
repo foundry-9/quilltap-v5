@@ -5044,11 +5044,15 @@ const REPO_LEVEL_CASES: &[&str] = &[
 ];
 
 /// v5's captured lines (`LEVEL target message k=v …`) whose message is in
-/// `messages`, as `{level, message, <fields>}` records. A field boundary is a
-/// space followed by `name=`; `error` and every `…Json` field run to the end
-/// of the line (v5 logs them LAST — a ZodError or a JSON object can hold
-/// anything), and a `…Json` field is stored under its v4 name with its JSON
-/// re-rendered compactly, as the oracle renders an object.
+/// `messages`, as `{level, message, <fields>}` records — in the line's own
+/// field ORDER (P4.161 Tier 2 item 9: [`compare_restore_logs`] compares key
+/// order). A field boundary is a space followed by `name=`; `error` runs to
+/// the end of the line (v5 logs it LAST — a ZodError can hold anything); a
+/// `…Json` field's value is parsed as ONE JSON value, so a field may follow
+/// it (it used to run to the end of the line, which forced `summaryJson` last
+/// where v4 logs `summary` before `warningCount`), and it is stored under its
+/// v4 name with its JSON re-rendered compactly, as the oracle renders an
+/// object.
 fn v5_log_records(lines: &[String], messages: &[&str]) -> Vec<Value> {
     let mut out = Vec::new();
     for line in lines {
@@ -5072,9 +5076,19 @@ fn v5_log_records(lines: &[String], messages: &[&str]) -> Vec<Value> {
             let Some((key, value_and_rest)) = fields.split_once('=') else {
                 break;
             };
-            let to_end = key == "error" || key.ends_with("Json");
+            let to_end = key == "error";
+            let json_len = key.ends_with("Json").then(|| {
+                let mut it =
+                    serde_json::Deserializer::from_str(value_and_rest).into_iter::<Value>();
+                match it.next() {
+                    Some(Ok(_)) => it.byte_offset(),
+                    _ => value_and_rest.len(),
+                }
+            });
             let (value, next) = if to_end {
                 (value_and_rest, "")
+            } else if let Some(n) = json_len {
+                (&value_and_rest[..n], value_and_rest[n..].trim_start())
             } else {
                 match find_field_boundary(value_and_rest) {
                     Some(i) => (&value_and_rest[..i], value_and_rest[i + 1..].trim_start()),
@@ -5149,6 +5163,24 @@ fn compare_restore_logs(
         return;
     };
     let mut messages: Vec<&str> = RESTORE_TS_MESSAGES.to_vec();
+    // [P4.161 Tier 2 item 9] v4's `restore.ts` lines all log through ONE
+    // module logger, so v5's twins all live on ONE target —
+    // `quilltap::restore` (P4.158 left five on the default module target).
+    for l in got_lines {
+        let mut parts = l.splitn(3, ' ');
+        let (Some(_), Some(target), Some(rest)) = (parts.next(), parts.next(), parts.next()) else {
+            continue;
+        };
+        if target != "quilltap::restore"
+            && RESTORE_TS_MESSAGES
+                .iter()
+                .any(|m| rest == *m || rest.starts_with(&format!("{m} ")))
+        {
+            failures.push(format!(
+                "[{name}] a restore.ts line on target {target:?}, not \"quilltap::restore\": {l}"
+            ));
+        }
+    }
     if REPO_LEVEL_CASES.contains(&name) {
         messages.extend_from_slice(REPO_LEVEL_MESSAGES);
     }
@@ -5184,9 +5216,15 @@ fn compare_restore_logs(
                     r.get("warningCount")
                 ));
             }
+            // Their VALUES leave the line diff (each side checked against its
+            // own summary above); their POSITIONS stay (P4.161 item 9 — v4
+            // logs `{targetUserId, mode, summary, warningCount}`).
             if let Some(o) = r.as_object_mut() {
-                o.remove("summary");
-                o.remove("warningCount");
+                for k in ["summary", "warningCount"] {
+                    if let Some(v) = o.get_mut(k) {
+                        *v = json!("<own summary>");
+                    }
+                }
             }
         }
     }
@@ -5233,6 +5271,23 @@ fn compare_restore_logs(
             }
         }
     }
+    // [P4.161 Tier 2 item 9] KEY ORDER is compared: `serde_json::Map`
+    // equality (an `IndexMap` under `preserve_order`) ignores it, so each
+    // record becomes its ordered `[key, value]` pairs.
+    let ordered = |recs: &[Value]| -> Vec<Value> {
+        recs.iter()
+            .map(|r| {
+                Value::Array(
+                    r.as_object()
+                        .into_iter()
+                        .flatten()
+                        .map(|(k, v)| json!([k, v]))
+                        .collect(),
+                )
+            })
+            .collect()
+    };
+    let (g, w) = (ordered(&g), ordered(&w));
     if g != w {
         let detail = g
             .iter()
@@ -5246,10 +5301,10 @@ fn compare_restore_logs(
         failures.push(format!(
             "[{name}] the restore's log census differs — {detail}\n  rust:   {:?}\n  oracle: {:?}",
             g.iter()
-                .map(|r| r["message"].as_str().unwrap_or(""))
+                .map(|r| r[1][1].as_str().unwrap_or(""))
                 .collect::<Vec<_>>(),
             w.iter()
-                .map(|r| r["message"].as_str().unwrap_or(""))
+                .map(|r| r[1][1].as_str().unwrap_or(""))
                 .collect::<Vec<_>>()
         ));
     }

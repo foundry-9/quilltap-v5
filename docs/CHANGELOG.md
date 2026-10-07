@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — fix(restore): log `Restore operation completed` in v4's key order and every restore.ts line on one target; the census compares key order (P4.161 Tier 2 item 9)
+
+_Versions: core 0.0.1246._
+
+`system_restore_state`'s log census compared each record as a `serde_json::Map`, whose equality ignores key order, so v5's `Restore operation completed` could log `warningCount` before `summary` (v4 logs `{targetUserId, mode, summary, warningCount}`) without a red. The census now compares ordered `[key, value]` pairs, keeps `summary` / `warningCount` in place (values still checked against each side's own summary), and its capture parser reads a `…Json` field as ONE JSON value so a field may follow it. The census also asserts every `restore.ts` twin logs on `quilltap::restore`. The core fix logs `summaryJson` before `warningCount` and moves the five lines left on the default module target (`Failed to restore chat` ×2, `Failed to restore chat document`, `Failed to restore chat inform`, `Restored chat informs`) to `quilltap::restore`. Red-first: 93 census differences across the corpus; green after.
+
 #### 2026-10-07 — test(restore): pin every managed file the preserve-arm backfill writes, live and unit-side (P4.161 Tier 2 item 10)
 
 _Versions: core 0.0.1245._
