@@ -663,6 +663,62 @@ mod tests {
     use super::*;
     use crate::services::quilltap_import::IdMap;
 
+    fn inform_item() -> serde_json::Value {
+        serde_json::json!({
+            "chatId": "c1000000-0000-4000-8000-000000000001",
+            "batchId": "b9000000-0000-4000-8000-000000000001",
+            "participantId": "e1000000-0000-4000-8000-000000000001",
+            "contentMarkdown": "x",
+        })
+    }
+
+    /// P4.161 (§S.2), carried from the retired `restored_inform` pins: the
+    /// standing flag survives, an archive written before standing informs (no
+    /// key) parses a one-shot, and the claimed id is the row's.
+    #[test]
+    fn parse_create_chat_inform_keeps_the_flag_and_defaults_it() {
+        let mut item = inform_item();
+        item["permanent"] = serde_json::json!(true);
+        let got =
+            parse_create_chat_inform(&item, Some("a9000000-0000-4000-8000-000000000001")).unwrap();
+        assert!(got.permanent);
+        assert_eq!(got.id, "a9000000-0000-4000-8000-000000000001");
+        assert!(
+            !parse_create_chat_inform(&inform_item(), None)
+                .unwrap()
+                .permanent
+        );
+    }
+
+    /// P4.161 (§S.2 / R-D): the WHOLE row validates — a malformed flag (the
+    /// P4.147 pin, now through the whole-row twin), an absent
+    /// `contentMarkdown` (v5 used to write it as `""`) and a `""`
+    /// `recordMessageId` are each refused with v4's issue at its path.
+    #[test]
+    fn parse_create_chat_inform_refuses_the_whole_row() {
+        for (key, value, path) in [
+            ("permanent", Some(serde_json::json!(1)), "permanent"),
+            ("contentMarkdown", None, "contentMarkdown"),
+            (
+                "recordMessageId",
+                Some(serde_json::json!("")),
+                "recordMessageId",
+            ),
+            ("batchId", Some(serde_json::json!("not-a-uuid")), "batchId"),
+        ] {
+            let mut item = inform_item();
+            match value {
+                Some(v) => item[key] = v,
+                None => {
+                    item.as_object_mut().unwrap().remove(key);
+                }
+            }
+            let err = parse_create_chat_inform(&item, None).unwrap_err();
+            let issues: serde_json::Value = serde_json::from_str(&err).unwrap();
+            assert_eq!(issues[0]["path"], serde_json::json!([path]), "{key}: {err}");
+        }
+    }
+
     /// [P4.148 item 13] The eight reconcile-pass WARN lines carry v4's
     /// camelCase fields (`reconcile.ts:153-598` — `characterId`,
     /// `scaffoldMountId`, `chatId`, `projectId`, `profileId`, `templateId`),
@@ -987,6 +1043,97 @@ pub fn remap_chat_inform(
         }),
         consumed_by_message_id_cleared: cleared,
     }
+}
+
+/// v4's `result.data` for a kept row (`reconcile.ts:89-102`) built from the
+/// RAW item, as the schema will meet it: `batchId`, `participantId` and
+/// `contentMarkdown` exactly as they came (an absent key stays absent), the
+/// two message ids and `consumedAt` `?? null`, `permanent === true`, and the
+/// cleared `consumedByMessageId` nulled. [`remap_chat_inform`]'s typed
+/// `ChatInformCreate` reads each key `as_str`, which turns a non-string or a
+/// missing `contentMarkdown` into `""`; this is what P4.161's whole-row parse
+/// validates instead (§S.2).
+pub fn remapped_chat_inform_input(
+    inform: &serde_json::Value,
+    remapped_chat_id: &str,
+    consumed_by_message_id_cleared: bool,
+) -> serde_json::Value {
+    use serde_json::Value;
+    let mut data = serde_json::Map::new();
+    data.insert("chatId".into(), Value::String(remapped_chat_id.into()));
+    for k in ["batchId", "participantId", "contentMarkdown"] {
+        if let Some(v) = inform.get(k) {
+            data.insert(k.into(), v.clone());
+        }
+    }
+    let or_null = |k: &str| inform.get(k).cloned().unwrap_or(Value::Null);
+    data.insert("recordMessageId".into(), or_null("recordMessageId"));
+    data.insert(
+        "permanent".into(),
+        Value::Bool(inform.get("permanent") == Some(&Value::Bool(true))),
+    );
+    data.insert("consumedAt".into(), or_null("consumedAt"));
+    data.insert(
+        "consumedByMessageId".into(),
+        if consumed_by_message_id_cleared {
+            Value::Null
+        } else {
+            or_null("consumedByMessageId")
+        },
+    );
+    Value::Object(data)
+}
+
+/// v4's `_create` validation of a chat inform (`base.repository.ts:350-368`
+/// over `ChatInformSchema`) — the ONE whole-row parse the `.qtap` import and
+/// the backup restore run BEFORE the write (P4.161, §S.2; the restore's old
+/// `restored_inform` checked `permanent` only). `item` is the data handed to
+/// `chatInforms.create` (unknown keys stripped); the entity validated is
+/// `{...item, id, createdAt, updatedAt}` with `id` the id the create writes
+/// (`claimed_id`, `None` = freshly minted) and fresh stamps. `Err` carries the
+/// `ZodError.message` bytes; `Ok` is the row with `permanent`'s default
+/// (`false`) applied.
+///
+/// Home recorded for a later move into `db/chat_informs.rs` (P4.163's file
+/// this round — the twin's issue builder is `zod_issues::
+/// zod_chat_inform_issues`).
+pub fn parse_create_chat_inform(
+    item: &serde_json::Value,
+    claimed_id: Option<&str>,
+) -> Result<crate::db::chat_informs::ChatInformCreate, String> {
+    use crate::api::zod_issues::{zod_chat_inform_issues, zod_error_message};
+    use serde_json::Value;
+    let minted;
+    let id = match claimed_id {
+        Some(id) => id,
+        None => {
+            minted = uuid::Uuid::new_v4().to_string();
+            &minted
+        }
+    };
+    let now = crate::clock::now_iso();
+    let mut entity = item.as_object().cloned().unwrap_or_default();
+    entity.insert("id".into(), Value::String(id.into()));
+    entity.insert("createdAt".into(), Value::String(now.clone()));
+    entity.insert("updatedAt".into(), Value::String(now.clone()));
+    let issues = zod_chat_inform_issues(&entity);
+    if !issues.is_empty() {
+        return Err(zod_error_message(&issues));
+    }
+    let s = |k: &str| entity.get(k).and_then(Value::as_str).map(str::to_string);
+    Ok(crate::db::chat_informs::ChatInformCreate {
+        id: id.to_string(),
+        chat_id: s("chatId").unwrap_or_default(),
+        batch_id: s("batchId").unwrap_or_default(),
+        participant_id: s("participantId").unwrap_or_default(),
+        content_markdown: s("contentMarkdown").unwrap_or_default(),
+        record_message_id: s("recordMessageId"),
+        permanent: entity.get("permanent") == Some(&Value::Bool(true)),
+        created_at: now.clone(),
+        updated_at: now,
+        consumed_at: s("consumedAt"),
+        consumed_by_message_id: s("consumedByMessageId"),
+    })
 }
 
 // === end P4.D205 ===

@@ -1486,6 +1486,115 @@ function propertyRefusalsPayload(
 }
 
 /**
+ * [P4.161 — dogfood #152] Memories v4's `MemorySchema` refuses at `_create`
+ * (`memories.repository.ts:418` → `base.repository.ts:368`), each beside the
+ * merged characters so its character maps under `skip`. Built from the FIRST
+ * merged memory, one bad key per item (fresh ids — memories always insert):
+ *
+ * - the dogfood walk's C6 shape: `importance: 5` + `kind: "bogus-kind"`, NO
+ *   `id` (the id-less `Failed to import memory` WARN);
+ * - `importance: "0.5"`, `reinforcementCount: 0`, `tags: ['nope']` (an
+ *   unmapped tag keeps its id, then fails the uuid), `content` absent,
+ *   `occurredAt: "yesterday"`, `witnessedContext: "overheard"`, `source:
+ *   "SYSTEM"`, `aboutCharacterId: ""` (falsy — the remap leaves it as it
+ *   came, and the schema refuses it);
+ * - `tags: "x"` — a non-empty STRING passes `memory.tags.length > 0` and has
+ *   no `.map`: v4's TypeError is the item's failure, no repository line;
+ *
+ * plus one SOUND memory and one whose defaulted keys are ABSENT (the schema
+ * defaults land: importance 0.5, MANUAL, semantic, 1, 0.5).
+ */
+function memoryRefusalsPayload(merged: {
+  manifest: unknown;
+  data: Record<string, unknown[]>;
+}): { manifest: unknown; data: Record<string, unknown[]> } {
+  const template = (merged.data.memories ?? [])[0] as Record<string, unknown> | undefined;
+  if (!template) throw new Error('memory refusals payload needs a merged memory');
+  const item = (n: number, patch: Record<string, unknown>, drop: string[] = []) => {
+    const m: Record<string, unknown> = {
+      ...JSON.parse(JSON.stringify(template)),
+      id: `f1610000-0000-4000-8000-0000000001${String(n).padStart(2, '0')}`,
+      summary: `Refusal memory ${n}`,
+      ...patch,
+    };
+    for (const k of drop) delete m[k];
+    return m;
+  };
+  return {
+    manifest: merged.manifest,
+    data: {
+      characters: merged.data.characters ?? [],
+      memories: [
+        item(1, { importance: 5, kind: 'bogus-kind' }, ['id']),
+        item(2, { importance: '0.5' }),
+        item(3, { reinforcementCount: 0 }),
+        item(4, { tags: ['nope'] }),
+        item(5, {}, ['content']),
+        item(6, { occurredAt: 'yesterday' }),
+        item(7, { witnessedContext: 'overheard' }),
+        item(8, { source: 'SYSTEM' }),
+        item(9, { aboutCharacterId: '' }),
+        item(10, { tags: 'x' }),
+        item(11, {}),
+        item(12, {}, [
+          'importance',
+          'source',
+          'kind',
+          'reinforcementCount',
+          'reinforcedImportance',
+          'keywords',
+          'tags',
+          'entities',
+          'relatedMemoryIds',
+        ]),
+      ],
+    },
+  };
+}
+
+/**
+ * [P4.161 R-D] Informs v4's `ChatInformSchema` refuses AFTER the remap kept
+ * them (`execute.ts:774` → a bare `_create`): built from the planted
+ * chats-informs export's first pending, seated row, one bad field per item —
+ * `batchId: "not-a-uuid"`, `contentMarkdown` ABSENT, `consumedAt: "now"`,
+ * `recordMessageId: ""` (falsy, so the remap neither drops nor clears it) —
+ * plus `permanent: "yes"` (normalized `=== true` by the remap, so it LANDS as
+ * a one-shot) and the sound row itself. The chats ride along so `skip` maps
+ * them to the target's own.
+ */
+function informRefusalsPayload(chatsInforms: {
+  manifest: unknown;
+  data: Record<string, unknown[]>;
+}): { manifest: unknown; data: Record<string, unknown[]> } {
+  const p = JSON.parse(JSON.stringify(chatsInforms)) as {
+    manifest: unknown;
+    data: Record<string, unknown[]>;
+  };
+  const informs = (p.data.chatInforms ?? []) as Array<Record<string, unknown>>;
+  const sound = informs.find((i) => i.contentMarkdown === 'Pending passage 1.');
+  if (!sound) throw new Error('inform refusals payload: the planted pending row is gone');
+  const item = (n: number, patch: Record<string, unknown>, drop: string[] = []) => {
+    const r: Record<string, unknown> = {
+      ...sound,
+      id: `f1610000-0000-4000-8000-0000000002${String(n).padStart(2, '0')}`,
+      contentMarkdown: `Inform refusal ${n}.`,
+      ...patch,
+    };
+    for (const k of drop) delete r[k];
+    return r;
+  };
+  p.data.chatInforms = [
+    item(1, { batchId: 'not-a-uuid' }),
+    item(2, {}, ['contentMarkdown']),
+    item(3, { consumedAt: 'now' }),
+    item(4, { recordMessageId: '' }),
+    item(5, { permanent: 'yes' }),
+    item(6, {}),
+  ];
+  return p;
+}
+
+/**
  * [P4.63 → v4 bug 105 → P4.D131] The bug-105 regression-guard payload: one
  * connection profile whose `provider` is not a string, followed by one image
  * profile that is perfectly sound.
@@ -1751,6 +1860,12 @@ const REPO_LOG_MESSAGES = new Set([
   'Error creating group',
   'Failed to import project',
   'Failed to import group',
+  // [P4.161] The refused memory create: `validate`'s line, the base
+  // `_create`'s `Error creating entity`, then the memories repository's own
+  // `safeQuery` wrap (`memories.repository.ts:418-428`). (The importer's WARN
+  // `Failed to import memory` is an `IMPORT_WARN_MESSAGES` line.) The refused
+  // inform create logs the base pair alone — `create` IS `_create`.
+  'Error creating memory',
 ]);
 
 /**
@@ -1778,7 +1893,16 @@ async function withRepoLogs<T>(
     ) {
       if (REPO_LOG_MESSAGES.has(message)) {
         const line: Record<string, unknown> = { level, message };
-        for (const key of ['collection', 'chatId', 'name', 'projectId', 'groupId', 'error', 'strictFailures']) {
+        for (const key of [
+          'collection',
+          'chatId',
+          'characterId',
+          'name',
+          'projectId',
+          'groupId',
+          'error',
+          'strictFailures',
+        ]) {
           if (context && key in context) {
             const v = context[key];
             line[key] = v instanceof Error ? v.message : v;
@@ -2671,6 +2795,21 @@ async function main(): Promise<void> {
     executeCase(
       'execute_group_property_refusals',
       () => propertyRefusalsPayload('groups'),
+      { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
+      true,
+    ),
+    // [P4.161 — dogfood #152 + R-D] The whole-row refusals — see
+    // `memoryRefusalsPayload` / `informRefusalsPayload` — with their
+    // repository lines recorded.
+    executeCase(
+      'execute_memory_refusals',
+      () => memoryRefusalsPayload(mergedPayload),
+      { conflictStrategy: 'skip', includeMemories: true, includeRelatedEntities: false },
+      true,
+    ),
+    executeCase(
+      'execute_inform_refusals',
+      () => informRefusalsPayload(chatsInformsPayload),
       { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
       true,
     ),

@@ -795,6 +795,9 @@ const REPO_LOG_MESSAGES: &[&str] = &[
     "Error creating group",
     "Failed to import project",
     "Failed to import group",
+    // [P4.161] The refused memory create's third ERROR — the memories
+    // repository's own wrap (`memories.repository.ts:418-428`).
+    "Error creating memory",
 ];
 
 /// The [`REPO_LOG_MESSAGES`] entry `rest` starts with — the LONGEST match, so
@@ -811,7 +814,14 @@ fn repo_log_message(rest: &str) -> Option<&'static str> {
 /// The context keys a recorded repository line may carry ahead of `error`, in
 /// the oracle's key list. A value runs to the next known key — `name=` carries
 /// the project's name, spaces and all (`%` renders it unquoted).
-const REPO_LOG_KEYS: &[&str] = &["collection", "chatId", "name", "projectId", "groupId"];
+const REPO_LOG_KEYS: &[&str] = &[
+    "collection",
+    "chatId",
+    "characterId",
+    "name",
+    "projectId",
+    "groupId",
+];
 
 /// v5's captured lines (`LEVEL target message k=v …`, the `CaptureLayer`
 /// shape) projected onto the oracle's `{level, message, collection, chatId,
@@ -1580,7 +1590,132 @@ fn system_import_execute_state_equivalence() {
     // …+ P4.148's `execute_chat_create_db_failure` (C2) arm (47 + 1 = 48).
     // …+ P4.155's two id-less arms (R-E) — `execute_idless_files` and
     // `execute_idless_refused_inserts` (48 + 2 = 50).
-    assert_eq!(ran, 50, "expected 50 cases, ran {ran}");
+    // …+ P4.161's `execute_memory_refusals` and `execute_inform_refusals`
+    // (50 + 2 = 52).
+    assert_eq!(ran, 52, "expected 52 cases, ran {ran}");
+    // [P4.161 — dogfood #152 + R-D] The whole-row refusal arms are non-vacuous
+    // only if v4 really refused each bad item (a ZodError tail — or, for the
+    // string `tags`, v4's TypeError) and landed the sound ones, with exactly
+    // its repository lines per refusal. v5's end-state and lines are the
+    // whole-state diff's and `compare_repo_logs`' above.
+    {
+        let case = cases
+            .iter()
+            .find(|c| c["name"] == "execute_memory_refusals")
+            .expect("the oracle is missing `execute_memory_refusals` — regenerate it");
+        assert_eq!(
+            (
+                case["result"]["imported"]["memories"].as_i64(),
+                case["result"]["skipped"]["memories"].as_i64(),
+            ),
+            (Some(2), Some(10)),
+            "execute_memory_refusals: v4 lands the sound + defaulted memories and \
+             counts the ten refusals `skipped` (R-F)"
+        );
+        let tails: Vec<&str> = case["result"]["warnings"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .filter_map(|w| w.strip_prefix("Failed to import memory: "))
+            .collect();
+        assert_eq!(tails.len(), 10, "one warning per refused memory: {tails:?}");
+        assert_eq!(
+            tails.iter().filter(|t| is_zod_error_message(t)).count(),
+            9,
+            "nine ZodError tails + the string-`tags` TypeError"
+        );
+        assert!(tails.contains(&"memory.tags.map is not a function"));
+        let messages: Vec<&str> = case["repoLogs"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|l| l["message"].as_str())
+            .collect();
+        assert_eq!(
+            messages,
+            [
+                "Data validation failed",
+                "Error creating entity",
+                "Error creating memory"
+            ]
+            .iter()
+            .cycle()
+            .take(27)
+            .copied()
+            .collect::<Vec<_>>(),
+            "execute_memory_refusals: v4's three repository ERRORs per Zod refusal"
+        );
+        let landed: Vec<&Value> = case["state"]["main"]["memories"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|m| {
+                m["summary"]
+                    .as_str()
+                    .is_some_and(|s| s.starts_with("Refusal memory "))
+            })
+            .collect();
+        assert_eq!(landed.len(), 2, "v4 lands memories 11 and 12 only");
+        let defaulted = landed
+            .iter()
+            .find(|m| m["summary"] == "Refusal memory 12")
+            .expect("the defaulted memory landed");
+        assert_eq!(
+            (
+                defaulted["importance"].as_f64(),
+                defaulted["source"].as_str(),
+                defaulted["kind"].as_str(),
+                defaulted["reinforcementCount"].as_f64(),
+                defaulted["reinforcedImportance"].as_f64(),
+            ),
+            (
+                Some(0.5),
+                Some("MANUAL"),
+                Some("semantic"),
+                Some(1.0),
+                Some(0.5)
+            ),
+            "MemorySchema's defaults on the absent keys (R-C)"
+        );
+    }
+    {
+        let case = cases
+            .iter()
+            .find(|c| c["name"] == "execute_inform_refusals")
+            .expect("the oracle is missing `execute_inform_refusals` — regenerate it");
+        assert_eq!(
+            case["result"]["imported"]["chatInforms"].as_i64(),
+            Some(2),
+            "execute_inform_refusals: v4 lands the normalized `permanent: \"yes\"` row and \
+             the sound one"
+        );
+        let tails: Vec<&str> = case["result"]["warnings"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .filter_map(|w| w.strip_prefix("Failed to import inform: "))
+            .collect();
+        assert_eq!(tails.len(), 4, "one warning per refused inform: {tails:?}");
+        assert!(tails.iter().all(|t| is_zod_error_message(t)));
+        let messages: Vec<&str> = case["repoLogs"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|l| l["message"].as_str())
+            .collect();
+        assert_eq!(
+            messages,
+            ["Data validation failed", "Error creating entity"]
+                .iter()
+                .cycle()
+                .take(8)
+                .copied()
+                .collect::<Vec<_>>(),
+            "execute_inform_refusals: v4's two lines per refusal and NO WARN (R-D)"
+        );
+    }
     // [P4.148] The property-refusal arms are non-vacuous only if v4 really
     // refused every bad item with a ZodError tail AND wrote nothing for it,
     // while the sound item landed — so the whole-state equality above is the
@@ -1918,20 +2053,24 @@ fn system_import_execute_state_equivalence() {
     // `execute_idless_refused_inserts` three `Failed to import memory` (one
     // id-less) and two `Failed to import prompt template` (one id-less) —
     // 2 + 1 + 5 = 8 lines.
+    // [P4.161] …+ the two refusal arms (39): `execute_memory_refusals` fires
+    // ten `Failed to import memory` (one id-less — the C6 walk shape), the
+    // inform arm none (R-D) — 8 + 10 = 18 lines.
     assert_eq!(
         IMPORT_WARN_CASES.load(Ordering::SeqCst),
-        37,
+        39,
         "cases comparing the import WARNs"
     );
     assert_eq!(
         IMPORT_WARNS_FIRED.load(Ordering::SeqCst),
-        8,
+        18,
         "v4 import WARN lines fired"
     );
     // [P4.155 R-A] …+ the two property-refusal arms (5).
+    // [P4.161] …+ the memory and inform refusal arms (7).
     assert_eq!(
         REPO_LOG_CASES.load(Ordering::SeqCst),
-        5,
+        7,
         "cases that compared a refused create's repository lines"
     );
     assert_eq!(
@@ -2393,6 +2532,9 @@ fn run_execute_case(
                 "Error creating group entity",
                 "Error creating project",
                 "Error creating group",
+                // [P4.161] the refused memory's wrap (its `Data validation
+                // failed` is a DIRECT logger call — never strict, measured).
+                "Error creating memory",
             ],
             failures,
         );

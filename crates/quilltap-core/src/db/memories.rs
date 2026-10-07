@@ -96,6 +96,97 @@ pub struct MemCreate {
     pub reinforced_importance: f64,
 }
 
+/// v4's `_create` validation of a memory (`base.repository.ts:350-368` over
+/// `MemorySchema`, `lib/schemas/memory.types.ts:54-108`) — the ONE parse the
+/// `.qtap` import and the backup restore run BEFORE the write (P4.161 R-A,
+/// dogfood #152). `item` is the data the caller hands `memories.create`
+/// (unknown keys are stripped, never refused); the entity validated is
+/// `{...item, id, createdAt, updatedAt}` with `id` the id the create will
+/// write (`claimed_id` — `None` stands for a freshly minted one, which always
+/// passes) and fresh stamps. `Err` carries the `ZodError.message` bytes
+/// ([`zod_error_message`](crate::api::zod_issues::zod_error_message)) — the
+/// `error` of v4's `Data validation failed` line and the tail of the
+/// importer's / restorer's warning. `Ok` is the parsed entity as a
+/// [`MemCreate`] with `MemorySchema`'s DEFAULTS applied to absent keys
+/// (`importance` 0.5, `source` `MANUAL`, `kind` `semantic`,
+/// `reinforcementCount` 1, `reinforcedImportance` 0.5, the four arrays `[]`
+/// — R-C: the restore used to fill 5.0 / `AUTO` / 0 / 0).
+///
+/// Production `create` callers (memory extraction, the manual create) are NOT
+/// gated by this yet — P4.161 Tier 3 item 13, by name.
+pub fn parse_create_memory(item: &Value, claimed_id: Option<&str>) -> Result<MemCreate, String> {
+    use crate::api::zod_issues::{zod_error_message, zod_memory_issues};
+    let mut entity = item.as_object().cloned().unwrap_or_default();
+    let now = now_iso();
+    entity.insert(
+        "id".into(),
+        Value::String(
+            claimed_id
+                .unwrap_or("00000000-0000-0000-0000-000000000000")
+                .into(),
+        ),
+    );
+    entity.insert("createdAt".into(), Value::String(now.clone()));
+    entity.insert("updatedAt".into(), Value::String(now));
+    let issues = zod_memory_issues(&entity);
+    if !issues.is_empty() {
+        return Err(zod_error_message(&issues));
+    }
+    // Every key below has passed its schema check, so each read is total.
+    let str_of = |k: &str| entity.get(k).and_then(Value::as_str).map(str::to_string);
+    let arr = |k: &str| -> Vec<String> {
+        entity
+            .get(k)
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let num = |k: &str, default: f64| entity.get(k).and_then(Value::as_f64).unwrap_or(default);
+    // The union's array option (a number[]); a string option is JSON-parsed as
+    // v4's transform does. An empty vector is SQL NULL (`create_row`).
+    let embedding = match entity.get("embedding") {
+        Some(Value::Array(a)) => Some(
+            a.iter()
+                .filter_map(Value::as_f64)
+                .map(|x| x as f32)
+                .collect(),
+        ),
+        Some(Value::String(s)) => serde_json::from_str::<Vec<f64>>(s)
+            .ok()
+            .map(|a| a.into_iter().map(|x| x as f32).collect()),
+        _ => None,
+    };
+    Ok(MemCreate {
+        character_id: str_of("characterId").unwrap_or_default(),
+        about_character_id: str_of("aboutCharacterId"),
+        chat_id: str_of("chatId"),
+        project_id: str_of("projectId"),
+        content: str_of("content").unwrap_or_default(),
+        summary: str_of("summary").unwrap_or_default(),
+        keywords: arr("keywords"),
+        tags: arr("tags"),
+        importance: num("importance", 0.5),
+        embedding,
+        source: str_of("source").unwrap_or_else(|| "MANUAL".into()),
+        witnessed_context: str_of("witnessedContext"),
+        occurred_at: str_of("occurredAt"),
+        narrative_time: str_of("narrativeTime"),
+        entities: arr("entities"),
+        kind: str_of("kind").unwrap_or_else(|| "semantic".into()),
+        source_message_id: str_of("sourceMessageId"),
+        last_accessed_at: str_of("lastAccessedAt"),
+        reinforcement_count: num("reinforcementCount", 1.0),
+        last_reinforced_at: str_of("lastReinforcedAt"),
+        related_memory_ids: arr("relatedMemoryIds"),
+        reinforced_importance: num("reinforcedImportance", 0.5),
+    })
+}
+
 /// Pinned id + timestamps (v4's `CreateOptions`).
 pub struct CreateOptions {
     pub id: String,
@@ -894,6 +985,68 @@ fn parse_related_ids(raw: Option<&str>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// P4.161 (R-C): `parse_create_memory` applies `MemorySchema`'s DEFAULTS
+    /// to absent keys — importance 0.5, `MANUAL`, `semantic`, 1, 0.5 — where
+    /// the restore used to fill 5.0 / `AUTO` / 0 / 0. The defaults are the
+    /// `repository_zod_messages` oracle's parsed rows; this pins them unit-side.
+    #[test]
+    fn parse_create_memory_applies_the_schema_defaults() {
+        let item = serde_json::json!({
+            "characterId": "c1610000-0000-4000-8000-0000000000b1",
+            "content": "c",
+            "summary": "s",
+        });
+        let m = parse_create_memory(&item, None).expect("a minimal memory parses");
+        assert_eq!(
+            (m.importance, m.source.as_str(), m.kind.as_str()),
+            (0.5, "MANUAL", "semantic")
+        );
+        assert_eq!((m.reinforcement_count, m.reinforced_importance), (1.0, 0.5));
+        assert!(m.keywords.is_empty() && m.tags.is_empty() && m.entities.is_empty());
+        assert!(m.related_memory_ids.is_empty() && m.embedding.is_none());
+    }
+
+    /// P4.161 (dogfood #152): the walk's C6 shape is REFUSED with both issues,
+    /// in schema order, as v4's `ZodError.message` — and a claimed id that is
+    /// not a uuid is refused too (the restore preserves ids).
+    #[test]
+    fn parse_create_memory_refuses_the_c6_shape_and_a_bad_claimed_id() {
+        let item = serde_json::json!({
+            "characterId": "c1610000-0000-4000-8000-0000000000b1",
+            "content": "c",
+            "summary": "s",
+            "importance": 5,
+            "kind": "bogus-kind",
+        });
+        let err = parse_create_memory(&item, None).err().expect("refused");
+        let issues: Value = serde_json::from_str(&err).unwrap();
+        let paths: Vec<&Value> = issues
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|i| &i["path"])
+            .collect();
+        assert_eq!(
+            paths,
+            [
+                &serde_json::json!(["importance"]),
+                &serde_json::json!(["kind"])
+            ]
+        );
+        let ok = serde_json::json!({
+            "characterId": "c1610000-0000-4000-8000-0000000000b1",
+            "content": "c",
+            "summary": "s",
+        });
+        let err = parse_create_memory(&ok, Some("not-a-uuid"))
+            .err()
+            .expect("refused");
+        assert!(
+            err.contains("\"Invalid UUID\"") && err.contains("\"id\""),
+            "{err}"
+        );
+    }
     use crate::db::Writer;
     use tempfile::{tempdir, TempDir};
 

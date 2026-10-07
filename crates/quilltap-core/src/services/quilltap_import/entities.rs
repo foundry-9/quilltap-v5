@@ -500,7 +500,7 @@ pub(super) fn import_projects(
 /// bundle item minus `id` / `createdAt` / `updatedAt` / `officialMountPointId`
 /// (`import-entities.ts:221,231,280,290` — the destructure), with the
 /// `duplicate` arm's rename applied. What `_create` validates WHOLE.
-fn store_create_payload(raw: &Value, name_override: Option<&str>) -> Value {
+pub(crate) fn store_create_payload(raw: &Value, name_override: Option<&str>) -> Value {
     let mut entity = raw.as_object().cloned().unwrap_or_default();
     for k in ["id", "createdAt", "updatedAt", "officialMountPointId"] {
         entity.remove(k);

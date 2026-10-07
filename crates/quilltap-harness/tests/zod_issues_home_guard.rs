@@ -58,9 +58,10 @@ use std::path::PathBuf;
 const CONSTRUCTOR_CENSUS: &[(&str, usize, &str)] = &[
     (
         "crates/quilltap-core/src/api/zod_issues.rs",
-        6,
+        7,
         "THE HOME — `invalid_type`, `invalid_int_type`, `invalid_value`, \
-         `invalid_literal`, `invalid_uuid` and (P4.148) `invalid_regex` \
+         `invalid_literal`, `invalid_uuid`, (P4.148) `invalid_regex` and \
+         (P4.161) `invalid_instance` — `z.instanceof`'s miss \
          (their `too_*` siblings are not in the needle list). Every route \
          family's issue bag is built from these.",
     ),
@@ -139,6 +140,7 @@ const CONSTRUCTOR_NEEDLES: &[&str] = &[
     // P4.148: the `invalid_format`/regex issue (`HexColorSchema`) — the
     // home's sixth constructor; a second definition anywhere is red.
     "fn invalid_regex(",
+    "fn invalid_instance(",
 ];
 
 /// The `parsedType` spellings the tree has used.

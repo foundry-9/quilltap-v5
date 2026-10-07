@@ -178,6 +178,15 @@ pub enum ZodIssue {
         message: String,
     },
     // === end P4.D217 ===
+    /// [P4.161] A `z.instanceof(Class)` miss — `code, expected, path, message`
+    /// (`code` FIRST, unlike [`Self::InvalidType`]; measured at zod 4.6.5
+    /// through `MemorySchema.embedding`'s `Float32Array` / `Buffer` options).
+    InvalidInstance {
+        code: &'static str,
+        expected: &'static str,
+        path: Vec<Value>,
+        message: String,
+    },
     /// A `z.union([...])` / `.or(...)` where every option ABORTED — `code,
     /// errors, path, message`, `errors` one issue list per option (each
     /// relative to the union's own position, so its `path` is `[]`). Measured
@@ -476,6 +485,19 @@ impl ZodIssue {
         }
     }
 
+    /// [P4.161] A `z.instanceof(Class)` miss (see [`Self::InvalidInstance`]).
+    pub fn invalid_instance(expected: &'static str, path: Vec<Value>, got: Option<&Value>) -> Self {
+        Self::InvalidInstance {
+            code: "invalid_type",
+            expected,
+            path,
+            message: format!(
+                "Invalid input: expected {expected}, received {}",
+                zod_parsed_type(got)
+            ),
+        }
+    }
+
     /// A union every option of which aborted (see [`Self::InvalidUnion`]).
     pub fn invalid_union(errors: Vec<Vec<ZodIssue>>, path: Vec<Value>) -> Self {
         Self::InvalidUnion {
@@ -505,6 +527,7 @@ impl ZodIssue {
             | Self::TooSmallInt { path, .. }
             | Self::TooBigInt { path, .. }
             | Self::Custom { path, .. }
+            | Self::InvalidInstance { path, .. }
             | Self::InvalidUnion { path, .. } => path,
         }
     }
@@ -521,6 +544,7 @@ impl ZodIssue {
             | Self::TooSmallInt { message, .. }
             | Self::TooBigInt { message, .. }
             | Self::Custom { message, .. }
+            | Self::InvalidInstance { message, .. }
             | Self::InvalidUnion { message, .. } => message,
         }
     }
@@ -824,6 +848,251 @@ pub fn zod_store_entity_issues(
     issues
 }
 
+/// v4 `MemorySourceEnum` (`lib/schemas/memory.types.ts:21`), in schema order.
+pub const MEMORY_SOURCE: [&str; 2] = ["AUTO", "MANUAL"];
+/// v4 `WitnessedContextEnum` (`memory.types.ts:35`).
+pub const MEMORY_WITNESSED_CONTEXT: [&str; 3] = ["user_present", "autonomous_room", "manual"];
+/// v4 `MemoryKindEnum` (`memory.types.ts:47`).
+pub const MEMORY_KIND: [&str; 2] = ["semantic", "episodic"];
+
+/// `z.array(z.string())` / `z.array(UUIDSchema)` with `.default([])` at `k`:
+/// absent defaults; anything but an array (incl. `null` — a default replaces
+/// `undefined` only) is `invalid_type array`; each element a string (a uuid
+/// when `uuid`), its issue at `[k, index]`.
+fn default_string_array_issues(
+    row: &serde_json::Map<String, Value>,
+    k: &str,
+    uuid: bool,
+    issues: &mut Vec<ZodIssue>,
+) {
+    match row.get(k) {
+        None => {}
+        Some(Value::Array(items)) => {
+            for (i, item) in items.iter().enumerate() {
+                let path = vec![key(k), json!(i)];
+                match item {
+                    Value::String(v) if uuid && !zod_uuid_ok(v) => {
+                        issues.push(ZodIssue::invalid_uuid(path))
+                    }
+                    Value::String(_) => {}
+                    got => issues.push(ZodIssue::invalid_type("string", path, Some(got))),
+                }
+            }
+        }
+        got => issues.push(ZodIssue::invalid_type("array", vec![key(k)], got)),
+    }
+}
+
+/// A `z.enum([...])` at `k` — `.default(..)` when `default` (absent passes),
+/// `.nullable().optional()` when `nullable` (absent and `null` pass). An enum
+/// has no separate type gate, so a wrong type is `invalid_value` too.
+fn enum_issues(
+    row: &serde_json::Map<String, Value>,
+    k: &str,
+    values: &[&str],
+    nullable: bool,
+    issues: &mut Vec<ZodIssue>,
+) {
+    match row.get(k) {
+        None => {}
+        Some(Value::Null) if nullable => {}
+        Some(Value::String(v)) if values.contains(&v.as_str()) => {}
+        Some(_) => issues.push(ZodIssue::invalid_value(values, vec![key(k)])),
+    }
+}
+
+/// `z.number().min(lo).max(hi).default(..)` at `k` (absent defaults).
+fn default_ranged_number_issues(
+    row: &serde_json::Map<String, Value>,
+    k: &str,
+    lo: i64,
+    hi: i64,
+    issues: &mut Vec<ZodIssue>,
+) {
+    match row.get(k) {
+        None => {}
+        Some(v) => match v.as_f64() {
+            None => issues.push(ZodIssue::invalid_type("number", vec![key(k)], Some(v))),
+            Some(n) if n < lo as f64 => {
+                issues.push(ZodIssue::too_small_number(json!(lo), vec![key(k)]))
+            }
+            Some(n) if n > hi as f64 => {
+                issues.push(ZodIssue::too_big_number(json!(hi), vec![key(k)]))
+            }
+            Some(_) => {}
+        },
+    }
+}
+
+/// A `.nullable().optional()` `z.string()` at `k`.
+fn nullable_plain_string_issues(
+    row: &serde_json::Map<String, Value>,
+    k: &str,
+    issues: &mut Vec<ZodIssue>,
+) {
+    nullable_string_issues(row, k, issues, |_| None);
+}
+
+/// A REQUIRED `z.string()` at `k`.
+fn required_string_issues(
+    row: &serde_json::Map<String, Value>,
+    k: &str,
+    issues: &mut Vec<ZodIssue>,
+) {
+    if !row.get(k).is_some_and(Value::is_string) {
+        issues.push(ZodIssue::invalid_type("string", vec![key(k)], row.get(k)));
+    }
+}
+
+/// `TimestampSchema.nullable().optional()` at `k`.
+fn nullable_timestamp_issues(
+    row: &serde_json::Map<String, Value>,
+    k: &str,
+    issues: &mut Vec<ZodIssue>,
+) {
+    if !matches!(row.get(k), None | Some(Value::Null)) {
+        zod_timestamp_issues(row, k, issues);
+    }
+}
+
+/// `MemorySchema.embedding` (`memory.types.ts:67-80`): `z.union([
+/// z.instanceof(Float32Array), z.array(z.number()).transform(…),
+/// z.instanceof(Buffer).transform(…), z.string().transform(…)])
+/// .nullable().optional()`. Absent / `null` pass; a hydrated BLOB
+/// ([`zod_float32_array_cell`]) is the `Float32Array` option; a number array
+/// the array option; a string the string option (whose transform's
+/// `JSON.parse` this twin does not run — no archive or `.qtap` writer emits a
+/// string embedding, and the import drops the key before the parse). Anything
+/// else fails EVERY option: one `invalid_union` carrying each option's issues
+/// (the array option's are its elements' `invalid_type number` at `[index]`
+/// when the value IS an array). Measured at zod 4.6.5 (P4.161).
+fn memory_embedding_issues(row: &serde_json::Map<String, Value>, issues: &mut Vec<ZodIssue>) {
+    let got = match row.get("embedding") {
+        None | Some(Value::Null) | Some(Value::String(_)) => return,
+        g if float32_array_len(g).is_some() => return,
+        Some(g) => g,
+    };
+    let array_option: Vec<ZodIssue> = match got.as_array() {
+        Some(items) => items
+            .iter()
+            .enumerate()
+            .filter(|(_, x)| !x.is_number())
+            .map(|(i, x)| ZodIssue::invalid_type("number", vec![json!(i)], Some(x)))
+            .collect(),
+        None => vec![ZodIssue::invalid_type("array", vec![], Some(got))],
+    };
+    if array_option.is_empty() {
+        return;
+    }
+    issues.push(ZodIssue::invalid_union(
+        vec![
+            vec![ZodIssue::invalid_instance(
+                "Float32Array",
+                vec![],
+                Some(got),
+            )],
+            array_option,
+            vec![ZodIssue::invalid_instance("Buffer", vec![], Some(got))],
+            vec![ZodIssue::invalid_type("string", vec![], Some(got))],
+        ],
+        vec![key("embedding")],
+    ));
+}
+
+/// v4 `MemorySchema` (`lib/schemas/memory.types.ts:54-108`) over the WHOLE
+/// entity `_create` validates (`{...data, id, createdAt, updatedAt}`,
+/// `base.repository.ts:350-368`) — zod's issue list in SCHEMA KEY order
+/// (empty = the row parses). Unknown keys are stripped, never an issue. The
+/// ONE rule set `db::memories::parse_create_memory` runs on the `.qtap`
+/// import and the backup restore (P4.161, dogfood #152); every bound is a
+/// recorded row of the `repository_zod_messages` oracle (v4's REAL schema),
+/// never typed from the source.
+pub fn zod_memory_issues(row: &serde_json::Map<String, Value>) -> Vec<ZodIssue> {
+    let mut issues = Vec::new();
+    zod_uuid_issues(row, "id", false, &mut issues);
+    zod_uuid_issues(row, "characterId", false, &mut issues);
+    for k in ["aboutCharacterId", "chatId", "projectId"] {
+        zod_uuid_issues(row, k, true, &mut issues);
+    }
+    required_string_issues(row, "content", &mut issues);
+    required_string_issues(row, "summary", &mut issues);
+    default_string_array_issues(row, "keywords", false, &mut issues);
+    default_string_array_issues(row, "tags", true, &mut issues);
+    default_ranged_number_issues(row, "importance", 0, 1, &mut issues);
+    memory_embedding_issues(row, &mut issues);
+    enum_issues(row, "source", &MEMORY_SOURCE, false, &mut issues);
+    enum_issues(
+        row,
+        "witnessedContext",
+        &MEMORY_WITNESSED_CONTEXT,
+        true,
+        &mut issues,
+    );
+    nullable_timestamp_issues(row, "occurredAt", &mut issues);
+    nullable_plain_string_issues(row, "narrativeTime", &mut issues);
+    default_string_array_issues(row, "entities", false, &mut issues);
+    enum_issues(row, "kind", &MEMORY_KIND, false, &mut issues);
+    zod_uuid_issues(row, "sourceMessageId", true, &mut issues);
+    nullable_timestamp_issues(row, "lastAccessedAt", &mut issues);
+    // `z.number().int().min(1).default(1)`: the number gate, then the integer
+    // gate (which ABORTS — `1.5` and `0.5` answer one issue), then the
+    // safe-integer bounds and the `min(1)` (which continue).
+    if let Some(v) = row.get("reinforcementCount") {
+        let at = || vec![key("reinforcementCount")];
+        match v.as_f64() {
+            None => issues.push(ZodIssue::invalid_type("number", at(), Some(v))),
+            Some(n) if n.fract() != 0.0 => issues.push(ZodIssue::invalid_int_type(at(), Some(v))),
+            Some(n) => {
+                if n > MAX_SAFE_INTEGER {
+                    issues.push(ZodIssue::too_big_int(at()));
+                } else if n < -MAX_SAFE_INTEGER {
+                    issues.push(ZodIssue::too_small_int(at()));
+                }
+                if n < 1.0 {
+                    issues.push(ZodIssue::too_small_number(json!(1), at()));
+                }
+            }
+        }
+    }
+    nullable_timestamp_issues(row, "lastReinforcedAt", &mut issues);
+    default_string_array_issues(row, "relatedMemoryIds", true, &mut issues);
+    default_ranged_number_issues(row, "reinforcedImportance", 0, 1, &mut issues);
+    zod_timestamp_issues(row, "createdAt", &mut issues);
+    zod_timestamp_issues(row, "updatedAt", &mut issues);
+    issues
+}
+
+/// v4 `ChatInformSchema` (`lib/schemas/chat-inform.types.ts:28-66`) over the
+/// WHOLE entity `chatInforms.create` hands `_create` — the whole-row inform
+/// twin (§S.2 of the `94fbb1ae3` smalls round, P4.161), in schema key order:
+/// `id` / `chatId` / `batchId` / `participantId` uuid; `contentMarkdown`
+/// string (`""` passes); `recordMessageId` uuid `.nullable().optional()`
+/// (`""` FAILS); `permanent` boolean `.default(false)` (`null` fails);
+/// the two stamps; `consumedAt` `TimestampSchema.nullable().optional()`;
+/// `consumedByMessageId` uuid `.nullable().optional()`. Recorded through
+/// v4's REAL schema (`repository_zod_messages`).
+pub fn zod_chat_inform_issues(row: &serde_json::Map<String, Value>) -> Vec<ZodIssue> {
+    let mut issues = Vec::new();
+    for k in ["id", "chatId", "batchId", "participantId"] {
+        zod_uuid_issues(row, k, false, &mut issues);
+    }
+    required_string_issues(row, "contentMarkdown", &mut issues);
+    zod_uuid_issues(row, "recordMessageId", true, &mut issues);
+    match row.get("permanent") {
+        None | Some(Value::Bool(_)) => {}
+        got => issues.push(ZodIssue::invalid_type(
+            "boolean",
+            vec![key("permanent")],
+            got,
+        )),
+    }
+    zod_timestamp_issues(row, "createdAt", &mut issues);
+    zod_timestamp_issues(row, "updatedAt", &mut issues);
+    nullable_timestamp_issues(row, "consumedAt", &mut issues);
+    zod_uuid_issues(row, "consumedByMessageId", true, &mut issues);
+    issues
+}
+
 /// v4 `GroupDocMountLinkSchema` (`lib/schemas/mount-index.types.ts`) — three
 /// required uuids and two timestamps — over a raw `group_doc_mount_links` row
 /// (the shape `findByFilter` `validateSafe()`s row by row). Zod's issue list;
@@ -1042,6 +1311,7 @@ pub fn zod_issue_aborts(issue: &ZodIssue) -> bool {
         ZodIssue::InvalidType { .. }
         | ZodIssue::InvalidIntType { .. }
         | ZodIssue::InvalidValue { .. }
+        | ZodIssue::InvalidInstance { .. }
         | ZodIssue::InvalidUnion { .. } => true,
         ZodIssue::InvalidFormat { .. }
         | ZodIssue::TooSmall { .. }

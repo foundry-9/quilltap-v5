@@ -830,44 +830,49 @@ fn restore_on_writer(
     {
         let repo = crate::db::memories::MemoriesRepository::new(main);
         for m in &data.memories {
-            let create = crate::db::memories::MemCreate {
-                character_id: s(m, "characterId"),
-                about_character_id: os(m, "aboutCharacterId"),
-                chat_id: os(m, "chatId"),
-                project_id: os(m, "projectId"),
-                content: s(m, "content"),
-                summary: s(m, "summary"),
-                keywords: sa(m, "keywords"),
-                tags: sa(m, "tags"),
-                importance: n(m, "importance", 5.0),
-                embedding: embedding(m, "embedding"),
-                source: str_or(m, "source", "AUTO"),
-                witnessed_context: os(m, "witnessedContext"),
-                occurred_at: os(m, "occurredAt"),
-                narrative_time: os(m, "narrativeTime"),
-                entities: sa(m, "entities"),
-                kind: str_or(m, "kind", "semantic"),
-                source_message_id: os(m, "sourceMessageId"),
-                last_accessed_at: os(m, "lastAccessedAt"),
-                reinforcement_count: n(m, "reinforcementCount", 0.0),
-                last_reinforced_at: os(m, "lastReinforcedAt"),
-                related_memory_ids: sa(m, "relatedMemoryIds"),
-                reinforced_importance: n(m, "reinforcedImportance", 0.0),
-            };
+            // v4 `:255-259`: `{ id, createdAt, updatedAt, ...memoryData }`, the
+            // legacy `personaId` stripped, `create(clean, { id })`.
+            let mut item = m.as_object().cloned().unwrap_or_default();
+            for k in ["id", "createdAt", "updatedAt", "personaId"] {
+                item.remove(k);
+            }
+            let item = Value::Object(item);
+            let character_id = s(m, "characterId");
+            let claimed = id_of(m);
             // v4 restores through the USER-SCOPED memories repository, whose
             // `create` first looks the character up for the target user and
             // refuses a memory whose character is not there
             // (`user-scoped.ts:310-311`) — reached when the character itself
             // failed to restore (P4.158 R-G's plant measured it: v5 went
-            // straight to the insert and failed on a different error).
-            let created = if character_owned_by(main, &create.character_id, target_user_id) {
-                repo.create(
-                    &create,
-                    &copts!(id_of(m), crate::db::memories::CreateOptions),
-                )
-                .map_err(|e| e.warn_text())
-            } else {
+            // straight to the insert and failed on a different error). ONLY
+            // THEN does the base `create` → `_create` validate the WHOLE
+            // entity through `MemorySchema` (P4.161 — the restore used to
+            // write any row as it came, and to default an absent `importance`
+            // to 5.0, `reinforcementCount` / `reinforcedImportance` to 0 and
+            // `source` to `AUTO` where the schema's defaults are 0.5 / 1 / 0.5
+            // / `MANUAL`: R-C). A refusal logs v4's three repository ERRORs
+            // (outside the strict scope — no `strictFailures`).
+            let created = if !character_owned_by(main, &character_id, target_user_id) {
                 Err("Character not found or access denied".to_string())
+            } else {
+                crate::db::memories::parse_create_memory(
+                    &item,
+                    Some(claimed.as_str()).filter(|id| !id.is_empty()),
+                )
+                .inspect_err(|zod| {
+                    crate::services::quilltap_import::log_refused_create("memories", zod);
+                    crate::db::fallback::log_memory_create_failure(
+                        &character_id,
+                        &crate::db::DbError::Internal(zod.clone()),
+                    );
+                })
+                .and_then(|create| {
+                    repo.create(
+                        &create,
+                        &copts!(claimed.clone(), crate::db::memories::CreateOptions),
+                    )
+                    .map_err(|e| e.warn_text())
+                })
             };
             warn_only!(
                 w,
@@ -1004,18 +1009,34 @@ fn restore_on_writer(
         for p in &data.projects {
             let label = format!("Failed to restore project \"{}\"", s(p, "name"));
             // v4's `_create` validates the WHOLE entity on both of v5's arms
-            // (`store-backed.repository.ts:142-144`) after its create seed
-            // (`parse_create_properties`), so a bag v4's schema refuses skips
-            // the project on the preserve arm too, with nothing written.
-            let properties = crate::db::document_store_overlay::fold_properties(
-                p,
-                ProjectEntity::property_keys(),
-            );
-            if let Err(e) = crate::db::projects::parse_create_properties(&properties) {
+            // (`store-backed.repository.ts:142-144`): the row keys (`name`
+            // 1–100 code points, `description` ≤ 2000, `instructions` ≤ 10000,
+            // `state` a record, the claimed `id`) THEN the bag after its
+            // create seed — so a row v4's schema refuses skips the project on
+            // the preserve arm too, with nothing written: no slim row, no
+            // store claim, no backfill entry (P4.161, P4.155's R-B — the arm
+            // used to validate the BAG alone, so a 101-code-point name
+            // restored). A refusal logs v4's three repository ERRORs (no
+            // `strictFailures` — outside the strict scope).
+            let entity = crate::services::quilltap_import::store_create_payload(p, None);
+            let claimed = id_of(p);
+            if let Err(e) = crate::db::projects::parse_create_entity(
+                &entity,
+                Some(claimed.as_str()).filter(|id| !id.is_empty()),
+            ) {
+                crate::db::document_store_overlay::log_refused_store_create(
+                    crate::db::document_store_overlay::StoreKind::Project,
+                    entity.get("name"),
+                    &e,
+                );
                 w.push(format!("{label}: {e}"));
                 project_warn(p, &e);
                 continue;
             }
+            let properties = crate::db::document_store_overlay::fold_properties(
+                p,
+                ProjectEntity::property_keys(),
+            );
             if let Some(store) = archived_store(p, "project") {
                 match slim_projects.create_slim_linked(&s(p, "name"), &store_opts(id_of(p)), &store)
                 {
@@ -1053,16 +1074,21 @@ fn restore_on_writer(
             crate::db::store_backed::StoreBackedRepository::<GroupEntity>::new(main, mount);
         for g in &data.groups {
             let label = format!("Failed to restore group \"{}\"", s(g, "name"));
-            // Validated on both arms, as the projects above (v4's groups have
-            // no create seed).
-            let properties = match GroupEntity::parse_properties(
-                &crate::db::document_store_overlay::fold_properties(
-                    g,
-                    GroupEntity::property_keys(),
-                ),
+            // Validated WHOLE on both arms, as the projects above (v4's groups
+            // have no create seed; P4.161 — the bag alone before).
+            let entity = crate::services::quilltap_import::store_create_payload(g, None);
+            let claimed = id_of(g);
+            let properties = match crate::db::groups::parse_create_entity(
+                &entity,
+                Some(claimed.as_str()).filter(|id| !id.is_empty()),
             ) {
                 Ok(bag) => bag,
                 Err(e) => {
+                    crate::db::document_store_overlay::log_refused_store_create(
+                        crate::db::document_store_overlay::StoreKind::Group,
+                        entity.get("name"),
+                        &e,
+                    );
                     w.push(format!("{label}: {e}"));
                     group_warn(g, &e);
                     continue;
@@ -1505,30 +1531,33 @@ fn restore_on_writer(
     {
         let repo = crate::db::chat_informs::ChatInformsRepository::new(main);
         for inform in &data.chat_informs {
-            let outcome = match restored_inform(inform, crate::clock::now_iso()) {
-                // v4's `validate` throws inside `_create`'s rethrowing
-                // `safeQuery`: ERROR `Data validation failed {collection, error}`
-                // then the base line, both carrying the ZodError's message
-                // (`extractErrorMessage`); no per-repository wrap (`create` is
-                // `_create`). Measured on `restore_informs_replace`.
-                Err(zod) => {
-                    tracing::error!(
-                        target: "quilltap::db",
-                        collection = "chat_informs",
-                        error = %zod,
-                        "Data validation failed"
-                    );
-                    crate::db::fallback::log_create_failure(
-                        "chat_informs",
-                        &crate::db::DbError::Internal(zod.clone()),
-                    );
-                    Err(zod)
-                }
-                Ok(create) => repo.create(&create).map_err(|e| {
-                    crate::db::fallback::log_create_failure("chat_informs", &e);
-                    e.warn_text()
-                }),
-            };
+            // v4 `:812-813`: `{ id, createdAt, updatedAt, ...informData }`,
+            // `chatInforms.create(informData, { id })` — a bare `_create`, so
+            // the WHOLE `ChatInformSchema` validates the row (P4.161, §S.2 —
+            // `restored_inform` used to check `permanent` alone). A refusal
+            // logs `validate`'s ERROR then the base rethrow line (no
+            // per-repository wrap; no `strictFailures` — the restore runs
+            // outside the strict scope). Measured on `restore_informs_replace`
+            // and `restore_inform_refusals_replace`.
+            let mut item = inform.as_object().cloned().unwrap_or_default();
+            for k in ["id", "createdAt", "updatedAt"] {
+                item.remove(k);
+            }
+            let claimed = id_of(inform);
+            let outcome =
+                match crate::services::quilltap_import::reconcile::parse_create_chat_inform(
+                    &Value::Object(item),
+                    Some(claimed.as_str()).filter(|id| !id.is_empty()),
+                ) {
+                    Err(zod) => {
+                        crate::services::quilltap_import::log_refused_create("chat_informs", &zod);
+                        Err(zod)
+                    }
+                    Ok(create) => repo.create(&create).map_err(|e| {
+                        crate::db::fallback::log_create_failure("chat_informs", &e);
+                        e.warn_text()
+                    }),
+                };
             match outcome {
                 Ok(_) => c.chat_informs += 1,
                 Err(error) => {
@@ -3152,93 +3181,6 @@ fn store_opts(id: String) -> crate::db::store_backed::StoreCreateOptions {
 /// One archived `chat_informs` row as v4's restore writes it: the id kept,
 /// the clocks minted (`now`), and — P4.D249, v4 `52d6e7ecd` — the standing
 /// flag carried. v4 spreads the archived row into `create`, where
-/// `ChatInformSchema.permanent: z.boolean().default(false)` fills an absent
-/// key, so a pre-standing archive restores every row as a one-shot.
-///
-/// That same schema REFUSES any other non-boolean (`null`, `"true"`, `1` …):
-/// `Err` carries v4's `ZodError.message` (P4.147 item 9 — the bytes recorded
-/// through `system_restore_state`'s informs arm). Only `permanent` is checked
-/// here; the row's other columns go to `create` as before.
-fn restored_inform(
-    inform: &Value,
-    now: String,
-) -> Result<crate::db::chat_informs::ChatInformCreate, String> {
-    let permanent = match inform.get("permanent") {
-        None => false,
-        Some(Value::Bool(b)) => *b,
-        Some(other) => {
-            return Err(crate::api::zod_issues::zod_error_message(&[
-                crate::api::zod_issues::ZodIssue::invalid_type(
-                    "boolean",
-                    vec![Value::String("permanent".into())],
-                    Some(other),
-                ),
-            ]))
-        }
-    };
-    Ok(crate::db::chat_informs::ChatInformCreate {
-        id: id_of(inform),
-        chat_id: s(inform, "chatId"),
-        batch_id: s(inform, "batchId"),
-        participant_id: s(inform, "participantId"),
-        content_markdown: s(inform, "contentMarkdown"),
-        record_message_id: os(inform, "recordMessageId"),
-        permanent,
-        created_at: now.clone(),
-        updated_at: now,
-        consumed_at: os(inform, "consumedAt"),
-        consumed_by_message_id: os(inform, "consumedByMessageId"),
-    })
-}
-
-#[cfg(test)]
-mod restored_inform_tests {
-    use super::*;
-    use serde_json::json;
-
-    /// P4.D249: the flag survives a restore, and an archive written before
-    /// standing informs (no key) restores a one-shot.
-    #[test]
-    fn the_standing_flag_round_trips_and_an_old_archive_reads_one_shot() {
-        let row = json!({
-            "id": "i1", "chatId": "c1", "batchId": "b1", "participantId": "p1",
-            "contentMarkdown": "x", "permanent": true,
-            "createdAt": "2026-01-01T00:00:00.000Z", "updatedAt": "2026-01-01T00:00:00.000Z"
-        });
-        let got = restored_inform(&row, "NOW".into()).unwrap();
-        assert!(got.permanent);
-        assert_eq!((got.id.as_str(), got.created_at.as_str()), ("i1", "NOW"));
-        let mut old = row.clone();
-        old.as_object_mut().unwrap().remove("permanent");
-        assert!(!restored_inform(&old, "NOW".into()).unwrap().permanent);
-        let mut one_shot = row.clone();
-        one_shot["permanent"] = json!(false);
-        assert!(!restored_inform(&one_shot, "NOW".into()).unwrap().permanent);
-    }
-
-    /// P4.147 item 9 (ruling R-D): a malformed flag is REFUSED with v4's
-    /// `ZodError.message` — the bytes `system_restore_state`'s informs arm
-    /// recorded through v4's real `ChatInformSchema`.
-    #[test]
-    fn a_malformed_flag_is_refused_with_v4s_zod_bytes() {
-        for (v, received) in [
-            (json!(null), "null"),
-            (json!("true"), "string"),
-            (json!(1), "number"),
-        ] {
-            let row = json!({ "id": "i1", "permanent": v });
-            assert_eq!(
-                restored_inform(&row, "NOW".into()).unwrap_err(),
-                format!(
-                    "[\n  {{\n    \"expected\": \"boolean\",\n    \"code\": \"invalid_type\",\n    \
-                     \"path\": [\n      \"permanent\"\n    ],\n    \"message\": \"Invalid input: \
-                     expected boolean, received {received}\"\n  }}\n]"
-                )
-            );
-        }
-    }
-}
-
 /// The two legacy translations v4's restore chains over a `chat_settings`
 /// row before `create` (`restore.ts:393-413`): the Concierge one first
 /// (`3b463d6b1`, #76), THEN — on its output — the retired impersonated-line

@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — fix(import,restore): validate memories, informs and the restore's projects/groups whole-row before the write (P4.161 Tier 1, dogfood #152)
+
+_Versions: core 0.0.1243._
+
+The `.qtap` import and the backup restore now refuse every memory and chat inform v4's `MemorySchema` / `ChatInformSchema` refuses, through one parse per kind called before the write: `db::memories::parse_create_memory` and `quilltap_import::reconcile::parse_create_chat_inform`, over new issue builders `zod_memory_issues` / `zod_chat_inform_issues` (plus `ZodIssue::invalid_instance` for `z.instanceof`). A refused memory logs v4's three repository ERRORs (`Data validation failed`, `Error creating entity`, `Error creating memory`), warns `Failed to import memory: <ZodError message>` / `Failed to restore memory: …`, WARNs, and counts `skipped` on import; a refused inform logs the base pair and no WARN on import (`informsDropped`), the pair plus `Failed to restore chat inform` on restore. `strictFailures=true` rides only the two `safeQuery`-born import lines (measured: `Data validation failed` never carries it).
+
+The import builds v4's exact create payload (falsy FK values kept as they came, so `aboutCharacterId: ""` is refused; a non-empty string `tags` fails with v4's TypeError) and no longer coerces `importance: 5` / `kind: "bogus-kind"` into the row. The import's inform arm validates the remapped row as v4's `result.data` carries it (a missing `contentMarkdown` and a `""` `recordMessageId` are refused). The restore's `restored_inform` (which checked `permanent` alone) is replaced by the whole-row parse.
+
+The restore's memory defaults are now `MemorySchema`'s (importance 0.5, `MANUAL`, `semantic`, reinforcementCount 1, reinforcedImportance 0.5) — it used to fill 5.0 / `AUTO` / 0 / 0. The restore's project and group arms validate the WHOLE entity through `parse_create_entity` (name 1–100 code points, description ≤ 2000, …) before the preserve arm, so a refused row writes nothing and claims no archived store; the three store-backed ERRORs log through `log_refused_store_create`.
+
+Differential: 77 new `repository_zod_messages` rows over v4's real schemas (accepted rows compare the parsed defaults); two new `system_import_state` cases (`execute_memory_refusals`, `execute_inform_refusals`); three new derived restore archives (`restore-archive-{memory,inform,entity}-refusals.zip`) and `system_restore_state` cases. Red-first on unported main: 10 import differences, 28 restore differences, and the zod-messages family's unknown-schema panic.
+
 #### 2026-10-07 — test(harness): census the dispatch verb read; close the P4.162 lane record
 
 _No crate versions bumped._

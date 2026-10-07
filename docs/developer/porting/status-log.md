@@ -171132,3 +171132,90 @@ from the pin); any further v4 docs commits are covered by that instruction.
   uuid row joined its family's table). Recorded finding, not fixed:
   `characters_routes::characters_get` answers 500 where v4 answers the vault 503
   (unit 1).
+
+## P4.161 lane — whole-row validation on `.qtap` import and backup restore (dogfood #152 + §S.2 + P4.155's R-B), pin `94fbb1ae3` (2026-10-07)
+
+Lane branch `claude/p4-161-whole-row-validation-844f61`; pin worktree
+`/tmp/qt-v4-pin-p4161-94fbb1ae3` (HEAD `94fbb1ae3…`, `4.10.0-dev.112`).
+
+**§2 probe at lane start:** branch `main`, HEAD `94fbb1ae3`, both logs
+empty; ONE untracked docs-only path (`docs/releases/4.10.0.md`). Mid-lane v4
+landed `938144eb4` ("docs: add 4.10.0 release notes draft" — that one file,
++404 lines); **the human ruled it ignorable in chat (docs-only release
+notes)** — every regen ran from the pin, so no oracle could see it. The
+unifier should record the waiver in the ledger's §1.
+
+### Unit 1 — Tier 1 items 1–6: memories, informs, the restore's projects/groups (core 0.0.1243)
+
+- **Item 1 / 3 — the issue builders**, in `api/zod_issues.rs`:
+  `zod_memory_issues` and `zod_chat_inform_issues` (+ `ZodIssue::
+  invalid_instance`, `z.instanceof`'s `{code, expected, path, message}` —
+  `code` FIRST, measured through the embedding union). **Recorded rows:**
+  `repository-zod-messages.ts` +54 `memory` rows (6 accepted, each carrying
+  v4's `r.data`; the Rust side drives `parse_create_memory` and compares the
+  defaulted fields) and +24 `chatInform` rows (5 accepted, `permanent`'s
+  default compared); 136 rows total (floor 58 → 136). Red-first: main's
+  prebuilt binary panics `memory-valid: unknown schema memory`.
+- **Item 2 — `db::memories::parse_create_memory`** (R-A home), the entity
+  `{...item, id, createdAt, updatedAt}` through `zod_memory_issues`; `Ok` is a
+  `MemCreate` with `MemorySchema`'s defaults (**R-C measured**: absent →
+  importance 0.5, `MANUAL`, `semantic`, 1, 0.5, `[]`s). Import
+  (`quilltap_import/memories.rs`) builds v4's payload from the RAW item
+  (`import-entities.ts:459-498`): falsy FK values ride through (so
+  `aboutCharacterId: ""` reaches the schema and is refused — v5 used to null
+  it), a non-empty STRING `tags` fails with v4's TypeError `memory.tags.map
+  is not a function` (no repository lines), the coercions deleted. Restore
+  (`orchestrator.rs` phase 9): `Character not found or access denied` FIRST,
+  then the parse — the 5.0 / `AUTO` / 0 / 0 defaults gone.
+- **Item 3 — informs:** `reconcile::parse_create_chat_inform` (home named for
+  a later move into `db/chat_informs.rs`, P4.163's file this round) +
+  `reconcile::remapped_chat_inform_input` (v4's `result.data` from the RAW
+  item — `remap_chat_inform`'s typed struct reads `as_str`, which turned a
+  missing `contentMarkdown` into `""`; its signature is untouched because
+  `chat_informs_remap_equivalence` matches its variants exhaustively).
+  `restored_inform` + its two unit tests DELETED, their pins carried to
+  `reconcile.rs` (`parse_create_chat_inform_*`).
+- **Item 4 — the restore's projects / groups WHOLE:** `parse_create_entity`
+  (CALLED unchanged) over `store_create_payload(row, None)` with the
+  archived id claimed, BEFORE the preserve arm; `log_refused_store_create`
+  (CALLED unchanged); the item skipped with no slim row, no claim, no
+  `PreservedStore` (measured: a refused project naming The Voyage's archived
+  store left it to The Voyage — on unported main it STOLE it).
+- **Lines measured at the pin (a recorded-description correction):** v4's
+  `Data validation failed` is a DIRECT `logger.error` in `validate`
+  (`base.repository.ts:135`), so it NEVER carries `strictFailures` — the
+  order's R-D and item 2 said it did. Only `Error creating entity` / `Error
+  creating memory` carry it on the import. The lane-local helper
+  `quilltap_import::log_refused_create(collection, zod)` logs the pair.
+- **Items 5 / 6 — the differential:** `system-import-execute.test.ts`
+  `memoryRefusalsPayload` (12 memories: the C6 walk shape id-less + eight
+  single-bound refusals + `aboutCharacterId: ""` + string `tags` + one sound
+  + one with the defaulted keys absent) and `informRefusalsPayload` (4
+  refused + `permanent: "yes"` normalized + sound); `REPO_LOG_MESSAGES` +
+  `Error creating memory`, recorded keys + `characterId`. Rust:
+  `ran` 50 → 52, `REPO_LOG_CASES` 5 → 7, `IMPORT_WARN_CASES` 37 → 39,
+  `IMPORT_WARNS_FIRED` 8 → 18, plus by-name non-vacuity (v4 imported 2 /
+  skipped 10 memories; 27 repository lines; 2 informs landed, 8 lines, no
+  WARN). Restore: three derive scripts →
+  `restore-archive-{memory,inform,entity}-refusals.zip` (each from
+  `restore-archive.zip`, md5-guarded); `system-restore.test.ts`
+  `REPO_LEVEL_MESSAGES` + the memories wrap + the store-backed four; Rust
+  `REPO_LEVEL_CASES` + the three, `seen` 34 → 37, `FRESH_STORE_CARVED_CASES`
+  24 → 27, `assert_refusals_restored` (by name, BOTH sides: the landed ids,
+  the R-C defaults, The Voyage's store), and the two tripwires taught the
+  archives (`assert_memory_graph_intact` skips the memory-refusals case;
+  `assert_pre_410_archive_restores_no_informs` skips the inform-refusals
+  one).
+- **Red-first (core reverted, harness + oracles at the lane):**
+  `system_import_state` **10** differences (all in the two new cases —
+  `main.memories`, `main.chat_informs`, the result bodies, the WARN lines,
+  `refused-chat repository lines: v5 0 vs v4 27` / `8`, `background_jobs`,
+  and the inform arm's `conversation_annotations` / `chat_documents`);
+  `system_restore_state` **28** differences (all in the three new cases,
+  incl. `R-C DEFAULTS (v5)` and The Voyage's store). Green after.
+- **Two unit pins moved (v4-faithful):** `import_warn_pins`' two cases
+  mapped their memory's character to `"c-new"`, which the schema now refuses
+  before the planted insert trigger; the target is a uuid now.
+- **Neutral:** `import_warning_text_guard`, `zod_issues_home_guard` (the home
+  6 → 7 constructors, `invalid_instance` a needle), `fallback_home_guard`,
+  `spelling_guard` green.

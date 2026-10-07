@@ -1029,6 +1029,11 @@ fn archive_for(name: &str) -> &'static str {
         // [P4.158 R-G + R-H] every phase's per-row catch, planted — see
         // `renamed_columns_in`.
         "restore_phase_warns_replace" => "restore-archive-legacy.zip",
+        // [P4.161] whole-row refusals — `derive-restore-archive-{memory,
+        // inform,entity}-refusals.py` (dogfood #152, §S.2, P4.155's R-B).
+        "restore_memory_refusals_replace" => "restore-archive-memory-refusals.zip",
+        "restore_inform_refusals_replace" => "restore-archive-inform-refusals.zip",
+        "restore_entity_refusals_replace" => "restore-archive-entity-refusals.zip",
         other => panic!("unknown restore case {other}"),
     }
 }
@@ -1328,7 +1333,10 @@ fn assert_memory_graph_intact(
 ) {
     // [P4.158 R-G] the phase plant refuses every memory on BOTH sides (its
     // characters never restore); the census and the row diff cover it.
-    if name == "restore_phase_warns_replace" {
+    // [P4.161] the memory-refusals archive refuses eight of its memories on
+    // BOTH sides by design (none of them is an edge target);
+    // `assert_refusals_restored` names exactly which land.
+    if name == "restore_phase_warns_replace" || name == "restore_memory_refusals_replace" {
         return;
     }
     let extracted = quilltap_core::services::backup::restore::parse_backup_zip(zip, temp_root)
@@ -1694,6 +1702,7 @@ fn system_restore_state_equivalence() {
 
         // [P4.147 item 9] the archived informs, by name.
         assert_informs_restored(name, &got_state, want_state, &mut failures);
+        assert_refusals_restored(name, &got_state, want_state, &mut failures);
 
         // [P4.143 item 2] the serde-arm plant, by name.
         assert_serde_room_skipped(
@@ -1739,16 +1748,18 @@ fn system_restore_state_equivalence() {
     // boolean in its shapes, translated on restore). 23 + 6 = 29: P4.147's
     // three fresh-target arms (#142), the bag-nulls arm, the informs arm and
     // the SQLite-tail plant.
+    // 34 + 3 = 37: P4.161's three whole-row refusal arms.
     assert_eq!(
-        seen, 34,
-        "expected all thirty-four restore cases in the oracle (ten + the #58 orphan-links arm \
+        seen, 37,
+        "expected all thirty-seven restore cases in the oracle (ten + the #58 orphan-links arm \
          + P4.D46's two compact arms + P4.D126's bug-103 legacy-profiles arm \
          + P4.D145's bug-114 duplicate-folders arm + P4.D152's bug-117 arm \
          + P4.D158's two bag-key arms + P4.D208's bug-158 arm \
          + P4.D226's legacy-Concierge arm + P4.130's refused-chat arm \
          + P4.143's serde-arm plant + P4.D251's voice-legacy arm \
          + P4.147's three fresh-target arms, bag-nulls, informs and SQLite-tail arms \
-         + P4.158's damaged-store, two-claimants, dup-store-id, general-pointer and phase-warns arms)"
+         + P4.158's damaged-store, two-claimants, dup-store-id, general-pointer and phase-warns arms \
+         + P4.161's memory-, inform- and entity-refusal arms)"
     );
     // [P4.147] Every ruled #141 case actually carved (red-first measured, then
     // both directions held) — the arm cannot go vacuous.
@@ -2144,8 +2155,9 @@ fn assert_pre_410_archive_restores_no_informs(
     want: &Value,
     failures: &mut Vec<String>,
 ) {
-    // [P4.147 item 9] the ONE archive that does carry informs.
-    if name == INFORMS_CASE {
+    // [P4.147 item 9] the archives that DO carry informs — P4.147's, and
+    // P4.161's whole-row refusal derivation (`assert_refusals_restored`).
+    if name == INFORMS_CASE || name == "restore_inform_refusals_replace" {
         return;
     }
     match got.get("main").and_then(|t| t.get("chat_informs")) {
@@ -4073,7 +4085,8 @@ fn carve_fresh_store_residual(
 /// every `replace` case whose archive carries a store some entity points at
 /// (measured, P4.147). A case falling out of the count is the carve going
 /// vacuous.
-const FRESH_STORE_CARVED_CASES: usize = 24;
+/// P4.161: + its three refusal archives (all `restore-archive.zip` derivations).
+const FRESH_STORE_CARVED_CASES: usize = 27;
 
 /// The `summary` adjustments a ruled carve makes: v5 leads v4's `files`
 /// counter by `files_lead`, and these v4 warnings are the divergence itself.
@@ -4799,8 +4812,21 @@ const REPO_LEVEL_MESSAGES: &[&str] = &[
     "Data validation failed",
     "Error creating entity",
     "Failed to create chat",
+    // [P4.161] the memories wrap and the store-backed pair.
+    "Error creating memory",
+    "Error creating project entity",
+    "Error creating group entity",
+    "Error creating project",
+    "Error creating group",
 ];
-const REPO_LEVEL_CASES: &[&str] = &["restore_informs_replace", "restore_sqlite_tail_replace"];
+const REPO_LEVEL_CASES: &[&str] = &[
+    "restore_informs_replace",
+    "restore_sqlite_tail_replace",
+    // [P4.161] the three whole-row refusal archives.
+    "restore_memory_refusals_replace",
+    "restore_inform_refusals_replace",
+    "restore_entity_refusals_replace",
+];
 
 /// v5's captured lines (`LEVEL target message k=v …`) whose message is in
 /// `messages`, as `{level, message, <fields>}` records. A field boundary is a
@@ -5151,6 +5177,119 @@ fn assert_informs_restored(
                 "[{name}] INFORMS ({side}): restored {rows:?}, expected {expected}"
             ));
         }
+    }
+}
+
+/// [P4.161 — dogfood #152, §S.2, P4.155's R-B] **The whole-row refusal
+/// archives, by name, on BOTH sides** (so a two-sided loss cannot pass as
+/// agreement): each side lands EXACTLY the sound rows its derive script names
+/// and none of the refused ones; the memory whose defaulted keys are absent
+/// lands with `MemorySchema`'s defaults (R-C — v5 used to write 5.0 / `AUTO`
+/// / 0 / 0); and on v5 the archive's own project keeps its archived store —
+/// the refused project that named that store claimed nothing (v4 always
+/// mints, so this half is v5's alone).
+fn assert_refusals_restored(
+    name: &str,
+    got: &BTreeMap<String, BTreeMap<String, Vec<Value>>>,
+    want: &Value,
+    failures: &mut Vec<String>,
+) {
+    let got_v = serde_json::to_value(got).expect("dump serializes");
+    let ids = |dump: &Value, partition: &str, table: &str, prefix: &str| -> Vec<String> {
+        let mut v: Vec<String> = rows_of(dump, partition, table)
+            .iter()
+            .filter_map(|r| r["id"].as_str())
+            .filter(|id| id.starts_with(prefix) || prefix.is_empty())
+            .map(str::to_string)
+            .collect();
+        v.sort();
+        v
+    };
+    match name {
+        "restore_memory_refusals_replace" => {
+            let expected: Vec<String> = ["01", "02", "11", "12", "13"]
+                .iter()
+                .map(|n| format!("ad000000-0000-4000-8000-0000000000{n}"))
+                .collect();
+            for (side, dump) in [("v5", &got_v), ("v4", want)] {
+                let landed = ids(dump, "main", "memories", "");
+                if landed != expected {
+                    failures.push(format!(
+                        "[{name}] MEMORIES ({side}): restored {landed:?}, expected {expected:?}"
+                    ));
+                }
+                let row = rows_of(dump, "main", "memories")
+                    .iter()
+                    .find(|r| r["id"] == "ad000000-0000-4000-8000-000000000012");
+                let got_defaults = row.map(|r| {
+                    json!([
+                        r["importance"],
+                        r["source"],
+                        r["kind"],
+                        r["reinforcementCount"],
+                        r["reinforcedImportance"]
+                    ])
+                });
+                if got_defaults != Some(json!([0.5, "MANUAL", "semantic", 1, 0.5])) {
+                    failures.push(format!(
+                        "[{name}] R-C DEFAULTS ({side}): {got_defaults:?}, expected \
+                         [0.5, MANUAL, semantic, 1, 0.5]"
+                    ));
+                }
+            }
+        }
+        "restore_inform_refusals_replace" => {
+            let expected = vec![
+                "af000000-0000-4000-8000-000000000010".to_string(),
+                "af000000-0000-4000-8000-000000000011".to_string(),
+            ];
+            for (side, dump) in [("v5", &got_v), ("v4", want)] {
+                let landed = ids(dump, "main", "chat_informs", "");
+                if landed != expected {
+                    failures.push(format!(
+                        "[{name}] INFORMS ({side}): restored {landed:?}, expected {expected:?}"
+                    ));
+                }
+            }
+        }
+        "restore_entity_refusals_replace" => {
+            for (side, dump) in [("v5", &got_v), ("v4", want)] {
+                for (table, expected) in [
+                    (
+                        "projects",
+                        vec![
+                            "a3000000-0000-4000-8000-000000000001",
+                            "a3000000-0000-4000-8000-0000000000e3",
+                        ],
+                    ),
+                    (
+                        "groups",
+                        vec![
+                            "a2000000-0000-4000-8000-000000000001",
+                            "a2000000-0000-4000-8000-0000000000e2",
+                        ],
+                    ),
+                ] {
+                    let landed = ids(dump, "main", table, "");
+                    if landed != expected {
+                        failures.push(format!(
+                            "[{name}] {table} ({side}): restored {landed:?}, expected {expected:?}"
+                        ));
+                    }
+                }
+            }
+            let voyage = rows_of(&got_v, "main", "projects")
+                .iter()
+                .find(|r| r["id"] == "a3000000-0000-4000-8000-000000000001")
+                .map(|r| r["officialMountPointId"].clone());
+            if voyage != Some(json!("5c17e916-5f79-4cca-a134-ec09c05924e9")) {
+                failures.push(format!(
+                    "[{name}] v5: The Voyage must keep its archived store (the refused \
+                     project that named it claims nothing): {voyage:?}"
+                ));
+            }
+        }
+        _ => {}
     }
 }
 

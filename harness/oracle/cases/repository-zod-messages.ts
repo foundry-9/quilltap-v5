@@ -52,6 +52,8 @@ import { GroupSchema } from '@/lib/schemas/group.types';
 import { GroupDocMountLinkSchema } from '@/lib/schemas/mount-index.types';
 import { ChatMetadataBaseSchema } from '@/lib/schemas/chat.types';
 import { ChatSettingsSchema } from '@/lib/schemas/settings.types';
+import { MemorySchema } from '@/lib/schemas/memory.types';
+import { ChatInformSchema } from '@/lib/schemas/chat-inform.types';
 import { logger } from '@/lib/logger';
 import { ChatSettingsRepository } from '@/lib/database/repositories/chat-settings.repository';
 
@@ -91,6 +93,28 @@ const SETTINGS: Row = {
   updatedAt: TS,
 };
 
+// P4.161: a minimal valid `MemorySchema` row — the four required strings and
+// the two stamps; every other key defaults or is optional.
+const MEMORY: Row = {
+  id: 'f1610000-0000-4000-8000-0000000000a1',
+  characterId: 'c1610000-0000-4000-8000-0000000000b1',
+  content: 'The lighthouse keeper keeps a cat.',
+  summary: 'Keeper has a cat.',
+  createdAt: TS,
+  updatedAt: TS,
+};
+
+// P4.161 (§S.2): a minimal valid `ChatInformSchema` row.
+const INFORM: Row = {
+  id: 'f1610000-0000-4000-8000-0000000000c1',
+  chatId: 'c1000000-0000-4000-8000-0000000000e7',
+  batchId: 'b1610000-0000-4000-8000-0000000000d1',
+  participantId: 'e1610000-0000-4000-8000-0000000000e1',
+  contentMarkdown: 'The butler did it.',
+  createdAt: TS,
+  updatedAt: TS,
+};
+
 const ABSENT = '<absent>';
 const patch = (base: Row, p: Row): Row => {
   const r: Row = { ...base };
@@ -102,13 +126,20 @@ const patch = (base: Row, p: Row): Row => {
 };
 const f32 = (n: number) => ({ $float32: n });
 
-const rows: Array<
-  [string, 'group' | 'groupDocMountLink' | 'chatMetadataBase' | 'chatSettings', Row]
-> = [];
+type SchemaName =
+  | 'group'
+  | 'groupDocMountLink'
+  | 'chatMetadataBase'
+  | 'chatSettings'
+  | 'memory'
+  | 'chatInform';
+const rows: Array<[string, SchemaName, Row]> = [];
 const group = (id: string, p: Row) => rows.push([id, 'group', patch(GROUP, p)]);
 const link = (id: string, p: Row) => rows.push([id, 'groupDocMountLink', patch(LINK, p)]);
 const chat = (id: string, p: Row) => rows.push([id, 'chatMetadataBase', patch(CHAT, p)]);
 const settings = (id: string, p: Row) => rows.push([id, 'chatSettings', patch(SETTINGS, p)]);
+const memory = (id: string, p: Row) => rows.push([id, 'memory', patch(MEMORY, p)]);
+const inform = (id: string, p: Row) => rows.push([id, 'chatInform', patch(INFORM, p)]);
 
 // --- GroupSchema -------------------------------------------------------------
 group('group-valid', {});
@@ -191,12 +222,162 @@ settings('settings-mode-empty', { impersonationVoiceMode: '' });
 settings('settings-mode-case', { impersonationVoiceMode: 'Off' });
 settings('settings-mode-numeric-text', { impersonationVoiceMode: '1' });
 
+// --- MemorySchema (P4.161 — dogfood #152) -----------------------------------
+// Every bound v5's `zod_memory_issues` checks is a row here; an accepted row
+// carries the PARSED output (the schema defaults applied) so v5's
+// `parse_create_memory` defaults are compared too (R-C).
+const UUID_A = 'a1610000-0000-4000-8000-0000000000f1';
+const UUID_B = 'a1610000-0000-4000-8000-0000000000f2';
+memory('memory-valid', {});
+memory('memory-valid-full', {
+  aboutCharacterId: UUID_A,
+  chatId: UUID_B,
+  projectId: null,
+  keywords: ['cat', 'lighthouse'],
+  tags: [UUID_A],
+  importance: 0.9,
+  embedding: [0.25, -0.5],
+  source: 'AUTO',
+  witnessedContext: 'autonomous_room',
+  occurredAt: '2026-01-01T00:00:00.000Z',
+  narrativeTime: 'the third night at sea',
+  entities: ['Lighthouse Point'],
+  kind: 'episodic',
+  sourceMessageId: UUID_B,
+  lastAccessedAt: null,
+  reinforcementCount: 3,
+  lastReinforcedAt: '2026-01-01T12:00:00Z',
+  relatedMemoryIds: [UUID_B],
+  reinforcedImportance: 1,
+});
+memory('memory-nullables-null', {
+  aboutCharacterId: null,
+  chatId: null,
+  sourceMessageId: null,
+  witnessedContext: null,
+  occurredAt: null,
+  narrativeTime: null,
+  lastReinforcedAt: null,
+  embedding: null,
+});
+memory('memory-importance-0', { importance: 0 });
+memory('memory-importance-1', { importance: 1 });
+memory('memory-importance-5', { importance: 5 });
+memory('memory-importance-negative', { importance: -0.1 });
+memory('memory-importance-string', { importance: '0.5' });
+memory('memory-importance-null', { importance: null });
+memory('memory-kind-bogus', { kind: 'bogus-kind' });
+memory('memory-kind-number', { kind: 5 });
+memory('memory-kind-null', { kind: null });
+memory('memory-source-system', { source: 'SYSTEM' });
+memory('memory-source-null', { source: null });
+memory('memory-witnessed-bogus', { witnessedContext: 'overheard' });
+memory('memory-witnessed-number', { witnessedContext: 1 });
+memory('memory-reinforcement-0', { reinforcementCount: 0 });
+memory('memory-reinforcement-fraction', { reinforcementCount: 1.5 });
+memory('memory-reinforcement-half', { reinforcementCount: 0.5 });
+memory('memory-reinforcement-string', { reinforcementCount: '1' });
+memory('memory-reinforcement-huge', { reinforcementCount: 9007199254740992 });
+memory('memory-reinforced-importance-2', { reinforcedImportance: 2 });
+memory('memory-reinforced-importance-negative', { reinforcedImportance: -1 });
+memory('memory-id-bad', { id: 'not-a-uuid' });
+memory('memory-character-bad', { characterId: 'nope' });
+memory('memory-character-absent', { characterId: ABSENT });
+memory('memory-about-bad', { aboutCharacterId: 'nope' });
+memory('memory-about-empty', { aboutCharacterId: '' });
+memory('memory-chat-number', { chatId: 7 });
+memory('memory-project-bad', { projectId: 'p' });
+memory('memory-source-message-bad', { sourceMessageId: 'm' });
+memory('memory-tags-bad-element', { tags: [UUID_A, 'nope'] });
+memory('memory-tags-number-element', { tags: [5] });
+memory('memory-tags-string', { tags: 'x' });
+memory('memory-tags-null', { tags: null });
+memory('memory-related-bad', { relatedMemoryIds: ['nope'] });
+memory('memory-keywords-number', { keywords: ['ok', 5] });
+memory('memory-keywords-null', { keywords: null });
+memory('memory-entities-null', { entities: null });
+memory('memory-entities-object', { entities: { a: 1 } });
+memory('memory-content-absent', { content: ABSENT });
+memory('memory-content-number', { content: 5 });
+memory('memory-summary-null', { summary: null });
+memory('memory-occurred-yesterday', { occurredAt: 'yesterday' });
+memory('memory-occurred-number', { occurredAt: 5 });
+memory('memory-last-accessed-date-only', { lastAccessedAt: '2026-01-02' });
+memory('memory-last-reinforced-number', { lastReinforcedAt: 1 });
+memory('memory-narrative-number', { narrativeTime: 5 });
+memory('memory-embedding-object', { embedding: { '0': 0.25, '1': 0.5 } });
+memory('memory-embedding-string-element', { embedding: [0.25, 'x'] });
+memory('memory-embedding-empty', { embedding: [] });
+memory('memory-embedding-number', { embedding: 5 });
+memory('memory-c6-walk', { importance: 5, kind: 'bogus-kind' });
+memory('memory-multi', {
+  id: 'x',
+  characterId: 7,
+  content: ABSENT,
+  importance: -1,
+  source: 'nope',
+  kind: 'nope',
+  reinforcementCount: 0,
+  reinforcedImportance: 9,
+  tags: ['bad'],
+});
+
+// --- ChatInformSchema (P4.161 §S.2 — the whole-row inform twin) -------------
+const MSG = 'd1610000-0000-4000-8000-0000000000f9';
+inform('inform-valid', {});
+inform('inform-valid-full', {
+  recordMessageId: MSG,
+  permanent: true,
+  consumedAt: TS,
+  consumedByMessageId: MSG,
+});
+inform('inform-nullables-null', { recordMessageId: null, consumedAt: null, consumedByMessageId: null });
+inform('inform-permanent-false', { permanent: false });
+inform('inform-permanent-yes', { permanent: 'yes' });
+inform('inform-permanent-null', { permanent: null });
+inform('inform-permanent-one', { permanent: 1 });
+inform('inform-batch-bad', { batchId: 'not-a-uuid' });
+inform('inform-batch-absent', { batchId: ABSENT });
+inform('inform-batch-number', { batchId: 5 });
+inform('inform-content-absent', { contentMarkdown: ABSENT });
+inform('inform-content-number', { contentMarkdown: 5 });
+inform('inform-content-null', { contentMarkdown: null });
+inform('inform-content-empty', { contentMarkdown: '' });
+inform('inform-consumed-now', { consumedAt: 'now' });
+inform('inform-consumed-number', { consumedAt: 5 });
+inform('inform-record-empty', { recordMessageId: '' });
+inform('inform-record-number', { recordMessageId: 5 });
+inform('inform-consumed-by-bad', { consumedByMessageId: 'm' });
+inform('inform-participant-bad', { participantId: 'p' });
+inform('inform-chat-absent', { chatId: ABSENT });
+inform('inform-id-bad', { id: 'i' });
+inform('inform-created-bad', { createdAt: '2026-01-02' });
+inform('inform-multi', {
+  batchId: 'x',
+  contentMarkdown: ABSENT,
+  recordMessageId: '',
+  permanent: 'yes',
+  consumedAt: 'now',
+});
+
 const SCHEMAS = {
   group: GroupSchema,
   groupDocMountLink: GroupDocMountLinkSchema,
   chatMetadataBase: ChatMetadataBaseSchema,
   chatSettings: ChatSettingsSchema,
+  memory: MemorySchema,
+  chatInform: ChatInformSchema,
 } as const;
+
+// An accepted row's parsed output as JSON — a `Float32Array` embedding as the
+// plain number array it holds (JSON.stringify would render it as an object).
+const parsedJson = (data: unknown): unknown => {
+  const out: Row = { ...(data as Row) };
+  for (const [k, v] of Object.entries(out)) {
+    if (v instanceof Float32Array) out[k] = Array.from(v);
+  }
+  return out;
+};
 
 const materialize = (r: Row): Row => {
   const out: Row = {};
@@ -243,7 +424,8 @@ async function main(): Promise<void> {
     const r = SCHEMAS[schema].safeParse(materialize(row));
     const lines = schema === 'chatSettings' ? { lines: await v4SettingsLines(row) } : {};
     if (r.success) {
-      process.stdout.write(JSON.stringify({ id, schema, row, ok: true, ...lines }) + '\n');
+      const parsed = schema === 'memory' || schema === 'chatInform' ? { parsed: parsedJson(r.data) } : {};
+      process.stdout.write(JSON.stringify({ id, schema, row, ok: true, ...lines, ...parsed }) + '\n');
     } else {
       process.stdout.write(
         JSON.stringify({ id, schema, row, message: r.error.message, issues: r.error.issues, ...lines }) +

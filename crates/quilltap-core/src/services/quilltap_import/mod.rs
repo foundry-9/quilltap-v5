@@ -41,6 +41,10 @@ pub mod reset;
 pub mod seed;
 pub mod seed_assets;
 
+/// The store-backed create payload (P4.161 — the restore's whole-entity
+/// project / group parse validates the same shape the import does).
+pub(crate) use entities::store_create_payload;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -411,6 +415,28 @@ pub(super) fn warning_display_name(raw: &Value) -> String {
 /// prefix.
 pub(super) fn item_error_text(e: &DbError) -> String {
     crate::db::fallback::error_text(e)
+}
+
+/// v4's base-repository refusal of a create whose entity fails its schema
+/// (`base.repository.ts:130-141, 350-379`): `validate`'s ERROR `Data
+/// validation failed {collection, error}` — a DIRECT logger call, so it never
+/// carries `strictFailures` — then `_create`'s rethrowing `safeQuery` line
+/// `Error creating entity {collection, error, strictFailures?}` (the
+/// [`crate::db::fallback::log_create_failure`] home). `zod` is the
+/// `ZodError.message`. Logs only. Shared by the `.qtap` import and the backup
+/// restore (P4.161); the restore runs outside the strict scope, so its second
+/// line carries no `strictFailures`.
+// HANDOFF(P4.163): C1 lists `log_create_failure` as "the `Data validation
+// failed` + `Error creating entity` pair" but it logs only the second; this
+// lane-local helper adds the first. Fold onto `db::fallback` at §S.1.
+pub(crate) fn log_refused_create(collection: &str, zod: &str) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = collection,
+        error = %zod,
+        "Data validation failed"
+    );
+    crate::db::fallback::log_create_failure(collection, &DbError::Internal(zod.to_string()));
 }
 
 /// [`item_error_text`] for the store-backed repositories' [`OverlayError`]:
@@ -1709,17 +1735,39 @@ fn import_body(
                             "Imported inform lost its consumedByMessageId",
                         );
                     }
-                    match crate::db::chat_informs::ChatInformsRepository::new(main).create(&data) {
+                    // v4 `chatInforms.create(result.data)` is a bare `_create`
+                    // (`chat-informs.repository.ts:61-65`): the WHOLE
+                    // `ChatInformSchema` validates the remapped row before
+                    // the insert (P4.161, §S.2 / R-D — v5 used to write a
+                    // missing `contentMarkdown` as `""` and a `""`
+                    // `recordMessageId` as it came). A refusal logs v4's two
+                    // lines and NO WARN; the warning + `informsDropped++` are
+                    // the importer's catch (`execute.ts:776-783`).
+                    let input = reconcile::remapped_chat_inform_input(
+                        inform,
+                        &remapped_chat_id,
+                        consumed_by_message_id_cleared,
+                    );
+                    let created = match reconcile::parse_create_chat_inform(&input, Some(&data.id))
+                    {
+                        Err(zod) => {
+                            log_refused_create("chat_informs", &zod);
+                            Err(zod)
+                        }
+                        Ok(row) => crate::db::chat_informs::ChatInformsRepository::new(main)
+                            .create(&row)
+                            .map_err(|e| {
+                                // v4 `_create`'s RETHROW line (`base.repository.ts:
+                                // 321`) before the importer's catch (P4.156).
+                                crate::db::fallback::log_create_failure("chat_informs", &e);
+                                item_error_text(&e)
+                            }),
+                    };
+                    match created {
                         Ok(()) => informs_imported += 1,
-                        Err(e) => {
-                            // v4 `globalRepos.chatInforms.create` → `_create`'s
-                            // RETHROW line (`base.repository.ts:321`) before
-                            // the importer's catch; v5's repository `create`
-                            // leaves that line to its callers (P4.156).
-                            crate::db::fallback::log_create_failure("chat_informs", &e);
+                        Err(text) => {
                             informs_dropped += 1;
-                            warnings
-                                .push(format!("Failed to import inform: {}", item_error_text(&e)));
+                            warnings.push(format!("Failed to import inform: {text}"));
                         }
                     }
                 }
@@ -2579,7 +2627,11 @@ mod import_warn_pins {
     fn run_all(main: &Connection, mount: &Connection) -> Vec<String> {
         let opts = ImportOptions::seed_defaults();
         let mut id_maps = IdMaps::default();
-        id_maps.characters.set("c-src".into(), "c-new".into());
+        // A uuid: P4.161's `MemorySchema` parse runs before the planted insert.
+        id_maps.characters.set(
+            "c-src".into(),
+            "c1610000-0000-4000-8000-0000000000b1".into(),
+        );
         let mut w = Vec::new();
         let ((), lines) = crate::test_support::captured_with(|| {
             configuration::import_prompt_templates(
@@ -2708,7 +2760,11 @@ mod import_warn_pins {
         let (main, mount) = conns(true);
         let opts = ImportOptions::seed_defaults();
         let mut id_maps = IdMaps::default();
-        id_maps.characters.set("c-src".into(), "c-new".into());
+        // A uuid: P4.161's `MemorySchema` parse runs before the planted insert.
+        id_maps.characters.set(
+            "c-src".into(),
+            "c1610000-0000-4000-8000-0000000000b1".into(),
+        );
         let mut w = Vec::new();
         let ((), lines) = crate::test_support::captured_with(|| {
             configuration::import_prompt_templates(

@@ -1,11 +1,15 @@
-//! v4 `importMemories` (`import-entities.ts:387`) — remap-only, always insert (no
+//! v4 `importMemories` (`import-entities.ts:433-522`) — remap-only, always insert (no
 //! conflict check). `characterId` MUST resolve through the character id-map (else
 //! warn + skip); `aboutCharacterId` remaps through the SAME character map or →
 //! null; `chatId`/`projectId` remap through the chats/projects maps or → null
 //! (which, after a `duplicate` import, can be a PHANTOM id — the map quirk rides
 //! straight into the stored FK, exactly as in v4); `tags` remap through the tags
 //! map with `get(tag) || tag` (an unmapped tag keeps its ORIGINAL id, unlike the
-//! null-on-miss FK remaps). Strips id/createdAt/updatedAt (create mints).
+//! null-on-miss FK remaps). Strips id/createdAt/updatedAt (create mints), then runs the whole entity
+//! through `MemorySchema` ([`parse_create_memory`](crate::db::memories::parse_create_memory),
+//! P4.161) BEFORE the write — a refused item logs v4's three repository
+//! ERRORs, warns `Failed to import memory: <ZodError message>`, WARNs, and
+//! counts `skipped` (v4 `:522`).
 //!
 //! ## Embeddings are dropped, not validated (v4 `7189a968`)
 //!
@@ -28,7 +32,7 @@ use rusqlite::Connection;
 use serde_json::Value;
 
 use super::{IdMaps, ImportOptions};
-use crate::db::memories::{CreateOptions, MemCreate, MemoriesRepository};
+use crate::db::memories::{CreateOptions, MemoriesRepository};
 use crate::db::DbError;
 
 pub(super) struct Counts {
@@ -77,86 +81,94 @@ pub(super) fn import_memories(
             continue;
         };
 
-        // Remap aboutCharacterId if present (Characters-Not-Personas: who the memory
-        // is about). `idMaps.characters.get(...) || null`.
-        let about_character_id = match memory.get("aboutCharacterId").and_then(Value::as_str) {
-            Some(about) => id_maps.characters.get(about).map(|s| s.to_string()),
-            None => None,
+        // v4 builds the create payload from the RAW item (`import-entities.ts:
+        // 459-498`): the item minus `id` / `createdAt` / `updatedAt` /
+        // `embedding`, with the four FKs remapped. Each FK remap runs only on a
+        // TRUTHY value (`if (memory.aboutCharacterId)`) and answers the map's
+        // hit `|| null`; a falsy value (`""`, `0`, `null`) rides through as it
+        // came — so `aboutCharacterId: ""` reaches the schema, which refuses it.
+        let mut payload = memory.as_object().cloned().unwrap_or_default();
+        for k in ["id", "createdAt", "updatedAt", "embedding"] {
+            payload.remove(k);
+        }
+        let remap = |k: &str, map: &super::IdMap| {
+            let raw = memory.get(k)?;
+            Some(if crate::api::system_qtap::js_truthy(Some(raw)) {
+                raw.as_str()
+                    .and_then(|v| map.get(v))
+                    .map_or(Value::Null, |v| Value::String(v.to_string()))
+            } else {
+                raw.clone()
+            })
+        };
+        payload.insert(
+            "characterId".into(),
+            Value::String(new_character_id.to_string()),
+        );
+        for (k, map) in [
+            ("aboutCharacterId", &id_maps.characters),
+            ("chatId", &id_maps.chats),
+            ("projectId", &id_maps.projects),
+        ] {
+            if let Some(v) = remap(k, map) {
+                payload.insert(k.into(), v);
+            }
+        }
+        // tags: `if (memory.tags && memory.tags.length > 0)` → `get(tag) ||
+        // tag` per element (an unmapped tag keeps its ORIGINAL id). A
+        // non-empty STRING passes that guard and has no `.map` — v4's TypeError
+        // is the item's failure.
+        let tags_failure = match memory.get("tags") {
+            Some(Value::Array(items)) => {
+                let mapped = items
+                    .iter()
+                    .map(|t| match t.as_str().and_then(|t| id_maps.tags.get(t)) {
+                        Some(hit) => Value::String(hit.to_string()),
+                        None => t.clone(),
+                    })
+                    .collect();
+                payload.insert("tags".into(), Value::Array(mapped));
+                None
+            }
+            Some(Value::String(s)) if !s.is_empty() => {
+                Some("memory.tags.map is not a function".to_string())
+            }
+            _ => None,
         };
 
-        // chatId / projectId: `idMaps.<kind>.get(...) || null` when present (which
-        // may surface a phantom `duplicate`-arm id — the carried quirk).
-        let chat_id = memory
-            .get("chatId")
-            .and_then(Value::as_str)
-            .and_then(|c| id_maps.chats.get(c))
-            .map(|s| s.to_string());
-        let project_id = memory
-            .get("projectId")
-            .and_then(Value::as_str)
-            .and_then(|p| id_maps.projects.get(p))
-            .map(|s| s.to_string());
-
-        // tags: `get(tag) || tag` — an unmapped tag keeps its original id.
-        let tags: Vec<String> = str_array(memory, "tags")
-            .into_iter()
-            .map(|t| id_maps.tags.get(&t).map(|s| s.to_string()).unwrap_or(t))
-            .collect();
-
-        let create = MemCreate {
-            character_id: new_character_id.to_string(),
-            about_character_id,
-            chat_id,
-            project_id,
-            content: opt_str(memory, "content").unwrap_or_default(),
-            summary: opt_str(memory, "summary").unwrap_or_default(),
-            keywords: str_array(memory, "keywords"),
-            tags,
-            // MemorySchema defaults (materialized by v4's `_create` validation):
-            // importance 0.5, reinforcementCount 1, reinforcedImportance 0.5,
-            // source 'MANUAL'.
-            importance: memory
-                .get("importance")
-                .and_then(Value::as_f64)
-                .unwrap_or(0.5),
-            // Excluded on purpose — see the module header (v4 `7189a968`).
-            embedding: None,
-            source: opt_str(memory, "source").unwrap_or_else(|| "MANUAL".to_string()),
-            witnessed_context: opt_str(memory, "witnessedContext"),
-            // Episodic spine (v4 8bf3cb5f): occurredAt/narrativeTime absent →
-            // NULL, entities [], kind 'semantic'.
-            occurred_at: opt_str(memory, "occurredAt"),
-            narrative_time: opt_str(memory, "narrativeTime"),
-            entities: str_array(memory, "entities"),
-            kind: opt_str(memory, "kind").unwrap_or_else(|| "semantic".to_string()),
-            source_message_id: opt_str(memory, "sourceMessageId"),
-            last_accessed_at: opt_str(memory, "lastAccessedAt"),
-            reinforcement_count: memory
-                .get("reinforcementCount")
-                .and_then(Value::as_f64)
-                .unwrap_or(1.0),
-            last_reinforced_at: opt_str(memory, "lastReinforcedAt"),
-            related_memory_ids: str_array(memory, "relatedMemoryIds"),
-            reinforced_importance: memory
-                .get("reinforcedImportance")
-                .and_then(Value::as_f64)
-                .unwrap_or(0.5),
-        };
-
-        let now = crate::clock::now_iso();
         let (new_id, _now) = super::mint_or_preserve(options, &source_id);
+        // v4's `_create` validates the WHOLE entity (`MemorySchema`) before the
+        // insert (P4.161, dogfood #152 — v5 used to coerce: `importance: 5`
+        // and `kind: "bogus-kind"` were written as they came).
+        let parsed = match tags_failure {
+            Some(type_error) => Err(type_error),
+            None => {
+                crate::db::memories::parse_create_memory(&Value::Object(payload), Some(&new_id))
+                    .inspect_err(|zod| {
+                        super::log_refused_create("memories", zod);
+                        crate::db::fallback::log_memory_create_failure(
+                            new_character_id,
+                            &DbError::Internal(zod.clone()),
+                        );
+                    })
+            }
+        };
+        let now = crate::clock::now_iso();
         let opts = CreateOptions {
             id: new_id,
             created_at: now.clone(),
             updated_at: now,
         };
-        match repo.create(&create, &opts) {
+        let created = parsed.and_then(|create| {
+            repo.create(&create, &opts)
+                .map_err(|e| super::item_error_text(&e))
+        });
+        match created {
             Ok(()) => {
                 created_ids.push((opts.id.clone(), new_character_id.to_string()));
                 imported += 1;
             }
-            Err(e) => {
-                let text = super::item_error_text(&e);
+            Err(text) => {
                 warnings.push(format!("Failed to import memory: {text}"));
                 // v4 `import-entities.ts:518` (P4.148 Tier 2 item 17).
                 tracing::warn!(memoryId = super::id_field(memory), error = %text, "Failed to import memory");
@@ -170,20 +182,4 @@ pub(super) fn import_memories(
         skipped,
         created_ids,
     })
-}
-
-fn opt_str(obj: &Value, key: &str) -> Option<String> {
-    obj.get(key).and_then(Value::as_str).map(|s| s.to_string())
-}
-
-fn str_array(obj: &Value, key: &str) -> Vec<String> {
-    obj.get(key)
-        .and_then(Value::as_array)
-        .map(|arr| {
-            arr.iter()
-                .filter_map(Value::as_str)
-                .map(|s| s.to_string())
-                .collect()
-        })
-        .unwrap_or_default()
 }

@@ -422,6 +422,17 @@ const RESTORE_CASES: Array<{
     archive: 'restore-archive-informs.zip',
   },
 
+  // ── P4.161 (dogfood #152 + §S.2 + P4.155's R-B): whole-row refusals ─────
+  //
+  // Three derivations of `restore-archive.zip`, each refusing rows v4's
+  // repository `_create` refuses (the WHOLE schema — `MemorySchema`,
+  // `ChatInformSchema`, `ProjectSchema` / `GroupSchema`), beside sound twins:
+  // `fixtures/derive-restore-archive-{memory,inform,entity}-refusals.py`. The
+  // memory archive also carries a row whose defaulted keys are ABSENT (R-C).
+  { name: 'restore_memory_refusals_replace', archive: 'restore-archive-memory-refusals.zip' },
+  { name: 'restore_inform_refusals_replace', archive: 'restore-archive-inform-refusals.zip' },
+  { name: 'restore_entity_refusals_replace', archive: 'restore-archive-entity-refusals.zip' },
+
   // ── P4.147 item 10(a)+(c): a real SQLite error on two restore inserts ────
   //
   // `restore-archive.zip` into a target whose `chats.rightPaneVerticalSplit`
@@ -734,7 +745,18 @@ const RESTORE_TS_MESSAGES = [
  * base `_create` rethrow, the chats wrap) — compared on the cases that wired
  * them (`restore_informs_replace`, `restore_sqlite_tail_replace`).
  */
-const REPO_LEVEL_MESSAGES = ['Data validation failed', 'Error creating entity', 'Failed to create chat'];
+const REPO_LEVEL_MESSAGES = [
+  'Data validation failed',
+  'Error creating entity',
+  'Failed to create chat',
+  // [P4.161] the memories repository's own wrap, and the store-backed
+  // `_create` override + `create` wrap (a refused project / group).
+  'Error creating memory',
+  'Error creating project entity',
+  'Error creating group entity',
+  'Error creating project',
+  'Error creating group',
+];
 
 /**
  * [P4.158 R-G] A recorded line carries EVERY context key, in the context's own

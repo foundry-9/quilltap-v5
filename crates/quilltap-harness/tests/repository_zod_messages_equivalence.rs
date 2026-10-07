@@ -37,6 +37,16 @@
 //! mode column is NOT a row (R-D: writer-unreachable on both sides; v5's check
 //! is `as_str()`-gated, so it would pass v5 and fail v4).
 //!
+//! P4.161 (dogfood #152 + §S.2): the `memory` rows run v4's REAL
+//! `MemorySchema` and the `chatInform` rows its REAL `ChatInformSchema`
+//! against `zod_memory_issues` / `zod_chat_inform_issues` — every bound the
+//! import and restore now refuse on is a recorded row here. An ACCEPTED
+//! memory row also drives `db::memories::parse_create_memory` over the row
+//! (minus the three keys `_create` stamps) and compares the parsed entity's
+//! defaulted fields with v4's `r.data` (R-C — the restore's old defaults
+//! were 5.0 / `AUTO` / 0 / 0); an accepted inform row compares `permanent`'s
+//! default.
+//!
 //! Regenerate + run (self-contained; a pure tsx oracle, no fixture):
 //!   V5W=${V5W:-$HOME/source/quilltap-v5}
 //!   N=~/.nvm/versions/node/v24.13.1/bin
@@ -49,8 +59,8 @@
 //!     cargo test -p quilltap-harness --test repository_zod_messages_equivalence -- --nocapture
 
 use quilltap_core::api::zod_issues::{
-    zod_error_message, zod_float32_array_cell, zod_group_doc_mount_link_issues, zod_group_issues,
-    ZodIssue,
+    zod_chat_inform_issues, zod_error_message, zod_float32_array_cell,
+    zod_group_doc_mount_link_issues, zod_group_issues, zod_memory_issues, ZodIssue,
 };
 use quilltap_core::services::dangerous_content::chat_override::concierge_columns_zod_error;
 use serde_json::{Map, Value};
@@ -172,6 +182,70 @@ fn materialize(row: &Map<String, Value>) -> Map<String, Value> {
         .collect()
 }
 
+/// v5's parsed entity for an ACCEPTED row against v4's `r.data` — for a
+/// memory, `parse_create_memory` over the row minus `_create`'s stamped keys
+/// (the claimed id is the row's), every defaulted / carried field; for an
+/// inform, `permanent`'s default.
+fn compare_parsed(schema: &str, row: &Map<String, Value>, parsed: &Value) -> Result<(), String> {
+    if schema == "chatInform" {
+        let got = row.get("permanent").cloned().unwrap_or(Value::Bool(false));
+        return (got == parsed["permanent"])
+            .then_some(())
+            .ok_or_else(|| format!("permanent v5 {got} v4 {}", parsed["permanent"]));
+    }
+    let mut item = row.clone();
+    let id = item
+        .remove("id")
+        .and_then(|v| v.as_str().map(str::to_string));
+    item.remove("createdAt");
+    item.remove("updatedAt");
+    let m = quilltap_core::db::memories::parse_create_memory(&Value::Object(item), id.as_deref())?;
+    let opt = |o: &Option<String>| o.clone().map(Value::String).unwrap_or(Value::Null);
+    let num = |n: f64| serde_json::Number::from_f64(n).map(Value::Number).unwrap();
+    let embedding = m
+        .embedding
+        .as_ref()
+        .map(|v| Value::Array(v.iter().map(|x| num(*x as f64)).collect()))
+        .unwrap_or(Value::Null);
+    let got = serde_json::json!({
+        "characterId": m.character_id,
+        "aboutCharacterId": opt(&m.about_character_id),
+        "chatId": opt(&m.chat_id),
+        "projectId": opt(&m.project_id),
+        "content": m.content,
+        "summary": m.summary,
+        "keywords": m.keywords,
+        "tags": m.tags,
+        "importance": num(m.importance),
+        "embedding": embedding,
+        "source": m.source,
+        "witnessedContext": opt(&m.witnessed_context),
+        "occurredAt": opt(&m.occurred_at),
+        "narrativeTime": opt(&m.narrative_time),
+        "entities": m.entities,
+        "kind": m.kind,
+        "sourceMessageId": opt(&m.source_message_id),
+        "lastAccessedAt": opt(&m.last_accessed_at),
+        "reinforcementCount": num(m.reinforcement_count),
+        "lastReinforcedAt": opt(&m.last_reinforced_at),
+        "relatedMemoryIds": m.related_memory_ids,
+        "reinforcedImportance": num(m.reinforced_importance),
+    });
+    for (k, v5) in got.as_object().unwrap() {
+        // v4's absent optional key is `undefined` (dropped from `r.data`), its
+        // `null` is `null`: both are v5's `None` → SQL NULL.
+        let v4 = parsed.get(k).cloned().unwrap_or(Value::Null);
+        let same = match (v5, &v4) {
+            (Value::Number(a), Value::Number(b)) => a.as_f64() == b.as_f64(),
+            _ => v5 == &v4,
+        };
+        if !same {
+            return Err(format!("{k}: v5 {v5} v4 {v4}"));
+        }
+    }
+    Ok(())
+}
+
 #[test]
 fn repository_zod_messages_match_oracle() {
     let Ok(path) = std::env::var("QT_ORACLE_REPOSITORY_ZOD_MESSAGES") else {
@@ -194,6 +268,7 @@ fn repository_zod_messages_match_oracle() {
     let mut chat_messages = 0usize;
     let (mut settings_messages, mut settings_ok) = (0usize, 0usize);
     let mut settings_two_line_rows = 0usize;
+    let (mut memory_rows, mut inform_rows, mut parsed_rows) = (0usize, 0usize, 0usize);
 
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         rows += 1;
@@ -270,6 +345,30 @@ fn repository_zod_messages_match_oracle() {
                 }
                 (m, i)
             }
+            "memory" | "chatInform" => {
+                let issues = if schema == "memory" {
+                    memory_rows += 1;
+                    zod_memory_issues(&row)
+                } else {
+                    inform_rows += 1;
+                    zod_chat_inform_issues(&row)
+                };
+                if let Some(parsed) = want.get("parsed") {
+                    if let Err(e) = compare_parsed(schema, &row, parsed) {
+                        failures.push(format!("{id}: PARSED differs: {e}"));
+                        continue;
+                    }
+                    parsed_rows += 1;
+                }
+                if issues.is_empty() {
+                    (None, None)
+                } else {
+                    (
+                        Some(zod_error_message(&issues)),
+                        Some(serde_json::to_string(&issues).unwrap()),
+                    )
+                }
+            }
             other => panic!("{id}: unknown schema {other}"),
         };
         if got_message.as_deref() != want_message {
@@ -286,7 +385,16 @@ fn repository_zod_messages_match_oracle() {
         }
     }
     eprintln!("repository_zod_messages: {rows} rows ({ok_rows} accepted)");
-    assert!(rows >= 58, "the corpus shrank ({rows} rows)");
+    assert!(rows >= 136, "the corpus shrank ({rows} rows)");
+    assert_eq!(
+        (memory_rows, inform_rows),
+        (54, 24),
+        "P4.161: the recorded MemorySchema / ChatInformSchema rows"
+    );
+    assert_eq!(
+        parsed_rows, 11,
+        "P4.161: every accepted memory / inform row compared its parsed defaults"
+    );
     assert!(
         saw_union && saw_datetime && saw_float32 && saw_astral_ok,
         "the corpus must still ask the union ({saw_union}), datetime ({saw_datetime}), \
