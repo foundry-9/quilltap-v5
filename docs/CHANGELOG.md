@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — refactor(core): fold the Google stream decoder's parts join onto the shared home; log a non-string Gemini block reason (P4.162)
+
+_Versions: core 0.0.1248._
+
+The Google stream decoder's terminal text read had its own copy of the SDK `.text` parts join; it now calls `response_parse::google_parts_text`, which `google_candidate_text` also uses. No behaviour change: the Google stream, text-error and primary-stream families re-run unchanged. Separately, the Gemini image safety WARN now logs a non-string `finishReason` / `blockReason` (rendered as v4's logger renders the raw value) instead of dropping it.
+
 #### 2026-10-07 — refactor(core): move the V8 `JSON.parse` message twin to `jsstr` (P4.162)
 
 _Versions: core 0.0.1247, web 0.0.224._

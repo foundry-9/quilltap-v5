@@ -170970,3 +170970,24 @@ this lane (the unifier records the waiver at §S.6).
   link). **Neutral:** `v8_json_parse_message_equivalence` 2/2 against a fresh
   pin regen (159 rows matched, 14 accepted → None, 3 lossy; 145 overlay rows) —
   identical to P4.154's record; core `jsstr` tests 2/2.
+
+### Unit 6 — the third Google parts join folded; the Gemini reasons through `to_js_string` (Tier 2 item 6)
+
+- **Fold:** NEW `response_parse::google_parts_text(parts)` — the ONE home of
+  the SDK `.text` concat (non-thought, non-`functionCall` `text`, joined `''`;
+  v4 `provider.ts:291-303`); `google_candidate_text` calls it, and
+  `decoders/google_parts.rs::extract_text`'s hand copy is replaced by
+  `google_candidate_parts` + `google_parts_text` over the last chunk's first
+  candidate. Behaviour identical by construction (an absent / non-array /
+  empty `parts` was `''` and still is — `build_done` then runs the WARN pass
+  and its `content.text` fallback, unchanged).
+- **`blockReason` / `finishReason`:** `image_dialects.rs` logged them through
+  `as_str`, so a non-string truthy `blockReason` (still a refusal — v4's `||`)
+  vanished from the line; now `to_js_string` of whatever is present (an absent
+  key stays omitted; a JSON `null` logs `null`, as winston does). **Red-first:**
+  NEW unit pin `gemini_non_string_block_reason_is_logged_not_dropped`
+  (`blockReason: 5`) — RED with the old two lines restored (`…finishReason=STOP`
+  alone), GREEN with the fix; the 25 Gemini/Google core tests green. No
+  recorded row carries a non-string reason (P4.154's 💸 "posed Gemini
+  `blockReason`-only refusal" stays the live twin).
+- **Neutral:** `stream_decoders` 5/5, `text_http_errors` 1/1 (its Google rows), `primary_stream_tier3` 2/2 — no row moved.

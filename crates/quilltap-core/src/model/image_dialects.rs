@@ -1001,12 +1001,14 @@ fn parse_gemini(data: &Value) -> Result<ImageGenResponse, ImageGenError> {
             // either may be `undefined` — winston drops an undefined key, and a
             // `None` field records nothing, so the absent one is OMITTED
             // (P4.154, §R.5; recorded through the real plugin's logger).
-            let logged_finish = finish_reason.and_then(serde_json::Value::as_str);
-            let logged_block = block_reason.and_then(serde_json::Value::as_str);
+            // A NON-string value is logged as v4 logs it (winston renders the
+            // raw value; `to_js_string` is its text — P4.162), never dropped.
+            let logged_finish = finish_reason.map(crate::pascal::js_value::to_js_string);
+            let logged_block = block_reason.map(crate::pascal::js_value::to_js_string);
             tracing::warn!(
                 context = "GoogleImagenProvider.generateWithGemini",
-                finishReason = logged_finish,
-                blockReason = logged_block,
+                finishReason = logged_finish.as_deref(),
+                blockReason = logged_block.as_deref(),
                 "Gemini withheld the image on safety grounds"
             );
             let suffix = if text_response.is_empty() {
@@ -2581,6 +2583,30 @@ mod tests {
         });
         assert!(!err.refusal.as_deref().is_some_and(|r| r.is_typed_refusal()));
         assert!(lines.is_empty());
+    }
+
+    /// P4.162: a NON-string truthy `blockReason` still refuses (v4's `||`
+    /// tests truthiness) and is LOGGED as v4's winston logs the raw value —
+    /// before P4.162 the `as_str` dropped it from the line. A non-safety
+    /// `finishReason` beside it is a string and logs as one.
+    #[test]
+    fn gemini_non_string_block_reason_is_logged_not_dropped() {
+        let p = params("gemini-2.5-flash-image");
+        let resp = WireResponse::new(
+            200,
+            r#"{"candidates":[{"finishReason":"STOP"}],"promptFeedback":{"blockReason":5}}"#,
+        );
+        let (err, lines) = crate::test_support::captured_with(|| {
+            parse_image_response("GOOGLE", &p, &resp).unwrap_err()
+        });
+        assert_eq!(err.message, "Gemini declined to generate this image (5)");
+        assert_eq!(
+            lines,
+            vec![
+                "WARN quilltap_core::model::image_dialects Gemini withheld the image on safety grounds context=GoogleImagenProvider.generateWithGemini finishReason=STOP blockReason=5"
+                    .to_string()
+            ]
+        );
     }
 
     /// P4.D225 (v4 `8bd080267`): Gemini's no-image safety stop WARNs once with

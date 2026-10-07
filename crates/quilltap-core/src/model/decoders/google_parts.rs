@@ -256,29 +256,17 @@ impl GooglePartsDecoder {
         None
     }
 
-    /// v4 `extractTextFromResponse`: SDK `.text` (concatenation of non-thought,
-    /// non-functionCall part text of the last chunk).
+    /// v4 `extractTextFromResponse`'s first read, the SDK `.text`: the parts
+    /// join of the last chunk's first candidate — through the ONE home
+    /// ([`crate::model::response_parse::google_parts_text`], P4.162). An absent
+    /// or empty `parts` is `''` here; the caller then runs the WARN pass and
+    /// its `content.text` fallback.
     fn extract_text(resp: &Value) -> String {
-        let empty = Vec::new();
-        let parts = resp
-            .get("candidates")
+        resp.get("candidates")
             .and_then(|c| c.get(0))
-            .and_then(|c| c.get("content"))
-            .and_then(|c| c.get("parts"))
-            .and_then(|p| p.as_array())
-            .unwrap_or(&empty);
-        let mut out = String::new();
-        for part in parts {
-            if part.get("functionCall").is_some()
-                || part.get("thought").and_then(|t| t.as_bool()) == Some(true)
-            {
-                continue;
-            }
-            if let Some(t) = part.get("text").and_then(|t| t.as_str()) {
-                out.push_str(t);
-            }
-        }
-        out
+            .and_then(crate::model::response_parse::google_candidate_parts)
+            .map(|parts| crate::model::response_parse::google_parts_text(parts))
+            .unwrap_or_default()
     }
 
     fn build_done(&self) -> StreamChunk {

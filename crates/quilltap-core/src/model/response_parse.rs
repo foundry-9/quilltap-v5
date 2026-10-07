@@ -1041,20 +1041,7 @@ pub(crate) fn google_candidate_parts(candidate: &Value) -> Option<&Vec<Value>> {
 /// chunk (P4.154, `ok_google_stream_candidate_content_text`).
 pub(crate) fn google_candidate_text(candidate: &Value) -> String {
     match google_candidate_parts(candidate) {
-        Some(parts) => {
-            let mut out = String::new();
-            for p in parts {
-                if p.get("functionCall").is_some()
-                    || p.get("thought").and_then(Value::as_bool) == Some(true)
-                {
-                    continue;
-                }
-                if let Some(t) = p.get("text").and_then(Value::as_str) {
-                    out.push_str(t);
-                }
-            }
-            out
-        }
+        Some(parts) => google_parts_text(parts),
         None => candidate
             .get("content")
             .and_then(|c| c.get("text"))
@@ -1062,6 +1049,26 @@ pub(crate) fn google_candidate_text(candidate: &Value) -> String {
             .unwrap_or_default()
             .to_string(),
     }
+}
+
+/// The SDK `.text` getter's concat over a candidate's `content.parts`: every
+/// non-thought, non-`functionCall` part's `text`, joined with `''` (v4
+/// `provider.ts:291-303`). The ONE home of the join — [`google_candidate_text`]
+/// and the stream decoder's terminal read both call it (P4.162 folded the
+/// decoder's hand copy).
+pub(crate) fn google_parts_text(parts: &[Value]) -> String {
+    let mut out = String::new();
+    for p in parts {
+        if p.get("functionCall").is_some()
+            || p.get("thought").and_then(Value::as_bool) == Some(true)
+        {
+            continue;
+        }
+        if let Some(t) = p.get("text").and_then(Value::as_str) {
+            out.push_str(t);
+        }
+    }
+    out
 }
 
 /// The `?? ` half of v4's Google `blockReason ?? …`: a STRING block reason, even
