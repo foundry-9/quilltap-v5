@@ -1093,6 +1093,61 @@ pub fn zod_chat_inform_issues(row: &serde_json::Map<String, Value>) -> Vec<ZodIs
     issues
 }
 
+/// A `z.string().min(lo)` / `.max(hi)` at `k` (CODE POINTS — zod ≥ 4.5's
+/// `util.codePointLength`), REQUIRED.
+fn required_bounded_string_issues(
+    row: &serde_json::Map<String, Value>,
+    k: &str,
+    min: Option<usize>,
+    max: Option<usize>,
+    issues: &mut Vec<ZodIssue>,
+) {
+    match row.get(k) {
+        Some(Value::String(v)) => {
+            if let Some(lo) = min.filter(|lo| !crate::jsstr::zod_len_min_ok(v, *lo)) {
+                issues.push(ZodIssue::too_small_string(json!(lo), vec![key(k)]));
+            } else if let Some(hi) = max.filter(|hi| !crate::jsstr::zod_len_max_ok(v, *hi)) {
+                issues.push(ZodIssue::too_big_string(json!(hi), vec![key(k)]));
+            }
+        }
+        got => issues.push(ZodIssue::invalid_type("string", vec![key(k)], got)),
+    }
+}
+
+/// v4 `PromptTemplateSchema` (`lib/schemas/template.types.ts:270-282`) over
+/// the WHOLE entity `promptTemplates.create` hands `_create`, in schema key
+/// order: `id` uuid; `userId` uuid `.nullable().optional()`; `name`
+/// `.min(1).max(100)`; `content` `.min(1)`; `description` `.max(500)
+/// .nullable().optional()`; `isBuiltIn` boolean `.default(false)`;
+/// `category` / `modelHint` string `.nullable().optional()`; `tags` uuid[]
+/// `.default([])`; the two stamps. Every bound is a recorded row of the
+/// `repository_zod_messages` oracle (P4.161 Tier 2).
+pub fn zod_prompt_template_issues(row: &serde_json::Map<String, Value>) -> Vec<ZodIssue> {
+    let mut issues = Vec::new();
+    zod_uuid_issues(row, "id", false, &mut issues);
+    zod_uuid_issues(row, "userId", true, &mut issues);
+    required_bounded_string_issues(row, "name", Some(1), Some(100), &mut issues);
+    required_bounded_string_issues(row, "content", Some(1), None, &mut issues);
+    nullable_string_issues(row, "description", &mut issues, |v| {
+        (!crate::jsstr::zod_len_max_ok(v, 500))
+            .then(|| ZodIssue::too_big_string(json!(500), vec![key("description")]))
+    });
+    match row.get("isBuiltIn") {
+        None | Some(Value::Bool(_)) => {}
+        got => issues.push(ZodIssue::invalid_type(
+            "boolean",
+            vec![key("isBuiltIn")],
+            got,
+        )),
+    }
+    nullable_plain_string_issues(row, "category", &mut issues);
+    nullable_plain_string_issues(row, "modelHint", &mut issues);
+    default_string_array_issues(row, "tags", true, &mut issues);
+    zod_timestamp_issues(row, "createdAt", &mut issues);
+    zod_timestamp_issues(row, "updatedAt", &mut issues);
+    issues
+}
+
 /// v4 `GroupDocMountLinkSchema` (`lib/schemas/mount-index.types.ts`) — three
 /// required uuids and two timestamps — over a raw `group_doc_mount_links` row
 /// (the shape `findByFilter` `validateSafe()`s row by row). Zod's issue list;

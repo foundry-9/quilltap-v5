@@ -888,24 +888,38 @@ fn restore_on_writer(
     {
         let repo = crate::db::prompt_templates::PromptTemplatesRepository::new(main);
         for t in &data.prompt_templates {
-            let create = crate::db::prompt_templates::PtCreate {
-                user_id: Some(target_user_id.to_string()),
-                name: s(t, "name"),
-                content: s(t, "content"),
-                description: os(t, "description"),
-                is_built_in: b(t, "isBuiltIn", false),
-                category: os(t, "category"),
-                model_hint: os(t, "modelHint"),
-                tags: sa(t, "tags"),
-            };
+            // v4 `:270-276`: `{ id, userId, createdAt, updatedAt, ...templateData
+            // }` → `create({ ...templateData, userId: targetUserId })`, the
+            // WHOLE `PromptTemplateSchema` validated by `_create` before the
+            // insert (P4.161 Tier 2 — the arm used to coerce every key). A
+            // refusal logs v4's three repository ERRORs (no `strictFailures`).
+            let mut item = t.as_object().cloned().unwrap_or_default();
+            for k in ["id", "userId", "createdAt", "updatedAt"] {
+                item.remove(k);
+            }
+            item.insert("userId".into(), Value::String(target_user_id.to_string()));
+            let created = crate::services::quilltap_import::parse_create_prompt_template(
+                &Value::Object(item),
+            )
+            .inspect_err(|zod| {
+                crate::services::quilltap_import::log_refused_prompt_template(
+                    target_user_id,
+                    t.get("name").and_then(Value::as_str),
+                    zod,
+                )
+            })
+            .and_then(|create| {
+                repo.create(
+                    &create,
+                    &copts!(new_id(), crate::db::prompt_templates::CreateOptions),
+                )
+                .map_err(|e| e.warn_text())
+            });
             warn_row!(
                 w,
                 c.prompt_templates,
                 format!("Failed to restore prompt template \"{}\"", s(t, "name")),
-                repo.create(
-                    &create,
-                    &copts!(new_id(), crate::db::prompt_templates::CreateOptions)
-                ),
+                created,
                 "Failed to restore prompt template",
                 templateId = s(t, "id"),
             );

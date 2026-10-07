@@ -798,6 +798,8 @@ const REPO_LOG_MESSAGES: &[&str] = &[
     // [P4.161] The refused memory create's third ERROR — the memories
     // repository's own wrap (`memories.repository.ts:418-428`).
     "Error creating memory",
+    // [P4.161 Tier 2] the prompt-templates repository's wrap.
+    "Error creating prompt template",
 ];
 
 /// The [`REPO_LOG_MESSAGES`] entry `rest` starts with — the LONGEST match, so
@@ -818,6 +820,7 @@ const REPO_LOG_KEYS: &[&str] = &[
     "collection",
     "chatId",
     "characterId",
+    "userId",
     "name",
     "projectId",
     "groupId",
@@ -1592,7 +1595,41 @@ fn system_import_execute_state_equivalence() {
     // `execute_idless_refused_inserts` (48 + 2 = 50).
     // …+ P4.161's `execute_memory_refusals` and `execute_inform_refusals`
     // (50 + 2 = 52).
-    assert_eq!(ran, 52, "expected 52 cases, ran {ran}");
+    // …+ P4.161 Tier 2's `execute_prompt_template_refusals` (52 + 1 = 53).
+    assert_eq!(ran, 53, "expected 53 cases, ran {ran}");
+    // [P4.161 Tier 2] Non-vacuity: v4 refused four prompt templates (three
+    // repository ERRORs each) and landed the sound twin.
+    {
+        let case = cases
+            .iter()
+            .find(|c| c["name"] == "execute_prompt_template_refusals")
+            .expect("the oracle is missing `execute_prompt_template_refusals` — regenerate it");
+        assert_eq!(
+            case["result"]["imported"]["promptTemplates"].as_i64(),
+            Some(1),
+            "v4 lands the sound prompt template only"
+        );
+        let messages: Vec<&str> = case["repoLogs"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|l| l["message"].as_str())
+            .collect();
+        assert_eq!(
+            messages,
+            [
+                "Data validation failed",
+                "Error creating entity",
+                "Error creating prompt template"
+            ]
+            .iter()
+            .cycle()
+            .take(12)
+            .copied()
+            .collect::<Vec<_>>(),
+            "v4's three repository ERRORs per refused prompt template"
+        );
+    }
     // [P4.161 — dogfood #152 + R-D] The whole-row refusal arms are non-vacuous
     // only if v4 really refused each bad item (a ZodError tail — or, for the
     // string `tags`, v4's TypeError) and landed the sound ones, with exactly
@@ -2056,21 +2093,23 @@ fn system_import_execute_state_equivalence() {
     // [P4.161] …+ the two refusal arms (39): `execute_memory_refusals` fires
     // ten `Failed to import memory` (one id-less — the C6 walk shape), the
     // inform arm none (R-D) — 8 + 10 = 18 lines.
+    // [P4.161 Tier 2] …+ the prompt-template arm (40), four more lines (22).
     assert_eq!(
         IMPORT_WARN_CASES.load(Ordering::SeqCst),
-        39,
+        40,
         "cases comparing the import WARNs"
     );
     assert_eq!(
         IMPORT_WARNS_FIRED.load(Ordering::SeqCst),
-        18,
+        22,
         "v4 import WARN lines fired"
     );
     // [P4.155 R-A] …+ the two property-refusal arms (5).
-    // [P4.161] …+ the memory and inform refusal arms (7).
+    // [P4.161] …+ the memory and inform refusal arms (7), + Tier 2's
+    // prompt-template arm (8).
     assert_eq!(
         REPO_LOG_CASES.load(Ordering::SeqCst),
-        7,
+        8,
         "cases that compared a refused create's repository lines"
     );
     assert_eq!(
@@ -2535,6 +2574,7 @@ fn run_execute_case(
                 // [P4.161] the refused memory's wrap (its `Data validation
                 // failed` is a DIRECT logger call — never strict, measured).
                 "Error creating memory",
+                "Error creating prompt template",
             ],
             failures,
         );

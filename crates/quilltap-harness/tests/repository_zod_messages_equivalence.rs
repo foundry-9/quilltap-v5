@@ -60,7 +60,8 @@
 
 use quilltap_core::api::zod_issues::{
     zod_chat_inform_issues, zod_error_message, zod_float32_array_cell,
-    zod_group_doc_mount_link_issues, zod_group_issues, zod_memory_issues, ZodIssue,
+    zod_group_doc_mount_link_issues, zod_group_issues, zod_memory_issues,
+    zod_prompt_template_issues, ZodIssue,
 };
 use quilltap_core::services::dangerous_content::chat_override::concierge_columns_zod_error;
 use serde_json::{Map, Value};
@@ -269,6 +270,7 @@ fn repository_zod_messages_match_oracle() {
     let (mut settings_messages, mut settings_ok) = (0usize, 0usize);
     let mut settings_two_line_rows = 0usize;
     let (mut memory_rows, mut inform_rows, mut parsed_rows) = (0usize, 0usize, 0usize);
+    let mut prompt_template_rows = 0usize;
 
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         rows += 1;
@@ -369,6 +371,19 @@ fn repository_zod_messages_match_oracle() {
                     )
                 }
             }
+            // P4.161 Tier 2: v4's REAL `PromptTemplateSchema`.
+            "promptTemplate" => {
+                prompt_template_rows += 1;
+                let issues = zod_prompt_template_issues(&row);
+                if issues.is_empty() {
+                    (None, None)
+                } else {
+                    (
+                        Some(zod_error_message(&issues)),
+                        Some(serde_json::to_string(&issues).unwrap()),
+                    )
+                }
+            }
             other => panic!("{id}: unknown schema {other}"),
         };
         if got_message.as_deref() != want_message {
@@ -385,7 +400,11 @@ fn repository_zod_messages_match_oracle() {
         }
     }
     eprintln!("repository_zod_messages: {rows} rows ({ok_rows} accepted)");
-    assert!(rows >= 136, "the corpus shrank ({rows} rows)");
+    assert!(rows >= 155, "the corpus shrank ({rows} rows)");
+    assert_eq!(
+        prompt_template_rows, 19,
+        "P4.161 Tier 2: the recorded PromptTemplateSchema rows"
+    );
     assert_eq!(
         (memory_rows, inform_rows),
         (54, 24),

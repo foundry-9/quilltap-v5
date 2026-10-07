@@ -54,6 +54,7 @@ import { ChatMetadataBaseSchema } from '@/lib/schemas/chat.types';
 import { ChatSettingsSchema } from '@/lib/schemas/settings.types';
 import { MemorySchema } from '@/lib/schemas/memory.types';
 import { ChatInformSchema } from '@/lib/schemas/chat-inform.types';
+import { PromptTemplateSchema } from '@/lib/schemas/template.types';
 import { logger } from '@/lib/logger';
 import { ChatSettingsRepository } from '@/lib/database/repositories/chat-settings.repository';
 
@@ -115,6 +116,16 @@ const INFORM: Row = {
   updatedAt: TS,
 };
 
+// P4.161 Tier 2: a minimal valid `PromptTemplateSchema` row.
+const PROMPT_TEMPLATE: Row = {
+  id: 'f1610000-0000-4000-8000-0000000003a1',
+  userId: 'a1000000-0000-4000-8000-000000000001',
+  name: 'Butler',
+  content: 'You are a butler.',
+  createdAt: TS,
+  updatedAt: TS,
+};
+
 const ABSENT = '<absent>';
 const patch = (base: Row, p: Row): Row => {
   const r: Row = { ...base };
@@ -132,7 +143,8 @@ type SchemaName =
   | 'chatMetadataBase'
   | 'chatSettings'
   | 'memory'
-  | 'chatInform';
+  | 'chatInform'
+  | 'promptTemplate';
 const rows: Array<[string, SchemaName, Row]> = [];
 const group = (id: string, p: Row) => rows.push([id, 'group', patch(GROUP, p)]);
 const link = (id: string, p: Row) => rows.push([id, 'groupDocMountLink', patch(LINK, p)]);
@@ -140,6 +152,8 @@ const chat = (id: string, p: Row) => rows.push([id, 'chatMetadataBase', patch(CH
 const settings = (id: string, p: Row) => rows.push([id, 'chatSettings', patch(SETTINGS, p)]);
 const memory = (id: string, p: Row) => rows.push([id, 'memory', patch(MEMORY, p)]);
 const inform = (id: string, p: Row) => rows.push([id, 'chatInform', patch(INFORM, p)]);
+const promptTemplate = (id: string, p: Row) =>
+  rows.push([id, 'promptTemplate', patch(PROMPT_TEMPLATE, p)]);
 
 // --- GroupSchema -------------------------------------------------------------
 group('group-valid', {});
@@ -360,6 +374,35 @@ inform('inform-multi', {
   consumedAt: 'now',
 });
 
+// --- PromptTemplateSchema (P4.161 Tier 2) ----------------------------------
+promptTemplate('prompt-template-valid', {});
+promptTemplate('prompt-template-valid-full', {
+  userId: null,
+  description: 'd'.repeat(500),
+  isBuiltIn: true,
+  category: 'COMPANION',
+  modelHint: null,
+  tags: ['a1610000-0000-4000-8000-0000000000f1'],
+  name: 'x'.repeat(99) + '\u{1F600}',
+});
+promptTemplate('prompt-template-user-absent', { userId: ABSENT });
+promptTemplate('prompt-template-user-bad', { userId: 'u' });
+promptTemplate('prompt-template-name-101', { name: 'x'.repeat(101) });
+promptTemplate('prompt-template-name-100x-astral', { name: 'x'.repeat(100) + '\u{1F600}' });
+promptTemplate('prompt-template-name-empty', { name: '' });
+promptTemplate('prompt-template-name-number', { name: 5 });
+promptTemplate('prompt-template-content-empty', { content: '' });
+promptTemplate('prompt-template-content-absent', { content: ABSENT });
+promptTemplate('prompt-template-description-501', { description: 'd'.repeat(501) });
+promptTemplate('prompt-template-description-number', { description: 5 });
+promptTemplate('prompt-template-builtin-yes', { isBuiltIn: 'yes' });
+promptTemplate('prompt-template-builtin-null', { isBuiltIn: null });
+promptTemplate('prompt-template-category-number', { category: 5 });
+promptTemplate('prompt-template-model-hint-bool', { modelHint: true });
+promptTemplate('prompt-template-tags-bad', { tags: ['nope'] });
+promptTemplate('prompt-template-tags-null', { tags: null });
+promptTemplate('prompt-template-multi', { name: '', content: '', description: 'd'.repeat(501), tags: [5] });
+
 const SCHEMAS = {
   group: GroupSchema,
   groupDocMountLink: GroupDocMountLinkSchema,
@@ -367,6 +410,7 @@ const SCHEMAS = {
   chatSettings: ChatSettingsSchema,
   memory: MemorySchema,
   chatInform: ChatInformSchema,
+  promptTemplate: PromptTemplateSchema,
 } as const;
 
 // An accepted row's parsed output as JSON — a `Float32Array` embedding as the

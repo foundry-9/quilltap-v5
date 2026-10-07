@@ -1595,6 +1595,42 @@ function informRefusalsPayload(chatsInforms: {
 }
 
 /**
+ * [P4.161 Tier 2] Prompt templates v4's `PromptTemplateSchema` refuses at
+ * `_create` (`prompt-templates.repository.ts:250-262`): a 101-code-point
+ * name, an empty `content`, a 501-character `description`, an unmapped
+ * non-uuid tag — each beside a SOUND twin. Fresh names, so none meets the
+ * existing-name branch first.
+ */
+function promptTemplateRefusalsPayload(): { manifest: unknown; data: Record<string, unknown> } {
+  const item = (n: number, name: string, extra: Record<string, unknown>) => ({
+    id: `f1610000-0000-4000-8000-0000000004${String(n).padStart(2, '0')}`,
+    name,
+    content: `Template ${n} content.`,
+    ...extra,
+  });
+  return {
+    manifest: {
+      format: 'quilltap-export',
+      version: '1.0',
+      exportType: 'all',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      appVersion: '4.0.0',
+      settings: { includeMemories: false, scope: 'all', selectedIds: [] },
+      counts: {},
+    },
+    data: {
+      promptTemplates: [
+        item(1, 'Refused Long Name '.padEnd(101, 'n'), {}),
+        item(2, 'Refused Empty Content', { content: '' }),
+        item(3, 'Refused Long Description', { description: 'd'.repeat(501) }),
+        item(4, 'Refused Bad Tag', { tags: ['nope'] }),
+        item(5, 'Sound Template', { description: 'A sound twin.', category: 'COMPANION' }),
+      ],
+    },
+  };
+}
+
+/**
  * [P4.63 → v4 bug 105 → P4.D131] The bug-105 regression-guard payload: one
  * connection profile whose `provider` is not a string, followed by one image
  * profile that is perfectly sound.
@@ -1866,6 +1902,9 @@ const REPO_LOG_MESSAGES = new Set([
   // `Failed to import memory` is an `IMPORT_WARN_MESSAGES` line.) The refused
   // inform create logs the base pair alone — `create` IS `_create`.
   'Error creating memory',
+  // [P4.161 Tier 2] the prompt-templates repository's own wrap
+  // (`prompt-templates.repository.ts:261`, `{userId, name}`).
+  'Error creating prompt template',
 ]);
 
 /**
@@ -1897,6 +1936,7 @@ async function withRepoLogs<T>(
           'collection',
           'chatId',
           'characterId',
+          'userId',
           'name',
           'projectId',
           'groupId',
@@ -2810,6 +2850,12 @@ async function main(): Promise<void> {
     executeCase(
       'execute_inform_refusals',
       () => informRefusalsPayload(chatsInformsPayload),
+      { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
+      true,
+    ),
+    executeCase(
+      'execute_prompt_template_refusals',
+      () => promptTemplateRefusalsPayload(),
       { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
       true,
     ),

@@ -30,6 +30,59 @@ fn os(v: &Value, key: &str) -> Option<String> {
     v.get(key).and_then(Value::as_str).map(str::to_string)
 }
 
+/// v4's `_create` validation of a prompt template (`base.repository.ts:
+/// 350-368` over `PromptTemplateSchema`) — the ONE parse the `.qtap` import
+/// and the backup restore run BEFORE the write (P4.161 Tier 2, R-A; the home
+/// a later order may move beside `db::prompt_templates`). `item` is the data
+/// handed to `promptTemplates.create` (the raw template minus `id` / `userId`
+/// / `createdAt` / `updatedAt`, `userId` set, any rename applied — unknown
+/// keys stripped); the entity is `{...item, id, createdAt, updatedAt}` with a
+/// minted id. `Err` is the `ZodError.message`; `Ok` the row with the schema's
+/// defaults (`isBuiltIn` false, `tags` `[]`).
+pub(crate) fn parse_create_prompt_template(item: &Value) -> Result<PtCreate, String> {
+    use crate::api::zod_issues::{zod_error_message, zod_prompt_template_issues};
+    let mut entity = item.as_object().cloned().unwrap_or_default();
+    let now = crate::clock::now_iso();
+    entity.insert("id".into(), Value::String(uuid::Uuid::new_v4().to_string()));
+    entity.insert("createdAt".into(), Value::String(now.clone()));
+    entity.insert("updatedAt".into(), Value::String(now));
+    let issues = zod_prompt_template_issues(&entity);
+    if !issues.is_empty() {
+        return Err(zod_error_message(&issues));
+    }
+    let e = Value::Object(entity);
+    Ok(PtCreate {
+        user_id: os(&e, "userId"),
+        name: s(&e, "name"),
+        content: s(&e, "content"),
+        description: os(&e, "description"),
+        is_built_in: e.get("isBuiltIn").and_then(Value::as_bool).unwrap_or(false),
+        category: os(&e, "category"),
+        model_hint: os(&e, "modelHint"),
+        tags: e
+            .get("tags")
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default(),
+    })
+}
+
+/// A refused prompt-template create's three repository ERRORs (validate →
+/// `_create` → the repository's wrap), then the caller's warning / WARN.
+pub(crate) fn log_refused_prompt_template(user_id: &str, name: Option<&str>, zod: &str) {
+    super::log_refused_create("prompt_templates", zod);
+    super::log_prompt_template_create_wrap_failure(
+        user_id,
+        name,
+        &DbError::Internal(zod.to_string()),
+    );
+}
+
 /// Prompt templates, mirroring the roleplay-template importer. Built-ins never
 /// appear in an archive (the writer filters them), so every row here is
 /// user-created. Dedup is by NAME, which is what a user recognises;
@@ -47,63 +100,58 @@ pub(super) fn import_prompt_templates(
 
     for template in templates {
         let name = s(template, "name");
-        let out = (|| -> Result<bool, DbError> {
-            let existing = crate::db::prompt_templates::find_by_name(main, user_id, &name)?;
+        let out = (|| -> Result<bool, String> {
+            let existing = crate::db::prompt_templates::find_by_name(main, user_id, &name)
+                .map_err(|e| super::item_error_text(&e))?;
 
             if let Some(existing_id) = &existing {
                 match options.conflict_strategy {
                     ConflictStrategy::Skip => return Ok(false),
                     ConflictStrategy::Overwrite => {
-                        repo.delete(existing_id)?;
+                        repo.delete(existing_id)
+                            .map_err(|e| super::item_error_text(&e))?;
                     }
                     ConflictStrategy::Duplicate => {}
                 }
             }
 
-            let final_name =
-                if existing.is_some() && options.conflict_strategy == ConflictStrategy::Duplicate {
-                    format!("{name} (imported)")
-                } else {
-                    name.clone()
-                };
+            // v4 `import-configuration.ts:56-69`: the raw template minus its
+            // id / userId / stamps, `userId` set, the `duplicate` rename —
+            // validated WHOLE by `_create` before the insert (P4.161 Tier 2;
+            // v5 used to coerce every key and write whatever passed serde).
+            let mut item = template.as_object().cloned().unwrap_or_default();
+            for k in ["id", "userId", "createdAt", "updatedAt"] {
+                item.remove(k);
+            }
+            item.insert("userId".into(), Value::String(user_id.to_string()));
+            if existing.is_some() && options.conflict_strategy == ConflictStrategy::Duplicate {
+                item.insert("name".into(), Value::String(format!("{name} (imported)")));
+            }
+            let create =
+                parse_create_prompt_template(&Value::Object(item.clone())).inspect_err(|zod| {
+                    log_refused_prompt_template(
+                        user_id,
+                        item.get("name").and_then(Value::as_str),
+                        zod,
+                    )
+                })?;
 
             let now = crate::clock::now_iso();
             repo.create(
-                &PtCreate {
-                    user_id: Some(user_id.to_string()),
-                    name: final_name,
-                    content: s(template, "content"),
-                    description: os(template, "description"),
-                    is_built_in: template
-                        .get("isBuiltIn")
-                        .and_then(Value::as_bool)
-                        .unwrap_or(false),
-                    category: os(template, "category"),
-                    model_hint: os(template, "modelHint"),
-                    tags: template
-                        .get("tags")
-                        .and_then(Value::as_array)
-                        .map(|a| {
-                            a.iter()
-                                .filter_map(Value::as_str)
-                                .map(str::to_string)
-                                .collect()
-                        })
-                        .unwrap_or_default(),
-                },
+                &create,
                 &crate::db::prompt_templates::CreateOptions {
                     id: uuid::Uuid::new_v4().to_string(),
                     created_at: now.clone(),
                     updated_at: now,
                 },
-            )?;
+            )
+            .map_err(|e| super::item_error_text(&e))?;
             Ok(true)
         })();
         match out {
             Ok(true) => imported += 1,
             Ok(false) => skipped += 1,
-            Err(e) => {
-                let text = super::item_error_text(&e);
+            Err(text) => {
                 warnings.push(format!(
                     "Failed to import prompt template \"{name}\": {text}"
                 ));

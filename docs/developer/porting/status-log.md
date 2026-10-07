@@ -171243,3 +171243,36 @@ unifier should record the waiver in the ledger's §1.
 - **Regen recipe** (unchanged headers; lane-private outputs used
   `/tmp/p4161/`): the three `build-*-fixture.ts` then the three cases, from
   the pin, Node 24.
+
+### Unit 3 — Tier 2 item 8, prompt templates (core 0.0.1244)
+
+- `zod_issues::zod_prompt_template_issues` (+ the shared
+  `required_bounded_string_issues`), 19 recorded `promptTemplate` rows (3
+  accepted; name 1–100 in CODE POINTS, `content` min 1, `description` ≤
+  500, `isBuiltIn` boolean, `category` / `modelHint` nullable strings, `tags`
+  uuid[]). Home: `quilltap_import::configuration::parse_create_prompt_template`
+  (R-A — beside the importer; a later order may move it to
+  `db::prompt_templates`), re-exported `pub(crate)` for the restore.
+- Import (`import-configuration.ts:56-69`): the raw template minus `id` /
+  `userId` / stamps, `userId` set, the duplicate rename — parsed BEFORE the
+  insert. Restore (`restore.ts:270-276`): the same with the target user.
+- **Lines (measured):** `Data validation failed {collection:
+  prompt_templates}` (never strict) → `Error creating entity` → `Error
+  creating prompt template {collection, userId, name, error,
+  strictFailures?}` → the WARN. **HANDOFF(P4.163):**
+  `quilltap_import::log_prompt_template_create_wrap_failure(user_id: &str,
+  name: Option<&str>, error: &DbError)` — P4.163's `d1e038fee` signature
+  (their message to this lane), so §S.1 folds it by repoint.
+- Oracle: `execute_prompt_template_refusals` (4 refused + 1 sound; v4
+  imported 1; 12 repository lines; 4 WARNs) — `ran` 52 → 53,
+  `REPO_LOG_CASES` 7 → 8, `IMPORT_WARN_CASES` 39 → 40, `IMPORT_WARNS_FIRED`
+  18 → 22; `REPO_LOG_KEYS` + `userId`. Restore: NEW
+  `restore-archive-kind-refusals.zip` (prompt templates `b2…0e1-0e5`),
+  `restore_kind_refusals_replace`, `seen` 37 → 38,
+  `FRESH_STORE_CARVED_CASES` 27 → 28, by-name landed-template assertion
+  (BOTH sides), `REPO_LEVEL_MESSAGES` + the wrap.
+- **Red-first (core at unit 1's commit):** `system_import_state` 4,
+  `system_restore_state` 5 — all in the new cases. Green after.
+- **Pins moved (v4-faithful):** `import_warn_pins`' two prompt-template
+  calls used user id `"u1"`, which the schema now refuses before the planted
+  trigger; a uuid now.

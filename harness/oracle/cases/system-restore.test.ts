@@ -432,6 +432,9 @@ const RESTORE_CASES: Array<{
   { name: 'restore_memory_refusals_replace', archive: 'restore-archive-memory-refusals.zip' },
   { name: 'restore_inform_refusals_replace', archive: 'restore-archive-inform-refusals.zip' },
   { name: 'restore_entity_refusals_replace', archive: 'restore-archive-entity-refusals.zip' },
+  // P4.161 Tier 2: one refusing row per landed Tier 2 kind —
+  // `fixtures/derive-restore-archive-kind-refusals.py`.
+  { name: 'restore_kind_refusals_replace', archive: 'restore-archive-kind-refusals.zip' },
 
   // ── P4.147 item 10(a)+(c): a real SQLite error on two restore inserts ────
   //
@@ -756,6 +759,8 @@ const REPO_LEVEL_MESSAGES = [
   'Error creating group entity',
   'Error creating project',
   'Error creating group',
+  // [P4.161 Tier 2] the per-kind repository wraps.
+  'Error creating prompt template',
 ];
 
 /**

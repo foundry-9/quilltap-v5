@@ -43,6 +43,7 @@ pub mod seed_assets;
 
 /// The store-backed create payload (P4.161 — the restore's whole-entity
 /// project / group parse validates the same shape the import does).
+pub(crate) use configuration::{log_refused_prompt_template, parse_create_prompt_template};
 pub(crate) use entities::store_create_payload;
 
 use serde::{Deserialize, Serialize};
@@ -437,6 +438,29 @@ pub(crate) fn log_refused_create(collection: &str, zod: &str) {
         "Data validation failed"
     );
     crate::db::fallback::log_create_failure(collection, &DbError::Internal(zod.to_string()));
+}
+
+/// The prompt-templates repository's own `safeQuery` wrap above `_create`
+/// (`prompt-templates.repository.ts:248-262`): ERROR `Error creating prompt
+/// template {collection, userId, name, error, strictFailures?}` — `name`
+/// omitted when absent (winston drops `undefined`). Logs only.
+// HANDOFF(P4.163): C1 item 3's `log_prompt_template_create_wrap_failure` —
+// this lane-local copy carries P4.163's measured signature (`d1e038fee`) so
+// §S.1 folds it by repoint.
+pub(crate) fn log_prompt_template_create_wrap_failure(
+    user_id: &str,
+    name: Option<&str>,
+    error: &DbError,
+) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "prompt_templates",
+        userId = %user_id,
+        name = name.map(tracing::field::display),
+        error = %crate::db::fallback::error_text(error),
+        strictFailures = crate::db::fallback::strict_repository_failures_active().then_some(true),
+        "Error creating prompt template"
+    );
 }
 
 /// [`item_error_text`] for the store-backed repositories' [`OverlayError`]:
@@ -2636,7 +2660,9 @@ mod import_warn_pins {
         let ((), lines) = crate::test_support::captured_with(|| {
             configuration::import_prompt_templates(
                 main,
-                "u1",
+                // A uuid: P4.161's `PromptTemplateSchema` parse runs before the
+                // planted insert trigger.
+                "a1000000-0000-4000-8000-000000000001",
                 &[json!({ "id": "pt-src", "name": "T", "content": "c" })],
                 &opts,
                 &mut w,
@@ -2769,7 +2795,9 @@ mod import_warn_pins {
         let ((), lines) = crate::test_support::captured_with(|| {
             configuration::import_prompt_templates(
                 &main,
-                "u1",
+                // A uuid: P4.161's `PromptTemplateSchema` parse runs before the
+                // planted insert trigger.
+                "a1000000-0000-4000-8000-000000000001",
                 &[json!({ "name": "T", "content": "c" })],
                 &opts,
                 &mut w,

@@ -1034,6 +1034,9 @@ fn archive_for(name: &str) -> &'static str {
         "restore_memory_refusals_replace" => "restore-archive-memory-refusals.zip",
         "restore_inform_refusals_replace" => "restore-archive-inform-refusals.zip",
         "restore_entity_refusals_replace" => "restore-archive-entity-refusals.zip",
+        // [P4.161 Tier 2] one refusing row per landed Tier 2 kind —
+        // `derive-restore-archive-kind-refusals.py`.
+        "restore_kind_refusals_replace" => "restore-archive-kind-refusals.zip",
         other => panic!("unknown restore case {other}"),
     }
 }
@@ -1748,10 +1751,11 @@ fn system_restore_state_equivalence() {
     // boolean in its shapes, translated on restore). 23 + 6 = 29: P4.147's
     // three fresh-target arms (#142), the bag-nulls arm, the informs arm and
     // the SQLite-tail plant.
-    // 34 + 3 = 37: P4.161's three whole-row refusal arms.
+    // 34 + 3 = 37: P4.161's three whole-row refusal arms. 37 + 1 = 38: its
+    // Tier 2 kind-refusals arm.
     assert_eq!(
-        seen, 37,
-        "expected all thirty-seven restore cases in the oracle (ten + the #58 orphan-links arm \
+        seen, 38,
+        "expected all thirty-eight restore cases in the oracle (ten + the #58 orphan-links arm \
          + P4.D46's two compact arms + P4.D126's bug-103 legacy-profiles arm \
          + P4.D145's bug-114 duplicate-folders arm + P4.D152's bug-117 arm \
          + P4.D158's two bag-key arms + P4.D208's bug-158 arm \
@@ -1759,7 +1763,7 @@ fn system_restore_state_equivalence() {
          + P4.143's serde-arm plant + P4.D251's voice-legacy arm \
          + P4.147's three fresh-target arms, bag-nulls, informs and SQLite-tail arms \
          + P4.158's damaged-store, two-claimants, dup-store-id, general-pointer and phase-warns arms \
-         + P4.161's memory-, inform- and entity-refusal arms)"
+         + P4.161's memory-, inform-, entity- and kind-refusal arms)"
     );
     // [P4.147] Every ruled #141 case actually carved (red-first measured, then
     // both directions held) — the arm cannot go vacuous.
@@ -4085,8 +4089,8 @@ fn carve_fresh_store_residual(
 /// every `replace` case whose archive carries a store some entity points at
 /// (measured, P4.147). A case falling out of the count is the carve going
 /// vacuous.
-/// P4.161: + its three refusal archives (all `restore-archive.zip` derivations).
-const FRESH_STORE_CARVED_CASES: usize = 27;
+/// P4.161: + its four refusal archives (all `restore-archive.zip` derivations).
+const FRESH_STORE_CARVED_CASES: usize = 28;
 
 /// The `summary` adjustments a ruled carve makes: v5 leads v4's `files`
 /// counter by `files_lead`, and these v4 warnings are the divergence itself.
@@ -4818,6 +4822,8 @@ const REPO_LEVEL_MESSAGES: &[&str] = &[
     "Error creating group entity",
     "Error creating project",
     "Error creating group",
+    // [P4.161 Tier 2] the per-kind repository wraps.
+    "Error creating prompt template",
 ];
 const REPO_LEVEL_CASES: &[&str] = &[
     "restore_informs_replace",
@@ -4826,6 +4832,7 @@ const REPO_LEVEL_CASES: &[&str] = &[
     "restore_memory_refusals_replace",
     "restore_inform_refusals_replace",
     "restore_entity_refusals_replace",
+    "restore_kind_refusals_replace",
 ];
 
 /// v5's captured lines (`LEVEL target message k=v …`) whose message is in
@@ -5248,6 +5255,23 @@ fn assert_refusals_restored(
                 if landed != expected {
                     failures.push(format!(
                         "[{name}] INFORMS ({side}): restored {landed:?}, expected {expected:?}"
+                    ));
+                }
+            }
+        }
+        "restore_kind_refusals_replace" => {
+            // Prompt templates mint fresh ids on restore, so they are named.
+            let expected = vec!["Fixture Prompt", "Sound Template Twin"];
+            for (side, dump) in [("v5", &got_v), ("v4", want)] {
+                let mut names: Vec<&str> = rows_of(dump, "main", "prompt_templates")
+                    .iter()
+                    .filter(|r| r["isBuiltIn"] != json!(1) && r["isBuiltIn"] != json!(true))
+                    .filter_map(|r| r["name"].as_str())
+                    .collect();
+                names.sort();
+                if names != expected {
+                    failures.push(format!(
+                        "[{name}] PROMPT TEMPLATES ({side}): restored {names:?}, expected {expected:?}"
                     ));
                 }
             }

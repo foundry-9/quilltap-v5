@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — fix(import,restore): validate prompt templates whole-row before the write (P4.161 Tier 2)
+
+_Versions: core 0.0.1244._
+
+The `.qtap` import and the backup restore now run v4's `PromptTemplateSchema` over the whole create payload before the insert, through one parse (`quilltap_import::configuration::parse_create_prompt_template`, over a new `zod_prompt_template_issues`): a 101-character name, an empty `content`, a 501-character `description` or a non-uuid tag is refused with v4's ZodError message, the repository's three ERRORs (`Data validation failed`, `Error creating entity`, `Error creating prompt template {userId, name}` — the last through a lane-local copy of P4.163's `log_prompt_template_create_wrap_failure`), and the importer's / restorer's warning and WARN. Both arms used to coerce every key and write whatever survived.
+
+Differential: 19 recorded `repository_zod_messages` rows; `execute_prompt_template_refusals` in `system_import_state`; a new derived archive `restore-archive-kind-refusals.zip` (`derive-restore-archive-kind-refusals.py`, one refusing row per landed Tier 2 kind). Red-first on the unit-1 tree: 4 import and 5 restore differences, all in the new cases. Two `import_warn_pins` moved their user id to a uuid (the parse now runs before their planted insert trigger).
+
 #### 2026-10-07 — test(harness): the createExpectError twin — v4's real create refusals for memories, projects and groups (P4.161 Tier 1 item 7)
 
 _No crate versions bumped._
