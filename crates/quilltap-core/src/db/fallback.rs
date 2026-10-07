@@ -33,9 +33,27 @@ use super::DbError;
 /// had all carried the prefix, and one caller had worked around it locally).
 /// `pub` since P4.134: the host's boot guards stand in for v4's
 /// `instrumentation.ts` catches, whose `error` field is the same bare message.
+///
+/// A sibling's [`DbError::PartitionUnavailable`] renders v4's DEGRADED guard
+/// sentence (`mount-index-guard.ts:20`, `llm-logs-guard.ts:21`) — the message
+/// `acquireDb()` throws inside v4's `safeQuery`, so every fallback / rethrow
+/// line over an unavailable sibling carries it (the `94fbb1ae3` boot-hardness
+/// unification, P4.159's HANDOFF; contract C1's reasoning — after P4.159 the
+/// only reachable unavailable sibling state is degraded). The main partition
+/// has no guard and keeps v5's Display.
 pub fn error_text(error: &DbError) -> String {
     match error {
         DbError::Sqlite(e) => e.to_string(),
+        DbError::PartitionUnavailable(target) => {
+            let partition = match target {
+                crate::write_partition::WriteDbTarget::Main => Partition::Main,
+                crate::write_partition::WriteDbTarget::MountIndex => Partition::MountIndex,
+                crate::write_partition::WriteDbTarget::LlmLogs => Partition::LlmLogs,
+            };
+            partition_degraded_sentence(partition)
+                .map(str::to_string)
+                .unwrap_or_else(|| error.to_string())
+        }
         other => other.to_string(),
     }
 }
@@ -288,10 +306,10 @@ fn partition_degraded_sentence(partition: Partition) -> Option<&'static str> {
 /// recorded pre-existing divergence, not a state this home renders). Any other
 /// `DbError` renders [`error_text`].
 pub fn log_partition_unavailable(partition: Partition, collection: &str, error: &DbError) {
-    let error = match (error, partition_degraded_sentence(partition)) {
-        (DbError::PartitionUnavailable(_), Some(sentence)) => sentence.to_string(),
-        (other, _) => error_text(other),
-    };
+    // `error_text` renders the guard sentence for a sibling's
+    // `PartitionUnavailable` (keyed by the error's own target, which every
+    // caller passes as `partition`).
+    let error = error_text(error);
     tracing::debug!(
         target: "quilltap::db",
         collection = collection,

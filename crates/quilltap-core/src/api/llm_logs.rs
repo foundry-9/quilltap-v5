@@ -394,10 +394,10 @@ mod tests {
     /// FALLBACK (`base.repository.ts:247-258`): ERROR `Error finding entity by
     /// ID {collection: llm_logs, id, error}` and `null` → `notFound('LLM
     /// Log')` (`[id]/route.ts:20-24`, `:44-48`) — never v5's former 500.
-    /// The `error` value renders `error_text`; v4's is its guard sentence
-    /// (`LLM logs database is in degraded mode`) — recorded in P4.159's lane
-    /// record as a HANDOFF(P4.163) on `error_text`'s `PartitionUnavailable`
-    /// arm, so it is matched here as a PREFIX of the line.
+    /// The `error` value is v4's guard sentence (`llm-logs-guard.ts:21`,
+    /// `LLM logs database is in degraded mode`) — `error_text`'s
+    /// `PartitionUnavailable` arm since the `94fbb1ae3` boot-hardness
+    /// unification (P4.159's HANDOFF); the line is matched WHOLE.
     fn degraded_llm_logs_db() -> (tempfile::TempDir, Db) {
         const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
         let dir = tempfile::tempdir().unwrap();
@@ -416,8 +416,8 @@ mod tests {
         (dir, db)
     }
 
-    const FIND_BY_ID_LINE: &str =
-        "ERROR quilltap::db Error finding entity by ID collection=llm_logs id=log-1 error=";
+    const FIND_BY_ID_LINE: &str = "ERROR quilltap::db Error finding entity by ID \
+         collection=llm_logs id=log-1 error=LLM logs database is in degraded mode";
 
     #[test]
     fn a_degraded_llm_logs_get_is_v4s_fallback_404() {
@@ -430,7 +430,7 @@ mod tests {
         assert_eq!(
             lines
                 .iter()
-                .filter(|l| l.starts_with(FIND_BY_ID_LINE))
+                .filter(|l| *l == FIND_BY_ID_LINE)
                 .count(),
             1,
             "{lines:#?}"
@@ -452,7 +452,7 @@ mod tests {
         assert_eq!(
             lines
                 .iter()
-                .filter(|l| l.starts_with(FIND_BY_ID_LINE))
+                .filter(|l| *l == FIND_BY_ID_LINE)
                 .count(),
             1,
             "{lines:#?}"
