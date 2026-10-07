@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — feat(projects): thirteen absent `[Projects v1]` success lines ported — delete, chats, files, mount points, tools, aesthetic, wardrobe (P4.163 Tier 2 item 7)
+
+_Versions: core 0.0.1247._
+
+A census of v4's 30 `[Projects v1]` sites at `94fbb1ae3` against v5's 8 found 13 success-path INFO lines absent on mutations `api/projects.rs` serves; each now logs with v4's message and keys in v4's order, after the write: `Project deleted {projectId, userId}`, `Chat added to project` / `Chat removed from project {projectId, chatId}`, `File added to project` / `File removed from project {projectId, fileId}`, `Mount point linked to project {projectId, mountPointId, linkId, userId}`, `Mount point unlinked from project {projectId, mountPointId, userId}`, `Default tool settings updated {projectId, disabledToolsCount, disabledGroupsCount}`, `Project aesthetic updated {projectId, kind, length, deleted, userId}` (JS-trimmed UTF-16 length), and the wardrobe factory's `Created` / `Updated` / `Deleted project wardrobe item` lines.
+
+`projects-routes.test.ts` wraps the thirteen mutation cases in its `withLogs` spy; `projects_routes` compares each against v4's real handlers (userId mapped to the engine's single user, minted `linkId` / created `itemId` masked). Red on unported main: 13 of 13. The remaining census rows (nine catch-arm ERRORs, the list catch, the project-scenario lines driven by another family) are recorded in the lane record for the next round.
+
 #### 2026-10-07 — fix(docs): the seven `find_enabled_for_docedit` callers answer through v4's `findEnabled` fallback — empty with the filter line, never a failure (P4.163 Tier 1 item 5)
 
 _Versions: core 0.0.1246._

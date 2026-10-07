@@ -1042,6 +1042,32 @@ async function main(): Promise<void> {
     },
   ];
 
+  // P4.163 (R-E): the `[Projects v1]` census — every mutation v5 serves records
+  // the lines v4 logs on its success path (the INFO lines P4.148 / P4.D246 left
+  // absent), through the same `withLogs` spy. Wrapped here so each case body
+  // stays as it was.
+  const WITH_LOGS = new Set([
+    'delete',
+    'add_chat',
+    'remove_chat',
+    'tool_settings',
+    'aesthetic_set',
+    'aesthetic_clear',
+    'mount_link',
+    'mount_unlink',
+    'add_file',
+    'remove_file',
+    'wardrobe_create',
+    'wardrobe_update',
+    'wardrobe_delete',
+  ]);
+  for (const c of cases) {
+    if (WITH_LOGS.has(c.name)) {
+      const inner = c.run;
+      c.run = () => withLogs(inner as never) as never;
+    }
+  }
+
   const outLines: string[] = [];
   for (const c of cases) {
     const payload = await runCase(spec, c, scratch, fixtures);

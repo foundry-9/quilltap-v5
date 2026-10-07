@@ -149,6 +149,38 @@ fn compare_projects_v1(v4: &Value, v5: &[String]) -> Result<(), String> {
     }
 }
 
+/// P4.163 (R-E) — the `[Projects v1]` census's success-path lines: v4's records
+/// (`withLogs`) against v5's capture through [`compare_projects_v1`], after two
+/// normalizations applied to BOTH sides: `userId` is the session user on v4 and
+/// the engine's single user on v5 (the recorded identity, as the `Project
+/// updated` pin states it), and a `minted` key (`linkId`, a created `itemId`)
+/// is a fresh uuid on each side.
+fn compare_projects_v1_masked(v4: &Value, v5: &[String], minted: &[&str]) -> Result<(), String> {
+    let mut v4 = v4.clone();
+    for rec in v4.as_array_mut().into_iter().flatten() {
+        for pair in rec["fields"].as_array_mut().into_iter().flatten() {
+            let key = pair[0].as_str().unwrap_or_default().to_string();
+            if key == "userId" {
+                pair[1] = Value::String(quilltap_core::api::SINGLE_USER_ID.to_string());
+            } else if minted.contains(&key.as_str()) {
+                pair[1] = Value::String("<minted>".into());
+            }
+        }
+    }
+    let v5: Vec<String> = v5
+        .iter()
+        .map(|l| {
+            let mut l = l.clone();
+            for key in minted {
+                let re = regex::Regex::new(&format!(r" {key}=\S+")).unwrap();
+                l = re.replace_all(&l, format!(" {key}=<minted>")).into_owned();
+            }
+            l
+        })
+        .collect();
+    compare_projects_v1(&v4, &v5)
+}
+
 fn canon_numbers(v: &mut Value) {
     match v {
         Value::Number(n) => {
@@ -1069,8 +1101,15 @@ fn projects_routes_match_oracle() {
     }
     {
         let db = fresh_db(&spec, "delete");
-        let resp = rt.block_on(projects::project_delete(&db, IOTA));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(projects::project_delete(&db, IOTA))
+        });
         check("delete", &response_data(&resp), false, &mut failed);
+        // P4.163 (R-E): v4's `[Projects v1]` success line(s) for this mutation.
+        if let Err(diff) = compare_projects_v1_masked(&oracle["delete"]["logs"], &lines, &[]) {
+            eprintln!("[delete] [Projects v1] lines MISMATCH:{diff}");
+            failed.push("delete_projects_v1".into());
+        }
         check_tables("delete", &dump_project_tables(&db), &mut failed);
     }
     {
@@ -1110,14 +1149,28 @@ fn projects_routes_match_oracle() {
     }
     {
         let db = fresh_db(&spec, "addch");
-        let resp = rt.block_on(projects::project_chat_add(&db, KAPPA, CHAT_A));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(projects::project_chat_add(&db, KAPPA, CHAT_A))
+        });
         check("add_chat", &response_data(&resp), false, &mut failed);
+        // P4.163 (R-E): v4's `[Projects v1]` success line(s) for this mutation.
+        if let Err(diff) = compare_projects_v1_masked(&oracle["add_chat"]["logs"], &lines, &[]) {
+            eprintln!("[add_chat] [Projects v1] lines MISMATCH:{diff}");
+            failed.push("add_chat_projects_v1".into());
+        }
         check_tables("add_chat", &dump_project_tables(&db), &mut failed);
     }
     {
         let db = fresh_db(&spec, "remch");
-        let resp = rt.block_on(projects::project_chat_remove(&db, IOTA, CHAT_A));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(projects::project_chat_remove(&db, IOTA, CHAT_A))
+        });
         check("remove_chat", &response_data(&resp), false, &mut failed);
+        // P4.163 (R-E): v4's `[Projects v1]` success line(s) for this mutation.
+        if let Err(diff) = compare_projects_v1_masked(&oracle["remove_chat"]["logs"], &lines, &[]) {
+            eprintln!("[remove_chat] [Projects v1] lines MISMATCH:{diff}");
+            failed.push("remove_chat_projects_v1".into());
+        }
         check_tables("remove_chat", &dump_project_tables(&db), &mut failed);
     }
     {
@@ -1136,23 +1189,33 @@ fn projects_routes_match_oracle() {
     }
     {
         let db = fresh_db(&spec, "ts");
-        let resp = rt.block_on(projects::project_tool_settings_update(
-            &db,
-            IOTA,
-            vec!["web_search".into()],
-            vec!["danger".into()],
-        ));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(projects::project_tool_settings_update(
+                &db,
+                IOTA,
+                vec!["web_search".into()],
+                vec!["danger".into()],
+            ))
+        });
         check("tool_settings", &response_data(&resp), false, &mut failed);
+        // P4.163 (R-E): v4's `[Projects v1]` success line(s) for this mutation.
+        if let Err(diff) = compare_projects_v1_masked(&oracle["tool_settings"]["logs"], &lines, &[])
+        {
+            eprintln!("[tool_settings] [Projects v1] lines MISMATCH:{diff}");
+            failed.push("tool_settings_projects_v1".into());
+        }
     }
     {
         // aesthetic set (write) + GET readback (trimmed) — body {success, readback}.
         let db = fresh_db(&spec, "aset");
-        let resp = rt.block_on(projects::project_aesthetic_set(
-            &db,
-            IOTA,
-            "aurora",
-            Some("  A brand new aurora palette.  ".into()),
-        ));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(projects::project_aesthetic_set(
+                &db,
+                IOTA,
+                "aurora",
+                Some("  A brand new aurora palette.  ".into()),
+            ))
+        });
         let mut body = response_data(&resp);
         let readback = response_data(&projects::project_aesthetic_get(&db, IOTA, "aurora"))
             .get("content")
@@ -1162,16 +1225,24 @@ fn projects_routes_match_oracle() {
             o.insert("readback".into(), readback);
         }
         check("aesthetic_set", &body, false, &mut failed);
+        // P4.163 (R-E): v4's `[Projects v1]` success line(s) for this mutation.
+        if let Err(diff) = compare_projects_v1_masked(&oracle["aesthetic_set"]["logs"], &lines, &[])
+        {
+            eprintln!("[aesthetic_set] [Projects v1] lines MISMATCH:{diff}");
+            failed.push("aesthetic_set_projects_v1".into());
+        }
     }
     {
         // aesthetic clear (empty → delete) + GET readback ('').
         let db = fresh_db(&spec, "aclr");
-        let resp = rt.block_on(projects::project_aesthetic_set(
-            &db,
-            IOTA,
-            "lantern",
-            Some("   ".into()),
-        ));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(projects::project_aesthetic_set(
+                &db,
+                IOTA,
+                "lantern",
+                Some("   ".into()),
+            ))
+        });
         let mut body = response_data(&resp);
         let readback = response_data(&projects::project_aesthetic_get(&db, IOTA, "lantern"))
             .get("content")
@@ -1181,25 +1252,49 @@ fn projects_routes_match_oracle() {
             o.insert("readback".into(), readback);
         }
         check("aesthetic_clear", &body, false, &mut failed);
+        // P4.163 (R-E): v4's `[Projects v1]` success line(s) for this mutation.
+        if let Err(diff) =
+            compare_projects_v1_masked(&oracle["aesthetic_clear"]["logs"], &lines, &[])
+        {
+            eprintln!("[aesthetic_clear] [Projects v1] lines MISMATCH:{diff}");
+            failed.push("aesthetic_clear_projects_v1".into());
+        }
     }
     {
         let db = fresh_db(&spec, "ml");
-        let resp = rt.block_on(projects::project_mount_point_link(
-            &db,
-            IOTA,
-            GAMMA_EXTRA_MP,
-        ));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(projects::project_mount_point_link(
+                &db,
+                IOTA,
+                GAMMA_EXTRA_MP,
+            ))
+        });
         check("mount_link", &response_data(&resp), true, &mut failed);
+        // P4.163 (R-E): v4's `[Projects v1]` success line(s) for this mutation.
+        if let Err(diff) =
+            compare_projects_v1_masked(&oracle["mount_link"]["logs"], &lines, &["linkId"])
+        {
+            eprintln!("[mount_link] [Projects v1] lines MISMATCH:{diff}");
+            failed.push("mount_link_projects_v1".into());
+        }
         pin_201("mount_link", &resp, &mut failed);
     }
     {
         let db = fresh_db(&spec, "mu");
-        let resp = rt.block_on(projects::project_mount_point_unlink(
-            &db,
-            IOTA,
-            IOTA_DANGLING_MP,
-        ));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(projects::project_mount_point_unlink(
+                &db,
+                IOTA,
+                IOTA_DANGLING_MP,
+            ))
+        });
         check("mount_unlink", &response_data(&resp), false, &mut failed);
+        // P4.163 (R-E): v4's `[Projects v1]` success line(s) for this mutation.
+        if let Err(diff) = compare_projects_v1_masked(&oracle["mount_unlink"]["logs"], &lines, &[])
+        {
+            eprintln!("[mount_unlink] [Projects v1] lines MISMATCH:{diff}");
+            failed.push("mount_unlink_projects_v1".into());
+        }
         check_tables("mount_unlink", &dump_project_tables(&db), &mut failed);
     }
 
@@ -1225,24 +1320,42 @@ fn projects_routes_match_oracle() {
     {
         // create mints a fresh id + timestamps (both sides) → blank.
         let db = fresh_db(&spec, "wc");
-        let resp = rt.block_on(projects::project_wardrobe_create(
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(projects::project_wardrobe_create(
             &db,
             IOTA,
             json!({ "title": "Rain Boots", "description": "For puddles.", "imagePrompt": "yellow rubber boots", "types": ["footwear"], "isDefault": false }),
-        ));
+        ))
+        });
         check("wardrobe_create", &response_data(&resp), true, &mut failed);
+        // P4.163 (R-E): v4's `[Projects v1]` success line(s) for this mutation.
+        if let Err(diff) =
+            compare_projects_v1_masked(&oracle["wardrobe_create"]["logs"], &lines, &["itemId"])
+        {
+            eprintln!("[wardrobe_create] [Projects v1] lines MISMATCH:{diff}");
+            failed.push("wardrobe_create_projects_v1".into());
+        }
         pin_201("wardrobe_create", &resp, &mut failed);
     }
     {
         // update mints a fresh updatedAt (both sides) → blank.
         let db = fresh_db(&spec, "wu");
-        let resp = rt.block_on(projects::project_wardrobe_update(
-            &db,
-            IOTA,
-            CLOAK,
-            json!({ "title": "Weathered Cloak", "description": null }),
-        ));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(projects::project_wardrobe_update(
+                &db,
+                IOTA,
+                CLOAK,
+                json!({ "title": "Weathered Cloak", "description": null }),
+            ))
+        });
         check("wardrobe_update", &response_data(&resp), true, &mut failed);
+        // P4.163 (R-E): v4's `[Projects v1]` success line(s) for this mutation.
+        if let Err(diff) =
+            compare_projects_v1_masked(&oracle["wardrobe_update"]["logs"], &lines, &[])
+        {
+            eprintln!("[wardrobe_update] [Projects v1] lines MISMATCH:{diff}");
+            failed.push("wardrobe_update_projects_v1".into());
+        }
     }
     // ── P4.D120 / v4 `d25dacc1` ──────────────────────────────────────────
     // The list's hard-coded `true` is gone; each of these archives the Cloak
@@ -1305,7 +1418,9 @@ fn projects_routes_match_oracle() {
     }
     {
         let db = fresh_db(&spec, "wd");
-        let resp = rt.block_on(projects::project_wardrobe_delete(&db, IOTA, ENSEMBLE));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(projects::project_wardrobe_delete(&db, IOTA, ENSEMBLE))
+        });
         let mut body = response_data(&resp);
         let remaining: Vec<Value> =
             response_data(&projects::project_wardrobe_list(&db, IOTA, false))
@@ -1326,6 +1441,13 @@ fn projects_routes_match_oracle() {
             o.insert("remaining".into(), Value::Array(remaining));
         }
         check("wardrobe_delete", &body, false, &mut failed);
+        // P4.163 (R-E): v4's `[Projects v1]` success line(s) for this mutation.
+        if let Err(diff) =
+            compare_projects_v1_masked(&oracle["wardrobe_delete"]["logs"], &lines, &[])
+        {
+            eprintln!("[wardrobe_delete] [Projects v1] lines MISMATCH:{diff}");
+            failed.push("wardrobe_delete_projects_v1".into());
+        }
     }
 
     // --- Files (Unit 5): list-files two-branch + add/remove ---
@@ -1415,8 +1537,15 @@ fn projects_routes_match_oracle() {
     }
     {
         let db = fresh_db(&spec, "add_file");
-        let resp = rt.block_on(projects::project_file_add(&db, KAPPA, BG_FILE));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(projects::project_file_add(&db, KAPPA, BG_FILE))
+        });
         check("add_file", &response_data(&resp), false, &mut failed);
+        // P4.163 (R-E): v4's `[Projects v1]` success line(s) for this mutation.
+        if let Err(diff) = compare_projects_v1_masked(&oracle["add_file"]["logs"], &lines, &[]) {
+            eprintln!("[add_file] [Projects v1] lines MISMATCH:{diff}");
+            failed.push("add_file_projects_v1".into());
+        }
         check_tables("add_file", &dump_project_tables(&db), &mut failed);
     }
     {
@@ -1441,8 +1570,15 @@ fn projects_routes_match_oracle() {
     }
     {
         let db = fresh_db(&spec, "rm_file");
-        let resp = rt.block_on(projects::project_file_remove(&db, LAMBDA, LAMBDA_FILE_1));
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(projects::project_file_remove(&db, LAMBDA, LAMBDA_FILE_1))
+        });
         check("remove_file", &response_data(&resp), false, &mut failed);
+        // P4.163 (R-E): v4's `[Projects v1]` success line(s) for this mutation.
+        if let Err(diff) = compare_projects_v1_masked(&oracle["remove_file"]["logs"], &lines, &[]) {
+            eprintln!("[remove_file] [Projects v1] lines MISMATCH:{diff}");
+            failed.push("remove_file_projects_v1".into());
+        }
         check_tables("remove_file", &dump_project_tables(&db), &mut failed);
     }
 

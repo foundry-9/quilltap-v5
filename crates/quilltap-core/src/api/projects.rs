@@ -647,7 +647,15 @@ pub async fn project_delete(db: &Db, project_id: &str) -> Response {
     })
     .await;
     match out {
-        Ok(true) => Response::Project(json!({ "success": true })),
+        Ok(true) => {
+            // P4.163: v4 `project-crud.ts:149` — after the delete.
+            tracing::info!(
+                projectId = %project_id,
+                userId = %SINGLE_USER_ID,
+                "[Projects v1] Project deleted"
+            );
+            Response::Project(json!({ "success": true }))
+        }
         Ok(false) => not_found("Project"),
         Err(e) => db_error_response(e),
     }
@@ -964,7 +972,15 @@ pub async fn project_chat_add(db: &Db, project_id: &str, chat_id: &str) -> Respo
     })
     .await;
     match out {
-        Ok(Ok(())) => Response::Project(json!({ "success": true })),
+        Ok(Ok(())) => {
+            // P4.163: v4 `chats.ts:154`.
+            tracing::info!(
+                projectId = %project_id,
+                chatId = %chat_id,
+                "[Projects v1] Chat added to project"
+            );
+            Response::Project(json!({ "success": true }))
+        }
         Ok(Err(r)) => r,
         Err(e) => db_error_response(e),
     }
@@ -991,7 +1007,15 @@ pub async fn project_chat_remove(db: &Db, project_id: &str, chat_id: &str) -> Re
     })
     .await;
     match out {
-        Ok(Ok(())) => Response::Project(json!({ "success": true })),
+        Ok(Ok(())) => {
+            // P4.163: v4 `chats.ts:178`.
+            tracing::info!(
+                projectId = %project_id,
+                chatId = %chat_id,
+                "[Projects v1] Chat removed from project"
+            );
+            Response::Project(json!({ "success": true }))
+        }
         Ok(Err(r)) => r,
         Err(e) => db_error_response(e),
     }
@@ -1102,11 +1126,20 @@ pub async fn project_tool_settings_update(
     })
     .await;
     match out {
-        Ok(true) => Response::Project(json!({
-            "success": true,
-            "defaultDisabledTools": disabled_tools,
-            "defaultDisabledToolGroups": disabled_tool_groups,
-        })),
+        Ok(true) => {
+            // P4.163: v4 `tools.ts:36` — the two COUNTS, after the write.
+            tracing::info!(
+                projectId = %project_id,
+                disabledToolsCount = disabled_tools.len(),
+                disabledGroupsCount = disabled_tool_groups.len(),
+                "[Projects v1] Default tool settings updated"
+            );
+            Response::Project(json!({
+                "success": true,
+                "defaultDisabledTools": disabled_tools,
+                "defaultDisabledToolGroups": disabled_tool_groups,
+            }))
+        }
         Ok(false) => not_found("Project"),
         Err(e) => db_error_response(e),
     }
@@ -1252,6 +1285,8 @@ pub async fn project_aesthetic_set(
     };
     // safeParse(...).data?.content ?? '' — a missing/invalid content → ''.
     let content = content.unwrap_or_default();
+    // v4 `aesthetic.ts:65`'s `content.trim().length` — JS trim, UTF-16 units.
+    let trimmed_len = crate::jsstr::utf16_len(crate::jsstr::js_trim(&content));
     let pid = project_id.to_string();
     let out = with_both_conns(db, move |main, mount| {
         let repo = ProjectsRepository::new(main, mount);
@@ -1269,7 +1304,18 @@ pub async fn project_aesthetic_set(
     })
     .await;
     match out {
-        Ok(Ok(())) => Response::Project(json!({ "success": true })),
+        Ok(Ok(())) => {
+            // P4.163: v4 `aesthetic.ts:65`, after the write.
+            tracing::info!(
+                projectId = %project_id,
+                kind = %kind,
+                length = trimmed_len,
+                deleted = trimmed_len == 0,
+                userId = %SINGLE_USER_ID,
+                "[Projects v1] Project aesthetic updated"
+            );
+            Response::Project(json!({ "success": true }))
+        }
         Ok(Err(r)) => r,
         Err(e) => db_error_response(e),
     }
@@ -1324,6 +1370,14 @@ pub async fn project_mount_point_link(db: &Db, project_id: &str, mount_point_id:
     .await;
     match out {
         Ok(Ok((link, mount_point))) => {
+            // P4.163: v4 `mount-points/route.ts:85`.
+            tracing::info!(
+                projectId = %project_id,
+                mountPointId = %mount_point_id,
+                linkId = %link.get("id").and_then(serde_json::Value::as_str).unwrap_or_default(),
+                userId = %SINGLE_USER_ID,
+                "[Projects v1] Mount point linked to project"
+            );
             Response::Project(json!({ "link": link, "mountPoint": mount_point }))
         }
         Ok(Err(r)) => r,
@@ -1355,7 +1409,16 @@ pub async fn project_mount_point_unlink(
     })
     .await;
     match out {
-        Ok(Ok(())) => Response::Project(json!({ "message": "Mount point unlinked from project" })),
+        Ok(Ok(())) => {
+            // P4.163: v4 `mount-points/route.ts:123`.
+            tracing::info!(
+                projectId = %project_id,
+                mountPointId = %mount_point_id,
+                userId = %SINGLE_USER_ID,
+                "[Projects v1] Mount point unlinked from project"
+            );
+            Response::Project(json!({ "message": "Mount point unlinked from project" }))
+        }
         Ok(Err(r)) => r,
         Err(e) => db_error_response(e),
     }
@@ -1524,11 +1587,24 @@ pub async fn project_wardrobe_create(db: &Db, project_id: &str, body: Value) -> 
     })
     .await;
     match out {
-        Ok(Ok((mp, item, items))) => Response::Project(json!({
-            "mountPointId": mp,
-            "wardrobeItem": item,
-            "wardrobeItems": items,
-        })),
+        Ok(Ok((mp, item, items))) => {
+            // P4.163: v4 `mount-wardrobe-route-factory.ts:267` (`logTag`
+            // `[Projects v1]`, `logIdKey` `projectId`).
+            tracing::info!(
+                projectId = %project_id,
+                userId = %SINGLE_USER_ID,
+                mountPointId = %mp,
+                itemId = %item.get("id").and_then(serde_json::Value::as_str).unwrap_or_default(),
+                title = %item.get("title").and_then(serde_json::Value::as_str).unwrap_or_default(),
+                context = "wardrobe",
+                "[Projects v1] Created project wardrobe item"
+            );
+            Response::Project(json!({
+                "mountPointId": mp,
+                "wardrobeItem": item,
+                "wardrobeItems": items,
+            }))
+        }
         Ok(Err(r)) => r,
         Err(e) => db_error_response(e),
     }
@@ -1605,7 +1681,7 @@ pub async fn project_wardrobe_update(
                     .into_iter()
                     .find(|i| i.get("id").and_then(Value::as_str) == Some(iid.as_str()))
                     .unwrap_or(Value::Null);
-                Ok(Ok(item))
+                Ok(Ok((mp, item)))
             }
             Ok(None) => Ok(Err(not_found("Project wardrobe item"))),
             Err(e) => Ok(Err(wardrobe_err(e))),
@@ -1613,7 +1689,18 @@ pub async fn project_wardrobe_update(
     })
     .await;
     match out {
-        Ok(Ok(item)) => Response::Project(json!({ "wardrobeItem": item })),
+        Ok(Ok((mp, item))) => {
+            // P4.163: v4 `mount-wardrobe-route-factory.ts:357`.
+            tracing::info!(
+                projectId = %project_id,
+                userId = %SINGLE_USER_ID,
+                mountPointId = %mp,
+                itemId = %item_id,
+                context = "wardrobe",
+                "[Projects v1] Updated project wardrobe item"
+            );
+            Response::Project(json!({ "wardrobeItem": item }))
+        }
         Ok(Err(r)) => r,
         Err(e) => db_error_response(e),
     }
@@ -1634,14 +1721,24 @@ pub async fn project_wardrobe_delete(db: &Db, project_id: &str, item_id: &str) -
         let links = DocMountFileLinksRepository::new(mount);
         let docs = DocMountDocumentsRepository::new(mount);
         match delete_project_wardrobe_item(main, &links, &docs, &mp, &iid) {
-            Ok(true) => Ok(Ok(())),
+            Ok(true) => Ok(Ok(mp)),
             Ok(false) => Ok(Err(not_found("Project wardrobe item"))),
             Err(e) => Ok(Err(wardrobe_err(e))),
         }
     })
     .await;
     match out {
-        Ok(Ok(())) => Response::Project(json!({ "success": true })),
+        Ok(Ok(mp)) => {
+            // P4.163: v4 `mount-wardrobe-route-factory.ts:385` (no `userId`).
+            tracing::info!(
+                projectId = %project_id,
+                mountPointId = %mp,
+                itemId = %item_id,
+                context = "wardrobe",
+                "[Projects v1] Deleted project wardrobe item"
+            );
+            Response::Project(json!({ "success": true }))
+        }
         Ok(Err(r)) => r,
         Err(e) => db_error_response(e),
     }
@@ -2074,7 +2171,15 @@ pub async fn project_file_add(db: &Db, project_id: &str, file_id: &str) -> Respo
     })
     .await;
     match out {
-        Ok(Ok(())) => Response::Project(json!({ "success": true })),
+        Ok(Ok(())) => {
+            // P4.163: v4 `files.ts:139`.
+            tracing::info!(
+                projectId = %project_id,
+                fileId = %file_id,
+                "[Projects v1] File added to project"
+            );
+            Response::Project(json!({ "success": true }))
+        }
         Ok(Err(r)) => r,
         Err(e) => db_error_response(e),
     }
@@ -2098,7 +2203,15 @@ pub async fn project_file_remove(db: &Db, project_id: &str, file_id: &str) -> Re
     })
     .await;
     match out {
-        Ok(Ok(())) => Response::Project(json!({ "success": true })),
+        Ok(Ok(())) => {
+            // P4.163: v4 `files.ts:163`.
+            tracing::info!(
+                projectId = %project_id,
+                fileId = %file_id,
+                "[Projects v1] File removed from project"
+            );
+            Response::Project(json!({ "success": true }))
+        }
         Ok(Err(r)) => r,
         Err(e) => db_error_response(e),
     }
