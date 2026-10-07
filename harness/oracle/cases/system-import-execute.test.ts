@@ -1654,6 +1654,42 @@ function folderRefusalsPayload(files: {
 }
 
 /**
+ * [P4.161 Tier 2] Tags v4's `tags.create` refuses — under `duplicate`, so
+ * both arms run. Fresh ids (the plain arm): a nested `visualStyle` regex
+ * miss and an over-long emoji (`TagSchema` at `_create`), a numeric `name`,
+ * an absent `name` and a truthy non-string `nameLower` (each a TypeError
+ * thrown by the create's `(nameLower || name).toLowerCase()` before
+ * `_create`), a `quickHide: "yes"` (normalized to `false` — it LANDS) and a
+ * sound tag. The merged payload's first tag id (the duplicate arm): a numeric
+ * `name` (the importer's own `tagData.name.toLowerCase()` throws) and a
+ * sound duplicate.
+ */
+function tagRefusalsPayload(merged: {
+  manifest: unknown;
+  data: Record<string, unknown[]>;
+}): { manifest: unknown; data: Record<string, unknown> } {
+  const existing = (merged.data.tags ?? [])[0] as Record<string, unknown> | undefined;
+  if (!existing) throw new Error('tag refusals payload needs a merged tag');
+  const id = (n: number) => `f1610000-0000-4000-8000-0000000007${String(n).padStart(2, '0')}`;
+  return {
+    manifest: merged.manifest,
+    data: {
+      tags: [
+        { id: id(1), name: 'Red Style', visualStyle: { foregroundColor: 'red' } },
+        { id: id(2), name: 'Long Emoji', visualStyle: { emoji: '123456789' } },
+        { id: id(3), name: 5 },
+        { id: id(4) },
+        { id: id(5), name: 'Numeric Lower', nameLower: 5 },
+        { id: id(6), name: 'Quick Hide Yes', quickHide: 'yes' },
+        { id: id(7), name: 'Sound Tag' },
+        { ...existing, name: 7, nameLower: undefined },
+        { ...existing },
+      ],
+    },
+  };
+}
+
+/**
  * [P4.63 → v4 bug 105 → P4.D131] The bug-105 regression-guard payload: one
  * connection profile whose `provider` is not a string, followed by one image
  * profile that is perfectly sound.
@@ -1930,6 +1966,8 @@ const REPO_LOG_MESSAGES = new Set([
   'Error creating prompt template',
   // [P4.161 Tier 2] the folders repository's own wrap (`{userId, path}`).
   'Error creating folder',
+  // [P4.161 Tier 2] the tags repository's own wrap (`{userId, name}`).
+  'Error creating tag',
 ]);
 
 /**
@@ -2889,6 +2927,12 @@ async function main(): Promise<void> {
       'execute_folder_refusals',
       () => folderRefusalsPayload(filesPayload),
       { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
+      true,
+    ),
+    executeCase(
+      'execute_tag_refusals',
+      () => tagRefusalsPayload(mergedPayload),
+      { conflictStrategy: 'duplicate', includeMemories: false, includeRelatedEntities: false },
       true,
     ),
     // [P4.63 → v4 bug 105 → P4.D131] The named-and-skipped regression guard

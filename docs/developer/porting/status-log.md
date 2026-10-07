@@ -171362,3 +171362,40 @@ unifier should record the waiver in the ledger's §1.
   `folder_create_payload`; 2743 bytes now; the guard green. (Lesson: never
   edit source while a gate's binaries run — a source-scanning guard reads
   the tree at run time.)
+
+### Unit 7 — Tier 2 items 8 + 11, tags; the `Broken Tag` serde row retired (core 0.0.1249)
+
+- `zod_issues::zod_tag_issues` (+ `tag_visual_style_issues`: `emoji` ≤ 8
+  CODE POINTS — measured, eight astral emoji pass; the two colours
+  `HexColorSchema.default`, `null` refused; four booleans); 17 recorded
+  `tag` rows. Home: `quilltap_import::entities::parse_create_tag` +
+  `TagRefusal {TypeError, Zod}` + `create_tag_refused` (the line set per
+  refusal kind), re-exported for the restore.
+- **v4's create-time derivations, measured:** `(data.nameLower ||
+  data.name).toLowerCase()` inside `tags.create`'s `safeQuery` — a numeric
+  name or a truthy non-string `nameLower` throws `(data.nameLower ||
+  data.name).toLowerCase is not a function`, an absent name `Cannot read
+  properties of undefined (reading 'toLowerCase')`; each logs ONLY `Error
+  creating tag` (no `Data validation failed`, no `Error creating entity`).
+  The importer's duplicate arm (`tagData.name.toLowerCase()`) and the
+  restorer (`tagData.name.toLowerCase()`) throw BEFORE `create` — no line.
+  `quickHide: "yes"` normalizes to `false` and LANDS.
+- **HANDOFF(P4.163):** `quilltap_import::log_tag_create_wrap_failure(
+  user_id: &str, name: Option<&str>, error: &DbError)`.
+- **Item 11:** `SERDE_ARM_DIVERGENCES` 9 → 8 — the `Broken Tag` row
+  retired (the tag tail is v4's ZodError now; `execute_named_item_failures`
+  compares it plainly). The remaining eight (the chat row, connection /
+  image / embedding profiles ×2 / ×2, roleplay template, bug-105) stay —
+  their kinds are Tier 3 below.
+- Oracle: `execute_tag_refusals` (`duplicate`; 9 repository lines; v4
+  imported 3) — `ran` 54 → 55, `REPO_LOG_CASES` 9 → 10,
+  `IMPORT_WARN_CASES` 41 → 42 (no tag WARN is in the recorded set);
+  `compare_repo_logs` renders v4's non-string context values as JSON text
+  (a numeric `name`). Restore: five tag rows `a5…0e1-0e5`; by-name landed
+  ids on BOTH sides.
+- **Red-first (core at the previous commit):** import 4 (incl.
+  `execute_named_item_failures`), restore 4. **Pin moved:**
+  `rendered_markdown_strip_tests::a_refused_tag_or_template_logs_v4s_one_warn`
+  — the tag family's tail is the ZodError now, its user a uuid.
+  `import_warning_text_guard` caught a `map_err` with `.to_string()`;
+  `TagRefusal::into_text` instead.

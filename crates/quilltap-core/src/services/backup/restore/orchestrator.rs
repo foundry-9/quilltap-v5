@@ -321,25 +321,63 @@ fn restore_on_writer(
     {
         let repo = crate::db::tags::TagsRepository::new(main);
         for tag in &data.tags {
-            let name = s(tag, "name");
-            let lower = os(tag, "nameLower").filter(|l| !l.is_empty());
-            let create = crate::db::tags::TagCreate {
-                // `repos.*` is `getUserRepositories(targetUserId)`, whose `create`
-                // spreads `{...data, userId: this.userId}` (`user-scoped.ts:84`) —
-                // so every user-scoped phase RE-OWNS the row to the target user,
-                // discarding the archive's `userId`. Only the `globalRepos.*`
-                // phases keep what the archive said.
-                user_id: target_user_id.to_string(),
-                name: name.clone(),
-                // v4 `nameLower: tagData.nameLower || tagData.name.toLowerCase()`.
-                name_lower: Some(lower.unwrap_or_else(|| name.to_lowercase())),
-                quick_hide: ob(tag, "quickHide"),
-                visual_style: de_opt(tag, "visualStyle"),
-            };
+            // v4 `:110-111`: `{ userId, createdAt, updatedAt, ...tagData }` →
+            // `create({ ...tagData, nameLower: tagData.nameLower ||
+            // tagData.name.toLowerCase() }, { id })`. The restorer's own
+            // `toLowerCase()` throws a TypeError for a non-string name (no
+            // repository line); `create` then derives again and `_create`
+            // validates the WHOLE `TagSchema` (P4.161 Tier 2 — the arm used to
+            // coerce every key). `repos.*` is `getUserRepositories(
+            // targetUserId)`, whose `create` RE-OWNS the row to the target
+            // user (`user-scoped.ts:84`).
+            let label = format!(
+                "Failed to restore tag \"{}\"",
+                crate::services::quilltap_import::js_display_name(tag)
+            );
+            let created = (|| -> Result<(), String> {
+                let mut item = tag.as_object().cloned().unwrap_or_default();
+                for k in ["userId", "createdAt", "updatedAt"] {
+                    item.remove(k);
+                }
+                if !crate::api::system_qtap::js_truthy(tag.get("nameLower")) {
+                    let lower = match tag.get("name") {
+                        Some(Value::String(n)) => n.to_lowercase(),
+                        None => {
+                            return Err(
+                                "Cannot read properties of undefined (reading 'toLowerCase')"
+                                    .into(),
+                            )
+                        }
+                        Some(Value::Null) => {
+                            return Err(
+                                "Cannot read properties of null (reading 'toLowerCase')".into()
+                            )
+                        }
+                        Some(_) => return Err("tagData.name.toLowerCase is not a function".into()),
+                    };
+                    item.insert("nameLower".into(), Value::String(lower));
+                }
+                item.insert("userId".into(), Value::String(target_user_id.to_string()));
+                let claimed = id_of(tag);
+                let create = crate::services::quilltap_import::parse_create_tag(
+                    &Value::Object(item),
+                    Some(claimed.as_str()).filter(|id| !id.is_empty()),
+                )
+                .map_err(|r| {
+                    crate::services::quilltap_import::create_tag_refused(
+                        target_user_id,
+                        tag.get("name"),
+                        &r,
+                    );
+                    r.text().to_string()
+                })?;
+                repo.create(&create, &copts!(claimed, crate::db::tags::CreateOptions))
+                    .map_err(|e| e.warn_text())
+            })();
             warn_only!(
                 w,
-                format!("Failed to restore tag \"{name}\""),
-                repo.create(&create, &copts!(id_of(tag), crate::db::tags::CreateOptions)),
+                label,
+                created,
                 "Failed to restore tag",
                 tagId = id_of(tag),
             );

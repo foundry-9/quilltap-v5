@@ -19,6 +19,14 @@ twin (the archive's own rows stay byte for byte).
     a9…0e3  path 5
     a9…0e4  a sound twin
 
+  tags (`TagSchema`; v4 `restore.ts:108-116` derives `nameLower` itself
+  — `tagData.nameLower || tagData.name.toLowerCase()` — then `tags.create`):
+    a5…0e1  visualStyle {"foregroundColor": "red"}
+    a5…0e2  name 5, no nameLower   (the restorer's TypeError, no repo line)
+    a5…0e3  nameLower 5            (`create`'s TypeError — the wrap only)
+    a5…0e4  quickHide "yes"        (normalized false — LANDS)
+    a5…0e5  a sound twin
+
 Each refusal is skipped with `Failed to restore <kind> "<name>": <ZodError
 message>`. The manifest's counts move with every collection
 touched; every other byte is kept. `restore-archive.zip` is md5-checked
@@ -78,10 +86,30 @@ def rewrite_folders(rows):
     ]
 
 
+def rewrite_tags(rows):
+    base = rows[0]
+
+    def item(suffix, **patch):
+        r = copy.deepcopy(base)
+        r["id"] = f"a5000000-0000-4000-8000-0000000000{suffix}"
+        r.pop("nameLower", None)
+        r.update(patch)
+        return r
+
+    return rows + [
+        item("e1", name="Red Style", visualStyle={"foregroundColor": "red"}),
+        item("e2", name=5),
+        item("e3", name="Numeric Lower", nameLower=5),
+        item("e4", name="Quick Hide Yes", quickHide="yes"),
+        item("e5", name="Sound Tag Twin"),
+    ]
+
+
 REWRITES = {
     # data file stem → (rewrite, manifest count key)
     "prompt-templates": (rewrite_prompt_templates, "promptTemplates"),
     "folders": (rewrite_folders, "folders"),
+    "tags": (rewrite_tags, "tags"),
 }
 
 

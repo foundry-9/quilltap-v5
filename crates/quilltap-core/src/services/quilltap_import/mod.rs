@@ -44,7 +44,7 @@ pub mod seed_assets;
 /// The store-backed create payload (P4.161 — the restore's whole-entity
 /// project / group parse validates the same shape the import does).
 pub(crate) use configuration::{log_refused_prompt_template, parse_create_prompt_template};
-pub(crate) use entities::store_create_payload;
+pub(crate) use entities::{create_tag_refused, parse_create_tag, store_create_payload};
 pub(crate) use files::{log_refused_folder, parse_create_folder};
 pub(crate) use warning_display_name as js_display_name;
 
@@ -480,6 +480,24 @@ pub(crate) fn log_folder_create_wrap_failure(user_id: &str, path: Option<&str>, 
         error = %crate::db::fallback::error_text(error),
         strictFailures = crate::db::fallback::strict_repository_failures_active().then_some(true),
         "Error creating folder"
+    );
+}
+
+/// The tags repository's own `safeQuery` wrap (`tags.repository.ts:60-88`):
+/// ERROR `Error creating tag {collection, userId, name, error,
+/// strictFailures?}` — `name` omitted when absent (a non-string renders as
+/// its JSON text). Logs only.
+// HANDOFF(P4.163): C1 item 3's `log_tag_create_wrap_failure` — P4.163's
+// measured signature (`d1e038fee`), folded by repoint at §S.1.
+pub(crate) fn log_tag_create_wrap_failure(user_id: &str, name: Option<&str>, error: &DbError) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "tags",
+        userId = %user_id,
+        name = name.map(tracing::field::display),
+        error = %crate::db::fallback::error_text(error),
+        strictFailures = crate::db::fallback::strict_repository_failures_active().then_some(true),
+        "Error creating tag"
     );
 }
 

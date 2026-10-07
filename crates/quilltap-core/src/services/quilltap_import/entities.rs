@@ -74,23 +74,130 @@ fn store_create_options(
 // Tags
 // ===========================================================================
 
-/// The tag payload (v4 `TagSchema` minus id/userId/timestamps). `nameLower` is
-/// optional here because `tags.create` re-derives it (v4 `(nameLower || name)
-/// .toLowerCase()`); `visualStyle` stays raw JSON so a malformed style fails the
-/// item exactly where v4's Zod parse would.
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ImportedTag {
-    name: String,
-    #[serde(default)]
-    name_lower: Option<String>,
-    #[serde(default)]
-    quick_hide: Option<bool>,
-    #[serde(default)]
-    visual_style: Option<tags::TagVisualStyle>,
+/// Why a tag create was refused before its insert (P4.161 Tier 2).
+pub(crate) enum TagRefusal {
+    /// A TypeError thrown INSIDE `tags.create`'s `safeQuery`, ahead of
+    /// `_create` (the `nameLower` derivation) — only the repository's wrap
+    /// ERROR logs.
+    TypeError(String),
+    /// `_create`'s `ZodError.message` — `validate`, `_create` and the wrap log.
+    Zod(String),
 }
 
-/// v4 `importTags` (`import-entities.ts:26`).
+impl TagRefusal {
+    pub(crate) fn text(&self) -> &str {
+        match self {
+            Self::TypeError(t) | Self::Zod(t) => t,
+        }
+    }
+
+    /// The bare tail (v4's `error.message`) — already rendered, so no
+    /// `to_string()` reaches an import warning (`import_warning_text_guard`).
+    pub(crate) fn into_text(self) -> String {
+        match self {
+            Self::TypeError(t) | Self::Zod(t) => t,
+        }
+    }
+}
+
+/// JS `<expr>.toLowerCase()` over a raw value: a string lowercases
+/// (`str::to_lowercase` is byte-identical to JS's), anything else throws V8's
+/// TypeError, whose message names the callee expression `expr`.
+fn js_to_lower_case(v: Option<&Value>, expr: &str) -> Result<String, String> {
+    match v {
+        Some(Value::String(s)) => Ok(s.to_lowercase()),
+        None => Err("Cannot read properties of undefined (reading 'toLowerCase')".into()),
+        Some(Value::Null) => Err("Cannot read properties of null (reading 'toLowerCase')".into()),
+        Some(_) => Err(format!("{expr}.toLowerCase is not a function")),
+    }
+}
+
+/// JS `${v}` over a raw value (`undefined` when absent).
+fn js_template(v: Option<&Value>) -> String {
+    v.map_or_else(
+        || "undefined".to_string(),
+        crate::pascal::js_value::to_js_string,
+    )
+}
+
+/// v4 `tags.create` (`tags.repository.ts:60-88`) up to the insert — the ONE
+/// parse the `.qtap` import and the backup restore run BEFORE the write
+/// (P4.161 Tier 2, R-A; the home a later order may move beside `db::tags`):
+/// `nameLower = (data.nameLower || data.name).toLowerCase()` (a TypeError on
+/// a non-string), `quickHide` a boolean or `false`, then `_create` validates
+/// the WHOLE entity through `TagSchema` (`zod_tag_issues`). `item` is the
+/// data handed to the user-scoped `create` (`userId` set); `claimed_id` the
+/// id the create writes. `Ok` carries the parsed style (defaults applied).
+pub(crate) fn parse_create_tag(
+    item: &Value,
+    claimed_id: Option<&str>,
+) -> Result<tags::TagCreate, TagRefusal> {
+    use crate::api::zod_issues::{zod_error_message, zod_tag_issues};
+    let mut entity = item.as_object().cloned().unwrap_or_default();
+    let source = if crate::api::system_qtap::js_truthy(entity.get("nameLower")) {
+        entity.get("nameLower")
+    } else {
+        entity.get("name")
+    };
+    let name_lower =
+        js_to_lower_case(source, "(data.nameLower || data.name)").map_err(TagRefusal::TypeError)?;
+    let quick_hide = entity.get("quickHide") == Some(&Value::Bool(true));
+    let now = crate::clock::now_iso();
+    entity.insert("nameLower".into(), Value::String(name_lower.clone()));
+    entity.insert("quickHide".into(), Value::Bool(quick_hide));
+    entity.insert(
+        "id".into(),
+        Value::String(
+            claimed_id
+                .unwrap_or("00000000-0000-0000-0000-000000000000")
+                .into(),
+        ),
+    );
+    entity.insert("createdAt".into(), Value::String(now.clone()));
+    entity.insert("updatedAt".into(), Value::String(now));
+    let issues = zod_tag_issues(&entity);
+    if !issues.is_empty() {
+        return Err(TagRefusal::Zod(zod_error_message(&issues)));
+    }
+    Ok(tags::TagCreate {
+        user_id: entity
+            .get("userId")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        name: entity
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        name_lower: Some(name_lower),
+        quick_hide: Some(quick_hide),
+        visual_style: match entity.get("visualStyle") {
+            Some(v @ Value::Object(_)) => serde_json::from_value(v.clone()).ok(),
+            _ => None,
+        },
+    })
+}
+
+/// A refused tag create's repository lines: a Zod refusal logs `validate`'s
+/// and `_create`'s lines, then the wrap; a TypeError (thrown before
+/// `_create`) the wrap alone.
+pub(crate) fn create_tag_refused(user_id: &str, name: Option<&Value>, refusal: &TagRefusal) {
+    let name = name.map(|v| match v {
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
+    });
+    if let TagRefusal::Zod(zod) = refusal {
+        super::log_refused_create("tags", zod);
+    }
+    super::log_tag_create_wrap_failure(
+        user_id,
+        name.as_deref(),
+        &DbError::Internal(refusal.text().to_string()),
+    );
+}
+
+/// v4 `importTags` (`import-entities.ts:26-85`).
 pub(super) fn import_tags(
     main: &Connection,
     user_id: &str,
@@ -107,7 +214,15 @@ pub(super) fn import_tags(
         let source_id = super::id_of(raw);
         let name = super::warning_display_name(raw);
         let out: Result<(), DbError> = (|| {
+            // `{ id, userId, createdAt, updatedAt, ...tagData }`; the
+            // user-scoped `create` sets `userId`.
+            let mut item = raw.as_object().cloned().unwrap_or_default();
+            for k in ["id", "userId", "createdAt", "updatedAt"] {
+                item.remove(k);
+            }
+            item.insert("userId".into(), Value::String(user_id.to_string()));
             let existing = tags::find_full_by_id(main, &source_id)?;
+            let mut id_and_now = None;
             if existing.is_some() {
                 match options.conflict_strategy {
                     ConflictStrategy::Skip => {
@@ -119,60 +234,43 @@ pub(super) fn import_tags(
                         repo.delete(&source_id)?;
                     }
                     ConflictStrategy::Duplicate => {
-                        // v4's create Zod-validates inside the per-item `try`,
-                        // so a malformed tag lands in the same catch the write
-                        // failures do — which `275cd7bc` gave a named warning.
-                        // P4.143 item 9: the refusal goes to the ONE per-item
-                        // catch below (v4's shape) — the same warning, plus v4's
-                        // WARN `Failed to import tag {tagId, error}`.
-                        let t = serde_json::from_value::<ImportedTag>(raw.clone())
-                            .map_err(|e| DbError::Internal(super::serde_error_text(&e)))?;
                         // v4: name `${name} (imported)`, nameLower
-                        // `${nameLower || name.toLowerCase()} (imported)` — the
-                        // create's own `(nameLower || name).toLowerCase()` then
-                        // lowercases the whole thing.
-                        let name_lower = format!(
-                            "{} (imported)",
-                            t.name_lower
-                                .clone()
-                                .filter(|s| !s.is_empty())
-                                .unwrap_or_else(|| t.name.to_lowercase())
+                        // `${nameLower || name.toLowerCase()} (imported)` —
+                        // evaluated in the importer, so a TypeError here logs
+                        // no repository line; the create's own
+                        // `(nameLower || name).toLowerCase()` then lowercases
+                        // the whole thing.
+                        let lower = if crate::api::system_qtap::js_truthy(raw.get("nameLower")) {
+                            js_template(raw.get("nameLower"))
+                        } else {
+                            js_to_lower_case(raw.get("name"), "tagData.name")
+                                .map_err(DbError::Internal)?
+                        };
+                        item.insert(
+                            "name".into(),
+                            Value::String(format!("{} (imported)", js_template(raw.get("name")))),
                         );
-                        let (id, now) = mint();
-                        repo.create(
-                            &tags::TagCreate {
-                                user_id: user_id.to_string(),
-                                name: format!("{} (imported)", t.name),
-                                name_lower: Some(name_lower),
-                                quick_hide: t.quick_hide,
-                                visual_style: t.visual_style,
-                            },
-                            &tags::CreateOptions {
-                                id: id.clone(),
-                                created_at: now.clone(),
-                                updated_at: now,
-                            },
-                        )?;
+                        item.insert(
+                            "nameLower".into(),
+                            Value::String(format!("{lower} (imported)")),
+                        );
                         // Tags map onto the REAL created id (unlike the phantom
                         // arm the other kinds carry).
-                        id_map.set(source_id.clone(), id);
-                        imported += 1;
-                        return Ok(());
+                        id_and_now = Some(mint());
                     }
                 }
             }
-            // P4.143 item 9: refused → the per-item catch (warning + WARN).
-            let t = serde_json::from_value::<ImportedTag>(raw.clone())
-                .map_err(|e| DbError::Internal(super::serde_error_text(&e)))?;
-            let (id, now) = mint_or_preserve(options, &source_id);
+            let (id, now) = id_and_now.unwrap_or_else(|| mint_or_preserve(options, &source_id));
+            // P4.161 Tier 2: the WHOLE entity through `TagSchema` BEFORE the
+            // insert (v5 used to decode the bag with serde — the recorded
+            // `Broken Tag` serde-arm row — and accept any name / nameLower).
+            let create =
+                parse_create_tag(&Value::Object(item.clone()), Some(&id)).map_err(|r| {
+                    create_tag_refused(user_id, item.get("name"), &r);
+                    DbError::Internal(r.into_text())
+                })?;
             repo.create(
-                &tags::TagCreate {
-                    user_id: user_id.to_string(),
-                    name: t.name,
-                    name_lower: t.name_lower,
-                    quick_hide: t.quick_hide,
-                    visual_style: t.visual_style,
-                },
+                &create,
                 &tags::CreateOptions {
                     id: id.clone(),
                     created_at: now.clone(),
@@ -1048,14 +1146,23 @@ mod rendered_markdown_strip_tests {
             &mut IdMap,
             &mut Vec<String>,
         ) -> Result<Counts, DbError>;
-        let families: [(&str, Importer, Value, Value, &str); 2] = [
+        // P4.161 Tier 2: the tag import validates through `TagSchema` now, so
+        // its tail is v4's ZodError message (the serde sentence it pinned
+        // before was the recorded serde-arm divergence, retired).
+        let tag_zod = crate::api::zod_issues::zod_error_message(&[
+            crate::api::zod_issues::ZodIssue::invalid_type(
+                "object",
+                vec![crate::api::zod_issues::key("visualStyle")],
+                Some(&json!("not-an-object")),
+            ),
+        ]);
+        let families: [(&str, Importer, Value, Value, String); 2] = [
             (
                 "tag",
                 import_tags,
                 json!({"id": "tag-bad", "name": "Bad", "visualStyle": "not-an-object"}),
                 json!({"id": "a4000000-0000-4000-8000-000000000001", "name": "Good"}),
-                "tagId=tag-bad error=invalid type: string \"not-an-object\", expected struct \
-                 TagVisualStyle",
+                format!("tagId=tag-bad error={tag_zod}"),
             ),
             (
                 "roleplay template",
@@ -1063,7 +1170,7 @@ mod rendered_markdown_strip_tests {
                 json!({"id": "rt-bad", "name": "Bad", "systemPrompt": 42}),
                 json!({"id": "a4000000-0000-4000-8000-000000000002", "name": "Good",
                        "systemPrompt": "p"}),
-                "templateId=rt-bad error=invalid type: integer `42`, expected a string",
+                "templateId=rt-bad error=invalid type: integer `42`, expected a string".to_string(),
             ),
         ];
         for (kind, import, bad, good, fields) in families {
@@ -1071,7 +1178,8 @@ mod rendered_markdown_strip_tests {
             let (counts, lines) = crate::test_support::captured_with(|| {
                 import(
                     &conn,
-                    "u",
+                    // A uuid: `TagSchema` checks the user id.
+                    "a1000000-0000-4000-8000-000000000001",
                     std::slice::from_ref(&bad),
                     &opts,
                     &mut IdMap::default(),
@@ -1089,7 +1197,8 @@ mod rendered_markdown_strip_tests {
             let (counts, lines) = crate::test_support::captured_with(|| {
                 import(
                     &conn,
-                    "u",
+                    // A uuid: `TagSchema` checks the user id.
+                    "a1000000-0000-4000-8000-000000000001",
                     std::slice::from_ref(&good),
                     &opts,
                     &mut IdMap::default(),

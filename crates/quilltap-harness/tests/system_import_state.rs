@@ -659,12 +659,9 @@ const SERDE_ARM_DIVERGENCES: &[SerdeArm] = &[
         v4_path_key: "scenarioText",
         v5_serde_prefix: "invalid type: integer `5`, expected a string",
     },
-    SerdeArm {
-        case: "execute_named_item_failures",
-        head: "Failed to import tag \"Broken Tag\": ",
-        v4_path_key: "visualStyle",
-        v5_serde_prefix: "invalid type: string \"not-an-object\", expected struct TagVisualStyle",
-    },
+    // [P4.161 Tier 2 item 11] The `Broken Tag` row RETIRED: the tag import
+    // now validates through `TagSchema` (`parse_create_tag`), so its tail is
+    // v4's ZodError bytes and the whole-state diff compares it plainly.
     SerdeArm {
         case: "execute_named_item_failures",
         head: "Failed to import connection profile \"Broken Connection\": ",
@@ -801,6 +798,7 @@ const REPO_LOG_MESSAGES: &[&str] = &[
     // [P4.161 Tier 2] the prompt-templates repository's wrap.
     "Error creating prompt template",
     "Error creating folder",
+    "Error creating tag",
 ];
 
 /// The [`REPO_LOG_MESSAGES`] entry `rest` starts with — the LONGEST match, so
@@ -910,6 +908,15 @@ fn compare_repo_logs(
     for w in want.iter_mut() {
         let message = w["message"].as_str().unwrap_or("").to_string();
         let strict = w.as_object_mut().and_then(|o| o.remove("strictFailures"));
+        // [P4.161 Tier 2] A non-string context value (a tag's numeric `name`)
+        // renders as v5's capture renders it — its JSON text.
+        if let Some(o) = w.as_object_mut() {
+            for v in o.values_mut() {
+                if !v.is_string() {
+                    *v = json!(v.to_string());
+                }
+            }
+        }
         let expect = strict_lines
             .contains(&message.as_str())
             .then_some(json!(true));
@@ -1599,7 +1606,40 @@ fn system_import_execute_state_equivalence() {
     // (50 + 2 = 52).
     // …+ P4.161 Tier 2's `execute_prompt_template_refusals` (52 + 1 = 53).
     // …+ `execute_folder_refusals` (53 + 1 = 54).
-    assert_eq!(ran, 54, "expected 54 cases, ran {ran}");
+    // …+ `execute_tag_refusals` (54 + 1 = 55).
+    assert_eq!(ran, 55, "expected 55 cases, ran {ran}");
+    // [P4.161 Tier 2] Non-vacuity: v4's tag refusals — two Zod refusals
+    // (three lines each), three TypeErrors INSIDE `create` (the wrap alone),
+    // one in the importer's duplicate arm (no line) — and three landed (the
+    // normalized `quickHide`, the sound tag, the sound duplicate).
+    {
+        let case = cases
+            .iter()
+            .find(|c| c["name"] == "execute_tag_refusals")
+            .expect("the oracle is missing `execute_tag_refusals` — regenerate it");
+        assert_eq!(case["result"]["imported"]["tags"].as_i64(), Some(3));
+        let messages: Vec<&str> = case["repoLogs"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|l| l["message"].as_str())
+            .collect();
+        assert_eq!(
+            messages,
+            [
+                "Data validation failed",
+                "Error creating entity",
+                "Error creating tag",
+                "Data validation failed",
+                "Error creating entity",
+                "Error creating tag",
+                "Error creating tag",
+                "Error creating tag",
+                "Error creating tag",
+            ],
+            "v4's tag refusal lines"
+        );
+    }
     // [P4.161 Tier 2] Non-vacuity: v4 refused the two bad folders (three
     // repository ERRORs each) and landed the sound one.
     {
@@ -2139,7 +2179,7 @@ fn system_import_execute_state_equivalence() {
     // [P4.161 Tier 2] …+ the prompt-template arm (40), four more lines (22).
     assert_eq!(
         IMPORT_WARN_CASES.load(Ordering::SeqCst),
-        41,
+        42,
         "cases comparing the import WARNs"
     );
     assert_eq!(
@@ -2152,13 +2192,14 @@ fn system_import_execute_state_equivalence() {
     // prompt-template arm (8).
     assert_eq!(
         REPO_LOG_CASES.load(Ordering::SeqCst),
-        9,
+        10,
         "cases that compared a refused create's repository lines"
     );
     assert_eq!(
         SERDE_ARM_DIVERGENCES.len(),
-        9,
-        "the chat row + the six create rows + P4.143 Tier 2's two duplicate-arm rows"
+        8,
+        "the chat row + the five remaining create rows (P4.161 retired the tag row) + \
+         P4.143 Tier 2's two duplicate-arm rows"
     );
 }
 
@@ -2619,6 +2660,7 @@ fn run_execute_case(
                 "Error creating memory",
                 "Error creating prompt template",
                 "Error creating folder",
+                "Error creating tag",
             ],
             failures,
         );

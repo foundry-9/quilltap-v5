@@ -56,6 +56,7 @@ import { MemorySchema } from '@/lib/schemas/memory.types';
 import { ChatInformSchema } from '@/lib/schemas/chat-inform.types';
 import { PromptTemplateSchema } from '@/lib/schemas/template.types';
 import { FolderSchema } from '@/lib/schemas/folder.types';
+import { TagSchema } from '@/lib/schemas/tag.types';
 import { logger } from '@/lib/logger';
 import { ChatSettingsRepository } from '@/lib/database/repositories/chat-settings.repository';
 
@@ -137,6 +138,18 @@ const FOLDER: Row = {
   updatedAt: TS,
 };
 
+// P4.161 Tier 2: a minimal valid `TagSchema` row (`nameLower` / `quickHide`
+// as `tags.create` derives them before `_create`).
+const TAG: Row = {
+  id: 'f1610000-0000-4000-8000-0000000007a1',
+  userId: 'a1000000-0000-4000-8000-000000000001',
+  name: 'Mystery',
+  nameLower: 'mystery',
+  quickHide: false,
+  createdAt: TS,
+  updatedAt: TS,
+};
+
 const ABSENT = '<absent>';
 const patch = (base: Row, p: Row): Row => {
   const r: Row = { ...base };
@@ -156,7 +169,8 @@ type SchemaName =
   | 'memory'
   | 'chatInform'
   | 'promptTemplate'
-  | 'folder';
+  | 'folder'
+  | 'tag';
 const rows: Array<[string, SchemaName, Row]> = [];
 const group = (id: string, p: Row) => rows.push([id, 'group', patch(GROUP, p)]);
 const link = (id: string, p: Row) => rows.push([id, 'groupDocMountLink', patch(LINK, p)]);
@@ -165,6 +179,7 @@ const settings = (id: string, p: Row) => rows.push([id, 'chatSettings', patch(SE
 const memory = (id: string, p: Row) => rows.push([id, 'memory', patch(MEMORY, p)]);
 const inform = (id: string, p: Row) => rows.push([id, 'chatInform', patch(INFORM, p)]);
 const folder = (id: string, p: Row) => rows.push([id, 'folder', patch(FOLDER, p)]);
+const tag = (id: string, p: Row) => rows.push([id, 'tag', patch(TAG, p)]);
 const promptTemplate = (id: string, p: Row) =>
   rows.push([id, 'promptTemplate', patch(PROMPT_TEMPLATE, p)]);
 
@@ -434,6 +449,35 @@ folder('folder-name-null', { name: null });
 folder('folder-user-bad', { userId: 'u' });
 folder('folder-multi', { path: 5, name: null, projectId: 'nope' });
 
+// --- TagSchema (P4.161 Tier 2) ---------------------------------------------
+tag('tag-valid', {});
+tag('tag-style-null', { visualStyle: null });
+tag('tag-style-empty', { visualStyle: {} });
+tag('tag-style-full', {
+  visualStyle: {
+    emoji: '\u{1F600}'.repeat(8),
+    foregroundColor: '#abc',
+    backgroundColor: '#AABBCC',
+    emojiOnly: true,
+    bold: true,
+    italic: false,
+    strikethrough: true,
+  },
+});
+tag('tag-style-emoji-null', { visualStyle: { emoji: null } });
+tag('tag-style-string', { visualStyle: 'not-an-object' });
+tag('tag-style-array', { visualStyle: [] });
+tag('tag-style-emoji-9', { visualStyle: { emoji: '123456789' } });
+tag('tag-style-emoji-number', { visualStyle: { emoji: 5 } });
+tag('tag-style-fg-red', { visualStyle: { foregroundColor: 'red' } });
+tag('tag-style-bg-null', { visualStyle: { backgroundColor: null } });
+tag('tag-style-bold-yes', { visualStyle: { bold: 'yes' } });
+tag('tag-style-multi', { visualStyle: { emoji: '123456789', foregroundColor: 5, italic: 1 } });
+tag('tag-name-number', { name: 5 });
+tag('tag-name-lower-null', { nameLower: null });
+tag('tag-quick-hide-yes', { quickHide: 'yes' });
+tag('tag-user-bad', { userId: 'u' });
+
 const SCHEMAS = {
   group: GroupSchema,
   groupDocMountLink: GroupDocMountLinkSchema,
@@ -443,6 +487,7 @@ const SCHEMAS = {
   chatInform: ChatInformSchema,
   promptTemplate: PromptTemplateSchema,
   folder: FolderSchema,
+  tag: TagSchema,
 } as const;
 
 // An accepted row's parsed output as JSON — a `Float32Array` embedding as the

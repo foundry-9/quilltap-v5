@@ -1166,6 +1166,72 @@ pub fn zod_folder_issues(row: &serde_json::Map<String, Value>) -> Vec<ZodIssue> 
     issues
 }
 
+/// v4 `TagVisualStyleSchema` (`lib/schemas/common.types.ts:80-88`) at
+/// `[visualStyle, …]`: `emoji` `.max(8).optional().nullable()` (CODE
+/// POINTS); `foregroundColor` / `backgroundColor` `HexColorSchema.default(…)`
+/// (absent defaults; `null` / a non-string is `invalid_type`, a string the
+/// regex); four booleans `.default(false)`.
+fn tag_visual_style_issues(style: &serde_json::Map<String, Value>, issues: &mut Vec<ZodIssue>) {
+    let at = |k: &str| vec![key("visualStyle"), key(k)];
+    match style.get("emoji") {
+        None | Some(Value::Null) => {}
+        Some(Value::String(e)) if crate::jsstr::zod_len_max_ok(e, 8) => {}
+        Some(Value::String(_)) => issues.push(ZodIssue::too_big_string(json!(8), at("emoji"))),
+        got => issues.push(ZodIssue::invalid_type("string", at("emoji"), got)),
+    }
+    for k in ["foregroundColor", "backgroundColor"] {
+        match style.get(k) {
+            None => {}
+            Some(Value::String(c)) if zod_hex_color_ok(c) => {}
+            Some(Value::String(_)) => {
+                issues.push(ZodIssue::invalid_regex(ZOD_HEX_COLOR_PATTERN, at(k)))
+            }
+            got => issues.push(ZodIssue::invalid_type("string", at(k), got)),
+        }
+    }
+    for k in ["emojiOnly", "bold", "italic", "strikethrough"] {
+        match style.get(k) {
+            None | Some(Value::Bool(_)) => {}
+            got => issues.push(ZodIssue::invalid_type("boolean", at(k), got)),
+        }
+    }
+}
+
+/// v4 `TagSchema` (`lib/schemas/tag.types.ts:21-30`) over the WHOLE entity
+/// `tags.create` hands `_create` (after it derives `nameLower` / `quickHide`),
+/// in schema key order: `id` / `userId` uuid; `name` / `nameLower` string;
+/// `quickHide` boolean `.default(false)`; `visualStyle`
+/// `TagVisualStyleSchema.nullable().optional()` (a non-object is ONE
+/// `invalid_type` `object`); the two stamps. Recorded through v4's REAL
+/// schema (P4.161 Tier 2 — retires the `Broken Tag` serde-arm row).
+pub fn zod_tag_issues(row: &serde_json::Map<String, Value>) -> Vec<ZodIssue> {
+    let mut issues = Vec::new();
+    zod_uuid_issues(row, "id", false, &mut issues);
+    zod_uuid_issues(row, "userId", false, &mut issues);
+    required_string_issues(row, "name", &mut issues);
+    required_string_issues(row, "nameLower", &mut issues);
+    match row.get("quickHide") {
+        None | Some(Value::Bool(_)) => {}
+        got => issues.push(ZodIssue::invalid_type(
+            "boolean",
+            vec![key("quickHide")],
+            got,
+        )),
+    }
+    match row.get("visualStyle") {
+        None | Some(Value::Null) => {}
+        Some(Value::Object(style)) => tag_visual_style_issues(style, &mut issues),
+        got => issues.push(ZodIssue::invalid_type(
+            "object",
+            vec![key("visualStyle")],
+            got,
+        )),
+    }
+    zod_timestamp_issues(row, "createdAt", &mut issues);
+    zod_timestamp_issues(row, "updatedAt", &mut issues);
+    issues
+}
+
 /// v4 `GroupDocMountLinkSchema` (`lib/schemas/mount-index.types.ts`) — three
 /// required uuids and two timestamps — over a raw `group_doc_mount_links` row
 /// (the shape `findByFilter` `validateSafe()`s row by row). Zod's issue list;

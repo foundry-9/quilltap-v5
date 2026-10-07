@@ -5033,6 +5033,7 @@ const REPO_LEVEL_MESSAGES: &[&str] = &[
     // [P4.161 Tier 2] the per-kind repository wraps.
     "Error creating prompt template",
     "Error creating folder",
+    "Error creating tag",
 ];
 const REPO_LEVEL_CASES: &[&str] = &[
     "restore_informs_replace",
@@ -5551,6 +5552,16 @@ fn assert_refusals_restored(
                     "a9000000-0000-4000-8000-000000000001".to_string(),
                     "a9000000-0000-4000-8000-0000000000e4".to_string(),
                 ];
+                let tags = ids_of(dump, "tags");
+                let want_tags: Vec<String> = ["01", "02", "e4", "e5"]
+                    .iter()
+                    .map(|n| format!("a5000000-0000-4000-8000-0000000000{n}"))
+                    .collect();
+                if tags != want_tags {
+                    failures.push(format!(
+                        "[{name}] TAGS ({side}): restored {tags:?}, expected {want_tags:?}"
+                    ));
+                }
                 if folders != want_folders {
                     failures.push(format!(
                         "[{name}] FOLDERS ({side}): restored {folders:?}, expected {want_folders:?}"

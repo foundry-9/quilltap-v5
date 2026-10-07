@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — fix(import,restore): validate tags whole-row before the write, with v4's create-time TypeErrors (P4.161 Tier 2)
+
+_Versions: core 0.0.1249._
+
+The `.qtap` import and the backup restore now run v4's `tags.create` up to its insert (`quilltap_import::entities::parse_create_tag`): `nameLower = (nameLower || name).toLowerCase()` — a non-string name throws v4's TypeError (`(data.nameLower || data.name).toLowerCase is not a function`, or `Cannot read properties of undefined/null (reading 'toLowerCase')`), which logs only the wrap `Error creating tag {userId, name}`; `quickHide` a boolean or `false`; then `TagSchema` over the whole entity (`zod_tag_issues`, the nested `visualStyle` included), whose refusal logs `Data validation failed`, `Error creating entity` and the wrap. The importer's duplicate arm and the restorer evaluate their own `name.toLowerCase()` first (a TypeError there logs nothing). v5 used to decode the bag with serde, so the `Broken Tag` row of `SERDE_ARM_DIVERGENCES` is RETIRED (9 → 8 rows): its tail is now v4's ZodError bytes.
+
+17 recorded `tag` rows; `execute_tag_refusals` (`duplicate` strategy, both arms); five tag rows in `restore-archive-kind-refusals.zip`; the import repo-line compare renders a non-string context value as the capture does. Red-first: 4 import and 4 restore differences. The tag pin in `rendered_markdown_strip_tests` moved to the ZodError tail and a uuid user.
+
 #### 2026-10-07 — refactor(import): keep `import_folders` within the bug-114 chokepoint guard's window (P4.161 Tier 2)
 
 _Versions: core 0.0.1248._
