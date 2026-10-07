@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — docs(porting): P4.164 lane record — harness / test-craft smalls round 3, LANE COMPLETE
+
+_Docs-only change._
+
+Appended the lane record to `status-log.md` (red-first measurements, the `ALLOWED` re-measurement, the `normalize_v4_sqlite` handoff, the gate) and marked the work order LANE COMPLETE.
+
 #### 2026-10-07 — test(harness): the in-force census follows argument-taking adapters and keys its allow-list by function (P4.164 item 4)
 
 _No crate versions bumped._

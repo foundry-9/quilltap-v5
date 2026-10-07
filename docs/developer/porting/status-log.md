@@ -171558,3 +171558,201 @@ place, and the source-scanning guards saw later units' working tree
 (`folders_chokepoint_wiring_guard` red there — fixed by `d95d53bce`).
 **Versions at close:** core 0.0.1251 (from 0.0.1242); harness frozen;
 nothing else moved.
+
+## P4.164 — harness / test-craft smalls, round 3 (lane `claude/p4-164-harness-test-craft-683448`, 2026-10-07)
+
+ZERO `crates/*/src/**` hunks; NO crate version moved (harness frozen at
+`0.0.1110`; no core / host / web / SPA bump). Pin
+`/tmp/qt-v4-pin-p4164-94fbb1ae3` (`git rev-parse` = `94fbb1ae3`,
+`package.json` `4.10.0-dev.112`, the three symlink classes). **§2 probe at
+lane start: FAILED on one point** — v4 HEAD at `94fbb1ae3`, both logs empty,
+branch `main`, but the checkout carried a STAGED `docs/releases/4.10.0.md`
+(docs only; nothing under `lib/` / `app/` / `packages/` / `plugins/`). The
+lane STOPPED and asked; **the human waived it** ("docs-only release notes")
+— the waiver is for the unifier to record in the ledger's §1 (a lane never
+writes the ledger). Every regen ran from the pin, never the checkout.
+
+### Unit 1 — the plan arms over the PRODUCTION statements (Tier 1 item 1, R-A)
+
+`host_boot_fresh_indexes.rs`'s plan arm planned three HAND-COPIED SQL
+strings. It now drives `chats_messages_read::get_messages`,
+`get_last_played_message_at` (the restore's per-chat read,
+`orchestrator.rs:783`) and `ChatInformsRepository::
+find_pending_for_participant` on the booted instance, captures every
+statement each ran with SQLite's own `sqlite3_trace_v2` (`SQLITE_TRACE_STMT`
+→ `sqlite3_sql`, the `?N` text) through `rusqlite::ffi` — R-A's capture route;
+the workspace's rusqlite has no `trace` feature and a `pub const` would be a
+production hunk, so NO HANDOFF was needed — and plans THOSE texts
+(`EXPLAIN QUERY PLAN`, binding only the statement's own parameter count).
+Every captured SELECT over the table must use the index; a capture that saw
+no SELECT panics. A new mutation twin `the_plan_arm_reddens_without_its_
+index` drops `idx_chat_messages_chatId` + `idx_chat_informs_pending` and pins
+that every captured plan leaves them. Measured plans without the indexes:
+`get_messages` → `SCAN chat_messages USING INDEX idx_chat_messages_createdAt`;
+`get_last_played_message_at` → `SCAN chat_messages | USE TEMP B-TREE FOR
+ORDER BY`; `find_pending_for_participant` → `SCAN chat_informs`.
+**Red-first:** the real arm with the `DROP INDEX` planted in-line (a
+temporary edit, reverted) → FAILED (`get_messages: the production statement
+does not use idx_chat_messages_chatId`, the captured `SELECT id, type, role,
+… FROM chat_messages WHERE chatId = ?1 ORDER BY createdAt ASC`). The header's
+stale "seven arms" corrected — P4.153's record said seven where its commit
+landed eight (the mp_path arm); the file now has NINE (+ the mutation twin).
+Before / after: 8 / 8 green → 9 / 9 green.
+
+### Unit 2 — ONE `common::normalize_v4_sqlite` (Tier 1 item 2, R-B)
+
+The two copies (`fold_episode_tier3_equivalence.rs:309-318`,
+`chat_informs_tier2_equivalence.rs:164-176`) differ in shape (strip-suffix-
+then-prefix vs both-strips-then-`replacen`) but are **measured identical** —
+neither stricter: both require the quoted prefix AND the hint; the prefix
+(ends `"`) and the hint (starts ` -`) cannot overlap, so the `replacen` always
+hits the stripped head's start. The `common` home is `fold_episode`'s form;
+the chat-informs copy is kept verbatim inside `common_helpers_selftest`'s
+both-ways witness over eight shapes (incl. `""`, an escaped `""` name, the
+bare hint). NEW `common_helpers_selftest.rs` (one binary — a `#[cfg(test)]`
+inside `common` would re-run in every family that declares `mod common;`,
+29 of them) pins the four rules. `fold_episode_tier3` imports the home;
+its copy is gone.
+**HANDOFF (§R.10(h), §S.1):** `crates/quilltap-harness/tests/chat_informs_
+tier2_equivalence.rs:158-176` — delete the `normalize_v4_sqlite` fn (and its
+doc comment), add `mod common;` (if absent) and `use common::
+normalize_v4_sqlite;`; the call sites are unchanged. Re-run
+`chat_informs_tier2_equivalence` by name on the union (62 read ops, 12 final
+rows).
+
+### Unit 3 — `pdf_lines_from_capture` keeps a spaced value whole (Tier 1 item 3)
+
+`split_whitespace` + `split_once('=')` shredded `error=file is not a database`
+into five keys. NEW `common::capture_fields` splits a line's fields at a space
+followed by an identifier and `=` (the `find_field_boundary` idea from
+`system_restore_state.rs`, re-implemented independently — that file is
+P4.161's, and its `…Json` boundary is theirs), else the value runs to the end;
+`pdf_lines_from_capture` uses it (signature unchanged — the two users
+untouched). Recorded limit: a value that itself contains ` ident=` is
+indistinguishable from a next field (no PDF line can carry one). **Red-
+first:** `pdf_lines_parse_a_spaced_error_value` with the old split restored
+(temporary) → FAILED (`{"error":"file","is":"","not":"","a":"","database":
+""}`). No family row poses the catch line (v5's catch is unreachable,
+`file_content.rs:329-333`).
+
+### Unit 4 — the in-force census follows one-argument adapters (Tier 1 item 4, R-C)
+
+The chain walk now skips any `.method(…)` call to its matching `)` (was:
+zero-argument only), and `map_or` / `map_or_else` / `xor` join the presence
+methods (their answer branches on presence). Three committed evasion
+fixtures: `map_then_is_none.rs.txt` (`.as_ref().map(|s| s.len()).is_none()`),
+`map_or.rs.txt` (`.as_deref().map_or(true, |_| false)`), `xor.rs.txt`
+(`.clone().xor(None::<String>).is_none()`). **Red-first:** HEAD's census
+(copied to a scratch binary, its fixture list widened, then deleted) →
+`the census misses: ["map_or.rs.txt", "map_then_is_none.rs.txt",
+"xor.rs.txt"]`. Matcher rows added for each form (+ a `filter`, a two-`map`
+chain, `map_or_else`, the path form `Option::map_or`) and two misses (an
+argument chain that ends in `is_empty`, a bare `.map(…)`).
+**`ALLOWED` re-measured:** after the widening the per-file counts were
+UNCHANGED — 2 / 1 / 1 (`db/chat_informs.rs` / `services/inform_block.rs` /
+`api/chat_informs.rs`); the new walk found NO new production site (no count
+grew — nothing for P4.163). **The per-file COUNT limit is RETIRED:** the
+allow-list is now keyed `(file, enclosing fn, count)` —
+`is_inform_in_force` 1, `row_to_json` 1, `assemble_inform_block` 1,
+`chat_inform_cancel` 1 (the innermost `fn` item; a closure counts toward its
+`fn`) — so a presence test moved between functions reddens
+(`a_moved_presence_test_no_longer_nets_zero`, which also shows the old
+per-file count netting). The narrower remaining limit (re-stated in the
+header): a second test added INSIDE an allowed function while one is removed
+from the same function nets zero. Before / after: 4 / 4 → 5 / 5.
+**For P4.163 (§R.10(e)):** a `db/chat_informs.rs` hunk that adds a presence
+test in a NEW fn now shows as a new `(file, fn)` row, not a count change —
+re-run `chat_informs_in_force_census` by name on the union.
+
+### Tier 2
+
+- **Item 5 (`recipe_sweep.py --self-test`):** UNCHANGED — at lane close no
+  sibling branch had committed a test file (`git diff --name-status
+  main...<branch> -- 'crates/*/tests/*.rs'` empty for P4.159 / P4.160 /
+  P4.161), so no new stage-marker shape could be read. `--self-test` exits 0
+  on this branch; the new `common_helpers_selftest` shows the census's shape
+  (empty regen, one `cargo test` run line). **Note for the unifier:** re-run
+  `--self-test` on the union and read the siblings' new headers then.
+- **Item 6:** `common/mod.rs`'s module doc now lists every shared helper by
+  group (the `llm_logs` partition, Pascal's stores, the v4 checkout, captured
+  log lines, SQLite error text) with the rule "search here before writing a
+  copy; self-test any parser in `common_helpers_selftest.rs`".
+
+### Tier 3 (recorded, never silent)
+
+- **Item 7 — P4.157's Tier 3 items 10–11:** as P4.157 recorded them; not
+  taken.
+- **Item 8 — the generator oracles' real-`pdf-parse` row:** stays
+  unrunnable (P4.157 R-A — no run under `--experimental-vm-modules`).
+
+### Neutral families (before → after, SAME rows)
+
+Before = the baseline sweep on unported `main` from the pin (2026-10-07);
+after = the lane's workspace gate (same oracle outputs, lane-private copies).
+
+| family | before | after |
+|---|---|---|
+| `host_boot_fresh_indexes` | 8 / 8 | 9 / 9 (+ the mutation twin) |
+| `fold_episode_tier3_equivalence` | 1 / 1 ok | 1 / 1 ok |
+| `chat_informs_tier2_equivalence` (P4.163's — re-run) | ok, 62 read ops / 12 final rows | 1 / 1 ok |
+| `chat_informs_in_force_census` | 4 / 4 | 5 / 5 |
+| `ai_import_tier3_equivalence` | ok, 42 cases (196 AI_IMPORT log calls) | 1 / 1 ok |
+| `character_wizard_tier3_equivalence` | ok, 41 cases / 4 PDF rows | 1 / 1 ok |
+| `common_helpers_selftest` (NEW) | — | 11 / 11 |
+| `recipe_sweep.py --self-test` | 0 failures | 0 failures |
+
+### Gate
+
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+-- -D warnings` clean AND with `--features quilltap-core/native-transport`
+clean (the first run reddened ONLY in `quilltap-tauri`'s
+`generate_context!` because the lane deleted the SPA `dist/` mid-run — an
+env artifact of this lane's own liveness build; re-run with `dist/`
+present: clean). `QT_V4_CHECKOUT=QT_V4_ROOT=/tmp/qt-v4-pin-p4164-94fbb1ae3
+CARGO_INCREMENTAL=0 cargo test --workspace --no-fail-fast` with the four
+families' env block: **674 binaries / 4,427 passed / 0 failed / 3 ignored**,
+exit 0 — the named families and `spelling_guard`, `fallback_home_guard`,
+`builtin_prompt_templates_guard`, `provider_sdk_version_guard`,
+`qtap_schema_embed_guard`, `public_schemas_vendor_guard`,
+`help_tree_equivalence` all ok by name. `npm run build` (apps/web,
+liveness, no SPA edit) ok. `git diff --stat main..HEAD`: ZERO
+`crates/*/src/**` paths.
+
+### HANDOFF
+
+- **§R.10(h) → the unifier (§S.1):** remove `normalize_v4_sqlite` from
+  `chat_informs_tier2_equivalence.rs:158-176` onto `common` (Unit 2).
+- **§R.10(e) ← P4.163:** the census is now keyed by `(file, fn)`; re-run it
+  by name on the union after P4.163's `db/chat_informs.rs` hunks.
+- **Tier 2 item 5:** re-run `recipe_sweep.py --self-test` on the union.
+- **Ledger §1:** the human's waiver of the staged `docs/releases/4.10.0.md`
+  (and the further docs-only v4 commits the human said they were landing
+  during this lane — "keep the baseline where it is") is the unifier's to
+  record; this lane never re-pinned.
+
+### Regen recipes
+
+No new oracle authored. The four oracle families ran through the sweep
+driver from the pin (`cd ~/source/quilltap-v5 && python3 harness/tools/
+recipe_sweep.py --run-all --families fold_episode_tier3_equivalence,
+chat_informs_tier2_equivalence,ai_import_tier3_equivalence,
+character_wizard_tier3_equivalence --v4 /tmp/qt-v4-pin-p4164-94fbb1ae3 --v5w
+~/source/quilltap-v5/.claude/worktrees/p4-164-harness-test-craft-683448
+--force`, Node 24.13.1 on `PATH`); the gate used lane-private copies of
+those outputs under `/tmp/p4164/`.
+
+### Fixtures
+
+Three NEW committed evasion fixtures under `crates/quilltap-harness/tests/
+fixtures/chat_informs_in_force_evasions/` (read only by the census). No
+`.db` pair, no NDJSON, no `migration_indexes.json` / `fresh_schema.json`
+byte moved; no other oracle invalidated.
+
+### 💸 for the dogfood pass
+
+None (test craft).
+
+### Versions at close
+
+No version moves: core 0.0.1242, host 0.0.187, web 0.0.222, SPA 0.5.811
+unchanged; harness frozen 0.0.1110.
