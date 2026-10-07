@@ -170045,6 +170045,183 @@ four planted proofs, dedup/summaries, the Brahma deep query, #101, the
 compression re-measure); #150's re-run of C3 once it lands; the restore
 census counted against a v4 log of the same restore.
 
+## P4.159 — the degraded sibling open, dogfood #150 (lane `claude/p4-159-sibling-boot-hardness-6cfcb7`, 2026-10-07)
+
+Pin `/tmp/qt-v4-pin-p4159-94fbb1ae3` (`94fbb1ae3`, `4.10.0-dev.112`). The §2
+probe at lane start found an UNTRACKED `docs/releases/4.10.0.md` in the v4
+checkout; by the first regen batch v4 `main` had COMMITTED it (`938144eb4`),
+and by the sweep batch also `7c78abd49` (wardrobe design specs + CHANGELOG +
+a `.claude/commands` doc). Both docs-only, both WAIVED by the human in-session
+("ignore the most recent v4 commit, it's docs-only release notes"; "keep the
+baseline where it is throughout this run"). Every regen ran from the pin,
+verified by `rev-parse` before each batch; the ledger is untouched.
+
+### Unit A — the per-sibling open, the integrity arm, the degraded state, the counted pass (Tier 1 items 1–8)
+- `db/runtime.rs`: `Db::open` keeps main's `?` and opens each sibling through
+  ONE `open_sibling` in v4's `connect()` order (LLM logs, then the mount
+  index): the mount index through v4's ladder (`[200, 600, 1500]` ms, a WARN
+  per failed attempt 1–3, the ERROR on the 4th — R-C, v4's constants, sleeps
+  on the opening thread), the LLM logs in ONE attempt (no ladder — v4's
+  asymmetry), then `PRAGMA quick_check` (first row, v4's `simple: true`) with
+  v4's three arms. A failure → `PartitionState::Degraded`, no writer, no read
+  pool (R-A). `Absent` stays distinct (R-B). `Db::partition_state(Partition)`.
+  v4's four INFO lines + the LLM-logs `SQLCipher key set` DEBUG ported (R-F);
+  `walMode=false` measured (v4's value with `SQLITE_WAL_MODE` unset; v5 has
+  no WAL). Target `quilltap::db`, v4's child-logger `module` FIRST (the
+  `files:llm-image-budget` precedent).
+- **R-D measured, probe SKIPPED:** SQLite3MC 2.3.5 answers `file is not a
+  database` at v4's probe AND at v5's `journal_mode` step (v4's own binding:
+  both `SQLITE_NOTADB`; the differential's garbage rows byte-equal).
+  `Writer::open_writable` (`db/mod.rs`, not this lane's) untouched.
+- **The integrity plant reaches the FAILED arm** (a page-3 overwrite —
+  SQLite3MC's page authentication fails the read and `quick_check` REPORTS
+  it); no plant reaches `threw` → unit-pinned over stubbed outcomes
+  (`the_integrity_verdict_has_v4s_three_arms`, both partitions). Result bytes
+  in the survey record.
+- `db/table_shape.rs`: `TableRead::PartitionDegraded` — COUNTED, v4's
+  `<label> database unavailable: <guard sentence>`, the per-problem ERROR +
+  summary, NO `Verified …` DEBUG. **R-E's question answered:** the eleven are
+  ONE LLM-logs repository (`llmLogs`), ONE main (`helpDocChunks`) and NINE
+  mount-index — no LLM-logs table lacks `verifyStructure`; v4 counts nine or
+  one, `checked=11` either way.
+- `host.rs` `verify_structural_tables_at_boot` maps `Degraded` →
+  `PartitionDegraded` (before any read); `env.rs` `mount_index_degraded`
+  reads the state (the probe-read kept for Absent). `health.rs` needed NO hunk
+  (measured — the existing `structure` service renders whatever is recorded);
+  web not bumped. `api/engine.rs` `open_ready` needed no hunk.
+- **HANDOFF(P4.163) — C1 item 2:** `log_partition_structural_unavailable` is
+  coded lane-locally in `db/table_shape.rs` with C1's exact signature;
+  P4.163 confirmed in-session its `d1e038fee` home renders the same bytes.
+  §S.1: delete the copy, `use crate::db::fallback::log_partition_structural_unavailable`,
+  re-run `table_shape_equivalence` + `degraded_sibling_open_equivalence`.
+  (Mine has `Partition::Main => unreachable!` — P4.163's arm wins.) C1 item
+  1's copy was NOT written: no lane caller needs it, and its message literal
+  would trip `fallback_home_guard`.
+- Red-first (unported source, the new tests written first):
+  `host_boot_hardness` 8 of the 8 new arms RED (5 "the boot FAILED … file is
+  not a database", 2 integrity plants booted SILENT, the silence leg missing
+  every INFO), the 26 existing GREEN; `health_structure` 2/2 new RED
+  (`unhealthy`, the boot died), 3 existing GREEN; with the new names stubbed
+  to today's behaviour (`partition_state` from `Option`, `PartitionDegraded`
+  read as absent): `degraded_sibling_open_equivalence` 2/2 RED (6/6 open rows:
+  2 `Db::open` errors, 4 silent; 3/3 pass rows ZERO problems),
+  `table_shape_equivalence`'s new `degraded` replay RED (zero problems), its
+  six existing tests NEUTRAL-green.
+- Green: core unit pins 14/14 (`db::runtime` + `db::table_shape`, incl. the
+  new `a_degraded_partition_is_counted_where_an_absent_one_is_skipped`);
+  `degraded_sibling_open_equivalence` 2/2 (every line, every key in order,
+  the `error` / `result` bytes, the state, R-A's no-pool + no-writer);
+  `table_shape_equivalence` 7/7; `host_boot_hardness` 34/34 (the nine new:
+  garbage mount index, garbage LLM logs, both, a reboot, the silence leg,
+  both integrity plants, the C3 chat move, `run_sql` over the degraded
+  partition); `health_structure` 5/5.
+- **The ladder's measured arm time:** `Db::open` over the garbage mount index
+  2.316 s; the whole host boot 3.17 s (the arm asserts ≥ 2.3 s).
+
+### Unit B — the `None`-arm census conversions (Tier 2 item 9)
+- The census (14 construction sites + `run_sql`) is the survey record's §5.
+  Converted where v4 FALLS BACK and the hunk is local:
+  `api/llm_logs.rs` GET + DELETE item routes → `find_by_id_or_none` (C1's
+  existing home: ERROR `Error finding entity by ID {collection: llm_logs, id,
+  error}` + 404, v4's `_findById` safeQuery fallback; was 500), and
+  `api/system.rs` the image-aesthetics CLEAR → v4's quiet `withRawDb` DEBUG
+  (`doc_mount_file_links`) + 200 (was 500; the WRITE arm stays 500, v4's
+  `ensureRawDb` throw). Red-first: 2/2 llm-log pins and the aesthetics pin
+  RED (500), green after.
+- **DEFERRED by name (multi-file refactors outside this order's files):** the
+  documents layer's `require_mount` (thread `Option<mount>`: v4's `general`
+  and `project` scopes keep working, `document_store` gets 404 / 500 / 400);
+  `.qtap` import over a degraded mount (v4 answers 200 `{success: false,
+  warnings: [… "Import failed: Mount index database is in degraded mode"]}`;
+  `services/quilltap_import/**` is P4.161's); the shared character-overlay
+  fix (a vaulted character → v4's 503 `Character vault unavailable`, an
+  unvaulted one reads — `enclave/announce.rs:300`, `chat_avatars.rs:177`, the
+  rebuild path, `character_archive/service.rs` ×4, all 500 in v5 today).
+- No site needed a `db_error_response` arm: every v4 guard-throw site the
+  census reached answers 500 too — **no HANDOFF(P4.162).**
+
+### HANDOFFs
+- **§S.1 (the C1 fold) flips two pinned strings:** `host_boot_hardness`'s
+  `C3_DEBUG_ERROR` and `api::system::tests::clearing_an_aesthetic_…`'s DEBUG
+  line both pin today's `partition not available: mountIndex`; once P4.163's
+  `log_mount_index_unavailable` wrapper lands they read `Mount index database
+  is in degraded mode` (v4's). Flip both — that flip IS item 6's red-first.
+- **HANDOFF(P4.163) on `error_text`:** a `PartitionUnavailable` rendered
+  through `error_text` (e.g. the llm-log fallback ERROR's `error`) still reads
+  `partition not available: llmLogs` where v4's is its guard sentence. The
+  llm-log pins match the line as a PREFIX for that reason. Whether
+  `error_text` learns the guard sentences is P4.163's / the unifier's call.
+- **HANDOFF(P4.161):** `services/backup/restore/orchestrator.rs:1110-1121` —
+  drop the `!data.llm_logs.is_empty()` guard so the `Skipping LLM logs
+  restore — logs database is in degraded mode` WARN + warning fire whenever
+  the logs partition is degraded (v4 `restore.ts:349-351`), and fix the
+  comment's `:326` cite.
+- **For the human:** v4's backup SUCCEEDS over a degraded mount index (the
+  mount-index tables answer empty); v5's fails whole. P4.142's STRICT ruling
+  covered a broken mount index — does it cover an unopenable one?
+
+### Ruled divergences
+- R-A both ways: v4 keeps the integrity-failed handle (its `run_sql` still
+  queries the file, a child job's apply still commits); v5 drops it (refuses).
+- The LLM-logs `SQLCipher key set` DEBUG is logged just ahead of the open (v4
+  logs it after the key pragma, before the failing `journal_mode`); differs
+  only if `Connection::open` itself fails on an existing path (v4's `new
+  Database` throwing — no DEBUG). Not reachable by any plant.
+- The ABSENT sibling (v4 creates the file) — recorded, not closed (Tier 3).
+
+### Tier 3 (recorded, never silent)
+- Item 14 main's `runIntegrityCheck` — not ported (non-blocking in v4).
+- Item 15 v4's absent-sibling CREATE — recorded in the survey §4.
+- Item 16 `write_apply`'s "not initialized" arm — unchanged.
+- Item 17 `backend.ts:588,613` — unreachable from any v5 state (survey §3).
+
+### Candidate v4 filing (§S.7)
+- v4's LLM-logs client has no cold-open retry ladder where its mount-index
+  twin does; the file sits in the same iCloud-synced directory. Nothing in
+  v4 marks the omission deliberate.
+
+### 💸 for the dogfood pass
+The order's rows stand: C3 on a clone (the boot continues; three WARNs + one
+ERROR in `combined.log`; `/health` 503 `degraded`, nine problems; the SPA
+opens; a chat move 503 with four DEBUGs); the same on the LLM-logs file (ONE
+ERROR, one problem, a Salon turn still running — its `llm_logs` write fails
+quietly as `Failed to log LLM call`); a Friday copy with both sound → the two
+`integrity check passed` INFOs (measure `quick_check`'s cost on the 1.28 GB
+mount index — v4 pays it too). Add: `GET /api/v1/llm-logs/<id>` over a
+degraded logs file → 404; clearing an image aesthetic over a degraded mount
+index → 200.
+
+### The gate
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets --
+  -D warnings` clean AND with `--features quilltap-core/native-transport`.
+- `cargo test --workspace --no-fail-fast` (`CARGO_INCREMENTAL=0`,
+  `QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin, `QT_ORACLE_DEGRADED_SIBLING_OPEN`
+  + `QT_ORACLE_TABLE_SHAPE`): **674 test binaries / 4,434 passed / 0 failed /
+  3 ignored, exit 0.** By name: `degraded_sibling_open_equivalence` 2,
+  `table_shape_equivalence` 7, `host_boot_hardness` 34, `health_structure` 5,
+  `fallback_home_guard` 2 (the lane-local C1 copy is NOT counted — it logs
+  nothing), `spelling_guard` 1, `builtin_prompt_templates_guard` 2,
+  `provider_sdk_version_guard` 3, `qtap_schema_embed_guard` 2,
+  `public_schemas_vendor_guard` 3.
+- Targeted sweep from the pin (announced; `--families`, one at a time):
+  **14/14 ok, zero SKIP** — the NEUTRAL set `salon_reads` 1,
+  `salon_mutations` 1, `system_backup` 1, `system_restore_state` 3,
+  `restore_vintage_state` 6, `system_import_state` 1, `self_inventory` 1,
+  `llm_logs_routes` 1, `llm_logs_tier2` 1, `brahma_console_routes` 1,
+  `brahma_console_tier3` 1, `help_tree_equivalence` 1, and the two touched
+  families through their committed recipes (`table_shape` 7,
+  `degraded_sibling_open` 2). Every sound-file `Db::open` now logs v4's INFO
+  pair + `integrity check passed`; no family that reopens a database moved.
+- `recipe_sweep.py --self-test`: 0 failures. SPA `npm run build`: clean (no
+  SPA edit).
+- Regen recipes: `degraded_sibling_open_equivalence` — the test header's
+  (jest, STAGE outside `.claude/`, from the pin, Node 24);
+  `table_shape_equivalence` — its header's (`node --import tsx`), the spec
+  grows `degradedTargets`. No committed fixture changed; no other oracle is
+  invalidated (the table-shape oracle gains three `degraded` rows only).
+- **Versions at close: core 0.0.1244, host 0.0.188** (web 0.0.222 unchanged —
+  test-only; harness frozen 0.0.1110).
+
 ## P4.163 — the repository-fallback class, round 5 (lane `claude/repository-fallbacks-round5-e9307c`, pin `94fbb1ae3`, 2026-10-07)
 
 - **§R.2 probe at lane start:** branch `main`, HEAD `94fbb1ae3`, both logs

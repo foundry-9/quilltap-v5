@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — docs(porting): P4.159 lane record + survey — the degraded sibling open (dogfood #150)
+
+_Docs-only change._
+
+The lane record in `status-log.md` (red-first counts, the ladder's measured 2.3 s, the integrity-plant measurements, the gate) and the survey record `work-orders/surveys/2026-10-07-p4.159-degraded-sibling-open.md`: v4's lines measured through its real clients, the integrity plant reaching the FAILED arm, the backend catch lines unreachable from v5, the absent-sibling divergence, the `None`-arm census table with its deferrals, and the restore/backup handoffs. The order's status moves to LANE COMPLETE.
+
 #### 2026-10-07 — fix(api): the LLM-log item routes and the image-aesthetics clear answer v4's fallbacks over an unavailable sibling (P4.159 census)
 
 _Versions: core 0.0.1244._
