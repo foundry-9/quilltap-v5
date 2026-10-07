@@ -171355,3 +171355,10 @@ unifier should record the waiver in the ledger's §1.
   `import_files` calls used user id `"u1"`; a uuid now.
 - v4 landed `7c78abd49` (docs only — three wardrobe design specs) during
   this unit; the human ruled docs-only commits ignorable for this run.
+- **Follow-up (core 0.0.1248):** `folders_chokepoint_wiring_guard` reddened
+  in the lane's first workspace gate — it scans source at RUNTIME and saw the
+  unit-6 working tree mid-gate: `ensure_by_path(` sat 3428 bytes past `fn
+  import_folders` (the guard's window is 3000). The payload moved into
+  `folder_create_payload`; 2743 bytes now; the guard green. (Lesson: never
+  edit source while a gate's binaries run — a source-scanning guard reads
+  the tree at run time.)

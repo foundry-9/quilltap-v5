@@ -118,6 +118,29 @@ pub(crate) fn log_refused_folder(user_id: &str, path: Option<&Value>, zod: &str)
     );
 }
 
+/// v4's `ensureByPath` payload (`import-files.ts:77-83`): `{userId, path,
+/// name, parentFolderId, projectId}` with the bundle's `path` / `name` RAW.
+fn folder_create_payload(
+    folder: &Value,
+    user_id: &str,
+    parent_folder_id: Option<String>,
+    project_id: Value,
+) -> Value {
+    let mut item = serde_json::Map::new();
+    item.insert("userId".into(), Value::String(user_id.to_string()));
+    for k in ["path", "name"] {
+        if let Some(v) = folder.get(k) {
+            item.insert(k.into(), v.clone());
+        }
+    }
+    item.insert(
+        "parentFolderId".into(),
+        parent_folder_id.map_or(Value::Null, Value::String),
+    );
+    item.insert("projectId".into(), project_id);
+    Value::Object(item)
+}
+
 /// Recreate the folder tree (v4 `importFolders`). Parents come first (the
 /// writer sorts by path length), so a child's `parentFolderId` always resolves
 /// against a folder we have already created — or against one that already
@@ -141,10 +164,8 @@ fn import_folders(
         let path = s(folder, "path");
         let out = (|| -> Result<(), String> {
             // `folder.projectId ? idMaps.projects.get(...) ?? folder.projectId
-            // : null` — an unmapped project id is KEPT (a same-instance
-            // re-import), unlike the null-on-miss FK remaps elsewhere. The
-            // value is kept RAW (P4.161): a non-uuid / non-string id reaches
-            // the schema, which refuses it.
+            // : null` — an unmapped id is KEPT, RAW (P4.161: the schema
+            // refuses a non-uuid one), unlike the null-on-miss FK remaps.
             let project_id: Value = match folder.get("projectId") {
                 Some(raw) if crate::api::system_qtap::js_truthy(Some(raw)) => raw
                     .as_str()
@@ -153,8 +174,7 @@ fn import_folders(
                 _ => Value::Null,
             };
 
-            // A non-string path or project id finds nothing (v4's lookup
-            // binds it as-is; SQLite's TEXT column never equals it).
+            // A non-string path / project id finds nothing (v4 binds it as-is).
             let existing = match (folder.get("path").and_then(Value::as_str), &project_id) {
                 (Some(p), Value::String(pid)) => repo.find_by_path(user_id, p, Some(pid)),
                 (Some(p), Value::Null) => repo.find_by_path(user_id, p, None),
@@ -173,23 +193,11 @@ fn import_folders(
                     .map(|(_, v)| v.clone())
             });
 
-            // v4 `ensureByPath({userId, path, name, parentFolderId,
-            // projectId})` → `create` → `_create` validates the WHOLE entity
-            // (P4.161 Tier 2 — v5 used to write `""` for a non-string path or
-            // name and any project id as it came).
-            let mut item = serde_json::Map::new();
-            item.insert("userId".into(), Value::String(user_id.to_string()));
-            for k in ["path", "name"] {
-                if let Some(v) = folder.get(k) {
-                    item.insert(k.into(), v.clone());
-                }
-            }
-            item.insert(
-                "parentFolderId".into(),
-                parent_folder_id.map_or(Value::Null, Value::String),
-            );
-            item.insert("projectId".into(), project_id);
-            let create = parse_create_folder(&Value::Object(item.clone()), None)
+            // v4 `ensureByPath({...})` → `create` → `_create` validates the
+            // WHOLE entity (P4.161 Tier 2 — v5 used to write `""` for a
+            // non-string path or name and any project id as it came).
+            let item = folder_create_payload(folder, user_id, parent_folder_id, project_id);
+            let create = parse_create_folder(&item, None)
                 .inspect_err(|zod| log_refused_folder(user_id, folder.get("path"), zod))?;
 
             // Find-or-create at the chokepoint (v4 `a5df98b3f`, bug 114). The

@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — refactor(import): keep `import_folders` within the bug-114 chokepoint guard's window (P4.161 Tier 2)
+
+_Versions: core 0.0.1248._
+
+The folder validation pushed `import_folders`' `ensure_by_path(` call past the 3000-byte window `folders_chokepoint_wiring_guard` checks from the function's head. The create payload moves into a `folder_create_payload` helper and two comments are tightened; behaviour unchanged (the import and restore families re-run green).
+
 #### 2026-10-07 — fix(import,restore): validate library folders whole-row before the write (P4.161 Tier 2)
 
 _Versions: core 0.0.1247._
