@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — test(harness): the createExpectError twin — v4's real create refusals for memories, projects and groups (P4.161 Tier 1 item 7)
+
+_No crate versions bumped._
+
+P4.155's R-E differential twin. `memories-tier2.ts` runs five creates v4's `MemorySchema` refuses (the C6 walk shape, an absent `content`, `reinforcementCount: 0`, a non-uuid tag, a non-uuid claimed id) through v4's REAL `MemoriesRepository.create` after its op sequence and records `{label, data, id, message}`; `memories_tier2_equivalence` replays each through `parse_create_memory` and compares the message bytes (the table dump is the "wrote nothing" proof). `projects-tier2.ts` / `groups-tier2.ts` gain a `createExpectError` op (a 101-character name, a 2001-character description, an empty name + array state + numeric colour) driving v4's REAL store-backed `create`; the Rust sides compare against `parse_create_entity`. The memories ops live in the case file because `memories-tier2.json` is not this lane's.
+
 #### 2026-10-07 — fix(import,restore): validate memories, informs and the restore's projects/groups whole-row before the write (P4.161 Tier 1, dogfood #152)
 
 _Versions: core 0.0.1243._

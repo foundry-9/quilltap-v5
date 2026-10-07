@@ -7,7 +7,9 @@
 //! minimal, embedding BLOB + null), `update`, `updateForCharacter` (owned +
 //! not-owned no-op), `updateAccessTime{,Bulk}`, `replaceInMemories`,
 //! `deleteForCharacter` (not-owned no-op), `bulkDelete`, `delete`,
-//! `deleteByChatId`, `deleteBySourceMessageId{,s}`.
+//! `deleteByChatId`, `deleteBySourceMessageId{,s}`. Since P4.161 the oracle
+//! also records five `createExpectError` rows (v4's REAL `create` over rows
+//! `MemorySchema` refuses) compared against `parse_create_memory`.
 //!
 //! NORMALIZATION: minted-timestamp placeholder. ids + createdAt + every payload
 //! column are pinned; only `updatedAt` (bumped by every mutator) and
@@ -372,5 +374,35 @@ fn memories_tier2_matches_oracle() {
 
     let n = got["rows"].as_array().map(|a| a.len()).unwrap_or(0);
     assert!(n > 0, "dump looks empty");
-    eprintln!("OK: memories tier-2 matched oracle ({n} rows).");
+
+    // [P4.161 — P4.155's R-E twin] v4's REAL `memories.create` over five
+    // rows `MemorySchema` refuses (run oracle-side AFTER the op sequence; the
+    // dump above is the "wrote nothing" proof): each message must be exactly
+    // `parse_create_memory`'s over the same data and claimed id.
+    let errors = oracle["errors"]
+        .as_array()
+        .expect("the oracle carries no `errors` — regenerate it (P4.161)");
+    assert_eq!(errors.len(), 5, "the five createExpectError rows");
+    for e in errors {
+        let label = e["label"].as_str().unwrap_or("?");
+        let want = e["message"].as_str();
+        assert!(
+            want.is_some(),
+            "[{label}] v4 ACCEPTED a row it should refuse"
+        );
+        let got = quilltap_core::db::memories::parse_create_memory(
+            &e["data"],
+            e.get("id").and_then(Value::as_str),
+        )
+        .err();
+        assert_eq!(
+            got.as_deref(),
+            want,
+            "[{label}] the refusal's ZodError message"
+        );
+    }
+    eprintln!(
+        "OK: memories tier-2 matched oracle ({n} rows, {} refusals).",
+        errors.len()
+    );
 }

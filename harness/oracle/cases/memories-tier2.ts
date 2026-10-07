@@ -132,6 +132,32 @@ async function main(): Promise<void> {
     }
   }
 
+  // P4.161 (P4.155's R-E twin): creates v4's `MemorySchema` refuses at
+  // `_create`'s `validate` — run AFTER the op sequence (a refused create writes
+  // nothing, so the dump below is unchanged by them) and recorded as `{label,
+  // data, id, message}`; the Rust side replays each through
+  // `parse_create_memory` and compares the message bytes. Kept here, not in
+  // `memories-tier2.json` (that fixture is not P4.161's file).
+  const CHAR = 'c1610000-0000-4000-8000-0000000000b1';
+  const base = { characterId: CHAR, content: 'Refused.', summary: 'refused' };
+  const createExpectErrors: Array<{ label: string; data: Record<string, unknown>; id?: string }> = [
+    { label: 'c6-walk', data: { ...base, importance: 5, kind: 'bogus-kind' } },
+    { label: 'content-absent', data: { characterId: CHAR, summary: 'refused' } },
+    { label: 'reinforcement-zero', data: { ...base, reinforcementCount: 0 } },
+    { label: 'tags-not-uuid', data: { ...base, tags: ['nope'] } },
+    { label: 'claimed-id-not-uuid', data: base, id: 'not-a-uuid' },
+  ];
+  const errors: Array<Record<string, unknown>> = [];
+  for (const c of createExpectErrors) {
+    let message: string | null = null;
+    try {
+      await repo.create(c.data as never, c.id ? ({ id: c.id } as never) : undefined);
+    } catch (err) {
+      message = err instanceof Error ? err.message : String(err);
+    }
+    errors.push({ label: c.label, data: c.data, ...(c.id ? { id: c.id } : {}), message });
+  }
+
   const columns = (
     (await rawQuery('PRAGMA table_info(memories)')) as Array<{ name: string }>
   ).map((c) => c.name);
@@ -140,7 +166,7 @@ async function main(): Promise<void> {
   await closeDatabase();
 
   const dump = canonicalizeRows({ table: 'memories', columns, rawRows, orderBy: 'id' });
-  process.stdout.write(JSON.stringify({ case: 'memories-tier2', ...dump }) + '\n');
+  process.stdout.write(JSON.stringify({ case: 'memories-tier2', ...dump, errors }) + '\n');
   process.exit(0);
 }
 

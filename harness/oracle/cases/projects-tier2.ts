@@ -49,6 +49,8 @@ interface Op {
     | 'plantProperties'
     | 'deleteProperties'
     | 'updateExpectError'
+    // P4.161 (P4.155's R-E): create expecting `_create`'s WHOLE-entity refusal.
+    | 'createExpectError'
     // P4.146 (dogfood #136): record the hydrated entity.
     | 'read'
     // P4.148: read expecting the overlay's refusal (a bag v4's rules reject).
@@ -160,6 +162,19 @@ async function main(): Promise<void> {
         let message: string | null = null;
         try {
           await repos.projects.findById(id());
+        } catch (err) {
+          message = err instanceof Error ? err.message : String(err);
+        }
+        errors.push({ label: op.label, message });
+        break;
+      }
+      case 'createExpectError': {
+        // P4.161 (P4.155's R-E): v4's store-backed `create` → `_create`
+        // validates the WHOLE entity first, so a refused create writes
+        // nothing (the dumps are the proof); the ZodError message is recorded.
+        let message: string | null = null;
+        try {
+          await repos.projects.create(op.input as never);
         } catch (err) {
           message = err instanceof Error ? err.message : String(err);
         }

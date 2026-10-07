@@ -204,6 +204,19 @@ async function main(): Promise<void> {
         errors.push({ label: op.label, message });
         break;
       }
+      case 'createExpectError': {
+        // P4.161 (P4.155's R-E): v4's store-backed `create` → `_create`
+        // validates the WHOLE entity first, so a refused create writes
+        // nothing (the dumps are the proof); the ZodError message is recorded.
+        let message: string | null = null;
+        try {
+          await repos.groups.create(op.input as never);
+        } catch (err) {
+          message = err instanceof Error ? err.message : String(err);
+        }
+        errors.push({ label: op.label, message });
+        break;
+      }
       case 'updateExpectError': {
         let message: string | null = null;
         try {

@@ -171219,3 +171219,27 @@ unifier should record the waiver in the ledger's §1.
 - **Neutral:** `import_warning_text_guard`, `zod_issues_home_guard` (the home
   6 → 7 constructors, `invalid_instance` a needle), `fallback_home_guard`,
   `spelling_guard` green.
+
+### Unit 2 — Tier 1 item 7: the `createExpectError` twin (harness only, no bump)
+
+- `memories-tier2.ts`: five refusing creates run AFTER the op sequence
+  through v4's REAL `MemoriesRepository.create` (fixed in the case file —
+  `memories-tier2.json` is not P4.161's), emitted as `errors: [{label, data,
+  id?, message}]`; `memories_tier2_equivalence` replays each through
+  `parse_create_memory` (5/5 byte-equal). `projects-tier2.json` /
+  `groups-tier2.json` + their cases gain three `createExpectError` ops each
+  (101-character name; 2001-character description; empty name + array
+  `state` + numeric `color` — the row-then-bag issue order) through v4's REAL
+  store-backed `create`; the Rust Op enum compares against
+  `parse_create_entity(input, None)` (projects 13 → 16 refusal arms, groups 9
+  → 12). The fixtures' JSON round-trips byte-identically through
+  `json.dumps(indent=2)`, so the append moved no other byte.
+- **Red on unported main by construction only** (the op kind is unknown to
+  main's harness, and `parse_create_memory` does not exist there): the
+  projects/groups arm verifies P4.155's EXISTING `parse_create_entity`
+  bytes against v4's real create — a test of that function, not of this
+  lane's fix (the restore's whole-entity red-first is unit 1's
+  `restore_entity_refusals_replace`).
+- **Regen recipe** (unchanged headers; lane-private outputs used
+  `/tmp/p4161/`): the three `build-*-fixture.ts` then the three cases, from
+  the pin, Node 24.

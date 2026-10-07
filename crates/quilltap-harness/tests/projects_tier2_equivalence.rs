@@ -110,6 +110,14 @@ enum Op {
     /// `ProjectPropertiesSchema` rejects); the message joins `errors`.
     #[serde(rename = "readExpectError")]
     ReadExpectError { label: String },
+    /// P4.161 (P4.155's R-E): a create v4's `_create` refuses WHOLE (the
+    /// row keys + the bag) — compared against `parse_create_entity`'s message
+    /// (the production `create` is not gated — P4.161 Tier 3).
+    #[serde(rename = "createExpectError")]
+    CreateExpectError {
+        label: String,
+        input: Map<String, Value>,
+    },
     #[serde(rename = "updateExpectError")]
     UpdateExpectError {
         label: String,
@@ -437,6 +445,16 @@ fn projects_tier2_matches_oracle() {
                     let message = match repo.find_by_id(&lookup_id(&id_by_label, label)) {
                         Ok(_) => Value::Null,
                         Err(e) => Value::String(e.to_string()),
+                    };
+                    got_errors.push(json!({ "label": label, "message": message }));
+                }
+                Op::CreateExpectError { label, input } => {
+                    let message = match quilltap_core::db::projects::parse_create_entity(
+                        &Value::Object(input.clone()),
+                        None,
+                    ) {
+                        Ok(_) => Value::Null,
+                        Err(e) => Value::String(e),
                     };
                     got_errors.push(json!({ "label": label, "message": message }));
                 }
