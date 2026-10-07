@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — docs(porting): P4.159 addendum — the degraded-backup ruling and a v4 Bug 179 draft (no LLM-logs cold-open retry)
+
+_Docs-only change._
+
+Records the human's two rulings at P4.159's close: P4.142's strict-backup ruling covers a degraded (unopenable) mount index too, so v5's whole-backup failure stands; and v4's missing LLM-logs cold-open retry ladder should be filed upstream — drafted as Bug 179 in v4's bug-file format with its Status row (`work-orders/surveys/2026-10-07-p4.159-v4-bug-179-draft.md`), for the human to add to the v4 repo.
+
 #### 2026-10-07 — docs(porting): P4.159 lane record + survey — the degraded sibling open (dogfood #150)
 
 _Docs-only change._

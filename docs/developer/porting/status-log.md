@@ -170222,6 +170222,20 @@ index → 200.
 - **Versions at close: core 0.0.1244, host 0.0.188** (web 0.0.222 unchanged —
   test-only; harness frozen 0.0.1110).
 
+### P4.159 — addendum at lane close (the human's rulings, 2026-10-07)
+- **Backup over a degraded mount index — RULED:** P4.142's STRICT backup
+  ruling covers an unopenable (DEGRADED) mount index too. v5's whole-backup
+  failure STANDS (a recorded divergence from v4's quiet empty dump); no
+  HANDOFF to P4.161. The survey record's §6 updated.
+- **The LLM-logs cold-open ladder — FILE IT:** drafted as v4 **Bug 179**
+  (`work-orders/surveys/2026-10-07-p4.159-v4-bug-179-draft.md` — the
+  `docs/developer/bugs/bug-179-llm-logs-no-cold-open-retry.md` file in v4's
+  format plus its Status row). Not written into the v4 checkout by the lane:
+  an uncommitted path there trips every sibling lane's §2 probe. The two v5
+  pins that flip when v4 fixes it: `degraded_sibling_open_equivalence`'s
+  `llmLogs/garbage` row and `host_boot_hardness`'s
+  `a_garbage_llm_logs_file_degrades_with_one_error_and_boots`.
+
 ## P4.163 — the repository-fallback class, round 5 (lane `claude/repository-fallbacks-round5-e9307c`, pin `94fbb1ae3`, 2026-10-07)
 
 - **§R.2 probe at lane start:** branch `main`, HEAD `94fbb1ae3`, both logs
