@@ -1,0 +1,5 @@
+// P4.164 evasion fixture — `map_or(d, f)` answers `d` exactly when the value
+// is absent, so `map_or(true, |_| false)` IS `.is_none()` under another name.
+pub fn pending(r: &ChatInformRow) -> bool {
+    r.permanent || r.consumed_at.as_deref().map_or(true, |_| false)
+}

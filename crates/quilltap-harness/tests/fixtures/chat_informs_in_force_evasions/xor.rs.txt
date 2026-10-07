@@ -1,0 +1,5 @@
+// P4.164 evasion fixture — `xor` answers by which side is present: against
+// `None` it is the value itself, so `.xor(None).is_none()` is `.is_none()`.
+pub fn pending(r: &ChatInformRow) -> bool {
+    r.permanent || r.consumed_at.clone().xor(None::<String>).is_none()
+}

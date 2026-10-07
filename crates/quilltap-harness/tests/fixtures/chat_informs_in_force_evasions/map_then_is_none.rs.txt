@@ -1,0 +1,6 @@
+// P4.164 evasion fixture — a ONE-ARGUMENT adapter before the presence test:
+// the zero-argument chain walk stopped at `.map(…)`, so this `.is_none()`
+// open-coded the in-force predicate unseen.
+pub fn pending(r: &ChatInformRow) -> bool {
+    r.permanent || r.consumed_at.as_ref().map(|s| s.len()).is_none()
+}

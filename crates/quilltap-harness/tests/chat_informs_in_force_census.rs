@@ -20,16 +20,25 @@
 //!   R-E; the regex arm it replaces saw only the method form and `== None`,
 //!   so a `match`, a `matches!`, `Option::is_none(&…)` or a rebinding walked
 //!   past it): every `consumed_at` presence test — the method form
-//!   (`.is_none(` / `.is_some(` / `.is_none_or(` / `.is_some_and(`, through any
-//!   zero-argument adapter chain), `== None` / `!= None` either side,
+//!   (`.is_none(` / `.is_some(` / `.is_none_or(` / `.is_some_and(`, and since
+//!   P4.164 the presence combinators `.map_or(` / `.map_or_else(` / `.xor(`,
+//!   through any adapter chain — zero-argument or, since P4.164, with
+//!   arguments: `.map(…).is_none()`), `== None` / `!= None` either side,
 //!   `matches!`, the path form, a `match` scrutinee, a refutable `let` — over
 //!   `consumed_at` AND every name a `let` rebinds it to. One committed evasion
 //!   fixture per form (`tests/fixtures/chat_informs_in_force_evasions/`) proves
-//!   the census trips. The allow-list IS the set of files with a per-file
-//!   COUNT: the home, plus the two CORRECT open checks that mirror v4's own
-//!   open checks (they ask "was it ever delivered?", not "is it in force?").
-//!   A per-file count is a known limit (recorded again by P4.157): a second
-//!   presence test added to an allowed file while one is removed nets zero.
+//!   the census trips. The allow-list IS the set of `(file, enclosing fn)`
+//!   pairs with a COUNT: the home, the row's JSON projection, plus the two
+//!   CORRECT open checks that mirror v4's own open checks (they ask "was it
+//!   ever delivered?", not "is it in force?"). P4.164 re-measured it after
+//!   the widened walk: the per-file counts were UNCHANGED (2 / 1 / 1 — the
+//!   one-argument adapters and the combinators found no new production
+//!   site), and the key moved from the file to the enclosing `fn`, which
+//!   RETIRES the per-file COUNT limit P4.157 recorded (a presence test moved
+//!   from one function to another now reddens — `a_moved_presence_test_no_
+//!   longer_nets_zero`). The narrower limit that remains: a second test
+//!   added INSIDE an allowed function while one is removed from the same
+//!   function nets zero.
 //! - **(ii) SQL** — in `string_literals(production_zone(src))`, any literal
 //!   that tests `consumedAt` against `NULL` (`consumedAt IS [NOT] NULL`, the
 //!   column optionally quoted). Allowed: none — no production SQL names it
@@ -49,20 +58,30 @@ use std::path::PathBuf;
 use regex::Regex;
 use source_census::{code_only, production_zone, rust_sources, string_literals};
 
-/// `(path from the repo root, presence tests, why)`.
-const ALLOWED: &[(&str, usize, &str)] = &[
+/// `(path from the repo root, enclosing fn, presence tests, why)` — P4.164:
+/// keyed by the enclosing `fn` (the innermost `fn` item; a closure counts
+/// toward the `fn` it sits in), so a presence test added in one function while
+/// another is removed elsewhere in the same file no longer nets zero.
+const ALLOWED: &[(&str, &str, usize, &str)] = &[
     (
         "crates/quilltap-core/src/db/chat_informs.rs",
-        2,
-        "the HOME — `is_inform_in_force` (`row.permanent || \
-         row.consumed_at.is_none()`), v4 `isInformInForce` — plus the row's \
-         JSON projection omitting an absent `consumedAt` (`if let Some(v) = \
-         &r.consumed_at`, a refutable `let` the token census counts since \
-         P4.157): v4's parsed row carries no `consumedAt` key when the cell is \
-         NULL — a serialization question, not an in-force one.",
+        "is_inform_in_force",
+        1,
+        "the HOME — `row.permanent || row.consumed_at.is_none()`, v4 \
+         `isInformInForce`.",
+    ),
+    (
+        "crates/quilltap-core/src/db/chat_informs.rs",
+        "row_to_json",
+        1,
+        "the row's JSON projection omitting an absent `consumedAt` (`if let \
+         Some(v) = &r.consumed_at`, a refutable `let` the token census counts \
+         since P4.157): v4's parsed row carries no `consumedAt` key when the \
+         cell is NULL — a serialization question, not an in-force one.",
     ),
     (
         "crates/quilltap-core/src/services/inform_block.rs",
+        "assemble_inform_block",
         1,
         "the block's `row_ids` keeps the NEVER-delivered rows for the consume \
          write (`r.consumed_at.is_none()`), v4 `inform-block.ts:137` \
@@ -70,6 +89,7 @@ const ALLOWED: &[(&str, usize, &str)] = &[
     ),
     (
         "crates/quilltap-core/src/api/chat_informs.rs",
+        "chat_inform_cancel",
         1,
         "the cancel's \"ever delivered\" (`r.consumed_at.is_some()`), v4 \
          `app/api/v1/chats/[id]/actions/inform.ts:219` — a delivery \
@@ -183,7 +203,19 @@ fn is_punct(t: Option<&Tok>, p: &str) -> bool {
     matches!(t, Some(Tok::Punct(q)) if *q == p)
 }
 
-const PRESENCE_METHODS: &[&str] = &["is_none", "is_some", "is_none_or", "is_some_and"];
+const PRESENCE_METHODS: &[&str] = &[
+    "is_none",
+    "is_some",
+    "is_none_or",
+    "is_some_and",
+    // P4.164 — the combinators whose ANSWER branches on presence: `map_or(d,
+    // f)` / `map_or_else(d, f)` answer `d` exactly when the value is absent
+    // (`r.consumed_at.map_or(true, |_| false)` IS `.is_none()`), and `xor`
+    // answers by which side is present.
+    "map_or",
+    "map_or_else",
+    "xor",
+];
 
 /// Is token `i` a VALUE mention of a watched name — not a struct field
 /// initializer (`consumed_at: None`) and not shorthand init (`{ consumed_at,`)?
@@ -306,31 +338,41 @@ fn watched_names(t: &[Tok]) -> BTreeSet<String> {
 ///
 /// over `consumed_at` AND every name a `let` rebinds it to.
 fn code_count(zone: &str) -> usize {
-    let t = tokens(&code_only(zone));
+    code_hits(&tokens(&code_only(zone))).len()
+}
+
+/// The token index of every presence test [`code_count`] counts, in order.
+fn code_hits(t: &[Tok]) -> Vec<usize> {
+    let t = t.to_vec();
     let watched = watched_names(&t);
-    let mut n = 0usize;
+    let mut hits = Vec::new();
     for i in 0..t.len() {
         if is_value_mention(&t, i, &watched) {
-            // (1) the method form, through zero-arg adapters.
+            // (1) the method form, through any adapter chain — zero-argument
+            // (`.as_ref()`) or with arguments (`.map(|s| s.len())`, P4.164),
+            // each call skipped to its matching `)`.
             let mut k = i + 1;
             while is_punct(t.get(k), ".")
                 && matches!(t.get(k + 1), Some(Tok::Ident(m)) if !PRESENCE_METHODS.contains(&m.as_str()))
                 && is_punct(t.get(k + 2), "(")
-                && is_punct(t.get(k + 3), ")")
             {
-                k += 4;
+                let close = expr_end(&t, k + 3, &[]);
+                if !is_punct(t.get(close), ")") {
+                    break;
+                }
+                k = close + 1;
             }
             if is_punct(t.get(k), ".")
                 && PRESENCE_METHODS.iter().any(|m| is_ident(t.get(k + 1), m))
                 && is_punct(t.get(k + 2), "(")
             {
-                n += 1;
+                hits.push(i);
             }
             // (2) `<mention> == None` / `!= None`.
             if (is_punct(t.get(k), "==") || is_punct(t.get(k), "!="))
                 && is_ident(t.get(k + 1), "None")
             {
-                n += 1;
+                hits.push(i);
             }
         }
         // (2) `None == <mention>` / `None != <mention>`.
@@ -339,7 +381,7 @@ fn code_count(zone: &str) -> usize {
         {
             let end = expr_end(&t, i + 2, &[";", ",", "{", "&&", "||"]);
             if mentions_in(&t, i + 2..end, &watched) {
-                n += 1;
+                hits.push(i);
             }
         }
         // (3) `matches!(<mention>, …)`.
@@ -348,7 +390,7 @@ fn code_count(zone: &str) -> usize {
             && is_punct(t.get(i + 2), "(")
             && mentions_in(&t, i + 3..expr_end(&t, i + 3, &[","]), &watched)
         {
-            n += 1;
+            hits.push(i);
         }
         // (4) `Option::is_none(&<mention>)` — any path call of the four.
         if is_punct(t.get(i), "::")
@@ -357,14 +399,14 @@ fn code_count(zone: &str) -> usize {
         {
             let end = expr_end(&t, i + 3, &[]);
             if mentions_in(&t, i + 3..end, &watched) {
-                n += 1;
+                hits.push(i);
             }
         }
         // (5) `match <scrutinee mentioning it> {`.
         if is_ident(t.get(i), "match") {
             let end = expr_end(&t, i + 1, &["{", ";"]);
             if is_punct(t.get(end), "{") && mentions_in(&t, i + 1..end, &watched) {
-                n += 1;
+                hits.push(i);
             }
         }
     }
@@ -373,11 +415,46 @@ fn code_count(zone: &str) -> usize {
         let refutable = pat
             .clone()
             .any(|k| is_ident(t.get(k), "Some") || is_ident(t.get(k), "None"));
-        if refutable && mentions_in(&t, expr, &watched) {
-            n += 1;
+        if refutable && mentions_in(&t, expr.clone(), &watched) {
+            hits.push(pat.start);
         }
     }
-    n
+    hits.sort_unstable();
+    hits
+}
+
+/// The innermost `fn` whose body holds token `at` — `None` at module level.
+fn enclosing_fn(t: &[Tok], at: usize) -> Option<String> {
+    let mut best: Option<(usize, String)> = None;
+    for j in 0..t.len() {
+        if !is_ident(t.get(j), "fn") || j > at {
+            continue;
+        }
+        let Some(Tok::Ident(name)) = t.get(j + 1) else {
+            continue;
+        };
+        let open = expr_end(t, j + 2, &["{", ";"]);
+        if !is_punct(t.get(open), "{") || open > at {
+            continue;
+        }
+        let close = expr_end(t, open + 1, &[]);
+        if at < close && best.as_ref().is_none_or(|(b, _)| j > *b) {
+            best = Some((j, name.clone()));
+        }
+    }
+    best.map(|(_, name)| name)
+}
+
+/// Every presence test in one production zone, attributed to its enclosing
+/// `fn`: `(fn name or "<module>", count)`, by name.
+fn hits_by_fn(zone: &str) -> Vec<(String, usize)> {
+    let t = tokens(&code_only(zone));
+    let mut by: std::collections::BTreeMap<String, usize> = Default::default();
+    for at in code_hits(&t) {
+        *by.entry(enclosing_fn(&t, at).unwrap_or_else(|| "<module>".into()))
+            .or_default() += 1;
+    }
+    by.into_iter().collect()
 }
 
 #[test]
@@ -395,15 +472,18 @@ fn the_in_force_predicate_lives_in_one_home() {
         "the web crate must be walked"
     );
 
-    let mut got: Vec<(String, usize)> = files
+    let mut got: Vec<(String, String, usize)> = files
         .iter()
-        .map(|(p, z)| (p.clone(), code_count(z)))
-        .filter(|(_, n)| *n > 0)
+        .flat_map(|(p, z)| {
+            hits_by_fn(z)
+                .into_iter()
+                .map(move |(f, n)| (p.clone(), f, n))
+        })
         .collect();
     got.sort();
-    let mut want: Vec<(String, usize)> = ALLOWED
+    let mut want: Vec<(String, String, usize)> = ALLOWED
         .iter()
-        .map(|(p, n, _)| (p.to_string(), *n))
+        .map(|(p, f, n, _)| (p.to_string(), f.to_string(), *n))
         .collect();
     want.sort();
     assert_eq!(
@@ -482,6 +562,14 @@ fn the_matchers_see_every_shape() {
         "let Some(v) = r.consumed_at.clone() else { return }",
         "let d = &r.consumed_at; d.is_none()",
         "let d = r.consumed_at.as_ref(); let e = d; e.is_some()",
+        // P4.164 — adapters WITH arguments, and the presence combinators.
+        "r.consumed_at.map(|s| s.len()).is_none()",
+        "r.consumed_at.as_ref().filter(|s| !s.is_empty()).is_some()",
+        "r.consumed_at.as_deref().map(|s| (s, f(s))).map(|p| p.0).is_none()",
+        "r.consumed_at.map_or(true, |_| false)",
+        "r.consumed_at.as_ref().map_or_else(|| true, |_| false)",
+        "r.consumed_at.clone().xor(None).is_none()",
+        "Option::map_or(r.consumed_at.as_ref(), true, |_| false)",
     ] {
         assert_eq!(code_count(&format!("fn f() {{ {hit}; }}")), 1, "{hit}");
     }
@@ -495,6 +583,9 @@ fn the_matchers_see_every_shape() {
         "match r.permanent { true => 1, false => 2 }",
         "let row = ChatInformCreate { consumed_at: None }; row.id.is_empty()",
         "if let Some(v) = &r.record_message_id { v.len() }",
+        // P4.164 — an argument-taking chain that never reaches a presence test.
+        "r.consumed_at.clone().unwrap_or(String::new()).is_empty()",
+        "r.consumed_at.as_ref().map(|s| s.len())",
     ] {
         assert_eq!(code_count(&format!("fn f() {{ {miss}; }}")), 0, "{miss}");
     }
@@ -534,8 +625,38 @@ fn the_matchers_see_every_shape() {
     }
 }
 
+/// P4.164 — the per-file COUNT limit P4.157 recorded (a presence test added in
+/// one function while one is removed in another nets zero) is retired by the
+/// per-`fn` key: the same file count, moved between functions, no longer
+/// matches the allow-list.
+#[test]
+fn a_moved_presence_test_no_longer_nets_zero() {
+    let before = "fn a(r: &R) -> bool { r.consumed_at.is_none() }\n\
+                  fn b(r: &R) -> bool { r.permanent }";
+    let after = "fn a(r: &R) -> bool { r.permanent }\n\
+                 fn b(r: &R) -> bool { r.consumed_at.is_none() }";
+    assert_eq!(
+        code_count(before),
+        code_count(after),
+        "the per-file count nets"
+    );
+    assert_eq!(hits_by_fn(before), vec![("a".to_string(), 1)]);
+    assert_eq!(hits_by_fn(after), vec![("b".to_string(), 1)]);
+    // A closure counts toward the `fn` it sits in; a nested `fn` is its own key.
+    assert_eq!(
+        hits_by_fn(
+            "fn outer(v: &[R]) -> usize {\n\
+                    fn inner(r: &R) -> bool { r.consumed_at.is_some() }\n\
+                    v.iter().filter(|r| r.consumed_at.is_none()).count()\n}"
+        ),
+        vec![("inner".to_string(), 1), ("outer".to_string(), 1)]
+    );
+}
+
 /// P4.157 R-E: one committed evasion fixture per form the old regex arm could
-/// not see. Each must count EXACTLY one presence test.
+/// not see; P4.164: one per form the zero-argument chain walk could not see
+/// (`.map(…).is_none()`, `.map_or(…)`, `.xor(…)` — each measured MISSED by
+/// the pre-P4.164 census). Each must count EXACTLY one presence test.
 #[test]
 fn the_census_trips_on_every_committed_evasion() {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -549,12 +670,15 @@ fn the_census_trips_on_every_committed_evasion() {
     assert_eq!(
         names,
         [
+            "map_or.rs.txt",
+            "map_then_is_none.rs.txt",
             "match.rs.txt",
             "matches_macro.rs.txt",
             "rebinding.rs.txt",
-            "ufcs_is_none.rs.txt"
+            "ufcs_is_none.rs.txt",
+            "xor.rs.txt"
         ],
-        "the four committed evasion forms"
+        "the seven committed evasion forms (P4.157's four + P4.164's three)"
     );
     let missed: Vec<String> = names
         .iter()

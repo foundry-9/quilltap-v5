@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — test(harness): the in-force census follows argument-taking adapters and keys its allow-list by function (P4.164 item 4)
+
+_No crate versions bumped._
+
+The `consumed_at` chain walk now skips adapters with arguments (`.map(…).is_none()`), and `map_or`, `map_or_else` and `xor` count as presence tests. Three new evasion fixtures, each missed by the previous census. Re-measured: no new production site. The allow-list is now `(file, enclosing fn, count)`, which retires the per-file count limit (moving a presence test to another function now fails the census).
+
 #### 2026-10-07 — test(harness): `pdf_lines_from_capture` keeps a spaced field value whole; `common` lists its shared helpers (P4.164 items 3, 6)
 
 _No crate versions bumped._
