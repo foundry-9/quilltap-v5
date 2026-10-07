@@ -232,6 +232,17 @@ fn ensure_doc_mount_points_columns(db: &Connection) -> Result<(), DbError> {
 /// migrations' `TABLE_DDL`. A no-op whenever the tables already exist (the
 /// generateDDL provisioning path, and every re-run). The DDL itself always
 /// propagates; the repairs after it follow `failures`.
+///
+/// The folder-path index here asks for UNIQUE, as v4's migrations make it. On
+/// an instance provisioned before P4.153 a PLAIN `idx_doc_mount_folders_mp_path`
+/// (`fresh_schema.json`'s copy) already holds the name, so this `IF NOT EXISTS`
+/// is a silent no-op behind it; the conversion is P4.160's
+/// `db::migration_index_family_repair`, which runs AFTER this in the same boot
+/// (the last step of the host's `seed_built_ins`) and drops the plain copy and
+/// creates the UNIQUE one in ONE transaction, after a duplicate pre-check. Were
+/// the index ever ABSENT here, this statement would create it UNIQUE and fail
+/// the boot on a duplicate path — which is why the backfill never leaves the
+/// name dropped between boots.
 fn ensure_mount_index_tables(
     mount_index: &Connection,
     failures: LazyRepairFailures,

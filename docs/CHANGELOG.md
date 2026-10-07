@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — feat(boot): backfill v4's migration-created index family on instances set up before P4.153 (P4.160)
+
+_Versions: core 0.0.1243, host 0.0.188._
+
+A v5 instance provisioned before 2026-10-06 never gained v4's migration-created index family. After a boot it lacked 56 of `migration_indexes.json`'s 60 statements (main 47 / mount-index 4 / llm-logs 5) and held `idx_doc_mount_folders_mp_path` as a plain index where v4 has it UNIQUE. Its UNIQUE refusals and query plans therefore depended on when it was set up. New `db::migration_index_family_repair`, called as the last step of the host's `seed_built_ins`, replays the committed artifact with `IF NOT EXISTS` spliced in, so `sqlite_master` ends byte-equal to a fresh provision's. It never writes a `CREATE INDEX` of its own, and it writes no `migrations_state` row: index presence is the once-only marker. A statement on an absent table is skipped. The plain `mp_path` is dropped and re-created UNIQUE in one transaction after a duplicate pre-check. The connection-profile name index runs a port of v4's `add-connection-profile-unique-name-index-v1` rename-dedupe first (oldest keeps its name, later ones get ` (2)`, ` (3)`, … and padded names are trimmed), with v4's DEBUG and INFO lines.
+
+For the other four UNIQUE names v4 has no dedupe. A duplicate there skips that one index with a v5-only WARN (`Skipped a unique index backfill: duplicate rows present`) and leaves `mp_path` plain; the boot never fails on it. The duplicate pre-check treats NULLs as distinct, as SQLite's UNIQUE index does. A failing statement is logged and counted, and the rest still run. A v5-only INFO line reports per-partition counts when anything was created, so a second boot is silent.
+
+Fixed a v5 defect the differential found: `services::profile_names` trimmed with Rust's `str::trim`, which keeps U+FEFF and strips U+0085, the reverse of JS. Both helpers now use `jsstr::js_trim`. This also moves the settings duplicate-name check, the `.qtap` importer and the restore merge onto v4's behaviour.
+
+`provisioning` exposes the artifact (`migration_index_family`), `index_name` and a new `index_table` as `pub(crate)`; `provision_fresh_instance` is unchanged. Comment-only edits in `builtin_mounts` and `host.rs`. New tests: `host_boot_backfilled_indexes` (12 arms over a derived pre-round instance, booted through the real `Host`) and `migration_index_backfill_equivalence`. Its arm A compares the backfilled index set against v4's migrations-first provision oracle. Its arm B compares the profile rename-dedupe against v4's real migration in five shapes: rows, index SQL and log lines. The new oracle case is `harness/oracle/cases/migration-index-backfill.ts`.
+
 #### 2026-10-07 — docs(porting): P4.159 addendum — the degraded-backup ruling and a v4 Bug 179 draft (no LLM-logs cold-open retry)
 
 _Docs-only change._

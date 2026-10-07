@@ -211,8 +211,17 @@ static CHAT_SETTINGS_SEED_JSON: &str = include_str!("chat_settings_seed.json");
 /// instance refuses a duplicate `(mountPointId, path)` folder row as every v4
 /// instance does (ruled 2026-10-06; v5's own `builtin_mounts` ensure already
 /// asked for UNIQUE, a silent no-op behind the plain copy until then). The file's `source` block names the v4
-/// commit. Statements are `sqlite_master` text — no `IF NOT EXISTS` — so they
-/// replay on a FRESH file only, which [`provision_fresh_instance`] enforces.
+/// commit. Statements are `sqlite_master` text — no `IF NOT EXISTS` — so
+/// [`provision_fresh_instance`] replays them verbatim on a FRESH file only.
+///
+/// P4.160: they are ALSO the boot backfill's only source
+/// (`db::migration_index_family_repair`, the last step of the host's
+/// `seed_built_ins`), which gives an instance provisioned BEFORE P4.153 the
+/// family at its next boot. It splices `IF NOT EXISTS ` after `INDEX ` — SQLite
+/// stores an index's text without that clause, so the backfilled
+/// `sqlite_master` is byte-equal to a fresh provision's — and reads the
+/// statements through [`migration_index_family`], [`index_name`] and
+/// [`index_table`]; it never writes a `CREATE INDEX` of its own (D23).
 ///
 /// Re-dump register (append): `94fbb1ae3` (P4.153 — first dump: main 50 /
 /// mount-index 5 (incl. the UNIQUE `idx_doc_mount_folders_mp_path`) /
@@ -224,12 +233,19 @@ static MIGRATION_INDEXES_JSON: &str = include_str!("migration_indexes.json");
 /// `migration_indexes.json` share the shape; the latter's `source` block is
 /// ignored).
 #[derive(Deserialize)]
-struct FreshSchema {
-    main: Vec<String>,
+pub(crate) struct FreshSchema {
+    pub(crate) main: Vec<String>,
     #[serde(rename = "mountIndex")]
-    mount_index: Vec<String>,
+    pub(crate) mount_index: Vec<String>,
     #[serde(rename = "llmLogs")]
-    llm_logs: Vec<String>,
+    pub(crate) llm_logs: Vec<String>,
+}
+
+/// `migration_indexes.json`, parsed — the provisioner's second artifact and
+/// the boot backfill's only source (P4.160).
+pub(crate) fn migration_index_family() -> Result<FreshSchema, ProvisionError> {
+    serde_json::from_str(MIGRATION_INDEXES_JSON)
+        .map_err(|e| ProvisionError::Artifact(format!("migration_indexes.json: {e}")))
 }
 
 #[derive(Deserialize)]
@@ -329,8 +345,7 @@ pub fn provision_fresh_instance(data_dir: &Path, pepper_b64: &str) -> Result<(),
 
     let schema: FreshSchema = serde_json::from_str(FRESH_SCHEMA_JSON)
         .map_err(|e| ProvisionError::Artifact(format!("fresh_schema.json: {e}")))?;
-    let migration_indexes: FreshSchema = serde_json::from_str(MIGRATION_INDEXES_JSON)
-        .map_err(|e| ProvisionError::Artifact(format!("migration_indexes.json: {e}")))?;
+    let migration_indexes = migration_index_family()?;
 
     // Main partition: schema + seed rows + the built-in roleplay templates
     // (family 1, main-only).
@@ -395,12 +410,23 @@ fn exec_ddl(
 
 /// The index a `CREATE [UNIQUE] INDEX [IF NOT EXISTS] name …` statement makes
 /// (quotes stripped); `None` for anything else.
-fn index_name(sql: &str) -> Option<&str> {
+pub(crate) fn index_name(sql: &str) -> Option<&str> {
     let rest = sql.strip_prefix("CREATE ")?;
     let rest = rest.strip_prefix("UNIQUE ").unwrap_or(rest);
     let rest = rest.strip_prefix("INDEX ")?;
     let rest = rest.strip_prefix("IF NOT EXISTS ").unwrap_or(rest);
     rest.split([' ', '(']).next().map(|n| n.trim_matches('"'))
+}
+
+/// The table a `CREATE [UNIQUE] INDEX … ON <table> (…)` statement indexes
+/// (quotes stripped), in both of the artifact's spellings — `ON "chats" (`,
+/// `ON "chats"(` and the bare `ON chats(` of v4's hand-written partial indexes;
+/// `None` for anything else.
+pub(crate) fn index_table(sql: &str) -> Option<&str> {
+    index_name(sql)?;
+    let (_, rest) = sql.split_once(" ON ")?;
+    let table = rest.split(['(', ' ']).next()?.trim_matches('"');
+    (!table.is_empty()).then_some(table)
 }
 
 /// Seed the main partition: the single user, its chat settings, and the default
@@ -516,6 +542,40 @@ mod tests {
     use tempfile::tempdir;
 
     const PEPPER: &str = "3q2+796tvu/erb7v3q2+796tvu/erb7v3q2+796tvu8=";
+
+    /// P4.160: the backfill reads each statement's table through this — the
+    /// artifact's three spellings, and every statement in it parses.
+    #[test]
+    fn index_table_reads_every_spelling_in_the_artifact() {
+        assert_eq!(
+            index_table("CREATE UNIQUE INDEX \"a\" ON \"chat_documents\" (\"x\")"),
+            Some("chat_documents")
+        );
+        assert_eq!(
+            index_table("CREATE INDEX \"a\" ON \"chats\"(\"chatType\")"),
+            Some("chats")
+        );
+        assert_eq!(
+            index_table("CREATE INDEX a ON chats(runState) WHERE chatType = 'autonomous'"),
+            Some("chats")
+        );
+        assert_eq!(index_table("CREATE TABLE \"t\" (\"x\" TEXT)"), None);
+        let family = migration_index_family().unwrap();
+        let all: Vec<&String> = family
+            .main
+            .iter()
+            .chain(&family.mount_index)
+            .chain(&family.llm_logs)
+            .collect();
+        assert_eq!(all.len(), 60);
+        for sql in all {
+            let table = index_table(sql).unwrap_or_else(|| panic!("no table in {sql}"));
+            assert!(
+                table.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'),
+                "{table} from {sql}"
+            );
+        }
+    }
 
     #[test]
     fn provisions_a_bootable_seeded_instance() {

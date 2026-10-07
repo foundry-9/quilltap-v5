@@ -9,10 +9,14 @@
 
 use std::collections::HashSet;
 
+use crate::jsstr::js_trim;
+
 /// v4 `normalizeProfileName`: `trim()` then `toLowerCase()`. `str::to_lowercase`
-/// is byte-identical to JS `toLowerCase` (the closed case-mapping seam).
+/// is byte-identical to JS `toLowerCase` (the closed case-mapping seam); the
+/// trim is JS's ([`js_trim`]) — `str::trim` keeps U+FEFF and strips U+0085,
+/// the reverse of JS (P4.160, measured against v4's real rename-dedupe).
 pub fn normalize_profile_name(name: &str) -> String {
-    name.trim().to_lowercase()
+    js_trim(name).to_lowercase()
 }
 
 /// v4 `makeUniqueProfileName` — `desired` trimmed, or `desired (2)`,
@@ -21,7 +25,7 @@ pub fn normalize_profile_name(name: &str) -> String {
 /// Callers minting several names in a row must add each returned name's
 /// normalized form back into the set before the next call.
 pub fn make_unique_profile_name(desired: &str, taken: &HashSet<String>) -> String {
-    let base = desired.trim().to_string();
+    let base = js_trim(desired).to_string();
     if !taken.contains(&normalize_profile_name(&base)) {
         return base;
     }
@@ -42,6 +46,22 @@ mod tests {
     #[test]
     fn normalizes_trim_then_lowercase() {
         assert_eq!(normalize_profile_name("  My Profile "), "my profile");
+    }
+
+    /// P4.160: JS `trim` strips U+FEFF and keeps U+0085 — Rust's `str::trim`
+    /// does the reverse. Measured against v4's REAL migration
+    /// (`migration_index_backfill_equivalence`'s `unicode-trim` shape).
+    #[test]
+    fn trims_js_whitespace_not_rusts() {
+        assert_eq!(normalize_profile_name("\u{FEFF}Gamma\u{FEFF}"), "gamma");
+        assert_eq!(normalize_profile_name("Delta\u{0085}"), "delta\u{0085}");
+        let taken: HashSet<String> = HashSet::new();
+        assert_eq!(make_unique_profile_name("Gamma\u{FEFF}", &taken), "Gamma");
+        assert_eq!(
+            make_unique_profile_name("Delta\u{0085}", &taken),
+            "Delta\u{0085}"
+        );
+        assert_eq!(make_unique_profile_name("\u{3000}Ideo", &taken), "Ideo");
     }
 
     #[test]

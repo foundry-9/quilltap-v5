@@ -1484,7 +1484,11 @@ fn seed_built_ins(db: &Db) -> Result<EnsureFailures, String> {
             // v4's MIGRATION-created index family (`migration_indexes.json`),
             // which does — so a fresh instance answers `AlreadyIndexed` here,
             // and this pass still covers every instance provisioned before
-            // that (`assemble` runs this chain on EVERY open).
+            // that (`assemble` runs this chain on EVERY open). Since P4.160
+            // the REST of that family is backfilled on such an instance by
+            // the LAST step of this chain (`migration_index_family_repair`,
+            // below) — after this collapse, so the folders are already
+            // deduped when it reaches this name and finds it present.
             if let quilltap_core::db::folders_unique_path_repair::CollapseOutcome::Ran {
                 scanned,
                 surviving,
@@ -1980,6 +1984,31 @@ fn seed_built_ins(db: &Db) -> Result<EnsureFailures, String> {
                 &mut ensure_failures,
             );
             // === end P4.D248 ===
+            // === P4.160 (P4.153's OPEN item) ===
+            // v4's MIGRATION-created index family on an instance provisioned
+            // before P4.153 (the 56 absent names + the PLAIN `mp_path`),
+            // from `migration_indexes.json` alone. LAST, so a table the step
+            // above just created gets its indexes this boot and every ensure
+            // before it (the folder collapse, the built-in mounts' UNIQUE
+            // `mp_path` request) has run. NON-FATAL (R-C): the pass logs and
+            // reports every failure itself; only an unparseable embedded
+            // artifact answers `Err` here. Not an `EnsureFailures` entry — no
+            // v4 repository ensure makes these indexes, so recording one would
+            // report a `degraded` v4 never reports.
+            if let Err(e) =
+                quilltap_core::db::migration_index_family_repair::ensure_migration_index_family(
+                    main,
+                    ws.mount_index().map(|w| w.connection()),
+                    ws.llm_logs().map(|w| w.connection()),
+                )
+            {
+                tracing::error!(
+                    target: "quilltap::boot",
+                    error = %e,
+                    "Migration index backfill failed"
+                );
+            }
+            // === end P4.160 ===
             Ok(ensure_failures)
         })
     })
