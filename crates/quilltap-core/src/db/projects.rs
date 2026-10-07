@@ -524,9 +524,9 @@ pub fn parse_create_properties(properties: &Value) -> Result<ProjectProperties, 
 /// bag's); `Ok` is the parsed, seeded bag.
 ///
 /// The import calls THIS before anything is written (P4.148's
-/// validate-before-write, widened from the bag to the whole row); the
-/// restore's two arms still call [`parse_create_properties`] — a named
-/// handoff (P4.158's file).
+/// validate-before-write, widened from the bag to the whole row); since P4.161
+/// the restore's projects / groups arm calls it too, before its preserve arm,
+/// so the import AND the restore validate the whole entity here.
 pub fn parse_create_entity(
     entity: &Value,
     claimed_id: Option<&str>,

@@ -110,8 +110,8 @@ pub(crate) fn log_refused_folder(user_id: &str, path: Option<&Value>, zod: &str)
         Value::String(s) => s.clone(),
         other => other.to_string(),
     });
-    super::log_refused_create("folders", zod);
-    super::log_folder_create_wrap_failure(
+    crate::db::fallback::log_refused_create("folders", zod);
+    crate::db::fallback::log_folder_create_wrap_failure(
         user_id,
         path.as_deref(),
         &DbError::Internal(zod.to_string()),
@@ -543,8 +543,8 @@ pub(super) fn import_files(
             set(&mut item, "userId", Value::String(user_id.to_string()));
             let create =
                 parse_create_file(&Value::Object(item.clone()), None).inspect_err(|zod| {
-                    super::log_refused_create("files", zod);
-                    super::log_file_create_wrap_failure(
+                    crate::db::fallback::log_refused_create("files", zod);
+                    crate::db::fallback::log_file_create_wrap_failure(
                         user_id,
                         item.get("originalFilename").and_then(Value::as_str),
                         &DbError::Internal(zod.clone()),

@@ -26,6 +26,7 @@
 
 use rusqlite::Connection;
 
+use super::fallback::log_partition_structural_unavailable;
 use super::DbError;
 
 /// Which partition a structural table lives in (v4's `dbTarget`).
@@ -304,25 +305,6 @@ pub fn find_table_shape_problem(
 /// `acquireDb()` threw (the database is degraded or not initialized).
 pub fn unavailable(label: &str, message: &str) -> String {
     format!("{label} database unavailable: {message}")
-}
-
-// HANDOFF(P4.163): C1 item 2's home, coded lane-locally with the contract's
-// EXACT signature — §S.1 folds it onto `db::fallback` (P4.163's file) and
-// repoints the one caller below.
-/// v4 `verifyStructure`'s problem string for a repository whose dedicated
-/// database is DEGRADED: `acquireDb()` throws the partition's guard sentence
-/// (`mount-index-guard.ts:20`, `llm-logs-guard.ts:21`), which
-/// `dedicated-db.repository.ts:176-182` renders through [`unavailable`] with
-/// `DB_LABELS`. Logs nothing — the pass logs the per-problem ERROR itself.
-/// `repository` (C1's signature) is the container key the caller reports
-/// beside the string; the string does not carry it.
-pub fn log_partition_structural_unavailable(partition: Partition, _repository: &str) -> String {
-    let sentence = match partition {
-        Partition::MountIndex => "Mount index database is in degraded mode",
-        Partition::LlmLogs => "LLM logs database is in degraded mode",
-        Partition::Main => unreachable!("the main database is never degraded — its open is fatal"),
-    };
-    unavailable(partition.label(), sentence)
 }
 
 /// v4 `verifyStructure`'s ensure-error form (`dedicated-db.repository.ts:197-199`,

@@ -361,8 +361,11 @@ fn the_parsed_type_word_has_one_home_plus_its_recorded_remainder() {
 /// (`zod_uuid_ok`, hand-matching v4 zod's own `uuid()` pattern) + the two
 /// `is_zod_uuid` names the tree's ~25 callers import, now ONE-LINE
 /// DELEGATIONS to the home ([`the_two_is_zod_uuid_names_delegate_to_the_home`]
-/// holds their bodies) + the recorded remainder below = **9 definitions in 9
-/// files**. Before P4.155 the two `is_zod_uuid`s were full hand copies —
+/// holds their bodies) + the recorded remainder below = **6 definitions in 6
+/// files** (9 in 9 until P4.162 deleted the three shape-only P4.155 findings —
+/// `chat_post_office.rs`, `chat_scenario.rs`, `chat_participants.rs` — and
+/// folded their gates onto the home; the `94fbb1ae3` boot-hardness
+/// unification dropped their rows). Before P4.155 the two `is_zod_uuid`s were full hand copies —
 /// measured byte-identical to the home over 1,291 inputs (every byte at the
 /// version nibble × eight variant nibbles, the nil / max forms in both cases,
 /// short, long, non-hex, non-ASCII) before the fold.
@@ -390,26 +393,6 @@ const UUID_PREDICATE_CENSUS: &[(&str, usize, &str)] = &[
         1,
         "`is_uuid` — the SAME zod pattern as a compiled `Regex` (equivalent; \
          not folded — outside P4.155's ownership; a named follow-up).",
-    ),
-    (
-        "crates/quilltap-core/src/api/chat_post_office.rs",
-        1,
-        "⚠ FINDING (P4.155): `is_uuid` claims `z.uuid()` but checks the \
-         8-4-4-4-12 SHAPE only — zod constrains the version and variant \
-         nibbles, so v5 accepts ids v4 refuses. Outside P4.155's ownership; \
-         recorded as a named follow-up, not folded.",
-    ),
-    (
-        "crates/quilltap-core/src/services/chat_scenario.rs",
-        1,
-        "⚠ FINDING (P4.155): the same shape-only `z.uuid()` claim as \
-         `chat_post_office.rs`. Named follow-up.",
-    ),
-    (
-        "crates/quilltap-core/src/services/chat_participants.rs",
-        1,
-        "⚠ FINDING (P4.155): the same shape-only `z.uuid()` claim (its doc \
-         cites `chat_post_office.rs`'s idiom). Named follow-up.",
     ),
     (
         "crates/quilltap-core/src/api/system_backup.rs",

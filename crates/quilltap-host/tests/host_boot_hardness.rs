@@ -547,9 +547,17 @@ async fn an_absent_group_link_table_is_created_and_reported_sound() {
             |r| r.get(0),
         )
         .unwrap();
-    // Exactly the dump's one index on this table (`idx_group_character_members_createdAt`);
-    // the exhaustive table-by-table proof is `table_shape_equivalence`'s substrate test.
-    assert_eq!(indexes, 1, "the created table carries v4's index");
+    // The dump's one generateDDL index (`idx_group_character_members_createdAt`)
+    // plus, since P4.160, the two migration-family indexes the same boot's
+    // backfill adds (`idx_group_character_members_characterId`, the UNIQUE
+    // `idx_group_character_members_group_char`) — a fresh provision's three
+    // (`host_boot_backfilled_indexes`'s (j) arm proves byte-equality); the
+    // exhaustive table-by-table proof of the create is `table_shape_equivalence`'s
+    // substrate test.
+    assert_eq!(
+        indexes, 3,
+        "the created table carries a fresh instance's indexes"
+    );
 }
 
 /// P4.D248 — the record is REPLACED on every assemble (v4's
@@ -1779,7 +1787,8 @@ async fn the_c3_chat_move_answers_503_over_a_degraded_mount_index() {
     assert_eq!(hits, 4, "{debug:?}; captured:\n{}", lines.join("\n"));
 }
 
-/// See the C3 arm: today's `DbError::PartitionUnavailable` Display, until
-/// P4.163's C1 item 1 folds (HANDOFF §S.1 → `Mount index database is in
-/// degraded mode`).
-const C3_DEBUG_ERROR: &str = "partition not available: mountIndex";
+/// See the C3 arm: v4's mount-index guard sentence (`mount-index-guard.ts:20`),
+/// which P4.163's `log_partition_unavailable` renders for a degraded partition
+/// (flipped from v5's `partition not available: mountIndex` Display at the
+/// `94fbb1ae3` boot-hardness unification, §S.1).
+const C3_DEBUG_ERROR: &str = "Mount index database is in degraded mode";

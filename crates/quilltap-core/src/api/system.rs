@@ -318,9 +318,10 @@ mod tests {
     /// for a degraded one: both are `PartitionUnavailable` at this seam, and
     /// the absent fixture pays no ladder.)
     ///
-    /// HANDOFF(§S.1): the DEBUG's `error` is `DbError`'s Display until P4.163's
-    /// C1 item 1 folds under `log_mount_index_unavailable`; the unifier flips
-    /// it to v4's `Mount index database is in degraded mode` with the C3 arm's.
+    /// The DEBUG's `error` is v4's guard sentence `Mount index database is in
+    /// degraded mode` — P4.163's `log_partition_unavailable` (C1 item 1) renders
+    /// it for any `PartitionUnavailable`, flipped from `DbError`'s Display at the
+    /// `94fbb1ae3` boot-hardness unification (§S.1).
     fn instance_without_mount_index() -> (tempfile::TempDir, Db) {
         const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
         let dir = tempfile::tempdir().unwrap();
@@ -353,7 +354,7 @@ mod tests {
         assert_eq!(
             lines,
             vec![
-                "DEBUG quilltap::db Dedicated database unavailable; answering with the fallback collection=doc_mount_file_links dbTarget=mountIndex error=partition not available: mountIndex"
+                "DEBUG quilltap::db Dedicated database unavailable; answering with the fallback collection=doc_mount_file_links dbTarget=mountIndex error=Mount index database is in degraded mode"
                     .to_string()
             ]
         );

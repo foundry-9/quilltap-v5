@@ -188,9 +188,9 @@ pub(crate) fn create_tag_refused(user_id: &str, name: Option<&Value>, refusal: &
         other => other.to_string(),
     });
     if let TagRefusal::Zod(zod) = refusal {
-        super::log_refused_create("tags", zod);
+        crate::db::fallback::log_refused_create("tags", zod);
     }
-    super::log_tag_create_wrap_failure(
+    crate::db::fallback::log_tag_create_wrap_failure(
         user_id,
         name.as_deref(),
         &DbError::Internal(refusal.text().to_string()),

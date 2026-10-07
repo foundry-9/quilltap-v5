@@ -89,6 +89,9 @@
 //!   QT_FIXTURE_CHAT_INFORMS=/tmp/qt-chat-informs-fixture.db \
 //!     cargo test -p quilltap-harness --test chat_informs_tier2_equivalence -- --nocapture
 
+mod common;
+
+use common::normalize_v4_sqlite;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -158,26 +161,6 @@ const UNPORTED_BACKEND_LINES: &[&str] = &[
     // Ruling R-A (with `Entity created` / `Entity deleted`).
     "Entity not found for update",
 ];
-
-/// P4.156 — one failure, two SQL texts: v4's query builder double-quotes every
-/// identifier, so a renamed column reaches SQLite's "double-quoted string"
-/// fallback and its message carries the quotes and a hint (`no such column:
-/// "chatId" - should this be a string literal in single-quotes?`); v5's SQL
-/// names the column bare (`no such column: chatId`). The v4 text is mapped onto
-/// v5's before the compare — the column NAME stays compared.
-fn normalize_v4_sqlite(text: &str) -> String {
-    const HINT: &str = " - should this be a string literal in single-quotes?";
-    match (
-        text.strip_prefix("no such column: \""),
-        text.strip_suffix(HINT),
-    ) {
-        (Some(_), Some(head)) => head
-            .replacen("no such column: \"", "no such column: ", 1)
-            .trim_end_matches('"')
-            .to_string(),
-        _ => text.to_string(),
-    }
-}
 
 /// P4.149 — the planted delete failure (the oracle's `PLANT`, byte-identical):
 /// a BEFORE DELETE trigger, so the selects inside the bulk deletes still

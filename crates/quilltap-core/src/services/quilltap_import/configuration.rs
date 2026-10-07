@@ -75,8 +75,8 @@ pub(crate) fn parse_create_prompt_template(item: &Value) -> Result<PtCreate, Str
 /// A refused prompt-template create's three repository ERRORs (validate →
 /// `_create` → the repository's wrap), then the caller's warning / WARN.
 pub(crate) fn log_refused_prompt_template(user_id: &str, name: Option<&str>, zod: &str) {
-    super::log_refused_create("prompt_templates", zod);
-    super::log_prompt_template_create_wrap_failure(
+    crate::db::fallback::log_refused_create("prompt_templates", zod);
+    crate::db::fallback::log_prompt_template_create_wrap_failure(
         user_id,
         name,
         &DbError::Internal(zod.to_string()),

@@ -172,7 +172,8 @@ const COLLAPSE_CENSUS: &[(&str, usize, &str)] = &[
         1,
         "PROSE ONLY: the surviving occurrence is the comment naming what \
          `parse_run_body` replaced.",
-    ),    (
+    ),
+    (
         "crates/quilltap-web/src/dispatch.rs",
         1,
         "NOT a body-VALUE read (P4.162, dogfood #151): `verb_of` re-reads the \

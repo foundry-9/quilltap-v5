@@ -420,105 +420,6 @@ pub(super) fn item_error_text(e: &DbError) -> String {
     crate::db::fallback::error_text(e)
 }
 
-/// v4's base-repository refusal of a create whose entity fails its schema
-/// (`base.repository.ts:130-141, 350-379`): `validate`'s ERROR `Data
-/// validation failed {collection, error}` — a DIRECT logger call, so it never
-/// carries `strictFailures` — then `_create`'s rethrowing `safeQuery` line
-/// `Error creating entity {collection, error, strictFailures?}` (the
-/// [`crate::db::fallback::log_create_failure`] home). `zod` is the
-/// `ZodError.message`. Logs only. Shared by the `.qtap` import and the backup
-/// restore (P4.161); the restore runs outside the strict scope, so its second
-/// line carries no `strictFailures`.
-// HANDOFF(P4.163): C1 lists `log_create_failure` as "the `Data validation
-// failed` + `Error creating entity` pair" but it logs only the second; this
-// lane-local helper adds the first. Fold onto `db::fallback` at §S.1.
-pub(crate) fn log_refused_create(collection: &str, zod: &str) {
-    tracing::error!(
-        target: "quilltap::db",
-        collection = collection,
-        error = %zod,
-        "Data validation failed"
-    );
-    crate::db::fallback::log_create_failure(collection, &DbError::Internal(zod.to_string()));
-}
-
-/// The prompt-templates repository's own `safeQuery` wrap above `_create`
-/// (`prompt-templates.repository.ts:248-262`): ERROR `Error creating prompt
-/// template {collection, userId, name, error, strictFailures?}` — `name`
-/// omitted when absent (winston drops `undefined`). Logs only.
-// HANDOFF(P4.163): C1 item 3's `log_prompt_template_create_wrap_failure` —
-// this lane-local copy carries P4.163's measured signature (`d1e038fee`) so
-// §S.1 folds it by repoint.
-pub(crate) fn log_prompt_template_create_wrap_failure(
-    user_id: &str,
-    name: Option<&str>,
-    error: &DbError,
-) {
-    tracing::error!(
-        target: "quilltap::db",
-        collection = "prompt_templates",
-        userId = %user_id,
-        name = name.map(tracing::field::display),
-        error = %crate::db::fallback::error_text(error),
-        strictFailures = crate::db::fallback::strict_repository_failures_active().then_some(true),
-        "Error creating prompt template"
-    );
-}
-
-/// The folders repository's own `safeQuery` wrap above `_create`
-/// (`folders.repository.ts:34-53`): ERROR `Error creating folder
-/// {collection, userId, path, error, strictFailures?}` — `path` omitted when
-/// absent (a non-string `path` renders as its JSON text). Logs only.
-// HANDOFF(P4.163): C1 item 3's `log_folder_create_wrap_failure` — P4.163's
-// measured signature (`d1e038fee`), folded by repoint at §S.1.
-pub(crate) fn log_folder_create_wrap_failure(user_id: &str, path: Option<&str>, error: &DbError) {
-    tracing::error!(
-        target: "quilltap::db",
-        collection = "folders",
-        userId = %user_id,
-        path = path.map(tracing::field::display),
-        error = %crate::db::fallback::error_text(error),
-        strictFailures = crate::db::fallback::strict_repository_failures_active().then_some(true),
-        "Error creating folder"
-    );
-}
-
-/// The tags repository's own `safeQuery` wrap (`tags.repository.ts:60-88`):
-/// ERROR `Error creating tag {collection, userId, name, error,
-/// strictFailures?}` — `name` omitted when absent (a non-string renders as
-/// its JSON text). Logs only.
-// HANDOFF(P4.163): C1 item 3's `log_tag_create_wrap_failure` — P4.163's
-// measured signature (`d1e038fee`), folded by repoint at §S.1.
-pub(crate) fn log_tag_create_wrap_failure(user_id: &str, name: Option<&str>, error: &DbError) {
-    tracing::error!(
-        target: "quilltap::db",
-        collection = "tags",
-        userId = %user_id,
-        name = name.map(tracing::field::display),
-        error = %crate::db::fallback::error_text(error),
-        strictFailures = crate::db::fallback::strict_repository_failures_active().then_some(true),
-        "Error creating tag"
-    );
-}
-
-/// The files repository's own `safeQuery` wrap (`files.repository.ts:
-/// 130-150`): ERROR `Error creating file {collection, userId, filename,
-/// error, strictFailures?}` — `filename` the payload's `originalFilename`,
-/// omitted when absent. Logs only.
-// HANDOFF(P4.163): C1 item 3's `log_file_create_wrap_failure` — P4.163's
-// measured signature (`d1e038fee`), folded by repoint at §S.1.
-pub(crate) fn log_file_create_wrap_failure(user_id: &str, filename: Option<&str>, error: &DbError) {
-    tracing::error!(
-        target: "quilltap::db",
-        collection = "files",
-        userId = %user_id,
-        filename = filename.map(tracing::field::display),
-        error = %crate::db::fallback::error_text(error),
-        strictFailures = crate::db::fallback::strict_repository_failures_active().then_some(true),
-        "Error creating file"
-    );
-}
-
 /// [`item_error_text`] for the store-backed repositories' [`OverlayError`]:
 /// its `Db` arm carries a `DbError` (and so, on a SQLite failure, the prefix);
 /// its `Unavailable` arm is already v4's sentence (`Project … has no usable
@@ -1831,7 +1732,7 @@ fn import_body(
                     let created = match reconcile::parse_create_chat_inform(&input, Some(&data.id))
                     {
                         Err(zod) => {
-                            log_refused_create("chat_informs", &zod);
+                            crate::db::fallback::log_refused_create("chat_informs", &zod);
                             Err(zod)
                         }
                         Ok(row) => crate::db::chat_informs::ChatInformsRepository::new(main)

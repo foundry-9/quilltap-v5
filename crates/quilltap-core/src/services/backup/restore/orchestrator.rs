@@ -150,6 +150,11 @@ pub async fn restore(
     let codec = host.pixel_codec();
     let dirs = host.host_dirs();
     let user_id = target_user_id.to_string();
+    // v4's phase-14 gate is `isLLMLogsDegraded()` (`restore.ts:349`) — read
+    // here, off the writer thread, from the open's recorded state (P4.159):
+    // the writer set alone cannot tell a DEGRADED logs file from an ABSENT one.
+    let llm_logs_degraded = db.partition_state(crate::db::table_shape::Partition::LlmLogs)
+        == crate::db::runtime::PartitionState::Degraded;
     // Step 25's reconcile takes no clock since v4 `f7f3d7bf0` (its staleness
     // window is gone — P4.D235; the dead argument dropped at the `97b25fc53`
     // unification).
@@ -161,6 +166,7 @@ pub async fn restore(
             &user_id,
             codec,
             dirs,
+            llm_logs_degraded,
         ))
     })
     .await
@@ -300,6 +306,7 @@ fn restore_on_writer(
     target_user_id: &str,
     codec: Arc<dyn PixelCodec>,
     dirs: HostDirs,
+    llm_logs_degraded: bool,
 ) -> RestoreSummary {
     let backup_format = extracted.backup_format();
     let root_path = extracted.root_path.clone();
@@ -908,7 +915,7 @@ fn restore_on_writer(
                     Some(claimed.as_str()).filter(|id| !id.is_empty()),
                 )
                 .inspect_err(|zod| {
-                    crate::services::quilltap_import::log_refused_create("memories", zod);
+                    crate::db::fallback::log_refused_create("memories", zod);
                     crate::db::fallback::log_memory_create_failure(
                         &character_id,
                         &crate::db::DbError::Internal(zod.clone()),
@@ -1196,8 +1203,13 @@ fn restore_on_writer(
 
     // ── 14. LLM logs — the ONLY phase that preserves `createdAt` (`:333`) ─────
     match llm {
-        // v4's `isLLMLogsDegraded()` arm (`:326`), with its warning verbatim.
-        None if !data.llm_logs.is_empty() => {
+        // v4's `isLLMLogsDegraded()` arm (`restore.ts:349-351`), with its
+        // warning verbatim: a DEGRADED logs file warns whether or not the
+        // archive carries logs (P4.159's handoff, landed at the `94fbb1ae3`
+        // boot-hardness unification). An ABSENT logs partition — a v5-only
+        // state; v4 creates the file — keeps v5's older rule: warn only when
+        // there are logs to lose.
+        None if llm_logs_degraded || !data.llm_logs.is_empty() => {
             tracing::warn!(
                 target: "quilltap::restore",
                 "Skipping LLM logs restore — logs database is in degraded mode"
@@ -1642,7 +1654,7 @@ fn restore_on_writer(
                     Some(claimed.as_str()).filter(|id| !id.is_empty()),
                 ) {
                     Err(zod) => {
-                        crate::services::quilltap_import::log_refused_create("chat_informs", &zod);
+                        crate::db::fallback::log_refused_create("chat_informs", &zod);
                         Err(zod)
                     }
                     Ok(create) => repo.create(&create).map_err(|e| {

@@ -186,7 +186,19 @@ fn run_restore(
     archive: &str,
     mode: RestoreMode,
 ) -> (tempfile::TempDir, PathBuf, Vec<String>, usize) {
+    run_restore_with(tag, archive, mode, |_| {})
+}
+
+/// [`run_restore`] with a hook over the instance copy BEFORE it is opened (a
+/// plant the open must see — e.g. a garbage sibling file it degrades).
+fn run_restore_with(
+    tag: &str,
+    archive: &str,
+    mode: RestoreMode,
+    prepare: impl FnOnce(&Path),
+) -> (tempfile::TempDir, PathBuf, Vec<String>, usize) {
     let (root, instance) = vintage_instance(tag);
+    prepare(&instance);
     let zip = fixtures_dir().join("restore-archives").join(archive);
     assert!(zip.exists(), "missing committed archive: {zip:?}");
     let host = TestHost {
@@ -764,5 +776,50 @@ fn a_pre_49_archive_lands_never_chosen_not_the_migrated_default() {
     assert_eq!(
         got, expected,
         "the six seeding shapes must land what their owners chose, not the migrated table defaults"
+    );
+}
+
+/// The `94fbb1ae3` boot-hardness unification (P4.159's HANDOFF to P4.161):
+/// v4's phase 14 keys its skip on `isLLMLogsDegraded()` ALONE
+/// (`lib/backup/restore/restore.ts:349-351`) — the WARN and the warning fire
+/// whenever the logs database is degraded, even for an archive that carries no
+/// logs. P4.159 made a garbage logs file a DEGRADED partition (no writer), so a
+/// restore over one must say so. `restore-archive-minimal.zip` has no
+/// `llm-logs.json`. Red before the fix: v5 keyed the arm on
+/// `!data.llm_logs.is_empty()` and stayed silent.
+#[test]
+fn a_degraded_llm_logs_file_warns_even_with_no_logs_to_restore() {
+    const DEGRADED: &str =
+        "LLM logs were not restored because the logs database is in degraded mode";
+    let (_root, _instance, warnings, _) = run_restore_with(
+        "degraded-llm-logs",
+        "restore-archive-minimal.zip",
+        RestoreMode::Replace,
+        |instance| {
+            std::fs::write(instance.join("quilltap-llm-logs.db"), vec![0x5a_u8; 8192])
+                .expect("plant a garbage logs file");
+        },
+    );
+    assert_eq!(
+        warnings.iter().filter(|w| *w == DEGRADED).count(),
+        1,
+        "v4's degraded-logs warning, once; warnings: {warnings:#?}"
+    );
+}
+
+/// The silence leg: a SOUND logs file and an archive with no logs restore with
+/// no degraded warning (v4's `else` arm loops over nothing).
+#[test]
+fn a_sound_llm_logs_file_with_no_logs_restores_silently() {
+    let (_root, _instance, warnings, _) = run_restore(
+        "sound-llm-logs",
+        "restore-archive-minimal.zip",
+        RestoreMode::Replace,
+    );
+    assert!(
+        !warnings
+            .iter()
+            .any(|w| w.contains("logs database is in degraded mode")),
+        "no degraded warning on a sound logs file; warnings: {warnings:#?}"
     );
 }

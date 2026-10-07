@@ -145,7 +145,7 @@ pub(super) fn import_memories(
             None => {
                 crate::db::memories::parse_create_memory(&Value::Object(payload), Some(&new_id))
                     .inspect_err(|zod| {
-                        super::log_refused_create("memories", zod);
+                        crate::db::fallback::log_refused_create("memories", zod);
                         crate::db::fallback::log_memory_create_failure(
                             new_character_id,
                             &DbError::Internal(zod.clone()),

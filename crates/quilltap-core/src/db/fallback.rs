@@ -838,6 +838,25 @@ pub fn log_create_failure(collection: &str, error: &DbError) {
     );
 }
 
+/// v4's base-repository refusal of a create whose entity fails its schema
+/// (`base.repository.ts:130-141, 350-379`): `validate`'s ERROR `Data
+/// validation failed {collection, error}` — a DIRECT logger call, so it never
+/// carries `strictFailures` — then `_create`'s rethrowing `safeQuery` line
+/// [`log_create_failure`]. `zod` is the `ZodError.message`. Logs only. Shared
+/// by the `.qtap` import and the backup restore (P4.161); the restore runs
+/// outside the strict scope, so its second line carries no `strictFailures`.
+/// Folded here from P4.161's lane-local copy at the `94fbb1ae3` boot-hardness
+/// unification (§S.1 — C1 had described `log_create_failure` as this pair).
+pub fn log_refused_create(collection: &str, zod: &str) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = collection,
+        error = %zod,
+        "Data validation failed"
+    );
+    log_create_failure(collection, &DbError::Internal(zod.to_string()));
+}
+
 /// v4's STORE-BACKED override of `createErrorMessage()`
 /// (`store-backed.repository.ts:234-236`): `_create`'s rethrowing `safeQuery`
 /// logs ERROR `Error creating {project|group} entity {collection, error,
