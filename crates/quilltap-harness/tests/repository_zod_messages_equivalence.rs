@@ -59,7 +59,7 @@
 //!     cargo test -p quilltap-harness --test repository_zod_messages_equivalence -- --nocapture
 
 use quilltap_core::api::zod_issues::{
-    zod_chat_inform_issues, zod_error_message, zod_float32_array_cell,
+    zod_chat_inform_issues, zod_error_message, zod_float32_array_cell, zod_folder_issues,
     zod_group_doc_mount_link_issues, zod_group_issues, zod_memory_issues,
     zod_prompt_template_issues, ZodIssue,
 };
@@ -270,7 +270,7 @@ fn repository_zod_messages_match_oracle() {
     let (mut settings_messages, mut settings_ok) = (0usize, 0usize);
     let mut settings_two_line_rows = 0usize;
     let (mut memory_rows, mut inform_rows, mut parsed_rows) = (0usize, 0usize, 0usize);
-    let mut prompt_template_rows = 0usize;
+    let (mut prompt_template_rows, mut folder_rows) = (0usize, 0usize);
 
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         rows += 1;
@@ -371,10 +371,15 @@ fn repository_zod_messages_match_oracle() {
                     )
                 }
             }
-            // P4.161 Tier 2: v4's REAL `PromptTemplateSchema`.
-            "promptTemplate" => {
-                prompt_template_rows += 1;
-                let issues = zod_prompt_template_issues(&row);
+            // P4.161 Tier 2: v4's REAL `PromptTemplateSchema` / `FolderSchema`.
+            "promptTemplate" | "folder" => {
+                let issues = if schema == "folder" {
+                    folder_rows += 1;
+                    zod_folder_issues(&row)
+                } else {
+                    prompt_template_rows += 1;
+                    zod_prompt_template_issues(&row)
+                };
                 if issues.is_empty() {
                     (None, None)
                 } else {
@@ -400,10 +405,11 @@ fn repository_zod_messages_match_oracle() {
         }
     }
     eprintln!("repository_zod_messages: {rows} rows ({ok_rows} accepted)");
-    assert!(rows >= 155, "the corpus shrank ({rows} rows)");
+    assert!(rows >= 166, "the corpus shrank ({rows} rows)");
     assert_eq!(
-        prompt_template_rows, 19,
-        "P4.161 Tier 2: the recorded PromptTemplateSchema rows"
+        (prompt_template_rows, folder_rows),
+        (19, 11),
+        "P4.161 Tier 2: the recorded PromptTemplateSchema / FolderSchema rows"
     );
     assert_eq!(
         (memory_rows, inform_rows),

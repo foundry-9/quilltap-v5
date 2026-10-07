@@ -761,6 +761,7 @@ const REPO_LEVEL_MESSAGES = [
   'Error creating group',
   // [P4.161 Tier 2] the per-kind repository wraps.
   'Error creating prompt template',
+  'Error creating folder',
 ];
 
 /**

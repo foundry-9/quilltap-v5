@@ -45,6 +45,8 @@ pub mod seed_assets;
 /// project / group parse validates the same shape the import does).
 pub(crate) use configuration::{log_refused_prompt_template, parse_create_prompt_template};
 pub(crate) use entities::store_create_payload;
+pub(crate) use files::{log_refused_folder, parse_create_folder};
+pub(crate) use warning_display_name as js_display_name;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -394,7 +396,7 @@ pub(crate) fn get_preserve_ids_create_options(
 /// data, not a sentence.
 ///
 /// [`to_js_string`]: crate::pascal::js_value::to_js_string
-pub(super) fn warning_display_name(raw: &Value) -> String {
+pub(crate) fn warning_display_name(raw: &Value) -> String {
     match raw.get("name") {
         None => "undefined".to_string(),
         Some(v) => crate::pascal::js_value::to_js_string(v),
@@ -460,6 +462,24 @@ pub(crate) fn log_prompt_template_create_wrap_failure(
         error = %crate::db::fallback::error_text(error),
         strictFailures = crate::db::fallback::strict_repository_failures_active().then_some(true),
         "Error creating prompt template"
+    );
+}
+
+/// The folders repository's own `safeQuery` wrap above `_create`
+/// (`folders.repository.ts:34-53`): ERROR `Error creating folder
+/// {collection, userId, path, error, strictFailures?}` — `path` omitted when
+/// absent (a non-string `path` renders as its JSON text). Logs only.
+// HANDOFF(P4.163): C1 item 3's `log_folder_create_wrap_failure` — P4.163's
+// measured signature (`d1e038fee`), folded by repoint at §S.1.
+pub(crate) fn log_folder_create_wrap_failure(user_id: &str, path: Option<&str>, error: &DbError) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "folders",
+        userId = %user_id,
+        path = path.map(tracing::field::display),
+        error = %crate::db::fallback::error_text(error),
+        strictFailures = crate::db::fallback::strict_repository_failures_active().then_some(true),
+        "Error creating folder"
     );
 }
 
@@ -2691,7 +2711,9 @@ mod import_warn_pins {
                 main,
                 mount,
                 &crate::services::file_storage::NotConfiguredPixelCodec,
-                "u1",
+                // A uuid: P4.161's `FolderSchema` parse runs before the planted
+                // insert trigger.
+                "a1000000-0000-4000-8000-000000000001",
                 &[],
                 &[json!({ "id": "fo-src", "path": "/A", "name": "A" })],
                 &opts,
@@ -2807,7 +2829,9 @@ mod import_warn_pins {
                 &main,
                 &mount,
                 &crate::services::file_storage::NotConfiguredPixelCodec,
-                "u1",
+                // A uuid: P4.161's `FolderSchema` parse runs before the planted
+                // insert trigger.
+                "a1000000-0000-4000-8000-000000000001",
                 &[],
                 &[
                     json!({ "path": "/A", "name": "A" }),

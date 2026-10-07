@@ -171329,3 +171329,29 @@ unifier should record the waiver in the ledger's §1.
   `the restore's log census differs` on the 37 cases logging the completion
   line + the off-target lines (every case logs `Restored chat informs`).
   Green after. No other pin referenced the five lines' targets.
+
+### Unit 6 — Tier 2 item 8, library folders (core 0.0.1247)
+
+- `zod_issues::zod_folder_issues`; 11 recorded `folder` rows (2 accepted —
+  `path` / `name` any string incl. `""`). Home:
+  `quilltap_import::files::parse_create_folder(item, claimed_id)` (+
+  `log_refused_folder`), re-exported for the restore.
+- Import: v4's `projectId` remap keeps an unmapped value RAW (a non-string
+  one too); the reuse lookup binds a non-string path / project id as
+  nothing-found; the create payload carries the RAW `path` / `name`; parsed
+  BEFORE `ensure_by_path`. Restore: `{...folderData, userId}` with the id
+  claimed; the warning's `"<name>"` through `warning_display_name` (now
+  `pub(crate)`, re-exported as `js_display_name`) — the DB-error arm too.
+- **HANDOFF(P4.163):** `quilltap_import::log_folder_create_wrap_failure(
+  user_id: &str, path: Option<&str>, error: &DbError)` — P4.163's signature.
+- Oracle: `execute_folder_refusals` (files payload + `projectId: "nope"`,
+  `name: 5`, a sound folder; 6 repository lines; 2 WARNs) — `ran` 53 → 54,
+  `REPO_LOG_CASES` 8 → 9, `IMPORT_WARN_CASES` 40 → 41, fired 22 → 24,
+  `REPO_LOG_KEYS` + `path`. Restore: `restore-archive-kind-refusals.zip`
+  re-derived with folders `a9…0e1-0e4` (projectId `"nope"`, name `5`, path
+  `5`, sound); by-name folder assertion on BOTH sides.
+- **Red-first (core at unit 5):** import 4, restore 5 — all in the new
+  cases. **Pins moved (v4-faithful):** `import_warn_pins`' two
+  `import_files` calls used user id `"u1"`; a uuid now.
+- v4 landed `7c78abd49` (docs only — three wardrobe design specs) during
+  this unit; the human ruled docs-only commits ignorable for this run.

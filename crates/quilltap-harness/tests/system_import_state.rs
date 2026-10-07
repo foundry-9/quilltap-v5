@@ -800,6 +800,7 @@ const REPO_LOG_MESSAGES: &[&str] = &[
     "Error creating memory",
     // [P4.161 Tier 2] the prompt-templates repository's wrap.
     "Error creating prompt template",
+    "Error creating folder",
 ];
 
 /// The [`REPO_LOG_MESSAGES`] entry `rest` starts with — the LONGEST match, so
@@ -822,6 +823,7 @@ const REPO_LOG_KEYS: &[&str] = &[
     "characterId",
     "userId",
     "name",
+    "path",
     "projectId",
     "groupId",
 ];
@@ -1596,7 +1598,48 @@ fn system_import_execute_state_equivalence() {
     // …+ P4.161's `execute_memory_refusals` and `execute_inform_refusals`
     // (50 + 2 = 52).
     // …+ P4.161 Tier 2's `execute_prompt_template_refusals` (52 + 1 = 53).
-    assert_eq!(ran, 53, "expected 53 cases, ran {ran}");
+    // …+ `execute_folder_refusals` (53 + 1 = 54).
+    assert_eq!(ran, 54, "expected 54 cases, ran {ran}");
+    // [P4.161 Tier 2] Non-vacuity: v4 refused the two bad folders (three
+    // repository ERRORs each) and landed the sound one.
+    {
+        let case = cases
+            .iter()
+            .find(|c| c["name"] == "execute_folder_refusals")
+            .expect("the oracle is missing `execute_folder_refusals` — regenerate it");
+        let messages: Vec<&str> = case["repoLogs"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|l| l["message"].as_str())
+            .collect();
+        assert_eq!(
+            messages,
+            [
+                "Data validation failed",
+                "Error creating entity",
+                "Error creating folder"
+            ]
+            .iter()
+            .cycle()
+            .take(6)
+            .copied()
+            .collect::<Vec<_>>(),
+            "v4's three repository ERRORs per refused folder"
+        );
+        let paths: Vec<&str> = case["state"]["main"]["folders"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|f| f["path"].as_str())
+            .collect();
+        assert!(
+            paths.contains(&"/sound-folder")
+                && !paths.contains(&"/refused-project")
+                && !paths.contains(&"/refused-name"),
+            "v4 lands the sound folder only: {paths:?}"
+        );
+    }
     // [P4.161 Tier 2] Non-vacuity: v4 refused four prompt templates (three
     // repository ERRORs each) and landed the sound twin.
     {
@@ -2096,12 +2139,12 @@ fn system_import_execute_state_equivalence() {
     // [P4.161 Tier 2] …+ the prompt-template arm (40), four more lines (22).
     assert_eq!(
         IMPORT_WARN_CASES.load(Ordering::SeqCst),
-        40,
+        41,
         "cases comparing the import WARNs"
     );
     assert_eq!(
         IMPORT_WARNS_FIRED.load(Ordering::SeqCst),
-        22,
+        24,
         "v4 import WARN lines fired"
     );
     // [P4.155 R-A] …+ the two property-refusal arms (5).
@@ -2109,7 +2152,7 @@ fn system_import_execute_state_equivalence() {
     // prompt-template arm (8).
     assert_eq!(
         REPO_LOG_CASES.load(Ordering::SeqCst),
-        8,
+        9,
         "cases that compared a refused create's repository lines"
     );
     assert_eq!(
@@ -2575,6 +2618,7 @@ fn run_execute_case(
                 // failed` is a DIRECT logger call — never strict, measured).
                 "Error creating memory",
                 "Error creating prompt template",
+                "Error creating folder",
             ],
             failures,
         );

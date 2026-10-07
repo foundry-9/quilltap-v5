@@ -1148,6 +1148,24 @@ pub fn zod_prompt_template_issues(row: &serde_json::Map<String, Value>) -> Vec<Z
     issues
 }
 
+/// v4 `FolderSchema` (`lib/schemas/folder.types.ts:18-41`) over the WHOLE
+/// entity `folders.create` hands `_create`, in schema key order: `id` /
+/// `userId` uuid; `path` / `name` string (any, `""` included);
+/// `parentFolderId` / `projectId` uuid `.nullable().optional()`; the two
+/// stamps. Recorded through v4's REAL schema (P4.161 Tier 2).
+pub fn zod_folder_issues(row: &serde_json::Map<String, Value>) -> Vec<ZodIssue> {
+    let mut issues = Vec::new();
+    zod_uuid_issues(row, "id", false, &mut issues);
+    zod_uuid_issues(row, "userId", false, &mut issues);
+    required_string_issues(row, "path", &mut issues);
+    required_string_issues(row, "name", &mut issues);
+    zod_uuid_issues(row, "parentFolderId", true, &mut issues);
+    zod_uuid_issues(row, "projectId", true, &mut issues);
+    zod_timestamp_issues(row, "createdAt", &mut issues);
+    zod_timestamp_issues(row, "updatedAt", &mut issues);
+    issues
+}
+
 /// v4 `GroupDocMountLinkSchema` (`lib/schemas/mount-index.types.ts`) — three
 /// required uuids and two timestamps — over a raw `group_doc_mount_links` row
 /// (the shape `findByFilter` `validateSafe()`s row by row). Zod's issue list;

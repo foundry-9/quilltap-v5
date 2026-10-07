@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — fix(import,restore): validate library folders whole-row before the write (P4.161 Tier 2)
+
+_Versions: core 0.0.1247._
+
+The `.qtap` import (through `ensureByPath`) and the backup restore now run v4's `FolderSchema` over the whole create payload before the insert (`quilltap_import::files::parse_create_folder` over a new `zod_folder_issues`). The import keeps an unmapped `projectId` RAW as v4 does (`get(...) ?? folder.projectId`), so a non-uuid one is refused where v5 used to write it; a numeric `name` / `path` is refused where v5 wrote `""`. A refusal logs `Data validation failed`, `Error creating entity` and `Error creating folder {userId, path}` (a lane-local copy of P4.163's `log_folder_create_wrap_failure`), then the warning and WARN; the restore's warning renders the raw name as v4's template literal does (`"5"`). 11 recorded `folder` rows; `execute_folder_refusals` (on the fixture's files payload — folders import only beside files); three folder rows in `restore-archive-kind-refusals.zip`. Red-first: 4 import and 5 restore differences, all in the new cases.
+
 #### 2026-10-07 — fix(restore): log `Restore operation completed` in v4's key order and every restore.ts line on one target; the census compares key order (P4.161 Tier 2 item 9)
 
 _Versions: core 0.0.1246._

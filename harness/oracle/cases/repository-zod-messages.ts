@@ -55,6 +55,7 @@ import { ChatSettingsSchema } from '@/lib/schemas/settings.types';
 import { MemorySchema } from '@/lib/schemas/memory.types';
 import { ChatInformSchema } from '@/lib/schemas/chat-inform.types';
 import { PromptTemplateSchema } from '@/lib/schemas/template.types';
+import { FolderSchema } from '@/lib/schemas/folder.types';
 import { logger } from '@/lib/logger';
 import { ChatSettingsRepository } from '@/lib/database/repositories/chat-settings.repository';
 
@@ -126,6 +127,16 @@ const PROMPT_TEMPLATE: Row = {
   updatedAt: TS,
 };
 
+// P4.161 Tier 2: a minimal valid `FolderSchema` row.
+const FOLDER: Row = {
+  id: 'f1610000-0000-4000-8000-0000000005a1',
+  userId: 'a1000000-0000-4000-8000-000000000001',
+  path: '/notes',
+  name: 'Notes',
+  createdAt: TS,
+  updatedAt: TS,
+};
+
 const ABSENT = '<absent>';
 const patch = (base: Row, p: Row): Row => {
   const r: Row = { ...base };
@@ -144,7 +155,8 @@ type SchemaName =
   | 'chatSettings'
   | 'memory'
   | 'chatInform'
-  | 'promptTemplate';
+  | 'promptTemplate'
+  | 'folder';
 const rows: Array<[string, SchemaName, Row]> = [];
 const group = (id: string, p: Row) => rows.push([id, 'group', patch(GROUP, p)]);
 const link = (id: string, p: Row) => rows.push([id, 'groupDocMountLink', patch(LINK, p)]);
@@ -152,6 +164,7 @@ const chat = (id: string, p: Row) => rows.push([id, 'chatMetadataBase', patch(CH
 const settings = (id: string, p: Row) => rows.push([id, 'chatSettings', patch(SETTINGS, p)]);
 const memory = (id: string, p: Row) => rows.push([id, 'memory', patch(MEMORY, p)]);
 const inform = (id: string, p: Row) => rows.push([id, 'chatInform', patch(INFORM, p)]);
+const folder = (id: string, p: Row) => rows.push([id, 'folder', patch(FOLDER, p)]);
 const promptTemplate = (id: string, p: Row) =>
   rows.push([id, 'promptTemplate', patch(PROMPT_TEMPLATE, p)]);
 
@@ -403,6 +416,24 @@ promptTemplate('prompt-template-tags-bad', { tags: ['nope'] });
 promptTemplate('prompt-template-tags-null', { tags: null });
 promptTemplate('prompt-template-multi', { name: '', content: '', description: 'd'.repeat(501), tags: [5] });
 
+// --- FolderSchema (P4.161 Tier 2) ------------------------------------------
+folder('folder-valid', {});
+folder('folder-valid-full', {
+  parentFolderId: 'a1610000-0000-4000-8000-0000000000f1',
+  projectId: null,
+  path: '',
+  name: '',
+});
+folder('folder-project-bad', { projectId: 'nope' });
+folder('folder-project-number', { projectId: 5 });
+folder('folder-parent-bad', { parentFolderId: 'p' });
+folder('folder-path-number', { path: 5 });
+folder('folder-path-absent', { path: ABSENT });
+folder('folder-name-number', { name: 5 });
+folder('folder-name-null', { name: null });
+folder('folder-user-bad', { userId: 'u' });
+folder('folder-multi', { path: 5, name: null, projectId: 'nope' });
+
 const SCHEMAS = {
   group: GroupSchema,
   groupDocMountLink: GroupDocMountLinkSchema,
@@ -411,6 +442,7 @@ const SCHEMAS = {
   memory: MemorySchema,
   chatInform: ChatInformSchema,
   promptTemplate: PromptTemplateSchema,
+  folder: FolderSchema,
 } as const;
 
 // An accepted row's parsed output as JSON — a `Float32Array` embedding as the

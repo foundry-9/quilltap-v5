@@ -12,8 +12,15 @@ twin (the archive's own rows stay byte for byte).
     b2…0e4  tags ["nope"]
     b2…0e5  a sound twin
 
-Each refusal is skipped with `Failed to restore prompt template "<name>":
-<ZodError message>`. The manifest's counts move with every collection
+  library folders (`FolderSchema`, `folders.create(..., {id})` → `_create`;
+  v4 `restore.ts:425-446`, id preserved, userId retargeted):
+    a9…0e1  projectId "nope"
+    a9…0e2  name 5             (the warning renders it `"5"`)
+    a9…0e3  path 5
+    a9…0e4  a sound twin
+
+Each refusal is skipped with `Failed to restore <kind> "<name>": <ZodError
+message>`. The manifest's counts move with every collection
 touched; every other byte is kept. `restore-archive.zip` is md5-checked
 unchanged before and after.
 
@@ -53,9 +60,28 @@ def rewrite_prompt_templates(rows):
     ]
 
 
+def rewrite_folders(rows):
+    assert len(rows) == 1, len(rows)
+    base = rows[0]
+
+    def item(suffix, **patch):
+        r = copy.deepcopy(base)
+        r["id"] = f"a9000000-0000-4000-8000-0000000000{suffix}"
+        r.update(patch)
+        return r
+
+    return rows + [
+        item("e1", path="/refused-project", name="Refused Project", projectId="nope"),
+        item("e2", path="/refused-name", name=5),
+        item("e3", path=5, name="Refused Path"),
+        item("e4", path="/sound-twin", name="Sound Twin"),
+    ]
+
+
 REWRITES = {
     # data file stem → (rewrite, manifest count key)
     "prompt-templates": (rewrite_prompt_templates, "promptTemplates"),
+    "folders": (rewrite_folders, "folders"),
 }
 
 

@@ -65,6 +65,59 @@ fn sa(v: &Value, key: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// v4's `_create` validation of a library folder (`base.repository.ts:
+/// 350-368` over `FolderSchema`) — the ONE parse the `.qtap` import and the
+/// backup restore run BEFORE the write (P4.161 Tier 2, R-A; the home a later
+/// order may move beside `db::folders`). `item` is the create payload (the
+/// raw `path` / `name` as they came; unknown keys stripped); the entity is
+/// `{...item, id, createdAt, updatedAt}` with `claimed_id` the id the create
+/// writes (`None` = minted). `Err` is the `ZodError.message`.
+pub(crate) fn parse_create_folder(
+    item: &Value,
+    claimed_id: Option<&str>,
+) -> Result<FolderCreate, String> {
+    use crate::api::zod_issues::{zod_error_message, zod_folder_issues};
+    let mut entity = item.as_object().cloned().unwrap_or_default();
+    let now = crate::clock::now_iso();
+    entity.insert(
+        "id".into(),
+        Value::String(
+            claimed_id
+                .unwrap_or("00000000-0000-0000-0000-000000000000")
+                .into(),
+        ),
+    );
+    entity.insert("createdAt".into(), Value::String(now.clone()));
+    entity.insert("updatedAt".into(), Value::String(now));
+    let issues = zod_folder_issues(&entity);
+    if !issues.is_empty() {
+        return Err(zod_error_message(&issues));
+    }
+    let e = Value::Object(entity);
+    Ok(FolderCreate {
+        user_id: s(&e, "userId"),
+        path: s(&e, "path"),
+        name: s(&e, "name"),
+        parent_folder_id: os(&e, "parentFolderId"),
+        project_id: os(&e, "projectId"),
+    })
+}
+
+/// A refused folder create's three repository ERRORs (validate → `_create` →
+/// the repository's wrap, `{userId, path}`).
+pub(crate) fn log_refused_folder(user_id: &str, path: Option<&Value>, zod: &str) {
+    let path = path.map(|v| match v {
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
+    });
+    super::log_refused_create("folders", zod);
+    super::log_folder_create_wrap_failure(
+        user_id,
+        path.as_deref(),
+        &DbError::Internal(zod.to_string()),
+    );
+}
+
 /// Recreate the folder tree (v4 `importFolders`). Parents come first (the
 /// writer sorts by path length), so a child's `parentFolderId` always resolves
 /// against a folder we have already created — or against one that already
@@ -86,19 +139,29 @@ fn import_folders(
 
     for folder in sorted {
         let path = s(folder, "path");
-        let out = (|| -> Result<(), DbError> {
+        let out = (|| -> Result<(), String> {
             // `folder.projectId ? idMaps.projects.get(...) ?? folder.projectId
             // : null` — an unmapped project id is KEPT (a same-instance
-            // re-import), unlike the null-on-miss FK remaps elsewhere.
-            let project_id = os(folder, "projectId").map(|pid| {
-                id_maps
-                    .projects
-                    .get(&pid)
-                    .map(str::to_string)
-                    .unwrap_or(pid)
-            });
+            // re-import), unlike the null-on-miss FK remaps elsewhere. The
+            // value is kept RAW (P4.161): a non-uuid / non-string id reaches
+            // the schema, which refuses it.
+            let project_id: Value = match folder.get("projectId") {
+                Some(raw) if crate::api::system_qtap::js_truthy(Some(raw)) => raw
+                    .as_str()
+                    .and_then(|pid| id_maps.projects.get(pid))
+                    .map_or_else(|| raw.clone(), |m| Value::String(m.to_string())),
+                _ => Value::Null,
+            };
 
-            if let Some(existing) = repo.find_by_path(user_id, &path, project_id.as_deref())? {
+            // A non-string path or project id finds nothing (v4's lookup
+            // binds it as-is; SQLite's TEXT column never equals it).
+            let existing = match (folder.get("path").and_then(Value::as_str), &project_id) {
+                (Some(p), Value::String(pid)) => repo.find_by_path(user_id, p, Some(pid)),
+                (Some(p), Value::Null) => repo.find_by_path(user_id, p, None),
+                _ => Ok(None),
+            }
+            .map_err(err_msg)?;
+            if let Some(existing) = existing {
                 id_by_old_id.push((id_of(folder), existing.id));
                 return Ok(());
             }
@@ -110,23 +173,35 @@ fn import_folders(
                     .map(|(_, v)| v.clone())
             });
 
+            // v4 `ensureByPath({userId, path, name, parentFolderId,
+            // projectId})` → `create` → `_create` validates the WHOLE entity
+            // (P4.161 Tier 2 — v5 used to write `""` for a non-string path or
+            // name and any project id as it came).
+            let mut item = serde_json::Map::new();
+            item.insert("userId".into(), Value::String(user_id.to_string()));
+            for k in ["path", "name"] {
+                if let Some(v) = folder.get(k) {
+                    item.insert(k.into(), v.clone());
+                }
+            }
+            item.insert(
+                "parentFolderId".into(),
+                parent_folder_id.map_or(Value::Null, Value::String),
+            );
+            item.insert("projectId".into(), project_id);
+            let create = parse_create_folder(&Value::Object(item.clone()), None)
+                .inspect_err(|zod| log_refused_folder(user_id, folder.get("path"), zod))?;
+
             // Find-or-create at the chokepoint (v4 `a5df98b3f`, bug 114). The
             // `find_by_path` above is the reuse-REPORTING branch, not the
             // uniqueness guarantee — that lives in `ensure_by_path` and the
             // unique index behind it.
-            let created = repo.ensure_by_path(&FolderCreate {
-                user_id: user_id.to_string(),
-                path: path.clone(),
-                name: s(folder, "name"),
-                parent_folder_id,
-                project_id,
-            })?;
+            let created = repo.ensure_by_path(&create).map_err(err_msg)?;
             id_by_old_id.push((id_of(folder), created.id));
             imported += 1;
             Ok(())
         })();
-        if let Err(e) = out {
-            let text = err_msg(e);
+        if let Err(text) = out {
             warnings.push(format!("Failed to import folder \"{path}\": {text}"));
             // v4 `import-files.ts:93` (P4.148 Tier 2 item 17).
             tracing::warn!(

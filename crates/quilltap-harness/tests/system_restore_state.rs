@@ -5032,6 +5032,7 @@ const REPO_LEVEL_MESSAGES: &[&str] = &[
     "Error creating group",
     // [P4.161 Tier 2] the per-kind repository wraps.
     "Error creating prompt template",
+    "Error creating folder",
 ];
 const REPO_LEVEL_CASES: &[&str] = &[
     "restore_informs_replace",
@@ -5465,6 +5466,14 @@ fn assert_refusals_restored(
     failures: &mut Vec<String>,
 ) {
     let got_v = serde_json::to_value(got).expect("dump serializes");
+    let ids_of = |dump: &Value, table: &str| -> Vec<String> {
+        let mut v: Vec<String> = rows_of(dump, "main", table)
+            .iter()
+            .filter_map(|r| r["id"].as_str().map(str::to_string))
+            .collect();
+        v.sort();
+        v
+    };
     let ids = |dump: &Value, partition: &str, table: &str, prefix: &str| -> Vec<String> {
         let mut v: Vec<String> = rows_of(dump, partition, table)
             .iter()
@@ -5535,6 +5544,16 @@ fn assert_refusals_restored(
                 if names != expected {
                     failures.push(format!(
                         "[{name}] PROMPT TEMPLATES ({side}): restored {names:?}, expected {expected:?}"
+                    ));
+                }
+                let folders = ids_of(dump, "folders");
+                let want_folders = vec![
+                    "a9000000-0000-4000-8000-000000000001".to_string(),
+                    "a9000000-0000-4000-8000-0000000000e4".to_string(),
+                ];
+                if folders != want_folders {
+                    failures.push(format!(
+                        "[{name}] FOLDERS ({side}): restored {folders:?}, expected {want_folders:?}"
                     ));
                 }
             }

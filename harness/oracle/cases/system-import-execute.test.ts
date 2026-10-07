@@ -1631,6 +1631,29 @@ function promptTemplateRefusalsPayload(): { manifest: unknown; data: Record<stri
 }
 
 /**
+ * [P4.161 Tier 2] Library folders v4's `FolderSchema` refuses at `_create`
+ * (`folders.repository.ts:34-53`, reached through `ensureByPath`): an
+ * unmapped non-uuid `projectId` (KEPT by the remap — `get(...) ??
+ * folder.projectId`) and a numeric `name`, beside a sound folder. Folders
+ * import only beside files (`execute.ts:908`), so they ride the fixture's own
+ * files export.
+ */
+function folderRefusalsPayload(files: {
+  manifest: unknown;
+  data: Record<string, unknown[]>;
+}): unknown {
+  const p = JSON.parse(JSON.stringify(files)) as { manifest: unknown; data: Record<string, unknown[]> };
+  const id = (n: number) => `f1610000-0000-4000-8000-0000000006${String(n).padStart(2, '0')}`;
+  p.data.folders = [
+    ...((p.data.folders ?? []) as unknown[]),
+    { id: id(1), path: '/refused-project', name: 'Refused Project', projectId: 'nope' },
+    { id: id(2), path: '/refused-name', name: 5 },
+    { id: id(3), path: '/sound-folder', name: 'Sound Folder' },
+  ];
+  return p;
+}
+
+/**
  * [P4.63 → v4 bug 105 → P4.D131] The bug-105 regression-guard payload: one
  * connection profile whose `provider` is not a string, followed by one image
  * profile that is perfectly sound.
@@ -1905,6 +1928,8 @@ const REPO_LOG_MESSAGES = new Set([
   // [P4.161 Tier 2] the prompt-templates repository's own wrap
   // (`prompt-templates.repository.ts:261`, `{userId, name}`).
   'Error creating prompt template',
+  // [P4.161 Tier 2] the folders repository's own wrap (`{userId, path}`).
+  'Error creating folder',
 ]);
 
 /**
@@ -1938,6 +1963,7 @@ async function withRepoLogs<T>(
           'characterId',
           'userId',
           'name',
+          'path',
           'projectId',
           'groupId',
           'error',
@@ -2856,6 +2882,12 @@ async function main(): Promise<void> {
     executeCase(
       'execute_prompt_template_refusals',
       () => promptTemplateRefusalsPayload(),
+      { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
+      true,
+    ),
+    executeCase(
+      'execute_folder_refusals',
+      () => folderRefusalsPayload(filesPayload),
       { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
       true,
     ),

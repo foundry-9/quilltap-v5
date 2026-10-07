@@ -1303,12 +1303,40 @@ fn restore_on_writer(
     {
         let repo = crate::db::folders::FoldersRepository::new(main);
         for f in &data.folders {
-            let create = crate::db::folders::FolderCreate {
-                user_id: target_user_id.to_string(),
-                path: s(f, "path"),
-                name: s(f, "name"),
-                parent_folder_id: os(f, "parentFolderId"),
-                project_id: os(f, "projectId"),
+            // v4 `:428-429`: `{ id, createdAt, updatedAt, ...folderData }` →
+            // `create({ ...folderData, userId: targetUserId }, { id })`, the
+            // WHOLE `FolderSchema` validated by `_create` before the insert
+            // (P4.161 Tier 2 — the arm used to coerce every key).
+            let mut item = f.as_object().cloned().unwrap_or_default();
+            for k in ["id", "createdAt", "updatedAt"] {
+                item.remove(k);
+            }
+            item.insert("userId".into(), Value::String(target_user_id.to_string()));
+            let claimed = id_of(f);
+            let create = match crate::services::quilltap_import::parse_create_folder(
+                &Value::Object(item),
+                Some(claimed.as_str()).filter(|id| !id.is_empty()),
+            ) {
+                Ok(create) => create,
+                Err(zod) => {
+                    crate::services::quilltap_import::log_refused_folder(
+                        target_user_id,
+                        f.get("path"),
+                        &zod,
+                    );
+                    w.push(format!(
+                        "Failed to restore folder \"{}\": {zod}",
+                        // v4's template literal over the RAW `folder.name`.
+                        crate::services::quilltap_import::js_display_name(f)
+                    ));
+                    tracing::warn!(
+                        target: "quilltap::restore",
+                        folderId = %id_of(f),
+                        error = %zod,
+                        "Failed to restore folder"
+                    );
+                    continue;
+                }
             };
             // v4 `a5df98b3f` (bug 114). Restore KEEPS `create` — ids must be
             // preserved, which the `ensure_by_path` chokepoint cannot do — and
@@ -1342,7 +1370,8 @@ fn restore_on_writer(
                     let error = e.warn_text();
                     w.push(format!(
                         "Failed to restore folder \"{}\": {error}",
-                        s(f, "name")
+                        // v4's template literal over the RAW `folder.name`.
+                        crate::services::quilltap_import::js_display_name(f)
                     ));
                     tracing::warn!(
                         target: "quilltap::restore",
