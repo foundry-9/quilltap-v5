@@ -303,30 +303,38 @@ fn fetch_branch(
 /// v4 `GET /api/v1/llm-logs/[id]` (`[id]/route.ts:16-35`): `findById` →
 /// `notFound('LLM Log')`, else `successResponse(log)` — the RAW log object, NOT
 /// wrapped in a `{log}` key. No ownership check (see the module header).
+///
+/// `findById` is the base `_findById` — a `safeQuery` FALLBACK
+/// (`base.repository.ts:247-258`): a failed read (a DEGRADED logs database
+/// included — P4.159, dogfood #150) logs `Error finding entity by ID` and
+/// answers `null`, so the route's 404. v5 had answered 500.
 pub fn llm_log_get(db: &Db, id: &str) -> Response {
-    let log_id = id.to_string();
-    match db.read_llm_logs(move |conn| LLMLogsRepository::new(conn).find_by_id(&log_id)) {
-        Ok(Some(log)) => match serde_json::to_value(&log) {
+    match find_log_or_none(db, id) {
+        Some(log) => match serde_json::to_value(&log) {
             Ok(v) => Response::LlmLog(v),
             Err(e) => Response::error(ErrorKind::Internal, format!("Failed to fetch LLM log: {e}")),
         },
-        Ok(None) => not_found("LLM Log"),
-        Err(_) => Response::error(ErrorKind::Internal, "Failed to fetch LLM log"),
+        None => not_found("LLM Log"),
     }
+}
+
+/// v4 `repos.llmLogs.findById` as the item routes see it (the fallback above).
+fn find_log_or_none(db: &Db, id: &str) -> Option<LlmLogRow> {
+    let log_id = id.to_string();
+    crate::db::fallback::find_by_id_or_none("llm_logs", id, || {
+        db.read_llm_logs(move |conn| LLMLogsRepository::new(conn).find_by_id(&log_id))
+    })
 }
 
 /// v4 `DELETE /api/v1/llm-logs/[id]` (`[id]/route.ts:40-67`): `findById` →
 /// `notFound('LLM Log')`; then `delete(id)`, whose `false` is its own
 /// `serverError('Failed to delete log')` (a lost race — the row vanished between
 /// the two reads); success is `{success: true, deletedId}`. No ownership check.
+///
+/// The existence read is the same `_findById` fallback as the GET's: a failed
+/// read (a DEGRADED logs database included) is v4's 404 with its ERROR line.
 pub async fn llm_log_delete(db: &Db, id: &str) -> Response {
-    let log_id = id.to_string();
-    let exists =
-        match db.read_llm_logs(move |conn| LLMLogsRepository::new(conn).find_by_id(&log_id)) {
-            Ok(found) => found.is_some(),
-            Err(_) => return Response::error(ErrorKind::Internal, "Failed to delete LLM log"),
-        };
-    if !exists {
+    if find_log_or_none(db, id).is_none() {
         return not_found("LLM Log");
     }
 
@@ -379,5 +387,75 @@ mod tests {
         assert_eq!(js_number_or_null(50.0), json!(50));
         assert_eq!(js_number_or_null(f64::NAN), Value::Null);
         assert_eq!(js_number_or_null(f64::INFINITY), Value::Null);
+    }
+
+    /// P4.159 (dogfood #150, the `None`-arm census): over a DEGRADED LLM-logs
+    /// partition v4's item routes read through `_findById` — a `safeQuery`
+    /// FALLBACK (`base.repository.ts:247-258`): ERROR `Error finding entity by
+    /// ID {collection: llm_logs, id, error}` and `null` → `notFound('LLM
+    /// Log')` (`[id]/route.ts:20-24`, `:44-48`) — never v5's former 500.
+    /// The `error` value renders `error_text`; v4's is its guard sentence
+    /// (`LLM logs database is in degraded mode`) — recorded in P4.159's lane
+    /// record as a HANDOFF(P4.163) on `error_text`'s `PartitionUnavailable`
+    /// arm, so it is matched here as a PREFIX of the line.
+    fn degraded_llm_logs_db() -> (tempfile::TempDir, Db) {
+        const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+        let dir = tempfile::tempdir().unwrap();
+        crate::db::Writer::open_writable(&dir.path().join("main.db"), PEPPER).unwrap();
+        let llm = dir.path().join("llm.db");
+        std::fs::write(&llm, vec![0x5Au8; 4608]).unwrap();
+        let db = Db::open(
+            crate::db::runtime::DbPaths {
+                main: dir.path().join("main.db"),
+                mount_index: None,
+                llm_logs: Some(llm),
+            },
+            PEPPER,
+        )
+        .unwrap();
+        (dir, db)
+    }
+
+    const FIND_BY_ID_LINE: &str =
+        "ERROR quilltap::db Error finding entity by ID collection=llm_logs id=log-1 error=";
+
+    #[test]
+    fn a_degraded_llm_logs_get_is_v4s_fallback_404() {
+        let (_dir, db) = degraded_llm_logs_db();
+        let (response, lines) = crate::test_support::captured_with(|| llm_log_get(&db, "log-1"));
+        match response {
+            Response::Error(e) => assert_eq!(e.kind, ErrorKind::NotFound, "{e:?}"),
+            other => panic!("expected the 404, got {other:?}"),
+        }
+        assert_eq!(
+            lines
+                .iter()
+                .filter(|l| l.starts_with(FIND_BY_ID_LINE))
+                .count(),
+            1,
+            "{lines:#?}"
+        );
+    }
+
+    #[test]
+    fn a_degraded_llm_logs_delete_is_v4s_fallback_404() {
+        let (_dir, db) = degraded_llm_logs_db();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let (response, lines) =
+            crate::test_support::captured_with(|| rt.block_on(llm_log_delete(&db, "log-1")));
+        match response {
+            Response::Error(e) => assert_eq!(e.kind, ErrorKind::NotFound, "{e:?}"),
+            other => panic!("expected the 404, got {other:?}"),
+        }
+        assert_eq!(
+            lines
+                .iter()
+                .filter(|l| l.starts_with(FIND_BY_ID_LINE))
+                .count(),
+            1,
+            "{lines:#?}"
+        );
     }
 }

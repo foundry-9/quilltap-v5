@@ -264,6 +264,8 @@ pub async fn system_image_aesthetics_set(db: &Db, kind: &str, content: Option<St
         return bad_request(AESTHETIC_KIND_ERROR);
     };
     let content = content.unwrap_or_default();
+    // v4's `writeStoreFile` DELETES on empty / whitespace-only content.
+    let deleting = crate::jsstr::js_trim(&content).is_empty();
     let mount_id = match db.read_main(get_general_mount_point_id) {
         Ok(Some(id)) => id,
         // Unlike the GET, the PUT REFUSES — there is no store to write into.
@@ -284,6 +286,17 @@ pub async fn system_image_aesthetics_set(db: &Db, kind: &str, content: Option<St
         .await;
     match out {
         Ok(()) => Response::SystemAesthetic(json!({ "success": true })),
+        // P4.159 (dogfood #150): v4's delete arm over an unavailable mount
+        // index looks the link up through `queryJoined`'s `withRawDb([])` —
+        // the quiet DEBUG, no link, nothing to delete, the route's 200. (Logged
+        // here, off the writer thread, so the caller's capture sees it.) The
+        // write arm's `ensureRawDb` throws → 500, below.
+        Err(
+            e @ DbError::PartitionUnavailable(crate::write_partition::WriteDbTarget::MountIndex),
+        ) if deleting => {
+            crate::db::fallback::log_mount_index_unavailable("doc_mount_file_links", &e);
+            Response::SystemAesthetic(json!({ "success": true }))
+        }
         Err(e) => internal(e),
     }
 }
@@ -292,6 +305,69 @@ pub async fn system_image_aesthetics_set(db: &Db, kind: &str, content: Option<St
 mod tests {
     use super::*;
     use serde_json::Value;
+
+    /// P4.159 (dogfood #150, the `None`-arm census): the image-aesthetics PUT
+    /// over a mount index that is not open. v4's DELETE arm (empty content —
+    /// `writeStoreFile` → `deleteDatabaseDocument`, `aesthetic.ts:111-121`,
+    /// `database-store.ts:176-191`) looks the link up through
+    /// `docMountFileLinks.findByMountPointAndPath` → `queryJoined`, a
+    /// `withRawDb([])` (`doc-mount-file-links.repository.ts:1445`): the quiet
+    /// DEBUG, no link, nothing deleted — the route's 200 `{success: true}`.
+    /// The WRITE arm's `linkDocumentContent` acquires through `ensureRawDb`,
+    /// which THROWS → the route's 500 — unchanged. (An ABSENT mount stands in
+    /// for a degraded one: both are `PartitionUnavailable` at this seam, and
+    /// the absent fixture pays no ladder.)
+    ///
+    /// HANDOFF(§S.1): the DEBUG's `error` is `DbError`'s Display until P4.163's
+    /// C1 item 1 folds under `log_mount_index_unavailable`; the unifier flips
+    /// it to v4's `Mount index database is in degraded mode` with the C3 arm's.
+    fn instance_without_mount_index() -> (tempfile::TempDir, Db) {
+        const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+        let dir = tempfile::tempdir().unwrap();
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER).unwrap();
+        let db = Db::open(
+            crate::db::runtime::DbPaths::main_only(dir.path().join("quilltap.db")),
+            PEPPER,
+        )
+        .unwrap();
+        (dir, db)
+    }
+
+    #[test]
+    fn clearing_an_aesthetic_over_an_unavailable_mount_index_is_v4s_quiet_200() {
+        let (_dir, db) = instance_without_mount_index();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let (response, lines) = crate::test_support::captured_with(|| {
+            rt.block_on(system_image_aesthetics_set(
+                &db,
+                "lantern",
+                Some("  ".to_string()),
+            ))
+        });
+        match response {
+            Response::SystemAesthetic(v) => assert_eq!(v, json!({ "success": true })),
+            other => panic!("expected v4's 200, got {other:?}"),
+        }
+        assert_eq!(
+            lines,
+            vec![
+                "DEBUG quilltap::db Dedicated database unavailable; answering with the fallback collection=doc_mount_file_links dbTarget=mountIndex error=partition not available: mountIndex"
+                    .to_string()
+            ]
+        );
+        // The write arm still refuses (v4's `ensureRawDb` throw → 500).
+        let response = rt.block_on(system_image_aesthetics_set(
+            &db,
+            "lantern",
+            Some("noir".to_string()),
+        ));
+        match response {
+            Response::Error(e) => assert_eq!(e.kind, ErrorKind::Internal),
+            other => panic!("expected the 500, got {other:?}"),
+        }
+    }
 
     #[test]
     fn normalize_matches_node_resolve() {

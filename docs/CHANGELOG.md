@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — fix(api): the LLM-log item routes and the image-aesthetics clear answer v4's fallbacks over an unavailable sibling (P4.159 census)
+
+_Versions: core 0.0.1244._
+
+From P4.159's census of every `PartitionUnavailable` construction site against v4's behaviour with that sibling degraded. `GET` / `DELETE /api/v1/llm-logs/[id]` read through v4's base `_findById`, a `safeQuery` fallback: a failed read (a degraded logs database included) now logs `Error finding entity by ID {collection: llm_logs, id, error}` and answers 404 `LLM Log not found`, where v5 answered 500. Clearing an image aesthetic (empty content) over an unavailable mount index now answers v4's 200 `{success: true}` with the quiet `withRawDb` DEBUG (`doc_mount_file_links`), as v4's `deleteDatabaseDocument` finds no link; a non-empty write still answers 500 (v4's `ensureRawDb` throws). The census's other rows are recorded in the survey (`work-orders/surveys/2026-10-07-p4.159-degraded-sibling-open.md`): the larger conversions (the documents layer, `.qtap` import, the vaulted-character 503s) are deferred by name.
+
 #### 2026-10-07 — fix(db): a sibling database that cannot be opened or fails its integrity check boots DEGRADED instead of stopping the boot (P4.159, dogfood #150)
 
 _Versions: core 0.0.1243, host 0.0.188._
