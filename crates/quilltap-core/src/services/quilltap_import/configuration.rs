@@ -127,10 +127,8 @@ pub(super) fn import_prompt_templates(
             if existing.is_some() && options.conflict_strategy == ConflictStrategy::Duplicate {
                 item.insert("name".into(), Value::String(format!("{name} (imported)")));
             }
-            let create =
-                parse_create_prompt_template(&Value::Object(item.clone())).inspect_err(|zod| {
-                    log_refused_prompt_template(user_id, item.get("name"), zod)
-                })?;
+            let create = parse_create_prompt_template(&Value::Object(item.clone()))
+                .inspect_err(|zod| log_refused_prompt_template(user_id, item.get("name"), zod))?;
 
             let now = crate::clock::now_iso();
             repo.create(

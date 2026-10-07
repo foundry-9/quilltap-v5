@@ -428,10 +428,7 @@ mod tests {
             other => panic!("expected the 404, got {other:?}"),
         }
         assert_eq!(
-            lines
-                .iter()
-                .filter(|l| *l == FIND_BY_ID_LINE)
-                .count(),
+            lines.iter().filter(|l| *l == FIND_BY_ID_LINE).count(),
             1,
             "{lines:#?}"
         );
@@ -450,10 +447,7 @@ mod tests {
             other => panic!("expected the 404, got {other:?}"),
         }
         assert_eq!(
-            lines
-                .iter()
-                .filter(|l| *l == FIND_BY_ID_LINE)
-                .count(),
+            lines.iter().filter(|l| *l == FIND_BY_ID_LINE).count(),
             1,
             "{lines:#?}"
         );
