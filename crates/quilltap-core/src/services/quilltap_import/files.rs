@@ -169,29 +169,32 @@ pub(crate) fn parse_create_file(
     if !issues.is_empty() {
         return Err(zod_error_message(&issues));
     }
-    let e = Value::Object(entity);
+    // The validated entity, read field by field (the avatar cache key
+    // verbatim — see the module header).
+    let validated = Value::Object(entity);
+    let file = &validated;
     Ok(crate::db::files::FileCreate {
-        user_id: s(&e, "userId"),
-        sha256: s(&e, "sha256"),
-        original_filename: s(&e, "originalFilename"),
-        mime_type: s(&e, "mimeType"),
-        size: e.get("size").and_then(Value::as_f64).unwrap_or_default(),
-        width: e.get("width").and_then(Value::as_f64),
-        height: e.get("height").and_then(Value::as_f64),
-        is_plain_text: e.get("isPlainText").and_then(Value::as_bool),
-        linked_to: sa(&e, "linkedTo"),
-        source: s(&e, "source"),
-        category: s(&e, "category"),
-        generation_prompt: os(&e, "generationPrompt"),
-        generation_model: os(&e, "generationModel"),
-        generation_revised_prompt: os(&e, "generationRevisedPrompt"),
-        generation_key: os(&e, "generationKey"),
-        description: os(&e, "description"),
-        tags: sa(&e, "tags"),
-        project_id: os(&e, "projectId"),
-        folder_path: os(&e, "folderPath"),
-        storage_key: os(&e, "storageKey"),
-        file_status: os(&e, "fileStatus").unwrap_or_else(|| "ok".to_string()),
+        user_id: s(file, "userId"),
+        sha256: s(file, "sha256"),
+        original_filename: s(file, "originalFilename"),
+        mime_type: s(file, "mimeType"),
+        size: file.get("size").and_then(Value::as_f64).unwrap_or_default(),
+        width: file.get("width").and_then(Value::as_f64),
+        height: file.get("height").and_then(Value::as_f64),
+        is_plain_text: file.get("isPlainText").and_then(Value::as_bool),
+        linked_to: sa(file, "linkedTo"),
+        source: s(file, "source"),
+        category: s(file, "category"),
+        generation_prompt: os(file, "generationPrompt"),
+        generation_model: os(file, "generationModel"),
+        generation_revised_prompt: os(file, "generationRevisedPrompt"),
+        generation_key: os(file, "generationKey"),
+        description: os(file, "description"),
+        tags: sa(file, "tags"),
+        project_id: os(file, "projectId"),
+        folder_path: os(file, "folderPath"),
+        storage_key: os(file, "storageKey"),
+        file_status: os(file, "fileStatus").unwrap_or_else(|| "ok".to_string()),
     })
 }
 

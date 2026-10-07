@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — refactor(import): read the avatar cache key under the literal `generation_key_travels_as_is_guard` pins (P4.161 Tier 2)
+
+_Versions: core 0.0.1251._
+
+`parse_create_file` read `generationKey` as `os(&e, "generationKey")`; the guard pins the verbatim literal `generation_key: os(file, "generationKey"),` (and a single mention of the key) in `files.rs`. The validated entity is now bound as `file`, so the read matches the pin — the key still travels verbatim. Caught by the lane's workspace gate (the one red of 673 binaries).
+
 #### 2026-10-07 — fix(import): validate file rows whole-row after the bytes land, before the row insert (P4.161 Tier 2)
 
 _Versions: core 0.0.1250._
