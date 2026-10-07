@@ -725,6 +725,31 @@ async function main(): Promise<void> {
     } as never;
   }
 
+  // P4.162: the two `Consumed informs …` DEBUG lines (`message-finalizer.
+  // service.ts:298-304`, `primary-stream.service.ts:125-130`), recorded off the
+  // same prototype (before the level check — the corpus runs at INFO). Per
+  // case, message + context verbatim (v4's key order is the comparand).
+  const INFORM_CONSUME_MESSAGES = new Set([
+    'Consumed informs for turn',
+    'Consumed informs on preserved partial response',
+  ]);
+  let informConsumeLines: Array<Record<string, unknown>> = [];
+  {
+    const { Logger } = await import('@/lib/logger');
+    const original = Logger.prototype.debug;
+    Logger.prototype.debug = function (
+      this: unknown,
+      message: string,
+      context?: Record<string, unknown>,
+      ...rest: unknown[]
+    ) {
+      if (INFORM_CONSUME_MESSAGES.has(message)) {
+        informConsumeLines.push({ level: 'debug', message, context: context ?? null });
+      }
+      return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+    } as never;
+  }
+
   // W4.7c: initialize the REAL provider registry (the nine built plugins/dist
   // bundles) so v4's `buildTools` → `buildToolsForProvider` → `plugin.formatTools`
   // reshapes the canonical slate to the provider's native shape (Anthropic
@@ -857,11 +882,15 @@ async function main(): Promise<void> {
     }
     lines.push(JSON.stringify({ kind: 'events', call: call.name, events, threw }));
     lines.push(JSON.stringify({ kind: 'toolChangeLog', call: call.name, lines: toolChangeLines }));
+    lines.push(
+      JSON.stringify({ kind: 'informConsumeLog', call: call.name, lines: informConsumeLines }),
+    );
     // P4.133: the keys this call's streams carried, in order (every leg: the
     // primary, its retries, the tool loops, a failover or reroute, a Carina or
     // Brahma consult, every chained turn).
     lines.push(JSON.stringify({ kind: 'streamKeys', call: call.name, keys: currentStreamKeys }));
     toolChangeLines = [];
+    informConsumeLines = [];
 
     // Let the fire-and-forget background triggers settle before the next call.
     await new Promise((resolve) => setTimeout(resolve, 200));

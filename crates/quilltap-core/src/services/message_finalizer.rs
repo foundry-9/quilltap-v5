@@ -1079,11 +1079,14 @@ where
             || outcome,
         )
         .unwrap_or(0);
+        // v4 `message-finalizer.service.ts:298-304`: `{chatId, messageId,
+        // participantId, requested, consumed}` — v4's camelCase keys in v4's
+        // order (P4.162; pinned by `orchestrator_tier3`'s informConsumeLog).
         tracing::debug!(
             target: "quilltap::inform",
-            chat_id = %chat_id,
-            message_id = %assistant_message_id,
-            participant_id = %character_participant.id,
+            chatId = %chat_id,
+            messageId = %assistant_message_id,
+            participantId = %character_participant.id,
             requested = inform_row_ids.len(),
             consumed,
             "Consumed informs for turn",

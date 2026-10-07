@@ -105,7 +105,8 @@
 //!     $N/npx tsx $V5W/harness/oracle/fixtures/build-primary-stream-fixture.ts
 //!   QT_FIXTURE_PRIMARY_STREAM=/tmp/qt-primary-stream.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-primary-stream.ndjson \
-//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$TMPO/cases" -- primary-stream-tier3
+//!     $N/npx jest --silent --watchman=false --testTimeout=180000 \
+//!       --roots "$PWD" --roots "$TMPO/cases" -- primary-stream-tier3
 //!   cp "$V5W/harness/oracle/cases/openai-chaining-fallback-tier3.test.ts" "$TMPO/cases/"
 //!   QT_ORACLE_OUT=/tmp/oracle-openai-fallback.ndjson \
 //!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$TMPO/cases" -- openai-chaining-fallback-tier3

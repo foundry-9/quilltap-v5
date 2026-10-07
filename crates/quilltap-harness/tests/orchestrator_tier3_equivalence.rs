@@ -1369,6 +1369,8 @@ fn orchestrator_tier3_matches_oracle() {
     let mut want_llm_logs: Option<Vec<Value>> = None;
     // P4.114: v4's `Injected tool change notification` INFO lines, per case.
     let mut want_tool_change: HashMap<String, Vec<Value>> = HashMap::new();
+    // P4.162: v4's two `Consumed informs …` DEBUG lines per case.
+    let mut want_inform_consume: HashMap<String, Vec<Value>> = HashMap::new();
     // P4.133: the keys v4's `streamMessage` received, per case, in call order.
     let mut want_stream_keys: HashMap<String, Vec<String>> = HashMap::new();
     // P4.133: v4's transport-shell `error` frame `details` per case (the
@@ -1429,6 +1431,15 @@ fn orchestrator_tier3_matches_oracle() {
                     .cloned()
                     .expect("toolChangeLog carries `lines`");
                 want_tool_change.insert(parsed.call.clone().unwrap(), lines);
+            }
+            "informConsumeLog" => {
+                let lines = parsed
+                    .rest
+                    .get("lines")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .expect("informConsumeLog carries `lines`");
+                want_inform_consume.insert(parsed.call.clone().unwrap(), lines);
             }
             "streamKeys" => {
                 let keys = parsed
@@ -2733,6 +2744,89 @@ fn orchestrator_tier3_matches_oracle() {
             "{name}: no caller-side failed-consume line (the repository logs it on the writer thread): {hits:?}"
         );
     }
+
+    // --- P4.162: the two `Consumed informs …` DEBUG lines, key ORDER pinned ---
+    // v4 `message-finalizer.service.ts:298-304` `logger.debug('Consumed informs
+    // for turn', {chatId, messageId, participantId, requested, consumed})` and
+    // `primary-stream.service.ts:125-130` `logger.debug('Consumed informs on
+    // preserved partial response', {chatId, messageId, requested, consumed})`,
+    // recorded off the `Logger` prototype per case. v5's line must carry v4's
+    // camelCase keys IN v4's ORDER (the `assert_inform_delivery_lines` shape);
+    // `messageId` is minted on both sides, so it verifies by RELATIONSHIP
+    // through each side's message idmap (the same token the consumed rows'
+    // `consumedByMessageId` normalized to above). Every other case is the
+    // silence leg — v4 logged nothing, so v5 must log nothing.
+    assert_eq!(
+        want_inform_consume.len(),
+        spec.calls.len(),
+        "every case must record its informConsumeLog row (regenerate from THIS tree's oracle case)"
+    );
+    let mut consume_lines_seen = 0usize;
+    for call in &spec.calls {
+        let got: Vec<&String> = initial_logs[&call.name]
+            .iter()
+            .chain(chain_logs.get(&call.name).into_iter().flatten())
+            .filter(|l| l.contains("Consumed informs"))
+            .collect();
+        let want = &want_inform_consume[&call.name];
+        assert_eq!(
+            got.len(),
+            want.len(),
+            "{}: `Consumed informs` lines (v5 {got:#?}, v4 {want:#?})",
+            call.name
+        );
+        for (g, w) in got.iter().zip(want) {
+            let msg = w["message"].as_str().expect("message");
+            let head = format!("DEBUG quilltap::inform {msg} ");
+            assert!(
+                g.starts_with(&head),
+                "{}: level/target/message: {g}",
+                call.name
+            );
+            let fields: Vec<(&str, &str)> = g[head.len()..]
+                .split(' ')
+                .map(|kv| {
+                    kv.split_once('=')
+                        .unwrap_or_else(|| panic!("{}: bad field {kv:?}", call.name))
+                })
+                .collect();
+            let ctx = w["context"].as_object().expect("context bag");
+            let got_keys: Vec<&str> = fields.iter().map(|(k, _)| *k).collect();
+            let want_keys: Vec<&str> = ctx.keys().map(String::as_str).collect();
+            assert_eq!(
+                got_keys, want_keys,
+                "{}: keys in v4's order: {g}",
+                call.name
+            );
+            for (k, v) in &fields {
+                let wv = &ctx[*k];
+                if *k == "messageId" {
+                    let tok = |map: &HashMap<String, String>, id: &str| {
+                        map.get(id)
+                            .cloned()
+                            .unwrap_or_else(|| format!("<unknown message {id}>"))
+                    };
+                    assert_eq!(
+                        tok(&idmap, v),
+                        tok(&idmap2, wv.as_str().expect("messageId string")),
+                        "{}: messageId by relationship",
+                        call.name
+                    );
+                    continue;
+                }
+                let want_text = match wv {
+                    Value::String(s) => s.clone(),
+                    other => other.to_string(),
+                };
+                assert_eq!(*v, want_text, "{}: `{k}`", call.name);
+            }
+        }
+        consume_lines_seen += want.len();
+    }
+    assert_eq!(
+        consume_lines_seen, 4,
+        "the four inform cases each log ONE consume line (three for a turn, one on a preserved partial)"
+    );
 
     // --- P4.D186 tier 2: the held result's SHAPE, read off the jobs it did not
     // enqueue ---

@@ -846,10 +846,13 @@ impl PreservePartialOnError {
                 || outcome,
             )
             .unwrap_or(0);
+            // v4 `primary-stream.service.ts:125-130`: `{chatId, messageId,
+            // requested, consumed}` — v4's camelCase keys in v4's order
+            // (P4.162; pinned by `orchestrator_tier3`'s informConsumeLog).
             tracing::debug!(
                 target: "quilltap::inform",
-                chat_id = %log_chat_id,
-                message_id = %log_message_id,
+                chatId = %log_chat_id,
+                messageId = %log_message_id,
                 requested = self.inform_row_ids.len(),
                 consumed,
                 "Consumed informs on preserved partial response",

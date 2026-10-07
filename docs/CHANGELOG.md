@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — fix(core): log the two `Consumed informs` lines with v4's camelCase keys (P4.162)
+
+_Versions: core 0.0.1245._
+
+`Consumed informs for turn` and `Consumed informs on preserved partial response` now log `chatId`, `messageId`, `participantId` (the turn line only), `requested`, `consumed`, in v4's order. `orchestrator_tier3` records v4's lines through a `Logger.prototype.debug` spy and compares every case, including the silence legs. The `primary_stream_tier3` recipe gains the `--testTimeout` its jest run needs.
+
 #### 2026-10-07 — fix(core): refuse RFC-invalid uuids at the chat-route gates, as Zod 4 does (P4.162)
 
 _Versions: core 0.0.1244._

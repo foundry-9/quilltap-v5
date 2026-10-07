@@ -170895,3 +170895,33 @@ this lane (the unifier records the waiver at §S.6).
   builds the raw bag on a parse refusal, as the dispatch verb does, so the
   refusal is answered inside `chat_add_participant` after the chat lookup —
   v4's order.
+
+### Unit 4 — the two `Consumed informs …` lines on v4's keys (Tier 1 item 4, R-E)
+
+- **Port:** `services/message_finalizer.rs` `Consumed informs for turn` and
+  `services/primary_stream.rs` `Consumed informs on preserved partial
+  response` — `chat_id` / `message_id` / `participant_id` → v4's `chatId` /
+  `messageId` / `participantId`, v4's order kept (`requested`, `consumed`
+  after). Target `quilltap::inform` unchanged.
+- **Oracle (the v4 side, NEW):** `orchestrator-tier3.test.ts` gains a
+  `Logger.prototype.debug` spy (the P4.114 recipe) recording the two messages
+  per case as `{kind: 'informConsumeLog'}`. **Measured at the pin:** v4 logs
+  ONE line on each of the four inform cases — three `for turn` (`requested`
+  2/1/2, `consumed` 2/1/0 — the poisoned row's `0`) and one `on preserved
+  partial response` — all through `handleSendMessage`, so BOTH lines are
+  pinned in `orchestrator_tier3` (the preserved-partial line runs inside the
+  real primary stream there); `primary_stream_tier3` is the neutral re-run.
+- **The Rust pin:** every case's v5 lines vs v4's — level, target, message,
+  keys in v4's ORDER, values; `messageId` (minted both sides) verified by
+  RELATIONSHIP through each side's message idmap (the token the consumed rows'
+  `consumedByMessageId` normalize to); every other case is the silence leg; a
+  floor of four lines.
+- **Red-first:** on unported main the family failed at
+  `inform_consumed_by_saved_turn`: `left: ["chat_id", "message_id",
+  "participant_id", "requested", "consumed"]` vs v4's camelCase. Green after
+  1/1.
+- **Recipe-header fix:** `primary_stream_tier3_equivalence.rs`'s recipe ran
+  jest without `--testTimeout` — measured RED at the pin ("Exceeded timeout of
+  5000 ms") — now `--testTimeout=180000`.
+- **Neutral:** `primary_stream_tier3` 2/2 (both oracles regenerated from the
+  pin), no row moved.
