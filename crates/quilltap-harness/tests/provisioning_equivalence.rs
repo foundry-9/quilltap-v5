@@ -60,7 +60,9 @@
 //!
 //! The provisioner's second artifact, `migration_indexes.json`, is NOT
 //! regenerated here (it is committed, D23); re-dump it with
-//! `harness/oracle/provision/dump-migration-indexes.ts` (recipe in its header)
+//! `harness/oracle/provision/dump-migration-indexes.ts` (recipe in its header,
+//! `QT_REAL_BOOT_MASTER` REQUIRED — a real `tsx server.ts` first boot's
+//! `sqlite_master`, and any real-boot FINDING exits non-zero, P4.160 R-F)
 //! when v4 moves the migration family — this family then goes red on the moved
 //! names first.
 //!

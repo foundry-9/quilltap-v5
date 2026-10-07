@@ -170532,3 +170532,269 @@ thirteen `[Projects v1]` lines in `combined.log`; a standing inform consumed →
 
 core 0.0.1247; harness frozen 0.0.1110; host / web / cli / tauri / SPA
 unchanged.
+
+## P4.160 — the migration-index-family boot backfill (P4.153's OPEN item) — LANE record (lane `claude/p4-160-migration-index-backfill-9c2e20`, 2026-10-07)
+
+**Lane start:** the drift ledger's §2 probe found v4 `main` CLEAN at
+`94fbb1ae3` except an untracked `docs/releases/4.10.0.md`. The human waived it
+as docs-only and later committed it as `938144eb4` ("docs: add 4.10.0 release
+notes draft"). Mid-lane a second docs-only commit landed: `7c78abd49`
+("Wardrobe programme: three design specs", `docs/` +
+`.claude/commands/update-documentation.md` only). The human's standing
+instruction was to keep the baseline at `94fbb1ae3` throughout. Each later
+probe found only those two commits (no `lib/`, `app/`, `packages/` or
+`plugins/` path), and `1a2b2164c..bugfix` stayed empty. **The lane did not
+write the ledger.** Every regen ran from the pin `/tmp/qt-v4-pin-p4160-94fbb1ae3`
+(`rev-parse` = `94fbb1ae3…`, `package.json` `4.10.0-dev.112`). The survey of
+record is `work-orders/surveys/2026-10-07-p4.160-pre-round-instance-indexes.md`.
+
+### Units
+
+1. **`b52812552` feat(boot)** (core 0.0.1243, host 0.0.188):
+   - NEW `db::migration_index_family_repair` (`ensure_migration_index_family`),
+     called as the LAST step of `seed_built_ins`, after
+     `create_missing_structural_tables` (R-C).
+   - The ported `add-connection-profile-unique-name-index-v1` rename-dedupe.
+   - `profile_names` onto `js_trim`.
+   - `provisioning` exposes `migration_index_family` / `index_name` / NEW
+     `index_table` as `pub(crate)`; `provision_fresh_instance` is unchanged.
+   - Comment-only `builtin_mounts` (item 8) and `host.rs:1481-1487`.
+   - The ONE `pub mod` line in `db/mod.rs`.
+   - NEW `host_boot_backfilled_indexes.rs`,
+     `migration_index_backfill_equivalence.rs` and
+     `harness/oracle/cases/migration-index-backfill.ts`.
+2. **(this commit) chore(harness)** (no crate bumps):
+   - `dump-migration-indexes.ts` requires `QT_REAL_BOOT_MASTER` and exits 1 on
+     any real-boot FINDING (R-F, item 7).
+   - `provisioning_equivalence.rs:61-67` recipe header lines only.
+   - The survey record, this record, and the order's status header.
+
+### The 60 / 3 / 56 / 1 count (item 6), reproduced from the lane's own derived instance
+
+- **60** statements: main 50 / mount-index 5 / llm-logs 5.
+- **3** made by boot ensures: `idx_files_generationKey`,
+  `idx_folders_userId_projectId_path`, `idx_help_doc_chunks_docId`.
+- **56** absent after one boot of unported `main`: main 47 / mount-index 4 /
+  llm-logs 5.
+- **1** PLAIN `mp_path`.
+- After the port, the first boot logs `created=47` / `created=5` (4 + the
+  conversion) / `created=5`.
+
+### Red-first (measured BEFORE the source was touched)
+
+- **`host_boot_backfilled_indexes` on unported `main`:** 10 of 12 arms RED.
+  The family arm reported "56 promised index(es) absent". The plan arm
+  reported `SCAN chat_messages USING INDEX idx_chat_messages_createdAt`.
+  `mp_path` stayed `CREATE INDEX` (plain). Every UNIQUE duplicate was
+  ACCEPTED. No WARN or rename lines appeared.
+- Its two green arms there are the silence legs, by design: the second boot
+  logs nothing, and a fresh instance gives the backfill nothing to do.
+- **`migration_index_backfill_equivalence` with the `host.rs` call reverted:**
+  - Arm A: **57 problems = 56 `v4 has index …, v5 does not` + `mp_path`
+    differs** (UNIQUE vs plain), as the order predicted.
+  - Arm B: **12 differences** (four running shapes × rows / index SQL / log
+    lines). The `indexed` shape is arm B's silence leg.
+- **`profile_names::trims_js_whitespace_not_rusts`:** RED before the
+  `js_trim` fix (`"\u{feff}gamma\u{feff}"` vs `"gamma"`).
+- **Arm B with the helper unfixed:** the `unicode-trim` shape is RED. v4
+  renamed `Gamma﻿` and kept `Delta\u0085`; v5 did the reverse.
+
+### Ruled divergences (R-A), recorded
+
+- **The v5-only WARN.** `Skipped a unique index backfill: duplicate rows
+  present {index, table, duplicates}` fires per skipped UNIQUE
+  (`idx_chat_documents_unique`, the two group-join UNIQUEs, `mp_path` left
+  PLAIN). v4 has no such line: its migration would fail the boot, but v4 never
+  runs it on an existing file. Pinned both ways in
+  `host_boot_backfilled_indexes` (g)/(h), with the boot succeeding.
+- **The v5-only INFO and ERROR lines.** `Backfilled migration-created indexes
+  {partition, created, skipped}` (with its silence leg), `Failed to backfill a
+  migration-created index {partition, index, error}`, and `Migration index
+  backfill failed {partition|error}`.
+- **One transaction for the profile index.** v5 runs v4's rename-dedupe +
+  `CREATE` + presence check in ONE transaction, where v4 runs them bare. A
+  failure leaves no half-renamed table, and the absent index re-runs the step
+  next boot.
+- **The re-check.** A skipped duplicate re-WARNs on every boot until the rows
+  are fixed (R-B: no ledger row).
+- **No `EnsureFailures` record.** A backfill failure is NOT recorded there: no
+  v4 repository ensure makes these indexes, so recording one would answer a
+  `/health` `degraded` v4 never answers. The order's item 3 said "pushes into
+  `ensure_failures`". `EnsureFailures` is keyed by structural collection, and
+  `verify_structural_tables` reads only those, so a push under any other key
+  would be inert. Under a structural key it would be a false 503. The pass
+  logs instead.
+
+### The normalization asymmetry (item 2), measured
+
+The JS rename (`trim().toLowerCase()`) folds more than SQLite's index
+(`lower(trim())`: ASCII-only lower, space-only trim). v4 renames `éclair` →
+`éclair (2)` (against `Éclair`) and `\tAlpha` → `Alpha (4)`, both pairs the
+bare SQLite index would ACCEPT. JS's fold is the coarser one, so the
+post-rename pre-check is unreachable (kept as a WARN-and-rollback net). Found
+here: v5's `profile_names` used Rust `str::trim` (FIXED, red-first, above).
+
+### Item 9 — v4's REAL runner over a BACKFILLED v5 instance
+
+`success`, 25 run / 185 skipped, nothing failed or deferred.
+**Index changes: ONE added** (`idx_wardrobe_items_character` on the legacy
+table v4 itself creates, the same single addition P4.153 measured on a fresh
+instance). None changed, none removed.
+
+Of the 32 index-creating scripts, 4 RAN (`sqlite-initial-schema-v1`,
+`create-wardrobe-items-table-v1`, `create-outfit-presets-and-archive-v1`,
+`create-character-plugin-data-table-v1` — an `IF NOT EXISTS` no-op) and 28
+skipped on their own `shouldRun`. Among the 28: `add-connection-profile-unique-
+name-index-v1` (P4.153's table omitted it — now row 4) and
+`add-memories-reinforced-importance-index-v1`, both index-gated, both FALSE as
+R-B predicts. **No script fails: no FINDING.** The full table is in the
+survey.
+
+### Item 10
+
+`verify-v5-provisioned.ts` over a copy of the backfilled instance: `OK`.
+
+### Item 7
+
+The dumper was exercised at the pin against a master synthesized from the
+provision oracle's migrations-first instance:
+
+- no master: refused, exit 1;
+- clean master: 0 findings, exit 0, and the dump is **byte-identical to the
+  committed `migration_indexes.json`**;
+- one index removed from the master: one FINDING, exit 1.
+
+`recipe_sweep.py --self-test` exits 0. The new family's header parses in both
+stages (`--show`). The items 9/10 legs carry their own `cd` to the v4 checkout.
+
+### Fixtures and oracles
+
+- **No committed fixture changed.** `migration_indexes.json` and
+  `fresh_schema.json` are UNMOVED (`git diff --stat` on both is empty).
+- New oracle case `migration-index-backfill.ts` (tsx, no jest). It writes its
+  base `.db` files to `QT_FIXTURE_OUT_DIR`, which the Rust side does not read:
+  the Rust side derives its own instance and plants the NDJSON's `plants`
+  statements.
+- Regen recipe, from the pin:
+
+  ```
+  N=~/.nvm/versions/node/v24.13.1/bin; cd <pin>
+  QT_ORACLE_PROVISION=/tmp/oracle-provision.json QT_V4_FRESH_OUT=/tmp/qt-v4-fresh \
+    $N/npx tsx $V5W/harness/oracle/provision/build-provision-oracle.ts
+  QT_FIXTURE_OUT_DIR=/tmp/qt-index-backfill \
+    $N/npx tsx $V5W/harness/oracle/cases/migration-index-backfill.ts \
+    > /tmp/oracle-index-backfill.ndjson
+  ```
+
+  Then
+  `QT_ORACLE_PROVISION=… QT_ORACLE_INDEX_BACKFILL=… [QT_V5_BACKFILLED_OUT=…]
+  cargo test -p quilltap-harness --test migration_index_backfill_equivalence`.
+
+### The gate (final tree of unit 1; unit 2 adds no Rust source)
+
+- `cargo fmt --all --check` clean. `cargo clippy --workspace --all-targets -D
+  warnings` clean in BOTH feature sets (`quilltap-core/native-transport` too).
+- **`cargo test --workspace --no-fail-fast`:** `QT_V4_CHECKOUT` and
+  `QT_V4_ROOT` at the pin, with the provision / fresh-schema-live / dbkey /
+  index-backfill / table-shape / folders-collapse-heal / system-restore
+  oracles regenerated from the pin into `/tmp/p4160/`, and `QT_NODE`.
+  **675 binaries / 4,436 passed / 1 failed / 3 ignored.**
+- Every touched or named-neutral family RAN, none SKIP:
+  - `provisioning_equivalence` 3/3 (with `QT_FRESH_SCHEMA_LIVE`);
+  - `migration_index_backfill_equivalence` 2/2;
+  - `host_boot_backfilled_indexes` 12/12;
+  - `host_boot_fresh_indexes` 8/8 (unchanged file; its arm 2 proves the
+    backfill creates nothing on a fresh instance);
+  - `host_boot` 3/3;
+  - `table_shape_equivalence` 6/6;
+  - `folders_collapse_heal_equivalence` 1/1;
+  - `system_restore_state` 3/3 and `restore_vintage_state` 6/6 (no row
+    change);
+  - `cli_differential` 1/1 (Tier R);
+  - `spelling_guard`, `fallback_home_guard`, `builtin_prompt_templates_guard`,
+    `provider_sdk_version_guard`, `qtap_schema_embed_guard`,
+    `public_schemas_vendor_guard`, `help_tree_equivalence` all GREEN.
+- **The one red is a union red by construction, and a HANDOFF (below):**
+  `host_boot_hardness::an_absent_group_link_table_is_created_and_reported_sound`
+  pins ONE index on a `group_character_members` table the boot recreates.
+  Since this lane the same boot's backfill adds the table's two
+  migration-family indexes (`left: 3, right: 1`). That is a fresh provision's
+  set, proven byte-equal by `host_boot_backfilled_indexes` (j). The file is
+  P4.159's.
+- SPA `npm run build` (liveness; no SPA edit) OK, with main's `node_modules`
+  symlinked in temporarily and removed after.
+
+### HANDOFF
+
+- **HANDOFF(P4.159 / the unifier) —
+  `crates/quilltap-host/tests/host_boot_hardness.rs:544-546`**, replace:
+
+  ```
+      // Exactly the dump's one index on this table (`idx_group_character_members_createdAt`);
+      // the exhaustive table-by-table proof is `table_shape_equivalence`'s substrate test.
+      assert_eq!(indexes, 1, "the created table carries v4's index");
+  ```
+
+  with:
+
+  ```
+      // The dump's one generateDDL index (`idx_group_character_members_createdAt`)
+      // plus, since P4.160, the two migration-family indexes the same boot's
+      // backfill adds (`idx_group_character_members_characterId`, the UNIQUE
+      // `idx_group_character_members_group_char`) — a fresh provision's three
+      // (`host_boot_backfilled_indexes`'s (j) arm proves byte-equality); the
+      // exhaustive table-by-table proof of the create is `table_shape_equivalence`'s
+      // substrate test.
+      assert_eq!(indexes, 3, "the created table carries a fresh instance's indexes");
+  ```
+
+- **HANDOFF(the unifier, §S.4) — `profile_names` now trims with `js_trim`.**
+  It is called by the settings duplicate-name 409 (`api/settings.rs`), the
+  `.qtap` importer (`services/quilltap_import/profiles.rs`, P4.161's) and the
+  restore merge (`services/backup/restore/orchestrator.rs`, P4.161's). A
+  convergence onto v4: no caller changed. Re-run `system_import_state` and the
+  settings routes family on the union. The lane ran `system_restore_state`
+  (green) but had no import oracle staged.
+- **HANDOFF(the unifier, §S.2):** on the union with P4.159, a DEGRADED sibling
+  is `None` to `seed_built_ins`, and the backfill answers
+  `PartitionOutcome::Absent` for it with no error. One union arm proves it.
+
+### Candidate v4 filing (§S.7, the human files)
+
+v4 creates `idx_chat_documents_unique`,
+`idx_group_character_members_group_char` and
+`idx_group_doc_mount_links_group_mount` (and the UNIQUE `mp_path` in the
+provision-mount migrations) with NO duplicate handling. On an instance that
+ever reached those migrations with duplicate rows, the boot would die.
+
+### Deferred (Tier 3, by name, unchanged)
+
+- A dedupe for the four no-dedupe UNIQUEs (not invented, R-A).
+- `migrations_state` rows (R-B).
+- A boot-time reconcile of the generateDDL index family.
+
+### 💸 for the dogfood pass
+
+- A PRE-ROUND v5 instance: the 2026-10-06 walk's "F2" `setup` instance if it
+  survives, else a fresh `setup` on unported release bits.
+  - ONE boot of the new build: the three INFO lines (`created=47` / `5` /
+    `5`) and `sqlite_master` equal to a fresh instance's.
+  - The second boot is silent.
+- A planted duplicate connection-profile name, renamed with v4's DEBUG + INFO
+  in `combined.log`.
+- A planted duplicate `chat_documents` row: the WARN, and the boot still
+  succeeds.
+- The 1.27 GB archive restored into the backfilled instance in ~7 m (#149's
+  timing, now for pre-round instances).
+
+### Versions at close
+
+core 0.0.1243, host 0.0.188; harness frozen 0.0.1110. web, cli, tauri and the
+SPA are untouched.
+
+### Memory-note candidates
+
+- A boot repair placed LAST moves any test that pins a boot-created table's
+  index COUNT: grep sibling boot tests for `type = 'index'` counts.
+- Neutral oracles can be regenerated by hand from the `--show` regen stage when
+  the worktree path has a space.

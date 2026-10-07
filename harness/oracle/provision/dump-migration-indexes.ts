@@ -35,10 +35,14 @@
  *     TABLE surface stays the generateDDL one (R-A), so there is nothing to
  *     index.
  *
- * With `QT_REAL_BOOT_MASTER` set (the `sqlite_master` dump of a REAL
- * `tsx server.ts` first boot at the same pin — the record's recipe), the
- * dumper diffs its own family against the real boot's by name and SQL and
- * prints every difference as a FINDING; the real boot wins.
+ * `QT_REAL_BOOT_MASTER` is REQUIRED (P4.160 R-F): the `sqlite_master` dump of
+ * a REAL `tsx server.ts` first boot at the same pin (the recipe in
+ * `docs/developer/porting/work-orders/surveys/2026-10-06-p4.153-v4-first-boot-
+ * indexes.md`, "The recipe"). The dumper diffs its own family against the real
+ * boot's by name and SQL, prints every difference as a FINDING (the real boot
+ * wins), and EXITS NON-ZERO on any finding — after writing the artifact, so
+ * the diff against the committed one is still there to read. Before P4.160 it
+ * printed the findings and exited 0, and the cross-check was optional.
  *
  * Output: JSON `{ source, main, mountIndex, llmLogs }`, each partition's
  * statements ordered by index name. NEVER hand-edit it (D23).
@@ -49,7 +53,11 @@
  *   V5W=${V5W:-$HOME/source/quilltap-v5}
  *   QT_FRESH_SCHEMA=$V5W/crates/quilltap-core/src/services/provisioning/fresh_schema.json \
  *   QT_MIGRATION_INDEXES_OUT=$V5W/crates/quilltap-core/src/services/provisioning/migration_indexes.json \
+ *   QT_REAL_BOOT_MASTER=/tmp/real-boot-master.json \
  *     $N/npx tsx $V5W/harness/oracle/provision/dump-migration-indexes.ts
+ * (`QT_REAL_BOOT_MASTER`: `{ main, mountIndex, llmLogs }`, each partition's
+ * `SELECT type, name, tbl_name, sql FROM sqlite_master` rows from the real
+ * boot's three `.db` files under the test pepper.)
  */
 
 import { execFileSync } from 'node:child_process';
@@ -81,8 +89,12 @@ const isUnique = (sql: string) => /^CREATE\s+UNIQUE\s/i.test(sql);
 async function main(): Promise<void> {
   const out = process.env.QT_MIGRATION_INDEXES_OUT;
   const freshPath = process.env.QT_FRESH_SCHEMA;
-  if (!out || !freshPath) {
-    throw new Error('QT_MIGRATION_INDEXES_OUT and QT_FRESH_SCHEMA must both be set');
+  const realPath = process.env.QT_REAL_BOOT_MASTER;
+  if (!out || !freshPath || !realPath) {
+    throw new Error(
+      'QT_MIGRATION_INDEXES_OUT, QT_FRESH_SCHEMA and QT_REAL_BOOT_MASTER must all be set ' +
+        '(the real-boot cross-check is required — see the header)',
+    );
   }
   const fresh = JSON.parse(readFileSync(freshPath, 'utf8')) as Record<Partition, string[]>;
 
@@ -157,14 +169,13 @@ async function main(): Promise<void> {
     ) + '\n',
   );
 
-  // The real-boot cross-check (R-B: the real boot wins).
-  const realPath = process.env.QT_REAL_BOOT_MASTER;
-  if (realPath) {
+  // The real-boot cross-check (R-B: the real boot wins) — required (P4.160 R-F).
+  let findings = 0;
+  {
     const real = JSON.parse(readFileSync(realPath, 'utf8')) as Record<
       Partition,
       { type: string; name: string; tbl_name: string; sql: string | null }[]
     >;
-    let findings = 0;
     for (const p of PARTITIONS) {
       const mine = new Map(family[p].map((r) => [r.name, r.sql]));
       const freshPlain = new Map(
@@ -209,6 +220,13 @@ async function main(): Promise<void> {
       lines.join('\n') +
       `\nwrote ${out} (v4 ${v4Commit} ${v4Version})\n`,
   );
+  if (findings > 0) {
+    process.stderr.write(
+      `migration-index dump: ${findings} real-boot FINDING(s) — the runner-driven build ` +
+        `differs from a real first boot; do not commit this dump until they are resolved\n`,
+    );
+    process.exit(1);
+  }
   process.exit(0);
 }
 

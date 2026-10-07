@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — chore(harness): require the migration-index dumper's real-boot cross-check; P4.160 survey + lane record
+
+_No crate versions bumped._
+
+`harness/oracle/provision/dump-migration-indexes.ts` now refuses to run without `QT_REAL_BOOT_MASTER` and exits 1 on any real-boot FINDING. It still writes the artifact first, so the diff can be read. Before this the cross-check was optional and findings only printed. The `provisioning_equivalence.rs` recipe header and the dumper's header say so. Nothing is re-dumped: `migration_indexes.json` is unchanged, and a dump at the pin reproduces it byte for byte.
+
+Adds the P4.160 survey (`work-orders/surveys/2026-10-07-p4.160-pre-round-instance-indexes.md`): the 60/3/56/1 index count on a derived pre-round instance, the six UNIQUE names with their duplicate pre-checks, the JS-vs-SQLite profile-name normalization measured against v4, and v4's real migration runner over a backfilled v5 instance (32 index-creating scripts, no failures, one legacy index added). Also adds the P4.160 lane record in `status-log.md`, and marks the work order LANE COMPLETE.
+
 #### 2026-10-07 — feat(boot): backfill v4's migration-created index family on instances set up before P4.153 (P4.160)
 
 _Versions: core 0.0.1243, host 0.0.188._
