@@ -1007,3 +1007,139 @@ mod tests { fn t() { links.find_by_mount_point_id(x)?; } }
     );
     assert!(found.iter().all(|(f, _, _)| f == "a"));
 }
+
+// ── P4.163 (Tier 1 item 5) — the `find_enabled_for_docedit()` callers ──────
+//
+// v4's `docMountPoints.findEnabled()` (`doc-mount-points.repository.ts:99-111`)
+// is a 4-argument FALLBACK `safeQuery` around the base `findByFilter` — itself a
+// fallback — so outside the strict scope it NEVER throws: a failed read logs
+// `Error finding entities by filter {collection: doc_mount_points, error}` and
+// every caller receives `[]`. Measured at `94fbb1ae3` caller by caller (none
+// runs under `withStrictRepositoryFailures`):
+//
+// | v5 site | v4 site |
+// |---|---|
+// | `pascal/roster.rs` `list_all_custom_tools` | `pascal/custom-tools.ts:510` |
+// | `pascal/workbench.rs` `list_custom_tool_destinations` | `pascal/workbench.ts:221` |
+// | `tools/search.rs` (operator surface) | `search-scriptorium-handler.ts:162` |
+// | `documents/mod.rs` `list_all_enabled_stores` | `documents/operator-doc-actions.ts:543` |
+// | `photos/user_gallery_service.rs` | `photos/user-gallery-service.ts:276` |
+// | `doc_edit/uri_producers.rs` `collect_ambiguous_store_names` | `doc-edit/uri-producers.ts:158` |
+// | `services/embedding_reindex_job.rs` `phase_mount_chunks` | `embedding-reindex.ts:291` |
+// | `doc_edit/path_resolver.rs` (operator override — P4.149) | `doc-edit/path-resolver.ts:332` |
+//
+// So all eight answer through `db::fallback::find_by_filter_or_empty
+// ("doc_mount_points", …)` (R-A converts each: v4 falls back at every one). The
+// census holds the set by file and the wrap by a source window, as
+// `delete_messages_callers_census` does.
+
+/// Every file with a production `find_enabled_for_docedit(` call, and how many.
+const DOCEDIT_SITES: &[(&str, usize)] = &[
+    ("doc_edit/path_resolver.rs", 1),
+    ("doc_edit/uri_producers.rs", 1),
+    ("documents/mod.rs", 1),
+    ("pascal/roster.rs", 1),
+    ("pascal/workbench.rs", 1),
+    ("photos/user_gallery_service.rs", 1),
+    ("services/embedding_reindex_job.rs", 1),
+    ("tools/search.rs", 1),
+];
+
+#[test]
+fn every_find_enabled_for_docedit_caller_answers_through_the_filter_fallback() {
+    let root = repo_root().join("crates/quilltap-core/src");
+    let mut files = Vec::new();
+    source_census::rust_sources(&root, &mut files);
+    files.sort();
+    let mut seen: Vec<(String, usize)> = Vec::new();
+    let mut bypassers: Vec<String> = Vec::new();
+    for f in &files {
+        let rel = f
+            .strip_prefix(&root)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
+        let code = code_only(&production_zone(&std::fs::read_to_string(f).unwrap()));
+        let lines: Vec<&str> = code.lines().collect();
+        let mut n = 0usize;
+        for (i, line) in lines.iter().enumerate() {
+            if !line.contains("find_enabled_for_docedit(")
+                || line.contains("fn find_enabled_for_docedit(")
+            {
+                continue;
+            }
+            n += 1;
+            let lo = i.saturating_sub(3);
+            if !lines[lo..=i]
+                .iter()
+                .any(|l| l.contains("find_by_filter_or_empty("))
+            {
+                bypassers.push(format!("{rel}:{}", i + 1));
+            }
+        }
+        if n > 0 {
+            seen.push((rel, n));
+        }
+    }
+    let want: Vec<(String, usize)> = DOCEDIT_SITES
+        .iter()
+        .map(|(f, n)| (f.to_string(), *n))
+        .collect();
+    assert_eq!(
+        seen, want,
+        "the `find_enabled_for_docedit` callers moved — measure the new site's v4 twin (R-A)"
+    );
+    assert!(
+        bypassers.is_empty(),
+        "callers bypassing `find_by_filter_or_empty(\"doc_mount_points\", …)` (v4's `findEnabled` \
+         is a fallback — the filter line + `[]`, never a throw):\n  {}",
+        bypassers.join("\n  ")
+    );
+}
+
+/// Behavioural arm: `documents::list_all_enabled_stores` (v4
+/// `listAllEnabledStores`, the "look everywhere" listing) over a mount index
+/// whose `doc_mount_points.enabled` column is renamed answers an EMPTY listing
+/// with v4's filter line — unported, it failed the whole listing.
+#[test]
+fn the_look_everywhere_listing_answers_empty_over_a_failed_enabled_read() {
+    let spec: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(repo_root().join("harness/oracle/fixtures/salon.json")).unwrap(),
+    )
+    .unwrap();
+    let pepper = spec["testPepperBase64"].as_str().unwrap();
+    let fixtures = repo_root().join("crates/quilltap-web/tests/fixtures");
+    let scratch = tempfile::tempdir().unwrap();
+    let (main, mount) = (
+        scratch.path().join("main.db"),
+        scratch.path().join("mount.db"),
+    );
+    std::fs::copy(fixtures.join("salon-main.db"), &main).unwrap();
+    std::fs::copy(fixtures.join("salon-mount.db"), &mount).unwrap();
+    let main_w = quilltap_core::db::Writer::open_writable(&main, pepper).unwrap();
+    let mount_w = quilltap_core::db::Writer::open_writable(&mount, pepper).unwrap();
+    mount_w
+        .connection()
+        .execute_batch("ALTER TABLE doc_mount_points RENAME COLUMN enabled TO enabled_x")
+        .unwrap();
+    let (got, lines) = quilltap_core::test_support::captured_with(|| {
+        quilltap_core::documents::list_all_enabled_stores(
+            main_w.connection(),
+            mount_w.connection(),
+            &mut std::collections::HashSet::new(),
+            &std::collections::HashSet::new(),
+        )
+    });
+    let got = got.expect("v4's findEnabled never throws: the listing answers");
+    assert!(got.is_empty(), "{got:?}");
+    let errors: Vec<&String> = lines.iter().filter(|l| l.starts_with("ERROR ")).collect();
+    assert_eq!(
+        errors,
+        [
+            &"ERROR quilltap::db Error finding entities by filter collection=doc_mount_points \
+           error=no such column: enabled"
+                .to_string()
+        ],
+        "{lines:?}"
+    );
+}

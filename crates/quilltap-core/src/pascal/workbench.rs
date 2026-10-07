@@ -426,7 +426,12 @@ pub fn list_custom_tool_destinations(
     main: &Connection,
     mount: &Connection,
 ) -> Result<CustomToolDestinations, DbError> {
-    let mounts: Vec<DmpRow> = DocMountPointsRepository::new(mount).find_enabled_for_docedit()?;
+    // P4.163: v4 `findEnabled()` (`workbench.ts:221`) is a fallback — the filter
+    // line and `[]`, never a throw (v5 had failed the whole destination list).
+    let mounts: Vec<DmpRow> =
+        crate::db::fallback::find_by_filter_or_empty("doc_mount_points", || {
+            DocMountPointsRepository::new(mount).find_enabled_for_docedit()
+        });
     let survey = survey_attachments(main, mount)?;
     let library = list_all_custom_tools(mount);
 

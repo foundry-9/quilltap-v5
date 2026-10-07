@@ -129,7 +129,11 @@ pub fn list_user_gallery(
     let points = DocMountPointsRepository::new(mount);
     let links_repo = DocMountFileLinksRepository::new(mount);
     let mut all_photo_links: Vec<(crate::db::doc_mount_file_links::LinkRow, String)> = Vec::new();
-    for mp in points.find_enabled_for_docedit()? {
+    // P4.163: v4 `findEnabled()` (`user-gallery-service.ts:276`) is a fallback —
+    // the filter line and `[]`, so the gallery answers empty (v5 had failed it).
+    for mp in crate::db::fallback::find_by_filter_or_empty("doc_mount_points", || {
+        points.find_enabled_for_docedit()
+    }) {
         // v4 `user-gallery-service.ts:282`: the fallback joined read (P4.142,
         // G1).
         for link in links_repo.find_by_mount_point_id_or_empty(&mp.id) {

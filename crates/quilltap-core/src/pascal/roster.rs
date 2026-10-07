@@ -561,10 +561,13 @@ pub struct CustomToolLibrary {
 /// attribution is meaningless without an invoker, so every entry carries
 /// `'global'` — callers should not read anything into it.
 pub fn list_all_custom_tools(mount: &Connection) -> CustomToolLibrary {
-    let mut mounts = match DocMountPointsRepository::new(mount).find_enabled_for_docedit() {
-        Ok(m) => m,
-        Err(_) => return CustomToolLibrary::default(),
-    };
+    // P4.163: v4 `docMountPoints.findEnabled()` (`custom-tools.ts:510`) is a
+    // FALLBACK around the fallback `findByFilter` — a failed read logs `Error
+    // finding entities by filter {collection: doc_mount_points}` and answers
+    // `[]` (v5 had answered the same empty library with no line).
+    let mut mounts = crate::db::fallback::find_by_filter_or_empty("doc_mount_points", || {
+        DocMountPointsRepository::new(mount).find_enabled_for_docedit()
+    });
     // v4 sorts by `id.localeCompare` — code-unit order for the ASCII mount ids.
     mounts.sort_by(|a, b| a.id.cmp(&b.id));
 

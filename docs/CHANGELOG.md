@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — fix(docs): the seven `find_enabled_for_docedit` callers answer through v4's `findEnabled` fallback — empty with the filter line, never a failure (P4.163 Tier 1 item 5)
+
+_Versions: core 0.0.1246._
+
+v4's `docMountPoints.findEnabled()` is a fallback around the fallback `findByFilter`: a failed read logs `Error finding entities by filter {collection: doc_mount_points}` and answers `[]`; it never throws outside the strict scope, and none of its callers runs inside it. Measured against each v4 counterpart at `94fbb1ae3`, all seven v5 callers that bypassed the home now read through `find_by_filter_or_empty("doc_mount_points", …)` (the `path_resolver.rs` shape): the Workbench destination list, the operator-surface search, the "look everywhere" store listing, the user gallery and the embedding reindex's mount phase (each failed whole on a broken mount index), and Pascal's custom-tool library and the URI producers' ambiguity set (each swallowed the failure with no line).
+
+`doc_mount_fallback_sites_census` gains a per-file census of the callers (red on unported main: seven bypassers) and a behavioural arm — the store listing over a renamed `doc_mount_points.enabled` answers empty with v4's line (red on unported main: the listing failed).
+
 #### 2026-10-07 — fix(chat): the five `delete_messages_by_ids` callers answer through v4's fallback — the Salon DELETE and the courier cancel no longer fail on a failed row delete (P4.163 Tier 1 item 4)
 
 _Versions: core 0.0.1245._

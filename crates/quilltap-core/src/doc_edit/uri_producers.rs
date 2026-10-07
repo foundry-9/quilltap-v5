@@ -153,7 +153,12 @@ impl DocStoreUriResolver {
 /// Nothing to port from that half; only the new `refForMount` sibling below.
 fn collect_ambiguous_store_names(mount: &Connection) -> Vec<String> {
     let mut ambiguous: Vec<String> = Vec::new();
-    if let Ok(enabled) = DocMountPointsRepository::new(mount).find_enabled_for_docedit() {
+    // P4.163: v4 `findEnabled()` (`uri-producers.ts:158`) is a fallback — the
+    // filter line and `[]` (v5 had swallowed the failure with no line).
+    {
+        let enabled = crate::db::fallback::find_by_filter_or_empty("doc_mount_points", || {
+            DocMountPointsRepository::new(mount).find_enabled_for_docedit()
+        });
         let mut counts: Vec<(String, usize)> = Vec::new();
         for mp in &enabled {
             let key = mp.name.trim().to_lowercase();

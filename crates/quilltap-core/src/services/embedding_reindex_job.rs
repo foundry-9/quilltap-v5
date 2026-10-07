@@ -548,9 +548,15 @@ async fn phase_mount_chunks(
 ) -> Result<(Vec<BjCreate>, Counts), DbError> {
     // v4 `docMountPoints.findEnabled()`. v5's accessor carries the same SELECT
     // under a name from its first consumer (the operator doc-edit override).
-    let mount_points = db.read_mount_index(|conn| {
-        crate::db::doc_mount_points::DocMountPointsRepository::new(conn).find_enabled_for_docedit()
-    })?;
+    // P4.163: v4's `findEnabled()` is a fallback whose `getCollection()` runs
+    // inside the same `safeQuery`, so the WHOLE checkout sits inside the home —
+    // the filter line and `[]` (v5 had failed the phase).
+    let mount_points = crate::db::fallback::find_by_filter_or_empty("doc_mount_points", || {
+        db.read_mount_index(|conn| {
+            crate::db::doc_mount_points::DocMountPointsRepository::new(conn)
+                .find_enabled_for_docedit()
+        })
+    });
     let failed = failed_ids_for(db, partial, "MOUNT_CHUNK", &payload.profile_id);
     let mut out = Vec::new();
     let mut counts = Counts::default();

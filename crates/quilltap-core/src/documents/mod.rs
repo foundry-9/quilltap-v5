@@ -661,7 +661,11 @@ pub fn list_all_enabled_stores(
     group_mount_ids: &std::collections::HashSet<String>,
 ) -> Result<Vec<AccessibleStoreOption>, DbError> {
     let mp_repo = DocMountPointsRepository::new(mount);
-    let mounts = mp_repo.find_enabled_for_docedit()?;
+    // P4.163: v4 `findEnabled()` (`operator-doc-actions.ts:543`) is a fallback —
+    // the filter line and `[]` (v5 had failed the whole listing).
+    let mounts = crate::db::fallback::find_by_filter_or_empty("doc_mount_points", || {
+        mp_repo.find_enabled_for_docedit()
+    });
 
     // Reverse-map character vaults to their owning character for labelling
     // (v4 `characters.findAll()` → `characterDocumentMountPointId`). The slim

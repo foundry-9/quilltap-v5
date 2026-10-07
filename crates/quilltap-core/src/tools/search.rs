@@ -638,8 +638,14 @@ fn build_pool_context(
                         "Search using pre-built mount pool"
                     );
                 } else if context.operator_surface {
-                    operator_store_ids = doc_mount_points::DocMountPointsRepository::new(mount)
-                        .find_enabled_for_docedit()?
+                    // P4.163: v4 `findEnabled()` (`search-scriptorium-handler.ts:
+                    // 162`) is a fallback — the filter line and `[]` (v5 had
+                    // failed the search).
+                    operator_store_ids =
+                        crate::db::fallback::find_by_filter_or_empty("doc_mount_points", || {
+                            doc_mount_points::DocMountPointsRepository::new(mount)
+                                .find_enabled_for_docedit()
+                        })
                         .into_iter()
                         .map(|r| r.id)
                         .collect();
