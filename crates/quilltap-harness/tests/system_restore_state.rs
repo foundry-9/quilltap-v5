@@ -1605,11 +1605,26 @@ fn system_restore_state_equivalence() {
         drop(db);
         let mut got_state = read_state(&instance);
         let mut want_owned = case["state"].clone();
+        // [the `94fbb1ae3` boot-hardness unification] the ruled
+        // index-keyed-embedding divergence, both ways, then carved from the
+        // dumps, the warnings and both log censuses (its own case copy).
+        let mut case_owned = case.clone();
+        let index_keyed_lead = carve_index_keyed_embedding(
+            name,
+            &mut got_state,
+            &mut want_owned,
+            &mut case_owned,
+            &mut failures,
+        );
+        let case = &case_owned;
 
         // [P4.147] The two ruled divergences, asserted both ways on the RAW
         // dumps and then carved — BEFORE any normalization, so the
         // `<minted-N>` first-encounter labels of the remaining rows line up.
-        let mut summary_carve = SummaryCarve::default();
+        let mut summary_carve = SummaryCarve {
+            memories_lead: index_keyed_lead,
+            ..SummaryCarve::default()
+        };
         if mode_for(name) == RestoreMode::Replace {
             if let Some(shared) = carve_fresh_store_residual(
                 name,
@@ -4107,6 +4122,8 @@ const FRESH_STORE_CARVED_CASES: usize = 28;
 #[derive(Default)]
 struct SummaryCarve {
     files_lead: i64,
+    /// [`INDEX_KEYED_EMBEDDING`]: v5 restores exactly this many memories more.
+    memories_lead: i64,
     drop_v4_warnings: Vec<String>,
     /// [`FRESH_STORE_SHARED_CONTENT`] applies on this case.
     shared_content: bool,
@@ -5452,6 +5469,122 @@ fn assert_informs_restored(
     }
 }
 
+/// ## ⚠ THE RULED DIVERGENCE — `INDEX_KEYED_EMBEDDING` (the human, 2026-10-07)
+///
+/// v4's FULL backup writes `data.memories` raw, so every embedding is
+/// `JSON.stringify(Float32Array)` — an index-keyed OBJECT `{"0":…}` — which
+/// v4's OWN restore refuses in `MemorySchema`'s embedding union (an
+/// `invalid_union` warning per memory: every embedded memory is lost). Ruled
+/// at the `94fbb1ae3` boot-hardness unification: FIX v5 —
+/// `restore::rows::decode_index_keyed_embedding` decodes that exact shape to
+/// the union's `number[]`, so the memory and its vector restore. (Before P4.161
+/// v5 restored such a memory with a NULL vector; P4.161's whole-row parse had
+/// silently converged on v4's loss.)
+///
+/// Each entry is `(case, memory id, the decoded vector)`. Asserted BOTH ways
+/// — v4 refuses that id with its `Failed to restore memory` WARN and three
+/// repository ERRORs carrying the same error; v5 lands it with exactly the
+/// decoded vector's BLOB and logs none of them — then carved from every
+/// comparand, so a v4 convergence (or a v5 regression) trips it.
+const INDEX_KEYED_EMBEDDING: &[(&str, &str, &[f32])] = &[(
+    "restore_memory_refusals_replace",
+    "ad000000-0000-4000-8000-000000000009",
+    &[0.25],
+)];
+
+fn carve_index_keyed_embedding(
+    name: &str,
+    got: &mut BTreeMap<String, BTreeMap<String, Vec<Value>>>,
+    want_state: &mut Value,
+    case: &mut Value,
+    failures: &mut Vec<String>,
+) -> i64 {
+    let mut lead = 0;
+    for (_, id, vector) in INDEX_KEYED_EMBEDDING.iter().filter(|(c, _, _)| *c == name) {
+        // v5: the memory landed, carrying exactly the decoded vector.
+        let blob = format!(
+            "sha256:{}",
+            hex::encode(Sha256::digest(
+                quilltap_core::embedding_blob::float32_to_blob(vector)
+            ))
+        );
+        let rows = got
+            .get_mut("main")
+            .and_then(|p| p.get_mut("memories"))
+            .expect("v5 dump has main.memories");
+        match rows.iter().position(|r| r["id"] == *id) {
+            Some(i) => {
+                if rows[i]["embedding"] != json!(blob) {
+                    failures.push(format!(
+                        "[{name}] INDEX_KEYED_EMBEDDING (v5): {id} landed with embedding {}, \
+                         want the decoded {vector:?} ({blob})",
+                        rows[i]["embedding"]
+                    ));
+                }
+                rows.remove(i);
+                lead += 1;
+            }
+            None => failures.push(format!(
+                "[{name}] INDEX_KEYED_EMBEDDING (v5): {id} did not restore — the decode is gone"
+            )),
+        }
+        // v4: refused, with ONE `Failed to restore memory` WARN naming the id…
+        if rows_of(want_state, "main", "memories")
+            .iter()
+            .any(|r| r["id"] == *id)
+        {
+            failures.push(format!(
+                "[{name}] INDEX_KEYED_EMBEDDING (v4): {id} now RESTORES on v4 — v4 converged; \
+                 retire the divergence"
+            ));
+            continue;
+        }
+        let logs = case["logs"].as_array_mut().expect("oracle carries logs");
+        let Some(at) = logs
+            .iter()
+            .position(|l| l["message"] == "Failed to restore memory" && l["memoryId"] == *id)
+        else {
+            failures.push(format!(
+                "[{name}] INDEX_KEYED_EMBEDDING (v4): no `Failed to restore memory` for {id}"
+            ));
+            continue;
+        };
+        let error = logs.remove(at)["error"].as_str().unwrap_or("").to_string();
+        if !error.contains("invalid_union") {
+            failures.push(format!(
+                "[{name}] INDEX_KEYED_EMBEDDING (v4): {id} refused for another reason: {error}"
+            ));
+        }
+        // …its one summary warning…
+        let warning = format!("Failed to restore memory: {error}");
+        let warns = case["summary"]["warnings"]
+            .as_array_mut()
+            .expect("warnings");
+        match warns.iter().position(|w| *w == json!(warning)) {
+            Some(i) => {
+                warns.remove(i);
+            }
+            None => failures.push(format!(
+                "[{name}] INDEX_KEYED_EMBEDDING (v4): no summary warning for {id}"
+            )),
+        }
+        // …and its three repository ERRORs (validate, `_create`, the wrap).
+        let repo = case["repoLogs"]
+            .as_array_mut()
+            .expect("oracle carries repoLogs");
+        let before = repo.len();
+        repo.retain(|l| l["error"] != json!(error));
+        if before - repo.len() != 3 {
+            failures.push(format!(
+                "[{name}] INDEX_KEYED_EMBEDDING (v4): {} repository line(s) carry {id}'s error, \
+                 want 3",
+                before - repo.len()
+            ));
+        }
+    }
+    lead
+}
+
 /// [P4.161 — dogfood #152, §S.2, P4.155's R-B] **The whole-row refusal
 /// archives, by name, on BOTH sides** (so a two-sided loss cannot pass as
 /// agreement): each side lands EXACTLY the sound rows its derive script names
@@ -5643,6 +5776,17 @@ fn compare_case(
                     "[{name}] summary.files: rust {g} vs oracle {w} — expected rust to lead by \
                      exactly {} (FRESH_TARGET_UPLOADS)",
                     summary_carve.files_lead
+                ));
+            }
+            continue;
+        }
+        if k == "memories" && summary_carve.memories_lead != 0 {
+            let (g, w) = (gv.as_i64().unwrap_or(-1), wv.as_i64().unwrap_or(-1));
+            if g != w + summary_carve.memories_lead {
+                failures.push(format!(
+                    "[{name}] summary.memories: rust {g} vs oracle {w} — expected rust to lead \
+                     by exactly {} (INDEX_KEYED_EMBEDDING)",
+                    summary_carve.memories_lead
                 ));
             }
             continue;

@@ -85,6 +85,36 @@ pub fn embedding(v: &Value, k: &str) -> Option<Vec<f32>> {
     )
 }
 
+/// A RULED DIVERGENCE (the human, 2026-10-07, at the `94fbb1ae3` boot-hardness
+/// unification — "fix v5"): v4's FULL backup writes `data.memories` raw
+/// (`backup-service.ts:657`, `writeJsonArrayFile` → `JSON.stringify`), and
+/// `JSON.stringify(Float32Array)` is an index-keyed OBJECT `{"0":v0,"1":v1,…}`
+/// — a shape v4's own restore then refuses in `MemorySchema`'s embedding union
+/// (`memory.types.ts:73-84`: Float32Array / number[] / Buffer / string), so v4
+/// drops EVERY embedded memory on restore with an `invalid_union` warning. v5
+/// decodes exactly that shape — keys `"0"…"n-1"` (canonical decimal, no gaps),
+/// every value a number — back into the `number[]` the union's array option
+/// takes, so the memory AND its vector restore. Any other object is left
+/// untouched (the schema refuses it, as v4's does). Answers whether it decoded.
+pub fn decode_index_keyed_embedding(item: &mut serde_json::Map<String, Value>) -> bool {
+    let Some(Value::Object(o)) = item.get("embedding") else {
+        return false;
+    };
+    let mut values: Vec<Option<Value>> = vec![None; o.len()];
+    for (k, x) in o {
+        let Ok(i) = k.parse::<usize>() else {
+            return false;
+        };
+        if i.to_string() != *k || i >= values.len() || !x.is_number() {
+            return false;
+        }
+        values[i] = Some(x.clone());
+    }
+    let decoded: Vec<Value> = values.into_iter().flatten().collect();
+    item.insert("embedding".into(), Value::Array(decoded));
+    true
+}
+
 /// Deserialize a nested typed value off the row, or the type's `Default`.
 pub fn de_or_default<T: DeserializeOwned + Default>(v: &Value, k: &str) -> T {
     v.get(k)
@@ -97,6 +127,43 @@ pub fn de_or_default<T: DeserializeOwned + Default>(v: &Value, k: &str) -> T {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn an_index_keyed_embedding_decodes_to_its_number_array() {
+        let mut m = json!({"embedding": {"1": -0.5, "0": 0.25, "2": 1}})
+            .as_object()
+            .cloned()
+            .unwrap();
+        assert!(decode_index_keyed_embedding(&mut m));
+        assert_eq!(m["embedding"], json!([0.25, -0.5, 1]));
+        // `Float32Array(0)` stringifies to `{}` → `[]` (stored as SQL NULL).
+        let mut empty = json!({"embedding": {}}).as_object().cloned().unwrap();
+        assert!(decode_index_keyed_embedding(&mut empty));
+        assert_eq!(empty["embedding"], json!([]));
+    }
+
+    #[test]
+    fn any_other_embedding_shape_is_left_for_the_schema() {
+        for e in [
+            json!({"0": 0.25, "2": 0.5}), // a gap
+            json!({"00": 0.25}),          // not canonical decimal
+            json!({"0": "0.25"}),         // a non-number value
+            json!({"x": 1}),              // not an index
+            json!([0.25, -0.5]),          // already the array option
+            json!("[0.25]"),              // the string option
+            Value::Null,
+        ] {
+            let mut m = json!({ "embedding": e.clone() })
+                .as_object()
+                .cloned()
+                .unwrap();
+            assert!(!decode_index_keyed_embedding(&mut m), "{e}");
+            assert_eq!(m["embedding"], e);
+        }
+        let mut absent = serde_json::Map::new();
+        assert!(!decode_index_keyed_embedding(&mut absent));
+        assert!(absent.is_empty());
+    }
 
     #[test]
     fn absent_and_null_are_the_same_thing() {

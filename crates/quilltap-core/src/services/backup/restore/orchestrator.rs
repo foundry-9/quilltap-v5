@@ -891,6 +891,10 @@ fn restore_on_writer(
             for k in ["id", "createdAt", "updatedAt", "personaId"] {
                 item.remove(k);
             }
+            // The RULED divergence (`rows::decode_index_keyed_embedding`): a
+            // full backup's `JSON.stringify(Float32Array)` embedding — which
+            // v4's own restore refuses — is decoded so the memory restores.
+            super::rows::decode_index_keyed_embedding(&mut item);
             let item = Value::Object(item);
             let character_id = s(m, "characterId");
             let claimed = id_of(m);

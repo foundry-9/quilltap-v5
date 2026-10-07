@@ -14,7 +14,9 @@ per-row catch warns `Failed to restore memory: <ZodError message>`:
   ad…06  tags ["nope"]                     (not a uuid)
   ad…07  content ABSENT                    (required)
   ad…08  occurredAt "yesterday"            (not an ISO datetime)
-  ad…09  embedding {"0": 0.25}             (the union: no option matches)
+  ad…09  embedding {"0": 0.25}             (JSON.stringify(Float32Array) — v4 REFUSES (no union
+                                            option); v5 DECODES and lands it: the ruled
+                                            INDEX_KEYED_EMBEDDING divergence, 2026-10-07)
   "not-a-uuid"  a bad `id`                 (the preserved id itself)
 
 and THREE that land:
