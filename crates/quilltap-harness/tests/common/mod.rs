@@ -5,6 +5,26 @@
 //! that un-mocks `logLLMCall` on the v4 side and dumps `llm_logs` uses these so the
 //! two dumps line up column-for-column.
 //!
+//! It has since grown into the harness's ONE home for every helper two or more
+//! families share (P4.164 — so the next private copy is caught at review;
+//! search here before writing one, and add a self-test in
+//! `common_helpers_selftest.rs` for any helper that parses or normalizes):
+//!
+//! - the `llm_logs` partition — [`TEST_PEPPER`], [`LLM_LOGS_DDL`],
+//!   [`LLM_LOGS_COLUMNS`], [`materialize_llm_logs`],
+//!   [`open_main_and_llm_logs_db`], [`dump_llm_logs`], [`oracle_llm_logs`],
+//!   [`normalize_duration_ms`], [`sort_by_canonical_json`], and the ruled
+//!   failed-call divergence ([`split_ruled_failed_call_rows`],
+//!   [`assert_ruled_failed_call_divergence`]);
+//! - Pascal's stores — [`dump_pascal_stores`];
+//! - the v4 checkout — [`v4_root`], [`locate_v4_root`],
+//!   [`V4_DEFAULT_CHECKOUT`];
+//! - captured log lines — [`capture_fields`] (a line's `name=value` fields,
+//!   spaced values kept whole), the PDF arm's [`PDF_MESSAGES`],
+//!   [`pdf_lines_from_capture`], [`pdf_outcome`];
+//! - SQLite error text — [`normalize_v4_sqlite`] (v4's quoted-identifier
+//!   `no such column` onto v5's bare one).
+//!
 //! `#[allow(dead_code)]` — each integration-test binary pulls in this module and
 //! uses a different subset of the helpers.
 #![allow(dead_code)]
@@ -437,8 +457,7 @@ pub fn pdf_lines_from_capture(lines: &[String]) -> Vec<Value> {
                 .iter()
                 .find(|m| rest == **m || rest.starts_with(&format!("{m} ")))?;
             let mut context = Map::new();
-            for kv in rest[message.len()..].split_whitespace() {
-                let (k, v) = kv.split_once('=').unwrap_or((kv, ""));
+            for (k, v) in capture_fields(&rest[message.len()..]) {
                 let v = v
                     .parse::<i64>()
                     .map(Value::from)
@@ -452,6 +471,36 @@ pub fn pdf_lines_from_capture(lines: &[String]) -> Vec<Value> {
             }))
         })
         .collect()
+}
+
+/// The `name=value` fields after a captured line's message, in order. The
+/// capture layer renders a `%`-formatted string BARE, so a value may hold
+/// spaces (`error=file is not a database`): a value runs to the next space
+/// followed by an identifier and `=` (the boundary `system_restore_state.rs`'s
+/// `find_field_boundary` uses), else to the end of the line. A value that
+/// itself contains ` ident=` is indistinguishable from a following field —
+/// no PDF line can carry one (`size` / `chars` are integers; v4's catch
+/// renders a bare error message).
+pub fn capture_fields(fields: &str) -> Vec<(&str, &str)> {
+    let boundary = |s: &str| {
+        s.char_indices()
+            .filter(|&(_, c)| c == ' ')
+            .map(|(i, _)| i)
+            .find(|&i| {
+                s[i + 1..].split_once('=').is_some_and(|(k, _)| {
+                    !k.is_empty() && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                })
+            })
+    };
+    let mut out = Vec::new();
+    let mut rest = fields.trim_start();
+    while !rest.is_empty() {
+        let end = boundary(rest).unwrap_or(rest.len());
+        let field = &rest[..end];
+        out.push(field.split_once('=').unwrap_or((field, "")));
+        rest = rest[end..].trim_start();
+    }
+    out
 }
 
 /// P4.156 / P4.164 — one failure, two SQL texts: v4's query builder

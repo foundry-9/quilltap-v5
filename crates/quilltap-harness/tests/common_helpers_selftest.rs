@@ -9,7 +9,8 @@
 
 mod common;
 
-use common::normalize_v4_sqlite;
+use common::{capture_fields, normalize_v4_sqlite, pdf_lines_from_capture};
+use serde_json::json;
 
 // ─────────────────────────── normalize_v4_sqlite ───────────────────────────
 
@@ -86,4 +87,106 @@ fn normalize_agrees_with_the_retired_chat_informs_copy() {
             "{text:?}"
         );
     }
+}
+
+// ───────────────────────────── capture_fields ──────────────────────────────
+
+#[test]
+fn capture_fields_splits_bare_integer_fields() {
+    assert_eq!(
+        capture_fields(" size=812 chars=40"),
+        vec![("size", "812"), ("chars", "40")]
+    );
+}
+
+/// The P4.157 OPEN item: a bare string value with spaces stays ONE value.
+#[test]
+fn capture_fields_keeps_a_spaced_value_whole() {
+    assert_eq!(
+        capture_fields(" error=file is not a database"),
+        vec![("error", "file is not a database")]
+    );
+    assert_eq!(
+        capture_fields(" size=3 error=file is not a database chars=0"),
+        vec![
+            ("size", "3"),
+            ("error", "file is not a database"),
+            ("chars", "0")
+        ]
+    );
+}
+
+/// A value whose words hold `=` but no identifier before it is not a boundary.
+#[test]
+fn capture_fields_only_breaks_before_an_identifier_key() {
+    assert_eq!(
+        capture_fields(" error=a = b == c"),
+        vec![("error", "a = b == c")]
+    );
+}
+
+#[test]
+fn capture_fields_on_nothing_is_empty() {
+    assert!(capture_fields("").is_empty());
+    assert!(capture_fields("   ").is_empty());
+}
+
+// ────────────────────────── pdf_lines_from_capture ─────────────────────────
+
+/// A synthetic catch line (`Error extracting PDF content`, v4's
+/// `file-content-extractor.ts:204` — unreachable in v5 today, so no family row
+/// poses it): the `error` value carries spaces and must arrive whole.
+#[test]
+fn pdf_lines_parse_a_spaced_error_value() {
+    let lines = vec![
+        "ERROR quilltap::file_content_extractor Error extracting PDF content \
+         error=file is not a database"
+            .to_string(),
+    ];
+    assert_eq!(
+        pdf_lines_from_capture(&lines),
+        vec![json!({
+            "level": "error",
+            "message": "Error extracting PDF content",
+            "context": {"error": "file is not a database"},
+        })]
+    );
+}
+
+/// The two shapes the generator families DO pose, unchanged by the parser
+/// rewrite (integers as numbers, field order kept, no fields → null).
+#[test]
+fn pdf_lines_parse_the_posed_shapes_unchanged() {
+    let lines = vec![
+        "WARN quilltap::file_content_extractor pdf-parse found no text, using \
+         native fallback extraction size=812"
+            .to_string(),
+        "DEBUG quilltap::file_content_extractor Extracted PDF content size=812 chars=40"
+            .to_string(),
+        "DEBUG quilltap::file_content_extractor Extracted PDF content".to_string(),
+        "DEBUG quilltap::other Extracted PDF content size=1".to_string(),
+    ];
+    let got = pdf_lines_from_capture(&lines);
+    assert_eq!(
+        got,
+        vec![
+            json!({
+                "level": "warn",
+                "message": "pdf-parse found no text, using native fallback extraction",
+                "context": {"size": 812},
+            }),
+            json!({
+                "level": "debug",
+                "message": "Extracted PDF content",
+                "context": {"size": 812, "chars": 40},
+            }),
+            json!({
+                "level": "debug",
+                "message": "Extracted PDF content",
+                "context": null,
+            }),
+        ]
+    );
+    let keys: Vec<_> = got[1]["context"].as_object().unwrap().keys().collect();
+    assert_eq!(keys, ["size", "chars"]);
 }

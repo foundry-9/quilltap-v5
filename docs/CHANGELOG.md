@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — test(harness): `pdf_lines_from_capture` keeps a spaced field value whole; `common` lists its shared helpers (P4.164 items 3, 6)
+
+_No crate versions bumped._
+
+New `common::capture_fields` splits a captured line's fields only at a space followed by `identifier=`, so `error=file is not a database` stays one value (the old whitespace split produced five keys). `pdf_lines_from_capture` uses it; its signature and the two callers are unchanged. Self-tests cover the spaced value and the shapes the generator families already pose. The `common` module doc now lists every shared helper by group.
+
 #### 2026-10-07 — test(harness): one `normalize_v4_sqlite` in `common`, with a self-test binary (P4.164 item 2)
 
 _No crate versions bumped._
