@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — feat(db): the round's new `db::fallback` homes — the partition-unavailable DEBUG for both siblings, the structural `unavailable` string, the per-repository create wraps (P4.163 Tier 1, contract C1)
+
+_Versions: core 0.0.1243._
+
+`log_partition_unavailable(partition, collection, error)` now emits v4's `withRawDb` DEBUG `Dedicated database unavailable; answering with the fallback` for either sibling (`dbTarget` `mountIndex` / `llmLogs`), rendering a `PartitionUnavailable` as v4's degraded guard sentence (`Mount index database is in degraded mode`, `LLM logs database is in degraded mode`) and any other error as its bare text. `log_mount_index_unavailable` is a thin wrapper over it; its one existing caller's `error` bytes move by construction. `log_partition_structural_unavailable(partition, repository)` returns v4's `verifyStructure` string for a degraded sibling through `table_shape::unavailable` (its first caller is P4.159).
+
+Eleven create-wrap homes for the import and restore refusal arms (P4.161 calls them): the characters pair (`Data validation failed` + v4's `Error creating character entity` override) and the characters, connection-profile, image-profile, embedding-profile, file, folder, tag, roleplay-template and prompt-template wraps, plus `chats.addMessage`'s collection-less `Failed to add message to chat`. Each sentence and field order was measured through a `Logger.prototype` spy on v4's real repositories at `94fbb1ae3` (new oracle case `create-wrap-lines.ts`, new family `create_wrap_lines_equivalence`, 22 rows plain and strict); an absent context field is omitted as winston drops it. `fallback_home_guard` grows by eleven messages.
+
 #### 2026-10-07 — docs(porting): order the `94fbb1ae3` boot-hardness + validation + follow-ups round (P4.159 ∥ P4.160 ∥ P4.161 ∥ P4.162 ∥ P4.163 ∥ P4.164)
 
 _Docs-only change._

@@ -119,6 +119,25 @@ const HOME_MESSAGES: &[&str] = &[
     "Error creating group entity",
     "Error creating project",
     "Error creating group",
+    // P4.163 (contract C1 item 3): the per-repository CREATE wraps the import
+    // and the restore log for a refused row, each measured through a
+    // `Logger.prototype` spy on v4's REAL repository at `94fbb1ae3`
+    // (`create_wrap_lines_equivalence`) — the characters repository's
+    // `createErrorMessage()` override, the nine wraps, and `chats.addMessage`'s
+    // standalone `safeQuery`. (`log_partition_unavailable`, C1 item 1, emits
+    // the EXISTING `Dedicated database unavailable` literal — the mount-index
+    // home is now its thin wrapper — and C1 item 2 returns a string.)
+    "Error creating character entity",
+    "Error creating character",
+    "Error creating connection profile",
+    "Error creating image profile",
+    "Error creating embedding profile",
+    "Error creating file",
+    "Error creating folder",
+    "Error creating tag",
+    "Error creating roleplay template",
+    "Error creating prompt template",
+    "Failed to add message to chat",
 ];
 
 const HOME: &str = "db/fallback.rs";

@@ -20,6 +20,7 @@
 //! quilltap::db`); every emitter of these two lines uses it.
 
 use super::document_store_overlay::{OverlayError, StoreKind};
+use super::table_shape::Partition;
 use super::DbError;
 
 /// The `error` field's bytes: v4 logs `extractErrorMessage(error)` — the
@@ -228,21 +229,75 @@ pub fn joined_file_links_strict_aware<T>(
     }
 }
 
+/// v4's guard sentence for a DEGRADED dedicated partition — the message
+/// `acquireDb()` throws (`mount-index-guard.ts:20`, `llm-logs-guard.ts:21`).
+/// `None` for the main partition: v4 has no main guard.
+fn partition_degraded_sentence(partition: Partition) -> Option<&'static str> {
+    match partition {
+        Partition::Main => None,
+        Partition::MountIndex => Some("Mount index database is in degraded mode"),
+        Partition::LlmLogs => Some("LLM logs database is in degraded mode"),
+    }
+}
+
 /// The ONE emitter of v4's quiet `withRawDb` arm (`dedicated-db.repository.ts:
-/// 242-251`): the mount-index database could not be acquired, so the read
-/// answers its fallback with a DEBUG `Dedicated database unavailable; answering
-/// with the fallback {collection, dbTarget: mountIndex, error}` — never an
-/// ERROR, strict scope or not. `collection` is the repository the read belongs
-/// to. `pub` since P4.156: the chat PUT's project gate stands in for v4's
-/// overlay reads when its mount-index checkout fails (`api/salon.rs`).
-pub fn log_mount_index_unavailable(collection: &str, error: &DbError) {
+/// 235-263`, the DEBUG at `:246`): the dedicated database could not be
+/// acquired, so the read answers its fallback with DEBUG `Dedicated database
+/// unavailable; answering with the fallback {collection, dbTarget, error}` —
+/// never an ERROR, strict scope or not. `collection` is the repository the read
+/// belongs to; `dbTarget` is v4's spelling (`mountIndex` / `llmLogs`,
+/// [`Partition::db_target`]).
+///
+/// P4.163 (contract C1 item 1, Ruling R-C): for [`DbError::PartitionUnavailable`]
+/// the `error` value is v4's DEGRADED guard sentence for `partition` (`Mount
+/// index database is in degraded mode` / `LLM logs database is in degraded
+/// mode`) — after P4.159 the only reachable unavailable state of a sibling is
+/// degraded (its path is created at provisioning; the `None`-path case is a
+/// recorded pre-existing divergence, not a state this home renders). Any other
+/// `DbError` renders [`error_text`].
+pub fn log_partition_unavailable(partition: Partition, collection: &str, error: &DbError) {
+    let error = match (error, partition_degraded_sentence(partition)) {
+        (DbError::PartitionUnavailable(_), Some(sentence)) => sentence.to_string(),
+        (other, _) => error_text(other),
+    };
     tracing::debug!(
         target: "quilltap::db",
         collection = collection,
-        dbTarget = "mountIndex",
-        error = %error_text(error),
+        dbTarget = partition.db_target(),
+        error = %error,
         "Dedicated database unavailable; answering with the fallback"
     );
+}
+
+/// [`log_partition_unavailable`] for the mount index — kept as a thin wrapper
+/// so its callers stay unchanged (`pub` since P4.156: the chat PUT's project
+/// gate stands in for v4's overlay reads when its mount-index checkout fails,
+/// `api/salon.rs`).
+pub fn log_mount_index_unavailable(collection: &str, error: &DbError) {
+    log_partition_unavailable(Partition::MountIndex, collection, error);
+}
+
+/// P4.163 (contract C1 item 2) — v4 `verifyStructure`'s problem string for a
+/// repository whose dedicated database is DEGRADED (`dedicated-db.repository.
+/// ts:176-182`): `acquireDb()` threw the guard sentence, so the pass records
+/// `"{label} database unavailable: {Sentence}"` — `Mount index database
+/// unavailable: …` is `mount index database unavailable: Mount index database
+/// is in degraded mode`, the LLM-logs twin `LLM logs database unavailable: LLM
+/// logs database is in degraded mode` — through [`table_shape::unavailable`]
+/// with `label` = [`Partition::label`]. v4's string carries no repository name
+/// (the structural pass's per-problem ERROR does, so `repository` is accepted
+/// for the caller's symmetry and not rendered); this logs NOTHING. The main
+/// partition has no guard, so it renders its `label` with `error_text`'s
+/// counterpart — `partition not available: main` — a shape v4 never reaches.
+///
+/// [`table_shape::unavailable`]: super::table_shape::unavailable
+pub fn log_partition_structural_unavailable(partition: Partition, _repository: &str) -> String {
+    let sentence = partition_degraded_sentence(partition)
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            DbError::PartitionUnavailable(crate::write_partition::WriteDbTarget::Main).to_string()
+        });
+    super::table_shape::unavailable(partition.label(), &sentence)
 }
 
 /// v4 `docMountDocuments.findByMountPointAndPath` as its callers see it: a
@@ -825,6 +880,235 @@ pub fn log_chat_create_wrap_failure(error: &DbError) {
         "Failed to create chat"
     );
 }
+
+// === P4.163 (contract C1 item 3) — the per-repository CREATE wraps the
+// import and the restore log when they refuse a row. Each v4 repository's
+// `create` wraps the base `_create` in its OWN 3-argument (rethrow)
+// `safeQuery`, so a refusal logs `_create`'s line ([`log_create_failure`], or
+// the characters override below) and then the wrap, both ERROR, `{collection,
+// …context, error, strictFailures?}` — `strictFailures=true` appended only
+// inside [`with_strict_repository_failures`] (the import runs strict, the
+// restore does not). Measured at `94fbb1ae3` through a `Logger.prototype` spy
+// on v4's REAL repositories (`create_wrap_lines_equivalence`); a context field
+// v4 reads as `undefined` is OMITTED (winston drops it), hence the `Option`s.
+// Logs only — the caller keeps propagating. ===
+
+/// Every per-kind wrap below renders through here: ERROR at `quilltap::db`,
+/// `collection` first, then the kind's context IN v4's ORDER, the bare `error`,
+/// `strictFailures` last. A tracing message must be a literal, so each kind
+/// keeps its own `tracing::error!` and this only computes the shared values.
+fn create_wrap_values(error: &DbError) -> (String, Option<bool>) {
+    (
+        error_text(error),
+        strict_repository_failures_active().then_some(true),
+    )
+}
+
+/// v4 `characters.repository.ts:352-354` OVERRIDES `createErrorMessage()`, so a
+/// refused character's `_create` logs `Error creating character entity`, not
+/// [`log_create_failure`]'s sentence — preceded, as every schema refusal is, by
+/// `validate`'s `Data validation failed {collection, error}` (no
+/// `strictFailures`: `validate` logs directly, outside any `safeQuery`). This
+/// home renders that PAIR for a refused character row; the wrap above it is
+/// [`log_character_create_wrap_failure`].
+pub fn log_character_create_failure(error: &DbError) {
+    let (error, strict) = create_wrap_values(error);
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "characters",
+        error = %error,
+        "Data validation failed"
+    );
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "characters",
+        error = %error,
+        strictFailures = strict,
+        "Error creating character entity"
+    );
+}
+
+/// `characters.create`'s wrap (`characters.repository.ts:262-314`): ERROR
+/// `Error creating character {collection, userId, name, error, strictFailures?}`.
+pub fn log_character_create_wrap_failure(user_id: &str, name: Option<&str>, error: &DbError) {
+    let (error, strict) = create_wrap_values(error);
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "characters",
+        userId = %user_id,
+        name = name.map(tracing::field::display),
+        error = %error,
+        strictFailures = strict,
+        "Error creating character"
+    );
+}
+
+/// `connectionProfiles.create`'s wrap (`connection-profiles.repository.ts:67-86`):
+/// ERROR `Error creating connection profile {collection, userId, name, provider,
+/// error, strictFailures?}`.
+pub fn log_connection_profile_create_wrap_failure(
+    user_id: &str,
+    name: Option<&str>,
+    provider: Option<&str>,
+    error: &DbError,
+) {
+    let (error, strict) = create_wrap_values(error);
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "connection_profiles",
+        userId = %user_id,
+        name = name.map(tracing::field::display),
+        provider = provider.map(tracing::field::display),
+        error = %error,
+        strictFailures = strict,
+        "Error creating connection profile"
+    );
+}
+
+/// `imageProfiles.create`'s wrap (`image-profiles.repository.ts:55-75`): ERROR
+/// `Error creating image profile {collection, userId, name, provider, error,
+/// strictFailures?}`.
+pub fn log_image_profile_create_wrap_failure(
+    user_id: &str,
+    name: Option<&str>,
+    provider: Option<&str>,
+    error: &DbError,
+) {
+    let (error, strict) = create_wrap_values(error);
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "image_profiles",
+        userId = %user_id,
+        name = name.map(tracing::field::display),
+        provider = provider.map(tracing::field::display),
+        error = %error,
+        strictFailures = strict,
+        "Error creating image profile"
+    );
+}
+
+/// `embeddingProfiles.create`'s wrap (`embedding-profiles.repository.ts:73-93`):
+/// ERROR `Error creating embedding profile {collection, userId, name, provider,
+/// error, strictFailures?}`.
+pub fn log_embedding_profile_create_wrap_failure(
+    user_id: &str,
+    name: Option<&str>,
+    provider: Option<&str>,
+    error: &DbError,
+) {
+    let (error, strict) = create_wrap_values(error);
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "embedding_profiles",
+        userId = %user_id,
+        name = name.map(tracing::field::display),
+        provider = provider.map(tracing::field::display),
+        error = %error,
+        strictFailures = strict,
+        "Error creating embedding profile"
+    );
+}
+
+/// `files.create`'s wrap (`files.repository.ts:134-151`): ERROR `Error creating
+/// file {collection, userId, filename, error, strictFailures?}` — `filename` is
+/// the payload's `originalFilename`.
+pub fn log_file_create_wrap_failure(user_id: &str, filename: Option<&str>, error: &DbError) {
+    let (error, strict) = create_wrap_values(error);
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "files",
+        userId = %user_id,
+        filename = filename.map(tracing::field::display),
+        error = %error,
+        strictFailures = strict,
+        "Error creating file"
+    );
+}
+
+/// `folders.create`'s wrap (`folders.repository.ts:34-54`): ERROR `Error
+/// creating folder {collection, userId, path, error, strictFailures?}`.
+pub fn log_folder_create_wrap_failure(user_id: &str, path: Option<&str>, error: &DbError) {
+    let (error, strict) = create_wrap_values(error);
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "folders",
+        userId = %user_id,
+        path = path.map(tracing::field::display),
+        error = %error,
+        strictFailures = strict,
+        "Error creating folder"
+    );
+}
+
+/// `tags.create`'s wrap (`tags.repository.ts:60-89`): ERROR `Error creating tag
+/// {collection, userId, name, error, strictFailures?}`. (A payload with no
+/// `name` throws a `TypeError` inside the wrap BEFORE `_create` — v4 lowercases
+/// `data.nameLower || data.name` first — so that refusal logs this line ALONE.)
+pub fn log_tag_create_wrap_failure(user_id: &str, name: Option<&str>, error: &DbError) {
+    let (error, strict) = create_wrap_values(error);
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "tags",
+        userId = %user_id,
+        name = name.map(tracing::field::display),
+        error = %error,
+        strictFailures = strict,
+        "Error creating tag"
+    );
+}
+
+/// `roleplayTemplates.create`'s wrap (`roleplay-templates.repository.ts:285-305`):
+/// ERROR `Error creating roleplay template {collection, userId, name, error,
+/// strictFailures?}`.
+pub fn log_roleplay_template_create_wrap_failure(
+    user_id: &str,
+    name: Option<&str>,
+    error: &DbError,
+) {
+    let (error, strict) = create_wrap_values(error);
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "roleplay_templates",
+        userId = %user_id,
+        name = name.map(tracing::field::display),
+        error = %error,
+        strictFailures = strict,
+        "Error creating roleplay template"
+    );
+}
+
+/// `promptTemplates.create`'s wrap (`prompt-templates.repository.ts:244-264`):
+/// ERROR `Error creating prompt template {collection, userId, name, error,
+/// strictFailures?}`.
+pub fn log_prompt_template_create_wrap_failure(user_id: &str, name: Option<&str>, error: &DbError) {
+    let (error, strict) = create_wrap_values(error);
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "prompt_templates",
+        userId = %user_id,
+        name = name.map(tracing::field::display),
+        error = %error,
+        strictFailures = strict,
+        "Error creating prompt template"
+    );
+}
+
+/// `chats.addMessage` (`chats-messages.ops.ts:387-446`): a STANDALONE 3-argument
+/// `safeQuery` — no repository wrapper, so NO `collection` — whose
+/// `ChatEventSchema.parse` throws with no validation line of its own: ERROR
+/// `Failed to add message to chat {chatId, error, strictFailures?}`, the one
+/// line a refused message logs.
+pub fn log_chat_message_add_create_wrap_failure(chat_id: &str, error: &DbError) {
+    let (error, strict) = create_wrap_values(error);
+    tracing::error!(
+        target: "quilltap::db",
+        chatId = %chat_id,
+        error = %error,
+        strictFailures = strict,
+        "Failed to add message to chat"
+    );
+}
+// === end P4.163 (the create wraps) ===
 
 /// v4 `_update`'s rethrow line: ERROR `Error updating entity {collection, id,
 /// error, strictFailures?}`. Logs only — the caller keeps propagating `error`.
@@ -1655,10 +1939,10 @@ mod tests {
             vec![
                 "ERROR quilltap::db Error querying joined file links collection=doc_mount_file_links whereClause=WHERE l.id = ? error=posed".to_string(),
                 "ERROR quilltap::db Error querying joined file links collection=doc_mount_file_links whereClause=WHERE l.id = ? error=posed strictFailures=true".to_string(),
-                format!(
-                    "DEBUG quilltap::db Dedicated database unavailable; answering with the fallback collection=doc_mount_file_links dbTarget=mountIndex error={}",
-                    unavailable()
-                ),
+                // P4.163 (R-C): the partition-unavailable arm renders v4's
+                // DEGRADED guard sentence (`mount-index-guard.ts:20`), never
+                // v5's `partition not available: …` Display.
+                "DEBUG quilltap::db Dedicated database unavailable; answering with the fallback collection=doc_mount_file_links dbTarget=mountIndex error=Mount index database is in degraded mode".to_string(),
                 "ERROR quilltap::db Error querying joined file links collection=doc_mount_file_links whereClause=WHERE l.id = ? error=posed".to_string(),
             ]
         );
@@ -1858,6 +2142,99 @@ mod tests {
         });
         assert_eq!(got, (vec![1], vec![2], vec![3], vec![4], vec![5], 1));
         assert!(lines.is_empty(), "{lines:?}");
+    }
+
+    /// P4.163 (C1 item 1) — `log_partition_unavailable` for BOTH dedicated
+    /// targets and BOTH `error` renderings: the degraded guard sentence for a
+    /// `PartitionUnavailable`, the bare `error_text` for anything else; a DEBUG
+    /// with no `strictFailures` even inside the strict scope (v4's `withRawDb`
+    /// arm never honours it); and the mount-index wrapper's bytes are the home's.
+    #[test]
+    fn the_partition_unavailable_home_renders_v4s_debug_for_both_targets() {
+        use crate::write_partition::WriteDbTarget;
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        let sqlite = DbError::from(conn.execute_batch("SELECT 1 FROM gone").unwrap_err());
+        let ((), lines) = crate::test_support::captured_with(|| {
+            log_partition_unavailable(
+                Partition::MountIndex,
+                "doc_mount_points",
+                &DbError::PartitionUnavailable(WriteDbTarget::MountIndex),
+            );
+            log_partition_unavailable(
+                Partition::LlmLogs,
+                "llm_logs",
+                &DbError::PartitionUnavailable(WriteDbTarget::LlmLogs),
+            );
+            log_partition_unavailable(Partition::LlmLogs, "llm_logs", &sqlite);
+            with_strict_repository_failures(|| {
+                log_mount_index_unavailable(
+                    "doc_mount_documents",
+                    &DbError::PartitionUnavailable(WriteDbTarget::MountIndex),
+                )
+            });
+            log_mount_index_unavailable("doc_mount_documents", &posed());
+        });
+        assert_eq!(
+            lines,
+            vec![
+                "DEBUG quilltap::db Dedicated database unavailable; answering with the fallback collection=doc_mount_points dbTarget=mountIndex error=Mount index database is in degraded mode",
+                "DEBUG quilltap::db Dedicated database unavailable; answering with the fallback collection=llm_logs dbTarget=llmLogs error=LLM logs database is in degraded mode",
+                "DEBUG quilltap::db Dedicated database unavailable; answering with the fallback collection=llm_logs dbTarget=llmLogs error=no such table: gone",
+                "DEBUG quilltap::db Dedicated database unavailable; answering with the fallback collection=doc_mount_documents dbTarget=mountIndex error=Mount index database is in degraded mode",
+                "DEBUG quilltap::db Dedicated database unavailable; answering with the fallback collection=doc_mount_documents dbTarget=mountIndex error=posed",
+            ]
+        );
+    }
+
+    /// P4.163 (C1 item 2) — v4's `verifyStructure` unavailable string for a
+    /// degraded sibling, exactly (`dedicated-db.repository.ts:179-182` over the
+    /// guards' sentences), through `table_shape::unavailable`; it logs nothing.
+    #[test]
+    fn the_structural_unavailable_home_returns_v4s_string_and_logs_nothing() {
+        let (got, lines) = crate::test_support::captured_with(|| {
+            (
+                log_partition_structural_unavailable(Partition::MountIndex, "docMountPoints"),
+                log_partition_structural_unavailable(Partition::LlmLogs, "llmLogs"),
+            )
+        });
+        assert_eq!(
+            got.0,
+            "mount index database unavailable: Mount index database is in degraded mode"
+        );
+        assert_eq!(
+            got.1,
+            "LLM logs database unavailable: LLM logs database is in degraded mode"
+        );
+        assert!(lines.is_empty(), "{lines:?}");
+    }
+
+    /// P4.163 (C1 item 3) — the create wraps in-crate: the characters PAIR
+    /// (validate's line carries NO `strictFailures`), an absent context field
+    /// OMITTED, `strictFailures=true` only inside the scope, and `addMessage`'s
+    /// collection-less line. The whole-corpus proof against v4's REAL
+    /// repositories is `create_wrap_lines_equivalence`.
+    #[test]
+    fn the_create_wrap_homes_render_v4s_lines() {
+        let ((), lines) = crate::test_support::captured_with(|| {
+            with_strict_repository_failures(|| {
+                log_character_create_failure(&posed());
+                log_character_create_wrap_failure("u-1", Some("Abigail"), &posed());
+            });
+            log_connection_profile_create_wrap_failure("u-1", None, Some("OPENAI"), &posed());
+            log_file_create_wrap_failure("u-1", Some("notes.md"), &posed());
+            log_chat_message_add_create_wrap_failure("c-1", &posed());
+        });
+        assert_eq!(
+            lines,
+            vec![
+                "ERROR quilltap::db Data validation failed collection=characters error=posed",
+                "ERROR quilltap::db Error creating character entity collection=characters error=posed strictFailures=true",
+                "ERROR quilltap::db Error creating character collection=characters userId=u-1 name=Abigail error=posed strictFailures=true",
+                "ERROR quilltap::db Error creating connection profile collection=connection_profiles userId=u-1 provider=OPENAI error=posed",
+                "ERROR quilltap::db Error creating file collection=files userId=u-1 filename=notes.md error=posed",
+                "ERROR quilltap::db Failed to add message to chat chatId=c-1 error=posed",
+            ]
+        );
     }
 }
 
