@@ -171028,3 +171028,31 @@ from the pin); any further v4 docs commits are covered by that instruction.
   than leave a both-ways divergence table. The unifier should confirm.
 - **Green:** `image_dialects_equivalence` 1/1; core `nanogpt` / `imagen` /
   `image_dialects` tests 42/42. The committed fixture is untouched (read-only).
+
+### Unit 8 — the chaining WARN on v4's bytes (Tier 2 item 8, R-H)
+
+- **Port:** `streaming_provider.rs`'s fallback WARN → v4's STREAMING line
+  (`provider.ts:560-564`): `Streaming conversation chaining failed, falling
+  back to full input` `{context: OpenAIProvider.streamMessage,
+  previousResponseId, error}` (was `Conversation chaining failed, …
+  provider=OPENAI`). `error` = `provider_error::v4_thrown_message` for the
+  failure (the SDK's thrown message — the same text the catch lines use);
+  `previousResponseId` = the chained request's id, cloned before the request
+  is moved.
+- **Oracle (both sides made REAL):** `openai-chaining-fallback-tier3.test.ts`
+  threw a plain `Error('400 previous_response_not_found')` and the Rust
+  transport a CONNECT error — neither the real path. Now the oracle throws the
+  plugin's own `openai` 7.23.0 `APIError.generate(400, CHAINED_400_BODY, …)`
+  and records the plugin's WARNs through the logger bridge (`warnLog`); the
+  Rust `FallbackTransport` answers `TransportError::http(400,
+  CHAINED_400_BODY)` (the same bytes). v4's recorded `error`: `400 Previous
+  response with id 'resp_dead' not found.`
+- **Red-first:** `openai_chaining_fallback_tier3_matches_oracle` RED on the old
+  line (`Conversation chaining failed, … provider=OPENAI`), the recovered
+  chunks still equal; GREEN after. `primary_stream_tier3` 2/2; core
+  `streaming_provider` 25/25 (the three P4.41 unit pins assert behaviour, not
+  the line's text — none moved).
+- **Recorded, unported (Tier 3 item 10):** v4's non-streaming `sendMessage`
+  variant (`provider.ts:503-507`, `Conversation chaining failed, …` with
+  `context: OpenAIProvider.sendMessage`) — v5 has no non-streaming chaining.
+- **HANDOFF(unifier):** none needed at `services/primary_stream.rs:1522`.

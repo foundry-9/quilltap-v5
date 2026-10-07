@@ -488,6 +488,8 @@ impl<T: ProviderTransport, K: ProviderKeySource> WireStreamingProvider<T, K> {
             raw_path,
         );
         let provider_id = provider.to_string();
+        // The chained request's id, for the chaining-fallback WARN (P4.162).
+        let chained_response_id = params.previous_response_id.clone();
         async move {
             let (request, mut decoder, mut attachment_results) = match prepared {
                 Ok(p) => p,
@@ -547,10 +549,26 @@ impl<T: ProviderTransport, K: ProviderKeySource> WireStreamingProvider<T, K> {
                                 // loud rather than swallow.
                                 Err(pe) => return single_error(pe.message),
                             };
+                        // v4 `provider.ts:560-564` (the STREAMING catch — v5
+                        // ports only this one; `sendMessage`'s `Conversation
+                        // chaining failed, …` twin has no v5 non-streaming
+                        // chaining): `{context, previousResponseId, error}`,
+                        // `error` the SDK's thrown message for the failure
+                        // (P4.162, R-H; pinned by `primary_stream_tier3`'s
+                        // chaining-fallback oracle).
+                        let error_text = crate::model::provider_error::v4_thrown_message(
+                            &provider_id,
+                            CatchMethod::StreamMessage,
+                            raw_path,
+                            &e,
+                        );
                         tracing::warn!(
                             target: "quilltap::model::streaming_provider",
-                            provider = %request.provider,
-                            "Conversation chaining failed, falling back to full input"
+                            context = "OpenAIProvider.streamMessage",
+                            previousResponseId =
+                                %chained_response_id.as_deref().unwrap_or_default(),
+                            error = %error_text,
+                            "Streaming conversation chaining failed, falling back to full input"
                         );
                         match self
                             .transport

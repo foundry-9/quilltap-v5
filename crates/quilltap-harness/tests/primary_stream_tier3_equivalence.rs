@@ -1895,6 +1895,9 @@ fn sort_rows_by(dump: &mut Value, col: &str) {
 // outcome parity against v4's real fallback.
 // ===========================================================================
 
+/// The oracle's `CHAINED_400_BODY`, verbatim (P4.162).
+const CHAINED_400_BODY: &str = r#"{"error":{"message":"Previous response with id 'resp_dead' not found.","type":"invalid_request_error","param":"previous_response_id","code":"previous_response_not_found"}}"#;
+
 /// Fails the FIRST `execute_stream` (the chained attempt) and serves the scripted
 /// Responses-API SSE on the retry, recording every request body.
 struct FallbackTransport {
@@ -1925,7 +1928,11 @@ impl ProviderTransport for FallbackTransport {
         let frame = self.retry_frame.clone();
         Box::pin(async move {
             if n == 1 {
-                Err(TransportError::connect("400 previous_response_not_found"))
+                // P4.162: the 400 OpenAI answers a dangling
+                // `previous_response_id` — the SAME body the oracle hands the
+                // SDK's real `APIError.generate`, so both sides' WARN `error`
+                // is the SDK's message for it.
+                Err(TransportError::http(400, CHAINED_400_BODY))
             } else {
                 let (tx, rx) = tokio::sync::mpsc::channel(1);
                 let _ = tx.send(Ok(frame)).await;
@@ -2015,12 +2022,57 @@ async fn openai_chaining_fallback_tier3_matches_oracle() {
         "Quilltap/test".to_string(),
     );
 
-    let mut rx = wire.stream_message("OPENAI", None, &params).await;
+    // P4.162: capture the chaining WARN (this current-thread test runs every
+    // event on this thread, so a thread-scoped default sees them all).
+    let lines = std::sync::Arc::new(Mutex::new(Vec::<String>::new()));
     let mut got_chunks: Vec<Value> = Vec::new();
-    while let Some(item) = rx.recv().await {
-        let chunk = item.expect("the fallback must recover the turn, not error");
-        got_chunks.push(normalize_fallback_chunk(&chunk));
+    {
+        use tracing_subscriber::layer::SubscriberExt;
+        let _guard = tracing::subscriber::set_default(
+            tracing_subscriber::registry()
+                .with(quilltap_core::test_support::CaptureLayer(lines.clone())),
+        );
+        let mut rx = wire.stream_message("OPENAI", None, &params).await;
+        while let Some(item) = rx.recv().await {
+            let chunk = item.expect("the fallback must recover the turn, not error");
+            got_chunks.push(normalize_fallback_chunk(&chunk));
+        }
     }
+
+    // P4.162 (R-H): v4's `Streaming conversation chaining failed, falling back
+    // to full input {context, previousResponseId, error}` (`provider.ts:
+    // 560-564`), recorded through the plugin's logger bridge — message, keys
+    // in v4's order, values; the ONLY WARN either side logs on this call.
+    let want_warns: Vec<String> = oracle["warnLog"]
+        .as_array()
+        .expect("warnLog — regenerate the oracle from THIS tree's case")
+        .iter()
+        .map(|w| {
+            let fields: Vec<String> = w["context"]
+                .as_object()
+                .expect("context")
+                .iter()
+                .map(|(k, v)| match v {
+                    Value::String(s) => format!("{k}={s}"),
+                    other => format!("{k}={other}"),
+                })
+                .collect();
+            format!(
+                "WARN quilltap::model::streaming_provider {} {}",
+                w["message"].as_str().unwrap(),
+                fields.join(" ")
+            )
+        })
+        .collect();
+    let got_warns: Vec<String> = lines
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|l| l.starts_with("WARN "))
+        .cloned()
+        .collect();
+    assert_eq!(got_warns, want_warns, "the chaining-fallback WARN");
+    assert_eq!(want_warns.len(), 1, "v4 logs exactly one chaining WARN");
 
     // The recovered chunk sequence matches v4's real fallback output.
     assert_eq!(

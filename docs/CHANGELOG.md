@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — fix(core): log the OpenAI chaining-fallback WARN with v4's bytes (P4.162)
+
+_Versions: core 0.0.1250._
+
+When a chained OpenAI stream fails before its first chunk and v5 retries with the full input, the WARN is now v4's streaming line: `Streaming conversation chaining failed, falling back to full input` with `context=OpenAIProvider.streamMessage`, `previousResponseId`, and `error` (the SDK's message for the failure). The chaining-fallback oracle now throws the SDK's real `APIError` for a 400 body and records the plugin's WARN; the Rust side serves the same 400 and compares the line. v4's non-streaming `sendMessage` variant stays unported (v5 has no non-streaming chaining).
+
 #### 2026-10-07 — fix(core): port the Imagen no-usable-images WARN and compare every image-corpus WARN (P4.162)
 
 _Versions: core 0.0.1249._

@@ -28,6 +28,13 @@
  * `tool_wire_call_site.rs::chaining_fallback_retry_bytes_match_a_nonchained_build`);
  * this tier-3 proves turn-level outcome parity against v4's REAL fallback.
  *
+ * P4.162: the plugin's WARN lines are recorded too (`warnLog`), through the
+ * host-bridge logger global every plugin's `createPluginLogger` consults
+ * (`globalThis.__quilltap_logger_factory`, `record-image-fixtures.mjs`'s
+ * bridge) — v4's `Streaming conversation chaining failed, falling back to full
+ * input {context, previousResponseId, error}` (`provider.ts:560-564`), the
+ * comparand for v5's line.
+ *
  * Run from the v4 server checkout under Node 24:
  *   N=~/.nvm/versions/node/v24.13.1/bin
  *   V5=~/source/quilltap-v5
@@ -61,6 +68,18 @@ interface RawChunk {
 // full-input (recovered) attempt — the numbers the Rust SSE fixture mirrors.
 const USAGE = { input_tokens: 10, output_tokens: 2, total_tokens: 12 };
 
+// P4.162: the 400 body OpenAI answers a dangling `previous_response_id` with
+// (the Responses API's `invalid_request_error`) — shared verbatim with the Rust
+// side's failing transport.
+const CHAINED_400_BODY = {
+  error: {
+    message: "Previous response with id 'resp_dead' not found.",
+    type: 'invalid_request_error',
+    param: 'previous_response_id',
+    code: 'previous_response_not_found',
+  },
+};
+
 // The conversation: a system turn (→ instructions), then a multi-turn exchange —
 // so the chained attempt sends only the last user message and the full-input
 // retry sends the whole thing (asserted by the wire test; here it just makes the
@@ -80,6 +99,40 @@ async function main(): Promise<void> {
   const seen: Array<Record<string, unknown>> = [];
 
   jest.resetModules();
+  const { APIError: RealAPIError } = jest.requireActual(
+    join(process.cwd(), 'plugins/dist/qtap-plugin-openai/node_modules/openai'),
+  ) as {
+    APIError: {
+      generate: (status: number, body: unknown, message: undefined, headers: Headers) => Error;
+    };
+  };
+  // P4.162: the plugin logger bridge, installed BEFORE the plugin is imported
+  // (a plugin's logger resolves the factory when it is built). WARN only;
+  // context verbatim, `undefined` keys named (winston would drop them).
+  const warnLog: Array<Record<string, unknown>> = [];
+  const captureLogger = (
+    plugin: string,
+    base: Record<string, unknown> = {},
+  ): Record<string, unknown> => {
+    const noop = (): void => {};
+    return {
+      debug: noop,
+      info: noop,
+      error: noop,
+      warn: (message: string, ctx?: Record<string, unknown>) => {
+        const context = { ...base, ...(ctx ?? {}) };
+        warnLog.push({
+          plugin,
+          message,
+          context,
+          undefinedKeys: Object.keys(context).filter((k) => context[k] === undefined),
+        });
+      },
+      child: (extra: Record<string, unknown>) => captureLogger(plugin, { ...base, ...extra }),
+    };
+  };
+  (globalThis as Record<string, unknown>).__quilltap_logger_factory = (plugin: string) =>
+    captureLogger(plugin);
   jest.doMock('openai', () => {
     class MockOpenAI {
       responses = {
@@ -89,7 +142,16 @@ async function main(): Promise<void> {
           if (createCount === 1) {
             // The chained attempt: OpenAI cannot resolve `previous_response_id`
             // (routine on `store: false` responses). v4 catches this pre-stream.
-            throw new Error('400 previous_response_not_found');
+            // P4.162: the SDK's OWN error for that 400 body (`APIError.generate`
+            // from the plugin's real `openai` copy), so the WARN's `error` is
+            // the message the real SDK would carry — the Rust side answers the
+            // same status + body through its transport.
+            throw RealAPIError.generate(
+              400,
+              CHAINED_400_BODY,
+              undefined,
+              new Headers({ 'content-type': 'application/json' }),
+            );
           }
           // The full-input retry succeeds: a Responses-API event stream.
           async function* gen() {
@@ -150,6 +212,7 @@ async function main(): Promise<void> {
     firstChained: seen[0]?.previous_response_id === 'resp_dead',
     secondChained: seen[1]?.previous_response_id !== undefined,
     chunks,
+    warnLog,
   });
   fs.writeFileSync(outPath, line + '\n');
   process.stderr.write(`openai chaining-fallback oracle wrote ${outPath}\n`);
