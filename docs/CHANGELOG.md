@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — test(host): host_boot_fresh_indexes plans the production SQL, captured by statement trace (P4.164 item 1)
+
+_No crate versions bumped._
+
+The query-plan arm planned hand-copied SQL. It now calls `get_messages`, `get_last_played_message_at` and `find_pending_for_participant` on the booted instance, captures the statements they actually ran with `sqlite3_trace_v2` (via `rusqlite::ffi`; no production change), and asserts every captured SELECT uses `idx_chat_messages_chatId` / `idx_chat_informs_pending`. A new mutation arm drops both indexes and pins that every captured plan leaves them. Header corrected: nine arms (it said seven; there were eight).
+
 #### 2026-10-07 — docs(porting): P4.161 lane record — whole-row validation on import and restore, LANE COMPLETE
 
 _Docs-only change._
