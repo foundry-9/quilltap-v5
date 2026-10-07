@@ -51,7 +51,7 @@ fn json_response(status: StatusCode, body: &Value) -> AxumResponse {
 /// with the Locked merge — so the HTTP route and the Tauri IPC `dispatch`
 /// command share them verbatim. IPC carries no HTTP status; there the
 /// envelope alone is authoritative and the status is dropped.
-pub async fn dispatch_body(state: &SharedState, body: &[u8]) -> (StatusCode, Value) {
+pub async fn dispatch_body(state: &SharedState, body_bytes: &[u8]) -> (StatusCode, Value) {
     let Some(host) = state.host() else {
         // A failed boot: everything is 503 (health carries the details).
         let msg = match &state.startup {
@@ -66,7 +66,7 @@ pub async fn dispatch_body(state: &SharedState, body: &[u8]) -> (StatusCode, Val
         );
     };
 
-    let req: Request = match serde_json::from_slice(body) {
+    let req: Request = match serde_json::from_slice(body_bytes) {
         Ok(r) => r,
         Err(e) => {
             let resp = Response::error(ErrorKind::BadRequest, format!("Invalid request: {e}"));
@@ -85,6 +85,14 @@ pub async fn dispatch_body(state: &SharedState, body: &[u8]) -> (StatusCode, Val
     // `{error: 'Setup required', setupUrl: '/setup', pepperState}`) alongside
     // the typed envelope, so dispatch clients stay typed.
     if let Response::Error(e) = &resp {
+        // v4's context-middleware ERROR for a store-unavailable 503 (P4.162,
+        // dogfood #151; ruling R-A): over HTTP the bracket is the request's
+        // real method + pathname (`POST /api/dispatch`); over Tauri IPC no
+        // request is in scope and the bracket is the verb (`[projectUpdate]`).
+        if e.kind == ErrorKind::Unavailable {
+            let route = crate::route_context::current().unwrap_or_else(|| verb_of(body_bytes));
+            e.log_store_unavailable(&route);
+        }
         if e.kind == ErrorKind::Locked {
             if let Some(obj) = body.as_object_mut() {
                 obj.insert("error".into(), json!("Setup required"));
@@ -127,6 +135,16 @@ pub async fn dispatch_body(state: &SharedState, body: &[u8]) -> (StatusCode, Val
         merge_already_saved_riders(e, &mut body);
     }
     (status, body)
+}
+
+/// The verb a dispatch body names — its internally-tagged `type` — for the IPC
+/// bracket. Read only on the rare store-unavailable refusal, so the body is
+/// parsed a second time there rather than on every request.
+fn verb_of(body: &[u8]) -> String {
+    serde_json::from_slice::<Value>(body)
+        .ok()
+        .and_then(|v| v.get("type").and_then(Value::as_str).map(str::to_string))
+        .unwrap_or_default()
 }
 
 /// The one place the dispatch wire flattens [`CoreError::already_saved`]:

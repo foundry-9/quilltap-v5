@@ -613,7 +613,9 @@ fn core_response_to_http(resp: CoreResponse, success_status: StatusCode) -> Axum
                 ErrorKind::Internal => StatusCode::INTERNAL_SERVER_ERROR,
             };
             // The store-unavailable refusal answers v4's exact
-            // `{error, <entity>Id}` body (P4.23).
+            // `{error, <entity>Id}` body (P4.23), after v4's
+            // context-middleware ERROR (P4.162, dogfood #151).
+            crate::route_context::log_store_unavailable(&e);
             if let Some(body) = e.unavailable_wire_body() {
                 return (
                     status,

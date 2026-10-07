@@ -172,10 +172,14 @@ impl OverlayError {
         match self {
             OverlayError::Db(d) => d,
             OverlayError::Unavailable {
-                entity_label, id, ..
+                entity_label,
+                id,
+                mount_point_id,
+                ..
             } => DbError::StoreUnavailable {
                 entity_label,
                 id,
+                mount_point_id,
                 message,
             },
         }

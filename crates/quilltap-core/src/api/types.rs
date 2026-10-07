@@ -4618,6 +4618,18 @@ impl Response {
     /// 503 body. `message` is v4's fixed error string for the entity (the
     /// dispatch envelope's own `message` mirrors the wire body's `error`).
     pub fn store_unavailable(label: &str, id: &str) -> Response {
+        Response::store_unavailable_at_mount(label, id, None)
+    }
+
+    /// [`Response::store_unavailable`] carrying the broken store's mount point
+    /// (P4.162, dogfood #151) — what [`db_error_response`] builds from a
+    /// [`crate::db::DbError::StoreUnavailable`], so the transport can log v4's
+    /// context-middleware ERROR. The wire body is unchanged by it.
+    pub fn store_unavailable_at_mount(
+        label: &str,
+        id: &str,
+        mount_point_id: Option<&str>,
+    ) -> Response {
         Response::Error(CoreError {
             kind: ErrorKind::Unavailable,
             message: unavailable_error_string(label),
@@ -4630,6 +4642,7 @@ impl Response {
             entity: Some(Box::new(UnavailableEntity {
                 label: label.to_string(),
                 id: id.to_string(),
+                mount_point_id: mount_point_id.map(str::to_string),
             })),
         })
     }
@@ -5001,11 +5014,19 @@ pub struct AlreadySavedRiders {
 
 /// The broken store's entity, carried on [`ErrorKind::Unavailable`] errors.
 /// `label` is the lowercase singular entity label (`"project"` / `"group"` /
-/// `"character"`); `id` the entity id.
+/// `"character"`); `id` the entity id; `mount_point_id` the broken store's
+/// mount point, for the transport's log line ONLY.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UnavailableEntity {
     pub label: String,
     pub id: String,
+    /// v4's `officialMountPointId` / `characterDocumentMountPointId` (P4.162,
+    /// dogfood #151). **Never serialized**: v4's 503 body is `{error,
+    /// <entity>Id}` alone (`context.ts:182,192,202`), and the typed envelope
+    /// keeps its pre-#151 bytes; the field exists so
+    /// [`CoreError::log_store_unavailable`] can render v4's ERROR.
+    #[serde(skip)]
+    pub mount_point_id: Option<String>,
 }
 
 /// Map a [`crate::db::DbError`] surfacing at an api terminal arm to its
@@ -5015,8 +5036,11 @@ pub struct UnavailableEntity {
 pub(crate) fn db_error_response(e: crate::db::DbError) -> Response {
     match e {
         crate::db::DbError::StoreUnavailable {
-            entity_label, id, ..
-        } => Response::store_unavailable(entity_label, &id),
+            entity_label,
+            id,
+            mount_point_id,
+            ..
+        } => Response::store_unavailable_at_mount(entity_label, &id, mount_point_id.as_deref()),
         other => Response::error(ErrorKind::Internal, other.to_string()),
     }
 }
@@ -5035,6 +5059,58 @@ pub fn unavailable_error_string(label: &str) -> String {
 }
 
 impl CoreError {
+    /// v4's context-middleware ERROR for a store-unavailable 503 (P4.162,
+    /// dogfood #151) — `handleRouteError` (`lib/api/middleware/context.ts:
+    /// 170-200` at `94fbb1ae3`) on the `api-context-middleware` child logger:
+    ///
+    /// - `` `[${method} ${url}] Project document store unavailable` ``
+    ///   `{projectId, officialMountPointId}`
+    /// - `` `[${method} ${url}] Group document store unavailable` ``
+    ///   `{groupId, officialMountPointId}`
+    /// - `` `[${method} ${url}] Character vault unavailable` ``
+    ///   `{characterId, characterDocumentMountPointId}`
+    ///
+    /// `route` is the bracket's content — the transport supplies it (the
+    /// request's method + pathname over HTTP, the verb over Tauri IPC; ruling
+    /// R-A). A v4 `null` mount id renders `null` (the `log_store_drop`
+    /// convention). A no-op unless this error carries the entity. Each line is
+    /// spelled once per entity because a tracing field NAME must be static.
+    pub fn log_store_unavailable(&self, route: &str) {
+        let Some(entity) = self.entity.as_deref() else {
+            return;
+        };
+        let id = entity.id.as_str();
+        let mount = entity.mount_point_id.as_deref().unwrap_or("null");
+        match entity.label.as_str() {
+            "project" => tracing::error!(
+                target: "quilltap::api_context_middleware",
+                projectId = %id,
+                officialMountPointId = %mount,
+                "[{route}] Project document store unavailable"
+            ),
+            "group" => tracing::error!(
+                target: "quilltap::api_context_middleware",
+                groupId = %id,
+                officialMountPointId = %mount,
+                "[{route}] Group document store unavailable"
+            ),
+            "character" => tracing::error!(
+                target: "quilltap::api_context_middleware",
+                characterId = %id,
+                characterDocumentMountPointId = %mount,
+                "[{route}] Character vault unavailable"
+            ),
+            label => tracing::error!(
+                target: "quilltap::api_context_middleware",
+                entityLabel = %label,
+                id = %id,
+                mountPointId = %mount,
+                "[{route}] {}",
+                unavailable_error_string(label)
+            ),
+        }
+    }
+
     /// v4's exact store-unavailable 503 body — `{"error": <fixed string>,
     /// "<label>Id": <id>}`, in that key order (`preserve_order` makes insertion
     /// order the wire order). `None` unless this error carries the entity.
@@ -5725,6 +5801,7 @@ mod db_error_surface_tests {
         let e = DbError::StoreUnavailable {
             entity_label: "project",
             id: "p1".to_string(),
+            mount_point_id: Some("mp1".to_string()),
             message: "Project document store unavailable: broken".to_string(),
         };
         let Response::Error(err) = db_error_response(e) else {
@@ -5737,6 +5814,22 @@ mod db_error_surface_tests {
                 .map(|e| (e.label.as_str(), e.id.as_str())),
             Some(("project", "p1"))
         );
+        // P4.162 (dogfood #151): the mount id rides the error for the
+        // transport's log line...
+        assert_eq!(
+            err.entity
+                .as_deref()
+                .and_then(|e| e.mount_point_id.as_deref()),
+            Some("mp1")
+        );
+        // ...and never reaches the wire: neither v4's merged body nor the
+        // typed envelope carries it.
+        assert_eq!(
+            err.unavailable_wire_body().unwrap().to_string(),
+            r#"{"error":"Project document store unavailable","projectId":"p1"}"#
+        );
+        let envelope = serde_json::to_string(&Response::Error(err)).unwrap();
+        assert!(!envelope.contains("mp1"), "{envelope}");
     }
 
     // === P4.D217 ===

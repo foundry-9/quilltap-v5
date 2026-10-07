@@ -277,6 +277,7 @@ pub fn find_by_id(
         Err(OverlayOneError::Unavailable(u)) => Err(DbError::StoreUnavailable {
             entity_label: "character",
             id: u.character_id.clone(),
+            mount_point_id: Some(u.mount_id.clone()),
             message: format!(
                 "applyDocumentStoreOverlayOne: vault unavailable for character {} (mount {})",
                 u.character_id, u.mount_id

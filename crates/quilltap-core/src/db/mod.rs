@@ -189,6 +189,12 @@ pub enum DbError {
         entity_label: &'static str,
         /// The entity id (project/group/character id, not the mount point).
         id: String,
+        /// The broken store's mount point — v4's `officialMountPointId` /
+        /// `characterDocumentMountPointId` on the `…UnavailableError`
+        /// (`null` when the row names none). Carried so the transport can log
+        /// v4's context-middleware ERROR (`context.ts:177-200`, dogfood #151);
+        /// it never reaches the wire body (v4's body is `{error, <entity>Id}`).
+        mount_point_id: Option<String>,
         /// The full formatted message (the `OverlayError::Unavailable` Display).
         message: String,
     },

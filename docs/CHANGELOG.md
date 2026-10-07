@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — fix(web): log v4's context-middleware ERROR for a store-unavailable 503 (P4.162, dogfood #151)
+
+_Versions: core 0.0.1243, web 0.0.223._
+
+A broken project / group document store or character vault now logs v4's `handleRouteError` line before the 503: `[<METHOD> <pathname>] Project document store unavailable {projectId, officialMountPointId}`, the group twin with `groupId`, and `Character vault unavailable {characterId, characterDocumentMountPointId}`, at target `quilltap::api_context_middleware`. `DbError::StoreUnavailable` and `UnavailableEntity` now carry the mount point id (never serialized; the 503 body stays v4's `{error, <entity>Id}`). A router-wide middleware lends each handler its method + pathname through a task-local; `dispatch_body`, `error_to_http`, `core_error_status_body`, `response_error` and the files edge log through one core home. Over Tauri IPC the bracket is the verb (`[groupGet]`). New `store_unavailable_errors` web test: HTTP dispatch for all three entities, IPC, a REST route, and the silence leg.
+
 #### 2026-10-07 — chore(harness): require the migration-index dumper's real-boot cross-check; P4.160 survey + lane record
 
 _No crate versions bumped._

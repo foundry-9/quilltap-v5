@@ -70,6 +70,8 @@ pub mod state;
 pub mod static_serve;
 // === P4.102: the shared decoder for tri-state REST edges ===
 pub mod request_envelope;
+// P4.162 (dogfood #151): the `[METHOD pathname]` for v4's context-middleware lines.
+pub mod route_context;
 // === end P4.102 ===
 // === P4.83: the prompt-templates REST edges ===
 pub mod prompt_templates_routes;
@@ -689,6 +691,10 @@ pub fn build_router(state: SharedState) -> Router {
         // (or `RUST_LOG=debug`) surfaces the per-request line on demand — never
         // drowning the default, never a per-token span on the hot path.
         .layer(tower_http::trace::TraceLayer::new_for_http())
+        // P4.162 (dogfood #151): lend every handler its `[METHOD pathname]`, so
+        // the seams that answer a store-unavailable 503 can log v4's
+        // context-middleware ERROR — see [`route_context`].
+        .layer(axum::middleware::from_fn(route_context::scope))
         // Must sit outside the routes it governs: the body extractors read this
         // limit, so raising it here is what lets the ported per-surface caps be
         // the ones that answer. See [`MAX_REQUEST_BODY_BYTES`].

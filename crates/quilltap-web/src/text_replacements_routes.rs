@@ -39,6 +39,8 @@ pub(crate) async fn dispatch_core(
 }
 
 pub(crate) fn error_to_http(e: quilltap_core::api::CoreError) -> AxumResponse {
+    // v4's context-middleware ERROR for a store-unavailable 503 (P4.162).
+    crate::route_context::log_store_unavailable(&e);
     let status = match e.kind {
         ErrorKind::BadRequest => StatusCode::BAD_REQUEST,
         ErrorKind::NotFound => StatusCode::NOT_FOUND,

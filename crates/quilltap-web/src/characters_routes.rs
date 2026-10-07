@@ -555,6 +555,7 @@ fn status_of_kind(kind: &ErrorKind) -> StatusCode {
 /// `validationError` envelope (`{error, details}`), the store-unavailable
 /// `{error, <entity>Id}`, else `{error}`.
 pub(crate) fn core_error_status_body(e: quilltap_core::api::CoreError) -> (StatusCode, Value) {
+    crate::route_context::log_store_unavailable(&e);
     let status = status_of_kind(&e.kind);
     let body = e
         .validation_wire_body()
@@ -1262,6 +1263,7 @@ async fn set_default_image_id(db: &Db, character_id: &str, link_id: &str) {
 /// the store-unavailable refusal answers v4's exact `{error, <entity>Id}`
 /// 503 body instead — P4.23).
 fn response_error(e: quilltap_core::api::types::CoreError) -> AxumResponse {
+    crate::route_context::log_store_unavailable(&e);
     let status = match e.kind {
         ErrorKind::BadRequest => StatusCode::BAD_REQUEST,
         ErrorKind::Unauthorized => StatusCode::UNAUTHORIZED,
