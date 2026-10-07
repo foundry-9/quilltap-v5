@@ -37,8 +37,9 @@ probe verifies against._
   commits (`938144eb4`, `7c78abd49`) in each lane's session. Previous checks:
   2026-10-06 (`/unify` of the `94fbb1ae3` smalls round; `/driftcheck`, which
   recorded `94fbb1ae3`).
-- **v4 `main` HEAD at check: `a9c99a4a0`** (a merge of `origin/main`) — SIX
-  commits past the baseline (§3), FOUR of them touching `lib/` / `app/` /
+- **v4 `main` HEAD at check: `b3f937076`** (`a9c99a4a0` — a merge of
+  `origin/main` — at the sweep; one more commit landed by the cleanup) —
+  SEVEN commits past the baseline (§3), FIVE of them touching `lib/` / `app/` /
   `migrations/` / `public/` (91 such paths; three NEW migrations:
   `add-wardrobe-wear-stats-table-v1`, `seed-wardrobe-wear-stats-v1`,
   `add-wardrobe-image-settings-field-v1`). `origin/main` agrees.
@@ -47,7 +48,7 @@ probe verifies against._
   infra, no new fix. **`release` tip:** `8fbf2afe0`, UNMOVED; still no
   `release: 4.10.0` squash.
 - **Checkout at check:** branch **`main`**, tree **CLEAN**.
-- **Verdict: DRIFT PENDING — 6 commits UNPROCESSED (§3), unclassified.**
+- **Verdict: DRIFT PENDING — 7 commits UNPROCESSED (§3), unclassified.**
 - **Regen rule: PIN REQUIRED at `94fbb1ae3`** (§5.1) — v4 HEAD is past the
   baseline. `provisioning_equivalence` still REQUIRES `QT_FRESH_SCHEMA_LIVE`,
   dumped FROM THE PIN (a dump from HEAD would carry the wardrobe migrations'
@@ -173,6 +174,7 @@ when absorbed/ratified.
 | `3ee3b1342` | 2026-10-07 | Wardrobe wear ledger: track item usage across characters (#81) | unclassified — `/driftcheck` owed (NEW migrations `add-wardrobe-wear-stats-table-v1` + `seed-wardrobe-wear-stats-v1`; `qtap-export.schema.json` moved → `public_schemas_vendor_guard` / `qtap_schema_embed_guard` will redden at HEAD) | unmeasured (wardrobe, `lib/wardrobe/**`, outfit displacement, export schema) | UNPROCESSED |
 | `f9f1ba177` | 2026-10-07 | Chat gallery: file old backdrops as backgrounds, list reused avatars | unclassified — `/driftcheck` owed | unmeasured (the Salon chat gallery) | UNPROCESSED |
 | `7c8572869` | 2026-10-07 | Wardrobe item images: pictures of garments and outfits (#82) | unclassified — `/driftcheck` owed (NEW migration `add-wardrobe-image-settings-field-v1`) | unmeasured (wardrobe, image settings) | UNPROCESSED |
+| `b3f937076` | 2026-10-07 | Wardrobe tools draw item pictures; listings expose picture ids; avatar picker generates portrait | unclassified — `/driftcheck` owed (landed after the unification's sweep; no new migration) | unmeasured (the wardrobe tools, the avatar picker) | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
@@ -340,7 +342,7 @@ don't silently swap it in.
 - **The `94fbb1ae3` boot-hardness + validation + follow-ups round
   (2026-10-07, baseline STAYS `94fbb1ae3`; P4.159 ∥ P4.160 ∥ P4.161 ∥ P4.162
   ∥ P4.163 ∥ P4.164):** no row absorbed (the round's §3 was EMPTY at
-  planning); v4 drifted SIX commits DURING the round (§3, UNPROCESSED), and
+  planning); v4 drifted SEVEN commits DURING the round (§3, UNPROCESSED), and
   by the human's ruling every regen stayed pinned at `94fbb1ae3`. Round
   record: `status-log.md` → "The `94fbb1ae3` boot-hardness + validation +
   follow-ups round — UNIFICATION record".
