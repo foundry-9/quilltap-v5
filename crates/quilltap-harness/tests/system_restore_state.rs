@@ -1609,11 +1609,13 @@ fn system_restore_state_equivalence() {
         // index-keyed-embedding divergence, both ways, then carved from the
         // dumps, the warnings and both log censuses (its own case copy).
         let mut case_owned = case.clone();
-        let index_keyed_lead = carve_index_keyed_embedding(
+        let mut index_keyed_drops = Vec::new();
+        carve_index_keyed_embedding(
             name,
             &mut got_state,
             &mut want_owned,
             &mut case_owned,
+            &mut index_keyed_drops,
             &mut failures,
         );
         let case = &case_owned;
@@ -1622,7 +1624,7 @@ fn system_restore_state_equivalence() {
         // dumps and then carved — BEFORE any normalization, so the
         // `<minted-N>` first-encounter labels of the remaining rows line up.
         let mut summary_carve = SummaryCarve {
-            memories_lead: index_keyed_lead,
+            drop_v4_warnings: index_keyed_drops,
             ..SummaryCarve::default()
         };
         if mode_for(name) == RestoreMode::Replace {
@@ -4122,8 +4124,6 @@ const FRESH_STORE_CARVED_CASES: usize = 28;
 #[derive(Default)]
 struct SummaryCarve {
     files_lead: i64,
-    /// [`INDEX_KEYED_EMBEDDING`]: v5 restores exactly this many memories more.
-    memories_lead: i64,
     drop_v4_warnings: Vec<String>,
     /// [`FRESH_STORE_SHARED_CONTENT`] applies on this case.
     shared_content: bool,
@@ -4349,7 +4349,7 @@ fn carve_fresh_target_uploads(
     });
     *got = serde_json::from_value(got_v).expect("dump round-trips");
     carve.files_lead = files.len() as i64;
-    carve.drop_v4_warnings = v4_hits;
+    carve.drop_v4_warnings.extend(v4_hits);
 }
 
 /// ## [P4.147 item 10(b)] The message replay's serde arm — a RECORDED divergence
@@ -5497,9 +5497,9 @@ fn carve_index_keyed_embedding(
     got: &mut BTreeMap<String, BTreeMap<String, Vec<Value>>>,
     want_state: &mut Value,
     case: &mut Value,
+    drop_v4_warnings: &mut Vec<String>,
     failures: &mut Vec<String>,
-) -> i64 {
-    let mut lead = 0;
+) {
     for (_, id, vector) in INDEX_KEYED_EMBEDDING.iter().filter(|(c, _, _)| *c == name) {
         // v5: the memory landed, carrying exactly the decoded vector.
         let blob = format!(
@@ -5522,7 +5522,6 @@ fn carve_index_keyed_embedding(
                     ));
                 }
                 rows.remove(i);
-                lead += 1;
             }
             None => failures.push(format!(
                 "[{name}] INDEX_KEYED_EMBEDDING (v5): {id} did not restore — the decode is gone"
@@ -5555,34 +5554,54 @@ fn carve_index_keyed_embedding(
                 "[{name}] INDEX_KEYED_EMBEDDING (v4): {id} refused for another reason: {error}"
             ));
         }
-        // …its one summary warning…
-        let warning = format!("Failed to restore memory: {error}");
-        let warns = case["summary"]["warnings"]
-            .as_array_mut()
-            .expect("warnings");
-        match warns.iter().position(|w| *w == json!(warning)) {
-            Some(i) => {
-                warns.remove(i);
-            }
-            None => failures.push(format!(
-                "[{name}] INDEX_KEYED_EMBEDDING (v4): no summary warning for {id}"
-            )),
-        }
-        // …and its three repository ERRORs (validate, `_create`, the wrap).
-        let repo = case["repoLogs"]
-            .as_array_mut()
-            .expect("oracle carries repoLogs");
-        let before = repo.len();
-        repo.retain(|l| l["error"] != json!(error));
-        if before - repo.len() != 3 {
+        // …its three repository ERRORs (validate, `_create`, the wrap) on the
+        // same error — recorded in the case's `logs` census…
+        let before = logs.len();
+        logs.retain(|l| {
+            !(l["error"] == json!(error)
+                && matches!(
+                    l["message"].as_str(),
+                    Some(
+                        "Data validation failed"
+                            | "Error creating entity"
+                            | "Error creating memory"
+                    )
+                ))
+        });
+        if before - logs.len() != 3 {
             failures.push(format!(
                 "[{name}] INDEX_KEYED_EMBEDDING (v4): {} repository line(s) carry {id}'s error, \
                  want 3",
-                before - repo.len()
+                before - logs.len()
+            ));
+        }
+        // …and the post-restore reconcile's count: v5's landed memory carries
+        // a vector of the DECODED width, so where that differs from the
+        // target profile's dimensions v5's `mismatched.memories` counts it
+        // and v4's (which never saw the row) does not.
+        for r in logs.iter_mut().filter(|l| {
+            l["message"] == "Post-restore embedding reconcile complete"
+                && l["targetDimensions"].as_u64() != Some(vector.len() as u64)
+        }) {
+            if let Some(n) = r["mismatched"]["memories"].as_u64() {
+                r["mismatched"]["memories"] = json!(n + 1);
+            }
+        }
+        // …and its one summary warning, which `compare_case` drops (v4's own
+        // summary stays whole: its `Restore operation completed` line is
+        // checked against it).
+        let warning = format!("Failed to restore memory: {error}");
+        if case["summary"]["warnings"]
+            .as_array()
+            .is_some_and(|ws| ws.iter().any(|w| *w == json!(warning)))
+        {
+            drop_v4_warnings.push(warning);
+        } else {
+            failures.push(format!(
+                "[{name}] INDEX_KEYED_EMBEDDING (v4): no summary warning for {id}"
             ));
         }
     }
-    lead
 }
 
 /// [P4.161 — dogfood #152, §S.2, P4.155's R-B] **The whole-row refusal
@@ -5776,17 +5795,6 @@ fn compare_case(
                     "[{name}] summary.files: rust {g} vs oracle {w} — expected rust to lead by \
                      exactly {} (FRESH_TARGET_UPLOADS)",
                     summary_carve.files_lead
-                ));
-            }
-            continue;
-        }
-        if k == "memories" && summary_carve.memories_lead != 0 {
-            let (g, w) = (gv.as_i64().unwrap_or(-1), wv.as_i64().unwrap_or(-1));
-            if g != w + summary_carve.memories_lead {
-                failures.push(format!(
-                    "[{name}] summary.memories: rust {g} vs oracle {w} — expected rust to lead \
-                     by exactly {} (INDEX_KEYED_EMBEDDING)",
-                    summary_carve.memories_lead
                 ));
             }
             continue;
