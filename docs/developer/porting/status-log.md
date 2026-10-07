@@ -170991,3 +170991,40 @@ this lane (the unifier records the waiver at §S.6).
   recorded row carries a non-string reason (P4.154's 💸 "posed Gemini
   `blockReason`-only refusal" stays the live twin).
 - **Neutral:** `stream_decoders` 5/5, `text_http_errors` 1/1 (its Google rows), `primary_stream_tier3` 2/2 — no row moved.
+
+**The §2 probe, second waiver:** mid-lane the human said in chat (2026-10-07):
+"Committing more docs-only changes, keep the baseline where it is throughout
+this run." The baseline stays `94fbb1ae3` for every regen of this lane (all
+from the pin); any further v4 docs commits are covered by that instruction.
+
+### Unit 7 — the Imagen WARN ported, every image-corpus WARN compared (Tier 2 item 7, R-G)
+
+- **Port:** `parse_imagen` logs v4's `Google Imagen returned no usable images
+  (likely safety filter)` `{context: GoogleImagenProvider.generateWithImagen,
+  predictionCount, filterReason}` (`image-provider.ts:280-289`) before the
+  moderation refusal; `filterReason` follows v4's `??` chain (first STRING
+  prediction `raiFilteredReason`, then `data.raiFilteredReason`, then
+  `data.filteredReason`, each passing a non-nullish value through; `null`
+  when none) — the refusal's own `reason` is unchanged.
+- **The compare (`image_dialects_equivalence`):** widened from the Gemini line
+  to EVERY `pluginWarnLog` entry — v5's WARN lines from the request BUILD
+  (now captured — the OpenAI lines fire there) plus the pure PARSE, in order,
+  against v4's rendered lines (message, keys in v4's order, a string unquoted,
+  an array / object as `<key>Json=<compact JSON>`, `null` as `null`,
+  `undefined` keys omitted; the target per plugin port: `nanogpt_loras` for
+  NanoGPT, `image_dialects` otherwise). Every row is a silence leg; the
+  `sdkThrow` rows compare their build lines; the Z_AI / NanoGPT download rows
+  compare build + pure parse. A floor of exactly 26 WARN-bearing rows.
+- **Measured per class (red-first on unported main):** the 17 OpenAI rows
+  (size / quality / enum / range / count / format) were ALREADY byte-equal —
+  no finding; the four Imagen rows RED (`left: []`, no v5 line); the two
+  NanoGPT rows RED — `max_loras=3` snake_case and Debug-rendered arrays
+  (`kept=["a/1", "a/2", "a/3"]`) where v4 has `maxLoras` and the `…Json`
+  convention; the three Gemini rows unchanged.
+- **OWNERSHIP NOTE, loud:** the NanoGPT fix is two `tracing::warn!` hunks in
+  `model/nanogpt_loras.rs`, a file the order's Ownership table does not list
+  (no sibling lane owns it either). The order's R-G names the two NanoGPT rows
+  as part of the compare; I made the minimal key/rendering fix there rather
+  than leave a both-ways divergence table. The unifier should confirm.
+- **Green:** `image_dialects_equivalence` 1/1; core `nanogpt` / `imagen` /
+  `image_dialects` tests 42/42. The committed fixture is untouched (read-only).

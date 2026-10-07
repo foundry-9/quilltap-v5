@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — fix(core): port the Imagen no-usable-images WARN and compare every image-corpus WARN (P4.162)
+
+_Versions: core 0.0.1249._
+
+An Imagen response with no usable images now logs v4's `Google Imagen returned no usable images (likely safety filter)` WARN (`context`, `predictionCount`, `filterReason`) before the moderation refusal. The NanoGPT LoRA WARNs now use v4's `maxLoras` key and log their arrays as `keptJson` / `droppedJson`. `image_dialects_equivalence` now compares every recorded plugin WARN on every row, from the request build and the parse, in order (26 rows carry one; all others are silence legs).
+
 #### 2026-10-07 — refactor(core): fold the Google stream decoder's parts join onto the shared home; log a non-string Gemini block reason (P4.162)
 
 _Versions: core 0.0.1248._

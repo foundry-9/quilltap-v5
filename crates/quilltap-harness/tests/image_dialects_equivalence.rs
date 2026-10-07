@@ -26,8 +26,18 @@
 //! rows the family compares v5's `Gemini withheld the image on safety grounds`
 //! line against v4's BOTH ways — present on exactly v4's three rows, under
 //! v4's camelCase `finishReason` / `blockReason`, with the key the plugin
-//! passed as `undefined` omitted. The other WARNs the bridge now records are
-//! NOT compared (out of P4.154's scope; a named follow-up).
+//! passed as `undefined` omitted.
+//!
+//! **P4.162: EVERY recorded WARN, every row.** The compare widened from the
+//! Gemini line alone to the whole `pluginWarnLog` of every request row: v5's
+//! WARN lines from the request BUILD (the OpenAI size / quality / enum /
+//! range / count / format lines, the NanoGPT LoRA lines) plus the pure PARSE
+//! (the Gemini and Imagen safety lines) must equal v4's, in order — message,
+//! keys in v4's order, values (a string unquoted, an array or object through
+//! the `…Json` file-layer convention, `null` as `null`), the key v4 passed as
+//! `undefined` omitted. So every row is also a silence leg: a WARN v4 did not
+//! log must not appear. The four Imagen rows were the red-first: v5 had no
+//! `Google Imagen returned no usable images (likely safety filter)` line.
 //!
 //! The fixture is committed (no env var); regenerate with
 //! `harness/oracle/providers/regenerate-image-fixtures.sh`.
@@ -179,6 +189,8 @@ fn image_dialects_match_v4() {
     let mut providers = std::collections::HashSet::new();
     let mut openai_cases: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut sdk_throw_rows = 0usize;
+    // P4.162: the request rows whose v4 plugin logged at least one WARN.
+    let mut warn_rows: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     let mut typed_rows = 0usize;
     let mut gemini_safety_cases: std::collections::BTreeSet<String> =
         std::collections::BTreeSet::new();
@@ -251,8 +263,14 @@ fn image_dialects_match_v4() {
         // rather than drop it — a recorder that stopped writing `model` would
         // otherwise be invisible here.
         assert_eq!(params.model, model, "{label}: row.model vs input.model");
-        let built = build_image_request(&provider, &params)
-            .unwrap_or_else(|e| panic!("{label}: build failed: {e}"));
+        // P4.162: the build's WARN lines are half of the row's comparand.
+        let (built, build_lines) = captured_with(|| build_image_request(&provider, &params));
+        let built = built.unwrap_or_else(|e| panic!("{label}: build failed: {e}"));
+        let build_lines = warn_lines(build_lines);
+        let v4_warns = v4_warn_lines(&row, None);
+        if !v4_warns.is_empty() {
+            warn_rows.insert(case.to_string());
+        }
         let req = &row["request"];
         assert_eq!(
             built.method,
@@ -273,6 +291,7 @@ fn image_dialects_match_v4() {
             // v5's `APIError` reconstruction AND the plugin's moderation
             // mapping, against v4's real SDK + plugin.
             check_sdk_throw_row(&row, &provider, &params, &built, &label);
+            assert_eq!(build_lines, v4_warns, "{label}: every plugin WARN");
             sdk_throw_rows += 1;
             continue;
         }
@@ -288,10 +307,23 @@ fn image_dialects_match_v4() {
         // providers' rows are driven through the whole composed
         // `generate_image`, with the recorded download answer canned per URL.
         if provider == "Z_AI" || provider == "NANOGPT" {
+            // The pure parse's lines (the download itself logs no WARN in v4).
+            let (_, parse_lines) =
+                captured_with(|| parse_image_response(&provider, &params, &resp));
+            let got: Vec<String> = build_lines
+                .iter()
+                .cloned()
+                .chain(warn_lines(parse_lines))
+                .collect();
+            assert_eq!(got, v4_warns, "{label}: every plugin WARN");
             check_download_row(&row, &provider, &params, &resp, &built);
             continue;
         }
         let (parsed, v5_lines) = captured_with(|| parse_image_response(&provider, &params, &resp));
+        let parse_lines = warn_lines(v5_lines.clone());
+        // P4.162: every WARN v4's plugin logged on this row — build then parse.
+        let got: Vec<String> = build_lines.iter().cloned().chain(parse_lines).collect();
+        assert_eq!(got, v4_warns, "{label}: every plugin WARN");
         // P4.154 (§R.5): the Gemini safety WARN against the line v4's REAL
         // plugin logged (the recorder's `pluginWarnLog` bridge), both ways — v5
         // logs it on exactly the rows v4 does, under v4's camelCase keys, with
@@ -300,7 +332,7 @@ fn image_dialects_match_v4() {
             .into_iter()
             .filter(|l| l.contains(GEMINI_SAFETY_WARN))
             .collect();
-        let v4_safety = v4_warn_lines(&row, GEMINI_SAFETY_WARN);
+        let v4_safety = v4_warn_lines(&row, Some(GEMINI_SAFETY_WARN));
         assert_eq!(v5_safety, v4_safety, "{label}: the Gemini safety WARN");
         if !v4_safety.is_empty() {
             gemini_safety_cases.insert(case.to_string());
@@ -322,6 +354,13 @@ fn image_dialects_match_v4() {
     }
 
     assert!(rows >= 25, "expected a substantial corpus, got {rows}");
+    // P4.162: the 23 OpenAI / Imagen / NanoGPT rows plus Gemini's three — each
+    // compared above; a corpus that lost them would pass vacuously.
+    assert_eq!(
+        warn_rows.len(),
+        26,
+        "the WARN-bearing rows moved: {warn_rows:?}"
+    );
     // P4.D225 floors: the composed SDK-throw path and the typed wire rows must
     // actually be exercised (a corpus that lost them would pass vacuously).
     assert!(
@@ -437,18 +476,33 @@ fn image_dialects_match_v4() {
 /// v4's Gemini no-image safety WARN (`image-provider.ts:185`).
 const GEMINI_SAFETY_WARN: &str = "Gemini withheld the image on safety grounds";
 
-/// The WARN lines v4's plugin logged on `row` with `message`, rendered as v5's
-/// capture layer renders the port's line (target `image_dialects`; v4's context
-/// keys in v4's order, a string unquoted). A key the plugin passed as
-/// `undefined` is absent from the recorded JSON — and named in `undefinedKeys`,
-/// which must never reach the line.
-fn v4_warn_lines(row: &Value, message: &str) -> Vec<String> {
+/// v5's WARN lines, in order (the capture renders every level).
+fn warn_lines(lines: Vec<String>) -> Vec<String> {
+    lines
+        .into_iter()
+        .filter(|l| l.starts_with("WARN "))
+        .collect()
+}
+
+/// The WARN lines v4's plugin logged on `row` (only those with `message` when
+/// given), rendered as v5's capture layer renders the port's line: the target
+/// the plugin's port lives under (`nanogpt_loras` for NanoGPT's LoRA lines,
+/// `image_dialects` for every other), v4's context keys in v4's order, a string
+/// unquoted, an array or object through the `…Json` file-layer convention
+/// (§R.5). A key the plugin passed as `undefined` is absent from the recorded
+/// JSON — and named in `undefinedKeys`, which must never reach the line.
+fn v4_warn_lines(row: &Value, message: Option<&str>) -> Vec<String> {
     let Some(log) = row.get("pluginWarnLog").and_then(Value::as_array) else {
         return Vec::new();
     };
     log.iter()
-        .filter(|w| w["message"].as_str() == Some(message))
+        .filter(|w| message.is_none() || w["message"].as_str() == message)
         .map(|w| {
+            let message = w["message"].as_str().expect("a WARN message");
+            let target = match w["plugin"].as_str() {
+                Some("qtap-plugin-nanogpt") => "quilltap_core::model::nanogpt_loras",
+                _ => "quilltap_core::model::image_dialects",
+            };
             let ctx = w["context"].as_object().expect("a context bag");
             let undefined: Vec<&str> = w["undefinedKeys"]
                 .as_array()
@@ -459,13 +513,11 @@ fn v4_warn_lines(row: &Value, message: &str) -> Vec<String> {
                 .filter(|(k, _)| !undefined.contains(&k.as_str()))
                 .map(|(k, v)| match v {
                     Value::String(s) => format!("{k}={s}"),
+                    Value::Array(_) | Value::Object(_) => format!("{k}Json={v}"),
                     other => format!("{k}={other}"),
                 })
                 .collect();
-            format!(
-                "WARN quilltap_core::model::image_dialects {message} {}",
-                fields.join(" ")
-            )
+            format!("WARN {target} {message} {}", fields.join(" "))
         })
         .collect()
 }

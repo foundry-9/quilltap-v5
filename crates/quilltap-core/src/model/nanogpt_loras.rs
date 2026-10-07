@@ -310,10 +310,16 @@ pub fn apply_loras(
         // ignores, which is the one failure mode nobody can see. This refusal
         // was already right and is untouched by the fix.
         if !loras.is_empty() {
+            // v4's camelCase keys; the array through the `…Json` file-layer
+            // convention (§R.5) — compared against v4's recorded line by
+            // `image_dialects_equivalence` since P4.162.
+            let dropped_json =
+                serde_json::to_string(&loras.iter().map(|l| l.source.as_str()).collect::<Vec<_>>())
+                    .unwrap_or_default();
             tracing::warn!(
                 context = "NanoGPTImageProvider.applyLoras",
                 model = %model,
-                dropped = ?loras.iter().map(|l| l.source.clone()).collect::<Vec<_>>(),
+                droppedJson = %dropped_json,
                 "LoRA family unknown for this model; dropping the adapters rather than guessing a dialect"
             );
             return AppliedLoras {
@@ -329,13 +335,19 @@ pub fn apply_loras(
     let kept: Vec<&ImageLoraSpec> = loras.iter().take(max).collect();
     let dropped: Vec<String> = loras.iter().skip(max).map(|l| l.source.clone()).collect();
     if !dropped.is_empty() {
+        // v4's camelCase `maxLoras`; the arrays through the `…Json` file-layer
+        // convention (§R.5) — compared since P4.162.
+        let kept_json =
+            serde_json::to_string(&kept.iter().map(|l| l.source.as_str()).collect::<Vec<_>>())
+                .unwrap_or_default();
+        let dropped_json = serde_json::to_string(&dropped).unwrap_or_default();
         tracing::warn!(
             context = "NanoGPTImageProvider.applyLoras",
             model = %model,
             dialect = %family.dialect.as_str(),
-            max_loras = max,
-            kept = ?kept.iter().map(|l| l.source.clone()).collect::<Vec<_>>(),
-            dropped = ?dropped,
+            maxLoras = max,
+            keptJson = %kept_json,
+            droppedJson = %dropped_json,
             "Capping the LoRA list to this model's limit"
         );
     }

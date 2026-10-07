@@ -1050,6 +1050,24 @@ fn parse_imagen(data: &Value) -> Result<ImageGenResponse, ImageGenError> {
             .map(str::to_string)
             .or_else(|| str_of(data, "raiFilteredReason"))
             .or_else(|| str_of(data, "filteredReason"));
+        // v4 `image-provider.ts:280-289`: the WARN before the throw, with
+        // `filterReason` = the first STRING `raiFilteredReason` among the
+        // predictions `?? data.raiFilteredReason ?? data.filteredReason ??
+        // null` — the `??` chain passes a non-string, non-nullish value
+        // through, so the logged value is the raw one (`null` when none).
+        // Ported at P4.162 (the four recorded Imagen rows were its red-first).
+        let logged_filter = predictions
+            .iter()
+            .find_map(|p| p.get("raiFilteredReason").filter(|v| v.is_string()))
+            .or_else(|| data.get("raiFilteredReason").filter(|v| !v.is_null()))
+            .or_else(|| data.get("filteredReason").filter(|v| !v.is_null()))
+            .map_or_else(|| "null".to_string(), crate::pascal::js_value::to_js_string);
+        tracing::warn!(
+            context = "GoogleImagenProvider.generateWithImagen",
+            predictionCount = predictions.len(),
+            filterReason = %logged_filter,
+            "Google Imagen returned no usable images (likely safety filter)"
+        );
         let suffix = match reason.as_deref() {
             Some(r) if !r.is_empty() => format!(": {r}"),
             _ => String::new(),
