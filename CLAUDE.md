@@ -725,6 +725,34 @@ records THERE. Update this summary only when a phase or round completes.
   where v4 boots DEGRADED. **#151:** v4's middleware ERROR for a
   store-unavailable 503 never logged. **#152:** an import writes a memory v4's
   `MemorySchema` refuses. **Still owed:** the standing queue.
+- **The `94fbb1ae3` boot-hardness + validation + follow-ups round (P4.159 ∥
+  P4.160 ∥ P4.161 ∥ P4.162 ∥ P4.163 ∥ P4.164): UNIFIED on main (2026-10-07) —
+  ALL SIX LANES LANDED; the oracle baseline STAYS `94fbb1ae3` — but v4 moved
+  SIX commits past it during the round (the wardrobe wear ledger + item
+  images, three NEW migrations), recorded UNPROCESSED in the ledger's §3;
+  by the human's ruling every regen stayed PINNED (PIN REQUIRED).** Dogfood
+  **#150 FIXED** (P4.159 — a sibling that cannot open or fails `quick_check`
+  boots DEGRADED: v4's mount-index ladder, the LLM logs' one attempt, no
+  writer / no pool, Absent ≠ Degraded, `/health` 503 `degraded`; v4 Bug 179
+  drafted); pre-round instances BACKFILL v4's migration index family at boot
+  (P4.160); **#152 FIXED** (P4.161 — memories, informs, prompt templates,
+  folders, tags, file rows validated WHOLE on import / restore through ports
+  of v4's schemas); **#151 FIXED** (P4.162 — v4's context-middleware ERRORs,
+  RFC uuid gates, log-text smalls); the repository-fallback class round 5
+  (P4.163 — C1's homes, the delete / docedit callers, the `[Projects v1]`
+  lines); harness smalls (P4.164). **The §3 review (six readers + the
+  unifier): ONE BLOCKING finding — P4.161's restore refused the `{"0":…}`
+  embedding every real full backup carries (v4's own restore drops every
+  embedded memory) — RULED FIX v5 (`INDEX_KEYED_EMBEDDING`, both ways);
+  eight should-fixes and three sweep-caught union reds fixed red-first; the
+  pin's symlinked `node_modules` had followed the live checkout to HEAD's
+  deps — `npm ci --offline` in the pin, sweep re-run whole.** Gate: sweep
+  592 ok / 4 / 3 refused of 599; Tier R 271/0; 674 binaries / 4,492 / 5
+  (standing + env artifacts) / 3 ignored, zero SKIP; SPA 467 / 8,889;
+  Playwright 350 / 11 / 6 (16.9 m) — all eleven reds green by file alone (the seven-file Salon-streaming cluster + `salon-documents-flow` ×2 and `workspace-flow` ×2, new to it). Versions: core 0.0.1252, host 0.0.189, web 0.0.224.
+  **Next: the owed dogfood pass (a full Friday restore's embedding count
+  first), `/driftcheck` once v4 settles, then the follow-ups round** —
+  `phase-4.md`. Round record: `status-log.md`.
 - **Oracle baseline: `94fbb1ae3` (2026-10-06, v4 main — "Inform: deliver as
   a trailing section, under a vouching header", `4.10.0-dev.112`), adopted
   at the `94fbb1ae3` smalls round's unification (2026-10-06).**

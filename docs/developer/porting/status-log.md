@@ -171756,3 +171756,232 @@ None (test craft).
 
 No version moves: core 0.0.1242, host 0.0.187, web 0.0.222, SPA 0.5.811
 unchanged; harness frozen 0.0.1110.
+
+## The `94fbb1ae3` boot-hardness + validation + follow-ups round — UNIFICATION record (2026-10-07)
+
+**P4.159 ∥ P4.160 ∥ P4.161 ∥ P4.162 ∥ P4.163 ∥ P4.164 — ALL SIX LANES
+LANDED; the oracle baseline STAYS `94fbb1ae3`.** Branch `unify/p4-159-164`,
+cherry-picked in the orders' sequence P4.163 → P4.159 → P4.160 → P4.162 →
+P4.161 → P4.164 (37 lane commits; the only conflicts were version files and
+the CHANGELOG / status-log, resolved max-version / both-sides union — every
+lane record and all 37 CHANGELOG entries verified present line for line).
+No source conflict: the two carved files (`host.rs` by function, `db/mod.rs`
+by region) merged clean.
+
+### The §2 probe and the pin
+
+The probe FAILED at the start: v4 `main` had moved to `7c78abd49`, then
+during the unification to `a9c99a4a0` — six commits past the baseline, four
+of them code (the wardrobe lists, the wardrobe wear ledger with two NEW
+migrations, the chat-gallery backdrops, wardrobe item images with a third
+migration). **The human ruled in-session: pin at the v4 we have
+(`94fbb1ae3`) — "more changes are coming on that end."** Every regen ran from
+`/tmp/qt-v4-pin-unify-p4159` (`rev-parse` checked before each batch); the
+six commits are recorded UNPROCESSED and unclassified in the ledger's §3
+(regen rule PIN REQUIRED); a full `/driftcheck` is owed once v4 settles. The
+two docs-only commits had already been waived by the human inside each lane.
+
+### Delivered scope, verified against each order
+
+- **P4.159 (#150):** Tier 1 items 1–8 and Tier 2 items 9 (two conversions),
+  10, 11, 13 as recorded; item 12's question RULED by the human mid-lane (a
+  degraded mount index fails the backup whole — P4.142's STRICT ruling).
+  v4 Bug 179 drafted. Verified by reading `db/runtime.rs` against v4's
+  `mount-index-client.ts` / `llm-logs-client.ts` / `*-protection.ts`.
+- **P4.160:** Tier 1 items 1–6, Tier 2 items 7–10; the two recorded
+  deviations (no `EnsureFailures` record; `profile_names` onto `js_trim`)
+  checked and accepted.
+- **P4.161 (#152):** Tier 1 items 1–7; Tier 2 item 8 for prompt templates,
+  folders, tags (both paths) and file rows (import), items 9–12; the rest
+  Tier 3 by name (status header).
+- **P4.162 (#151):** Tier 1 items 1–4, Tier 2 items 5–8; the
+  `nanogpt_loras.rs` hunks outside its Ownership RATIFIED (log-only, v4's
+  `maxLoras` key and the `…Json` convention, now compared).
+- **P4.163:** Tier 1 items 1–6 (item 6's validating arm deferred by name),
+  Tier 2 item 7, items 8–10 as the census record.
+- **P4.164:** Tier 1 items 1–4, Tier 2 items 5–6; ZERO `crates/*/src/**`
+  hunks (verified).
+
+### The §S wires (`c53d7aca2`)
+
+§S.1: P4.159's `table_shape.rs` copy of `log_partition_structural_unavailable`
+and P4.161's four create-wrap copies DELETED onto P4.163's `db::fallback`
+homes (byte-identical — keys, order, `error_text`, the strict read; checked
+by hand and by two reviewers); P4.161's `log_refused_create` (the pair C1's
+prose had wrongly attributed to `log_create_failure`) MOVED into
+`db::fallback`; `chat_informs_tier2`'s `normalize_v4_sqlite` onto P4.164's
+`common` home. The pins P4.163's wrapper flips (`C3_DEBUG_ERROR`, the
+aesthetics DEBUG); P4.160's index-count HANDOFF (1 → 3); P4.162's census
+HANDOFF (`zod_issues_home_guard` 9 → 6); P4.159's restore HANDOFF — the
+phase-14 WARN keyed on the logs partition's DEGRADED state (read before the
+writer closure), red-first in `restore_vintage_state` over
+`restore-archive-minimal.zip`; `db/projects.rs`' stale doc; rustfmt over
+P4.162's census row. §S.2: the union arm (below). §S.3: #150 / #151 / #152
+FIXED and #69 marked FIXED by P4.41 in `dogfood-findings.md`, the standing
+notes struck. §S.5: core 0.0.1252, host 0.0.189 (from the lanes' highest,
++1 for the union's own hunks); web 0.0.224 (no unifier hunk).
+
+### The §3 review — six parallel readers + the unifier's own reads
+
+**ONE BLOCKING finding, escalated and ruled; nine should-fixes fixed with
+red-first tests; the rest recorded by name.** The one that would have
+shipped:
+
+1. **BLOCKING — P4.161's restore refused every embedded memory a real full
+   backup carries** (P4.161 reviewer; verified on both trees by the
+   unifier). v4's backup writes `data.memories` raw, so each embedding is
+   `JSON.stringify(Float32Array)` = `{"0":…,"1":…}`, which `MemorySchema`'s
+   union refuses — on v4 too (v4's own restore drops every embedded
+   memory). Before P4.161 v5 restored those memories with a NULL vector; the
+   new whole-row parse silently converged on v4's loss. The lane's corpus
+   had the shape (`ad…09 {"0": 0.25}`) and labelled it an exotic "no option
+   matches" row. **The human ruled: FIX v5** (`268b8c52b`):
+   `restore::rows::decode_index_keyed_embedding` decodes exactly that shape
+   to `number[]` before the parse; the named both-ways table
+   `INDEX_KEYED_EMBEDDING` in `system_restore_state` asserts v4's refusal
+   (WARN + summary warning + three repository ERRORs on one `invalid_union`
+   error) and v5's landing (`float32_to_blob([0.25])`), then carves it.
+   The `.qtap` import was unaffected (both sides drop `embedding` there).
+
+Fixed (each red-first):
+
+2. **P4.160 — one failed duplicate pre-check abandoned the rest of the
+   partition** (`e77204c92`): the pre-check's `?` ended the partition as
+   `Failed`, silently skipping every later statement, against the module's
+   own contract. Now one failed statement. Measured on the way: the
+   reviewer's proposed plant (a missing key column) does NOT reach the arm —
+   the artifact double-quotes identifiers, so SQLite's double-quoted-string
+   fallback makes the pre-check succeed; the pin drives a bare identifier.
+3. **P4.159 / P4.163 — every fallback line over a degraded sibling read
+   `partition not available: …`** where v4's carries its guard sentence
+   (`b57b06f79`): `error_text` gains the `PartitionUnavailable` arm; the two
+   LLM-log pins had matched only a PREFIX of the line (so could not see it)
+   and now match it whole.
+4. **P4.163 — `Updated project wardrobe item` dropped v4's conditional
+   `archivedAt`** (`2cac6ec7e`): the corpus never PUT `archived` with the
+   spy on; now `wardrobe_update_archives` is captured both sides.
+5. **P4.161 — a `null` tag element v4 drops was handed to the schema**
+   (`3d684cb6f`): a new `memoryRefusalsPayload` row; red 30 vs 27 lines.
+6. **P4.161 — a non-string prompt-template / file name was dropped from the
+   wrap line and blanked in the warning** (`3d684cb6f`): one
+   `log_field_text` (the tag / folder copies folded onto it); a numeric-name
+   row, red on repository line 14 and the result body.
+7. **P4.160 + P4.159 union — §S.2's "one union arm proves it" did not
+   exist** (`cc3ba3466`): NEW `host_boot_backfilled_indexes` arm — a
+   pre-round instance with a GARBAGE mount index boots degraded and the
+   backfill still makes main's 47 and the LLM logs' 5, with no mountIndex
+   line; the backfill's four failure lines join `host_boot_hardness`' silence
+   leg; the artifact arm logs its own message; the dumper writes only after
+   its cross-check.
+8. **P4.164 → P4.160 — the backfilled plan arm still planned hand-copied
+   SQL** (`6e4a4e35d`): P4.164's statement trace moves to a shared
+   `crates/quilltap-host/tests/common/` with a drop guard on the unregister;
+   both families plan the production statements, each with a mutation twin.
+9. **P4.162 — the union failed `cargo fmt --check`** on the lane's closing
+   census row (landed after its own gate).
+
+**Recorded, not fixed (named OPEN in the order status headers):**
+`mark_consumed`'s validating arm (needs v4's `rowToDocument` hydration of
+`permanent` first — a careless port would refuse every consume); P4.159's
+census missed the READ side (`GET /api/v1/llm-logs` and the
+image-aesthetics GET 500 where v4's fallbacks answer 200 — 66
+`read_mount_index` / `read_llm_logs` sites in `api/` uncensused);
+P4.163's delete / docedit callers proven only by source windows for nine of
+twelve sites; the docedit callers holding a checked-out mount over a
+degraded mount; P4.162's `parse_imagen` reason derivation and a fourth uuid
+copy; P4.161's file-`tags` TypeError, `.length(64)` re-derivation and two
+restore labels; P4.160's name-only present check and the `X (2)` oracle
+shape; P4.164's census gaps (turbofish, `?`, `unwrap_or`/`ok_or`).
+Reviewed and found SOUND: the C1 fold (a pure repoint); P4.164's
+`sqlite3_trace_v2` capture (same connection, no vacuous arm); the
+`zod_uuid_ok` regex against zod 4.6.5; the V8 twin move byte-for-byte; the
+Zod twins field by field against v4's schemas; the rename-dedupe against
+v4's migration; `js_trim` against JS's whitespace set; the single-writer
+invariant (no new RW open; a degraded partition has neither writer nor
+pool).
+
+### The gate
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean AND with `--features quilltap-core/native-transport`
+  (re-run on the final source tree); `cargo build --workspace --release`
+  clean.
+- **The full sweep from the pin — RUN TWICE.** The first run (589 ok / 7
+  run_failed / 3 refused of 599) caught THREE union reds no lane could see
+  — `system_restore_state` (the unifier's own first `INDEX_KEYED_EMBEDDING`
+  carve read a `repoLogs` key the case never records), `embedding_
+  profiles_routes` and `image_profiles_routes` (P4.159's sibling-open INFO
+  pair landing inside captures that opened their database IN the closure)
+  — all fixed (`e042d367d`, `1d6f410cf`), and ONE pin defect:
+  `provider_sdk_version_guard` showed the pin's root `node_modules` was a
+  symlink into the live checkout, which the human's `npm install` after
+  pulling v4 had moved to HEAD's tree (105 package versions: `openai`
+  7.30.0, `@openrouter/sdk` 1.4.25, `next`, `sharp`, `babel`). The pin got
+  its OWN tree (`npm ci --offline` from the npm cache, the `94fbb1ae3`
+  lockfile — seconds, no download; the other two symlink classes verified
+  unmoved) and **the whole sweep re-ran: 592 ok / 4 run_failed / 1
+  refused_repo_write / 2 refused_non_extractable of 599** — the reds the
+  standing three (`ariel_writers_tier3`, `memory_processor_tier3`,
+  `search_replace`) plus `provider_sdk_version_guard`, which reads the LIVE
+  checkout when the sweep's run stage sets no `QT_V4_CHECKOUT` (3 / 3
+  against the pin, by name); the refusals the standing three. Results:
+  `harness/tools/sweep-results/2026-10-07-94fbb1ae3-boot-hardness-unify.json`.
+  The trap is recorded in ledger §5.1 ("The dependency trap").
+- **Tier R (`cli_differential`): 271 cases / 0 failures.**
+- **The workspace suite** (`QT_V4_CHECKOUT=QT_V4_ROOT=<pin> TZ=UTC
+  CARGO_INCREMENTAL=0 cargo test --workspace --no-fail-fast` with the
+  765-variable env block harvested from every family's run stage, nine
+  dup-valued names withheld): **674 test binaries / 4,492 passed / 5 failed
+  / 3 ignored, zero `SKIP:` lines** — the five the three standing reds +
+  the two recorded env-block artifacts (`backup_uuid_remap`,
+  `doc_mount_files_tier2` — `ok` in the sweep). Confirmed RUN by name:
+  `degraded_sibling_open` 2, `table_shape` 7, `host_boot_hardness` 34,
+  `health_structure` 5, `host_boot_backfilled_indexes` 14 (incl. the union
+  arm), `host_boot_fresh_indexes` 9, `migration_index_backfill` 2,
+  `provisioning_equivalence` 3 (with `QT_FRESH_SCHEMA_LIVE` dumped from the
+  pin), `create_wrap_lines` 1, `system_import_state` 1, `system_restore_state`
+  3, `restore_vintage_state` 8, `repository_zod_messages` 1,
+  `store_unavailable_errors` 1, `projects_routes` 1, `chat_informs_tier2` 1,
+  `chat_informs_in_force_census` 5, `delete_messages_callers_census` 2, the
+  guards (`fallback_home_guard`, `zod_issues_home_guard` 4,
+  `import_warning_text_guard`, `provider_sdk_version_guard` 3, the
+  live-checkout guards at the pin), `common_helpers_selftest` 11;
+  `quilltap-core --lib` 3,136 / 0. `recipe_sweep.py --self-test` 0 failures.
+  §S.4: the import / restore / provisioning families all green on the
+  union; the restore families' targets are fresh provisions, which carry
+  the migration index family (P4.153), so a restore over the backfilled
+  index set changed no row.
+- **SPA:** `npm run lint` + `npm test` (**467 files / 8,889, 0 failed**) +
+  `npm run build` clean (no SPA source change this round). Full Playwright
+  **350 passed / 11 failed / 6 skipped (16.9 m)** — the six skips the standing parks; the eleven reds re-run by FILE alone afterwards, one invocation at a time, ALL green: the recorded Salon-streaming cluster's seven (`salon-regenerate-stream-flow` 3/3, `salon-roleplay-template-flow` 2/2, `salon-streaming-avatar-flow` 2/2, `salon-thinking-indicator` 1/1, `salon-transcript-subscribed-read` 2/2) and four NEW to the cluster — `salon-documents-flow` ×2 (5/5 alone; the full run's terminal-pane and document-picker clicks timed out at 90 / 120 s) and `workspace-flow` ×2 (13/13 alone; a composer still hidden at 5 s, a tab strip at 1 of 2) — with no SPA source changed this round. The full run took 16.9 m against 12.7–12.9 m in the previous two rounds; P4.159's per-open `quick_check` is the round's one new per-boot cost (the dogfood pass measures it on the Friday copy).
+
+### Candidate v4 filings (the human files)
+
+- **v4 Bug 179 (drafted):** the LLM-logs client has no cold-open retry
+  ladder where its mount-index twin has one
+  (`work-orders/surveys/2026-10-07-p4.159-v4-bug-179-draft.md`).
+- **v4's restore drops every embedded memory from its own full backup**
+  (`JSON.stringify(Float32Array)` vs `MemorySchema`'s union) — the
+  `INDEX_KEYED_EMBEDDING` divergence; v4's fix would be `encodeEmbedding`
+  for `data.memories` in `backup-service.ts` or a decode in the restore.
+- P4.160: `idx_chat_documents_unique` and the two group-join UNIQUEs (and the
+  UNIQUE `mp_path`) are created with no duplicate handling — a boot dies on
+  an instance that reached those migrations with duplicates.
+
+### 💸 for the dogfood pass
+
+The six lanes' rows (each lane record), headlined by: C3 re-run on a clone
+(garbage mount index → three WARNs + one ERROR, `/health` 503 `degraded`
+with nine problems, the SPA opens, the chat move 503 with the four DEBUGs
+now reading `Mount index database is in degraded mode`); the same on the
+LLM-logs file (ONE ERROR); a pre-round v5 instance's first boot
+(`created=47 / 5 / 5`, the second boot silent); **a full Friday backup
+restored — every embedded memory lands WITH its vector** (count memories
+and non-NULL embeddings before and after); the `.qtap` refusals in v4's
+ZodError words; the thirteen `[Projects v1]` lines (an archive PUT carrying
+`archivedAt`); #151's ERROR on a broken project PUT.
+
+### Versions
+
+core 0.0.1252, host 0.0.189, web 0.0.224; SPA 0.5.811, cli 0.0.29, tauri
+0.0.9 unchanged; harness frozen 0.0.1110.

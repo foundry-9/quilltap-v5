@@ -26,26 +26,32 @@ probe verifies against._
   P4.154 ∥ P4.155 ∥ P4.156 ∥ P4.157 ∥ P4.158, 2026-10-06). The one row it
   absorbed is retired to §6: `94fbb1ae3` ABSORBED(P4.D254). CLAUDE.md's
   Status bullet agrees.
-- **Checked:** 2026-10-06 (`/unify` of the `94fbb1ae3` smalls round,
-  main-checkout session; `git fetch --all` first) — the §2 probe PASSED at
-  its start and close, every regen from `/tmp/qt-v4-pin-unify-94fbb1ae3`.
-  Previous checks: 2026-10-06 (`/driftcheck`, which recorded `94fbb1ae3`)
-  and 2026-10-05 (`/unify` of the `07b8f0209` follow-ups + restore round).
-- **v4 `main` HEAD at check: `94fbb1ae3`** — AT the baseline; `origin/main`
-  agrees.
-- **v4 `bugfix` tip at check:** `1a2b2164c` ("bugfix: started 4.9.2 bug
-  branch"), UNMOVED; `1a2b2164c..bugfix` and `..origin/bugfix` empty.
-  **`release` tip:** `8fbf2afe0` ("release: 4.9.2"), UNMOVED; still no
+- **Checked:** 2026-10-07 (`/unify` of the `94fbb1ae3` boot-hardness +
+  validation + follow-ups round, P4.159–P4.164; `git fetch --all` first) —
+  the §2 probe FAILED at its start: v4 `main` had moved past the baseline.
+  **The human ruled in-session: keep the baseline, PIN every regen at
+  `94fbb1ae3` ("more changes are coming on that end")** — every regen ran
+  from `/tmp/qt-v4-pin-unify-p4159`; the commits below are recorded
+  UNPROCESSED in §3, NOT classified (a full `/driftcheck` is owed once v4
+  settles). During the lanes the human had already waived the two docs-only
+  commits (`938144eb4`, `7c78abd49`) in each lane's session. Previous checks:
+  2026-10-06 (`/unify` of the `94fbb1ae3` smalls round; `/driftcheck`, which
+  recorded `94fbb1ae3`).
+- **v4 `main` HEAD at check: `a9c99a4a0`** (a merge of `origin/main`) — SIX
+  commits past the baseline (§3), FOUR of them touching `lib/` / `app/` /
+  `migrations/` / `public/` (91 such paths; three NEW migrations:
+  `add-wardrobe-wear-stats-table-v1`, `seed-wardrobe-wear-stats-v1`,
+  `add-wardrobe-image-settings-field-v1`). `origin/main` agrees.
+- **v4 `bugfix` tip at check:** `1a2b2164c`, UNMOVED (`1a2b2164c..bugfix`
+  empty); `origin/bugfix` carries the `release: 4.9.2` merge (`8fbf2afe0`) —
+  infra, no new fix. **`release` tip:** `8fbf2afe0`, UNMOVED; still no
   `release: 4.10.0` squash.
 - **Checkout at check:** branch **`main`**, tree **CLEAN**.
-- **Verdict: CURRENT — 0 commits** (§3 EMPTY).
-- **Regen rule: NO PIN REQUIRED** — v4 HEAD is AT the baseline and the tree
-  is clean (§5.1); a lane pins regardless when it wants a stable tree.
-  **New since this round:** `provisioning_equivalence` REQUIRES
-  `QT_FRESH_SCHEMA_LIVE` (a live `dump-fresh-schema.ts` run from the v4
-  tree, arm (1d) — the D23 generateDDL tripwire, restored at the
-  unification); a red there after a drift check is v4 drift — RE-DUMP
-  `fresh_schema.json`, never "fix" v5 back.
+- **Verdict: DRIFT PENDING — 6 commits UNPROCESSED (§3), unclassified.**
+- **Regen rule: PIN REQUIRED at `94fbb1ae3`** (§5.1) — v4 HEAD is past the
+  baseline. `provisioning_equivalence` still REQUIRES `QT_FRESH_SCHEMA_LIVE`,
+  dumped FROM THE PIN (a dump from HEAD would carry the wardrobe migrations'
+  schema — that red is drift, not a v5 bug).
 - **Live-checkout guards at the baseline:** `builtin_prompt_templates_guard`,
   `provider_sdk_version_guard`, `qtap_schema_embed_guard`,
   `public_schemas_vendor_guard`, and the help guards (`help_tree_equivalence`
@@ -67,8 +73,9 @@ probe verifies against._
   shape — the human's ruling, 2026-10-06), skipping generateDDL's plain copy
   of that one shared name. Re-dump it when v4 moves a migration that creates
   an index; `provisioning_equivalence` (1c) reddens on the moved names first.
-  Instances provisioned BEFORE the round lack the family (no boot backfill —
-  a named follow-up). The paragraph below is the `07b8f0209` state, still
+  Instances provisioned BEFORE that round gain the family at their next boot
+  since P4.160 (`db::migration_index_family_repair`, LAST in `seed_built_ins`,
+  replaying the same committed statements — the 2026-10-07 round). The paragraph below is the `07b8f0209` state, still
   current for the table text:
   `fresh_schema.json` is the FIFTH D23 re-dump (P4.D251,
   from the `07b8f0209` pin — EXACTLY one line moved: `chat_settings`'s
@@ -160,6 +167,12 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
+| `938144eb4` | 2026-10-07 | docs: add 4.10.0 release notes draft | NO-PORT? (docs only — `docs/releases/4.10.0.md`; waived by the human in-lane) | — | UNPROCESSED |
+| `7c78abd49` | 2026-10-07 | Wardrobe programme: three design specs | NO-PORT? (docs + `.claude/commands/` only; waived in-lane) | — | UNPROCESSED |
+| `cc80dc89d` | 2026-10-07 | Wardrobe lists: wrap titles, name a borrowed garment's wardrobe (#80) | unclassified — `/driftcheck` owed | unmeasured (wardrobe lists — the wardrobe container + group tiers, P4.6x/P4.88-era) | UNPROCESSED |
+| `3ee3b1342` | 2026-10-07 | Wardrobe wear ledger: track item usage across characters (#81) | unclassified — `/driftcheck` owed (NEW migrations `add-wardrobe-wear-stats-table-v1` + `seed-wardrobe-wear-stats-v1`; `qtap-export.schema.json` moved → `public_schemas_vendor_guard` / `qtap_schema_embed_guard` will redden at HEAD) | unmeasured (wardrobe, `lib/wardrobe/**`, outfit displacement, export schema) | UNPROCESSED |
+| `f9f1ba177` | 2026-10-07 | Chat gallery: file old backdrops as backgrounds, list reused avatars | unclassified — `/driftcheck` owed | unmeasured (the Salon chat gallery) | UNPROCESSED |
+| `7c8572869` | 2026-10-07 | Wardrobe item images: pictures of garments and outfits (#82) | unclassified — `/driftcheck` owed (NEW migration `add-wardrobe-image-settings-field-v1`) | unmeasured (wardrobe, image settings) | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
@@ -238,6 +251,17 @@ cd "$PIN"   # run EVERY tsx/jest oracle + fixture builder from here
   oracle that loads a provider plugin (`provider-registry.ts`, the
   stream/envelope recorders, the manifest generator) — without it they die
   on `Cannot find module '@anthropic-ai/sdk'`.
+- **The dependency trap (2026-10-07, the `94fbb1ae3` boot-hardness
+  unification):** the root `node_modules` symlink follows the LIVE checkout,
+  so once the human pulls v4 past the baseline and runs `npm install`, a
+  "pinned" regen imports HEAD's dependency tree (that day: 105 package
+  versions — `openai` 7.30.0, `@openrouter/sdk` 1.4.25, `next`, `sharp`,
+  `babel`). `provider_sdk_version_guard` is the tripwire (it reddens on the
+  root SDKs). The cure, offline from the npm cache: `rm "$PIN/node_modules"
+  && (cd "$PIN" && npm ci --offline --no-audit --no-fund)` — a real tree from
+  the pin's own lockfile in seconds. Check the other two classes against the
+  lockfile diff (`packages/quilltap/` and the plugin dirs did not move that
+  day) before trusting their symlinks.
 - **The empty-file trap:** that failure is loud on stderr, but if stdout was
   redirected to the oracle file, the redirect already truncated it to ZERO
   bytes — the next diff then reads "DIFFERS against an empty file" exactly
@@ -313,6 +337,13 @@ don't silently swap it in.
 
 ## §6 History
 
+- **The `94fbb1ae3` boot-hardness + validation + follow-ups round
+  (2026-10-07, baseline STAYS `94fbb1ae3`; P4.159 ∥ P4.160 ∥ P4.161 ∥ P4.162
+  ∥ P4.163 ∥ P4.164):** no row absorbed (the round's §3 was EMPTY at
+  planning); v4 drifted SIX commits DURING the round (§3, UNPROCESSED), and
+  by the human's ruling every regen stayed pinned at `94fbb1ae3`. Round
+  record: `status-log.md` → "The `94fbb1ae3` boot-hardness + validation +
+  follow-ups round — UNIFICATION record".
 - **The `94fbb1ae3` fresh-instance-indexes + follow-ups smalls round
   (2026-10-06, baseline `07b8f0209` → `94fbb1ae3`; P4.D254 ∥ P4.153 ∥ P4.154
   ∥ P4.155 ∥ P4.156 ∥ P4.157 ∥ P4.158):** `94fbb1ae3` (the inform block as a

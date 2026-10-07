@@ -7151,7 +7151,67 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
-## The `94fbb1ae3` boot-hardness + validation + follow-ups round (P4.159 ∥ P4.160 ∥ P4.161 ∥ P4.162 ∥ P4.163 ∥ P4.164) — ORDERED 2026-10-07
+## The `94fbb1ae3` boot-hardness + validation + follow-ups round (P4.159 ∥ P4.160 ∥ P4.161 ∥ P4.162 ∥ P4.163 ∥ P4.164) — UNIFIED 2026-10-07 (ordered 2026-10-07)
+
+**UNIFIED on main (2026-10-07) — ALL SIX LANES LANDED; the oracle baseline
+STAYS `94fbb1ae3`.** v4 moved SIX commits past it DURING the round (the
+wardrobe lists, the wardrobe wear ledger with two NEW migrations, the chat
+gallery's backdrops, wardrobe item images with a third migration, two docs
+commits); **by the human's ruling every regen stayed pinned at `94fbb1ae3`**
+and the six are recorded UNPROCESSED, unclassified, in the drift ledger's §3
+(regen rule PIN REQUIRED). Round record: `status-log.md` → "The `94fbb1ae3`
+boot-hardness + validation + follow-ups round — UNIFICATION record"; each
+order's status header lists exactly what stays OPEN. Dogfood #150 / #151 /
+#152 FIXED; #69 marked FIXED by P4.41. **The §3 review (six parallel readers
++ the unifier): ONE BLOCKING finding, escalated and ruled — P4.161's restore
+refused the `{"0":…}` embedding every real full backup carries (v4's own
+restore drops every embedded memory the same way); RULED FIX v5, the
+both-ways table `INDEX_KEYED_EMBEDDING`** — plus eight should-fixes fixed
+red-first (the backfill pre-check that abandoned a partition; `error_text`'s
+degraded guard sentence; the wardrobe `archivedAt`; a dropped `null` tag; raw
+non-string names; the missing §S.2 union arm; the hand-copied plan SQL; a
+union `fmt` red) and three union reds the full sweep caught (the unifier's own
+first carve; two profiles families capturing P4.159's open lines). The sweep
+also exposed that the pin's symlinked root `node_modules` had followed the
+live checkout to HEAD's dependency tree; the pin got its own (`npm ci
+--offline`) and the sweep re-ran whole (ledger §5.1's new trap). Gate: sweep
+592 ok / 4 (the three standing + the SDK guard reading the live checkout,
+3/3 against the pin) / 3 refused of 599; Tier R 271/0; workspace 674
+binaries / 4,492 / 5 (standing + the two env-block artifacts) / 3 ignored,
+zero SKIP; SPA 467 / 8,889; full Playwright 350 / 11 / 6 (16.9 m) — all eleven reds green by file alone (the seven-file Salon-streaming cluster + `salon-documents-flow` ×2 and `workspace-flow` ×2, new to it). Versions: core 0.0.1252,
+host 0.0.189, web 0.0.224; SPA 0.5.811, cli 0.0.29, tauri 0.0.9 unchanged;
+harness frozen 0.0.1110.
+
+**NEXT (in order):**
+1. **The owed dogfood pass** — the six lanes' 💸 rows (the round record lists
+   them), headlined by: the C3 re-run on a clone (a garbage mount index → the
+   boot continues DEGRADED, `/health` 503 `degraded` with nine problems, the
+   SPA opens, the chat move's DEBUGs reading `Mount index database is in
+   degraded mode`) and its LLM-logs twin; a PRE-ROUND v5 instance's first
+   boot (`created=47 / 5 / 5`, the second silent); **a full Friday backup
+   restored — count memories AND non-NULL embeddings before and after (the
+   ruled `INDEX_KEYED_EMBEDDING` fix)**; the `.qtap` refusals in v4's ZodError
+   words; the `[Projects v1]` lines incl. an archive PUT's `archivedAt`;
+   #151's ERROR on a broken project PUT.
+2. **`/driftcheck` once v4 settles** — classify the ledger's six UNPROCESSED
+   rows (three new migrations → expect a D23 re-dump of `fresh_schema.json`
+   and `migration_indexes.json` if they create tables / indexes; the moved
+   `qtap-export.schema.json` reddens the vendor / embed guards at HEAD), then
+   a drift catch-up round.
+3. **A follow-ups round** from the six status headers' OPEN lists — first:
+   `mark_consumed`'s VALIDATING per-row arm (v4's `rowToDocument` hydration of
+   `permanent` FIRST); P4.159's READ-side census (`GET /api/v1/llm-logs`, the
+   image-aesthetics GET, the 66 `read_mount_index` / `read_llm_logs` sites in
+   `api/`); P4.163's conversion list (the survey record's Tables A/C/D/E) and
+   behavioural arms for the source-window-only callers; P4.161's Tier 3 kinds
+   (chats, messages, characters, profiles, roleplay templates, the restore's
+   files arm); the nits each header names.
+4. Unchanged and still the human's: P4.156's R-E (the fold-pass test seam),
+   the 5c sync ruling (Option B written up), the five dead API-key wrappers.
+   **Candidate v4 filings** (the human files): Bug 179 (drafted — the
+   LLM-logs cold-open ladder); v4's restore dropping every embedded memory
+   from its own full backup; P4.160's no-dedupe UNIQUE creates.
+
 
 **Baseline `94fbb1ae3`; v4 AT the baseline at the planning probe (HEAD
 `94fbb1ae3`, `origin/main` agreeing after `git fetch --all`, tree CLEAN,
