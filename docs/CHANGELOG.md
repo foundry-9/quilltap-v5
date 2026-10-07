@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — refactor(core): move the V8 `JSON.parse` message twin to `jsstr` (P4.162)
+
+_Versions: core 0.0.1247, web 0.0.224._
+
+`v8_json_parse_message` and its fixed-row table test move unchanged from `generators::optimizer` to `jsstr`, the JS string-semantics module; the overlay, the SDK response-shape reader, the system data route and the harness family import it from there. No behaviour change: `v8_json_parse_message_equivalence` re-run 2/2 with every row matched.
+
 #### 2026-10-07 — fix(core): log `read_properties`' three arms on v4's sentences and keys, and port the unreadable arm (P4.162)
 
 _Versions: core 0.0.1246._

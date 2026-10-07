@@ -899,7 +899,7 @@ async fn system_ai_import_stream(
 ) -> AxumResponse {
     let Some(parsed) = parsed else {
         let text = String::from_utf8_lossy(body);
-        let message = quilltap_core::generators::optimizer::v8_json_parse_message(&text)
+        let message = quilltap_core::jsstr::v8_json_parse_message(&text)
             .unwrap_or_else(|| "Unexpected end of JSON input".to_string());
         return error_json(StatusCode::INTERNAL_SERVER_ERROR, &message);
     };

@@ -32,7 +32,7 @@
 //! `undefined`; every other client (`@anthropic-ai/sdk`, `@google/genai`, the
 //! raw `response.json()`) runs `JSON.parse('')` and throws V8's `Unexpected end
 //! of JSON input`. A body that is not JSON throws V8's `JSON.parse` text on
-//! every provider ([`v8_json_parse_message`](crate::generators::optimizer::v8_json_parse_message)).
+//! every provider ([`v8_json_parse_message`](crate::jsstr::v8_json_parse_message)).
 //!
 //! V8's read error is exactly `Cannot read properties of undefined (reading
 //! '<k>')` / `… of null (…)` with an array index key as `'0'`; a `for…of` over
@@ -225,10 +225,10 @@ fn anthropic_chain(body: &Js<'_>) -> Result<(), String> {
 }
 
 /// V8's `JSON.parse` text for a body that is not JSON — or, where V8 ACCEPTS
-/// what serde refused ([`v8_json_parse_message`](crate::generators::optimizer::v8_json_parse_message)
+/// what serde refused ([`v8_json_parse_message`](crate::jsstr::v8_json_parse_message)
 /// answers `None`), serde's own text: a RECORDED divergence (the module doc).
 fn json_parse_failure(body: &[u8], serde_error: &serde_json::Error) -> String {
-    crate::generators::optimizer::v8_json_parse_message(&String::from_utf8_lossy(body))
+    crate::jsstr::v8_json_parse_message(&String::from_utf8_lossy(body))
         .unwrap_or_else(|| serde_error.to_string())
 }
 

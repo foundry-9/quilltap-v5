@@ -170958,3 +170958,15 @@ this lane (the unifier records the waiver at §S.6).
   re-run by name — the detail-tail compares did not move),
   `doc_mount_fallback_sites_census` 4/4 (P4.163's, re-run).
 - Core overlay tests (`document_store_overlay`) 12/12.
+
+### Unit 5 — the V8 twin to `jsstr` (Tier 2 item 5, R-F)
+
+- `v8_json_parse_message` (350 lines incl. its doc) and its fixed-row table test
+  moved byte-for-byte into `jsstr.rs` (own `v8_json_parse_message_tests`
+  module); importers repointed: `document_store_overlay.rs` ×2,
+  `model/sdk_response_shape.rs` (call + two doc links), `quilltap-web`
+  `system_data_routes.rs`, the harness family, and `optimizer.rs` itself
+  (`llm_json_failure_message`, via its `jsstr` import; the module comment's
+  link). **Neutral:** `v8_json_parse_message_equivalence` 2/2 against a fresh
+  pin regen (159 rows matched, 14 accepted → None, 3 lossy; 145 overlay rows) —
+  identical to P4.154's record; core `jsstr` tests 2/2.

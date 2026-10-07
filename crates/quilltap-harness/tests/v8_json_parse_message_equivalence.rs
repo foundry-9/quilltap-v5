@@ -33,7 +33,7 @@
 //!   QT_ORACLE_V8_JSON_PARSE_MESSAGES=/tmp/oracle-v8-json-parse-messages.ndjson \
 //!     cargo test -p quilltap-harness --test v8_json_parse_message_equivalence
 
-use quilltap_core::generators::optimizer::v8_json_parse_message;
+use quilltap_core::jsstr::v8_json_parse_message;
 use serde::Deserialize;
 
 #[derive(Deserialize)]

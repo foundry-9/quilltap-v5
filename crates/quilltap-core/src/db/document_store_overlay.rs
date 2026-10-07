@@ -331,8 +331,8 @@ fn hydrate_one<E: StoreEntity>(
     // v4 `${err.message}` is V8's `JSON.parse` text (dogfood #146, P4.154);
     // serde's own only where V8 accepts what serde refuses — RECORDED.
     let props_value: Value = serde_json::from_str(props_raw).map_err(|e| {
-        let detail = crate::generators::optimizer::v8_json_parse_message(props_raw)
-            .unwrap_or_else(|| e.to_string());
+        let detail =
+            crate::jsstr::v8_json_parse_message(props_raw).unwrap_or_else(|| e.to_string());
         OverlayError::unavailable::<E>(
             id,
             Some(mount_id),
@@ -611,8 +611,7 @@ pub fn read_properties<E: StoreEntity>(
         // line and the detail (`document-store-overlay.ts:294-306`), as the
         // read path's `hydrate_one` does (P4.154, dogfood #146); serde's own
         // text survives only where V8 would ACCEPT the bag.
-        let e = crate::generators::optimizer::v8_json_parse_message(&content)
-            .unwrap_or_else(|| e.to_string());
+        let e = crate::jsstr::v8_json_parse_message(&content).unwrap_or_else(|| e.to_string());
         log_properties_arm::<E>(PropertiesArm::Unparseable, entity_id, mount_point_id, &e);
         OverlayError::unavailable::<E>(
             entity_id,
