@@ -26,6 +26,19 @@ The manifest's counts move with every collection touched. Entry order, names
 and every other byte are kept (the `derive-restore-archive-bag-nulls.py`
 precedent). `restore-archive.zip` is md5-checked unchanged before and after.
 
+P4.161 (Tier 2 item 10) widens the damage to ONE of each managed kind, so the
+backfill's other files are exercised live, not only `description.md`:
+
+  Lorian's vault   properties.json, metadata.json, identity.md, manifesto.md,
+                   personality.md, example-dialogues.md, physical-description.md,
+                   physical-prompts.json  (+ description.md)
+  the project      properties.json, state.json  (+ description.md)
+  the group        instructions.md  (+ description.md)
+
+Content rows shared with a SURVIVING link stay (the empty `""` file and the
+`{}` file back several links each). The original three `description.md`
+removals are unchanged, so P4.158's `PRESERVE_BACKFILL` rows keep their meaning.
+
 Usage (from the v5 repo root):
   python3 harness/oracle/fixtures/derive-restore-archive-damaged-store.py
 """
@@ -45,6 +58,21 @@ PROJECT_STORE = "5c17e916-5f79-4cca-a134-ec09c05924e9"
 GROUP_STORE = "60a8194d-f8ea-4540-af77-5e13e7ed0e9b"
 DAMAGED = {LORIAN_VAULT, PROJECT_STORE, GROUP_STORE}
 REMOVED_PATH = "description.md"
+# P4.161 Tier 2 item 10: the other managed kinds, per store.
+REMOVED_MORE = {
+    LORIAN_VAULT: {
+        "properties.json",
+        "metadata.json",
+        "identity.md",
+        "manifesto.md",
+        "personality.md",
+        "example-dialogues.md",
+        "physical-description.md",
+        "physical-prompts.json",
+    },
+    PROJECT_STORE: {"properties.json", "state.json"},
+    GROUP_STORE: {"instructions.md"},
+}
 
 
 def md5(path):
@@ -65,6 +93,14 @@ def plan(zin, root):
     ]
     assert {l["mountPointId"] for l in gone} == DAMAGED, "one description.md per store"
     assert len(gone) == 3
+    more = [
+        l for l in links
+        if l["relativePath"] in REMOVED_MORE.get(l["mountPointId"], set())
+    ]
+    assert len(more) == sum(len(v) for v in REMOVED_MORE.values()), sorted(
+        (l["mountPointId"], l["relativePath"]) for l in more
+    )
+    gone += more
     gone_links = {l["id"] for l in gone}
     kept_links = [l for l in links if l["id"] not in gone_links]
     out["doc-mount-file-links"] = kept_links

@@ -171276,3 +171276,36 @@ unifier should record the waiver in the ledger's §1.
 - **Pins moved (v4-faithful):** `import_warn_pins`' two prompt-template
   calls used user id `"u1"`, which the schema now refuses before the planted
   trigger; a uuid now.
+
+### Unit 4 — Tier 2 item 10, the backfill's other managed files (core 0.0.1245)
+
+- **Unit pins (v5-alone, v4 cannot reach the state):**
+  `db::character_vault::backfill_tests` + `every_managed_vault_file_is_
+  backfilled_from_the_row`, `the_conditional_vault_files_follow_the_row`,
+  `a_present_managed_file_is_never_overwritten`; NEW
+  `restore::orchestrator::backfill_official_store_tests` (the four store
+  files; `""` / `{}` defaults; the failure warning through a planted
+  `BEFORE INSERT … RAISE(ABORT)` trigger — the order's "read-only store
+  directory" plant does not apply to database-backed stores, so a trigger
+  stands in; no WARN line for an unwritten file).
+- **Live:** `derive-restore-archive-damaged-store.py` extended (the
+  `REMOVED_MORE` map) and `restore-archive-damaged-store.zip` RE-DERIVED
+  (this lane's one re-key; md5 before
+  `ff870fc3a125d36a40a2d96f1713e6d4` → `071ae49ef3264631175c71947ba0926b`;
+  `restore-archive.zip` md5-checked unchanged). `PRESERVE_BACKFILL` 3 → 14
+  rows (the three `description.md` rows UNCHANGED — no finding); the
+  comparand for every non-description file is v4's projected bytes at the
+  same `(store, path)` (all eleven byte-equal — the backfill renders what the
+  projection renders); `BACKFILL_WARNS` 3 → 14.
+- **FINDING (recorded, ruled-divergence facet):**
+  `PRESERVE_BACKFILL_SHARED_CONTENT` — v4 holds TWO `doc_mount_files` rows
+  for the shas of `""`, `{}` and Lorian's `properties.json` (its projection
+  minted one BEFORE 22b restored the archive's); v5 holds the archive's one
+  (the backfill runs after 22b; sha256 dedupe). Asserted both ways; v4's
+  minted duplicate folded onto the archive's row (documents dropped, links
+  repointed) before the diff. Not fixed: making v5 mint a duplicate would be
+  waste with no reader. The unifier/human may rule.
+- **Mutation proof:** dropping `identity.md` from the vault backfill reddens
+  `restore_damaged_store_replace` three ways (the row, the WARN table, the
+  content diff). Red-first on the re-derived archive with the OLD harness is
+  not meaningful (no behaviour changed — this unit adds coverage).

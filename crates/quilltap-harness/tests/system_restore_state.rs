@@ -1632,6 +1632,16 @@ fn system_restore_state_equivalence() {
             &want_owned,
             &mut failures,
         );
+        // [P4.161 Tier 2 item 10] the backfill's shared content rows, both
+        // ways, then collapsed on v4's side.
+        collapse_backfill_shared_content(
+            name,
+            &zip,
+            &host.temp_dir(),
+            &got_state,
+            &mut want_owned,
+            &mut failures,
+        );
         carve_fresh_target_uploads(
             name,
             &zip,
@@ -4410,7 +4420,8 @@ fn classify_message_serde_arm(
 ///
 /// Each entry is `(case, [(table, entity id, store id, path)])`. Both ways on
 /// the dumps: **both** sides carry the file on the archive's store holding the
-/// archived row's `description` (v4's after the #141 carve re-homed its fresh
+/// archived row's `description` — or, for every other managed file (P4.161),
+/// v4's projected bytes (v4's after the #141 carve re-homed its fresh
 /// projection — so a v4 that stops projecting fails here too); **v5**'s link is
 /// written AFTER the archive's own links (a backfill), **v4**'s BEFORE them (the
 /// phase-6/13 projection) — the insertion-order difference this divergence IS,
@@ -4440,8 +4451,174 @@ const PRESERVE_BACKFILL: &[(&str, &[BackfillEntry])] = &[(
             "60a8194d-f8ea-4540-af77-5e13e7ed0e9b",
             "description.md",
         ),
+        // [P4.161 Tier 2 item 10] the backfill's OTHER managed files, one of
+        // each kind (the re-derived archive strips them too).
+        (
+            "characters",
+            "a1000000-0000-4000-8000-000000000001",
+            "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "properties.json",
+        ),
+        (
+            "characters",
+            "a1000000-0000-4000-8000-000000000001",
+            "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "metadata.json",
+        ),
+        (
+            "characters",
+            "a1000000-0000-4000-8000-000000000001",
+            "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "identity.md",
+        ),
+        (
+            "characters",
+            "a1000000-0000-4000-8000-000000000001",
+            "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "manifesto.md",
+        ),
+        (
+            "characters",
+            "a1000000-0000-4000-8000-000000000001",
+            "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "personality.md",
+        ),
+        (
+            "characters",
+            "a1000000-0000-4000-8000-000000000001",
+            "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "example-dialogues.md",
+        ),
+        (
+            "characters",
+            "a1000000-0000-4000-8000-000000000001",
+            "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "physical-description.md",
+        ),
+        (
+            "characters",
+            "a1000000-0000-4000-8000-000000000001",
+            "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+            "physical-prompts.json",
+        ),
+        (
+            "projects",
+            "a3000000-0000-4000-8000-000000000001",
+            "5c17e916-5f79-4cca-a134-ec09c05924e9",
+            "properties.json",
+        ),
+        (
+            "projects",
+            "a3000000-0000-4000-8000-000000000001",
+            "5c17e916-5f79-4cca-a134-ec09c05924e9",
+            "state.json",
+        ),
+        (
+            "groups",
+            "a2000000-0000-4000-8000-000000000001",
+            "60a8194d-f8ea-4540-af77-5e13e7ed0e9b",
+            "instructions.md",
+        ),
     ],
 )];
+
+/// ## ⚠ THE RULED R-A DIVERGENCE, ITS CONTENT ROWS — `PRESERVE_BACKFILL_SHARED_CONTENT` (P4.161)
+///
+/// A backfilled managed file whose BYTES the archive already holds (the empty
+/// `""` markdown, the `{}` JSON, a `properties.json` the projection renders
+/// identically) shares the archive's content row on v5: the backfill runs
+/// AFTER 22b restored the archive's `doc_mount_files` / `doc_mount_documents`,
+/// and the write path dedupes by sha256. v4 projects the same file in phase
+/// 6 / 13, BEFORE 22b, so its projection mints its own content row and 22b
+/// then adds the archive's — two rows with one sha256, each link reading the
+/// same bytes. Measured on the re-derived `restore-archive-damaged-store.zip`
+/// (P4.161 Tier 2 item 10 — the original `description.md` damage never hit
+/// it: every description's bytes are unique in the archive).
+///
+/// Each entry is `(case, [sha256])`. Both ways: **v4** carries EXACTLY two
+/// `doc_mount_files` rows per listed sha (one of them the archive's), **v5**
+/// exactly one (the archive's) — a v4 that stops duplicating, or a v5 that
+/// starts, fails here. Then v4's minted duplicate is folded onto the archive's
+/// row (its `doc_mount_documents` row dropped, its links repointed) so the
+/// content tables diff row for row.
+const PRESERVE_BACKFILL_SHARED_CONTENT: &[(&str, &[&str])] = &[(
+    "restore_damaged_store_replace",
+    &[
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "70eb827a041e489d4478af17c56a212827a3933ad946999d49bb026aacab67bc",
+    ],
+)];
+
+fn collapse_backfill_shared_content(
+    name: &str,
+    zip: &Path,
+    temp_root: &Path,
+    got: &BTreeMap<String, BTreeMap<String, Vec<Value>>>,
+    want: &mut Value,
+    failures: &mut Vec<String>,
+) {
+    let Some((_, shas)) = PRESERVE_BACKFILL_SHARED_CONTENT
+        .iter()
+        .find(|(c, _)| *c == name)
+    else {
+        return;
+    };
+    let extracted = quilltap_core::services::backup::restore::parse_backup_zip(zip, temp_root)
+        .expect("parse archive for its content rows");
+    let archived: HashSet<String> = extracted
+        .data
+        .doc_mount_files
+        .iter()
+        .filter_map(|f| str_at(f, "id").map(str::to_string))
+        .collect();
+    let got_v = serde_json::to_value(got).expect("dump serializes");
+    let mut fold: BTreeMap<String, String> = BTreeMap::new();
+    for sha in *shas {
+        let ids = |dump: &Value| -> Vec<String> {
+            rows_of(dump, "mountIndex", "doc_mount_files")
+                .iter()
+                .filter(|f| str_at(f, "sha256") == Some(sha))
+                .filter_map(|f| str_at(f, "id").map(str::to_string))
+                .collect()
+        };
+        let (g, w) = (ids(&got_v), ids(want));
+        let g_ok = g.len() == 1 && archived.contains(&g[0]);
+        let w_archive: Vec<&String> = w.iter().filter(|i| archived.contains(*i)).collect();
+        if !g_ok || w.len() != 2 || w_archive.len() != 1 {
+            failures.push(format!(
+                "[{name}] PRESERVE_BACKFILL_SHARED_CONTENT {sha}: v5 rows {g:?} (want the \
+                 archive's one), v4 rows {w:?} (want the archive's + one minted) — if v4 \
+                 converged, retire the entry"
+            ));
+            continue;
+        }
+        let keep = w_archive[0].clone();
+        for id in w.iter().filter(|i| **i != keep) {
+            fold.insert(id.clone(), keep.clone());
+        }
+    }
+    if fold.is_empty() {
+        return;
+    }
+    for table in ["doc_mount_files", "doc_mount_documents"] {
+        let key = if table == "doc_mount_files" {
+            "id"
+        } else {
+            "fileId"
+        };
+        if let Some(rows) = want["mountIndex"][table].as_array_mut() {
+            rows.retain(|r| !str_at(r, key).is_some_and(|id| fold.contains_key(id)));
+        }
+    }
+    if let Some(rows) = want["mountIndex"]["doc_mount_file_links"].as_array_mut() {
+        for r in rows.iter_mut() {
+            if let Some(to) = str_at(r, "fileId").and_then(|f| fold.get(f)).cloned() {
+                r["fileId"] = Value::String(to);
+            }
+        }
+    }
+}
 
 /// The four tables a backfill writes into, compared order-insensitively on a
 /// [`PRESERVE_BACKFILL`] case.
@@ -4489,11 +4666,18 @@ fn assert_preserve_backfill(
             "projects" => &d.projects,
             _ => &d.groups,
         };
-        let archived = rows
-            .iter()
-            .find(|r| str_at(r, "id") == Some(id))
-            .and_then(|r| str_at(r, "description"))
-            .map(str::to_string);
+        // `description.md` is pinned to the archived row's value (P4.158);
+        // every other managed file (P4.161 Tier 2 item 10) to v4's projected
+        // bytes on the same store and path — the backfill must render what
+        // the projection renders.
+        let archived = if *path == "description.md" {
+            rows.iter()
+                .find(|r| str_at(r, "id") == Some(id))
+                .and_then(|r| str_at(r, "description"))
+                .map(str::to_string)
+        } else {
+            store_file(want, store, path).and_then(|(_, c)| c)
+        };
         // The store's links in the archive, so "before/after 22d" is measured
         // against the archive's own first link on that store.
         let first_archive_link = |dump: &Value| {
@@ -4694,13 +4878,37 @@ const BACKFILL_WARN: &str =
     "WARN quilltap::restore Backfilled a managed file the archived store was missing";
 const BACKFILL_WARNS: &[(&str, &[&str])] = &[(
     "restore_damaged_store_replace",
+    // [P4.161 Tier 2 item 10] + the eleven other managed files the re-derived
+    // archive strips, in the backfill's own file order.
     &[
         "entity=character entityId=a1000000-0000-4000-8000-000000000001 \
+         mountPointId=aff3114e-ed90-4d5b-99c1-ef3fa20203fc relativePath=properties.json",
+        "entity=character entityId=a1000000-0000-4000-8000-000000000001 \
+         mountPointId=aff3114e-ed90-4d5b-99c1-ef3fa20203fc relativePath=metadata.json",
+        "entity=character entityId=a1000000-0000-4000-8000-000000000001 \
+         mountPointId=aff3114e-ed90-4d5b-99c1-ef3fa20203fc relativePath=identity.md",
+        "entity=character entityId=a1000000-0000-4000-8000-000000000001 \
          mountPointId=aff3114e-ed90-4d5b-99c1-ef3fa20203fc relativePath=description.md",
+        "entity=character entityId=a1000000-0000-4000-8000-000000000001 \
+         mountPointId=aff3114e-ed90-4d5b-99c1-ef3fa20203fc relativePath=manifesto.md",
+        "entity=character entityId=a1000000-0000-4000-8000-000000000001 \
+         mountPointId=aff3114e-ed90-4d5b-99c1-ef3fa20203fc relativePath=personality.md",
+        "entity=character entityId=a1000000-0000-4000-8000-000000000001 \
+         mountPointId=aff3114e-ed90-4d5b-99c1-ef3fa20203fc relativePath=example-dialogues.md",
+        "entity=character entityId=a1000000-0000-4000-8000-000000000001 \
+         mountPointId=aff3114e-ed90-4d5b-99c1-ef3fa20203fc relativePath=physical-description.md",
+        "entity=character entityId=a1000000-0000-4000-8000-000000000001 \
+         mountPointId=aff3114e-ed90-4d5b-99c1-ef3fa20203fc relativePath=physical-prompts.json",
+        "entity=project entityId=a3000000-0000-4000-8000-000000000001 \
+         mountPointId=5c17e916-5f79-4cca-a134-ec09c05924e9 relativePath=properties.json",
         "entity=project entityId=a3000000-0000-4000-8000-000000000001 \
          mountPointId=5c17e916-5f79-4cca-a134-ec09c05924e9 relativePath=description.md",
+        "entity=project entityId=a3000000-0000-4000-8000-000000000001 \
+         mountPointId=5c17e916-5f79-4cca-a134-ec09c05924e9 relativePath=state.json",
         "entity=group entityId=a2000000-0000-4000-8000-000000000001 \
          mountPointId=60a8194d-f8ea-4540-af77-5e13e7ed0e9b relativePath=description.md",
+        "entity=group entityId=a2000000-0000-4000-8000-000000000001 \
+         mountPointId=60a8194d-f8ea-4540-af77-5e13e7ed0e9b relativePath=instructions.md",
     ],
 )];
 

@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — test(restore): pin every managed file the preserve-arm backfill writes, live and unit-side (P4.161 Tier 2 item 10)
+
+_Versions: core 0.0.1245._
+
+Before this only `description.md` was exercised. `restore-archive-damaged-store.zip` is re-derived (its derive script extended) to also strip Lorian's vault `properties.json`, `metadata.json`, the four markdown fields and the physical pair, the project store's `properties.json` and `state.json`, and the group store's `instructions.md`; `PRESERVE_BACKFILL` grows by those eleven rows (each non-description file compared to v4's projected bytes on the same store and path) and `BACKFILL_WARNS` by their eleven v5-only lines. The original three `description.md` rows are unchanged.
+
+The re-derivation surfaced one new facet of the ruled R-A divergence, now recorded both ways as `PRESERVE_BACKFILL_SHARED_CONTENT`: a backfilled file whose bytes the archive already holds shares the archive's content row on v5 (the backfill runs after 22b and the write path dedupes by sha256), while v4's earlier phase-6/13 projection mints its own row and 22b then adds the archive's — two rows for one sha. v4's duplicate is folded onto the archive's row before the diff.
+
+Unit pins (v5-alone): `backfill_tests` gains three tests (every vault file from the row; the conditional files absent when the row has no value; the not-overwritten arm for every file), and a new `backfill_official_store_tests` module covers the store's four files, the defaults for absent fields, and the failure warning `Failed to complete the archived store for …` through a planted trigger. A mutation that drops `identity.md` from the backfill reddens the live family three ways.
+
 #### 2026-10-07 — fix(import,restore): validate prompt templates whole-row before the write (P4.161 Tier 2)
 
 _Versions: core 0.0.1244._

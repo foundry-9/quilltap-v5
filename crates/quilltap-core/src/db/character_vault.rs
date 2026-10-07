@@ -744,4 +744,166 @@ mod backfill_tests {
             "the hand-written + the backfilled: {scenarios:?}"
         );
     }
+
+    /// A provisioned mount-index (a temp COPY) and the backfill over `vault`
+    /// into the EMPTY store `MP`, after `plant` (path → bytes) — the written
+    /// paths and a reader for any path.
+    fn backfill_over(
+        vault: serde_json::Value,
+        plant: &[(&str, &str)],
+    ) -> (tempfile::TempDir, crate::db::Writer, Vec<String>) {
+        let dir = tempfile::tempdir().unwrap();
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER).unwrap();
+        let mount =
+            crate::db::Writer::open_writable(&dir.path().join("quilltap-mount-index.db"), PEPPER)
+                .unwrap();
+        let links = DocMountFileLinksRepository::new(mount.connection());
+        for (path, content) in plant {
+            links.write_database_document(MP, path, content).unwrap();
+        }
+        let vault: CharacterVaultWriteInput = serde_json::from_value(vault).unwrap();
+        let written =
+            backfill_character_vault_managed_files(mount.connection(), MP, &vault).unwrap();
+        (dir, mount, written)
+    }
+
+    fn read(mount: &crate::db::Writer, path: &str) -> Option<String> {
+        crate::db::database_store::read_database_document(mount.connection(), MP, path)
+            .ok()
+            .map(|d| d.content)
+    }
+
+    /// P4.161 Tier 2 item 10: EVERY managed vault file the backfill writes,
+    /// each with the bytes the projection renders from the archived row —
+    /// `properties.json` (the six property keys, defaults filled),
+    /// `metadata.json` (present when the row carries one), the five markdown
+    /// fields, and the physical pair (present when the row carries a
+    /// description). Before this only `description.md` was exercised.
+    #[test]
+    fn every_managed_vault_file_is_backfilled_from_the_row() {
+        let (_dir, mount, written) = backfill_over(
+            serde_json::json!({
+                "title": "The Lamplighter",
+                "talkativeness": 0.7,
+                "aliases": ["Lamps"],
+                "metadata": {"origin": "archive"},
+                "identity": "Who she is.",
+                "description": "How she looks.",
+                "manifesto": "What she holds.",
+                "personality": "How she behaves.",
+                "exampleDialogues": "\"Lights,\" she said.",
+                "physicalDescription": {"fullDescription": "Tall, with soot."}
+            }),
+            &[],
+        );
+        let mut want: Vec<&str> = vec![
+            "properties.json",
+            "metadata.json",
+            "identity.md",
+            "description.md",
+            "manifesto.md",
+            "personality.md",
+            "example-dialogues.md",
+            "physical-description.md",
+            "physical-prompts.json",
+        ];
+        let mut got: Vec<&str> = written.iter().map(String::as_str).collect();
+        want.sort();
+        got.sort();
+        assert_eq!(
+            got, want,
+            "every managed file is written into an empty store"
+        );
+        assert_eq!(
+            read(&mount, "properties.json").as_deref(),
+            Some(
+                render_properties_json(
+                    None,
+                    &["Lamps".to_string()],
+                    Some("The Lamplighter"),
+                    None,
+                    0.7,
+                    false
+                )
+                .as_str()
+            )
+        );
+        assert_eq!(
+            read(&mount, "metadata.json").as_deref(),
+            Some("{\n  \"origin\": \"archive\"\n}")
+        );
+        for (path, value) in [
+            ("identity.md", "Who she is."),
+            ("description.md", "How she looks."),
+            ("manifesto.md", "What she holds."),
+            ("personality.md", "How she behaves."),
+            ("example-dialogues.md", "\"Lights,\" she said."),
+            ("physical-description.md", "Tall, with soot."),
+        ] {
+            assert_eq!(read(&mount, path).as_deref(), Some(value), "{path}");
+        }
+        assert!(read(&mount, "physical-prompts.json").is_some());
+    }
+
+    /// The two conditional files are ABSENT when the row carries no value: a
+    /// `null` `metadata` writes no `metadata.json`, no `physicalDescription`
+    /// writes neither half of the physical pair; an absent markdown field is
+    /// still written, empty (the projection's `""`), and `properties.json`
+    /// takes the defaults (talkativeness 0.5, `canChooseOutfit` false).
+    #[test]
+    fn the_conditional_vault_files_follow_the_row() {
+        let (_dir, mount, written) = backfill_over(serde_json::json!({ "metadata": null }), &[]);
+        assert!(!written.iter().any(|p| p == "metadata.json"), "{written:?}");
+        assert!(
+            !written.iter().any(|p| p.starts_with("physical-")),
+            "{written:?}"
+        );
+        assert_eq!(read(&mount, "identity.md").as_deref(), Some(""));
+        assert_eq!(
+            read(&mount, "properties.json").as_deref(),
+            Some(render_properties_json(None, &[], None, None, 0.5, false).as_str())
+        );
+    }
+
+    /// The NOT-overwritten arm for every managed file: a file the store
+    /// carries is never touched, whatever the row says — only the missing
+    /// ones are written.
+    #[test]
+    fn a_present_managed_file_is_never_overwritten() {
+        let present = [
+            ("properties.json", "{\"theirs\": true}"),
+            ("metadata.json", "{\"theirs\": true}"),
+            ("identity.md", "Theirs."),
+            ("manifesto.md", "Theirs."),
+            ("personality.md", "Theirs."),
+            ("example-dialogues.md", "Theirs."),
+            ("physical-description.md", "Theirs."),
+            ("physical-prompts.json", "{}"),
+        ];
+        let (_dir, mount, written) = backfill_over(
+            serde_json::json!({
+                "metadata": {"ours": true},
+                "identity": "Ours.",
+                "description": "Ours.",
+                "manifesto": "Ours.",
+                "personality": "Ours.",
+                "exampleDialogues": "Ours.",
+                "physicalDescription": {"fullDescription": "Ours."}
+            }),
+            &present,
+        );
+        assert_eq!(
+            written,
+            vec!["description.md".to_string()],
+            "only the missing file"
+        );
+        for (path, theirs) in present {
+            assert_eq!(
+                read(&mount, path).as_deref(),
+                Some(theirs),
+                "{path} untouched"
+            );
+        }
+        assert_eq!(read(&mount, "description.md").as_deref(), Some("Ours."));
+    }
 }

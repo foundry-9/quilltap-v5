@@ -3154,6 +3154,136 @@ fn backfill_official_store(mount: &Connection, p: &PreservedStore) -> Result<Vec
     Ok(written)
 }
 
+#[cfg(test)]
+mod backfill_official_store_tests {
+    //! P4.161 Tier 2 item 10: the official store's managed files and the
+    //! backfill's failure warning — v5-alone pins (v4 never preserves an
+    //! archived store, so it cannot reach either state), over a provisioned
+    //! mount-index in a temp dir.
+    use super::*;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+    const STORE: &str = "mp-preserved-store";
+
+    fn mount() -> (tempfile::TempDir, crate::db::Writer) {
+        let dir = tempfile::tempdir().unwrap();
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER).unwrap();
+        let w =
+            crate::db::Writer::open_writable(&dir.path().join("quilltap-mount-index.db"), PEPPER)
+                .unwrap();
+        (dir, w)
+    }
+
+    fn project(row: Value) -> PreservedStore {
+        PreservedStore::new("project", &row, STORE.to_string())
+    }
+
+    fn read(m: &crate::db::Writer, path: &str) -> Option<String> {
+        crate::db::database_store::read_database_document(m.connection(), STORE, path)
+            .ok()
+            .map(|d| d.content)
+    }
+
+    /// All four of `writeManagedFields`' files land in an EMPTY store, from
+    /// the row: `properties.json` (the bag through the create-time parse),
+    /// `description.md`, `instructions.md` and `state.json`.
+    #[test]
+    fn every_official_store_file_is_backfilled_from_the_row() {
+        let (_d, m) = mount();
+        let p = project(serde_json::json!({
+            "id": "a3000000-0000-4000-8000-000000000001",
+            "name": "The Voyage",
+            "description": "A fixture project.",
+            "instructions": "Mind the gap.",
+            "state": {"leg": 2},
+            "color": "#334455"
+        }));
+        let mut written = backfill_official_store(m.connection(), &p).unwrap();
+        written.sort();
+        assert_eq!(
+            written,
+            [
+                "description.md",
+                "instructions.md",
+                "properties.json",
+                "state.json"
+            ]
+        );
+        assert_eq!(
+            read(&m, "description.md").as_deref(),
+            Some("A fixture project.")
+        );
+        assert_eq!(
+            read(&m, "instructions.md").as_deref(),
+            Some("Mind the gap.")
+        );
+        assert_eq!(
+            read(&m, "state.json").as_deref(),
+            Some("{\n  \"leg\": 2\n}")
+        );
+        let props: Value = serde_json::from_str(&read(&m, "properties.json").unwrap()).unwrap();
+        assert_eq!(props["color"], "#334455");
+        // The create-time seed (`allowAnyCharacter ?? true`).
+        assert_eq!(props["allowAnyCharacter"], true);
+    }
+
+    /// An absent `instructions` writes `""` and an absent `state` writes
+    /// `{}`; a file the store carries is never touched.
+    #[test]
+    fn absent_fields_write_defaults_and_present_files_stay() {
+        let (_d, m) = mount();
+        let links =
+            crate::db::doc_mount_file_links::DocMountFileLinksRepository::new(m.connection());
+        links
+            .write_database_document(STORE, "properties.json", "{}")
+            .unwrap();
+        links
+            .write_database_document(STORE, "description.md", "Theirs.")
+            .unwrap();
+        let p = project(serde_json::json!({ "name": "Bare", "description": "Ours." }));
+        let mut written = backfill_official_store(m.connection(), &p).unwrap();
+        written.sort();
+        assert_eq!(written, ["instructions.md", "state.json"]);
+        assert_eq!(read(&m, "properties.json").as_deref(), Some("{}"));
+        assert_eq!(read(&m, "description.md").as_deref(), Some("Theirs."));
+        assert_eq!(read(&m, "instructions.md").as_deref(), Some(""));
+        assert_eq!(read(&m, "state.json").as_deref(), Some("{}"));
+    }
+
+    /// The failure arm: a write the store refuses (a planted trigger) is ONE
+    /// warning — `Failed to complete the archived store for <entity> "<name>":
+    /// <bare error>` — and no WARN line for a file that was not written.
+    #[test]
+    fn a_failed_backfill_is_one_warning() {
+        let (_d, m) = mount();
+        m.connection()
+            .execute_batch(
+                "CREATE TRIGGER planted_refusal BEFORE INSERT ON doc_mount_file_links \
+                 BEGIN SELECT RAISE(ABORT, 'planted: store refuses writes'); END",
+            )
+            .unwrap();
+        let p = project(serde_json::json!({ "name": "The Voyage", "description": "d" }));
+        let mut w = Vec::new();
+        let ((), lines) = crate::test_support::captured_with(|| {
+            backfill_preserved_store(m.connection(), &p, &mut w)
+        });
+        assert_eq!(
+            w,
+            vec![
+                "Failed to complete the archived store for project \"The Voyage\": \
+                 planted: store refuses writes"
+                    .to_string()
+            ]
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("Backfilled a managed file")),
+            "{lines:?}"
+        );
+    }
+}
+
 /// The archived stores the preserve arm has handed out so far (P4.158, ruling
 /// R-B): store id → the entity that claimed it first.
 #[derive(Default)]
