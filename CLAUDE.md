@@ -733,8 +733,8 @@ records THERE. Update this summary only when a phase or round completes.
   by the human's ruling every regen stayed PINNED (PIN REQUIRED).** Dogfood
   **#150 FIXED** (P4.159 — a sibling that cannot open or fails `quick_check`
   boots DEGRADED: v4's mount-index ladder, the LLM logs' one attempt, no
-  writer / no pool, Absent ≠ Degraded, `/health` 503 `degraded`; v4 Bug 179
-  drafted); pre-round instances BACKFILL v4's migration index family at boot
+  writer / no pool, Absent ≠ Degraded, `/health` 503 `degraded`; v4 Bug 180
+  filed); pre-round instances BACKFILL v4's migration index family at boot
   (P4.160); **#152 FIXED** (P4.161 — memories, informs, prompt templates,
   folders, tags, file rows validated WHOLE on import / restore through ports
   of v4's schemas); **#151 FIXED** (P4.162 — v4's context-middleware ERRORs,

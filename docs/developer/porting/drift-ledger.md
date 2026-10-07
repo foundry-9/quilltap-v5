@@ -48,7 +48,8 @@ probe verifies against._
   infra, no new fix. **`release` tip:** `8fbf2afe0`, UNMOVED; still no
   `release: 4.10.0` squash.
 - **Checkout at check:** branch **`main`**, tree **CLEAN**.
-- **Verdict: DRIFT PENDING — 7 commits UNPROCESSED (§3), unclassified.**
+- **Verdict: DRIFT PENDING — 8 commits UNPROCESSED (§3), unclassified** (the
+  eighth, `06a70a76f`, is the port's own docs-only bug filing).
 - **Regen rule: PIN REQUIRED at `94fbb1ae3`** (§5.1) — v4 HEAD is past the
   baseline. `provisioning_equivalence` still REQUIRES `QT_FRESH_SCHEMA_LIVE`,
   dumped FROM THE PIN (a dump from HEAD would carry the wardrobe migrations'
@@ -175,6 +176,7 @@ when absorbed/ratified.
 | `f9f1ba177` | 2026-10-07 | Chat gallery: file old backdrops as backgrounds, list reused avatars | unclassified — `/driftcheck` owed | unmeasured (the Salon chat gallery) | UNPROCESSED |
 | `7c8572869` | 2026-10-07 | Wardrobe item images: pictures of garments and outfits (#82) | unclassified — `/driftcheck` owed (NEW migration `add-wardrobe-image-settings-field-v1`) | unmeasured (wardrobe, image settings) | UNPROCESSED |
 | `b3f937076` | 2026-10-07 | Wardrobe tools draw item pictures; listings expose picture ids; avatar picker generates portrait | unclassified — `/driftcheck` owed (landed after the unification's sweep; no new migration) | unmeasured (the wardrobe tools, the avatar picker) | UNPROCESSED |
+| `06a70a76f` | 2026-10-07 | docs(bugs): file bugs 180 and 181 — the LLM logs have no cold-open retry; a full-backup restore drops every embedded memory | NO-PORT? (docs only — `docs/developer/bugs.md` + two bug files; the port's OWN filings, made from this session) | — (v5 Pinned on 181 by `INDEX_KEYED_EMBEDDING`; Faithful on 180) | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 

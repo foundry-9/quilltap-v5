@@ -171955,18 +171955,20 @@ pool).
   `npm run build` clean (no SPA source change this round). Full Playwright
   **350 passed / 11 failed / 6 skipped (16.9 m)** — the six skips the standing parks; the eleven reds re-run by FILE alone afterwards, one invocation at a time, ALL green: the recorded Salon-streaming cluster's seven (`salon-regenerate-stream-flow` 3/3, `salon-roleplay-template-flow` 2/2, `salon-streaming-avatar-flow` 2/2, `salon-thinking-indicator` 1/1, `salon-transcript-subscribed-read` 2/2) and four NEW to the cluster — `salon-documents-flow` ×2 (5/5 alone; the full run's terminal-pane and document-picker clicks timed out at 90 / 120 s) and `workspace-flow` ×2 (13/13 alone; a composer still hidden at 5 s, a tab strip at 1 of 2) — with no SPA source changed this round. The full run took 16.9 m against 12.7–12.9 m in the previous two rounds; P4.159's per-open `quick_check` is the round's one new per-boot cost (the dogfood pass measures it on the Friday copy).
 
-### Candidate v4 filings (the human files)
+### v4 filings — FILED 2026-10-07 (v4 `06a70a76f`, re-checked at `b3f937076`)
 
-- **v4 Bug 179 (drafted):** the LLM-logs client has no cold-open retry
-  ladder where its mount-index twin has one
-  (`work-orders/surveys/2026-10-07-p4.159-v4-bug-179-draft.md`).
-- **v4's restore drops every embedded memory from its own full backup**
+- **v4 Bug 180 (filed; drafted as 179, a number v4 used meanwhile):** the
+  LLM-logs client has no cold-open retry ladder where its mount-index twin
+  has one (`work-orders/surveys/2026-10-07-p4.159-v4-bug-179-draft.md`).
+- **v4 Bug 181 (filed, High):** v4's restore drops every embedded memory from its own full backup
   (`JSON.stringify(Float32Array)` vs `MemorySchema`'s union) — the
   `INDEX_KEYED_EMBEDDING` divergence; v4's fix would be `encodeEmbedding`
   for `data.memories` in `backup-service.ts` or a decode in the restore.
-- P4.160: `idx_chat_documents_unique` and the two group-join UNIQUEs (and the
-  UNIQUE `mp_path`) are created with no duplicate handling — a boot dies on
-  an instance that reached those migrations with duplicates.
+- P4.160 (NOT filed — re-checked at `b3f937076`): `idx_chat_documents_unique`
+  is created only on a table its migration just made empty (unreachable);
+  the group-join UNIQUEs need one join table pre-populated with duplicates
+  and no index while the other is missing; `mp_path` sits behind v4's
+  find-or-create folder path. Speculative; recorded, not filed.
 
 ### 💸 for the dogfood pass
 

@@ -7208,9 +7208,14 @@ harness frozen 0.0.1110.
    files arm); the nits each header names.
 4. Unchanged and still the human's: P4.156's R-E (the fold-pass test seam),
    the 5c sync ruling (Option B written up), the five dead API-key wrappers.
-   **Candidate v4 filings** (the human files): Bug 179 (drafted — the
-   LLM-logs cold-open ladder); v4's restore dropping every embedded memory
-   from its own full backup; P4.160's no-dedupe UNIQUE creates.
+   **v4 filings, FILED 2026-10-07 (v4 `06a70a76f`, after a re-check at
+   v4 `b3f937076`):** Bug 180 (the LLM-logs cold-open ladder — the draft's
+   179 had been taken) and Bug 181 (High — a full-backup restore drops every
+   embedded memory; v5 Pinned by `INDEX_KEYED_EMBEDDING`). P4.160's
+   no-dedupe UNIQUE candidate was NOT filed: re-checked, `idx_chat_documents_
+   unique` is created only on a table its migration just made empty, and the
+   group-join / `mp_path` arms need a pre-populated table without the index —
+   speculative, recorded here only.
 
 
 **Baseline `94fbb1ae3`; v4 AT the baseline at the planning probe (HEAD

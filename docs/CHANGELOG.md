@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — docs(porting): v4 bugs 180 and 181 filed — the LLM-logs cold-open ladder and the full-backup embedded-memory loss; the no-dedupe UNIQUE candidate re-checked and not filed
+
+_Docs-only change._
+
+The round's candidate v4 filings, re-checked against v4 `b3f937076` and filed in the v4 repo as `06a70a76f`: Bug 180 (Low — the LLM-logs client makes one open attempt where the mount index has a four-attempt retry ladder; the draft's number 179 had been taken by v4 meanwhile) and Bug 181 (High — a full backup serializes each memory's `Float32Array` embedding as an index-keyed object that `MemorySchema` refuses on restore, so every embedded memory is dropped; v5 Pinned by `INDEX_KEYED_EMBEDDING`). P4.160's no-dedupe UNIQUE candidate was not filed: `idx_chat_documents_unique` is created only on a table its migration just made empty, and the other arms need a pre-populated table without the index. The round record, the phase plan, P4.159's status header and survey, the draft, `dogfood-findings.md` #150 and CLAUDE.md now name the filed numbers; the drift ledger records `06a70a76f` (docs only) as the eighth commit past the baseline.
+
 #### 2026-10-07 — docs(porting): unify the `94fbb1ae3` boot-hardness + validation + follow-ups round — all six lanes landed; the baseline stays `94fbb1ae3`; the review's findings fixed
 
 _Versions: core 0.0.1252, host 0.0.189._
