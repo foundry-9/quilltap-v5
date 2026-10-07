@@ -48,6 +48,9 @@ use quilltap_core::services::provisioning::provision_fresh_instance;
 use quilltap_core::test_support::CaptureLayer;
 use quilltap_host::{Host, HostConfig};
 use serde_json::Value;
+
+mod common;
+use common::{assert_all_use, per_chat_read_plans};
 use tracing_subscriber::layer::SubscriberExt;
 
 const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
@@ -259,23 +262,6 @@ fn boot_fresh() -> Booted {
 const BACKFILLED: &str = "Backfilled migration-created indexes";
 const SKIPPED_UNIQUE: &str = "Skipped a unique index backfill: duplicate rows present";
 
-/// `EXPLAIN QUERY PLAN` details, joined.
-fn plan(data: &Path, sql: &str, args: &[&str]) -> String {
-    let w = Writer::open_writable(&data.join(MAIN), PEPPER).unwrap();
-    let mut stmt = w
-        .connection()
-        .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
-        .unwrap();
-    let details: Vec<String> = stmt
-        .query_map(rusqlite::params_from_iter(args.iter()), |r| {
-            r.get::<_, String>(3)
-        })
-        .unwrap()
-        .map(Result::unwrap)
-        .collect();
-    details.join(" | ")
-}
-
 fn assert_master_equals_fresh(booted: &Booted, fresh: &Booted, skip: &[&str]) {
     for (partition, file) in PARTITIONS {
         let ours: Vec<_> = master(&booted.data, file)
@@ -385,7 +371,10 @@ async fn a_degraded_mount_index_skips_its_statements_and_the_others_still_backfi
         .filter(|(t, _, _)| t == "index")
         .map(|(_, n, _)| n)
         .collect();
-    let missing: Vec<String> = promised("main").into_iter().filter(|n| !have.contains(n)).collect();
+    let missing: Vec<String> = promised("main")
+        .into_iter()
+        .filter(|n| !have.contains(n))
+        .collect();
     assert!(missing.is_empty(), "main still lacks {missing:?}");
 }
 
@@ -425,30 +414,43 @@ async fn a_fresh_instance_gives_the_backfill_nothing_to_do() {
 
 // ───────────── (c): the plan the restore depends on ─────────────
 
+/// The per-chat reads the restore depends on, driven through their
+/// PRODUCTION functions and planned on the statements they ran
+/// (`common::per_chat_read_plans` — P4.164's statement trace; this arm planned
+/// hand-copied SQL until the `94fbb1ae3` boot-hardness unification's review).
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn the_per_chat_message_read_uses_the_chat_id_index_after_one_boot() {
     let _serial = SERIAL.lock().await;
     let booted = boot_pre_round(&[]);
     booted.host();
-    let chat = "00000000-0000-0000-0000-000000000001";
-    let messages = plan(
-        &booted.data,
-        "SELECT id FROM chat_messages WHERE chatId = ?1 ORDER BY createdAt ASC",
-        &[chat],
-    );
-    assert!(
-        messages.contains("USING INDEX idx_chat_messages_chatId"),
-        "get_messages plan: {messages}"
-    );
-    let pending = plan(
-        &booted.data,
-        "SELECT id FROM chat_informs WHERE chatId = ?1 AND participantId = ?2",
-        &[chat, "p"],
-    );
-    assert!(
-        pending.contains("USING INDEX idx_chat_informs_pending"),
-        "find_pending_for_participant plan: {pending}"
-    );
+    let w = Writer::open_writable(&booted.data.join(MAIN), PEPPER).unwrap();
+    for (label, index, plans) in per_chat_read_plans(w.connection()) {
+        assert_all_use(label, &plans, index);
+    }
+}
+
+/// The arm above can fail: on a pre-round instance BOOTED ON UNPORTED CODE
+/// the backfill never ran, so the two indexes are absent — the same plans
+/// leave them (P4.160's red-first measured `SCAN chat_messages USING INDEX
+/// idx_chat_messages_createdAt`). Modelled here by dropping them after the
+/// boot.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_backfilled_plan_arm_reddens_without_its_index() {
+    let _serial = SERIAL.lock().await;
+    let booted = boot_pre_round(&[]);
+    booted.host();
+    let w = Writer::open_writable(&booted.data.join(MAIN), PEPPER).unwrap();
+    let conn = w.connection();
+    conn.execute_batch("DROP INDEX idx_chat_messages_chatId; DROP INDEX idx_chat_informs_pending;")
+        .unwrap();
+    for (label, index, plans) in per_chat_read_plans(conn) {
+        for (sql, p) in &plans {
+            assert!(
+                !p.contains(index),
+                "{label}: still planned on the dropped {index}\n  sql: {sql}\n  plan: {p}"
+            );
+        }
+    }
 }
 
 // ───────────── (d) + (e): the UNIQUE refusals over the backfilled instance ─────────────
