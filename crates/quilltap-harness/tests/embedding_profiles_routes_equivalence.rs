@@ -356,28 +356,33 @@ fn embedding_profiles_routes_match_oracle() {
                 failed.push(format!("{name}_lines"));
             }
         };
+        // Opened BEFORE the capture: the open's own v4 lines (P4.159's sibling
+        // open INFO pair) are not the request's — v4's oracle records the route alone.
+        let ck_db = corrupt_key_db("gck");
         let (r, lines) = quilltap_core::test_support::captured_with(|| {
-            ep::embedding_profile_get(&corrupt_key_db("gck"), EP_DEFAULT)
+            ep::embedding_profile_get(&ck_db, EP_DEFAULT)
         });
         ok("get_corrupt_key", &r, &[], &mut failed);
         lines_of("get_corrupt_key", lines, &mut failed);
-        let (r, lines) = quilltap_core::test_support::captured_with(|| {
-            ep::embedding_profile_list(&corrupt_key_db("lck"), &uid)
-        });
+        let ck_db = corrupt_key_db("lck");
+        let (r, lines) =
+            quilltap_core::test_support::captured_with(|| ep::embedding_profile_list(&ck_db, &uid));
         ok("list_corrupt_key", &r, &[], &mut failed);
         lines_of("list_corrupt_key", lines, &mut failed);
+        let ck_db = corrupt_key_db("cck");
         let (r, lines) = quilltap_core::test_support::captured_with(|| {
             rt.block_on(ep::embedding_profile_create(
-                &corrupt_key_db("cck"),
+                &ck_db,
                 &uid,
                 json!({ "name": "Z", "provider": "OPENAI", "modelName": "x", "apiKeyId": APIKEY }),
             ))
         });
         err("create_corrupt_key", &r, &mut failed);
         lines_of("create_corrupt_key", lines, &mut failed);
+        let ck_db = corrupt_key_db("uck");
         let (r, lines) = quilltap_core::test_support::captured_with(|| {
             rt.block_on(ep::embedding_profile_update(
-                &corrupt_key_db("uck"),
+                &ck_db,
                 &uid,
                 EP_TRUNC,
                 json!({ "apiKeyId": APIKEY }),

@@ -549,28 +549,33 @@ fn image_profiles_routes_match_oracle() {
                 failed.push(format!("{name}_lines"));
             }
         };
-        let (r, lines) = quilltap_core::test_support::captured_with(|| {
-            ip::image_profile_get(&corrupt_key_db(&rt, &spec, "gck"), IP_1)
-        });
+        // Opened BEFORE the capture: the open's own v4 lines (P4.159's sibling
+        // open INFO pair) are not the request's — v4's oracle records the route alone.
+        let ck_db = corrupt_key_db(&rt, &spec, "gck");
+        let (r, lines) =
+            quilltap_core::test_support::captured_with(|| ip::image_profile_get(&ck_db, IP_1));
         ok("get_corrupt_key", &r, &[], &mut failed);
         lines_of("get_corrupt_key", lines, &mut failed);
+        let ck_db = corrupt_key_db(&rt, &spec, "lpck");
         let (r, lines) = quilltap_core::test_support::captured_with(|| {
-            ip::image_profile_list(&corrupt_key_db(&rt, &spec, "lpck"), &uid, None)
+            ip::image_profile_list(&ck_db, &uid, None)
         });
         ok("list_plain_corrupt_key", &r, &[], &mut failed);
         lines_of("list_plain_corrupt_key", lines, &mut failed);
+        let ck_db = corrupt_key_db(&rt, &spec, "cck");
         let (r, lines) = quilltap_core::test_support::captured_with(|| {
             rt.block_on(ip::image_profile_create(
-                &corrupt_key_db(&rt, &spec, "cck"),
+                &ck_db,
                 &uid,
                 json!({ "name": "X", "provider": "OPENAI", "modelName": "m", "apiKeyId": APIKEY }),
             ))
         });
         err("create_corrupt_key", &r, &mut failed);
         lines_of("create_corrupt_key", lines, &mut failed);
+        let ck_db = corrupt_key_db(&rt, &spec, "uck");
         let (r, lines) = quilltap_core::test_support::captured_with(|| {
             rt.block_on(ip::image_profile_update(
-                &corrupt_key_db(&rt, &spec, "uck"),
+                &ck_db,
                 &uid,
                 IP_1,
                 json!({ "apiKeyId": APIKEY }),
@@ -578,9 +583,10 @@ fn image_profiles_routes_match_oracle() {
         });
         err("update_corrupt_key", &r, &mut failed);
         lines_of("update_corrupt_key", lines, &mut failed);
+        let ck_db = corrupt_key_db(&rt, &spec, "lmck");
         let (r, lines) = quilltap_core::test_support::captured_with(|| {
             rt.block_on(ip::image_profile_list_models(
-                &corrupt_key_db(&rt, &spec, "lmck"),
+                &ck_db,
                 &ErasedImageDiscovery::new(RealImageProvider::new(CannedWireTransport::new())),
                 Some("OPENAI"),
                 Some(APIKEY),
