@@ -1547,6 +1547,10 @@ function memoryRefusalsPayload(merged: {
           'entities',
           'relatedMemoryIds',
         ]),
+        // The `94fbb1ae3` boot-hardness unification's review: v4 maps the tags
+        // then FILTERS `null` (`import-entities.ts:485-488`), so a null element
+        // is dropped and the memory LANDS with the unmapped uuid kept.
+        item(13, { tags: [null, 'f1610000-0000-4000-8000-0000000002ff'] }),
       ],
     },
   };
@@ -1625,6 +1629,10 @@ function promptTemplateRefusalsPayload(): { manifest: unknown; data: Record<stri
         item(3, 'Refused Long Description', { description: 'd'.repeat(501) }),
         item(4, 'Refused Bad Tag', { tags: ['nope'] }),
         item(5, 'Sound Template', { description: 'A sound twin.', category: 'COMPANION' }),
+        // The `94fbb1ae3` boot-hardness unification's review: a NON-STRING
+        // name — v4 logs it raw (`name: data.name`) and interpolates it raw
+        // into the warning (`"${template.name}"`).
+        item(6, 5 as unknown as string, {}),
       ],
     },
   };

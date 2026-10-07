@@ -74,11 +74,11 @@ pub(crate) fn parse_create_prompt_template(item: &Value) -> Result<PtCreate, Str
 
 /// A refused prompt-template create's three repository ERRORs (validate →
 /// `_create` → the repository's wrap), then the caller's warning / WARN.
-pub(crate) fn log_refused_prompt_template(user_id: &str, name: Option<&str>, zod: &str) {
+pub(crate) fn log_refused_prompt_template(user_id: &str, name: Option<&Value>, zod: &str) {
     crate::db::fallback::log_refused_create("prompt_templates", zod);
     crate::db::fallback::log_prompt_template_create_wrap_failure(
         user_id,
-        name,
+        super::log_field_text(name).as_deref(),
         &DbError::Internal(zod.to_string()),
     );
 }
@@ -129,11 +129,7 @@ pub(super) fn import_prompt_templates(
             }
             let create =
                 parse_create_prompt_template(&Value::Object(item.clone())).inspect_err(|zod| {
-                    log_refused_prompt_template(
-                        user_id,
-                        item.get("name").and_then(Value::as_str),
-                        zod,
-                    )
+                    log_refused_prompt_template(user_id, item.get("name"), zod)
                 })?;
 
             let now = crate::clock::now_iso();
@@ -152,8 +148,10 @@ pub(super) fn import_prompt_templates(
             Ok(true) => imported += 1,
             Ok(false) => skipped += 1,
             Err(text) => {
+                // v4 interpolates the RAW name (`"${template.name}"`).
                 warnings.push(format!(
-                    "Failed to import prompt template \"{name}\": {text}"
+                    "Failed to import prompt template \"{}\": {text}",
+                    super::warning_display_name(template)
                 ));
                 // v4 `import-configuration.ts:78` (P4.148 Tier 2 item 17).
                 tracing::warn!(

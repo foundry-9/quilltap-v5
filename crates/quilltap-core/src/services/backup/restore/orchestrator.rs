@@ -963,7 +963,7 @@ fn restore_on_writer(
             .inspect_err(|zod| {
                 crate::services::quilltap_import::log_refused_prompt_template(
                     target_user_id,
-                    t.get("name").and_then(Value::as_str),
+                    t.get("name"),
                     zod,
                 )
             })
@@ -977,7 +977,11 @@ fn restore_on_writer(
             warn_row!(
                 w,
                 c.prompt_templates,
-                format!("Failed to restore prompt template \"{}\"", s(t, "name")),
+                // v4 interpolates the RAW name (`restore.ts:281`).
+                format!(
+                    "Failed to restore prompt template \"{}\"",
+                    crate::services::quilltap_import::js_display_name(t)
+                ),
                 created,
                 "Failed to restore prompt template",
                 templateId = s(t, "id"),

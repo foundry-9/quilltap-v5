@@ -183,10 +183,7 @@ pub(crate) fn parse_create_tag(
 /// and `_create`'s lines, then the wrap; a TypeError (thrown before
 /// `_create`) the wrap alone.
 pub(crate) fn create_tag_refused(user_id: &str, name: Option<&Value>, refusal: &TagRefusal) {
-    let name = name.map(|v| match v {
-        Value::String(s) => s.clone(),
-        other => other.to_string(),
-    });
+    let name = super::log_field_text(name);
     if let TagRefusal::Zod(zod) = refusal {
         crate::db::fallback::log_refused_create("tags", zod);
     }

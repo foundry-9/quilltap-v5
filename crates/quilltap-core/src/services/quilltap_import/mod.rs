@@ -396,6 +396,17 @@ pub(crate) fn get_preserve_ids_create_options(
 /// data, not a sentence.
 ///
 /// [`to_js_string`]: crate::pascal::js_value::to_js_string
+/// A refused create's context field (`name`, `path`, `filename`) as v4's
+/// logger carries the RAW value (`{userId, name: data.name}`): a string
+/// verbatim, any other value as its JSON text (the tag / folder precedent),
+/// an absent key omitted (winston drops `undefined`).
+pub(crate) fn log_field_text(v: Option<&Value>) -> Option<String> {
+    v.map(|v| match v {
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
+    })
+}
+
 pub(crate) fn warning_display_name(raw: &Value) -> String {
     match raw.get("name") {
         None => "undefined".to_string(),

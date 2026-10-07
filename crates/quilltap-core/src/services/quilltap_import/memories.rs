@@ -115,17 +115,20 @@ pub(super) fn import_memories(
             }
         }
         // tags: `if (memory.tags && memory.tags.length > 0)` → `get(tag) ||
-        // tag` per element (an unmapped tag keeps its ORIGINAL id). A
-        // non-empty STRING passes that guard and has no `.map` — v4's TypeError
-        // is the item's failure.
+        // tag` per element (an unmapped tag keeps its ORIGINAL id), then
+        // `.filter(id => id !== null)` — a `null` element is DROPPED, never
+        // handed to the schema (`import-entities.ts:485-488`; the `94fbb1ae3`
+        // boot-hardness unification's review). A non-empty STRING passes the
+        // guard and has no `.map` — v4's TypeError is the item's failure.
         let tags_failure = match memory.get("tags") {
-            Some(Value::Array(items)) => {
+            Some(Value::Array(items)) if !items.is_empty() => {
                 let mapped = items
                     .iter()
                     .map(|t| match t.as_str().and_then(|t| id_maps.tags.get(t)) {
                         Some(hit) => Value::String(hit.to_string()),
                         None => t.clone(),
                     })
+                    .filter(|t| !t.is_null())
                     .collect();
                 payload.insert("tags".into(), Value::Array(mapped));
                 None

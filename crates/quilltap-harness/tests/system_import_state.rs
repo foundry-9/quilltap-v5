@@ -1720,8 +1720,9 @@ fn system_import_execute_state_equivalence() {
             "v4 lands the sound folder only: {paths:?}"
         );
     }
-    // [P4.161 Tier 2] Non-vacuity: v4 refused four prompt templates (three
-    // repository ERRORs each) and landed the sound twin.
+    // [P4.161 Tier 2] Non-vacuity: v4 refused five prompt templates (three
+    // repository ERRORs each — the fifth's wrap carrying its NON-STRING name,
+    // the unification review's row) and landed the sound twin.
     {
         let case = cases
             .iter()
@@ -1747,10 +1748,19 @@ fn system_import_execute_state_equivalence() {
             ]
             .iter()
             .cycle()
-            .take(12)
+            .take(15)
             .copied()
             .collect::<Vec<_>>(),
             "v4's three repository ERRORs per refused prompt template"
+        );
+        assert!(
+            case["result"]["warnings"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .any(|w| w.starts_with("Failed to import prompt template \"5\": ")),
+            "v4 interpolates the numeric name raw into its warning"
         );
     }
     // [P4.161 — dogfood #152 + R-D] The whole-row refusal arms are non-vacuous
@@ -1768,9 +1778,9 @@ fn system_import_execute_state_equivalence() {
                 case["result"]["imported"]["memories"].as_i64(),
                 case["result"]["skipped"]["memories"].as_i64(),
             ),
-            (Some(2), Some(10)),
-            "execute_memory_refusals: v4 lands the sound + defaulted memories and \
-             counts the ten refusals `skipped` (R-F)"
+            (Some(3), Some(10)),
+            "execute_memory_refusals: v4 lands the sound, the defaulted and the \
+             null-tag memories and counts the ten refusals `skipped` (R-F)"
         );
         let tails: Vec<&str> = case["result"]["warnings"]
             .as_array()
@@ -1816,7 +1826,18 @@ fn system_import_execute_state_equivalence() {
                     .is_some_and(|s| s.starts_with("Refusal memory "))
             })
             .collect();
-        assert_eq!(landed.len(), 2, "v4 lands memories 11 and 12 only");
+        assert_eq!(landed.len(), 3, "v4 lands memories 11, 12 and 13 only");
+        // v4 drops a `null` tag element after the remap (`.filter(id => id !==
+        // null)`), keeping the unmapped uuid — the unification review's row.
+        let null_tag = landed
+            .iter()
+            .find(|m| m["summary"] == "Refusal memory 13")
+            .expect("the null-tag memory landed");
+        assert_eq!(
+            null_tag["tags"].as_str(),
+            Some(r#"["f1610000-0000-4000-8000-0000000002ff"]"#),
+            "v4 filters the null tag element (the column's JSON text)"
+        );
         let defaulted = landed
             .iter()
             .find(|m| m["summary"] == "Refusal memory 12")
@@ -2216,7 +2237,8 @@ fn system_import_execute_state_equivalence() {
     // [P4.161] …+ the two refusal arms (39): `execute_memory_refusals` fires
     // ten `Failed to import memory` (one id-less — the C6 walk shape), the
     // inform arm none (R-D) — 8 + 10 = 18 lines.
-    // [P4.161 Tier 2] …+ the prompt-template arm (40), four more lines (22).
+    // [P4.161 Tier 2] …+ the prompt-template arm (40), four more lines (22);
+    // the unification review's numeric-name row, one more.
     assert_eq!(
         IMPORT_WARN_CASES.load(Ordering::SeqCst),
         43,
@@ -2224,7 +2246,7 @@ fn system_import_execute_state_equivalence() {
     );
     assert_eq!(
         IMPORT_WARNS_FIRED.load(Ordering::SeqCst),
-        28,
+        29,
         "v4 import WARN lines fired"
     );
     // [P4.155 R-A] …+ the two property-refusal arms (5).

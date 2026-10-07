@@ -106,10 +106,7 @@ pub(crate) fn parse_create_folder(
 /// A refused folder create's three repository ERRORs (validate → `_create` →
 /// the repository's wrap, `{userId, path}`).
 pub(crate) fn log_refused_folder(user_id: &str, path: Option<&Value>, zod: &str) {
-    let path = path.map(|v| match v {
-        Value::String(s) => s.clone(),
-        other => other.to_string(),
-    });
+    let path = super::log_field_text(path);
     crate::db::fallback::log_refused_create("folders", zod);
     crate::db::fallback::log_folder_create_wrap_failure(
         user_id,
@@ -546,7 +543,7 @@ pub(super) fn import_files(
                     crate::db::fallback::log_refused_create("files", zod);
                     crate::db::fallback::log_file_create_wrap_failure(
                         user_id,
-                        item.get("originalFilename").and_then(Value::as_str),
+                        super::log_field_text(item.get("originalFilename")).as_deref(),
                         &DbError::Internal(zod.clone()),
                     );
                 })?;
