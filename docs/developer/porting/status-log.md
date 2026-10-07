@@ -170885,9 +170885,10 @@ this lane (the unifier records the waiver at §S.6).
   16 failure keys over the 10 new rows (the whisper and send-mail rows already
   answered 400, but from a later arm with a different body); `chat_scenario_routes`
   8 keys / 4 rows; `chat_cast_routes` 12 keys / 6 rows. Green after (below).
-- **Not in this order, recorded:** two more shape-only `is_uuid` copies exist —
-  `vault_overlay.rs:287` and `api/system_backup.rs:95` (the upload id). Whether
-  v4's twins are `z.uuid()` is unmeasured; a census item for a later order.
+- **The two other `is_uuid`s are NOT findings** (corrected at lane close from
+  `zod_issues_home_guard`'s census): `vault_overlay.rs` is the same Zod pattern
+  as a compiled regex, and `api/system_backup.rs` is v4's own shape-only
+  `UUID_REGEX` (`system/restore/route.ts:35`), by v4's design.
 - **Green after:** `post_office_routes` 1/1, `chat_scenario_routes` 3/3,
   `chat_cast_routes` 9/9, `chats_participants_tier2` 1/1 (NEUTRAL, regenerated
   from the pin), core `zod_floors` + `chat_participants` + `chat_scenario`
@@ -171056,3 +171057,78 @@ from the pin); any further v4 docs commits are covered by that instruction.
   variant (`provider.ts:503-507`, `Conversation chaining failed, …` with
   `context: OpenAIProvider.sendMessage`) — v5 has no non-streaming chaining.
 - **HANDOFF(unifier):** none needed at `services/primary_stream.rs:1522`.
+
+### Lane close
+
+- **The workspace gate** (`QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin, the lane's
+  env block — every oracle regenerated from the pin into `/tmp/p4162/`,
+  `CARGO_INCREMENTAL=0`, launched only once at most one sibling gate was
+  running — §R.9): `cargo fmt --all --check` clean; `cargo clippy --workspace
+  --all-targets -- -D warnings` clean, and again with
+  `--features quilltap-core/native-transport` clean; `cargo test --workspace
+  --no-fail-fast`: **674 binaries / 4,416 passed / 2 failed / 3 ignored**.
+  Both reds were this lane's own tripwires firing as designed:
+  `web_edge_body_parse_guard` (the new `dispatch.rs` `verb_of` read —
+  adjudicated and censused in the follow-up commit, re-run 2/2), and
+  `zod_issues_home_guard` (below — a HANDOFF). Every touched family
+  confirmed RUN and green in the gate log: `store_unavailable_errors` 1,
+  `store_unavailable_envelope` 2 (its oracle regenerated from the pin — it had
+  SKIPped in the earlier web run), `post_office_routes` 1, `chat_scenario_routes`
+  3, `chat_cast_routes` 9, `chats_participants_tier2` 1, `orchestrator_tier3` 1,
+  `primary_stream_tier3` 2, `image_dialects` 1, `v8_json_parse_message` 2,
+  `projects_tier2` 1, `groups_tier2` 2; the guards `spelling_guard`,
+  `fallback_home_guard`, `builtin_prompt_templates_guard`,
+  `provider_sdk_version_guard`, `qtap_schema_embed_guard`,
+  `public_schemas_vendor_guard`, `help_tree_equivalence` all green.
+  `recipe_sweep.py --self-test` 0 failures. SPA `npm run build` (liveness, no
+  SPA edit) exit 0. The full `quilltap-web` suite (75 binaries) was also run
+  green on unit 1.
+- **HANDOFF(P4.161 — `crates/quilltap-harness/tests/zod_issues_home_guard.rs`,
+  P4.161's file):** `the_uuid_predicate_has_one_home_plus_its_recorded_remainder`
+  is RED on this branch BY DESIGN: unit 2 deleted the three shape-only `is_uuid`
+  definitions its `UUID_PREDICATE_CENSUS` still lists as `⚠ FINDING (P4.155)`.
+  The hunk: delete the three rows for `api/chat_post_office.rs`,
+  `services/chat_scenario.rs` and `services/chat_participants.rs`, and change
+  the doc's "**9 definitions in 9 files**" to **6 in 6** (adding "the three
+  shape-only P4.155 findings folded onto the home by P4.162"). Without it the
+  union is red.
+- **HANDOFF(P4.163):** #151's v4 line through the REAL route —
+  `projects-routes.test.ts` + `projects_routes_equivalence.rs`, a
+  `projectUpdate` on a planted keystone-less store with a `Logger.prototype`
+  spy on the `api-context-middleware` child — pinned at the web edge only here.
+- **HANDOFF(unifier):** a sibling constructing `DbError::StoreUnavailable {…}`
+  by fields needs `mount_point_id` (none known); the NanoGPT ownership note
+  (unit 7); P4.159's `PartitionUnavailable` `db_error_response` arm: none
+  arrived in this lane.
+- **Fixtures:** no committed fixture changed. `image-dialects.recorded.ndjson`
+  was read-only. Every regen was to `/tmp/p4162/` (scratch).
+- **Recipes authored or changed** (all from the v4 pin `cd`, Node 24 on PATH,
+  each in its own invocation, `rm -f` of the output first): the post-office /
+  chat-scenario / chat-cast jest cases (their headers' recipes unchanged — new
+  rows only); `orchestrator-tier3.test.ts` (header recipe unchanged; emits a
+  new `informConsumeLog` kind per call); `openai-chaining-fallback-tier3.test.ts`
+  (header recipe unchanged; the row gains `warnLog`, the SDK error is now the
+  real `APIError`); `primary_stream_tier3_equivalence.rs`'s header gained
+  `--testTimeout=180000` (its jest step times out at 5 s without it).
+- **💸 for the dogfood pass:** the order's six rows. Note that a project GET on a
+  broken store answers v4's own 500 `Failed to fetch project` with NO
+  middleware line — v4's GET catches it; use a PUT (`projectUpdate`) to see the
+  ERROR. Also the unreadable `properties.json` arm now answers 503 (it was 500).
+- **Versions at close:** core 0.0.1250, web 0.0.224 (harness frozen 0.0.1110;
+  host / cli / tauri / SPA unchanged).
+- **v4 during the lane:** `938144eb4` (release notes) and `7c78abd49` (Wardrobe
+  design specs — `docs/` + `.claude/commands/` only) landed on v4 `main`; both
+  are docs-only and both are covered by the human's waivers. The pin stayed
+  `94fbb1ae3` throughout.
+- **Commits** (branch `claude/wire-log-smalls-unavailable-errors-56b596`):
+  `4653e4b7f` #151, `6390c1b17` the uuid gates, `0c2624f96` the consume lines,
+  `94309dae8` `read_properties`, `c4dcd9697` the V8 move, `89c7aef08` the
+  Google fold + Gemini reasons, `3513e0e33` the Imagen WARN + image WARN compare,
+  `a530bc323` the chaining WARN, and the closing census + record commit.
+- **Deferred by name (Tier 3):** item 9 (v4's `[METHOD URL] Unhandled route
+  error` catch-all — the `[Characters v1]` twin and `chat_informs.rs:374`'s
+  note stand; a census order), item 10 (the `sendMessage` chaining variant — v5
+  has no non-streaming chaining), item 11 (`VALIDATION_DETAILS_GAP` — every new
+  uuid row joined its family's table). Recorded finding, not fixed:
+  `characters_routes::characters_get` answers 500 where v4 answers the vault 503
+  (unit 1).

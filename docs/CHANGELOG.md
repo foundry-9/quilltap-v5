@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — test(harness): census the dispatch verb read; close the P4.162 lane record
+
+_No crate versions bumped._
+
+`web_edge_body_parse_guard` records `dispatch.rs`'s `verb_of` (it re-reads the `type` of a dispatch body that already deserialized, only to spell the IPC bracket of the store-unavailable ERROR). The work order is marked lane-complete, and the lane record closes with the gate counts, the handoffs (P4.161's `zod_issues_home_guard` census rows for the three deleted uuid shape checks; P4.163's real-route spy row), and the versions.
+
 #### 2026-10-07 — fix(core): log the OpenAI chaining-fallback WARN with v4's bytes (P4.162)
 
 _Versions: core 0.0.1250._
