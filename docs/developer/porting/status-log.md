@@ -170925,3 +170925,36 @@ this lane (the unifier records the waiver at §S.6).
   5000 ms") — now `--testTimeout=180000`.
 - **Neutral:** `primary_stream_tier3` 2/2 (both oracles regenerated from the
   pin), no row moved.
+
+### Unit 3 — `read_properties`' lines on v4's sentences and keys (Tier 1 item 3, R-D)
+
+- **v4** (`document-store-overlay.ts:266-308`): `${Label} properties.json
+  unreadable — refusing to treat as absent` ERROR `{[idLogKey],
+  officialMountPointId, reason}` then `throw createUnavailableError(…,
+  'properties.json unreadable: <detail>')`; `${Label} … absent — caller may
+  seed defaults` DEBUG `{[idLogKey], officialMountPointId}`; `${Label} …
+  unparseable — refusing to treat as absent` ERROR `{[idLogKey],
+  officialMountPointId, reason}`.
+- **Port:** ONE `log_properties_arm::<E>` with six static sentences (project /
+  group × unreadable / absent / unparseable, the `log_store_drop` precedent);
+  keys `projectId` / `groupId` + `officialMountPointId` (+ `reason`). The
+  `unreadable` arm is NEW: a failed `find_by_mount_point_and_path` logs the
+  ERROR with `db::fallback::error_text` (the bare SQLite message) and refuses
+  as `OverlayError::Unavailable` with detail `properties.json unreadable:
+  <bare message>` — **a behavioural change, v4's:** before it the raw `DbError`
+  propagated as `OverlayError::Db` (a 500 at the api; now the store-unavailable
+  503, as v4's middleware answers). `read_properties`' only production caller
+  is the write overlay's seed (`apply_write_overlay`, `:841`).
+- **Pins (in-crate, `read_properties_line_tests`):** the four arms × both
+  entities (absent, V8 `JSON.parse`, a schema-refused `[]`, a table-less
+  connection for `unreadable` — the in-memory analogue of the order's
+  "directory where the file should be": v5's `properties.json` is a DB
+  document, so the read fails at SQL) + the silence leg. **Red-first:** 2/2 on
+  unported main (`entity=project entity_id=e-1 official_mount_point_id=…`, no
+  `Project` prefix; no unreadable line). Green after 2/2.
+- **Neutral (regenerated from the pin into lane-private paths — the sweep
+  driver's recipe writes the shared `/tmp/qt-{projects,groups}-*.db` P4.161
+  may be using):** `projects_tier2` 1/1, `groups_tier2` 2/2 (P4.161's files,
+  re-run by name — the detail-tail compares did not move),
+  `doc_mount_fallback_sites_census` 4/4 (P4.163's, re-run).
+- Core overlay tests (`document_store_overlay`) 12/12.

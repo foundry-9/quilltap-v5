@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-07 — fix(core): log `read_properties`' three arms on v4's sentences and keys, and port the unreadable arm (P4.162)
+
+_Versions: core 0.0.1246._
+
+The document-store overlay's `properties.json` read now logs v4's `Project …` / `Group …` sentences with `projectId` / `groupId` and `officialMountPointId` (plus `reason`): `absent — caller may seed defaults` (DEBUG) and `unparseable — refusing to treat as absent` (ERROR). The `unreadable` arm is new: a failed read logs v4's ERROR with the bare SQLite message and refuses as store-unavailable (`properties.json unreadable: …`), where it used to propagate the raw database error. In-crate pins cover the four arms for both entities and the silence leg.
+
 #### 2026-10-07 — fix(core): log the two `Consumed informs` lines with v4's camelCase keys (P4.162)
 
 _Versions: core 0.0.1245._

@@ -551,10 +551,12 @@ fn log_state_unparseable<E: StoreEntity>(id: &str, mount_id: &str) {
 ///
 /// Returns `None` **only** when `properties.json` is genuinely absent from the
 /// store. Every other failure — an unreadable mount index, a transient
-/// repository error, malformed JSON, a body the schema rejects — is an error:
-/// the finder's [`DbError`] propagates as [`OverlayError::Db`] (v4's
-/// "unreadable" arm), and the two parse failures raise
-/// [`OverlayError::Unavailable`].
+/// repository error, malformed JSON, a body the schema rejects — is an error,
+/// and all three raise [`OverlayError::Unavailable`], each after v4's line: a
+/// failed read is v4's `unreadable` arm (ERROR, then `createUnavailableError(…,
+/// 'properties.json unreadable: <bare message>')` — P4.162; before it the
+/// finder's [`DbError`] propagated as [`OverlayError::Db`] with no line), the
+/// two parse failures its `unparseable` arm.
 ///
 /// That distinction is load-bearing, not pedantry (v4 `dcd9440a`). Callers read
 /// `None` as "nothing persisted yet, seed from the raw row", and post-cutover
@@ -572,21 +574,36 @@ fn log_state_unparseable<E: StoreEntity>(id: &str, mount_id: &str) {
 /// The v4↔v5 arm mapping: v5's finder returns `Ok(None)` where v4's
 /// `readDatabaseDocument` throws `DatabaseStoreError { code: 'NOT_FOUND' }`, so
 /// `Ok(None)` ≡ v4's NOT_FOUND arm and `Err(DbError)` ≡ v4's every-other-read-
-/// error arm.
+/// error (`unreadable`) arm.
 pub fn read_properties<E: StoreEntity>(
     mount: &Connection,
     mount_point_id: &str,
     entity_id: &str,
 ) -> Result<Option<E::Properties>, OverlayError> {
-    let content = DocMountDocumentsRepository::new(mount)
-        .find_by_mount_point_and_path(mount_point_id, PROPERTIES_JSON_PATH)?;
+    // v4 `:271-282`: a read that THROWS is `unreadable` — logged, and refused
+    // as the store-unavailable error (never the raw read error), with the bare
+    // message as both the `reason` and the detail (P4.162).
+    let content = match DocMountDocumentsRepository::new(mount)
+        .find_by_mount_point_and_path(mount_point_id, PROPERTIES_JSON_PATH)
+    {
+        Ok(content) => content,
+        Err(e) => {
+            let detail = crate::db::fallback::error_text(&e);
+            log_properties_arm::<E>(
+                PropertiesArm::Unreadable,
+                entity_id,
+                mount_point_id,
+                &detail,
+            );
+            return Err(OverlayError::unavailable::<E>(
+                entity_id,
+                Some(mount_point_id),
+                format!("{PROPERTIES_JSON_PATH} unreadable: {detail}"),
+            ));
+        }
+    };
     let Some(content) = content else {
-        tracing::debug!(
-            entity = E::entity_label(),
-            entity_id,
-            official_mount_point_id = mount_point_id,
-            "{PROPERTIES_JSON_PATH} absent — caller may seed defaults"
-        );
+        log_properties_arm::<E>(PropertiesArm::Absent, entity_id, mount_point_id, "");
         return Ok(None);
     };
     let value: Value = serde_json::from_str(&content).map_err(|e| {
@@ -596,13 +613,7 @@ pub fn read_properties<E: StoreEntity>(
         // text survives only where V8 would ACCEPT the bag.
         let e = crate::generators::optimizer::v8_json_parse_message(&content)
             .unwrap_or_else(|| e.to_string());
-        tracing::error!(
-            entity = E::entity_label(),
-            entity_id,
-            official_mount_point_id = mount_point_id,
-            reason = %e,
-            "{PROPERTIES_JSON_PATH} unparseable — refusing to treat as absent"
-        );
+        log_properties_arm::<E>(PropertiesArm::Unparseable, entity_id, mount_point_id, &e);
         OverlayError::unavailable::<E>(
             entity_id,
             Some(mount_point_id),
@@ -610,12 +621,11 @@ pub fn read_properties<E: StoreEntity>(
         )
     })?;
     let parsed = E::parse_properties(&value).map_err(|detail| {
-        tracing::error!(
-            entity = E::entity_label(),
+        log_properties_arm::<E>(
+            PropertiesArm::Unparseable,
             entity_id,
-            official_mount_point_id = mount_point_id,
-            reason = %detail,
-            "{PROPERTIES_JSON_PATH} unparseable — refusing to treat as absent"
+            mount_point_id,
+            &detail,
         );
         OverlayError::unavailable::<E>(
             entity_id,
@@ -624,6 +634,78 @@ pub fn read_properties<E: StoreEntity>(
         )
     })?;
     Ok(Some(parsed))
+}
+
+/// `read_properties`' three outcomes that log (v4 `document-store-overlay.ts:
+/// 271-302`).
+#[derive(Clone, Copy)]
+enum PropertiesArm {
+    /// The read threw — ERROR `${Label} properties.json unreadable — refusing to
+    /// treat as absent`.
+    Unreadable,
+    /// No document — DEBUG `${Label} properties.json absent — caller may seed
+    /// defaults` (no `reason`).
+    Absent,
+    /// `JSON.parse` or `parseProperties` threw — ERROR `${Label}
+    /// properties.json unparseable — refusing to treat as absent`.
+    Unparseable,
+}
+
+/// v4's `read_properties` lines (P4.162, R-D): `${Label}`-prefixed sentences
+/// with `{[idLogKey]: entityId, officialMountPointId, reason}` (`reason`
+/// absent on the DEBUG). A tracing message and field NAME must be static, so
+/// each line is spelled once per store-backed entity — the [`log_store_drop`]
+/// precedent.
+fn log_properties_arm<E: StoreEntity>(arm: PropertiesArm, id: &str, mount: &str, reason: &str) {
+    use PropertiesArm::*;
+    match (E::entity_label(), arm) {
+        ("project", Unreadable) => tracing::error!(
+            projectId = %id,
+            officialMountPointId = %mount,
+            reason = %reason,
+            "Project properties.json unreadable — refusing to treat as absent"
+        ),
+        ("project", Absent) => tracing::debug!(
+            projectId = %id,
+            officialMountPointId = %mount,
+            "Project properties.json absent — caller may seed defaults"
+        ),
+        ("project", Unparseable) => tracing::error!(
+            projectId = %id,
+            officialMountPointId = %mount,
+            reason = %reason,
+            "Project properties.json unparseable — refusing to treat as absent"
+        ),
+        ("group", Unreadable) => tracing::error!(
+            groupId = %id,
+            officialMountPointId = %mount,
+            reason = %reason,
+            "Group properties.json unreadable — refusing to treat as absent"
+        ),
+        ("group", Absent) => tracing::debug!(
+            groupId = %id,
+            officialMountPointId = %mount,
+            "Group properties.json absent — caller may seed defaults"
+        ),
+        ("group", Unparseable) => tracing::error!(
+            groupId = %id,
+            officialMountPointId = %mount,
+            reason = %reason,
+            "Group properties.json unparseable — refusing to treat as absent"
+        ),
+        (label, arm) => tracing::error!(
+            entityLabel = label,
+            id = %id,
+            officialMountPointId = %mount,
+            reason = %reason,
+            arm = match arm {
+                Unreadable => "unreadable",
+                Absent => "absent",
+                Unparseable => "unparseable",
+            },
+            "properties.json read — unknown store-backed entity"
+        ),
+    }
 }
 
 /// Fold a hydrated flat project/group payload into the store-backed create
@@ -1280,5 +1362,142 @@ mod refused_create_line_tests {
             lines[2],
             format!("{T} Error creating group collection=groups name=42 error=Z")
         );
+    }
+}
+
+/// P4.162 (R-D): `read_properties`' lines on v4's `${Label}` sentences and
+/// `[idLogKey]` keys (`document-store-overlay.ts:266-308` at `94fbb1ae3`) —
+/// `unreadable` (ERROR, the read-failure arm v5 had no line for), `absent`
+/// (DEBUG), `unparseable` (ERROR, both the `JSON.parse` and the
+/// `parseProperties` arm), for BOTH store-backed entities, plus the silence leg.
+#[cfg(test)]
+mod read_properties_line_tests {
+    use super::*;
+    use crate::db::groups::GroupEntity;
+    use crate::db::projects::ProjectEntity;
+
+    const TARGET: &str = "quilltap_core::db::document_store_overlay";
+
+    /// One store per arm: `mp-ok` (`{}`), `mp-json` (`{` — V8 refuses),
+    /// `mp-shape` (`[]` — parses, the schema refuses); `mp-absent` has none.
+    fn mount() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE doc_mount_file_links (id TEXT, mountPointId TEXT, relativePath TEXT, fileId TEXT);
+             CREATE TABLE doc_mount_documents (fileId TEXT, content TEXT);
+             CREATE TABLE doc_mount_files (id TEXT);",
+        )
+        .unwrap();
+        for (i, (mp, content)) in [("mp-ok", "{}"), ("mp-json", "{"), ("mp-shape", "[]")]
+            .iter()
+            .enumerate()
+        {
+            conn.execute(
+                "INSERT INTO doc_mount_file_links VALUES (?1, ?2, 'properties.json', ?1)",
+                rusqlite::params![format!("f{i}"), mp],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO doc_mount_documents VALUES (?1, ?2)",
+                rusqlite::params![format!("f{i}"), content],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO doc_mount_files VALUES (?1)",
+                rusqlite::params![format!("f{i}")],
+            )
+            .unwrap();
+        }
+        conn
+    }
+
+    fn lines_of<E: StoreEntity>(conn: &Connection, mp: &str, id: &str) -> (bool, Vec<String>) {
+        let (got, lines) =
+            crate::test_support::captured_with(|| read_properties::<E>(conn, mp, id));
+        (got.is_ok(), lines)
+    }
+
+    #[test]
+    fn the_four_arms_log_v4s_sentences_and_keys_per_entity() {
+        let conn = mount();
+        for (label, key) in [("Project", "projectId"), ("Group", "groupId")] {
+            let run = |mp: &str| {
+                if label == "Project" {
+                    lines_of::<ProjectEntity>(&conn, mp, "e-1")
+                } else {
+                    lines_of::<GroupEntity>(&conn, mp, "e-1")
+                }
+            };
+            // absent → DEBUG, Ok(None)
+            let (ok, lines) = run("mp-absent");
+            assert!(ok, "{label}: absent is Ok");
+            assert_eq!(
+                lines,
+                vec![format!(
+                    "DEBUG {TARGET} {label} properties.json absent — caller may seed defaults {key}=e-1 officialMountPointId=mp-absent"
+                )]
+            );
+            // unparseable (JSON.parse) → ERROR with V8's sentence
+            let (ok, lines) = run("mp-json");
+            assert!(!ok, "{label}: unparseable JSON is Unavailable");
+            assert_eq!(
+                lines,
+                vec![format!(
+                    "ERROR {TARGET} {label} properties.json unparseable — refusing to treat as absent {key}=e-1 officialMountPointId=mp-json reason=Expected property name or '}}' in JSON at position 1 (line 1 column 2)"
+                )]
+            );
+            // unparseable (parseProperties) → the same sentence
+            let (ok, lines) = run("mp-shape");
+            assert!(!ok, "{label}: a refused shape is Unavailable");
+            assert_eq!(lines.len(), 1, "{lines:?}");
+            assert!(
+                lines[0].starts_with(&format!(
+                    "ERROR {TARGET} {label} properties.json unparseable — refusing to treat as absent {key}=e-1 officialMountPointId=mp-shape reason="
+                )),
+                "{lines:?}"
+            );
+            // the silence leg
+            let (ok, lines) = run("mp-ok");
+            assert!(ok);
+            assert!(
+                lines.is_empty(),
+                "{label}: a sound store logs nothing: {lines:?}"
+            );
+        }
+    }
+
+    /// v4's `unreadable` arm (`:271-281`): the read itself fails → ERROR with
+    /// the bare error text, and the refusal is the store-unavailable error
+    /// (`createUnavailableError(…, 'properties.json unreadable: …')`), never the
+    /// raw database error.
+    #[test]
+    fn a_failed_read_logs_unreadable_and_answers_unavailable() {
+        let conn = Connection::open_in_memory().unwrap(); // no tables at all
+        for (label, key) in [("Project", "projectId"), ("Group", "groupId")] {
+            let (got, lines) = crate::test_support::captured_with(|| {
+                if label == "Project" {
+                    read_properties::<ProjectEntity>(&conn, "mp-1", "e-1").map(|_| ())
+                } else {
+                    read_properties::<GroupEntity>(&conn, "mp-1", "e-1").map(|_| ())
+                }
+            });
+            let err = got.expect_err("an unreadable store refuses");
+            assert!(err.is_unavailable(), "{label}: {err}");
+            let detail = err.to_string();
+            assert!(
+                detail
+                    .ends_with(": properties.json unreadable: no such table: doc_mount_file_links"),
+                "{label}: {detail}"
+            );
+            let unreadable: Vec<&String> =
+                lines.iter().filter(|l| l.contains("unreadable")).collect();
+            assert_eq!(
+                unreadable,
+                vec![&format!(
+                    "ERROR {TARGET} {label} properties.json unreadable — refusing to treat as absent {key}=e-1 officialMountPointId=mp-1 reason=no such table: doc_mount_file_links"
+                )],
+                "{lines:#?}"
+            );
+        }
     }
 }
