@@ -174765,3 +174765,45 @@ files / 337.
 on maps to `reloadCurrentItems()` (the list is signal-held, survey §7.5);
 `fittingWornBundleIds` / `liveWornBundlesByChar` are plain fields, not
 signals (never rendered). Version: SPA 0.5.815.
+
+### Unit 5 — #81 `3ee3b1342` the editor's Wear history (C2 §3)
+
+NEW `wardrobe/item-editor/wear-history-section.ts`, a port of
+`WardrobeWearHistorySection.tsx:1-161` read at the pin — every string from it
+(`Wear history`, `Consulting the ledger…`, `The wear ledger could not be
+read just now.`, `Created` / `Times worn` / `First worn` / `Last worn`,
+`, in` + `“title”` (U+201C/U+201D), `, in a chat since deleted`, `Worn by`,
+`Unattributed` / `A departed character`, `N×, last …` via `formatWornWhen`,
+`Wearing this outfit also counts a wear for each garment it put on.`), the
+markup classes verbatim. Mounted at the editor's foot (after Description,
+`wardrobe-item-editor.tsx:793-801`), edit mode only, through a NEW
+`itemHomeContainer` computed — v4's `:386-393` rule (`sharedContainer ??
+(isShared ? GENERAL : {character, characterId})`).
+
+**Ruling vs the order's prose (port from the code, §R.4):** the order's item
+10 says the verb routes through `homeContainerForItem` for a character item;
+v4's code routes BOTH the wear history and (#82) the Picture section through
+the editor's `itemHomeContainer`, which keys off `isShared` + the editor's
+`characterId`, not the item's. v5 follows the code; `homeContainerForItem`'s
+consumer is the dialog's Generate (unit 6).
+
+Specs: NEW `item-editor/wear-history-section.spec.ts` — v4
+`wardrobe-wear-ledger-ui.test.tsx`'s history ×3 transcribed onto the verb
+(the first asserts the exact verb body in place of v4's fetched URL), + the
+verb per scope (General carries NO `containerId`), the loading/error
+sentences, the chat link (workspace → `openTab('salon', {chatId})`, bare →
+`router.navigate(['/salon', id])`); `wardrobe-item-editor.spec.ts` + 4 arms
+(create mode: no section, no read; character item → character vault, the
+section LAST in the body; shared item → General; pinned group container).
+
+**Red-first:** the section COMPILE-red (missing module); with it present and
+the editor unwired, the editor arms measured **3 red** (the create-mode
+negative green, as negatives are). All green after: 24 files / 347.
+
+**Recorded mechanism divergences:** the verb in place of v4's
+`${itemUrl}?action=wear-history` fetch; the link is an `<a href="/salon/{id}">`
+whose click opens the workspace Salon tab (v5's chat surface) — the order's
+named "tab-open link" divergence; v4's `staleTime: 0` query → a read on mount
+and on every item/container input change; a stale answer for an item the
+editor has left is dropped. No `containerGetRequest` router is written (the
+order's starting point 1: recorded, not built). Version: SPA 0.5.816.

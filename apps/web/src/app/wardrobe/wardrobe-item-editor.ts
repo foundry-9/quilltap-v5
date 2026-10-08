@@ -16,7 +16,7 @@ import { CoreClient } from '../core/core-client';
 import type { WardrobeItemDto, WardrobeSlotType } from '../core/core-contract';
 import { MarkdownField } from '../editor/markdown-field';
 import { WARDROBE_SLOT_TYPES, unionTypes } from './equipped-slots';
-import type { WardrobeContainer } from './wardrobe-container';
+import { GENERAL_CONTAINER, type WardrobeContainer } from './wardrobe-container';
 import {
   containerCreateRequest,
   containerListRequest,
@@ -29,6 +29,7 @@ import { GROUP_ORDER, getCandidateGroup } from './item-editor/constants';
 import type { CandidateGroup, CandidateItem } from './item-editor/types';
 import { WardrobeComponentPicker } from './item-editor/wardrobe-component-picker';
 import { WardrobeModeChangePrompt } from './item-editor/wardrobe-mode-change-prompt';
+import { WardrobeWearHistorySection } from './item-editor/wear-history-section';
 import { ToastService } from '../ui/toast.service';
 
 type EditorMode = 'single' | 'bundle';
@@ -63,7 +64,12 @@ function charCountClass(current: number, max: number): string {
 @Component({
   selector: 'qt-wardrobe-item-editor',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MarkdownField, WardrobeComponentPicker, WardrobeModeChangePrompt],
+  imports: [
+    MarkdownField,
+    WardrobeComponentPicker,
+    WardrobeModeChangePrompt,
+    WardrobeWearHistorySection,
+  ],
   template: `
     <!-- Overlay — z values sit above the qt-dialog-overlay (z-[60]) so this
          editor always stacks on top when summoned from another dialog. -->
@@ -341,6 +347,19 @@ function charCountClass(current: number, max: number): string {
               (contentChange)="description.set($event)"
             />
           </div>
+
+          <!-- Wear ledger — read-only, edit mode only (a new item has none;
+               v4 3ee3b1342 :793-801). -->
+          @if (item(); as editing) {
+            @if (itemHomeContainer(); as home) {
+              <qt-wardrobe-wear-history-section
+                [itemId]="editing.id"
+                [container]="home"
+                [createdAt]="editing.createdAt"
+                [isComposite]="(editing.componentItemIds?.length ?? 0) > 0"
+              />
+            }
+          }
         </div>
 
         <!-- Footer (v4 :684-694). -->
@@ -425,6 +444,22 @@ export class WardrobeItemEditor {
   protected readonly isShared = computed(() => {
     const existing = this.item();
     return this.isSharedInput() || (existing !== null && !existing.characterId);
+  });
+
+  /**
+   * The item's own container when editing — where the wear history (and, with
+   * #82, its pictures) are read. Pinned to a shared container, that
+   * container; otherwise the item keeps its existing tier (v4 `3ee3b1342` /
+   * `7c8572869` `:386-393`). Null in create mode. This is the EDITOR's rule
+   * (it keys off `isShared` and the editor's `characterId`), not
+   * `homeContainerForItem` — v4 keeps the two apart, and so does v5.
+   */
+  protected readonly itemHomeContainer = computed<WardrobeContainer | null>(() => {
+    if (!this.item()) return null;
+    return (
+      this.sharedContainer() ??
+      (this.isShared() ? GENERAL_CONTAINER : { scope: 'character', id: this.characterId() })
+    );
   });
 
   /** Destination for a NEW item (v4 `:63-68`). */

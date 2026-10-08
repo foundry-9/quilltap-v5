@@ -576,3 +576,61 @@ describe('the editor pinned to a shared container (v4 d7263f39)', () => {
     ]);
   });
 });
+
+/**
+ * P4.D261 — v4 `3ee3b1342` `wardrobe-item-editor.tsx:386-394, 793-801` at the
+ * pin `f5e953a3f`: the Wear history section at the foot, EDIT MODE ONLY,
+ * read through v4's `itemHomeContainer` (`sharedContainer ?? (isShared ?
+ * GENERAL : {character, characterId})`).
+ */
+describe('the editor’s Wear history (v4 3ee3b1342)', () => {
+  const historyReads = (seen: AnyRequest[]): AnyRequest[] =>
+    seen.filter((r) => (r.type as string) === 'wardrobeItemWearHistory');
+  const answer = (req: AnyRequest): Record<string, unknown> =>
+    (req.type as string) === 'wardrobeItemWearHistory'
+      ? {
+          history: { wearCount: 0, firstWornAt: null, lastWornAt: null, lastWornChatId: null, wearers: [] },
+          wearers: [],
+          lastWornChat: null,
+        }
+      : { wardrobeItems: [] };
+
+  it('create mode has no history section and reads no ledger', async () => {
+    const { fixture, seen } = await render({ item: null }, answer);
+    expect(historyReads(seen)).toEqual([]);
+    expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('Wear history');
+  });
+
+  it('a character item reads through the character vault, at the foot of the form', async () => {
+    const { fixture, seen } = await render({ item: item({ id: 'w1' }) }, answer);
+    expect(historyReads(seen)).toEqual([
+      { type: 'wardrobeItemWearHistory', scope: 'character', containerId: 'char-1', itemId: 'w1' },
+    ]);
+    const host = fixture.nativeElement as HTMLElement;
+    const section = host.querySelector('qt-wardrobe-wear-history-section')!;
+    expect(section.textContent).toContain('Wear history');
+    // After the Description block — the last thing in the scrolling body.
+    expect(section.parentElement!.lastElementChild).toBe(section);
+  });
+
+  it('a shared item in the character view reads through Quilltap General', async () => {
+    const { seen } = await render({ item: item({ id: 'w2', characterId: null }) }, answer);
+    expect(historyReads(seen)).toEqual([
+      { type: 'wardrobeItemWearHistory', scope: 'general', itemId: 'w2' },
+    ]);
+  });
+
+  it('pinned to a shared container, the container names the read', async () => {
+    const { seen } = await render(
+      {
+        characterId: null,
+        item: item({ id: 'w3', characterId: null }),
+        container: { scope: 'group', id: 'g1' },
+      },
+      answer,
+    );
+    expect(historyReads(seen)).toEqual([
+      { type: 'wardrobeItemWearHistory', scope: 'group', containerId: 'g1', itemId: 'w3' },
+    ]);
+  });
+});

@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(spa): P4.D261 unit 5 — v4 3ee3b1342: the item editor's Wear history section over wardrobeItemWearHistory
+
+_Versions: SPA 0.5.816._
+
+The wardrobe item editor gains a read-only Wear history section at the foot of the form, in edit mode only. It dispatches `wardrobeItemWearHistory` with the item's home container (the editor's own rule: the pinned shared container, else General for a shared item, else the character's vault; General sends no `containerId`) and shows Created, Times worn, First worn, Last worn (with a link to the chat it was last worn in, or `in a chat since deleted`), Worn by (avatar, name, `N×, last …`; unnamed wearers read `Unattributed` / `A departed character`), and the composite note. The chat link keeps v4's `/salon/{id}` href but a click opens the Salon tab in the workspace (or routes there outside it). Loading reads `Consulting the ledger…`; a failed read (including a pre-round server's refusal) reads `The wear ledger could not be read just now.`
+
 #### 2026-10-08 — feat(spa): P4.D261 unit 4 — v4 3ee3b1342: the dialog's set_all carries wornBundleIds for the outfits it dissolved
 
 _Versions: SPA 0.5.815._
