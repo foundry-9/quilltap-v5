@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(spa): P4.D261 unit 4 — v4 3ee3b1342: the dialog's set_all carries wornBundleIds for the outfits it dissolved
+
+_Versions: SPA 0.5.815._
+
+The wardrobe dialog dissolves an outfit into its garments before staging, so the slots it saves cannot say an outfit was worn. It now records which outfits each gesture put on and sends them as `wornBundleIds` on the two `set_all` paths: the Live tab's Done flush (per character, cleared after a successful commit) and the Outfit Builder's Try on. A plain garment edit still sends exactly the old body (the key is omitted when empty). Claims made before the worn snapshot arrives are rebuilt from the replayed gestures. The Builder's Reset to defaults credits the default outfits it dissolved; Reset to worn and Clear all drop the claim. New pure helpers in `staged-live-outfits.ts` (`StagedGesture`, `wornBundleIdsFor`, `appendWornBundleIds`, `rebaseStagedGestures`, `buildSetAllEquipBody`, a 3-arg `classifyStagedOutfits`), plus `dissolveBundlesInSlotsWithCredit` and `buildDefaultOutfitWithCredit`. After either save the dialog reloads its list so wear tallies refresh.
+
 #### 2026-10-08 — feat(spa): P4.D261 unit 3 — v4 3ee3b1342: the wear line, formatRelativeDays, the dialog's Sort select and Never worn filter
 
 _Versions: SPA 0.5.814._

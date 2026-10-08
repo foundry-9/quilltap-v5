@@ -51,6 +51,16 @@ function dto(partial: Partial<WardrobeItemDto> & { id: string }): WardrobeItemDt
 const ITEMS = [
   dto({ id: 'shirt', title: 'Linen Shirt', types: ['top'] }),
   dto({ id: 'hat', title: 'Straw Hat', types: ['accessories'] }),
+  // P4.D261: v4 `worn-bundles.test.tsx`'s bundle, for the rebase-keeps-the-
+  // claim beat. Composite, so the default Items tab hides it — no other beat
+  // here can see it.
+  dto({ id: 'boots', title: 'Walking Boots', types: ['footwear'] }),
+  dto({
+    id: 'rambler',
+    title: 'Country Rambler',
+    types: ['accessories', 'footwear'],
+    componentItemIds: ['hat', 'boots'],
+  }),
 ];
 
 /** The worn snapshot the outfit read eventually publishes. */
@@ -262,5 +272,39 @@ describe('WardrobeControlDialogInner — staging before the worn snapshot arrive
     expect(confirm).toHaveBeenCalledWith(
       'Word of what Alice is presently wearing never reached us, so your alterations cannot be saved. Close the wardrobe and let them go?',
     );
+  });
+});
+
+/**
+ * P4.D261 — v4 `3ee3b1342` `wardrobe-control-dialog.worn-bundles.test.tsx`
+ * "keeps the claim of an outfit worn before the snapshot arrived, rebased with
+ * its gesture" (`rebaseStagedGestures`, the seed effect).
+ */
+describe('WardrobeControlDialogInner — the worn-bundle claim survives the rebase', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('keeps the claim of an outfit worn before the snapshot arrived', async () => {
+    const h = await renderRace(true);
+    const tabs = h.fixture.debugElement.queryAll(By.css('[role="tab"]'));
+    (tabs.find((t) => (t.nativeElement as HTMLElement).textContent?.trim() === 'Outfits')!
+      .nativeElement as HTMLButtonElement).click();
+    await h.settle();
+
+    clickWear(h.fixture, 'Country Rambler');
+    await h.settle();
+    expect(stagedSlots(h.component).footwear).toEqual(['boots']);
+
+    h.releaseOutfit();
+    await h.settle();
+    expect(stagedSlots(h.component).top).toEqual(['shirt']);
+
+    clickDone(h.fixture);
+    await h.settle();
+    expect(h.equipCalls()).toHaveLength(1);
+    expect(h.equipCalls()[0]).toMatchObject({
+      mode: 'set_all',
+      slots: { top: ['shirt'], footwear: ['boots'], accessories: ['hat'] },
+      wornBundleIds: ['rambler'],
+    });
   });
 });

@@ -174731,3 +174731,37 @@ row ×3, project manager ×1). All green after: 25 files / 344.
 **Recorded:** the Sort select binds `[selected]` per option (the dogfood-#6
 rule) rather than `[value]` on the select; the tablist row's inner `<div>`
 keeps v4's own (mis)indentation. Version: SPA 0.5.814.
+
+### Unit 4 — #81 `3ee3b1342` the staged worn-bundle claim (C2 §4)
+
+Read at the pin: `lib/wardrobe/staged-live-outfits.ts` whole (the claim half
+transcribed beside v5's existing Bug-61 half); `default-outfit.ts:28-51`;
+`dissolve-bundles.ts:160-226`; `wardrobe-control-dialog.tsx:294, 332, 459-494,
+719-790, 813-871, 940-1060`. Specs: `staged-live-outfits.spec.ts` + v4
+`staged-worn-bundles.test.ts` transcribed case for case (9 arms — wornBundleIdsFor,
+append, the four set_all travel arms incl. "a plain edit has NO
+`wornBundleIds` property", the three rebase arms); `dissolve-bundles.spec.ts`
++ 3 `…WithCredit` arms (no v4 unit test drives them — pinned from the
+source); `wardrobe-control-dialog.spec.ts` + v4
+`wardrobe-control-dialog.worn-bundles.test.tsx`'s Done / plain-edit / Try-on
+cases (DOM-driven: the Outfits tab, the row's Wear / Try on, Done, the
+`Replace what the character is wearing with this composition` button) + four
+v5 arms (the slot-add / slot-row paths claim too; a committed claim does not
+ride the next flush; the Builder's Reset to defaults / to worn / Clear all; the
+in-chat Builder seed carries NO claim); `wardrobe-control-dialog.race.spec.ts`
++ v4's "keeps the claim … rebased with its gesture" (the race ITEMS grew
+`boots` + the composite `rambler`, hidden from the default Items tab, so no
+existing beat sees them).
+
+**Red-first:** the five new staged exports + the two `…WithCredit` twins
+COMPILE-red; with the pure halves landed, the dialog measured **6 red**, each
+an `AssertionError` on the missing claim (not a harness slip — read). v4's
+negative arms (plain edit; the in-chat seed) were green before. The existing
+Done / Try-on exact-body beats (`:219`, `:273`) stay green UNEDITED — they
+are the "plain edit sends exactly the old body" pin. All green after: 23
+files / 337.
+
+**Recorded:** v4's `queryKeys.wardrobe.all` invalidate after the flush / Try
+on maps to `reloadCurrentItems()` (the list is signal-held, survey §7.5);
+`fittingWornBundleIds` / `liveWornBundlesByChar` are plain fields, not
+signals (never rendered). Version: SPA 0.5.815.

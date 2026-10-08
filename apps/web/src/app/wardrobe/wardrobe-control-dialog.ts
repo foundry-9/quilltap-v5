@@ -18,7 +18,7 @@ import { characterAvatarSrc } from '../screens/characters/characters.api';
 import { AvatarGenerationPane, type ImageProfileSummary } from './avatar-generation-pane';
 import {
   addItemToSlot,
-  buildDefaultOutfit,
+  buildDefaultOutfitWithCredit,
   cloneSlots,
   EMPTY_EQUIPPED_SLOTS,
   freshSlots,
@@ -32,10 +32,14 @@ import {
 import { WARDROBE_SLOT_TYPES } from './slot-meta';
 import { createOutfitStore, type OutfitStore } from './outfit-store';
 import {
+  appendWornBundleIds,
+  buildSetAllEquipBody,
   classifyStagedOutfits,
   equippedSlotsEqual,
-  rebaseStagedSlots,
+  rebaseStagedGestures,
+  wornBundleIdsFor,
   type SlotsMutator,
+  type StagedGesture,
 } from './staged-live-outfits';
 import { OutfitComposer } from './outfit-composer';
 import { WardrobeDialogService } from './wardrobe-dialog.service';
@@ -719,6 +723,13 @@ export class WardrobeControlDialogInner {
 
   /** Fitting room — transient; never hits the equip API (v4 :196-202). */
   protected readonly fittingSlots = signal<EquippedSlots>(freshSlots());
+  /**
+   * The outfits (bundles) the Builder's composition put on — the claim its Try
+   * on sends as `wornBundleIds` (v4 `3ee3b1342` `:294`). Never rendered, so a
+   * plain field: appended by every wear gesture, reset by Reset to worn /
+   * Clear all, set from the defaults' credit by Reset to defaults.
+   */
+  private fittingWornBundleIds: string[] = [];
   /** v4 `:203` — the load-bearing chat-awareness flag. Fixed per mount (the
    *  remount key includes chatId). */
   protected isInChat = false;
@@ -746,7 +757,13 @@ export class WardrobeControlDialogInner {
    * or committed against an empty base, undressing everything the user never
    * touched.
    */
-  private readonly pendingLiveMutators: Record<string, SlotsMutator[]> = {};
+  private readonly pendingLiveMutators: Record<string, StagedGesture[]> = {};
+  /**
+   * The bundles each character's staged Live gestures put on (v4 `3ee3b1342`
+   * `:332`), sent beside the slots on Done. Rebuilt by the seed's rebase,
+   * deleted for a character whose commit succeeded.
+   */
+  private readonly liveWornBundlesByChar: Record<string, string[]> = {};
 
   protected outfit!: OutfitStore;
   private booted = false;
@@ -804,8 +821,14 @@ export class WardrobeControlDialogInner {
       if (this.fittingSeedKey === seedKey) return;
       this.fittingSeedKey = seedKey;
 
-      const seed = this.isInChat && wornSlots ? cloneSlots(wornSlots) : buildDefaultOutfit(items);
-      untracked(() => this.fittingSlots.set(seed));
+      // v4 `:463-468`: worn slots carry no claim; the defaults credit the
+      // default bundles they dissolved.
+      const seed =
+        this.isInChat && wornSlots
+          ? { slots: cloneSlots(wornSlots), wornBundles: [] }
+          : buildDefaultOutfitWithCredit(items);
+      this.fittingWornBundleIds = seed.wornBundles.map((b) => b.id);
+      untracked(() => this.fittingSlots.set(seed.slots));
     });
 
     // Seed staged Live slots once a worn snapshot exists for this character
@@ -827,11 +850,14 @@ export class WardrobeControlDialogInner {
       this.liveBaselineByChar[characterId] = cloneSlots(wornSlots);
       const pending = this.pendingLiveMutators[characterId] ?? [];
       delete this.pendingLiveMutators[characterId];
-      const seed = rebaseStagedSlots(wornSlots, pending);
+      // v4 `:492-494` — the claims are rebuilt from exactly the replayed
+      // gestures, so none outlives its staged state.
+      const seed = rebaseStagedGestures(wornSlots, pending);
+      this.liveWornBundlesByChar[characterId] = seed.wornBundleIds;
       untracked(() =>
         this.liveStagedByChar.update((prev) => ({
           ...prev,
-          [characterId]: seed,
+          [characterId]: seed.slots,
         })),
       );
     });
@@ -1176,7 +1202,7 @@ export class WardrobeControlDialogInner {
   //
   // Every Live-tab gesture goes through `updateLiveStaged`, which mutates the
   // staged slots for the current character. None of these touch the server.
-  private updateLiveStaged(mutator: SlotsMutator): void {
+  private updateLiveStaged(mutator: SlotsMutator, wornBundleIds: readonly string[] = []): void {
     const characterId = this.selectedCharacterId();
     if (!characterId) return;
     // Until the worn snapshot has seeded there is no honest base to stage
@@ -1185,7 +1211,14 @@ export class WardrobeControlDialogInner {
     const seedKey = `${characterId}|${this.chatId() ?? 'no-chat'}`;
     if (this.isInChat && !this.liveSeededByChar.has(seedKey)) {
       const queued = this.pendingLiveMutators[characterId] ?? [];
-      this.pendingLiveMutators[characterId] = [...queued, mutator];
+      this.pendingLiveMutators[characterId] = [...queued, { mutate: mutator, wornBundleIds }];
+    }
+    // v4 `3ee3b1342` `:733-738` — the outfits this gesture put on.
+    if (wornBundleIds.length > 0) {
+      this.liveWornBundlesByChar[characterId] = appendWornBundleIds(
+        this.liveWornBundlesByChar[characterId],
+        wornBundleIds,
+      );
     }
     this.liveStagedByChar.update((prev) => {
       const wornFallback = this.outfit.outfitState()[characterId]?.slots;
@@ -1201,7 +1234,7 @@ export class WardrobeControlDialogInner {
   protected handleEquipItem(item: WardrobeItemDto): void {
     if (!this.isInChat) return;
     const itemsById = this.itemsById();
-    this.updateLiveStaged((prev) => wearItemIntoSlots(prev, item, itemsById));
+    this.updateLiveStaged((prev) => wearItemIntoSlots(prev, item, itemsById), wornBundleIdsFor(item));
   }
 
   /** v4 `:490-499` — pure state; fires no route. Since 4.8.2 the slot-add
@@ -1211,7 +1244,10 @@ export class WardrobeControlDialogInner {
     if (!this.isInChat) return;
     if (!item.types.includes(slot)) return;
     const itemsById = this.itemsById();
-    this.updateLiveStaged((prev) => addItemToSlot(prev, slot, item, itemsById));
+    this.updateLiveStaged(
+      (prev) => addItemToSlot(prev, slot, item, itemsById),
+      wornBundleIdsFor(item),
+    );
   }
 
   /** v4 `:499-512` — picking from a slot row wears the item (fills every slot
@@ -1220,12 +1256,14 @@ export class WardrobeControlDialogInner {
     if (!this.isInChat) return;
     const itemsById = this.itemsById();
     const item = itemsById.get(itemId);
-    this.updateLiveStaged((prev) =>
-      item
-        ? wearItemIntoSlots(prev, item, itemsById)
-        : prev[slot].includes(itemId)
-          ? prev
-          : { ...prev, [slot]: [...prev[slot], itemId] },
+    this.updateLiveStaged(
+      (prev) =>
+        item
+          ? wearItemIntoSlots(prev, item, itemsById)
+          : prev[slot].includes(itemId)
+            ? prev
+            : { ...prev, [slot]: [...prev[slot], itemId] },
+      item ? wornBundleIdsFor(item) : [],
     );
   }
 
@@ -1249,6 +1287,10 @@ export class WardrobeControlDialogInner {
     const item = itemsById.get(itemId);
     if (!item) return;
     this.fittingSlots.update((prev) => wearItemIntoSlots(prev, item, itemsById));
+    this.fittingWornBundleIds = appendWornBundleIds(
+      this.fittingWornBundleIds,
+      wornBundleIdsFor(item),
+    );
   }
 
   protected fittingRemove(slot: WardrobeSlotType, itemId: string): void {
@@ -1275,11 +1317,12 @@ export class WardrobeControlDialogInner {
       return;
     }
     this.fittingSlots.set(target);
+    this.fittingWornBundleIds = [];
   }
 
-  /** v4 `:566-577`. */
+  /** v4 `:566-577` (+ `3ee3b1342` `:850-860` — the defaults' credit). */
   protected fittingResetToDefaults(): void {
-    const target = buildDefaultOutfit(this.items());
+    const { slots: target, wornBundles } = buildDefaultOutfitWithCredit(this.items());
     if (
       !equippedSlotsEqual(this.fittingSlots(), target) &&
       !window.confirm('Discard your composition and start from this character’s default outfit?')
@@ -1287,6 +1330,7 @@ export class WardrobeControlDialogInner {
       return;
     }
     this.fittingSlots.set(target);
+    this.fittingWornBundleIds = wornBundles.map((b) => b.id);
   }
 
   /** v4 `:579-587`. */
@@ -1298,6 +1342,7 @@ export class WardrobeControlDialogInner {
       return;
     }
     this.fittingSlots.set(freshSlots());
+    this.fittingWornBundleIds = [];
   }
 
   /**
@@ -1359,6 +1404,7 @@ export class WardrobeControlDialogInner {
     const { dirty, unresolved } = classifyStagedOutfits(
       this.liveStagedByChar(),
       this.liveBaselineByChar,
+      this.liveWornBundlesByChar,
     );
 
     if (unresolved.length > 0) {
@@ -1377,22 +1423,27 @@ export class WardrobeControlDialogInner {
     if (dirty.length === 0) return true;
 
     let allOk = true;
-    for (const { characterId, slots } of dirty) {
+    for (const { characterId, slots, wornBundleIds } of dirty) {
       try {
         await dispatchWardrobe(this.core, {
           type: 'chatEquip',
           chatId,
-          characterId,
-          mode: 'set_all',
-          slots,
+          ...buildSetAllEquipBody(characterId, slots, wornBundleIds),
         });
         this.outfit.invalidateWardrobe(characterId);
         this.liveBaselineByChar[characterId] = cloneSlots(slots);
+        // Committed: the claims went with the slots, so start the next round
+        // clean (v4 `:974-979`).
+        delete this.liveWornBundlesByChar[characterId];
       } catch (err) {
         this.toasts.showError(err instanceof Error ? err.message : 'Failed to update outfit');
         allOk = false;
       }
     }
+    // A committed outfit may have put garments on — every wear tally is
+    // stale. v4 invalidates `queryKeys.wardrobe.all`; v5's list is
+    // signal-held, so the equivalent is the list reload (v4 `:982-983`).
+    void this.reloadCurrentItems();
     await this.outfit.refreshOutfit();
     return allOk;
   }
@@ -1418,9 +1469,7 @@ export class WardrobeControlDialogInner {
       await dispatchWardrobe(this.core, {
         type: 'chatEquip',
         chatId,
-        characterId,
-        mode: 'set_all',
-        slots: this.fittingSlots(),
+        ...buildSetAllEquipBody(characterId, this.fittingSlots(), this.fittingWornBundleIds),
       });
     } catch (err) {
       this.toasts.showError(err instanceof Error ? err.message : 'Failed to wear this outfit');
@@ -1428,6 +1477,7 @@ export class WardrobeControlDialogInner {
     }
     this.toasts.showSuccess('Worn!');
     this.outfit.invalidateWardrobe(characterId);
+    void this.reloadCurrentItems();
     await this.outfit.refreshOutfit();
     this.closed.emit();
   }
@@ -1446,6 +1496,10 @@ export class WardrobeControlDialogInner {
     if (this.useFittingActions()) {
       const itemsById = this.itemsById();
       this.fittingSlots.update((prev) => wearItemIntoSlots(prev, item, itemsById));
+      this.fittingWornBundleIds = appendWornBundleIds(
+        this.fittingWornBundleIds,
+        wornBundleIdsFor(item),
+      );
       return;
     }
     this.handleEquipItem(item);

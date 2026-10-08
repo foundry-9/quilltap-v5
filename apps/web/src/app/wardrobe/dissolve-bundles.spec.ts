@@ -13,6 +13,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { WardrobeItemDto, WardrobeSlotType } from '../core/core-contract';
 import {
   dissolveBundlesInSlots,
+  dissolveBundlesInSlotsWithCredit,
   dissolveBundleToLeaves,
   isBundle,
   layLeavesIntoSlots,
@@ -20,6 +21,7 @@ import {
 import {
   addItemToSlot,
   buildDefaultOutfit,
+  buildDefaultOutfitWithCredit,
   replaceItemIntoSlots,
   wearItemIntoSlots,
   type EquippedSlots,
@@ -392,5 +394,49 @@ describe('buildDefaultOutfit with a bundle (v4 default-outfit.test.ts, 61574563)
     expect(result.top).toEqual([top.id]);
     expect(result.bottom).toEqual([bottom.id]);
     expect(JSON.stringify(result)).not.toContain(bundle.id);
+  });
+});
+
+/**
+ * P4.D261 — v4 `3ee3b1342` `dissolve-bundles.ts:160-226` +
+ * `default-outfit.ts:28-51` at the pin `f5e953a3f`: the `…WithCredit` twins
+ * report which bundles they dissolved and the leaves each contributed (the
+ * Outfit Builder's Reset-to-defaults claim), and the plain functions are now
+ * their `.slots`.
+ */
+describe('the …WithCredit twins (v4 3ee3b1342)', () => {
+  it('dissolveBundlesInSlotsWithCredit reports each dissolved bundle once, with its leaves', () => {
+    const worn: EquippedSlots = {
+      top: ['undershirt', 'man-in-black', 'scarf'],
+      bottom: ['man-in-black'],
+      footwear: ['man-in-black'],
+      accessories: ['man-in-black'],
+      hair: [],
+    };
+    const out = dissolveBundlesInSlotsWithCredit(worn, WARDROBE);
+    expect(out.slots).toEqual(dissolveBundlesInSlots(worn, WARDROBE));
+    expect(out.wornBundles).toEqual([
+      { id: 'man-in-black', leafIds: ['shirt', 'trousers', 'boots', 'gloves'] },
+    ]);
+  });
+
+  it('claims nothing — and keeps the very snapshot — when nothing is a bundle', () => {
+    const worn: EquippedSlots = { top: ['shirt'], bottom: [], footwear: [], accessories: [], hair: [] };
+    const out = dissolveBundlesInSlotsWithCredit(worn, WARDROBE);
+    expect(out.slots).toBe(worn);
+    expect(out.wornBundles).toEqual([]);
+  });
+
+  it('buildDefaultOutfitWithCredit credits the default bundle it dissolved', () => {
+    const top = makeItem('11111111-0000-0000-0000-0000000000a1', ['top']);
+    const bottom = makeItem('11111111-0000-0000-0000-0000000000a2', ['bottom']);
+    const bundle = makeItem('11111111-0000-0000-0000-0000000000b1', ['top', 'bottom'], [top.id, bottom.id], {
+      isDefault: true,
+    });
+    const out = buildDefaultOutfitWithCredit([top, bottom, bundle]);
+    expect(out.slots).toEqual(buildDefaultOutfit([top, bottom, bundle]));
+    expect(out.wornBundles).toEqual([{ id: bundle.id, leafIds: [top.id, bottom.id] }]);
+    // A default GARMENT is no claim.
+    expect(buildDefaultOutfitWithCredit([{ ...top, isDefault: true }]).wornBundles).toEqual([]);
   });
 });

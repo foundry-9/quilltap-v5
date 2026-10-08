@@ -1072,3 +1072,174 @@ describe('WardrobeControlDialogInner — Sort and Never worn (v4 3ee3b1342)', ()
     expect(seen.length).toBe(before);
   });
 });
+
+/**
+ * P4.D261 — v4 `3ee3b1342` `__tests__/unit/components/wardrobe/wardrobe-
+ * control-dialog.worn-bundles.test.tsx` at the pin `f5e953a3f` (×4,
+ * transcribed onto the Angular harness — the staged slots read off the signal
+ * rather than a stubbed composer), plus the fitting side v4's dialog threads
+ * (`wardrobe-control-dialog.tsx:294, 459-468, 813-871, 1005-1054`) and the
+ * three Live gestures that can put an outfit on.
+ */
+describe('WardrobeControlDialogInner — staged outfits travel with set_all (v4 worn-bundles)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const A_SHIRT = dto({ id: 'shirt', title: 'Linen Shirt' });
+  const A_HAT = dto({ id: 'hat', title: 'Straw Hat', types: ['accessories'] });
+  const A_BOOTS = dto({ id: 'boots', title: 'Walking Boots', types: ['footwear'] });
+  const RAMBLER = dto({
+    id: 'rambler',
+    title: 'Country Rambler',
+    types: ['accessories', 'footwear'],
+    componentItemIds: ['hat', 'boots'],
+  });
+  const ramblerRoute = (req: AnyRequest): Record<string, unknown> | Error =>
+    (req.type as string) === 'characterWardrobeList'
+      ? {
+          wardrobeItems:
+            (req as { characterId?: string }).characterId === 'c1'
+              ? [A_SHIRT, A_HAT, A_BOOTS, RAMBLER]
+              : [],
+        }
+      : defaultRoute(req);
+
+  const el = (f: ComponentFixture<unknown>): HTMLElement => f.nativeElement as HTMLElement;
+  const showOutfits = async (f: ComponentFixture<unknown>): Promise<void> => {
+    [...el(f).querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+      .find((b) => b.textContent!.trim() === 'Outfits')!
+      .click();
+    await settle(f);
+  };
+  const clickRowButton = async (f: ComponentFixture<unknown>, title: string, label: string) => {
+    const row = [...el(f).querySelectorAll<HTMLElement>('.qt-card-interactive')].find((r) =>
+      r.querySelector(`[title="${title}"]`),
+    )!;
+    [...row.querySelectorAll<HTMLButtonElement>('button')]
+      .find((b) => b.textContent!.trim() === label)!
+      .click();
+    await settle(f);
+  };
+  const clickDone = async (f: ComponentFixture<unknown>): Promise<void> => {
+    [...el(f).querySelectorAll<HTMLButtonElement>('button')]
+      .find((b) => b.textContent!.trim() === 'Done')!
+      .click();
+    await settle(f);
+  };
+
+  it('sends the bundle id with the Done flush when an outfit is worn from the list', async () => {
+    const { fixture, seen } = await renderInner('chat-1', ramblerRoute);
+    await showOutfits(fixture);
+    await clickRowButton(fixture, 'Country Rambler', 'Wear');
+    await clickDone(fixture);
+    const flushed = equips(seen);
+    expect(flushed).toHaveLength(1);
+    expect(flushed[0]).toEqual({
+      type: 'chatEquip',
+      chatId: 'chat-1',
+      characterId: 'c1',
+      mode: 'set_all',
+      // Leaves only — the bundle never lands in the slots…
+      slots: { top: ['shirt'], bottom: [], footwear: ['boots'], accessories: ['hat'], hair: [] },
+      // …so its claim rides beside them.
+      wornBundleIds: ['rambler'],
+    });
+  });
+
+  it('sends no wornBundleIds for a plain garment edit', async () => {
+    const { fixture, seen } = await renderInner('chat-1', ramblerRoute);
+    await clickRowButton(fixture, 'Straw Hat', 'Wear');
+    await clickDone(fixture);
+    expect(equips(seen)).toHaveLength(1);
+    expect('wornBundleIds' in equips(seen)[0]).toBe(false);
+  });
+
+  it("sends the bundle id with the Outfit Builder's Try on", async () => {
+    const { fixture, component, seen } = await renderInner('chat-1', ramblerRoute);
+    inner(component).rightTab.set('builder');
+    await settle(fixture);
+    await showOutfits(fixture);
+    await clickRowButton(fixture, 'Country Rambler', 'Try on');
+    el(fixture)
+      .querySelector<HTMLButtonElement>(
+        '[title="Replace what the character is wearing with this composition"]',
+      )!
+      .click();
+    await settle(fixture);
+    expect(equips(seen)).toHaveLength(1);
+    expect(equips(seen)[0]).toMatchObject({
+      characterId: 'c1',
+      mode: 'set_all',
+      slots: { top: ['shirt'], footwear: ['boots'], accessories: ['hat'] },
+      wornBundleIds: ['rambler'],
+    });
+  });
+
+  it('the slot-add and slot-row paths (the quick-pick lands on the latter) claim too', async () => {
+    const { fixture, component, seen } = await renderInner('chat-1', ramblerRoute);
+    const c = inner(component);
+    c.handleAddToSlot(RAMBLER, 'footwear');
+    c.handleSlotAdd('accessories', 'rambler');
+    c.handleEquipItem(RAMBLER);
+    c.requestClose();
+    await settle(fixture);
+    expect(equips(seen)[0]['wornBundleIds']).toEqual(['rambler']);
+  });
+
+  it('a committed claim does not ride the next flush', async () => {
+    const { fixture, component, seen } = await renderInner('chat-1', ramblerRoute);
+    const c = inner(component);
+    c.handleEquipItem(RAMBLER);
+    await (component as unknown as { flushStagedLiveOutfits(): Promise<boolean> }).flushStagedLiveOutfits();
+    c.handleSlotClear('top');
+    await (component as unknown as { flushStagedLiveOutfits(): Promise<boolean> }).flushStagedLiveOutfits();
+    await settle(fixture);
+    const flushed = equips(seen);
+    expect(flushed).toHaveLength(2);
+    expect(flushed[0]['wornBundleIds']).toEqual(['rambler']);
+    expect('wornBundleIds' in flushed[1]).toBe(false);
+  });
+
+  it('the Builder: Reset to defaults credits the default bundle; Reset to worn and Clear all drop the claim', async () => {
+    const DEFAULT_RAMBLER = { ...RAMBLER, isDefault: true };
+    const route = (req: AnyRequest): Record<string, unknown> | Error =>
+      (req.type as string) === 'characterWardrobeList'
+        ? {
+            wardrobeItems:
+              (req as { characterId?: string }).characterId === 'c1'
+                ? [A_SHIRT, A_HAT, A_BOOTS, DEFAULT_RAMBLER]
+                : [],
+          }
+        : defaultRoute(req);
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const { fixture, component, seen } = await renderInner('chat-1', route);
+    const c = inner(component) as ReturnType<typeof inner> & {
+      fittingResetToDefaults(): void;
+      fittingResetToWorn(): void;
+      fittingClearAll(): void;
+    };
+    c.rightTab.set('builder');
+    c.fittingResetToDefaults();
+    await c.wearFitting();
+    c.fittingResetToWorn();
+    c.fittingAdd('top', 'shirt');
+    await c.wearFitting();
+    c.fittingResetToDefaults();
+    c.fittingClearAll();
+    await c.wearFitting();
+    await settle(fixture);
+    const bodies = equips(seen);
+    expect(bodies).toHaveLength(3);
+    expect(bodies[0]['wornBundleIds']).toEqual(['rambler']);
+    expect('wornBundleIds' in bodies[1]).toBe(false);
+    expect('wornBundleIds' in bodies[2]).toBe(false);
+    expect(confirmSpy).toHaveBeenCalled();
+  });
+
+  it('in chat the Builder seeds from the worn snapshot with NO claim', async () => {
+    const { fixture, component, seen } = await renderInner('chat-1', ramblerRoute);
+    inner(component).rightTab.set('builder');
+    await inner(component).wearFitting();
+    await settle(fixture);
+    expect('wornBundleIds' in equips(seen)[0]).toBe(false);
+  });
+});

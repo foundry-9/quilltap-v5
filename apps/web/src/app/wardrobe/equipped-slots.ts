@@ -22,7 +22,7 @@ import type {
   WardrobeSlotType,
 } from '../core/core-contract';
 import {
-  dissolveBundlesInSlots,
+  dissolveBundlesInSlotsWithCredit,
   dissolveBundleToLeaves,
   layLeavesIntoSlots,
   type WearableLookup,
@@ -170,6 +170,19 @@ export function sortForDefaultOutfit(items: WardrobeItemDto[]): WardrobeItemDto[
  * archived ones (v4 `default-outfit.ts:13-39`).
  */
 export function buildDefaultOutfit(items: WardrobeItemDto[]): EquippedSlots {
+  return buildDefaultOutfitWithCredit(items).slots;
+}
+
+/**
+ * {@link buildDefaultOutfit}, also returning the `isDefault` bundles it
+ * dissolved and the leaves each contributed — the wear ledger credits an
+ * outfit only when its caller says one was put on (v4 `3ee3b1342`,
+ * `default-outfit.ts:28-51`).
+ */
+export function buildDefaultOutfitWithCredit(items: WardrobeItemDto[]): {
+  slots: EquippedSlots;
+  wornBundles: Array<{ id: string; leafIds: string[] }>;
+} {
   const next = freshSlots();
   for (const item of sortForDefaultOutfit(items)) {
     if (!item.isDefault || item.archivedAt) continue;
@@ -178,7 +191,7 @@ export function buildDefaultOutfit(items: WardrobeItemDto[]): EquippedSlots {
   // A bundle marked default goes on as its parts, like every other put-on
   // gesture — the wardrobe should never open onto a card over empty slots
   // (v4 `:36-38`, added at 4.8.2).
-  return dissolveBundlesInSlots(next, new Map(items.map((i) => [i.id, i])));
+  return dissolveBundlesInSlotsWithCredit(next, new Map(items.map((i) => [i.id, i])));
 }
 
 // ---------------------------------------------------------------------------
