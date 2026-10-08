@@ -12,6 +12,11 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — chore(schema): re-vendor `qtap-export.schema.json` at v4 `f5e953a3f` (P4.D264 unit A)
+
+_Versions: core 0.0.1254._
+
+The vendored `.qtap` export schema is byte-copied from v4 `f5e953a3f` (97,324 → 101,092 bytes). v4 `3ee3b1342` (#81) added `data.wardrobeWear` to the characters and document-stores data objects (both `additionalProperties: false` — the one acceptance change), `counts.wardrobeWear` and `$defs.WardrobeWear`; `7c8572869` (#82) added `WardrobeItem.imageFileId` and `_imageFiles` (documentation only). Both size pins moved (`generators/qtap_schema.rs`, `qtap_schema_embed_guard.rs`). The `qtap_schema_validate_equivalence` corpus gains six mutations: a characters export carrying `wardrobeWear` (valid; red under the old schema), a non-uuid path-derived `itemId` (valid), a negative `wearCount` and a missing required key (both refused), and the document-stores form (valid). The P4.D264 lane record opens in `status-log.md`.
 #### 2026-10-08 — test(almanack): pin that the Almanack never reports `generateFromTools`; the cleanup meta census (P4.D263 items 15, 17)
 
 _Versions: core 0.0.1263._

@@ -39,7 +39,13 @@ mod common;
 /// P4.D249: 97,324 at v4 `52d6e7ecd` — `$defs.ChatInform.permanent` (a
 /// boolean, default false) after `recordMessageId`, and `consumedAt` /
 /// `consumedByMessageId` gaining their first-delivery descriptions.
-const VENDORED_BYTES: usize = 97_324;
+/// P4.D264: 101,092 at v4 `f5e953a3f` — `3ee3b1342` (#81) added
+/// `data.wardrobeWear` under BOTH `additionalProperties: false` data objects
+/// (characters `:29`, document-stores `:183` — the one acceptance change),
+/// `counts.wardrobeWear` and `$defs.WardrobeWear`; `7c8572869` (#82) added
+/// `WardrobeItem.imageFileId` and `WardrobeItem._imageFiles` (documentation —
+/// `$defs.WardrobeItem` was already `additionalProperties: true`).
+const VENDORED_BYTES: usize = 101_092;
 
 #[test]
 fn the_embedded_schema_is_self_consistent() {

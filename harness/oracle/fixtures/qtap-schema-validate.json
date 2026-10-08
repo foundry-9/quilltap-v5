@@ -498,6 +498,106 @@
           ]
         }
       ]
+    },
+    {
+      "name": "characters_wardrobe_wear_valid",
+      "from": "characters_valid_rich",
+      "$comment": "P4.D264 (v4 `3ee3b1342` #81): a characters export carrying the trailing wear-ledger rows, assembled as v4's importer stitches them (`data.wardrobeWear`, last) plus the footer's `counts.wardrobeWear`. VALID at `f5e953a3f`; under the pre-#81 schema `data` is `additionalProperties: false` and refuses the key \u2014 the one acceptance change of the re-vendor.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/wardrobeWear",
+          "value": [
+            {
+              "id": "ab000001-0000-4000-8000-000000000001",
+              "itemId": "ab000002-0000-4000-8000-000000000002",
+              "wearerCharacterId": null,
+              "wearCount": 3,
+              "firstWornAt": "2026-01-01T00:00:00.000Z",
+              "lastWornAt": "2026-02-01T00:00:00.000Z",
+              "lastWornChatId": null,
+              "createdAt": "2026-01-01T00:00:00.000Z",
+              "updatedAt": "2026-02-01T00:00:00.000Z"
+            }
+          ]
+        },
+        {
+          "op": "set",
+          "path": "/manifest/counts/wardrobeWear",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "name": "characters_wardrobe_wear_path_item_id",
+      "from": "characters_wardrobe_wear_valid",
+      "$comment": "P4.D264: `$defs.WardrobeWear.itemId` is `minLength: 1`, NOT a uuid (a path-derived item id is uuid-shaped but not RFC-versioned; the schema does not care) \u2014 still VALID.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/wardrobeWear/0/itemId",
+          "value": "1be98852-2beb-8d94-a0ac-7122c1159b54"
+        }
+      ]
+    },
+    {
+      "name": "characters_wardrobe_wear_negative_count",
+      "from": "characters_wardrobe_wear_valid",
+      "$comment": "P4.D264: `wearCount` is an integer >= 0 \u2014 a negative tally is REFUSED (one error path under `/data/wardrobeWear`).",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/wardrobeWear/0/wearCount",
+          "value": -1
+        }
+      ]
+    },
+    {
+      "name": "characters_wardrobe_wear_missing_required",
+      "from": "characters_wardrobe_wear_valid",
+      "$comment": "P4.D264: all nine keys are `required` \u2014 a row without `lastWornAt` is REFUSED.",
+      "ops": [
+        {
+          "op": "remove",
+          "path": "/data/wardrobeWear/0/lastWornAt"
+        }
+      ]
+    },
+    {
+      "name": "document_stores_empty_blobs",
+      "from": "document_stores_all",
+      "$comment": "P4.D264: the document-stores seed is INVALID only through its blob section (the recorded `ExportedDocumentStoreBlob` observation, as `characters_valid_rich`); emptying it (the key is `required`) gives the base the wear-ledger arm below derives from.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/blobs",
+          "value": []
+        }
+      ]
+    },
+    {
+      "name": "document_stores_wardrobe_wear",
+      "from": "document_stores_empty_blobs",
+      "$comment": "P4.D264 (v4 `3ee3b1342` `:183`): the document-stores `data` object gains `wardrobeWear` too (also `additionalProperties: false`) \u2014 the second acceptance hunk.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/wardrobeWear",
+          "value": [
+            {
+              "id": "ab000001-0000-4000-8000-000000000001",
+              "itemId": "ab000002-0000-4000-8000-000000000002",
+              "wearerCharacterId": null,
+              "wearCount": 3,
+              "firstWornAt": "2026-01-01T00:00:00.000Z",
+              "lastWornAt": "2026-02-01T00:00:00.000Z",
+              "lastWornChatId": null,
+              "createdAt": "2026-01-01T00:00:00.000Z",
+              "updatedAt": "2026-02-01T00:00:00.000Z"
+            }
+          ]
+        }
+      ]
     }
   ],
   "literals": [

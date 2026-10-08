@@ -173270,3 +173270,47 @@ red-first in its own unit), `avatar_job_tier3_equivalence` and
   `qtap_schema_embed_guard` (v4's schema 101,092 bytes vs vendored 97,324 — P4.D264's
   re-vendor); `recipe_sweep.py --self-test` 0 failures. **Versions at close:** core 0.0.1263,
   host 0.0.192, web 0.0.225; harness frozen 0.0.1110.
+---
+
+## P4.D264 — the `f5e953a3f` wardrobe CARRIERS (backup / restore / `.qtap` export / import / schema) — lane record
+
+Branch `claude/wardrobe-carriers-backup-restore-9acf61`, cut from P4.D255's LANE-COMPLETE tip
+`23cd7123b` (which contains `KEYSTONE` `c30603378` plus its grown builders + `test_support`
+helper — the sibling stage-2 lanes cut from the same tip). Pin `/tmp/qt-v4-pin-p4d264-f5e953a3f`
+(`f5e953a3f`, `4.10.0-dev.117`; root `node_modules` symlinked — the live checkout's lockfile moved
+only its version stamp past the pin; `openai` 7.30.0 verified).
+
+**§R.2 probe at lane start: FAILED, then WAIVED.** v4 `main` held FOUR commits past `f5e953a3f`
+(`1825bfd53` waived in the ledger; `3f7320138` waived in P4.D255's header only; `da98ca58b`,
+`f7d8064be` unwaived — memory recall work, no carrier path). The lane STOPPED and reported; the
+human waived all three in chat (2026-10-08, "Waived — all three are recorded in the ledger"). At
+the time of resuming, the main checkout's `drift-ledger.md` did not yet carry the waiver text — the
+chat waiver is what the lane resumed on. Pin unchanged.
+
+### Red-first at the P4.D255 tip (fresh oracles from the pin)
+
+- `backup_uuid_remap_equivalence`: the ORACLE ITSELF failed at the pin on the committed corpus —
+  `doc_mount_graph`'s hand-built link carried no `relativePath`, and `f5e953a3f`'s
+  `buildWardrobeItemIdRemap` calls `isWardrobeItemDocumentPath(link.relativePath)` on every link
+  (TypeError). After the corpus fix the Rust side was RED on the shape-rot guard (40 collections
+  vs 39).
+- `system_backup_equivalence`: 19 diffs — 15 wardrobe (`manifest` ×5, `manifest.json` ×5,
+  `data/wardrobe-wear.json` missing ×5) + 4 `data/memories.json` (P4.D258's, §R.13(g)).
+- `system_restore_equivalence`: 4 diffs — the 42nd preview key on every successful preview.
+- `qtap_schema_embed_guard`: 1/2 red (byte-equality vs the pin).
+- `system_restore_state`: 5 diffs, ALL P4.D258's (`INDEX_KEYED_EMBEDDING` converged, memories
+  counts) — no wardrobe arm can redden until an archive carries the material.
+- GREEN as predicted on the committed fixtures: `qtap_schema_validate_equivalence`,
+  `system_export_equivalence`, `system_import_equivalence`, `system_import_state`,
+  `qtap_import_equivalence`.
+
+### Unit A — the schema re-vendor
+
+`generators/qtap-export.schema.json` byte-copied from `git show f5e953a3f:public/schemas/
+qtap-export.schema.json` (101,092 bytes, `cmp`-identical to the pin's file); the two size pins
+moved. `qtap_schema_validate_equivalence` grew six mutations (`characters_wardrobe_wear_valid`,
+`characters_wardrobe_wear_path_item_id`, `characters_wardrobe_wear_negative_count`,
+`characters_wardrobe_wear_missing_required`, `document_stores_empty_blobs`,
+`document_stores_wardrobe_wear`); v4 answers valid / valid / refused / refused / valid / valid.
+RED under the OLD vendored bytes (the family failed), GREEN under the new (1/1), embed guard 2/2.
+

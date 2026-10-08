@@ -177,7 +177,11 @@ mod tests {
         // P4.D249: 97,324 at v4 `52d6e7ecd` (`$defs.ChatInform.permanent`
         // plus the two rewritten `consumedAt`/`consumedByMessageId`
         // descriptions).
-        assert_eq!(QTAP_EXPORT_SCHEMA_JSON.len(), 97_324);
+        // P4.D264: 101,092 at v4 `f5e953a3f` (`3ee3b1342` #81: `data.wardrobeWear`
+        // on the characters and document-stores data objects, `counts.
+        // wardrobeWear`, `$defs.WardrobeWear`; `7c8572869` #82: `WardrobeItem.
+        // imageFileId` and `_imageFiles`).
+        assert_eq!(QTAP_EXPORT_SCHEMA_JSON.len(), 101_092);
     }
 
     #[test]
