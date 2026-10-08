@@ -4,6 +4,196 @@
 
 ### 4.10-dev
 
+#### Daily database optimize on startup
+
+- On the first launch of each local calendar day, startup now runs VACUUM, ANALYZE and
+  `PRAGMA optimize` on the main, LLM-logs and mount-index databases — the same steps as
+  `quilltap db optimize`. New `lib/startup/daily-db-optimize.ts`, called from `instrumentation.ts`
+  as Phase 0.75: after the version guard, before migrations.
+- Each database is backed up first through the existing 24 h-gated physical-backup functions, so
+  on that launch the daily backup is taken before the optimize (and before migrations); the
+  backend's connect-time backup then finds it and skips.
+- The gate is `data/db-optimize-state.json` (per-database local date of the last successful
+  optimize). A failed database is not stamped and retries on the next launch. Failures are logged
+  and never block startup. The main database reuses the migration layer's lock-holding handle and
+  gets a `wal_checkpoint(TRUNCATE)` afterward; the two sidecars are opened and closed for the pass.
+- Loading-screen labels `subsystem:db-optimize:start` / `:complete`. Help:
+  `help/database-protection.md` ("Daily Tidying on Startup").
+
+#### Fix bugs 179, 180 and 181: outfit writes in the job child, LLM-logs cold open, memory embeddings in backups
+
+- Bug 181 (High): a full backup wrote each memory's `Float32Array` embedding through
+  `JSON.stringify`, producing an index-keyed object (`{"0":…}`) that `MemorySchema` refuses, so
+  restore skipped every embedded memory. `createBackup` now writes memory embeddings through
+  `encodeEmbedding` as `number[]`. For existing backups, the restore's memory phase runs new
+  `decodeIndexKeyedEmbedding` (`lib/backup/restore/index-keyed-embedding.ts`), which converts an
+  object with exactly the keys `"0"…"n-1"` and finite number values to a `number[]` and passes
+  anything else through. The restore summary's `memories` count is now the rows written, not the
+  archive's row count.
+- Bug 180 (Low): the LLM-logs database opened with one attempt, so a transient cold-open read
+  failure degraded it until restart. New `openWithColdOpenRetry`
+  (`lib/database/backends/sqlite/cold-open-retry.ts`) holds the four-attempt, 200/600/1500 ms
+  ladder that the mount-index client had inline; both clients now use it. The LLM-logs open
+  gained the `sqlite_master` verify probe and closes the connection on a failed attempt. New WARN
+  `LLM logs cold-open failed — retrying`; the success INFO and degraded ERROR now carry
+  `attempts`.
+- Bug 179 (Low): in the job child, outfit reads came from the readonly snapshot, so two outfit
+  changes in one job computed from the same baseline and the parent's replay kept only the last.
+  The child repository proxy now records the `nextSlots` of each buffered
+  `wardrobeWear.commitEquippedOutfit` in a per-job overlay keyed `chatId:characterId`, and
+  `chats.getEquippedOutfitForCharacter` returns a copy from it before reading the snapshot.
+- Docs: `docs/developer/BACKGROUND_JOBS_CHILD.md` (the outfit overlay),
+  `features/complete/wardrobe-wear-ledger.md` §3.5, bug files moved to
+  `docs/developer/bugs/fixed/`, index updated.
+
+#### Wardrobe tools: pictures and picture ids
+
+- New setting `chatSettings.wardrobeImageSettings.generateFromTools` (default false; no migration,
+  the schema default fills existing JSON). Settings → Images → Wardrobe Images gains a checkbox.
+- `wardrobe_create` and `wardrobe_update` take an optional `generate_image` boolean. The setting is
+  both gate and default: off, nothing is generated and an explicit request is answered with
+  `image_generation.status: 'not-enabled'`; on, create defaults to generating and update defaults to
+  generating only when title, image_prompt, types or components actually change. Decision lives in
+  `maybeQueueWardrobeToolImage` (`lib/wardrobe/tool-image-generation.ts`), which never throws.
+- New background job `WARDROBE_ITEM_IMAGE_GENERATION` (activity kind `image`, `maxAttempts: 1`,
+  deduped against a PENDING job for the same item) runs `generateWardrobeItemImage` against the
+  owning character's wardrobe. Missing profile, refusal, archived owner, or a vanished/archived item
+  end the job without retry. Completion hints the `characters` and `mountPoints` topics.
+- `writeWardrobeItemImage` now routes to the parent over host-RPC (new method
+  `writeWardrobeItemImage`) when called in the job child, instead of throwing.
+  `deleteWardrobeItemImageLink` still refuses in the child.
+- `wardrobe_list` and `wardrobe_read` (and the `wardrobe_update` echo) return `image_file_id`, and
+  their formatted text names it with a pointer to `describe_image` / `keep_image`.
+
+#### Avatar generation from the picker is portrait
+
+- `POST /api/v1/images?action=generate` accepts `options.orientation`
+  (`portrait` | `landscape` | `square`), passed to `buildImageGenParams`, where it outranks
+  `size` / `aspectRatio`.
+- `ImageGenerationDialog` takes an `orientation` prop; when set it sends that instead of a size and
+  hides the size and Gemini aspect-ratio pickers. `ImageUploadDialog` forwards
+  `generateOrientation`, and `AvatarSelector` (profile and character avatars) passes `portrait`.
+  The character avatar job and the wardrobe preview-avatar route already used portrait.
+
+#### Chat gallery: misfiled backdrops and missing reused avatars
+
+- Superseded story backgrounds that never reached a Lantern mount were listed under Generated.
+  The enumerator now also recognizes a backdrop by its `/story-backgrounds/` folder.
+- An avatar the character-avatar job reused from its configuration cache was missing from the
+  gallery: the cache hit rebinds `characterAvatars` / `avatarOverrides` but never links the file to
+  the chat. A new pass in `lib/photos/chat-gallery.ts` lists every avatar the chat's bindings name
+  that the linked-files pass missed, marked current when worn and never deletable (another chat
+  owns the record).
+
+#### Wardrobe item images
+
+- Wardrobe items and outfits can carry pictures. New frontmatter key `imageFileId` (the current
+  picture) on `WardrobeItemSchema`, the vault builder/parser and `updateWardrobeSchema`; create
+  bodies never set it. Item PUTs refuse an `imageFileId` not linked to the item (400).
+- Pictures are blob links at `Wardrobe/images/<itemId>/<timestamp>-<kind>-<8 hex>.webp` in the item's own
+  mount, written by `writeWardrobeItemImage` (`lib/file-storage/wardrobe-image-bridge.ts`, parent
+  process only), each with a `files` row (`linkedTo: [itemId]`, category IMAGE). History is
+  `files.findByLinkedTo(itemId)`; `lib/wardrobe/item-images.ts` is the only writer of `imageFileId`.
+- New route `/api/v1/wardrobe/[itemId]/images?scope=&id=`: `GET` lists pictures; `POST` actions
+  `generate`, `upload`, `set-current`, `delete-image`. 404 when the item is not in the named
+  container, 409 for an archived character, 422 with the Concierge trail on an unrerouted refusal, 502 on any other provider failure.
+- Generation is synchronous (`trackActivity('image')`) through `generateImageWithConciergeFailover`
+  with new purpose `'wardrobe'` and no chat. A character's own item is drawn worn by the character
+  (full length; hair items head and shoulders); shared items are drawn catalogue style. Prompt:
+  `lib/wardrobe/item-image-prompt.ts`; the avatar prompt's identity block is now the shared
+  `buildFigureIdentityBlock` (avatar output unchanged). New LLM log type `WARDROBE_ITEM_IMAGE`.
+- New setting `chatSettings.wardrobeImageSettings.imageProfileId` (column added by
+  `add-wardrobe-image-settings-field-v1`), resolved by `resolveWardrobeImageProfile`: per-call
+  override → designated → default image profile. Settings → Images gains a Wardrobe Images card.
+  Remapped on restore; reported in the Almanack and `help_settings` (`images`).
+- Item deletes (all tiers) remove the item's picture links and rows after the item goes. Transfers
+  carry pictures: a move re-links them into the destination and drops the source links; a copy
+  duplicates them under the new id and repoints the copy's `imageFileId`.
+- UI: Image section in the item editor (generate with profile override, upload, history strip with
+  make-current/delete, refusal notice); 40 px row thumbnails and a "Generate image" menu entry for
+  manageable rows; 28 px thumbnails in the slot and quick-pick choosers; Import from image keeps
+  the photograph as each created piece's first picture (checkbox, on by default).
+- `.qtap` character exports attach `_imageFiles` (picture file metadata) to each character-owned
+  `wardrobe_item` record; bytes ride in the vault blobs. Import re-mints the rows against the
+  imported vault after reconciliation and repoints `imageFileId`, or leaves it null. Export schema
+  updated; `uuid-remap.ts` remaps `imageFileId`. Archived character-owned items are now included in
+  character exports so their pictures and ledger rows travel.
+- New-account restore keeps picture rows' `linkedTo`/`tags` on the item's (unchanged) id and repoints
+  each item's frontmatter `imageFileId` to the remapped file id through the per-mount wardrobe update
+  (`planWardrobeImagePointerFixes`); archived characters' vaults are left untouched.
+- Transfer moves resolve the source's writable mount before any write (archived source → 409) and
+  repoint picture rows and drop source links only after the source item is gone
+  (`commitMovedImages`). Item-delete picture cleanup continues past a single failure.
+
+#### Wardrobe wear ledger
+
+- New `wardrobe_wear_stats` table (`add-wardrobe-wear-stats-table-v1`): per wardrobe item and wearer,
+  a wear count, first and last worn, and the chat last worn in. Unique on
+  `(itemId, COALESCE(wearerCharacterId, ''))`. `seed-wardrobe-wear-stats-v1` backfills one wear per
+  chat from every chat's current `equippedOutfit`, dated by the chat's `updatedAt`.
+- New `WardrobeWearRepository` (`repos.wardrobeWear`). `commitEquippedOutfit` is now the only caller
+  of `chats.setEquippedOutfit`: it writes the slots, diffs them against the prior slots, and credits
+  one wear to each newly worn item, plus each dissolved bundle the caller names when one of its leaves
+  was newly worn. Source `'merge'` credits nothing. A unit test fences other callers.
+- The chokepoint is a buffered write in the job child (`METHOD_OVERRIDES`), so autonomous turns are
+  credited against the true prior state at replay.
+- The displacement primitives (`equipItem`, `replaceItem`, `addToSlot`, `removeFromSlot`) take a
+  `source` and pass the bundle they dissolved. `applyOutfitSelections` takes `context.source`
+  (`chat-start` / `participant-added` / `merge`); `buildDefaultOutfitWithCredit` and
+  `dissolveBundlesInSlotsWithCredit` report the bundles they dissolved.
+- `POST /api/v1/chats/[id]?action=equip` `set_all` accepts optional `wornBundleIds`;
+  `OutfitSelection` accepts optional `wornBundleIds` for `manual`. Both are validated against the
+  character's reachable items and expanded server-side.
+- Wardrobe collection GETs attach a read-time `wear` summary (one `findSummaries` call, via
+  `attachWear` in `lib/wardrobe/wear-history.ts`); item GETs answer `?action=wear-history` with
+  per-wearer rows, names resolved through `findByIdRaw` ("a departed character" / "unattributed"),
+  and the last chat (null when deleted). Unknown item-GET actions now return 400.
+- `wardrobe_list` appends "last worn …" / "never worn" per item; `wardrobe_read` adds a wear line
+  (second person for the asking character). New `formatRelativeDays` in `lib/format-time.ts`;
+  `memory-weighting`'s relative age delegates to it.
+- Wardrobe dialog: wear line on each row, a Sort select (Title / Recently worn / Most worn / Newest)
+  and a Never worn filter; staged edits accumulate the bundles they put on and send them as
+  `wornBundleIds` with `set_all`, reset on rebase. The editor gains a Wear history section; the
+  project wardrobe card shows the wear line; the new-chat composer sends `wornBundleIds`.
+- Item delete drops the item's ledger rows (`cleanupEquippedRefs` now takes `{ chats, wardrobeWear }`).
+  Character delete folds the character's rows into the unattributed row. Move keeps the item id and
+  its ledger; copy starts empty.
+- `.qtap` exports carry `wardrobe_wear` records for exported character-owned and `Wardrobe/` document
+  items (`$defs/WardrobeWear`); import remaps item, wearer and chat ids, folds unknown wearers into the
+  unattributed row, drops rows whose item did not import, and never rewinds an existing tally.
+- Backups include `data/wardrobe-wear.json`; restore writes it back; new-account remap leaves
+  frontmatter item ids alone; the delete service truncates the table.
+- `commitEquippedOutfit` throws when the slot write fails (no wears credited), so `set_all` and the
+  other equip paths report the failure instead of success. Each call's credits, and a deleted
+  character's fold, run in one synchronous transaction (nested as a savepoint inside the job
+  applier's).
+- Filed bug 179 (open): in the job child a second outfit change in one turn overwrites the first.
+
+#### Wardrobe lists: wrapping titles, origin chip
+
+- Garment selection lists (the per-slot picker, the Wear-an-outfit pull-down, the editor's
+  component picker, the project wardrobe card) wrap long titles instead of truncating them, and
+  print slots as display labels ("Top, Bottom") via the new `formatSlotLabels`.
+- Wardrobe list endpoints tag each item with a read-time `origin` (`{ scope, id, name }`); the
+  character route's `?scope=group` read attributes items per group through the new
+  `resolveGroupMountsForCharacter` and `findArchetypesInMountsAttributed`. The dialog row's
+  "· shared" text is replaced by a `qt-badge-wardrobe-shared` chip naming the source
+  ("Project · Thornfield"); the pickers append the origin to the slot list. `origin` is never
+  stored or exported.
+
+#### Wardrobe programme specs (design only)
+
+- Three approved specs under `docs/developer/features/`, no code yet: `wardrobe-list-legibility.md`
+  (titles wrap in every garment-selection list; the row's "· shared" marker becomes one chip naming
+  the source project, group, or Quilltap General, driven by a read-time `origin` annotation),
+  `wardrobe-wear-ledger.md` (per-item wear count, first/last worn, and per-wearer rows in a new
+  `wardrobe_wear_stats` table, credited inside a single equip chokepoint; outfits cascade to the
+  garments they put on), and `wardrobe-item-images.md` (an optional image per garment or outfit with
+  history, generated through the Concierge failover with a designated wardrobe image profile or
+  uploaded, and kept from Import-from-image photographs).
+- The specs record the decisions taken on 2026-10-07 and the audit finding that wardrobe items are
+  vault files, not SQL rows, which is why the wear tally lives in its own table.
+
 #### Inform: delivered last, with a header
 
 - The inform block moved from a system message after the identity reminder to a trailing context

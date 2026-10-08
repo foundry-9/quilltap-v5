@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — docs(v4): mirror the twelve `docs/` paths v4 moved through `f5e953a3f` (P4.D260)
+
+_Docs-only change._
+
+`docs/v4/` brought to v4 `f5e953a3f` for every path the span moved, each byte-identical to the pin: `CHANGELOG.md`, `developer/{API,DDL,BACKGROUND_JOBS_CHILD,bugs}.md`, the new `developer/bugs/fixed/bug-{179,180,181}-*.md`, the three wardrobe specs under `developer/features/complete/`, and `releases/4.10.0.md`.
+
 #### 2026-10-08 — chore(help): re-vendor help/ whole at v4 `f5e953a3f` — 130 files (P4.D260)
 
 _No crate versions bumped._
