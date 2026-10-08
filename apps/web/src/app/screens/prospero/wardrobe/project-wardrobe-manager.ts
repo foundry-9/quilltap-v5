@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, computed, input, signal } from '@an
 import type { WardrobeItemDto, WardrobeSlotType } from '../../../core/core-contract';
 import { MarkdownField } from '../../../editor/markdown-field';
 import { formatSlotLabels } from '../../../wardrobe/slot-meta';
+import { formatWearLine, wearOf } from '../../../wardrobe/wear-display';
 import {
   WARDROBE_SLOT_TYPES,
   type WardrobeCreateInput,
@@ -252,6 +253,11 @@ function draftFromItem(item: WardrobeItemDto): DraftState {
                     <span class="qt-badge qt-text-secondary">Archived</span>
                   }
                 </div>
+                <!-- Wear ledger tally — a shared garment keeps one count across
+                     every borrower (v4 3ee3b1342 :366-369). -->
+                <p class="qt-text-xs qt-text-secondary mt-0.5" data-testid="wardrobe-wear-line">
+                  {{ wearLineOf(item) }}
+                </p>
                 @if (item.imagePrompt || item.description) {
                   <p class="qt-text-small qt-text-secondary mt-1">
                     {{ item.imagePrompt || item.description }}
@@ -304,6 +310,10 @@ export class ProjectWardrobeManager {
   protected readonly slotTypes = WARDROBE_SLOT_TYPES;
   /** v4 `cc80dc89d` `:361` — the row prints its slots as display labels. */
   protected readonly formatSlotLabels = formatSlotLabels;
+
+  protected wearLineOf(item: WardrobeItemDto): string {
+    return formatWearLine(wearOf(item));
+  }
 
   protected readonly editingId = signal<string | null>(null);
   protected readonly creating = signal(false);

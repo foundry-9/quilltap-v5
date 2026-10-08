@@ -961,3 +961,114 @@ describe('WardrobeControlDialogInner — Show shared', () => {
     expect(titles(component)).toContain('Apple Watch');
   });
 });
+
+/**
+ * P4.D261 — v4 `3ee3b1342` `wardrobe-control-dialog.tsx:226-235, 519-520,
+ * 1312-1345, 1386-1395` at the pin `f5e953a3f`: the Sort select and the
+ * `Never worn` tickbox. Dialog state only (not persisted); `Never worn` is NOT
+ * scope-gated (unlike Show shared) and composes with every other filter.
+ */
+const wornSummary = (count: number, at: string | null) => ({
+  wearCount: count,
+  firstWornAt: at,
+  lastWornAt: at,
+  lastWornChatId: null,
+});
+const WORN_LINEN = dto({ id: 'linen', title: 'Linen Shirt', wear: wornSummary(2, '2026-09-01T00:00:00.000Z') });
+const WORN_BOOTS = dto({ id: 'boots', title: 'Boots', types: ['footwear'], wear: wornSummary(1, '2026-10-01T00:00:00.000Z') });
+const NEW_APRON = dto({ id: 'apron', title: 'Apron', wear: wornSummary(0, null) });
+const SHARED_CAPE = dto({ id: 'cape', title: 'Cape' });
+(SHARED_CAPE as { characterId: string | null }).characterId = null;
+
+function wearRoute(req: AnyRequest): Record<string, unknown> | Error {
+  switch (req.type as string) {
+    case 'characterWardrobeList':
+      return {
+        wardrobeItems:
+          (req as { characterId?: string }).characterId === 'c1' &&
+          (req as { scope?: string }).scope === undefined
+            ? [WORN_LINEN, WORN_BOOTS, NEW_APRON]
+            : [],
+      };
+    case 'wardrobeList':
+      return { wardrobeItems: [SHARED_CAPE] };
+    default:
+      return defaultRoute(req);
+  }
+}
+
+const sortSelect = (fixture: ComponentFixture<unknown>): HTMLSelectElement | null =>
+  (fixture.nativeElement as HTMLElement).querySelector('select[aria-label="Sort wardrobe"]');
+
+const neverWornBox = (fixture: ComponentFixture<unknown>): HTMLInputElement | null => {
+  const label = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('label')).find(
+    (l) => (l.textContent ?? '').trim() === 'Never worn',
+  );
+  return (label?.querySelector('input') as HTMLInputElement | undefined) ?? null;
+};
+
+describe('WardrobeControlDialogInner — Sort and Never worn (v4 3ee3b1342)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('offers the four sorts by text, Title selected, inside a labelled Sort control', async () => {
+    const { fixture } = await renderInner(null, wearRoute);
+    const select = sortSelect(fixture)!;
+    expect(select).not.toBeNull();
+    expect(select.className).toBe('qt-select qt-select-sm');
+    expect([...select.options].map((o) => o.textContent!.trim())).toEqual([
+      'Title',
+      'Recently worn',
+      'Most worn',
+      'Newest',
+    ]);
+    expect(select.value).toBe('title');
+    expect(select.closest('label')!.textContent).toContain('Sort');
+    // It sits beside the Items/Outfits tablist, in v4's wrapping row.
+    const row = select.closest('label')!.parentElement!;
+    expect(row.className).toBe('flex flex-wrap items-center justify-between gap-2');
+    expect(row.querySelector('[role="tablist"]')).not.toBeNull();
+  });
+
+  it('Recently worn puts the never-worn LAST, alphabetically; Title is the default order', async () => {
+    const { fixture, component } = await renderInner(null, wearRoute);
+    expect(titles(component)).toEqual(['Apron', 'Boots', 'Cape', 'Linen Shirt']);
+    const select = sortSelect(fixture)!;
+    select.value = 'recently-worn';
+    select.dispatchEvent(new Event('change'));
+    await settle(fixture);
+    expect(titles(component)).toEqual(['Boots', 'Linen Shirt', 'Apron', 'Cape']);
+    select.value = 'most-worn';
+    select.dispatchEvent(new Event('change'));
+    await settle(fixture);
+    expect(titles(component)).toEqual(['Linen Shirt', 'Boots', 'Apron', 'Cape']);
+  });
+
+  it('Never worn keeps only the never-worn and composes with Show shared', async () => {
+    const { fixture, component } = await renderInner(null, wearRoute);
+    const box = neverWornBox(fixture)!;
+    expect(box.checked).toBe(false);
+    expect(box.className).toBe('qt-checkbox');
+    box.click();
+    await settle(fixture);
+    // The absent annotation (the shared Cape) reads as never worn.
+    expect(titles(component)).toEqual(['Apron', 'Cape']);
+    sharedBox(fixture)!.click();
+    await settle(fixture);
+    expect(titles(component)).toEqual(['Apron']);
+  });
+
+  it('is shown in EVERY scope — not gated like Show shared — and fires no fetch', async () => {
+    const { fixture, component, seen } = await renderInner(null, wearRoute);
+    inner(component).selectedContainer.set({ scope: 'general', id: null });
+    await settle(fixture);
+    expect(sharedBox(fixture)).toBeNull();
+    expect(neverWornBox(fixture)).not.toBeNull();
+    expect(sortSelect(fixture)).not.toBeNull();
+    const before = seen.length;
+    neverWornBox(fixture)!.click();
+    sortSelect(fixture)!.value = 'newest';
+    sortSelect(fixture)!.dispatchEvent(new Event('change'));
+    await settle(fixture);
+    expect(seen.length).toBe(before);
+  });
+});

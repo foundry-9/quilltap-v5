@@ -174705,3 +174705,29 @@ the SELECTED character, the transfer exclusion off the item). Its consumers
 are units 5–7 (Generate, the Picture and Wear-history sections). No CSS:
 `qt-badge-wardrobe-shared` already exists (`_content.css:229`); `npm run lint`
 (the class guard) green. Version: SPA 0.5.813.
+
+### Unit 3 — #81 `3ee3b1342` display (wear line, `formatRelativeDays`, Sort, Never worn)
+
+Read at the pin: `lib/wardrobe/wear-display.ts` whole (transcribed);
+`lib/format-time.ts:170-196` (R-E — the code's ladder, no weekday);
+`wardrobe-item-row.tsx:257-263`; `ProjectWardrobeManager.tsx:366-369`;
+`wardrobe-control-dialog.tsx:226-235, 519-520, 1312-1345, 1386-1395`.
+Specs: NEW `wardrobe/wear-display.spec.ts` (v4 `wear-display.test.ts` ×11,
+case for case, + `formatWornWhen` empties + the sort labels);
+`format-date.relative.spec.ts` + `formatRelativeDays` (eight rungs, every
+boundary edge, the future clamp); the row spec + v4
+`wardrobe-wear-ledger-ui.test.tsx`'s row ×3 (the absent-annotation arm also
+pins the line ABOVE `appropriateness`); the project manager's row arm + the
+`<p>` line; the dialog spec + four arms (the four options by text in v4's
+wrapping row beside the tablist, Title default; recently-worn / most-worn
+order with the never-worn LAST alphabetically; Never worn composing with Show
+shared, an absent annotation counted never-worn; shown in container scope
+where Show shared is hidden, and NO fetch on either flip).
+
+**Red-first:** `wear-display` / `formatRelativeDays` COMPILE-red (missing
+module/export); with them landed, the components measured **8 red** (dialog ×4,
+row ×3, project manager ×1). All green after: 25 files / 344.
+
+**Recorded:** the Sort select binds `[selected]` per option (the dogfood-#6
+rule) rather than `[value]` on the select; the tablist row's inner `<div>`
+keeps v4's own (mis)indentation. Version: SPA 0.5.814.

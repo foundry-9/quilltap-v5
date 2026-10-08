@@ -190,3 +190,33 @@ export function formatRelativeAge(ts: number, nowMs: number = Date.now()): strin
   const minutes = Math.floor(seconds / 60);
   return `${minutes}m ago`;
 }
+
+/**
+ * v4 `lib/format-time.ts:170-196` (`3ee3b1342`) — day-resolution relative age
+ * ("today", "yesterday", "3 days ago", "last week", "2 weeks ago", "last
+ * month", "4 months ago", "2 years ago") for a raw epoch-millisecond
+ * timestamp.
+ *
+ * Distinct from {@link formatRelativeAge}, which counts seconds and minutes
+ * for a readout that ticks. This is the ladder for things that happened days
+ * or months ago — a garment last worn (`wardrobe/wear-display.ts`). v4's
+ * memory injector delegates its label here too; v5's twin of THAT reading is
+ * Rust (`memory_weighting.rs`), so the SPA's only consumer is the wardrobe.
+ * Ported from the CODE: no rung ever prints a weekday (the help's `last Tue`
+ * is not what v4 prints).
+ *
+ * `nowMs` is injectable so callers (and their tests) can pin the clock.
+ */
+export function formatRelativeDays(ts: number, nowMs: number = Date.now()): string {
+  const daysOld = Math.max(0, (nowMs - ts) / 86400000);
+
+  if (daysOld < 1) return 'today';
+  if (daysOld < 2) return 'yesterday';
+  if (daysOld < 7) return `${Math.floor(daysOld)} days ago`;
+  if (daysOld < 14) return 'last week';
+  if (daysOld < 30) return `${Math.floor(daysOld / 7)} weeks ago`;
+  if (daysOld < 60) return 'last month';
+  if (daysOld < 365) return `${Math.floor(daysOld / 30)} months ago`;
+  const years = Math.floor(daysOld / 365);
+  return `${years} year${years > 1 ? 's' : ''} ago`;
+}

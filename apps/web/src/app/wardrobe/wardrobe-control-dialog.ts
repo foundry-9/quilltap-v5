@@ -43,6 +43,11 @@ import { WardrobeItemEditor } from './wardrobe-item-editor';
 import { WardrobeItemRow } from './wardrobe-item-row';
 import { WardrobeTransferDialog, type TransferMode } from './wardrobe-transfer-dialog';
 import {
+  sortAndFilterWardrobeItems,
+  WARDROBE_LIST_SORTS,
+  type WardrobeListSort,
+} from './wear-display';
+import {
   GENERAL_CONTAINER,
   decodeWardrobeContainer,
   encodeWardrobeContainer,
@@ -279,6 +284,9 @@ type EditorIntent = 'create-single' | 'create-bundle';
                   class="qt-input qt-input-sm"
                   aria-label="Search wardrobe by title"
                 />
+                <!-- v4 3ee3b1342 :1312-1345 — the tablist shares a wrapping row
+                     with the Sort select. -->
+                <div class="flex flex-wrap items-center justify-between gap-2">
                 <div
                   role="tablist"
                   aria-label="Item kind"
@@ -299,6 +307,21 @@ type EditorIntent = 'create-single' | 'create-bundle';
                       {{ k === 'items' ? 'Items' : 'Outfits' }}
                     </button>
                   }
+                </div>
+                  <label class="flex items-center gap-2 qt-text-xs qt-text-secondary">
+                    Sort
+                    <select
+                      class="qt-select qt-select-sm"
+                      aria-label="Sort wardrobe"
+                      (change)="onListSort($event)"
+                    >
+                      @for (s of listSorts; track s.value) {
+                        <option [value]="s.value" [selected]="listSort() === s.value">
+                          {{ s.label }}
+                        </option>
+                      }
+                    </select>
+                  </label>
                 </div>
                 <div class="flex flex-wrap gap-1">
                   @for (slot of slotFilters; track slot) {
@@ -337,6 +360,17 @@ type EditorIntent = 'create-single' | 'create-bundle';
                       Show shared
                     </label>
                   }
+                  <!-- v4 3ee3b1342 :1386-1395 — NOT scope-gated: it governs
+                       the list in every view. -->
+                  <label class="flex items-center gap-2 qt-text-xs qt-text-secondary">
+                    <input
+                      type="checkbox"
+                      class="qt-checkbox"
+                      [checked]="neverWornOnly()"
+                      (change)="onNeverWornOnly($event)"
+                    />
+                    Never worn
+                  </label>
                 </div>
               </div>
 
@@ -665,6 +699,15 @@ export class WardrobeControlDialogInner {
    * Never persisted: v4 keeps no memory of it across dialog opens.
    */
   protected readonly showShared = signal(true);
+  /**
+   * List ordering and the "Never worn" filter (v4 `3ee3b1342`, wear ledger
+   * §5.3; `:229-235`). Dialog state only — like the toggles above, they are not
+   * persisted. The filter composes with any sort. Neither is a fetch
+   * parameter: the reload effect does not track them.
+   */
+  protected readonly listSort = signal<WardrobeListSort>('title');
+  protected readonly neverWornOnly = signal(false);
+  protected readonly listSorts = WARDROBE_LIST_SORTS;
   protected readonly titleFilter = signal('');
   protected readonly updatingDefaultId = signal<string | null>(null);
 
@@ -959,7 +1002,12 @@ export class WardrobeControlDialogInner {
   };
 
   protected readonly filteredItems = computed(() => {
-    const sorted = [...this.listItems()].sort((a, b) => a.title.localeCompare(b.title));
+    // v4 `3ee3b1342` `:520` — the sort (title by default) and the never-worn
+    // filter, then the existing filters.
+    const sorted = sortAndFilterWardrobeItems(this.listItems(), {
+      sort: this.listSort(),
+      neverWornOnly: this.neverWornOnly(),
+    });
     const term = this.titleFilter().trim().toLowerCase();
     const kindFilter = this.kindFilter();
     const slotFilter = this.slotFilter();
@@ -1039,6 +1087,14 @@ export class WardrobeControlDialogInner {
 
   protected onShowShared(event: Event): void {
     this.showShared.set((event.target as HTMLInputElement).checked);
+  }
+
+  protected onListSort(event: Event): void {
+    this.listSort.set((event.target as HTMLSelectElement).value as WardrobeListSort);
+  }
+
+  protected onNeverWornOnly(event: Event): void {
+    this.neverWornOnly.set((event.target as HTMLInputElement).checked);
   }
 
   /**

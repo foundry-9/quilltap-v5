@@ -164,6 +164,11 @@ describe('ProjectWardrobeManager', () => {
     expect(h4.classList.contains('truncate')).toBe(false);
     expect(h4.classList.contains('break-words')).toBe(true);
     expect(h4.nextElementSibling!.classList.contains('truncate')).toBe(false);
+    // P4.D261 — v4 `3ee3b1342` `ProjectWardrobeManager.tsx:366-369`: the wear
+    // line under the badge row (no annotation → `Never worn`).
+    const wearLine = el.querySelector('ul li p[data-testid="wardrobe-wear-line"]')!;
+    expect(wearLine.textContent!.trim()).toBe('Never worn');
+    expect(wearLine.className).toBe('qt-text-xs qt-text-secondary mt-0.5');
     expect(t).toContain('Composite');
     expect(t).toContain('Default');
     expect(t).toContain('Archived');

@@ -11,6 +11,7 @@ import {
 import type { WardrobeItemDto, WardrobeSlotType } from '../core/core-contract';
 import { WARDROBE_SLOT_META } from './slot-meta';
 import { wardrobeOriginLabel } from './wardrobe-container';
+import { formatWearLine, wearOf } from './wear-display';
 
 /**
  * One line in the dialog's wardrobe list (v4
@@ -95,6 +96,12 @@ import { wardrobeOriginLabel } from './wardrobe-container';
                 originLabel()
               }}</span>
             }
+          </div>
+          <!-- Wear ledger tally (v4 3ee3b1342 :257-263) — the count is what
+               gets compared across rows; the full breakdown is the editor's
+               job. Always rendered: an absent annotation reads Never worn. -->
+          <div class="qt-text-xs qt-text-secondary mt-0.5" data-testid="wardrobe-wear-line">
+            {{ wearLine() }}
           </div>
           @if (item().appropriateness) {
             <div class="qt-text-xs qt-text-secondary truncate mt-0.5">
@@ -350,6 +357,9 @@ export class WardrobeItemRow {
     const predicate = this.canManage();
     return predicate ? predicate(this.item()) : Boolean(this.item().characterId);
   });
+
+  /** v4 `:261-263` — `formatWearLine(wearOf(item))`. */
+  protected readonly wearLine = computed(() => formatWearLine(wearOf(this.item())));
 
   /** v4 `:193` — `wardrobeOriginLabel(item.origin)`. */
   protected readonly originLabel = computed(() => wardrobeOriginLabel(this.item().origin));

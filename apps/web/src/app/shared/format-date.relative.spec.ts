@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatChatListDate, formatRelativeAge, formatRelativeDate } from './format-date';
+import {
+  formatChatListDate,
+  formatRelativeAge,
+  formatRelativeDate,
+  formatRelativeDays,
+} from './format-date';
 
 /**
  * Parity specs for the three relative formatters against v4
@@ -128,5 +133,44 @@ describe('formatRelativeAge (v4 lib/format-time.ts:161-167)', () => {
 
   it('a future timestamp floors at 0 rather than going negative (v4 `Math.max(0, …)`)', () => {
     expect(formatRelativeAge(now + 10_000, now)).toBe('just now');
+  });
+});
+
+/**
+ * P4.D261 (R-E) — v4 `3ee3b1342` `lib/format-time.ts:170-196` at the pin
+ * `f5e953a3f`: the DAY ladder, ported from the code (never the help's
+ * `last Tue` — no rung prints a weekday). Every rung and both edges of each
+ * boundary, from a fixed `nowMs`.
+ */
+describe('formatRelativeDays (v4 lib/format-time.ts:184-196)', () => {
+  const now = Date.parse('2026-10-07T12:00:00.000Z');
+  const ago = (days: number): number => now - days * DAY;
+
+  it('walks the eight rungs', () => {
+    expect(formatRelativeDays(ago(0), now)).toBe('today');
+    expect(formatRelativeDays(ago(1), now)).toBe('yesterday');
+    expect(formatRelativeDays(ago(3), now)).toBe('3 days ago');
+    expect(formatRelativeDays(ago(10), now)).toBe('last week');
+    expect(formatRelativeDays(ago(21), now)).toBe('3 weeks ago');
+    expect(formatRelativeDays(ago(45), now)).toBe('last month');
+    expect(formatRelativeDays(ago(120), now)).toBe('4 months ago');
+    expect(formatRelativeDays(ago(400), now)).toBe('1 year ago');
+    expect(formatRelativeDays(ago(800), now)).toBe('2 years ago');
+  });
+
+  it('holds each boundary where v4’s strict `<` puts it', () => {
+    expect(formatRelativeDays(now - (DAY - 1), now)).toBe('today');
+    expect(formatRelativeDays(ago(2) + 1, now)).toBe('yesterday');
+    expect(formatRelativeDays(ago(2), now)).toBe('2 days ago');
+    expect(formatRelativeDays(ago(7), now)).toBe('last week');
+    expect(formatRelativeDays(ago(14), now)).toBe('2 weeks ago');
+    expect(formatRelativeDays(ago(30), now)).toBe('last month');
+    expect(formatRelativeDays(ago(60), now)).toBe('2 months ago');
+    expect(formatRelativeDays(ago(364.9), now)).toBe('12 months ago');
+    expect(formatRelativeDays(ago(365), now)).toBe('1 year ago');
+  });
+
+  it('clamps a future timestamp to today (`Math.max(0, …)`)', () => {
+    expect(formatRelativeDays(now + 5 * DAY, now)).toBe('today');
   });
 });

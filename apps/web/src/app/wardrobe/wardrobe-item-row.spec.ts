@@ -273,3 +273,44 @@ describe('WardrobeItemRow — origin chip (v4 wardrobe-item-row-origin.test.tsx)
     expect(chipOf(f)).toBeNull();
   });
 });
+
+/**
+ * P4.D261 — v4 `3ee3b1342` `wardrobe-wear-ledger-ui.test.tsx` (the row ×3) at
+ * the pin `f5e953a3f`; markup `wardrobe-item-row.tsx:257-263` — ALWAYS
+ * rendered under the badge row (an absent annotation reads `Never worn`),
+ * before `appropriateness`.
+ */
+describe('WardrobeItemRow — the wear line (v4 wardrobe-wear-ledger-ui.test.tsx)', () => {
+  const line = (f: ComponentFixture<WardrobeItemRow>): HTMLElement =>
+    (f.nativeElement as HTMLElement).querySelector('[data-testid="wardrobe-wear-line"]')!;
+  const daysAgo = (n: number): string => new Date(Date.now() - n * 86_400_000).toISOString();
+
+  it('shows the tally and the relative date of the last wear', async () => {
+    const f = await render(
+      dto({
+        id: 'w',
+        characterId: 'c1',
+        wear: { wearCount: 4, firstWornAt: daysAgo(30), lastWornAt: daysAgo(3), lastWornChatId: null },
+      }),
+    );
+    expect(line(f).textContent!.trim()).toMatch(/^Worn 4× · last /);
+    expect(line(f).classList.contains('qt-text-xs')).toBe(true);
+  });
+
+  it('says "once" for a single wear', async () => {
+    const f = await render(
+      dto({
+        id: 'w',
+        characterId: 'c1',
+        wear: { wearCount: 1, firstWornAt: daysAgo(21), lastWornAt: daysAgo(21), lastWornChatId: null },
+      }),
+    );
+    expect(line(f).textContent!.trim()).toMatch(/^Worn once · last /);
+  });
+
+  it('reads an item with no annotation (a pre-round server) as never worn, above appropriateness', async () => {
+    const f = await render(dto({ id: 'w', characterId: 'c1', appropriateness: 'formal' }));
+    expect(line(f).textContent!.trim()).toBe('Never worn');
+    expect(line(f).nextElementSibling!.textContent!.trim()).toBe('formal');
+  });
+});

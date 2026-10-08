@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(spa): P4.D261 unit 3 — v4 3ee3b1342: the wear line, formatRelativeDays, the dialog's Sort select and Never worn filter
+
+_Versions: SPA 0.5.814._
+
+Ports the display half of v4's wear ledger. New `wardrobe/wear-display.ts` (a transcription of v4's: `wearOf`, `isNeverWorn`, `formatWearLine`, `formatWornWhen`, `WARDROBE_LIST_SORTS`, `sortWardrobeItems`, `sortAndFilterWardrobeItems`) and `formatRelativeDays` in `shared/format-date.ts` (v4's day ladder from the code — it never prints a weekday). Every wardrobe row and every project-wardrobe row now shows a wear line (`Worn 4× · last 3 days ago`, `Worn once · …`, `Never worn`; an item with no `wear` annotation reads `Never worn`). The wardrobe dialog gains a Sort select (Title / Recently worn / Most worn / Newest, never-worn last under the wear sorts) and a `Never worn` checkbox shown in every scope; both are dialog-only state and fire no fetch.
+
 #### 2026-10-08 — feat(spa): P4.D261 unit 2 — v4 cc80dc89d: the origin chip replaces · shared, wrapped picker titles, formatSlotLabels in canonical order
 
 _Versions: SPA 0.5.813._
