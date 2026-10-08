@@ -172880,3 +172880,28 @@ ERROR leg is the unit pin (one arm per family — the carve).
   completed` / `Wardrobe create completed` / `Wardrobe update completed` INFO
   lines, so the keys `3ee3b1342` / `b3f937076` add to them (`neverWornCount`,
   `withPictureCount`, `imageGeneration`, `changesLook`) have no line to land on.
+
+### Unit 7 — the selection paths' families see the ledger (item 7's dumps)
+
+- `chat_cast_routes_equivalence` + `chat-cast-routes.test.ts`: the committed
+  `chat-cast` pair predates the ledger, so each case's copy gets the table in
+  the MIGRATION's shape (v4: `WARDROBE_WEAR_STATS_DDL` after
+  `initializeDatabase`; v5: P4.D255's `ensure_wear_ledger_on` before
+  `Db::open`) and `castTables` gains `wardrobeWear` (every row minus the minted
+  cells). 13 add-participant cases now carry credited rows; green.
+- `chat_create_capstone_equivalence` + `chat-create-capstone.test.ts`: the
+  builder already grows the table (P4.D255); `MAIN_TABLES` gains
+  `wardrobe_wear_stats` (sorted `(itemId, wearer)` — the minted id cannot
+  order). 61 create cases carry `chat-start` credits; green.
+- `outfit_llm_choose_tier3_equivalence` + `chat-dialogs-llm-choose-tier3.test.ts`:
+  the plant as above; `readTables` gains `wardrobeWear`; the two stamps a
+  case's credit mints collapse to `<ts>` (the oracle's frozen clock vs the
+  wall clock). The add-participant picks credit (bundles included); the three
+  MERGE cases carry ZERO rows on both sides — "a merge changes nobody's
+  clothes"; green.
+- **Red-first by mutation** (the KEYSTONE binaries ignore the new dump key, so
+  they cannot show it): `ChatStart` and `ParticipantAdded` swapped for `Merge`
+  (credits nothing) → all three families RED (cast 1 of 9, capstone 1 of 3,
+  llm_choose 1 of 1); restored → green.
+- `chats_outfits_tier2_equivalence` (R-J) re-run at the pin: GREEN, as
+  predicted (its case drives the slot writer only).

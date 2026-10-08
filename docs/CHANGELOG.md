@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — test(harness): the cast, capstone and llm_choose families dump the wear ledger (P4.D262 item 7)
+
+_No crate versions bumped._
+
+The three selection-path families now see the wear ledger (P4.D262 item 7's dumps). `chat_cast_routes` and `outfit_llm_choose_tier3` give each committed-fixture copy the ledger table in the migration's shape: v4's DDL in the oracle, P4.D255's ensure on the v5 copy. Their dumps gain every ledger row. `chat_create_capstone` (its builder already grows the table) dumps `wardrobe_wear_stats` as a fifth table. Add-participant credits as `participant-added`, chat create as `chat-start`, and the merge cases credit nothing on both sides. With the chat-start and participant-added sources switched to `merge`, all three families go red; restored, they are green.
+
 #### 2026-10-08 — feat(tools): the four wardrobe tools at HEAD — wear tags and tally, the picture handle, `generate_image` (P4.D262 items 10–14)
 
 _Versions: core 0.0.1259._

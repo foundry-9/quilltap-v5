@@ -134,6 +134,9 @@ const MAIN_TABLES: Array<{ key: string; table: string; orderBy: string }> = [
   { key: 'chatMessages', table: 'chat_messages', orderBy: 'id' },
   { key: 'projects', table: 'projects', orderBy: 'id' },
   { key: 'backgroundJobs', table: 'background_jobs', orderBy: 'id' },
+  // [P4.D262 / v4 `3ee3b1342`] the chat-start outfits commit through the wear
+  // ledger's chokepoint (`source: 'chat-start'`); the builder grew the table.
+  { key: 'wardrobeWear', table: 'wardrobe_wear_stats', orderBy: 'itemId' },
 ];
 
 function canonValue(v: unknown): unknown {

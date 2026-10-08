@@ -173,6 +173,12 @@ fn fresh_db(spec: &Spec, tag: &str) -> ScratchDb {
     let mount = scratch.path().join("mount.db");
     std::fs::copy(fixtures_dir().join("chat-dialogs-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("chat-dialogs-mount.db"), &mount).unwrap();
+    // P4.D262: the committed pair predates the wear ledger — P4.D255's ensure.
+    {
+        let w = Writer::open_writable(&main, &spec.test_pepper_base64)
+            .expect("open main for the ledger ensure");
+        quilltap_core::test_support::ensure_wear_ledger_on(w.connection());
+    }
     let db = Db::open(
         DbPaths {
             main,
@@ -201,7 +207,24 @@ fn sorted(v: &Value) -> Value {
     }
 }
 fn norm(v: &Value) -> String {
-    serde_json::to_string_pretty(&sorted(v)).unwrap()
+    serde_json::to_string_pretty(&sorted(&wear_stamps_collapsed(v))).unwrap()
+}
+
+/// P4.D262: a wear credited during the case is stamped NOW on each side (the
+/// oracle's frozen clock vs the Rust wall clock), so `wardrobeWear`'s two
+/// stamps collapse to `<ts>`; every other cell compares exactly.
+fn wear_stamps_collapsed(v: &Value) -> Value {
+    let mut v = v.clone();
+    if let Some(rows) = v.get_mut("wardrobeWear").and_then(Value::as_array_mut) {
+        for row in rows {
+            for k in ["firstWornAt", "lastWornAt"] {
+                if row.get(k).is_some_and(Value::is_string) {
+                    row[k] = Value::String("<ts>".into());
+                }
+            }
+        }
+    }
+    v
 }
 fn first_diff(got: &str, want: &str) -> String {
     let g: Vec<&str> = got.lines().collect();
@@ -247,7 +270,29 @@ fn dump_tables_conn(c: &rusqlite::Connection, chat_id: &str) -> Value {
                 .collect()
         })
         .unwrap_or_default();
-    json!({ "equippedOutfit": equipped, "participants": participants })
+    // P4.D262 (v4 `3ee3b1342`): every ledger row minus the minted
+    // id/createdAt/updatedAt — the oracle's `wardrobeWear`.
+    let mut stmt = c
+        .prepare(
+            "SELECT \"itemId\", \"wearerCharacterId\", \"wearCount\", \"firstWornAt\", \"lastWornAt\", \"lastWornChatId\" \
+             FROM \"wardrobe_wear_stats\" ORDER BY \"itemId\", COALESCE(\"wearerCharacterId\", '')",
+        )
+        .unwrap();
+    let wardrobe_wear: Vec<Value> = stmt
+        .query_map([], |r| {
+            Ok(json!({
+                "itemId": r.get::<_, String>(0)?,
+                "wearerCharacterId": r.get::<_, Option<String>>(1)?,
+                "wearCount": r.get::<_, i64>(2)?,
+                "firstWornAt": r.get::<_, String>(3)?,
+                "lastWornAt": r.get::<_, String>(4)?,
+                "lastWornChatId": r.get::<_, Option<String>>(5)?,
+            }))
+        })
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    json!({ "equippedOutfit": equipped, "participants": participants, "wardrobeWear": wardrobe_wear })
 }
 
 #[test]
@@ -798,6 +843,8 @@ fn drive_apply_case(
     std::fs::copy(fixtures_dir().join("chat-dialogs-mount.db"), &mount_path).unwrap();
     let main_w = Writer::open_writable(&main_path, &spec.test_pepper_base64).expect("open main");
     let mount_w = Writer::open_writable(&mount_path, &spec.test_pepper_base64).expect("open mount");
+    // P4.D262: the committed pair predates the wear ledger — P4.D255's ensure.
+    quilltap_core::test_support::ensure_wear_ledger_on(main_w.connection());
     let main = main_w.connection();
     let mount = mount_w.connection();
 

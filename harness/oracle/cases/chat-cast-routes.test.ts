@@ -202,6 +202,17 @@ async function readJobs(): Promise<unknown> {
   }));
 }
 
+/** [P4.D262 / v4 `3ee3b1342`] Every `wardrobe_wear_stats` row minus the minted
+ *  `id`/`createdAt`/`updatedAt` — the add-participant outfit now commits
+ *  through the wear ledger's chokepoint as `participant-added`. */
+async function readWear(): Promise<unknown> {
+  const { rawQuery } = await import('@/lib/database/manager');
+  return rawQuery(
+    'SELECT "itemId", "wearerCharacterId", "wearCount", "firstWornAt", "lastWornAt", "lastWornChatId" ' +
+      'FROM "wardrobe_wear_stats" ORDER BY "itemId", COALESCE("wearerCharacterId", \'\')',
+  );
+}
+
 interface CaseSpec {
   name: string;
   run: () => Promise<{ status: number; body: unknown; tables?: unknown }>;
@@ -240,6 +251,18 @@ async function runCase(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
   await initializeDatabase();
+  // [P4.D262] The committed pair predates the wear ledger: plant the table in
+  // the MIGRATION's shape, as a booted pre-round instance has it (the Rust side
+  // runs P4.D255's ensure on its copy).
+  {
+    const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+    const { WARDROBE_WEAR_STATS_DDL } = await import(
+      '@/lib/database/backends/sqlite/wardrobe-wear-stats-ddl'
+    );
+    const raw = getRawDatabase() as { exec: (sql: string) => void } | null;
+    if (!raw) throw new Error('main DB handle unavailable for the wear ledger');
+    for (const sql of WARDROBE_WEAR_STATS_DDL) raw.exec(sql);
+  }
 
   const RealDate = Date;
   const iso = new RealDate(NOW_MS).toISOString();
@@ -324,6 +347,7 @@ async function main(): Promise<void> {
     chat: await readChatRow(chatId),
     messages: await readMessages(chatId),
     jobs: await readJobs(),
+    wardrobeWear: await readWear(),
   });
 
   const addCase = (name: string, chatId: string, body: unknown, dump = true): CaseSpec => ({

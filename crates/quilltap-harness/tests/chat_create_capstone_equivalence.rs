@@ -511,6 +511,10 @@ fn sort_rows(table: &str, rows: &mut [Value]) {
             )
         }),
         "chats" => rows.sort_by_key(|r| (text(r, "createdAt"), text(r, "title"))),
+        // P4.D262: one row per (item × wearer); the minted `id` cannot order.
+        "wardrobe_wear_stats" => {
+            rows.sort_by_key(|r| (text(r, "itemId"), text(r, "wearerCharacterId")))
+        }
         _ => {}
     }
 }
@@ -1113,6 +1117,10 @@ fn chat_create_capstone_matches_oracle() {
         let got_msgs = dump("chat_messages");
         let got_projects = dump("projects");
         let got_bg = dump("background_jobs");
+        // P4.D262 (v4 `3ee3b1342`): the chat-start credits.
+        let got_wear = db
+            .read_main(|conn| dump_table_json_conn(conn, "wardrobe_wear_stats", "itemId"))
+            .unwrap_or_else(|e| panic!("dump wardrobe_wear_stats: {e}"));
 
         // P4.D246 (v4 `9753d0eb2`): the fixture project's roster + flag after
         // the create — the one write the MAIN dumps cannot see (it lives in the
@@ -1188,7 +1196,7 @@ fn chat_create_capstone_matches_oracle() {
             }
         }
 
-        let sections: [(&str, Value, Value); 8] = [
+        let sections: [(&str, Value, Value); 9] = [
             (
                 "chats",
                 table_rows("chats", &got_chats),
@@ -1208,6 +1216,11 @@ fn chat_create_capstone_matches_oracle() {
                 "background_jobs",
                 table_rows("background_jobs", &got_bg),
                 table_rows("background_jobs", &want["tables"]["backgroundJobs"]),
+            ),
+            (
+                "wardrobe_wear_stats",
+                table_rows("wardrobe_wear_stats", &got_wear),
+                table_rows("wardrobe_wear_stats", &want["tables"]["wardrobeWear"]),
             ),
             (
                 "message_order",

@@ -171,6 +171,14 @@ fn fresh_db(spec: &Spec, tag: &str) -> (Db, tempfile::TempDir) {
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("chat-cast-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("chat-cast-mount.db"), &mount).unwrap();
+    // P4.D262: the committed pair predates the wear ledger — P4.D255's ensure
+    // gives the copy the table a booted pre-round instance has (the oracle
+    // plants v4's migration DDL).
+    {
+        let w = quilltap_core::db::Writer::open_writable(&main, &spec.test_pepper_base64)
+            .expect("open main for the ledger ensure");
+        quilltap_core::test_support::ensure_wear_ledger_on(w.connection());
+    }
     let db = Db::open(
         DbPaths {
             main,
@@ -411,6 +419,31 @@ fn dump_avatar_overrides(db: &Db) -> Value {
             })?
             .collect::<Result<Vec<_>, _>>()?;
         Ok::<_, quilltap_core::db::DbError>(Value::Array(rows))
+    })
+    .unwrap()
+}
+
+/// P4.D262: every `wardrobe_wear_stats` row minus the minted `id` /
+/// `createdAt` / `updatedAt` (the oracle's `readWear`).
+fn dump_wear(db: &Db) -> Value {
+    db.read_main(|c| {
+        let mut stmt = c.prepare(
+            "SELECT \"itemId\", \"wearerCharacterId\", \"wearCount\", \"firstWornAt\", \"lastWornAt\", \"lastWornChatId\" \
+             FROM \"wardrobe_wear_stats\" ORDER BY \"itemId\", COALESCE(\"wearerCharacterId\", '')",
+        )?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(json!({
+                    "itemId": r.get::<_, String>(0)?,
+                    "wearerCharacterId": r.get::<_, Option<String>>(1)?,
+                    "wearCount": r.get::<_, i64>(2)?,
+                    "firstWornAt": r.get::<_, String>(3)?,
+                    "lastWornAt": r.get::<_, String>(4)?,
+                    "lastWornChatId": r.get::<_, Option<String>>(5)?,
+                }))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Value::Array(rows))
     })
     .unwrap()
 }
@@ -708,6 +741,7 @@ fn chat_cast_routes_match_oracle() {
                 "chat": dump_chat_row(db, chat),
                 "messages": dump_messages(db, chat),
                 "jobs": dump_jobs(db),
+                "wardrobeWear": dump_wear(db),
             })
         };
 

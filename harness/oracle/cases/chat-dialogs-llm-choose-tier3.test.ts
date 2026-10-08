@@ -166,7 +166,15 @@ async function readTables(chatId: string): Promise<unknown> {
       status: p.status,
     }),
   );
-  return { equippedOutfit: equipped ?? {}, participants };
+  // [P4.D262 / v4 `3ee3b1342`] every ledger row minus the minted
+  // id/createdAt/updatedAt: the add-participant pick credits as
+  // `participant-added`; a merge credits NOTHING.
+  const { rawQuery } = await import('@/lib/database/manager');
+  const wardrobeWear = await rawQuery(
+    'SELECT "itemId", "wearerCharacterId", "wearCount", "firstWornAt", "lastWornAt", "lastWornChatId" ' +
+      'FROM "wardrobe_wear_stats" ORDER BY "itemId", COALESCE("wearerCharacterId", \'\')',
+  );
+  return { equippedOutfit: equipped ?? {}, participants, wardrobeWear };
 }
 
 interface CaseSpec {
@@ -234,6 +242,18 @@ async function runCase(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
   await initializeDatabase();
+  // [P4.D262] The committed pair predates the wear ledger: plant the table in
+  // the MIGRATION's shape, as a booted pre-round instance has it (the Rust side
+  // runs P4.D255's ensure on its copy).
+  {
+    const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+    const { WARDROBE_WEAR_STATS_DDL } = await import(
+      '@/lib/database/backends/sqlite/wardrobe-wear-stats-ddl'
+    );
+    const raw = getRawDatabase() as { exec: (sql: string) => void } | null;
+    if (!raw) throw new Error('main DB handle unavailable for the wear ledger');
+    for (const sql of WARDROBE_WEAR_STATS_DDL) raw.exec(sql);
+  }
 
   if (c.seedInstructions) {
     const { getRepositories } = await import('@/lib/repositories/factory');
