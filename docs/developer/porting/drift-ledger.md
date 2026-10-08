@@ -25,42 +25,55 @@ probe verifies against._
   follow-ups smalls round was unified, all seven lanes (P4.D254 ∥ P4.153 ∥
   P4.154 ∥ P4.155 ∥ P4.156 ∥ P4.157 ∥ P4.158, 2026-10-06). The one row it
   absorbed is retired to §6: `94fbb1ae3` ABSORBED(P4.D254). CLAUDE.md's
-  Status bullet agrees.
-- **Checked:** 2026-10-07 (`/unify` of the `94fbb1ae3` boot-hardness +
-  validation + follow-ups round, P4.159–P4.164; `git fetch --all` first) —
-  the §2 probe FAILED at its start: v4 `main` had moved past the baseline.
-  **The human ruled in-session: keep the baseline, PIN every regen at
-  `94fbb1ae3` ("more changes are coming on that end")** — every regen ran
-  from `/tmp/qt-v4-pin-unify-p4159`; the commits below are recorded
-  UNPROCESSED in §3, NOT classified (a full `/driftcheck` is owed once v4
-  settles). During the lanes the human had already waived the two docs-only
-  commits (`938144eb4`, `7c78abd49`) in each lane's session. Previous checks:
-  2026-10-06 (`/unify` of the `94fbb1ae3` smalls round; `/driftcheck`, which
-  recorded `94fbb1ae3`).
-- **v4 `main` HEAD at check: `b3f937076`** (`a9c99a4a0` — a merge of
-  `origin/main` — at the sweep; one more commit landed by the cleanup) —
-  SEVEN commits past the baseline (§3), FIVE of them touching `lib/` / `app/` /
-  `migrations/` / `public/` (91 such paths; three NEW migrations:
-  `add-wardrobe-wear-stats-table-v1`, `seed-wardrobe-wear-stats-v1`,
-  `add-wardrobe-image-settings-field-v1`). `origin/main` agrees.
+  Status bullet agrees (the boot-hardness round's bullet: "the oracle
+  baseline STAYS `94fbb1ae3`"; its "Oracle baseline" bullet names it).
+- **Checked:** 2026-10-08 (`/driftcheck`, the full §4 procedure;
+  `git fetch --all` first) — the classification the 2026-10-07 unification
+  owed. Previous checks: 2026-10-07 (`/unify` of the boot-hardness round —
+  recorded the commits UNPROCESSED, unclassified, by the human's PIN ruling);
+  2026-10-06 (`/unify` of the `94fbb1ae3` smalls round).
+- **v4 `main` HEAD at check: `f5e953a3f`** ("feat(startup): daily database
+  optimize before migrations", 2026-10-07 23:28) — ELEVEN commits past the
+  baseline (ten + the merge `a9c99a4a0`, which now has its own row: it alone
+  moves the root dependency tree). `origin/main` agrees. Two commits landed
+  since the 2026-10-07 record: `039f7017c` (v4's fixes for bugs 179/180/181
+  — **two of them this port's own filings: CONVERGENCE**) and `f5e953a3f`.
 - **v4 `bugfix` tip at check:** `1a2b2164c`, UNMOVED (`1a2b2164c..bugfix`
-  empty); `origin/bugfix` carries the `release: 4.9.2` merge (`8fbf2afe0`) —
-  infra, no new fix. **`release` tip:** `8fbf2afe0`, UNMOVED; still no
-  `release: 4.10.0` squash.
+  and `..origin/bugfix` empty). **`release` tip:** `8fbf2afe0` (`release:
+  4.9.2`), UNMOVED; still no `release: 4.10.0` squash.
 - **Checkout at check:** branch **`main`**, tree **CLEAN**.
-- **Verdict: DRIFT PENDING — 8 commits UNPROCESSED (§3), unclassified** (the
-  eighth, `06a70a76f`, is the port's own docs-only bug filing).
+- **Verdict: DRIFT PENDING — 11 commits (§3), all classified.** Three
+  NO-PORT? (the two docs commits and the port's own bug filing; bug 179's
+  half of `039f7017c` is a fourth candidate pending one measurement); the
+  rest PORT / PORT-NEW / CONVERGENCE:
+  the wardrobe programme (#80 lists, #81 wear ledger, #82 item images + the
+  tool pictures), the chat gallery's two passes, bugs 180/181 converging
+  (v5's backup WRITER must move too — see the row), and the daily optimize
+  (PORT-NEW, likely needs a ruling). **Schema: TWO D23 moves pending** — the
+  SIXTH re-dump will carry `wardrobe_wear_stats` (a new generateDDL table)
+  and `chat_settings."wardrobeImageSettings"`; plus a migration UNIQUE
+  `COALESCE` index for `migration_indexes.json` (load-bearing: v4's
+  increment SQL is an `ON CONFLICT` on it) and two boot ensures (the column
+  ADD, the seed).
 - **Regen rule: PIN REQUIRED at `94fbb1ae3`** (§5.1) — v4 HEAD is past the
-  baseline. `provisioning_equivalence` still REQUIRES `QT_FRESH_SCHEMA_LIVE`,
-  dumped FROM THE PIN (a dump from HEAD would carry the wardrobe migrations'
-  schema — that red is drift, not a v5 bug).
-- **Live-checkout guards at the baseline:** `builtin_prompt_templates_guard`,
-  `provider_sdk_version_guard`, `qtap_schema_embed_guard`,
-  `public_schemas_vendor_guard`, and the help guards (`help_tree_equivalence`
-  and kin — `94fbb1ae3` moved `help/inform.md`, re-vendored by P4.D254; 129
-  files md5-identical to the pin) GREEN against the pin at the unification.
-  Since P4.157 the five resolve the v4 tree through ONE `common::v4_root()`
-  (`QT_V4_CHECKOUT`, then `QT_V4_ROOT`, then the default checkout).
+  baseline. ⚠ **The dependency trap is LIVE:** the merge `a9c99a4a0` moved
+  the root tree (`openai` 7.23.0 → 7.30.0, `@openrouter/sdk` 1.3.28 →
+  1.4.25, `mammoth` 1.12.3 → 1.13.0, `sharp`, `next` 16.4.0, the
+  micromark/mdast family), so every pin needs `npm ci --offline` in its own
+  tree, never the root `node_modules` symlink. `b3f937076` rebuilt eight
+  `plugins/dist/*/index.js` bundles embedding `openai` 7.30.0 (no plugin
+  source change) — the third symlink class is ALSO past the baseline at HEAD.
+  `provisioning_equivalence` still REQUIRES `QT_FRESH_SCHEMA_LIVE` dumped
+  FROM THE PIN (a dump from HEAD carries the two wardrobe schema moves —
+  drift, not a v5 bug).
+- **Live-checkout guards at HEAD (predicted, not run):** `provider_sdk_version_guard`
+  reddens (`RECORDED_OPENAI_SDK` / `RECORDED_OPENROUTER_SDK`);
+  `public_schemas_vendor_guard` / `qtap_schema_embed_guard` redden
+  (`qtap-export.schema.json` moved in `3ee3b1342` + `7c8572869`); the help
+  guards redden (`help/wardrobe.md`, `project-wardrobe.md`,
+  `wardrobe-images.md` NEW, `chat-gallery.md`, `image-generation-profiles.md`,
+  `profile-avatar.md`, `system-backup-restore.md`, `database-protection.md`).
+  All green against the pin at the 2026-10-07 unification.
 - **The workspace gate at the baseline:** the round record in
   `status-log.md` has the counts.
 - **Schema state (`94fbb1ae3`):** `fresh_schema.json` UNMOVED by
@@ -74,7 +87,9 @@ probe verifies against._
   `idx_doc_mount_folders_mp_path` is provisioned UNIQUE (v4's migration
   shape — the human's ruling, 2026-10-06), skipping generateDDL's plain copy
   of that one shared name. Re-dump it when v4 moves a migration that creates
-  an index; `provisioning_equivalence` (1c) reddens on the moved names first.
+  an index (`3ee3b1342` does — `idx_wardrobe_wear_stats_item_wearer` UNIQUE
+  `COALESCE` + `idx_wardrobe_wear_stats_wearer`); `provisioning_equivalence`
+  (1c) reddens on the moved names first.
   Instances provisioned BEFORE that round gain the family at their next boot
   since P4.160 (`db::migration_index_family_repair`, LAST in `seed_built_ins`,
   replaying the same committed statements — the 2026-10-07 round). The paragraph below is the `07b8f0209` state, still
@@ -169,14 +184,17 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-| `938144eb4` | 2026-10-07 | docs: add 4.10.0 release notes draft | NO-PORT? (docs only — `docs/releases/4.10.0.md`; waived by the human in-lane) | — | UNPROCESSED |
-| `7c78abd49` | 2026-10-07 | Wardrobe programme: three design specs | NO-PORT? (docs + `.claude/commands/` only; waived in-lane) | — | UNPROCESSED |
-| `cc80dc89d` | 2026-10-07 | Wardrobe lists: wrap titles, name a borrowed garment's wardrobe (#80) | unclassified — `/driftcheck` owed | unmeasured (wardrobe lists — the wardrobe container + group tiers, P4.6x/P4.88-era) | UNPROCESSED |
-| `3ee3b1342` | 2026-10-07 | Wardrobe wear ledger: track item usage across characters (#81) | unclassified — `/driftcheck` owed (NEW migrations `add-wardrobe-wear-stats-table-v1` + `seed-wardrobe-wear-stats-v1`; `qtap-export.schema.json` moved → `public_schemas_vendor_guard` / `qtap_schema_embed_guard` will redden at HEAD) | unmeasured (wardrobe, `lib/wardrobe/**`, outfit displacement, export schema) | UNPROCESSED |
-| `f9f1ba177` | 2026-10-07 | Chat gallery: file old backdrops as backgrounds, list reused avatars | unclassified — `/driftcheck` owed | unmeasured (the Salon chat gallery) | UNPROCESSED |
-| `7c8572869` | 2026-10-07 | Wardrobe item images: pictures of garments and outfits (#82) | unclassified — `/driftcheck` owed (NEW migration `add-wardrobe-image-settings-field-v1`) | unmeasured (wardrobe, image settings) | UNPROCESSED |
-| `b3f937076` | 2026-10-07 | Wardrobe tools draw item pictures; listings expose picture ids; avatar picker generates portrait | unclassified — `/driftcheck` owed (landed after the unification's sweep; no new migration) | unmeasured (the wardrobe tools, the avatar picker) | UNPROCESSED |
+| `938144eb4` | 2026-10-07 | docs: add 4.10.0 release notes draft | NO-PORT? (docs only — `docs/releases/4.10.0.md`; waived by the human in-lane; re-confirmed 2026-10-08 by `--stat`: one file) | — | UNPROCESSED |
+| `7c78abd49` | 2026-10-07 | Wardrobe programme: three design specs | NO-PORT? (docs + `.claude/commands/` only; waived in-lane; re-confirmed 2026-10-08: five docs files, the specs of #80/#81/#82 below) | — | UNPROCESSED |
+| `cc80dc89d` | 2026-10-07 | Wardrobe lists: wrap titles, name a borrowed garment's wardrobe (#80) | **PORT** (classified 2026-10-08 from the hunks). Server: every wardrobe list GET and item GET tags each item with a read-time `origin: {scope, id, name}` (never stored) — `/wardrobe` + `/wardrobe/[itemId]` → `{general, null, 'Quilltap General'}`; character routes → the character's name; group/project tiers (`mount-wardrobe-route-factory`) on the list GET, the item GET and the POST 201's echoed `wardrobeItems` (NOT its `wardrobeItem`). `?scope=group` now reads through a GROUPED resolver (`resolveGroupMountsForCharacter` + `findArchetypesInMountsAttributed`; later mount still shadows; debug line gains `groupCount`). `tiered-mount-pool.ts`: a store linked to two groups credits the FIRST group; ONE group's lookup failure now drops only that group (new `Group store lookup failed` line) where it used to zero the whole result. `ndjson-writer` strips `origin` (inert — v5 never attaches it to export rows). `formatSlotLabels` / `wardrobeOriginLabel` / `composed-outfits.ts` generics are SPA/type-only. SPA: origin chip, wrapped titles, slot labels. The spec's §7 (`wardrobe_list` tool) was NOT shipped — no tool change | `api/wardrobe.rs` (P4.9f1), `api/characters.rs` wardrobe GET + `scope=group` arm (P4.D71), `api/groups.rs` / `api/projects.rs` mount-wardrobe factory (P4.D112, P4.163), `db/tiered_mount_pool.rs` (P4.D231, P4.124), `db/archetype_wardrobe.rs`; pins in `wardrobe_routes_equivalence`; SPA `wardrobe/wardrobe.api.ts`, `wardrobe-control-dialog.ts` + pickers (P4.D112/P4.D113). `origin` appears nowhere in v5 wardrobe code | UNPROCESSED |
+| `3ee3b1342` | 2026-10-07 | Wardrobe wear ledger: track item usage across characters (#81) | **mixed — PORT-NEW + PORT** (classified 2026-10-08). **Schema:** new main-DB table `wardrobe_wear_stats` (`id` PK, `itemId` NOT NULL, `wearerCharacterId` NULL = unattributed, `wearCount` NOT NULL DEFAULT 0, `firstWornAt`, `lastWornAt`, `lastWornChatId`, `createdAt`, `updatedAt`) — registered as a repository, so generateDDL creates it (→ the SIXTH D23 re-dump) AND migration `add-wardrobe-wear-stats-table-v1` creates it with the hand DDL in `wardrobe-wear-stats-ddl.ts`, incl. **UNIQUE `idx_wardrobe_wear_stats_item_wearer ON ("itemId", COALESCE("wearerCharacterId",''))`** + `idx_wardrobe_wear_stats_wearer` → `migration_indexes.json` re-dump; the UNIQUE is LOAD-BEARING (the increment is `ON CONFLICT (…COALESCE…) DO UPDATE`). `seed-wardrobe-wear-stats-v1` credits one wear per (chat × character × equipped item), dated `chats.updatedAt` → a boot ensure. **PORT on ported surfaces:** every equipped-slot write now goes through ONE `wardrobeWear.commitEquippedOutfit` chokepoint (read prior → write → diff → increment); slot bytes unchanged EXCEPT it now THROWS when `setEquippedOutfit` returns null (before: `set_all` answered 200 / primitives fell back to `result ?? next`) and primitives return the computed `next`, not the repo echo; `applyOutfitSelections` / displacement primitives gain a `source` (chat-start / participant-added / merge — merge never credits / tool); `set_all` + `OutfitSelectionSchema` take optional `wornBundleIds` (validated against the character's tiers); **model-visible:** `wardrobe_list` output gains `wear_count` / `last_worn_at` + ` · last worn X` / ` · never worn` per line, `wardrobe_read` gains a second-person `wear` block, both tool descriptions change; cascade-delete folds a character's rows into the unattributed row; item delete drops its rows (new WARN); transfers keep rows on move, start fresh on copy; backup writes `data/wardrobe-wear.json` + restore `upsertRows` + delete-list + `uuid-remap` of item ids; `.qtap` gains a trailing `wardrobe_wear` record kind (count key only when rows exist), `qtap-export.schema.json` `$defs.WardrobeWear`, new `import-wardrobe-wear.ts` + an item-id map in `import-characters`. **NO-BEHAVIOR:** `memory-weighting.ts` `formatRelativeAge` now delegates to the new `format-time.ts` `formatRelativeDays` — ladder/thresholds/plural byte-identical (tier-1 port should not move; the regen proves it); `vault-overlay/parsers.ts` `resolveWardrobeItemId` a pure extraction. **NEW:** the wear repo, a read-time `wear` summary on collection GETs, `?action=wear-history` on the three item GETs, `wear-display.ts` / `wear-history.ts`, the dialog's wear line + Sort + Never-worn filter, the editor's history section, the composer sending `wornBundleIds`; help `wardrobe.md` / `project-wardrobe.md`. Files bug 179 OPEN (fixed in `039f7017c`) | `services/outfit_selections.rs` (P4.D39; `outfit_llm_choose_tier3_equivalence`), `services/chat_create.rs`, `services/chat_participants.rs`, `services/chat_merge.rs`, `tools/wardrobe_shared.rs` + `wardrobe.rs` (displacement), `api/chat_outfits.rs` `set_all` (P4.D88/P4.107), `tools/wardrobe_{list,read,wear,create}.rs` (P4.123), `dissolve_bundles.rs`, `memory_weighting.rs:222` (Phase 1), `vault_overlay.rs`, `db/chats_outfits.rs`, `services/cascade_delete.rs`, `services/wardrobe_transfers.rs`, the four item-delete routes, `services/backup/{collect,archive,uuid_remap}.rs` + `restore/`, `services/qtap_export/records.rs` + the vendored schema, `services/quilltap_import/`, `fresh_schema.json` + `migration_indexes.json`; SPA `staged-live-outfits` (P4.D72), wardrobe dialog/row/editor/composer (P4.D112/P4.D113, P4.9f1/f2) | UNPROCESSED |
+| `f9f1ba177` | 2026-10-07 | Chat gallery: file old backdrops as backgrounds, list reused avatars | **PORT** (classified 2026-10-08). `lib/photos/chat-gallery.ts`: (1) `isStoryBackgroundPath` → `isStoryBackgroundFile(file, paths)`, also true for `folderPath === '/story-backgrounds/'` — superseded backdrops once listed `source: 'generated'` now `source: 'story-background'`, `isCurrent: false`; (2) a NEW `current-avatars` pass between message attachments and cast portraits over `chat.characterAvatars[*].imageId` + every `avatarOverrides` owner, de-duped by id and sha256, emitting `{id, idKind, url, filename (original → basename → '<name>.webp'), mimeType, size, width, height, sha256, createdAt (characterAvatars[cid].generatedAt → file createdAt → chat.updatedAt), source: 'avatar', characterId, characterName, isCurrent, deletable: false}` + debug `{chatId, pass: 'current-avatars', found}` — moves entries, by-source counts, the sidebar count. Help `chat-gallery.md` | `photos/chat_gallery.rs` (P4.D174; P4.88, P4.D244, P4.138) — `is_story_background_path` (:818), `pass_linked_files` (:676), the new pass between `pass_message_attachments` / `pass_cast_portraits` (:454–455), reusing `resolve_avatar_override_owners` / `safe_resolve_avatar`; `chat_gallery_equivalence` | UNPROCESSED |
+| `7c8572869` | 2026-10-07 | Wardrobe item images: pictures of garments and outfits (#82) | **mixed — PORT-NEW + PORT** (classified 2026-10-08). **Schema:** `chat_settings.wardrobeImageSettings` — the migration `add-wardrobe-image-settings-field-v1` appends `TEXT DEFAULT '{"imageProfileId":null}'`; zod gains it `.optional()` after `storyBackgroundsSettings` → generateDDL's nullable schema-order `TEXT` (TWO shapes, as the inform `permanent` case) → the SIXTH D23 re-dump + a boot ensure. **PORT on ported surfaces:** the chat-settings PUT's new arm + repo seed `{imageProfileId:null}`; profile-resolution adds `resolveWardrobeImageProfile` (override → designated → default; `resolveImageProfileForChat` unchanged); `avatar-prompt.ts` a pure refactor (`buildFigureIdentityBlock`, bytes identical — prove by regen); create-body `imageFileId: null`; item PUT's new 400 `imageFileId must name one of this item's own pictures`, DELETE's `cleanupItemImages`, the vault frontmatter's `imageFileId` key; transfers carry pictures and an ARCHIVED source now 409s; backup/restore: new-account `files.linkedTo` / `tags` now remap wardrobe item ids (`buildWardrobeItemIdRemap` — a change to EXISTING remap output) + `imageFileId` + `wardrobeImageSettings.imageProfileId` remaps + a new step 22f-ter; `.qtap` export now INCLUDES ARCHIVED wardrobe items (`streamCharacters`) + `_imageFiles`; import strips both then `importWardrobeItemImages`; schema `imageFileId` / `_imageFiles`; the Almanack's new "Wardrobe Images" section; llm-log type `WARDROBE_ITEM_IMAGE`; Concierge / image-failover / refusal-ledger purpose `'wardrobe'` + commission strings; help-settings images key. **NEW:** `/api/v1/wardrobe/[itemId]/images` (generate / upload / set-current / delete-image), the image bridge + item-images modules, the editor Image section, thumbnails, the Settings card, `help/wardrobe-images.md` | `api/settings.rs` (P4.6d, P4.56), `db/chat_settings.rs`, `services/image_profile_resolution.rs` (P4.6ao), `services/avatar_prompt.rs`, `wardrobe.rs` / `api/wardrobe.rs` (P4.6ay, P4.9f1; transfers), `db/vault_wardrobe_public.rs`, `vault_overlay.rs`, create-body (P4.D163), `services/backup/uuid_remap.rs` (P4.9G6, P4.D251) + `restore/orchestrator.rs`, `services/qtap_export/records.rs` (P4.9G4, P4.D237), `services/quilltap_import/characters.rs` (P4.4u4), `almanack/` (P4.37, P4.D237), `services/llm_logging.rs` + SPA `llm-logs.api.ts`, `services/concierge_notifications.rs`, `services/dangerous_content/{image_failover,refusal_ledger}.rs` (P4.D225), `tools/help.rs`, `fresh_schema.json` | UNPROCESSED |
+| `a9c99a4a0` | 2026-10-07 | Merge remote-tracking branch 'origin/main' | **PORT-INFRA** (classified 2026-10-08; differs from BOTH parents) — moves the ROOT dependency tree: `openai` 7.23.0 → 7.30.0, `@openrouter/sdk` 1.3.28 → 1.4.25, `mammoth` 1.12.3 → 1.13.0, `sharp` 0.35.5, `next` 16.4.0, micromark/mdast. Trips `provider_sdk_version_guard` (`RECORDED_OPENAI_SDK` / `RECORDED_OPENROUTER_SDK`) at the baseline move; `mammoth` + mdast may move the docx / markdown oracles; the 7.30.0 SDK normalizes a missing chunk `finish_reason` to `null` (stream decoders) | `provider_sdk_version_guard`, the provider stream decoders + recorders (P4.13/P4.14), the docx/markdown oracles; the §5.1 dependency trap | UNPROCESSED |
+| `b3f937076` | 2026-10-07 | Wardrobe tools draw item pictures; listings expose picture ids; avatar picker generates portrait | **mixed — PORT + PORT-NEW** (classified 2026-10-08; no SQL schema move — `WardrobeImageSettingsSchema` gains `generateFromTools: z.boolean().default(false)` INSIDE the JSON, repo seed gains the key, column default unchanged). **Model-visible:** `wardrobe_create` / `wardrobe_update` gain optional `generate_image` (tool-definition snapshot moves); create/list/read descriptions change; list/read gain `image_file_id` + `· picture: …` / `picture: (none)`; create/update may queue a job and append an image line (update decides via `patchChangesLook`). **Jobs:** new `WARDROBE_ITEM_IMAGE_GENERATION` (activity `image`, `maxAttempts: 1`, deduped while PENDING), handler, host-RPC `writeWardrobeItemImage`, job topics `characters` + `mountPoints`. **`/api/v1/images`:** new `options.orientation` that OUTRANKS size/aspectRatio (v5's `api/images.rs` header says it "resolves NO orientation" — that changes). SPA: avatar picker sends `portrait`, a Shape line replaces the Size picker. `plugins/dist/*` (8 bundles): a pure REBUILD embedding `openai` 7.30.0, no plugin source change | `tools/wardrobe_{create,list,read,update}.rs` + `tools/definitions/data.rs` (P4.123), `services/queue_service.rs` (P4.6y), `realtime/job_topics.rs`, `api/images.rs` (P4.62, P4.73, P4.9a2) + `image_gen/params_builder.rs` (orientation arm exists), `api/settings.rs`; SPA image-generation dialog (P4.6ac, P4.9b) | UNPROCESSED |
 | `06a70a76f` | 2026-10-07 | docs(bugs): file bugs 180 and 181 — the LLM logs have no cold-open retry; a full-backup restore drops every embedded memory | NO-PORT? (docs only — `docs/developer/bugs.md` + two bug files; the port's OWN filings, made from this session) | — (v5 Pinned on 181 by `INDEX_KEYED_EMBEDDING`; Faithful on 180) | UNPROCESSED |
+| `039f7017c` | 2026-10-07 | fix: bugs 179, 180, 181 — job-child outfit overwrite, LLM-logs cold open, embedded memories dropped on restore | **CONVERGENCE (180, 181) + NO-PORT? (179)** (classified 2026-10-08). **181 (this port's filing):** `backup-service.ts` now writes each memory embedding as `number[]` (`encodeEmbedding`) — ⚠ **v5's backup writer is FAITHFUL to the OLD shape** (`db/memories_read.rs` `embedding_to_value` emits `{"0":…}`, carried raw by `services/backup/collect.rs`), so this is a PORT on the writer, not just a pin retirement; restore decodes the old shape via `decodeIndexKeyedEmbedding` and the summary's `memories` now counts rows actually written (was `data.memories.length`). §5.4: **measure the decoders' edge rules** — v4 returns `{}` (empty object) UNCHANGED (the schema then refuses) and requires every value finite, where v5's `restore::rows::decode_index_keyed_embedding` turns `{}` into `[]`. **180 (this port's filing):** a shared `openWithColdOpenRetry` ladder (`[200, 600, 1500]`, WARN `<label> cold-open failed — retrying` with `{path, attempt, maxAttempts, backoffMs, error}`) used by BOTH the mount index and the LLM logs; the LLM-logs open gains the `SELECT count(*) FROM sqlite_master` verify probe and its degraded ERROR gains `attempts` — v5's P4.159 "one attempt" faithfulness pins trip by design. **179 (v4's own):** a per-job overlay of buffered `commitEquippedOutfit` slots in `child-repositories-proxy.ts` — a forked-child artifact; v5 has no child process, so NO-PORT? pending ONE measurement (two outfit changes in one v5 autonomous turn compound). Help `system-backup-restore.md` | `services/backup/collect.rs` + `db/memories_read.rs` (writer), `services/backup/restore/rows.rs` + `system_restore_state`'s `INDEX_KEYED_EMBEDDING` (P4.161 / the unifier's `268b8c52b`), `db/runtime.rs` mount-index ladder + the LLM-logs open (P4.159); the bug-179 measurement against `tools/wardrobe_shared.rs` / the in-process job runner | UNPROCESSED |
+| `f5e953a3f` | 2026-10-07 | feat(startup): daily database optimize before migrations | **PORT-NEW — RULING LIKELY NEEDED** (classified 2026-10-08). `instrumentation.ts` PHASE 0.75 (after the version guard, before migrations, never fatal): for main / llm-logs / mount-points, once per local calendar day gated by a JSON FILE `data/db-optimize-state.json` (`{main\|llm-logs\|mount-points: "YYYY-MM-DD"}`, not a DB row): a 24-h-gated physical backup first, then `VACUUM` → `ANALYZE` → `PRAGMA optimize` (stop at first failure; the CLI's `optimizeOneDb` steps), then on main only `PRAGMA wal_checkpoint(TRUNCATE)`; an absent file is stamped done, a failure left unstamped; startup-progress labels. v5 has NO equivalent (no VACUUM / ANALYZE / optimize / physical startup backup; the CLI's `db optimize` / `backup` verbs answer "recognized but not yet available" — a standing deferral). Port questions: the WAL checkpoint is moot under v5's `journal_mode = TRUNCATE`; VACUUM must run on the single writer and rewrites the whole file (iCloud/Dropbox). Help `database-protection.md` | none ported — `quilltap-host` boot (before the boot ensures), the deferred CLI `db optimize` / physical-backup writer (`status-log.md` standing deferrals) | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
