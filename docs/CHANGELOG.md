@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — docs(porting): P4.D258 lane close — the bug-180/181 convergence and the bug-179 no-port
+
+_Docs-only change._
+
+The P4.D258 lane record in `status-log.md` closes with the full gate (fmt, clippy in both feature sets, the two live-checkout guards at the pin, `cargo test --workspace` 4,496 passed / 5 failed / 3 ignored — every red another lane's by-design red at `f5e953a3f`), the three handoffs for the unifier, the dogfood rows, and versions at close (core 0.0.1256, host unchanged). The work order's status header reads LANE COMPLETE.
+
 #### 2026-10-08 — test(restore): an empty index-keyed embedding is refused on both sides (P4.D258 Tier 2)
 
 _No crate versions bumped._

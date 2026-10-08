@@ -174077,3 +174077,85 @@ then flip `EMPTY_EMBEDDING_CASE_LANDED` to `true` in
 Noted, not changed: `derive-restore-archive-memory-refusals.py`'s docstring
 still says v4 REFUSES `…09` (the archive itself is never re-derived; the
 sentence is stale since `039f7017c`).
+
+### Lane close — what landed, what is OPEN, the gate
+
+**Tier 1 — all ten items LANDED:** 1 (red-first dumps, above), 2 (unit 2),
+3–6 (unit 3), 7–9 (unit 1), 10 (unit 4). **Tier 2:** 11 (unit 5 — gated on
+its HANDOFF), 12 (docs, across units 1–3: `rows.rs`, the orchestrator's
+comment, `collect.rs`'s two helpers, `embedding_to_value`'s sentence,
+`runtime.rs`), 13 (unit 4's fixture note). **Tier 3 deferrals, recorded:**
+14 the verify probe NOT ported (P4.159 R-D stands; `runtime.rs`'s module
+doc now says both siblings' v4 probes fail with the same bytes as v5's
+`journal_mode`); 15 `help/**` / `docs/v4/**` untouched (P4.D260's); 16 the
+reconcile count — no finding (both sides' lines agree once `…09` lands on
+both); 17 the live Friday proof — 💸 below.
+
+**OPEN under the order: nothing in this lane.** Three HANDOFFs remain for
+the unifier (recorded in units 3, 4, 5): the census line + the case line
+in `system-restore.test.ts` (with the `EMPTY_EMBEDDING_CASE_LANDED` flip),
+and the `bug_179_no_port` EOF append in `tools/wardrobe_wear.rs` over
+P4.D262's edits. R-G's three `orchestrator.rs` touches (the `Counters`
+field, the `warn_row!` increment in the memories loop, `into_summary`'s
+`self.memories`) are named here for P4.D264's awareness — none is in
+22f-ter / 22n-bis / the plan step. `collect.rs`: this lane's hunks are the
+two helpers inserted ABOVE `compact_backup_data` (after `encode_embedding`),
+compact's memory loop, and the `memories.extend` in `collect_user_data` —
+P4.D264's end-of-table appends do not meet them.
+
+**Fixtures:** one NEW derived archive (`restore-archive-empty-embedding.zip`)
++ its derive script. No committed pair or archive rebuilt; no other
+family's oracle invalidated. The NEW tier-1 oracle case
+`harness/oracle/cases/index-keyed-embedding.ts`.
+
+**Regen recipes (all from the pin, Node 24 at
+`~/.nvm/versions/node/v24.13.1/bin` on PATH):**
+- `index_keyed_embedding_equivalence` (NEW): `cd <pin> && npx tsx
+  ~/source/quilltap-v5/harness/oracle/cases/index-keyed-embedding.ts >
+  /tmp/oracle-index-keyed-embedding.ndjson`, then
+  `QT_ORACLE_INDEX_KEYED_EMBEDDING=… cargo test -p quilltap-harness --test
+  index_keyed_embedding_equivalence` (35 rows asserted).
+- `system_backup_equivalence`, `system_restore_state`,
+  `degraded_sibling_open_equivalence`: their headers' recipes unchanged
+  (`recipe_sweep.py --show <family>`); `system_restore_state` needs the two
+  HANDOFF lines in the case file first.
+
+**Gate (the final tree, `CARGO_INCREMENTAL=0`, one run — per-commit gates
+were the touched families + fmt + clippy of the touched crates; the full
+workspace ran once over all five commits):** `cargo fmt --all --check` 0;
+`cargo clippy --workspace --all-targets -- -D warnings` 0, and with
+`--features quilltap-core/native-transport` 0; the live-checkout guards at
+the PIN (`QT_V4_CHECKOUT` + `QT_V4_ROOT`): `builtin_prompt_templates_guard`
+2/2, `public_schemas_vendor_guard` 3/3 GREEN; `cargo test --workspace
+--no-fail-fast` with this lane's four oracles frozen under
+`/tmp/p4d258/gate/` (the restore oracle with BOTH handoff lines applied to
+the staged case copy): 681 binaries, 4,496 passed / 5 failed / 3 ignored,
+zero `SKIP` for this lane's families (`degraded_sibling_open_equivalence`
+2/2, `index_keyed_embedding_equivalence` 1/1, `host_boot_hardness` 34/34).
+The five reds are ALL §R.13 by-design reds of other lanes, each classified:
+`provider_sdk_version_guard` (live checkout's `openai` 7.30.0 /
+`@openrouter/sdk` 1.4.25 — P4.D260, §R.13(c)); `qtap_schema_embed_guard`
+(the live schema 101,092 bytes — P4.D264, §R.13(d));
+`system_backup_equivalence` (15 differences, every one
+`data/wardrobe-wear.json` or the manifest's `wardrobeWear` — P4.D264);
+`system_restore_equivalence` (4 preview rows, the only differing key
+`wardrobeWear` — P4.D264); `system_restore_state` (33 differences, every one
+a `main.chat_settings` row whose only differing key is
+`wardrobeImageSettings` — P4.D255 / P4.D264). No NEW red.
+`recipe_sweep.py --self-test` exits 0.
+
+**💸 for the dogfood pass:** a full backup of the Friday copy — 
+`data/memories.json` carries `number[]` and `"embedding": null` (key after
+`importance`); a `replace` restore of it reports `memories` = rows written
+(manifest count minus refusals) and logs NO `Decoded index-keyed memory
+embedding`. A PRE-round backup restored: every embedded memory lands (count
+`memories.embedding IS NOT NULL` before/after), one DEBUG per embedded
+memory. A garbage `quilltap-llm-logs.db` on a clone: the key DEBUG ×4, three
+`LLM logs cold-open failed — retrying` WARNs ~2.3 s total, the ERROR with
+`attempts=4`, `/health` `degraded`, the SPA opens. Two garments in one
+`wardrobe_wear` call on a real Salon turn: both worn.
+
+**Versions at close:** core 0.0.1256 (four core-changing commits from
+0.0.1252); host 0.0.189 UNCHANGED (no `crates/quilltap-host/src` line moved
+— the three pins are host TESTS); web, cli, tauri, SPA unchanged; harness
+frozen 0.0.1110.
