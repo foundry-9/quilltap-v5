@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — docs(porting): P4.D259 lane record and order status
+
+_Docs-only change._
+
+Closes the P4.D259 lane: the gate counts, the hand-offs for the unifier (a stale doc line in `collapse_stale_chat_caches.rs`, the shared filename parser, the STAT4 compile-option difference the human ruled to leave alone), the deferred Tier 3 items and the dogfood rows. The work order's status header now reads LANE COMPLETE.
+
 #### 2026-10-08 — feat(cli): ship `quilltap db optimize` (P4.D259 unit 3)
 
 _Versions: cli 0.0.30._

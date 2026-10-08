@@ -174287,3 +174287,73 @@ symlink classes incl. 15 plugin `node_modules`).
   the shared machine): unported `main` answers every `db optimize` row with
   the `recognized but not yet available` refusal, exit 1, where v4 prints
   and exits 0 (the `bogus` and lock rows differ in the message too).
+
+### The lane gate
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` and with `--features quilltap-core/native-transport` clean.
+- `recipe_sweep.py --self-test` exit 0; `recipe_sweep.py --run
+  daily_db_optimize_equivalence --v4 /tmp/qt-v4-pin-p4d259-f5e953a3f --v5w
+  <spaceless worktree> --force` — the recipe ran end-to-end from the pin, both
+  zones ok, `Daily database optimize starting` 17× in each fresh NDJSON.
+- `cargo test --workspace --no-fail-fast` (`CARGO_INCREMENTAL=0`,
+  `QT_V4_CHECKOUT` + `QT_V4_ROOT` at the pin, the family's two env vars):
+  **676 binaries / 4,508 passed / 2 failed / 3 ignored, zero SKIP.** The two
+  reds are §R.13 by-design live-checkout guards owned by OTHER lanes —
+  `provider_sdk_version_guard` (P4.D260, §R.13(c)) and
+  `qtap_schema_embed_guard` (P4.D264, §R.13(d)) — not findings here. By name:
+  `daily_db_optimize_equivalence` 2/2, `host_boot_daily_optimize` 7/7,
+  `host_boot_fresh_indexes` 9/9 (the plan arms unmoved by boot-time ANALYZE),
+  `host_boot_hardness` 34/34, `host_lock_ordering` 5/5, `cli_differential`
+  ok (382 s). No pre-existing `host_boot_*` count moved — no §R.10(i) HANDOFF.
+
+### HANDOFFs (§R.10) and items for the unifier
+
+- **HANDOFF (item 12):** `crates/quilltap-core/src/services/
+  collapse_stale_chat_caches.rs:43` — replace
+  `//! \`npx quilltap db optimize\` (VACUUM — an unported CLI surface).`
+  with `//! \`quilltap db optimize\` (VACUUM — ported in P4.D259, and run
+  daily at boot by v4's PHASE 0.75 pass).` (a doc line in no lane's file).
+- **R-G hunk, recorded:** `almanack/phase1_premises.rs` — `fn
+  parse_backup_filename` → `pub fn` plus a three-line doc note (landed on this
+  branch in unit 1; the file is in no lane's Ownership row).
+- **`STAT4_NOT_COMPILED` — RULED by the human 2026-10-08: leave the sys
+  crate alone, record it for unification.** v4's driver has
+  `SQLITE_ENABLE_STAT4`; `quilltap-sqlite3mc-sys` does not. Pinned both ways
+  in the tier-2 family and in Tier R (the after-size normalization is live
+  only while the build lacks STAT4). Consequence on a shared instance: v5's
+  daily optimize empties `sqlite_stat4` until v4's next daily pass. A future
+  order that adds the define retires both tables.
+- **Order corrections for the record:** the four lines the order listed as
+  NEGATIVE pins (`Pre-optimize backup threw…` and backend.ts's three ERRORs)
+  are reachable through v4's real code and are pinned POSITIVELY; the oracle
+  is a `tsx` script (v4's jest config pins `TZ=UTC`); host arm (c) plants a
+  directory at the state path (a read-only `data/` fails the lock first).
+
+### Deferred (Tier 3, recorded — never silent)
+
+- `db backup` / `db integrity` stay refused (the `not yet available` arm,
+  now pinned for `schema` / `backup` / `integrity`).
+- The progress labels (R-C) and the degraded arm's `error` VALUE
+  (`DEGRADED_OPTIMIZE_ERROR_TEXT`, R-A) — recorded divergences.
+- The migration layer's `Opening … database for migration` DEBUGs — no analog.
+- The live Friday-copy proof — 💸.
+
+### 💸 for the dogfood pass
+
+- The Friday copy's first v5 boot of a day: `data/db-optimize-state.json`
+  with three stamps in v4's bytes; `data/backups/` gains the trio with
+  local-time names; `combined.log` carries `Daily database optimize starting`
+  → three `Database optimize finished` → `… complete`, then the startup
+  trio's `Recent … backup exists, skipping` ×3 and the retention lines; the
+  first boot's duration against a same-day second boot (the skip DEBUG alone).
+  Count `sqlite_stat4` rows before/after (STAT4_NOT_COMPILED, live).
+- A planted 30-day backups tree on the copy: survivors match the four phases.
+- `quilltap db optimize` on the copy with the server stopped; the lock
+  refusal with it running.
+
+### Versions at close
+
+core 0.0.1253, host 0.0.190, cli 0.0.30; web, tauri, SPA unchanged; harness
+frozen 0.0.1110. Branch `claude/physical-backups-retention-db-optimize-d68134`; commits `2ee0e4d86` (unit 1),
+`3fcd02d6d` (unit 2), `3874c22c9` (unit 3) + this record.
