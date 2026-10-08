@@ -12,6 +12,11 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — refactor(format-time): extract `format_relative_days` and delegate the memory age label to it (P4.D262 R-E)
+
+_Versions: core 0.0.1254._
+
+`format_time::format_relative_days(ts_ms, now_ms)` is NEW: the port of v4's `formatRelativeDays` (`lib/format-time.ts:184-196`, `3ee3b1342`), the eight-rung day ladder with v4's clamp, floors and year pluralization. `memory_weighting::format_relative_age` now delegates to it, as v4's `formatRelativeAge` does, so the memory label and the wardrobe tools' "last worn" read one ladder. The delegation is byte-identical: the Phase-1 `memory_weighting` family was green before and after the extraction against a fresh oracle from the `f5e953a3f` pin. A unit test walks every rung at its boundary. First unit of P4.D262 (R-E).
 #### 2026-10-08 — docs(porting): P4.D256 lane record, LANE COMPLETE
 
 _Docs-only change._

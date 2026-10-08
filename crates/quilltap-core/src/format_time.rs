@@ -232,11 +232,73 @@ pub fn locale_date_time_us(iso: &str, zone: &TimeZone) -> Option<String> {
     ))
 }
 
+/// v4 `formatRelativeDays(ts, nowMs = Date.now())` (`lib/format-time.ts:
+/// 184-196`, `3ee3b1342`) — the day-resolution relative age ("today",
+/// "yesterday", "3 days ago", "last week", "2 weeks ago", "last month",
+/// "4 months ago", "2 years ago") for an epoch-millisecond timestamp.
+///
+/// v4's why, carried: this is the ladder for things that happened days or
+/// months ago — a memory's age in recall, a garment last worn. The memory
+/// label ([`crate::memory_weighting::format_relative_age`]) delegates here so
+/// the two readings cannot drift. `now_ms` is the caller's clock (v4's
+/// injectable `nowMs`; production passes [`crate::clock::now_unix_ms`]).
+///
+/// `days_old` is clamped at 0; the branch boundaries and `Math.floor`
+/// semantics are v4's exactly (JS `Math.floor` on a non-negative f64 is
+/// Rust's `.floor()`); the year branch pluralizes only when the floored
+/// count exceeds 1.
+pub fn format_relative_days(ts_ms: f64, now_ms: f64) -> String {
+    let days_old = ((now_ms - ts_ms) / 86_400_000.0).max(0.0);
+
+    if days_old < 1.0 {
+        "today".to_string()
+    } else if days_old < 2.0 {
+        "yesterday".to_string()
+    } else if days_old < 7.0 {
+        format!("{} days ago", days_old.floor() as i64)
+    } else if days_old < 14.0 {
+        "last week".to_string()
+    } else if days_old < 30.0 {
+        format!("{} weeks ago", (days_old / 7.0).floor() as i64)
+    } else if days_old < 60.0 {
+        "last month".to_string()
+    } else if days_old < 365.0 {
+        format!("{} months ago", (days_old / 30.0).floor() as i64)
+    } else {
+        let years = (days_old / 365.0).floor() as i64;
+        format!("{} year{} ago", years, if years > 1 { "s" } else { "" })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     const UTC: TimeZone = TimeZone::UTC;
+
+    /// The eight rungs of v4's `formatRelativeDays` at their boundaries
+    /// (the differential over v4's real function is
+    /// `tool_image_generation_equivalence`'s `formatRelativeDays` rows; the
+    /// memory label's delegation is pinned by Phase-1 `memory_weighting`).
+    #[test]
+    fn format_relative_days_walks_v4s_ladder() {
+        const DAY: f64 = 86_400_000.0;
+        let now = 1_800_000_000_000.0;
+        let at = |days: f64| format_relative_days(now - days * DAY, now);
+        assert_eq!(at(-3.0), "today"); // a future stamp clamps to 0
+        assert_eq!(at(0.999), "today");
+        assert_eq!(at(1.0), "yesterday");
+        assert_eq!(at(2.0), "2 days ago");
+        assert_eq!(at(6.99), "6 days ago");
+        assert_eq!(at(7.0), "last week");
+        assert_eq!(at(14.0), "2 weeks ago");
+        assert_eq!(at(29.9), "4 weeks ago");
+        assert_eq!(at(30.0), "last month");
+        assert_eq!(at(60.0), "2 months ago");
+        assert_eq!(at(364.9), "12 months ago");
+        assert_eq!(at(365.0), "1 year ago");
+        assert_eq!(at(730.0), "2 years ago");
+    }
 
     fn chicago() -> TimeZone {
         TimeZone::get("America/Chicago").unwrap()

@@ -209,10 +209,11 @@ pub fn default_min_cosine_for_provider(provider: Option<&str>) -> f64 {
 }
 
 /// Human-readable relative age. Port of `formatRelativeAge`. Reference time is
-/// max(createdAt, lastReinforcedAt); `days_old` is clamped at 0. Branch
-/// boundaries and `Math.floor` semantics match the TS exactly (note JS
-/// `Math.floor` on a non-negative f64 == Rust `.floor()`; the year branch
-/// pluralizes only when floor(years) > 1).
+/// max(createdAt, lastReinforcedAt). The day ladder itself is
+/// [`crate::format_time::format_relative_days`] — v4 `3ee3b1342` moved it to
+/// `lib/format-time.ts` and made this label delegate "so the two readings
+/// cannot drift" (the wardrobe tools' "last worn" reads the same ladder);
+/// the delegation is byte-identical (the Phase-1 pin does not move).
 ///
 /// Episodic spine (v4 8bf3cb5f): the label reads off the EVENT clock —
 /// `occurredAt` when present, else the write/reinforce clock — so "last week"
@@ -223,24 +224,5 @@ pub fn format_relative_age(m: &MemoryInputs, now_ms: f64) -> String {
     let reinforced = m.last_reinforced_at_ms.unwrap_or(0.0);
     let write_reference = m.created_at_ms.max(reinforced);
     let reference = m.occurred_at_ms.unwrap_or(write_reference);
-    let days_old = ((now_ms - reference) / MS_PER_DAY).max(0.0);
-
-    if days_old < 1.0 {
-        "today".to_string()
-    } else if days_old < 2.0 {
-        "yesterday".to_string()
-    } else if days_old < 7.0 {
-        format!("{} days ago", days_old.floor() as i64)
-    } else if days_old < 14.0 {
-        "last week".to_string()
-    } else if days_old < 30.0 {
-        format!("{} weeks ago", (days_old / 7.0).floor() as i64)
-    } else if days_old < 60.0 {
-        "last month".to_string()
-    } else if days_old < 365.0 {
-        format!("{} months ago", (days_old / 30.0).floor() as i64)
-    } else {
-        let years = (days_old / 365.0).floor() as i64;
-        format!("{} year{} ago", years, if years > 1 { "s" } else { "" })
-    }
+    crate::format_time::format_relative_days(reference, now_ms)
 }
