@@ -12,6 +12,11 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — chore(help): re-vendor help/ whole at v4 `f5e953a3f` — 130 files (P4.D260)
+
+_No crate versions bumped._
+
+`help/` copied byte-exact from v4 `f5e953a3f`: one new page, `help/wardrobe-images.md`, and seven updated pages (`wardrobe`, `project-wardrobe`, `profile-avatar`, `chat-gallery`, `image-generation-profiles`, `system-backup-restore`, `database-protection`). The three count pins move 129 → 130: `help_tree_embed_guard`'s `VENDORED_FILE_COUNT`, `host_help_docs_boot` (assertion and module doc), and `help_tree_equivalence`'s count comment. `help_tree_equivalence` regenerated at the pin: 130 docs, 754 chunks, matching.
 #### 2026-10-08 — docs(porting): P4.D259 lane record and order status
 
 _Docs-only change._

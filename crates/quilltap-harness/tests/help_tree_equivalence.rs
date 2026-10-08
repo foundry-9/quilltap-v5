@@ -118,7 +118,9 @@ async fn shipped_help_tree_matches_oracle() {
     // are present on the unified tree, so this is 126 = 126 and any red here
     // names a REAL missing or surplus file. P4.D217 (v4 `d1c06cd9d`): measured
     // RED at 126 vs the target pin's 127 before `help/scenario-builder.md` was
-    // vendored; 127 = 127 after.
+    // vendored; 127 = 127 after. P4.D260 (v4 `f5e953a3f`): measured RED at
+    // 129 vs the target pin's 130 before `help/wardrobe-images.md` was
+    // vendored (the tree re-vendored WHOLE); 130 = 130 after.
     assert_eq!(
         files.len(),
         want.count,

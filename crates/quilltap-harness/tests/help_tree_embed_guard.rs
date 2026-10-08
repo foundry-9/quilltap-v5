@@ -73,7 +73,15 @@ use quilltap_host::help_content::EMBEDDED_HELP;
 /// `chat-settings-ai-services`; the whole tree re-vendored at the target (the
 /// fourteen modified pages move no count). `host_help_docs_boot.rs` carries
 /// the same number in the host crate.
-const VENDORED_FILE_COUNT: usize = 129;
+///
+/// **130 at v4 `f5e953a3f` (129 + 1, P4.D260):** `help/wardrobe-images.md`
+/// (the wardrobe item pictures, `7c8572869`); the seven re-vendored pages
+/// (`wardrobe`, `project-wardrobe`, `profile-avatar`, `chat-gallery`,
+/// `image-generation-profiles`, `system-backup-restore`,
+/// `database-protection`) move no count. The tree re-vendored WHOLE at the
+/// target (R-A). Measured RED at 130 on disk vs this constant's 129 before
+/// the move.
+const VENDORED_FILE_COUNT: usize = 130;
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

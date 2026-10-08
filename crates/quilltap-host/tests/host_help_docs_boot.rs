@@ -4,17 +4,17 @@
 //! Three pins over a REAL fresh-provisioned instance:
 //!
 //!   1. **The boot reconcile runs.** `Host::start` alone leaves `help_docs` at
-//!      the shipped tree's 129 rows with their section chunks — the
+//!      the shipped tree's 130 rows with their section chunks — the
 //!      `reconcile_help_docs_at_boot` call in `assemble` (v4's Phase 3.66
 //!      `ensureHelpDocsSynced`, EAGER at startup since `492771aff`; until then
 //!      v4 only reconciled lazily from `HelpSearch.loadFromDatabase()` and this
 //!      boot call was a recorded divergence — CONVERGED). Removing that call
 //!      reads 0 (the lane record's mutation).
 //!   2. **A second boot writes nothing.** The `contentHash` sync: every row
-//!      keeps its `updatedAt`, and the count stays 129.
+//!      keeps its `updatedAt`, and the count stays 130.
 //!   3. **`EMBEDDING_REINDEX_ALL` re-syncs from the EMBEDDED table.** With the
 //!      table emptied by hand, one reindex-all job pumped through the host's
-//!      registry restores all 129 rows. Tests run with cwd = the crate dir,
+//!      registry restores all 130 rows. Tests run with cwd = the crate dir,
 //!      which has NO `help/` — so restoring the retired `current_dir()` walk in
 //!      the registration reads an empty tree and leaves 0 rows (the lane
 //!      record's second mutation).
@@ -102,7 +102,10 @@ async fn boot_syncs_the_embedded_help_tree_and_reindex_reads_it() {
     // `chat-settings` into it plus `chat-settings-composer` and
     // `chat-settings-ai-services`; the tree re-vendored WHOLE at the target
     // (fourteen modified pages move no count).
-    assert_eq!(expected, 129, "the vendored tree at v4 b0b6656b5");
+    //
+    // 130 at v4 `f5e953a3f` (129 + 1, P4.D260): `help/wardrobe-images.md`;
+    // the seven re-vendored wardrobe / backup / protection pages move no count.
+    assert_eq!(expected, 130, "the vendored tree at v4 f5e953a3f");
 
     // ── 1. The boot ensure. ──
     let host = Host::start(hermetic_config(dir.path())).unwrap();
