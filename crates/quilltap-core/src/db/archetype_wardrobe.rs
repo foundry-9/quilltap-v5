@@ -115,6 +115,13 @@ pub struct OwnerStore {
 /// from: `{ ...item, origin }`, so `origin` lands LAST (the items are
 /// `preserve_order` maps; an `insert` appends). A non-object item passes
 /// through untouched.
+///
+/// Only the ROUTES call this (and the attributed group read, which only the
+/// `?scope=group` route reaches) — no repository read tags, exactly as in v4
+/// (`cc80dc89d` tags nothing below the routes). So the `.qtap` export's
+/// `origin` strip (v4 `ndjson-writer.ts`; v5 `services/qtap_export/records.rs`)
+/// is INERT against v5's own reads: its items come from
+/// `wardrobe_read::find_by_character_id`, which never carries `origin`.
 pub fn with_origin(items: Vec<Value>, origin: &WardrobeOrigin) -> Vec<Value> {
     let origin = serde_json::to_value(origin).unwrap_or(Value::Null);
     items

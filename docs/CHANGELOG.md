@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — docs(wardrobe): record that no repository read tags `origin`, so the .qtap export's strip is inert (P4.D256 item 15)
+
+_Versions: core 0.0.1259._
+
+A doc comment on `with_origin`: only the routes (and the route-only attributed group read) attach `origin`, as in v4, so the `.qtap` export's `origin` strip never sees one from v5's own reads. No behavior change.
+
 #### 2026-10-08 — feat(wardrobe): the item PUTs accept imageFileId only among the item's own pictures (P4.D256 item 12)
 
 _Versions: core 0.0.1258._
