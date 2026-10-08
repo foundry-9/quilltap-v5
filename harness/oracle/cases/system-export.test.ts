@@ -147,6 +147,8 @@ interface ExportOpts {
 interface CaseSpec {
   name: string;
   run: () => Promise<Record<string, unknown>>;
+  /** [P4.D264] Plant the wardrobe carriers' material first (`plantWardrobe`). */
+  wardrobe?: boolean;
 }
 
 function buildCases(spec: Spec): CaseSpec[] {
@@ -329,6 +331,46 @@ function buildCases(spec: Spec): CaseSpec[] {
   }
   cases.push(entitiesCase('entities_bogus', 'nonsense'));
 
+  // ── P4.D264 (v4 `3ee3b1342` #81 + `7c8572869` #82): the wardrobe carriers ─
+  // Over the `plantWardrobe` copy: the coat ARCHIVED and pointing at its
+  // picture, `portrait.png` linked to it, and three ledger rows (one for an
+  // item no export carries). `characters` emits the archived coat with
+  // `_imageFiles` LAST and the trailing `wardrobe_wear` records; a
+  // `document-stores` export collects the coat off its `Wardrobe/*.md`
+  // document; `projects` streams no store and so carries no ledger; and the
+  // preview counts no `wardrobeWear` (v4's `previewExport` is untouched).
+  const wardrobe = (c: CaseSpec): CaseSpec => ({ ...c, wardrobe: true });
+  cases.push(
+    wardrobe(
+      streamCase('stream_characters_all_wardrobe', {
+        type: 'characters',
+        scope: 'all',
+        includeMemories: false,
+      }),
+    ),
+  );
+  cases.push(
+    wardrobe(
+      streamCase('stream_document-stores_all_wardrobe', {
+        type: 'document-stores',
+        scope: 'all',
+        includeMemories: false,
+      }),
+    ),
+  );
+  cases.push(
+    wardrobe(streamCase('stream_projects_all_wardrobe', { type: 'projects', scope: 'all', includeMemories: false })),
+  );
+  cases.push(
+    wardrobe(
+      previewCase('preview_characters_wardrobe', {
+        type: 'characters',
+        scope: 'all',
+        includeMemories: false,
+      }),
+    ),
+  );
+
   return cases;
 }
 
@@ -400,6 +442,62 @@ function plantP4d171Values(db: { exec(sql: string): unknown; prepare(sql: string
   );
 }
 
+/** [P4.D264] The coat's frontmatter edit (archived + a current picture). */
+const COAT_EDIT_FROM = 'imagePrompt: brown coat\n';
+const COAT_EDIT_TO =
+  'imagePrompt: brown coat\narchived: true\narchivedAt: 2026-03-04T00:00:00.000Z\n' +
+  'imageFileId: f0000001-0000-4000-8000-000000000001\n';
+
+/**
+ * [P4.D264] The wardrobe carriers' plant — plain SQL, run IDENTICALLY by the
+ * Rust twin `plant_wardrobe` (no write clock reaches the export bytes): the
+ * coat's document gains `archived` / `archivedAt` / `imageFileId`, the
+ * `portrait.png` IMAGE row is linked to the coat, and `wardrobe_wear_stats`
+ * is created through v4's REAL migration DDL with three rows inserted
+ * verbatim — the coat × Lorian, the coat × unattributed, and an item no
+ * export carries (which must never be emitted).
+ */
+const WEAR_PLANT_SQL =
+  'INSERT INTO "wardrobe_wear_stats" ("id", "itemId", "wearerCharacterId", "wearCount", ' +
+  '"firstWornAt", "lastWornAt", "lastWornChatId", "createdAt", "updatedAt") VALUES ' +
+  "('3e0000e1-0000-4000-8000-0000000000e1', 'ac000000-0000-4000-8000-000000000001', " +
+  "'a1000000-0000-4000-8000-000000000001', 3, '2026-03-02T00:00:00.000Z', " +
+  "'2026-03-05T00:00:00.000Z', 'c1000000-0000-4000-8000-000000000001', " +
+  "'2026-03-02T00:00:00.000Z', '2026-03-05T00:00:00.000Z'), " +
+  "('3e0000e2-0000-4000-8000-0000000000e2', 'ac000000-0000-4000-8000-000000000001', NULL, 2, " +
+  "'2026-03-01T00:00:00.000Z', '2026-03-03T00:00:00.000Z', NULL, " +
+  "'2026-03-01T00:00:00.000Z', '2026-03-03T00:00:00.000Z'), " +
+  "('3e0000e3-0000-4000-8000-0000000000e3', 'ae0000e3-0000-4000-8000-0000000000e3', " +
+  "'a1000000-0000-4000-8000-000000000002', 9, '2026-03-01T00:00:00.000Z', " +
+  "'2026-03-09T00:00:00.000Z', NULL, '2026-03-01T00:00:00.000Z', '2026-03-09T00:00:00.000Z')";
+
+async function plantWardrobe(): Promise<void> {
+  const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+  const { getRawMountIndexDatabase } = await import(
+    '@/lib/database/backends/sqlite/mount-index-client'
+  );
+  const { WARDROBE_WEAR_STATS_DDL } = await import(
+    '@/lib/database/backends/sqlite/wardrobe-wear-stats-ddl'
+  );
+  const main = getRawDatabase()!;
+  for (const statement of WARDROBE_WEAR_STATS_DDL) main.exec(statement);
+  main.exec(WEAR_PLANT_SQL);
+  const linked = main
+    .prepare(
+      `UPDATE "files" SET "linkedTo" = '["ac000000-0000-4000-8000-000000000001"]' WHERE "id" = ?`,
+    )
+    .run('f0000001-0000-4000-8000-000000000001') as { changes: number };
+  if (linked.changes !== 1) throw new Error('plantWardrobe: portrait.png not found');
+  const mount = getRawMountIndexDatabase()!;
+  const edited = mount
+    .prepare(
+      `UPDATE "doc_mount_documents" SET "content" = replace("content", ?, ?) ` +
+        `WHERE "content" LIKE '%title: Travelling Coat%'`,
+    )
+    .run(COAT_EDIT_FROM, COAT_EDIT_TO) as { changes: number };
+  if (edited.changes !== 1) throw new Error('plantWardrobe: the coat document not found');
+}
+
 async function runCase(
   spec: Spec,
   c: CaseSpec,
@@ -430,6 +528,7 @@ async function runCase(
     plantP4d171Values(getRawDatabase()!);
     plantP4d182Values(getRawDatabase()!);
   }
+  if (c.wardrobe) await plantWardrobe();
 
   try {
     const out = await c.run();

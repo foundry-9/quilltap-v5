@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(export): the wardrobe carriers in the `.qtap` export (P4.D264 unit C)
+
+_Versions: core 0.0.1256._
+
+Ports the export halves of v4 `3ee3b1342` (#81) and `7c8572869` (#82). A characters export now includes archived wardrobe items, and each character-owned item carries `_imageFiles` (the twelve-key projection of its IMAGE `files` rows, export exclusions applied, only when non-empty) as its last key. The ids of every wardrobe item the export carries, character-owned items and `Wardrobe/*.md` documents in an exported store alike, are collected in insertion order, and their `wardrobe_wear_stats` rows are emitted raw as trailing `wardrobe_wear` records right before the footer, for every export type (only the characters and document-stores paths collect ids). The footer counts `wardrobeWear` only when a row was emitted; a failed ledger read warns and skips the tail. `system_export_equivalence` gains four cases over a planted copy (the coat archived and pointing at its linked picture, three ledger rows, one for an item no export carries); the export's DEBUG and WARN lines are capture-pinned.
+
 #### 2026-10-08 — feat(backup): the wardrobe carriers in backup, restore and the UUID remap (P4.D264 unit B)
 
 _Versions: core 0.0.1255._

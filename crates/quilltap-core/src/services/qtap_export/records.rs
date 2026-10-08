@@ -70,6 +70,7 @@ pub(super) fn stream_characters(
     include_memories: bool,
     counts: &mut Counts,
     out: &mut Vec<Value>,
+    wardrobe_item_ids: &mut WardrobeItemIds,
 ) -> Result<(), ExportError> {
     let docs = DocMountDocumentsRepository::new(mount);
 
@@ -90,8 +91,35 @@ pub(super) fn stream_characters(
         counts.bump("characters");
 
         // Wardrobe items — one record each (v4 swallows a failure with a warn).
-        if let Ok(items) = wardrobe_read::find_by_character_id(main, &docs, id, false) {
-            for item in items {
+        //
+        // P4.D264 (v4 `7c8572869` `ndjson-writer.ts:247-263`): "Archived
+        // garments too: the vault carries their documents and picture blobs
+        // regardless, and an archived item's record is what lets the importer
+        // re-mint its pictures and keep its ledger rows" — hence `true`. v4
+        // strips a read-time `origin` here (`:254`); the db read carries none
+        // (P4.D256 tags `origin` at the ROUTE reads — measured, no key on this
+        // path), so there is nothing to strip. "A character-owned item carries
+        // its pictures' file metadata; the bytes ride in the vault's blobs
+        // below (Wardrobe/images/<itemId>/)" — `_imageFiles` LAST, only when
+        // non-empty; and "Character-owned items only: a shared item the overlay
+        // might surface here is not this bundle's to carry, nor is its wear
+        // ledger" — the id is collected for the trailing `wardrobe_wear`
+        // records.
+        if let Ok(items) = wardrobe_read::find_by_character_id(main, &docs, id, true) {
+            for mut item in items {
+                let owned_id = item
+                    .get("characterId")
+                    .and_then(Value::as_str)
+                    .filter(|s| !s.is_empty())
+                    .and_then(|_| item.get("id").and_then(Value::as_str).map(str::to_string));
+                if let Some(item_id) = &owned_id {
+                    let image_files = exported_wardrobe_image_files(main, item_id);
+                    if !image_files.is_empty() {
+                        if let Some(obj) = item.as_object_mut() {
+                            obj.insert("_imageFiles".into(), Value::Array(image_files));
+                        }
+                    }
+                }
                 let mut m = Map::new();
                 m.insert("kind".into(), Value::String("wardrobe_item".into()));
                 m.insert("characterId".into(), Value::String(id.clone()));
@@ -100,6 +128,9 @@ pub(super) fn stream_characters(
                 // order is the vault document's own.
                 m.insert("data".into(), item);
                 out.push(Value::Object(m));
+                if let Some(item_id) = owned_id {
+                    wardrobe_item_ids.add(item_id);
+                }
             }
         }
 
@@ -136,7 +167,9 @@ pub(super) fn stream_characters(
         {
             // v4 wraps the whole emission in try/warn — an unreadable vault
             // must not sink the export.
-            if let Err(e) = stream_one_store(mount, &vault_id, counts, out, true) {
+            if let Err(e) =
+                stream_one_store(mount, &vault_id, counts, out, true, Some(wardrobe_item_ids))
+            {
                 tracing::warn!(
                     character_id = %id,
                     mount_point_id = %vault_id,
@@ -599,6 +632,147 @@ pub(super) fn stream_groups(
 }
 
 // ============================================================================
+// P4.D264 — the wardrobe carriers (v4 `3ee3b1342` #81 + `7c8572869` #82)
+// ============================================================================
+
+/// v4's `wardrobeItemIds: Set<string>` (`ndjson-writer.ts:1126`) — every
+/// wardrobe item the export carries, in insertion order (the order
+/// `findRowsForItems` asks for them, and so the order its chunks run in).
+#[derive(Debug, Default)]
+pub(super) struct WardrobeItemIds {
+    order: Vec<String>,
+    seen: std::collections::HashSet<String>,
+}
+
+impl WardrobeItemIds {
+    fn add(&mut self, id: String) {
+        if self.seen.insert(id.clone()) {
+            self.order.push(id);
+        }
+    }
+
+    pub(super) fn is_empty(&self) -> bool {
+        self.order.is_empty()
+    }
+
+    pub(super) fn len(&self) -> usize {
+        self.order.len()
+    }
+
+    pub(super) fn ids(&self) -> &[String] {
+        &self.order
+    }
+}
+
+/// v4 `exportedWardrobeImageFiles(repos, itemId)` (`:184-212`, `7c8572869`):
+/// "The `files` rows of one wardrobe item's pictures, reduced to the metadata
+/// an importer needs to re-mint them against the imported vault's blobs. The
+/// export-exclusion predicate is asked like everywhere else; IMAGE files
+/// pass." EXACTLY twelve keys (`?? null` on the six nullable ones) — no
+/// `storageKey`, `sha256`, `generationKey` or `fileStatus`. v4's catch (WARN
+/// `Failed to load wardrobe item pictures for export` → `[]`) is UNREACHABLE
+/// through v4's real read — `findByLinkedTo` answers `[]` through
+/// `findByFilter`'s own fallback — and C1 §8's `find_by_linked_to` is the same
+/// fallback twin; the arm is kept for a failure the read could still surface.
+fn exported_wardrobe_image_files(main: &Connection, item_id: &str) -> Vec<Value> {
+    let rows = match FilesRepository::new(main).find_by_linked_to(item_id) {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::warn!(
+                target: "quilltap::export",
+                itemId = %item_id,
+                error = %crate::db::fallback::error_text(&e),
+                "Failed to load wardrobe item pictures for export"
+            );
+            return Vec::new();
+        }
+    };
+    rows.into_iter()
+        .filter(|f| {
+            let probe = serde_json::json!({ "category": f.category, "folderPath": f.folder_path });
+            f.category == "IMAGE" && !super::excluded_files::is_file_excluded_from_export(&probe)
+        })
+        .map(|f| {
+            let mut m = Map::new();
+            m.insert("id".into(), Value::String(f.id));
+            m.insert(
+                "originalFilename".into(),
+                Value::String(f.original_filename),
+            );
+            m.insert("mimeType".into(), Value::String(f.mime_type));
+            m.insert("size".into(), Value::from(f.size));
+            m.insert(
+                "width".into(),
+                f.width.map(Value::from).unwrap_or(Value::Null),
+            );
+            m.insert(
+                "height".into(),
+                f.height.map(Value::from).unwrap_or(Value::Null),
+            );
+            m.insert("source".into(), Value::String(f.source));
+            for (key, v) in [
+                ("generationPrompt", f.generation_prompt),
+                ("generationModel", f.generation_model),
+                ("generationRevisedPrompt", f.generation_revised_prompt),
+                ("description", f.description),
+            ] {
+                m.insert(key.into(), v.map(Value::String).unwrap_or(Value::Null));
+            }
+            m.insert("createdAt".into(), Value::String(f.created_at));
+            Value::Object(m)
+        })
+        .collect()
+}
+
+/// v4 `streamWardrobeWear(wardrobeItemIds, counts)` (`:810-834`, `3ee3b1342`):
+/// "The wear ledger (`wardrobe_wear_stats`) for every wardrobe item the export
+/// carried — character-owned items and shared items riding in a store's
+/// `Wardrobe/` folder alike. Emitted last, after every entity record, so the
+/// importer has every item, character and chat in hand before it remaps a row.
+/// The ledger is keyed by item id with no FK, so rows for an item are found by
+/// id alone; a failure here costs the tally, never the export." Rows ride RAW
+/// in DB column order (v4's `normalizeRow` spread — no key-order template);
+/// `wardrobeWear` is bumped per row, so the footer carries the key only when
+/// a row was emitted.
+pub(super) fn stream_wardrobe_wear(
+    main: &Connection,
+    wardrobe_item_ids: &WardrobeItemIds,
+    counts: &mut Counts,
+    out: &mut Vec<Value>,
+) {
+    if wardrobe_item_ids.is_empty() {
+        return;
+    }
+    let rows = match crate::db::wardrobe_wear_stats::WardrobeWearStatsRepository::new(main)
+        .find_rows_for_items(wardrobe_item_ids.ids())
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::warn!(
+                target: "quilltap::export",
+                itemCount = wardrobe_item_ids.len(),
+                error = %crate::db::fallback::error_text(&e),
+                "Failed to load wardrobe wear ledger for export"
+            );
+            return;
+        }
+    };
+    for row in &rows {
+        out.push(kind_data(
+            "wardrobe_wear",
+            serde_json::to_value(row).expect("a wear row serializes"),
+        ));
+        counts.bump("wardrobeWear");
+    }
+    tracing::debug!(
+        target: "quilltap::export",
+        itemCount = wardrobe_item_ids.len(),
+        rowCount = rows.len(),
+        "Exported wardrobe wear ledger rows"
+    );
+}
+
+// ============================================================================
 // document stores (v4 :480) — instance-scoped, mount-index partition only
 // ============================================================================
 
@@ -607,9 +781,10 @@ pub(super) fn stream_document_stores(
     ids: &[String],
     counts: &mut Counts,
     out: &mut Vec<Value>,
+    wardrobe_item_ids: &mut WardrobeItemIds,
 ) -> Result<(), ExportError> {
     for id in ids {
-        stream_one_store(mount, id, counts, out, false)?;
+        stream_one_store(mount, id, counts, out, false, Some(&mut *wardrobe_item_ids))?;
     }
     Ok(())
 }
@@ -633,12 +808,18 @@ pub(super) fn stream_document_stores(
 /// `skip_project_links` omits `project_doc_mount_link` records. Character
 /// vaults never carry project links, so the characters path passes it to keep
 /// bundles clean.
+/// P4.D264 (v4 `3ee3b1342`, `:655-663`): `wardrobe_item_ids` collects "the
+/// ids of the wardrobe items this store carries (`Wardrobe/*.md` documents), so
+/// the export can emit their wear-ledger rows once every store has been
+/// streamed". v4 has only TWO call sites (the character vault, the document
+/// stores) — a projects / groups export streams no store and carries no ledger.
 fn stream_one_store(
     mount: &Connection,
     mount_point_id: &str,
     counts: &mut Counts,
     out: &mut Vec<Value>,
     skip_project_links: bool,
+    mut wardrobe_item_ids: Option<&mut WardrobeItemIds>,
 ) -> Result<(), ExportError> {
     let points = DocMountPointsRepository::new(mount);
     let folders = DocMountFoldersRepository::new(mount);
@@ -749,6 +930,17 @@ fn stream_one_store(
                 }
                 out.push(kind_data("doc_mount_document", Value::Object(d)));
                 counts.bump("documentStoreDocuments");
+                // P4.D264 (v4 `:728-730`): collected AFTER the yield + bump.
+                if let Some(collector) = wardrobe_item_ids.as_deref_mut() {
+                    let relative_path = get_str(&doc, "relativePath").unwrap_or_default();
+                    if crate::vault_overlay::is_wardrobe_item_document_path(&relative_path) {
+                        collector.add(crate::vault_overlay::wardrobe_item_id_for_document(
+                            &get_str(&doc, "mountPointId").unwrap_or_default(),
+                            &relative_path,
+                            &get_str(&doc, "content").unwrap_or_default(),
+                        ));
+                    }
+                }
             }
         }
 
@@ -1240,3 +1432,93 @@ fn base64_encode(bytes: &[u8]) -> String {
     use base64::Engine;
     base64::engine::general_purpose::STANDARD.encode(bytes)
 }
+
+// === P4.D264 (append-only test region) ===
+#[cfg(test)]
+mod wardrobe_wear_export_tests {
+    //! P4.D264 — v4 `streamWardrobeWear` (`ndjson-writer.ts:810-834`): the
+    //! DEBUG `Exported wardrobe wear ledger rows` (`itemCount`, `rowCount`)
+    //! after the rows; on a failed read (v4's `findRowsForItems` is a
+    //! `rawQuery` — an ABSENT table throws `no such table`) the WARN `Failed to
+    //! load wardrobe wear ledger for export` (`itemCount`, the BARE error) and
+    //! NO records; an empty id set returns before any read, silently.
+    use super::*;
+    use crate::test_support::captured_with;
+
+    fn ids(list: &[&str]) -> WardrobeItemIds {
+        let mut out = WardrobeItemIds::default();
+        for id in list {
+            out.add((*id).to_string());
+        }
+        out
+    }
+
+    #[test]
+    fn rows_are_emitted_raw_and_counted_with_the_debug_line() {
+        let conn = Connection::open_in_memory().unwrap();
+        crate::test_support::ensure_wear_ledger_on(&conn);
+        conn.execute_batch(
+            "INSERT INTO wardrobe_wear_stats VALUES \
+             ('3e000001-0000-4000-8000-000000000001', 'item-1', NULL, 2, \
+              '2026-03-01T00:00:00.000Z', '2026-03-03T00:00:00.000Z', NULL, \
+              '2026-03-01T00:00:00.000Z', '2026-03-03T00:00:00.000Z');",
+        )
+        .unwrap();
+        let mut counts = Counts::default();
+        let mut out = Vec::new();
+        let ((), lines) = captured_with(|| {
+            stream_wardrobe_wear(
+                &conn,
+                &ids(&["item-1", "item-2", "item-1"]),
+                &mut counts,
+                &mut out,
+            )
+        });
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0]["kind"], "wardrobe_wear");
+        assert_eq!(
+            serde_json::to_string(&out[0]["data"]).unwrap(),
+            "{\"id\":\"3e000001-0000-4000-8000-000000000001\",\"itemId\":\"item-1\",\
+             \"wearerCharacterId\":null,\"wearCount\":2,\"firstWornAt\":\"2026-03-01T00:00:00.000Z\",\
+             \"lastWornAt\":\"2026-03-03T00:00:00.000Z\",\"lastWornChatId\":null,\
+             \"createdAt\":\"2026-03-01T00:00:00.000Z\",\"updatedAt\":\"2026-03-03T00:00:00.000Z\"}"
+        );
+        assert_eq!(counts.into_value(), serde_json::json!({"wardrobeWear": 1}));
+        assert_eq!(
+            lines,
+            vec![
+                "DEBUG quilltap::export Exported wardrobe wear ledger rows itemCount=2 rowCount=1"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_failed_read_warns_once_and_emits_nothing() {
+        let conn = Connection::open_in_memory().unwrap();
+        let mut counts = Counts::default();
+        let mut out = Vec::new();
+        let ((), lines) =
+            captured_with(|| stream_wardrobe_wear(&conn, &ids(&["item-1"]), &mut counts, &mut out));
+        assert!(out.is_empty());
+        assert_eq!(counts.into_value(), serde_json::json!({}));
+        assert_eq!(
+            lines,
+            vec![
+                "WARN quilltap::export Failed to load wardrobe wear ledger for export \
+                 itemCount=1 error=no such table: wardrobe_wear_stats"
+            ]
+        );
+    }
+
+    #[test]
+    fn an_empty_id_set_reads_nothing_and_logs_nothing() {
+        let conn = Connection::open_in_memory().unwrap();
+        let mut counts = Counts::default();
+        let mut out = Vec::new();
+        let ((), lines) = captured_with(|| {
+            stream_wardrobe_wear(&conn, &WardrobeItemIds::default(), &mut counts, &mut out)
+        });
+        assert!(out.is_empty() && lines.is_empty(), "{lines:?}");
+    }
+}
+// === end P4.D264 ===

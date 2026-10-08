@@ -423,11 +423,20 @@ fn stream_export_records_strict(
 
     let mut counts = Counts::default();
     let include_memories = options.include_memories;
+    // P4.D264 (v4 `:1126`): "Ids of every wardrobe item the export carries,
+    // for the wear-ledger tail."
+    let mut wardrobe_item_ids = records::WardrobeItemIds::default();
 
     match options.entity_type.as_str() {
-        "characters" => {
-            records::stream_characters(main, mount, &ids, include_memories, &mut counts, &mut out)?
-        }
+        "characters" => records::stream_characters(
+            main,
+            mount,
+            &ids,
+            include_memories,
+            &mut counts,
+            &mut out,
+            &mut wardrobe_item_ids,
+        )?,
         "chats" => {
             records::stream_chats(main, mount, &ids, include_memories, &mut counts, &mut out)?
         }
@@ -446,7 +455,13 @@ fn stream_export_records_strict(
         "tags" => records::stream_tags(main, &ids, &mut counts, &mut out)?,
         "projects" => records::stream_projects(main, mount, &ids, &mut counts, &mut out)?,
         "groups" => records::stream_groups(main, mount, &ids, &mut counts, &mut out)?,
-        "document-stores" => records::stream_document_stores(mount, &ids, &mut counts, &mut out)?,
+        "document-stores" => records::stream_document_stores(
+            mount,
+            &ids,
+            &mut counts,
+            &mut out,
+            &mut wardrobe_item_ids,
+        )?,
         "files" => {
             records::stream_files(main, mount, storage, user_id, &ids, &mut counts, &mut out)?
         }
@@ -462,6 +477,10 @@ fn stream_export_records_strict(
         }
         other => return Err(ExportError::UnknownType(other.to_string())),
     }
+
+    // P4.D264 (v4 `:1178`): after the `switch`, for EVERY type, immediately
+    // before the footer — the trailing record kind.
+    records::stream_wardrobe_wear(main, &wardrobe_item_ids, &mut counts, &mut out);
 
     let mut footer = Map::new();
     footer.insert("kind".into(), Value::String("__footer__".into()));

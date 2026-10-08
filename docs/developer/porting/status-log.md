@@ -173400,3 +173400,35 @@ RED under the OLD vendored bytes (the family failed), GREEN under the new (1/1),
   equivalence` 7/7; `system_restore_state` red ONLY on the five P4.D258 memory rows it carried
   at the tip, `wardrobe_picture_tombstone_is_skipped` ok; core lib 3,170 ok; clippy clean.
 
+### Unit C — the `.qtap` export (core 0.0.1256)
+
+- `records.rs`: `find_by_character_id(…, true)` (archived items ride); the `origin` strip
+  MEASURED unnecessary (the db read carries no `origin` — P4.D256 tags it at the route reads), so
+  none added; `exported_wardrobe_image_files` over C1 §8 `find_by_linked_to` +
+  `is_file_excluded_from_export` → v4's twelve keys, `?? null` on the six nullable ones;
+  `_imageFiles` LAST, non-empty, `characterId`-truthy items only; `WardrobeItemIds` (an
+  insertion-ordered set) threaded through `stream_characters`, `stream_document_stores` and
+  `stream_one_store` (collected AFTER the `doc_mount_document` yield + bump, via C1 §9);
+  `stream_wardrobe_wear` (empty set → return; `find_rows_for_items`; a failure → WARN `Failed to
+  load wardrobe wear ledger for export` `{itemCount, error}` → no records; rows RAW in DB column
+  order, `bump("wardrobeWear")`; the DEBUG). `mod.rs` calls it after the dispatch, before the
+  footer, for EVERY type. v4's `Failed to load wardrobe item pictures for export` catch is
+  UNREACHABLE through v4's real read (`findByLinkedTo` answers `[]` through `findByFilter`'s
+  fallback; C1 §8 is the same twin) — the arm is kept, not pinned. `key_order.rs` unchanged
+  (no template for `wardrobe_item` or `wardrobe_wear` — v4 emits both raw).
+- `system-export.test.ts` + `system_export_equivalence.rs`: `plantWardrobe` / `plant_wardrobe`
+  (identical SQL both sides, so no write clock reaches the bytes): the ledger via v4's REAL DDL /
+  C1 §6, three rows (coat × Lorian, coat × unattributed, an UNCARRIED item × Riya), `portrait.png`
+  linked to the coat, the coat's frontmatter archived + `imageFileId`. Four cases on a SEPARATE
+  planted copy: `stream_characters_all_wardrobe` (the archived coat with `_imageFiles`, two
+  `wardrobe_wear` records — the uncarried row never appears — footer `wardrobeWear: 2` last),
+  `stream_document-stores_all_wardrobe` (the coat collected off its document), `stream_projects_
+  all_wardrobe` (no ledger — v4's `streamOneStore` has two call sites), `preview_characters_
+  wardrobe` (no `wardrobeWear` in the preview). 57 → 61 cases, all green.
+- Capture pins (`records.rs` `wardrobe_wear_export_tests`): the DEBUG with `itemCount` (distinct)
+  and `rowCount`; the WARN on an absent table (`no such table: wardrobe_wear_stats`, bare) with no
+  records and no count key; silence on an empty set.
+- Red-first by mutation: `false` for archived + no `_imageFiles` + no tail → `stream_characters_
+  all_wardrobe` and `stream_document-stores_all_wardrobe` red (projects + preview stay green, as
+  they must); restored byte-identically.
+

@@ -65,6 +65,11 @@ fn fresh_db(tag: &str) -> ScratchDb {
         let w = quilltap_core::db::Writer::open_writable(&main, TEST_PEPPER).unwrap();
         plant_p4d171_values(w.connection());
         plant_p4d182_values(w.connection());
+        // [P4.D264] the oracle's `plantWardrobe`, for the `…_wardrobe` cases.
+        if tag.ends_with("_wardrobe") {
+            let m = quilltap_core::db::Writer::open_writable(&mount, TEST_PEPPER).unwrap();
+            plant_wardrobe(w.connection(), m.connection());
+        }
     }
     let db = Db::open(
         DbPaths {
@@ -131,12 +136,21 @@ fn system_export_matches_oracle() {
     let app_version = meta["appVersion"].as_str().unwrap().to_string();
     let user = meta["userId"].as_str().unwrap().to_string();
 
-    let db = fresh_db("reads");
+    let plain = fresh_db("reads");
+    // [P4.D264] the `…_wardrobe` cases read their own planted copy.
+    let planted = fresh_db("reads_wardrobe");
     let mut failed: Vec<String> = Vec::new();
     let mut ran = 0usize;
+    let mut wardrobe_cases = 0usize;
 
     for name in order.iter().filter(|n| n.as_str() != "_meta") {
         let exp = &oracle[name];
+        let db = if name.ends_with("_wardrobe") {
+            wardrobe_cases += 1;
+            &planted
+        } else {
+            &plain
+        };
         match exp["kind"].as_str().unwrap_or("") {
             "ndjson" => {
                 let opts = options_from(&exp["options"]);
@@ -299,7 +313,12 @@ fn system_export_matches_oracle() {
         failed.len(),
         failed.join("\n\n")
     );
-    assert_eq!(ran, 57, "expected 57 cases to run, ran {ran}");
+    // P4.D264: 57 + 4 = 61 (the three `…_wardrobe` streams + the preview).
+    assert_eq!(ran, 61, "expected 61 cases to run, ran {ran}");
+    assert_eq!(
+        wardrobe_cases, 4,
+        "the four P4.D264 wardrobe cases read the planted copy"
+    );
 
     // [P4.D46, `7189a968`] The embedding strip is a MEASUREMENT, not a vacuous
     // pass: the fixture must carry at least one embedding-BEARING memory
@@ -307,7 +326,7 @@ fn system_export_matches_oracle() {
     // diff above already proves byte-parity with v4's stripped output; this
     // guards the fixture itself so a rebuild that loses the vector can't turn
     // the strip arms green by absence.
-    let bearing: i64 = db
+    let bearing: i64 = plain
         .read_main(|main| {
             Ok(main
                 .query_row(
@@ -328,9 +347,9 @@ fn system_export_matches_oracle() {
         selected_ids: vec![],
         include_memories: true,
     };
-    let records = db
+    let records = plain
         .read_main(|main| {
-            db.read_mount_index(|mount| {
+            plain.read_mount_index(|mount| {
                 Ok(qtap_export::stream_export_records(
                     main,
                     mount,
@@ -466,3 +485,52 @@ fn plant_p4d182_values(conn: &rusqlite::Connection) {
 /// [`plant_p4d182_values`]).
 const P4D182_GENERATION_KEY: &str = "a3000000-0000-4000-8000-000000000001";
 const P4D182_FILE_ID: &str = "f0000001-0000-4000-8000-000000000001";
+
+// === P4.D264 (append-only) ===
+
+/// [P4.D264] The twin of the oracle's `plantWardrobe`, statement for
+/// statement (no write clock reaches the export bytes): the ledger table
+/// through C1 §6's helper (the migration's DDL, as the oracle runs v4's
+/// `WARDROBE_WEAR_STATS_DDL`), the oracle's three rows verbatim, `portrait.png`
+/// linked to the coat, and the coat's frontmatter archived + pointing at it.
+fn plant_wardrobe(main: &rusqlite::Connection, mount: &rusqlite::Connection) {
+    quilltap_core::test_support::ensure_wear_ledger_on(main);
+    main.execute_batch(WEAR_PLANT_SQL)
+        .expect("plant the wear rows");
+    let linked = main
+        .execute(
+            "UPDATE \"files\" SET \"linkedTo\" = '[\"ac000000-0000-4000-8000-000000000001\"]' \
+             WHERE \"id\" = ?1",
+            ["f0000001-0000-4000-8000-000000000001"],
+        )
+        .expect("link portrait.png to the coat");
+    assert_eq!(linked, 1, "plantWardrobe: portrait.png not found");
+    let edited = mount
+        .execute(
+            "UPDATE \"doc_mount_documents\" SET \"content\" = replace(\"content\", ?1, ?2) \
+             WHERE \"content\" LIKE '%title: Travelling Coat%'",
+            [COAT_EDIT_FROM, COAT_EDIT_TO],
+        )
+        .expect("edit the coat's frontmatter");
+    assert_eq!(edited, 1, "plantWardrobe: the coat document not found");
+}
+
+const COAT_EDIT_FROM: &str = "imagePrompt: brown coat\n";
+const COAT_EDIT_TO: &str =
+    "imagePrompt: brown coat\narchived: true\narchivedAt: 2026-03-04T00:00:00.000Z\n\
+imageFileId: f0000001-0000-4000-8000-000000000001\n";
+
+/// The oracle's `WEAR_PLANT_SQL`, byte for byte.
+const WEAR_PLANT_SQL: &str = "INSERT INTO \"wardrobe_wear_stats\" (\"id\", \"itemId\", \"wearerCharacterId\", \"wearCount\", \
+\"firstWornAt\", \"lastWornAt\", \"lastWornChatId\", \"createdAt\", \"updatedAt\") VALUES \
+('3e0000e1-0000-4000-8000-0000000000e1', 'ac000000-0000-4000-8000-000000000001', \
+'a1000000-0000-4000-8000-000000000001', 3, '2026-03-02T00:00:00.000Z', \
+'2026-03-05T00:00:00.000Z', 'c1000000-0000-4000-8000-000000000001', \
+'2026-03-02T00:00:00.000Z', '2026-03-05T00:00:00.000Z'), \
+('3e0000e2-0000-4000-8000-0000000000e2', 'ac000000-0000-4000-8000-000000000001', NULL, 2, \
+'2026-03-01T00:00:00.000Z', '2026-03-03T00:00:00.000Z', NULL, \
+'2026-03-01T00:00:00.000Z', '2026-03-03T00:00:00.000Z'), \
+('3e0000e3-0000-4000-8000-0000000000e3', 'ae0000e3-0000-4000-8000-0000000000e3', \
+'a1000000-0000-4000-8000-000000000002', 9, '2026-03-01T00:00:00.000Z', \
+'2026-03-09T00:00:00.000Z', NULL, '2026-03-01T00:00:00.000Z', '2026-03-09T00:00:00.000Z')";
+// === end P4.D264 ===
