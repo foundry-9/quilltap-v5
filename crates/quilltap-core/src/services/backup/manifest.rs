@@ -98,6 +98,8 @@ pub fn create_manifest(
         data.group_character_members.len(),
     );
     n(c, "textReplacementRules", data.text_replacement_rules.len());
+    // P4.D264 (v4 `3ee3b1342`, `backup-service.ts:511`): the LAST count.
+    n(c, "wardrobeWear", data.wardrobe_wear.len());
 
     let mut m = Map::new();
     m.insert("version".into(), Value::String("1.0".into()));

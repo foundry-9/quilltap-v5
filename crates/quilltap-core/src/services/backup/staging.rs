@@ -133,6 +133,11 @@ fn data_files(data: &BackupData, compact: bool) -> Vec<(&'static str, &Vec<Value
             &data.group_character_members,
         ),
         ("text-replacement-rules.json", &data.text_replacement_rules),
+        // P4.D264 (v4 `3ee3b1342`, `backup-service.ts:722`): "Wear ledger
+        // (4.11). Optional on the way back in, so an older restorer simply does
+        // not see it." Written on EVERY archive (`[]` when none), compact
+        // included — it is not a derived embedding file.
+        ("wardrobe-wear.json", &data.wardrobe_wear),
     ];
     files.into_iter().filter(|(name, _)| !omit(name)).collect()
 }

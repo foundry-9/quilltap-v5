@@ -18,10 +18,20 @@
 //!    exactly what v4's three order traps (spread-then-`userId`, `delete` as a
 //!    shift-remove, the `remapFields`→`remapArrayFields` chain) are about. Each
 //!    collection is re-serialized on both sides and the strings compared.
-//! 2. **The key SET of the returned object.** v4 returns 38 collections plus
+//! 2. **The key SET of the returned object.** v4 returns 40 collections plus
 //!    `manifest: data.manifest`, which is `undefined` here (v5's `BackupData`
 //!    carries no manifest — that pass-through is the caller's business) and so
-//!    is dropped by `JSON.stringify`. 38 keys, no more.
+//!    is dropped by `JSON.stringify`. 40 keys, no more (38 at P4.9G6; +1
+//!    `chatInforms` at P4.D205; +1 `wardrobeWear` at P4.D264 — v4
+//!    `3ee3b1342`, ALWAYS present, `[]` when the archive has none).
+//! 5. **The restore ORDER** (P4.D264 R-A, v4 `7c8572869` `restore.ts:98-104`).
+//!    A case flagged `restorePath` runs `planWardrobeImagePointerFixes` FIRST
+//!    on the original data with the SAME remapper, then `remapBackupData`, and
+//!    the planned fixes are compared too. `buildWardrobeItemIdRemap` MINTS the
+//!    Wardrobe-holding mount's id where it runs, so the plan step (and, in the
+//!    plain path, the item map built before `files`) moves every later counter
+//!    id — the `wide` case (the committed archive holds `Wardrobe/Travelling
+//!    Coat.md`) and every wardrobe case pin it.
 //! 3. **`getMapping()` / `mapping_object()`, entry for entry and in order.**
 //!    That is the direct proof that cross-references stayed consistent: if any
 //!    pass minted a second id for an already-seen key, the map diverges here
@@ -42,7 +52,9 @@
 use std::path::PathBuf;
 
 use quilltap_core::services::backup::collect::BackupData;
-use quilltap_core::services::backup::uuid_remap::remap_backup_data;
+use quilltap_core::services::backup::uuid_remap::{
+    plan_wardrobe_image_pointer_fixes, remap_backup_data,
+};
 use quilltap_core::services::backup::uuid_remapper::UuidRemapper;
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
@@ -50,7 +62,8 @@ use sha2::{Digest, Sha256};
 /// Every collection `remapBackupData` returns, in v4's return-literal order —
 /// and the ONLY keys it returns (`manifest` is `undefined` here and dropped).
 // P4.D205: 38 + 1 = 39 (`chatInforms`, v4 `e7d77bb60`).
-const COLLECTIONS: [&str; 39] = [
+// P4.D264: 39 + 1 = 40 (`wardrobeWear`, v4 `3ee3b1342`, the LAST key).
+const COLLECTIONS: [&str; 40] = [
     "characters",
     "chats",
     "tags",
@@ -92,6 +105,7 @@ const COLLECTIONS: [&str; 39] = [
     "groupDocMountLinks",
     "groupCharacterMembers",
     "textReplacementRules",
+    "wardrobeWear",
 ];
 
 fn corpus_path() -> PathBuf {
@@ -161,6 +175,7 @@ fn backup_data(data: &Map<String, Value>) -> BackupData {
         group_doc_mount_links: rows(data, "groupDocMountLinks"),
         group_character_members: rows(data, "groupCharacterMembers"),
         text_replacement_rules: rows(data, "textReplacementRules"),
+        wardrobe_wear: rows(data, "wardrobeWear"),
     }
 }
 
@@ -209,6 +224,7 @@ fn produced(out: &BackupData, key: &str) -> Vec<Value> {
         "groupDocMountLinks" => out.group_doc_mount_links.clone(),
         "groupCharacterMembers" => out.group_character_members.clone(),
         "textReplacementRules" => out.text_replacement_rules.clone(),
+        "wardrobeWear" => out.wardrobe_wear.clone(),
         other => panic!("unknown collection `{other}`"),
     }
 }
@@ -317,9 +333,27 @@ fn backup_uuid_remap_equivalence() {
 
         let input = backup_data(data);
         let mut remapper = counting_remapper();
+        // 5. The restore order: the plan FIRST, on the original, same remapper.
+        let restore_path = case["restorePath"].as_bool().unwrap_or(false);
+        if restore_path != expected.get("fixes").is_some() {
+            failures.push(format!(
+                "[{name}] the corpus's restorePath ({restore_path}) disagrees with the oracle row"
+            ));
+        }
+        if restore_path {
+            let fixes = plan_wardrobe_image_pointer_fixes(&input, &mut remapper);
+            let got = serde_json::to_string(&fixes).unwrap();
+            let want = serde_json::to_string(&expected["fixes"]).unwrap();
+            if got != want {
+                failures.push(format!(
+                    "[{name}] planWardrobeImagePointerFixes differs\n  {}",
+                    first_diff(&got, &want)
+                ));
+            }
+        }
         let out = remap_backup_data(&input, target, &mut remapper);
 
-        // 1. The oracle's returned object carries exactly the 38 collections.
+        // 1. The oracle's returned object carries exactly the 40 collections.
         let want_obj = expected["output"].as_object().expect("oracle output");
         let want_keys: Vec<&str> = want_obj.keys().map(String::as_str).collect();
         if want_keys != COLLECTIONS.to_vec() {
@@ -363,7 +397,7 @@ fn backup_uuid_remap_equivalence() {
 
         if diffs == 0 {
             println!(
-                "OK {name}: 38 collections byte-identical, {} ids remapped",
+                "OK {name}: 40 collections byte-identical, {} ids remapped",
                 remapper.size()
             );
         }

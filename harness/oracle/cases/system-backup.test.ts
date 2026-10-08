@@ -157,6 +157,71 @@ interface CaseSpec {
    * byte-identical to `backup_full`'s.
    */
   plantBlobProfile?: boolean;
+  /**
+   * P4.D264 (v4 `3ee3b1342`, #81): plant `wardrobe_wear_stats` + two ledger
+   * rows on the copy before the backup — `data/wardrobe-wear.json` carries the
+   * WHOLE table (unattributed row included) and `manifest.counts.wardrobeWear`
+   * counts it.
+   */
+  plantWardrobeWear?: boolean;
+}
+
+/**
+ * P4.D264 — the ledger plant, on the per-run COPY: the table through v4's REAL
+ * migration DDL (`WARDROBE_WEAR_STATS_DDL` — the shape every migrated v4
+ * instance carries, the UNIQUE `COALESCE` upsert target included; NEVER
+ * `ensureCollection`, whose translator cannot emit it), then two rows through
+ * v4's REAL `upsertRows`: Lorian's tally on `Wardrobe/Travelling Coat.md`'s
+ * item, an unattributed tally on the same item, and Riya's chat-less tally.
+ * ⚠ v4's real `findAll` DROPS the last two (the ruled `FIND_ALL_DROPS_NULLABLE`,
+ * `system_backup_equivalence.rs`: the SQLite backend maps NULL → `undefined`,
+ * which `z.string().nullable()` refuses). The Rust family plants the
+ * same cells through `ensure_wear_ledger_on` + `upsert_rows`.
+ */
+const WEAR_PLANT_ROWS = [
+  {
+    id: '3e000001-0000-4000-8000-000000000001',
+    itemId: 'ac000000-0000-4000-8000-000000000001',
+    wearerCharacterId: 'a1000000-0000-4000-8000-000000000001',
+    wearCount: 3,
+    firstWornAt: '2026-03-02T00:00:00.000Z',
+    lastWornAt: '2026-03-05T00:00:00.000Z',
+    lastWornChatId: 'c1000000-0000-4000-8000-000000000001',
+    createdAt: '2026-03-02T00:00:00.000Z',
+    updatedAt: '2026-03-05T00:00:00.000Z',
+  },
+  {
+    id: '3e000002-0000-4000-8000-000000000002',
+    itemId: 'ac000000-0000-4000-8000-000000000001',
+    wearerCharacterId: null,
+    wearCount: 2,
+    firstWornAt: '2026-03-01T00:00:00.000Z',
+    lastWornAt: '2026-03-03T00:00:00.000Z',
+    lastWornChatId: null,
+    createdAt: '2026-03-01T00:00:00.000Z',
+    updatedAt: '2026-03-03T00:00:00.000Z',
+  },
+  {
+    id: '3e000003-0000-4000-8000-000000000003',
+    itemId: 'ac000000-0000-4000-8000-000000000001',
+    wearerCharacterId: 'a1000000-0000-4000-8000-000000000002',
+    wearCount: 1,
+    firstWornAt: '2026-03-04T00:00:00.000Z',
+    lastWornAt: '2026-03-04T00:00:00.000Z',
+    lastWornChatId: null,
+    createdAt: '2026-03-04T00:00:00.000Z',
+    updatedAt: '2026-03-04T00:00:00.000Z',
+  },
+];
+
+async function plantWardrobeWear(): Promise<void> {
+  const { rawQuery } = await import('@/lib/database/manager');
+  const { WARDROBE_WEAR_STATS_DDL } = await import(
+    '@/lib/database/backends/sqlite/wardrobe-wear-stats-ddl'
+  );
+  for (const statement of WARDROBE_WEAR_STATS_DDL) await rawQuery(statement);
+  const { getRepositories } = await import('@/lib/repositories/factory');
+  await getRepositories().wardrobeWear.upsertRows(WEAR_PLANT_ROWS as never);
 }
 
 /** P4.149: the BLOB-named clone's id (both sides plant these statements). */
@@ -237,6 +302,9 @@ const CASES: CaseSpec[] = [
   // P4.149 (Ruling R-C): a BLOB-named profile is DROPPED by the collect, as
   // `validateSafe` drops it on every v4 path (the strict scope never reaches it).
   { name: 'backup_with_blob_profile', seedFileBytes: true, plantBlobProfile: true },
+  // P4.D264 (v4 `3ee3b1342`): the wear ledger — the whole table in DDL key
+  // order, the unattributed row included, and `counts.wardrobeWear: 2` LAST.
+  { name: 'backup_with_wardrobe_wear', seedFileBytes: true, plantWardrobeWear: true },
 ];
 
 async function runCase(
@@ -277,6 +345,7 @@ async function runCase(
   await initializeDatabase();
   if (c.plantInforms) await plantInforms(spec.userId);
   if (c.plantBlobProfile) await plantBlobProfile(spec.userId);
+  if (c.plantWardrobeWear) await plantWardrobeWear();
 
   const extractDir = mkdtempSync(join(scratchRoot, 'ex-'));
   try {

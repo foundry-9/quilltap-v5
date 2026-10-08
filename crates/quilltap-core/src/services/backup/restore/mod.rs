@@ -83,6 +83,10 @@ pub struct RestoreSummary {
     pub group_doc_mount_links: usize,
     pub group_character_members: usize,
     pub text_replacement_rules: usize,
+    /// P4.D264 (v4 `3ee3b1342`, `types.ts:616`): the wear-ledger rows written
+    /// (all or nothing — v4's ONE `upsertRows`); the archive's row count in the
+    /// preview (`preview.ts:75`, the 42nd key).
+    pub wardrobe_wear: usize,
     /// v4 `7189a968`: the post-restore embedding reconcile's outcome (step 25).
     /// Restore ALWAYS sets it; preview never does (the key is optional in v4's
     /// type and absent from `previewRestore`'s summary).

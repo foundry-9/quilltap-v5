@@ -293,6 +293,91 @@ fn plant_informs(db: &Db) {
     .expect("plant chat_informs on the fixture copy");
 }
 
+/// ## ⚠ RULED DIVERGENCE — `FIND_ALL_DROPS_NULLABLE` (the human, 2026-10-08:
+/// FIX v5, file v4 — ruled at P4.D255, whose record names this lane's backup)
+///
+/// v4's backup reads the ledger through the base repository's `findAll`
+/// (`backup-service.ts:298`), whose SQLite backend maps every NULL column to
+/// `undefined` (`backends/sqlite/backend.ts:466-467`, "for Zod .optional()
+/// compatibility") — and `WardrobeWearStatsRowSchema`'s `wearerCharacterId` /
+/// `lastWornChatId` are `z.string().nullable()`, NOT optional, so `validateSafe`
+/// REFUSES the row and `findAll` drops it. Every UNATTRIBUTED tally (a departed
+/// wearer's fold) and every chat-less tally is silently missing from a v4
+/// backup (measured on this family's plant, 2026-10-08: three rows planted
+/// through v4's real `upsertRows`, ONE in `data/wardrobe-wear.json`, count 1).
+/// v4's own `wardrobe-wear-backup.test.ts:211-217` mocks `findAll` and never
+/// sees it. v5's C1 `find_all` carries the WHOLE table. Pinned both ways: the
+/// (v5) arm requires the carved rows in v5's archive; the (v4) arm requires
+/// them ABSENT from v4's, so the day v4 fixes its read the family reddens "v4
+/// converged". Every other byte of the file and the manifest is compared after
+/// the carve.
+const FIND_ALL_DROPS_NULLABLE: &[&str] = &[
+    // wearerCharacterId: null (and lastWornChatId: null)
+    "3e000002-0000-4000-8000-000000000002",
+    // lastWornChatId: null
+    "3e000003-0000-4000-8000-000000000003",
+];
+
+/// P4.D264 — the oracle's `plantWardrobeWear`, cell for cell: the table
+/// through C1 §6's helper (the migration's DDL, as v4's plant runs
+/// `WARDROBE_WEAR_STATS_DDL`), then the two rows through C1 §3's `upsert_rows`.
+fn plant_wardrobe_wear(db: &Db) {
+    use quilltap_core::db::wardrobe_wear_stats::{
+        WardrobeWearStatsRepository, WardrobeWearStatsRow,
+    };
+    let row = |id: &str,
+               wearer: Option<&str>,
+               count: i64,
+               first: &str,
+               last: &str,
+               chat: Option<&str>| {
+        WardrobeWearStatsRow {
+            id: id.into(),
+            item_id: "ac000000-0000-4000-8000-000000000001".into(),
+            wearer_character_id: wearer.map(str::to_string),
+            wear_count: count,
+            first_worn_at: first.into(),
+            last_worn_at: last.into(),
+            last_worn_chat_id: chat.map(str::to_string),
+            created_at: first.into(),
+            updated_at: last.into(),
+        }
+    };
+    let rows = vec![
+        row(
+            "3e000001-0000-4000-8000-000000000001",
+            Some("a1000000-0000-4000-8000-000000000001"),
+            3,
+            "2026-03-02T00:00:00.000Z",
+            "2026-03-05T00:00:00.000Z",
+            Some("c1000000-0000-4000-8000-000000000001"),
+        ),
+        row(
+            "3e000002-0000-4000-8000-000000000002",
+            None,
+            2,
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-03T00:00:00.000Z",
+            None,
+        ),
+        row(
+            "3e000003-0000-4000-8000-000000000003",
+            Some("a1000000-0000-4000-8000-000000000002"),
+            1,
+            "2026-03-04T00:00:00.000Z",
+            "2026-03-04T00:00:00.000Z",
+            None,
+        ),
+    ];
+    db.write_blocking(move |w| {
+        let conn = w.main().connection();
+        quilltap_core::test_support::ensure_wear_ledger_on(conn);
+        WardrobeWearStatsRepository::new(conn).upsert_rows(&rows)?;
+        Ok(())
+    })
+    .expect("plant wardrobe_wear_stats on the fixture copy");
+}
+
 /// Every regular file under `root`, `/`-joined and relative.
 fn walk(root: &Path) -> Vec<String> {
     fn rec(root: &Path, dir: &Path, out: &mut Vec<String>) {
@@ -503,7 +588,8 @@ fn system_backup_equivalence() {
         let seed_file_bytes = name == "backup_full"
             || name == "backup_compact"
             || name == "backup_with_informs"
-            || name == "backup_with_blob_profile";
+            || name == "backup_with_blob_profile"
+            || name == "backup_with_wardrobe_wear";
         // [P4.D46] `backup_compact` runs the same projection with the compact
         // flag: memory embeddings nulled, the six derived embedding data files
         // ABSENT from the tree (asserted below and by the oracle tree diff),
@@ -517,6 +603,9 @@ fn system_backup_equivalence() {
         }
         if name == "backup_with_blob_profile" {
             plant_blob_profile(&db);
+        }
+        if name == "backup_with_wardrobe_wear" {
+            plant_wardrobe_wear(&db);
         }
 
         // The oracle seeds the user file's bytes into its data dir for the
@@ -624,6 +713,29 @@ fn system_backup_equivalence() {
             );
         }
 
+        // P4.D264 — non-vacuity for the plant: the staged
+        // `data/wardrobe-wear.json` carries BOTH rows (the unattributed one
+        // included) and the manifest counts them; every OTHER case stages the
+        // file too, as `[]` (v4 writes it on every archive).
+        let wear_text = std::fs::read_to_string(staging.join("data/wardrobe-wear.json"))
+            .expect("data/wardrobe-wear.json staged on every archive");
+        let wear_rows: Vec<Value> = serde_json::from_str(&wear_text).expect("wardrobe-wear.json");
+        let want_rows = if name == "backup_with_wardrobe_wear" {
+            3
+        } else {
+            0
+        };
+        assert_eq!(
+            wear_rows.len(),
+            want_rows,
+            "[{name}] wardrobe-wear.json: {wear_text}"
+        );
+        assert_eq!(
+            manifest["counts"]["wardrobeWear"],
+            Value::from(want_rows),
+            "[{name}] the manifest's wardrobeWear count"
+        );
+
         // P4.149 (Ruling R-C) — non-vacuity for the plant: the clone IS in the
         // table, and NOT in the staged `data/connection-profiles.json` (v4's
         // `validateSafe` drop). The tree diff below compares the bytes to v4's.
@@ -691,6 +803,54 @@ fn system_backup_equivalence() {
             }
         }
 
+        // P4.D264 — the `FIND_ALL_DROPS_NULLABLE` carve (see the const).
+        let mut got = describe(&staging);
+        let mut manifest = manifest;
+        if name == "backup_with_wardrobe_wear" {
+            let rows_of =
+                |text: &str| -> Vec<Value> { serde_json::from_str(text).expect("wear rows") };
+            let id_of = |r: &Value| r["id"].as_str().unwrap_or_default().to_string();
+            let v5_rows = rows_of(got["data/wardrobe-wear.json"].text.as_deref().unwrap());
+            let v4_rows: Vec<Value> = case["tree"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|e| e["path"] == "data/wardrobe-wear.json")
+                .and_then(|e| e["text"].as_str())
+                .map(rows_of)
+                .unwrap_or_default();
+            for carved in FIND_ALL_DROPS_NULLABLE {
+                if !v5_rows.iter().any(|r| id_of(r) == *carved) {
+                    failures.push(format!(
+                        "[{name}] FIND_ALL_DROPS_NULLABLE (v5): {carved} missing from v5's archive"
+                    ));
+                }
+                if v4_rows.iter().any(|r| id_of(r) == *carved) {
+                    failures.push(format!(
+                        "[{name}] FIND_ALL_DROPS_NULLABLE (v4): {carved} is in v4's archive — v4 converged; retire the divergence"
+                    ));
+                }
+            }
+            let kept: Vec<Value> = v5_rows
+                .into_iter()
+                .filter(|r| !FIND_ALL_DROPS_NULLABLE.contains(&id_of(r).as_str()))
+                .collect();
+            let carved_file = scratch.root.join("wardrobe-wear.carved.json");
+            quilltap_core::services::backup::staging::write_json_array_file(&carved_file, &kept)
+                .expect("render the carved ledger");
+            let text = std::fs::read_to_string(&carved_file).unwrap();
+            got.get_mut("data/wardrobe-wear.json").unwrap().text = Some(text);
+            manifest["counts"]["wardrobeWear"] = Value::from(kept.len());
+            if let Some(m) = got.get_mut("manifest.json") {
+                if let Some(t) = m.text.as_mut() {
+                    *t = t.replace(
+                        &format!("\"wardrobeWear\": {want_rows}"),
+                        &format!("\"wardrobeWear\": {}", kept.len()),
+                    );
+                }
+            }
+        }
+
         // 1. The manifest object.
         let mut expected_manifest = case["manifest"].clone();
         expected_manifest["createdAt"] = Value::String(NORMALIZED.into());
@@ -704,7 +864,6 @@ fn system_backup_equivalence() {
         }
 
         // 2. The archive tree: paths first, then contents.
-        let got = describe(&staging);
         let want = oracle_entries(case["tree"].as_array().unwrap());
         let got_paths: Vec<&String> = got.keys().collect();
         let want_paths: Vec<&String> = want.keys().collect();

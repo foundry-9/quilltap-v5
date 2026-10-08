@@ -18,6 +18,16 @@
 //!   consumer; the backup therefore reads the column itself rather than reusing
 //!   that function. (The divergence in that reader is recorded in the lane
 //!   record as a follow-up — it is not this lane's file to change.)
+//! - **No schema write on the SOURCE for the wear ledger** (P4.D264 R-G). v4's
+//!   `wardrobeWear.findAll()` (`backup-service.ts:298`) goes through the base
+//!   repository's `getCollection()`, which lazily `ensureCollection`s
+//!   `wardrobe_wear_stats` (`base.repository.ts:111-116`) — so a v4 backup of an
+//!   instance that never had the table CREATES it there and carries `[]`. v5's
+//!   [`crate::db::wardrobe_wear_stats::WardrobeWearStatsRepository::find_all`]
+//!   answers `[]` on an absent table and writes nothing (every BOOTED v5
+//!   instance already has the table — P4.D255's boot ensure). A side effect on
+//!   the instance being backed up only; the archive bytes are identical, so no
+//!   comparand sees it.
 
 use serde_json::{Map, Value};
 
@@ -118,6 +128,12 @@ pub struct BackupData {
     pub group_doc_mount_links: Vec<Value>,
     pub group_character_members: Vec<Value>,
     pub text_replacement_rules: Vec<Value>,
+    // === P4.D264 (v4 `3ee3b1342`, #81) — `BackupData.wardrobeWear`, LAST
+    // (`types.ts:426`, `backup-service.ts:407`). The whole `wardrobe_wear_stats`
+    // table in DDL key order (`WardrobeWearStatsRow`), unattributed rows
+    // included; `data/wardrobe-wear.json` on EVERY archive.
+    pub wardrobe_wear: Vec<Value>,
+    // === end P4.D264 ===
 }
 
 impl BackupData {
@@ -670,8 +686,23 @@ pub fn collect_user_data(db: &Db, user_id: &str) -> Result<BackupData, DbError> 
                 "",
                 &[],
             )?,
+            // === P4.D264 (v4 `backup-service.ts:298`) — the inherited
+            // `findAll()`; `[]` on an absent table (R-G in the header).
+            wardrobe_wear: crate::db::wardrobe_wear_stats::WardrobeWearStatsRepository::new(main)
+                .find_all()
+                .iter()
+                .map(|row| serde_json::to_value(row).expect("a wear row serializes"))
+                .collect(),
+            // === end P4.D264 ===
         })
     })?;
+    // === P4.D264 (v4 `:299`) — logged on the caller thread, outside the read.
+    tracing::debug!(
+        target: "quilltap::backup",
+        rowCount = main_side.wardrobe_wear.len(),
+        "Collected wardrobe wear ledger for backup"
+    );
+    // === end P4.D264 ===
 
     // v4 excludes prior backups from the file list (`:188`).
     let files: Vec<Value> = main_side
@@ -768,6 +799,9 @@ pub fn collect_user_data(db: &Db, user_id: &str) -> Result<BackupData, DbError> 
         group_doc_mount_links: mount.group_doc_mount_links,
         group_character_members: mount.group_character_members,
         text_replacement_rules: main_side.text_replacement_rules,
+        // === P4.D264 ===
+        wardrobe_wear: main_side.wardrobe_wear,
+        // === end P4.D264 ===
     })
 }
 
@@ -799,6 +833,9 @@ struct MainSide {
     vector_index_metas: Vec<Value>,
     vector_entries: Vec<Value>,
     text_replacement_rules: Vec<Value>,
+    // === P4.D264 ===
+    wardrobe_wear: Vec<Value>,
+    // === end P4.D264 ===
 }
 
 struct MountSide {
@@ -1039,3 +1076,103 @@ mod strict_scope_tests {
         );
     }
 }
+
+// === P4.D264 (append-only test region) ===
+#[cfg(test)]
+mod wardrobe_wear_collect_tests {
+    //! P4.D264 — v4 `backup-service.ts:298-299`: the whole wear ledger is
+    //! collected and v4's DEBUG `Collected wardrobe wear ledger for backup`
+    //! (`rowCount`) fires on EVERY backup, `0` included (no silence leg — v4
+    //! logs unconditionally). R-G: an ABSENT table answers `[]` and is NOT
+    //! created on the source (v4's lazy `ensureCollection` is the divergence).
+    use super::*;
+    use crate::db::runtime::DbPaths;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    fn db_with(setup: &str) -> (tempfile::TempDir, Db) {
+        let dir = tempfile::tempdir().unwrap();
+        let (main, mount) = (dir.path().join("main.db"), dir.path().join("mount.db"));
+        {
+            let w = crate::db::Writer::open_writable(&main, PEPPER).unwrap();
+            w.connection().execute_batch(setup).unwrap();
+            crate::db::Writer::open_writable(&mount, PEPPER).unwrap();
+        }
+        let db = Db::open(
+            DbPaths {
+                main,
+                mount_index: Some(mount),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        (dir, db)
+    }
+
+    #[test]
+    fn the_ledger_is_collected_whole_and_logged() {
+        let mut setup = String::new();
+        for statement in crate::db::wardrobe_wear_stats::WARDROBE_WEAR_STATS_DDL {
+            setup.push_str(statement);
+            setup.push_str(";\n");
+        }
+        setup.push_str(
+            "INSERT INTO wardrobe_wear_stats VALUES \
+             ('3e000001-0000-4000-8000-000000000001', 'item-1', 'char-1', 3, \
+              '2026-03-02T00:00:00.000Z', '2026-03-05T00:00:00.000Z', 'chat-1', \
+              '2026-03-02T00:00:00.000Z', '2026-03-05T00:00:00.000Z'), \
+             ('3e000002-0000-4000-8000-000000000002', 'item-1', NULL, 2, \
+              '2026-03-01T00:00:00.000Z', '2026-03-03T00:00:00.000Z', NULL, \
+              '2026-03-01T00:00:00.000Z', '2026-03-03T00:00:00.000Z');",
+        );
+        let (_dir, db) = db_with(&setup);
+        let (data, lines) = crate::test_support::captured_with(|| collect_user_data(&db, "u-1"));
+        let data = data.expect("collect");
+        assert_eq!(
+            data.wardrobe_wear.len(),
+            2,
+            "the unattributed row rides too"
+        );
+        assert_eq!(
+            serde_json::to_string(&data.wardrobe_wear[1]).unwrap(),
+            "{\"id\":\"3e000002-0000-4000-8000-000000000002\",\"itemId\":\"item-1\",\
+             \"wearerCharacterId\":null,\"wearCount\":2,\"firstWornAt\":\"2026-03-01T00:00:00.000Z\",\
+             \"lastWornAt\":\"2026-03-03T00:00:00.000Z\",\"lastWornChatId\":null,\
+             \"createdAt\":\"2026-03-01T00:00:00.000Z\",\"updatedAt\":\"2026-03-03T00:00:00.000Z\"}",
+            "DDL key order, nulls kept"
+        );
+        let hits: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("Collected wardrobe wear ledger for backup"))
+            .collect();
+        assert_eq!(
+            hits,
+            vec!["DEBUG quilltap::backup Collected wardrobe wear ledger for backup rowCount=2"],
+            "{lines:#?}"
+        );
+    }
+
+    #[test]
+    fn an_absent_table_collects_nothing_logs_zero_and_creates_nothing() {
+        let (_dir, db) = db_with("CREATE TABLE stand_in (id TEXT);");
+        let (data, lines) = crate::test_support::captured_with(|| collect_user_data(&db, "u-1"));
+        assert!(data.expect("collect").wardrobe_wear.is_empty());
+        assert!(
+            lines.iter().any(|l| l
+                == "DEBUG quilltap::backup Collected wardrobe wear ledger for backup rowCount=0"),
+            "{lines:#?}"
+        );
+        let exists: i64 = db
+            .read_main(|c| {
+                Ok(c.query_row(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE name = 'wardrobe_wear_stats'",
+                    [],
+                    |r| r.get(0),
+                )?)
+            })
+            .unwrap();
+        assert_eq!(exists, 0, "R-G: the backup writes no schema on the source");
+    }
+}
+// === end P4.D264 ===

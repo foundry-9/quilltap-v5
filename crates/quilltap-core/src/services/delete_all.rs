@@ -216,6 +216,12 @@ const FORMAT3_MAIN_TABLES: &[&str] = &[
     "vector_entries",
     "vector_indices",
     "text_replacement_rules",
+    // === P4.D264 (v4 `3ee3b1342`, `delete-service.ts:53-56`) ===
+    // "The wardrobe wear ledger. Global like the rest of this list (no userId),
+    // and its unique (itemId, wearer) index would otherwise make a
+    // replace-mode restore merge into stale tallies rather than replace them."
+    "wardrobe_wear_stats",
+    // === end P4.D264 ===
 ];
 
 /// ## ⚠ DELIBERATE DIVERGENCE (dogfood #57, 2026-08-03) — v5 wipes what v4 leaks

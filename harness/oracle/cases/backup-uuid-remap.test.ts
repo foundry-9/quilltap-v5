@@ -112,6 +112,10 @@ const COLLECTIONS: ReadonlyArray<readonly [string, string]> = [
   ['groupDocMountLinks', 'group-doc-mount-links.json'],
   ['groupCharacterMembers', 'group-character-members.json'],
   ['textReplacementRules', 'text-replacement-rules.json'],
+  // P4.D264 (v4 `3ee3b1342`, #81): the wear ledger — the 39th returned key,
+  // ALWAYS present (`uuid-remap.ts:629`); `data/wardrobe-wear.json` is written
+  // on every backup (`backup-service.ts:722`).
+  ['wardrobeWear', 'wardrobe-wear.json'],
 ];
 
 type Bag = Record<string, unknown[]>;
@@ -248,10 +252,33 @@ interface Case {
   note: string;
   targetUserId: string;
   data: Bag;
+  /**
+   * P4.D264 (v4 `7c8572869`, `restore.ts:98-104`): run the restore's ORDER —
+   * `planWardrobeImagePointerFixes(original, remapper)` FIRST, then
+   * `remapBackupData` with the SAME remapper — and emit the planned fixes. The
+   * plan primes the remapper (mount, legacy-item and pointer ids), so every
+   * later minted id lands where the restore path puts it.
+   */
+  restorePath?: boolean;
+}
+
+/**
+ * P4.D264: a path-derived wardrobe item id, through v4's REAL parser (the
+ * corpus stores it as data, so the Rust side reads the same bytes).
+ */
+function pathDerivedItemId(mountPointId: string, relativePath: string, content: string): string {
+  const { wardrobeItemIdForDocument } = jest.requireActual(
+    '@/lib/database/repositories/vault-overlay/parsers',
+  ) as typeof import('@/lib/database/repositories/vault-overlay/parsers');
+  return wardrobeItemIdForDocument({ mountPointId, relativePath, content });
 }
 
 function edgeCases(): Case[] {
   const t = TARGET_USER_ID;
+  const hatContent = '---\ntitle: Hat\ntypes: [accessories]\n---\n';
+  const hatPicContent = '---\ntitle: Hat\ntypes: [accessories]\nimageFileId: file-hat\n---\n';
+  const hatItemId = pathDerivedItemId('mount-hat', 'Wardrobe/Hat.md', hatContent);
+  const hatPicItemId = pathDerivedItemId('mount-old', 'Wardrobe/Hat.md', hatPicContent);
   return [
     {
       name: 'all_empty',
@@ -704,8 +731,12 @@ function edgeCases(): Case[] {
           { id: 'fol-2', mountPointId: 'mp-1', parentId: 'fol-1' },
         ],
         docMountFiles: [{ id: 'dmf-1', sha256: 'abc' }],
+        // P4.D264: `relativePath` is a NOT NULL column on every real link —
+        // v4 `f5e953a3f`'s `buildWardrobeItemIdRemap` calls
+        // `isWardrobeItemDocumentPath(link.relativePath)` on every link and
+        // THROWS on an absent one, so this hand-built row now carries one.
         docMountFileLinks: [
-          { id: 'link-1', fileId: 'dmf-1', mountPointId: 'mp-1', folderId: 'fol-2' },
+          { id: 'link-1', fileId: 'dmf-1', mountPointId: 'mp-1', folderId: 'fol-2', relativePath: 'notes/a.md' },
         ],
         docMountChunks: [{ id: 'chunk-1', linkId: 'link-1', mountPointId: 'mp-1' }],
         docMountDocuments: [{ id: 'doc-1', fileId: 'dmf-1' }],
@@ -726,6 +757,188 @@ function edgeCases(): Case[] {
           { id: 'cp-c', fallbackProfileId: 'cp-c', tags: [] },
           { id: 'cp-d', fallbackProfileId: null, tags: [] },
           { id: 'cp-e', tags: [] },
+        ],
+      }),
+    },
+    // ── P4.D264 (v4 `3ee3b1342` #81 + `7c8572869` #82) — the wardrobe shapes of
+    // v4's own `uuid-remapper.test.ts:652-837`, widened. Wardrobe item ids
+    // are NOT remapper keys: a frontmatter uuid maps to itself, a path-derived
+    // id is recomputed against the remapped mount, a legacy row follows the
+    // remapper; `buildWardrobeItemIdRemap` runs BEFORE `files` and mints the
+    // Wardrobe-holding mount's id at that call.
+    {
+      name: 'wardrobe_wear_frontmatter_item',
+      note: "a frontmatter item id is kept (the document is not rewritten); the row's id / wearer / chat are remapped and the wearer lands on the restored character's id; an unattributed row keeps its nulls; an itemId the backup carries no document for passes through UNCHANGED (never minted)",
+      targetUserId: t,
+      data: bag({
+        characters: [{ id: 'char-old', userId: 'old-user' }],
+        docMountFileLinks: [
+          { id: 'wlink-1', fileId: 'wfile-1', mountPointId: '22222222-2222-4222-8222-222222222222', relativePath: 'Wardrobe/Coat.md' },
+        ],
+        docMountDocuments: [
+          { id: 'wdoc-1', fileId: 'wfile-1', content: '---\nid: 11111111-1111-4111-8111-111111111111\ntitle: Coat\ntypes: [top]\n---\n' },
+        ],
+        wardrobeWear: [
+          {
+            id: 'row-old',
+            itemId: '11111111-1111-4111-8111-111111111111',
+            wearerCharacterId: 'char-old',
+            wearCount: 4,
+            firstWornAt: '2026-01-01T00:00:00.000Z',
+            lastWornAt: '2026-02-01T00:00:00.000Z',
+            lastWornChatId: 'chat-old',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-02-01T00:00:00.000Z',
+          },
+          {
+            id: 'row-unattributed',
+            itemId: '11111111-1111-4111-8111-111111111111',
+            wearerCharacterId: null,
+            wearCount: 2,
+            firstWornAt: '2026-01-02T00:00:00.000Z',
+            lastWornAt: '2026-01-03T00:00:00.000Z',
+            lastWornChatId: null,
+            createdAt: '2026-01-02T00:00:00.000Z',
+            updatedAt: '2026-01-03T00:00:00.000Z',
+          },
+          {
+            id: 'row-orphan',
+            itemId: 'not-a-carried-item',
+            wearerCharacterId: 'char-departed',
+            wearCount: 1,
+            firstWornAt: '2026-01-04T00:00:00.000Z',
+            lastWornAt: '2026-01-04T00:00:00.000Z',
+            lastWornChatId: 'chat-old',
+            createdAt: '2026-01-04T00:00:00.000Z',
+            updatedAt: '2026-01-04T00:00:00.000Z',
+          },
+        ],
+      }),
+    },
+    {
+      name: 'wardrobe_wear_path_derived',
+      note: "a path-derived item id (no frontmatter id, or one that is not uuid-shaped) is recomputed against the REMAPPED mount; the item-path test is case-insensitive and non-recursive — instructions.md, a nested Wardrobe/Old/*.md, a Notes/*.md and a link whose document is missing are not items (their ledger rows pass through unchanged)",
+      targetUserId: t,
+      data: bag({
+        docMountPoints: [{ id: 'mount-hat' }],
+        docMountFileLinks: [
+          { id: 'wl-hat', fileId: 'wf-hat', mountPointId: 'mount-hat', relativePath: 'Wardrobe/Hat.md' },
+          { id: 'wl-scarf', fileId: 'wf-scarf', mountPointId: 'mount-hat', relativePath: 'WARDROBE/Scarf.MD' },
+          { id: 'wl-instr', fileId: 'wf-instr', mountPointId: 'mount-hat', relativePath: 'Wardrobe/instructions.md' },
+          { id: 'wl-nested', fileId: 'wf-nested', mountPointId: 'mount-hat', relativePath: 'Wardrobe/Old/Coat.md' },
+          { id: 'wl-notes', fileId: 'wf-notes', mountPointId: 'mount-hat', relativePath: 'Notes/Hat.md' },
+          { id: 'wl-nodoc', fileId: 'wf-nodoc', mountPointId: 'mount-other', relativePath: 'Wardrobe/Ghost.md' },
+        ],
+        docMountDocuments: [
+          { id: 'wd-hat', fileId: 'wf-hat', content: hatContent },
+          { id: 'wd-scarf', fileId: 'wf-scarf', content: '---\nid: not-a-uuid\ntitle: Scarf\ntypes: [accessories]\n---\n' },
+          { id: 'wd-instr', fileId: 'wf-instr', content: 'Dress for the weather.' },
+          { id: 'wd-nested', fileId: 'wf-nested', content: '---\ntitle: Old Coat\ntypes: [top]\n---\n' },
+          { id: 'wd-notes', fileId: 'wf-notes', content: '---\ntitle: Notes Hat\n---\n' },
+        ],
+        wardrobeWear: [
+          {
+            id: 'row-hat',
+            itemId: hatItemId,
+            wearerCharacterId: null,
+            wearCount: 3,
+            firstWornAt: '2026-01-01T00:00:00.000Z',
+            lastWornAt: '2026-03-01T00:00:00.000Z',
+            lastWornChatId: null,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-03-01T00:00:00.000Z',
+          },
+        ],
+      }),
+    },
+    {
+      name: 'wardrobe_wear_legacy_row',
+      note: "a legacy wardrobe_items row follows the remapper and its ledger row follows the row; the legacy row's imageFileId is now in remapFields' list and lands on the SAME minted id as the files row it names",
+      targetUserId: t,
+      data: bag({
+        files: [{ id: 'file-legacy', linkedTo: ['legacy-item'], tags: ['legacy-item'] }],
+        wardrobeItems: [
+          { id: 'legacy-item', characterId: 'char-old', imageFileId: 'file-legacy', componentItemIds: [] },
+          { id: 'legacy-nopic', characterId: 'char-old', imageFileId: null, componentItemIds: ['legacy-item'] },
+        ],
+        wardrobeWear: [
+          {
+            id: 'row-legacy',
+            itemId: 'legacy-item',
+            wearerCharacterId: 'char-old',
+            wearCount: 7,
+            firstWornAt: '2026-01-01T00:00:00.000Z',
+            lastWornAt: '2026-02-01T00:00:00.000Z',
+            lastWornChatId: 'chat-old',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-02-01T00:00:00.000Z',
+          },
+        ],
+      }),
+    },
+    {
+      name: 'wardrobe_picture_links_restore_path',
+      note: "the restore order (plan first, same remapper): a picture's files row keeps its item link on the item's unchanged id and remaps only the other links, element by element and key positions unchanged (a path-derived item id in linkedTo follows the RECOMPUTED id; a non-string element still goes through the remapper); exactly one pointer fix, onto the picture's new files id against the remapped mount",
+      targetUserId: t,
+      restorePath: true,
+      data: bag({
+        files: [
+          // `7.5`, not `7`: an integer-like key ENUMERATES FIRST in the JS
+          // object `getMapping()` folds into, an ordering v5's
+          // `mapping_object` does not model (P4.D264 lane record) — it touches
+          // no restored row, only this family's memo comparand.
+          { id: 'file-old', linkedTo: ['11111111-1111-4111-8111-111111111111', 'chat-old'], tags: ['11111111-1111-4111-8111-111111111111'], userId: 'old-user' },
+          { id: 'file-hat', linkedTo: [hatPicItemId, 7.5, null], tags: [], userId: 'old-user' },
+        ],
+        docMountPoints: [{ id: 'mount-old' }],
+        docMountFileLinks: [
+          { id: 'link-1', mountPointId: 'mount-old', fileId: 'docfile-1', relativePath: 'Wardrobe/Coat.md' },
+          { id: 'link-2', mountPointId: 'mount-old', fileId: 'docfile-2', relativePath: 'Wardrobe/Hat.md' },
+        ],
+        docMountDocuments: [
+          {
+            id: 'doc-1',
+            fileId: 'docfile-1',
+            content: '---\nid: 11111111-1111-4111-8111-111111111111\ntitle: Coat\ntypes:\n  - top\nimageFileId: file-old\n---\nA coat.',
+          },
+          { id: 'doc-2', fileId: 'docfile-2', content: hatPicContent },
+        ],
+      }),
+    },
+    {
+      name: 'wardrobe_picture_pointer_unplanned',
+      note: "the restore order: a pointer naming a file the backup does not carry, a non-string pointer and an item with no pointer plan NOTHING; the plan still mints the Wardrobe-holding mount's id first",
+      targetUserId: t,
+      restorePath: true,
+      data: bag({
+        files: [{ id: 'file-other', linkedTo: [], tags: [] }],
+        docMountFileLinks: [
+          { id: 'link-a', mountPointId: 'mount-a', fileId: 'df-a', relativePath: 'Wardrobe/A.md' },
+          { id: 'link-b', mountPointId: 'mount-a', fileId: 'df-b', relativePath: 'Wardrobe/B.md' },
+          { id: 'link-c', mountPointId: 'mount-a', fileId: 'df-c', relativePath: 'Wardrobe/C.md' },
+        ],
+        docMountDocuments: [
+          { id: 'doc-a', fileId: 'df-a', content: '---\ntitle: A\ntypes: [top]\nimageFileId: file-missing\n---\n' },
+          { id: 'doc-b', fileId: 'df-b', content: '---\ntitle: B\ntypes: [top]\nimageFileId: 42\n---\n' },
+          { id: 'doc-c', fileId: 'df-c', content: '---\ntitle: C\ntypes: [top]\n---\n' },
+        ],
+      }),
+    },
+    {
+      name: 'chat_settings_wardrobe_image_settings',
+      note: "v4 `7c8572869` `uuid-remap.ts:440-445`: wardrobeImageSettings is guarded on its ONE id (truthy imageProfileId), spread-rewritten in place after storyBackgroundsSettings; a null id leaves the bag alone, an absent bag stays absent",
+      targetUserId: t,
+      data: bag({
+        chatSettings: [
+          {
+            id: 'cs-w1',
+            userId: 'old-user',
+            storyBackgroundsSettings: { enabled: true, defaultImageProfileId: 'story-w' },
+            wardrobeImageSettings: { imageProfileId: 'wardrobe-ip', generateFromTools: true },
+          },
+          { id: 'cs-w2', wardrobeImageSettings: { generateFromTools: false, imageProfileId: null } },
+          { id: 'cs-w3', wardrobeImageSettings: { imageProfileId: '' } },
+          { id: 'cs-w4' },
         ],
       }),
     },
@@ -792,7 +1005,7 @@ async function main(): Promise<void> {
   // The committed corpus — the INPUT half of the contract.
   const corpus = {
     _meta: {
-      baseline: 'e646f58b',
+      baseline: 'f5e953a3f',
       generatedBy: 'harness/oracle/cases/backup-uuid-remap.test.ts',
       idSource: '00000000-0000-4000-8000-<12-digit counter, from 1>',
       widePinnedStamp: PINNED_STAMP,
@@ -811,7 +1024,9 @@ async function main(): Promise<void> {
     randomUUID: () => nextId(),
   }));
   const { UuidRemapper } = await import('@/lib/backup/uuid-remapper');
-  const { remapBackupData } = await import('@/lib/backup/restore/uuid-remap');
+  const { remapBackupData, planWardrobeImagePointerFixes } = await import(
+    '@/lib/backup/restore/uuid-remap'
+  );
 
   const outLines: string[] = [];
   for (const c of cases) {
@@ -820,11 +1035,15 @@ async function main(): Promise<void> {
     // A deep clone per case: `remapBackupData` must never mutate its input, and
     // the corpus we just wrote is the Rust side's input too.
     const input = JSON.parse(JSON.stringify(c.data));
+    // P4.D264: the restore's order — plan on the ORIGINAL data first, same
+    // remapper (`restore.ts:98-104`).
+    const fixes = c.restorePath ? planWardrobeImagePointerFixes(input, remapper) : undefined;
     const output = remapBackupData(input, c.targetUserId, remapper);
     outLines.push(
       JSON.stringify({
         name: c.name,
         corpusSha256,
+        ...(fixes !== undefined ? { fixes } : {}),
         output,
         mapping: remapper.getMapping(),
         size: remapper.getSize(),

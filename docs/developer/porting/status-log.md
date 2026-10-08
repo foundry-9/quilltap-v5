@@ -173314,3 +173314,89 @@ moved. `qtap_schema_validate_equivalence` grew six mutations (`characters_wardro
 `document_stores_wardrobe_wear`); v4 answers valid / valid / refused / refused / valid / valid.
 RED under the OLD vendored bytes (the family failed), GREEN under the new (1/1), embed guard 2/2.
 
+### Unit B — backup, restore, UUID remap (core 0.0.1255)
+
+- **Backup** (`collect.rs` append-only regions + header note, `manifest.rs`, `staging.rs`):
+  `BackupData.wardrobe_wear` LAST; C1 §3 `find_all` rows serialized in DDL key order; the DEBUG
+  `Collected wardrobe wear ledger for backup` `rowCount=N` logged on the CALLER thread after
+  `read_main` — capture-pinned with its zero leg (`wardrobe_wear_collect_tests`, which also pins
+  R-G: an absent table answers `[]` and is NOT created). `system_backup_equivalence`: every case
+  gains the file + count; NEW `backup_with_wardrobe_wear` (three rows through v4's REAL
+  `WARDROBE_WEAR_STATS_DDL` + `upsertRows`; Rust: C1 §6 helper + `upsert_rows`).
+- **`FIND_ALL_DROPS_NULLABLE` reached the backup, as P4.D255 predicted.** v4's archive carried
+  ONE of the three planted rows (the unattributed and the chat-less rows are refused by
+  `validateSafe` after NULL → `undefined`); v5 carries all three. The human's ruling (FIX v5,
+  file v4) applies; pinned both ways in `system_backup_equivalence.rs` (a (v5) arm per carved
+  id, a (v4) "converged" arm), the rest of the file and the manifest compared after the carve.
+- **Restore**: `archive.rs` (optional file, last key), `preview.rs` (42nd key), `mod.rs`
+  (`RestoreSummary.wardrobe_wear` before `embedding_reconcile`), `delete_all.rs`
+  (`"wardrobe_wear_stats"` LAST, v4's why), `orchestrator.rs`: the plan step BEFORE
+  `remap_backup_data` (same remapper), 22f-ter after 22f-bis (tombstones off the REMAPPED
+  characters, either mount id; `Ok(None)` counts and warns nothing), 22n-bis after 22n (ONE
+  `upsert_rows`, no transaction — R-B; the warning via `WarnText`; the DEBUG always), the
+  counter into the summary. **Beyond the order (recorded):** 22f-bis's legacy literal now carries
+  the row's `imageFileId` (v4 `wardrobe.create({...itemData})` writes it; KEYSTONE left `None`
+  for this lane); pinned by `restore_wardrobe_picture_new_account` (the cloak lands pointing at
+  the remapped file on both sides).
+- **UUID remap** (`uuid_remap.rs`): `build_wardrobe_item_id_remap` built after tags and BEFORE
+  files (R-A — in `wide` v4 mints Lorian's vault mount `c5e2a72d…` THIRD, after the two tags and
+  before any `files` id; v5 byte-identical); `remap_link_id` per element (non-string elements
+  through the remapper, as `remapArray` did); `imageFileId` on legacy items;
+  `wardrobeImageSettings` guarded on its id; the `wardrobeWear` rows (`itemId` via the map or
+  unchanged — never minted); `plan_wardrobe_image_pointer_fixes` + `WardrobeImagePointerFix`.
+  A link with a non-string `relativePath` is "not an item" in v5 where v4 throws (a NOT NULL
+  column on every real archive — no comparand).
+- **Remap corpus** (`backup-uuid-remap.test.ts`): `wardrobeWear` joins `COLLECTIONS` (the 40th;
+  the Rust header said "38" — stale since P4.D205's 39th); six NEW cases from v4's
+  `uuid-remapper.test.ts:652-837`, widened (frontmatter item; path-derived recomputed, with
+  instructions / nested / `Notes/` / doc-less links and a case-insensitive `WARDROBE/*.MD`;
+  legacy row + `imageFileId`; two `restorePath` cases — the plan runs first and its fixes are
+  compared; `wardrobeImageSettings` present / null / `''` / absent). `doc_mount_graph`'s link
+  gained `relativePath` (v4 now throws without one). The `wide` case's `memories` moved under
+  bug 181 (`embedding: null` keys, a decoded vector) — corpus INPUT only, P4.D258's semantics.
+  **Gap recorded, not fixed:** v5's `UuidRemapper::mapping_object` does not order integer-like
+  keys first as a JS object does (`getMapping()` of a remapped `7`) — the corpus uses `7.5`;
+  no restored row is affected (the memo comparand only).
+- **Derived archives** (`derive-restore-archive-wardrobe.py`, `restore-archive.zip` md5-checked):
+  `-wardrobe-wear.zip` (four rows: attributed, unattributed, an uncarried item, an absent
+  wearer), `-wardrobe-picture.zip` (the coat's frontmatter → `portrait.png`, that row linked to
+  the coat, one legacy row on RIYA with `imageFileId`), `-wardrobe-picture-tombstone.zip`
+  (+ Lorian archived). The legacy row sits on Riya because on Lorian's PRESERVED vault (v5,
+  #141) the create re-projects the coat while v4's fresh store never sees it (measured, then
+  moved).
+- **Restore cases** (`system-restore.test.ts` + `system_restore_state.rs`): `preview_wardrobe_wear`;
+  `restore_wardrobe_wear_{replace,new_account}` over a target planted with two STALE rows
+  (`replace`: both wiped, the archive's ids land; `new-account`: the colliding unattributed key
+  keeps the live `id` + `createdAt` and takes the backup's tally, the other stale row
+  survives); `restore_wardrobe_wear_refused_replace` (a trigger → v4's warning + WARN
+  `{rowCount: 4, error}`, `restored: 0`, the DEBUG still logged); `restore_wardrobe_picture_
+  {replace,new_account}` (new-account: `planned 1, fixed 1`, the coat AND the legacy cloak
+  pointing at the remapped file). New option `wearLedgerDdl` (v4's REAL DDL on the oracle's
+  fresh generateDDL target, which lacks the `ON CONFLICT` index; v5's fresh target carries it —
+  asserted, and C1 §6's helper asserted a no-op there). The four restore lines join both
+  census whitelists (63 → 67; the pin's 68th is bug 181's DEBUG — P4.D258's). Counts:
+  `seen` 38 → 43, `FRESH_STORE_CARVED_CASES` 28 → 31, preview cases 6 → 7;
+  `PHASE_ORDER_RESIDUAL` + `V5_STATS_GAP` gain the two new-account cases (the ruled
+  legacy-disk-key `portrait.png` replay shape).
+- **Normalizer fix** (`system_restore_state.rs`): embedded-timestamp and embedded-UUID
+  substitution now CHAIN (it returned after the timestamps, leaving a new-account vault
+  document's remapped frontmatter ids raw — first reached by the legacy cloak).
+- **FINDING (unruled, outside this lane's region) — `ARCHIVED_CHARACTER_RESTORE`:** a
+  `new-account` restore of an ARCHIVED character: v4 creates the row WITH `archivedAt`, refuses
+  its store (`Failed to restore character "Lorian": Character … is archived: this character is
+  archived; rehydrate it to continue`) and refuses a legacy item on him; v5 restores the
+  character with `archivedAt` NULL and provisions its vault — silently UN-ARCHIVING him (phase 2,
+  `orchestrator.rs`'s character restore never reads `archivedAt`). Measured on
+  `restore-archive-wardrobe-picture-tombstone.zip`; `replace` mode not measured. Pinned both ways
+  in `wardrobe_picture_tombstone_is_skipped`, which otherwise compares ONLY the 22f-ter facts
+  (`planned 1, fixed 0`, the coat keeping its source pointer on both sides). For the human.
+- **Red-first:** the backup/restore reds at the P4.D255 tip are in the opening section. The
+  restore code by mutation: removing the delete-list line + no-op 22n-bis + an empty fix loop →
+  13 diffs across `restore_wardrobe_wear_{replace,new_account,refused_replace}` and
+  `restore_wardrobe_picture_new_account`; dropping the tombstone skip → both facts of
+  `wardrobe_picture_tombstone_is_skipped` red. Restored byte-identically (`cmp`).
+- **After:** `backup_uuid_remap_equivalence` 31/31 cases byte-identical; `system_backup_
+  equivalence` red ONLY on `data/memories.json` ×6 (P4.D258's, §R.13(g)); `system_restore_
+  equivalence` 7/7; `system_restore_state` red ONLY on the five P4.D258 memory rows it carried
+  at the tip, `wardrobe_picture_tombstone_is_skipped` ok; core lib 3,170 ok; clippy clean.
+

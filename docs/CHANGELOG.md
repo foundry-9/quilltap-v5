@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(backup): the wardrobe carriers in backup, restore and the UUID remap (P4.D264 unit B)
+
+_Versions: core 0.0.1255._
+
+Ports the backup/restore halves of v4 `3ee3b1342` (#81, wear ledger) and `7c8572869` (#82, item images). The backup collects the whole `wardrobe_wear_stats` table and writes `data/wardrobe-wear.json` on every archive (compact included), with `manifest.counts.wardrobeWear` last and v4's `Collected wardrobe wear ledger for backup` DEBUG. The restore reads the file optionally, counts it as the 42nd preview key, wipes the table in `replace` mode (the delete list's last line), upserts it in ONE `upsert_rows` at 22n-bis (not wrapped in a transaction, as v4), and in `new-account` mode plans the picture-pointer fixes on the original data with the same remapper before the remap, then repoints them at 22f-ter through the per-mount wardrobe update, skipping archived characters' vaults. The UUID remap gains `build_wardrobe_item_id_remap` at v4's position (it mints the Wardrobe-holding mount's id before `files`), per-element `linkedTo`/`tags` through the item map, `imageFileId` on legacy items, `wardrobeImageSettings.imageProfileId`, and the `wardrobeWear` rows (the 40th returned key). 22f-bis now writes a legacy row's `imageFileId` into the vault, as v4's `...itemData` does.
+
+Tests: the remap corpus grows six wardrobe cases (two run the restore order: plan first, same remapper) and `wardrobeWear` as a collection; a corpus case that v4 now throws on gained its `relativePath`. `system_backup_equivalence` gains `backup_with_wardrobe_wear` (three rows planted through v4's real `upsertRows`); v4's `findAll` drops the two NULL-carrying rows, the ruled `FIND_ALL_DROPS_NULLABLE` divergence, pinned both ways. NEW derived archives `restore-archive-wardrobe-{wear,picture,picture-tombstone}.zip` (`derive-restore-archive-wardrobe.py`) drive five new restore-state cases (both modes, a refused-ledger arm) and a dedicated tombstone test, which also pins an unruled pre-existing divergence it surfaced: a new-account restore un-archives an archived character on v5 where v4 keeps `archivedAt` and refuses its store. The restore-state normalizer now chains its embedded-timestamp and embedded-UUID substitutions.
+
 #### 2026-10-08 — chore(schema): re-vendor `qtap-export.schema.json` at v4 `f5e953a3f` (P4.D264 unit A)
 
 _Versions: core 0.0.1254._

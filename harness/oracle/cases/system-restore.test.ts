@@ -7,7 +7,7 @@
  *
  * ── PART 1: preview (`lib/backup/restore/preview.ts:20`) ─────────────────────
  * `previewRestore(zipPath)` is filesystem-only — it extracts, counts, and
- * cleans up, touching no database. Each case emits either the 41-key
+ * cleans up, touching no database. Each case emits either the 42-key
  * `RestoreSummary` or the thrown message, verbatim: the preview route leaks
  * `error.message` to the client (`system/restore/route.ts:176`), so the
  * malformed-archive wording is part of the contract.
@@ -51,6 +51,9 @@ const PREVIEW_CASES: PreviewCase[] = [
   // data files read as empty (the optional readers), and previewRestore never
   // sets `embeddingReconcile`.
   { name: 'preview_compact', archive: 'restore-archive-compact.zip' },
+  // P4.D264 (v4 `3ee3b1342`, `preview.ts:75`): the 42nd key counts the
+  // archive's `data/wardrobe-wear.json` (every other archive predates it → 0).
+  { name: 'preview_wardrobe_wear', archive: 'restore-archive-wardrobe-wear.zip' },
 ];
 
 /**
@@ -118,6 +121,23 @@ const PREVIEW_CASES: PreviewCase[] = [
  *                            resolve after the restore
  */
 const TEST_PEPPER = '3q2+796tvu/erb7v3q2+796tvu/erb7v3q2+796tvu8=';
+
+/**
+ * [P4.D264] Two stale ledger rows planted on the TARGET before the baseline
+ * (both sides run these exact statements — `system_restore_state.rs`'s
+ * `WEAR_STALE_ROWS_SQL` is this text): one on the archive's
+ * (Travelling Coat × unattributed) key, one on an item the archive never
+ * names.
+ */
+const WEAR_STALE_ROWS_SQL =
+  'INSERT INTO "wardrobe_wear_stats" ("id", "itemId", "wearerCharacterId", "wearCount", ' +
+  '"firstWornAt", "lastWornAt", "lastWornChatId", "createdAt", "updatedAt") VALUES ' +
+  "('3e0000ff-0000-4000-8000-0000000000f1', 'ac000000-0000-4000-8000-000000000001', NULL, 9, " +
+  "'2026-01-01T00:00:00.000Z', '2026-01-09T00:00:00.000Z', NULL, " +
+  "'2026-01-01T00:00:00.000Z', '2026-01-09T00:00:00.000Z'), " +
+  "('3e0000ff-0000-4000-8000-0000000000f2', 'ae0000ff-0000-4000-8000-0000000000f2', NULL, 7, " +
+  "'2026-01-02T00:00:00.000Z', '2026-01-08T00:00:00.000Z', NULL, " +
+  "'2026-01-02T00:00:00.000Z', '2026-01-08T00:00:00.000Z')";
 const SINGLE_USER_ID = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
 
 const RESTORE_CASES: Array<{
@@ -146,6 +166,15 @@ const RESTORE_CASES: Array<{
   renameColumnsIn?: Array<[string, string, string, string]>;
   /** [P4.158 R-G] Raw SQL run on a partition (`[partition, sql]`) — a trigger plant. */
   plantSqlIn?: Array<[string, string]>;
+  /**
+   * [P4.D264] Run v4's REAL `WARDROBE_WEAR_STATS_DDL` on the TARGET before the
+   * baseline — what every booted v4 instance carries (the migration creates
+   * the UNIQUE `COALESCE` index `upsertRows`' `ON CONFLICT` names). This
+   * oracle's fresh generateDDL target lacks it (the translator cannot emit an
+   * expression index), so without the plant v4's 22n-bis fails outright; a
+   * fresh v5 target already carries both indexes (`migration_indexes.json`).
+   */
+  wearLedgerDdl?: boolean;
 }> = [
   { name: 'restore_replace', archive: 'restore-archive.zip' },
   { name: 'restore_legacy_archive', archive: 'restore-archive-legacy.zip' },
@@ -561,6 +590,71 @@ const RESTORE_CASES: Array<{
   { name: 'restore_dup_store_id_replace', archive: 'restore-archive-dup-store-id.zip' },
 
 
+  // ── P4.D264 (v4 `3ee3b1342` #81): the wear ledger, both modes ──────────
+  //
+  // `restore-archive-wardrobe-wear.zip` carries four ledger rows (attributed,
+  // unattributed, an item the archive holds no document for, a wearer it does
+  // not carry). The target is planted with two STALE rows first: one on the
+  // archive's (coat × unattributed) key and one on an item the archive never
+  // names. `replace` wipes `wardrobe_wear_stats` (the delete list, R-B) — both
+  // stale rows vanish and the archive's rows land under their own ids; in
+  // `new-account` nothing is wiped, so the colliding key KEEPS the live row's
+  // id + createdAt and takes the backup's tally (`upsertRows`), and the other
+  // stale row survives. Built by `fixtures/derive-restore-archive-wardrobe.py`.
+  {
+    name: 'restore_wardrobe_wear_replace',
+    archive: 'restore-archive-wardrobe-wear.zip',
+    wearLedgerDdl: true,
+    plantSqlIn: [['main', WEAR_STALE_ROWS_SQL]],
+  },
+  {
+    name: 'restore_wardrobe_wear_new_account',
+    archive: 'restore-archive-wardrobe-wear.zip',
+    mode: 'new-account',
+    wearLedgerDdl: true,
+    plantSqlIn: [['main', WEAR_STALE_ROWS_SQL]],
+  },
+
+  // The ledger's failure arm (R-B, R-C): a trigger refuses every insert, so
+  // the ONE `upsertRows` throws on its first row and v4 pushes `Failed to
+  // restore the wardrobe wear ledger: <msg>` + WARN `{rowCount, error}`, with
+  // `restored` 0 and the DEBUG still logged.
+  {
+    name: 'restore_wardrobe_wear_refused_replace',
+    archive: 'restore-archive-wardrobe-wear.zip',
+    wearLedgerDdl: true,
+    plantSqlIn: [
+      [
+        'main',
+        `CREATE TRIGGER "planted_wardrobe_wear_failure" BEFORE INSERT ON "wardrobe_wear_stats" ` +
+          `BEGIN SELECT RAISE(ABORT, 'planted wardrobe wear failure'); END`,
+      ],
+    ],
+  },
+
+  // ── P4.D264 (v4 `7c8572869` #82): the picture pointer, both modes ──────
+  //
+  // `restore-archive-wardrobe-picture.zip`: the coat's frontmatter names the
+  // archive's `portrait.png` row, which is linked to the coat; plus one LEGACY
+  // wardrobe row carrying `imageFileId`. `replace` restores the pointer as-is;
+  // `new-account` plans the fix on the ORIGINAL data with the same remapper
+  // (`restore.ts:98-104`) and 22f-ter repoints the coat onto the file's new id
+  // through the per-mount update, while the files row keeps its coat link
+  // (the item's id never moves) and the legacy row's `imageFileId` follows the
+  // remapped file. The tombstone twin archives Lorian: his vault is never
+  // written, so the coat keeps the SOURCE pointer.
+  { name: 'restore_wardrobe_picture_replace', archive: 'restore-archive-wardrobe-picture.zip' },
+  {
+    name: 'restore_wardrobe_picture_new_account',
+    archive: 'restore-archive-wardrobe-picture.zip',
+    mode: 'new-account',
+  },
+  {
+    name: 'restore_wardrobe_picture_tombstone_new_account',
+    archive: 'restore-archive-wardrobe-picture-tombstone.zip',
+    mode: 'new-account',
+  },
+
   // ── P4.158 item 3 (ruling R-C): a shared legacy item vs the General pointer ─
   //
   // `restore-archive-general-pointer.zip` is `restore-archive-gen2.zip` plus
@@ -674,7 +768,9 @@ const REPO_LOG_MESSAGES = new Set([
 /**
  * [P4.158 R-G] Every message `lib/backup/restore/restore.ts` logs through its
  * `moduleLogger` — all 63 sites, each message distinct (counted at the pin:
- * 44 warn, 5 info, 14 debug, 0 error). EVERY restore case records them, at
+ * 44 warn, 5 info, 14 debug, 0 error). P4.D264: +4 at `f5e953a3f` (+2 warn,
+ * +1 info, +1 debug — 22n-bis and 22f-ter); the pin's 68th is bug 181's
+ * `Decoded index-keyed memory embedding` DEBUG, P4.D258's to add. EVERY restore case records them, at
  * every level, so the census is compared across the whole corpus.
  */
 const RESTORE_TS_MESSAGES = [
@@ -722,6 +818,9 @@ const RESTORE_TS_MESSAGES = [
   "Failed to restore vector entries batch",
   "Failed to restore vector index meta",
   "Failed to restore wardrobe item",
+  // [P4.D264] v4 `3ee3b1342` / `7c8572869` — 22n-bis + 22f-ter (63 → 67).
+  "Failed to restore wardrobe wear ledger",
+  "Failed to repoint wardrobe item picture after restore",
   "No npm plugins directory in backup",
   "No themes directory in backup",
   "Post-restore embedding reconcile complete",
@@ -734,6 +833,8 @@ const RESTORE_TS_MESSAGES = [
   "Restored text replacement rules",
   "Restored theme bundle",
   "Restored user-installed theme bundles",
+  "Restored wardrobe wear ledger",
+  "Repointed wardrobe item pictures after new-account restore",
   "Seeded connection-profile columns the archive predates",
   "Skipped duplicate folder row during restore",
   "Skipping LLM logs restore — logs database is in degraded mode",
@@ -826,6 +927,7 @@ async function runRestoreCase(
     renameColumns?: Array<[string, string, string]>;
     renameColumnsIn?: Array<[string, string, string, string]>;
     plantSqlIn?: Array<[string, string]>;
+    wearLedgerDdl?: boolean;
   },
   archives: string,
   scratchRoot: string,
@@ -942,6 +1044,12 @@ async function runRestoreCase(
       );
       const r = await collapseDuplicateFoldersMigration.run();
       if (!r.success) throw new Error(`collapse migration failed on target: ${r.message}`);
+    }
+    if (c.wearLedgerDdl) {
+      const { WARDROBE_WEAR_STATS_DDL } = await import(
+        '@/lib/database/backends/sqlite/wardrobe-wear-stats-ddl'
+      );
+      for (const statement of WARDROBE_WEAR_STATS_DDL) await rawQuery(statement);
     }
     if (c.alignUploadsPointer) {
       const { parseBackupZip } = await import('@/lib/backup/restore/archive');

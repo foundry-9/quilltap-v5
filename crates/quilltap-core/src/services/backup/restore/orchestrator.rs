@@ -136,15 +136,29 @@ pub async fn restore(
     // ORIGINAL rows, because the archive's on-disk file and blob names are keyed
     // by the original ids and do not move. Phase 5 and 22f pair the two by index,
     // exactly as v4 does (`:133-136`, `:505-508`).
-    let remapped = if mode == RestoreMode::NewAccount {
+    //
+    // P4.D264 (v4 `7c8572869`, `restore.ts:98-104`): the wardrobe picture
+    // pointers are planned FIRST, "against the original data with the same
+    // remapper, so each pointer resolves to the id its `files` row is about to
+    // receive" — and the plan's mints (the Wardrobe-holding mounts, legacy
+    // items, pointed files) land in the remapper before any other id, which is
+    // v4's order (R-A). `replace` plans nothing.
+    let (remapped, wardrobe_image_pointer_fixes) = if mode == RestoreMode::NewAccount {
         let mut remapper = crate::services::backup::uuid_remapper::UuidRemapper::new();
-        Some(crate::services::backup::uuid_remap::remap_backup_data(
+        let fixes = crate::services::backup::uuid_remap::plan_wardrobe_image_pointer_fixes(
             &extracted.data,
-            target_user_id,
             &mut remapper,
-        ))
+        );
+        (
+            Some(crate::services::backup::uuid_remap::remap_backup_data(
+                &extracted.data,
+                target_user_id,
+                &mut remapper,
+            )),
+            fixes,
+        )
     } else {
-        None
+        (None, Vec::new())
     };
 
     let codec = host.pixel_codec();
@@ -163,6 +177,7 @@ pub async fn restore(
             ws,
             &mut extracted,
             remapped,
+            wardrobe_image_pointer_fixes,
             &user_id,
             codec,
             dirs,
@@ -303,6 +318,7 @@ fn restore_on_writer(
     ws: &mut WriterSet,
     extracted: &mut ExtractedBackup,
     remapped: Option<crate::services::backup::BackupData>,
+    wardrobe_image_pointer_fixes: Vec<crate::services::backup::uuid_remap::WardrobeImagePointerFix>,
     target_user_id: &str,
     codec: Arc<dyn PixelCodec>,
     dirs: HostDirs,
@@ -1515,6 +1531,7 @@ fn restore_on_writer(
             &extracted.data,
             &root_path,
             replace_mode.then_some(&archived_stores),
+            &wardrobe_image_pointer_fixes,
             &mut c,
             &mut w,
         );
@@ -1872,6 +1889,46 @@ fn restore_on_writer(
         }
     }
 
+    // ── 22n-bis. Wardrobe wear ledger — P4.D264, v4 `3ee3b1342`
+    //    `restore.ts:987-1006`. "Global; keyed by item id, no FKs. Written as
+    //    given through the repository's import/restore path — no increment.
+    //    Replace mode truncated the table first (delete-service); a collision
+    //    on (item, wearer) in any other mode takes the backup's tally. The
+    //    backup's rows are unique on that key already, so no pre-merge is
+    //    needed." ONE `upsert_rows`, NOT wrapped in a transaction (R-B — v4's
+    //    is not: a mid-list failure keeps the earlier rows and warns once);
+    //    `restored` is all-or-nothing.
+    {
+        let rows = &data.wardrobe_wear;
+        if !rows.is_empty() {
+            let result = wardrobe_wear_rows(rows).and_then(|typed| {
+                crate::db::wardrobe_wear_stats::WardrobeWearStatsRepository::new(main)
+                    .upsert_rows(&typed)
+                    .map_err(|e| e.warn_text())
+            });
+            match result {
+                Ok(()) => c.wardrobe_wear = rows.len(),
+                Err(error) => {
+                    w.push(format!(
+                        "Failed to restore the wardrobe wear ledger: {error}"
+                    ));
+                    tracing::warn!(
+                        target: "quilltap::restore",
+                        rowCount = rows.len(),
+                        error = %error,
+                        "Failed to restore wardrobe wear ledger"
+                    );
+                }
+            }
+        }
+        tracing::debug!(
+            target: "quilltap::restore",
+            total = rows.len(),
+            restored = c.wardrobe_wear,
+            "Restored wardrobe wear ledger"
+        );
+    }
+
     // ── 22o. Instance settings — LAST, because the mount-point keys point at
     //    the doc_mount_points restored above. Raw upsert by key (`:746`).
     for row in &data.instance_settings {
@@ -2113,6 +2170,7 @@ fn restore_mount_family(
     original: &crate::services::backup::BackupData,
     root_path: &Path,
     archived_stores: Option<&std::collections::HashMap<String, String>>,
+    wardrobe_image_pointer_fixes: &[crate::services::backup::uuid_remap::WardrobeImagePointerFix],
     c: &mut Counters,
     w: &mut Vec<String>,
 ) {
@@ -2416,7 +2474,13 @@ fn restore_mount_family(
                 is_default: b(item, "isDefault", false),
                 replace: b(item, "replace", false),
                 migrated_from_clothing_record_id: Some(os(item, "migratedFromClothingRecordId")),
-                image_file_id: None,
+                // P4.D264: v4 hands `wardrobe.create` the row's `...itemData`,
+                // so a legacy row's `imageFileId` (remapped with the files in
+                // new-account mode, `uuid-remap.ts:459-464`) lands in the
+                // frontmatter; an absent key stays absent.
+                image_file_id: item
+                    .get("imageFileId")
+                    .map(|v| v.as_str().map(str::to_string)),
                 archived_at: Some(os(item, "archivedAt")),
                 created_at: now(),
                 updated_at: now(),
@@ -2438,6 +2502,83 @@ fn restore_mount_family(
                     );
                 }
             }
+        }
+    }
+
+    // 22f-ter. Wardrobe picture pointers (new-account mode) — P4.D264, v4
+    // `7c8572869` `restore.ts:757-788`. v4's why, carried: "The vaults and the
+    // picture `files` rows are in place; each item's frontmatter `imageFileId`
+    // still names the file's pre-remap id. Repoint it through the ordinary
+    // per-mount wardrobe update, which re-projects the document (so its
+    // content hash follows the new text). The mount-scoped writer is used for
+    // every tier: it addresses the folder by mount, and a character vault's
+    // frontmatter carries no characterId to disturb. An archived character's
+    // vault is a tombstone: it is never written, so its pictures keep their
+    // old pointer (readable history, no current pick)." The tombstone set is
+    // read off the REMAPPED characters; a fix is skipped on EITHER mount id.
+    // `Ok(None)` (the item is not in that folder) counts nothing and warns
+    // nothing, as v4's falsy `updateProjectWardrobeItem` result.
+    {
+        let tombstoned_vaults: std::collections::HashSet<String> = data
+            .characters
+            .iter()
+            .filter(|ch| {
+                is_truthy_value(ch.get("archivedAt"))
+                    && is_truthy_value(ch.get("characterDocumentMountPointId"))
+            })
+            .filter_map(|ch| {
+                ch.get("characterDocumentMountPointId")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
+            .collect();
+        let links = crate::db::doc_mount_file_links::DocMountFileLinksRepository::new(mount);
+        let docs = crate::db::doc_mount_documents::DocMountDocumentsRepository::new(mount);
+        let mut fixed = 0usize;
+        for fix in wardrobe_image_pointer_fixes {
+            if tombstoned_vaults.contains(&fix.mount_point_id)
+                || tombstoned_vaults.contains(&fix.source_mount_point_id)
+            {
+                continue;
+            }
+            match crate::db::vault_wardrobe_public::update_project_wardrobe_item(
+                main,
+                &links,
+                &docs,
+                &fix.mount_point_id,
+                &fix.item_id,
+                &crate::db::vault_wardrobe_public::WardrobePatch {
+                    image_file_id: Some(Some(fix.image_file_id.clone())),
+                    ..Default::default()
+                },
+            ) {
+                Ok(Some(_)) => fixed += 1,
+                Ok(None) => {}
+                Err(e) => {
+                    let error = e.warn_text();
+                    w.push(format!(
+                        "Failed to repoint a wardrobe item's picture ({}): {error}",
+                        fix.item_id
+                    ));
+                    tracing::warn!(
+                        target: "quilltap::restore",
+                        mountPointId = %fix.mount_point_id,
+                        sourceMountPointId = %fix.source_mount_point_id,
+                        itemId = %fix.item_id,
+                        imageFileId = %fix.image_file_id,
+                        error = %error,
+                        "Failed to repoint wardrobe item picture after restore"
+                    );
+                }
+            }
+        }
+        if !wardrobe_image_pointer_fixes.is_empty() {
+            tracing::info!(
+                target: "quilltap::restore",
+                planned = wardrobe_image_pointer_fixes.len(),
+                fixed = fixed,
+                "Repointed wardrobe item pictures after new-account restore"
+            );
         }
     }
 
@@ -3687,6 +3828,35 @@ struct Counters {
     group_doc_mount_links: usize,
     group_character_members: usize,
     text_replacement_rules: usize,
+    // === P4.D264 ===
+    wardrobe_wear: usize,
+    // === end P4.D264 ===
+}
+
+/// P4.D264: JS truthiness for 22f-ter's tombstone filter (`c.archivedAt &&
+/// c.characterDocumentMountPointId`).
+fn is_truthy_value(v: Option<&Value>) -> bool {
+    match v {
+        None | Some(Value::Null) => false,
+        Some(Value::Bool(b)) => *b,
+        Some(Value::Number(n)) => n.as_f64().is_some_and(|f| f != 0.0 && !f.is_nan()),
+        Some(Value::String(s)) => !s.is_empty(),
+        Some(_) => true,
+    }
+}
+
+/// P4.D264: the archive's `data/wardrobe-wear.json` rows as the typed rows
+/// `upsert_rows` binds. v4 hands the parsed objects to `upsertRows` as given
+/// and binds each column; a row v4's bind would itself refuse (a missing
+/// column, a non-integer tally) fails the WHOLE ledger here with the decode
+/// message — the one warning v4 also pushes for a failed `upsertRows` (no
+/// comparand reaches a malformed archive row).
+fn wardrobe_wear_rows(
+    rows: &[Value],
+) -> Result<Vec<crate::db::wardrobe_wear_stats::WardrobeWearStatsRow>, String> {
+    rows.iter()
+        .map(|row| serde_json::from_value(row.clone()).map_err(|e| e.to_string()))
+        .collect()
 }
 
 impl Counters {
@@ -3749,6 +3919,8 @@ impl Counters {
             group_doc_mount_links: self.group_doc_mount_links,
             group_character_members: self.group_character_members,
             text_replacement_rules: self.text_replacement_rules,
+            // P4.D264 (v4 `restore.ts:1226`).
+            wardrobe_wear: self.wardrobe_wear,
             embedding_reconcile: Some(embedding_reconcile),
             warnings,
         }

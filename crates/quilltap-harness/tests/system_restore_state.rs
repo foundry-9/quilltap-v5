@@ -268,6 +268,40 @@ const PHASE_ORDER_RESIDUAL: &[(&str, &str, &str)] = &[
         "mountIndex",
         "doc_mount_files",
     ),
+    // [P4.D264] the two wardrobe-carrier `new-account` archives ARE
+    // `restore-archive.zip`'s instance (+ a ledger file / + a picture pointer
+    // and one legacy row), so each replays the same legacy disk-key
+    // `portrait.png` — the ruled residual, reached by two more cases.
+    (
+        "restore_wardrobe_wear_new_account",
+        "mountIndex",
+        "doc_mount_blobs",
+    ),
+    (
+        "restore_wardrobe_wear_new_account",
+        "mountIndex",
+        "doc_mount_file_links",
+    ),
+    (
+        "restore_wardrobe_wear_new_account",
+        "mountIndex",
+        "doc_mount_files",
+    ),
+    (
+        "restore_wardrobe_picture_new_account",
+        "mountIndex",
+        "doc_mount_blobs",
+    ),
+    (
+        "restore_wardrobe_picture_new_account",
+        "mountIndex",
+        "doc_mount_file_links",
+    ),
+    (
+        "restore_wardrobe_picture_new_account",
+        "mountIndex",
+        "doc_mount_files",
+    ),
 ];
 
 /// ## A pre-existing v5 gap, newly VISIBLE — not this lane's to fix
@@ -320,6 +354,10 @@ const V5_STATS_GAP: &[(&str, &str)] = &[
     // stale rollup. A fifth case of the shape, not a fifth gap — the edits are
     // four values inside existing columns and touch no file at all.
     ("restore_bag_keys_new_account", "Quilltap Uploads"),
+    // [P4.D264] the same one `files/portrait.png` replayed into the target's
+    // own uploads mount — the existing deferral, two more cases of the shape.
+    ("restore_wardrobe_wear_new_account", "Quilltap Uploads"),
+    ("restore_wardrobe_picture_new_account", "Quilltap Uploads"),
 ];
 
 /// The columns [`V5_STATS_GAP`] makes incomparable on its named rows.
@@ -854,20 +892,26 @@ impl Normalizer {
                 // contains two. Only stamps absent from the archive are replaced —
                 // an archive timestamp that survives into a document body stays
                 // under diff.
-                if s.len() > 24 {
-                    let sub = self.substitute_embedded_timestamps(s);
-                    if sub != *s {
-                        return Value::String(sub);
-                    }
-                }
+                //
+                // [P4.D264] The two substitutions CHAIN: a vault document written
+                // in `new-account` mode carries BOTH (22f-bis's legacy row lands
+                // with a remapped frontmatter `id` / `imageFileId` beside its
+                // write-clock stamps), and returning after the timestamps left
+                // those ids raw — first measured on
+                // `restore_wardrobe_picture_new_account`.
+                let mut sub = if s.len() > 24 {
+                    self.substitute_embedded_timestamps(s)
+                } else {
+                    s.clone()
+                };
                 // A storage key embeds one or two minted ids (`mount-blob:<mp>:
                 // <blob>`, or a slash-shaped path). Normalize them wherever they
                 // sit — see `substitute_embedded_uuids`.
-                if s.len() > 36 {
-                    let sub = self.substitute_embedded_uuids(s);
-                    if sub != *s {
-                        return Value::String(sub);
-                    }
+                if sub.len() > 36 {
+                    sub = self.substitute_embedded_uuids(&sub);
+                }
+                if sub != *s {
+                    return Value::String(sub);
                 }
                 v.clone()
             }
@@ -1037,6 +1081,19 @@ fn archive_for(name: &str) -> &'static str {
         // [P4.161 Tier 2] one refusing row per landed Tier 2 kind —
         // `derive-restore-archive-kind-refusals.py`.
         "restore_kind_refusals_replace" => "restore-archive-kind-refusals.zip",
+        // [P4.D264] the wardrobe carriers — `derive-restore-archive-wardrobe.py`:
+        // four ledger rows (22n-bis), and the coat's picture pointer + a legacy
+        // row's `imageFileId` (22f-ter / 22f-bis), with Lorian archived in the
+        // tombstone twin.
+        "restore_wardrobe_wear_replace"
+        | "restore_wardrobe_wear_new_account"
+        | "restore_wardrobe_wear_refused_replace" => "restore-archive-wardrobe-wear.zip",
+        "restore_wardrobe_picture_replace" | "restore_wardrobe_picture_new_account" => {
+            "restore-archive-wardrobe-picture.zip"
+        }
+        "restore_wardrobe_picture_tombstone_new_account" => {
+            "restore-archive-wardrobe-picture-tombstone.zip"
+        }
         other => panic!("unknown restore case {other}"),
     }
 }
@@ -1267,11 +1324,50 @@ fn renamed_columns_in(
     }
 }
 
+/// [P4.D264] The oracle's `WEAR_STALE_ROWS_SQL`: one stale row on the
+/// archive's (Travelling Coat × unattributed) key and one on an item the
+/// archive never names. `replace` wipes both (the delete list); `new-account`
+/// keeps both, the colliding key's live `id` + `createdAt` surviving the
+/// backup's tally (`upsert_rows`).
+const WEAR_STALE_ROWS_SQL: &str = "INSERT INTO \"wardrobe_wear_stats\" (\"id\", \"itemId\", \"wearerCharacterId\", \"wearCount\", \
+     \"firstWornAt\", \"lastWornAt\", \"lastWornChatId\", \"createdAt\", \"updatedAt\") VALUES \
+     ('3e0000ff-0000-4000-8000-0000000000f1', 'ac000000-0000-4000-8000-000000000001', NULL, 9, \
+     '2026-01-01T00:00:00.000Z', '2026-01-09T00:00:00.000Z', NULL, \
+     '2026-01-01T00:00:00.000Z', '2026-01-09T00:00:00.000Z'), \
+     ('3e0000ff-0000-4000-8000-0000000000f2', 'ae0000ff-0000-4000-8000-0000000000f2', NULL, 7, \
+     '2026-01-02T00:00:00.000Z', '2026-01-08T00:00:00.000Z', NULL, \
+     '2026-01-02T00:00:00.000Z', '2026-01-08T00:00:00.000Z')";
+
+/// [P4.D264] Mirrors the oracle's `wearLedgerDdl`: v4's fresh generateDDL
+/// target lacks the ledger's UNIQUE `COALESCE` index, so the oracle runs
+/// v4's REAL `WARDROBE_WEAR_STATS_DDL` there; a fresh v5 target already
+/// carries both migration indexes (`migration_indexes.json`), and C1 §6's
+/// helper is an exact no-op on it (asserted).
+fn wear_ledger_ddl(name: &str) -> bool {
+    matches!(
+        name,
+        "restore_wardrobe_wear_replace"
+            | "restore_wardrobe_wear_new_account"
+            | "restore_wardrobe_wear_refused_replace"
+    )
+}
+
 /// [P4.158 R-G] Raw SQL planted on a partition — mirrors the oracle's
 /// `plantSqlIn`. v5's chat-settings insert drops a column the table lacks
 /// (`tolerant_insert`), so its catch is reached by a trigger, not a rename.
 fn plant_sql_in(name: &str) -> &'static [(&'static str, &'static str)] {
     match name {
+        // [P4.D264] two STALE ledger rows on the target — the oracle's
+        // `WEAR_STALE_ROWS_SQL`, byte for byte.
+        "restore_wardrobe_wear_replace" | "restore_wardrobe_wear_new_account" => {
+            &[("quilltap.db", WEAR_STALE_ROWS_SQL)]
+        }
+        // [P4.D264] the ledger's failure arm — every insert refused.
+        "restore_wardrobe_wear_refused_replace" => &[(
+            "quilltap.db",
+            "CREATE TRIGGER \"planted_wardrobe_wear_failure\" BEFORE INSERT ON \"wardrobe_wear_stats\" \
+             BEGIN SELECT RAISE(ABORT, 'planted wardrobe wear failure'); END",
+        )],
         "restore_phase_warns_replace" => &[
             (
                 "quilltap.db",
@@ -1491,6 +1587,11 @@ fn system_restore_state_equivalence() {
         if !name.starts_with("restore_") {
             continue;
         }
+        // [P4.D264] compared on its 22f-ter facts alone — see
+        // `wardrobe_picture_tombstone_is_skipped`.
+        if name == TOMBSTONE_CASE {
+            continue;
+        }
         seen += 1;
 
         let scratch = fresh_scratch(name);
@@ -1537,6 +1638,33 @@ fn system_restore_state_equivalence() {
                         | quilltap_core::db::folders_unique_path_repair::CollapseOutcome::AlreadyIndexed
                 ),
                 "[{name}] a fresh target must come out indexed — got {outcome:?}"
+            );
+        }
+        if wear_ledger_ddl(name) {
+            let w = quilltap_core::db::Writer::open_writable(
+                &instance.join("quilltap.db"),
+                TEST_PEPPER,
+            )
+            .expect("open target for the wear ledger");
+            let indexes = |c: &rusqlite::Connection| -> i64 {
+                c.query_row(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' \
+                     AND name IN ('idx_wardrobe_wear_stats_item_wearer', 'idx_wardrobe_wear_stats_wearer')",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap()
+            };
+            assert_eq!(
+                indexes(w.connection()),
+                2,
+                "[{name}] a fresh v5 target carries both"
+            );
+            quilltap_core::test_support::ensure_wear_ledger_on(w.connection());
+            assert_eq!(
+                indexes(w.connection()),
+                2,
+                "[{name}] the helper is a no-op here"
             );
         }
         if aligns_uploads_pointer(name) {
@@ -1779,10 +1907,12 @@ fn system_restore_state_equivalence() {
     // three fresh-target arms (#142), the bag-nulls arm, the informs arm and
     // the SQLite-tail plant.
     // 34 + 3 = 37: P4.161's three whole-row refusal arms. 37 + 1 = 38: its
-    // Tier 2 kind-refusals arm.
+    // Tier 2 kind-refusals arm. 38 + 5 = 43: P4.D264's wardrobe carriers (the
+    // ledger both modes + its refused arm, the picture pointer both modes; the
+    // tombstone twin is the dedicated `wardrobe_picture_tombstone_is_skipped`).
     assert_eq!(
-        seen, 38,
-        "expected all thirty-eight restore cases in the oracle (ten + the #58 orphan-links arm \
+        seen, 43,
+        "expected all forty-three restore cases in the oracle (ten + the #58 orphan-links arm \
          + P4.D46's two compact arms + P4.D126's bug-103 legacy-profiles arm \
          + P4.D145's bug-114 duplicate-folders arm + P4.D152's bug-117 arm \
          + P4.D158's two bag-key arms + P4.D208's bug-158 arm \
@@ -1790,7 +1920,8 @@ fn system_restore_state_equivalence() {
          + P4.143's serde-arm plant + P4.D251's voice-legacy arm \
          + P4.147's three fresh-target arms, bag-nulls, informs and SQLite-tail arms \
          + P4.158's damaged-store, two-claimants, dup-store-id, general-pointer and phase-warns arms \
-         + P4.161's memory-, inform-, entity- and kind-refusal arms)"
+         + P4.161's memory-, inform-, entity- and kind-refusal arms \
+         + P4.D264's five wardrobe-carrier arms)"
     );
     // [P4.147] Every ruled #141 case actually carved (red-first measured, then
     // both directions held) — the arm cannot go vacuous.
@@ -4117,7 +4248,9 @@ fn carve_fresh_store_residual(
 /// (measured, P4.147). A case falling out of the count is the carve going
 /// vacuous.
 /// P4.161: + its four refusal archives (all `restore-archive.zip` derivations).
-const FRESH_STORE_CARVED_CASES: usize = 28;
+/// P4.D264: + its two `replace` wardrobe archives (both `restore-archive.zip`
+/// derivations) and its refused-ledger arm — measured 28 → 31.
+const FRESH_STORE_CARVED_CASES: usize = 31;
 
 /// The `summary` adjustments a ruled carve makes: v5 leads v4's `files`
 /// counter by `files_lead`, and these v4 warnings are the divergence itself.
@@ -5013,6 +5146,9 @@ const RESTORE_TS_MESSAGES: &[&str] = &[
     "Failed to restore vector entries batch",
     "Failed to restore vector index meta",
     "Failed to restore wardrobe item",
+    // [P4.D264] v4 `3ee3b1342` / `7c8572869` — 22n-bis + 22f-ter.
+    "Failed to restore wardrobe wear ledger",
+    "Failed to repoint wardrobe item picture after restore",
     "No npm plugins directory in backup",
     "No themes directory in backup",
     "Post-restore embedding reconcile complete",
@@ -5025,6 +5161,8 @@ const RESTORE_TS_MESSAGES: &[&str] = &[
     "Restored text replacement rules",
     "Restored theme bundle",
     "Restored user-installed theme bundles",
+    "Restored wardrobe wear ledger",
+    "Repointed wardrobe item pictures after new-account restore",
     "Seeded connection-profile columns the archive predates",
     "Skipped duplicate folder row during restore",
     "Skipping LLM logs restore — logs database is in degraded mode",
@@ -6107,3 +6245,173 @@ fn compare_case(
         );
     }
 }
+
+// === P4.D264 (append-only test region) ===
+
+/// [P4.D264] The tombstone twin of `restore_wardrobe_picture_new_account`.
+const TOMBSTONE_CASE: &str = "restore_wardrobe_picture_tombstone_new_account";
+
+/// ## [P4.D264] 22f-ter's tombstone skip — compared on its OWN facts
+///
+/// `restore-archive-wardrobe-picture-tombstone.zip` archives Lorian, whose
+/// vault holds the coat that names a picture. v4's 22f-ter (`restore.ts:
+/// 766-773`) builds the tombstone set from the REMAPPED characters and skips a
+/// fix on either mount id, so the coat keeps its SOURCE pointer and v4 logs
+/// `Repointed … {planned: 1, fixed: 0}`. Compared here on exactly that: the
+/// INFO line's fields, and the coat document in both final states still
+/// naming `f0000001-…0001`.
+///
+/// The bulk row-for-row diff is NOT run on this case, because the archive
+/// surfaced an UNRULED PRE-EXISTING divergence outside the wardrobe carriers
+/// (phase 2, the character restore — not P4.D264's file region): v4 creates
+/// the archived character WITH `archivedAt` and refuses its store
+/// (`Failed to restore character "Lorian": Character … is archived: this
+/// character is archived; rehydrate it to continue`, and the same refusal for
+/// a legacy item on him); v5 restores the character with `archivedAt` NULL and
+/// provisions its vault — a new-account restore silently UN-ARCHIVES him.
+/// `ARCHIVED_CHARACTER_RESTORE` pins both directions so a fix on either side
+/// trips it; the ruling is the human's (P4.D264 lane record, FINDING).
+#[test]
+fn wardrobe_picture_tombstone_is_skipped() {
+    let _serial = serial();
+    let Some(cases) = read_cases() else {
+        eprintln!("SKIP: QT_ORACLE_SYSTEM_RESTORE unset");
+        return;
+    };
+    let case = cases
+        .iter()
+        .find(|c| c["name"] == TOMBSTONE_CASE)
+        .expect("the oracle carries the tombstone case");
+    const SOURCE_POINTER: &str = "imageFileId: f0000001-0000-4000-8000-000000000001\n";
+    const REPOINTED: &str = "Repointed wardrobe item pictures after new-account restore";
+
+    let scratch = fresh_scratch(TOMBSTONE_CASE);
+    let zip = archives_dir().join("restore-archive-wardrobe-picture-tombstone.zip");
+    let instance = scratch.root.join("instance");
+    let db = fresh_instance(&instance);
+    let host = TestHost {
+        root: scratch.root.clone(),
+    };
+    std::fs::create_dir_all(host.temp_dir()).unwrap();
+    let log_buf = {
+        let buf = global_capture();
+        buf.lock().unwrap().clear();
+        buf
+    };
+    let summary = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(restore(
+            &db,
+            &host,
+            &zip,
+            RestoreMode::NewAccount,
+            SINGLE_USER_ID,
+            Default::default(),
+        ))
+        .expect("restore succeeded");
+    drop(db);
+    let lines = log_buf.lock().unwrap().clone();
+    let state = read_state(&instance);
+    let mut failures = Vec::new();
+
+    // 1. The INFO line, field for field (v4 records numbers, v5 renders text).
+    let flat = |r: &Value| -> Vec<(String, String)> {
+        r.as_object()
+            .unwrap()
+            .iter()
+            .map(|(k, v)| {
+                (
+                    k.clone(),
+                    v.as_str()
+                        .map(str::to_string)
+                        .unwrap_or_else(|| v.to_string()),
+                )
+            })
+            .collect()
+    };
+    let got: Vec<_> = v5_log_records(&lines, &[REPOINTED])
+        .iter()
+        .map(flat)
+        .collect();
+    let want: Vec<_> = case["logs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|l| l["message"] == REPOINTED)
+        .map(flat)
+        .collect();
+    let expected = vec![vec![
+        ("level".to_string(), "info".to_string()),
+        ("message".to_string(), REPOINTED.to_string()),
+        ("planned".to_string(), "1".to_string()),
+        ("fixed".to_string(), "0".to_string()),
+    ]];
+    if got != want || want != expected {
+        failures.push(format!("the 22f-ter line: rust {got:?} vs oracle {want:?}"));
+    }
+
+    // 2. The coat keeps its SOURCE pointer on both sides.
+    let coat_pointer = |docs: &[Value]| {
+        docs.iter()
+            .filter(|d| {
+                d["content"]
+                    .as_str()
+                    .is_some_and(|c| c.contains("title: Travelling Coat\n"))
+            })
+            .map(|d| d["content"].as_str().unwrap().contains(SOURCE_POINTER))
+            .collect::<Vec<bool>>()
+    };
+    let got_coat = coat_pointer(&state["mountIndex"]["doc_mount_documents"]);
+    let want_coat = coat_pointer(
+        case["state"]["mountIndex"]["doc_mount_documents"]
+            .as_array()
+            .unwrap(),
+    );
+    if got_coat != vec![true] || want_coat != vec![true] {
+        failures.push(format!(
+            "the tombstoned coat must keep its source pointer: rust {got_coat:?} vs oracle {want_coat:?}"
+        ));
+    }
+
+    // 3. ARCHIVED_CHARACTER_RESTORE — the unruled divergence, both ways.
+    let v4_refused = case["summary"]["warnings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|w| {
+            w.as_str().is_some_and(|w| {
+                w.starts_with("Failed to restore character \"Lorian\": Character ")
+                    && w.ends_with(
+                        " is archived: this character is archived; rehydrate it to continue",
+                    )
+            })
+        });
+    if !v4_refused {
+        failures.push(
+            "ARCHIVED_CHARACTER_RESTORE (v4): v4 no longer refuses the archived character's store — re-measure"
+                .to_string(),
+        );
+    }
+    let v5_unarchived = state["main"]["characters"]
+        .iter()
+        .any(|c| c["name"] == "Lorian" && c["archivedAt"].is_null());
+    if !v5_unarchived {
+        failures.push(
+            "ARCHIVED_CHARACTER_RESTORE (v5): v5 now keeps `archivedAt` — re-measure and retire the pin"
+                .to_string(),
+        );
+    }
+    if summary.warnings.iter().any(|w| w.contains("is archived")) {
+        failures.push(format!(
+            "ARCHIVED_CHARACTER_RESTORE (v5): v5 now refuses the archived character: {:?}",
+            summary.warnings
+        ));
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+    println!(
+        "OK {TOMBSTONE_CASE}: planned 1, fixed 0; the coat kept its source pointer on both sides"
+    );
+}
+// === end P4.D264 ===

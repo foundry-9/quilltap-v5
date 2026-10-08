@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "baseline": "e646f58b",
+    "baseline": "f5e953a3f",
     "generatedBy": "harness/oracle/cases/backup-uuid-remap.test.ts",
     "idSource": "00000000-0000-4000-8000-<12-digit counter, from 1>",
     "widePinnedStamp": "2026-01-01T00:00:00.000Z",
@@ -43,7 +43,8 @@
       "projectDocMountLinks",
       "groupDocMountLinks",
       "groupCharacterMembers",
-      "textReplacementRules"
+      "textReplacementRules",
+      "wardrobeWear"
     ]
   },
   "cases": [
@@ -394,6 +395,7 @@
             "keywords": [],
             "tags": [],
             "importance": 0.6,
+            "embedding": null,
             "source": "AUTO",
             "entities": [],
             "kind": "semantic",
@@ -414,12 +416,12 @@
             ],
             "tags": [],
             "importance": 0.7,
-            "embedding": {
-              "0": 0.25196850299835205,
-              "1": -0.4960629940032959,
-              "2": 0.12598425149917603,
-              "3": 1
-            },
+            "embedding": [
+              0.25196850299835205,
+              -0.4960629940032959,
+              0.12598425149917603,
+              1
+            ],
             "source": "AUTO",
             "entities": [],
             "kind": "semantic",
@@ -437,6 +439,7 @@
             "keywords": [],
             "tags": [],
             "importance": 0.4,
+            "embedding": null,
             "source": "MANUAL",
             "entities": [],
             "kind": "semantic",
@@ -2863,7 +2866,8 @@
             "createdAt": "2026-03-01T00:00:00.000Z",
             "updatedAt": "2026-03-01T00:00:00.000Z"
           }
-        ]
+        ],
+        "wardrobeWear": []
       }
     },
     {
@@ -2909,7 +2913,8 @@
         "projectDocMountLinks": [],
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
-        "textReplacementRules": []
+        "textReplacementRules": [],
+        "wardrobeWear": []
       }
     },
     {
@@ -2998,7 +3003,8 @@
         "projectDocMountLinks": [],
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
-        "textReplacementRules": []
+        "textReplacementRules": [],
+        "wardrobeWear": []
       }
     },
     {
@@ -3063,7 +3069,8 @@
         "projectDocMountLinks": [],
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
-        "textReplacementRules": []
+        "textReplacementRules": [],
+        "wardrobeWear": []
       }
     },
     {
@@ -3141,7 +3148,8 @@
         "projectDocMountLinks": [],
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
-        "textReplacementRules": []
+        "textReplacementRules": [],
+        "wardrobeWear": []
       }
     },
     {
@@ -3207,7 +3215,8 @@
         "projectDocMountLinks": [],
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
-        "textReplacementRules": []
+        "textReplacementRules": [],
+        "wardrobeWear": []
       }
     },
     {
@@ -3272,7 +3281,8 @@
         "projectDocMountLinks": [],
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
-        "textReplacementRules": []
+        "textReplacementRules": [],
+        "wardrobeWear": []
       }
     },
     {
@@ -3341,7 +3351,8 @@
         "projectDocMountLinks": [],
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
-        "textReplacementRules": []
+        "textReplacementRules": [],
+        "wardrobeWear": []
       }
     },
     {
@@ -3404,7 +3415,8 @@
         "projectDocMountLinks": [],
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
-        "textReplacementRules": []
+        "textReplacementRules": [],
+        "wardrobeWear": []
       }
     },
     {
@@ -3460,7 +3472,8 @@
         "projectDocMountLinks": [],
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
-        "textReplacementRules": []
+        "textReplacementRules": [],
+        "wardrobeWear": []
       }
     },
     {
@@ -3529,7 +3542,8 @@
         "projectDocMountLinks": [],
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
-        "textReplacementRules": []
+        "textReplacementRules": [],
+        "wardrobeWear": []
       }
     },
     {
@@ -3598,7 +3612,8 @@
         "projectDocMountLinks": [],
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
-        "textReplacementRules": []
+        "textReplacementRules": [],
+        "wardrobeWear": []
       }
     },
     {
@@ -3670,7 +3685,8 @@
         "projectDocMountLinks": [],
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
-        "textReplacementRules": []
+        "textReplacementRules": [],
+        "wardrobeWear": []
       }
     },
     {
@@ -3753,7 +3769,8 @@
         "projectDocMountLinks": [],
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
-        "textReplacementRules": []
+        "textReplacementRules": [],
+        "wardrobeWear": []
       }
     },
     {
@@ -3834,7 +3851,8 @@
         "projectDocMountLinks": [],
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
-        "textReplacementRules": []
+        "textReplacementRules": [],
+        "wardrobeWear": []
       }
     },
     {
@@ -3912,7 +3930,8 @@
         "projectDocMountLinks": [],
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
-        "textReplacementRules": []
+        "textReplacementRules": [],
+        "wardrobeWear": []
       }
     },
     {
@@ -3978,7 +3997,8 @@
         "projectDocMountLinks": [],
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
-        "textReplacementRules": []
+        "textReplacementRules": [],
+        "wardrobeWear": []
       }
     },
     {
@@ -4037,7 +4057,8 @@
         "projectDocMountLinks": [],
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
-        "textReplacementRules": []
+        "textReplacementRules": [],
+        "wardrobeWear": []
       }
     },
     {
@@ -4206,7 +4227,8 @@
         "projectDocMountLinks": [],
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
-        "textReplacementRules": []
+        "textReplacementRules": [],
+        "wardrobeWear": []
       }
     },
     {
@@ -4294,7 +4316,8 @@
         "projectDocMountLinks": [],
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
-        "textReplacementRules": []
+        "textReplacementRules": [],
+        "wardrobeWear": []
       }
     },
     {
@@ -4364,7 +4387,8 @@
             "characterId": "char-1"
           }
         ],
-        "textReplacementRules": []
+        "textReplacementRules": [],
+        "wardrobeWear": []
       }
     },
     {
@@ -4423,7 +4447,8 @@
             "replace": "b",
             "userId": "old-user"
           }
-        ]
+        ],
+        "wardrobeWear": []
       }
     },
     {
@@ -4499,7 +4524,8 @@
             "id": "link-1",
             "fileId": "dmf-1",
             "mountPointId": "mp-1",
-            "folderId": "fol-2"
+            "folderId": "fol-2",
+            "relativePath": "notes/a.md"
           }
         ],
         "docMountChunks": [
@@ -4530,7 +4556,8 @@
         ],
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
-        "textReplacementRules": []
+        "textReplacementRules": [],
+        "wardrobeWear": []
       }
     },
     {
@@ -4603,7 +4630,580 @@
         "projectDocMountLinks": [],
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
-        "textReplacementRules": []
+        "textReplacementRules": [],
+        "wardrobeWear": []
+      }
+    },
+    {
+      "name": "wardrobe_wear_frontmatter_item",
+      "note": "a frontmatter item id is kept (the document is not rewritten); the row's id / wearer / chat are remapped and the wearer lands on the restored character's id; an unattributed row keeps its nulls; an itemId the backup carries no document for passes through UNCHANGED (never minted)",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [
+          {
+            "id": "char-old",
+            "userId": "old-user"
+          }
+        ],
+        "chats": [],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "chatInforms": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorIndexMetas": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [
+          {
+            "id": "wlink-1",
+            "fileId": "wfile-1",
+            "mountPointId": "22222222-2222-4222-8222-222222222222",
+            "relativePath": "Wardrobe/Coat.md"
+          }
+        ],
+        "docMountChunks": [],
+        "docMountDocuments": [
+          {
+            "id": "wdoc-1",
+            "fileId": "wfile-1",
+            "content": "---\nid: 11111111-1111-4111-8111-111111111111\ntitle: Coat\ntypes: [top]\n---\n"
+          }
+        ],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": [],
+        "wardrobeWear": [
+          {
+            "id": "row-old",
+            "itemId": "11111111-1111-4111-8111-111111111111",
+            "wearerCharacterId": "char-old",
+            "wearCount": 4,
+            "firstWornAt": "2026-01-01T00:00:00.000Z",
+            "lastWornAt": "2026-02-01T00:00:00.000Z",
+            "lastWornChatId": "chat-old",
+            "createdAt": "2026-01-01T00:00:00.000Z",
+            "updatedAt": "2026-02-01T00:00:00.000Z"
+          },
+          {
+            "id": "row-unattributed",
+            "itemId": "11111111-1111-4111-8111-111111111111",
+            "wearerCharacterId": null,
+            "wearCount": 2,
+            "firstWornAt": "2026-01-02T00:00:00.000Z",
+            "lastWornAt": "2026-01-03T00:00:00.000Z",
+            "lastWornChatId": null,
+            "createdAt": "2026-01-02T00:00:00.000Z",
+            "updatedAt": "2026-01-03T00:00:00.000Z"
+          },
+          {
+            "id": "row-orphan",
+            "itemId": "not-a-carried-item",
+            "wearerCharacterId": "char-departed",
+            "wearCount": 1,
+            "firstWornAt": "2026-01-04T00:00:00.000Z",
+            "lastWornAt": "2026-01-04T00:00:00.000Z",
+            "lastWornChatId": "chat-old",
+            "createdAt": "2026-01-04T00:00:00.000Z",
+            "updatedAt": "2026-01-04T00:00:00.000Z"
+          }
+        ]
+      }
+    },
+    {
+      "name": "wardrobe_wear_path_derived",
+      "note": "a path-derived item id (no frontmatter id, or one that is not uuid-shaped) is recomputed against the REMAPPED mount; the item-path test is case-insensitive and non-recursive — instructions.md, a nested Wardrobe/Old/*.md, a Notes/*.md and a link whose document is missing are not items (their ledger rows pass through unchanged)",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [],
+        "chats": [],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "chatInforms": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorIndexMetas": [],
+        "vectorEntries": [],
+        "docMountPoints": [
+          {
+            "id": "mount-hat"
+          }
+        ],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [
+          {
+            "id": "wl-hat",
+            "fileId": "wf-hat",
+            "mountPointId": "mount-hat",
+            "relativePath": "Wardrobe/Hat.md"
+          },
+          {
+            "id": "wl-scarf",
+            "fileId": "wf-scarf",
+            "mountPointId": "mount-hat",
+            "relativePath": "WARDROBE/Scarf.MD"
+          },
+          {
+            "id": "wl-instr",
+            "fileId": "wf-instr",
+            "mountPointId": "mount-hat",
+            "relativePath": "Wardrobe/instructions.md"
+          },
+          {
+            "id": "wl-nested",
+            "fileId": "wf-nested",
+            "mountPointId": "mount-hat",
+            "relativePath": "Wardrobe/Old/Coat.md"
+          },
+          {
+            "id": "wl-notes",
+            "fileId": "wf-notes",
+            "mountPointId": "mount-hat",
+            "relativePath": "Notes/Hat.md"
+          },
+          {
+            "id": "wl-nodoc",
+            "fileId": "wf-nodoc",
+            "mountPointId": "mount-other",
+            "relativePath": "Wardrobe/Ghost.md"
+          }
+        ],
+        "docMountChunks": [],
+        "docMountDocuments": [
+          {
+            "id": "wd-hat",
+            "fileId": "wf-hat",
+            "content": "---\ntitle: Hat\ntypes: [accessories]\n---\n"
+          },
+          {
+            "id": "wd-scarf",
+            "fileId": "wf-scarf",
+            "content": "---\nid: not-a-uuid\ntitle: Scarf\ntypes: [accessories]\n---\n"
+          },
+          {
+            "id": "wd-instr",
+            "fileId": "wf-instr",
+            "content": "Dress for the weather."
+          },
+          {
+            "id": "wd-nested",
+            "fileId": "wf-nested",
+            "content": "---\ntitle: Old Coat\ntypes: [top]\n---\n"
+          },
+          {
+            "id": "wd-notes",
+            "fileId": "wf-notes",
+            "content": "---\ntitle: Notes Hat\n---\n"
+          }
+        ],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": [],
+        "wardrobeWear": [
+          {
+            "id": "row-hat",
+            "itemId": "c4e19c39-2393-8719-9b8e-b08fa97e5cee",
+            "wearerCharacterId": null,
+            "wearCount": 3,
+            "firstWornAt": "2026-01-01T00:00:00.000Z",
+            "lastWornAt": "2026-03-01T00:00:00.000Z",
+            "lastWornChatId": null,
+            "createdAt": "2026-01-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          }
+        ]
+      }
+    },
+    {
+      "name": "wardrobe_wear_legacy_row",
+      "note": "a legacy wardrobe_items row follows the remapper and its ledger row follows the row; the legacy row's imageFileId is now in remapFields' list and lands on the SAME minted id as the files row it names",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [],
+        "chats": [],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [
+          {
+            "id": "file-legacy",
+            "linkedTo": [
+              "legacy-item"
+            ],
+            "tags": [
+              "legacy-item"
+            ]
+          }
+        ],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [
+          {
+            "id": "legacy-item",
+            "characterId": "char-old",
+            "imageFileId": "file-legacy",
+            "componentItemIds": []
+          },
+          {
+            "id": "legacy-nopic",
+            "characterId": "char-old",
+            "imageFileId": null,
+            "componentItemIds": [
+              "legacy-item"
+            ]
+          }
+        ],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "chatInforms": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorIndexMetas": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": [],
+        "wardrobeWear": [
+          {
+            "id": "row-legacy",
+            "itemId": "legacy-item",
+            "wearerCharacterId": "char-old",
+            "wearCount": 7,
+            "firstWornAt": "2026-01-01T00:00:00.000Z",
+            "lastWornAt": "2026-02-01T00:00:00.000Z",
+            "lastWornChatId": "chat-old",
+            "createdAt": "2026-01-01T00:00:00.000Z",
+            "updatedAt": "2026-02-01T00:00:00.000Z"
+          }
+        ]
+      }
+    },
+    {
+      "name": "wardrobe_picture_links_restore_path",
+      "note": "the restore order (plan first, same remapper): a picture's files row keeps its item link on the item's unchanged id and remaps only the other links, element by element and key positions unchanged (a path-derived item id in linkedTo follows the RECOMPUTED id; a non-string element still goes through the remapper); exactly one pointer fix, onto the picture's new files id against the remapped mount",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "restorePath": true,
+      "data": {
+        "characters": [],
+        "chats": [],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [
+          {
+            "id": "file-old",
+            "linkedTo": [
+              "11111111-1111-4111-8111-111111111111",
+              "chat-old"
+            ],
+            "tags": [
+              "11111111-1111-4111-8111-111111111111"
+            ],
+            "userId": "old-user"
+          },
+          {
+            "id": "file-hat",
+            "linkedTo": [
+              "2265286d-4dc0-8c67-a512-d1b58c46956e",
+              7.5,
+              null
+            ],
+            "tags": [],
+            "userId": "old-user"
+          }
+        ],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "chatInforms": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorIndexMetas": [],
+        "vectorEntries": [],
+        "docMountPoints": [
+          {
+            "id": "mount-old"
+          }
+        ],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [
+          {
+            "id": "link-1",
+            "mountPointId": "mount-old",
+            "fileId": "docfile-1",
+            "relativePath": "Wardrobe/Coat.md"
+          },
+          {
+            "id": "link-2",
+            "mountPointId": "mount-old",
+            "fileId": "docfile-2",
+            "relativePath": "Wardrobe/Hat.md"
+          }
+        ],
+        "docMountChunks": [],
+        "docMountDocuments": [
+          {
+            "id": "doc-1",
+            "fileId": "docfile-1",
+            "content": "---\nid: 11111111-1111-4111-8111-111111111111\ntitle: Coat\ntypes:\n  - top\nimageFileId: file-old\n---\nA coat."
+          },
+          {
+            "id": "doc-2",
+            "fileId": "docfile-2",
+            "content": "---\ntitle: Hat\ntypes: [accessories]\nimageFileId: file-hat\n---\n"
+          }
+        ],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": [],
+        "wardrobeWear": []
+      }
+    },
+    {
+      "name": "wardrobe_picture_pointer_unplanned",
+      "note": "the restore order: a pointer naming a file the backup does not carry, a non-string pointer and an item with no pointer plan NOTHING; the plan still mints the Wardrobe-holding mount's id first",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "restorePath": true,
+      "data": {
+        "characters": [],
+        "chats": [],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [
+          {
+            "id": "file-other",
+            "linkedTo": [],
+            "tags": []
+          }
+        ],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "chatInforms": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorIndexMetas": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [
+          {
+            "id": "link-a",
+            "mountPointId": "mount-a",
+            "fileId": "df-a",
+            "relativePath": "Wardrobe/A.md"
+          },
+          {
+            "id": "link-b",
+            "mountPointId": "mount-a",
+            "fileId": "df-b",
+            "relativePath": "Wardrobe/B.md"
+          },
+          {
+            "id": "link-c",
+            "mountPointId": "mount-a",
+            "fileId": "df-c",
+            "relativePath": "Wardrobe/C.md"
+          }
+        ],
+        "docMountChunks": [],
+        "docMountDocuments": [
+          {
+            "id": "doc-a",
+            "fileId": "df-a",
+            "content": "---\ntitle: A\ntypes: [top]\nimageFileId: file-missing\n---\n"
+          },
+          {
+            "id": "doc-b",
+            "fileId": "df-b",
+            "content": "---\ntitle: B\ntypes: [top]\nimageFileId: 42\n---\n"
+          },
+          {
+            "id": "doc-c",
+            "fileId": "df-c",
+            "content": "---\ntitle: C\ntypes: [top]\n---\n"
+          }
+        ],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": [],
+        "wardrobeWear": []
+      }
+    },
+    {
+      "name": "chat_settings_wardrobe_image_settings",
+      "note": "v4 `7c8572869` `uuid-remap.ts:440-445`: wardrobeImageSettings is guarded on its ONE id (truthy imageProfileId), spread-rewritten in place after storyBackgroundsSettings; a null id leaves the bag alone, an absent bag stays absent",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [],
+        "chats": [],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [
+          {
+            "id": "cs-w1",
+            "userId": "old-user",
+            "storyBackgroundsSettings": {
+              "enabled": true,
+              "defaultImageProfileId": "story-w"
+            },
+            "wardrobeImageSettings": {
+              "imageProfileId": "wardrobe-ip",
+              "generateFromTools": true
+            }
+          },
+          {
+            "id": "cs-w2",
+            "wardrobeImageSettings": {
+              "generateFromTools": false,
+              "imageProfileId": null
+            }
+          },
+          {
+            "id": "cs-w3",
+            "wardrobeImageSettings": {
+              "imageProfileId": ""
+            }
+          },
+          {
+            "id": "cs-w4"
+          }
+        ],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "chatInforms": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorIndexMetas": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": [],
+        "wardrobeWear": []
       }
     },
     {
@@ -4686,7 +5286,8 @@
         "projectDocMountLinks": [],
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
-        "textReplacementRules": []
+        "textReplacementRules": [],
+        "wardrobeWear": []
       }
     }
   ]

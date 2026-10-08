@@ -10,7 +10,7 @@
 //!
 //! ## Part 1 — preview (unit 3)
 //!
-//! `previewRestore` is filesystem-only, so the diff is its 41-key
+//! `previewRestore` is filesystem-only, so the diff is its 42-key (P4.D264: + `wardrobeWear`)
 //! `RestoreSummary` (or its thrown message) plus one invariant v4 gets from a
 //! `finally` and v5 gets from ownership: **the extract directory is gone
 //! afterwards, on the success path and on every failure path**. Each case runs
@@ -87,6 +87,8 @@ fn archive_for(name: &str) -> &'static str {
         // [P4.D46] The compact archive previews like any other (the six
         // omitted data files read as empty; no `embeddingReconcile` key).
         "preview_compact" => "restore-archive-compact.zip",
+        // P4.D264: the 42nd key over an archive that carries the ledger.
+        "preview_wardrobe_wear" => "restore-archive-wardrobe-wear.zip",
         other => panic!("unknown oracle case {other}"),
     }
 }
@@ -124,7 +126,7 @@ fn system_restore_equivalence() {
                             serde_json::to_string(want).unwrap()
                         ));
                     } else {
-                        println!("OK {name}: 41-key summary matches");
+                        println!("OK {name}: 42-key summary matches");
                     }
                 }
                 Err(e) => failures.push(format!("[{name}] rust errored, oracle succeeded: {e}")),
@@ -170,7 +172,8 @@ fn system_restore_equivalence() {
         }
     }
 
-    assert_eq!(seen, 6, "expected all six preview cases in the oracle");
+    // P4.D264: + `preview_wardrobe_wear` (the 42nd key over a ledger-carrying archive).
+    assert_eq!(seen, 7, "expected all seven preview cases in the oracle");
     assert!(
         failures.is_empty(),
         "{} restore difference(s):\n{}",

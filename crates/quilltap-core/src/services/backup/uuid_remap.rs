@@ -33,10 +33,13 @@
 //! to bottom and evaluates `characterPluginData` / `conversationAnnotations`
 //! **inside the return literal**, i.e. last of all — reproduced here.
 
+use std::collections::{HashMap, HashSet};
+
 use serde_json::{Map, Value};
 
 use super::collect::BackupData;
 use super::uuid_remapper::UuidRemapper;
+use crate::vault_overlay::{is_wardrobe_item_document_path, wardrobe_item_id_for_document};
 
 /// v4 `:61` — settings keys whose values are mount-point UUIDs. These need
 /// remapping in new-account mode so they keep pointing at the right mount
@@ -120,17 +123,36 @@ pub fn remap_backup_data(
     // Remap tags
     let tags = each(&data.tags, |t| fields_owned(r, t, &["id"], target_user_id));
 
+    // P4.D264 (v4 `7c8572869`, `uuid-remap.ts:188-192`): "Wardrobe item ids
+    // are not remapper keys (see buildWardrobeItemIdRemap). Built up front: a
+    // wardrobe picture's `files` row names its item in `linkedTo` / `tags`, and
+    // those must follow the item, not mint a stranger." Built HERE — after
+    // tags, BEFORE files — because it MINTS the Wardrobe-holding mount's id
+    // (R-A: every later counter id lands in v4's order).
+    let wardrobe_item_id_remap = build_wardrobe_item_id_remap(data, r);
+
     // Remap files
-    // IMPORTANT: Chain remapFields → remapArrayFields so array spread doesn't
-    // overwrite remapped scalar fields (v4 `:82`).
+    // IMPORTANT: Chain remapFields → array remaps so array spread doesn't
+    // overwrite remapped scalar fields (v4 `:82`). Since `7c8572869` the two
+    // arrays go element by element through `remapLinkId` (the item map first,
+    // else the remapper) rather than `remapArrayFields`: `linkedTo` then
+    // `tags`, each only when it IS an array, each rewritten in place (a JS
+    // spread of an existing key keeps its position) — the same order, guard
+    // and positions `remapArrayFields` had, so only the element lookup moved.
     let files = each(&data.files, |f| {
-        chain_owned(
-            r,
-            f,
-            &["id", "projectId"],
-            &["linkedTo", "tags"],
-            target_user_id,
-        )
+        let mut out = r.remap_fields(f, &["id", "projectId"]);
+        if let Some(obj) = out.as_object_mut() {
+            for field in ["linkedTo", "tags"] {
+                if let Some(Value::Array(elements)) = obj.get(field).cloned() {
+                    let mapped = elements
+                        .iter()
+                        .map(|e| Value::String(remap_link_id(r, &wardrobe_item_id_remap, e)))
+                        .collect();
+                    obj.insert(field.to_string(), Value::Array(mapped));
+                }
+            }
+        }
+        with_user_id(out, target_user_id)
     });
 
     // Remap characters
@@ -269,8 +291,15 @@ pub fn remap_backup_data(
     // share the same UUID space; remap them along with id/characterId so cross-refs
     // stay consistent in new-account mode. Legacy outfit presets folded into
     // composites at parse time pass through this same path.
+    // P4.D264 (v4 `7c8572869`, `:459-464`): "imageFileId names a `files`
+    // row, remapped with the files above."
     let wardrobe_items = each(&data.wardrobe_items, |i| {
-        chain(r, i, &["id", "characterId"], &["componentItemIds"])
+        chain(
+            r,
+            i,
+            &["id", "characterId", "imageFileId"],
+            &["componentItemIds"],
+        )
     });
 
     // Chat documents reference chat IDs that have been remapped above.
@@ -364,6 +393,35 @@ pub fn remap_backup_data(
         r.remap_fields(m, &["id", "groupId", "characterId"])
     });
 
+    // P4.D264 (v4 `3ee3b1342`, `:561-571`): "Wardrobe wear ledger. `id`,
+    // `wearerCharacterId` and `lastWornChatId` go through the remapper like any
+    // FK (a wearer or chat absent from the backup gets a fresh id that names
+    // nothing — the readers already label a missing wearer and 'a chat since
+    // deleted'). `itemId` does not: see buildWardrobeItemIdRemap. An item id
+    // the backup carries no document for passes through unchanged."
+    // `{ ...remapFields(row, …), itemId: … }` — `itemId` keeps its position
+    // when present and is APPENDED (as `undefined`, dropped by JSON) when not.
+    let wardrobe_wear = each(&data.wardrobe_wear, |row| {
+        let mut out = r.remap_fields(row, &["id", "wearerCharacterId", "lastWornChatId"]);
+        if let Some(obj) = out.as_object_mut() {
+            let mapped = row
+                .get("itemId")
+                .and_then(Value::as_str)
+                .and_then(|id| wardrobe_item_id_remap.get(id))
+                .map(|id| Value::String(id.clone()))
+                .or_else(|| row.get("itemId").cloned());
+            match mapped {
+                Some(v) => {
+                    obj.insert("itemId".to_string(), v);
+                }
+                None => {
+                    obj.shift_remove("itemId");
+                }
+            }
+        }
+        out
+    });
+
     // Instance settings — only the mount-point keys carry UUIDs we need to
     // remap. Everything else is opaque text (numbers, JSON config blobs).
     let instance_settings = each(&data.instance_settings, |row| {
@@ -436,7 +494,173 @@ pub fn remap_backup_data(
         // Text replacement rules: global config, no userId, no FKs to remapped
         // entities, and nothing references rule IDs — pass through unchanged.
         text_replacement_rules: data.text_replacement_rules.clone(),
+        // P4.D264 (v4 `:629`): the 39th key, ALWAYS present (`[]` when the
+        // archive has none).
+        wardrobe_wear,
     }
+}
+
+/// v4 `buildWardrobeItemIdRemap(data, remapper)` (`uuid-remap.ts:95-122`,
+/// `3ee3b1342`). v4's why, carried: "A wardrobe item's id is the `id` in its
+/// `Wardrobe/*.md` frontmatter, or — when that is absent — one derived from
+/// the file's mount point and path. Neither is a remapper key, and
+/// `remapper.remap` would mint a fresh id that names no item, orphaning every
+/// wear-ledger row that points at it. Instead: a frontmatter id travels
+/// verbatim, so it maps to itself; an item with no frontmatter id has an id
+/// derived from its mount point and path, and the mount point *is* remapped —
+/// recompute it against the new mount-point id, exactly as the vault reader
+/// will after the restore; a legacy (pre-cutover) `wardrobeItems` row is
+/// remapped by id like any other row, so its ledger rows follow it."
+///
+/// ⚠ `remapper.remap(link.mountPointId)` MINTS the mount's new id HERE, which
+/// is why the call sites run it where v4 does (P4.D264 R-A). A link whose
+/// `relativePath` is not a string THROWS in v4 (`relativePath.toLowerCase()`
+/// on `undefined` — a NOT NULL column on every real archive); v5 treats it as
+/// not an item.
+fn build_wardrobe_item_id_remap(
+    data: &BackupData,
+    r: &mut UuidRemapper,
+) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    let content_by_file_id = content_by_file_id(data);
+    for link in &data.doc_mount_file_links {
+        let Some((mount, relative_path, content)) = wardrobe_link(link, &content_by_file_id) else {
+            continue;
+        };
+        let old_id = wardrobe_item_id_for_document(&js_string(mount), relative_path, content);
+        let new_mount = r.remap(mount);
+        let new_id = wardrobe_item_id_for_document(&new_mount, relative_path, content);
+        map.insert(old_id, new_id);
+    }
+    for item in &data.wardrobe_items {
+        let id = item.get("id").unwrap_or(&Value::Null);
+        let new_id = r.remap(id);
+        map.insert(js_string(id), new_id);
+    }
+    map
+}
+
+/// v4 `new Map(docMountDocuments.map(doc => [doc.fileId, doc.content]))` — a
+/// later document on the same `fileId` wins; only a STRING content counts.
+fn content_by_file_id(data: &BackupData) -> HashMap<String, Value> {
+    let mut map = HashMap::new();
+    for doc in &data.doc_mount_documents {
+        let key = js_string(doc.get("fileId").unwrap_or(&Value::Null));
+        map.insert(key, doc.get("content").cloned().unwrap_or(Value::Null));
+    }
+    map
+}
+
+/// A `Wardrobe/*.md` link and its document's string content — the two guards
+/// both v4 walks share (`isWardrobeItemDocumentPath`, `typeof content ===
+/// 'string'`).
+fn wardrobe_link<'a>(
+    link: &'a Value,
+    content_by_file_id: &'a HashMap<String, Value>,
+) -> Option<(&'a Value, &'a str, &'a str)> {
+    let relative_path = link.get("relativePath").and_then(Value::as_str)?;
+    if !is_wardrobe_item_document_path(relative_path) {
+        return None;
+    }
+    let file_id = js_string(link.get("fileId").unwrap_or(&Value::Null));
+    let content = content_by_file_id.get(&file_id)?.as_str()?;
+    Some((
+        link.get("mountPointId").unwrap_or(&Value::Null),
+        relative_path,
+        content,
+    ))
+}
+
+/// JS `String(x)` for a map key / template-literal slot (`mountPointId` is a
+/// string on every real row).
+fn js_string(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        Value::Null => "null".to_string(),
+        other => other.to_string(),
+    }
+}
+
+/// v4 `remapLinkId` (`:192`) — `wardrobeItemIdRemap.get(id) ?? remapper.remap(id)`.
+/// The item map's keys are strings, so a non-string element (a `Map.get` miss)
+/// always goes through the remapper, as `remapArray` sent it before.
+fn remap_link_id(r: &mut UuidRemapper, items: &HashMap<String, String>, element: &Value) -> String {
+    if let Some(mapped) = element.as_str().and_then(|id| items.get(id)) {
+        return mapped.clone();
+    }
+    r.remap(element)
+}
+
+/// v4 `WardrobeImagePointerFix` (`uuid-remap.ts:126-135`, `7c8572869`) — one
+/// wardrobe item whose current-picture pointer must follow its file's new id.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WardrobeImagePointerFix {
+    /// The item's mount, already remapped.
+    pub mount_point_id: String,
+    /// The item's mount as the backup named it (before the remap).
+    pub source_mount_point_id: String,
+    /// The item's id in the restored instance.
+    pub item_id: String,
+    /// The picture's remapped `files` id.
+    pub image_file_id: String,
+}
+
+/// v4 `planWardrobeImagePointerFixes(original, remapper)` (`:147-172`). v4's
+/// why, carried: "New-account mode remaps `files.id`, but an item's
+/// `imageFileId` lives in its `Wardrobe/*.md` frontmatter, which this remap
+/// never rewrites. List the pointers that need to follow their file, for the
+/// restore to apply through the ordinary wardrobe update once the vaults have
+/// landed (that path re-projects the document, so content hashes stay
+/// consistent). Pass the ORIGINAL (pre-remap) backup data and the same
+/// remapper used for `remapBackupData`, so file ids resolve to the ids the rows
+/// received." The restore calls it BEFORE [`remap_backup_data`] (`restore.ts:
+/// 98-104`), so it primes the remapper with the mount, legacy-item and pointer
+/// ids — `backup_uuid_remap_equivalence`'s `restorePath` cases pin that order.
+pub fn plan_wardrobe_image_pointer_fixes(
+    original: &BackupData,
+    r: &mut UuidRemapper,
+) -> Vec<WardrobeImagePointerFix> {
+    let file_ids: HashSet<String> = original
+        .files
+        .iter()
+        .map(|f| js_string(f.get("id").unwrap_or(&Value::Null)))
+        .collect();
+    let item_id_remap = build_wardrobe_item_id_remap(original, r);
+    let content_by_file_id = content_by_file_id(original);
+    let mut fixes = Vec::new();
+    for link in &original.doc_mount_file_links {
+        let Some((mount, relative_path, content)) = wardrobe_link(link, &content_by_file_id) else {
+            continue;
+        };
+        let fm = crate::markdown::parse_frontmatter(content);
+        let Some(pointer) = fm
+            .data
+            .as_ref()
+            .and_then(|d| d.get("imageFileId"))
+            .and_then(Value::as_str)
+        else {
+            continue;
+        };
+        if !file_ids.contains(pointer) {
+            continue;
+        }
+        let source_mount = js_string(mount);
+        let old_item_id = wardrobe_item_id_for_document(&source_mount, relative_path, content);
+        let mount_point_id = r.remap(mount);
+        let item_id = item_id_remap
+            .get(&old_item_id)
+            .cloned()
+            .unwrap_or(old_item_id);
+        let image_file_id = r.remap_str(pointer);
+        fixes.push(WardrobeImagePointerFix {
+            mount_point_id,
+            source_mount_point_id: source_mount,
+            item_id,
+            image_file_id,
+        });
+    }
+    fixes
 }
 
 /// v4 `:92-145` — the character pass and its five legacy-shape extras, in v4's
@@ -710,6 +934,9 @@ fn remap_chat_settings(
         &["defaultImageProfileId"],
         true,
     );
+    // P4.D264 (v4 `7c8572869`, `:440-445`): the same shape — guarded on the
+    // ONE id (`?.imageProfileId` truthy), the bag spread-rewritten in place.
+    remap_nested_bag(r, obj, "wardrobeImageSettings", &["imageProfileId"], true);
 
     remapped
 }

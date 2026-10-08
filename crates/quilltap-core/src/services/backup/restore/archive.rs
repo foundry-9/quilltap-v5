@@ -195,6 +195,9 @@ fn parse_tree(root: &Path) -> Result<(BackupData, Value), String> {
     let group_doc_mount_links = opt("data/group-doc-mount-links.json")?;
     let group_character_members = opt("data/group-character-members.json")?;
     let text_replacement_rules = opt("data/text-replacement-rules.json")?;
+    // P4.D264 (v4 `3ee3b1342`, `archive.ts:271`): the wear ledger, read
+    // OPTIONALLY — an archive predating it restores with `wardrobeWear: 0`.
+    let wardrobe_wear = opt("data/wardrobe-wear.json")?;
 
     Ok((
         BackupData {
@@ -239,6 +242,8 @@ fn parse_tree(root: &Path) -> Result<(BackupData, Value), String> {
             group_doc_mount_links,
             group_character_members,
             text_replacement_rules,
+            // P4.D264 (`archive.ts:320`) — the last key of the parsed `data`.
+            wardrobe_wear,
         },
         manifest,
     ))
