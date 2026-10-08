@@ -25,6 +25,17 @@
  * models, so everything below it (sha256, the vault write, the files row, the
  * response) runs real on both sides.
  *
+ * P4.D256 (v4 `cc80dc89d` + `3ee3b1342`): the committed pair predates
+ * `wardrobe_wear_stats`, so EVERY case reads it as a booted instance would —
+ * the table created from v4's own migration statements
+ * (`WARDROBE_WEAR_STATS_DDL`, what `add-wardrobe-wear-stats-table-v1` runs;
+ * the Rust side runs `test_support::ensure_wear_ledger_on`) — unless the case
+ * sets `preRound: true` (the absent-table shape: v4's `findSummaries` /
+ * `findHistory` fallbacks, its `deleteByItemIds` throw). `plants` (raw SQL on
+ * the main copy, both sides) run after it, before the database initializes —
+ * how the ledger rows the wear-history and collection cases read are planted.
+ * `action` adds `?action=<x>` to an item GET (`wear-history`).
+ *
  * Chained rows: a case with `thenOutfit` emits a second `${name}__outfit` row,
  * and one with `thenGroupWardrobe` emits a `${name}__group` row (the group-tier
  * read-back that proves an item copied INTO a group store is now reachable —
@@ -72,6 +83,12 @@ interface CaseEntry {
    *  would erase the very distinction the archive arms exist to prove. */
   classify?: string[];
   emitBytes?: boolean;
+  /** [P4.D256] Leave `wardrobe_wear_stats` ABSENT (the pre-round shape). */
+  preRound?: boolean;
+  /** [P4.D256] Raw SQL on the main copy, after the ledger ensure, pre-init. */
+  plants?: Array<{ sql: string; params: Array<string | number | null> }>;
+  /** [P4.D256] `?action=<x>` on an item GET (`wear-history`). */
+  action?: string;
 }
 
 interface Spec {
@@ -196,10 +213,26 @@ async function runKind(c: CaseEntry): Promise<{ status: number; body: unknown }>
       const mod = (await import('@/app/api/v1/wardrobe/[itemId]/route')) as {
         GET: (...a: unknown[]) => Promise<unknown>;
       };
+      // [P4.D256] `?action=wear-history` (v4 `3ee3b1342`).
+      const qs = c.action ? `?action=${c.action}` : '';
       return respond(
-        await mod.GET(mockRequest(`${B}/wardrobe/${c.itemId}`), {
+        await mod.GET(mockRequest(`${B}/wardrobe/${c.itemId}${qs}`), {
           params: Promise.resolve({ itemId: c.itemId }),
         }),
+      );
+    }
+    case 'characterWardrobeItemGet': {
+      // [P4.D256] the character item GET (`cc80dc89d`'s origin; `3ee3b1342`'s
+      // `?action=wear-history`).
+      const mod = (await import('@/app/api/v1/characters/[id]/wardrobe/[itemId]/route')) as {
+        GET: (...a: unknown[]) => Promise<unknown>;
+      };
+      const qs = c.action ? `?action=${c.action}` : '';
+      return respond(
+        await mod.GET(
+          mockRequest(`${B}/characters/${c.characterId}/wardrobe/${c.itemId}${qs}`),
+          { params: Promise.resolve({ id: c.characterId, itemId: c.itemId }) },
+        ),
       );
     }
     case 'wardrobeUpdate': {
@@ -291,6 +324,29 @@ async function runKind(c: CaseEntry): Promise<{ status: number; body: unknown }>
   }
 }
 
+/**
+ * [P4.D256] The booted-instance ledger (v4's migration statements) unless the
+ * case is `preRound`, then the case's raw `plants` — on the main copy, BEFORE
+ * the database initializes.
+ */
+async function prepareLedger(spec: Spec, c: CaseEntry, mainWork: string): Promise<void> {
+  const { WARDROBE_WEAR_STATS_DDL } = (await import(
+    '@/lib/database/backends/sqlite/wardrobe-wear-stats-ddl'
+  )) as { WARDROBE_WEAR_STATS_DDL: readonly string[] };
+  const nodeRequire = require('node:module').createRequire(join(process.cwd(), 'noop.js'));
+  const Database = nodeRequire(
+    join(process.cwd(), 'packages/quilltap/node_modules/better-sqlite3-multiple-ciphers'),
+  );
+  const conn = new Database(mainWork);
+  conn.pragma(`key = "x'${Buffer.from(spec.testPepperBase64, 'base64').toString('hex')}'"`);
+  try {
+    if (!c.preRound) for (const statement of WARDROBE_WEAR_STATS_DDL) conn.exec(statement);
+    for (const p of c.plants ?? []) conn.prepare(p.sql).run(...p.params);
+  } finally {
+    conn.close();
+  }
+}
+
 async function runCase(
   spec: Spec,
   c: CaseEntry,
@@ -308,6 +364,7 @@ async function runCase(
   const mountWork = join(work, 'mount.db');
   copyFileSync(fixtures.main, mainWork);
   copyFileSync(fixtures.mount, mountWork);
+  await prepareLedger(spec, c, mainWork);
   process.env.SQLITE_PATH = mainWork;
   process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
   process.env.QT_WROUTES_SPEC = JSON.stringify({ userId: spec.userId });

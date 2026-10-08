@@ -25,6 +25,15 @@
 //! image, so the sha256, the vault write, the `files` row, and the response
 //! run real on both sides.
 //!
+//! P4.D256 (v4 `cc80dc89d` + `3ee3b1342`): every case reads the pair as a
+//! BOOTED instance would — `wardrobe_wear_stats` ensured through
+//! `test_support::ensure_wear_ledger_on` (the oracle runs v4's migration
+//! statements) — unless the case is `preRound` (the absent-table shape);
+//! `plants` (raw SQL on the main copy, both sides) follow, before the `Db`
+//! opens. `action: "wear-history"` on an item GET drives the dispatch verb
+//! (`wardrobe_item_wear_history`) — the web edge's own arm is pinned in
+//! `quilltap-web`'s `wardrobe_routes` unit tests.
+//!
 //! Generate the oracle (see the .ts header), then:
 //!   QT_ORACLE_WARDROBE_ROUTES=/tmp/oracle-wardrobe-routes.ndjson \
 //!     cargo test -p quilltap-web --test wardrobe_routes_equivalence -- --nocapture
@@ -32,14 +41,15 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use quilltap_core::api::characters::character_wardrobe_list;
+use quilltap_core::api::characters::{character_wardrobe_get, character_wardrobe_list};
 use quilltap_core::api::chat_outfits::{chat_equip, chat_outfit_get, chat_regenerate_avatar};
-use quilltap_core::api::types::{ErrorKind, Response};
+use quilltap_core::api::types::{ErrorKind, Response, WardrobeContainerScope};
 use quilltap_core::api::wardrobe::{
     wardrobe_create, wardrobe_delete, wardrobe_item_get, wardrobe_list, wardrobe_preview_avatar,
     wardrobe_transfer_apply, wardrobe_transfer_destinations, wardrobe_update, AvatarPreviewImage,
     AvatarPreviewRenderRequest, AvatarPreviewRenderer, ErasedAvatarPreview,
 };
+use quilltap_core::api::wardrobe_wear_history::wardrobe_item_wear_history;
 use quilltap_core::db::runtime::{Db, DbPaths};
 use serde::Deserialize;
 use serde_json::Value;
@@ -85,6 +95,21 @@ struct CaseEntry {
     emit_bytes: bool,
     #[serde(default)]
     normalize: Vec<String>,
+    /// [P4.D256] Leave `wardrobe_wear_stats` ABSENT (the pre-round shape).
+    #[serde(default)]
+    pre_round: bool,
+    /// [P4.D256] Raw SQL on the main copy, after the ledger ensure.
+    #[serde(default)]
+    plants: Vec<Plant>,
+    /// [P4.D256] `?action=<x>` on an item GET.
+    #[serde(default)]
+    action: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct Plant {
+    sql: String,
+    params: Vec<Value>,
 }
 
 #[derive(Deserialize)]
@@ -114,7 +139,10 @@ fn env_or_skip(key: &str) -> Option<String> {
 
 /// A fresh two-partition `Db` over a private copy of the committed fixture.
 /// The scratch dir rides out with the handle — bind it for the test's life.
-fn fresh_db(tag: &str) -> (Db, tempfile::TempDir) {
+/// [P4.D256] The ledger is ensured (a booted instance) unless `pre_round`;
+/// the case's `plants` run after it, before the `Db` opens.
+fn fresh_db(case: &CaseEntry) -> (Db, tempfile::TempDir) {
+    let tag = case.name.as_str();
     let scratch = tempfile::Builder::new()
         .prefix(&format!("qt-wroutes-{tag}-"))
         .tempdir()
@@ -123,6 +151,27 @@ fn fresh_db(tag: &str) -> (Db, tempfile::TempDir) {
     let mount = scratch.path().join("mount.db");
     std::fs::copy(fixtures_dir().join("wardrobe-routes-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("wardrobe-routes-mount.db"), &mount).unwrap();
+    {
+        let w = quilltap_core::db::Writer::open_writable(&main, TEST_PEPPER).unwrap();
+        let conn = w.connection();
+        if !case.pre_round {
+            quilltap_core::test_support::ensure_wear_ledger_on(conn);
+        }
+        for p in &case.plants {
+            let params: Vec<rusqlite::types::Value> = p
+                .params
+                .iter()
+                .map(|v| match v {
+                    Value::Null => rusqlite::types::Value::Null,
+                    Value::String(s) => rusqlite::types::Value::Text(s.clone()),
+                    Value::Number(n) => rusqlite::types::Value::Integer(n.as_i64().unwrap()),
+                    other => panic!("{tag}: unsupported plant param {other}"),
+                })
+                .collect();
+            conn.execute(&p.sql, rusqlite::params_from_iter(params))
+                .unwrap_or_else(|e| panic!("{tag}: plant `{}`: {e}", p.sql));
+        }
+    }
     let db = Db::open(
         DbPaths {
             main,
@@ -208,7 +257,10 @@ fn success_body(r: &Response) -> Option<Value> {
     match r {
         // `Character` is the character-wardrobe route's envelope (P4.D71's
         // `?scope=group` arm rides the characters surface, not the archetype one).
-        Response::Wardrobe(v) | Response::ChatOutfit(v) | Response::Character(v) => Some(v.clone()),
+        Response::Wardrobe(v)
+        | Response::ChatOutfit(v)
+        | Response::Character(v)
+        | Response::WardrobeWearHistory(v) => Some(v.clone()),
         _ => None,
     }
 }
@@ -356,11 +408,17 @@ fn check_key_order(
         return;
     };
     let want = &oracle[name]["body"];
+    // [P4.D256] Arrays are walked too, so a list's per-item key sequence
+    // (`…, origin, wear` LAST — v4's object spreads) is claimed.
     fn key_walk(v: &Value, out: &mut Vec<String>, prefix: &str) {
         if let Some(o) = v.as_object() {
             for (k, inner) in o {
                 out.push(format!("{prefix}{k}"));
                 key_walk(inner, out, &format!("{prefix}{k}."));
+            }
+        } else if let Some(a) = v.as_array() {
+            for (i, inner) in a.iter().enumerate() {
+                key_walk(inner, out, &format!("{prefix}{i}."));
             }
         }
     }
@@ -445,12 +503,36 @@ async fn wardrobe_routes_equivalence() {
     let mut checks = 0usize;
 
     for case in &spec.cases {
-        let (db, _scratch) = fresh_db(&case.name);
+        let (db, _scratch) = fresh_db(case);
         let body = case.body.clone().unwrap_or(Value::Null);
         let resp = match case.kind.as_str() {
             "wardrobeList" => wardrobe_list(&db, case.include_archived.unwrap_or(false)),
             "wardrobeCreate" => wardrobe_create(&db, body).await,
-            "wardrobeItemGet" => wardrobe_item_get(&db, case.item_id.as_deref().unwrap()),
+            "wardrobeItemGet" => match case.action.as_deref() {
+                None => wardrobe_item_get(&db, case.item_id.as_deref().unwrap()),
+                Some("wear-history") => wardrobe_item_wear_history(
+                    &db,
+                    WardrobeContainerScope::General,
+                    None,
+                    case.item_id.as_deref().unwrap(),
+                ),
+                Some(other) => panic!("unknown action {other}"),
+            },
+            "characterWardrobeItemGet" => match case.action.as_deref() {
+                None => character_wardrobe_get(
+                    &db,
+                    user,
+                    case.character_id.as_deref().unwrap(),
+                    case.item_id.as_deref().unwrap(),
+                ),
+                Some("wear-history") => wardrobe_item_wear_history(
+                    &db,
+                    WardrobeContainerScope::Character,
+                    case.character_id.as_deref(),
+                    case.item_id.as_deref().unwrap(),
+                ),
+                Some(other) => panic!("unknown action {other}"),
+            },
             "wardrobeUpdate" => wardrobe_update(&db, case.item_id.as_deref().unwrap(), body).await,
             "wardrobeDelete" => wardrobe_delete(&db, case.item_id.as_deref().unwrap()).await,
             "transferDestinations" => wardrobe_transfer_destinations(&db, user),
@@ -481,7 +563,19 @@ async fn wardrobe_routes_equivalence() {
         checks += 1;
 
         // The two raw key-order claims (the richest read + the equip echo).
-        if case.name == "outfit_preset" || case.name == "eq_set_all" {
+        // [P4.D256] + the tagged / worn reads and the wear-history payload.
+        const KEY_ORDER_CASES: &[&str] = &[
+            "outfit_preset",
+            "eq_set_all",
+            "list_with_ledger",
+            "cw_no_scope_with_ledger",
+            "cw_group_scope_with_ledger",
+            "item_get_with_ledger",
+            "cw_item_get",
+            "wh_general",
+            "wh_character",
+        ];
+        if KEY_ORDER_CASES.contains(&case.name.as_str()) {
             check_key_order(&oracle, &case.name, &resp, &mut failed);
             checks += 1;
         }
@@ -523,4 +617,129 @@ async fn wardrobe_routes_equivalence() {
         spec.cases.len(),
         expected_rows
     );
+}
+
+/// [P4.D256] Capture pins (§R.5) for the lines this lane's routes emit on the
+/// caller thread, over the committed pair with the ledger ensured + planted:
+/// R-D's group-tier line with v4's FIVE camelCase keys (`groupCount` NEW in
+/// `cc80dc89d`), each tier's `Read … wear history` DEBUG, the single GETs'
+/// silence on `Attached wear summaries` (no `wear` on a single GET), and the
+/// 404-before-ledger order — an item outside the tier never reaches the ledger
+/// (`Built wear history` silent, v4 `wear-ledger-routes.test.ts:197-206`).
+#[test]
+fn p4d256_route_lines_are_v4s() {
+    let spec: Spec = serde_json::from_str(&std::fs::read_to_string(spec_path()).unwrap()).unwrap();
+    let base = spec
+        .cases
+        .iter()
+        .find(|c| c.name == "wh_general")
+        .expect("the corpus carries wh_general (its ledger plants)");
+    let (db, _scratch) = fresh_db(base);
+    let raw: Value = serde_json::from_str(&std::fs::read_to_string(spec_path()).unwrap()).unwrap();
+    let id = |k: &str| raw["ids"][k].as_str().unwrap().to_string();
+    let (aria, bram, group, project) = (id("aria"), id("bram"), id("group"), id("project"));
+    let (g_coat, w_top, g_livery, p_scarf) = (id("gCoat"), id("wTop"), id("gLivery"), id("pScarf"));
+    let cap = |f: &dyn Fn() -> Response| quilltap_core::test_support::captured_with(f);
+    let has = |lines: &[String], needle: &str| lines.iter().any(|l| l.contains(needle));
+
+    // R-D: the group-tier read's one line, v4's keys in v4's order.
+    let (resp, lines) =
+        cap(&|| character_wardrobe_list(&db, &spec.user_id, &aria, Some("group"), false));
+    let items = success_body(&resp).unwrap()["wardrobeItems"]
+        .as_array()
+        .unwrap()
+        .len();
+    let line = lines
+        .iter()
+        .find(|l| l.contains("[Wardrobe v1] Group-tier wardrobe read"))
+        .unwrap_or_else(|| panic!("no group-tier line: {lines:?}"));
+    let tail = line
+        .split("[Wardrobe v1] Group-tier wardrobe read")
+        .nth(1)
+        .unwrap();
+    let keys: Vec<&str> = tail
+        .split_whitespace()
+        .map(|kv| kv.split('=').next().unwrap())
+        .collect();
+    assert_eq!(
+        keys,
+        [
+            "characterId",
+            "groupCount",
+            "groupMountCount",
+            "itemCount",
+            "context"
+        ],
+        "{line}"
+    );
+    assert!(
+        tail.contains(&format!("characterId={aria}"))
+            && tail.contains(&format!("itemCount={items}"))
+    );
+    assert!(!lines
+        .iter()
+        .any(|l| l.contains("character_id=") || l.contains("group_mount_count")));
+    assert!(has(&lines, "Attached wear summaries to wardrobe read"));
+
+    // Each tier's wear-history DEBUG, after the payload.
+    for (scope, container, item, needle) in [
+        (WardrobeContainerScope::General, None, g_coat.as_str(),
+         format!("[Wardrobe Archetypes v1] Read archetype item wear history itemId={g_coat} wearCount=6")),
+        (WardrobeContainerScope::Character, Some(aria.as_str()), w_top.as_str(),
+         format!("[Wardrobe v1] Read wardrobe item wear history characterId={aria} itemId={w_top} wearCount=2")),
+        (WardrobeContainerScope::Group, Some(group.as_str()), g_livery.as_str(),
+         format!("[Groups v1] Read group wardrobe item wear history groupId={group} itemId={g_livery} wearCount=1 context=wardrobe")),
+        (WardrobeContainerScope::Project, Some(project.as_str()), p_scarf.as_str(),
+         format!("[Projects v1] Read project wardrobe item wear history projectId={project} itemId={p_scarf} wearCount=0 context=wardrobe")),
+    ] {
+        let (resp, lines) = cap(&|| wardrobe_item_wear_history(&db, scope, container, item));
+        assert!(matches!(resp, Response::WardrobeWearHistory(_)), "{scope:?}: {resp:?}");
+        let built = lines.iter().position(|l| l.contains("Built wear history"));
+        let read = lines.iter().position(|l| l.ends_with(&needle));
+        assert!(built.is_some() && read.is_some() && built < read, "{scope:?}: {lines:#?}");
+    }
+
+    // 404 BEFORE the ledger: never `Built wear history`, never a tier line.
+    for (scope, container, item) in [
+        (WardrobeContainerScope::General, None, w_top.as_str()),
+        (
+            WardrobeContainerScope::Character,
+            Some(bram.as_str()),
+            w_top.as_str(),
+        ),
+        (
+            WardrobeContainerScope::Group,
+            Some(group.as_str()),
+            g_coat.as_str(),
+        ),
+        (
+            WardrobeContainerScope::Project,
+            Some(project.as_str()),
+            g_coat.as_str(),
+        ),
+    ] {
+        let (resp, lines) = cap(&|| wardrobe_item_wear_history(&db, scope, container, item));
+        assert!(
+            matches!(&resp, Response::Error(e) if e.kind == ErrorKind::NotFound),
+            "{scope:?}: {resp:?}"
+        );
+        assert!(
+            !has(&lines, "Built wear history") && !has(&lines, "wear history"),
+            "{scope:?}: {lines:#?}"
+        );
+    }
+    // A container scope without its id has no v4 analog: a 400, no ledger read.
+    let (resp, lines) =
+        cap(&|| wardrobe_item_wear_history(&db, WardrobeContainerScope::Group, None, &g_livery));
+    assert!(
+        matches!(&resp, Response::Error(e) if e.kind == ErrorKind::BadRequest),
+        "{resp:?}"
+    );
+    assert!(lines.is_empty(), "{lines:?}");
+
+    // Single GETs: tagged, never worn — no `Attached wear summaries` line.
+    let (_, lines) = cap(&|| wardrobe_item_get(&db, &g_coat));
+    assert!(!has(&lines, "Attached wear summaries"), "{lines:?}");
+    let (_, lines) = cap(&|| character_wardrobe_get(&db, &spec.user_id, &aria, &w_top));
+    assert!(!has(&lines, "Attached wear summaries"), "{lines:?}");
 }

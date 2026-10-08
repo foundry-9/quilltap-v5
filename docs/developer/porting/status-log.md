@@ -172328,3 +172328,93 @@ dirt never reaches a regen. The ledger is NOT written (lane rule).
 - Regen (from the pin): stage the case + corpus in `/tmp/p4d256/wwh-oracle`,
   `QT_FIXTURE_WROUTES_MAIN=$V5W/crates/quilltap-web/tests/fixtures/wardrobe-routes-main.db QT_FIXTURE_WROUTES_MOUNT=…-mount.db QT_ORACLE_OUT=/tmp/p4d256/oracle-wwh.ndjson npx jest --silent --watchman=false --testTimeout=180000 --roots "$PWD" --roots /tmp/p4d256/wwh-oracle/cases -- wardrobe-wear-history`
   (13 rows); run with `QT_ORACLE_WARDROBE_WEAR_HISTORY=/tmp/p4d256/oracle-wwh.ndjson`.
+
+### Red-first at the target (the `KEYSTONE`-line tip + units 1–2, which touch no route; every oracle regenerated from the pin into `/tmp/p4d256/`)
+
+- web `wardrobe_routes_equivalence` (86 cases, 94 rows): **22 red** —
+  `list_default`, `list_include_archived`, `item_get_ok`, `item_get_archived`,
+  `cw_group_scope`, `cw_no_scope`, `cw_unknown_scope`,
+  `char_list_include_archived`, `char_list_group_scope_include_archived`,
+  `tr_copy_char_to_group__group` (`origin` + `wear` — as predicted; and
+  `cw_group_scope_non_member`, predicted red, stayed GREEN: an empty group
+  tier has no item to tag); `create_ok`, `create_full` (NOT predicted: v4's
+  shared `wardrobeItemFromCreateBody` now echoes `imageFileId: null`,
+  `7c8572869`); and ten `eq_*` rows (NOT this lane's surface — the pre-round
+  pair: v4's equip now credits the ledger and THROWS `no such table` → 500.
+  Cured in the CORPUS: every case now reads the pair as a booted instance —
+  the table ensured — per §R.3).
+- `group_wardrobe_routes_equivalence`: red at `gw_list` (`origin` — the family
+  asserts case by case and stops at the first; the transfers pair, rebuilt
+  from P4.D255's grown builder, already carries the ledger table).
+- `projects_routes_equivalence`: red on `wardrobe_list`, `wardrobe_get`,
+  `wardrobe_create` (the `imageFileId: null` echo + the re-list's
+  `origin`/`wear`), `wardrobe_list_hides_an_archived_garment`,
+  `wardrobe_list_shows_an_archived_garment_with_the_flag`, and the
+  `wardrobe_delete` `[Projects v1]` LINES (v4's `Cleanup of wear-ledger rows
+  had issues` WARN on the pre-round pair — unit 5's).
+- `characters_reads_equivalence`: red on `wardrobe`.
+  `characters_mutations_equivalence`: red on `wardrobe_get` and
+  `wardrobe_create` (`imageFileId: null`).
+- `tiered_mount_pool`: GREEN until grown (unit 1). The NEW
+  `wardrobe_wear_history_equivalence`: red by construction (unit 2).
+- Silent-stale-pass checks on the fresh NDJSON: wardrobe-routes `"origin"`
+  19 / `"wear"` 13 / `Quilltap General` 8 / `lastWornChat` 17 (after growth);
+  group-wardrobe 7 / 4; projects 20 / 4; characters-reads 1 / 1;
+  characters-mutations 3 / 0.
+
+### Unit 3 — the tagged + worn reads, the wear-history verb, the create echo (items 3, 4, 5, 9, 13; core 0.0.1256)
+
+- General: `wardrobe_list` → `attach_wear(with_origin(items, general))`;
+  `wardrobe_item_get` → `with_origin([item])`. Character: the vault arm →
+  `attach_wear(with_origin(items, { character, id, name }))` with the name off
+  `require_character`'s overlaid row; the `scope=group` arm →
+  `resolve_group_mounts_for_character` → `find_archetypes_in_mounts_
+  attributed` → `attach_wear`; `character_wardrobe_get` → `with_origin`.
+  Group / project: `ensure_*_store_mount` / `resolve_group_wardrobe_mount` →
+  `OwnerStore { mount_point_id, origin }` (R-B: the name from the row already
+  read); list → tagged + worn; POST's re-list tagged + worn, `wardrobeItem`
+  untagged; GET tagged. PUT / DELETE echoes untagged.
+- **R-D landed:** the group-tier DEBUG now carries `characterId`,
+  `groupCount`, `groupMountCount`, `itemCount`, `context` (no snake_case pin
+  existed to move; a NEW capture pin asserts the five keys in order).
+- **The verb** (`api/wardrobe_wear_history.rs`, from the keystone's refusal
+  body): dispatches by scope to each tier's arm, which lives BESIDE that
+  tier's item GET (`wardrobe_item_wear_history_general`,
+  `character_wardrobe_wear_history`, `group_wardrobe_wear_history`,
+  `project_wardrobe_wear_history`) and resolves the item exactly as the GET
+  does; the 404s run before the ledger read; the per-tier DEBUG lines are
+  v4's. A container scope with no `containerId` answers a 400 (no v4
+  analog — the REST path always carries the id).
+- **Create echoes — `imageFileId: null`** on all four tiers (v4's shared
+  `wardrobeItemFromCreateBody`, `7c8572869`; the order did not name it, the
+  red-first run did): the four create literals move `image_file_id: None` →
+  `Some(None)` — echoed, still never written to the file (the writer emits
+  only `Some(Some(_))`). These literals were P4.D255's one-token hunks before
+  `KEYSTONE`; the files are this lane's, and no C1 signature / type / verb /
+  arm moves.
+- **Recorded, unchanged:** v5's create echo puts `id` FIRST where v4's puts
+  it after the data keys (`{...data, id, createdAt, updatedAt}`) —
+  pre-existing, never claimed; the sorted-key bodies agree.
+- **Harness growth:** `wardrobe-routes.test.ts` + the Rust test ensure the
+  ledger on every case (v4: `WARDROBE_WEAR_STATS_DDL`; v5:
+  `ensure_wear_ledger_on`) unless `preRound`, then run `plants`; `action` on
+  item GETs; NEW kind `characterWardrobeItemGet`. 18 NEW cases (104 total,
+  112 rows): `list_with_ledger`, `list_pre_round`, `cw_no_scope_with_ledger`,
+  `cw_group_scope_with_ledger`, `cw_no_scope_pre_round`,
+  `item_get_with_ledger`, `cw_item_get` (+ `_wrong_owner`,
+  `_missing_character`), `wh_general` (+ `_never_worn`, `_pre_round`,
+  `_not_in_tier`, `_missing`), `wh_character` (+ `_wrong_owner`,
+  `_missing_character`, `_general_item`). Key-order claims now walk arrays
+  and cover the tagged / worn reads and both payloads. NEW
+  `p4d256_route_lines_are_v4s` (not oracle-gated): R-D's five keys, the four
+  tiers' wear-history lines (each after `Built wear history`), the
+  404-before-ledger SILENCE on all four tiers, the single GETs' silence on
+  `Attached wear summaries`.
+- Green: `wardrobe_routes_equivalence` 120 checks / 104 cases;
+  `group_wardrobe_routes`, `characters_reads`, `characters_mutations` green at
+  the pin; `projects_routes` red ONLY on the `wardrobe_delete` lines (unit 5).
+  Core lib 3,175 / 0.
+- Noise recorded: the wardrobe-routes oracle's stderr now carries v4's
+  `child-entry.ts` `ERR_MODULE_NOT_FOUND` (the background-jobs child v4 forks
+  when an equip — now succeeding on the ledger-ensured pair — enqueues an
+  avatar job); no row depends on it.

@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(wardrobe): tag every wardrobe read with its origin and wear; answer ?action=wear-history on all four item GETs (P4.D256 items 3, 4, 5, 9, 13)
+
+_Versions: core 0.0.1256._
+
+Ports v4 `cc80dc89d`'s route side and `3ee3b1342`'s reads. Every wardrobe collection read (General, character, character `?scope=group`, project, group) appends `origin` (`{scope, id, name}`) and then `wear` to each item; the group and project POST 201's re-listed `wardrobeItems` carry both while its `wardrobeItem` stays untagged; every single-item GET carries `origin` only. The character `?scope=group` read now uses the grouped resolver and the attributed read, so each item names the group it hangs in; its debug line moves to v4's five camelCase keys (`characterId`, `groupCount`, `groupMountCount`, `itemCount`, `context`). The group and project store helpers return an `OwnerStore { mount_point_id, origin }` built from the owner row already read.
+
+The `wardrobeItemWearHistory` dispatch verb's refusal body is replaced: each tier's arm resolves the item exactly as its GET does (404 `Archetype wardrobe item` / `Character` / `Wardrobe item` / `Group` / `Group wardrobe item` / `Project` / `Project wardrobe item`) before reading the ledger, then answers `{history, wearers, lastWornChat}` with v4's per-tier DEBUG line.
+
+The four create echoes now carry v4's `imageFileId: null` (`wardrobeItemFromCreateBody`, `7c8572869`); the file write is unchanged.
+
+Harness: `wardrobe_routes_equivalence` reads the committed pair with the wear ledger ensured (a booted instance; `preRound` opts out) and grows 18 cases (ledger-planted lists, the character item GET, the wear-history arms on the General and character tiers incl. their 404s and a deleted last-worn chat), key-order claims over the tagged / worn reads, and a capture test for the group-tier line, each tier's wear-history line and the 404-before-ledger silence. `group_wardrobe_routes`, `characters_reads` and `characters_mutations` regenerated at the pin and green.
+
 #### 2026-10-08 — feat(wardrobe): port v4's wear-history helpers — attach_wear, resolve_wearers, build_wear_history_payload (P4.D256 item 8)
 
 _Versions: core 0.0.1255._

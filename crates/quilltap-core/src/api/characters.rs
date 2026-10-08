@@ -43,6 +43,7 @@ use crate::services::dangerous_content::chat_override::{
 };
 use crate::services::image_job_common::with_both_conns;
 use crate::services::scriptorium_status::derive_scriptorium_status;
+use crate::services::wardrobe_wear_history::{attach_wear, build_wear_history_payload};
 use crate::vault_overlay::WardrobeItem;
 use crate::wardrobe_instructions::{
     read_wardrobe_instructions_file, write_wardrobe_instructions_file,
@@ -853,26 +854,37 @@ pub fn character_wardrobe_list(
     let character_id = character_id.to_string();
     let group_scope = scope == Some("group");
     let result = read_main_mount(db, move |main, mount| {
-        if let Err(r) = require_character(main, mount, &character_id) {
-            return Ok(Err(r));
-        }
+        let character = match require_character(main, mount, &character_id) {
+            Ok(c) => c,
+            Err(r) => return Ok(Err(r)),
+        };
         let docs = DocMountDocumentsRepository::new(mount);
         if group_scope {
-            let group_mount_point_ids =
-                crate::db::tiered_mount_pool::resolve_group_mount_point_ids_for_character(
-                    main,
-                    mount,
-                    &character_id,
-                );
-            let items = crate::db::archetype_wardrobe::find_archetypes_in_mounts(
-                &docs,
-                &group_mount_point_ids,
-                include_archived,
-            )?;
+            // `cc80dc89d`: kept GROUPED so each item can say which group it
+            // hangs in; the attributed read resolves id collisions exactly as
+            // the flat one does.
+            let groups = crate::db::tiered_mount_pool::resolve_group_mounts_for_character(
+                main,
+                mount,
+                &character_id,
+            );
+            let items = attach_wear(
+                main,
+                crate::db::archetype_wardrobe::find_archetypes_in_mounts_attributed(
+                    &docs,
+                    &groups,
+                    include_archived,
+                )?,
+            );
+            // R-D: v4's five camelCase keys (`groupCount` NEW in `cc80dc89d`).
             tracing::debug!(
-                character_id = character_id.as_str(),
-                group_mount_count = group_mount_point_ids.len(),
-                item_count = items.len(),
+                characterId = character_id.as_str(),
+                groupCount = groups.len(),
+                groupMountCount = groups
+                    .iter()
+                    .map(|g| g.mount_point_ids.len())
+                    .sum::<usize>(),
+                itemCount = items.len(),
                 context = "wardrobe",
                 "[Wardrobe v1] Group-tier wardrobe read"
             );
@@ -880,13 +892,35 @@ pub fn character_wardrobe_list(
         }
         let items =
             wardrobe_read::find_by_character_id(main, &docs, &character_id, include_archived)?;
-        Ok(Ok(items))
+        // `cc80dc89d` + `3ee3b1342`: `{ scope: 'character', id, name:
+        // character.name }`, then `wear`.
+        let origin = character_origin(&character_id, &character);
+        Ok(Ok(attach_wear(
+            main,
+            crate::db::archetype_wardrobe::with_origin(items, &origin),
+        )))
     });
     match result {
         Ok(Ok(items)) => Response::Character(json!({ "wardrobeItems": items })),
         Ok(Err(r)) => r,
         Err(e) => db_error_response(e),
     }
+}
+
+/// The character tier's read-time origin — v4 `{ scope: 'character', id, name:
+/// character.name }` off the overlaid character the route already holds.
+fn character_origin(
+    character_id: &str,
+    character: &Value,
+) -> crate::db::archetype_wardrobe::WardrobeOrigin {
+    crate::db::archetype_wardrobe::WardrobeOrigin::new(
+        crate::db::archetype_wardrobe::WardrobeOriginScope::Character,
+        character_id,
+        character
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+    )
 }
 
 /// v4 `GET /characters/[id]/plugin-data` — ownership → `{ pluginData: map }`.
@@ -2731,7 +2765,9 @@ pub async fn character_wardrobe_create(
             // appears as null in the create echo), but NOT `archivedAt` (absent),
             // so the create echo carries the former and omits the latter.
             migrated_from_clothing_record_id: Some(None),
-            image_file_id: None,
+            // v4 `wardrobeItemFromCreateBody` (`7c8572869`): `imageFileId:
+            // null` on every create — echoed, never written to the file.
+            image_file_id: Some(None),
             archived_at: None,
             created_at: now.clone(),
             updated_at: now,
@@ -2758,9 +2794,10 @@ pub fn character_wardrobe_get(
     let cid = character_id.to_string();
     let iid = item_id.to_string();
     let result = read_main_mount(db, move |main, mount| {
-        if let Err(r) = require_character(main, mount, &cid) {
-            return Ok(Err(r));
-        }
+        let character = match require_character(main, mount, &cid) {
+            Ok(c) => c,
+            Err(r) => return Ok(Err(r)),
+        };
         let docs = DocMountDocumentsRepository::new(mount);
         match wardrobe_read::find_by_id_for_character(
             main,
@@ -2769,7 +2806,14 @@ pub fn character_wardrobe_get(
             &iid,
             &SharedWardrobeTiers::none(),
         )? {
-            Some(item) => Ok(Ok(item)),
+            // `cc80dc89d`: the single GET is tagged with the character's
+            // origin, never worn.
+            Some(item) => Ok(Ok(crate::db::archetype_wardrobe::with_origin(
+                vec![item],
+                &character_origin(&cid, &character),
+            )
+            .pop()
+            .unwrap_or(Value::Null))),
             None => Ok(Err(not_found("Wardrobe item"))),
         }
     });
@@ -2777,6 +2821,55 @@ pub fn character_wardrobe_get(
         Ok(Ok(item)) => Response::Character(json!({ "wardrobeItem": item })),
         Ok(Err(r)) => r,
         Err(e) => db_error_response(e),
+    }
+}
+
+/// v4 `GET /characters/[id]/wardrobe/[itemId]?action=wear-history`
+/// (`3ee3b1342`): `findById` → `404 Character`; `findByIdForCharacter` with
+/// `characterId === id` → `404 Wardrobe item`; only THEN the ledger read (the
+/// 404 runs before `findHistory`). DEBUG `[Wardrobe v1] Read wardrobe item
+/// wear history { characterId, itemId, wearCount }`. v4's GET catch answers
+/// `Failed to fetch wardrobe item` for anything that throws past the 404s.
+pub(crate) fn character_wardrobe_wear_history(
+    db: &Db,
+    character_id: &str,
+    item_id: &str,
+) -> Response {
+    let cid = character_id.to_string();
+    let iid = item_id.to_string();
+    let result = read_main_mount(db, move |main, mount| {
+        if let Err(r) = require_character(main, mount, &cid) {
+            return Ok(Err(r));
+        }
+        let docs = DocMountDocumentsRepository::new(mount);
+        let found = wardrobe_read::find_by_id_for_character(
+            main,
+            &docs,
+            &cid,
+            &iid,
+            &SharedWardrobeTiers::none(),
+        )?;
+        let owned = found
+            .as_ref()
+            .and_then(|i| i.get("characterId"))
+            .and_then(Value::as_str)
+            == Some(cid.as_str());
+        if !owned {
+            return Ok(Err(not_found("Wardrobe item")));
+        }
+        let payload = build_wear_history_payload(main, mount, &iid);
+        tracing::debug!(
+            characterId = %cid,
+            itemId = %iid,
+            wearCount = payload["history"]["wearCount"].as_i64().unwrap_or(0),
+            "[Wardrobe v1] Read wardrobe item wear history"
+        );
+        Ok(Ok(payload))
+    });
+    match result {
+        Ok(Ok(payload)) => Response::WardrobeWearHistory(payload),
+        Ok(Err(r)) => r,
+        Err(_) => internal("Failed to fetch wardrobe item"),
     }
 }
 

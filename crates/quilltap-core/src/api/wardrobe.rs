@@ -53,6 +53,7 @@ use crate::services::wardrobe_transfers::{
     self, ComponentMode, DestinationScope, ExplicitSource, SourceScope, TransferAction,
     TransferError, TransferRequest,
 };
+use crate::services::wardrobe_wear_history::attach_wear;
 use crate::vault_overlay::WardrobeItem;
 use crate::wardrobe_tiers::SharedWardrobeTiers;
 
@@ -224,16 +225,22 @@ fn parse_archetype_body(body: &Value, require_all: bool) -> Result<ArchetypeBody
 // ===========================================================================
 
 /// v4 `GET /api/v1/wardrobe` — `repos.wardrobe.findArchetypes()` (non-archived,
-/// General only — the route has no project context) → `{wardrobeItems}`.
+/// General only — the route has no project context) → `{wardrobeItems}`, each
+/// item tagged with the General origin (`cc80dc89d`) and then its `wear`
+/// (`3ee3b1342` — `attachWear(withOrigin(items, GENERAL_WARDROBE_ORIGIN))`).
 pub fn wardrobe_list(db: &Db, include_archived: bool) -> Response {
     let out = read_main_mount(db, |main, mount| {
         let docs = DocMountDocumentsRepository::new(mount);
-        archetype_wardrobe::find_archetypes(
+        let items = archetype_wardrobe::find_archetypes(
             main,
             &docs,
             include_archived,
             &SharedWardrobeTiers::none(),
-        )
+        )?;
+        Ok(attach_wear(
+            main,
+            archetype_wardrobe::with_origin(items, &archetype_wardrobe::general_wardrobe_origin()),
+        ))
     });
     match out {
         Ok(items) => Response::Wardrobe(json!({ "wardrobeItems": items })),
@@ -273,7 +280,9 @@ pub async fn wardrobe_create(db: &Db, body: Value) -> Response {
             is_default: parsed.is_default.unwrap_or(false),
             replace: parsed.replace.unwrap_or(false),
             migrated_from_clothing_record_id: Some(None),
-            image_file_id: None,
+            // v4 `wardrobeItemFromCreateBody` (`7c8572869`): `imageFileId:
+            // null` on every create — echoed, never written to the file.
+            image_file_id: Some(None),
             archived_at: None,
             created_at: now.clone(),
             updated_at: now,
@@ -307,11 +316,54 @@ pub fn wardrobe_item_get(db: &Db, item_id: &str) -> Response {
         archetype_wardrobe::find_archetype_by_id(main, &docs, &iid, &SharedWardrobeTiers::none())
     });
     match out {
+        // `cc80dc89d`: the single GET is tagged with the General origin
+        // (`withOrigin([item], GENERAL_WARDROBE_ORIGIN)`), never worn.
         Ok(Some(item)) if item.get("characterId").map(Value::is_null) == Some(true) => {
+            let item = archetype_wardrobe::with_origin(
+                vec![item],
+                &archetype_wardrobe::general_wardrobe_origin(),
+            )
+            .pop()
+            .unwrap_or(Value::Null);
             Response::Wardrobe(json!({ "wardrobeItem": item }))
         }
         Ok(_) => not_found("Archetype wardrobe item"),
         // v4 catches → serverError with this exact message.
+        Err(_) => internal("Failed to fetch archetype wardrobe item"),
+    }
+}
+
+/// v4 `GET /api/v1/wardrobe/[itemId]?action=wear-history` (`3ee3b1342`): the
+/// item must be a General archetype (`characterId === null`) — else `404
+/// Archetype wardrobe item` — and only THEN is the ledger read (the 404 runs
+/// before `findHistory`). DEBUG `[Wardrobe Archetypes v1] Read archetype item
+/// wear history { itemId, wearCount }`; anything that throws past the 404 is
+/// the GET's own catch (`Failed to fetch archetype wardrobe item`).
+pub(crate) fn wardrobe_item_wear_history_general(db: &Db, item_id: &str) -> Response {
+    let iid = item_id.to_string();
+    let out = read_main_mount(db, move |main, mount| {
+        let docs = DocMountDocumentsRepository::new(mount);
+        let item = archetype_wardrobe::find_archetype_by_id(
+            main,
+            &docs,
+            &iid,
+            &SharedWardrobeTiers::none(),
+        )?;
+        if !matches!(&item, Some(i) if i.get("characterId").map(Value::is_null) == Some(true)) {
+            return Ok(Err(not_found("Archetype wardrobe item")));
+        }
+        let payload =
+            crate::services::wardrobe_wear_history::build_wear_history_payload(main, mount, &iid);
+        tracing::debug!(
+            itemId = %iid,
+            wearCount = payload["history"]["wearCount"].as_i64().unwrap_or(0),
+            "[Wardrobe Archetypes v1] Read archetype item wear history"
+        );
+        Ok(Ok(payload))
+    });
+    match out {
+        Ok(Ok(payload)) => Response::WardrobeWearHistory(payload),
+        Ok(Err(r)) => r,
         Err(_) => internal("Failed to fetch archetype wardrobe item"),
     }
 }

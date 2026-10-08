@@ -101,6 +101,16 @@ pub fn general_wardrobe_origin() -> WardrobeOrigin {
     }
 }
 
+/// A group / project wardrobe's resolved store, with the origin its reads
+/// attach — v4's factory ok-arm `{ mountPointId, origin }` (`cc80dc89d`), the
+/// origin built from the owner row ALREADY loaded (`ownerOrigin(ownerLabel,
+/// row)` — no extra read).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OwnerStore {
+    pub mount_point_id: String,
+    pub origin: WardrobeOrigin,
+}
+
 /// v4 `withOrigin(items, origin)` — tag every item with the container it came
 /// from: `{ ...item, origin }`, so `origin` lands LAST (the items are
 /// `preserve_order` maps; an `insert` appends). A non-object item passes

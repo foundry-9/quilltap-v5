@@ -13,6 +13,7 @@
 use serde_json::{json, Map, Value};
 
 use super::SINGLE_USER_ID;
+use crate::db::archetype_wardrobe::{OwnerStore, WardrobeOrigin, WardrobeOriginScope};
 use crate::db::chats_outfits::ChatOutfitsRepository;
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
 use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
@@ -37,6 +38,7 @@ use crate::services::dangerous_content::chat_override::{
     get_concierge_provenance, get_concierge_reason, get_concierge_state,
 };
 use crate::services::image_job_common::with_both_conns;
+use crate::services::wardrobe_wear_history::{attach_wear, build_wear_history_payload};
 use crate::vault_overlay::WardrobeItem;
 use crate::wardrobe_instructions::{
     read_wardrobe_instructions_file, write_wardrobe_instructions_file,
@@ -1453,24 +1455,28 @@ fn ensure_project_wardrobe_mount(
     main: &rusqlite::Connection,
     mount: &rusqlite::Connection,
     project_id: &str,
-) -> Result<Result<String, Response>, DbError> {
-    let mount_point_id = match ensure_project_store_mount(main, mount, project_id)? {
-        Ok(mp) => mp,
+) -> Result<Result<OwnerStore, Response>, DbError> {
+    let store = match ensure_project_store_mount(main, mount, project_id)? {
+        Ok(store) => store,
         Err(r) => return Ok(Err(r)),
     };
     let links = DocMountFileLinksRepository::new(mount);
-    let _ = links.ensure_folder_path(&mount_point_id, "Wardrobe");
-    Ok(Ok(mount_point_id))
+    let _ = links.ensure_folder_path(&store.mount_point_id, "Wardrobe");
+    Ok(Ok(store))
 }
 
 /// The store-ensure half of [`ensure_project_wardrobe_mount`] with NO
 /// `Wardrobe/` folder ensure — v4's `?action=instructions` GET calls
 /// `ensureProjectOfficialStore` alone (only its POST adds the folder ensure).
+///
+/// `cc80dc89d`: also answers the store's [`OwnerStore::origin`] — `{ scope:
+/// 'project', id, name }` from the project row this already holds (v4's
+/// factory `ownerOrigin`).
 fn ensure_project_store_mount(
     main: &rusqlite::Connection,
     mount: &rusqlite::Connection,
     project_id: &str,
-) -> Result<Result<String, Response>, DbError> {
+) -> Result<Result<OwnerStore, Response>, DbError> {
     let repo = ProjectsRepository::new(main, mount);
     let Some(project) = repo.find_by_id(project_id).map_err(overlay_to_db)? else {
         return Ok(Err(not_found("Project")));
@@ -1480,22 +1486,32 @@ fn ensure_project_store_mount(
     else {
         return Ok(Err(internal("Failed to ensure project document store")));
     };
-    Ok(Ok(ensured.mount_point_id))
+    Ok(Ok(OwnerStore {
+        mount_point_id: ensured.mount_point_id,
+        origin: WardrobeOrigin::new(WardrobeOriginScope::Project, project_id, name),
+    }))
 }
 
 /// v4 GET `/wardrobe`: `{ mountPointId, wardrobeItems }` (include archived).
+/// `cc80dc89d` + `3ee3b1342`: every item tagged with the project's `origin`,
+/// then its `wear` (v4 `attachWear(withOrigin(…))`).
 pub fn project_wardrobe_list(db: &Db, project_id: &str, include_archived: bool) -> Response {
     let pid = project_id.to_string();
     let out = read_both(db, move |main, mount| {
-        let mp = match ensure_project_wardrobe_mount(main, mount, &pid)? {
-            Ok(mp) => mp,
+        let store = match ensure_project_wardrobe_mount(main, mount, &pid)? {
+            Ok(store) => store,
             Err(r) => return Ok(Err(r)),
         };
         let docs = DocMountDocumentsRepository::new(mount);
         // v4 `d25dacc1` replaced this route's hard-coded `true` with the
         // query param: the archived filter is SERVER-side now.
-        let items = archetype_wardrobe::read_project_wardrobe(&docs, &mp, include_archived)?;
-        Ok(Ok((mp, items)))
+        let items = archetype_wardrobe::read_project_wardrobe(
+            &docs,
+            &store.mount_point_id,
+            include_archived,
+        )?;
+        let items = attach_wear(main, archetype_wardrobe::with_origin(items, &store.origin));
+        Ok(Ok((store.mount_point_id, items)))
     });
     match out {
         Ok(Ok((mp, items))) => {
@@ -1549,12 +1565,14 @@ pub async fn project_wardrobe_create(db: &Db, project_id: &str, body: Value) -> 
         .unwrap_or(false);
 
     let out = with_both_conns(db, move |main, mount| {
-        let mp = match ensure_project_wardrobe_mount(main, mount, &pid)? {
-            Ok(mp) => mp,
+        let store = match ensure_project_wardrobe_mount(main, mount, &pid)? {
+            Ok(store) => store,
             Err(r) => return Ok(Err(r)),
         };
+        let mp = store.mount_point_id.clone();
         // v4 route mints id + ISO timestamps + the null columns (characterId,
-        // migratedFromClothingRecordId, archivedAt all explicit null).
+        // migratedFromClothingRecordId, archivedAt all explicit null; and
+        // `imageFileId` since `7c8572869`'s `wardrobeItemFromCreateBody`).
         let now = crate::clock::now_iso();
         let item = WardrobeItem {
             id: uuid::Uuid::new_v4().to_string(),
@@ -1568,7 +1586,7 @@ pub async fn project_wardrobe_create(db: &Db, project_id: &str, body: Value) -> 
             is_default,
             replace,
             migrated_from_clothing_record_id: Some(None),
-            image_file_id: None,
+            image_file_id: Some(None),
             archived_at: Some(None),
             created_at: now.clone(),
             updated_at: now,
@@ -1579,7 +1597,10 @@ pub async fn project_wardrobe_create(db: &Db, project_id: &str, body: Value) -> 
             Ok(s) => s,
             Err(e) => return Ok(Err(wardrobe_err(e))),
         };
+        // `cc80dc89d` + `3ee3b1342`: the re-list is TAGGED and WORN; the
+        // `wardrobeItem` echo stays untagged (v4's `wardrobeItem: stored`).
         let items = archetype_wardrobe::read_project_wardrobe(&docs, &mp, true)?;
+        let items = attach_wear(main, archetype_wardrobe::with_origin(items, &store.origin));
         Ok(Ok((
             mp,
             serde_json::to_value(stored).unwrap_or(Value::Null),
@@ -1616,20 +1637,66 @@ pub fn project_wardrobe_get(db: &Db, project_id: &str, item_id: &str) -> Respons
     let pid = project_id.to_string();
     let iid = item_id.to_string();
     let out = read_both(db, move |main, mount| {
-        let mp = match ensure_project_wardrobe_mount(main, mount, &pid)? {
-            Ok(mp) => mp,
+        let store = match ensure_project_wardrobe_mount(main, mount, &pid)? {
+            Ok(store) => store,
             Err(_) => return Ok(None), // v4 resolveProjectMount → notFound('Project')
         };
         let docs = DocMountDocumentsRepository::new(mount);
-        let items = archetype_wardrobe::read_project_wardrobe(&docs, &mp, true)?;
-        Ok(Some(items.into_iter().find(|i| {
-            i.get("id").and_then(Value::as_str) == Some(iid.as_str())
-        })))
+        let items = archetype_wardrobe::read_project_wardrobe(&docs, &store.mount_point_id, true)?;
+        // `cc80dc89d`: the single GET is tagged (`origin`), never worn.
+        Ok(Some(
+            items
+                .into_iter()
+                .find(|i| i.get("id").and_then(Value::as_str) == Some(iid.as_str()))
+                .map(|i| {
+                    archetype_wardrobe::with_origin(vec![i], &store.origin)
+                        .pop()
+                        .unwrap_or(Value::Null)
+                }),
+        ))
     });
     match out {
         Ok(Some(Some(item))) => Response::Project(json!({ "wardrobeItem": item })),
         Ok(Some(None)) => not_found("Project wardrobe item"),
         Ok(None) => not_found("Project"),
+        Err(e) => db_error_response(e),
+    }
+}
+
+/// v4 GET `/projects/[id]/wardrobe/[itemId]?action=wear-history` (the
+/// factory's `handleGetWearHistory`, `3ee3b1342`): the item must live in the
+/// project's store (archived included) — `404 Project` / `404 Project wardrobe
+/// item` — and only THEN is the ledger read (the 404 runs before
+/// `findHistory`). The store resolves exactly as [`project_wardrobe_get`]'s.
+pub(crate) fn project_wardrobe_wear_history(db: &Db, project_id: &str, item_id: &str) -> Response {
+    let pid = project_id.to_string();
+    let iid = item_id.to_string();
+    let out = read_both(db, move |main, mount| {
+        let store = match ensure_project_wardrobe_mount(main, mount, &pid)? {
+            Ok(store) => store,
+            Err(_) => return Ok(Err(not_found("Project"))),
+        };
+        let docs = DocMountDocumentsRepository::new(mount);
+        let items = archetype_wardrobe::read_project_wardrobe(&docs, &store.mount_point_id, true)?;
+        if !items
+            .iter()
+            .any(|i| i.get("id").and_then(Value::as_str) == Some(iid.as_str()))
+        {
+            return Ok(Err(not_found("Project wardrobe item")));
+        }
+        let payload = build_wear_history_payload(main, mount, &iid);
+        tracing::debug!(
+            projectId = %pid,
+            itemId = %iid,
+            wearCount = payload["history"]["wearCount"].as_i64().unwrap_or(0),
+            context = "wardrobe",
+            "[Projects v1] Read project wardrobe item wear history"
+        );
+        Ok(Ok(payload))
+    });
+    match out {
+        Ok(Ok(payload)) => Response::WardrobeWearHistory(payload),
+        Ok(Err(r)) => r,
         Err(e) => db_error_response(e),
     }
 }
@@ -1648,7 +1715,7 @@ pub async fn project_wardrobe_update(
     let archived = body.get("archived").and_then(Value::as_bool);
     let out = with_both_conns(db, move |main, mount| {
         let mp = match ensure_project_wardrobe_mount(main, mount, &pid)? {
-            Ok(mp) => mp,
+            Ok(store) => store.mount_point_id,
             Err(_) => return Ok(Err(not_found("Project"))),
         };
         let links = DocMountFileLinksRepository::new(mount);
@@ -1723,7 +1790,7 @@ pub async fn project_wardrobe_delete(db: &Db, project_id: &str, item_id: &str) -
     let iid = item_id.to_string();
     let out = with_both_conns(db, move |main, mount| {
         let mp = match ensure_project_wardrobe_mount(main, mount, &pid)? {
-            Ok(mp) => mp,
+            Ok(store) => store.mount_point_id,
             Err(_) => return Ok(Err(not_found("Project"))),
         };
         // warn-and-proceed cleanup (v4 wraps this in its own try/catch → warn).
@@ -2239,7 +2306,7 @@ pub fn project_wardrobe_instructions_get(db: &Db, project_id: &str) -> Response 
     let pid = project_id.to_string();
     let out = read_both(db, move |main, mount| {
         let mp = match ensure_project_store_mount(main, mount, &pid)? {
-            Ok(mp) => mp,
+            Ok(store) => store.mount_point_id,
             Err(r) => return Ok(Err(r)),
         };
         let instructions = read_wardrobe_instructions_file(mount, &mp);
@@ -2285,7 +2352,7 @@ pub async fn project_wardrobe_instructions_set(
         };
         let (cleared, echo) = super::wardrobe::instructions_echo(instructions.as_deref());
         let mp = match ensure_project_wardrobe_mount(main, mount, &pid)? {
-            Ok(mp) => mp,
+            Ok(store) => store.mount_point_id,
             Err(r) => return Ok(Err(r)),
         };
         let links = DocMountFileLinksRepository::new(mount);
