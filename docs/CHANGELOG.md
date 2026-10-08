@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(spa): P4.D261 unit 7 — v4 7c8572869: the item editor's Picture section (generate, upload, choose, take down)
+
+_Versions: SPA 0.5.818._
+
+The wardrobe item editor gains a Picture section directly under Title (port of v4's `WardrobeItemImageSection.tsx`). In create mode it is inert (`Save the item first; then it may sit for its portrait.`) and makes no request. In edit mode it lists the item's pictures through its home container and shows the current one with a caption (`Drawn by …` / `rerouted to the uncensored desk` / `Drawn to order` / `From the imported photograph` / `Hung by hand`, plus `catalogue shot` outside a character vault), a generating veil, a split Generate button (designated profile) with a one-off profile picker (options labelled v4's way, ` · designated` marked and preselected), Upload with v4's client-side type and 10 MB checks, a 422 refusal notice that names the artist and opens the picker, and a history strip with Make current and Delete (confirmed). Every change re-reads the pictures and emits `imageChanged`; the wardrobe dialog reloads its list on it.
+
 #### 2026-10-08 — feat(spa): P4.D261 unit 6 — v4 7c8572869: the item-images client, row and picker thumbnails, the row's Generate image
 
 _Versions: SPA 0.5.817._

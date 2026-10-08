@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../core/core-client';
@@ -109,7 +110,8 @@ async function renderInner(
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
     imports: [WardrobeControlDialogInner],
-    providers: [{ provide: CoreClient, useValue: core }],
+    // The editor's Picture section (edit mode) reads through TanStack (P4.D261).
+    providers: [provideTanStackQuery(new QueryClient()), { provide: CoreClient, useValue: core }],
   });
   const fixture = TestBed.createComponent(WardrobeControlDialogInner);
   fixture.componentRef.setInput('initialCharacterId', 'c1');
@@ -1333,5 +1335,20 @@ describe('WardrobeControlDialogInner — Generate image (v4 7c8572869)', () => {
     await first;
     await settle(fixture);
     expect(g.generatingImageIds().has('hat')).toBe(false);
+  });
+});
+
+/** P4.D261 — v4 `7c8572869` `wardrobe-control-dialog.tsx:1720` `onImageChanged={() => void reloadActiveItems()}`. */
+describe('WardrobeControlDialogInner — the editor’s picture change reloads the list', () => {
+  it('re-reads the list when the editor reports a picture change', async () => {
+    const { fixture, component, seen } = await renderInner(null);
+    (component as unknown as { editingItem: { set(v: WardrobeItemDto): void } }).editingItem.set(HAT);
+    await settle(fixture);
+    const editor = fixture.debugElement.query((d) => d.name === 'qt-wardrobe-item-editor');
+    expect(editor).not.toBeNull();
+    const before = seen.filter((r) => (r.type as string) === 'characterWardrobeList').length;
+    (editor.componentInstance as { imageChanged: { emit(): void } }).imageChanged.emit();
+    await settle(fixture);
+    expect(seen.filter((r) => (r.type as string) === 'characterWardrobeList').length).toBeGreaterThan(before);
   });
 });

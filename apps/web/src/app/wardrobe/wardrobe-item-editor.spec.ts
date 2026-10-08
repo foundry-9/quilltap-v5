@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../core/core-client';
@@ -67,7 +68,9 @@ async function render(
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
     imports: [WardrobeItemEditor],
-    providers: [{ provide: CoreClient, useValue: core }],
+    // The Picture section's live half (edit mode) reads the image profiles and
+    // the chat-settings row through TanStack (P4.D261).
+    providers: [provideTanStackQuery(new QueryClient()), { provide: CoreClient, useValue: core }],
   });
   const fixture = TestBed.createComponent(WardrobeItemEditor);
   fixture.componentRef.setInput(
@@ -632,5 +635,54 @@ describe('the editor’s Wear history (v4 3ee3b1342)', () => {
     expect(historyReads(seen)).toEqual([
       { type: 'wardrobeItemWearHistory', scope: 'group', containerId: 'g1', itemId: 'w3' },
     ]);
+  });
+});
+
+/**
+ * P4.D261 — v4 `7c8572869` `wardrobe-item-editor.tsx:636-646` at the pin
+ * `f5e953a3f`: the Picture section DIRECTLY under Title, before Type(s);
+ * inert in create mode; live in edit mode through `itemHomeContainer`; a
+ * picture change surfaces as the editor's `imageChanged`.
+ */
+describe('the editor’s Picture section (v4 7c8572869)', () => {
+  const imageReads = (seen: AnyRequest[]): AnyRequest[] =>
+    seen.filter((r) => (r.type as string) === 'wardrobeItemImagesList');
+  const answer = (req: AnyRequest): Record<string, unknown> =>
+    (req.type as string) === 'wardrobeItemImagesList'
+      ? { current: null, images: [] }
+      : (req.type as string) === 'imageProfileList'
+        ? { profiles: [] }
+        : { wardrobeItems: [] };
+
+  it('sits directly under Title — inert, and silent, in create mode', async () => {
+    const { fixture, seen } = await render({ item: null }, answer);
+    const host = fixture.nativeElement as HTMLElement;
+    const section = host.querySelector('[data-testid="wardrobe-item-image-section"]')!;
+    expect(section).not.toBeNull();
+    expect(host.querySelector('[data-testid="wardrobe-item-image-inert"]')).not.toBeNull();
+    const block = section.closest('qt-wardrobe-item-image-section')!;
+    expect(block.previousElementSibling!.querySelector('#wardrobe-title')).not.toBeNull();
+    expect(block.nextElementSibling!.textContent).toContain('Type(s) *');
+    expect(imageReads(seen)).toEqual([]);
+  });
+
+  it('edit mode reads the pictures through the item’s home container', async () => {
+    const { seen } = await render({ item: item({ id: 'w1' }) }, answer);
+    expect(imageReads(seen)).toEqual([
+      { type: 'wardrobeItemImagesList', scope: 'character', containerId: 'char-1', itemId: 'w1' },
+    ]);
+  });
+
+  it('a picture change re-emits as imageChanged', async () => {
+    const { fixture, component } = await render({ item: item({ id: 'w1' }) }, answer);
+    const out: number[] = [];
+    (component as unknown as { imageChanged: { subscribe(f: () => void): void } }).imageChanged.subscribe(
+      () => out.push(1),
+    );
+    const section = fixture.debugElement.query(
+      (d) => d.name === 'qt-wardrobe-item-image-section',
+    );
+    (section.componentInstance as { imageChanged: { emit(): void } }).imageChanged.emit();
+    expect(out).toHaveLength(1);
   });
 });

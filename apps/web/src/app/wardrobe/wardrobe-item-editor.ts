@@ -30,6 +30,7 @@ import type { CandidateGroup, CandidateItem } from './item-editor/types';
 import { WardrobeComponentPicker } from './item-editor/wardrobe-component-picker';
 import { WardrobeModeChangePrompt } from './item-editor/wardrobe-mode-change-prompt';
 import { WardrobeWearHistorySection } from './item-editor/wear-history-section';
+import { WardrobeItemImageSection } from './item-editor/wardrobe-item-image-section';
 import { ToastService } from '../ui/toast.service';
 
 type EditorMode = 'single' | 'bundle';
@@ -69,6 +70,7 @@ function charCountClass(current: number, max: number): string {
     WardrobeComponentPicker,
     WardrobeModeChangePrompt,
     WardrobeWearHistorySection,
+    WardrobeItemImageSection,
   ],
   template: `
     <!-- Overlay — z values sit above the qt-dialog-overlay (z-[60]) so this
@@ -224,6 +226,15 @@ function charCountClass(current: number, max: number): string {
               <p class="mt-1 text-xs qt-text-destructive">Enter a title</p>
             }
           </div>
+
+          <!-- Picture — directly under Title, the most visible thing in the
+               form. Inert in create mode: a fresh item has no id yet (v4
+               7c8572869 :638-646). -->
+          <qt-wardrobe-item-image-section
+            [item]="item()"
+            [container]="itemHomeContainer()"
+            (imageChanged)="imageChanged.emit()"
+          />
 
           <!-- Single mode: Types checkboxes (v4 :537-569). -->
           @if (!isBundle()) {
@@ -429,6 +440,9 @@ export class WardrobeItemEditor {
 
   readonly closed = output<void>();
   readonly saved = output<void>();
+  /** The item's current picture changed (v4 `onImageChanged`), so the lists
+   *  behind the editor can refresh their thumbnails. */
+  readonly imageChanged = output<void>();
 
   protected readonly slotTypes = WARDROBE_SLOT_TYPES;
 

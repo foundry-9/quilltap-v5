@@ -174852,3 +174852,58 @@ byte URLs through `apiUrl`; (4) the thumbnail host is `display: contents`
 and empty without a picture (v4 returns `null`); (5) v4's
 `queryKeys.wardrobe.images` invalidate after a row generate has no v5 cache
 to bust — the list reload repaints the thumbnail. Version: SPA 0.5.817.
+
+### Unit 7 — #82 `7c8572869` the editor's Picture section (C2 §6)
+
+NEW `wardrobe/item-editor/wardrobe-item-image-section.ts` — the inert shell
+(`qt-wardrobe-item-image-section`) + the live `qt-wardrobe-item-image-active`
+(v4's `WardrobeItemImageSection` / `ActiveImageSection` split), every string
+and class from `WardrobeItemImageSection.tsx:1-487` read whole at the pin:
+`Picture` (R-F — the `aria-label` and the `qt-label`), the inert sentence,
+`Fetching the portfolio…` / `No picture yet` / `The artist is at the
+easel…`, the spinner `Generating a picture`, the five caption parts + `
+catalogue shot`, `Generate` / `Generating…` with `Paint it with the
+designated wardrobe profile` / `No image profiles are configured`, the
+chevron `Choose an image profile` / `Choose another image profile, just this
+once`, `Upload` / `Uploading…` + its title, `Upload a picture`,
+`WARDROBE_IMAGE_ACCEPT` / `WARDROBE_IMAGE_MAX_BYTES`, the two client checks,
+`The portrait is hung` (+ the uncensored-desk variant), `Picture hung`,
+`Picture taken down`, the four `Failed to …` fallbacks, the refusal notice
+`${profileName ?? 'The artist'} declined to paint it${detail}. Try another
+profile.`, `Image model`, `profileLabel` + ` · designated`, `Generate with
+this`, `Cancel`, `History`, `Picture history`, `Current picture` /
+`Earlier picture`, `Make current`, `Delete` / `Delete this picture`, the
+confirm `Take this picture down for good? It cannot be rehung.`. Mounted
+DIRECTLY under Title (`wardrobe-item-editor.tsx:638-646`) through unit 5's
+`itemHomeContainer`; the editor gains an `imageChanged` output and the
+dialog binds it to `reloadCurrentItems()` (v4 `onImageChanged={() => void
+reloadActiveItems()}`).
+
+Specs: NEW `item-editor/wardrobe-item-image-section.spec.ts` — v4
+`wardrobe-item-images-ui.test.tsx`'s section ×2 transcribed (inert + no
+request; the current picture, `Drawn by flux-pro · catalogue shot`, two
+history entries, one Make current, the list verb for General) + 9 arms (empty
+frame + disabled Generate without profiles + every button title/aria; `Hung by
+hand` in a vault with the character verb body; the two client checks toast
+with NO request; upload → multipart URL, `Picture hung`, re-read,
+`imageChanged`; Generate → `{}` body, the rerouted toast and caption; the 422
+refusal notice + picker, no toast; a 502 toasts its sentence; the picker's
+labels, designated preselection and `{"imageProfileId":"ip-2"}`; Make
+current / Delete over the verbs with the confirm declined then accepted);
+`wardrobe-item-editor.spec.ts` + 3 arms (placement between Title and Type(s),
+inert and silent in create mode; edit-mode verb through the home container;
+`imageChanged` re-emitted); `wardrobe-control-dialog.spec.ts` + 1 (the
+editor's `imageChanged` re-reads the list). Both harnesses now provide
+TanStack (the live half's queries).
+
+**Red-first:** the section COMPILE-red (absent module); with it present and
+unwired, **4 red** (editor ×3, dialog ×1). All green after: 26 files / 382.
+
+**Recorded mechanism divergences:** the history is signal-held and re-read
+after every change (no wardrobe query cache, survey §7.5) where v4 keys
+`queryKeys.wardrobe.images`; the profiles and the designated id ride the
+Settings cards' own TanStack keys (`imageProfileKeys.list()`,
+`chatSettingsKeys.all`) and dedupe with them; `showConfirmation` →
+`window.confirm` (the dialog's idiom); v4's `queryKeys.wardrobe.all`
+invalidate → `imageChanged` → the dialog's list reload; the picker's
+`<select>` binds `[selected]` per option (dogfood-#6). Version: SPA 0.5.818.

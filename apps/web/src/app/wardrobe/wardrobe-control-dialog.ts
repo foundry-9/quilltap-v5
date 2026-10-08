@@ -612,6 +612,7 @@ type EditorIntent = 'create-single' | 'create-bundle';
         [autoFocusTitle]="creatingNew() === 'create-bundle'"
         (closed)="closeEditor()"
         (saved)="onEditorSaved()"
+        (imageChanged)="reloadCurrentItems()"
       />
     }
 
@@ -998,7 +999,7 @@ export class WardrobeControlDialogInner {
   }
 
   /** v4 `:206-209` `reloadActiveItems` — refresh whichever view is on display. */
-  private async reloadCurrentItems(): Promise<void> {
+  protected async reloadCurrentItems(): Promise<void> {
     await this.reloadForContainer(this.selectedContainer());
   }
 
