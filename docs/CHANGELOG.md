@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — test(host): the wear-ledger boot ensures through the real `Host::start` (P4.D255 item 22)
+
+_No crate versions bumped._
+
+NEW `host_boot_p4d255_wardrobe_wear_stats.rs`, three arms. A pre-round instance with outfits gets the migration-shaped table and three indexes, is seeded exactly as `wears_from_equipped_outfit` counts, gets both ledger rows and the one-key column default, and a second boot is a byte no-op. A v4-stamped instance is never seeded again. A fresh `setup` instance keeps generateDDL's table and stamps only the empty seed row, as v4's real first boot does.
+
 #### 2026-10-08 — test(harness): the two P4.D255 boot ensures against v4's real migrations (items 19, 20)
 
 _No crate versions bumped._
