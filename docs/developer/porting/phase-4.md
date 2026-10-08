@@ -7151,6 +7151,226 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
+## The `f5e953a3f` wardrobe-programme + convergence drift catch-up round (P4.D255 → {P4.D256 ∥ P4.D262 ∥ P4.D263 ∥ P4.D264} ∥ P4.D257 ∥ P4.D258 ∥ P4.D259 ∥ P4.D260 ∥ P4.D261) — ORDERED 2026-10-08
+
+**Baseline `94fbb1ae3`; v4 `main` HEAD `f5e953a3f` ("feat(startup): daily
+database optimize before migrations", `4.10.0-dev.117`, 2026-10-07 23:28
+-0500) — ELEVEN commits past the baseline, the ledger's eleven §3 rows,
+every one now `ORDERED(…)`; v4 `bugfix` tip `1a2b2164c` and `release` tip
+`8fbf2afe0` unmoved; the checkout on `main`, CLEAN at the planning probe
+(2026-10-08 — the §2 probe passed, so the ledger stood and nothing was
+re-derived; v4 then landed the docs-only `1825bfd53` DURING planning and the
+human ruled the round pins at `f5e953a3f` regardless — the waiver is in the
+ledger's §1, the commit a new UNPROCESSED `NO-PORT?` row); regen rule PIN REQUIRED (every moving family from a lane-unique
+detached worktree at the TARGET `f5e953a3f`; no baseline pin this round).**
+The standing rule holds: drift debt clears before new scope, so the whole
+round IS the eleven-row catch-up — split by FILE OWNERSHIP, not by v4's
+commit batching: the wardrobe programme (#80 lists, #81 the wear ledger, #82
+item images, `b3f937076` tool pictures) lands as ONE keystone lane plus four
+lanes cut from its `KEYSTONE` commit; the chat gallery, the bug-180/181
+convergence, the daily optimize (with the never-ported physical-backup trio
+it presupposes), the dependency move + the vendored trees, and the wardrobe
+SPA run from `main` beside it. The round-wide §R meeting points (fourteen —
+the keystone/stacking rule §R.14, the no-baseline-pin rule, the
+fixture-pair rules, sixteen survey corrections in §R.4, the nine handoff
+seams, the thirteen rulings for the human), the §S unifier wires, the two
+contracts (C1 the keystone surface; C2 the wire) and the Ownership table are
+spliced byte-identically into every order (one md5 over the block, verified
+at planning: `4d386f50659ae2886afa4643afc9c293`). Six fresh surveys
+(2026-10-08, at `f5e953a3f` and on `main` `4895d1200`; under
+`work-orders/surveys/2026-10-08-setupphase-*.md`) are folded into the
+orders' survey sections on top of the ledger's same-day rows.
+
+**Planning facts that shape the split (each measured from the hunks, none
+from prose):** (1) v4's generateDDL renders `wardrobe_wear_stats` in a
+DIFFERENT shape from its migration (`REAL` count, no default, neither hand
+index), and a real v4 first boot never materializes that shape — so the
+SIXTH D23 re-dump records the Zod text while v5 PROVISIONS the migration's
+text through a D23 `migration_tables.json` dumped by v4's REAL runner (the
+P4.153 `mp_path` precedent generalized; P4.D255 R-A); the UNIQUE `COALESCE`
+index is the `ON CONFLICT` target of every write. (2) The seed migration has
+no once-only gate of its own — v4's runner checks `migrations_state` first —
+so v5's ensure STAMPS both rows or a shared instance double-counts (P4.D255
+R-B, the first stamping ensure since the heals). (3) v4 disagrees with
+itself on `wardrobeImageSettings` (three JSON shapes reach the read path)
+and `db/chat_settings.rs` reads positionally. (4) Items on the wire are
+`Value`s under `preserve_order`, so `origin` / `wear` are inserted keys, not
+struct slots; `Group store lookup failed` is not new and the flat resolver is
+unchanged. (5) v5 has no child process — the buffering, the host-RPC bridge
+write and bug 179 are structural no-ports; the fence becomes a census guard.
+(6) The `.qtap` image import never calls the bridge write — the carriers
+depend on path helpers and the wear repository only. (7) v4's
+`encodeEmbedding` is not a decoder; `{}` is REFUSED by v4 and recovered by
+v5 — a ruling (converge). (8) v5 has NO startup physical backup at all;
+the daily pass does not run retention; the WAL checkpoint is moot under
+TRUNCATE; there is no startup-progress surface. (9) The help tree is 130 at
+the target, not 132. (10) The eight rebuilt plugin bundles are the non-OpenAI
+plugins — the provider bundles still ship `openai` 7.23.0, so the SDK stamp
+is measured before any `RECORDED_*` bump. (11) `wardrobe_routes_equivalence`
+is a `quilltap-web` test. (12) The chat-gallery fixture is blind to both new
+arms — a fixture-growth order. (13) Two of the four SPA halves have no v5
+host (the avatar-picker Shape leg; the Import-from-image photograph) and the
+composer `wornBundleIds` is unreachable.
+
+**The orders** (`docs/developer/porting/work-orders/`):
+
+1. **`p4.d255-wardrobe-foundation-keystone-schema-ensures-wear-repo-verbs.md`
+   — P4.D255, the keystone (the most capable tier, from `main`).** The SIXTH
+   D23 re-dump (`fresh_schema.json` + the seed row) + the `migration_indexes.
+   json` re-dump + the NEW `migration_tables.json` with migrations-first
+   provisioning (R-A); the three re-homed migrations as boot ensures (the
+   table + both hand indexes; the seed in one transaction with v4's rowid
+   order, STAMPING both ledger rows, R-B; the `wardrobeImageSettings` column
+   with v4's one-key default) each with a P4.D251-template ensure
+   differential; the wear repository's DATA layer (v4's exact upsert SQL,
+   the fold, the deletes, `upsert_rows`, the summaries/history/rows reads
+   with v4's fallbacks) under a NEW tier-2 family over v4's REAL repository;
+   `WardrobeItem.image_file_id` through parser/writer/patch + the five inline
+   create sites; the typed `WardrobeImageSettings` + the positional read; the
+   full-row `files.find_by_linked_to`; the three parser extractions; the job
+   kind + PENDING-only dedupe enqueue + topics + activity row; the five new
+   dispatch verbs with refusal-bodied delegation arms in two new modules
+   handed to P4.D256 / P4.D263; the fixture helper + grown builders. Tier 1
+   ends in the ONE commit named `KEYSTONE` (§R.14). Bumps core + host.
+2. **`p4.d256-wardrobe-item-routes-origin-wear-reads-delete-hooks.md` —
+   P4.D256 (the most capable tier, from `KEYSTONE`).** `cc80dc89d` whole on
+   the server (the read-time `origin` on every collection read, item GET and
+   the group/project POST 201's `wardrobeItems`; the grouped resolver +
+   `GroupMounts`; the attributed read with first-group credit and the
+   shadowing winner's own origin; the `groupCount` key); `3ee3b1342`'s READ
+   side (`attach_wear` on every collection read; `?action=wear-history` on
+   the four item GETs with the 404-before-ledger order, through a NEW
+   `services/wardrobe_wear_history.rs` — raw-resolved names, `a departed
+   character`, `unattributed`); the item DELETEs' wear-row drop +
+   `cleanup_item_images` and the item PUTs' `imageFileId` 400 through the
+   keystone's primitives, warn-and-proceed in all four tiers (R-A folds
+   `characters.rs:2917`'s `?`); the web `?action` arms. Families:
+   `wardrobe_routes_equivalence` (web), `group_wardrobe_routes`,
+   `projects_routes`, `characters_reads` / `characters_mutations`,
+   `tiered_mount_pool` (grouped arms + a two-group plant), NEW
+   `wardrobe_wear_history_equivalence`. Bumps core + web.
+3. **`p4.d262-wear-ledger-chokepoint-equip-paths-wardrobe-tools.md` —
+   P4.D262 (the most capable tier, from `KEYSTONE`).** The chokepoint
+   `commit_equipped_outfit` in a NEW `services/wardrobe_wear_commit.rs`
+   (prior read → slot write → THROW on a lost write → diff → credit unless
+   `merge` → increment → the DEBUG), every one of v5's FIVE writer sites
+   routed through it with v4's `source` and `worn_bundles` (`set_all`'s
+   `wornBundleIds` + `resolve_worn_bundles`; chat-start / participant-added /
+   merge; the displacement primitives; `take-off`), the `…_with_credit`
+   widenings, the cascade fold, the census guard that replaces v4's fence
+   (R-A), the moved failure sentence `Failed to equip wardrobe slot` (R-B),
+   `format_relative_days` extracted with the Phase-1 pin unmoved, and the
+   four wardrobe tools (`wear_count` / `last_worn_at` / `image_file_id`, the
+   ` · last worn …` / ` · picture: …` tags, the `wardrobe_read` + `wardrobe_
+   update` second-person `wear` paragraph, `generate_image` with the
+   decision module + the executor-side enqueue, the four descriptions
+   regenerated). Families: `wardrobe_tools`, `tool_definitions`,
+   `chats_outfits_tier2`, `chat_cast_routes`, `chat_create_capstone`,
+   `outfit_llm_choose_tier3`, `dissolve_bundles`, `wardrobe_tools_avatar_
+   trigger`, NEW `wardrobe_wear_commit_tier2`, NEW `tool_image_generation`.
+   Bumps core.
+4. **`p4.d263-wardrobe-item-images-route-generation-job-settings-transfers.md`
+   — P4.D263 (the most capable tier, from `KEYSTONE`).** `7c8572869`'s
+   server beyond the keystone + `b3f937076`'s job / orientation / settings
+   key: the `/api/v1/wardrobe/[itemId]/images` surface (list / generate /
+   upload / set-current / delete-image with v4's 400/404/409/422/502 arms)
+   over the keystone's verbs + a NEW web binary route; the item-images
+   lifecycle module (beyond the primitives), the bridge write, the prompt
+   builder (worn vs catalogue over the shared identity block — the avatar
+   prompt's bytes PINNED unchanged), the generation through the Concierge
+   failover with `purpose: 'wardrobe'` and no chat; `resolve_wardrobe_image_
+   profile`; the settings PUT arm; transfers carrying pictures + the
+   archived-source 409; the job handler registered in `spine.rs` with a
+   seams constructor; `options.orientation`; the Almanack section; the log
+   type + purpose enums (R-B, for totality); the host-RPC/child branch
+   NO-PORT (R-A). Families per the survey's §15 + five NEW ones. Bumps core
+   + host + web.
+5. **`p4.d264-wardrobe-carriers-backup-restore-qtap-export-import-schema.md`
+   — P4.D264 (the most capable tier, from `KEYSTONE`).** `data/wardrobe-wear.
+   json` on every backup + the manifest count; restore's 22n-bis `upsert_
+   rows` + the delete-list line + 22f-ter picture-pointer fixes + the
+   new-account remaps (`files.linkedTo` / `tags` through the item-id remap —
+   a change to EXISTING output; `imageFileId`; `wardrobeImageSettings.image
+   ProfileId`; the mint ORDER byte-exact, R-A); `.qtap` export's trailing
+   `wardrobe_wear` records, archived items included, `_imageFiles` on
+   character-owned items; import's collector (today silently dropped),
+   `IdMaps.wardrobe_items`, phase 7e with MAX-against-live merge, the
+   post-reconcile picture re-mint, the seven warning literals VERBATIM; the
+   schema re-vendored + its two size pins. Families: `backup_uuid_remap`,
+   `system_backup`, `system_restore` (+ `_state`'s wardrobe arms), `system_
+   export` / `system_import` / `system_import_state`, `qtap_schema_embed_
+   guard`, `qtap_schema_validate`, `qtap_import`, `restore_vintage_state`;
+   DERIVED archives/bundles only. Bumps core.
+6. **`p4.d257-chat-gallery-story-background-folder-current-avatars-pass.md`
+   — P4.D257 (Opus, from `main`).** `f9f1ba177`: the folder-first
+   `is_story_background_file`, the NEW `current-avatars` pass with v4's
+   field chain and `deletable: false`, an insertion-ordered owners map
+   (R-A), the DEBUG line pinned; the committed chat-gallery pair REBUILT
+   with the two plants the blind fixture lacks (R-B). Bumps core.
+7. **`p4.d258-bug-180-181-convergence-llm-logs-ladder-embedding-shape-bug-179-no-port.md`
+   — P4.D258 (Opus, from `main`).** 181: the backup writes `number[]` +
+   the explicit `embedding: null` key (position measured); `{}` CONVERGES on
+   v4's refusal (R-A); the `INDEX_KEYED_EMBEDDING` carve retires into plain
+   comparands + the `Decoded index-keyed memory embedding` DEBUG + the
+   written-rows `memories` count. 180: the shared ladder helper on the
+   LLM-logs open, the per-attempt `SQLCipher key set…` DEBUG, `attempts` on
+   both terminal lines, the three `host_boot_hardness` pins, `degraded_
+   sibling_open` regenerated. 179: NO-PORT by architecture, proven by a
+   v5-alone pin that two ops compound. Bumps core.
+8. **`p4.d259-physical-backups-retention-daily-db-optimize-phase-0-75.md` —
+   P4.D259 (the most capable tier, from `main`).** The never-ported
+   `physical-backup.ts` trio (`VACUUM INTO`, the three filename shapes, the
+   24-h gate, the four-phase retention policy) + v4's PHASE-2 startup backup
+   as a fire-and-forget on a read connection (R-D); `f5e953a3f`'s daily pass
+   at the head of `assemble` on the writer connections before the ensures
+   (R-A), the state file byte-exact, the day gate from the host zone (R-E),
+   NO WAL checkpoint under TRUNCATE (R-B, recorded), the progress labels and
+   `isSQLiteBackend` arm NO-PORT (R-C); Tier 2 the CLI `db optimize` thaw
+   (Tier R). A NEW tier-2 family over v4's REAL `runDailyDbOptimize` from
+   the pin. Bumps core + host + cli.
+9. **`p4.d260-dependency-move-sdk-guard-recorders-help-docs-revendor.md` —
+   P4.D260 (Opus, from `main`).** `a9c99a4a0` + the bundle rebuilds: the
+   §R.4(k) stamp measurement BEFORE any `RECORDED_*` bump, the three
+   recorded corpora re-recorded from the pin with moved bytes CLASSIFIED,
+   the markdown families regenerated (a moved byte is a finding); `help/**`
+   re-vendored WHOLE at the target (130 files — R-A) + the `docs/v4/` paths
+   the span moved incl. `releases/4.10.0.md`; the two docs-only rows'
+   NO-PORT evidence. Bumps none unless a core hunk lands.
+10. **`p4.d261-wardrobe-spa-origin-chip-wear-ledger-pictures-settings-card.md`
+    — P4.D261 (Opus, from `main`).** The four commits' client halves as ONE
+    lane against contract C2 (every key optional): the origin chip with v4's
+    rule, wrapped titles, canonical slot labels; the wear line, Sort,
+    Never-worn, staged `wornBundleIds` on the dialog's two `set_all` paths,
+    the editor's Wear history through the new verb, `formatRelativeDays`
+    from the code; the editor's Picture section (generate / multipart upload
+    / set-current / delete-image with the veil), row + picker thumbnails,
+    the Settings → Images → Wardrobe Images card with the `generateFromTools`
+    checkbox; the `WARDROBE_ITEM_IMAGE` log-type union; the `characters`
+    realtime refresh (Tier 2); three named deferrals; gated Playwright beats
+    behind `P4D255_SERVER_LANDED`. Bumps SPA.
+
+**Execution:** P4.D255 cut from `main` at the orders' commit and launched
+FIRST, alone or beside the five other stage-1 lanes (P4.D257, P4.D258,
+P4.D259, P4.D260, P4.D261 — all from `main`); the moment P4.D255's status
+header names its `KEYSTONE` sha, P4.D256 ∥ P4.D262 ∥ P4.D263 ∥ P4.D264 are
+cut from THAT commit (worktree per lane, main's `target/` cloned). Cherry-pick
+order at `/unify`: P4.D255 → P4.D256 → P4.D262 → P4.D263 → P4.D264 → P4.D257
+→ P4.D258 → P4.D259 → P4.D260 → P4.D261 (§S.1). **Fences:** `api/types.rs` +
+`api/engine.rs` edited by P4.D255 ONLY; `help/**` + `docs/v4/**` by P4.D260
+ONLY; `apps/web/**` by P4.D261 ONLY; the committed pairs rebuilt by P4.D257
+ONLY (its own pair); no lane re-dumps a provisioning artefact but P4.D255.
+**Deliberately left out of this round:** the owed dogfood pass (the
+`94fbb1ae3` boot-hardness round's 💸 rows — still owed, AFTER this round
+with the ten lanes' rows added); the follow-ups smalls round from the six
+`94fbb1ae3`-round status headers (the previous NEXT item 3 — unchanged,
+next); the `db backup` CLI thaw (P4.D259 Tier 3); the avatar-picker Shape
+leg and the Import-from-image modal (no v5 host — named SPA deferrals, not
+orders); a shared `wardrobe_container` resolver adopted by the transfers
+(P4.D263 may create it; adoption is a later smalls item). **NEXT after this
+round unifies:** the owed dogfood pass (two rounds' rows); then the
+follow-ups smalls round; then a drift catch-up when v4 moves.
+
+
 ## The `94fbb1ae3` boot-hardness + validation + follow-ups round (P4.159 ∥ P4.160 ∥ P4.161 ∥ P4.162 ∥ P4.163 ∥ P4.164) — UNIFIED 2026-10-07 (ordered 2026-10-07)
 
 **UNIFIED on main (2026-10-07) — ALL SIX LANES LANDED; the oracle baseline

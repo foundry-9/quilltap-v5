@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — docs(porting): order the `f5e953a3f` wardrobe-programme + convergence drift catch-up round — ten work orders (P4.D255 → {P4.D256 ∥ P4.D262 ∥ P4.D263 ∥ P4.D264} ∥ P4.D257 ∥ P4.D258 ∥ P4.D259 ∥ P4.D260 ∥ P4.D261)
+
+_Docs-only change._
+
+`/setupphase` for the eleven-commit drift the 2026-10-08 `/driftcheck` classified. Ten work orders under `docs/developer/porting/work-orders/` (`p4.d255` … `p4.d264`), a binding round block (§R meeting points, §S unifier wires, contracts C1 the keystone surface and C2 the wire, the Ownership table) spliced byte-identically into all ten, and six planning surveys under `work-orders/surveys/2026-10-08-setupphase-*.md`.
+
+- **P4.D255 is the keystone:** the sixth D23 re-dump plus a new `migration_tables.json` (v4's generateDDL renders `wardrobe_wear_stats` in a different shape from its migration, and a real v4 first boot only ever gets the migration's), the three re-homed migrations as boot ensures (the wear-ledger ones stamp `migrations_state`, since the seed has no gate of its own), the wear repository's data layer, the item type's `imageFileId`, the typed `wardrobeImageSettings`, the item-image primitives, the job kind, and every new dispatch verb with refusal-bodied arms. The four wardrobe lanes branch from its `KEYSTONE` commit.
+- **P4.D256 / P4.D262 / P4.D263 / P4.D264** split the wardrobe programme by file ownership: item routes (origin, wear reads, delete hooks), the wear ledger's write side plus the four wardrobe tools, item images plus the tool-pictures job and `orientation`, and the backup/restore/export/import carriers with the re-vendored export schema.
+- **P4.D257** the chat gallery (a fixture-growth order with a rebuilt pair); **P4.D258** the bug-180/181 convergence plus the bug-179 no-port ratification; **P4.D259** the never-ported physical backups and retention plus the daily optimize; **P4.D260** the dependency move, the recorded corpora and the whole-tree help/docs re-vendor (130 help files); **P4.D261** the wardrobe SPA as one lane.
+
+v4 landed the docs-only `1825bfd53` during planning; by the human's ruling the round still pins at `f5e953a3f`, the waiver is recorded in the ledger's §1 and the commit is a new UNPROCESSED row. The drift ledger's eleven §3 rows are marked `ORDERED(…)`, with two planning corrections appended (the generateDDL-vs-migration shape and the stamping hazard on `3ee3b1342`; the pre-existing `Group store lookup failed` line on `cc80dc89d`) and the `public_schemas_vendor_guard` misattribution in §1 corrected. `phase-4.md` gains the round's ORDERED section.
+
 #### 2026-10-08 — docs(porting): drift check — 11 v4 commits past `94fbb1ae3` classified; bugs 180/181 converge; two schema moves pending
 
 _Docs-only change._
