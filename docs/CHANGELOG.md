@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — fix(restore): decode index-keyed memory embeddings as v4 does, log the decode, count memories written (v4 bug 181, `039f7017c`)
+
+_Versions: core 0.0.1255._
+
+P4.D258 unit 3. v4 `039f7017c` fixed this port's bug-181 filing on the restore side with `decodeIndexKeyedEmbedding` — the same decode v5 had carried since 2026-10-07 as a ruled divergence. Three things converge:
+
+- `restore::rows::decode_index_keyed_embedding` now leaves an empty object `{}` unchanged, so `MemorySchema` refuses the memory, as v4's decoder does; v5 used to decode it to `[]` and restore the memory with a NULL vector. The old unit test is inverted.
+- The memories phase logs v4's DEBUG `Decoded index-keyed memory embedding` (`memoryId`, `dimensions`) on target `quilltap::restore` whenever a decode happened.
+- `RestoreSummary.memories` counts the memories actually written (`Counters.memories`, incremented after a successful create), not the archive's length. The preview still reports the archive's count, as v4's does.
+
+NEW tier-1 family `index_keyed_embedding_equivalence` (`harness/oracle/cases/index-keyed-embedding.ts`) runs v4's REAL decoder over 35 rows: v4's jest inputs, widths 1 / 2 / 4 / 1536, key and value edge cases, every object replayed with its keys reversed on the Rust side, and three inputs JSON cannot carry recorded as named gaps. It was red on unported `main` on the `{}` row alone.
+
+`system_restore_state` retires the `INDEX_KEYED_EMBEDDING` carve into plain comparands: `…09` is compared like every other row and named on both sides with its decoded vector, the DEBUG joins the Rust census list, and the summary count is compared as a written count. Red-first at the `f5e953a3f` pin on unported `main`: the carve's `v4 converged` tripwire, `main.memories` 5 vs 6 rows, `summary.memories` 13 vs 6 on the refusals case and 2 vs 0 on `restore_phase_warns_replace`. Green now apart from the 32 `chat_settings` rows (`wardrobeImageSettings`, owned by P4.D255 / P4.D264). The oracle side of the DEBUG needs one line in `harness/oracle/cases/system-restore.test.ts`'s census list (P4.D264's file), handed off to the unifier; without it the refusals case is red on v5's extra line.
+
 #### 2026-10-08 — fix(backup): full backups write memory embeddings as `number[]` with an explicit `null` (v4 bug 181, `039f7017c`)
 
 _Versions: core 0.0.1254._

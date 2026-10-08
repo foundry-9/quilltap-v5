@@ -57,6 +57,26 @@
 //!    — see [`PHASE_ORDER_RESIDUAL`]. A deliberate divergence, not a pending
 //!    question.
 //!
+//! ## The `INDEX_KEYED_EMBEDDING` divergence — RETIRED (P4.D258, 2026-10-08)
+//!
+//! Ruled by the human at the `94fbb1ae3` boot-hardness unification
+//! (2026-10-07): v4's full backup wrote every memory embedding as
+//! `JSON.stringify(Float32Array)`'s index-keyed object, which v4's own restore
+//! refused, so v4 lost every embedded memory; v5 decoded the shape and kept
+//! them. Pinned both ways on `restore_memory_refusals_replace`'s `…09`.
+//!
+//! **v4 fixed it in `039f7017c`** (bug 181, this port's filing) — the backup
+//! writes `number[]`, the restore decodes the old shape, and the summary's
+//! `memories` counts the rows written. The tripwire fired on the first
+//! regenerated oracle (`…09 now RESTORES on v4 — v4 converged`). What it
+//! turned into: `…09` is compared like every other row (and named on both
+//! sides, with its decoded vector, by `assert_refusals_restored`); v4's
+//! `Decoded index-keyed memory embedding` DEBUG is in the log census; the
+//! summary's `memories` is a written count on both sides. CONVERGED — v5
+//! took v4's one differing edge too (`{}` is refused, not decoded to `[]`;
+//! `index_keyed_embedding_equivalence` pins the decoder against v4's REAL
+//! one).
+//!
 //! ## ⚠ What is left, and why each is not simply "fixed here"
 //!
 //! - [`PHASE_ORDER_RESIDUAL`] — the two orderings write the SAME ROWS with the
@@ -1733,28 +1753,11 @@ fn system_restore_state_equivalence() {
         drop(db);
         let mut got_state = read_state(&instance);
         let mut want_owned = case["state"].clone();
-        // [the `94fbb1ae3` boot-hardness unification] the ruled
-        // index-keyed-embedding divergence, both ways, then carved from the
-        // dumps, the warnings and both log censuses (its own case copy).
-        let mut case_owned = case.clone();
-        let mut index_keyed_drops = Vec::new();
-        carve_index_keyed_embedding(
-            name,
-            &mut got_state,
-            &mut want_owned,
-            &mut case_owned,
-            &mut index_keyed_drops,
-            &mut failures,
-        );
-        let case = &case_owned;
 
         // [P4.147] The two ruled divergences, asserted both ways on the RAW
         // dumps and then carved — BEFORE any normalization, so the
         // `<minted-N>` first-encounter labels of the remaining rows line up.
-        let mut summary_carve = SummaryCarve {
-            drop_v4_warnings: index_keyed_drops,
-            ..SummaryCarve::default()
-        };
+        let mut summary_carve = SummaryCarve::default();
         if mode_for(name) == RestoreMode::Replace {
             if let Some(shared) = carve_fresh_store_residual(
                 name,
@@ -5095,7 +5098,8 @@ fn assert_claimed_store_warns(name: &str, lines: &[String], failures: &mut Vec<S
 /// ## [P4.158 R-G] The restore's log census — every `moduleLogger` line of
 /// ## v4's `restore.ts`, on every case
 ///
-/// All 63 sites (44 warn, 5 info, 14 debug — each message distinct), recorded
+/// All 64 sites (44 warn, 5 info, 15 debug — each message distinct; P4.D258
+/// added `039f7017c`'s `Decoded index-keyed memory embedding`), recorded
 /// by the oracle on every case with every context key. v5 must log the same
 /// lines, in the same order, with the same fields (an Error recorded as its
 /// message; an object / array through the `…Json` file-layer convention).
@@ -5103,6 +5107,7 @@ fn assert_claimed_store_warns(name: &str, lines: &[String], failures: &mut Vec<S
 /// lacked (ported), and which are unreachable in v5 (named, with the reason).
 const RESTORE_TS_MESSAGES: &[&str] = &[
     "All entities restored with preserved IDs - no reconciliation needed",
+    "Decoded index-keyed memory embedding",
     "Failed to enqueue reindex after compact restore",
     "Failed to restore LLM log",
     "Failed to restore character",
@@ -5607,141 +5612,6 @@ fn assert_informs_restored(
     }
 }
 
-/// ## ⚠ THE RULED DIVERGENCE — `INDEX_KEYED_EMBEDDING` (the human, 2026-10-07)
-///
-/// v4's FULL backup writes `data.memories` raw, so every embedding is
-/// `JSON.stringify(Float32Array)` — an index-keyed OBJECT `{"0":…}` — which
-/// v4's OWN restore refuses in `MemorySchema`'s embedding union (an
-/// `invalid_union` warning per memory: every embedded memory is lost). Ruled
-/// at the `94fbb1ae3` boot-hardness unification: FIX v5 —
-/// `restore::rows::decode_index_keyed_embedding` decodes that exact shape to
-/// the union's `number[]`, so the memory and its vector restore. (Before P4.161
-/// v5 restored such a memory with a NULL vector; P4.161's whole-row parse had
-/// silently converged on v4's loss.)
-///
-/// Each entry is `(case, memory id, the decoded vector)`. Asserted BOTH ways
-/// — v4 refuses that id with its `Failed to restore memory` WARN and three
-/// repository ERRORs carrying the same error; v5 lands it with exactly the
-/// decoded vector's BLOB and logs none of them — then carved from every
-/// comparand, so a v4 convergence (or a v5 regression) trips it.
-const INDEX_KEYED_EMBEDDING: &[(&str, &str, &[f32])] = &[(
-    "restore_memory_refusals_replace",
-    "ad000000-0000-4000-8000-000000000009",
-    &[0.25],
-)];
-
-fn carve_index_keyed_embedding(
-    name: &str,
-    got: &mut BTreeMap<String, BTreeMap<String, Vec<Value>>>,
-    want_state: &mut Value,
-    case: &mut Value,
-    drop_v4_warnings: &mut Vec<String>,
-    failures: &mut Vec<String>,
-) {
-    for (_, id, vector) in INDEX_KEYED_EMBEDDING.iter().filter(|(c, _, _)| *c == name) {
-        // v5: the memory landed, carrying exactly the decoded vector.
-        let blob = format!(
-            "sha256:{}",
-            hex::encode(Sha256::digest(
-                quilltap_core::embedding_blob::float32_to_blob(vector)
-            ))
-        );
-        let rows = got
-            .get_mut("main")
-            .and_then(|p| p.get_mut("memories"))
-            .expect("v5 dump has main.memories");
-        match rows.iter().position(|r| r["id"] == *id) {
-            Some(i) => {
-                if rows[i]["embedding"] != json!(blob) {
-                    failures.push(format!(
-                        "[{name}] INDEX_KEYED_EMBEDDING (v5): {id} landed with embedding {}, \
-                         want the decoded {vector:?} ({blob})",
-                        rows[i]["embedding"]
-                    ));
-                }
-                rows.remove(i);
-            }
-            None => failures.push(format!(
-                "[{name}] INDEX_KEYED_EMBEDDING (v5): {id} did not restore — the decode is gone"
-            )),
-        }
-        // v4: refused, with ONE `Failed to restore memory` WARN naming the id…
-        if rows_of(want_state, "main", "memories")
-            .iter()
-            .any(|r| r["id"] == *id)
-        {
-            failures.push(format!(
-                "[{name}] INDEX_KEYED_EMBEDDING (v4): {id} now RESTORES on v4 — v4 converged; \
-                 retire the divergence"
-            ));
-            continue;
-        }
-        let logs = case["logs"].as_array_mut().expect("oracle carries logs");
-        let Some(at) = logs
-            .iter()
-            .position(|l| l["message"] == "Failed to restore memory" && l["memoryId"] == *id)
-        else {
-            failures.push(format!(
-                "[{name}] INDEX_KEYED_EMBEDDING (v4): no `Failed to restore memory` for {id}"
-            ));
-            continue;
-        };
-        let error = logs.remove(at)["error"].as_str().unwrap_or("").to_string();
-        if !error.contains("invalid_union") {
-            failures.push(format!(
-                "[{name}] INDEX_KEYED_EMBEDDING (v4): {id} refused for another reason: {error}"
-            ));
-        }
-        // …its three repository ERRORs (validate, `_create`, the wrap) on the
-        // same error — recorded in the case's `logs` census…
-        let before = logs.len();
-        logs.retain(|l| {
-            !(l["error"] == json!(error)
-                && matches!(
-                    l["message"].as_str(),
-                    Some(
-                        "Data validation failed"
-                            | "Error creating entity"
-                            | "Error creating memory"
-                    )
-                ))
-        });
-        if before - logs.len() != 3 {
-            failures.push(format!(
-                "[{name}] INDEX_KEYED_EMBEDDING (v4): {} repository line(s) carry {id}'s error, \
-                 want 3",
-                before - logs.len()
-            ));
-        }
-        // …and the post-restore reconcile's count: v5's landed memory carries
-        // a vector of the DECODED width, so where that differs from the
-        // target profile's dimensions v5's `mismatched.memories` counts it
-        // and v4's (which never saw the row) does not.
-        for r in logs.iter_mut().filter(|l| {
-            l["message"] == "Post-restore embedding reconcile complete"
-                && l["targetDimensions"].as_u64() != Some(vector.len() as u64)
-        }) {
-            if let Some(n) = r["mismatched"]["memories"].as_u64() {
-                r["mismatched"]["memories"] = json!(n + 1);
-            }
-        }
-        // …and its one summary warning, which `compare_case` drops (v4's own
-        // summary stays whole: its `Restore operation completed` line is
-        // checked against it).
-        let warning = format!("Failed to restore memory: {error}");
-        if case["summary"]["warnings"]
-            .as_array()
-            .is_some_and(|ws| ws.iter().any(|w| *w == json!(warning)))
-        {
-            drop_v4_warnings.push(warning);
-        } else {
-            failures.push(format!(
-                "[{name}] INDEX_KEYED_EMBEDDING (v4): no summary warning for {id}"
-            ));
-        }
-    }
-}
-
 /// [P4.161 — dogfood #152, §S.2, P4.155's R-B] **The whole-row refusal
 /// archives, by name, on BOTH sides** (so a two-sided loss cannot pass as
 /// agreement): each side lands EXACTLY the sound rows its derive script names
@@ -5777,10 +5647,19 @@ fn assert_refusals_restored(
     };
     match name {
         "restore_memory_refusals_replace" => {
-            let expected: Vec<String> = ["01", "02", "11", "12", "13"]
+            // `…09` is the archive's `{"0":0.25}` index-keyed embedding (v4 bug
+            // 181): it lands on BOTH sides since `039f7017c` (P4.D258 — the
+            // retired `INDEX_KEYED_EMBEDDING` carve), with the decoded vector.
+            let expected: Vec<String> = ["01", "02", "09", "11", "12", "13"]
                 .iter()
                 .map(|n| format!("ad000000-0000-4000-8000-0000000000{n}"))
                 .collect();
+            let decoded = json!(format!(
+                "sha256:{}",
+                hex::encode(Sha256::digest(
+                    quilltap_core::embedding_blob::float32_to_blob(&[0.25])
+                ))
+            ));
             for (side, dump) in [("v5", &got_v), ("v4", want)] {
                 let landed = ids(dump, "main", "memories", "");
                 if landed != expected {
@@ -5800,6 +5679,16 @@ fn assert_refusals_restored(
                         r["reinforcedImportance"]
                     ])
                 });
+                let vector = rows_of(dump, "main", "memories")
+                    .iter()
+                    .find(|r| r["id"] == "ad000000-0000-4000-8000-000000000009")
+                    .map(|r| r["embedding"].clone());
+                if vector.as_ref() != Some(&decoded) {
+                    failures.push(format!(
+                        "[{name}] INDEX-KEYED EMBEDDING ({side}): …09 landed with {vector:?}, \
+                         expected the decoded [0.25] ({decoded})"
+                    ));
+                }
                 if got_defaults != Some(json!([0.5, "MANUAL", "semantic", 1, 0.5])) {
                     failures.push(format!(
                         "[{name}] R-C DEFAULTS ({side}): {got_defaults:?}, expected \

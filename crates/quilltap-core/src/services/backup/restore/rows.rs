@@ -85,21 +85,33 @@ pub fn embedding(v: &Value, k: &str) -> Option<Vec<f32>> {
     )
 }
 
-/// A RULED DIVERGENCE (the human, 2026-10-07, at the `94fbb1ae3` boot-hardness
-/// unification — "fix v5"): v4's FULL backup writes `data.memories` raw
-/// (`backup-service.ts:657`, `writeJsonArrayFile` → `JSON.stringify`), and
-/// `JSON.stringify(Float32Array)` is an index-keyed OBJECT `{"0":v0,"1":v1,…}`
-/// — a shape v4's own restore then refuses in `MemorySchema`'s embedding union
-/// (`memory.types.ts:73-84`: Float32Array / number[] / Buffer / string), so v4
-/// drops EVERY embedded memory on restore with an `invalid_union` warning. v5
-/// decodes exactly that shape — keys `"0"…"n-1"` (canonical decimal, no gaps),
-/// every value a number — back into the `number[]` the union's array option
-/// takes, so the memory AND its vector restore. Any other object is left
-/// untouched (the schema refuses it, as v4's does). Answers whether it decoded.
+/// v4 `decodeIndexKeyedEmbedding` (`lib/backup/restore/index-keyed-embedding.ts
+/// :11-30`, new at `039f7017c` — v4 bug 181, this port's filing). A full
+/// backup written before that fix carries each memory embedding as
+/// `JSON.stringify(Float32Array)`: an index-keyed OBJECT `{"0":v0,"1":v1,…}`
+/// that `MemorySchema`'s embedding union (`memory.types.ts:73-84`) refuses.
+/// This decodes exactly that shape — a NON-EMPTY object whose keys are
+/// `"0"…"n-1"` (canonical decimal, no gaps), every value a number — into the
+/// `number[]` the union's array option takes, so the memory and its vector
+/// restore. Anything else is left untouched for the schema to accept or
+/// refuse, `{}` included (v4 `:17` returns it unchanged — the memory is
+/// refused). v4's `Number.isFinite` check has no Rust twin to make: a v5
+/// archive is parsed JSON, which carries no non-finite number.
+///
+/// CONVERGED (P4.D258): this was a RULED DIVERGENCE (the human, 2026-10-07,
+/// at the `94fbb1ae3` boot-hardness unification — "fix v5") while v4 lost
+/// every embedded memory on restore; v4 then fixed it in the same shape, and
+/// the one edge where v5 had differed — `{}`, which v5 decoded to `[]` and
+/// restored with a NULL vector — now follows v4 (R-A). Pinned against v4's
+/// REAL decoder by `index_keyed_embedding_equivalence`. Answers whether it
+/// decoded (the caller logs v4's `Decoded index-keyed memory embedding`).
 pub fn decode_index_keyed_embedding(item: &mut serde_json::Map<String, Value>) -> bool {
     let Some(Value::Object(o)) = item.get("embedding") else {
         return false;
     };
+    if o.is_empty() {
+        return false;
+    }
     let mut values: Vec<Option<Value>> = vec![None; o.len()];
     for (k, x) in o {
         let Ok(i) = k.parse::<usize>() else {
@@ -136,10 +148,16 @@ mod tests {
             .unwrap();
         assert!(decode_index_keyed_embedding(&mut m));
         assert_eq!(m["embedding"], json!([0.25, -0.5, 1]));
-        // `Float32Array(0)` stringifies to `{}` → `[]` (stored as SQL NULL).
+    }
+
+    /// The retired divergence's pin, inverted (P4.D258 R-A): `Float32Array(0)`
+    /// stringifies to `{}`, which v4 leaves UNCHANGED for `MemorySchema` to
+    /// refuse. v5 used to decode it to `[]` and restore the memory.
+    #[test]
+    fn an_empty_index_keyed_object_is_left_for_the_schema_to_refuse() {
         let mut empty = json!({"embedding": {}}).as_object().cloned().unwrap();
-        assert!(decode_index_keyed_embedding(&mut empty));
-        assert_eq!(empty["embedding"], json!([]));
+        assert!(!decode_index_keyed_embedding(&mut empty));
+        assert_eq!(empty["embedding"], json!({}));
     }
 
     #[test]

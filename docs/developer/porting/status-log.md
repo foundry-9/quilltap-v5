@@ -173931,3 +173931,58 @@ cases; the family stays red ONLY on P4.D264's `data/wardrobe-wear.json` +
 manifest `wardrobeWear` (§R.13(d)) — 15 differences, every one of that
 kind. Silent-stale check: `"embedding\": null` occurs 75 times in the fresh
 backup NDJSON.
+
+### Unit 3 — the decoder converges, the DEBUG, the written-rows count, the carve retired (bug 181, items 3–6)
+
+- `services/backup/restore/rows.rs`: `{}` → `false` (R-A); the doc is now
+  the convergence record (`039f7017c`; the 2026-10-07 ruling it overtakes);
+  the `{}` unit test MOVED to assert the refusal path
+  (`an_empty_index_keyed_object_is_left_for_the_schema_to_refuse`).
+  `api/zod_issues.rs` already refuses a non-array object — no
+  `db/memories.rs` hunk.
+- `restore/orchestrator.rs` (R-G — the three touches, recorded for P4.D264):
+  the decode's `true` arm logs DEBUG `Decoded index-keyed memory embedding`
+  `memoryId, dimensions` on `quilltap::restore` (caller thread — not inside
+  a `Db::write` closure); the memories loop's `warn_only!` became
+  `warn_row!(…, c.memories, …)` (increment on `Ok` only — v4 `:279`);
+  `Counters.memories: usize`; `into_summary` reads `self.memories`.
+  `preview.rs:27` untouched.
+- NEW tier-1 family `index_keyed_embedding_equivalence` (item 6) —
+  `harness/oracle/cases/index-keyed-embedding.ts` over v4's REAL
+  `decodeIndexKeyedEmbedding`; 35 rows (9 decode, 23 unchanged, 3 named gaps:
+  `NaN`, a live `Float32Array`, a null-prototype object — none can reach a
+  v5 decoder through parsed JSON); every object replayed with its keys
+  REVERSED on the Rust side (the oracle's JSON emits JS's ascending
+  integer-key order, so "keys in any order" is v5-side). Red-first: the
+  `jest_empty_object` row alone (both replays). Green after.
+  `recipe_sweep.py --self-test` exits 0; `--show` resolves the recipe.
+- `system_restore_state.rs`: `INDEX_KEYED_EMBEDDING` + its carve + the call
+  + the `index_keyed_drops` feed DELETED; the header records the
+  retirement in the `c1507f47` idiom. Two hunks OUTSIDE the order's named
+  line range, both the carve's own comparands: `assert_refusals_restored`'s
+  expected list gains `…09` and asserts its decoded vector
+  (`sha256(float32_to_blob([0.25]))`) on BOTH sides (so a two-sided
+  NULL-vector landing cannot pass as agreement); `RESTORE_TS_MESSAGES` gains
+  the DEBUG (its doc 63 → 64 sites, 14 → 15 debug). After, at the pin
+  (census patched in the STAGED case copy only — see the HANDOFF): the
+  family's only differences are the 32 `main.chat_settings` rows, every one
+  the `wardrobeImageSettings` key (P4.D255 / P4.D264, §R.13). The reconcile
+  count (item 16): no finding — both sides' `Post-restore embedding reconcile
+  complete` lines agree once `…09` lands on both. The `summary.memories`
+  red on `restore_phase_warns_replace` (2 vs 0) closed with the count.
+- Silent-stale check: `Decoded index-keyed memory embedding` occurs ONCE in
+  the fresh (patched-census) restore NDJSON (the `…09` row).
+- Measured the handoff's necessity: the same family against an UNPATCHED
+  census oracle is red on `restore_memory_refusals_replace` — "the restore's
+  log census differs — first difference at line 26" (v5's DEBUG, absent from
+  v4's whitelist).
+
+**HANDOFF: the unifier (P4.D264's file)** —
+`harness/oracle/cases/system-restore.test.ts`, the `RESTORE_TS_MESSAGES`
+array: insert, as its SECOND entry (after `"All entities restored with
+preserved IDs - no reconciliation needed",`), the line
+`  "Decoded index-keyed memory embedding",` and in the doc comment above it
+change "all 63 sites" → "all 64 sites" and "14 debug" → "15 debug"; then
+regenerate `system_restore_state` from the pin and re-run it by name. Until
+that line lands, `restore_memory_refusals_replace` is red on the census
+(measured above) — that red is this handoff, not a finding.

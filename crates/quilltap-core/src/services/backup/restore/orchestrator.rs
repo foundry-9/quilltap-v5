@@ -907,10 +907,21 @@ fn restore_on_writer(
             for k in ["id", "createdAt", "updatedAt", "personaId"] {
                 item.remove(k);
             }
-            // The RULED divergence (`rows::decode_index_keyed_embedding`): a
-            // full backup's `JSON.stringify(Float32Array)` embedding — which
-            // v4's own restore refuses — is decoded so the memory restores.
-            super::rows::decode_index_keyed_embedding(&mut item);
+            // v4 `:265-273` (bug 181, `039f7017c` — the convergence of the
+            // 2026-10-07 ruled divergence): a pre-fix full backup's
+            // `JSON.stringify(Float32Array)` embedding is decoded so the
+            // memory restores, with v4's DEBUG when it was.
+            if super::rows::decode_index_keyed_embedding(&mut item) {
+                tracing::debug!(
+                    target: "quilltap::restore",
+                    memoryId = %id_of(m),
+                    dimensions = item
+                        .get("embedding")
+                        .and_then(serde_json::Value::as_array)
+                        .map_or(0, Vec::len),
+                    "Decoded index-keyed memory embedding"
+                );
+            }
             let item = Value::Object(item);
             let character_id = s(m, "characterId");
             let claimed = id_of(m);
@@ -949,8 +960,11 @@ fn restore_on_writer(
                     .map_err(|e| e.warn_text())
                 })
             };
-            warn_only!(
+            // v4 `:279` counts a memory only once `create` returned
+            // (`memoriesRestored++`, bug 181's summary half).
+            warn_row!(
                 w,
+                c.memories,
                 "Failed to restore memory".to_string(),
                 created,
                 "Failed to restore memory",
@@ -3841,6 +3855,8 @@ struct Counters {
     plugin_configs: usize,
     chat_settings: usize,
     folders: usize,
+    /// v4 `memoriesRestored` (`restore.ts:262`, `039f7017c`).
+    memories: usize,
     wardrobe_items: usize,
     npm_plugins: usize,
     character_plugin_data: usize,
@@ -3900,9 +3916,10 @@ fn wardrobe_wear_rows(
 
 impl Counters {
     /// v4 `restore.ts:840-887`, field by field. The mix is deliberate:
-    /// `characters` / `chats` / `tags` / `memories` and the three `profiles`
-    /// report the archive's INPUT lengths even when a row failed, while
-    /// everything else reports what actually landed.
+    /// `characters` / `chats` / `tags` and the three `profiles` report the
+    /// archive's INPUT lengths even when a row failed, while everything else
+    /// reports what actually landed — `memories` among them since v4
+    /// `039f7017c` (bug 181: `memories: memoriesRestored`, `:1185`).
     fn into_summary(
         self,
         data: &crate::services::backup::collect::BackupData,
@@ -3918,7 +3935,7 @@ impl Counters {
             messages: self.messages,
             tags: data.tags.len(),
             files: self.files,
-            memories: data.memories.len(),
+            memories: self.memories,
             profiles: ProfileCounts {
                 connection: data.connection_profiles.len(),
                 image: data.image_profiles.len(),
