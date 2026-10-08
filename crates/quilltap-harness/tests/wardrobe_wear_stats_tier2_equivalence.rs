@@ -119,7 +119,10 @@ fn expected_line(entry: &Value) -> Option<String> {
     let (target, lead) = if fields.first().is_some_and(|f| f.starts_with("collection=")) {
         ("quilltap::db", String::new())
     } else {
-        ("quilltap::wardrobe_wear", "module=wardrobe-wear ".to_string())
+        (
+            "quilltap::wardrobe_wear",
+            "module=wardrobe-wear ".to_string(),
+        )
     };
     Some(format!(
         "{} {target} {message} {lead}{}",
@@ -137,8 +140,7 @@ fn wardrobe_wear_stats_tier2_matches_oracle() {
         eprintln!("SKIP: set QT_ORACLE_WEAR_T2 and QT_FIXTURE_WEAR_T2_DIR (see header).");
         return;
     };
-    let spec: Value =
-        serde_json::from_str(&std::fs::read_to_string(spec_path()).unwrap()).unwrap();
+    let spec: Value = serde_json::from_str(&std::fs::read_to_string(spec_path()).unwrap()).unwrap();
     let oracle: Value = serde_json::from_str(
         std::fs::read_to_string(&oracle_path)
             .expect("read oracle")
@@ -203,7 +205,8 @@ fn wardrobe_wear_stats_tier2_matches_oracle() {
                 rows(repo.find_rows_for_wearer(op["characterId"].as_str().unwrap()))
             }
             // v4's `foldWearerIntoUnattributed` answers `void`.
-            "fold" => match repo.fold_wearer_into_unattributed(op["characterId"].as_str().unwrap()) {
+            "fold" => match repo.fold_wearer_into_unattributed(op["characterId"].as_str().unwrap())
+            {
                 Ok(_) => Value::Null,
                 Err(e) => json!({ "threw": error_text(&e) }),
             },
@@ -258,7 +261,10 @@ fn wardrobe_wear_stats_tier2_matches_oracle() {
                 .cloned()
                 .collect();
             let dropped = all.len() - kept.len();
-            assert!(dropped > 0, "[{label}] the corpus must hold a NULL-carrying row");
+            assert!(
+                dropped > 0,
+                "[{label}] the corpus must hold a NULL-carrying row"
+            );
             assert_eq!(
                 v4["result"],
                 Value::Array(kept),
@@ -266,8 +272,15 @@ fn wardrobe_wear_stats_tier2_matches_oracle() {
                  converged: retire the carve into a plain comparand"
             );
             let v4_logs = v4["logs"].as_array().unwrap();
-            assert_eq!(v4_logs.len(), dropped * 2, "[{label}] v4's two lines per dropped row");
-            assert!(lines.is_empty(), "[{label}] v5 drops nothing and logs nothing: {lines:#?}");
+            assert_eq!(
+                v4_logs.len(),
+                dropped * 2,
+                "[{label}] v4's two lines per dropped row"
+            );
+            assert!(
+                lines.is_empty(),
+                "[{label}] v5 drops nothing and logs nothing: {lines:#?}"
+            );
             continue;
         }
 

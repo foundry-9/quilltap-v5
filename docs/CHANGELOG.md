@@ -12,6 +12,13 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — test(harness): the two P4.D255 boot ensures against v4's real migrations (items 19, 20)
+
+_No crate versions bumped._
+
+- NEW `wardrobe_wear_stats_ensure_equivalence` + `cases/wardrobe-wear-stats-ensure.ts`. These drive v4's REAL `MigrationRunner`, narrowed to `add-wardrobe-wear-stats-table-v1` + `seed-wardrobe-wear-stats-v1` so the ledger gate before `shouldRun` and `recordCompletedMigration`'s stamps are part of the oracle. Four modes: no table (both run, both stamped); the migration-shaped table unseeded (only the seed runs and is stamped); both rows present (both skipped); the seed edge corpus (11 wears across 9 chats, including the rowid tie-break and `Object.entries` index-first key order). Comparands: `table_info`, `sqlite_master.sql`, the rows, and the `migrations_state` rows. The repository `createdAt` index v5 re-homes is carved by name. A key-order mutation reds mode (d).
+- NEW `chat_settings_wardrobe_image_settings_ensure_equivalence` + `cases/chat-settings-wardrobe-image-settings-ensure.ts` covers three shapes: the pre-round table (the column appended with v4's one-key default, existing rows reading it), the pin's generateDDL (no-op), and already migrated (no-op).
+
 #### 2026-10-08 — test(harness): the wear-ledger tier-2 family against v4's REAL repository; the five wardrobe builders grow the ledger table (P4.D255 items 17, 21)
 
 _No crate versions bumped._
