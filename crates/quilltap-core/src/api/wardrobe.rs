@@ -52,7 +52,8 @@ use crate::services::wardrobe_item_images::primitives::{
     cleanup_item_images, ItemImageCleanupMeta,
 };
 use crate::services::wardrobe_item_route_steps::{
-    log_cleanup_equipped_refs, run_cleanup_equipped_refs, ItemRouteMeta,
+    image_choice_error, log_cleanup_equipped_refs, parse_image_file_id, run_cleanup_equipped_refs,
+    ItemRouteMeta,
 };
 use crate::services::wardrobe_transfers::{
     self, ComponentMode, DestinationScope, ExplicitSource, SourceScope, TransferAction,
@@ -113,6 +114,8 @@ struct ArchetypeBody {
     /// v4 `d25dacc1`'s `archived: z.boolean().optional()` — archive (`true`) or
     /// restore (`false`); omitting it leaves the current state alone.
     archived: Option<bool>,
+    /// v4 `7c8572869`'s update-only `imageFileId: z.uuid().nullable().optional()`.
+    image_file_id: Option<Option<String>>,
 }
 
 /// Zod PASS/FAIL port of v4 `createArchetypeSchema` (`require_all = true`) and
@@ -196,6 +199,12 @@ fn parse_archetype_body(body: &Value, require_all: bool) -> Result<ArchetypeBody
     } else {
         boolean("archived")?
     };
+    // v4 `7c8572869`: update-only, like `archived` (the create schema strips it).
+    let image_file_id = if require_all {
+        None
+    } else {
+        parse_image_file_id(body)?
+    };
 
     let component_item_ids = match obj.get("componentItemIds") {
         None => None,
@@ -222,6 +231,7 @@ fn parse_archetype_body(body: &Value, require_all: bool) -> Result<ArchetypeBody
         component_item_ids,
         replace,
         archived,
+        image_file_id,
     })
 }
 
@@ -398,9 +408,10 @@ pub async fn wardrobe_update(db: &Db, item_id: &str, body: Value) -> Response {
         is_default: parsed.is_default,
         replace: parsed.replace,
         archived_at: None,
-        image_file_id: None,
+        image_file_id: parsed.image_file_id.clone(),
     };
     let archived = parsed.archived;
+    let image_file_id = parsed.image_file_id;
 
     let out = with_both_conns(db, move |main, mount| {
         let docs = DocMountDocumentsRepository::new(mount);
@@ -418,6 +429,23 @@ pub async fn wardrobe_update(db: &Db, item_id: &str, body: Value) -> Response {
         );
         if !exists {
             return Ok(Err(not_found("Archetype wardrobe item")));
+        }
+        // v4 `7c8572869`: `imageChoiceError` — BEFORE the archive flag. A file
+        // that is not one of the item's own pictures is v4's 400; a failed
+        // picture read is v4's rethrow (the middleware's 500).
+        match image_choice_error(
+            main,
+            &iid,
+            image_file_id.as_ref().and_then(|o| o.as_deref()),
+        ) {
+            Ok(None) => {}
+            Ok(Some(message)) => return Ok(Err(bad_request(message))),
+            Err(_) => {
+                return Ok(Err(Response::error(
+                    ErrorKind::Internal,
+                    "Internal server error",
+                )))
+            }
         }
         // v4 `d25dacc1`: the General route reads the ALREADY-LOADED `existing`.
         if let Some(a) = archived {

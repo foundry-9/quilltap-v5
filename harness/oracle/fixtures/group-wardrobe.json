@@ -521,7 +521,185 @@
           ]
         }
       ]
+    },
+    {
+      "name": "gw_update_image_file_id_own",
+      "kind": "update",
+      "body": {
+        "imageFileId": "f9256500-0000-4000-8000-000000000001"
+      },
+      "plants": [
+        {
+          "sql": "CREATE TABLE \"files\" (\n  \"id\" TEXT PRIMARY KEY NOT NULL,\n  \"userId\" TEXT NOT NULL,\n  \"sha256\" TEXT NOT NULL,\n  \"originalFilename\" TEXT NOT NULL,\n  \"mimeType\" TEXT NOT NULL,\n  \"size\" REAL NOT NULL,\n  \"width\" REAL,\n  \"height\" REAL,\n  \"isPlainText\" INTEGER,\n  \"linkedTo\" TEXT DEFAULT '[]',\n  \"source\" TEXT NOT NULL,\n  \"category\" TEXT NOT NULL,\n  \"generationPrompt\" TEXT,\n  \"generationModel\" TEXT,\n  \"generationRevisedPrompt\" TEXT,\n  \"generationKey\" TEXT,\n  \"description\" TEXT,\n  \"tags\" TEXT DEFAULT '[]',\n  \"projectId\" TEXT,\n  \"folderPath\" TEXT,\n  \"storageKey\" TEXT,\n  \"fileStatus\" TEXT DEFAULT 'ok',\n  \"createdAt\" TEXT NOT NULL,\n  \"updatedAt\" TEXT NOT NULL\n)",
+          "params": []
+        },
+        {
+          "sql": "CREATE INDEX \"idx_files_createdAt\" ON \"files\" (\"createdAt\" DESC)",
+          "params": []
+        },
+        {
+          "sql": "CREATE INDEX \"idx_files_userId\" ON \"files\" (\"userId\" ASC)",
+          "params": []
+        },
+        {
+          "sql": "INSERT INTO \"files\" (\"id\", \"userId\", \"sha256\", \"originalFilename\", \"mimeType\", \"size\", \"linkedTo\", \"source\", \"category\", \"tags\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256500-0000-4000-8000-000000000001",
+            "a0000000-0000-4000-8000-000000000001",
+            "000000000000000000000000000000000000000000000000000000000000000b",
+            "picture-11.webp",
+            "image/webp",
+            1234,
+            "[\"e5000000-0000-4000-8000-0000000000c1\"]",
+            "GENERATED",
+            "IMAGE",
+            "[]",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"files\" (\"id\", \"userId\", \"sha256\", \"originalFilename\", \"mimeType\", \"size\", \"linkedTo\", \"source\", \"category\", \"tags\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256500-0000-4000-8000-000000000002",
+            "a0000000-0000-4000-8000-000000000001",
+            "000000000000000000000000000000000000000000000000000000000000000c",
+            "picture-12.webp",
+            "image/webp",
+            1234,
+            "[\"e5000000-0000-4000-8000-0000000000a1\"]",
+            "GENERATED",
+            "IMAGE",
+            "[]",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        }
+      ],
+      "normalize": [
+        "wardrobeItem.updatedAt"
+      ]
+    },
+    {
+      "name": "gw_update_image_file_id_foreign",
+      "kind": "update",
+      "body": {
+        "imageFileId": "f9256500-0000-4000-8000-000000000002"
+      },
+      "plants": [
+        {
+          "sql": "CREATE TABLE \"files\" (\n  \"id\" TEXT PRIMARY KEY NOT NULL,\n  \"userId\" TEXT NOT NULL,\n  \"sha256\" TEXT NOT NULL,\n  \"originalFilename\" TEXT NOT NULL,\n  \"mimeType\" TEXT NOT NULL,\n  \"size\" REAL NOT NULL,\n  \"width\" REAL,\n  \"height\" REAL,\n  \"isPlainText\" INTEGER,\n  \"linkedTo\" TEXT DEFAULT '[]',\n  \"source\" TEXT NOT NULL,\n  \"category\" TEXT NOT NULL,\n  \"generationPrompt\" TEXT,\n  \"generationModel\" TEXT,\n  \"generationRevisedPrompt\" TEXT,\n  \"generationKey\" TEXT,\n  \"description\" TEXT,\n  \"tags\" TEXT DEFAULT '[]',\n  \"projectId\" TEXT,\n  \"folderPath\" TEXT,\n  \"storageKey\" TEXT,\n  \"fileStatus\" TEXT DEFAULT 'ok',\n  \"createdAt\" TEXT NOT NULL,\n  \"updatedAt\" TEXT NOT NULL\n)",
+          "params": []
+        },
+        {
+          "sql": "CREATE INDEX \"idx_files_createdAt\" ON \"files\" (\"createdAt\" DESC)",
+          "params": []
+        },
+        {
+          "sql": "CREATE INDEX \"idx_files_userId\" ON \"files\" (\"userId\" ASC)",
+          "params": []
+        },
+        {
+          "sql": "INSERT INTO \"files\" (\"id\", \"userId\", \"sha256\", \"originalFilename\", \"mimeType\", \"size\", \"linkedTo\", \"source\", \"category\", \"tags\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256500-0000-4000-8000-000000000001",
+            "a0000000-0000-4000-8000-000000000001",
+            "000000000000000000000000000000000000000000000000000000000000000b",
+            "picture-11.webp",
+            "image/webp",
+            1234,
+            "[\"e5000000-0000-4000-8000-0000000000c1\"]",
+            "GENERATED",
+            "IMAGE",
+            "[]",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"files\" (\"id\", \"userId\", \"sha256\", \"originalFilename\", \"mimeType\", \"size\", \"linkedTo\", \"source\", \"category\", \"tags\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256500-0000-4000-8000-000000000002",
+            "a0000000-0000-4000-8000-000000000001",
+            "000000000000000000000000000000000000000000000000000000000000000c",
+            "picture-12.webp",
+            "image/webp",
+            1234,
+            "[\"e5000000-0000-4000-8000-0000000000a1\"]",
+            "GENERATED",
+            "IMAGE",
+            "[]",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "gw_update_image_file_id_null",
+      "kind": "update",
+      "body": {
+        "imageFileId": null
+      },
+      "plants": [
+        {
+          "sql": "CREATE TABLE \"files\" (\n  \"id\" TEXT PRIMARY KEY NOT NULL,\n  \"userId\" TEXT NOT NULL,\n  \"sha256\" TEXT NOT NULL,\n  \"originalFilename\" TEXT NOT NULL,\n  \"mimeType\" TEXT NOT NULL,\n  \"size\" REAL NOT NULL,\n  \"width\" REAL,\n  \"height\" REAL,\n  \"isPlainText\" INTEGER,\n  \"linkedTo\" TEXT DEFAULT '[]',\n  \"source\" TEXT NOT NULL,\n  \"category\" TEXT NOT NULL,\n  \"generationPrompt\" TEXT,\n  \"generationModel\" TEXT,\n  \"generationRevisedPrompt\" TEXT,\n  \"generationKey\" TEXT,\n  \"description\" TEXT,\n  \"tags\" TEXT DEFAULT '[]',\n  \"projectId\" TEXT,\n  \"folderPath\" TEXT,\n  \"storageKey\" TEXT,\n  \"fileStatus\" TEXT DEFAULT 'ok',\n  \"createdAt\" TEXT NOT NULL,\n  \"updatedAt\" TEXT NOT NULL\n)",
+          "params": []
+        },
+        {
+          "sql": "CREATE INDEX \"idx_files_createdAt\" ON \"files\" (\"createdAt\" DESC)",
+          "params": []
+        },
+        {
+          "sql": "CREATE INDEX \"idx_files_userId\" ON \"files\" (\"userId\" ASC)",
+          "params": []
+        },
+        {
+          "sql": "INSERT INTO \"files\" (\"id\", \"userId\", \"sha256\", \"originalFilename\", \"mimeType\", \"size\", \"linkedTo\", \"source\", \"category\", \"tags\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256500-0000-4000-8000-000000000001",
+            "a0000000-0000-4000-8000-000000000001",
+            "000000000000000000000000000000000000000000000000000000000000000b",
+            "picture-11.webp",
+            "image/webp",
+            1234,
+            "[\"e5000000-0000-4000-8000-0000000000c1\"]",
+            "GENERATED",
+            "IMAGE",
+            "[]",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"files\" (\"id\", \"userId\", \"sha256\", \"originalFilename\", \"mimeType\", \"size\", \"linkedTo\", \"source\", \"category\", \"tags\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256500-0000-4000-8000-000000000002",
+            "a0000000-0000-4000-8000-000000000001",
+            "000000000000000000000000000000000000000000000000000000000000000c",
+            "picture-12.webp",
+            "image/webp",
+            1234,
+            "[\"e5000000-0000-4000-8000-0000000000a1\"]",
+            "GENERATED",
+            "IMAGE",
+            "[]",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        }
+      ],
+      "normalize": [
+        "wardrobeItem.updatedAt"
+      ]
+    },
+    {
+      "name": "gw_update_image_file_id_not_a_uuid",
+      "kind": "update",
+      "body": {
+        "imageFileId": "nope"
+      }
     }
   ],
-  "$p4d256Comment": "P4.D256: `plants` add ledger rows (the item worn by the transfer owner — last worn in a chat that no longer exists — and by the unattributed row; another item's row that a delete must leave alone). Every row carries `ledger`, main's wardrobe_wear_stats after the case."
+  "$p4d256Comment": "P4.D256: `plants` add ledger rows (the item worn by the transfer owner — last worn in a chat that no longer exists — and by the unattributed row; another item's row that a delete must leave alone). Every row carries `ledger`, main's wardrobe_wear_stats after the case. The transfers pair has no `files` table (v4 creates it lazily on first access), so the PUT cases plant v4's generateDDL text for it (from fresh_schema.json, the D23 dump) ahead of the picture rows."
 }

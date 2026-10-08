@@ -38,6 +38,8 @@ interface Spec {
   userId: string;
   /** P4.D256: the planted wear-ledger rows. */
   p4d256Ledger: { rows: unknown[][] };
+  /** P4.D256: the planted `files` rows (an item's own / a foreign picture). */
+  p4d256Files: { rows: unknown[][]; own: string; foreign: string };
 }
 
 const IOTA = 'a3000000-0000-4000-8000-000000000001';
@@ -148,6 +150,18 @@ async function plantLedger(rows: unknown[][]): Promise<void> {
   for (const statement of WARDROBE_WEAR_STATS_DDL) raw.exec(statement);
   const insert = raw.prepare(
     'INSERT INTO "wardrobe_wear_stats" ("id", "itemId", "wearerCharacterId", "wearCount", "firstWornAt", "lastWornAt", "lastWornChatId", "createdAt", "updatedAt") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  );
+  for (const r of rows) insert.run(...r);
+}
+
+/** P4.D256 — the PUT cases' pictures (raw `files` rows, mirrored on the Rust side). */
+async function plantFiles(rows: unknown[][]): Promise<void> {
+  const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+  const raw = getRawDatabase() as unknown as {
+    prepare: (s: string) => { run: (...a: unknown[]) => unknown };
+  };
+  const insert = raw.prepare(
+    'INSERT INTO "files" ("id", "userId", "sha256", "originalFilename", "mimeType", "size", "linkedTo", "source", "category", "tags", "createdAt", "updatedAt") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
   );
   for (const r of rows) insert.run(...r);
 }
@@ -890,6 +904,21 @@ async function main(): Promise<void> {
         return { status, body: { ...(body as object), ledger: await dumpLedger() } };
       },
     },
+    // P4.D256 (v4 `7c8572869`): the PUT's `imageFileId` — one of the item's
+    // own pictures (echoed), a foreign one (400), `null` (cleared), not a uuid
+    // (the middleware's `Validation error`).
+    ...([
+      ['wardrobe_update_image_file_id_own', () => spec.p4d256Files.own],
+      ['wardrobe_update_image_file_id_foreign', () => spec.p4d256Files.foreign],
+      ['wardrobe_update_image_file_id_null', () => null],
+      ['wardrobe_update_image_file_id_not_a_uuid', () => 'nope'],
+    ] as Array<[string, () => string | null]>).map(([name, pick]) => ({
+      name,
+      run: async () => {
+        await plantFiles(spec.p4d256Files.rows);
+        return respond(await (await loadRoute('@/app/api/v1/projects/[id]/wardrobe/[itemId]/route')).PUT(mockRequest(`${B}/${IOTA}/wardrobe/${CLOAK}`, { imageFileId: pick() }), { params: Promise.resolve({ id: IOTA, itemId: CLOAK }) }));
+      },
+    })),
     { name: 'mount_link', run: async () => respond(await (await loadRoute(mpRoute)).POST(mockRequest(`${B}/${IOTA}/mount-points`, { mountPointId: GAMMA_EXTRA_MP }), p(IOTA))) },
     {
       name: 'mount_unlink',

@@ -43,7 +43,8 @@ use crate::services::wardrobe_item_images::primitives::{
     cleanup_item_images, ItemImageCleanupMeta,
 };
 use crate::services::wardrobe_item_route_steps::{
-    log_cleanup_equipped_refs, run_cleanup_equipped_refs, ItemRouteMeta,
+    image_choice_error, log_cleanup_equipped_refs, parse_image_file_id, run_cleanup_equipped_refs,
+    ItemRouteMeta,
 };
 use crate::services::wardrobe_wear_history::{attach_wear, build_wear_history_payload};
 use crate::vault_overlay::WardrobeItem;
@@ -1053,6 +1054,8 @@ struct WardrobeFields {
     /// `archived: z.boolean().optional()`. `createWardrobeSchema` did NOT gain
     /// it, so on a create the key is a stripped unknown, not a refusal.
     archived: Option<bool>,
+    /// v4 `7c8572869`: update-only `imageFileId: z.uuid().nullable().optional()`.
+    image_file_id: Option<Option<String>>,
 }
 
 /// Parse the shared field bag. `partial` = the update schema (every field
@@ -1118,6 +1121,11 @@ fn parse_wardrobe_fields(body: &Value, partial: bool) -> Result<WardrobeFields, 
     let is_default = boolean("isDefault")?;
     let replace = boolean("replace")?;
     let archived = if partial { boolean("archived")? } else { None };
+    let image_file_id = if partial {
+        parse_image_file_id(body)?
+    } else {
+        None
+    };
 
     // componentItemIds: z.array(z.string()).optional().
     let component_item_ids = match get("componentItemIds") {
@@ -1145,6 +1153,7 @@ fn parse_wardrobe_fields(body: &Value, partial: bool) -> Result<WardrobeFields, 
         component_item_ids,
         replace,
         archived,
+        image_file_id,
     })
 }
 
@@ -1422,8 +1431,26 @@ pub async fn group_wardrobe_update(
             is_default: fields.is_default,
             replace: fields.replace,
             archived_at: None,
-            image_file_id: None,
+            image_file_id: fields.image_file_id.clone(),
         };
+        let image_file_id = fields.image_file_id;
+        // v4 `7c8572869`: `imageChoiceError` — BEFORE the archive flag. A file
+        // that is not one of the item's own pictures is v4's 400; a failed
+        // picture read is v4's rethrow (the middleware's 500).
+        match image_choice_error(
+            main,
+            &iid,
+            image_file_id.as_ref().and_then(|o| o.as_deref()),
+        ) {
+            Ok(None) => {}
+            Ok(Some(message)) => return Ok(Err(bad_request(message))),
+            Err(_) => {
+                return Ok(Err(Response::error(
+                    ErrorKind::Internal,
+                    "Internal server error",
+                )))
+            }
+        }
         let links = DocMountFileLinksRepository::new(mount);
         let docs = DocMountDocumentsRepository::new(mount);
         // v4 `d25dacc1`: an EXTRA O(folder) read, but ONLY when `archived` is in

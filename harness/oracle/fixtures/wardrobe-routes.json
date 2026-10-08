@@ -2252,6 +2252,527 @@
       "itemId": "e2000000-0000-4000-8000-000000000001",
       "preRound": true,
       "thenOutfit": "c1000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "update_image_file_id_own",
+      "kind": "wardrobeUpdate",
+      "itemId": "e2000000-0000-4000-8000-000000000002",
+      "body": {
+        "imageFileId": "f9256400-0000-4000-8000-000000000001"
+      },
+      "plants": [
+        {
+          "sql": "INSERT INTO \"files\" (\"id\", \"userId\", \"sha256\", \"originalFilename\", \"mimeType\", \"size\", \"linkedTo\", \"source\", \"category\", \"tags\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256400-0000-4000-8000-000000000001",
+            "11000000-0000-4000-8000-000000000001",
+            "0000000000000000000000000000000000000000000000000000000000000001",
+            "picture-1.webp",
+            "image/webp",
+            1234,
+            "[\"e2000000-0000-4000-8000-000000000002\"]",
+            "GENERATED",
+            "IMAGE",
+            "[]",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"files\" (\"id\", \"userId\", \"sha256\", \"originalFilename\", \"mimeType\", \"size\", \"linkedTo\", \"source\", \"category\", \"tags\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256400-0000-4000-8000-000000000002",
+            "11000000-0000-4000-8000-000000000001",
+            "0000000000000000000000000000000000000000000000000000000000000002",
+            "picture-2.webp",
+            "image/webp",
+            1234,
+            "[\"e2000000-0000-4000-8000-000000000001\"]",
+            "GENERATED",
+            "IMAGE",
+            "[]",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"files\" (\"id\", \"userId\", \"sha256\", \"originalFilename\", \"mimeType\", \"size\", \"linkedTo\", \"source\", \"category\", \"tags\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256400-0000-4000-8000-000000000003",
+            "11000000-0000-4000-8000-000000000001",
+            "0000000000000000000000000000000000000000000000000000000000000003",
+            "picture-3.webp",
+            "image/webp",
+            1234,
+            "[\"e1000000-0000-4000-8000-000000000001\"]",
+            "GENERATED",
+            "IMAGE",
+            "[]",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        }
+      ],
+      "normalize": [
+        "wardrobeItem.updatedAt"
+      ]
+    },
+    {
+      "name": "update_image_file_id_foreign",
+      "kind": "wardrobeUpdate",
+      "itemId": "e2000000-0000-4000-8000-000000000002",
+      "body": {
+        "imageFileId": "f9256400-0000-4000-8000-000000000002"
+      },
+      "plants": [
+        {
+          "sql": "INSERT INTO \"files\" (\"id\", \"userId\", \"sha256\", \"originalFilename\", \"mimeType\", \"size\", \"linkedTo\", \"source\", \"category\", \"tags\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256400-0000-4000-8000-000000000001",
+            "11000000-0000-4000-8000-000000000001",
+            "0000000000000000000000000000000000000000000000000000000000000001",
+            "picture-1.webp",
+            "image/webp",
+            1234,
+            "[\"e2000000-0000-4000-8000-000000000002\"]",
+            "GENERATED",
+            "IMAGE",
+            "[]",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"files\" (\"id\", \"userId\", \"sha256\", \"originalFilename\", \"mimeType\", \"size\", \"linkedTo\", \"source\", \"category\", \"tags\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256400-0000-4000-8000-000000000002",
+            "11000000-0000-4000-8000-000000000001",
+            "0000000000000000000000000000000000000000000000000000000000000002",
+            "picture-2.webp",
+            "image/webp",
+            1234,
+            "[\"e2000000-0000-4000-8000-000000000001\"]",
+            "GENERATED",
+            "IMAGE",
+            "[]",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"files\" (\"id\", \"userId\", \"sha256\", \"originalFilename\", \"mimeType\", \"size\", \"linkedTo\", \"source\", \"category\", \"tags\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256400-0000-4000-8000-000000000003",
+            "11000000-0000-4000-8000-000000000001",
+            "0000000000000000000000000000000000000000000000000000000000000003",
+            "picture-3.webp",
+            "image/webp",
+            1234,
+            "[\"e1000000-0000-4000-8000-000000000001\"]",
+            "GENERATED",
+            "IMAGE",
+            "[]",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "update_image_file_id_unknown_file",
+      "kind": "wardrobeUpdate",
+      "itemId": "e2000000-0000-4000-8000-000000000002",
+      "body": {
+        "imageFileId": "f9256400-0000-4000-8000-0000000000ff"
+      },
+      "plants": [
+        {
+          "sql": "INSERT INTO \"files\" (\"id\", \"userId\", \"sha256\", \"originalFilename\", \"mimeType\", \"size\", \"linkedTo\", \"source\", \"category\", \"tags\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256400-0000-4000-8000-000000000001",
+            "11000000-0000-4000-8000-000000000001",
+            "0000000000000000000000000000000000000000000000000000000000000001",
+            "picture-1.webp",
+            "image/webp",
+            1234,
+            "[\"e2000000-0000-4000-8000-000000000002\"]",
+            "GENERATED",
+            "IMAGE",
+            "[]",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"files\" (\"id\", \"userId\", \"sha256\", \"originalFilename\", \"mimeType\", \"size\", \"linkedTo\", \"source\", \"category\", \"tags\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256400-0000-4000-8000-000000000002",
+            "11000000-0000-4000-8000-000000000001",
+            "0000000000000000000000000000000000000000000000000000000000000002",
+            "picture-2.webp",
+            "image/webp",
+            1234,
+            "[\"e2000000-0000-4000-8000-000000000001\"]",
+            "GENERATED",
+            "IMAGE",
+            "[]",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"files\" (\"id\", \"userId\", \"sha256\", \"originalFilename\", \"mimeType\", \"size\", \"linkedTo\", \"source\", \"category\", \"tags\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256400-0000-4000-8000-000000000003",
+            "11000000-0000-4000-8000-000000000001",
+            "0000000000000000000000000000000000000000000000000000000000000003",
+            "picture-3.webp",
+            "image/webp",
+            1234,
+            "[\"e1000000-0000-4000-8000-000000000001\"]",
+            "GENERATED",
+            "IMAGE",
+            "[]",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "update_image_file_id_null",
+      "kind": "wardrobeUpdate",
+      "itemId": "e2000000-0000-4000-8000-000000000002",
+      "body": {
+        "imageFileId": null
+      },
+      "plants": [
+        {
+          "sql": "INSERT INTO \"files\" (\"id\", \"userId\", \"sha256\", \"originalFilename\", \"mimeType\", \"size\", \"linkedTo\", \"source\", \"category\", \"tags\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256400-0000-4000-8000-000000000001",
+            "11000000-0000-4000-8000-000000000001",
+            "0000000000000000000000000000000000000000000000000000000000000001",
+            "picture-1.webp",
+            "image/webp",
+            1234,
+            "[\"e2000000-0000-4000-8000-000000000002\"]",
+            "GENERATED",
+            "IMAGE",
+            "[]",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"files\" (\"id\", \"userId\", \"sha256\", \"originalFilename\", \"mimeType\", \"size\", \"linkedTo\", \"source\", \"category\", \"tags\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256400-0000-4000-8000-000000000002",
+            "11000000-0000-4000-8000-000000000001",
+            "0000000000000000000000000000000000000000000000000000000000000002",
+            "picture-2.webp",
+            "image/webp",
+            1234,
+            "[\"e2000000-0000-4000-8000-000000000001\"]",
+            "GENERATED",
+            "IMAGE",
+            "[]",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"files\" (\"id\", \"userId\", \"sha256\", \"originalFilename\", \"mimeType\", \"size\", \"linkedTo\", \"source\", \"category\", \"tags\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256400-0000-4000-8000-000000000003",
+            "11000000-0000-4000-8000-000000000001",
+            "0000000000000000000000000000000000000000000000000000000000000003",
+            "picture-3.webp",
+            "image/webp",
+            1234,
+            "[\"e1000000-0000-4000-8000-000000000001\"]",
+            "GENERATED",
+            "IMAGE",
+            "[]",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        }
+      ],
+      "normalize": [
+        "wardrobeItem.updatedAt"
+      ]
+    },
+    {
+      "name": "update_image_file_id_not_a_uuid",
+      "kind": "wardrobeUpdate",
+      "itemId": "e2000000-0000-4000-8000-000000000002",
+      "body": {
+        "imageFileId": "not-a-uuid"
+      }
+    },
+    {
+      "name": "update_image_file_id_foreign_with_archive_writes_nothing",
+      "kind": "wardrobeUpdate",
+      "itemId": "e2000000-0000-4000-8000-000000000002",
+      "body": {
+        "imageFileId": "f9256400-0000-4000-8000-000000000002",
+        "archived": true
+      },
+      "plants": [
+        {
+          "sql": "INSERT INTO \"files\" (\"id\", \"userId\", \"sha256\", \"originalFilename\", \"mimeType\", \"size\", \"linkedTo\", \"source\", \"category\", \"tags\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256400-0000-4000-8000-000000000001",
+            "11000000-0000-4000-8000-000000000001",
+            "0000000000000000000000000000000000000000000000000000000000000001",
+            "picture-1.webp",
+            "image/webp",
+            1234,
+            "[\"e2000000-0000-4000-8000-000000000002\"]",
+            "GENERATED",
+            "IMAGE",
+            "[]",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"files\" (\"id\", \"userId\", \"sha256\", \"originalFilename\", \"mimeType\", \"size\", \"linkedTo\", \"source\", \"category\", \"tags\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256400-0000-4000-8000-000000000002",
+            "11000000-0000-4000-8000-000000000001",
+            "0000000000000000000000000000000000000000000000000000000000000002",
+            "picture-2.webp",
+            "image/webp",
+            1234,
+            "[\"e2000000-0000-4000-8000-000000000001\"]",
+            "GENERATED",
+            "IMAGE",
+            "[]",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"files\" (\"id\", \"userId\", \"sha256\", \"originalFilename\", \"mimeType\", \"size\", \"linkedTo\", \"source\", \"category\", \"tags\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256400-0000-4000-8000-000000000003",
+            "11000000-0000-4000-8000-000000000001",
+            "0000000000000000000000000000000000000000000000000000000000000003",
+            "picture-3.webp",
+            "image/webp",
+            1234,
+            "[\"e1000000-0000-4000-8000-000000000001\"]",
+            "GENERATED",
+            "IMAGE",
+            "[]",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "cw_update_image_file_id_own",
+      "kind": "characterWardrobeUpdate",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "itemId": "e1000000-0000-4000-8000-000000000001",
+      "body": {
+        "imageFileId": "f9256400-0000-4000-8000-000000000003"
+      },
+      "plants": [
+        {
+          "sql": "INSERT INTO \"files\" (\"id\", \"userId\", \"sha256\", \"originalFilename\", \"mimeType\", \"size\", \"linkedTo\", \"source\", \"category\", \"tags\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256400-0000-4000-8000-000000000001",
+            "11000000-0000-4000-8000-000000000001",
+            "0000000000000000000000000000000000000000000000000000000000000001",
+            "picture-1.webp",
+            "image/webp",
+            1234,
+            "[\"e2000000-0000-4000-8000-000000000002\"]",
+            "GENERATED",
+            "IMAGE",
+            "[]",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"files\" (\"id\", \"userId\", \"sha256\", \"originalFilename\", \"mimeType\", \"size\", \"linkedTo\", \"source\", \"category\", \"tags\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256400-0000-4000-8000-000000000002",
+            "11000000-0000-4000-8000-000000000001",
+            "0000000000000000000000000000000000000000000000000000000000000002",
+            "picture-2.webp",
+            "image/webp",
+            1234,
+            "[\"e2000000-0000-4000-8000-000000000001\"]",
+            "GENERATED",
+            "IMAGE",
+            "[]",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"files\" (\"id\", \"userId\", \"sha256\", \"originalFilename\", \"mimeType\", \"size\", \"linkedTo\", \"source\", \"category\", \"tags\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256400-0000-4000-8000-000000000003",
+            "11000000-0000-4000-8000-000000000001",
+            "0000000000000000000000000000000000000000000000000000000000000003",
+            "picture-3.webp",
+            "image/webp",
+            1234,
+            "[\"e1000000-0000-4000-8000-000000000001\"]",
+            "GENERATED",
+            "IMAGE",
+            "[]",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        }
+      ],
+      "normalize": [
+        "wardrobeItem.updatedAt"
+      ]
+    },
+    {
+      "name": "cw_update_image_file_id_foreign",
+      "kind": "characterWardrobeUpdate",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "itemId": "e1000000-0000-4000-8000-000000000001",
+      "body": {
+        "imageFileId": "f9256400-0000-4000-8000-000000000001"
+      },
+      "plants": [
+        {
+          "sql": "INSERT INTO \"files\" (\"id\", \"userId\", \"sha256\", \"originalFilename\", \"mimeType\", \"size\", \"linkedTo\", \"source\", \"category\", \"tags\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256400-0000-4000-8000-000000000001",
+            "11000000-0000-4000-8000-000000000001",
+            "0000000000000000000000000000000000000000000000000000000000000001",
+            "picture-1.webp",
+            "image/webp",
+            1234,
+            "[\"e2000000-0000-4000-8000-000000000002\"]",
+            "GENERATED",
+            "IMAGE",
+            "[]",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"files\" (\"id\", \"userId\", \"sha256\", \"originalFilename\", \"mimeType\", \"size\", \"linkedTo\", \"source\", \"category\", \"tags\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256400-0000-4000-8000-000000000002",
+            "11000000-0000-4000-8000-000000000001",
+            "0000000000000000000000000000000000000000000000000000000000000002",
+            "picture-2.webp",
+            "image/webp",
+            1234,
+            "[\"e2000000-0000-4000-8000-000000000001\"]",
+            "GENERATED",
+            "IMAGE",
+            "[]",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"files\" (\"id\", \"userId\", \"sha256\", \"originalFilename\", \"mimeType\", \"size\", \"linkedTo\", \"source\", \"category\", \"tags\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256400-0000-4000-8000-000000000003",
+            "11000000-0000-4000-8000-000000000001",
+            "0000000000000000000000000000000000000000000000000000000000000003",
+            "picture-3.webp",
+            "image/webp",
+            1234,
+            "[\"e1000000-0000-4000-8000-000000000001\"]",
+            "GENERATED",
+            "IMAGE",
+            "[]",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "cw_update_image_file_id_null",
+      "kind": "characterWardrobeUpdate",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "itemId": "e1000000-0000-4000-8000-000000000001",
+      "body": {
+        "imageFileId": null
+      },
+      "plants": [
+        {
+          "sql": "INSERT INTO \"files\" (\"id\", \"userId\", \"sha256\", \"originalFilename\", \"mimeType\", \"size\", \"linkedTo\", \"source\", \"category\", \"tags\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256400-0000-4000-8000-000000000001",
+            "11000000-0000-4000-8000-000000000001",
+            "0000000000000000000000000000000000000000000000000000000000000001",
+            "picture-1.webp",
+            "image/webp",
+            1234,
+            "[\"e2000000-0000-4000-8000-000000000002\"]",
+            "GENERATED",
+            "IMAGE",
+            "[]",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"files\" (\"id\", \"userId\", \"sha256\", \"originalFilename\", \"mimeType\", \"size\", \"linkedTo\", \"source\", \"category\", \"tags\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256400-0000-4000-8000-000000000002",
+            "11000000-0000-4000-8000-000000000001",
+            "0000000000000000000000000000000000000000000000000000000000000002",
+            "picture-2.webp",
+            "image/webp",
+            1234,
+            "[\"e2000000-0000-4000-8000-000000000001\"]",
+            "GENERATED",
+            "IMAGE",
+            "[]",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"files\" (\"id\", \"userId\", \"sha256\", \"originalFilename\", \"mimeType\", \"size\", \"linkedTo\", \"source\", \"category\", \"tags\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256400-0000-4000-8000-000000000003",
+            "11000000-0000-4000-8000-000000000001",
+            "0000000000000000000000000000000000000000000000000000000000000003",
+            "picture-3.webp",
+            "image/webp",
+            1234,
+            "[\"e1000000-0000-4000-8000-000000000001\"]",
+            "GENERATED",
+            "IMAGE",
+            "[]",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        }
+      ],
+      "normalize": [
+        "wardrobeItem.updatedAt"
+      ]
+    },
+    {
+      "name": "cw_update_image_file_id_missing_item_404_first",
+      "kind": "characterWardrobeUpdate",
+      "characterId": "a1000000-0000-4000-8000-000000000002",
+      "itemId": "e1000000-0000-4000-8000-000000000001",
+      "body": {
+        "imageFileId": "not-a-uuid"
+      }
     }
   ],
   "$p4d256Comment": "P4.D256: every case reads the committed pair with wardrobe_wear_stats ensured (v4's migration DDL; v5 ensure_wear_ledger_on) unless `preRound`; `plants` add ledger rows. The wh_* rows are the ?action=wear-history arms on the General and character item GETs (the 404s run BEFORE the ledger is read); cw_item_get* the character item GET. The ledger rows: gCoat worn by aria (chat1, most recent), an unattributed row, a departed wearer; wTop's last-worn chat deleted (chatMissing); gLivery and gHat worn."

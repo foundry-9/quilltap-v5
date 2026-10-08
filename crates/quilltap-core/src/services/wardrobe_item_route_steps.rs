@@ -176,6 +176,23 @@ pub fn image_choice_error(
     }
 }
 
+/// v4 `updateWardrobeSchema`'s `imageFileId: UUIDSchema.nullable().optional()`
+/// (`7c8572869`) on an item PUT body: absent → `Ok(None)` (leave the pointer);
+/// `null` → `Ok(Some(None))` (clear it); a `z.uuid()`-valid string →
+/// `Ok(Some(Some(id)))`; anything else fails the parse (`Err` — the routes
+/// answer v4's middleware `Validation error`). Create bodies never carry it
+/// (v4's create schema strips it).
+pub(crate) fn parse_image_file_id(body: &serde_json::Value) -> Result<Option<Option<String>>, ()> {
+    match body.get("imageFileId") {
+        None => Ok(None),
+        Some(serde_json::Value::Null) => Ok(Some(None)),
+        Some(serde_json::Value::String(s)) if crate::api::zod_issues::zod_uuid_ok(s) => {
+            Ok(Some(Some(s.clone())))
+        }
+        Some(_) => Err(()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -329,5 +346,26 @@ mod tests {
                 "[WardrobeItem] Refused an imageFileId that is not the item's own itemId={ITEM} imageFileId={foreign}"
             )]
         );
+    }
+
+    #[test]
+    fn image_file_id_parses_as_v4s_nullable_optional_uuid() {
+        use serde_json::json;
+        assert_eq!(parse_image_file_id(&json!({})), Ok(None));
+        assert_eq!(
+            parse_image_file_id(&json!({ "imageFileId": null })),
+            Ok(Some(None))
+        );
+        let id = "f9000000-0000-4000-8000-000000000009";
+        assert_eq!(
+            parse_image_file_id(&json!({ "imageFileId": id })),
+            Ok(Some(Some(id.to_string())))
+        );
+        assert_eq!(
+            parse_image_file_id(&json!({ "imageFileId": "not-a-uuid" })),
+            Err(())
+        );
+        assert_eq!(parse_image_file_id(&json!({ "imageFileId": 7 })), Err(()));
+        assert_eq!(parse_image_file_id(&json!({ "imageFileId": "" })), Err(()));
     }
 }

@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(wardrobe): the item PUTs accept imageFileId only among the item's own pictures (P4.D256 item 12)
+
+_Versions: core 0.0.1258._
+
+The General, character, group and project item PUTs parse v4's `imageFileId: z.uuid().nullable().optional()` (an invalid value is the middleware's `Validation error`), then, before the archive flag, run `image_choice_error`: a file that is not one of the item's own IMAGE pictures answers 400 `imageFileId must name one of this item's own pictures` (INFO `[WardrobeItem] Refused an imageFileId that is not the item's own`), `null` clears the pointer, absent leaves it. The chosen id rides `WardrobePatch.image_file_id` into the item's frontmatter. Each tier's corpus (`wardrobe_routes` incl. a new character-PUT kind, `group_wardrobe_routes`, `projects_routes`) gains own / foreign / unknown / `null` / not-a-uuid rows over planted `files` rows.
+
 #### 2026-10-08 — feat(wardrobe): item deletes drop the item's wear-ledger rows and pictures; the equipped-ref scrub warns and proceeds on every tier (P4.D256 item 11)
 
 _Versions: core 0.0.1257._

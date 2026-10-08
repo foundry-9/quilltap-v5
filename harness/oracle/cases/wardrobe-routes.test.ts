@@ -225,6 +225,18 @@ async function runKind(c: CaseEntry): Promise<{ status: number; body: unknown }>
         }),
       );
     }
+    case 'characterWardrobeUpdate': {
+      // [P4.D256] the character item PUT (`7c8572869`'s `imageFileId` arm).
+      const mod = (await import('@/app/api/v1/characters/[id]/wardrobe/[itemId]/route')) as {
+        PUT: (...a: unknown[]) => Promise<unknown>;
+      };
+      return respond(
+        await mod.PUT(
+          mockRequest(`${B}/characters/${c.characterId}/wardrobe/${c.itemId}`, 'PUT', c.body),
+          { params: Promise.resolve({ id: c.characterId, itemId: c.itemId }) },
+        ),
+      );
+    }
     case 'characterWardrobeItemGet': {
       // [P4.D256] the character item GET (`cc80dc89d`'s origin; `3ee3b1342`'s
       // `?action=wear-history`).

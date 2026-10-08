@@ -46,7 +46,8 @@ use crate::services::wardrobe_item_images::primitives::{
     cleanup_item_images, ItemImageCleanupMeta,
 };
 use crate::services::wardrobe_item_route_steps::{
-    log_cleanup_equipped_refs, run_cleanup_equipped_refs, ItemRouteMeta,
+    image_choice_error, log_cleanup_equipped_refs, parse_image_file_id, run_cleanup_equipped_refs,
+    ItemRouteMeta,
 };
 use crate::services::wardrobe_wear_history::{attach_wear, build_wear_history_payload};
 use crate::vault_overlay::WardrobeItem;
@@ -2918,7 +2919,33 @@ pub async fn character_wardrobe_update(
         else {
             return Ok(Err(not_found("Wardrobe item")));
         };
-        let mut patch = WardrobePatch::default();
+        // v4 `7c8572869`: `imageFileId: z.uuid().nullable().optional()` — the
+        // parse runs after the two 404s (v4's order), uncaught → `Validation
+        // error`.
+        let Ok(image_file_id) = parse_image_file_id(&body) else {
+            return Ok(Err(bad_request("Validation error")));
+        };
+        // v4 `7c8572869`: `imageChoiceError` — BEFORE the archive flag. A file
+        // that is not one of the item's own pictures is v4's 400; a failed
+        // picture read is v4's rethrow (the middleware's 500).
+        match image_choice_error(
+            main,
+            &iid,
+            image_file_id.as_ref().and_then(|o| o.as_deref()),
+        ) {
+            Ok(None) => {}
+            Ok(Some(message)) => return Ok(Err(bad_request(message))),
+            Err(_) => {
+                return Ok(Err(Response::error(
+                    ErrorKind::Internal,
+                    "Internal server error",
+                )))
+            }
+        }
+        let mut patch = WardrobePatch {
+            image_file_id,
+            ..WardrobePatch::default()
+        };
         if let Some(t) = body.get("title").and_then(Value::as_str) {
             patch.title = Some(t.to_string());
         }

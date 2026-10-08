@@ -172487,3 +172487,37 @@ dirt never reaches a regen. The ledger is NOT written (lane rule).
 - Green at the pin: `group_wardrobe_routes` 29 cases (7 new); `projects_routes`
   103 cases (4 new); `wardrobe_routes` 125 checks / 106 cases / 117 rows;
   core lib 3,179.
+
+### Unit 6 — the four PUTs' `imageFileId` (item 12; core 0.0.1258)
+
+- `services/wardrobe_item_route_steps.rs`: `parse_image_file_id` (v4's
+  `UUIDSchema.nullable().optional()` — `zod_uuid_ok`; update-only, the create
+  schemas strip it) and `image_choice_error` (v4 `imageChoiceError` over
+  P4.D255's `assert_item_image_choice`: `Foreign` → the INFO + the 400
+  sentence; `Read` → v4's rethrow, the route's `Internal server error`).
+- Wired BEFORE the archive flag in v4's order per tier: General (the parse in
+  `parse_archetype_body`, the check after the existence 404); character (parse
+  + check after BOTH 404s — v4's order; the pre-existing `archived` guard
+  stays where it was); group (`parse_wardrobe_fields` partial + the check
+  after the store 404); project (parse + check after the store 404 — the
+  project PUT validates nothing else, pre-existing and banked). The pointer
+  rides `WardrobePatch.image_file_id`.
+- **Fixture note:** the transfers pair has NO `files` table (v4's files
+  repository creates it lazily), so the group PUT rows plant v4's generateDDL
+  text for it (from `fresh_schema.json`) ahead of the picture rows on both
+  sides. Picture rows are RAW `INSERT`s mirrored on both sides (a deviation
+  from the order's "through v4's REAL `files.create`": `create` mints its own
+  id, which the two sides could not share; the rows are v4-`FileEntrySchema`
+  valid — `findByLinkedTo`'s `validateSafe` admits them on v4's side).
+- Rows: wardrobe-routes `update_image_file_id_{own, foreign, unknown_file,
+  null, not_a_uuid, foreign_with_archive_writes_nothing}` + NEW kind
+  `characterWardrobeUpdate` `cw_update_image_file_id_{own, foreign, null,
+  missing_item_404_first}`; group-wardrobe `gw_update_image_file_id_{own,
+  foreign, null, not_a_uuid}` (its mount-index dump compares the written
+  frontmatter — `imageFileId` emitted for a pick, gone after `null`);
+  projects `wardrobe_update_image_file_id_{own, foreign, null, not_a_uuid}`.
+  Red-first: on the unit-5 tip these routes ignored `imageFileId` (a foreign
+  pick answered 200 and wrote the pointer); mutation (the check disabled) →
+  exactly the four refusal rows of wardrobe-routes red.
+- Green at the pin: `wardrobe_routes` 135 checks / 116 cases / 127 rows;
+  `group_wardrobe_routes` 33; `projects_routes` 107; core lib 3,180.

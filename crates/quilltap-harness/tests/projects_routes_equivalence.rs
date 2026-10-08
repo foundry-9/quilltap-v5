@@ -66,6 +66,16 @@ struct Spec {
     /// P4.D256: the planted wear-ledger rows (`p4d256Ledger.rows`).
     #[serde(rename = "p4d256Ledger")]
     p4d256_ledger: LedgerPlant,
+    /// P4.D256: the planted `files` rows for the PUT `imageFileId` cases.
+    #[serde(rename = "p4d256Files")]
+    p4d256_files: FilesPlant,
+}
+
+#[derive(Deserialize)]
+struct FilesPlant {
+    rows: Vec<Vec<Value>>,
+    own: String,
+    foreign: String,
 }
 
 #[derive(Deserialize)]
@@ -302,6 +312,12 @@ impl std::ops::Deref for ScratchDb {
 /// spec's `p4d256Ledger.rows` on the main copy before the `Db` opens (the
 /// oracle runs v4's `WARDROBE_WEAR_STATS_DDL` + the same rows).
 fn fresh_db_with_ledger(spec: &Spec, tag: &str) -> ScratchDb {
+    fresh_db_planted(spec, tag, true, false)
+}
+
+/// P4.D256 — a fresh copy with the wear ledger and / or the PUT cases'
+/// `files` rows planted on the main copy before the `Db` opens.
+fn fresh_db_planted(spec: &Spec, tag: &str, ledger: bool, files: bool) -> ScratchDb {
     let scratch = tempfile::Builder::new()
         .prefix(&format!("qt-gp-proj-{tag}-"))
         .tempdir()
@@ -313,8 +329,25 @@ fn fresh_db_with_ledger(spec: &Spec, tag: &str) -> ScratchDb {
     {
         let w = quilltap_core::db::Writer::open_writable(&main, &spec.test_pepper_base64).unwrap();
         let conn = w.connection();
-        quilltap_core::test_support::ensure_wear_ledger_on(conn);
-        for row in &spec.p4d256_ledger.rows {
+        let cell = |v: &Value| match v {
+            Value::Null => rusqlite::types::Value::Null,
+            Value::String(s) => rusqlite::types::Value::Text(s.clone()),
+            Value::Number(n) => rusqlite::types::Value::Integer(n.as_i64().unwrap()),
+            other => panic!("unsupported plant cell {other}"),
+        };
+        if files {
+            for row in &spec.p4d256_files.rows {
+                conn.execute(
+                    r#"INSERT INTO "files" ("id", "userId", "sha256", "originalFilename", "mimeType", "size", "linkedTo", "source", "category", "tags", "createdAt", "updatedAt") VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)"#,
+                    rusqlite::params_from_iter(row.iter().map(cell)),
+                )
+                .unwrap();
+            }
+        }
+        if ledger {
+            quilltap_core::test_support::ensure_wear_ledger_on(conn);
+        }
+        for row in spec.p4d256_ledger.rows.iter().filter(|_| ledger) {
             let params: Vec<rusqlite::types::Value> = row
                 .iter()
                 .map(|v| match v {
@@ -1606,6 +1639,45 @@ fn projects_routes_match_oracle() {
         {
             eprintln!("[wardrobe_delete_with_ledger] [Projects v1] lines MISMATCH:{diff}");
             failed.push("wardrobe_delete_with_ledger_projects_v1".into());
+        }
+    }
+
+    // --- P4.D256 (v4 `7c8572869`): the PUT's `imageFileId` ---
+    for (name, pick) in [
+        (
+            "wardrobe_update_image_file_id_own",
+            json!(spec.p4d256_files.own),
+        ),
+        (
+            "wardrobe_update_image_file_id_foreign",
+            json!(spec.p4d256_files.foreign),
+        ),
+        ("wardrobe_update_image_file_id_null", Value::Null),
+        ("wardrobe_update_image_file_id_not_a_uuid", json!("nope")),
+    ] {
+        let db = fresh_db_planted(&spec, "wif", false, true);
+        let resp = rt.block_on(projects::project_wardrobe_update(
+            &db,
+            IOTA,
+            CLOAK,
+            json!({ "imageFileId": pick }),
+        ));
+        let want = &oracle[name];
+        let want_status = want["status"].as_i64().unwrap();
+        match &resp {
+            Response::Error(e) => {
+                if http_for(e.kind) != want_status
+                    || e.message != want["body"]["error"].as_str().unwrap_or("")
+                {
+                    eprintln!(
+                        "[{name}] MISMATCH: {} {} vs {want}",
+                        http_for(e.kind),
+                        e.message
+                    );
+                    failed.push(name.into());
+                }
+            }
+            _ => check(name, &response_data(&resp), true, &mut failed),
         }
     }
 
