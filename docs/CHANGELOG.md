@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(wardrobe): the wear ledger's write chokepoint — every equipped-slot writer through `commit_equipped_outfit` (P4.D262 items 2, 5–7, 9, 15)
+
+_Versions: core 0.0.1256._
+
+The wear ledger's write chokepoint (v4 `3ee3b1342`) and every equipped-slot writer routed through it.
+
+- NEW `services::wardrobe_wear_commit::commit_equipped_outfit` reads the prior slots, always writes the next ones, diffs them, and credits newly worn leaves plus claimed bundles in one savepoint. `Merge` credits nothing. A failed slot write logs v4's WARN and returns `Failed to save the equipped outfit for character … in chat …`. A missing chat is not a failed write: v4's no-op `update` still returns the slots, and the chokepoint credits it, as measured at the pin.
+- The displacement primitives commit with v4's `source` and `worn_bundles_for` claim. `remove_from_slot` commits as `take-off` with no claim.
+- The chat outfit route: `set_all` accepts `wornBundleIds` as a claim (`resolve_worn_bundles`, with v4's Zod-4 messages), commits through the chokepoint and logs the `set_all` INFO / claim DEBUG. Any commit error now answers 500 `Failed to equip wardrobe slot` with v4's ERROR line and skips the avatar trigger and the announcement.
+- The selection paths: `OutfitSelection.worn_bundle_ids`, `OutfitContext.source`, `manual_worn_bundles`, `resolve_llm_pick`, the credit-carrying default. Chat create, add-participant and merge commit through the chokepoint as `chat-start` / `participant-added` / `merge`. The llm_choose runner now returns the raw pick, so the credit is computed by its consumers (the runner's type lives in the host).
+- NEW `set_equipped_outfit_census_guard`: only the definition and the chokepoint may spell `set_equipped_outfit(`.
+- NEW `wardrobe_wear_commit_tier2_equivalence` (29 ops through v4's real `commitEquippedOutfit`, `applyOutfitSelections` and `handleEquipSlot`; result, outfit, every ledger row and the log lines). `wardrobe-tools.json` marks `Casual Outfit` `isDefault`.
+
+P4.D262 items 2, 5, 6, 7, 9, 15.
+
 #### 2026-10-08 — feat(wardrobe): the wear-credit widenings — `dissolve_bundles_in_slots_with_credit`, `default_outfit_from_pool_with_credit`, `worn_bundles_for` (P4.D262 item 4)
 
 _Versions: core 0.0.1255._

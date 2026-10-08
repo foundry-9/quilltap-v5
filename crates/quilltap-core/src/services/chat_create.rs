@@ -721,6 +721,46 @@ fn check_outfit_selection(v: &Value, index: usize, issues: &mut Vec<CreateZodIss
         base("mode"),
         issues,
     );
+    check_outfit_selection_slots(obj, index, issues);
+    // wornBundleIds: z.array(z.string().min(1)).optional() (v4 `3ee3b1342`),
+    // after `slots` in the schema's key order.
+    if let Some(ids) = obj.get("wornBundleIds") {
+        match ids.as_array() {
+            None => issues.push(ZodIssue::invalid_type(
+                "array",
+                base("wornBundleIds"),
+                Some(ids),
+            )),
+            Some(list) => {
+                for (i, id) in list.iter().enumerate() {
+                    let at_id = path(&[
+                        key("outfitSelections"),
+                        idx.clone(),
+                        key("wornBundleIds"),
+                        json!(i),
+                    ]);
+                    match id {
+                        Value::String(s) if !s.is_empty() => {}
+                        Value::String(_) => {
+                            issues.push(ZodIssue::too_small_string(json!(1), at_id))
+                        }
+                        other => issues.push(ZodIssue::invalid_type("string", at_id, Some(other))),
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The `slots: EquippedSlotsSchema.optional()` half of
+/// [`check_outfit_selection`].
+fn check_outfit_selection_slots(
+    obj: &Map<String, Value>,
+    index: usize,
+    issues: &mut Vec<CreateZodIssue>,
+) {
+    let idx = json!(index);
+    let base = |k: &str| path(&[key("outfitSelections"), idx.clone(), key(k)]);
     let Some(slots) = obj.get("slots") else {
         return;
     };
@@ -1529,6 +1569,8 @@ where
         scenario_text: resolved_scenario.as_deref(),
         cheap_settings,
         source_chat_id: req.continuation_from_chat_id.as_deref(),
+        // A new chat (v4 `route.ts:1370` passes `source: 'chat-start'`).
+        source: crate::db::wardrobe_wear_stats::EquipSource::ChatStart,
     };
     let selections = build_outfit_selections(req, &participants);
     emitter.status("Consulting the wardrobe\u{2026}");
@@ -3329,6 +3371,15 @@ fn build_outfit_selections(
                         .get("slots")
                         .filter(|v| v.is_object())
                         .map(slots_from_value),
+                    // Validated by `check_outfit_selection`; read by `manual`.
+                    worn_bundle_ids: sel.get("wornBundleIds").and_then(Value::as_array).map(
+                        |ids| {
+                            ids.iter()
+                                .filter_map(Value::as_str)
+                                .map(str::to_string)
+                                .collect()
+                        },
+                    ),
                 });
             }
             for cid in &char_ids {
@@ -3337,6 +3388,7 @@ fn build_outfit_selections(
                         character_id: cid.clone(),
                         mode: "default".to_string(),
                         slots: None,
+                        worn_bundle_ids: None,
                     });
                 }
             }
@@ -3348,6 +3400,7 @@ fn build_outfit_selections(
                 character_id,
                 mode: "default".to_string(),
                 slots: None,
+                worn_bundle_ids: None,
             })
             .collect(),
     }

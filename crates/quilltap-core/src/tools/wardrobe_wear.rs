@@ -13,6 +13,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
+use crate::db::wardrobe_wear_stats::EquipSource;
 use crate::db::DbError;
 use crate::wardrobe::{describe_wardrobe_effect, normalize_no_item_sentinel, WardrobeEffect};
 
@@ -303,6 +304,7 @@ fn apply_op(
                 &types,
                 &component_item_ids,
                 tiers,
+                EquipSource::Tool,
             )?;
             (WardrobeEffect::Layered, vec![slot.to_string()])
         }
@@ -316,6 +318,7 @@ fn apply_op(
                 &types,
                 &component_item_ids,
                 tiers,
+                EquipSource::Tool,
             )?;
             (WardrobeEffect::Replaced, types.clone())
         }
@@ -331,6 +334,7 @@ fn apply_op(
                 &component_item_ids,
                 replace,
                 tiers,
+                EquipSource::Tool,
             )?;
             let effect = if replace {
                 WardrobeEffect::Replaced

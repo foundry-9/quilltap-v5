@@ -3,8 +3,12 @@
 //! task (`lib/memory/cheap-llm-tasks/outfit-selection.ts`).
 //!
 //! [`apply_outfit_selections`] resolves each character's `OutfitSelection` to a
-//! concrete equipped-slots record and persists it via
-//! [`ChatOutfitsRepository::set_equipped_outfit`]. Modes: `default` (the
+//! concrete equipped-slots record and commits it through the wear ledger's
+//! chokepoint ([`commit_equipped_outfit`], v4 `3ee3b1342`), which writes the
+//! slots and credits the garments newly put on — `source` says why: a new chat
+//! (`chat-start`), a seat added (`participant-added`), or a merge (`merge`,
+//! which never credits — a merge stitches chats together and changes nobody's
+//! clothes). Modes: `default` (the
 //! wardrobe items marked default), `manual` (the passed slot assignments),
 //! `none` (undressed), `previous_chat` (copy from `source_chat_id`, else
 //! default), and `llm_choose` (ask a cheap LLM, else default). An outfit failure
@@ -48,11 +52,9 @@ use crate::db::chats_outfits::ChatOutfitsRepository;
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
 use crate::db::tiered_mount_pool::resolve_group_mount_point_ids_for_character;
 use crate::db::wardrobe_read::{find_by_character_id, find_wearable_pool_for_character};
-use crate::db::wardrobe_wear_stats::WornBundle;
+use crate::db::wardrobe_wear_stats::{EquipSource, WornBundle};
 use crate::db::{characters_read, connection_profiles, DbError};
-use crate::dissolve_bundles::{
-    dissolve_bundles_in_slots, dissolve_bundles_in_slots_with_credit, WearableLookup,
-};
+use crate::dissolve_bundles::{dissolve_bundles_in_slots_with_credit, WearableLookup};
 use crate::memory_tasks::strip_code_fences;
 use crate::model::completion::{CompletionMessage, CompletionProvider, CompletionRole};
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
@@ -61,6 +63,7 @@ use crate::services::creation_progress::{
     CreationProgressEmitter, LogLevel, OutfitPreviewEntry, OutfitPreviewSlots,
 };
 use crate::services::image_job_common::build_cheap_llm_selection;
+use crate::services::wardrobe_wear_commit::{commit_equipped_outfit, CommitEquippedOutfitInput};
 use crate::subprompts::SubpromptForPrompt;
 use crate::tools::wardrobe_shared::resolve_equipped_outfit_leaf_values;
 use crate::wardrobe::{sort_for_default_outfit, Slots, WARDROBE_SLOT_TYPES};
@@ -104,6 +107,11 @@ pub struct OutfitSelection {
     pub mode: String,
     /// The `manual` mode's slot assignments; ignored otherwise.
     pub slots: Option<Slots>,
+    /// `manual` only (v4 `3ee3b1342`): the bundles the composer dissolved into
+    /// `slots` (an outfit picked from the quick-pick), so the wear ledger can
+    /// credit the outfit as worn. A claim — validated and expanded against the
+    /// character's pool ([`manual_worn_bundles`]).
+    pub worn_bundle_ids: Option<Vec<String>>,
 }
 
 /// The context the LLM path needs (v4 `OutfitSelectionContext`, minus the
@@ -128,16 +136,15 @@ pub struct OutfitContext<'a> {
     pub cheap_settings: Option<&'a Value>,
     /// The continuation source chat for `previous_chat` mode.
     pub source_chat_id: Option<&'a str>,
+    /// Why these characters are being dressed, for the wear ledger (v4
+    /// `OutfitSelectionContext.source`, `3ee3b1342`): `ChatStart` (a new chat
+    /// — v4's default), `ParticipantAdded` (a seat added or reactivated), or
+    /// `Merge` (which never credits a wear).
+    pub source: EquipSource,
 }
 
 fn s(v: &Value, key: &str) -> Option<String> {
     v.get(key).and_then(Value::as_str).map(str::to_string)
-}
-
-/// A `Slots` → the `{top,bottom,footwear,accessories,hair}` `Value` that
-/// `set_equipped_outfit` stores (the canonical serialization).
-fn slots_to_value(slots: &Slots) -> Value {
-    slots.to_value()
 }
 
 /// v4 `resolveDefaultOutfit`'s pure half — the default outfit computed from an
@@ -218,6 +225,75 @@ pub fn default_outfit_from_pool_with_credit(pool: &[Value]) -> ResolvedOutfit {
     }
 }
 
+/// v4 `manualWornBundles(wornBundleIds, pool)` (`apply-outfit-selections.ts:
+/// 178-192`) — the bundle credit a manual selection claims: the client
+/// dissolved the bundles itself and names them in `wornBundleIds`. Validated
+/// against the character's pool and expanded here (an unknown id, or an item
+/// that is not a bundle with wearable parts, is dropped); the ledger still
+/// credits a bundle only when one of its leaves was newly put on.
+pub fn manual_worn_bundles(worn_bundle_ids: &[String], pool: &[Value]) -> Vec<WornBundle> {
+    if worn_bundle_ids.is_empty() {
+        return Vec::new();
+    }
+    let by_id = lookup_from(pool);
+    let mut seen: Vec<&str> = Vec::new();
+    let mut result = Vec::new();
+    for id in worn_bundle_ids {
+        if seen.contains(&id.as_str()) {
+            continue;
+        }
+        seen.push(id);
+        let Some(bundle) = by_id.get(id) else {
+            continue;
+        };
+        let node = crate::dissolve_bundles::WearableNode::from_value(bundle);
+        if let Some(leaves) =
+            crate::dissolve_bundles::dissolve_bundle_to_leaves(&node, Some(&by_id))
+        {
+            result.push(WornBundle {
+                id: node.id.clone(),
+                leaf_ids: leaves.into_iter().map(|leaf| leaf.id).collect(),
+            });
+        }
+    }
+    result
+}
+
+/// The `llm_choose` pick, dissolved against the character's pool with its
+/// credit (v4's `dissolveBundlesInSlotsWithCredit(result.slots, lookup)` arm).
+/// The [`OutfitLlmChooseRunner`] seam hands back the model's RAW pick (its
+/// output type is spelled by the host), so the two out-of-create consumers
+/// — the added participant and the merge — dissolve it here, over the same
+/// three-tier pool the runner consulted.
+pub fn resolve_llm_pick(
+    main: &Connection,
+    mount: &Connection,
+    character_id: &str,
+    project_mount_point_ids: &[String],
+    picked: &Slots,
+) -> Result<ResolvedOutfit, DbError> {
+    let pool = resolve_wearable_pool(main, mount, character_id, project_mount_point_ids)?;
+    let dissolved = dissolve_bundles_in_slots_with_credit(picked, &lookup_from(&pool));
+    Ok(ResolvedOutfit {
+        slots: dissolved.slots,
+        worn_bundles: dissolved.worn_bundles,
+    })
+}
+
+/// The merged three-tier wearable pool for one character outside a batch (the
+/// read [`resolve_default_outfit`] makes).
+pub fn resolve_wearable_pool(
+    main: &Connection,
+    mount: &Connection,
+    character_id: &str,
+    project_mount_point_ids: &[String],
+) -> Result<Vec<Value>, DbError> {
+    let docs = DocMountDocumentsRepository::new(mount);
+    let tiers =
+        shared_wardrobe_tiers_for_character(main, mount, character_id, project_mount_point_ids);
+    find_wearable_pool_for_character(main, &docs, character_id, &tiers)
+}
+
 /// An `id → item` lookup over a wardrobe pool, for [`dissolve_bundles_in_slots`].
 fn lookup_from(items: &[Value]) -> WearableLookup {
     let mut map = WearableLookup::new();
@@ -242,11 +318,20 @@ pub fn resolve_default_outfit(
     character_id: &str,
     project_mount_point_ids: &[String],
 ) -> Result<Slots, DbError> {
-    let docs = DocMountDocumentsRepository::new(mount);
-    let tiers =
-        shared_wardrobe_tiers_for_character(main, mount, character_id, project_mount_point_ids);
-    let pool = find_wearable_pool_for_character(main, &docs, character_id, &tiers)?;
-    Ok(default_outfit_from_pool(&pool))
+    resolve_default_outfit_with_credit(main, mount, character_id, project_mount_point_ids)
+        .map(|r| r.slots)
+}
+
+/// [`resolve_default_outfit`] with the `isDefault` bundles it dissolved (v4
+/// `buildDefaultOutfitWithCredit(await getPool(characterId))`).
+pub fn resolve_default_outfit_with_credit(
+    main: &Connection,
+    mount: &Connection,
+    character_id: &str,
+    project_mount_point_ids: &[String],
+) -> Result<ResolvedOutfit, DbError> {
+    let pool = resolve_wearable_pool(main, mount, character_id, project_mount_point_ids)?;
+    Ok(default_outfit_from_pool_with_credit(&pool))
 }
 
 /// v4 `LLMOutfitChoice` — what the model decided.
@@ -633,10 +718,10 @@ impl<'a> PoolCache<'a> {
 ///     the caller's existing current-thread runtime, so network waits overlap
 ///     while the DB reads stay serial at await points and the single-writer rule
 ///     is untouched.
-///  2. **Commit, serially, in the caller's order.**
-///     [`ChatOutfitsRepository::set_equipped_outfit`] reads the chat's whole
-///     `equippedOutfit` map, sets one key and writes it back, so concurrent
-///     writers would lose every entry but the last.
+///  2. **Commit, serially, in the caller's order.** The chokepoint's write
+///     ([`commit_equipped_outfit`]) reads the chat's whole `equippedOutfit`
+///     map, sets one key and writes it back, so concurrent writers would lose
+///     every entry but the last.
 ///
 /// Never returns `Err`: a character that can't be resolved or persisted is
 /// logged and left as-is rather than failing the chat around them (v4's
@@ -660,7 +745,7 @@ pub async fn apply_outfit_selections<C: CompletionProvider>(
     // completion and surfaces each one's own `Result`, which is v4's
     // `allSettled` in Rust: a blow-up is captured per character, never
     // cancelling its siblings.
-    let resolved: Vec<Result<Option<Value>, DbError>> =
+    let resolved: Vec<Result<Option<ResolvedOutfit>, DbError>> =
         futures_util::future::join_all(selections.iter().map(|selection| {
             resolve_selection(
                 main, mount, completion, executor, &outfits, &pools, chat_id, selection, ctx,
@@ -684,14 +769,47 @@ pub async fn apply_outfit_selections<C: CompletionProvider>(
             Ok(None) => continue,
             Ok(Some(v)) => v,
         };
-        if let Err(e) = outfits.set_equipped_outfit(chat_id, character_id, &value) {
-            tracing::error!(
-                chat_id, character_id, error = %e,
-                "[applyOutfitSelections] Failed to persist equipped outfit"
-            );
-        }
+        commit_selection(main, chat_id, character_id, &value, ctx.source);
     }
     Ok(())
+}
+
+/// v4's commit-loop body: the chokepoint, and on a failure the ERROR
+/// `[applyOutfitSelections] Failed to persist equipped outfit` `{chatId,
+/// characterId, error}` — the character is left as they were and the batch
+/// goes on.
+fn commit_selection(
+    main: &Connection,
+    chat_id: &str,
+    character_id: &str,
+    resolved: &ResolvedOutfit,
+    source: EquipSource,
+) {
+    let committed = commit_equipped_outfit(
+        main,
+        CommitEquippedOutfitInput {
+            chat_id,
+            character_id,
+            next_slots: &resolved.slots,
+            worn_bundles: &resolved.worn_bundles,
+            source,
+            at: None,
+        },
+    );
+    if let Err(e) = committed {
+        log_persist_failure(chat_id, character_id, &e);
+    }
+}
+
+/// v4's ERROR `[applyOutfitSelections] Failed to persist equipped outfit`
+/// `{chatId, characterId, error}` (the `error` the thrown message).
+pub fn log_persist_failure(chat_id: &str, character_id: &str, error: &dyn std::fmt::Display) {
+    tracing::error!(
+        chatId = chat_id,
+        characterId = character_id,
+        error = %error,
+        "[applyOutfitSelections] Failed to persist equipped outfit"
+    );
 }
 
 /// v4 `resolveSelection` — work out what a character should be wearing. `None`
@@ -714,7 +832,7 @@ async fn resolve_selection<C: CompletionProvider>(
     selection: &OutfitSelection,
     ctx: &OutfitContext<'_>,
     emitter: &CreationProgressEmitter,
-) -> Result<Option<Value>, DbError> {
+) -> Result<Option<ResolvedOutfit>, DbError> {
     if let Some(value) = resolve_non_llm_selection(outfits, pools, selection, ctx) {
         return Ok(Some(value));
     }
@@ -744,22 +862,33 @@ async fn resolve_selection<C: CompletionProvider>(
 
 /// The four modes that need no model call (`default` / `manual` / `none` /
 /// `previous_chat`). `None` for `llm_choose` and for an unknown mode, which the
-/// caller dispatches. The returned `Value` is what
-/// `set_equipped_outfit` should store — `previous_chat` carries the source
-/// chat's stored object through verbatim, as v4 does.
+/// caller dispatches. `previous_chat` carries the source chat's stored slots
+/// through (normalized on read, as v4's `getEquippedOutfitForCharacter` does)
+/// and claims NO bundle — the bundle was credited in the source chat.
 fn resolve_non_llm_selection(
     outfits: &ChatOutfitsRepository<'_>,
     pools: &PoolCache<'_>,
     selection: &OutfitSelection,
     ctx: &OutfitContext<'_>,
-) -> Option<Value> {
+) -> Option<ResolvedOutfit> {
     let character_id = selection.character_id.as_str();
     match selection.mode.as_str() {
-        "default" => Some(slots_to_value(&default_outfit_from_pool(
+        "default" => Some(default_outfit_from_pool_with_credit(
             &pools.get(character_id),
-        ))),
-        "manual" => Some(slots_to_value(&selection.slots.clone().unwrap_or_default())),
-        "none" => Some(slots_to_value(&Slots::default())),
+        )),
+        "manual" => {
+            // The composer dissolves client-side and sends leaves; an outfit
+            // picked from the quick-pick rides along in `wornBundleIds`.
+            let worn_bundles = match selection.worn_bundle_ids.as_deref() {
+                Some(ids) if !ids.is_empty() => manual_worn_bundles(ids, &pools.get(character_id)),
+                _ => Vec::new(),
+            };
+            Some(ResolvedOutfit {
+                slots: selection.slots.clone().unwrap_or_default(),
+                worn_bundles,
+            })
+        }
+        "none" => Some(ResolvedOutfit::bare(Slots::default())),
         "previous_chat" => {
             if let Some(source) = ctx.source_chat_id {
                 // v4 wraps the read in try/catch → fall back to default (the
@@ -767,12 +896,12 @@ fn resolve_non_llm_selection(
                 // `None` here, never an error).
                 if let Some(prev) = outfits.get_equipped_outfit_for_character(source, character_id)
                 {
-                    return Some(prev);
+                    return Some(ResolvedOutfit::bare(Slots::from_value(Some(&prev))));
                 }
             }
-            Some(slots_to_value(&default_outfit_from_pool(
+            Some(default_outfit_from_pool_with_credit(
                 &pools.get(character_id),
-            )))
+            ))
         }
         _ => None,
     }
@@ -781,8 +910,11 @@ fn resolve_non_llm_selection(
 /// The four no-model modes for a SYNC caller — the chat merge, which runs inside
 /// the single-writer closure and cannot hold connections across an await
 /// (P4.9E3A). Resolves through the same [`resolve_non_llm_selection`] the
-/// concurrent path uses, then persists. Returns `true` when the selection was
-/// handled here; `false` for `llm_choose` and for an unknown mode.
+/// concurrent path uses, then commits through the chokepoint with
+/// `ctx.source` (v4's merge passes `merge`). Returns `true` when the selection
+/// was handled here; `false` for `llm_choose` and for an unknown mode. A
+/// failed commit logs v4's `Failed to persist equipped outfit` ERROR (on the
+/// calling thread) and is still `Ok(true)` — v4's loop catches it.
 pub fn apply_outfit_selection_sync(
     main: &Connection,
     mount: &Connection,
@@ -795,7 +927,7 @@ pub fn apply_outfit_selection_sync(
     let Some(value) = resolve_non_llm_selection(outfits, &pools, selection, ctx) else {
         return Ok(false);
     };
-    outfits.set_equipped_outfit(chat_id, &selection.character_id, &value)?;
+    commit_selection(main, chat_id, &selection.character_id, &value, ctx.source);
     Ok(true)
 }
 
@@ -1187,9 +1319,12 @@ pub async fn run_llm_choose_via_db<C: CompletionProvider>(
     )
     .await
     {
-        LlmChooseOutcome::Attempted { choice, .. } => accept_llm_choice(choice.as_ref())
-            // The same dissolution the batch arm applies (v4 `applyOutfitSelections`).
-            .map(|(slots, _)| dissolve_bundles_in_slots(&slots, &lookup_from(&items))),
+        // The model's RAW pick (v4 `3ee3b1342`): the consumer dissolves it
+        // with its bundle credit through [`resolve_llm_pick`] — the seam's
+        // output type is spelled by the host, so the credit cannot ride it.
+        LlmChooseOutcome::Attempted { choice, .. } => {
+            accept_llm_choice(choice.as_ref()).map(|(slots, _)| slots)
+        }
         LlmChooseOutcome::NotAttempted => None,
     }
 }
@@ -1209,8 +1344,8 @@ async fn resolve_llm_choose<C: CompletionProvider>(
     character_id: &str,
     ctx: &OutfitContext<'_>,
     emitter: Option<&CreationProgressEmitter>,
-) -> Result<Value, DbError> {
-    let mut chosen: Option<Slots> = None;
+) -> Result<ResolvedOutfit, DbError> {
+    let mut chosen: Option<ResolvedOutfit> = None;
     let mut deliberately_unclothed = false;
     // Track whether we announced a consult so the fallback path can still
     // resolve the dialog's panel instead of leaving it spinning.
@@ -1257,10 +1392,12 @@ async fn resolve_llm_choose<C: CompletionProvider>(
                 // The prompt lets the model pick a bundle outright; break it
                 // into its parts before it's stored, so the wardrobe reads as
                 // garments rather than an opaque card (`61574563`).
-                chosen = Some(dissolve_bundles_in_slots(
-                    &slots,
-                    &lookup_from(&wardrobe_items),
-                ));
+                let dissolved =
+                    dissolve_bundles_in_slots_with_credit(&slots, &lookup_from(&wardrobe_items));
+                chosen = Some(ResolvedOutfit {
+                    slots: dissolved.slots,
+                    worn_bundles: dissolved.worn_bundles,
+                });
                 deliberately_unclothed = bare;
             }
             None => {
@@ -1274,7 +1411,7 @@ async fn resolve_llm_choose<C: CompletionProvider>(
         }
     }
 
-    if let Some(slots) = chosen {
+    if let Some(resolved) = chosen {
         if deliberately_unclothed {
             tracing::info!(
                 chat_id,
@@ -1294,13 +1431,13 @@ async fn resolve_llm_choose<C: CompletionProvider>(
             emitter,
             character_id,
             &consulted_name,
-            &slots,
+            &resolved.slots,
             ctx.project_mount_point_ids,
         );
-        return Ok(slots_to_value(&slots));
+        return Ok(resolved);
     }
 
-    let slots = default_outfit_from_pool(&wardrobe_items);
+    let fallback = default_outfit_from_pool_with_credit(&wardrobe_items);
     // If we already told the dialog we were consulting this character, resolve
     // their panel with the default we fell back to (and note it).
     if consulted {
@@ -1315,12 +1452,12 @@ async fn resolve_llm_choose<C: CompletionProvider>(
                 Some(emitter),
                 character_id,
                 &consulted_name,
-                &slots,
+                &fallback.slots,
                 ctx.project_mount_point_ids,
             );
         }
     }
-    Ok(slots_to_value(&slots))
+    Ok(fallback)
 }
 
 /// v4 `publishPreview` — publish a resolved outfit to the status dialog. Inert

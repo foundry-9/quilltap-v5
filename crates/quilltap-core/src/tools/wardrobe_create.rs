@@ -23,6 +23,7 @@ use crate::db::doc_mount_documents::DocMountDocumentsRepository;
 use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
 use crate::db::vault_wardrobe_public::create_vault_wardrobe_item;
 use crate::db::wardrobe_read::find_by_character_id;
+use crate::db::wardrobe_wear_stats::EquipSource;
 use crate::vault_overlay::WardrobeItem;
 use crate::wardrobe::{
     describe_wardrobe_effect, union_types, Slots, WardrobeEffect, WARDROBE_SLOT_TYPES,
@@ -365,6 +366,7 @@ fn run(
             &created.component_item_ids,
             created.replace,
             &tiers,
+            EquipSource::Tool,
         )?;
         equipped = true;
         effect = Some(if created.replace {

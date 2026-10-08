@@ -52,6 +52,7 @@ use crate::api::types::{ErrorKind, Response};
 use crate::db::chats::{ChatUpdate, ChatsRepository};
 use crate::db::chats_outfits::ChatOutfitsRepository;
 use crate::db::runtime::Db;
+use crate::db::wardrobe_wear_stats::EquipSource;
 use crate::db::{characters_read, chats_read, connection_profiles, DbError};
 use crate::services::chat_admin::{bad_request, internal, load_chat, not_found, ok};
 use crate::services::host_notifications::{
@@ -59,8 +60,8 @@ use crate::services::host_notifications::{
     HostAddAnnouncement, HostCharacter, HostMergeFromAnnouncement, HostMergeToAnnouncement,
 };
 use crate::services::outfit_selections::{
-    apply_outfit_selection_sync, OutfitContext, OutfitLlmChooseRequest, OutfitLlmChooseRunner,
-    OutfitSelection,
+    apply_outfit_selection_sync, resolve_llm_pick, OutfitContext, OutfitLlmChooseRequest,
+    OutfitLlmChooseRunner, OutfitSelection,
 };
 use crate::services::system_prompt_compiler::compile_identity_stack_for_participant;
 use crate::wardrobe::Slots;
@@ -395,11 +396,17 @@ pub async fn apply_chat_merge(
                 character_id: character_id.clone(),
                 mode: "previous_chat".to_string(),
                 slots: None,
+                worn_bundle_ids: None,
             });
         // `llm_choose` consults the cheap LLM OUTSIDE the writer (P4.9E3B):
         // the decided slots become a `manual` selection; any failure — task,
         // read, or an unwired runner — becomes `default`, v4's own fallback.
-        let selection = if selection.mode == "llm_choose" {
+        // The runner hands back the model's RAW pick (P4.D262), dissolved
+        // inside the writer below against the character's pool (v4's
+        // `dissolveBundlesInSlotsWithCredit` arm — a merge credits nothing, so
+        // only the slots matter here).
+        let llm_pick = selection.mode == "llm_choose";
+        let selection = if llm_pick {
             let chosen = match outfit_runner {
                 Some(runner) => {
                     runner
@@ -427,11 +434,13 @@ pub async fn apply_chat_merge(
                     character_id: character_id.clone(),
                     mode: "manual".to_string(),
                     slots: Some(slots),
+                    worn_bundle_ids: None,
                 },
                 None => OutfitSelection {
                     character_id: character_id.clone(),
                     mode: "default".to_string(),
                     slots: None,
+                    worn_bundle_ids: None,
                 },
             }
         } else {
@@ -461,7 +470,29 @@ pub async fn apply_chat_merge(
                     scenario_text: scenario.as_deref(),
                     cheap_settings: cheap.as_ref(),
                     source_chat_id: Some(&source),
+                    // "A merge changes nobody's clothes" — committed through the
+                    // chokepoint, credited nothing (v4 `apply-chat-merge.ts:252`).
+                    source: EquipSource::Merge,
                 };
+                let mut selection = selection;
+                if llm_pick {
+                    if let Some(picked) = selection.slots.as_ref() {
+                        // v4's catch around the llm arm falls back to default.
+                        match resolve_llm_pick(
+                            main,
+                            mount,
+                            &selection.character_id,
+                            &mounts,
+                            picked,
+                        ) {
+                            Ok(resolved) => selection.slots = Some(resolved.slots),
+                            Err(_) => {
+                                selection.mode = "default".to_string();
+                                selection.slots = None;
+                            }
+                        }
+                    }
+                }
                 // v4 logs an outfit failure and continues.
                 let _ =
                     apply_outfit_selection_sync(main, mount, &outfits, &target, &selection, &ctx);
@@ -561,10 +592,18 @@ fn parse_outfit_selections(rows: Option<&[Value]>) -> Option<Vec<OutfitSelection
             .get("slots")
             .filter(|s| s.is_object())
             .map(|s| Slots::from_value(Some(s)));
+        // `manual` only (v4 `3ee3b1342`): the composer's dissolved bundles.
+        let worn_bundle_ids = r.get("wornBundleIds").and_then(Value::as_array).map(|ids| {
+            ids.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        });
         out.push(OutfitSelection {
             character_id,
             mode,
             slots,
+            worn_bundle_ids,
         });
     }
     Some(out)

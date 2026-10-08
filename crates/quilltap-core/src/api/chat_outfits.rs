@@ -21,7 +21,31 @@
 //! `handleEquipSlot` never loads the chat: a mutation against a nonexistent
 //! chat still answers 200 with the computed slots (v4's repo `update` is a
 //! silent no-op on a missing row, and `setEquippedOutfit` returns the passed
-//! slots regardless). The differential pins this arm — do not "fix" it.
+//! slots regardless). Since the wear ledger (v4 `3ee3b1342`) every mode writes
+//! through the chokepoint ([`commit_equipped_outfit`]), which — for the same
+//! reason — credits that wear too (measured at `f5e953a3f`: the tier-2
+//! `route_wear_missing_chat` row). The differentials pin this arm — do not
+//! "fix" it.
+//!
+//! ## A FAILED slot write is a 500 (v4 `3ee3b1342`)
+//!
+//! When the slot write itself fails (a database error — v4's `safeQuery`
+//! fallback `null`), the chokepoint THROWS `Failed to save the equipped outfit
+//! …`, so v4's outer catch answers 500 `Failed to equip wardrobe slot`
+//! (ERROR `[Chats v1] Error equipping wardrobe slot` `{chatId}`) and the avatar
+//! trigger + announcement are skipped — no caller reports a change that was
+//! not saved. The old `Failed to update equipped slot` arm is unreachable in
+//! v4 now and is not ported.
+//!
+//! ## `set_all`'s `wornBundleIds` (v4 `3ee3b1342`)
+//!
+//! The dialog stages bundles as their leaves, so the stored slots alone cannot
+//! say an outfit was put on. `set_all` accepts the bundles the client
+//! dissolved as a CLAIM ([`resolve_worn_bundles`]): ids the character cannot
+//! reach and items that are not bundles are dropped (the `Some claimed worn
+//! bundles were not credited` DEBUG), each survivor is expanded to its leaves
+//! server-side, and the ledger credits it only when one of those leaves was
+//! newly put on.
 //!
 //! ## The equip body parse
 //!
@@ -36,12 +60,18 @@ use crate::db::chats_outfits::ChatOutfitsRepository;
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
 use crate::db::runtime::Db;
 use crate::db::wardrobe_read;
+use crate::db::wardrobe_wear_stats::{EquipSource, WornBundle};
+use crate::dissolve_bundles::WearableNode;
 use crate::services::avatar_generation::{
     trigger_avatar_generation_if_enabled, AvatarGenerationParams,
 };
 use crate::services::image_job_common::with_both_conns;
 use crate::services::queue_service::enqueue_wardrobe_outfit_announcement;
-use crate::tools::wardrobe_shared::{add_to_slot, equip_item, remove_from_slot, replace_item};
+use crate::services::wardrobe_wear_commit::{commit_equipped_outfit, CommitEquippedOutfitInput};
+use crate::tools::wardrobe_shared::{
+    add_to_slot, equip_item, lookup_for_bundle, remove_from_slot, replace_item, worn_bundles_for,
+};
+use crate::wardrobe::Slots;
 use crate::wardrobe_tiers::{
     resolve_shared_wardrobe_tiers_for_chat, SharedWardrobeTierOptions, SharedWardrobeTiers,
 };
@@ -280,6 +310,9 @@ struct EquipBody {
     /// The Zod-parsed `slots` (all four keys materialized, defaults applied,
     /// unknown keys stripped) — present only when the body carried `slots`.
     slots: Option<Value>,
+    /// `wornBundleIds: z.array(z.string().min(1)).optional()` (v4
+    /// `3ee3b1342`) — read by `set_all` only.
+    worn_bundle_ids: Option<Vec<String>>,
 }
 
 /// Zod type-name for the `received …` clause of a Zod-4 message.
@@ -444,6 +477,35 @@ fn parse_equip_body(body: &Value) -> Result<EquipBody, String> {
         }
     };
 
+    // wornBundleIds: z.array(z.string().min(1)).optional() — every bad element
+    // is its own issue (Zod 4 keeps walking the array).
+    let worn_bundle_ids = match get("wornBundleIds") {
+        None => None,
+        Some(Value::Array(a)) => {
+            let mut ids = Vec::with_capacity(a.len());
+            for v in a {
+                match v {
+                    Value::String(s) if !s.is_empty() => ids.push(s.clone()),
+                    Value::String(_) => {
+                        issues.push("Too small: expected string to have >=1 characters".to_string())
+                    }
+                    other => issues.push(format!(
+                        "Invalid input: expected string, received {}",
+                        received(Some(other))
+                    )),
+                }
+            }
+            Some(ids)
+        }
+        v => {
+            issues.push(format!(
+                "Invalid input: expected array, received {}",
+                received(v)
+            ));
+            None
+        }
+    };
+
     if !issues.is_empty() {
         return Err(issues.join(", "));
     }
@@ -476,7 +538,63 @@ fn parse_equip_body(body: &Value) -> Result<EquipBody, String> {
         slot,
         item_id,
         slots,
+        worn_bundle_ids,
     })
+}
+
+/// What [`resolve_worn_bundles`] resolved, for its DEBUG line (logged by the
+/// caller on its own thread — the resolution runs inside the writer closure,
+/// where a line would be invisible to the capture rig).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct WornBundleClaim {
+    claimed: usize,
+    resolved: usize,
+}
+
+/// v4 `resolveWornBundles` (`outfit.ts:220-243`) — turn a `set_all` request's
+/// `wornBundleIds` into the ledger's bundle credit. Ids the character cannot
+/// reach, and items that are not bundles, are dropped (a client cannot credit
+/// a garment it cannot see); each survivor is expanded to its leaves
+/// server-side. A read failure propagates (v4 throws to the route's catch).
+/// The claim counts ride back for v4's DEBUG `[Chats v1] Some claimed worn
+/// bundles were not credited`, which the caller logs when they differ.
+fn resolve_worn_bundles(
+    main: &rusqlite::Connection,
+    docs: &DocMountDocumentsRepository,
+    character_id: &str,
+    worn_bundle_ids: &[String],
+    tiers: &crate::wardrobe_tiers::SharedWardrobeTiers,
+) -> Result<(Vec<WornBundle>, WornBundleClaim), crate::db::DbError> {
+    // `Array.from(new Set(ids))` — first-seen order.
+    let mut ids: Vec<String> = Vec::new();
+    for id in worn_bundle_ids {
+        if !ids.contains(id) {
+            ids.push(id.clone());
+        }
+    }
+    if ids.is_empty() {
+        let none = WornBundleClaim {
+            claimed: 0,
+            resolved: 0,
+        };
+        return Ok((Vec::new(), none));
+    }
+    let bundles: Vec<Value> =
+        wardrobe_read::find_by_ids_for_character(main, docs, character_id, &ids, tiers)?
+            .into_iter()
+            .filter(|item| crate::dissolve_bundles::is_bundle(&WearableNode::from_value(item)))
+            .collect();
+    let mut result: Vec<WornBundle> = Vec::new();
+    for bundle in &bundles {
+        let node = WearableNode::from_value(bundle);
+        let lookup = lookup_for_bundle(main, docs, character_id, &node.component_item_ids, tiers);
+        result.extend(worn_bundles_for(&node, lookup.as_ref(), None));
+    }
+    let claim = WornBundleClaim {
+        claimed: ids.len(),
+        resolved: result.len(),
+    };
+    Ok((result, claim))
 }
 
 // ===========================================================================
@@ -485,7 +603,12 @@ fn parse_equip_body(body: &Value) -> Result<EquipBody, String> {
 
 /// The mode-dispatch result computed inside the write closure.
 enum EquipOutcome {
-    Updated(Value),
+    /// The written slots, plus — for `set_all` — the credited bundle count its
+    /// INFO line reports (logged by the caller, outside the closure).
+    Updated {
+        slots: Value,
+        set_all_claim: Option<WornBundleClaim>,
+    },
     Refused(Response),
 }
 
@@ -557,19 +680,30 @@ pub async fn chat_equip(db: &Db, user_id: &str, chat_id: &str, body: Value) -> R
                         }
                     }
                 }
-                // v4 `setEquippedOutfit` returns the passed slots (even for a
-                // missing chat — the repo update is a silent no-op there).
-                let repo = ChatOutfitsRepository::new(main);
-                if repo
-                    .set_equipped_outfit(&cid, &parsed.character_id, slots_value)
-                    .is_err()
-                {
-                    // safeQuery fallback null → v4's 500 with this message.
-                    return Ok(EquipOutcome::Refused(internal(
-                        "Failed to update equipped slot",
-                    )));
-                }
-                slots_value.clone()
+                let (worn_bundles, claim) = resolve_worn_bundles(
+                    main,
+                    &docs,
+                    &parsed.character_id,
+                    parsed.worn_bundle_ids.as_deref().unwrap_or_default(),
+                    &tiers,
+                )?;
+                // Through the chokepoint: a lost write throws to the outer
+                // catch (500, no trigger, no announcement).
+                commit_equipped_outfit(
+                    main,
+                    CommitEquippedOutfitInput {
+                        chat_id: &cid,
+                        character_id: &parsed.character_id,
+                        next_slots: &Slots::from_value(Some(slots_value)),
+                        worn_bundles: &worn_bundles,
+                        source: EquipSource::Ui,
+                        at: None,
+                    },
+                )?;
+                return Ok(EquipOutcome::Updated {
+                    slots: slots_value.clone(),
+                    set_all_claim: Some(claim),
+                });
             }
             m @ ("wear" | "equip" | "replace") => {
                 // itemId guaranteed by the schema refine.
@@ -601,6 +735,7 @@ pub async fn chat_equip(db: &Db, user_id: &str, chat_id: &str, body: Value) -> R
                         &types,
                         &component_item_ids,
                         &tiers,
+                        EquipSource::Ui,
                     )
                 } else {
                     // `wear` (and its deprecated alias `equip`) honor the flag.
@@ -615,16 +750,10 @@ pub async fn chat_equip(db: &Db, user_id: &str, chat_id: &str, body: Value) -> R
                         &component_item_ids,
                         replace_flag,
                         &tiers,
+                        EquipSource::Ui,
                     )
                 };
-                match next {
-                    Ok(slots) => slots.to_value(),
-                    Err(_) => {
-                        return Ok(EquipOutcome::Refused(internal(
-                            "Failed to update equipped slot",
-                        )))
-                    }
-                }
+                next?.to_value()
             }
             "add_to_slot" => {
                 let item_id = parsed.item_id.as_deref().expect("schema-guaranteed");
@@ -654,7 +783,7 @@ pub async fn chat_equip(db: &Db, user_id: &str, chat_id: &str, body: Value) -> R
                     .and_then(Value::as_str)
                     .unwrap_or_default()
                     .to_string();
-                match add_to_slot(
+                add_to_slot(
                     main,
                     &docs,
                     &cid,
@@ -664,56 +793,75 @@ pub async fn chat_equip(db: &Db, user_id: &str, chat_id: &str, body: Value) -> R
                     &types,
                     &component_ids_of(&item),
                     &tiers,
-                ) {
-                    Ok(slots) => slots.to_value(),
-                    Err(_) => {
-                        return Ok(EquipOutcome::Refused(internal(
-                            "Failed to update equipped slot",
-                        )))
-                    }
-                }
+                    EquipSource::Ui,
+                )?
+                .to_value()
             }
             "remove_from_slot" => {
                 let slot = parsed.slot.as_deref().expect("schema-guaranteed");
                 // v4 `itemId ?? undefined` — an empty string is a VALUE here
                 // (only the refine arms treat '' as falsy, and remove has none).
-                match remove_from_slot(
+                remove_from_slot(
                     main,
                     &cid,
                     &parsed.character_id,
                     slot,
                     parsed.item_id.as_deref(),
-                ) {
-                    Ok(slots) => slots.to_value(),
-                    Err(_) => {
-                        return Ok(EquipOutcome::Refused(internal(
-                            "Failed to update equipped slot",
-                        )))
-                    }
-                }
+                )?
+                .to_value()
             }
             _ => {
                 // mode === 'clear_slot'
                 let slot = parsed.slot.as_deref().expect("schema-guaranteed");
-                match remove_from_slot(main, &cid, &parsed.character_id, slot, None) {
-                    Ok(slots) => slots.to_value(),
-                    Err(_) => {
-                        return Ok(EquipOutcome::Refused(internal(
-                            "Failed to update equipped slot",
-                        )))
-                    }
-                }
+                remove_from_slot(main, &cid, &parsed.character_id, slot, None)?.to_value()
             }
         };
-        Ok(EquipOutcome::Updated(updated))
+        Ok(EquipOutcome::Updated {
+            slots: updated,
+            set_all_claim: None,
+        })
     })
     .await;
 
     let updated = match out {
-        Ok(EquipOutcome::Updated(v)) => v,
+        Ok(EquipOutcome::Updated {
+            slots,
+            set_all_claim,
+        }) => {
+            if let Some(claim) = set_all_claim {
+                if claim.resolved != claim.claimed {
+                    tracing::debug!(
+                        characterId = character_id.as_str(),
+                        claimed = claim.claimed,
+                        resolved = claim.resolved,
+                        context = "wardrobe",
+                        "[Chats v1] Some claimed worn bundles were not credited"
+                    );
+                }
+                // `wornBundleCount` is the credit CLAIM that survived
+                // resolution (v4 `wornBundles.length`).
+                tracing::info!(
+                    chatId = chat_id,
+                    characterId = character_id.as_str(),
+                    wornBundleCount = claim.resolved,
+                    context = "wardrobe",
+                    "[Chats v1] Equipped outfit replaced (set_all)"
+                );
+            }
+            slots
+        }
         Ok(EquipOutcome::Refused(r)) => return r,
-        // The route's outer catch (a failure before/around the primitives).
-        Err(_) => return internal("Failed to equip wardrobe slot"),
+        // The route's outer catch — a lost slot write (the chokepoint's
+        // `Failed to save the equipped outfit …`), a failed read, a failed
+        // credit — skips the trigger and the announcement.
+        Err(e) => {
+            tracing::error!(
+                chatId = chat_id,
+                error = %crate::db::fallback::error_text(&e),
+                "[Chats v1] Error equipping wardrobe slot"
+            );
+            return internal("Failed to equip wardrobe slot");
+        }
     };
 
     // Post-mutation legs, both failure-swallowed (v4 awaits them in order).

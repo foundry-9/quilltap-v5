@@ -1,0 +1,545 @@
+{
+  "comment": "P4.D262 — the wear ledger's chokepoint, tier-2 (v4 `3ee3b1342`). A companion to wardrobe-tools.json, consumed by build-wardrobe-tools-fixture.ts through QT_WT_AVATAR_SPEC (it reads `imageProfile` + `scenarios` — one chat per scenario, each seeded with the caller's Blue Blouse, avatar generation OFF), by cases/wardrobe-wear-commit-tier2.ts and by wardrobe_wear_commit_tier2_equivalence.rs. `ops` drive v4's REAL WardrobeWearRepository.commitEquippedOutfit (`commit`), applyOutfitSelections (`apply`) and the chat outfit route's handleEquipSlot (`route`) in sequence on ONE copy; `who` names the caller / recipient. The shapes are v4's own jest cases: wardrobe-wear.repository.test.ts:237-330, apply-outfit-selections.ledger.test.ts:109-198, outfit.test.ts (set_all wornBundleIds, clear_slot take-off, the lost write's 500).",
+  "imageProfile": {
+    "id": "eeeeeeee-0000-4000-8000-0000000000d2",
+    "name": "Ledger Imagery",
+    "provider": "OPENAI_COMPATIBLE",
+    "baseUrl": "http://127.0.0.1:1/v1",
+    "modelName": "mock-image-model"
+  },
+  "scenarios": [
+    {
+      "name": "ledger_1",
+      "chatId": "bbbbbbbb-0000-4000-8000-000000000001",
+      "chatType": "salon",
+      "avatarGenerationEnabled": false
+    },
+    {
+      "name": "ledger_2",
+      "chatId": "bbbbbbbb-0000-4000-8000-000000000002",
+      "chatType": "salon",
+      "avatarGenerationEnabled": false
+    },
+    {
+      "name": "ledger_3",
+      "chatId": "bbbbbbbb-0000-4000-8000-000000000003",
+      "chatType": "salon",
+      "avatarGenerationEnabled": false
+    },
+    {
+      "name": "ledger_4",
+      "chatId": "bbbbbbbb-0000-4000-8000-000000000004",
+      "chatType": "salon",
+      "avatarGenerationEnabled": false
+    },
+    {
+      "name": "ledger_5",
+      "chatId": "bbbbbbbb-0000-4000-8000-000000000005",
+      "chatType": "salon",
+      "avatarGenerationEnabled": false
+    },
+    {
+      "name": "ledger_6",
+      "chatId": "bbbbbbbb-0000-4000-8000-000000000006",
+      "chatType": "salon",
+      "avatarGenerationEnabled": false
+    },
+    {
+      "name": "ledger_7",
+      "chatId": "bbbbbbbb-0000-4000-8000-000000000007",
+      "chatType": "salon",
+      "avatarGenerationEnabled": false
+    },
+    {
+      "name": "ledger_8",
+      "chatId": "bbbbbbbb-0000-4000-8000-000000000008",
+      "chatType": "salon",
+      "avatarGenerationEnabled": false
+    },
+    {
+      "name": "ledger_9",
+      "chatId": "bbbbbbbb-0000-4000-8000-000000000009",
+      "chatType": "salon",
+      "avatarGenerationEnabled": false
+    }
+  ],
+  "missingChatId": "bbbbbbbb-0000-4000-8000-0000000000ff",
+  "ops": [
+    {
+      "name": "commit_newly_worn",
+      "kind": "commit",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000001",
+      "who": "caller",
+      "nextSlots": {
+        "top": [
+          "a0000000-0000-4000-8000-000000000001"
+        ],
+        "bottom": [
+          "a0000000-0000-4000-8000-000000000002"
+        ]
+      },
+      "source": "ui",
+      "at": "2026-03-14T09:00:00.000Z"
+    },
+    {
+      "name": "commit_take_off",
+      "kind": "commit",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000001",
+      "who": "caller",
+      "nextSlots": {
+        "top": [
+          "a0000000-0000-4000-8000-000000000001"
+        ]
+      },
+      "source": "take-off",
+      "at": "2026-03-15T09:00:00.000Z"
+    },
+    {
+      "name": "commit_rewear",
+      "kind": "commit",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000001",
+      "who": "caller",
+      "nextSlots": {
+        "top": [
+          "a0000000-0000-4000-8000-000000000001"
+        ],
+        "bottom": [
+          "a0000000-0000-4000-8000-000000000002"
+        ]
+      },
+      "source": "tool",
+      "at": "2026-03-16T09:00:00.000Z"
+    },
+    {
+      "name": "commit_second_wearer",
+      "kind": "commit",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000001",
+      "who": "recipient",
+      "nextSlots": {
+        "bottom": [
+          "a0000000-0000-4000-8000-000000000002"
+        ]
+      },
+      "source": "ui",
+      "at": "2026-03-16T09:00:00.000Z"
+    },
+    {
+      "name": "commit_earlier_wear_lands_late",
+      "kind": "commit",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000001",
+      "who": "caller",
+      "nextSlots": {
+        "top": [
+          "a0000000-0000-4000-8000-000000000001"
+        ],
+        "bottom": [
+          "a0000000-0000-4000-8000-000000000002"
+        ],
+        "footwear": [
+          "a0000000-0000-4000-8000-000000000003"
+        ]
+      },
+      "source": "ui",
+      "at": "2026-03-01T09:00:00.000Z"
+    },
+    {
+      "name": "commit_bundle_once",
+      "kind": "commit",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000002",
+      "who": "caller",
+      "nextSlots": {
+        "top": [
+          "a0000000-0000-4000-8000-000000000001"
+        ],
+        "bottom": [
+          "a0000000-0000-4000-8000-000000000002"
+        ]
+      },
+      "wornBundles": [
+        {
+          "id": "a0000000-0000-4000-8000-000000000004",
+          "leafIds": [
+            "a0000000-0000-4000-8000-000000000001",
+            "a0000000-0000-4000-8000-000000000002"
+          ]
+        }
+      ],
+      "source": "ui",
+      "at": "2026-03-14T09:00:00.000Z"
+    },
+    {
+      "name": "commit_bundle_all_on",
+      "kind": "commit",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000002",
+      "who": "caller",
+      "nextSlots": {
+        "top": [
+          "a0000000-0000-4000-8000-000000000001"
+        ],
+        "bottom": [
+          "a0000000-0000-4000-8000-000000000002"
+        ]
+      },
+      "wornBundles": [
+        {
+          "id": "a0000000-0000-4000-8000-000000000004",
+          "leafIds": [
+            "a0000000-0000-4000-8000-000000000001",
+            "a0000000-0000-4000-8000-000000000002"
+          ]
+        }
+      ],
+      "source": "ui",
+      "at": "2026-03-15T09:00:00.000Z"
+    },
+    {
+      "name": "commit_merge",
+      "kind": "commit",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000003",
+      "who": "caller",
+      "nextSlots": {
+        "top": [
+          "a0000000-0000-4000-8000-000000000001"
+        ],
+        "footwear": [
+          "a0000000-0000-4000-8000-000000000003"
+        ]
+      },
+      "source": "merge",
+      "at": "2026-03-14T09:00:00.000Z"
+    },
+    {
+      "name": "commit_equal_slots",
+      "kind": "commit",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000003",
+      "who": "caller",
+      "nextSlots": {
+        "top": [
+          "a0000000-0000-4000-8000-000000000001"
+        ],
+        "footwear": [
+          "a0000000-0000-4000-8000-000000000003"
+        ]
+      },
+      "source": "ui",
+      "at": "2026-03-15T09:00:00.000Z"
+    },
+    {
+      "name": "commit_legacy_composite",
+      "kind": "commit",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000004",
+      "who": "caller",
+      "nextSlots": {
+        "top": [
+          "a0000000-0000-4000-8000-000000000004"
+        ],
+        "bottom": [
+          "a0000000-0000-4000-8000-000000000004"
+        ]
+      },
+      "wornBundles": [
+        {
+          "id": "a0000000-0000-4000-8000-000000000004",
+          "leafIds": [
+            "a0000000-0000-4000-8000-000000000001",
+            "a0000000-0000-4000-8000-000000000002"
+          ]
+        }
+      ],
+      "source": "ui",
+      "at": "2026-03-14T09:00:00.000Z"
+    },
+    {
+      "name": "commit_lost_write",
+      "kind": "commit",
+      "chat": "bbbbbbbb-0000-4000-8000-0000000000ff",
+      "who": "caller",
+      "nextSlots": {
+        "footwear": [
+          "a0000000-0000-4000-8000-000000000003"
+        ]
+      },
+      "source": "tool",
+      "at": "2026-03-14T09:00:00.000Z"
+    },
+    {
+      "name": "apply_default_chat_start",
+      "kind": "apply",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000005",
+      "selections": [
+        {
+          "who": "caller",
+          "mode": "default"
+        }
+      ]
+    },
+    {
+      "name": "apply_manual_claims",
+      "kind": "apply",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000006",
+      "source": "participant-added",
+      "selections": [
+        {
+          "who": "caller",
+          "mode": "manual",
+          "slots": {
+            "top": [
+              "a0000000-0000-4000-8000-000000000001"
+            ],
+            "bottom": [
+              "a0000000-0000-4000-8000-000000000002"
+            ]
+          },
+          "wornBundleIds": [
+            "a0000000-0000-4000-8000-000000000004",
+            "not-reachable",
+            "a0000000-0000-4000-8000-000000000003",
+            "a0000000-0000-4000-8000-000000000004"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "apply_manual_without_ids",
+      "kind": "apply",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000006",
+      "source": "participant-added",
+      "selections": [
+        {
+          "who": "recipient",
+          "mode": "manual",
+          "slots": {
+            "accessories": [
+              "d0000000-0000-4000-8000-000000000001"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "apply_none_and_previous_merge",
+      "kind": "apply",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000007",
+      "source": "merge",
+      "sourceChat": "bbbbbbbb-0000-4000-8000-000000000001",
+      "selections": [
+        {
+          "who": "recipient",
+          "mode": "none"
+        },
+        {
+          "who": "caller",
+          "mode": "previous_chat"
+        }
+      ]
+    },
+    {
+      "name": "apply_previous_chat_credits_leaves",
+      "kind": "apply",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000008",
+      "source": "chat-start",
+      "sourceChat": "bbbbbbbb-0000-4000-8000-000000000001",
+      "selections": [
+        {
+          "who": "recipient",
+          "mode": "previous_chat"
+        }
+      ]
+    },
+    {
+      "name": "apply_manual_ids_ignored_off_manual",
+      "kind": "apply",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000009",
+      "source": "chat-start",
+      "selections": [
+        {
+          "who": "recipient",
+          "mode": "none",
+          "wornBundleIds": [
+            "a0000000-0000-4000-8000-000000000004"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "apply_lost_write",
+      "kind": "apply",
+      "chat": "bbbbbbbb-0000-4000-8000-0000000000ff",
+      "selections": [
+        {
+          "who": "caller",
+          "mode": "manual",
+          "slots": {
+            "top": [
+              "a0000000-0000-4000-8000-000000000001"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "route_set_all_claims",
+      "kind": "route",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000008",
+      "body": {
+        "who": "caller",
+        "mode": "set_all",
+        "slots": {
+          "top": [
+            "a0000000-0000-4000-8000-000000000001"
+          ],
+          "bottom": [
+            "a0000000-0000-4000-8000-000000000002"
+          ]
+        },
+        "wornBundleIds": [
+          "a0000000-0000-4000-8000-000000000004",
+          "a0000000-0000-4000-8000-000000000001",
+          "not-reachable"
+        ]
+      }
+    },
+    {
+      "name": "route_set_all_unreachable_item",
+      "kind": "route",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000008",
+      "body": {
+        "who": "caller",
+        "mode": "set_all",
+        "slots": {
+          "top": [
+            "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+          ]
+        }
+      }
+    },
+    {
+      "name": "route_clear_slot_takes_off",
+      "kind": "route",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000008",
+      "body": {
+        "who": "caller",
+        "mode": "clear_slot",
+        "slot": "bottom"
+      }
+    },
+    {
+      "name": "route_wear_bundle",
+      "kind": "route",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000007",
+      "body": {
+        "who": "caller",
+        "mode": "wear",
+        "itemId": "a0000000-0000-4000-8000-000000000004"
+      }
+    },
+    {
+      "name": "route_add_to_slot_bundle",
+      "kind": "route",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000009",
+      "body": {
+        "who": "caller",
+        "mode": "add_to_slot",
+        "slot": "bottom",
+        "itemId": "a0000000-0000-4000-8000-000000000004"
+      }
+    },
+    {
+      "name": "route_set_all_without_claims",
+      "kind": "route",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000009",
+      "body": {
+        "who": "recipient",
+        "mode": "set_all",
+        "slots": {
+          "accessories": [
+            "d0000000-0000-4000-8000-000000000001"
+          ]
+        }
+      }
+    },
+    {
+      "name": "route_set_all_every_claim_resolves",
+      "kind": "route",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000009",
+      "body": {
+        "who": "caller",
+        "mode": "set_all",
+        "slots": {
+          "top": [
+            "a0000000-0000-4000-8000-000000000001"
+          ],
+          "bottom": [
+            "a0000000-0000-4000-8000-000000000002"
+          ],
+          "footwear": [
+            "a0000000-0000-4000-8000-000000000003"
+          ]
+        },
+        "wornBundleIds": [
+          "a0000000-0000-4000-8000-000000000004"
+        ]
+      }
+    },
+    {
+      "name": "route_wear_missing_chat",
+      "kind": "route",
+      "chat": "bbbbbbbb-0000-4000-8000-0000000000ff",
+      "body": {
+        "who": "caller",
+        "mode": "wear",
+        "itemId": "a0000000-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "name": "route_set_all_missing_chat",
+      "kind": "route",
+      "chat": "bbbbbbbb-0000-4000-8000-0000000000ff",
+      "body": {
+        "who": "caller",
+        "mode": "set_all",
+        "slots": {
+          "top": [
+            "a0000000-0000-4000-8000-000000000001"
+          ]
+        },
+        "wornBundleIds": [
+          "a0000000-0000-4000-8000-000000000004"
+        ]
+      }
+    },
+    {
+      "name": "route_bad_worn_bundle_ids",
+      "kind": "route",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000009",
+      "body": {
+        "who": "caller",
+        "mode": "set_all",
+        "slots": {
+          "top": [
+            "a0000000-0000-4000-8000-000000000001"
+          ]
+        },
+        "wornBundleIds": [
+          "",
+          5
+        ]
+      }
+    },
+    {
+      "name": "route_worn_bundle_ids_not_array",
+      "kind": "route",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000009",
+      "body": {
+        "who": "caller",
+        "mode": "set_all",
+        "slots": {
+          "top": [
+            "a0000000-0000-4000-8000-000000000001"
+          ]
+        },
+        "wornBundleIds": "x"
+      }
+    }
+  ]
+}

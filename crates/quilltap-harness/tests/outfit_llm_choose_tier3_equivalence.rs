@@ -868,11 +868,14 @@ fn drive_apply_case(
         scenario_text: None,
         cheap_settings: None,
         source_chat_id: None,
+        // v4's `context?.source ?? 'chat-start'` (the case passes none).
+        source: quilltap_core::db::wardrobe_wear_stats::EquipSource::ChatStart,
     };
     let selections = vec![OutfitSelection {
         character_id: character_id.to_string(),
         mode: "llm_choose".to_string(),
         slots: None,
+        worn_bundle_ids: None,
     }];
     let applied = rt.block_on(apply_outfit_selections(
         main,

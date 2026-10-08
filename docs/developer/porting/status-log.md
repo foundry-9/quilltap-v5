@@ -172660,3 +172660,117 @@ unit 4 · `83219f0c9` unit 5 · `0cf600d7f` unit 6 · `83ed2618f` item 15 note �
 `89ebbc260` the gate's two test fixes · (this record).
 
 **LANE COMPLETE.**
+## P4.D262 — the wear ledger's WRITE side + the four wardrobe tools — lane record (`claude/p4-wear-ledger-chokepoint-72f051`, 2026-10-08)
+
+Branched from P4.D255's lane tip `23cd7123b` (its `KEYSTONE` `c30603378` plus the
+five P4.D255 commits after it, LANE COMPLETE; the unifier picks P4.D255 whole
+first, so every commit here cherry-picks onto a union that already holds them).
+Pin `/tmp/qt-v4-pin-p4d262-f5e953a3f` (verified `rev-parse` + `4.10.0-dev.117`;
+the live checkout's lockfile differs from the pin's by the version stamp alone,
+so the three symlink classes were kept — `openai` 7.30.0 under the pin).
+
+**§R.2 probe at lane start: FAILED, then WAIVED.** v4 `main` carried
+`3f7320138` (memory F1–F9, #83), `da98ca58b` (#84 docs) and `f7d8064be` (recall
+retuning, `4.10.0-dev.137`) beyond the waived `1825bfd53`. None touches a
+surface this lane ports (`3f7320138` edits v4's `wardrobe-wear.repository.test.ts`
+only to match SQLite rejections by message). The human waived all three ("pin
+stays `f5e953a3f`") before any work.
+
+### Red-first at the lane base (oracles from the pin, KEYSTONE-tip binaries)
+
+- `wardrobe_tools_equivalence` RED (first diff `list_all`: the Output's
+  `image_file_id` / `wear_count` / `last_worn_at`, every line's ` · never worn`).
+- `tool_definitions_equivalence` RED (`wardrobeList` first).
+- GREEN until grown: `dissolve_bundles` (1), `chats_outfits_tier2` (1),
+  `chat_cast_routes` (9), `chat_create_capstone` (3), `outfit_llm_choose_tier3`
+  (1), `wardrobe_tools_avatar_trigger` (3); `characters_mutations` red ONLY on
+  P4.D256's `wardrobe_create` / `wardrobe_get` arms (the `character_delete_cascade`
+  arm and its tables OK).
+- Phase-1 `memory_weighting` GREEN (R-E's "before").
+
+### Unit 1 — `format_relative_days` (R-E) — `c9fb46023`
+
+`format_time::format_relative_days(ts_ms, now_ms)` (v4 `lib/format-time.ts:184-196`);
+`memory_weighting::format_relative_age` delegates. `memory_weighting` green before
+AND after against the same fresh pin oracle; a unit test walks the eight rungs at
+their boundaries (the differential over v4's real fn is the tier-1 family, unit 6).
+
+### Unit 2 — the credit widenings (item 4) — `cf38defa3`
+
+`dissolve_bundles_in_slots_with_credit`, `default_outfit_from_pool_with_credit`
+(+ `ResolvedOutfit`), `tools::wardrobe_shared::worn_bundles_for`.
+`dissolve_bundles_equivalence` grows `snapshot_credit` (13), `worn_bundles_for`
+(12), `default_credit` (8) through v4's REAL functions; 21 rows carry a non-empty
+`wornBundles`. The KEYSTONE binary refuses the grown oracle (unknown row kind).
+
+### Unit 3 — the chokepoint and its five writers (items 2, 5, 6, 7, 9, 15)
+
+- NEW `services/wardrobe_wear_commit.rs` — `commit_equipped_outfit` (v4
+  `commitEquippedOutfit`): prior read → the slot write ALWAYS → a FAILED write
+  (the slot writer's `Err`) logs v4's WARN and answers `WearCommitError::Unsaved`
+  (v4's sentence) → `diff_equipped_outfit` over `next_slots` → credit unless
+  `Merge` → `increment_wears` at ONE `at` → the DEBUG → `next_slots`. The
+  non-atomicity comment carried. A credit failure is `WearCommitError::Credit`
+  (bare SQLite text, as v4's thrown error). 10 unit tests (v4's repository spec
+  cases + both capture pins + the failed-write and failed-credit arms).
+- **Measured divergence from the order (port the hunk, not the prose): a
+  MISSING chat is NOT a lost write.** R-B said `set_equipped_outfit → Ok(false)`
+  (no chat row) is the lost write. v4's real chokepoint at the pin credits it:
+  `ChatsRepository.update` is a silent no-op on a missing row and
+  `setEquippedOutfit` still returns the slots, so only a THROWN error (its
+  `safeQuery` fallback `null`) reaches the throw. The tier-2 rows
+  `commit_lost_write`, `apply_lost_write`, `route_wear_missing_chat`,
+  `route_set_all_missing_chat` pin v4's behaviour (credited; the route 200).
+  v5 follows: `Ok(false)` is written, `Err` is the lost write. The
+  `chat_outfits` module doc's "chat-existence looseness" STANDS (extended to the
+  credit); the 500 `Failed to equip wardrobe slot` arm is reached only by a
+  failed write / read / credit. v4's own `safeQuery` ERROR `Failed to set
+  equipped outfit` (logged on that failed write) is NOT logged by v5's slot
+  writer — pre-existing (`db/chats_outfits.rs`, no lane's file this round),
+  BANKED.
+- The primitives (`tools/wardrobe_shared.rs`): `equip_item` / `replace_item` /
+  `add_to_slot` take `EquipSource` (`Tool` from `wardrobe_wear` and `wardrobe_create`
+  `equip_now`, `Ui` from the route arms) and claim `worn_bundles_for(…)` (`Some(slot)`
+  for `add_to_slot`); `remove_from_slot` commits `TakeOff` with `[]` (R-C); `persist`
+  is gone.
+- `api/chat_outfits.rs`: `EquipBody.worn_bundle_ids` (Zod-4 bytes — `expected
+  array`, `expected string`, `Too small: expected string to have >=1
+  characters`), `resolve_worn_bundles` (v4 `:220-243`), `set_all` through the
+  chokepoint (`Ui`), the INFO `Equipped outfit replaced (set_all)` (`wornBundleCount`)
+  and the DEBUG `Some claimed worn bundles were not credited` logged on the
+  CALLER thread (the resolution runs inside the writer closure); every
+  primitive / commit `Err` reaches the outer catch: ERROR `[Chats v1] Error
+  equipping wardrobe slot` `{chatId}` + 500 `Failed to equip wardrobe slot`,
+  trigger + announcement skipped (R-B, minus its missing-chat premise).
+- The selection paths: `OutfitSelection.worn_bundle_ids` (chat-create's bag +
+  its `OutfitSelectionSchema` check — `wornBundleIds` issues after `slots`;
+  the merge's parse; the participant bag), `OutfitContext.source` (`ChatStart`
+  / `ParticipantAdded` / `Merge`), `manual_worn_bundles`, `resolve_llm_pick`,
+  `resolve_wearable_pool`, `resolve_default_outfit_with_credit`; the commit
+  loop, `apply_outfit_selection_sync` and the added-participant write through
+  the chokepoint; a failure logs v4's ERROR `[applyOutfitSelections] Failed to
+  persist equipped outfit` with camelCase keys (was `chat_id` / `character_id`).
+- **The llm_choose runner seam returns the model's RAW pick now.** Its output
+  type is spelled in `quilltap-host/src/spine.rs` (not this lane's), so the
+  credit cannot ride it; `run_llm_choose_via_db` hands back the undissolved
+  slots and both out-of-create consumers dissolve them with credit through
+  `resolve_llm_pick` over the same three-tier pool (the merge inside its writer
+  closure; the added participant on a read before the write).
+  `outfit_llm_choose_tier3` stays green (its stored outfits unchanged).
+- NEW `set_equipped_outfit_census_guard` (R-A): exactly `db/chats_outfits.rs`
+  (definition, 0 calls) and `services/wardrobe_wear_commit.rs` (1 call). At the
+  lane base the same census finds FIVE calling files (`api/chat_outfits.rs`,
+  `services/chat_participants.rs`, `services/outfit_selections.rs` ×2,
+  `tools/wardrobe_shared.rs`) — red there.
+- NEW `wardrobe_wear_commit_tier2_equivalence` + `cases/wardrobe-wear-commit-tier2.ts`
+  + `fixtures/wardrobe-wear-commit-tier2.json` (the builder's `QT_WT_AVATAR_SPEC`
+  companion — nine chats; the builder is unchanged). 29 ops: 11 `commit` through
+  v4's REAL `commitEquippedOutfit`, 7 `apply` through v4's REAL
+  `applyOutfitSelections`, 11 `route` through v4's REAL `handleEquipSlot`;
+  comparands the result, the chat's outfit, every ledger row (minted stamps →
+  `<now>`), and the log lines (24 compared; route ops compare the route's own
+  lines — the chokepoint's run on the writer thread). 29/29 on the first run
+  after the missing-chat correction.
+- `wardrobe-tools.json`: `Casual Outfit` is `isDefault` (the `default` shape
+  needs a bundle to dissolve and credit) — every family built from that spec
+  regenerates (`wardrobe_tools`, `wardrobe_tools_avatar_trigger`, this one).

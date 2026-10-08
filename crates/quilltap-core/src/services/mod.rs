@@ -246,3 +246,6 @@ pub mod builtin_prompt_templates;
 /// `route_via` and the only composer of the persisted `routeTrail` column.
 pub mod route_trail;
 // === end P4.D173 ===
+// ── P4.D262: the wear ledger's write chokepoint + the tools' picture decision ──
+pub mod wardrobe_wear_commit;
+// ── end P4.D262 ──

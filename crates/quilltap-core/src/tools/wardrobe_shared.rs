@@ -27,9 +27,10 @@ use crate::db::vault_wardrobe_public::{WardrobePublicError, NO_MOUNT_MESSAGE};
 use crate::db::wardrobe_read::{
     find_by_character_id, find_by_id_for_character, find_by_ids_for_character,
 };
-use crate::db::wardrobe_wear_stats::WornBundle;
+use crate::db::wardrobe_wear_stats::{EquipSource, WornBundle};
 use crate::db::DbError;
 use crate::dissolve_bundles::{WearableLookup, WearableNode};
+use crate::services::wardrobe_wear_commit::{commit_equipped_outfit, CommitEquippedOutfitInput};
 use crate::wardrobe::{
     describe_outfit, expand_composites, OutfitSlotValues, Slots, COMPOSITE_MAX_DEPTH,
     WARDROBE_SLOT_TYPES,
@@ -194,10 +195,13 @@ pub fn load_current_wardrobe_state(
 }
 
 // ── The persisted equip primitives (v4 `outfit-displacement.ts`) ─────────────
-// Each loads the character's slots, mutates them, and persists via
-// `ChatOutfitsRepository::set_equipped_outfit` (RMW through `chats.update`, which
-// preserves the chat's `updatedAt`). The returned `Slots` are the computed next
-// state (v4's `result ?? next`; the stored value equals `next`).
+// Each loads the character's slots, mutates them, and commits them through the
+// wear ledger's chokepoint ([`commit_equipped_outfit`], v4 `3ee3b1342`), which
+// writes them via `ChatOutfitsRepository::set_equipped_outfit` (RMW through
+// `chats.update`, which preserves the chat's `updatedAt`) and credits the
+// garments newly put on. Each returns the slots it computed (v4's `commit`
+// returns `nextSlots`, not the chokepoint's echo); a lost write is an `Err`
+// carrying v4's `Failed to save the equipped outfit …` sentence.
 
 /// v4 `hydrateComponentGraph` (`lib/wardrobe/hydrate-components.ts`) — fill in
 /// every component reachable from the items already in `items_by_id`, mutating
@@ -278,7 +282,7 @@ fn hydrate_component_graph(
 /// item isn't a bundle (no query fired), when the direct component read fails or
 /// comes back empty, or when nothing resolves. The whole component graph is then
 /// hydrated a level at a time so a nested bundle comes fully apart.
-fn lookup_for_bundle(
+pub(crate) fn lookup_for_bundle(
     main: &Connection,
     docs: &DocMountDocumentsRepository,
     character_id: &str,
@@ -354,17 +358,15 @@ pub fn equip_item(
     component_item_ids: &[String],
     replace: bool,
     tiers: &SharedWardrobeTiers,
+    source: EquipSource,
 ) -> Result<Slots, DbError> {
     let current = load_current_wardrobe_state(main, chat_id, character_id)?;
     let items_by_id = lookup_for_bundle(main, docs, character_id, component_item_ids, tiers);
-    let next = crate::wardrobe::wear_item_into_slots(
-        &current,
-        &WearableNode::new(id, types, component_item_ids),
-        replace,
-        items_by_id.as_ref(),
-    );
-    persist(main, chat_id, character_id, &next)?;
-    Ok(next)
+    let node = WearableNode::new(id, types, component_item_ids);
+    let next =
+        crate::wardrobe::wear_item_into_slots(&current, &node, replace, items_by_id.as_ref());
+    let worn_bundles = worn_bundles_for(&node, items_by_id.as_ref(), None);
+    commit(main, chat_id, character_id, &next, source, &worn_bundles)
 }
 
 /// v4 `replaceItem` — force-swap: clear each designated slot and set it to
@@ -380,16 +382,14 @@ pub fn replace_item(
     types: &[String],
     component_item_ids: &[String],
     tiers: &SharedWardrobeTiers,
+    source: EquipSource,
 ) -> Result<Slots, DbError> {
     let current = load_current_wardrobe_state(main, chat_id, character_id)?;
     let items_by_id = lookup_for_bundle(main, docs, character_id, component_item_ids, tiers);
-    let next = crate::wardrobe::replace_item_into_slots(
-        &current,
-        &WearableNode::new(id, types, component_item_ids),
-        items_by_id.as_ref(),
-    );
-    persist(main, chat_id, character_id, &next)?;
-    Ok(next)
+    let node = WearableNode::new(id, types, component_item_ids);
+    let next = crate::wardrobe::replace_item_into_slots(&current, &node, items_by_id.as_ref());
+    let worn_bundles = worn_bundles_for(&node, items_by_id.as_ref(), None);
+    commit(main, chat_id, character_id, &next, source, &worn_bundles)
 }
 
 /// v4 `addToSlot` — append `id` to one named slot (validates `slot ∈ types`, a
@@ -407,24 +407,24 @@ pub fn add_to_slot(
     types: &[String],
     component_item_ids: &[String],
     tiers: &SharedWardrobeTiers,
+    source: EquipSource,
 ) -> Result<Slots, DbError> {
     // v4 throws if the item can't occupy the slot; the wear handler checks first,
     // so this is unreachable there, but ported for fidelity.
     debug_assert!(types.iter().any(|t| t == slot));
     let current = load_current_wardrobe_state(main, chat_id, character_id)?;
     let items_by_id = lookup_for_bundle(main, docs, character_id, component_item_ids, tiers);
-    let next = crate::wardrobe::add_item_to_slot(
-        &current,
-        slot,
-        &WearableNode::new(id, types, component_item_ids),
-        items_by_id.as_ref(),
-    );
-    persist(main, chat_id, character_id, &next)?;
-    Ok(next)
+    let node = WearableNode::new(id, types, component_item_ids);
+    let next = crate::wardrobe::add_item_to_slot(&current, slot, &node, items_by_id.as_ref());
+    // Only the parts that land in THIS slot are claimed.
+    let worn_bundles = worn_bundles_for(&node, items_by_id.as_ref(), Some(slot));
+    commit(main, chat_id, character_id, &next, source, &worn_bundles)
 }
 
 /// v4 `removeFromSlot` — filter `item_id` out of a slot (or clear it entirely when
-/// `item_id` is `None`).
+/// `item_id` is `None`). Committed as [`EquipSource::TakeOff`] with no bundle
+/// claim: a removal can newly put nothing on, so it credits nothing — the
+/// source is kept for the log line.
 pub fn remove_from_slot(
     main: &Connection,
     chat_id: &str,
@@ -437,22 +437,38 @@ pub fn remove_from_slot(
         None => current_slot_mut(&mut current, slot).clear(),
         Some(id) => current_slot_mut(&mut current, slot).retain(|x| x != id),
     }
-    persist(main, chat_id, character_id, &current)?;
-    Ok(current)
+    commit(
+        main,
+        chat_id,
+        character_id,
+        &current,
+        EquipSource::TakeOff,
+        &[],
+    )
 }
 
-fn persist(
+/// v4 `commit(…)` (`outfit-displacement.ts:126-138`): the chokepoint, then the
+/// slots the primitive computed.
+fn commit(
     main: &Connection,
     chat_id: &str,
     character_id: &str,
-    slots: &Slots,
-) -> Result<(), DbError> {
-    ChatOutfitsRepository::new(main).set_equipped_outfit(
-        chat_id,
-        character_id,
-        &slots.to_value(),
+    next: &Slots,
+    source: EquipSource,
+    worn_bundles: &[WornBundle],
+) -> Result<Slots, DbError> {
+    commit_equipped_outfit(
+        main,
+        CommitEquippedOutfitInput {
+            chat_id,
+            character_id,
+            next_slots: next,
+            worn_bundles,
+            source,
+            at: None,
+        },
     )?;
-    Ok(())
+    Ok(next.clone())
 }
 
 fn current_slot_mut<'a>(slots: &'a mut Slots, name: &str) -> &'a mut Vec<String> {

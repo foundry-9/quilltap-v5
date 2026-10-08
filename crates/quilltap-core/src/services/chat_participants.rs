@@ -1290,10 +1290,6 @@ pub async fn handle_remove_participant(
 
 /// v4's equipped-outfit shape (the same object `services::outfit_selections`
 /// writes) — the canonical serialization, hair key included.
-fn slots_value(slots: &crate::wardrobe::Slots) -> Value {
-    slots.to_value()
-}
-
 fn slots_from_value(v: &Value) -> crate::wardrobe::Slots {
     crate::wardrobe::Slots::from_value(Some(v))
 }
@@ -1337,6 +1333,18 @@ pub async fn apply_outfit_for_added_participant(
         .and_then(|s| s.get("slots"))
         .filter(|v| v.is_object())
         .map(slots_from_value);
+    // `manual` only (v4 `3ee3b1342`): the bundles the composer dissolved into
+    // `slots` — a claim, expanded against the character's pool below.
+    let manual_worn_bundle_ids: Vec<String> = outfit_selection
+        .and_then(|s| s.get("wornBundleIds"))
+        .and_then(Value::as_array)
+        .map(|ids| {
+            ids.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
 
     // Project wardrobe tier for this chat, so a joining character can be dressed
     // from the project's shared stores as well as their own vault (v4
@@ -1353,18 +1361,18 @@ pub async fn apply_outfit_for_added_participant(
         .unwrap_or_default()
     };
 
-    let slots = match mode.as_str() {
+    let resolved = match mode.as_str() {
         // No `sourceChatId` at this call site, so v4's `previous_chat` falls
         // straight through to the default wardrobe.
         "default" | "previous_chat" => {
             let cid = character_id.to_string();
             let mounts = project_mount_point_ids.clone();
             match read_main_mount(db, |main, mount| {
-                crate::services::outfit_selections::resolve_default_outfit(
+                crate::services::outfit_selections::resolve_default_outfit_with_credit(
                     main, mount, &cid, &mounts,
                 )
             }) {
-                Ok(s) => s,
+                Ok(r) => r,
                 Err(e) => {
                     tracing::error!(
                         chat_id, character_id, mode = %mode, error = %e,
@@ -1374,8 +1382,38 @@ pub async fn apply_outfit_for_added_participant(
                 }
             }
         }
-        "manual" => manual_slots.unwrap_or_default(),
-        "none" => crate::wardrobe::Slots::default(),
+        "manual" => {
+            let worn_bundles = if manual_worn_bundle_ids.is_empty() {
+                Vec::new()
+            } else {
+                let cid = character_id.to_string();
+                let mounts = project_mount_point_ids.clone();
+                match read_main_mount(db, |main, mount| {
+                    crate::services::outfit_selections::resolve_wearable_pool(
+                        main, mount, &cid, &mounts,
+                    )
+                }) {
+                    Ok(pool) => crate::services::outfit_selections::manual_worn_bundles(
+                        &manual_worn_bundle_ids,
+                        &pool,
+                    ),
+                    Err(e) => {
+                        tracing::error!(
+                            chat_id, character_id, mode = %mode, error = %e,
+                            "[Chats v1] Failed to apply outfit for added participant"
+                        );
+                        return;
+                    }
+                }
+            };
+            crate::services::outfit_selections::ResolvedOutfit {
+                slots: manual_slots.unwrap_or_default(),
+                worn_bundles,
+            }
+        }
+        "none" => crate::services::outfit_selections::ResolvedOutfit::bare(
+            crate::wardrobe::Slots::default(),
+        ),
         "llm_choose" => {
             let chosen = match runner {
                 Some(runner) => {
@@ -1419,18 +1457,32 @@ pub async fn apply_outfit_for_added_participant(
                     None
                 }
             };
-            match chosen {
-                Some(slots) => slots,
+            // The runner hands back the model's RAW pick: dissolve it with its
+            // bundle credit over the same pool (v4's
+            // `dissolveBundlesInSlotsWithCredit` arm); a failed read takes v4's
+            // catch — the default outfit.
+            let picked = chosen.and_then(|slots| {
+                let cid = character_id.to_string();
+                let mounts = project_mount_point_ids.clone();
+                read_main_mount(db, |main, mount| {
+                    crate::services::outfit_selections::resolve_llm_pick(
+                        main, mount, &cid, &mounts, &slots,
+                    )
+                })
+                .ok()
+            });
+            match picked {
+                Some(resolved) => resolved,
                 // v4: any failure → resolveDefaultOutfit.
                 None => {
                     let cid = character_id.to_string();
                     let mounts = project_mount_point_ids.clone();
                     match read_main_mount(db, |main, mount| {
-                        crate::services::outfit_selections::resolve_default_outfit(
+                        crate::services::outfit_selections::resolve_default_outfit_with_credit(
                             main, mount, &cid, &mounts,
                         )
                     }) {
-                        Ok(s) => s,
+                        Ok(r) => r,
                         Err(e) => {
                             tracing::error!(
                                 chat_id, character_id, mode = %mode, error = %e,
@@ -1446,17 +1498,38 @@ pub async fn apply_outfit_for_added_participant(
         _ => return,
     };
 
-    let (cid, chid, value) = (
-        chat_id.to_string(),
-        character_id.to_string(),
-        slots_value(&slots),
-    );
-    let _ = db
+    // v4 routes this through `applyOutfitSelections` with `source:
+    // 'participant-added'` (`participants.ts:222`): the chokepoint writes and
+    // credits, and a failure is its ERROR line — dressing never blocks a join.
+    let (cid, chid) = (chat_id.to_string(), character_id.to_string());
+    let committed = db
         .write(move |w| {
-            crate::db::chats_outfits::ChatOutfitsRepository::new(w.main().connection())
-                .set_equipped_outfit(&cid, &chid, &value)
+            Ok(
+                crate::services::wardrobe_wear_commit::commit_equipped_outfit(
+                    w.main().connection(),
+                    crate::services::wardrobe_wear_commit::CommitEquippedOutfitInput {
+                        chat_id: &cid,
+                        character_id: &chid,
+                        next_slots: &resolved.slots,
+                        worn_bundles: &resolved.worn_bundles,
+                        source: crate::db::wardrobe_wear_stats::EquipSource::ParticipantAdded,
+                        at: None,
+                    },
+                ),
+            )
         })
         .await;
+    match committed {
+        Ok(Ok(_)) => {}
+        Ok(Err(e)) => {
+            crate::services::outfit_selections::log_persist_failure(chat_id, character_id, &e)
+        }
+        Err(e) => crate::services::outfit_selections::log_persist_failure(
+            chat_id,
+            character_id,
+            &crate::db::fallback::error_text(&e),
+        ),
+    }
 }
 
 // ===========================================================================
