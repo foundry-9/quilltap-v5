@@ -472,7 +472,17 @@ fn chat_gallery_equivalence() {
         let (db, _scratch) = fresh_db(&spec, "roll");
         let r = chat_media::chat_gallery(&db, CHAT);
         check(&mut failed, &oracle, "gallery", &r, Norm::Exact);
-        status_body(&r).1
+        let body = status_body(&r).1;
+        // The tally on both sides, printed whatever the verdict — P4.D257's
+        // red-first record reads the unported side's counts from here.
+        eprintln!(
+            "[gallery] counts got={} total={} | want={} total={}",
+            body["counts"],
+            body["total"],
+            oracle["gallery"]["body"]["counts"],
+            oracle["gallery"]["body"]["total"]
+        );
+        body
     };
     {
         let (db, _scratch) = fresh_db(&spec, "portrait");

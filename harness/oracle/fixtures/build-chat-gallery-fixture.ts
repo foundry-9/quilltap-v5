@@ -8,7 +8,10 @@
  * exercises every arm of `lib/photos/chat-gallery.ts`:
  *
  *   1. Five characters. ALDA (llm, vault) wears a chat avatar and owns a
- *      superseded `avatarOverrides` repaint for this chat; her standing
+ *      superseded `avatarOverrides` repaint for this chat (plus, P4.D257, an
+ *      override-only one never linked here); BRAN wears (P4.D257) a cached
+ *      repaint bound but not linked; CORA owns (P4.D257) three override-only
+ *      repaints; ALDA's standing
  *      portrait is a vault LINK. BRAN (llm, vault) has a portrait whose bytes
  *      are the repaint's bytes — the pass-3 `hasSha` skip. CORA (user persona,
  *      vault) authors the inline-Markdown message. DELL is a `removed`
@@ -24,7 +27,8 @@
  *      `library/notes.md` (a native-text document: no blob, so the shared walk
  *      surfaces it for `chatFilesList` and the gallery drops it on the mime
  *      check).
- *   3. Ten `files` rows linked to the chat, one per classifier arm: the current
+ *   3. Ten `files` rows linked to the chat (eleven since P4.D257), one per
+ *      classifier arm: the current
  *      background (`chats.storyBackgroundImageId`), the superseded background
  *      (the `generated/` path), the worn avatar (`chats.characterAvatars`), the
  *      superseded repaint (`avatarOverrides`), an `images/history/` avatar
@@ -34,6 +38,20 @@
  *      NOT a row with an unparseable `createdAt` — see the comment at the seed
  *      site: v4's repository drops such a row on its Zod schema, so the NaN
  *      comparator is unreachable through v4's own reader.
+ *      [P4.D257, v4 `f9f1ba177`] Plus five rows the corpus was blind to: a
+ *      GENERATED backdrop known ONLY by `folderPath: '/story-backgrounds/'`
+ *      (linked here, no mount twin, not current → `story-background`,
+ *      deletable), and four repaints bound to this chat but linked to
+ *      ANOTHER chat (pass 2b, `passCurrentAvatars`): BRAN's cache-hit
+ *      `characterAvatars` binding (dated by the binding's later
+ *      `generatedAt`, worn → `isCurrent`), ALDA's override-only repaint
+ *      (dated by ALDA's binding — v4's `avatarBoundAt` is keyed by
+ *      CHARACTER, not image), and CORA's two override-only repaints (no
+ *      binding → dated by their files; both tie ALDA's at 2026-04-24, so
+ *      only the owners map's insertion order — cast × override — sorts
+ *      them). CORA also owns an override-only vault LINK in her
+ *      `images/history/` (pass 2b's link arm: no `files` row, the path's
+ *      basename, dated `chat.updatedAt`).
  *   4. Six messages: the GENERATED image's announcement, a kept-photo re-show,
  *      a store attach + the twin link + the native-text document, CORA's
  *      inline-Markdown prose (a relative vault path, an absolute blob URL, a
@@ -103,6 +121,14 @@ const F_UPLOAD = 'f1000000-0000-4000-8000-000000000008';
 const F_TWIN = 'f1000000-0000-4000-8000-000000000009';
 const F_NOTES = 'f1000000-0000-4000-8000-00000000000a';
 const F_KEPT_SISTER = 'f1000000-0000-4000-8000-00000000000c';
+// P4.D257 (v4 `f9f1ba177`) — the plants the corpus was blind to.
+const F_BG_FOLDER = 'f1000000-0000-4000-8000-00000000000d';
+const F_AV_REUSED = 'f1000000-0000-4000-8000-00000000000e';
+const F_AV_CORA_OVR = 'f1000000-0000-4000-8000-00000000000f';
+const F_AV_ALDA_OVR = 'f1000000-0000-4000-8000-000000000010';
+const F_AV_CORA_OVR2 = 'f1000000-0000-4000-8000-000000000011';
+/** Named only in `linkedTo` — the chat a reused repaint was first painted for. */
+const OTHER_CHAT = 'c1000000-0000-4000-8000-000000000003';
 const F_MISSING = '99999999-9999-4999-8999-999999999999';
 
 /** A tiny valid PNG, varied by one byte per image so every sha differs. */
@@ -407,6 +433,17 @@ async function main(): Promise<void> {
     '2026-04-20T00:00:00.000Z',
     'dellPortrait',
   );
+  // [P4.D257] A repaint in CORA's vault that only an `avatarOverrides` row
+  // names — pass 2b's vault-LINK arm (no `files` row consulted: the filename
+  // is the path's basename, the date falls through to `chat.updatedAt`).
+  const coraBorrowed = await writeBlob(
+    coraVault,
+    'images/history/cora-borrowed.webp',
+    12,
+    'image/webp',
+    '2026-04-21T06:00:00.000Z',
+    'coraBorrowed',
+  );
   // A native-text document (no blob): the shared walk surfaces it for the file
   // listing; the gallery drops it on the mime check.
   const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
@@ -428,6 +465,20 @@ async function main(): Promise<void> {
   await repos.characters.update(ALDA, {
     avatarOverrides: [
       { chatId: CHAT, imageId: F_AV_REPAINT, generatedAt: '2026-04-18T00:00:00.000Z' },
+      // [P4.D257] Override-only, never linked here: pass 2b dates it by ALDA's
+      // `characterAvatars` binding (`avatarBoundAt` is keyed by CHARACTER),
+      // NOT by its own file's `createdAt`.
+      { chatId: CHAT, imageId: F_AV_ALDA_OVR, generatedAt: '2026-04-06T00:00:00.000Z' },
+    ],
+  } as never);
+  // [P4.D257] CORA has no `characterAvatars` binding, so her override-only
+  // repaints date from their files (two of them tie on purpose — insertion
+  // order, cast × override, decides) and the vault link from `chat.updatedAt`.
+  await repos.characters.update(CORA, {
+    avatarOverrides: [
+      { chatId: CHAT, imageId: F_AV_CORA_OVR, generatedAt: '2026-04-24T00:00:00.000Z' },
+      { chatId: CHAT, imageId: F_AV_CORA_OVR2, generatedAt: '2026-04-24T00:00:00.000Z' },
+      { chatId: CHAT, imageId: coraBorrowed.linkId, generatedAt: '2026-04-21T06:00:00.000Z' },
     ],
   } as never);
   // ELIN's vault pointer names a mount point that does not exist.
@@ -595,6 +646,78 @@ async function main(): Promise<void> {
     { id: F_KEPT_SISTER, createdAt: '2026-04-14T00:00:00.000Z', updatedAt: TS } as never,
   );
 
+  // [P4.D257] A superseded backdrop that never reached a mount: GENERATED, no
+  // `generated/` linker path (no blob shares its sha), not the chat's
+  // `storyBackgroundImageId` — known only by its `/story-backgrounds/` folder.
+  await mkFile(
+    F_BG_FOLDER,
+    {
+      sha256: 'dddd'.repeat(16),
+      originalFilename: 'backdrop-folder.webp',
+      source: 'GENERATED',
+      folderPath: '/story-backgrounds/',
+      storageKey: `${spec.userId}/backdrop-folder.webp`,
+    },
+    '2026-04-21T12:00:00.000Z',
+  );
+  // [P4.D257] The avatar job's cache hit: BRAN's `characterAvatars` binding
+  // names a repaint first painted for ANOTHER chat and never linked here. Its
+  // binding's `generatedAt` (2026-05-01) is LATER than the file's `createdAt`,
+  // so the roll proves `avatarBoundAt` wins.
+  await mkFile(
+    F_AV_REUSED,
+    {
+      sha256: 'eeee'.repeat(16),
+      originalFilename: 'bran-reused.webp',
+      source: 'GENERATED',
+      linkedTo: [OTHER_CHAT, BRAN],
+      tags: [BRAN],
+      folderPath: '/character-avatars/',
+      storageKey: `${spec.userId}/bran-reused.webp`,
+    },
+    '2026-04-05T00:00:00.000Z',
+  );
+  // [P4.D257] ALDA's override-only repaint (see her `avatarOverrides`): its
+  // file says 2026-04-06, but v4 dates it 2026-04-24 — ALDA's binding.
+  await mkFile(
+    F_AV_ALDA_OVR,
+    {
+      sha256: 'abab'.repeat(16),
+      originalFilename: 'alda-borrowed.webp',
+      source: 'GENERATED',
+      linkedTo: [OTHER_CHAT, ALDA],
+      storageKey: `${spec.userId}/alda-borrowed.webp`,
+    },
+    '2026-04-06T00:00:00.000Z',
+  );
+  // [P4.D257] CORA's two override-only repaints, both 2026-04-24 — tying with
+  // ALDA's (and with `F_AV_WORN`), so only insertion order can sort them.
+  await mkFile(
+    F_AV_CORA_OVR,
+    {
+      sha256: 'cdcd'.repeat(16),
+      originalFilename: 'cora-borrowed-1.webp',
+      source: 'GENERATED',
+      linkedTo: [OTHER_CHAT, CORA],
+      width: 48,
+      height: 64,
+      size: 256,
+      storageKey: `${spec.userId}/cora-borrowed-1.webp`,
+    },
+    '2026-04-24T00:00:00.000Z',
+  );
+  await mkFile(
+    F_AV_CORA_OVR2,
+    {
+      sha256: 'cece'.repeat(16),
+      originalFilename: 'cora-borrowed-2.webp',
+      source: 'GENERATED',
+      linkedTo: [OTHER_CHAT, CORA],
+      storageKey: `${spec.userId}/cora-borrowed-2.webp`,
+    },
+    '2026-04-24T00:00:00.000Z',
+  );
+
   // NOT SEEDED: a row whose `createdAt` is unparseable. The order asked for the
   // NaN-comparator arm; it was MEASURED UNREACHABLE through v4's own reader —
   // `FileEntrySchema.createdAt` is `z.iso.datetime()`, so a `not-a-date` row
@@ -633,6 +756,12 @@ async function main(): Promise<void> {
           imageId: F_AV_WORN,
           generatedAt: '2026-04-24T00:00:00.000Z',
           afterMessageCount: 2,
+        },
+        // [P4.D257] The cache hit: bound here, linked to another chat.
+        [BRAN]: {
+          imageId: F_AV_REUSED,
+          generatedAt: '2026-05-01T00:00:00.000Z',
+          afterMessageCount: 4,
         },
       },
       activeTypingParticipantId: P_CORA,
@@ -744,11 +873,38 @@ async function main(): Promise<void> {
     olderHistoryLinkId: olderHistory.linkId,
     repaintHistoryLinkId: repaintHistory.linkId,
     notesLinkId,
+    coraBorrowedLinkId: coraBorrowed.linkId,
   };
   writeFileSync(mainOut + '.meta.json', JSON.stringify(meta, null, 2) + '\n');
 
   await closeDatabase();
   closeMountIndexSQLiteClient();
+
+  // P4.D257 rebuild: the `chats` / `files` columns v4 adds by MIGRATION only
+  // (`generateDDL` walks the Zod schema and never emits them), through v4's
+  // OWN modules — the committed pair had carried them since the P4.94 /
+  // P4.D225 widens, so a rebuild that skipped them would be born a vintage
+  // behind (and every `addMessages` logs "Failed to bump transcript
+  // version"). Skipped at a pin that predates a module.
+  const { runV4Migrations, ADD_CHAT_REFUSAL_LEDGER } = await import('../lib/v4-migrations');
+  const migrated = await runV4Migrations({
+    dbPath: mainOut,
+    pepperBase64: spec.testPepperBase64,
+    migrations: [
+      {
+        file: 'migrations/scripts/add-transcript-version-column-v1.ts',
+        exportName: 'addTranscriptVersionColumnMigration',
+      },
+      ADD_CHAT_REFUSAL_LEDGER,
+      {
+        file: 'migrations/scripts/add-file-generation-key-column-v1.ts',
+        exportName: 'addFileGenerationKeyColumnMigration',
+      },
+    ],
+    allowMissing: true,
+  });
+  process.stderr.write(`chat-gallery fixture migrations: ${migrated.join('; ')}\n`);
+
   rmSync(scratch, { recursive: true, force: true });
   process.stderr.write(`chat-gallery fixture written: ${mainOut} + ${mountOut}\n`);
 }

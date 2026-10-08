@@ -9,7 +9,10 @@
  * chat_save_gallery_image}`) diff byte-for-byte.
  *
  * Cases: the whole roll (`gallery` — every classifier arm, the dedup, the sort
- * and the seven-key `counts`), the portrait-only roll, the 404, the entry KEY
+ * and the seven-key `counts`; since P4.D257 / v4 `f9f1ba177` also the
+ * folder-only superseded backdrop and pass 2b's borrowed avatars, incl. the
+ * `avatarBoundAt`-by-character date and a three-way `createdAt` tie only the
+ * owners map's insertion order can sort — see the builder's header), the portrait-only roll, the 404, the entry KEY
  * ORDER as a raw sequence (v4's entry key order is its JS construction order
  * and a later pass may APPEND `messageId`, so the shape is not a fixed
  * declaration order — every other family sorts keys and cannot see it), the

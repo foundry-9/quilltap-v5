@@ -12,6 +12,15 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — test(fixtures): grow the chat-gallery pair with the plants v4 `f9f1ba177` needs; rebuild it at the `f5e953a3f` pin (P4.D257 unit 1)
+
+_No crate versions bumped._
+
+The committed `chat-gallery-{main,mount}.db` pair could not see either arm v4 `f9f1ba177` added: no `files` row carried `folderPath: '/story-backgrounds/'`, and every bound avatar was also linked to the chat. A regenerated oracle over the old pair stayed green on unported v5 (measured: 26 cases, all OK).
+
+`build-chat-gallery-fixture.ts` gains five `files` rows (`f1…0d`–`f1…11`), one vault link and the bindings that name them: a GENERATED backdrop known only by its folder; BRAN's cache-hit `characterAvatars` binding to a repaint linked to another chat, bound after the file was made; an override-only repaint for ALDA, who already wears a bound avatar (v4 dates it by her binding — `avatarBoundAt` is keyed by character); two override-only repaints for CORA that tie ALDA's at 2026-04-24, so only the owners map's insertion order can sort them; and an override-only vault link for CORA. The builder now also runs v4's own `add-transcript-version-column-v1` and `add-chat-refusal-ledger-v1` modules after the build, so the rebuilt pair carries the migration-only `chats` columns the old pair had picked up from earlier widens.
+
+The pair is rebuilt from the pin. Every pre-existing gallery entry is byte-identical once minted ids are remapped; six entries are added. Against the new oracle, unported `main` is red on nine cases (`gallery`, the six plant-probe rolls, `gallery_key_order`, `gallery_key_order_raw`): v5 counts `story-background` 2 / `avatar` 4 / `generated` 2 / total 15 where v4 counts 3 / 9 / 1 / 20. `photo_side_effects_wiring` is green over the rebuilt pair with no edit. The harness now prints both sides' tallies for the `gallery` case.
 #### 2026-10-08 — docs(porting): P4.D264 lane record, LANE COMPLETE
 
 _No crate versions bumped._

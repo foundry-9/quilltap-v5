@@ -173683,3 +173683,62 @@ green. `recipe_sweep.py --self-test` 0 failures. Disk: 284 GiB free on the volum
 
 **Versions at close:** core 0.0.1259 (A 1254 · B 1255 · C 1256 · D 1257 · F 1258 · G 1259; E
 moved no crate); harness frozen 0.0.1110; host 0.0.190, web 0.0.224, cli, tauri, SPA unchanged.
+## P4.D257 — the chat gallery: v4 `f9f1ba177` (lane `claude/chat-gallery-avatars-pass-93bcb4`, 2026-10-08)
+
+Pin `/tmp/qt-v4-pin-p4d257-f5e953a3f` (`f5e953a3f`, `4.10.0-dev.117`,
+`node_modules/openai` 7.30.0, the three symlink classes). §2 probe at lane
+start: branch `main`, tree clean, `f5e953a3f..main` = exactly the waived
+`1825bfd53`, `1a2b2164c..bugfix` empty — PASS.
+
+### Unit 1 — the fixture growth + the rebuilt pair (red-first)
+
+- **Red-first (a), the old pair:** the oracle regenerated from the pin over
+  the EXISTING committed pair (26 cases) — unported `main` GREEN on every case,
+  as §R.4(m) predicted (the corpus is blind to both arms).
+- **The plants** (`build-chat-gallery-fixture.ts`, ids in the `f1…` series
+  after the existing ones): `F_BG_FOLDER` `f1…0d` (GENERATED,
+  `folderPath: '/story-backgrounds/'`, linked here, sha `dddd…`, no mount twin,
+  not current); `F_AV_REUSED` `f1…0e` (BRAN's NEW `characterAvatars` binding,
+  `generatedAt 2026-05-01` LATER than the file's `2026-04-05`, `linkedTo
+  [OTHER_CHAT, BRAN]` — R-B(2a)); `F_AV_CORA_OVR` `f1…0f` (CORA override-only,
+  no CORA binding, file `2026-04-24` — R-B(2b)); `F_AV_ALDA_OVR` `f1…10`
+  (ALDA override-only, file `2026-04-06`, dated `2026-04-24` by ALDA's
+  binding — Tier 2 item 10); `F_AV_CORA_OVR2` `f1…11` (CORA override-only,
+  `2026-04-24` — the item-9 tie, three-way with ALDA's); and an override-only
+  vault LINK in CORA's `images/history/cora-borrowed.webp` (Tier 3 item 14 —
+  plantable through v4's REAL `characters.update` + `linkBlobContent`; new
+  sidecar key `coraBorrowedLinkId`). `OTHER_CHAT` `c1…03` is named only in
+  `linkedTo`. Existing rows untouched except the two plant-bearing ones the
+  order names (ALDA's `avatarOverrides` gains one row, CORA's gains three, the
+  chat's `characterAvatars` gains BRAN).
+- **Rebuild finding (recorded):** the bare builder is born a vintage behind
+  the committed pair — the old pair had been WIDENED after its build (P4.94 /
+  P4.D225 / P4.D226) and carried `chats."transcriptVersion"`,
+  `"moderationRefusalCount"`, `"lastModerationRefusalAt"`. The builder now runs
+  v4's REAL `add-transcript-version-column-v1` + `add-chat-refusal-ledger-v1`
+  (+ `add-file-generation-key-column-v1`, "not needed": the Zod column exists)
+  after the build via `lib/v4-migrations.ts`. Residual schema differences vs
+  the old pair, none read by the gallery: the three concierge columns sit in
+  Zod order with NULL values (the old pair's migration appended them with
+  `DEFAULT 'moderated'`), `files."generationKey"` in Zod position, and no
+  `idx_files_generationKey` (the migration skips when the column exists).
+- **Before/after:** with the 17 minted vault/link ids remapped through the two
+  sidecars, every pre-existing `gallery` entry is byte-identical; six entries
+  are ADDED (no entry moved — the planted backdrop is new). The `save_image_*`
+  bodies differ only in their per-run minted `linkId` (normalized by the
+  family's `Minted` mode); `files_list` gains the backdrop.
+- **Red-first (b), the new pair:** `grep -c f1000000-0000-4000-8000-00000000000e`
+  in the fresh NDJSON = 8 (> 0). Unported `main` RED on 9 cases: `gallery`,
+  `gallery_blobs_table_dropped`, `gallery_blobs_column_renamed`,
+  `gallery_links_column_renamed`, `gallery_links_table_dropped`,
+  `gallery_empty_blob_sha256`, `gallery_empty_mount_file_sha256`,
+  `gallery_key_order`, `gallery_key_order_raw`. First diffs: `counts.avatar` 4
+  vs 9 (`gallery`); the raw key-order list's third entry `…0008` vs v4's
+  `…000e`. Tallies — unported v5 over the NEW pair: `story-background` 2,
+  `avatar` 4, `portrait` 1, `generated` 2 (the folder backdrop filed there),
+  `attachment` 3, `kept` 1, `inline` 2, total 15; v4: 3 / 9 / 1 / 1 / 3 / 1 /
+  2, total 20. Against the OLD oracle: `avatar` +5, `story-background` +1,
+  `total` +6 (the order's "+2 / +1 / +3" was the Tier-1 plants alone; the
+  Tier-2/3 plants add three avatars).
+- `photo_side_effects_wiring` (the pair's second reader, `generalMp`) GREEN
+  over the rebuilt pair, no edit.
