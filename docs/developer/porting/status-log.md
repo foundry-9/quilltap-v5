@@ -173986,3 +173986,45 @@ change "all 63 sites" → "all 64 sites" and "14 debug" → "15 debug"; then
 regenerate `system_restore_state` from the pin and re-run it by name. Until
 that line lands, `restore_memory_refusals_replace` is red on the census
 (measured above) — that red is this handoff, not a finding.
+
+### Unit 4 — bug 179 NO-PORT-RATIFIED by measurement (item 10; R-D, R-F)
+
+**The sentence the ledger retires on:** v4 bug 179 cannot arise in v5 — no
+child process, no buffered proxy, no overlay (`services/job_runner.rs:7-24`);
+the wardrobe tools read-modify-write the equipped slots on the writer's
+connections inside one `Db::write` (`tools/executor.rs` `wardrobe_write`), so
+each op reads what the previous op committed; pinned by
+`tools::wardrobe_wear::bug_179_no_port::two_outfit_changes_in_one_call_compound`
+(+ `a_take_off_after_a_put_on_sees_the_put_on`).
+
+- The plant (item 13, for P4.D262's `wardrobe_wear_commit_tier2` if it
+  wants a two-op row): `provision_fresh_instance` into a tempdir → `Db::open`
+  (main + mount, no LLM logs) → four Quilltap General items through
+  `api::wardrobe::wardrobe_create` (`Linen Shirt` top, `Wool Trousers`
+  bottom, `Riding Boots` footwear, `Brocade Waistcoat` top — ids minted, read
+  back from the 201 body) → one raw `chats` row (`id, userId, title,
+  createdAt, updatedAt`); the character id is a bare constant (General
+  archetypes need no character row). Items go through the ROUTE, not a
+  `WardrobeItem` literal, so P4.D255's `image_file_id` field needs no edit
+  here. Read back through `ChatOutfitsRepository::
+  get_equipped_outfit_for_character`.
+- Call 1 `[{wear shirt}, {wear trousers}]` → `top [shirt]`, `bottom
+  [trousers]`. Call 2 `[{wear boots}, {replace waistcoat}]` → `top
+  [waistcoat]`, `bottom [trousers]`, `footwear [boots]`. Take-off after a
+  put-on (two `Db::write`s, the wear and take-off tools) → `top []`.
+- Green on `main`'s code BY DESIGN (a ratification, not a port).
+  Discrimination measured by mutation: `equip_item` made to start from
+  `empty_equipped_state()` (v4's stale read) → the compound test RED; source
+  restored byte-for-byte.
+
+**HANDOFF: P4.D262 / the unifier** — `crates/quilltap-core/src/tools/
+wardrobe_wear.rs` is P4.D262's file; this lane's hunk is a pure APPEND at
+EOF: the doc-commented `#[cfg(test)] mod bug_179_no_port { … }` (everything
+from the line `/// P4.D258 (R-D, R-F) — **v4 bug 179 cannot arise in v5**,
+measured.` to the end of the file; nothing above it touched). §S.1 picks
+P4.D262 first, so on the union this lands append-only after P4.D262's
+edits; if P4.D262's `source` threading changed `wardrobe_wear::execute`'s
+signature, the pin follows the new signature (its two call sites are in
+`wear` and nowhere else; `wardrobe_take_off::execute` likewise in the
+take-off test), then re-run by name: `cargo test -p quilltap-core --lib
+tools::wardrobe_wear::bug_179_no_port`. The wear LEDGER is never touched.

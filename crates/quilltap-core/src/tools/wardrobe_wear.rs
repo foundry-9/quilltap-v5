@@ -437,3 +437,190 @@ pub fn format(output: &WardrobeWearToolOutput) -> String {
     lines.push(format!("Summary: {}", output.coverage_summary));
     lines.join("\n")
 }
+
+/// P4.D258 (R-D, R-F) — **v4 bug 179 cannot arise in v5**, measured.
+///
+/// v4 `039f7017c` fixed a forked-child artifact: a background job's wardrobe
+/// tools wrote equipped slots through the child's BUFFERED proxy
+/// (`commitEquippedOutfit` replayed by the parent after the job), while the
+/// child's own `getEquippedOutfitForCharacter` still read the parent's
+/// pre-job row — so a second outfit change in one job was built on the stale
+/// slots and overwrote the first. The fix is a per-job overlay of buffered
+/// slots inside `child-repositories-proxy.ts`. v5 has no child process, no
+/// buffered-write proxy and no overlay (`services/job_runner.rs`'s header):
+/// the wardrobe tools read-modify-write the equipped slots on the WRITER's
+/// connections inside one `Db::write` (`tools/executor.rs`'s
+/// `wardrobe_write`), each op reading what the previous op committed.
+///
+/// These pins are the shape of v4's jest (`child-proxy-wardrobe-wear.test.ts
+/// :94-189`): two garments in one call both stay worn; a later op in the same
+/// call builds on the earlier one; and a take-off after a put-on, on the same
+/// connections, sees the put-on.
+#[cfg(test)]
+mod bug_179_no_port {
+    use super::execute;
+    use crate::api::types::Response;
+    use crate::db::chats_outfits::ChatOutfitsRepository;
+    use crate::db::runtime::{Db, DbPaths};
+    use crate::tools::wardrobe_take_off;
+    use serde_json::{json, Value};
+
+    const PEPPER: &str = "cXVpbGx0YXAtdGVzdC1wZXBwZXItMzItYnl0ZXMhIQ==";
+    const USER: &str = "u-179";
+    const CHAT: &str = "c1790000-0000-4000-8000-000000000001";
+    const CHARACTER: &str = "a1790000-0000-4000-8000-000000000001";
+
+    /// The plant: a provisioned temp instance, four Quilltap General garments
+    /// created through the General wardrobe's own create route (two tops, a
+    /// bottom, footwear) and one chat. Returns the `Db` and the four item ids
+    /// (shirt, trousers, boots, waistcoat).
+    async fn instance(dir: &std::path::Path) -> (Db, [String; 4]) {
+        let path = dir.to_path_buf();
+        let db = tokio::task::spawn_blocking(move || {
+            crate::services::provisioning::provision_fresh_instance(&path, PEPPER).unwrap();
+            Db::open(
+                DbPaths {
+                    main: path.join("quilltap.db"),
+                    mount_index: Some(path.join("quilltap-mount-index.db")),
+                    llm_logs: None,
+                },
+                PEPPER,
+            )
+            .unwrap()
+        })
+        .await
+        .unwrap();
+        let mut ids = Vec::new();
+        for (title, slot) in [
+            ("Linen Shirt", "top"),
+            ("Wool Trousers", "bottom"),
+            ("Riding Boots", "footwear"),
+            ("Brocade Waistcoat", "top"),
+        ] {
+            let created = crate::api::wardrobe::wardrobe_create(
+                &db,
+                json!({ "title": title, "types": [slot] }),
+            )
+            .await;
+            let Response::Wardrobe(body) = created else {
+                panic!("the General create failed: {created:?}");
+            };
+            ids.push(body["wardrobeItem"]["id"].as_str().unwrap().to_string());
+        }
+        db.write(|w| {
+            w.main()
+                .connection()
+                .execute(
+                    "INSERT INTO chats (id, userId, title, createdAt, updatedAt) \
+                     VALUES (?1, ?2, 'A Change of Clothes', ?3, ?3)",
+                    rusqlite::params![CHAT, USER, "2026-10-08T00:00:00.000Z"],
+                )
+                .map(|_| ())
+                .map_err(Into::into)
+        })
+        .await
+        .unwrap();
+        (db, ids.try_into().unwrap())
+    }
+
+    async fn worn(db: &Db) -> Value {
+        db.write(|w| {
+            Ok(ChatOutfitsRepository::new(w.main().connection())
+                .get_equipped_outfit_for_character(CHAT, CHARACTER)
+                .unwrap_or(Value::Null))
+        })
+        .await
+        .unwrap()
+    }
+
+    fn slot(slots: &Value, name: &str) -> Vec<String> {
+        slots[name]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// ONE `wardrobe_wear` call, inside ONE `Db::write` on the writer's main
+    /// and mount connections — the executor's `wardrobe_write` shape.
+    async fn wear(db: &Db, ops: Value) {
+        let (out, announce) = db
+            .write(move |w| {
+                let mount = w.mount_index().expect("mount index").connection();
+                Ok(execute(
+                    w.main().connection(),
+                    mount,
+                    USER,
+                    CHAT,
+                    CHARACTER,
+                    &json!({ "operations": ops }),
+                ))
+            })
+            .await
+            .unwrap();
+        assert!(out.success, "{:?}", out.error);
+        assert!(out.operations.iter().all(|op| op.error.is_none()));
+        assert_eq!(announce, vec![CHARACTER.to_string()]);
+    }
+
+    #[tokio::test]
+    async fn two_outfit_changes_in_one_call_compound() {
+        let dir = tempfile::tempdir().unwrap();
+        let (db, [shirt, trousers, boots, waistcoat]) = instance(dir.path()).await;
+        // v4's bug: the job's second op read the pre-job slots and dropped
+        // the first garment. Here the second op reads the first op's write.
+        wear(&db, json!([{ "item_id": shirt }, { "item_id": trousers }])).await;
+        let slots = worn(&db).await;
+        assert_eq!(slot(&slots, "top"), vec![shirt.clone()]);
+        assert_eq!(slot(&slots, "bottom"), vec![trousers.clone()]);
+
+        // A later call builds on the stored slots, and its second op on its
+        // first: the boots go on, then the waistcoat REPLACES the top — the
+        // trousers and the boots must both survive it.
+        wear(
+            &db,
+            json!([
+                { "item_id": boots },
+                { "item_id": waistcoat, "mode": "replace" },
+            ]),
+        )
+        .await;
+        let slots = worn(&db).await;
+        assert_eq!(slot(&slots, "top"), vec![waistcoat]);
+        assert_eq!(slot(&slots, "bottom"), vec![trousers]);
+        assert_eq!(slot(&slots, "footwear"), vec![boots]);
+    }
+
+    #[tokio::test]
+    async fn a_take_off_after_a_put_on_sees_the_put_on() {
+        let dir = tempfile::tempdir().unwrap();
+        let (db, [shirt, ..]) = instance(dir.path()).await;
+        // One turn's two tool calls, each its own `Db::write` — as the
+        // executor runs them.
+        wear(&db, json!([{ "item_id": shirt }])).await;
+        assert_eq!(slot(&worn(&db).await, "top"), vec![shirt.clone()]);
+        let out = db
+            .write(move |w| {
+                let mount = w.mount_index().expect("mount index").connection();
+                Ok(wardrobe_take_off::execute(
+                    w.main().connection(),
+                    mount,
+                    USER,
+                    CHAT,
+                    CHARACTER,
+                    &json!({ "operations": [{ "item_id": shirt }] }),
+                )
+                .0)
+            })
+            .await
+            .unwrap();
+        assert!(out.success, "{:?}", out.error);
+        assert!(
+            slot(&worn(&db).await, "top").is_empty(),
+            "the take-off missed the put-on"
+        );
+    }
+}

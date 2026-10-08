@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — test(wardrobe): pin that two outfit changes in one `wardrobe_wear` call compound (v4 bug 179, no port)
+
+_Versions: core 0.0.1256._
+
+P4.D258 unit 4. v4 `039f7017c` fixed bug 179 — inside a forked background job, a second outfit change in one turn read the parent's pre-job slots through the child's buffered proxy and overwrote the first — with a per-job overlay of buffered `commitEquippedOutfit` slots in `child-repositories-proxy.ts`. v5 has no child process, no buffered proxy and no overlay; the wardrobe tools read and write the equipped slots on the writer's connections inside one `Db::write`. Nothing is ported. A new `bug_179_no_port` test module at the end of `tools/wardrobe_wear.rs` proves it on a provisioned temp instance (four Quilltap General garments created through the General create route, one chat): one call that wears a shirt then trousers leaves both worn; a second call's boots-then-replace-the-top keeps the trousers and the boots; and a take-off after a put-on sees the put-on. Making `equip_item` read stale slots (v4's bug shape) turns the first test red.
+
 #### 2026-10-08 — fix(restore): decode index-keyed memory embeddings as v4 does, log the decode, count memories written (v4 bug 181, `039f7017c`)
 
 _Versions: core 0.0.1255._
