@@ -174907,3 +174907,43 @@ Settings cards' own TanStack keys (`imageProfileKeys.list()`,
 `window.confirm` (the dialog's idiom); v4's `queryKeys.wardrobe.all`
 invalidate → `imageChanged` → the dialog's list reload; the picker's
 `<select>` binds `[selected]` per option (dogfood-#6). Version: SPA 0.5.818.
+
+### Unit 8 — #82 + `b3f937076` Settings → Images → Wardrobe Images (C2 §7)
+
+NEW `screens/settings/images/wardrobe-images-card.ts` (`extends
+ChatSettingsCard`, the `story-backgrounds-card.ts` pattern), every string from
+`WardrobeImageSettings.tsx:28-102` at the pin: `Wardrobe Images` / `Pictures
+of every garment and outfit` (the settings-card heading), the checkbox card
+FIRST (`Portraits from the Wardrobe Tools` + its sentence, v4's `&apos;`
+rendering a plain `'`, class `qt-checkbox mt-1` in v4's label classes),
+`Wardrobe Artist` (`for="wardrobe-image-profile"`), the help sentence, the
+`qt-select w-full max-w-md` select disabled while saving or loading,
+`The default image profile (${name})` / `The default image profile`,
+`wardrobeImageProfileLabel` (` (uncensored)`), the empty-studio warning;
+`DEFAULT_WARDROBE_IMAGE_SETTINGS` (`types.ts:545`); both handlers
+(`useChatSettings.ts:650-686`) spread the read bag and replace one key, with
+v4's `failureMessage` `Failed to update wardrobe image settings`.
+`images-tab.ts` mounts it as the fourth `qt-collapsible-card` (`Wardrobe
+Images` / `Choose the artist who draws pictures of garments and outfits` /
+`sectionId="wardrobe-images"`, `ImagesTabContent.tsx:55-70`).
+
+Specs: NEW `wardrobe-images-card.spec.ts` — v4 `WardrobeImageSettings.test.tsx`
+×7 transcribed (helper copy; default selected + `The default image profile
+(House Artist)`; every label incl. `Back Room (GROK - grok-image)
+(uncensored)`; a stored designation; `p-default` then `''` → `null`;
+disabled while a save is in flight — a HELD update, both controls; the empty
+warning + the nameless default option) + v4 `useChatSettings.test.tsx`'s
+whole-bag pair (a pre-round row saves `{imageProfileId, generateFromTools:
+false}`; the switch PUTs `{ imageProfileId: 'profile-1', generateFromTools: true
+}` and the box reads checked AFTER the save settles — the P4.D252 resync
+lesson) + the checkbox's copy/placement + the failure alert; NEW
+`images-tab.spec.ts` (the four cards in v4's order, the third's title,
+description and body).
+
+**Red-first:** the card COMPILE-red (absent module); with the card spec set
+aside, `images-tab.spec.ts` measured **1 red** (three cards, not four). All
+green after: settings/images 11 files / 270.
+
+**Recorded:** both handlers surface v4's `failureMessage` (the shared one),
+not the per-handler `logLabel`; `story-backgrounds-card.ts` mixed the two —
+untouched here. Version: SPA 0.5.819.

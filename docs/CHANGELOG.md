@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(spa): P4.D261 unit 8 — v4 7c8572869 + b3f937076: Settings → Images → Wardrobe Images (the artist picker and the wardrobe-tools checkbox)
+
+_Versions: SPA 0.5.819._
+
+The Images settings tab gains a fourth card, Wardrobe Images (`?section=wardrobe-images`), between Story Backgrounds and Default Aesthetics. It holds, first, the `Portraits from the Wardrobe Tools` checkbox (off by default) and then the `Wardrobe Artist` picker: the default image profile (named when one is marked default) or any profile, labelled `name (provider - model)` with ` (uncensored)` on the dangerous-compatible ones, plus v4's empty-studio warning. Either control saves the whole `wardrobeImageSettings` bag with one key replaced; a row without the bag reads `{ imageProfileId: null, generateFromTools: false }`; a failed save shows `Failed to update wardrobe image settings`.
+
 #### 2026-10-08 — feat(spa): P4.D261 unit 7 — v4 7c8572869: the item editor's Picture section (generate, upload, choose, take down)
 
 _Versions: SPA 0.5.818._

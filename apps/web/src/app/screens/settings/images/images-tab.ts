@@ -6,17 +6,24 @@ import { CollapsibleCard } from '../../../ui/collapsible-card';
 import { DefaultAestheticsCard } from './default-aesthetics-card';
 import { ImageProfilesCard } from './image-profiles-card';
 import { StoryBackgroundsCard } from './story-backgrounds-card';
+import { WardrobeImagesCard } from './wardrobe-images-card';
 
 /**
  * The Images tab (v4 `components/settings/tabs/ImagesTabContent.tsx`): the Image
- * Profiles, Story Backgrounds and Default Aesthetics collapsible cards, in v4's
- * order. The cards seed `defaultOpen` in `ngOnInit`
+ * Profiles, Story Backgrounds, Wardrobe Images (v4 `7c8572869`) and Default
+ * Aesthetics collapsible cards, in v4's order. The cards seed `defaultOpen` in `ngOnInit`
  * ([[p4.6l-groups-projects-spa]] gotcha) and honour the `?section=` deep link.
  */
 @Component({
   selector: 'qt-settings-images',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CollapsibleCard, DefaultAestheticsCard, ImageProfilesCard, StoryBackgroundsCard],
+  imports: [
+    CollapsibleCard,
+    DefaultAestheticsCard,
+    ImageProfilesCard,
+    StoryBackgroundsCard,
+    WardrobeImagesCard,
+  ],
   template: `
     <div>
       <p class="qt-text-small qt-text-muted italic mb-6">
@@ -44,6 +51,18 @@ import { StoryBackgroundsCard } from './story-backgrounds-card';
           [forceOpen]="section() === 'story-backgrounds'"
         >
           <qt-story-backgrounds-card />
+        </qt-collapsible-card>
+
+        <!-- v4 7c8572869 ImagesTabContent.tsx:55-70 — after Story
+             Backgrounds, before Default Aesthetics. -->
+        <qt-collapsible-card
+          title="Wardrobe Images"
+          description="Choose the artist who draws pictures of garments and outfits"
+          sectionId="wardrobe-images"
+          [defaultOpen]="defaultOpen()"
+          [forceOpen]="section() === 'wardrobe-images'"
+        >
+          <qt-wardrobe-images-card />
         </qt-collapsible-card>
 
         <qt-collapsible-card
