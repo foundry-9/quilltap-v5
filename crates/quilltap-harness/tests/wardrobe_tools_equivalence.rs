@@ -31,14 +31,36 @@
 //!   QT_ORACLE_WT=/tmp/oracle-wardrobe-tools.ndjson \
 //!   QT_FIXTURE_WT_MAIN=/tmp/qt-wt-main.db QT_FIXTURE_WT_MOUNT=/tmp/qt-wt-mount.db \
 //!     cargo test -p quilltap-harness --test wardrobe_tools_equivalence
+//!
+//! P4.D262 (v4 `3ee3b1342` + `b3f937076`): the formatters run at the spec's
+//! pinned `nowMs` (`format_at`, v4's second parameter); the wear ledger and one
+//! item's picture pointer are PLANTED before the ops (each side through its
+//! real repository — v4's `incrementWears` / `wardrobe.update`); the read-back
+//! gains every ledger row (minted item ids keyed by title); and a third oracle
+//! line carries the switch-ON `pictureScenario` — the same composition the
+//! executor runs (the handler, then `maybe_queue_wardrobe_tool_image` once the
+//! write commits, then the format) — and the queued `background_jobs` rows
+//! (type / status / maxAttempts / payload, compared parsed). v4's job host is
+//! held off in the oracle (no runner on either side), so every job is PENDING.
 
 use std::collections::HashMap;
 
 use quilltap_core::db::archetype_wardrobe::find_archetypes;
+use quilltap_core::db::chat_settings::{update_for_user, SettingsColVal};
 use quilltap_core::db::chats_outfits::ChatOutfitsRepository;
 use quilltap_core::db::doc_mount_documents::DocMountDocumentsRepository;
+use quilltap_core::db::doc_mount_file_links::DocMountFileLinksRepository;
+use quilltap_core::db::image_profiles::{
+    CreateOptions as IpCreateOptions, ImageProfilesRepository, IpCreate,
+};
+use quilltap_core::db::runtime::{Db, DbPaths};
+use quilltap_core::db::vault_wardrobe_public::{update_vault_wardrobe_item, WardrobePatch};
 use quilltap_core::db::wardrobe_read::find_by_character_id;
+use quilltap_core::db::wardrobe_wear_stats::{WardrobeWearIncrement, WardrobeWearStatsRepository};
 use quilltap_core::db::Writer;
+use quilltap_core::services::tool_image_generation::{
+    maybe_queue_wardrobe_tool_image, QueueWardrobeToolImageArgs,
+};
 use quilltap_core::tools::{
     wardrobe_archive, wardrobe_create, wardrobe_list, wardrobe_read, wardrobe_take_off,
     wardrobe_update, wardrobe_wear,
@@ -59,6 +81,41 @@ struct Spec {
     recipient_character_id: String,
     #[serde(rename = "chatId")]
     chat_id: String,
+    ops: Vec<Op>,
+    #[serde(rename = "nowMs")]
+    now_ms: String,
+    #[serde(rename = "departedCharacterId")]
+    departed_character_id: String,
+    #[serde(rename = "wearPlant")]
+    wear_plant: Vec<WearPlant>,
+    #[serde(rename = "picturePlant")]
+    picture_plant: PicturePlant,
+    #[serde(rename = "pictureScenario")]
+    picture_scenario: PictureScenario,
+}
+
+#[derive(Deserialize)]
+struct WearPlant {
+    #[serde(rename = "itemId")]
+    item_id: String,
+    wearer: Option<String>,
+    #[serde(rename = "chatId")]
+    chat_id: Option<String>,
+    at: String,
+}
+
+#[derive(Deserialize)]
+struct PicturePlant {
+    #[serde(rename = "itemId")]
+    item_id: String,
+    #[serde(rename = "imageFileId")]
+    image_file_id: String,
+}
+
+#[derive(Deserialize)]
+struct PictureScenario {
+    #[serde(rename = "imageProfile")]
+    image_profile: Value,
     ops: Vec<Op>,
 }
 
@@ -233,6 +290,60 @@ fn wardrobe_tools_match_oracle() {
 
     let main = Writer::open_writable(&work_main, &spec.test_pepper_base64).expect("open main");
     let mount = Writer::open_writable(&work_mount, &spec.test_pepper_base64).expect("open mount");
+    let now = quilltap_core::clock::iso_to_ms(&spec.now_ms).expect("nowMs") as f64;
+
+    // [P4.D262] The ledger + picture plants — the oracle's rows, through the
+    // repositories.
+    {
+        let wearer_id = |w: Option<&str>| -> Option<String> {
+            match w {
+                Some("caller") => Some(spec.caller_character_id.clone()),
+                Some("recipient") => Some(spec.recipient_character_id.clone()),
+                Some("departed") => Some(spec.departed_character_id.clone()),
+                _ => None,
+            }
+        };
+        let repo = WardrobeWearStatsRepository::new(main.connection());
+        for w in &spec.wear_plant {
+            repo.increment_wears(&[WardrobeWearIncrement {
+                item_id: w.item_id.clone(),
+                wearer_character_id: wearer_id(w.wearer.as_deref()),
+                chat_id: w.chat_id.clone(),
+                at: w.at.clone(),
+            }])
+            .expect("plant a wear");
+        }
+        let links = DocMountFileLinksRepository::new(mount.connection());
+        let docs = DocMountDocumentsRepository::new(mount.connection());
+        update_vault_wardrobe_item(
+            main.connection(),
+            &links,
+            &docs,
+            &spec.picture_plant.item_id,
+            &WardrobePatch {
+                image_file_id: Some(Some(spec.picture_plant.image_file_id.clone())),
+                ..WardrobePatch::default()
+            },
+            Some(&spec.caller_character_id),
+        )
+        .expect("plant the picture pointer")
+        .expect("the planted item exists");
+    }
+
+    // The executor's picture call needs the `Db` (an async enqueue).
+    let db = Db::open(
+        DbPaths {
+            main: work_main.clone(),
+            mount_index: Some(work_mount.clone()),
+            llm_logs: None,
+        },
+        &spec.test_pepper_base64,
+    )
+    .expect("open db");
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
 
     let mut announce: std::collections::HashSet<String> = std::collections::HashSet::new();
 
@@ -250,6 +361,9 @@ fn wardrobe_tools_match_oracle() {
             character_id,
             &op.args,
             &mut announce,
+            now,
+            &rt,
+            &db,
         );
 
         let got = normalize(&json!({
@@ -300,12 +414,14 @@ fn wardrobe_tools_match_oracle() {
     let mut ann: Vec<String> = announce.into_iter().collect();
     ann.sort();
 
+    let wear = wear_readback(main_c, &spec, &caller_items, &recipient_items);
     let readback = json!({
         "callerItems": caller_items,
         "recipientItems": recipient_items,
         "generalItems": general_items,
         "equippedOutfit": equipped.unwrap_or(Value::Null),
         "pendingAnnouncements": ann,
+        "wardrobeWear": wear,
     });
 
     let got = normalize(&readback);
@@ -315,14 +431,302 @@ fn wardrobe_tools_match_oracle() {
         "read-back state diverged\n  rust:   {got}\n  oracle: {want}"
     );
 
+    // ── [P4.D262] the picture scenario: the operator switch ON ──
+    let fresh: Value = serde_json::from_str(include_str!(
+        "../../quilltap-core/src/services/provisioning/fresh_schema.json"
+    ))
+    .unwrap();
+    for table in ["chat_settings", "image_profiles", "background_jobs"] {
+        let head = format!("CREATE TABLE \"{table}\" (");
+        let ddl = fresh["main"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .find(|s| s.starts_with(&head))
+            .unwrap();
+        main_c
+            .execute_batch(&ddl.replacen("CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1))
+            .unwrap();
+    }
+    update_for_user(
+        main_c,
+        &spec.user_id,
+        &[(
+            "wardrobeImageSettings",
+            SettingsColVal::Text(
+                json!({"imageProfileId": null, "generateFromTools": true}).to_string(),
+            ),
+        )],
+        "2026-02-01T00:00:00.000Z",
+    )
+    .expect("switch ON");
+    {
+        let ip = &spec.picture_scenario.image_profile;
+        let s = |k: &str| ip[k].as_str().map(str::to_string);
+        ImageProfilesRepository::new(main_c)
+            .create(
+                &IpCreate {
+                    user_id: spec.user_id.clone(),
+                    name: s("name").unwrap(),
+                    provider: s("provider").unwrap(),
+                    api_key_id: s("apiKeyId"),
+                    base_url: s("baseUrl"),
+                    model_name: s("modelName").unwrap(),
+                    parameters: json!({}),
+                    is_default: true,
+                    is_dangerous_compatible: false,
+                    tags: Vec::new(),
+                },
+                &IpCreateOptions {
+                    id: s("id").unwrap(),
+                    created_at: "2026-02-01T00:00:00.000Z".to_string(),
+                    updated_at: "2026-02-01T00:00:00.000Z".to_string(),
+                },
+            )
+            .expect("plant the image profile");
+    }
+    let mut pictures: Vec<Value> = Vec::new();
+    for op in &spec.picture_scenario.ops {
+        let character_id = match op.character_id.as_deref() {
+            Some("recipient") => &spec.recipient_character_id,
+            _ => &spec.caller_character_id,
+        };
+        let (output, formatted) = run_picture_op(
+            &rt,
+            &db,
+            &op.tool,
+            &main,
+            &mount,
+            &spec.user_id,
+            &spec.chat_id,
+            character_id,
+            &op.args,
+            now,
+        );
+        pictures.push(json!({
+            "name": op.name,
+            "tool": op.tool,
+            "output": output,
+            "formatted": formatted,
+        }));
+    }
+    let jobs: Vec<Value> = {
+        let mut st = main_c
+            .prepare(
+                "SELECT \"type\", \"status\", \"maxAttempts\", \"payload\" FROM \"background_jobs\" ORDER BY rowid",
+            )
+            .unwrap();
+        st.query_map([], |r| {
+            Ok(json!({
+                "type": r.get::<_, String>(0)?,
+                "status": r.get::<_, String>(1)?,
+                "maxAttempts": r.get::<_, f64>(2)?,
+                "payload": serde_json::from_str::<Value>(&r.get::<_, String>(3)?).unwrap(),
+            }))
+        })
+        .unwrap()
+        .map(Result::unwrap)
+        .collect()
+    };
+    let (want_pictures, want_jobs) = parse_oracle_pictures(&oracle_text);
+    for (i, (got, want)) in pictures.iter().zip(&want_pictures).enumerate() {
+        let (got, want) = (normalize(got), normalize(want));
+        assert_eq!(
+            got, want,
+            "picture op[{i}] diverged\n  rust:   {got}\n  oracle: {want}"
+        );
+    }
+    assert_eq!(pictures.len(), want_pictures.len(), "picture op count");
+    let want_jobs: Vec<Value> = want_jobs
+        .iter()
+        .map(|j| {
+            json!({
+                "type": j["type"],
+                "status": j["status"],
+                "maxAttempts": j["maxAttempts"].as_f64(),
+                "payload": serde_json::from_str::<Value>(j["payload"].as_str().unwrap()).unwrap(),
+            })
+        })
+        .collect();
+    let (got_jobs, want_jobs) = (normalize(&json!(jobs)), normalize(&json!(want_jobs)));
+    assert_eq!(
+        got_jobs, want_jobs,
+        "queued picture jobs diverged\n  rust:   {got_jobs}\n  oracle: {want_jobs}"
+    );
+    // A queued picture is PENDING (no runner on either side) and tried once.
+    assert!(!jobs.is_empty(), "the switch-ON scenario queued no picture");
+    for job in &jobs {
+        assert_eq!(job["type"], json!("WARDROBE_ITEM_IMAGE_GENERATION"));
+        assert_eq!(job["status"], json!("PENDING"));
+        assert_eq!(job["maxAttempts"], json!(1.0));
+    }
+
+    drop(db);
     drop(main);
     drop(mount);
     drop(scratch);
 
     eprintln!(
-        "OK: wardrobe tools matched oracle ({} ops + read-back).",
-        spec.ops.len()
+        "OK: wardrobe tools matched oracle ({} ops + read-back + {} picture ops, {} jobs).",
+        spec.ops.len(),
+        pictures.len(),
+        jobs.len()
     );
+}
+
+/// [P4.D262] Every ledger row minus the minted `id` / `createdAt` /
+/// `updatedAt`, the item keyed by TITLE where a create minted its id — the
+/// oracle's `wearReadback`, sorted by plain code-unit order.
+fn wear_readback(
+    main: &rusqlite::Connection,
+    spec: &Spec,
+    caller_items: &[Value],
+    recipient_items: &[Value],
+) -> Value {
+    let spec_text = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../harness/oracle/fixtures/wardrobe-tools.json"),
+    )
+    .unwrap();
+    let _ = spec;
+    let key_of = |id: &str| -> String {
+        if spec_text.contains(id) {
+            return id.to_string();
+        }
+        caller_items
+            .iter()
+            .chain(recipient_items)
+            .find(|i| i.get("id").and_then(Value::as_str) == Some(id))
+            .and_then(|i| i.get("title").and_then(Value::as_str))
+            .unwrap_or(id)
+            .to_string()
+    };
+    let mut st = main
+        .prepare(
+            "SELECT \"itemId\", \"wearerCharacterId\", \"wearCount\", \"firstWornAt\", \"lastWornAt\", \"lastWornChatId\" FROM \"wardrobe_wear_stats\"",
+        )
+        .unwrap();
+    let mut rows: Vec<(String, Value)> = st
+        .query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, Option<String>>(1)?,
+                r.get::<_, i64>(2)?,
+                r.get::<_, String>(3)?,
+                r.get::<_, String>(4)?,
+                r.get::<_, Option<String>>(5)?,
+            ))
+        })
+        .unwrap()
+        .map(Result::unwrap)
+        .map(|(item, wearer, count, first, last, chat)| {
+            let item = key_of(&item);
+            let sort_key = format!("{item}|{}", wearer.clone().unwrap_or_default());
+            (
+                sort_key,
+                json!({
+                    "itemId": item,
+                    "wearerCharacterId": wearer,
+                    "wearCount": count,
+                    "firstWornAt": first,
+                    "lastWornAt": last,
+                    "lastWornChatId": chat,
+                }),
+            )
+        })
+        .collect();
+    rows.sort_by(|a, b| a.0.cmp(&b.0));
+    Value::Array(rows.into_iter().map(|(_, v)| v).collect())
+}
+
+/// [P4.D262] One switch-ON op, composed exactly as the executor composes it:
+/// the handler (inside the write), then — for a successful create / update —
+/// `maybe_queue_wardrobe_tool_image` once the write has committed, then the
+/// format.
+#[allow(clippy::too_many_arguments)]
+fn run_picture_op(
+    rt: &tokio::runtime::Runtime,
+    db: &Db,
+    tool: &str,
+    main_w: &Writer,
+    mount_w: &Writer,
+    user_id: &str,
+    chat_id: &str,
+    character_id: &str,
+    args: &Value,
+    now: f64,
+) -> (Value, String) {
+    let main = main_w.connection();
+    let mount = mount_w.connection();
+    match tool {
+        "wardrobe_create" => {
+            let mut out =
+                wardrobe_create::execute(main, mount, user_id, chat_id, character_id, args);
+            if out.success {
+                if let Some(recipient) = out.picture_character_id.clone() {
+                    out.image_generation = rt.block_on(maybe_queue_wardrobe_tool_image(
+                        db,
+                        QueueWardrobeToolImageArgs {
+                            user_id: user_id.to_string(),
+                            chat_id: chat_id.to_string(),
+                            character_id: recipient,
+                            item_id: out.item_id.clone(),
+                            requested: out.generate_image,
+                            default_when_enabled: true,
+                            caller_context: "wardrobe-create-handler",
+                        },
+                    ));
+                }
+            }
+            (to_value(&out), wardrobe_create::format(&out))
+        }
+        "wardrobe_update" => {
+            let (mut out, claim) = wardrobe_update::execute_with_picture_claim(
+                main,
+                mount,
+                user_id,
+                chat_id,
+                character_id,
+                args,
+            );
+            if let Some(claim) = claim {
+                out.image_generation = rt.block_on(maybe_queue_wardrobe_tool_image(
+                    db,
+                    QueueWardrobeToolImageArgs {
+                        user_id: user_id.to_string(),
+                        chat_id: chat_id.to_string(),
+                        character_id: character_id.to_string(),
+                        item_id: claim.item_id,
+                        requested: claim.requested,
+                        default_when_enabled: claim.changes_look,
+                        caller_context: "wardrobe-update-handler",
+                    },
+                ));
+            }
+            (to_value(&out), wardrobe_update::format(&out))
+        }
+        "wardrobe_list" => {
+            let out = wardrobe_list::execute(main, mount, user_id, chat_id, character_id, args);
+            (to_value(&out), wardrobe_list::format_at(&out, now))
+        }
+        "wardrobe_read" => {
+            let out = wardrobe_read::execute(main, mount, user_id, chat_id, character_id, args);
+            (to_value(&out), wardrobe_read::format_at(&out, now))
+        }
+        other => panic!("no picture-scenario arm for {other}"),
+    }
+}
+
+/// The third oracle line: `{ pictures, jobs }`.
+fn parse_oracle_pictures(text: &str) -> (Vec<Value>, Vec<Value>) {
+    for line in text.lines().filter(|l| !l.trim().is_empty()) {
+        let v: Value = serde_json::from_str(line).expect("parse oracle ndjson line");
+        if let (Some(p), Some(j)) = (v.get("pictures"), v.get("jobs")) {
+            return (p.as_array().unwrap().clone(), j.as_array().unwrap().clone());
+        }
+    }
+    panic!("the oracle predates P4.D262 — no `pictures` line; regenerate it");
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -335,25 +739,29 @@ fn run_op(
     character_id: &str,
     args: &Value,
     announce: &mut std::collections::HashSet<String>,
+    now: f64,
+    rt: &tokio::runtime::Runtime,
+    db: &Db,
 ) -> (Value, String) {
     let main = main_w.connection();
     let mount = mount_w.connection();
     match tool {
-        "wardrobe_list" => {
-            let out = wardrobe_list::execute(main, mount, user_id, chat_id, character_id, args);
-            (to_value(&out), wardrobe_list::format(&out))
-        }
-        "wardrobe_read" => {
-            let out = wardrobe_read::execute(main, mount, user_id, chat_id, character_id, args);
-            (to_value(&out), wardrobe_read::format(&out))
-        }
-        "wardrobe_create" => {
-            let out = wardrobe_create::execute(main, mount, user_id, chat_id, character_id, args);
-            (to_value(&out), wardrobe_create::format(&out))
-        }
-        "wardrobe_update" => {
-            let out = wardrobe_update::execute(main, mount, user_id, chat_id, character_id, args);
-            (to_value(&out), wardrobe_update::format(&out))
+        // The four picture-aware tools compose exactly as the executor does
+        // (the switch is OFF in the main sequence — no settings row — so only a
+        // `generate_image: true` ask reaches an outcome: `not-enabled`).
+        "wardrobe_list" | "wardrobe_read" | "wardrobe_create" | "wardrobe_update" => {
+            run_picture_op(
+                rt,
+                db,
+                tool,
+                main_w,
+                mount_w,
+                user_id,
+                chat_id,
+                character_id,
+                args,
+                now,
+            )
         }
         "wardrobe_archive" => {
             let (out, ids) =

@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(tools): the four wardrobe tools at HEAD — wear tags and tally, the picture handle, `generate_image` (P4.D262 items 10–14)
+
+_Versions: core 0.0.1259._
+
+The four wardrobe tools at v4 HEAD's model-visible bytes (`3ee3b1342` + `b3f937076`):
+
+- `wardrobe_list` items carry `image_file_id`, `wear_count` and `last_worn_at` from one ledger read. Each line ends with ` · last worn <relative>` / ` · never worn`, then ` · picture: <handle>`.
+- `wardrobe_read` (and the `wardrobe_update` echo) carry `image_file_id` and the `wear` block, with wearers named for the calling character. Its text adds `  picture: …` after the Portrait Cue and the second-person `  wear: …` paragraph last.
+- `wardrobe_create` / `wardrobe_update` take `generate_image`. Once the write commits, the executor runs the picture decision (create: on by default when the operator allows it, for the gift's recipient too; update: only when the edit changes the look) and appends `- Picture: …`.
+- `tools/definitions/data.rs` regenerated from the pin: only the four wardrobe definitions move.
+- `format_at(&out, now_ms)` takes v4's injectable clock; `format(&out)` keeps the production clock.
+
+`wardrobe_tools_equivalence` grows the ledger and picture plants, a pinned clock, the ledger read-back, a switch-off ask and a 12-op switch-on scenario. It compares the queued jobs, with v4's job host held off so they stay PENDING. Lane-local `resolve_wearers` is marked `HANDOFF(P4.D256)`. P4.D262 items 10, 11, 12 (wiring), 13, 14.
+
 #### 2026-10-08 — feat(wardrobe): the tools' picture decision module and the wear formatters (P4.D262 items 12, 16)
 
 _Versions: core 0.0.1258._

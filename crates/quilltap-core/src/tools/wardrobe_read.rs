@@ -31,6 +31,9 @@ pub struct WardrobeReadToolOutput {
     pub title: String,
     pub description: Option<String>,
     pub image_prompt: Option<String>,
+    /// The item's current picture (v4 `b3f937076` — `item.imageFileId ??
+    /// null`; always serialized).
+    pub image_file_id: Option<String>,
     pub types: Vec<String>,
     pub appropriateness: Option<String>,
     pub is_default: bool,
@@ -42,6 +45,13 @@ pub struct WardrobeReadToolOutput {
     pub is_own: bool,
     pub is_equipped: bool,
     pub equipped_slots: Vec<String>,
+    /// The item's wear history (v4 `3ee3b1342`) — absent on failure.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wear: Option<WardrobeReadWearResult>,
+    /// `wardrobe_update`'s picture outcome (v4's `{ ...output,
+    /// image_generation }`); the read itself never sets it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image_generation: Option<crate::services::tool_image_generation::WardrobeToolImageResult>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
@@ -226,6 +236,7 @@ pub fn build_read_failure(error: impl Into<String>) -> WardrobeReadToolOutput {
         title: String::new(),
         description: None,
         image_prompt: None,
+        image_file_id: None,
         types: Vec::new(),
         appropriateness: None,
         is_default: false,
@@ -237,6 +248,8 @@ pub fn build_read_failure(error: impl Into<String>) -> WardrobeReadToolOutput {
         is_own: false,
         is_equipped: false,
         equipped_slots: Vec::new(),
+        wear: None,
+        image_generation: None,
         error: Some(error.into()),
     }
 }
@@ -278,12 +291,15 @@ pub fn build_read_output(
     let id = str_field(item, "id").unwrap_or_default();
     let equipped = find_equipped_slots(&id, equipped_slots_val.as_ref());
 
+    let wear = build_wardrobe_read_wear(main, character_id, &id);
+
     Ok(WardrobeReadToolOutput {
         success: true,
         item_id: id,
         title: str_field(item, "title").unwrap_or_default(),
         description: str_field(item, "description"),
         image_prompt: str_field(item, "imagePrompt"),
+        image_file_id: str_field(item, "imageFileId"),
         types: types_of(item),
         appropriateness: str_field(item, "appropriateness"),
         is_default: item
@@ -301,8 +317,90 @@ pub fn build_read_output(
         is_own: is_own_wardrobe_item(item, character_id),
         is_equipped: !equipped.is_empty(),
         equipped_slots: equipped,
+        wear: Some(wear),
+        image_generation: None,
         error: None,
     })
+}
+
+/// How a wearer resolved (v4 `WearerKind`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WearerKind {
+    Character,
+    Departed,
+    Unattributed,
+}
+
+/// v4 `resolveWearers(wearers, repos)` without avatars (`lib/wardrobe/
+/// wear-history.ts:85-131`) — each wearer's display name, index-aligned. The
+/// null wearer is `unattributed`; a character that no longer exists (or has
+/// no name) is `a departed character`. Names resolve RAW (`findByIdRaw` — a
+/// broken vault costs a label, never the read); v4's read is a fallback
+/// `safeQuery` that never throws, so its `Could not read wearer` WARN is
+/// unreachable and not ported.
+//
+// HANDOFF(P4.D256): `services::wardrobe_wear_history::resolve_wearers` is
+// P4.D256's (§R.10(b)); it was not on this lane's base. The unifier repoints
+// this call at P4.D256's fn (with `avatars: false`) and deletes this copy.
+fn resolve_wearers(
+    main: &Connection,
+    wearers: &[crate::db::wardrobe_wear_stats::WardrobeWearer],
+) -> Vec<(String, WearerKind)> {
+    wearers
+        .iter()
+        .map(|w| match w.character_id.as_deref() {
+            None | Some("") => ("unattributed".to_string(), WearerKind::Unattributed),
+            Some(id) => match crate::db::characters_read::find_by_id_raw_or_none(main, id)
+                .and_then(|c| c.get("name").and_then(Value::as_str).map(str::to_string))
+                .filter(|n| !n.is_empty())
+            {
+                Some(name) => (name, WearerKind::Character),
+                None => ("a departed character".to_string(), WearerKind::Departed),
+            },
+        })
+        .collect()
+}
+
+/// v4 `buildWardrobeReadWear(repos, characterId, itemId)` (`wardrobe-read-
+/// handler.ts:97-127`) — the item's wear history, each wearer named for the
+/// calling character: themselves flagged `is_you`, anyone the ledger can no
+/// longer name flagged `departed`. v4's DEBUG `Wardrobe read resolved wear
+/// history` (`context`, `characterId`, `itemId`, `wearCount`, `wearerCount`).
+fn build_wardrobe_read_wear(
+    main: &Connection,
+    character_id: &str,
+    item_id: &str,
+) -> WardrobeReadWearResult {
+    let history = crate::db::wardrobe_wear_stats::WardrobeWearStatsRepository::new(main)
+        .find_history(item_id);
+    let resolved = resolve_wearers(main, &history.wearers);
+    tracing::debug!(
+        context = "wardrobe-read-handler",
+        characterId = character_id,
+        itemId = item_id,
+        wearCount = history.wear_count,
+        wearerCount = history.wearers.len(),
+        "Wardrobe read resolved wear history"
+    );
+    WardrobeReadWearResult {
+        wear_count: history.wear_count,
+        first_worn_at: history.first_worn_at,
+        last_worn_at: history.last_worn_at,
+        wearers: history
+            .wearers
+            .iter()
+            .zip(resolved)
+            .map(|(w, (name, kind))| WardrobeReadWearerResult {
+                character_id: w.character_id.clone(),
+                name,
+                is_you: w.character_id.as_deref() == Some(character_id),
+                departed: kind != WearerKind::Character,
+                wear_count: w.wear_count,
+                first_worn_at: w.first_worn_at.clone(),
+                last_worn_at: w.last_worn_at.clone(),
+            })
+            .collect(),
+    }
 }
 
 /// Validated `wardrobe_read` / `wardrobe_update`-style locate input (`item_id` /
@@ -401,8 +499,15 @@ fn run(
     build_read_output(main, &docs, character_id, chat_id, &item, &tiers)
 }
 
-/// v4 `formatWardrobeReadResults`.
+/// v4 `formatWardrobeReadResults(output, nowMs = Date.now())` on the
+/// production clock — the wear paragraph's relative dates read now.
 pub fn format(output: &WardrobeReadToolOutput) -> String {
+    format_at(output, crate::clock::now_unix_ms() as f64)
+}
+
+/// [`format`] at a pinned clock (v4's second parameter) — the differentials
+/// pass one fixed `nowMs` on both sides so the relative dates compare.
+pub fn format_at(output: &WardrobeReadToolOutput, now_ms: f64) -> String {
     if !output.success {
         return format!(
             "Wardrobe Error: {}",
@@ -423,6 +528,15 @@ pub fn format(output: &WardrobeReadToolOutput) -> String {
             .image_prompt
             .as_deref()
             .unwrap_or("(none — falls back to title)")
+    ));
+    // v4 `b3f937076`: the item's picture, right after the Portrait Cue.
+    lines.push(format!(
+        "  picture: {}",
+        match output.image_file_id.as_deref() {
+            Some(id) if !id.is_empty() =>
+                crate::services::tool_image_generation::format_wardrobe_image_handle(id),
+            _ => "(none)".to_string(),
+        }
     ));
     if output.is_composite {
         let titles = output.component_titles.join(", ");
@@ -456,5 +570,12 @@ pub fn format(output: &WardrobeReadToolOutput) -> String {
             "no".to_string()
         }
     ));
+    // v4 `3ee3b1342`: the wear paragraph LAST, only when the output carries it.
+    if let Some(wear) = &output.wear {
+        lines.push(format!(
+            "  wear: {}",
+            format_wardrobe_wear_paragraph(Some(wear), now_ms)
+        ));
+    }
     lines.join("\n")
 }

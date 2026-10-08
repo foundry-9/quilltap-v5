@@ -172826,3 +172826,57 @@ ERROR leg is the unit pin (one arm per family — the carve).
   byte-equal; `first_worn_at: null` → the last stamp; unparseable stamps raw;
   four wearers joined). 70/70 on the first run. `patchChangesLook` is
   module-private in v4 — pinned through `wardrobe_tools`' switch-ON rows.
+
+### Unit 6 — the four wardrobe tools at HEAD's bytes (items 10, 11, 12 wiring, 13, 14)
+
+- `wardrobe_list`: `image_file_id` (after `image_prompt`, always serialized),
+  `wear_count` / `last_worn_at` (after `equipped_slot`); ONE `find_summaries`
+  over the type / appropriateness-filtered ids (before `include_equipped`, v4's
+  order); the line ends `…{description}{wearTag}{pictureTag}`.
+- `wardrobe_read` (+ the `wardrobe_update` echo, R-H): `image_file_id` (after
+  `image_prompt`; `null` on failure), `wear` (absent on failure) built by
+  `build_wardrobe_read_wear` (`find_history` + the DEBUG `Wardrobe read resolved
+  wear history`); `  picture: …` after the Portrait Cue, `  wear: …` LAST. The
+  update echo carries `wear` in its Output; its TEXT is `Updated "…" (…).` plus
+  the picture line only. **HANDOFF(P4.D256) — §R.10(b):** a lane-local
+  `resolve_wearers` in `tools/wardrobe_read.rs` (v4's three labels; raw reads;
+  v4's `Could not read wearer` WARN unreachable — its read never throws — not
+  ported) marked `// HANDOFF(P4.D256)`; the unifier repoints it at P4.D256's
+  `services::wardrobe_wear_history::resolve_wearers` (no avatars).
+- `format(&out)` keeps the production clock; NEW `format_at(&out, now_ms)`
+  takes v4's second parameter (the differentials pin it) — so
+  `project_roster_access_equivalence` (not this lane's file) needed no edit.
+- `wardrobe_create` / `wardrobe_update` parse `generate_image`; the create
+  carries the RECIPIENT and the flag out (`#[serde(skip)]`), the update a
+  `UpdatePictureClaim` (`execute_with_picture_claim` — `patch_changes_look` over
+  the PRE-update item and the patch as written, the recomputed union included).
+  The EXECUTOR now composes after the write commits: the avatar trigger, then
+  `maybe_queue_wardrobe_tool_image` (create: `default_when_enabled: true`; update:
+  `changes_look`), then the format — the create's result subset is unchanged (the
+  picture rides `formattedText`), the update's spread carries `image_generation`.
+- `tools/definitions/data.rs` regenerated through `gen-tool-catalog.mjs` from the
+  pin's NDJSON — exactly the four wardrobe definitions moved;
+  `tool_definitions_equivalence` green (`generate_image` ×5 in the NDJSON).
+- `wardrobe_tools_equivalence` grown (R-D, R-F): the pinned `nowMs`; the ledger
+  plant (7 increments — caller, recipient, a departed wearer, the unattributed
+  row, the caller's group item) and the picture pointer through each side's real
+  repository; the read-back gains every ledger row (minted ids keyed by title,
+  code-unit order); a NEW op `create_picture_switch_off` (`not-enabled`); and the
+  switch-ON `pictureScenario` (12 ops — create default / declined / gift, the
+  look-changing update that DEDUPES onto the pending job, non-look, forced, the
+  same cue, a changed cue with `false`, the same and the reordered components,
+  read + list of the pictured item) with the 4 queued `background_jobs` rows
+  compared (all PENDING, `maxAttempts` 1). **The oracle holds v4's job host
+  off** (`__quilltapJobHost.shuttingDown`) — the first regen showed v4's lazily
+  spawned runner CLAIMING the jobs mid-case (PROCESSING), which defeats the
+  PENDING-only dedupe; the Rust side has no runner. 36 ops + read-back + 12
+  picture ops + 4 jobs green; the KEYSTONE binary red at `op[0]`. Fresh-NDJSON
+  greps: `never worn` > 0, `picture:` 8.
+- `project_roster_access_equivalence` (not this lane's) re-run by name with
+  lane-private paths at the pin: green (its list text gains ` · never worn`).
+- `crates/quilltap-core/tests/unreported_if_blank_slots.rs` gains the three new
+  `WardrobeCreateToolOutput` fields (a struct literal).
+- **BANKED (pre-existing):** v5's tools never ported v4's `Wardrobe list
+  completed` / `Wardrobe create completed` / `Wardrobe update completed` INFO
+  lines, so the keys `3ee3b1342` / `b3f937076` add to them (`neverWornCount`,
+  `withPictureCount`, `imageGeneration`, `changesLook`) have no line to land on.

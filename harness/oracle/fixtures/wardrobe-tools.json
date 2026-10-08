@@ -405,6 +405,17 @@
           }
         ]
       }
+    },
+    {
+      "name": "create_picture_switch_off",
+      "tool": "wardrobe_create",
+      "args": {
+        "title": "Evening Gloves",
+        "types": [
+          "accessories"
+        ],
+        "generate_image": true
+      }
     }
   ],
   "callerGroupItems": [
@@ -433,5 +444,180 @@
         "accessories"
       ]
     }
-  ]
+  ],
+  "nowMs": "2026-06-15T12:00:00.000Z",
+  "departedCharacterId": "dddddddd-0000-4000-8000-000000000001",
+  "wearPlant": [
+    {
+      "itemId": "a0000000-0000-4000-8000-000000000002",
+      "wearer": "caller",
+      "chatId": "55555555-5555-4555-8555-555555555555",
+      "at": "2026-03-14T10:00:00.000Z"
+    },
+    {
+      "itemId": "a0000000-0000-4000-8000-000000000002",
+      "wearer": "recipient",
+      "chatId": "55555555-5555-4555-8555-555555555555",
+      "at": "2026-05-26T09:00:00.000Z"
+    },
+    {
+      "itemId": "a0000000-0000-4000-8000-000000000002",
+      "wearer": "caller",
+      "chatId": "55555555-5555-4555-8555-555555555555",
+      "at": "2026-06-12T12:00:00.000Z"
+    },
+    {
+      "itemId": "a0000000-0000-4000-8000-000000000003",
+      "wearer": "departed",
+      "chatId": "55555555-5555-4555-8555-555555555555",
+      "at": "2026-04-01T08:00:00.000Z"
+    },
+    {
+      "itemId": "a0000000-0000-4000-8000-000000000003",
+      "wearer": "departed",
+      "chatId": "55555555-5555-4555-8555-555555555555",
+      "at": "2026-04-05T08:00:00.000Z"
+    },
+    {
+      "itemId": "a0000000-0000-4000-8000-000000000003",
+      "wearer": null,
+      "chatId": null,
+      "at": "2026-02-01T08:00:00.000Z"
+    },
+    {
+      "itemId": "c0000000-0000-4000-8000-000000000001",
+      "wearer": "caller",
+      "chatId": "55555555-5555-4555-8555-555555555555",
+      "at": "2026-06-01T18:30:00.000Z"
+    }
+  ],
+  "picturePlant": {
+    "itemId": "a0000000-0000-4000-8000-000000000003",
+    "imageFileId": "f1000000-0000-4000-8000-000000000001"
+  },
+  "pictureScenario": {
+    "comment": "P4.D262 item 14 — run AFTER the main ops and the read-back, on the same copy, with the operator switch ON (chat_settings.wardrobeImageSettings.generateFromTools through each side's REAL updateForUser), a usable default image profile (apiKeyId set; the key row is never read by the decision) and the background_jobs table. The queued jobs are read back (type / status / maxAttempts / payload).",
+    "imageProfile": {
+      "id": "eeeeeeee-0000-4000-8000-0000000000e1",
+      "name": "Wardrobe Imagery",
+      "provider": "OPENAI_COMPATIBLE",
+      "apiKeyId": "eeeeeeee-0000-4000-8000-0000000000e2",
+      "baseUrl": "http://127.0.0.1:1/v1",
+      "modelName": "mock-image-model"
+    },
+    "ops": [
+      {
+        "name": "create_picture_default",
+        "tool": "wardrobe_create",
+        "args": {
+          "title": "Opera Cloak",
+          "types": [
+            "top"
+          ]
+        }
+      },
+      {
+        "name": "create_picture_declined",
+        "tool": "wardrobe_create",
+        "args": {
+          "title": "Spare Gloves",
+          "types": [
+            "accessories"
+          ],
+          "generate_image": false
+        }
+      },
+      {
+        "name": "create_picture_gift",
+        "tool": "wardrobe_create",
+        "args": {
+          "title": "Gift Scarf",
+          "types": [
+            "accessories"
+          ],
+          "recipient": "Basil"
+        }
+      },
+      {
+        "name": "update_picture_look_dedupes",
+        "tool": "wardrobe_update",
+        "args": {
+          "item_title": "Opera Cloak",
+          "title": "Opera Cape"
+        }
+      },
+      {
+        "name": "update_picture_nonlook",
+        "tool": "wardrobe_update",
+        "args": {
+          "item_title": "Grey Slacks",
+          "description": "Pressed and creased."
+        }
+      },
+      {
+        "name": "update_picture_forced",
+        "tool": "wardrobe_update",
+        "args": {
+          "item_title": "Grey Slacks",
+          "generate_image": true
+        }
+      },
+      {
+        "name": "update_picture_same_cue",
+        "tool": "wardrobe_update",
+        "args": {
+          "item_title": "Loafers",
+          "image_prompt": "brown leather loafers"
+        }
+      },
+      {
+        "name": "update_picture_cue_changes",
+        "tool": "wardrobe_update",
+        "args": {
+          "item_title": "Loafers",
+          "image_prompt": "oxblood brogues",
+          "generate_image": false
+        }
+      },
+      {
+        "name": "update_picture_same_components",
+        "tool": "wardrobe_update",
+        "args": {
+          "item_title": "Casual Outfit",
+          "component_item_ids": [
+            "a0000000-0000-4000-8000-000000000001",
+            "a0000000-0000-4000-8000-000000000002"
+          ]
+        }
+      },
+      {
+        "name": "update_picture_reordered_components",
+        "tool": "wardrobe_update",
+        "args": {
+          "item_title": "Casual Outfit",
+          "component_item_ids": [
+            "a0000000-0000-4000-8000-000000000002",
+            "a0000000-0000-4000-8000-000000000001"
+          ]
+        }
+      },
+      {
+        "name": "read_pictured_item",
+        "tool": "wardrobe_read",
+        "args": {
+          "item_title": "Loafers"
+        }
+      },
+      {
+        "name": "list_after_pictures",
+        "tool": "wardrobe_list",
+        "args": {
+          "type_filter": [
+            "footwear",
+            "bottom"
+          ]
+        }
+      }
+    ]
+  }
 }

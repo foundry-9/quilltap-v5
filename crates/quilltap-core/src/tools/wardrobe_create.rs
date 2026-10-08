@@ -30,6 +30,9 @@ use crate::wardrobe::{
 };
 
 use super::wardrobe_shared::public_error_message;
+use crate::services::tool_image_generation::{
+    format_wardrobe_tool_image_line, WardrobeToolImageResult,
+};
 use crate::wardrobe_tiers::{resolve_shared_wardrobe_tiers_for_chat, SharedWardrobeTiers};
 
 /// v4 `WardrobeCreateToolOutput` (fields conditionally present per v4's object
@@ -54,6 +57,11 @@ pub struct WardrobeCreateToolOutput {
     pub recipient_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_state: Option<Value>,
+    /// What became of the picture (v4 `b3f937076`) — present only when one was
+    /// wanted. Set by the executor AFTER the write commits
+    /// ([`crate::services::tool_image_generation::maybe_queue_wardrobe_tool_image`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image_generation: Option<WardrobeToolImageResult>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
     /// The character the item was equipped on (the RECIPIENT of a gift, else
@@ -62,6 +70,16 @@ pub struct WardrobeCreateToolOutput {
     /// (P4.123) without touching the tool's JSON result.
     #[serde(skip)]
     pub target_character_id: Option<String>,
+    /// The character whose wardrobe received the item (the RECIPIENT of a
+    /// gift, else the caller) — set on EVERY success, equipped or not (v4
+    /// draws a new garment by default even when `equip_now` is false). Never
+    /// serialized: the executor's picture call reads it (`b3f937076`).
+    #[serde(skip)]
+    pub picture_character_id: Option<String>,
+    /// The model's `generate_image` input (`None` = the tool's default),
+    /// carried to the executor's picture call. Never serialized.
+    #[serde(skip)]
+    pub generate_image: Option<bool>,
 }
 
 fn failure(error: impl Into<String>) -> WardrobeCreateToolOutput {
@@ -77,8 +95,11 @@ fn failure(error: impl Into<String>) -> WardrobeCreateToolOutput {
         resolved_component_item_ids: None,
         recipient_name: None,
         current_state: None,
+        image_generation: None,
         error: Some(error.into()),
         target_character_id: None,
+        picture_character_id: None,
+        generate_image: None,
     }
 }
 
@@ -98,6 +119,8 @@ struct CreateInput {
     component_item_ids: Option<Vec<String>>,
     component_titles: Option<Vec<String>>,
     replace: Option<bool>,
+    /// v4 `generate_image: z.boolean().optional()` (`b3f937076`).
+    generate_image: Option<bool>,
 }
 
 fn opt_string(obj: &serde_json::Map<String, Value>, key: &str) -> Result<Option<String>, ()> {
@@ -185,6 +208,11 @@ fn validate(args: &Value) -> Option<CreateInput> {
         Some(Value::Bool(b)) => Some(*b),
         Some(_) => return None,
     };
+    let generate_image = match obj.get("generate_image") {
+        None | Some(Value::Null) => None,
+        Some(Value::Bool(b)) => Some(*b),
+        Some(_) => return None,
+    };
     // Top-level refine: types OR non-empty components.
     let has_components = component_item_ids.as_ref().is_some_and(|v| !v.is_empty())
         || component_titles.as_ref().is_some_and(|v| !v.is_empty());
@@ -202,6 +230,7 @@ fn validate(args: &Value) -> Option<CreateInput> {
         component_item_ids,
         component_titles,
         replace,
+        generate_image,
     })
 }
 
@@ -410,12 +439,15 @@ fn run(
         },
         recipient_name,
         current_state,
+        image_generation: None,
         error: None,
         target_character_id: if equipped {
-            Some(target_character_id)
+            Some(target_character_id.clone())
         } else {
             None
         },
+        picture_character_id: Some(target_character_id),
+        generate_image: input.generate_image,
     })
 }
 
@@ -617,6 +649,11 @@ pub fn format(output: &WardrobeCreateToolOutput) -> String {
         parts.push(format!(
             "- Not equipped (added to wardrobe{of_recipient} only)"
         ));
+    }
+
+    // v4 `b3f937076`: the picture line LAST.
+    if let Some(line) = format_wardrobe_tool_image_line(output.image_generation.as_ref()) {
+        parts.push(line);
     }
 
     parts.join("\n")

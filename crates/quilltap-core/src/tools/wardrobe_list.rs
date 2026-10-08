@@ -25,11 +25,18 @@ pub struct WardrobeListItemResult {
     pub title: String,
     pub description: Option<String>,
     pub image_prompt: Option<String>,
+    /// The item's current picture (v4 `b3f937076` — `item.imageFileId ??
+    /// null`; always serialized).
+    pub image_file_id: Option<String>,
     pub types: Vec<String>,
     pub appropriateness: Option<String>,
     pub is_own: bool,
     pub is_equipped: bool,
     pub equipped_slot: Option<String>,
+    /// Times worn across every wearer (v4 `3ee3b1342`; `0` = never worn).
+    pub wear_count: i64,
+    /// When it was last worn, by anyone (`null` = never).
+    pub last_worn_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_composite: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -213,10 +220,24 @@ fn run(
         })
         .collect();
 
+    // One ledger read for every listed item's "last worn" (v4 `3ee3b1342` —
+    // over the type / appropriateness-filtered items, before the
+    // `include_equipped` filter). A failed read is v4's fallback: never worn.
+    let filtered_ids: Vec<String> = filtered
+        .iter()
+        .filter_map(|item| str_field(item, "id"))
+        .collect();
+    let wear_summaries = crate::db::wardrobe_wear_stats::WardrobeWearStatsRepository::new(main)
+        .find_summaries(&filtered_ids);
+
     let result_items: Vec<WardrobeListItemResult> = filtered
         .into_iter()
         .map(|item| {
             let id = str_field(item, "id").unwrap_or_default();
+            let wear = wear_summaries
+                .get(&id)
+                .cloned()
+                .unwrap_or_else(crate::db::wardrobe_wear_stats::never_worn_summary);
             let equipped_slots = find_equipped_slots(&id, equipped.as_ref());
             let component_item_ids = component_ids_of(item);
             let is_composite = !component_item_ids.is_empty();
@@ -235,11 +256,14 @@ fn run(
                 title: str_field(item, "title").unwrap_or_default(),
                 description: str_field(item, "description"),
                 image_prompt: str_field(item, "imagePrompt"),
+                image_file_id: str_field(item, "imageFileId"),
                 types: types_of(item),
                 appropriateness: str_field(item, "appropriateness"),
                 is_own: item.get("characterId").and_then(Value::as_str) == Some(character_id),
                 is_equipped: !equipped_slots.is_empty(),
                 equipped_slot: equipped_slots.first().cloned(),
+                wear_count: wear.wear_count,
+                last_worn_at: wear.last_worn_at,
                 is_composite: if is_composite { Some(true) } else { None },
                 component_item_ids: if is_composite {
                     Some(component_item_ids)
@@ -293,8 +317,15 @@ pub fn format_wardrobe_list_wear_note(
     }
 }
 
-/// v4 `formatWardrobeListResults`.
+/// v4 `formatWardrobeListResults(output, nowMs = Date.now())` on the
+/// production clock — the relative "last worn" dates read now.
 pub fn format(output: &WardrobeListToolOutput) -> String {
+    format_at(output, crate::clock::now_unix_ms() as f64)
+}
+
+/// [`format`] at a pinned clock (v4's second parameter) — the differentials
+/// pass one fixed `nowMs` on both sides so the relative dates compare.
+pub fn format_at(output: &WardrobeListToolOutput, now_ms: f64) -> String {
     if !output.success {
         return format!(
             "Wardrobe Error: {}",
@@ -352,8 +383,18 @@ pub fn format(output: &WardrobeListToolOutput) -> String {
         } else {
             String::new()
         };
+        // v4 `3ee3b1342` / `b3f937076`: the wear note, then the picture handle.
+        let wear_tag =
+            format_wardrobe_list_wear_note(item.wear_count, item.last_worn_at.as_deref(), now_ms);
+        let picture_tag = match item.image_file_id.as_deref() {
+            Some(id) if !id.is_empty() => format!(
+                " · picture: {}",
+                crate::services::tool_image_generation::format_wardrobe_image_handle(id)
+            ),
+            _ => String::new(),
+        };
         lines.push(format!(
-            "  {} {}{}{}{}{}{}{}",
+            "  {} {}{}{}{}{}{}{}{}{}",
             type_tags,
             item.title,
             equipped_tag,
@@ -361,7 +402,9 @@ pub fn format(output: &WardrobeListToolOutput) -> String {
             appropriateness_tag,
             composite_tag,
             cue_tag,
-            description
+            description,
+            wear_tag,
+            picture_tag
         ));
     }
     lines.join("\n")

@@ -204,8 +204,11 @@ fn create_dump_omits_the_hair_row_when_hair_is_empty() {
         resolved_component_item_ids: None,
         recipient_name: None,
         current_state: Some(state_with("top", &["item-1"])),
+        image_generation: None,
         error: None,
         target_character_id: None,
+        picture_character_id: None,
+        generate_image: None,
     });
     assert!(text.contains("top: item-1"));
     assert!(text.contains("accessories: (empty)"));
@@ -229,8 +232,11 @@ fn create_dump_still_lists_the_hair_row_when_a_hairdo_is_worn() {
             "top": [], "bottom": [], "footwear": [], "accessories": [],
             "hair": ["braid-1"],
         })),
+        image_generation: None,
         error: None,
         target_character_id: None,
+        picture_character_id: None,
+        generate_image: None,
     });
     assert!(text.contains("hair: braid-1"));
 }

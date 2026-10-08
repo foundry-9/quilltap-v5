@@ -1672,6 +1672,13 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
         let (trigger_db, trigger_user, trigger_chat) =
             (db.clone(), user_id.clone(), chat_id.clone());
         // === end P4.123 ===
+        // === P4.D262 === the handler's output rides out of the write so the
+        // picture (an async enqueue) can be queued once the garment has
+        // committed — v4 queues it inside the handler, after the avatar
+        // trigger — and the result is composed from the finished output.
+        let stash: Arc<Mutex<Option<wardrobe_create::WardrobeCreateToolOutput>>> = Arc::default();
+        let stash_in = stash.clone();
+        // === end P4.D262 ===
         let result = self
             .wardrobe_write(db, move |main, mount| {
                 let out =
@@ -1685,25 +1692,11 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
                     }
                 }
                 // === end P4.123 ===
-                let formatted = wardrobe_create::format(&out);
-                if out.success {
-                    // v4 selects a subset: formattedText, item_id, title, equipped,
-                    // recipient_name?, current_state? (undefined ones omitted).
-                    let mut result = Map::new();
-                    result.insert("formattedText".into(), json!(formatted));
-                    result.insert("item_id".into(), json!(out.item_id));
-                    result.insert("title".into(), json!(out.title));
-                    result.insert("equipped".into(), json!(out.equipped));
-                    if let Some(name) = &out.recipient_name {
-                        result.insert("recipient_name".into(), json!(name));
-                    }
-                    if let Some(state) = &out.current_state {
-                        result.insert("current_state".into(), state.clone());
-                    }
-                    ok("wardrobe_create", Value::Object(result))
-                } else {
-                    fail("wardrobe_create", out.error.clone().unwrap_or_default())
+                if let Ok(mut g) = stash_in.lock() {
+                    *g = Some(out);
                 }
+                // Replaced below once the picture has been decided.
+                ok("wardrobe_create", Value::Null)
             })
             .await;
         // === P4.123 ===
@@ -1717,22 +1710,112 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
         )
         .await;
         // === end P4.123 ===
-        result
+        let Some(mut out) = stash.lock().unwrap_or_else(|e| e.into_inner()).take() else {
+            // The write itself failed (no mount-index, a writer error).
+            return result;
+        };
+        // === P4.D262 === v4 `b3f937076`: a new garment is drawn by default
+        // when the operator allows tool pictures — for the RECIPIENT of a gift,
+        // equipped or not.
+        if out.success {
+            if let Some(recipient) = out.picture_character_id.clone() {
+                out.image_generation =
+                    crate::services::tool_image_generation::maybe_queue_wardrobe_tool_image(
+                        &trigger_db,
+                        crate::services::tool_image_generation::QueueWardrobeToolImageArgs {
+                            user_id: trigger_user.clone(),
+                            chat_id: trigger_chat.clone(),
+                            character_id: recipient,
+                            item_id: out.item_id.clone(),
+                            requested: out.generate_image,
+                            default_when_enabled: true,
+                            caller_context: "wardrobe-create-handler",
+                        },
+                    )
+                    .await;
+            }
+        }
+        // === end P4.D262 ===
+        let formatted = wardrobe_create::format(&out);
+        if out.success {
+            // v4 selects a subset: formattedText, item_id, title, equipped,
+            // recipient_name?, current_state? (undefined ones omitted) — the
+            // picture rides the formatted text only.
+            let mut result = Map::new();
+            result.insert("formattedText".into(), json!(formatted));
+            result.insert("item_id".into(), json!(out.item_id));
+            result.insert("title".into(), json!(out.title));
+            result.insert("equipped".into(), json!(out.equipped));
+            if let Some(name) = &out.recipient_name {
+                result.insert("recipient_name".into(), json!(name));
+            }
+            if let Some(state) = &out.current_state {
+                result.insert("current_state".into(), state.clone());
+            }
+            ok("wardrobe_create", Value::Object(result))
+        } else {
+            fail("wardrobe_create", out.error.clone().unwrap_or_default())
+        }
     }
 
     async fn run_wardrobe_update(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
         let (db, args, user_id, chat_id, character_id) = self.wardrobe_snapshot(tc, ctx);
-        self.wardrobe_write(db, move |main, mount| {
-            let out =
-                wardrobe_update::execute(main, mount, &user_id, &chat_id, &character_id, &args);
-            let formatted = wardrobe_update::format(&out);
-            if out.success {
-                ok("wardrobe_update", spread_output(&formatted, &out))
-            } else {
-                fail("wardrobe_update", out.error.clone().unwrap_or_default())
-            }
-        })
-        .await
+        // === P4.D262 === the echo + the picture claim ride out of the write;
+        // the picture is queued once the edit has committed (v4 `b3f937076`).
+        type Stashed = (
+            wardrobe_read::WardrobeReadToolOutput,
+            Option<wardrobe_update::UpdatePictureClaim>,
+        );
+        let stash: Arc<Mutex<Option<Stashed>>> = Arc::default();
+        let stash_in = stash.clone();
+        let (picture_db, picture_user, picture_chat, picture_character) = (
+            db.clone(),
+            user_id.clone(),
+            chat_id.clone(),
+            character_id.clone(),
+        );
+        let result = self
+            .wardrobe_write(db, move |main, mount| {
+                let stashed = wardrobe_update::execute_with_picture_claim(
+                    main,
+                    mount,
+                    &user_id,
+                    &chat_id,
+                    &character_id,
+                    &args,
+                );
+                if let Ok(mut g) = stash_in.lock() {
+                    *g = Some(stashed);
+                }
+                ok("wardrobe_update", Value::Null)
+            })
+            .await;
+        let Some((mut out, claim)) = stash.lock().unwrap_or_else(|e| e.into_inner()).take() else {
+            return result;
+        };
+        if let Some(claim) = claim {
+            out.image_generation =
+                crate::services::tool_image_generation::maybe_queue_wardrobe_tool_image(
+                    &picture_db,
+                    crate::services::tool_image_generation::QueueWardrobeToolImageArgs {
+                        user_id: picture_user,
+                        chat_id: picture_chat,
+                        character_id: picture_character,
+                        item_id: claim.item_id,
+                        requested: claim.requested,
+                        default_when_enabled: claim.changes_look,
+                        caller_context: "wardrobe-update-handler",
+                    },
+                )
+                .await;
+        }
+        // === end P4.D262 ===
+        let formatted = wardrobe_update::format(&out);
+        if out.success {
+            ok("wardrobe_update", spread_output(&formatted, &out))
+        } else {
+            fail("wardrobe_update", out.error.clone().unwrap_or_default())
+        }
     }
 
     async fn run_wardrobe_archive(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
