@@ -35,11 +35,11 @@ use source_census::{code_only, core_src_root, production_zone, rust_sources};
 /// `(path under crates/quilltap-core/src, blob write calls, with_blob_codec
 /// constructions, why)`.
 ///
-/// **The arithmetic: 1 + 1 + 1 + 1 + 2 + 1 + 1 + 1 + 1 + 1 + 1 = 12 blob write
-/// calls across eleven files, and 12 `with_blob_codec` constructions** — the
-/// ten sites the P4.104 order named (with `image_job_storage.rs` holding two),
-/// the sync applier P4.D209 wired, and the `create` facade that the doc-edit
-/// tool writes through. Every write file constructs exactly as many codec'd
+/// **The arithmetic: 1 + 1 + 1 + 1 + 2 + 1 + 1 + 1 + 1 + 1 + 1 + 1 = 13 blob
+/// write calls across twelve files, and 13 `with_blob_codec` constructions** —
+/// the ten sites the P4.104 order named (with `image_job_storage.rs` holding
+/// two), the sync applier P4.D209 wired, the `create` facade that the doc-edit
+/// tool writes through, and the wardrobe image bridge (P4.D263). Every write file constructs exactly as many codec'd
 /// repositories as it makes writes.
 const CENSUS: &[(&str, usize, usize, &str)] = &[
     (
@@ -119,6 +119,15 @@ const CENSUS: &[(&str, usize, usize, &str)] = &[
         1,
         "the `quilltap sync` applier (P4.D209, the first wired site): \
          `with_blob_codec` when the engine holds an encoder.",
+    ),
+    (
+        "services/wardrobe_image_bridge.rs",
+        1,
+        1,
+        "`write_wardrobe_item_image` (P4.D263, v4 `wardrobe-image-bridge.ts`) — \
+         its `blob_webp` argument: the generate route's / job's \
+         `PixelCodecWebp` over the host codec, the upload route's host codec, \
+         the transfers' engine encoder.",
     ),
 ];
 
@@ -235,10 +244,10 @@ fn every_production_blob_write_carries_an_encoder() {
     }
     let total_w: usize = CENSUS.iter().map(|(_, w, _, _)| w).sum();
     let total_c: usize = CENSUS.iter().map(|(_, _, c, _)| c).sum();
-    if (total_w, total_c) != (12, 12) {
+    if (total_w, total_c) != (13, 13) {
         failures.push(format!(
             "the census sums to {total_w} writes / {total_c} with_blob_codec — the \
-             header's arithmetic says 12 / 12"
+             header's arithmetic says 13 / 13"
         ));
     }
     assert!(

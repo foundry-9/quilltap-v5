@@ -12,6 +12,13 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(wardrobe): the item-images module, the shared container resolver and the image bridge (P4.D263 items 2–4)
+
+_Versions: core 0.0.1254._
+
+Ports v4 `7c8572869`'s server-side item-images module. NEW `services/wardrobe_container.rs`: v4's `resolveWardrobeContainer` (it ensures a project's or group's official store on the way, with its DEBUG line), `resolveContainerMountPointId` (v4's three sentences; an archived character's tombstone surfaces as `CharacterArchived`) and `WardrobeItemHome` (`resolve_mount`, `update`). NEW `services/wardrobe_image_bridge.rs`: the picture write (`Wardrobe/images/<itemId>/<yyyymmdd-hhmmss>-<kind>-<8 hex>.webp`, the given-leaf arm with no bump, `link_blob_content` with the blob encoder, the best-effort `refresh_stats`) and the link delete, which `primitives.rs` now calls. v4's job-child host-RPC branch is a recorded structural no-port. NEW `wardrobe_item_images/{service,carry}.rs`: the summary, add / set-current / delete with the next-newest rule and dangling-pointer repair, and carry / commit / drop for transfers.
+
+NEW tier-2 family `wardrobe_item_images_tier2_equivalence` (36 scenarios) drives v4's real `item-images.ts` over a fixture whose pictures are seeded by v4's own `addWardrobeItemImage`. It compares results, every log line in v4's key order, every item's pointer, and the `files` table plus six mount-index tables. Six source mutations are each caught. `blob_write_sites_census` gains the bridge (13 / 13); `doc_mount_fallback_sites_census` moves the two link-delete rows into the bridge.
 #### 2026-10-08 — docs(porting): P4.D262 lane record, LANE COMPLETE; the wear date's fixed UTC classified in the host-zone census
 
 _No crate versions bumped._

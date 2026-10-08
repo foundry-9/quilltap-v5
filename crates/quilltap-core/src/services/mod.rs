@@ -186,6 +186,8 @@ pub mod turn_extras;
 pub mod turn_orchestrator;
 pub mod turn_transcript;
 pub mod user_identity_resolver;
+pub mod wardrobe_container;
+pub mod wardrobe_image_bridge;
 pub mod wardrobe_image_paths;
 pub mod wardrobe_item_images;
 pub mod wardrobe_item_route_steps;

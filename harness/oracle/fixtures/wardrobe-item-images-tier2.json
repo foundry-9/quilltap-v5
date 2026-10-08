@@ -1,0 +1,548 @@
+{
+  "_comment": "P4.D263 tier-2 spec for the wardrobe item-images module (v4 lib/wardrobe/item-images.ts at f5e953a3f). The builder seeds every picture through v4's REAL addWardrobeItemImage, so picture file ids are minted at build time: an op names a picture SYMBOLICALLY ({item, nth} = the item's nth-newest IMAGE file in the baked fixture; {doc: item} = the DOCUMENT file linked to the item). Both sides resolve refs the same way against the same baked fixture.",
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "userId": "0f1e2d3c-4b5a-4968-8776-655443322110",
+  "user": {
+    "username": "wardrobe-images-user",
+    "name": "Wardrobe Images"
+  },
+  "strangerUserId": "0f1e2d3c-4b5a-4968-8776-655443322999",
+  "strangerUser": {
+    "username": "stranger",
+    "name": "Stranger"
+  },
+  "characterId": "1a2b3c4d-0001-4000-8000-000000000001",
+  "archivedCharacterId": "1a2b3c4d-0002-4000-8000-000000000002",
+  "strangerCharacterId": "1a2b3c4d-0003-4000-8000-000000000003",
+  "characterTemplate": {
+    "name": "Transfer Owner Character",
+    "identity": "The keeper of a modest closet.",
+    "description": "",
+    "manifesto": "",
+    "personality": "",
+    "exampleDialogues": "",
+    "title": "",
+    "firstMessage": "",
+    "talkativeness": 0.5,
+    "pronouns": {
+      "subject": "they",
+      "object": "them",
+      "possessive": "theirs"
+    },
+    "aliases": [],
+    "physicalDescription": null,
+    "systemPrompts": [],
+    "scenarios": [],
+    "controlledBy": "llm",
+    "isFavorite": false,
+    "npc": false,
+    "defaultImageId": null,
+    "defaultConnectionProfileId": null,
+    "defaultPartnerId": null,
+    "defaultRoleplayTemplateId": null,
+    "defaultImageProfileId": null,
+    "sillyTavernData": null,
+    "defaultAgentModeEnabled": null,
+    "defaultHelpToolsEnabled": null,
+    "defaultTimestampConfig": null,
+    "defaultScenarioId": null,
+    "defaultSystemPromptId": null,
+    "characterDocumentMountPointId": null,
+    "canDressThemselves": null,
+    "canCreateOutfits": null,
+    "systemTransparency": null,
+    "coreWhisperEnabled": null,
+    "canBeCarina": null,
+    "partnerLinks": [],
+    "tags": []
+  },
+  "character": {
+    "name": "Abigail Pennyworth",
+    "pronouns": {
+      "subject": "she",
+      "object": "her",
+      "possessive": "hers"
+    }
+  },
+  "archivedCharacter": {
+    "name": "Bartholomew Quince"
+  },
+  "strangerCharacter": {
+    "name": "Someone Else"
+  },
+  "projectId": "2b3c4d5e-0001-4000-8000-000000000001",
+  "groupId": "3c4d5e6f-0001-4000-8000-000000000001",
+  "generalMountPointId": "4d5e6f70-0001-4000-8000-000000000001",
+  "generalStore": {
+    "name": "Quilltap General"
+  },
+  "items": {
+    "coat": {
+      "id": "5e6f7081-0001-4000-8000-000000000001",
+      "home": "character",
+      "title": "Velvet Coat",
+      "types": [
+        "top"
+      ],
+      "imagePrompt": "a burgundy velvet coat"
+    },
+    "scarf": {
+      "id": "5e6f7081-0002-4000-8000-000000000002",
+      "home": "character",
+      "title": "Silk Scarf",
+      "types": [
+        "accessories"
+      ]
+    },
+    "hat": {
+      "id": "5e6f7081-0003-4000-8000-000000000003",
+      "home": "character",
+      "title": "Bowler Hat",
+      "types": [
+        "accessories"
+      ]
+    },
+    "bare": {
+      "id": "5e6f7081-0004-4000-8000-000000000004",
+      "home": "character",
+      "title": "Plain Gloves",
+      "types": [
+        "accessories"
+      ]
+    },
+    "apron": {
+      "id": "5e6f7081-0005-4000-8000-000000000005",
+      "home": "general",
+      "title": "Canvas Apron",
+      "types": [
+        "top"
+      ]
+    },
+    "smock": {
+      "id": "5e6f7081-0006-4000-8000-000000000006",
+      "home": "project",
+      "title": "Painter's Smock",
+      "types": [
+        "top"
+      ]
+    },
+    "sash": {
+      "id": "5e6f7081-0007-4000-8000-000000000007",
+      "home": "group",
+      "title": "Guild Sash",
+      "types": [
+        "accessories"
+      ]
+    },
+    "cloak": {
+      "id": "5e6f7081-0008-4000-8000-000000000008",
+      "home": "archived",
+      "title": "Moth-eaten Cloak",
+      "types": [
+        "top"
+      ]
+    }
+  },
+  "pictures": [
+    {
+      "item": "coat",
+      "kind": "imported",
+      "webp": 2
+    },
+    {
+      "item": "coat",
+      "kind": "uploaded",
+      "webp": 0
+    },
+    {
+      "item": "coat",
+      "kind": "generated",
+      "webp": 1,
+      "generationPrompt": "Product photograph of a burgundy velvet coat",
+      "generationModel": "gpt-image-1",
+      "generationRevisedPrompt": "A burgundy coat"
+    },
+    {
+      "item": "scarf",
+      "kind": "uploaded",
+      "webp": 2
+    },
+    {
+      "item": "scarf",
+      "kind": "imported",
+      "webp": 0
+    },
+    {
+      "item": "apron",
+      "kind": "imported",
+      "webp": 1
+    },
+    {
+      "item": "smock",
+      "kind": "uploaded",
+      "webp": 2
+    },
+    {
+      "item": "sash",
+      "kind": "generated",
+      "webp": 0,
+      "generationPrompt": "",
+      "generationModel": ""
+    },
+    {
+      "item": "cloak",
+      "kind": "uploaded",
+      "webp": 1
+    }
+  ],
+  "danglingPointer": {
+    "item": "scarf",
+    "fileId": "deadbeef-0000-4000-8000-000000000000"
+  },
+  "emptyPointer": {
+    "item": "hat"
+  },
+  "unreadablePicture": {
+    "item": "smock",
+    "storageKey": "not-a-mount-blob-key",
+    "originalFilename": "lost.webp"
+  },
+  "documentFile": {
+    "item": "coat",
+    "originalFilename": "coat-notes.txt"
+  },
+  "webp": [
+    "UklGRjoAAABXRUJQVlA4IC4AAACQAQCdASoEAAQAAUAmJaACdLoAA5gA/vFNr+LaR0KZD/7xn/9xn/9xn/yIAAAA",
+    "UklGRjwAAABXRUJQVlA4IDAAAAAQAgCdASoEAAQAAUAmJaACdLoB+AH4AAPIAP7tBy/9wb7Iuf+tF/9ZVfJUfvyAAAA=",
+    "UklGRjoAAABXRUJQVlA4IC4AAADwAQCdASoGAAYAAUAmJaACdLoB+AAEyAAA/hMf+Uq8FjdHn/3nz9z5+58/5xgA"
+  ],
+  "copyDestinationItemId": "6f708192-0001-4000-8000-000000000001",
+  "scenarios": [
+    {
+      "name": "home_character_found",
+      "op": "home",
+      "scope": "character",
+      "container": "character",
+      "item": "coat"
+    },
+    {
+      "name": "home_general_item_not_in_character",
+      "op": "home",
+      "scope": "character",
+      "container": "character",
+      "item": "apron"
+    },
+    {
+      "name": "home_wrong_container",
+      "op": "home",
+      "scope": "project",
+      "container": "project",
+      "item": "coat"
+    },
+    {
+      "name": "home_stranger_character",
+      "op": "home",
+      "scope": "character",
+      "container": "stranger",
+      "item": "coat"
+    },
+    {
+      "name": "home_missing_id",
+      "op": "home",
+      "scope": "project",
+      "container": null,
+      "item": "smock"
+    },
+    {
+      "name": "home_unknown_project",
+      "op": "home",
+      "scope": "project",
+      "container": "nowhere",
+      "item": "smock"
+    },
+    {
+      "name": "home_group",
+      "op": "home",
+      "scope": "group",
+      "container": "group",
+      "item": "sash"
+    },
+    {
+      "name": "list_coat",
+      "op": "list",
+      "scope": "character",
+      "container": "character",
+      "item": "coat"
+    },
+    {
+      "name": "list_scarf_dangling",
+      "op": "list",
+      "scope": "character",
+      "container": "character",
+      "item": "scarf"
+    },
+    {
+      "name": "list_hat_empty_pointer",
+      "op": "list",
+      "scope": "character",
+      "container": "character",
+      "item": "hat"
+    },
+    {
+      "name": "list_sash_empty_generation",
+      "op": "list",
+      "scope": "group",
+      "container": "group",
+      "item": "sash"
+    },
+    {
+      "name": "list_archived",
+      "op": "list",
+      "scope": "character",
+      "container": "archived",
+      "item": "cloak"
+    },
+    {
+      "name": "add_uploaded_character",
+      "op": "add",
+      "scope": "character",
+      "container": "character",
+      "item": "bare",
+      "kind": "uploaded",
+      "webp": 1
+    },
+    {
+      "name": "add_imported_general",
+      "op": "add",
+      "scope": "general",
+      "container": null,
+      "item": "apron",
+      "kind": "imported",
+      "webp": 2
+    },
+    {
+      "name": "add_generated_project",
+      "op": "add",
+      "scope": "project",
+      "container": "project",
+      "item": "smock",
+      "kind": "generated",
+      "webp": 0,
+      "generationPrompt": "Product photograph of a smock",
+      "generationModel": "dall-e-3",
+      "generationRevisedPrompt": null,
+      "width": 6,
+      "height": 6
+    },
+    {
+      "name": "add_group",
+      "op": "add",
+      "scope": "group",
+      "container": "group",
+      "item": "sash",
+      "kind": "uploaded",
+      "webp": 2
+    },
+    {
+      "name": "add_archived",
+      "op": "add",
+      "scope": "character",
+      "container": "archived",
+      "item": "cloak",
+      "kind": "uploaded",
+      "webp": 0
+    },
+    {
+      "name": "set_current_own",
+      "op": "setCurrent",
+      "scope": "character",
+      "container": "character",
+      "item": "coat",
+      "file": {
+        "item": "coat",
+        "nth": 1
+      }
+    },
+    {
+      "name": "set_current_foreign",
+      "op": "setCurrent",
+      "scope": "character",
+      "container": "character",
+      "item": "coat",
+      "file": {
+        "item": "scarf",
+        "nth": 0
+      }
+    },
+    {
+      "name": "set_current_document",
+      "op": "setCurrent",
+      "scope": "character",
+      "container": "character",
+      "item": "coat",
+      "file": {
+        "doc": "coat"
+      }
+    },
+    {
+      "name": "set_current_archived",
+      "op": "setCurrent",
+      "scope": "character",
+      "container": "archived",
+      "item": "cloak",
+      "file": {
+        "item": "cloak",
+        "nth": 0
+      }
+    },
+    {
+      "name": "delete_current",
+      "op": "delete",
+      "scope": "character",
+      "container": "character",
+      "item": "coat",
+      "file": {
+        "item": "coat",
+        "nth": 0
+      }
+    },
+    {
+      "name": "delete_not_current",
+      "op": "delete",
+      "scope": "character",
+      "container": "character",
+      "item": "coat",
+      "file": {
+        "item": "coat",
+        "nth": 1
+      }
+    },
+    {
+      "name": "delete_dangling_repaired",
+      "op": "delete",
+      "scope": "character",
+      "container": "character",
+      "item": "scarf",
+      "file": {
+        "item": "scarf",
+        "nth": 1
+      }
+    },
+    {
+      "name": "delete_last",
+      "op": "delete",
+      "scope": "general",
+      "container": null,
+      "item": "apron",
+      "file": {
+        "item": "apron",
+        "nth": 0
+      }
+    },
+    {
+      "name": "delete_foreign",
+      "op": "delete",
+      "scope": "character",
+      "container": "character",
+      "item": "coat",
+      "file": {
+        "item": "scarf",
+        "nth": 0
+      }
+    },
+    {
+      "name": "delete_archived",
+      "op": "delete",
+      "scope": "character",
+      "container": "archived",
+      "item": "cloak",
+      "file": {
+        "item": "cloak",
+        "nth": 0
+      }
+    },
+    {
+      "name": "cleanup_coat",
+      "op": "cleanup",
+      "item": "coat"
+    },
+    {
+      "name": "cleanup_nothing",
+      "op": "cleanup",
+      "item": "bare"
+    },
+    {
+      "name": "carry_move_coat_to_project",
+      "op": "carry",
+      "mode": "move",
+      "item": "coat",
+      "destinationItem": "coat",
+      "destination": "project",
+      "commit": true
+    },
+    {
+      "name": "carry_move_same_mount",
+      "op": "carry",
+      "mode": "move",
+      "item": "coat",
+      "destinationItem": "coat",
+      "destination": "character",
+      "commit": true
+    },
+    {
+      "name": "carry_move_uncommitted",
+      "op": "carry",
+      "mode": "move",
+      "item": "scarf",
+      "destinationItem": "scarf",
+      "destination": "group",
+      "commit": false
+    },
+    {
+      "name": "carry_copy_coat_to_group",
+      "op": "carry",
+      "mode": "copy",
+      "item": "coat",
+      "destinationItem": "copy",
+      "destination": "group",
+      "commit": false
+    },
+    {
+      "name": "carry_unreadable_blob",
+      "op": "carry",
+      "mode": "copy",
+      "item": "smock",
+      "destinationItem": "copy",
+      "destination": "general",
+      "commit": false
+    },
+    {
+      "name": "carry_nothing",
+      "op": "carry",
+      "mode": "move",
+      "item": "bare",
+      "destinationItem": "bare",
+      "destination": "general",
+      "commit": true
+    },
+    {
+      "name": "drop_source_links",
+      "op": "drop",
+      "item": "coat",
+      "links": [
+        {
+          "mount": "character",
+          "nth": 0
+        },
+        {
+          "mount": "character",
+          "nth": 1
+        },
+        {
+          "mount": "general",
+          "leaf": "missing.webp"
+        }
+      ]
+    }
+  ]
+}

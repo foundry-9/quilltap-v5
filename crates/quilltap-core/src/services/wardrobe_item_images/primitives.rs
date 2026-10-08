@@ -10,18 +10,16 @@
 //! mount link through `deleteWithGC` (the blob only when no sibling still links
 //! it) and each `files` row, ALWAYS, even when the storage key does not parse.
 //!
-//! **Recorded for P4.D263** (it owns this directory's bodies after `KEYSTONE`):
-//! v4's link delete also emits `emitDocumentDeleted({mountPointId,
-//! relativePath})` and a best-effort `docMountPoints.refreshStats` — the
-//! bridge's realtime / stats side, which lands with P4.D263's bridge.
+//! The link delete is the bridge's ([`delete_wardrobe_item_image_link`],
+//! P4.D263 — with v4's best-effort `refreshStats`; the realtime side is the
+//! bridge header's note).
 
 use rusqlite::Connection;
 
-use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
 use crate::db::files::{FileRow, FilesRepository};
 use crate::db::DbError;
 use crate::services::file_storage::parse_mount_blob_storage_key;
-use crate::services::wardrobe_image_paths::wardrobe_item_image_path;
+use crate::services::wardrobe_image_bridge::delete_wardrobe_item_image_link;
 
 /// v4 `listWardrobeItemImages(repos, itemId)` — the item's pictures, newest
 /// first: `files.findByLinkedTo(itemId)` → `category === 'IMAGE'` → sorted by
@@ -204,7 +202,7 @@ pub fn cleanup_item_images(
 
 /// v4 `removeImageFile` — the picture's mount link (when the storage key
 /// parses), then its `files` row ALWAYS. Never fails on a missing link.
-fn remove_image_file(
+pub(crate) fn remove_image_file(
     main: &Connection,
     mount: &Connection,
     item_id: &str,
@@ -213,49 +211,16 @@ fn remove_image_file(
     if let Some((mount_point_id, _blob_id)) =
         parse_mount_blob_storage_key(file.storage_key.as_deref().unwrap_or(""))
     {
-        delete_item_image_link(mount, &mount_point_id, item_id, &file.original_filename);
+        delete_wardrobe_item_image_link(mount, &mount_point_id, item_id, &file.original_filename);
     }
     FilesRepository::new(main).delete(&file.id)?;
     Ok(())
 }
 
-/// v4 `deleteWardrobeItemImageLink(mountPointId, itemId, leafName)` — the
-/// link at `Wardrobe/images/<itemId>/<leaf>` (a case-insensitive path read,
-/// v4's fallback `queryJoined`), deleted through `deleteWithGC` (v4's
-/// fallback: a failure logs and answers `false`). Its two DEBUG lines carry
-/// v4's `file-storage.wardrobe-image-bridge` context. `true` when a link went.
-fn delete_item_image_link(
-    mount: &Connection,
-    mount_point_id: &str,
-    item_id: &str,
-    leaf_name: &str,
-) -> bool {
-    let relative_path = wardrobe_item_image_path(item_id, leaf_name);
-    let links = DocMountFileLinksRepository::new(mount);
-    let Some(link) = links.find_by_mount_point_and_path_or_none(mount_point_id, &relative_path)
-    else {
-        tracing::debug!(
-            context = "file-storage.wardrobe-image-bridge",
-            mountPointId = %mount_point_id,
-            relativePath = %relative_path,
-            "[WardrobeImageBridge] No link to delete"
-        );
-        return false;
-    };
-    let blob_collected = links.delete_with_gc_or_false(&link.id);
-    tracing::debug!(
-        context = "file-storage.wardrobe-image-bridge",
-        mountPointId = %mount_point_id,
-        relativePath = %relative_path,
-        blobCollected = blob_collected,
-        "[WardrobeImageBridge] Deleted wardrobe item image link"
-    );
-    true
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::wardrobe_image_paths::wardrobe_item_image_path;
     use crate::test_support::captured_with;
     use rusqlite::params;
 

@@ -173038,3 +173038,57 @@ eight jobs. KEYSTONE binary RED on the new scenario; green here.
 core 0.0.1259 (+6 from P4.D255's 0.0.1253 — one per core-changing commit:
 `c9fb46023`, `cf38defa3`, `19fa478a7`, `fc1fcc499`, `58537ddfd`, `d0a590655`);
 harness frozen 0.0.1110; host / web / cli / tauri / SPA untouched.
+## P4.D263 — wardrobe item images (server) + the tool-picture job, orientation and the settings arm (lane `claude/wardrobe-images-route-generation-816bd9`)
+
+Lane start 2026-10-08, branched at P4.D255's lane-complete tip `23cd7123b` (a superset of `KEYSTONE`
+`c30603378`; the human said to proceed from it). Pin `/tmp/qt-v4-pin-p4d263-f5e953a3f` (HEAD
+`f5e953a3f`, `4.10.0-dev.117`, `openai` 7.30.0).
+
+### Rulings and amendments recorded at lane start
+
+- **§R.2 probe FAILED at start:** v4 `main` had `3f7320138`, `da98ca58b` and `f7d8064be` past the
+  waived `1825bfd53` (memory recall work, `4.10.0-dev.137`; no file this lane ports). Reported; **the
+  human ruled a waiver in chat ("Waiver recorded in the ledger; proceed")**. The ledger file on disk
+  did not carry it when the lane resumed; the lane does not write the ledger. The pin stays
+  `f5e953a3f`.
+- **C1 AMENDMENT (the human, 2026-10-08, two rulings):** (1) the `WardrobeItemImageGenerate` engine
+  arm calls `ready_db()`, so `generate` could not reach the image seams; ruled "amend the one arm":
+  it switches to the engine's image-seams accessor and passes the seams. (2) The keystone made
+  `list` / `set_current` / `delete` synchronous, but `set-current` and `delete-image` write through
+  the async `Db::write` (`write_blocking` panics inside tokio), and `list` ensures a project/group
+  store as v4's container resolve does; ruled: make the three module fns `async` and add `.await`
+  in their three engine arms. No other change to `engine.rs` / `types.rs`.
+
+### Red-first at the tip (before any source moved)
+
+Every owned / re-run family regenerated from the pin and run against the unported tip:
+RED — `help_tools_equivalence` (op 4: the images category's `wardrobeImageSettings` echo),
+`almanack_render_equivalence` (the `#### Wardrobe Images` block),
+`almanack_tier2_equivalence` (6 checks: the renderer line + `/featureConfig/wardrobeImages`
+presence). GREEN — `settings_routes_equivalence`, `images_generate_route_equivalence`,
+`wardrobe_transfers_tier2_equivalence` (no corpus rows for the new behaviour yet — each grows
+red-first in its own unit), `avatar_job_tier3_equivalence` and
+`wardrobe_tools_avatar_trigger_equivalence` (EXPECTED green — the refactor's baseline),
+`image_failover_tier3_equivalence`, and the four re-run-by-name families
+(`activity_tables`, `vault_wardrobe_item_file`, `vault_wardrobe_emit`, `task_type_log_mapping`).
+
+### Units
+
+- **Unit 1 — items 2, 3, 4 (container resolver, bridge, item-images module).** NEW
+  `services/wardrobe_container.rs` (R-E), `services/wardrobe_image_bridge.rs` (R-A's NO-PORT
+  recorded in its header), `services/wardrobe_item_images/{service,carry}.rs`. `primitives.rs`:
+  bodies only, no signature change. The private link delete now calls the bridge's
+  `delete_wardrobe_item_image_link`, which adds v4's best-effort `refreshStats`, and
+  `remove_image_file` became `pub(crate)`. NEW tier-2 `wardrobe_item_images_tier2_equivalence`
+  (36 scenarios; oracle `cases/wardrobe-item-images.test.ts` over v4's REAL module; fixture
+  `build-wardrobe-item-images-fixture.ts` + spec `wardrobe-item-images-tier2.json`). Red-first: a
+  new module, so red by construction. **Mutation proof (six, each caught):** straight quotes in the
+  description (8 divergences); `rfind` for the next-newest rule (4, once the coat gained a THIRD
+  picture; with two it SURVIVED); the dangling repair disabled (6); a logged `sizeBytes` off by one
+  (4); a same-mount move dropping its source link (4); a copy without `tags` (2). Normalizer: ts →
+  `<ts>`; a minted leaf / uuid not in the baked fixture → first-seen tokens; non-picture digests →
+  `<sha>`. Whole REALs dump as integers (JS has one number type). `drop_source_image_links`'s
+  per-link WARN is pinned NEGATIVE (unreachable through v4's real code: both bridge calls are
+  fallback twins). Censuses: `blob_write_sites_census` +1 row (12 → 13);
+  `doc_mount_fallback_sites_census` moves its two P4.D255 rows to the bridge (count unchanged).
+  Regen recipe: the test file's header.
