@@ -12,6 +12,11 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(spa): P4.D261 unit 1 — the C2 wardrobe wire types (origin, wear, imageFileId, wornBundleIds, wardrobeImageSettings, the wear-history and item-image verbs)
+
+_Versions: SPA 0.5.812._
+
+Types only. `WardrobeItemDto` gains optional `imageFileId`, `origin` and `wear`; `ChatEquipRequest` gains optional `wornBundleIds`; `ChatSettingsDto` gains optional `wardrobeImageSettings`. New request/response types for `wardrobeItemWearHistory` and the four item-image verbs (`wardrobeItemImagesList` / `Generate` / `SetCurrent` / `Delete`), added to `CoreRequest`. Every new key is optional so the SPA still renders against a pre-round server. No `orientation` key and no `ChatCreateOutfitSelectionInput.wornBundleIds` (named deferrals).
 #### 2026-10-08 — docs(porting): P4.D260 lane record — dependency move measured, help/docs re-vendored
 
 _Docs-only change._

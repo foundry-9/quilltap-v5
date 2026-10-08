@@ -3818,6 +3818,13 @@ export interface ConciergeSettingsDto {
  */
 export type ImpersonationVoiceMode = 'off' | 'ask' | 'always';
 
+/** v4 `settings.types.ts` `WardrobeImageSettingsSchema` (`imageProfileId`
+ *  default `null`; `generateFromTools` default `false`). */
+export interface WardrobeImageSettingsDto {
+  imageProfileId: string | null;
+  generateFromTools?: boolean;
+}
+
 export interface ChatSettingsDto {
   avatarDisplayMode: 'ALWAYS' | 'GROUP_ONLY' | 'NEVER';
   avatarDisplayStyle: 'CIRCULAR' | 'RECTANGULAR';
@@ -3847,6 +3854,14 @@ export interface ChatSettingsDto {
    * 4.10-dev boolean, which the SPA never sends (the server ignores it).
    */
   impersonationVoiceMode?: ImpersonationVoiceMode;
+  /**
+   * Who draws the wardrobe's pictures, and whether the wardrobe tools may
+   * commission them (v4 `7c8572869` + `b3f937076`; C2 §7 — on the wire after
+   * `storyBackgroundsSettings`). A row predating the column reads `{
+   * imageProfileId: null, generateFromTools: false }`; an absent key here (a
+   * pre-round server) reads the same in the card.
+   */
+  wardrobeImageSettings?: WardrobeImageSettingsDto;
   /** The composer text-replacement master switch (v4 default true). */
   textReplacementsEnabled?: boolean;
   [key: string]: unknown;
@@ -4324,6 +4339,165 @@ export interface WardrobeItemDto {
   archivedAt?: string | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * The item's current picture (v4 `7c8572869`, `wardrobe.types.ts`
+   * `imageFileId: uuid | null | optional`). On the wire ONLY when set; an
+   * item PUT accepts it solely to choose among the item's OWN pictures.
+   * Absent on a pre-round server — no thumbnail renders.
+   */
+  imageFileId?: string | null;
+  /**
+   * Which wardrobe a collection read found the item in (v4 `cc80dc89d`,
+   * `wardrobe-container.ts:31-44`): "a read-time annotation attached by the
+   * list endpoints on the way out — never persisted, never exported, never
+   * accepted on create/update." Absent on a pre-round server (and on every
+   * mutation echo) — the row then shows no origin chip.
+   */
+  origin?: WardrobeOrigin;
+  /**
+   * The wear tally across every wearer (v4 `3ee3b1342`, attached by every
+   * collection read; never on a single-item GET). Optional in the TYPE only:
+   * an absent annotation reads as never-worn (v4 `wear-display.ts` `wearOf`).
+   */
+  wear?: WardrobeWearSummary;
+}
+
+/** The four wardrobe container scopes (v4 `WardrobeContainerScope`); the
+ *  SPA's own twin is `wardrobe/wardrobe-container.ts`. */
+export type WardrobeOriginScope = 'character' | 'general' | 'project' | 'group';
+
+/**
+ * v4 `wardrobe-container.ts:37-44` `WardrobeOrigin` — key order `scope, id,
+ * name` (C2 §1). `id` is the container id, `null` for General; `name` the
+ * container's display name, `"Quilltap General"` for General.
+ */
+export interface WardrobeOrigin {
+  scope: WardrobeOriginScope;
+  id: string | null;
+  name: string;
+}
+
+/**
+ * v4 `lib/schemas/wardrobe-wear.types.ts` `WardrobeWearSummary` (C2 §2). A
+ * never-worn item carries `{ wearCount: 0, firstWornAt: null, lastWornAt:
+ * null, lastWornChatId: null }`. `lastWornChatId` may name a deleted chat.
+ */
+export interface WardrobeWearSummary {
+  wearCount: number;
+  firstWornAt: string | null;
+  lastWornAt: string | null;
+  lastWornChatId: string | null;
+}
+
+/** v4 `WardrobeWearer` — `characterId: null` is the unattributed row. */
+export interface WardrobeWearer {
+  characterId: string | null;
+  wearCount: number;
+  firstWornAt: string | null;
+  lastWornAt: string | null;
+  lastWornChatId: string | null;
+}
+
+/** v4 `WardrobeWearHistory` — the summary plus the wearers, most recent first. */
+export interface WardrobeWearHistory extends WardrobeWearSummary {
+  wearers: WardrobeWearer[];
+}
+
+/**
+ * The item GET's `?action=wear-history` (v4 `3ee3b1342`; C2 §3) — the dispatch
+ * verb answers EXACTLY this body. A wearer's `name` is resolved server-side
+ * (`"unattributed"` for the null row, `"a departed character"` for one that no
+ * longer exists); `lastWornChat` is `null` when the chat is gone.
+ */
+export interface WardrobeItemWearHistoryRequest {
+  type: 'wardrobeItemWearHistory';
+  scope: WardrobeOriginScope;
+  /** Absent for General. */
+  containerId?: string;
+  itemId: string;
+}
+
+export interface WardrobeWearHistoryResponse {
+  history: WardrobeWearHistory;
+  wearers: Array<{ characterId: string | null; name: string; avatarUrl: string | null }>;
+  lastWornChat: { id: string; title: string } | null;
+}
+
+/** v4 `lib/schemas/file.types.ts` `FileSourceEnum`. */
+export type WardrobeImageFileSource = 'UPLOADED' | 'GENERATED' | 'IMPORTED' | 'SYSTEM';
+
+/** One picture in an item's history (v4 `item-images-client.ts:19-28`). */
+export interface WardrobeItemImageSummary {
+  fileId: string;
+  url: string;
+  thumbnailUrl: string;
+  source: WardrobeImageFileSource;
+  createdAt: string;
+  prompt?: string;
+  model?: string;
+}
+
+/** v4 `item-images-client.ts:30-33` — newest first. */
+export interface WardrobeItemImagesResponse {
+  current: string | null;
+  images: WardrobeItemImageSummary[];
+}
+
+/** v4 `item-images-client.ts:35-43` — the generate 201. */
+export interface WardrobeItemImageGenerateResponse {
+  image: WardrobeItemImageSummary;
+  current: string;
+  prompt: string;
+  subject: 'worn' | 'catalogue';
+  profile: { id: string; name: string };
+  rerouted: boolean;
+  trail: RouteAttempt[] | null;
+}
+
+/** v4 `item-images-client.ts:45-49` — the 422 body's `details` when the
+ *  provider (and any understudy) declined. */
+export interface WardrobeItemImageRefusal {
+  trail: RouteAttempt[] | null;
+  refused: boolean;
+}
+
+/**
+ * The item-images route's four dispatch verbs (v4 `7c8572869`
+ * `/api/v1/wardrobe/[itemId]/images`; C2 §6). `containerId` is absent for
+ * General. The UPLOAD has NO verb — it is a multipart binary route the SPA
+ * posts directly (`wardrobe/item-images.api.ts`).
+ */
+export interface WardrobeItemImagesListRequest {
+  type: 'wardrobeItemImagesList';
+  scope: WardrobeOriginScope;
+  containerId?: string;
+  itemId: string;
+}
+
+/** Absent `imageProfileId` → the designated wardrobe profile. */
+export interface WardrobeItemImageGenerateRequest {
+  type: 'wardrobeItemImageGenerate';
+  scope: WardrobeOriginScope;
+  containerId?: string;
+  itemId: string;
+  imageProfileId?: string;
+}
+
+export interface WardrobeItemImageSetCurrentRequest {
+  type: 'wardrobeItemImageSetCurrent';
+  scope: WardrobeOriginScope;
+  containerId?: string;
+  itemId: string;
+  fileId: string;
+}
+
+/** Answers `{ current }` — the next-newest picture becomes current. */
+export interface WardrobeItemImageDeleteRequest {
+  type: 'wardrobeItemImageDelete';
+  scope: WardrobeOriginScope;
+  containerId?: string;
+  itemId: string;
+  fileId: string;
 }
 
 /**
@@ -5940,6 +6114,12 @@ export type MemoryRequest =
   | WardrobeListRequest
   | WardrobeCreateRequest
   | WardrobeItemGetRequest
+  // P4.D261 (C2 §3 + §6, landed server-side by P4.D255's keystone).
+  | WardrobeItemWearHistoryRequest
+  | WardrobeItemImagesListRequest
+  | WardrobeItemImageGenerateRequest
+  | WardrobeItemImageSetCurrentRequest
+  | WardrobeItemImageDeleteRequest
   | WardrobeUpdateRequest
   | WardrobeDeleteRequest
   | WardrobePreviewAvatarRequest
@@ -7514,6 +7694,15 @@ export interface ChatEquipRequest {
   slot?: WardrobeSlotType;
   itemId?: string | null;
   slots?: EquippedSlots;
+  /**
+   * `set_all` only (v4 `3ee3b1342`; C2 §4): the composite outfits the composer
+   * dissolved into the slots being sent. A claim, not a fact — ids the
+   * character cannot reach are dropped server-side, and an outfit is credited
+   * a wear only when at least one of its garments was newly put on. OMITTED
+   * when empty, so a plain slot edit sends exactly what it always did
+   * (`wardrobe/staged-live-outfits.ts` `buildSetAllEquipBody`).
+   */
+  wornBundleIds?: string[];
 }
 
 /** v4 `GET /api/v1/wardrobe/transfers` (`transfers/route.ts:236-260`). */

@@ -174635,3 +174635,28 @@ re-record; then this record.
 
 core 0.0.1252, host 0.0.189, web 0.0.224 — UNCHANGED (no crate source
 moved); harness frozen 0.0.1110.
+## P4.D261 — the wardrobe SPA (lane record; branch `claude/wardrobe-spa-chip-wear-settings-f36cbe`, from `main` `9dbcfcb65`)
+
+Lane start 2026-10-08. §2 probe PASSED (v4 `main`, tree clean, `bugfix`
+log empty, `log f5e953a3f..main` = exactly the waived `1825bfd53`). Every v4
+string below was read with `git show f5e953a3f:<path>` from the live
+checkout (no pin worktree — reading only, §R.3). Baseline SPA suite on the
+unported branch: 467 files / 8,889 tests green.
+
+### Unit 1 — the C2 wire types (`core/core-contract.ts`)
+
+`WardrobeItemDto.imageFileId? / origin? / wear?`, `WardrobeOrigin`
+(`WardrobeOriginScope` — the contract cannot import the wardrobe module's
+`WardrobeContainerScope`; structurally identical), `WardrobeWearSummary`,
+`WardrobeWearer`, `WardrobeWearHistory`, the `wardrobeItemWearHistory`
+request + `WardrobeWearHistoryResponse` (C2 §3 keys exactly), the four
+item-image verbs + `WardrobeItemImagesResponse` /
+`WardrobeItemImageGenerateResponse` / `WardrobeItemImageRefusal` (field docs
+from v4 `item-images-client.ts:19-49`), `ChatEquipRequest.wornBundleIds?`,
+`WardrobeImageSettingsDto` + `ChatSettingsDto.wardrobeImageSettings?`.
+Every key OPTIONAL (R-B). NO `orientation`, NO
+`ChatCreateOutfitSelectionInput.wornBundleIds` (R-A). Types only — no red
+arm possible; `npm run build` is the check.
+Version: SPA 0.5.812. **Recorded:** `main`'s `apps/web/package-lock.json`
+stood at `0.5.810` while `package.json` read `0.5.811` (a prior bump left
+the lock behind); this commit brings both to `0.5.812`.
