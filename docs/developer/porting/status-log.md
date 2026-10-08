@@ -174236,3 +174236,25 @@ symlink classes incl. 15 plugin `node_modules`).
 - Regen (from the pin, per zone; fixture copies under `/tmp/p4d259/fx`):
   the test header's two `tsx` lines with `TZ=UTC` /
   `TZ=America/Chicago`.
+
+### Unit 2 — the host wiring (host 0.0.190)
+
+- PHASE 0.75 = `run_daily_db_optimize_at_boot` at the head of `assemble`
+  (before `seed_built_ins` — P4.D255's region is untouched; the two new fns
+  are appended at the END of `host.rs`), a fresh OS thread + join, a panic →
+  v4's `Daily database optimize failed — continuing startup` root ERROR
+  (`context=instrumentation.register`). PHASE 2 = `spawn_startup_backups`
+  after the three pump spawns: one `spawn_blocking` over
+  `run_startup_backups` (read pool), a panic → the main-chain root ERROR.
+- Item 11 taken: `almanack_services.rs`'s `backups_dir` reads
+  `physical_backup::backups_dir`.
+- NEW `crates/quilltap-host/tests/host_boot_daily_optimize.rs` — seven arms,
+  a process-global capture (the pass runs on its own thread). Arm (c)
+  deviates from the order's sketch on purpose: a read-only `data/` fails the
+  instance lock's own write in `pre_open` before the pass is reached, so the
+  arm plants a DIRECTORY at the state path (both v4 WARNs, `EISDIR`, boot
+  answers). **Red-first: with the two wiring calls removed, 7 / 7 RED**
+  (220.9 s — each red arm waits out its 30-s retention deadline).
+- Pre-existing host pins: `host_lock_ordering`'s "not one byte" comparand
+  runs only on REFUSED boots (never reach `assemble`) — unaffected. Every
+  other `host_boot_*` family re-run in the lane's workspace gate (below).

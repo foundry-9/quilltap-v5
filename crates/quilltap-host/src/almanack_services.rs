@@ -237,7 +237,8 @@ impl AlmanackHost for HostAlmanackServices {
             main_db: data.join("quilltap.db"),
             llm_logs_db: Some(data.join("quilltap-llm-logs.db")),
             mount_index_db: Some(data.join("quilltap-mount-index.db")),
-            backups_dir: data.join("backups"),
+            // P4.D259: the physical backups' own home — one source of truth.
+            backups_dir: quilltap_core::services::physical_backup::backups_dir(&data),
             data_dir: data,
             // === P4.119 === the host's zone for the volume's dates (v4's
             // zone-less `toLocale*` / local `new Date(y, m, …)`) — the value

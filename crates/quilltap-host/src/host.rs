@@ -552,6 +552,17 @@ impl EngineAssembler for HostAssembler {
         // the engine opened anything (P4.46). `HostShutdown` releases it.
         let lock_path = lock::instance_lock_path(&self.base_dir);
 
+        // === P4.D259: v4's PHASE 0.75, the daily backup + optimize ===
+        // v4 (`instrumentation.ts:403-417`) runs it after the version guard and
+        // before the migrations, so the day's first launch backs up and then
+        // VACUUM / ANALYZE / PRAGMA optimizes all three databases before
+        // anything else touches them. v5 has no migration layer to precede, so
+        // the slot is the head of `assemble`: the partitions are open (on the
+        // writer connections the pass needs) and nothing has read or seeded
+        // yet. Never fatal — v4 wraps the call in a try/catch.
+        run_daily_db_optimize_at_boot(db, data_dir, &self.display_zone);
+        // === end P4.D259 ===
+
         // Seed the built-in roleplay templates + provision-or-adopt the three
         // built-in mount stores (P4.4u3), on EVERY assemble/unlock — matching v4's
         // every-startup `seedBuiltInTemplates` + the mount-provisioning migrations
@@ -849,6 +860,15 @@ impl EngineAssembler for HostAssembler {
             stop_rx.clone(),
             self.autonomous_tick_ms,
         ));
+
+        // === P4.D259: v4's PHASE-2 startup backup + retention ===
+        // backend.ts `connect()` (`:561-568, 580-584, 605-610`) fires the three
+        // physical backups and then the retention policy without awaiting them.
+        // A fire-and-forget on the read pool (`VACUUM INTO` is legal read-only),
+        // after the pumps start. On the day's first boot it finds the PHASE 0.75
+        // files and skips; it never propagates a failure.
+        spawn_startup_backups(&self.rt, db, data_dir, &self.display_zone);
+        // === end P4.D259 ===
 
         // The one ordered teardown for this assembly, registered inward into
         // the heartbeat loop exactly as v4's `client.ts` registers its
@@ -2449,3 +2469,75 @@ async fn danger_scan_loop(db: Db, mut stop: watch::Receiver<bool>, interval_ms: 
         }
     }
 }
+
+// === P4.D259: the daily optimize (PHASE 0.75) + the startup backup (PHASE 2) ===
+
+/// A panic's payload as text (v4's `error.message`).
+fn panic_text(payload: &(dyn std::any::Any + Send)) -> String {
+    payload
+        .downcast_ref::<&str>()
+        .map(|s| (*s).to_string())
+        .or_else(|| payload.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "unknown panic".to_string())
+}
+
+/// v4's PHASE 0.75: [`run_daily_db_optimize`] on a fresh OS thread, joined —
+/// `write_blocking` is legal whether `assemble` was reached from the sync boot
+/// path or an async `Unlock` dispatch (the `seed_built_ins` idiom). The pass
+/// itself never fails; a panic is v4's outer catch (`instrumentation.ts:409-
+/// 417`) and the boot continues.
+///
+/// [`run_daily_db_optimize`]: quilltap_core::services::daily_db_optimize::run_daily_db_optimize
+fn run_daily_db_optimize_at_boot(
+    db: &Db,
+    data_dir: &std::path::Path,
+    zone: &quilltap_core::host_zone::TimeZone,
+) {
+    use quilltap_core::services::daily_db_optimize::run_daily_db_optimize;
+    let (db, data_dir, zone) = (db.clone(), data_dir.to_path_buf(), zone.clone());
+    let joined = std::thread::spawn(move || {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            run_daily_db_optimize(&db, &data_dir, &zone, now_unix_ms())
+        }))
+    })
+    .join();
+    let failure = match joined {
+        Ok(Ok(_)) => None,
+        Ok(Err(payload)) | Err(payload) => Some(panic_text(payload.as_ref())),
+    };
+    if let Some(error) = failure {
+        tracing::error!(
+            target: "quilltap::boot",
+            context = "instrumentation.register",
+            error = error.as_str(),
+            "Daily database optimize failed — continuing startup"
+        );
+    }
+}
+
+/// v4's PHASE-2 startup backup + retention ([`run_startup_backups`]) as a
+/// fire-and-forget blocking task. A panic is swallowed with the same root
+/// ERROR v4's `.catch` logs for the main chain.
+///
+/// [`run_startup_backups`]: quilltap_core::services::physical_backup::run_startup_backups
+fn spawn_startup_backups(
+    rt: &tokio::runtime::Handle,
+    db: &Db,
+    data_dir: &std::path::Path,
+    zone: &quilltap_core::host_zone::TimeZone,
+) {
+    use quilltap_core::services::physical_backup::run_startup_backups;
+    let (db, data_dir, zone) = (db.clone(), data_dir.to_path_buf(), zone.clone());
+    rt.spawn_blocking(move || {
+        if let Err(payload) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            run_startup_backups(&db, &data_dir, now_unix_ms(), &zone)
+        })) {
+            tracing::error!(
+                target: "quilltap::db",
+                error = panic_text(payload.as_ref()).as_str(),
+                "Startup physical backup or retention policy failed"
+            );
+        }
+    });
+}
+// === end P4.D259 ===

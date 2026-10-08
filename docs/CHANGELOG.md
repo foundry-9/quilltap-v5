@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(host): run the daily optimize at boot and the startup backup after the pumps (P4.D259 unit 2)
+
+_Versions: host 0.0.190._
+
+The host now runs v4's PHASE 0.75 at the head of `assemble`, before the built-in seeds: on the first boot of each local day (the host's display zone) each database is backed up (24-hour gated) and then VACUUM / ANALYZE / PRAGMA optimized on its writer connection, and `data/db-optimize-state.json` is stamped. It runs on a fresh joined thread and never fails the boot. After the job pumps start, v4's PHASE-2 startup backup and retention run as a fire-and-forget blocking task on the read pool; on the day's first boot it finds the files PHASE 0.75 just wrote and skips. The Almanack reads the backups directory from the physical-backup module. New host tests `host_boot_daily_optimize` (seven boots: first boot, same-day second boot, an unwritable state file, a corrupt state file, a garbage LLM-logs sibling, a main-only instance, a 25-hour-old backup).
+
 #### 2026-10-08 — feat(core): port v4's physical backups and the daily optimize pass (P4.D259 unit 1)
 
 _Versions: core 0.0.1253._
