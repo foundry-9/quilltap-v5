@@ -13,40 +13,59 @@
 //!
 //! Two halves, because the two things can drift independently:
 //!
-//! 1. **Installed vs recorded.** Every INSTALLED location in the checkout —
-//!    the root `node_modules` AND each `plugins/dist/*/node_modules` — must
-//!    carry the recorded version. The plugin dirs are separate installs (the
-//!    anthropic and google SDKs live ONLY there, absent from the root), and
-//!    the pinned-worktree recipe symlinks them from the live checkout, so a
-//!    pinned regen cannot prove a bump the plugin dirs never installed
-//!    (memory `a-pinned-regen-cannot-prove-an-sdk-bump-the-plugin-dirs-never-
-//!    installed`). Each location is asserted on its own.
+//! 1. **Installed vs expected, per LOCATION.** Each `plugins/dist/*/
+//!    node_modules` must carry the RECORDED version — the plugin dirs are
+//!    where the recorders resolve every SDK that stamps a recorded request
+//!    (each recorder runs FROM `plugins/dist/qtap-plugin-<name>/` and imports
+//!    that plugin's source, so its own `node_modules` answers first), and the
+//!    pinned-worktree recipe symlinks them from the live checkout, so a pinned
+//!    regen cannot prove a bump the plugin dirs never installed (memory
+//!    `a-pinned-regen-cannot-prove-an-sdk-bump-the-plugin-dirs-never-
+//!    installed`). The ROOT `node_modules` is asserted against the root
+//!    LOCK's versions (`INSTALLED_ROOT_*`), not the recorded ones (P4.D260
+//!    R-F): since `a9c99a4a0` the root carries newer SDKs than any plugin dir
+//!    while resolving NO recorded request, so a root move stays visible — it
+//!    is still a regen event to measure — without a false red. Each location
+//!    is asserted on its own, and the failure names the location and which
+//!    side moved.
 //! 2. **Corpora vs recorded.** Every stamp in the three recorded corpora must
 //!    equal the constants, and each expected stamp must be PRESENT — so a
 //!    re-record without a constant bump is a red, and a constant bump without
 //!    a re-record is a red too.
 //!
-//! Re-measured 2026-09-28 by P4.D232 (the `6d0f88d65` SDK-bump regen event;
-//! the regen event actually BEGAN at `8bd080267` #73, which had already
-//! rebuilt the grok/openai/z-ai bundles at openai 7.23.0 — no recorder reads a
-//! bundle for request bytes, so that changes nothing here). Installed in the
-//! live checkout (the pinned worktree's `node_modules` are symlinks into it):
-//! root `openai` 7.23.0 and `@openrouter/sdk` 1.3.28; `@anthropic-ai/sdk` and
-//! `@google/genai` absent from the root; `qtap-plugin-anthropic` 0.115.0,
-//! `qtap-plugin-google` 1.52.0 (both UNMOVED), `openai` 7.23.0 under the six
-//! SDK-bundling plugin dirs (`deepseek`, `grok`, `nanogpt`, `openai-compatible`,
-//! `openai`, `z-ai`), `@openrouter/sdk` 1.3.28 under `qtap-plugin-openrouter`.
-//! Corpus stamps after the re-record at the `acadcc7cd` pin:
-//! `request-envelopes.recorded.ndjson` (367 rows) 7.23.0 ×216 + 0.115.0 ×44 +
-//! the OpenRouter UA ×14 (`1.3.28 2.914.0 1.0.0`) — the diff against the
-//! 7.20.0 recording was those 230 stamp lines and nothing else;
-//! `google-wire.recorded.ndjson` `google-genai-sdk/1.52.0` ×22 (re-recorded
-//! byte-identical). `image-dialects.recorded.ndjson` still carries 7.20.0 ×8 +
-//! the 1.3.11 UA ×3 on this branch: it is P4.D225's corpus (#73 moves its
-//! plugin source), re-recorded there, so the second test below is RED on
-//! P4.D232's branch alone by design and GREEN on the union. Node runtime
-//! stamps: `v24.13.1` ×290 (260 + 8 `x-stainless-runtime-version`, 22
-//! `gl-node/`). (`google_parts.rs` cites `@google/genai@1.52.0` too.)
+//! Re-measured 2026-10-08 by P4.D260 (the `a9c99a4a0` root dependency move,
+//! v4 `f5e953a3f`; the round's §R.4(k) measurement, made BEFORE any constant
+//! moved). Installed in the live checkout (the pinned worktree's
+//! `node_modules` are symlinks into it): root `openai` **7.30.0** and
+//! `@openrouter/sdk` **1.4.25** (moved from 7.23.0 / 1.3.28 by the merge's
+//! lockfile); `@anthropic-ai/sdk` and `@google/genai` absent from the root;
+//! `qtap-plugin-anthropic` 0.115.0, `qtap-plugin-google` 1.52.0, `openai`
+//! 7.23.0 under the six SDK-bundling plugin dirs (`deepseek`, `grok`,
+//! `nanogpt`, `openai-compatible`, `openai`, `z-ai`), `@openrouter/sdk` 1.3.28
+//! under `qtap-plugin-openrouter` — every plugin dir UNMOVED. Resolution from
+//! each plugin dir (Node 24.13.1, `require.resolve(<sdk>, {paths: [<dir>]})`):
+//! the six resolve `openai` from their OWN install (7.23.0); the other nine
+//! (`anthropic`, `builtin-embeddings`, `curl`, `default-system-prompts`,
+//! `google`, `mcp`, `ollama`, `openrouter`, `search-serper`) carry no `openai`
+//! and would resolve the ROOT's 7.30.0 — but none of their recorded requests
+//! is built through it (no 7.30.0 stamp below); `@openrouter/sdk` resolves
+//! the plugin's own 1.3.28 from `qtap-plugin-openrouter` and the root's 1.4.25
+//! everywhere else (only openrouter records through it); `@anthropic-ai/sdk`
+//! and `@google/genai` resolve only from their own plugin dirs. The eight
+//! bundles `b3f937076` rebuilt (the NON-OpenAI plugins, embedding `openai`
+//! 7.30.0 via `@quilltap/plugin-utils`) are read by no recorder. Corpus stamps
+//! after the re-record from the `f5e953a3f` pin:
+//! `request-envelopes.recorded.ndjson` (399 rows) 7.23.0 ×242 (deepseek 30,
+//! grok 22, nanogpt 78, openai 32, openai-compatible 44, z-ai 36) + 0.115.0
+//! ×46 (anthropic) + the OpenRouter UA ×15 (`1.3.28 2.914.0 1.0.0`) —
+//! re-recorded BYTE-IDENTICAL; `image-dialects.recorded.ndjson` (185 rows)
+//! 7.23.0 ×8 (openai 4, z-ai 4) + the UA ×3 — byte-identical;
+//! `google-wire.recorded.ndjson` (24 rows) `google-genai-sdk/1.52.0` ×24 — the
+//! 22 committed rows byte-identical, plus the two `participant-names` rows
+//! P4.128 added to the shared recorder without re-recording this corpus.
+//! Node runtime stamps: `v24.13.1` ×320 (288 + 8 `x-stainless-runtime-
+//! version`, 24 `gl-node/`). (`google_parts.rs` cites `@google/genai@1.52.0`
+//! too.)
 //!
 //! Locator: the shared `common::v4_root` (`QT_V4_CHECKOUT`, then the
 //! `QT_V4_ROOT` alias, then `$HOME/source/quilltap-server`). An
@@ -72,6 +91,16 @@ const RECORDED_ANTHROPIC_SDK: &str = "0.115.0";
 const RECORDED_GOOGLE_GENAI_SDK: &str = "1.52.0";
 /// `@openrouter/sdk` — the speakeasy user-agent's first version token.
 const RECORDED_OPENROUTER_SDK: &str = "1.3.28";
+/// The ROOT `node_modules`' `openai` — the root lockfile's version since v4
+/// `a9c99a4a0` (P4.D260 R-F). No recorder resolves it for a recorded request
+/// (every OpenAI-SDK provider plugin ships its own `RECORDED_OPENAI_SDK`), so
+/// it is pinned apart from the recorded constant: a root move is a regen
+/// event to MEASURE (does a recorder now resolve the root?), not a re-record.
+const INSTALLED_ROOT_OPENAI_SDK: &str = "7.30.0";
+/// The ROOT `node_modules`' `@openrouter/sdk` (the root lockfile's, since
+/// `a9c99a4a0`); the openrouter plugin records through its own
+/// `RECORDED_OPENROUTER_SDK`.
+const INSTALLED_ROOT_OPENROUTER_SDK: &str = "1.4.25";
 /// The Node runtime every provider corpus is recorded under: the Stainless
 /// `x-stainless-runtime-version` and the genai `gl-node/<v>` token (P4.D232).
 /// The recipes pin `~/.nvm/versions/node/v24.13.1/bin`; the PATH also carries
@@ -96,6 +125,19 @@ fn package_version(pkg_json: &Path) -> String {
         .as_str()
         .unwrap_or_else(|| panic!("no string \"version\" field in {}", pkg_json.display()))
         .to_string()
+}
+
+/// The version a LOCATION must carry: the root's lock-pinned SDKs for the
+/// root (P4.D260 R-F), the recorded version everywhere else.
+fn expected_at(is_root: bool, pkg: &str, recorded: &'static str) -> (&'static str, &'static str) {
+    match (is_root, pkg) {
+        (true, "openai") => (INSTALLED_ROOT_OPENAI_SDK, "INSTALLED_ROOT_OPENAI_SDK"),
+        (true, "@openrouter/sdk") => (
+            INSTALLED_ROOT_OPENROUTER_SDK,
+            "INSTALLED_ROOT_OPENROUTER_SDK",
+        ),
+        _ => (recorded, "RECORDED"),
+    }
 }
 
 /// Every `node_modules` dir the oracle resolves an SDK from: the root, then
@@ -154,7 +196,9 @@ fn every_installed_provider_sdk_matches_the_recorded_version() {
 
     let mut found: Vec<(&str, usize)> = SDKS.iter().map(|(p, _)| (*p, 0usize)).collect();
     let mut mismatches = Vec::new();
+    let root = checkout.join("node_modules");
     for loc in locations {
+        let is_root = loc == root;
         for (i, (pkg, recorded)) in SDKS.iter().enumerate() {
             let pkg_json = loc.join(pkg).join("package.json");
             if !pkg_json.is_file() {
@@ -162,9 +206,16 @@ fn every_installed_provider_sdk_matches_the_recorded_version() {
             }
             found[i].1 += 1;
             let installed = package_version(&pkg_json);
-            if installed != *recorded {
+            let (expected, constant) = expected_at(is_root, pkg, recorded);
+            if installed != expected {
+                let side = if is_root {
+                    "the ROOT install moved (re-measure whether any recorder now resolves \
+                     the root before touching a RECORDED_* constant)"
+                } else {
+                    "a PLUGIN install moved (the recorders resolve this copy — re-record)"
+                };
                 mismatches.push(format!(
-                    "  {pkg}: recorded {recorded}, installed {installed} at {}",
+                    "  {pkg}: expected {expected} ({constant}), installed {installed} at {} — {side}",
                     pkg_json.display()
                 ));
             }
@@ -190,7 +241,10 @@ fn every_installed_provider_sdk_matches_the_recorded_version() {
          re-record the corpora through the pinned recorders with the plugin dirs INSTALLED at \
          the new version (a pinned worktree's plugin node_modules are symlinks into the live \
          checkout — prove the bump reached them), re-run every provider family, then bump the \
-         RECORDED_* constant here. The corpora half of this guard fails until both move.",
+         RECORDED_* constant here. The corpora half of this guard fails until both move. \
+         A ROOT-only move is a measurement first (the P4.D260 §R.4(k) shape): record which \
+         copy each plugin dir resolves (`require.resolve(<sdk>, {{paths: [<dir>]}})`), re-record \
+         to prove no stamp moved, then move INSTALLED_ROOT_* alone.",
         mismatches.join("\n")
     );
 }

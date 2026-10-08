@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — test(harness): provider SDK guard checks the root against the lock, plugins against the recorded SDKs; google-wire re-recorded (P4.D260)
+
+_No crate versions bumped._
+
+v4's `a9c99a4a0` moved the ROOT `openai` to 7.30.0 and `@openrouter/sdk` to 1.4.25, but every plugin dir still ships 7.23.0 / 1.3.28 and the recorders resolve SDKs from the plugin dirs. Measured before changing anything: re-recording the three provider corpora from the `f5e953a3f` pin moved no stamp and no request byte (`request-envelopes` 399 rows and `image-dialects` 185 rows byte-identical). `provider_sdk_version_guard` now asserts per location: the root against new `INSTALLED_ROOT_*` constants, the plugin dirs against the unchanged `RECORDED_*`. Failures name the location and which side moved. The module doc carries the 2026-10-08 measurement.
+
+`google-wire.recorded.ndjson` gains the two `participant-names` rows P4.128 added to the shared recorder without re-recording this corpus; its 22 existing rows are byte-identical and v5 matches all 24.
+
 #### 2026-10-08 — docs(v4): mirror the twelve `docs/` paths v4 moved through `f5e953a3f` (P4.D260)
 
 _Docs-only change._
