@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — fix(restore): an archived character stays archived after a restore (P4.D264 unit F)
+
+_Versions: core 0.0.1258._
+
+A restore wrote each character through the slim create, which carries no archive columns, so an archived character came back with `archivedAt` NULL — the restore silently un-archived it. Phase 6 now writes `archivedAt`, `archiveFileId` and `archivedAvatarFileId` exactly as the archive row carries them, right after the create, on both the preserve and the fresh-vault arms (the human's ruling: fix v5, keep `archivedAt`). v4 keeps `archivedAt` too but then refuses to provision the archived character's store and warns; v5 keeps the vault and does not warn. `system_restore_state`'s tombstone test now compares `archivedAt` as an equality and pins the vault half both ways.
+
 #### 2026-10-08 — test(harness): rebuild the migration-vintage trio at v4 `f5e953a3f`; the wear ledger restores onto the migrated table (P4.D264 unit E)
 
 _No crate versions bumped._

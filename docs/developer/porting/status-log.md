@@ -173521,3 +173521,25 @@ RED under the OLD vendored bytes (the family failed), GREEN under the new (1/1),
   chat_settings.userId` — the restored settings row keeps the ARCHIVE user's id, which the
   TARGET user's wipe does not reach. The raw-SQLite assertion therefore runs on pass 1 only.
 
+### Unit F — `ARCHIVED_CHARACTER_RESTORE`, RULED and fixed (core 0.0.1258)
+
+- **The human's ruling (2026-10-08, on unit B's finding): "fix v5, keep archivedAt".**
+- `restore/orchestrator.rs` phase 6 (`restore_one_character`): NEW `keep_archive_columns` — after
+  the create on BOTH arms (the P4.147 preserve arm and the fresh-vault arm), the three archive
+  columns (`archivedAt`, `archiveFileId`, `archivedAvatarFileId`) are written through
+  `CharactersRepository::update` exactly as the archive row names them (only the named ones —
+  v4's `...rest` reaches its INSERT whole); a row naming none is untouched. The slim
+  `CharacterCreate` (not this lane's file) is unchanged.
+- **Measured:** v4 keeps `archivedAt` (its INSERT carries `...rest`) and then refuses the store
+  (`ensureCharacterVault` → `Character … is archived …`), leaving `characterDocumentMountPointId`
+  NULL and warning; before the fix v5 dropped `archivedAt` (the red — `archivedAt` NULL on the
+  tombstone case); after, `archivedAt` is an EQUALITY with v4's and v5 keeps a vault without a
+  warning. The vault half stays a pinned divergence (the ruling keeps the tombstone readable, v4's
+  refusal is not reproduced) in `wardrobe_picture_tombstone_is_skipped`.
+- `replace` mode is covered by the same helper on the preserve arm; no committed `replace`
+  archive carries an archived character (measured: only the tombstone archive does), so it is
+  not separately differentially pinned.
+- Gate (targeted): `system_restore_state` red ONLY on the five P4.D258 rows;
+  `wardrobe_picture_tombstone_is_skipped` ok; `system_restore_equivalence` 1/1;
+  `restore_vintage_state` 9/9.
+

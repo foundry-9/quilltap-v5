@@ -3070,10 +3070,49 @@ fn restore_one_character(
             ..slim
         };
         crate::db::characters::CharactersRepository::new(main).create(&slim, &opts)?;
+        keep_archive_columns(main, ch, &opts.id)?;
         return Ok(Some(vault_id));
     }
-    crate::db::character_vault::create_character_with_options(main, mount, &slim, &vault, &opts)
-        .map(|_| None)
+    crate::db::character_vault::create_character_with_options(main, mount, &slim, &vault, &opts)?;
+    keep_archive_columns(main, ch, &opts.id)?;
+    Ok(None)
+}
+
+/// ## ⚠ RULED DIVERGENCE — `ARCHIVED_CHARACTER_RESTORE` (the human, 2026-10-08:
+/// "fix v5, keep archivedAt")
+///
+/// An archived character is a TOMBSTONE (v4 `d553f72a`): `archivedAt` set, the
+/// `.qtap` bundle at `archiveFileId`. v4's restore hands `repos.characters.
+/// create` the archive row's `...rest`, so the INSERT carries all three archive
+/// columns — and then `ensureCharacterVault` refuses an archived character
+/// (`Character … is archived: this character is archived; rehydrate it to
+/// continue`), so v4 keeps the row with NO vault and warns `Failed to restore
+/// character`. v5's slim `CharacterCreate` has no archive columns, so the row
+/// used to land with `archivedAt` NULL — a restore silently UN-ARCHIVED the
+/// character (P4.D264's FINDING, measured on
+/// `restore-archive-wardrobe-picture-tombstone.zip`). The ruling keeps the
+/// tombstone a tombstone: the three columns are written exactly as the
+/// archive row carries them (only the ones it names — v4's `$set`), on BOTH
+/// arms, right after the create. The vault is kept (the preserve arm's archived
+/// store, or the fresh arm's), so the restored tombstone stays readable — v4's
+/// refusal is NOT reproduced. Pinned both ways in `system_restore_state`'s
+/// `wardrobe_picture_tombstone_is_skipped`.
+fn keep_archive_columns(main: &Connection, ch: &Value, id: &str) -> Result<(), DbError> {
+    let patch = crate::db::characters::CharacterUpdate {
+        archived_at: os(ch, "archivedAt"),
+        archive_file_id: os(ch, "archiveFileId"),
+        archived_avatar_file_id: os(ch, "archivedAvatarFileId"),
+        updated_at: now(),
+        ..Default::default()
+    };
+    if patch.archived_at.is_none()
+        && patch.archive_file_id.is_none()
+        && patch.archived_avatar_file_id.is_none()
+    {
+        return Ok(());
+    }
+    crate::db::characters::CharactersRepository::new(main).update(id, &patch)?;
+    Ok(())
 }
 
 /// Which of phases 23 / 24 a [`copy_host_subdirs`] call is: it names the

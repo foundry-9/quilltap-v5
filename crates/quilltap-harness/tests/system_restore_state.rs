@@ -6261,16 +6261,16 @@ const TOMBSTONE_CASE: &str = "restore_wardrobe_picture_tombstone_new_account";
 /// INFO line's fields, and the coat document in both final states still
 /// naming `f0000001-…0001`.
 ///
-/// The bulk row-for-row diff is NOT run on this case, because the archive
-/// surfaced an UNRULED PRE-EXISTING divergence outside the wardrobe carriers
-/// (phase 2, the character restore — not P4.D264's file region): v4 creates
-/// the archived character WITH `archivedAt` and refuses its store
-/// (`Failed to restore character "Lorian": Character … is archived: this
-/// character is archived; rehydrate it to continue`, and the same refusal for
-/// a legacy item on him); v5 restores the character with `archivedAt` NULL and
-/// provisions its vault — a new-account restore silently UN-ARCHIVES him.
-/// `ARCHIVED_CHARACTER_RESTORE` pins both directions so a fix on either side
-/// trips it; the ruling is the human's (P4.D264 lane record, FINDING).
+/// The bulk row-for-row diff is NOT run on this case: the archive is an
+/// ARCHIVED character's, and the two engines disagree on its vault —
+/// `ARCHIVED_CHARACTER_RESTORE`, RULED (the human, 2026-10-08: "fix v5, keep
+/// archivedAt"; see `restore_one_character`'s `keep_archive_columns`). Both
+/// keep the tombstone's `archivedAt` (an EQUALITY — v5 used to drop it, the
+/// P4.D264 finding); v4 then refuses the archived character's store (`Failed
+/// to restore character "Lorian": Character … is archived: this character is
+/// archived; rehydrate it to continue`, and the same refusal for a legacy item
+/// on him) and leaves the pointer NULL, where v5 keeps a vault and warns
+/// nothing. That vault half is pinned both ways, so a v4 change trips it.
 #[test]
 fn wardrobe_picture_tombstone_is_skipped() {
     let _serial = serial();
@@ -6375,7 +6375,26 @@ fn wardrobe_picture_tombstone_is_skipped() {
         ));
     }
 
-    // 3. ARCHIVED_CHARACTER_RESTORE — the unruled divergence, both ways.
+    // 3. ARCHIVED_CHARACTER_RESTORE (ruled). `archivedAt` — an equality now.
+    let lorian = |rows: &[Value]| {
+        rows.iter()
+            .find(|c| c["name"] == "Lorian")
+            .cloned()
+            .expect("Lorian's row")
+    };
+    let (got_lorian, want_lorian) = (
+        lorian(&state["main"]["characters"]),
+        lorian(case["state"]["main"]["characters"].as_array().unwrap()),
+    );
+    if got_lorian["archivedAt"] != want_lorian["archivedAt"]
+        || got_lorian["archivedAt"] != "2026-03-06T00:00:00.000Z"
+    {
+        failures.push(format!(
+            "ARCHIVED_CHARACTER_RESTORE: archivedAt must be the archive's on both sides — rust {} vs oracle {}",
+            got_lorian["archivedAt"], want_lorian["archivedAt"]
+        ));
+    }
+    // …and the vault half, both ways: v4 refuses the store, v5 keeps one.
     let v4_refused = case["summary"]["warnings"]
         .as_array()
         .unwrap()
@@ -6388,19 +6407,15 @@ fn wardrobe_picture_tombstone_is_skipped() {
                     )
             })
         });
-    if !v4_refused {
+    if !v4_refused || !want_lorian["characterDocumentMountPointId"].is_null() {
         failures.push(
-            "ARCHIVED_CHARACTER_RESTORE (v4): v4 no longer refuses the archived character's store — re-measure"
+            "ARCHIVED_CHARACTER_RESTORE (v4): v4 no longer refuses the archived character's store — v4 converged; re-measure"
                 .to_string(),
         );
     }
-    let v5_unarchived = state["main"]["characters"]
-        .iter()
-        .any(|c| c["name"] == "Lorian" && c["archivedAt"].is_null());
-    if !v5_unarchived {
+    if got_lorian["characterDocumentMountPointId"].is_null() {
         failures.push(
-            "ARCHIVED_CHARACTER_RESTORE (v5): v5 now keeps `archivedAt` — re-measure and retire the pin"
-                .to_string(),
+            "ARCHIVED_CHARACTER_RESTORE (v5): the restored tombstone lost its vault".to_string(),
         );
     }
     if summary.warnings.iter().any(|w| w.contains("is archived")) {
