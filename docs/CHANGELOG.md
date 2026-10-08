@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — docs(porting): P4.D255 names its KEYSTONE commit (`c30603378`)
+
+_Docs-only change._
+
+The work order's status header names the KEYSTONE sha the four stage-2 wardrobe lanes branch from; the C1 spellings it chose are listed under it.
+
 #### 2026-10-08 — feat(wardrobe): KEYSTONE — the wardrobe foundation for the `f5e953a3f` round (P4.D255 contract C1)
 
 _Versions: core 0.0.1253, host 0.0.190._
