@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — test(harness): classify the item-image cleanup's two mount-index reads; P4.D255 lane record, LANE COMPLETE
+
+_No crate versions bumped._
+
+`doc_mount_fallback_sites_census` gains the two `primitives.rs` rows (both v4 fallback twins, `converted`; 160 → 162 sites). The lane record (`status-log.md`) adds the `FIND_ALL_DROPS_NULLABLE` ruling and the v4 bug filing it owes, the Friday-copy recipe for the dogfood pass, and the lane-close gate. The order's status header reads LANE COMPLETE.
+
 #### 2026-10-08 — test(host): the wear-ledger boot ensures through the real `Host::start` (P4.D255 item 22)
 
 _No crate versions bumped._

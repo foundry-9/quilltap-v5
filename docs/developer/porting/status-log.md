@@ -172145,3 +172145,77 @@ the moved counts above) / 1 ignored → after the fix that binary 14/0;
 
 Versions at KEYSTONE: core 0.0.1253, host 0.0.190 (web: test-only edits, not
 bumped); harness frozen 0.0.1110.
+
+### After KEYSTONE — Tier 1 item 17 + Tier 2 (all LANDED)
+
+- `4265d426f` — item 17: `wardrobe_wear_stats_tier2_equivalence` (29 ops through v4's REAL
+  `WardrobeWearRepository`; results, thrown messages, log lines per op; the table dump; the
+  absent-table fallbacks; mutation-proven). Item 21: the five wardrobe fixture BUILDERS create
+  the ledger in the migration's shape (each run at the pin; committed pairs not rebuilt).
+- **RULED DIVERGENCE `FIND_ALL_DROPS_NULLABLE`** (the human, 2026-10-08 — FIX v5, file v4):
+  v4's inherited `findAll()` DROPS every row with a NULL in a `.nullable()` column (NULL →
+  `undefined` → `z.string().nullable()` refuses) after `Data validation failed` + `Safe
+  validation failed` — measured: 3 rows, `findAll` answered 1. v4's full backup reads the ledger
+  through `findAll`, so every unattributed tally (every folded departed wearer) is lost. v5's
+  `find_all` returns every row; pinned both ways. **v4 bug filing owed (the human files it):**
+  "`WardrobeWearRepository.findAll()` drops NULL-wearer / NULL-chat rows; the full backup loses
+  the unattributed wear tallies" — fix: a `.nullable().optional()`-tolerant row schema or a
+  hydration that keeps `null`. **Note for P4.D264:** its backup collect calls `find_all` — v5's
+  `wardrobe-wear.json` will carry rows v4's does not (the divergence, by ruling).
+- Recorded divergence (not driven): v4's `findAll()` on an ABSENT table runs `ensureCollection`
+  and CREATES the generateDDL table; v5 answers `[]` and creates nothing (unreachable on a booted
+  instance).
+- `076fc11b2` — item 19: `wardrobe_wear_stats_ensure_equivalence` drives v4's REAL
+  `MigrationRunner` narrowed to the two wear migrations (its `migrations` list is TS-private,
+  runtime-public) — so the ledger gate before `shouldRun` and `recordCompletedMigration` are in
+  the oracle, which `lib/v4-migrations.ts` cannot provide. Four modes (a/b/c/d), every one
+  report-asserted; mode (b) restated (the survey's "generateDDL shape" mode makes v4's seed fail
+  on `ON CONFLICT`). The first key-order mutation SURVIVED (`JSON.stringify` already emits an
+  array-index key first) — the corpus now hand-writes that cell's text with the index key LAST,
+  and the mutation reds mode (d). Item 20:
+  `chat_settings_wardrobe_image_settings_ensure_equivalence`, three shapes (A runs, B/C no-op).
+- `07a696449` — item 22: `host_boot_p4d255_wardrobe_wear_stats.rs` (pre-round upgrade + second
+  boot no-op; the v4-stamped cross-app arm; the fresh-instance empty-seed stamp).
+- Item 23 — **the Friday-copy recipe for the dogfood pass** (💸, not run in-lane): copy the live
+  instance's `data/` twice (never the live file; `brctl download` first if iCloud evicted it).
+  On copy 1, boot v5 once; on copy 2, boot v4 (`tsx server.ts` at the pin) once. On each:
+  `SELECT COUNT(*), SUM(wearCount) FROM wardrobe_wear_stats`; `SELECT id, itemsAffected, message
+  FROM migrations_state WHERE id LIKE '%wardrobe%'`; `PRAGMA table_info(wardrobe_wear_stats)`
+  (v5 copy: INTEGER DEFAULT 0 — the migration shape); `SELECT dflt_value FROM
+  pragma_table_info('chat_settings') WHERE name = 'wardrobeImageSettings'` (one-key default).
+  Expected: equal row counts / sums / both ledger messages (`Credited N wear(s) across M
+  chat(s)` byte-equal); then boot v4 on the v5 copy — no second seed (the R-B handshake); and a
+  second v5 boot is a no-op. If v4 had already booted the copy past `7c8572869`, v5's boot is an
+  exact no-op.
+
+### Lane-close gate
+
+- The sweep driver from the pin over the ten owned / new families (`--run-all --families …`):
+  10/10 `ok` (`provisioning_equivalence`, `migration_index_backfill_equivalence`,
+  `chat_settings_tier2_equivalence`, `chat_settings_column_sites_guard`,
+  `activity_tables_equivalence`, `vault_wardrobe_item_file_equivalence`,
+  `vault_wardrobe_emit_equivalence`, `wardrobe_wear_stats_tier2_equivalence`,
+  `wardrobe_wear_stats_ensure_equivalence`,
+  `chat_settings_wardrobe_image_settings_ensure_equivalence`).
+- `cargo test --workspace --no-fail-fast` with that env block + `QT_V4_CHECKOUT` / `QT_V4_ROOT`
+  at the pin: 684 binaries / 4,539 passed / 4 failed / 3 ignored. The four: TWO §R.13 by-design
+  reds owned elsewhere — `provider_sdk_version_guard` (P4.D260: `openai` 7.23.0 → 7.30.0,
+  `@openrouter/sdk` 1.3.28 → 1.4.25) and `qtap_schema_embed_guard` (P4.D264: 97,324 → 101,092
+  bytes) — and `doc_mount_fallback_sites_census` ×2, THIS lane's: the item-image cleanup's two
+  mount-index reads (both v4 fallback twins, `converted`) — classified, `COUNTS` 83 → 85 converted
+  (160 → 162 sites), 6/0 after.
+- fmt / clippy (both feature sets) clean at KEYSTONE and after; `recipe_sweep.py --self-test` 0
+  failures.
+
+### 💸 for the dogfood pass
+
+The Friday-copy recipe above (the headline row); a fresh `quilltap setup` instance — the
+increment prepares, zero rows, the seed row alone; v4 booting a v5-SEEDED copy — no second seed;
+`chat_settings.wardrobeImageSettings` reading `{imageProfileId: null, generateFromTools: false}`
+on the copy (and OMITTED from the repository read on a NULL cell — the C2 §7 GET is P4.D263's to
+measure).
+
+### Versions at close
+
+core 0.0.1253, host 0.0.190 (web: test-only edits, not bumped); harness frozen 0.0.1110; SPA,
+cli, tauri unchanged.

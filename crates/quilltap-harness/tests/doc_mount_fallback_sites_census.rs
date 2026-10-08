@@ -752,6 +752,11 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/services/mount_index/sync/apply_store.rs", "apply_store_action", "find_by_mount_point_and_path", "fallback-in-v4"),
     ("quilltap-core/src/services/mount_index/sync/apply_store.rs", "apply_store_action", "delete_with_gc", "fallback-in-v4"),
     ("quilltap-core/src/services/qtap_export/records.rs", "stream_one_store", "find_by_mount_point_id", "strict-by-ruling"),
+    // P4.D255: the item-image cleanup's link delete — v4's bridge
+    // `deleteWardrobeItemImageLink` reads through the fallback `queryJoined`
+    // and deletes through the fallback `deleteWithGC`.
+    ("quilltap-core/src/services/wardrobe_item_images/primitives.rs", "delete_item_image_link", "find_by_mount_point_and_path_or_none", "converted"),
+    ("quilltap-core/src/services/wardrobe_item_images/primitives.rs", "delete_item_image_link", "delete_with_gc_or_false", "converted"),
     ("quilltap-core/src/tools/doc_edit/blob.rs", "handle_read_blob", "find_by_mount_point_and_path", "swallowed-by-other-means"),
     ("quilltap-core/src/tools/doc_edit/shared.rs", "document_hidden_from_characters", "find_by_mount_point_and_path", "swallowed-by-other-means"),
     ("quilltap-core/src/tools/doc_edit/shared.rs", "assert_character_may_read", "find_by_mount_point_and_path", "swallowed-by-other-means"),
@@ -824,7 +829,9 @@ fn the_class_counts_are_pinned() {
 /// no-v4-counterpart, strict-by-ruling, strict-by-ruling(write-path), fallback-in-v4),
 /// with the arithmetic:
 ///
-/// - **160 direct call sites in all** = 83 + 14 + 19 + 0 + 13 + 5 + 1 + 20 + 5
+/// - **162 direct call sites in all** = 85 + 14 + 19 + 0 + 13 + 5 + 1 + 20 + 5
+///   (P4.D255: +2 converted — the item-image cleanup's link read + delete).
+/// - (before P4.D255) 160 = 83 + 14 + 19 + 0 + 13 + 5 + 1 + 20 + 5
 ///   (156, P4.158's two backfill reads, and the unification's two
 ///   `vault_entry_names` folder listings).
 ///   P4.149: +1 internal (the strict-aware path-read sibling's closure over
@@ -901,7 +908,7 @@ const COUNTS: (
     usize,
     usize,
     usize,
-) = (83, 14, 19, 0, 13, 5, 1, 20, 5);
+) = (85, 14, 19, 0, 13, 5, 1, 20, 5);
 
 /// P4.142 §S.4 — reads HANDED to P4.144 this round, recorded as documentation:
 /// the fold-episode pass's two memory reads (`services/fold_episode_pass.rs` —
