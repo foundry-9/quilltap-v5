@@ -174159,3 +174159,80 @@ memory. A garbage `quilltap-llm-logs.db` on a clone: the key DEBUG ×4, three
 0.0.1252); host 0.0.189 UNCHANGED (no `crates/quilltap-host/src` line moved
 — the three pins are host TESTS); web, cli, tauri, SPA unchanged; harness
 frozen 0.0.1110.
+## P4.D259 lane record — `f5e953a3f` PHASE 0.75 daily optimize + the never-ported physical backups (branch `claude/physical-backups-retention-db-optimize-d68134`)
+
+### The §2 probe and the pin
+
+Probe at lane start (2026-10-08): branch `main`, tree CLEAN, `log
+1a2b2164c..bugfix` EMPTY, `log f5e953a3f..main` exactly the waived
+`1825bfd53` — PASS; re-run before every regen batch, PASS each time. Pin
+`/tmp/qt-v4-pin-p4d259-f5e953a3f` (`rev-parse` = `f5e953a3f557762b…`,
+`package.json` `4.10.0-dev.117`, root `node_modules/openai` 7.30.0, the three
+symlink classes incl. 15 plugin `node_modules`).
+
+### Unit 1 — `services::physical_backup` + `services::daily_db_optimize` (core 0.0.1253)
+
+- Ported whole from the pin: `physical-backup.ts` (the three `VACUUM INTO`
+  backups, v4's per-kind texts, the 24-h gate on the newest file, the
+  four-phase retention with v4's why-comments) and `daily-db-optimize.ts`
+  (the state file, the local-calendar gate, the three steps with
+  stop-at-first-failure, the per-database pass, every line). The Almanack's
+  `parse_backup_filename` promoted `pub` and shared (R-G — ONE token plus a
+  doc line in `almanack/phase1_premises.rs`, a file in no lane's Ownership
+  row; the unifier may prefer it as a HANDOFF hunk).
+- **The oracle is a `tsx` script, not jest** (`harness/oracle/cases/
+  daily-db-optimize.ts`): v4's `jest.config.ts:11` pins `process.env.TZ =
+  'UTC'` before forking workers, and an assignment inside a jest worker never
+  reaches the real process — MEASURED: a first jest version's "Chicago" arm
+  recorded UTC instants. A jest run also renders every Node `fs` error with
+  an `Error: ` prefix (cross-realm `instanceof Error` fails, so v4's
+  `String(error)` arm runs) — a harness artifact the tsx run does not have.
+  The `Date` is frozen by hand (`new Date()` / `Date.now()` only).
+- **Reachability correction (the order's §R.5 NEGATIVE list was wrong for
+  four lines):** v4's `shouldCreateBackup` (→ `readdirSync`) runs OUTSIDE each
+  backup function's `try`, so a `data/backups` that is a FILE makes every
+  backup REJECT with `ENOTDIR: not a directory, scandir '…'`. MEASURED at the
+  pin: the daily pass's `Pre-optimize backup threw; optimizing anyway (VACUUM
+  is transactional)` WARN and backend.ts's three root ERRORs all fire, in
+  the order LLM logs → mount index → main (main's rejection passes through
+  its `.then` first). Ported as reachable (`create_physical_backup`'s `Err`,
+  `run_startup_backups`' ordering) and pinned positively by the
+  `backups-is-file` row. Still NEGATIVE (never logged): `Post-optimize WAL
+  checkpoint failed` (both ways, `WAL_CHECKPOINT_UNDER_TRUNCATE`), `Error
+  closing database after optimize`, `Not a SQLite backend…`, the PHASE 0.75
+  root ERROR (the pass catches everything).
+- **FINDING for the human — `STAT4_NOT_COMPILED`:** v4's
+  `better-sqlite3-multiple-ciphers` (SQLite 3.53.2) is built with
+  `SQLITE_ENABLE_STAT4` (`PRAGMA compile_options`); `quilltap-sqlite3mc-sys`'s
+  `build.rs` is not. v4's `ANALYZE` repopulates `sqlite_stat4`; v5's EMPTIES it
+  (SQLite's non-STAT4 `openStatTable` deletes the rows of a stat table it
+  does not maintain). The committed trio already carries v4-written stat4
+  rows (287 / 68 / 5), so after the pass v4's main is 60–61 pages and v5's
+  58–59, the mount index 63–64 vs 54–55. On a SHARED instance v5's daily
+  optimize discards v4's stat4 samples until v4's next daily pass. The cure
+  is one `.define("SQLITE_ENABLE_STAT4", None)` in the PINNED sys crate (a
+  one-time ~4-min amalgamation recompile for every lane) — outside every
+  lane's Ownership row, so NOT changed here; the family pins the divergence
+  as a both-ways table (a build that gains STAT4 fails it).
+- Divergences (named, both ways): `DEGRADED_OPTIMIZE_ERROR_TEXT` (v4 `file
+  is not a database` / v5 `LLM logs database is in degraded mode`),
+  `WAL_CHECKPOINT_UNDER_TRUNCATE`, `STAT4_NOT_COMPILED`. Retention takes ONE
+  `now_ms` for the three sets (v4: three `new Date()`s microseconds apart;
+  day-granular comparands). `readdirSync` order is libuv's `strcmp` sort —
+  v5 sorts bytewise.
+- NEW family `daily_db_optimize_equivalence` (`QT_ORACLE_DAILY_DB_OPTIMIZE`
+  + `QT_ORACLE_DAILY_DB_OPTIMIZE_CHICAGO`), 27 rows per zone (1 recipe, 6
+  `stamp`, 20 instance rows: fresh, again-same-day, one-stale, key-order,
+  llm-absent, main-only, six state shapes, state-is-dir, gate,
+  retention, retention-after-pass, backups-is-file, llm-garbage,
+  day-boundary-late, optimize-readonly). Silent-stale guard: `Daily database
+  optimize starting` appears 17× per NDJSON. GREEN both zones.
+- **Red-first:** on unported `main` the family does not compile (no
+  modules). With `run_daily_db_optimize` / `run_startup_backups` /
+  `apply_retention_policy` stubbed to today's behaviour (return at once):
+  **19 of 20 instance rows RED in each zone (102 failing comparands per
+  zone)**; the 20th (`optimize-readonly`, `optimize_database` unstubbed) and
+  the 6 stamp rows green by construction.
+- Regen (from the pin, per zone; fixture copies under `/tmp/p4d259/fx`):
+  the test header's two `tsx` lines with `TZ=UTC` /
+  `TZ=America/Chicago`.

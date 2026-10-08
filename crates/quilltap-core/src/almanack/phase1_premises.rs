@@ -157,7 +157,10 @@ pub fn collect_database_security(
 /// production (P4.119, Mandate 3): the Almanack renders the stamp back through
 /// the same zone, so the filename's digits print unchanged, where a UTC parse
 /// under a local render would shift them by the offset.
-fn parse_backup_filename(filename: &str, prefix: &str, zone: &TimeZone) -> Option<i64> {
+///
+/// `pub` since P4.D259 (R-G): the ONE parser — `services::physical_backup`'s
+/// 24-hour gate and retention policy read the same filenames through it.
+pub fn parse_backup_filename(filename: &str, prefix: &str, zone: &TimeZone) -> Option<i64> {
     let rest = filename.strip_prefix(prefix)?.strip_suffix(".db")?;
     // `YYYY-MM-DDTHHmmss`
     let bytes = rest.as_bytes();

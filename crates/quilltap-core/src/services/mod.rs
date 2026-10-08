@@ -81,6 +81,9 @@ pub mod cost_estimation;
 pub mod cost_events;
 pub mod courier_transport;
 pub mod creation_progress;
+// === P4.D259: v4's PHASE 0.75 daily optimize ===
+pub mod daily_db_optimize;
+// === end P4.D259 ===
 pub mod danger_scan;
 pub mod dangerous_content;
 // === P4.9c: the data-directory resolver (lane C, append-only) ===
@@ -145,6 +148,9 @@ pub mod outfit_selections;
 pub mod participant_resolver;
 pub mod pascal_writer;
 pub mod paused_hold;
+// === P4.D259: v4's physical backups + retention ===
+pub mod physical_backup;
+// === end P4.D259 ===
 pub mod pre_compute;
 pub mod pricing_fetcher;
 pub mod primary_stream;

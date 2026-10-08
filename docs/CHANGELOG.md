@@ -12,6 +12,13 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(core): port v4's physical backups and the daily optimize pass (P4.D259 unit 1)
+
+_Versions: core 0.0.1253._
+
+Two new core modules, neither wired into the host yet. `services::physical_backup` ports v4 `physical-backup.ts` whole for the first time: the three `VACUUM INTO` backups under `data/backups/` with v4's local-time filenames, the 24-hour gate on the newest matching file, the four-phase retention policy (oldest-in-bucket for weeks and months, newest per year), and backend.ts `connect()`'s startup trio in v4's real promise order (`run_startup_backups`). `services::daily_db_optimize` ports `f5e953a3f`'s `daily-db-optimize.ts`: the `data/db-optimize-state.json` gate (byte-exact `JSON.stringify(state, null, 2)` + newline, v4's key order), the local-calendar stamp, `VACUUM` / `ANALYZE` / `PRAGMA optimize` with stop-at-first-failure, the per-database pass with the absent-file stamp and the degraded-sibling error arm, and every log line. The Almanack's backup-filename parser is now `pub` and shared.
+
+Measured against v4: a backups path that is a file makes v4's gate throw outside its try, so the `Pre-optimize backup threw` warning and backend.ts's three startup-backup errors are reachable and are ported as such. No `wal_checkpoint` (v5 writers are TRUNCATE) and no progress labels — recorded divergences. New tier-2 family `daily_db_optimize_equivalence` over v4's real functions in two zones (UTC, America/Chicago), oracle `harness/oracle/cases/daily-db-optimize.ts` (a `tsx` script: v4's jest config pins `TZ=UTC`). Finding: v4's SQLite driver is built with `SQLITE_ENABLE_STAT4` and v5's sys crate is not, so v5's `ANALYZE` empties `sqlite_stat4`; recorded as the `STAT4_NOT_COMPILED` table, not changed here.
 #### 2026-10-08 — docs(porting): P4.D258 lane close — the bug-180/181 convergence and the bug-179 no-port
 
 _Docs-only change._
