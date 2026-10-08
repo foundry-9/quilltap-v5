@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(import): the wardrobe carriers in the `.qtap` import (P4.D264 unit D)
+
+_Versions: core 0.0.1257._
+
+Ports the import halves of v4 `3ee3b1342` (#81) and `7c8572869` (#82). The NDJSON reader now collects `wardrobe_wear` records (they used to fall through to the unknown-kind skip) and stitches them onto the characters / document-stores `data` as `wardrobeWear`, last and only when non-empty. The character importer records each created wardrobe item's source → minted id. NEW phase 7e (`quilltap_import/wardrobe_wear.rs`, after 7d) remaps the ledger rows: item ids through the carried `Wardrobe/*.md` documents (they win) or the minted map, wearers and chats through the bundle's maps or the local instance, unknown wearers folded into the unattributed row and unknown chats cleared, rows on one key summed within the bundle and MAXed against a live row, malformed rows dropped with v4's one warning, and v4's eight-key INFO; a failure becomes v4's phase warning. NEW post-reconcile picture re-mint (`quilltap_import/wardrobe_images.rs`) re-creates each owned item's picture `files` rows against the blobs the vault already landed (keeping the exported id when free), repoints the item only when its current picture's id moved, and warns per lost or failed picture with v4's text. `imported.wardrobeWear` appears only when the phase ran.
+
+Tests: a NEW tier-1 family (`wardrobe_wear_import_remap_equivalence`, 13 cases over v4's real `remapWardrobeWearRows` / `buildImportedWardrobeItemIdMap`); three NDJSON read cases in `system_import_equivalence`; five `system_import_state` arms (the real exporter's bundle under skip / overwrite / duplicate into a target with the ledger, the same bundle into one without it, and a hand-built bundle exercising a kept, a taken and a lost picture plus live-row MAX) with v4's wardrobe INFO/DEBUG lines compared. The seven warning texts are pinned verbatim; the picture re-mint's `FileCreate` is pinned to carry no `generationKey`; the census classifies its one new mount-index read.
+
 #### 2026-10-08 — feat(export): the wardrobe carriers in the `.qtap` export (P4.D264 unit C)
 
 _Versions: core 0.0.1256._

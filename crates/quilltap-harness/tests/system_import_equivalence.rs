@@ -465,5 +465,6 @@ fn system_import_read_matches_oracle() {
     );
     // 19 from P4.9G4 + `read_ndjson_multi_chunk_blob` (P4.d22) + the two
     // planted read-failure arms (P4.48).
-    assert_eq!(ran, 29, "expected 29 cases to run, ran {ran}");
+    // P4.D264: + the three `read_ndjson_wardrobe_wear_*` cases.
+    assert_eq!(ran, 32, "expected 32 cases to run, ran {ran}");
 }

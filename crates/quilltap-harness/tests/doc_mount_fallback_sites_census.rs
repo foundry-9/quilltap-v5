@@ -752,6 +752,10 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/services/mount_index/sync/apply_store.rs", "apply_store_action", "find_by_mount_point_and_path", "fallback-in-v4"),
     ("quilltap-core/src/services/mount_index/sync/apply_store.rs", "apply_store_action", "delete_with_gc", "fallback-in-v4"),
     ("quilltap-core/src/services/qtap_export/records.rs", "stream_one_store", "find_by_mount_point_id", "strict-by-ruling"),
+    // P4.D264: the picture re-mint's path read — strict in v4 (the import runs
+    // under `withStrictRepositoryFailures`), propagated into the per-picture
+    // warning, as v4's catch does.
+    ("quilltap-core/src/services/quilltap_import/wardrobe_images.rs", "import_wardrobe_item_images", "find_by_mount_point_and_path", "strict-in-v4 (import)"),
     // P4.D255: the item-image cleanup's link delete — v4's bridge
     // `deleteWardrobeItemImageLink` reads through the fallback `queryJoined`
     // and deletes through the fallback `deleteWithGC`. P4.D263 moved it into
@@ -831,7 +835,9 @@ fn the_class_counts_are_pinned() {
 /// no-v4-counterpart, strict-by-ruling, strict-by-ruling(write-path), fallback-in-v4),
 /// with the arithmetic:
 ///
-/// - **162 direct call sites in all** = 85 + 14 + 19 + 0 + 13 + 5 + 1 + 20 + 5
+/// - **163 direct call sites in all** = 85 + 14 + 19 + 1 + 13 + 5 + 1 + 20 + 5
+///   (P4.D264: +1 strict-in-v4 (import) — the picture re-mint's path read).
+/// - (before P4.D264) 162 = 85 + 14 + 19 + 0 + 13 + 5 + 1 + 20 + 5
 ///   (P4.D255: +2 converted — the item-image cleanup's link read + delete).
 /// - (before P4.D255) 160 = 83 + 14 + 19 + 0 + 13 + 5 + 1 + 20 + 5
 ///   (156, P4.158's two backfill reads, and the unification's two
@@ -875,9 +881,11 @@ fn the_class_counts_are_pinned() {
 ///   path-read sibling 1.
 /// - **other-repo 19** = P4.131's 18 + `doc_mount_blobs.rs` `create_with_ids`
 ///   (the BLOBS repository's self-call, misfiled `fallback-in-v4` — [`OVERRIDES`]).
-/// - **strict-in-v4 (import) 0** — the importer's strict reads are
-///   `get_messages_strict` (P4.109), not these repositories; the class stays so a
-///   future importer site must say so.
+/// - **strict-in-v4 (import) 1** — P4.D264's picture re-mint
+///   (`quilltap_import/wardrobe_images.rs`, v4 `import-wardrobe-images.ts:67`):
+///   the read propagates into `Failed to import a picture of wardrobe item …`,
+///   as v4's strict scope rethrows into the same catch. (Before it: 0 — the
+///   importer's strict reads were `get_messages_strict`, P4.109.)
 /// - **swallowed-by-other-means 13** = `.ok().flatten()` / a `match` arm /
 ///   `.unwrap_or_else` / `let Ok … else` at the site: `api/characters` 1,
 ///   `chat_gallery` 1, `aesthetics` 1, `memory_processor` 1, `file_ops::link_file`
@@ -910,7 +918,7 @@ const COUNTS: (
     usize,
     usize,
     usize,
-) = (85, 14, 19, 0, 13, 5, 1, 20, 5);
+) = (85, 14, 19, 1, 13, 5, 1, 20, 5);
 
 /// P4.142 §S.4 — reads HANDED to P4.144 this round, recorded as documentation:
 /// the fold-episode pass's two memory reads (`services/fold_episode_pass.rs` —

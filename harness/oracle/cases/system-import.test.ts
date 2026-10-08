@@ -313,6 +313,57 @@ function buildCases(): CaseSpec[] {
     },
   });
 
+  // ── P4.D264 (v4 `3ee3b1342` #81): the trailing `wardrobe_wear` records ──
+  // COLLECTED (`quilltap-import-stream.ts:324-326`) and stitched onto the
+  // characters / document-stores `data` as `wardrobeWear`, LAST and only when
+  // non-empty (`:590`, `:621`). Before the collector a v5 reader dropped them
+  // with the unknown kinds. A third bundle carries none: no key at all.
+  const wearRecord = (id: string, itemId: string) =>
+    `{"kind":"wardrobe_wear","data":{"id":"${id}","itemId":"${itemId}","wearerCharacterId":null,` +
+    `"wearCount":2,"firstWornAt":"2026-03-01T00:00:00.000Z","lastWornAt":"2026-03-03T00:00:00.000Z",` +
+    `"lastWornChatId":null,"createdAt":"2026-03-01T00:00:00.000Z","updatedAt":"2026-03-03T00:00:00.000Z"}}\n`;
+  for (const [name, exportType, body] of [
+    [
+      'read_ndjson_wardrobe_wear_characters',
+      'characters',
+      '{"kind":"character","data":{"id":"zz000000-0000-4000-8000-000000000020","name":"Mara"}}\n' +
+        '{"kind":"wardrobe_item","characterId":"zz000000-0000-4000-8000-000000000020","data":{"id":"zz000000-0000-4000-8000-000000000021","title":"Shawl","imageFileId":"zz000000-0000-4000-8000-000000000022","_imageFiles":[{"id":"zz000000-0000-4000-8000-000000000022","originalFilename":"shawl.webp"}]}}\n' +
+        wearRecord('zz000000-0000-4000-8000-000000000023', 'zz000000-0000-4000-8000-000000000021') +
+        wearRecord('zz000000-0000-4000-8000-000000000024', 'zz000000-0000-4000-8000-000000000021') +
+        '{"kind":"__footer__","counts":{"characters":1,"wardrobeWear":2}}\n',
+    ],
+    [
+      'read_ndjson_wardrobe_wear_document_stores',
+      'document-stores',
+      '{"kind":"doc_mount_point","data":{"id":"zz000000-0000-4000-8000-000000000030","name":"Shared"}}\n' +
+        wearRecord('zz000000-0000-4000-8000-000000000031', 'zz000000-0000-4000-8000-000000000032') +
+        '{"kind":"__footer__","counts":{"documentStores":1,"wardrobeWear":1}}\n',
+    ],
+    [
+      'read_ndjson_wardrobe_wear_absent',
+      'characters',
+      '{"kind":"character","data":{"id":"zz000000-0000-4000-8000-000000000040","name":"Pre-ledger"}}\n' +
+        '{"kind":"__footer__","counts":{"characters":1}}\n',
+    ],
+  ] as const) {
+    cases.push({
+      name,
+      run: async (spec) => {
+        const bytes = Buffer.from(
+          `{"kind":"__envelope__","format":"qtap-ndjson","version":1,"manifest":{"exportType":"${exportType}"}}\n` +
+            body,
+          'utf8',
+        );
+        const assembled = await loadQtap(bytes);
+        // Tier 2 item 12: v4's `previewImport` carries NO `wardrobeWear` (its
+        // `preview.ts` is untouched by #81) — the negative row, compared.
+        const { previewImport } = await import('@/lib/import/quilltap-import-service');
+        const preview = await previewImport(spec.userId, assembled as never);
+        return { kind: 'read', qtapBase64: bytes.toString('base64'), assembled, preview };
+      },
+    });
+  }
+
   // ── [P4.48] planted read failures ──────────────────────────────────────────
   //
   // The preview's existence checks used to swallow repository read errors to

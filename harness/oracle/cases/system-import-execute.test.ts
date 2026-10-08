@@ -228,6 +228,21 @@ async function buildCharactersExport(
 // sha-first classifier discriminating rather than shadowed by the
 // link-in-target fallback.
 const LORIAN_VAULT = 'c5e2a72d-b5f1-4486-8325-8308f783c90e';
+
+/** [P4.D264] `system-export.test.ts`'s `WEAR_PLANT_SQL`, byte for byte. */
+const WARDROBE_WEAR_PLANT_SQL =
+  'INSERT INTO "wardrobe_wear_stats" ("id", "itemId", "wearerCharacterId", "wearCount", ' +
+  '"firstWornAt", "lastWornAt", "lastWornChatId", "createdAt", "updatedAt") VALUES ' +
+  "('3e0000e1-0000-4000-8000-0000000000e1', 'ac000000-0000-4000-8000-000000000001', " +
+  "'a1000000-0000-4000-8000-000000000001', 3, '2026-03-02T00:00:00.000Z', " +
+  "'2026-03-05T00:00:00.000Z', 'c1000000-0000-4000-8000-000000000001', " +
+  "'2026-03-02T00:00:00.000Z', '2026-03-05T00:00:00.000Z'), " +
+  "('3e0000e2-0000-4000-8000-0000000000e2', 'ac000000-0000-4000-8000-000000000001', NULL, 2, " +
+  "'2026-03-01T00:00:00.000Z', '2026-03-03T00:00:00.000Z', NULL, " +
+  "'2026-03-01T00:00:00.000Z', '2026-03-03T00:00:00.000Z'), " +
+  "('3e0000e3-0000-4000-8000-0000000000e3', 'ae0000e3-0000-4000-8000-0000000000e3', " +
+  "'a1000000-0000-4000-8000-000000000002', 9, '2026-03-01T00:00:00.000Z', " +
+  "'2026-03-09T00:00:00.000Z', NULL, '2026-03-01T00:00:00.000Z', '2026-03-09T00:00:00.000Z')";
 /** `doc_mount_files` row linked ONLY in Riya's vault, with its true hash. */
 const RIYA_ONLY_CONTENT = '06d2d56a-d8d4-46ba-953b-d13b7141f7bf';
 const RIYA_ONLY_CONTENT_SHA =
@@ -466,6 +481,177 @@ function preserveIdsVaultPayload(): { manifest: unknown; data: Record<string, un
     },
   };
 }
+
+/**
+ * [P4.D264] The picture re-mint + phase 7e's edge rows, as a hand-built
+ * document-form characters bundle (the shape a real export assembles to): a
+ * NEW character, Wren, whose vault carries three garments and two picture
+ * blobs under `Wardrobe/images/<itemId>/`, imported into the `system-data`
+ * target (whose fixed ids make a LOCAL wearer / chat and a TAKEN file id
+ * plantable — the reason this leg lives here and not in `qtap-import.ts`,
+ * whose target mints every character id).
+ *
+ *   Velvet Cape  pointer → PIC_KEPT  (fresh id, blob present) → kept, NO pointer write
+ *   Silk Scarf   pointer → f0000001… (TAKEN in the target)    → re-minted + pointer moved
+ *   Lost Gloves  pointer → PIC_LOST  (no blob in the bundle)  → warning + pointer cleared
+ *
+ * Ledger rows: Wren on the cape (her new id) in a LOCAL chat (kept); Lorian
+ * (LOCAL wearer, kept as-is) — a live row on that key takes MAX; an UNKNOWN
+ * wearer in an unknown chat (folded + cleared) and an unattributed row, summed
+ * into one — a live unattributed row takes MAX over the sum; an item the
+ * bundle does not carry (dropped); a malformed row (the ONE warning); Wren on
+ * the scarf. The `wear-ledger-live` prep plants the two live rows.
+ */
+const WREN = 'ab0000c1-0000-4000-8000-0000000000c1';
+const WREN_VAULT = 'ab0000c2-0000-4000-8000-0000000000c2';
+const CAPE = 'ab0000d1-0000-4000-8000-0000000000d1';
+const GLOVES = 'ab0000d2-0000-4000-8000-0000000000d2';
+const SCARF = 'ab0000d3-0000-4000-8000-0000000000d3';
+const PIC_KEPT = 'ab0000e1-0000-4000-8000-0000000000e1';
+const PIC_TAKEN = 'f0000001-0000-4000-8000-000000000001';
+const PIC_LOST = 'ab0000e3-0000-4000-8000-0000000000e3';
+
+function wardrobePicturesPayload(): { manifest: unknown; data: Record<string, unknown> } {
+  const sha = (s: string | Buffer) => createHash('sha256').update(s).digest('hex');
+  const properties = JSON.stringify(
+    { pronouns: null, aliases: [], title: null, firstMessage: null, talkativeness: 0.5, canChooseOutfit: false },
+    null,
+    2,
+  );
+  const item = (id: string, title: string, types: string[], pointer: string) =>
+    `---\nid: ${id}\ntitle: ${title}\ntypes:\n${types.map((t) => `  - ${t}`).join('\n')}\n` +
+    `imageFileId: ${pointer}\ncreatedAt: 2026-03-01T00:00:00.000Z\nupdatedAt: 2026-03-01T00:00:00.000Z\n---\n\n${title}.`;
+  const doc = (n: number, relativePath: string, fileType: string, content: string) => ({
+    mountPointId: WREN_VAULT,
+    relativePath,
+    fileName: relativePath.split('/').pop(),
+    fileType,
+    content,
+    contentSha256: sha(content),
+    plainTextLength: content.length,
+    lastModified: '2026-03-01T00:00:00.000Z',
+    folderId: null,
+    fileId: `ab0000f${n}-0000-4000-8000-0000000000f${n}`,
+    linkId: `ab0000a${n}-0000-4000-8000-0000000000a${n}`,
+    linkGroupId: null,
+  });
+  const blob = (n: number, itemId: string, leaf: string, bytes: string) => ({
+    mountPointId: WREN_VAULT,
+    relativePath: `Wardrobe/images/${itemId}/${leaf}`,
+    originalFileName: leaf,
+    originalMimeType: 'image/webp',
+    storedMimeType: 'image/webp',
+    sizeBytes: Buffer.from(bytes).length,
+    sha256: sha(Buffer.from(bytes)),
+    description: '',
+    descriptionUpdatedAt: null,
+    fileId: `ab0000b${n}-0000-4000-8000-0000000000b${n}`,
+    linkId: `ab00009${n}-0000-4000-8000-00000000009${n}`,
+    blobId: `ab00008${n}-0000-4000-8000-00000000008${n}`,
+    extractedText: null,
+    extractedTextSha256: null,
+    extractionStatus: 'none',
+    extractionError: null,
+    dataBase64: Buffer.from(bytes).toString('base64'),
+  });
+  const pic = (id: string, leaf: string, source: string) => ({
+    id,
+    originalFilename: leaf,
+    mimeType: 'image/webp',
+    size: 99,
+    width: 64,
+    height: 96,
+    source,
+    generationPrompt: source === 'GENERATED' ? 'a velvet cape on a hook' : null,
+    generationModel: source === 'GENERATED' ? 'image-model-x' : null,
+    generationRevisedPrompt: null,
+    description: null,
+    createdAt: '2026-03-02T00:00:00.000Z',
+  });
+  const wear = (n: number, itemId: string, wearer: unknown, count: unknown, chat: unknown) => ({
+    id: `ab00007${n}-0000-4000-8000-00000000007${n}`,
+    itemId,
+    wearerCharacterId: wearer,
+    wearCount: count,
+    firstWornAt: `2026-03-0${n}T00:00:00.000Z`,
+    lastWornAt: `2026-04-0${n}T00:00:00.000Z`,
+    lastWornChatId: chat,
+    createdAt: `2026-03-0${n}T00:00:00.000Z`,
+    updatedAt: `2026-04-0${n}T00:00:00.000Z`,
+  });
+  return {
+    manifest: {
+      format: 'quilltap-export',
+      version: '1.0',
+      exportType: 'characters',
+      createdAt: '2026-03-01T00:00:00.000Z',
+      appVersion: 'test',
+      settings: { includeMemories: false, scope: 'all', selectedIds: [] },
+      counts: {},
+    },
+    data: {
+      characters: [
+        {
+          id: WREN,
+          name: 'Wren',
+          identity: 'A seamstress.',
+          description: 'Quick hands.',
+          personality: 'Particular.',
+          characterDocumentMountPointId: WREN_VAULT,
+          avatarOverrides: [],
+          tags: [],
+          wardrobeItems: [
+            { id: CAPE, characterId: WREN, title: 'Velvet Cape', types: ['top'], imageFileId: PIC_KEPT, _imageFiles: [pic(PIC_KEPT, 'cape.webp', 'GENERATED')] },
+            { id: GLOVES, characterId: WREN, title: 'Lost Gloves', types: ['accessories'], imageFileId: PIC_LOST, _imageFiles: [pic(PIC_LOST, 'gloves.webp', 'UPLOADED')] },
+            { id: SCARF, characterId: WREN, title: 'Silk Scarf', types: ['accessories'], imageFileId: PIC_TAKEN, _imageFiles: [pic(PIC_TAKEN, 'scarf.webp', 'IMPORTED')] },
+          ],
+        },
+      ],
+      mountPoints: [
+        {
+          id: WREN_VAULT,
+          name: 'Wren Character Vault',
+          basePath: '',
+          mountType: 'database',
+          storeType: 'character',
+          includePatterns: [],
+          excludePatterns: [],
+          enabled: true,
+        },
+      ],
+      folders: [],
+      documents: [
+        doc(1, 'properties.json', 'json', properties),
+        doc(2, 'Wardrobe/Velvet Cape.md', 'markdown', item(CAPE, 'Velvet Cape', ['top'], PIC_KEPT)),
+        doc(3, 'Wardrobe/Lost Gloves.md', 'markdown', item(GLOVES, 'Lost Gloves', ['accessories'], PIC_LOST)),
+        doc(4, 'Wardrobe/Silk Scarf.md', 'markdown', item(SCARF, 'Silk Scarf', ['accessories'], PIC_TAKEN)),
+      ],
+      blobs: [blob(1, CAPE, 'cape.webp', 'velvet-bytes'), blob(2, SCARF, 'scarf.webp', 'silk-bytes')],
+      projectLinks: [],
+      wardrobeWear: [
+        wear(1, CAPE, WREN, 3, 'c1000000-0000-4000-8000-000000000001'),
+        wear(2, CAPE, 'a1000000-0000-4000-8000-000000000001', 2, null),
+        wear(3, CAPE, 'ab0000ff-0000-4000-8000-0000000000ff', 4, 'ab0000fe-0000-4000-8000-0000000000fe'),
+        wear(4, CAPE, null, 1, null),
+        wear(5, 'ab0000d9-0000-4000-8000-0000000000d9', null, 6, null),
+        wear(6, CAPE, null, -1, null),
+        wear(7, SCARF, WREN, 5, null),
+      ],
+    },
+  };
+}
+
+/** [P4.D264] The `wear-ledger-live` prep's two live rows (both sides run this SQL). */
+const WEAR_LIVE_ROWS_SQL =
+  'INSERT INTO "wardrobe_wear_stats" ("id", "itemId", "wearerCharacterId", "wearCount", ' +
+  '"firstWornAt", "lastWornAt", "lastWornChatId", "createdAt", "updatedAt") VALUES ' +
+  "('ab000061-0000-4000-8000-000000000061', 'ab0000d1-0000-4000-8000-0000000000d1', " +
+  "'a1000000-0000-4000-8000-000000000001', 7, '2026-01-01T00:00:00.000Z', " +
+  "'2026-05-01T00:00:00.000Z', 'c1000000-0000-4000-8000-000000000002', " +
+  "'2025-12-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z'), " +
+  "('ab000062-0000-4000-8000-000000000062', 'ab0000d1-0000-4000-8000-0000000000d1', NULL, 1, " +
+  "'2026-03-10T00:00:00.000Z', '2026-03-11T00:00:00.000Z', NULL, " +
+  "'2026-03-10T00:00:00.000Z', '2026-03-11T00:00:00.000Z')";
 
 /** The rehydrate target the second run of `execute_preserve_ids_vault` names. */
 const PRESERVE_IDS_VAULT_TARGET = {
@@ -2093,11 +2279,49 @@ const IMPORT_WARN_MESSAGES = new Set([
   'Failed to import file',
   'Failed to import memory',
   'Imported memories left unembedded',
+  // [P4.D264] phase 7e's catch (`execute.ts:910-913`).
+  'Failed to import wardrobe wear ledger',
 ]);
 
-async function withImportWarns<T>(body: () => Promise<T>): Promise<{ out: T; importWarns: string[] }> {
+/**
+ * [P4.D264] The wardrobe carriers' non-WARN lines (phase 7e's INFO, the
+ * picture re-mint's INFO and DEBUG), recorded at their own level as
+ * `"<level> <message> k=v …"` — `wardrobeLogs` on every execute case, so a
+ * case where none fires is a silence leg.
+ */
+const WARDROBE_LOG_MESSAGES = new Set([
+  'Imported wardrobe wear ledger',
+  'Imported wardrobe item pictures',
+  'No imported vault for character; wardrobe pictures not carried',
+]);
+
+async function withImportWarns<T>(
+  body: () => Promise<T>,
+): Promise<{ out: T; importWarns: string[]; wardrobeLogs: string[] }> {
   const { Logger } = await import('@/lib/logger');
   const importWarns: string[] = [];
+  // [P4.D264] the info / debug half, for `WARDROBE_LOG_MESSAGES` only.
+  const wardrobeLogs: string[] = [];
+  const quiet = { info: Logger.prototype.info, debug: Logger.prototype.debug };
+  for (const level of ['info', 'debug'] as const) {
+    const orig = quiet[level];
+    Logger.prototype[level] = function (
+      this: unknown,
+      message: string,
+      context?: Record<string, unknown>,
+      ...rest: unknown[]
+    ) {
+      if (WARDROBE_LOG_MESSAGES.has(message)) {
+        let line = `${level} ${message}`;
+        for (const [k, v] of Object.entries(context ?? {})) {
+          if (k === 'module' || v === undefined) continue;
+          line += ` ${k}=${v instanceof Error ? v.message : String(v)}`;
+        }
+        wardrobeLogs.push(line);
+      }
+      return (orig as (...a: unknown[]) => void).call(this, message, context, ...rest);
+    } as never;
+  }
   const original = Logger.prototype.warn;
   Logger.prototype.warn = function (
     this: unknown,
@@ -2116,9 +2340,11 @@ async function withImportWarns<T>(body: () => Promise<T>): Promise<{ out: T; imp
     return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
   } as never;
   try {
-    return { out: await body(), importWarns };
+    return { out: await body(), importWarns, wardrobeLogs };
   } finally {
     Logger.prototype.warn = original;
+    Logger.prototype.info = quiet.info;
+    Logger.prototype.debug = quiet.debug;
   }
 }
 
@@ -2140,6 +2366,7 @@ function executeCase(
       const {
         out: { out: result, repoLogs },
         importWarns,
+        wardrobeLogs,
       } = await withImportWarns(async () =>
         recordRepoLogs ? await withRepoLogs(run) : { out: await run(), repoLogs: undefined },
       );
@@ -2153,6 +2380,7 @@ function executeCase(
         state: dumpAll(),
         ...(repoLogs ? { repoLogs } : {}),
         importWarns,
+        wardrobeLogs,
       };
     },
   };
@@ -2364,7 +2592,9 @@ function executePreppedCase(
     | 'orphan-project-store'
     | 'unvalidatable-tag'
     | 'refuse-chat-inserts'
-    | 'refuse-idless-inserts',
+    | 'refuse-idless-inserts'
+    | 'wear-ledger'
+    | 'wear-ledger-live',
   payload: (spec: Spec) => Promise<unknown> | unknown,
   options: Record<string, unknown>,
   // [P4.148] Record the repository lines too (`withRepoLogs`).
@@ -2419,6 +2649,15 @@ function executePreppedCase(
         db.exec(
           "CREATE TRIGGER qt_p4148_no_chats BEFORE INSERT ON chats BEGIN SELECT RAISE(ABORT, 'planted: chat inserts refused'); END",
         );
+      } else if (prep === 'wear-ledger' || prep === 'wear-ledger-live') {
+        // [P4.D264] A BOOTED target: `wardrobe_wear_stats` in v4's REAL
+        // migration shape (the `ON CONFLICT` index included). The committed
+        // fixture predates the table; v5's twin runs C1 §6's helper.
+        const { WARDROBE_WEAR_STATS_DDL } = await import(
+          '@/lib/database/backends/sqlite/wardrobe-wear-stats-ddl'
+        );
+        for (const statement of WARDROBE_WEAR_STATS_DDL) db.exec(statement);
+        if (prep === 'wear-ledger-live') db.exec(WEAR_LIVE_ROWS_SQL);
       } else if (prep === 'refuse-idless-inserts') {
         // [P4.155 R-E] Every `memories` / `prompt_templates` INSERT fails AFTER
         // the row validated, so each item lands in its importer's per-item
@@ -2443,12 +2682,14 @@ function executePreppedCase(
       const {
         out: { out: result, repoLogs },
         importWarns,
+        wardrobeLogs,
       } = await withImportWarns(async () =>
         recordRepoLogs ? await withRepoLogs(run) : { out: await run(), repoLogs: undefined },
       );
       await settle();
       return {
         importWarns,
+        wardrobeLogs,
         kind: 'execute_prepped',
         prep,
         exportData,
@@ -2538,6 +2779,43 @@ async function main(): Promise<void> {
     // P4.106 item 6: LAST — it plants informs on this `_build` copy.
     chatsInformsPayload: await buildChatsInformsExport(spec.userId),
   }));
+  // [P4.D264] A characters bundle out of a SEPARATELY planted copy (the
+  // export family's `plantWardrobe`, cell for cell): the archived coat with its
+  // `_imageFiles` and `imageFileId`, and two `wardrobe_wear` records.
+  const wardrobeBuild = await runCase(spec, '_build_wardrobe', scratch, fixtures, async () => {
+    const { getRawDatabase: rawMain } = await import('@/lib/database/backends/sqlite/client');
+    const { getRawMountIndexDatabase: rawMount } = await import(
+      '@/lib/database/backends/sqlite/mount-index-client'
+    );
+    const { WARDROBE_WEAR_STATS_DDL } = await import(
+      '@/lib/database/backends/sqlite/wardrobe-wear-stats-ddl'
+    );
+    const main = rawMain()!;
+    for (const statement of WARDROBE_WEAR_STATS_DDL) main.exec(statement);
+    main.exec(WARDROBE_WEAR_PLANT_SQL);
+    main
+      .prepare(`UPDATE "files" SET "linkedTo" = ? WHERE "id" = ?`)
+      .run('["ac000000-0000-4000-8000-000000000001"]', 'f0000001-0000-4000-8000-000000000001');
+    const edited = rawMount()!
+      .prepare(
+        `UPDATE "doc_mount_documents" SET "content" = replace("content", ?, ?) ` +
+          `WHERE "content" LIKE '%title: Travelling Coat%'`,
+      )
+      .run(
+        'imagePrompt: brown coat\n',
+        'imagePrompt: brown coat\narchived: true\narchivedAt: 2026-03-04T00:00:00.000Z\n' +
+          'imageFileId: f0000001-0000-4000-8000-000000000001\n',
+      ) as { changes: number };
+    if (edited.changes !== 1) throw new Error('_build_wardrobe: the coat document not found');
+    return { payload: await buildCharactersExport(spec.userId) };
+  });
+  const wardrobePayload = wardrobeBuild.payload as {
+    manifest: unknown;
+    data: Record<string, unknown[]>;
+  };
+  if (!Array.isArray(wardrobePayload.data.wardrobeWear) || wardrobePayload.data.wardrobeWear.length !== 2) {
+    throw new Error('_build_wardrobe: the bundle must carry two wardrobeWear rows');
+  }
   const mergedPayload = merged.payload as { manifest: unknown; data: Record<string, unknown[]> };
   const filesPayload = merged.filesPayload as { manifest: unknown; data: Record<string, unknown[]> };
   const charactersPayload = merged.charactersPayload as {
@@ -2560,6 +2838,40 @@ async function main(): Promise<void> {
   };
 
   const cases = [
+    // ── P4.D264 (v4 `3ee3b1342` #81 + `7c8572869` #82): phase 7e + the
+    // picture re-mint, over the `_build_wardrobe` bundle into a BOOTED target
+    // (`wear-ledger`). `skip` meets both characters (their vaults skipped →
+    // every row dropped as a missing item; the pictures' DEBUG); `overwrite`
+    // and `duplicate` land the coat → its two rows (Lorian remapped, the chat
+    // local and kept) and the lost-picture warning (the bundle carries no
+    // `Wardrobe/images/` blob) with the pointer cleared. The un-prepped target
+    // lacks the table → v4's phase catch.
+    executePreppedCase('execute_wardrobe_skip', 'wear-ledger', () => wardrobePayload, {
+      conflictStrategy: 'skip',
+      includeMemories: false,
+      includeRelatedEntities: false,
+    }),
+    executePreppedCase('execute_wardrobe_overwrite', 'wear-ledger', () => wardrobePayload, {
+      conflictStrategy: 'overwrite',
+      includeMemories: false,
+      includeRelatedEntities: false,
+    }),
+    executePreppedCase('execute_wardrobe_duplicate', 'wear-ledger', () => wardrobePayload, {
+      conflictStrategy: 'duplicate',
+      includeMemories: false,
+      includeRelatedEntities: false,
+    }),
+    executePreppedCase(
+      'execute_wardrobe_pictures',
+      'wear-ledger-live',
+      () => wardrobePicturesPayload(),
+      { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
+    ),
+    executeCase('execute_wardrobe_no_table', () => wardrobePayload, {
+      conflictStrategy: 'duplicate',
+      includeMemories: false,
+      includeRelatedEntities: false,
+    }),
     executeCase('execute_skip_all', () => mergedPayload, {
       conflictStrategy: 'skip',
       includeMemories: true,

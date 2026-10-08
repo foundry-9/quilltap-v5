@@ -353,7 +353,14 @@ pub(super) fn import_characters(
 
             // Per-character wardrobe items (folding any legacy outfitPresets into
             // composites for pre-rework `.qtap` exports).
-            import_character_wardrobe_items(main, mount, raw_character, &new_id, warnings);
+            import_character_wardrobe_items(
+                main,
+                mount,
+                raw_character,
+                &new_id,
+                warnings,
+                &mut id_maps.wardrobe_items,
+            );
 
             // Per-character plugin data.
             import_character_plugin_data(main, raw_character, &new_id, warnings);
@@ -388,6 +395,9 @@ fn import_character_wardrobe_items(
     raw_character: &Value,
     new_character_id: &str,
     warnings: &mut Vec<String>,
+    // P4.D264 (v4 `3ee3b1342`, `:237-238`): "Records source item id → minted
+    // id for the wear-ledger import."
+    wardrobe_item_id_map: &mut super::IdMap,
 ) {
     let mut combined: Vec<Value> = raw_character
         .get("wardrobeItems")
@@ -545,8 +555,20 @@ fn import_character_wardrobe_items(
             updated_at: now,
         };
 
+        // `imageFileId` / `_imageFiles` are dropped here (v4 `7c8572869`
+        // `:306-318`): "`imageFileId` / `_imageFiles` name pictures whose rows
+        // have not been minted here yet; `importWardrobeItemImages` re-mints
+        // them against the imported vault once it has landed and points the
+        // item at its own copy. Until then the item carries no picture rather
+        // than a dangling id." (`image_file_id: None` above; the field-by-field
+        // build never carried `_imageFiles`.)
         match create_vault_wardrobe_item(main, &links, &docs, &stored) {
-            Ok(_) => {}
+            Ok(_) => {
+                // v4 `:341`, after a successful create.
+                if let Some(source_id) = item.get("id").and_then(Value::as_str) {
+                    wardrobe_item_id_map.set(source_id.to_string(), stored.id.clone());
+                }
+            }
             // Per-item failure → warning + continue (v4). `NoMount` would mean the
             // freshly-provisioned vault didn't resolve — surface it as a warning.
             // v4's per-item catch pushes AND warns `{wardrobeItemId,
@@ -684,9 +706,20 @@ mod warn_field_tests {
         let raw = json!({ "wardrobeItems": [
             { "id": "w-src", "characterId": "c-src", "title": "Hat", "types": ["accessories"] }
         ] });
+        let mut item_ids = super::super::IdMap::default();
         let ((), lines) = crate::test_support::captured_with(|| {
-            import_character_wardrobe_items(&main, &mount, &raw, "c-new", &mut warnings)
+            import_character_wardrobe_items(
+                &main,
+                &mount,
+                &raw,
+                "c-new",
+                &mut warnings,
+                &mut item_ids,
+            )
         });
+        // P4.D264: a refused create records NO source → minted id (v4 sets
+        // the map only after `create` resolves, `import-characters.ts:341`).
+        assert!(item_ids.values().is_empty());
         let warns: Vec<&String> = lines.iter().filter(|l| l.starts_with("WARN ")).collect();
         assert_eq!(
             warns,
@@ -706,7 +739,14 @@ mod warn_field_tests {
             ]
         );
         let ((), quiet) = crate::test_support::captured_with(|| {
-            import_character_wardrobe_items(&main, &mount, &json!({}), "c-new", &mut Vec::new())
+            import_character_wardrobe_items(
+                &main,
+                &mount,
+                &json!({}),
+                "c-new",
+                &mut Vec::new(),
+                &mut super::super::IdMap::default(),
+            )
         });
         assert!(quiet.iter().all(|l| !l.starts_with("WARN ")), "{quiet:?}");
     }

@@ -173432,3 +173432,66 @@ RED under the OLD vendored bytes (the family failed), GREEN under the new (1/1),
   all_wardrobe` and `stream_document-stores_all_wardrobe` red (projects + preview stay green, as
   they must); restored byte-identically.
 
+### Unit D — the `.qtap` import (core 0.0.1257)
+
+- `ndjson.rs`: the `"wardrobe_wear"` arm before the unknown-kind skip; `Collected.wardrobe_wear`;
+  stitched LAST (non-empty) on characters and document-stores. `characters.rs`: the id map
+  recorded on `Ok` only (a refused create records nothing — pinned in its unit test); the
+  `imageFileId` / `_imageFiles` strip was already implicit (the field-by-field build).
+  `mod.rs`: `ImportCounts.wardrobe_wear: Option<u32>` between the document-store counts and
+  `files` (v4's assignment order), `IdMaps.wardrobe_items`, 7e after 7d, the images step after
+  `reconcile_relationships`, its count discarded.
+- NEW `wardrobe_wear.rs` (pub — the tier-1 family reaches it): `parse_wardrobe_wear_row` (a
+  whole-row port of `WardrobeWearStatsRowSchema`: `z.uuid()` id, `itemId` length ≥ 1, the two
+  `.nullable()` keys — ABSENT fails, a safe non-negative integer, the four `TimestampSchema`
+  stamps, unknown keys stripped), `remap_wardrobe_wear_rows` (key `item\u0000wearer`, strict-`>`
+  `later_last_wear`, lexical `min_iso`, SUM within / MAX against live, a later live row on one key
+  wins as v4's `Map`), `build_imported_wardrobe_item_id_map` (documents win; a non-imported
+  store contributes nothing), `import_wardrobe_wear` (the RAW-row pre-resolution through
+  `characters_read::find_by_id_raw` / `chats_read::find_by_id`, once per distinct id;
+  `find_rows_for_items` over the distinct destination ids; the ONE warning; `upsert_rows` ALWAYS;
+  the eight-key INFO).
+- NEW `wardrobe_images.rs`: per character → `character_vault_mounts` → `mount_points` (the DEBUG
+  when absent), per picture C1 §7's FROZEN `wardrobe_item_image_path` → the link → its blob
+  (missing either → the lost-picture warning); the exported id kept when free; `FileCreate` per
+  v4's payload (`storage_key` = `build_mount_blob_storage_key(mount, blob.id)`, `linked_to` /
+  `tags` = the SOURCE item id, NO `generation_key`) with `created_at` from the export; the pointer
+  through `update_vault_wardrobe_item(…, Some(new_character_id))` ONLY when it moved (an `''`
+  pointer counts as moved, as v4's `!==`); the INFO when any were created. It never writes
+  bytes and never calls the image bridge's write (§R.4(f)).
+- **Deviation from item 10's letter, recorded:** the order put the picture / edge-row arms in
+  `qtap_import_equivalence` over a NEW committed `qtap-import-wardrobe.qtap` + builder. That
+  family's target is an EMPTY instance whose character ids are minted per run, so "a
+  locally-existing wearer kept AS-IS" and "a TAKEN exported file id" cannot be planted
+  deterministically there; the `system-data` target carries fixed ids for both. The arms landed
+  as `system_import_state`'s `execute_wardrobe_pictures` (a hand-built document-form bundle, the
+  `preserveIdsVaultPayload` idiom) instead — a stronger comparand (every table, both
+  partitions). `build-qtap-import-fixture.ts` was therefore NOT grown, and no `.qtap` fixture was
+  added. The order's "idempotent second import (MAX, not SUM)" is measured as MAX against LIVE
+  rows planted by the `wear-ledger-live` prep (the second import's state is exactly that) plus
+  the tier-1 `idempotent_reimport_is_max_not_sum` case.
+- **Tests:** NEW `wardrobe_wear_import_remap_equivalence` (tier-1 EXACT, 11 remap + 2 map cases,
+  the corpus inline in `harness/oracle/cases/wardrobe-wear-import-remap.ts`, each line carrying
+  its own input; green at the first run). `system_import_equivalence`: three NDJSON read cases
+  (29 → 32); the characters and document-stores ones also run v4's `previewImport` — Tier 2
+  item 12's negative row: no `wardrobeWear` entity listing on either side). `system_import_state` (56 → 61 cases): `execute_wardrobe_{skip,overwrite,duplicate}`
+  (prep `wear-ledger`) over the REAL exporter's characters bundle from a `_build_wardrobe` copy
+  planted as the export family's; `execute_wardrobe_no_table` (v4's phase catch on an un-booted
+  target: `Failed to import the wardrobe wear ledger: no such table: wardrobe_wear_stats`);
+  `execute_wardrobe_pictures` (prep `wear-ledger-live`: the cape's exported id KEPT and no
+  pointer write, the scarf's TAKEN id `f0000001…` re-minted and the pointer moved, the gloves'
+  missing blob → the warning + the pointer cleared; Lorian's live row keeps 7 over 2, the live
+  unattributed row 1 → 5 over the bundle's 4 + 1, the uncarried item dropped, one malformed row).
+  `IMPORT_WARN_MESSAGES` gains phase 7e's WARN (43 → 48 cases, 29 → 30 lines); NEW
+  `wardrobeLogs` (v4's three wardrobe INFO / DEBUG lines at their own level, on every execute
+  case — 48 cases, 6 lines fired).
+- Guards: `import_warning_text_guard` gains the seven literals VERBATIM (R-C);
+  `generation_key_travels_as_is_guard` — the census names its two readers explicitly, so NO
+  exemption was needed; a NEW test pins the re-mint's single `generation_key: None,` (R-D);
+  `doc_mount_fallback_sites_census` classifies the re-mint's path read `strict-in-v4 (import)`
+  (162 → 163 sites; the class 0 → 1).
+- **Red-first by mutation** (the collector arm removed + 7e and the images step disabled): 37
+  diffs across all five `execute_wardrobe_*` arms and the two non-empty read cases (the absent
+  case stays green); restored byte-identically. The tier-1 family's "before" is the unported tip
+  (no `wardrobe_wear` module — it cannot compile there).
+

@@ -197,6 +197,8 @@ pub fn assemble_export_from_stream(records: &[Value]) -> Result<QuilltapExport, 
     // === P4.D205 (v4 `e7d77bb60`, `quilltap-import-stream.ts:150,316,587`) ===
     let mut chat_informs: Vec<Value> = Vec::new();
     // === end P4.D205 ===
+    // P4.D264 (v4 `3ee3b1342`, `quilltap-import-stream.ts:152`).
+    let mut wardrobe_wear: Vec<Value> = Vec::new();
 
     // The `7189a968` additions. General-library folders are a DISTINCT typed
     // field from the doc-store `folders` above (v4's own hazard note endorses
@@ -612,6 +614,11 @@ pub fn assemble_export_from_stream(records: &[Value]) -> Result<QuilltapExport, 
             "provider_model" => provider_models.push(data()),
             "plugin_config" => plugin_configs.push(data()),
             "instance_setting" => instance_settings.push(data()),
+            // P4.D264 (v4 `3ee3b1342`, `:324-326`): the trailing wear-ledger
+            // rows, COLLECTED (until this arm existed a v4-written bundle's
+            // ledger fell through to the unknown-kind skip below — silently
+            // lost on v5).
+            "wardrobe_wear" => wardrobe_wear.push(data()),
             // Unknown kind — v4 warns and skips.
             _ => {}
         }
@@ -732,6 +739,7 @@ pub fn assemble_export_from_stream(records: &[Value]) -> Result<QuilltapExport, 
             conversation_annotations,
             chat_documents,
             chat_informs,
+            wardrobe_wear,
             file_folders,
             files: files.into_iter().map(|(_, f)| Value::Object(f)).collect(),
             prompt_templates,
@@ -768,6 +776,9 @@ struct Collected {
     conversation_annotations: Vec<Value>,
     chat_documents: Vec<Value>,
     chat_informs: Vec<Value>,
+    /// P4.D264: the `wardrobe_wear` records, stitched LAST onto the
+    /// characters and document-stores `data` (`:590`, `:621`).
+    wardrobe_wear: Vec<Value>,
     /// General file-library folders — a DISTINCT typed field from the
     /// doc-store `folders` (v4's `fileFolders`; see the assembler note).
     file_folders: Vec<Value>,
@@ -810,6 +821,10 @@ fn build_export_data_for_type(export_type: &str, c: Collected) -> Result<Value, 
             // `skipProjectLinks`), but v4 spreads the collection anyway.
             if !c.project_links.is_empty() {
                 d.insert("projectLinks".into(), Value::Array(c.project_links));
+            }
+            // P4.D264 (v4 `:590`): the wear ledger, LAST, only when non-empty.
+            if !c.wardrobe_wear.is_empty() {
+                d.insert("wardrobeWear".into(), Value::Array(c.wardrobe_wear));
             }
         }
         "chats" => {
@@ -866,6 +881,10 @@ fn build_export_data_for_type(export_type: &str, c: Collected) -> Result<Value, 
             d.insert("documents".into(), Value::Array(c.documents));
             d.insert("blobs".into(), Value::Array(c.blobs));
             d.insert("projectLinks".into(), Value::Array(c.project_links));
+            // P4.D264 (v4 `:621`): the wear ledger, LAST, only when non-empty.
+            if !c.wardrobe_wear.is_empty() {
+                d.insert("wardrobeWear".into(), Value::Array(c.wardrobe_wear));
+            }
         }
         "files" => {
             // `folders` is the same field name the document-store branch uses;

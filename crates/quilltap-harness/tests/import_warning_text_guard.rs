@@ -255,3 +255,55 @@ mod tests {
     // `d4`'s mid-sentence `{name}`, `e`'s known-bare `{text}` or `f`'s `{}`.
     assert_eq!(bad, vec!["e".to_string(); 4], "{bad:?}");
 }
+
+// === P4.D264 (append-only) ===
+
+/// P4.D264 R-C — the wardrobe carriers' seven warning literals, VERBATIM in
+/// the production source (the `format!` text, interpolations as written).
+/// Five live in the importer (the rule above already holds their tails to the
+/// helpers: `{msg}` / `{title}` / `{original_filename}` are rendered upstream);
+/// the restore's two go through `WarnText`. The v4 text each pins:
+/// `import-wardrobe-wear.ts:281`, `execute.ts:910`, `restore.ts:999` / `:779`,
+/// `import-wardrobe-images.ts:71` / `:102-104` / `:116-118`.
+#[test]
+fn the_wardrobe_carrier_warnings_are_v4s_text() {
+    let core = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../quilltap-core/src/services");
+    let read = |rel: &str| std::fs::read_to_string(core.join(rel)).expect("read source");
+    for (file, literal) in [
+        (
+            "quilltap_import/wardrobe_wear.rs",
+            "\"Dropped {} malformed wardrobe wear-ledger row(s).\"",
+        ),
+        (
+            "quilltap_import/mod.rs",
+            "\"Failed to import the wardrobe wear ledger: {msg}\"",
+        ),
+        (
+            "quilltap_import/wardrobe_images.rs",
+            "\"Wardrobe item \\\"{title}\\\" lost a picture whose bytes were not in the bundle ({original_filename}).\"",
+        ),
+        (
+            "quilltap_import/wardrobe_images.rs",
+            "\"Failed to import a picture of wardrobe item \\\"{title}\\\": {msg}\"",
+        ),
+        (
+            "quilltap_import/wardrobe_images.rs",
+            "\"Failed to repoint the picture of wardrobe item \\\"{title}\\\": {}\"",
+        ),
+        (
+            "backup/restore/orchestrator.rs",
+            "\"Failed to restore the wardrobe wear ledger: {error}\"",
+        ),
+        (
+            "backup/restore/orchestrator.rs",
+            "\"Failed to repoint a wardrobe item's picture ({}): {error}\"",
+        ),
+    ] {
+        assert_eq!(
+            read(file).matches(literal).count(),
+            1,
+            "{file} must carry v4's warning text exactly once: {literal}"
+        );
+    }
+}
+// === end P4.D264 ===

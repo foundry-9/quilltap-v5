@@ -983,7 +983,55 @@ const IMPORT_WARN_MESSAGES: &[&str] = &[
     "Failed to import file",
     "Failed to import memory",
     "Imported memories left unembedded",
+    // [P4.D264] phase 7e's catch.
+    "Failed to import wardrobe wear ledger",
 ];
+
+/// [P4.D264] The oracle's `WEAR_LIVE_ROWS_SQL`, byte for byte: live rows on
+/// two of the hand-built bundle's keys (the Velvet Cape × Lorian, and × no
+/// one), so the import's MAX-against-live is measured on real rows.
+const WEAR_LIVE_ROWS_SQL: &str = "INSERT INTO \"wardrobe_wear_stats\" (\"id\", \"itemId\", \"wearerCharacterId\", \"wearCount\", \
+\"firstWornAt\", \"lastWornAt\", \"lastWornChatId\", \"createdAt\", \"updatedAt\") VALUES \
+('ab000061-0000-4000-8000-000000000061', 'ab0000d1-0000-4000-8000-0000000000d1', \
+'a1000000-0000-4000-8000-000000000001', 7, '2026-01-01T00:00:00.000Z', \
+'2026-05-01T00:00:00.000Z', 'c1000000-0000-4000-8000-000000000002', \
+'2025-12-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z'), \
+('ab000062-0000-4000-8000-000000000062', 'ab0000d1-0000-4000-8000-0000000000d1', NULL, 1, \
+'2026-03-10T00:00:00.000Z', '2026-03-11T00:00:00.000Z', NULL, \
+'2026-03-10T00:00:00.000Z', '2026-03-11T00:00:00.000Z')";
+
+/// [P4.D264] The oracle's `WARDROBE_LOG_MESSAGES` — the wardrobe carriers'
+/// INFO / DEBUG lines, compared as `"<level> <message> k=v …"` on every case
+/// whose oracle row carries `wardrobeLogs` (silence legs included).
+const WARDROBE_LOG_MESSAGES: &[&str] = &[
+    "Imported wardrobe wear ledger",
+    "Imported wardrobe item pictures",
+    "No imported vault for character; wardrobe pictures not carried",
+];
+
+/// v5's captured `INFO` / `DEBUG` lines for [`WARDROBE_LOG_MESSAGES`], in the
+/// oracle's string shape (lower-case level, target dropped).
+fn v5_wardrobe_logs(lines: &[String]) -> Vec<String> {
+    lines
+        .iter()
+        .filter_map(|l| {
+            let (level, rest) = l.split_once(' ')?;
+            if level != "INFO" && level != "DEBUG" {
+                return None;
+            }
+            let (_target, rest) = rest.split_once(' ')?;
+            WARDROBE_LOG_MESSAGES
+                .iter()
+                .any(|m| rest == *m || rest.starts_with(&format!("{m} ")))
+                .then(|| format!("{} {rest}", level.to_lowercase()))
+        })
+        .collect()
+}
+
+/// [P4.D264] How many cases compared `wardrobeLogs`, and how many v4 lines
+/// fired across them (non-vacuity, asserted after the run).
+static WARDROBE_LOG_CASES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static WARDROBE_LOGS_FIRED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 /// v5's captured WARN lines (`WARN <target> <message> k=v …`) for those
 /// messages, with the level and target dropped — the oracle's string shape.
@@ -1610,7 +1658,8 @@ fn system_import_execute_state_equivalence() {
     // …+ `execute_folder_refusals` (53 + 1 = 54).
     // …+ `execute_tag_refusals` (54 + 1 = 55).
     // …+ `execute_file_refusals` (55 + 1 = 56).
-    assert_eq!(ran, 56, "expected 56 cases, ran {ran}");
+    // …+ P4.D264's five `execute_wardrobe_*` arms (56 + 5 = 61).
+    assert_eq!(ran, 61, "expected 61 cases, ran {ran}");
     // [P4.161 Tier 2, R-E] Non-vacuity: v4 refused four file rows AFTER their
     // bytes landed (three repository ERRORs each, `skipped` counted) and
     // landed the sound copy; the store contents are the whole-state diff's.
@@ -2239,15 +2288,30 @@ fn system_import_execute_state_equivalence() {
     // inform arm none (R-D) — 8 + 10 = 18 lines.
     // [P4.161 Tier 2] …+ the prompt-template arm (40), four more lines (22);
     // the unification review's numeric-name row, one more.
+    // [P4.D264] + the five wardrobe-carrier arms (48), and the no-table
+    // arm's phase-7e WARN (30).
     assert_eq!(
         IMPORT_WARN_CASES.load(Ordering::SeqCst),
-        43,
+        48,
         "cases comparing the import WARNs"
     );
     assert_eq!(
         IMPORT_WARNS_FIRED.load(Ordering::SeqCst),
-        29,
+        30,
         "v4 import WARN lines fired"
+    );
+    // [P4.D264] every execute case compares `wardrobeLogs`; six lines fire
+    // (the skip arm's INFO + DEBUG, the overwrite and duplicate INFOs, the
+    // pictures arm's ledger INFO + picture INFO).
+    assert_eq!(
+        WARDROBE_LOG_CASES.load(Ordering::SeqCst),
+        48,
+        "cases comparing the wardrobe carriers' import lines"
+    );
+    assert_eq!(
+        WARDROBE_LOGS_FIRED.load(Ordering::SeqCst),
+        6,
+        "v4 wardrobe carrier import lines fired"
     );
     // [P4.155 R-A] …+ the two property-refusal arms (5).
     // [P4.161] …+ the memory and inform refusal arms (7), + Tier 2's
@@ -2614,6 +2678,16 @@ fn run_execute_case(
                      BEGIN SELECT RAISE(ABORT, 'planted: template inserts refused'); END",
                 )
                 .expect("prep: refuse id-less inserts"),
+            // [P4.D264] A BOOTED target: the wear ledger in the migration's
+            // shape (C1 §6) — the oracle runs v4's REAL DDL.
+            "wear-ledger" => quilltap_core::test_support::ensure_wear_ledger_on(conn.connection()),
+            // [P4.D264] …plus the oracle's two LIVE rows (`WEAR_LIVE_ROWS_SQL`).
+            "wear-ledger-live" => {
+                quilltap_core::test_support::ensure_wear_ledger_on(conn.connection());
+                conn.connection()
+                    .execute_batch(WEAR_LIVE_ROWS_SQL)
+                    .expect("prep: the live wear rows");
+            }
             other => panic!("[{name}] unknown prep {other}"),
         }
     }
@@ -2657,7 +2731,8 @@ fn run_execute_case(
     // [P4.148 Tier 2 item 17] Every execute case records v4's nine
     // `IMPORT_WARN_MESSAGES` lines — capture v5's for the same compare.
     let capture_import_warns = case.get("importWarns").is_some();
-    let capture = capture_repo_logs || capture_import_warns;
+    let capture_wardrobe_logs = case.get("wardrobeLogs").is_some();
+    let capture = capture_repo_logs || capture_import_warns || capture_wardrobe_logs;
     let db = open_db(&scratch);
     let (results, repo_lines) = db
         .write_blocking(move |ws| {
@@ -2744,6 +2819,22 @@ fn run_execute_case(
         }
         IMPORT_WARN_CASES.fetch_add(1, Ordering::SeqCst);
         IMPORT_WARNS_FIRED.fetch_add(want.len(), Ordering::SeqCst);
+    }
+    if capture_wardrobe_logs {
+        let want: Vec<String> = case["wardrobeLogs"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|w| w.as_str().map(str::to_string))
+            .collect();
+        let got = v5_wardrobe_logs(&repo_lines);
+        if got != want {
+            failures.push(format!(
+                "[{name}] the wardrobe carriers' import lines differ\n  rust:   {got:?}\n  oracle: {want:?}"
+            ));
+        }
+        WARDROBE_LOG_CASES.fetch_add(1, Ordering::SeqCst);
+        WARDROBE_LOGS_FIRED.fetch_add(want.len(), Ordering::SeqCst);
     }
     drop(db);
 

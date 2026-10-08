@@ -30,9 +30,13 @@ mod entities;
 mod files;
 mod legacy_presets;
 mod memories;
+// P4.D264 (v4 `3ee3b1342` / `7c8572869`): phase 7e and the post-reconcile
+// picture re-mint.
 pub mod ndjson;
 pub mod preview;
 mod profiles;
+mod wardrobe_images;
+pub mod wardrobe_wear;
 // P4.D205: `pub` so `chat_informs_remap_equivalence` can drive
 // `remap_chat_inform` directly — the function is a pure decision over explicit
 // inputs, and driving it through the whole importer would hide which rule fired.
@@ -171,6 +175,13 @@ pub struct ImportCounts {
     pub document_store_blobs: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub document_store_project_links: Option<u32>,
+    // === P4.D264 (v4 `3ee3b1342`, `execute.ts:901`) ===
+    // `imported.wardrobeWear` exists ONLY when phase 7e ran; v4 assigns it
+    // after the document-store counts (7c) and before the file library (9),
+    // which is its place in the bag's insertion order.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wardrobe_wear: Option<u32>,
+    // === end P4.D264 ===
     // The five `7189a968` additions (steps 9-10) — assigned only when their
     // phase runs, exactly like the sidecar/document-store extras above.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -332,6 +343,10 @@ pub(crate) struct IdMaps {
     /// > repoint the character at its imported vault and cascade-delete the
     /// > scaffold (bundle wins, whole-store).
     pub character_vault_mounts: IdMap,
+    /// P4.D264 (v4 `3ee3b1342`, `types.ts:224-230`): "source item id → the id
+    /// `importCharacterWardrobeItems` minted; a carried `Wardrobe/*.md`
+    /// OVERRIDES it" (phase 7e's item map starts from this one).
+    pub wardrobe_items: IdMap,
     /// v4 `skippedCharacterVaults`. Source vault mount-point ids belonging to
     /// characters the importer *skipped*. Their store records are dropped
     /// before the document-store phase: importing them would strand an orphan
@@ -1888,6 +1903,33 @@ fn import_body(
         }
     }
 
+    // 7e. Wardrobe wear ledger — P4.D264, v4 `3ee3b1342` `execute.ts:894-916`.
+    //    "Last of the wardrobe-bearing phases: every item (character-owned via
+    //    importCharacters, shared and vault-borne via the document-store
+    //    phase), every character and every chat the rows can point at has
+    //    landed and its id map is final. A row whose item did not come along
+    //    is dropped; an unresolvable wearer folds into the item's unattributed
+    //    row."
+    if let Some(rows) = non_empty_array(data, "wardrobeWear") {
+        let documents = data
+            .get("documents")
+            .and_then(Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
+        match wardrobe_wear::import_wardrobe_wear(main, rows, documents, id_maps, warnings) {
+            Ok(written) => imported.wardrobe_wear = Some(written as u32),
+            Err(e) => {
+                let msg = item_error_text(&e);
+                warnings.push(format!("Failed to import the wardrobe wear ledger: {msg}"));
+                tracing::warn!(
+                    rowCount = rows.len(),
+                    error = %msg,
+                    "Failed to import wardrobe wear ledger"
+                );
+            }
+        }
+    }
+
     // 8. Memories (if includeMemories is enabled).
     let mut imported_memory_refs: Vec<(String, String)> = Vec::new();
     if options.include_memories {
@@ -1950,6 +1992,16 @@ fn import_body(
 
     // Post-import reconciliation.
     reconcile::reconcile_relationships(main, mount, id_maps, warnings);
+
+    // Wardrobe pictures — P4.D264, v4 `7c8572869` `execute.ts:979-984`. "After
+    // reconciliation: the character must already point at the vault the
+    // bundle carried, whose blobs hold the bytes and whose Wardrobe/*.md the
+    // item update writes back to." The count is DISCARDED, as v4 does.
+    if let Some(characters) = non_empty_array(data, "characters") {
+        wardrobe_images::import_wardrobe_item_images(
+            main, mount, user_id, characters, id_maps, warnings,
+        );
+    }
 
     // Re-embed what we just inserted (v4 `execute.ts:532`, AFTER the
     // reconcile). Imported memories carry no vector, and without this their

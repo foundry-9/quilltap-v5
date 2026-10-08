@@ -66,6 +66,26 @@ fn every_archive_reader_carries_the_key_verbatim() {
     }
 }
 
+/// P4.D264 (v4 `7c8572869`): the `.qtap` import's wardrobe picture re-mint
+/// builds its `FileCreate` from `_imageFiles`, whose twelve-key projection
+/// (`ndjson-writer.ts:184-212`) carries NO `generationKey` — v4's `files.create`
+/// payload (`import-wardrobe-images.ts:76-99`) omits it, so the row lands NULL.
+/// Pinned as exactly one `generation_key: None,` and no other mention: a carry
+/// added there would read a key the bundle never holds. (The census above
+/// names its two readers explicitly, so this file needed no exemption — it is
+/// pinned here on its own terms instead.)
+#[test]
+fn the_wardrobe_picture_remint_carries_no_key() {
+    let src = core_src("services/quilltap_import/wardrobe_images.rs");
+    assert_eq!(src.matches("generation_key: None,").count(), 1);
+    assert_eq!(src.matches("generation_key").count(), 1);
+    assert_eq!(
+        src.matches("generationKey").count(),
+        1,
+        "the module header's one mention"
+    );
+}
+
 /// The export/backup field spec places the key in v4's `FileEntrySchema` slot
 /// — between `generationRevisedPrompt` and `description`. That position is the
 /// exported record's KEY ORDER, which `.qtap` consumers compare byte-for-byte,
