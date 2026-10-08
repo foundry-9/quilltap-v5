@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(spa): P4.D261 unit 6 — v4 7c8572869: the item-images client, row and picker thumbnails, the row's Generate image
+
+_Versions: SPA 0.5.817._
+
+New `wardrobe/item-images.api.ts` (port of v4's `item-images-client.ts`): list / set-current / delete ride the `wardrobeItemImages*` dispatch verbs; upload POSTs multipart `file` + `kind` to `/api/v1/wardrobe/{id}/images?scope=…&id=…&action=upload`; generate POSTs the same route's `?action=generate` (the dispatch error envelope carries no `details`/status, which the refusal notice needs); thumbnail and full-size URLs go through `apiUrl`. New `qt-wardrobe-item-thumbnail` (renders nothing without a picture). Wardrobe rows show a 40 px thumbnail; the slot picker and outfit quick-pick show 28 px ones. A manageable row's kebab gains `Generate image` directly after Edit (`Generating image…`, disabled, while that item is being drawn); the wardrobe dialog opts its rows in, draws with the designated profile in the item's home container, toasts `A portrait of "…" is hung` (or the uncensored-desk variant) or the error, and reloads the list.
+
 #### 2026-10-08 — feat(spa): P4.D261 unit 5 — v4 3ee3b1342: the item editor's Wear history section over wardrobeItemWearHistory
 
 _Versions: SPA 0.5.816._

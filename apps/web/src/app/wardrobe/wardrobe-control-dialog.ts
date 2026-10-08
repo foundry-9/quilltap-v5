@@ -46,6 +46,7 @@ import { WardrobeDialogService } from './wardrobe-dialog.service';
 import { WardrobeItemEditor } from './wardrobe-item-editor';
 import { WardrobeItemRow } from './wardrobe-item-row';
 import { WardrobeTransferDialog, type TransferMode } from './wardrobe-transfer-dialog';
+import { generateWardrobeItemImage } from './item-images.api';
 import {
   sortAndFilterWardrobeItems,
   WARDROBE_LIST_SORTS,
@@ -55,6 +56,7 @@ import {
   GENERAL_CONTAINER,
   decodeWardrobeContainer,
   encodeWardrobeContainer,
+  homeContainerForItem,
   type WardrobeContainer,
 } from './wardrobe-container';
 import {
@@ -404,6 +406,9 @@ type EditorIntent = 'create-single' | 'create-bundle';
                       [addAction]="useFittingActions() ? 'add' : 'layer'"
                       [isUpdatingDefault]="updatingDefaultId() === item.id"
                       canArchive
+                      canGenerateImage
+                      [generatingImageIds]="generatingImageIds()"
+                      (generateImage)="handleGenerateImage($event)"
                       (toggleArchived)="handleToggleArchived($event)"
                       (toggleDefault)="handleToggleDefault($event)"
                       (edit)="editingItem.set($event)"
@@ -1104,6 +1109,46 @@ export class WardrobeControlDialogInner {
       this.toasts.showError(err instanceof Error ? err.message : 'Failed to update item');
     } finally {
       this.updatingDefaultId.set(null);
+    }
+  }
+
+  /**
+   * Items whose picture is being drawn right now (v4 `7c8572869` `:275`) — a
+   * SET, since an item can appear more than once (as itself and as a
+   * component of an outfit row).
+   */
+  protected readonly generatingImageIds = signal<ReadonlySet<string>>(new Set());
+
+  /**
+   * Draw a picture of one garment with the designated wardrobe profile (no
+   * picker — the editor has that). Offered only on manageable rows, so the
+   * item lives where its other management actions address it (v4
+   * `:606-636`). v4 invalidates `queryKeys.wardrobe.images(item.id)` too; v5
+   * holds no such cache — an open editor's Picture section refetches on its
+   * own change, and the list reload repaints the row's thumbnail.
+   */
+  protected async handleGenerateImage(item: WardrobeItemDto): Promise<void> {
+    const container = this.selectedContainer();
+    if (!container) return;
+    if (this.generatingImageIds().has(item.id)) return;
+    const home = this.isCharacterScope() ? homeContainerForItem(item) : container;
+    this.generatingImageIds.update((prev) => new Set(prev).add(item.id));
+    try {
+      const result = await generateWardrobeItemImage(item.id, home);
+      this.toasts.showSuccess(
+        result.rerouted
+          ? `A portrait of "${item.title}" is hung — drawn at the uncensored desk`
+          : `A portrait of "${item.title}" is hung`,
+      );
+      await this.reloadCurrentItems();
+    } catch (error) {
+      this.toasts.showError(error instanceof Error ? error.message : 'Failed to generate a picture');
+    } finally {
+      this.generatingImageIds.update((prev) => {
+        const next = new Set(prev);
+        next.delete(item.id);
+        return next;
+      });
     }
   }
 

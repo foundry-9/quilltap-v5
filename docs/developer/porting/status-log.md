@@ -174807,3 +174807,48 @@ named "tab-open link" divergence; v4's `staleTime: 0` query → a read on mount
 and on every item/container input change; a stale answer for an item the
 editor has left is dropped. No `containerGetRequest` router is written (the
 order's starting point 1: recorded, not built). Version: SPA 0.5.816.
+
+### Unit 6 — #82 `7c8572869` the images client, thumbnails, the row's Generate image
+
+Read at the pin: `lib/wardrobe/item-images-client.ts` whole;
+`components/wardrobe/wardrobe-item-thumbnail.tsx:1-53`;
+`wardrobe-item-row.tsx:213-219, 355-373`; `equipped-slot-row.tsx:183`;
+`outfit-quick-pick.tsx:128`; `wardrobe-control-dialog.tsx:275, 606-636,
+1525-1545`. Strings: `Generate image` / `Generating image…`; `A portrait of
+"${title}" is hung` / `… is hung — drawn at the uncensored desk`; `Failed to
+generate a picture`; `Request failed (${status})`.
+
+Specs: NEW `wardrobe/item-images.api.spec.ts` (the URL's scope/id/action
+ORDER + id encoding, General without `id`, the byte URLs, the three verb
+bodies — General without `containerId` — the generate JSON body `{}` /
+`{imageProfileId}`, the multipart `file` + `kind` (default `uploaded`, no
+content-type header), the error class's message / status / refusal);
+`wardrobe-item-row.spec.ts` + v4 `wardrobe-item-images-ui.test.tsx`'s row ×5
+(+ the boolean gate, + nested rows inheriting gate and set);
+`equipped-slot-row.spec.ts` + v4's picker-thumbnail case;
+`outfit-quick-pick.spec.ts` + the 28 px option thumbnail;
+`wardrobe-control-dialog.spec.ts` + 4 Generate arms (rows opt in; character
+garment → its vault, the `{}` body, the toast, the list reload; a shared
+garment in the character view → General, the rerouted toast; a browsed
+project container → itself; the error sentence and v4's fallback; the
+generating SET refusing a second press).
+
+**Red-first:** `item-images.api` and the thumbnail COMPILE-red; the row's new
+output compile-red until declared — with the inputs/output declared and no
+markup, **10 red** (row ×4, slot-row ×1, quick-pick ×1, dialog ×4). v4's two
+negative row arms (no picture; borrowed row) and the new gate negative were
+green before. All green after: 25 files / 367.
+
+**Recorded mechanism divergences:** (1) **generate posts the REST route**
+(`?action=generate`, C2 §6) rather than the `wardrobeItemImageGenerate` verb
+the order's item 11 names — the dispatch error envelope (`CoreError`) has no
+`details` and no status, and the Picture section's 422 refusal notice (unit 7)
+reads both; reading the REST body keeps C2 untouched (the alternative, a
+`details` key on the dispatch envelope, would be a key beyond C2 — a STOP).
+The verb's request type stays in the contract unused. **Flagged for the
+unifier/human.** (2) the boolean `canGenerateImage` input stands in for v4's
+"render when `onGenerateImage` is given" (the `canArchive` precedent); (3)
+byte URLs through `apiUrl`; (4) the thumbnail host is `display: contents`
+and empty without a picture (v4 returns `null`); (5) v4's
+`queryKeys.wardrobe.images` invalidate after a row generate has no v5 cache
+to bust — the list reload repaints the thumbnail. Version: SPA 0.5.817.

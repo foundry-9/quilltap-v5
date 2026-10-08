@@ -13,6 +13,7 @@ import {
 
 import type { WardrobeItemDto } from '../core/core-contract';
 import { Icon } from '../ui/icon';
+import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
 import { selectComposedOutfits } from './composed-outfits';
 import { formatSlotLabels } from './slot-meta';
 import { wardrobeOriginLabel } from './wardrobe-container';
@@ -39,7 +40,7 @@ import { wardrobeOriginLabel } from './wardrobe-container';
 @Component({
   selector: 'qt-outfit-quick-pick',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon],
+  imports: [Icon, WardrobeItemThumbnail],
   host: { '[attr.hidden]': 'outfits().length === 0 ? "" : null' },
   template: `
     @if (outfits().length > 0) {
@@ -84,6 +85,7 @@ import { wardrobeOriginLabel } from './wardrobe-container';
                       (click)="pick(outfit)"
                       class="flex w-full items-start justify-between gap-3 px-3 py-2 text-left hover:qt-bg-muted"
                     >
+                      <qt-wardrobe-item-thumbnail [fileId]="outfit.imageFileId" [size]="28" />
                       <span class="min-w-0 flex-1 break-words text-sm text-foreground">{{
                         outfit.title
                       }}</span>

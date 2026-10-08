@@ -297,3 +297,20 @@ describe('OutfitQuickPick — wrapped titles, canonical labels, origin (v4 wardr
     expect(row.querySelectorAll('span')[1]!.textContent!.trim()).toBe('Top, Footwear');
   });
 });
+
+/** P4.D261 — v4 `7c8572869` `outfit-quick-pick.tsx:128`: the 28 px thumbnail. */
+describe('OutfitQuickPick — thumbnails (v4 7c8572869)', () => {
+  it('a pictured outfit leads its option with a 28 px thumbnail', () => {
+    const fixture = render([
+      item({ id: 'shirt', title: 'Shirt' }),
+      item({ id: 'b', title: 'Pictured', componentItemIds: ['shirt'], imageFileId: 'file-b' }),
+      item({ id: 'c', title: 'Plain', componentItemIds: ['shirt'] }),
+    ]);
+    openMenu(fixture);
+    const thumbs = [...el(fixture).querySelectorAll('[data-testid="wardrobe-item-thumbnail"]')];
+    expect(thumbs).toHaveLength(1);
+    expect(thumbs[0].getAttribute('src')).toBe('/api/v1/files/file-b?action=thumbnail');
+    expect(thumbs[0].getAttribute('width')).toBe('28');
+    expect(thumbs[0].closest('[role="option"]')!.firstElementChild!.contains(thumbs[0])).toBe(true);
+  });
+});

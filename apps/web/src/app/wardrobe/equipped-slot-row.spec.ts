@@ -200,3 +200,28 @@ describe('EquippedSlotRow picker — wrapped titles and origin (v4 wardrobe-pick
     expect(titleSpan(el).nextElementSibling!.textContent!.trim()).toBe('Top');
   });
 });
+
+/**
+ * P4.D261 — v4 `7c8572869` `wardrobe-item-images-ui.test.tsx` (`Picker
+ * thumbnails`) at the pin `f5e953a3f`; `equipped-slot-row.tsx:183`.
+ */
+describe('EquippedSlotRow picker — thumbnails (v4 wardrobe-item-images-ui.test.tsx)', () => {
+  it('shows a 28 px thumbnail beside a candidate that has a picture, and none otherwise', () => {
+    const el = openPicker(
+      render({
+        slot: 'top',
+        equippedIds: [],
+        allItems: [
+          item({ id: 'a', title: 'Pictured Blouse', imageFileId: 'file-a' }),
+          item({ id: 'b', title: 'Plain Blouse', imageFileId: null }),
+        ],
+      }),
+    );
+    const thumbs = [...el.querySelectorAll('[data-testid="wardrobe-item-thumbnail"]')];
+    expect(thumbs).toHaveLength(1);
+    expect(thumbs[0].getAttribute('src')).toBe('/api/v1/files/file-a?action=thumbnail');
+    expect(thumbs[0].getAttribute('width')).toBe('28');
+    // The button's FIRST child (v4 :183).
+    expect(thumbs[0].closest('button')!.firstElementChild!.contains(thumbs[0])).toBe(true);
+  });
+});

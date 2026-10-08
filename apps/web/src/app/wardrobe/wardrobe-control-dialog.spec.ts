@@ -11,6 +11,7 @@ import {
   WardrobeTabView,
 } from './wardrobe-control-dialog';
 import { WardrobeDialogService } from './wardrobe-dialog.service';
+import { ToastService } from '../ui/toast.service';
 
 type AnyRequest = CoreRequest & Record<string, unknown>;
 
@@ -1241,5 +1242,96 @@ describe('WardrobeControlDialogInner — staged outfits travel with set_all (v4 
     await inner(component).wearFitting();
     await settle(fixture);
     expect('wornBundleIds' in equips(seen)[0]).toBe(false);
+  });
+});
+
+/**
+ * P4.D261 — v4 `7c8572869` `wardrobe-control-dialog.tsx:275, 606-636, 1525-
+ * 1545` at the pin `f5e953a3f`: the row's Generate image → the designated
+ * profile (no override), the item's HOME container in the character view
+ * (`homeContainerForItem`) or the browsed container otherwise; v4's two
+ * success toasts and its error fallback; the list reloads; a SET of
+ * generating ids (an item can appear as itself and as a component).
+ */
+describe('WardrobeControlDialogInner — Generate image (v4 7c8572869)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  const stubGenerate = (status: number, body: unknown): ReturnType<typeof vi.fn> => {
+    const fn = vi.fn(async () => ({ ok: status < 300, status, json: async () => body }));
+    vi.stubGlobal('fetch', fn);
+    return fn;
+  };
+  const toasts = (): Array<{ type: string; message: string }> =>
+    TestBed.inject(ToastService)
+      .toasts()
+      .map((t) => ({ type: t.type, message: t.message }));
+  type Gen = { handleGenerateImage(i: WardrobeItemDto): Promise<void>; generatingImageIds(): ReadonlySet<string> };
+
+  it('the rows opt in, and a character garment is drawn in its own vault', async () => {
+    const fetchFn = stubGenerate(201, { rerouted: false, current: 'f1' });
+    const { fixture, component, seen } = await renderInner(null);
+    const row = fixture.debugElement.queryAll(By.css('qt-wardrobe-item-row'))[0];
+    expect(row.componentInstance.canGenerateImage()).toBe(true);
+    const before = seen.filter((r) => (r.type as string) === 'characterWardrobeList').length;
+    await (component as unknown as Gen).handleGenerateImage(HAT);
+    await settle(fixture);
+    expect(fetchFn.mock.calls[0][0]).toBe('/api/v1/wardrobe/hat/images?scope=character&id=c1&action=generate');
+    expect((fetchFn.mock.calls[0][1] as RequestInit).body).toBe('{}');
+    expect(toasts()).toContainEqual({ type: 'success', message: 'A portrait of "Hat" is hung' });
+    expect(seen.filter((r) => (r.type as string) === 'characterWardrobeList').length).toBeGreaterThan(before);
+    expect((component as unknown as Gen).generatingImageIds().size).toBe(0);
+  });
+
+  it('a shared garment in the character view goes to General; a browsed container is its own home', async () => {
+    const fetchFn = stubGenerate(201, { rerouted: true, current: 'f1' });
+    const { fixture, component } = await renderInner(null);
+    const cape = dto({ id: 'cape', title: 'Cape' });
+    (cape as { characterId: string | null }).characterId = null;
+    await (component as unknown as Gen).handleGenerateImage(cape);
+    expect(fetchFn.mock.calls[0][0]).toBe('/api/v1/wardrobe/cape/images?scope=general&action=generate');
+    expect(toasts()).toContainEqual({
+      type: 'success',
+      message: 'A portrait of "Cape" is hung — drawn at the uncensored desk',
+    });
+    inner(component).selectedContainer.set({ scope: 'project', id: 'p1' });
+    await settle(fixture);
+    await (component as unknown as Gen).handleGenerateImage(cape);
+    expect(fetchFn.mock.calls[1][0]).toBe('/api/v1/wardrobe/cape/images?scope=project&id=p1&action=generate');
+  });
+
+  it('a failure toasts the route’s sentence, or v4’s fallback', async () => {
+    stubGenerate(400, { error: 'No image profiles are configured' });
+    const { component } = await renderInner(null);
+    await (component as unknown as Gen).handleGenerateImage(HAT);
+    expect(toasts()).toContainEqual({ type: 'error', message: 'No image profiles are configured' });
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      throw 'offline';
+    }));
+    await (component as unknown as Gen).handleGenerateImage(HAT);
+    expect(toasts()).toContainEqual({ type: 'error', message: 'Failed to generate a picture' });
+  });
+
+  it('marks the item generating while the draw is in flight, and refuses a second press', async () => {
+    let release!: () => void;
+    const fetchFn = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve({ ok: true, status: 201, json: async () => ({ rerouted: false }) });
+        }),
+    );
+    vi.stubGlobal('fetch', fetchFn);
+    const { fixture, component } = await renderInner(null);
+    const g = component as unknown as Gen;
+    const first = g.handleGenerateImage(HAT);
+    expect(g.generatingImageIds().has('hat')).toBe(true);
+    await g.handleGenerateImage(HAT);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    release();
+    await first;
+    await settle(fixture);
+    expect(g.generatingImageIds().has('hat')).toBe(false);
   });
 });

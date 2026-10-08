@@ -22,7 +22,11 @@ async function render(
   item: WardrobeItemDto,
   canManage?: (i: WardrobeItemDto) => boolean,
   allItems: WardrobeItemDto[] = [],
-  opts: { canArchive?: boolean } = {},
+  opts: {
+    canArchive?: boolean;
+    canGenerateImage?: boolean;
+    generatingImageIds?: ReadonlySet<string>;
+  } = {},
 ): Promise<ComponentFixture<WardrobeItemRow>> {
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({ imports: [WardrobeItemRow] });
@@ -32,6 +36,10 @@ async function render(
   fixture.componentRef.setInput('inChat', false);
   if (canManage) fixture.componentRef.setInput('canManage', canManage);
   if (opts.canArchive) fixture.componentRef.setInput('canArchive', true);
+  if (opts.canGenerateImage) fixture.componentRef.setInput('canGenerateImage', true);
+  if (opts.generatingImageIds) {
+    fixture.componentRef.setInput('generatingImageIds', opts.generatingImageIds);
+  }
   fixture.detectChanges();
   return fixture;
 }
@@ -312,5 +320,102 @@ describe('WardrobeItemRow — the wear line (v4 wardrobe-wear-ledger-ui.test.tsx
     const f = await render(dto({ id: 'w', characterId: 'c1', appropriateness: 'formal' }));
     expect(line(f).textContent!.trim()).toBe('Never worn');
     expect(line(f).nextElementSibling!.textContent!.trim()).toBe('formal');
+  });
+});
+
+/**
+ * P4.D261 — v4 `7c8572869` `components/wardrobe/__tests__/wardrobe-item-images-
+ * ui.test.tsx` (`WardrobeItemRow — picture` ×5) at the pin `f5e953a3f`; markup
+ * `wardrobe-item-row.tsx:217` (the 40 px thumbnail between the expander and
+ * the title block) and `:361-373` (the entry directly after Edit). v4 renders
+ * the entry when `onGenerateImage` is GIVEN; an Angular output always exists,
+ * so the gate is the boolean `canGenerateImage` input (the `canArchive`
+ * precedent — recorded).
+ */
+describe('WardrobeItemRow — picture (v4 wardrobe-item-images-ui.test.tsx)', () => {
+  const pictured = (partial: Partial<WardrobeItemDto> = {}): WardrobeItemDto =>
+    dto({ id: 'item-1', characterId: 'char-1', title: 'Midnight Lightning Flapper Dress', ...partial });
+  const thumbOf = (f: ComponentFixture<WardrobeItemRow>): HTMLImageElement | null =>
+    (f.nativeElement as HTMLElement).querySelector('[data-testid="wardrobe-item-thumbnail"]');
+
+  it('shows a 40 px thumbnail when the item has a current picture', async () => {
+    const f = await render(pictured({ imageFileId: 'file-9' }));
+    const thumb = thumbOf(f)!;
+    expect(thumb.getAttribute('src')).toBe('/api/v1/files/file-9?action=thumbnail');
+    expect(thumb.getAttribute('width')).toBe('40');
+    expect(thumb.getAttribute('height')).toBe('40');
+    expect(thumb.getAttribute('alt')).toBe('');
+    expect(thumb.getAttribute('loading')).toBe('lazy');
+    // Between the expander placeholder and the title block (v4 :217).
+    expect(thumb.closest('qt-wardrobe-item-thumbnail')!.nextElementSibling!.textContent).toContain(
+      'Midnight Lightning Flapper Dress',
+    );
+  });
+
+  it('shows no thumbnail when the item has no picture (or a pre-round server sent none)', async () => {
+    expect(thumbOf(await render(pictured({ imageFileId: null })))).toBeNull();
+    expect(thumbOf(await render(pictured()))).toBeNull();
+  });
+
+  it('offers "Generate image" on a manageable row, under Edit', async () => {
+    const f = await render(pictured(), undefined, [], { canGenerateImage: true });
+    const emitted: WardrobeItemDto[] = [];
+    f.componentInstance.generateImage.subscribe((i) => emitted.push(i));
+    const labels = kebabLabels(f);
+    expect(labels.indexOf('Generate image')).toBe(labels.indexOf('Edit') + 1);
+    const entry = [...(f.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(
+      (b) => b.textContent!.trim() === 'Generate image',
+    )!;
+    entry.click();
+    expect(emitted).toEqual([f.componentInstance.item()]);
+  });
+
+  it("disables \"Generate image\" while that item's picture is already being drawn", async () => {
+    const f = await render(pictured(), undefined, [], {
+      canGenerateImage: true,
+      generatingImageIds: new Set(['item-1']),
+    });
+    const emitted: WardrobeItemDto[] = [];
+    f.componentInstance.generateImage.subscribe((i) => emitted.push(i));
+    kebabLabels(f);
+    const entry = [...(f.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(
+      (b) => b.textContent!.trim() === 'Generating image…',
+    )!;
+    expect(entry.disabled).toBe(true);
+    entry.click();
+    expect(emitted).toEqual([]);
+  });
+
+  it('withholds "Generate image" from a borrowed row', async () => {
+    const f = await render(
+      pictured({ characterId: null, origin: { scope: 'general', id: null, name: 'Quilltap General' } }),
+      undefined,
+      [],
+      { canGenerateImage: true },
+    );
+    const labels = kebabLabels(f);
+    expect(labels).not.toContain('Generate image');
+    expect(labels).toContain('Move');
+  });
+
+  it('a host that does not opt in offers no entry at all (the boolean gate)', async () => {
+    expect(kebabLabels(await render(pictured()))).not.toContain('Generate image');
+  });
+
+  it('nested component rows inherit the gate and the generating set', async () => {
+    const child = dto({ id: 'child', characterId: 'char-1', title: 'Cravat' });
+    const parent = dto({ id: 'parent', characterId: 'char-1', title: 'Kit', componentItemIds: ['child'] });
+    const f = await render(parent, undefined, [child], {
+      canGenerateImage: true,
+      generatingImageIds: new Set(['child']),
+    });
+    const host = f.nativeElement as HTMLElement;
+    (host.querySelector('button[aria-label="Expand components"]') as HTMLButtonElement).click();
+    f.detectChanges();
+    const nested = host.querySelector('qt-wardrobe-item-row') as HTMLElement;
+    (nested.querySelector('button[aria-label="More actions"]') as HTMLButtonElement).click();
+    f.detectChanges();
+    const labels = [...nested.querySelectorAll('[role="menuitem"]')].map((b) => b.textContent!.trim());
+    expect(labels).toContain('Generating image…');
   });
 });

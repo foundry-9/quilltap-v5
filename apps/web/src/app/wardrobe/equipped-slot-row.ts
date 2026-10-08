@@ -4,6 +4,7 @@ import type { WardrobeItemDto, WardrobeSlotType } from '../core/core-contract';
 import { formatSlotLabels, WARDROBE_SLOT_META } from './slot-meta';
 import { wardrobeOriginLabel } from './wardrobe-container';
 import { selectGarments } from './composed-outfits';
+import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
 
 /**
  * One slot in the dialog's "Wearing now" column (v4
@@ -17,6 +18,7 @@ import { selectGarments } from './composed-outfits';
  */
 @Component({
   selector: 'qt-equipped-slot-row',
+  imports: [WardrobeItemThumbnail],
   changeDetection: ChangeDetectionStrategy.OnPush,
   // The host needs a BOX: it is a direct child of a `space-y-*` stack, and a
   // vertical margin never applies to a non-replaced inline box — see
@@ -102,6 +104,7 @@ import { selectGarments } from './composed-outfits';
                     (click)="pickCandidate(c.id)"
                     class="flex w-full items-start justify-between gap-3 px-3 py-2 text-left hover:qt-bg-muted"
                   >
+                    <qt-wardrobe-item-thumbnail [fileId]="c.imageFileId" [size]="28" />
                     <span class="min-w-0 flex-1 break-words text-sm text-foreground">{{
                       c.title
                     }}</span>

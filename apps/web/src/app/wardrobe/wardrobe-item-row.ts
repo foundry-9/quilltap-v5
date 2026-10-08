@@ -12,6 +12,7 @@ import type { WardrobeItemDto, WardrobeSlotType } from '../core/core-contract';
 import { WARDROBE_SLOT_META } from './slot-meta';
 import { wardrobeOriginLabel } from './wardrobe-container';
 import { formatWearLine, wearOf } from './wear-display';
+import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
 
 /**
  * One line in the dialog's wardrobe list (v4
@@ -44,6 +45,7 @@ import { formatWearLine, wearOf } from './wear-display';
 @Component({
   selector: 'qt-wardrobe-item-row',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [WardrobeItemThumbnail],
   // The host needs a BOX: it is a direct child of a `space-y-*` stack, and a
   // vertical margin never applies to a non-replaced inline box — see
   // `_surfaces.css`'s rule for this class (P4.75, measured).
@@ -66,6 +68,8 @@ import { formatWearLine, wearOf } from './wear-display';
         } @else {
           <span class="inline-block w-3" aria-hidden="true"></span>
         }
+
+        <qt-wardrobe-item-thumbnail [fileId]="item().imageFileId" [size]="40" />
 
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2 flex-wrap">
@@ -190,6 +194,19 @@ import { formatWearLine, wearOf } from './wear-display';
                         Edit
                       </button>
                     </li>
+                    @if (canGenerateImage()) {
+                      <li>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          [disabled]="isGeneratingImage()"
+                          (click)="menuAction(generateImage)"
+                          class="block w-full text-left px-3 py-2 text-sm hover:qt-bg-muted disabled:opacity-50"
+                        >
+                          {{ isGeneratingImage() ? 'Generating image…' : 'Generate image' }}
+                        </button>
+                      </li>
+                    }
                     <li>
                       <button
                         type="button"
@@ -281,6 +298,8 @@ import { formatWearLine, wearOf } from './wear-display';
                 [allItems]="allItems()"
                 [inChat]="false"
                 [canManage]="canManage()"
+                [canGenerateImage]="canGenerateImage()"
+                [generatingImageIds]="generatingImageIds()"
                 [depth]="depth() + 1"
                 (toggleDefault)="toggleDefault.emit($event)"
                 (edit)="edit.emit($event)"
@@ -288,6 +307,7 @@ import { formatWearLine, wearOf } from './wear-display';
                 (move)="move.emit($event)"
                 (copyItem)="copyItem.emit($event)"
                 (delete)="delete.emit($event)"
+                (generateImage)="generateImage.emit($event)"
               />
             }
           }
@@ -327,6 +347,20 @@ export class WardrobeItemRow {
    * inside `canManage`, alongside Edit and Duplicate.
    */
   readonly canArchive = input(false, { transform: booleanAttribute });
+  /**
+   * Whether this host offers "Generate image" at all — v4's optional
+   * `onGenerateImage` prop, expressed as a gate (the {@link canArchive}
+   * precedent: an Angular output always exists). Default false; the entry
+   * additionally rides inside `canManage`, directly after Edit (v4
+   * `7c8572869` `:361-373`).
+   */
+  readonly canGenerateImage = input(false, { transform: booleanAttribute });
+  /**
+   * Item ids whose picture is being drawn right now — a SET, since an item
+   * can appear twice (as itself and as a component of an outfit row). Passed
+   * down to nested component rows (v4 `:217-219`).
+   */
+  readonly generatingImageIds = input<ReadonlySet<string>>(new Set());
   /** Nesting depth for composite components — indentation. */
   readonly depth = input(0);
 
@@ -338,6 +372,8 @@ export class WardrobeItemRow {
   readonly delete = output<WardrobeItemDto>();
   /** Archive an active garment, or restore an archived one (v4 `d25dacc1`). */
   readonly toggleArchived = output<WardrobeItemDto>();
+  /** Draw a picture of this item with the designated wardrobe profile. */
+  readonly generateImage = output<WardrobeItemDto>();
   readonly equip = output<WardrobeItemDto>();
   readonly addToSlot = output<{ item: WardrobeItemDto; slot: WardrobeSlotType }>();
 
@@ -346,6 +382,10 @@ export class WardrobeItemRow {
   protected readonly expanded = signal(false);
   protected readonly slotPickerOpen = signal(false);
   protected readonly kebabOpen = signal(false);
+
+  protected readonly isGeneratingImage = computed(() =>
+    this.generatingImageIds().has(this.item().id),
+  );
 
   protected readonly isComposite = computed(() => (this.item().componentItemIds ?? []).length > 0);
   /**
