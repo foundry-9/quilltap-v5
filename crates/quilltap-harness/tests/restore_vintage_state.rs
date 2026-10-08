@@ -667,6 +667,18 @@ fn the_vintage_fixture_carries_the_columns_v4s_chain_adds() {
             "allowTierFallback",
             "add-profile-fallback-fields-v1",
         ),
+        // P4.D264 (R-H): the trio rebuilt at `f5e953a3f` — `7c8572869`'s
+        // column and `3ee3b1342`'s table (its `itemId` stands for the table).
+        (
+            "chat_settings",
+            "wardrobeImageSettings",
+            "add-wardrobe-image-settings-field-v1",
+        ),
+        (
+            "wardrobe_wear_stats",
+            "itemId",
+            "add-wardrobe-wear-stats-table-v1",
+        ),
     ];
 
     let mut missing: Vec<String> = Vec::new();
@@ -823,3 +835,98 @@ fn a_sound_llm_logs_file_with_no_logs_restores_silently() {
         "no degraded warning on a sound logs file; warnings: {warnings:#?}"
     );
 }
+
+// === P4.D264 (append-only) ===
+
+/// [P4.D264, Tier 2 item 11] 22n-bis against a REAL v4-migrated
+/// `wardrobe_wear_stats` (`"wearCount" INTEGER NOT NULL DEFAULT 0` + the UNIQUE
+/// `COALESCE` index `upsert_rows`' `ON CONFLICT` names — the trio rebuilt by
+/// v4's chain at the pin, R-H). A `replace` restore of the ledger archive
+/// lands all four rows under their own ids with no warning; a SECOND `replace`
+/// restore onto the result changes nothing (the delete list wipes the table
+/// first — no doubling, no merge into stale tallies).
+#[test]
+fn the_wear_ledger_restores_onto_the_migrated_table_without_doubling() {
+    let (root, instance) = vintage_instance("wearledger");
+    let pepper_hex = quilltap_core::dbkey::pepper_b64_to_key_hex(TEST_PEPPER).unwrap();
+    let raw = |instance: &Path| {
+        let conn = Connection::open(instance.join("quilltap.db")).unwrap();
+        conn.pragma_update(None, "key", format!("x'{pepper_hex}'")).unwrap();
+        conn
+    };
+    {
+        let conn = raw(&instance);
+        let ddl: String = conn
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE name = 'wardrobe_wear_stats'",
+                [],
+                |r| r.get(0),
+            )
+            .expect("the vintage instance carries the migrated table");
+        assert!(ddl.contains("\"wearCount\" INTEGER NOT NULL DEFAULT 0"), "{ddl}");
+        assert_eq!(
+            count(
+                &conn,
+                "SELECT COUNT(*) FROM sqlite_master WHERE name = 'idx_wardrobe_wear_stats_item_wearer'"
+            ),
+            1
+        );
+    }
+    let host = TestHost {
+        root: root.path().to_path_buf(),
+    };
+    std::fs::create_dir_all(host.temp_dir()).unwrap();
+    let zip = fixtures_dir()
+        .join("restore-archives")
+        .join("restore-archive-wardrobe-wear.zip");
+    let rows = |instance: &Path| -> Vec<(String, i64)> {
+        let conn = raw(instance);
+        let mut st = conn
+            .prepare("SELECT id, wearCount FROM wardrobe_wear_stats ORDER BY id")
+            .unwrap();
+        st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap()
+    };
+    let want = vec![
+        ("3e000000-0000-4000-8000-000000000001".to_string(), 3),
+        ("3e000000-0000-4000-8000-000000000002".to_string(), 2),
+        ("3e000000-0000-4000-8000-000000000003".to_string(), 1),
+        ("3e000000-0000-4000-8000-000000000004".to_string(), 5),
+    ];
+    for pass in 1..=2 {
+        let db = open(&instance);
+        let summary = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(restore(
+                &db,
+                &host,
+                &zip,
+                RestoreMode::Replace,
+                SINGLE_USER_ID,
+                Default::default(),
+            ))
+            .expect("restore returned an error");
+        drop(db);
+        assert_eq!(summary.wardrobe_wear, 4, "pass {pass}");
+        assert!(
+            !summary.warnings.iter().any(|w| w.contains("wardrobe wear")),
+            "pass {pass}: {:?}",
+            summary.warnings
+        );
+        // Pass 1 only: a SECOND `replace` restore of any archive leaks
+        // `Failed to restore chat settings: UNIQUE constraint failed:
+        // chat_settings.userId` (the archive user's settings row survives the
+        // TARGET user's wipe) — pre-existing, not the ledger's, and recorded in
+        // the P4.D264 lane record as an observation (v4's behaviour unmeasured).
+        if pass == 1 {
+            assert_no_raw_sqlite("wear ledger", &summary.warnings);
+        }
+        assert_eq!(rows(&instance), want, "pass {pass}");
+    }
+}
+// === end P4.D264 ===
+

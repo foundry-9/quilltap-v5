@@ -173495,3 +173495,29 @@ RED under the OLD vendored bytes (the family failed), GREEN under the new (1/1),
   case stays green); restored byte-identically. The tier-1 family's "before" is the unported tip
   (no `wardrobe_wear` module — it cannot compile there).
 
+### Unit E — Tier 2 item 11: the rebuilt `migration-vintage/` trio (R-H)
+
+- **Sole-reader check (R-H), before the rebuild:** `grep -rn migration-vintage crates/ harness/`
+  — the PATH is read only by `restore_vintage_state.rs` (`fixtures_dir().join("migration-
+  vintage")`) and written only by `build-migration-vintage-fixture.ts`; every other hit is prose
+  (doc comments naming the vintage SHAPE). No STOP.
+- Rebuilt from the pin (`QT_FIXTURE_MV_DIR=… node --import tsx build-migration-vintage-
+  fixture.ts`, 125 migrations run / 88 skipped) into a scratch dir, `sqlite_master` + the
+  `migrations_state` ids diffed against the committed trio, then copied in. The diff: NEW
+  `wardrobe_wear_stats` (`"wearCount" INTEGER NOT NULL DEFAULT 0`) + `idx_wardrobe_wear_stats_
+  item_wearer` (UNIQUE `COALESCE`) + `idx_wardrobe_wear_stats_wearer` + its autoindex;
+  `chat_settings` gains `wardrobeImageSettings`; and two migrations the committed trio PREDATED
+  — `add-chat-informs-permanent-v1` (`chat_informs.permanent`) and `impersonation-voice-mode-
+  v1` — plus `add-wardrobe-image-settings-field-v1`, `add-wardrobe-wear-stats-table-v1`,
+  `seed-wardrobe-wear-stats-v1` in `migrations_state`. All nine `restore_vintage_state` tests
+  green on it (eight existing + one new).
+- `the_vintage_fixture_carries_the_columns_v4s_chain_adds` gains `chat_settings.wardrobeImage
+  Settings` and `wardrobe_wear_stats.itemId`. NEW `the_wear_ledger_restores_onto_the_migrated_
+  table_without_doubling`: the migrated DDL and the UNIQUE index asserted; two `replace`
+  restores of `restore-archive-wardrobe-wear.zip` → 4 rows under the archive's ids both times,
+  `summary.wardrobe_wear == 4`, no ledger warning.
+- **Observation (pre-existing, outside the ledger, v4 unmeasured):** a SECOND `replace` restore of
+  the same archive leaks `Failed to restore chat settings: UNIQUE constraint failed:
+  chat_settings.userId` — the restored settings row keeps the ARCHIVE user's id, which the
+  TARGET user's wipe does not reach. The raw-SQLite assertion therefore runs on pass 1 only.
+

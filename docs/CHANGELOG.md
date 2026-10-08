@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — test(harness): rebuild the migration-vintage trio at v4 `f5e953a3f`; the wear ledger restores onto the migrated table (P4.D264 unit E)
+
+_No crate versions bumped._
+
+The committed `migration-vintage/` trio is rebuilt through v4's real migration chain at `f5e953a3f` (`build-migration-vintage-fixture.ts`, unchanged; `restore_vintage_state` is its only reader). It now carries `wardrobe_wear_stats` in the migration's shape with both hand indexes, `chat_settings.wardrobeImageSettings`, and the two earlier migrations it predated (`chat_informs.permanent`, `impersonation-voice-mode-v1`). A new test restores `restore-archive-wardrobe-wear.zip` into it twice in `replace` mode: all four ledger rows land under their own ids with no warning, and the second restore changes nothing.
+
 #### 2026-10-08 — feat(import): the wardrobe carriers in the `.qtap` import (P4.D264 unit D)
 
 _Versions: core 0.0.1257._
