@@ -71,6 +71,10 @@ pub enum RefusalPurpose {
     Lantern,
     Avatar,
     Dialog,
+    /// v4 `'wardrobe'` (`refusal-ledger.ts:44`, `7c8572869`) — unreachable
+    /// through v4's real code (the wardrobe generation passes no chat), landed
+    /// for totality (P4.D263 R-B).
+    Wardrobe,
 }
 
 impl RefusalPurpose {
@@ -82,6 +86,7 @@ impl RefusalPurpose {
             RefusalPurpose::Lantern => "lantern",
             RefusalPurpose::Avatar => "avatar",
             RefusalPurpose::Dialog => "dialog",
+            RefusalPurpose::Wardrobe => "wardrobe",
         }
     }
 }
@@ -497,6 +502,23 @@ mod tests {
         assert!(
             SWITCH_CHECKS.lock().unwrap().get("c1").is_none(),
             "the chain is forgotten once nobody waits on it"
+        );
+    }
+}
+
+#[cfg(test)]
+mod wardrobe_purpose_tests {
+    use super::*;
+
+    /// P4.D263 R-B: v4 `refusal-ledger.ts:44` gains `'wardrobe'`; and the
+    /// image failover's `Wardrobe` purpose maps onto it and onto the
+    /// announcement purpose of the same spelling.
+    #[test]
+    fn the_wardrobe_purpose_spells_wardrobe() {
+        assert_eq!(RefusalPurpose::Wardrobe.as_str(), "wardrobe");
+        assert_eq!(
+            crate::services::dangerous_content::image_failover::ImagePurpose::Wardrobe.as_str(),
+            "wardrobe"
         );
     }
 }

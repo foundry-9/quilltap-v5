@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(wardrobe): the item-picture generation chokepoint, the wardrobe profile resolver and the `wardrobe` purpose arms (P4.D263 item 6, R-B)
+
+_Versions: core 0.0.1256._
+
+NEW `services/wardrobe_item_image_generation.rs` ports v4 `generateWardrobeItemImage` in v4's order. The item's mount is resolved first, so an archived owner refuses before any spend. The profile is resolved next, and no profile or a gone key row gives one 400 sentence. Then come the owner, the component leaves (a local `hydrateComponentGraph` port; the private twin is P4.D262's, recorded as a handoff), the project aesthetic and the prompt. One provider call follows (`n: 1`, `style: natural`, the prompt's orientation), through the Concierge image failover with no chat and purpose `wardrobe`. The picture is converted to WebP and stored with `add_wardrobe_item_image`. Each attempt writes one `WARDROBE_ITEM_IMAGE` LLM-log row. `WardrobeItemImageSeams` carries the provider and the pixel codec. `image_profile_resolution::resolve_wardrobe_image_profile` ports v4's override → designated → default resolver and returns the profile row. `llm_logging::log_type::WARDROBE_ITEM_IMAGE` is new. `ConciergeRefusalPurpose`, `ImagePurpose` and `RefusalPurpose` gain `Wardrobe` with v4's commission strings, unit-pinned; no caller can reach them, because the generation passes no chat.
+
+NEW tier-3 family `wardrobe_item_image_generation_tier3_equivalence` (16 arms) runs v4's real generation with the provider mocked below it and the real `logLLMCall`. It compares results, provider calls with resolved params, log lines, pointers, tables, `llm_logs` rows, and the zero `concierge_refusals` / `chat_messages` negative pin. Three source mutations are each caught. The two wardrobe-image families now share `tests/wardrobe_images_support/`.
+
 #### 2026-10-08 — feat(wardrobe): the item-picture prompt over a shared figure identity block (P4.D263 item 5)
 
 _Versions: core 0.0.1255._

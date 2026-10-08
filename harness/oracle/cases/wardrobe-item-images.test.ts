@@ -110,7 +110,8 @@ const LOG_PREFIXES = [
 function sanitize(meta: unknown): unknown {
   if (meta === undefined) return null;
   return JSON.parse(
-    JSON.stringify(meta, (_k, v) => (v instanceof Error ? v.message : v === undefined ? null : v)),
+    // An `undefined` field is DROPPED, as winston drops it (§R.5).
+    JSON.stringify(meta, (_k, v) => (v instanceof Error ? v.message : v)),
   );
 }
 

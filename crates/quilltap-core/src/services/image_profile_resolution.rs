@@ -111,3 +111,62 @@ pub fn resolve_image_profile_for_chat(
 
     None
 }
+
+/// v4 `resolveWardrobeImageProfile(userId, repos, override)`
+/// (`profile-resolution.ts:119-141`, `7c8572869`) — the image profile that
+/// draws a wardrobe item's picture, as the whole PROFILE row (the generation
+/// reads its `apiKeyId`, `id`, `name`, `provider`, `modelName`, `parameters`).
+///
+/// Priority: (1) the per-generation override (the editor's "▾" pick); (2)
+/// `chatSettings.wardrobeImageSettings.imageProfileId` (Settings → Images);
+/// (3) the user's default image profile. Each of the first two must exist,
+/// belong to the user and carry an API key; the default needs only the key
+/// (`findDefault` already scopes by user). The Lantern's
+/// `storyBackgroundsSettings.defaultImageProfileId` is deliberately NOT
+/// consulted: the backdrop desk is chosen for landscapes, not for a garment a
+/// provider might refuse. Both repository reads are v4's fallback reads (a
+/// failure logs and reads as "none").
+pub fn resolve_wardrobe_image_profile(
+    main: &Connection,
+    user_id: &str,
+    chat_settings: Option<&Value>,
+    override_id: Option<&str>,
+) -> Option<Value> {
+    let truthy = |s: &&str| !s.is_empty();
+    let has_key = |p: &Value| {
+        p.get("apiKeyId")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .is_some()
+    };
+    let usable = |p: &Value| p.get("userId").and_then(Value::as_str) == Some(user_id) && has_key(p);
+
+    if let Some(id) = override_id.filter(truthy) {
+        if let Some(p) = crate::db::image_profiles::find_by_id_or_none(main, id) {
+            if usable(&p) {
+                return Some(p);
+            }
+        }
+    }
+
+    if let Some(id) = chat_settings
+        .and_then(|cs| cs.get("wardrobeImageSettings"))
+        .and_then(|w| w.get("imageProfileId"))
+        .and_then(Value::as_str)
+        .filter(truthy)
+    {
+        if let Some(p) = crate::db::image_profiles::find_by_id_or_none(main, id) {
+            if usable(&p) {
+                return Some(p);
+            }
+        }
+    }
+
+    crate::db::image_profiles::find_all_or_empty(main)
+        .into_iter()
+        .find(|p| {
+            p.get("isDefault").and_then(Value::as_bool) == Some(true)
+                && p.get("userId").and_then(Value::as_str) == Some(user_id)
+        })
+        .filter(has_key)
+}

@@ -380,6 +380,12 @@ pub mod log_type {
     pub const APPEARANCE_RESOLUTION: &str = "APPEARANCE_RESOLUTION";
     pub const SCENE_STATE_TRACKING: &str = "SCENE_STATE_TRACKING";
     pub const ANSWER_CONFIRMATION: &str = "ANSWER_CONFIRMATION";
+    /// A wardrobe item picture (v4 `LLMLogTypeEnum` `'WARDROBE_ITEM_IMAGE'`,
+    /// `7c8572869` — after `WARDROBE_IMAGE_ANALYSIS`, before
+    /// `ANSWER_CONFIRMATION`). Written only by the item-image generation's
+    /// `logLLMCall` (`services::wardrobe_item_image_generation`); not a cheap-LLM
+    /// task type, so [`map_task_type_to_log_type`] never yields it.
+    pub const WARDROBE_ITEM_IMAGE: &str = "WARDROBE_ITEM_IMAGE";
     /// A custom tool's mid-run LLM consult (v4 `616930db`/`a2d9a3c8`).
     pub const CUSTOM_TOOL_CONSULT: &str = "CUSTOM_TOOL_CONSULT";
     pub const DANGER_CLASSIFICATION: &str = "DANGER_CLASSIFICATION";

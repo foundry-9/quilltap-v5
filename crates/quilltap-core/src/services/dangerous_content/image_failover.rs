@@ -100,6 +100,10 @@ pub enum ImagePurpose {
     Lantern,
     Avatar,
     Dialog,
+    /// v4 `'wardrobe'` (`image-failover.ts:68`, `7c8572869`) — the wardrobe
+    /// item picture. Its generation passes no chat, so its announcement and
+    /// ledger spellings are unreachable through v4's real code (P4.D263 R-B).
+    Wardrobe,
 }
 
 impl ImagePurpose {
@@ -113,6 +117,7 @@ impl ImagePurpose {
             ImagePurpose::Lantern => ConciergeRefusalPurpose::Lantern,
             ImagePurpose::Avatar => ConciergeRefusalPurpose::Avatar,
             ImagePurpose::Dialog => ConciergeRefusalPurpose::Dialog,
+            ImagePurpose::Wardrobe => ConciergeRefusalPurpose::Wardrobe,
         }
     }
 
@@ -122,6 +127,7 @@ impl ImagePurpose {
             ImagePurpose::Lantern => RefusalPurpose::Lantern,
             ImagePurpose::Avatar => RefusalPurpose::Avatar,
             ImagePurpose::Dialog => RefusalPurpose::Dialog,
+            ImagePurpose::Wardrobe => RefusalPurpose::Wardrobe,
         }
     }
 }

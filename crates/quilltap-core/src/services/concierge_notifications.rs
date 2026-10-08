@@ -497,6 +497,10 @@ pub enum ConciergeRefusalPurpose {
     Lantern,
     Avatar,
     Dialog,
+    /// v4 `'wardrobe'` (`writer.ts:385`, `7c8572869`) — a wardrobe item
+    /// picture. P4.D263 R-B: landed for enum totality; NO caller reaches it
+    /// today (the generation passes `chatId: null`, so no bubble is written).
+    Wardrobe,
     Text,
 }
 
@@ -507,6 +511,7 @@ impl ConciergeRefusalPurpose {
             Self::Lantern => "lantern",
             Self::Avatar => "avatar",
             Self::Dialog => "dialog",
+            Self::Wardrobe => "wardrobe",
             Self::Text => "text",
         }
     }
@@ -517,6 +522,7 @@ impl ConciergeRefusalPurpose {
             "lantern" => Some(Self::Lantern),
             "avatar" => Some(Self::Avatar),
             "dialog" => Some(Self::Dialog),
+            "wardrobe" => Some(Self::Wardrobe),
             "text" => Some(Self::Text),
             _ => None,
         }
@@ -528,6 +534,10 @@ impl ConciergeRefusalPurpose {
             Self::Tool | Self::Dialog => ("the commission for a picture", "an image request"),
             Self::Lantern => ("the commission for a new backdrop", "a story background"),
             Self::Avatar => ("the commission for a new portrait", "a character portrait"),
+            Self::Wardrobe => (
+                "the commission for a picture of a garment",
+                "a wardrobe picture",
+            ),
             Self::Text => ("the request for a reply", "this turn"),
         }
     }
@@ -1201,5 +1211,28 @@ mod tests {
             .as_str()
             .unwrap()
             .starts_with("Twice now the house's regular staff"));
+    }
+}
+
+#[cfg(test)]
+mod wardrobe_purpose_tests {
+    use super::*;
+
+    /// P4.D263 R-B: v4 `writer.ts:385, 415-416` (`7c8572869`) — the
+    /// `'wardrobe'` arm round-trips and carries v4's two commission strings.
+    /// Unreachable through v4's real code (the generation passes no chat);
+    /// pinned for enum totality.
+    #[test]
+    fn the_wardrobe_purpose_round_trips_with_v4s_commission() {
+        let p = ConciergeRefusalPurpose::Wardrobe;
+        assert_eq!(p.as_wire(), "wardrobe");
+        assert_eq!(ConciergeRefusalPurpose::from_wire("wardrobe"), Some(p));
+        assert_eq!(
+            p.commission(),
+            (
+                "the commission for a picture of a garment",
+                "a wardrobe picture"
+            )
+        );
     }
 }

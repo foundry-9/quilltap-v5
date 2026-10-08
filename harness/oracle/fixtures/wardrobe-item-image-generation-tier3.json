@@ -1,0 +1,400 @@
+{
+  "_comment": "P4.D263 tier-3 spec for v4 lib/wardrobe/item-image-generation.ts generateWardrobeItemImage (and, from item 9, handleWardrobeItemImageGeneration) at f5e953a3f. The image provider is mocked BELOW v4's real code (createImageProvider); logLLMCall runs REAL into a scratch llm-logs DB. Per scenario both sides apply the same `sql` patches to a fresh copy, then run the op.",
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "userId": "0f1e2d3c-4b5a-4968-8776-655443322110",
+  "user": {
+    "username": "wardrobe-gen-user",
+    "name": "Wardrobe Gen"
+  },
+  "characterId": "1a2b3c4d-1001-4000-8000-000000000001",
+  "archivedCharacterId": "1a2b3c4d-1002-4000-8000-000000000002",
+  "projectId": "2b3c4d5e-1001-4000-8000-000000000001",
+  "generalMountPointId": "4d5e6f70-1001-4000-8000-000000000001",
+  "characterTemplate": {
+    "name": "Transfer Owner Character",
+    "identity": "The keeper of a modest closet.",
+    "description": "",
+    "manifesto": "",
+    "personality": "",
+    "exampleDialogues": "",
+    "title": "",
+    "firstMessage": "",
+    "talkativeness": 0.5,
+    "pronouns": {
+      "subject": "they",
+      "object": "them",
+      "possessive": "theirs"
+    },
+    "aliases": [],
+    "physicalDescription": null,
+    "systemPrompts": [],
+    "scenarios": [],
+    "controlledBy": "llm",
+    "isFavorite": false,
+    "npc": false,
+    "defaultImageId": null,
+    "defaultConnectionProfileId": null,
+    "defaultPartnerId": null,
+    "defaultRoleplayTemplateId": null,
+    "defaultImageProfileId": null,
+    "sillyTavernData": null,
+    "defaultAgentModeEnabled": null,
+    "defaultHelpToolsEnabled": null,
+    "defaultTimestampConfig": null,
+    "defaultScenarioId": null,
+    "defaultSystemPromptId": null,
+    "characterDocumentMountPointId": null,
+    "canDressThemselves": null,
+    "canCreateOutfits": null,
+    "systemTransparency": null,
+    "coreWhisperEnabled": null,
+    "canBeCarina": null,
+    "partnerLinks": [],
+    "tags": []
+  },
+  "character": {
+    "name": "Abigail Pennyworth",
+    "pronouns": {
+      "subject": "she",
+      "object": "her",
+      "possessive": "hers"
+    },
+    "physicalDescription": {
+      "name": "Abigail",
+      "shortPrompt": "slim, auburn hair",
+      "mediumPrompt": "a slim woman with auburn hair",
+      "longPrompt": "A slim woman in her thirties with auburn hair and freckles.",
+      "completePrompt": "A tall slim woman in her thirties, auburn hair to the shoulders, freckled, grey eyes.",
+      "headAndShouldersPrompt": "auburn hair, freckles, grey eyes",
+      "fullDescription": "Abigail is tall.",
+      "id": "c3c3c3c3-0001-4000-8000-000000000001",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z"
+    }
+  },
+  "archivedCharacter": {
+    "name": "Bartholomew Quince"
+  },
+  "apiKeys": [
+    {
+      "id": "a1a1a1a1-0001-4000-8000-000000000001",
+      "provider": "OPENAI",
+      "key_value": "sk-designated"
+    },
+    {
+      "id": "a1a1a1a1-0002-4000-8000-000000000002",
+      "provider": "GOOGLE",
+      "key_value": "sk-default"
+    },
+    {
+      "id": "a1a1a1a1-0003-4000-8000-000000000003",
+      "provider": "OPENAI",
+      "key_value": "sk-override"
+    },
+    {
+      "id": "a1a1a1a1-0005-4000-8000-000000000005",
+      "provider": "GROK",
+      "key_value": "sk-uncensored"
+    }
+  ],
+  "imageProfiles": [
+    {
+      "id": "b2b2b2b2-0001-4000-8000-000000000001",
+      "name": "Designated",
+      "provider": "OPENAI",
+      "modelName": "gpt-image-1",
+      "apiKeyId": "a1a1a1a1-0001-4000-8000-000000000001",
+      "parameters": {
+        "quality": "high"
+      },
+      "isDefault": false,
+      "isDangerousCompatible": false
+    },
+    {
+      "id": "b2b2b2b2-0002-4000-8000-000000000002",
+      "name": "Default",
+      "provider": "GOOGLE",
+      "modelName": "imagen-4.0-generate-001",
+      "apiKeyId": "a1a1a1a1-0002-4000-8000-000000000002",
+      "parameters": {},
+      "isDefault": true,
+      "isDangerousCompatible": false
+    },
+    {
+      "id": "b2b2b2b2-0003-4000-8000-000000000003",
+      "name": "Override",
+      "provider": "OPENAI",
+      "modelName": "dall-e-3",
+      "apiKeyId": "a1a1a1a1-0003-4000-8000-000000000003",
+      "parameters": {},
+      "isDefault": false,
+      "isDangerousCompatible": false
+    },
+    {
+      "id": "b2b2b2b2-0004-4000-8000-000000000004",
+      "name": "Keyless",
+      "provider": "OPENAI",
+      "modelName": "gpt-image-1",
+      "apiKeyId": "a1a1a1a1-0004-4000-8000-000000000004",
+      "parameters": {},
+      "isDefault": false,
+      "isDangerousCompatible": false
+    },
+    {
+      "id": "b2b2b2b2-0005-4000-8000-000000000005",
+      "name": "Uncensored",
+      "provider": "GROK",
+      "modelName": "grok-2-image",
+      "apiKeyId": "a1a1a1a1-0005-4000-8000-000000000005",
+      "parameters": {},
+      "isDefault": false,
+      "isDangerousCompatible": true
+    }
+  ],
+  "items": {
+    "coat": {
+      "id": "5e6f7081-1001-4000-8000-000000000001",
+      "home": "character",
+      "title": "Velvet Coat",
+      "types": [
+        "top"
+      ],
+      "imagePrompt": "a burgundy velvet coat"
+    },
+    "shirt": {
+      "id": "5e6f7081-1002-4000-8000-000000000002",
+      "home": "character",
+      "title": "Linen Shirt",
+      "types": [
+        "top"
+      ]
+    },
+    "boots": {
+      "id": "5e6f7081-1003-4000-8000-000000000003",
+      "home": "character",
+      "title": "Riding Boots",
+      "types": [
+        "footwear"
+      ]
+    },
+    "updo": {
+      "id": "5e6f7081-1004-4000-8000-000000000004",
+      "home": "character",
+      "title": "Chignon",
+      "types": [
+        "hair"
+      ],
+      "imagePrompt": "an elegant chignon"
+    },
+    "outfit": {
+      "id": "5e6f7081-1005-4000-8000-000000000005",
+      "home": "character",
+      "title": "Sunday Best",
+      "types": [
+        "top",
+        "footwear"
+      ],
+      "componentItemIds": [
+        "5e6f7081-1002-4000-8000-000000000002",
+        "5e6f7081-1003-4000-8000-000000000003",
+        "5e6f7081-1006-4000-8000-000000000006"
+      ]
+    },
+    "scarf": {
+      "id": "5e6f7081-1006-4000-8000-000000000006",
+      "home": "general",
+      "title": "Silk Scarf",
+      "types": [
+        "accessories"
+      ]
+    },
+    "apron": {
+      "id": "5e6f7081-1007-4000-8000-000000000007",
+      "home": "general",
+      "title": "Canvas Apron",
+      "types": [
+        "top"
+      ]
+    },
+    "smock": {
+      "id": "5e6f7081-1008-4000-8000-000000000008",
+      "home": "project",
+      "title": "Painter's Smock",
+      "types": [
+        "top"
+      ]
+    },
+    "cloak": {
+      "id": "5e6f7081-1009-4000-8000-000000000009",
+      "home": "archived",
+      "title": "Moth-eaten Cloak",
+      "types": [
+        "top"
+      ]
+    }
+  },
+  "chatSettings": {
+    "llmLoggingSettings": {
+      "enabled": true,
+      "verboseMode": false,
+      "retentionDays": 30
+    },
+    "wardrobeImageSettings": {
+      "imageProfileId": "b2b2b2b2-0001-4000-8000-000000000001",
+      "generateFromTools": false
+    }
+  },
+  "webp": "UklGRjoAAABXRUJQVlA4IC4AAACQAQCdASoEAAQAAUAmJaACdLoAA5gA/vFNr+LaR0KZD/7xn/9xn/9xn/yIAAAA",
+  "scenarios": [
+    {
+      "name": "worn_designated",
+      "op": "generate",
+      "scope": "character",
+      "container": "character",
+      "item": "coat",
+      "provider": "ok"
+    },
+    {
+      "name": "catalogue_general_default",
+      "op": "generate",
+      "scope": "general",
+      "container": null,
+      "item": "apron",
+      "provider": "ok",
+      "sql": [
+        "UPDATE chat_settings SET wardrobeImageSettings = NULL"
+      ]
+    },
+    {
+      "name": "hair_worn",
+      "op": "generate",
+      "scope": "character",
+      "container": "character",
+      "item": "updo",
+      "provider": "ok"
+    },
+    {
+      "name": "outfit_worn_with_general_component",
+      "op": "generate",
+      "scope": "character",
+      "container": "character",
+      "item": "outfit",
+      "provider": "ok"
+    },
+    {
+      "name": "project_catalogue",
+      "op": "generate",
+      "scope": "project",
+      "container": "project",
+      "item": "smock",
+      "provider": "ok"
+    },
+    {
+      "name": "override_profile",
+      "op": "generate",
+      "scope": "character",
+      "container": "character",
+      "item": "coat",
+      "provider": "ok",
+      "imageProfileId": "b2b2b2b2-0003-4000-8000-000000000003"
+    },
+    {
+      "name": "override_unknown_falls_to_designated",
+      "op": "generate",
+      "scope": "character",
+      "container": "character",
+      "item": "coat",
+      "provider": "ok",
+      "imageProfileId": "ffffffff-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "designated_unknown_falls_to_default",
+      "op": "generate",
+      "scope": "general",
+      "container": null,
+      "item": "apron",
+      "provider": "ok",
+      "sql": [
+        "UPDATE chat_settings SET wardrobeImageSettings = '{\"imageProfileId\":\"ffffffff-0000-4000-8000-000000000000\"}'"
+      ]
+    },
+    {
+      "name": "no_profile",
+      "op": "generate",
+      "scope": "character",
+      "container": "character",
+      "item": "coat",
+      "provider": "ok",
+      "sql": [
+        "UPDATE chat_settings SET wardrobeImageSettings = NULL",
+        "UPDATE image_profiles SET isDefault = 0"
+      ]
+    },
+    {
+      "name": "key_row_gone",
+      "op": "generate",
+      "scope": "character",
+      "container": "character",
+      "item": "coat",
+      "provider": "ok",
+      "imageProfileId": "b2b2b2b2-0004-4000-8000-000000000004"
+    },
+    {
+      "name": "refused_off_duty",
+      "op": "generate",
+      "scope": "character",
+      "container": "character",
+      "item": "coat",
+      "provider": "refuseAll",
+      "sql": [
+        "UPDATE chat_settings SET conciergeSettings = '{\"enabled\":false}'"
+      ]
+    },
+    {
+      "name": "refused_rerouted",
+      "op": "generate",
+      "scope": "character",
+      "container": "character",
+      "item": "coat",
+      "provider": "refuseFirst",
+      "sql": [
+        "UPDATE chat_settings SET conciergeSettings = '{\"enabled\":true,\"uncensoredImageProfileId\":\"b2b2b2b2-0005-4000-8000-000000000005\"}'"
+      ]
+    },
+    {
+      "name": "refused_no_understudy",
+      "op": "generate",
+      "scope": "character",
+      "container": "character",
+      "item": "coat",
+      "provider": "refuseAll",
+      "sql": [
+        "UPDATE chat_settings SET conciergeSettings = '{\"enabled\":true,\"uncensoredImageProfileId\":\"b2b2b2b2-0005-4000-8000-000000000005\"}'"
+      ]
+    },
+    {
+      "name": "provider_failure",
+      "op": "generate",
+      "scope": "character",
+      "container": "character",
+      "item": "coat",
+      "provider": "throw"
+    },
+    {
+      "name": "no_picture",
+      "op": "generate",
+      "scope": "character",
+      "container": "character",
+      "item": "coat",
+      "provider": "nodata"
+    },
+    {
+      "name": "archived_owner_before_spend",
+      "op": "generate",
+      "scope": "character",
+      "container": "archived",
+      "item": "cloak",
+      "provider": "ok"
+    }
+  ]
+}

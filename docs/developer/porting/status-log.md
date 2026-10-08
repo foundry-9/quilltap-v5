@@ -173109,3 +173109,30 @@ red-first in its own unit), `avatar_job_tier3_equivalence` and
   provider receives (`Buffer.from(p).toString()`, lone surrogate → U+FFFD), which is byte-equal to
   `utf16_truncate`'s lossy decode. The in-memory UTF-16 length agrees too. Mutations caught: the
   full-length ladder swapped (17), the cap at 599 (8), a type-less item read as hair-only (2).
+- **Unit 3 — item 6 + item 14's purpose arms (the generation; R-B, R-D, R-F).** NEW
+  `services/wardrobe_item_image_generation.rs`; `image_profile_resolution::
+  resolve_wardrobe_image_profile`; `log_type::WARDROBE_ITEM_IMAGE`; the three `Wardrobe` purpose
+  arms (unit-pinned: `as_wire` / `from_wire` / the commission pair / the ledger and failover
+  spellings). NEW tier-3 `wardrobe_item_image_generation_tier3_equivalence` (16 arms: worn
+  designated, General catalogue on the default, hair, an outfit with a General component, a
+  project catalogue, an override, an unknown override falling to the designated, an unknown
+  designated falling to the default, no profile, the key row gone, refused off duty (422), refused
+  then rerouted to the dangerous-compatible understudy, refused by both (422), a provider failure
+  (502), no picture, and an archived owner before any spend). The oracle
+  (`cases/wardrobe-item-image-generation.test.ts`) mocks `createImageProvider` below v4's real code,
+  initializes the real provider registry (the orientation resolves to v4's real `size:
+  1024x1536` etc.), and runs the REAL `logLLMCall` into a per-scenario scratch llm-logs DB (jest.setup
+  mocks the logging service globally; the case un-mocks it). **R-B negative pin:**
+  `concierge_refusals` / `chat_messages` absent on both sides in every refused arm. Red-first: a
+  new module, so red by construction. Mutations caught: `style: vivid` (13), orientation `None`
+  (13), a failed attempt's LLM-log row without its error (4). Harness rendering, measured: a v4
+  `undefined` meta field is DROPPED (the oracle sanitizers had mapped it to `null`), and an array
+  field renders `<key>Json=…`. **`api_key_read_sites_census`:** no new row, because the read goes
+  through `api_key_service::read_api_key_scoped` (the sanctioned helper; the census lists only raw
+  `api_keys::` calls) and the census stays green. **HANDOFF (to the unifier, P4.D262's file):**
+  `tools/wardrobe_shared.rs` `fn hydrate_component_graph` → `pub(crate)`, and its WARN keys →
+  v4's `context = "wardrobe", characterId, depth, wantedCount, error` (it logs snake_case today).
+  This lane's local copy in `wardrobe_item_image_generation.rs` then folds onto it. **HANDOFF
+  (`image_gen/params_builder.rs`, owned by no lane):** `ImageParamsLogContext` has no `itemId`
+  field, so v4's `logContext: { context, itemId, profileId }` loses `itemId` on the builder's own
+  lines.
