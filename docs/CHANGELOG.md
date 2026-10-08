@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(photos): the chat gallery files a folder-only backdrop as a background and lists the avatars a chat wears but never minted (P4.D257, v4 `f9f1ba177`)
+
+_Versions: core 0.0.1253._
+
+Ports v4 `f9f1ba177` into `photos/chat_gallery.rs`.
+
+- **Backdrops:** `is_story_background_file` replaces `is_story_background_path`. A linked file whose `folderPath` is exactly `/story-backgrounds/` is a `story-background` even when no mount path says `generated/`. The test is exact: no lowercasing and no `files.source` check, as in v4.
+- **Pass 2b, `pass_current_avatars`:** runs between message attachments and cast portraits. It lists every avatar the chat's bindings name that pass 1 did not find: the `characterAvatars` bindings first, then every `avatarOverrides` owner for this chat. Entries are built in v4's key order. `createdAt` comes from the binding's `generatedAt` (keyed by character, as v4's `avatarBoundAt` is), then the file's `createdAt`, then `chat.updatedAt`. Bound ids are `isCurrent`. Every entry is `deletable: false`, because another chat owns the record. The pass ends with v4's `Chat gallery pass complete` DEBUG line (`chatId`, `pass=current-avatars`, `found`).
+- **Ordering (R-A):** the cast map and the override-owners map are now insertion-ordered (`serde_json::Map` with `preserve_order`, which matches JS `Map.set`). A HashMap build of the same port went red on 6 of 6 runs against the planted three-way tie.
+- **Resolver degrade:** the gallery's `safe_resolve_avatar` now runs the two resolve steps itself. If the vault-link read fails, it logs v4's `Error querying joined file links` line and falls through to the legacy `files` row, as v4's fallback-mode reads do. Pass 2b was the first arm to hit this: a broken link table had cost every legacy-file avatar. The shared `resolve_character_avatar` still propagates for its other callers; that is recorded for a follow-up order.
+
+`chat_gallery_equivalence` is green at the `f5e953a3f` pin over the rebuilt pair. The harness also gains three pins that need no oracle: the DEBUG line (`found=5`, plus a `found=0` leg on the portrait-only chat), the cast order checked against v4's measured `findByIds` order, and the dropped-link-table fall-through. Each was measured red before its fix.
+
 #### 2026-10-08 — test(fixtures): grow the chat-gallery pair with the plants v4 `f9f1ba177` needs; rebuild it at the `f5e953a3f` pin (P4.D257 unit 1)
 
 _No crate versions bumped._

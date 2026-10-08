@@ -11,6 +11,13 @@
 //! rather than in a declaration slot. `norm()` sorts keys, so the raw sequence
 //! is pinned separately.
 //!
+//! P4.D257 (v4 `f9f1ba177`) grew the pair with the plants the corpus was
+//! blind to (a folder-only superseded backdrop; five avatars bound to the chat
+//! but linked elsewhere — pass 2b) and adds three oracle-free pins beside the
+//! differential: pass 2b's `current-avatars` DEBUG line (with its `found=0`
+//! leg), the cast order R-A rests on (measured against v4's `findByIds`), and
+//! the gallery resolver's step-by-step degrade on a dropped link table.
+//!
 //! Save-image reads a `files` id through a canned [`FileBytesStore`] returning
 //! the bytes the oracle recorded (jest.setup's storage-manager stub); a
 //! `doc_mount_file_links` id resolves its bytes from the fixture's own blob, on
@@ -392,6 +399,11 @@ mod documented {
 
 #[test]
 fn chat_gallery_equivalence() {
+    // This binary also holds a capture test that shares the gallery's
+    // callsites; the global rig must own the subscriber before ANY callsite is
+    // reached here, or tracing's cached `Interest` can lose them (the
+    // `test_support` module doc).
+    quilltap_core::test_support::global_capture::install();
     let Some(oracle_path) = env_or_skip("QT_ORACLE_CHAT_GALLERY") else {
         return;
     };
@@ -841,4 +853,184 @@ fn chat_gallery_equivalence() {
     );
 
     assert!(failed.is_empty(), "chat-gallery differences: {failed:?}");
+}
+
+// ---------------------------------------------------------------------------
+// P4.D257 (v4 `f9f1ba177`) — pass 2b's DEBUG line, and the cast order R-A rests on
+// ---------------------------------------------------------------------------
+
+const ALDA: &str = "a1000000-0000-4000-8000-000000000001";
+const BRAN: &str = "a1000000-0000-4000-8000-000000000002";
+const CORA: &str = "a1000000-0000-4000-8000-000000000003";
+const ELIN: &str = "a1000000-0000-4000-8000-000000000005";
+
+/// Read-only connections over a fresh COPY of the committed pair — opened
+/// BEFORE any capture, so no open-time line lands in it.
+fn readonly_pair(
+    spec: &Spec,
+) -> (
+    rusqlite::Connection,
+    rusqlite::Connection,
+    tempfile::TempDir,
+) {
+    let scratch = tempfile::Builder::new()
+        .prefix("qt-cg-capture-")
+        .tempdir()
+        .expect("tempdir");
+    let main = scratch.path().join("main.db");
+    let mount = scratch.path().join("mount.db");
+    std::fs::copy(fixtures_dir().join("chat-gallery-main.db"), &main).unwrap();
+    std::fs::copy(fixtures_dir().join("chat-gallery-mount.db"), &mount).unwrap();
+    let pepper = &spec.test_pepper_base64;
+    (
+        quilltap_core::test_support::open_readonly(&main, pepper),
+        quilltap_core::test_support::open_readonly(&mount, pepper),
+        scratch,
+    )
+}
+
+/// v4 `chat-gallery.ts:649`: `log.debug('Chat gallery pass complete', {
+/// chatId, pass: 'current-avatars', found })` — logged UNCONDITIONALLY at the
+/// pass's end, so the "silence" leg is `found=0` on a chat with no unlinked
+/// bindings, never the line's absence. The key is v4's camelCase `chatId`
+/// (§R.5). `list_chat_gallery` runs on THIS thread over plain read-only
+/// connections — no `Db` closure, so nothing runs on a writer thread the rig
+/// cannot see. `found=5` is the rebuilt pair's four bound-but-unlinked file
+/// ids PLUS CORA's vault link: BRAN's cache hit, ALDA's override-only
+/// repaint, CORA's two override-only repaints and her override-only link.
+#[test]
+fn chat_gallery_current_avatars_pass_line() {
+    quilltap_core::test_support::global_capture::install();
+    let spec: Spec = serde_json::from_str(&std::fs::read_to_string(spec_path()).unwrap()).unwrap();
+    let pass_lines = |lines: &[String]| -> Vec<String> {
+        lines
+            .iter()
+            .filter(|l| {
+                l.contains("Chat gallery pass complete") && l.contains("pass=current-avatars")
+            })
+            .cloned()
+            .collect()
+    };
+
+    for (chat_id, found, entries_with_pass2b) in [(CHAT, 5usize, 5usize), (PORTRAIT_CHAT, 0, 0)] {
+        let (main, mount, _scratch) = readonly_pair(&spec);
+        let (entries, lines) = quilltap_core::test_support::global_capture::capture(|| {
+            quilltap_core::photos::chat_gallery::list_chat_gallery(&main, &mount, chat_id)
+                .expect("the roll")
+        });
+        let got = pass_lines(&lines);
+        assert_eq!(
+            got.len(),
+            1,
+            "exactly one current-avatars line for {chat_id}: {lines:#?}"
+        );
+        let line = &got[0];
+        assert!(
+            line.starts_with(
+                "DEBUG quilltap_core::photos::chat_gallery Chat gallery pass complete"
+            ),
+            "level, target and message: {line}"
+        );
+        for want in [
+            format!(" chatId={chat_id}"),
+            " pass=current-avatars".to_string(),
+            format!(" found={found}"),
+        ] {
+            assert!(line.contains(&want), "{want:?} in {line}");
+        }
+        assert!(
+            !line.contains("chat_id="),
+            "camelCase, never snake_case: {line}"
+        );
+        // `found` counts exactly the entries pass 2b built: `avatar` entries
+        // with NO `linkSummary` (pass 1 attaches one to every sha-bearing
+        // linked file; v4's pass 2b never does) and never deletable.
+        let borrowed: Vec<&Value> = entries
+            .iter()
+            .filter(|e| e["source"] == "avatar" && e.get("linkSummary").is_none())
+            .collect();
+        assert_eq!(
+            borrowed.len(),
+            entries_with_pass2b,
+            "{chat_id}: {entries:#?}"
+        );
+        assert!(
+            borrowed.iter().all(|e| e["deletable"] == false),
+            "{borrowed:#?}"
+        );
+    }
+}
+
+/// R-A's premise, measured: pass 2b iterates the override owners in CAST
+/// order, and the cast is `find_by_ids`' return order. v4's `findByIds` on
+/// this pair (probed at the `f5e953a3f` pin, 2026-10-08, through v4's REAL
+/// `repos.characters.findByIds` over a copy of the rebuilt pair) answered
+/// `[ALDA, BRAN, CORA]` — table order, ELIN dropped by the broken-vault
+/// overlay — for EVERY input order tried (`[A,B,C,E]`, `[E,C,B,A]`, `[C,A,B]`).
+/// v5's must agree, or the tie the pair plants sorts differently.
+#[test]
+fn cast_order_matches_v4_find_by_ids() {
+    quilltap_core::test_support::global_capture::install();
+    let spec: Spec = serde_json::from_str(&std::fs::read_to_string(spec_path()).unwrap()).unwrap();
+    let (main, mount, _scratch) = readonly_pair(&spec);
+    for input in [
+        vec![ALDA, BRAN, CORA, ELIN],
+        vec![ELIN, CORA, BRAN, ALDA],
+        vec![CORA, ALDA, BRAN],
+    ] {
+        let ids: Vec<String> = input.iter().map(|s| s.to_string()).collect();
+        let got: Vec<String> = quilltap_core::db::characters_read::find_by_ids(&main, &mount, &ids)
+            .expect("find_by_ids")
+            .iter()
+            .map(|c| c["id"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(got, vec![ALDA, BRAN, CORA], "input {input:?}");
+    }
+}
+
+/// The gallery's `safe_resolve_avatar` degrades step by step as v4's
+/// `resolveCharacterAvatar` does (P4.D257 — exposed by pass 2b): with the
+/// mount's link table gone, the vault-link read logs v4's inner `queryJoined`
+/// line and answers nothing, and the resolve falls THROUGH to the legacy
+/// `files` row — so BRAN's bound cache-hit repaint is still on the roll (the
+/// oracle's `gallery_links_table_dropped` body pins the entry; this pins the
+/// line), and the old propagate-and-give-up debug never fires.
+#[test]
+fn a_dropped_link_table_falls_through_to_the_legacy_file() {
+    quilltap_core::test_support::global_capture::install();
+    let spec: Spec = serde_json::from_str(&std::fs::read_to_string(spec_path()).unwrap()).unwrap();
+    let (main, _mount, scratch) = readonly_pair(&spec);
+    let mount_path = scratch.path().join("mount.db");
+    drop(_mount);
+    quilltap_core::db::Writer::open_writable(&mount_path, &spec.test_pepper_base64)
+        .expect("open the mount copy writable to plant")
+        .connection()
+        .execute_batch(r#"DROP TABLE "doc_mount_file_links";"#)
+        .expect("plant");
+    let mount = quilltap_core::test_support::open_readonly(&mount_path, &spec.test_pepper_base64);
+    let (entries, lines) = quilltap_core::test_support::global_capture::capture(|| {
+        quilltap_core::photos::chat_gallery::list_chat_gallery(&main, &mount, CHAT)
+            .expect("the roll")
+    });
+    let reused = "f1000000-0000-4000-8000-00000000000e";
+    let entry = entries
+        .iter()
+        .find(|e| e["id"] == reused)
+        .unwrap_or_else(|| panic!("BRAN's legacy repaint must survive: {entries:#?}"));
+    assert_eq!(entry["idKind"], "file", "{entry:#?}");
+    assert_eq!(entry["isCurrent"], true, "{entry:#?}");
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.contains("Error querying joined file links")
+                && l.contains("collection=doc_mount_file_links")
+                && l.contains("whereClause=WHERE l.id = ?")),
+        "v4's inner line on the resolve's vault-link read: {lines:#?}"
+    );
+    assert!(
+        !lines
+            .iter()
+            .any(|l| l.contains("Avatar id did not resolve")),
+        "the resolve no longer throws, so the debug-on-throw arm is silent: {lines:#?}"
+    );
 }

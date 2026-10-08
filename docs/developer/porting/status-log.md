@@ -173742,3 +173742,104 @@ start: branch `main`, tree clean, `f5e953a3f..main` = exactly the waived
   Tier-2/3 plants add three avatars).
 - `photo_side_effects_wiring` (the pair's second reader, `generalMp`) GREEN
   over the rebuilt pair, no edit.
+
+### Unit 2 — the predicate, pass 2b, R-A, R-C (core 0.0.1253)
+
+- **Predicate:** `is_story_background_file(file, &paths)` replaces
+  `is_story_background_path` — `folder_path == Some("/story-backgrounds/")`
+  EXACT first, then the old `generated/` path test; v4's `:502-506` comment
+  carried. Arm order unchanged (backdrop before avatar).
+- **Pass 2b `pass_current_avatars`** between `pass_message_attachments` and
+  `pass_cast_portraits`: the `wearing` seed walks `characterAvatars` (object,
+  document order, non-empty string `imageId`) then the ordered owners with
+  the `!wearing.contains_key` guard; `current` = the bindings only; v4's three
+  skips in order; the `files` row ONLY for `AvatarKind::LegacyFile`, read
+  through `db::fallback::find_by_id_or_none("files", …)` — v4's `findById` is
+  the fallback-mode `_findById`, so a failed read logs v4's `Error finding
+  entity by ID` and is no row (the order said `Err → None`; the line is v4's
+  too); the filename chain with the `'avatar'` fallback; keys inserted in v4's
+  construction order with `width`/`height`/`sha256`/`characterName` only when
+  present; `createdAt` = `avatar_bound_at` (keyed by CHARACTER) → file →
+  `chat.updatedAt`; `deletable: false` with v4's comment. The
+  `documented::ENTRY` subsequence check passes unchanged.
+- **R-A:** `Cast.by_character_id` and `resolve_avatar_override_owners` are
+  `serde_json::Map` (`preserve_order` → IndexMap: first-insertion position,
+  last-writer value — JS `Map.set`; no new dependency; owners' values are
+  JSON strings). **Cast-order measurement:** v4's REAL `findByIds` on the
+  rebuilt pair answered `[ALDA, BRAN, CORA]` (table order, ELIN dropped) for
+  inputs `[A,B,C,E]`, `[E,C,B,A]`, `[C,A,B]`; v5's `find_by_ids` agrees on all
+  three — pinned as `cast_order_matches_v4_find_by_ids` (no finding).
+  **Observability (Tier 2 item 9, landed):** the planted three-way tie at
+  2026-04-24 (ALDA's override-only, CORA's two) — a HashMap build of the
+  otherwise-ported pass went RED on 6 of 6 runs (different case subsets each
+  run); the ordered build green on every run. R-A is PINNED, not merely
+  "ordered".
+- **Item 10 (landed):** ALDA's override-only `F_AV_ALDA_OVR` (file
+  2026-04-06) is dated 2026-04-24 by v4 — her `characterAvatars` binding —
+  oracle-pinned in the `gallery` body.
+- **Item 14 (landed):** CORA's override-only vault LINK → an `idKind: "link"`
+  entry, filename from the path's basename, `size: 0`, no `width`/`height`,
+  dated `chat.updatedAt`.
+- **R-C:** `tracing::debug!(chatId = %chat_id, pass = "current-avatars",
+  found, "Chat gallery pass complete")` — the key is v4's camelCase `chatId`
+  per §R.5 (the order's item 6 text spelled `chat_id = %chat_id` after the
+  `pass_linked_files` line; §R.5 governs, and the pre-existing `chat_id` keys
+  on the other pass lines are untouched — not this order's hunks). Pin
+  `chat_gallery_current_avatars_pass_line`: `found=5` on `CHAT` (the five
+  plants), `found=0` on `PORTRAIT_CHAT` — v4 logs unconditionally, so the
+  silence leg is `found=0`, not absence; RED on main's `chat_gallery.rs`
+  (no line). Captured with `test_support::global_capture` (the binary now
+  holds four tests sharing callsites — the Interest race), on the caller
+  thread over `open_readonly` connections opened before the capture.
+- **FINDING, fixed in the lane's own file:** with the pair's link table
+  broken (`gallery_links_table_dropped` / `_column_renamed`), v4 still lists
+  BRAN's bound legacy repaint — `resolveCharacterAvatar`'s two reads are both
+  fallback mode, so a failed vault-link read falls THROUGH to the `files` row;
+  v5's shared `resolve_character_avatar` propagates (`?`), so the whole
+  resolve failed. Invisible until pass 2b (pass 1 matches by id, pass 3's
+  portraits are links). Measured RED (those two cases, `avatar` 2 vs 3) after
+  pass 2b alone; the gallery's `safe_resolve_avatar` now composes the two
+  steps (`joined_link_or_none` + `find_by_id_or_none`, the shared module's
+  builders/struct) → green. Pin `a_dropped_link_table_falls_through_to_the_
+  legacy_file` (v4's inner `Error querying joined file links … WHERE l.id = ?`
+  line fires; `Avatar id did not resolve` silent) — RED against the old
+  wrapper. **NOT landed (ownership): the shared `resolve_character_avatar`
+  still propagates for its other callers** — named for a follow-up order
+  (a task chip was raised); no HANDOFF hunk, as no sibling owns the file.
+- **Differential:** `chat_gallery_equivalence` regenerated from the pin over
+  the rebuilt pair (26 cases, identical to the red-first oracle modulo the
+  per-run minted `linkId`) — GREEN by name, every case (`gallery` counts
+  3/9/1/1/3/1/2 total 20 both sides). `photo_side_effects_wiring` green.
+- **Gate (lane branch):** `cargo fmt --all --check` clean; clippy
+  `--workspace --all-targets -D warnings` clean AND with
+  `--features quilltap-core/native-transport` clean (`apps/web/dist` cloned
+  from main's build — no SPA hunk); `recipe_sweep.py --self-test` 0
+  failures; `cargo test --workspace --no-fail-fast` (`CARGO_INCREMENTAL=0`,
+  `QT_ORACLE_CHAT_GALLERY` set): **680 binaries / 4,498 passed / 2 failed / 3
+  ignored** — the two reds are §R.13's by-design live-checkout reds
+  (`provider_sdk_version_guard` (c), P4.D260; `qtap_schema_embed_guard` (d),
+  P4.D264), not findings. Live-checkout guards at the PIN
+  (`QT_V4_CHECKOUT`+`QT_V4_ROOT`): `builtin_prompt_templates_guard` 2/2 and
+  `public_schemas_vendor_guard` 3/3 GREEN.
+- **Regen recipes:** the builder's header (`TZ=UTC`, Node 24, cwd = the pin,
+  `QT_FIXTURE_CG_MAIN`/`_MOUNT` at the committed paths) then the case's
+  header (`QT_FIXTURE_CG_{MAIN,MOUNT,META}` + `QT_ORACLE_OUT`, `--roots` the
+  pin + a `/tmp` mirror of the case) — unchanged recipes; the lane ran them by
+  hand with lane-private outputs under `/tmp/p4d257/`.
+- **Fixtures changed:** `crates/quilltap-web/tests/fixtures/chat-gallery-
+  {main,mount}.db` + `chat-gallery-main.db.meta.json` (rebuilt; minted vault
+  and link ids all new). Readers: `chat_gallery_equivalence` (this lane) and
+  `photo_side_effects_wiring` (green, no edit; reads only the pinned
+  `generalMp`). No other oracle is invalidated.
+- **Deferrals (Tier 3):** item 12 — `help/chat-gallery.md` is P4.D260's
+  byte-copy, nothing handed off; item 13 — the SPA renders the new entries
+  unchanged (no `apps/web/**` hunk), 💸 below.
+- **💸 for the dogfood pass:** on the Friday copy, a chat whose avatar job
+  reused a cached repaint — the Gallery's Avatars chip lists it, worn, no
+  bin; the sidebar count rises by exactly those entries; a superseded
+  backdrop filed under `/story-backgrounds/` without a mount path moves from
+  "Generated" to "Backgrounds", deletable, not current; `combined.log`
+  carries `Chat gallery pass complete … pass=current-avatars found=N
+  chatId=…` once per gallery open.
+- **Versions at close:** core 0.0.1253; harness frozen 0.0.1110; nothing
+  else bumped.

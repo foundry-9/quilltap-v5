@@ -13,6 +13,15 @@
 //! not the `/chats/{id}/files` listing, not the sidebar count, not the gallery
 //! modal — re-derives "which images are in this chat".
 //!
+//! v4 `f9f1ba177` (P4.D257) added two rules. A superseded Lantern backdrop that
+//! never reached a mount is still a BACKGROUND, known by its
+//! `/story-backgrounds/` folder alone ([`is_story_background_file`]). And a
+//! portrait the avatar job BORROWED — a cached repaint first painted for
+//! another chat, bound here through `characterAvatars` / `avatarOverrides` but
+//! never linked here — is listed from the bindings by pass 2b
+//! ([`pass_current_avatars`]): worn → current, and NEVER deletable, because the
+//! chat that minted it still owns the record.
+//!
 //! Two facts shape everything here:
 //!
 //!  - **Ids are of two species.** `files.id` and `doc_mount_file_links.id` both
@@ -46,10 +55,13 @@ use crate::db::chats_read;
 use crate::db::doc_mount_blobs::DocMountBlobsRepository;
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
 use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
+use crate::db::files::FilesRepository;
 use crate::db::DbError;
 use crate::photos::photo_link_summary::get_photo_link_summary_by_sha256;
 use crate::photos::photos_paths::is_photos_relative_path;
-use crate::photos::resolve_character_avatar::{resolve_character_avatar, AvatarKind};
+use crate::photos::resolve_character_avatar::{
+    build_legacy_file_url, build_mount_file_url, AvatarKind, ResolvedCharacterAvatar,
+};
 use crate::services::mount_index::path_utils::native_text_attachment_mime;
 use crate::tools::photo::encode_uri;
 
@@ -400,7 +412,9 @@ fn walk_message_attachments(
 
 /// List every image in a chat, whatever produced it (v4 `listChatGallery`).
 ///
-/// Four passes, in order; the first pass to see an image wins its `source`, and
+/// Five passes, in order (linked files, message attachments, the avatars the
+/// chat wears but never minted, cast portraits, inline Markdown); the first
+/// pass to see an image wins its `source`, and
 /// a later pass may only *add* a `messageId`. Deduped by sha256 where known and
 /// by id otherwise; sorted newest first, with portraits carrying their
 /// character's `createdAt` so a standing portrait lands at the end of the roll
@@ -452,6 +466,7 @@ pub fn list_chat_gallery(
     };
 
     pass_message_attachments(mount, &events, &mut collector)?;
+    pass_current_avatars(main, mount, chat_id, &chat, &cast, &mut collector)?;
     pass_cast_portraits(main, mount, &chat, &cast, &mut collector)?;
     pass_inline_markdown(main, mount, &chat, &cast, &events, &mut collector)?;
 
@@ -525,12 +540,21 @@ struct CurrentAssets {
 /// — the repaint's owner, the standing portrait, and the vault a relative
 /// Markdown path resolves against — and a per-pass read would fetch the same
 /// rows three times over.
+///
+/// **Insertion-ordered, like v4's `Map`** (P4.D257 R-A): pass 2b ITERATES the
+/// override owners, which are read off the cast in this order, and the entries
+/// it emits keep that order through `finish()`'s stable sort on a `createdAt`
+/// tie. `serde_json`'s `preserve_order` map has JS `Map.set` semantics — the
+/// FIRST insertion fixes the position, the LAST writer the value. The order is
+/// `characters_read::find_by_ids`' return order, as v4's is `findByIds`'
+/// (measured on the chat-gallery fixture: table order, whatever the input
+/// order — the same on both sides).
 struct Cast {
-    by_character_id: HashMap<String, Value>,
+    by_character_id: Map<String, Value>,
 }
 
 fn load_cast(main: &Connection, mount: &Connection, chat: &Value) -> Result<Cast, DbError> {
-    let mut by_character_id = HashMap::new();
+    let mut by_character_id = Map::new();
     let ids = participant_character_ids(chat);
     if ids.is_empty() {
         return Ok(Cast { by_character_id });
@@ -721,7 +745,7 @@ fn pass_linked_files(
         let mut character_id: Option<String> = None;
         let mut is_current = false;
 
-        if is_current_background || paths.iter().any(|p| is_story_background_path(p)) {
+        if is_current_background || is_story_background_file(file, &paths) {
             source = "story-background";
             is_current = is_current_background;
         } else if avatar_owner.is_some()
@@ -732,7 +756,12 @@ fn pass_linked_files(
             is_current = avatar_owner.is_some();
             character_id = avatar_owner
                 .clone()
-                .or_else(|| override_owners.get(&file.id).cloned())
+                .or_else(|| {
+                    override_owners
+                        .get(&file.id)
+                        .and_then(Value::as_str)
+                        .map(str::to_string)
+                })
                 // The avatar job tags the file with the character it painted, and
                 // links it to `[chatId, characterId]`; either is a usable fallback
                 // for a repaint the chat has since moved on from.
@@ -790,8 +819,12 @@ fn pass_linked_files(
 
 /// Which superseded repaints belong to which character, read off every
 /// participant's `avatarOverrides` row for this chat.
-fn resolve_avatar_override_owners(cast: &Cast, chat_id: &str) -> HashMap<String, String> {
-    let mut owners = HashMap::new();
+///
+/// imageId → characterId (a JSON string). Insertion-ordered — cast order ×
+/// override order, first insertion's position, last writer's value — because
+/// pass 2b iterates it (v4 returns a `Map`; P4.D257 R-A).
+fn resolve_avatar_override_owners(cast: &Cast, chat_id: &str) -> Map<String, Value> {
+    let mut owners = Map::new();
     for (character_id, character) in &cast.by_character_id {
         let overrides = character
             .get("avatarOverrides")
@@ -807,16 +840,27 @@ fn resolve_avatar_override_owners(cast: &Cast, chat_id: &str) -> HashMap<String,
                 .and_then(Value::as_str)
                 .filter(|s| !s.is_empty())
             {
-                owners.insert(image_id.to_string(), character_id.clone());
+                owners.insert(image_id.to_string(), json!(character_id));
             }
         }
     }
     owners
 }
 
-/// The Lantern writes a chat's backdrops to `generated/` in its own mount.
-fn is_story_background_path(relative_path: &str) -> bool {
-    relative_path.to_lowercase().starts_with("generated/")
+/// A Lantern backdrop, recognised by where it was stored: `generated/` in its
+/// own mount, or the `/story-backgrounds/` folder the job files every backdrop
+/// under. A superseded backdrop is no longer `storyBackgroundImageId`, so one
+/// that never reached a mount is known only by its folder (v4 `f9f1ba177`).
+///
+/// The folder test is EXACT — no lowercasing, no `files.source` check — as
+/// v4's `file.folderPath === '/story-backgrounds/'`.
+fn is_story_background_file(file: &LinkedFileRow, paths: &[String]) -> bool {
+    if file.folder_path.as_deref() == Some("/story-backgrounds/") {
+        return true;
+    }
+    paths
+        .iter()
+        .any(|p| p.to_lowercase().starts_with("generated/"))
 }
 
 /// An Aurora repaint, recognised by where it was stored: `images/history/` in
@@ -907,6 +951,168 @@ fn pass_message_attachments(
         "Chat gallery pass complete"
     );
     Ok(())
+}
+
+// ============================================================================
+// Pass 2b — avatars the chat is wearing but never minted
+// ============================================================================
+
+/// The avatar each character is wearing in this chat, when pass 1 did not find
+/// it (v4 `passCurrentAvatars`, `f9f1ba177`). The avatar job's configuration
+/// cache hands a chat a repaint first painted for *another* chat — it rebinds
+/// `characterAvatars` / `avatarOverrides` but never links the file here (nor
+/// should it: that would let this chat's bin delete another chat's picture).
+/// So the wearing is the only trace, and this pass reads it.
+///
+/// Every override row for this chat is read, not only `characterAvatars`, so a
+/// character who has since left the chat still shows what they wore.
+fn pass_current_avatars(
+    main: &Connection,
+    mount: &Connection,
+    chat_id: &str,
+    chat: &Value,
+    cast: &Cast,
+    collector: &mut EntryCollector,
+) -> Result<(), DbError> {
+    // imageId → characterId, in v4's `Map` order: the `characterAvatars`
+    // bindings in document order first, then every override owner not already
+    // there. Only the bindings are `current` — an override-only id is worn
+    // nowhere now.
+    let mut wearing: Map<String, Value> = Map::new();
+    let mut current: HashSet<String> = HashSet::new();
+    if let Some(avatars) = chat.get("characterAvatars").and_then(Value::as_object) {
+        for (character_id, entry) in avatars {
+            let Some(image_id) = entry
+                .get("imageId")
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+            else {
+                continue;
+            };
+            wearing.insert(image_id.to_string(), json!(character_id));
+            current.insert(image_id.to_string());
+        }
+    }
+    for (image_id, character_id) in resolve_avatar_override_owners(cast, chat_id) {
+        if !wearing.contains_key(&image_id) {
+            wearing.insert(image_id, character_id);
+        }
+    }
+
+    let mut found = 0usize;
+    for (image_id, character_id) in &wearing {
+        let character_id = character_id.as_str().unwrap_or_default();
+        if collector.has(image_id) {
+            continue;
+        }
+        let Some(resolved) = safe_resolve_avatar(main, mount, image_id) else {
+            continue;
+        };
+        if let Some(sha) = &resolved.sha256 {
+            if collector.has_sha(sha) {
+                continue;
+            }
+        }
+
+        // v4 `repos.files.findById(imageId).catch(() => null)` — a vault link
+        // has no `files` row to read. `findById` is the base repository's
+        // fallback-mode `_findById`, so a failed read logs v4's line and is
+        // simply no row (the `.catch` never fires).
+        let file = if resolved.kind == AvatarKind::LegacyFile {
+            crate::db::fallback::find_by_id_or_none("files", image_id, || {
+                find_file_row(main, image_id)
+            })
+        } else {
+            None
+        };
+        let character_name = cast
+            .by_character_id
+            .get(character_id)
+            .and_then(|c| c.get("name"))
+            .and_then(Value::as_str);
+        // `file?.originalFilename ?? (relativePath ? basename(relativePath) :
+        // null) ?? \`${name ?? 'avatar'}.webp\`` — an EMPTY path is falsy.
+        let filename = match &file {
+            Some(f) => f.original_filename.clone(),
+            None => resolved
+                .relative_path
+                .as_deref()
+                .filter(|p| !p.is_empty())
+                .map(posix_basename)
+                .unwrap_or_else(|| format!("{}.webp", character_name.unwrap_or("avatar"))),
+        };
+
+        let mut obj = Map::new();
+        obj.insert("id".into(), json!(image_id));
+        obj.insert(
+            "idKind".into(),
+            json!(if resolved.kind == AvatarKind::VaultLink {
+                "link"
+            } else {
+                "file"
+            }),
+        );
+        obj.insert("url".into(), json!(resolved.url));
+        obj.insert("filename".into(), json!(filename));
+        obj.insert(
+            "mimeType".into(),
+            json!(resolved
+                .mime_type
+                .as_deref()
+                .or(file.as_ref().map(|f| f.mime_type.as_str()))
+                .unwrap_or("image/webp")),
+        );
+        obj.insert("size".into(), json!(file.as_ref().map_or(0, |f| f.size)));
+        if let Some(w) = file.as_ref().and_then(|f| f.width) {
+            obj.insert("width".into(), json!(w));
+        }
+        if let Some(h) = file.as_ref().and_then(|f| f.height) {
+            obj.insert("height".into(), json!(h));
+        }
+        if let Some(sha) = &resolved.sha256 {
+            obj.insert("sha256".into(), json!(sha));
+        }
+        obj.insert(
+            "createdAt".into(),
+            avatar_bound_at(chat, character_id)
+                .map(Value::from)
+                .or_else(|| file.as_ref().map(|f| json!(f.created_at)))
+                .unwrap_or_else(|| chat.get("updatedAt").cloned().unwrap_or(Value::Null)),
+        );
+        obj.insert("source".into(), json!("avatar"));
+        obj.insert("characterId".into(), json!(character_id));
+        if let Some(name) = character_name {
+            obj.insert("characterName".into(), json!(name));
+        }
+        obj.insert("isCurrent".into(), json!(current.contains(image_id)));
+        // Minted by another chat, which still owns the record.
+        obj.insert("deletable".into(), json!(false));
+        collector.add(Value::Object(obj));
+        found += 1;
+    }
+
+    tracing::debug!(
+        chatId = %chat_id,
+        pass = "current-avatars",
+        found,
+        "Chat gallery pass complete"
+    );
+    Ok(())
+}
+
+/// When this chat put the avatar on, which is where it belongs on the roll (v4
+/// `avatarBoundAt`).
+///
+/// **Keyed by CHARACTER, not by image** — as v4's is: an override-only repaint
+/// owned by a character who also wears a bound avatar is dated by the WORN
+/// avatar's `generatedAt`, not by its own file.
+fn avatar_bound_at(chat: &Value, character_id: &str) -> Option<String> {
+    chat.get("characterAvatars")
+        .and_then(|a| a.get(character_id))
+        .and_then(|e| e.get("generatedAt"))
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
 }
 
 // ============================================================================
@@ -1304,7 +1510,7 @@ fn vault_mount_by_participant(chat: &Value, cast: &Cast) -> HashMap<String, Stri
 // Collector
 // ============================================================================
 
-/// Accumulates entries across the four passes, holding the two dedup rules the
+/// Accumulates entries across the five passes, holding the two dedup rules the
 /// design turns on: the first pass to see an image wins its source, and a later
 /// pass may only add a `messageId` (v4 `EntryCollector`).
 struct EntryCollector {
@@ -1413,7 +1619,8 @@ impl EntryCollector {
     /// Newest first. v4 sorts on `new Date(b.createdAt).getTime() - new
     /// Date(a.createdAt).getTime()` with **no tie-break**, relying on JS's
     /// stable sort — so ties fall to pass order (linked files → message
-    /// attachments → portraits → inline).
+    /// attachments → current avatars → portraits → inline), then to insertion
+    /// order within a pass.
     ///
     /// **Deliberate divergence, in the safe direction:** an unparseable
     /// `createdAt` makes v4's comparator return `NaN`, which V8 treats as
@@ -1503,18 +1710,57 @@ fn participant_character_ids(chat: &Value) -> Vec<String> {
     ids
 }
 
+/// v4 `safeResolveAvatar` — `resolveCharacterAvatar` behind a debug-on-throw
+/// `try`, composed here so each of its two reads DEGRADES the way v4's do.
+///
+/// v4's resolver calls `docMountFileLinks.findByIdWithContent` (whose inner
+/// `queryJoined` is fallback mode: a failed read logs `Error querying joined
+/// file links` and answers `null`) and then `files.findById` (the base
+/// repository's fallback `_findById`: logs `Error finding entity by ID`,
+/// answers `null`) — so a broken link table falls THROUGH to the legacy
+/// `files` row, and nothing ever reaches the `try`. v5's shared
+/// [`crate::photos::resolve_character_avatar::resolve_character_avatar`] still propagates either failure, which made a
+/// broken link table cost every legacy-file avatar too; the first pass to
+/// expose it was pass 2b (P4.D257 — BRAN's bound legacy repaint on the
+/// `gallery_links_*` plant arms). The shared resolver is not this order's to
+/// touch, so the gallery composes the two steps itself; the URL / kind /
+/// mime / sha shapes stay the shared module's (its builders, its struct).
 fn safe_resolve_avatar(
     main: &Connection,
     mount: &Connection,
     id: &str,
-) -> Option<crate::photos::resolve_character_avatar::ResolvedCharacterAvatar> {
-    match resolve_character_avatar(main, mount, Some(id)) {
-        Ok(v) => v,
-        Err(err) => {
-            tracing::debug!(id = %id, error = %err, "Avatar id did not resolve");
-            None
-        }
+) -> Option<ResolvedCharacterAvatar> {
+    if id.is_empty() {
+        return None;
     }
+    let null_if_empty = |v: Option<String>| v.filter(|s| !s.is_empty());
+
+    // Path 1: vault-link id (post-Phase-3).
+    let links = DocMountFileLinksRepository::new(mount);
+    if let Some(link) = joined_link_or_none(links.find_by_id_with_content(id), "WHERE l.id = ?") {
+        return Some(ResolvedCharacterAvatar {
+            id: id.to_string(),
+            kind: AvatarKind::VaultLink,
+            url: build_mount_file_url(&link.mount_point_id, &link.relative_path),
+            mime_type: null_if_empty(link.original_mime_type),
+            sha256: null_if_empty(Some(link.sha256)),
+            mount_point_id: Some(link.mount_point_id),
+            relative_path: Some(link.relative_path),
+        });
+    }
+
+    // Path 2: legacy files-table id (pre-Phase-3 or just-imported).
+    let files = FilesRepository::new(main);
+    let file = crate::db::fallback::find_by_id_or_none("files", id, || files.find_by_id(id))?;
+    Some(ResolvedCharacterAvatar {
+        id: id.to_string(),
+        kind: AvatarKind::LegacyFile,
+        url: build_legacy_file_url(&file.id),
+        mime_type: null_if_empty(Some(file.mime_type)),
+        sha256: null_if_empty(Some(file.sha256)),
+        mount_point_id: None,
+        relative_path: None,
+    })
 }
 
 fn safe_link_summary(mount: &Connection, sha256: &str) -> Option<Value> {
