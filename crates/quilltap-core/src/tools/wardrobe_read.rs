@@ -8,7 +8,7 @@
 //! status, ownership, and equipped slots.
 
 use rusqlite::Connection;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::db::chats_outfits::ChatOutfitsRepository;
@@ -44,6 +44,152 @@ pub struct WardrobeReadToolOutput {
     pub equipped_slots: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+}
+
+/// One wearer in [`WardrobeReadWearResult`] (v4 `WardrobeReadWearerResult`,
+/// `wardrobe-read-tool.ts:77-89`), named for the CALLING character.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WardrobeReadWearerResult {
+    /// `null` for the unattributed row (a wearer since folded away).
+    pub character_id: Option<String>,
+    pub name: String,
+    /// The calling character themselves.
+    pub is_you: bool,
+    /// The ledger can no longer name them (a deleted character, or the
+    /// unattributed row).
+    pub departed: bool,
+    pub wear_count: i64,
+    pub first_worn_at: String,
+    pub last_worn_at: String,
+}
+
+/// The item's wear history as `wardrobe_read` reports it (v4
+/// `WardrobeReadWearResult`, `:94-99`; `3ee3b1342`) — totals across wearers,
+/// the wearers most recent first.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WardrobeReadWearResult {
+    pub wear_count: i64,
+    pub first_worn_at: Option<String>,
+    pub last_worn_at: Option<String>,
+    pub wearers: Vec<WardrobeReadWearerResult>,
+}
+
+/// v4 `wearerPhrase` — how a wearer is named to the character reading the
+/// tool output.
+fn wearer_phrase(wearer: &WardrobeReadWearerResult) -> &str {
+    if wearer.is_you {
+        "you"
+    } else if wearer.departed {
+        "someone no longer in the household"
+    } else {
+        &wearer.name
+    }
+}
+
+/// v4 `timesPhrase` — "once", "twice", "4 times".
+fn times_phrase(count: i64) -> String {
+    match count {
+        1 => "once".to_string(),
+        2 => "twice".to_string(),
+        n => format!("{n} times"),
+    }
+}
+
+/// en-GB short month names as Node 24's ICU renders them (September is
+/// `Sept`, measured).
+const EN_GB_MONTHS_SHORT: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sept", "Oct", "Nov", "Dec",
+];
+
+/// v4 `wearDate(iso)` — an absolute date as "14 Mar 2026":
+/// `toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year:
+/// 'numeric', timeZone: 'UTC' })` (UTC, so a reader's locale cannot reshape
+/// it); an unparseable stamp is returned as given.
+fn wear_date(iso: &str) -> String {
+    let Some(ms) = crate::episodic::js_date_parse_ms(iso) else {
+        return iso.to_string();
+    };
+    let Ok(ts) = jiff::Timestamp::from_millisecond(ms) else {
+        return iso.to_string();
+    };
+    let date = ts.to_zoned(jiff::tz::TimeZone::UTC).date();
+    // ICU's `year: 'numeric'` drops the era: year 0 renders 1, -5 renders 6.
+    let year = i32::from(date.year());
+    let year = if year <= 0 { 1 - year } else { year };
+    format!(
+        "{} {} {}",
+        date.day(),
+        EN_GB_MONTHS_SHORT[usize::from(date.month() as u8) - 1],
+        year
+    )
+}
+
+/// v4 `relativeWearDate(iso, nowMs)` — [`format_relative_days`] or, for an
+/// unparseable stamp, the stamp itself.
+///
+/// [`format_relative_days`]: crate::format_time::format_relative_days
+fn relative_wear_date(iso: &str, now_ms: f64) -> String {
+    match crate::episodic::js_date_parse_ms(iso) {
+        Some(ms) => crate::format_time::format_relative_days(ms as f64, now_ms),
+        None => iso.to_string(),
+    }
+}
+
+/// v4 `joinPhrases` — `a`, `a and b`, `a, b and c`.
+fn join_phrases(parts: &[String]) -> String {
+    match parts {
+        [] => String::new(),
+        [one] => one.clone(),
+        [init @ .., last] => format!("{} and {last}", init.join(", ")),
+    }
+}
+
+/// v4 `formatWardrobeWearParagraph(wear, nowMs)` (`wardrobe-read-handler.ts:
+/// 170-188`) — the `Wear` paragraph of `wardrobe_read`: "Worn 4 times, first
+/// 14 Mar 2026, last 3 days ago by you. Also worn by Marguerite (once)." — or
+/// "Never worn." `now_ms` is the caller's clock (v4's injectable `nowMs`).
+pub fn format_wardrobe_wear_paragraph(
+    wear: Option<&WardrobeReadWearResult>,
+    now_ms: f64,
+) -> String {
+    let Some(wear) = wear else {
+        return "Never worn.".to_string();
+    };
+    let last_worn_at = match wear.last_worn_at.as_deref() {
+        Some(s) if !s.is_empty() => s,
+        _ => return "Never worn.".to_string(),
+    };
+    let Some((latest, others)) = wear.wearers.split_first() else {
+        return "Never worn.".to_string();
+    };
+    if wear.wear_count == 0 {
+        return "Never worn.".to_string();
+    }
+    let last = format!(
+        "{} by {}",
+        relative_wear_date(last_worn_at, now_ms),
+        wearer_phrase(latest)
+    );
+    let head = if wear.wear_count == 1 {
+        format!("Worn once, {last}.")
+    } else {
+        // v4 `wear.first_worn_at ?? wear.last_worn_at` — `??` keeps an empty
+        // string.
+        let first = wear.first_worn_at.as_deref().unwrap_or(last_worn_at);
+        format!(
+            "Worn {} times, first {}, last {last}.",
+            wear.wear_count,
+            wear_date(first)
+        )
+    };
+    if others.is_empty() {
+        return head;
+    }
+    let also: Vec<String> = others
+        .iter()
+        .map(|w| format!("{} ({})", wearer_phrase(w), times_phrase(w.wear_count)))
+        .collect();
+    format!("{head} Also worn by {}.", join_phrases(&also))
 }
 
 fn str_field(item: &Value, key: &str) -> Option<String> {

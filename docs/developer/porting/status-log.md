@@ -172795,3 +172795,34 @@ and an existing unattributed row the fold MERGES into (count 1 + 2 = 3, first
 2026-01-05, last 2026-03-01 + its chat). Red-first by mutation (the fold call
 removed): `character_delete_cascade_tables` RED; restored: green. The no-table
 ERROR leg is the unit pin (one arm per family — the carve).
+
+### Unit 5 — the tools' picture decision + the pure tool formatters (items 12 pure, 16)
+
+- NEW `services/tool_image_generation.rs` (v4 `tool-image-generation.ts`):
+  `WardrobeToolImageStatus` / `WardrobeToolImageResult` (the four sentences
+  verbatim), `wardrobe_tool_images_enabled(settings)` (the pure form; the
+  stored-row read is P4.D255's `db::chat_settings::wardrobe_tool_images_enabled`),
+  `wanted`, `patch_changes_look`, `format_wardrobe_tool_image_line`,
+  `format_wardrobe_image_handle`, and the async `maybe_queue_wardrobe_tool_image`
+  (the DEBUG with `requested` OMITTED when absent — winston's drop; the INFO;
+  the ERROR + `failed`; never fails the garment). **HANDOFF(P4.D263) — R-G:** a
+  lane-local `resolve_wardrobe_image_profile(main, user_id)` (v4's steps 2 + 3;
+  the tools never pass an override) marked `// HANDOFF(P4.D263)`; the unifier
+  repoints the call at P4.D263's `services::image_profile_resolution::
+  resolve_wardrobe_image_profile` and deletes the lane-local fn.
+- `tools/wardrobe_read.rs`: `WardrobeReadWearResult` / `WardrobeReadWearerResult`
+  (Serialize + Deserialize), `wearer_phrase`, `times_phrase`, `wear_date` (en-GB
+  short months as Node 24's ICU renders them — **September is `Sept`**,
+  measured; the era-less year), `relative_wear_date`, `join_phrases`,
+  `format_wardrobe_wear_paragraph(wear, now_ms)`. `tools/wardrobe_list.rs`:
+  `format_wardrobe_list_wear_note(count, last, now_ms)`. Both parse through
+  `episodic::js_date_parse_ms` (the `Date.parse` port — date-only and offset
+  stamps included), not `clock::iso_to_ms` (stored shape only).
+- NEW `tool_image_generation_equivalence` (tier-1) + `cases/tool-image-
+  generation.ts`: 70 rows through v4's REAL functions — 8 settings shapes, the
+  12-cell decision table (stub repos as inputs), 5 lines, the handle, 21
+  `formatRelativeDays` boundaries, 12 list notes (incl. date-only / offset /
+  unparseable), 11 paragraphs (v4's `wardrobe-wear-readout.test.ts` lines
+  byte-equal; `first_worn_at: null` → the last stamp; unparseable stamps raw;
+  four wearers joined). 70/70 on the first run. `patchChangesLook` is
+  module-private in v4 — pinned through `wardrobe_tools`' switch-ON rows.

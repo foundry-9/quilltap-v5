@@ -270,6 +270,29 @@ fn run(
     })
 }
 
+/// v4 `formatWardrobeListWearNote(item, nowMs)` (`wardrobe-list-handler.ts:
+/// 204-212`, `3ee3b1342`) — the compact wear note a listed item carries:
+/// ` · last worn 3 days ago` or ` · never worn` (a zero count, an absent or
+/// empty `last_worn_at`, or an unparseable one). `now_ms` is the caller's
+/// clock (v4's injectable `nowMs`).
+pub fn format_wardrobe_list_wear_note(
+    wear_count: i64,
+    last_worn_at: Option<&str>,
+    now_ms: f64,
+) -> String {
+    let last = match last_worn_at {
+        Some(s) if wear_count != 0 && !s.is_empty() => s,
+        _ => return " · never worn".to_string(),
+    };
+    match crate::episodic::js_date_parse_ms(last) {
+        Some(ms) => format!(
+            " · last worn {}",
+            crate::format_time::format_relative_days(ms as f64, now_ms)
+        ),
+        None => " · never worn".to_string(),
+    }
+}
+
 /// v4 `formatWardrobeListResults`.
 pub fn format(output: &WardrobeListToolOutput) -> String {
     if !output.success {

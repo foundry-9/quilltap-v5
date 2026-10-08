@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(wardrobe): the tools' picture decision module and the wear formatters (P4.D262 items 12, 16)
+
+_Versions: core 0.0.1258._
+
+NEW `services::tool_image_generation`, v4's picture decision for the wardrobe tools (`lib/wardrobe/tool-image-generation.ts`, `b3f937076`). It holds the four outcomes and their sentences, the operator-switch read, `wanted` (an explicit `generate_image` wins, otherwise the tool's default applies only when the switch is on), `patch_changes_look`, the `- Picture:` line, the image handle, and the async `maybe_queue_wardrobe_tool_image`, which logs v4's DEBUG / INFO / ERROR and never fails the garment. The image-profile resolution is a lane-local copy of v4's designated → default steps, marked `HANDOFF(P4.D263)`.
+
+`tools::wardrobe_read` gains the wear result types and `format_wardrobe_wear_paragraph` (v4's second-person tally: en-GB dates with `Sept`, relative last-worn dates, "Also worn by …"). `tools::wardrobe_list` gains `format_wardrobe_list_wear_note`. Both take an injectable clock and parse stamps through the `Date.parse` port.
+
+NEW tier-1 `tool_image_generation_equivalence` checks 70 rows through v4's real functions, including v4's own readout test lines byte for byte. P4.D262 items 12 (the module) and 16.
+
 #### 2026-10-08 — feat(cascade): fold the departed wearer's wear-ledger rows into the unattributed row (P4.D262 item 8)
 
 _Versions: core 0.0.1257._
