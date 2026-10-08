@@ -172281,3 +172281,50 @@ dirt never reaches a regen. The ledger is NOT written (lane rule).
   `QT_FIXTURE_TMP_MAIN=/tmp/p4d256/qt-tmp-main.db QT_FIXTURE_TMP_MOUNT=/tmp/p4d256/qt-tmp-mount.db node --import tsx $V5W/harness/oracle/fixtures/build-tiered-mount-pool-fixture.ts`,
   then the same env with `harness/oracle/cases/tiered-mount-pool.ts` →
   `/tmp/p4d256/oracle-tmp.ndjson` (26 rows; 6 `grouped`).
+
+### Unit 2 — `services/wardrobe_wear_history.rs` (item 8; core 0.0.1255)
+
+- `attach_wear(main, items)`, `resolve_wearers(main, mount, wearers, avatars)`
+  → `ResolvedWearer { character_id, name, avatar_url, kind }`,
+  `build_wear_history_payload(main, mount, item_id) -> Value`; the two labels
+  as consts. Every log line is emitted on the caller thread (these are
+  read-path homes).
+- **R-F MEASURED:** a corrupt `characters` row (`name = X'00'`) makes v4's
+  `findByIdRaw` answer `null` after `Data validation failed` + `Error finding
+  entity by ID` — the departed arm; `Could not read wearer; labelling as
+  departed` NEVER fires → pinned NEGATIVE (Tier 3 item 17's leg, as the order
+  foresaw). v5 reads through `characters_read::find_by_id_raw_or_none` (the
+  fallback twin) and takes the same arm.
+- **MEASURED, against the order's text:** `Could not resolve wearer avatar` is
+  unreachable too — v4's `resolveCharacterAvatar` runs both reads fallback-mode
+  and never throws (`resolve_avatar_read_fails`: `files` renamed → v4 answers
+  `avatarUrl: null` with NO line). v5's shared `resolve_character_avatar`
+  still propagates (the known gap — memory note
+  `shared-avatar-resolver-propagates`; `photos/**` is not this lane's), so
+  the site maps an `Err` to `null` and the WARN is pinned NEGATIVE. `Could
+  not read last-worn chat` likewise (v4 `chats.findById` is `_findById`);
+  v5 reads `chats_read::find_by_id_or_none`.
+- **RECORDED v4-only line `V4_ONLY_CHARACTER_VALIDATION`** (pinned both ways,
+  the `scenario_builder_mount_pool_equivalence` precedent): v4 logs `Data
+  validation failed {collection: characters}` before the fallback line; v5's
+  raw character read (`db/characters_read.rs`, not this lane's) fails at the
+  cell decode and logs only `Error finding entity by ID`. Values agree.
+  Three cases; a convergence trips the pin.
+- **Differential (NEW):** `wardrobe_wear_history_equivalence` (harness) +
+  `harness/oracle/cases/wardrobe-wear-history.test.ts` + corpus
+  `fixtures/wardrobe-wear-history.json` (13 cases over the committed
+  `wardrobe-routes` pair: `attach_none`, the pre-round absent table — both
+  sides' `Error reading wear summaries` fallback — the planted ledger, an
+  empty ledger, the three labels with and without avatars, a dangling
+  `defaultImageId`, a failing avatar read, the full payload, a deleted
+  last-worn chat → `lastWornChat: null`, never-worn, the pre-round history
+  fallback). Compared: values EXACT incl. key order; every WARN / ERROR + the
+  two DEBUG lines, `error` dropped. The ledger table comes from v4's
+  `WARDROBE_WEAR_STATS_DDL` (the migration's own statements) on the oracle
+  side, `test_support::ensure_wear_ledger_on` on v5's.
+- Red-first: no `services::wardrobe_wear_history` on `KEYSTONE` (red by
+  construction); mutation (no empty-list short-circuit) reddens
+  `attach_none` alone. Green: 13/13.
+- Regen (from the pin): stage the case + corpus in `/tmp/p4d256/wwh-oracle`,
+  `QT_FIXTURE_WROUTES_MAIN=$V5W/crates/quilltap-web/tests/fixtures/wardrobe-routes-main.db QT_FIXTURE_WROUTES_MOUNT=…-mount.db QT_ORACLE_OUT=/tmp/p4d256/oracle-wwh.ndjson npx jest --silent --watchman=false --testTimeout=180000 --roots "$PWD" --roots /tmp/p4d256/wwh-oracle/cases -- wardrobe-wear-history`
+  (13 rows); run with `QT_ORACLE_WARDROBE_WEAR_HISTORY=/tmp/p4d256/oracle-wwh.ndjson`.

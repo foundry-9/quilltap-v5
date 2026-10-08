@@ -555,7 +555,10 @@ mod tests {
             ]
         );
         // `origin` is the LAST key (v4's object spread).
-        assert_eq!(out[0].as_object().unwrap().keys().next_back().unwrap(), "origin");
+        assert_eq!(
+            out[0].as_object().unwrap().keys().next_back().unwrap(),
+            "origin"
+        );
         assert_eq!(
             lines,
             vec!["DEBUG quilltap_core::db::archetype_wardrobe Attributed group wardrobe read groupCount=2 itemCount=2 context=wardrobe".to_string()]

@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(wardrobe): port v4's wear-history helpers — attach_wear, resolve_wearers, build_wear_history_payload (P4.D256 item 8)
+
+_Versions: core 0.0.1255._
+
+NEW `services/wardrobe_wear_history.rs`, the port of v4 `lib/wardrobe/wear-history.ts` (`3ee3b1342`). `attach_wear` tags each item with `wear` (one `find_summaries` call; appended after `origin`; never-worn items carry the zero summary; DEBUG `Attached wear summaries to wardrobe read`). `resolve_wearers` names each wearer from the raw character read (`unattributed` for the null wearer, `a departed character` for a missing or unreadable one), with avatars through the default-image enrichment. `build_wear_history_payload` answers `{history, wearers, lastWornChat}` (a deleted chat gives `null`; DEBUG `Built wear history`). v4's three catches (`Could not read wearer`, `Could not resolve wearer avatar`, `Could not read last-worn chat`) are unreachable through v4's fallback-mode reads and are pinned negative.
+
+NEW `wardrobe_wear_history_equivalence` + `wardrobe-wear-history.test.ts` + corpus (13 cases over the committed `wardrobe-routes` pair) compare values (key order included) and logged lines against v4's real exports. Records one v4-only line (`Data validation failed {collection: characters}` on a corrupt character row — v5's raw character read does not log it), pinned both ways.
+
 #### 2026-10-08 — feat(wardrobe): the grouped group-tier resolver, the attributed group read and the read-time origin (P4.D256 items 2, 6, 7)
 
 _Versions: core 0.0.1254._
