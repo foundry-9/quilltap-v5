@@ -174357,3 +174357,281 @@ symlink classes incl. 15 plugin `node_modules`).
 core 0.0.1253, host 0.0.190, cli 0.0.30; web, tauri, SPA unchanged; harness
 frozen 0.0.1110. Branch `claude/physical-backups-retention-db-optimize-d68134`; commits `2ee0e4d86` (unit 1),
 `3fcd02d6d` (unit 2), `3874c22c9` (unit 3) + this record.
+## P4.D260 — the `a9c99a4a0` root dependency move + `b3f937076`'s bundles + the vendored trees (lane `claude/p4-dependency-move-sdk-guard-0af870`, pin `f5e953a3f`, 2026-10-08)
+
+Harness + vendored trees only. **Zero core hunks** — no re-record proved a
+request-shape change, so no crate version moved (§R.6).
+
+### The §2 probe and the pin
+
+- Probe at lane start and again before the re-record batch: branch `main`,
+  tree CLEAN, `log f5e953a3f..main` = exactly the waived `1825bfd53`,
+  `log 1a2b2164c..bugfix` empty — PASS both times.
+- Pin `/tmp/qt-v4-pin-p4d260-f5e953a3f` (`git rev-parse HEAD` =
+  `f5e953a3f557762b…`; `package.json` `4.10.0-dev.117`), the three symlink
+  classes; `node_modules/openai/package.json` under the pin reads `7.30.0`
+  (the target's lock, as §R.3 predicted — no `npm ci` cure needed: the live
+  checkout IS the target's dependency tree).
+
+### Item 1 — the §R.4(k) measurement, BEFORE any constant moved
+
+Resolution from each pin plugin dir (Node v24.13.1; `require.resolve(<sdk>,
+{paths: [<dir>]})`, walked up to the package root — `openai`'s
+`package.json` is not in its `exports`, so `openai/package.json` throws
+`ERR_PACKAGE_PATH_NOT_EXPORTED`; the symlinks resolve to the live paths):
+
+| plugin dir | `openai` | `@openrouter/sdk` | `@anthropic-ai/sdk` | `@google/genai` |
+|---|---|---|---|---|
+| anthropic | root 7.30.0 | root 1.4.25 | own 0.115.0 | — |
+| builtin-embeddings | root 7.30.0 | root 1.4.25 | — | — |
+| curl | root 7.30.0 | root 1.4.25 | — | — |
+| deepseek | **own 7.23.0** | root 1.4.25 | — | — |
+| default-system-prompts | root 7.30.0 | root 1.4.25 | — | — |
+| google | root 7.30.0 | root 1.4.25 | — | own 1.52.0 |
+| grok | **own 7.23.0** | root 1.4.25 | — | — |
+| mcp | root 7.30.0 | root 1.4.25 | — | — |
+| nanogpt | **own 7.23.0** | root 1.4.25 | — | — |
+| ollama | root 7.30.0 | root 1.4.25 | — | — |
+| openai-compatible | **own 7.23.0** | root 1.4.25 | — | — |
+| openai | **own 7.23.0** | root 1.4.25 | — | — |
+| openrouter | root 7.30.0 | **own 1.3.28** | — | — |
+| search-serper | root 7.30.0 | root 1.4.25 | — | — |
+| z-ai | **own 7.23.0** | root 1.4.25 | — | — |
+
+One correction to the planner's reading (R-B): the nine non-OpenAI dirs
+carry no `openai`, but a bare `openai` import from them WOULD resolve the
+ROOT's 7.30.0 (Node walks up past the plugin dir). The corpora are the
+proof none of their recorded requests is built through it: no 7.30.0 stamp
+anywhere after the re-record (below).
+
+Red set at the target on unported `main` (+ this lane's help copy for the
+two embed-side guards), by name, with the assertion text:
+
+- `provider_sdk_version_guard::every_installed_provider_sdk_matches_the_recorded_version`
+  RED at the pin: `openai: recorded 7.23.0, installed 7.30.0 at
+  /tmp/qt-v4-pin-p4d260-f5e953a3f/node_modules/openai/package.json` and
+  `@openrouter/sdk: recorded 1.3.28, installed 1.4.25 at …/node_modules/
+  @openrouter/sdk/package.json` — the ROOT alone; every plugin location
+  matched. Tests 2 and 3 GREEN.
+- `help_tree_equivalence::shipped_help_tree_matches_oracle` RED after the
+  regen at the pin: `embedded file count vs the oracle's synced count —
+  left: 129, right: 130` (it SKIPs without `QT_ORACLE_HELP_TREE`, so the red
+  needs the regen first).
+- `help_tree_embed_guard::embedded_table_equals_the_on_disk_help_tree` RED
+  once the 130 files landed: `left: 130, right: 129` (it compares the embed
+  with the on-disk tree, so it cannot redden before the copy).
+- `host_help_docs_boot::boot_syncs_the_embedded_help_tree_and_reindex_reads_it`
+  RED once the 130 files landed: `the vendored tree at v4 b0b6656b5 —
+  left: 130, right: 129`.
+
+### Item 2 — the re-record (R-C): ZERO moved stamp or shape bytes
+
+The three `regenerate-*.sh` with `V4=/tmp/qt-v4-pin-p4d260-f5e953a3f`,
+Node v24.13.1, `V5` the lane worktree (spaceless symlink path), each exit 0:
+
+- `request-envelopes.recorded.ndjson` (399 rows): **byte-identical**. Not
+  re-committed.
+- `image-dialects.recorded.ndjson` (185 rows): **byte-identical**. Not
+  re-committed.
+- `google-wire.recorded.ndjson`: the 22 committed rows **byte-identical**;
+  the re-record carries **two NEW rows** (`participant-names`, stream +
+  send). Classified: neither a header nor a request-shape move — a stale
+  corpus. P4.128 unit A (`2bc5352ad`) added the `participant-names` case to
+  the SHARED recorder and re-recorded `request-envelopes` (18 rows there) but
+  never re-ran `regenerate-google-wire.sh`. v5 matches both new rows
+  (`request_builder_google_wire_equivalence`: `24 cases, both modes; headers
+  pinned on 24 rows`). Committed (24 rows).
+- Control (not in R-C's list): `google-request.recorded.ndjson` re-recorded
+  through `dump-wardrobe-tool-params.mjs` (pin root) + `record-google-request.mjs
+  --wardrobe-params` (google plugin dir) — **byte-identical** (13 rows).
+
+Stamp census after the re-record (R-B reproduced): `request-envelopes`
+7.23.0 ×242 (deepseek 30, grok 22, nanogpt 78, openai 32,
+openai-compatible 44, z-ai 36) + 0.115.0 ×46 (anthropic) + the UA
+`1.3.28 2.914.0 1.0.0` ×15 (openrouter); no stamp on ollama or openrouter's
+other rows; `image-dialects` 7.23.0 ×8 + the UA ×3; `google-wire`
+`google-genai-sdk/1.52.0` ×24. Node runtime `v24.13.1` ×320 (288 + 8
+`x-stainless-runtime-version`, 24 `gl-node/`). **No `RECORDED_*` constant
+moved.**
+
+Families re-run by name at the pin on the re-recorded corpora:
+`request_builder_equivalence` (`399 request envelopes … matched v4; headers
+pinned for 9 providers`), `image_dialects_equivalence`,
+`request_builder_google_equivalence`, `request_builder_google_wire_equivalence`
+— all ok. Tier 3 item 15: the other `recorded.ndjson` consumers
+(`moderation_wire`, `response_parse`, `stream_decoders`, `text_http_errors`,
+`tool_wire`, `web_search_wire`) NOT re-recorded — item 2's diff implicates
+none of their recorders (their corpora are not stamp-bearing request
+captures); recorded as not-run.
+
+### Item 3 — `provider_sdk_version_guard` per R-F (the planner's call, kept)
+
+Test 1 now asserts per LOCATION: the ROOT against `INSTALLED_ROOT_OPENAI_SDK
+= "7.30.0"` / `INSTALLED_ROOT_OPENROUTER_SDK = "1.4.25"` (the root lock's
+versions), every plugin dir against the unchanged `RECORDED_*`. The failure
+line names the location, the expected constant, and which side moved
+("the ROOT install moved (re-measure …)" / "a PLUGIN install moved (… re-record)").
+The alternative (read the pin only, SKIP elsewhere) was not taken — the
+pin's root IS the live root by symlink, so it buys nothing. The module doc's
+measurement paragraph rewritten with the 2026-10-08 figures above.
+
+- GREEN at the pin AND at the live root (`QT_V4_CHECKOUT=~/source/quilltap-server`).
+- Mutations: `INSTALLED_ROOT_OPENAI_SDK` → 7.23.0 reds test 1 on the root
+  alone with the ROOT sentence; `RECORDED_OPENAI_SDK` → 7.30.0 reds test 1
+  on the six plugin dirs with the PLUGIN sentence (and test 2 on the
+  corpora). Both reverted.
+
+### Item 4 — `help/**` WHOLE from the pin (R-A): 130 files
+
+`git -C "$PIN" ls-tree -r --name-only f5e953a3f help/` → 130 flat names,
+each written from `git show f5e953a3f:<f>`; `find help -type f | wc -l` =
+130; the census below prints nothing. Changed: `A help/wardrobe-images.md`;
+`M help/wardrobe.md`, `project-wardrobe.md`, `profile-avatar.md`,
+`chat-gallery.md`, `image-generation-profiles.md`, `system-backup-restore.md`,
+`database-protection.md` (the other 122 unchanged — they were already
+byte-identical to `94fbb1ae3`, and the span did not touch them). Pins moved:
+`help_tree_embed_guard.rs` `VENDORED_FILE_COUNT` 129 → 130 (+ the "130 at v4
+`f5e953a3f`" paragraph); `host_help_docs_boot.rs` 129 → 130 (`"the vendored
+tree at v4 f5e953a3f"`, the module doc's three "129"s); `help_tree_equivalence`
+regenerated at the pin (`130 docs, 754 chunks`) — `docs OK (130 rows)`,
+`chunks OK (754 rows)`. Host rebuilt (the `build.rs` embed) before every run.
+
+Census helper (Tier 2 item 10 — the unifier re-runs it at §S.7):
+
+    PIN=/tmp/qt-v4-pin-<unify>-f5e953a3f
+    for f in help/*.md; do cmp -s "$f" <(git -C "$PIN" show f5e953a3f:"$f") || echo DIFF "$f"; done
+    find help -type f | wc -l   # 130
+
+### Item 5 — `docs/v4/**`, twelve paths, each `cmp`-identical to `git show f5e953a3f:docs/<path>`
+
+`CHANGELOG.md`, `developer/API.md`, `developer/DDL.md`,
+`developer/BACKGROUND_JOBS_CHILD.md`, `developer/bugs.md` (modified);
+`developer/bugs/fixed/bug-179-buffered-outfit-overwrite.md`,
+`bug-180-llm-logs-no-cold-open-retry.md`,
+`bug-181-restore-drops-embedded-memories.md`,
+`developer/features/complete/wardrobe-item-images.md`,
+`wardrobe-list-legibility.md`, `wardrobe-wear-ledger.md`,
+`releases/4.10.0.md` (new). `git diff --stat 94fbb1ae3 f5e953a3f -- docs/`
+lists exactly these twelve. `CLAUDE.md` / `README.md` moved in the span
+too — v5 mirrors neither (recorded).
+
+### Item 6 — the markdown families (R-D): ZERO moved bytes
+
+Regenerated at the pin by hand into `/tmp/p4d260/` (Node v24.13.1; the pin
+resolves `mdast-util-to-markdown` 2.2.0, `micromark` 4.0.3 — the moved
+stack) and then again through the sweep driver (`--run-all --families
+help_tree_equivalence,conversation_markdown_equivalence,
+markdown_transcript_equivalence,markdown_frontmatter_equivalence --v4 "$PIN"
+--v5w <spaceless worktree> --force` — totals `{'ok': 4}`):
+`conversation_markdown_equivalence` both zones (`18 cases OK (37
+interchanges compared)` ×2), `markdown_transcript_equivalence` under
+`TZ=UTC` (every vector `transcript bytes OK`), `markdown_frontmatter_equivalence`
+(`58 cases`, the control) — all green, ZERO test-file edits, no FINDING for
+the human. `mammoth` 1.12.3 → 1.13.0 INERT (v5 has no docx extractor —
+`generators/file_content.rs`'s P4.6y refusal; Tier 3 item 12).
+
+### Item 7 — the NO-PORT ratification evidence (R-E), for §S.6
+
+`git show --stat 938144eb4` ("docs: add 4.10.0 release notes draft"):
+
+    docs/releases/4.10.0.md | 404 ++++++++
+    1 file changed, 404 insertions(+)
+
+`git show --stat 7c78abd49` ("Wardrobe programme: three design specs"):
+
+    .claude/commands/update-documentation.md           |   3 +
+    docs/CHANGELOG.md                                  |  13 +
+    docs/developer/features/wardrobe-item-images.md    | 387 +++++
+    .../developer/features/wardrobe-list-legibility.md | 301 +++++
+    docs/developer/features/wardrobe-wear-ledger.md    | 476 +++++
+    5 files changed, 1180 insertions(+)
+
+The three specs were later MOVED to `docs/developer/features/complete/`
+within the span (`a9c99a4a0`'s `{ => complete}` renames), so the vendored
+copies land at their TARGET path; the pre-move path does not exist at the
+pin. v5 mirrors no `.claude/`. Neither commit touches `lib/`, `app/`,
+`help/`, `packages/` or `plugins/` — both are `NO-PORT-RATIFIED(P4.D260)`
+on these file lists.
+
+### Item 8 — the bundle absorption note (R-G)
+
+`git show --stat b3f937076 -- plugins/`: the eight `index.js` bundles of the
+NON-OpenAI plugins (anthropic, curl, default-system-prompts, google, mcp,
+ollama, openrouter, search-serper; 14,548+/5,740−), embedding `openai`
+7.30.0 through `@quilltap/plugin-utils`. No v5 artefact reads a bundle for
+request bytes and every recorder imports the plugin's SOURCE
+(`provider.ts` / `image-provider.ts` / `index.ts`) from the plugin dir, so
+the bundles reach v5 only through item 1's resolution — and item 2 proves
+no recorded byte moved. `a9c99a4a0`'s dependency content (`package.json`
++4−, `package-lock.json` 886 lines; first parent `f9f1ba177`) is absorbed by
+the same measurement: ABSORBED(P4.D260).
+
+### Tier 2
+
+- Item 9: `help_tree_equivalence.rs`'s count comment extended with the
+  P4.D260 line.
+- Item 10: the census helper above.
+- Item 11 — **the `plugin-utils` note for the human:** the root lock pins
+  `@quilltap/plugin-utils` 2.6.3; all 14 plugin dirs that install it carry
+  2.6.2 (none nests `openai`). A second "installed ≠ lock" fact the guard
+  does not pin — a candidate guard arm, not this lane's.
+
+### Tier 3 — deferred, recorded
+
+12. A docx extractor (`mammoth` 1.13.0) — P4.6y's standing deferral.
+13. The `openai` 7.30.0 changelog audit — unread; item 2 proves nothing
+    reached the recorded wire at the pin (the six OpenAI-SDK plugins still
+    ship 7.23.0, so 7.30.0 cannot reach the wire until v4 re-installs them —
+    which the guard's plugin arm would catch).
+14. `next` 16.4.0, `sharp` 0.35.5, `katex` 0.18.10, `ws` 8.22.0,
+    `@types/node`, `typescript-eslint` — no v5 surface.
+15. The other recorded-corpus consumers — not re-recorded (item 2).
+
+### Live-checkout guards at the pin (§R.3)
+
+`builtin_prompt_templates_guard` GREEN (2/2), `public_schemas_vendor_guard`
+GREEN (3/3); `qtap_schema_embed_guard::the_embedded_schema_equals_the_v4_checkouts`
+RED by design (P4.D264's, §R.13(d)). No other red.
+
+### HANDOFF
+
+None. No wardrobe lane needs a help sentence changed (the copy is
+byte-exact from the pin).
+
+### Gate
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` AND with `--features quilltap-core/native-transport` both
+  exit 0 (after cloning main's `apps/web/dist` — the lane touches no SPA).
+- `cargo test --workspace --no-fail-fast` with `QT_V4_CHECKOUT` +
+  `QT_V4_ROOT` at the pin and the five lane oracles
+  (`QT_ORACLE_HELP_TREE`, `QT_ORACLE_CONVERSATION_MARKDOWN` + `_CHICAGO`,
+  `QT_ORACLE_MARKDOWN_TRANSCRIPT`, `QT_ORACLE_MARKDOWN_FRONTMATTER`, all under
+  `/tmp/p4d260/`): **680 binaries / 4,496 passed / 1 failed / 3 ignored**,
+  zero `SKIP:` lines. The ONE red is
+  `qtap_schema_embed_guard::the_embedded_schema_equals_the_v4_checkouts` —
+  RED by design at the target until P4.D264 (§R.13(d)); no NEW red.
+- `recipe_sweep.py --self-test` exit 0; the four-family sweep `{'ok': 4}`.
+- Per-commit: the gate above ran once on the final tree; the three commits
+  before the record are subsets of it (vendored files + harness/host test
+  files only — no crate source).
+
+### 💸 for the dogfood pass
+
+- The help viewer lists `wardrobe-images.md` and the reworked `wardrobe.md`;
+  `database-protection.md` shows "Daily Tidying on Startup";
+  `system-backup-restore.md` shows the bug-181 paragraph; the boot reconcile
+  leaves `help_docs` at 130 rows and a second boot writes nothing.
+- A real provider turn on the Friday copy after the union stamps nothing new
+  (the port sends no SDK header — a control row, not a finding).
+
+### Commits
+
+`a25493a3b` help re-vendor (130) + the three pins; `17b2bd89c` the
+twelve `docs/v4/` paths; `945faa83d` the SDK guard + the google-wire
+re-record; then this record.
+
+### Versions at close
+
+core 0.0.1252, host 0.0.189, web 0.0.224 — UNCHANGED (no crate source
+moved); harness frozen 0.0.1110.

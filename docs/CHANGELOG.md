@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — docs(porting): P4.D260 lane record — dependency move measured, help/docs re-vendored
+
+_Docs-only change._
+
+The P4.D260 lane record in `status-log.md` (the per-plugin SDK resolution table, the red-first set, the re-record and markdown regen results, the NO-PORT evidence for `938144eb4` and `7c78abd49`, the gate) and the order's status set to LANE COMPLETE.
+
 #### 2026-10-08 — test(harness): provider SDK guard checks the root against the lock, plugins against the recorded SDKs; google-wire re-recorded (P4.D260)
 
 _No crate versions bumped._
