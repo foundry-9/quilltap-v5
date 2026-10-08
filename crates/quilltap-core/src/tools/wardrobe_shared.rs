@@ -27,6 +27,7 @@ use crate::db::vault_wardrobe_public::{WardrobePublicError, NO_MOUNT_MESSAGE};
 use crate::db::wardrobe_read::{
     find_by_character_id, find_by_id_for_character, find_by_ids_for_character,
 };
+use crate::db::wardrobe_wear_stats::WornBundle;
 use crate::db::DbError;
 use crate::dissolve_bundles::{WearableLookup, WearableNode};
 use crate::wardrobe::{
@@ -309,6 +310,34 @@ fn lookup_for_bundle(
     }
     hydrate_component_graph(main, docs, character_id, &mut items_by_id, tiers);
     Some(items_by_id)
+}
+
+/// v4 `wornBundlesFor(item, itemsById, onlySlot?)` (`outfit-displacement.ts:
+/// 114-124`, `3ee3b1342`) — the bundle credit a put-on gesture claims: the
+/// bundle and the leaves it dissolved into, or nothing when the item is a leaf
+/// or could not dissolve (stored whole — the leaf diff then credits it as
+/// itself). With `only_slot` (`add_to_slot`), only the leaves covering that
+/// slot count; none ⇒ nothing.
+pub fn worn_bundles_for(
+    item: &WearableNode,
+    items_by_id: Option<&WearableLookup>,
+    only_slot: Option<&str>,
+) -> Vec<WornBundle> {
+    let Some(leaves) = crate::dissolve_bundles::dissolve_bundle_to_leaves(item, items_by_id) else {
+        return Vec::new();
+    };
+    let contributed: Vec<String> = leaves
+        .into_iter()
+        .filter(|leaf| only_slot.is_none_or(|slot| leaf.slots.iter().any(|s| s == slot)))
+        .map(|leaf| leaf.id)
+        .collect();
+    if contributed.is_empty() {
+        return Vec::new();
+    }
+    vec![WornBundle {
+        id: item.id.clone(),
+        leaf_ids: contributed,
+    }]
 }
 
 /// v4 `equipItem` — wear an item into the slots its `types` designate, honoring

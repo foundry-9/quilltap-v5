@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(wardrobe): the wear-credit widenings — `dissolve_bundles_in_slots_with_credit`, `default_outfit_from_pool_with_credit`, `worn_bundles_for` (P4.D262 item 4)
+
+_Versions: core 0.0.1255._
+
+The credit widenings the wear ledger's chokepoint needs (v4 `3ee3b1342`), each a return-type widening over logic v5 already had:
+
+- `dissolve_bundles::dissolve_bundles_in_slots_with_credit` returns `DissolvedWithCredit { slots, worn_bundles }`, the bundles in the order they were met (v4 `dissolveBundlesInSlotsWithCredit`, the `Map`'s insertion order). `dissolve_bundles_in_slots` is now its `.slots`.
+- `services::outfit_selections::default_outfit_from_pool_with_credit` returns the NEW `ResolvedOutfit { slots, worn_bundles }` (v4 `buildDefaultOutfitWithCredit`). `default_outfit_from_pool` is now its `.slots`.
+- `tools::wardrobe_shared::worn_bundles_for(item, items_by_id, only_slot)` is NEW (v4 `wornBundlesFor`). It returns the bundle and the leaves it dissolved into, only the leaves covering `only_slot` when one is named, and nothing for a leaf or a bundle that can't dissolve.
+
+`dissolve_bundles_equivalence` grows three row kinds through v4's REAL functions at the `f5e953a3f` pin: `snapshot_credit` (all 13 snapshot cases), `worn_bundles_for` (12 item × lookup × slot cases) and `default_credit` (8 pools covering createdAt layering, an archived default, unresolvable and paired default bundles, and a missing `createdAt`). `wornBundles` is compared whole; 21 rows carry a non-empty claim. The KEYSTONE build refuses the grown oracle. P4.D262 item 4.
+
 #### 2026-10-08 — refactor(format-time): extract `format_relative_days` and delegate the memory age label to it (P4.D262 R-E)
 
 _Versions: core 0.0.1254._

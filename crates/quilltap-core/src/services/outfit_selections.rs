@@ -48,8 +48,11 @@ use crate::db::chats_outfits::ChatOutfitsRepository;
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
 use crate::db::tiered_mount_pool::resolve_group_mount_point_ids_for_character;
 use crate::db::wardrobe_read::{find_by_character_id, find_wearable_pool_for_character};
+use crate::db::wardrobe_wear_stats::WornBundle;
 use crate::db::{characters_read, connection_profiles, DbError};
-use crate::dissolve_bundles::{dissolve_bundles_in_slots, WearableLookup};
+use crate::dissolve_bundles::{
+    dissolve_bundles_in_slots, dissolve_bundles_in_slots_with_credit, WearableLookup,
+};
 use crate::memory_tasks::strip_code_fences;
 use crate::model::completion::{CompletionMessage, CompletionProvider, CompletionRole};
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
@@ -155,6 +158,34 @@ fn slots_to_value(slots: &Slots) -> Value {
 /// shared bundle's components are in it even when the character doesn't own
 /// them.
 pub fn default_outfit_from_pool(pool: &[Value]) -> Slots {
+    default_outfit_from_pool_with_credit(pool).slots
+}
+
+/// A resolved outfit plus the bundles dissolved to build it (v4
+/// `apply-outfit-selections.ts`' `ResolvedOutfit`, `3ee3b1342`) — what the
+/// commit loop hands the wear ledger's chokepoint.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ResolvedOutfit {
+    pub slots: Slots,
+    pub worn_bundles: Vec<WornBundle>,
+}
+
+impl ResolvedOutfit {
+    /// Slots that claim no bundle (`none`, `previous_chat`'s carry-over, a
+    /// `manual` selection without `wornBundleIds`).
+    pub fn bare(slots: Slots) -> Self {
+        ResolvedOutfit {
+            slots,
+            worn_bundles: Vec::new(),
+        }
+    }
+}
+
+/// v4 `buildDefaultOutfitWithCredit` (`default-outfit.ts:40-51`) —
+/// [`default_outfit_from_pool`], also returning the `isDefault` bundles it
+/// dissolved and the leaves each contributed: the wear ledger credits an
+/// outfit only when its caller says one was put on.
+pub fn default_outfit_from_pool_with_credit(pool: &[Value]) -> ResolvedOutfit {
     let defaults: Vec<Value> = pool
         .iter()
         .filter(|i| i.get("isDefault").and_then(Value::as_bool) == Some(true))
@@ -163,7 +194,7 @@ pub fn default_outfit_from_pool(pool: &[Value]) -> Slots {
         .collect();
     let mut slots = Slots::default();
     if defaults.is_empty() {
-        return slots;
+        return ResolvedOutfit::bare(slots);
     }
 
     for item in sort_for_default_outfit(&defaults) {
@@ -180,7 +211,11 @@ pub fn default_outfit_from_pool(pool: &[Value]) -> Slots {
             }
         }
     }
-    dissolve_bundles_in_slots(&slots, &lookup_from(pool))
+    let dissolved = dissolve_bundles_in_slots_with_credit(&slots, &lookup_from(pool));
+    ResolvedOutfit {
+        slots: dissolved.slots,
+        worn_bundles: dissolved.worn_bundles,
+    }
 }
 
 /// An `id → item` lookup over a wardrobe pool, for [`dissolve_bundles_in_slots`].

@@ -16,13 +16,23 @@
 //! Run:
 //!   QT_ORACLE_DISSOLVE=/tmp/oracle-dissolve-bundles.ndjson \
 //!     cargo test -p quilltap-harness --test dissolve_bundles_equivalence -- --nocapture
+//!
+//! P4.D262 (v4 `3ee3b1342`, the wear ledger) adds the credit widenings:
+//! `dissolve_bundles_in_slots_with_credit` (every snapshot case),
+//! `tools::wardrobe_shared::worn_bundles_for` (v4 `wornBundlesFor`) and
+//! `services::outfit_selections::default_outfit_from_pool_with_credit` (v4
+//! `buildDefaultOutfitWithCredit`), `wornBundles` compared whole.
 
 use std::collections::HashMap;
 
+use quilltap_core::db::wardrobe_wear_stats::WornBundle;
 use quilltap_core::dissolve_bundles::{
-    dissolve_bundle_to_leaves, dissolve_bundles_in_slots, is_bundle, lay_leaves_into_slots,
-    slots_covered_by, DissolvedLeaf, WearableLookup, WearableNode,
+    dissolve_bundle_to_leaves, dissolve_bundles_in_slots, dissolve_bundles_in_slots_with_credit,
+    is_bundle, lay_leaves_into_slots, slots_covered_by, DissolvedLeaf, WearableLookup,
+    WearableNode,
 };
+use quilltap_core::services::outfit_selections::default_outfit_from_pool_with_credit;
+use quilltap_core::tools::wardrobe_shared::worn_bundles_for;
 use quilltap_core::wardrobe::{
     add_item_to_slot, replace_item_into_slots, wear_item_into_slots, Slots,
 };
@@ -130,6 +140,64 @@ enum Row {
         lookup: Vec<String>,
         out: WireSlots,
     },
+    // ── P4.D262 (v4 `3ee3b1342`): the wear ledger's credit widenings ──
+    #[serde(rename = "snapshot_credit")]
+    SnapshotCredit {
+        id: String,
+        current: WireSlots,
+        lookup: Vec<String>,
+        out: WireCredit,
+    },
+    #[serde(rename = "worn_bundles_for")]
+    WornBundlesFor {
+        id: String,
+        #[serde(rename = "itemId")]
+        item_id: String,
+        lookup: Option<Vec<String>>,
+        #[serde(rename = "onlySlot")]
+        only_slot: Option<String>,
+        out: Vec<WireWornBundle>,
+    },
+    #[serde(rename = "default_credit")]
+    DefaultCredit {
+        id: String,
+        pool: Vec<Value>,
+        out: WireCredit,
+    },
+}
+
+/// v4's `{ id, leafIds }` worn-bundle element.
+#[derive(Deserialize)]
+struct WireWornBundle {
+    id: String,
+    #[serde(rename = "leafIds")]
+    leaf_ids: Vec<String>,
+}
+
+/// v4's `{ slots, wornBundles }` (`…WithCredit`).
+#[derive(Deserialize)]
+struct WireCredit {
+    slots: WireSlots,
+    #[serde(rename = "wornBundles")]
+    worn_bundles: Vec<WireWornBundle>,
+}
+
+fn assert_worn_bundles(got: &[WornBundle], want: &[WireWornBundle], label: &str) {
+    let got: Vec<(&str, &[String])> = got
+        .iter()
+        .map(|b| (b.id.as_str(), b.leaf_ids.as_slice()))
+        .collect();
+    let want: Vec<(&str, &[String])> = want
+        .iter()
+        .map(|b| (b.id.as_str(), b.leaf_ids.as_slice()))
+        .collect();
+    assert_eq!(got, want, "{label}: wornBundles");
+}
+
+/// Every slot, hair included (the credit rows postdate the hair slot).
+fn assert_all_slots(got: &Slots, want: &WireSlots, label: &str) {
+    assert_slots(got, want, label);
+    assert_eq!(got.hair, want.hair, "{label}: hair");
 }
 
 /// Rebuild the case's lookup from the corpus's item universe. `None` = v4 passed
@@ -179,6 +247,9 @@ fn dissolve_bundles_matches_oracle() {
     let mut universe: HashMap<String, Value> = HashMap::new();
     let mut saw_meta = false;
     let (mut shapes, mut dissolves, mut lays, mut wears, mut snapshots) = (0, 0, 0, 0, 0);
+    let (mut snapshot_credits, mut worn_bundles_fors, mut default_credits) = (0, 0, 0);
+    // The credit rows must exercise a non-empty claim, not only `[]`.
+    let mut non_empty_claims = 0;
     // Both dissolution outcomes must be present: leaves, and the store-whole
     // fail-safe. A corpus carrying only one is blind to half the contract.
     let (mut dissolved_to_leaves, mut stored_whole) = (0, 0);
@@ -312,6 +383,59 @@ fn dissolve_bundles_matches_oracle() {
                 assert_slots(&got, &out, &format!("snapshot '{id}'"));
                 snapshots += 1;
             }
+
+            Row::SnapshotCredit {
+                id,
+                current,
+                lookup,
+                out,
+            } => {
+                let map = lookup_of(&universe, Some(&lookup)).expect("snapshot lookup");
+                let got = dissolve_bundles_in_slots_with_credit(&current.to_slots(), &map);
+                let label = format!("snapshot_credit '{id}'");
+                assert_all_slots(&got.slots, &out.slots, &label);
+                assert_worn_bundles(&got.worn_bundles, &out.worn_bundles, &label);
+                // The plain form is the credit form's slots, always.
+                assert_eq!(
+                    dissolve_bundles_in_slots(&current.to_slots(), &map),
+                    got.slots
+                );
+                if !got.worn_bundles.is_empty() {
+                    non_empty_claims += 1;
+                }
+                snapshot_credits += 1;
+            }
+
+            Row::WornBundlesFor {
+                id,
+                item_id,
+                lookup,
+                only_slot,
+                out,
+            } => {
+                let map = lookup_of(&universe, lookup.as_ref());
+                let got = worn_bundles_for(
+                    &node_of(&universe, &item_id),
+                    map.as_ref(),
+                    only_slot.as_deref(),
+                );
+                assert_worn_bundles(&got, &out, &format!("worn_bundles_for '{id}'"));
+                if !got.is_empty() {
+                    non_empty_claims += 1;
+                }
+                worn_bundles_fors += 1;
+            }
+
+            Row::DefaultCredit { id, pool, out } => {
+                let got = default_outfit_from_pool_with_credit(&pool);
+                let label = format!("default_credit '{id}'");
+                assert_all_slots(&got.slots, &out.slots, &label);
+                assert_worn_bundles(&got.worn_bundles, &out.worn_bundles, &label);
+                if !got.worn_bundles.is_empty() {
+                    non_empty_claims += 1;
+                }
+                default_credits += 1;
+            }
         }
     }
 
@@ -324,6 +448,22 @@ fn dissolve_bundles_matches_oracle() {
     assert!(lays >= 7, "lay cases: {lays}");
     assert!(wears >= 19, "wear cases: {wears}");
     assert!(snapshots >= 13, "snapshot cases: {snapshots}");
+    assert!(
+        snapshot_credits >= 13,
+        "snapshot_credit cases: {snapshot_credits} (an oracle predating P4.D262 — regenerate it)"
+    );
+    assert!(
+        worn_bundles_fors >= 12,
+        "worn_bundles_for cases: {worn_bundles_fors}"
+    );
+    assert!(
+        default_credits >= 8,
+        "default_credit cases: {default_credits}"
+    );
+    assert!(
+        non_empty_claims >= 10,
+        "non-empty credit claims: {non_empty_claims}"
+    );
     assert!(
         dissolved_to_leaves >= 6,
         "dissolve→leaves arms: {dissolved_to_leaves}"

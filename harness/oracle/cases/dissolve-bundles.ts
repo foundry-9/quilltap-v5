@@ -4,9 +4,16 @@
  *
  * Drives the REAL `lib/wardrobe/dissolve-bundles.ts` (`slotsCoveredBy`,
  * `isBundle`, `dissolveBundleToLeaves`, `layLeavesIntoSlots`,
- * `dissolveBundlesInSlots`) and the REAL pure primitives in
- * `lib/wardrobe/outfit-displacement.ts` (`wearItemIntoSlots`,
- * `replaceItemIntoSlots`, `addItemToSlot`) — no mocks, no reimplementation.
+ * `dissolveBundlesInSlots`, `dissolveBundlesInSlotsWithCredit`) and the REAL
+ * pure primitives in `lib/wardrobe/outfit-displacement.ts`
+ * (`wearItemIntoSlots`, `replaceItemIntoSlots`, `addItemToSlot`,
+ * `wornBundlesFor`) plus `lib/wardrobe/default-outfit.ts`'s
+ * `buildDefaultOutfitWithCredit` — no mocks, no reimplementation.
+ *
+ * P4.D262 (v4 `3ee3b1342`, the wear ledger) adds the three credit row kinds:
+ * `snapshot_credit` (every snapshot case through `…WithCredit`, `wornBundles`
+ * compared whole), `worn_bundles_for` (item × lookup × `onlySlot`), and
+ * `default_credit` (`buildDefaultOutfitWithCredit` over small item sets).
  *
  * The corpus is v4's own `__tests__/unit/lib/wardrobe/dissolve-bundles.test.ts`
  * case-for-case, plus the shapes that test leaves implicit: a depth-5 chain that
@@ -23,6 +30,7 @@
 import {
   dissolveBundleToLeaves,
   dissolveBundlesInSlots,
+  dissolveBundlesInSlotsWithCredit,
   isBundle,
   layLeavesIntoSlots,
   slotsCoveredBy,
@@ -31,7 +39,9 @@ import {
   addItemToSlot,
   replaceItemIntoSlots,
   wearItemIntoSlots,
+  wornBundlesFor,
 } from '@/lib/wardrobe/outfit-displacement';
+import { buildDefaultOutfitWithCredit } from '@/lib/wardrobe/default-outfit';
 import type { EquippedSlots, WardrobeItem, WardrobeItemType } from '@/lib/schemas/wardrobe.types';
 
 const NOW = '2026-01-01T00:00:00.000Z';
@@ -419,4 +429,110 @@ for (const c of snapshotCases) {
     lookup: c.lookup,
     out: dissolveBundlesInSlots(c.current, lookupOf(c.lookup) as never),
   });
+}
+
+// ── P4.D262: the wear ledger's credit widenings (`3ee3b1342`) ──────────────
+
+for (const c of snapshotCases) {
+  emit({
+    kind: 'snapshot_credit',
+    id: c.id,
+    current: c.current,
+    lookup: c.lookup,
+    out: dissolveBundlesInSlotsWithCredit(c.current, lookupOf(c.lookup) as never),
+  });
+}
+
+interface WornBundlesForCase {
+  id: string;
+  itemId: string;
+  /** ids visible to the lookup; null = no lookup supplied at all. */
+  lookup: string[] | null;
+  onlySlot?: string;
+}
+
+const wornBundlesForCases: WornBundlesForCase[] = [
+  { id: 'four-slot-bundle', itemId: 'man-in-black', lookup: ALL },
+  { id: 'four-slot-bundle-only-top', itemId: 'man-in-black', lookup: ALL, onlySlot: 'top' },
+  { id: 'four-slot-bundle-only-hair', itemId: 'man-in-black', lookup: ALL, onlySlot: 'hair' },
+  { id: 'nested-bundle', itemId: 'gala', lookup: ALL },
+  { id: 'nested-bundle-only-accessories', itemId: 'gala', lookup: ALL, onlySlot: 'accessories' },
+  { id: 'plain-garment', itemId: 'shirt', lookup: ALL },
+  { id: 'no-lookup', itemId: 'man-in-black', lookup: null },
+  { id: 'unresolvable', itemId: 'orphan', lookup: ALL },
+  { id: 'part-into-unclaimed-slot', itemId: 'kit', lookup: ALL, onlySlot: 'accessories' },
+  { id: 'multi-slot-leaf', itemId: 'gown-bundle', lookup: ALL, onlySlot: 'bottom' },
+  { id: 'self-echo-with-a-real-leaf', itemId: 'echo-1', lookup: ALL },
+  { id: 'mutual-cycle', itemId: 'yin', lookup: ALL },
+];
+
+for (const c of wornBundlesForCases) {
+  emit({
+    kind: 'worn_bundles_for',
+    id: c.id,
+    itemId: c.itemId,
+    lookup: c.lookup,
+    onlySlot: c.onlySlot ?? null,
+    out: wornBundlesFor(
+      item(c.itemId),
+      c.lookup ? (lookupOf(c.lookup) as never) : undefined,
+      c.onlySlot as WardrobeItemType | undefined,
+    ),
+  });
+}
+
+// `buildDefaultOutfitWithCredit` takes whole items (it reads `isDefault`,
+// `archivedAt` and `createdAt`), so each case ships its own pool.
+interface DefaultCase {
+  id: string;
+  pool: WardrobeItem[];
+}
+
+const dflt = (
+  id: string,
+  types: string[],
+  componentItemIds: string[] = [],
+  extra: Record<string, unknown> = {},
+): WardrobeItem => makeItem(id, types, componentItemIds, { isDefault: true, ...extra });
+
+const defaultCases: DefaultCase[] = [
+  { id: 'no-defaults', pool: [item('shirt'), item('trousers')] },
+  { id: 'leaf-defaults-layer-by-createdAt', pool: [
+    dflt('coat', ['top'], [], { createdAt: '2026-03-01T00:00:00.000Z' }),
+    dflt('vest', ['top'], [], { createdAt: '2026-02-01T00:00:00.000Z' }),
+    dflt('boots-d', ['footwear']),
+  ] },
+  { id: 'default-bundle-dissolves', pool: [
+    dflt('suit', ['top', 'bottom'], ['shirt', 'trousers']),
+    item('shirt'),
+    item('trousers'),
+  ] },
+  { id: 'two-default-bundles', pool: [
+    dflt('suit', ['top', 'bottom'], ['shirt', 'trousers'], { createdAt: '2026-01-02T00:00:00.000Z' }),
+    dflt('feet', ['footwear'], ['boots'], { createdAt: '2026-01-01T00:00:00.000Z' }),
+    item('shirt'),
+    item('trousers'),
+    item('boots'),
+  ] },
+  { id: 'archived-default-skipped', pool: [
+    dflt('suit', ['top', 'bottom'], ['shirt', 'trousers'], { archivedAt: '2026-01-05T00:00:00.000Z' }),
+    dflt('hat-d', ['accessories']),
+    item('shirt'),
+    item('trousers'),
+  ] },
+  { id: 'unresolvable-default-bundle', pool: [dflt('orphan-d', ['top'], ['nowhere'])] },
+  { id: 'default-bundle-and-its-default-leaf', pool: [
+    dflt('suit', ['top', 'bottom'], ['shirt', 'trousers'], { createdAt: '2026-01-02T00:00:00.000Z' }),
+    dflt('shirt-d', ['top'], [], { createdAt: '2026-01-01T00:00:00.000Z' }),
+    item('shirt'),
+    item('trousers'),
+  ] },
+  { id: 'missing-createdAt-sorts-last', pool: [
+    dflt('late', ['top'], [], { createdAt: undefined }),
+    dflt('early', ['top'], [], { createdAt: '2026-01-01T00:00:00.000Z' }),
+  ] },
+];
+
+for (const c of defaultCases) {
+  emit({ kind: 'default_credit', id: c.id, pool: c.pool, out: buildDefaultOutfitWithCredit(c.pool) });
 }

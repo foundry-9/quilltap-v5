@@ -226,6 +226,28 @@ pub fn lay_leaves_into_slots(
 ///
 /// Bundles that can't be resolved are left in place untouched.
 pub fn dissolve_bundles_in_slots(current_slots: &Slots, items_by_id: &WearableLookup) -> Slots {
+    dissolve_bundles_in_slots_with_credit(current_slots, items_by_id).slots
+}
+
+/// [`dissolve_bundles_in_slots_with_credit`]'s answer (v4's `{ slots,
+/// wornBundles }`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct DissolvedWithCredit {
+    pub slots: Slots,
+    /// Every bundle dissolved, with the leaves it contributed — in the order
+    /// the bundles were met (slot order, first seen).
+    pub worn_bundles: Vec<crate::db::wardrobe_wear_stats::WornBundle>,
+}
+
+/// v4 `dissolveBundlesInSlotsWithCredit` (`dissolve-bundles.ts:177-233`,
+/// `3ee3b1342`) — [`dissolve_bundles_in_slots`], also reporting which bundles
+/// it dissolved and the leaves each contributed: the claim the wear ledger
+/// needs to credit an outfit as worn, since the stored leaves alone cannot say
+/// one was.
+pub fn dissolve_bundles_in_slots_with_credit(
+    current_slots: &Slots,
+    items_by_id: &WearableLookup,
+) -> DissolvedWithCredit {
     // v4's `Map<string, DissolvedLeaf[]>` — insertion-ordered, and the second
     // pass below walks it in that order, so a Vec is the faithful shape.
     let mut dissolved: Vec<(String, Vec<DissolvedLeaf>)> = Vec::new();
@@ -248,7 +270,10 @@ pub fn dissolve_bundles_in_slots(current_slots: &Slots, items_by_id: &WearableLo
     }
 
     if dissolved.is_empty() {
-        return current_slots.clone();
+        return DissolvedWithCredit {
+            slots: current_slots.clone(),
+            worn_bundles: Vec::new(),
+        };
     }
 
     let leaves_of = |id: &str| -> Option<&Vec<DissolvedLeaf>> {
@@ -292,7 +317,17 @@ pub fn dissolve_bundles_in_slots(current_slots: &Slots, items_by_id: &WearableLo
         }
     }
 
-    next
+    let worn_bundles = dissolved
+        .into_iter()
+        .map(|(id, leaves)| crate::db::wardrobe_wear_stats::WornBundle {
+            id,
+            leaf_ids: leaves.into_iter().map(|leaf| leaf.id).collect(),
+        })
+        .collect();
+    DissolvedWithCredit {
+        slots: next,
+        worn_bundles,
+    }
 }
 
 /// A slot's id array by name — the canonical accessor (an unrecognized name is
