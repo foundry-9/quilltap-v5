@@ -272,7 +272,16 @@ fn system_import_read_matches_oracle() {
                     want.insert("manifest".into(), expected["manifest"].clone());
                     want.insert("data".into(), expected["data"].clone());
                     let want = Value::Object(want);
-                    if got != want {
+                    // P4.D264: compared as BYTES — `serde_json::Map`'s `==`
+                    // ignores key order even under `preserve_order` (an
+                    // IndexMap), so the "exact incl. key order" claim this
+                    // family made was never enforced (measured: the
+                    // chatInforms / chatDocuments order passed with v5's
+                    // stitch reversed).
+                    // (Not `got != want` — exactly the order-blind compare
+                    // clippy's `cmp_owned` would suggest.)
+                    let bytes = |v: &Value| serde_json::to_string(v).expect("serializable");
+                    if bytes(&got) != bytes(&want) {
                         failed.push(format!(
                             "{name}: assembled export differs\n  rust:   {got}\n  oracle: {want}"
                         ));
@@ -466,5 +475,6 @@ fn system_import_read_matches_oracle() {
     // 19 from P4.9G4 + `read_ndjson_multi_chunk_blob` (P4.d22) + the two
     // planted read-failure arms (P4.48).
     // P4.D264: + the three `read_ndjson_wardrobe_wear_*` cases.
-    assert_eq!(ran, 32, "expected 32 cases to run, ran {ran}");
+    // P4.D264 (ruled fix): + `read_ndjson_chat_documents_and_informs_order`.
+    assert_eq!(ran, 33, "expected 33 cases to run, ran {ran}");
 }

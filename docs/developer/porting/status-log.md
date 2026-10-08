@@ -173543,3 +173543,17 @@ RED under the OLD vendored bytes (the family failed), GREEN under the new (1/1),
   `wardrobe_picture_tombstone_is_skipped` ok; `system_restore_equivalence` 1/1;
   `restore_vintage_state` 9/9.
 
+### Unit G — the chats bundle's key order, RULED and fixed (core 0.0.1259)
+
+- **The human's ruling (2026-10-08, on the lane's finding 2): fix it.** `quilltap_import/
+  ndjson.rs`'s `"chats"` arm now stitches `chatDocuments` BEFORE `chatInforms` (v4
+  `quilltap-import-stream.ts:597-598`, unchanged since `e7d77bb60` — P4.D205 ported the two
+  reversed).
+- **A test that could not fail, found on the way:** `system_import_equivalence` compared the
+  assembled payload with `Value ==`, and `serde_json::Map`'s equality IGNORES key order even
+  under `preserve_order` (an `IndexMap`) — the NEW case `read_ndjson_chat_documents_and_informs_
+  order` passed on the unfixed code. The comparison is now `to_string()` bytes. Red-first: with
+  the byte compare, the unfixed tree was red on that case ALONE (no other assembled payload hid
+  a key-order divergence); green after the swap. 32 → 33 cases. `system_import_state` and the
+  core importer unit tests (55) green.
+

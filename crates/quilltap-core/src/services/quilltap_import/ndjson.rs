@@ -838,11 +838,16 @@ fn build_export_data_for_type(export_type: &str, c: Collected) -> Result<Value, 
                     Value::Array(c.conversation_annotations),
                 );
             }
-            if !c.chat_informs.is_empty() {
-                d.insert("chatInforms".into(), Value::Array(c.chat_informs));
-            }
+            // v4 `quilltap-import-stream.ts:597-598` (since `e7d77bb60`):
+            // `chatDocuments` BEFORE `chatInforms`. P4.D205 ported the two
+            // reversed; P4.D264 fixed it by the human's ruling, pinned by
+            // `system_import_equivalence`'s byte-compared
+            // `read_ndjson_chat_documents_and_informs_order`.
             if !c.chat_documents.is_empty() {
                 d.insert("chatDocuments".into(), Value::Array(c.chat_documents));
+            }
+            if !c.chat_informs.is_empty() {
+                d.insert("chatInforms".into(), Value::Array(c.chat_informs));
             }
         }
         "roleplay-templates" => {

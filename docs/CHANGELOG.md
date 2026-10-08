@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — fix(import): a chats bundle assembles `chatDocuments` before `chatInforms`, as v4 does (P4.D264 unit G)
+
+_Versions: core 0.0.1259._
+
+The `.qtap` reader stitched a chats bundle's `chatInforms` ahead of `chatDocuments`; v4 has put `chatDocuments` first since the Inform feature landed (`e7d77bb60`). Swapped, by the human's ruling on the lane's finding. `system_import_equivalence` now compares the assembled payload as bytes: `serde_json::Map` equality ignores key order even with `preserve_order`, so its "exact including key order" claim had never been enforced. Only the new case went red when the comparison tightened. NEW case `read_ndjson_chat_documents_and_informs_order`.
+
 #### 2026-10-08 — fix(restore): an archived character stays archived after a restore (P4.D264 unit F)
 
 _Versions: core 0.0.1258._

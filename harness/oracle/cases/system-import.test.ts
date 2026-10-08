@@ -364,6 +364,28 @@ function buildCases(): CaseSpec[] {
     });
   }
 
+  // ── P4.D264 (the human's 2026-10-08 ruling on the lane's finding): a chats
+  // bundle carrying BOTH `chat_document` and `chat_inform` records. v4 has
+  // stitched `chatDocuments` BEFORE `chatInforms` since `e7d77bb60`
+  // (`quilltap-import-stream.ts:597-598`); no committed bundle carried both,
+  // so the assembled key order went unpinned.
+  cases.push({
+    name: 'read_ndjson_chat_documents_and_informs_order',
+    run: async () => {
+      const chat = 'zz000000-0000-4000-8000-000000000050';
+      const bytes = Buffer.from(
+        '{"kind":"__envelope__","format":"qtap-ndjson","version":1,"manifest":{"exportType":"chats"}}\n' +
+          `{"kind":"chat","data":{"id":"${chat}","title":"Order"}}\n` +
+          `{"kind":"chat_inform","data":{"id":"zz000000-0000-4000-8000-000000000051","chatId":"${chat}","batchId":"zz000000-0000-4000-8000-000000000052","participantId":"zz000000-0000-4000-8000-000000000053","contentMarkdown":"A note."}}\n` +
+          `{"kind":"chat_document","data":{"id":"zz000000-0000-4000-8000-000000000054","chatId":"${chat}"}}\n` +
+          '{"kind":"__footer__","counts":{"chats":1}}\n',
+        'utf8',
+      );
+      const assembled = await loadQtap(bytes);
+      return { kind: 'read', qtapBase64: bytes.toString('base64'), assembled };
+    },
+  });
+
   // ── [P4.48] planted read failures ──────────────────────────────────────────
   //
   // The preview's existence checks used to swallow repository read errors to
