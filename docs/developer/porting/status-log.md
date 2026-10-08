@@ -174028,3 +174028,52 @@ signature, the pin follows the new signature (its two call sites are in
 `wear` and nowhere else; `wardrobe_take_off::execute` likewise in the
 take-off test), then re-run by name: `cargo test -p quilltap-core --lib
 tools::wardrobe_wear::bug_179_no_port`. The wear LEDGER is never touched.
+
+### Unit 5 — the `{}` row both ways in the restore (Tier 2 item 11)
+
+- NEW `harness/oracle/fixtures/derive-restore-archive-empty-embedding.py` →
+  NEW `crates/quilltap-web/tests/fixtures/restore-archives/
+  restore-archive-empty-embedding.zip` (md5 `e1925adc1481da69b3d6c780c2f52e27`,
+  deterministic across two derives; `restore-archive.zip` md5-checked
+  unchanged). The archive's two sound memories (`…01`, `…02` — they carry no
+  `embedding` key) + `…21` on Lorian with `embedding: {}`; manifest
+  `counts.memories` 2 → 3. (The order said "one `{}` beside a sound one,
+  `memories: 1`"; the lane kept the source archive's two sound rows rather
+  than drop one — written count 2.)
+- `system_restore_state.rs` (this lane's region): `EMPTY_EMBEDDING_CASE`
+  (`restore_empty_embedding_replace`) → the archive; joined to
+  `REPO_LEVEL_CASES` (v4's three repository ERRORs compared) and to
+  `assert_memory_graph_intact`'s skip; an `assert_refusals_restored` arm
+  (both sides land `…01` + `…02` only). Gated by
+  `EMPTY_EMBEDDING_CASE_LANDED = false` (absent → a loud `PENDING (P4.D258
+  HANDOFF)` note; true → absence FAILS); the `seen == 38` and
+  `FRESH_STORE_CARVED_CASES` counts allow for the case (it is a `replace` of
+  `restore-archive.zip`'s instance, so it carves one #141 fresh store — the
+  first run found that count 29 vs 28).
+- Measured at the pin with the case line added to the STAGED oracle copy:
+  v4 lands `…01`, `…02`; `summary.memories` 2; warning `Failed to restore
+  memory: [invalid_union at ["embedding"] …]`. v5 agrees on every comparand
+  (the family's 33 differences = 32 + this case's own `wardrobeImageSettings`
+  row, P4.D255's). Red-first by mutation (the `o.is_empty()` guard removed —
+  v5's old decode): five differences on the case (the census, `MEMORIES
+  (v5)` with `…21`, `summary.memories` 3 vs 2, `summary.warnings`,
+  `main.memories`); source restored.
+
+**HANDOFF: the unifier (P4.D264's file)** —
+`harness/oracle/cases/system-restore.test.ts`, the case list: directly after
+the line `  { name: 'restore_kind_refusals_replace', archive:
+'restore-archive-kind-refusals.zip' },` insert
+```
+  // P4.D258 Tier 2 item 11: an `embedding: {}` memory (v4 bug 181) —
+  // `fixtures/derive-restore-archive-empty-embedding.py`.
+  { name: 'restore_empty_embedding_replace', archive: 'restore-archive-empty-embedding.zip' },
+```
+then flip `EMPTY_EMBEDDING_CASE_LANDED` to `true` in
+`crates/quilltap-harness/tests/system_restore_state.rs`, regenerate
+`system_restore_state` from the pin and re-run it by name. (This and unit
+3's census line are the two hunks the lane's `/tmp/p4d258/regen.sh`
+`PATCH_CENSUS=1` applies to its staged copy.)
+
+Noted, not changed: `derive-restore-archive-memory-refusals.py`'s docstring
+still says v4 REFUSES `…09` (the archive itself is never re-derived; the
+sentence is stale since `039f7017c`).

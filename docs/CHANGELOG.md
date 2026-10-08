@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — test(restore): an empty index-keyed embedding is refused on both sides (P4.D258 Tier 2)
+
+_No crate versions bumped._
+
+P4.D258 unit 5. A new derived archive `restore-archive-empty-embedding.zip` (`harness/oracle/fixtures/derive-restore-archive-empty-embedding.py`, from `restore-archive.zip`, which stays md5-unchanged) adds one Lorian memory with `embedding: {}` beside the archive's two sound ones. v4's `decodeIndexKeyedEmbedding` leaves `{}` unchanged and `MemorySchema` refuses it; v5 now does the same. `system_restore_state` gains the `restore_empty_embedding_replace` arm: both sides land the two sound memories only, the `invalid_union` warning and v4's three repository ERRORs are compared, and the summary counts 2 written against 3 archived. Measured both ways at the `f5e953a3f` pin with the case line added to a staged copy of the oracle case: agreement on the current code, and five differences with v5's old `{}` → `[]` decode put back.
+
+The case line belongs in `harness/oracle/cases/system-restore.test.ts`, which P4.D264 owns, so it is handed off to the unifier. Until it lands the arm is gated by `EMPTY_EMBEDDING_CASE_LANDED = false`: a missing case logs a PENDING note, and the case and #141-carve counts allow for it. The unifier flips the flag once the line is in.
+
 #### 2026-10-08 — test(wardrobe): pin that two outfit changes in one `wardrobe_wear` call compound (v4 bug 179, no port)
 
 _Versions: core 0.0.1256._

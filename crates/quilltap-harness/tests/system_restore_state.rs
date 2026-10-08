@@ -997,6 +997,19 @@ fn read_cases() -> Option<Vec<Value>> {
     )
 }
 
+/// [P4.D258 Tier 2 item 11] The `{}` embedding row, both ways: v4's
+/// `decodeIndexKeyedEmbedding` leaves an EMPTY index-keyed object unchanged,
+/// so `MemorySchema` refuses the memory; v5 used to decode it to `[]` and
+/// restore it (converged, R-A). The case line lives in
+/// `harness/oracle/cases/system-restore.test.ts` — P4.D264's file — so it is
+/// a HANDOFF to the unifier; until it lands the oracle simply lacks the case.
+const EMPTY_EMBEDDING_CASE: &str = "restore_empty_embedding_replace";
+
+/// Flipped to `true` by the unifier once [`EMPTY_EMBEDDING_CASE`]'s line is in
+/// the oracle's case list (the P4.D258 HANDOFF): from then on its absence
+/// FAILS. While `false`, an absent case logs a loud pending note.
+const EMPTY_EMBEDDING_CASE_LANDED: bool = false;
+
 fn archive_for(name: &str) -> &'static str {
     match name {
         "restore_replace" => "restore-archive.zip",
@@ -1114,6 +1127,9 @@ fn archive_for(name: &str) -> &'static str {
         "restore_wardrobe_picture_tombstone_new_account" => {
             "restore-archive-wardrobe-picture-tombstone.zip"
         }
+        // [P4.D258 Tier 2 item 11] an `embedding: {}` memory beside two sound
+        // ones — `derive-restore-archive-empty-embedding.py`.
+        EMPTY_EMBEDDING_CASE => "restore-archive-empty-embedding.zip",
         other => panic!("unknown restore case {other}"),
     }
 }
@@ -1455,7 +1471,12 @@ fn assert_memory_graph_intact(
     // [P4.161] the memory-refusals archive refuses eight of its memories on
     // BOTH sides by design (none of them is an edge target);
     // `assert_refusals_restored` names exactly which land.
-    if name == "restore_phase_warns_replace" || name == "restore_memory_refusals_replace" {
+    // [P4.D258] the empty-embedding archive refuses its `{}` memory on BOTH
+    // sides; `assert_refusals_restored` names which land.
+    if name == "restore_phase_warns_replace"
+        || name == "restore_memory_refusals_replace"
+        || name == EMPTY_EMBEDDING_CASE
+    {
         return;
     }
     let extracted = quilltap_core::services::backup::restore::parse_backup_zip(zip, temp_root)
@@ -1601,6 +1622,7 @@ fn system_restore_state_equivalence() {
     let mut repo_log_cases = 0usize;
     let mut restore_log_cases = 0usize;
     let mut fresh_store_carved = 0usize;
+    let mut empty_embedding_seen = 0usize;
 
     for case in &cases {
         let name = case["name"].as_str().unwrap();
@@ -1611,6 +1633,9 @@ fn system_restore_state_equivalence() {
         // `wardrobe_picture_tombstone_is_skipped`.
         if name == TOMBSTONE_CASE {
             continue;
+        }
+        if name == EMPTY_EMBEDDING_CASE {
+            empty_embedding_seen += 1;
         }
         seen += 1;
 
@@ -1913,8 +1938,22 @@ fn system_restore_state_equivalence() {
     // Tier 2 kind-refusals arm. 38 + 5 = 43: P4.D264's wardrobe carriers (the
     // ledger both modes + its refused arm, the picture pointer both modes; the
     // tombstone twin is the dedicated `wardrobe_picture_tombstone_is_skipped`).
+    // (+ 1 once P4.D258's empty-embedding case is in the oracle — gated below.)
+    if EMPTY_EMBEDDING_CASE_LANDED {
+        assert_eq!(
+            empty_embedding_seen, 1,
+            "{EMPTY_EMBEDDING_CASE} is missing from the oracle — regenerate it"
+        );
+    } else if empty_embedding_seen == 0 {
+        eprintln!(
+            "PENDING (P4.D258 HANDOFF): {EMPTY_EMBEDDING_CASE} is not in the oracle's case \
+             list yet — add it to system-restore.test.ts, regenerate, and flip \
+             EMPTY_EMBEDDING_CASE_LANDED"
+        );
+    }
     assert_eq!(
-        seen, 43,
+        seen - empty_embedding_seen,
+        43,
         "expected all forty-three restore cases in the oracle (ten + the #58 orphan-links arm \
          + P4.D46's two compact arms + P4.D126's bug-103 legacy-profiles arm \
          + P4.D145's bug-114 duplicate-folders arm + P4.D152's bug-117 arm \
@@ -1928,8 +1967,11 @@ fn system_restore_state_equivalence() {
     );
     // [P4.147] Every ruled #141 case actually carved (red-first measured, then
     // both directions held) — the arm cannot go vacuous.
+    // (P4.D258's empty-embedding case, a `replace` of `restore-archive.zip`'s
+    // instance, carves one too — counted while its oracle line is gated.)
     assert_eq!(
-        fresh_store_carved, FRESH_STORE_CARVED_CASES,
+        fresh_store_carved,
+        FRESH_STORE_CARVED_CASES + empty_embedding_seen,
         "replace cases whose v4 dump carried a #141 fresh store to carve"
     );
     assert!(
@@ -5203,6 +5245,8 @@ const REPO_LEVEL_CASES: &[&str] = &[
     "restore_inform_refusals_replace",
     "restore_entity_refusals_replace",
     "restore_kind_refusals_replace",
+    // [P4.D258] the `{}` embedding refusal (v4's three repository ERRORs).
+    EMPTY_EMBEDDING_CASE,
 ];
 
 /// v5's captured lines (`LEVEL target message k=v …`) whose message is in
@@ -5693,6 +5737,22 @@ fn assert_refusals_restored(
                     failures.push(format!(
                         "[{name}] R-C DEFAULTS ({side}): {got_defaults:?}, expected \
                          [0.5, MANUAL, semantic, 1, 0.5]"
+                    ));
+                }
+            }
+        }
+        EMPTY_EMBEDDING_CASE => {
+            // `…21`'s `{}` is refused on BOTH sides (v4 `index-keyed-
+            // embedding.ts:17`; P4.D258 R-A); the two sound memories land.
+            let expected: Vec<String> = ["01", "02"]
+                .iter()
+                .map(|n| format!("ad000000-0000-4000-8000-0000000000{n}"))
+                .collect();
+            for (side, dump) in [("v5", &got_v), ("v4", want)] {
+                let landed = ids(dump, "main", "memories", "");
+                if landed != expected {
+                    failures.push(format!(
+                        "[{name}] MEMORIES ({side}): restored {landed:?}, expected {expected:?}"
                     ));
                 }
             }
