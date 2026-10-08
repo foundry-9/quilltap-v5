@@ -104,6 +104,10 @@ struct CaseEntry {
     /// [P4.D256] `?action=<x>` on an item GET.
     #[serde(default)]
     action: Option<String>,
+    /// [P4.D256] Chained General wear-history reads on the SAME copy →
+    /// `${name}__wear_${i}` rows (the ledger a delete left behind).
+    #[serde(default)]
+    then_wear_history: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -470,7 +474,12 @@ async fn wardrobe_routes_equivalence() {
             .iter()
             .filter(|c| c.then_group_wardrobe.is_some())
             .count()
-        + spec.cases.iter().filter(|c| c.emit_bytes).count();
+        + spec.cases.iter().filter(|c| c.emit_bytes).count()
+        + spec
+            .cases
+            .iter()
+            .map(|c| c.then_wear_history.len())
+            .sum::<usize>();
     assert_eq!(
         oracle.len(),
         expected_rows,
@@ -577,6 +586,20 @@ async fn wardrobe_routes_equivalence() {
         ];
         if KEY_ORDER_CASES.contains(&case.name.as_str()) {
             check_key_order(&oracle, &case.name, &resp, &mut failed);
+            checks += 1;
+        }
+
+        for (i, wid) in case.then_wear_history.iter().enumerate() {
+            let follow =
+                wardrobe_item_wear_history(&db, WardrobeContainerScope::General, None, wid);
+            check(
+                &oracle,
+                &format!("{}__wear_{i}", case.name),
+                &follow,
+                &[],
+                &[],
+                &mut failed,
+            );
             checks += 1;
         }
 

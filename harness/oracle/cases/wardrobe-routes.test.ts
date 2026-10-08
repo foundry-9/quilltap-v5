@@ -89,6 +89,10 @@ interface CaseEntry {
   plants?: Array<{ sql: string; params: Array<string | number | null> }>;
   /** [P4.D256] `?action=<x>` on an item GET (`wear-history`). */
   action?: string;
+  /** [P4.D256] After the case, `GET /wardrobe/<id>?action=wear-history` for
+   *  each id on the SAME copy → `${name}__wear_${i}` rows (the ledger left
+   *  behind by a delete). */
+  thenWearHistory?: string[];
 }
 
 interface Spec {
@@ -386,6 +390,18 @@ async function runCase(
       };
       const follow = await respond(await mod.handleGetOutfit(c.thenOutfit, await authedCtx()));
       rows.push({ name: `${c.name}__outfit`, status: follow.status, body: follow.body });
+    }
+
+    for (const [i, wid] of (c.thenWearHistory ?? []).entries()) {
+      const mod = (await import('@/app/api/v1/wardrobe/[itemId]/route')) as {
+        GET: (...a: unknown[]) => Promise<unknown>;
+      };
+      const follow = await respond(
+        await mod.GET(mockRequest(`${B}/wardrobe/${wid}?action=wear-history`), {
+          params: Promise.resolve({ itemId: wid }),
+        }),
+      );
+      rows.push({ name: `${c.name}__wear_${i}`, status: follow.status, body: follow.body });
     }
 
     if (c.thenGroupWardrobe) {

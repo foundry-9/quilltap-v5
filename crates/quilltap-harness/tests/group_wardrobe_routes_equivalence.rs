@@ -17,6 +17,14 @@
 //! create 201) live at the transport and are not comparable here; error
 //! statuses ARE compared via the ErrorKind mapping.
 //!
+//! **P4.D256** (v4 `cc80dc89d` + `3ee3b1342` + `7c8572869`): the transfers pair
+//! carries `wardrobe_wear_stats` (P4.D255's grown builder). A case's `plants`
+//! (raw SQL on the main copy) run on both sides before the database opens;
+//! every row's `ledger` (main's `wardrobe_wear_stats` after the case — `id`,
+//! `itemId`, `wearerCharacterId`, `wearCount` by `id`) is compared, which pins
+//! the DELETE's dropped rows; kind `wear-history` drives the
+//! `wardrobeItemWearHistory` verb at group scope.
+//!
 //! Generate the fixtures + oracle (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   V5=~/source/quilltap-v5
@@ -490,6 +498,29 @@ fn group_wardrobe_routes_match_oracle() {
         let mount_work = scratch.path().join("mount.db");
         std::fs::copy(&main_fixture, &main_work).unwrap_or_else(|e| panic!("copy main: {e}"));
         std::fs::copy(&mount_fixture, &mount_work).unwrap_or_else(|e| panic!("copy mount: {e}"));
+        // [P4.D256] The case's raw plants on the main copy, before the db opens.
+        if let Some(plants) = case.get("plants").and_then(Value::as_array) {
+            let w = Writer::open_writable(&main_work, &spec.test_pepper_base64).unwrap();
+            for p in plants {
+                let params: Vec<rusqlite::types::Value> = p["params"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|v| match v {
+                        Value::Null => rusqlite::types::Value::Null,
+                        Value::String(s) => rusqlite::types::Value::Text(s.clone()),
+                        Value::Number(n) => rusqlite::types::Value::Integer(n.as_i64().unwrap()),
+                        other => panic!("{name}: unsupported plant param {other}"),
+                    })
+                    .collect();
+                w.connection()
+                    .execute(
+                        p["sql"].as_str().unwrap(),
+                        rusqlite::params_from_iter(params),
+                    )
+                    .unwrap_or_else(|e| panic!("{name}: plant: {e}"));
+            }
+        }
 
         let resp = {
             let db = Db::open(
@@ -527,6 +558,14 @@ fn group_wardrobe_routes_match_oracle() {
                 ),
                 "create" => rt.block_on(groups::group_wardrobe_create(&db, &gid, body)),
                 "get" => groups::group_wardrobe_get(&db, &gid, &iid),
+                "wear-history" => {
+                    quilltap_core::api::wardrobe_wear_history::wardrobe_item_wear_history(
+                        &db,
+                        quilltap_core::api::types::WardrobeContainerScope::Group,
+                        Some(&gid),
+                        &iid,
+                    )
+                }
                 "update" => rt.block_on(groups::group_wardrobe_update(&db, &gid, &iid, body)),
                 "delete" => rt.block_on(groups::group_wardrobe_delete(&db, &gid, &iid)),
                 other => panic!("unknown case kind {other}"),
@@ -608,6 +647,34 @@ fn group_wardrobe_routes_match_oracle() {
                 got[i]["rows"], wanted[i]["rows"],
                 "case {name} / {}: remapped rows diverged\n  rust:   {}\n  oracle: {}",
                 s.table, got[i]["rows"], wanted[i]["rows"]
+            );
+        }
+
+        // [P4.D256] main's ledger after the case.
+        {
+            let main = Writer::open_writable(&main_work, &spec.test_pepper_base64).unwrap();
+            let mut stmt = main
+                .connection()
+                .prepare(
+                    r#"SELECT "id", "itemId", "wearerCharacterId", "wearCount" FROM "wardrobe_wear_stats" ORDER BY "id""#,
+                )
+                .unwrap();
+            let got: Vec<Value> = stmt
+                .query_map([], |r| {
+                    Ok(serde_json::json!({
+                        "id": r.get::<_, String>(0)?,
+                        "itemId": r.get::<_, String>(1)?,
+                        "wearerCharacterId": r.get::<_, Option<String>>(2)?,
+                        "wearCount": r.get::<_, i64>(3)?,
+                    }))
+                })
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap();
+            assert_eq!(
+                Value::Array(got),
+                want["ledger"],
+                "case {name}: wardrobe_wear_stats after the case"
             );
         }
 

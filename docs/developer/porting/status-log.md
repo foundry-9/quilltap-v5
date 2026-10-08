@@ -172439,3 +172439,51 @@ dirt never reaches a regen. The ledger is NOT written (lane rule).
   mutation (drop the fan-out arm) → 500 `Unexpected core response`.
 - Item 16: `characters_wardrobe_route` green unchanged (the collection edge
   passes `scope` through; `origin`/`wear` ride the body).
+
+### Unit 5 — the four DELETEs (item 11, R-A; core 0.0.1257)
+
+- NEW `services/wardrobe_item_route_steps.rs` (v4 `item-route-steps.ts`):
+  `run_cleanup_equipped_refs` (the scrub, then `delete_by_item_ids([id])`;
+  each error answered, never thrown) + `log_cleanup_equipped_refs` (v4's three
+  lines, `{...meta, cleanupError}` / `{...meta, itemId}` /
+  `{...meta, ledgerError}`) composed as `cleanup_equipped_refs`; `ItemRouteMeta
+  { Character, Archetype, Project, Group }` renders each tier's meta, under the
+  ROUTE's tracing target (the projects family captures `[Projects v1]` lines
+  at `quilltap_core::api::projects`). `image_choice_error` (item 12) lives here
+  too.
+- Each DELETE is TWO writes (v4's separate awaits): write 1 = the 404s v4 runs
+  BEFORE the clean-up (General / character: the item; group / project: only
+  the store — v4's factory scrubs before it knows the item exists) + the
+  clean-up; its outcome is logged on the CALLING thread (memory note
+  `capture-rig-writer-thread`); write 2 = the item delete, then
+  `cleanup_item_images` (P4.D255's primitive, untouched; its lines are emitted
+  on the writer thread), then v4's success line on the calling thread — NEW for
+  General (`[Wardrobe Archetypes v1] Archetype item deleted`), character
+  (`[Wardrobe v1] Wardrobe item deleted`) and group (`[Groups v1] Deleted
+  group wardrobe item`), which v5 had never logged; the project's existed.
+- **R-A landed:** `characters.rs`'s scrub `?` is gone — the scrub is
+  warn-and-proceed on all four tiers (and now WARNS on the three that had
+  `let _ =` it silently). Pinned: `a_failed_scrub_warns_and_proceeds`.
+- **Both legs pinned:** pre-round (no table) — v4's `deleteByItemIds` throws
+  `no such table`, v5's `Err`, the same WARN: the projects family's existing
+  `wardrobe_delete` (now GREEN against v4's captured WARN) + the unit pin
+  `a_pre_round_instance_warns_and_proceeds` + `delete_pre_round_proceeds`
+  (wardrobe-routes); table present — the DEBUG + the rows gone:
+  `group_wardrobe_routes`' NEW `gw_delete_drops_the_items_ledger_rows` (main's
+  `wardrobe_wear_stats` dumped after EVERY case — only the deleted item's rows
+  go), the projects family's NEW `wardrobe_delete_with_ledger` (the composite
+  ENSEMBLE's deletion leaves its component CLOAK's rows — v4's "a composite's
+  deletion drops only its own rows"), wardrobe-routes'
+  `delete_with_ledger_keeps_component_rows` (+ chained `__wear_0` 404 /
+  `__wear_1` the component's history intact), and the unit pins for all four
+  metas. Mutation (drop nothing) → `gw_delete_…` red.
+- **R-G:** `characters_mutations_equivalence`'s `wardrobe-delete` arm is
+  untouched and green — the characters pair predates the ledger and the
+  family dumps no `wardrobe_wear_stats` (nothing to dump: "where the fixture
+  has it"); P4.D262's cascade region untouched.
+- **Projects family:** v4's `withLogs` spy records INFO / WARN / ERROR only, so
+  `wardrobe_delete_with_ledger` compares v5's lines minus DEBUG (the DEBUG is
+  the unit pins').
+- Green at the pin: `group_wardrobe_routes` 29 cases (7 new); `projects_routes`
+  103 cases (4 new); `wardrobe_routes` 125 checks / 106 cases / 117 rows;
+  core lib 3,179.

@@ -15,7 +15,15 @@
  *
  * Per case the oracle resets to a FRESH copy of the fixture pair, calls the
  * route, then dumps the seven mount-index tables. Emits one NDJSON line per
- * case: { name, ok, status, body, tables }.
+ * case: { name, ok, status, body, tables, ledger }.
+ *
+ * P4.D256 (v4 `cc80dc89d` + `3ee3b1342` + `7c8572869`): the transfers pair is
+ * built by P4.D255's grown builder, so it already carries `wardrobe_wear_stats`
+ * (the migration's shape). `plants` are raw SQL on the main copy BEFORE the
+ * database initializes (ledger rows, `files` rows); `ledger` is main's
+ * `wardrobe_wear_stats` after the case (`id`, `itemId`, `wearerCharacterId`,
+ * `wearCount`, by `id`) — the DELETE's dropped rows. Kind `wear-history` is the
+ * item GET's `?action=wear-history`.
  *
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores
  * .claude/ paths, and this case reads its spec from `../fixtures/`):
@@ -80,6 +88,8 @@ interface Case {
    *  way to reach "list a group store that HOLDS an archived garment" when every
    *  case starts from a fresh fixture that has none. */
   preArchive?: boolean;
+  /** [P4.D256] Raw SQL on the main copy, pre-init. */
+  plants?: Array<{ sql: string; params: Array<string | number | null> }>;
 }
 interface Spec {
   testPepperBase64: string;
@@ -172,6 +182,18 @@ async function runCase(
   const mountWork = join(work, 'mount.db');
   copyFileSync(mainFixture, mainWork);
   copyFileSync(mountFixture, mountWork);
+  if (c.plants && c.plants.length) {
+    // [P4.D256] The case's raw plants, on the main copy, pre-init.
+    const nodeRequire = require('node:module').createRequire(join(process.cwd(), 'noop.js'));
+    const Database = nodeRequire(cipherDriverPath);
+    const conn = new Database(mainWork);
+    conn.pragma(`key = "x'${Buffer.from(spec.testPepperBase64, 'base64').toString('hex')}'"`);
+    try {
+      for (const p of c.plants) conn.prepare(p.sql).run(...p.params);
+    } finally {
+      conn.close();
+    }
+  }
   process.env.SQLITE_PATH = mainWork;
   process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
 
@@ -216,6 +238,13 @@ async function runCase(
       case 'get':
         response = await detail.GET(mockRequest(`${B}/${iid}`, 'GET'), itemCtx);
         break;
+      case 'wear-history':
+        // [P4.D256] v4 `3ee3b1342` — the factory's `handleGetWearHistory`.
+        response = await detail.GET(
+          mockRequest(`${B}/${iid}?action=wear-history`, 'GET'),
+          itemCtx,
+        );
+        break;
       case 'update':
         response = await detail.PUT(mockRequest(`${B}/${iid}`, 'PUT', c.body), itemCtx);
         break;
@@ -243,7 +272,17 @@ async function runCase(
       tables[t.key] = canonicalizeRows({ table: t.table, columns, rawRows, orderBy: t.orderBy });
     }
 
-    return { name: c.name, ok, status, body, tables };
+    // [P4.D256] main's ledger after the case.
+    const { getRawDatabase } = await import('@/lib/database/backends/sqlite');
+    const raw = getRawDatabase();
+    if (!raw) throw new Error('main DB handle unavailable for the ledger dump');
+    const ledger = raw
+      .prepare(
+        'SELECT "id", "itemId", "wearerCharacterId", "wearCount" FROM "wardrobe_wear_stats" ORDER BY "id"',
+      )
+      .all();
+
+    return { name: c.name, ok, status, body, tables, ledger };
   } finally {
     await closeDatabase();
     closeMountIndexSQLiteClient();

@@ -63,6 +63,14 @@ struct Spec {
     test_pepper_base64: String,
     #[allow(dead_code)]
     user_id: String,
+    /// P4.D256: the planted wear-ledger rows (`p4d256Ledger.rows`).
+    #[serde(rename = "p4d256Ledger")]
+    p4d256_ledger: LedgerPlant,
+}
+
+#[derive(Deserialize)]
+struct LedgerPlant {
+    rows: Vec<Vec<Value>>,
 }
 
 fn spec_path() -> PathBuf {
@@ -288,6 +296,73 @@ impl std::ops::Deref for ScratchDb {
     fn deref(&self) -> &Db {
         &self.db
     }
+}
+
+/// P4.D256 — [`fresh_db`] with the wear ledger: `ensure_wear_ledger_on` + the
+/// spec's `p4d256Ledger.rows` on the main copy before the `Db` opens (the
+/// oracle runs v4's `WARDROBE_WEAR_STATS_DDL` + the same rows).
+fn fresh_db_with_ledger(spec: &Spec, tag: &str) -> ScratchDb {
+    let scratch = tempfile::Builder::new()
+        .prefix(&format!("qt-gp-proj-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let main = scratch.path().join("main.db");
+    let mount = scratch.path().join("mount.db");
+    std::fs::copy(fixtures_dir().join("groups-projects-main.db"), &main).unwrap();
+    std::fs::copy(fixtures_dir().join("groups-projects-mount.db"), &mount).unwrap();
+    {
+        let w = quilltap_core::db::Writer::open_writable(&main, &spec.test_pepper_base64).unwrap();
+        let conn = w.connection();
+        quilltap_core::test_support::ensure_wear_ledger_on(conn);
+        for row in &spec.p4d256_ledger.rows {
+            let params: Vec<rusqlite::types::Value> = row
+                .iter()
+                .map(|v| match v {
+                    Value::Null => rusqlite::types::Value::Null,
+                    Value::String(s) => rusqlite::types::Value::Text(s.clone()),
+                    Value::Number(n) => rusqlite::types::Value::Integer(n.as_i64().unwrap()),
+                    other => panic!("unsupported ledger cell {other}"),
+                })
+                .collect();
+            conn.execute(
+                r#"INSERT INTO "wardrobe_wear_stats" ("id", "itemId", "wearerCharacterId", "wearCount", "firstWornAt", "lastWornAt", "lastWornChatId", "createdAt", "updatedAt") VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"#,
+                rusqlite::params_from_iter(params),
+            )
+            .unwrap();
+        }
+    }
+    let db = Db::open(
+        DbPaths {
+            main,
+            mount_index: Some(mount),
+            llm_logs: None,
+        },
+        &spec.test_pepper_base64,
+    )
+    .expect("open db");
+    ScratchDb { db, _dir: scratch }
+}
+
+/// P4.D256 — main's ledger after a case (`id`, `itemId`, `wearerCharacterId`,
+/// `wearCount` by `id`), the oracle's `dumpLedger`.
+fn dump_ledger(db: &Db) -> Value {
+    db.read_main(|c| {
+        let mut stmt = c.prepare(
+            r#"SELECT "id", "itemId", "wearerCharacterId", "wearCount" FROM "wardrobe_wear_stats" ORDER BY "id""#,
+        )?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(json!({
+                    "id": r.get::<_, String>(0)?,
+                    "itemId": r.get::<_, String>(1)?,
+                    "wearerCharacterId": r.get::<_, Option<String>>(2)?,
+                    "wearCount": r.get::<_, i64>(3)?,
+                }))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Value::Array(rows))
+    })
+    .unwrap()
 }
 
 fn fresh_db(spec: &Spec, tag: &str) -> ScratchDb {
@@ -1461,6 +1536,76 @@ fn projects_routes_match_oracle() {
         {
             eprintln!("[wardrobe_delete] [Projects v1] lines MISMATCH:{diff}");
             failed.push("wardrobe_delete_projects_v1".into());
+        }
+    }
+
+    // --- P4.D256 (v4 `3ee3b1342`): the project tier over a planted ledger ---
+    {
+        let db = fresh_db_with_ledger(&spec, "wwh");
+        check(
+            "wardrobe_wear_history",
+            &response_data(
+                &quilltap_core::api::wardrobe_wear_history::wardrobe_item_wear_history(
+                    &db,
+                    quilltap_core::api::types::WardrobeContainerScope::Project,
+                    Some(IOTA),
+                    CLOAK,
+                ),
+            ),
+            false,
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db_with_ledger(&spec, "wwhm");
+        let resp = quilltap_core::api::wardrobe_wear_history::wardrobe_item_wear_history(
+            &db,
+            quilltap_core::api::types::WardrobeContainerScope::Project,
+            Some(IOTA),
+            "eeeeeeee-eeee-4eee-8eee-eeeeeeeeee01",
+        );
+        let want = &oracle["wardrobe_wear_history_missing_item"];
+        match &resp {
+            Response::Error(e)
+                if http_for(e.kind) == want["status"].as_i64().unwrap()
+                    && e.message == want["body"]["error"].as_str().unwrap_or("") => {}
+            other => {
+                eprintln!("[wardrobe_wear_history_missing_item] MISMATCH: {other:?} vs {want}");
+                failed.push("wardrobe_wear_history_missing_item".into());
+            }
+        }
+    }
+    {
+        let db = fresh_db_with_ledger(&spec, "wll");
+        check(
+            "wardrobe_list_with_ledger",
+            &response_data(&projects::project_wardrobe_list(&db, IOTA, false)),
+            false,
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db_with_ledger(&spec, "wdl");
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(projects::project_wardrobe_delete(&db, IOTA, ENSEMBLE))
+        });
+        let mut body = response_data(&resp);
+        if let Value::Object(o) = &mut body {
+            o.insert("ledger".into(), dump_ledger(&db));
+        }
+        check("wardrobe_delete_with_ledger", &body, false, &mut failed);
+        // v4's `withLogs` spy records INFO / WARN / ERROR only; the step's
+        // DEBUG (`Dropped wear-ledger rows for deleted item`) is pinned by
+        // `services::wardrobe_item_route_steps`' unit tests.
+        let lines: Vec<String> = lines
+            .into_iter()
+            .filter(|l| !l.starts_with("DEBUG "))
+            .collect();
+        if let Err(diff) =
+            compare_projects_v1_masked(&oracle["wardrobe_delete_with_ledger"]["logs"], &lines, &[])
+        {
+            eprintln!("[wardrobe_delete_with_ledger] [Projects v1] lines MISMATCH:{diff}");
+            failed.push("wardrobe_delete_with_ledger_projects_v1".into());
         }
     }
 

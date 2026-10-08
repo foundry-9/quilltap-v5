@@ -1,5 +1,43 @@
 {
   "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
-  "seedTimestamp": "2026-03-01T00:00:00.000Z"
+  "seedTimestamp": "2026-03-01T00:00:00.000Z",
+  "p4d256Ledger": {
+    "$comment": "P4.D256: wardrobe_wear_stats rows the projects family plants (table from v4's WARDROBE_WEAR_STATS_DDL / v5 ensure_wear_ledger_on) for the wear-history, ledger-planted list and ledger-present delete cases. Columns: id, itemId, wearerCharacterId, wearCount, firstWornAt, lastWornAt, lastWornChatId, createdAt, updatedAt.",
+    "rows": [
+      [
+        "f9256300-0000-4000-8000-000000000001",
+        "aa000000-0000-4000-8000-000000000001",
+        "a1000000-0000-4000-8000-000000000001",
+        2,
+        "2026-03-01T10:00:00.000Z",
+        "2026-03-05T10:00:00.000Z",
+        "c1000000-0000-4000-8000-000000000001",
+        "2026-03-01T00:00:00.000Z",
+        "2026-03-01T00:00:00.000Z"
+      ],
+      [
+        "f9256300-0000-4000-8000-000000000002",
+        "aa000000-0000-4000-8000-000000000001",
+        null,
+        1,
+        "2026-03-02T10:00:00.000Z",
+        "2026-03-03T10:00:00.000Z",
+        null,
+        "2026-03-01T00:00:00.000Z",
+        "2026-03-01T00:00:00.000Z"
+      ],
+      [
+        "f9256300-0000-4000-8000-000000000003",
+        "aa000000-0000-4000-8000-000000000002",
+        "a1000000-0000-4000-8000-000000000001",
+        1,
+        "2026-03-04T10:00:00.000Z",
+        "2026-03-04T10:00:00.000Z",
+        null,
+        "2026-03-01T00:00:00.000Z",
+        "2026-03-01T00:00:00.000Z"
+      ]
+    ]
+  }
 }

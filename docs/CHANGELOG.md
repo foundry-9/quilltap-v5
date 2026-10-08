@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(wardrobe): item deletes drop the item's wear-ledger rows and pictures; the equipped-ref scrub warns and proceeds on every tier (P4.D256 item 11)
+
+_Versions: core 0.0.1257._
+
+NEW `services/wardrobe_item_route_steps.rs`, the port of v4 `lib/wardrobe/item-route-steps.ts`: `cleanup_equipped_refs` scrubs the item from every chat's equipped slots and then drops its `wardrobe_wear_stats` rows; either failure logs v4's WARN (`Cleanup of equipped references had issues, proceeding with delete` / `Cleanup of wear-ledger rows had issues, proceeding with delete`, with `cleanupError` / `ledgerError`) and the delete proceeds; a successful drop logs `Dropped wear-ledger rows for deleted item`. A composite's deletion drops only its own rows. `image_choice_error` (v4 `imageChoiceError`) lands here for the PUT unit.
+
+All four item DELETE routes (General, character, group, project) now run that step, delete the item, call P4.D255's `cleanup_item_images` for its pictures, and log v4's success line (General, character and group gain theirs). The character route's scrub failure no longer fails the delete (R-A: it was a `?`). Each route runs in two writes so the step's lines log on the calling thread.
+
+Harness: `group_wardrobe_routes` gains `plants`, a wear-history kind and a post-case `wardrobe_wear_stats` dump (a delete drops only the item's rows); `projects_routes` gains four ledger cases (wear-history, its 404, a worn list, a ledger-present delete — the pre-round delete already pins v4's ledger WARN); `wardrobe_routes` gains a ledger-present composite delete with chained wear-history reads and a pre-round delete.
+
 #### 2026-10-08 — feat(web): GET /api/v1/wardrobe/{itemId}?action=wear-history (P4.D256 item 10)
 
 _Versions: web 0.0.225._

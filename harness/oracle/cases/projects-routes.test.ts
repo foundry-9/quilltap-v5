@@ -36,6 +36,8 @@ import { tmpdir } from 'node:os';
 interface Spec {
   testPepperBase64: string;
   userId: string;
+  /** P4.D256: the planted wear-ledger rows. */
+  p4d256Ledger: { rows: unknown[][] };
 }
 
 const IOTA = 'a3000000-0000-4000-8000-000000000001';
@@ -126,6 +128,36 @@ async function dumpProjectTables(): Promise<unknown> {
       .prepare('SELECT projectId, mountPointId FROM project_doc_mount_links ORDER BY projectId, mountPointId')
       .all(),
   };
+}
+
+/**
+ * P4.D256 — the wear ledger on this case's fresh copy: the table from v4's own
+ * migration statements (`WARDROBE_WEAR_STATS_DDL`) and `spec.p4d256Ledger.rows`
+ * (the groups-projects pair predates the table; the Rust side runs
+ * `ensure_wear_ledger_on` + the same rows). `dumpLedger` is the table after.
+ */
+async function plantLedger(rows: unknown[][]): Promise<void> {
+  const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+  const { WARDROBE_WEAR_STATS_DDL } = (await import(
+    '@/lib/database/backends/sqlite/wardrobe-wear-stats-ddl'
+  )) as { WARDROBE_WEAR_STATS_DDL: readonly string[] };
+  const raw = getRawDatabase() as unknown as {
+    exec: (s: string) => void;
+    prepare: (s: string) => { run: (...a: unknown[]) => unknown };
+  };
+  for (const statement of WARDROBE_WEAR_STATS_DDL) raw.exec(statement);
+  const insert = raw.prepare(
+    'INSERT INTO "wardrobe_wear_stats" ("id", "itemId", "wearerCharacterId", "wearCount", "firstWornAt", "lastWornAt", "lastWornChatId", "createdAt", "updatedAt") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  );
+  for (const r of rows) insert.run(...r);
+}
+
+async function dumpLedger(): Promise<unknown> {
+  const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+  const raw = getRawDatabase() as unknown as { prepare: (s: string) => { all: () => unknown } };
+  return raw
+    .prepare('SELECT "id", "itemId", "wearerCharacterId", "wearCount" FROM "wardrobe_wear_stats" ORDER BY "id"')
+    .all();
 }
 
 interface CaseSpec {
@@ -824,6 +856,40 @@ async function main(): Promise<void> {
         return { status, body: { ...(body as object), remaining } };
       },
     },
+    // P4.D256 (v4 `3ee3b1342`): the project tier over a planted ledger — the
+    // factory's `?action=wear-history` (its 404 runs before the ledger read),
+    // the list's `wear` totals, and the DELETE dropping the item's rows only.
+    {
+      name: 'wardrobe_wear_history',
+      run: async () => {
+        await plantLedger(spec.p4d256Ledger.rows);
+        return respond(await (await loadRoute('@/app/api/v1/projects/[id]/wardrobe/[itemId]/route')).GET(mockRequest(`${B}/${IOTA}/wardrobe/${CLOAK}?action=wear-history`), { params: Promise.resolve({ id: IOTA, itemId: CLOAK }) }));
+      },
+    },
+    {
+      name: 'wardrobe_wear_history_missing_item',
+      run: async () => {
+        await plantLedger(spec.p4d256Ledger.rows);
+        return respond(await (await loadRoute('@/app/api/v1/projects/[id]/wardrobe/[itemId]/route')).GET(mockRequest(`${B}/${IOTA}/wardrobe/eeeeeeee-eeee-4eee-8eee-eeeeeeeeee01?action=wear-history`), { params: Promise.resolve({ id: IOTA, itemId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeee01' }) }));
+      },
+    },
+    {
+      name: 'wardrobe_list_with_ledger',
+      run: async () => {
+        await plantLedger(spec.p4d256Ledger.rows);
+        return respond(await (await loadRoute('@/app/api/v1/projects/[id]/wardrobe/route')).GET(mockRequest(`${B}/${IOTA}/wardrobe`), p(IOTA)));
+      },
+    },
+    {
+      name: 'wardrobe_delete_with_ledger',
+      run: async () => {
+        await plantLedger(spec.p4d256Ledger.rows);
+        const mod = await loadRoute('@/app/api/v1/projects/[id]/wardrobe/[itemId]/route');
+        const r = await mod.DELETE(mockRequest(`${B}/${IOTA}/wardrobe/${ENSEMBLE}`), { params: Promise.resolve({ id: IOTA, itemId: ENSEMBLE }) });
+        const { status, body } = await respond(r);
+        return { status, body: { ...(body as object), ledger: await dumpLedger() } };
+      },
+    },
     { name: 'mount_link', run: async () => respond(await (await loadRoute(mpRoute)).POST(mockRequest(`${B}/${IOTA}/mount-points`, { mountPointId: GAMMA_EXTRA_MP }), p(IOTA))) },
     {
       name: 'mount_unlink',
@@ -1063,6 +1129,8 @@ async function main(): Promise<void> {
     // line carries v4's conditional `archivedAt` (a minted stamp here).
     'wardrobe_update_archives',
     'wardrobe_delete',
+    // P4.D256: the ledger-present delete — no ledger WARN, the success INFO.
+    'wardrobe_delete_with_ledger',
   ]);
   for (const c of cases) {
     if (WITH_LOGS.has(c.name)) {

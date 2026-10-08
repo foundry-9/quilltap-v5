@@ -14,7 +14,6 @@ use serde_json::{json, Map, Value};
 
 use super::SINGLE_USER_ID;
 use crate::db::archetype_wardrobe::{OwnerStore, WardrobeOrigin, WardrobeOriginScope};
-use crate::db::chats_outfits::ChatOutfitsRepository;
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
 use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
 use crate::db::doc_mount_points::DocMountPointsRepository;
@@ -38,6 +37,12 @@ use crate::services::dangerous_content::chat_override::{
     get_concierge_provenance, get_concierge_reason, get_concierge_state,
 };
 use crate::services::image_job_common::with_both_conns;
+use crate::services::wardrobe_item_images::primitives::{
+    cleanup_item_images, ItemImageCleanupMeta,
+};
+use crate::services::wardrobe_item_route_steps::{
+    log_cleanup_equipped_refs, run_cleanup_equipped_refs, ItemRouteMeta,
+};
 use crate::services::wardrobe_wear_history::{attach_wear, build_wear_history_payload};
 use crate::vault_overlay::WardrobeItem;
 use crate::wardrobe_instructions::{
@@ -1783,29 +1788,71 @@ pub async fn project_wardrobe_update(
     }
 }
 
-/// v4 DELETE `/wardrobe/[itemId]`: `removeEquippedItemFromAllChats(itemId)`
-/// warn-and-proceed → delete. Body `{ success: true }`; missing item → NotFound.
+/// v4 DELETE `/projects/[id]/wardrobe/[itemId]` (the factory): resolve the
+/// store (404 `Project`) → `cleanupEquippedRefs` (the equipped-reference scrub
+/// and, since `3ee3b1342`, the item's wear-ledger rows — each warn-and-proceed,
+/// BEFORE the item's existence is known, as v4's factory does) → delete (404
+/// `Project wardrobe item`) → (`7c8572869`) the item's pictures → the success
+/// line. Body `{ success: true }`.
+///
+/// Two writes, as v4's separate awaits: the clean-up's outcome is logged on
+/// the CALLING thread between them (the capture rig sees it).
 pub async fn project_wardrobe_delete(db: &Db, project_id: &str, item_id: &str) -> Response {
+    const LOG_TAG: &str = "[Projects v1]";
     let pid = project_id.to_string();
     let iid = item_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
-        let mp = match ensure_project_wardrobe_mount(main, mount, &pid)? {
-            Ok(store) => store.mount_point_id,
-            Err(_) => return Ok(Err(not_found("Project"))),
-        };
-        // warn-and-proceed cleanup (v4 wraps this in its own try/catch → warn).
-        let _ = ChatOutfitsRepository::new(main).remove_equipped_item_from_all_chats(&iid);
-        let links = DocMountFileLinksRepository::new(mount);
-        let docs = DocMountDocumentsRepository::new(mount);
-        match delete_project_wardrobe_item(main, &links, &docs, &mp, &iid) {
-            Ok(true) => Ok(Ok(mp)),
-            Ok(false) => Ok(Err(not_found("Project wardrobe item"))),
-            Err(e) => Ok(Err(wardrobe_err(e))),
+    let cleaned = with_both_conns(db, {
+        let (pid, iid) = (pid.clone(), iid.clone());
+        move |main, mount| {
+            let mp = match ensure_project_wardrobe_mount(main, mount, &pid)? {
+                Ok(store) => store.mount_point_id,
+                Err(_) => return Ok(Err(not_found("Project"))),
+            };
+            Ok(Ok((mp, run_cleanup_equipped_refs(main, &iid))))
+        }
+    })
+    .await;
+    let mp = match cleaned {
+        Ok(Ok((mp, outcome))) => {
+            log_cleanup_equipped_refs(
+                &outcome,
+                &iid,
+                LOG_TAG,
+                ItemRouteMeta::Project { project_id: &pid },
+            );
+            mp
+        }
+        Ok(Err(r)) => return r,
+        Err(e) => return db_error_response(e),
+    };
+
+    let out = with_both_conns(db, {
+        let (pid, iid, mp) = (pid.clone(), iid.clone(), mp.clone());
+        move |main, mount| {
+            let links = DocMountFileLinksRepository::new(mount);
+            let docs = DocMountDocumentsRepository::new(mount);
+            match delete_project_wardrobe_item(main, &links, &docs, &mp, &iid) {
+                Ok(true) => {
+                    cleanup_item_images(
+                        main,
+                        mount,
+                        &iid,
+                        LOG_TAG,
+                        ItemImageCleanupMeta::Project {
+                            project_id: &pid,
+                            mount_point_id: &mp,
+                        },
+                    );
+                    Ok(Ok(()))
+                }
+                Ok(false) => Ok(Err(not_found("Project wardrobe item"))),
+                Err(e) => Ok(Err(wardrobe_err(e))),
+            }
         }
     })
     .await;
     match out {
-        Ok(Ok(mp)) => {
+        Ok(Ok(())) => {
             // P4.163: v4 `mount-wardrobe-route-factory.ts:385` (no `userId`).
             tracing::info!(
                 projectId = %project_id,

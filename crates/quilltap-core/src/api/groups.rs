@@ -21,7 +21,6 @@ use serde_json::{json, Map, Value};
 
 use crate::collation::locale_compare;
 use crate::db::archetype_wardrobe::{OwnerStore, WardrobeOrigin, WardrobeOriginScope};
-use crate::db::chats_outfits::ChatOutfitsRepository;
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
 use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
 use crate::db::doc_mount_points::DocMountPointsRepository;
@@ -40,6 +39,12 @@ use crate::db::vault_wardrobe_public::{
 };
 use crate::db::{archetype_wardrobe, characters_read, DbError};
 use crate::services::image_job_common::with_both_conns;
+use crate::services::wardrobe_item_images::primitives::{
+    cleanup_item_images, ItemImageCleanupMeta,
+};
+use crate::services::wardrobe_item_route_steps::{
+    log_cleanup_equipped_refs, run_cleanup_equipped_refs, ItemRouteMeta,
+};
 use crate::services::wardrobe_wear_history::{attach_wear, build_wear_history_payload};
 use crate::vault_overlay::WardrobeItem;
 use crate::wardrobe_instructions::{
@@ -1464,30 +1469,82 @@ pub async fn group_wardrobe_update(
     }
 }
 
-/// v4 DELETE `/groups/[id]/wardrobe/[itemId]`:
-/// `removeEquippedItemFromAllChats(itemId)` warn-and-proceed → delete. Body
-/// `{ success: true }`; missing item → 404 `Group wardrobe item`.
+/// v4 DELETE `/groups/[id]/wardrobe/[itemId]` (the factory): resolve the store
+/// (404 `Group`) → `cleanupEquippedRefs` (the equipped-reference scrub and,
+/// since `3ee3b1342`, the item's wear-ledger rows — each warn-and-proceed,
+/// and BEFORE the item's existence is known, as v4's factory does) → delete
+/// (404 `Group wardrobe item`) → (`7c8572869`) the item's pictures → the
+/// success line. Body `{ success: true }`.
+///
+/// Two writes, as v4's separate awaits: the clean-up's outcome is logged on
+/// the CALLING thread between them (the capture rig sees it).
 pub async fn group_wardrobe_delete(db: &Db, group_id: &str, item_id: &str) -> Response {
+    const LOG_TAG: &str = "[Groups v1]";
     let gid = group_id.to_string();
     let iid = item_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
-        let Some(mp) = resolve_group_wardrobe_mount(main, mount, &gid)?.map(|s| s.mount_point_id)
-        else {
-            return Ok(Err(not_found("Group")));
-        };
-        // warn-and-proceed cleanup (v4 wraps this in its own try/catch → warn).
-        let _ = ChatOutfitsRepository::new(main).remove_equipped_item_from_all_chats(&iid);
-        let links = DocMountFileLinksRepository::new(mount);
-        let docs = DocMountDocumentsRepository::new(mount);
-        match delete_project_wardrobe_item(main, &links, &docs, &mp, &iid) {
-            Ok(true) => Ok(Ok(())),
-            Ok(false) => Ok(Err(not_found("Group wardrobe item"))),
-            Err(e) => Ok(Err(group_wardrobe_write_err(e))),
+    let cleaned = with_both_conns(db, {
+        let (gid, iid) = (gid.clone(), iid.clone());
+        move |main, mount| {
+            let Some(mp) =
+                resolve_group_wardrobe_mount(main, mount, &gid)?.map(|s| s.mount_point_id)
+            else {
+                return Ok(Err(not_found("Group")));
+            };
+            Ok(Ok((mp, run_cleanup_equipped_refs(main, &iid))))
+        }
+    })
+    .await;
+    let mp = match cleaned {
+        Ok(Ok((mp, outcome))) => {
+            log_cleanup_equipped_refs(
+                &outcome,
+                &iid,
+                LOG_TAG,
+                ItemRouteMeta::Group { group_id: &gid },
+            );
+            mp
+        }
+        Ok(Err(r)) => return r,
+        Err(e) => return db_error_response(e),
+    };
+
+    let out = with_both_conns(db, {
+        let (gid, iid, mp) = (gid.clone(), iid.clone(), mp.clone());
+        move |main, mount| {
+            let links = DocMountFileLinksRepository::new(mount);
+            let docs = DocMountDocumentsRepository::new(mount);
+            match delete_project_wardrobe_item(main, &links, &docs, &mp, &iid) {
+                Ok(true) => {
+                    cleanup_item_images(
+                        main,
+                        mount,
+                        &iid,
+                        LOG_TAG,
+                        ItemImageCleanupMeta::Group {
+                            group_id: &gid,
+                            mount_point_id: &mp,
+                        },
+                    );
+                    Ok(Ok(()))
+                }
+                Ok(false) => Ok(Err(not_found("Group wardrobe item"))),
+                Err(e) => Ok(Err(group_wardrobe_write_err(e))),
+            }
         }
     })
     .await;
     match out {
-        Ok(Ok(())) => Response::Group(json!({ "success": true })),
+        Ok(Ok(())) => {
+            // v4's factory success line (`logTag` `[Groups v1]`).
+            tracing::info!(
+                groupId = %gid,
+                mountPointId = %mp,
+                itemId = %iid,
+                context = "wardrobe",
+                "[Groups v1] Deleted group wardrobe item"
+            );
+            Response::Group(json!({ "success": true }))
+        }
         Ok(Err(r)) => r,
         Err(e) => db_error_response(e),
     }

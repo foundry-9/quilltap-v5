@@ -31,7 +31,6 @@
 use serde_json::{json, Value};
 
 use crate::db::archetype_wardrobe;
-use crate::db::chats_outfits::ChatOutfitsRepository;
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
 use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
 use crate::db::runtime::Db;
@@ -49,6 +48,12 @@ use crate::model::image::ImageGenParams;
 use crate::services::activity_kinds::ActivityKind;
 use crate::services::activity_registry::track_activity;
 use crate::services::image_job_common::with_both_conns;
+use crate::services::wardrobe_item_images::primitives::{
+    cleanup_item_images, ItemImageCleanupMeta,
+};
+use crate::services::wardrobe_item_route_steps::{
+    log_cleanup_equipped_refs, run_cleanup_equipped_refs, ItemRouteMeta,
+};
 use crate::services::wardrobe_transfers::{
     self, ComponentMode, DestinationScope, ExplicitSource, SourceScope, TransferAction,
     TransferError, TransferRequest,
@@ -460,41 +465,77 @@ pub async fn wardrobe_update(db: &Db, item_id: &str, body: Value) -> Response {
 // DELETE /api/v1/wardrobe/{itemId}
 // ===========================================================================
 
-/// v4 `DELETE /api/v1/wardrobe/[itemId]` — existence pre-check (404), the
-/// warn-and-proceed `removeEquippedItemFromAllChats` cleanup, then
-/// `repos.wardrobe.delete(itemId, null)` → `{success: true}`. A thrown delete →
-/// the route's own catch (`Failed to delete archetype wardrobe item`).
+/// v4 `DELETE /api/v1/wardrobe/[itemId]` — existence pre-check (404),
+/// `cleanupEquippedRefs` (the equipped-reference scrub and, since `3ee3b1342`,
+/// the item's wear-ledger rows — each warn-and-proceed), then
+/// `repos.wardrobe.delete(itemId, null)`, then (`7c8572869`) the item's
+/// pictures (`cleanupItemImages`), then the success line → `{success: true}`.
+/// A thrown delete → the route's own catch (`Failed to delete archetype
+/// wardrobe item`).
+///
+/// Two writes, as v4's separate awaits: the clean-up's outcome is logged on
+/// the CALLING thread between them (the capture rig sees it).
 pub async fn wardrobe_delete(db: &Db, item_id: &str) -> Response {
+    const LOG_TAG: &str = "[Wardrobe Archetypes v1]";
     let iid = item_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
-        let docs = DocMountDocumentsRepository::new(mount);
-        let existing = archetype_wardrobe::find_archetype_by_id(
-            main,
-            &docs,
-            &iid,
-            &SharedWardrobeTiers::none(),
-        )?;
-        let exists = matches!(
-            &existing,
-            Some(item) if item.get("characterId").map(Value::is_null) == Some(true)
-        );
-        if !exists {
-            return Ok(Err(not_found("Archetype wardrobe item")));
+    let cleaned = with_both_conns(db, {
+        let iid = iid.clone();
+        move |main, mount| {
+            let docs = DocMountDocumentsRepository::new(mount);
+            let existing = archetype_wardrobe::find_archetype_by_id(
+                main,
+                &docs,
+                &iid,
+                &SharedWardrobeTiers::none(),
+            )?;
+            let exists = matches!(
+                &existing,
+                Some(item) if item.get("characterId").map(Value::is_null) == Some(true)
+            );
+            if !exists {
+                return Ok(Err(not_found("Archetype wardrobe item")));
+            }
+            Ok(Ok(run_cleanup_equipped_refs(main, &iid)))
         }
-        // warn-and-proceed cleanup (v4 wraps this in its own try/catch → warn).
-        let _ = ChatOutfitsRepository::new(main).remove_equipped_item_from_all_chats(&iid);
-        let links = DocMountFileLinksRepository::new(mount);
-        match delete_vault_wardrobe_item(main, &links, &docs, &iid, None) {
-            Ok(true) => Ok(Ok(())),
-            Ok(false) => Ok(Err(not_found("Archetype wardrobe item"))),
-            // v4's delete rethrows into the route's catch → this exact message.
-            Err(_) => Ok(Err(internal("Failed to delete archetype wardrobe item"))),
+    })
+    .await;
+    match cleaned {
+        Ok(Ok(outcome)) => {
+            log_cleanup_equipped_refs(&outcome, &iid, LOG_TAG, ItemRouteMeta::Archetype)
+        }
+        Ok(Err(r)) => return r,
+        Err(e) => return internal(e),
+    }
+
+    let out = with_both_conns(db, {
+        let iid = iid.clone();
+        move |main, mount| {
+            let docs = DocMountDocumentsRepository::new(mount);
+            let links = DocMountFileLinksRepository::new(mount);
+            match delete_vault_wardrobe_item(main, &links, &docs, &iid, None) {
+                Ok(true) => {
+                    cleanup_item_images(
+                        main,
+                        mount,
+                        &iid,
+                        LOG_TAG,
+                        ItemImageCleanupMeta::Archetype,
+                    );
+                    Ok(Ok(()))
+                }
+                Ok(false) => Ok(Err(not_found("Archetype wardrobe item"))),
+                // v4's delete rethrows into the route's catch → this exact message.
+                Err(_) => Ok(Err(internal("Failed to delete archetype wardrobe item"))),
+            }
         }
     })
     .await;
 
     match out {
-        Ok(Ok(())) => Response::Wardrobe(json!({ "success": true })),
+        Ok(Ok(())) => {
+            tracing::info!(itemId = %iid, "[Wardrobe Archetypes v1] Archetype item deleted");
+            Response::Wardrobe(json!({ "success": true }))
+        }
         Ok(Err(r)) => r,
         Err(e) => internal(e),
     }

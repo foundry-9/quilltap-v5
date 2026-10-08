@@ -188,6 +188,7 @@ pub mod turn_transcript;
 pub mod user_identity_resolver;
 pub mod wardrobe_image_paths;
 pub mod wardrobe_item_images;
+pub mod wardrobe_item_route_steps;
 pub mod wardrobe_transfers;
 pub mod wardrobe_wear_history;
 // ── P4.9E2A ──

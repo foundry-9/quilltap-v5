@@ -2136,6 +2136,122 @@
           ]
         }
       ]
+    },
+    {
+      "name": "delete_with_ledger_keeps_component_rows",
+      "kind": "wardrobeDelete",
+      "itemId": "e2000000-0000-4000-8000-000000000003",
+      "plants": [
+        {
+          "sql": "INSERT INTO \"wardrobe_wear_stats\" (\"id\", \"itemId\", \"wearerCharacterId\", \"wearCount\", \"firstWornAt\", \"lastWornAt\", \"lastWornChatId\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256100-0000-4000-8000-000000000001",
+            "e2000000-0000-4000-8000-000000000002",
+            "a1000000-0000-4000-8000-000000000001",
+            3,
+            "2026-03-01T10:00:00.000Z",
+            "2026-03-05T10:00:00.000Z",
+            "c1000000-0000-4000-8000-000000000001",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"wardrobe_wear_stats\" (\"id\", \"itemId\", \"wearerCharacterId\", \"wearCount\", \"firstWornAt\", \"lastWornAt\", \"lastWornChatId\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256100-0000-4000-8000-000000000002",
+            "e2000000-0000-4000-8000-000000000002",
+            null,
+            1,
+            "2026-03-02T10:00:00.000Z",
+            "2026-03-03T10:00:00.000Z",
+            null,
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"wardrobe_wear_stats\" (\"id\", \"itemId\", \"wearerCharacterId\", \"wearCount\", \"firstWornAt\", \"lastWornAt\", \"lastWornChatId\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256100-0000-4000-8000-000000000003",
+            "e2000000-0000-4000-8000-000000000002",
+            "a1000000-0000-4000-8000-0000000000ee",
+            2,
+            "2026-03-01T09:00:00.000Z",
+            "2026-03-04T10:00:00.000Z",
+            "c1000000-0000-4000-8000-000000000002",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"wardrobe_wear_stats\" (\"id\", \"itemId\", \"wearerCharacterId\", \"wearCount\", \"firstWornAt\", \"lastWornAt\", \"lastWornChatId\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256100-0000-4000-8000-000000000004",
+            "e1000000-0000-4000-8000-000000000001",
+            "a1000000-0000-4000-8000-000000000001",
+            2,
+            "2026-03-02T10:00:00.000Z",
+            "2026-03-06T10:00:00.000Z",
+            "c1000000-0000-4000-8000-0000000000ff",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"wardrobe_wear_stats\" (\"id\", \"itemId\", \"wearerCharacterId\", \"wearCount\", \"firstWornAt\", \"lastWornAt\", \"lastWornChatId\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256100-0000-4000-8000-000000000005",
+            "e4000000-0000-4000-8000-000000000001",
+            "a1000000-0000-4000-8000-000000000001",
+            1,
+            "2026-03-07T10:00:00.000Z",
+            "2026-03-07T10:00:00.000Z",
+            "c1000000-0000-4000-8000-000000000002",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"wardrobe_wear_stats\" (\"id\", \"itemId\", \"wearerCharacterId\", \"wearCount\", \"firstWornAt\", \"lastWornAt\", \"lastWornChatId\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256100-0000-4000-8000-000000000006",
+            "e2000000-0000-4000-8000-000000000001",
+            "a1000000-0000-4000-8000-000000000002",
+            4,
+            "2026-03-01T08:00:00.000Z",
+            "2026-03-08T10:00:00.000Z",
+            "c1000000-0000-4000-8000-000000000001",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        },
+        {
+          "sql": "INSERT INTO \"wardrobe_wear_stats\" (\"id\", \"itemId\", \"wearerCharacterId\", \"wearCount\", \"firstWornAt\", \"lastWornAt\", \"lastWornChatId\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "f9256100-0000-4000-8000-000000000007",
+            "e2000000-0000-4000-8000-000000000003",
+            "a1000000-0000-4000-8000-000000000001",
+            1,
+            "2026-03-09T10:00:00.000Z",
+            "2026-03-09T10:00:00.000Z",
+            "c1000000-0000-4000-8000-000000000001",
+            "2026-03-01T00:00:00.000Z",
+            "2026-03-01T00:00:00.000Z"
+          ]
+        }
+      ],
+      "thenWearHistory": [
+        "e2000000-0000-4000-8000-000000000003",
+        "e2000000-0000-4000-8000-000000000002"
+      ]
+    },
+    {
+      "name": "delete_pre_round_proceeds",
+      "kind": "wardrobeDelete",
+      "itemId": "e2000000-0000-4000-8000-000000000001",
+      "preRound": true,
+      "thenOutfit": "c1000000-0000-4000-8000-000000000001"
     }
   ],
   "$p4d256Comment": "P4.D256: every case reads the committed pair with wardrobe_wear_stats ensured (v4's migration DDL; v5 ensure_wear_ledger_on) unless `preRound`; `plants` add ledger rows. The wh_* rows are the ?action=wear-history arms on the General and character item GETs (the 404s run BEFORE the ledger is read); cw_item_get* the character item GET. The ledger rows: gCoat worn by aria (chat1, most recent), an unattributed row, a departed wearer; wTop's last-worn chat deleted (chatMissing); gLivery and gHat worn."

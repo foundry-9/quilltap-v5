@@ -18,7 +18,6 @@
 use serde_json::{json, Map, Value};
 
 use crate::db::characters::CharacterCreate;
-use crate::db::chats_outfits::ChatOutfitsRepository;
 use crate::db::database_store;
 use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
 use crate::db::runtime::Db;
@@ -43,6 +42,12 @@ use crate::services::dangerous_content::chat_override::{
 };
 use crate::services::image_job_common::with_both_conns;
 use crate::services::scriptorium_status::derive_scriptorium_status;
+use crate::services::wardrobe_item_images::primitives::{
+    cleanup_item_images, ItemImageCleanupMeta,
+};
+use crate::services::wardrobe_item_route_steps::{
+    log_cleanup_equipped_refs, run_cleanup_equipped_refs, ItemRouteMeta,
+};
 use crate::services::wardrobe_wear_history::{attach_wear, build_wear_history_payload};
 use crate::vault_overlay::WardrobeItem;
 use crate::wardrobe_instructions::{
@@ -2980,43 +2985,82 @@ pub async fn character_wardrobe_update(
 }
 
 /// v4 `DELETE /characters/[id]/wardrobe/[itemId]` — ownership + existence
-/// pre-check → `removeEquippedItemFromAllChats` cleanup → `repos.wardrobe.delete`
-/// → `{ success: true }`.
+/// pre-check → `cleanupEquippedRefs` (the equipped-reference scrub and, since
+/// `3ee3b1342`, the item's wear-ledger rows — each warn-and-proceed: R-A folds
+/// the scrub's former `?`, which FAILED the delete where v4 logs and proceeds)
+/// → `repos.wardrobe.delete` → (`7c8572869`) the item's pictures → the
+/// success line → `{ success: true }`.
+///
+/// Two writes, as v4's separate awaits: the clean-up's outcome is logged on
+/// the CALLING thread between them (the capture rig sees it).
 pub async fn character_wardrobe_delete(
     db: &Db,
     _user_id: &str,
     character_id: &str,
     item_id: &str,
 ) -> Response {
+    const LOG_TAG: &str = "[Wardrobe v1]";
     let cid = character_id.to_string();
     let iid = item_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
-        if let Err(r) = require_character_owned(main, mount, &cid)? {
-            return Ok(Err(r));
-        }
-        let docs = DocMountDocumentsRepository::new(mount);
-        if wardrobe_read::find_by_id_for_character(
-            main,
-            &docs,
-            &cid,
-            &iid,
-            &SharedWardrobeTiers::none(),
-        )?
-        .is_none()
-        {
-            return Ok(Err(not_found("Wardrobe item")));
-        }
-        // Clean up equipped references before deleting (v4 logs + proceeds on
-        // cleanup failure; composite componentItemIds are intentionally left).
-        ChatOutfitsRepository::new(main).remove_equipped_item_from_all_chats(&iid)?;
-        let links = DocMountFileLinksRepository::new(mount);
-        match delete_vault_wardrobe_item(main, &links, &docs, &iid, Some(&cid)) {
-            Ok(true) => Ok(Ok(())),
-            Ok(false) => Ok(Err(not_found("Wardrobe item"))),
-            Err(e) => Ok(Err(wardrobe_err(e))),
+    let cleaned = with_both_conns(db, {
+        let (cid, iid) = (cid.clone(), iid.clone());
+        move |main, mount| {
+            if let Err(r) = require_character_owned(main, mount, &cid)? {
+                return Ok(Err(r));
+            }
+            let docs = DocMountDocumentsRepository::new(mount);
+            if wardrobe_read::find_by_id_for_character(
+                main,
+                &docs,
+                &cid,
+                &iid,
+                &SharedWardrobeTiers::none(),
+            )?
+            .is_none()
+            {
+                return Ok(Err(not_found("Wardrobe item")));
+            }
+            // Composite componentItemIds are intentionally left (v4).
+            Ok(Ok(run_cleanup_equipped_refs(main, &iid)))
         }
     })
     .await;
+    match cleaned {
+        Ok(Ok(outcome)) => log_cleanup_equipped_refs(
+            &outcome,
+            &iid,
+            LOG_TAG,
+            ItemRouteMeta::Character { character_id: &cid },
+        ),
+        Ok(Err(r)) => return r,
+        Err(e) => return db_error_response(e),
+    }
+
+    let out = with_both_conns(db, {
+        let (cid, iid) = (cid.clone(), iid.clone());
+        move |main, mount| {
+            let links = DocMountFileLinksRepository::new(mount);
+            let docs = DocMountDocumentsRepository::new(mount);
+            match delete_vault_wardrobe_item(main, &links, &docs, &iid, Some(&cid)) {
+                Ok(true) => {
+                    cleanup_item_images(
+                        main,
+                        mount,
+                        &iid,
+                        LOG_TAG,
+                        ItemImageCleanupMeta::Character { character_id: &cid },
+                    );
+                    Ok(Ok(()))
+                }
+                Ok(false) => Ok(Err(not_found("Wardrobe item"))),
+                Err(e) => Ok(Err(wardrobe_err(e))),
+            }
+        }
+    })
+    .await;
+    if matches!(out, Ok(Ok(()))) {
+        tracing::info!(characterId = %cid, itemId = %iid, "[Wardrobe v1] Wardrobe item deleted");
+    }
     success_or(out)
 }
 
