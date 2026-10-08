@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(cli): ship `quilltap db optimize` (P4.D259 unit 3)
+
+_Versions: cli 0.0.30._
+
+`quilltap db optimize [all | main | llm-logs | mount-points …] [--json]` now runs VACUUM / ANALYZE / PRAGMA optimize per database through core's step runner (the one the server's daily pass uses), with v4's output: the per-database block, `Skipping … not found.`, the unknown-target error, `--json` results in v4's key order (the human block still prints, as v4 does), and `Total reclaimed:` when positive. It refuses first when the instance lock is active, suspect or corrupt (a port of the launcher's `getLockStatus`); a stale lock proceeds. `backup` and `integrity` stay refused. Tier R gains eleven `db optimize` rows with two documented normalizations: step durations, and, while the workspace SQLite lacks `SQLITE_ENABLE_STAT4`, the after-size (v4's `ANALYZE` writes `sqlite_stat4`; a pin asserts v4's file is the larger on every database).
+
 #### 2026-10-08 — feat(host): run the daily optimize at boot and the startup backup after the pumps (P4.D259 unit 2)
 
 _Versions: host 0.0.190._

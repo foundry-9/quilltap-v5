@@ -99,7 +99,7 @@ impl Ctx {
 /// v4 `parseSubArgs`: `--k=v`, `--k v` (only when `v` does not itself start
 /// with `--`), otherwise `--k` → boolean true. Single-dash tokens are
 /// positional.
-fn parse_sub_args(args: &[String]) -> (Map<String, Value>, Vec<String>) {
+pub(crate) fn parse_sub_args(args: &[String]) -> (Map<String, Value>, Vec<String>) {
     let mut flags = Map::new();
     let mut positional = Vec::new();
     let mut i = 0;
@@ -129,7 +129,7 @@ fn parse_sub_args(args: &[String]) -> (Map<String, Value>, Vec<String>) {
 }
 
 /// v4 `asBool(v)`: `v === true || v === 'true' || v === '1'`.
-fn as_bool(v: Option<&Value>) -> bool {
+pub(crate) fn as_bool(v: Option<&Value>) -> bool {
     match v {
         Some(Value::Bool(true)) => true,
         Some(Value::String(s)) => s == "true" || s == "1",
@@ -188,7 +188,7 @@ fn print_table(rows: &[Map<String, Value>]) {
 }
 
 /// v4 `printJson(data)`.
-fn print_json(v: &Value) {
+pub(crate) fn print_json(v: &Value) {
     out::write_stdout(format!("{}\n", json_stringify_pretty(v)).as_bytes());
 }
 

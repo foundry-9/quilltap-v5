@@ -22,7 +22,7 @@ use crate::vtable::console_table;
 const DB_HELP: &str = include_str!("help/db_help.txt");
 
 /// v4 `db-commands.js` `VERBS` — the high-level verb set. All recognized;
-/// none shipped this round (they exit loud).
+/// `characters` (P4.D66) and `optimize` (P4.D259) ship, the rest exit loud.
 const DB_VERBS: &[&str] = &[
     "schema",
     "find",
@@ -286,6 +286,9 @@ fn run_verb_path(
     let rest: Vec<String> = cleaned.iter().skip(1).cloned().collect();
     let result = match verb {
         "characters" => crate::db_characters::run(&rest, &ctx),
+        // P4.D259 (Tier 2): the optimize verb, over core's own step runner —
+        // the one the server's daily PHASE 0.75 pass runs.
+        "optimize" => cmd_optimize(&rest, &ctx),
         other if DB_VERBS.contains(&other) => {
             out::elog(&format!(
                 "Error: db subcommand '{other}' is recognized but not yet available in this build of the quilltap CLI."
@@ -914,6 +917,274 @@ fn format_history_ts(ts: &str) -> String {
         }
     }
     spaced
+}
+
+// ---------- verb: optimize (P4.D259 Tier 2; v4 `db-commands.js:1330-1480`) ----------
+
+/// v4 `OPTIMIZE_TARGETS` — `(key, filename, friendly name)`; the key is also
+/// the label. The friendly name is v4's `openMainDb` & co.
+const OPTIMIZE_TARGETS: [(&str, &str, &str); 3] = [
+    ("main", "quilltap.db", "main database"),
+    ("llm-logs", "quilltap-llm-logs.db", "LLM logs database"),
+    (
+        "mount-points",
+        "quilltap-mount-index.db",
+        "mount index database",
+    ),
+];
+
+/// v4 `formatBytes`.
+fn format_bytes(n: f64) -> String {
+    use quilltap_core::jsnum::to_fixed;
+    if n < 1024.0 {
+        return format!("{} B", crate::nodefmt::js_num_string(n));
+    }
+    if n < 1024.0 * 1024.0 {
+        return format!("{} KB", to_fixed(n / 1024.0, 1));
+    }
+    if n < 1024.0 * 1024.0 * 1024.0 {
+        return format!("{} MB", to_fixed(n / (1024.0 * 1024.0), 1));
+    }
+    format!("{} GB", to_fixed(n / (1024.0 * 1024.0 * 1024.0), 2))
+}
+
+/// v4 `formatDuration`.
+fn format_duration(ms: u64) -> String {
+    use quilltap_core::jsnum::to_fixed;
+    if ms < 1000 {
+        return format!("{ms} ms");
+    }
+    if ms < 60_000 {
+        return format!("{} s", to_fixed(ms as f64 / 1000.0, 2));
+    }
+    format!("{} min", to_fixed(ms as f64 / 60_000.0, 2))
+}
+
+/// v4 `fileSize` — `fs.statSync(p).size`, 0 on error.
+fn optimize_file_size(path: &str) -> f64 {
+    std::fs::metadata(path)
+        .map(|m| m.len() as f64)
+        .unwrap_or(0.0)
+}
+
+/// v4 launcher `getLockStatus` (`lock-helpers.js:54-107`) — the read-only
+/// decision a maintenance verb refuses on. `Ok(())` for `absent` / `stale`;
+/// the refusal sentence otherwise.
+fn optimize_lock_refusal(data_dir: &str) -> Result<(), String> {
+    let lock_path = node_join(data_dir, "quilltap.lock");
+    if !std::path::Path::new(&lock_path).exists() {
+        return Ok(());
+    }
+    // `JSON.parse(readFileSync)` — only a read or parse failure is `corrupt`;
+    // a non-object parses fine and simply matches no host (stale).
+    let parsed = std::fs::read_to_string(&lock_path)
+        .ok()
+        .and_then(|raw| serde_json::from_str::<Value>(&raw).ok());
+    let Some(parsed) = parsed else {
+        return Err(format!(
+            "Lock file at {lock_path} is corrupt. Inspect it manually or clean with `quilltap db --lock-clean`, then retry."
+        ));
+    };
+    let lock = match parsed {
+        Value::Object(o) => o,
+        _ => Map::new(),
+    };
+    let hostname = quilltap_host::lock::hostname();
+    let pid = lock_num(&lock, "pid");
+    let active = |reason: String| {
+        Err(format!(
+            "Database is currently in use — {reason}.\nStop the running Quilltap instance before optimizing, then try again.\n(See `quilltap db --lock-status` for details.)"
+        ))
+    };
+    if lock_str(&lock, "hostname") == hostname {
+        let alive = pid.is_finite() && is_pid_alive(pid as u32);
+        if !alive {
+            return Ok(()); // stale: PID no longer running
+        }
+        if !verify_pid_is_quilltap(pid as u32) {
+            let reason = format!(
+                "PID {} is alive but does not look like a Quilltap process",
+                crate::nodefmt::js_num_string(pid)
+            );
+            return Err(format!(
+                "Lock file {reason}.\nThis may be a stale lock from a reused PID. Inspect it with\n`quilltap db --lock-status` and clean it up with `quilltap db --lock-clean` if safe."
+            ));
+        }
+        return active(format!(
+            "held by PID {} on this host",
+            crate::nodefmt::js_num_string(pid)
+        ));
+    }
+    // Different hostname — could be a VM/container sharing the data dir.
+    let environment = lock_str(&lock, "environment");
+    let age_ms = heartbeat_age_ms(&lock);
+    if environment == "docker" && age_ms < FRESH_MS {
+        let age = format!(
+            "{}s",
+            crate::nodefmt::js_num_string(quilltap_core::jsnum::math_round(age_ms / 1000.0))
+        );
+        return active(format!(
+            "held by {environment} instance on {} (heartbeat {age} ago)",
+            lock_str(&lock, "hostname")
+        ));
+    }
+    Ok(())
+}
+
+/// v4 `cmdOptimize` — `VACUUM`, `ANALYZE`, `PRAGMA optimize` per target with
+/// the instance lock checked first (the server holds its connections open, so
+/// a running instance refuses). The steps are core's
+/// [`run_optimize_steps`](quilltap_core::services::daily_db_optimize::run_optimize_steps),
+/// the server's daily pass's own — v4's "keep the two step lists in step".
+fn cmd_optimize(
+    args: &[String],
+    ctx: &crate::db_characters::Ctx,
+) -> Result<(), crate::db_characters::CmdError> {
+    use crate::db_characters::{as_bool, parse_sub_args, print_json, CmdError};
+    let (flags, positional) = parse_sub_args(args);
+    let json = as_bool(flags.get("json"));
+
+    let keys: Vec<&str> = OPTIMIZE_TARGETS.iter().map(|t| t.0).collect();
+    let targets: Vec<&(&str, &str, &str)> =
+        if positional.is_empty() || (positional.len() == 1 && positional[0] == "all") {
+            OPTIMIZE_TARGETS.iter().collect()
+        } else {
+            let mut out = Vec::new();
+            for p in &positional {
+                match OPTIMIZE_TARGETS.iter().find(|t| t.0 == p) {
+                    Some(t) => out.push(t),
+                    None => {
+                        return Err(CmdError {
+                            message: format!(
+                                "Unknown optimize target '{p}'. Allowed: {} | all",
+                                keys.join(" | ")
+                            ),
+                            exit_code: 1,
+                        })
+                    }
+                }
+            }
+            out
+        };
+
+    // Refuse to proceed if any instance is actively holding the lock.
+    optimize_lock_refusal(&ctx.data_dir).map_err(|message| CmdError {
+        message,
+        exit_code: 1,
+    })?;
+
+    let mut results: Vec<Value> = Vec::new();
+    for (key, filename, friendly) in targets {
+        let db_path = node_join(&ctx.data_dir, filename);
+        if !std::path::Path::new(&db_path).exists() {
+            if !json {
+                out::log(&format!("Skipping {key}: {db_path} not found."));
+            }
+            let mut r = Map::new();
+            r.insert("target".into(), Value::from(*key));
+            r.insert("skipped".into(), Value::Bool(true));
+            r.insert("reason".into(), Value::from("not found"));
+            results.push(Value::Object(r));
+            continue;
+        }
+        results.push(optimize_one_db(key, &db_path, friendly, ctx));
+    }
+
+    if json {
+        let mut o = Map::new();
+        o.insert("results".into(), Value::Array(results));
+        print_json(&Value::Object(o));
+        return Ok(());
+    }
+
+    // Final summary
+    let total_saved: f64 = results
+        .iter()
+        .filter(|r| r["skipped"] == Value::Bool(false))
+        .filter_map(|r| Some(r.get("sizeBefore")?.as_f64()? - r.get("sizeAfter")?.as_f64()?))
+        .sum();
+    if total_saved > 0.0 {
+        out::log("");
+        out::log(&format!("Total reclaimed: {}", format_bytes(total_saved)));
+    }
+    Ok(())
+}
+
+/// v4 `optimizeOneDb` — prints its block whether or not `--json` was given
+/// (v4 does), and answers the result object in v4's key order.
+fn optimize_one_db(
+    label: &str,
+    db_path: &str,
+    friendly: &str,
+    ctx: &crate::db_characters::Ctx,
+) -> Value {
+    use quilltap_core::services::daily_db_optimize::run_optimize_steps;
+    out::log("");
+    out::log(&format!("── {label}  ({db_path}) ──"));
+    let size_before = optimize_file_size(db_path);
+    out::log(&format!("  size before: {}", format_bytes(size_before)));
+
+    let mut r = Map::new();
+    r.insert("target".into(), Value::from(label));
+    let conn = match open_encrypted(
+        db_path,
+        ctx.pepper.as_deref(),
+        OpenOptions {
+            readonly: false,
+            friendly_name: friendly,
+        },
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            out::log(&format!("  open failed: {}", e.message));
+            r.insert("skipped".into(), Value::Bool(true));
+            r.insert("reason".into(), Value::from(e.message));
+            return Value::Object(r);
+        }
+    };
+
+    let outcome = run_optimize_steps(&conn);
+    let mut steps = Vec::new();
+    for step in &outcome.steps {
+        let mut s = Map::new();
+        s.insert("name".into(), Value::from(step.name));
+        s.insert("ok".into(), Value::Bool(step.ok));
+        s.insert("ms".into(), Value::from(step.ms));
+        match &step.error {
+            None => out::log(&format!("  {}: {}", step.name, format_duration(step.ms))),
+            Some(error) => {
+                out::log(&format!(
+                    "  {}: FAILED after {} — {error}",
+                    step.name,
+                    format_duration(step.ms)
+                ));
+                s.insert("error".into(), Value::from(error.as_str()));
+            }
+        }
+        steps.push(Value::Object(s));
+    }
+    drop(conn);
+
+    let size_after = optimize_file_size(db_path);
+    r.insert("skipped".into(), Value::Bool(false));
+    r.insert("sizeBefore".into(), Value::from(size_before as u64));
+    r.insert("sizeAfter".into(), Value::from(size_after as u64));
+    r.insert("steps".into(), Value::Array(steps));
+    if outcome.ok {
+        let delta = size_before - size_after;
+        let delta_str = if delta == 0.0 {
+            "no change".to_string()
+        } else if delta > 0.0 {
+            format!("reclaimed {}", format_bytes(delta))
+        } else {
+            format!("grew by {}", format_bytes(-delta))
+        };
+        out::log(&format!(
+            "  size after:  {}  ({delta_str})",
+            format_bytes(size_after)
+        ));
+    }
+    Value::Object(r)
 }
 
 #[cfg(test)]

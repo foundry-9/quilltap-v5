@@ -72,6 +72,56 @@ struct CaseOpts<'a> {
     /// millisecond ISO stamp (`quilltap.dbkey.bak-<stamp>`), and the two sides
     /// run at different instants — collapse the stamp, keep everything else.
     normalize_bak: bool,
+    /// P4.D259 `db optimize`: v4 prints each step's wall-clock duration
+    /// (`  VACUUM: 3 ms`, `FAILED after 1.20 s`, and `"ms": 3` under
+    /// `--json`) — timing truth that legitimately differs between the two
+    /// runs. Collapsed to `<DUR>` / `<MS>`; every other byte (sizes included)
+    /// is compared raw.
+    normalize_durations: bool,
+}
+
+/// `STAT4_NOT_COMPILED` (P4.D259; the harness family's table of the same
+/// name): v4's `better-sqlite3-multiple-ciphers` is built with
+/// `SQLITE_ENABLE_STAT4`, this workspace's SQLite3MC is not, so v4's
+/// `ANALYZE` writes a `sqlite_stat4` table v5's does not and every `size
+/// after` differs by those pages. Measured on this fixture: main 76.0 vs
+/// 72.0 KB, llm-logs 20.0 vs 16.0 KB, mount-points 112.0 vs 100.0 KB. While
+/// the build lacks STAT4 (checked live, `PRAGMA compile_options`) the
+/// `db optimize` cases collapse the after-size; a build that gains it
+/// compares sizes raw again, and `the stat4 size pin` below trips.
+fn build_has_stat4() -> bool {
+    let dir = tempfile::tempdir().unwrap();
+    let w = Writer::open_writable(&dir.path().join("probe.db"), PEPPER).unwrap();
+    let mut st = w.connection().prepare("PRAGMA compile_options").unwrap();
+    let opts: Vec<String> = st
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect();
+    opts.iter().any(|o| o == "ENABLE_STAT4")
+}
+
+/// The after-size spans `STAT4_NOT_COMPILED` moves: the `  size after:  …`
+/// line (size and delta) and the JSON `"sizeAfter": <n>`.
+fn normalize_stat4_sizes(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for line in text.split_inclusive('\n') {
+        let nl = if line.ends_with('\n') { "\n" } else { "" };
+        let body = line.strip_suffix('\n').unwrap_or(line);
+        if body.starts_with("  size after:  ") {
+            out.push_str(&format!("  size after:  <STAT4>{nl}"));
+            continue;
+        }
+        let trimmed = body.trim_start();
+        if trimmed.starts_with("\"sizeAfter\": ") {
+            let indent = &body[..body.len() - trimmed.len()];
+            let comma = if body.ends_with(',') { "," } else { "" };
+            out.push_str(&format!("{indent}\"sizeAfter\": <STAT4>{comma}{nl}"));
+            continue;
+        }
+        out.push_str(line);
+    }
+    out
 }
 
 struct RunOut {
@@ -164,6 +214,61 @@ fn normalize_bak(text: &str) -> String {
         rest = &tail[end..];
     }
     out.push_str(rest);
+    out
+}
+
+/// The `db optimize` durations (see `CaseOpts::normalize_durations`): after
+/// each step label (`  VACUUM: `, `  ANALYZE: `, `  PRAGMA optimize: `, with an
+/// optional `FAILED after `) the `<n> ms` / `<n.nn> s` / `<n.nn> min` token
+/// becomes `<DUR>`; a JSON `"ms": <n>` line becomes `"ms": <MS>`.
+fn normalize_durations(text: &str) -> String {
+    fn is_duration(tok: &str) -> bool {
+        let num = tok
+            .strip_suffix(" ms")
+            .or_else(|| tok.strip_suffix(" s"))
+            .or_else(|| tok.strip_suffix(" min"));
+        num.is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit() || c == '.'))
+    }
+    let mut out = String::with_capacity(text.len());
+    for line in text.split_inclusive('\n') {
+        let (body, nl) = match line.strip_suffix('\n') {
+            Some(b) => (b, "\n"),
+            None => (line, ""),
+        };
+        let mut done = false;
+        for label in ["  VACUUM: ", "  ANALYZE: ", "  PRAGMA optimize: "] {
+            let Some(rest) = body.strip_prefix(label) else {
+                continue;
+            };
+            let (prefix, rest) = match rest.strip_prefix("FAILED after ") {
+                Some(r) => ("FAILED after ", r),
+                None => ("", rest),
+            };
+            let (tok, tail) = match rest.find(" — ") {
+                Some(i) => (&rest[..i], &rest[i..]),
+                None => (rest, ""),
+            };
+            if is_duration(tok) {
+                out.push_str(&format!("{label}{prefix}<DUR>{tail}{nl}"));
+                done = true;
+            }
+            break;
+        }
+        if done {
+            continue;
+        }
+        let trimmed = body.trim_start();
+        if let Some(rest) = trimmed.strip_prefix("\"ms\": ") {
+            let digits = rest.trim_end_matches(',');
+            if !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit()) {
+                let indent = &body[..body.len() - trimmed.len()];
+                let comma = if rest.ends_with(',') { "," } else { "" };
+                out.push_str(&format!("{indent}\"ms\": <MS>{comma}{nl}"));
+                continue;
+            }
+        }
+        out.push_str(line);
+    }
     out
 }
 
@@ -466,6 +571,12 @@ impl Ctx {
             }
             if opts.normalize_bak {
                 text = normalize_bak(&text);
+            }
+            if opts.normalize_durations {
+                text = normalize_durations(&text);
+                if !build_has_stat4() {
+                    text = normalize_stat4_sizes(&text);
+                }
             }
             text.into_bytes()
         };
@@ -2234,14 +2345,18 @@ fn cli_differential() {
     );
 
     // Recognized-but-unshipped verbs exit loud on the v5 side only — assert
-    // v5 directly (not diffed; v4 ships them).
-    {
+    // v5 directly (not diffed; v4 ships them). P4.D259 shipped `optimize`; the
+    // pin narrows to the verbs still refused (`backup` / `integrity` are the
+    // order's Tier 3).
+    for verb in ["schema", "backup", "integrity"] {
         let opts = CaseOpts::default();
         ctx.reset_live(&opts);
-        let r = ctx.run_v5(&d(&["schema"]), &opts);
-        assert_eq!(r.code, 1, "db schema should exit loud");
+        let r = ctx.run_v5(&d(&[verb]), &opts);
+        assert_eq!(r.code, 1, "db {verb} should exit loud");
         assert!(
-            String::from_utf8_lossy(&r.stderr).contains("recognized but not yet available"),
+            String::from_utf8_lossy(&r.stderr).contains(&format!(
+                "db subcommand '{verb}' is recognized but not yet available"
+            )),
             "loud message names the verb"
         );
     }
@@ -2673,6 +2788,121 @@ fn cli_differential() {
             !ctx.live.join("instA/data/quilltap.lock").exists(),
             "write lock released after one-shot --write"
         );
+    }
+
+    // ---------------- db optimize (P4.D259 Tier 2) ----------------
+    {
+        let dur = || CaseOpts {
+            normalize_durations: true,
+            ..Default::default()
+        };
+        ctx.case_with("db optimize all", &d(&["optimize"]), dur());
+        // The stat4 size pin (`STAT4_NOT_COMPILED`, both ways): with the
+        // build lacking STAT4, v4's raw after-size must EXCEED v5's on every
+        // database — the divergence the normalization hides is still real.
+        if !build_has_stat4() {
+            let opts = CaseOpts::default();
+            let args = d(&["optimize", "--json"]);
+            ctx.reset_live(&opts);
+            let a = ctx.run_v4(&args, &opts);
+            ctx.reset_live(&opts);
+            let b = ctx.run_v5(&args, &opts);
+            let after = |out: &[u8]| -> Vec<u64> {
+                let text = String::from_utf8_lossy(out);
+                let json = &text[text.find("{\n  \"results\"").expect("the --json object")..];
+                let v: serde_json::Value = serde_json::from_str(json).unwrap();
+                v["results"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|r| r["sizeAfter"].as_u64().unwrap())
+                    .collect()
+            };
+            let (v4_after, v5_after) = (after(&a.stdout), after(&b.stdout));
+            assert_eq!(v4_after.len(), 3);
+            assert!(
+                v4_after.iter().zip(&v5_after).all(|(x, y)| x > y),
+                "STAT4_NOT_COMPILED no longer explains the sizes: v4 {v4_after:?} v5 {v5_after:?}"
+            );
+        }
+        ctx.case_with("db optimize all explicit", &d(&["optimize", "all"]), dur());
+        ctx.case_with("db optimize llm-logs", &d(&["optimize", "llm-logs"]), dur());
+        ctx.case_with(
+            "db optimize two named",
+            &d(&["optimize", "mount-points", "main"]),
+            dur(),
+        );
+        ctx.case_with("db optimize bogus", &d(&["optimize", "bogus"]), dur());
+        ctx.case_with("db optimize json", &d(&["optimize", "--json"]), dur());
+        ctx.case_with(
+            "db optimize mount-points removed",
+            &d(&["optimize", "mount-points"]),
+            CaseOpts {
+                pre: Some(Box::new(|live: &Path| {
+                    std::fs::remove_file(live.join("instA/data/quilltap-mount-index.db")).unwrap();
+                })),
+                normalize_durations: true,
+                ..Default::default()
+            },
+        );
+        ctx.case_with(
+            "db optimize json mount-points removed",
+            &d(&["optimize", "--json"]),
+            CaseOpts {
+                pre: Some(Box::new(|live: &Path| {
+                    std::fs::remove_file(live.join("instA/data/quilltap-mount-index.db")).unwrap();
+                })),
+                normalize_durations: true,
+                ..Default::default()
+            },
+        );
+        ctx.case_with(
+            "db optimize corrupt lock",
+            &d(&["optimize"]),
+            CaseOpts {
+                pre: Some(Box::new(corrupt_pre)),
+                normalize_durations: true,
+                ..Default::default()
+            },
+        );
+        ctx.case_with(
+            "db optimize stale lock proceeds",
+            &d(&["optimize", "main"]),
+            CaseOpts {
+                pre: Some(Box::new(stale_pre.clone())),
+                normalize_durations: true,
+                ..Default::default()
+            },
+        );
+        // A live Quilltap-shaped owner (a fresh node sleeper) → ACTIVE.
+        let mut sleeper = Command::new(&ctx.node)
+            .args(["-e", "setTimeout(() => {}, 60000)"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn node sleeper");
+        let pid = sleeper.id();
+        let active_lock = {
+            let host = host.clone();
+            move |live: &Path| {
+                std::fs::write(
+                    live.join("instA/data/quilltap.lock"),
+                    lock_json(pid, &host, "local", &iso_minus_secs(60), vec![]),
+                )
+                .unwrap();
+            }
+        };
+        ctx.case_with(
+            "db optimize active lock",
+            &d(&["optimize"]),
+            CaseOpts {
+                pre: Some(Box::new(active_lock)),
+                normalize_durations: true,
+                ..Default::default()
+            },
+        );
+        let _ = sleeper.kill();
+        let _ = sleeper.wait();
     }
 
     // ---------------- db characters (P4.D66) ----------------

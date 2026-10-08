@@ -174258,3 +174258,32 @@ symlink classes incl. 15 plugin `node_modules`).
 - Pre-existing host pins: `host_lock_ordering`'s "not one byte" comparand
   runs only on REFUSED boots (never reach `assemble`) — unaffected. Every
   other `host_boot_*` family re-run in the lane's workspace gate (below).
+
+### Unit 3 — Tier 2: the CLI `db optimize` thaw (cli 0.0.30)
+
+- `db_cmd.rs`: `cmd_optimize` / `optimize_one_db` over core's
+  `run_optimize_steps`; `optimize_lock_refusal` ports the launcher's
+  `getLockStatus` (`lock-helpers.js:54-107`) — no twin existed in v5 (the
+  `--lock-status` path is `assessLock`, a different decision) — over the
+  existing `lock_num` / `lock_str` / `heartbeat_age_ms` / `FRESH_MS` /
+  `is_pid_alive` / `verify_pid_is_quilltap`. A non-object lock JSON is NOT
+  corrupt in v4 (it parses, matches no host → stale); ported so.
+  `db_characters.rs`'s `parse_sub_args` / `as_bool` / `print_json` became
+  `pub(crate)` (three tokens; the shared v4 helpers).
+- Tier R (`cli_differential.rs`): eleven rows — all, `all`, `llm-logs`, two
+  named, `bogus`, `--json`, mount-points removed (text + `--json`), corrupt
+  lock, stale lock proceeds, active lock (a fresh node sleeper);
+  `normalize_durations` (R-H) for the step durations and `"ms"`; the
+  `:2244` refusal pin narrowed to `schema` / `backup` / `integrity`.
+  **Sizes were compared RAW first and DISAGREED on every optimized
+  database — the FINDING is `STAT4_NOT_COMPILED` again** (v4 76.0 / 20.0 /
+  112.0 KB after, v5 72.0 / 16.0 / 100.0 KB: v4's `ANALYZE` writes
+  `sqlite_stat4` on a fixture that had none). By the human's ruling
+  (2026-10-08: leave STAT4 alone, record it for the unifier) the cases
+  collapse the after-size ONLY while the build lacks STAT4 (checked live),
+  and a both-ways pin asserts v4's raw `sizeAfter` exceeds v5's on all three.
+  Gate: Tier R green (`cli_differential` ok, 349 s).
+- Red-first (by construction, not re-measured — a Tier R run is ~6 min on
+  the shared machine): unported `main` answers every `db optimize` row with
+  the `recognized but not yet available` refusal, exit 1, where v4 prints
+  and exits 0 (the `bogus` and lock rows differ in the message too).
