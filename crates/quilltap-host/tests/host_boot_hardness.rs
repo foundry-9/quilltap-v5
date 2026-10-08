@@ -1052,20 +1052,30 @@ fn normalize_duration(line: &str) -> String {
 }
 
 impl Booted {
-    /// Each of `lines` exactly once, in that order.
+    /// Each of `lines` exactly as many times as it is listed (once, for all
+    /// but a repeated line — the LLM logs' per-attempt key DEBUG, P4.D258),
+    /// in that order: an in-order subsequence of the capture, matched
+    /// occurrence by occurrence.
     fn assert_lines_in_order(&self, lines: &[String]) {
-        let mut last = None;
         for line in lines {
-            self.assert_line(line);
-            let at = self.lines.iter().position(|l| l == line).unwrap();
-            if let Some(prev) = last {
-                assert!(
-                    prev < at,
+            let want = lines.iter().filter(|l| *l == line).count();
+            let hits = self.lines.iter().filter(|l| *l == line).count();
+            assert_eq!(
+                hits,
+                want,
+                "expected {want} line(s) {line:?}; captured:\n{}",
+                self.lines.join("\n")
+            );
+        }
+        let mut from = 0;
+        for line in lines {
+            let Some(at) = self.lines[from..].iter().position(|l| l == line) else {
+                panic!(
                     "{line:?} logged out of v4's order; captured:\n{}",
                     self.lines.join("\n")
                 );
-            }
-            last = Some(at);
+            };
+            from += at + 1;
         }
     }
 }
@@ -1369,10 +1379,14 @@ async fn the_134_plant_is_re_ensured_and_re_logged_on_every_boot() {
 //
 // v4 `94fbb1ae3`: a mount-index or LLM-logs database that cannot be opened —
 // or fails its `quick_check` — leaves that partition DEGRADED and the boot
-// goes on (`backends/sqlite/backend.ts:571-617`; `mount-index-client.ts:102-149`
-// — four attempts, `[200, 600, 1500]` ms apart, a WARN on attempts 1–3 and one
-// ERROR; `llm-logs-client.ts:49-98` — ONE attempt, one ERROR;
-// `*-protection.ts:44-66`). The structural pass then COUNTS each of that
+// goes on (`backends/sqlite/backend.ts:571-617`; both clients through ONE
+// cold-open ladder since v4 `039f7017c` — bug 180, this port's filing —
+// `cold-open-retry.ts:32-60`: four attempts, `[200, 600, 1500]` ms apart, a
+// WARN on attempts 1–3 and one ERROR carrying `attempts`;
+// `mount-index-client.ts:99-126`, `llm-logs-client.ts:94-126` at `f5e953a3f`,
+// whose key DEBUG fires inside each attempt; `*-protection.ts:44-66`). Until
+// that commit the LLM logs had ONE attempt and these arms pinned it (P4.159);
+// P4.D258 moved them with the fix. The structural pass then COUNTS each of that
 // partition's repositories as `<label> database unavailable: <guard sentence>`
 // (`dedicated-db.repository.ts:176-182`), so `/api/health` answers `degraded`.
 // The line bytes are the `degraded_sibling_open_equivalence` differential's
@@ -1499,9 +1513,19 @@ fn mount_failed(b: &Booted) -> String {
     )
 }
 
+fn llm_retry(b: &Booted, attempt: u32, backoff: u32) -> String {
+    format!(
+        "WARN quilltap::db LLM logs cold-open failed — retrying module=database:llm-logs-client path={} attempt={attempt} maxAttempts=4 backoffMs={backoff} error=file is not a database",
+        llm_path(b)
+    )
+}
+
+const LLM_KEY_SET: &str =
+    "DEBUG quilltap::db SQLCipher key set on LLM logs database module=database:llm-logs-client";
+
 fn llm_failed(b: &Booted) -> String {
     format!(
-        "ERROR quilltap::db Failed to initialize LLM logs database — entering degraded mode module=database:llm-logs-client path={} error=file is not a database",
+        "ERROR quilltap::db Failed to initialize LLM logs database — entering degraded mode module=database:llm-logs-client path={} attempts=4 error=file is not a database",
         llm_path(b)
     )
 }
@@ -1602,22 +1626,30 @@ async fn a_garbage_mount_index_degrades_through_v4s_ladder_and_boots() {
     assert!(main.success(), "{main:?}");
 }
 
-/// (b) A garbage LLM-logs file: v4's ONE attempt (no ladder — the asymmetry,
-/// §S.7's candidate filing) and ONE ERROR; one problem.
+/// (b) A garbage LLM-logs file: the shared ladder's four attempts (v4
+/// `039f7017c`, bug 180 — the P4.159 pin on v4's old ONE attempt moved with
+/// the fix), the key DEBUG inside EACH attempt, a WARN on attempts 1–3 and
+/// ONE ERROR carrying `attempts=4`; one problem. The mount index stays sound
+/// and silent.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn a_garbage_llm_logs_file_degrades_with_one_error_and_boots() {
+async fn a_garbage_llm_logs_file_degrades_after_four_attempts_and_boots() {
     let _serial = SERIAL.lock().await;
     let booted = boot_damaged("", &[(LLM, SiblingPlant::Garbage)]).await;
     booted.host();
     booted.assert_lines_in_order(&[
         llm_initializing(&booted),
-        "DEBUG quilltap::db SQLCipher key set on LLM logs database module=database:llm-logs-client"
-            .to_string(),
+        LLM_KEY_SET.to_string(),
+        llm_retry(&booted, 1, 200),
+        LLM_KEY_SET.to_string(),
+        llm_retry(&booted, 2, 600),
+        LLM_KEY_SET.to_string(),
+        llm_retry(&booted, 3, 1500),
+        LLM_KEY_SET.to_string(),
         llm_failed(&booted),
         mount_initializing(&booted),
         MOUNT_PASSED.to_string(),
     ]);
-    booted.assert_silent("cold-open failed");
+    booted.assert_silent("Mount index cold-open failed");
     booted.assert_silent("LLM logs database connection established");
     booted.assert_silent("LLM logs database integrity check");
     booted.assert_structural(&[LLM_DEGRADED_PROBLEM]);
@@ -1675,10 +1707,9 @@ async fn sound_siblings_log_v4s_open_lines_and_nothing_degraded() {
     booted.host();
     booted.assert_lines_in_order(&[
         llm_initializing(&booted),
-        "DEBUG quilltap::db SQLCipher key set on LLM logs database module=database:llm-logs-client"
-            .to_string(),
+        LLM_KEY_SET.to_string(),
         format!(
-            "INFO quilltap::db LLM logs database connection established module=database:llm-logs-client path={}",
+            "INFO quilltap::db LLM logs database connection established module=database:llm-logs-client path={} attempts=1",
             llm_path(&booted)
         ),
         LLM_PASSED.to_string(),

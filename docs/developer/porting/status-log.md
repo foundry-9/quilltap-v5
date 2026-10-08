@@ -173843,3 +173843,72 @@ start: branch `main`, tree clean, `f5e953a3f..main` = exactly the waived
   chatId=…` once per gallery open.
 - **Versions at close:** core 0.0.1253; harness frozen 0.0.1110; nothing
   else bumped.
+## P4.D258 — the `039f7017c` convergence lane (bugs 180 / 181 + the bug-179 no-port) — lane record
+
+Branch `claude/ladder-embedding-shape-bug-5244ae` (from `main` `9dbcfcb65`).
+Pin `/tmp/qt-v4-pin-p4d258-f5e953a3f` at `f5e953a3f` (`4.10.0-dev.117`,
+`openai` 7.30.0 in the root `node_modules`). §2 probe PASSED at lane start
+and before each regen batch (branch `main`, tree clean, `f5e953a3f..main` =
+the waived `1825bfd53` alone, `bugfix` empty). Lane-private regens under
+`/tmp/p4d258/` through `/tmp/p4d258/regen.sh` (a hand copy of the three
+families' recipes — two of them are P4.D264's too, §R.3); the worktree is
+reached through the spaceless symlink `/tmp/p4d258-v5w`.
+
+### Red-first at the pin, on unported `main` (item 1)
+
+- `degraded_sibling_open_equivalence`: 1 of 2 tests red — the open test,
+  on THREE rows: `llmLogs × garbage` (v4: the key DEBUG ×4, three `LLM logs
+  cold-open failed — retrying` WARNs at 200/600/1500, the ERROR with
+  `attempts=4`), `llmLogs × sound` and `llmLogs × integrity` (`attempts=1`
+  on the INFO — the order predicted `sound` alone; `integrity` opens soundly
+  first, so it carries the same INFO). Every `mountIndex × *` row green. The
+  pass test green.
+- `host_boot_hardness`: 34/34 GREEN on unported `main` — the three P4.159
+  pins (`llm_failed()`, the garbage arm, the sound arm's INFO) pin the
+  DEFECT and moved with the fix (§R.5's rule applied to one-attempt pins).
+- `system_backup_equivalence`: 19 differences. Mine: `data/memories.json`
+  on `backup_full`, `backup_missing_file`, `backup_with_informs`,
+  `backup_with_blob_profile` (v4 writes `"embedding": null` / `number[]`);
+  `backup_compact` green on memories. NOT mine (P4.D264, §R.13(d)): the
+  `data/wardrobe-wear.json` path + the manifest `wardrobeWear` count on all
+  five cases.
+- `system_restore_state`: 37 differences. Mine: `restore_memory_refusals_
+  replace` — `INDEX_KEYED_EMBEDDING (v4): …09 now RESTORES on v4 — v4
+  converged`, `MEMORIES (v4)` landed `…09`, `main.memories` row count 5 vs
+  6 (the carve removed v5's), `summary.memories` 13 vs 6; and
+  `restore_phase_warns_replace` `summary.memories` 2 vs 0 (v4 now counts
+  written rows; the phase plant writes none). NOT mine (P4.D255 / P4.D264,
+  §R.13): `main.chat_settings` on 32 cases (`wardrobeImageSettings`).
+- **R-B measured:** v4's post-fix `memories.json` (`backup_full`) writes
+  `embedding` right after `importance` on every memory — MEM_1 / MEM_2
+  `null`, MEM_3 `[0.25196850299835205, -0.4960629940032959,
+  0.12598425149917603, 1]` (the fixture's BLOB is the quantized format).
+- **v4 at the pin, the refusals case:** `summary.memories` = 6 (archive 13;
+  `…01`, `…02`, `…09`, `…11`, `…12`, `…13` land), the `Restore operation
+  completed` summary agrees. **⚠ PREMISE CORRECTION (item 3):** the oracle
+  holds NO `Decoded index-keyed memory embedding` line — the restore case's
+  log census is a fixed WHITELIST (`RESTORE_TS_MESSAGES` in
+  `system-restore.test.ts`, P4.D264's file), not "everything the restore
+  logs". The line reaches the comparison only once that list carries it —
+  a `HANDOFF:` (below).
+
+### Unit 1 — the shared cold-open ladder (bug 180, items 7–9)
+
+`db/runtime.rs`: `open_sibling_with_ladder(label, module, path_text,
+attempt: impl FnMut() -> Result<Writer, DbError>) -> (Result<Writer,
+String>, usize)` (the order's sketch took `pepper`; the closure captures it
+instead, so the helper needs neither path nor pepper beyond the text it
+logs). `COLD_OPEN_RETRY_BACKOFF_MS` replaces `MOUNT_INDEX_OPEN_BACKOFF_MS`.
+`open_mount_index` rewritten over it (bytes unchanged — every `mountIndex`
+row green); `open_llm_logs` logs the key DEBUG inside each attempt, the
+WARN, `attempts` on both terminal lines. No probe (R-C). Module docs
+rewritten (the asymmetry is gone; `cold-open-retry.ts:1-60`,
+`llm-logs-client.ts:46-126` at `f5e953a3f`).
+`host_boot_hardness.rs`: the three pins moved (garbage arm renamed
+`a_garbage_llm_logs_file_degrades_after_four_attempts_and_boots`; its
+LLM-leg `cold-open failed` silence deleted, the mount leg's kept as
+`Mount index cold-open failed`); the P4.159 comment block's citation
+corrected; `assert_lines_in_order` is now an in-order subsequence with
+per-line counts (it found a line's FIRST occurrence, so a repeated line
+could not be pinned). `NEVER_ON_SOUND`, `:552`, `:1009` untouched.
+After: `degraded_sibling_open_equivalence` 2/2, `host_boot_hardness` 34/34.

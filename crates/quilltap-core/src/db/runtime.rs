@@ -44,13 +44,19 @@
 //! way v4's `SQLiteBackend.connect()` does (`backend.ts:571-617` at
 //! `94fbb1ae3`), LLM logs FIRST:
 //!
-//! - the LLM logs in ONE attempt (`llm-logs-client.ts:49-98`), the mount index
-//!   through a four-attempt ladder `[200, 600, 1500]` ms apart
-//!   (`mount-index-client.ts:43-149` — a cold open over an iCloud/VirtioFS
-//!   bind mount can read incomplete page-1 bytes once and succeed a moment
-//!   later). The asymmetry is v4's; the LLM-logs client simply has no ladder.
-//!   The sleeps block the opening thread as v4's `sleepSync` blocks its event
-//!   loop (R-C — v4's constants, no injection seam);
+//! - BOTH through ONE four-attempt cold-open ladder `[200, 600, 1500]` ms
+//!   apart ([`open_sibling_with_ladder`] — v4 `cold-open-retry.ts:1-60` at
+//!   `f5e953a3f`; a cold open over an iCloud/VirtioFS bind mount can read
+//!   incomplete page-1 bytes once and succeed a moment later). Until v4
+//!   `039f7017c` (bug 180, this port's filing) the LLM logs had ONE attempt
+//!   and v5 pinned that asymmetry faithfully (P4.159); v4 now opens both
+//!   siblings through `openWithColdOpenRetry` "so the two cannot drift
+//!   again", and so does v5 (P4.D258). Each leg keeps its own lines: the
+//!   mount index's bytes are unchanged (`mount-index-client.ts:47-126`), the
+//!   LLM logs log their key DEBUG INSIDE each attempt and carry `attempts` on
+//!   both terminal lines (`llm-logs-client.ts:46-126`). The sleeps block the
+//!   opening thread as v4's `sleepSync` blocks its event loop (R-C — v4's
+//!   constants, no injection seam);
 //! - an opened sibling then runs v4's `quick_check` (`*-protection.ts:44-66`);
 //! - a sibling that failed either step is DEGRADED: [`PartitionState::Degraded`],
 //!   no writer, no read pool. v4 KEEPS the connection after a failed integrity
@@ -66,12 +72,14 @@
 //! an absent one (R4). Collapsing the two would answer a healthy 200 over a
 //! dead mount index (R-B).
 //!
-//! The writable open needs no separate verify probe (R-D): v4's mount-index
-//! client probes `SELECT count(*) FROM sqlite_master` before its pragmas so a
-//! bad page 1 fails there; v5's [`Writer::open_writable`] fails at its
-//! `journal_mode` pragma on the same bytes, and SQLite3MC answers the same
-//! `file is not a database` at both steps (measured through v4's own binding
-//! and pinned by `degraded_sibling_open_equivalence`).
+//! The writable open needs no separate verify probe (R-D): v4's sibling
+//! clients — the mount index's always, the LLM logs' since `039f7017c`
+//! (`llm-logs-client.ts:58`) — probe `SELECT count(*) FROM sqlite_master`
+//! before their pragmas so a bad page 1 fails there; v5's
+//! [`Writer::open_writable`] fails at its `journal_mode` pragma on the same
+//! bytes, and SQLite3MC answers the same `file is not a database` at both
+//! steps (measured through v4's own binding and pinned by
+//! `degraded_sibling_open_equivalence`, for both partitions).
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -89,9 +97,10 @@ use super::table_shape::Partition;
 use super::text_compression;
 use super::{DbError, Writer};
 
-/// The mount index's cold-open ladder (`mount-index-client.ts:43`,
-/// `OPEN_RETRY_BACKOFF_MS`): the sleep after each failed attempt but the last.
-const MOUNT_INDEX_OPEN_BACKOFF_MS: [u64; 3] = [200, 600, 1500];
+/// The siblings' shared cold-open ladder (v4 `cold-open-retry.ts:18`,
+/// `COLD_OPEN_RETRY_BACKOFF_MS`): the sleep after each failed attempt but the
+/// last; the attempt budget is one more than its length.
+const COLD_OPEN_RETRY_BACKOFF_MS: [u64; 3] = [200, 600, 1500];
 
 /// v4's child-logger `module` on each client's and protection module's lines.
 const MOUNT_INDEX_CLIENT: &str = "database:mount-index-client";
@@ -198,8 +207,8 @@ struct SiblingOpen {
 }
 
 /// Open one sibling partition the way v4's `connect()` does (see the module
-/// doc): the client's open (the ladder for the mount index, one attempt for
-/// the LLM logs), then the integrity check; either failing leaves it
+/// doc): the client's open through the shared ladder, then the integrity
+/// check; either failing leaves it
 /// [`PartitionState::Degraded`] with no writer. `None` is `Absent`, silently.
 fn open_sibling(partition: Partition, path: Option<&Path>, pepper_b64: &str) -> SiblingOpen {
     let Some(path) = path else {
@@ -227,11 +236,50 @@ fn open_sibling(partition: Partition, path: Option<&Path>, pepper_b64: &str) -> 
     }
 }
 
-/// v4 `getMountIndexSQLiteClient` (`mount-index-client.ts:102-149`): the
-/// four-attempt ladder, a WARN after each failed attempt but the last, one
-/// ERROR when the budget is spent. `walMode` is v4's config value: v5 never
-/// runs WAL (TRUNCATE journaling, cloud-sync safety), so it is always `false`
-/// — v4's value with `SQLITE_WAL_MODE` unset.
+/// v4 `openWithColdOpenRetry` (`cold-open-retry.ts:32-60`): run `attempt`
+/// until it opens or the budget is spent, a WARN `<label> cold-open failed —
+/// retrying` (keys `path, attempt, maxAttempts, backoffMs, error`, v4's
+/// order) and a blocking sleep after each failure but the last. Never logs a
+/// terminal line — each caller renders its own INFO / ERROR from the outcome
+/// and `attempts` (the attempts it took, or the whole budget when spent).
+/// `Err` carries the LAST attempt's error text (v4's `lastError`).
+fn open_sibling_with_ladder(
+    label: &str,
+    module: &'static str,
+    path_text: &str,
+    mut attempt: impl FnMut() -> Result<Writer, DbError>,
+) -> (Result<Writer, String>, usize) {
+    let max_attempts = COLD_OPEN_RETRY_BACKOFF_MS.len() + 1;
+    let mut last_error = String::new();
+    for i in 0..max_attempts {
+        match attempt() {
+            Ok(writer) => return (Ok(writer), i + 1),
+            Err(error) => {
+                last_error = error_text(&error);
+                if let Some(&backoff) = COLD_OPEN_RETRY_BACKOFF_MS.get(i) {
+                    tracing::warn!(
+                        target: "quilltap::db",
+                        module = module,
+                        path = path_text,
+                        attempt = i + 1,
+                        maxAttempts = max_attempts,
+                        backoffMs = backoff,
+                        error = last_error.as_str(),
+                        "{label} cold-open failed — retrying"
+                    );
+                    thread::sleep(Duration::from_millis(backoff));
+                }
+            }
+        }
+    }
+    (Err(last_error), max_attempts)
+}
+
+/// v4 `getMountIndexSQLiteClient` (`mount-index-client.ts:99-126` at
+/// `f5e953a3f`) over the shared ladder (`'Mount index'`); `attemptOpenMountIndex`
+/// (`:47-60`) logs nothing of its own. `walMode` is v4's config value: v5
+/// never runs WAL (TRUNCATE journaling, cloud-sync safety), so it is always
+/// `false` — v4's value with `SQLITE_WAL_MODE` unset.
 fn open_mount_index(path: &Path, pepper_b64: &str) -> Option<Writer> {
     let path_text = path.display().to_string();
     tracing::info!(
@@ -241,54 +289,42 @@ fn open_mount_index(path: &Path, pepper_b64: &str) -> Option<Writer> {
         walMode = false,
         "Initializing mount index database connection"
     );
-    let max_attempts = MOUNT_INDEX_OPEN_BACKOFF_MS.len() + 1;
-    let mut last_error = String::new();
-    for attempt in 0..max_attempts {
-        match Writer::open_writable(path, pepper_b64) {
-            Ok(writer) => {
-                tracing::info!(
-                    target: "quilltap::db",
-                    module = MOUNT_INDEX_CLIENT,
-                    path = path_text.as_str(),
-                    attempts = attempt + 1,
-                    "Mount index database connection established"
-                );
-                return Some(writer);
-            }
-            Err(error) => {
-                last_error = error_text(&error);
-                if let Some(&backoff) = MOUNT_INDEX_OPEN_BACKOFF_MS.get(attempt) {
-                    tracing::warn!(
-                        target: "quilltap::db",
-                        module = MOUNT_INDEX_CLIENT,
-                        path = path_text.as_str(),
-                        attempt = attempt + 1,
-                        maxAttempts = max_attempts,
-                        backoffMs = backoff,
-                        error = last_error.as_str(),
-                        "Mount index cold-open failed — retrying"
-                    );
-                    thread::sleep(Duration::from_millis(backoff));
-                }
-            }
+    let (outcome, attempts) =
+        open_sibling_with_ladder("Mount index", MOUNT_INDEX_CLIENT, &path_text, || {
+            Writer::open_writable(path, pepper_b64)
+        });
+    match outcome {
+        Ok(writer) => {
+            tracing::info!(
+                target: "quilltap::db",
+                module = MOUNT_INDEX_CLIENT,
+                path = path_text.as_str(),
+                attempts = attempts,
+                "Mount index database connection established"
+            );
+            Some(writer)
+        }
+        Err(error) => {
+            tracing::error!(
+                target: "quilltap::db",
+                module = MOUNT_INDEX_CLIENT,
+                path = path_text.as_str(),
+                attempts = attempts,
+                error = error.as_str(),
+                "Failed to initialize mount index database — entering degraded mode"
+            );
+            None
         }
     }
-    tracing::error!(
-        target: "quilltap::db",
-        module = MOUNT_INDEX_CLIENT,
-        path = path_text.as_str(),
-        attempts = max_attempts,
-        error = last_error.as_str(),
-        "Failed to initialize mount index database — entering degraded mode"
-    );
-    None
 }
 
-/// v4 `getLLMLogsSQLiteClient` (`llm-logs-client.ts:49-98`): ONE attempt, no
-/// verify probe, no retry. v4's DEBUG `SQLCipher key set on LLM logs database`
-/// fires once the key pragma has run, BEFORE the pragma that fails on a bad
-/// file — v5's key is the first step of [`Writer::open_writable`] and cannot
-/// fail on an existing file, so the line is logged just ahead of the open.
+/// v4 `getLLMLogsSQLiteClient` (`llm-logs-client.ts:94-126` at `f5e953a3f`)
+/// over the shared ladder (`'LLM logs'`; bug 180). v4's DEBUG `SQLCipher key
+/// set on LLM logs database` fires INSIDE each attempt, once the key pragma
+/// has run and BEFORE the probe that fails on a bad file
+/// (`attemptOpenLLMLogs`, `:51-53`) — so four times on a garbage file. v5's
+/// key is the first step of [`Writer::open_writable`] and cannot fail on an
+/// existing file, so each attempt logs the line just ahead of its open.
 fn open_llm_logs(path: &Path, pepper_b64: &str) -> Option<Writer> {
     let path_text = path.display().to_string();
     tracing::info!(
@@ -298,17 +334,22 @@ fn open_llm_logs(path: &Path, pepper_b64: &str) -> Option<Writer> {
         walMode = false,
         "Initializing LLM logs database connection"
     );
-    tracing::debug!(
-        target: "quilltap::db",
-        module = LLM_LOGS_CLIENT,
-        "SQLCipher key set on LLM logs database"
-    );
-    match Writer::open_writable(path, pepper_b64) {
+    let (outcome, attempts) =
+        open_sibling_with_ladder("LLM logs", LLM_LOGS_CLIENT, &path_text, || {
+            tracing::debug!(
+                target: "quilltap::db",
+                module = LLM_LOGS_CLIENT,
+                "SQLCipher key set on LLM logs database"
+            );
+            Writer::open_writable(path, pepper_b64)
+        });
+    match outcome {
         Ok(writer) => {
             tracing::info!(
                 target: "quilltap::db",
                 module = LLM_LOGS_CLIENT,
                 path = path_text.as_str(),
+                attempts = attempts,
                 "LLM logs database connection established"
             );
             Some(writer)
@@ -318,7 +359,8 @@ fn open_llm_logs(path: &Path, pepper_b64: &str) -> Option<Writer> {
                 target: "quilltap::db",
                 module = LLM_LOGS_CLIENT,
                 path = path_text.as_str(),
-                error = error_text(&error).as_str(),
+                attempts = attempts,
+                error = error.as_str(),
                 "Failed to initialize LLM logs database — entering degraded mode"
             );
             None

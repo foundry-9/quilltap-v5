@@ -12,6 +12,13 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — fix(db): the LLM logs open through the shared cold-open ladder (v4 bug 180, `039f7017c`)
+
+_Versions: core 0.0.1253._
+
+P4.D258 unit 1. v4 `039f7017c` fixed this port's bug-180 filing: both sibling databases now open through one `openWithColdOpenRetry` ladder (`[200, 600, 1500]` ms). `db/runtime.rs` gains `open_sibling_with_ladder` (the WARN `<label> cold-open failed — retrying` with `path, attempt, maxAttempts, backoffMs, error`; the blocking sleep; returns the outcome and the attempt count) and `COLD_OPEN_RETRY_BACKOFF_MS` replaces the mount-index-only constant. The mount index's lines are byte-identical. The LLM logs now log the `SQLCipher key set on LLM logs database` DEBUG inside each attempt (four times on a garbage file), retry three times with the WARN, and carry `attempts` on both the `connection established` INFO and the degraded ERROR. No verify probe is ported (P4.159 R-D stands). Module docs and citations corrected.
+
+`degraded_sibling_open_equivalence` was red at the `f5e953a3f` pin on unported `main` on all three `llmLogs` rows (garbage, sound, integrity) and is green now; the `mountIndex` rows were green before and after. The three P4.159 host pins on the old one-attempt open moved with the fix in `host_boot_hardness.rs`: `llm_failed()` carries `attempts=4`, the garbage arm is renamed `a_garbage_llm_logs_file_degrades_after_four_attempts_and_boots` and asserts the four DEBUG / three WARN sequence (its LLM-leg `cold-open failed` silence was pinning the defect and is gone; the mount leg's silence stays), and the sound arm's INFO carries `attempts=1`. `assert_lines_in_order` became an in-order subsequence check with per-line counts, so a line logged more than once is matched occurrence by occurrence.
 #### 2026-10-08 — feat(photos): the chat gallery files a folder-only backdrop as a background and lists the avatars a chat wears but never minted (P4.D257, v4 `f9f1ba177`)
 
 _Versions: core 0.0.1253._
