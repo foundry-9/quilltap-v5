@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — test(spa): P4.D261 unit 10 — the gated wardrobe and Wardrobe Images beats; two live beats re-pinned to the retired bytes; lane close
+
+_Versions: SPA 0.5.821._
+
+Five new Playwright beats, each skipped behind `P4D255_SERVER_LANDED = false` until the round's server lanes are unified: in `wardrobe-flow.spec.ts` the origin chip (and no `· shared` text), the wear line + Sort + Never worn around a real Done, the editor's Wear history with its chat link, and the Picture section (inert in create mode; two uploads, Make current, Delete); in `settings-flow.spec.ts` the Wardrobe Images card's artist labels and a whole-bag save of the tools checkbox, reloaded and restored. Two existing live beats re-pinned to bytes this round moved: the Show-shared beat finds the borrowed row by name (the `· shared` text is gone and the chip needs a server `origin`), and the project Wardrobe card beat expects `Top` (plus the `Never worn` line). The Picture section's Generate leg has no beat — the e2e instance has no mock image route. Also marks the P4.D261 work order LANE COMPLETE.
+
 #### 2026-10-08 — feat(spa): P4.D261 unit 9 — Tier 2: an open wardrobe dialog refreshes on the characters topic; WARDROBE_ITEM_IMAGE joins the llm-log union
 
 _Versions: SPA 0.5.820._

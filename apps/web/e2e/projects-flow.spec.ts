@@ -528,8 +528,14 @@ test.describe('P4.6l — Projects vertical (list → detail → toggle → renam
 
     const row = card.locator('li', { hasText: 'Walk livery cloak' });
     await expect(row).toBeVisible({ timeout: 10_000 });
-    await expect(row).toContainText('top');
+    // RE-PINNED by P4.D261: v4 `cc80dc89d` prints the row's slots through
+    // `formatSlotLabels` (`ProjectWardrobeManager.tsx:361`) — `Top`, not `top`.
+    await expect(row).toContainText('Top');
     await expect(row).toContainText('Default');
+    // v4 `3ee3b1342` `:366-369` — every row carries its wear line; a fresh
+    // garment reads `Never worn` (a pre-round server sends no annotation,
+    // which reads the same).
+    await expect(row.getByTestId('wardrobe-wear-line')).toHaveText('Never worn');
 
     // --- Delete (window.confirm) ---
     page.once('dialog', (d) => void d.accept());

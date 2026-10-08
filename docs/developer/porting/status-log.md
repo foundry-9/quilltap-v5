@@ -174977,3 +174977,92 @@ call under); the header re-states the count (21 here, 23 in v4).
 `CUSTOM_TOOL_CONSULT` / `VOICE_REWRITE` NOT added (the header's own rule —
 not this lane's). Type-only: no red arm possible; `npm run build` is the
 check. Version: SPA 0.5.820.
+
+### Unit 10 — the gated beats (R-G, §S.9) + the re-pinned live beats
+
+**Gated (all SKIPPED on this branch with their reasons):**
+`wardrobe-flow.spec.ts` + `P4D255_SERVER_LANDED = false` (the
+`P4D120_SERVER_LANDED` file-local precedent) and four beats at the foot of the
+describe — (a) the origin chip on the merged `Domino Mask` General row
+(`Shared · Quilltap General`, `title="Borrowed from …"`, no `· shared`
+anywhere; browsing General, NO chip on the same row); (b) a fresh `Ledger
+Spats` reads `Never worn`, the `Sort wardrobe` options `Title` / `Recently
+worn` / `Most worn` / `Newest`, a Wear + Done awaited on the `set_all` flush
+(body asserted to carry NO `wornBundleIds` — a plain garment), reopen →
+`Worn once · last today`, Recently worn puts it first, Never worn hides and
+restores it; (c) the editor's Wear history (`Times worn` `1`, the
+`“…Solo Voyage…”` link, Aria); (d) create mode's inert sentence, then two
+uploads (in-spec 1×1 PNG buffers — the `characters-flow.spec.ts:344` idiom, NO
+fixture file added), `Hung by hand`, `Make current`, a confirmed Delete →
+`Picture taken down`, the row's 40 px thumbnail. `settings-flow.spec.ts` +
+`P4D255_SERVER_LANDED = false` and one beat in the P4.6r Images describe:
+`?section=wardrobe-images`, the `Wardrobe Artist` options computed from the
+instance's own `imageProfileList` with v4's labels, the tools checkbox →
+ONE `chatSettingsUpdate` whose bag is exactly `{imageProfileId: null,
+generateFromTools: true}`, the DOM asserted after the save settles (P4.D252),
+a reload, and the RESTORE to `false`. **Recorded:** "generate beat: no mock
+image route — unrun" (`e2e/support/**` serves none; the dogfood row carries it).
+
+**Live beats re-pinned (the order predicted none — two moved):**
+`wardrobe-flow.spec.ts` P4.D188 "the Show shared tickbox…" filtered borrowed
+rows by the retired `· shared` text, so #80 broke it; the chip needs the
+server's `origin` (absent pre-round), so the borrowed population is now named
+(`Domino Mask`, the General garment the selector beat leaves) — holds against
+both servers; the chip is asserted by gated beat (a). `projects-flow.spec.ts`
+"the Wardrobe card…" expected `top` → `Top` (`formatSlotLabels`) and gains the
+`Never worn` line. R-C's `Top, Footwear` option (`wardrobe-flow.spec.ts:959`)
+prints the same bytes — unedited. The selector beat's `not.toContainText('·
+shared')` (`:607`) is now vacuous (no source prints it) — left unedited.
+
+**By file, one at a time (4319 + each spec's port announced, no other
+Playwright running):** `wardrobe-flow` 12 passed / 4 skipped; `settings-flow`
+8 passed / 1 skipped; `projects-flow` 7 passed; `workspace-flow` 13 passed.
+Binaries: this branch changes no crate source and `git diff main -- crates/
+Cargo.toml Cargo.lock` is empty, so main's release `quilltap-web` /
+`quilltap` (built 2026-10-08 00:11–00:13, after the last crate commit) were
+APFS-cloned (`cp -c`) into this worktree's `target/release` instead of a fresh
+release build while two sibling workspace gates ran — RECORDED.
+
+## P4.D261 — lane close
+
+**Landed:** Tier 1 items 1–19 (units 1–8, 10), Tier 2 items 20–22 (unit 9;
+item 22's by-file runs above). **Deferred (Tier 3, named, no stub, no hidden
+control, no contract key):** R-A(1) the avatar-picker Generate dialog's
+`orientation: 'portrait'` + `Shape` line (v4
+`components/images/image-generation-dialog.tsx` via `image-upload-dialog.tsx`,
+`avatar-selector.tsx:163`) — waits for the `ImageUploadDialog` leg both v5
+avatar pickers already defer; R-A(2) Import-from-image's `keepPhotograph`
+checkbox, the `'imported'` uploads and the darkroom toasts (v4
+`import-from-image-modal.tsx`) — waits for the modal (tier-3 `analyze-image`);
+`uploadWardrobeItemImage`'s `kind` parameter already lands; R-A(3)
+`ChatCreateOutfitSelectionInput.wornBundleIds` and the new-chat composer's
+`buildDefaultOutfitWithCredit` seeding (v4 `outfit-selector.tsx`) — waits for
+Compose/manual (`outfit-selector.ts:224-230`); item 26 — every class-guard /
+template translation is recorded in its unit (none forced a restyle; `npm run
+lint` green on every commit).
+
+**For the unifier / human (flags):** (1) **generate rides the REST route**
+(`POST /api/v1/wardrobe/{id}/images?action=generate`, C2 §6), not the
+`wardrobeItemImageGenerate` verb the order's item 11 names — the dispatch
+error envelope has no `details`/status and the 422 refusal notice needs both;
+the REST route is P4.D263's `wardrobe_images_routes.rs` (C2 §6). If the human
+prefers the verb, the envelope would need a `details` key beyond C2 (a STOP
+for the server lanes). (2) The wear-history and Picture sections route through
+the editor's `itemHomeContainer` (v4's code), not `homeContainerForItem` as
+the order's item 10 prose says. (3) The two re-pinned live beats above. (4)
+`main`'s `package-lock.json` stood one version behind `package.json`
+(0.5.810 vs 0.5.811) — unit 1 re-synced it. No `HANDOFF:`; no key beyond C2
+sent or typed REQUIRED.
+
+**Suite at close:** SPA 474 files / 9,012 tests (from 467 / 8,889), lint +
+build clean. **Version at close: SPA 0.5.821** (0.5.811 → 0.5.821, +1 per commit, ten
+commits); no crate moved.
+
+### 💸 for the dogfood pass (the order's list, plus)
+
+The order's rows verbatim, plus: the Picture section's GENERATE through the
+real Concierge desk and its 422 refusal notice naming the artist (no e2e
+mock); a tool-drawn picture repainting an OPEN dialog via the `characters`
+hint; the `Never worn` tickbox and the Sort select in a shared-container view;
+an outfit (bundle) worn from the dialog's Outfits tab sending
+`wornBundleIds` and its tally moving by ONE.

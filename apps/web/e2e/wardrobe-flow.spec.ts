@@ -93,6 +93,30 @@ const P4D120_SERVER_LANDED = true;
  */
 const P4D119_INSTRUCTIONS_LANDED = true;
 
+/**
+ * ACTIVATE-AT-UNIFY (P4.D261 → P4.D255 and its stage-2 lanes). The four beats
+ * at the foot of this describe need the round's server halves on the branch:
+ * `origin` on the collection reads (P4.D256), `wear` + the
+ * `wardrobeItemWearHistory` verb (P4.D255/P4.D256) and the ledger's write side
+ * crediting a `set_all` (P4.D262), the item-images route (P4.D263). Against a
+ * pre-round server every one would fail for a reason that says nothing about
+ * the SPA lane. Flip to `true` at unification (the order's §S.9).
+ */
+const P4D255_SERVER_LANDED = false;
+
+/** The garment the wear-ledger beats create fresh, so its tally starts at zero. */
+const LEDGER_GARMENT = 'Ledger Spats';
+
+/** Two distinct 1×1 PNGs (the route dedups by sha), the characters-flow idiom. */
+const SWATCH_AMBER = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGPYUqHxHwAFjAJUxS77cgAAAABJRU5ErkJggg==',
+  'base64',
+);
+const SWATCH_INDIGO = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGPQsKn4DwADSAHc/BF3hwAAAABJRU5ErkJggg==',
+  'base64',
+);
+
 const WARDROBE_PORT = 4329;
 const BASE_URL = `http://127.0.0.1:${WARDROBE_PORT}`;
 const INSTANCE_DIR = resolve(ARTIFACTS_DIR, 'wardrobe-instance');
@@ -639,13 +663,16 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
    *
    * Serial position matters: this beat runs directly after the container
    * selector beat, which creates a garment in Quilltap General. That row then
-   * appears in Aria's MERGED character view badged `· shared`, which is the
-   * whole population the toggle governs. Her own garments carry no badge.
+   * appears in Aria's MERGED character view, which is the whole population
+   * the toggle governs. Her own garments stay.
    *
-   * The assertions are counts rather than names on purpose — the shared
-   * population is whatever the preceding beats have left in the shared tiers,
-   * and the contract is "every badged row goes, every unbadged row stays",
-   * not "this particular garment goes".
+   * RE-PINNED by P4.D261: the population used to be found by its `· shared`
+   * text, which v4 `cc80dc89d` retired for the origin chip — and the chip
+   * renders only when the server tags the row with an `origin` (P4.D256), so a
+   * pre-round server's borrowed rows carry NO marker at all. The borrowed row
+   * is therefore named (`Domino Mask`, the General garment the selector beat
+   * left), which holds against both servers; the chip itself is asserted by
+   * the gated origin-chip beat below.
    */
   test('the Show shared tickbox hides the merged shared rows and leaves the archived toggle alone (P4.D188)', async ({
     page,
@@ -658,7 +685,7 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
 
     const dialog = page.getByRole('dialog');
     const rows = dialog.locator('.qt-card-interactive');
-    const sharedRows = rows.filter({ hasText: '· shared' });
+    const sharedRows = rows.filter({ hasText: 'Domino Mask' });
     const ownRows = dialog.locator('.qt-card-interactive').filter({ hasText: 'Brass Goggles' });
 
     const sharedBox = dialog.locator('label').filter({ hasText: 'Show shared' }).locator('input');
@@ -1304,6 +1331,292 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     await expect(reopened).toContainText('Clockwork Pin', { timeout: 10_000 });
     await expect(reopened).toContainText('Tessellated Cravat');
     await page.getByRole('button', { name: 'Done' }).click();
+  });
+
+  // -------------------------------------------------------------------------
+  // P4.D261 — the wardrobe SPA's half of v4 `cc80dc89d` / `3ee3b1342` /
+  // `7c8572869`. Every beat below is GATED on `P4D255_SERVER_LANDED` (R-G).
+  //
+  // RECORDED, not a beat: the Picture section's GENERATE leg — the e2e
+  // instance has no mock image-generation route (`e2e/support/**` carries
+  // none, read-only for this lane), so a Generate would reach a real
+  // provider or fail on the fixture's keyless profile. "generate beat: no mock
+  // image route — unrun"; the dogfood pass carries it.
+  // -------------------------------------------------------------------------
+
+  /** Aria's id and the Solo Voyage chat, reached as the Done beat reaches it. */
+  async function openAriaChat(page: Page): Promise<{ ariaId: string; chatId: string }> {
+    const characters = ((await dispatch(page, { type: 'characterList' }))['characters'] ??
+      []) as Array<{ id: string; name: string }>;
+    const ariaId = characters.find((c) => c.name === 'Aria')?.id;
+    expect(ariaId, "Aria's character id").toBeTruthy();
+    await openAriaDetail(page);
+    await page.getByRole('button', { name: 'Conversations' }).click();
+    await page.getByRole('link', { name: /Solo Voyage/ }).click();
+    await expect(page).toHaveURL(/\/salon\//);
+    const chatId = /\/salon\/([^/?#]+)/.exec(page.url())?.[1];
+    expect(chatId, 'the Solo Voyage chat id').toBeTruthy();
+    return { ariaId: ariaId!, chatId: chatId! };
+  }
+
+  /** Find-or-create Aria's fresh ledger garment; returns its id. */
+  async function ensureLedgerGarment(page: Page, ariaId: string): Promise<string> {
+    const listed = ((await dispatch(page, { type: 'characterWardrobeList', characterId: ariaId }))[
+      'wardrobeItems'
+    ] ?? []) as Array<{ id: string; title: string }>;
+    const existing = listed.find((i) => i.title === LEDGER_GARMENT);
+    if (existing) return existing.id;
+    const created = (
+      await dispatch(page, {
+        type: 'characterWardrobeCreate',
+        characterId: ariaId,
+        item: {
+          title: LEDGER_GARMENT,
+          description: null,
+          imagePrompt: null,
+          types: ['footwear'],
+          appropriateness: null,
+          isDefault: false,
+          componentItemIds: [],
+          replace: false,
+        },
+      })
+    )['wardrobeItem'] as { id: string } | undefined;
+    expect(created?.id, 'the ledger garment id').toBeTruthy();
+    return created!.id;
+  }
+
+  test('the origin chip names a borrowed garment’s wardrobe; nothing says “· shared” (ACTIVATE-AT-UNIFY, P4.D256)', async ({
+    page,
+  }) => {
+    test.skip(
+      !P4D255_SERVER_LANDED,
+      'awaits P4.D256’s `origin` on the collection reads (P4.D255 keystone; flipped at unification)',
+    );
+    test.setTimeout(90_000);
+    await page.goto(`${BASE_URL}/characters`);
+    await unlockIfLocked(page);
+    await openAriaDetail(page);
+    await openWardrobeDialog(page);
+    const dialog = page.getByRole('dialog');
+
+    // The General garment the container-selector beat left, merged into Aria's
+    // view: borrowed, so it carries v4's chip with its `Borrowed from` title.
+    const borrowed = dialog.locator('qt-wardrobe-item-row').filter({ hasText: 'Domino Mask' }).first();
+    const chip = borrowed.locator('.qt-badge-wardrobe-shared');
+    await expect(chip).toHaveText('Shared · Quilltap General', { timeout: 10_000 });
+    await expect(chip).toHaveAttribute('title', 'Borrowed from Shared · Quilltap General');
+    await expect(dialog).not.toContainText('· shared');
+    // Her own garment carries none.
+    await expect(
+      dialog
+        .locator('qt-wardrobe-item-row')
+        .filter({ hasText: 'Brass Goggles' })
+        .first()
+        .locator('.qt-badge-wardrobe-shared'),
+    ).toHaveCount(0);
+
+    // Browsing General itself, the same row is the container's OWN: no chip.
+    await dialog.locator('#wardrobe-container-select').selectOption('general:');
+    await expect(dialog.getByText('Browsing a shared wardrobe', { exact: false })).toBeVisible();
+    const own = dialog.locator('qt-wardrobe-item-row').filter({ hasText: 'Domino Mask' }).first();
+    await expect(own).toBeVisible();
+    await expect(own.locator('.qt-badge-wardrobe-shared')).toHaveCount(0);
+    await dialog.getByRole('button', { name: 'Done' }).click();
+    await expect(dialog).toBeHidden();
+  });
+
+  test('the wear ledger: the row line, Sort, Never worn and the claim-carrying Done (ACTIVATE-AT-UNIFY, P4.D255/P4.D256/P4.D262)', async ({
+    page,
+  }) => {
+    test.skip(
+      !P4D255_SERVER_LANDED,
+      'awaits the wear ledger: `wear` on the reads (P4.D256) and a `set_all` crediting it (P4.D262) — flipped at unification',
+    );
+    test.setTimeout(120_000);
+    await page.goto(`${BASE_URL}/characters`);
+    await unlockIfLocked(page);
+    const { ariaId, chatId } = await openAriaChat(page);
+    await ensureLedgerGarment(page, ariaId);
+
+    // The deflake the Done beat documents: give the Live tab a worn snapshot
+    // it can be SEEN to have seeded from, then stage only after it paints.
+    const listed = ((await dispatch(page, { type: 'characterWardrobeList', characterId: ariaId }))[
+      'wardrobeItems'
+    ] ?? []) as Array<{ id: string; title: string }>;
+    const scarfId = listed.find((i) => i.title === SEEDED_ACCESSORY)?.id;
+    expect(scarfId, 'the Done beat’s seeded accessory').toBeTruthy();
+    await dispatch(page, {
+      type: 'chatEquip',
+      chatId,
+      characterId: ariaId,
+      mode: 'set_all',
+      slots: { top: [], bottom: [], footwear: [], accessories: [scarfId], hair: [] },
+    });
+
+    await page.getByTitle('Wardrobe', { exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.locator('.qt-dialog-title')).toHaveText('Wardrobe');
+
+    // The Sort select (v4 :1336-1345) — four orderings, Title first.
+    const sort = dialog.locator('select[aria-label="Sort wardrobe"]');
+    await expect(sort.locator('option')).toHaveText(['Title', 'Recently worn', 'Most worn', 'Newest']);
+    await expect(sort).toHaveValue('title');
+
+    const ledgerRow = dialog.locator('qt-wardrobe-item-row').filter({ hasText: LEDGER_GARMENT }).first();
+    await expect(ledgerRow.getByTestId('wardrobe-wear-line')).toHaveText('Never worn', {
+      timeout: 10_000,
+    });
+
+    const liveAccessories = dialog.locator('.qt-card').filter({ hasText: 'Accessories' }).first();
+    await expect(liveAccessories).toContainText(SEEDED_ACCESSORY, { timeout: 15_000 });
+    await ledgerRow.getByRole('button', { name: 'Wear', exact: true }).click();
+    const liveFootwear = dialog.locator('.qt-card').filter({ hasText: 'Footwear' }).first();
+    await expect(liveFootwear).toContainText(LEDGER_GARMENT);
+
+    // Done flushes ONE set_all; await the flush itself, not just the close
+    // (the P4.D250 shape: a beat must not pass with nothing posted).
+    const flushed = page.waitForResponse(
+      (r) =>
+        r.url().includes('/api/dispatch') &&
+        (r.request().postData() ?? '').includes('"chatEquip"') &&
+        (r.request().postData() ?? '').includes('"set_all"'),
+      { timeout: 15_000 },
+    );
+    await dialog.getByRole('button', { name: 'Done' }).click();
+    const flushBody = (await flushed).request().postData() ?? '';
+    // A plain garment edit carries NO claim (C2 §4).
+    expect(flushBody).not.toContain('wornBundleIds');
+    await expect(dialog).toBeHidden({ timeout: 10_000 });
+
+    // Reopen: the ledger credited ONE wear, today.
+    await page.getByTitle('Wardrobe', { exact: true }).click();
+    const reopened = page.getByRole('dialog');
+    const ledgerAgain = reopened
+      .locator('qt-wardrobe-item-row')
+      .filter({ hasText: LEDGER_GARMENT })
+      .first();
+    await expect(ledgerAgain.getByTestId('wardrobe-wear-line')).toHaveText('Worn once · last today', {
+      timeout: 10_000,
+    });
+
+    // Recently worn puts it first (its wear is the newest on record).
+    await reopened.locator('select[aria-label="Sort wardrobe"]').selectOption('recently-worn');
+    await expect(reopened.locator('qt-wardrobe-item-row').first()).toContainText(LEDGER_GARMENT);
+
+    // The Never worn tickbox hides it — and brings it back unticked.
+    const neverWorn = reopened
+      .locator('label')
+      .filter({ hasText: /^\s*Never worn\s*$/ })
+      .locator('input[type="checkbox"]');
+    await neverWorn.check();
+    await expect(
+      reopened.locator('qt-wardrobe-item-row').filter({ hasText: LEDGER_GARMENT }),
+    ).toHaveCount(0);
+    await neverWorn.uncheck();
+    await expect(
+      reopened.locator('qt-wardrobe-item-row').filter({ hasText: LEDGER_GARMENT }).first(),
+    ).toBeVisible();
+    await reopened.getByRole('button', { name: 'Done' }).click();
+    await expect(reopened).toBeHidden();
+  });
+
+  test('the editor’s Wear history reads the ledger and links the chat (ACTIVATE-AT-UNIFY, P4.D255/P4.D256)', async ({
+    page,
+  }) => {
+    test.skip(
+      !P4D255_SERVER_LANDED,
+      'awaits the `wardrobeItemWearHistory` verb (P4.D256 over P4.D255’s repository) — flipped at unification',
+    );
+    test.setTimeout(90_000);
+    await page.goto(`${BASE_URL}/characters`);
+    await unlockIfLocked(page);
+    await openAriaDetail(page);
+    await openWardrobeDialog(page);
+    const dialog = page.getByRole('dialog');
+    const row = dialog.locator('qt-wardrobe-item-row').filter({ hasText: LEDGER_GARMENT }).first();
+    await row.getByRole('button', { name: 'More actions' }).click();
+    await page.getByRole('menuitem', { name: 'Edit' }).click();
+    await expect(page.getByRole('heading', { name: 'Edit Wardrobe Item' })).toBeVisible();
+
+    // The section at the foot (after the previous beat's one Done).
+    const history = page.locator('qt-wardrobe-wear-history-section');
+    await expect(history.getByRole('heading', { name: 'Wear history' })).toBeVisible();
+    await expect(history.locator('dt', { hasText: 'Times worn' }).locator('+ dd')).toHaveText('1', {
+      timeout: 10_000,
+    });
+    await expect(history.locator('dt', { hasText: 'Last worn' })).toBeVisible();
+    await expect(history.locator('a.qt-link')).toHaveText(/^“.*Solo Voyage.*”$/);
+    await expect(history).toContainText('Aria');
+
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Done' }).click();
+  });
+
+  test('the Picture section: inert in create mode; upload, make current and take down (ACTIVATE-AT-UNIFY, P4.D263)', async ({
+    page,
+  }) => {
+    test.skip(
+      !P4D255_SERVER_LANDED,
+      'awaits P4.D263’s item-images route (list / upload / set-current / delete-image) — flipped at unification',
+    );
+    test.setTimeout(120_000);
+    await page.goto(`${BASE_URL}/characters`);
+    await unlockIfLocked(page);
+    await openAriaDetail(page);
+    await openWardrobeDialog(page);
+    const dialog = page.getByRole('dialog');
+
+    // Create mode: present, inert, and quiet (v4 :91-104).
+    await dialog.getByRole('button', { name: '+ New Item' }).click();
+    await expect(page.getByTestId('wardrobe-item-image-inert')).toHaveText(
+      'Save the item first; then it may sit for its portrait.',
+    );
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+
+    // Edit mode on the ledger garment.
+    const row = dialog.locator('qt-wardrobe-item-row').filter({ hasText: LEDGER_GARMENT }).first();
+    await row.getByRole('button', { name: 'More actions' }).click();
+    await page.getByRole('menuitem', { name: 'Edit' }).click();
+    const section = page.getByTestId('wardrobe-item-image-section');
+    await expect(section).toContainText('No picture yet', { timeout: 10_000 });
+
+    const toasts = page.locator('[role="toast-container"] > div');
+    await page.getByLabel('Upload a picture').setInputFiles({
+      name: 'amber.png',
+      mimeType: 'image/png',
+      buffer: SWATCH_AMBER,
+    });
+    await expect(toasts.filter({ hasText: 'Picture hung' }).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('wardrobe-item-image-caption')).toHaveText('Hung by hand');
+    await page.getByLabel('Upload a picture').setInputFiles({
+      name: 'indigo.png',
+      mimeType: 'image/png',
+      buffer: SWATCH_INDIGO,
+    });
+    const entries = page.getByTestId('wardrobe-item-image-history-entry');
+    await expect(entries).toHaveCount(2, { timeout: 15_000 });
+
+    // The newest is current; make the earlier one current again.
+    await section.getByRole('button', { name: 'Make current' }).click();
+    await expect(entries.locator('img[alt="Current picture"]')).toHaveCount(1);
+
+    // Take the other down (confirmed).
+    page.once('dialog', (d) => void d.accept());
+    await entries
+      .filter({ has: page.locator('img[alt="Earlier picture"]') })
+      .getByRole('button', { name: 'Delete' })
+      .click();
+    await expect(toasts.filter({ hasText: 'Picture taken down' }).first()).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(entries).toHaveCount(1);
+
+    // The row behind the editor shows the current picture.
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(row.getByTestId('wardrobe-item-thumbnail')).toBeVisible({ timeout: 10_000 });
+    await expect(row.getByTestId('wardrobe-item-thumbnail')).toHaveAttribute('width', '40');
+    await dialog.getByRole('button', { name: 'Done' }).click();
   });
 });
 

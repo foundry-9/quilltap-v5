@@ -481,6 +481,95 @@ test.describe('P4.6r — Templates & Images settings verticals', () => {
   });
 
   // -------------------------------------------------------------------------
+  // P4.D261 — Settings → Images → Wardrobe Images (v4 `7c8572869` +
+  // `b3f937076`). ACTIVATE-AT-UNIFY: the `wardrobeImageSettings` bag needs
+  // P4.D255's column + P4.D263's PUT arm; against a pre-round server the
+  // update ignores the unknown key and the reload would read the default —
+  // a failure that says nothing about this lane. Flipped at unification.
+  // -------------------------------------------------------------------------
+  const P4D255_SERVER_LANDED = false;
+
+  test('Images tab: the Wardrobe Images card lists the artists and saves the tools switch whole (ACTIVATE-AT-UNIFY, P4.D255/P4.D263)', async ({
+    page,
+  }) => {
+    test.skip(
+      !P4D255_SERVER_LANDED,
+      'awaits P4.D255’s `wardrobeImageSettings` column + P4.D263’s PUT arm (flipped at unification)',
+    );
+    test.setTimeout(60_000);
+    await page.goto(`${TMPL_BASE_URL}/settings?tab=images&section=wardrobe-images`);
+    await unlockIfLocked(page, page.getByRole('heading', { name: 'Wardrobe Images' }));
+
+    const card = page.locator('qt-wardrobe-images-card');
+    const artist = card.getByLabel('Wardrobe Artist');
+    await expect(artist).toBeVisible({ timeout: 10_000 });
+
+    // The options are v4's labels over the fixture's own profiles.
+    const profiles = (
+      (await (
+        await page.request.post(`${TMPL_BASE_URL}/api/dispatch`, { data: { type: 'imageProfileList' } })
+      ).json()) as {
+        data?: { profiles?: Array<{ name: string; provider: string; modelName: string; isDefault?: boolean; isDangerousCompatible?: boolean }> };
+      }
+    ).data?.profiles ?? [];
+    const def = profiles.find((p) => p.isDefault);
+    await expect(artist.locator('option')).toHaveText([
+      def ? `The default image profile (${def.name})` : 'The default image profile',
+      ...profiles.map(
+        (p) =>
+          `${p.name} (${p.provider} - ${p.modelName})${p.isDangerousCompatible ? ' (uncensored)' : ''}`,
+      ),
+    ]);
+
+    // Tick the tools switch: ONE update carrying the WHOLE bag.
+    const toggle = card.getByRole('checkbox', { name: /Portraits from the Wardrobe Tools/ });
+    await expect(toggle).not.toBeChecked();
+    const saved = page.waitForResponse(
+      (r) =>
+        r.url().includes('/api/dispatch') &&
+        (r.request().postData() ?? '').includes('"chatSettingsUpdate"') &&
+        (r.request().postData() ?? '').includes('wardrobeImageSettings'),
+      { timeout: 15_000 },
+    );
+    await toggle.check();
+    const body = JSON.parse((await saved).request().postData() ?? '{}') as {
+      settings?: { wardrobeImageSettings?: Record<string, unknown> };
+    };
+    expect(body.settings?.wardrobeImageSettings).toEqual({
+      imageProfileId: null,
+      generateFromTools: true,
+    });
+    // Assert the DOM AFTER the save settles, not the instant after `.check()`
+    // (the P4.D252 radio-resync lesson).
+    await expect(toggle).toBeChecked();
+
+    // It is server state.
+    await page.reload();
+    await expect(page.getByRole('heading', { name: 'Wardrobe Images' })).toBeVisible({ timeout: 10_000 });
+    const toggleAgain = page
+      .locator('qt-wardrobe-images-card')
+      .getByRole('checkbox', { name: /Portraits from the Wardrobe Tools/ });
+    await expect(toggleAgain).toBeChecked({ timeout: 10_000 });
+
+    // Restore the row (off, the default artist) so later beats see v4's default.
+    const restored = page.waitForResponse(
+      (r) =>
+        r.url().includes('/api/dispatch') &&
+        (r.request().postData() ?? '').includes('"chatSettingsUpdate"'),
+      { timeout: 15_000 },
+    );
+    await toggleAgain.uncheck();
+    const restoredBody = JSON.parse((await restored).request().postData() ?? '{}') as {
+      settings?: { wardrobeImageSettings?: Record<string, unknown> };
+    };
+    expect(restoredBody.settings?.wardrobeImageSettings).toEqual({
+      imageProfileId: null,
+      generateFromTools: false,
+    });
+    await expect(toggleAgain).not.toBeChecked();
+  });
+
+  // -------------------------------------------------------------------------
   // P4.D102 — the image Fetch Models control and the NanoGPT provider entries.
   //
   // ACTIVATE-AT-UNIFY. Both beats need a sibling lane's server half and are

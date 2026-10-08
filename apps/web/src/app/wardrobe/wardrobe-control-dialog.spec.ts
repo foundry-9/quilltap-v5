@@ -825,14 +825,15 @@ describe('WardrobeControlDialogInner — archived garments (v4 d25dacc1)', () =>
 /**
  * The character view lists the merge of the character's own garments with
  * every shared tier above them (group / project / Quilltap General). Those
- * borrowed rows are badged `· shared` and can't be edited from here, and when
+ * borrowed rows can't be edited from here (they carry v4 `cc80dc89d`'s origin
+ * chip when the read tagged them — the `· shared` text is retired), and when
  * you're dressing a character or building an outfit out of their own clothes
  * they're just noise. The toggle is on by default — hiding is opt-in — and it
  * filters after the merge, since ownership isn't something the fetch can ask
  * the server for.
  */
 
-/** A Quilltap General archetype merged in from above — badged `· shared`. */
+/** A Quilltap General archetype merged in from above (no `origin` here, so no chip). */
 const SHARED_WATCH = dto({ id: 'watch', title: 'Apple Watch', types: ['accessories'] });
 (SHARED_WATCH as { characterId: string | null }).characterId = null;
 
