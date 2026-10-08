@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(spa): P4.D261 unit 2 — v4 cc80dc89d: the origin chip replaces · shared, wrapped picker titles, formatSlotLabels in canonical order
+
+_Versions: SPA 0.5.813._
+
+Ports the client half of v4 `cc80dc89d`. A borrowed wardrobe row now shows a chip naming the wardrobe it came from (`Shared · Quilltap General`, `Project · <name>`, `Group · <name>`, title `Borrowed from …`) instead of the bare `· shared` text; the chip renders only when the row is not manageable and the item carries an `origin`, so rows from a pre-round server show nothing. New helpers: `wardrobeOriginLabel`, `homeContainerForItem`, `GENERAL_WARDROBE_NAME` (`wardrobe-container.ts`) and `formatSlotLabels` (`slot-meta.ts`, canonical slot order). The slot picker, the outfit quick-pick, the component picker and the project wardrobe manager wrap titles instead of truncating and print slot labels; the pickers append a borrowed item's origin. `CandidateItem.isShared` became `origin`.
+
 #### 2026-10-08 — feat(spa): P4.D261 unit 1 — the C2 wardrobe wire types (origin, wear, imageFileId, wornBundleIds, wardrobeImageSettings, the wear-history and item-image verbs)
 
 _Versions: SPA 0.5.812._

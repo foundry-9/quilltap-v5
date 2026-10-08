@@ -9,6 +9,7 @@ import {
   UNREPORTED_IF_BLANK_SLOT_TYPES,
   WARDROBE_SLOT_META,
   WARDROBE_SLOT_TYPES,
+  formatSlotLabels,
 } from './slot-meta';
 
 /**
@@ -120,5 +121,23 @@ describe('freshSlots / cloneSlots (v4 makeEmptyEquippedSlots / cloneEquippedSlot
       accessories: [],
       hair: [],
     });
+  });
+});
+
+/** P4.D261 — v4 `cc80dc89d` `wardrobe.types.ts:94-100` at the pin `f5e953a3f`. */
+describe('formatSlotLabels (v4 `wardrobe.types.ts:94-100`)', () => {
+  it('prints display labels in CANONICAL slot order, not item order', () => {
+    expect(formatSlotLabels(['bottom', 'top'])).toBe('Top, Bottom');
+    expect(formatSlotLabels(['hair', 'footwear', 'accessories', 'top'])).toBe(
+      'Top, Footwear, Accessories, Hair',
+    );
+  });
+
+  it('drops an unknown entry', () => {
+    expect(formatSlotLabels(['top', 'cape'])).toBe('Top');
+  });
+
+  it('the empty list prints the empty string', () => {
+    expect(formatSlotLabels([])).toBe('');
   });
 });

@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import {
   GENERAL_CONTAINER,
+  GENERAL_WARDROBE_NAME,
   decodeWardrobeContainer,
+  homeContainerForItem,
+  wardrobeOriginLabel,
   encodeWardrobeContainer,
   sameWardrobeContainer,
   type WardrobeContainer,
@@ -83,5 +86,45 @@ describe('sameWardrobeContainer (v4 :47-53)', () => {
     expect(
       sameWardrobeContainer(GENERAL_CONTAINER, { scope: 'general' } as WardrobeContainer),
     ).toBe(true);
+  });
+});
+
+/**
+ * P4.D261 — v4 `cc80dc89d` `wardrobe-container.ts:29, 66-79, 95-99` at the pin
+ * `f5e953a3f`. THE one spelling of the origin chip: three labelled scopes and
+ * the two `null` arms (a character's own garment; an item with no origin).
+ */
+describe('wardrobeOriginLabel (v4 `wardrobe-container.ts:66-79`)', () => {
+  it('names the General library with v4’s constant (`:29`)', () => {
+    expect(GENERAL_WARDROBE_NAME).toBe('Quilltap General');
+    expect(wardrobeOriginLabel({ scope: 'general', id: null, name: 'ignored' })).toBe(
+      'Shared · Quilltap General',
+    );
+  });
+
+  it('prefixes a project and a group with their kind, U+00B7 between', () => {
+    expect(wardrobeOriginLabel({ scope: 'project', id: 'p1', name: 'Thornfield' })).toBe(
+      'Project · Thornfield',
+    );
+    expect(wardrobeOriginLabel({ scope: 'group', id: 'g1', name: 'The Sisters' })).toBe(
+      'Group · The Sisters',
+    );
+  });
+
+  it('answers null for a character’s own garment and for a missing origin', () => {
+    expect(wardrobeOriginLabel({ scope: 'character', id: 'c1', name: 'Bertie' })).toBeNull();
+    expect(wardrobeOriginLabel(null)).toBeNull();
+    expect(wardrobeOriginLabel(undefined)).toBeNull();
+  });
+});
+
+describe('homeContainerForItem (v4 `wardrobe-container.ts:95-99`)', () => {
+  it('a character-owned item lives in that character’s vault', () => {
+    expect(homeContainerForItem({ characterId: 'c1' })).toEqual({ scope: 'character', id: 'c1' });
+  });
+
+  it('anything else is addressed as a Quilltap General archetype', () => {
+    expect(homeContainerForItem({ characterId: null })).toEqual(GENERAL_CONTAINER);
+    expect(homeContainerForItem({})).toEqual(GENERAL_CONTAINER);
   });
 });

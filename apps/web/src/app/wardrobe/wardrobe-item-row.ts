@@ -10,6 +10,7 @@ import {
 
 import type { WardrobeItemDto, WardrobeSlotType } from '../core/core-contract';
 import { WARDROBE_SLOT_META } from './slot-meta';
+import { wardrobeOriginLabel } from './wardrobe-container';
 
 /**
  * One line in the dialog's wardrobe list (v4
@@ -77,9 +78,6 @@ import { WARDROBE_SLOT_META } from './slot-meta';
             @if (isComposite()) {
               <span class="qt-text-xs qt-text-secondary">· bundle</span>
             }
-            @if (!manageable()) {
-              <span class="qt-text-xs qt-text-secondary">· shared</span>
-            }
             @if (item().isDefault) {
               <span class="qt-text-xs qt-text-secondary">· default</span>
             }
@@ -88,6 +86,14 @@ import { WARDROBE_SLOT_META } from './slot-meta';
             }
             @for (t of item().types; track t) {
               <span class="qt-badge" [class]="slotMeta[t].badgeClass">{{ t }}</span>
+            }
+            <!-- The origin chip (v4 cc80dc89d :250-256): only a BORROWED
+                 row whose origin resolves to a label — a pre-round server's
+                 rows carry no origin and so show nothing. -->
+            @if (!manageable() && originLabel()) {
+              <span class="qt-badge qt-badge-wardrobe-shared" [title]="'Borrowed from ' + originLabel()">{{
+                originLabel()
+              }}</span>
             }
           </div>
           @if (item().appropriateness) {
@@ -294,7 +300,9 @@ export class WardrobeItemRow {
    * Whether an item can be managed (edited / starred / duplicated / deleted)
    * from the current view — true when the item lives in the container being
    * browsed, false when it was merged in from a shared tier elsewhere. Items
-   * failing this check keep only Move and Copy, and are badged `· shared`.
+   * failing this check keep only Move and Copy, and — when their collection
+   * read named where they came from — carry a chip naming the wardrobe they
+   * were borrowed from (`Project · Thornfield`; v4 `cc80dc89d`).
    * Defaults to the character-view rule: manageable iff character-owned
    * (v4 `wardrobe-item-row.tsx:36-40`, `:83-85`).
    */
@@ -342,6 +350,9 @@ export class WardrobeItemRow {
     const predicate = this.canManage();
     return predicate ? predicate(this.item()) : Boolean(this.item().characterId);
   });
+
+  /** v4 `:193` — `wardrobeOriginLabel(item.origin)`. */
+  protected readonly originLabel = computed(() => wardrobeOriginLabel(this.item().origin));
 
   protected readonly components = computed(() => {
     if (!this.isComposite()) return [];

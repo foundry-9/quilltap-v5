@@ -14,7 +14,8 @@ import {
 import type { WardrobeItemDto } from '../core/core-contract';
 import { Icon } from '../ui/icon';
 import { selectComposedOutfits } from './composed-outfits';
-import { WARDROBE_SLOT_META } from './slot-meta';
+import { formatSlotLabels } from './slot-meta';
+import { wardrobeOriginLabel } from './wardrobe-container';
 
 /**
  * Outfit Quick Pick — a port of v4 `components/wardrobe/outfit-quick-pick.tsx`
@@ -81,12 +82,15 @@ import { WARDROBE_SLOT_META } from './slot-meta';
                       role="option"
                       [attr.aria-selected]="false"
                       (click)="pick(outfit)"
-                      class="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:qt-bg-muted"
+                      class="flex w-full items-start justify-between gap-3 px-3 py-2 text-left hover:qt-bg-muted"
                     >
-                      <span class="truncate text-sm text-foreground">{{ outfit.title }}</span>
-                      <span class="qt-text-xs qt-text-secondary whitespace-nowrap">{{
-                        meta(outfit)
+                      <span class="min-w-0 flex-1 break-words text-sm text-foreground">{{
+                        outfit.title
                       }}</span>
+                      <span
+                        class="shrink-0 max-w-[45%] text-right qt-text-xs qt-text-secondary"
+                        >{{ meta(outfit) }}</span
+                      >
                     </button>
                   </li>
                 }
@@ -133,9 +137,16 @@ export class OutfitQuickPick implements OnDestroy {
     });
   }
 
+  /**
+   * v4 `cc80dc89d` `:131-134` — the slot labels in CANONICAL order
+   * (`formatSlotLabels`; the pre-round port printed item order), then
+   * ` · replaces`, then a borrowed outfit's origin.
+   */
   protected meta(outfit: WardrobeItemDto): string {
-    const slots = outfit.types.map((t) => WARDROBE_SLOT_META[t].label).join(', ');
-    return `${slots}${outfit.replace ? ' · replaces' : ''}`;
+    const originLabel = wardrobeOriginLabel(outfit.origin);
+    return `${formatSlotLabels(outfit.types)}${outfit.replace ? ' · replaces' : ''}${
+      originLabel ? ` · ${originLabel}` : ''
+    }`;
   }
 
   protected toggle(): void {

@@ -145,7 +145,7 @@ describe('ProjectWardrobeManager', () => {
       mockMutator([
         item({
           title: 'Estate ensemble',
-          types: ['top', 'bottom'],
+          types: ['bottom', 'top'],
           componentItemIds: ['a', 'b'],
           isDefault: true,
           archivedAt: '2024-02-01T00:00:00.000Z',
@@ -155,7 +155,15 @@ describe('ProjectWardrobeManager', () => {
     );
     const t = text(fixture);
     expect(t).toContain('Estate ensemble');
-    expect(t).toContain('top, bottom');
+    // RE-PINNED by P4.D261: v4 `cc80dc89d` `ProjectWardrobeManager.tsx:360-361`
+    // — `formatSlotLabels` (labels, canonical order), the title WRAPS.
+    expect(t).toContain('Top, Bottom');
+    expect(t).not.toContain('top, bottom');
+    const el = fixture.nativeElement as HTMLElement;
+    const h4 = el.querySelector('ul li h4')!;
+    expect(h4.classList.contains('truncate')).toBe(false);
+    expect(h4.classList.contains('break-words')).toBe(true);
+    expect(h4.nextElementSibling!.classList.contains('truncate')).toBe(false);
     expect(t).toContain('Composite');
     expect(t).toContain('Default');
     expect(t).toContain('Archived');

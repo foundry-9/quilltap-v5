@@ -577,7 +577,10 @@ export class WardrobeItemEditor {
       ]);
 
       const collected: CandidateItem[] = [];
-      const push = (data: Record<string, unknown> | null, shared: boolean): void => {
+      // `local` lists are the wardrobe being edited; anything else is
+      // borrowed and keeps the origin its endpoint attached (v4 `cc80dc89d`
+      // :213-228).
+      const push = (data: Record<string, unknown> | null, local: boolean): void => {
         const list = (data?.['wardrobeItems'] as WardrobeItemDto[] | undefined) ?? [];
         for (const w of list) {
           if (collected.some((c) => c.id === w.id)) continue;
@@ -586,13 +589,15 @@ export class WardrobeItemEditor {
             title: w.title,
             types: w.types,
             componentItemIds: Array.isArray(w.componentItemIds) ? w.componentItemIds : [],
-            isShared: shared,
+            origin: local ? null : (w.origin ?? null),
           });
         }
       };
-      push(personal, false);
-      push(project, true);
-      push(archetype, true);
+      // In a shared container the first read IS the container's list; its
+      // items are the local (manageable) set, not shared imports.
+      push(personal, true);
+      push(project, false);
+      push(archetype, false);
       this.candidates.set(collected);
     } finally {
       this.candidatesLoading.set(false);

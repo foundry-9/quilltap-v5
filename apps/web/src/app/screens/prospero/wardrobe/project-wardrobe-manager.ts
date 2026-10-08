@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, input, signal } from '@an
 
 import type { WardrobeItemDto, WardrobeSlotType } from '../../../core/core-contract';
 import { MarkdownField } from '../../../editor/markdown-field';
+import { formatSlotLabels } from '../../../wardrobe/slot-meta';
 import {
   WARDROBE_SLOT_TYPES,
   type WardrobeCreateInput,
@@ -192,14 +193,14 @@ function draftFromItem(item: WardrobeItemDto): DraftState {
               </label>
               <div class="max-h-40 overflow-y-auto qt-border qt-border-default rounded p-2 space-y-1">
                 @for (choice of componentChoices(); track choice.id) {
-                  <label class="flex items-center gap-1.5 qt-text-small">
+                  <label class="flex items-start gap-1.5 qt-text-small">
                     <input
                       type="checkbox"
-                      class="qt-checkbox"
+                      class="qt-checkbox mt-0.5"
                       [checked]="draft().componentItemIds.includes(choice.id)"
                       (change)="toggleComponent(choice.id)"
                     />
-                    <span class="truncate">{{ choice.title }}</span>
+                    <span class="min-w-0 break-words">{{ choice.title }}</span>
                   </label>
                 }
               </div>
@@ -237,8 +238,10 @@ function draftFromItem(item: WardrobeItemDto): DraftState {
             <li class="py-3 flex items-start gap-3">
               <div class="flex-1 min-w-0">
                 <div class="flex items-baseline gap-2 flex-wrap">
-                  <h4 class="qt-label truncate">{{ item.title }}</h4>
-                  <span class="qt-text-xs qt-text-secondary truncate">{{ item.types.join(', ') }}</span>
+                  <h4 class="qt-label min-w-0 break-words">{{ item.title }}</h4>
+                  <span class="qt-text-xs qt-text-secondary">{{
+                    formatSlotLabels(item.types)
+                  }}</span>
                   @if (item.componentItemIds && item.componentItemIds.length > 0) {
                     <span class="qt-badge qt-text-secondary">Composite</span>
                   }
@@ -299,6 +302,8 @@ export class ProjectWardrobeManager {
   );
 
   protected readonly slotTypes = WARDROBE_SLOT_TYPES;
+  /** v4 `cc80dc89d` `:361` — the row prints its slots as display labels. */
+  protected readonly formatSlotLabels = formatSlotLabels;
 
   protected readonly editingId = signal<string | null>(null);
   protected readonly creating = signal(false);

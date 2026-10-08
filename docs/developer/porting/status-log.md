@@ -174660,3 +174660,48 @@ arm possible; `npm run build` is the check.
 Version: SPA 0.5.812. **Recorded:** `main`'s `apps/web/package-lock.json`
 stood at `0.5.810` while `package.json` read `0.5.811` (a prior bump left
 the lock behind); this commit brings both to `0.5.812`.
+
+### Unit 2 — #80 `cc80dc89d` (origin chip, wraps, `formatSlotLabels`)
+
+Strings/markup read at the pin: `lib/wardrobe/wardrobe-container.ts:29, 37-44,
+61-79, 88-99`; `lib/schemas/wardrobe.types.ts:89-100`;
+`components/wardrobe/wardrobe-item-row.tsx:250-256` (chip after the slot
+badges); `equipped-slot-row.tsx:171-189`; `outfit-quick-pick.tsx:114-135`;
+`WardrobeComponentPicker.tsx:92-101, 163-183`; `wardrobe-item-editor/types.ts:13-19`;
+`wardrobe-item-editor.tsx:213-238`; `ProjectWardrobeManager.tsx:332, 360-361`.
+Specs: v4 `wardrobe-item-row-origin.test.tsx` ×4 and
+`wardrobe-picker-rows.test.tsx` ×5 transcribed (row spec, equipped-slot-row
+spec, quick-pick spec, NEW `item-editor/wardrobe-component-picker.spec.ts`),
+plus `wardrobeOriginLabel` ×3 / `homeContainerForItem` ×2 /
+`formatSlotLabels` ×3, an R-C canonical-order arm, the component picker's
+`· bundle` meta + selected chip arms.
+
+**Red-first:** the three pure helpers and the picker spec were COMPILE-red
+(missing exports / `CandidateItem.origin`). With the helpers landed and the
+picker spec set aside, the components measured **13 red** (row ×4 incl. the
+two re-pinned `· shared` arms, equipped-slot-row ×4 incl. the re-pinned
+`['Top', 'Top, Bottom']` meta, quick-pick ×2, editor ×2, project manager ×1);
+v4's two negative row arms (own garment; project view) were green before, as
+negatives are. All green after: wardrobe + prospero-wardrobe 23 files / 308.
+
+**Moved assertions, re-pinned by name:** `wardrobe-item-row.spec.ts`
+`canManage` block (`· shared` → no chip without an origin; the nested arm now
+carries an origin and asserts NO chip); `equipped-slot-row.spec.ts` "drops the
+now-dead ' · composite' suffix" (`['top','top, bottom']` → `['Top','Top,
+Bottom']`); `wardrobe-item-editor.spec.ts` the three-tier candidates arm
+(`isShared` → `origin`) and the container arm (+ a tagged local read → `null`);
+`project-wardrobe-manager.spec.ts` "renders a row with types…" (`top, bottom`
+→ `Top, Bottom`, the `h4` wraps); `item-editor/constants.spec.ts`'s fixture
+(`isShared` → `origin`). The quick-pick's existing "lists outfits" arm
+survives unchanged (its fixtures are already canonical); R-C's Playwright
+option `Top, Footwear` (`wardrobe-flow.spec.ts:959`) prints the same bytes.
+
+**Recorded:** `homeContainerForItem` lands but `buildSaveRequest` is NOT
+rewired to it — its edit arm keys off the EDITOR's `characterId` + `isShared`
+(as v4's own `itemHomeContainer` does, `wardrobe-item-editor.tsx`), not the
+item's `characterId`, so it is a different rule; the survey's "the dialog
+inlines the latter's rule" has no single inline site in v5 (Duplicate keys off
+the SELECTED character, the transfer exclusion off the item). Its consumers
+are units 5–7 (Generate, the Picture and Wear-history sections). No CSS:
+`qt-badge-wardrobe-shared` already exists (`_content.css:229`); `npm run lint`
+(the class guard) green. Version: SPA 0.5.813.

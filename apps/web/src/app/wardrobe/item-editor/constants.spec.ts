@@ -7,7 +7,7 @@ const candidate = (over: Partial<CandidateItem> & { id: string }): CandidateItem
   title: over.id,
   types: ['top'],
   componentItemIds: [],
-  isShared: false,
+  origin: null,
   ...over,
 });
 

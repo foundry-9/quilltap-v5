@@ -194,17 +194,37 @@ describe('WardrobeItemEditor (v4 wardrobe-item-editor.tsx)', () => {
   // -------------------------------------------------------------------------
   // Candidate loading (v4 :139-189)
   // -------------------------------------------------------------------------
-  it('loads candidates from the three tiers, de-duped, flagging shared tiers (v4 :144-174)', async () => {
+  // RE-KEYED by P4.D261: v4 `cc80dc89d` replaced `CandidateItem.isShared`
+  // with `origin` (`wardrobe-item-editor.tsx:215-242`) — the personal read is
+  // LOCAL (no origin, whatever the read said); a borrowed read keeps the
+  // origin its endpoint attached, or `null` when it arrived without one.
+  it('loads candidates from the three tiers, de-duped, carrying the borrowed tiers’ origins (v4 :215-242)', async () => {
+    const PROJECT_ORIGIN = { scope: 'project' as const, id: 'p1', name: 'Thornfield' };
+    const GENERAL_ORIGIN = { scope: 'general' as const, id: null, name: 'Quilltap General' };
     const { component, seen } = await render(
       { projectId: 'p1' },
       (req) => {
         switch (req.type as string) {
           case 'characterWardrobeList':
-            return { wardrobeItems: [item({ id: 'a' })] };
+            return {
+              wardrobeItems: [
+                item({ id: 'a', origin: { scope: 'character', id: 'char-1', name: 'Bertie' } }),
+              ],
+            };
           case 'projectWardrobeList':
-            return { wardrobeItems: [item({ id: 'a' }), item({ id: 'b' })] };
+            return {
+              wardrobeItems: [
+                item({ id: 'a', origin: PROJECT_ORIGIN }),
+                item({ id: 'b', origin: PROJECT_ORIGIN }),
+              ],
+            };
           case 'wardrobeList':
-            return { wardrobeItems: [item({ id: 'c', characterId: null })] };
+            return {
+              wardrobeItems: [
+                item({ id: 'c', characterId: null, origin: GENERAL_ORIGIN }),
+                item({ id: 'd', characterId: null }),
+              ],
+            };
           default:
             return new Error(`unexpected ${req.type}`);
         }
@@ -216,12 +236,13 @@ describe('WardrobeItemEditor (v4 wardrobe-item-editor.tsx)', () => {
       'wardrobeList',
     ]);
     const candidates = (
-      component as unknown as { candidates: () => Array<{ id: string; isShared: boolean }> }
+      component as unknown as { candidates: () => Array<{ id: string; origin: unknown }> }
     ).candidates();
-    expect(candidates.map((c) => [c.id, c.isShared])).toEqual([
-      ['a', false],
-      ['b', true],
-      ['c', true],
+    expect(candidates.map((c) => [c.id, c.origin])).toEqual([
+      ['a', null],
+      ['b', PROJECT_ORIGIN],
+      ['c', GENERAL_ORIGIN],
+      ['d', null],
     ]);
   });
 
@@ -516,6 +537,30 @@ describe('the editor pinned to a shared container (v4 d7263f39)', () => {
 
     const general = await render({ characterId: null, item: null, container: GENERAL });
     expect(general.seen.map((r) => r.type as string)).toEqual(['wardrobeList']);
+
+    // P4.D261 (v4 `cc80dc89d` :215-242): the container's own read is LOCAL —
+    // its rows carry no origin chip even when the read tagged them.
+    const ORIGIN = { scope: 'project' as const, id: 'p1', name: 'Thornfield' };
+    const tagged = await render({ characterId: null, item: null, container: PROJECT }, (req) =>
+      (req.type as string) === 'projectWardrobeList'
+        ? { wardrobeItems: [item({ id: 'own', characterId: null, origin: ORIGIN })] }
+        : {
+            wardrobeItems: [
+              item({
+                id: 'gen',
+                characterId: null,
+                origin: { scope: 'general', id: null, name: 'Quilltap General' },
+              }),
+            ],
+          },
+    );
+    const tc = (
+      tagged.component as unknown as { candidates: () => Array<{ id: string; origin: unknown }> }
+    ).candidates();
+    expect(tc.map((c) => [c.id, c.origin])).toEqual([
+      ['own', null],
+      ['gen', { scope: 'general', id: null, name: 'Quilltap General' }],
+    ]);
 
     // The project TIER read (the character view's second fetch) is suppressed
     // even when a projectId is in play — the container is the only source.

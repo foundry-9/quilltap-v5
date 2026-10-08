@@ -52,7 +52,10 @@ function kebabLabels(fixture: ComponentFixture<WardrobeItemRow>): string[] {
 /**
  * v4 `wardrobe-item-row.tsx` at `d7263f39`: the `isShared = !item.characterId`
  * rule became the optional `canManage` predicate. Full kebab iff manageable;
- * otherwise Move/Copy only plus the `· shared` badge.
+ * otherwise Move/Copy only. RE-PINNED by P4.D261: v4 `cc80dc89d` retired the
+ * bare `· shared` text for the origin chip (`wardrobe-item-row.tsx:250-256`),
+ * which needs an `origin` — these fixtures carry none, so a borrowed row here
+ * shows NEITHER (a pre-round server's rows read exactly so).
  */
 describe('WardrobeItemRow canManage (v4 :36-40, :83-85, :199, :291, :363)', () => {
   it('falls back to the character-view rule when no predicate is passed (v4 :83-85)', async () => {
@@ -69,7 +72,10 @@ describe('WardrobeItemRow canManage (v4 :36-40, :83-85, :199, :291, :363)', () =
 
     const shared = await render(dto({ id: 'i2', characterId: null }));
     expect(kebabLabels(shared)).toEqual(['Move', 'Copy']);
-    expect((shared.nativeElement as HTMLElement).textContent).toContain('· shared');
+    expect((shared.nativeElement as HTMLElement).textContent).not.toContain('· shared');
+    expect(
+      (shared.nativeElement as HTMLElement).querySelector('.qt-badge-wardrobe-shared'),
+    ).toBeNull();
   });
 
   it('an explicit predicate OVERRIDES the character rule in both directions', async () => {
@@ -84,7 +90,10 @@ describe('WardrobeItemRow canManage (v4 :36-40, :83-85, :199, :291, :363)', () =
     // A character-owned item the predicate refuses keeps Move/Copy only.
     const refused = await render(dto({ id: 'i2', characterId: 'c1' }), () => false);
     expect(kebabLabels(refused)).toEqual(['Move', 'Copy']);
-    expect((refused.nativeElement as HTMLElement).textContent).toContain('· shared');
+    expect((refused.nativeElement as HTMLElement).textContent).not.toContain('· shared');
+    expect(
+      (refused.nativeElement as HTMLElement).querySelector('.qt-badge-wardrobe-shared'),
+    ).toBeNull();
   });
 
   it('the predicate is asked about THIS row, so a mixed list badges per item', async () => {
@@ -96,7 +105,12 @@ describe('WardrobeItemRow canManage (v4 :36-40, :83-85, :199, :291, :363)', () =
   });
 
   it('nested composite components inherit the predicate (v4 :399)', async () => {
-    const child = dto({ id: 'child', characterId: null, title: 'Cravat' });
+    const child = dto({
+      id: 'child',
+      characterId: null,
+      title: 'Cravat',
+      origin: { scope: 'general', id: null, name: 'Quilltap General' },
+    });
     const parent = dto({
       id: 'parent',
       characterId: null,
@@ -107,11 +121,12 @@ describe('WardrobeItemRow canManage (v4 :36-40, :83-85, :199, :291, :363)', () =
     const host = fixture.nativeElement as HTMLElement;
     (host.querySelector('button[aria-label="Expand components"]') as HTMLButtonElement).click();
     fixture.detectChanges();
-    // The nested row exists and is NOT badged shared — it inherited the
-    // predicate rather than falling back to `!characterId`.
+    // The nested row exists and carries NO origin chip although it has an
+    // origin — it inherited the predicate rather than falling back to
+    // `!characterId`.
     const nested = host.querySelector('qt-wardrobe-item-row') as HTMLElement;
     expect(nested.textContent).toContain('Cravat');
-    expect(nested.textContent).not.toContain('· shared');
+    expect(nested.querySelector('.qt-badge-wardrobe-shared')).toBeNull();
   });
 });
 
@@ -207,5 +222,54 @@ describe('WardrobeItemRow — the host carries its own box (P4.75)', () => {
     expect(
       (fixture.nativeElement as HTMLElement).classList.contains('qt-wardrobe-item-row'),
     ).toBe(true);
+  });
+});
+
+/**
+ * P4.D261 — v4 `cc80dc89d` `components/wardrobe/__tests__/wardrobe-item-row-
+ * origin.test.tsx` at the pin `f5e953a3f`, transcribed case for case. The
+ * chip renders ONLY when the row is not manageable AND `wardrobeOriginLabel`
+ * resolves (`wardrobe-item-row.tsx:250-256`), after the slot badges.
+ */
+describe('WardrobeItemRow — origin chip (v4 wardrobe-item-row-origin.test.tsx)', () => {
+  const THORNFIELD = { scope: 'project' as const, id: 'p1', name: 'Thornfield' };
+  const flapper = (partial: Partial<WardrobeItemDto> = {}): WardrobeItemDto =>
+    dto({
+      id: 'item-1',
+      characterId: null,
+      title: 'Midnight Lightning Flapper Dress',
+      types: ['top', 'bottom'],
+      ...partial,
+    });
+  const chipOf = (f: ComponentFixture<WardrobeItemRow>): HTMLElement | null =>
+    (f.nativeElement as HTMLElement).querySelector('.qt-badge-wardrobe-shared');
+
+  it('names the wardrobe a borrowed garment came from, as a shared-badge chip', async () => {
+    const f = await render(flapper({ origin: THORNFIELD }));
+    const chip = chipOf(f)!;
+    expect(chip.textContent!.trim()).toBe('Project · Thornfield');
+    expect(chip.classList.contains('qt-badge')).toBe(true);
+    expect(chip.getAttribute('title')).toBe('Borrowed from Project · Thornfield');
+    expect((f.nativeElement as HTMLElement).textContent).not.toContain('· shared');
+    // v4 places it AFTER the slot badges.
+    const badges = [...(f.nativeElement as HTMLElement).querySelectorAll('.qt-badge')];
+    expect(badges.at(-1)).toBe(chip);
+  });
+
+  it('spells Quilltap General as a shared wardrobe', async () => {
+    const f = await render(flapper({ origin: { scope: 'general', id: null, name: 'Quilltap General' } }));
+    expect(chipOf(f)!.textContent!.trim()).toBe('Shared · Quilltap General');
+  });
+
+  it('renders no chip for the character’s own garment', async () => {
+    const f = await render(
+      flapper({ characterId: 'char-1', origin: { scope: 'character', id: 'char-1', name: 'Bertie' } }),
+    );
+    expect(chipOf(f)).toBeNull();
+  });
+
+  it('renders no chip in a project view, where every row is the project’s own', async () => {
+    const f = await render(flapper({ origin: THORNFIELD }), () => true);
+    expect(chipOf(f)).toBeNull();
   });
 });

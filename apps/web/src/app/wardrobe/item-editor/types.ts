@@ -3,7 +3,7 @@
  * (v4 `components/wardrobe/wardrobe-item-editor/types.ts`).
  */
 
-import type { WardrobeSlotType } from '../../core/core-contract';
+import type { WardrobeOrigin, WardrobeSlotType } from '../../core/core-contract';
 
 /** A wardrobe item summary shape used by the components multi-select
  *  (v4 `types.ts:8-15`). */
@@ -12,8 +12,13 @@ export interface CandidateItem {
   title: string;
   types: WardrobeSlotType[];
   componentItemIds: string[];
-  /** Whether this is a shared archetype (no characterId) */
-  isShared: boolean;
+  /**
+   * Where a borrowed candidate hangs, as its collection read reported it.
+   * Null for an item that lives in the wardrobe being edited (and for one that
+   * arrived without an origin) — those get no chip. (v4 `cc80dc89d`,
+   * `types.ts:13-19` — replaced `isShared`.)
+   */
+  origin: WardrobeOrigin | null;
 }
 
 /** v4 `types.ts:17` — every slot, plus the multi-slot catch-all. */

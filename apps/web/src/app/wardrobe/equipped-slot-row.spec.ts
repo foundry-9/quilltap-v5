@@ -79,11 +79,12 @@ describe('EquippedSlotRow (v4 equipped-slot-row.tsx)', () => {
   it('drops the now-dead “ · composite” suffix (v4 `aec86a613` :179)', () => {
     const el = openPicker(render({ slot: 'top', equippedIds: [], allItems: [blouse, dress] }));
     expect(el.textContent).not.toContain('· composite');
-    // The type list itself is unchanged — only the suffix went.
+    // RE-PINNED by P4.D261: v4 `cc80dc89d` prints the slot list through
+    // `formatSlotLabels` (display labels, canonical order) — was the raw join.
     const metas = [...el.querySelectorAll('ul li button')].map((b) =>
       b.querySelectorAll('span')[1]!.textContent!.trim(),
     );
-    expect(metas).toEqual(['top', 'top, bottom']);
+    expect(metas).toEqual(['Top', 'Top, Bottom']);
   });
 
   it('an EQUIPPED composite keeps its chip label — `allItems` is still passed whole (v4 :19-23)', () => {
@@ -136,5 +137,66 @@ describe('EquippedSlotRow — the host carries its own box (P4.75)', () => {
     expect(
       (fixture.nativeElement as HTMLElement).classList.contains('qt-equipped-slot-row'),
     ).toBe(true);
+  });
+});
+
+/**
+ * P4.D261 — v4 `cc80dc89d` `components/wardrobe/__tests__/wardrobe-picker-
+ * rows.test.tsx` (`EquippedSlotRow picker` ×3) at the pin `f5e953a3f`; the
+ * markup is `equipped-slot-row.tsx:171-189`.
+ */
+describe('EquippedSlotRow picker — wrapped titles and origin (v4 wardrobe-picker-rows.test.tsx)', () => {
+  const LONG_TITLE = 'Midnight Lightning Flapper Dress with the Beaded Fringe and the Long Gloves';
+  const titleSpan = (el: HTMLElement): HTMLElement =>
+    [...el.querySelectorAll<HTMLElement>('ul li button span')].find(
+      (s) => s.textContent!.trim() === LONG_TITLE,
+    )!;
+
+  it('wraps the title instead of truncating it', () => {
+    const el = openPicker(
+      render({ slot: 'top', equippedIds: [], allItems: [item({ id: 'item-1', title: LONG_TITLE })] }),
+    );
+    const title = titleSpan(el);
+    expect(title.classList.contains('truncate')).toBe(false);
+    expect(title.classList.contains('break-words')).toBe(true);
+    expect(title.classList.contains('min-w-0')).toBe(true);
+  });
+
+  it('prints slot labels and a borrowed garment’s origin', () => {
+    const el = openPicker(
+      render({
+        slot: 'top',
+        equippedIds: [],
+        allItems: [
+          item({
+            id: 'item-1',
+            title: LONG_TITLE,
+            types: ['bottom', 'top'],
+            origin: { scope: 'project', id: 'p1', name: 'Thornfield' },
+          }),
+        ],
+      }),
+    );
+    expect(titleSpan(el).nextElementSibling!.textContent!.trim()).toBe(
+      'Top, Bottom · Project · Thornfield',
+    );
+  });
+
+  it('adds no origin for the character’s own garment', () => {
+    const el = openPicker(
+      render({
+        slot: 'top',
+        equippedIds: [],
+        allItems: [
+          item({
+            id: 'item-1',
+            title: LONG_TITLE,
+            characterId: 'char-1',
+            origin: { scope: 'character', id: 'char-1', name: 'Bertie' },
+          }),
+        ],
+      }),
+    );
+    expect(titleSpan(el).nextElementSibling!.textContent!.trim()).toBe('Top');
   });
 });

@@ -25,6 +25,8 @@
  * @module wardrobe/wardrobe-container
  */
 
+import type { WardrobeOrigin } from '../core/core-contract';
+
 /** v4 `wardrobe-container.ts:16`. */
 export type WardrobeContainerScope = 'character' | 'general' | 'project' | 'group';
 
@@ -37,6 +39,49 @@ export interface WardrobeContainer {
 
 /** v4 `wardrobe-container.ts:24`. */
 export const GENERAL_CONTAINER: WardrobeContainer = { scope: 'general', id: null };
+
+/** Display name of the singleton General library, as an origin chip spells it
+ *  (v4 `cc80dc89d`, `wardrobe-container.ts:29`). */
+export const GENERAL_WARDROBE_NAME = 'Quilltap General';
+
+/**
+ * Which wardrobe a collection read found an item in. A read-time annotation
+ * attached by the list endpoints on the way out — never persisted, never
+ * exported, never accepted on create/update. A garment has no idea which
+ * project it lives in; the read that found it does. (v4 `:31-44`; the wire
+ * type lives in the contract, re-exported here as v4's module exports it.)
+ */
+export type { WardrobeOrigin } from '../core/core-contract';
+
+/**
+ * The one place the origin chip text is spelled (v4 `:61-79`). Returns null
+ * for a character-owned item (a garment in its own vault is not "shared from"
+ * anywhere) and for an item that arrived without an origin.
+ */
+export function wardrobeOriginLabel(origin: WardrobeOrigin | null | undefined): string | null {
+  if (!origin) return null;
+  switch (origin.scope) {
+    case 'general':
+      return `Shared · ${GENERAL_WARDROBE_NAME}`;
+    case 'project':
+      return `Project · ${origin.name}`;
+    case 'group':
+      return `Group · ${origin.name}`;
+    case 'character':
+      return null;
+  }
+}
+
+/**
+ * The container an item is addressed through in the *character view*, where
+ * the list is a merge of every tier the character can reach: a
+ * character-owned item lives in that character's vault; anything else is
+ * treated as a Quilltap General archetype (the only shared tier whose items
+ * the character view offers full management on). (v4 `:88-99`.)
+ */
+export function homeContainerForItem(item: { characterId?: string | null }): WardrobeContainer {
+  return item.characterId ? { scope: 'character', id: item.characterId } : GENERAL_CONTAINER;
+}
 
 /** Serialize a container for use as a `<select>` option value (`scope:id`). */
 export function encodeWardrobeContainer(container: WardrobeContainer): string {

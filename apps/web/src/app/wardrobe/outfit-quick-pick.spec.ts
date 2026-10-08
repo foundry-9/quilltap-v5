@@ -256,3 +256,44 @@ describe('OutfitQuickPick (v4 outfit-quick-pick.tsx)', () => {
     }
   });
 });
+
+/**
+ * P4.D261 — v4 `cc80dc89d` `wardrobe-picker-rows.test.tsx` (`OutfitQuickPick`)
+ * at the pin `f5e953a3f`; the markup is `outfit-quick-pick.tsx:114-135`. R-C:
+ * the slot list is `formatSlotLabels` — CANONICAL order, not the item's.
+ */
+describe('OutfitQuickPick — wrapped titles, canonical labels, origin (v4 wardrobe-picker-rows.test.tsx)', () => {
+  const LONG_TITLE = 'Midnight Lightning Flapper Dress with the Beaded Fringe and the Long Gloves';
+
+  it('wraps the title and keeps the replaces marker beside the origin', () => {
+    const fixture = render([
+      item({ id: 'shirt', title: 'Shirt', characterId: 'char-1' }),
+      item({
+        id: 'bundle',
+        title: LONG_TITLE,
+        types: ['top', 'bottom'],
+        componentItemIds: ['shirt'],
+        replace: true,
+        origin: { scope: 'group', id: 'g1', name: 'The Sisters' },
+      }),
+    ]);
+    openMenu(fixture);
+    const row = el(fixture).querySelector<HTMLElement>('[role="option"]')!;
+    const title = [...row.querySelectorAll('span')].find((s) => s.textContent!.trim() === LONG_TITLE)!;
+    expect(title.classList.contains('truncate')).toBe(false);
+    expect(title.classList.contains('break-words')).toBe(true);
+    expect(title.nextElementSibling!.textContent!.trim()).toBe(
+      'Top, Bottom · replaces · Group · The Sisters',
+    );
+  });
+
+  it('prints the slots in canonical order whatever the item’s own order (R-C)', () => {
+    const fixture = render([
+      item({ id: 'shirt', title: 'Shirt' }),
+      item({ id: 'b', title: 'Backwards', types: ['footwear', 'top'], componentItemIds: ['shirt'] }),
+    ]);
+    openMenu(fixture);
+    const row = el(fixture).querySelector<HTMLElement>('[role="option"]')!;
+    expect(row.querySelectorAll('span')[1]!.textContent!.trim()).toBe('Top, Footwear');
+  });
+});

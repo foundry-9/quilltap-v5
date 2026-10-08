@@ -3,7 +3,8 @@ import { ChangeDetectionStrategy, Component, input, output } from '@angular/core
 import { WARDROBE_SLOT_TYPES } from '../equipped-slots';
 import type { WardrobeSlotType } from '../../core/core-contract';
 import { GROUP_LABEL, GROUP_ORDER } from './constants';
-import { WARDROBE_SLOT_META } from '../slot-meta';
+import { formatSlotLabels, WARDROBE_SLOT_META } from '../slot-meta';
+import { wardrobeOriginLabel } from '../wardrobe-container';
 import type { CandidateGroup, CandidateItem } from './types';
 
 /**
@@ -43,8 +44,8 @@ import type { CandidateGroup, CandidateItem } from './types';
                 class="inline-flex items-center gap-1 rounded-full qt-bg-muted border qt-border-default px-2 py-0.5 qt-text-xs"
               >
                 {{ c.title }}
-                @if (c.isShared) {
-                  <span class="qt-badge qt-badge-info ml-1">shared</span>
+                @if (originLabelOf(c); as originLabel) {
+                  <span class="qt-badge qt-badge-wardrobe-shared ml-1">{{ originLabel }}</span>
                 }
                 <button
                   type="button"
@@ -101,25 +102,30 @@ import type { CandidateGroup, CandidateItem } from './types';
                   <ul class="divide-y qt-border-default">
                     @for (c of groupedCandidates().get(group) ?? []; track c.id) {
                       <li>
+                        <!-- v4 cc80dc89d :163-183 — the title wraps; the origin
+                             chip is a SIBLING outside it. -->
                         <label
-                          class="flex items-center gap-2 px-3 py-2 cursor-pointer hover:qt-bg-muted"
+                          class="flex items-start gap-2 px-3 py-2 cursor-pointer hover:qt-bg-muted"
                         >
                           <input
                             type="checkbox"
-                            class="qt-checkbox"
+                            class="qt-checkbox mt-0.5"
                             [checked]="componentItemIds().includes(c.id)"
                             (change)="toggleComponent.emit(c.id)"
                           />
-                          <span class="flex-1 truncate text-sm text-foreground">
-                            {{ c.title }}
-                            @if (c.isShared) {
-                              <span class="ml-1 qt-badge qt-badge-info">shared</span>
-                            }
-                          </span>
-                          <span class="qt-text-xs qt-text-secondary">
-                            {{ c.types.join(', ')
-                            }}{{ c.componentItemIds.length > 0 ? ' · bundle' : '' }}
-                          </span>
+                          <span class="min-w-0 flex-1 break-words text-sm text-foreground">{{
+                            c.title
+                          }}</span>
+                          @if (originLabelOf(c); as originLabel) {
+                            <span class="qt-badge qt-badge-wardrobe-shared shrink-0">{{
+                              originLabel
+                            }}</span>
+                          }
+                          <span
+                            class="shrink-0 max-w-[45%] text-right qt-text-xs qt-text-secondary"
+                            >{{ formatSlotLabels(c.types)
+                            }}{{ c.componentItemIds.length > 0 ? ' · bundle' : '' }}</span
+                          >
                         </label>
                       </li>
                     }
@@ -216,4 +222,9 @@ export class WardrobeComponentPicker {
   protected readonly groupLabel = GROUP_LABEL;
   protected readonly slotMeta = WARDROBE_SLOT_META;
   protected readonly slotTypes = WARDROBE_SLOT_TYPES;
+  protected readonly formatSlotLabels = formatSlotLabels;
+
+  protected originLabelOf(c: CandidateItem): string | null {
+    return wardrobeOriginLabel(c.origin);
+  }
 }

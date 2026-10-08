@@ -1,7 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
 
 import type { WardrobeItemDto, WardrobeSlotType } from '../core/core-contract';
-import { WARDROBE_SLOT_META } from './slot-meta';
+import { formatSlotLabels, WARDROBE_SLOT_META } from './slot-meta';
+import { wardrobeOriginLabel } from './wardrobe-container';
 import { selectGarments } from './composed-outfits';
 
 /**
@@ -93,15 +94,20 @@ import { selectGarments } from './composed-outfits';
             <ul class="divide-y qt-border-default">
               @for (c of candidates(); track c.id) {
                 <li>
+                  <!-- v4 cc80dc89d :171-189 — the title WRAPS (several
+                       garments share their first words), the slots print as
+                       labels, and a borrowed garment says where it hangs. -->
                   <button
                     type="button"
                     (click)="pickCandidate(c.id)"
-                    class="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:qt-bg-muted"
+                    class="flex w-full items-start justify-between gap-3 px-3 py-2 text-left hover:qt-bg-muted"
                   >
-                    <span class="truncate text-sm text-foreground">{{ c.title }}</span>
-                    <span class="qt-text-xs qt-text-secondary">
-                      {{ c.types.join(', ') }}
-                    </span>
+                    <span class="min-w-0 flex-1 break-words text-sm text-foreground">{{
+                      c.title
+                    }}</span>
+                    <span class="shrink-0 max-w-[45%] text-right qt-text-xs qt-text-secondary">{{
+                      candidateMeta(c)
+                    }}</span>
                   </button>
                 </li>
               }
@@ -162,6 +168,12 @@ export class EquippedSlotRow {
       .filter((i) => !equipped.has(i.id))
       .filter((i) => (term ? i.title.toLowerCase().includes(term) : true));
   });
+
+  /** v4 `:185-188` — `formatSlotLabels` + `` ` · ${originLabel}` ``. */
+  protected candidateMeta(c: WardrobeItemDto): string {
+    const originLabel = wardrobeOriginLabel(c.origin);
+    return `${formatSlotLabels(c.types)}${originLabel ? ` · ${originLabel}` : ''}`;
+  }
 
   protected pickCandidate(itemId: string): void {
     this.add.emit({ slot: this.slot(), itemId });
