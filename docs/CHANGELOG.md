@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — test(harness): the wear-ledger tier-2 family against v4's REAL repository; the five wardrobe builders grow the ledger table (P4.D255 items 17, 21)
+
+_No crate versions bumped._
+
+- NEW `wardrobe_wear_stats_tier2_equivalence` + `harness/oracle/cases/wardrobe-wear-stats-tier2.ts` + the committed op spec `fixtures/wardrobe-wear-stats-tier2.json`. The case builds the base DB per run at the pin, with the table made by v4's real `addWardrobeWearStatsTableMigration.run()`. 29 ops go through v4's `WardrobeWearRepository` and v5's ledger: results, thrown messages and log lines are compared per op, then the table dump, then the absent-table fallbacks. Mutation-proven (a `>=` tie in `summarize` reds op #8).
+- Ruled divergence `FIND_ALL_DROPS_NULLABLE` (the human's ruling: fix v5, file v4). v4's inherited `findAll()` drops every row with a NULL in a `.nullable()` column, so v4's backup loses every unattributed tally. v5 keeps every row, pinned both ways.
+- `build-{wardrobe-tools,chats-outfits,chat-cast,chat-create-capstone,wardrobe-transfers}-fixture.ts` create `wardrobe_wear_stats` through v4's `WARDROBE_WEAR_STATS_DDL` (the migration shape) right after `initializeDatabase`. Each was verified at the pin. The committed pairs are not rebuilt; the dependents regenerate from the grown builders.
+
 #### 2026-10-08 — docs(porting): P4.D255 names its KEYSTONE commit (`c30603378`)
 
 _Docs-only change._

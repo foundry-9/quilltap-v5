@@ -1,0 +1,42 @@
+{
+  "$comment": [
+    "Tier-2 spec for the wardrobe wear ledger's DATA layer (P4.D255; v4 `wardrobe-wear.repository.ts` minus the chokepoint, `3ee3b1342`). ONE committed file drives BOTH sides: the oracle case `harness/oracle/cases/wardrobe-wear-stats-tier2.ts` builds the base DB per run at the pin (the table through v4's REAL `addWardrobeWearStatsTableMigration.run()` — never the repository), writes it to `QT_FIXTURE_OUT_DIR/base.db`, then runs `ops` through v4's REAL `WardrobeWearRepository`; the Rust test runs the same ops on a copy through `db::wardrobe_wear_stats`.",
+    "Each op's result (minted `id` / `createdAt` / `updatedAt` stripped from rows), its thrown message, and its log lines (level + message + the call's context, in v4's key order) are compared; then the table dump (rowid order, minus the three minted/clocked columns). The `absent` phase (after `dropTable`) compares results and lines only.",
+    "Shapes from v4's own spec (`__tests__/unit/lib/database/repositories/wardrobe-wear.repository.test.ts:90-235`): a later wear moves last forward; an EARLIER wear landing late never rewinds; a bad row rejects the whole batch (here a planted trigger refuses item `bad` — the Rust type cannot carry v4's `itemId: null`; recorded); one row per wearer; two NULL-wearer increments are one row; the fold sums / min / max-and-chat, and rolls back whole when its final DELETE fails (a planted BEFORE DELETE trigger on wearer `Z`); summaries total across wearers and an unknown id is never-worn; history most recent first incl. a lastWornAt TIE (stable); deleteByItemIds drops only those; upsertRows REPLACE semantics; findRowsForItems / findRowsForWearer; findAll; then the absent table."
+  ],
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "ops": [
+    {"kind": "increment", "label": "first wear", "entries": [{"itemId": "coat", "wearerCharacterId": "A", "chatId": "chat-1", "at": "2026-01-01T00:00:00.000Z"}]},
+    {"kind": "increment", "label": "later wear moves last", "entries": [{"itemId": "coat", "wearerCharacterId": "A", "chatId": "chat-2", "at": "2026-02-01T00:00:00.000Z"}]},
+    {"kind": "increment", "label": "earlier wear landing late", "entries": [{"itemId": "coat", "wearerCharacterId": "A", "chatId": "chat-0", "at": "2025-12-01T00:00:00.000Z"}]},
+    {"kind": "execSql", "label": "plant bad-row refusal", "sql": "CREATE TRIGGER qt_bad_row BEFORE INSERT ON wardrobe_wear_stats WHEN NEW.itemId = 'bad' BEGIN SELECT RAISE(ABORT, 'planted bad row'); END"},
+    {"kind": "increment", "label": "a batch with one bad row", "entries": [{"itemId": "hat", "wearerCharacterId": "A", "chatId": "chat-3", "at": "2026-03-01T00:00:00.000Z"}, {"itemId": "bad", "wearerCharacterId": "A", "chatId": "chat-3", "at": "2026-03-01T00:00:00.000Z"}]},
+    {"kind": "execSql", "label": "drop bad-row plant", "sql": "DROP TRIGGER qt_bad_row"},
+    {"kind": "increment", "label": "one row per wearer + one unattributed row", "entries": [{"itemId": "coat", "wearerCharacterId": "B", "chatId": "chat-4", "at": "2026-02-01T00:00:00.000Z"}, {"itemId": "coat", "wearerCharacterId": null, "chatId": "chat-5", "at": "2026-01-15T00:00:00.000Z"}, {"itemId": "coat", "wearerCharacterId": null, "chatId": "chat-6", "at": "2026-01-20T00:00:00.000Z"}]},
+    {"kind": "increment", "label": "a second item, two wearers, equal lastWornAt", "entries": [{"itemId": "scarf", "wearerCharacterId": "C", "chatId": "chat-7", "at": "2026-04-01T00:00:00.000Z"}, {"itemId": "scarf", "wearerCharacterId": "D", "chatId": "chat-8", "at": "2026-04-01T00:00:00.000Z"}, {"itemId": "scarf", "wearerCharacterId": "Z", "chatId": "chat-9", "at": "2026-03-01T00:00:00.000Z"}]},
+    {"kind": "findSummaries", "label": "summaries + unknown + empty + dup", "itemIds": ["coat", "nope", "", "scarf", "coat"]},
+    {"kind": "findHistory", "label": "history coat", "itemId": "coat"},
+    {"kind": "findHistory", "label": "history scarf (tie)", "itemId": "scarf"},
+    {"kind": "findHistory", "label": "history never worn", "itemId": "nope"},
+    {"kind": "findRowsForItems", "label": "rows for items", "itemIds": ["scarf", "coat", "scarf", ""]},
+    {"kind": "findRowsForWearer", "label": "rows for wearer A", "characterId": "A"},
+    {"kind": "fold", "label": "fold wearer A", "characterId": "A"},
+    {"kind": "fold", "label": "fold nobody", "characterId": "nobody"},
+    {"kind": "execSql", "label": "plant fold delete failure", "sql": "CREATE TRIGGER qt_no_delete BEFORE DELETE ON wardrobe_wear_stats WHEN OLD.wearerCharacterId = 'Z' BEGIN SELECT RAISE(ABORT, 'planted delete failure'); END"},
+    {"kind": "fold", "label": "fold Z rolls back whole", "characterId": "Z"},
+    {"kind": "execSql", "label": "drop fold plant", "sql": "DROP TRIGGER qt_no_delete"},
+    {"kind": "upsertRows", "label": "upsert: replace one, insert one", "rows": [
+      {"id": "11111111-1111-4111-8111-111111111111", "itemId": "scarf", "wearerCharacterId": "C", "wearCount": 9, "firstWornAt": "2025-01-01T00:00:00.000Z", "lastWornAt": "2025-06-01T00:00:00.000Z", "lastWornChatId": null, "createdAt": "2025-01-01T00:00:00.000Z", "updatedAt": "2025-06-01T00:00:00.000Z"},
+      {"id": "22222222-2222-4222-8222-222222222222", "itemId": "gloves", "wearerCharacterId": null, "wearCount": 3, "firstWornAt": "2025-02-01T00:00:00.000Z", "lastWornAt": "2025-03-01T00:00:00.000Z", "lastWornChatId": "chat-x", "createdAt": "2025-02-01T00:00:00.000Z", "updatedAt": "2025-03-01T00:00:00.000Z"}
+    ]},
+    {"kind": "upsertRows", "label": "upsert nothing", "rows": []},
+    {"kind": "deleteByItemIds", "label": "delete scarf (dup + empty)", "itemIds": ["scarf", "", "scarf"]},
+    {"kind": "deleteByItemIds", "label": "delete nothing", "itemIds": [""]},
+    {"kind": "findAll", "label": "find all"},
+    {"kind": "dump", "label": "final table state"},
+    {"kind": "dropTable", "label": "drop the table"},
+    {"kind": "findSummaries", "label": "absent: summaries fall back", "itemIds": ["coat"]},
+    {"kind": "findHistory", "label": "absent: history falls back", "itemId": "coat"},
+    {"kind": "findRowsForItems", "label": "absent: rows throw", "itemIds": ["coat"]}
+  ]
+}
