@@ -52,6 +52,19 @@ impl PepperState {
 // Request / Response
 // ============================================================================
 
+/// The wardrobe container a scoped wardrobe verb names (P4.D255, contract C1
+/// §11 / C2 §3, §6) — v4's `WardrobeContainerScope` (`lib/wardrobe/
+/// wardrobe-container.ts`): `'character' | 'general' | 'project' | 'group'`.
+/// `general` takes no container id; the other three take the owner's id.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WardrobeContainerScope {
+    Character,
+    General,
+    Project,
+    Group,
+}
+
 /// One variant per user-meaningful operation (api-boundary.md Part 1). The
 /// always-available family (health, unlock, instances) works while the vault
 /// is locked; everything else is readiness-gated in dispatch (D2).
@@ -2773,6 +2786,58 @@ pub enum Request {
         body: serde_json::Value,
     },
     // === end P4.9f1 ===
+    // === P4.D255 (contract C1 §11 — the round's wardrobe verbs; FROZEN) ===
+    /// v4 `GET …/wardrobe/[itemId]?action=wear-history` on every tier's
+    /// single-item GET (`3ee3b1342`) — `{history, wearers, lastWornChat}`
+    /// (contract C2 §3). The arm delegates to
+    /// [`super::wardrobe_wear_history::wardrobe_item_wear_history`] (P4.D256's).
+    #[serde(rename_all = "camelCase")]
+    WardrobeItemWearHistory {
+        scope: WardrobeContainerScope,
+        #[serde(default)]
+        container_id: Option<String>,
+        item_id: String,
+    },
+    /// v4 `GET /api/v1/wardrobe/[itemId]/images?scope=…&id=…` (`7c8572869`) —
+    /// `{current, images}` (C2 §6). P4.D263's.
+    #[serde(rename_all = "camelCase")]
+    WardrobeItemImagesList {
+        scope: WardrobeContainerScope,
+        #[serde(default)]
+        container_id: Option<String>,
+        item_id: String,
+    },
+    /// v4 `POST …/images?action=generate` — ⚠ 💸 LIVE MONEY (one image-provider
+    /// call). P4.D263's.
+    #[serde(rename_all = "camelCase")]
+    WardrobeItemImageGenerate {
+        scope: WardrobeContainerScope,
+        #[serde(default)]
+        container_id: Option<String>,
+        item_id: String,
+        #[serde(default)]
+        image_profile_id: Option<String>,
+    },
+    /// v4 `POST …/images?action=set-current` — `{current}`. P4.D263's.
+    #[serde(rename_all = "camelCase")]
+    WardrobeItemImageSetCurrent {
+        scope: WardrobeContainerScope,
+        #[serde(default)]
+        container_id: Option<String>,
+        item_id: String,
+        file_id: String,
+    },
+    /// v4 `POST …/images?action=delete-image` — `{current}` (the next-newest
+    /// becomes current). P4.D263's.
+    #[serde(rename_all = "camelCase")]
+    WardrobeItemImageDelete {
+        scope: WardrobeContainerScope,
+        #[serde(default)]
+        container_id: Option<String>,
+        item_id: String,
+        file_id: String,
+    },
+    // === end P4.D255 ===
 
     // === P4.9I1A: the Brahma Console dedicated dispatch family ===
     /// v4 `GET /api/v1/brahma-console` — the user's brahma chats.
@@ -4456,6 +4521,10 @@ pub enum Response {
     /// mimeType, prompt}`). The exact bytes are pinned by
     /// `wardrobe_routes_equivalence`.
     Wardrobe(serde_json::Value),
+    /// P4.D255 (C1 §11): the `?action=wear-history` body (C2 §3).
+    WardrobeWearHistory(serde_json::Value),
+    /// P4.D255 (C1 §11): the item-images route's bodies (C2 §6).
+    WardrobeItemImages(serde_json::Value),
     /// A chat-outfit body — `{equippedOutfit}`, `{equippedSlots}`, and the
     /// regenerate-avatar `{message, queued}`. Pinned by
     /// `wardrobe_routes_equivalence`.

@@ -371,6 +371,65 @@ fn provisioning_matches_v4_fresh_instance() {
         ],
     );
 
+    // --- (1e) P4.D255: the wear ledger's ON CONFLICT target, BOTH instances ---
+    // The human's 2026-10-08 ruling over the order's R-A: a fresh v5 instance
+    // keeps generateDDL's `wardrobe_wear_stats` text (REAL, no default) where
+    // v4's migrations-first boot has the migration's (INTEGER DEFAULT 0) — 40
+    // of the 45 tables differ that way, measured — so the arm that matters is
+    // FUNCTIONAL: the same increments through v5's ledger on a COPY of each
+    // fresh instance land the same rows (the UNIQUE `COALESCE` index is the
+    // conflict target on both; `wearCount` reads type-tolerantly on v5's).
+    if let Some(v4_fresh) = opt_env("QT_FIXTURE_V4_FRESH") {
+        let ledger_rows = |db: &Path| -> Value {
+            use quilltap_core::db::wardrobe_wear_stats::{
+                WardrobeWearIncrement, WardrobeWearStatsRepository,
+            };
+            let copy = tempfile::tempdir().unwrap();
+            let file = copy.path().join("quilltap.db");
+            std::fs::copy(db, &file).unwrap();
+            let w = Writer::open_writable(&file, TEST_PEPPER).unwrap();
+            let repo = WardrobeWearStatsRepository::new(w.connection());
+            for (wearer, chat, at) in [
+                (Some("A"), "c1", "2026-01-01T00:00:00.000Z"),
+                (Some("A"), "c2", "2026-02-01T00:00:00.000Z"),
+                (None, "c3", "2026-01-15T00:00:00.000Z"),
+                (None, "c4", "2026-01-15T00:00:00.000Z"),
+            ] {
+                repo.increment_wears(&[WardrobeWearIncrement {
+                    item_id: "coat".into(),
+                    wearer_character_id: wearer.map(str::to_string),
+                    chat_id: Some(chat.into()),
+                    at: at.into(),
+                }])
+                .expect("(1e) the increment upserts");
+            }
+            let rows: Vec<Value> = repo
+                .find_all()
+                .into_iter()
+                .map(|r| {
+                    json!([
+                        r.item_id,
+                        r.wearer_character_id,
+                        r.wear_count,
+                        r.first_worn_at,
+                        r.last_worn_at,
+                        r.last_worn_chat_id
+                    ])
+                })
+                .collect();
+            json!(rows)
+        };
+        let v5_rows = ledger_rows(&data.join("quilltap.db"));
+        let v4_rows = ledger_rows(&v4_fresh.join("quilltap.db"));
+        assert_eq!(v5_rows.as_array().map(Vec::len), Some(2), "(1e) {v5_rows}");
+        assert_eq!(
+            v5_rows, v4_rows,
+            "(1e) the ledger diverged between the two fresh instances"
+        );
+    } else {
+        eprintln!("SKIP (1e): set QT_FIXTURE_V4_FRESH (the recipe's v4-fresh instance).");
+    }
+
     // --- (2) seed rows ---
     // P4.153: v4's rows now live in its MIGRATION-built tables, so each side
     // drops the columns only it has — exactly the TABLE_COLUMN_ASYMMETRY rows

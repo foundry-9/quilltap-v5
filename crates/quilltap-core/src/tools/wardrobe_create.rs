@@ -339,6 +339,7 @@ fn run(
             false
         },
         migrated_from_clothing_record_id: None,
+        image_file_id: None,
         archived_at: None,
         created_at: now.clone(),
         updated_at: now,

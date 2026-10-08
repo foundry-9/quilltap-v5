@@ -653,6 +653,75 @@ pub async fn enqueue_character_avatar_generation(
     Ok((job_id, true))
 }
 
+/// v4 `WardrobeItemImageGenerationPayload` (`queue-service.ts:236-247`,
+/// `b3f937076`; P4.D255) — a wardrobe item picture queued by a wardrobe tool.
+/// Tools only create and edit character-owned items, so the container is
+/// always the owning character's wardrobe (measured at the pin: the payload
+/// carries no scope / container key — `tool-image-generation.ts:100-104`).
+/// Serialized in v4's key order: `chatId`, `characterId`, `itemId`.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WardrobeItemImageJobPayload {
+    /// The chat the tool ran in — scopes the pending-job dedupe.
+    pub chat_id: String,
+    /// The character whose wardrobe holds the item (the recipient, for a gift).
+    pub character_id: String,
+    /// The wardrobe item to draw.
+    pub item_id: String,
+}
+
+/// v4 `enqueueWardrobeItemImageGeneration(userId, payload)`
+/// (`queue-service.ts:1246-1286`, `b3f937076`; P4.D255): collapses against a
+/// still-PENDING `WARDROBE_ITEM_IMAGE_GENERATION` job for the same item in the
+/// same chat — the handler reads the item when it runs, so one queued job
+/// already covers any later edit; a PROCESSING job has already built its
+/// prompt, so a fresh one is enqueued (`find_pending_for_chat` answers both
+/// statuses, so PENDING is filtered here). One try (`maxAttempts: 1` — a
+/// refusal or a provider failure would only be paid for again). v4's two INFO
+/// lines. Answers `(jobId, isNew)`.
+pub async fn enqueue_wardrobe_item_image_generation(
+    db: &Db,
+    user_id: &str,
+    payload: &WardrobeItemImageJobPayload,
+) -> Result<(String, bool), DbError> {
+    let chat_id = payload.chat_id.clone();
+    let pending = db.read_main(|conn| {
+        crate::db::background_jobs::BackgroundJobsRepository::new(conn)
+            .find_pending_for_chat(&chat_id)
+    })?;
+    let existing = pending.iter().find(|j| {
+        j.job_type == "WARDROBE_ITEM_IMAGE_GENERATION"
+            && j.status == "PENDING"
+            && serde_json::from_str::<Value>(&j.payload)
+                .ok()
+                .and_then(|p| p.get("itemId").and_then(Value::as_str).map(str::to_string))
+                .as_deref()
+                == Some(payload.item_id.as_str())
+    });
+    if let Some(existing) = existing {
+        tracing::info!(
+            context = "background-jobs.queue",
+            chatId = %payload.chat_id,
+            itemId = %payload.item_id,
+            existingJobId = %existing.id,
+            "[WardrobeItemImage] Reusing existing pending job"
+        );
+        return Ok((existing.id.clone(), false));
+    }
+    let value = serde_json::to_value(payload)
+        .map_err(|e| DbError::Internal(format!("wardrobe item image payload: {e}")))?;
+    let job_id = enqueue_job(db, user_id, "WARDROBE_ITEM_IMAGE_GENERATION", value, 1.0).await?;
+    tracing::info!(
+        context = "background-jobs.queue",
+        chatId = %payload.chat_id,
+        characterId = %payload.character_id,
+        itemId = %payload.item_id,
+        jobId = %job_id,
+        "[WardrobeItemImage] Wardrobe item image job enqueued"
+    );
+    Ok((job_id, true))
+}
+
 /// v4 `enqueueStoryBackgroundGeneration` (`lib/background-jobs/queue-service.ts`):
 /// enqueue a `STORY_BACKGROUND_GENERATION` job, deduping via `findPendingForChat`
 /// **chat-level only** (any PENDING/PROCESSING story-background job for the same
@@ -1729,5 +1798,105 @@ mod avatar_enqueue_tests {
             payload.get("force").is_none(),
             "an automatic trigger must not carry the key: {payload}"
         );
+    }
+}
+
+#[cfg(test)]
+mod wardrobe_item_image_enqueue_tests {
+    use super::*;
+    use crate::db::runtime::DbPaths;
+
+    fn test_db(dir: &tempfile::TempDir, rt: &tokio::runtime::Runtime) -> Db {
+        let db = Db::open(
+            DbPaths {
+                main: dir.path().join("main.db"),
+                mount_index: None,
+                llm_logs: None,
+            },
+            "dGVzdC1wZXBwZXItZm9yLWF2YXRhci1lbnF1ZXVl",
+        )
+        .expect("open test db");
+        rt.block_on(db.write(|ws| {
+            ws.main()
+                .connection()
+                .execute_batch(
+                    "CREATE TABLE IF NOT EXISTS background_jobs (
+                       id TEXT PRIMARY KEY, userId TEXT, type TEXT, status TEXT,
+                       payload TEXT, priority REAL, attempts REAL, maxAttempts REAL,
+                       lastError TEXT, scheduledAt TEXT, startedAt TEXT, completedAt TEXT,
+                       createdAt TEXT, updatedAt TEXT);",
+                )
+                .map_err(Into::into)
+        }))
+        .expect("create tables");
+        db
+    }
+
+    /// v4's payload bytes and one try; a still-PENDING job for the same item
+    /// in the same chat is reused (v4's line), a PROCESSING one is not.
+    #[test]
+    fn enqueue_dedupes_against_pending_only() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let db = test_db(&dir, &rt);
+        let payload = WardrobeItemImageJobPayload {
+            chat_id: "chat-1".into(),
+            character_id: "char-1".into(),
+            item_id: "item-1".into(),
+        };
+        let ((first, is_new), lines) = crate::test_support::captured_with(|| {
+            rt.block_on(enqueue_wardrobe_item_image_generation(&db, "u1", &payload))
+                .unwrap()
+        });
+        assert!(is_new);
+        assert!(lines.iter().any(|l| l.ends_with(&format!(
+            "[WardrobeItemImage] Wardrobe item image job enqueued context=background-jobs.queue chatId=chat-1 characterId=char-1 itemId=item-1 jobId={first}"
+        ))), "{lines:#?}");
+        let id = first.clone();
+        let (raw, attempts): (String, f64) = db
+            .read_main(move |c| {
+                c.query_row(
+                    "SELECT payload, maxAttempts FROM background_jobs WHERE id = ?1",
+                    rusqlite::params![id],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .map_err(Into::into)
+            })
+            .unwrap();
+        assert_eq!(
+            raw,
+            r#"{"chatId":"chat-1","characterId":"char-1","itemId":"item-1"}"#
+        );
+        assert_eq!(attempts, 1.0);
+
+        let ((again, is_new), lines) = crate::test_support::captured_with(|| {
+            rt.block_on(enqueue_wardrobe_item_image_generation(&db, "u1", &payload))
+                .unwrap()
+        });
+        assert_eq!((again.as_str(), is_new), (first.as_str(), false));
+        assert!(lines.iter().any(|l| l.ends_with(&format!(
+            "[WardrobeItemImage] Reusing existing pending job context=background-jobs.queue chatId=chat-1 itemId=item-1 existingJobId={first}"
+        ))), "{lines:#?}");
+
+        let id = first.clone();
+        rt.block_on(db.write(move |ws| {
+            ws.main()
+                .connection()
+                .execute(
+                    "UPDATE background_jobs SET status = 'PROCESSING' WHERE id = ?1",
+                    [id],
+                )
+                .map(|_| ())
+                .map_err(Into::into)
+        }))
+        .unwrap();
+        let (fresh, is_new) = rt
+            .block_on(enqueue_wardrobe_item_image_generation(&db, "u1", &payload))
+            .unwrap();
+        assert!(is_new);
+        assert_ne!(fresh, first);
     }
 }

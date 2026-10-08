@@ -99,6 +99,7 @@ fn item_for_create(data: &Value, options: &Value) -> WardrobeItem {
             .and_then(Value::as_bool)
             .unwrap_or(false),
         migrated_from_clothing_record_id: None,
+        image_file_id: None,
         archived_at: str_field_opt(data, "archivedAt"),
         created_at: str_field(options, "createdAt"),
         updated_at: str_field(options, "updatedAt"),
@@ -118,6 +119,14 @@ fn patch_from_json(patch: &Value) -> WardrobePatch {
     let obj = patch.as_object();
     let has = |k: &str| obj.map(|o| o.contains_key(k)).unwrap_or(false);
     WardrobePatch {
+        // P4.D255: the item's picture pointer (a nullable string, as the
+        // nullable siblings below).
+        image_file_id: has("imageFileId").then(|| {
+            patch
+                .get("imageFileId")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        }),
         title: has("title").then(|| str_field(patch, "title")),
         types: has("types").then(|| str_array(patch, "types")),
         component_item_ids: has("componentItemIds").then(|| str_array(patch, "componentItemIds")),

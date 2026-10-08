@@ -1984,6 +1984,42 @@ fn seed_built_ins(db: &Db) -> Result<EnsureFailures, String> {
                 &mut ensure_failures,
             );
             // === end P4.D248 ===
+            // === P4.D255 (v4 f5e953a3f, migrations add-wardrobe-wear-stats-table-v1 / seed-wardrobe-wear-stats-v1 / add-wardrobe-image-settings-field-v1) ===
+            // The wardrobe wear ledger, then its one-time seed, then the
+            // wardrobe-picture settings column — v4's registration order
+            // (`migrations/scripts/index.ts:849-855`), BEFORE the index-family
+            // backfill below, so the two hand indexes already exist when it
+            // runs (its "present → skipped" arm). The ledger ensure STAMPS
+            // `migrations_state` for each step that ran and skips a step either
+            // app recorded (R-B: v4's seed has no once-only gate of its own —
+            // an unstamped seed would make v4's next boot credit every current
+            // outfit twice). The table step is fatal on failure like every
+            // table ensure in this chain; a failed SEED rolls back, logs, is
+            // not stamped and lets the boot continue (R-D). The column ensure
+            // stamps nothing (a re-ADD is a no-op).
+            let wear = quilltap_core::db::wardrobe_wear_stats_repair::ensure_wardrobe_wear_stats(main)?;
+            if wear.table_created {
+                tracing::info!(
+                    target: "quilltap::boot",
+                    migrationId = quilltap_core::db::wardrobe_wear_stats_repair::TABLE_MIGRATION_ID,
+                    "Created the wardrobe wear ledger"
+                );
+            }
+            if let quilltap_core::db::wardrobe_wear_stats_repair::SeedOutcome::Seeded {
+                wears,
+                chats_with_outfits,
+            } = wear.seed
+            {
+                tracing::info!(
+                    target: "quilltap::boot",
+                    migrationId = quilltap_core::db::wardrobe_wear_stats_repair::SEED_MIGRATION_ID,
+                    wears,
+                    chatsWithOutfits = chats_with_outfits,
+                    "Seeded the wardrobe wear ledger from current outfits"
+                );
+            }
+            quilltap_core::db::chat_settings_wardrobe_image_settings_repair::ensure_chat_settings_wardrobe_image_settings(main)?;
+            // === end P4.D255 ===
             // === P4.160 (P4.153's OPEN item) ===
             // v4's MIGRATION-created index family on an instance provisioned
             // before P4.153 (the 56 absent names + the PLAIN `mp_path`),

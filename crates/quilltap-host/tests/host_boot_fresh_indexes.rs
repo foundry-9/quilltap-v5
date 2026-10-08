@@ -90,7 +90,9 @@ fn index_name(sql: &str) -> Option<String> {
     let rest = rest.strip_prefix("INDEX ")?;
     let rest = rest.strip_prefix("IF NOT EXISTS ").unwrap_or(rest);
     Some(
-        rest.split([' ', '('])
+        // P4.D255: any whitespace ends the name — v4's wardrobe-wear
+        // indexes are stored with a line break after it.
+        rest.split(|c: char| c.is_whitespace() || c == '(')
             .next()
             .unwrap()
             .trim_matches('"')

@@ -98,6 +98,11 @@ pub struct WardrobePatch {
     pub is_default: Option<bool>,
     pub replace: Option<bool>,
     pub archived_at: Option<Option<String>>,
+    /// P4.D255 (v4 `updateWardrobeSchema.imageFileId`, `7c8572869`): choose
+    /// among the item's own pictures (`Some(Some(id))`) or clear the pointer
+    /// (`Some(None)`); the ownership check is the caller's
+    /// (`services::wardrobe_item_images::primitives::assert_item_image_choice`).
+    pub image_file_id: Option<Option<String>>,
 }
 
 impl WardrobePatch {
@@ -129,6 +134,9 @@ impl WardrobePatch {
         }
         if let Some(v) = &self.archived_at {
             item.archived_at = Some(v.clone());
+        }
+        if let Some(v) = &self.image_file_id {
+            item.image_file_id = Some(v.clone());
         }
     }
 }
@@ -294,6 +302,7 @@ fn item_from_read(v: &Value, character_id: Option<&str>) -> WardrobeItem {
         is_default: v.get("isDefault").and_then(Value::as_bool).unwrap_or(false),
         replace: v.get("replace").and_then(Value::as_bool).unwrap_or(false),
         migrated_from_clothing_record_id: opt_opt(v.get("migratedFromClothingRecordId")),
+        image_file_id: opt_opt(v.get("imageFileId")),
         archived_at: opt_opt(v.get("archivedAt")),
         created_at: str_field(v, "createdAt"),
         updated_at: str_field(v, "updatedAt"),
@@ -605,6 +614,7 @@ mod tests {
             is_default: false,
             replace: false,
             migrated_from_clothing_record_id: None,
+            image_file_id: None,
             archived_at: None,
             created_at: "2026-02-01T00:00:00.000Z".to_string(),
             updated_at: "2026-02-01T00:00:00.000Z".to_string(),

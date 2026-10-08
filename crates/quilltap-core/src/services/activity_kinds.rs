@@ -105,6 +105,8 @@ pub const JOB_TYPE_ACTIVITY: &[(&str, Option<ActivityKind>)] = &[
     // ── Img ──────────────────────────────────────────────────────────────────
     ("STORY_BACKGROUND_GENERATION", Some(ActivityKind::Image)),
     ("CHARACTER_AVATAR_GENERATION", Some(ActivityKind::Image)),
+    // P4.D255 (v4 `b3f937076`, `activity-kinds.ts:67`).
+    ("WARDROBE_ITEM_IMAGE_GENERATION", Some(ActivityKind::Image)),
     (
         "CHARACTER_HEADSHOULDERS_BACKFILL",
         Some(ActivityKind::Image),
@@ -210,6 +212,7 @@ mod tests {
         for t in [
             "STORY_BACKGROUND_GENERATION",
             "CHARACTER_AVATAR_GENERATION",
+            "WARDROBE_ITEM_IMAGE_GENERATION",
             "CHARACTER_HEADSHOULDERS_BACKFILL",
         ] {
             assert_eq!(activity_kind_for_job_type(t), Some(ActivityKind::Image));

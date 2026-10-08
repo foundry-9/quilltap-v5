@@ -2416,6 +2416,7 @@ fn restore_mount_family(
                 is_default: b(item, "isDefault", false),
                 replace: b(item, "replace", false),
                 migrated_from_clothing_record_id: Some(os(item, "migratedFromClothingRecordId")),
+                image_file_id: None,
                 archived_at: Some(os(item, "archivedAt")),
                 created_at: now(),
                 updated_at: now(),

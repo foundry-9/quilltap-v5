@@ -171987,3 +171987,161 @@ ZodError words; the thirteen `[Projects v1]` lines (an archive PUT carrying
 
 core 0.0.1252, host 0.0.189, web 0.0.224; SPA 0.5.811, cli 0.0.29, tauri
 0.0.9 unchanged; harness frozen 0.0.1110.
+
+## P4.D255 — the wardrobe foundation (the round's KEYSTONE) — lane record (`claude/wardrobe-keystone-schema-940f7c`, 2026-10-08)
+
+Pin `/tmp/qt-v4-pin-p4d255-f5e953a3f` (detached at `f5e953a3f`, `4.10.0-dev.117`;
+root + `packages/quilltap` `node_modules` APFS-CLONED from the live checkout —
+the real-boot recipe needs real directories — `openai` 7.30.0 verified).
+
+### Red-first at the target on unported `main` (`9dbcfcb65`, the sweep driver)
+
+- `provisioning_equivalence` RED 2/1 — (1d) fired first (three live-only
+  statements: `chat_settings` with `wardrobeImageSettings`, the Zod
+  `wardrobe_wear_stats`, its `createdAt` index), so (1a)–(1c) were not reached.
+  After the three re-dumps ALONE: GREEN 3/0 (under the R-A ruling below the
+  provisioned surface IS generateDDL's, so the re-dumps close it).
+- `migration_index_backfill_equivalence` RED 1/1 — three absent indexes
+  (`idx_wardrobe_wear_stats_{createdAt,item_wearer,wearer}`). After the
+  re-dumps alone: RED on BOTH arms with a `DROP INDEX ""` syntax error — the
+  test's own `index_name` twin (and `provisioning::index_name`) split on the
+  space only; v4's wear indexes are the first MULTI-LINE index text, so the
+  parsed name was `…_item_wearer"\n`. Fixed in both (any whitespace ends a
+  name) with a unit pin; `host_boot_fresh_indexes.rs:93` and
+  `host_boot_backfilled_indexes.rs:113` carry the same twin — not this lane's
+  files: HANDOFF (below).
+- `chat_settings_tier2_equivalence` GREEN — predicted red, BLIND: the oracle's
+  column list carried `wardrobeImageSettings`, but no op wrote it (both sides
+  NULL) and the family dumped the TABLE, never the positional read. Grown:
+  three create/update rows carry the bag, and a READ leg hydrates rows through
+  v4's REAL `findByUserId` interleaved with raw plants of the measured shapes.
+  Mutation proof: reading `conciergeSettings` at the OLD index 33 → `read #0
+  diverged`.
+- `chat_settings_column_sites_guard` GREEN as predicted (JSON bags excluded);
+  `ADOPTED_JSON_COLUMNS = ["wardrobeImageSettings"]` added — red on unported
+  `main` by construction (0 occurrences in all three regions). The UPDATE
+  region starts at `auto_detect_rng`, so the assignment was placed inside it.
+- `activity_tables_equivalence` RED 0/1 — 4 arms (the row, totality vs v4's
+  enum, the `JOB_TYPES` enqueue gate, the unmapped type).
+- `vault_wardrobe_item_file_equivalence` RED 0/1 — every parsed item lacked
+  `imageFileId: null`.
+- `vault_wardrobe_emit_equivalence` GREEN — VACUOUS as predicted; grown with a
+  pointer case; mutation proof (drop the push) → red.
+- `dispatch_wrong_type_census` (web) RED — 451 → 464 route identifiers (the 13
+  new `*_id` fields) and five unclassified `scope` fields; constant moved and
+  five rows added (`Path` for wear-history, `Query` for the images route).
+
+### Measurements the order asked for
+
+- **D23 re-dump #6:** `fresh_schema.json` diff EXACTLY the three predicted
+  statements; `chat_settings_seed.json` EXACTLY the one key
+  (`{"imageProfileId":null,"generateFromTools":false}`).
+- **`migration_indexes.json`:** EXACTLY the two hand indexes + the source
+  block (main 52 / mount-index 5 / llm-logs 5); the REAL first-boot
+  cross-check (`tsx server.ts` at the pin, PORT 39255, test pepper, 20 s
+  settle) → 0 findings. The real boot's master lacked
+  `idx_wardrobe_wear_stats_createdAt` (the repository was never touched in the
+  settle); the runner-driven build has it.
+- **The UNIQUE needs NO pre-check row** in `migration_index_family_repair.rs`
+  — its generic duplicate pre-check already reads the `COALESCE` key, and a
+  table the ensure creates has no rows to collide (file untouched).
+- **A fresh v4 boot RUNS the seed over zero chats** and stamps
+  `seed-wardrobe-wear-stats-v1` (`itemsAffected 0`, `Credited 0 wear(s) across
+  0 chat(s)`) beside `add-wardrobe-wear-stats-table-v1` — so a fresh v5
+  instance's first boot stamps the SEED row (its table came from provisioning,
+  so no table row — v4 records only a migration that ran).
+- **`wardrobeImageSettings` on v4's REAL repository read** (measured at the
+  pin): NULL → the key is OMITTED (`.optional()`, `undefined`); `{"imageProfileId":
+  null}` and `{}` → `{imageProfileId: null, generateFromTools: false}`; a
+  two-key bag in any order + a stray key → schema order, stripped;
+  `{"generateFromTools":"yes"}` → `Data validation failed` + `Error finding
+  entity by filter`, the row DROPPED. **The order's "a NULL cell reads the
+  two-key default" is false for the repository read** (C2 §7's GET may still
+  materialize it — P4.D263 / P4.D261 measure the route).
+- **v4's enqueue payload** is exactly `{chatId, characterId, itemId}` (all
+  required strings; `tool-image-generation.ts:100-104`) — no scope / container
+  key; `WardrobeItemImageJobPayload` carries the three.
+- **v4's seed failure exits the server** (`migrations/index.ts` → the runner's
+  `failed` list; a non-`resumable` migration): R-D's "lets boot continue" is a
+  ruled v5 divergence, recorded (the ensure logs ONE v5-side ERROR, stamps
+  nothing, retries next boot).
+
+### Rulings (the human, mid-lane, before `KEYSTONE`)
+
+1. **R-A OVERRULED — no `migration_tables.json`.** Measured on the real boot:
+   40 of `fresh_schema.json`'s 45 tables differ from generateDDL in v4's
+   migration text, 40 by `PRAGMA table_info` too (INTEGER vs REAL on
+   `chats.messageCount`, `files.size`, …) — `wardrobe_wear_stats` is one more
+   case, not the only one. The `ON CONFLICT` target arrives through the index
+   re-dump; a fresh v5 instance keeps generateDDL's table. (1e) is re-aimed:
+   the same four increments through v5's ledger on COPIES of both fresh
+   instances (v5-provisioned and v4's migrations-first build) land identical
+   rows. The ensure creates v4's MIGRATION shape on an upgraded instance, so
+   two shapes exist (R-C's type-tolerant reads cover both).
+2. **§R.2 waiver:** v4 `3f7320138` ("Implement memory recall and housekeeping
+   fixes (F1–F9) (#83)", `4.10.0-dev.120`, memory-only; its one wardrobe file
+   is v4's own jest test) landed mid-lane and failed the probe; the lane
+   STOPPED and asked; waived, pin stays `f5e953a3f`, a §3 row for the next
+   `/driftcheck` (the human records it — lanes never write the ledger).
+
+### Divergences from the order's text (each measured or forced; recorded)
+
+- `files.find_by_linked_to` answers a NEW `FileRow` (the whole row), not
+  `FileEntry` — the photo-tool subset lacks `source`/`createdAt`/`linkedTo`/
+  `tags`, which the primitive's own sort and P4.D263's list need; widening
+  `FileEntry` would touch five other lanes' construction sites.
+- `WardrobeItemFromFile.image_file_id` is `Option<String>` ALWAYS serialized
+  (v4 emits `null` for absent AND `''`), not `Option<Option<…>>`.
+- `cleanup_item_images` takes a typed `ItemImageCleanupMeta` (tracing field
+  names are static; v4's `meta` object has four caller shapes).
+- `find_rows_for_items` / `find_rows_for_wearer` / the writes return `Result`
+  (v4's do not fall back — §R.3's measurement), `find_summaries` /
+  `find_history` / `find_all` answer plain values through v4's fallback.
+- The `WardrobeItem` struct literal sites were NINE, not four, plus three
+  `WardrobePatch` literals and four harness literals: each gained the
+  one-token `image_file_id: None` (sibling-owned files included — the field
+  breaks compilation at every site, and the dependents branch from
+  `KEYSTONE`). `vault_wardrobe_public::item_from_read` carries the pointer
+  through read-modify-write; `restore/orchestrator.rs` and
+  `quilltap_import/characters.rs` write `None` until P4.D264's carriers land.
+- The bridge's `emitDocumentDeleted` + `refreshStats` on a link delete are
+  P4.D263's (it owns the bridge and the primitives' bodies); the two DEBUG
+  lines are ported.
+
+### Sibling host tests moved by the artefacts (landed IN-LANE — no lane owns them this round; the KEYSTONE gate cannot be green without them)
+
+- `crates/quilltap-host/tests/host_boot_backfilled_indexes.rs` — RED 13/14 at
+  the first gate: its private `index_name` twin split on the space only (the
+  multi-line wear indexes → `DROP INDEX ""` plant failures). Fixed (any
+  whitespace ends a name). Then RED 3 on MOVED COUNTS: the derived "pre-round"
+  instance still carried this round's provisioned `wardrobe_wear_stats`, so the
+  backfill recreated its two dropped hand indexes (`created=47` → `49`,
+  `46/1` → `48/1`). The derivation now DROPs the table (a pre-round instance
+  never had it): the boot's wear ensure creates it before the backfill and the
+  pinned 47 / 46 hold. The byte-equal `sqlite_master` comparison gained a NAMED
+  both-ways carve (`WEAR_TABLE`): the ensured table must be v4's migration
+  text, the provisioned one generateDDL's — the R-A ruling's two shapes.
+- `crates/quilltap-host/tests/host_boot_fresh_indexes.rs` — the same
+  `index_name` twin fixed (it did not redden; same latent defect).
+- No other host test moved: `host_boot_hardness.rs` (P4.D258's — its
+  `has_table` read now always finds `migrations_state`, which the ledger read
+  behind it tolerates), `host_boot_avatar_rolls_collapse.rs`,
+  `host_boot_p4d182_columns.rs` all green in the gate.
+
+### The KEYSTONE gate
+
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -- -D
+warnings` clean, and with `--features quilltap-core/native-transport` clean;
+`cargo test -p quilltap-core -p quilltap-host -p quilltap-web --no-fail-fast`
+102 binaries / 3,682 passed / 3 failed (all `host_boot_backfilled_indexes`,
+the moved counts above) / 1 ignored → after the fix that binary 14/0;
+`recipe_sweep.py --self-test` 0 failures. Owned families green from the pin
+(lane-private oracles): `provisioning_equivalence` 3/0 (1a–1e),
+`migration_index_backfill_equivalence` 2/0, `chat_settings_tier2_equivalence`
+1/0 (8 reads), `chat_settings_column_sites_guard` 1/0,
+`activity_tables_equivalence` 1/0, `vault_wardrobe_item_file_equivalence` 1/0
+(24 parse + 28 extraction rows), `vault_wardrobe_emit_equivalence` 1/0,
+`dispatch_wrong_type_census` 14/0.
+
+Versions at KEYSTONE: core 0.0.1253, host 0.0.190 (web: test-only edits, not
+bumped); harness frozen 0.0.1110.

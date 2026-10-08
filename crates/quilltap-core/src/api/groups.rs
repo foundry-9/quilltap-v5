@@ -1268,6 +1268,7 @@ pub async fn group_wardrobe_create(db: &Db, group_id: &str, body: Value) -> Resp
             is_default: fields.is_default.unwrap_or(false),
             replace: fields.replace.unwrap_or(false),
             migrated_from_clothing_record_id: Some(None),
+            image_file_id: None,
             archived_at: Some(None),
             created_at: now.clone(),
             updated_at: now,
@@ -1348,6 +1349,7 @@ pub async fn group_wardrobe_update(
             is_default: fields.is_default,
             replace: fields.replace,
             archived_at: None,
+            image_file_id: None,
         };
         let links = DocMountFileLinksRepository::new(mount);
         let docs = DocMountDocumentsRepository::new(mount);

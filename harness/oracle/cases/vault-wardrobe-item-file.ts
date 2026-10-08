@@ -16,7 +16,12 @@
  *     > /tmp/oracle-vault-wardrobe-item-file.ndjson
  */
 
-import { parseWardrobeItemFile } from '@/lib/database/repositories/vault-overlay/parsers';
+import {
+  isWardrobeItemDocumentPath,
+  parseWardrobeItemFile,
+  resolveWardrobeItemId,
+  wardrobeItemIdForDocument,
+} from '@/lib/database/repositories/vault-overlay/parsers';
 
 type Doc = {
   content: string;
@@ -79,6 +84,75 @@ wCase('w-timestamps-from-fm', `---\ntitle: X\ntypes: [top]\ncreatedAt: 2020-05-0
 wCase('w-empty-body-desc-null', '---\ntitle: X\ntypes: [top]\n---\n');
 wCase('w-multibyte', '---\ntitle: Côat\ntypes: [top]\n---\nBödy déscription');
 
+// ── P4.D255 (v4 `7c8572869`): `imageFileId` — a NON-EMPTY string, else null;
+// always emitted (parsers.ts:376-379, 415) ─────────────────────────────────
+wCase('w-image-file-id', `---\ntitle: X\ntypes: [top]\nimageFileId: ${UUID}\n---\nb`);
+wCase('w-image-file-id-empty', '---\ntitle: X\ntypes: [top]\nimageFileId: ""\n---\nb');
+wCase('w-image-file-id-number', '---\ntitle: X\ntypes: [top]\nimageFileId: 7\n---\nb');
+wCase('w-image-file-id-null', '---\ntitle: X\ntypes: [top]\nimageFileId: null\n---\nb');
+
 for (const row of rows) {
   process.stdout.write(JSON.stringify(row) + '\n');
+}
+
+// ── P4.D255 (v4 `3ee3b1342`): the three parser extractions the carriers share,
+// through their REAL exports ──────────────────────────────────────────────────
+const resolveRows: Array<[string, unknown]> = [
+  ['uuid-36', UUID],
+  ['upper-hex-36', UUID.toUpperCase()],
+  ['dashes-36', '------------------------------------'],
+  ['short-35', UUID.slice(0, 35)],
+  ['long-37', `${UUID}0`],
+  ['number', 12345],
+  ['absent', undefined],
+  ['null', null],
+];
+for (const [id, frontmatterId] of resolveRows) {
+  process.stdout.write(
+    JSON.stringify({
+      kind: 'resolve',
+      id,
+      frontmatterId: typeof frontmatterId === 'string' ? frontmatterId : null,
+      out: resolveWardrobeItemId(frontmatterId, 'mp-1', 'Wardrobe/Coat.md'),
+    }) + '\n',
+  );
+}
+for (const path of [
+  'Wardrobe/Coat.md',
+  'wardrobe/coat.MD',
+  'WARDROBE/Coat.md',
+  'Wardrobe/sub/Coat.md',
+  'Wardrobe/instructions.md',
+  'Wardrobe/INSTRUCTIONS.md',
+  'Wardrobe/Instructions.MD',
+  'Wardrobe/',
+  'Wardrobe/.md',
+  'Wardrobe/Coat.txt',
+  'Wardrobe/Coat.md.bak',
+  'Other/Coat.md',
+  'Wardrobe',
+  'Wardrobes/Coat.md',
+  'Wardrobe/images/x/pic.webp',
+]) {
+  process.stdout.write(
+    JSON.stringify({ kind: 'docpath', id: path, path, out: isWardrobeItemDocumentPath(path) }) + '\n',
+  );
+}
+for (const [id, content] of [
+  ['fm-uuid', `---\nid: ${UUID}\ntitle: X\n---\nb`],
+  ['fm-bad', '---\nid: not-an-id\n---\nb'],
+  ['fm-number', '---\nid: 123\n---\nb'],
+  ['no-fm', 'just a body'],
+  ['empty', ''],
+] as const) {
+  process.stdout.write(
+    JSON.stringify({
+      kind: 'docid',
+      id,
+      mountPointId: 'mp-2',
+      relativePath: 'Wardrobe/Hat.md',
+      content,
+      out: wardrobeItemIdForDocument({ mountPointId: 'mp-2', relativePath: 'Wardrobe/Hat.md', content }),
+    }) + '\n',
+  );
 }

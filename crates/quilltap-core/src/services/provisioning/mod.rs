@@ -167,6 +167,28 @@ pub const SINGLE_USER_ID: &str = "ffffffff-ffff-ffff-ffff-ffffffffffff";
 /// `db::chat_settings_impersonation_voice_mode_repair`, which REPLACES the
 /// P4.D179 ensure) spells the same clause, differing only in position
 /// (appended). The seed MOVED with it (below).
+///
+/// `f5e953a3f` (P4.D255 — D23 re-dump #6, v4 `3ee3b1342` + `7c8572869` +
+/// `b3f937076`, migrations `add-wardrobe-wear-stats-table-v1` /
+/// `seed-wardrobe-wear-stats-v1` / `add-wardrobe-image-settings-field-v1`; run
+/// FROM the pin, 2026-10-08): EXACTLY three lines move, as measured. (1)
+/// `chat_settings` GAINS `"wardrobeImageSettings" TEXT` between
+/// `storyBackgroundsSettings` and `conciergeSettings` — generateDDL's spelling
+/// of `WardrobeImageSettingsSchema.optional()` (no default). THREE shapes reach
+/// the read (§R.4(c)): this one, the migration's appended `TEXT DEFAULT
+/// '{"imageProfileId":null}'` (re-homed as
+/// `db::chat_settings_wardrobe_image_settings_repair`), and the repository
+/// seed's two-key object (below). (2) a NEW `wardrobe_wear_stats` CREATE in
+/// generateDDL's text — `"wearCount" REAL NOT NULL`, no default — and (3) its
+/// `idx_wardrobe_wear_stats_createdAt`. TWO table shapes exist: v4's migration
+/// creates `"wearCount" INTEGER NOT NULL DEFAULT 0` + two hand indexes (re-homed
+/// as `db::wardrobe_wear_stats_repair`); the order's R-A would have provisioned
+/// that text too, but a real v4 first boot at the pin carries 40 of these 45
+/// tables in migration text that differs from generateDDL (not this one alone),
+/// so the human RULED (2026-10-08) that a fresh v5 instance keeps this
+/// generateDDL surface: the two hand indexes arrive through
+/// `migration_indexes.json` (below), the `ON CONFLICT` target included, and
+/// every ledger read takes `wearCount` type-tolerantly.
 static FRESH_SCHEMA_JSON: &str = include_str!("fresh_schema.json");
 
 /// The captured `chat_settings` seed row's columns (all but the minted
@@ -189,6 +211,11 @@ static FRESH_SCHEMA_JSON: &str = include_str!("fresh_schema.json");
 /// becomes `"impersonationVoiceMode": "off"` (the column entry AND the value
 /// move together) — v4's repository default `impersonationVoiceMode: 'off'`
 /// (`chat-settings.repository.ts:211`), as captured; nothing else moved.
+/// `f5e953a3f` (P4.D255): the seed row GAINS `"wardrobeImageSettings":
+/// "{\"imageProfileId\":null,\"generateFromTools\":false}"` (column entry
+/// between `storyBackgroundsSettings` and `conciergeSettings`) — v4's
+/// repository default (`chat-settings.repository.ts:222-225`), as captured;
+/// nothing else moved.
 static CHAT_SETTINGS_SEED_JSON: &str = include_str!("chat_settings_seed.json");
 
 /// P4.153 (dogfood #149): v4's OTHER index family — the one its MIGRATIONS
@@ -227,6 +254,14 @@ static CHAT_SETTINGS_SEED_JSON: &str = include_str!("chat_settings_seed.json");
 /// mount-index 5 (incl. the UNIQUE `idx_doc_mount_folders_mp_path`) /
 /// llm-logs 5, cross-checked name-and-SQL against a REAL
 /// `tsx server.ts` first boot at the same pin, zero differences).
+/// `f5e953a3f` (P4.D255 — re-dumped from the pin with a REAL first boot's
+/// `sqlite_master` as the cross-check, zero findings): main GAINS EXACTLY the
+/// two wardrobe-wear hand indexes — the UNIQUE
+/// `idx_wardrobe_wear_stats_item_wearer ("itemId", COALESCE("wearerCharacterId",
+/// ''))` every ledger upsert's `ON CONFLICT` targets, and
+/// `idx_wardrobe_wear_stats_wearer` — in v4's text, line breaks kept (the
+/// first multi-line statements: [`index_name`] now ends a name at ANY
+/// whitespace). main 52 / mount-index 5 / llm-logs 5.
 static MIGRATION_INDEXES_JSON: &str = include_str!("migration_indexes.json");
 
 /// One artifact's statements per partition (`fresh_schema.json` and
@@ -246,6 +281,21 @@ pub(crate) struct FreshSchema {
 pub(crate) fn migration_index_family() -> Result<FreshSchema, ProvisionError> {
     serde_json::from_str(MIGRATION_INDEXES_JSON)
         .map_err(|e| ProvisionError::Artifact(format!("migration_indexes.json: {e}")))
+}
+
+/// The main partition's `fresh_schema.json` `CREATE INDEX` statement named
+/// `name` (generateDDL's text, no `IF NOT EXISTS`), if the artifact carries
+/// one. P4.D255: the wardrobe-wear table ensure re-homes v4's REPOSITORY
+/// first touch (`ensureCollection` → generateDDL's `CREATE INDEX IF NOT
+/// EXISTS "idx_wardrobe_wear_stats_createdAt"`) through this, so the boot
+/// never spells a generateDDL index of its own (D23).
+pub(crate) fn fresh_main_index(name: &str) -> Result<Option<String>, ProvisionError> {
+    let schema: FreshSchema = serde_json::from_str(FRESH_SCHEMA_JSON)
+        .map_err(|e| ProvisionError::Artifact(format!("fresh_schema.json: {e}")))?;
+    Ok(schema
+        .main
+        .into_iter()
+        .find(|sql| index_name(sql) == Some(name)))
 }
 
 #[derive(Deserialize)]
@@ -410,12 +460,20 @@ fn exec_ddl(
 
 /// The index a `CREATE [UNIQUE] INDEX [IF NOT EXISTS] name …` statement makes
 /// (quotes stripped); `None` for anything else.
+///
+/// The name ends at ANY whitespace or `(`: v4's wardrobe-wear DDL
+/// (`wardrobe-wear-stats-ddl.ts`, P4.D255) is the first migration index whose
+/// stored text breaks the line after the name (`"…_item_wearer"\n    ON …`),
+/// and a split on the space alone answered `…_item_wearer"\n` — a name no
+/// `sqlite_master` row carries.
 pub(crate) fn index_name(sql: &str) -> Option<&str> {
     let rest = sql.strip_prefix("CREATE ")?;
     let rest = rest.strip_prefix("UNIQUE ").unwrap_or(rest);
     let rest = rest.strip_prefix("INDEX ")?;
     let rest = rest.strip_prefix("IF NOT EXISTS ").unwrap_or(rest);
-    rest.split([' ', '(']).next().map(|n| n.trim_matches('"'))
+    rest.split(|c: char| c.is_whitespace() || c == '(')
+        .next()
+        .map(|n| n.trim_matches('"'))
 }
 
 /// The table a `CREATE [UNIQUE] INDEX … ON <table> (…)` statement indexes
@@ -567,14 +625,97 @@ mod tests {
             .chain(&family.mount_index)
             .chain(&family.llm_logs)
             .collect();
-        assert_eq!(all.len(), 60);
+        assert_eq!(all.len(), 62);
         for sql in all {
             let table = index_table(sql).unwrap_or_else(|| panic!("no table in {sql}"));
             assert!(
                 table.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'),
                 "{table} from {sql}"
             );
+            // P4.D255: every NAME is a bare identifier too — the wardrobe-wear
+            // pair breaks the line after the name.
+            let name = index_name(sql).unwrap_or_else(|| panic!("no name in {sql}"));
+            assert!(
+                name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'),
+                "{name:?} from {sql}"
+            );
         }
+    }
+
+    /// P4.D255: v4's first multi-line index text — the name ends at the line
+    /// break, not at the next space.
+    #[test]
+    fn index_name_ends_at_a_line_break() {
+        assert_eq!(
+            index_name(
+                "CREATE UNIQUE INDEX \"idx_wardrobe_wear_stats_item_wearer\"\n    ON \"wardrobe_wear_stats\" (\"itemId\", COALESCE(\"wearerCharacterId\", ''))"
+            ),
+            Some("idx_wardrobe_wear_stats_item_wearer")
+        );
+        assert_eq!(
+            index_table(
+                "CREATE INDEX \"idx_wardrobe_wear_stats_wearer\"\n    ON \"wardrobe_wear_stats\" (\"wearerCharacterId\")"
+            ),
+            Some("wardrobe_wear_stats")
+        );
+    }
+
+    /// P4.D255 (the human's 2026-10-08 ruling over the order's R-A): a fresh
+    /// instance carries `wardrobe_wear_stats` in generateDDL's text, its
+    /// repository `createdAt` index AND the migration's two hand indexes —
+    /// so the ledger's `ON CONFLICT` upserts PREPARE against it (the UNIQUE
+    /// `COALESCE` index is their conflict target) and a REAL-affinity count
+    /// increments.
+    #[test]
+    fn a_fresh_instance_can_upsert_the_wear_ledger() {
+        use crate::db::wardrobe_wear_stats::{
+            WardrobeWearIncrement, WardrobeWearStatsRepository, WARDROBE_WEAR_INCREMENT_SQL,
+        };
+        let dir = tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        provision_fresh_instance(&data, PEPPER).unwrap();
+        let main = Writer::open_writable(&data.join("quilltap.db"), PEPPER).unwrap();
+        let conn = main.connection();
+        let names: Vec<String> = conn
+            .prepare(
+                "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'wardrobe_wear_stats' \
+                 AND sql IS NOT NULL ORDER BY name",
+            )
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                "idx_wardrobe_wear_stats_createdAt",
+                "idx_wardrobe_wear_stats_item_wearer",
+                "idx_wardrobe_wear_stats_wearer"
+            ]
+        );
+        conn.prepare(WARDROBE_WEAR_INCREMENT_SQL)
+            .expect("the increment prepares");
+        let repo = WardrobeWearStatsRepository::new(conn);
+        for at in ["2026-01-01T00:00:00.000Z", "2026-01-02T00:00:00.000Z"] {
+            repo.increment_wears(&[WardrobeWearIncrement {
+                item_id: "coat".into(),
+                wearer_character_id: Some("A".into()),
+                chat_id: None,
+                at: at.into(),
+            }])
+            .unwrap();
+        }
+        assert_eq!(repo.find_all()[0].wear_count, 2);
+        let table: String = conn
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE name = 'wardrobe_wear_stats'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(table.contains("\"wearCount\" REAL NOT NULL"), "{table}");
     }
 
     #[test]

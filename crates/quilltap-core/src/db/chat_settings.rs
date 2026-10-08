@@ -381,6 +381,81 @@ pub struct StoryBackgroundsSettings {
     pub default_image_profile_id: Option<String>,
 }
 
+/// v4 `WardrobeImageSettingsSchema` (`settings.types.ts:614-626`, `7c8572869`
+/// + `b3f937076`; P4.D255): `imageProfileId: UUIDSchema.nullable()
+/// .default(null)`, `generateFromTools: z.boolean().default(false)`.
+///
+/// v4 disagrees with itself on this column (§R.4(c)): the migration's DEFAULT
+/// is the ONE-key `{"imageProfileId":null}` (never bumped for
+/// `generateFromTools`), the repository seed is the two-key object, and a
+/// fresh generateDDL column is a nullable TEXT with no default. Both fields
+/// therefore take `#[serde(default)]`, so every stored object parses — the
+/// one-key cell and `{}` read `{imageProfileId: null, generateFromTools:
+/// false}`, as v4's Zod parse fills them (measured at the `f5e953a3f` pin).
+/// A NULL cell is a different case: v4's `.optional()` leaves it `undefined`
+/// and the read OMITS the key (see [`find_by_user_id`]).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WardrobeImageSettings {
+    #[serde(default)]
+    pub image_profile_id: Option<String>,
+    #[serde(default)]
+    pub generate_from_tools: bool,
+}
+
+/// The `WardrobeImageSettingsSchema` issues for a stored cell's parsed value
+/// (`path` rooted at `wardrobeImageSettings`) — empty when v4's parse
+/// accepts it. Unknown keys are stripped, not refused (Zod's default).
+pub fn wardrobe_image_settings_issues(
+    bag: &serde_json::Value,
+) -> Vec<crate::api::zod_issues::ZodIssue> {
+    use crate::api::zod_issues::{zod_uuid_ok, ZodIssue};
+    use serde_json::Value;
+    let root = || Value::String("wardrobeImageSettings".into());
+    let Some(obj) = bag.as_object() else {
+        return vec![ZodIssue::invalid_type("object", vec![root()], Some(bag))];
+    };
+    let mut issues = Vec::new();
+    match obj.get("imageProfileId") {
+        None | Some(Value::Null) => {}
+        Some(Value::String(s)) if zod_uuid_ok(s) => {}
+        Some(Value::String(_)) => issues.push(ZodIssue::invalid_uuid(vec![
+            root(),
+            Value::String("imageProfileId".into()),
+        ])),
+        Some(other) => issues.push(ZodIssue::invalid_type(
+            "string",
+            vec![root(), Value::String("imageProfileId".into())],
+            Some(other),
+        )),
+    }
+    match obj.get("generateFromTools") {
+        None | Some(Value::Bool(_)) => {}
+        Some(other) => issues.push(ZodIssue::invalid_type(
+            "boolean",
+            vec![root(), Value::String("generateFromTools".into())],
+            Some(other),
+        )),
+    }
+    issues
+}
+
+/// A stored `wardrobeImageSettings` cell read as v4's hydrate + parse does:
+/// `None` for a NULL cell (v4's `.optional()` — the key is OMITTED from the
+/// row); otherwise the parsed value, which [`wardrobe_image_settings_issues`]
+/// then judges (an unparseable text is the raw string, refused as a
+/// non-object).
+fn read_wardrobe_image_settings_cell(cell: Option<String>) -> Option<serde_json::Value> {
+    let text = cell?;
+    let parsed: serde_json::Value =
+        serde_json::from_str(&text).unwrap_or(serde_json::Value::String(text));
+    if !wardrobe_image_settings_issues(&parsed).is_empty() {
+        return Some(parsed);
+    }
+    let typed: WardrobeImageSettings = serde_json::from_value(parsed).unwrap_or_default();
+    Some(serde_json::to_value(typed).unwrap_or(serde_json::Value::Null))
+}
+
 // ============================================================================
 // conciergeSettings — the Concierge's own settings object (v4 `3b463d6b1`, #76)
 // ============================================================================
@@ -806,6 +881,13 @@ pub struct ChatSettingsCreate {
     #[serde(default)]
     pub smart_typography_settings: SmartTypographySettings,
     pub story_backgrounds_settings: StoryBackgroundsSettings,
+    /// P4.D255 (v4 `7c8572869` + `b3f937076`): the wardrobe-picture settings
+    /// bag, schema-ordered between `storyBackgroundsSettings` and
+    /// `conciergeSettings`. `None` writes SQL NULL — v4's `create` leaves an
+    /// absent `.optional()` key NULL (only `updateForUser`'s create branch
+    /// seeds the two-key default, through `chat_settings_seed.json`).
+    #[serde(default)]
+    pub wardrobe_image_settings: Option<WardrobeImageSettings>,
     /// v4 `3b463d6b1` (#76): the Concierge's own settings object, in
     /// `dangerousContentSettings`' old slot. Carried as the raw object and
     /// Zod-parsed at the write ([`concierge_settings_column_text`]) — absent
@@ -899,6 +981,8 @@ pub struct ChatSettingsUpdate {
     pub auto_scroll_on_response_complete: Option<bool>,
     pub answer_confirmation_settings: Option<AnswerConfirmationSettings>,
     pub smart_typography_settings: Option<SmartTypographySettings>,
+    /// P4.D255: `wardrobeImageSettings`, a whole-object replace.
+    pub wardrobe_image_settings: Option<WardrobeImageSettings>,
     pub timezone: Option<String>,
     pub updated_at: String,
 }
@@ -979,6 +1063,11 @@ impl<'c> ChatSettingsRepository<'c> {
             to_json("smartTypographySettings", &data.smart_typography_settings)?;
         let story_backgrounds_settings =
             to_json("storyBackgroundsSettings", &data.story_backgrounds_settings)?;
+        let wardrobe_image_settings = data
+            .wardrobe_image_settings
+            .as_ref()
+            .map(|w| to_json("wardrobeImageSettings", w))
+            .transpose()?;
         let concierge_settings = concierge_settings_column_text(data.concierge_settings.as_ref());
         let auto_lock_settings = to_json("autoLockSettings", &data.auto_lock_settings)?;
 
@@ -1039,6 +1128,7 @@ impl<'c> ChatSettingsRepository<'c> {
                 ("coreWhisper", &core_whisper),
                 ("thinkingDisplay", &thinking_display),
                 ("storyBackgroundsSettings", &story_backgrounds_settings),
+                ("wardrobeImageSettings", &wardrobe_image_settings),
                 ("conciergeSettings", &concierge_settings),
                 ("autoLockSettings", &auto_lock_settings),
                 ("timezone", &data.timezone),
@@ -1160,6 +1250,13 @@ impl<'c> ChatSettingsRepository<'c> {
                 values.len() + 1
             ));
             values.push(Box::new(i64::from(auto_scroll_on_response_complete)));
+        }
+        if let Some(wardrobe_image_settings) = &patch.wardrobe_image_settings {
+            assignments.push(format!("wardrobeImageSettings = ?{}", values.len() + 1));
+            values.push(Box::new(to_json(
+                "wardrobeImageSettings",
+                wardrobe_image_settings,
+            )?));
         }
         if let Some(timezone) = &patch.timezone {
             assignments.push(format!("timezone = ?{}", values.len() + 1));
@@ -1320,6 +1417,7 @@ pub fn find_by_user_id(
             "answerConfirmationSettings",
             "smartTypographySettings",
             "storyBackgroundsSettings",
+            "wardrobeImageSettings",
             "conciergeSettings",
             "autoLockSettings",
             "timezone",
@@ -1505,6 +1603,14 @@ pub fn find_by_user_id(
                     "storyBackgroundsSettings".into(),
                     parse_json(r.get::<_, Option<String>>(32)?),
                 );
+                // P4.D255: `wardrobeImageSettings` (index 33 — every later
+                // positional read shifted by one). A NULL cell is v4's
+                // `undefined`: the key is OMITTED; a stored object is parsed
+                // with the schema's defaults (judged below with the voice mode).
+                if let Some(v) = read_wardrobe_image_settings_cell(r.get::<_, Option<String>>(33)?)
+                {
+                    obj.insert("wardrobeImageSettings".into(), v);
+                }
                 // v4 `3b463d6b1` (#76): `conciergeSettings` in
                 // `dangerousContentSettings`' old slot, read through the
                 // schema as v4's hydrate + parse does: a NULL / empty /
@@ -1518,15 +1624,15 @@ pub fn find_by_user_id(
                 // strips them).
                 obj.insert(
                     "conciergeSettings".into(),
-                    read_concierge_settings_cell(r.get::<_, Option<String>>(33)?),
+                    read_concierge_settings_cell(r.get::<_, Option<String>>(34)?),
                 );
                 obj.insert(
                     "autoLockSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(34)?),
+                    parse_json(r.get::<_, Option<String>>(35)?),
                 );
-                put_opt(&mut obj, "timezone", r.get::<_, Option<String>>(35)?);
-                obj.insert("createdAt".into(), Value::String(r.get::<_, String>(36)?));
-                obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(37)?));
+                put_opt(&mut obj, "timezone", r.get::<_, Option<String>>(36)?);
+                obj.insert("createdAt".into(), Value::String(r.get::<_, String>(37)?));
+                obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(38)?));
                 Ok(Value::Object(obj))
             },
         )
@@ -1549,28 +1655,54 @@ pub fn find_by_user_id(
     // existence check is a raw `SELECT id`, so it answers 500 — a state no
     // writer on either side can produce, pinned at the repository level only).
     if let Some(row) = row {
+        // Schema order: the voice mode, then `wardrobeImageSettings` (P4.D255
+        // — the second column a stored value v4's schema refuses can reach:
+        // a hand-planted bag; the PUT arm parses before it writes).
+        let mut issues = Vec::new();
         if let Some(mode) = row.get("impersonationVoiceMode").and_then(Value::as_str) {
             if ImpersonationVoiceMode::parse(mode).is_none() {
-                let issues = [crate::api::zod_issues::ZodIssue::invalid_value(
+                issues.push(crate::api::zod_issues::ZodIssue::invalid_value(
                     &ImpersonationVoiceMode::VALUES,
                     vec![Value::String("impersonationVoiceMode".into())],
-                )];
-                let error = crate::api::zod_issues::zod_error_message(&issues);
-                tracing::error!(
-                    target: "quilltap::db",
-                    collection = "chat_settings",
-                    error = %error,
-                    "Data validation failed"
-                );
-                return Ok(crate::db::fallback::find_one_by_filter_or_none(
-                    "chat_settings",
-                    || Err(DbError::Internal(error.clone())),
                 ));
             }
+        }
+        if let Some(bag) = row.get("wardrobeImageSettings") {
+            issues.extend(wardrobe_image_settings_issues(bag));
+        }
+        if !issues.is_empty() {
+            let error = crate::api::zod_issues::zod_error_message(&issues);
+            tracing::error!(
+                target: "quilltap::db",
+                collection = "chat_settings",
+                error = %error,
+                "Data validation failed"
+            );
+            return Ok(crate::db::fallback::find_one_by_filter_or_none(
+                "chat_settings",
+                || Err(DbError::Internal(error.clone())),
+            ));
         }
         return Ok(Some(row));
     }
     Ok(row)
+}
+
+/// C1 §12 (P4.D255): whether a wardrobe tool's create / update should queue a
+/// picture — `wardrobeImageSettings.generateFromTools` on the user's settings
+/// row, read through [`find_by_user_id`] (v4 `chatSettings.findByUserId(
+/// userId)?.wardrobeImageSettings?.generateFromTools`). `false` when the row,
+/// the bag or the key is absent, and when the read fails.
+pub fn wardrobe_tool_images_enabled(main: &Connection, user_id: &str) -> bool {
+    find_by_user_id(main, user_id)
+        .ok()
+        .flatten()
+        .and_then(|row| {
+            row.get("wardrobeImageSettings")
+                .and_then(|w| w.get("generateFromTools"))
+                .and_then(serde_json::Value::as_bool)
+        })
+        .unwrap_or(false)
 }
 
 /// Scoped read for the memory gate's watermark check: the
@@ -1918,7 +2050,7 @@ mod tests {
                 autoScrollOnResponseComplete INTEGER, agentModeSettings TEXT, \
                 coreWhisper TEXT, thinkingDisplay TEXT, answerConfirmationSettings TEXT, \
                 smartTypographySettings TEXT, \
-                storyBackgroundsSettings TEXT, dangerousContentSettings TEXT, \
+                storyBackgroundsSettings TEXT, wardrobeImageSettings TEXT, dangerousContentSettings TEXT, \
                 autoLockSettings TEXT, createdAt TEXT, updatedAt TEXT);",
         )
         .unwrap();
@@ -2023,7 +2155,7 @@ mod tests {
                 autoScrollOnResponseComplete INTEGER, agentModeSettings TEXT, \
                 coreWhisper TEXT, thinkingDisplay TEXT, answerConfirmationSettings TEXT, \
                 smartTypographySettings TEXT, \
-                storyBackgroundsSettings TEXT, dangerousContentSettings TEXT, \
+                storyBackgroundsSettings TEXT, wardrobeImageSettings TEXT, dangerousContentSettings TEXT, \
                 autoLockSettings TEXT, timezone TEXT, createdAt TEXT, updatedAt TEXT);",
         )
         .unwrap();
@@ -2076,7 +2208,7 @@ mod tests {
                 composerSpellcheck INTEGER, textReplacementsEnabled INTEGER, \
                 autoScrollOnResponseComplete INTEGER, agentModeSettings TEXT, \
                 coreWhisper TEXT, thinkingDisplay TEXT, answerConfirmationSettings TEXT, \
-                storyBackgroundsSettings TEXT, dangerousContentSettings TEXT, \
+                storyBackgroundsSettings TEXT, wardrobeImageSettings TEXT, dangerousContentSettings TEXT, \
                 autoLockSettings TEXT, timezone TEXT, createdAt TEXT, updatedAt TEXT);",
         )
         .unwrap();
@@ -2237,7 +2369,7 @@ mod tests {
                 impersonationVoiceMode TEXT DEFAULT 'off', textReplacementsEnabled INTEGER, \
                 autoScrollOnResponseComplete INTEGER, agentModeSettings TEXT, \
                 coreWhisper TEXT, thinkingDisplay TEXT, answerConfirmationSettings TEXT, \
-                smartTypographySettings TEXT, storyBackgroundsSettings TEXT, \
+                smartTypographySettings TEXT, storyBackgroundsSettings TEXT, wardrobeImageSettings TEXT, \
                 conciergeSettings TEXT, autoLockSettings TEXT, timezone TEXT, \
                 createdAt TEXT, updatedAt TEXT);",
         )
@@ -2283,6 +2415,83 @@ mod tests {
             ],
             "{lines:#?}"
         );
+    }
+
+    /// P4.D255: the three stored `wardrobeImageSettings` shapes v4 measured at
+    /// the `f5e953a3f` pin — NULL omits the key (`.optional()`), the
+    /// migration's one-key DEFAULT and `{}` read the two-key default, a stored
+    /// two-key bag reads as itself — and a bag the schema refuses drops the
+    /// row with v4's two lines.
+    #[test]
+    fn the_stored_wardrobe_image_settings_shapes_read_back() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE chat_settings (\
+                id TEXT PRIMARY KEY, userId TEXT, avatarDisplayMode TEXT, \
+                avatarDisplayStyle TEXT, tagStyles TEXT, cheapLLMSettings TEXT, \
+                autoDetectRng INTEGER, customTools INTEGER, compositionModeDefault INTEGER, \
+                composerSpellcheck INTEGER, textReplacementsEnabled INTEGER, \
+                autoScrollOnResponseComplete INTEGER, storyBackgroundsSettings TEXT, \
+                wardrobeImageSettings TEXT, createdAt TEXT, updatedAt TEXT);",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO chat_settings (id, userId, avatarDisplayMode, avatarDisplayStyle, \
+             tagStyles, cheapLLMSettings, autoDetectRng, customTools, compositionModeDefault, \
+             composerSpellcheck, textReplacementsEnabled, autoScrollOnResponseComplete, \
+             createdAt, updatedAt) VALUES ('s1', 'u1', 'ALWAYS', 'CIRCULAR', '{}', '{}', \
+             1, 1, 0, 0, 1, 0, '2026-10-05T00:00:00.000Z', '2026-10-05T00:00:00.000Z')",
+            [],
+        )
+        .unwrap();
+        let read = |cell: Option<&str>| {
+            conn.execute(
+                "UPDATE chat_settings SET wardrobeImageSettings = ?1 WHERE id = 's1'",
+                [cell],
+            )
+            .unwrap();
+            crate::test_support::captured_with(|| find_by_user_id(&conn, "u1").unwrap())
+        };
+        let (row, lines) = read(None);
+        let row = row.expect("row");
+        assert!(row.get("wardrobeImageSettings").is_none(), "{row}");
+        assert!(lines.is_empty());
+        // The key lands between `storyBackgroundsSettings` and
+        // `conciergeSettings`.
+        for cell in [r#"{"imageProfileId":null}"#, "{}"] {
+            let (row, _) = read(Some(cell));
+            let row = row.expect("row");
+            assert_eq!(
+                row["wardrobeImageSettings"],
+                serde_json::json!({"imageProfileId": null, "generateFromTools": false})
+            );
+            let keys: Vec<&String> = row.as_object().unwrap().keys().collect();
+            let at = keys
+                .iter()
+                .position(|k| *k == "wardrobeImageSettings")
+                .unwrap();
+            assert_eq!(keys[at - 1], "storyBackgroundsSettings");
+            assert_eq!(keys[at + 1], "conciergeSettings");
+        }
+        let (row, _) = read(Some(
+            r#"{"generateFromTools":true,"imageProfileId":"7d8c4a4e-5b1d-4f3a-9a2e-1c2b3d4e5f60","extra":1}"#,
+        ));
+        assert_eq!(
+            row.unwrap()["wardrobeImageSettings"],
+            serde_json::json!({"imageProfileId": "7d8c4a4e-5b1d-4f3a-9a2e-1c2b3d4e5f60", "generateFromTools": true})
+        );
+        assert!(wardrobe_tool_images_enabled(&conn, "u1"));
+        assert!(!wardrobe_tool_images_enabled(&conn, "nobody"));
+        let (row, lines) = read(Some(r#"{"generateFromTools":"yes"}"#));
+        assert!(row.is_none(), "v4 drops the row it cannot validate");
+        assert_eq!(lines.len(), 2, "{lines:#?}");
+        assert!(lines[0].starts_with(
+            "ERROR quilltap::db Data validation failed collection=chat_settings error=["
+        ));
+        assert!(lines[1].starts_with(
+            "ERROR quilltap::db Error finding entity by filter collection=chat_settings error=["
+        ));
+        assert!(!wardrobe_tool_images_enabled(&conn, "u1"));
     }
 
     /// P4.D251 Tier 2 item 14: `ChatSettingsCreate` ignores unknown keys, so

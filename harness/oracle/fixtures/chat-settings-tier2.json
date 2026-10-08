@@ -47,7 +47,8 @@
     "",
     "DETERMINISM: every id and timestamp is pinned, so both sides produce",
     "byte-identical post-op state and the canonical dump needs ZERO normalization.",
-    "P4.D227 (v4 `3b463d6b1`, #76): `dangerousContentSettings` is REPLACED by `conciergeSettings` (the Zod shape, parsed by `_create`/`_update` with every default materialized and unknown keys stripped). Seed row A omits it (the `.default()` literal, no desk ids, no prompt); seed row B stores the migration's full shape. Op 0 creates a PARTIAL object (defaults filled, an integral threshold `1` kept as `1`) and still carries the retired `dangerousContentSettings` + `uncensoredImageDescriptionProfileId` + `cheapLLMSettings.imagePromptProfileId` as STRIP PROBES (v4's schema drops them; v5's typed create never binds them). Op 1 replaces the object with a partial one carrying an unknown key (stripped). Op 3 creates the full object."
+    "P4.D227 (v4 `3b463d6b1`, #76): `dangerousContentSettings` is REPLACED by `conciergeSettings` (the Zod shape, parsed by `_create`/`_update` with every default materialized and unknown keys stripped). Seed row A omits it (the `.default()` literal, no desk ids, no prompt); seed row B stores the migration's full shape. Op 0 creates a PARTIAL object (defaults filled, an integral threshold `1` kept as `1`) and still carries the retired `dangerousContentSettings` + `uncensoredImageDescriptionProfileId` + `cheapLLMSettings.imagePromptProfileId` as STRIP PROBES (v4's schema drops them; v5's typed create never binds them). Op 1 replaces the object with a partial one carrying an unknown key (stripped). Op 3 creates the full object.",
+    "P4.D255 (v4 `7c8572869` + `b3f937076`): `wardrobeImageSettings` — op 0 creates the full two-key bag, op 1 updates with `imageProfileId` alone (Zod fills `generateFromTools: false`), op 3 creates with `generateFromTools` alone (Zod fills `imageProfileId: null`). Then a READ leg through v4's REAL `findByUserId` (the port's read is POSITIONAL — the new column shifts every later index, which a table dump cannot see): `read` ops emit the hydrated row, interleaved with raw `sql` plants of the three stored shapes v4 measured — NULL (the key OMITTED), the migration's one-key DEFAULT and `{}` (the two-key default), and a two-key bag in a foreign key order with a stray key (schema order, stripped)."
   ],
   "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
   "seed": [
@@ -259,6 +260,10 @@
           "enabled": true,
           "defaultImageProfileId": "44444444-0000-4000-8000-000000000001"
         },
+        "wardrobeImageSettings": {
+          "imageProfileId": "d4000000-0000-4000-8000-000000000004",
+          "generateFromTools": true
+        },
         "conciergeSettings": {
           "preScreen": {
             "enabled": true,
@@ -369,6 +374,9 @@
           "displayQuotes": false,
           "dashes": true,
           "ellipsis": false
+        },
+        "wardrobeImageSettings": {
+          "imageProfileId": "d4000000-0000-4000-8000-000000000004"
         }
       }
     },
@@ -478,6 +486,9 @@
           "enabled": true,
           "defaultImageProfileId": "44444444-0000-4000-8000-000000000001"
         },
+        "wardrobeImageSettings": {
+          "generateFromTools": true
+        },
         "conciergeSettings": {
           "enabled": true,
           "uncensoredTextProfileId": "11111111-0000-4000-8000-000000000004",
@@ -519,6 +530,62 @@
         "createdAt": "2026-02-01T00:00:00.000Z",
         "updatedAt": "2026-02-01T00:00:00.000Z"
       }
+    },
+    {
+      "kind": "read",
+      "userId": "00000000-0000-4000-8000-0000000000aa"
+    },
+    {
+      "kind": "read",
+      "userId": "00000000-0000-4000-8000-0000000000bb"
+    },
+    {
+      "kind": "sql",
+      "sql": "UPDATE chat_settings SET wardrobeImageSettings = ? WHERE id = ?",
+      "params": [
+        null,
+        "a1000000-0000-4000-8000-000000000001"
+      ]
+    },
+    {
+      "kind": "read",
+      "userId": "00000000-0000-4000-8000-0000000000aa"
+    },
+    {
+      "kind": "sql",
+      "sql": "UPDATE chat_settings SET wardrobeImageSettings = ? WHERE id = ?",
+      "params": [
+        "{\"imageProfileId\":null}",
+        "a1000000-0000-4000-8000-000000000001"
+      ]
+    },
+    {
+      "kind": "read",
+      "userId": "00000000-0000-4000-8000-0000000000aa"
+    },
+    {
+      "kind": "sql",
+      "sql": "UPDATE chat_settings SET wardrobeImageSettings = ? WHERE id = ?",
+      "params": [
+        "{}",
+        "c3000000-0000-4000-8000-000000000003"
+      ]
+    },
+    {
+      "kind": "read",
+      "userId": "00000000-0000-4000-8000-0000000000bb"
+    },
+    {
+      "kind": "sql",
+      "sql": "UPDATE chat_settings SET wardrobeImageSettings = ? WHERE id = ?",
+      "params": [
+        "{\"generateFromTools\":true,\"imageProfileId\":\"d4000000-0000-4000-8000-000000000004\",\"stray\":1}",
+        "a1000000-0000-4000-8000-000000000001"
+      ]
+    },
+    {
+      "kind": "read",
+      "userId": "00000000-0000-4000-8000-0000000000aa"
     }
   ]
 }

@@ -31,6 +31,7 @@
     "answerConfirmationSettings",
     "smartTypographySettings",
     "storyBackgroundsSettings",
+    "wardrobeImageSettings",
     "conciergeSettings",
     "autoLockSettings",
     "timezone"
@@ -67,6 +68,7 @@
     "answerConfirmationSettings": "{\"enabled\":false}",
     "smartTypographySettings": "{\"displayQuotes\":false,\"dashes\":true,\"ellipsis\":true}",
     "storyBackgroundsSettings": "{\"enabled\":false,\"defaultImageProfileId\":null}",
+    "wardrobeImageSettings": "{\"imageProfileId\":null,\"generateFromTools\":false}",
     "conciergeSettings": "{\"enabled\":true,\"uncensoredTextProfileId\":null,\"uncensoredImageProfileId\":null,\"uncensoredVisionProfileId\":null,\"imagePromptProfileId\":null,\"autoSwitchAfterRefusals\":2,\"newChatsStartAs\":\"moderated\",\"display\":{\"mode\":\"SHOW\",\"showWarningBadges\":true},\"preScreen\":{\"enabled\":false,\"threshold\":0.7,\"scanTextChat\":true,\"scanImagePrompts\":true,\"scanImageGeneration\":false,\"customClassificationPrompt\":null,\"summaryClassification\":false}}",
     "autoLockSettings": "{\"enabled\":false,\"idleMinutes\":15}",
     "timezone": null

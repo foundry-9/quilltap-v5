@@ -40,7 +40,7 @@ use quilltap_core::db::chat_settings::{
     ContextCompressionSettings, CoreWhisperSettings, CreateOptions, ImpersonationVoiceMode,
     LlmLoggingSettings, MemoryCascadePreferences, MemoryExtractionLimits, SmartTypographySettings,
     StoryBackgroundsSettings, ThemePreference, ThinkingDisplaySettings, TimestampConfig,
-    TokenDisplaySettings,
+    TokenDisplaySettings, WardrobeImageSettings,
 };
 use quilltap_core::db::Writer;
 use serde::Deserialize;
@@ -70,6 +70,15 @@ enum Op {
     Update { id: String, data: UpdateData },
     #[serde(rename = "delete")]
     Delete { id: String },
+    /// P4.D255: a raw plant, identical on both sides.
+    #[serde(rename = "sql")]
+    Sql { sql: String, params: Vec<Value> },
+    /// P4.D255: hydrate one user's row through the port's POSITIONAL read.
+    #[serde(rename = "read")]
+    Read {
+        #[serde(rename = "userId")]
+        user_id: String,
+    },
 }
 
 /// The full create input — every persisted column, nested objects deserialized
@@ -120,6 +129,9 @@ struct CreateData {
     answer_confirmation_settings: AnswerConfirmationSettings,
     smart_typography_settings: SmartTypographySettings,
     story_backgrounds_settings: StoryBackgroundsSettings,
+    /// P4.D255: absent → NULL (v4's `.optional()` create).
+    #[serde(default)]
+    wardrobe_image_settings: Option<WardrobeImageSettings>,
     /// v4 `3b463d6b1` (#76): the raw object (absent → the `.default()`
     /// literal), Zod-parsed by the repository write.
     #[serde(default)]
@@ -184,6 +196,8 @@ struct UpdateData {
     #[serde(default)]
     smart_typography_settings: Option<SmartTypographySettings>,
     #[serde(default)]
+    wardrobe_image_settings: Option<WardrobeImageSettings>,
+    #[serde(default)]
     timezone: Option<String>,
     #[serde(rename = "updatedAt")]
     updated_at: String,
@@ -234,6 +248,7 @@ fn chat_settings_tier2_matches_oracle() {
     // Run the SAME op sequence through the Rust port.
     let writer = Writer::open_writable(&work, &spec.test_pepper_base64)
         .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
+    let mut reads: Vec<Option<String>> = Vec::new();
     {
         let repo = writer.chat_settings();
         for op in spec.ops {
@@ -273,6 +288,7 @@ fn chat_settings_tier2_matches_oracle() {
                             answer_confirmation_settings: data.answer_confirmation_settings,
                             smart_typography_settings: data.smart_typography_settings,
                             story_backgrounds_settings: data.story_backgrounds_settings,
+                            wardrobe_image_settings: data.wardrobe_image_settings,
                             concierge_settings: data.concierge_settings,
                             auto_lock_settings: data.auto_lock_settings,
                             timezone: data.timezone,
@@ -312,6 +328,7 @@ fn chat_settings_tier2_matches_oracle() {
                                     .auto_scroll_on_response_complete,
                                 answer_confirmation_settings: data.answer_confirmation_settings,
                                 smart_typography_settings: data.smart_typography_settings,
+                                wardrobe_image_settings: data.wardrobe_image_settings,
                                 timezone: data.timezone,
                                 updated_at: data.updated_at,
                             },
@@ -322,6 +339,28 @@ fn chat_settings_tier2_matches_oracle() {
                 Op::Delete { id } => {
                     let found = repo.delete(&id).expect("chat_settings.delete");
                     assert!(found, "delete target {id} not found in fixture");
+                }
+                Op::Sql { sql, params } => {
+                    let binds: Vec<rusqlite::types::Value> = params
+                        .iter()
+                        .map(|v| match v {
+                            Value::Null => rusqlite::types::Value::Null,
+                            Value::String(s) => rusqlite::types::Value::Text(s.clone()),
+                            other => panic!("unsupported sql param {other}"),
+                        })
+                        .collect();
+                    writer
+                        .connection()
+                        .execute(&sql, rusqlite::params_from_iter(binds))
+                        .expect("sql plant");
+                }
+                Op::Read { user_id } => {
+                    let row = quilltap_core::db::chat_settings::find_by_user_id(
+                        writer.connection(),
+                        &user_id,
+                    )
+                    .expect("find_by_user_id");
+                    reads.push(row.map(|r| serde_json::to_string(&r).unwrap()));
                 }
             }
         }
@@ -343,6 +382,20 @@ fn chat_settings_tier2_matches_oracle() {
         "row state diverged\n  rust:   {}\n  oracle: {}",
         got["rows"], oracle["rows"]
     );
+
+    // P4.D255: the READ leg — each hydrated row's JSON text, byte for byte
+    // (key order included: the port's read is positional).
+    let oracle_reads: Vec<Option<String>> = oracle["reads"]
+        .as_array()
+        .expect("oracle reads (regenerate: the P4.D255 case emits them)")
+        .iter()
+        .map(|v| v.as_str().map(str::to_string))
+        .collect();
+    assert!(!oracle_reads.is_empty(), "the oracle's read leg is EMPTY");
+    assert_eq!(reads.len(), oracle_reads.len(), "read op count");
+    for (i, (mine, theirs)) in reads.iter().zip(&oracle_reads).enumerate() {
+        assert_eq!(mine, theirs, "read #{i} diverged");
+    }
 
     let n = got["rows"].as_array().map(|a| a.len()).unwrap_or(0);
     assert!(n > 0, "dump looks empty");

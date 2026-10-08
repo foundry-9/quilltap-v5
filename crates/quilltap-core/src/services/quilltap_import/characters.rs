@@ -539,6 +539,7 @@ fn import_character_wardrobe_items(
                 .and_then(Value::as_bool)
                 .unwrap_or(false),
             migrated_from_clothing_record_id: Some(None),
+            image_file_id: None,
             archived_at: Some(opt_string(item, "archivedAt")),
             created_at: now.clone(),
             updated_at: now,

@@ -2305,6 +2305,43 @@ const CENSUS: &[Row] = &[
         v4: V4::Query,
         note: "`ui/search/route.ts:87-93` `searchParams`",
     },
+    // === P4.D255 (contract C1 §11): the wardrobe container scope ===
+    Row {
+        variant: "WardrobeItemWearHistory",
+        field: "scope",
+        rust_type: "WardrobeContainerScope",
+        v4: V4::Path,
+        note: "the tier is WHICH item route `?action=wear-history` rides (`wardrobe/[itemId]`, `characters/[id]/wardrobe/[itemId]`, the project / group factories) — never a body key",
+    },
+    Row {
+        variant: "WardrobeItemImagesList",
+        field: "scope",
+        rust_type: "WardrobeContainerScope",
+        v4: V4::Query,
+        note: "`wardrobe/[itemId]/images/route.ts:82` `sp.get('scope')` (a Zod enum over the query)",
+    },
+    Row {
+        variant: "WardrobeItemImageGenerate",
+        field: "scope",
+        rust_type: "WardrobeContainerScope",
+        v4: V4::Query,
+        note: "`wardrobe/[itemId]/images/route.ts:82` `sp.get('scope')` (a Zod enum over the query)",
+    },
+    Row {
+        variant: "WardrobeItemImageSetCurrent",
+        field: "scope",
+        rust_type: "WardrobeContainerScope",
+        v4: V4::Query,
+        note: "`wardrobe/[itemId]/images/route.ts:82` `sp.get('scope')` (a Zod enum over the query)",
+    },
+    Row {
+        variant: "WardrobeItemImageDelete",
+        field: "scope",
+        rust_type: "WardrobeContainerScope",
+        v4: V4::Query,
+        note: "`wardrobe/[itemId]/images/route.ts:82` `sp.get('scope')` (a Zod enum over the query)",
+    },
+    // === end P4.D255 ===
 ];
 
 /// The `ChatCreate` trio (the order's anchor). These are NOT `Request` fields —
@@ -2602,7 +2639,11 @@ fn is_route_identifier(field: &str) -> bool {
 // query flag with no `*_id` suffix. P4.D226/P4.D227 left 449 unmoved (the
 // chain's literal before this lane). Measured by running the test (red at 451
 // against 449 first).
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 451;
+// **P4.D255 (+13): 451 → 464** — the five C1 §11 wardrobe verbs
+// (`WardrobeItemWearHistory`, `WardrobeItemImagesList`, `…ImageGenerate`,
+// `…ImageSetCurrent`, `…ImageDelete`): five `item_id`, five `container_id`, two
+// `file_id`, one `image_profile_id`. Measured red at 464 before this edit.
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 464;
 
 /// **P4.115 item 5 — the field [`strip_noise`] hides, pinned both ways.** The
 /// shared module's rule finds every field this census's walk finds, plus

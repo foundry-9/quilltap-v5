@@ -73,6 +73,13 @@ pub fn topics_for_completed_job(job_type: Option<&str>, payload: Option<&Value>)
             TopicHint::scoped(RealtimeTopic::Characters, str_field(payload, "characterId")),
         ],
 
+        // P4.D255 (v4 `b3f937076`, `job-topics.ts:66-69`): the owner's
+        // wardrobe, and the mount the picture landed in. No chat hint.
+        Some("WARDROBE_ITEM_IMAGE_GENERATION") => vec![
+            TopicHint::scoped(RealtimeTopic::Characters, str_field(payload, "characterId")),
+            TopicHint::collection(RealtimeTopic::MountPoints),
+        ],
+
         Some("CHARACTER_HEADSHOULDERS_BACKFILL") => vec![TopicHint::scoped(
             RealtimeTopic::Characters,
             str_field(payload, "characterId"),

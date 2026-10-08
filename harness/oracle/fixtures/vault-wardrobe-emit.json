@@ -1898,6 +1898,84 @@
         "updatedAt": "2026-01-01T00:00:00.000Z",
         "characterId": null
       }
+    ],
+    [
+      {
+        "id": "00000000-0000-4000-8000-0000000d2551",
+        "title": "Pictured Coat",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": "legacy-9",
+        "imageFileId": "7d8c4a4e-5b1d-4f3a-9a2e-1c2b3d4e5f60",
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-10-08T00:00:00.000Z",
+        "updatedAt": "2026-10-08T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-0000000d2552",
+        "title": "Pictured Hat",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "imageFileId": "8d8c4a4e-5b1d-4f3a-9a2e-1c2b3d4e5f60",
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-10-08T00:00:00.000Z",
+        "updatedAt": "2026-10-08T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-0000000d2553",
+        "title": "Unpictured Scarf",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "imageFileId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-10-08T00:00:00.000Z",
+        "updatedAt": "2026-10-08T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-0000000d2554",
+        "title": "Blank Pointer Gloves",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "imageFileId": "",
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-10-08T00:00:00.000Z",
+        "updatedAt": "2026-10-08T00:00:00.000Z",
+        "characterId": null
+      }
     ]
   ]
 }

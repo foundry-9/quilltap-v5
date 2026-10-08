@@ -353,6 +353,12 @@ pub struct WardrobeItem {
         skip_serializing_if = "Option::is_none"
     )]
     pub migrated_from_clothing_record_id: Option<Option<String>>,
+    /// v4 `7c8572869` (#82, P4.D255): the item's current picture — a `files`
+    /// row linked to the item (`UUIDSchema.nullable().optional()`, after
+    /// `migratedFromClothingRecordId`). Written only by the images route or a
+    /// PUT choosing among the item's own pictures; never by a create.
+    #[serde(rename = "imageFileId", skip_serializing_if = "Option::is_none")]
+    pub image_file_id: Option<Option<String>>,
     #[serde(rename = "archivedAt", skip_serializing_if = "Option::is_none")]
     pub archived_at: Option<Option<String>>,
     #[serde(rename = "createdAt")]
@@ -401,6 +407,7 @@ impl WardrobeItem {
             is_default: v.get("isDefault").and_then(Value::as_bool).unwrap_or(false),
             replace: v.get("replace").and_then(Value::as_bool).unwrap_or(false),
             migrated_from_clothing_record_id: opt(v, "migratedFromClothingRecordId"),
+            image_file_id: opt(v, "imageFileId"),
             archived_at: opt(v, "archivedAt"),
             created_at: s(v, "createdAt"),
             updated_at: s(v, "updatedAt"),
@@ -484,6 +491,9 @@ fn validate_wardrobe_item(v: &Value) -> Option<WardrobeItem> {
 
     let migrated_from_clothing_record_id =
         opt_nullable_uuid(obj.get("migratedFromClothingRecordId"))?;
+    // P4.D255: `imageFileId: UUIDSchema.nullable().optional()` — the same
+    // nullable-UUID rule.
+    let image_file_id = opt_nullable_uuid(obj.get("imageFileId"))?;
 
     // archivedAt: ISO datetime | null | absent.
     let archived_at = match obj.get("archivedAt") {
@@ -516,6 +526,7 @@ fn validate_wardrobe_item(v: &Value) -> Option<WardrobeItem> {
         is_default,
         replace,
         migrated_from_clothing_record_id,
+        image_file_id,
         archived_at,
         created_at: created_at.to_string(),
         updated_at: updated_at.to_string(),
@@ -1047,6 +1058,11 @@ pub struct WardrobeItemFromFile {
     pub component_item_ids: Vec<String>,
     #[serde(rename = "migratedFromClothingRecordId")]
     pub migrated_from_clothing_record_id: Option<String>,
+    /// P4.D255 (v4 `parsers.ts:376-379, 415`): a NON-EMPTY frontmatter string,
+    /// else `null` — absent and `''` both read `null` (unlike the neighbour,
+    /// which keeps any string), and the key is ALWAYS emitted.
+    #[serde(rename = "imageFileId")]
+    pub image_file_id: Option<String>,
     #[serde(rename = "archivedAt")]
     pub archived_at: Option<String>,
     #[serde(rename = "createdAt")]
@@ -1107,13 +1123,11 @@ pub fn parse_wardrobe_item_file(
     // types: required valid enum list (parsed from frontmatter; absent → null → skip).
     let types = parse_wardrobe_types_field(fm_get(&fm, "types").unwrap_or(&Value::Null))?;
 
-    let id = match fm_get(&fm, "id").and_then(Value::as_str) {
-        Some(s) if is_wardrobe_id_shaped(s) => s.to_string(),
-        _ => stable_uuid_from_string(&format!(
-            "wardrobe-item:{}:{}",
-            doc.mount_point_id, doc.relative_path
-        )),
-    };
+    let id = resolve_wardrobe_item_id(
+        fm_get(&fm, "id").and_then(Value::as_str),
+        doc.mount_point_id,
+        doc.relative_path,
+    );
 
     let appropriateness = fm_get(&fm, "appropriateness")
         .and_then(Value::as_str)
@@ -1140,6 +1154,11 @@ pub fn parse_wardrobe_item_file(
     // `typeof === 'string'` — any string (incl. empty) is kept.
     let migrated_from_clothing_record_id = fm_get(&fm, "migratedFromClothingRecordId")
         .and_then(Value::as_str)
+        .map(str::to_string);
+
+    let image_file_id = fm_get(&fm, "imageFileId")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
         .map(str::to_string);
 
     let component_item_ids =
@@ -1174,10 +1193,64 @@ pub fn parse_wardrobe_item_file(
         replace,
         component_item_ids,
         migrated_from_clothing_record_id,
+        image_file_id,
         archived_at,
         created_at,
         updated_at,
     })
+}
+
+/// v4 `resolveWardrobeItemId(frontmatterId, mountPointId, relativePath)`
+/// (`parsers.ts:238-246`, `3ee3b1342`; P4.D255) — the id a `Wardrobe/*.md`
+/// file's item carries: its frontmatter `id` when that is a string matching
+/// `/^[0-9a-f-]{36}$/i`, otherwise a stable id derived from where the file
+/// lives. The single source of the rule: the parser and the `.qtap` /
+/// backup carriers (which need an item's id without parsing the whole item)
+/// all call it. A non-string frontmatter id is `None` here.
+pub fn resolve_wardrobe_item_id(
+    frontmatter_id: Option<&str>,
+    mount_point_id: &str,
+    relative_path: &str,
+) -> String {
+    match frontmatter_id {
+        Some(s) if is_wardrobe_id_shaped(s) => s.to_string(),
+        _ => stable_uuid_from_string(&format!("wardrobe-item:{mount_point_id}:{relative_path}")),
+    }
+}
+
+/// v4 `isWardrobeItemDocumentPath(relativePath)` (`parsers.ts:254-261`) — a
+/// `.md` file DIRECTLY inside a mount's `Wardrobe/` folder (not nested
+/// deeper), other than the dressing-guidance `instructions.md`. The whole
+/// test runs on the LOWER-CASED path (`toLowerCase` — the prefix, the `.md`
+/// suffix and the instructions name are all case-insensitive), mirroring the
+/// non-recursive folder read `readCharacterVaultWardrobe` performs.
+pub fn is_wardrobe_item_document_path(relative_path: &str) -> bool {
+    let prefix = "wardrobe/";
+    let lower = relative_path.to_lowercase();
+    let Some(rest) = lower.strip_prefix(prefix) else {
+        return false;
+    };
+    if rest.is_empty() || rest.contains('/') || !rest.ends_with(".md") {
+        return false;
+    }
+    !crate::wardrobe_instructions::is_wardrobe_instructions_file_name(rest)
+}
+
+/// v4 `wardrobeItemIdForDocument(doc)` (`parsers.ts:268-278`) — a
+/// `Wardrobe/*.md` document's item id from its frontmatter ALONE (see
+/// [`resolve_wardrobe_item_id`]). Callers check
+/// [`is_wardrobe_item_document_path`] first.
+pub fn wardrobe_item_id_for_document(
+    mount_point_id: &str,
+    relative_path: &str,
+    content: &str,
+) -> String {
+    let fm = crate::markdown::parse_frontmatter(content);
+    resolve_wardrobe_item_id(
+        fm_get(&fm, "id").and_then(Value::as_str),
+        mount_point_id,
+        relative_path,
+    )
 }
 
 /// A shared archetype seeded into component resolution (v4's
@@ -2274,6 +2347,14 @@ pub fn build_wardrobe_item_file(
             data.push(("migratedFromClothingRecordId", FmVal::Str(m.clone())));
         }
     }
+    // P4.D255 (v4 `character-vault.ts:361-363`): `if (item.imageFileId)` —
+    // emitted ONLY when set (a non-empty string), after the neighbour and
+    // before the timestamps.
+    if let Some(Some(f)) = &item.image_file_id {
+        if !f.is_empty() {
+            data.push(("imageFileId", FmVal::Str(f.clone())));
+        }
+    }
     data.push(("createdAt", FmVal::Str(item.created_at.clone())));
     data.push(("updatedAt", FmVal::Str(item.updated_at.clone())));
 
@@ -2373,6 +2454,7 @@ mod tests {
             replace: false,
             component_item_ids: refs.iter().map(|s| s.to_string()).collect(),
             migrated_from_clothing_record_id: None,
+            image_file_id: None,
             archived_at: None,
             created_at: "t".to_string(),
             updated_at: "t".to_string(),
@@ -2639,6 +2721,7 @@ mod tests {
             is_default: false,
             replace: false,
             migrated_from_clothing_record_id: None,
+            image_file_id: None,
             archived_at: None,
             created_at: "2026-01-01T00:00:00.000Z".to_string(),
             updated_at: "2026-01-01T00:00:00.000Z".to_string(),

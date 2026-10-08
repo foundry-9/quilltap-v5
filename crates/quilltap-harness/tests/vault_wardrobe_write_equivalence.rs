@@ -155,6 +155,7 @@ fn item_from_json(v: &Value) -> WardrobeItem {
         is_default: v.get("isDefault").and_then(Value::as_bool).unwrap_or(false),
         replace: v.get("replace").and_then(Value::as_bool).unwrap_or(false),
         migrated_from_clothing_record_id: opt_opt(v.get("migratedFromClothingRecordId")),
+        image_file_id: None,
         archived_at: opt_opt(v.get("archivedAt")),
         created_at: str_field(v, "createdAt"),
         updated_at: str_field(v, "updatedAt"),

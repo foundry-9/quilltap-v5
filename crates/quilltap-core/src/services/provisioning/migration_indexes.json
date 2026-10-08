@@ -1,8 +1,8 @@
 {
   "source": {
     "dumper": "harness/oracle/provision/dump-migration-indexes.ts",
-    "v4Commit": "94fbb1ae3e1f7cda46f818a4acefb045f1a33740",
-    "v4Version": "4.10.0-dev.112",
+    "v4Commit": "f5e953a3f557762b18a314004cefc843786df78b",
+    "v4Version": "4.10.0-dev.117",
     "note": "Generated - never hand-edit (D23). Re-dump from a pinned v4 worktree."
   },
   "main": [
@@ -55,7 +55,9 @@
     "CREATE INDEX \"idx_users_email\" ON \"users\" (\"email\")",
     "CREATE INDEX \"idx_users_username\" ON \"users\" (\"username\")",
     "CREATE INDEX \"idx_vector_entries_characterId\" ON \"vector_entries\" (\"characterId\")",
-    "CREATE INDEX \"idx_vector_indices_characterId\" ON \"vector_indices\" (\"characterId\")"
+    "CREATE INDEX \"idx_vector_indices_characterId\" ON \"vector_indices\" (\"characterId\")",
+    "CREATE UNIQUE INDEX \"idx_wardrobe_wear_stats_item_wearer\"\n    ON \"wardrobe_wear_stats\" (\"itemId\", COALESCE(\"wearerCharacterId\", ''))",
+    "CREATE INDEX \"idx_wardrobe_wear_stats_wearer\"\n    ON \"wardrobe_wear_stats\" (\"wearerCharacterId\")"
   ],
   "mountIndex": [
     "CREATE UNIQUE INDEX \"idx_doc_mount_folders_mp_path\" ON \"doc_mount_folders\" (\"mountPointId\", \"path\")",

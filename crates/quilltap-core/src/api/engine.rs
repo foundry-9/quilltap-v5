@@ -5453,6 +5453,78 @@ impl CoreEngine {
                 Ok(db) => super::wardrobe::wardrobe_create(&db, item).await,
                 Err(r) => r,
             },
+            // === P4.D255 (contract C1 §11 — FROZEN call shapes) ===
+            Request::WardrobeItemWearHistory {
+                scope,
+                container_id,
+                item_id,
+            } => match self.ready_db() {
+                Ok(db) => super::wardrobe_wear_history::wardrobe_item_wear_history(
+                    &db,
+                    scope,
+                    container_id.as_deref(),
+                    &item_id,
+                ),
+                Err(r) => r,
+            },
+            Request::WardrobeItemImagesList {
+                scope,
+                container_id,
+                item_id,
+            } => match self.ready_db() {
+                Ok(db) => super::wardrobe_item_images::list(&db, scope, container_id.as_deref(), &item_id),
+                Err(r) => r,
+            },
+            Request::WardrobeItemImageGenerate {
+                scope,
+                container_id,
+                item_id,
+                image_profile_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::wardrobe_item_images::generate(
+                        &db,
+                        SINGLE_USER_ID,
+                        scope,
+                        container_id.as_deref(),
+                        &item_id,
+                        image_profile_id.as_deref(),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::WardrobeItemImageSetCurrent {
+                scope,
+                container_id,
+                item_id,
+                file_id,
+            } => match self.ready_db() {
+                Ok(db) => super::wardrobe_item_images::set_current(
+                    &db,
+                    scope,
+                    container_id.as_deref(),
+                    &item_id,
+                    &file_id,
+                ),
+                Err(r) => r,
+            },
+            Request::WardrobeItemImageDelete {
+                scope,
+                container_id,
+                item_id,
+                file_id,
+            } => match self.ready_db() {
+                Ok(db) => super::wardrobe_item_images::delete(
+                    &db,
+                    scope,
+                    container_id.as_deref(),
+                    &item_id,
+                    &file_id,
+                ),
+                Err(r) => r,
+            },
+            // === end P4.D255 ===
             Request::WardrobeItemGet { item_id } => match self.ready_db() {
                 Ok(db) => super::wardrobe::wardrobe_item_get(&db, &item_id),
                 Err(r) => r,

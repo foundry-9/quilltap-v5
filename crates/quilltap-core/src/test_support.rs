@@ -180,6 +180,16 @@ pub fn ensure_p4d225_columns(conn: &rusqlite::Connection) {
         .expect("ensure the refusal-ledger columns on a test fixture");
 }
 
+/// C1 §6 (P4.D255): read a pre-round fixture pair as a booted instance would —
+/// v4's `add-wardrobe-wear-stats-table-v1` TABLE step alone (the migration's
+/// three statements when the table is absent), never the seed, never a
+/// `migrations_state` stamp. For harness families whose committed pairs
+/// predate `wardrobe_wear_stats` (§R.3).
+pub fn ensure_wear_ledger_on(conn: &rusqlite::Connection) {
+    crate::db::wardrobe_wear_stats_repair::ensure_wardrobe_wear_stats_table_only(conn)
+        .expect("ensure the wardrobe wear ledger table on a test fixture");
+}
+
 /// `job_runner.rs`'s holdout idiom: a process-global subscriber, armed once,
 /// with a per-thread buffer — see the module doc for why this is a
 /// genuinely different contract from [`captured`], not a copy that drifted.

@@ -55,6 +55,8 @@ use tracing_subscriber::layer::SubscriberExt;
 
 const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
 const MAIN: &str = "quilltap.db";
+/// P4.D255: the wear ledger, whose TABLE text is a ruled two-shape carve.
+const WEAR_TABLE: &str = "wardrobe_wear_stats";
 const MOUNT: &str = "quilltap-mount-index.db";
 const LLM: &str = "quilltap-llm-logs.db";
 const PARTITIONS: [(&str, &str); 3] = [("main", MAIN), ("mountIndex", MOUNT), ("llmLogs", LLM)];
@@ -110,7 +112,9 @@ fn index_name(sql: &str) -> Option<String> {
     let rest = rest.strip_prefix("INDEX ")?;
     let rest = rest.strip_prefix("IF NOT EXISTS ").unwrap_or(rest);
     Some(
-        rest.split([' ', '('])
+        // P4.D255: any whitespace ends the name — v4's wardrobe-wear
+        // indexes are stored with a line break after it.
+        rest.split(|c: char| c.is_whitespace() || c == '(')
             .next()
             .unwrap()
             .trim_matches('"')
@@ -167,6 +171,11 @@ fn derive_pre_round(data: &Path) {
             .collect();
         exec(data, file, &drops);
     }
+    // P4.D255: an instance `setup` before this round has no
+    // `wardrobe_wear_stats` either — the boot's wear ensure creates it (with
+    // its two hand indexes) BEFORE the backfill, which then counts them as
+    // present, not created. Dropping the table drops its provisioned indexes.
+    exec(data, MAIN, "DROP TABLE \"wardrobe_wear_stats\";");
     // `fresh_schema.json`'s PLAIN copy — what the provisioner made before the
     // 2026-10-06 ruling skipped it in favour of the artifact's UNIQUE one.
     let plain = statements("fresh_schema.json", "mountIndex")
@@ -272,8 +281,39 @@ fn assert_master_equals_fresh(booted: &Booted, fresh: &Booted, skip: &[&str]) {
             .into_iter()
             .filter(|(_, n, _)| !skip.contains(&n.as_str()))
             .collect();
-        let only_ours: Vec<_> = ours.iter().filter(|r| !theirs.contains(r)).collect();
-        let only_theirs: Vec<_> = theirs.iter().filter(|r| !ours.contains(r)).collect();
+        // P4.D255 (the human's 2026-10-08 ruling over the order's R-A) — a
+        // NAMED both-ways carve: the boot's wear ensure creates v4's MIGRATION
+        // text on an upgraded instance, a fresh provision keeps generateDDL's.
+        // Each side must hold ITS shape, so a convergence reddens here.
+        let wear = |rows: &[(String, String, Option<String>)]| -> Option<String> {
+            rows.iter()
+                .find(|(t, n, _)| t == "table" && n == WEAR_TABLE)
+                .and_then(|(_, _, sql)| sql.clone())
+        };
+        if partition == "main" {
+            let (o, t) = (wear(&ours), wear(&theirs));
+            assert!(
+                o.as_deref()
+                    .is_some_and(|s| s.contains("\"wearCount\" INTEGER NOT NULL DEFAULT 0")),
+                "the ensured wear ledger is not v4's migration text: {o:?}"
+            );
+            assert!(
+                t.as_deref()
+                    .is_some_and(|s| s.contains("\"wearCount\" REAL NOT NULL")),
+                "the provisioned wear ledger is not generateDDL's text: {t:?}"
+            );
+        }
+        let carved = |r: &&(String, String, Option<String>)| !(r.0 == "table" && r.1 == WEAR_TABLE);
+        let only_ours: Vec<_> = ours
+            .iter()
+            .filter(carved)
+            .filter(|r| !theirs.contains(r))
+            .collect();
+        let only_theirs: Vec<_> = theirs
+            .iter()
+            .filter(carved)
+            .filter(|r| !ours.contains(r))
+            .collect();
         assert!(
             only_ours.is_empty() && only_theirs.is_empty(),
             "{partition}: sqlite_master differs from a fresh provision's after one boot\n  \

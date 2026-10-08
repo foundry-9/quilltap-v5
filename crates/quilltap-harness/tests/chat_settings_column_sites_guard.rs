@@ -49,6 +49,14 @@ const ADOPTED_BOOLEAN_COLUMNS: &[&str] = &[
 /// the old name must appear in NO region now, pinned below).
 const ADOPTED_TEXT_COLUMNS: &[&str] = &["impersonationVoiceMode"];
 
+/// The JSON-object bag columns adopted the same way (the six regions; bound as
+/// the serialized object). P4.D255 (v4 `7c8572869` + `b3f937076`):
+/// `wardrobeImageSettings`, whose read is POSITIONAL like the rest — a dropped
+/// array entry would shift every later index. The pre-existing bags
+/// (`smartTypographySettings`, `storyBackgroundsSettings`, …) are NOT listed
+/// yet: widening the census to them is a recorded smalls-round item.
+const ADOPTED_JSON_COLUMNS: &[&str] = &["wardrobeImageSettings"];
+
 /// Columns v4 RETIRED whose name must no longer reach any census region.
 const RETIRED_COLUMNS: &[&str] = &["impersonationVoiceRewrite"];
 
@@ -102,7 +110,11 @@ fn every_adopted_column_reaches_all_six_sites() {
     );
 
     let mut missing: Vec<String> = Vec::new();
-    for col in ADOPTED_BOOLEAN_COLUMNS.iter().chain(ADOPTED_TEXT_COLUMNS) {
+    for col in ADOPTED_BOOLEAN_COLUMNS
+        .iter()
+        .chain(ADOPTED_TEXT_COLUMNS)
+        .chain(ADOPTED_JSON_COLUMNS)
+    {
         let quoted = format!("\"{col}\"");
         // The UPDATE builder spells the column inside a `format!` SQL fragment
         // (`"composerUnicode = ?{}"`), so the quoted-name needle would never

@@ -48,10 +48,15 @@ import { tmpdir } from 'node:os';
 import { canonicalizeRows } from '../lib/tier2.js';
 
 interface Op {
-  kind: 'create' | 'update' | 'delete';
+  kind: 'create' | 'update' | 'delete' | 'sql' | 'read';
   id?: string;
   data?: Record<string, unknown>;
   options?: { id: string; createdAt: string; updatedAt: string };
+  /** P4.D255: a raw plant (`sql`) and its bind params, identical on both sides. */
+  sql?: string;
+  params?: unknown[];
+  /** P4.D255: the user whose row a `read` op hydrates through `findByUserId`. */
+  userId?: string;
 }
 
 interface Spec {
@@ -97,11 +102,18 @@ async function main(): Promise<void> {
   await initializeDatabase();
   const repo = new ChatSettingsRepository();
 
+  // P4.D255: each `read` op's hydrated row, JSON text (null = no row), in op order.
+  const reads: Array<string | null> = [];
   for (const op of spec.ops) {
     if (op.kind === 'create') {
       await repo.create(op.data as never, op.options);
     } else if (op.kind === 'update') {
       await repo.update(op.id as string, op.data as never);
+    } else if (op.kind === 'sql') {
+      await rawQuery(op.sql as string, op.params ?? []);
+    } else if (op.kind === 'read') {
+      const row = await repo.findByUserId(op.userId as string);
+      reads.push(row === null ? null : JSON.stringify(row));
     } else {
       await repo.delete(op.id as string);
     }
@@ -129,7 +141,7 @@ async function main(): Promise<void> {
   });
 
   process.stdout.write(
-    JSON.stringify({ case: 'chat-settings-tier2', ...dump }) + '\n'
+    JSON.stringify({ case: 'chat-settings-tier2', ...dump, reads }) + '\n'
   );
   process.exit(0);
 }

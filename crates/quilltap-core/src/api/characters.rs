@@ -2731,6 +2731,7 @@ pub async fn character_wardrobe_create(
             // appears as null in the create echo), but NOT `archivedAt` (absent),
             // so the create echo carries the former and omits the latter.
             migrated_from_clothing_record_id: Some(None),
+            image_file_id: None,
             archived_at: None,
             created_at: now.clone(),
             updated_at: now,

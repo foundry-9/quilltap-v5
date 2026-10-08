@@ -273,6 +273,7 @@ pub async fn wardrobe_create(db: &Db, body: Value) -> Response {
             is_default: parsed.is_default.unwrap_or(false),
             replace: parsed.replace.unwrap_or(false),
             migrated_from_clothing_record_id: Some(None),
+            image_file_id: None,
             archived_at: None,
             created_at: now.clone(),
             updated_at: now,
@@ -340,6 +341,7 @@ pub async fn wardrobe_update(db: &Db, item_id: &str, body: Value) -> Response {
         is_default: parsed.is_default,
         replace: parsed.replace,
         archived_at: None,
+        image_file_id: None,
     };
     let archived = parsed.archived;
 

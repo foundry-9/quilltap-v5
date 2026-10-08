@@ -135,7 +135,9 @@ fn index_name(sql: &str) -> Option<String> {
     let rest = rest.strip_prefix("UNIQUE ").unwrap_or(rest);
     let rest = rest.strip_prefix("INDEX ")?;
     Some(
-        rest.split([' ', '('])
+        // Any whitespace ends the name: the wardrobe-wear pair (P4.D255) is
+        // stored with a line break after it.
+        rest.split(|c: char| c.is_whitespace() || c == '(')
             .next()
             .unwrap()
             .trim_matches('"')
@@ -161,6 +163,12 @@ fn derive_pre_round(data: &Path) {
             .collect();
         exec(data, file, &drops);
     }
+    // P4.D255: a pre-round instance predates `wardrobe_wear_stats` too, so the
+    // boot's wear ensure CREATES it (the migration's three statements) and adds
+    // the repository's `createdAt` index — BEFORE the index backfill, which then
+    // finds both hand indexes present ("present → skipped"). Dropping the table
+    // drops the provisioned `createdAt` index with it.
+    exec(data, MAIN, "DROP TABLE \"wardrobe_wear_stats\";");
     let plain = artifact("fresh_schema.json", "mountIndex")
         .into_iter()
         .find(|sql| index_name(sql).as_deref() == Some("idx_doc_mount_folders_mp_path"))

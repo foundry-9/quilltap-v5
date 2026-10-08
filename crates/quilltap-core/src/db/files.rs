@@ -481,6 +481,54 @@ impl<'c> FilesRepository<'c> {
         Ok(rows)
     }
 
+    /// v4 `findByLinkedTo(entityId)` (`files.repository.ts:104-112`) WHOLE —
+    /// every column of every `files` row whose `linkedTo` names the entity,
+    /// rowid order (P4.D255, the wardrobe item-images history read). v4 runs
+    /// `findByFilter({ linkedTo: { $in: [entityId] } })`, which validates each
+    /// row through `FileEntrySchema` and DROPS a failure after its two lines
+    /// (ERROR `Data validation failed`, WARN `Safe validation failed`, both
+    /// `{collection: 'files', error}`) — [`file_row_issues`] carries the arms a
+    /// stored row can actually fail (the `api/images.rs` rule). A read failure
+    /// is `findByFilter`'s own fallback (`Error finding entities by filter`,
+    /// `[]`), which is why the method's outer `Error finding files linked to
+    /// entity` wrap never fires.
+    pub fn find_by_linked_to(&self, entity_id: &str) -> Result<Vec<FileRow>, DbError> {
+        Ok(super::fallback::find_by_filter_or_empty("files", || {
+            // Tolerant: a migration-vintage instance can lack a later column
+            // (`isPlainText`, `generationKey`, …) — it reads as NULL.
+            let cols = super::tolerant_select_list(self.conn, "files", FILE_ROW_COLUMNS)?;
+            let mut stmt = self.conn.prepare(&format!(
+                "SELECT {cols} FROM files WHERE EXISTS (SELECT 1 FROM json_each(files.linkedTo) WHERE value = ?1)"
+            ))?;
+            let rows = stmt
+                .query_map(params![entity_id], map_file_row)?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .into_iter()
+        .filter(|row| {
+            let issues = file_row_issues(row);
+            if issues.is_empty() {
+                return true;
+            }
+            let error = crate::api::zod_issues::zod_error_message(&issues);
+            tracing::error!(
+                target: "quilltap::db",
+                collection = "files",
+                error = %error,
+                "Data validation failed"
+            );
+            tracing::warn!(
+                target: "quilltap::db",
+                collection = "files",
+                error = %error,
+                "Safe validation failed"
+            );
+            false
+        })
+        .collect())
+    }
+
     /// v4 `findByLinkedTo(entityId)` reduced to the columns the W4.4b
     /// `loadAndProcessFiles` consumes (`id`, `originalFilename`, `mimeType`,
     /// `size`). Same `json_each` membership test as [`Self::find_sweep_rows_by_linked_to`],
@@ -919,6 +967,102 @@ impl<'c> FilesRepository<'c> {
     }
 }
 
+/// EVERY `files` column, as stored (P4.D255 — [`FilesRepository::find_by_linked_to`]'s
+/// row; v4's whole `FileEntry`). `linkedTo` / `tags` are the raw JSON elements
+/// (v4 hydrates with `JSON.parse`, so a non-string survives to validation);
+/// `size` / `width` / `height` are REAL-affinity integers.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FileRow {
+    pub id: String,
+    pub user_id: String,
+    pub sha256: Option<String>,
+    pub original_filename: String,
+    pub mime_type: String,
+    pub size: i64,
+    pub width: Option<i64>,
+    pub height: Option<i64>,
+    pub is_plain_text: Option<bool>,
+    pub linked_to: Vec<serde_json::Value>,
+    pub source: String,
+    pub category: String,
+    pub generation_prompt: Option<String>,
+    pub generation_model: Option<String>,
+    pub generation_revised_prompt: Option<String>,
+    pub generation_key: Option<String>,
+    pub description: Option<String>,
+    pub tags: Vec<serde_json::Value>,
+    pub project_id: Option<String>,
+    pub folder_path: Option<String>,
+    pub storage_key: Option<String>,
+    pub file_status: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl FileRow {
+    /// The photo-tool [`FileEntry`] subset of this row.
+    pub fn as_file_entry(&self) -> FileEntry {
+        FileEntry {
+            id: self.id.clone(),
+            sha256: self.sha256.clone().unwrap_or_default(),
+            original_filename: self.original_filename.clone(),
+            mime_type: self.mime_type.clone(),
+            size: self.size,
+            width: self.width,
+            height: self.height,
+            category: self.category.clone(),
+            generation_prompt: self.generation_prompt.clone(),
+            generation_model: self.generation_model.clone(),
+            generation_revised_prompt: self.generation_revised_prompt.clone(),
+            generation_key: self.generation_key.clone(),
+            description: self.description.clone(),
+            storage_key: self.storage_key.clone(),
+        }
+    }
+}
+
+/// `FileEntrySchema`'s issues for a stored row, restricted (as
+/// `api/images.rs`'s rule is) to the arms a row this port or v4 writes can
+/// fail: `sha256: z.string().length(64)`, `linkedTo` / `tags:
+/// z.array(UUIDSchema)`. Schema key order.
+pub fn file_row_issues(row: &FileRow) -> Vec<crate::api::zod_issues::ZodIssue> {
+    use crate::api::zod_issues::ZodIssue;
+    use serde_json::Value;
+    let mut issues = Vec::new();
+    match row.sha256.as_deref() {
+        None => issues.push(ZodIssue::invalid_type(
+            "string",
+            vec![Value::String("sha256".into())],
+            Some(&Value::Null),
+        )),
+        Some(s) => {
+            let n = s.encode_utf16().count();
+            if n < 64 {
+                issues.push(ZodIssue::too_small_string_exact(
+                    64,
+                    vec![Value::String("sha256".into())],
+                ));
+            } else if n > 64 {
+                issues.push(ZodIssue::too_big_string_exact(
+                    64,
+                    vec![Value::String("sha256".into())],
+                ));
+            }
+        }
+    }
+    for (key, arr) in [("linkedTo", &row.linked_to), ("tags", &row.tags)] {
+        for (i, v) in arr.iter().enumerate() {
+            let path = vec![Value::String(key.into()), Value::from(i)];
+            match v.as_str() {
+                Some(s) if crate::services::file_storage::is_zod_uuid(s) => {}
+                Some(_) => issues.push(ZodIssue::invalid_uuid(path)),
+                None => issues.push(ZodIssue::invalid_type("string", path, Some(v))),
+            }
+        }
+    }
+    issues
+}
+
 /// The `files`-row subset the photo tools consume (v4 `FileEntry`, restricted to
 /// the columns `saveImageToAlbum` / `attach_image` read). The image bytes live
 /// behind the [`crate::photos::save_image_to_album::FileBytesStore`] seam, keyed
@@ -1081,6 +1225,68 @@ fn map_file_full(row: &rusqlite::Row<'_>) -> rusqlite::Result<FileFull> {
         updated_at: row.get(15)?,
         sha256: row.get(16)?,
         generation_key: row.get(17)?,
+    })
+}
+
+const FILE_ROW_COLUMNS: &[&str] = &[
+    "id",
+    "userId",
+    "sha256",
+    "originalFilename",
+    "mimeType",
+    "size",
+    "width",
+    "height",
+    "isPlainText",
+    "linkedTo",
+    "source",
+    "category",
+    "generationPrompt",
+    "generationModel",
+    "generationRevisedPrompt",
+    "generationKey",
+    "description",
+    "tags",
+    "projectId",
+    "folderPath",
+    "storageKey",
+    "fileStatus",
+    "createdAt",
+    "updatedAt",
+];
+
+/// Map a [`FILE_ROW_COLUMNS`] row into a [`FileRow`].
+fn map_file_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<FileRow> {
+    let json_array = |cell: Option<String>| -> Vec<serde_json::Value> {
+        cell.filter(|s| !s.is_empty())
+            .and_then(|s| serde_json::from_str::<Vec<serde_json::Value>>(&s).ok())
+            .unwrap_or_default()
+    };
+    Ok(FileRow {
+        id: row.get(0)?,
+        user_id: row.get(1)?,
+        sha256: row.get(2)?,
+        original_filename: row.get(3)?,
+        mime_type: row.get(4)?,
+        size: real_affinity_opt_i64(row.get_ref(5)?).unwrap_or(0),
+        width: real_affinity_opt_i64(row.get_ref(6)?),
+        height: real_affinity_opt_i64(row.get_ref(7)?),
+        is_plain_text: row.get::<_, Option<i64>>(8)?.map(|v| v != 0),
+        linked_to: json_array(row.get(9)?),
+        source: row.get(10)?,
+        category: row.get(11)?,
+        generation_prompt: row.get(12)?,
+        generation_model: row.get(13)?,
+        generation_revised_prompt: row.get(14)?,
+        generation_key: row.get(15)?,
+        description: row.get(16)?,
+        tags: json_array(row.get(17)?),
+        project_id: row.get(18)?,
+        folder_path: row.get(19)?,
+        storage_key: row.get(20)?,
+        file_status: row.get(21)?,
+        created_at: row.get(22)?,
+        updated_at: row.get(23)?,
     })
 }
 
@@ -1354,5 +1560,97 @@ mod generation_key_tests {
             None,
             "None binds SQL NULL, not the empty string"
         );
+    }
+}
+
+#[cfg(test)]
+mod find_by_linked_to_tests {
+    use super::*;
+
+    const ITEM: &str = "7d8c4a4e-5b1d-4f3a-9a2e-1c2b3d4e5f60";
+    const SHA: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+    fn table() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        let schema: serde_json::Value =
+            serde_json::from_str(include_str!("../services/provisioning/fresh_schema.json"))
+                .unwrap();
+        let ddl = schema["main"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|s| s.as_str().unwrap())
+            .find(|s| s.starts_with("CREATE TABLE \"files\""))
+            .unwrap();
+        conn.execute_batch(ddl).unwrap();
+        conn
+    }
+
+    fn plant(conn: &Connection, id: &str, sha: &str, linked: &str, created: &str) {
+        conn.execute(
+            "INSERT INTO files (id, userId, sha256, originalFilename, mimeType, size, linkedTo, \
+             source, category, tags, createdAt, updatedAt) VALUES (?1, 'u', ?2, 'coat.webp', \
+             'image/webp', 12, ?3, 'GENERATED', 'IMAGE', '[]', ?4, ?4)",
+            params![id, sha, linked, created],
+        )
+        .unwrap();
+    }
+
+    /// One valid row, one a schema failure (a short `sha256`), one linked to
+    /// another entity: the read answers the valid row alone, after v4's two
+    /// lines for the dropped one.
+    #[test]
+    fn reads_full_rows_and_drops_an_invalid_one() {
+        let conn = table();
+        plant(
+            &conn,
+            "a",
+            SHA,
+            &format!("[\"{ITEM}\"]"),
+            "2026-01-01T00:00:00.000Z",
+        );
+        plant(
+            &conn,
+            "b",
+            "short",
+            &format!("[\"{ITEM}\"]"),
+            "2026-01-02T00:00:00.000Z",
+        );
+        plant(
+            &conn,
+            "c",
+            SHA,
+            "[\"8d8c4a4e-5b1d-4f3a-9a2e-1c2b3d4e5f60\"]",
+            "2026-01-03T00:00:00.000Z",
+        );
+        let (rows, lines) = crate::test_support::captured_with(|| {
+            FilesRepository::new(&conn).find_by_linked_to(ITEM).unwrap()
+        });
+        assert_eq!(
+            rows.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+            vec!["a"]
+        );
+        assert_eq!(rows[0].source, "GENERATED");
+        assert_eq!(rows[0].created_at, "2026-01-01T00:00:00.000Z");
+        assert_eq!(rows[0].linked_to, vec![serde_json::json!(ITEM)]);
+        assert_eq!(lines.len(), 2, "{lines:#?}");
+        assert!(lines[0]
+            .starts_with("ERROR quilltap::db Data validation failed collection=files error=["));
+        assert!(lines[0].contains("\"sha256\""));
+        assert!(lines[1]
+            .starts_with("WARN quilltap::db Safe validation failed collection=files error=["));
+    }
+
+    /// A read failure is `findByFilter`'s fallback: the line and `[]`.
+    #[test]
+    fn a_missing_table_is_the_find_by_filter_fallback() {
+        let conn = Connection::open_in_memory().unwrap();
+        let (rows, lines) = crate::test_support::captured_with(|| {
+            FilesRepository::new(&conn).find_by_linked_to(ITEM).unwrap()
+        });
+        assert!(rows.is_empty());
+        assert_eq!(lines.len(), 1, "{lines:#?}");
+        assert!(lines[0]
+            .starts_with("ERROR quilltap::db Error finding entities by filter collection=files"));
     }
 }

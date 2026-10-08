@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(wardrobe): KEYSTONE — the wardrobe foundation for the `f5e953a3f` round (P4.D255 contract C1)
+
+_Versions: core 0.0.1253, host 0.0.190._
+
+The shared surface four stage-2 lanes (P4.D256, P4.D262, P4.D263, P4.D264) build on.
+
+- Schema: sixth D23 re-dump of `fresh_schema.json` (adds `chat_settings."wardrobeImageSettings"` and v4's generateDDL `wardrobe_wear_stats` + its `createdAt` index) and of `chat_settings_seed.json` (the two-key default). Re-dumped `migration_indexes.json` adds the UNIQUE `idx_wardrobe_wear_stats_item_wearer` and `idx_wardrobe_wear_stats_wearer`. Cross-checked against a real v4 first boot at the pin: zero findings. The order's `migration_tables.json` was dropped by the human's ruling: a fresh instance keeps generateDDL's table text, and its upsert target comes from the index re-dump.
+- `provisioning::index_name` ends a name at any whitespace. v4's first multi-line index text had produced a corrupted name.
+- Boot ensures (host): the wear-ledger table and its one-time seed from current outfits. Each step stamps its `migrations_state` row and is skipped when either app already wrote one, so v4 never double-seeds a shared instance. A failed seed rolls back and the boot continues. The `wardrobeImageSettings` column is added with v4's one-key default.
+- `db::wardrobe_wear_stats`: the ledger data layer (v4's exact upsert SQL, savepoint atomicity, the fold, type-tolerant `wearCount`, fallback reads, `diff_equipped_outfit`, `summarize`).
+- Item `imageFileId`: struct field, frontmatter read and write, `WardrobePatch`, and every struct literal. Also the three parser extractions.
+- Chat settings: typed `WardrobeImageSettings` through the positional read. A NULL cell omits the key, as v4 does, and an invalid bag drops the row. Adds `wardrobe_tool_images_enabled`.
+- `files.find_by_linked_to` returns a new full-row `FileRow`. Adds the item-image primitives and the frozen path helpers.
+- Job kind `WARDROBE_ITEM_IMAGE_GENERATION`: activity row, topics, `JOB_TYPES` row, and the PENDING-only enqueue.
+- Five dispatch verbs (`WardrobeContainerScope`, `Response::WardrobeWearHistory` / `WardrobeItemImages`), with agreed `not_available` refusal bodies that their owning lanes replace.
+- Differentials: `chat_settings_tier2` gains the create/update rows and a read leg through v4's real `findByUserId`. `vault_wardrobe_item_file` gains `imageFileId` rows and 28 extraction rows. `vault_wardrobe_emit` gains a pointer case. `provisioning_equivalence` (1e) runs the ledger upsert on both fresh instances. The backfill family derives a faithful pre-round instance. The column-sites guard adopts the JSON column. The dispatch census goes from 451 to 464 and classifies the five `scope` fields.
+
 #### 2026-10-08 — docs(porting): order the `f5e953a3f` wardrobe-programme + convergence drift catch-up round — ten work orders (P4.D255 → {P4.D256 ∥ P4.D262 ∥ P4.D263 ∥ P4.D264} ∥ P4.D257 ∥ P4.D258 ∥ P4.D259 ∥ P4.D260 ∥ P4.D261)
 
 _Docs-only change._

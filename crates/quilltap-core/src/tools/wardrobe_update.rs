@@ -206,6 +206,7 @@ Only items in your own wardrobe can be changed."
         replace: input.replace,
         component_item_ids: input.component_item_ids.clone(),
         archived_at: None,
+        image_file_id: None,
     };
 
     // When components changed and types wasn't supplied, recompute the coverage

@@ -10,6 +10,12 @@
 //! the always-present nullable fields, and the body→description rule (empty body
 //! → null description, NOT a skip).
 //!
+//! P4.D255 (v4 `3ee3b1342` + `7c8572869`): every parsed item now carries
+//! `imageFileId` (a non-empty string, else `null`), and three `kind`-tagged
+//! row families pin the parser extractions the carriers share —
+//! `resolveWardrobeItemId`, `isWardrobeItemDocumentPath`,
+//! `wardrobeItemIdForDocument` — through their REAL exports.
+//!
 //! Generate the oracle output:
 //!   cd ~/source/quilltap-server
 //!   npx tsx ~/source/quilltap-v5/harness/oracle/cases/vault-wardrobe-item-file.ts \
@@ -18,7 +24,10 @@
 //!   QT_ORACLE_VAULT_WARDROBE_ITEM_FILE=/tmp/oracle-vault-wardrobe-item-file.ndjson \
 //!     cargo test -p quilltap-harness --test vault_wardrobe_item_file_equivalence
 
-use quilltap_core::vault_overlay::{parse_wardrobe_item_file, VaultDoc};
+use quilltap_core::vault_overlay::{
+    is_wardrobe_item_document_path, parse_wardrobe_item_file, resolve_wardrobe_item_id,
+    wardrobe_item_id_for_document, VaultDoc,
+};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -61,8 +70,31 @@ fn wardrobe_item_file_parser_matches_oracle() {
         std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("cannot read oracle: {e}"));
 
     let mut n = 0;
+    let mut extractions = 0;
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
-        let row: Row = serde_json::from_str(line).expect("parse oracle row");
+        // P4.D255: the three parser extractions (tier-1, their REAL exports).
+        let raw: Value = serde_json::from_str(line).expect("parse oracle row");
+        if let Some(kind) = raw.get("kind").and_then(Value::as_str) {
+            let s = |k: &str| raw[k].as_str().unwrap_or_default().to_string();
+            let got = match kind {
+                "resolve" => Value::String(resolve_wardrobe_item_id(
+                    raw["frontmatterId"].as_str(),
+                    "mp-1",
+                    "Wardrobe/Coat.md",
+                )),
+                "docpath" => Value::Bool(is_wardrobe_item_document_path(&s("path"))),
+                "docid" => Value::String(wardrobe_item_id_for_document(
+                    &s("mountPointId"),
+                    &s("relativePath"),
+                    &s("content"),
+                )),
+                other => panic!("unknown oracle row kind {other}"),
+            };
+            assert_eq!(got, raw["out"], "[{kind}:{}]", s("id"));
+            extractions += 1;
+            continue;
+        }
+        let row: Row = serde_json::from_value(raw).expect("parse oracle row");
         let d = &row.doc;
         let doc = VaultDoc {
             content: &d.content,
@@ -78,6 +110,10 @@ fn wardrobe_item_file_parser_matches_oracle() {
         assert_eq!(got, row.out, "[{}] parse_wardrobe_item_file", row.id);
         n += 1;
     }
-    assert!(n >= 20, "expected the full corpus, saw {n} rows");
+    assert!(n >= 24, "expected the full corpus, saw {n} rows");
+    assert!(
+        extractions >= 28,
+        "expected the P4.D255 extraction rows, saw {extractions}"
+    );
     eprintln!("OK: wardrobe item file parser matched oracle on {n} cases.");
 }

@@ -150,6 +150,22 @@ async function main(): Promise<void> {
   } = await import('@/lib/schemas/mount-index.types');
 
   await initializeDatabase();
+  // P4.D255 (§R.4(a), C1 §6): the wardrobe wear ledger in v4's MIGRATION shape
+  // (`WARDROBE_WEAR_STATS_DDL` — `"wearCount" INTEGER NOT NULL DEFAULT 0` + the
+  // UNIQUE `COALESCE` index every upsert's `ON CONFLICT` targets + the wearer
+  // index), as a migrated v4 instance has it. NEVER through the repository:
+  // generateDDL would make the index-less REAL shape and every increment would
+  // fail. A committed pair this builder made BEFORE P4.D255 lacks the table;
+  // a dependent lane regenerates it from this grown builder.
+  {
+    const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+    const { WARDROBE_WEAR_STATS_DDL } = await import(
+      '@/lib/database/backends/sqlite/wardrobe-wear-stats-ddl'
+    );
+    const raw = getRawDatabase();
+    if (!raw) throw new Error('main DB handle unavailable for the wear ledger');
+    for (const sql of WARDROBE_WEAR_STATS_DDL) raw.exec(sql);
+  }
   await ensureCollection('users', UserSchema);
   await ensureCollection('characters', CharacterSchema);
   await ensureCollection('chats', ChatMetadataSchema);

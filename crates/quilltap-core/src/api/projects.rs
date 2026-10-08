@@ -1568,6 +1568,7 @@ pub async fn project_wardrobe_create(db: &Db, project_id: &str, body: Value) -> 
             is_default,
             replace,
             migrated_from_clothing_record_id: Some(None),
+            image_file_id: None,
             archived_at: Some(None),
             created_at: now.clone(),
             updated_at: now,
@@ -1779,6 +1780,7 @@ fn build_wardrobe_patch(body: &Value) -> WardrobePatch {
         is_default: body.get("isDefault").and_then(Value::as_bool),
         replace: body.get("replace").and_then(Value::as_bool),
         archived_at: None,
+        image_file_id: None,
     }
 }
 
