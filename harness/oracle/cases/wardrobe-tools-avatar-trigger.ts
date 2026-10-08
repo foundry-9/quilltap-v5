@@ -32,6 +32,8 @@ interface Scenario {
   name: string;
   chatId: string;
   ops: Op[];
+  /** [P4.D262] turn the operator's wardrobe-picture switch ON before this one. */
+  switchOn?: boolean;
 }
 
 async function main(): Promise<void> {
@@ -41,7 +43,7 @@ async function main(): Promise<void> {
   ) as { testPepperBase64: string; userId: string; callerCharacterId: string };
   const av = JSON.parse(
     readFileSync(join(here, '..', 'fixtures', 'wardrobe-tools-avatar-trigger.json'), 'utf8'),
-  ) as { scenarios: Scenario[] };
+  ) as { scenarios: Scenario[]; wardrobePictureProfile: Record<string, unknown> & { id: string } };
 
   const fixtureMain = process.env.QT_FIXTURE_WTA_MAIN;
   const fixtureMount = process.env.QT_FIXTURE_WTA_MOUNT;
@@ -64,17 +66,49 @@ async function main(): Promise<void> {
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
 
+  // [P4.D262] No job runner in this process: v4's `enqueueJob` lazily spawns the
+  // job host, which CLAIMS queued jobs (PENDING → PROCESSING) and so defeats the
+  // wardrobe picture's PENDING-only dedupe mid-scenario. The Rust side has no
+  // runner either (statuses are still not compared); the host's own
+  // `shuttingDown` flag keeps `ensureProcessorRunning` a no-op.
+  (globalThis as unknown as Record<string, unknown>).__quilltapJobHost = {
+    child: null,
+    spawning: false,
+    shuttingDown: true,
+    childCrashed: false,
+    restartTimestamps: [],
+    signalHandlersInstalled: false,
+    invalidationListeners: new Set(),
+  };
+
   const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
   const { getRepositories } = await import('@/lib/repositories/factory');
   const wc = await import('@/lib/tools/handlers/wardrobe-create-handler');
   const wa = await import('@/lib/tools/handlers/wardrobe-archive-handler');
   const ww = await import('@/lib/tools/handlers/wardrobe-wear-handler');
   const wt = await import('@/lib/tools/handlers/wardrobe-take-off-handler');
+  const wu = await import('@/lib/tools/handlers/wardrobe-update-handler');
 
   await initializeDatabase();
 
   const scenarios: unknown[] = [];
   for (const sc of av.scenarios) {
+    if (sc.switchOn) {
+      // [P4.D262] The operator switch ON, designating the wardrobe desk through
+      // v4's REAL repositories (the avatar desk keeps its own default).
+      const repos = getRepositories();
+      const { ensureCollection } = await import('@/lib/database/manager');
+      const { ChatSettingsSchema } = await import('@/lib/schemas/settings.types');
+      await ensureCollection('chat_settings', ChatSettingsSchema);
+      const { id: wpId, ...wpRest } = av.wardrobePictureProfile;
+      await repos.imageProfiles.create(
+        { userId: base.userId, parameters: {}, isDefault: false, isDangerousCompatible: false, tags: [], ...wpRest } as never,
+        { id: wpId, createdAt: '2026-02-01T00:00:00.000Z', updatedAt: '2026-02-01T00:00:00.000Z' } as never,
+      );
+      await repos.chatSettings.updateForUser(base.userId, {
+        wardrobeImageSettings: { imageProfileId: wpId, generateFromTools: true },
+      } as never);
+    }
     const pendingWardrobeAnnouncements = new Set<string>();
     const ctx = {
       userId: base.userId,
@@ -97,6 +131,9 @@ async function main(): Promise<void> {
           break;
         case 'wardrobe_take_off':
           output = await wt.executeWardrobeTakeOffTool(op.args, ctx);
+          break;
+        case 'wardrobe_update':
+          output = await wu.executeWardrobeUpdateTool(op.args, ctx);
           break;
         default:
           throw new Error(`unknown tool ${op.tool}`);

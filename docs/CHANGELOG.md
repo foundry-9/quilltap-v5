@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — test(harness): the avatar-trigger family queues a wardrobe picture beside the avatar job (P4.D262 item 17)
+
+_No crate versions bumped._
+
+`wardrobe_tools_avatar_trigger_equivalence` gains a switch-ON scenario (P4.D262 item 17). Each side turns the operator's wardrobe-picture switch on through its real settings repository. On v5 the run goes through the production executor: an `equip_now` create, then a forced redraw of the same item in the same chat. Both sides queue the avatar job and exactly one `WARDROBE_ITEM_IMAGE_GENERATION` job (`maxAttempts` 1); the redraw collapses onto the pending one. Per-chat job rows now compare through the uuid map, and the oracle holds v4's job host off so the dedupe is not raced.
+
 #### 2026-10-08 — test(harness): the cast, capstone and llm_choose families dump the wear ledger (P4.D262 item 7)
 
 _No crate versions bumped._

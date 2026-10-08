@@ -1,5 +1,5 @@
 {
-  "comment": "P4.123 \u2014 flag-ON companion to wardrobe-tools.json. The base spec (seed items, characters, groups) is READ from wardrobe-tools.json; this file adds the default image profile and one chat per scenario (its own chat so the trigger's pending-job dedup never crosses scenarios). Consumed by build-wardrobe-tools-fixture.ts when QT_WT_AVATAR_SPEC is set, by cases/wardrobe-tools-avatar-trigger.ts, and by wardrobe_tools_avatar_trigger_equivalence.rs.",
+  "comment": "P4.123 — flag-ON companion to wardrobe-tools.json. The base spec (seed items, characters, groups) is READ from wardrobe-tools.json; this file adds the default image profile and one chat per scenario (its own chat so the trigger's pending-job dedup never crosses scenarios). Consumed by build-wardrobe-tools-fixture.ts when QT_WT_AVATAR_SPEC is set, by cases/wardrobe-tools-avatar-trigger.ts, and by wardrobe_tools_avatar_trigger_equivalence.rs.",
   "imageProfile": {
     "id": "eeeeeeee-0000-4000-8000-000000000001",
     "name": "Avatar Imagery",
@@ -258,6 +258,41 @@
           }
         }
       ]
+    },
+    {
+      "name": "picture_switch_on_equip_and_redraw",
+      "chatId": "aaaaaaaa-0000-4000-8000-000000000015",
+      "chatType": "salon",
+      "avatarGenerationEnabled": true,
+      "switchOn": true,
+      "comment": "P4.D262 item 17 (v4 b3f937076): the operator switch turned ON (chat_settings.wardrobeImageSettings, designating wardrobePictureProfile — the avatar desk keeps its own default) right before this scenario; the equip_now create queues a WARDROBE_ITEM_IMAGE_GENERATION job (maxAttempts 1) beside the avatar job, and the forced redraw of the SAME item in the SAME chat collapses onto the still-PENDING job (isNew false).",
+      "ops": [
+        {
+          "tool": "wardrobe_create",
+          "args": {
+            "title": "Opera Gloves",
+            "types": [
+              "accessories"
+            ],
+            "equip_now": true
+          }
+        },
+        {
+          "tool": "wardrobe_update",
+          "args": {
+            "item_title": "Opera Gloves",
+            "generate_image": true
+          }
+        }
+      ]
     }
-  ]
+  ],
+  "wardrobePictureProfile": {
+    "id": "eeeeeeee-0000-4000-8000-0000000000f1",
+    "name": "Wardrobe Pictures",
+    "provider": "OPENAI_COMPATIBLE",
+    "apiKeyId": "eeeeeeee-0000-4000-8000-0000000000f2",
+    "baseUrl": "http://127.0.0.1:1/v1",
+    "modelName": "mock-image-model"
+  }
 }

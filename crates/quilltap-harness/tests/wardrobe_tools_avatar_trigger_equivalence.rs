@@ -73,6 +73,9 @@ struct AvSpec {
     #[serde(rename = "imageProfile")]
     image_profile: Value,
     scenarios: Vec<Scenario>,
+    /// P4.D262: the wardrobe picture desk the switch-ON scenario designates.
+    #[serde(rename = "wardrobePictureProfile")]
+    wardrobe_picture_profile: Value,
 }
 
 #[derive(Deserialize)]
@@ -81,6 +84,9 @@ struct Scenario {
     #[serde(rename = "chatId")]
     chat_id: String,
     ops: Vec<Op>,
+    /// P4.D262: turn the operator's wardrobe-picture switch ON before this one.
+    #[serde(default, rename = "switchOn")]
+    switch_on: bool,
 }
 
 #[derive(Deserialize)]
@@ -253,6 +259,9 @@ fn wardrobe_tools_avatar_trigger_matches_oracle() {
 
     let mut got_scen: Vec<Value> = Vec::new();
     for sc in &av.scenarios {
+        if sc.switch_on {
+            plant_switch_on(&rt, &db, &base.user_id, &av.wardrobe_picture_profile);
+        }
         let ctx = ToolExecutionContext {
             chat_id: sc.chat_id.clone(),
             user_id: base.user_id.clone(),
@@ -323,22 +332,57 @@ fn wardrobe_tools_avatar_trigger_matches_oracle() {
     );
     let got = jobs_by_chat(&rows);
     let want = jobs_by_chat(&o_jobs);
+    // P4.D262: a picture job's payload names the item a create MINTED, so the
+    // per-chat rows compare through the positional uuid map (fixture-baked ids
+    // map identically on both sides; only minted ones tokenise apart).
+    let per_chat =
+        |m: &BTreeMap<String, Vec<Value>>, chat: &str| -> Value { norm_uuids(&json!(m.get(chat))) };
     for sc in &av.scenarios {
         assert_eq!(
-            got.get(&sc.chat_id),
-            want.get(&sc.chat_id),
+            per_chat(&got, &sc.chat_id),
+            per_chat(&want, &sc.chat_id),
             "{}: background_jobs diverged\n  rust:   {:?}\n  oracle: {:?}",
             sc.name,
             got.get(&sc.chat_id),
             want.get(&sc.chat_id)
         );
     }
-    assert_eq!(got, want, "background_jobs (whole table) diverged");
-    // Exercised-count: v4 enqueues exactly these six (create self, create gifted,
-    // wear, take_off, archive equipped, the deduped double wear).
-    assert_eq!(want.len(), 6, "oracle enqueued jobs for six chats");
+    assert_eq!(
+        got.keys().collect::<Vec<_>>(),
+        want.keys().collect::<Vec<_>>(),
+        "background_jobs (whole table) diverged: the set of chats with jobs"
+    );
+    // P4.D262 item 17: the switch-ON scenario queues exactly one picture
+    // beside the avatar job — the forced redraw collapsed onto the PENDING one.
+    for sc in av.scenarios.iter().filter(|s| s.switch_on) {
+        let types: Vec<&str> = got
+            .get(&sc.chat_id)
+            .map(|rows| rows.iter().filter_map(|r| r["type"].as_str()).collect())
+            .unwrap_or_default();
+        assert_eq!(
+            types
+                .iter()
+                .filter(|t| **t == "WARDROBE_ITEM_IMAGE_GENERATION")
+                .count(),
+            1,
+            "{}: one picture job (the redraw dedupes): {types:?}",
+            sc.name
+        );
+        assert!(
+            types.contains(&"CHARACTER_AVATAR_GENERATION"),
+            "{}: {types:?}",
+            sc.name
+        );
+    }
+    // Exercised-count: v4 enqueues jobs in exactly these seven chats (create
+    // self, create gifted, wear, take_off, archive equipped, the deduped double
+    // wear, and P4.D262's switch-ON scenario — an avatar job AND one picture).
+    assert_eq!(want.len(), 7, "oracle enqueued jobs for seven chats");
     let total: usize = want.values().map(Vec::len).sum();
-    assert_eq!(total, 6, "the double wear collapses to ONE row");
+    assert_eq!(
+        total, 8,
+        "the double wear collapses to ONE row; the switch-ON chat holds two"
+    );
 
     drop(tools);
     drop(db);
@@ -505,4 +549,61 @@ fn trigger_read_failures_take_v4_fallback_arms() {
     );
     drop(db);
     drop(scratch);
+}
+
+/// P4.D262 (v4 `b3f937076`): the operator's wardrobe-picture switch ON,
+/// designating `profile` (the avatar desk keeps its own default) — the
+/// oracle's `updateForUser` + `imageProfiles.create`, through v5's twins. The
+/// copy predates `chat_settings`; its D23 DDL is v4's `ensureCollection` table.
+fn plant_switch_on(rt: &tokio::runtime::Runtime, db: &Db, user_id: &str, profile: &Value) {
+    let (user_id, profile) = (user_id.to_string(), profile.clone());
+    rt.block_on(db.write(move |w| {
+        let main = w.main().connection();
+        let fresh: Value = serde_json::from_str(include_str!(
+            "../../quilltap-core/src/services/provisioning/fresh_schema.json"
+        ))
+        .unwrap();
+        let ddl = fresh["main"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .find(|s| s.starts_with("CREATE TABLE \"chat_settings\" ("))
+            .unwrap()
+            .replacen("CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1);
+        main.execute_batch(&ddl)?;
+        let s = |k: &str| profile[k].as_str().map(str::to_string);
+        quilltap_core::db::image_profiles::ImageProfilesRepository::new(main).create(
+            &quilltap_core::db::image_profiles::IpCreate {
+                user_id: user_id.clone(),
+                name: s("name").unwrap(),
+                provider: s("provider").unwrap(),
+                api_key_id: s("apiKeyId"),
+                base_url: s("baseUrl"),
+                model_name: s("modelName").unwrap(),
+                parameters: json!({}),
+                is_default: false,
+                is_dangerous_compatible: false,
+                tags: Vec::new(),
+            },
+            &quilltap_core::db::image_profiles::CreateOptions {
+                id: s("id").unwrap(),
+                created_at: "2026-02-01T00:00:00.000Z".to_string(),
+                updated_at: "2026-02-01T00:00:00.000Z".to_string(),
+            },
+        )?;
+        quilltap_core::db::chat_settings::update_for_user(
+            main,
+            &user_id,
+            &[(
+                "wardrobeImageSettings",
+                quilltap_core::db::chat_settings::SettingsColVal::Text(
+                    json!({"imageProfileId": s("id"), "generateFromTools": true}).to_string(),
+                ),
+            )],
+            "2026-02-01T00:00:00.000Z",
+        )?;
+        Ok(())
+    }))
+    .expect("plant the switch-ON settings");
 }

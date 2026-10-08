@@ -172905,3 +172905,20 @@ ERROR leg is the unit pin (one arm per family — the carve).
   llm_choose 1 of 1); restored → green.
 - `chats_outfits_tier2_equivalence` (R-J) re-run at the pin: GREEN, as
   predicted (its case drives the slot writer only).
+
+### Unit 8 — the avatar-trigger family's switch-ON scenario (item 17)
+
+`wardrobe-tools-avatar-trigger.json` gains `wardrobePictureProfile` and a 15th
+scenario, `picture_switch_on_equip_and_redraw` (chat `…015`, `switchOn`): before
+it, each side turns the operator switch ON through its real settings repository
+(`updateForUser` / `update_for_user`, designating the new profile — the avatar
+desk keeps its own default); then an `equip_now` create and a forced redraw of
+the SAME item run THROUGH THE EXECUTOR (`BuiltInToolRunner`) on v5. Both sides:
+one `CHARACTER_AVATAR_GENERATION` job and exactly ONE
+`WARDROBE_ITEM_IMAGE_GENERATION` (`maxAttempts` 1, payload `{chatId, characterId,
+itemId}`) — the redraw collapsed onto the PENDING job (P4.D255's `Reusing
+existing pending job` INFO path; that line is P4.D255's pin). The per-chat job
+rows now compare through the positional uuid map (a picture payload names a
+minted item). The oracle holds v4's job host off as `wardrobe-tools.ts` does
+(statuses are still not compared). The exercised counts move to seven chats /
+eight jobs. KEYSTONE binary RED on the new scenario; green here.
