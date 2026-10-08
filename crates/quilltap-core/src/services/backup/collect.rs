@@ -434,6 +434,82 @@ fn encode_embedding(blob: Option<Vec<u8>>) -> Value {
     }
 }
 
+/// v4 `{ ...memory, embedding: encodeEmbedding(memory.embedding ?? null) }`
+/// (`backup-service.ts:207-216` at `f5e953a3f` — v4 `039f7017c`, bug 181,
+/// this port's filing): a full backup's memory carries its embedding as a
+/// plain `number[]`, and an un-embedded memory an EXPLICIT `"embedding":
+/// null`. Before the fix v4 wrote the repository row raw, so
+/// `JSON.stringify(Float32Array)` put an index-keyed OBJECT `{"0":…}` in the
+/// archive that v4's own restore refused (every embedded memory lost);
+/// v5 had carried the same object (`memories_read::embedding_to_value`).
+///
+/// The read keeps its `{"0":…}` shape (its other consumers mirror v4's
+/// unchanged `findByCharacterId`); this re-encodes the values in index
+/// order. They are already `js_number_to_json(f32 as f64)` — v4's
+/// `Array.from(Float32Array)` widening — so the bytes equal
+/// [`encode_embedding`]'s. Any other non-null value encodes to `null`, as
+/// v4's `encodeEmbedding` falls through (`:65`). The key lands where
+/// [`set_memory_embedding`] puts it.
+fn encode_memory_embedding(memory: &mut Value) {
+    let Some(obj) = memory.as_object_mut() else {
+        return;
+    };
+    let encoded = match obj.get("embedding") {
+        Some(Value::Object(o)) => {
+            let mut indexed: Vec<(usize, Value)> = Vec::with_capacity(o.len());
+            for (k, v) in o {
+                match k.parse::<usize>() {
+                    Ok(i) => indexed.push((i, v.clone())),
+                    Err(_) => {
+                        indexed.clear();
+                        break;
+                    }
+                }
+            }
+            if indexed.len() == o.len() {
+                indexed.sort_by_key(|(i, _)| *i);
+                Value::Array(indexed.into_iter().map(|(_, v)| v).collect())
+            } else {
+                Value::Null
+            }
+        }
+        Some(Value::Array(a)) => Value::Array(a.clone()),
+        _ => Value::Null,
+    };
+    set_memory_embedding(obj, encoded);
+}
+
+/// Where a memory's `embedding` override lands — v4's spread `{ ...memory,
+/// embedding: … }` keeps an existing key IN PLACE and appends one the row
+/// lacked. v4's repository-read memory carries `embedding` as a PROPERTY even
+/// when its value is `undefined` (which `JSON.stringify` had been dropping),
+/// so the override lands at the SCHEMA slot — right after `importance` — not
+/// at the end (learned at compact mode's first oracle diff, and measured
+/// again for the full backup in P4.D258: every memory of the
+/// `system-data-*` fixture, `null` and `number[]` alike, writes `embedding`
+/// after `importance`). v5's marshal omits the key outright when NULL, so the
+/// slot is found here; a row with no `importance` appends.
+fn set_memory_embedding(obj: &mut Map<String, Value>, value: Value) {
+    if obj.contains_key("embedding") {
+        obj.insert("embedding".into(), value);
+        return;
+    }
+    let mut rebuilt = Map::with_capacity(obj.len() + 1);
+    let mut value = Some(value);
+    for (k, v) in obj.iter() {
+        rebuilt.insert(k.clone(), v.clone());
+        if k == "importance" {
+            if let Some(v) = value.take() {
+                rebuilt.insert("embedding".into(), v);
+            }
+        }
+    }
+    if let Some(v) = value {
+        rebuilt.insert("embedding".into(), v);
+    }
+    *obj = rebuilt;
+}
+
 /// v4 `collectUserData(userId)`.
 /// v4 `compactBackupData` (`backup-service.ts:557`, `7189a968`) — strip every
 /// embedding-derived payload out of a collected backup.
@@ -448,33 +524,14 @@ fn encode_embedding(blob: Option<Vec<u8>>) -> Value {
 /// existing 10k cap already bounds them).
 pub fn compact_backup_data(mut data: BackupData) -> BackupData {
     // Memories keep every word; only the vector goes: v4 `{...memory,
-    // embedding: null}`. Subtle key-position point, learned from the first
-    // oracle diff: v4's parsed memory carries `embedding` as a PROPERTY even
-    // when its value is `undefined` (which `JSON.stringify` had been
-    // dropping), so the spread's `null` override lands at the SCHEMA slot —
-    // right after `importance` — not at the end. v5's marshal omits the key
-    // outright when NULL, so the null is inserted at that slot here.
+    // embedding: null}`, at the slot [`set_memory_embedding`] documents. (A
+    // collected memory always carries the key since the bug-181 encoder, so
+    // the in-place arm is the one taken; the slot arm still covers a
+    // `BackupData` built any other way.)
     for memory in &mut data.memories {
-        let Some(obj) = memory.as_object_mut() else {
-            continue;
-        };
-        if obj.contains_key("embedding") {
-            obj.insert("embedding".into(), Value::Null);
-            continue;
+        if let Some(obj) = memory.as_object_mut() {
+            set_memory_embedding(obj, Value::Null);
         }
-        let mut rebuilt = Map::with_capacity(obj.len() + 1);
-        let mut inserted = false;
-        for (k, v) in obj.iter() {
-            rebuilt.insert(k.clone(), v.clone());
-            if k == "importance" && !inserted {
-                rebuilt.insert("embedding".into(), Value::Null);
-                inserted = true;
-            }
-        }
-        if !inserted {
-            rebuilt.insert("embedding".into(), Value::Null);
-        }
-        *obj = rebuilt;
     }
     // Wholly derived collections — regenerable from the content above.
     data.conversation_chunks = Vec::new();
@@ -545,7 +602,14 @@ pub fn collect_user_data(db: &Db, user_id: &str) -> Result<BackupData, DbError> 
         let mut character_plugin_data = Vec::new();
         for c in &characters {
             let cid = c.get("id").and_then(Value::as_str).unwrap_or_default();
-            memories.extend(memories_read::find_by_character_id(main, cid)?);
+            memories.extend(
+                memories_read::find_by_character_id(main, cid)?
+                    .into_iter()
+                    .map(|mut m| {
+                        encode_memory_embedding(&mut m);
+                        m
+                    }),
+            );
             character_plugin_data.extend(query_all(
                 main,
                 "character_plugin_data",

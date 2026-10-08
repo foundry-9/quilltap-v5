@@ -173912,3 +173912,22 @@ corrected; `assert_lines_in_order` is now an in-order subsequence with
 per-line counts (it found a line's FIRST occurrence, so a repeated line
 could not be pinned). `NEVER_ON_SOUND`, `:552`, `:1009` untouched.
 After: `degraded_sibling_open_equivalence` 2/2, `host_boot_hardness` 34/34.
+
+### Unit 2 — the backup writer (bug 181, item 2; R-B, R-E)
+
+`services/backup/collect.rs`: `encode_memory_embedding` (beside
+`encode_embedding`; the `{"0":…}` object re-encoded in index order — the
+lane picked the re-encode over a BLOB re-read: the values are already
+`js_number_to_json(f32 as f64)`) applied to every memory as it is
+collected, and `set_memory_embedding` (v4's spread: in place when present,
+else after `importance`, else appended — R-B, MEASURED as above). Compact
+mode's hand-rolled slot code folded into the same helper; its "lacked the
+key" arm is now unreachable from `collect_user_data` (every collected
+memory carries the key) but kept for a `BackupData` built any other way —
+`backup_compact` green before and after. `memories_read::embedding_to_value`
+unchanged in shape, its doc naming bug 181 (R-E).
+After: `system_backup_equivalence` `memories.json` byte-equal on all five
+cases; the family stays red ONLY on P4.D264's `data/wardrobe-wear.json` +
+manifest `wardrobeWear` (§R.13(d)) — 15 differences, every one of that
+kind. Silent-stale check: `"embedding\": null` occurs 75 times in the fresh
+backup NDJSON.

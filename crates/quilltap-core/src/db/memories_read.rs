@@ -99,6 +99,12 @@ fn json_array_or_empty(v: Option<String>) -> Value {
 
 /// A present, non-empty embedding BLOB → the `Float32Array` JSON-object shape
 /// `{"0":v0,"1":v1,…}` that `JSON.stringify(Float32Array)` produces in v4.
+/// It STAYS that shape after v4 bug 181 (`039f7017c`): v4 fixed the full
+/// backup in `backup-service.ts` alone, not `findByCharacterId`, so every
+/// other consumer of this read (the memories wire, `.qtap` export, the
+/// character archive, cascade delete, rename, the reindex job) still mirrors
+/// v4's object; the backup re-encodes it (`backup::collect`'s
+/// `encode_memory_embedding`).
 fn embedding_to_value(blob: &[u8]) -> Value {
     let v = blob_to_float32(blob);
     let mut m = Map::new();

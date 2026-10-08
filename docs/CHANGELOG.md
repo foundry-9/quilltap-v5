@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — fix(backup): full backups write memory embeddings as `number[]` with an explicit `null` (v4 bug 181, `039f7017c`)
+
+_Versions: core 0.0.1254._
+
+P4.D258 unit 2. v4 `039f7017c` fixed this port's bug-181 filing on the writer side: `backup-service.ts` now maps every collected memory through `encodeEmbedding`, so `data/memories.json` carries a plain `number[]` and an un-embedded memory an explicit `"embedding": null`. v5's full backup was faithful to the old shape (the `{"0":…}` object `memories_read::embedding_to_value` builds, carried raw). `backup::collect` gains `encode_memory_embedding` (the object's values in index order, already `js_number_to_json(f32 as f64)`, so byte-equal to `encode_embedding`'s; any other value encodes to `null`, as v4 falls through) and `set_memory_embedding` (in place when the key exists, else right after `importance`, else appended). The key position was measured from v4's post-fix archive, not assumed: every fixture memory, `null` and `number[]` alike, writes `embedding` after `importance`. Compact mode now uses the same slot helper. `embedding_to_value` keeps its shape (v4 changed `backup-service.ts` only, and the memories wire, `.qtap` export and the other readers still mirror v4's object); its doc says why.
+
+`system_backup_equivalence` at the `f5e953a3f` pin: `data/memories.json` was red on four cases on unported `main` and is byte-equal on all five now. The family's remaining differences are `data/wardrobe-wear.json` and the manifest's `wardrobeWear` count on every case — P4.D264's by design.
+
 #### 2026-10-08 — fix(db): the LLM logs open through the shared cold-open ladder (v4 bug 180, `039f7017c`)
 
 _Versions: core 0.0.1253._
