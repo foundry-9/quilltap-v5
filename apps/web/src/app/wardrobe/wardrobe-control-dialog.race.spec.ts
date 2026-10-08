@@ -22,9 +22,11 @@
 
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../core/core-client';
+import { coreStreamStub } from '../core/core-client.testing';
 import type { CoreRequest, WardrobeItemDto } from '../core/core-contract';
 import type { EquippedSlots } from './equipped-slots';
 import { WardrobeControlDialogInner } from './wardrobe-control-dialog';
@@ -86,6 +88,8 @@ async function renderRace(deferOutfit: boolean): Promise<Harness> {
   });
 
   const core = {
+    // RealtimeService (the `characters` hook, P4.D261) reads the stream.
+    ...coreStreamStub(),
     dispatchData: vi.fn(async (req: CoreRequest) => {
       const r = req as AnyRequest;
       seen.push(r);
@@ -120,7 +124,7 @@ async function renderRace(deferOutfit: boolean): Promise<Harness> {
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
     imports: [WardrobeControlDialogInner],
-    providers: [{ provide: CoreClient, useValue: core }],
+    providers: [provideTanStackQuery(new QueryClient()), { provide: CoreClient, useValue: core }],
   });
   const fixture = TestBed.createComponent(WardrobeControlDialogInner);
   fixture.componentRef.setInput('initialCharacterId', CHARACTER_ID);

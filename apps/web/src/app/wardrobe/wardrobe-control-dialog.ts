@@ -13,6 +13,7 @@ import {
 
 import { apiUrl } from '../core/api-url';
 import { CoreClient } from '../core/core-client';
+import { RealtimeService } from '../core/realtime.service';
 import type { CharacterListItem, WardrobeItemDto, WardrobeSlotType } from '../core/core-contract';
 import { characterAvatarSrc } from '../screens/characters/characters.api';
 import { AvatarGenerationPane, type ImageProfileSummary } from './avatar-generation-pane';
@@ -875,6 +876,19 @@ export class WardrobeControlDialogInner {
     onTabActivated(() => {
       void this.reloadCurrentItems();
     });
+
+    // P4.D261 (R-H, v4 `b3f937076` `job-topics.ts`): a finished wardrobe-picture
+    // job publishes `characters` (id = the item's character) + `mountPoints`,
+    // and v4's wardrobe views watch both. v5's list is signal-held, so no
+    // TanStack key the topic map resolves can reach it — the dialog subscribes
+    // itself, scoped to the selected character (an id-less, collection-wide
+    // hint fires too; it says nothing about which rows). `mountPoints` resolves
+    // to nothing in the SPA (`realtime-topic-map.ts`) and stays so.
+    inject(RealtimeService).onTopic(
+      'characters',
+      () => void this.reloadCurrentItems(),
+      () => this.selectedCharacterId(),
+    );
   }
 
   // ---------------------------------------------------------------------------

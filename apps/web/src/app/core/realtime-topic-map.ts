@@ -109,6 +109,10 @@ export function queryKeysForTopic(topic: string, id?: string): readonly QueryKey
       return id ? [projectKeys.detail(id), projectKeys.background(id)] : [projectKeys.all];
 
     case 'characters':
+      // The wardrobe dialog's item list is signal-held (no query key here can
+      // reach it), so `WardrobeControlDialogInner` subscribes to this topic
+      // DIRECTLY through `RealtimeService.onTopic` — v4's wardrobe views
+      // refresh on a finished wardrobe-picture job this way (P4.D261, R-H).
       return id
         ? [
             characterKeys.detail(id),

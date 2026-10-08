@@ -174947,3 +174947,33 @@ green after: settings/images 11 files / 270.
 **Recorded:** both handlers surface v4's `failureMessage` (the shared one),
 not the per-handler `logLabel`; `story-backgrounds-card.ts` mixed the two —
 untouched here. Version: SPA 0.5.819.
+
+### Unit 9 — Tier 2: the `characters` hook (R-H) + `WARDROBE_ITEM_IMAGE`
+
+**The hook (item 20).** `WardrobeControlDialogInner` registers
+`inject(RealtimeService).onTopic('characters', () => void
+this.reloadCurrentItems(), () => this.selectedCharacterId())` for its
+lifetime (`core/realtime.service.ts` — `onTopic` releases on the host's
+`DestroyRef`); `core/realtime-topic-map.ts`'s `characters` case gains the
+comment row naming the direct subscriber; `mountPoints` still resolves to
+nothing. Spec: `wardrobe-control-dialog.spec.ts` + 3 arms (a hint for the
+selected id re-reads the list and one for another id does not; an id-less
+`characters` hint re-reads — `onTopic`'s collection-wide rule; another topic
+is ignored). **Measured:** red 2 (the two positive arms; the negatives green
+before), green after. **Harness change recorded:** `RealtimeService` is now
+constructed by the dialog, so every dialog spec harness (the dialog spec's
+three core stubs, the race spec's one) spreads `coreStreamStub()` and provides
+TanStack (`RealtimeService` injects `QueryClient`) — the
+`memory-cards-realtime.spec.ts` idiom. In a shared-container view
+(`selectedCharacterId()` null) every `characters` hint reloads the browsed
+list — recorded, harmless (one list read). The onTopic re-run on every
+(re)connect is `onTopic`'s own contract.
+
+**The union (item 21).** `chat/llm-logs.api.ts` `LlmLogType` +
+`WARDROBE_ITEM_IMAGE` after `WARDROBE_IMAGE_ANALYSIS` (v4
+`lib/schemas/llm-log.types.ts:36` at the pin; the type v4's
+`lib/wardrobe/item-image-generation.ts:233, 249` logs the provider's image
+call under); the header re-states the count (21 here, 23 in v4).
+`CUSTOM_TOOL_CONSULT` / `VOICE_REWRITE` NOT added (the header's own rule —
+not this lane's). Type-only: no red arm possible; `npm run build` is the
+check. Version: SPA 0.5.820.

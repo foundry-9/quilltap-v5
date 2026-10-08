@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(spa): P4.D261 unit 9 — Tier 2: an open wardrobe dialog refreshes on the characters topic; WARDROBE_ITEM_IMAGE joins the llm-log union
+
+_Versions: SPA 0.5.820._
+
+v4's finished wardrobe-picture job publishes the `characters` realtime topic (id = the item's character). The wardrobe dialog's list is held in signals, which the topic map cannot reach, so the dialog now subscribes itself through `RealtimeService.onTopic('characters', …)` scoped to the selected character and reloads its list on a matching (or id-less) hint; a hint for another character is ignored. The topic map's `characters` case records this. `LlmLogType` gains `WARDROBE_ITEM_IMAGE` after `WARDROBE_IMAGE_ANALYSIS` (v4's image-call log type for item pictures); `CUSTOM_TOOL_CONSULT` / `VOICE_REWRITE` stay unadded per the union's own recorded rule.
+
 #### 2026-10-08 — feat(spa): P4.D261 unit 8 — v4 7c8572869 + b3f937076: Settings → Images → Wardrobe Images (the artist picker and the wardrobe-tools checkbox)
 
 _Versions: SPA 0.5.819._

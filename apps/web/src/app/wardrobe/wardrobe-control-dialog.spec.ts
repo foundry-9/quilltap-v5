@@ -4,6 +4,7 @@ import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-exper
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../core/core-client';
+import { coreStreamStub } from '../core/core-client.testing';
 import type { CoreRequest, WardrobeItemDto } from '../core/core-contract';
 import type { EquippedSlots } from './equipped-slots';
 import {
@@ -98,6 +99,8 @@ async function renderInner(
 ): Promise<Handle> {
   const seen: AnyRequest[] = [];
   const core = {
+    // RealtimeService (the `characters` hook, P4.D261) reads the stream.
+    ...coreStreamStub(),
     dispatchData: vi.fn(async (req: CoreRequest) => {
       const r = req as AnyRequest;
       seen.push(r);
@@ -495,6 +498,7 @@ describe('the asTab chrome switch (v4 WardrobeShell :128-164 / WardrobeView :105
 
   function makeCore(seen: AnyRequest[]): CoreClient {
     return {
+      ...coreStreamStub(),
       dispatchData: vi.fn(async (req: CoreRequest) => {
         const r = req as AnyRequest;
         seen.push(r);
@@ -519,7 +523,7 @@ describe('the asTab chrome switch (v4 WardrobeShell :128-164 / WardrobeView :105
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       imports: [WardrobeTabView],
-      providers: [{ provide: CoreClient, useValue: makeCore(seen) }],
+      providers: [provideTanStackQuery(new QueryClient()), { provide: CoreClient, useValue: makeCore(seen) }],
     });
     const fixture = TestBed.createComponent(WardrobeTabView);
     fixture.detectChanges();
@@ -537,7 +541,7 @@ describe('the asTab chrome switch (v4 WardrobeShell :128-164 / WardrobeView :105
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       imports: [WardrobeTabView],
-      providers: [{ provide: CoreClient, useValue: makeCore(seen) }],
+      providers: [provideTanStackQuery(new QueryClient()), { provide: CoreClient, useValue: makeCore(seen) }],
     });
     const fixture = TestBed.createComponent(WardrobeTabView);
     fixture.componentRef.setInput('characterId', 'c1');
@@ -574,7 +578,7 @@ describe('the asTab chrome switch (v4 WardrobeShell :128-164 / WardrobeView :105
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       imports: [WardrobeTabView],
-      providers: [{ provide: CoreClient, useValue: makeCore(seen) }],
+      providers: [provideTanStackQuery(new QueryClient()), { provide: CoreClient, useValue: makeCore(seen) }],
     });
     const fixture = TestBed.createComponent(WardrobeTabView);
     // NO characterId input — the rail opens the tab without a payload.
@@ -592,6 +596,7 @@ describe('WardrobeControlDialog host — the remount key (v4 :92-93)', () => {
   it('a context change REMOUNTS the inner and discards staged state', async () => {
     const seen: AnyRequest[] = [];
     const core = {
+      ...coreStreamStub(),
       dispatchData: vi.fn(async (req: CoreRequest) => {
         const r = req as AnyRequest;
         seen.push(r);
@@ -604,7 +609,11 @@ describe('WardrobeControlDialog host — the remount key (v4 :92-93)', () => {
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       imports: [WardrobeControlDialog],
-      providers: [{ provide: CoreClient, useValue: core }, WardrobeDialogService],
+      providers: [
+        provideTanStackQuery(new QueryClient()),
+        { provide: CoreClient, useValue: core },
+        WardrobeDialogService,
+      ],
     });
     const service = TestBed.inject(WardrobeDialogService);
     const fixture = TestBed.createComponent(WardrobeControlDialog);
@@ -1350,5 +1359,53 @@ describe('WardrobeControlDialogInner — the editor’s picture change reloads t
     (editor.componentInstance as { imageChanged: { emit(): void } }).imageChanged.emit();
     await settle(fixture);
     expect(seen.filter((r) => (r.type as string) === 'characterWardrobeList').length).toBeGreaterThan(before);
+  });
+});
+
+/**
+ * P4.D261 Tier 2 (R-H) — v4 `b3f937076` `lib/realtime/job-topics.ts`: a
+ * finished wardrobe-picture job publishes `characters` (id = the payload's
+ * `characterId`) + `mountPoints`; v4's wardrobe views watch both. v5's list is
+ * signal-held (no TanStack key the topic map could reach), so the dialog
+ * subscribes itself through `RealtimeService.onTopic('characters', …,
+ * selectedCharacterId)`.
+ */
+describe('WardrobeControlDialogInner — the `characters` realtime hook (R-H)', () => {
+  const hint = (id?: string) => ({ v: 1, topic: 'characters', at: 1, ...(id ? { id } : {}) });
+
+  it('a hint for the selected character re-reads the list; one for another character does not', async () => {
+    const { fixture, seen } = await renderInner(null);
+    const stream = TestBed.inject(CoreClient) as unknown as { frames: { next(f: unknown): void } };
+    const reads = (): number =>
+      seen.filter((r) => (r.type as string) === 'characterWardrobeList').length;
+
+    const before = reads();
+    stream.frames.next(hint('c2'));
+    await settle(fixture);
+    expect(reads()).toBe(before);
+
+    stream.frames.next(hint('c1'));
+    await settle(fixture);
+    expect(reads()).toBeGreaterThan(before);
+  });
+
+  it('a collection-wide `characters` hint (no id) re-reads too — it says nothing about which rows', async () => {
+    const { fixture, seen } = await renderInner(null);
+    const stream = TestBed.inject(CoreClient) as unknown as { frames: { next(f: unknown): void } };
+    const before = seen.filter((r) => (r.type as string) === 'characterWardrobeList').length;
+    stream.frames.next(hint());
+    await settle(fixture);
+    expect(seen.filter((r) => (r.type as string) === 'characterWardrobeList').length).toBeGreaterThan(
+      before,
+    );
+  });
+
+  it('another topic is ignored', async () => {
+    const { fixture, seen } = await renderInner(null);
+    const stream = TestBed.inject(CoreClient) as unknown as { frames: { next(f: unknown): void } };
+    const before = seen.length;
+    stream.frames.next({ v: 1, topic: 'projects', at: 1, id: 'c1' });
+    await settle(fixture);
+    expect(seen.length).toBe(before);
   });
 });

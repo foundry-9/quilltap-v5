@@ -20,10 +20,12 @@ export type { LlmLogsListRequest } from '../core/core-contract';
 
 /**
  * The log types (v4 `LLMLogTypeEnum`, `llm-log.types.ts`) — nineteen, plus
- * `SCENARIO_BUILDER` (v4 `d1c06cd9d`). ⚠ v4's enum ALSO carries
- * `CUSTOM_TOOL_CONSULT` and `VOICE_REWRITE`, which this union has never
- * picked up (22 in v4 at `d1c06cd9d`); nothing narrows on it today, so the lag
- * is recorded for a housekeeping pass rather than widened here (P4.D218).
+ * `SCENARIO_BUILDER` (v4 `d1c06cd9d`), plus `WARDROBE_ITEM_IMAGE` (v4
+ * `7c8572869`, `llm-log.types.ts:36` at `f5e953a3f` — P4.D261): 21 here.
+ * ⚠ v4's enum ALSO carries `CUSTOM_TOOL_CONSULT` and `VOICE_REWRITE`, which
+ * this union has never picked up (23 in v4 at `f5e953a3f`); nothing narrows on
+ * it today, so the lag is recorded for a housekeeping pass rather than widened
+ * here (P4.D218; P4.D261 keeps that rule — it adds only its own type).
  *
  * Note the Inspector's badge/filter tables cover only twelve of them — the other
  * seven fall through to the unknown-type arms BY DESIGN (see
@@ -48,6 +50,9 @@ export type LlmLogType =
   | 'AUTO_CONFIGURE'
   | 'IMAGE_GENERATION'
   | 'WARDROBE_IMAGE_ANALYSIS'
+  // A wardrobe item's picture — the provider's image call itself, success or
+  // failure (v4 `7c8572869`, `lib/wardrobe/item-image-generation.ts:233, 249`).
+  | 'WARDROBE_ITEM_IMAGE'
   | 'ANSWER_CONFIRMATION'
   // The Host's Scenario Builder (v4 `d1c06cd9d` adds it to `LLMLogTypeEnum`).
   | 'SCENARIO_BUILDER';
