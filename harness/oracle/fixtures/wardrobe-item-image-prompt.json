@@ -1,0 +1,776 @@
+{
+  "_comment": "P4.D263 tier-1 corpus for v4 lib/wardrobe/item-image-prompt.ts (buildWardrobeItemImagePrompt / buildWardrobeItemCue) and avatar-prompt.ts buildFigureIdentityBlock at f5e953a3f. `aesthetic` is what the mocked resolveAesthetic answers (null = none).",
+  "cases": [
+    {
+      "name": "garment_no_owner",
+      "item": {
+        "id": "item-plain-shirt",
+        "title": "Plain Shirt",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": []
+      },
+      "components": [],
+      "owner": null,
+      "aesthetic": null
+    },
+    {
+      "name": "garment_cue_no_owner",
+      "item": {
+        "id": "item-velvet-coat",
+        "title": "Velvet Coat",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "imagePrompt": "a burgundy velvet coat"
+      },
+      "components": [],
+      "owner": null,
+      "aesthetic": null
+    },
+    {
+      "name": "garment_she_full_length",
+      "item": {
+        "id": "item-velvet-coat",
+        "title": "Velvet Coat",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "imagePrompt": "a burgundy velvet coat"
+      },
+      "components": [],
+      "owner": {
+        "name": "Abigail",
+        "pronouns": {
+          "subject": "she",
+          "object": "her",
+          "possessive": "hers"
+        },
+        "archivedAt": null,
+        "physicalDescription": {
+          "headAndShouldersPrompt": "auburn hair, freckles",
+          "mediumPrompt": "a slim woman in her thirties",
+          "shortPrompt": "slim",
+          "longPrompt": "A slim woman in her thirties with auburn hair and freckles!",
+          "completePrompt": "  A tall slim woman in her thirties, auburn hair to the shoulders, freckled, grey eyes...  ",
+          "fullDescription": "Full prose"
+        }
+      },
+      "aesthetic": null
+    },
+    {
+      "name": "garment_he_falls_to_head",
+      "item": {
+        "id": "item-plain-shirt",
+        "title": "Plain Shirt",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": []
+      },
+      "components": [],
+      "owner": {
+        "name": "Barnaby",
+        "pronouns": {
+          "subject": "he",
+          "object": "him",
+          "possessive": "his"
+        },
+        "archivedAt": null,
+        "physicalDescription": {
+          "headAndShouldersPrompt": "bearded, ruddy cheeks?!",
+          "mediumPrompt": null,
+          "shortPrompt": "",
+          "longPrompt": null,
+          "completePrompt": null,
+          "fullDescription": null
+        }
+      },
+      "aesthetic": null
+    },
+    {
+      "name": "garment_they_person",
+      "item": {
+        "id": "item-velvet-coat",
+        "title": "Velvet Coat",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "imagePrompt": "a burgundy velvet coat"
+      },
+      "components": [],
+      "owner": {
+        "name": "Quill",
+        "pronouns": {
+          "subject": "they",
+          "object": "them",
+          "possessive": "theirs"
+        },
+        "archivedAt": null,
+        "physicalDescription": null
+      },
+      "aesthetic": null
+    },
+    {
+      "name": "garment_no_pronouns_medium",
+      "item": {
+        "id": "item-velvet-coat",
+        "title": "Velvet Coat",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "imagePrompt": "a burgundy velvet coat"
+      },
+      "components": [],
+      "owner": {
+        "name": "Nobody",
+        "pronouns": null,
+        "archivedAt": null,
+        "physicalDescription": {
+          "mediumPrompt": "a medium build"
+        }
+      },
+      "aesthetic": null
+    },
+    {
+      "name": "garment_short_only",
+      "item": {
+        "id": "item-tweed-trousers",
+        "title": "Tweed Trousers",
+        "types": [
+          "bottom"
+        ],
+        "componentItemIds": [],
+        "imagePrompt": "  tweed trousers  "
+      },
+      "components": [],
+      "owner": {
+        "name": "Shorty",
+        "pronouns": {
+          "subject": "she"
+        },
+        "archivedAt": null,
+        "physicalDescription": {
+          "shortPrompt": "short and stout"
+        }
+      },
+      "aesthetic": null
+    },
+    {
+      "name": "garment_blank_full_description",
+      "item": {
+        "id": "item-riding-boots",
+        "title": "Riding Boots",
+        "types": [
+          "footwear"
+        ],
+        "componentItemIds": []
+      },
+      "components": [],
+      "owner": {
+        "name": "Prosy",
+        "pronouns": {
+          "subject": "he"
+        },
+        "archivedAt": null,
+        "physicalDescription": {
+          "fullDescription": "   "
+        }
+      },
+      "aesthetic": null
+    },
+    {
+      "name": "garment_archived_owner",
+      "item": {
+        "id": "item-velvet-coat",
+        "title": "Velvet Coat",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "imagePrompt": "a burgundy velvet coat"
+      },
+      "components": [],
+      "owner": {
+        "name": "Abigail",
+        "pronouns": {
+          "subject": "she",
+          "object": "her",
+          "possessive": "hers"
+        },
+        "archivedAt": "2026-03-01T00:00:00.000Z",
+        "physicalDescription": {
+          "headAndShouldersPrompt": "auburn hair, freckles",
+          "mediumPrompt": "a slim woman in her thirties",
+          "shortPrompt": "slim",
+          "longPrompt": "A slim woman in her thirties with auburn hair and freckles!",
+          "completePrompt": "  A tall slim woman in her thirties, auburn hair to the shoulders, freckled, grey eyes...  ",
+          "fullDescription": "Full prose"
+        }
+      },
+      "aesthetic": null
+    },
+    {
+      "name": "hair_worn",
+      "item": {
+        "id": "item-chignon",
+        "title": "Chignon",
+        "types": [
+          "hair"
+        ],
+        "componentItemIds": [],
+        "imagePrompt": "an elegant chignon"
+      },
+      "components": [],
+      "owner": {
+        "name": "Abigail",
+        "pronouns": {
+          "subject": "she",
+          "object": "her",
+          "possessive": "hers"
+        },
+        "archivedAt": null,
+        "physicalDescription": {
+          "headAndShouldersPrompt": "auburn hair, freckles",
+          "mediumPrompt": "a slim woman in her thirties",
+          "shortPrompt": "slim",
+          "longPrompt": "A slim woman in her thirties with auburn hair and freckles!",
+          "completePrompt": "  A tall slim woman in her thirties, auburn hair to the shoulders, freckled, grey eyes...  ",
+          "fullDescription": "Full prose"
+        }
+      },
+      "aesthetic": null
+    },
+    {
+      "name": "hair_he_head_ladder",
+      "item": {
+        "id": "item-braids",
+        "title": "Braids",
+        "types": [
+          "hair"
+        ],
+        "componentItemIds": []
+      },
+      "components": [],
+      "owner": {
+        "name": "Barnaby",
+        "pronouns": {
+          "subject": "he",
+          "object": "him",
+          "possessive": "his"
+        },
+        "archivedAt": null,
+        "physicalDescription": {
+          "headAndShouldersPrompt": "bearded, ruddy cheeks?!",
+          "mediumPrompt": null,
+          "shortPrompt": "",
+          "longPrompt": null,
+          "completePrompt": null,
+          "fullDescription": null
+        }
+      },
+      "aesthetic": null
+    },
+    {
+      "name": "hair_catalogue",
+      "item": {
+        "id": "item-chignon",
+        "title": "Chignon",
+        "types": [
+          "hair"
+        ],
+        "componentItemIds": [],
+        "imagePrompt": "an elegant chignon"
+      },
+      "components": [],
+      "owner": null,
+      "aesthetic": null
+    },
+    {
+      "name": "hat_hair_and_accessories_not_hair_only",
+      "item": {
+        "id": "item-bowler",
+        "title": "Bowler",
+        "types": [
+          "accessories",
+          "hair"
+        ],
+        "componentItemIds": []
+      },
+      "components": [],
+      "owner": {
+        "name": "Abigail",
+        "pronouns": {
+          "subject": "she",
+          "object": "her",
+          "possessive": "hers"
+        },
+        "archivedAt": null,
+        "physicalDescription": {
+          "headAndShouldersPrompt": "auburn hair, freckles",
+          "mediumPrompt": "a slim woman in her thirties",
+          "shortPrompt": "slim",
+          "longPrompt": "A slim woman in her thirties with auburn hair and freckles!",
+          "completePrompt": "  A tall slim woman in her thirties, auburn hair to the shoulders, freckled, grey eyes...  ",
+          "fullDescription": "Full prose"
+        }
+      },
+      "aesthetic": null
+    },
+    {
+      "name": "no_types_garment",
+      "item": {
+        "id": "item-mystery",
+        "title": "Mystery",
+        "types": [],
+        "componentItemIds": []
+      },
+      "components": [],
+      "owner": null,
+      "aesthetic": null
+    },
+    {
+      "name": "empty_image_prompt_uses_title",
+      "item": {
+        "id": "item-empty-cue",
+        "title": "Empty Cue",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "imagePrompt": ""
+      },
+      "components": [],
+      "owner": null,
+      "aesthetic": null
+    },
+    {
+      "name": "outfit_worn",
+      "item": {
+        "id": "item-sunday-best",
+        "title": "Sunday Best",
+        "types": [
+          "top",
+          "bottom"
+        ],
+        "componentItemIds": [
+          "c1",
+          "c2"
+        ]
+      },
+      "components": [
+        {
+          "id": "item-velvet-coat",
+          "title": "Velvet Coat",
+          "types": [
+            "top"
+          ],
+          "componentItemIds": [],
+          "imagePrompt": "a burgundy velvet coat"
+        },
+        {
+          "id": "item-tweed-trousers",
+          "title": "Tweed Trousers",
+          "types": [
+            "bottom"
+          ],
+          "componentItemIds": [],
+          "imagePrompt": "  tweed trousers  "
+        },
+        {
+          "id": "item-riding-boots",
+          "title": "Riding Boots",
+          "types": [
+            "footwear"
+          ],
+          "componentItemIds": []
+        },
+        {
+          "id": "item-bowler",
+          "title": "Bowler",
+          "types": [
+            "accessories",
+            "hair"
+          ],
+          "componentItemIds": []
+        }
+      ],
+      "owner": {
+        "name": "Abigail",
+        "pronouns": {
+          "subject": "she",
+          "object": "her",
+          "possessive": "hers"
+        },
+        "archivedAt": null,
+        "physicalDescription": {
+          "headAndShouldersPrompt": "auburn hair, freckles",
+          "mediumPrompt": "a slim woman in her thirties",
+          "shortPrompt": "slim",
+          "longPrompt": "A slim woman in her thirties with auburn hair and freckles!",
+          "completePrompt": "  A tall slim woman in her thirties, auburn hair to the shoulders, freckled, grey eyes...  ",
+          "fullDescription": "Full prose"
+        }
+      },
+      "aesthetic": null
+    },
+    {
+      "name": "outfit_catalogue",
+      "item": {
+        "id": "item-sunday-best",
+        "title": "Sunday Best",
+        "types": [
+          "top",
+          "bottom"
+        ],
+        "componentItemIds": [
+          "c1",
+          "c2"
+        ]
+      },
+      "components": [
+        {
+          "id": "item-ball-gown",
+          "title": "Ball Gown",
+          "types": [
+            "top",
+            "bottom"
+          ],
+          "componentItemIds": []
+        },
+        {
+          "id": "item-riding-boots",
+          "title": "Riding Boots",
+          "types": [
+            "footwear"
+          ],
+          "componentItemIds": []
+        },
+        {
+          "id": "item-mystery",
+          "title": "Mystery",
+          "types": [],
+          "componentItemIds": []
+        }
+      ],
+      "owner": null,
+      "aesthetic": null
+    },
+    {
+      "name": "outfit_hair_only_worn",
+      "item": {
+        "id": "item-wedding-hair",
+        "title": "Wedding Hair",
+        "types": [
+          "hair"
+        ],
+        "componentItemIds": [
+          "h1",
+          "h2"
+        ]
+      },
+      "components": [
+        {
+          "id": "item-chignon",
+          "title": "Chignon",
+          "types": [
+            "hair"
+          ],
+          "componentItemIds": [],
+          "imagePrompt": "an elegant chignon"
+        },
+        {
+          "id": "item-braids",
+          "title": "Braids",
+          "types": [
+            "hair"
+          ],
+          "componentItemIds": []
+        }
+      ],
+      "owner": {
+        "name": "Barnaby",
+        "pronouns": {
+          "subject": "he",
+          "object": "him",
+          "possessive": "his"
+        },
+        "archivedAt": null,
+        "physicalDescription": {
+          "headAndShouldersPrompt": "bearded, ruddy cheeks?!",
+          "mediumPrompt": null,
+          "shortPrompt": "",
+          "longPrompt": null,
+          "completePrompt": null,
+          "fullDescription": null
+        }
+      },
+      "aesthetic": null
+    },
+    {
+      "name": "outfit_hair_only_catalogue",
+      "item": {
+        "id": "item-wedding-hair",
+        "title": "Wedding Hair",
+        "types": [
+          "hair"
+        ],
+        "componentItemIds": [
+          "h1",
+          "h2"
+        ]
+      },
+      "components": [
+        {
+          "id": "item-chignon",
+          "title": "Chignon",
+          "types": [
+            "hair"
+          ],
+          "componentItemIds": [],
+          "imagePrompt": "an elegant chignon"
+        },
+        {
+          "id": "item-braids",
+          "title": "Braids",
+          "types": [
+            "hair"
+          ],
+          "componentItemIds": []
+        }
+      ],
+      "owner": null,
+      "aesthetic": null
+    },
+    {
+      "name": "outfit_two_tops",
+      "item": {
+        "id": "item-sunday-best",
+        "title": "Sunday Best",
+        "types": [
+          "top",
+          "bottom"
+        ],
+        "componentItemIds": [
+          "c1",
+          "c2"
+        ]
+      },
+      "components": [
+        {
+          "id": "item-velvet-coat",
+          "title": "Velvet Coat",
+          "types": [
+            "top"
+          ],
+          "componentItemIds": [],
+          "imagePrompt": "a burgundy velvet coat"
+        },
+        {
+          "id": "item-plain-shirt",
+          "title": "Plain Shirt",
+          "types": [
+            "top"
+          ],
+          "componentItemIds": []
+        },
+        {
+          "id": "item-ball-gown",
+          "title": "Ball Gown",
+          "types": [
+            "top",
+            "bottom"
+          ],
+          "componentItemIds": []
+        }
+      ],
+      "owner": {
+        "name": "Quill",
+        "pronouns": {
+          "subject": "they",
+          "object": "them",
+          "possessive": "theirs"
+        },
+        "archivedAt": null,
+        "physicalDescription": null
+      },
+      "aesthetic": null
+    },
+    {
+      "name": "aesthetic_trimmed",
+      "item": {
+        "id": "item-velvet-coat",
+        "title": "Velvet Coat",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "imagePrompt": "a burgundy velvet coat"
+      },
+      "components": [],
+      "owner": {
+        "name": "Abigail",
+        "pronouns": {
+          "subject": "she",
+          "object": "her",
+          "possessive": "hers"
+        },
+        "archivedAt": null,
+        "physicalDescription": {
+          "headAndShouldersPrompt": "auburn hair, freckles",
+          "mediumPrompt": "a slim woman in her thirties",
+          "shortPrompt": "slim",
+          "longPrompt": "A slim woman in her thirties with auburn hair and freckles!",
+          "completePrompt": "  A tall slim woman in her thirties, auburn hair to the shoulders, freckled, grey eyes...  ",
+          "fullDescription": "Full prose"
+        }
+      },
+      "aesthetic": "  Gilded Age noir, sepia tones.  \n"
+    },
+    {
+      "name": "aesthetic_whitespace_only",
+      "item": {
+        "id": "item-velvet-coat",
+        "title": "Velvet Coat",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "imagePrompt": "a burgundy velvet coat"
+      },
+      "components": [],
+      "owner": null,
+      "aesthetic": "   \n\t "
+    },
+    {
+      "name": "aesthetic_empty",
+      "item": {
+        "id": "item-velvet-coat",
+        "title": "Velvet Coat",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "imagePrompt": "a burgundy velvet coat"
+      },
+      "components": [],
+      "owner": null,
+      "aesthetic": ""
+    },
+    {
+      "name": "aesthetic_exactly_600",
+      "item": {
+        "id": "item-plain-shirt",
+        "title": "Plain Shirt",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": []
+      },
+      "components": [],
+      "owner": null,
+      "aesthetic": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    },
+    {
+      "name": "aesthetic_601",
+      "item": {
+        "id": "item-plain-shirt",
+        "title": "Plain Shirt",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": []
+      },
+      "components": [],
+      "owner": null,
+      "aesthetic": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+    },
+    {
+      "name": "aesthetic_surrogate_straddles_600",
+      "item": {
+        "id": "item-velvet-coat",
+        "title": "Velvet Coat",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "imagePrompt": "a burgundy velvet coat"
+      },
+      "components": [],
+      "owner": {
+        "name": "Abigail",
+        "pronouns": {
+          "subject": "she",
+          "object": "her",
+          "possessive": "hers"
+        },
+        "archivedAt": null,
+        "physicalDescription": {
+          "headAndShouldersPrompt": "auburn hair, freckles",
+          "mediumPrompt": "a slim woman in her thirties",
+          "shortPrompt": "slim",
+          "longPrompt": "A slim woman in her thirties with auburn hair and freckles!",
+          "completePrompt": "  A tall slim woman in her thirties, auburn hair to the shoulders, freckled, grey eyes...  ",
+          "fullDescription": "Full prose"
+        }
+      },
+      "aesthetic": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa😀bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    {
+      "name": "aesthetic_surrogate_ends_at_600",
+      "item": {
+        "id": "item-velvet-coat",
+        "title": "Velvet Coat",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "imagePrompt": "a burgundy velvet coat"
+      },
+      "components": [],
+      "owner": null,
+      "aesthetic": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc😀dddddddddddddddddddddddddddddddddddddddddddddddddd"
+    },
+    {
+      "name": "aesthetic_outfit",
+      "item": {
+        "id": "item-sunday-best",
+        "title": "Sunday Best",
+        "types": [
+          "top",
+          "bottom"
+        ],
+        "componentItemIds": [
+          "c1",
+          "c2"
+        ]
+      },
+      "components": [
+        {
+          "id": "item-velvet-coat",
+          "title": "Velvet Coat",
+          "types": [
+            "top"
+          ],
+          "componentItemIds": [],
+          "imagePrompt": "a burgundy velvet coat"
+        },
+        {
+          "id": "item-riding-boots",
+          "title": "Riding Boots",
+          "types": [
+            "footwear"
+          ],
+          "componentItemIds": []
+        }
+      ],
+      "owner": null,
+      "aesthetic": "Watercolour"
+    }
+  ]
+}

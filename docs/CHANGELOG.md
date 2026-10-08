@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(wardrobe): the item-picture prompt over a shared figure identity block (P4.D263 item 5)
+
+_Versions: core 0.0.1255._
+
+`avatar_prompt.rs` gains `build_figure_identity_block(character, FigureFraming)` (v4 `buildFigureIdentityBlock`, `7c8572869`): both description ladders, the pronoun noun with its `person` default, and the strip that leaves exactly one closing period. The avatar path now reads the block. Its bytes are unchanged: `avatar_job_tier3_equivalence` and `wardrobe_tools_avatar_trigger_equivalence`, regenerated from the pin, pass with no corpus edits. NEW `services/wardrobe_item_image_prompt.rs` ports `primarySlot`, `isHairOnly`, `buildWardrobeItemCue` and `buildWardrobeItemImagePrompt`: worn vs catalogue, the hair framing, and the aesthetic preamble capped at 600 UTF-16 units after the trim. The caller resolves the aesthetic, so the builder is pure.
+
+NEW tier-1 family `wardrobe_item_image_prompt_equivalence` (28 cases, jest oracle over v4's real builder with `resolveAesthetic` mocked). It covers both ladders, four pronoun shapes, outfits, hair-only outfits, and a surrogate pair split by the cap, compared as wire bytes. Three source mutations are each caught.
+
 #### 2026-10-08 — feat(wardrobe): the item-images module, the shared container resolver and the image bridge (P4.D263 items 2–4)
 
 _Versions: core 0.0.1254._

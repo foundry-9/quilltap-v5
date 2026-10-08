@@ -173092,3 +173092,20 @@ red-first in its own unit), `avatar_job_tier3_equivalence` and
   fallback twins). Censuses: `blob_write_sites_census` +1 row (12 → 13);
   `doc_mount_fallback_sites_census` moves its two P4.D255 rows to the bridge (count unchanged).
   Regen recipe: the test file's header.
+- **Unit 2 — item 5 (the identity block + the prompt; R-G).** `avatar_prompt.rs`:
+  `pub fn build_figure_identity_block(&Value, FigureFraming) -> FigureIdentityBlock`, with the avatar
+  path re-pointed. NEW `services/wardrobe_item_image_prompt.rs`. **R-G proof:**
+  `avatar_job_tier3_equivalence` (2/2) + `wardrobe_tools_avatar_trigger_equivalence` (3/3),
+  regenerated from the pin at lane start, green with ZERO corpus edits. Measured: the avatar job
+  family IS prompt-sensitive (a `.` → `;` in the period strip reds both of its tests), while the
+  trigger family is prompt-BLIND (green under the same mutation; it pins trigger ordering only), so
+  the byte proof rests on `avatar_job_tier3`. NEW tier-1 `wardrobe_item_image_prompt_equivalence`
+  (28 cases; jest oracle `cases/wardrobe-item-image-prompt.test.ts` over v4's REAL
+  `buildWardrobeItemImagePrompt` / `buildWardrobeItemCue` / `buildFigureIdentityBlock`).
+  **How `resolveAesthetic` is satisfied:** `jest.mock('@/lib/image-gen/aesthetic')` answers each
+  case's `aesthetic`; the Rust builder takes the resolved text as an argument (the generation
+  resolves it through `services::aesthetics`). **The split-surrogate row:** v4's `slice(0, 600)`
+  can leave a lone surrogate, which JSON cannot carry; the oracle emits the prompt as the UTF-8 the
+  provider receives (`Buffer.from(p).toString()`, lone surrogate → U+FFFD), which is byte-equal to
+  `utf16_truncate`'s lossy decode. The in-memory UTF-16 length agrees too. Mutations caught: the
+  full-length ladder swapped (17), the cap at 599 (8), a type-less item read as hair-only (2).
