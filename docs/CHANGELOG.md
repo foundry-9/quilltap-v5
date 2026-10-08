@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — docs(porting): drift check — 11 v4 commits past `94fbb1ae3` classified; bugs 180/181 converge; two schema moves pending
+
+_Docs-only change._
+
+Full `/driftcheck` of v4 against the `94fbb1ae3` baseline. v4 `main` is at `f5e953a3f`, 11 commits past the baseline. `bugfix` and `release` have not moved, and the checkout is clean on `main`. The drift ledger's §1 is rewritten. All 11 §3 rows are now classified from their shipped hunks:
+- **Wardrobe:** lists `origin` (#80, PORT), the wear ledger (#81, PORT-NEW + PORT), and item images plus tool pictures (#82 and `b3f937076`, PORT-NEW + PORT).
+- **Chat gallery:** the two gallery passes (PORT).
+- **Merge `a9c99a4a0`:** now has its own row. It moves `openai` and `@openrouter/sdk`, so `provider_sdk_version_guard` will trip, and pins need `npm ci --offline`.
+- **`039f7017c`:** CONVERGENCE on this port's bugs 180 and 181. v5's backup writer still emits the old `{"0":…}` memory embedding, so this is a port item, not just a pin retirement. Bug 179 is a NO-PORT candidate pending one measurement.
+- **Daily DB optimize:** PORT-NEW; a ruling is likely needed.
+
+Two schema moves are pending, as the sixth D23 re-dump: `wardrobe_wear_stats` and `chat_settings.wardrobeImageSettings`. A load-bearing UNIQUE `COALESCE` index is also pending for `migration_indexes.json`. The regen rule stays PIN REQUIRED.
+
+The ledger landed in `72b8521e4`. This entry follows separately because the first commit's changelog step failed.
+
 #### 2026-10-07 — docs(porting): v4 bugs 180 and 181 filed — the LLM-logs cold-open ladder and the full-backup embedded-memory loss; the no-dedupe UNIQUE candidate re-checked and not filed
 
 _Docs-only change._
