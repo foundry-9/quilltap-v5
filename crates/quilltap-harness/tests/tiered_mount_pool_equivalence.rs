@@ -25,6 +25,15 @@
 //! ⚠ PIN REQUIRED at `08c49319d` for the helper rows (a baseline pin records
 //! none — the helper does not exist there).
 //!
+//! **P4.D256 (v4 `cc80dc89d`)** — the NEW grouped resolver
+//! `resolveGroupMountsForCharacter` is driven by the spec's `groupedArms`
+//! (each row carries `groups` AND the flat resolver's `flat`, so "flattens to
+//! exactly the flat resolver, in the same order" is a comparand), over the
+//! `p4d256` plants in `helperPlants`: first-group credit for a store linked to
+//! two of a character's groups, a group whose every store is already claimed
+//! (DROPPED), a membership whose group row is absent / unreadable but whose
+//! links survive (`name: ""`). ⚠ PIN REQUIRED at `cc80dc89d` or later.
+//!
 //! Build the fixtures + oracle (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
 //!   cd ~/source/quilltap-server
@@ -41,6 +50,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use quilltap_core::db::tiered_mount_pool::{
+    resolve_group_mount_point_ids_for_character, resolve_group_mounts_for_character,
     resolve_mount_point_ids_for_group, resolve_tiered_mount_pool, TierContext, TierResolveOptions,
 };
 use quilltap_core::db::Writer;
@@ -67,6 +77,9 @@ struct Spec {
     helper_plants: Vec<HelperPlant>,
     #[serde(rename = "helperArms")]
     helper_arms: Vec<HelperArm>,
+    /// P4.D256 (v4 `cc80dc89d`): the grouped resolver's arms.
+    #[serde(rename = "groupedArms")]
+    grouped_arms: Vec<GroupedArm>,
     /// P4.149 (items 6a/6b): the two project-tier helpers' arms.
     #[serde(rename = "projectTierArms")]
     project_tier_arms: Vec<ProjectTierArm>,
@@ -115,6 +128,13 @@ struct HelperArm {
     group_id: String,
 }
 
+#[derive(Deserialize)]
+struct GroupedArm {
+    id: String,
+    #[serde(rename = "characterId")]
+    character_id: String,
+}
+
 /// A matrix row carries `pool`; a P4.D231 helper row carries `ids`; a P4.149
 /// project-tier row carries `ids` + `logs` under `projectTier: true`.
 #[derive(Deserialize)]
@@ -128,6 +148,13 @@ struct Row {
     project_tier: bool,
     #[serde(default)]
     logs: Option<Vec<ArmLog>>,
+    /// P4.D256: a grouped row carries `groups` + `flat` under `grouped: true`.
+    #[serde(default)]
+    grouped: bool,
+    #[serde(default)]
+    groups: Option<Value>,
+    #[serde(default)]
+    flat: Option<Value>,
 }
 
 // P4.D231's `LINK_ROW_DIVERGENCE` pin (`helper_unreadable_link_row`: v4
@@ -170,12 +197,23 @@ fn tiered_mount_pool_matches_oracle() {
     let mut oracle: HashMap<String, Value> = HashMap::new();
     let mut helper_oracle: HashMap<String, Value> = HashMap::new();
     let mut project_tier_oracle: HashMap<String, (Value, Vec<ArmLog>)> = HashMap::new();
+    let mut grouped_oracle: HashMap<String, (Value, Value)> = HashMap::new();
     for line in std::fs::read_to_string(&oracle_path)
         .unwrap_or_else(|e| panic!("read oracle: {e}"))
         .lines()
         .filter(|l| !l.trim().is_empty())
     {
         let row: Row = serde_json::from_str(line).expect("oracle line parses");
+        if row.grouped {
+            grouped_oracle.insert(
+                row.id,
+                (
+                    row.groups.expect("a grouped row carries groups"),
+                    row.flat.expect("a grouped row carries flat"),
+                ),
+            );
+            continue;
+        }
         if row.project_tier {
             project_tier_oracle.insert(
                 row.id,
@@ -363,6 +401,48 @@ fn tiered_mount_pool_matches_oracle() {
         helper_failures.is_empty(),
         "resolve_mount_point_ids_for_group differs:\n{}",
         helper_failures.join("\n")
+    );
+
+    // P4.D256 — `resolve_group_mounts_for_character` (v4 `cc80dc89d`
+    // `resolveGroupMountsForCharacter`) beside the flat resolver, which is now
+    // DEFINED over it (its bytes unchanged — the matrix above stays green).
+    assert_eq!(
+        grouped_oracle.len(),
+        spec.grouped_arms.len(),
+        "grouped arm count — a pre-`cc80dc89d` pin records none (regenerate at the pin)"
+    );
+    let mut grouped_failures: Vec<String> = Vec::new();
+    for arm in &spec.grouped_arms {
+        let got_groups = serde_json::to_value(resolve_group_mounts_for_character(
+            main,
+            mount,
+            &arm.character_id,
+        ))
+        .unwrap();
+        let got_flat = serde_json::to_value(resolve_group_mount_point_ids_for_character(
+            main,
+            mount,
+            &arm.character_id,
+        ))
+        .unwrap();
+        let (want_groups, want_flat) = &grouped_oracle[&arm.id];
+        if &got_groups != want_groups {
+            grouped_failures.push(format!(
+                "{}: groups\n  v4: {want_groups}\n  v5: {got_groups}",
+                arm.id
+            ));
+        }
+        if &got_flat != want_flat {
+            grouped_failures.push(format!(
+                "{}: flat\n  v4: {want_flat}\n  v5: {got_flat}",
+                arm.id
+            ));
+        }
+    }
+    assert!(
+        grouped_failures.is_empty(),
+        "resolve_group_mounts_for_character differs:\n{}",
+        grouped_failures.join("\n")
     );
 
     // P4.149 (items 6a/6b) — the project-tier helpers, AFTER everything above

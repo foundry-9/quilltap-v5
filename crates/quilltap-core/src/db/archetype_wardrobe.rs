@@ -19,7 +19,11 @@
 //!     `?scope=group` route and the chat-start pool's per-character group tier
 //!     both reach for directly;
 //!   - [`find_archetype_by_id`] — the single-item lookup the public read trio
-//!     falls back to.
+//!     falls back to;
+//!   - [`find_archetypes_in_mounts_attributed`] — the `?scope=group` read KEPT
+//!     GROUPED, each item tagged with the group it hangs in (v4 `cc80dc89d`),
+//!     plus the read-time [`WardrobeOrigin`] annotation every wardrobe read
+//!     attaches ([`with_origin`]).
 //!
 //! Every reader calls [`read_character_vault_wardrobe`] with `seed_archetypes =
 //! false` (these folders ARE the shared set — re-seeding would recurse) and
@@ -32,10 +36,87 @@ use serde_json::Value;
 use super::doc_mount_documents::DocMountDocumentsRepository;
 use super::doc_mount_file_links::DocMountFileLinksRepository;
 use super::instance_settings;
+use super::tiered_mount_pool::GroupMounts;
 use super::vault_read_overlay::read_character_vault_wardrobe;
 use super::DbError;
 use crate::wardrobe_tiers::SharedWardrobeTiers;
 use crate::wearable_pool::is_archived_truthy;
+
+// ===========================================================================
+// The read-time origin (v4 `lib/wardrobe/wardrobe-container.ts`, `cc80dc89d`)
+// ===========================================================================
+
+/// The display name of the singleton General library, as an origin spells it
+/// (v4 `GENERAL_WARDROBE_NAME`). The SAME bytes as the built-in store's own
+/// name (`services/builtin_mounts.rs`'s `MountSpec` — a unit pin holds them
+/// equal; v4 spells both `'Quilltap General'`).
+pub const GENERAL_WARDROBE_NAME: &str = "Quilltap General";
+
+/// Which kind of wardrobe a read found an item in (v4
+/// `WardrobeContainerScope`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WardrobeOriginScope {
+    Character,
+    General,
+    Project,
+    Group,
+}
+
+/// Which wardrobe a collection read found an item in — v4 `WardrobeOrigin`.
+///
+/// v4's *why*: a READ-TIME annotation attached by the list endpoints on the way
+/// out — never persisted, never exported, never accepted on create/update. A
+/// garment has no idea which project it lives in; the read that found it does.
+/// Serializes exactly `{ "scope", "id", "name" }` in that order; `id` is `null`
+/// for General.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct WardrobeOrigin {
+    pub scope: WardrobeOriginScope,
+    /// The container id; `None` (→ `null`) for General.
+    pub id: Option<String>,
+    /// The container's display name, resolved server-side.
+    pub name: String,
+}
+
+impl WardrobeOrigin {
+    /// A character / project / group container's origin.
+    pub fn new(scope: WardrobeOriginScope, id: &str, name: &str) -> Self {
+        WardrobeOrigin {
+            scope,
+            id: Some(id.to_string()),
+            name: name.to_string(),
+        }
+    }
+}
+
+/// The origin every Quilltap General read attaches (v4
+/// `GENERAL_WARDROBE_ORIGIN`): `{ scope: 'general', id: null, name: 'Quilltap
+/// General' }`.
+pub fn general_wardrobe_origin() -> WardrobeOrigin {
+    WardrobeOrigin {
+        scope: WardrobeOriginScope::General,
+        id: None,
+        name: GENERAL_WARDROBE_NAME.to_string(),
+    }
+}
+
+/// v4 `withOrigin(items, origin)` — tag every item with the container it came
+/// from: `{ ...item, origin }`, so `origin` lands LAST (the items are
+/// `preserve_order` maps; an `insert` appends). A non-object item passes
+/// through untouched.
+pub fn with_origin(items: Vec<Value>, origin: &WardrobeOrigin) -> Vec<Value> {
+    let origin = serde_json::to_value(origin).unwrap_or(Value::Null);
+    items
+        .into_iter()
+        .map(|mut item| {
+            if let Value::Object(map) = &mut item {
+                map.insert("origin".to_string(), origin.clone());
+            }
+            item
+        })
+        .collect()
+}
 
 /// The `Wardrobe/` folder, shared by every tier (v4 `CHARACTER_WARDROBE_FOLDER`).
 const WARDROBE_FOLDER: &str = "Wardrobe";
@@ -248,6 +329,69 @@ where
     acc.order
 }
 
+/// v4 `WardrobeRepository.findArchetypesInMountsAttributed` (`cc80dc89d`) —
+/// the group tier of a character's wardrobe with each item tagged by the group
+/// it hangs in, for the dialog's origin chip. Reads every group's mounts in the
+/// order given (resolve them with
+/// [`super::tiered_mount_pool::resolve_group_mounts_for_character`]) and
+/// resolves an id collision exactly as [`find_archetypes_in_mounts`] does over
+/// the flattened list — a later mount's copy shadows an earlier one — so the
+/// item that wins here is the item that wins there, and it carries ITS OWN
+/// group's origin (the tagged value replaces the earlier one in place, v4's
+/// `Map.set`).
+///
+/// `[]` for no groups BEFORE anything (no line). A mount that can't be read is
+/// logged (with its `groupId`) and skipped. v4's `safeQuery` wrapper (`Error
+/// finding attributed group wardrobe items { groupCount, includeArchived }`) is
+/// unreachable — every read inside it is caught per mount, as in the flat
+/// sibling — so this answers `Ok` always.
+pub fn find_archetypes_in_mounts_attributed(
+    docs: &DocMountDocumentsRepository,
+    groups: &[GroupMounts],
+    include_archived: bool,
+) -> Result<Vec<Value>, DbError> {
+    Ok(merge_groups_attributed(groups, |mount_point_id| {
+        read_shared_wardrobe(docs, mount_point_id, include_archived)
+    }))
+}
+
+/// The attributed merge over an injected reader (the [`merge_mounts`] seam).
+fn merge_groups_attributed<F>(groups: &[GroupMounts], mut read: F) -> Vec<Value>
+where
+    F: FnMut(&str) -> Result<Vec<Value>, DbError>,
+{
+    if groups.is_empty() {
+        return Vec::new();
+    }
+    let mut acc = OrderedById::new();
+    for g in groups {
+        let origin = WardrobeOrigin::new(WardrobeOriginScope::Group, &g.group.id, &g.group.name);
+        for mount_point_id in &g.mount_point_ids {
+            match read(mount_point_id) {
+                Ok(items) => {
+                    for item in with_origin(items, &origin) {
+                        acc.upsert(item);
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        mountPointId = %mount_point_id, groupId = %g.group.id,
+                        context = "wardrobe", error = %crate::db::fallback::error_text(&e),
+                        "Failed to read shared wardrobe tier; skipping"
+                    );
+                }
+            }
+        }
+    }
+    tracing::debug!(
+        groupCount = groups.len(),
+        itemCount = acc.order.len(),
+        context = "wardrobe",
+        "Attributed group wardrobe read"
+    );
+    acc.order
+}
+
 /// v4 `WardrobeRepository.findArchetypes` — the General tier merged under the
 /// scoped tiers (`tiers.scoped_mounts()`, project-then-group so group wins).
 ///
@@ -369,5 +513,146 @@ mod tests {
             }
         });
         assert_eq!(titles(&out), vec!["shared (group)", "p-only (project)"]);
+    }
+
+    // === `cc80dc89d`: the attributed read — v4's four
+    // `findArchetypesInMountsAttributed` cases, over the same reader seam. ===
+
+    fn gm(id: &str, name: &str, mounts: &[&str]) -> GroupMounts {
+        GroupMounts {
+            group: super::super::tiered_mount_pool::GroupRef {
+                id: id.to_string(),
+                name: name.to_string(),
+            },
+            mount_point_ids: ids(mounts),
+        }
+    }
+
+    #[test]
+    fn attributed_tags_every_item_with_the_group_whose_store_it_hangs_in() {
+        let (out, lines) = crate::test_support::captured_with(|| {
+            merge_groups_attributed(
+                &[
+                    gm("G1", "The Sisters", &["m-sisters"]),
+                    gm("G2", "The Regiment", &["m-regiment"]),
+                ],
+                |mp| {
+                    Ok(vec![if mp == "m-sisters" {
+                        item("shawl", "sisters")
+                    } else {
+                        item("kit", "regiment")
+                    }])
+                },
+            )
+        });
+        assert_eq!(
+            out,
+            vec![
+                json!({ "id": "shawl", "characterId": null, "title": "shawl (sisters)",
+                        "origin": { "scope": "group", "id": "G1", "name": "The Sisters" } }),
+                json!({ "id": "kit", "characterId": null, "title": "kit (regiment)",
+                        "origin": { "scope": "group", "id": "G2", "name": "The Regiment" } }),
+            ]
+        );
+        // `origin` is the LAST key (v4's object spread).
+        assert_eq!(out[0].as_object().unwrap().keys().next_back().unwrap(), "origin");
+        assert_eq!(
+            lines,
+            vec!["DEBUG quilltap_core::db::archetype_wardrobe Attributed group wardrobe read groupCount=2 itemCount=2 context=wardrobe".to_string()]
+        );
+    }
+
+    #[test]
+    fn attributed_collision_resolves_as_the_flat_read_and_the_winner_keeps_its_own_origin() {
+        let reader = |mp: &str| {
+            Ok(vec![if mp == "m-sisters" {
+                item("livery", "sisters")
+            } else {
+                item("livery", "regiment")
+            }])
+        };
+        let flat = merge_mounts(&ids(&["m-sisters", "m-regiment"]), reader);
+        let attributed = merge_groups_attributed(
+            &[
+                gm("G1", "The Sisters", &["m-sisters"]),
+                gm("G2", "The Regiment", &["m-regiment"]),
+            ],
+            reader,
+        );
+        assert_eq!(attributed.len(), 1);
+        assert_eq!(attributed[0]["title"], flat[0]["title"]);
+        assert_eq!(attributed[0]["title"], "livery (regiment)");
+        assert_eq!(
+            attributed[0]["origin"],
+            json!({ "scope": "group", "id": "G2", "name": "The Regiment" })
+        );
+    }
+
+    #[test]
+    fn attributed_skips_an_unreadable_store_with_its_group_id() {
+        let (out, lines) = crate::test_support::captured_with(|| {
+            merge_groups_attributed(
+                &[
+                    gm("G1", "The Sisters", &["m-broken"]),
+                    gm("G2", "The Regiment", &["m-regiment"]),
+                ],
+                |mp| {
+                    if mp == "m-broken" {
+                        return Err(DbError::Internal("store offline".into()));
+                    }
+                    Ok(vec![item("kit", "regiment")])
+                },
+            )
+        });
+        assert_eq!(titles(&out), vec!["kit (regiment)"]);
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert_eq!(
+            lines[0],
+            "WARN quilltap_core::db::archetype_wardrobe Failed to read shared wardrobe tier; skipping mountPointId=m-broken groupId=G1 context=wardrobe error=store offline"
+        );
+        assert!(lines[1].contains("Attributed group wardrobe read groupCount=2 itemCount=1"));
+    }
+
+    #[test]
+    fn attributed_reads_nothing_and_logs_nothing_for_an_empty_group_tier() {
+        let mut calls = 0usize;
+        let (out, lines) = crate::test_support::captured_with(|| {
+            merge_groups_attributed(&[], |_| {
+                calls += 1;
+                Ok(Vec::new())
+            })
+        });
+        assert!(out.is_empty());
+        assert_eq!(calls, 0);
+        assert!(lines.is_empty(), "{lines:?}");
+    }
+
+    #[test]
+    fn origin_shapes_and_the_general_name_matches_the_builtin_store() {
+        assert_eq!(
+            serde_json::to_value(general_wardrobe_origin()).unwrap(),
+            json!({ "scope": "general", "id": null, "name": "Quilltap General" })
+        );
+        assert_eq!(
+            serde_json::to_string(&WardrobeOrigin::new(
+                WardrobeOriginScope::Character,
+                "c1",
+                "Abigail"
+            ))
+            .unwrap(),
+            r#"{"scope":"character","id":"c1","name":"Abigail"}"#
+        );
+        // Sourced from the built-in store's name, never re-spelled.
+        let builtin = include_str!("../services/builtin_mounts.rs");
+        assert!(builtin.contains(&format!("name: \"{GENERAL_WARDROBE_NAME}\",")));
+        // An item that already carries `origin` is re-tagged in place.
+        let out = with_origin(
+            vec![json!({"id": "a", "origin": 1, "z": 2})],
+            &general_wardrobe_origin(),
+        );
+        assert_eq!(
+            out[0].as_object().unwrap().keys().collect::<Vec<_>>(),
+            vec!["id", "origin", "z"]
+        );
     }
 }

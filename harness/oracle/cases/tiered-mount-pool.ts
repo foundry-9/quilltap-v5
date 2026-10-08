@@ -19,6 +19,11 @@
  * row is `{ id, helper: true, ids }`. At a pin older than `08c49319d` the
  * export does not exist and the helper rows are simply absent.
  *
+ * P4.D256 (v4 `cc80dc89d`): the NEW `resolveGroupMountsForCharacter` is driven
+ * by `groupedArms` (rows `{ id, grouped: true, groups, flat }`, the flat
+ * resolver beside it), over the `p4d256` plants in `helperPlants`. PIN
+ * REQUIRED at `cc80dc89d` or later.
+ *
  * Run (Node 24, from the v4 checkout):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
  *   cd ~/source/quilltap-server
@@ -47,6 +52,8 @@ interface Spec {
   fakeMountPointId: string;
   helperPlants: Array<{ db: 'main' | 'mount'; sql: string; params: Array<string | null> }>;
   helperArms: Array<{ id: string; groupId: string }>;
+  /** P4.D256 (v4 `cc80dc89d`): the grouped resolver's arms. */
+  groupedArms: Array<{ id: string; characterId: string }>;
   /** P4.149: the two project-tier helpers, each arm optionally over a RENAME. */
   projectTierArms: Array<{
     id: string;
@@ -107,6 +114,11 @@ async function main(): Promise<void> {
   const resolveMountPointIdsForGroup = tieredModule.resolveMountPointIdsForGroup as
     | ((groupId: string) => Promise<string[]>)
     | undefined;
+  const resolveGroupMountsForCharacter = tieredModule.resolveGroupMountsForCharacter as
+    | ((characterId: string) => Promise<unknown[]>)
+    | undefined;
+  const resolveGroupMountPointIdsForCharacter =
+    tieredModule.resolveGroupMountPointIdsForCharacter as (characterId: string) => Promise<string[]>;
   const { resolveProjectMountPointIds, resolveProjectMountPointIdsForChat } = tieredModule as unknown as {
     resolveProjectMountPointIds: (projectId: string) => Promise<string[]>;
     resolveProjectMountPointIdsForChat: (chatId: string) => Promise<string[]>;
@@ -142,6 +154,19 @@ async function main(): Promise<void> {
   if (resolveMountPointIdsForGroup) {
     for (const h of spec.helperArms) {
       rows.push({ id: h.id, helper: true, ids: await resolveMountPointIdsForGroup(h.groupId) });
+    }
+  }
+  // P4.D256 (v4 `cc80dc89d`): the grouped resolver beside the flat one — the
+  // flatten-equals-flat claim is a comparand. Absent at a pin older than
+  // `cc80dc89d` (the export does not exist there).
+  if (resolveGroupMountsForCharacter) {
+    for (const g of spec.groupedArms) {
+      rows.push({
+        id: g.id,
+        grouped: true,
+        groups: await resolveGroupMountsForCharacter(g.characterId),
+        flat: await resolveGroupMountPointIdsForCharacter(g.characterId),
+      });
     }
   }
 

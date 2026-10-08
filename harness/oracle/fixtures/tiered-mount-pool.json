@@ -305,6 +305,183 @@
         "2026-09-25T00:00:00.000Z",
         "2026-09-25T00:00:00.000Z"
       ]
+    },
+    {
+      "db": "main",
+      "sql": "CREATE TEMP TABLE \"p4d256_clone\" AS SELECT * FROM \"groups\" WHERE \"id\" = ?",
+      "params": [
+        "d8000000-0000-4000-8000-000000000001"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "UPDATE \"p4d256_clone\" SET \"id\" = ?, \"name\" = ?, \"officialMountPointId\" = ?",
+      "params": [
+        "d8256000-0000-4000-8000-0000000000a1",
+        "Crew X",
+        "e8256000-0000-4000-8000-0000000000c1"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "INSERT INTO \"groups\" SELECT * FROM \"p4d256_clone\"",
+      "params": []
+    },
+    {
+      "db": "main",
+      "sql": "DROP TABLE \"p4d256_clone\"",
+      "params": []
+    },
+    {
+      "db": "main",
+      "sql": "CREATE TEMP TABLE \"p4d256_clone\" AS SELECT * FROM \"groups\" WHERE \"id\" = ?",
+      "params": [
+        "d8000000-0000-4000-8000-000000000001"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "UPDATE \"p4d256_clone\" SET \"id\" = ?, \"name\" = ?, \"officialMountPointId\" = ?",
+      "params": [
+        "d8256000-0000-4000-8000-0000000000a2",
+        "Crew Y",
+        "e8256000-0000-4000-8000-0000000000c2"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "INSERT INTO \"groups\" SELECT * FROM \"p4d256_clone\"",
+      "params": []
+    },
+    {
+      "db": "main",
+      "sql": "DROP TABLE \"p4d256_clone\"",
+      "params": []
+    },
+    {
+      "db": "main",
+      "sql": "CREATE TEMP TABLE \"p4d256_clone\" AS SELECT * FROM \"groups\" WHERE \"id\" = ?",
+      "params": [
+        "d8000000-0000-4000-8000-000000000001"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "UPDATE \"p4d256_clone\" SET \"id\" = ?, \"name\" = ?, \"officialMountPointId\" = ?",
+      "params": [
+        "d8256000-0000-4000-8000-0000000000a3",
+        "Crew Z",
+        "e8256000-0000-4000-8000-0000000000c1"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "INSERT INTO \"groups\" SELECT * FROM \"p4d256_clone\"",
+      "params": []
+    },
+    {
+      "db": "main",
+      "sql": "DROP TABLE \"p4d256_clone\"",
+      "params": []
+    },
+    {
+      "db": "mount",
+      "sql": "INSERT INTO \"group_doc_mount_links\" (\"id\", \"groupId\", \"mountPointId\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?)",
+      "params": [
+        "f8256000-0000-4000-8000-000000000001",
+        "d8256000-0000-4000-8000-0000000000a1",
+        "e8256000-0000-4000-8000-0000000000c9",
+        "2026-10-08T00:00:00.000Z",
+        "2026-10-08T00:00:00.000Z"
+      ]
+    },
+    {
+      "db": "mount",
+      "sql": "INSERT INTO \"group_doc_mount_links\" (\"id\", \"groupId\", \"mountPointId\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?)",
+      "params": [
+        "f8256000-0000-4000-8000-000000000002",
+        "d8256000-0000-4000-8000-0000000000a2",
+        "e8256000-0000-4000-8000-0000000000c9",
+        "2026-10-08T00:00:00.000Z",
+        "2026-10-08T00:00:00.000Z"
+      ]
+    },
+    {
+      "db": "mount",
+      "sql": "INSERT INTO \"group_doc_mount_links\" (\"id\", \"groupId\", \"mountPointId\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?)",
+      "params": [
+        "f8256000-0000-4000-8000-000000000003",
+        "d8256000-0000-4000-8000-0000000000a4",
+        "e8256000-0000-4000-8000-0000000000c4",
+        "2026-10-08T00:00:00.000Z",
+        "2026-10-08T00:00:00.000Z"
+      ]
+    },
+    {
+      "db": "mount",
+      "sql": "INSERT INTO \"group_character_members\" (\"id\", \"groupId\", \"characterId\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?)",
+      "params": [
+        "f8256000-0000-4000-8000-000000000101",
+        "d8256000-0000-4000-8000-0000000000a1",
+        "c8256000-0000-4000-8000-000000000001",
+        "2026-10-08T00:00:00.000Z",
+        "2026-10-08T00:00:00.000Z"
+      ]
+    },
+    {
+      "db": "mount",
+      "sql": "INSERT INTO \"group_character_members\" (\"id\", \"groupId\", \"characterId\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?)",
+      "params": [
+        "f8256000-0000-4000-8000-000000000102",
+        "d8256000-0000-4000-8000-0000000000a2",
+        "c8256000-0000-4000-8000-000000000001",
+        "2026-10-08T00:00:00.000Z",
+        "2026-10-08T00:00:00.000Z"
+      ]
+    },
+    {
+      "db": "mount",
+      "sql": "INSERT INTO \"group_character_members\" (\"id\", \"groupId\", \"characterId\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?)",
+      "params": [
+        "f8256000-0000-4000-8000-000000000103",
+        "d8256000-0000-4000-8000-0000000000a3",
+        "c8256000-0000-4000-8000-000000000001",
+        "2026-10-08T00:00:00.000Z",
+        "2026-10-08T00:00:00.000Z"
+      ]
+    },
+    {
+      "db": "mount",
+      "sql": "INSERT INTO \"group_character_members\" (\"id\", \"groupId\", \"characterId\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?)",
+      "params": [
+        "f8256000-0000-4000-8000-000000000104",
+        "d8256000-0000-4000-8000-0000000000a4",
+        "c8256000-0000-4000-8000-000000000001",
+        "2026-10-08T00:00:00.000Z",
+        "2026-10-08T00:00:00.000Z"
+      ]
+    },
+    {
+      "db": "mount",
+      "sql": "INSERT INTO \"group_character_members\" (\"id\", \"groupId\", \"characterId\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?)",
+      "params": [
+        "f8256000-0000-4000-8000-000000000105",
+        "d8231000-0000-4000-8000-0000000000b4",
+        "c8256000-0000-4000-8000-000000000001",
+        "2026-10-08T00:00:00.000Z",
+        "2026-10-08T00:00:00.000Z"
+      ]
+    },
+    {
+      "db": "mount",
+      "sql": "INSERT INTO \"group_character_members\" (\"id\", \"groupId\", \"characterId\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?)",
+      "params": [
+        "f8256000-0000-4000-8000-000000000201",
+        "d8256000-0000-4000-8000-0000000000a5",
+        "c8256000-0000-4000-8000-000000000002",
+        "2026-10-08T00:00:00.000Z",
+        "2026-10-08T00:00:00.000Z"
+      ]
     }
   ],
   "helperArms": [
@@ -377,6 +554,39 @@
         "from": "id",
         "to": "id_x"
       }
+    }
+  ],
+  "$groupedComment": "P4.D256 (v4 `cc80dc89d`): `groupedArms` drive v4's REAL `resolveGroupMountsForCharacter` beside the flat `resolveGroupMountPointIdsForCharacter` (flatten == flat is a comparand). The `p4d256` plants give character C memberships in X, Y, Z, W and the BLOB-named group, in that order: X and Y both link store c9 (FIRST-group credit to X); Z's only store is X's official c1 (Z DROPPED); W has a link but no row (name \"\"); the BLOB group's row is unreadable (name \"\", its official lost, its link kept). Character E's one group has no row and no stores (dropped -> []). PIN REQUIRED at `cc80dc89d`+ (the export does not exist earlier).",
+  "groupedArms": [
+    {
+      "id": "grouped_char_A",
+      "characterId": "c8000000-0000-4000-8000-00000000000a",
+      "note": "the fixture's one membership"
+    },
+    {
+      "id": "grouped_char_B",
+      "characterId": "c8000000-0000-4000-8000-00000000000b",
+      "note": "no memberships: []"
+    },
+    {
+      "id": "grouped_first_credit_drop_absent_row",
+      "characterId": "c8256000-0000-4000-8000-000000000001",
+      "note": "X, Y (c9 credited to X), Z dropped, W name \"\", BLOB group name \"\""
+    },
+    {
+      "id": "grouped_only_group_empty",
+      "characterId": "c8256000-0000-4000-8000-000000000002",
+      "note": "one membership, no stores: dropped -> []"
+    },
+    {
+      "id": "grouped_unknown_character",
+      "characterId": "c8256000-0000-4000-8000-0000000000ff",
+      "note": "[]"
+    },
+    {
+      "id": "grouped_empty_id",
+      "characterId": "",
+      "note": "`if (!characterId) return []`"
     }
   ]
 }

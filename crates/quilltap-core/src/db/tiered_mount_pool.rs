@@ -206,11 +206,41 @@ fn character_mount_of(v: &serde_json::Value) -> Option<String> {
         .map(String::from)
 }
 
+/// One group's name and stores — v4's private `readGroupStores` (`cc80dc89d`):
+/// the official store first, then every store linked to it, deduped. The name
+/// comes off the row the official-pointer read ALREADY holds (no extra read on
+/// this hot path); an absent / unreadable row answers `""` (v4 `group?.name ??
+/// ''`). Shared by [`resolve_mount_point_ids_for_group`] and
+/// [`resolve_group_mounts_for_character`] so the two cannot drift.
+fn read_group_stores(
+    main: &Connection,
+    mount: &Connection,
+    group_id: &str,
+) -> (String, Vec<String>) {
+    let mut ids: Vec<String> = Vec::new();
+    let mut name = String::new();
+    // findByIdRaw avoids a store read on this hot path — we only need the
+    // group's name and officialMountPointId pointer, not its hydrated content.
+    if let Some((row_name, off)) = super::fallback::find_by_id_or_none("groups", group_id, || {
+        groups::find_validated_name_and_official_mount_point_id_raw(main, group_id)
+    }) {
+        name = row_name;
+        if let Some(off) = off.filter(|o| !o.is_empty()) {
+            push_unique(&mut ids, off);
+        }
+    }
+    for link in super::fallback::find_by_filter_or_empty("group_doc_mount_links", || {
+        GroupDocMountLinksRepository::new(mount).find_by_group_id(group_id)
+    }) {
+        push_unique(&mut ids, link);
+    }
+    (name, ids)
+}
+
 /// One group's stores — its official store, then every store linked to it
 /// (v4 `resolveMountPointIdsForGroup`, NEW in `08c49319d`). For a caller that
 /// holds a group rather than a member (the Scenario Builder launched from a
-/// group's page), and the per-membership step of
-/// [`resolve_group_mount_point_ids_for_character`]. `[]` for an empty id.
+/// group's page). `[]` for an empty id.
 ///
 /// **Neither read's failure empties the group — measured, not v4's comment.**
 /// v4 wraps both reads in ONE try/catch (WARN `Group store lookup failed
@@ -240,42 +270,54 @@ pub fn resolve_mount_point_ids_for_group(
     if group_id.is_empty() {
         return Vec::new();
     }
-    let mut ids: Vec<String> = Vec::new();
-    // findByIdRaw avoids a store read on this hot path — we only need the
-    // group's officialMountPointId pointer, not its hydrated content.
-    if let Some((_, Some(off))) = super::fallback::find_by_id_or_none("groups", group_id, || {
-        groups::find_validated_name_and_official_mount_point_id_raw(main, group_id)
-    }) {
-        if !off.is_empty() {
-            push_unique(&mut ids, off);
-        }
-    }
-    for link in super::fallback::find_by_filter_or_empty("group_doc_mount_links", || {
-        GroupDocMountLinksRepository::new(mount).find_by_group_id(group_id)
-    }) {
-        push_unique(&mut ids, link);
-    }
-    ids
+    read_group_stores(main, mount, group_id).1
 }
 
-/// Resolve the group tier — the union of the official store and every linked
-/// store across all groups the given character is a member of (v4
-/// `resolveGroupMountPointIdsForCharacter`). Keyed on the RESPONDING character
-/// (never the chat). Returns `[]` for a missing character id or on any lookup
-/// failure (fails soft). Insertion order: per membership, the group's official
-/// mount first, then its linked stores — [`resolve_mount_point_ids_for_group`]
-/// per membership since `08c49319d`.
+/// A group as the grouped resolver names it — v4 `GroupMounts.group`.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct GroupRef {
+    pub id: String,
+    /// The group row's name; `""` when the row is absent or unreadable.
+    pub name: String,
+}
+
+/// One group's share of a character's group tier — v4 `GroupMounts`
+/// (`cc80dc89d`). Serializes `{ group: { id, name }, mountPointIds }`.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupMounts {
+    pub group: GroupRef,
+    pub mount_point_ids: Vec<String>,
+}
+
+/// The group tier for a character, KEPT GROUPED (v4
+/// `resolveGroupMountsForCharacter`, `cc80dc89d`): one entry per group the
+/// character belongs to, in membership order, each carrying that group's
+/// official store first and its linked stores after.
 ///
-/// v4's outer catch (WARN `Group mount lookup failed { characterId, error }`)
-/// is unreachable for the same reason as the helper's: the memberships read
-/// (`findByCharacterId`) is a fallback-mode `safeQuery` too. v5's memberships
-/// read still answers `[]` on `Err`, silently (the repository line is the
-/// memberships repository's, and v5's is a raw read).
-pub fn resolve_group_mount_point_ids_for_character(
+/// v4's *why*: callers that must say WHICH group a shared item hangs in (the
+/// wardrobe dialog's origin chip) use this; everyone else uses the flat
+/// [`resolve_group_mount_point_ids_for_character`], which is DEFINED OVER this
+/// function so the two orders cannot drift.
+///
+/// - **First-group credit:** a store linked to two of the character's groups
+///   is credited to the FIRST only, so every mount appears exactly once across
+///   the result.
+/// - **Dropped empty group:** a group left with no unclaimed store is dropped.
+/// - `[]` for an empty id or no memberships.
+///
+/// Both of v4's WARNs here — the per-group `Group store lookup failed
+/// { groupId, error }` (a SECOND emission site of the pre-existing line, not a
+/// new line) and the outer `Group mount lookup failed { characterId, error }`
+/// — are UNREACHABLE through v4's real code: every read under them is a
+/// fallback-mode `safeQuery` (see [`resolve_mount_point_ids_for_group`]), so
+/// v5 logs neither (pinned NEGATIVE). v5's memberships read still answers `[]`
+/// on `Err`, silently, as before.
+pub fn resolve_group_mounts_for_character(
     main: &Connection,
     mount: &Connection,
     character_id: &str,
-) -> Vec<String> {
+) -> Vec<GroupMounts> {
     if character_id.is_empty() {
         return Vec::new();
     }
@@ -285,16 +327,47 @@ pub fn resolve_group_mount_point_ids_for_character(
         Ok(m) => m,
         Err(_) => return Vec::new(),
     };
-    if memberships.is_empty() {
-        return Vec::new();
-    }
-    let mut ids: Vec<String> = Vec::new();
+    let mut claimed: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut result: Vec<GroupMounts> = Vec::new();
     for group_id in memberships {
-        for id in resolve_mount_point_ids_for_group(main, mount, &group_id) {
-            push_unique(&mut ids, id);
+        let (name, stores) = read_group_stores(main, mount, &group_id);
+        let mount_point_ids: Vec<String> = stores
+            .into_iter()
+            .filter(|id| !claimed.contains(id))
+            .collect();
+        for id in &mount_point_ids {
+            claimed.insert(id.clone());
         }
+        if mount_point_ids.is_empty() {
+            continue;
+        }
+        result.push(GroupMounts {
+            group: GroupRef { id: group_id, name },
+            mount_point_ids,
+        });
     }
-    ids
+    result
+}
+
+/// Resolve the group tier — the union of the official store and every linked
+/// store across all groups the given character is a member of (v4
+/// `resolveGroupMountPointIdsForCharacter`). Keyed on the RESPONDING character
+/// (never the chat). Returns `[]` for a missing character id or on any lookup
+/// failure (fails soft).
+///
+/// Since `cc80dc89d` this is `groups.flatMap(g => g.mountPointIds)` over
+/// [`resolve_group_mounts_for_character`] — its bytes are UNCHANGED (one
+/// group's failure already dropped that group alone, and the first-group
+/// credit IS the old insertion-ordered dedup).
+pub fn resolve_group_mount_point_ids_for_character(
+    main: &Connection,
+    mount: &Connection,
+    character_id: &str,
+) -> Vec<String> {
+    resolve_group_mounts_for_character(main, mount, character_id)
+        .into_iter()
+        .flat_map(|g| g.mount_point_ids)
+        .collect()
 }
 
 /// Resolve the tri-tier mount pool for a context (v4 `resolveTieredMountPool`).
@@ -620,6 +693,122 @@ mod tests {
         assert!(!lines
             .iter()
             .any(|l| l.contains("Group store lookup failed")));
+    }
+
+    /// `cc80dc89d`: the grouped resolver's fixture — groups X / Y / Z share
+    /// stores, W has links but no row; memberships in X, Y, Z, W order.
+    fn grouped_dbs() -> (Connection, Connection) {
+        let main = Connection::open_in_memory().unwrap();
+        main.execute_batch(
+            r#"CREATE TABLE "groups" ("id" TEXT PRIMARY KEY NOT NULL, "name" TEXT NOT NULL,
+                 "officialMountPointId" TEXT, "createdAt" TEXT NOT NULL, "updatedAt" TEXT NOT NULL);
+               INSERT INTO "groups" VALUES ('d2000000-0000-4000-8000-0000000000a1', 'Crew X', 'e2000000-0000-4000-8000-0000000000c1', '2026-10-08T00:00:00.000Z', '2026-10-08T00:00:00.000Z');
+               INSERT INTO "groups" VALUES ('d2000000-0000-4000-8000-0000000000a2', 'Crew Y', 'e2000000-0000-4000-8000-0000000000c2', '2026-10-08T00:00:00.000Z', '2026-10-08T00:00:00.000Z');
+               INSERT INTO "groups" VALUES ('d2000000-0000-4000-8000-0000000000a3', 'Crew Z', 'e2000000-0000-4000-8000-0000000000c1', '2026-10-08T00:00:00.000Z', '2026-10-08T00:00:00.000Z');"#,
+        )
+        .unwrap();
+        let mount = Connection::open_in_memory().unwrap();
+        mount
+            .execute_batch(
+                r#"CREATE TABLE "group_doc_mount_links" ("id" TEXT PRIMARY KEY NOT NULL,
+                 "groupId" TEXT NOT NULL, "mountPointId" TEXT NOT NULL,
+                 "createdAt" TEXT NOT NULL, "updatedAt" TEXT NOT NULL);
+               CREATE TABLE "group_character_members" ("id" TEXT PRIMARY KEY NOT NULL,
+                 "groupId" TEXT NOT NULL, "characterId" TEXT NOT NULL,
+                 "createdAt" TEXT NOT NULL, "updatedAt" TEXT NOT NULL);
+               INSERT INTO "group_doc_mount_links" VALUES ('f2000000-0000-4000-8000-000000000001', 'd2000000-0000-4000-8000-0000000000a1', 'e2000000-0000-4000-8000-0000000000c9', '2026-10-08T00:00:00.000Z', '2026-10-08T00:00:00.000Z');
+               INSERT INTO "group_doc_mount_links" VALUES ('f2000000-0000-4000-8000-000000000002', 'd2000000-0000-4000-8000-0000000000a2', 'e2000000-0000-4000-8000-0000000000c9', '2026-10-08T00:00:00.000Z', '2026-10-08T00:00:00.000Z');
+               INSERT INTO "group_doc_mount_links" VALUES ('f2000000-0000-4000-8000-000000000003', 'd2000000-0000-4000-8000-0000000000a4', 'e2000000-0000-4000-8000-0000000000c4', '2026-10-08T00:00:00.000Z', '2026-10-08T00:00:00.000Z');
+               INSERT INTO "group_character_members" VALUES ('f3000000-0000-4000-8000-000000000001', 'd2000000-0000-4000-8000-0000000000a1', 'c2000000-0000-4000-8000-000000000001', '2026-10-08T00:00:00.000Z', '2026-10-08T00:00:00.000Z');
+               INSERT INTO "group_character_members" VALUES ('f3000000-0000-4000-8000-000000000002', 'd2000000-0000-4000-8000-0000000000a2', 'c2000000-0000-4000-8000-000000000001', '2026-10-08T00:00:00.000Z', '2026-10-08T00:00:00.000Z');
+               INSERT INTO "group_character_members" VALUES ('f3000000-0000-4000-8000-000000000003', 'd2000000-0000-4000-8000-0000000000a3', 'c2000000-0000-4000-8000-000000000001', '2026-10-08T00:00:00.000Z', '2026-10-08T00:00:00.000Z');
+               INSERT INTO "group_character_members" VALUES ('f3000000-0000-4000-8000-000000000004', 'd2000000-0000-4000-8000-0000000000a4', 'c2000000-0000-4000-8000-000000000001', '2026-10-08T00:00:00.000Z', '2026-10-08T00:00:00.000Z');"#,
+            )
+            .unwrap();
+        (main, mount)
+    }
+
+    #[test]
+    fn grouped_resolver_credits_the_first_group_drops_the_empty_one_and_names_from_the_row() {
+        let (main, mount) = grouped_dbs();
+        let (groups, lines) = crate::test_support::captured_with(|| {
+            resolve_group_mounts_for_character(
+                &main,
+                &mount,
+                "c2000000-0000-4000-8000-000000000001",
+            )
+        });
+        let got = serde_json::to_value(&groups).unwrap();
+        assert_eq!(
+            got,
+            serde_json::json!([
+                { "group": { "id": "d2000000-0000-4000-8000-0000000000a1", "name": "Crew X" },
+                  "mountPointIds": ["e2000000-0000-4000-8000-0000000000c1", "e2000000-0000-4000-8000-0000000000c9"] },
+                // c9 is linked to X too: credited to the FIRST group only.
+                { "group": { "id": "d2000000-0000-4000-8000-0000000000a2", "name": "Crew Y" },
+                  "mountPointIds": ["e2000000-0000-4000-8000-0000000000c2"] },
+                // Z's only store (c1) is X's — Z is DROPPED. W has no row: `""`.
+                { "group": { "id": "d2000000-0000-4000-8000-0000000000a4", "name": "" },
+                  "mountPointIds": ["e2000000-0000-4000-8000-0000000000c4"] }
+            ])
+        );
+        assert!(lines.is_empty(), "the success path is silent: {lines:?}");
+        // The flat resolver is the flatten, in the same order.
+        assert_eq!(
+            resolve_group_mount_point_ids_for_character(
+                &main,
+                &mount,
+                "c2000000-0000-4000-8000-000000000001"
+            ),
+            groups
+                .iter()
+                .flat_map(|g| g.mount_point_ids.clone())
+                .collect::<Vec<_>>()
+        );
+        assert!(resolve_group_mounts_for_character(&main, &mount, "").is_empty());
+        assert!(resolve_group_mounts_for_character(&main, &mount, "c-none").is_empty());
+    }
+
+    #[test]
+    fn grouped_resolver_never_logs_v4s_two_unreachable_warns() {
+        // A failed links read and a failed memberships read: v4's per-group
+        // `Group store lookup failed` and outer `Group mount lookup failed`
+        // catches are unreachable (fallback-mode reads) — pinned NEGATIVE.
+        let (main, mount) = grouped_dbs();
+        mount
+            .execute_batch(r#"DROP TABLE "group_doc_mount_links""#)
+            .unwrap();
+        let (groups, lines) = crate::test_support::captured_with(|| {
+            resolve_group_mounts_for_character(
+                &main,
+                &mount,
+                "c2000000-0000-4000-8000-000000000001",
+            )
+        });
+        assert_eq!(
+            groups.len(),
+            2,
+            "X and Y keep their official stores: {groups:?}"
+        );
+        assert!(!lines
+            .iter()
+            .any(|l| l.contains("Group store lookup failed")
+                || l.contains("Group mount lookup failed")));
+        let no_members = Connection::open_in_memory().unwrap();
+        let (groups, lines) = crate::test_support::captured_with(|| {
+            resolve_group_mounts_for_character(
+                &main,
+                &no_members,
+                "c2000000-0000-4000-8000-000000000001",
+            )
+        });
+        assert!(groups.is_empty());
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("Group mount lookup failed")),
+            "{lines:?}"
+        );
     }
 
     fn s(v: &[&str]) -> Vec<String> {

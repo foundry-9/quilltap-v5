@@ -172219,3 +172219,65 @@ measure).
 
 core 0.0.1253, host 0.0.190 (web: test-only edits, not bumped); harness frozen 0.0.1110; SPA,
 cli, tauri unchanged.
+
+## P4.D256 — the wardrobe item routes: `origin` + `wear` reads, `?action=wear-history`, the DELETE / PUT hooks — lane record (`claude/wardrobe-item-routes-hooks-b40dd5`, 2026-10-08)
+
+Stage-2 lane of the `f5e953a3f` round, branched from P4.D255's COMPLETE tip
+(`23cd7123b`, which holds `KEYSTONE` `c30603378` and every later P4.D255
+commit; this lane's own commits start after it). Pin
+`/tmp/qt-v4-pin-p4d256-f5e953a3f` (`f5e953a3f`, `4.10.0-dev.117`, root
+`openai` 7.30.0, the three symlink classes); every regen in a lane-private
+`/tmp/p4d256/`.
+
+**§R.2 probe — FAILED at lane start, WAIVED by the human (2026-10-08).** v4
+`main` carried three commits beyond the ledger's waived `1825bfd53`:
+`3f7320138` (memory F1–F9; waived for P4.D255 in its own order only),
+`da98ca58b` (docs), `f7d8064be` (memory recall retuning). None touch the
+wardrobe / mount-index / route files; root dependencies unchanged (the
+version stamp alone, `4.10.0-dev.137`). The human ruled: pin stays
+`f5e953a3f`; the three are for the next `/driftcheck`. At the first regen's
+re-probe the live checkout had gone DIRTY (`app/api/v1/memories/route.ts`,
+`components/memory/memory-card.tsx`, `memory-editor.tsx`); the human waived
+memory-only drift (commits or dirt) for the rest of the lane — any change
+touching wardrobe, mount-index, files, chats, characters, groups / projects
+or dependencies stays a STOP. The pin is a detached worktree, so working-tree
+dirt never reaches a regen. The ledger is NOT written (lane rule).
+
+### Unit 1 — the grouped resolver, the attributed read, the origin type (items 2, 6, 7; core 0.0.1254)
+
+- `db/tiered_mount_pool.rs`: a private `read_group_stores` (v4's) shared by
+  `resolve_mount_point_ids_for_group` and the NEW
+  `resolve_group_mounts_for_character` → `Vec<GroupMounts>`; the flat
+  resolver is its flatten. R-B: the name comes from the row
+  `find_validated_name_and_official_mount_point_id_raw` already reads — no new
+  read; `""` for an absent / unreadable row.
+- `db/archetype_wardrobe.rs`: `WardrobeOrigin` / `WardrobeOriginScope` /
+  `GENERAL_WARDROBE_NAME` (a source pin holds it equal to the built-in
+  store's `MountSpec` name) / `general_wardrobe_origin()` / `with_origin()`
+  (R-C — `insert`, so `origin` lands last) / `find_archetypes_in_mounts_
+  attributed` over a `merge_groups_attributed` reader seam (v4's four jest
+  cases as unit pins, plus capture pins for the DEBUG, the WARN's `groupId`,
+  and the empty-tier silence).
+- Unreachable lines pinned NEGATIVE: `Group store lookup failed` (the new
+  per-group site) and `Group mount lookup failed` (a failed links read and a
+  missing memberships table — neither fires). v4's `safeQuery` wrapper on the
+  attributed read (`Error finding attributed group wardrobe items`) is
+  unreachable for the same reason as the flat sibling's (every read is caught
+  per mount) — NOT ported, recorded.
+- **Recorded, not changed:** the flat `merge_mounts` WARN still logs the
+  snake_case `mount_point_id` (pre-existing; its callers are not this lane's
+  routes). A candidate smalls row.
+- **Differential:** `tiered_mount_pool_equivalence` + `tiered-mount-pool.ts`
+  grow `groupedArms` (6 rows: charA, charB, the plant character C — X, Y with
+  a shared store credited to X, Z dropped, W with no row, the BLOB-named
+  group — a store-less membership, an unknown id, the empty id), each row
+  carrying v4's `groups` AND the flat `flat`. Red-first: the export does not
+  exist on `KEYSTONE` (the arms cannot compile there — red by construction);
+  a mutation (empty groups kept) reddens exactly
+  `grouped_first_credit_drop_absent_row` + `grouped_only_group_empty`. Green:
+  9 matrix cases + every helper / grouped / project-tier arm. The Phase-1 /
+  P4.D231 rows unchanged and green.
+- Regen (from the pin, Node 24):
+  `QT_FIXTURE_TMP_MAIN=/tmp/p4d256/qt-tmp-main.db QT_FIXTURE_TMP_MOUNT=/tmp/p4d256/qt-tmp-mount.db node --import tsx $V5W/harness/oracle/fixtures/build-tiered-mount-pool-fixture.ts`,
+  then the same env with `harness/oracle/cases/tiered-mount-pool.ts` →
+  `/tmp/p4d256/oracle-tmp.ndjson` (26 rows; 6 `grouped`).

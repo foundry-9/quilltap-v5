@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(wardrobe): the grouped group-tier resolver, the attributed group read and the read-time origin (P4.D256 items 2, 6, 7)
+
+_Versions: core 0.0.1254._
+
+Ports v4 `cc80dc89d`'s data layer. `db/tiered_mount_pool.rs` gains `GroupMounts { group: { id, name }, mountPointIds }` and `resolve_group_mounts_for_character` (membership order; a store linked to two of a character's groups is credited to the first; a group left with no unclaimed store is dropped; the group name comes from the row the official-pointer read already holds, `""` when absent or unreadable). The flat `resolve_group_mount_point_ids_for_character` is now the flatten of the grouped one; its output is unchanged. `db/archetype_wardrobe.rs` gains `WardrobeOrigin` (`{scope, id, name}`), `GENERAL_WARDROBE_NAME`, `general_wardrobe_origin()`, `with_origin()` (appends `origin` as the last key), and `find_archetypes_in_mounts_attributed` (collision winner keeps its own group's origin; per-mount WARN carries `groupId`; DEBUG `Attributed group wardrobe read`). v4's two group-lookup WARNs stay unlogged (unreachable through v4's fallback-mode reads) and are pinned negative.
+
+`tiered_mount_pool_equivalence` grows six `groupedArms` rows driving v4's real `resolveGroupMountsForCharacter` beside the flat resolver, over new `p4d256` plants (first-group credit, a dropped group, an absent group row, an unreadable group row, a member of a store-less group). Pin required at `cc80dc89d` or later.
+
 #### 2026-10-08 — test(harness): classify the item-image cleanup's two mount-index reads; P4.D255 lane record, LANE COMPLETE
 
 _No crate versions bumped._
