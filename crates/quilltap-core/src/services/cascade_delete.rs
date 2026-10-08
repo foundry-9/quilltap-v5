@@ -22,6 +22,7 @@ use crate::db::characters::CharactersRepository;
 use crate::db::chats::ChatsRepository;
 use crate::db::files::FilesRepository;
 use crate::db::vector_indices::VectorIndicesRepository;
+use crate::db::wardrobe_wear_stats::WardrobeWearStatsRepository;
 use crate::db::{characters_read, chats_read, memories_read, DbError};
 use crate::photos::character_gallery_service::remove_from_character_gallery;
 use crate::photos::resolve_character_avatar::{resolve_character_avatar, AvatarKind};
@@ -381,10 +382,38 @@ pub fn execute_cascade_delete(
         params![character_id],
     )?;
 
+    fold_departed_wearer(main, character_id);
+
     // Finally the character (slim row).
     CharactersRepository::new(main).delete(character_id)?;
 
     Ok((true, deleted_chats, deleted_images, deleted_memories))
+}
+
+/// The cascade's wear-ledger step (v4 `3ee3b1342`, `cascade-delete.ts:
+/// 404-413`), after the plugin data and BEFORE the character row goes: fold
+/// the character's rows into each item's unattributed row — the garments'
+/// totals survive the wearer, the attribution does not. A fold rather than
+/// SET NULL because the ledger's unique index admits only one unattributed row
+/// per item. v4's DEBUG `[CascadeDelete] Folded wear-ledger rows into
+/// unattributed` on success; on a failure (a pre-round instance with no ledger
+/// table included — v4's `runAtomically` throws `no such table`) the ERROR
+/// `Failed to fold wear-ledger rows for character <id>`, and the delete
+/// PROCEEDS (v4's catch). `{ context: { characterId } }` renders as one
+/// `contextJson` field (the `…Json` file-layer convention).
+fn fold_departed_wearer(main: &Connection, character_id: &str) {
+    let context_json = serde_json::json!({ "characterId": character_id }).to_string();
+    match WardrobeWearStatsRepository::new(main).fold_wearer_into_unattributed(character_id) {
+        Ok(_) => tracing::debug!(
+            contextJson = %context_json,
+            "[CascadeDelete] Folded wear-ledger rows into unattributed"
+        ),
+        Err(e) => tracing::error!(
+            contextJson = %context_json,
+            error = %crate::db::fallback::error_text(&e),
+            "Failed to fold wear-ledger rows for character {character_id}"
+        ),
+    }
 }
 
 /// Collapse a [`GalleryError`] from the gallery-removal call into a [`DbError`]
@@ -432,6 +461,68 @@ mod strict_image_check_tests {
         assert!(
             lines.iter().any(|l| l.ends_with("strictFailures=true")),
             "{got:?} {lines:#?}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::wardrobe_wear_stats::{WardrobeWearIncrement, WARDROBE_WEAR_STATS_DDL};
+    use crate::test_support::captured_with;
+
+    const ARIA: &str = "a0000000-0000-4000-8000-0000000000a1";
+
+    /// P4.D262 item 8: the fold folds (the repository's INFO, then the
+    /// cascade's DEBUG) and the attribution is gone.
+    #[test]
+    fn the_fold_step_folds_and_logs_v4s_debug() {
+        let conn = Connection::open_in_memory().unwrap();
+        for sql in WARDROBE_WEAR_STATS_DDL {
+            conn.execute_batch(sql).unwrap();
+        }
+        WardrobeWearStatsRepository::new(&conn)
+            .increment_wears(&[WardrobeWearIncrement {
+                item_id: "coat".into(),
+                wearer_character_id: Some(ARIA.into()),
+                chat_id: Some("chat-1".into()),
+                at: "2026-03-14T00:00:00.000Z".into(),
+            }])
+            .unwrap();
+        let ((), lines) = captured_with(|| fold_departed_wearer(&conn, ARIA));
+        let wearers: Vec<Option<String>> = conn
+            .prepare("SELECT wearerCharacterId FROM wardrobe_wear_stats")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(wearers, vec![None]);
+        assert_eq!(lines.len(), 2, "{lines:#?}");
+        assert!(lines[0].starts_with("INFO quilltap::wardrobe_wear Folded a departed wearer"));
+        assert_eq!(
+            lines[1],
+            format!(
+                "DEBUG quilltap_core::services::cascade_delete [CascadeDelete] Folded wear-ledger \
+                 rows into unattributed contextJson={{\"characterId\":\"{ARIA}\"}}"
+            )
+        );
+    }
+
+    /// No ledger table (a pre-round instance): v4's ERROR, and the step
+    /// returns so the delete proceeds.
+    #[test]
+    fn a_failed_fold_logs_v4s_error_and_does_not_stop_the_delete() {
+        let conn = Connection::open_in_memory().unwrap();
+        let ((), lines) = captured_with(|| fold_departed_wearer(&conn, ARIA));
+        assert_eq!(lines.len(), 1, "{lines:#?}");
+        assert_eq!(
+            lines[0],
+            format!(
+                "ERROR quilltap_core::services::cascade_delete Failed to fold wear-ledger rows \
+                 for character {ARIA} contextJson={{\"characterId\":\"{ARIA}\"}} \
+                 error=no such table: wardrobe_wear_stats"
+            )
         );
     }
 }

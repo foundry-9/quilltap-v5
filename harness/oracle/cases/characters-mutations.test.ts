@@ -160,7 +160,9 @@ function dumpTagTables(getRawDatabase: () => { prepare: (s: string) => { all: ()
 
 /** Dump every cascade-touched table (baked ids identical on both sides → no
  *  remap): the character/chat/message/memory/plugin rows (MAIN) + the vault
- *  link/file/blob rows (MOUNT-INDEX). */
+ *  link/file/blob rows (MOUNT-INDEX). [P4.D262 / v4 `3ee3b1342`] plus every
+ *  `wardrobe_wear_stats` row minus the minted `id`/`createdAt`/`updatedAt` —
+ *  the cascade folds the departed wearer's rows into the unattributed row. */
 function dumpCascadeTables(
   mainDb: { prepare: (s: string) => { all: (...a: unknown[]) => unknown } },
   mountDb: { prepare: (s: string) => { all: (...a: unknown[]) => unknown } },
@@ -178,8 +180,35 @@ function dumpCascadeTables(
       .all(),
     files: mountDb.prepare('SELECT id, sha256 FROM doc_mount_files ORDER BY id').all(),
     blobs: mountDb.prepare('SELECT fileId FROM doc_mount_blobs ORDER BY fileId').all(),
+    wardrobeWear: mainDb
+      .prepare(
+        `SELECT "itemId", "wearerCharacterId", "wearCount", "firstWornAt", "lastWornAt", "lastWornChatId"
+           FROM "wardrobe_wear_stats" ORDER BY "itemId", COALESCE("wearerCharacterId", '')`,
+      )
+      .all(),
   };
 }
+
+/** [P4.D262 / v4 `3ee3b1342`] The wear-ledger plant for the cascade arm, IN
+ *  CASE on both sides (the committed pair predates the table): the table in
+ *  the MIGRATION's shape (`WARDROBE_WEAR_STATS_DDL` — a booted pre-round
+ *  instance gets it from the ensure), then rows through v4's REAL
+ *  `incrementWears` — two of Aria's garments (one worn twice), Fenn's wear of
+ *  the shared one (survives), and an existing unattributed row for it (the
+ *  fold MERGES into it: counts summed, `MIN` first, `MAX` last + its chat).
+ *  The Rust arm plants the identical increments. */
+export const CASCADE_WEAR_PLANT: Array<{
+  itemId: string;
+  wearerCharacterId: string | null;
+  chatId: string | null;
+  at: string;
+}> = [
+  { itemId: 'cccccccc-0000-4000-8000-0000000000a1', wearerCharacterId: null, chatId: 'cccccccc-0000-4000-8000-0000000000c0', at: '2026-01-05T00:00:00.000Z' },
+  { itemId: 'cccccccc-0000-4000-8000-0000000000a1', wearerCharacterId: ARIA, chatId: 'cccccccc-0000-4000-8000-0000000000c1', at: '2026-02-01T00:00:00.000Z' },
+  { itemId: 'cccccccc-0000-4000-8000-0000000000a1', wearerCharacterId: ARIA, chatId: 'cccccccc-0000-4000-8000-0000000000c2', at: '2026-03-01T00:00:00.000Z' },
+  { itemId: 'cccccccc-0000-4000-8000-0000000000a2', wearerCharacterId: ARIA, chatId: 'cccccccc-0000-4000-8000-0000000000c1', at: '2026-02-10T00:00:00.000Z' },
+  { itemId: 'cccccccc-0000-4000-8000-0000000000a1', wearerCharacterId: FENN, chatId: 'cccccccc-0000-4000-8000-0000000000c3', at: '2026-04-01T00:00:00.000Z' },
+];
 
 function mockRequest(url: string, body: unknown): unknown {
   return {
@@ -340,6 +369,22 @@ async function runCase(
     }
 
     if (c.kind === 'character-delete') {
+      // [P4.D262] Plant the wear ledger (see CASCADE_WEAR_PLANT).
+      {
+        const { getRepositories } = await import('@/lib/repositories/factory');
+        const repos = getRepositories();
+        await repos.characters.findByIdRaw(ARIA);
+        const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+        const { WARDROBE_WEAR_STATS_DDL } = await import(
+          '@/lib/database/backends/sqlite/wardrobe-wear-stats-ddl'
+        );
+        const raw = getRawDatabase() as { exec: (sql: string) => void } | null;
+        if (!raw) throw new Error('main DB handle unavailable for the wear ledger plant');
+        for (const sql of WARDROBE_WEAR_STATS_DDL) raw.exec(sql);
+        for (const w of CASCADE_WEAR_PLANT) {
+          await repos.wardrobeWear.incrementWears([w as never]);
+        }
+      }
       // DELETE /api/v1/characters/[id]?cascadeChats=true&cascadeImages=true.
       const url = `http://localhost/api/v1/characters/${ARIA}?cascadeChats=true&cascadeImages=true`;
       const { DELETE } = (await import('@/app/api/v1/characters/[id]/route')) as {

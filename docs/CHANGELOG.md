@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(cascade): fold the departed wearer's wear-ledger rows into the unattributed row (P4.D262 item 8)
+
+_Versions: core 0.0.1257._
+
+The character cascade delete folds the departed wearer's wear-ledger rows into each item's unattributed row before the character row goes (v4 `3ee3b1342`, `cascade-delete.ts:404-413`). The garments keep their totals; only the attribution goes. A fold is used rather than `SET NULL` because the ledger's unique index admits one unattributed row per item. On success it logs v4's DEBUG `[CascadeDelete] Folded wear-ledger rows into unattributed`. On failure, including an instance with no ledger table, it logs the ERROR `Failed to fold wear-ledger rows for character …` with the bare SQLite text, and the delete proceeds. Both lines are capture-pinned.
+
+`characters_mutations_equivalence`'s cascade arm plants the ledger on both sides: the migration DDL, then v4's real `incrementWears` and v5's increment covering Aria's rows, Fenn's and an existing unattributed row. The cascade dump gains every ledger row. With the fold call removed the arm is red; with it, green. P4.D262 item 8; R-K's region carve.
+
 #### 2026-10-08 — feat(wardrobe): the wear ledger's write chokepoint — every equipped-slot writer through `commit_equipped_outfit` (P4.D262 items 2, 5–7, 9, 15)
 
 _Versions: core 0.0.1256._

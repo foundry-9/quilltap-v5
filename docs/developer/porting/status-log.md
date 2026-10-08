@@ -172774,3 +172774,24 @@ their boundaries (the differential over v4's real fn is the tier-1 family, unit 
 - `wardrobe-tools.json`: `Casual Outfit` is `isDefault` (the `default` shape
   needs a bundle to dissolve and credit) — every family built from that spec
   regenerates (`wardrobe_tools`, `wardrobe_tools_avatar_trigger`, this one).
+
+### Unit 4 — the cascade fold (item 8, R-K)
+
+`services/cascade_delete.rs`: `fold_departed_wearer` after the plugin data and
+BEFORE the character row — `fold_wearer_into_unattributed` → DEBUG
+`[CascadeDelete] Folded wear-ledger rows into unattributed` (`contextJson` —
+v4's `{ context: { characterId } }`); a failure → ERROR `Failed to fold
+wear-ledger rows for character <id>` (bare SQLite text) and the delete
+PROCEEDS. Two unit capture pins (the fold — the repository's INFO then the
+DEBUG; no table — the ERROR). **R-K carve (agreed by the order; P4.D256 owns the
+file):** `characters_mutations_equivalence.rs` edits ONLY `dump_cascade_tables`
+(+ `wardrobeWear` rows), a NEW `CASCADE_WEAR_PLANT` const beside it, and the
+`character_delete_cascade` arm (the plant — `ensure_wear_ledger_on` + the
+repository's increments); `characters-mutations.test.ts` edits ONLY
+`dumpCascadeTables`, a NEW exported `CASCADE_WEAR_PLANT`, and the
+`character-delete` branch (the migration DDL + v4's REAL `incrementWears`). The
+plant: two of Aria's garments (one worn twice), Fenn's wear of the shared one,
+and an existing unattributed row the fold MERGES into (count 1 + 2 = 3, first
+2026-01-05, last 2026-03-01 + its chat). Red-first by mutation (the fold call
+removed): `character_delete_cascade_tables` RED; restored: green. The no-table
+ERROR leg is the unit pin (one arm per family — the carve).

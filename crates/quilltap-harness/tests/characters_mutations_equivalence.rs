@@ -486,6 +486,41 @@ fn dump_saved_photo_links(db: &Db, mount_point_id: &str) -> Value {
 }
 
 /// Dump every cascade-touched table (baked ids → no remap), in the oracle's shape.
+/// [P4.D262] The cascade arm's wear-ledger plant — `(itemId, wearer, chat,
+/// at)`, identical to the oracle's `CASCADE_WEAR_PLANT`.
+const CASCADE_WEAR_PLANT: [(&str, Option<&str>, &str, &str); 5] = [
+    (
+        "cccccccc-0000-4000-8000-0000000000a1",
+        None,
+        "cccccccc-0000-4000-8000-0000000000c0",
+        "2026-01-05T00:00:00.000Z",
+    ),
+    (
+        "cccccccc-0000-4000-8000-0000000000a1",
+        Some(ARIA),
+        "cccccccc-0000-4000-8000-0000000000c1",
+        "2026-02-01T00:00:00.000Z",
+    ),
+    (
+        "cccccccc-0000-4000-8000-0000000000a1",
+        Some(ARIA),
+        "cccccccc-0000-4000-8000-0000000000c2",
+        "2026-03-01T00:00:00.000Z",
+    ),
+    (
+        "cccccccc-0000-4000-8000-0000000000a2",
+        Some(ARIA),
+        "cccccccc-0000-4000-8000-0000000000c1",
+        "2026-02-10T00:00:00.000Z",
+    ),
+    (
+        "cccccccc-0000-4000-8000-0000000000a1",
+        Some(FENN),
+        "cccccccc-0000-4000-8000-0000000000c3",
+        "2026-04-01T00:00:00.000Z",
+    ),
+];
+
 fn dump_cascade_tables(db: &Db) -> Value {
     let main_part = db
         .read_main(|main| {
@@ -506,7 +541,29 @@ fn dump_cascade_tables(db: &Db) -> Value {
                 }
                 Ok(out)
             };
+            // [P4.D262] every ledger row minus the minted id/createdAt/updatedAt.
+            let mut wear = Vec::new();
+            {
+                let mut stmt = main.prepare(
+                    "SELECT \"itemId\", \"wearerCharacterId\", \"wearCount\", \"firstWornAt\", \"lastWornAt\", \"lastWornChatId\"
+                       FROM \"wardrobe_wear_stats\" ORDER BY \"itemId\", COALESCE(\"wearerCharacterId\", '')",
+                )?;
+                let rows = stmt.query_map([], |r| {
+                    Ok(json!({
+                        "itemId": r.get::<_, String>(0)?,
+                        "wearerCharacterId": r.get::<_, Option<String>>(1)?,
+                        "wearCount": r.get::<_, i64>(2)?,
+                        "firstWornAt": r.get::<_, String>(3)?,
+                        "lastWornAt": r.get::<_, String>(4)?,
+                        "lastWornChatId": r.get::<_, Option<String>>(5)?,
+                    }))
+                })?;
+                for row in rows {
+                    wear.push(row?);
+                }
+            }
             Ok(json!({
+                "wardrobeWear": wear,
                 "characters": simple("SELECT id FROM characters ORDER BY id", &["id"])?,
                 "chats": simple("SELECT id FROM chats ORDER BY id", &["id"])?,
                 "messages": simple("SELECT id, chatId FROM chat_messages ORDER BY id", &["id", "chatId"])?,
@@ -566,6 +623,7 @@ fn dump_cascade_tables(db: &Db) -> Value {
         "links": mount_part["links"],
         "files": mount_part["files"],
         "blobs": mount_part["blobs"],
+        "wardrobeWear": main_part["wardrobeWear"],
     })
 }
 
@@ -1508,6 +1566,28 @@ fn characters_mutations_match_oracle() {
         // {success,deletedChats,deletedImages,deletedMemories} body AND the full
         // cascade-table dump (baked ids → no remap).
         let (db, _scratch) = fresh_db(&spec, "cascade");
+        // [P4.D262] The wear-ledger plant — the table through the boot
+        // ensure's helper (a booted pre-round instance), the rows through the
+        // repository's increment, identical to the oracle's
+        // `CASCADE_WEAR_PLANT` (v4's REAL `incrementWears`).
+        rt.block_on(db.write(|w| {
+            let main = w.main().connection();
+            quilltap_core::test_support::ensure_wear_ledger_on(main);
+            let repo =
+                quilltap_core::db::wardrobe_wear_stats::WardrobeWearStatsRepository::new(main);
+            for (item, wearer, chat, at) in CASCADE_WEAR_PLANT {
+                repo.increment_wears(&[
+                    quilltap_core::db::wardrobe_wear_stats::WardrobeWearIncrement {
+                        item_id: item.to_string(),
+                        wearer_character_id: wearer.map(str::to_string),
+                        chat_id: Some(chat.to_string()),
+                        at: at.to_string(),
+                    },
+                ])?;
+            }
+            Ok(())
+        }))
+        .expect("plant the wear ledger");
         let r = rt.block_on(characters::character_delete(&db, &uid, ARIA, true, true));
         run("character_delete_cascade", r);
         let got = dump_cascade_tables(&db);
