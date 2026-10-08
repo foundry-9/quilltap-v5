@@ -172418,3 +172418,24 @@ dirt never reaches a regen. The ledger is NOT written (lane rule).
   `child-entry.ts` `ERR_MODULE_NOT_FOUND` (the background-jobs child v4 forks
   when an equip — now succeeding on the ledger-ensured pair — enqueues an
   avatar job); no row depends on it.
+
+### Unit 4 — the ONE web arm (item 10; web 0.0.225)
+
+- `wardrobe_routes.rs::wardrobe_item_get` gains the `Query` pairs: absent →
+  `WardrobeItemGet`; `wear-history` → `WardrobeItemWearHistory { scope:
+  General, container_id: None, item_id }`; anything else (incl. bare
+  `?action=`) → the item lookup FIRST (v4's GET runs `findArchetypeById` + its
+  404 before `dispatchAction`), then `query::unknown_action_response` (v4's
+  envelope + WARN) only for a present item. `CoreResponse::WardrobeWear
+  History` added to `unwrap_to_http`'s success fan-out.
+- **R-E measured as the order said:** the only wardrobe item-GET REST edge is
+  `/api/v1/wardrobe/{itemId}`; the character / group / project item-GET edges
+  are absent (Tier 3 item 19) — the verb reaches them via `/api/dispatch`.
+- Pin: NEW `crates/quilltap-web/tests/wardrobe_item_wear_history_route.rs`
+  (the `characters_wardrobe_route` pattern — a booted host over the committed
+  pair, so the boot ensures create the ledger): the tagged item (no `wear`),
+  the never-worn payload, the wear-history 404 for a character item, `bogus`
+  and bare-action 400s, and the missing-item 404 beating `bogus`. Red-first:
+  mutation (drop the fan-out arm) → 500 `Unexpected core response`.
+- Item 16: `characters_wardrobe_route` green unchanged (the collection edge
+  passes `scope` through; `origin`/`wear` ride the body).

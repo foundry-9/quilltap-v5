@@ -29,6 +29,7 @@ use std::collections::HashMap;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response as AxumResponse};
+use quilltap_core::api::types::ErrorKind;
 use quilltap_core::api::{Request as CoreRequest, Response as CoreResponse};
 use quilltap_core::content_disposition::{build_content_disposition, Disposition};
 use serde_json::Value;
@@ -53,7 +54,9 @@ fn unwrap_to_http(resp: CoreResponse, success_status: StatusCode) -> AxumRespons
         // and `?action=cancel-inform` (v4's plain `NextResponse.json`).
         | CoreResponse::ChatInform(v)
         | CoreResponse::ChatInforms(v)
-        | CoreResponse::ChatInformCancelled(v) => (
+        | CoreResponse::ChatInformCancelled(v)
+        // P4.D256 (v4 `3ee3b1342`): the item GET's `?action=wear-history`.
+        | CoreResponse::WardrobeWearHistory(v) => (
             success_status,
             [("content-type", "application/json")],
             v.to_string(),
@@ -187,11 +190,38 @@ pub async fn wardrobe_post(
 // /api/v1/wardrobe/{itemId}
 // ===========================================================================
 
+/// v4 `GET /api/v1/wardrobe/[itemId]` — the archetype item, or (`3ee3b1342`)
+/// `?action=wear-history` → the `wardrobeItemWearHistory` verb at General
+/// scope. v4 runs the item's 404 BEFORE `dispatchAction(req, { 'wear-history'
+/// }, default)`, so an unknown action on a MISSING item is the 404 (and v4's
+/// unknown-action WARN never fires); on a present item it is the three-way
+/// rule's `Unknown action` 400. The wear-history verb runs its own 404 first.
 pub async fn wardrobe_item_get(
     State(state): State<SharedState>,
     Path(item_id): Path<String>,
+    Query(pairs): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
-    match dispatch_core(&state, CoreRequest::WardrobeItemGet { item_id }).await {
+    const PATH: &str = "/api/v1/wardrobe/[itemId]";
+    const ACTIONS: &[&str] = &["wear-history"];
+    let request = match crate::query::action_param(&pairs) {
+        None => CoreRequest::WardrobeItemGet { item_id },
+        Some("wear-history") => CoreRequest::WardrobeItemWearHistory {
+            scope: quilltap_core::api::types::WardrobeContainerScope::General,
+            container_id: None,
+            item_id,
+        },
+        Some(unknown) => {
+            // The item's 404 first (v4's order), then the refusal.
+            return match dispatch_core(&state, CoreRequest::WardrobeItemGet { item_id }).await {
+                Ok(CoreResponse::Error(e)) if e.kind == ErrorKind::NotFound => {
+                    unwrap_to_http(CoreResponse::Error(e), StatusCode::OK)
+                }
+                Ok(_) => crate::query::unknown_action_response(unknown, ACTIONS, "GET", PATH),
+                Err(r) => r,
+            };
+        }
+    };
+    match dispatch_core(&state, request).await {
         Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
         Err(r) => r,
     }

@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(web): GET /api/v1/wardrobe/{itemId}?action=wear-history (P4.D256 item 10)
+
+_Versions: web 0.0.225._
+
+The one wardrobe item-GET REST edge gains v4's action dispatch: no action → the archetype item; `?action=wear-history` → the `wardrobeItemWearHistory` verb at General scope; any other action → v4's `Unknown action` 400 envelope, except that a missing item answers its 404 first (v4 looks the item up before `dispatchAction`). `WardrobeWearHistory` joins the edge's success fan-out (without it the arm answered 500 `Unexpected core response`). NEW `wardrobe_item_wear_history_route` edge test over the booted `wardrobe-routes` instance pins all three arms and the 404-first order. The character, group and project item-GET REST edges do not exist on v5 (R-E); the verb reaches those tiers through `/api/dispatch`.
+
 #### 2026-10-08 — feat(wardrobe): tag every wardrobe read with its origin and wear; answer ?action=wear-history on all four item GETs (P4.D256 items 3, 4, 5, 9, 13)
 
 _Versions: core 0.0.1256._
