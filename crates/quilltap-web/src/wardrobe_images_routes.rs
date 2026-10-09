@@ -116,30 +116,28 @@ fn rendered(generate: bool, resp: CoreResponse, success: StatusCode) -> AxumResp
 pub fn read_container_query(
     pairs: &QueryPairs,
 ) -> Result<(WardrobeContainerScope, Option<String>), String> {
-    let mut issues: Vec<&str> = Vec::new();
+    let id = first(pairs, "id").map(str::to_string);
     let scope = match first(pairs, "scope") {
-        Some("character") => Some(WardrobeContainerScope::Character),
-        Some("project") => Some(WardrobeContainerScope::Project),
-        Some("group") => Some(WardrobeContainerScope::Group),
-        Some("general") => Some(WardrobeContainerScope::General),
+        Some("character") => WardrobeContainerScope::Character,
+        Some("project") => WardrobeContainerScope::Project,
+        Some("group") => WardrobeContainerScope::Group,
+        Some("general") => WardrobeContainerScope::General,
         _ => {
-            issues.push(SCOPE_ISSUE);
-            None
+            // The fatal enum issue: the refine does not run, `id`'s `min(1)`
+            // still reports.
+            let mut issues = vec![SCOPE_ISSUE];
+            if id.as_deref() == Some("") {
+                issues.push(quilltap_core::api::wardrobe_item_images::CONTAINER_ID_EMPTY_ISSUE);
+            }
+            return Err(issues.join("; "));
         }
     };
-    let id = first(pairs, "id").map(str::to_string);
-    if id.as_deref() == Some("") {
-        issues.push("Too small: expected string to have >=1 characters");
+    // The id rules live in core (ONE copy of v4's sentences — the
+    // `f5e953a3f` unification folded the edge's twin onto it).
+    match quilltap_core::api::wardrobe_item_images::container_query_issue(scope, id.as_deref()) {
+        None => Ok((scope, id)),
+        Some(msg) => Err(msg),
     }
-    if let Some(scope) = scope {
-        if scope != WardrobeContainerScope::General && id.as_deref().is_none_or(str::is_empty) {
-            issues.push("id is required for this scope");
-        }
-        if issues.is_empty() {
-            return Ok((scope, id));
-        }
-    }
-    Err(issues.join("; "))
 }
 
 fn db_of(state: &SharedState) -> Result<Db, Box<AxumResponse>> {

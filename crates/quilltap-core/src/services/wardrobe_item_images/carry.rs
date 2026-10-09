@@ -125,9 +125,24 @@ pub fn carry_item_images(
     for file in &images {
         let parsed = parse_mount_blob_storage_key(file.storage_key.as_deref().unwrap_or(""));
         // v4 `file.storageKey ? await readMountBlob(storageKey) : null` —
-        // `readMountBlob` answers null for a malformed key or a missing blob.
+        // `readMountBlob` answers null for a malformed key or a missing blob,
+        // and `docMountBlobs.readData` is a FALLBACK read (`doc-mount-blobs.
+        // repository.ts:185-198`: WARN `Failed to read blob data`, then
+        // `null`), so a failed read skips this picture rather than failing the
+        // whole transfer (the `f5e953a3f` unification's §3 finding).
         let bytes = match &parsed {
-            Some((_mp, blob_id)) => DocMountBlobsRepository::new(mount).read_data(blob_id)?,
+            Some((_mp, blob_id)) => match DocMountBlobsRepository::new(mount).read_data(blob_id) {
+                Ok(bytes) => bytes,
+                Err(e) => {
+                    tracing::warn!(
+                        target: "quilltap::db",
+                        id = %blob_id,
+                        error = %crate::db::fallback::error_text(&e),
+                        "Failed to read blob data"
+                    );
+                    None
+                }
+            },
             None => None,
         };
         let (Some((source_mount_point_id, _)), Some(bytes)) = (parsed, bytes) else {

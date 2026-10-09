@@ -105,7 +105,7 @@ const INSTALLED_ROOT_OPENROUTER_SDK: &str = "1.4.25";
 /// `x-stainless-runtime-version` and the genai `gl-node/<v>` token (P4.D232).
 /// The recipes pin `~/.nvm/versions/node/v24.13.1/bin`; the PATH also carries
 /// other Node 24s and Homebrew 26, and a regen under any of them would churn
-/// all 290 stamps silently — this constant turns that into a red.
+/// all 320 stamps silently — this constant turns that into a red.
 const RECORDED_NODE: &str = "v24.13.1";
 
 /// (package, recorded version) — the four SDKs this guard pins.

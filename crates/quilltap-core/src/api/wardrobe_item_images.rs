@@ -40,6 +40,10 @@ use crate::services::wardrobe_item_images::service::{
 
 const LOG_TAG: &str = "[Wardrobe Images v1]";
 
+/// Zod 4's `min(1)` sentence for an EMPTY `id` (shared with the web edge's
+/// scope-failure arm).
+pub const CONTAINER_ID_EMPTY_ISSUE: &str = "Too small: expected string to have >=1 characters";
+
 /// v4 `containerQuerySchema`'s two checks the typed verb can still fail:
 /// `id: z.string().min(1).optional()` and the refine `scope === 'general' ||
 /// !!id`. MEASURED (the routes oracle): Zod 4 still runs the refine after the
@@ -51,7 +55,7 @@ pub fn container_query_issue(
 ) -> Option<String> {
     let mut issues: Vec<&str> = Vec::new();
     if container_id == Some("") {
-        issues.push("Too small: expected string to have >=1 characters");
+        issues.push(CONTAINER_ID_EMPTY_ISSUE);
     }
     if scope != WardrobeContainerScope::General && container_id.is_none_or(str::is_empty) {
         issues.push("id is required for this scope");

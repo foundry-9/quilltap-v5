@@ -35,10 +35,12 @@
 //!    [`crate::db::vault_wardrobe_public::delete_vault_wardrobe_item`]; it is NOT
 //!    exercised by the corpus (flagged, like `cascade_delete`'s legacy-file
 //!    branch).
-//! 4. **`conversation_annotations` is wiped.** v4 never deletes the table on any
-//!    path, so a replace-mode restore collides with the survivors. v5 truncates
-//!    it — see [`V5_EXTRA_MAIN_TABLES`] for the full reasoning, the vintage
-//!    evidence and the ruling it is made under (dogfood finding #57).
+//! 4. **`conversation_annotations` is wiped.** v4 used to delete the table on
+//!    no path, so a replace-mode restore collided with the survivors; v5
+//!    truncated it first and v4 has since converged (bug 10 — the table is in
+//!    `delete-service.ts`' `mainTables` at `f5e953a3f`). See
+//!    [`V5_EXTRA_MAIN_TABLES`] for the reasoning, the vintage evidence and the
+//!    ruling it was made under (dogfood finding #57).
 
 use rusqlite::Connection;
 use serde::Serialize;
@@ -226,10 +228,11 @@ const FORMAT3_MAIN_TABLES: &[&str] = &[
 
 /// ## ⚠ DELIBERATE DIVERGENCE (dogfood #57, 2026-08-03) — v5 wipes what v4 leaks
 ///
-/// `conversation_annotations` appears in **no** v4 delete path. It is not in
-/// `clearFormat3Entities`' main list, `deleteUserData` never collects it, and
-/// `chats.repository.delete()` sweeps only the message rows — so on v4 the table
-/// survives "delete all my data" and survives a `replace`-mode restore's wipe.
+/// `conversation_annotations` appeared in **no** v4 delete path (before v4's
+/// bug-10 convergence, below). It was not in `clearFormat3Entities`' main list,
+/// `deleteUserData` never collected it, and `chats.repository.delete()` sweeps
+/// only the message rows — so on v4 the table survived "delete all my data"
+/// and survived a `replace`-mode restore's wipe.
 ///
 /// That is not merely untidy. The table is chat-scoped and the backup collects
 /// it per chat, so a replace-mode restore re-inserts every archived annotation
