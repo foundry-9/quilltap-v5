@@ -108,6 +108,15 @@ const MOUNT_TABLES: Array<{ key: string; table: string; orderBy: string }> = [
   { key: 'folders', table: 'doc_mount_folders', orderBy: 'path' },
   { key: 'projectLinks', table: 'project_doc_mount_links', orderBy: 'createdAt' },
   { key: 'groupLinks', table: 'group_doc_mount_links', orderBy: 'createdAt' },
+  // P4.D263: the picture blobs a carry writes.
+  { key: 'blobs', table: 'doc_mount_blobs', orderBy: 'sha256' },
+];
+// P4.D263: the MAIN tables a transfer now touches — the pictures' `files` rows
+// (repointed on a move, minted on a copy) and the wear ledger (a move keeps the
+// id and so its rows; a copy's fresh id has none).
+const MAIN_TABLES: Array<{ key: string; table: string; orderBy: string }> = [
+  { key: 'mainFiles', table: 'files', orderBy: 'originalFilename' },
+  { key: 'wearStats', table: 'wardrobe_wear_stats', orderBy: 'id' },
 ];
 
 function createMockRequest(body: unknown): unknown {
@@ -258,6 +267,15 @@ async function runScenario(
       }
     }
 
+    // P4.D263: let v4's fire-and-forget work land before the dump — the
+    // picture bridge's `refreshStats(...).catch(() => {})` is NOT awaited, and
+    // its dynamic `import('./index')` defers the stats write past the
+    // handler's return. The dump records the EVENTUAL state (v5 refreshes
+    // synchronously inside the write).
+    for (let i = 0; i < 10; i++) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+
     // Dump the mount-index tables (raw handle).
     const midb = getRawMountIndexDatabase();
     if (!midb) throw new Error('mount-index DB handle unavailable for dump');
@@ -267,6 +285,19 @@ async function runScenario(
         midb.prepare(`PRAGMA table_info(${t.table})`).all() as Array<{ name: string }>
       ).map((c) => c.name);
       const rawRows = midb.prepare(`SELECT * FROM ${t.table}`).all() as Array<
+        Record<string, unknown>
+      >;
+      tables[t.key] = canonicalizeRows({ table: t.table, columns, rawRows, orderBy: t.orderBy });
+    }
+
+    const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+    const mdb = getRawDatabase();
+    if (!mdb) throw new Error('main DB handle unavailable for dump');
+    for (const t of MAIN_TABLES) {
+      const columns = (
+        mdb.prepare(`PRAGMA table_info(${t.table})`).all() as Array<{ name: string }>
+      ).map((c) => c.name);
+      const rawRows = mdb.prepare(`SELECT * FROM ${t.table}`).all() as Array<
         Record<string, unknown>
       >;
       tables[t.key] = canonicalizeRows({ table: t.table, columns, rawRows, orderBy: t.orderBy });

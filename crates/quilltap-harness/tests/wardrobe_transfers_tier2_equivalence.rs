@@ -40,6 +40,20 @@
 //! FROZEN_NOW is arbitrary: copy timestamps are minted, so they placeholder either
 //! way (proving the diff is insensitive to `now`).
 //!
+//! P4.D263 (v4 `7c8572869`): PICTURES TRAVEL. The fixture seeds pictures (v4's
+//! REAL `addWardrobeItemImage`) on the source garment, a composite and one of
+//! its components, the group item, a garment whose pointer names a picture
+//! that cannot be carried (an unparseable storage key), and an ARCHIVED source
+//! character's garment; an archived destination character; and two wear-ledger
+//! rows for the source garment. Three more tables join the diff —
+//! `doc_mount_blobs`, the MAIN `files` table (its `storageKey` remapped through
+//! the shared id-map, so a moved picture must name the destination mount) and
+//! the MAIN `wardrobe_wear_stats` (a move keeps the id and its rows; a copy's
+//! fresh id has none). The three `…_conflict` rows are v4's 409 `An archived
+//! character's wardrobe cannot be changed` — a move out of an archived source,
+//! and any transfer into an archived destination; a COPY out of an archived
+//! source succeeds (v4 pre-resolves the source only for a move).
+//!
 //! Generate the fixtures + oracle (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   V5=~/source/quilltap-v5
@@ -137,6 +151,18 @@ struct TableSpec {
     content_column: Option<&'static str>,
     sha_column: Option<&'static str>,
     pin_chunk_count: bool,
+    /// P4.D263: which database the table lives in (the pictures' `files`
+    /// rows and the wear ledger are MAIN tables).
+    main_db: bool,
+    /// P4.D263: a `mount-blob:{mountPointId}:{blobId}` column — both ids are
+    /// remapped through the shared id-map (the points and blobs walks precede
+    /// it) BEFORE the table is sorted, so a carried picture's row must name the
+    /// DESTINATION mount and the same blob on both sides.
+    storage_key_column: Option<&'static str>,
+    /// P4.D263: JSON-text id lists (`files.linkedTo` / `tags`) whose UUIDs are
+    /// blanked to `<uuid>` (a copy's minted item id lives only in `.md` bytes,
+    /// which are blanked the same way).
+    blank_uuid_columns: &'static [&'static str],
 }
 
 const TABLES: &[TableSpec] = &[
@@ -150,6 +176,9 @@ const TABLES: &[TableSpec] = &[
         content_column: None,
         sha_column: None,
         pin_chunk_count: false,
+        main_db: false,
+        storage_key_column: None,
+        blank_uuid_columns: &[],
     },
     TableSpec {
         table: "doc_mount_folders",
@@ -161,6 +190,9 @@ const TABLES: &[TableSpec] = &[
         content_column: None,
         sha_column: None,
         pin_chunk_count: false,
+        main_db: false,
+        storage_key_column: None,
+        blank_uuid_columns: &[],
     },
     TableSpec {
         table: "doc_mount_file_links",
@@ -179,6 +211,9 @@ const TABLES: &[TableSpec] = &[
         content_column: None,
         sha_column: None,
         pin_chunk_count: false, // P4.6BK: v5 chunks on write — chunkCount now diffs exactly
+        main_db: false,
+        storage_key_column: None,
+        blank_uuid_columns: &[],
     },
     TableSpec {
         table: "doc_mount_files",
@@ -191,6 +226,9 @@ const TABLES: &[TableSpec] = &[
         content_column: None,
         sha_column: Some("sha256"),
         pin_chunk_count: false,
+        main_db: false,
+        storage_key_column: None,
+        blank_uuid_columns: &[],
     },
     TableSpec {
         table: "doc_mount_documents",
@@ -202,6 +240,9 @@ const TABLES: &[TableSpec] = &[
         content_column: Some("content"),
         sha_column: Some("contentSha256"),
         pin_chunk_count: false,
+        main_db: false,
+        storage_key_column: None,
+        blank_uuid_columns: &[],
     },
     TableSpec {
         table: "project_doc_mount_links",
@@ -213,6 +254,9 @@ const TABLES: &[TableSpec] = &[
         content_column: None,
         sha_column: None,
         pin_chunk_count: false,
+        main_db: false,
+        storage_key_column: None,
+        blank_uuid_columns: &[],
     },
     TableSpec {
         table: "group_doc_mount_links",
@@ -224,6 +268,54 @@ const TABLES: &[TableSpec] = &[
         content_column: None,
         sha_column: None,
         pin_chunk_count: false,
+        main_db: false,
+        storage_key_column: None,
+        blank_uuid_columns: &[],
+    },
+    // P4.D263 (v4 `7c8572869`): the picture blobs (content-addressed — a
+    // carry re-links the same bytes), the pictures' `files` rows, the wear
+    // ledger.
+    TableSpec {
+        table: "doc_mount_blobs",
+        oracle_key: "blobs",
+        order_by: "sha256",
+        id_columns: &["id", "fileId"],
+        sort_ref_cols: &["fileId"],
+        ts_columns: &["createdAt", "updatedAt"],
+        content_column: None,
+        sha_column: None,
+        pin_chunk_count: false,
+        main_db: false,
+        storage_key_column: None,
+        blank_uuid_columns: &[],
+    },
+    TableSpec {
+        table: "files",
+        oracle_key: "mainFiles",
+        order_by: "originalFilename",
+        id_columns: &["id"],
+        sort_ref_cols: &[],
+        ts_columns: &["createdAt", "updatedAt"],
+        content_column: None,
+        sha_column: None,
+        pin_chunk_count: false,
+        main_db: true,
+        storage_key_column: Some("storageKey"),
+        blank_uuid_columns: &["linkedTo", "tags"],
+    },
+    TableSpec {
+        table: "wardrobe_wear_stats",
+        oracle_key: "wearStats",
+        order_by: "id",
+        id_columns: &["id"],
+        sort_ref_cols: &[],
+        ts_columns: &["createdAt", "updatedAt"],
+        content_column: None,
+        sha_column: None,
+        pin_chunk_count: false,
+        main_db: true,
+        storage_key_column: None,
+        blank_uuid_columns: &[],
     },
 ];
 
@@ -312,6 +404,56 @@ fn norm_sort_key(row: &Value, spec: &TableSpec, id_map: &HashMap<String, String>
 ///   3. walk tables in order, remap UUIDs in id columns AND `content`;
 ///   4. recompute `contentSha256` from normalized content, propagate to files;
 ///   5. (chunkCount diffs exactly since P4.6BK — the pin is retired).
+/// The ids a transfer MINTED (P4.D263): a copy's fresh item id and the fresh
+/// ids its copied components were given, read off the side's own response
+/// (the outfit's `componentItemIds` carry them in source order on both sides).
+/// A fixture-baked id is never minted, so it is filtered out by the spec text.
+fn minted_ids(item: Option<&Value>, spec_text: &str) -> Vec<String> {
+    let Some(item) = item else { return Vec::new() };
+    let mut ids: Vec<String> = item
+        .get("id")
+        .and_then(Value::as_str)
+        .into_iter()
+        .chain(
+            item.get("componentItemIds")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str),
+        )
+        .filter(|id| !spec_text.contains(id))
+        .map(str::to_string)
+        .collect();
+    ids.dedup();
+    ids
+}
+
+/// Replace each minted id with a POSITIONAL token in every string cell — a
+/// copy's pictures land under `Wardrobe/images/<mintedId>/`, so the minted id
+/// is embedded in folder and link PATHS, which the id-column remap never
+/// sees (and which drive the path sort).
+fn tokenize_minted(dumps: &mut [Value], minted: &[String]) {
+    for dump in dumps.iter_mut() {
+        let Some(rows) = dump.get_mut("rows").and_then(Value::as_array_mut) else {
+            continue;
+        };
+        for row in rows.iter_mut() {
+            let Some(obj) = row.as_object_mut() else {
+                continue;
+            };
+            for v in obj.values_mut() {
+                if let Value::String(s) = v {
+                    for (n, id) in minted.iter().enumerate() {
+                        if s.contains(id.as_str()) {
+                            *s = s.replace(id.as_str(), &format!("minted-{n}"));
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn normalize_all(dumps: &mut [Value]) {
     // Phase 1: placeholder every ISO timestamp everywhere; blank embedded UUIDs
     // inside content columns to a CONSTANT `<uuid>` (so a copy's frontmatter is
@@ -326,7 +468,9 @@ fn normalize_all(dumps: &mut [Value]) {
                     for (k, v) in obj.iter_mut() {
                         if let Value::String(s) = v {
                             *s = placeholder_ts_in(s);
-                            if spec.content_column == Some(k.as_str()) {
+                            if spec.content_column == Some(k.as_str())
+                                || spec.blank_uuid_columns.contains(&k.as_str())
+                            {
                                 *s = blank_uuids_in(s);
                             }
                         }
@@ -397,6 +541,28 @@ fn normalize_all(dumps: &mut [Value]) {
             .get_mut("rows")
             .and_then(Value::as_array_mut)
             .unwrap_or_else(|| panic!("{}: no rows array", spec.table));
+        if let Some(col) = spec.storage_key_column {
+            for row in rows.iter_mut() {
+                let Some(obj) = row.as_object_mut() else {
+                    continue;
+                };
+                let Some(Value::String(key)) = obj.get(col).cloned() else {
+                    continue;
+                };
+                let remapped = match key
+                    .strip_prefix("mount-blob:")
+                    .and_then(|r| r.split_once(':'))
+                {
+                    Some((mp, blob)) => format!(
+                        "mount-blob:{}:{}",
+                        id_map.get(mp).map(String::as_str).unwrap_or(mp),
+                        id_map.get(blob).map(String::as_str).unwrap_or(blob)
+                    ),
+                    None => key,
+                };
+                obj.insert(col.to_string(), Value::String(remapped));
+            }
+        }
         rows.sort_by_key(|a| norm_sort_key(a, spec, &id_map));
         for row in rows.iter_mut() {
             let obj = row
@@ -578,6 +744,7 @@ fn wardrobe_transfers_tier2_matches_oracle() {
                 &spec.user_id,
                 &req,
                 FROZEN_NOW,
+                &quilltap_core::services::mount_index::blob_transcode::RefusingWebpTranscoder,
             ),
             Err(joined) => Err(TransferError::BadRequest(joined)),
         };
@@ -698,6 +865,7 @@ fn wardrobe_transfers_tier2_matches_oracle() {
                         TransferError::BadRequest(m) => m.clone(),
                         TransferError::NotFound => "Wardrobe item".to_string(),
                         TransferError::Server(m) => m.clone(),
+                        TransferError::Conflict(m) => m.clone(),
                         TransferError::Internal(m) => m.clone(),
                     };
                     assert_eq!(&got_msg, msg, "scenario {name}: error message");
@@ -723,7 +891,7 @@ fn wardrobe_transfers_tier2_matches_oracle() {
         let mut got: Vec<Value> = TABLES
             .iter()
             .map(|s| {
-                mount
+                if s.main_db { &main } else { &mount }
                     .dump_table_json(s.table, s.order_by)
                     .unwrap_or_else(|e| panic!("dump {}: {e}", s.table))
             })
@@ -742,6 +910,18 @@ fn wardrobe_transfers_tier2_matches_oracle() {
             })
             .collect();
 
+        let got_minted = minted_ids(result.as_ref().ok().map(|o| &o.wardrobe_item), &spec_text);
+        let want_minted = minted_ids(
+            want.get("body").and_then(|b| b.get("wardrobeItem")),
+            &spec_text,
+        );
+        assert_eq!(
+            got_minted.len(),
+            want_minted.len(),
+            "scenario {name}: minted id count"
+        );
+        tokenize_minted(&mut got, &got_minted);
+        tokenize_minted(&mut wanted, &want_minted);
         normalize_all(&mut got);
         normalize_all(&mut wanted);
 
@@ -789,7 +969,7 @@ fn wardrobe_transfers_tier2_matches_oracle() {
     }
 
     eprintln!(
-        "OK: wardrobe-transfers tier-2 matched oracle ({} scenarios + __destinations, 7 tables each).",
+        "OK: wardrobe-transfers tier-2 matched oracle ({} scenarios + __destinations, 10 tables each).",
         spec.scenarios.len()
     );
 }

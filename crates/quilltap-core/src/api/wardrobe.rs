@@ -809,7 +809,34 @@ pub fn parse_transfer_request(body: &Value) -> Result<TransferRequest, String> {
 /// [`wardrobe_transfers::transfer_wardrobe_item`]; success is
 /// `successResponse({wardrobeItem, action})` (RAW at the edge). `now` is the
 /// minted copy timestamp (injected — v4 `new Date().toISOString()`).
+///
+/// The carried pictures' blob links write through the
+/// [`RefusingWebpTranscoder`](crate::services::mount_index::blob_transcode::RefusingWebpTranscoder)
+/// (v4's store-original fallback): the frozen engine arm has no codec to
+/// hand. A carried picture is already a stored WebP, which the normalizer
+/// passes through either way. HANDOFF (P4.D263 → the unifier): the engine arm
+/// should call [`wardrobe_transfer_apply_with_codec`] over
+/// `ready_db_and_blob_webp()`.
 pub async fn wardrobe_transfer_apply(db: &Db, user_id: &str, body: Value, now: &str) -> Response {
+    wardrobe_transfer_apply_with_codec(
+        db,
+        user_id,
+        body,
+        now,
+        std::sync::Arc::new(crate::services::mount_index::blob_transcode::RefusingWebpTranscoder),
+    )
+    .await
+}
+
+/// [`wardrobe_transfer_apply`] with the engine's blob codec for the carried
+/// pictures' links (P4.D263).
+pub async fn wardrobe_transfer_apply_with_codec(
+    db: &Db,
+    user_id: &str,
+    body: Value,
+    now: &str,
+    blob_webp: std::sync::Arc<dyn crate::services::mount_index::blob_transcode::WebpTranscoder>,
+) -> Response {
     let req = match parse_transfer_request(&body) {
         Ok(r) => r,
         Err(joined) => return bad_request(joined),
@@ -819,7 +846,12 @@ pub async fn wardrobe_transfer_apply(db: &Db, user_id: &str, body: Value, now: &
 
     let out = with_both_conns(db, move |main, mount| {
         Ok(wardrobe_transfers::transfer_wardrobe_item(
-            main, mount, &uid, &req, &now,
+            main,
+            mount,
+            &uid,
+            &req,
+            &now,
+            blob_webp.as_ref(),
         ))
     })
     .await;
@@ -843,6 +875,8 @@ pub async fn wardrobe_transfer_apply(db: &Db, user_id: &str, body: Value, now: &
         }
         Ok(Err(TransferError::NotFound)) => not_found("Wardrobe item"),
         Ok(Err(TransferError::BadRequest(m))) => bad_request(m),
+        // v4 `conflict(...)` for a `CharacterArchivedError` (P4.D263).
+        Ok(Err(TransferError::Conflict(m))) => Response::error(ErrorKind::Conflict, m),
         // v4's explicit serverError arms — the message IS the wire payload.
         Ok(Err(TransferError::Server(m))) => internal(m),
         // v4's catch → serverError with this exact message.

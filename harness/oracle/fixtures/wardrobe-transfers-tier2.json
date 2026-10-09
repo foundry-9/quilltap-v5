@@ -438,6 +438,78 @@
    },
    "expect": "error",
    "expectMessage": "Either sourceCharacterId or source is required; Copying an outfit cannot move its components — the original outfit still needs them"
+  },
+  {
+   "name": "move_lost_picture_pointer",
+   "action": "move",
+   "itemId": "e5000000-0000-4000-8000-0000000000f1",
+   "sourceCharacterId": "c7000000-0000-4000-8000-000000000001",
+   "sourceProjectId": null,
+   "destination": {
+    "scope": "general"
+   },
+   "expect": "ok"
+  },
+  {
+   "name": "copy_lost_picture_pointer",
+   "action": "copy",
+   "itemId": "e5000000-0000-4000-8000-0000000000f1",
+   "sourceCharacterId": "c7000000-0000-4000-8000-000000000001",
+   "sourceProjectId": null,
+   "destination": {
+    "scope": "group",
+    "id": "b2000000-0000-4000-8000-000000000001"
+   },
+   "expect": "ok"
+  },
+  {
+   "name": "move_from_archived_source_conflict",
+   "action": "move",
+   "itemId": "e5000000-0000-4000-8000-0000000000f2",
+   "sourceCharacterId": "c7000000-0000-4000-8000-0000000000a1",
+   "sourceProjectId": null,
+   "destination": {
+    "scope": "general"
+   },
+   "expect": "error",
+   "expectMessage": "An archived character's wardrobe cannot be changed"
+  },
+  {
+   "name": "copy_from_archived_source_ok",
+   "action": "copy",
+   "itemId": "e5000000-0000-4000-8000-0000000000f2",
+   "sourceCharacterId": "c7000000-0000-4000-8000-0000000000a1",
+   "sourceProjectId": null,
+   "destination": {
+    "scope": "general"
+   },
+   "expect": "ok"
+  },
+  {
+   "name": "move_to_archived_destination_conflict",
+   "action": "move",
+   "itemId": "e5000000-0000-4000-8000-0000000000a1",
+   "sourceCharacterId": "c7000000-0000-4000-8000-000000000001",
+   "sourceProjectId": null,
+   "destination": {
+    "scope": "character",
+    "id": "c7000000-0000-4000-8000-0000000000a2"
+   },
+   "expect": "error",
+   "expectMessage": "An archived character's wardrobe cannot be changed"
+  },
+  {
+   "name": "copy_to_archived_destination_conflict",
+   "action": "copy",
+   "itemId": "e5000000-0000-4000-8000-0000000000a1",
+   "sourceCharacterId": "c7000000-0000-4000-8000-000000000001",
+   "sourceProjectId": null,
+   "destination": {
+    "scope": "character",
+    "id": "c7000000-0000-4000-8000-0000000000a2"
+   },
+   "expect": "error",
+   "expectMessage": "An archived character's wardrobe cannot be changed"
   }
  ],
  "groupMemberId": "b2000000-0000-4000-8000-000000000002",
@@ -516,5 +588,184 @@
   "isDefault": false,
   "replace": false,
   "componentItemIds": []
- }
+ },
+ "$pictures": "P4.D263 (v4 7c8572869): pictures travel. Every picture is seeded through v4's REAL addWardrobeItemImage (the item's home resolved by v4's resolveWardrobeItemHome); `item` names a key below (sourceItem / groupItem / a compositeItems id / lostPictureItem / archivedItem).",
+ "pictures": [
+  {
+   "item": "sourceItem",
+   "kind": "uploaded",
+   "webp": 0
+  },
+  {
+   "item": "sourceItem",
+   "kind": "generated",
+   "webp": 1,
+   "generationPrompt": "a brass waistcoat",
+   "generationModel": "gpt-image-1"
+  },
+  {
+   "item": "e5000000-0000-4000-8000-0000000000d1",
+   "kind": "imported",
+   "webp": 2
+  },
+  {
+   "item": "e5000000-0000-4000-8000-0000000000d4",
+   "kind": "uploaded",
+   "webp": 0
+  },
+  {
+   "item": "groupItem",
+   "kind": "uploaded",
+   "webp": 1
+  },
+  {
+   "item": "lostPictureItem",
+   "kind": "uploaded",
+   "webp": 2
+  },
+  {
+   "item": "archivedItem",
+   "kind": "uploaded",
+   "webp": 0
+  }
+ ],
+ "webp": [
+  "UklGRjoAAABXRUJQVlA4IC4AAACQAQCdASoEAAQAAUAmJaACdLoAA5gA/vFNr+LaR0KZD/7xn/9xn/9xn/yIAAAA",
+  "UklGRjwAAABXRUJQVlA4IDAAAAAQAgCdASoEAAQAAUAmJaACdLoB+AH4AAPIAP7tBy/9wb7Iuf+tF/9ZVfJUfvyAAAA=",
+  "UklGRjoAAABXRUJQVlA4IC4AAADwAQCdASoGAAYAAUAmJaACdLoB+AAEyAAA/hMf+Uq8FjdHn/3nz9z5+58/5xgA"
+ ],
+ "lostPictureItem": {
+  "id": "e5000000-0000-4000-8000-0000000000f1",
+  "title": "Lost Gloves",
+  "types": [
+   "accessories"
+  ],
+  "description": "",
+  "componentItemIds": []
+ },
+ "lostPicture": {
+  "id": "7a8b9cad-0101-4000-8000-000000000001",
+  "storageKey": "not-a-mount-blob-key",
+  "originalFilename": "lost.webp"
+ },
+ "archivedSourceCharacterId": "c7000000-0000-4000-8000-0000000000a1",
+ "archivedSourceCharacter": {
+  "id": "c7000000-0000-4000-8000-0000000000a1",
+  "userId": "a0000000-0000-4000-8000-000000000001",
+  "name": "Retired Source Character",
+  "identity": "The keeper of a modest closet.",
+  "description": "",
+  "manifesto": "",
+  "personality": "",
+  "exampleDialogues": "",
+  "title": "",
+  "firstMessage": "",
+  "talkativeness": 0.5,
+  "pronouns": {
+   "subject": "they",
+   "object": "them",
+   "possessive": "theirs"
+  },
+  "aliases": [],
+  "physicalDescription": null,
+  "systemPrompts": [],
+  "scenarios": [],
+  "controlledBy": "llm",
+  "isFavorite": false,
+  "npc": false,
+  "defaultImageId": null,
+  "defaultConnectionProfileId": null,
+  "defaultPartnerId": null,
+  "defaultRoleplayTemplateId": null,
+  "defaultImageProfileId": null,
+  "sillyTavernData": null,
+  "defaultAgentModeEnabled": null,
+  "defaultHelpToolsEnabled": null,
+  "defaultTimestampConfig": null,
+  "defaultScenarioId": null,
+  "defaultSystemPromptId": null,
+  "characterDocumentMountPointId": null,
+  "canDressThemselves": null,
+  "canCreateOutfits": null,
+  "systemTransparency": null,
+  "coreWhisperEnabled": null,
+  "canBeCarina": null,
+  "partnerLinks": [],
+  "tags": []
+ },
+ "archivedItem": {
+  "id": "e5000000-0000-4000-8000-0000000000f2",
+  "title": "Moth-eaten Cloak",
+  "types": [
+   "top"
+  ],
+  "description": "",
+  "componentItemIds": []
+ },
+ "archivedDestCharacterId": "c7000000-0000-4000-8000-0000000000a2",
+ "archivedDestCharacter": {
+  "id": "c7000000-0000-4000-8000-0000000000a2",
+  "userId": "a0000000-0000-4000-8000-000000000001",
+  "name": "Retired Destination Character",
+  "identity": "The keeper of a modest closet.",
+  "description": "",
+  "manifesto": "",
+  "personality": "",
+  "exampleDialogues": "",
+  "title": "",
+  "firstMessage": "",
+  "talkativeness": 0.5,
+  "pronouns": {
+   "subject": "they",
+   "object": "them",
+   "possessive": "theirs"
+  },
+  "aliases": [],
+  "physicalDescription": null,
+  "systemPrompts": [],
+  "scenarios": [],
+  "controlledBy": "llm",
+  "isFavorite": false,
+  "npc": false,
+  "defaultImageId": null,
+  "defaultConnectionProfileId": null,
+  "defaultPartnerId": null,
+  "defaultRoleplayTemplateId": null,
+  "defaultImageProfileId": null,
+  "sillyTavernData": null,
+  "defaultAgentModeEnabled": null,
+  "defaultHelpToolsEnabled": null,
+  "defaultTimestampConfig": null,
+  "defaultScenarioId": null,
+  "defaultSystemPromptId": null,
+  "characterDocumentMountPointId": null,
+  "canDressThemselves": null,
+  "canCreateOutfits": null,
+  "systemTransparency": null,
+  "coreWhisperEnabled": null,
+  "canBeCarina": null,
+  "partnerLinks": [],
+  "tags": []
+ },
+ "$wearRows": "P4.D263 item 12: wear-ledger rows for the source item (one unattributed, one by the source character) — a MOVE keeps them (the id survives); a COPY's fresh id has none.",
+ "wearRows": [
+  {
+   "id": "f9000000-0000-4000-8000-000000000001",
+   "itemId": "e5000000-0000-4000-8000-0000000000a1",
+   "wearerCharacterId": null,
+   "wearCount": 3,
+   "firstWornAt": "2026-01-01T00:00:00.000Z",
+   "lastWornAt": "2026-01-20T00:00:00.000Z",
+   "lastWornChatId": null
+  },
+  {
+   "id": "f9000000-0000-4000-8000-000000000002",
+   "itemId": "e5000000-0000-4000-8000-0000000000a1",
+   "wearerCharacterId": "c7000000-0000-4000-8000-000000000001",
+   "wearCount": 2,
+   "firstWornAt": "2026-01-05T00:00:00.000Z",
+   "lastWornAt": "2026-01-25T00:00:00.000Z",
+   "lastWornChatId": null
+  }
+ ]
 }

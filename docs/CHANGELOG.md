@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(wardrobe): transfers carry an item's pictures, and an archived character answers 409 (P4.D263 item 12)
+
+_Versions: core 0.0.1261._
+
+`transfer_wardrobe_item` ports v4 `7c8572869`'s transfer hunk. After the collision check, a move (or a component move) resolves the source's writable mount, and the destination's mount is resolved too. An archived character on either side is now `TransferError::Conflict`, which the route answers with v4's 409 `An archived character's wardrobe cannot be changed`; a copy out of an archived source still succeeds. Every travelling item's pictures are carried before the items land. A copy re-links them under its new id with fresh `files` rows and points `imageFileId` at its own copy; a picture that cannot be carried nulls the pointer. A move re-links them at the same path, then re-points the rows and drops the source links after the source item is gone. The function takes the blob codec. `wardrobe_transfer_apply` keeps its signature, writing through the store-original transcoder, and gains `wardrobe_transfer_apply_with_codec` for the engine to thread its codec. The transfers tier-2 family grows six scenarios and three tables (`doc_mount_blobs`, main `files` with the storage key remapped, `wardrobe_wear_stats`). Minted ids are tokenized inside paths. The oracle now lets v4's un-awaited `refreshStats` land before it dumps.
+
 #### 2026-10-08 — feat(images): `options.orientation` on the images generate route (P4.D263 item 11)
 
 _Versions: core 0.0.1260._

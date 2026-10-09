@@ -69,6 +69,23 @@ interface Spec {
   /** P4.D112: a project-store item sharing the travelling Coat's id (the
    * component-collision refusal seed). */
   projectCollisionItem: ItemSpec;
+  /** P4.D263: pictures, seeded through v4's REAL `addWardrobeItemImage`. */
+  pictures: Array<{
+    item: string;
+    kind: 'generated' | 'uploaded' | 'imported';
+    webp: number;
+    generationPrompt?: string;
+    generationModel?: string;
+  }>;
+  webp: string[];
+  lostPictureItem: ItemSpec;
+  lostPicture: { id: string; storageKey: string; originalFilename: string };
+  archivedSourceCharacterId: string;
+  archivedSourceCharacter: Record<string, unknown>;
+  archivedItem: ItemSpec;
+  archivedDestCharacterId: string;
+  archivedDestCharacter: Record<string, unknown>;
+  wearRows: Array<Record<string, unknown>>;
 }
 
 const PINNED_TS = '2026-02-01T00:00:00.000Z';
@@ -109,6 +126,7 @@ async function main(): Promise<void> {
     '@/lib/database/backends/sqlite/mount-index-client'
   );
   const { CharacterSchema } = await import('@/lib/schemas/types');
+  const { FileEntrySchema } = await import('@/lib/schemas/file.types');
   const { UserSchema } = await import('@/lib/schemas/auth.types');
   const { generateDDL } = await import('@/lib/database/schema-translator');
   const {
@@ -146,6 +164,7 @@ async function main(): Promise<void> {
   // MAIN db: the slim tables the create/provision path touches.
   await ensureCollection('users', UserSchema);
   await ensureCollection('characters', CharacterSchema);
+  await ensureCollection('files', FileEntrySchema);
   // projects/groups slim tables are ensured by their repositories on first create.
 
   // MOUNT-INDEX db: materialize every store table via v4's own generated DDL.
@@ -353,6 +372,120 @@ async function main(): Promise<void> {
     createdAt: PINNED_TS,
     updatedAt: PINNED_TS,
   } as never);
+
+  // ── P4.D263 (v4 `7c8572869`): pictures travel ──────────────────────────
+  // Two more characters (an archived source with one garment, an archived
+  // destination), the lost-pointer garment, then every picture through v4's
+  // REAL `addWardrobeItemImage`.
+  await repos.characters.create(spec.archivedSourceCharacter as never, {
+    id: spec.archivedSourceCharacterId,
+    createdAt: PINNED_TS,
+    updatedAt: PINNED_TS,
+  } as never);
+  await repos.characters.create(spec.archivedDestCharacter as never, {
+    id: spec.archivedDestCharacterId,
+    createdAt: PINNED_TS,
+    updatedAt: PINNED_TS,
+  } as never);
+  await seedItem(spec.archivedItem, spec.archivedSourceCharacterId);
+  await seedItem(spec.lostPictureItem, spec.characterId);
+  const { resolveWardrobeItemHome, addWardrobeItemImage } = await import(
+    '@/lib/wardrobe/item-images'
+  );
+  const homeOf = async (key: string) => {
+    const [scope, container, itemId] =
+      key === 'sourceItem'
+        ? ['character', spec.characterId, spec.sourceItem.id]
+        : key === 'groupItem'
+          ? ['group', spec.groupId, spec.groupItem.id]
+          : key === 'lostPictureItem'
+            ? ['character', spec.characterId, spec.lostPictureItem.id]
+            : key === 'archivedItem'
+              ? ['character', spec.archivedSourceCharacterId, spec.archivedItem.id]
+              : ['character', spec.characterId, key];
+    const home = await resolveWardrobeItemHome(repos, spec.userId, scope as never, container, itemId);
+    if (!home) throw new Error(`no home for picture item ${key}`);
+    return home;
+  };
+  for (const p of spec.pictures) {
+    await addWardrobeItemImage(repos, await homeOf(p.item), {
+      userId: spec.userId,
+      kind: p.kind,
+      content: Buffer.from(spec.webp[p.webp], 'base64'),
+      contentType: 'image/webp',
+      width: null,
+      height: null,
+      generationPrompt: p.generationPrompt ?? null,
+      generationModel: p.generationModel ?? null,
+      generationRevisedPrompt: null,
+    });
+  }
+  // The lost-pointer garment: an IMAGE row whose storage key does not parse
+  // (so it is never carried), and the item's pointer aimed at it.
+  await repos.files.create(
+    {
+      userId: spec.userId,
+      sha256: 'c'.repeat(64),
+      originalFilename: spec.lostPicture.originalFilename,
+      mimeType: 'image/webp',
+      size: 10,
+      width: null,
+      height: null,
+      linkedTo: [spec.lostPictureItem.id],
+      source: 'UPLOADED',
+      category: 'IMAGE',
+      generationPrompt: null,
+      generationModel: null,
+      generationRevisedPrompt: null,
+      description: null,
+      tags: [],
+      storageKey: spec.lostPicture.storageKey,
+      projectId: null,
+      folderPath: null,
+    } as never,
+    { id: spec.lostPicture.id } as never,
+  );
+  await repos.wardrobe.update(
+    spec.lostPictureItem.id,
+    { imageFileId: spec.lostPicture.id } as never,
+    spec.characterId,
+  );
+  // Pin every `files` row's timestamps, one second apart in seeding order, so
+  // "newest first" is unambiguous.
+  {
+    const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+    const raw = getRawDatabase();
+    if (!raw) throw new Error('main DB handle unavailable');
+    const rows = raw.prepare('SELECT id FROM files ORDER BY rowid').all() as Array<{ id: string }>;
+    const base = Date.parse(PINNED_TS);
+    rows.forEach((r, i) => {
+      const ts = new Date(base + (i + 1) * 1000).toISOString();
+      raw.prepare('UPDATE files SET createdAt = ?, updatedAt = ? WHERE id = ?').run(ts, ts, r.id);
+    });
+    // The wear rows (raw — the table is the migration's, above).
+    for (const w of spec.wearRows) {
+      raw
+        .prepare(
+          'INSERT INTO "wardrobe_wear_stats" ("id","itemId","wearerCharacterId","wearCount","firstWornAt","lastWornAt","lastWornChatId","createdAt","updatedAt") VALUES (?,?,?,?,?,?,?,?,?)',
+        )
+        .run(
+          w.id,
+          w.itemId,
+          w.wearerCharacterId,
+          w.wearCount,
+          w.firstWornAt,
+          w.lastWornAt,
+          w.lastWornChatId,
+          PINNED_TS,
+          PINNED_TS,
+        );
+    }
+  }
+  await rawQuery('UPDATE "characters" SET "archivedAt" = ? WHERE "id" IN (?, ?)', [
+    '2026-03-01T00:00:00.000Z',
+    spec.archivedSourceCharacterId,
+    spec.archivedDestCharacterId,
+  ]);
 
   closeMountIndexSQLiteClient();
   await closeDatabase();

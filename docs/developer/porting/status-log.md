@@ -173194,3 +173194,26 @@ red-first in its own unit), `avatar_job_tier3_equivalence` and
   `aspectRatio 3:4`. Red-first: `None` restored at the call → 6 rows red. The oracle (58 cases)
   regenerated at the pin `/tmp/qt-v4-pin-p4d263-f5e953a3f`. The SPA's avatar-picker `portrait` /
   Shape line is not this lane's (no `apps/web` ownership).
+- **Unit 8 — item 12 (transfers carry pictures + the 409).** `services/wardrobe_transfers.rs`:
+  `TransferError::Conflict` (`DbError::CharacterArchived`, also through `WardrobePublicError::Db`);
+  after the collision check the source's writable mount is pre-resolved on a move / component
+  move, then the destination's (both through `wardrobe_container::resolve_container_mount_point_id`);
+  every traveller (components first, then the item) runs `carry_item_images`, sets
+  `planned.image_file_id` from the carried map, and queues a move's `PendingImageMove`;
+  `commit_moved_images` runs after the deletes (for every move-mode traveller, as v4's loop does).
+  `api/wardrobe.rs`: the 409 arm; `wardrobe_transfer_apply_with_codec`. **HANDOFF (`api/engine.rs`,
+  FROZEN):** the `WardrobeTransferApply` arm should call `wardrobe_transfer_apply_with_codec`
+  over `ready_db_and_blob_webp()`; until then the carried links write through
+  `RefusingWebpTranscoder` (a carried picture is already a stored WebP — measured pass-through on
+  the fixture's pictures). Harness: three tables (`doc_mount_blobs`; main `files` with
+  `storageKey` remapped through the id map; main `wardrobe_wear_stats`), six scenarios (pictures
+  on a garment / a composite + component / the group item; an uncarriable picture; an archived
+  source move → 409, copy → ok; an archived destination → 409), minted ids tokenized POSITIONALLY
+  inside every string cell (a copy's pictures live under `Wardrobe/images/<mintedId>/`).
+  **Oracle fix, measured:** v4's bridge `refreshStats(...).catch(() => {})` is un-awaited and its
+  dynamic `import('./index')` defers the write past the handler's return, so the oracle dumped a
+  source vault's stats one link stale (18 vs 17 files); the case now flushes ten `setImmediate`
+  turns before dumping (the EVENTUAL state). Mutations caught 3/3 (no carry → `copy_character_to_
+  general`; no source pre-resolve → `move_from_archived_source_conflict`; no commit →
+  `move_character_to_project`). **Fixture moved:** `wardrobe-transfers-tier2.json` (+ builder) —
+  `QT_ORACLE_WTR` / `QT_FIXTURE_WTR_*` regenerate (25 rows).

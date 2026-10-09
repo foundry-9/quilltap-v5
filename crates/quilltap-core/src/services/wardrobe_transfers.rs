@@ -23,12 +23,25 @@
 //!
 //! Move vs copy: `copy` mints a fresh id and `createdAt`/`updatedAt` (`now`);
 //! `move` keeps the source id + timestamps and deletes the source after the create.
+//!
+//! P4.D263 (v4 `7c8572869`, #82): pictures (`Wardrobe/images/<itemId>/` in the
+//! source mount) travel with every transferred item. A move re-links them into
+//! the destination mount at the same path and re-points their `files` rows,
+//! dropping the source links once the source item is gone; a copy links them
+//! under the copy's new id with fresh `files` rows, and the copy's
+//! `imageFileId` points at its own copy (a picture that cannot be carried
+//! nulls the pointer). A move writes to the source too, so its writable mount
+//! is resolved BEFORE anything is written: an archived source character
+//! refuses there (v4's 409 `An archived character's wardrobe cannot be
+//! changed`), as does an archived destination — a COPY out of an archived
+//! source still succeeds.
 
 use std::collections::HashMap;
 
 use rusqlite::Connection;
 use serde_json::{json, Value};
 
+use crate::api::types::WardrobeContainerScope;
 use crate::collation::locale_compare;
 use crate::db::archetype_wardrobe::{
     ensure_group_wardrobe_folder, ensure_project_wardrobe_folder, read_general_wardrobe,
@@ -47,7 +60,16 @@ use crate::db::vault_wardrobe_public::{
 };
 use crate::db::wardrobe_read::find_by_character_id;
 use crate::db::DbError;
+use crate::services::mount_index::blob_transcode::WebpTranscoder;
+use crate::services::wardrobe_container::resolve_container_mount_point_id;
+use crate::services::wardrobe_item_images::carry::{
+    carry_item_images, commit_moved_images, CarryArgs, CarryMode, PendingImageMove,
+};
 use crate::vault_overlay::WardrobeItem;
+
+/// v4's `conflict(...)` sentence for a `CharacterArchivedError` (the route's
+/// catch, `transfers/route.ts:501-503`).
+const ARCHIVED_CONFLICT: &str = "An archived character's wardrobe cannot be changed";
 
 /// Move or copy (v4 `TransferAction`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -127,6 +149,9 @@ pub enum TransferError {
     /// v4 `badRequest(msg)` — invalid destination, same source/destination, or an
     /// id collision at the destination.
     BadRequest(String),
+    /// v4 `conflict(...)` — a `CharacterArchivedError` out of the source /
+    /// destination mount resolution or a vault writer (P4.D263).
+    Conflict(String),
     /// v4's explicit `serverError(msg)` arms — the MESSAGE reaches the wire
     /// (unlike [`TransferError::Internal`], which the route's catch collapses
     /// to `'Failed to transfer wardrobe item'`).
@@ -137,13 +162,21 @@ pub enum TransferError {
 
 impl From<DbError> for TransferError {
     fn from(e: DbError) -> Self {
-        TransferError::Internal(format!("{e:?}"))
+        match e {
+            DbError::CharacterArchived { .. } => {
+                TransferError::Conflict(ARCHIVED_CONFLICT.to_string())
+            }
+            e => TransferError::Internal(format!("{e:?}")),
+        }
     }
 }
 
 impl From<WardrobePublicError> for TransferError {
     fn from(e: WardrobePublicError) -> Self {
-        TransferError::Internal(format!("{e:?}"))
+        match e {
+            WardrobePublicError::Db(e) => e.into(),
+            e => TransferError::Internal(format!("{e:?}")),
+        }
     }
 }
 
@@ -225,6 +258,15 @@ pub enum SourceScope {
 }
 
 impl SourceScope {
+    fn container_scope(self) -> WardrobeContainerScope {
+        match self {
+            SourceScope::Character => WardrobeContainerScope::Character,
+            SourceScope::Group => WardrobeContainerScope::Group,
+            SourceScope::Project => WardrobeContainerScope::Project,
+            SourceScope::General => WardrobeContainerScope::General,
+        }
+    }
+
     fn as_str(self) -> &'static str {
         match self {
             SourceScope::Character => "character",
@@ -243,6 +285,15 @@ struct ResolvedDestination {
 }
 
 impl DestinationScope {
+    fn container_scope(self) -> WardrobeContainerScope {
+        match self {
+            DestinationScope::General => WardrobeContainerScope::General,
+            DestinationScope::Project => WardrobeContainerScope::Project,
+            DestinationScope::Group => WardrobeContainerScope::Group,
+            DestinationScope::Character => WardrobeContainerScope::Character,
+        }
+    }
+
     fn as_str(self) -> &'static str {
         match self {
             DestinationScope::General => "general",
@@ -717,13 +768,15 @@ fn delete_from_source(
 
 /// v4 POST — move or copy one wardrobe item between tiers. `now` is the minted
 /// timestamp for a copy's `createdAt`/`updatedAt` (injected for determinism;
-/// v4 uses `new Date().toISOString()`).
+/// v4 uses `new Date().toISOString()`) and for the carried pictures' rows;
+/// `blob_webp` is the blob codec the picture links write through.
 pub fn transfer_wardrobe_item(
     main: &Connection,
     mount: &Connection,
     user_id: &str,
     req: &TransferRequest,
     now: &str,
+    blob_webp: &dyn WebpTranscoder,
 ) -> Result<TransferOutcome, TransferError> {
     // 1. Resolve the source item — explicitly named container first (v4
     //    `body.source ? resolveExplicitSource : resolveSourceItem`).
@@ -807,7 +860,7 @@ pub fn transfer_wardrobe_item(
             .collect()
     };
 
-    let planned_components: Vec<WardrobeItem> = travelling
+    let mut planned_components: Vec<WardrobeItem> = travelling
         .iter()
         .map(|component| {
             let mut planned = WardrobeItem::from_read_value(component);
@@ -853,6 +906,77 @@ pub fn transfer_wardrobe_item(
         }
     }
 
+    // 6b. A move writes to the source too (its item and its picture links
+    //     go), so its writable mount is resolved before anything is written:
+    //     an archived source character refuses here (the tombstone), not
+    //     half-way through.
+    if req.action == TransferAction::Move || req.components == ComponentMode::Move {
+        resolve_container_mount_point_id(
+            main,
+            source.scope.container_scope(),
+            source.character_id.as_deref(),
+            source.mount_point_id.as_deref(),
+        )?;
+    }
+
+    // 6c. Pictures are linked at the destination before the items land, so a
+    //     landed item's `imageFileId` never dangles. A copy's pointer is
+    //     rewritten to its own copied file; a move's rows are re-pointed only
+    //     after the source item is gone (`commit_moved_images`), so a failure
+    //     before then leaves the source whole.
+    let destination_mount_point_id = resolve_container_mount_point_id(
+        main,
+        destination.scope.container_scope(),
+        destination.character_id.as_deref(),
+        destination.mount_point_id.as_deref(),
+    )?;
+    let component_mode = if req.components == ComponentMode::Copy {
+        CarryMode::Copy
+    } else {
+        CarryMode::Move
+    };
+    let item_mode = match req.action {
+        TransferAction::Copy => CarryMode::Copy,
+        TransferAction::Move => CarryMode::Move,
+    };
+    let source_item_id = item_id_of(&source.item).unwrap_or_default().to_string();
+    let mut travellers: Vec<(String, &mut WardrobeItem, CarryMode)> = travelling
+        .iter()
+        .map(|c| item_id_of(c).unwrap_or_default().to_string())
+        .zip(planned_components.iter_mut())
+        .map(|(original_id, planned)| (original_id, planned, component_mode))
+        .collect();
+    travellers.push((source_item_id, &mut next_item, item_mode));
+    let mut pending_image_moves: Vec<(String, PendingImageMove)> = Vec::new();
+    let mut mint_file_id = || uuid::Uuid::new_v4().to_string();
+    for (original_id, planned, mode) in travellers {
+        let carried = carry_item_images(
+            main,
+            mount,
+            &CarryArgs {
+                mode,
+                source_item_id: &original_id,
+                destination_item_id: &planned.id,
+                destination_mount_point_id: &destination_mount_point_id,
+                user_id,
+            },
+            &mut mint_file_id,
+            now,
+            blob_webp,
+        )?;
+        // The planned item still carries the ORIGINAL's pointer here.
+        let current = planned.image_file_id.clone().flatten();
+        planned.image_file_id = Some(
+            current
+                .as_deref()
+                .and_then(|id| carried.mapped(id))
+                .map(str::to_string),
+        );
+        if mode == CarryMode::Move {
+            pending_image_moves.push((original_id, carried.pending_move));
+        }
+    }
+
     // 7. Components land first so the outfit's references resolve the moment
     //    it arrives; the write layer tolerates missing components, but there
     //    is no reason to create that window.
@@ -881,6 +1005,11 @@ pub fn transfer_wardrobe_item(
                 "Failed to remove item from source after move".to_string(),
             ));
         }
+    }
+
+    // 8b. The moved items' source-side picture links go once their items have.
+    for (item_id, pending) in &pending_image_moves {
+        commit_moved_images(main, mount, item_id, pending, now);
     }
 
     // 9. Post-write verification: read the outfit BACK from the destination
