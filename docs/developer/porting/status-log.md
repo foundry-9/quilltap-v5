@@ -175367,3 +175367,7 @@ chat's avatar-on-outfit-change setting).
 A forced lock override on a throwaway fresh instance landed while its previous
 server was still inside a 40 s window, so one optimize ran beside a live
 server; nothing was lost and the row was redone cleanly after #153's fix.
+
+### Addendum (same day, the human's rulings)
+- **C5 RAN** on the human's authorization: Friday's `wardrobe_create` (switch ON) queued and drew *Leather Tool Belt* through the default desk (GROK `grok-imagine-image-2.0`) — the tool's `- Picture: … being drawn in the background …` sentence, one `WARDROBE_ITEM_IMAGE_GENERATION` job COMPLETED in 24 s, one `WARDROBE_ITEM_IMAGE` `llm_logs` row, the item's `imageFileId` set, the picture (Friday wearing the belt, 864×1152 webp) in the row thumbnail and the editor's Picture section. The walk has no HUMAN rows left.
+- **Filed upstream as v4 bugs 183 and 184** — `docs/developer/bugs/bug-183-wear-line-last-last-week.md` (Low: `last last week` / `last last month` at `wear-display.ts:57`, `wardrobe-read-handler.ts:179-183`, `WardrobeWearHistorySection.tsx:142`) and `bug-184-wardrobe-tools-household-wear-as-own.md` (Medium: `wardrobe_list`'s household `wear_count` / `last_worn_at` unlabelled, `wardrobe_read` never states the reader's own count) + their `bugs.md` rows, v4 commit `5abcd01ea` (docs-only, committed locally in the v4 checkout, NOT pushed — the bug-169 precedent); recorded as a NO-PORT row on the drift ledger. The read head's missing count is covered by 184 (the human's ruling).

@@ -803,7 +803,9 @@ records THERE. Update this summary only when a phase or round completes.
   #155 (Start Chat dead inside the workspace) and #154 in `17792dd49` (SPA
   0.5.822). **ORDER-PENDING:** #156 (115 `with_both_conns` callers answer a
   500 on a degraded mount index), #157 (log text). **RULING:** #159
-  (`new-account` restore orphans every vault — v4-shared). ⚠ **Drift measured:**
+  (`new-account` restore orphans every vault — v4-shared). C5 (a real
+  garment picture) RAN on the human's authorization; v4 bugs 183 / 184 FILED
+  (`5abcd01ea`, local). ⚠ **Drift measured:**
   v4 HEAD already tiered + consolidated the live instance; v5 at the baseline
   refuses the 365 `CONSOLIDATED` digests on restore and HARD-DELETES what v4
   demotes — **run no v5 build against live Friday before the memory catch-up**

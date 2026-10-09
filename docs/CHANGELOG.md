@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — docs(porting): the wardrobe dogfood pass closes C5; v4 bugs 183 and 184 filed
+
+_Docs-only change._
+
+C5 ran on the human's authorization: a tool-queued wardrobe picture generated end to end on the Friday copy (one `WARDROBE_ITEM_IMAGE_GENERATION` job, one `WARDROBE_ITEM_IMAGE` log row, the picture on the item). Two v4 bugs filed from the walk, committed locally in the v4 checkout (`5abcd01ea`, not pushed): 183, wear lines reading "last last week"; 184, the wardrobe tools reporting the household's wear count as the character's own. The drift ledger records the local v4 commit as a NO-PORT row.
+
 #### 2026-10-09 — docs(porting): the f5e953a3f wardrobe-programme dogfood pass
 
 _Docs-only change._
