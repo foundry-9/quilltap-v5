@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — docs(porting): drift check — v4 unmoved since `783385873`, nine rows still pending
+
+_Docs-only change._
+
+Re-ran the drift check after a fetch: v4 `main` is still at `783385873`, `bugfix` and `release` are unmoved, and the checkout is on `main` and clean. The drift ledger's §1 records the re-check date; §3's nine UNPROCESSED rows (the memory programme) and the PIN REQUIRED regen rule at `f5e953a3f` stand.
+
 #### 2026-10-09 — docs(porting): the drift ledger records v4's ninth mid-round commit (`783385873`, release notes only)
 
 _Docs-only change._

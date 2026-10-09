@@ -27,10 +27,14 @@ probe verifies against._
   The eleven rows it absorbed (`938144eb4` … `f5e953a3f`) are retired to §6.
   CLAUDE.md's Status bullet agrees (the round's bullet: "the oracle baseline
   MOVES to `f5e953a3f`"; its "Oracle baseline" bullet names it).
-- **Checked:** 2026-10-08 (`/unify` of the `f5e953a3f` round; the eight
-  commits past the target were classified the same evening by a `/driftcheck`
-  run from the unification session — its draft rows are §3's eight). Previous
-  checks: 2026-10-08 morning (`/driftcheck`, the eleven commits to
+- **Checked:** 2026-10-09 (`/driftcheck` — after `git fetch`, the §2 probe
+  PASSED whole: `783385873..main`, `..origin/main`, `1a2b2164c..bugfix`,
+  `..origin/bugfix` all empty, `release` still `8fbf2afe0`, checkout `main`
+  CLEAN; no new commit to classify, §3's nine rows stand as recorded;
+  CLAUDE.md's Status agrees). Previous checks: 2026-10-08 (`/unify` of the
+  `f5e953a3f` round; the eight commits past the target were classified the
+  same evening by a `/driftcheck` run from the unification session — its
+  draft rows are §3's eight); 2026-10-08 morning (`/driftcheck`, the eleven commits to
   `f5e953a3f`); 2026-10-07 (`/unify` of the boot-hardness round).
 - **v4 `main` HEAD at check: `783385873`** ("docs: update 4.10.0 release
   notes for memory consolidation, wardrobe ledger and pictures, daily
