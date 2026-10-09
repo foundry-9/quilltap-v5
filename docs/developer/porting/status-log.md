@@ -175771,3 +175771,72 @@ Branch `claude/wardrobe-images-spa-viewer-4a334b` (worktree
   the shared fixture`), so its unit-4 re-pin is NOT exercised by this fixture
   (recorded; the locator is the same frame locator the chat-gallery beat
   proves); `photos-flow` 5 passed.
+
+### Lane close — gate, divergences, deferrals, 💸
+
+- **Gate (final tree):** `npm run lint` clean (`check-qt-classes` self-test
+  5/5, 956 classes resolve); `npm run build` clean; `npm test` **479 files /
+  9,204 tests green**; `cargo fmt --all --check` clean; `cargo clippy
+  --workspace --all-targets -- -D warnings` clean, and with
+  `--features quilltap-core/native-transport` clean; `cargo test --workspace`
+  (`CARGO_INCREMENTAL=0`, no oracle env — this lane owns no Rust family) **699
+  binaries / 4,628 passed / 1 failed / 3 ignored**: the one red is
+  `qtap_schema_embed_guard` run against the LIVE v4 checkout — RED BY DESIGN
+  until P4.D272 lands (§R.3 / §R.13(h)); this lane changes no crate.
+  `recipe_sweep.py --self-test` exit 0. `git diff main` — ONLY `apps/web/**`,
+  `docs/CHANGELOG.md`, `status-log.md` and this order's header; `crates/`,
+  `harness/`, `help/`, `docs/v4/` EMPTY; none of P4.D276's files;
+  `shared/format-date.ts`, `equipped-slot-row.ts`, `outfit-quick-pick.ts`,
+  `project-wardrobe-manager.ts`, `screens/scriptorium/**` UNTOUCHED;
+  `core-contract.ts` wholly inside the two P4.D277 brackets;
+  `salon-conversation.ts` the one binding. **Ownership deviation (flagged):**
+  `e2e/salon-image-detail-flow.spec.ts` (one R-B re-pin — unit 4).
+- **§J.4 — the chat-gallery regression net by file, before / after:** the
+  "before" leg ran in this worktree with `main`'s `apps/web/src` + `e2e`
+  restored (the branch-added files removed for the build), then HEAD restored
+  and rebuilt. `salon-chat-gallery-flow`: before 4 passed / 1 skipped, after 4
+  passed / 1 skipped — the SAME beats (`Delete a generated file` skips on its
+  fixture guard both times); no beat moved. `salon-image-detail-flow`: its one
+  beat skips on its fixture guard before AND after.
+- **Tier 2 item 14 — NOT measured live:** the existing chat Save beat
+  (`salon-chat-gallery-flow`) presses no Escape (it saves and the dialog
+  closes on Save), so the chat doors' Escape convergence (R-C) is UNIT-PINNED
+  only (`save-image-dialog.spec.ts` `closes on Escape, once`). Per Tier 3 item
+  21 one Escape there closes BOTH the dialog and the chat viewer, as in v4.
+  → a dogfood row.
+- **Recorded mechanism divergences:** R-B (the frame and its hosts'
+  body-portal consequences — unit specs query `document.body`, three e2e
+  locators re-pinned); R-C (the save dialog's LOCAL portal + Escape, all three
+  doors); R-D (`PhotoAlbumKind` / `PhotoAlbumOption` aliases); R-E (the gate
+  idioms — `openable` + `open`, `canOpenImage` + `openImage`, `actions` as
+  data, conditionally-`undefined` arrows, projection slots by marker
+  directive, no `isOpen`); R-I (Download / Copy on v5's helpers — the copy
+  helper THROWS, so v4's try/catch shape and its `console.error` are kept,
+  contrary to the order's premise); the exported `pictureFilename`; the verb
+  (not URL) doors and the TanStack key per door; `[attr.class]` for v4's class
+  token order.
+- **Tier 3 deferrals (recorded, never silent):** 17 — v4's `Failed to load
+  photo albums (<status>)` has no counterpart on any door (no status on the
+  dispatch error; a failed read renders the empty sentence); 18 — no app-wide
+  `qt-modal` portal / Escape; 19 — `pictureFilename` has no oracle row (spec
+  cases only); 20 — whether the anchor's `download=<Title>.webp` or the
+  server's `Content-Disposition` names the file is a dogfood row; 21 — the
+  chat viewer keeps the keys under an open save dialog, as v4.
+- **💸 dogfood rows (no model spend in this lane):** a real garment with ≥2
+  pictures — the row thumbnail → `Picture of <title>`, Escape back to the
+  dialog; the editor's current picture → `Current picture · 1 of N`, the arrows
+  walk, a history entry opens at its index (click ABOVE the hover buttons on
+  a non-current entry — their layout covers the thumbnail's centre); **Save to
+  Quilltap General** → toast + the file in General's `photos/`, the SECOND
+  save's dated sentence, a save into a live character's vault (`<Name> (you)`),
+  Escape with the dialog up closing only the dialog; Download's filename
+  (Tier 3 item 20); Copy pasting into another app; the chat gallery viewer on
+  a missing picture (`Image Deleted` WITH Close, the next arrow renders);
+  a Salon message Save Image + a gallery Save (the moved `chatId`; the dialog
+  on top of the chat viewer; one Escape closing both there — item 14); a row
+  worn 7–13 days ago reading `Worn N× · last a week ago` and the editor's
+  `a week ago`.
+- **Versions at close:** SPA **0.5.834** (from 0.5.822, +1 per commit — 12
+  commits); no crate bumped; harness frozen. The unifier takes the higher of
+  P4.D276 / P4.D277 +1 (§R.8).
+- Pin `/tmp/qt-v4-pin-p4d277-01a83539d` removed; the lane's `target/` deleted.

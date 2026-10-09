@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — docs(porting): P4.D277 lane close — wardrobe/images SPA
+
+_Versions: SPA 0.5.834._
+
+Closes the P4.D277 lane. The order's status header now reads LANE COMPLETE, and `status-log.md` gains the close record:
+
+- the gates;
+- the before/after chat-gallery runs;
+- the recorded divergences and the Tier 3 deferrals;
+- the dogfood rows.
+
+No source changed.
+
 #### 2026-10-09 — test(e2e): the wardrobe picture viewer beats, live + gated — P4.D277 unit 11
 
 _Versions: SPA 0.5.833._
