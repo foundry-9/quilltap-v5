@@ -839,6 +839,8 @@ test.describe('P4.6t — Settings Memory tab (Commonplace Book cards)', () => {
     // collapsible title — `.first()`); the rest render collapsed but titled.
     await expect(page.getByRole('heading', { name: 'Embedding Profiles' }).first()).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Memory Housekeeping' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Consolidation', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Extraction Grain', exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Recall Relevance' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Memory Deduplication' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Regenerate Memories' })).toBeVisible();

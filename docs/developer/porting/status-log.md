@@ -175534,3 +175534,44 @@ kinds.ts`'s `memory` chip title. **Re-pinned by name:**
   RECORDED: whether the server re-sources the digest is P4.D265/P4.D266's
   `memoryUpdate` (v4's PUT schema `[id]/route.ts:18-27` has no `source`); a 💸
   row checks it live.
+
+### Unit M8 — the Playwright beats (SPA 0.5.829)
+New `apps/web/e2e/settings-memory-consolidation-flow.spec.ts` (port 4335 —
+re-grepped `e2e/` for `43[0-9][0-9]` first: 4319–4334 taken, 4335 free;
+instance `e2e/.artifacts/memory-consolidation-instance`, log
+`memory-consolidation-server.log`, the `characters-flow.spec.ts:439-450`
+`MEM_USER_TABLES` recipe). `settings-flow.spec.ts` gains exactly the two
+heading lines after `Memory Housekeeping`.
+- **Measurements, on the materialized private instance (the spec's
+  `beforeAll` recipe, read with the worktree's release CLI, no server):**
+  - **29 (Dry run) — PASS.** Pip `b1000000-…-000000000003`: 0 memories,
+    `controlledBy='user'`, `archivedAt` null, on the counts roster
+    (`memory_character_counts` lists every character incl. zero-count). Mnemo:
+    51 memories, 47 embedded. Orla: 4, none embedded. **A Mnemo dry run
+    reaches a model call** (non-empty selection; `Local Mock` →
+    `http://127.0.0.1:1/v1` unreachable) — a 💸 row, never a beat.
+  - **30 (Cleanup) — ≥ 1 predicted:** Mnemo AUTO rows with `importance < 0.3`
+    and `createdAt` > 6 months old = **5** (`…100000000010`, `…020`, `…028`,
+    `…038`, `…046`; none accessed, `reinforcementCount` 1). The gated beat
+    asserts the parsed `Archive N Memories` ≥ 1 before clicking, and
+    `result.demoted` ≥ 1.
+  - **31 (plant path):** on `main` the `memories` table has NO tier columns
+    (25 columns; `pragma_table_info`), and the CLI's own open does not add
+    them. The stop → two `--write`s → restart recipe is authored GATED; it
+    plants by UPDATE (Mnemo `MEM_REL_A` → a one-member `CONSOLIDATED` digest of
+    `MEM_REL_B`; `MEM_REL_B` → `tier='cold'`, `supersededById=MEM_REL_A`), so it
+    needs no column list. **Exercised only on the union (§S.9 flips it).**
+- **Runs (by file, one at a time, 4319 + 4335 free, after `npm run build` and
+  `cargo build --release -p quilltap-web -p quilltap-cli` in the worktree):**
+  the new file 2 passed / 5 skipped (the gated beats, reason string naming
+  P4.D265/P4.D266/P4.D269/P4.D271); `settings-flow.spec.ts` 9/9;
+  `characters-flow.spec.ts` 7/7 (its Memories beat drives the changed card and
+  list); `settings-memory-flow.spec.ts` 4/4. The first run of the new file
+  caught a strict-mode collision in the LIVE grain beat (`Observations of
+  others` also prefixes the hybrid description) — `exact: true`, green.
+- **Gated beats (5), each unrun on this branch by design (§S.9):** the grain
+  round trip; consolidation field / refused field (dispatch COUNT, not hope) /
+  switch; Pip dry run (asserts `report.stats.clustersSelected === 0` and no
+  `skippedReason` — R-I's tripwire) + real run toast; Cleanup → Archived tier;
+  the digest viewer over the R-K plant. **Unauthored beats:** none — every
+  Mnemo / Orla consolidation leg is a 💸 row by R-I.

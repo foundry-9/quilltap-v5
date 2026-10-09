@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — test(e2e): P4.D276 M8 — the memory consolidation Playwright file (LIVE anchors + gated server beats)
+
+_Versions: SPA 0.5.829._
+
+New `e2e/settings-memory-consolidation-flow.spec.ts`, on its own locked copy of the committed memories fixture at port 4335. Two LIVE beats check that `section=memory-consolidation` and `section=memory-extraction-grain` force-open the new cards with v4's labels and options. Five beats sit behind `P4D265_SERVER_LANDED = false` until the round's server lands: an Extraction Grain round trip; a Consolidation field save, a refused field that posts nothing, and the switch; a dry run on Pip (who has zero memories, so no model call is possible — the beat also asserts `clustersSelected === 0`) followed by a real run; Cleanup archiving Mnemo's old low-importance notes and the `Archived` tier listing them; and a planted digest opened from a superseded card (stop the server, two CLI writes, restart). `settings-flow.spec.ts` gains the `Consolidation` and `Extraction Grain` heading checks.
+
 #### 2026-10-09 — feat(spa): P4.D276 M7 — the Mem chip names consolidation; an editor arm pins the digest edit bag
 
 _Versions: SPA 0.5.828._
