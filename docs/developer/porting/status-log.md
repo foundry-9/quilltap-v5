@@ -172521,3 +172521,142 @@ dirt never reaches a regen. The ledger is NOT written (lane rule).
   exactly the four refusal rows of wardrobe-routes red.
 - Green at the pin: `wardrobe_routes` 135 checks / 116 cases / 127 rows;
   `group_wardrobe_routes` 33; `projects_routes` 107; core lib 3,180.
+
+### Tier 2 / Tier 3 disposition
+
+- **13 (R-D) LANDED** in unit 3 — no snake_case pin existed to move; the NEW
+  capture pin asserts v4's five keys in order.
+- **14 LANDED, split:** `wornCount` is compared against v4's REAL logged key
+  set by `wardrobe_wear_history_equivalence` (the helper's DEBUG lines are in
+  every row's `logs`); `groupCount` is pinned by the v5 capture test
+  `p4d256_route_lines_are_v4s` — no jest case captures the character route's
+  DEBUG (the wardrobe-routes oracle records no logs), so its key set is v4's
+  SOURCE (`characters/[id]/wardrobe/route.ts:110-116`), as the order allowed.
+- **15 LANDED** (each site's *why*; the `.qtap` strip note on `with_origin`,
+  core 0.0.1259 — no `records.rs` hunk).
+- **16 VERIFIED:** `characters_wardrobe_route` green unchanged.
+- **17 (Tier 3) — pinned NEGATIVE, measured:** v4's `findByIdRaw` answers
+  `null` on a corrupt row; `Could not read wearer` never fires (nor `Could not
+  resolve wearer avatar`, nor `Could not read last-worn chat`).
+- **18** — P4.D260's whole-tree re-vendor (nothing handed off).
+- **19** — the character / group / project item-GET REST edges stay ABSENT
+  (measured, R-E); the verb is reachable on every tier via `/api/dispatch`. A
+  future smalls row; `lib.rs` is P4.D263's.
+- **20** — P4.D261's beat (the SPA); 💸.
+
+### HANDOFFs
+
+- **None to P4.D255** (no C1 gap: every signature compiled as recorded at
+  `KEYSTONE`).
+- **None to P4.D263** under §R.10(c): `cleanup_item_images` and
+  `assert_item_image_choice` were called as-is; no missing primitive behaviour
+  was found by these families (no family here plants a picture with a mount
+  link, so the link-delete leg is P4.D263's own families').
+- **For the unifier (not a handoff — recorded):** (a) the four create literals
+  P4.D255 set to `image_file_id: None` are `Some(None)` on this branch (the
+  red-first run found v4's `imageFileId: null` create echo); any sibling that
+  adds another create literal should follow. (b) `wardrobe_routes_equivalence`
+  now ensures the ledger on every case — its `eq_*` rows are green on this
+  branch WITHOUT P4.D262's chokepoint (the bodies carry no ledger state); after
+  P4.D262 lands, re-run the family by name. (c) R-G: this lane made NO edit to
+  `characters_mutations_equivalence.rs` or its case — the `wardrobe_get` /
+  `wardrobe-delete` arms went green at the pin from the source changes alone;
+  P4.D262's cascade region is untouched.
+
+### Recorded divergences / observations (each pinned or pre-existing)
+
+- `V4_ONLY_CHARACTER_VALIDATION` (both ways, 3 cases) — v5's raw character read
+  omits v4's `Data validation failed {collection: characters}` line.
+- v5's create echo puts `id` first (v4 after the data keys) — pre-existing,
+  never claimed (`create_ok` deliberately not in the key-order list).
+- The flat `merge_mounts` WARN logs snake_case `mount_point_id` — pre-existing;
+  a smalls candidate.
+- The character PUT's `archived` guard runs before the 404s (pre-existing,
+  banked by P4.D120); the project PUT validates nothing but `imageFileId`
+  (pre-existing).
+- The project item GET / wear-history resolve the store through
+  `ensure_project_wardrobe_mount` (with the `Wardrobe/` folder ensure) where
+  v4's item routes do not ensure the folder — pre-existing, kept for parity
+  with `project_wardrobe_get`.
+
+### Fixtures changed (corpora / spec files — no committed `.db` rebuilt)
+
+- `harness/oracle/fixtures/wardrobe-routes.json` (+30 cases; `preRound`,
+  `plants`, `action`, `thenWearHistory`; kinds `characterWardrobeItemGet`,
+  `characterWardrobeUpdate`) — invalidates `/tmp/oracle-wardrobe-routes.ndjson`.
+- `harness/oracle/fixtures/group-wardrobe.json` (+11 cases, `plants`) —
+  invalidates the group-wardrobe NDJSON (every row now also carries `ledger`).
+- `harness/oracle/fixtures/groups-projects.json` (NEW keys `p4d256Ledger`,
+  `p4d256Files` only) — invalidates the projects-routes NDJSON (8 new cases);
+  the other five readers (`groups-routes`, `image-profiles-routes`,
+  `mount-points-routes`, `scenarios-routes`, `roleplay-templates-routes`)
+  ignore the keys.
+- `harness/oracle/fixtures/tiered-mount-pool.json` (+`p4d256` plants,
+  `groupedArms`) — invalidates the tiered-mount-pool NDJSON (the plants touch
+  NEW groups / a NEW character only — the matrix rows are unchanged).
+- NEW `harness/oracle/fixtures/wardrobe-wear-history.json`.
+
+### Regen recipes (all from the pin, Node 24, staged under `/tmp/p4d256/`)
+
+- `tiered_mount_pool_equivalence`: the test header's recipe (builder → case),
+  unchanged in shape.
+- `wardrobe_wear_history_equivalence` (NEW): the `.ts` header's recipe →
+  `QT_ORACLE_WARDROBE_WEAR_HISTORY`.
+- web `wardrobe_routes_equivalence`: the `.ts` header's recipe (jest, the
+  committed pair) → `QT_ORACLE_WARDROBE_ROUTES`;
+  `cargo test -p quilltap-web --test wardrobe_routes_equivalence`.
+- `group_wardrobe_routes_equivalence`: the header's recipe (rebuild the
+  transfers pair from P4.D255's grown builder FIRST, then the jest case).
+- `projects_routes_equivalence`, `characters_reads_equivalence`,
+  `characters_mutations_equivalence`: the sweep driver's recipes
+  (`--show <family>`), outputs redirected to the lane dir.
+
+### Lane-close gate
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -- -D
+  warnings` clean, and with `--features quilltap-core/native-transport` clean
+  (`apps/web/dist` built first); `recipe_sweep.py --self-test` 0 failures (and
+  `--show wardrobe_wear_history_equivalence` extracts the new recipe).
+- `cargo test --workspace --no-fail-fast` (`CARGO_INCREMENTAL=0`, the lane's
+  env block — every owned oracle + `QT_V4_CHECKOUT` / `QT_V4_ROOT` at the pin):
+  **686 binaries / 4,554 passed / 4 failed / 3 ignored, zero `SKIP:`.** The
+  four: TWO §R.13 by-design reds owned elsewhere — `provider_sdk_version_guard`
+  (P4.D260) and `qtap_schema_embed_guard` (P4.D264) — and TWO of this lane's,
+  FIXED after the gate (`89ebbc260`, test-only): `p4d256_route_lines_are_v4s`
+  (green alone, red in the gate — the `Interest`-cache race: the sibling oracle
+  test reached the callsites first; moved to `test_support::global_capture`,
+  installed by both tests in the binary; 3/3 green with the sibling after) and
+  `tri_state_edges_share_the_decoder`'s typed-only construction census
+  (`wardrobe_routes.rs` 15 → 17, total 115 → 117 — the item GET's two
+  hand-built typed-only requests). Both re-run green by name.
+- Every owned family green by name at the pin: `tiered_mount_pool`,
+  `wardrobe_wear_history` (NEW), web `wardrobe_routes`,
+  `group_wardrobe_routes`, `projects_routes`, `characters_reads`,
+  `characters_mutations`; plus `wardrobe_item_wear_history_route` (NEW, web
+  edge) and `characters_wardrobe_route`.
+
+### 💸 for the dogfood pass
+
+The order's four rows stand: Friday's character wardrobe tab (no chip on own
+items, `Shared · Quilltap General`, `Group · <name>`, first-group credit vs the
+`groupCount` / `groupMountCount` line); `GET /api/v1/wardrobe/<id>?action=
+wear-history` on the copy (a real `lastWornChat` title; `null` after a chat
+delete; a never-worn item); an item delete (`Dropped wear-ledger rows for
+deleted item`, the pictures' `files` rows + links gone with `Removed wardrobe
+item images with the item`, a composite's components' rows untouched); a PUT
+with a foreign `imageFileId` → 400, `null` clears. Plus: an unknown
+`?action=` on a missing item answers the 404, on a present one the 400
+envelope.
+
+### Versions at close
+
+core 0.0.1259, web 0.0.225; harness frozen 0.0.1110; host, cli, tauri, SPA
+unchanged.
+
+### Commits (on top of P4.D255's tip `23cd7123b`)
+
+`fb185bc73` unit 1 · `4a597f47e` unit 2 · `4fa989023` unit 3 · `47e87f3fd`
+unit 4 · `83219f0c9` unit 5 · `0cf600d7f` unit 6 · `83ed2618f` item 15 note ·
+`89ebbc260` the gate's two test fixes · (this record).
+
+**LANE COMPLETE.**

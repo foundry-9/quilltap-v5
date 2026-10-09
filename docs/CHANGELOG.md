@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — docs(porting): P4.D256 lane record, LANE COMPLETE
+
+_Docs-only change._
+
+The lane-close record in `status-log.md` (Tier 2/3 disposition, handoffs — none — and the unifier notes, recorded divergences, fixtures changed, regen recipes, the gate, the 💸 rows, versions at close) and the order's status header.
+
 #### 2026-10-08 — test(web): P4.D256's route-line pins on the process-global capture rig; the typed-only construction census counts the item GET's two arms
 
 _No crate versions bumped._
