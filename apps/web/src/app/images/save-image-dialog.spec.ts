@@ -3,6 +3,7 @@ import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-exper
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { CoreClient } from '../core/core-client';
+import { CoreDispatchError } from '../core/core-contract';
 import type { AlbumOption, CoreResponse, MessageAttachment } from '../core/core-contract';
 import { SaveImageDialog, type SaveImageTarget } from './save-image-dialog';
 
@@ -31,8 +32,21 @@ function stubClient(
   saveResponse?: CoreResponse,
 ): Partial<CoreClient> {
   return {
-    dispatchData: (async (req: { type: string }) => {
+    dispatchData: (async (req: { type: string; [k: string]: unknown }) => {
       if (req.type === 'chatPhotoAlbums') return { albums: albumList };
+      if (req.type === 'wardrobeItemImageSaveTargets') {
+        log.requests.push(req);
+        return { albums: albumList };
+      }
+      if (req.type === 'wardrobeItemImageSaveToStore') {
+        log.requests.push(req);
+        const resp = saveResponse ?? {
+          type: 'ack',
+          data: { saved: true, mountPoint: 'Quilltap General', relativePath: 'photos/x.webp' },
+        };
+        if (resp.type === 'error') throw new CoreDispatchError(resp.data);
+        return resp.data as Record<string, unknown>;
+      }
       return {};
     }) as CoreClient['dispatchData'],
     dispatch: (async (req: { type: string; [k: string]: unknown }) => {
@@ -46,17 +60,18 @@ function stubClient(
 
 async function render(
   client: Partial<CoreClient>,
-  target: SaveImageTarget = { kind: 'message', messageId: 'm-1', fileId: 'file-1' },
+  target: SaveImageTarget = { kind: 'message', chatId: 'chat-1', messageId: 'm-1', fileId: 'file-1' },
   attachments: MessageAttachment[] = [IMG],
+  overlayClass?: string,
 ): Promise<ComponentFixture<SaveImageDialog>> {
   TestBed.configureTestingModule({
     imports: [SaveImageDialog],
     providers: [provideTanStackQuery(new QueryClient()), { provide: CoreClient, useValue: client }],
   });
   const fixture = TestBed.createComponent(SaveImageDialog);
-  fixture.componentRef.setInput('chatId', 'chat-1');
   fixture.componentRef.setInput('target', target);
   fixture.componentRef.setInput('attachments', attachments);
+  if (overlayClass !== undefined) fixture.componentRef.setInput('overlayClass', overlayClass);
   fixture.detectChanges();
   for (let i = 0; i < 5; i++) {
     await new Promise((r) => setTimeout(r, 0));
@@ -77,9 +92,11 @@ describe('SaveImageDialog', () => {
     expect(fixture.nativeElement.textContent).toContain('Riya (you)');
   });
 
-  it('shows the empty state when no albums are available', async () => {
+  // v4 `SaveImageDialog.tsx:298-304` at `01a83539d` — the empty sentence by door.
+  it('shows the chat empty state when no albums are available', async () => {
     const fixture = await render(stubClient({ requests: [] }, []));
-    expect(fixture.nativeElement.textContent).toContain('No photo albums are available');
+    expect(fixture.nativeElement.textContent).toContain('No photo albums are available for this chat.');
+    expect(fixture.nativeElement.textContent).not.toContain('No document stores are available.');
   });
 
   it('saves via messageSaveImage with the default album and trimmed caption (the message door)', async () => {
@@ -113,7 +130,7 @@ describe('SaveImageDialog', () => {
     };
     const fixture = await render(
       stubClient(log, albums()),
-      { kind: 'chat', fileId: 'gallery-file-9' },
+      { kind: 'chat', chatId: 'chat-1', fileId: 'gallery-file-9' },
       [galleryAttachment],
     );
     (fixture.nativeElement.querySelector('.qt-dialog-footer button:last-child') as HTMLButtonElement).click();
@@ -142,7 +159,7 @@ describe('SaveImageDialog', () => {
           alreadySaved: { relativePath: 'photos/x.webp', keptAt: '2026-09-01T12:00:00.000Z' },
         },
       }),
-      { kind: 'chat', fileId: 'file-1' },
+      { kind: 'chat', chatId: 'chat-1', fileId: 'file-1' },
     );
     (fixture.nativeElement.querySelector('.qt-dialog-footer button:last-child') as HTMLButtonElement).click();
     for (let i = 0; i < 5; i++) {
@@ -179,7 +196,7 @@ describe('SaveImageDialog', () => {
     const two: MessageAttachment = { ...IMG, id: 'file-2', filename: 'two.png' };
     const fixture = await render(
       stubClient({ requests: [] }, albums()),
-      { kind: 'chat', fileId: '' },
+      { kind: 'chat', chatId: 'chat-1', fileId: '' },
       [IMG, two],
     );
     const selected = fixture.nativeElement.querySelector('.qt-chat-attachment-button.ring-2');
@@ -190,7 +207,7 @@ describe('SaveImageDialog', () => {
     const two: MessageAttachment = { ...IMG, id: 'file-2', filename: 'two.png' };
     const fixture = await render(
       stubClient({ requests: [] }, albums()),
-      { kind: 'message', messageId: 'm-1', fileId: 'file-2' },
+      { kind: 'message', chatId: 'chat-1', messageId: 'm-1', fileId: 'file-2' },
       [IMG, two],
     );
     const selected = fixture.nativeElement.querySelector('.qt-chat-attachment-button.ring-2');
@@ -218,7 +235,7 @@ describe('SaveImageDialog', () => {
         type: 'error',
         data: { kind: 'conflict', message: 'That picture is already in this album.' },
       }),
-      { kind: 'chat', fileId: 'file-1' },
+      { kind: 'chat', chatId: 'chat-1', fileId: 'file-1' },
     );
     (fixture.nativeElement.querySelector('.qt-dialog-footer button:last-child') as HTMLButtonElement).click();
     await new Promise((r) => setTimeout(r, 0));
@@ -234,7 +251,7 @@ describe('SaveImageDialog', () => {
         type: 'error',
         data: { kind: 'conflict', message: '' },
       }),
-      { kind: 'chat', fileId: 'file-1' },
+      { kind: 'chat', chatId: 'chat-1', fileId: 'file-1' },
     );
     (fixture.nativeElement.querySelector('.qt-dialog-footer button:last-child') as HTMLButtonElement).click();
     await new Promise((r) => setTimeout(r, 0));
@@ -259,6 +276,179 @@ describe('SaveImageDialog', () => {
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('[role="alert"]').textContent).toBe(
       'Image is not in this chat',
+    );
+  });
+
+  // ---------------------------------------------------------------------------
+  // P4.D277 — `01a83539d`: the wardrobe door, `chatId` on the chat targets,
+  // `overlayClassName`, and (R-C) v4 BaseModal's portal + closeOnEscape.
+  // ---------------------------------------------------------------------------
+
+  const WARDROBE: SaveImageTarget = {
+    kind: 'wardrobe',
+    itemId: 'item-1',
+    container: { scope: 'character', id: 'char-1' },
+    fileId: 'file-1',
+  };
+
+  async function settle(fixture: ComponentFixture<SaveImageDialog>): Promise<void> {
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+  }
+
+  function clickSave(fixture: ComponentFixture<SaveImageDialog>): void {
+    (fixture.nativeElement.querySelector('.qt-dialog-footer button:last-child') as HTMLButtonElement).click();
+  }
+
+  it('the wardrobe door reads wardrobeItemImageSaveTargets and saves through wardrobeItemImageSaveToStore (v4 :56-72)', async () => {
+    const log: DispatchLog = { requests: [] };
+    const fixture = await render(stubClient(log, albums()), WARDROBE);
+    const caption = fixture.nativeElement.querySelector('#save-image-caption') as HTMLInputElement;
+    caption.value = '  for the ball  ';
+    caption.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    clickSave(fixture);
+    await settle(fixture);
+    expect(log.requests).toEqual([
+      { type: 'wardrobeItemImageSaveTargets', scope: 'character', containerId: 'char-1', itemId: 'item-1' },
+      {
+        type: 'wardrobeItemImageSaveToStore',
+        scope: 'character',
+        containerId: 'char-1',
+        itemId: 'item-1',
+        fileId: 'file-1',
+        mountPointId: 'mp-gen',
+        caption: 'for the ball',
+      },
+    ]);
+  });
+
+  it('the wardrobe door omits a blank caption (never "") and General carries no containerId', async () => {
+    const log: DispatchLog = { requests: [] };
+    const saved: string[] = [];
+    const fixture = await render(stubClient(log, albums()), {
+      kind: 'wardrobe',
+      itemId: 'item-2',
+      container: { scope: 'general', id: null },
+      fileId: 'file-1',
+    });
+    fixture.componentInstance.saved.subscribe((info) => saved.push(info.mountPoint));
+    const caption = fixture.nativeElement.querySelector('#save-image-caption') as HTMLInputElement;
+    caption.value = '   ';
+    caption.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    clickSave(fixture);
+    await settle(fixture);
+    expect(log.requests[1]).toEqual({
+      type: 'wardrobeItemImageSaveToStore',
+      scope: 'general',
+      itemId: 'item-2',
+      fileId: 'file-1',
+      mountPointId: 'mp-gen',
+    });
+    expect('caption' in log.requests[1]).toBe(false);
+    expect(saved).toEqual(['Quilltap General']);
+  });
+
+  it("the wardrobe door's empty sentence is v4's document-store one (v4 :298-304)", async () => {
+    const fixture = await render(stubClient({ requests: [] }, []), WARDROBE);
+    expect(fixture.nativeElement.textContent).toContain('No document stores are available.');
+    expect(fixture.nativeElement.textContent).not.toContain('No photo albums are available for this chat.');
+  });
+
+  it('lands overlayClass on the modal overlay (v4 :84-88 → BaseModal :107)', async () => {
+    const fixture = await render(stubClient({ requests: [] }, albums()), WARDROBE, [IMG], 'z-[100]');
+    const overlay = fixture.nativeElement.querySelector('.qt-dialog-overlay') as HTMLElement;
+    expect(overlay.classList.contains('z-[100]')).toBe(true);
+  });
+
+  it('portals its host to document.body (v4 BaseModal :106 createPortal — R-C)', async () => {
+    const fixture = await render(stubClient({ requests: [] }, albums()));
+    expect((fixture.nativeElement as HTMLElement).parentElement).toBe(document.body);
+  });
+
+  it('closes on Escape, once (v4 BaseModal closeOnEscape :97-100 — R-C)', async () => {
+    const fixture = await render(stubClient({ requests: [] }, albums()), WARDROBE);
+    let closes = 0;
+    fixture.componentInstance.close.subscribe(() => (closes += 1));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(closes).toBe(1);
+  });
+
+  // P4.D275 moves the message door's ALREADY_SAVED 400 → 409 (C2) — transparent.
+  it("reads the message door's NEW 409 (conflict + ALREADY_SAVED + keptAt) dated", async () => {
+    const fixture = await render(
+      stubClient({ requests: [] }, albums(), {
+        type: 'error',
+        data: {
+          kind: 'conflict',
+          message: 'Image already saved to this album',
+          code: 'ALREADY_SAVED',
+          alreadySaved: { relativePath: 'photos/x.webp', keptAt: '2026-09-01T12:00:00.000Z' },
+        },
+      }),
+    );
+    clickSave(fixture);
+    await settle(fixture);
+    const when = new Date('2026-09-01T12:00:00.000Z').toLocaleDateString();
+    expect(fixture.nativeElement.querySelector('[role="alert"]').textContent).toBe(
+      `That picture is already in this album — it was filed there on ${when}.`,
+    );
+  });
+
+  it("the wardrobe door's ALREADY_SAVED 409 reads dated", async () => {
+    const fixture = await render(
+      stubClient({ requests: [] }, albums(), {
+        type: 'error',
+        data: {
+          kind: 'conflict',
+          message: 'That picture is already in this album',
+          code: 'ALREADY_SAVED',
+          alreadySaved: { relativePath: 'photos/x.webp', keptAt: '2026-09-01T12:00:00.000Z' },
+        },
+      }),
+      WARDROBE,
+    );
+    clickSave(fixture);
+    await settle(fixture);
+    const when = new Date('2026-09-01T12:00:00.000Z').toLocaleDateString();
+    expect(fixture.nativeElement.querySelector('[role="alert"]').textContent).toBe(
+      `That picture is already in this album — it was filed there on ${when}.`,
+    );
+  });
+
+  it('the archived-vault 409 (kind conflict, no code) reads as already-saved — v4-faithful (R-A)', async () => {
+    const fixture = await render(
+      stubClient({ requests: [] }, albums(), {
+        type: 'error',
+        data: {
+          kind: 'conflict',
+          message: 'That store belongs to an archived character and cannot be written to',
+        },
+      }),
+      WARDROBE,
+    );
+    clickSave(fixture);
+    await settle(fixture);
+    expect(fixture.nativeElement.querySelector('[role="alert"]').textContent).toBe(
+      'That picture is already in this album.',
+    );
+  });
+
+  it("a non-conflict wardrobe refusal shows the server's sentence", async () => {
+    const fixture = await render(
+      stubClient({ requests: [] }, albums(), {
+        type: 'error',
+        data: { kind: 'bad-request', message: 'That picture does not belong to this wardrobe item' },
+      }),
+      WARDROBE,
+    );
+    clickSave(fixture);
+    await settle(fixture);
+    expect(fixture.nativeElement.querySelector('[role="alert"]').textContent).toBe(
+      'That picture does not belong to this wardrobe item',
     );
   });
 });

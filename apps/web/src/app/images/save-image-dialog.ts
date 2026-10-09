@@ -1,6 +1,9 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
+  ElementRef,
+  afterNextRender,
   computed,
   inject,
   input,
@@ -13,6 +16,8 @@ import { CoreClient } from '../core/core-client';
 import { CoreDispatchError } from '../core/core-contract';
 import type { AlbumKind, AlbumOption, MessageAttachment } from '../core/core-contract';
 import { Modal } from '../ui/modal';
+import { listWardrobeSaveTargets, saveWardrobeImageToStore } from '../wardrobe/item-images.api';
+import type { WardrobeContainer } from '../wardrobe/wardrobe-container';
 import { fileUrl } from './image-urls';
 
 const ALBUM_KIND_LABEL: Record<AlbumKind, string> = {
@@ -31,37 +36,68 @@ interface AlbumGroup {
 }
 
 /**
- * Which door the dialog was opened from, and therefore which verb it
- * dispatches (v4 `SaveImageDialog.tsx:45-47` `SaveImageTarget`, P4.D176).
+ * Which door the dialog was opened from, and therefore where it reads its
+ * albums and which verb it saves through (v4 `SaveImageDialog.tsx:45-53`
+ * `SaveImageTarget` at `01a83539d`). `fileId` is the image selected when it
+ * opened; the in-dialog picker can move it when a message carries several.
+ * `chatId` rides the two chat targets (it was a separate input before
+ * `01a83539d`).
  */
 export type SaveImageTarget =
-  | { kind: 'message'; messageId: string; fileId: string }
-  | { kind: 'chat'; fileId: string };
+  | { kind: 'message'; chatId: string; messageId: string; fileId: string }
+  | { kind: 'chat'; chatId: string; fileId: string }
+  | { kind: 'wardrobe'; itemId: string; container: WardrobeContainer; fileId: string };
 
 /**
  * SaveImageDialog — the operator "save this attached image" picker (a port of
- * v4 `app/salon/[id]/components/SaveImageDialog.tsx` at `78b381a96`, P4.D176).
- * Opens from two doors — the per-message Save Image toolbar button, and the
- * chat gallery's Save — and loads the chat's candidate albums
- * (`chatPhotoAlbums`), lets the operator pick an image (when the message
- * carries more than one), an album (grouped by kind), and an optional
- * caption, then saves through whichever verb the {@link target} names.
+ * v4 `app/salon/[id]/components/SaveImageDialog.tsx`, P4.D176; read again at
+ * `01a83539d` for P4.D277).
  *
- * The two differ only in the verb they dispatch: the message route's guard —
+ * v4's module doc, carried: opens from three doors — the per-message Save
+ * Image toolbar button, the chat gallery's Save, and the wardrobe picture
+ * viewer's Save. For the two Salon doors it fetches the chat's candidate photo
+ * albums (chat participants' vaults, the project album, linked document
+ * stores, Quilltap General); the wardrobe viewer belongs to no chat and is
+ * offered every document store. It then saves the chosen album through
+ * whichever save-image verb matches the door it came from.
+ *
+ * The doors differ only in the verb they dispatch. The message route's guard —
  * *is this image attached to this message* — is a real invariant there, and
  * half the gallery has no message at all (a Lantern backdrop posted with
- * alerts off, a standing portrait), so the gallery dispatches a chat-scoped
- * twin whose guard is *is this image in this chat's gallery* (`§C.3`,
- * `chatSaveGalleryImage`). Everything the reader sees is identical.
+ * alerts off, a participant's standing portrait), so the gallery dispatches a
+ * chat-scoped twin whose guard is *is this image in this chat's gallery*
+ * (`chatSaveGalleryImage`). The wardrobe door dispatches the item's images
+ * verb (`wardrobeItemImageSaveToStore`), whose guard is *is this one of the
+ * item's own pictures*. Everything the reader sees is identical, bar the empty
+ * sentence.
  *
  * Mirrors the LLM `keep_image` save path under the hood.
+ *
+ * **Recorded mechanism divergences.** v4 fetches URLs; v5 rides verbs (album
+ * reads: `chatPhotoAlbums` for both chat doors, `wardrobeItemImageSaveTargets`
+ * for the wardrobe door — each under its own TanStack key). v4's
+ * `Failed to load photo albums (<status>)` line has no counterpart (the
+ * dispatch error carries no status; a failed read renders the empty sentence —
+ * P4.D277 Tier 3 item 17). And (R-C) v5's `qt-modal` renders in place with no
+ * Escape, so this dialog ports v4 `BaseModal`'s two behaviours LOCALLY for all
+ * three doors: it reparents its own host to `document.body` (so it paints
+ * above a body-portalled full-screen viewer, and escapes the item editor's
+ * `transform`ed ancestor), and it closes on a document Escape (v4
+ * `closeOnEscape`, default true).
  */
 @Component({
   selector: 'qt-save-image-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Modal],
+  // R-C — v4 BaseModal's `closeOnEscape` (default true; `BaseModal.tsx:97-100`).
+  host: { '(document:keydown.escape)': 'close.emit()' },
   template: `
-    <qt-modal title="Save image to album" maxWidth="lg" (close)="close.emit()">
+    <qt-modal
+      title="Save image to album"
+      maxWidth="lg"
+      [overlayClass]="overlayClass()"
+      (close)="close.emit()"
+    >
       <div class="space-y-4">
         @if (imageAttachments().length > 1) {
           <div>
@@ -107,7 +143,13 @@ export type SaveImageTarget =
           @if (albumsQuery.isPending()) {
             <div class="text-sm opacity-70">Loading albums…</div>
           } @else if (groupedAlbums().length === 0) {
-            <div class="text-sm opacity-70">No photo albums are available for this chat.</div>
+            <div class="text-sm opacity-70">
+              {{
+                target().kind === 'wardrobe'
+                  ? 'No document stores are available.'
+                  : 'No photo albums are available for this chat.'
+              }}
+            </div>
           } @else {
             <select
               id="save-image-album"
@@ -169,7 +211,6 @@ export type SaveImageTarget =
 export class SaveImageDialog {
   private readonly core = inject(CoreClient);
 
-  readonly chatId = input.required<string>();
   readonly target = input.required<SaveImageTarget>();
   /**
    * Candidate images for the in-dialog picker. The message door passes every
@@ -177,6 +218,12 @@ export class SaveImageDialog {
    * the ONE entry it opened on (v4 `PhotoGalleryModal.tsx:558-565`).
    */
   readonly attachments = input.required<MessageAttachment[]>();
+  /**
+   * Extra overlay classes — a raised `z-[…]` when the dialog opens over
+   * something that already sits above the ordinary dialog layer (v4 `:84-88`
+   * `overlayClassName`, `01a83539d`).
+   */
+  readonly overlayClass = input('');
 
   readonly close = output<void>();
   readonly saved = output<{ mountPoint: string; relativePath: string }>();
@@ -205,19 +252,34 @@ export class SaveImageDialog {
       null,
   );
 
-  protected readonly albumsQuery = injectQuery(() => ({
-    queryKey: ['chatPhotoAlbums', this.chatId()],
-    queryFn: async (): Promise<AlbumOption[]> => {
-      const data = await this.core.dispatchData({ type: 'chatPhotoAlbums', chatId: this.chatId() });
-      const albums = (data['albums'] as AlbumOption[]) ?? [];
-      // Seed the default selection (v4 picks isDefault, else the first).
-      const preferred = albums.find((a) => a.isDefault) ?? albums[0];
-      if (preferred && !this.selectedMountPointId()) {
-        this.selectedMountPointId.set(preferred.mountPointId);
-      }
-      return albums;
-    },
-  }));
+  /**
+   * The album list for the door (v4 `albumsUrlFor`, `:56-60`): the chat's
+   * candidate albums for both chat doors, every document store for the
+   * wardrobe door — each under its own key. The default selection is seeded
+   * once (v4 picks `isDefault`, else the first).
+   */
+  protected readonly albumsQuery = injectQuery(() => {
+    const target = this.target();
+    return {
+      queryKey:
+        target.kind === 'wardrobe'
+          ? ['wardrobeItemImageSaveTargets', target.itemId, target.container.scope, target.container.id]
+          : ['chatPhotoAlbums', target.chatId],
+      queryFn: async (): Promise<AlbumOption[]> => {
+        const albums =
+          target.kind === 'wardrobe'
+            ? await listWardrobeSaveTargets(this.core, target.itemId, target.container)
+            : (((await this.core.dispatchData({ type: 'chatPhotoAlbums', chatId: target.chatId }))[
+                'albums'
+              ] as AlbumOption[]) ?? []);
+        const preferred = albums.find((a) => a.isDefault) ?? albums[0];
+        if (preferred && !this.selectedMountPointId()) {
+          this.selectedMountPointId.set(preferred.mountPointId);
+        }
+        return albums;
+      },
+    };
+  });
 
   protected readonly groupedAlbums = computed<AlbumGroup[]>(() => {
     const albums = this.albumsQuery.data() ?? [];
@@ -234,6 +296,21 @@ export class SaveImageDialog {
       !!this.selectedAttachment() &&
       !!this.selectedMountPointId(),
   );
+
+  constructor() {
+    // R-C — v4 BaseModal's portal (`BaseModal.tsx:106`), ported locally: the
+    // host reparents itself to `document.body` after the first render (the
+    // `image-detail-modal.ts` idiom — every host mounts this dialog under an
+    // `@if`, so a constructor-time reparent would be undone by the insertion).
+    // The host moves with its content, so `qt-save-image-dialog` locators hold.
+    const host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
+    inject(DestroyRef).onDestroy(() => host.remove());
+    afterNextRender(() => {
+      if (typeof document !== 'undefined') {
+        document.body.appendChild(host);
+      }
+    });
+  }
 
   protected preview(att: MessageAttachment): string {
     return fileUrl(att.id);
@@ -256,29 +333,38 @@ export class SaveImageDialog {
     try {
       const target = this.target();
       const caption = this.caption().trim() ? this.caption().trim() : undefined;
-      const resp =
-        target.kind === 'message'
-          ? await this.core.dispatch({
-              type: 'messageSaveImage',
-              chatId: this.chatId(),
-              messageId: target.messageId,
-              fileId: att.id,
-              mountPointId,
-              caption,
-            })
-          : await this.core.dispatch({
-              type: 'chatSaveGalleryImage',
-              chatId: this.chatId(),
-              fileId: att.id,
-              mountPointId,
-              caption,
-            });
-      if (resp.type === 'error') throw new CoreDispatchError(resp.data);
-      const body = (resp.data ?? {}) as {
+      let body: {
         mountPoint?: string;
         relativePath?: string;
         data?: { mountPoint?: string; relativePath?: string };
       };
+      if (target.kind === 'wardrobe') {
+        body = await saveWardrobeImageToStore(this.core, target.itemId, target.container, {
+          fileId: att.id,
+          mountPointId,
+          caption,
+        });
+      } else {
+        const resp =
+          target.kind === 'message'
+            ? await this.core.dispatch({
+                type: 'messageSaveImage',
+                chatId: target.chatId,
+                messageId: target.messageId,
+                fileId: att.id,
+                mountPointId,
+                caption,
+              })
+            : await this.core.dispatch({
+                type: 'chatSaveGalleryImage',
+                chatId: target.chatId,
+                fileId: att.id,
+                mountPointId,
+                caption,
+              });
+        if (resp.type === 'error') throw new CoreDispatchError(resp.data);
+        body = (resp.data ?? {}) as typeof body;
+      }
       this.saved.emit({
         mountPoint: body.data?.mountPoint ?? body.mountPoint ?? '',
         relativePath: body.data?.relativePath ?? body.relativePath ?? '',
@@ -292,16 +378,23 @@ export class SaveImageDialog {
   }
 
   /**
-   * v4 `:157-168` — the album already holds these bytes is an ANSWER, not a
-   * failure, and deserves to be said in those words. v4 detects it off the
-   * response directly — `res.status === 409 || body.code === 'ALREADY_SAVED'`,
-   * so BOTH doors (the chat leg's 409 and the message leg's 400 carrying the
-   * same code, §C.3) — and formats `body.keptAt` into the sentence when the
-   * server sent one: `That picture is already in this album — it was filed
-   * there on <toLocaleDateString()>.` The dispatch envelope carries `code`
-   * and the `keptAt` rider on `CoreError` (the §3 unification review of the
-   * `78b381a96` round: the riders used to be nested where no client could
+   * v4 `:185-196` (at `01a83539d`) — the album already holds these bytes is an
+   * ANSWER, not a failure, and deserves to be said in those words. v4 detects
+   * it off the response directly — `res.status === 409 || body.code ===
+   * 'ALREADY_SAVED'`, so ALL THREE doors (the chat and wardrobe legs' 409, and
+   * the message leg's — a 400 carrying the same code until P4.D275 moves it to
+   * the same 409, transparently) — and formats `body.keptAt` into the sentence
+   * when the server sent one: `That picture is already in this album — it was
+   * filed there on <toLocaleDateString()>.` The dispatch envelope carries
+   * `code` and the `keptAt` rider on `CoreError` (the §3 unification review of
+   * the `78b381a96` round: the riders used to be nested where no client could
    * read them, and this arm was gated on the chat leg alone).
+   *
+   * R-A (P4.D277, v4-faithful — a v4-filing candidate): the wardrobe door's
+   * archived-vault refusal is a plain 409 conflict with NO `code` and NO
+   * `keptAt`, so it too reads as the undated "already in this album" — as it
+   * does in v4. Reachable only by archiving the character between the list
+   * read and the save (save-targets never offers an archived vault).
    */
   private errorMessage(err: unknown): string {
     if (err instanceof CoreDispatchError) {

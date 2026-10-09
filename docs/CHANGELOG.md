@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(spa): the save dialog's wardrobe door; chatId on the chat targets — P4.D277 unit 6
+
+_Versions: SPA 0.5.828._
+
+`images/save-image-dialog.ts` gains v4 `01a83539d`'s third door. `{ kind: 'wardrobe', itemId, container, fileId }` reads its albums through `wardrobeItemImageSaveTargets`, saves through `wardrobeItemImageSaveToStore`, and shows v4's `No document stores are available.` when the list is empty. The separate `chatId` input is gone: `chatId` now rides the two chat targets, at both hosts (the photo gallery and the one Salon binding). An `overlayClass` input passes v4's `overlayClassName` through to `qt-modal`.
+
+The dialog also ports two v4 `BaseModal` behaviours locally, for all three doors:
+
+- it reparents its own host to `document.body`, so it paints above the body-portalled viewers and escapes the item editor's transformed ancestor;
+- it closes on Escape.
+
+The conflict arm is unchanged. A wardrobe archived-vault 409 with no `code` reads as the undated "already in this album", as in v4 (R-A, a v4-filing candidate).
+
 #### 2026-10-09 — feat(spa): wardrobe save-to-store wire + helpers (C2) — P4.D277 unit 5
 
 _Versions: SPA 0.5.827._

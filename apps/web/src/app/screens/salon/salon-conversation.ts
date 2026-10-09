@@ -602,8 +602,7 @@ interface CascadePrompt {
 
     @if (saveImageTarget(); as target) {
       <qt-save-image-dialog
-        [chatId]="chatId()!"
-        [target]="{ kind: 'message', messageId: target.messageId, fileId: target.attachmentId }"
+        [target]="{ kind: 'message', chatId: chatId()!, messageId: target.messageId, fileId: target.attachmentId }"
         [attachments]="saveImageAttachments()"
         (saved)="onMessageImageSaved($event)"
         (close)="saveImageTarget.set(null)"

@@ -175526,3 +175526,48 @@ Branch `claude/wardrobe-images-spa-viewer-4a334b` (worktree
   itemId}`, General with NO `containerId`; `'caption' in body === false` when
   blank; no `tags`; a `CoreDispatchError` propagates with `kind:'conflict'`,
   `code:'ALREADY_SAVED'`, `keptAt` intact.
+
+### Unit 6 — the save dialog's third door + both hosts (W4b)
+
+- `images/save-image-dialog.ts`: `SaveImageTarget` three-armed exactly as v4
+  `SaveImageDialog.tsx:50-53` (`chatId` on `message` / `chat`; `wardrobe`
+  carries `itemId` + `container: WardrobeContainer`); the `chatId` input
+  DELETED; `overlayClass = input('')` → `<qt-modal [overlayClass]>` (v4
+  `:84-88` doc); albums per door — chat doors `chatPhotoAlbums` under
+  `['chatPhotoAlbums', target.chatId]`, wardrobe `listWardrobeSaveTargets`
+  under `['wardrobeItemImageSaveTargets', itemId, scope, id]`, the default seed
+  unchanged; save per door (`messageSaveImage` / `chatSaveGalleryImage` with
+  `chatId: target.chatId`, bodies otherwise byte-identical;
+  `saveWardrobeImageToStore` for the wardrobe door); the empty sentence v4
+  `:298-304`'s ternary (`No document stores are available.` / `No photo albums
+  are available for this chat.`); the conflict arm UNCHANGED (R-A), its doc
+  rewritten for three doors and P4.D275's message-door 409; module doc
+  rewritten from v4 `:3-24`. **R-C:** host reparented to `document.body`
+  (`afterNextRender` / `host.remove()`) and `host: { '(document:keydown.escape)':
+  'close.emit()' }` — v4 `BaseModal`'s `createPortal` (`:106`) and
+  `closeOnEscape` (`:97-100`), for ALL THREE doors (a convergence on v4 for the
+  two chat doors).
+- Hosts: `images/photo-gallery-modal.ts` `[target]="{ kind: 'chat', chatId:
+  chatId()!, fileId: target.id }"`; `screens/salon/salon-conversation.ts`
+  — the ONE binding (`[target]="{ kind: 'message', chatId: chatId()!,
+  messageId, fileId }"`), `[chatId]` removed at both.
+- `save-image-dialog.spec.ts`: every `setInput('chatId', …)` replaced by the
+  target's `chatId`; the empty-state arm tightened to the full chat sentence;
+  **10 NEW arms** — the wardrobe door's read + save bodies (trimmed caption);
+  blank caption ABSENT + General without `containerId` + `saved` emits
+  `Quilltap General`; the wardrobe empty sentence; `overlayClass` on the
+  overlay; the host body-portalled; Escape emits `close` once; the message
+  door's NEW 409 dated; the wardrobe door's ALREADY_SAVED 409 dated; **R-A by
+  name** (`the archived-vault 409 (kind conflict, no code) reads as
+  already-saved — v4-faithful (R-A)` → `That picture is already in this
+  album.`); a wardrobe 400 shows `That picture does not belong to this wardrobe
+  item`. **Red on unported source** (TS2353 ×7 / TS2322 ×2 — the targets'
+  `chatId` and the `wardrobe` kind; the build fails the file); green 22/22.
+  `photo-gallery-modal.spec.ts` re-pinned for the binding (the album read names
+  `chatId: 'chat-1'` through the target); the 13 Salon spec files green
+  (320).
+- **R-A — v4-filing candidate for the human:** v4's dialog keys
+  already-saved on `res.status === 409 || body.code === 'ALREADY_SAVED'`
+  (`SaveImageDialog.tsx:188` at the pin), so the wardrobe door's archived-vault
+  409 (`That store belongs to an archived character and cannot be written to`,
+  no `code`) renders `That picture is already in this album.` in v4 too.
