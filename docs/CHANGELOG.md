@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(spa): P4.D276 M7 — the Mem chip names consolidation; an editor arm pins the digest edit bag
+
+_Versions: SPA 0.5.828._
+
+The queue-status `Mem` chip's tooltip now reads `Memory work (extraction, regeneration, consolidation, housekeeping)` (v4 `lib/background-jobs/activity-kinds.ts:89` at `d58548051`); `activity-kinds.spec.ts` and `queue-status-badges.spec.ts` are re-pinned. The job-to-kind row for `MEMORY_CONSOLIDATION` is server-side and not part of this change.
+
+A new `memory-editor.spec.ts` arm pins that editing a `CONSOLIDATED` memory sends the same bag v4 sends (`source: 'MANUAL'`, six keys). v4's PUT ignores `source`; whether v5's `memoryUpdate` keeps `CONSOLIDATED` is left to the server lanes and a dogfood check.
+
 #### 2026-10-09 — feat(spa): P4.D276 M4c — the Extraction Grain card; the Memory tab carries v4's nine cards
 
 _Versions: SPA 0.5.827._

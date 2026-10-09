@@ -163,3 +163,30 @@ describe('MemoryEditor', () => {
     expect(dispatch).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * P4.D276 Tier 2 item 16 — v4 `d58548051` only widened the editor's type
+ * (`memory-editor.tsx:25`); it still sends `source: 'MANUAL'`, and v4's PUT
+ * schema (`app/api/v1/memories/[id]/route.ts:18-27`) has no `source`, so editing
+ * a digest does not re-source it there. Whether v5's `memoryUpdate` keeps
+ * `CONSOLIDATED` is the server's (P4.D265/P4.D266) — a 💸 row checks it live.
+ */
+describe('MemoryEditor — editing a digest (P4.D276)', () => {
+  it('sends the bag v4 sends — source MANUAL — for a CONSOLIDATED memory', async () => {
+    const dispatch = vi.fn(async (_req: DispatchReq) => ({ memory: mem({}) }));
+    const fixture = render(
+      mem({ id: 'dig-1', source: 'CONSOLIDATED', tier: 'hot', consolidatedFrom: ['a', 'b'] }),
+      dispatch,
+    );
+    fixture.componentInstance['submit']();
+    await settle(fixture);
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    const req = dispatch.mock.calls[0][0] as DispatchReq & { memory: Record<string, unknown> };
+    expect(req.type).toBe('memoryUpdate');
+    expect(req['memoryId']).toBe('dig-1');
+    expect(req.memory['source']).toBe('MANUAL');
+    expect(Object.keys(req.memory).sort()).toEqual(
+      ['characterId', 'content', 'importance', 'keywords', 'source', 'summary'],
+    );
+  });
+});

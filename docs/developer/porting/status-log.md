@@ -175518,3 +175518,19 @@ saved`, `Failed to save extraction settings`); read failure `:69`.
   against `main`'s tab (seven cards, the old housekeeping description).
 - **R-E** (the select re-syncs from the stored mode after the save settles)
   and **R-F** (one key; the clobbered echo renders) each have an arm.
+
+### Unit M7 + Tier 2 item 16 — the chip title; the digest edit bag (SPA 0.5.828)
+v4 `lib/background-jobs/activity-kinds.ts:89` at the pin → `layout/activity-
+kinds.ts`'s `memory` chip title. **Re-pinned by name:**
+`layout/activity-kinds.spec.ts` (`carries v4's NEW titles, byte for byte`) and
+`layout/queue-status-badges.spec.ts` (`…housekeeping): 0 active` →
+`…consolidation, housekeeping): 0 active`).
+- **Red-first:** both arms RED against `main`'s title (2 of 2).
+- **Tier 2 item 16:** `memory-editor.ts` needs no source change (the widened
+  `MemoryDto` compiles; `MemoryWriteBag.source` stays `'MANUAL'`, v4
+  `memory-editor.tsx:25` is a type widen only). New arm: editing a
+  `CONSOLIDATED` memory sends `memoryUpdate` with `source: 'MANUAL'` and
+  exactly v4's six keys — GREEN on `main` by design (unchanged behaviour).
+  RECORDED: whether the server re-sources the digest is P4.D265/P4.D266's
+  `memoryUpdate` (v4's PUT schema `[id]/route.ts:18-27` has no `source`); a 💸
+  row checks it live.

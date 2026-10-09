@@ -29,7 +29,7 @@ describe('ACTIVITY_CHIPS (v4\'s table, verbatim)', () => {
 
   it('carries v4\'s NEW titles, byte for byte', () => {
     expect(ACTIVITY_CHIPS.map((c) => c.title)).toEqual([
-      'Memory work (extraction, regeneration, housekeeping)',
+      'Memory work (extraction, regeneration, consolidation, housekeeping)',
       'Embedding work (indexing, refits, live query embeddings)',
       'Summarization and post-turn processing (summaries, titles, scene state, rendering)',
       'the Concierge classification (per-message and chat-level)',
