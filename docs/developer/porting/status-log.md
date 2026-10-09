@@ -175437,3 +175437,19 @@ All are green BY NAME from the pin:
 - `cargo test -p quilltap-core -p quilltap-host -p quilltap-web --no-fail-fast` with `QT_V4_CHECKOUT` / `QT_V4_ROOT` set to the pin: 108 binaries, 3,780 passed and 1 failed (the fixture above, fixed and 9/9 by module), 1 ignored. No host-boot index or count pin moved beyond the provisioning count (62 → 63).
 - `fmt`, both clippy feature sets and the censuses (`fallback_home_guard`, `zod_issues_home_guard`, `spelling_guard`, `other_extraction_watermark_writers_census`) are clean, as is `recipe_sweep.py --self-test`.
 - The full workspace gate and the own-family sweep are Tier 2 (#19).
+
+### P4.D265 Tier 2 — the host boot test + mutation proofs (2026-10-09)
+- **NEW `crates/quilltap-host/tests/host_boot_p4d265_memory_tiers.rs`, 4/4, through the real `Host::start`.** The pre-round instance is derived from a fresh provision with the round's four columns, the index and the chat column dropped. That follows the `host_boot_p4d255_wardrobe_wear_stats.rs` shape, not the committed-builder derivation in `host_boot_backfilled_indexes.rs`, because the provision IS the current builder.
+  - (a) One boot APPENDS the four columns in the migration's text and adds the index and the chat column. It logs exactly one `INFO quilltap::boot Fitted the memory tiers migrationId=add-memory-tiers-v1 columnsAdded=4 indexCreated=true healedRows=0 chatColumnAdded=true`, none of v4's five migration lines, and writes no `migrations_state` row. A second boot leaves `sqlite_master` byte-equal and logs nothing.
+  - (b) A planted NULL tier is healed on the next boot (`healedRows=1`).
+  - (c) A fresh `setup` keeps generateDDL's column slot and both new indexes (incl. mountIndex `idx_doc_mount_points_name_nocase`), and the ensure is silent.
+  - (d) On a v4-migrated plant the tier surface is unchanged, the ensure is silent, and v4's ledger row is untouched.
+  - **Observed:** planting a `migrations_state` table makes OTHER boot steps append their own `chats` columns (`transcriptVersion`, `moderationRefusalCount`, `lastModerationRefusalAt`). So arm (d) compares the tier surface, not all of `sqlite_master`. No host source moved, so there is no host bump.
+- **Mutation proofs.** Each mutation is run through its family by name from the pin (`recipe_sweep.py --run`) and then reverted. Every one goes RED:
+  - drop the heal → `memory_tiers_ensure` mode d `memoryRows`;
+  - swap F4's tiebreak (id before the reinforcement clock) → `memories_read` query 38 result;
+  - `COALESCE` → `tier = 'hot'` in `find_most_important` → `memories_read` query 38 lines;
+  - omit the `supersededById` SET arm → `memories_tier2` row state;
+  - filter AFTER top-K → `vector_store_tiers` op 1 ids;
+  - the host skips the ensure → `host_boot_p4d265_memory_tiers` (a) and (b).
+- **Corpus gap closed by the mutation run.** The `supersededById` mutation first SURVIVED: op 212's value landed only on `tid(101)` (`tid(106)` belongs to another character) and the hot move reset it. `memories-tier2.ts` gains one `updateTierBulk` that leaves `supersededById` standing on `tid(105)`; the pin is now `>= 20` tier ops. The regenerated family is green (20 ops / 10 lines).

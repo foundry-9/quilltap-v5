@@ -213,6 +213,9 @@ async function main(): Promise<void> {
     },
     { kind: 'updateTierBulk', characterId: T, ids: [tid(101)], tier: 'hot', extra: { supersededById: null } },
     { kind: 'updateTierBulk', characterId: T, ids: [tid(105)], tier: 'cold', extra: {} },
+    // A supersededById that SURVIVES to the dump (op above's 101 is reset by
+    // the hot move): a dropped `supersededById` SET arm reddens the table.
+    { kind: 'updateTierBulk', characterId: T, ids: [tid(105)], tier: 'cold', extra: { supersededById: tid(103) } },
     { kind: 'updateTierBulk', characterId: T, ids: [], tier: 'cold', extra: {} },
     { kind: 'updateTierBulk', characterId: T, ids: [...ghosts, tid(104)], tier: 'cold', extra: {} },
     { kind: 'markConsidered', characterId: T, ids: [tid(103), tid(104), tid(106)], when: at(6) },

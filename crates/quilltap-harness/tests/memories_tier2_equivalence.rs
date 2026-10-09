@@ -385,7 +385,7 @@ fn memories_tier2_matches_oracle() {
         .cloned()
         .expect("the oracle carries no `tier` phase — regenerate it (P4.D265)");
     assert!(
-        tier_ops.len() >= 19,
+        tier_ops.len() >= 20,
         "the tier phase shrank: {}",
         tier_ops.len()
     );

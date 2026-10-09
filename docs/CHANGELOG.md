@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — test(memory): P4.D265 host boot test for the memory-tiers ensure + mutation proofs
+
+_No crate versions bumped._
+
+New `host_boot_p4d265_memory_tiers`, four arms through the real `Host::start`: a pre-round instance gets the appended columns, the index, the chat column and one `Fitted the memory tiers` line, with no ledger row; a second boot is silent; a planted NULL tier is healed; a fresh instance and a v4-migrated plant are silent no-ops. Six mutations (the heal, F4's tiebreak, the hot predicate, the `supersededById` SET, filter-before-top-K, the host call) each redden their family. One corpus gap was closed: `memories-tier2.ts` gains an `updateTierBulk` whose `supersededById` survives to the dump.
+
 #### 2026-10-09 — docs(porting): P4.D265 status header records KEYSTONE `609d9d9f2` and the R-F spellings
 
 _Docs-only change._
