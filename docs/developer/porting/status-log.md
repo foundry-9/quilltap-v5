@@ -173217,3 +173217,13 @@ red-first in its own unit), `avatar_job_tier3_equivalence` and
   general`; no source pre-resolve → `move_from_archived_source_conflict`; no commit →
   `move_character_to_project`). **Fixture moved:** `wardrobe-transfers-tier2.json` (+ builder) —
   `QT_ORACLE_WTR` / `QT_FIXTURE_WTR_*` regenerate (25 rows).
+- **Unit 9 — item 14 (the Almanack block).** `almanack/types.rs` `WardrobeImagesConfig`;
+  `phase3_ledgers.rs` (default `false`; `jtruthy(["wardrobeImageSettings","imageProfileId"])`);
+  `render.rs` the `#### Wardrobe Images` block after the Lantern. Both oracles regenerated at the
+  pin (render 11 variants, routes 14 rows) — every pre-existing row renders `No`, so the render
+  family gains `wardrobe_images_designated` (`Yes`); red-first: `yes_no(false)` → that variant
+  red. **HANDOFF (the almanack `.db` pair, rebuilt by no lane this round):** the tier-2 ledger's
+  TRUTHY read is uncovered — `build-almanack-fixture.ts`' chat_settings create should store a
+  designated `wardrobeImageSettings.imageProfileId` (its header promises "a non-default value in
+  most feature-config sections"), then the pair is rebuilt and `QT_ORACLE_ALMANACK_TIER2`
+  regenerated.

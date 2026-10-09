@@ -1072,6 +1072,15 @@ pub fn render_almanack_markdown(data: &AlmanackReportData, zone: &TimeZone) -> S
         ""
     );
 
+    push!("#### Wardrobe Images", "");
+    push!(
+        format!(
+            "- **Has Designated Image Profile**: {}",
+            yes_no(fc.wardrobe_images.has_designated_image_profile)
+        ),
+        ""
+    );
+
     push!("#### Aurora (Core Whisper)", "");
     push!(format!(
         "- **Enabled**: {}",

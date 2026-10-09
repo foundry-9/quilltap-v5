@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(almanack): the "Wardrobe Images" feature-config block (P4.D263 item 14)
+
+_Versions: core 0.0.1262._
+
+The Almanack's feature config gains v4's `wardrobeImages: { hasDesignatedImageProfile }`, read as `!!chatSettings.wardrobeImageSettings.imageProfileId` (default `false`). The report renders a `#### Wardrobe Images` block after the Lantern's. The render family gains a `wardrobe_images_designated` variant for the `Yes` arm; both Almanack oracles were regenerated at the pin.
+
 #### 2026-10-08 — feat(wardrobe): transfers carry an item's pictures, and an archived character answers 409 (P4.D263 item 12)
 
 _Versions: core 0.0.1261._

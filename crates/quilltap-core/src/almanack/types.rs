@@ -444,6 +444,13 @@ pub struct StoryBackgroundsConfig {
     pub has_default_image_profile: bool,
 }
 
+/// v4 `wardrobeImages: { hasDesignatedImageProfile }` (`7c8572869`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WardrobeImagesConfig {
+    pub has_designated_image_profile: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TimestampsConfig {
@@ -520,6 +527,7 @@ pub struct FeatureConfigInfo {
     pub context_compression: ContextCompressionConfig,
     pub agent_mode: AgentModeConfig,
     pub story_backgrounds: StoryBackgroundsConfig,
+    pub wardrobe_images: WardrobeImagesConfig,
     pub timestamps: TimestampsConfig,
     pub auto_lock: AutoLockConfig,
     pub memory_cascade: MemoryCascadeConfig,

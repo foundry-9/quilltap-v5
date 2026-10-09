@@ -597,6 +597,9 @@ pub fn default_feature_config() -> FeatureConfigInfo {
             enabled: false,
             has_default_image_profile: false,
         },
+        wardrobe_images: WardrobeImagesConfig {
+            has_designated_image_profile: false,
+        },
         timestamps: TimestampsConfig {
             mode: "NONE".into(),
             format: "FRIENDLY".into(),
@@ -724,6 +727,10 @@ pub fn collect_feature_config(db: &Db, user_id: &str) -> Result<FeatureConfigInf
                 s,
                 &["storyBackgroundsSettings", "defaultImageProfileId"],
             ),
+        },
+        // `!!chatSettings?.wardrobeImageSettings?.imageProfileId` (`7c8572869`).
+        wardrobe_images: WardrobeImagesConfig {
+            has_designated_image_profile: jtruthy(s, &["wardrobeImageSettings", "imageProfileId"]),
         },
         timestamps: TimestampsConfig {
             mode: jstr(s, &["defaultTimestampConfig", "mode"], "NONE"),

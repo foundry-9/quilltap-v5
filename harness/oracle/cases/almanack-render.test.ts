@@ -459,6 +459,16 @@ function variants(): Variant[] {
         return d;
       },
     },
+    // 11. P4.D263 (v4 `7c8572869`): the "Wardrobe Images" block's `Yes` arm —
+    //     every other variant renders `No` (no designated wardrobe profile).
+    {
+      name: 'wardrobe_images_designated',
+      build: () => {
+        const d = clone(fixture());
+        d.featureConfig.wardrobeImages = { hasDesignatedImageProfile: true };
+        return d;
+      },
+    },
   ];
 }
 
