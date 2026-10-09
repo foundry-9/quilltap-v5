@@ -770,11 +770,12 @@ const REPO_LOG_MESSAGES = new Set([
 
 /**
  * [P4.158 R-G] Every message `lib/backup/restore/restore.ts` logs through its
- * `moduleLogger` — all 63 sites, each message distinct (counted at the pin:
- * 44 warn, 5 info, 14 debug, 0 error). P4.D264: +4 at `f5e953a3f` (+2 warn,
- * +1 info, +1 debug — 22n-bis and 22f-ter); the pin's 68th is bug 181's
- * `Decoded index-keyed memory embedding` DEBUG (P4.D258, landed at the unification). EVERY restore case records them, at
- * every level, so the census is compared across the whole corpus.
+ * `moduleLogger` — all 68 sites at `f5e953a3f`, each message distinct
+ * (counted at the pin: 46 warn, 6 info, 16 debug, 0 error). P4.158 counted
+ * 63 (44 / 5 / 14); P4.D264 added four (22n-bis and 22f-ter: +2 warn, +1
+ * info, +1 debug) and P4.D258 bug 181's `Decoded index-keyed memory
+ * embedding` DEBUG (landed at the unification). EVERY restore case records
+ * them, at every level, so the census is compared across the whole corpus.
  */
 const RESTORE_TS_MESSAGES = [
   "All entities restored with preserved IDs - no reconciliation needed",

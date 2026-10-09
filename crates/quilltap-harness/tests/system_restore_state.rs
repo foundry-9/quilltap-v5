@@ -1005,11 +1005,6 @@ fn read_cases() -> Option<Vec<Value>> {
 /// a HANDOFF to the unifier, landed at the `f5e953a3f` round's unification.
 const EMPTY_EMBEDDING_CASE: &str = "restore_empty_embedding_replace";
 
-/// Flipped to `true` by the unifier once [`EMPTY_EMBEDDING_CASE`]'s line was in
-/// the oracle's case list (the P4.D258 HANDOFF): its absence now FAILS. (While
-/// `false`, an absent case logged a loud pending note.)
-const EMPTY_EMBEDDING_CASE_LANDED: bool = true;
-
 fn archive_for(name: &str) -> &'static str {
     match name {
         "restore_replace" => "restore-archive.zip",
@@ -1938,23 +1933,16 @@ fn system_restore_state_equivalence() {
     // Tier 2 kind-refusals arm. 38 + 5 = 43: P4.D264's wardrobe carriers (the
     // ledger both modes + its refused arm, the picture pointer both modes; the
     // tombstone twin is the dedicated `wardrobe_picture_tombstone_is_skipped`).
-    // (+ 1 once P4.D258's empty-embedding case is in the oracle — gated below.)
-    if EMPTY_EMBEDDING_CASE_LANDED {
-        assert_eq!(
-            empty_embedding_seen, 1,
-            "{EMPTY_EMBEDDING_CASE} is missing from the oracle — regenerate it"
-        );
-    } else if empty_embedding_seen == 0 {
-        eprintln!(
-            "PENDING (P4.D258 HANDOFF): {EMPTY_EMBEDDING_CASE} is not in the oracle's case \
-             list yet — add it to system-restore.test.ts, regenerate, and flip \
-             EMPTY_EMBEDDING_CASE_LANDED"
-        );
-    }
+    // 43 + 1 = 44: P4.D258's empty-embedding arm (its case line landed at the
+    // `f5e953a3f` unification — the P4.D258 HANDOFF).
     assert_eq!(
-        seen - empty_embedding_seen,
-        43,
-        "expected all forty-three restore cases in the oracle (ten + the #58 orphan-links arm \
+        empty_embedding_seen, 1,
+        "{EMPTY_EMBEDDING_CASE} is missing from the oracle — regenerate it"
+    );
+    assert_eq!(
+        seen,
+        44,
+        "expected all forty-four restore cases in the oracle (ten + the #58 orphan-links arm \
          + P4.D46's two compact arms + P4.D126's bug-103 legacy-profiles arm \
          + P4.D145's bug-114 duplicate-folders arm + P4.D152's bug-117 arm \
          + P4.D158's two bag-key arms + P4.D208's bug-158 arm \
@@ -1963,15 +1951,12 @@ fn system_restore_state_equivalence() {
          + P4.147's three fresh-target arms, bag-nulls, informs and SQLite-tail arms \
          + P4.158's damaged-store, two-claimants, dup-store-id, general-pointer and phase-warns arms \
          + P4.161's memory-, inform-, entity- and kind-refusal arms \
-         + P4.D264's five wardrobe-carrier arms)"
+         + P4.D264's five wardrobe-carrier arms + P4.D258's empty-embedding arm)"
     );
     // [P4.147] Every ruled #141 case actually carved (red-first measured, then
     // both directions held) — the arm cannot go vacuous.
-    // (P4.D258's empty-embedding case, a `replace` of `restore-archive.zip`'s
-    // instance, carves one too — counted while its oracle line is gated.)
     assert_eq!(
-        fresh_store_carved,
-        FRESH_STORE_CARVED_CASES + empty_embedding_seen,
+        fresh_store_carved, FRESH_STORE_CARVED_CASES,
         "replace cases whose v4 dump carried a #141 fresh store to carve"
     );
     assert!(
@@ -4295,7 +4280,9 @@ fn carve_fresh_store_residual(
 /// P4.161: + its four refusal archives (all `restore-archive.zip` derivations).
 /// P4.D264: + its two `replace` wardrobe archives (both `restore-archive.zip`
 /// derivations) and its refused-ledger arm — measured 28 → 31.
-const FRESH_STORE_CARVED_CASES: usize = 31;
+/// P4.D258: + its empty-embedding `replace` (a `restore-archive.zip`
+/// derivation) — 31 → 32 at the `f5e953a3f` unification.
+const FRESH_STORE_CARVED_CASES: usize = 32;
 
 /// The `summary` adjustments a ruled carve makes: v5 leads v4's `files`
 /// counter by `files_lead`, and these v4 warnings are the divergence itself.
@@ -5140,8 +5127,9 @@ fn assert_claimed_store_warns(name: &str, lines: &[String], failures: &mut Vec<S
 /// ## [P4.158 R-G] The restore's log census — every `moduleLogger` line of
 /// ## v4's `restore.ts`, on every case
 ///
-/// All 64 sites (44 warn, 5 info, 15 debug — each message distinct; P4.D258
-/// added `039f7017c`'s `Decoded index-keyed memory embedding`), recorded
+/// All 68 sites at `f5e953a3f` (46 warn, 6 info, 16 debug — each message
+/// distinct; P4.158's 63, + P4.D264's four for 22n-bis / 22f-ter, + P4.D258's
+/// `039f7017c` `Decoded index-keyed memory embedding`), recorded
 /// by the oracle on every case with every context key. v5 must log the same
 /// lines, in the same order, with the same fields (an Error recorded as its
 /// message; an object / array through the `…Json` file-layer convention).
