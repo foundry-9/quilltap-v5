@@ -13,6 +13,7 @@ import {
   type WorkspaceHandle,
 } from '../../../workspace/workspace-contract';
 import { CharacterDetail } from './character-detail';
+import { interpretWorkspaceLinkClick } from '../../../workspace/chrome/link-interceptor';
 
 function toasts(): { type: string; message: string }[] {
   return TestBed.inject(ToastService)
@@ -424,6 +425,23 @@ describe('CharacterDetail (workspace-tab mode)', () => {
     expect(fixture.nativeElement.querySelector('a[href="/characters"]')).toBeNull();
     back.click();
     expect(closed).toEqual(['tab-9']);
+  });
+
+  it('Start Chat links to /salon/new?characterId= — the interceptor opens the New Chat tab (dogfood #155)', async () => {
+    const { handle: h } = handle();
+    const fixture = await render(stubClient(character({})), h);
+    const start = Array.from(fixture.nativeElement.querySelectorAll('a')).find(
+      (a) => (a as HTMLAnchorElement).textContent?.trim() === 'Start Chat',
+    ) as HTMLAnchorElement;
+    expect(start.getAttribute('href')).toBe('/salon/new?characterId=c1');
+    // The click the workspace actually sees: its capture-phase interceptor must
+    // turn it into the New Chat tab, not the character-view tab already open.
+    const click = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+    Object.defineProperty(click, 'target', { value: start });
+    expect(interpretWorkspaceLinkClick(click)).toEqual({
+      kind: 'salon-new',
+      payload: { characterId: 'c1', projectId: undefined, autonomous: false },
+    });
   });
 
   it('deep-links a sub-tab from the tab input', async () => {

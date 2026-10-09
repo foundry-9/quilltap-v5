@@ -376,6 +376,16 @@ test('a /characters/<id> deep link opens the character detail as a tab', async (
   await expect(page.locator('.qt-workspace')).toBeVisible({ timeout: 15_000 });
   await expect(page).toHaveURL(/\/workspace$/);
   await expect(page.getByRole('heading', { name: 'Aria' })).toBeVisible({ timeout: 15_000 });
+
+  // Dogfood #155: the header's Start Chat, CLICKED inside the workspace, opens
+  // the New Chat tab. It was a dead click: the link carried `?action=chat` on
+  // the character's own path, which the link interceptor turned into the
+  // character-view tab already showing (the deep-link arm above always worked).
+  const before = await tabs(page).count();
+  await page.getByRole('link', { name: 'Start Chat' }).click();
+  await expect(tabLabel(page, 'New Chat')).toBeVisible({ timeout: 15_000 });
+  await expect(tabs(page)).toHaveCount(before + 1);
+  await expect(page).toHaveURL(/\/workspace$/);
 });
 
 test('a /salon/new deep link opens the New Chat tab seeded with its character', async ({

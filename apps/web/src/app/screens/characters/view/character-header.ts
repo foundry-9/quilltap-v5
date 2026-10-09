@@ -210,9 +210,17 @@ interface StatItem {
       </div>
       } @else {
       <div class="flex flex-shrink-0 flex-col gap-2">
+        <!-- v4's button calls onStartChat, which opens New Chat with this
+             character preselected. The entry is /salon/new?characterId= (the
+             home card's precedent): inside the workspace the link interceptor's
+             salon-new arm opens the New Chat tab, and outside it the route's
+             redirect guard does. A self-link carrying ?action=chat was a dead
+             click in the workspace, because the interceptor maps
+             /characters/<id> to the character-view tab already showing and
+             drops the query (dogfood #155). -->
         <a
-          [routerLink]="['/characters', character().id]"
-          [queryParams]="{ action: 'chat' }"
+          [routerLink]="['/salon/new']"
+          [queryParams]="{ characterId: character().id }"
           class="inline-flex items-center justify-center rounded-lg qt-bg-success px-4 py-2 text-sm font-semibold qt-text-on-success qt-shadow-sm hover:qt-bg-success/90"
         >
           Start Chat

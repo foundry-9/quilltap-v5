@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — fix(spa): Start Chat opens New Chat inside the workspace; the wear history's Last line loses its stray space
+
+_Versions: SPA 0.5.822._
+
+Dogfood #155: the character view's Start Chat linked to `/characters/<id>?action=chat`, which the workspace link interceptor turned into the character-view tab already showing, so the click did nothing inside the workspace (a full page load of the same URL worked). It now links to `/salon/new?characterId=<id>`, the home card's entry: the interceptor's `salon-new` arm opens the New Chat tab, and the route's redirect guard does outside the workspace. v4's button opens New Chat with the character preselected. Pinned by a tab-mode spec that runs the real interceptor over the rendered link and by a `workspace-flow` beat that clicks Start Chat.
+
+Dogfood #154: the item editor's Wear history rendered `Oct 8, 2026 , in “…”`; the template's line break before the `@if` arm became a space. The date and both arms' commas are now adjacent, as in v4's JSX. The two specs match the exact `2026, in` form.
+
 #### 2026-10-09 — fix(web): release the instance lock on SIGINT/SIGTERM; .qtap imports over 2 MB reach the loader
 
 _Versions: web 0.0.227, host 0.0.194._

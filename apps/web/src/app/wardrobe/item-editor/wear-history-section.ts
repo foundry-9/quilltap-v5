@@ -73,15 +73,14 @@ import { formatWornWhen } from '../wear-display';
               <div class="contents">
                 <dt class="qt-text-secondary">Last worn</dt>
                 <dd class="text-foreground">
-                  {{ formatDate(h.lastWornAt) }}
-                  @if (lastWornChat(); as chat) {
-                    , in
+                  <!-- No whitespace between the date and either arm's comma:
+                       Angular keeps a collapsed space there, where v4's JSX
+                       writes "Oct 8, 2026, in" (dogfood #154). -->
+                  {{ formatDate(h.lastWornAt) }}@if (lastWornChat(); as chat) {, in
                     <a class="qt-link" [href]="'/salon/' + chat.id" (click)="openChat($event, chat.id)"
                       >“{{ chat.title }}”</a
                     >
-                  } @else if (h.lastWornChatId) {
-                    , in a chat since deleted
-                  }
+                  } @else if (h.lastWornChatId) {, in a chat since deleted}
                 </dd>
               </div>
             }

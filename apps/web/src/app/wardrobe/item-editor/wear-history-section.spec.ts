@@ -129,7 +129,11 @@ describe('WardrobeWearHistorySection (v4 wardrobe-wear-ledger-ui.test.tsx)', () 
     expect(dt(el, 'Times worn')!.nextElementSibling!.textContent!.trim()).toBe('4');
     expect(dt(el, 'Created')).toBeDefined();
     expect(dt(el, 'First worn')).toBeDefined();
-    expect(dt(el, 'Last worn')!.nextElementSibling!.textContent).toContain(', in');
+    // v4's bytes: the comma sits on the date, and one space precedes the link
+    // (dogfood #154 — the template once rendered "2026 , in").
+    expect(dt(el, 'Last worn')!.nextElementSibling!.textContent!.trim()).toMatch(
+      /\d{4}, in “The Thornfield Dinner”$/,
+    );
     expect(el.textContent).toContain('Vivienne');
     const counts = [...el.querySelectorAll('li span.qt-text-xs')].map((s) => s.textContent!.trim());
     expect(counts[0]).toMatch(/^3×, last /);
@@ -144,7 +148,9 @@ describe('WardrobeWearHistorySection (v4 wardrobe-wear-ledger-ui.test.tsx)', () 
       { itemId: 'item-2', container: { scope: 'general', id: null }, isComposite: true },
       async () => historyResponse({ lastWornChat: null }),
     );
-    expect(el.textContent).toMatch(/, in a chat since deleted/);
+    expect(dt(el, 'Last worn')!.nextElementSibling!.textContent!.trim()).toMatch(
+      /\d{4}, in a chat since deleted$/,
+    );
     expect(el.querySelector('a')).toBeNull();
     expect(dt(el, 'Created')).toBeUndefined();
     const foot = [...el.querySelectorAll('p')].map((p) => p.textContent!.trim());
