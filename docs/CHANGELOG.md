@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — docs(porting): the f5e953a3f wardrobe-programme dogfood pass
+
+_Docs-only change._
+
+Records the 2026-10-09 dogfood pass over the `f5e953a3f` wardrobe-programme round and the owed `94fbb1ae3` boot-hardness round: the walk doc (36 rows, all terminal), findings #153–#159 (four fixed in the two preceding commits, #156/#157 order-pending, #159 a ruling request), the status-log record, the CLAUDE.md status bullet, `phase-4.md` NEXT, and a measured note on the drift ledger's `d58548051` row: v4 has already tiered and consolidated the live instance, and v5 at the baseline refuses its `CONSOLIDATED` memories on restore and hard-deletes what v4 demotes.
+
 #### 2026-10-09 — fix(spa): Start Chat opens New Chat inside the workspace; the wear history's Last line loses its stray space
 
 _Versions: SPA 0.5.822._

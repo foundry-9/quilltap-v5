@@ -787,6 +787,28 @@ records THERE. Update this summary only when a phase or round completes.
   0.0.193, web 0.0.226, cli 0.0.30, SPA 0.5.821. **Next: the owed dogfood
   pass, then the memory-programme catch-up round, then a follow-ups smalls
   round** — `phase-4.md`. Round record: `status-log.md`.
+- **The `f5e953a3f` wardrobe-programme + owed `94fbb1ae3` boot-hardness
+  dogfood pass RAN (2026-10-09, agent-driven, on the Friday copy + five planted
+  clones + two fresh instances) — 36 rows, all terminal; FOUR v5 defects FIXED
+  in place, two ORDER-PENDING, one ruling requested.** Walk doc:
+  `dogfood-walks/2026-10-09-wardrobe-programme-optimize-degraded-boot-pass.md`;
+  record in `status-log.md`. ⭐ The day's first boot ran v4's PHASE 0.75 whole
+  (backups, optimize, the startup trio joined before the pumps); the wear
+  ledger end to end on real turns (one `wardrobe_wear` call wearing two
+  garments; `wardrobe_read`'s tally); degraded siblings on clones; a full
+  backup → `replace` restore keeping every tally and vector. **FIXED:** #153
+  (a stopped `quilltap-web` never released the instance lock — now v4's
+  SIGINT/SIGTERM shutdown) and #158 (every multipart `.qtap` import over 2 MB
+  answered `No file provided`) in `9ea2945c3` (web 0.0.227, host 0.0.194);
+  #155 (Start Chat dead inside the workspace) and #154 in `17792dd49` (SPA
+  0.5.822). **ORDER-PENDING:** #156 (115 `with_both_conns` callers answer a
+  500 on a degraded mount index), #157 (log text). **RULING:** #159
+  (`new-account` restore orphans every vault — v4-shared). ⚠ **Drift measured:**
+  v4 HEAD already tiered + consolidated the live instance; v5 at the baseline
+  refuses the 365 `CONSOLIDATED` digests on restore and HARD-DELETES what v4
+  demotes — **run no v5 build against live Friday before the memory catch-up**
+  (ledger `d58548051`). **Next: the memory-programme catch-up round, then the
+  follow-ups smalls round (with #156/#157)** — `phase-4.md`.
 - **Oracle baseline: `f5e953a3f` (2026-10-07, v4 main — "feat(startup):
   daily database optimize before migrations", `4.10.0-dev.117`), adopted
   at the `f5e953a3f` wardrobe-programme round's unification (2026-10-08).**

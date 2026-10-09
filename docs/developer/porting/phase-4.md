@@ -7194,7 +7194,7 @@ core 0.0.1264, host 0.0.193, web 0.0.226, cli 0.0.30, SPA 0.5.821; tauri
 0.0.9 unchanged; harness frozen 0.0.1110.
 
 **NEXT (in order):**
-1. **The owed dogfood pass** — the ten lanes' 💸 rows (the round record lists
+1. ✅ **RAN 2026-10-09** (`dogfood-walks/2026-10-09-wardrobe-programme-optimize-degraded-boot-pass.md`; record in `status-log.md`) — 36 rows terminal; #153 / #154 / #155 / #158 FIXED in place (`9ea2945c3`, `17792dd49`); #156 / #157 ORDER-PENDING (fold into item 3); #159 a ruling for the human; C5 (a garment picture, 💸) handed to the human. The memory-programme drift was measured live and recorded on the ledger's `d58548051` row — it raises item 2's urgency: v5 at the baseline refuses `CONSOLIDATED` digests on restore and hard-deletes what v4 demotes. Was: **The owed dogfood pass** — the ten lanes' 💸 rows (the round record lists
    them), headlined by: the Friday copy's first v5 boot creating + SEEDING the
    wear ledger (count against v4's `seed-wardrobe-wear-stats-v1` on a second
    copy; both `migrations_state` rows); a real equip on a Salon turn crediting
@@ -7219,7 +7219,9 @@ core 0.0.1264, host 0.0.193, web 0.0.226, cli 0.0.30, SPA 0.5.821; tauri
    the CLI surfaces. Predicted HEAD reds (the schema embed + size pin, the
    help tree 130 → 131, Tier R's completion / recall-replay / help arms).
 3. **A follow-ups smalls round** from the ten status headers' OPEN lists —
-   first: the SHARED `resolve_character_avatar` fall-through (nine callers;
+   plus dogfood #156 (the 115 `with_both_conns` callers on a degraded mount
+   index, classified against v4 per surface) and #157 (the degraded LLM-logs
+   failure line's keys + v4's guard sentence) — first: the SHARED `resolve_character_avatar` fall-through (nine callers;
    delete the gallery's duplicate); `ImageParamsLogContext`'s `itemId` within
    a log-key pass over the image log context; the almanack `.db` pair's
    designated wardrobe profile; the production file log's integral-f64

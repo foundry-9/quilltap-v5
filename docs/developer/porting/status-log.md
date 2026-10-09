@@ -175251,3 +175251,119 @@ The ten lanes' rows (each lane record lists its own), headlined in
 `phase-4.md` NEXT 1 — plus the unification's own: a same-day SECOND boot on
 the copy with a > 24 h backup, proving the startup trio now finishes before
 the first job-pump line.
+
+## Dogfood pass — the `f5e953a3f` wardrobe-programme round + the owed `94fbb1ae3` boot-hardness round: the daily optimize and physical backups, the wear ledger end to end, degraded siblings on planted clones, the backup / restore / `.qtap` carriers (2026-10-09)
+
+**Walk doc:** `dogfood-walks/2026-10-09-wardrobe-programme-optimize-degraded-boot-pass.md`.
+**36 rows, every one terminal: 34 PASS (several with a finding beside them), C5
+HUMAN (an image commission), and the standing queue unchanged. SEVEN findings:
+four FIXED in place (#153, #154, #155, #158 — two commits, re-proven live), two
+ORDER-PENDING (#156, #157), one RULING REQUESTED (#159, v4-shared).** Main
+copy (rsynced 07:35 CDT) plus five planted APFS clones plus two fresh
+instances; zero panics. Both rounds walked: P4.D255 → {P4.D256 ∥ P4.D262 ∥
+P4.D263 ∥ P4.D264} ∥ P4.D257 ∥ P4.D258 ∥ P4.D259 ∥ P4.D260 ∥ P4.D261, and the
+owed P4.159 ∥ P4.160 ∥ P4.161 ∥ P4.162 ∥ P4.163 ∥ P4.164. The ledger's §2 probe
+PASSED (v4 at `783385873`, clean); §3's nine memory-programme rows stood.
+
+### Proven live
+- **P4.D259 on the day's first boot:** the integrity checks (`quick_check` on
+  the 672 MB mount index 1.8 s), `Daily database optimize starting` → the
+  pre-optimize backup trio with LOCAL-time names → three `Database optimize
+  finished` → `complete … elapsedMs=16712`, the startup trio skipping and
+  retention, the stamps to `2026-10-09`, the whole boot 20 s; a same-day
+  second boot with the trio aged 48 h: the skip DEBUG alone, the trio JOINED
+  before the first job (the unification's fix); a planted 30-day tree kept
+  exactly v4's four phases (11 of 31); `quilltap db optimize` runs on a stopped
+  copy and refuses a held lock.
+- **P4.D255 / P4.160:** the seed an exact no-op on the v4-migrated copy (the
+  ledger md5 unmoved); with the table dropped on a clone, v5 seeded `Credited
+  8165 wear(s) across 778 chat(s)` in v4's bytes — v4's 10-07 run was 8,081 /
+  772 and exactly 6 outfit chats are newer; a fresh `setup` provisions the
+  seed row alone; its 62 migration-family indexes dropped (pre-P4.153 shape) →
+  the backfill restores 102 / 24 / 7 with `mp_path` UNIQUE and the duplicate
+  profile renamed `dup name (2)` with v4's DEBUG + INFO; a third boot silent.
+  On the migrated copy the backfill added only the two `terminal_sessions`
+  indexes Friday's table predates and converted `mp_path` (by design).
+- **The wardrobe programme end to end:** Friday's wardrobe dialog (102 items;
+  own / `Group · …` / `Shared · Quilltap General` chips; the Sort's Most-worn
+  order equal to the ledger's item totals); `wear-history` through REST
+  (archetypes) and the dispatch verb (a real `lastWornChat` title, the
+  never-worn shape); the PUT's foreign-`imageFileId` 400 and the unknown-action
+  404 / 400; the Picture section and the Settings card (one click persisted
+  `generateFromTools: false`); a UI equip crediting 4 garments + 1 bundle and a
+  take-off crediting nothing; a real Salon turn whose ONE `wardrobe_wear` call
+  carried two garments and wore both (bugs 180/181); `wardrobe_list`'s ` · last
+  worn …` and `wardrobe_read`'s `Worn 116 times, first 13 Jun 2026, last today
+  by you. Also worn by …` in v4's shape; `wardrobe_create` refusing a picture
+  with the switch off (no job, no image call); a character delete folding 3
+  rows into the unattributed row with totals unchanged; a pictured composite
+  deleted (its row and picture gone, its components' rows untouched); the chat
+  gallery's current avatars unbinnable and superseded backdrops in Backgrounds
+  across 10 real chats.
+- **P4.159 / P4.163 / P4.162 on planted clones:** a garbage mount index → three
+  retry WARNs + the degraded ERROR, `/health` 503 with nine problems, the SPA
+  opens, the chat PUT gate's 503 with four DEBUGs and #151's middleware ERROR;
+  a garbage LLM-logs file → the key DEBUG ×4, three WARNs over 2.3 s, one
+  ERROR, a turn still runs; a renamed `doc_mount_points.enabled` → empty
+  destinations and gallery with v4's filter ERROR; a BEFORE DELETE trigger → a
+  message delete 200 with `Failed to delete messages from chat` and the row
+  kept; the `[Projects v1]` lines on real mutations.
+- **P4.D264 / P4.D258 / P4.161 carriers:** a full backup (1 m 25 s, 1.73 GB) with
+  `wardrobe-wear.json` = the table (unattributed rows included), the manifest
+  count, every embedding `number[]`; a `replace` restore kept every tally and
+  every written vector with no index-keyed DEBUG; a `new-account` restore
+  remapped every wearer; Ariel's `.qtap` (items with pictures, trailing wear
+  lines, footer count) re-imported with v4's malformed-row warning and no
+  live tally moved; a tag's `"red"` refused in v4's ZodError bytes.
+- **P4.D260:** the help tree at 130 rows with the re-vendored pages.
+
+### Findings
+- **#153 — FIXED** `9ea2945c3` (web 0.0.227, host 0.0.194): a stopped server
+  never released the instance lock (no signal handler). Now v4's shutdown:
+  `Shutting down`, every event stream ended, the engine's `Lock` (lock
+  released, `Instance lock released`), graceful HTTP close, the 5 s watchdog.
+  Live: SIGTERM with a stream attached → all three lines in 5 ms, no lock.
+- **#158 — FIXED** `9ea2945c3`: every multipart `.qtap` import over 2 MB
+  answered `No file provided` (the re-driven request dropped the router's body
+  limit). Live: Ariel's 8 MB file imports.
+- **#155 — FIXED** `17792dd49` (SPA 0.5.822): the character view's Start Chat
+  was a dead click inside the workspace. **#154 — FIXED** `17792dd49`: the wear
+  history's `2026 , in`.
+- **#156 — ORDER-PENDING:** on a degraded mount index the 115
+  `with_both_conns` callers answer 500 `image job requires the mount-index
+  database` where v4 reaches each route's own handling (measured:
+  `projectChatAdd`, `projectAestheticSet`).
+- **#157 — ORDER-PENDING (smalls):** `Failed to log LLM call` on a degraded
+  LLM-logs file carries v5's keys and error text.
+- **#159 — RULING REQUESTED:** a `new-account` restore leaves every character
+  on a fresh vault, the archive's orphaned (Friday's restored wardrobe reads
+  empty) — #141's fix is `replace`-only by P4.147 R-B; v4 shares it.
+
+### Drift measured (recorded on the ledger's `d58548051` row)
+v4 has already run `add-memory-tiers-v1` and its consolidation job on the live
+instance (7,932 `cold` rows, 365 `CONSOLIDATED` digests). Against that v5 at
+the baseline refuses all 365 digests on restore and HARD-DELETES under
+housekeeping what v4 demotes (189 of Friday's memories after one turn). No v5
+build should run against the live instance until the memory catch-up lands.
+Also seen: the help sync ping-pongs v4's six memory-programme pages, and the
+live-checkout `qtap_schema_embed_guard` is red against v4 HEAD (the predicted
+re-vendor).
+
+### Gates for the two commits
+Rust: fmt + clippy (both feature sets) clean; `cargo test --workspace` 698
+binaries / 4,627 passed / 1 failed / 3 ignored — the one red the live-checkout
+`qtap_schema_embed_guard` (v4 HEAD's schema, the §3 drift), run WITHOUT the
+oracle env block (the oracle families early-return); then `quilltap-web`
+re-run whole on the final tree, `graceful_shutdown` + `qtap_import_large_multipart`
+mutation-proven. SPA: 474 files / 9,013 tests, build clean; Playwright
+`workspace-flow` 13/13 and `wardrobe-flow` 16/16 (the full suite not re-run).
+
+### Walk spend
+Four glm-5.3-flash Salon turns plus their extractions, one greeting, one nudge
+on a clone; TWO unplanned avatar repaints from C1's equip and take-off (the
+chat's avatar-on-outfit-change setting).
+
+### Process note
+A forced lock override on a throwaway fresh instance landed while its previous
+server was still inside a 40 s window, so one optimize ran beside a live
+server; nothing was lost and the row was redone cleanly after #153's fix.
