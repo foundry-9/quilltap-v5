@@ -11,10 +11,13 @@ import type { CoreClient } from '../core/core-client';
 import type {
   BackfillProgress,
   CharacterMemoryCount,
+  ConsolidationReport,
   HousekeepingConfig,
   HousekeepingPreview,
   HousekeepingResult,
+  MemoryConsolidationConfig,
   MemoryDto,
+  MemoryExtractionModeConfig,
   MemoryHousekeepOptions,
   MemoryListRequest,
   MemoryWriteBag,
@@ -38,6 +41,10 @@ export const memoryKeys = {
   chatCount: (chatId: string | null | undefined) => ['memories', 'chat-count', chatId] as const,
   recallConfig: () => ['memories', 'recall-config'] as const,
   regenerateStatus: () => ['memories', 'regenerate-status'] as const,
+  /** v4 `queryKeys.memories.consolidationConfig` (`lib/query/keys.ts:198`). */
+  consolidationConfig: () => ['memories', 'consolidation-config'] as const,
+  /** v4 `queryKeys.memories.extractionModeConfig` (`lib/query/keys.ts:199`). */
+  extractionModeConfig: () => ['memories', 'extraction-mode-config'] as const,
 };
 
 /** The paginated list page (v4 `{ memories, totalCount }`; `count` also pinned). */
@@ -57,6 +64,15 @@ export async function fetchMemories(
   const totalCount = (data['totalCount'] as number | undefined) ?? memories.length;
   const count = (data['count'] as number | undefined) ?? memories.length;
   return { memories, totalCount, count };
+}
+
+/**
+ * GET one memory by id (v4 `GET /api/v1/memories/:id` → `{ memory }`) — the
+ * digest viewer's read. `null` when the reply carries no `memory`.
+ */
+export async function fetchMemory(core: CoreClient, memoryId: string): Promise<MemoryDto | null> {
+  const data = await core.dispatchData({ type: 'memoryGet', memoryId });
+  return (data['memory'] as MemoryDto | undefined) ?? null;
 }
 
 /** POST a new manual memory (v4 `POST /api/v1/memories`). */
@@ -90,7 +106,6 @@ export async function fetchHousekeepingPreview(
     maxMemories?: number;
     maxAgeMonths?: number;
     minImportance?: number;
-    mergeSimilar?: boolean;
   },
 ): Promise<HousekeepingPreview> {
   const data = await core.dispatchData({ type: 'memoryHousekeepPreview', ...params });
@@ -190,4 +205,63 @@ export async function regenerateAllMemories(
 ): Promise<{ message?: string }> {
   const data = await core.dispatchData({ type: 'memoryRegenerateAll' });
   return { message: data['message'] as string | undefined };
+}
+
+// --- Consolidation + extraction grain (P4.D276, v4 `d58548051`) -------------
+
+/** GET the consolidation settings (v4 `?action=consolidation-config` → `settings`). */
+export async function fetchConsolidationConfig(
+  core: CoreClient,
+): Promise<Partial<MemoryConsolidationConfig> | null> {
+  const data = await core.dispatchData({ type: 'memoryConsolidationConfigGet' });
+  return (data['settings'] as Partial<MemoryConsolidationConfig> | undefined) ?? null;
+}
+
+/**
+ * POST a consolidation-settings patch. The patch is sent UNTOUCHED — v4 posts
+ * exactly the one changed field, and the server's `.partial()` default-fill is
+ * the server's to answer for (P4.D271 R-A).
+ */
+export async function setConsolidationConfig(
+  core: CoreClient,
+  patch: Partial<MemoryConsolidationConfig>,
+): Promise<Partial<MemoryConsolidationConfig> | null> {
+  const data = await core.dispatchData({ type: 'memoryConsolidationConfigSet', config: patch });
+  return (data['settings'] as Partial<MemoryConsolidationConfig> | undefined) ?? null;
+}
+
+/** GET the extraction-grain settings (v4 `?action=extraction-mode-config` → `settings`). */
+export async function fetchExtractionModeConfig(
+  core: CoreClient,
+): Promise<Partial<MemoryExtractionModeConfig> | null> {
+  const data = await core.dispatchData({ type: 'memoryExtractionModeConfigGet' });
+  return (data['settings'] as Partial<MemoryExtractionModeConfig> | undefined) ?? null;
+}
+
+/** POST an extraction-grain patch (sent untouched, as {@link setConsolidationConfig}). */
+export async function setExtractionModeConfig(
+  core: CoreClient,
+  patch: Partial<MemoryExtractionModeConfig>,
+): Promise<Partial<MemoryExtractionModeConfig> | null> {
+  const data = await core.dispatchData({ type: 'memoryExtractionModeConfigSet', config: patch });
+  return (data['settings'] as Partial<MemoryExtractionModeConfig> | undefined) ?? null;
+}
+
+/**
+ * POST a consolidation for one character (v4 `?action=consolidate`). v4 posts
+ * ONLY `{ characterId, dryRun }` (`memory-consolidation-card.tsx:165`); a dry
+ * run answers `{ report }`, a real one `{ jobId }`.
+ */
+export async function consolidateMemories(
+  core: CoreClient,
+  options: { characterId: string; dryRun: boolean },
+): Promise<{ report?: ConsolidationReport; jobId?: string }> {
+  const data = await core.dispatchData({
+    type: 'memoryConsolidate',
+    options: { characterId: options.characterId, dryRun: options.dryRun },
+  });
+  return {
+    report: data['report'] as ConsolidationReport | undefined,
+    jobId: data['jobId'] as string | undefined,
+  };
 }

@@ -56,6 +56,33 @@ describe('SearchResults — the importance meter', () => {
 });
 
 /**
+ * P4.D276 — v4 `d58548051` widened `MemorySearchResult.source` with
+ * `CONSOLIDATED` (`components/search/types.ts:67`) and left the render
+ * UNCHANGED (`search-results.tsx:204-208`): only `MANUAL` reads "Manual";
+ * everything else — a digest included — reads "Auto".
+ */
+describe('SearchResults — a CONSOLIDATED memory hit (P4.D276, v4 search-results.tsx:204-208)', () => {
+  it('renders a digest hit as Auto, on the auto badge', () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [SearchResults],
+      providers: [provideRouter([])],
+    });
+    const fixture = TestBed.createComponent(SearchResults);
+    fixture.componentRef.setInput('results', [{ ...memoryResult(0.5), source: 'CONSOLIDATED' }]);
+    fixture.componentRef.setInput('query', 'remembered');
+    fixture.detectChanges();
+    const host = fixture.nativeElement as HTMLElement;
+    const badge = Array.from(host.querySelectorAll('span')).find((s) =>
+      s.classList.contains('qt-badge-auto') || s.classList.contains('qt-badge-manual'),
+    )!;
+    expect(badge.textContent?.trim()).toBe('Auto');
+    expect(badge.classList.contains('qt-badge-auto')).toBe(true);
+    expect(badge.classList.contains('qt-badge-manual')).toBe(false);
+  });
+});
+
+/**
  * The P4.D122 documents row (v4 `search-results.tsx` `DocumentResultCard`,
  * `b220999d`). Two things are load-bearing and easy to lose: the subtitle's
  * exact `name · path` bytes, and the modified-click PASSTHROUGH — v4's card is

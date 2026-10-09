@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(spa): P4.D276 M1+M2 — the memory contract for v4 `d58548051`, and the housekeeping dialog archives
+
+_Versions: SPA 0.5.823._
+
+One compile-coupled commit (the contract change breaks the dialog and its spec, so they move together). The memory appendix of `core-contract.ts` gains v4 `d58548051`'s wire per contract C2: `MemoryDto.source` adds `CONSOLIDATED` plus four optional tier keys (`tier`, `supersededById`, `consolidatedFrom`, `consolidatedAt`); `memoryList` takes an optional `tier`; `memoryList`/`memorySearch` take the three-way source; `HousekeepingPreview` requires `wouldDemote` (`wouldMerge` and `coldCount` optional); `HousekeepingResult` adds `demoted`, `coldCount`, `demotedIds`; the three `mergeSimilar` keys stay, documented as retired. A bracketed P4.D276 block adds the consolidation and extraction-mode settings types, the consolidation report types (from v4 `lib/memory/consolidation.ts:114-205`), and the five new verbs, with their own group in `MemoryRequest`. `CoreRequest` is untouched.
+
+`memory.api.ts` gains `fetchMemory` (over `memoryGet`), the two config get/set pairs (patches sent untouched), `consolidateMemories` (sends only `{ characterId, dryRun }`), and v4's two query keys; `fetchHousekeepingPreview` no longer takes `mergeSimilar`. `search.types.ts` widens the memory hit's source.
+
+The per-character housekeeping dialog now says Archive: v4's description, option copy and empty state; the merge checkbox is gone and neither dispatch sends `mergeSimilar`; the third tile is `Archive` over `wouldDemote`; Run is `qt-button-primary`, labelled `Archive N Memories` over `wouldDemote + wouldDelete`, enabled by either count. The success toast is v4's two sentences over `result.demoted ?? 0` (deleted rows are not counted). The old count-less toast and its comment are gone; the status-log claim that v5's reply carried no count was false.
+
+New spec `memory.api.spec.ts`; the dialog spec re-pinned and extended (tiles by label, Run label/class/enablement, no `mergeSimilar` on either request, the three toast cases incl. a pre-round reply); a `search-results` arm pins that a `CONSOLIDATED` hit still renders `Auto` (v4's render is unchanged).
+
 #### 2026-10-09 — docs(porting): order the `01a83539d` memory-programme + bugs-183–186 + wardrobe-viewer drift catch-up round — fourteen work orders (P4.D265 → {P4.D266 … P4.D275} ∥ P4.D276 ∥ P4.D277 ∥ P4.D278)
 
 _Docs-only change._

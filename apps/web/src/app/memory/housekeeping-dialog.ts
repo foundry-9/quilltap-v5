@@ -20,11 +20,15 @@ const PREVIEW_DEBOUNCE_MS = 300;
 
 /**
  * The per-character memory cleanup dialog (v4 `components/memory/
- * housekeeping-dialog.tsx`): the options (max unprotected memories, max age,
- * min-importance threshold, merge-similar), a debounced preview
- * (`memoryHousekeepPreview`) with Keep / Delete / Merge stats and a changes
- * list, and a Run (`memoryHousekeep`, `dryRun:false`) that deletes and closes.
- * Run is disabled while loading or when the preview shows nothing to do.
+ * housekeeping-dialog.tsx` at `01a83539d`): housekeeping ARCHIVES — old,
+ * low-importance memories are demoted to the cold tier, never destroyed (v4
+ * `d58548051`). The options (max unprotected memories, max age, min-importance
+ * threshold — v4 retired the merge-similar option), a debounced preview
+ * (`memoryHousekeepPreview`) with Keep / Delete / Archive stats and a changes
+ * list, and a Run (`memoryHousekeep`, `dryRun:false`) labelled with the
+ * archive + delete sum, which thanks the user with v4's count sentence over
+ * `result.demoted` and closes. Run is disabled while loading or when the
+ * preview shows nothing to do. Neither dispatch carries `mergeSimilar`.
  */
 @Component({
   selector: 'qt-housekeeping-dialog',
@@ -33,7 +37,7 @@ const PREVIEW_DEBOUNCE_MS = 300;
   template: `
     <qt-modal title="Memory Cleanup" maxWidth="2xl" (close)="close.emit()">
       <p class="qt-dialog-description mb-4">
-        Clean up old and low-importance memories to stay within limits.
+        Old and low-importance memories are retired to the archive, never destroyed. They stay searchable by the gate and can return should the world ask for them again.
       </p>
 
       <!-- Options -->
@@ -50,7 +54,7 @@ const PREVIEW_DEBOUNCE_MS = 300;
               (input)="maxMemories.set(parseIntOr($any($event.target).value, 1000))"
             />
             <div class="mt-1 qt-text-xs space-y-0.5">
-              <p>Not deleting memories that are:</p>
+              <p>Never archiving memories that are:</p>
               <ul class="list-disc pl-4">
                 <li>Importance &ge; 70%</li>
                 <li>Reinforced 5+ times</li>
@@ -70,7 +74,7 @@ const PREVIEW_DEBOUNCE_MS = 300;
               [value]="maxAgeMonths()"
               (input)="maxAgeMonths.set(parseIntOr($any($event.target).value, 6))"
             />
-            <p class="mt-1 qt-text-xs">Delete old low-importance memories</p>
+            <p class="mt-1 qt-text-xs">Archive old low-importance memories</p>
           </div>
         </div>
 
@@ -87,20 +91,10 @@ const PREVIEW_DEBOUNCE_MS = 300;
           />
           <div class="flex justify-between qt-text-xs mt-1">
             <span>0%</span>
-            <span>Threshold for deletion</span>
+            <span>Threshold for archiving</span>
             <span>70%</span>
           </div>
         </div>
-
-        <label class="flex items-center gap-2">
-          <input
-            type="checkbox"
-            class="w-4 h-4 rounded"
-            [checked]="mergeSimilar()"
-            (change)="mergeSimilar.set($any($event.target).checked)"
-          />
-          <span class="text-sm text-foreground">Merge similar memories (requires embeddings)</span>
-        </label>
       </div>
 
       <!-- Preview -->
@@ -123,12 +117,12 @@ const PREVIEW_DEBOUNCE_MS = 300;
                 <p class="text-sm qt-text-destructive">Delete</p>
               </div>
               <div class="qt-bg-warning/10 border qt-border-warning/30 rounded-lg p-4 text-center">
-                <p class="text-2xl font-bold qt-text-warning">{{ p.wouldMerge }}</p>
-                <p class="text-sm qt-text-warning">Merge</p>
+                <p class="text-2xl font-bold qt-text-warning">{{ p.wouldDemote }}</p>
+                <p class="text-sm qt-text-warning">Archive</p>
               </div>
             </div>
 
-            @if (p.wouldDelete > 0 || p.wouldMerge > 0) {
+            @if (p.wouldDelete > 0 || p.wouldDemote > 0) {
               <div>
                 <h3 class="text-sm qt-text-primary mb-2">Changes Preview</h3>
                 <div class="max-h-64 overflow-y-auto space-y-2">
@@ -151,7 +145,7 @@ const PREVIEW_DEBOUNCE_MS = 300;
               </div>
             } @else {
               <div class="text-center py-8 qt-text-small">
-                <p>No memories to clean up with current settings.</p>
+                <p>Nothing to send to the archive with current settings.</p>
                 <p class="qt-text-xs mt-1">All memories are within retention policy.</p>
               </div>
             }
@@ -165,11 +159,11 @@ const PREVIEW_DEBOUNCE_MS = 300;
         </button>
         <button
           type="button"
-          class="qt-button qt-button-destructive"
+          class="qt-button qt-button-primary"
           [disabled]="runDisabled()"
           (click)="run()"
         >
-          {{ running() ? 'Running...' : 'Delete ' + (preview()?.wouldDelete ?? 0) + ' Memories' }}
+          {{ running() ? 'Running...' : runLabel() }}
         </button>
       </div>
     </qt-modal>
@@ -188,7 +182,6 @@ export class HousekeepingDialog {
   protected readonly maxMemories = signal(1000);
   protected readonly maxAgeMonths = signal(6);
   protected readonly minImportance = signal(0.3);
-  protected readonly mergeSimilar = signal(false);
 
   protected readonly loading = signal(true);
   protected readonly running = signal(false);
@@ -205,7 +198,16 @@ export class HousekeepingDialog {
 
   protected readonly runDisabled = computed(() => {
     const p = this.preview();
-    return this.running() || this.loading() || !p || (p.wouldDelete === 0 && p.wouldMerge === 0);
+    return this.running() || this.loading() || !p || (p.wouldDelete === 0 && p.wouldDemote === 0);
+  });
+
+  /**
+   * v4 `:282` — `Archive ${(preview?.wouldDemote || 0) + (preview?.wouldDelete || 0)} Memories`.
+   * JS `||`, not `??`: a NaN or absent count reads 0.
+   */
+  protected readonly runLabel = computed(() => {
+    const p = this.preview();
+    return `Archive ${(p?.wouldDemote || 0) + (p?.wouldDelete || 0)} Memories`;
   });
 
   constructor() {
@@ -216,7 +218,6 @@ export class HousekeepingDialog {
         maxMemories: this.maxMemories(),
         maxAgeMonths: this.maxAgeMonths(),
         minImportance: this.minImportance(),
-        mergeSimilar: this.mergeSimilar(),
       };
       if (this.previewTimer) {
         clearTimeout(this.previewTimer);
@@ -236,7 +237,6 @@ export class HousekeepingDialog {
     maxMemories: number;
     maxAgeMonths: number;
     minImportance: number;
-    mergeSimilar: boolean;
   }): Promise<void> {
     this.loading.set(true);
     this.error.set(null);
@@ -252,17 +252,21 @@ export class HousekeepingDialog {
   protected async run(): Promise<void> {
     this.running.set(true);
     try {
-      await runHousekeeping(this.core, {
+      const result = await runHousekeeping(this.core, {
         characterId: this.characterId(),
         maxMemories: this.maxMemories(),
         maxAgeMonths: this.maxAgeMonths(),
         minImportance: this.minImportance(),
-        mergeSimilar: this.mergeSimilar(),
         dryRun: false,
       });
-      // v4 `:89` names the count; v5's run reply carries none, so the sentence
-      // is the count-less half of v4's — recorded in the census.
-      this.toasts.showSuccess('Memory housekeeping complete');
+      // v4 `:87-92` — the count is `demoted` alone (`deleted` is not counted);
+      // a pre-round reply without `demoted` reads 0, v4's own bytes for it.
+      const moved = result.demoted ?? 0;
+      this.toasts.showSuccess(
+        moved === 1
+          ? 'One memory has been shown to the archive, where it will keep.'
+          : `${moved} memories have been shown to the archive, where they will keep.`,
+      );
       this.complete.emit();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to run cleanup';
