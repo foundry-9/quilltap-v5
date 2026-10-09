@@ -110,13 +110,22 @@ Data refresh — a fresh copy of Friday into the standing dogfood instance
 `logs/`):
 
 ```bash
-rsync -a ~/iCloud/Quilltap/Friday/data/*.db ~/qt-dogfood-friday/data/ && rsync -a ~/iCloud/Quilltap/Friday/data/quilltap.dbkey ~/qt-dogfood-friday/data/ && rm -f ~/qt-dogfood-friday/data/*.db-journal ~/qt-dogfood-friday/data/quilltap.lock
+rsync -av --delete-excluded ~/iCloud/Quilltap/Friday/data/*.db ~/iCloud/Quilltap/Friday/data/quilltap.dbkey ~/iCloud/Quilltap/Friday/data/db-optimize-state.json ~/qt-dogfood-friday/data/ && rsync -av --delete-excluded ~/iCloud/Quilltap/Friday/logs/ ~/qt-dogfood-friday/logs && rsync -av --delete-excluded ~/iCloud/Quilltap/Friday/files/ ~/qt-dogfood-friday/files && rm -vf ~/qt-dogfood-friday/data/*.db-journal ~/qt-dogfood-friday/data/quilltap.lock
 ```
+
+It refreshes all three trees: the DBs + `.dbkey` + v4's
+`db-optimize-state.json` (so v5's PHASE 0.75 daily optimize sees the same
+"last ran" stamp v4 left, rather than firing on every refresh), and `logs/`
+and `files/` whole. `--delete-excluded` on the two directory syncs implies
+`--delete`: anything a previous walk created under the copy's `files/` or
+`logs/` is REMOVED, so a refresh resets the file store to production too —
+capture any walk evidence (server logs, planted files) before asking for it.
 
 Remind them: **never reverse the rsync direction** (the copy IS the safety
 layer; nothing writable ever points at live `~/iCloud/Quilltap/Friday`), and
-if the copy opens with 0 tables, iCloud evicted the source —
-`brctl download ~/iCloud/Quilltap/Friday/data` first, then re-rsync.
+if the copy opens with 0 tables or files come over as zero-byte placeholders,
+iCloud evicted the source — `brctl download ~/iCloud/Quilltap/Friday/data`
+(and `…/files` as needed) first, then re-run the refresh.
 
 ## 3. Launch the server and get unlocked
 

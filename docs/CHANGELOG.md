@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — docs(commands): /dogfood's data refresh copies logs, files and the optimize stamp
+
+_Docs-only change._
+
+The `/dogfood` data-refresh command now matches the one in use: it also copies `data/db-optimize-state.json` and syncs `logs/` and `files/` with `--delete-excluded`, then removes journals and the lock. The surrounding notes explain that a refresh deletes files a walk created in the copy's `files/` and `logs/`, and they extend the iCloud-eviction advice to `files/`.
+
 #### 2026-10-09 — docs(porting): drift check — v4 unmoved since `783385873`, nine rows still pending
 
 _Docs-only change._
