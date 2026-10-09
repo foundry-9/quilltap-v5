@@ -289,12 +289,12 @@ pub async fn generate_wardrobe_item_image(
     // The owner (character scope), the outfit's leaves, the project aesthetic
     // mount (v4's `Promise.all`).
     let owner = resolve_owner(db, home).await;
-    let components = {
-        read_both(db, |main, mount| {
-            Ok(resolve_component_leaves(main, mount, home))
-        })
-        .unwrap_or_default()
-    };
+    // A failed pool read is v4's rejected `Promise.all` — the route's 500 —
+    // never a component-less prompt that still spends a provider call (the
+    // `f5e953a3f` unification's §3 finding).
+    let components = read_both(db, |main, mount| {
+        Ok(resolve_component_leaves(main, mount, home))
+    })?;
     let project_mount = if home.scope == crate::api::types::WardrobeContainerScope::Project {
         crate::services::aesthetics::get_project_official_mount_point_id(db, args.container_id)
             .await

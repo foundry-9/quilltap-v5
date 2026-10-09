@@ -33,11 +33,15 @@
 //! Lantern bridges took — `image_job_storage.rs`' header). Nothing of either
 //! branch is ported, and neither DEBUG nor the refusal can occur.
 //!
-//! **v4's realtime emits (`emitDocumentWritten` / `emitDocumentDeleted`).** v5
-//! carries no per-document db-store event bus; a mount write's realtime
-//! invalidation rides the write path's table hints (`realtime/job_topics.rs`
-//! maps the `docMount*` tables to the `mountPoints` collection). The lane
-//! record carries the measurement.
+//! **v4's `emitDocumentWritten` / `emitDocumentDeleted` (`:147`, `:201`).**
+//! Not realtime: measured at the pin (the `f5e953a3f` unification), the ONLY
+//! listeners are `lib/mount-index/watcher.ts:113-114`, which call
+//! `scheduleDatabaseStoreEmbedding(mountPointId)` — the embedding scheduler.
+//! v5 treats those events as no-op seams everywhere (`db/database_store.rs`'
+//! "Seams deliberately NOT ported"; the embedding scheduling stays a standing
+//! refusal), so nothing of either emit is ported here. (A mount write's
+//! realtime invalidation, separately, rides the write path's table hints —
+//! `realtime/job_topics.rs` maps the `docMount*` tables to `mountPoints`.)
 
 use rusqlite::Connection;
 
