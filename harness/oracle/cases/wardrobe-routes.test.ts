@@ -237,6 +237,20 @@ async function runKind(c: CaseEntry): Promise<{ status: number; body: unknown }>
         ),
       );
     }
+    case 'characterWardrobeDelete': {
+      // [unify §3, f5e953a3f] the character item DELETE — v4's
+      // `!existing || existing.characterId !== id` 404 runs BEFORE
+      // `cleanupEquippedRefs` and the ledger delete.
+      const mod = (await import('@/app/api/v1/characters/[id]/wardrobe/[itemId]/route')) as {
+        DELETE: (...a: unknown[]) => Promise<unknown>;
+      };
+      return respond(
+        await mod.DELETE(
+          mockRequest(`${B}/characters/${c.characterId}/wardrobe/${c.itemId}`, 'DELETE'),
+          { params: Promise.resolve({ id: c.characterId, itemId: c.itemId }) },
+        ),
+      );
+    }
     case 'characterWardrobeItemGet': {
       // [P4.D256] the character item GET (`cc80dc89d`'s origin; `3ee3b1342`'s
       // `?action=wear-history`).

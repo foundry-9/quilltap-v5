@@ -2805,13 +2805,16 @@ pub fn character_wardrobe_get(
             Err(r) => return Ok(Err(r)),
         };
         let docs = DocMountDocumentsRepository::new(mount);
-        match wardrobe_read::find_by_id_for_character(
-            main,
-            &docs,
+        match owned_wardrobe_item(
+            wardrobe_read::find_by_id_for_character(
+                main,
+                &docs,
+                &cid,
+                &iid,
+                &SharedWardrobeTiers::none(),
+            )?,
             &cid,
-            &iid,
-            &SharedWardrobeTiers::none(),
-        )? {
+        ) {
             // `cc80dc89d`: the single GET is tagged with the character's
             // origin, never worn.
             Some(item) => Ok(Ok(crate::db::archetype_wardrobe::with_origin(
@@ -2828,6 +2831,18 @@ pub fn character_wardrobe_get(
         Ok(Err(r)) => r,
         Err(e) => db_error_response(e),
     }
+}
+
+/// v4's item-route guard `!item || item.characterId !== id` (`app/api/v1/
+/// characters/[id]/wardrobe/[itemId]/route.ts` GET / PUT / DELETE):
+/// `findByIdForCharacter` also answers a Quilltap General archetype (its
+/// `characterId` is `null`), which the character's item routes must treat as
+/// absent. Without it a General id came back tagged with the CHARACTER's
+/// origin, and a DELETE scrubbed every chat's slots and dropped the
+/// archetype's wear ledger before answering 404 (the `f5e953a3f`
+/// unification's §3 finding).
+fn owned_wardrobe_item(found: Option<Value>, character_id: &str) -> Option<Value> {
+    found.filter(|item| item.get("characterId").and_then(Value::as_str) == Some(character_id))
 }
 
 /// v4 `GET /characters/[id]/wardrobe/[itemId]?action=wear-history`
@@ -2855,12 +2870,7 @@ pub(crate) fn character_wardrobe_wear_history(
             &iid,
             &SharedWardrobeTiers::none(),
         )?;
-        let owned = found
-            .as_ref()
-            .and_then(|i| i.get("characterId"))
-            .and_then(Value::as_str)
-            == Some(cid.as_str());
-        if !owned {
+        if owned_wardrobe_item(found, &cid).is_none() {
             return Ok(Err(not_found("Wardrobe item")));
         }
         let payload = build_wear_history_payload(main, mount, &iid);
@@ -2908,15 +2918,18 @@ pub async fn character_wardrobe_update(
             return Ok(Err(r));
         }
         let docs = DocMountDocumentsRepository::new(mount);
-        // v4 pre-checks existence before update (findByIdForCharacter).
-        let Some(existing) = wardrobe_read::find_by_id_for_character(
-            main,
-            &docs,
+        // v4 pre-checks existence AND ownership before update
+        // (`!existing || existing.characterId !== id`).
+        let Some(existing) = owned_wardrobe_item(
+            wardrobe_read::find_by_id_for_character(
+                main,
+                &docs,
+                &cid,
+                &iid,
+                &SharedWardrobeTiers::none(),
+            )?,
             &cid,
-            &iid,
-            &SharedWardrobeTiers::none(),
-        )?
-        else {
+        ) else {
             return Ok(Err(not_found("Wardrobe item")));
         };
         // v4 `7c8572869`: `imageFileId: z.uuid().nullable().optional()` — the
@@ -3036,13 +3049,19 @@ pub async fn character_wardrobe_delete(
                 return Ok(Err(r));
             }
             let docs = DocMountDocumentsRepository::new(mount);
-            if wardrobe_read::find_by_id_for_character(
-                main,
-                &docs,
+            // v4: `!existing || existing.characterId !== id` → 404 BEFORE
+            // `cleanupEquippedRefs` — a General archetype id never reaches the
+            // scrub or the ledger delete through a character's route.
+            if owned_wardrobe_item(
+                wardrobe_read::find_by_id_for_character(
+                    main,
+                    &docs,
+                    &cid,
+                    &iid,
+                    &SharedWardrobeTiers::none(),
+                )?,
                 &cid,
-                &iid,
-                &SharedWardrobeTiers::none(),
-            )?
+            )
             .is_none()
             {
                 return Ok(Err(not_found("Wardrobe item")));

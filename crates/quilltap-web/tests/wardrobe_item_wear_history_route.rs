@@ -126,3 +126,45 @@ async fn the_item_get_edge_serves_the_item_the_wear_history_and_v4s_refusals() {
     assert_eq!(status, 404, "{body}");
     assert_eq!(body["error"], "Archetype wardrobe item not found");
 }
+
+/// The `f5e953a3f` unification's §3 finding: a FAILED item read is never
+/// masked as the unknown-action 400. v4 runs `findArchetypeById` inside the
+/// GET's try/catch BEFORE `dispatchAction`, so a throw answers the catch's
+/// error, never `Unknown action`. A garbage mount index boots DEGRADED
+/// (P4.159 — the partition unavailable), so the General read itself fails;
+/// the unknown action must answer exactly what the bare GET answers.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_failed_item_read_is_not_masked_as_an_unknown_action() {
+    let base = materialize_instance();
+    std::fs::write(
+        base.path().join("data").join("quilltap-mount-index.db"),
+        b"not a database at all, just bytes",
+    )
+    .unwrap();
+    let (addr, _state) = common::serve_instance(base.path(), |mut c| {
+        c.terminal = false;
+        c
+    })
+    .await;
+    let client = reqwest::Client::new();
+    let get = |qs: &str| {
+        let url = format!("http://{addr}/api/v1/wardrobe/{G_COAT}{qs}");
+        let client = client.clone();
+        async move {
+            let resp = client.get(url).send().await.unwrap();
+            let status = resp.status().as_u16();
+            let body: Value = resp.json().await.unwrap();
+            (status, body)
+        }
+    };
+    let bare = get("").await;
+    assert!(
+        bare.0 >= 500,
+        "the bare GET fails on a degraded mount index: {bare:?}"
+    );
+    let bogus = get("?action=bogus").await;
+    assert_eq!(
+        bogus, bare,
+        "the unknown-action arm passes the core error through"
+    );
+}

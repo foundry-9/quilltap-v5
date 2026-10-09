@@ -29,7 +29,6 @@ use std::collections::HashMap;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response as AxumResponse};
-use quilltap_core::api::types::ErrorKind;
 use quilltap_core::api::{Request as CoreRequest, Response as CoreResponse};
 use quilltap_core::content_disposition::{build_content_disposition, Disposition};
 use serde_json::Value;
@@ -213,7 +212,11 @@ pub async fn wardrobe_item_get(
         Some(unknown) => {
             // The item's 404 first (v4's order), then the refusal.
             return match dispatch_core(&state, CoreRequest::WardrobeItemGet { item_id }).await {
-                Ok(CoreResponse::Error(e)) if e.kind == ErrorKind::NotFound => {
+                // Only a PRESENT item reaches the three-way rule; every core
+                // error (the 404, and a failed read — v4's GET catch answers
+                // 500 `Failed to fetch archetype wardrobe item` before
+                // `dispatchAction`) crosses as itself.
+                Ok(CoreResponse::Error(e)) => {
                     unwrap_to_http(CoreResponse::Error(e), StatusCode::OK)
                 }
                 Ok(_) => crate::query::unknown_action_response(unknown, ACTIONS, "GET", PATH),

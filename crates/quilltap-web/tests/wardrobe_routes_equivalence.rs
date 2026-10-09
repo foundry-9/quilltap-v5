@@ -541,6 +541,15 @@ async fn wardrobe_routes_equivalence() {
                 )
                 .await
             }
+            "characterWardrobeDelete" => {
+                quilltap_core::api::characters::character_wardrobe_delete(
+                    &db,
+                    user,
+                    case.character_id.as_deref().unwrap(),
+                    case.item_id.as_deref().unwrap(),
+                )
+                .await
+            }
             "characterWardrobeItemGet" => match case.action.as_deref() {
                 None => character_wardrobe_get(
                     &db,
