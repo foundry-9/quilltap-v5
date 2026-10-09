@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — refactor(spa): the chat gallery viewer onto the shared frame (v4 01a83539d) — P4.D277 unit 4
+
+_Versions: SPA 0.5.826._
+
+The chat gallery's detail view (`images/chat-gallery-image-view-modal.ts`) now renders through the shared full-screen frame, as v4 `01a83539d` does. Its own miss flag, keyboard effect and overlay markup are gone, and no user-facing string changed. Four behaviours moved with the frame:
+
+- the overlay is portalled to `document.body`;
+- the dialog is named by the entry's filename;
+- Close stays visible while the image is missing;
+- a miss clears when prev/next changes the picture.
+
+The delete button and the filename/provenance caption are projected into the frame's slots. Unit specs now query `document.body`. Three e2e locators are re-pinned to `qt-full-screen-image-viewer`, two in `salon-chat-gallery-flow` and one in `salon-image-detail-flow`, with the same assertions.
+
 #### 2026-10-09 — feat(spa): the shared full-screen image frame (v4 FullScreenImageViewer) — P4.D277 unit 3
 
 _Versions: SPA 0.5.825._

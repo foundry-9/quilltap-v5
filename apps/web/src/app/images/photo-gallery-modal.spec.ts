@@ -462,7 +462,10 @@ describe('PhotoGalleryModal', () => {
       expect(document.querySelector('.fixed.inset-0.z-50')).toBeTruthy();
       (gridImgs(fixture)[0].closest('button') as HTMLButtonElement).click();
       await flush(fixture);
-      const detail = document.querySelector('qt-chat-gallery-image-view-modal');
+      // P4.D277 R-B: the detail's frame is portalled to document.body, so its
+      // overlay is no longer a descendant of the detail view's own host.
+      const detail = document.querySelector('qt-full-screen-image-viewer');
+      expect(detail!.parentElement).toBe(document.body);
       expect(detail!.querySelector('.fixed.inset-0.z-\\[60\\]')).toBeTruthy();
     });
 
@@ -474,7 +477,8 @@ describe('PhotoGalleryModal', () => {
       );
       (gridImgs(fixture)[0].closest('button') as HTMLButtonElement).click();
       await flush(fixture);
-      const detail = () => document.querySelector('qt-chat-gallery-image-view-modal')!;
+      // P4.D277 R-B: the arrows live in the body-portalled frame.
+      const detail = () => document.querySelector('qt-full-screen-image-viewer')!;
       expect(detail().querySelector('button[title="Previous image (Left Arrow)"]')).toBeNull();
       expect(detail().querySelector('button[title="Next image (Right Arrow)"]')).toBeTruthy();
 

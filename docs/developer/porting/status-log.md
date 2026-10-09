@@ -175465,3 +175465,38 @@ Branch `claude/wardrobe-images-spa-viewer-4a334b` (worktree
 - NEW `full-screen-image-viewer.spec.ts`: **red 13/13 on unported source**
   (the module does not exist — the build fails the file); then 3 red on the
   first port (the `[class]` re-sort above), green 13/13 after.
+
+### Unit 4 — the chat gallery viewer onto the frame (W2b)
+
+- `images/chat-gallery-image-view-modal.ts` renders `qt-full-screen-image-viewer`
+  (`src`/`alt`/`imageId`/`filename` from the entry; `onPrev`/`onNext` passed
+  through; NO `keyboardActive` — v4 passes none); the three actions as a
+  `computed` array (`bookmark` `Save to a photo album`, `download` `Download`,
+  `copy` `Copy to clipboard`); the delete button projected bottom-right under
+  `@if (entry().deletable)` (class / title / aria-label unchanged); filename +
+  provenance + links + Jump projected as the caption (bytes unchanged). Its
+  `imageMissing` signal, nav effect and overlay markup DELETED. No
+  user-facing string moved. The four behaviour moves (portal, `aria-label` =
+  filename, Close visible while missing, miss reset on navigation) plus the
+  `disabled:opacity-50` token, named in the module doc.
+- `chat-gallery-image-view-modal.spec.ts`: every query moved from the fixture
+  to `document.body` (R-B); `:208` re-pinned (actions + delete hidden, **Close
+  visible**); NEW arms — `aria-label` is the filename; a miss on entry A
+  cleared after the host switches to B; the frame is body-portalled. **Red
+  4/22 on unported source — exactly the re-pinned arm and the three new ones**;
+  green 22/22 after.
+- `photo-gallery-modal.spec.ts`: two arms that reached into the viewer through
+  `qt-chat-gallery-image-view-modal` (`layers the gallery at z-50 and the
+  detail modal at z-[60]`, `hands the arrows down as undefined at the ends of
+  the list`) went RED on the port (measured) and are re-pinned to the frame
+  (`qt-full-screen-image-viewer`, asserted a child of `document.body`); green
+  25/25.
+- e2e re-pins (R-B, same assertions; measured by file at the gate below):
+  `salon-chat-gallery-flow.spec.ts` — the detail beat (`:118`) and the Jump
+  beat (`:233`) read `qt-full-screen-image-viewer`.
+  **Ownership deviation, flagged:** `e2e/salon-image-detail-flow.spec.ts:128`
+  reads the same moved descendants (`detail.locator('[role="dialog"]')`, the
+  arrows) — the order predicted it "unaffected", a planning miss. The file is
+  owned by no lane this round (only P4.D276's memory files are touched under
+  `apps/web` besides this lane's), so it gets the identical R-B re-pin (one
+  locator, same assertions) rather than shipping a red.

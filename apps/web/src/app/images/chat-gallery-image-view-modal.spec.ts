@@ -35,6 +35,13 @@ async function render(
   return fixture;
 }
 
+/**
+ * The frame portals to `document.body` (P4.D277 R-B), so the viewer's DOM
+ * leaves the fixture — every query reads the body. `render` resets the
+ * module first, which destroys the previous fixture and removes its frame.
+ */
+const body = (): HTMLElement => document.body;
+
 async function flush(fixture: ComponentFixture<ChatGalleryImageViewModal>): Promise<void> {
   for (let i = 0; i < 5; i++) {
     await new Promise((r) => setTimeout(r, 0));
@@ -44,9 +51,11 @@ async function flush(fixture: ComponentFixture<ChatGalleryImageViewModal>): Prom
 
 /**
  * The chat-gallery detail view — a rewrite of v4
- * `components/chat/ChatGalleryImageViewModal.tsx` at `78b381a96` (P4.D176).
- * v4 has NO jest suite for this file; every case pins a transcribed behavior
- * by `file:line` (this suite is its only fidelity record).
+ * `components/chat/ChatGalleryImageViewModal.tsx` at `78b381a96` (P4.D176),
+ * moved onto the shared `FullScreenImageViewer` frame at `01a83539d`
+ * (P4.D277). v4 has NO jest suite for this file; every case pins a
+ * transcribed behavior by `file:line` (this suite is its only fidelity
+ * record).
  */
 describe('ChatGalleryImageViewModal', () => {
   afterEach(() => {
@@ -60,9 +69,9 @@ describe('ChatGalleryImageViewModal', () => {
     const fixture = await render();
     // v4's deleted buttons read "Save to <name>'s photo album" — distinct from
     // the ONE shared-dialog trigger's fixed "Save to a photo album".
-    expect(fixture.nativeElement.querySelector("[title*=\"'s photo album\"]")).toBeNull();
+    expect(body().querySelector("[title*=\"'s photo album\"]")).toBeNull();
     expect(
-      fixture.nativeElement.querySelector('button[title="Save to a photo album"]'),
+      body().querySelector('button[title="Save to a photo album"]'),
     ).toBeTruthy();
   });
 
@@ -71,7 +80,7 @@ describe('ChatGalleryImageViewModal', () => {
     const saves: number[] = [];
     fixture.componentInstance.save.subscribe(() => saves.push(1));
     (
-      fixture.nativeElement.querySelector(
+      body().querySelector(
         'button[title="Save to a photo album"]',
       ) as HTMLButtonElement
     ).click();
@@ -95,7 +104,7 @@ describe('ChatGalleryImageViewModal', () => {
         isCurrent: true,
       }),
     });
-    const provenance = fixture.nativeElement.querySelector('.text-xs.opacity-80');
+    const provenance = body().querySelector('.text-xs.opacity-80')!;
     expect(provenance.textContent).toContain(
       `Avatar, repainted during this conversation · Aria · painted ${day} · current`,
     );
@@ -105,7 +114,7 @@ describe('ChatGalleryImageViewModal', () => {
     const fixture = await render({
       entry: entry({ source: 'portrait', createdAt: '1970-01-01T00:00:00Z' }),
     });
-    const provenance = fixture.nativeElement.querySelector('.text-xs.opacity-80');
+    const provenance = body().querySelector('.text-xs.opacity-80')!;
     expect(provenance.textContent).toContain('Standing portrait');
     expect(provenance.textContent).not.toContain('painted');
   });
@@ -120,19 +129,19 @@ describe('ChatGalleryImageViewModal', () => {
     ['inline', 'Woven into the prose'],
   ] as const)('SOURCE_PHRASE[%s] = %s', async (source, phrase) => {
     const fixture = await render({ entry: entry({ source }) });
-    expect(fixture.nativeElement.textContent).toContain(phrase);
+    expect(body().textContent).toContain(phrase);
   });
 
   // :241 — the link count, pluralized.
   it('shows the link-summary bracket only when count > 0, pluralized', async () => {
     const one = await render({ entry: entry({ linkSummary: { count: 1 } }) });
-    expect(one.nativeElement.textContent).toContain('[1 link]');
+    expect(body().textContent).toContain('[1 link]');
 
     const many = await render({ entry: entry({ linkSummary: { count: 3 } }) });
-    expect(many.nativeElement.textContent).toContain('[3 links]');
+    expect(body().textContent).toContain('[3 links]');
 
     const zero = await render({ entry: entry({ linkSummary: { count: 0 } }) });
-    expect(zero.nativeElement.textContent).not.toContain('link');
+    expect(body().textContent).not.toContain('link');
   });
 
   // :242-256 — the Jump button renders only when the entry carries a messageId.
@@ -141,19 +150,19 @@ describe('ChatGalleryImageViewModal', () => {
     const jumps: string[] = [];
     withMsg.componentInstance.jumpToMessage.subscribe((id) => jumps.push(id));
     (
-      withMsg.nativeElement.querySelector('button.qt-link.underline') as HTMLButtonElement
+      body().querySelector('button.qt-link.underline') as HTMLButtonElement
     ).click();
     expect(jumps).toEqual(['m-9']);
 
     const without = await render({ entry: entry({ messageId: undefined }) });
-    expect(without.nativeElement.querySelector('button.qt-link.underline')).toBeNull();
+    expect(body().querySelector('button.qt-link.underline')).toBeNull();
   });
 
   // Delete double-guard: only rendered when `entry.deletable`.
   it('hides the delete button when the entry is not deletable', async () => {
     const fixture = await render({ entry: entry({ deletable: false }) });
     expect(
-      fixture.nativeElement.querySelector('button[title="Delete image permanently"]'),
+      body().querySelector('button[title="Delete image permanently"]'),
     ).toBeNull();
   });
 
@@ -169,7 +178,7 @@ describe('ChatGalleryImageViewModal', () => {
     const deletes: number[] = [];
     fixture.componentInstance.deleteFile.subscribe(() => deletes.push(1));
     (
-      fixture.nativeElement.querySelector(
+      body().querySelector(
         'button[title="Delete image permanently"]',
       ) as HTMLButtonElement
     ).click();
@@ -185,12 +194,12 @@ describe('ChatGalleryImageViewModal', () => {
         prevs += 1;
       },
     });
-    expect(fixture.nativeElement.querySelector('.fixed.inset-0.z-\\[60\\]')).toBeTruthy();
-    const prev = fixture.nativeElement.querySelector(
+    expect(body().querySelector('.fixed.inset-0.z-\\[60\\]')).toBeTruthy();
+    const prev = body().querySelector(
       'button[title="Previous image (Left Arrow)"]',
     ) as HTMLButtonElement;
     expect(prev).toBeTruthy();
-    expect(fixture.nativeElement.querySelector('button[title="Next image (Right Arrow)"]')).toBeNull();
+    expect(body().querySelector('button[title="Next image (Right Arrow)"]')).toBeNull();
     prev.click();
     expect(prevs).toBe(1);
   });
@@ -204,17 +213,56 @@ describe('ChatGalleryImageViewModal', () => {
     expect(closes.length).toBe(1);
   });
 
-  // :141 / :194 — the toolbar and delete button hide while the image is missing.
-  it('hides the toolbar and delete button for a missing image', async () => {
+  // 01a83539d (FullScreenImageViewer.tsx:117-136): a missing image hides the
+  // actions and the bottom-right delete — but Close now STAYS (the old viewer
+  // hid the whole cluster, Close included). Re-pinned by P4.D277.
+  it('hides the actions and delete button for a missing image, keeping Close', async () => {
     const fixture = await render();
-    (fixture.nativeElement.querySelector('img') as HTMLImageElement).dispatchEvent(
+    (body().querySelector('img') as HTMLImageElement).dispatchEvent(
       new Event('error'),
     );
     await flush(fixture);
-    expect(fixture.nativeElement.querySelector('qt-deleted-image-placeholder')).toBeTruthy();
-    expect(fixture.nativeElement.querySelector('button[title="Download"]')).toBeNull();
+    expect(body().querySelector('qt-deleted-image-placeholder')).toBeTruthy();
+    expect(body().querySelector('button[title="Download"]')).toBeNull();
+    expect(body().querySelector('button[title="Save to a photo album"]')).toBeNull();
     expect(
-      fixture.nativeElement.querySelector('button[title="Delete image permanently"]'),
+      body().querySelector('button[title="Delete image permanently"]'),
+    ).toBeNull();
+    expect(body().querySelector('button[title="Close (Escape)"]')).toBeTruthy();
+  });
+
+  // 01a83539d — the frame names the dialog by `alt`, which this view passes as
+  // the entry's filename (ChatGalleryImageViewModal.tsx hunk; frame :104).
+  it("names the dialog by the entry's filename", async () => {
+    await render({ entry: entry({ filename: 'yacht.webp' }) });
+    expect(body().querySelector('[role="dialog"]')!.getAttribute('aria-label')).toBe('yacht.webp');
+  });
+
+  // 01a83539d (frame :79-81) — the miss is keyed by `src`, so walking to the
+  // next entry clears a previous miss (the old viewer's flag never reset).
+  it('clears a miss on entry A once the host switches to entry B', async () => {
+    const fixture = await render();
+    (body().querySelector('img') as HTMLImageElement).dispatchEvent(new Event('error'));
+    await flush(fixture);
+    expect(body().querySelector('qt-deleted-image-placeholder')).toBeTruthy();
+    fixture.componentRef.setInput(
+      'entry',
+      entry({ id: 'file-2', url: '/api/v1/files/file-2', filename: 'next.png' }),
+    );
+    await flush(fixture);
+    expect(body().querySelector('qt-deleted-image-placeholder')).toBeNull();
+    expect(body().querySelector('img')!.getAttribute('src')).toBe('/api/v1/files/file-2');
+    expect(body().querySelector('button[title="Download"]')).toBeTruthy();
+  });
+
+  // 01a83539d (frame :98-166, bug 99) — the overlay is portalled to the body,
+  // leaving this view's own host empty (R-B).
+  it('portals the frame to document.body', async () => {
+    const fixture = await render();
+    const frame = body().querySelector('qt-full-screen-image-viewer');
+    expect(frame?.parentElement).toBe(document.body);
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('[role="dialog"]'),
     ).toBeNull();
   });
 
@@ -229,7 +277,7 @@ describe('ChatGalleryImageViewModal', () => {
         clicked.push({ href: this.href, download: this.download });
       });
     (
-      fixture.nativeElement.querySelector('button[title="Download"]') as HTMLButtonElement
+      body().querySelector('button[title="Download"]') as HTMLButtonElement
     ).click();
     expect(spy).toHaveBeenCalledOnce();
     expect(clicked[0].href).toContain('/api/v1/files/file-1?download=1');

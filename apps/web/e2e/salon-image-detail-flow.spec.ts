@@ -125,7 +125,9 @@ test.describe('P4.9a2 — the deep image-detail modal family', () => {
     //    Assert on the inner overlay — the component HOST element has no
     //    layout box, so Playwright reads it as hidden (the P4.9b lesson).
     await tiles.first().click();
-    const detail = page.locator('qt-chat-gallery-image-view-modal');
+    //    P4.D277 R-B: the view renders through the shared frame, portalled
+    //    to document.body, so the beat reads the frame's host.
+    const detail = page.locator('qt-full-screen-image-viewer');
     await expect(detail.locator('[role="dialog"]')).toBeVisible();
     await expect(detail.locator('img')).toBeVisible();
     // First item of the list: next exists, prev does not (the
