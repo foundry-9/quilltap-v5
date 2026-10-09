@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(spa): the wardrobe picture viewer (v4 01a83539d) — P4.D277 unit 7
+
+_Versions: SPA 0.5.829._
+
+New `wardrobe/wardrobe-image-viewer.ts`, a port of v4 `01a83539d`'s wardrobe picture viewer. It is the shared full-screen frame at `z-[90]`, named `Picture of <title>`, with three actions:
+
+- **Save to a document store** opens the save dialog's wardrobe door at `z-[100]`, and toasts `Saved to <store>`.
+- **Download** saves the picture as `<Title>.webp`.
+- **Copy to clipboard**.
+
+The title and an optional note make up the caption, and Previous/Next pass through. While the save dialog is up the viewer leaves the keyboard alone, so Escape closes only the dialog. Download and copy failures toast v4's sentences and log v4's `console.error` lines. Not yet mounted anywhere (the next units wire it in).
+
 #### 2026-10-09 — feat(spa): the save dialog's wardrobe door; chatId on the chat targets — P4.D277 unit 6
 
 _Versions: SPA 0.5.828._

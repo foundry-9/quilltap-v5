@@ -175571,3 +175571,48 @@ Branch `claude/wardrobe-images-spa-viewer-4a334b` (worktree
   (`SaveImageDialog.tsx:188` at the pin), so the wardrobe door's archived-vault
   409 (`That store belongs to an archived character and cannot be written to`,
   no `code`) renders `That picture is already in this album.` in v4 too.
+
+### Unit 7 — NEW `wardrobe/wardrobe-image-viewer.ts` (W5a)
+
+- v4 `components/wardrobe/wardrobe-image-viewer.tsx` (NEW at `01a83539d`, 127
+  lines) ported: inputs `itemId`, `itemTitle`, `container`, `fileId`
+  (required), `note` (`string | null`, default null), `onPrev`, `onNext`;
+  output `closed`. The frame with `alt` `Picture of <title>` (`:93`),
+  `[imageId]="fileId()"`, `filename` = `pictureFilename(title)`,
+  `[keyboardActive]="!saving()"`, `zIndexClass="z-[90]"`, actions `Save to a
+  document store` / `Download` / `Copy to clipboard` (`:99-103`), caption =
+  title + the note div `text-xs opacity-80` only when given (`:104-109`), no
+  bottom-right; `@if (saving())` the save dialog on `{ kind: 'wardrobe', … }`
+  with the one `image/webp` attachment, `overlayClass="z-[100]"`, `(saved)` →
+  toast `` `Saved to ${mountPoint}` `` (`:113-122`). Module doc `:3-20`
+  carried.
+- **Recorded divergences:** `pictureFilename` EXPORTED for the spec (v4's is
+  module-private — no oracle row, Tier 3 item 19); R-I — Download / Copy ride
+  `downloadImageUrl` / `copyImageToClipboard`. **R-I's premise was FALSE
+  (measured):** the order says v5's copy helper "does not throw" and has the
+  viewer branch on its boolean; `core/clipboard-utils.ts:85` THROWS `No
+  clipboard write method available` when every write fails (and its `fetch`
+  can reject) — it never returns `false`. So the viewer keeps v4's own
+  try/catch shape (`:76-86`): success toast on resolution, `console.error(
+  'Failed to copy wardrobe picture:', { error })` + `Failed to copy image to
+  clipboard` on a throw — v4-exact, and pinned. **Follow-up (pre-existing,
+  NOT fixed — the order keeps the chat viewer's strings and handlers):**
+  `images/chat-gallery-image-view-modal.ts`'s `handleCopyToClipboard`
+  branches on `if (await copyImageToClipboard(…))` with no try/catch, so a
+  failed copy there rejects unhandled and shows NO toast (v4's
+  `ChatGalleryImageViewModal.tsx:67-77` catches and toasts `Failed to copy
+  image to clipboard`). A smalls item.
+- NEW `wardrobe-image-viewer.spec.ts`: **red on unported source** (the module
+  does not exist — the build fails the file); green **16/16** — the six
+  `pictureFilename` rows (`Blue Velvet Gown` → `Blue_Velvet_Gown.webp`;
+  `  --Café au Lait!! ` → `Caf_au_Lait.webp`; `!!!` / `''` →
+  `wardrobe_item.webp`; `A__B` → `A_B.webp`; `Dress (2)` → `Dress_2.webp`),
+  each asserted equal to v4's two regexes evaluated in-spec AND to the literal;
+  the dialog named `Picture of Blue Velvet Gown` at `z-[90]`, body-portalled;
+  the three titles + Close in order; the caption with / without the note; Save
+  → the wardrobe dialog at `z-[100]` (body-portalled; the
+  `wardrobeItemImageSaveTargets` read), arrows / Escape do not reach the
+  viewer while it is up, ONE Escape closes only the dialog, the keys return
+  after; `saved` toasts `Saved to Quilltap General`; Download's anchor
+  (`/api/v1/files/file-1?download=1`, `Blue_Velvet_Gown.webp`) and its throw
+  arm (toast + v4's console line); Copy's success and failure arms.
