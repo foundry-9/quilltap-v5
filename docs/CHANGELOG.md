@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — chore(help): re-vendor help/ at v4 01a83539d (130 → 131) and move the three count pins
+
+_No crate versions bumped._
+
+P4.D278 U1. The whole `help/` tree is re-copied from v4 `01a83539d`, and all 131 files match the pin byte for byte. One page is new: `help/memory-consolidation.md`. Eight pages changed: `cli-memories`, `episodic-memory`, `memory-housekeeping`, `memory-recall-relevance`, `memory-regenerate`, `mount-points`, `system-backup-restore`, `wardrobe`. The host embeds the tree at build time, so it is rebuilt but not bumped. The count pins move 130 → 131 in `help_tree_embed_guard` and `host_help_docs_boot` (with its module doc); `help_tree_equivalence` gets a history note. Before the copy, `help_tree_equivalence` and `help_section_size_equivalence` were red at the pin (130 vs 131). After the copy and before the pins moved, `help_tree_embed_guard` and `host_help_docs_boot` were red (131 vs 130). All four are green now: 131 docs and 763 chunks.
+
 #### 2026-10-09 — docs(porting): order the `01a83539d` memory-programme + bugs-183–186 + wardrobe-viewer drift catch-up round — fourteen work orders (P4.D265 → {P4.D266 … P4.D275} ∥ P4.D276 ∥ P4.D277 ∥ P4.D278)
 
 _Docs-only change._

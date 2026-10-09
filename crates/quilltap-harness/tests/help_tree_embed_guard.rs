@@ -81,7 +81,15 @@ use quilltap_host::help_content::EMBEDDED_HELP;
 /// `database-protection`) move no count. The tree re-vendored WHOLE at the
 /// target (R-A). Measured RED at 130 on disk vs this constant's 129 before
 /// the move.
-const VENDORED_FILE_COUNT: usize = 130;
+///
+/// **131 at v4 `01a83539d` (130 + 1, P4.D278):** `help/memory-consolidation.md`
+/// (the memory consolidation page, `d58548051`); the eight re-vendored pages
+/// (`cli-memories`, `episodic-memory`, `memory-housekeeping`,
+/// `memory-recall-relevance`, `memory-regenerate`, `mount-points`,
+/// `system-backup-restore`, `wardrobe`) move no count. The tree re-vendored
+/// WHOLE at the pin (R-A). Measured RED at 131 on disk vs this constant's 130
+/// before the move.
+const VENDORED_FILE_COUNT: usize = 131;
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

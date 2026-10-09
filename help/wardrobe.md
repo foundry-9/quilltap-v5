@@ -202,12 +202,12 @@ Every garment in the house keeps a ledger --- a discreet little tally, kept belo
 
 **Where to read it.**
 
-- In the **Wardrobe dialog**, each row carries one quiet line beneath its badges: *Worn 4× · last Tue*, *Worn once · last 3 weeks ago*, or *Never worn*.
+- In the **Wardrobe dialog**, each row carries one quiet line beneath its badges, counting every wearer in the household: *Worn 4× · last 3 days ago*, *Worn once · last a week ago*, or *Never worn*.
 - A **Sort** selector beside the Items/Outfits tabs arranges the list by **Title** (the usual order), **Recently worn**, **Most worn**, or **Newest**; under the two wear sorts, the never-worn sit at the back. A **Never worn** tickbox, beside *Show archived* and *Show shared*, shows only the garments nobody has yet had on --- it combines with any sort. Neither is remembered after the dialog closes.
 - **Editing** an existing item shows a **Wear history** section at the foot of the form: when it was created, how many times it has been worn, first and last worn (with the conversation it was last worn in, if that conversation still exists), and who has worn it, most recent first.
 - The **project wardrobe card** shows the same one-line tally on each row.
 
-**Characters may ask after it, too.** `wardrobe_list` notes beside each item when it was last worn (or that it never has been), and `wardrobe_read` gives the full account --- how often, since when, and whether it was the asking character or someone else. Nothing about the ledger is slipped into a character's prompt unbidden; they learn of it only by asking.
+**Characters may ask after it, too.** `wardrobe_list` notes beside each item how often the asking character has worn it and when they last did, with the whole household's tally beside it for context --- so a borrowed pair of Levi's that fifteen others have worn to threads is not mistaken for one's own old favourite. `wardrobe_read` gives the full account: the asking character's own record first, then how often the household has worn it all told, and by whom. Nothing about the ledger is slipped into a character's prompt unbidden; they learn of it only by asking.
 
 A garment's ledger follows it when moved to another wardrobe; a *copy* is a new garment and starts its ledger afresh. Deleting a garment closes its ledger. Should a character be deleted, the wears they ran up stay on the books, merely unattributed.
 
@@ -217,7 +217,7 @@ During a chat, characters with the appropriate permissions may attend to their t
 
 Throughout, a character sees not only the items in their **own** wardrobe but also any shared garments hanging in their **groups'** stores, in the **project** stores, and in the great communal cloakroom that is **Quilltap General** — though shared items, being held in common, may be *worn* but never *altered* by a single character's hand.
 
-- **wardrobe_list** --- Survey the available garments — one's own plus the shared finery of one's groups, the project, and Quilltap General. Composites are flagged with their components listed; each item notes whether you own it (and may thus edit it) or merely borrow it, when it was last worn (see *The Ledger* above), and, if it has sat for its portrait, the picture's image file id.
+- **wardrobe_list** --- Survey the available garments — one's own plus the shared finery of one's groups, the project, and Quilltap General. Composites are flagged with their components listed; each item notes whether you own it (and may thus edit it) or merely borrow it, how often you have worn it and when you last did, beside the household's tally (see *The Ledger* above), and, if it has sat for its portrait, the picture's image file id.
 - **wardrobe_read** --- Inspect one item in full: its Portrait Cue, its default-outfit standing, its composite particulars, the slots it presently occupies, its wear history, and its picture's image file id. Where `wardrobe_list` offers a glance, this offers a proper appraisal. A character who wishes to *see* the picture passes that id to `describe_image`.
 - **wardrobe_wear** --- Put garments on. Hand it an ordered list of changes and it applies them in sequence — force-swap the coat, *then* layer a muffler over it, all in a single gesture. Per item: `wear` (don it across every slot it covers, honoring its replace setting — ordinarily a gentle layering), `replace` (clear those slots first, a decisive swap), or `add_to_slot` (tuck it into one named slot).
 - **wardrobe_take_off** --- Remove garments, or empty a slot entirely. Likewise an ordered list. Per item: `remove` (take a worn piece off across every slot it covers, leaving any other layers undisturbed — narrow it to a single slot if you wish) or `clear_slot` (sweep one slot bare).
@@ -325,7 +325,7 @@ Conversations begun before the Hair slot arrived sit for their portraits exactly
 
 ## Portraits of the Garments
 
-A wardrobe item --- or a whole outfit --- may carry a picture of itself, so that two jackets of nearly identical name are told apart at a glance rather than by squinting at their descriptions. The picture appears as a small thumbnail beside the item in the wardrobe lists and in the slot and quick-pick choosers, and at full size in the item's editor.
+A wardrobe item --- or a whole outfit --- may carry a picture of itself, so that two jackets of nearly identical name are told apart at a glance rather than by squinting at their descriptions. The picture appears as a small thumbnail beside the item in the wardrobe lists and in the slot and quick-pick choosers, and at full size in the item's editor; click it to see it full screen (see [Viewing a Picture Properly](#viewing-a-picture-properly)).
 
 Open an item for editing and you will find an **Image** section directly beneath the title:
 
@@ -347,6 +347,16 @@ Characters may commission pictures too, when they make or amend their own garmen
 - **A shared garment** (Quilltap General, a project, or a group) belongs to nobody in particular, so it is drawn **catalogue style**: on a dress form or laid flat, with no one inside it. The caption says "catalogue shot" so the empty dress form comes as no surprise.
 
 An outfit follows the same rule for the whole ensemble. The picture's prompt is built from each piece's **Image cue** (or its title), never from the prose description, and is kept with the picture so you can see exactly what was asked of the painter. The "people and their outfits" aesthetic from **Settings → Images** applies to both kinds of picture.
+
+### Viewing a Picture Properly
+
+A thumbnail is a fine thing for telling jackets apart, but a poor one for admiring the stitching. Click the thumbnail beside an item in the wardrobe list --- or the picture, or any picture in the history strip, in the item's editor --- and it opens across the whole window, as large as your screen will allow. Three buttons wait in the top corner:
+
+- **Save to a document store** (the bookmark) files a copy in the `photos/` folder of whichever store you choose --- a character's vault, a project's files, any document store you keep, or Quilltap General, which is offered first. An optional caption may go with it; leave it blank and the item's name is used. Should the store already hold that very picture, you are told when it was filed rather than given a second copy. The garment's own pictures are not disturbed.
+- **Download** saves the picture to your computer.
+- **Copy** puts it on the clipboard.
+
+Opened from the editor, the arrows (or your keyboard's left and right keys) step through the item's whole history. **Escape**, the close button, or a click on the darkened margin puts the picture away. The little thumbnails in the slot and quick-pick choosers are for choosing, not viewing, and stay as they are.
 
 Pictures live beside the item in its own wardrobe's store, travel with it when you move or copy it to another wardrobe, go with it when it is deleted, and ride along in a character's `.qtap` export. An archived character's pictures may be admired but not changed.
 
