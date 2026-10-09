@@ -27,31 +27,37 @@ probe verifies against._
   The eleven rows it absorbed (`938144eb4` … `f5e953a3f`) are retired to §6.
   CLAUDE.md's Status bullet agrees (the round's bullet: "the oracle baseline
   MOVES to `f5e953a3f`"; its "Oracle baseline" bullet names it).
-- **Checked:** 2026-10-09 afternoon (`/driftcheck` — after `git fetch`, the
-  §2 probe FAILED: `783385873..main` = THREE commits — this port's two
+- **Checked:** 2026-10-09 late afternoon (`/driftcheck` — after `git fetch`,
+  the §2 probe FAILED: `ed8b15b50..main` = ONE new commit, `01a83539d`
+  (the wardrobe full-screen picture viewer); `..origin/main` agrees;
+  `1a2b2164c..bugfix` / `..origin/bugfix` empty, `release` still
+  `8fbf2afe0`, checkout `main` CLEAN; classified, §3 row appended).
+  Previous checks: 2026-10-09 afternoon (`/driftcheck` — the §2 probe
+  FAILED: `783385873..main` = THREE commits — this port's two
   local bug filings `5abcd01ea` + `3c56a41e7` (now PUSHED, `origin/main`
   carries them) and v4's NEW `ed8b15b50`, the fix for bugs 183–186;
   `1a2b2164c..bugfix` / `..origin/bugfix` empty, `release` still
   `8fbf2afe0`, checkout `main` CLEAN; one new commit classified, §3 row
-  appended; CLAUDE.md's Status agrees on the baseline). Previous checks:
-  2026-10-09 morning (`/driftcheck`, probe PASSED, no new commit);
+  appended; CLAUDE.md's Status agrees on the baseline); 2026-10-09 morning (`/driftcheck`, probe PASSED, no new commit);
   2026-10-08 (`/unify` of the `f5e953a3f` round + the evening `/driftcheck`
   classifying the eight memory-programme commits); 2026-10-08 morning
   (`/driftcheck`, the eleven commits to `f5e953a3f`).
-- **v4 `main` HEAD at check: `ed8b15b50`** ("fix: bugs 183-186 — wear
-  wording and whose wear, restore store binding, unique store names",
-  2026-10-09 13:08, `4.10.0-dev.142`) — TWELVE commits past the baseline
+- **v4 `main` HEAD at check: `01a83539d`** ("feat(wardrobe): full-screen
+  picture viewer with save to a document store", 2026-10-09 14:44,
+  `4.10.0-dev.143`) — THIRTEEN commits past the baseline
   (`1825bfd53`, `3f7320138`, `da98ca58b`, `f7d8064be`, `d58548051`,
   `70f9b495c`, `197104649`, `7e9eaf42c`, `783385873`, `5abcd01ea`,
-  `3c56a41e7`, `ed8b15b50`; a linear run, no merges). `origin/main` agrees.
+  `3c56a41e7`, `ed8b15b50`, `01a83539d`; a linear run, no merges).
+  `origin/main` agrees.
   The memory-programme nine arrived during the `f5e953a3f` round; the two
   bug filings were this port's `/dogfood` commits (pushed since); the
-  twelfth is v4 fixing three of this port's filings plus a new bug 186.
+  twelfth is v4 fixing three of this port's filings plus a new bug 186; the
+  thirteenth a new wardrobe picture viewer with save-to-store.
 - **v4 `bugfix` tip at check:** `1a2b2164c`, UNMOVED (`1a2b2164c..bugfix`
   and `..origin/bugfix` empty). **`release` tip:** `8fbf2afe0` (`release:
   4.9.2`), UNMOVED; still no `release: 4.10.0` squash.
 - **Checkout at check:** branch **`main`**, tree **CLEAN**.
-- **Verdict: DRIFT PENDING — 12 commits (§3), all classified; ten
+- **Verdict: DRIFT PENDING — 13 commits (§3), all classified; eleven
   `UNPROCESSED`, two NO-PORT (recorded by `/dogfood`)** — v4's **memory
   programme** (2026-10-08) plus a sync log line, a test commit, a
   release-notes update, this port's two bug filings, and the bugs 183–186
@@ -91,12 +97,24 @@ probe verifies against._
     restore/import, and on character create/rename/delete — **a boot
     pass that RENAMES stores on a shared instance**; the mount-points
     rename route refuses a live vault (409).
+  - **PORT-NEW + PORT** (1): `01a83539d` — the wardrobe full-screen
+    picture viewer (SPA) over two NEW wardrobe images actions (`GET
+    ?action=save-targets` → every enabled store minus archived vaults,
+    General default; `POST ?action=save-to-store` → `saveImageToAlbum`,
+    409 on an archived vault / `ALREADY_SAVED`), and ONE behaviour move on
+    a ported route: the MESSAGE Save Image now answers `ALREADY_SAVED` with
+    v4's **409** body (v5's `api/chat_media.rs` still maps it to 400,
+    faithful to the baseline). Sits on P4.D263's item-images route and
+    P4.D257's chat gallery viewer; independent of the memory rows.
   - The memory rows interlock: `f7d8064be` sits on `3f7320138`'s
     budget-sized head, `d58548051` RETIRES the housekeeping half of
     `3f7320138`'s F9 merge, and `70f9b495c` rewrites F1's reinforcement
     write — **order them as ONE memory catch-up, never commit-by-commit.**
     `ed8b15b50` is independent of them (wardrobe / restore / mount-index)
     and can be its own lane(s) in the same round; it subsumes dogfood #159.
+    `01a83539d` touches the same wardrobe surfaces as `ed8b15b50`'s 183/184
+    half (the SPA wardrobe row/editor, `help/wardrobe.md`) — one wardrobe
+    lane, or sequence them.
   - **Schema: ONE D23 move pending (memory)** — the SEVENTH re-dump carries
     `memories.tier` / `supersededById` / `consolidatedFrom` /
     `consolidatedAt` and `chats.otherExtractionWatermarkMessageId`
@@ -112,13 +130,13 @@ probe verifies against._
     (`ensureMountPointNameUniqueIndex`, after the collision repair), not
     by generateDDL or a migration; whether a fresh-schema dump of v4 picks
     it up is NOT measured — measure before deciding which artefact holds it.
-  - **Dependencies: NONE moved** by the twelve (version stamps only;
+  - **Dependencies: NONE moved** by the thirteen (version stamps only;
     `plugins/dist/` untouched).
-- **Regen rule: PIN REQUIRED at `f5e953a3f`** (§5.1) — v4 HEAD is twelve
+- **Regen rule: PIN REQUIRED at `f5e953a3f`** (§5.1) — v4 HEAD is thirteen
   commits past the baseline (unchanged rule). ⚠ **The dependency trap:** the root tree moved
   at `a9c99a4a0` (now INSIDE the baseline — `openai` 7.30.0,
   `@openrouter/sdk` 1.4.25, …); a `f5e953a3f` pin's own lockfile carries it,
-  and the twelve later commits move nothing, so the root `node_modules`
+  and the thirteen later commits move nothing, so the root `node_modules`
   symlink and a fresh `npm ci --offline` tree agree today — still build the
   pin's own tree (§5.1), as the unification did. `provisioning_equivalence`
   REQUIRES `QT_FRESH_SCHEMA_LIVE` dumped FROM THE PIN — a HEAD dump carries
@@ -129,7 +147,8 @@ probe verifies against._
   family on a HEAD regen (`help_tree_equivalence` — 130 → 131 with
   `help/memory-consolidation.md`, plus five modified pages — and
   `ed8b15b50` modifies three more: `mount-points.md`,
-  `system-backup-restore.md`, `wardrobe.md`); Tier R
+  `system-backup-restore.md`, `wardrobe.md` — the last again in
+  `01a83539d`); Tier R
   (`cli_differential`) where it runs v4's CLI from the LIVE checkout (the
   top-level help's `anchor-probe`, the `recall-replay` help/flags, all three
   `completion` scripts). **Predicted GREEN:** `provider_sdk_version_guard`
@@ -237,6 +256,7 @@ when absorbed/ratified.
 | `5abcd01ea` | 2026-10-09 | docs(bugs): file bugs 183 and 184 — wardrobe wear wording and whose wear the tools report | **NO-PORT** (docs only — `--stat`: `docs/developer/bugs.md` + two NEW `docs/developer/bugs/bug-18{3,4}-*.md`; committed LOCALLY in the v4 checkout by this port's 2026-10-09 `/dogfood` session at the human's request, NOT pushed — the bug-169 precedent; `origin/main` does not have it). _Appended 2026-10-09 afternoon: now PUSHED (`origin/main` carries it); both bugs FIXED by `ed8b15b50`._ Files v4 bugs 183 ("last last week") and 184 (the wardrobe tools' household wear count), both OPEN and both Faithful in v5 — a future fix commit in v4 is the PORT row, not this one | — | NO-PORT (recorded by `/dogfood`) |
 | `3c56a41e7` | 2026-10-09 | docs(bugs): file bug 185 — a restore orphans every archived vault and official store | **NO-PORT** (docs only — `bugs.md` + NEW `docs/developer/bugs/bug-185-restore-orphans-archived-stores.md`; committed LOCALLY by this port's `/dogfood` session at the human's request, NOT pushed). _Appended 2026-10-09 afternoon: now PUSHED; bug 185 FIXED by `ed8b15b50` in both modes — that row is the PORT._ Bug 185 (High, OPEN) is dogfood #141 + #159: v5 FIXED `replace` (P4.147, a ruled divergence) and the human ruled 2026-10-09 that `new-account` is a bug too — v5's fix is ORDERED (`dogfood-findings.md` #159). A v4 fix would retire `FRESH_STORE_RESIDUAL`'s carve — a PORT row then | — | NO-PORT (recorded by `/dogfood`) |
 | `ed8b15b50` | 2026-10-09 | fix: bugs 183-186 — wear wording and whose wear, restore store binding, unique store names | **CONVERGENCE (183, 184, 185) + PORT-NEW (186)** (classified 2026-10-09 from the hunks; 51 files, +2,351 / −280; no dependency move — version stamps only, `4.10.0-dev.142`). **183** (this port's filing, `5abcd01ea`): `lib/wardrobe/wear-display.ts` gains `formatWornRelative` (maps the `formatRelativeDays` rungs `last week` → `a week ago`, `last month` → `a month ago`; every other rung and the memory-recall labels untouched); `formatWornWhen` and both wardrobe tool handlers phrase wear dates through it. **184** (this port's filing): `WardrobeWearRepository.findSummariesForWearer` (household + the reader's own row in one read; new `WardrobeWearPerspective` type); `wardrobe_list` results gain `worn_by_you` / `last_worn_by_you_at` and write the note from the caller's side, `wear_count` / `last_worn_at` re-documented as household context; BOTH tool DESCRIPTIONS change (model-visible); `wardrobe_read` leads with the reader's own record, then the household. **185** (this port's filing, `3c56a41e7` — dogfood #141 + #159): NEW `lib/backup/restore/store-claims.ts` (`makeStoreClaimMap`, first claim wins, reasons `no-pointer` / `not-carried` / `wrong-kind` / claimed-by), `CharactersRepository.createBoundToVault` + store-backed `createBoundToStore` (slim row, nothing minted), the restore binds characters / projects / groups in BOTH modes, `uuid-remap` remaps the pointers in `new-account`, memories owner-checked by id, a bound store whose row fails at 22a is re-provisioned (never for an archived character — WARN `Archived character vault failed to restore; tombstone left unhealed`), carried-row detection extended to project files with the rest of a bound project's files deferred past 22h (WARN `Failed to restore deferred project file`); new lines `Restored entity falls back to a fresh store`, `Re-provisioned a character vault…` / `…an official store…` (+ ERROR twins), INFO `Restored entities bound to their archived stores`, `Character restored bound to its archived vault`. **⚠ v5 diverges in SHAPE:** P4.147's Shape A preserve-at-create covers `replace` only with its own storeType filter; v4's claim map is the convergence target — retire `FRESH_STORE_RESIDUAL`'s v4-fresh-store carve by measurement (§5.4), and dogfood #159's ordered `new-account` design (a raw→restored store-id map) should be RE-PLANNED as this port, not built to v5's own design. **186 (NEW, Medium, found by v4):** `DocMountPointsRepository.create` / `update` refuse a taken name (`MountPointNameTakenError`, WARN `Refused a document-store name another store holds`; new `findNameHolder`), the routes use it; `ensureMountPointNameUniqueIndex` on mount-index table init (collision repair, then `CREATE UNIQUE INDEX "idx_doc_mount_points_name_nocase" ON "doc_mount_points" ("name" COLLATE NOCASE)`, INFO `Mount-index: created the unique document-store name index`) — DDL.md's "deliberately no DB unique index" REVERSED; NEW `lib/mount-index/store-names.ts` + `reconcile-store-names.ts` (live vault `<Name> Character Vault`, namesakes ` (N)`, unlinked `storeType='character'` vaults retired to `<Name> Version <createdAt YYYY-MM-DDTHHMMSSZ> Store` unless a vault-less character bears the name; two-phase rename in one transaction) run at boot (`instrumentation.ts`, after the character-vault backfill), at the end of a restore and a `.qtap` import (`import-document-stores.ts` picks free names), and from `CharactersRepository` on create / rename / delete (WARN `Store-name reconcile after a character change failed`); the mount-points PATCH refuses renaming a live vault (409 `This vault belongs to <name> and is named after them. Rename the character to rename the vault.`). **💸 A boot pass that renames stores — run on a shared instance, v4 and v5 must agree or they will ping-pong names.** Help `mount-points.md`, `system-backup-restore.md`, `wardrobe.md`; v4 CLAUDE.md gains a store-names rule | Wardrobe: `tools/wardrobe_list.rs` + the `wardrobe_read` tool, `db/wardrobe_wear_stats.rs`, `services/wardrobe_wear_history.rs` (P4.D256 / P4.D262), SPA `apps/web/src/app/wardrobe/wear-display.ts` (+ `wardrobe-item-row.ts`, `item-editor/wear-history-section.ts`, `screens/prospero/wardrobe/project-wardrobe-manager.ts`; P4.D261). Restore: `services/backup/restore/orchestrator.rs` (`restore_one_character`, P4.147 Shape A, P4.158 backfill), `db/store_backed.rs`, the uuid remap; `system_restore_state` (`FRESH_STORE_RESIDUAL`, `FRESH_TARGET_UPLOADS`), the restore census whitelist (`RESTORE_TS_MESSAGES` both sides). Store names: `db/mount_index_case_repair.rs` (+ `mount_case_repair_equivalence`), `db/doc_mount_points.rs`, `db/character_vault.rs`, `db/ensure_official_store.rs`, `services/builtin_mounts.rs`, `services/quilltap_import/document_stores.rs`, the characters create/rename/delete paths, `api/` mount-points create/PATCH, `quilltap-host` boot sequence; possibly `fresh_schema.json` (the NOCASE index — measure). Reddens (predicted): `system_restore_state`, `system_backup_equivalence`, the restore census, `mount_case_repair_equivalence`, `wardrobe_*` tool / routes families, `memory_tasks_equivalence` / `autonomous_rooms_routes_equivalence` where they seed wear, `help_tree_equivalence` on a HEAD regen, possibly `provisioning_equivalence` | UNPROCESSED |
+| `01a83539d` | 2026-10-09 | feat(wardrobe): full-screen picture viewer with save to a document store | **PORT-NEW + PORT** (classified 2026-10-09 from the hunks; 30 files, +1,096 / −259; no schema, no dependency move — version stamps only, `4.10.0-dev.143`). **Server, PORT-NEW:** `app/api/v1/wardrobe/[itemId]/images/route.ts` — the GET gains `withActionDispatch({ 'save-targets' })` (`{ albums }` from NEW `lib/photos/photo-album-options.ts` `listAllPhotoAlbumOptions`: every `findEnabled()` store minus `getArchivedCharacterVaultMountPointIds()`, live-character vaults labelled with the character's name as `kind: 'character'` + `characterId` + `isUserCharacter`, General `kind: 'general'` `isDefault`, project official stores `project`, the rest `document-store`; sorted by kind order then `localeCompare` name; first option defaulted when General is absent; debug `[photo-album-options] Listed every store as a save target`) and the POST gains `save-to-store` (`SaveImageRequestSchema`; 400 `That picture does not belong to this wardrobe item` when the file is not one of the item's pictures; **409** `That store belongs to an archived character and cannot be written to`; `saveImageToAlbum` with caption defaulting to the item's title, attribution the operator `{ name ?? 'Quilltap', id, role: 'user' }`; INFO `Saved wardrobe picture to a store` / `Save to store rejected` / the two refusals; the item is NOT written, so an archived character's item may be copied OUT). `PhotoAlbumOption` moves from `chats/[id]/actions/photo-albums.ts` to the new lib module (type-only re-export). **Server, PORT (behaviour move on a ported route):** NEW `lib/photos/save-image-response.ts` (`savedImageResponse` — byte-identical success body; `saveImageErrorResponse` — `ALREADY_SAVED` → **409** `{ error, code, relativePath, keptAt }`, else 400) now serves the chat gallery save action (unchanged — it already 409'd), the wardrobe action, AND `chats/[id]/messages/[messageId]/route.ts`'s Save Image, which **moves from 400 to 409** on `ALREADY_SAVED`. **SPA, PORT-NEW:** shared `components/images/FullScreenImageViewer.tsx` frame (the chat gallery viewer `ChatGalleryImageViewModal.tsx` refactored onto it), `components/wardrobe/wardrobe-image-viewer.tsx` (Save / Download / Copy; from the editor, Previous/Next + arrow keys walk the history), clickable thumbnails in `wardrobe-item-row.tsx` / `wardrobe-item-thumbnail.tsx` / `WardrobeItemImageSection.tsx` (the slot and quick-pick choosers' thumbnails stay inert), `SaveImageDialog.tsx` gains a `{ kind: 'wardrobe' }` target (chat targets now carry `chatId` in the target), `BaseModal` `overlayClassName`, `wardrobe-control-dialog.tsx`, `lib/wardrobe/item-images-client.ts`. Help `wardrobe.md` gains "Viewing a Picture Properly"; `docs/developer/API.md` + `features/complete/wardrobe-item-images.md` updated | Server: `crates/quilltap-core/src/api/wardrobe_item_images.rs` (P4.D263 — `list` / `generate` / `upload` + the POST actions; the two new actions land here) + the web dispatch/route census (`COLLAPSE_CENSUS` row per new action), `api/chat_media.rs` (the photo-album options + gallery save — already 409; **the message Save Image arm at :341 maps `AlreadySaved` → `bad_request`, the 400 that moves**), `tools/photo.rs` `save_image_to_album`, the archived-vault id read (`character_vault`). SPA (P4.D261 / P4.D257): `apps/web/src/app/images/{save-image-dialog,chat-gallery-image-view-modal,photo-gallery-modal}.ts`, `apps/web/src/app/wardrobe/` (row, thumbnail, item editor image section), `core/core-contract.ts`. Reddens (predicted): the chat-media / message-route families where they pin the `ALREADY_SAVED` 400, `wardrobe_item_images` routes families on a HEAD regen (new actions), `help_tree_equivalence` on a HEAD regen | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 

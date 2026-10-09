@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — docs(porting): drift check records v4's wardrobe picture viewer
+
+_Docs-only change._
+
+`/driftcheck` found one more v4 commit, now thirteen past the `f5e953a3f` baseline: `01a83539d` adds a full-screen wardrobe picture viewer and two new wardrobe images actions (`save-targets`, `save-to-store`). It also changes a ported route: the message Save Image now answers `ALREADY_SAVED` with 409 instead of 400. Recorded as a PORT-NEW + PORT row. The regen rule is unchanged: pin required at `f5e953a3f`.
+
 #### 2026-10-09 — docs(porting): drift check records v4's fix for bugs 183-186
 
 _Docs-only change._
