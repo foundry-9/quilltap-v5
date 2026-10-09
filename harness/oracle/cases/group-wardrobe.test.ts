@@ -259,6 +259,17 @@ async function runCase(
     const body = await response.json();
     const ok = status >= 200 && status < 300;
 
+    // Unification (`f5e953a3f`): let v4's fire-and-forget work land before the
+    // dump — since P4.D263 the shared builder hangs pictures on the group item,
+    // and the item delete's picture cleanup runs the bridge's un-awaited
+    // `refreshStats(...).catch(() => {})` (a dynamic `import('./index')` defers
+    // the stats write past the handler's return). The dump records the
+    // EVENTUAL state; v5 refreshes synchronously inside the write. (The
+    // transfers case's flush, `wardrobe-transfers.test.ts`.)
+    for (let i = 0; i < 10; i++) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+
     const midb = getRawMountIndexDatabase();
     if (!midb) throw new Error('mount-index DB handle unavailable for dump');
     const tables: Record<string, unknown> = {};
