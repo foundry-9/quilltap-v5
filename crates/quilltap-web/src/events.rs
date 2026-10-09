@@ -57,6 +57,7 @@ pub async fn events(State(state): State<SharedState>) -> AxumResponse {
         return (StatusCode::SERVICE_UNAVAILABLE, "server failed to start").into_response();
     };
     let (mut rx, backlog) = subscribe_with_backlog(host);
+    let mut stop = state.shutdown.subscribe();
 
     let (tx, body_rx) = tokio::sync::mpsc::channel::<Result<Vec<u8>, std::io::Error>>(64);
     tokio::spawn(async move {
@@ -95,6 +96,10 @@ pub async fn events(State(state): State<SharedState>) -> AxumResponse {
                     Err(RecvError::Lagged(_)) => continue,
                     Err(RecvError::Closed) => break,
                 },
+                // Shutdown: end the stream so the graceful close can finish
+                // (v4 closes every WebSocket client with 1001 first).
+                // (The `Ref` `wait_for` yields is not `Send`; drop it inside.)
+                _ = async { let _ = stop.wait_for(|stopping| *stopping).await; } => break,
                 _ = keep_alive.tick() => {
                     if tx.send(Ok(b": keep-alive\n\n".to_vec())).await.is_err() {
                         break;

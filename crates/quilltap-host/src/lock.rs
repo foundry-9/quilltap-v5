@@ -732,6 +732,11 @@ pub fn release_instance_lock(lock_path: &Path) {
     let _ = write_lock_file(lock_path, &updated);
     let _ = std::fs::remove_file(lock_path);
     forget_lock_owner(lock_path);
+    tracing::info!(
+        lockPath = %lock_path.display(),
+        pid,
+        "Instance lock released"
+    );
 }
 
 /// The lock path for an instance base dir (v4 `getInstanceLockPath()` =

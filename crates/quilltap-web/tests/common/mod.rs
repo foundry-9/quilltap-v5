@@ -370,6 +370,7 @@ pub fn materialize_subprompts_instance() -> tempfile::TempDir {
 
 /// Boot + serve on an ephemeral port; returns the bound address + state.
 /// `configure` tweaks the `HostConfig` (spine factory, terminal toggle, …).
+#[allow(dead_code)]
 pub async fn serve_instance(
     base_dir: &Path,
     configure: impl FnOnce(HostConfig) -> HostConfig,

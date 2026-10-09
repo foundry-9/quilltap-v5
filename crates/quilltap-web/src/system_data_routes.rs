@@ -396,6 +396,9 @@ pub async fn system_tools_post(
     // P4.9G4: the import legs need the raw headers so they can re-drive the
     // multipart parser over the buffered body (v4 branches on `content-type`).
     headers: axum::http::HeaderMap,
+    // dogfood #158: the router's body-limit marker rides the extensions; the
+    // multipart re-drive must carry it or axum caps the upload at 2 MB.
+    extensions: axum::http::Extensions,
     body: axum::body::Bytes,
 ) -> AxumResponse {
     // `action` is the only key this verb reads off the URL (every other value
@@ -518,10 +521,10 @@ pub async fn system_tools_post(
         // ── P4.9G4 ──
         "export" => crate::qtap_routes::export_download(&state, &body).await,
         "import-preview" => {
-            crate::qtap_routes::import_preview(&state, &headers, body.clone()).await
+            crate::qtap_routes::import_preview(&state, &headers, &extensions, body.clone()).await
         }
         "import-execute" => {
-            crate::qtap_routes::import_execute(&state, &headers, body.clone()).await
+            crate::qtap_routes::import_execute(&state, &headers, &extensions, body.clone()).await
         }
         // === P4.9K2: Summon From Lore (v4 `handleAIImportStream`, `route.ts:
         // 1190-1260`) — the hand-rolled body read + its two 400s run inside the

@@ -244,7 +244,7 @@ fn main() {
         // --spa-dir → QUILLTAP_SPA_DIR → beside the binary → placeholders.
         let spa_dir = quilltap_web::spa::resolve_spa_dir_for_process(args.spa_dir.clone());
         let state = web_state(startup, version, base_dir, spa_dir.clone());
-        let router = build_router(state);
+        let router = build_router(std::sync::Arc::clone(&state));
 
         let addr: SocketAddr = format!("{}:{}", args.host, args.port)
             .parse()
@@ -267,10 +267,29 @@ fn main() {
                  QUILLTAP_SPA_DIR, or set the dist down beside the binary as ./spa."
             ),
         }
-        if let Err(e) = quilltap_web::serve(router, addr).await {
+        // v4 `server.ts` + `client.ts`: on SIGINT / SIGTERM, release the
+        // engine (and with it the instance lock), then close HTTP gracefully;
+        // a second signal or a close past the timeout exits at once.
+        let shutdown = async move {
+            let signal = quilltap_web::shutdown_signal().await;
+            quilltap_web::begin_shutdown(&state, signal).await;
+            tokio::spawn(async {
+                tokio::select! {
+                    signal = quilltap_web::shutdown_signal() => {
+                        tracing::warn!(target: "quilltap::server", signal, "Forced exit on second signal");
+                    }
+                    _ = tokio::time::sleep(quilltap_web::SHUTDOWN_TIMEOUT) => {
+                        tracing::warn!(target: "quilltap::server", "Shutdown timed out, forcing exit");
+                    }
+                }
+                std::process::exit(1);
+            });
+        };
+        if let Err(e) = quilltap_web::serve(router, addr, shutdown).await {
             eprintln!("quilltap-web: server error: {e}");
             std::process::exit(1);
         }
+        tracing::info!(target: "quilltap::server", "HTTP server closed");
     });
 }
 

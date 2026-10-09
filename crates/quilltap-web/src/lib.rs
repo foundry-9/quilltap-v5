@@ -768,14 +768,80 @@ pub fn web_state(
         version,
         spa_dir,
         base_dir,
+        shutdown: tokio::sync::watch::channel(false).0,
     })
 }
 
-/// Serve the router on `addr` until the process ends. Returns the bound
-/// address (useful when `addr` carries port 0 — the tests bind ephemeral).
-pub async fn serve(router: Router, addr: SocketAddr) -> std::io::Result<()> {
+/// Serve the router on `addr` until `shutdown` resolves, then close
+/// gracefully (in-flight requests finish; `/api/events` streams end on the
+/// state's shutdown flag).
+pub async fn serve(
+    router: Router,
+    addr: SocketAddr,
+    shutdown: impl std::future::Future<Output = ()> + Send + 'static,
+) -> std::io::Result<()> {
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, router).await
+    serve_listener(router, listener, shutdown).await
+}
+
+/// [`serve`] over an already-bound listener (the tests bind port 0).
+pub async fn serve_listener(
+    router: Router,
+    listener: tokio::net::TcpListener,
+    shutdown: impl std::future::Future<Output = ()> + Send + 'static,
+) -> std::io::Result<()> {
+    axum::serve(listener, router)
+        .with_graceful_shutdown(shutdown)
+        .await
+}
+
+/// How long the graceful close may take before the process exits anyway
+/// (v4 `server.ts`'s 5-second `Shutdown timed out, forcing exit` timer).
+pub const SHUTDOWN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Resolve on the first SIGINT or SIGTERM (Ctrl-C elsewhere), naming it as
+/// v4's `shutdown(signal)` does.
+pub async fn shutdown_signal() -> &'static str {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+        let (Ok(mut int), Ok(mut term)) = (
+            signal(SignalKind::interrupt()),
+            signal(SignalKind::terminate()),
+        ) else {
+            // No handler could be installed: never resolve, as before.
+            return std::future::pending().await;
+        };
+        tokio::select! {
+            _ = int.recv() => "SIGINT",
+            _ = term.recv() => "SIGTERM",
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        if tokio::signal::ctrl_c().await.is_err() {
+            return std::future::pending().await;
+        }
+        "SIGINT"
+    }
+}
+
+/// v4's shutdown, both halves: `server.ts`'s `Shutting down` + closing every
+/// live stream, and `client.ts`'s `handleShutdown` (registered on the same
+/// SIGTERM / SIGINT) — close the three database clients and release the
+/// instance lock. v5 reaches the second half through the engine's own `Lock`
+/// verb: it stops the drivers, drops the `Db` (the writer thread exits once
+/// the drivers' clones are gone) and runs the host teardown, which releases
+/// the lock. Without this a stopped server left `quilltap.lock` behind with a
+/// fresh heartbeat, so v4 on another machine sharing the instance refused to
+/// open it for the five-minute stale window.
+pub async fn begin_shutdown(state: &SharedState, signal: &str) {
+    tracing::info!(target: "quilltap::server", signal, "Shutting down");
+    state.shutdown.send_replace(true);
+    if let Some(host) = state.host() {
+        use quilltap_core::api::{QuilltapCore, Request};
+        let _ = host.core().dispatch(Request::Lock).await;
+    }
 }
 
 #[cfg(test)]

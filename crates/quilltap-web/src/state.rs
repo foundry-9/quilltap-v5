@@ -37,6 +37,11 @@ pub struct WebState {
     pub spa_dir: Option<PathBuf>,
     /// The instance root (`<base>/files` is the disk storage backend root).
     pub base_dir: PathBuf,
+    /// Flips to `true` once a shutdown signal arrives ([`crate::begin_shutdown`]).
+    /// Long-lived streams (`/api/events`) watch it and end, as v4's shutdown
+    /// closes every WebSocket client before `server.close()` — otherwise the
+    /// graceful HTTP close waits on a stream that never finishes.
+    pub shutdown: tokio::sync::watch::Sender<bool>,
 }
 
 pub type SharedState = Arc<WebState>;

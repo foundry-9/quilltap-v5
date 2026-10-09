@@ -14,7 +14,7 @@
 
 use axum::body::{Body, Bytes};
 use axum::extract::Request;
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::{Extensions, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response as AxumResponse};
 use serde_json::Value;
 
@@ -85,11 +85,24 @@ fn validate_export_file(export: &QuilltapExport) -> bool {
         && manifest.get("version").and_then(Value::as_str) == Some("1.0")
 }
 
+/// Rebuild a `Request` over the already-buffered body for [`FormData`], with the
+/// ORIGINAL request's headers AND extensions. The extensions carry the router's
+/// `DefaultBodyLimit` (10 GB, `lib.rs`); a bare `Request::new` has none, so
+/// axum's `Multipart` fell back to its 2 MB default and every `.qtap` upload
+/// past 2 MB answered 400 `No file provided` (dogfood #158).
+fn buffered_request(headers: &HeaderMap, extensions: &Extensions, body: Bytes) -> Request {
+    let mut req = Request::new(Body::from(body));
+    *req.headers_mut() = headers.clone();
+    *req.extensions_mut() = extensions.clone();
+    req
+}
+
 /// Load the uploaded `.qtap` for the import legs: the multipart `file` part when
 /// the request is `multipart/form-data` (v4's live path — the client always holds
 /// a `File`), else the JSON body's `exportData` (v4's legacy leg).
 async fn load_export(
     headers: &HeaderMap,
+    extensions: &Extensions,
     body: Bytes,
     missing_json_field: &str,
     leg_failure: &str,
@@ -102,8 +115,7 @@ async fn load_export(
     if content_type.contains("multipart/form-data") {
         // The body is already buffered, so rebuild a `Request` for the shared
         // multipart parser (v4 buffers too — `await req.formData()`).
-        let mut req = Request::new(Body::from(body));
-        *req.headers_mut() = headers.clone();
+        let req = buffered_request(headers, extensions, body);
         let form = match FormData::from_request(req, &()).await {
             Ok(f) => f,
             Err(_) => return Err(bad_request("No file provided")),
@@ -162,9 +174,15 @@ fn bad_request(message: &str) -> AxumResponse {
 /// `POST /api/v1/system/tools?action=import-preview` — v4 `handleImportPreview`
 /// (`route.ts:655`). Read-only: it counts what an import would do and flags
 /// conflicts, and writes nothing.
-pub async fn import_preview(state: &SharedState, headers: &HeaderMap, body: Bytes) -> AxumResponse {
+pub async fn import_preview(
+    state: &SharedState,
+    headers: &HeaderMap,
+    extensions: &Extensions,
+    body: Bytes,
+) -> AxumResponse {
     let export = match load_export(
         headers,
+        extensions,
         body,
         "Missing required field: exportData",
         "Failed to preview import",
@@ -220,15 +238,19 @@ pub async fn import_preview(state: &SharedState, headers: &HeaderMap, body: Byte
 /// [`system_qtap::run_import_execute`] tail. NOTE: unlike preview, v4's execute
 /// leg does NOT validate the export manifest — a malformed export reaches
 /// `executeImport`'s own catch.
-pub async fn import_execute(state: &SharedState, headers: &HeaderMap, body: Bytes) -> AxumResponse {
+pub async fn import_execute(
+    state: &SharedState,
+    headers: &HeaderMap,
+    extensions: &Extensions,
+    body: Bytes,
+) -> AxumResponse {
     let content_type = headers
         .get("content-type")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
 
     let (export, data_key_absent, options) = if content_type.contains("multipart/form-data") {
-        let mut req = Request::new(Body::from(body));
-        *req.headers_mut() = headers.clone();
+        let req = buffered_request(headers, extensions, body);
         let form = match FormData::from_request(req, &()).await {
             Ok(f) => f,
             Err(_) => return bad_request("No file provided"),

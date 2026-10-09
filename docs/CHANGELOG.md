@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — fix(web): release the instance lock on SIGINT/SIGTERM; .qtap imports over 2 MB reach the loader
+
+_Versions: web 0.0.227, host 0.0.194._
+
+Dogfood #153: `quilltap-web` installed no signal handler, so stopping it left `data/quilltap.lock` behind with a fresh heartbeat. The CLI then refused the lock for five minutes, and a v4 on another machine sharing the instance would refuse it for the stale window. On SIGINT or SIGTERM the server now logs `Shutting down {signal}`, ends every `/api/events` stream, dispatches the engine's `Lock` verb (drivers stopped, database dropped, instance lock released), closes HTTP gracefully and logs `HTTP server closed`, matching v4's `server.ts` and `client.ts` handlers, including the 5-second `Shutdown timed out, forcing exit` and the second-signal `Forced exit on second signal`. `release_instance_lock` now logs v4's `Instance lock released {lockPath, pid}`. New test `graceful_shutdown`.
+
+Dogfood #158: the `.qtap` import legs (`/api/v1/system/tools?action=import-preview|import-execute`) rebuilt a bare request for the multipart parser without the original's extensions, where the router's 10 GB body limit lives, so axum applied its 2 MB default and every upload over 2 MB answered 400 `No file provided`. The SPA's Import dialog always uses these legs. The rebuilt request now carries the headers and extensions. New test `qtap_import_large_multipart`.
+
 #### 2026-10-09 — docs(commands): /dogfood preflights the build and the data copy
 
 _Docs-only change._
