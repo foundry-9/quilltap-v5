@@ -137,6 +137,10 @@ interface CaseSpec {
   provider?: ProviderMode;
   /** Remove the Lantern Backgrounds pointer, so the store write throws. */
   dropLantern?: boolean;
+  /** P4.D263: raw SQL applied to main before the case runs (the Rust harness
+   *  applies the same) — e.g. re-pointing a profile at an `aspectRatio`
+   *  provider, which the committed pair does not carry. */
+  sql?: string[];
 }
 
 const SAFE: CannedClassification = { isDangerous: false, score: 0.1, categories: [] };
@@ -568,6 +572,50 @@ function buildCases(): CaseSpec[] {
       dropLantern: true,
     },
 
+    // ── P4.D263 (v4 `b3f937076`): `options.orientation` ──────────────────────
+    // A shape rather than a size, resolved onto the provider's own mechanism
+    // and OUTRANKING `size` / `aspectRatio` (`route.ts:73-82`, `:367`).
+    {
+      name: 'generate_orientation_portrait_size',
+      body: { prompt, profileId: PROFILE_MAIN, options: { orientation: 'portrait' } },
+    },
+    {
+      name: 'generate_orientation_landscape_size',
+      body: { prompt, profileId: PROFILE_MAIN, options: { orientation: 'landscape' } },
+    },
+    {
+      name: 'generate_orientation_square_size',
+      body: { prompt, profileId: PROFILE_MAIN, options: { orientation: 'square' } },
+    },
+    {
+      // An explicit `size` is honoured only until a shape is asked for.
+      name: 'generate_orientation_outranks_size',
+      body: {
+        prompt,
+        profileId: PROFILE_MAIN,
+        options: { orientation: 'portrait', size: '1024x1024' },
+      },
+    },
+    {
+      // The GROK profile re-pointed at Google's Imagen — an `aspectRatio`
+      // provider — for this case alone.
+      name: 'generate_orientation_aspect_ratio',
+      body: { prompt, profileId: PROFILE_UNCENSORED, options: { orientation: 'landscape', aspectRatio: '1:1' } },
+      sql: [
+        "UPDATE connection_profiles SET provider = 'GOOGLE', modelName = 'imagen-4.0-generate-001' WHERE id = 'aaaa0000-0000-4000-8000-000000000002'",
+      ],
+    },
+    {
+      // GROK's own mechanism (whatever its declaration says — a size, an
+      // aspect ratio, or the prompt-hint fallback).
+      name: 'generate_orientation_grok',
+      body: { prompt, profileId: PROFILE_UNCENSORED, options: { orientation: 'portrait' } },
+    },
+    {
+      name: 'zod_orientation_invalid',
+      body: { prompt, profileId: PROFILE_MAIN, options: { orientation: 'diagonal' } },
+    },
+
     // ── `generateImageSchema` (every arm answers `Validation error` 400) ─────
     { name: 'zod_prompt_missing', body: { profileId: PROFILE_MAIN } },
     { name: 'zod_prompt_empty', body: { prompt: '', profileId: PROFILE_MAIN } },
@@ -690,6 +738,9 @@ async function runCase(
     await rawQuery('DELETE FROM instance_settings WHERE key = ?', [
       'lanternBackgroundsMountPointId',
     ]);
+  }
+  for (const sql of c.sql ?? []) {
+    await rawQuery(sql);
   }
 
   const RealDate = Date;

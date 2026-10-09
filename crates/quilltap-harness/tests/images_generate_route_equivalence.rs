@@ -602,6 +602,9 @@ struct Case {
     classify: DangerClassificationResult,
     provider: ProviderMode,
     drop_lantern: bool,
+    /// P4.D263: raw SQL applied to main before the case runs — the oracle's
+    /// `sql` (e.g. re-pointing a profile at an `aspectRatio` provider).
+    plant_sql: &'static [&'static str],
 }
 
 impl Case {
@@ -618,6 +621,7 @@ impl Case {
             classify: safe(),
             provider: ProviderMode::Webp,
             drop_lantern: false,
+            plant_sql: &[],
         }
     }
 }
@@ -799,6 +803,42 @@ fn cases() -> Vec<Case> {
         Case {
             drop_lantern: true,
             ..ok("generate_lantern_unprovisioned")
+        },
+        // ── P4.D263 (v4 `b3f937076`): `options.orientation` — a shape, resolved
+        // onto the provider's own mechanism and OUTRANKING `size` / `aspectRatio`.
+        Case {
+            options: Some(json!({ "orientation": "portrait" })),
+            ..ok("generate_orientation_portrait_size")
+        },
+        Case {
+            options: Some(json!({ "orientation": "landscape" })),
+            ..ok("generate_orientation_landscape_size")
+        },
+        Case {
+            options: Some(json!({ "orientation": "square" })),
+            ..ok("generate_orientation_square_size")
+        },
+        Case {
+            options: Some(json!({ "orientation": "portrait", "size": "1024x1024" })),
+            ..ok("generate_orientation_outranks_size")
+        },
+        Case {
+            profile_id: Some(json!(PROFILE_UNCENSORED)),
+            options: Some(json!({ "orientation": "landscape", "aspectRatio": "1:1" })),
+            plant_sql: &[
+                "UPDATE connection_profiles SET provider = 'GOOGLE', modelName = \
+                 'imagen-4.0-generate-001' WHERE id = 'aaaa0000-0000-4000-8000-000000000002'",
+            ],
+            ..ok("generate_orientation_aspect_ratio")
+        },
+        Case {
+            profile_id: Some(json!(PROFILE_UNCENSORED)),
+            options: Some(json!({ "orientation": "portrait" })),
+            ..ok("generate_orientation_grok")
+        },
+        Case {
+            options: Some(json!({ "orientation": "diagonal" })),
+            ..ok("zod_orientation_invalid")
         },
     ];
 
@@ -985,6 +1025,13 @@ fn images_generate_matches_oracle() {
                 Ok(())
             })
             .expect("set the chat's Concierge state");
+        }
+        for sql in c.plant_sql {
+            db.write_blocking(move |ws| {
+                ws.main().connection().execute(sql, [])?;
+                Ok(())
+            })
+            .expect("apply the case's planted SQL");
         }
         if c.drop_lantern {
             db.write_blocking(|ws| {

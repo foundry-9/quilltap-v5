@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(images): `options.orientation` on the images generate route (P4.D263 item 11)
+
+_Versions: core 0.0.1260._
+
+`POST /api/v1/images` accepts v4's `options.orientation` (`portrait` / `landscape` / `square`). The shared params builder resolves the shape onto the provider's own mechanism, and it outranks `size` / `aspectRatio`. Any other value is the 400 `Validation error`. Without it, an explicit size is honoured as before. The header comments that said the route "resolves NO orientation" are rewritten. `images_generate_route_equivalence` gains seven rows: three OpenAI sizes, one orientation over an explicit size, one Imagen aspect ratio via a planted re-point, one Grok, and an invalid value. Red-first: six rows go red with the orientation dropped.
+
 #### 2026-10-08 — feat(settings): the `wardrobeImageSettings` PUT arm and the help tool's images echo (P4.D263 item 10)
 
 _Versions: core 0.0.1259._

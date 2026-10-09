@@ -31,8 +31,9 @@
 //!   the asking chat (v4 `8bd080267`), its pre-flight reroute picks the first
 //!   `isDangerousCompatible` profile rather than consulting the Concierge
 //!   desk, its post-hoc refusal failover asks a CONNECTION-profile understudy
-//!   that can draw, and it resolves NO orientation (`params_builder`'s
-//!   `orientation: None` arm exists for this caller).
+//!   that can draw, and it resolves an orientation ONLY when the caller asks
+//!   for a shape (`options.orientation`, v4 `b3f937076`) — otherwise
+//!   `params_builder`'s `orientation: None` arm honours the explicit size.
 //! * **The route-level timestamps are the route's own.** The upload / import
 //!   receipts stamp `new Date().toISOString()` at `route.ts:443-444` /
 //!   `:494-495`, NOT the row's — so they are minted values, normalized in the
@@ -1287,9 +1288,11 @@ mod validate_image_file_tests {
 // * the failover reroute picks the FIRST `isDangerousCompatible` profile
 //   other than the current one, rather than consulting the Concierge desk's
 //   `uncensoredImageProfileId` the way the tool's `reroute_image_profile` does;
-// * NO orientation is resolved (`params_builder`'s `orientation: None` arm
-//   exists for exactly this caller — "this route's caller passes an explicit
-//   size and means it");
+// * an orientation is resolved only when the body asks for a shape
+//   (`options.orientation`, v4 `b3f937076` — the avatar picker sends
+//   `portrait`); the builder resolves it per provider and lets it OUTRANK
+//   `size` / `aspectRatio`. Absent, the `orientation: None` arm honours the
+//   explicit size as given;
 // * the whole Concierge block sits in one try/catch that FAILS SAFE — "never
 //   block on the Concierge errors" — so a classification failure continues
 //   with the ORIGINAL profile;
@@ -1370,6 +1373,9 @@ struct GenerateBody {
     chat_id: Option<String>,
     /// The parsed `options` bag, already narrowed to the five override keys.
     overrides: crate::image_gen::params_builder::ImageGenOverrides,
+    /// `options.orientation: z.enum(['portrait','landscape','square'])
+    /// .optional()` (v4 `b3f937076`) — a shape, not a size.
+    orientation: Option<crate::image_gen::Orientation>,
 }
 
 /// v4 `generateImageSchema.parse(body)`. A failure is a ZodError out of the
@@ -1440,6 +1446,7 @@ fn parse_generate_body(
     // `options` is `.optional()`; the handler's `= {}` default only applies to
     // an ABSENT key. A present non-object (null included) is a ZodError.
     let mut overrides = crate::image_gen::params_builder::ImageGenOverrides::default();
+    let mut orientation = None;
     if let Some(v) = options {
         let o = v.as_object().ok_or_else(bad)?;
         // `n: z.int().min(1).max(10).optional()`.
@@ -1481,6 +1488,16 @@ fn parse_generate_body(
                 _ => return Err(bad()),
             }
         }
+        // `orientation: z.enum(['portrait','landscape','square']).optional()`.
+        if let Some(v) = o.get("orientation") {
+            use crate::image_gen::Orientation;
+            orientation = Some(match v.as_str() {
+                Some("portrait") => Orientation::Portrait,
+                Some("landscape") => Orientation::Landscape,
+                Some("square") => Orientation::Square,
+                _ => return Err(bad()),
+            });
+        }
     }
 
     Ok(GenerateBody {
@@ -1489,6 +1506,7 @@ fn parse_generate_body(
         tags,
         chat_id,
         overrides,
+        orientation,
     })
 }
 
@@ -1876,13 +1894,14 @@ async fn run_images_generate(
     // ── the provider call, through the Concierge's failover chokepoint ────────
     // (v4 `8bd080267`). One call against one connection profile: the shared
     // builder gives this route the profile's stored defaults, LoRAs and
-    // residual options with NO orientation ("this route's caller passes an
-    // explicit size and means it"). A refusal is retried once on an uncensored
+    // residual options; an explicit size is honoured as given unless the
+    // caller asked for a shape (`options.orientation`), which the builder
+    // resolves per provider and lets outrank the size. A refusal is retried once on an uncensored
     // CONNECTION-profile understudy that can draw; the trail labels the rows
     // `connection` (no `profileKind` key) and is NOT persisted — this route has
     // no message to carry it. A failure escapes to the middleware's flat 500,
     // as v4's unwrapped throw does.
-    let (prompt, overrides) = (&body.prompt, &body.overrides);
+    let (prompt, overrides, orientation) = (&body.prompt, &body.overrides, body.orientation);
     let attempt =
         |candidate: crate::services::dangerous_content::image_failover::FailoverProfile,
          key: String| async move {
@@ -1895,7 +1914,7 @@ async fn run_images_generate(
                 },
                 prompt,
                 overrides,
-                None,
+                orientation,
                 "dall-e-3",
                 &crate::image_gen_data::image_declarations_for(&candidate_provider),
                 &crate::image_gen::params_builder::ImageParamsLogContext {

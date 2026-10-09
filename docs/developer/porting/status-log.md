@@ -173184,3 +173184,13 @@ red-first in its own unit), `avatar_job_tier3_equivalence` and
   the help echo removed → red. **Fixtures moved:** `help-tools-tier2.json` (user A's
   `wardrobeImageSettings`, a textual insert) — the help-tools oracle is invalidated and was
   regenerated; the settings-routes oracle was regenerated for its new cases.
+- **Unit 7 — item 11 (`options.orientation` on `/api/v1/images`).** `GenerateBody.orientation`
+  (the enum parse, else `Validation error`), passed to `build_image_gen_params` in place of
+  `None`; the three "resolves NO orientation" comments rewritten to v4's `b3f937076` wording.
+  `images-generate-route.test.ts` gains an `sql` plant field + seven rows; the Rust family a
+  `plant_sql` field + the same seven. Measured through v4's real builder: OpenAI portrait /
+  landscape / square → `1024x1536` / `1536x1024` / `1024x1024`, orientation over `size:
+  1024x1024` → `1024x1536`, Imagen landscape over `aspectRatio: 1:1` → `16:9`, Grok portrait →
+  `aspectRatio 3:4`. Red-first: `None` restored at the call → 6 rows red. The oracle (58 cases)
+  regenerated at the pin `/tmp/qt-v4-pin-p4d263-f5e953a3f`. The SPA's avatar-picker `portrait` /
+  Shape line is not this lane's (no `apps/web` ownership).
