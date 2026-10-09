@@ -1410,3 +1410,123 @@ describe('WardrobeControlDialogInner — the `characters` realtime hook (R-H)', 
     expect(seen.length).toBe(before);
   });
 });
+
+/**
+ * P4.D277 — v4 `01a83539d` `wardrobe-control-dialog.tsx`: `viewingImage`
+ * (`:263-267`), `handleOpenImage` (`:613-629` — a borrowed row through its
+ * origin's wardrobe, else the same rule as every other row action; no
+ * picture → nothing), `editorOpen` gains `|| viewingImage` (`:1198-1204`),
+ * the rows' `onOpenImage` (`:1460`), and the viewer mounted before the inline
+ * editor with no note and no prev/next (`:1682-1691`).
+ */
+describe('WardrobeControlDialogInner — the row picture viewer (v4 01a83539d)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    TestBed.resetTestingModule();
+    document.body.style.overflow = '';
+  });
+
+  type Viewing = {
+    handleOpenImage(item: WardrobeItemDto): void;
+    viewingImage(): { item: WardrobeItemDto; container: { scope: string; id: string | null } } | null;
+  };
+  const v = (component: WardrobeControlDialogInner): Viewing => component as unknown as Viewing;
+  const frame = (): HTMLElement | null => document.body.querySelector('qt-full-screen-image-viewer');
+
+  const PICTURED_HAT = dto({ id: 'hat', title: 'Hat', types: ['accessories'], imageFileId: 'file-hat' });
+  const pictured = (partial: Partial<WardrobeItemDto> & { id: string }): WardrobeItemDto =>
+    dto({ imageFileId: `file-${partial.id}`, ...partial });
+
+  function picturedRoute(req: AnyRequest): Record<string, unknown> | Error {
+    if ((req.type as string) === 'characterWardrobeList') {
+      return { wardrobeItems: (req as { characterId?: string }).characterId === 'c1' ? [SHIRT, PICTURED_HAT] : [] };
+    }
+    return defaultRoute(req);
+  }
+
+  it("a character-owned row opens through the character's wardrobe", async () => {
+    const { fixture, component } = await renderInner(null, picturedRoute);
+    v(component).handleOpenImage(PICTURED_HAT);
+    await settle(fixture);
+    expect(v(component).viewingImage()!.container).toEqual({ scope: 'character', id: 'c1' });
+    const dialog = frame()!.querySelector('[role="dialog"]')!;
+    expect(dialog.getAttribute('aria-label')).toBe('Picture of Hat');
+    expect(frame()!.querySelector('img')!.getAttribute('src')).toBe('/api/v1/files/file-hat');
+    // No note and no prev/next from the row (v4 :1682-1691).
+    expect(frame()!.querySelector('.qt-bg-overlay-caption .text-xs')).toBeNull();
+    expect(frame()!.querySelector('button[title="Next image (Right Arrow)"]')).toBeNull();
+    expect(frame()!.querySelector('button[title="Previous image (Left Arrow)"]')).toBeNull();
+  });
+
+  it("a borrowed row opens through its origin's wardrobe — in the character view and in a container view", async () => {
+    const { fixture, component } = await renderInner(null, picturedRoute);
+    const borrowed = pictured({
+      id: 'cloak',
+      title: 'Estate Cloak',
+      characterId: null,
+      origin: { scope: 'project', id: 'p1', name: 'The Estate' },
+    } as Partial<WardrobeItemDto> & { id: string });
+    v(component).handleOpenImage(borrowed);
+    expect(v(component).viewingImage()!.container).toEqual({ scope: 'project', id: 'p1' });
+    inner(component).selectedContainer.set({ scope: 'group', id: 'g1' });
+    await settle(fixture);
+    v(component).handleOpenImage(borrowed);
+    expect(v(component).viewingImage()!.container).toEqual({ scope: 'project', id: 'p1' });
+  });
+
+  it('a General archetype with no origin in the character view opens through General', async () => {
+    const { component } = await renderInner(null, picturedRoute);
+    const cape = pictured({ id: 'cape', title: 'Cape', characterId: null });
+    v(component).handleOpenImage(cape);
+    expect(v(component).viewingImage()!.container).toEqual({ scope: 'general', id: null });
+  });
+
+  it('in a project container view, a row with no origin opens through the selected container', async () => {
+    const { fixture, component } = await renderInner(null, picturedRoute);
+    inner(component).selectedContainer.set({ scope: 'project', id: 'p1' });
+    await settle(fixture);
+    v(component).handleOpenImage(pictured({ id: 'apron', title: 'Apron', characterId: null }));
+    expect(v(component).viewingImage()!.container).toEqual({ scope: 'project', id: 'p1' });
+  });
+
+  it('a row with no picture opens nothing', async () => {
+    const { fixture, component } = await renderInner(null, picturedRoute);
+    v(component).handleOpenImage(HAT);
+    await settle(fixture);
+    expect(v(component).viewingImage()).toBeNull();
+    expect(frame()).toBeNull();
+  });
+
+  it("the list rows opt in, and a row thumbnail's button opens the viewer", async () => {
+    const { fixture, component } = await renderInner(null, picturedRoute);
+    const rows = fixture.debugElement.queryAll(By.css('qt-wardrobe-item-row'));
+    expect(rows.every((r) => r.componentInstance.canOpenImage() === true)).toBe(true);
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('button[aria-label="View the picture of Hat"]')!
+      .click();
+    await settle(fixture);
+    expect(v(component).viewingImage()!.item.id).toBe('hat');
+    expect(frame()).toBeTruthy();
+  });
+
+  it('with the viewer open, a backdrop click and an Escape leave the dialog open; ONE Escape closes the viewer only (§J.3)', async () => {
+    const { fixture, component } = await renderInner(null, picturedRoute);
+    let closes = 0;
+    component.closed.subscribe(() => (closes += 1));
+    v(component).handleOpenImage(PICTURED_HAT);
+    await settle(fixture);
+    expect(frame()).toBeTruthy();
+    // The dialog's backdrop is gated by editorOpen while the viewer is up.
+    (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('.qt-dialog-overlay')!.click();
+    await settle(fixture);
+    expect(closes).toBe(0);
+    // Listener order: the dialog's host Escape listener (registered first)
+    // reads editorOpen() === true BEFORE the viewer's listener clears
+    // viewingImage — so one Escape closes the viewer and nothing else.
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    await settle(fixture);
+    expect(v(component).viewingImage()).toBeNull();
+    expect(frame()).toBeNull();
+    expect(closes).toBe(0);
+  });
+});

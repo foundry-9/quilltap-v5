@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(spa): open a wardrobe row's picture full screen from the dialog — P4.D277 unit 9
+
+_Versions: SPA 0.5.831._
+
+The wardrobe dialog's rows now open their picture full screen (v4 `01a83539d`). `handleOpenImage` picks the container to address the images route through. A borrowed row goes through the wardrobe its `origin` names; otherwise it is the item's home in the character view, or the browsed container. A row with no picture opens nothing. The viewer mounts above the dialog and before the inline editor, with no note and no prev/next. While it is open, `editorOpen` keeps the dialog's backdrop and Escape from closing the dialog, so one Escape closes only the viewer. Seven new spec arms.
+
 #### 2026-10-09 — feat(spa): openable wardrobe thumbnails in the row (v4 01a83539d) — P4.D277 unit 8
 
 _Versions: SPA 0.5.830._

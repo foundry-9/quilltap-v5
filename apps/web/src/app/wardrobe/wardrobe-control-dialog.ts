@@ -48,6 +48,7 @@ import { WardrobeItemEditor } from './wardrobe-item-editor';
 import { WardrobeItemRow } from './wardrobe-item-row';
 import { WardrobeTransferDialog, type TransferMode } from './wardrobe-transfer-dialog';
 import { generateWardrobeItemImage } from './item-images.api';
+import { WardrobeImageViewer } from './wardrobe-image-viewer';
 import {
   sortAndFilterWardrobeItems,
   WARDROBE_LIST_SORTS,
@@ -132,6 +133,7 @@ type EditorIntent = 'create-single' | 'create-bundle';
     NgTemplateOutlet,
     AvatarGenerationPane,
     OutfitComposer,
+    WardrobeImageViewer,
     WardrobeInstructionsSection,
     WardrobeItemEditor,
     WardrobeItemRow,
@@ -409,6 +411,8 @@ type EditorIntent = 'create-single' | 'create-bundle';
                       canArchive
                       canGenerateImage
                       [generatingImageIds]="generatingImageIds()"
+                      canOpenImage
+                      (openImage)="handleOpenImage($event)"
                       (generateImage)="handleGenerateImage($event)"
                       (toggleArchived)="handleToggleArchived($event)"
                       (toggleDefault)="handleToggleDefault($event)"
@@ -596,6 +600,20 @@ type EditorIntent = 'create-single' | 'create-bundle';
             }
           </div>
     </ng-template>
+
+    <!-- A row's picture, full screen — above the dialog and the editor
+         (v4 01a83539d :1682-1691; no note, no prev/next). -->
+    @if (viewingImage(); as viewing) {
+      @if (viewing.item.imageFileId; as fileId) {
+        <qt-wardrobe-image-viewer
+          [itemId]="viewing.item.id"
+          [itemTitle]="viewing.item.title"
+          [container]="viewing.container"
+          [fileId]="fileId"
+          (closed)="viewingImage.set(null)"
+        />
+      }
+    }
 
     <!-- Inline editor — stacked on top of the dialog (v4 :1213-1246). -->
     @if ((editingItem() || creatingNew()) && selectedContainer(); as container) {
@@ -1105,7 +1123,9 @@ export class WardrobeControlDialogInner {
     Boolean(
       this.editingItem() ||
         this.creatingNew() ||
-        (this.transferringItem() && this.transferIntent()),
+        (this.transferringItem() && this.transferIntent()) ||
+        // v4 `01a83539d` `:1198-1204` — the picture viewer too.
+        this.viewingImage(),
     ),
   );
 
@@ -1125,6 +1145,30 @@ export class WardrobeControlDialogInner {
     } finally {
       this.updatingDefaultId.set(null);
     }
+  }
+
+  /**
+   * The row whose picture is open full screen, with the container its images
+   * route is addressed through (v4 `01a83539d` `:263-267`).
+   */
+  protected readonly viewingImage = signal<{
+    item: WardrobeItemDto;
+    container: WardrobeContainer;
+  } | null>(null);
+
+  /**
+   * Open a row's current picture full screen. A borrowed row is addressed
+   * through the wardrobe its origin names; otherwise the same rule as every
+   * other row action. (v4 `01a83539d` `:613-629`.)
+   */
+  protected handleOpenImage(item: WardrobeItemDto): void {
+    const container: WardrobeContainer | null = item.origin
+      ? { scope: item.origin.scope, id: item.origin.id }
+      : this.isCharacterScope()
+        ? homeContainerForItem(item)
+        : this.selectedContainer();
+    if (!container || !item.imageFileId) return;
+    this.viewingImage.set({ item, container });
   }
 
   /**

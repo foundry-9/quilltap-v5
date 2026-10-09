@@ -175646,3 +175646,29 @@ Branch `claude/wardrobe-images-spa-viewer-4a334b` (worktree
   shows) — a REGRESSION GUARD that passes on unported source by design (the
   source files stay UNTOUCHED; the arm trips if anyone makes a chooser
   thumbnail openable). Green 55/55 over the four files.
+
+### Unit 9 — the control dialog (W5c)
+
+- `wardrobe/wardrobe-control-dialog.ts`: `viewingImage = signal<{ item;
+  container } | null>` (v4 `:263-267` comment carried); `handleOpenImage(item)`
+  — `item.origin ? { scope, id } : isCharacterScope ? homeContainerForItem(item)
+  : selectedContainer`, bail without a container or `imageFileId` (v4
+  `:613-629`, doc carried); `editorOpen` gains `|| this.viewingImage()` (v4
+  `:1198-1204`); the list rows `canOpenImage` + `(openImage)=
+  "handleOpenImage($event)"` (v4 `:1460`); the viewer `@if (viewingImage(); as
+  viewing) { @if (viewing.item.imageFileId; as fileId) { <qt-wardrobe-image-viewer
+  …/> } }` BEFORE the inline editor (v4 order `:1682-1691`), no note, no
+  prev/next.
+- `wardrobe-control-dialog.spec.ts`: 7 NEW arms — **red 7/7 on unported
+  source** (57 existing green), green after: a character-owned row →
+  `{scope:'character', id:'c1'}` (dialog `Picture of Hat`, no note, no arrows);
+  a borrowed row with a project origin → the origin's container in the
+  character view AND in a group container view; a General archetype with no
+  origin in the character view → `GENERAL_CONTAINER`; a project container view
+  with no origin → the selected container; no `imageFileId` → no viewer; the
+  rows opt in and a row thumbnail's button opens the viewer; **§J.3 / the
+  listener-order measurement** — with the viewer open a backdrop click and an
+  Escape leave the dialog open (`closed` never emits) and ONE Escape closes the
+  viewer only (the dialog's host listener, registered first, reads
+  `editorOpen() === true` before the frame's listener clears `viewingImage`).
+  `wardrobe-control-dialog.race.spec.ts` untouched and green (69/69 over both).
