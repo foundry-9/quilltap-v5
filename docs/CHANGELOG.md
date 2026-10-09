@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — docs(porting): P4.D278 lane record — vendored trees at 01a83539d + the six NO-PORT ratifications
+
+_Docs-only change._
+
+Appends the P4.D278 lane record to `status-log.md` and marks the order LANE COMPLETE. The record covers the §2 probe: v4 moved past the pin to `9ecebf986`, which is recorded and not vendored. It also covers the pin verification, the red-first measurements for both trees, the census results, the help mutation, and the evidence that retires six ledger rows as NO-PORT: `1825bfd53`, `da98ca58b`, `7e9eaf42c`, `783385873`, `5abcd01ea`, `3c56a41e7`. For `7e9eaf42c`, the All-LLM pause refactor is compared line by line with v5's Continue handler, and its 19 new v4 tests are mapped to their v5 surfaces; all 19 pass at the pin (251 tests). The record also includes the driver confirmation (`{'ok': 2}`) and the workspace gate: 2 reds, both expected at the pin (P4.D272's schema guard and P4.D269's Tier R, which shows one more case than §R.3 predicted).
+
 #### 2026-10-09 — test(harness): pin Node 24 in the help-section-size recipe header
 
 _No crate versions bumped._
