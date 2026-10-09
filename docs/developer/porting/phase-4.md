@@ -7219,7 +7219,9 @@ core 0.0.1264, host 0.0.193, web 0.0.226, cli 0.0.30, SPA 0.5.821; tauri
    the CLI surfaces. Predicted HEAD reds (the schema embed + size pin, the
    help tree 130 → 131, Tier R's completion / recall-replay / help arms).
 3. **A follow-ups smalls round** from the ten status headers' OPEN lists —
-   plus dogfood #156 (the 115 `with_both_conns` callers on a degraded mount
+   plus dogfood #159 (RULED a bug 2026-10-09 — `new-account` restores keep
+   each entity on its restored store; the design + harness carve on #159's
+   findings row; v4 bug 185), dogfood #156 (the 115 `with_both_conns` callers on a degraded mount
    index, classified against v4 per surface) and #157 (the degraded LLM-logs
    failure line's keys + v4's guard sentence) — first: the SHARED `resolve_character_avatar` fall-through (nine callers;
    delete the gallery's duplicate); `ImageParamsLogContext`'s `itemId` within

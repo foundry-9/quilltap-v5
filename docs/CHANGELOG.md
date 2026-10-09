@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — docs(porting): dogfood #159 ruled a bug; v4 bug 185 filed
+
+_Docs-only change._
+
+The human ruled that a `new-account` restore must keep each character, project and group on the store the archive restores, not orphan it (dogfood #159). The fix is ordered for the follow-ups round with its design recorded on the findings row: a raw-to-restored store-id map in the restore orchestrator, leaving the uuid remapper untouched, plus a `new-account` carve in `system_restore_state`. Filed upstream as v4 bug 185, which covers both restore modes; it was committed locally in the v4 checkout as `3c56a41e7` and recorded on the drift ledger.
+
 #### 2026-10-09 — docs(porting): the wardrobe dogfood pass closes C5; v4 bugs 183 and 184 filed
 
 _Docs-only change._

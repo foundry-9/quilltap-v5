@@ -802,15 +802,15 @@ records THERE. Update this summary only when a phase or round completes.
   answered `No file provided`) in `9ea2945c3` (web 0.0.227, host 0.0.194);
   #155 (Start Chat dead inside the workspace) and #154 in `17792dd49` (SPA
   0.5.822). **ORDER-PENDING:** #156 (115 `with_both_conns` callers answer a
-  500 on a degraded mount index), #157 (log text). **RULING:** #159
-  (`new-account` restore orphans every vault — v4-shared). C5 (a real
-  garment picture) RAN on the human's authorization; v4 bugs 183 / 184 FILED
-  (`5abcd01ea`, local). ⚠ **Drift measured:**
+  500 on a degraded mount index), #157 (log text). **#159** (`new-account`
+  restore orphans every vault) RULED a bug — ORDER-PENDING. C5 (a real
+  garment picture) RAN on the human's authorization; v4 bugs 183 / 184 / 185
+  FILED (`5abcd01ea`, `3c56a41e7`, local). ⚠ **Drift measured:**
   v4 HEAD already tiered + consolidated the live instance; v5 at the baseline
   refuses the 365 `CONSOLIDATED` digests on restore and HARD-DELETES what v4
   demotes — **run no v5 build against live Friday before the memory catch-up**
   (ledger `d58548051`). **Next: the memory-programme catch-up round, then the
-  follow-ups smalls round (with #156/#157)** — `phase-4.md`.
+  follow-ups round (with #159/#156/#157)** — `phase-4.md`.
 - **Oracle baseline: `f5e953a3f` (2026-10-07, v4 main — "feat(startup):
   daily database optimize before migrations", `4.10.0-dev.117`), adopted
   at the `f5e953a3f` wardrobe-programme round's unification (2026-10-08).**
