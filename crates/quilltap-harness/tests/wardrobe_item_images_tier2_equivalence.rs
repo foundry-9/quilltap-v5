@@ -505,3 +505,241 @@ fn wardrobe_item_images_tier2_matches_oracle() {
         failures.join("\n\n")
     );
 }
+
+/// P4.D263 item 7 — the route's own `[Wardrobe Images v1]` LINES, capture-pinned
+/// against v4's `route.ts` literals (`:111`, `:134`, `:233`, `:248`, `:263`) in
+/// v4's meta key order, each with its SILENCE leg: the core verbs run on the
+/// test thread over a fresh copy of the tier-2 fixture (the routes family's
+/// served host logs off-thread, so the lines are pinned here).
+#[test]
+fn the_route_lines_are_v4s() {
+    use quilltap_core::api::wardrobe_item_images::{
+        delete, generate_on_home, list, resolve_home, set_current, upload_on_home,
+    };
+    use quilltap_core::db::runtime::{Db, DbPaths};
+    let (Ok(main_fixture), Ok(mount_fixture)) = (
+        std::env::var("QT_FIXTURE_WII_MAIN"),
+        std::env::var("QT_FIXTURE_WII_MOUNT"),
+    ) else {
+        eprintln!("SKIP: set QT_FIXTURE_WII_MAIN + QT_FIXTURE_WII_MOUNT (see header).");
+        return;
+    };
+    let spec: Value = serde_json::from_str(&std::fs::read_to_string(spec_path()).unwrap()).unwrap();
+    let pepper = spec["testPepperBase64"].as_str().unwrap().to_string();
+    let s = |k: &str| spec[k].as_str().unwrap().to_string();
+    let item = |k: &str| spec["items"][k]["id"].as_str().unwrap().to_string();
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let fresh = || {
+        let dir = tempfile::tempdir().unwrap();
+        let (m, n) = (dir.path().join("main.db"), dir.path().join("mount.db"));
+        std::fs::copy(&main_fixture, &m).unwrap();
+        std::fs::copy(&mount_fixture, &n).unwrap();
+        let db = Db::open(
+            DbPaths {
+                main: m,
+                mount_index: Some(n),
+                llm_logs: None,
+            },
+            &pepper,
+        )
+        .unwrap();
+        (dir, db)
+    };
+    let lines_of =
+        |lines: Vec<String>| -> Vec<String> { rust_lines(&lines, &["[Wardrobe Images v1]"]) };
+    let character = WardrobeContainerScope::Character;
+    let (coat, cloak) = (item("coat"), item("cloak"));
+    let (cid, archived) = (s("characterId"), s("archivedCharacterId"));
+
+    // list → ONE DEBUG with `current` (a listed picture) and the count.
+    let (_d, db) = fresh();
+    let newest = db
+        .read_main(|c| list_wardrobe_item_images(c, &coat))
+        .unwrap()[0]
+        .id
+        .clone();
+    let (_, lines) = captured_with(|| rt.block_on(list(&db, character, Some(&cid), &coat)));
+    assert_eq!(
+        lines_of(lines),
+        vec![format!(
+            "DEBUG [Wardrobe Images v1] Listed wardrobe item images itemId={coat} scope=character count=3 current={newest}"
+        )]
+    );
+    // …a DANGLING pointer lists `current=null`.
+    let scarf = item("scarf");
+    let (_, lines) = captured_with(|| rt.block_on(list(&db, character, Some(&cid), &scarf)));
+    assert_eq!(
+        lines_of(lines),
+        vec![format!(
+            "DEBUG [Wardrobe Images v1] Listed wardrobe item images itemId={scarf} scope=character count=2 current=null"
+        )]
+    );
+    // Silence: a 404 lists nothing.
+    let (_, lines) = captured_with(|| {
+        rt.block_on(list(
+            &db,
+            WardrobeContainerScope::Group,
+            Some(&s("groupId")),
+            &coat,
+        ))
+    });
+    assert!(lines_of(lines).is_empty());
+
+    // set-current → ONE INFO; a foreign pick is a SILENT 400.
+    let (_d, db) = fresh();
+    let pics = db
+        .read_main(|c| list_wardrobe_item_images(c, &coat))
+        .unwrap();
+    let older = pics[2].id.clone();
+    let (_, lines) =
+        captured_with(|| rt.block_on(set_current(&db, character, Some(&cid), &coat, &older)));
+    assert_eq!(
+        lines_of(lines),
+        vec![format!(
+            "INFO [Wardrobe Images v1] Set current wardrobe item image itemId={coat} scope=character fileId={older}"
+        )]
+    );
+    let foreign = db
+        .read_main(|c| list_wardrobe_item_images(c, &scarf))
+        .unwrap()[0]
+        .id
+        .clone();
+    let (_, lines) =
+        captured_with(|| rt.block_on(set_current(&db, character, Some(&cid), &coat, &foreign)));
+    assert!(lines_of(lines).is_empty(), "a foreign pick logs nothing");
+
+    // delete-image → ONE INFO carrying the new current.
+    let (_d, db) = fresh();
+    let pics = db
+        .read_main(|c| list_wardrobe_item_images(c, &coat))
+        .unwrap();
+    let (gone, next) = (pics[0].id.clone(), pics[1].id.clone());
+    let (_, lines) =
+        captured_with(|| rt.block_on(delete(&db, character, Some(&cid), &coat, &gone)));
+    assert_eq!(
+        lines_of(lines),
+        vec![format!(
+            "INFO [Wardrobe Images v1] Deleted wardrobe item image itemId={coat} scope=character fileId={gone} current={next}"
+        )]
+    );
+
+    // An ARCHIVED character's item: the 409's INFO, in each action's meta
+    // shape — set-current `{itemId, scope}`, generate `+containerId`, upload
+    // `+kind` — and nothing else.
+    let (_d, db) = fresh();
+    let pic = db
+        .read_main(|c| list_wardrobe_item_images(c, &cloak))
+        .unwrap()[0]
+        .id
+        .clone();
+    let (_, lines) =
+        captured_with(|| rt.block_on(set_current(&db, character, Some(&archived), &cloak, &pic)));
+    assert_eq!(
+        lines_of(lines),
+        vec![format!(
+            "INFO [Wardrobe Images v1] Refused a picture write on an archived character itemId={cloak} scope=character"
+        )]
+    );
+    let home = rt
+        .block_on(resolve_home(&db, character, Some(&archived), &cloak))
+        .unwrap_or_else(|_| panic!("home"));
+    let seams = quilltap_core::services::wardrobe_item_image_generation::WardrobeItemImageSeams {
+        provider: quilltap_core::model::image::ErasedImageGenerate::new(NeverProvider),
+        codec: std::sync::Arc::new(quilltap_host::HostImageCodec),
+    };
+    let (_, lines) = captured_with(|| {
+        rt.block_on(generate_on_home(
+            &db,
+            &seams,
+            &s("userId"),
+            character,
+            Some(&archived),
+            &home,
+            None,
+        ))
+    });
+    assert_eq!(
+        lines_of(lines),
+        vec![format!(
+            "INFO [Wardrobe Images v1] Refused a picture write on an archived character itemId={cloak} scope=character containerId={archived}"
+        )]
+    );
+    let webp: Vec<u8> = {
+        use base64::Engine;
+        base64::engine::general_purpose::STANDARD
+            .decode(spec["webp"][0].as_str().unwrap())
+            .unwrap()
+    };
+    let blob: std::sync::Arc<
+        dyn quilltap_core::services::mount_index::blob_transcode::WebpTranscoder,
+    > = std::sync::Arc::new(RefusingWebpTranscoder);
+    let (_, lines) = captured_with(|| {
+        rt.block_on(upload_on_home(
+            &db,
+            blob.clone(),
+            character,
+            &home,
+            WardrobeImageKind::Uploaded,
+            webp.clone(),
+            "image/webp".into(),
+            None,
+            None,
+        ))
+    });
+    assert_eq!(
+        lines_of(lines),
+        vec![format!(
+            "INFO [Wardrobe Images v1] Refused a picture write on an archived character itemId={cloak} scope=character kind=uploaded"
+        )]
+    );
+
+    // upload → ONE INFO `{itemId, scope, kind, fileId, bytes}`.
+    let bare = item("bare");
+    let home = rt
+        .block_on(resolve_home(&db, character, Some(&cid), &bare))
+        .unwrap_or_else(|_| panic!("home"));
+    let (resp, lines) = captured_with(|| {
+        rt.block_on(upload_on_home(
+            &db,
+            blob.clone(),
+            character,
+            &home,
+            WardrobeImageKind::Imported,
+            webp.clone(),
+            "image/webp".into(),
+            None,
+            None,
+        ))
+    });
+    let quilltap_core::api::types::Response::WardrobeItemImages(body) = resp else {
+        panic!("upload answered {resp:?}");
+    };
+    let file_id = body["current"].as_str().unwrap();
+    assert_eq!(
+        lines_of(lines),
+        vec![format!(
+            "INFO [Wardrobe Images v1] Uploaded wardrobe item image itemId={bare} scope=character kind=imported fileId={file_id} bytes={}",
+            webp.len()
+        )]
+    );
+}
+
+/// A provider no pin may reach (the archived gate refuses first).
+struct NeverProvider;
+
+impl quilltap_core::model::image::ImageProvider for NeverProvider {
+    async fn generate_image(
+        &self,
+        _provider: &str,
+        _api_key: &str,
+        _params: &quilltap_core::model::image::ImageGenParams,
+    ) -> Result<
+        quilltap_core::model::image::ImageGenResponse,
+        quilltap_core::model::image::ImageGenError,
+    > {
+        panic!("the provider must not be reached");
+    }
+}

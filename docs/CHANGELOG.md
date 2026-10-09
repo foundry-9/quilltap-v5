@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(wardrobe): the item-images route — four core verbs and the `quilltap-web` edge with its multipart upload (P4.D263 items 7, 8, 16; C1 amendment)
+
+_Versions: core 0.0.1257, host 0.0.191, web 0.0.225._
+
+`api/wardrobe_item_images.rs` replaces P4.D255's refusal bodies. `list` lists an item's pictures and reads `current` as null when the pointer dangles. `generate` returns 201 inside the activity span; no usable profile is 400, a refusal is 422 with `details: {trail, refused}`, and any other provider failure is v4's 502 with the same `details`. `set_current` and `delete` complete the four verbs; upload has no verb. Every verb checks the container query first (Zod's sentences; an empty `id` gets both of v4's sentences, measured), then the item (404), then the action. An archived character's item answers 409 with v4's INFO line. A picture that is not the item's own answers 400. Each verb has a gated form (`resolve_home` + `…_on_home`).
+
+C1 amendment, ruled by the human: the `generate` engine arm takes the image seams, and `list` / `set_current` / `delete` are async with `.await` in their arms.
+
+NEW `quilltap-web` route `/api/v1/wardrobe/{itemId}/images` (GET + POST `?action=`). It uses v4's action dispatch with no default, gates once and then parses the body (generate reads text; set-current and delete-image parse `{fileId}` with v4's Zod sentences). The binary `upload` leg returns `Expected a multipart upload`, `No file provided` (also for a string part named `file`), v4's `validateImageFile` sentences, or the `kind` 400. It then converts to WebP with the host codec and answers 201. `render` restores v4's 502 for `generate`, which the frozen dispatch boundary carries as `Internal` with `details`. `FormData::first` mirrors v4's `form.get`. NEW host `wardrobe_item_image_seams(version)` is shared by the route and, next, the job. `validate_image_file` is now pub.
+
+NEW web family `wardrobe_item_images_routes_equivalence` (51 requests over a booted host plus the direct generate leg) compares status, body, the follow-up GET and item-scoped rows. Three mutations are each caught. The route's `[Wardrobe Images v1]` lines are capture-pinned with silence legs in the tier-2 harness file. The tier-2 fixture's owner moves to v4's single-user id and gains a key, a profile and chat settings for the route's generate arms. `web_edge_body_parse_guard` gains the route's one row (`render`'s `details.refused` pick off the server's own error — not a body read).
+
 #### 2026-10-08 — feat(wardrobe): the item-picture generation chokepoint, the wardrobe profile resolver and the `wardrobe` purpose arms (P4.D263 item 6, R-B)
 
 _Versions: core 0.0.1256._

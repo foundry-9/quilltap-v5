@@ -57,6 +57,7 @@ pub mod paths;
 pub mod providers;
 pub mod spine;
 pub mod terminal;
+pub mod wardrobe_item_image;
 pub mod wire;
 // === P4.9K1 ===
 /// The per-character generator driver (P4.9K1 unit 5) — the optimizer +

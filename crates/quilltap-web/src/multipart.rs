@@ -1,10 +1,9 @@
 //! A small `multipart/form-data` helper mirroring the browser `FormData`
 //! semantics the v4 routes rely on: whole-body buffering, string-or-file fields,
 //! `get` (first value) and `getAll` (every value). This is the reusable edge
-//! machinery for quilltap-web's first multipart routes (the characters photo
-//! upload + the ST-card import); every OTHER v4 multipart route (images-v2,
-//! chat attachments, mount ingest, `.qtap`/theme install) is a documented
-//! deferral — the helper is built to serve them when their families land.
+//! machinery for quilltap-web's multipart routes — the characters photo upload,
+//! the ST-card import, the images collection, mount ingest, and (P4.D263) the
+//! wardrobe item-image upload.
 //!
 //! v4 buffers the whole body (`Buffer.from(await file.arrayBuffer())`); so do we
 //! (no streaming uploads). A part is a "file" (`instanceof File` in v4) exactly
@@ -52,6 +51,13 @@ impl FormData {
             });
         }
         Ok(FormData { fields })
+    }
+
+    /// v4 `formData.get(name)` — the FIRST field with this name, file OR
+    /// string (the caller then tests `instanceof File` itself: a string part
+    /// named `file` ahead of a file part is v4's `No file provided`).
+    pub fn first(&self, name: &str) -> Option<&Field> {
+        self.fields.iter().find(|f| f.name == name)
     }
 
     /// The first field with this name that is a FILE (`formData.get(name)` where

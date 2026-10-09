@@ -76,6 +76,9 @@ interface Spec {
   unreadablePicture: { item: string; storageKey: string; originalFilename: string };
   documentFile: { item: string; originalFilename: string };
   webp: string[];
+  apiKey: { id: string; provider: string; key_value: string };
+  imageProfile: Record<string, unknown> & { id: string };
+  chatSettings: Record<string, unknown>;
 }
 
 const PINNED_TS = '2026-02-01T00:00:00.000Z';
@@ -106,13 +109,13 @@ async function main(): Promise<void> {
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
   process.env.SQLITE_PATH = mainOut;
   process.env.SQLITE_MOUNT_INDEX_PATH = mountOut;
+  process.env.SQLITE_LLM_LOGS_PATH = join(scratch, 'llm-logs.db');
   process.env.QUILLTAP_DATA_DIR = scratch;
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
 
-  const { initializeDatabase, ensureCollection, closeDatabase, rawQuery } = await import(
-    '@/lib/database/manager'
-  );
+  const { initializeDatabase, ensureCollection, getCollection, closeDatabase, rawQuery } =
+    await import('@/lib/database/manager');
   const { getRepositories } = await import('@/lib/repositories/factory');
   const { getRawMountIndexDatabase, closeMountIndexSQLiteClient } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
@@ -121,6 +124,7 @@ async function main(): Promise<void> {
   const { CharacterSchema } = await import('@/lib/schemas/types');
   const { UserSchema } = await import('@/lib/schemas/auth.types');
   const { FileEntrySchema } = await import('@/lib/schemas/file.types');
+  const { ImageProfileSchema, ApiKeySchema } = await import('@/lib/schemas/profile.types');
   const { generateDDL } = await import('@/lib/database/schema-translator');
   const {
     DocMountPointSchema,
@@ -146,6 +150,8 @@ async function main(): Promise<void> {
   await ensureCollection('users', UserSchema);
   await ensureCollection('characters', CharacterSchema);
   await ensureCollection('files', FileEntrySchema);
+  await ensureCollection('image_profiles', ImageProfileSchema);
+  await ensureCollection('api_keys', ApiKeySchema);
 
   const midb = getRawMountIndexDatabase();
   if (!midb) throw new Error('mount-index DB handle unavailable');
@@ -188,6 +194,32 @@ async function main(): Promise<void> {
   // Users + characters.
   await repos.users.create(spec.user as never, pin(spec.userId));
   await repos.users.create(spec.strangerUser as never, pin(spec.strangerUserId));
+  // The routes family's generate arms: one key, one designated (and default)
+  // profile, the owner's chat settings (logging ON).
+  await (await getCollection('api_keys')).insertOne(
+    ApiKeySchema.parse({
+      id: spec.apiKey.id,
+      userId: spec.userId,
+      label: spec.apiKey.key_value,
+      provider: spec.apiKey.provider,
+      key_value: spec.apiKey.key_value,
+      isActive: true,
+      lastUsed: null,
+      createdAt: PINNED_TS,
+      updatedAt: PINNED_TS,
+    }) as never,
+  );
+  {
+    const { id, ...rest } = spec.imageProfile;
+    await repos.imageProfiles.create(
+      { userId: spec.userId, baseUrl: null, tags: [], ...rest } as never,
+      pin(id),
+    );
+  }
+  await repos.chatSettings.create(
+    { userId: spec.userId, ...spec.chatSettings } as never,
+    pin('d4d4d4d4-0101-4000-8000-000000000001'),
+  );
   const character = (over: Record<string, unknown>, userId: string) =>
     ({ ...spec.characterTemplate, ...over, userId }) as never;
   await repos.characters.create(character(spec.character, spec.userId), pin(spec.characterId));

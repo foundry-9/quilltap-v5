@@ -92,6 +92,7 @@ pub mod text_replacements_routes;
 // === end P4.6ak ===
 // === P4.9f1: the wardrobe REST edges (lane F1, append-only) ===
 pub mod tools_routes;
+pub mod wardrobe_images_routes;
 pub mod wardrobe_routes;
 // ── P4.9G4 ──
 pub mod qtap_routes;
@@ -494,6 +495,13 @@ pub fn build_router(state: SharedState) -> Router {
                 .delete(wardrobe_routes::wardrobe_item_delete),
         )
         // === end P4.9f1 ===
+        // === P4.D263: the wardrobe item-images edge (v4 `7c8572869`) ===
+        .route(
+            "/api/v1/wardrobe/{itemId}/images",
+            get(wardrobe_images_routes::wardrobe_item_images_get)
+                .post(wardrobe_images_routes::wardrobe_item_images_post),
+        )
+        // === end P4.D263 ===
         // === P4.6ay: Pascal's custom-tools route ===
         .route(
             "/api/v1/chats/{id}/custom-tools",

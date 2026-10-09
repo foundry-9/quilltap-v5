@@ -182,6 +182,18 @@ const COLLAPSE_CENSUS: &[(&str, usize, &str)] = &[
          and only to spell the `[<verb>]` bracket of v4's context-middleware \
          ERROR over Tauri IPC (ruling R-A). Nothing is answered from it.",
     ),
+    (
+        "crates/quilltap-web/src/wardrobe_images_routes.rs",
+        1,
+        "NOT a body read — FAITHFUL (P4.D263). The one site is `render`'s \
+         `details.refused` pick off the server's OWN dispatch error, which \
+         restores v4's 502 for a provider failure the frozen boundary carries \
+         as `Internal`. The request bodies never use the idiom: `generate`'s \
+         `{imageProfileId}` and set-current / delete-image's `{fileId}` go \
+         through ported Zod parsers (`parse_generate_body` / \
+         `parse_file_id_body`) that match on the `Value` and keep absent, null \
+         and wrong-typed apart. Arm: `wardrobe_item_images_routes_equivalence`.",
+    ),
 ];
 
 const NEEDLE: &str = "and_then(Value::as_";

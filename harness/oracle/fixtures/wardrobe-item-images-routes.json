@@ -1,0 +1,840 @@
+{
+  "_comment": "P4.D263 routes corpus for v4 app/api/v1/wardrobe/[itemId]/images/route.ts over the wardrobe-item-images tier-2 fixture. `@x` container ids name spec ids; a {ref} fileId is resolved against the baked fixture (the tier-2 rules). driver `http` = the real router (v5: a booted host, `oneshot`); `direct` = the generate leg with the provider mocked below both sides (v5: `generate_on_home` + the route's `render`). No HTTP request ever reaches a provider.",
+  "png": "iVBORw0KGgoAAAANSUhEUgAAAAMAAAADCAIAAADZSiLoAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEElEQVQImWNgZGKGIAYsLAADNgA3hQ4ykAAAAABJRU5ErkJggg==",
+  "requests": [
+    {
+      "name": "get_character_coat",
+      "method": "GET",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http"
+    },
+    {
+      "name": "get_dangling_pointer",
+      "method": "GET",
+      "item": "scarf",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http"
+    },
+    {
+      "name": "get_empty_pointer",
+      "method": "GET",
+      "item": "hat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http"
+    },
+    {
+      "name": "get_general_apron",
+      "method": "GET",
+      "item": "apron",
+      "query": {
+        "scope": "general"
+      },
+      "driver": "http"
+    },
+    {
+      "name": "get_project_smock",
+      "method": "GET",
+      "item": "smock",
+      "query": {
+        "scope": "project",
+        "id": "@project"
+      },
+      "driver": "http"
+    },
+    {
+      "name": "get_group_sash",
+      "method": "GET",
+      "item": "sash",
+      "query": {
+        "scope": "group",
+        "id": "@group"
+      },
+      "driver": "http"
+    },
+    {
+      "name": "get_archived_lists",
+      "method": "GET",
+      "item": "cloak",
+      "query": {
+        "scope": "character",
+        "id": "@archived"
+      },
+      "driver": "http"
+    },
+    {
+      "name": "get_missing_id",
+      "method": "GET",
+      "item": "smock",
+      "query": {
+        "scope": "project"
+      },
+      "driver": "http"
+    },
+    {
+      "name": "get_empty_id",
+      "method": "GET",
+      "item": "smock",
+      "query": {
+        "scope": "project",
+        "id": ""
+      },
+      "driver": "http"
+    },
+    {
+      "name": "get_bad_scope_and_empty_id",
+      "method": "GET",
+      "item": "coat",
+      "query": {
+        "scope": "planet",
+        "id": ""
+      },
+      "driver": "http"
+    },
+    {
+      "name": "get_no_query",
+      "method": "GET",
+      "item": "coat",
+      "query": null,
+      "driver": "http"
+    },
+    {
+      "name": "get_wrong_container",
+      "method": "GET",
+      "item": "coat",
+      "query": {
+        "scope": "group",
+        "id": "@group"
+      },
+      "driver": "http"
+    },
+    {
+      "name": "get_stranger_character",
+      "method": "GET",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@stranger"
+      },
+      "driver": "http"
+    },
+    {
+      "name": "get_unknown_item",
+      "method": "GET",
+      "item": "@nowhere",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http"
+    },
+    {
+      "name": "post_no_action",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http"
+    },
+    {
+      "name": "post_unknown_action",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "frobnicate"
+    },
+    {
+      "name": "post_bare_action",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": ""
+    },
+    {
+      "name": "set_current_own",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "set-current",
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "coat",
+              "nth": 2
+            }
+          }
+        }
+      },
+      "followGet": true
+    },
+    {
+      "name": "set_current_foreign",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "set-current",
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "scarf",
+              "nth": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "set_current_document",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "set-current",
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "doc": "coat"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "set_current_missing_file_id",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "set-current",
+      "body": {
+        "type": "json",
+        "value": {}
+      }
+    },
+    {
+      "name": "set_current_empty_file_id",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "set-current",
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": ""
+        }
+      }
+    },
+    {
+      "name": "set_current_number_file_id",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "set-current",
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": 5
+        }
+      }
+    },
+    {
+      "name": "set_current_unparseable",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "set-current",
+      "body": {
+        "type": "text",
+        "value": "{not json"
+      }
+    },
+    {
+      "name": "set_current_archived",
+      "method": "POST",
+      "item": "cloak",
+      "query": {
+        "scope": "character",
+        "id": "@archived"
+      },
+      "driver": "http",
+      "action": "set-current",
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "cloak",
+              "nth": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "set_current_404_before_body",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "group",
+        "id": "@group"
+      },
+      "driver": "http",
+      "action": "set-current",
+      "body": {
+        "type": "json",
+        "value": {}
+      }
+    },
+    {
+      "name": "set_current_400_query_first",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "project"
+      },
+      "driver": "http",
+      "action": "set-current",
+      "body": {
+        "type": "json",
+        "value": {}
+      }
+    },
+    {
+      "name": "delete_current",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "delete-image",
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "coat",
+              "nth": 0
+            }
+          }
+        }
+      },
+      "followGet": true
+    },
+    {
+      "name": "delete_dangling_repaired",
+      "method": "POST",
+      "item": "scarf",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "delete-image",
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "scarf",
+              "nth": 1
+            }
+          }
+        }
+      },
+      "followGet": true
+    },
+    {
+      "name": "delete_foreign",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "delete-image",
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "scarf",
+              "nth": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "delete_archived",
+      "method": "POST",
+      "item": "cloak",
+      "query": {
+        "scope": "character",
+        "id": "@archived"
+      },
+      "driver": "http",
+      "action": "delete-image",
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "cloak",
+              "nth": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "upload_uploaded",
+      "method": "POST",
+      "item": "bare",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "upload",
+      "body": {
+        "type": "multipart",
+        "parts": [
+          {
+            "name": "file",
+            "file": true,
+            "contentType": "image/webp",
+            "filename": "photo.webp",
+            "webp": 1
+          }
+        ]
+      },
+      "followGet": true
+    },
+    {
+      "name": "upload_imported_general",
+      "method": "POST",
+      "item": "apron",
+      "query": {
+        "scope": "general"
+      },
+      "driver": "http",
+      "action": "upload",
+      "body": {
+        "type": "multipart",
+        "parts": [
+          {
+            "name": "file",
+            "file": true,
+            "contentType": "image/webp",
+            "filename": "photo.webp",
+            "webp": 2
+          },
+          {
+            "name": "kind",
+            "value": "imported"
+          }
+        ]
+      },
+      "followGet": true
+    },
+    {
+      "name": "upload_bad_kind",
+      "method": "POST",
+      "item": "bare",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "upload",
+      "body": {
+        "type": "multipart",
+        "parts": [
+          {
+            "name": "file",
+            "file": true,
+            "contentType": "image/webp",
+            "filename": "photo.webp",
+            "webp": 1
+          },
+          {
+            "name": "kind",
+            "value": "stolen"
+          }
+        ]
+      }
+    },
+    {
+      "name": "upload_text_plain",
+      "method": "POST",
+      "item": "bare",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "upload",
+      "body": {
+        "type": "multipart",
+        "parts": [
+          {
+            "name": "file",
+            "file": true,
+            "contentType": "text/plain",
+            "filename": "notes.txt",
+            "webp": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "upload_too_big",
+      "method": "POST",
+      "item": "bare",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "upload",
+      "body": {
+        "type": "multipart",
+        "parts": [
+          {
+            "name": "file",
+            "file": true,
+            "contentType": "image/png",
+            "filename": "huge.png",
+            "size": 10485761
+          }
+        ]
+      }
+    },
+    {
+      "name": "upload_no_file",
+      "method": "POST",
+      "item": "bare",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "upload",
+      "body": {
+        "type": "multipart",
+        "parts": [
+          {
+            "name": "kind",
+            "value": "uploaded"
+          }
+        ]
+      }
+    },
+    {
+      "name": "upload_string_named_file",
+      "method": "POST",
+      "item": "bare",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "upload",
+      "body": {
+        "type": "multipart",
+        "parts": [
+          {
+            "name": "file",
+            "value": "not a file"
+          }
+        ]
+      }
+    },
+    {
+      "name": "upload_not_multipart",
+      "method": "POST",
+      "item": "bare",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "upload",
+      "body": {
+        "type": "json",
+        "value": {
+          "file": "x"
+        }
+      }
+    },
+    {
+      "name": "upload_archived",
+      "method": "POST",
+      "item": "cloak",
+      "query": {
+        "scope": "character",
+        "id": "@archived"
+      },
+      "driver": "http",
+      "action": "upload",
+      "body": {
+        "type": "multipart",
+        "parts": [
+          {
+            "name": "file",
+            "file": true,
+            "contentType": "image/webp",
+            "filename": "photo.webp",
+            "webp": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "upload_png_transcoded",
+      "method": "POST",
+      "item": "bare",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "upload",
+      "body": {
+        "type": "multipart",
+        "parts": [
+          {
+            "name": "file",
+            "file": true,
+            "contentType": "image/png",
+            "filename": "tiny.png",
+            "png": true
+          }
+        ]
+      },
+      "codecDependent": true
+    },
+    {
+      "name": "generate_invalid_json",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "generate",
+      "body": {
+        "type": "text",
+        "value": "{nope"
+      }
+    },
+    {
+      "name": "generate_bad_profile_type",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "generate",
+      "body": {
+        "type": "json",
+        "value": {
+          "imageProfileId": 5
+        }
+      }
+    },
+    {
+      "name": "generate_empty_profile",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "generate",
+      "body": {
+        "type": "json",
+        "value": {
+          "imageProfileId": ""
+        }
+      }
+    },
+    {
+      "name": "generate_not_object",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "generate",
+      "body": {
+        "type": "json",
+        "value": [
+          1
+        ]
+      }
+    },
+    {
+      "name": "generate_archived_before_profile",
+      "method": "POST",
+      "item": "cloak",
+      "query": {
+        "scope": "character",
+        "id": "@archived"
+      },
+      "driver": "http",
+      "action": "generate",
+      "body": {
+        "type": "text",
+        "value": ""
+      }
+    },
+    {
+      "name": "generate_no_profile",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "generate",
+      "body": {
+        "type": "text",
+        "value": "   "
+      },
+      "sql": [
+        "DELETE FROM image_profiles"
+      ]
+    },
+    {
+      "name": "generate_404",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "group",
+        "id": "@group"
+      },
+      "driver": "http",
+      "action": "generate",
+      "body": {
+        "type": "text",
+        "value": "{nope"
+      }
+    },
+    {
+      "name": "generate_ok_201",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "direct",
+      "action": "generate",
+      "body": {
+        "type": "json",
+        "value": {
+          "imageProfileId": null
+        }
+      },
+      "provider": "ok",
+      "followGet": true
+    },
+    {
+      "name": "generate_refused_422",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "direct",
+      "action": "generate",
+      "body": {
+        "type": "text",
+        "value": ""
+      },
+      "provider": "refuseAll",
+      "sql": [
+        "UPDATE chat_settings SET conciergeSettings = '{\"enabled\":false}'"
+      ]
+    },
+    {
+      "name": "generate_provider_502",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "direct",
+      "action": "generate",
+      "body": {
+        "type": "text",
+        "value": ""
+      },
+      "provider": "throw"
+    }
+  ]
+}

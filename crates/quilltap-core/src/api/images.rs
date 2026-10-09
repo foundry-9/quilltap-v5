@@ -702,7 +702,7 @@ fn allowed_types_joined() -> String {
 /// and the client sees a flat `500 {"error": "Internal server error"}` — they
 /// are pinned by [`validate_image_file_tests`] here, not by a corpus row,
 /// because the wire cannot show them (v4 logs them as the unhandled error).
-fn validate_image_file(content_type: &str, size: usize) -> Result<(), String> {
+pub fn validate_image_file(content_type: &str, size: usize) -> Result<(), String> {
     if !crate::services::file_storage::ALLOWED_IMAGE_TYPES.contains(&content_type) {
         return Err(format!(
             "Invalid file type. Allowed types: {}",

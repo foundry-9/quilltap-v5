@@ -5472,18 +5472,24 @@ impl CoreEngine {
                 container_id,
                 item_id,
             } => match self.ready_db() {
-                Ok(db) => super::wardrobe_item_images::list(&db, scope, container_id.as_deref(), &item_id),
+                Ok(db) => {
+                    super::wardrobe_item_images::list(&db, scope, container_id.as_deref(), &item_id)
+                        .await
+                }
                 Err(r) => r,
             },
+            // C1 AMENDMENT (P4.D263, the human 2026-10-08): `generate` takes the
+            // image seams; `list` / `set_current` / `delete` are async.
             Request::WardrobeItemImageGenerate {
                 scope,
                 container_id,
                 item_id,
                 image_profile_id,
-            } => match self.ready_db() {
-                Ok(db) => {
+            } => match self.ready_images_generate() {
+                Ok((db, seams)) => {
                     super::wardrobe_item_images::generate(
                         &db,
+                        &seams,
                         SINGLE_USER_ID,
                         scope,
                         container_id.as_deref(),
@@ -5500,13 +5506,16 @@ impl CoreEngine {
                 item_id,
                 file_id,
             } => match self.ready_db() {
-                Ok(db) => super::wardrobe_item_images::set_current(
-                    &db,
-                    scope,
-                    container_id.as_deref(),
-                    &item_id,
-                    &file_id,
-                ),
+                Ok(db) => {
+                    super::wardrobe_item_images::set_current(
+                        &db,
+                        scope,
+                        container_id.as_deref(),
+                        &item_id,
+                        &file_id,
+                    )
+                    .await
+                }
                 Err(r) => r,
             },
             Request::WardrobeItemImageDelete {
@@ -5515,13 +5524,16 @@ impl CoreEngine {
                 item_id,
                 file_id,
             } => match self.ready_db() {
-                Ok(db) => super::wardrobe_item_images::delete(
-                    &db,
-                    scope,
-                    container_id.as_deref(),
-                    &item_id,
-                    &file_id,
-                ),
+                Ok(db) => {
+                    super::wardrobe_item_images::delete(
+                        &db,
+                        scope,
+                        container_id.as_deref(),
+                        &item_id,
+                        &file_id,
+                    )
+                    .await
+                }
                 Err(r) => r,
             },
             // === end P4.D255 ===

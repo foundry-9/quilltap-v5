@@ -1,7 +1,7 @@
 {
-  "_comment": "P4.D263 tier-2 spec for the wardrobe item-images module (v4 lib/wardrobe/item-images.ts at f5e953a3f). The builder seeds every picture through v4's REAL addWardrobeItemImage, so picture file ids are minted at build time: an op names a picture SYMBOLICALLY ({item, nth} = the item's nth-newest IMAGE file in the baked fixture; {doc: item} = the DOCUMENT file linked to the item). Both sides resolve refs the same way against the same baked fixture.",
+  "_comment": "P4.D263 tier-2 spec for the wardrobe item-images module (v4 lib/wardrobe/item-images.ts at f5e953a3f). The builder seeds every picture through v4's REAL addWardrobeItemImage, so picture file ids are minted at build time: an op names a picture SYMBOLICALLY ({item, nth} = the item's nth-newest IMAGE file in the baked fixture; {doc: item} = the DOCUMENT file linked to the item). Both sides resolve refs the same way against the same baked fixture. The owner is v5's SINGLE_USER_ID (v4's own single-user id), so the booted-host routes family (wardrobe_item_images_routes_equivalence, same fixture) resolves ownership as v4 does. The image profile + key + chat settings serve that family's generate arms.",
   "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
-  "userId": "0f1e2d3c-4b5a-4968-8776-655443322110",
+  "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
   "user": {
     "username": "wardrobe-images-user",
     "name": "Wardrobe Images"
@@ -544,5 +544,31 @@
         }
       ]
     }
-  ]
+  ],
+  "apiKey": {
+    "id": "a1a1a1a1-0101-4000-8000-000000000001",
+    "provider": "OPENAI",
+    "key_value": "sk-routes-test"
+  },
+  "imageProfile": {
+    "id": "b2b2b2b2-0101-4000-8000-000000000001",
+    "name": "Routes Designated",
+    "provider": "OPENAI",
+    "modelName": "gpt-image-1",
+    "apiKeyId": "a1a1a1a1-0101-4000-8000-000000000001",
+    "parameters": {},
+    "isDefault": true,
+    "isDangerousCompatible": false
+  },
+  "chatSettings": {
+    "llmLoggingSettings": {
+      "enabled": true,
+      "verboseMode": false,
+      "retentionDays": 30
+    },
+    "wardrobeImageSettings": {
+      "imageProfileId": "b2b2b2b2-0101-4000-8000-000000000001",
+      "generateFromTools": false
+    }
+  }
 }

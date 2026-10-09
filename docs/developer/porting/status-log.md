@@ -173136,3 +173136,27 @@ red-first in its own unit), `avatar_job_tier3_equivalence` and
   (`image_gen/params_builder.rs`, owned by no lane):** `ImageParamsLogContext` has no `itemId`
   field, so v4's `logContext: { context, itemId, profileId }` loses `itemId` on the builder's own
   lines.
+- **Unit 4 — items 7, 8, 16 + the C1 amendment (the route).** `api/wardrobe_item_images.rs`
+  replaces P4.D255's refusal bodies: `list` / `generate` / `set_current` / `delete`, each with a
+  gated `resolve_home` + `…_on_home` form; the container query is checked first (Zod's
+  sentences — an empty `id` carries BOTH of v4's sentences, measured: the refine still runs after
+  a non-fatal `min(1)` issue), then the item (404), then the action; an archived owner's item
+  answers 409 with v4's INFO line. **C1 AMENDMENT (the human, 2026-10-08, in chat):** the
+  `generate` engine arm takes the image seams (`ready_images_generate()`), and `list` /
+  `set_current` / `delete` became async (`write_blocking` panics inside tokio) — the frozen
+  signature moved by ruling, recorded at the arm. NEW `quilltap-web`
+  `/api/v1/wardrobe/{itemId}/images` (GET + POST `?action=` with v4's no-default action
+  dispatch; the binary `upload` leg through `FormData::first`, v4's `validateImageFile`
+  sentences, the host WebP transcoder, 201). **Divergence over the boundary, recorded:** the
+  frozen dispatch boundary has no 502 `ErrorKind`, so core carries v4's provider-failure 502 as
+  `Internal` + `details{trail, refused:false}` and `render` restores the 502 at the web edge (the
+  `chat_media` precedent); a direct-mode (Tauri) caller sees the `Internal` kind. NEW host
+  `wardrobe_item_image::wardrobe_item_image_seams(version)` (shared by the route and the job).
+  NEW web family `wardrobe_item_images_routes_equivalence` (51 requests over a booted host + the
+  direct generate leg; status, body, follow-up GET, item-scoped rows; env `QT_ORACLE_WIIR` +
+  `QT_FIXTURE_WII_*`); mutations caught 3/3 (the dangling-pointer `current` read: 1 divergence;
+  a second: 1; a third: 5). The route's `[Wardrobe Images v1]` lines capture-pinned with silence
+  legs in the tier-2 file (`the_route_lines_are_v4s`). **Fixture moved:** the tier-2 spec's owner
+  → v4's single-user id `ffffffff-…` plus a key, an image profile and chat settings — the
+  `QT_ORACLE_WII` oracle is invalidated and was regenerated. `web_edge_body_parse_guard`: one
+  FAITHFUL row (`render`'s `details.refused` pick, not a body read).
