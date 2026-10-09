@@ -16,22 +16,25 @@ import { injectInfiniteQuery, injectQueryClient } from '@tanstack/angular-query-
 import { CoreClient } from '../core/core-client';
 import type { MemoryDto, MemorySortBy, MemorySortOrder } from '../core/core-contract';
 import { SectionHeader } from '../ui/section-header';
-import { fetchMemories, memoryKeys, type MemoryListPage } from './memory.api';
+import { fetchMemories, fetchMemory, memoryKeys, type MemoryListPage } from './memory.api';
 import { HousekeepingDialog } from './housekeeping-dialog';
 import { MemoryCard } from './memory-card';
+import { MemoryDigestViewer } from './memory-digest-viewer';
 import { MemoryEditor } from './memory-editor';
-import { appendUniqueMemories } from './memory-format';
+import { appendUniqueMemories, getErrorMessage } from './memory-format';
 import { deleteMemory } from './memory.api';
 import { ToastService } from '../ui/toast.service';
 
 const MEMORIES_PER_PAGE = 30;
 const SEARCH_DEBOUNCE_MS = 300;
 
-type SourceFilter = 'ALL' | 'AUTO' | 'MANUAL';
+type SourceFilter = 'ALL' | 'AUTO' | 'MANUAL' | 'CONSOLIDATED';
+type TierFilter = 'ALL' | 'hot' | 'cold';
 
 /**
  * The per-character Commonplace Book list (v4 `components/memory/memory-list.tsx`):
- * a search box (debounced), sort-by + sort-order + source filters, a header with
+ * a search box (debounced), sort-by + sort-order + source + tier filters (v4
+ * `d58548051`: `Consolidated (digests)` and `Filter by tier`), a header with
  * the total count and an "Add Memory" action, an infinite-scroll grid of memory
  * cards (`MEMORIES_PER_PAGE = 30`, NOT virtualized — v4 parity), and the
  * create/edit editor. Appended pages are deduped by id (offset instability during
@@ -39,12 +42,17 @@ type SourceFilter = 'ALL' | 'AUTO' | 'MANUAL';
  *
  * The "Cleanup" housekeeping dialog lands in the P4.6t housekeeping unit; the
  * Source link on a card navigates to the source chat (deep message anchoring is
- * a P4.6t deferral).
+ * a P4.6t deferral). An archived card's `Superseded by a digest` opens the
+ * digest in v4's viewer (`memoryGet`, v4 `handleViewDigest` `:195-205`).
+ *
+ * **Recorded divergence (P4.D276 R-A):** v4's list never passes
+ * `onNavigateToSource` (`memory-list.tsx:335-342` at `01a83539d`), so it never
+ * shows "Source"; this list does. Pre-existing, not drift; kept.
  */
 @Component({
   selector: 'qt-memory-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [SectionHeader, MemoryCard, MemoryEditor, HousekeepingDialog],
+  imports: [SectionHeader, MemoryCard, MemoryDigestViewer, MemoryEditor, HousekeepingDialog],
   template: `
     <div class="space-y-4">
       @if (banner(); as msg) {
@@ -104,6 +112,18 @@ type SourceFilter = 'ALL' | 'AUTO' | 'MANUAL';
           <option value="ALL" [selected]="sourceFilter() === 'ALL'">All Sources</option>
           <option value="AUTO" [selected]="sourceFilter() === 'AUTO'">Auto-generated</option>
           <option value="MANUAL" [selected]="sourceFilter() === 'MANUAL'">Manual</option>
+          <option value="CONSOLIDATED" [selected]="sourceFilter() === 'CONSOLIDATED'">
+            Consolidated (digests)
+          </option>
+        </select>
+        <select
+          class="qt-select w-auto"
+          aria-label="Filter by tier"
+          (change)="tierFilter.set($any($event.target).value)"
+        >
+          <option value="ALL" [selected]="tierFilter() === 'ALL'">All Memories</option>
+          <option value="hot" [selected]="tierFilter() === 'hot'">Active</option>
+          <option value="cold" [selected]="tierFilter() === 'cold'">Archived</option>
         </select>
       </div>
 
@@ -144,9 +164,11 @@ type SourceFilter = 'ALL' | 'AUTO' | 'MANUAL';
               <qt-memory-card
                 [memory]="memory"
                 [isDeleting]="deletingId() === memory.id"
+                [canViewDigest]="true"
                 (edit)="openEdit($event)"
                 (delete)="confirmDelete($event)"
                 (navigateToSource)="navigateToSource($event)"
+                (viewDigest)="openDigest($event)"
               />
             }
           </div>
@@ -175,6 +197,10 @@ type SourceFilter = 'ALL' | 'AUTO' | 'MANUAL';
         (close)="closeEditor()"
         (saved)="onEditorSaved()"
       />
+    }
+
+    @if (viewedDigest(); as digest) {
+      <qt-memory-digest-viewer [memory]="digest" (close)="viewedDigest.set(null)" />
     }
 
     @if (showHousekeeping()) {
@@ -226,6 +252,9 @@ export class MemoryList {
   protected readonly sortBy = signal<MemorySortBy>('createdAt');
   protected readonly sortOrder = signal<MemorySortOrder>('desc');
   protected readonly sourceFilter = signal<SourceFilter>('ALL');
+  protected readonly tierFilter = signal<TierFilter>('ALL');
+  /** v4 `viewedDigest` (`:67`). */
+  protected readonly viewedDigest = signal<MemoryDto | null>(null);
 
   protected readonly showEditor = signal(false);
   protected readonly showHousekeeping = signal(false);
@@ -238,9 +267,15 @@ export class MemoryList {
   private readonly loadMoreEl = viewChild<ElementRef<HTMLElement>>('loadMore');
 
   /** The source param sent to the server: `undefined` when the filter is ALL. */
-  private readonly sourceParam = computed<'AUTO' | 'MANUAL' | undefined>(() => {
+  private readonly sourceParam = computed<'AUTO' | 'MANUAL' | 'CONSOLIDATED' | undefined>(() => {
     const s = this.sourceFilter();
     return s === 'ALL' ? undefined : s;
+  });
+
+  /** v4 `:92` — `tier` is sent only when the filter is not ALL. */
+  private readonly tierParam = computed<'hot' | 'cold' | undefined>(() => {
+    const t = this.tierFilter();
+    return t === 'ALL' ? undefined : t;
   });
 
   private readonly filters = computed(() => ({
@@ -248,6 +283,7 @@ export class MemoryList {
     sortBy: this.sortBy(),
     sortOrder: this.sortOrder(),
     source: this.sourceParam(),
+    tier: this.tierParam(),
   }));
 
   protected readonly memoriesQuery = injectInfiniteQuery(() => ({
@@ -262,6 +298,7 @@ export class MemoryList {
         sortOrder: this.sortOrder(),
         search: this.search() || undefined,
         source: this.sourceParam(),
+        ...(this.tierParam() ? { tier: this.tierParam() } : {}),
       }),
     // v4 `hasMore = newMemories.length === MEMORIES_PER_PAGE`.
     getNextPageParam: (lastPage: MemoryListPage, _all: unknown, lastParam: number) =>
@@ -372,6 +409,23 @@ export class MemoryList {
     void this.queryClient.invalidateQueries({ queryKey: memoryKeys.list(this.characterId()) });
   }
 
+  /**
+   * v4 `handleViewDigest` (`:195-205`): a reply without `memory` throws `The
+   * digest could not be found`; the toast is v4's `getErrorMessage(err,
+   * 'Failed to load the digest')` — an Error's message, else the fallback.
+   */
+  protected async openDigest(digestId: string): Promise<void> {
+    try {
+      const digest = await fetchMemory(this.core, digestId);
+      if (!digest) {
+        throw new Error('The digest could not be found');
+      }
+      this.viewedDigest.set(digest);
+    } catch (err) {
+      this.toasts.showError(getErrorMessage(err, 'Failed to load the digest'));
+    }
+  }
+
   protected navigateToSource(e: { chatId: string; messageId: string }): void {
     // Deep message anchoring is a P4.6t deferral; navigate to the chat.
     void this.router.navigate(['/salon', e.chatId]);
@@ -382,3 +436,4 @@ export class MemoryList {
     return err instanceof Error ? err.message : 'Failed to fetch memories';
   }
 }
+

@@ -175419,3 +175419,37 @@ keys.ts:198-199`. Contract: C2 + `lib/memory/consolidation.ts:114-205`.
   `parseIntOr`) where v4's `parseInt(v) || 1000` / `|| 6` substitutes the
   default (v4 `:140`, `:163`); (b) `run()` sets the inline `error` on a run
   failure where v4 only toasts (v4 `:94-96`).
+
+### Unit M3 — the card, the list, the digest viewer (SPA 0.5.824)
+Strings asserted, v4 at the pin: `memory-card.tsx` — `Archived` chip + title
+`:79-86`, source chip classes/text `:87-94`, `opacity-75` `:67`, provenance
+`:99-116` (`Digested from N note(s). ` with v4's trailing space, `Superseded
+by a digest` button / `Superseded by a digest.` text), footer gates
+`:157-193`; `memory-list.tsx` — source options `:296-300`, the tier select
+`:302-310`, `tier` param `:92`, `handleViewDigest` `:195-205`, the viewer
+`:370-389` (`The Digest`, `The denser note that took this one’s place on the
+active shelf.` with U+2019, `Close`).
+- **Red-first** (card + list swapped to `main`, the viewer removed; the one
+  output-typed arm reads the output structurally so it COMPILES on main):
+  `memory-card.spec.ts` new arms 10 RED / 3 green (green by design: AUTO/MANUAL
+  chips unchanged, "no provenance on a hot empty digest" and "a pre-round row
+  renders as before" — negative / unchanged pins); `memory-list.spec.ts` new
+  arms 8 RED / 0 green. `memory-digest-viewer.spec.ts` RED BY CONSTRUCTION
+  (the component does not exist on `main`).
+- **Re-pinned by name:** `memory-list.spec.ts` `filters by source via the
+  source select` — now finds the source select by its `MANUAL` option and
+  asserts the value took (`removing-a-select-option-makes-a-spec-vacuous`);
+  it drove "the last select", which is now the tier select.
+- **Mechanism translations, RECORDED:** R-D — `showActions` (gates Edit,
+  Delete AND Source) + `canViewDigest` (button vs text) translate v4's
+  handler-presence gates; the list binds `[canViewDigest]="true"`, the viewer
+  `[showActions]="false"`. R-H — the viewer is v4's hand markup with no
+  `role="dialog"`, no Escape, no backdrop close; host reparented to
+  `document.body` via `afterNextRender` (the `image-detail-modal.ts` idiom).
+  `getErrorMessage` (v4 `lib/error-utils.ts:19-33`) lives ONCE in
+  `memory/memory-format.ts` (the list needs it and `memory/` must not import
+  from `screens/`); the settings `api-error-text.ts` re-exports it.
+- **R-A, RECORDED (both line pins):** v4's `MemoryList` never passes
+  `onNavigateToSource` (`memory-list.tsx:335-342`), so v4 never shows
+  "Source"; v5's list does (`memory-list.ts` `(navigateToSource)` +
+  `navigateToSource()`). Kept; named in both docblocks.

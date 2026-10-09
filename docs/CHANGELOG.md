@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(spa): P4.D276 M3 — memory cards show tiers and digests; the list filters by tier and opens the digest viewer
+
+_Versions: SPA 0.5.824._
+
+The memory card (v4 `memory-card.tsx` at `01a83539d`) shows an `Archived` chip and `opacity-75` on a cold row, a `Digest` chip (warning colors) for a `CONSOLIDATED` row, and the provenance line: `Digested from N note(s). ` and, on an archived row with `supersededById`, either a `Superseded by a digest` button (emits `viewDigest`) or the plain text `Superseded by a digest.`. v4 decides Edit / Delete / Source and the button by whether a handler was passed; Angular outputs always exist, so two inputs carry those gates: `showActions` (default true) and `canViewDigest` (default false).
+
+The list adds the `Consolidated (digests)` source option and a `Filter by tier` select (`All Memories` / `Active` / `Archived`) after it; `tier` joins the query key and is sent only when filtered. Following `Superseded by a digest` fetches the digest with `memoryGet` and opens the new `qt-memory-digest-viewer`, v4's hand-written overlay (no dialog role, no Escape, no backdrop close; reparented to `document.body` after first render) over an action-less card. A missing `memory` toasts `The digest could not be found`; other failures toast through a transcription of v4's `getErrorMessage` (added to `memory-format.ts`).
+
+v5's list keeps the Source link that v4's list never shows (pre-existing; recorded). The existing source-filter spec now finds its select by option, since the tier select comes last.
+
 #### 2026-10-09 — feat(spa): P4.D276 M1+M2 — the memory contract for v4 `d58548051`, and the housekeeping dialog archives
 
 _Versions: SPA 0.5.823._
