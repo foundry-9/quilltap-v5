@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — docs(porting): P4.D265 status header records KEYSTONE `609d9d9f2` and the R-F spellings
+
+_Docs-only change._
+
+The order's status header now records the `KEYSTONE` sha. It also records the Rust spellings C1 left open (R-F), the exact `job_runner.rs` hook-region lines, P4.D266's R-C obligation (`ResolvedIds` on the housekeeping job path), the 43 widened fixture pairs, and restore 22a as the only production store-insert site given v4's free-name pick.
+
 #### 2026-10-09 — feat(memory): KEYSTONE — P4.D265 the memory programme's data layer (v4 `01a83539d` pin)
 
 _Versions: core 0.0.1265, host 0.0.195, web 0.0.228._
