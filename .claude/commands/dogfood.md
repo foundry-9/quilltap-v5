@@ -1,5 +1,5 @@
 ---
-description: Run a hands-on dogfood pass over freshly unified work — research the walk, pause for the human's build + data refresh, then drive the browser yourself, deferring only the genuinely human steps
+description: Run a hands-on dogfood pass over freshly unified work — research the walk, preflight the build + data copy (pausing for the human only when either is stale), then drive the browser yourself, deferring only the genuinely human steps
 argument-hint: <work order path(s) that just landed, or "the standing 💸 queue">
 ---
 
@@ -13,8 +13,9 @@ schema shapes, real data volumes, and gestures the e2e never makes. Findings
 log: `docs/developer/porting/dogfood-findings.md` (numbered, classed,
 fixed-in-place or promoted into an order).
 
-**The division of labor: Claude drives the walk.** The human builds, refreshes
-the data copy, and unlocks the instance; Claude then executes every test it
+**The division of labor: Claude drives the walk.** The human builds and refreshes
+the data copy when the §2 preflight finds them stale, and unlocks the
+instance; Claude then executes every test it
 can through the Browser pane, and hands the human only the short remainder
 that genuinely needs them. This is a disposable test instance — it is never
 rsynced back to production — so be bold: create test characters, spin up new
@@ -59,18 +60,46 @@ updated in place as tests run, so structure every step as a checklist row:
 - **What NOT to expect to work**: the still-refusal-armed actions, listed
   from the orders, so nobody reports them as bugs.
 
-## 2. Pause for the build + data refresh (the human's turn)
+## 2. Preflight: are the build and the data current?
 
-Print these instructions verbatim (adjusted only if the round changed them),
-then **STOP and wait for the human to confirm** both are done:
-
-```bash
-cargo build --release
-```
+Run the read-only preflight first (seconds; it builds and copies nothing):
 
 ```bash
-cd apps/web && npm run build
+scripts/dogfood-preflight.sh
 ```
+
+It checks three things and prints PASS or STALE with the reasons for each
+(its header documents the method):
+
+- **release build:** `target/release/quilltap-web` is newer than every input
+  in cargo's own dep-info list (`quilltap-web.d`: the sources plus the
+  `include_str!`-embedded help tree, manifests and schemas) and than the
+  `Cargo.toml`s / `Cargo.lock`;
+- **SPA build:** `apps/web/dist/quilltap/browser/` is newer than every
+  build input under `apps/web/` (specs excluded);
+- **dogfood data:** the copy at `~/qt-dogfood-friday` was refreshed within
+  the last 12 h (`--max-age-hours N` to change), no server has written its
+  DBs since (no earlier walk's leftovers), and no lock or journal is left
+  behind.
+
+**Exit 0 → carry on to §3 without stopping.** Say in one line that the
+preflight passed (the build and refresh times it printed) and launch.
+
+**Exit 1 → STOP.** Show the human the preflight's output and ask them to
+run ONLY the remedies for what it flagged, then confirm; re-run the
+preflight afterwards, and launch only when it passes:
+
+- release build STALE → **`/cleanup`** (it runs exactly `cargo build
+  --release` and then sweeps `target/` around it; a bare `cargo build
+  --release` also works if they would rather skip the sweep);
+- SPA build STALE → `(cd apps/web && npm run build)`;
+- dogfood data STALE → the data refresh below.
+
+If a running `quilltap-web` is reported, a previous walk's server is still
+up — it holds the copy's lock and the old binary's inode; it has to stop
+before the refresh or the relaunch.
+
+Notes for the remedies.
 
 **How warm the release build is depends on what ran last in main's tree.**
 Straight after `/unify`, the DEPENDENCIES are warm (the unify gate builds the
@@ -83,7 +112,8 @@ what the lanes' dev/test builds used and deletes the release artifacts. Expect
 several minutes, including the pinned SQLite3MC amalgamation compiled in
 release. That is expected, not a fault. Three rules:
 
-- **Run exactly `cargo build --release` — never `-p quilltap-web`.** Cargo
+- **The build is exactly `cargo build --release` (what `/cleanup` runs) —
+  never `-p quilltap-web`.** Cargo
   resolves dependency features from the packages selected, so building one
   package gives many dependencies a different feature set than the gate's
   whole-workspace build. They get new artifact hashes and rebuild from
@@ -105,7 +135,7 @@ Angular + TypeScript bump). `npm run build` goes through `apps/web/tools/
 ng-run.mjs`, which waits for `Application bundle generation complete./failed.`,
 reclaims the shell, and exits with the real status.
 
-Data refresh — a fresh copy of Friday into the standing dogfood instance
+**Data refresh** — a fresh copy of Friday into the standing dogfood instance
 (`~/qt-dogfood-friday` — the instance dir itself: it holds `data/`, `files/`,
 `logs/`):
 
@@ -129,7 +159,7 @@ iCloud evicted the source — `brctl download ~/iCloud/Quilltap/Friday/data`
 
 ## 3. Launch the server and get unlocked
 
-Once the human confirms, Claude launches (backend serves the SPA — one
+Once the preflight passes, Claude launches (backend serves the SPA — one
 process):
 
 ```bash

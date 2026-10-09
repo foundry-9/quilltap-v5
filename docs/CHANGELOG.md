@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — docs(commands): /dogfood preflights the build and the data copy
+
+_Docs-only change._
+
+Adds `scripts/dogfood-preflight.sh`, a read-only check that reports PASS or STALE for the release build (the binary against every input in cargo's `quilltap-web.d` dep-info plus the manifests and lockfile), the SPA build (`dist/` against the build inputs under `apps/web/`, specs excluded), and the dogfood data copy (refreshed within `--max-age-hours`, default 12; no DB written since the refresh; no lock or journal left). `/dogfood` step 2 runs it and continues without pausing when everything passes; otherwise it stops and asks for only the flagged remedies (`/cleanup`, the SPA build, the data refresh) and re-runs the check before launching.
+
 #### 2026-10-09 — docs(commands): disk checks measure the repo's real filesystem
 
 _Docs-only change._
