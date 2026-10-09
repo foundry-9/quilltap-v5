@@ -175672,3 +175672,36 @@ Branch `claude/wardrobe-images-spa-viewer-4a334b` (worktree
   viewer only (the dialog's host listener, registered first, reads
   `editorOpen() === true` before the frame's listener clears `viewingImage`).
   `wardrobe-control-dialog.race.spec.ts` untouched and green (69/69 over both).
+
+### Unit 10 — the image section (W5d)
+
+- `item-editor/wardrobe-item-image-section.ts` (the inner active component
+  only): `viewingIndex = signal<number | null>`, `viewing` computed,
+  `openViewer(fileId)` (`findIndex`, `>= 0` — v4 `:167-173`); the current
+  picture's `<a target=_blank>` → v4's button (`type="button"`, class `block
+  cursor-zoom-in`, title `View full size`, aria-label `View the picture of
+  <title> full size` — `:348-361`; the img's `alt` + `data-testid` unchanged);
+  each history img wrapped in v4's button (`[attr.title]="img.prompt ?? 'View
+  full size'"`, aria-labels `View the current picture full size` / `View this
+  earlier picture full size` by `img.fileId === currentId()` — `:467-480`), the
+  img's own `title` REMOVED; the hover layer `pointer-events-none`, its two
+  buttons `pointer-events-auto` + v4's comment (`:483-497`); the viewer `@if
+  (viewing(); as v)` with `[note]` = v4 `:518-523` (`viewing.fileId ===
+  currentId` — the CODE, not the survey's `isCurrent`), `[onPrev]` /
+  `[onNext]` as STABLE bound callbacks or `undefined` at the ends,
+  `[container]` = the section's `container()`, `(closed)` →
+  `viewingIndex.set(null)`. Class doc gains v4's `:10-12` sentence.
+- `wardrobe-item-image-section.spec.ts`: v4 jest `:150-172` transcribed (the
+  button name, the dialog `Picture of Midnight Lightning Flapper Dress`,
+  `Current picture · 1 of 2`, `Next image (Right Arrow)` → `Earlier picture ·
+  2 of 2`, `Save to a document store` → option `Quilltap General` + the
+  `wardrobeItemImageSaveTargets` dispatch `{scope:'character',
+  containerId:'char-1', itemId:'item-1'}`); NEW — the current picture's
+  button bytes (no `<a target=_blank>` left); a single picture's note is
+  `Current picture` with no arrows; a history entry opens at its own index (+
+  the fallback title `View full size`); the arrow keys walk, ArrowLeft at 0
+  does nothing, Escape closes; the hover layer / its buttons' pointer classes;
+  the `:359` `title` assertion re-pinned to the wrapping button. **Red 7/17 on
+  unported source** (the six new arms + the re-pin); green 17/17. The
+  `wardrobe/**`, `images/**` and `screens/prospero/**` spec folders: 49 files
+  / 826 tests green.

@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(spa): the item editor's pictures open full screen and walk the history — P4.D277 unit 10
+
+_Versions: SPA 0.5.832._
+
+The wardrobe item editor's Picture section (`item-editor/wardrobe-item-image-section.ts`) opens pictures full screen, as v4 `01a83539d` does. The current picture's new-tab link becomes a view button, and each history thumbnail is wrapped in one. Each button carries v4's labels, and the prompt `title` moves from the img to the button. The viewer's note reads `Current picture · 1 of 2` / `Earlier picture · 2 of 2`, with no count for a single picture. Previous/Next and the arrow keys walk the history. The hover layer is `pointer-events-none`, with its two buttons `pointer-events-auto`, so clicks reach the view button underneath. v4's jest case is transcribed, plus five arms and one re-pin.
+
 #### 2026-10-09 — feat(spa): open a wardrobe row's picture full screen from the dialog — P4.D277 unit 9
 
 _Versions: SPA 0.5.831._
