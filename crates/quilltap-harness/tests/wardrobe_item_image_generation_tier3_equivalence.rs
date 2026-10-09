@@ -5,8 +5,12 @@
 //! mocked BELOW both (the P4.76 shape; the oracle header names every seam).
 //!
 //! Per scenario both sides take a fresh copy of the baked fixture, apply the
-//! scenario's `sql` to main, resolve the item's home and run ONE generation;
-//! then compare:
+//! scenario's `sql` to main, and run ONE generation — or (P4.D263 item 9, the
+//! `job_*` arms) ONE `WARDROBE_ITEM_IMAGE_GENERATION` job through v4's REAL
+//! `handleWardrobeItemImageGeneration` vs `services::wardrobe_item_image_job`
+//! (success; the item gone; the item archived; no profile; the owner
+//! archived; a refusal; a provider failure — each skip COMPLETES the job, as
+//! v4's handler returns rather than throws); then compare:
 //!   - the result (`fileId` / `url` / `prompt` / `subject` / `profile` /
 //!     `rerouted` / `trail` / the item's new pointer) or the typed error
 //!     (`NoWardrobeImageProfileError` — the ONE sentence for no profile AND a
@@ -349,39 +353,82 @@ fn wardrobe_item_image_generation_tier3_matches_oracle() {
             .build()
             .unwrap();
         let user = spec["userId"].as_str().unwrap().to_string();
-        let container = container_of(&spec, scenario.get("container").and_then(Value::as_str));
         let item_id = spec["items"][scenario["item"].as_str().unwrap()]["id"]
             .as_str()
             .unwrap()
             .to_string();
-        let scope = scope_of(scenario["scope"].as_str().unwrap());
-        let home = {
-            let (u, c, i) = (user.clone(), container.clone(), item_id.clone());
-            rt.block_on(db.write(move |ws| {
-                resolve_wardrobe_item_home(
-                    ws.main().connection(),
-                    ws.mount_index().unwrap().connection(),
-                    &u,
-                    scope,
-                    c.as_deref(),
-                    &i,
+        let (result, lines) = if scenario["op"] == "job" {
+            // v4 `handleWardrobeItemImageGeneration(job)` — completes (an
+            // expected skip completes too) or rethrows.
+            let job = quilltap_core::db::background_jobs::BackgroundJob {
+                id: "e5e5e5e5-0001-4000-8000-000000000001".into(),
+                user_id: user.clone(),
+                job_type: "WARDROBE_ITEM_IMAGE_GENERATION".into(),
+                status: "PROCESSING".into(),
+                payload: json!({
+                    "chatId": spec["jobChatId"],
+                    "characterId": container_of(&spec, scenario["jobCharacter"].as_str()),
+                    "itemId": item_id,
+                })
+                .to_string(),
+                priority: 0.0,
+                attempts: 1.0,
+                max_attempts: 1.0,
+                last_error: None,
+                scheduled_at: String::new(),
+                started_at: None,
+                completed_at: None,
+                created_at: String::new(),
+                updated_at: String::new(),
+            };
+            let (outcome, lines) = captured_with(|| {
+                rt.block_on(
+                    quilltap_core::services::wardrobe_item_image_job::handle_wardrobe_item_image_generation(
+                        &db, &seams, &job,
+                    ),
                 )
-            }))
-            .unwrap()
-            .expect("home")
+            });
+            let r = match outcome {
+                quilltap_core::services::job_runner::JobOutcome::Completed(_) => {
+                    json!({ "ok": true, "completed": true })
+                }
+                quilltap_core::services::job_runner::JobOutcome::Failed(m) => {
+                    json!({ "ok": false, "threw": m })
+                }
+            };
+            (r, lines)
+        } else {
+            let container = container_of(&spec, scenario.get("container").and_then(Value::as_str));
+            let scope = scope_of(scenario["scope"].as_str().unwrap());
+            let home = {
+                let (u, c, i) = (user.clone(), container.clone(), item_id.clone());
+                rt.block_on(db.write(move |ws| {
+                    resolve_wardrobe_item_home(
+                        ws.main().connection(),
+                        ws.mount_index().unwrap().connection(),
+                        &u,
+                        scope,
+                        c.as_deref(),
+                        &i,
+                    )
+                }))
+                .unwrap()
+                .expect("home")
+            };
+            let (result, lines) = captured_with(|| {
+                rt.block_on(generate_wardrobe_item_image(
+                    &db,
+                    &seams,
+                    &GenerateWardrobeItemImageArgs {
+                        user_id: &user,
+                        home: &home,
+                        container_id: container.as_deref(),
+                        image_profile_id: scenario.get("imageProfileId").and_then(Value::as_str),
+                    },
+                ))
+            });
+            (result_json(&result), lines)
         };
-        let (result, lines) = captured_with(|| {
-            rt.block_on(generate_wardrobe_item_image(
-                &db,
-                &seams,
-                &GenerateWardrobeItemImageArgs {
-                    user_id: &user,
-                    home: &home,
-                    container_id: container.as_deref(),
-                    image_profile_id: scenario.get("imageProfileId").and_then(Value::as_str),
-                },
-            ))
-        });
         let (tables, ptrs) = {
             let tables = db
                 .read_main(|m| db.read_mount_index(|n| Ok(dump_all(m, n))))
@@ -389,7 +436,7 @@ fn wardrobe_item_image_generation_tier3_matches_oracle() {
             (tables, rt.block_on(pointers(&db, &spec)))
         };
         let got = json!({
-            "result": result_json(&result),
+            "result": result,
             "providerCalls": calls.lock().unwrap().clone(),
             "logs": blank_duration(rust_lines(&lines, &LOG_PREFIXES)),
             "pointers": ptrs,

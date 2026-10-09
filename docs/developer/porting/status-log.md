@@ -173160,3 +173160,16 @@ red-first in its own unit), `avatar_job_tier3_equivalence` and
   → v4's single-user id `ffffffff-…` plus a key, an image profile and chat settings — the
   `QT_ORACLE_WII` oracle is invalidated and was regenerated. `web_edge_body_parse_guard`: one
   FAITHFUL row (`render`'s `details.refused` pick, not a body read).
+- **Unit 5 — item 9 (the tool-picture job).** NEW `services/wardrobe_item_image_job.rs`
+  (`WardrobeItemImageJobHandler`, `handle_wardrobe_item_image_generation`) with v4's eight lines
+  under `context=background-jobs.wardrobe-item-image`; every expected skip returns
+  `Completed(None)` (v4 returns; the enqueue sets `maxAttempts: 1`), the rethrow returns
+  `Failed`. R-D: `containerId: characterId`, no override, the payload's `chatId` never reaches the
+  generation (no Concierge bubble / ledger row — negative-pinned). Registered in
+  `ProductionSpineFactory` after the avatar tuple over `wardrobe_item_image_seams` (R-F). The
+  tier-3 family gains seven `job_*` arms driving v4's REAL handler; the fixture gains `oldhat`
+  (`archivedAt`) and a `jobChatId` — the `QT_ORACLE_WIIG` oracle is invalidated and was
+  regenerated. Red-first: a new module; the job mutation (a skip returning `Failed`) caught.
+  **HANDOFF (`services/job_runner.rs`, owned by no lane):** `KNOWN_JOB_TYPES` lacks
+  `WARDROBE_ITEM_IMAGE_GENERATION` — harmless while the host registers the handler (the list only
+  words the not-yet-available sentence), but the list should name it.

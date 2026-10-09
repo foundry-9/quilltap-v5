@@ -231,6 +231,15 @@
       "types": [
         "top"
       ]
+    },
+    "oldhat": {
+      "id": "5e6f7081-1010-4000-8000-000000000010",
+      "home": "character",
+      "title": "Retired Topper",
+      "types": [
+        "accessories"
+      ],
+      "archivedAt": "2026-02-15T00:00:00.000Z"
     }
   },
   "chatSettings": {
@@ -395,6 +404,63 @@
       "container": "archived",
       "item": "cloak",
       "provider": "ok"
+    },
+    {
+      "name": "job_success",
+      "op": "job",
+      "item": "coat",
+      "jobCharacter": "character",
+      "provider": "ok"
+    },
+    {
+      "name": "job_item_gone",
+      "op": "job",
+      "item": "apron",
+      "jobCharacter": "character",
+      "provider": "ok"
+    },
+    {
+      "name": "job_item_archived",
+      "op": "job",
+      "item": "oldhat",
+      "jobCharacter": "character",
+      "provider": "ok"
+    },
+    {
+      "name": "job_no_profile",
+      "op": "job",
+      "item": "coat",
+      "jobCharacter": "character",
+      "provider": "ok",
+      "sql": [
+        "UPDATE chat_settings SET wardrobeImageSettings = NULL",
+        "UPDATE image_profiles SET isDefault = 0"
+      ]
+    },
+    {
+      "name": "job_owner_archived",
+      "op": "job",
+      "item": "cloak",
+      "jobCharacter": "archived",
+      "provider": "ok"
+    },
+    {
+      "name": "job_refused",
+      "op": "job",
+      "item": "coat",
+      "jobCharacter": "character",
+      "provider": "refuseAll",
+      "sql": [
+        "UPDATE chat_settings SET conciergeSettings = '{\"enabled\":false}'"
+      ]
+    },
+    {
+      "name": "job_provider_failure",
+      "op": "job",
+      "item": "coat",
+      "jobCharacter": "character",
+      "provider": "throw"
     }
-  ]
+  ],
+  "jobChatId": "c0c0c0c0-0001-4000-8000-000000000001"
 }

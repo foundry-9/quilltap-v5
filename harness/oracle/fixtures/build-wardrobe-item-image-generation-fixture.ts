@@ -43,6 +43,7 @@ interface ItemSpec {
   types: string[];
   imagePrompt?: string;
   componentItemIds?: string[];
+  archivedAt?: string;
 }
 interface Spec {
   testPepperBase64: string;
@@ -251,7 +252,7 @@ async function main(): Promise<void> {
     isDefault: false,
     replace: false,
     migratedFromClothingRecordId: null,
-    archivedAt: null,
+    archivedAt: item.archivedAt ?? null,
   });
   // General and leaves first, so every component reference resolves when its
   // outfit is written.

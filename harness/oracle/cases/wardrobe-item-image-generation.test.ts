@@ -66,7 +66,8 @@ interface Scenario {
   imageProfileId?: string | null;
   provider: 'ok' | 'refuseFirst' | 'refuseAll' | 'throw' | 'nodata';
   sql?: string[];
-  job?: { characterId: string; chatId: string };
+  /** `job` op: the payload's character (`character` | `archived`). */
+  jobCharacter?: string;
 }
 interface Spec {
   testPepperBase64: string;
@@ -76,6 +77,7 @@ interface Spec {
   projectId: string;
   items: Record<string, { id: string; home: string }>;
   webp: string;
+  jobChatId: string;
   scenarios: Scenario[];
 }
 
@@ -190,6 +192,7 @@ async function runScenario(
   );
   const ii = await import('@/lib/wardrobe/item-images');
   const gen = await import('@/lib/wardrobe/item-image-generation');
+  const jobHandler = await import('@/lib/background-jobs/handlers/wardrobe-item-image');
 
   await initializeDatabase();
   const repos = getRepositories();
@@ -223,7 +226,23 @@ async function runScenario(
   }
 
   let result: unknown;
-  try {
+  if (scenario.op === 'job') {
+    try {
+      await jobHandler.handleWardrobeItemImageGeneration({
+        id: 'e5e5e5e5-0001-4000-8000-000000000001',
+        userId: spec.userId,
+        type: 'WARDROBE_ITEM_IMAGE_GENERATION',
+        payload: {
+          chatId: spec.jobChatId,
+          characterId: containerId(scenario.jobCharacter),
+          itemId: spec.items[scenario.item].id,
+        },
+      } as never);
+      result = { ok: true, completed: true };
+    } catch (e) {
+      result = { ok: false, threw: (e as Error).message };
+    }
+  } else try {
     const home = await ii.resolveWardrobeItemHome(
       repos,
       spec.userId,

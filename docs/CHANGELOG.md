@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(wardrobe): the WARDROBE_ITEM_IMAGE_GENERATION job, registered in the production spine (P4.D263 item 9)
+
+_Versions: core 0.0.1258, host 0.0.192._
+
+NEW `services/wardrobe_item_image_job.rs` ports v4's `handleWardrobeItemImageGeneration`: it resolves the item in the character's wardrobe, skips a vanished or archived item, then runs the same `generate_wardrobe_item_image` the Generate button takes, with no profile override and no chat id forwarded (R-D). A missing profile, an archived owner, a refusal or a provider failure is logged with v4's line and the job COMPLETES; anything else fails the job (one attempt, no retry). The host registers it after the avatar handler over the shared `wardrobe_item_image_seams`. A unit test pins the completion topics (the owner's `characters` and `mountPoints`). The tier-3 family gains seven `job_*` arms (success, vanished item, archived item, archived owner, no profile, refused, provider failure) driving v4's real handler; the fixture gains an archived `oldhat` item and a job chat.
+
 #### 2026-10-08 — feat(wardrobe): the item-images route — four core verbs and the `quilltap-web` edge with its multipart upload (P4.D263 items 7, 8, 16; C1 amendment)
 
 _Versions: core 0.0.1257, host 0.0.191, web 0.0.225._

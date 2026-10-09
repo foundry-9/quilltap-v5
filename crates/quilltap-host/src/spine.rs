@@ -3880,6 +3880,17 @@ impl SpineFactory for ProductionSpineFactory {
                 "CHARACTER_AVATAR_GENERATION".to_string(),
                 Box::new(AvatarJobHandler { wire: wire.clone() }),
             ),
+            // P4.D263 (v4 `b3f937076`): the tool-queued wardrobe item picture —
+            // the core handler over the SAME seams the Generate route takes
+            // (`wardrobe_item_image_seams`, R-F).
+            (
+                "WARDROBE_ITEM_IMAGE_GENERATION".to_string(),
+                Box::new(
+                    quilltap_core::services::wardrobe_item_image_job::WardrobeItemImageJobHandler {
+                        seams: crate::wardrobe_item_image::wardrobe_item_image_seams(&self.version),
+                    },
+                ),
+            ),
             (
                 "STORY_BACKGROUND_GENERATION".to_string(),
                 Box::new(StoryBackgroundJobHandler { wire: wire.clone() }),

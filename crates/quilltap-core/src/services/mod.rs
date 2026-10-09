@@ -190,6 +190,7 @@ pub mod wardrobe_container;
 pub mod wardrobe_image_bridge;
 pub mod wardrobe_image_paths;
 pub mod wardrobe_item_image_generation;
+pub mod wardrobe_item_image_job;
 pub mod wardrobe_item_image_prompt;
 pub mod wardrobe_item_images;
 pub mod wardrobe_item_route_steps;
