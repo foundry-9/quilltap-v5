@@ -7151,6 +7151,127 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
+## The `01a83539d` memory-programme + bugs-183–186 + wardrobe-viewer drift catch-up round (P4.D265 → {P4.D266 ∥ P4.D267 ∥ P4.D268 ∥ P4.D269 ∥ P4.D270 ∥ P4.D271 ∥ P4.D272 ∥ P4.D273 ∥ P4.D274 ∥ P4.D275} ∥ P4.D276 ∥ P4.D277 ∥ P4.D278) — ORDERED 2026-10-09
+
+**Baseline `f5e953a3f`. The round is PINNED at v4 `01a83539d` ("feat(wardrobe):
+full-screen picture viewer with save to a document store", `4.10.0-dev.143`,
+2026-10-09 14:44).** That was v4 `main` HEAD at the planning probe, thirteen
+commits past the baseline. The §2 probe PASSED (after `git fetch`;
+`origin/main` agrees, `bugfix` `1a2b2164c` and `release` `8fbf2afe0`
+unmoved), so the ledger stood and nothing was re-derived. **The human's
+ruling (2026-10-09): the work follows the PIN, not the latest commit or
+later changes in v4.** For this round's lanes the probe is an observation,
+not a gate. A v4 commit past `01a83539d` is recorded and left for the next
+`/driftcheck`, and a lane stops only when its pin is unusable (§R.1/§R.2,
+ledger §1).
+
+The standing rule holds: drift debt clears before new scope, so the round IS
+the thirteen-row catch-up. It is the NEXT item 2 the `f5e953a3f` unification
+named, widened to `ed8b15b50` (bugs 183–186; three of them this port's
+filings, and #159 rides it) and `01a83539d`. Fourteen lanes are split by FILE
+OWNERSHIP:
+
+- **ONE keystone, P4.D265 (the memory data layer):**
+  - the SEVENTH D23 re-dump — three statements, incl. bug 186's NOCASE store
+    index — plus `idx_memories_character_tier`;
+  - the `add-memory-tiers-v1` boot ensure (no stamp);
+  - every new memory repository verb, the chat watermark, the two instance
+    settings, the job kind and the vector-store tiers;
+  - the pure `memory_pools` / `commonplace_file` / `memory_access` leaves and
+    the search option types;
+  - every new wire variant + refusal arm;
+  - the oracle tier-migration helper.
+- **Ten lanes cut from its `KEYSTONE` commit:**
+  - P4.D266 — gate + housekeeping demotion + the dedup fold;
+  - P4.D267 — recall engine + replay;
+  - P4.D268 — context delivery;
+  - P4.D269 — the anchor probe, list/search API and CLI;
+  - P4.D270 — extraction grain;
+  - P4.D271 — the consolidation engine;
+  - P4.D272 — memory carriers;
+  - P4.D273 — restore store binding + remap (#159);
+  - P4.D274 — unique store names + the sync line;
+  - P4.D275 — the wardrobe server: 183/184 + the viewer's save + the 409.
+- **Three lanes from `main`:** P4.D276 (memory SPA), P4.D277
+  (wardrobe/images SPA) and P4.D278 (help 131 + `docs/v4/` + the NO-PORT
+  record).
+
+The §R meeting points, the §S unifier wires, contracts C1 (the keystone
+surface) and C2 (the wire), and the Ownership table are spliced
+byte-identically into every order. The three files carved by region are
+`api/memories.rs`, `queue_service.rs` and `spine.rs`. `job_runner.rs` gets a
+keystone-placed append-only hook region. Nine fresh surveys (2026-10-09, at
+`01a83539d` and on `main` `96cfdaaf7`) live under
+`work-orders/surveys/2026-10-09-setupphase-*.md`.
+
+**Planning facts that shape the split** (each measured from the hunks, none
+from prose):
+1. **One re-dump carries both commits.** The re-dump at the pin picks up
+   `ed8b15b50`'s NOCASE index (v4 creates it in the repository table-init
+   hook), so the memory schema and bug 186 share one D23 re-dump. That
+   re-dump is the keystone's, and bug 186's existing-instance ensure +
+   reconcile are P4.D274's.
+2. **v4 has three hot-tier semantics** (COALESCE, exact equality, JS
+   `!== 'cold'`), ported per site.
+3. **v4's two settings POSTs clobber stored values.** Zod 4 `.partial()` still
+   fills defaults. Ported faithfully under a named both-ways table, as a v4
+   filing candidate.
+4. **The Commonplace read is wider than the ledger says.** It feeds the
+   per-turn and fold OTHER canon too, and Carina's extraction rides it.
+5. **The housekeeping merge is gone at the pin.** Retention deletes
+   superseded cold CONSOLIDATED digests too.
+6. **The F5 completion hook must be ported.** It invalidates the frozen
+   archive on every non-dry housekeeping/consolidation completion.
+7. **The 1.4 boost cap applies without relevance,** and the TF-IDF fixtures
+   switch the relevance gate off. A scripted embedding corpus is needed.
+8. **v4's claim map keeps the LAST duplicated store row.** It is kept as v5's
+   first-row named divergence, a v4 filing candidate.
+9. **The restore lane needs P4.D274's reconcile.** Every v4 restore case's
+   store names move, so P4.D273 carries a named carve
+   `RECONCILE_PENDING_UNION` that the unifier lifts.
+10. **v5 has no child process.** The consolidation watermark trigger gets a
+    ruled v5 shape: a `rowid` high-water mark checked at job completion,
+    under `WATERMARK_ROWID_WINDOW`. A `createdAt` window cannot work,
+    because extraction backdates `createdAt` to the source message.
+11. **`MEMORY_REGENERATE_CHAT` has no v5 handler.** The fold-grain rebuild is
+    DEFERRED by name.
+12. **The message Save Image's 400 is pinned by no family.** Its 409 move is
+    a new case on both sides.
+
+
+13. **About 200 harness families open committed `*-main.db` pairs.** The
+    keystone WIDENS every pair IN PLACE through v4's real
+    `add-memory-tiers-v1` (the P4.d12 / P4.D226 precedent) before
+    `KEYSTONE`. Without the widen, every v5 chat or memory read on those
+    pairs would answer `no such column`.
+14. **The new NOCASE index breaks restore 22a.** So the keystone also ports
+    v4's 22a free-name pick (C1 §14), and P4.D273 builds the rest of 22a on
+    it.**Rulings for the human to read first:** §R.11 in any order. THE PIN;
+P4.D265 R-A/R-B/R-C; P4.D266 R-A; P4.D271 R-A/R-B/R-C; P4.D273 R-A–R-D;
+P4.D274 R-A/R-B; P4.D275 R-A; P4.D276 R-A; P4.D277 R-A; P4.D278 R-A.
+
+**Execution (§S.0):**
+- **Wave A, at once:** P4.D265, P4.D276, P4.D277, P4.D278.
+- **Wave B, from `KEYSTONE`:**
+  - first P4.D274, P4.D266, P4.D267, P4.D270, P4.D272, P4.D275;
+  - then P4.D268, P4.D269, P4.D271, P4.D273.
+
+At most six stage-2 lanes run concurrently and two workspace gates at once.
+
+**Deliberately out of this round:**
+- the follow-ups smalls round, the `f5e953a3f` NEXT item 3 (dogfood #156
+  `with_both_conns` on a degraded mount index, #157 the LLM-logs failure line,
+  the shared avatar resolver fall-through, the ten status headers' OPEN
+  lists);
+- the `MEMORY_REGENERATE_CHAT` handler (and with it the fold-grain rebuild);
+- the CLI `memories` verb (still "not yet available"; only its completion
+  lines move);
+- v5's pre-existing memory-list "Source" link and store-detail
+  silent-rename-failure (recorded);
+- the v4 filing candidates (the settings clobber, the dup-store-id claim map,
+  retention/dedup tier reach) — the human's call; v4 used bugs 187–197 after
+  the pin.
+
 ## The `f5e953a3f` wardrobe-programme + convergence drift catch-up round (P4.D255 → {P4.D256 ∥ P4.D262 ∥ P4.D263 ∥ P4.D264} ∥ P4.D257 ∥ P4.D258 ∥ P4.D259 ∥ P4.D260 ∥ P4.D261) — UNIFIED 2026-10-08 (ordered 2026-10-08)
 
 **UNIFIED on main (2026-10-08) — ALL TEN LANES LANDED; the oracle baseline
@@ -7206,7 +7327,7 @@ core 0.0.1264, host 0.0.193, web 0.0.226, cli 0.0.30, SPA 0.5.821; tauri
    full backup whose embeddings restore as `number[]` with the written-rows
    count; the origin chip / wear line / Sort / Picture section / Wardrobe
    Images card in the SPA.
-2. **The memory-programme catch-up round** (`/setupphase`, from the ledger's
+2. ✅ **ORDERED 2026-10-09** as the `01a83539d` round (P4.D265–P4.D278 — the section above; widened to `ed8b15b50` + `01a83539d`, pinned at `01a83539d`). Was: **The memory-programme catch-up round** (`/setupphase`, from the ledger's
    nine UNPROCESSED rows — order the four memory rows as ONE catch-up; the
    `docs/v4/releases/4.10.0.md` re-vendor rides it): the
    SEVENTH D23 re-dump (`memories.tier` / `supersededById` /

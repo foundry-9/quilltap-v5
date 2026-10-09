@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — docs(porting): order the `01a83539d` memory-programme + bugs-183–186 + wardrobe-viewer drift catch-up round — fourteen work orders (P4.D265 → {P4.D266 … P4.D275} ∥ P4.D276 ∥ P4.D277 ∥ P4.D278)
+
+_Docs-only change._
+
+`/setupphase` for the thirteen commits v4 has landed past the `f5e953a3f` baseline. This adds fourteen work orders under `docs/developer/porting/work-orders/` (`p4.d265` … `p4.d278`) and nine planning surveys under `work-orders/surveys/2026-10-09-setupphase-*.md`. A binding round block (§R meeting points, §S unifier wires, contracts C1 the keystone surface and C2 the wire, the Ownership table) is spliced byte-identically into all fourteen orders (md5 `34f377893bdfda8a836110c2b2f01a94` from the §R heading to the end of the file).
+
+- **The round is pinned at v4 `01a83539d`, and the work follows the pin (the human's ruling).** Lanes read v4 only from a detached worktree at that commit. A v4 commit landing after it is recorded and left for the next `/driftcheck`, never ported, and is not a reason to stop. v4 had already landed two such commits (`3e6e2f590`, `7a8d6dacc`) by the close of planning; both are now UNPROCESSED ledger rows.
+- **P4.D265 is the keystone:** the memory data layer. That covers the seventh D23 re-dump (which also carries bug 186's unique store-name index), the `add-memory-tiers-v1` boot ensure, every new memory repository verb, the chat watermark column, the two instance settings, the job kind and the vector-store tiers. It also adds the pure `memory_pools` / `commonplace_file` / `memory_access` leaves, an in-place widen of every committed fixture pair, restore 22a's free-name pick (which the new index forces), and every new wire variant with refusal-bodied arms. Ten lanes branch from its `KEYSTONE` commit: the gate + housekeeping + dedup, the recall engine + replay, context delivery, the anchor probe + list/search API + CLI, the extraction grain, the consolidation engine, the memory carriers, the restore store binding (dogfood #159, as v4 bug 185's convergence), unique store names (bug 186) + the sync line, and the wardrobe server (bugs 183/184, the picture viewer's save, the 409). The memory SPA, the wardrobe/images SPA and the help + `docs/v4/` vendor lane start from `main`.
+- **Records updated:** the drift ledger's eleven unprocessed rows are marked ORDERED (plus the two post-pin rows); `phase-4.md` has the round's ORDERED section; dogfood #159 is marked ORDERED as P4.D273.
+
 #### 2026-10-09 — docs(porting): drift check records v4's wardrobe picture viewer
 
 _Docs-only change._
