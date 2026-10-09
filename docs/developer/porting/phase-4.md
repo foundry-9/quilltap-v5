@@ -7155,12 +7155,13 @@ catch-up when v4 moves.
 
 **UNIFIED on main (2026-10-08) — ALL TEN LANES LANDED; the oracle baseline
 MOVES to `f5e953a3f`; the eleven absorbed rows retire to the drift ledger's
-§6.** v4 landed EIGHT more commits DURING the round (`1825bfd53` …
-`7e9eaf42c` — v4's memory programme: F1–F9, the recall retuning, hot/cold
+§6.** v4 landed NINE more commits DURING the round (`1825bfd53` …
+`783385873` — v4's memory programme: F1–F9, the recall retuning, hot/cold
 tiers + consolidation with a SEVENTH schema move, bug 182, a sync log line, a
-test commit); the lanes' `1825bfd53`-only waiver was superseded, every regen
-stayed pinned at `f5e953a3f`, and the eight are classified UNPROCESSED in the
-ledger's §3 (regen rule PIN REQUIRED at `f5e953a3f`). Round record:
+test commit, and — during the gate — a release-notes update); the lanes'
+`1825bfd53`-only waiver was superseded, every regen stayed pinned at
+`f5e953a3f`, and the nine are classified UNPROCESSED in the ledger's §3
+(regen rule PIN REQUIRED at `f5e953a3f`). Round record:
 `status-log.md` → "The `f5e953a3f` wardrobe-programme + convergence drift
 catch-up round — UNIFICATION record"; each order's status header carries its
 Unification paragraph and exactly what stays OPEN. The planned
@@ -7206,7 +7207,8 @@ core 0.0.1264, host 0.0.193, web 0.0.226, cli 0.0.30, SPA 0.5.821; tauri
    count; the origin chip / wear line / Sort / Picture section / Wardrobe
    Images card in the SPA.
 2. **The memory-programme catch-up round** (`/setupphase`, from the ledger's
-   eight UNPROCESSED rows — order the four memory rows as ONE catch-up): the
+   nine UNPROCESSED rows — order the four memory rows as ONE catch-up; the
+   `docs/v4/releases/4.10.0.md` re-vendor rides it): the
    SEVENTH D23 re-dump (`memories.tier` / `supersededById` /
    `consolidatedFrom` / `consolidatedAt`, `chats.otherExtraction
    WatermarkMessageId`) as its keystone, the `migration_indexes.json`

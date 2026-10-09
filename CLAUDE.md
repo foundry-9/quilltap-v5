@@ -757,8 +757,9 @@ records THERE. Update this summary only when a phase or round completes.
   (P4.D255 → {P4.D256 ∥ P4.D262 ∥ P4.D263 ∥ P4.D264} ∥ P4.D257 ∥ P4.D258 ∥
   P4.D259 ∥ P4.D260 ∥ P4.D261): UNIFIED on main (2026-10-08) — ALL TEN LANES
   LANDED; the oracle baseline MOVES to `f5e953a3f`; the ledger's §3 holds the
-  EIGHT memory-programme commits v4 landed mid-round (`1825bfd53` …
-  `7e9eaf42c`, UNPROCESSED — a SEVENTH D23 move pending), PIN REQUIRED.** v4's
+  NINE commits v4 landed mid-round (`1825bfd53` … `783385873` — the memory
+  programme + a release-notes update, UNPROCESSED; a SEVENTH D23 move
+  pending), PIN REQUIRED.** v4's
   wardrobe programme whole: the SIXTH D23 re-dump (`wardrobe_wear_stats` +
   `chat_settings."wardrobeImageSettings"`; NO `migration_tables.json` — R-A
   overruled) with three boot ensures (P4.D255, the keystone); the read-time

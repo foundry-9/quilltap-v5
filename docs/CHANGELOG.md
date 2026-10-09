@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — docs(porting): the drift ledger records v4's ninth mid-round commit (`783385873`, release notes only)
+
+_Docs-only change._
+
+v4 landed `783385873` (an update to `docs/releases/4.10.0.md`, one file) during the `f5e953a3f` unification's gate. The drift ledger's §1 now names it as HEAD (nine commits past the `f5e953a3f` baseline) and §3 gains a NO-PORT? row; the `docs/v4/releases/4.10.0.md` mirror is stale until the next round re-vendors it.
+
 #### 2026-10-08 — docs(porting): unify the `f5e953a3f` wardrobe-programme + convergence drift catch-up round — ten lanes, the baseline moves to `f5e953a3f`
 
 _Versions: core 0.0.1264, host 0.0.193, web 0.0.226, cli 0.0.30, SPA 0.5.821._

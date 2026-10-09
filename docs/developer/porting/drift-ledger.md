@@ -32,24 +32,27 @@ probe verifies against._
   run from the unification session — its draft rows are §3's eight). Previous
   checks: 2026-10-08 morning (`/driftcheck`, the eleven commits to
   `f5e953a3f`); 2026-10-07 (`/unify` of the boot-hardness round).
-- **v4 `main` HEAD at check: `7e9eaf42c`** ("test: release checklist 2 —
-  regression tests and coverage for 4.10", 2026-10-08 17:46,
-  `4.10.0-dev.141`) — EIGHT commits past the baseline (`1825bfd53`,
-  `3f7320138`, `da98ca58b`, `f7d8064be`, `d58548051`, `70f9b495c`,
-  `197104649`, `7e9eaf42c`; a linear run, no merges). `origin/main` agrees.
-  All eight arrived DURING the round (after the lanes' `1825bfd53`-only
-  waiver, which the unification superseded); the round's regens all ran from
-  the `f5e953a3f` pin.
+- **v4 `main` HEAD at check: `783385873`** ("docs: update 4.10.0 release
+  notes for memory consolidation, wardrobe ledger and pictures, daily
+  optimize", 2026-10-09 00:36) — NINE commits past the baseline
+  (`1825bfd53`, `3f7320138`, `da98ca58b`, `f7d8064be`, `d58548051`,
+  `70f9b495c`, `197104649`, `7e9eaf42c`, `783385873`; a linear run, no
+  merges). `origin/main` agrees. All nine arrived DURING the round (after the
+  lanes' `1825bfd53`-only waiver, which the unification superseded) — the
+  ninth, docs-only, during the unification's gate, recorded at its cleanup;
+  the round's regens all ran from the `f5e953a3f` pin.
 - **v4 `bugfix` tip at check:** `1a2b2164c`, UNMOVED (`1a2b2164c..bugfix`
   and `..origin/bugfix` empty). **`release` tip:** `8fbf2afe0` (`release:
   4.9.2`), UNMOVED; still no `release: 4.10.0` squash.
 - **Checkout at check:** branch **`main`**, tree **CLEAN**.
-- **Verdict: DRIFT PENDING — 8 commits (§3), all classified, all
+- **Verdict: DRIFT PENDING — 9 commits (§3), all classified, all
   `UNPROCESSED`** — v4's **memory programme** (2026-10-08) plus a sync log
-  line and a test commit:
-  - **NO-PORT?** (3): `1825bfd53` + `da98ca58b` (docs/specs only),
+  line, a test commit and a release-notes update:
+  - **NO-PORT?** (4): `1825bfd53` + `da98ca58b` (docs/specs only),
     `7e9eaf42c` (tests + a behaviour-preserving SPA refactor v5 already
-    matches).
+    matches), `783385873` (`docs/releases/4.10.0.md` only — but the
+    `docs/v4/releases/4.10.0.md` mirror P4.D260 vendored is now stale: a
+    re-vendor rides the next round).
   - **PORT / PORT-NEW** (5): `3f7320138` (F1–F9 — near-duplicate
     reinforcement, the footnote cap, archive ranking, the per-chat frozen
     archive, delivered-only access stamps, budget-sized head/archive, real
@@ -81,7 +84,7 @@ probe verifies against._
     `MEMORY_CONSOLIDATION` need no DDL.
   - **Dependencies: NONE moved** by the eight (version stamps only;
     `plugins/dist/` untouched).
-- **Regen rule: PIN REQUIRED at `f5e953a3f`** (§5.1) — v4 HEAD is eight
+- **Regen rule: PIN REQUIRED at `f5e953a3f`** (§5.1) — v4 HEAD is nine
   commits past the baseline. ⚠ **The dependency trap:** the root tree moved
   at `a9c99a4a0` (now INSIDE the baseline — `openai` 7.30.0,
   `@openrouter/sdk` 1.4.25, …); a `f5e953a3f` pin's own lockfile carries it,
@@ -198,6 +201,7 @@ when absorbed/ratified.
 | `70f9b495c` | 2026-10-08 | fix(memory): count concurrent reinforcements atomically (bug 182) | **PORT** (classified 2026-10-08; NOT a convergence — bug 182 was found by v4's own review of PR 83, never filed by this port; no schema move). New `MemoriesRepository.incrementReinforcement(characterId, memoryId, at)`: ONE synchronous transaction reads `importance` / `reinforcementCount` by `(id, characterId)`, writes `reinforcementCount = (row ?? 1) + 1`, `reinforcedImportance` recomputed, `lastReinforcedAt = at`, `updatedAt`; WARN `Memory not found for reinforcement` → null; debug `Memory reinforcement counted`. `memory-gate.ts` `countReinforcement` routes BOTH `absorbNearDuplicate` and `reinforceMemory` through it; `reinforceMemory` now patches ONLY content + anchors (and only when they changed — a second write, after the count), the returned memory merges the counted fields. The child-buffered `increment*` arm (debug `[MemoryGate] Reinforcement buffered (job child)`) is a forked-child artifact — NO-PORT half. `calculateReinforcedImportance` moved to the pure `lib/memory/reinforced-importance.ts` (formula byte-identical; re-exported). **v5 carries the bug's shape:** `services/memory_gate.rs` `reinforce_memory` computes `existing_count + 1.0` from the gate's snapshot and writes it absolutely through `update_for_character` in ONE patch with content/anchors (a lost update between two concurrent in-process extraction jobs — the single writer serializes the WRITES, not the read-modify-write; the fix is the increment inside one `Db::write` closure). v5 has no `absorbNearDuplicate` yet (`SkipNearDuplicate` writes nothing — `near_duplicate_skips_without_writing`; it arrives with `3f7320138`'s F1). bugs.md: 182 FIXED, none open | `services/memory_gate.rs` `reinforce_memory` (:657) + the near-duplicate arm, `db/memories*.rs` (a new increment write), `memory_gate.rs:45` `calculate_reinforced_importance` (tier-1, Phase 1 — unchanged); the memory-gate tier-2/tier-3 families (the write count / `updatedAt` ordering moves) | UNPROCESSED |
 | `197104649` | 2026-10-08 | fix(sync): read target bytes through the disk adapter | **PORT (log line only)** (classified 2026-10-08). `bytesFor`'s inline `fs.readFile(resolveInTarget(…))` moves to a new `apply-disk.ts` `readDiskFile`, which resolves the SAME way and adds ONE debug line `[Sync] Reading disk file` `{relativePath}`. Behaviour otherwise identical — v5's `bytes_for` already reads through `resolve_in_target` (escape refusal included). The new `disk-boundary.test.ts` is a v4 test-only import guard | `services/mount_index/sync/mod.rs` `bytes_for` (:483) / `sync/apply_disk` (P4.D210); `sync_engine_equivalence` if it captures debug lines | UNPROCESSED |
 | `7e9eaf42c` | 2026-10-08 | test: release checklist 2 — regression tests and coverage for 4.10 | **NO-PORT?** (classified 2026-10-08). Tests (19 new files) + ONE behaviour-preserving SPA refactor: the All-LLM pause dialog's Continue moved from `SalonView.tsx` into `continueAllLLMRoom` (`app/salon/[id]/hooks/all-llm-pause-actions.ts` — close, await `setPauseState(false)`, then `handleContinue`; the same order as before), and the unused no-op `handleAllLLMContinue` / `handleAllLLMStop` removed from `useChatControls`. v5 already carries bug 139's fix (`apps/web/src/app/chat/all-llm-pause.ts` + specs). The new v4 tests (sync engine walk/apply/orchestrator, consolidation handler + triggers, fold-other catch-up, daily-db-optimize, avatar-rolls + subprompts routes, save-attribution) are reference material for the lanes porting those surfaces, not ports | — (`apps/web/src/app/chat/all-llm-pause*.ts` already v4-faithful) | UNPROCESSED |
+| `783385873` | 2026-10-09 | docs: update 4.10.0 release notes for memory consolidation, wardrobe ledger and pictures, daily optimize | NO-PORT? (docs only — `--stat`: ONE file, `docs/releases/4.10.0.md`, +75 / −9; recorded at the `f5e953a3f` unification's cleanup) | `docs/v4/releases/4.10.0.md` (P4.D260's mirror — stale until re-vendored) | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
