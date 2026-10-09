@@ -1397,12 +1397,22 @@ pub async fn apply_outfit_for_added_participant(
                         &manual_worn_bundle_ids,
                         &pool,
                     ),
+                    // v4's `getPool` never throws (each tier read catches and
+                    // WARNs; `apply-outfit-selections.ts:290-322`), so a manual
+                    // selection is ALWAYS written — at worst with no bundle
+                    // credit. v5's pool read is strict, so a failure here
+                    // dresses the character without the claim rather than
+                    // leaving them undressed (the `f5e953a3f` unification's §3
+                    // finding on P4.D262). The WARN is v5's own: v4 cannot
+                    // reach a whole-pool failure.
                     Err(e) => {
-                        tracing::error!(
-                            chat_id, character_id, mode = %mode, error = %e,
-                            "[Chats v1] Failed to apply outfit for added participant"
+                        tracing::warn!(
+                            chat_id, character_id, error = %e,
+                            "[Chats v1] Could not read the wearable pool for an added \
+                             participant's claimed bundles; equipping the manual slots \
+                             without bundle credit"
                         );
-                        return;
+                        Vec::new()
                     }
                 }
             };

@@ -2040,3 +2040,85 @@ fn the_outfit_failure_line_is_error_with_mode_on_both_arms() {
     });
     assert!(!has(&lines, FAILED), "{lines:#?}");
 }
+
+/// The `f5e953a3f` unification's §3 finding on P4.D262: a `manual` join whose
+/// selection claims dissolved bundles (`wornBundleIds`) must still be DRESSED
+/// when the wearable-pool read fails. v4's `getPool` never throws — each tier
+/// read catches and WARNs (`apply-outfit-selections.ts:290-322`) — so v4
+/// always writes the manual slots, at worst with no bundle credit; P4.D262's
+/// first cut returned on the failed read and left the character undressed.
+/// The main-only `Db` makes every mount-index read (the pool's vault and
+/// shared tiers) answer `PartitionUnavailable`; the main partition carries
+/// the ledger so the chokepoint's commit can credit the newly worn leaf.
+#[test]
+fn a_manual_join_with_claimed_bundles_is_dressed_when_the_pool_read_fails() {
+    const FAILED: &str = "[Chats v1] Failed to apply outfit for added participant";
+    const DEGRADED: &str = "[Chats v1] Could not read the wearable pool for an added \
+                            participant's claimed bundles";
+    let spec = load_spec();
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let chat = spec.ids["chatQuiet"].clone();
+    let character = spec.ids["dora"].clone();
+
+    let scratch_dir = tempfile::Builder::new()
+        .prefix("qt-cast-of-manual-")
+        .tempdir()
+        .expect("tempdir");
+    let main = scratch_dir.path().join("main.db");
+    std::fs::copy(fixtures_dir().join("chat-cast-main.db"), &main).unwrap();
+    {
+        let w = quilltap_core::db::Writer::open_writable(&main, &spec.test_pepper_base64)
+            .expect("open main for the ledger ensure");
+        quilltap_core::test_support::ensure_wear_ledger_on(w.connection());
+    }
+    let db = Db::open(
+        DbPaths {
+            main,
+            mount_index: None,
+            llm_logs: None,
+        },
+        &spec.test_pepper_base64,
+    )
+    .expect("open main-only db");
+
+    let selection = json!({
+        "characterId": character,
+        "mode": "manual",
+        "slots": { "top": ["a1b2c3d4-0000-4000-8000-0000000000aa"] },
+        "wornBundleIds": ["a1b2c3d4-0000-4000-8000-0000000000bb"],
+    });
+    let ((), lines) = quilltap_core::test_support::captured_with(|| {
+        rt.block_on(
+            quilltap_core::services::chat_participants::apply_outfit_for_added_participant(
+                &db,
+                &spec.user_id,
+                &chat,
+                &character,
+                Some(&selection),
+                None,
+            ),
+        )
+    });
+    assert!(
+        !has(&lines, FAILED),
+        "the join must not give up: {lines:#?}"
+    );
+    assert!(has(&lines, DEGRADED), "{lines:#?}");
+    let equipped = db
+        .read_main(|c| {
+            Ok(
+                quilltap_core::db::chats_outfits::ChatOutfitsRepository::new(c)
+                    .get_equipped_outfit_for_character(&chat, &character),
+            )
+        })
+        .unwrap()
+        .expect("the manual slots were written");
+    assert_eq!(
+        equipped["top"],
+        json!(["a1b2c3d4-0000-4000-8000-0000000000aa"]),
+        "{equipped}"
+    );
+}
