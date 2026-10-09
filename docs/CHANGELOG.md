@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — test(harness): pin Node 24 in the help-section-size recipe header
+
+_No crate versions bumped._
+
+P4.D278 Tier 2. The `help_section_size_equivalence` regen recipe ran a bare `npx tsx` with no Node pin. It now uses the same shape as the `help_tree_equivalence` header: `N=~/.nvm/versions/node/v24.13.1/bin`, `V5W=${V5W:-$HOME/source/quilltap-v5}`, `PATH=$N:$PATH $N/npx tsx …`. `recipe_sweep.py --self-test` passes.
+
 #### 2026-10-09 — docs(v4): bring the docs/v4 mirror to v4 01a83539d (19 paths)
 
 _Docs-only change._
