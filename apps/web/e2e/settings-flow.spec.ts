@@ -487,7 +487,7 @@ test.describe('P4.6r — Templates & Images settings verticals', () => {
   // update ignores the unknown key and the reload would read the default —
   // a failure that says nothing about this lane. Flipped at unification.
   // -------------------------------------------------------------------------
-  const P4D255_SERVER_LANDED = false;
+  const P4D255_SERVER_LANDED = true;
 
   test('Images tab: the Wardrobe Images card lists the artists and saves the tools switch whole (ACTIVATE-AT-UNIFY, P4.D255/P4.D263)', async ({
     page,
@@ -498,7 +498,7 @@ test.describe('P4.6r — Templates & Images settings verticals', () => {
     );
     test.setTimeout(60_000);
     await page.goto(`${TMPL_BASE_URL}/settings?tab=images&section=wardrobe-images`);
-    await unlockIfLocked(page, page.getByRole('heading', { name: 'Wardrobe Images' }));
+    await unlockIfLocked(page, page.locator('qt-wardrobe-images-card').getByRole('heading', { name: 'Wardrobe Images' }));
 
     const card = page.locator('qt-wardrobe-images-card');
     const artist = card.getByLabel('Wardrobe Artist');
@@ -545,7 +545,7 @@ test.describe('P4.6r — Templates & Images settings verticals', () => {
 
     // It is server state.
     await page.reload();
-    await expect(page.getByRole('heading', { name: 'Wardrobe Images' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('qt-wardrobe-images-card').getByRole('heading', { name: 'Wardrobe Images' })).toBeVisible({ timeout: 10_000 });
     const toggleAgain = page
       .locator('qt-wardrobe-images-card')
       .getByRole('checkbox', { name: /Portraits from the Wardrobe Tools/ });

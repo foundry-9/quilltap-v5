@@ -102,7 +102,7 @@ const P4D119_INSTRUCTIONS_LANDED = true;
  * pre-round server every one would fail for a reason that says nothing about
  * the SPA lane. Flip to `true` at unification (the order's §S.9).
  */
-const P4D255_SERVER_LANDED = false;
+const P4D255_SERVER_LANDED = true;
 
 /** The garment the wear-ledger beats create fresh, so its tally starts at zero. */
 const LEDGER_GARMENT = 'Ledger Spats';
@@ -628,7 +628,8 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
         .filter({ hasText: 'Domino Mask' })
         .first();
       await expect(maskRow).toBeVisible();
-      await expect(maskRow).not.toContainText('· shared');
+      // Its own container's row: no borrowed-origin chip.
+      await expect(maskRow.locator('.qt-badge-wardrobe-shared')).toHaveCount(0);
       await maskRow.getByRole('button', { name: 'More actions' }).click();
       await expect(page.getByRole('menuitem', { name: 'Edit' })).toBeVisible();
       await expect(page.getByRole('menuitem', { name: 'Delete' })).toBeVisible();
@@ -685,7 +686,10 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
 
     const dialog = page.getByRole('dialog');
     const rows = dialog.locator('.qt-card-interactive');
-    const sharedRows = rows.filter({ hasText: 'Domino Mask' });
+    // Every BORROWED row carries the origin chip (v4 `cc80dc89d`) — the whole
+    // population, now the union serves `origin` (restored from the lane's
+    // pre-round `Domino Mask` narrowing at the unification).
+    const sharedRows = rows.filter({ has: page.locator('.qt-badge-wardrobe-shared') });
     const ownRows = dialog.locator('.qt-card-interactive').filter({ hasText: 'Brass Goggles' });
 
     const sharedBox = dialog.locator('label').filter({ hasText: 'Show shared' }).locator('input');
@@ -1597,8 +1601,15 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     const entries = page.getByTestId('wardrobe-item-image-history-entry');
     await expect(entries).toHaveCount(2, { timeout: 15_000 });
 
-    // The newest is current; make the earlier one current again.
+    // The newest is current; make the earlier one current again. The current
+    // picture must actually CHANGE (one entry is current before and after, so
+    // a count alone could not fail — the unification's §3 finding).
+    const currentImg = page.getByTestId('wardrobe-item-image-current');
+    const newestSrc = await currentImg.getAttribute('src');
+    expect(newestSrc).toBeTruthy();
     await section.getByRole('button', { name: 'Make current' }).click();
+    await expect(currentImg).not.toHaveAttribute('src', newestSrc!, { timeout: 10_000 });
+    const earlierSrc = await currentImg.getAttribute('src');
     await expect(entries.locator('img[alt="Current picture"]')).toHaveCount(1);
 
     // Take the other down (confirmed).
@@ -1611,6 +1622,8 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
       timeout: 15_000,
     });
     await expect(entries).toHaveCount(1);
+    // The one taken down was the newest; the made-current picture stays.
+    await expect(currentImg).toHaveAttribute('src', earlierSrc!);
 
     // The row behind the editor shows the current picture.
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
