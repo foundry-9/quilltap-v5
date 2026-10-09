@@ -28,9 +28,12 @@
 //! off the test thread); they are capture-pinned in `quilltap-core::api::
 //! wardrobe_item_images`'s tests.
 //!
-//! Regenerate (see the oracle header — the fixture is the tier-2 builder's):
+//! Regenerate (see the oracle header — the fixture is the tier-2 builder's,
+//! built into this family's OWN `/tmp/qt-wiir-*` paths: sharing the tier-2
+//! family's `/tmp/qt-wii-*` let whichever regenerated last re-mint the other's
+//! picture ids — the `f5e953a3f` unification's workspace-run catch):
 //!   QT_ORACLE_WIIR=/tmp/oracle-wardrobe-item-images-routes.ndjson \
-//!   QT_FIXTURE_WII_MAIN=/tmp/qt-wii-main.db QT_FIXTURE_WII_MOUNT=/tmp/qt-wii-mount.db \
+//!   QT_FIXTURE_WIIR_MAIN=/tmp/qt-wiir-main.db QT_FIXTURE_WIIR_MOUNT=/tmp/qt-wiir-mount.db \
 //!     cargo test -p quilltap-web --test wardrobe_item_images_routes_equivalence
 
 mod common;
@@ -628,11 +631,11 @@ async fn direct_request(
 async fn wardrobe_item_images_routes_match_oracle() {
     let (Ok(oracle_path), Ok(main_fixture), Ok(mount_fixture)) = (
         std::env::var("QT_ORACLE_WIIR"),
-        std::env::var("QT_FIXTURE_WII_MAIN"),
-        std::env::var("QT_FIXTURE_WII_MOUNT"),
+        std::env::var("QT_FIXTURE_WIIR_MAIN"),
+        std::env::var("QT_FIXTURE_WIIR_MOUNT"),
     ) else {
         eprintln!(
-            "SKIP: set QT_ORACLE_WIIR + QT_FIXTURE_WII_MAIN + QT_FIXTURE_WII_MOUNT (see header)."
+            "SKIP: set QT_ORACLE_WIIR + QT_FIXTURE_WIIR_MAIN + QT_FIXTURE_WIIR_MOUNT (see header)."
         );
         return;
     };

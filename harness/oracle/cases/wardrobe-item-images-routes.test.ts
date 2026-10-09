@@ -29,9 +29,9 @@
  *   cp "$V5W/harness/oracle/fixtures/wardrobe-item-images-tier2.json" "$TMPO/fixtures/"
  *   cp "$V5W/harness/oracle/fixtures/wardrobe-item-images-routes.json" "$TMPO/fixtures/"
  *   cd ~/source/quilltap-server
- *   QT_FIXTURE_WII_MAIN=/tmp/qt-wii-main.db QT_FIXTURE_WII_MOUNT=/tmp/qt-wii-mount.db \
+ *   QT_FIXTURE_WII_MAIN=/tmp/qt-wiir-main.db QT_FIXTURE_WII_MOUNT=/tmp/qt-wiir-mount.db \
  *     $N/node --import tsx $V5W/harness/oracle/fixtures/build-wardrobe-item-images-fixture.ts
- *   QT_FIXTURE_WII_MAIN=/tmp/qt-wii-main.db QT_FIXTURE_WII_MOUNT=/tmp/qt-wii-mount.db \
+ *   QT_FIXTURE_WIIR_MAIN=/tmp/qt-wiir-main.db QT_FIXTURE_WIIR_MOUNT=/tmp/qt-wiir-mount.db \
  *   QT_ORACLE_OUT=/tmp/oracle-wardrobe-item-images-routes.ndjson \
  *     $N/npx jest --silent --watchman=false --testTimeout=600000 \
  *       --roots "$PWD" --roots "$TMPO/cases" -- "cases/wardrobe-item-images-routes\.test\.ts$"
@@ -350,10 +350,13 @@ async function main(): Promise<void> {
   const corpus = JSON.parse(
     fs.readFileSync(join(here, '..', 'fixtures', 'wardrobe-item-images-routes.json'), 'utf8'),
   ) as { png: string; requests: RouteRequest[] };
-  const mainFixture = process.env.QT_FIXTURE_WII_MAIN;
-  const mountFixture = process.env.QT_FIXTURE_WII_MOUNT;
+  // Its OWN build of the tier-2 builder's fixture (`/tmp/qt-wiir-*`, the
+  // `f5e953a3f` unification): sharing `/tmp/qt-wii-*` with the tier-2 family
+  // let whichever regenerated last re-mint the other's picture ids.
+  const mainFixture = process.env.QT_FIXTURE_WIIR_MAIN;
+  const mountFixture = process.env.QT_FIXTURE_WIIR_MOUNT;
   if (!mainFixture || !existsSync(mainFixture) || !mountFixture || !existsSync(mountFixture)) {
-    throw new Error('QT_FIXTURE_WII_MAIN and QT_FIXTURE_WII_MOUNT must point at the seed fixtures');
+    throw new Error('QT_FIXTURE_WIIR_MAIN and QT_FIXTURE_WIIR_MOUNT must point at the seed fixtures');
   }
   const outPath = process.env.QT_ORACLE_OUT;
   if (!outPath) throw new Error('QT_ORACLE_OUT must point at the NDJSON file to write');
