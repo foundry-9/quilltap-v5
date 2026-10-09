@@ -398,12 +398,6 @@ fn norm_sort_key(row: &Value, spec: &TableSpec, id_map: &HashMap<String, String>
     key
 }
 
-/// Normalize all seven dumps in place using ONE shared id-map. Phases:
-///   1. placeholder ISO timestamps in EVERY string cell (incl. `content`);
-///   2. sort each table's rows by its `order_by` (post-ts key);
-///   3. walk tables in order, remap UUIDs in id columns AND `content`;
-///   4. recompute `contentSha256` from normalized content, propagate to files;
-///   5. (chunkCount diffs exactly since P4.6BK — the pin is retired).
 /// The ids a transfer MINTED (P4.D263): a copy's fresh item id and the fresh
 /// ids its copied components were given, read off the side's own response
 /// (the outfit's `componentItemIds` carry them in source order on both sides).
@@ -454,6 +448,12 @@ fn tokenize_minted(dumps: &mut [Value], minted: &[String]) {
     }
 }
 
+/// Normalize all seven dumps in place using ONE shared id-map. Phases:
+///   1. placeholder ISO timestamps in EVERY string cell (incl. `content`);
+///   2. sort each table's rows by its `order_by` (post-ts key);
+///   3. walk tables in order, remap UUIDs in id columns AND `content`;
+///   4. recompute `contentSha256` from normalized content, propagate to files;
+///   5. (chunkCount diffs exactly since P4.6BK — the pin is retired).
 fn normalize_all(dumps: &mut [Value]) {
     // Phase 1: placeholder every ISO timestamp everywhere; blank embedded UUIDs
     // inside content columns to a CONSTANT `<uuid>` (so a copy's frontmatter is

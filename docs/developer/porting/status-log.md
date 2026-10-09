@@ -173236,3 +173236,37 @@ red-first in its own unit), `avatar_job_tier3_equivalence` and
   `wardrobe_images_block_never_reports_generate_from_tools` pins the block's one key; the
   `JOB_TYPES` row (`api/system_data.rs:650`, P4.D255's) is run by name in the lane gate
   (`activity_tables_equivalence`).
+- **LANE CLOSE — P4.D263 (2026-10-08).** Branch `claude/wardrobe-images-route-generation-816bd9`,
+  cut from P4.D255's lane tip `23cd7123b` (the `KEYSTONE` `c30603378` + P4.D255's lane record).
+  **Drift:** the §2 probe FAILED at lane start; the human waived it in chat ("Waiver recorded in
+  the ledger; proceed from the current tip"). At close v4 `main` stands 8 commits past
+  `f5e953a3f` (`1825bfd53` … `7e9eaf42c`, memory work + a sync fix + a 4.10 checklist test; the
+  version stamp `4.10.0-dev.141`); every regen ran in the pin `/tmp/qt-v4-pin-p4d263-f5e953a3f`,
+  whose `node_modules` symlinks to the live checkout — `package.json` / `package-lock.json` differ
+  between the pin and HEAD ONLY in the version stamp, so no dependency drift reached a regen.
+  **Landed:** items 2–17 (Tier 1 + Tier 2) in units 1–10. **C1 AMENDMENT (the human, in chat):**
+  the `generate` engine arm takes the image seams; `list` / `set_current` / `delete` are async.
+  **Recorded divergence:** v4's provider-failure 502 crosses the frozen dispatch boundary as
+  `Internal` + `details{trail, refused:false}`; the web edge restores 502, a direct-mode caller
+  sees `Internal`. **HANDOFFs (to the unifier):** (1) `tools/wardrobe_shared.rs`
+  `hydrate_component_graph` → `pub(crate)` + v4's WARN keys, then fold this lane's local copy in
+  `wardrobe_item_image_generation.rs`; (2) `image_gen/params_builder.rs` `ImageParamsLogContext`
+  lacks `itemId`; (3) `services/job_runner.rs` `KNOWN_JOB_TYPES` lacks
+  `WARDROBE_ITEM_IMAGE_GENERATION`; (4) `api/engine.rs` `WardrobeTransferApply` →
+  `wardrobe_transfer_apply_with_codec` over `ready_db_and_blob_webp()`; (5) the almanack `.db`
+  pair's chat_settings should store a designated wardrobe profile (the ledger's truthy read is
+  uncovered at tier 2). **Tier 3 deferred (recorded, not landed):** 18 (transfers adopting
+  `wardrobe_container.rs` — the transfers resolve the mount through it, their source/destination
+  readers stay); 19 (the four `sanitize_leaf_name` copies); 20 (P4.D256's `?`, the SPA halves,
+  `help/wardrobe-images.md`, the carriers — other lanes'); 21 💸 the live proof (a garment picture
+  through the real Concierge desk on the Friday copy), plus the tool-queued job end to end and a
+  transfer with pictures on the copy. **Gate (2026-10-08, final tree bar a doc-comment move):**
+  fmt clean; clippy both feature sets clean (re-run after the
+  `wardrobe_transfers_tier2_equivalence` doc-comment fix); `cargo test --workspace --no-fail-fast`
+  688 binaries / 4,556 passed / 2 failed / 3 ignored, zero SKIP, every lane env var set
+  (`QT_V4_CHECKOUT` / `QT_V4_ROOT` at the pin) — the two reds are live-checkout guards owned by
+  other lanes and red only against the pin: `provider_sdk_version_guard` (`openai` 7.23.0 →
+  7.30.0, `@openrouter/sdk` 1.3.28 → 1.4.25 — P4.D260's dependency move) and
+  `qtap_schema_embed_guard` (v4's schema 101,092 bytes vs vendored 97,324 — P4.D264's
+  re-vendor); `recipe_sweep.py --self-test` 0 failures. **Versions at close:** core 0.0.1263,
+  host 0.0.192, web 0.0.225; harness frozen 0.0.1110.
