@@ -1411,14 +1411,12 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     await expect(chip).toHaveText('Shared · Quilltap General', { timeout: 10_000 });
     await expect(chip).toHaveAttribute('title', 'Borrowed from Shared · Quilltap General');
     await expect(dialog).not.toContainText('· shared');
-    // Her own garment carries none.
-    await expect(
-      dialog
-        .locator('qt-wardrobe-item-row')
-        .filter({ hasText: 'Brass Goggles' })
-        .first()
-        .locator('.qt-badge-wardrobe-shared'),
-    ).toHaveCount(0);
+    // Her own garment carries none. (The fixture's Flight Jacket: by this beat
+    // the Move beat has carried Brass Goggles to General, so a `Brass Goggles`
+    // row here IS borrowed — the unification's §S.9 finding.)
+    const ownJacket = dialog.locator('qt-wardrobe-item-row').filter({ hasText: 'Flight Jacket' }).first();
+    await expect(ownJacket).toBeVisible();
+    await expect(ownJacket.locator('.qt-badge-wardrobe-shared')).toHaveCount(0);
 
     // Browsing General itself, the same row is the container's OWN: no chip.
     await dialog.locator('#wardrobe-container-select').selectOption('general:');

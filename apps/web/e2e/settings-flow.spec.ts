@@ -1,5 +1,5 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, openSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { expect, test, type Page } from './support/fixtures';
@@ -11,6 +11,7 @@ import {
   E2E_PASSPHRASE,
   FIXTURE_USER,
   FIXTURES_DIR,
+  REPO_ROOT,
   SINGLE_USER_ID,
   spaDir,
   TEST_PEPPER,
@@ -288,6 +289,31 @@ test.describe('P4.6r — Templates & Images settings verticals', () => {
           throw new Error(`fixture rewrite failed (${table}):\n${res.stdout}\n${res.stderr}`);
         }
       }
+    }
+
+    // The groups-projects pair carries NO `chat_settings` table (it was built
+    // for the project / group families), and every real instance has one; the
+    // Wardrobe Images beat saves into it. Plant generateDDL's own table — read
+    // from the committed D23 dump, never hand-written (the `f5e953a3f`
+    // unification's §S.9 finding: the gated beat could not save here).
+    const freshSchema = JSON.parse(
+      readFileSync(
+        resolve(REPO_ROOT, 'crates/quilltap-core/src/services/provisioning/fresh_schema.json'),
+        'utf8',
+      ),
+    ) as { main: string[] };
+    const chatSettingsDdl = freshSchema.main.find((sql) => sql.startsWith('CREATE TABLE "chat_settings"'));
+    if (!chatSettingsDdl) throw new Error('fresh_schema.json carries no chat_settings CREATE TABLE');
+    const ddl = spawnSync(
+      cli,
+      ['db', '--data-dir', TMPL_INSTANCE_DIR, '--write', chatSettingsDdl],
+      {
+        env: { ...withoutPepper(), QUILLTAP_DB_PASSPHRASE: E2E_PASSPHRASE, QUILLTAP_QUIET_HINTS: '1' },
+        encoding: 'utf8',
+      },
+    );
+    if (ddl.status !== 0 && !`${ddl.stdout}${ddl.stderr}`.includes('already exists')) {
+      throw new Error(`chat_settings plant failed:\n${ddl.stdout}\n${ddl.stderr}`);
     }
 
     const logFd = openSync(TMPL_SERVER_LOG, 'w');
