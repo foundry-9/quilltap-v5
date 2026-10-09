@@ -2063,6 +2063,20 @@ fn render_cache(lines: &mut Vec<String>, heading: &str, rows: &[CacheRow], empty
 mod tests {
     use super::*;
 
+    /// P4.D263 item 17 — pinned NON-reporting: v4's Almanack reports only
+    /// whether a wardrobe profile is designated, never `generateFromTools`
+    /// (`7c8572869` snapshot `+302-305`; `b3f937076` added the key to the
+    /// settings bag and left the Almanack alone). The block's wire shape has
+    /// the one key.
+    #[test]
+    fn wardrobe_images_block_never_reports_generate_from_tools() {
+        let v = serde_json::to_value(crate::almanack::types::WardrobeImagesConfig {
+            has_designated_image_profile: true,
+        })
+        .unwrap();
+        assert_eq!(v, serde_json::json!({ "hasDesignatedImageProfile": true }));
+    }
+
     #[test]
     fn locale_string_matches_node() {
         // Probed against Node 24 `Number.prototype.toLocaleString()`.

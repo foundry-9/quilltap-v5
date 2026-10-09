@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — test(almanack): pin that the Almanack never reports `generateFromTools`; the cleanup meta census (P4.D263 items 15, 17)
+
+_Versions: core 0.0.1263._
+
+A unit test pins the Almanack's `wardrobeImages` block to its one key. v4 never reports the tool-pictures switch. The `cleanup_item_images` meta census found all four of v4's caller shapes already rendered by P4.D255's `ItemImageCleanupMeta`, so no hunk is owed.
+
 #### 2026-10-08 — feat(almanack): the "Wardrobe Images" feature-config block (P4.D263 item 14)
 
 _Versions: core 0.0.1262._

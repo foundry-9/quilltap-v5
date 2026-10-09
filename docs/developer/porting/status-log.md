@@ -173227,3 +173227,12 @@ red-first in its own unit), `avatar_job_tier3_equivalence` and
   designated `wardrobeImageSettings.imageProfileId` (its header promises "a non-default value in
   most feature-config sections"), then the pair is rebuilt and `QT_ORACLE_ALMANACK_TIER2`
   regenerated.
+- **Unit 10 — items 15 + 17 (the cleanup meta census; pinned non-reporting).** Item 15: v4's
+  three `cleanupItemImages` callers at the pin — `[Wardrobe v1] {characterId, itemId}`,
+  `[Wardrobe Archetypes v1] {itemId}`, the store factory's `{[logIdKey]: id, mountPointId,
+  context: 'wardrobe'}` with `logIdKey` `projectId` (`[Projects v1]`) / `groupId` (`[Groups v1]`)
+  — all four shapes are `ItemImageCleanupMeta` variants with v4's key order (`itemId` after the
+  meta unless placed): **no HANDOFF owed.** Item 17: `render.rs`
+  `wardrobe_images_block_never_reports_generate_from_tools` pins the block's one key; the
+  `JOB_TYPES` row (`api/system_data.rs:650`, P4.D255's) is run by name in the lane gate
+  (`activity_tables_equivalence`).
