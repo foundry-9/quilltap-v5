@@ -2016,8 +2016,10 @@ One route for an item's pictures in every tier; the item's container rides in th
 | `POST` | `upload` | multipart `file` (JPEG/PNG/WebP/GIF, ≤ 10 MB) and optional `kind: 'uploaded'\|'imported'` | `201 { image, current }` |
 | `POST` | `set-current` | `{ fileId }` | `{ current }` |
 | `POST` | `delete-image` | `{ fileId }` | `{ current }` — the next-newest becomes current |
+| `GET` | `save-targets` | — | `{ albums: PhotoAlbumOption[] }` — every enabled store, archived characters' vaults excluded, Quilltap General flagged `isDefault` |
+| `POST` | `save-to-store` | `{ fileId, mountPointId, caption?, tags? }` | `{ saved, mountPoint, relativePath, linkId, keptAt, fileId, sha256 }` |
 
-A `POST` without an action is a 400. `generate` runs synchronously inside `trackActivity('image', …)`, with the profile resolved by `resolveWardrobeImageProfile` (override → `chatSettings.wardrobeImageSettings.imageProfileId` → default image profile; no usable profile → 400). A character's own item is drawn worn by its owner; a shared item is drawn catalogue style. The provider call goes through `generateImageWithConciergeFailover` with `purpose: 'wardrobe'` and no chat; a refusal that could not be rerouted answers **422** with `details: { trail, refused: true }`; any other provider failure (auth, rate limit, timeout, no image) answers **502** with the same `details` shape. `set-current` and `delete-image` refuse a file not linked to the item (400).
+A `POST` without an action is a 400. `generate` runs synchronously inside `trackActivity('image', …)`, with the profile resolved by `resolveWardrobeImageProfile` (override → `chatSettings.wardrobeImageSettings.imageProfileId` → default image profile; no usable profile → 400). A character's own item is drawn worn by its owner; a shared item is drawn catalogue style. The provider call goes through `generateImageWithConciergeFailover` with `purpose: 'wardrobe'` and no chat; a refusal that could not be rerouted answers **422** with `details: { trail, refused: true }`; any other provider failure (auth, rate limit, timeout, no image) answers **502** with the same `details` shape. `set-current`, `delete-image` and `save-to-store` refuse a file not linked to the item (400). `save-to-store` files a copy into the store's `photos/` through `saveImageToAlbum` (the Salon's save service), attributed to the operator and captioned with the item's title by default; an archived character's vault as the target is a **409**, and a store already holding the picture is a **409** `{ code: 'ALREADY_SAVED', keptAt, relativePath }`. The item is not written, so a picture may be copied out of an archived character's wardrobe.
 
 #### `POST /api/v1/wardrobe/analyze-image`
 
@@ -2934,11 +2936,23 @@ Episodic-recall tuning harness (wrapped by `quilltap recall-replay`). Reconstruc
 {
   "turnIndex": 42,
   "characterId": "char-uuid",
-  "limit": 25
+  "limit": 25,
+  "memoryBudget": 8000,
+  "tuning": { "boostGateAbs": 0.45, "boostGateMargin": 0.15, "boostGateRamp": 0.1, "boostCap": 1.6 },
+  "signals": { "keywords": ["fair"], "paraphrase": "…", "retrospective": false, "entities": [] },
+  "asOf": true
 }
 ```
 
-`turnIndex` is the 1-based interchange to replay at (default: last); `characterId` defaults to the first LLM-controlled participant; `limit` caps candidate rows per path (max 100).
+`turnIndex` is the 1-based interchange to replay at (default: last); `characterId` defaults to the first LLM-controlled participant; `limit` caps candidate rows per path (max 100; default the larger of 25 and the new path's head size + 10). `memoryBudget` (tokens) sizes the new path's `selected` rows from the budget-scaled dynamic head (`sizeMemoryPools`); the old path keeps the historical fixed 5-entry head. The result carries `oldHeadSize` / `newHeadSize`.
+
+Harness knobs (recall multiplier retuning, R7):
+
+- `tuning` — retuning constants for the **new path only**; the old path stays the reference. Validated by `RecallTuningInputSchema` (`lib/memory/recall-tuning.ts`), and unknown keys are a 400. Keys: `boostGateAbs` / `boostGateMargin` / `boostGateRamp` (R1 relevance gate; 0 or null turns a term off), `boostCap` (R2), `freshBypassesGate` / `windowBypassesGate` (apply that event-time boost outside the R1 gate), `multipliers` (any `RECALL_MULTIPLIERS` key, fresh-event values included), `specificAnchors` with `anchorMinHits` and `anchorOrder` (`rarest` | `distiller`) (R4), `backgroundReserve` (R6, 0–0.5 of the head). Omitted → today's constants, byte-identical ranking.
+- `signals` — a previous replay's `signals`, reused instead of a fresh cheap-LLM distillation (which is not deterministic). Validated by `RecallReplaySignalsSchema`.
+- `asOf` — search only memories created before the turn's opening message, and decay weights against the turn's clock: the corpus as it stood then. Applies to both paths.
+
+The replay memoises embeddings by text for the life of the server process, so repeat runs embed identical vectors. The result also carries `tuning` (a summary, `"defaults"` when none), `signalsPinned`, `asOf` (the cutoff, or null) and `excludedAfterAsOf`.
 
 #### `POST /api/v1/chats/[id]?action=toggle-agent-mode`
 
@@ -3908,7 +3922,7 @@ Cancel a Courier placeholder turn: delete the message and unpause the chat.
 
 #### `POST /api/v1/chats/[id]/messages/[messageId]?action=save-image`
 
-Save an image attached to the message into a chosen photo album.
+Save an image attached to the message into a chosen photo album. A store that already holds the picture answers **409** `{ code: 'ALREADY_SAVED', keptAt, relativePath }`.
 
 ---
 
@@ -4107,6 +4121,14 @@ Get memories with filtering.
 - `chatId` - Filter by chat
 - `messageId` - Filter by message
 
+With `characterId` (and `limit`, which switches on pagination) these narrow the list:
+`source` (`AUTO` | `MANUAL` | `CONSOLIDATED` — digests), `tier` (`hot` | `cold`; omitted lists both,
+an unknown value is ignored), `search`, `minImportance`, `sortBy`, `sortOrder`, `offset`.
+
+Every row also carries `tier` (`hot` active / `cold` archived), `supersededById` (the digest that
+replaced an archived row, else `null`), `consolidatedFrom` (the member ids a digest was folded from)
+and `consolidatedAt`.
+
 **Response**: `200 OK`
 
 ```json
@@ -4245,6 +4267,19 @@ Rebuild the vector index for one character. `PUT` without `?action=embeddings` i
 
 **Request Body**: `{ "characterId": "char-uuid" }`
 
+#### `POST /api/v1/memories?action=anchor-gate-probe`
+
+Measurement-only developer tool (wrapped by `quilltap anchor-probe`). Re-embeds a character's most
+recent memories with and without the episodic anchor line, scores each against older rows both
+ways, and reports how many would reach the Memory Gate's reinforce (0.85) and near-duplicate (0.90)
+thresholds. Writes nothing; costs roughly up to 7 embedding calls per sampled row.
+
+**Request Body**: `{ "characterId": "char-uuid", "limit": 50 }` (`limit` 1–200, default 50)
+
+**Response**: `200 OK` — `{ success, data: { characterId, sampled, anchoredRows, thresholds,
+anchored: { reinforce, nearDuplicate }, anchorFree: { reinforce, nearDuplicate },
+crossedOnlyWithoutAnchors, embeddingsGenerated, rows[] } }`
+
 #### `POST /api/v1/memories?action=housekeep-sweep`
 
 Enqueue a manual instance-wide housekeeping sweep (`MEMORY_HOUSEKEEPING`, `reason: 'manual'`)
@@ -4283,6 +4318,43 @@ return `{ success, settings }`.
 **Settings**: `scopePolicy`, `expandRelated`, `perTurnConversationSummaries` (the Settings →
 Memory → Recall Relevance switch that re-runs the past-conversation search every turn, reusing the
 vector the turn's memory search already embedded).
+
+#### `POST /api/v1/memories?action=consolidate`
+
+Fold clusters of one character's hot memories into digest rows and send the originals cold (see
+`docs/developer/features/memory-consolidation-and-tiers.md`). Manual runs ignore the
+`memoryConsolidation.enabled` master switch.
+
+**Request Body**: `{ characterId, dryRun?, maxClustersPerRun?, clusterThreshold? }`. `characterId`
+is a UUID; `clusterThreshold` is 0–1 and applies to dry runs only (a real run uses the stored
+settings).
+
+- `dryRun: true` runs **in-process** (dry-run jobs only log, so the report is returned directly),
+  writes nothing, and is bounded: `maxClustersPerRun` defaults to 10 and is capped at 40, with a
+  120 s time budget. **Response**: `200 OK` — `{ success, dryRun: true, report }`, where `report` is a
+  `ConsolidationReport` (`clusters[]` with `bucket`, `memberIds`, `memberContents`, `digests`,
+  `keepStandalone`, `contradictions`, `status`; plus `stats`, `settings`, `skippedReason`).
+- otherwise a `MEMORY_CONSOLIDATION` job is enqueued (deduped per character while in flight).
+  **Response**: `200 OK` — `{ success, dryRun: false, jobId }`.
+
+`404` for an unknown character; `400` for a malformed body.
+
+#### `GET` / `POST /api/v1/memories?action=consolidation-config`
+
+Read and write the **instance-wide** consolidation settings (`instance_settings['memoryConsolidation']`).
+`POST` merges a partial patch over the stored values; both return `{ success, settings }`.
+
+**Settings**: `enabled` (default false), `connectionProfileId` (null → cheap LLM), `clusterThreshold`
+(0–1, 0.72), `minClusterSize` (3), `maxClusterSize` (30), `matureAfterDays` (7), `maxClustersPerRun`
+(40), `watermark` (150), `coldRetentionDays` (null → never delete cold rows).
+
+#### `GET` / `POST /api/v1/memories?action=extraction-mode-config`
+
+Read and write the **instance-wide** grain of the extractor's OTHER pass
+(`instance_settings['memoryExtractionMode']`). Same merge semantics; returns `{ success, settings }`.
+
+**Settings**: `otherPass` (`turn` | `fold` | `hybrid`, default `hybrid`), `perTurnOtherFloor` (0–1,
+0.75), `foldCandidatesPerSubject` (3).
 
 #### `GET /api/v1/memories?action=backfill-embeddings`
 

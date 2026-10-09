@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — docs(v4): bring the docs/v4 mirror to v4 01a83539d (19 paths)
+
+_Docs-only change._
+
+P4.D278 U2. The 19 mirror paths that moved between `f5e953a3f` and `01a83539d` are copied byte-exact from the pin: 10 modified (`CHANGELOG.md`, `developer/API.md`, `BACKGROUND_JOBS_CHILD.md`, `CLI.md`, `DDL.md` with the bug-186 unique store-name index, `bugs.md`, two wardrobe feature specs, `releases/4.10.0.md`, `packages-quilltap-README.md`) and 9 added (`bugs/fixed/` 182–186, and the four memory feature specs including `recall-probe-set-runbook.md`). A census of the whole mirror against the pin finds no other drift and no stray file; 419 files are tracked.
+
 #### 2026-10-09 — chore(help): re-vendor help/ at v4 01a83539d (130 → 131) and move the three count pins
 
 _No crate versions bumped._

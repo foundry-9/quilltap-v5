@@ -342,9 +342,13 @@ quilltap memories tree <id|prefix> [--depth N] [--max-nodes N]         # ASCII w
 quilltap memories status [--character <name|id>]                       # Per-holder rollup + dangling-edge check
 quilltap memories validate [--character <name|id>] [--list]            # Dangling-edge health check; exit 1 if any remain
 quilltap memories grep --semantic --character Ariadne "the argument"   # Embedding search (server required, one holder)
+quilltap memories consolidate --character Ariadne --dry-run            # Rehearse consolidation, print proposed digests (server required)
+quilltap memories consolidate --character Ariadne [--max N]            # Queue a real consolidation job (server required)
 ```
 
-Shared filter flags apply to `ls`, `find`, `grep`, and `status` where they make sense: `--character`, `--about` (with `self` / `none` shortcuts), `--source`, `--chat` (with `none` for manual entries), `--project`, `--since`, `--until`, `--min-importance`, `--min-reinforced`, `--has-embedding` / `--no-embedding`. Sort flags (`--sort reinforced|importance|created|accessed|reinforcement-count|links`, plus `-r` to reverse) apply to `ls`, `find`, and `grep`. Names accept fuzzy substrings; ambiguous names print candidates and exit 2. `--json` is supported by every verb. `validate` is `status`'s terse twin — read-only, exit 1 if any dangling related-memory edge remains, `--list` to print the offending source IDs and their dangling targets. `grep --semantic` defaults to `--top 20`, `--threshold 0.5`, `--port 3000`, and scopes to **one holder at a time**: `--character all` is rejected. The legacy `quilltap db memories --character <name>` verb remains undisturbed.
+Shared filter flags apply to `ls`, `find`, `grep`, and `status` where they make sense: `--character`, `--about` (with `self` / `none` shortcuts), `--source` (AUTO / MANUAL / CONSOLIDATED), `--tier` (hot / cold; both by default, cold rows are starred in the `src` column), `--chat` (with `none` for manual entries), `--project`, `--since`, `--until`, `--min-importance`, `--min-reinforced`, `--has-embedding` / `--no-embedding`. Sort flags (`--sort reinforced|importance|created|accessed|reinforcement-count|links`, plus `-r` to reverse) apply to `ls`, `find`, and `grep`. Names accept fuzzy substrings; ambiguous names print candidates and exit 2. `--json` is supported by every verb. `validate` is `status`'s terse twin — read-only, exit 1 if any dangling related-memory edge remains, `--list` to print the offending source IDs and their dangling targets. `grep --semantic` defaults to `--top 20`, `--threshold 0.5`, `--port 3000`, and scopes to **one holder at a time**: `--character all` is rejected. The legacy `quilltap db memories --character <name>` verb remains undisturbed.
+
+`consolidate` folds clusters of near-duplicate hot memories into denser digests and sends the originals to the cold tier. It resolves `--character <name|id>` locally (required; `all` is rejected) and then asks the running server (`--port`, default 3000) — the model and embedding provider live there, not in the CLI. With `--dry-run` the server rehearses a bounded run (default 10 clusters, at most 40; `--max N` sets the bound, `--threshold 0..1` overrides the cluster similarity for this run), writes nothing, and the CLI prints each cluster as its member notes followed by the proposed digest(s), standalones, contradictions, and run stats. Without `--dry-run` it queues a background `MEMORY_CONSOLIDATION` job (`--max N` overrides `maxClustersPerRun`; a real run uses the stored settings, so `--threshold` is honoured only by dry runs) and prints the job id; manual runs ignore the master `enabled` switch. `--json` prints the raw API payload.
 
 ## Memory Extraction Dry-Run
 
@@ -365,9 +369,33 @@ Needs a running server (`--port`, default 3000) to reach the extraction pipeline
 quilltap recall-replay <chatId>                 # Replay the last turn
 quilltap recall-replay <chatId> --turn 42       # Replay at interchange 42 (its own clock)
 quilltap recall-replay <chatId> --json          # Raw JSON for scripting
+quilltap recall-replay <chatId> --memory-budget 4000  # Budget-sized dynamic head
+quilltap recall-replay <chatId> --turn 42 --json > t42.json
+quilltap recall-replay <chatId> --turn 42 --signals-from t42.json --as-of \
+  --tuning '{"boostGateAbs":0.45,"boostGateMargin":0.15,"boostGateRamp":0.1}'
 ```
 
-Flags: `--turn <n>` (default: last), `--char <characterId>` (default: first LLM-controlled participant), `--limit <n>` (default 25), `--port <n>` (default 3000), `--json`.
+Flags: `--turn <n>` (default: last), `--char <characterId>` (default: first LLM-controlled participant), `--limit <n>` (default: the larger of 25 and the new path's head size + 10), `--memory-budget <tokens>` (positive integer; the new path's selected rows then follow the budget-sized dynamic head, which scales with the model's memory budget, while the old path keeps the historical fixed 5-entry head; each path header prints its head size), `--port <n>` (default 3000), `--json`.
+
+Tuning and comparable runs:
+
+- `--tuning '<json>'` / `--tuning-file <path>` — retuning constants for the new path only (the old path stays the reference): `boostGateAbs`, `boostGateMargin`, `boostGateRamp` (relevance gate on boosts), `boostCap`, `freshBypassesGate`, `windowBypassesGate`, `multipliers` (`{ "freshEvent24h": 1.3, … }`), `specificAnchors`, `anchorMinHits`, `anchorOrder`, `backgroundReserve`. Unknown keys are rejected. The header's `Tuning` line shows what is active.
+- `--signals-from <replay.json>` — reuse the signals saved in an earlier `--json` replay of the same chat and turn. The distillation is a cheap-LLM call and words the same turn differently each time, so runs you mean to compare should share it.
+- `--as-of` — search only memories created before the turn's opening message, with weights decayed to the turn's own clock: the corpus as it stood then. The header's `Harness` line shows the cutoff and how many later memories were left out.
+
+The server memoises the replay's embeddings by text until it restarts, so repeat runs embed identical vectors.
+
+## Anchor Probe
+
+`quilltap anchor-probe <characterId>` measures whether the episodic anchor line embedded with each memory suppresses Memory Gate reinforcement. It re-embeds the character's most recent memories with and without the anchor line, compares each against older rows, and reports how many would cross the reinforce (0.85) and near-duplicate (0.90) thresholds each way, plus a per-row table (rows that cross 0.85 only without anchors are highlighted). Read-only, but it costs embedding calls (roughly up to 7 per sampled row).
+
+```bash
+quilltap anchor-probe <characterId>             # Sample the 50 most recent memories
+quilltap anchor-probe <characterId> --limit 20  # Smaller, cheaper sample
+quilltap anchor-probe <characterId> --json      # Raw JSON for scripting
+```
+
+Flags: `--limit <n>` (1–200, default 50), `--port <n>` (default 3000), `--json`.
 
 ## Maintenance & Cleanup
 
