@@ -175437,3 +175437,31 @@ Branch `claude/wardrobe-images-spa-viewer-4a334b` (worktree
   `overlayClass` input; the build fails the file); green after — the default
   overlay's `className` is EXACTLY `qt-dialog-overlay`; `z-[100]` appended with
   `classList.length === 2`.
+
+### Unit 3 — NEW `images/full-screen-image-viewer.ts` (W2)
+
+- v4 `components/images/FullScreenImageViewer.tsx` (NEW at `01a83539d`, 169
+  lines) ported: `FullScreenImageAction` (`:25-31`); `ROUND_BUTTON` /
+  `ARROW_BUTTON` byte-for-byte (`:59-62`); root `fixed inset-0 <z> flex
+  items-center justify-center qt-bg-overlay backdrop-blur-sm` + `role="dialog"
+  aria-modal="true" aria-label={alt}` (`:99-105`); arrows `:106-115`; actions
+  hidden while missing, Close ALWAYS (`:117-134`); bottom-right `:136`; image
+  box + placeholder 600×400 (`:138-154`); caption box only when given
+  (`:156-163`); `missingSrc` keyed by `src` (`:79-81`); keys gated on
+  `keyboardActive` (`:83-89`, Escape via `handleEscape`). Module doc `:3-17`
+  carried.
+- **Mechanism divergences (recorded):** R-B — the frame reparents its own host
+  to `document.body` (`afterNextRender` / `DestroyRef` → `host.remove()`, the
+  `image-detail-modal.ts` idiom); R-E — `isOpen` has no counterpart (hosts
+  mount under `@if`), `actions` a data input, `onPrev`/`onNext`
+  conditionally-`undefined` function inputs, caption / bottom-right as
+  projection slots marked by `[qtFullScreenCaption]` /
+  `[qtFullScreenBottomRight]` directives (`contentChild` decides whether the
+  box renders), `closeModal` = v4 `onClose`; the bottom-right wrapper also
+  stops propagation (order item 4; v4's wrapper does not, its trash button
+  does — no observable difference). Class strings bind through `[attr.class]`
+  — measured: Angular's `[class]` string binding re-sorted the tokens
+  alphabetically, which reddened three byte-for-byte arms.
+- NEW `full-screen-image-viewer.spec.ts`: **red 13/13 on unported source**
+  (the module does not exist — the build fails the file); then 3 red on the
+  first port (the `[class]` re-sort above), green 13/13 after.

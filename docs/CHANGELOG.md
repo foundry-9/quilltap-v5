@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(spa): the shared full-screen image frame (v4 FullScreenImageViewer) — P4.D277 unit 3
+
+_Versions: SPA 0.5.825._
+
+New `images/full-screen-image-viewer.ts`, a port of v4 `01a83539d`'s `FullScreenImageViewer`: the shared frame for looking at a picture full screen. It provides the blurred overlay, round action buttons with Close always present, optional previous/next arrows, and caption and bottom-right projection slots. It also handles Escape and the arrow keys (gated by `keyboardActive`), locks body scroll, and swaps to the deleted-image placeholder on a miss keyed by `src`. The frame reparents its own host to `document.body`, as v4 portals it (bug 99). Class strings bind through `[attr.class]` so they keep v4's token order. 13 spec arms.
+
 #### 2026-10-09 — feat(spa): qt-modal overlayClass (v4 BaseModal overlayClassName) — P4.D277 unit 2
 
 _Versions: SPA 0.5.824._
