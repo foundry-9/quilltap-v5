@@ -175427,3 +175427,13 @@ Branch `claude/wardrobe-images-spa-viewer-4a334b` (worktree
 - Tier 2 item 15, Prospero: `project-wardrobe-manager.spec.ts` is outside
   Ownership — RECORDED, not edited: the manager renders `formatWearLine(…)`
   (`project-wardrobe-manager.ts:315`), which the oracle proves row for row.
+
+### Unit 2 — `ui/modal.ts` `overlayClass` (W3)
+
+- `readonly overlayClass = input('')` (v4 `BaseModal.tsx:31-35`'s doc, default
+  `''` `:90`), bound as `class="qt-dialog-overlay" [class]="overlayClass()"`
+  (v4 `:107`). No portal, no Escape on `qt-modal` (R-C; Tier 3 item 18).
+- NEW `ui/modal.spec.ts`: **red 2/2 on unported source** (NG8002 — no
+  `overlayClass` input; the build fails the file); green after — the default
+  overlay's `className` is EXACTLY `qt-dialog-overlay`; `z-[100]` appended with
+  `classList.length === 2`.

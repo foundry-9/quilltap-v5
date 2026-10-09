@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(spa): qt-modal overlayClass (v4 BaseModal overlayClassName) — P4.D277 unit 2
+
+_Versions: SPA 0.5.824._
+
+`ui/modal.ts` gains v4 `BaseModal`'s `overlayClassName` (`01a83539d`) as an `overlayClass` input, appended to the overlay's `qt-dialog-overlay`. The default adds nothing. It lets the save dialog open above the full-screen viewers at `z-[100]`. Pinned by a new `ui/modal.spec.ts` (two arms). No other `Modal` behaviour changes.
+
 #### 2026-10-09 — fix(spa): wear dates never read "last last week" (bug 183) — P4.D277 unit 1
 
 _Versions: SPA 0.5.823._

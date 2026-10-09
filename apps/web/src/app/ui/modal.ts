@@ -18,13 +18,17 @@ const MAX_WIDTHS: Record<string, string> = {
  * `qt-dialog-*` surface classes: a scrim, a titled card with a close button, a
  * scrollable body (`<ng-content>`), and a footer slot
  * (`<ng-content select="[qt-modal-footer]">`). Backdrop + the ✕ both emit `close`.
+ *
+ * It renders IN PLACE and handles no Escape (the standing convention); a host
+ * that needs v4 `BaseModal`'s portal or `closeOnEscape` ports them locally
+ * (`images/save-image-dialog.ts`, P4.D277 R-C).
  */
 @Component({
   selector: 'qt-modal',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon],
   template: `
-    <div class="qt-dialog-overlay" (click)="onBackdrop()">
+    <div class="qt-dialog-overlay" [class]="overlayClass()" (click)="onBackdrop()">
       <div
         class="qt-dialog flex flex-col max-h-[90vh]"
         [style.max-width]="maxWidthRem()"
@@ -59,6 +63,14 @@ export class Modal {
   readonly maxWidth = input<string>('lg');
   /** Whether a backdrop click dismisses (v4 `closeOnClickOutside`, default true). */
   readonly closeOnBackdrop = input(true);
+  /**
+   * Additional classes for the full-screen overlay — e.g. a raised `z-[…]`
+   * when the modal opens over a viewer already above the dialog layer.
+   * (v4 `BaseModal.tsx:31-35` `overlayClassName`, `01a83539d`; appended to
+   * `qt-dialog-overlay` as v4 `:107` does. Tailwind sees only literal class
+   * strings, so callers pass the `z-[…]` token as a literal.)
+   */
+  readonly overlayClass = input('');
   readonly close = output<void>();
 
   protected readonly maxWidthRem = computed(() => MAX_WIDTHS[this.maxWidth()] ?? MAX_WIDTHS['lg']);
