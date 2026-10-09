@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(spa): P4.D276 M4c — the Extraction Grain card; the Memory tab carries v4's nine cards
+
+_Versions: SPA 0.5.827._
+
+New `qt-memory-extraction-grain-card` (v4 `components/tools/memory-extraction-grain-card.tsx`, new in `d58548051`): the `Observations of others` select (`Hybrid (recommended)` / `At the fold only` / `Every turn`) with the current mode's description below it, saved on change; the per-turn importance floor (enabled only in hybrid) and fold candidates per subject (disabled under `turn`), each saved on blur. The blur rules match v4: the draft is cleared before validation, and values go through `Number` with no trim, so a blank floor saves `0` while a blank per-subject is refused. One key per save; the server's echo is shown over the defaults; a failed save snaps the select back.
+
+The Settings → Memory tab mounts the two new cards between Memory Housekeeping and Recall Relevance, as `Consolidation` (`section=memory-consolidation`) and `Extraction Grain` (`section=memory-extraction-grain`), and the housekeeping card's description now reads `Retire stale, low-importance memories to the archive as characters approach their cap`. A new `memory-tab.spec.ts` pins all nine cards' ids, titles and descriptions in v4's order.
+
 #### 2026-10-09 — feat(spa): P4.D276 M4b — the Consolidation settings card and its report dialog
 
 _Versions: SPA 0.5.826._

@@ -175502,3 +175502,19 @@ precedence verbatim); note line `:141-147`; empty sentence `:149-153`; footer
   the draft and could not restore the stored value — a harness artefact, not a
   card defect. The card spec's `QueryClient` turns retries off so a read
   failure surfaces at once.
+
+### Unit M4c — the Extraction Grain card + the Memory tab (SPA 0.5.827)
+Strings asserted, v4 at the pin. `memory-extraction-grain-card.tsx`: loading
+`:116`; intro with two `<em>` `:123-125` (U+2019); `OTHER_PASS_OPTIONS`
+`:26-43` (labels + descriptions, U+2014 ×2); labels/help/limits `:128-182`;
+disabled rules `:159`, `:176`; `commitFloor` / `commitPerSubject` `:93-113`
+(the two sentences; draft cleared first; `Number('')` → a blank floor saves
+`0`, a blank per-subject refused); `save` `:72-91` (`Extraction settings
+saved`, `Failed to save extraction settings`); read failure `:69`.
+`MemorySearchTabContent.tsx:25-59` — nine cards' titles, descriptions and
+`sectionId`s (incl. the housekeeping description `:33`).
+- **Red-first:** `memory-extraction-grain-card.spec.ts` RED BY CONSTRUCTION
+  (new component; 15 arms green after); `memory-tab.spec.ts` (new) 1 arm RED
+  against `main`'s tab (seven cards, the old housekeeping description).
+- **R-E** (the select re-syncs from the stored mode after the save settles)
+  and **R-F** (one key; the clobbered echo renders) each have an arm.
