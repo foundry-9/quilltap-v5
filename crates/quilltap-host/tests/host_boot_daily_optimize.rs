@@ -1,6 +1,7 @@
 //! P4.D259 — v4 `f5e953a3f`'s PHASE 0.75 daily backup + optimize at the head
 //! of the host's `assemble`, and v4's PHASE-2 startup backup + retention as a
-//! fire-and-forget after the pumps, through the REAL `Host::start`.
+//! JOINED pass right after it (before the pumps — the unification moved it
+//! off P4.D259's fire-and-forget), through the REAL `Host::start`.
 //!
 //! The pass's bytes and lines are proven against v4 by the tier-2 family
 //! (`crates/quilltap-harness/tests/daily_db_optimize_equivalence.rs`); these
@@ -382,5 +383,42 @@ async fn a_day_old_backup_is_replaced_and_kept() {
         .collect();
     assert_eq!(mains.len(), 2, "{names:?}");
     assert!(names.contains(&old), "the < 7 d backup is kept");
+    assert_never_logged(&l);
+}
+
+/// (h) — the `f5e953a3f` unification's §3 finding. A same-day second boot
+/// (the optimize already stamped today, so PHASE 0.75 skips) whose newest
+/// main backup is 25 hours old: the PHASE-2 trio really runs `VACUUM INTO`.
+/// v4 runs it synchronously inside `connect()`, before anything serves; v5
+/// must too — under TRUNCATE journalling a `VACUUM INTO` beside a live writer
+/// holds SHARED for its whole run, so every COMMIT in that window would wait
+/// out the busy timeout and fail `database is locked`. So the trio (and its
+/// retention pass) has FINISHED by the time `Host::start` returns — read with
+/// no wait at all. Red-first: P4.D259's fire-and-forget after the pumps left
+/// the lines unlogged at return.
+#[tokio::test]
+async fn the_startup_backup_finishes_before_the_boot_returns() {
+    let _serial = SERIAL.lock().await;
+    let (dir, data) = fresh();
+    std::fs::write(
+        data.join(STATE),
+        stamped(&["main", "llm-logs", "mount-points"]),
+    )
+    .unwrap();
+    let old = generate_backup_filename(BackupKind::Main, now_ms() - 25 * 3_600_000, &TimeZone::UTC);
+    std::fs::create_dir(data.join("backups")).unwrap();
+    std::fs::write(data.join("backups").join(&old), "an old backup").unwrap();
+
+    capture().lock().unwrap().clear();
+    let _host =
+        Host::start(config(dir.path())).expect("the boot never fails on the startup backup");
+    let l = lines();
+    assert_eq!(
+        count(&l, "Databases already optimized today; skipping"),
+        1,
+        "{l:#?}"
+    );
+    assert_eq!(count(&l, "Startup physical backup created"), 1, "{l:#?}");
+    assert_eq!(count(&l, "Retention policy applied"), 3, "{l:#?}");
     assert_never_logged(&l);
 }

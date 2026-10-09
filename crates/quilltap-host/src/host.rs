@@ -561,6 +561,19 @@ impl EngineAssembler for HostAssembler {
         // writer connections the pass needs) and nothing has read or seeded
         // yet. Never fatal — v4 wraps the call in a try/catch.
         run_daily_db_optimize_at_boot(db, data_dir, &self.display_zone);
+
+        // === v4's PHASE-2 startup backup + retention (backend.ts `connect()`) ===
+        // v4's three backups run SYNCHRONOUSLY as each partition connects
+        // (`physical-backup.ts` awaits nothing before `db.exec`; better-sqlite3
+        // is synchronous), so they finish before the migrations and before
+        // anything serves. Run here, joined, BEFORE the job pump / cadence
+        // loops start: v5's journal is TRUNCATE (rollback), so a `VACUUM INTO`
+        // on the read pool holds SHARED on the source for its whole run — run
+        // beside a live writer, every COMMIT in that window would wait out the
+        // busy timeout and fail `database is locked` (the `f5e953a3f`
+        // unification's §3 finding; P4.D259's fire-and-forget after the pumps).
+        // On the day's first boot it finds PHASE 0.75's files and skips.
+        run_startup_backups_at_boot(db, data_dir, &self.display_zone);
         // === end P4.D259 ===
 
         // Seed the built-in roleplay templates + provision-or-adopt the three
@@ -860,15 +873,6 @@ impl EngineAssembler for HostAssembler {
             stop_rx.clone(),
             self.autonomous_tick_ms,
         ));
-
-        // === P4.D259: v4's PHASE-2 startup backup + retention ===
-        // backend.ts `connect()` (`:561-568, 580-584, 605-610`) fires the three
-        // physical backups and then the retention policy without awaiting them.
-        // A fire-and-forget on the read pool (`VACUUM INTO` is legal read-only),
-        // after the pumps start. On the day's first boot it finds the PHASE 0.75
-        // files and skips; it never propagates a failure.
-        spawn_startup_backups(&self.rt, db, data_dir, &self.display_zone);
-        // === end P4.D259 ===
 
         // The one ordered teardown for this assembly, registered inward into
         // the heartbeat loop exactly as v4's `client.ts` registers its
@@ -2515,29 +2519,32 @@ fn run_daily_db_optimize_at_boot(
     }
 }
 
-/// v4's PHASE-2 startup backup + retention ([`run_startup_backups`]) as a
-/// fire-and-forget blocking task. A panic is swallowed with the same root
-/// ERROR v4's `.catch` logs for the main chain.
+/// v4's PHASE-2 startup backup + retention ([`run_startup_backups`]) on a
+/// fresh OS thread, JOINED (the [`run_daily_db_optimize_at_boot`] idiom — legal
+/// from the sync boot path or an async `Unlock` dispatch), before the pumps
+/// start: v4 runs the trio synchronously inside `connect()`. A panic is
+/// swallowed with the same root ERROR v4's `.catch` logs for the main chain.
 ///
 /// [`run_startup_backups`]: quilltap_core::services::physical_backup::run_startup_backups
-fn spawn_startup_backups(
-    rt: &tokio::runtime::Handle,
+fn run_startup_backups_at_boot(
     db: &Db,
     data_dir: &std::path::Path,
     zone: &quilltap_core::host_zone::TimeZone,
 ) {
     use quilltap_core::services::physical_backup::run_startup_backups;
     let (db, data_dir, zone) = (db.clone(), data_dir.to_path_buf(), zone.clone());
-    rt.spawn_blocking(move || {
-        if let Err(payload) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    let joined = std::thread::spawn(move || {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             run_startup_backups(&db, &data_dir, now_unix_ms(), &zone)
-        })) {
-            tracing::error!(
-                target: "quilltap::db",
-                error = panic_text(payload.as_ref()).as_str(),
-                "Startup physical backup or retention policy failed"
-            );
-        }
-    });
+        }))
+    })
+    .join();
+    if let Ok(Err(payload)) | Err(payload) = joined {
+        tracing::error!(
+            target: "quilltap::db",
+            error = panic_text(payload.as_ref()).as_str(),
+            "Startup physical backup or retention policy failed"
+        );
+    }
 }
 // === end P4.D259 ===
