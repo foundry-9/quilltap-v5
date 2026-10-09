@@ -57,8 +57,11 @@ what's marked landed.
    (each full `cargo test --workspace` gate adds ~10 GB of
    `target/debug/incremental`), and full disks have blocked the harness
    mid-gate as mysterious slowness or `os error 28`. So:
-   - **Check `df -h ~` before starting** and before each full workspace
-     gate. If free space is under ~20 GB, reclaim before building.
+   - **Check `df -h "$(pwd -P)"` from your worktree before starting** and
+     before each full workspace gate — the filesystem the worktree and its
+     `target/` really live on (`~/source/quilltap-v5` is a symlink onto
+     `/Volumes/External 1`; a bare `df -h ~` reports the boot volume, which
+     is the wrong disk). If free space is under ~20 GB, reclaim before building.
    - **Start warm: clone main's `target/` before your first build** —
      `cp -cR ~/source/quilltap-v5/target <your-worktree>/target`. That is
      an APFS copy-on-write clone, not a copy: measured 2026-10-03 at 15 s

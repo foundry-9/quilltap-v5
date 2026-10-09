@@ -33,7 +33,13 @@ session" true. Never `cargo clean`, never `rm -rf target/`, never a bare
 - A stopped `quilltap-web` from a dogfood walk is fine; a RUNNING one holds
   `target/release/quilltap-web` open — sweeping replaces the file, the process
   keeps its inode. Mention it in the report; don't kill it.
-- Record `df -h ~` and `du -sh target` before.
+- Record `df -h ~/source/quilltap-v5/` and `du -sh target` before — the
+  filesystem the repo and its `target/` really live on.
+  `~/source/quilltap-v5` is a symlink onto `/Volumes/External 1`, so a bare
+  `df -h ~` reports the boot volume, which `target/` is not on (the trailing
+  slash makes `df` follow the link). `scripts/tmp-sweep.sh` reports
+  `$TMPDIR`'s free space, which IS the boot volume — a different disk;
+  report the two separately.
 
 ## 1a. Sweep the temp dir
 
@@ -89,7 +95,8 @@ With `--release-only`, drop the three `CARGO_INCREMENTAL=0` lines. Rules:
 - The temp sweep's lines: whether jest's cache went (and its size if the
   dry run was taken), how many scratch entries went, the space reclaimed.
 - Exit status of each step (from the log, not the notification alone).
-- `df -h ~` and `du -sh target` after, and the space reclaimed.
+- `df -h ~/source/quilltap-v5/` and `du -sh target` after, and the space
+  reclaimed on that volume (the temp sweep's boot-volume line separately).
 - A summary of the dry run: how many units removed, by profile
   (`debug`/`release`), and any surprise — a `quilltap-sqlite3mc-sys` unit in
   the removed list for a profile this run built means the atime reset or the

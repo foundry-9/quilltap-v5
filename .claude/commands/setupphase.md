@@ -122,7 +122,10 @@ CARGO_INCREMENTAL=0 cargo clippy --workspace --all-targets \
 scripts/cargo-sweep.sh file
 ```
 
-- Record `df -h ~` and `du -sh target` before and after.
+- Record `df -h ~/source/quilltap-v5/` and `du -sh target` before and after
+  — the repo's real filesystem, not the boot volume. `~/source/quilltap-v5`
+  is a symlink onto `/Volumes/External 1`, so a bare `df -h ~` reports the
+  wrong disk (the trailing slash makes `df` follow the link).
 - Run `scripts/tmp-sweep.sh` first (foreground, before the chain): it
   clears jest's cache and the `qt-*` scratch the last round's gates leaked
   into `$TMPDIR` — tens of GB that would otherwise follow the lanes into

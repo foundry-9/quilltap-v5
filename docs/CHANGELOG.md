@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — docs(commands): disk checks measure the repo's real filesystem
+
+_Docs-only change._
+
+`/cleanup`, `/setupphase` and `/carryout` measured free space with `df -h ~`, which reports the boot volume; `~/source/quilltap-v5` is a symlink onto `/Volumes/External 1`, where `target/` lives. `/cleanup` and `/setupphase` now use `df -h ~/source/quilltap-v5/` (the trailing slash follows the link), and `/carryout` lanes use `df -h "$(pwd -P)"` from their worktree. `/cleanup` reports the temp sweep's boot-volume figure separately.
+
 #### 2026-10-09 — docs(commands): /dogfood's data refresh copies logs, files and the optimize stamp
 
 _Docs-only change._
