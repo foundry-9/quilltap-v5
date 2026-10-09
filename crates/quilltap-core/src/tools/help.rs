@@ -342,7 +342,9 @@ fn read_embedding_profiles(
 // --- images -------------------------------------------------------------------
 
 /// v4 `case 'images'`: `{ count, profiles: sanitizeImageProfile[],
-/// storyBackgroundsSettings: settings?.storyBackgroundsSettings || null }`.
+/// storyBackgroundsSettings: settings?.storyBackgroundsSettings || null,
+/// wardrobeImageSettings: settings?.wardrobeImageSettings || null }` (the last
+/// key P4.D263, v4 `7c8572869`).
 fn fetch_images(db: &Db, user_id: &str) -> Result<Value, DbError> {
     let profiles = db.read_main(|conn| read_image_profiles(conn, user_id))?;
     let settings = read_chat_settings(db, user_id)?;
@@ -352,10 +354,18 @@ fn fetch_images(db: &Db, user_id: &str) -> Result<Value, DbError> {
         .as_ref()
         .and_then(|s| s.get("storyBackgroundsSettings").cloned())
         .unwrap_or(Value::Null);
+    // `settings?.wardrobeImageSettings || null` — the read OMITS the key for a
+    // NULL cell (v4's `.optional()` with no default), so absent reads `null`;
+    // a stored bag reads as its materialized two-key object (truthy).
+    let wardrobe = settings
+        .as_ref()
+        .and_then(|s| s.get("wardrobeImageSettings").cloned())
+        .unwrap_or(Value::Null);
     Ok(json!({
         "count": profiles.len(),
         "profiles": Value::Array(profiles),
         "storyBackgroundsSettings": story,
+        "wardrobeImageSettings": wardrobe,
     }))
 }
 

@@ -498,6 +498,32 @@ fn settings_routes_match_v4() {
             assert!(n >= 1, "[{name}] the voice-mode plant must land on a row");
         }
 
+        // P4.D263: the `wardrobeImageSettings` plant — the three stored shapes
+        // the read path meets (SQL NULL, v4's one-key migration default, the
+        // repository's two-key seed) and a non-default value an ABSENT key must
+        // leave alone. `{value: null}` plants NULL.
+        if let Some(plant) = req
+            .get("plantWardrobeImageSettings")
+            .filter(|p| !p.is_null())
+        {
+            let value = plant["value"].as_str().map(str::to_string);
+            let n = rt
+                .block_on(db.write(move |w| {
+                    w.main()
+                        .connection()
+                        .execute(
+                            "UPDATE chat_settings SET \"wardrobeImageSettings\" = ?1",
+                            [&value],
+                        )
+                        .map_err(Into::into)
+                }))
+                .expect("plant wardrobeImageSettings");
+            assert!(
+                n >= 1,
+                "[{name}] the wardrobe-image plant must land on a row"
+            );
+        }
+
         // P4.139: the corrupt-key plant (the oracle applies the same UPDATE on
         // its work copy) — a BLOB `key_value` both sides' marshals refuse.
         if let Some(key_id) = req["corruptApiKey"].as_str().map(str::to_string) {

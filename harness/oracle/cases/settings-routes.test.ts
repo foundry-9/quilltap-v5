@@ -99,6 +99,12 @@ interface CaseSpec {
    *  retired-key silence are invisible on a row that is already `'off'`. The
    *  Rust harness plants identically. */
   plantVoiceMode?: string;
+  /** P4.D263: set EVERY `chat_settings` row's `wardrobeImageSettings` cell on
+   *  the case's work copy before the case runs (a raw UPDATE): `{ value: null }`
+   *  plants SQL NULL, `{ value: '<json text>' }` the text — the three stored
+   *  shapes that reach the read path (v4's migration default, the repository
+   *  seed, a NULL cell). The Rust harness plants identically. */
+  plantWardrobeImageSettings?: { value: string | null };
   /** P4.D85: a v4 arm with NO v5 counterpart by design — v5 carries no
    *  `?action=` surface for connection profiles (the verbs ARE the action
    *  selection and no REST edge exists), so v4's two action-gate 400s and the
@@ -209,6 +215,12 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
       const { rawQuery } = await import('@/lib/database/manager');
       await rawQuery('UPDATE chat_settings SET "impersonationVoiceMode" = ?', [c.plantVoiceMode]);
     }
+    if (c.plantWardrobeImageSettings !== undefined) {
+      const { rawQuery } = await import('@/lib/database/manager');
+      await rawQuery('UPDATE chat_settings SET "wardrobeImageSettings" = ?', [
+        c.plantWardrobeImageSettings.value,
+      ]);
+    }
     if (c.corruptApiKey !== undefined) {
       const { rawQuery } = await import('@/lib/database/manager');
       await rawQuery("UPDATE api_keys SET key_value = x'00000000' WHERE id = ?", [
@@ -292,6 +304,7 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
         seedBrahmaConsole: c.seedBrahmaConsole ?? null,
         corruptApiKey: c.corruptApiKey ?? null,
         plantVoiceMode: c.plantVoiceMode ?? null,
+        plantWardrobeImageSettings: c.plantWardrobeImageSettings ?? null,
         recorded: c.recorded ?? false,
       },
       status,
@@ -613,6 +626,171 @@ describe('settings-routes oracle', () => {
         composerEmoji: false,
         smartTypographySettings: { displayQuotes: true, dashes: true, ellipsis: false },
       },
+    },
+    // ---- P4.D263 (v4 7c8572869 + b3f937076): `wardrobeImageSettings` ----
+    {
+      // Both keys — the two-key object stored, schema order.
+      name: 's_put_wardrobe_images_both',
+      family: 'wardrobe_images',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { wardrobeImageSettings: { imageProfileId: '11111111-1111-4111-8111-111111111111', generateFromTools: true } },
+    },
+    {
+      // One key — `generateFromTools` takes its `.default(false)`.
+      name: 's_put_wardrobe_images_profile_only',
+      family: 'wardrobe_images',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { wardrobeImageSettings: { imageProfileId: '11111111-1111-4111-8111-111111111111' } },
+    },
+    {
+      // The other key alone — `imageProfileId` takes its `.default(null)`.
+      name: 's_put_wardrobe_images_tools_only',
+      family: 'wardrobe_images',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { wardrobeImageSettings: { generateFromTools: true } },
+    },
+    {
+      name: 's_put_wardrobe_images_null_profile',
+      family: 'wardrobe_images',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { wardrobeImageSettings: { imageProfileId: null, generateFromTools: false } },
+    },
+    {
+      name: 's_put_wardrobe_images_empty_bag',
+      family: 'wardrobe_images',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { wardrobeImageSettings: {} },
+    },
+    {
+      // An ABSENT key leaves a planted value alone.
+      name: 's_put_wardrobe_images_absent_key',
+      family: 'wardrobe_images',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { composerEmoji: false },
+      plantWardrobeImageSettings: { value: '{"imageProfileId":"11111111-1111-4111-8111-111111111111","generateFromTools":true}' },
+    },
+    {
+      name: 's_put_wardrobe_images_bad_uuid',
+      family: 'wardrobe_images',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { wardrobeImageSettings: { imageProfileId: 'not-a-uuid' } },
+    },
+    {
+      name: 's_put_wardrobe_images_number_profile',
+      family: 'wardrobe_images',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { wardrobeImageSettings: { imageProfileId: 7 } },
+    },
+    {
+      name: 's_put_wardrobe_images_tools_not_boolean',
+      family: 'wardrobe_images',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { wardrobeImageSettings: { generateFromTools: 'yes' } },
+    },
+    {
+      name: 's_put_wardrobe_images_both_bad',
+      family: 'wardrobe_images',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { wardrobeImageSettings: { imageProfileId: 'x', generateFromTools: 1 } },
+    },
+    {
+      // `typeof null !== 'undefined'` — the arm runs and Zod refuses.
+      name: 's_put_wardrobe_images_null_bag',
+      family: 'wardrobe_images',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { wardrobeImageSettings: null },
+    },
+    {
+      name: 's_put_wardrobe_images_not_object',
+      family: 'wardrobe_images',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { wardrobeImageSettings: 'on' },
+    },
+    {
+      // An unknown key is stripped, silently.
+      name: 's_put_wardrobe_images_unknown_key',
+      family: 'wardrobe_images',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { wardrobeImageSettings: { imageProfileId: '11111111-1111-4111-8111-111111111111', bogus: 1 } },
+    },
+    {
+      // The CREATE branch (user B has no row) — the seed and the assignment compose.
+      name: 's_put_wardrobe_images_fresh',
+      family: 'wardrobe_images',
+      user: 'B',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { wardrobeImageSettings: { imageProfileId: '11111111-1111-4111-8111-111111111111' } },
+    },
+    {
+      // GET over a NULL cell.
+      name: 's_get_wardrobe_images_null_cell',
+      family: 'wardrobe_images',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'GET',
+      url: 'http://x/api/v1/settings/chat',
+      plantWardrobeImageSettings: { value: null },
+    },
+    {
+      // GET over v4's ONE-key migration default.
+      name: 's_get_wardrobe_images_one_key_default',
+      family: 'wardrobe_images',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'GET',
+      url: 'http://x/api/v1/settings/chat',
+      plantWardrobeImageSettings: { value: '{"imageProfileId":null}' },
+    },
+    {
+      // GET over the repository's two-key seed.
+      name: 's_get_wardrobe_images_two_key_seed',
+      family: 'wardrobe_images',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'GET',
+      url: 'http://x/api/v1/settings/chat',
+      plantWardrobeImageSettings: { value: '{"imageProfileId":null,"generateFromTools":false}' },
     },
     // ---- P4.D251 (v4 07b8f0209): the impersonated-line voice MODE ----
     // `impersonationVoiceMode` ('off' / 'ask' / 'always') REPLACED the P4.D179

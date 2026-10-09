@@ -173173,3 +173173,14 @@ red-first in its own unit), `avatar_job_tier3_equivalence` and
   **HANDOFF (`services/job_runner.rs`, owned by no lane):** `KNOWN_JOB_TYPES` lacks
   `WARDROBE_ITEM_IMAGE_GENERATION` — harmless while the host registers the handler (the list only
   words the not-yet-available sentence), but the list should name it.
+- **Unit 6 — item 10 (the settings arm + the help echo).** `api/settings.rs`
+  `zod_wardrobe_image_settings` + the arm after `storyBackgroundsSettings` (v4's
+  `typeof !== 'undefined'` gate: a present `null` runs the parse and is refused; both
+  `.default`s materialize). `tools/help.rs` `fetch_images` adds `wardrobeImageSettings`
+  (`|| null`). `settings-routes.test.ts` gains a `plantWardrobeImageSettings` field and 17
+  `wardrobe_images` cases (both keys, partials, empty, null bag, a non-object, a bad uuid, a
+  wrong-typed boolean, unknown-key stripping, the two-issue order, an absent key over a planted
+  cell, the DEBUG line). Red-first: renaming the arm's key → red at `s_put_wardrobe_images_both`;
+  the help echo removed → red. **Fixtures moved:** `help-tools-tier2.json` (user A's
+  `wardrobeImageSettings`, a textual insert) — the help-tools oracle is invalidated and was
+  regenerated; the settings-routes oracle was regenerated for its new cases.

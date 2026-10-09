@@ -125,6 +125,10 @@
         "enabled": true,
         "defaultImageProfileId": "44444444-0000-4000-8000-000000000001"
       },
+      "wardrobeImageSettings": {
+        "imageProfileId": "44444444-0000-4000-8000-000000000001",
+        "generateFromTools": true
+      },
       "conciergeSettings": {
         "enabled": true,
         "uncensoredTextProfileId": null,

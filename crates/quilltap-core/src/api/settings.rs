@@ -712,6 +712,41 @@ fn zod_smart_typography_settings(v: &Value) -> Result<chat_settings::SettingsCol
     Ok(chat_settings::SettingsColVal::Text(text))
 }
 
+/// v4 `WardrobeImageSettingsSchema.parse` over a PUT bag (`settings.types.ts:
+/// 614-626`): `imageProfileId: UUIDSchema.nullable().default(null)`,
+/// `generateFromTools: z.boolean().default(false)` — absent keys materialize,
+/// unknown keys are stripped, a non-object is the single top-level
+/// `invalid_type`, and the issue order is declaration order. The `Err` string
+/// is the whole `ZodError.message`.
+fn zod_wardrobe_image_settings(v: &Value) -> Result<chat_settings::WardrobeImageSettings, String> {
+    let o = zod_object_or_issue(v, &[])?;
+    let mut issues: Vec<ZodIssue> = Vec::new();
+    let image_profile_id = match o.get("imageProfileId") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(s)) if zod_uuid_ok(s) => Some(s.clone()),
+        Some(Value::String(_)) => {
+            issues.push(ZodIssue::invalid_uuid(zod_path(&[], "imageProfileId")));
+            None
+        }
+        other => {
+            issues.push(ZodIssue::invalid_type(
+                "string",
+                zod_path(&[], "imageProfileId"),
+                other,
+            ));
+            None
+        }
+    };
+    let generate_from_tools = zod_bool(o, "generateFromTools", false, &[], &mut issues);
+    if !issues.is_empty() {
+        return Err(zod_error_message(&issues));
+    }
+    Ok(chat_settings::WardrobeImageSettings {
+        image_profile_id,
+        generate_from_tools,
+    })
+}
+
 /// v4 `AnswerConfirmationSettingsSchema.parse` over a PUT sub-bag (a route-level
 /// parse, `settings/chat/route.ts` L270) — one `z.boolean().default(false)` key,
 /// so a partial or empty bag materializes `enabled: false`, unknown keys are
@@ -915,6 +950,27 @@ fn build_settings_assignments(
         out.push((
             "storyBackgroundsSettings",
             json_field::<chat_settings::StoryBackgroundsSettings>("story backgrounds settings", v)?,
+        ));
+    }
+    // P4.D263 (v4 `7c8572869` + `b3f937076`, `settings/chat/route.ts:183-188`):
+    // `typeof wardrobeImageSettings !== 'undefined'` — a present `null` RUNS
+    // the arm and the parse refuses it; an ABSENT key leaves the column alone.
+    // `WardrobeImageSettingsSchema.parse` materializes both `.default`s, so a
+    // partial or empty bag stores the TWO-key object; a refusal is the whole
+    // ZodError text (the route's `includes('Invalid')` split decides 400 vs
+    // 500 — every issue this schema can raise says "Invalid").
+    if let Some(v) = obj.get("wardrobeImageSettings") {
+        let parsed = zod_wardrobe_image_settings(v)?;
+        tracing::debug!(
+            imageProfileId = parsed.image_profile_id.as_deref().unwrap_or("null"),
+            generateFromTools = parsed.generate_from_tools,
+            "[Settings v1] Wardrobe image settings updated"
+        );
+        let text = serde_json::to_string(&parsed)
+            .map_err(|_| "Invalid wardrobe image settings".to_string())?;
+        out.push((
+            "wardrobeImageSettings",
+            chat_settings::SettingsColVal::Text(text),
         ));
     }
     if let Some(v) = obj.get("contextCompressionSettings") {

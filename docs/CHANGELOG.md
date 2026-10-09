@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — feat(settings): the `wardrobeImageSettings` PUT arm and the help tool's images echo (P4.D263 item 10)
+
+_Versions: core 0.0.1259._
+
+The chat-settings PUT gains v4's `wardrobeImageSettings` arm. A present key (`null` included) runs `WardrobeImageSettingsSchema.parse`: `imageProfileId` is a nullable UUID, `generateFromTools` defaults to `false`, unknown keys are stripped, and a partial or empty bag stores the two-key object. A refusal is the whole ZodError text, which answers 400. An absent key leaves the column alone. The arm logs v4's DEBUG `[Settings v1] Wardrobe image settings updated`. The help tool's `images` read adds `wardrobeImageSettings` (the stored bag or `null`). `settings_routes_equivalence` gains 17 `wardrobe_images` cases over a planted cell; the help fixture's user A carries a stored bag.
+
 #### 2026-10-08 — feat(wardrobe): the WARDROBE_ITEM_IMAGE_GENERATION job, registered in the production spine (P4.D263 item 9)
 
 _Versions: core 0.0.1258, host 0.0.192._
