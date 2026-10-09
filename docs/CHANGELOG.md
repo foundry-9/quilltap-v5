@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(spa): P4.D276 M4a — the housekeeping settings card archives; the read/write error-text twins
+
+_Versions: SPA 0.5.825._
+
+The Settings → Memory housekeeping card takes v4 `d58548051`'s paragraph (housekeeping now retires memories to the archive; nothing is destroyed), the cap suffix `active memories per character`, and loses the `Also merge semantically similar memories during the sweep` checkbox and its handler. `DEFAULT_CONFIG` keeps both merge keys, as v4's does. The old paragraph's straight apostrophe is now U+2019, matching v4's rendered text.
+
+New `screens/settings/memory/api-error-text.ts` ports v4's `readErrorText` / `writeErrorText` (`components/tools/hooks/api-error-text.ts`): a server failure on a read shows the card's fallback; on a write it shows the server's sentence (or the fallback when empty); any other throw goes through v4's `getErrorMessage`, re-exported from `memory/memory-format.ts`. The two new settings cards use them.
+
 #### 2026-10-09 — feat(spa): P4.D276 M3 — memory cards show tiers and digests; the list filters by tier and opens the digest viewer
 
 _Versions: SPA 0.5.824._

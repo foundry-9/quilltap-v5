@@ -175453,3 +175453,16 @@ active shelf.` with U+2019, `Close`).
   `onNavigateToSource` (`memory-list.tsx:335-342`), so v4 never shows
   "Source"; v5's list does (`memory-list.ts` `(navigateToSource)` +
   `navigateToSource()`). Kept; named in both docblocks.
+
+### Unit M4a — the housekeeping settings card + `api-error-text.ts` (SPA 0.5.825)
+Strings asserted, v4 `components/tools/memory-housekeeping-card.tsx` at the
+pin: the paragraph `:177-179` (U+2019 ×2, the literal `—`), the cap suffix
+`:210`, the merge checkbox's absence (hunk `-279..-289`); R-G's twins from
+`components/tools/hooks/api-error-text.ts:17-32` + `lib/error-utils.ts:19-33`.
+- **Red-first:** `memory-housekeeping-card.spec.ts` new arms 3 RED / 0 green
+  against `main`'s card; `api-error-text.spec.ts` RED BY CONSTRUCTION (new
+  file).
+- The old paragraph's straight `'` in "you've" (v4 renders U+2019) fixed while
+  rewriting. `DEFAULT_CONFIG` keeps `autoMergeSimilarThreshold` / `mergeSimilar`
+  (v4 `:25-31`). The survey's "merge cases" in the card spec never existed —
+  only a stub config key (order item 26), left as is.

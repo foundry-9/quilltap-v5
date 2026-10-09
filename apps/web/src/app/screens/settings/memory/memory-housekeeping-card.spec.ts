@@ -145,3 +145,36 @@ describe('MemoryHousekeepingCard', () => {
     expect(seen.some((r) => r.type === 'memoryHousekeepSweep')).toBe(true);
   });
 });
+
+/**
+ * P4.D276 — v4 `d58548051` re-worded the card for the archive and deleted the
+ * merge checkbox (`components/tools/memory-housekeeping-card.tsx` at
+ * `01a83539d`).
+ */
+describe('MemoryHousekeepingCard — the archive (P4.D276, v4 d58548051)', () => {
+  it('reads v4\'s paragraph byte for byte, both U+2019 and the em dash (v4 :177-179)', async () => {
+    const fixture = render(baseDispatch([]));
+    await settle(fixture);
+    const p = (fixture.nativeElement as HTMLElement).querySelector('p.qt-text-small.qt-text-muted')!;
+    expect((p.textContent ?? '').replace(/\s+/g, ' ').trim()).toBe(
+      'Automatic housekeeping retires low-importance, stale memories to the archive (the cold tier) once a character’s active memories approach the cap. Nothing is destroyed: archived memories stay on the shelf, still guard against repeats, and return to active duty if they are observed again. High-importance, manually added, consolidated, recently accessed, and well-reinforced memories are never moved. Off by default — toggle on once you’ve reviewed the limits below.',
+    );
+  });
+
+  it('suffixes the cap `active memories per character` (v4 :210)', async () => {
+    const fixture = render(baseDispatch([]));
+    await settle(fixture);
+    const cap = (fixture.nativeElement as HTMLElement).querySelector('#perCharacterCap')!;
+    expect(cap.nextElementSibling?.textContent?.trim()).toBe('active memories per character');
+  });
+
+  it('has no merge checkbox — its only checkbox is the enable toggle (v4 hunk -279..-289)', async () => {
+    const fixture = render(baseDispatch([]));
+    await settle(fixture);
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.textContent).not.toContain('Also merge semantically similar memories during the sweep');
+    const boxes = Array.from(host.querySelectorAll('input[type="checkbox"]'));
+    expect(boxes.length).toBe(1);
+    expect(boxes[0].closest('label')?.textContent?.trim()).toBe('Enable automatic housekeeping');
+  });
+});
