@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — docs(porting): unify the `f5e953a3f` wardrobe-programme + convergence drift catch-up round — ten lanes, the baseline moves to `f5e953a3f`
+
+_Versions: core 0.0.1264, host 0.0.193, web 0.0.226, cli 0.0.30, SPA 0.5.821._
+
+Unifies P4.D255 → {P4.D256 ∥ P4.D262 ∥ P4.D263 ∥ P4.D264} ∥ P4.D257 ∥ P4.D258 ∥ P4.D259 ∥ P4.D260 ∥ P4.D261 on main: 70 lane commits picked in §S.1's order, then the unifier's HANDOFF, fix, wire and gate commits. The oracle baseline moves to `f5e953a3f`; the drift ledger retires its eleven rows to §6 and records the eight commits v4 landed mid-round (the memory programme, a seventh schema move pending) as UNPROCESSED, regen rule PIN REQUIRED at `f5e953a3f`.
+
+- **HANDOFFs landed:** P4.D258's restore census + empty-embedding case; P4.D262's two lane-local copies repointed onto P4.D263 / P4.D256 (`resolve_wearer_names` new); `hydrate_component_graph` shared with v4's WARN keys; `KNOWN_JOB_TYPES`; the transfer engine arm over the engine's codec. Deferred by name: `ImageParamsLogContext.itemId`, the almanack fixture pair's wardrobe profile.
+- **§3 review fixes (red-first):** the startup physical backup now runs joined before the pumps (a `VACUUM INTO` beside a live writer under TRUNCATE journalling fails every write with `database is locked`); a character's item routes refuse a General archetype (a DELETE had wiped its wear ledger before the 404); a manual join with a failed pool read is dressed without credit; a malformed `wardrobeImageSettings` cell no longer drops the settings row; R-B's failed-write 500 arm is now a differential under an abort trigger; a failed item read is no longer masked as `Unknown action`; v4's fallback lines for the settings read, the ledger backup read and the carry's blob read; a failed component read no longer spends a provider call; the edge's query check folded onto core; a credit failure's bare message; the union's restore census at 68 sites.
+- **Union reds the gate caught:** P4.D256's group-wardrobe plants under P4.D263's grown builder (idempotent plants, v4's async stats tail flushed); the two item-image families' shared `/tmp` fixture (split to `/tmp/qt-wiir-*`); the flipped Playwright beats (a really-borrowed row, the worker-restart re-copy, a fixture without `chat_settings`).
+- **Gate:** fmt / clippy (both feature sets) / release clean; sweep from the pin 608 ok / 3 standing / 3 refused of 614; Tier R 282/0; workspace 697 binaries / 4,621 passed / 6 failed (the three standing, two env-block artifacts, the fixed collision re-run green) / 3 ignored, zero SKIP; SPA 474 files / 9,012 tests; full Playwright 366 passed / 0 failed / 6 skipped.
+
 #### 2026-10-08 — test(spa): P4.D261 unit 10 — the gated wardrobe and Wardrobe Images beats; two live beats re-pinned to the retired bytes; lane close
 
 _Versions: SPA 0.5.821._

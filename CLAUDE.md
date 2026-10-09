@@ -753,9 +753,42 @@ records THERE. Update this summary only when a phase or round completes.
   **Next: the owed dogfood pass (a full Friday restore's embedding count
   first), `/driftcheck` once v4 settles, then the follow-ups round** —
   `phase-4.md`. Round record: `status-log.md`.
-- **Oracle baseline: `94fbb1ae3` (2026-10-06, v4 main — "Inform: deliver as
-  a trailing section, under a vouching header", `4.10.0-dev.112`), adopted
-  at the `94fbb1ae3` smalls round's unification (2026-10-06).**
+- **The `f5e953a3f` wardrobe-programme + convergence drift catch-up round
+  (P4.D255 → {P4.D256 ∥ P4.D262 ∥ P4.D263 ∥ P4.D264} ∥ P4.D257 ∥ P4.D258 ∥
+  P4.D259 ∥ P4.D260 ∥ P4.D261): UNIFIED on main (2026-10-08) — ALL TEN LANES
+  LANDED; the oracle baseline MOVES to `f5e953a3f`; the ledger's §3 holds the
+  EIGHT memory-programme commits v4 landed mid-round (`1825bfd53` …
+  `7e9eaf42c`, UNPROCESSED — a SEVENTH D23 move pending), PIN REQUIRED.** v4's
+  wardrobe programme whole: the SIXTH D23 re-dump (`wardrobe_wear_stats` +
+  `chat_settings."wardrobeImageSettings"`; NO `migration_tables.json` — R-A
+  overruled) with three boot ensures (P4.D255, the keystone); the read-time
+  `origin` + `wear`, `?action=wear-history`, delete hooks (P4.D256); the ONE
+  `commit_equipped_outfit` chokepoint under every equip path + the four tools'
+  wear text and pictures (P4.D262); item images — route, generation job,
+  settings, transfers, Almanack (P4.D263); the backup / restore / `.qtap`
+  carriers (P4.D264); the chat gallery's two passes (P4.D257); bugs 180/181
+  CONVERGED + bug 179 NO-PORT (P4.D258); physical backups + retention + the
+  daily optimize + `quilltap db optimize` (P4.D259); the dependency move +
+  `help/` 130 + `docs/v4/` (P4.D260); the whole SPA side (P4.D261). **The §3
+  review (seven readers + the unifier): ONE finding that would have shipped —
+  P4.D259's startup `VACUUM INTO` ran beside a live writer (TRUNCATE →
+  `database is locked`); now JOINED before the pumps as v4's `connect()` does,
+  pinned** — plus eight should-fixes red-first (a General archetype through a
+  character's item routes — a DELETE wiped its ledger; a manual join left
+  undressed; a malformed settings cell dropping the row; R-B's untested 500
+  arm; a web 500 masked as 400; silent read swallows; a spent provider call;
+  stale claims) and three union reds the gate caught (P4.D263's grown builder
+  under P4.D256's plants; a shared `/tmp` item-images fixture; the flipped
+  beats' worker-restart cascade + a fixture without `chat_settings`). Gate:
+  sweep 608 ok / 3 standing / 3 refused of 614; Tier R 282/0; 697 binaries /
+  4,621 / 6 (standing + env artifacts + the fixed collision) / 3 ignored, zero
+  SKIP; SPA 474 / 9,012; Playwright 366 / 0 / 6 (11.8 m). Versions: core 0.0.1264, host
+  0.0.193, web 0.0.226, cli 0.0.30, SPA 0.5.821. **Next: the owed dogfood
+  pass, then the memory-programme catch-up round, then a follow-ups smalls
+  round** — `phase-4.md`. Round record: `status-log.md`.
+- **Oracle baseline: `f5e953a3f` (2026-10-07, v4 main — "feat(startup):
+  daily database optimize before migrations", `4.10.0-dev.117`), adopted
+  at the `f5e953a3f` wardrobe-programme round's unification (2026-10-08).**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting

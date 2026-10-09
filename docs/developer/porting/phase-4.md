@@ -7151,7 +7151,87 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
-## The `f5e953a3f` wardrobe-programme + convergence drift catch-up round (P4.D255 → {P4.D256 ∥ P4.D262 ∥ P4.D263 ∥ P4.D264} ∥ P4.D257 ∥ P4.D258 ∥ P4.D259 ∥ P4.D260 ∥ P4.D261) — ORDERED 2026-10-08
+## The `f5e953a3f` wardrobe-programme + convergence drift catch-up round (P4.D255 → {P4.D256 ∥ P4.D262 ∥ P4.D263 ∥ P4.D264} ∥ P4.D257 ∥ P4.D258 ∥ P4.D259 ∥ P4.D260 ∥ P4.D261) — UNIFIED 2026-10-08 (ordered 2026-10-08)
+
+**UNIFIED on main (2026-10-08) — ALL TEN LANES LANDED; the oracle baseline
+MOVES to `f5e953a3f`; the eleven absorbed rows retire to the drift ledger's
+§6.** v4 landed EIGHT more commits DURING the round (`1825bfd53` …
+`7e9eaf42c` — v4's memory programme: F1–F9, the recall retuning, hot/cold
+tiers + consolidation with a SEVENTH schema move, bug 182, a sync log line, a
+test commit); the lanes' `1825bfd53`-only waiver was superseded, every regen
+stayed pinned at `f5e953a3f`, and the eight are classified UNPROCESSED in the
+ledger's §3 (regen rule PIN REQUIRED at `f5e953a3f`). Round record:
+`status-log.md` → "The `f5e953a3f` wardrobe-programme + convergence drift
+catch-up round — UNIFICATION record"; each order's status header carries its
+Unification paragraph and exactly what stays OPEN. The planned
+`migration_tables.json` does NOT exist (R-A overruled mid-lane).
+**The §3 review (seven parallel readers + the unifier): ONE finding that
+would have shipped — P4.D259's PHASE-2 startup backup ran `VACUUM INTO`
+beside a live writer (TRUNCATE journalling → `database is locked` on every
+write in the window); now a JOINED pass before the pumps, as v4's
+`connect()` runs it, pinned by host arm (h)** — plus, fixed red-first on the
+union: the character item routes accepting a General archetype (a DELETE
+wiped its wear ledger before the 404); a manual join left undressed on a
+failed pool read; a malformed `wardrobeImageSettings` cell dropping the
+whole settings row; R-B's failed-write 500 arm untested (now three ops under
+an abort trigger, all matched against v4); a web 500 masked as a 400;
+silent read swallows (the settings fallback line, the ledger backup read,
+the carry's blob read); a provider call spent on a failed read; the edge's
+duplicated query check; stale claims (the bridge's emit, the census counts).
+**Union reds the gate caught:** P4.D263's grown transfers builder broke
+P4.D256's group-wardrobe plants (fixed; v4's async stats tail flushed); the
+two item-image families shared one `/tmp` fixture and its env names (split);
+four flipped Playwright beats red from a really-borrowed row + the worker
+restart's `beforeAll` re-copy, and a fixture without `chat_settings` (fixed).
+Gate: fmt/clippy (both feature sets)/release clean; the sweep from the pin
+608 ok / 3 standing / 3 refused of 614 (group-wardrobe re-run green after
+its repair); Tier R 282/0; `cargo test --workspace` 697 binaries / 4,621
+passed / 6 failed (the three standing + the two recorded env-block artifacts
++ the item-images fixture collision, fixed and re-run green) / 3 ignored,
+zero SKIP; SPA 474 / 9,012, lint + build clean; full Playwright 366 passed / 0 failed / 6 skipped (11.8 m — the six the standing parks; no timing-cluster red this run). Versions:
+core 0.0.1264, host 0.0.193, web 0.0.226, cli 0.0.30, SPA 0.5.821; tauri
+0.0.9 unchanged; harness frozen 0.0.1110.
+
+**NEXT (in order):**
+1. **The owed dogfood pass** — the ten lanes' 💸 rows (the round record lists
+   them), headlined by: the Friday copy's first v5 boot creating + SEEDING the
+   wear ledger (count against v4's `seed-wardrobe-wear-stats-v1` on a second
+   copy; both `migrations_state` rows); a real equip on a Salon turn crediting
+   ONE wear; `wardrobe_read`'s second-person tally; the `.qtap` round trip
+   carrying `wardrobe_wear` + `_imageFiles`; a generated garment picture
+   through the real Concierge desk (💸); the `db-optimize-state.json` stamp +
+   the `data/backups/` trio on the first boot of a day and the startup trio
+   JOINED before the pumps on a same-day second boot with a > 24 h backup; a
+   full backup whose embeddings restore as `number[]` with the written-rows
+   count; the origin chip / wear line / Sort / Picture section / Wardrobe
+   Images card in the SPA.
+2. **The memory-programme catch-up round** (`/setupphase`, from the ledger's
+   eight UNPROCESSED rows — order the four memory rows as ONE catch-up): the
+   SEVENTH D23 re-dump (`memories.tier` / `supersededById` /
+   `consolidatedFrom` / `consolidatedAt`, `chats.otherExtraction
+   WatermarkMessageId`) as its keystone, the `migration_indexes.json`
+   re-dump (`idx_memories_character_tier`), the `add-memory-tiers-v1` boot
+   ensure, F1–F9, the recall retuning, hot/cold + consolidation, bug 182's
+   atomic reinforcement (v5's `reinforce_memory` carries the lost-update
+   shape), the `[Sync] Reading disk file` line, `quilltap anchor-probe` +
+   the CLI surfaces. Predicted HEAD reds (the schema embed + size pin, the
+   help tree 130 → 131, Tier R's completion / recall-replay / help arms).
+3. **A follow-ups smalls round** from the ten status headers' OPEN lists —
+   first: the SHARED `resolve_character_avatar` fall-through (nine callers;
+   delete the gallery's duplicate); `ImageParamsLogContext`'s `itemId` within
+   a log-key pass over the image log context; the almanack `.db` pair's
+   designated wardrobe profile; the production file log's integral-f64
+   rendering (`25.0` vs v4's `25`); `maybe_queue_wardrobe_tool_image`'s
+   read-failure outcomes; the generate edge's per-request seams; the
+   item-images tier-2 / generation tier-3 oracles' `setImmediate` flush;
+   P4.D264's #4 / #8 and item 12's two unpinned non-behaviours.
+4. **v4 filing candidates (the human's call):** P4.D264 #3 — a second
+   `replace` restore leaks `UNIQUE constraint failed: chat_settings.userId`
+   (v4 shares it; only a non-single-user archive reaches it); P4.D264 #8 — a
+   new-account restore leaves an archived character's `archiveFileId` /
+   `archivedAvatarFileId` pointing at a remapped bundle id (v4 shares it).
+   `STAT4_NOT_COMPILED` stays RULED (leave the sys crate).
+
 
 **Baseline `94fbb1ae3`; v4 `main` HEAD `f5e953a3f` ("feat(startup): daily
 database optimize before migrations", `4.10.0-dev.117`, 2026-10-07 23:28

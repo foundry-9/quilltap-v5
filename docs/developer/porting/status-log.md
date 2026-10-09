@@ -175066,3 +175066,188 @@ mock); a tool-drawn picture repainting an OPEN dialog via the `characters`
 hint; the `Never worn` tickbox and the Sort select in a shared-container view;
 an outfit (bundle) worn from the dialog's Outfits tab sending
 `wornBundleIds` and its tally moving by ONE.
+
+## The `f5e953a3f` wardrobe-programme + convergence drift catch-up round — UNIFICATION record (2026-10-08)
+
+**P4.D255 → {P4.D256 ∥ P4.D262 ∥ P4.D263 ∥ P4.D264} ∥ P4.D257 ∥ P4.D258 ∥
+P4.D259 ∥ P4.D260 ∥ P4.D261 — ALL TEN LANES LANDED; the oracle baseline MOVES
+to `f5e953a3f`.** Branch `unify/f5e953a3f-wardrobe`, cherry-picked in §S.1's
+order (P4.D255 whole → P4.D256 → P4.D262 → P4.D263 → P4.D264 → P4.D257 →
+P4.D258 → P4.D259 → P4.D260 → P4.D261; the four stage-2 lanes from the
+keystone tip `23cd7123b`): 70 lane commits. Conflicts: the version files and
+the CHANGELOG / status-log (resolved max-version / both-sides union), plus ONE
+source conflict — `system_restore_state.rs`, where P4.D264's carrier arms and
+P4.D258's empty-embedding arm met at `archive_for`, the `seen` count and the
+fresh-store carve; resolved as a union (both arms kept, the counts reconciled
+— below). `services/backup/collect.rs` and `restore/orchestrator.rs` (the
+§R.10(e) union) merged clean and compose.
+
+### The §2 probe and the pin
+
+The probe FAILED at the start: v4 `main` had moved EIGHT commits past
+`f5e953a3f` (`1825bfd53` … `7e9eaf42c`, the memory programme), superseding the
+lanes' `1825bfd53`-only waiver. A `/driftcheck` subagent classified all eight
+from their hunks (memory F1–F9, the recall retuning, hot/cold tiers +
+consolidation — a SEVENTH D23 schema move — bug 182, a sync log line, a test
+commit; no convergence, no dependency move); it could not commit on `main`
+while the unify branch was checked out, so its ledger draft landed in this
+unification's docs commit (§1 rewritten for the moved baseline, the eight rows
+UNPROCESSED). Every regen ran from `/tmp/qt-v4-pin-unify-f5e953a3f` with its
+OWN `npm ci --offline` tree (`openai` 7.30.0 — the pin's lockfile; ledger §5.1).
+
+### Delivered scope, verified against each order
+
+Every lane reported LANE COMPLETE; each order's Tier 1 / Tier 2 lists were
+checked against the code by seven parallel §3 readers (one per lane group,
+v4 read at the pin) and the unifier. Recorded deviations accepted: P4.D255's
+R-A OVERRULED by the human mid-lane (no `migration_tables.json`; a fresh v5
+`wardrobe_wear_stats` keeps generateDDL's `REAL` shape and gets both hand
+indexes from the index family); P4.D263's C1 amendment (ruled in-lane — the
+generate arm takes the image seams); P4.D262's measured departure from R-B (a
+MISSING chat credits and answers 200 — confirmed against v4's `_update`);
+P4.D264's item-10 leg landed in `system_import_state` (equivalent coverage,
+recorded); P4.D261's REST-route generate (accepted — the dispatch envelope does
+carry `kind` / `details`, only the SPA's TS types drop them). The keystone's
+`not_available` refusal bodies were all replaced by their stage-2 owners (no
+refusal arm survives on the union).
+
+### The §5.4 HANDOFFs (landed in `c711c20b5`)
+
+P4.D258's census line + case line + the `EMPTY_EMBEDDING_CASE_LANDED` flip;
+P4.D262's two lane-local copies repointed and deleted (`resolve_wardrobe_
+image_profile` → `image_profile_resolution`; `resolve_wearers` → the new
+names-only `wardrobe_wear_history::resolve_wearer_names`); P4.D263's
+`hydrate_component_graph` shared with v4's WARN keys (and `[loadBundleLookup]`'s),
+`KNOWN_JOB_TYPES` naming `WARDROBE_ITEM_IMAGE_GENERATION`, the
+`WardrobeTransferApply` engine arm over `ready_db_and_blob_webp()`; P4.D259's
+doc line. **Deferred by name:** P4.D263's `ImageParamsLogContext.itemId` (the
+whole image log context is snake_case — a log-key pass) and the almanack
+`.db` pair's designated wardrobe profile (a fixture rebuild).
+
+### The §3 review — what it found (fixed on the union unless noted)
+
+1. **P4.D259 — the one that would have shipped.** R-D's PHASE-2 startup backup
+   was a fire-and-forget `spawn_blocking` AFTER the job pump / stuck-reset /
+   autonomous-tick loops started. Under v5's TRUNCATE journal a `VACUUM INTO`
+   on the read pool holds SHARED for its whole run, so on a same-day second
+   boot whose newest backup is > 24 h old every writer COMMIT in that window
+   waits out the busy timeout and fails `database is locked`. v4 runs the trio
+   synchronously inside `connect()`. Now `run_startup_backups_at_boot` — joined,
+   directly after PHASE 0.75, before the ensures and the pumps. Host arm (h)
+   `the_startup_backup_finishes_before_the_boot_returns`: red on the lane
+   wiring, green after; `host_boot_daily_optimize` 8/8 (`4b64e859a`).
+2. **P4.D256:** the character item GET / PUT / DELETE lacked v4's
+   `item.characterId !== id` guard — a General archetype id came back tagged
+   with the CHARACTER's origin, and a DELETE scrubbed every chat's slots and
+   dropped the archetype's wear ledger before answering 404. `owned_wardrobe_
+   item`; a `characterWardrobeDelete` corpus kind (both sides) + three rows,
+   regenerated from the pin (v4: 404 ×3, ledger intact at six wears); red on
+   the lane code. And the web `/api/v1/wardrobe/{itemId}` unknown-action arm
+   masked a failed read as the 400 — `a_failed_item_read_is_not_masked_as_an_
+   unknown_action` (a garbage mount index boots degraded); red first
+   (`4b6c4571f`).
+3. **P4.D262 (a regression):** a `manual` join with `wornBundleIds` returned on
+   a failed pool read, leaving the character UNDRESSED; v4's `getPool` never
+   throws. Now equipped without credit (a v5-only WARN) —
+   `a_manual_join_with_claimed_bundles_is_dressed_when_the_pool_read_fails`,
+   red first (`b6822420b`). And R-B's failed-write 500 arm was
+   reached by no test (every "lost write" row was a missing chat): the wear-
+   commit tier-2 family gained per-op `plantSql` / `unplantSql` and three ops
+   under a `BEFORE UPDATE ON chats` abort trigger, the route op's oracle row
+   asserted to be v4's 500, all 32 ops matched (`c2a82a21a`); a credit failure
+   displayed `sqlite error: …` where v4 says the bare message.
+4. **P4.D255:** a `''` / `'null'` / unparseable `wardrobeImageSettings` cell
+   refused the WHOLE settings row (the next update would create a second row);
+   v4's `fromJsonSafe` omits the key. `wardrobe_tool_images_enabled` swallowed
+   a failed read (v4 logs `Error finding chat settings by user ID`).
+   `find_all`'s table check turned a failed `sqlite_master` read into a
+   silently ledger-less backup. All pinned.
+5. **P4.D263:** a failed component read still spent a provider call (now the
+   500); the edge's `read_container_query` duplicated core's sentences
+   (folded); the carry's blob read propagated where v4's `readData` is a
+   fallback skip; the bridge header claimed a realtime emit and a measurement
+   the record lacked (measured at the pin: the only listeners are the
+   embedding scheduler).
+6. **P4.D258 × P4.D264:** the two census docs each counted only their own lane
+   — the union reads 68 sites (46 warn / 6 info / 16 debug, counted at the pin,
+   both whitelists); the dead `LANDED` gate folded into plain counts (`seen`
+   44, `FRESH_STORE_CARVED_CASES` 32).
+7. **P4.D261:** the Wardrobe Images heading matched two `<h3>`s (strict mode);
+   the Picture beat's `Current picture` count could not fail; the Show-shared
+   beat went back to the whole borrowed population once the gate flipped.
+8. **Smalls:** the stale `V5_EXTRA_MAIN_TABLES` comment (v4 converged); the
+   SDK guard's 290 → 320 stamp count.
+
+**Escalated / recorded, no code this round:** the SHARED `resolve_character_
+avatar` fall-through (P4.D257 — a follow-up order); P4.D264's #3 and #8 (v4
+shares both — filing candidates) and #4; `maybe_queue_wardrobe_tool_image`'s
+read-failure outcomes; the production file log's integral-f64 `25.0`; the
+item-images oracles' missing `setImmediate` flush; the generate edge's
+per-request seams. Each in its order's OPEN list and `phase-4.md` NEXT.
+
+### Union reds the gate caught
+
+- **`group_wardrobe_routes` (sweep, regen):** P4.D263 grew the shared
+  `build-wardrobe-transfers-fixture.ts` (two `wearRows`, a `files` table,
+  pictures on the group item) under P4.D256's corpus — the (…00a1, c7…001)
+  ledger plant hit the UNIQUE `COALESCE` index, the `files` DDL plants hit the
+  present table, and `gw_delete`'s picture cleanup let v4's un-awaited
+  `refreshStats` land after the dump. Plants made idempotent (`INSERT OR
+  REPLACE` / `IF NOT EXISTS`, both sides' SQL), the oracle flushes ten
+  `setImmediate` turns; 33 cases matched.
+- **`wardrobe_item_images_tier2` (workspace run):** the two item-image families
+  shared `/tmp/qt-wii-*` AND the `QT_FIXTURE_WII_*` names, so the later routes
+  regen re-minted the tier-2 fixture's picture ids. The routes family now
+  builds into `/tmp/qt-wiir-*` under `QT_FIXTURE_WIIR_*`; both re-run green.
+- **The §S.9 flip:** four wardrobe beats red — one real spec error (by then
+  "Brass Goggles" lives in General, so the row IS borrowed) whose failure
+  RESTARTED the worker, and the new worker's `beforeAll` re-copied the fixture
+  under the next three; and the Wardrobe Images beat's templates fixture has no
+  `chat_settings` table (now planted from the committed `fresh_schema.json`).
+  Root-caused from the traces' network bodies before anything was accepted.
+
+### The gate
+
+- `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D
+  warnings` plain AND `--features quilltap-core/native-transport`, `cargo
+  build --release`: clean.
+- **The full sweep from the pin** (`recipe_sweep.py --run-all --v4
+  /tmp/qt-v4-pin-unify-f5e953a3f`, after `ai_import_tier3`'s `V4_APP_VERSION`
+  → `4.10.0-dev.117`): **608 ok / 3 standing run_failed (`ariel_writers_tier3`,
+  `memory_processor_tier3`, `search_replace`) / 3 refused by design of 614**
+  (`group_wardrobe_routes` regen_failed in the sweep itself, re-run green after
+  its repair). Results: `harness/tools/sweep-results/2026-10-08-f5e953a3f-
+  wardrobe-unify.json`. `--self-test` 0 failures.
+- **Tier R (`cli_differential`): 282 cases / 0 failures** (271 → 282 with
+  P4.D259's `db optimize` rows).
+- **The workspace suite** (`QT_V4_CHECKOUT=QT_V4_ROOT=<pin> TZ=UTC
+  CARGO_INCREMENTAL=0 cargo test --workspace --no-fail-fast` with the
+  788-variable env block harvested from every family's run stage, nine
+  dup-valued names withheld): **697 binaries / 4,621 passed / 6 failed / 3
+  ignored, zero `SKIP:`** — the three standing reds, the two recorded
+  env-block artifacts (`backup_uuid_remap` — its recipe refuses the repo write
+  by design; `doc_mount_files_tier2`), and `wardrobe_item_images_tier2` (the
+  fixture collision above, fixed and re-run green). Run by name with their
+  counts: `host_boot_daily_optimize` 8, `host_boot_hardness` 34,
+  `provisioning_equivalence` 3 (`QT_FRESH_SCHEMA_LIVE` dumped from the pin),
+  `system_restore_state` 4, `chat_cast_routes` 10, `chat_gallery` 4,
+  `wardrobe_routes` 2, `wardrobe_item_wear_history_route` 2,
+  `set_equipped_outfit_census_guard` 2, `daily_db_optimize` 2,
+  `degraded_sibling_open` 2, `migration_index_backfill` 2, every wardrobe /
+  wear / item-image family 1/1.
+- **SPA:** lint + build clean; vitest **474 files / 9,012 tests**.
+- **Playwright:** the touched files by file after the flip (wardrobe-flow
+  16/16, settings-flow 9/9, projects-flow 7/7); the full suite **366 passed / 0 failed / 6 skipped (11.8 m)** — the six the standing parks, every flipped beat LIVE and green.
+
+### Versions
+
+core 0.0.1264, host 0.0.193, web 0.0.226 (each the highest lane value + 1 for
+the union's own source changes); cli 0.0.30 (P4.D259), SPA 0.5.821 (P4.D261);
+tauri 0.0.9 unchanged; harness frozen 0.0.1110.
+
+### 💸 for the next `/dogfood`
+
+The ten lanes' rows (each lane record lists its own), headlined in
+`phase-4.md` NEXT 1 — plus the unification's own: a same-day SECOND boot on
+the copy with a > 24 h backup, proving the startup trio now finishes before
+the first job-pump line.

@@ -19,136 +19,139 @@ write it** — a lane that finds the probe failing STOPs and reports instead.
 _Updated only by `/driftcheck` and `/unify`. Every field here is what the §2
 probe verifies against._
 
-- **Oracle baseline: `94fbb1ae3`**: "Inform: deliver as a trailing
-  section, under a vouching header" (v4 main, 2026-10-06 09:01,
-  `4.10.0-dev.112`), adopted when the `94fbb1ae3` fresh-instance-indexes +
-  follow-ups smalls round was unified, all seven lanes (P4.D254 ∥ P4.153 ∥
-  P4.154 ∥ P4.155 ∥ P4.156 ∥ P4.157 ∥ P4.158, 2026-10-06). The one row it
-  absorbed is retired to §6: `94fbb1ae3` ABSORBED(P4.D254). CLAUDE.md's
-  Status bullet agrees (the boot-hardness round's bullet: "the oracle
-  baseline STAYS `94fbb1ae3`"; its "Oracle baseline" bullet names it).
-- **Checked:** 2026-10-08 (`/driftcheck`, the full §4 procedure;
-  `git fetch --all` first) — the classification the 2026-10-07 unification
-  owed. Previous checks: 2026-10-07 (`/unify` of the boot-hardness round —
-  recorded the commits UNPROCESSED, unclassified, by the human's PIN ruling);
-  2026-10-06 (`/unify` of the `94fbb1ae3` smalls round).
-- **AMENDMENT 2026-10-08 (the `/setupphase` planning session, after the probe passed at `f5e953a3f`):** v4 landed **`1825bfd53`** ("docs: memory improvement specs", 2026-10-08 08:57 -0500 — two NEW `docs/developer/features/{memory-consolidation-and-tiers,memory-recall-and-housekeeping-fixes}.md` files, 664 insertions, docs only, version stamp unchanged at `4.10.0-dev.117`; `origin/main` agrees; the tree CLEAN). **The human ruled: the round pins at `f5e953a3f`.** For the `f5e953a3f` round's lanes the §2 probe PASSES when `git log f5e953a3f..main` shows EXACTLY `1825bfd53` and nothing else (branch `main`, tree CLEAN, `bugfix` log empty) — this is the recorded waiver §R.2 requires; a SECOND commit is a STOP. `1825bfd53` is a NEW §3 row (`NO-PORT?`, UNPROCESSED) for the next `/driftcheck`.
-- **v4 `main` HEAD at check: `f5e953a3f`** ("feat(startup): daily database
-  optimize before migrations", 2026-10-07 23:28) — ELEVEN commits past the
-  baseline (ten + the merge `a9c99a4a0`, which now has its own row: it alone
-  moves the root dependency tree). `origin/main` agrees. Two commits landed
-  since the 2026-10-07 record: `039f7017c` (v4's fixes for bugs 179/180/181
-  — **two of them this port's own filings: CONVERGENCE**) and `f5e953a3f`.
+- **Oracle baseline: `f5e953a3f`**: "feat(startup): daily database optimize
+  before migrations" (v4 main, 2026-10-07 23:28, `4.10.0-dev.117`), adopted
+  when the `f5e953a3f` wardrobe-programme + convergence drift catch-up round
+  was unified, all ten lanes (P4.D255 → {P4.D256 ∥ P4.D262 ∥ P4.D263 ∥
+  P4.D264} ∥ P4.D257 ∥ P4.D258 ∥ P4.D259 ∥ P4.D260 ∥ P4.D261, 2026-10-08).
+  The eleven rows it absorbed (`938144eb4` … `f5e953a3f`) are retired to §6.
+  CLAUDE.md's Status bullet agrees (the round's bullet: "the oracle baseline
+  MOVES to `f5e953a3f`"; its "Oracle baseline" bullet names it).
+- **Checked:** 2026-10-08 (`/unify` of the `f5e953a3f` round; the eight
+  commits past the target were classified the same evening by a `/driftcheck`
+  run from the unification session — its draft rows are §3's eight). Previous
+  checks: 2026-10-08 morning (`/driftcheck`, the eleven commits to
+  `f5e953a3f`); 2026-10-07 (`/unify` of the boot-hardness round).
+- **v4 `main` HEAD at check: `7e9eaf42c`** ("test: release checklist 2 —
+  regression tests and coverage for 4.10", 2026-10-08 17:46,
+  `4.10.0-dev.141`) — EIGHT commits past the baseline (`1825bfd53`,
+  `3f7320138`, `da98ca58b`, `f7d8064be`, `d58548051`, `70f9b495c`,
+  `197104649`, `7e9eaf42c`; a linear run, no merges). `origin/main` agrees.
+  All eight arrived DURING the round (after the lanes' `1825bfd53`-only
+  waiver, which the unification superseded); the round's regens all ran from
+  the `f5e953a3f` pin.
 - **v4 `bugfix` tip at check:** `1a2b2164c`, UNMOVED (`1a2b2164c..bugfix`
   and `..origin/bugfix` empty). **`release` tip:** `8fbf2afe0` (`release:
   4.9.2`), UNMOVED; still no `release: 4.10.0` squash.
 - **Checkout at check:** branch **`main`**, tree **CLEAN**.
-- **Verdict: DRIFT PENDING — 11 commits (§3), all classified; ALL ELEVEN `ORDERED(…)` by `/setupphase` on 2026-10-08 (the `f5e953a3f` wardrobe-programme + convergence drift catch-up round: P4.D255 → {P4.D256 ∥ P4.D262 ∥ P4.D263 ∥ P4.D264} ∥ P4.D257 ∥ P4.D258 ∥ P4.D259 ∥ P4.D260 ∥ P4.D261 — orders under `work-orders/p4.d25[5-9]-*.md`, `p4.d26[0-4]-*.md`; the round's target is `f5e953a3f`).** Three
-  NO-PORT? (the two docs commits and the port's own bug filing; bug 179's
-  half of `039f7017c` is a fourth candidate pending one measurement); the
-  rest PORT / PORT-NEW / CONVERGENCE:
-  the wardrobe programme (#80 lists, #81 wear ledger, #82 item images + the
-  tool pictures), the chat gallery's two passes, bugs 180/181 converging
-  (v5's backup WRITER must move too — see the row), and the daily optimize
-  (PORT-NEW, likely needs a ruling). **Schema: TWO D23 moves pending** — the
-  SIXTH re-dump will carry `wardrobe_wear_stats` (a new generateDDL table)
-  and `chat_settings."wardrobeImageSettings"`; plus a migration UNIQUE
-  `COALESCE` index for `migration_indexes.json` (load-bearing: v4's
-  increment SQL is an `ON CONFLICT` on it) and two boot ensures (the column
-  ADD, the seed).
-- **Regen rule: PIN REQUIRED at `94fbb1ae3`** (§5.1) — v4 HEAD is past the
-  baseline. ⚠ **The dependency trap is LIVE:** the merge `a9c99a4a0` moved
-  the root tree (`openai` 7.23.0 → 7.30.0, `@openrouter/sdk` 1.3.28 →
-  1.4.25, `mammoth` 1.12.3 → 1.13.0, `sharp`, `next` 16.4.0, the
-  micromark/mdast family), so every pin needs `npm ci --offline` in its own
-  tree, never the root `node_modules` symlink. `b3f937076` rebuilt eight
-  `plugins/dist/*/index.js` bundles embedding `openai` 7.30.0 (no plugin
-  source change) — the third symlink class is ALSO past the baseline at HEAD.
-  `provisioning_equivalence` still REQUIRES `QT_FRESH_SCHEMA_LIVE` dumped
-  FROM THE PIN (a dump from HEAD carries the two wardrobe schema moves —
-  drift, not a v5 bug).
-- **Live-checkout guards at HEAD (predicted, not run):** `provider_sdk_version_guard`
-  reddens (`RECORDED_OPENAI_SDK` / `RECORDED_OPENROUTER_SDK`);
-  `qtap_schema_embed_guard` + the `generators/qtap_schema.rs:180` size pin redden
-  (`qtap-export.schema.json` moved in `3ee3b1342` + `7c8572869`; planning
-  correction 2026-10-08: `public_schemas_vendor_guard` guards the custom-tool /
-  progression schemas, NOT the export schema, and stays GREEN); the help
-  guards redden (`help/wardrobe.md`, `project-wardrobe.md`,
-  `wardrobe-images.md` NEW, `chat-gallery.md`, `image-generation-profiles.md`,
-  `profile-avatar.md`, `system-backup-restore.md`, `database-protection.md`).
-  All green against the pin at the 2026-10-07 unification.
+- **Verdict: DRIFT PENDING — 8 commits (§3), all classified, all
+  `UNPROCESSED`** — v4's **memory programme** (2026-10-08) plus a sync log
+  line and a test commit:
+  - **NO-PORT?** (3): `1825bfd53` + `da98ca58b` (docs/specs only),
+    `7e9eaf42c` (tests + a behaviour-preserving SPA refactor v5 already
+    matches).
+  - **PORT / PORT-NEW** (5): `3f7320138` (F1–F9 — near-duplicate
+    reinforcement, the footnote cap, archive ranking, the per-chat frozen
+    archive, delivered-only access stamps, budget-sized head/archive, real
+    merges; PORT-NEW the anchor probe + `quilltap anchor-probe`);
+    `f7d8064be` (recall multiplier retuning — the fresh boosts 1.6/1.35 →
+    1.3/1.15, the relevance gate + the 1.4 boost cap, specific entity
+    anchors, the recall-replay `tuning`/`signals`/`asOf`); `d58548051`
+    (hot/cold tiers + consolidation — SCHEMA MOVE; housekeeping demotes
+    instead of deleting, recall reads hot rows only, the OTHER extraction
+    pass defaults to `hybrid`); `70f9b495c` (bug 182 — the atomic
+    reinforcement increment; v5's `reinforce_memory` carries the bug's
+    lost-update shape); `197104649` (one sync debug line).
+  - **CONVERGENCE: none.** Bug 182 was found by v4's own review of PR 83,
+    not by this port; `bugs.md` reads "Bugs 1–182 are fixed in v4; none is
+    open".
+  - The memory rows interlock: `f7d8064be` sits on `3f7320138`'s
+    budget-sized head, `d58548051` RETIRES the housekeeping half of
+    `3f7320138`'s F9 merge, and `70f9b495c` rewrites F1's reinforcement
+    write — **order them as ONE memory catch-up, never commit-by-commit.**
+  - **Schema: ONE D23 move pending** — the SEVENTH re-dump carries
+    `memories.tier` / `supersededById` / `consolidatedFrom` /
+    `consolidatedAt` and `chats.otherExtractionWatermarkMessageId`
+    (`d58548051`), plus the migration-only index
+    `idx_memories_character_tier` for `migration_indexes.json` and a boot
+    ensure re-homing `add-memory-tiers-v1` (append-ADD shape + the NULL-tier
+    heal; generateDDL's vs the migration's column shape predicted to differ,
+    NOT measured). Two new `instance_settings` keys
+    (`memoryConsolidation`, `memoryExtractionMode`) and the new job type
+    `MEMORY_CONSOLIDATION` need no DDL.
+  - **Dependencies: NONE moved** by the eight (version stamps only;
+    `plugins/dist/` untouched).
+- **Regen rule: PIN REQUIRED at `f5e953a3f`** (§5.1) — v4 HEAD is eight
+  commits past the baseline. ⚠ **The dependency trap:** the root tree moved
+  at `a9c99a4a0` (now INSIDE the baseline — `openai` 7.30.0,
+  `@openrouter/sdk` 1.4.25, …); a `f5e953a3f` pin's own lockfile carries it,
+  and the eight later commits move nothing, so the root `node_modules`
+  symlink and a fresh `npm ci --offline` tree agree today — still build the
+  pin's own tree (§5.1), as the unification did. `provisioning_equivalence`
+  REQUIRES `QT_FRESH_SCHEMA_LIVE` dumped FROM THE PIN — a HEAD dump carries
+  the memory-tier columns (drift, not a v5 bug).
+- **Live-checkout guards at HEAD (predicted, not run):** the eight commits
+  ALONE redden `qtap_schema_embed_guard` + the `generators/qtap_schema.rs`
+  size pin (`d58548051` moves `qtap-export.schema.json` again); the help
+  family on a HEAD regen (`help_tree_equivalence` — 130 → 131 with
+  `help/memory-consolidation.md`, plus five modified pages); Tier R
+  (`cli_differential`) where it runs v4's CLI from the LIVE checkout (the
+  top-level help's `anchor-probe`, the `recall-replay` help/flags, all three
+  `completion` scripts). **Predicted GREEN:** `provider_sdk_version_guard`
+  (the `a9c99a4a0` move is inside the baseline and P4.D260 re-recorded it),
+  `zod_version_guard`, `public_schemas_vendor_guard`,
+  `builtin_prompt_templates_guard`. All green against the pin at the
+  unification.
 - **The workspace gate at the baseline:** the round record in
   `status-log.md` has the counts.
-- **Schema state (`94fbb1ae3`):** `fresh_schema.json` UNMOVED by
-  `94fbb1ae3` (no schema hunk) — and since the unification the (1d) arm
-  PROVES it equals v4's live generateDDL dump. **NEW committed artifact
-  (P4.153, dogfood #149): `services/provisioning/migration_indexes.json`** —
-  v4's MIGRATION-created index family (main 50 / mount-index 5 / llm-logs 5),
-  dumped through v4's REAL `MigrationRunner` over an empty data dir
-  (`dump-migration-indexes.ts`, D23: never hand-written) and replayed by
-  `provision_fresh_instance` after each partition's generateDDL statements;
-  `idx_doc_mount_folders_mp_path` is provisioned UNIQUE (v4's migration
-  shape — the human's ruling, 2026-10-06), skipping generateDDL's plain copy
-  of that one shared name. Re-dump it when v4 moves a migration that creates
-  an index (`3ee3b1342` does — `idx_wardrobe_wear_stats_item_wearer` UNIQUE
-  `COALESCE` + `idx_wardrobe_wear_stats_wearer`); `provisioning_equivalence`
-  (1c) reddens on the moved names first.
-  Instances provisioned BEFORE that round gain the family at their next boot
-  since P4.160 (`db::migration_index_family_repair`, LAST in `seed_built_ins`,
-  replaying the same committed statements — the 2026-10-07 round). The paragraph below is the `07b8f0209` state, still
-  current for the table text:
-  `fresh_schema.json` is the FIFTH D23 re-dump (P4.D251,
-  from the `07b8f0209` pin — EXACTLY one line moved: `chat_settings`'s
-  `"impersonationVoiceRewrite" INTEGER DEFAULT 0` REPLACED in place by
-  `"impersonationVoiceMode" TEXT DEFAULT 'off'`; the seed's column + value
-  moved with it, `0` → `"off"`). v4's `impersonation-voice-mode-v1` (ADD +
-  translate `1` → `'ask'` + DROP) is re-homed as the boot ensure
-  `db::chat_settings_impersonation_voice_mode_repair`, differentially
-  compared against v4's REAL migration in three starting shapes; ONE DDL
-  shape this time (generateDDL and the migration spell the same clause;
-  only the position differs). **The P4.D179 ensure
-  `db::chat_settings_impersonation_voice_repair` is DELETED** — kept, it
-  would re-add the column v4's migration drops on a shared instance and
-  ping-pong with v4; the new ensure's both-columns arm heals a file that
-  window damaged. `chat_settings` is not one of P4.D248's structural tables.
-  The committed pairs carrying the old column (17) were narrowed through v4's
-  real migration; five pairs carrying neither column were left as they are
-  (v5 reads the absent column as `'off'`, as v4 defaults it).
-- **Real-instance note (MEASURED 2026-10-05 at the unification, read-only
-  through the release CLI):** the standing dogfood copy
-  (`~/qt-dogfood-friday`) carries ONLY the retired column
-  `impersonationVoiceRewrite`, ONE row holding `1`, and v4's
-  `add-impersonation-voice-rewrite-field-v1` ledger row but NOT
-  `impersonation-voice-mode-v1` — so v4 had not yet booted it past
-  `07b8f0209`. **The first v5 boot on it translates the row to `'ask'` and
-  DROPS the old column; the second boot is a no-op** (a 💸 row for the next
-  `/dogfood`). v4's `migrations_state` row is NOT written by v5 (the deferred
-  runner), so a later v4 boot on that file runs its migration and finds
-  nothing to do (`shouldRun` false: the mode present, the old column gone).
-  A LATER copy of live Friday may already be migrated by v4 — then v5's
-  ensure is an exact no-op. The copy's `chat_informs` still lacks
-  `permanent` (the `52d6e7ecd` round's note: the first v5 boot ALTERs it in).
-- **`help/**`:** whole at `94fbb1ae3` (129 files; P4.D254 re-vendored
-  `help/inform.md`; before it P4.D251 `help/chat-settings-composer.md` +
-  `help/impersonation-voice.md`).
-  **`docs/v4/`:** CURRENT at `94fbb1ae3` (P4.D254 re-vendored `CHANGELOG.md`,
-  `developer/PROMPT_ARCHITECTURE.md`, `developer/features/salon-inform.md`;
-  before it P4.D251 the seven
-  paths of both commits — `CHANGELOG.md`, `developer/API.md`,
-  `developer/DDL.md`, `developer/features/complete/impersonation-voice-
-  rewrite.md`, `developer/bugs.md`, `developer/bugs/fixed/bug-177-…` and
-  `bug-178-…`; the `fixed/` dir 176 → 178); residual only
-  `packages-quilltap-README.md`.
+- **Schema state (`f5e953a3f`):** `fresh_schema.json` +
+  `chat_settings_seed.json` are the SIXTH D23 re-dump (P4.D255, from the
+  `f5e953a3f` pin — exactly three lines: `chat_settings."wardrobeImageSettings"`
+  TEXT in v4's schema order, the NEW `wardrobe_wear_stats` table in
+  generateDDL's text (`"wearCount" REAL NOT NULL`) and its auto `createdAt`
+  index; the seed row's `wardrobeImageSettings` =
+  `{"imageProfileId":null,"generateFromTools":false}`).
+  `migration_indexes.json` re-dumped through v4's REAL `MigrationRunner` (+
+  `idx_wardrobe_wear_stats_item_wearer` UNIQUE on `("itemId",
+  COALESCE("wearerCharacterId", ''))` — the `ON CONFLICT` target the
+  increment SQL needs — and `idx_wardrobe_wear_stats_wearer`). **There is NO
+  `migration_tables.json`:** the planned R-A artefact was OVERRULED by the
+  human mid-lane (a real v4 first boot carries 40 of 45 tables in migration
+  text that differs from generateDDL, so the "exactly one table" premise was
+  false); a fresh v5 instance keeps generateDDL's `wardrobe_wear_stats` and
+  gets both hand indexes from the index family. v4's three migrations are
+  re-homed as boot ensures (`db::wardrobe_wear_stats_repair` — the table +
+  the ONE-transaction seed, STAMPING both `migrations_state` rows and
+  skipping on v4-written ones; `db::chat_settings_wardrobe_image_settings_
+  repair` — v4's one-key ADD default, no stamp), each differentially
+  compared against v4's real migrations. Earlier state (the `07b8f0209`
+  FIFTH re-dump — `impersonationVoiceMode` replacing the retired toggle,
+  its boot ensure, the deleted P4.D179 ensure) unchanged.
+- **Real-instance note:** NOT re-measured at this unification (the dogfood
+  copy was not opened). Predicted for the next `/dogfood`: unless v4 has
+  already booted the copy past `7c8572869`, the first v5 boot CREATES
+  `wardrobe_wear_stats` (generateDDL's shape — or finds v4's migration
+  shape), SEEDS it and STAMPS both rows, and ADDs `wardrobeImageSettings`;
+  the PHASE 0.75 daily optimize stamps `data/db-optimize-state.json` and the
+  startup trio lands in `data/backups/` (now JOINED before the pumps — the
+  unification's §3 fix). The `52d6e7ecd`/`07b8f0209` notes (the
+  `chat_informs.permanent` ALTER, the voice-mode translation) stand.
+- **`help/**`:** whole at `f5e953a3f` (130 files, md5-identical — P4.D260;
+  `help/wardrobe-images.md` NEW). **`docs/v4/`:** CURRENT at `f5e953a3f`
+  (P4.D260's twelve paths, incl. three `bugs/fixed/` files, the three
+  `features/complete/` specs and `releases/4.10.0.md`); residual only
+  `packages-quilltap-README.md`. `qtap-export.schema.json` re-vendored at
+  `f5e953a3f` (P4.D264, 101,092 bytes).
 - **Standing deferrals unchanged:** the three text-compression migrations,
   the image re-encode migration and the stored-`renderedMarkdown`
   reclamation stay DEFERRED as reclamation; the animated-input ruling is
   LANDED (P4.108); the corrupt-second-frame ruling keeps v5's still. The
   ledger-gate divergence STANDS (v5 keeps its per-boot ensures, R5) beside
   the ported structural check. The production pdf/docx
-  `DocumentTextExtractor` stays DEFERRED (only `RefusingTextExtractor`
-  exists) — since P4.D253 the file extractor's PDF arm reads through that
-  seam first, so v5 differs from v4 ONLY where pdf-parse finds text (pinned
-  both ways by `file_content_extractor_equivalence`).
+  `DocumentTextExtractor` stays DEFERRED. `STAT4_NOT_COMPILED` RULED
+  (P4.D259, leave the sys crate): v4 builds SQLite with `ENABLE_STAT4`, v5
+  does not, so v5's daily optimize empties `sqlite_stat4` on a shared
+  instance until v4's next pass.
 
 ## §2 The freshness probe
 
@@ -187,18 +190,14 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-| `938144eb4` | 2026-10-07 | docs: add 4.10.0 release notes draft | NO-PORT? (docs only — `docs/releases/4.10.0.md`; waived by the human in-lane; re-confirmed 2026-10-08 by `--stat`: one file) | — | ORDERED(P4.D260) |
-| `7c78abd49` | 2026-10-07 | Wardrobe programme: three design specs | NO-PORT? (docs + `.claude/commands/` only; waived in-lane; re-confirmed 2026-10-08: five docs files, the specs of #80/#81/#82 below) | — | ORDERED(P4.D260) |
-| `cc80dc89d` | 2026-10-07 | Wardrobe lists: wrap titles, name a borrowed garment's wardrobe (#80) | **PORT** (classified 2026-10-08 from the hunks). Server: every wardrobe list GET and item GET tags each item with a read-time `origin: {scope, id, name}` (never stored) — `/wardrobe` + `/wardrobe/[itemId]` → `{general, null, 'Quilltap General'}`; character routes → the character's name; group/project tiers (`mount-wardrobe-route-factory`) on the list GET, the item GET and the POST 201's echoed `wardrobeItems` (NOT its `wardrobeItem`). `?scope=group` now reads through a GROUPED resolver (`resolveGroupMountsForCharacter` + `findArchetypesInMountsAttributed`; later mount still shadows; debug line gains `groupCount`). `tiered-mount-pool.ts`: a store linked to two groups credits the FIRST group; ONE group's lookup failure drops only that group — **planning correction 2026-10-08: `Group store lookup failed` is NOT new (it pre-existed in `resolveMountPointIdsForGroup`; the commit adds a second emission site) and the flat resolver's behaviour is IDENTICAL before and after — one group's failure already dropped that group alone; both catches are unreachable through v4's real code (P4.D231/P4.124).** `ndjson-writer` strips `origin` (inert — v5 never attaches it to export rows). `formatSlotLabels` / `wardrobeOriginLabel` / `composed-outfits.ts` generics are SPA/type-only. SPA: origin chip, wrapped titles, slot labels. The spec's §7 (`wardrobe_list` tool) was NOT shipped — no tool change | `api/wardrobe.rs` (P4.9f1), `api/characters.rs` wardrobe GET + `scope=group` arm (P4.D71), `api/groups.rs` / `api/projects.rs` mount-wardrobe factory (P4.D112, P4.163), `db/tiered_mount_pool.rs` (P4.D231, P4.124), `db/archetype_wardrobe.rs`; pins in `wardrobe_routes_equivalence`; SPA `wardrobe/wardrobe.api.ts`, `wardrobe-control-dialog.ts` + pickers (P4.D112/P4.D113). `origin` appears nowhere in v5 wardrobe code | ORDERED(P4.D256, P4.D261) |
-| `3ee3b1342` | 2026-10-07 | Wardrobe wear ledger: track item usage across characters (#81) | **mixed — PORT-NEW + PORT** (classified 2026-10-08). **Schema:** new main-DB table `wardrobe_wear_stats` (`id` PK, `itemId` NOT NULL, `wearerCharacterId` NULL = unattributed, `wearCount` NOT NULL DEFAULT 0, `firstWornAt`, `lastWornAt`, `lastWornChatId`, `createdAt`, `updatedAt`) — registered as a repository, so generateDDL creates it (→ the SIXTH D23 re-dump) AND migration `add-wardrobe-wear-stats-table-v1` creates it with the hand DDL in `wardrobe-wear-stats-ddl.ts`, incl. **UNIQUE `idx_wardrobe_wear_stats_item_wearer ON ("itemId", COALESCE("wearerCharacterId",''))`** + `idx_wardrobe_wear_stats_wearer` → `migration_indexes.json` re-dump; the UNIQUE is LOAD-BEARING (the increment is `ON CONFLICT (…COALESCE…) DO UPDATE`). **Planning 2026-10-08 (`/setupphase` survey): generateDDL renders this table in a DIFFERENT shape from the migration — `"wearCount" REAL NOT NULL` (no default), an auto `idx_wardrobe_wear_stats_createdAt`, NEITHER hand index — and a real v4 first boot never materializes it (migrations run first); v5 provisions the MIGRATION's text through a D23 `migration_tables.json` (P4.D255 R-A). The seed has no once-only gate of its own — v4's runner checks `migrations_state` first — so v5's ensure STAMPS both rows (P4.D255 R-B).** `seed-wardrobe-wear-stats-v1` credits one wear per (chat × character × equipped item), dated `chats.updatedAt` → a boot ensure. **PORT on ported surfaces:** every equipped-slot write now goes through ONE `wardrobeWear.commitEquippedOutfit` chokepoint (read prior → write → diff → increment); slot bytes unchanged EXCEPT it now THROWS when `setEquippedOutfit` returns null (before: `set_all` answered 200 / primitives fell back to `result ?? next`) and primitives return the computed `next`, not the repo echo; `applyOutfitSelections` / displacement primitives gain a `source` (chat-start / participant-added / merge — merge never credits / tool); `set_all` + `OutfitSelectionSchema` take optional `wornBundleIds` (validated against the character's tiers); **model-visible:** `wardrobe_list` output gains `wear_count` / `last_worn_at` + ` · last worn X` / ` · never worn` per line, `wardrobe_read` gains a second-person `wear` block, both tool descriptions change; cascade-delete folds a character's rows into the unattributed row; item delete drops its rows (new WARN); transfers keep rows on move, start fresh on copy; backup writes `data/wardrobe-wear.json` + restore `upsertRows` + delete-list + `uuid-remap` of item ids; `.qtap` gains a trailing `wardrobe_wear` record kind (count key only when rows exist), `qtap-export.schema.json` `$defs.WardrobeWear`, new `import-wardrobe-wear.ts` + an item-id map in `import-characters`. **NO-BEHAVIOR:** `memory-weighting.ts` `formatRelativeAge` now delegates to the new `format-time.ts` `formatRelativeDays` — ladder/thresholds/plural byte-identical (tier-1 port should not move; the regen proves it); `vault-overlay/parsers.ts` `resolveWardrobeItemId` a pure extraction. **NEW:** the wear repo, a read-time `wear` summary on collection GETs, `?action=wear-history` on the three item GETs, `wear-display.ts` / `wear-history.ts`, the dialog's wear line + Sort + Never-worn filter, the editor's history section, the composer sending `wornBundleIds`; help `wardrobe.md` / `project-wardrobe.md`. Files bug 179 OPEN (fixed in `039f7017c`) | `services/outfit_selections.rs` (P4.D39; `outfit_llm_choose_tier3_equivalence`), `services/chat_create.rs`, `services/chat_participants.rs`, `services/chat_merge.rs`, `tools/wardrobe_shared.rs` + `wardrobe.rs` (displacement), `api/chat_outfits.rs` `set_all` (P4.D88/P4.107), `tools/wardrobe_{list,read,wear,create}.rs` (P4.123), `dissolve_bundles.rs`, `memory_weighting.rs:222` (Phase 1), `vault_overlay.rs`, `db/chats_outfits.rs`, `services/cascade_delete.rs`, `services/wardrobe_transfers.rs`, the four item-delete routes, `services/backup/{collect,archive,uuid_remap}.rs` + `restore/`, `services/qtap_export/records.rs` + the vendored schema, `services/quilltap_import/`, `fresh_schema.json` + `migration_indexes.json`; SPA `staged-live-outfits` (P4.D72), wardrobe dialog/row/editor/composer (P4.D112/P4.D113, P4.9f1/f2) | ORDERED(P4.D255, P4.D256, P4.D262, P4.D264, P4.D261) |
-| `f9f1ba177` | 2026-10-07 | Chat gallery: file old backdrops as backgrounds, list reused avatars | **PORT** (classified 2026-10-08). `lib/photos/chat-gallery.ts`: (1) `isStoryBackgroundPath` → `isStoryBackgroundFile(file, paths)`, also true for `folderPath === '/story-backgrounds/'` — superseded backdrops once listed `source: 'generated'` now `source: 'story-background'`, `isCurrent: false`; (2) a NEW `current-avatars` pass between message attachments and cast portraits over `chat.characterAvatars[*].imageId` + every `avatarOverrides` owner, de-duped by id and sha256, emitting `{id, idKind, url, filename (original → basename → '<name>.webp'), mimeType, size, width, height, sha256, createdAt (characterAvatars[cid].generatedAt → file createdAt → chat.updatedAt), source: 'avatar', characterId, characterName, isCurrent, deletable: false}` + debug `{chatId, pass: 'current-avatars', found}` — moves entries, by-source counts, the sidebar count. Help `chat-gallery.md` | `photos/chat_gallery.rs` (P4.D174; P4.88, P4.D244, P4.138) — `is_story_background_path` (:818), `pass_linked_files` (:676), the new pass between `pass_message_attachments` / `pass_cast_portraits` (:454–455), reusing `resolve_avatar_override_owners` / `safe_resolve_avatar`; `chat_gallery_equivalence` | ORDERED(P4.D257) |
-| `7c8572869` | 2026-10-07 | Wardrobe item images: pictures of garments and outfits (#82) | **mixed — PORT-NEW + PORT** (classified 2026-10-08). **Schema:** `chat_settings.wardrobeImageSettings` — the migration `add-wardrobe-image-settings-field-v1` appends `TEXT DEFAULT '{"imageProfileId":null}'`; zod gains it `.optional()` after `storyBackgroundsSettings` → generateDDL's nullable schema-order `TEXT` (TWO shapes, as the inform `permanent` case) → the SIXTH D23 re-dump + a boot ensure. **PORT on ported surfaces:** the chat-settings PUT's new arm + repo seed `{imageProfileId:null}`; profile-resolution adds `resolveWardrobeImageProfile` (override → designated → default; `resolveImageProfileForChat` unchanged); `avatar-prompt.ts` a pure refactor (`buildFigureIdentityBlock`, bytes identical — prove by regen); create-body `imageFileId: null`; item PUT's new 400 `imageFileId must name one of this item's own pictures`, DELETE's `cleanupItemImages`, the vault frontmatter's `imageFileId` key; transfers carry pictures and an ARCHIVED source now 409s; backup/restore: new-account `files.linkedTo` / `tags` now remap wardrobe item ids (`buildWardrobeItemIdRemap` — a change to EXISTING remap output) + `imageFileId` + `wardrobeImageSettings.imageProfileId` remaps + a new step 22f-ter; `.qtap` export now INCLUDES ARCHIVED wardrobe items (`streamCharacters`) + `_imageFiles`; import strips both then `importWardrobeItemImages`; schema `imageFileId` / `_imageFiles`; the Almanack's new "Wardrobe Images" section; llm-log type `WARDROBE_ITEM_IMAGE`; Concierge / image-failover / refusal-ledger purpose `'wardrobe'` + commission strings; help-settings images key. **NEW:** `/api/v1/wardrobe/[itemId]/images` (generate / upload / set-current / delete-image), the image bridge + item-images modules, the editor Image section, thumbnails, the Settings card, `help/wardrobe-images.md` | `api/settings.rs` (P4.6d, P4.56), `db/chat_settings.rs`, `services/image_profile_resolution.rs` (P4.6ao), `services/avatar_prompt.rs`, `wardrobe.rs` / `api/wardrobe.rs` (P4.6ay, P4.9f1; transfers), `db/vault_wardrobe_public.rs`, `vault_overlay.rs`, create-body (P4.D163), `services/backup/uuid_remap.rs` (P4.9G6, P4.D251) + `restore/orchestrator.rs`, `services/qtap_export/records.rs` (P4.9G4, P4.D237), `services/quilltap_import/characters.rs` (P4.4u4), `almanack/` (P4.37, P4.D237), `services/llm_logging.rs` + SPA `llm-logs.api.ts`, `services/concierge_notifications.rs`, `services/dangerous_content/{image_failover,refusal_ledger}.rs` (P4.D225), `tools/help.rs`, `fresh_schema.json` | ORDERED(P4.D255, P4.D256, P4.D263, P4.D264, P4.D261) |
-| `a9c99a4a0` | 2026-10-07 | Merge remote-tracking branch 'origin/main' | **PORT-INFRA** (classified 2026-10-08; differs from BOTH parents) — moves the ROOT dependency tree: `openai` 7.23.0 → 7.30.0, `@openrouter/sdk` 1.3.28 → 1.4.25, `mammoth` 1.12.3 → 1.13.0, `sharp` 0.35.5, `next` 16.4.0, micromark/mdast. Trips `provider_sdk_version_guard` (`RECORDED_OPENAI_SDK` / `RECORDED_OPENROUTER_SDK`) at the baseline move; `mammoth` + mdast may move the docx / markdown oracles; the 7.30.0 SDK normalizes a missing chunk `finish_reason` to `null` (stream decoders) | `provider_sdk_version_guard`, the provider stream decoders + recorders (P4.13/P4.14), the docx/markdown oracles; the §5.1 dependency trap | ORDERED(P4.D260) |
-| `b3f937076` | 2026-10-07 | Wardrobe tools draw item pictures; listings expose picture ids; avatar picker generates portrait | **mixed — PORT + PORT-NEW** (classified 2026-10-08; no SQL schema move — `WardrobeImageSettingsSchema` gains `generateFromTools: z.boolean().default(false)` INSIDE the JSON, repo seed gains the key, column default unchanged). **Model-visible:** `wardrobe_create` / `wardrobe_update` gain optional `generate_image` (tool-definition snapshot moves); create/list/read descriptions change; list/read gain `image_file_id` + `· picture: …` / `picture: (none)`; create/update may queue a job and append an image line (update decides via `patchChangesLook`). **Jobs:** new `WARDROBE_ITEM_IMAGE_GENERATION` (activity `image`, `maxAttempts: 1`, deduped while PENDING), handler, host-RPC `writeWardrobeItemImage`, job topics `characters` + `mountPoints`. **`/api/v1/images`:** new `options.orientation` that OUTRANKS size/aspectRatio (v5's `api/images.rs` header says it "resolves NO orientation" — that changes). SPA: avatar picker sends `portrait`, a Shape line replaces the Size picker. `plugins/dist/*` (8 bundles): a pure REBUILD embedding `openai` 7.30.0, no plugin source change | `tools/wardrobe_{create,list,read,update}.rs` + `tools/definitions/data.rs` (P4.123), `services/queue_service.rs` (P4.6y), `realtime/job_topics.rs`, `api/images.rs` (P4.62, P4.73, P4.9a2) + `image_gen/params_builder.rs` (orientation arm exists), `api/settings.rs`; SPA image-generation dialog (P4.6ac, P4.9b) | ORDERED(P4.D255, P4.D262, P4.D263, P4.D261; the bundles P4.D260) |
-| `06a70a76f` | 2026-10-07 | docs(bugs): file bugs 180 and 181 — the LLM logs have no cold-open retry; a full-backup restore drops every embedded memory | NO-PORT? (docs only — `docs/developer/bugs.md` + two bug files; the port's OWN filings, made from this session) | — (v5 Pinned on 181 by `INDEX_KEYED_EMBEDDING`; Faithful on 180) | ORDERED(P4.D258) |
-| `039f7017c` | 2026-10-07 | fix: bugs 179, 180, 181 — job-child outfit overwrite, LLM-logs cold open, embedded memories dropped on restore | **CONVERGENCE (180, 181) + NO-PORT? (179)** (classified 2026-10-08). **181 (this port's filing):** `backup-service.ts` now writes each memory embedding as `number[]` (`encodeEmbedding`) — ⚠ **v5's backup writer is FAITHFUL to the OLD shape** (`db/memories_read.rs` `embedding_to_value` emits `{"0":…}`, carried raw by `services/backup/collect.rs`), so this is a PORT on the writer, not just a pin retirement; restore decodes the old shape via `decodeIndexKeyedEmbedding` and the summary's `memories` now counts rows actually written (was `data.memories.length`). §5.4: **measure the decoders' edge rules** — v4 returns `{}` (empty object) UNCHANGED (the schema then refuses) and requires every value finite, where v5's `restore::rows::decode_index_keyed_embedding` turns `{}` into `[]`. **180 (this port's filing):** a shared `openWithColdOpenRetry` ladder (`[200, 600, 1500]`, WARN `<label> cold-open failed — retrying` with `{path, attempt, maxAttempts, backoffMs, error}`) used by BOTH the mount index and the LLM logs; the LLM-logs open gains the `SELECT count(*) FROM sqlite_master` verify probe and its degraded ERROR gains `attempts` — v5's P4.159 "one attempt" faithfulness pins trip by design. **179 (v4's own):** a per-job overlay of buffered `commitEquippedOutfit` slots in `child-repositories-proxy.ts` — a forked-child artifact; v5 has no child process, so NO-PORT? pending ONE measurement (two outfit changes in one v5 autonomous turn compound). Help `system-backup-restore.md` | `services/backup/collect.rs` + `db/memories_read.rs` (writer), `services/backup/restore/rows.rs` + `system_restore_state`'s `INDEX_KEYED_EMBEDDING` (P4.161 / the unifier's `268b8c52b`), `db/runtime.rs` mount-index ladder + the LLM-logs open (P4.159); the bug-179 measurement against `tools/wardrobe_shared.rs` / the in-process job runner | ORDERED(P4.D258) |
-| `f5e953a3f` | 2026-10-07 | feat(startup): daily database optimize before migrations | **PORT-NEW — RULING LIKELY NEEDED** (classified 2026-10-08). `instrumentation.ts` PHASE 0.75 (after the version guard, before migrations, never fatal): for main / llm-logs / mount-points, once per local calendar day gated by a JSON FILE `data/db-optimize-state.json` (`{main\|llm-logs\|mount-points: "YYYY-MM-DD"}`, not a DB row): a 24-h-gated physical backup first, then `VACUUM` → `ANALYZE` → `PRAGMA optimize` (stop at first failure; the CLI's `optimizeOneDb` steps), then on main only `PRAGMA wal_checkpoint(TRUNCATE)`; an absent file is stamped done, a failure left unstamped; startup-progress labels. v5 has NO equivalent (no VACUUM / ANALYZE / optimize / physical startup backup; the CLI's `db optimize` / `backup` verbs answer "recognized but not yet available" — a standing deferral). Port questions: the WAL checkpoint is moot under v5's `journal_mode = TRUNCATE`; VACUUM must run on the single writer and rewrites the whole file (iCloud/Dropbox). Help `database-protection.md` | none ported — `quilltap-host` boot (before the boot ensures), the deferred CLI `db optimize` / physical-backup writer (`status-log.md` standing deferrals) | ORDERED(P4.D259) |
-| `1825bfd53` | 2026-10-08 | docs: memory improvement specs | NO-PORT? (docs only — two NEW `docs/developer/features/*.md` specs, 664 insertions, no code; landed DURING the `f5e953a3f` round's planning; the human waived it for that round's probe — §1 amendment) | — | UNPROCESSED |
+| `1825bfd53` | 2026-10-08 | docs: memory improvement specs | NO-PORT? (docs only — re-confirmed 2026-10-08 evening by `--stat`: two NEW `docs/developer/features/{memory-consolidation-and-tiers,memory-recall-and-housekeeping-fixes}.md` specs, 664 insertions, no code, version stamp unchanged at `4.10.0-dev.117`; landed DURING the `f5e953a3f` round's planning and waived for that round's probe by the human — the §1 amendment, now SUPERSEDED. The two specs are the planning inputs for `3f7320138` (F1–F9) and `d58548051` (tiers + consolidation); both were AMENDED by later commits — read the post-`d58548051` copies, whose "Implementation notes" record what shipped) | — (planning input for the memory rows below) | UNPROCESSED |
+| `3f7320138` | 2026-10-08 | Implement memory recall and housekeeping fixes (F1–F9) (#83) | **PORT + PORT-NEW** (classified 2026-10-08 from the hunks; NO schema / DDL / migration / index move — F4 rides the existing `reinforcedImportance` index; files bug 182 OPEN, fixed in `70f9b495c`). **F1** `absorbNearDuplicate`: a `SKIP_NEAR_DUPLICATE` (≥ 0.90) now WRITES count+1 / `lastReinforcedAt` / recomputed `reinforcedImportance` (text + vector untouched, action unchanged; debug `[MemoryGate] Near-duplicate absorbed as reinforcement`, WARN `… Failed to reinforce near-duplicate memory`). **F3** `MAX_REINFORCEMENT_FOOTNOTES = 8` (`appendCappedFootnotes`; debug `Reinforcement footnote cap reached; dropping extra details`); a row at the cap is never re-embedded even when anchors fill; `anchorsChanged` only when the truncated entity union actually grew; `reembedMemory` factored out (WARN `Failed to re-embed memory`). **F4** `findMostImportant` → raw SQL `ORDER BY reinforcedImportance DESC, COALESCE(lastReinforcedAt, createdAt) DESC, id ASC` (`[]` on limit ≤ 0). **F5** frozen-archive cache keyed `(characterId, chatId)`, freshness = generation AND size, LRU 64; `invalidateFrozenArchive` (all chats of the character) now CALLED by housekeeping + dedup, new `invalidateAllFrozenArchives` + a dispatcher completion hook for `MEMORY_HOUSEKEEPING` (v5: direct calls suffice). **F6** `searchMemoriesSemantic` + the text fallback STOP stamping `lastAccessedAt`; `markMemoriesAccessed` stamps only what was delivered — context-manager (formatted archive / head / inter-character entries), the scriptorium `search` tool (post-`limit`), first-message context, Carina recall, voice-rewrite `recallForSeed`; the Memories API search and recall-replay stamp NOTHING (the spec's "API already bumps its own" is false — §5.3); debug memory infos gain `memoryId`. **F7** `sizeMemoryPools(memoryBudget, retro)`: head tokens clamp(15 %, 200, 1200), entries clamp(round(t/40), 5, 15), retro max(600, 2×) / max(10, 2×), archive clamp(round((budget − head)/60), 25, 60) — **at the 2,000-token floor an 8-entry / 300-token head and a 28-entry archive, so EVERY turn's context moves**; search limit = entries × 3; debug `[ContextManager] Memory pools sized`; pre-compute `PROACTIVE_RECALL_POOL_SIZE = 90` (was 20) and no `.slice(0,10)`; recall-replay body `memoryBudget`, response `oldHeadSize` / `newHeadSize`, CLI `--memory-budget`. **F8** a child-only NaN deleted-count guard — NO-PORT (v5's `delete_many_with_unlink` returns a real count). **F9** NEW `lib/memory/memory-merge.ts` (`planMemoryMerge` pure — tier-1 portable; `applyMemoryMerge`): housekeeping pass 2 and dedup FOLD losers into the survivor (capped footnotes, summed counts, recomputed importance, unioned links minus the group, earliest `occurredAt`, latest `lastReinforcedAt`, re-embed) before deleting; a failed fold keeps its losers (WARN `Some merges failed…`); the cap pass skips merge survivors; dedup takes a `userId`, drops the explicit `updatedAt`; a `currentLinks` scrub override. **F2 PORT-NEW** (measurement only — the gate is unchanged): `lib/memory/anchor-gate-probe.ts`, `POST /api/v1/memories?action=anchor-gate-probe` (`{characterId, limit 1–200}`; 404 `Character`, 500 `Anchor gate probe failed`), top-level CLI `quilltap anchor-probe <characterId>` (v4's `SUBCOMMANDS` gains it after `recall-replay`; top-level help + all three completion templates move). `patchMemory`'s buffered-`undefined` arm is job-child plumbing (NO-PORT). Help `memory-housekeeping.md`, `memory-recall-relevance.md`. ⚠ `mergeSimilar` is RETIRED again by `d58548051` one commit later — order the two together | `services/memory_gate.rs` (`SkipNearDuplicate` arm ~:276 writes nothing today; `reinforce_memory` :657 — uncapped footnotes, the entity `anchors_changed` over-report), `services/memory_processor.rs`, `db/memories_read.rs:525` `find_most_important` (still `ORDER BY importance DESC`), `services/frozen_archive.rs` (`get_or_compute_frozen_archive` :57 character-keyed; `invalidate_frozen_archive` :91 has NO production caller) + `services/build_context.rs` (:2455 caller; head/archive :2632–2740; inter-char :2865), `services/memory_service.rs` `bump_access_times` (:430/:444), `tools/search.rs:565`, `services/first_message_context.rs`, `services/carina_query.rs`, `services/announcer/voice_rewrite_core.rs`, `memory_injector.rs` (:73–83 constants; `memory_id: None` at :655/:921), `services/pre_compute.rs` (:393 `Some(20)`, :440 `take(10)`), `services/housekeeping.rs` (`merge_pairs` :303–530 just deletes) + `services/memory_dedup.rs` + `api/memory_maintenance.rs` (dedup has no embedding provider), `db/memories.rs` scrub, `services/recall_replay.rs` + `api/recall_replay.rs` + `api/types.rs` `ChatRecallReplay`, `api/memories.rs` (F2 action), `quilltap-cli/src/{main.rs SUBCOMMANDS, recall_replay_cmd.rs, help/}`; rounds P4.d5 ∥ P4.d6 ∥ P4.6ay (gate / housekeeping / frozen archive), P4.d12 unit 6, P4.d13 unit 7/8, P4.19, P4.43 unit 6. Reddens (predicted): `memory_gate_tier3_equivalence`, `memories_read_equivalence`, `build_context_tier3_equivalence`, `precompute_equivalence`, `recall_replay_equivalence`, `search_tools_equivalence`, `first_message_context_equivalence`, `memory_dedup_equivalence`, `memory_housekeeping_tier2_equivalence`, the orchestrator / enclave / announcer / Carina tier-3 families where they seed memories | UNPROCESSED |
+| `da98ca58b` | 2026-10-08 | docs(memory): F2 anchor-probe result + recall multiplier retuning spec (#84) | NO-PORT? (docs only — re-confirmed by `--stat`: `docs/CHANGELOG.md`, `.claude/commands/update-documentation.md`, `memory-recall-and-housekeeping-fixes.md` (the F2 result: the gate unchanged), NEW `recall-multiplier-retuning.md` (the spec `f7d8064be` implements); no code, no version bump) | — (the spec is the planning input for `f7d8064be`'s row) | UNPROCESSED |
+| `f7d8064be` | 2026-10-08 | feat(memory): recall multiplier retuning — probe set, R7 harness, cap14 defaults | **PORT + PORT-NEW** (classified 2026-10-08 from the hunks; NO schema move — the only new zod schemas are request validators). **Live recall ranking moves for every injected memory:** `RECALL_MULTIPLIERS.freshEvent24h` 1.6 → **1.3**, `freshEvent48h` 1.35 → **1.15**; new `RECALL_TUNING_DEFAULTS` (`boostGate {abs 0.45, margin 0.15, ramp 0.1}`, `boostCap 1.4`, `freshBypassesGate`/`windowBypassesGate` false, `specificAnchors` true, `anchorMinHits 1`, `anchorOrder 'rarest'`, `backgroundReserve 0`; `MULTIPLIER_CLAMP` unchanged); `combineRecallMultipliers(memory, ctx, relevance?)` splits boost (>1) from penalty (≤1) factors and caps / relevance-gates the boost (new `fired` labels `cap1.4`, `gate×0.NN`; gate only when `relevance` is passed — both memory-service sites pass it); `searchMemoriesSemantic` captures raw cosine before the literal boost (`bestCosine`), turns the gate OFF for the `BUILTIN` (TF-IDF) provider when no explicit tuning (debug `[Memory] TF-IDF embeddings: recall boost gate off`), chooses entity anchors by specificity (R4 — `searchByContent` hit counts, drops present participants' names, rarest first, 3; debug `[Memory] Specific entity anchors chosen`) instead of the first three, `expandRelatedMemories` gates neighbours on their own cosine + takes a weight clock, new options `excludeMemoryIds` / `headSize` / `weightClockMs` / `embeddingMemo`; R6 `reserveBackgroundSlots` ships INERT (reserve 0; debug `[Memory] Background reservation (R6)`). `buildContext` / orchestrator / pre-compute thread `presentParticipantNames` into `buildTurnRecallContext`. No new settings or env knobs — tuning is reachable only through the replay body. **recall-replay:** body gains strict `tuning` (`RecallTuningInputSchema`, unknown keys refused → `validationError`), `signals`, `asOf` (boolean else 400 `asOf must be a boolean`); response gains `tuning` (`'defaults'`), `signalsPinned`, `asOf`, `excludedAfterAsOf`; default `limit` `max(25, newHeadSize+10)`; a process-lifetime 500-entry embedding memo; new debug lines + `Recall replay complete` INFO gains fields; CLI `--tuning` / `--tuning-file` / `--signals-from` / `--as-of`, `Harness` / `Tuning` header lines, completions. **⚠ Prose misleads (§5.3):** the replay's OLD path ALSO runs under the cap14 defaults (no tuning → `recallTuningOf` falls back), so the retained "byte-identical to pre-overhaul recall" / "Absent → today's constants" comments are now false; "R5 … pinned" is test-only (no R5 hunk). **NEW pure module** `lib/memory/recall-tuning.ts` (tier-1 portable). Help `memory-recall-relevance.md`, `episodic-memory.md`. Sits ON `3f7320138`'s budget-sized head (`memoryBudget`) — order after it | `recall_tags.rs` (`FRESH_EVENT_24H`/`48H` :174–175, `combine_recall_multipliers` :591, `RecallContext`; P4.d13 unit 2, P4.d26 unit 2), NEW `recall_tuning.rs`, `services/memory_service.rs` (`search_memories_semantic` :399 incl. the `take(3)` anchor loop :595, `apply_recall_multipliers`, `expand_related_memories` :889, `RecallContextInput`; P4.d13 unit 3), `db/vector_store.rs` `search` (:148 — NO filter param today; `excludeMemoryIds` needs one), `services/build_context.rs` / `pre_compute.rs` / `orchestrator.rs` (participant names), `services/recall_replay.rs` + `api/recall_replay.rs` + `api/types.rs` `Request::ChatRecallReplay` (P4.d13 unit 7), `quilltap-cli/src/recall_replay_cmd.rs` + the vendored completion templates (P4.d13 unit 8; `completion_behavior.rs`); reddens `recall_tags_equivalence`, `recall_replay_equivalence`, likely `precompute_equivalence` / `build_context_tier3_equivalence` / `memory_injector_equivalence` | UNPROCESSED |
+| `d58548051` | 2026-10-08 | feat(memory): consolidation and hot/cold tiers | **mixed — PORT-NEW + PORT, SCHEMA MOVE (D23)** (classified 2026-10-08 from the hunks; 123 files, ~10k insertions). **Schema:** `MemorySchema` gains `tier` (`'hot'\|'cold'`, default `'hot'`), `supersededById` (uuid, nullable), `consolidatedFrom` (uuid[], default `[]`), `consolidatedAt` (timestamp, nullable); `MemorySourceEnum` gains `'CONSOLIDATED'`; `ChatMetadataSchema` / `…BaseSchema` gain `otherExtractionWatermarkMessageId` (string, nullable) → **the SEVENTH D23 re-dump** of `fresh_schema.json` (`memories` +4 columns, `chats` +1 — generateDDL renders them in schema order, the chat column likely bare `TEXT`, where migration **`add-memory-tiers-v1`** APPENDS `tier TEXT DEFAULT 'hot'`, `supersededById TEXT DEFAULT NULL`, `consolidatedFrom TEXT DEFAULT '[]'`, `consolidatedAt TEXT DEFAULT NULL`, `chats."otherExtractionWatermarkMessageId" TEXT DEFAULT NULL` — TWO shapes, as the inform `permanent` case; measure, don't assume), a heal `UPDATE memories SET tier = COALESCE(tier,'hot'), consolidatedFrom = COALESCE(consolidatedFrom,'[]')` + the migration-only index **`idx_memories_character_tier ON memories ("characterId","tier")`** → the `migration_indexes.json` re-dump (generateDDL does not create it) + a boot ensure (four INFO lines + `Stamped NULL-tier memories hot`). New job type `MEMORY_CONSOLIDATION` (zod enum; `jobs.type` is TEXT — no DDL). Two NEW instance-settings keys (no DDL): `instance_settings['memoryConsolidation']` (`enabled` false, `connectionProfileId` null, `clusterThreshold` 0.72, `minClusterSize` 3, `maxClusterSize` 30, `matureAfterDays` 7, `maxClustersPerRun` 40, `watermark` 150, `coldRetentionDays` null) and `['memoryExtractionMode']` (`otherPass` `'hybrid'` DEFAULT, `perTurnOtherFloor` 0.75, `foldCandidatesPerSubject` 3). **PORT on ported surfaces — behaviour moves with the feature OFF:** (1) **the OTHER extraction pass defaults to `hybrid`** — per-turn OTHER candidates below 0.75 importance are DROPPED on every turn (`memory-processor.ts`; debug `[Memory] OTHER pass mode resolved`, WARN on lookup failure), the rest move to fold grain (context-summary folds + a daily idle-chat catch-up `fold-other-catchup.ts` + a regenerate rebuild) advancing the chat watermark — the fold hook `runFoldOtherPass` after every context-summary fold is a NEW cheap-LLM call per observer (ERROR `[Context Summary] Fold OTHER pass failed:` on failure), so the tier-3 fold request sequences move too; (2) **housekeeping DEMOTES to cold instead of deleting** — the cap counts HOT rows only, `mergeSimilar` RETIRED (debug `[Housekeeping] mergeSimilar is retired…` — undoing `3f7320138`'s F9 fold in housekeeping), retention-flagged AND cap-pressure rows both go cold (`updateTierBulk` + the vector store's tier stamp), reason `Exceeded memory limit (N)` → `Exceeded hot-memory limit (N)`, new `demoted` / `coldCount` / `demotedIds` result fields (the Memories API housekeep + preview echo them, `wouldDemote`; `merged` always 0), the outcome cache records `demoted + deleted`, deletion only by the opt-in `coldRetentionDays` sweep of superseded cold AUTO rows; MANUAL and CONSOLIDATED rows never demoted; (3) **recall reads HOT rows only** (the repository's `COALESCE(tier,'hot')='hot'` predicate in `findMostImportant` / `findRecentByImportanceTier` / `findByCharacterAboutCharacters`; `searchMemoriesSemantic` gains `includeCold` default false — the search tool and the API search pass `true`; the character optimizer is hot-only), the frozen archive composes digests first (3 per present character, 5 self) and keys on presence, inter-character recall prepends `findHotDigests(other, 2)`, recap and first-message context put digests first, digests lead (`digestsFirst`) and carry the model-visible suffix ` (from N notes)` (`formatDigestProvenance`); the gate still reads cold rows — a match on a superseded cold row reinforces/links the digest, a re-observed demoted row is PROMOTED; (4) self-canon now reads `Commonplace/<Subject>.md` from the character's vault (`loadCanonForSelfWithCommonplace`) — model-visible extraction prompt input; (5) the scriptorium `search` tool labels cold rows `(archived — superseded by <id>)` / `(archived)` and accepts `CONSOLIDATED`; (6) backup/restore `uuid-remap` remaps `supersededById` + `consolidatedFrom` + `chats.otherExtractionWatermarkMessageId`; **`.qtap` import now REMAPS `relatedMemoryIds`** (it did not before) and mints every memory id up front; `qtap-export.schema.json` gains the five fields + a `source` description; (7) the memories list API gains `?tier=` + `source=CONSOLIDATED`; the Brahma SQL prompt's `memories` paragraph names the new columns (model-visible); the activity-kind title becomes `Memory work (extraction, regeneration, consolidation, housekeeping)`; `queue-service`'s extraction dedupe compares `foldOtherCatchup`; scheduled housekeeping runs consolidation first and defers 30 min when it enqueued; scheduled maintenance gains the `fold-other-catchup` sweep (idle > 2 h, < 30 d, cap 50) and a summary key; the SPA housekeeping dialog drops the merge checkbox and says Archive instead of Delete. Every memory row/JSON grows four keys (`tier: 'hot'`, `consolidatedFrom: []` written on create). `memory-regenerate-chat.ts`'s watermark reset lands on a handler v5 has not registered. The scriptorium tool's DESCRIPTION is unchanged (types only). **PORT-NEW:** the consolidation engine (`consolidation.ts` 1,067 lines, `-clustering`, `-plan`, `-triggers`, `cheap-llm-tasks/consolidation-tasks.ts` — a new cheap-LLM prompt family), the `MEMORY_CONSOLIDATION` handler + host-RPC + job topics, daily + watermark triggers (OFF by default), the Commonplace digest vault bridge + `commonplace-file.ts`, `fold-other-pass.ts` (634 lines), `vector-store.ts` additions; Memories API `POST ?action=consolidate` (dryRun in-process report, else `{jobId}`), `GET/POST ?action=consolidation-config` / `extraction-mode-config`; SPA Memory-tab cards (consolidation, report dialog, extraction grain), memory-list tier filters, card/editor; CLI `quilltap memories consolidate` + `--tier` (v5's `memories` verb is still "recognized but not yet available" — only the completion templates are ported). Help `memory-consolidation.md` NEW (help tree 130 → 131), `cli-memories.md`, `memory-housekeeping.md`, `memory-recall-relevance.md`, `memory-regenerate.md` | `fresh_schema.json` + `migration_indexes.json` (D23), a new `db::` boot ensure beside the P4.D251/P4.D249 ones, `db/memories*.rs` (row type + every hot-only read + `MemorySchema` validation on import/restore — P4.161's ported schema), `db/chats*.rs`, `services/housekeeping.rs` (P4.d5 ∥ P4.d6 ∥ P4.6ay), `services/memory_gate.rs` + `memory_gate.rs`, `services/memory_processor.rs` + `services/carina_memory_extraction.rs` + `canon.rs` (P4.6bj), `services/context_summary*` + `services/fold_episode_pass.rs` (the fold hook), `services/frozen_archive.rs`, `services/build_context.rs` + `memory_injector.rs`, `services/memory_recap/`, `services/memory_service.rs`, `tools/search.rs`, `services/queue_service.rs` + `services/activity_kinds.rs` + `services/scheduled_maintenance.rs` + `realtime/job_topics.rs`, `services/backup/{collect,uuid_remap}.rs` + `restore/`, `services/quilltap_import/` + `services/qtap_export/` + the vendored `qtap-export.schema.json`, `api/memories.rs` (`memory_list` / `memory_search` / `memory_housekeep_preview` / `memory_housekeep`; P4.6s) + `api/memory_maintenance.rs`, `services/brahma_console/prompt_text.rs`, `generators/optimizer.rs`, `services/memory_extraction_job.rs`, `quilltap-host/src/spine.rs` (the housekeeping outcome record), `services/activity_kinds.rs` + SPA `layout/activity-kinds.ts`, the instance-settings accessors, `quilltap-cli/src/help/completion/*`; SPA `apps/web/src/app/memory/{memory-card,memory-list,housekeeping-dialog}.ts` + `screens/settings/memory/` (P4.6t). Reddens (predicted): `memory_housekeeping_tier2_equivalence`, `memory_watermark_tier3_equivalence`, `memory_processor_tier3_equivalence` + `memory_pipeline_jobs_tier3_equivalence` (any OTHER candidate under 0.75), `context_summary_service_tier3_equivalence` + `fold_episode_tier3_equivalence` + `orchestrator_tier3` / `build_context_tier3` (the fold OTHER call), `memories_read_equivalence` / `memories_tier2_equivalence` / `memories_routes_equivalence` (four new keys), `activity_tables_equivalence`, `realtime_topics_equivalence`, `maintenance_sweep_tier2_equivalence`, `brahma_console_tier3_equivalence`, `character_optimizer_tier3_equivalence`, `backup_uuid_remap_equivalence` / `system_backup_equivalence`, `qtap_import_equivalence` / `system_import_equivalence`, `provisioning_equivalence` (the D23 tripwire, by design) | UNPROCESSED |
+| `70f9b495c` | 2026-10-08 | fix(memory): count concurrent reinforcements atomically (bug 182) | **PORT** (classified 2026-10-08; NOT a convergence — bug 182 was found by v4's own review of PR 83, never filed by this port; no schema move). New `MemoriesRepository.incrementReinforcement(characterId, memoryId, at)`: ONE synchronous transaction reads `importance` / `reinforcementCount` by `(id, characterId)`, writes `reinforcementCount = (row ?? 1) + 1`, `reinforcedImportance` recomputed, `lastReinforcedAt = at`, `updatedAt`; WARN `Memory not found for reinforcement` → null; debug `Memory reinforcement counted`. `memory-gate.ts` `countReinforcement` routes BOTH `absorbNearDuplicate` and `reinforceMemory` through it; `reinforceMemory` now patches ONLY content + anchors (and only when they changed — a second write, after the count), the returned memory merges the counted fields. The child-buffered `increment*` arm (debug `[MemoryGate] Reinforcement buffered (job child)`) is a forked-child artifact — NO-PORT half. `calculateReinforcedImportance` moved to the pure `lib/memory/reinforced-importance.ts` (formula byte-identical; re-exported). **v5 carries the bug's shape:** `services/memory_gate.rs` `reinforce_memory` computes `existing_count + 1.0` from the gate's snapshot and writes it absolutely through `update_for_character` in ONE patch with content/anchors (a lost update between two concurrent in-process extraction jobs — the single writer serializes the WRITES, not the read-modify-write; the fix is the increment inside one `Db::write` closure). v5 has no `absorbNearDuplicate` yet (`SkipNearDuplicate` writes nothing — `near_duplicate_skips_without_writing`; it arrives with `3f7320138`'s F1). bugs.md: 182 FIXED, none open | `services/memory_gate.rs` `reinforce_memory` (:657) + the near-duplicate arm, `db/memories*.rs` (a new increment write), `memory_gate.rs:45` `calculate_reinforced_importance` (tier-1, Phase 1 — unchanged); the memory-gate tier-2/tier-3 families (the write count / `updatedAt` ordering moves) | UNPROCESSED |
+| `197104649` | 2026-10-08 | fix(sync): read target bytes through the disk adapter | **PORT (log line only)** (classified 2026-10-08). `bytesFor`'s inline `fs.readFile(resolveInTarget(…))` moves to a new `apply-disk.ts` `readDiskFile`, which resolves the SAME way and adds ONE debug line `[Sync] Reading disk file` `{relativePath}`. Behaviour otherwise identical — v5's `bytes_for` already reads through `resolve_in_target` (escape refusal included). The new `disk-boundary.test.ts` is a v4 test-only import guard | `services/mount_index/sync/mod.rs` `bytes_for` (:483) / `sync/apply_disk` (P4.D210); `sync_engine_equivalence` if it captures debug lines | UNPROCESSED |
+| `7e9eaf42c` | 2026-10-08 | test: release checklist 2 — regression tests and coverage for 4.10 | **NO-PORT?** (classified 2026-10-08). Tests (19 new files) + ONE behaviour-preserving SPA refactor: the All-LLM pause dialog's Continue moved from `SalonView.tsx` into `continueAllLLMRoom` (`app/salon/[id]/hooks/all-llm-pause-actions.ts` — close, await `setPauseState(false)`, then `handleContinue`; the same order as before), and the unused no-op `handleAllLLMContinue` / `handleAllLLMStop` removed from `useChatControls`. v5 already carries bug 139's fix (`apps/web/src/app/chat/all-llm-pause.ts` + specs). The new v4 tests (sync engine walk/apply/orchestrator, consolidation handler + triggers, fold-other catch-up, daily-db-optimize, avatar-rolls + subprompts routes, save-attribution) are reference material for the lanes porting those surfaces, not ports | — (`apps/web/src/app/chat/all-llm-pause*.ts` already v4-faithful) | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
@@ -362,6 +361,35 @@ the disposable copy proves the mechanism but is a weaker claim — offer it,
 don't silently swap it in.
 
 ## §6 History
+
+- **The `f5e953a3f` wardrobe-programme + convergence drift catch-up round
+  (2026-10-08, baseline `94fbb1ae3` → `f5e953a3f`; P4.D255 → {P4.D256 ∥
+  P4.D262 ∥ P4.D263 ∥ P4.D264} ∥ P4.D257 ∥ P4.D258 ∥ P4.D259 ∥ P4.D260 ∥
+  P4.D261):** the eleven rows retired — `938144eb4` (4.10.0 release-notes
+  draft) and `7c78abd49` (the wardrobe programme's three specs)
+  NO-PORT-RATIFIED(P4.D260, docs-only, on the file lists; `releases/4.10.0.md`
+  + the specs mirrored); `cc80dc89d` (#80 lists / read-time `origin`)
+  ABSORBED(P4.D256, P4.D261); `3ee3b1342` (#81 the wear ledger)
+  ABSORBED(P4.D255, P4.D256, P4.D262, P4.D264, P4.D261); `f9f1ba177` (the chat
+  gallery's backdrop + current-avatars passes) ABSORBED(P4.D257);
+  `7c8572869` (#82 item images) ABSORBED(P4.D255, P4.D256, P4.D263, P4.D264,
+  P4.D261); `a9c99a4a0` (the merge — the root dependency move) ABSORBED(P4.D260
+  — measured, the SDK guard re-scoped, google-wire re-recorded, no recorded
+  byte moved); `b3f937076` (the wardrobe tools' pictures)
+  ABSORBED(P4.D255, P4.D262, P4.D263, P4.D261; the plugin bundles P4.D260);
+  `06a70a76f` (this port's own bug-180/181 filing) NO-PORT-RATIFIED(P4.D258);
+  `039f7017c` ABSORBED(P4.D258) for bugs 180/181 (CONVERGED — the LLM-logs
+  cold-open ladder, the `number[]` embedding writer, the index-keyed decode +
+  the written-rows count; the `INDEX_KEYED_EMBEDDING` carve retired by
+  measurement) + NO-PORT-RATIFIED(P4.D258) for bug 179 (no child process / no
+  buffered overlay in v5 — pinned `bug_179_no_port`); `f5e953a3f` (the daily
+  optimize + physical backups) ABSORBED(P4.D259 — the startup trio moved to a
+  JOINED pass before the pumps at the unification). The SIXTH D23 re-dump
+  landed (no `migration_tables.json` — R-A overruled). Eight commits arrived
+  DURING the round (`1825bfd53` … `7e9eaf42c`, v4's memory programme) — §3,
+  UNPROCESSED; every regen stayed pinned at `f5e953a3f`. Round record:
+  `status-log.md` → "The `f5e953a3f` wardrobe-programme + convergence drift
+  catch-up round — UNIFICATION record".
 
 - **The `94fbb1ae3` boot-hardness + validation + follow-ups round
   (2026-10-07, baseline STAYS `94fbb1ae3`; P4.159 ∥ P4.160 ∥ P4.161 ∥ P4.162
