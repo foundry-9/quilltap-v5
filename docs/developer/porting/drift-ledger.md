@@ -27,36 +27,41 @@ probe verifies against._
   The eleven rows it absorbed (`938144eb4` … `f5e953a3f`) are retired to §6.
   CLAUDE.md's Status bullet agrees (the round's bullet: "the oracle baseline
   MOVES to `f5e953a3f`"; its "Oracle baseline" bullet names it).
-- **Checked:** 2026-10-09 (`/driftcheck` — after `git fetch`, the §2 probe
-  PASSED whole: `783385873..main`, `..origin/main`, `1a2b2164c..bugfix`,
-  `..origin/bugfix` all empty, `release` still `8fbf2afe0`, checkout `main`
-  CLEAN; no new commit to classify, §3's nine rows stand as recorded;
-  CLAUDE.md's Status agrees). Previous checks: 2026-10-08 (`/unify` of the
-  `f5e953a3f` round; the eight commits past the target were classified the
-  same evening by a `/driftcheck` run from the unification session — its
-  draft rows are §3's eight); 2026-10-08 morning (`/driftcheck`, the eleven commits to
-  `f5e953a3f`); 2026-10-07 (`/unify` of the boot-hardness round).
-- **v4 `main` HEAD at check: `783385873`** — local `main` is now `3c56a41e7` (+2, this port's docs-only bug filings `5abcd01ea` + `3c56a41e7`, unpushed; §3's two NO-PORT rows — a §2 probe should expect `783385873..main` = exactly those two commits until `/driftcheck` re-anchors); at check: ("docs: update 4.10.0 release
-  notes for memory consolidation, wardrobe ledger and pictures, daily
-  optimize", 2026-10-09 00:36) — NINE commits past the baseline
+- **Checked:** 2026-10-09 afternoon (`/driftcheck` — after `git fetch`, the
+  §2 probe FAILED: `783385873..main` = THREE commits — this port's two
+  local bug filings `5abcd01ea` + `3c56a41e7` (now PUSHED, `origin/main`
+  carries them) and v4's NEW `ed8b15b50`, the fix for bugs 183–186;
+  `1a2b2164c..bugfix` / `..origin/bugfix` empty, `release` still
+  `8fbf2afe0`, checkout `main` CLEAN; one new commit classified, §3 row
+  appended; CLAUDE.md's Status agrees on the baseline). Previous checks:
+  2026-10-09 morning (`/driftcheck`, probe PASSED, no new commit);
+  2026-10-08 (`/unify` of the `f5e953a3f` round + the evening `/driftcheck`
+  classifying the eight memory-programme commits); 2026-10-08 morning
+  (`/driftcheck`, the eleven commits to `f5e953a3f`).
+- **v4 `main` HEAD at check: `ed8b15b50`** ("fix: bugs 183-186 — wear
+  wording and whose wear, restore store binding, unique store names",
+  2026-10-09 13:08, `4.10.0-dev.142`) — TWELVE commits past the baseline
   (`1825bfd53`, `3f7320138`, `da98ca58b`, `f7d8064be`, `d58548051`,
-  `70f9b495c`, `197104649`, `7e9eaf42c`, `783385873`; a linear run, no
-  merges). `origin/main` agrees. All nine arrived DURING the round (after the
-  lanes' `1825bfd53`-only waiver, which the unification superseded) — the
-  ninth, docs-only, during the unification's gate, recorded at its cleanup;
-  the round's regens all ran from the `f5e953a3f` pin.
+  `70f9b495c`, `197104649`, `7e9eaf42c`, `783385873`, `5abcd01ea`,
+  `3c56a41e7`, `ed8b15b50`; a linear run, no merges). `origin/main` agrees.
+  The memory-programme nine arrived during the `f5e953a3f` round; the two
+  bug filings were this port's `/dogfood` commits (pushed since); the
+  twelfth is v4 fixing three of this port's filings plus a new bug 186.
 - **v4 `bugfix` tip at check:** `1a2b2164c`, UNMOVED (`1a2b2164c..bugfix`
   and `..origin/bugfix` empty). **`release` tip:** `8fbf2afe0` (`release:
   4.9.2`), UNMOVED; still no `release: 4.10.0` squash.
 - **Checkout at check:** branch **`main`**, tree **CLEAN**.
-- **Verdict: DRIFT PENDING — 9 commits (§3), all classified, all
-  `UNPROCESSED`** — v4's **memory programme** (2026-10-08) plus a sync log
-  line, a test commit and a release-notes update:
+- **Verdict: DRIFT PENDING — 12 commits (§3), all classified; ten
+  `UNPROCESSED`, two NO-PORT (recorded by `/dogfood`)** — v4's **memory
+  programme** (2026-10-08) plus a sync log line, a test commit, a
+  release-notes update, this port's two bug filings, and the bugs 183–186
+  fix:
   - **NO-PORT?** (4): `1825bfd53` + `da98ca58b` (docs/specs only),
     `7e9eaf42c` (tests + a behaviour-preserving SPA refactor v5 already
     matches), `783385873` (`docs/releases/4.10.0.md` only — but the
     `docs/v4/releases/4.10.0.md` mirror P4.D260 vendored is now stale: a
-    re-vendor rides the next round).
+    re-vendor rides the next round). **NO-PORT** (2): `5abcd01ea`,
+    `3c56a41e7` (this port's filings).
   - **PORT / PORT-NEW** (5): `3f7320138` (F1–F9 — near-duplicate
     reinforcement, the footnote cap, archive ranking, the per-chat frozen
     archive, delivered-only access stamps, budget-sized head/archive, real
@@ -69,14 +74,30 @@ probe verifies against._
     pass defaults to `hybrid`); `70f9b495c` (bug 182 — the atomic
     reinforcement increment; v5's `reinforce_memory` carries the bug's
     lost-update shape); `197104649` (one sync debug line).
-  - **CONVERGENCE: none.** Bug 182 was found by v4's own review of PR 83,
-    not by this port; `bugs.md` reads "Bugs 1–182 are fixed in v4; none is
-    open".
+  - **CONVERGENCE + PORT-NEW** (1): `ed8b15b50` — bugs **183**, **184**,
+    **185** were all FILED BY THIS PORT (2026-10-09 / 2026-10-05) and come
+    back fixed: 183 (`formatWornRelative`, "a week ago" / "a month ago" —
+    v5 Faithful, SPA + tool text move), 184 (`findSummariesForWearer`,
+    `worn_by_you` / `last_worn_by_you_at` — v5 Faithful, the tools' result
+    shape + description move), 185 (restore store binding in BOTH modes —
+    v5 fixed `replace` in its own Shape A, P4.147; `new-account` is
+    dogfood #159, ORDERED-pending — **re-plan #159 as convergence onto
+    v4's claim-map shape, not v5's own design**; `FRESH_STORE_RESIDUAL`'s
+    v4-side carve retires by measurement, §5.4). **Bug 186 is NEW** (not
+    this port's): store-name uniqueness at the repository + a unique NOCASE
+    index on `doc_mount_points` (a mount-index boot ensure) +
+    `reconcileStoreNames` (live vaults named `<Name> Character Vault`,
+    orphans retired to `<Name> Version <timestamp> Store`) at boot, after
+    restore/import, and on character create/rename/delete — **a boot
+    pass that RENAMES stores on a shared instance**; the mount-points
+    rename route refuses a live vault (409).
   - The memory rows interlock: `f7d8064be` sits on `3f7320138`'s
     budget-sized head, `d58548051` RETIRES the housekeeping half of
     `3f7320138`'s F9 merge, and `70f9b495c` rewrites F1's reinforcement
     write — **order them as ONE memory catch-up, never commit-by-commit.**
-  - **Schema: ONE D23 move pending** — the SEVENTH re-dump carries
+    `ed8b15b50` is independent of them (wardrobe / restore / mount-index)
+    and can be its own lane(s) in the same round; it subsumes dogfood #159.
+  - **Schema: ONE D23 move pending (memory)** — the SEVENTH re-dump carries
     `memories.tier` / `supersededById` / `consolidatedFrom` /
     `consolidatedAt` and `chats.otherExtractionWatermarkMessageId`
     (`d58548051`), plus the migration-only index
@@ -85,23 +106,30 @@ probe verifies against._
     heal; generateDDL's vs the migration's column shape predicted to differ,
     NOT measured). Two new `instance_settings` keys
     (`memoryConsolidation`, `memoryExtractionMode`) and the new job type
-    `MEMORY_CONSOLIDATION` need no DDL.
-  - **Dependencies: NONE moved** by the eight (version stamps only;
+    `MEMORY_CONSOLIDATION` need no DDL. **Plus (`ed8b15b50`):**
+    `idx_doc_mount_points_name_nocase` UNIQUE on `("name" COLLATE NOCASE)`
+    — created by an ENSURE on mount-index table init
+    (`ensureMountPointNameUniqueIndex`, after the collision repair), not
+    by generateDDL or a migration; whether a fresh-schema dump of v4 picks
+    it up is NOT measured — measure before deciding which artefact holds it.
+  - **Dependencies: NONE moved** by the twelve (version stamps only;
     `plugins/dist/` untouched).
-- **Regen rule: PIN REQUIRED at `f5e953a3f`** (§5.1) — v4 HEAD is nine
-  commits past the baseline. ⚠ **The dependency trap:** the root tree moved
+- **Regen rule: PIN REQUIRED at `f5e953a3f`** (§5.1) — v4 HEAD is twelve
+  commits past the baseline (unchanged rule). ⚠ **The dependency trap:** the root tree moved
   at `a9c99a4a0` (now INSIDE the baseline — `openai` 7.30.0,
   `@openrouter/sdk` 1.4.25, …); a `f5e953a3f` pin's own lockfile carries it,
-  and the eight later commits move nothing, so the root `node_modules`
+  and the twelve later commits move nothing, so the root `node_modules`
   symlink and a fresh `npm ci --offline` tree agree today — still build the
   pin's own tree (§5.1), as the unification did. `provisioning_equivalence`
   REQUIRES `QT_FRESH_SCHEMA_LIVE` dumped FROM THE PIN — a HEAD dump carries
   the memory-tier columns (drift, not a v5 bug).
-- **Live-checkout guards at HEAD (predicted, not run):** the eight commits
+- **Live-checkout guards at HEAD (predicted, not run):** the memory commits
   ALONE redden `qtap_schema_embed_guard` + the `generators/qtap_schema.rs`
   size pin (`d58548051` moves `qtap-export.schema.json` again); the help
   family on a HEAD regen (`help_tree_equivalence` — 130 → 131 with
-  `help/memory-consolidation.md`, plus five modified pages); Tier R
+  `help/memory-consolidation.md`, plus five modified pages — and
+  `ed8b15b50` modifies three more: `mount-points.md`,
+  `system-backup-restore.md`, `wardrobe.md`); Tier R
   (`cli_differential`) where it runs v4's CLI from the LIVE checkout (the
   top-level help's `anchor-probe`, the `recall-replay` help/flags, all three
   `completion` scripts). **Predicted GREEN:** `provider_sdk_version_guard`
@@ -206,8 +234,9 @@ when absorbed/ratified.
 | `197104649` | 2026-10-08 | fix(sync): read target bytes through the disk adapter | **PORT (log line only)** (classified 2026-10-08). `bytesFor`'s inline `fs.readFile(resolveInTarget(…))` moves to a new `apply-disk.ts` `readDiskFile`, which resolves the SAME way and adds ONE debug line `[Sync] Reading disk file` `{relativePath}`. Behaviour otherwise identical — v5's `bytes_for` already reads through `resolve_in_target` (escape refusal included). The new `disk-boundary.test.ts` is a v4 test-only import guard | `services/mount_index/sync/mod.rs` `bytes_for` (:483) / `sync/apply_disk` (P4.D210); `sync_engine_equivalence` if it captures debug lines | UNPROCESSED |
 | `7e9eaf42c` | 2026-10-08 | test: release checklist 2 — regression tests and coverage for 4.10 | **NO-PORT?** (classified 2026-10-08). Tests (19 new files) + ONE behaviour-preserving SPA refactor: the All-LLM pause dialog's Continue moved from `SalonView.tsx` into `continueAllLLMRoom` (`app/salon/[id]/hooks/all-llm-pause-actions.ts` — close, await `setPauseState(false)`, then `handleContinue`; the same order as before), and the unused no-op `handleAllLLMContinue` / `handleAllLLMStop` removed from `useChatControls`. v5 already carries bug 139's fix (`apps/web/src/app/chat/all-llm-pause.ts` + specs). The new v4 tests (sync engine walk/apply/orchestrator, consolidation handler + triggers, fold-other catch-up, daily-db-optimize, avatar-rolls + subprompts routes, save-attribution) are reference material for the lanes porting those surfaces, not ports | — (`apps/web/src/app/chat/all-llm-pause*.ts` already v4-faithful) | UNPROCESSED |
 | `783385873` | 2026-10-09 | docs: update 4.10.0 release notes for memory consolidation, wardrobe ledger and pictures, daily optimize | NO-PORT? (docs only — `--stat`: ONE file, `docs/releases/4.10.0.md`, +75 / −9; recorded at the `f5e953a3f` unification's cleanup) | `docs/v4/releases/4.10.0.md` (P4.D260's mirror — stale until re-vendored) | UNPROCESSED |
-| `5abcd01ea` | 2026-10-09 | docs(bugs): file bugs 183 and 184 — wardrobe wear wording and whose wear the tools report | **NO-PORT** (docs only — `--stat`: `docs/developer/bugs.md` + two NEW `docs/developer/bugs/bug-18{3,4}-*.md`; committed LOCALLY in the v4 checkout by this port's 2026-10-09 `/dogfood` session at the human's request, NOT pushed — the bug-169 precedent; `origin/main` does not have it). Files v4 bugs 183 ("last last week") and 184 (the wardrobe tools' household wear count), both OPEN and both Faithful in v5 — a future fix commit in v4 is the PORT row, not this one | — | NO-PORT (recorded by `/dogfood`) |
-| `3c56a41e7` | 2026-10-09 | docs(bugs): file bug 185 — a restore orphans every archived vault and official store | **NO-PORT** (docs only — `bugs.md` + NEW `docs/developer/bugs/bug-185-restore-orphans-archived-stores.md`; committed LOCALLY by this port's `/dogfood` session at the human's request, NOT pushed). Bug 185 (High, OPEN) is dogfood #141 + #159: v5 FIXED `replace` (P4.147, a ruled divergence) and the human ruled 2026-10-09 that `new-account` is a bug too — v5's fix is ORDERED (`dogfood-findings.md` #159). A v4 fix would retire `FRESH_STORE_RESIDUAL`'s carve — a PORT row then | — | NO-PORT (recorded by `/dogfood`) |
+| `5abcd01ea` | 2026-10-09 | docs(bugs): file bugs 183 and 184 — wardrobe wear wording and whose wear the tools report | **NO-PORT** (docs only — `--stat`: `docs/developer/bugs.md` + two NEW `docs/developer/bugs/bug-18{3,4}-*.md`; committed LOCALLY in the v4 checkout by this port's 2026-10-09 `/dogfood` session at the human's request, NOT pushed — the bug-169 precedent; `origin/main` does not have it). _Appended 2026-10-09 afternoon: now PUSHED (`origin/main` carries it); both bugs FIXED by `ed8b15b50`._ Files v4 bugs 183 ("last last week") and 184 (the wardrobe tools' household wear count), both OPEN and both Faithful in v5 — a future fix commit in v4 is the PORT row, not this one | — | NO-PORT (recorded by `/dogfood`) |
+| `3c56a41e7` | 2026-10-09 | docs(bugs): file bug 185 — a restore orphans every archived vault and official store | **NO-PORT** (docs only — `bugs.md` + NEW `docs/developer/bugs/bug-185-restore-orphans-archived-stores.md`; committed LOCALLY by this port's `/dogfood` session at the human's request, NOT pushed). _Appended 2026-10-09 afternoon: now PUSHED; bug 185 FIXED by `ed8b15b50` in both modes — that row is the PORT._ Bug 185 (High, OPEN) is dogfood #141 + #159: v5 FIXED `replace` (P4.147, a ruled divergence) and the human ruled 2026-10-09 that `new-account` is a bug too — v5's fix is ORDERED (`dogfood-findings.md` #159). A v4 fix would retire `FRESH_STORE_RESIDUAL`'s carve — a PORT row then | — | NO-PORT (recorded by `/dogfood`) |
+| `ed8b15b50` | 2026-10-09 | fix: bugs 183-186 — wear wording and whose wear, restore store binding, unique store names | **CONVERGENCE (183, 184, 185) + PORT-NEW (186)** (classified 2026-10-09 from the hunks; 51 files, +2,351 / −280; no dependency move — version stamps only, `4.10.0-dev.142`). **183** (this port's filing, `5abcd01ea`): `lib/wardrobe/wear-display.ts` gains `formatWornRelative` (maps the `formatRelativeDays` rungs `last week` → `a week ago`, `last month` → `a month ago`; every other rung and the memory-recall labels untouched); `formatWornWhen` and both wardrobe tool handlers phrase wear dates through it. **184** (this port's filing): `WardrobeWearRepository.findSummariesForWearer` (household + the reader's own row in one read; new `WardrobeWearPerspective` type); `wardrobe_list` results gain `worn_by_you` / `last_worn_by_you_at` and write the note from the caller's side, `wear_count` / `last_worn_at` re-documented as household context; BOTH tool DESCRIPTIONS change (model-visible); `wardrobe_read` leads with the reader's own record, then the household. **185** (this port's filing, `3c56a41e7` — dogfood #141 + #159): NEW `lib/backup/restore/store-claims.ts` (`makeStoreClaimMap`, first claim wins, reasons `no-pointer` / `not-carried` / `wrong-kind` / claimed-by), `CharactersRepository.createBoundToVault` + store-backed `createBoundToStore` (slim row, nothing minted), the restore binds characters / projects / groups in BOTH modes, `uuid-remap` remaps the pointers in `new-account`, memories owner-checked by id, a bound store whose row fails at 22a is re-provisioned (never for an archived character — WARN `Archived character vault failed to restore; tombstone left unhealed`), carried-row detection extended to project files with the rest of a bound project's files deferred past 22h (WARN `Failed to restore deferred project file`); new lines `Restored entity falls back to a fresh store`, `Re-provisioned a character vault…` / `…an official store…` (+ ERROR twins), INFO `Restored entities bound to their archived stores`, `Character restored bound to its archived vault`. **⚠ v5 diverges in SHAPE:** P4.147's Shape A preserve-at-create covers `replace` only with its own storeType filter; v4's claim map is the convergence target — retire `FRESH_STORE_RESIDUAL`'s v4-fresh-store carve by measurement (§5.4), and dogfood #159's ordered `new-account` design (a raw→restored store-id map) should be RE-PLANNED as this port, not built to v5's own design. **186 (NEW, Medium, found by v4):** `DocMountPointsRepository.create` / `update` refuse a taken name (`MountPointNameTakenError`, WARN `Refused a document-store name another store holds`; new `findNameHolder`), the routes use it; `ensureMountPointNameUniqueIndex` on mount-index table init (collision repair, then `CREATE UNIQUE INDEX "idx_doc_mount_points_name_nocase" ON "doc_mount_points" ("name" COLLATE NOCASE)`, INFO `Mount-index: created the unique document-store name index`) — DDL.md's "deliberately no DB unique index" REVERSED; NEW `lib/mount-index/store-names.ts` + `reconcile-store-names.ts` (live vault `<Name> Character Vault`, namesakes ` (N)`, unlinked `storeType='character'` vaults retired to `<Name> Version <createdAt YYYY-MM-DDTHHMMSSZ> Store` unless a vault-less character bears the name; two-phase rename in one transaction) run at boot (`instrumentation.ts`, after the character-vault backfill), at the end of a restore and a `.qtap` import (`import-document-stores.ts` picks free names), and from `CharactersRepository` on create / rename / delete (WARN `Store-name reconcile after a character change failed`); the mount-points PATCH refuses renaming a live vault (409 `This vault belongs to <name> and is named after them. Rename the character to rename the vault.`). **💸 A boot pass that renames stores — run on a shared instance, v4 and v5 must agree or they will ping-pong names.** Help `mount-points.md`, `system-backup-restore.md`, `wardrobe.md`; v4 CLAUDE.md gains a store-names rule | Wardrobe: `tools/wardrobe_list.rs` + the `wardrobe_read` tool, `db/wardrobe_wear_stats.rs`, `services/wardrobe_wear_history.rs` (P4.D256 / P4.D262), SPA `apps/web/src/app/wardrobe/wear-display.ts` (+ `wardrobe-item-row.ts`, `item-editor/wear-history-section.ts`, `screens/prospero/wardrobe/project-wardrobe-manager.ts`; P4.D261). Restore: `services/backup/restore/orchestrator.rs` (`restore_one_character`, P4.147 Shape A, P4.158 backfill), `db/store_backed.rs`, the uuid remap; `system_restore_state` (`FRESH_STORE_RESIDUAL`, `FRESH_TARGET_UPLOADS`), the restore census whitelist (`RESTORE_TS_MESSAGES` both sides). Store names: `db/mount_index_case_repair.rs` (+ `mount_case_repair_equivalence`), `db/doc_mount_points.rs`, `db/character_vault.rs`, `db/ensure_official_store.rs`, `services/builtin_mounts.rs`, `services/quilltap_import/document_stores.rs`, the characters create/rename/delete paths, `api/` mount-points create/PATCH, `quilltap-host` boot sequence; possibly `fresh_schema.json` (the NOCASE index — measure). Reddens (predicted): `system_restore_state`, `system_backup_equivalence`, the restore census, `mount_case_repair_equivalence`, `wardrobe_*` tool / routes families, `memory_tasks_equivalence` / `autonomous_rooms_routes_equivalence` where they seed wear, `help_tree_equivalence` on a HEAD regen, possibly `provisioning_equivalence` | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 

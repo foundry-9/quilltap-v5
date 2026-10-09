@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — docs(porting): drift check records v4's fix for bugs 183-186
+
+_Docs-only change._
+
+`/driftcheck` found v4 twelve commits past the `f5e953a3f` baseline: the two local bug filings were pushed, and v4 landed `ed8b15b50`, fixing bugs 183, 184 and 185 (all filed by this port) and a new bug 186 (unique store names: a NOCASE index on `doc_mount_points` plus a boot reconcile that renames character vaults). Recorded as a CONVERGENCE + PORT-NEW row. Dogfood #159 should now be re-planned to match v4's claim-map restore binding. The regen rule is unchanged: pin required at `f5e953a3f`.
+
 #### 2026-10-09 — docs(porting): dogfood #159 ruled a bug; v4 bug 185 filed
 
 _Docs-only change._
