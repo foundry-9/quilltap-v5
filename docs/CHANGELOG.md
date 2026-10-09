@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(spa): openable wardrobe thumbnails in the row (v4 01a83539d) — P4.D277 unit 8
+
+_Versions: SPA 0.5.830._
+
+`wardrobe/wardrobe-item-thumbnail.ts` gains v4 `01a83539d`'s open button: with `openable` set, the image sits inside a button with `cursor-zoom-in`, labelled `openLabel` (default `View picture full size`), that emits `open`. `wardrobe/wardrobe-item-row.ts` gains a `canOpenImage` gate and an `openImage` output. The row thumbnail is labelled `View the picture of <title>`, and nested component rows propagate both, so a nested thumbnail opens its own item. The slot picker and the outfit quick-pick thumbnails stay inert, since they already sit inside buttons. New thumbnail spec, three row arms (v4 jest `:183-194` + nested) and one inert-chooser arm in each picker spec.
+
 #### 2026-10-09 — feat(spa): the wardrobe picture viewer (v4 01a83539d) — P4.D277 unit 7
 
 _Versions: SPA 0.5.829._

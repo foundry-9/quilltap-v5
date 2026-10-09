@@ -175616,3 +175616,33 @@ Branch `claude/wardrobe-images-spa-viewer-4a334b` (worktree
   after; `saved` toasts `Saved to Quilltap General`; Download's anchor
   (`/api/v1/files/file-1?download=1`, `Blue_Velvet_Gown.webp`) and its throw
   arm (toast + v4's console line); Copy's success and failure arms.
+
+### Unit 8 — thumbnail + row (W5b)
+
+- `wardrobe/wardrobe-item-thumbnail.ts`: `openable` (default false), `openLabel`
+  (default `View picture full size`, v4 `:48`), `open` output (R-E); with a
+  `fileId` and `openable`, the img sits inside v4's button (`:64-74` — `type=
+  "button"`, class `flex-shrink-0 rounded cursor-zoom-in hover:opacity-80
+  transition-opacity`, `title` = `aria-label` = `openLabel()`,
+  `data-testid="wardrobe-item-thumbnail-open"`); the img (one
+  `ng-template`, so both forms share its bytes) keeps
+  `data-testid="wardrobe-item-thumbnail"`; no `fileId` → nothing either way.
+  Module doc gains v4's `:14-16` sentence.
+- `wardrobe/wardrobe-item-row.ts`: `canOpenImage` gate + `openImage` output
+  (R-E; doc from v4 `:89-90`); the thumbnail `[openable]="canOpenImage()"
+  [openLabel]="'View the picture of ' + item().title"`; nested rows pass
+  `[canOpenImage]` and re-emit `(openImage)` (v4 `:503`); class doc gains v4's
+  `:24-26` sentence.
+- Specs: NEW `wardrobe-item-thumbnail.spec.ts` (4 arms — plain without
+  `openable`; the button's bytes + `open` emit; the default label; nothing
+  without a `fileId`) and 3 NEW `wardrobe-item-row.spec.ts` arms (v4 jest
+  `:183-189` → `openImage` emits the item, title `View the picture of Midnight
+  Lightning Flapper Dress`; `:191-194` → no `wardrobe-item-thumbnail-open`
+  without the gate; a nested component row's thumbnail emits ITS item through
+  the parent). **Red on unported source:** NG8002 (`openable` / `openLabel`
+  unknown) + TS2339 (`openImage`) — the build fails both files (7 arms).
+  `equipped-slot-row.spec.ts` / `outfit-quick-pick.spec.ts` each gain ONE
+  inert-chooser arm (no `wardrobe-item-thumbnail-open` where the picture
+  shows) — a REGRESSION GUARD that passes on unported source by design (the
+  source files stay UNTOUCHED; the arm trips if anyone makes a chooser
+  thumbnail openable). Green 55/55 over the four files.

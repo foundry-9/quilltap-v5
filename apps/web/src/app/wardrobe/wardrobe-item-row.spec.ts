@@ -26,6 +26,7 @@ async function render(
     canArchive?: boolean;
     canGenerateImage?: boolean;
     generatingImageIds?: ReadonlySet<string>;
+    canOpenImage?: boolean;
   } = {},
 ): Promise<ComponentFixture<WardrobeItemRow>> {
   TestBed.resetTestingModule();
@@ -37,6 +38,7 @@ async function render(
   if (canManage) fixture.componentRef.setInput('canManage', canManage);
   if (opts.canArchive) fixture.componentRef.setInput('canArchive', true);
   if (opts.canGenerateImage) fixture.componentRef.setInput('canGenerateImage', true);
+  if (opts.canOpenImage) fixture.componentRef.setInput('canOpenImage', true);
   if (opts.generatingImageIds) {
     fixture.componentRef.setInput('generatingImageIds', opts.generatingImageIds);
   }
@@ -350,6 +352,43 @@ describe('WardrobeItemRow — picture (v4 wardrobe-item-images-ui.test.tsx)', ()
     expect(thumb.closest('qt-wardrobe-item-thumbnail')!.nextElementSibling!.textContent).toContain(
       'Midnight Lightning Flapper Dress',
     );
+  });
+
+  // P4.D277 — v4 `01a83539d` `wardrobe-item-images-ui.test.tsx:183-189`.
+  it('opens the picture full screen from the thumbnail', async () => {
+    const item = pictured({ imageFileId: 'file-9' });
+    const f = await render(item, undefined, [], { canOpenImage: true });
+    const opened: WardrobeItemDto[] = [];
+    f.componentInstance.openImage.subscribe((i) => opened.push(i));
+    const button = (f.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+      `button[aria-label="View the picture of ${item.title}"]`,
+    )!;
+    expect(button.title).toBe('View the picture of Midnight Lightning Flapper Dress');
+    button.click();
+    expect(opened).toEqual([item]);
+  });
+
+  // P4.D277 — v4 `01a83539d` `wardrobe-item-images-ui.test.tsx:191-194`.
+  it('leaves the thumbnail a plain image without an open handler', async () => {
+    const f = await render(pictured({ imageFileId: 'file-9' }));
+    expect(
+      (f.nativeElement as HTMLElement).querySelector('[data-testid="wardrobe-item-thumbnail-open"]'),
+    ).toBeNull();
+    expect(thumbOf(f)).toBeTruthy();
+  });
+
+  // P4.D277 — v4 `wardrobe-item-row.tsx:503` passes `onOpenImage` to nested rows.
+  it("a nested component row's thumbnail opens ITS item through the parent", async () => {
+    const part = dto({ id: 'gloves', characterId: 'char-1', title: 'Opera Gloves', imageFileId: 'file-g' });
+    const outfit = pictured({ componentItemIds: ['gloves'] });
+    const f = await render(outfit, undefined, [outfit, part], { canOpenImage: true });
+    const opened: WardrobeItemDto[] = [];
+    f.componentInstance.openImage.subscribe((i) => opened.push(i));
+    const host = f.nativeElement as HTMLElement;
+    (host.querySelector('button[aria-label="Expand components"]') as HTMLButtonElement).click();
+    f.detectChanges();
+    host.querySelector<HTMLButtonElement>('button[aria-label="View the picture of Opera Gloves"]')!.click();
+    expect(opened).toEqual([part]);
   });
 
   it('shows no thumbnail when the item has no picture (or a pre-round server sent none)', async () => {
