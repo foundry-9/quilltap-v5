@@ -5425,13 +5425,21 @@ impl CoreEngine {
                 Ok(db) => super::wardrobe::wardrobe_transfer_destinations(&db, SINGLE_USER_ID),
                 Err(r) => r,
             },
-            Request::WardrobeTransferApply { body } => match self.ready_db() {
-                Ok(db) => {
-                    super::wardrobe::wardrobe_transfer_apply(
+            Request::WardrobeTransferApply { body } => match self.ready_db_and_blob_webp() {
+                // P4.D263 HANDOFF, landed at the `f5e953a3f` unification: the
+                // carried pictures' blob links normalize through the engine's
+                // `blob_webp` (the store-original refusal only when unwired).
+                Ok((db, blob_webp)) => {
+                    super::wardrobe::wardrobe_transfer_apply_with_codec(
                         &db,
                         SINGLE_USER_ID,
                         body,
                         &crate::clock::now_iso(),
+                        blob_webp.unwrap_or_else(|| {
+                            Arc::new(
+                                crate::services::mount_index::blob_transcode::RefusingWebpTranscoder,
+                            )
+                        }),
                     )
                     .await
                 }

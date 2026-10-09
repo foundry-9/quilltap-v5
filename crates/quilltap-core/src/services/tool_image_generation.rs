@@ -15,7 +15,6 @@
 //! async and enqueues through the `Db`), and the outcome rides back onto the
 //! tool's output.
 
-use rusqlite::Connection;
 use serde::Serialize;
 use serde_json::Value;
 
@@ -179,63 +178,6 @@ pub struct QueueWardrobeToolImageArgs {
     pub caller_context: &'static str,
 }
 
-/// v4 `resolveWardrobeImageProfile(userId, repos)` with no override
-/// (`profile-resolution.ts:119-141`, `7c8572869`): the designated
-/// `wardrobeImageSettings.imageProfileId`, then the user's default; each must
-/// exist, belong to the user and carry an API key. The Lantern's
-/// `storyBackgroundsSettings.defaultImageProfileId` is deliberately NOT
-/// consulted (a backdrop desk is chosen for landscapes, not for a garment a
-/// provider might refuse). Answers the profile's id.
-//
-// HANDOFF(P4.D263): `services::image_profile_resolution::resolve_wardrobe_image_profile`
-// is P4.D263's (R-G); it was not on this lane's base. This lane-local fn codes
-// exactly v4's three steps minus the per-generation override (the tools never
-// pass one); the unifier repoints this call at P4.D263's fn and deletes it.
-fn resolve_wardrobe_image_profile(main: &Connection, user_id: &str) -> Option<String> {
-    let usable = |profile: &Value| -> bool {
-        profile.get("userId").and_then(Value::as_str) == Some(user_id)
-            && profile
-                .get("apiKeyId")
-                .and_then(Value::as_str)
-                .is_some_and(|k| !k.is_empty())
-    };
-    let designated = crate::db::chat_settings::find_by_user_id(main, user_id)
-        .ok()
-        .flatten()
-        .and_then(|row| {
-            row.get("wardrobeImageSettings")
-                .and_then(|w| w.get("imageProfileId"))
-                .and_then(Value::as_str)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string)
-        });
-    if let Some(id) = designated {
-        if let Some(profile) = crate::db::image_profiles::find_by_id_or_none(main, &id) {
-            if usable(&profile) {
-                return profile
-                    .get("id")
-                    .and_then(Value::as_str)
-                    .map(str::to_string);
-            }
-        }
-    }
-    // `findDefault(userId)` then `fallback.apiKeyId` (scoped to the user by
-    // the filter itself).
-    let all = crate::db::image_profiles::find_all_or_empty(main);
-    let fallback = all.iter().find(|p| {
-        p.get("isDefault").and_then(Value::as_bool) == Some(true)
-            && p.get("userId").and_then(Value::as_str) == Some(user_id)
-    })?;
-    fallback
-        .get("apiKeyId")
-        .and_then(Value::as_str)
-        .filter(|k| !k.is_empty())?;
-    fallback
-        .get("id")
-        .and_then(Value::as_str)
-        .map(str::to_string)
-}
-
 /// v4 `maybeQueueWardrobeToolImage(repos, args)` — queue a picture of
 /// `item_id` if the operator allows it and the call wants one. `None` when no
 /// picture was wanted (nothing to report). Never fails: a picture is never
@@ -297,8 +239,24 @@ pub async fn maybe_queue_wardrobe_tool_image(
         ));
     }
 
+    // v4 `resolveWardrobeImageProfile(userId, repos)` with no override (the
+    // tools never pass one): designated → default. `chatSettings.findByUserId`
+    // is a fallback read.
     let profile_id = db
-        .read_main(|main| Ok(resolve_wardrobe_image_profile(main, &user_id)))
+        .read_main(|main| {
+            let chat_settings = crate::db::chat_settings::find_by_user_id(main, &user_id)
+                .ok()
+                .flatten();
+            Ok(
+                crate::services::image_profile_resolution::resolve_wardrobe_image_profile(
+                    main,
+                    &user_id,
+                    chat_settings.as_ref(),
+                    None,
+                )
+                .and_then(|p| p.get("id").and_then(Value::as_str).map(str::to_string)),
+            )
+        })
         .ok()
         .flatten();
     let Some(profile_id) = profile_id else {

@@ -464,6 +464,9 @@ const RESTORE_CASES: Array<{
   // P4.161 Tier 2: one refusing row per landed Tier 2 kind —
   // `fixtures/derive-restore-archive-kind-refusals.py`.
   { name: 'restore_kind_refusals_replace', archive: 'restore-archive-kind-refusals.zip' },
+  // P4.D258 Tier 2 item 11: an `embedding: {}` memory (v4 bug 181) —
+  // `fixtures/derive-restore-archive-empty-embedding.py`.
+  { name: 'restore_empty_embedding_replace', archive: 'restore-archive-empty-embedding.zip' },
 
   // ── P4.147 item 10(a)+(c): a real SQLite error on two restore inserts ────
   //
@@ -770,11 +773,12 @@ const REPO_LOG_MESSAGES = new Set([
  * `moduleLogger` — all 63 sites, each message distinct (counted at the pin:
  * 44 warn, 5 info, 14 debug, 0 error). P4.D264: +4 at `f5e953a3f` (+2 warn,
  * +1 info, +1 debug — 22n-bis and 22f-ter); the pin's 68th is bug 181's
- * `Decoded index-keyed memory embedding` DEBUG, P4.D258's to add. EVERY restore case records them, at
+ * `Decoded index-keyed memory embedding` DEBUG (P4.D258, landed at the unification). EVERY restore case records them, at
  * every level, so the census is compared across the whole corpus.
  */
 const RESTORE_TS_MESSAGES = [
   "All entities restored with preserved IDs - no reconciliation needed",
+  "Decoded index-keyed memory embedding",
   "Failed to enqueue reindex after compact restore",
   "Failed to restore LLM log",
   "Failed to restore character",

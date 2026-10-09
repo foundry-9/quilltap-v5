@@ -812,11 +812,11 @@ pub fn parse_transfer_request(body: &Value) -> Result<TransferRequest, String> {
 ///
 /// The carried pictures' blob links write through the
 /// [`RefusingWebpTranscoder`](crate::services::mount_index::blob_transcode::RefusingWebpTranscoder)
-/// (v4's store-original fallback): the frozen engine arm has no codec to
-/// hand. A carried picture is already a stored WebP, which the normalizer
-/// passes through either way. HANDOFF (P4.D263 → the unifier): the engine arm
-/// should call [`wardrobe_transfer_apply_with_codec`] over
-/// `ready_db_and_blob_webp()`.
+/// (v4's store-original fallback) — a codec-less caller's form. A carried
+/// picture is already a stored WebP, which the normalizer passes through
+/// either way. The engine arm calls [`wardrobe_transfer_apply_with_codec`]
+/// over `ready_db_and_blob_webp()` (P4.D263's HANDOFF, landed at the
+/// `f5e953a3f` unification).
 pub async fn wardrobe_transfer_apply(db: &Db, user_id: &str, body: Value, now: &str) -> Response {
     wardrobe_transfer_apply_with_codec(
         db,

@@ -218,7 +218,11 @@ pub fn load_current_wardrobe_state(
 /// hot paths (avatar generation, story backgrounds, scene state) and the read
 /// side runs on every turn. Failures are logged and swallowed — a component we
 /// can't fetch degrades to an unresolvable leaf, never to a thrown turn.
-fn hydrate_component_graph(
+///
+/// Shared with the wardrobe item-picture generation
+/// (`services::wardrobe_item_image_generation`, P4.D263 — its local copy
+/// folded onto this one at the `f5e953a3f` unification).
+pub(crate) fn hydrate_component_graph(
     main: &Connection,
     docs: &DocMountDocumentsRepository,
     character_id: &str,
@@ -227,7 +231,7 @@ fn hydrate_component_graph(
 ) {
     let mut requested_component_ids: std::collections::HashSet<String> =
         std::collections::HashSet::new();
-    for _depth in 0..COMPOSITE_MAX_DEPTH {
+    for depth in 0..COMPOSITE_MAX_DEPTH {
         let mut wanted: Vec<String> = Vec::new();
         for item in items_by_id.values() {
             let components = item
@@ -256,8 +260,13 @@ fn hydrate_component_graph(
         let components = match find_by_ids_for_character(main, docs, character_id, &wanted, tiers) {
             Ok(c) => c,
             Err(e) => {
+                let error = crate::db::fallback::error_text(&e);
                 tracing::warn!(
-                    character_id, depth = _depth, wanted_count = wanted.len(), error = %e,
+                    context = "wardrobe",
+                    characterId = %character_id,
+                    depth = depth,
+                    wantedCount = wanted.len(),
+                    error = %error,
                     "[hydrateComponentGraph] Component hydration failed"
                 );
                 return;
@@ -296,8 +305,12 @@ pub(crate) fn lookup_for_bundle(
         match find_by_ids_for_character(main, docs, character_id, component_item_ids, tiers) {
             Ok(items) => items,
             Err(e) => {
+                let error = crate::db::fallback::error_text(&e);
                 tracing::warn!(
-                    character_id, component_count = component_item_ids.len(), error = %e,
+                    context = "wardrobe",
+                    characterId = %character_id,
+                    componentCount = component_item_ids.len(),
+                    error = %error,
                     "[loadBundleLookup] Failed to load bundle components"
                 );
                 return None;

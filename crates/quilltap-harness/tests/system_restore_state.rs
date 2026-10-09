@@ -1001,14 +1001,14 @@ fn read_cases() -> Option<Vec<Value>> {
 /// `decodeIndexKeyedEmbedding` leaves an EMPTY index-keyed object unchanged,
 /// so `MemorySchema` refuses the memory; v5 used to decode it to `[]` and
 /// restore it (converged, R-A). The case line lives in
-/// `harness/oracle/cases/system-restore.test.ts` — P4.D264's file — so it is
-/// a HANDOFF to the unifier; until it lands the oracle simply lacks the case.
+/// `harness/oracle/cases/system-restore.test.ts` — P4.D264's file — so it was
+/// a HANDOFF to the unifier, landed at the `f5e953a3f` round's unification.
 const EMPTY_EMBEDDING_CASE: &str = "restore_empty_embedding_replace";
 
-/// Flipped to `true` by the unifier once [`EMPTY_EMBEDDING_CASE`]'s line is in
-/// the oracle's case list (the P4.D258 HANDOFF): from then on its absence
-/// FAILS. While `false`, an absent case logs a loud pending note.
-const EMPTY_EMBEDDING_CASE_LANDED: bool = false;
+/// Flipped to `true` by the unifier once [`EMPTY_EMBEDDING_CASE`]'s line was in
+/// the oracle's case list (the P4.D258 HANDOFF): its absence now FAILS. (While
+/// `false`, an absent case logged a loud pending note.)
+const EMPTY_EMBEDDING_CASE_LANDED: bool = true;
 
 fn archive_for(name: &str) -> &'static str {
     match name {

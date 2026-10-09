@@ -15,6 +15,7 @@ use crate::db::chats_outfits::ChatOutfitsRepository;
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
 use crate::db::wardrobe_read::find_by_ids_for_character;
 use crate::db::DbError;
+use crate::services::wardrobe_wear_history::{resolve_wearer_names, WearerKind};
 use crate::wardrobe::normalize_no_item_sentinel;
 
 use super::wardrobe_shared::{
@@ -323,44 +324,6 @@ pub fn build_read_output(
     })
 }
 
-/// How a wearer resolved (v4 `WearerKind`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum WearerKind {
-    Character,
-    Departed,
-    Unattributed,
-}
-
-/// v4 `resolveWearers(wearers, repos)` without avatars (`lib/wardrobe/
-/// wear-history.ts:85-131`) — each wearer's display name, index-aligned. The
-/// null wearer is `unattributed`; a character that no longer exists (or has
-/// no name) is `a departed character`. Names resolve RAW (`findByIdRaw` — a
-/// broken vault costs a label, never the read); v4's read is a fallback
-/// `safeQuery` that never throws, so its `Could not read wearer` WARN is
-/// unreachable and not ported.
-//
-// HANDOFF(P4.D256): `services::wardrobe_wear_history::resolve_wearers` is
-// P4.D256's (§R.10(b)); it was not on this lane's base. The unifier repoints
-// this call at P4.D256's fn (with `avatars: false`) and deletes this copy.
-fn resolve_wearers(
-    main: &Connection,
-    wearers: &[crate::db::wardrobe_wear_stats::WardrobeWearer],
-) -> Vec<(String, WearerKind)> {
-    wearers
-        .iter()
-        .map(|w| match w.character_id.as_deref() {
-            None | Some("") => ("unattributed".to_string(), WearerKind::Unattributed),
-            Some(id) => match crate::db::characters_read::find_by_id_raw_or_none(main, id)
-                .and_then(|c| c.get("name").and_then(Value::as_str).map(str::to_string))
-                .filter(|n| !n.is_empty())
-            {
-                Some(name) => (name, WearerKind::Character),
-                None => ("a departed character".to_string(), WearerKind::Departed),
-            },
-        })
-        .collect()
-}
-
 /// v4 `buildWardrobeReadWear(repos, characterId, itemId)` (`wardrobe-read-
 /// handler.ts:97-127`) — the item's wear history, each wearer named for the
 /// calling character: themselves flagged `is_you`, anyone the ledger can no
@@ -373,7 +336,7 @@ fn build_wardrobe_read_wear(
 ) -> WardrobeReadWearResult {
     let history = crate::db::wardrobe_wear_stats::WardrobeWearStatsRepository::new(main)
         .find_history(item_id);
-    let resolved = resolve_wearers(main, &history.wearers);
+    let resolved = resolve_wearer_names(main, &history.wearers);
     tracing::debug!(
         context = "wardrobe-read-handler",
         characterId = character_id,
@@ -390,11 +353,11 @@ fn build_wardrobe_read_wear(
             .wearers
             .iter()
             .zip(resolved)
-            .map(|(w, (name, kind))| WardrobeReadWearerResult {
+            .map(|(w, r)| WardrobeReadWearerResult {
                 character_id: w.character_id.clone(),
-                name,
+                name: r.name,
                 is_you: w.character_id.as_deref() == Some(character_id),
-                departed: kind != WearerKind::Character,
+                departed: r.kind != WearerKind::Character,
                 wear_count: w.wear_count,
                 first_worn_at: w.first_worn_at.clone(),
                 last_worn_at: w.last_worn_at.clone(),

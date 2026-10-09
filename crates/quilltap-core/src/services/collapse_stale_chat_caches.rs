@@ -40,7 +40,8 @@
 //! Gated on CHAT staleness via the same shared [`super::maintenance::is_stale`]
 //! the asset collapse uses, so the sweeps can never disagree on "stale". NULLing
 //! frees pages inside the file; actual file shrink happens at the periodic manual
-//! `npx quilltap db optimize` (VACUUM — an unported CLI surface).
+//! `quilltap db optimize` (VACUUM — ported in P4.D259, and run daily at boot
+//! by v4's PHASE 0.75 pass).
 //!
 //! ## v4's three log lines
 //!

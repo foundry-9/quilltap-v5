@@ -209,7 +209,13 @@ fn resolve_component_leaves(
                 character_id,
                 &[],
             );
-            hydrate_component_graph(main, &docs, character_id, &mut items_by_id, &tiers);
+            crate::tools::wardrobe_shared::hydrate_component_graph(
+                main,
+                &docs,
+                character_id,
+                &mut items_by_id,
+                &tiers,
+            );
         }
     }
     let expanded =
@@ -220,79 +226,6 @@ fn resolve_component_leaves(
         .filter(|id| id.as_str() != home.item_id())
         .filter_map(|id| items_by_id.get(id).cloned())
         .collect()
-}
-
-/// v4 `hydrateComponentGraph` (`lib/wardrobe/hydrate-components.ts`) — fill in
-/// every component reachable from the items already in `items_by_id`, a level
-/// at a time, bounded by the depth `expand_composites` walks. A failed level
-/// WARNs and stops (a component we can't fetch degrades to an unresolvable
-/// leaf).
-///
-/// ⚠ A LOCAL port: `tools/wardrobe_shared.rs`' twin is private and that file
-/// is P4.D262's this round — a `pub(crate)` there is a recorded `HANDOFF:`
-/// (the lane record), after which this copy folds onto it. This copy logs
-/// v4's camelCase keys; the twin still logs snake_case ones (the HANDOFF
-/// names that too).
-fn hydrate_component_graph(
-    main: &rusqlite::Connection,
-    docs: &crate::db::doc_mount_documents::DocMountDocumentsRepository,
-    character_id: &str,
-    items_by_id: &mut std::collections::HashMap<String, Value>,
-    tiers: &crate::wardrobe_tiers::SharedWardrobeTiers,
-) {
-    let mut requested: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for depth in 0..crate::wardrobe::COMPOSITE_MAX_DEPTH {
-        let mut wanted: Vec<String> = Vec::new();
-        for item in items_by_id.values() {
-            for component in item
-                .get("componentItemIds")
-                .and_then(Value::as_array)
-                .map(Vec::as_slice)
-                .unwrap_or_default()
-            {
-                let Some(cid) = component.as_str() else {
-                    continue;
-                };
-                if items_by_id.contains_key(cid) || !requested.insert(cid.to_string()) {
-                    continue;
-                }
-                wanted.push(cid.to_string());
-            }
-        }
-        if wanted.is_empty() {
-            return;
-        }
-        match crate::db::wardrobe_read::find_by_ids_for_character(
-            main,
-            docs,
-            character_id,
-            &wanted,
-            tiers,
-        ) {
-            Ok(components) => {
-                if components.is_empty() {
-                    return;
-                }
-                for c in components {
-                    if let Some(id) = c.get("id").and_then(Value::as_str) {
-                        items_by_id.insert(id.to_string(), c);
-                    }
-                }
-            }
-            Err(e) => {
-                let error = crate::db::fallback::error_text(&e);
-                tracing::warn!(
-                    context = "wardrobe",
-                    characterId = %character_id,
-                    depth = depth,
-                    wantedCount = wanted.len(),
-                    error = %error,
-                    "[hydrateComponentGraph] Component hydration failed"
-                );
-                return;
-            }
-        }
-    }
 }
 
 /// v4 `generateWardrobeItemImage(repos, args)` — generate, store and make

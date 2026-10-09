@@ -116,6 +116,23 @@ pub fn resolve_wearers(
     wearers: &[WardrobeWearer],
     avatars: bool,
 ) -> Vec<ResolvedWearer> {
+    resolve_wearers_inner(main, avatars.then_some(mount), wearers)
+}
+
+/// v4 `resolveWearers(wearers, repos)` with its default `{ avatars: false }`
+/// — names and kinds only, so no mount-index connection is needed (the
+/// `wardrobe_read` tool's form, v4 `buildWardrobeReadWear`).
+pub fn resolve_wearer_names(main: &Connection, wearers: &[WardrobeWearer]) -> Vec<ResolvedWearer> {
+    resolve_wearers_inner(main, None, wearers)
+}
+
+/// The shared body: `avatar_mount` is `Some` exactly when v4's `avatars` is
+/// set.
+fn resolve_wearers_inner(
+    main: &Connection,
+    avatar_mount: Option<&Connection>,
+    wearers: &[WardrobeWearer],
+) -> Vec<ResolvedWearer> {
     let mut resolved = Vec::with_capacity(wearers.len());
     for wearer in wearers {
         let Some(character_id) = wearer.character_id.as_deref().filter(|id| !id.is_empty()) else {
@@ -146,7 +163,7 @@ pub fn resolve_wearers(
         };
 
         let mut avatar_url = None;
-        if avatars {
+        if let Some(mount) = avatar_mount {
             let default_image_id = character
                 .as_ref()
                 .and_then(|c| c.get("defaultImageId"))
