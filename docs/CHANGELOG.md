@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — test(e2e): the wardrobe picture viewer beats, live + gated — P4.D277 unit 11
+
+_Versions: SPA 0.5.833._
+
+Two Playwright beats for the wardrobe picture viewer in `e2e/wardrobe-flow.spec.ts`. Each beat creates its own garment and hangs two never-seen 1×1 PNGs.
+
+- **Live:** the row thumbnail opens `Picture of <title>` with its four buttons. One Escape closes only the viewer. The editor's current picture opens at `Current picture · 1 of 2`, and the arrow keys walk the history. A history entry opens at `2 of 2`, and Escape leaves the editor up. `elementFromPoint` lands inside the frame.
+- **Gated** behind a new `P4D265_SERVER_LANDED = false`: Save to Quilltap General (asserting the toast), the dated already-saved sentence on a second save, Escape layering, and the dialog opening above the editor.
+
+By file: wardrobe-flow 17 passed / 1 skipped; salon-chat-gallery-flow 4/1; salon-image-detail-flow 0/1 (its own fixture skip); photos-flow 5/0.
+
 #### 2026-10-09 — feat(spa): the item editor's pictures open full screen and walk the history — P4.D277 unit 10
 
 _Versions: SPA 0.5.832._

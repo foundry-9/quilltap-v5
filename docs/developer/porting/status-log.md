@@ -175705,3 +175705,69 @@ Branch `claude/wardrobe-images-spa-viewer-4a334b` (worktree
   unported source** (the six new arms + the re-pin); green 17/17. The
   `wardrobe/**`, `images/**` and `screens/prospero/**` spec folders: 49 files
   / 826 tests green.
+
+### Follow-ups for the next smalls round (R-H + found in lane)
+
+- **R-H — the store-detail silent rename failure, made reachable by
+  `ed8b15b50`'s mount-points PATCH 409** (bug 186: `This vault belongs to
+  <name> and is named after them. Rename the character to rename the vault.`).
+  v4's SPA toasts `Failed to update document store` on both paths
+  (`useDocumentStores.ts:86`, `useDocumentStoreDetail.ts:83`). v5: the list
+  path toasts the SERVER text instead
+  (`screens/scriptorium/scriptorium.store.ts:76-84`, `message()` `:169-171`);
+  the detail path swallows with NO toast
+  (`screens/scriptorium/store-detail.ts:326-334`). Neither file is this lane's;
+  both UNTOUCHED.
+- **The chat gallery viewer's unhandled copy failure** (unit 7's finding):
+  `images/chat-gallery-image-view-modal.ts` `handleCopyToClipboard` has no
+  try/catch around `copyImageToClipboard`, which THROWS on failure — no
+  `Failed to copy image to clipboard` toast, an unhandled rejection (v4
+  `ChatGalleryImageViewModal.tsx:67-75` catches, logs and toasts).
+- **R-A — v4-filing candidate** (unit 6): the wardrobe door's archived-vault
+  409 reads `That picture is already in this album.` in v4 too.
+
+### Unit 11 — e2e (W6)
+
+- `e2e/wardrobe-flow.spec.ts` only (+ unit 4's re-pins), on the spec's own
+  port **4329** — no new e2e file. `const P4D265_SERVER_LANDED = false` beside
+  `P4D255_SERVER_LANDED`, doc in that shape (flip at unification, §S.9).
+  `onePixelPng(r, g, b)` (zlib `crc32` + `deflateSync`) — every beat hangs
+  NEVER-SEEN pictures on its own fresh garment (`Viewer … ${Date.now()}`), so
+  no beat leans on another's state (#16).
+- **LIVE — `the wardrobe picture viewer: row thumbnail, editor history walk,
+  Escape layering (P4.D277)`**: GREEN. The row's `View the picture of <title>`
+  → `dialog` `Picture of <title>`, caption the title, the four titles present;
+  **§J.2 measured:** `document.elementFromPoint` at the viewer image's centre
+  resolves inside `qt-full-screen-image-viewer` (from the row AND from the
+  editor); **§J.3 measured:** one Escape closes only the viewer (the wardrobe
+  dialog stays), and from the editor one Escape closes only the viewer (the
+  editor stays); the editor's current picture → `Current picture · 1 of 2`,
+  ArrowRight → `Earlier picture · 2 of 2`, ArrowLeft back; the history entry
+  opens at `2 of 2`; the inert choosers — every `wardrobe-item-thumbnail-open`
+  on the page is a list row's (unit-pinned in the picker specs too).
+  **Measured on the first run (a beat fix, not a port defect):** a CENTRE click
+  on a non-current history entry is intercepted by `Make current` — the two
+  hover buttons (`pointer-events-auto`) stack at the foot of the 64 px
+  thumbnail and cover its centre, exactly v4's layout (`:483-497`); the view
+  button takes the strip above them, so the beat clicks at `{x:32, y:4}`.
+- **GATED — `the wardrobe picture viewer saves to a document store
+  (ACTIVATE-AT-UNIFY, P4.D275)`**: SKIPPED with its reason (the two C2
+  verbs). Asserts, once flipped: `Quilltap General` pre-selected → `Save
+  image` → the TOAST `Saved to Quilltap General`; §J.2 at the save dialog's
+  centre inside `qt-save-image-dialog`; the second save → `That picture is
+  already in this album — it was filed there on <date>.`; §J.3 — Escape
+  closes the dialog only, a second the viewer; from the editor's viewer the
+  dialog opens ABOVE the editor (its Cancel clicks through, no interception).
+- Existing beats: none re-pinned in `wardrobe-flow.spec.ts` — the Picture
+  beat's `Make current` (through `pointer-events-auto`) and the
+  `wardrobe-item-thumbnail` test-id both survived (measured green).
+- **By FILE (one invocation at a time; release `quilltap-web` built in the
+  worktree, `apps/web/dist` fresh):** `wardrobe-flow` 17 passed / 1 skipped
+  (the gated beat) — first run 16 passed / 1 failed (the centre click above) /
+  1 skipped; `salon-chat-gallery-flow` 4 passed / 1 skipped (`Delete a
+  generated file` — its standing fixture guard) — the re-pinned detail and
+  Jump beats GREEN; `salon-image-detail-flow` 0 passed / 1 skipped — its ONE
+  beat skips at run time on its own guard (`no general (non-project) chat in
+  the shared fixture`), so its unit-4 re-pin is NOT exercised by this fixture
+  (recorded; the locator is the same frame locator the chat-gallery beat
+  proves); `photos-flow` 5 passed.

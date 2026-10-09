@@ -1,5 +1,6 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { copyFileSync, mkdirSync, openSync, rmSync, writeFileSync } from 'node:fs';
+import { crc32, deflateSync } from 'node:zlib';
 import { resolve } from 'node:path';
 
 import { expect, test, request as pwRequest, type Page } from './support/fixtures';
@@ -104,6 +105,17 @@ const P4D119_INSTRUCTIONS_LANDED = true;
  */
 const P4D255_SERVER_LANDED = true;
 
+/**
+ * ACTIVATE-AT-UNIFY (P4.D277 → P4.D265 / P4.D275). The wardrobe picture
+ * viewer's Save needs C2's two wardrobe verbs — `wardrobeItemImageSaveTargets`
+ * and `wardrobeItemImageSaveToStore`. Before the union P4.D265 lands them only
+ * as typed `not_available` refusal arms and P4.D275 fills the handlers, so a
+ * save beat would fail on every branch this lane can run, for a reason that
+ * says nothing about the SPA. The viewer beats that touch no C2 verb run LIVE
+ * now. Flip to `true` at unification (§S.9).
+ */
+const P4D265_SERVER_LANDED = false;
+
 /** The garment the wear-ledger beats create fresh, so its tally starts at zero. */
 const LEDGER_GARMENT = 'Ledger Spats';
 
@@ -116,6 +128,33 @@ const SWATCH_INDIGO = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGPQsKn4DwADSAHc/BF3hwAAAABJRU5ErkJggg==',
   'base64',
 );
+
+/**
+ * A fresh 1×1 RGB PNG of the given colour — each viewer beat hangs pictures
+ * the route has never seen (it dedups by sha), so it shares no state with
+ * another beat (P4.D277; memory `unify-review-finding-shapes` #16).
+ */
+function onePixelPng(r: number, g: number, b: number): Buffer {
+  const chunk = (type: string, data: Buffer): Buffer => {
+    const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(body) >>> 0);
+    return Buffer.concat([len, body, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(1, 0);
+  ihdr.writeUInt32BE(1, 4);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 2; // colour type: RGB
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', deflateSync(Buffer.from([0, r, g, b]))),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
 
 const WARDROBE_PORT = 4329;
 const BASE_URL = `http://127.0.0.1:${WARDROBE_PORT}`;
@@ -1627,6 +1666,207 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     await expect(row.getByTestId('wardrobe-item-thumbnail')).toBeVisible({ timeout: 10_000 });
     await expect(row.getByTestId('wardrobe-item-thumbnail')).toHaveAttribute('width', '40');
+    await dialog.getByRole('button', { name: 'Done' }).click();
+  });
+
+  /** Aria's id, read through the page's unlocked session. */
+  async function ariaIdOf(page: Page): Promise<string> {
+    const chars = ((await dispatch(page, { type: 'characterList' }))['characters'] ?? []) as Array<{
+      id: string;
+      name: string;
+    }>;
+    const aria = chars.find((c) => c.name === 'Aria');
+    expect(aria?.id, 'Aria’s id').toBeTruthy();
+    return aria!.id;
+  }
+
+  /**
+   * A fresh garment of Aria's with TWO pictures hung through the editor
+   * (oldest first), the editor left open on it. Each beat makes its own, with
+   * its own never-seen swatches (#16 — no beat leans on another's state).
+   */
+  async function garmentWithTwoPictures(page: Page, title: string, seed: number): Promise<void> {
+    const ariaId = await ariaIdOf(page);
+    const created = (
+      await dispatch(page, {
+        type: 'characterWardrobeCreate',
+        characterId: ariaId,
+        item: {
+          title,
+          description: null,
+          imagePrompt: null,
+          types: ['accessories'],
+          appropriateness: null,
+          isDefault: false,
+          componentItemIds: [],
+          replace: false,
+        },
+      })
+    )['wardrobeItem'] as { id: string } | undefined;
+    expect(created?.id, 'the viewer garment id').toBeTruthy();
+    await openAriaDetail(page);
+    await openWardrobeDialog(page);
+    const dialog = page.getByRole('dialog');
+    const row = dialog.locator('qt-wardrobe-item-row').filter({ hasText: title }).first();
+    await expect(row).toBeVisible({ timeout: 10_000 });
+    await row.getByRole('button', { name: 'More actions' }).click();
+    await page.getByRole('menuitem', { name: 'Edit' }).click();
+    await expect(page.getByTestId('wardrobe-item-image-section')).toContainText('No picture yet', {
+      timeout: 10_000,
+    });
+    const entries = page.getByTestId('wardrobe-item-image-history-entry');
+    await page.getByLabel('Upload a picture').setInputFiles({
+      name: 'first.png',
+      mimeType: 'image/png',
+      buffer: onePixelPng(seed % 256, 17, 211),
+    });
+    await expect(entries).toHaveCount(1, { timeout: 15_000 });
+    await page.getByLabel('Upload a picture').setInputFiles({
+      name: 'second.png',
+      mimeType: 'image/png',
+      buffer: onePixelPng(seed % 256, 211, 17),
+    });
+    await expect(entries).toHaveCount(2, { timeout: 15_000 });
+  }
+
+  /** Does `document.elementFromPoint` at the element's centre land inside `hostSelector`? */
+  async function centreLandsIn(page: Page, locator: ReturnType<Page['locator']>, hostSelector: string): Promise<boolean> {
+    const box = await locator.boundingBox();
+    expect(box, 'a laid-out element to probe').toBeTruthy();
+    return page.evaluate(
+      ({ x, y, sel }) => !!document.elementFromPoint(x, y)?.closest(sel),
+      { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2, sel: hostSelector },
+    );
+  }
+
+  test('the wardrobe picture viewer: row thumbnail, editor history walk, Escape layering (P4.D277)', async ({
+    page,
+  }) => {
+    test.setTimeout(150_000);
+    const title = `Viewer Opera Cape ${Date.now()}`;
+    await page.goto(`${BASE_URL}/characters`);
+    await unlockIfLocked(page);
+    await garmentWithTwoPictures(page, title, Date.now());
+    const dialog = page.getByRole('dialog').filter({ has: page.locator('.qt-dialog-title', { hasText: /^Wardrobe$/ }) });
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+
+    // The row thumbnail opens the viewer (v4 wardrobe-item-row.tsx:221-226).
+    const row = dialog.locator('qt-wardrobe-item-row').filter({ hasText: title }).first();
+    await row.getByRole('button', { name: `View the picture of ${title}` }).click();
+    const viewer = page.getByRole('dialog', { name: `Picture of ${title}` });
+    await expect(viewer).toBeVisible();
+    await expect(viewer).toContainText(title);
+    for (const name of ['Save to a document store', 'Download', 'Copy to clipboard', 'Close (Escape)']) {
+      await expect(viewer.getByTitle(name, { exact: true })).toBeVisible();
+    }
+    // §J.2 — the viewer's centre resolves inside the frame, above the dialog.
+    expect(await centreLandsIn(page, viewer.locator('img'), 'qt-full-screen-image-viewer')).toBe(true);
+
+    // §J.3 — one Escape closes ONLY the viewer; the wardrobe dialog stays.
+    await page.keyboard.press('Escape');
+    await expect(viewer).toHaveCount(0);
+    await expect(dialog.locator('.qt-dialog-title')).toHaveText('Wardrobe');
+
+    // From the editor: the current picture opens at `1 of 2`.
+    await row.getByRole('button', { name: 'More actions' }).click();
+    await page.getByRole('menuitem', { name: 'Edit' }).click();
+    await page.getByRole('button', { name: `View the picture of ${title} full size` }).click();
+    await expect(viewer).toContainText('Current picture · 1 of 2');
+    expect(await centreLandsIn(page, viewer.locator('img'), 'qt-full-screen-image-viewer')).toBe(true);
+    await page.keyboard.press('ArrowRight');
+    await expect(viewer).toContainText('Earlier picture · 2 of 2');
+    await page.keyboard.press('ArrowLeft');
+    await expect(viewer).toContainText('Current picture · 1 of 2');
+    await page.keyboard.press('Escape');
+    await expect(viewer).toHaveCount(0);
+
+    // A history entry opens at its own index.
+    // A non-current entry's two hover buttons (Make current + Delete) stack
+    // at the foot of the 64 px thumbnail and cover its centre — v4's layout
+    // (`:483-497`; measured: a centre click lands on Make current). The view
+    // button takes the strip above them, so click near the top edge.
+    await page
+      .getByRole('button', { name: 'View this earlier picture full size' })
+      .click({ position: { x: 32, y: 4 } });
+    await expect(viewer).toContainText('Earlier picture · 2 of 2');
+    // §J.3 — Escape closes only the viewer; the editor stays.
+    await page.keyboard.press('Escape');
+    await expect(viewer).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Edit Wardrobe Item' })).toBeVisible();
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+
+    // The choosers stay inert (unit-pinned in equipped-slot-row / outfit-quick-pick
+    // specs too): no openable thumbnail anywhere outside the list rows.
+    const openButtons = page.getByTestId('wardrobe-item-thumbnail-open');
+    const rowOpenButtons = dialog.locator('qt-wardrobe-item-row').getByTestId('wardrobe-item-thumbnail-open');
+    expect(await openButtons.count()).toBe(await rowOpenButtons.count());
+    await dialog.getByRole('button', { name: 'Done' }).click();
+  });
+
+  test('the wardrobe picture viewer saves to a document store (ACTIVATE-AT-UNIFY, P4.D275)', async ({
+    page,
+  }) => {
+    test.skip(
+      !P4D265_SERVER_LANDED,
+      'awaits C2’s wardrobeItemImageSaveTargets / wardrobeItemImageSaveToStore — P4.D265’s refusal arms filled by P4.D275 — flipped at unification',
+    );
+    test.setTimeout(150_000);
+    const title = `Viewer Evening Gloves ${Date.now()}`;
+    await page.goto(`${BASE_URL}/characters`);
+    await unlockIfLocked(page);
+    await garmentWithTwoPictures(page, title, Date.now() + 101);
+    const dialog = page.getByRole('dialog').filter({ has: page.locator('.qt-dialog-title', { hasText: /^Wardrobe$/ }) });
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    const toasts = page.locator('[role="toast-container"] > div');
+
+    const row = dialog.locator('qt-wardrobe-item-row').filter({ hasText: title }).first();
+    await row.getByRole('button', { name: `View the picture of ${title}` }).click();
+    const viewer = page.getByRole('dialog', { name: `Picture of ${title}` });
+    await expect(viewer).toBeVisible();
+
+    // Save → the shared dialog with Quilltap General pre-selected (isDefault).
+    await viewer.getByTitle('Save to a document store', { exact: true }).click();
+    const save = page.locator('qt-save-image-dialog');
+    await expect(save.locator('.qt-dialog-title')).toHaveText('Save image to album');
+    const album = save.locator('#save-image-album');
+    await expect(album.locator('option:checked')).toHaveText('Quilltap General', { timeout: 10_000 });
+    // §J.2 — the dialog's centre resolves inside the save dialog, above the viewer.
+    expect(await centreLandsIn(page, save.locator('.qt-dialog'), 'qt-save-image-dialog')).toBe(true);
+    await save.getByRole('button', { name: 'Save image' }).click();
+    // The TOAST — a beat that passes with nothing saved is the review's shape.
+    await expect(toasts.filter({ hasText: 'Saved to Quilltap General' }).first()).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(save).toHaveCount(0);
+
+    // Save the same picture again → v4's dated already-saved sentence.
+    await viewer.getByTitle('Save to a document store', { exact: true }).click();
+    await expect(album.locator('option:checked')).toHaveText('Quilltap General', { timeout: 10_000 });
+    await save.getByRole('button', { name: 'Save image' }).click();
+    await expect(save.getByRole('alert')).toHaveText(
+      /^That picture is already in this album — it was filed there on .+\.$/,
+      { timeout: 15_000 },
+    );
+    // §J.3 — Escape closes only the dialog; a second the viewer.
+    await page.keyboard.press('Escape');
+    await expect(save).toHaveCount(0);
+    await expect(viewer).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(viewer).toHaveCount(0);
+
+    // From the editor's viewer the dialog opens ABOVE the editor: Cancel is
+    // clickable (no "element intercepts pointer events").
+    await row.getByRole('button', { name: 'More actions' }).click();
+    await page.getByRole('menuitem', { name: 'Edit' }).click();
+    await page.getByRole('button', { name: `View the picture of ${title} full size` }).click();
+    await viewer.getByTitle('Save to a document store', { exact: true }).click();
+    await expect(save.locator('.qt-dialog-title')).toHaveText('Save image to album');
+    expect(await centreLandsIn(page, save.locator('.qt-dialog'), 'qt-save-image-dialog')).toBe(true);
+    await save.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(save).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await expect(viewer).toHaveCount(0);
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     await dialog.getByRole('button', { name: 'Done' }).click();
   });
 });
