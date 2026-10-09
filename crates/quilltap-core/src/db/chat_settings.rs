@@ -446,9 +446,18 @@ pub fn wardrobe_image_settings_issues(
 /// then judges (an unparseable text is the raw string, refused as a
 /// non-object).
 fn read_wardrobe_image_settings_cell(cell: Option<String>) -> Option<serde_json::Value> {
+    // v4 hydrates this JSON column through `fromJsonSafe` (`backend.ts:419-
+    // 437`): NULL, `''`, the text `'null'` and unparseable text all read as
+    // `undefined` — the key is OMITTED and the row KEPT (an unparseable cell
+    // also logs `Corrupted JSON in column, using default`, unported across
+    // v5's JSON columns, as `parse_json` here). Only a PARSED non-object
+    // value reaches `ChatSettingsSchema` and refuses the row (the `f5e953a3f`
+    // unification's §3 finding: the first cut refused all four).
     let text = cell?;
-    let parsed: serde_json::Value =
-        serde_json::from_str(&text).unwrap_or(serde_json::Value::String(text));
+    let parsed: serde_json::Value = serde_json::from_str(&text).ok()?;
+    if parsed.is_null() {
+        return None;
+    }
     if !wardrobe_image_settings_issues(&parsed).is_empty() {
         return Some(parsed);
     }
@@ -1692,17 +1701,31 @@ pub fn find_by_user_id(
 /// picture — `wardrobeImageSettings.generateFromTools` on the user's settings
 /// row, read through [`find_by_user_id`] (v4 `chatSettings.findByUserId(
 /// userId)?.wardrobeImageSettings?.generateFromTools`). `false` when the row,
-/// the bag or the key is absent, and when the read fails.
+/// the bag or the key is absent, and when the read fails — v4's
+/// `findByUserId` is a FALLBACK `safeQuery` (`chat-settings.repository.ts:
+/// 39-46`) that logs `Error finding chat settings by user ID` before its
+/// `null` (the `f5e953a3f` unification's §3 finding: the first cut swallowed
+/// the error silently).
 pub fn wardrobe_tool_images_enabled(main: &Connection, user_id: &str) -> bool {
-    find_by_user_id(main, user_id)
-        .ok()
-        .flatten()
-        .and_then(|row| {
-            row.get("wardrobeImageSettings")
-                .and_then(|w| w.get("generateFromTools"))
-                .and_then(serde_json::Value::as_bool)
-        })
-        .unwrap_or(false)
+    let row = match find_by_user_id(main, user_id) {
+        Ok(row) => row,
+        Err(e) => {
+            tracing::error!(
+                target: "quilltap::db",
+                collection = "chat_settings",
+                userId = %user_id,
+                error = %crate::db::fallback::error_text(&e),
+                "Error finding chat settings by user ID"
+            );
+            None
+        }
+    };
+    row.and_then(|row| {
+        row.get("wardrobeImageSettings")
+            .and_then(|w| w.get("generateFromTools"))
+            .and_then(serde_json::Value::as_bool)
+    })
+    .unwrap_or(false)
 }
 
 /// Scoped read for the memory gate's watermark check: the
@@ -2423,6 +2446,23 @@ mod tests {
     /// two-key bag reads as itself — and a bag the schema refuses drops the
     /// row with v4's two lines.
     #[test]
+    fn a_failed_settings_read_is_logged_and_reads_as_disabled() {
+        // No `chat_settings` table: the read fails.
+        let conn = Connection::open_in_memory().unwrap();
+        let (enabled, lines) =
+            crate::test_support::captured_with(|| wardrobe_tool_images_enabled(&conn, "u1"));
+        assert!(!enabled);
+        assert_eq!(lines.len(), 1, "{lines:#?}");
+        assert!(
+            lines[0].starts_with(
+                "ERROR quilltap::db Error finding chat settings by user ID \
+                 collection=chat_settings userId=u1 error="
+            ),
+            "{lines:#?}"
+        );
+    }
+
+    #[test]
     fn the_stored_wardrobe_image_settings_shapes_read_back() {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
@@ -2482,6 +2522,17 @@ mod tests {
         );
         assert!(wardrobe_tool_images_enabled(&conn, "u1"));
         assert!(!wardrobe_tool_images_enabled(&conn, "nobody"));
+        // v4's `fromJsonSafe`: an empty, `'null'` or unparseable cell is
+        // `undefined` — the key omitted, the row KEPT, nothing logged by v5.
+        for cell in ["", "null", "{bad"] {
+            let (row, lines) = read(Some(cell));
+            let row = row.unwrap_or_else(|| panic!("{cell:?}: v4 keeps the row"));
+            assert!(
+                row.get("wardrobeImageSettings").is_none(),
+                "{cell:?}: {row}"
+            );
+            assert!(lines.is_empty(), "{cell:?}: {lines:#?}");
+        }
         let (row, lines) = read(Some(r#"{"generateFromTools":"yes"}"#));
         assert!(row.is_none(), "v4 drops the row it cannot validate");
         assert_eq!(lines.len(), 2, "{lines:#?}");

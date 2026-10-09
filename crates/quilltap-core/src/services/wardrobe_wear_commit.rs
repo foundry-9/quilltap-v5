@@ -97,15 +97,14 @@ impl std::fmt::Display for WearCommitError {
 impl std::error::Error for WearCommitError {}
 
 /// The primitives and the selection paths are `DbError`-typed; v4's callers
-/// see the thrown `Error`'s message, which this keeps byte-for-byte (the
-/// unsaved sentence as a bare-message `Internal`; a credit failure as the
-/// underlying error itself).
+/// see the thrown `Error`'s message, which this keeps byte-for-byte: both arms
+/// cross as a bare-message `Internal` (the unsaved sentence; a credit failure
+/// as the SQLite error's own text — handing the inner `DbError::Sqlite` back
+/// displayed `sqlite error: …`, which v4 never says; the `f5e953a3f`
+/// unification's §3 finding).
 impl From<WearCommitError> for DbError {
     fn from(e: WearCommitError) -> Self {
-        match e {
-            WearCommitError::Unsaved { .. } => DbError::Internal(e.to_string()),
-            WearCommitError::Credit(inner) => inner,
-        }
+        DbError::Internal(e.to_string())
     }
 }
 
@@ -633,6 +632,9 @@ mod tests {
         .unwrap_err();
         assert!(matches!(err, WearCommitError::Credit(_)), "{err}");
         assert!(err.to_string().contains("no such table"), "{err}");
+        // As the callers see it: v4's BARE message, never `sqlite error: …`.
+        let as_db = DbError::from(err).to_string();
+        assert!(as_db.starts_with("no such table"), "{as_db}");
         assert_eq!(stored(&conn, CHAT, ALICE), Some(top(&["coat"])));
     }
 

@@ -757,19 +757,26 @@ impl<'a> WardrobeWearStatsRepository<'a> {
     /// `[]` silently (a pre-round instance the boot has not yet upgraded, as
     /// `services::backup::marshal::query_all` treats every table); any other
     /// failure logs v4's `Error finding all entities` and answers `[]`.
+    ///
+    /// Only a table the schema really LACKS is the silent arm: a failed
+    /// existence check (a lock, a damaged schema) is a read failure like any
+    /// other and takes the logged fallback, never a silently ledger-less
+    /// backup (the `f5e953a3f` unification's §3 finding).
     pub fn find_all(&self) -> Vec<WardrobeWearStatsRow> {
-        let exists = self
-            .conn
-            .query_row(
-                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1",
-                [WARDROBE_WEAR_STATS_TABLE],
-                |_| Ok(()),
-            )
-            .is_ok();
-        if !exists {
-            return Vec::new();
-        }
+        use rusqlite::OptionalExtension as _;
         super::fallback::find_all_or_empty(WARDROBE_WEAR_STATS_TABLE, || {
+            let exists = self
+                .conn
+                .query_row(
+                    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                    [WARDROBE_WEAR_STATS_TABLE],
+                    |_| Ok(()),
+                )
+                .optional()?
+                .is_some();
+            if !exists {
+                return Ok(Vec::new());
+            }
             rows_where(
                 self.conn,
                 &format!("SELECT * FROM \"{WARDROBE_WEAR_STATS_TABLE}\""),
