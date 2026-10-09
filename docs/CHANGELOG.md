@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(spa): P4.D276 M4b — the Consolidation settings card and its report dialog
+
+_Versions: SPA 0.5.826._
+
+New `qt-memory-consolidation-card` (v4 `components/tools/memory-consolidation-card.tsx`, new in `d58548051`): the enable checkbox, the connection-profile select (the cheap LLM by default; a stored profile that no longer exists shows as `(a profile that has since left the building)`), the seven number fields with v4's labels, help, limits and blur validation (inline error, no toast, the draft kept), and Consolidate now (a roster select, `Dry run` / `Consolidate for real`). Each save posts exactly one key and then shows the server's echo merged over the defaults, so v4's server-side clobber of the other fields stays visible. A failed save snaps the checkbox and profile select back to the stored values (a React-controlled input does this on its own; an Angular binding whose value did not change does not). A dry run with a report opens the report dialog; any other reply toasts the queued sentence, as v4 does. Error text follows v4's read/write rules.
+
+New `qt-memory-consolidation-report-dialog` (v4 `memory-consolidation-report-dialog.tsx`): title, description, skip reasons, the four stats (with v4's `(created + updated) || clusters' digests` fallback), the note line, and each cluster's members, proposed digests and contradictions. Every composed line is built as one string. Like v4's, it is hand markup with no dialog role or Escape handling, reparented to `document.body`.
+
+The card is mounted on the Memory tab in the next commit.
+
 #### 2026-10-09 — feat(spa): P4.D276 M4a — the housekeeping settings card archives; the read/write error-text twins
 
 _Versions: SPA 0.5.825._

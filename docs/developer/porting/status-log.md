@@ -175466,3 +175466,39 @@ pin: the paragraph `:177-179` (U+2019 ×2, the literal `—`), the cap suffix
   rewriting. `DEFAULT_CONFIG` keeps `autoMergeSimilarThreshold` / `mergeSimilar`
   (v4 `:25-31`). The survey's "merge cases" in the card spec never existed —
   only a stub config key (order item 26), left as is.
+
+### Unit M4b — the Consolidation card + its report dialog (SPA 0.5.826)
+Strings asserted, v4 at the pin. `memory-consolidation-card.tsx`: loading line
+`:181-183`; intro `:191-193` (U+2019, U+2014); checkbox `:195-204`; profile
+label/options/help `:206-227` (`House (OPENAI • gpt-4o)`, `Bare (OLLAMA)`, the
+left-the-building arm `:218`); `NUMBER_FIELDS` `:60-68` (labels, help, min/
+max/step, `placeholder="never"`) via `:230-254`; `commitNumber` `:131-155`
+(the three sentence shapes); `saveConfig` `:110-129` (`Consolidation settings
+saved`, `Failed to save consolidation settings`); read failure `:105-108`;
+Consolidate now `:257-294`; `consolidate` `:157-179` (`The consolidation has
+been sent below stairs — it will run in the background`, `The rehearsal
+failed`, `Failed to queue consolidation`). `memory-consolidation-report-
+dialog.tsx`: `SKIPPED_TEXT` `:12-16`; `bucketLabel` `:18-27`; `ClusterBlock`
+`:29-99`; title/description `:115-127`; stats `:135-140` (the `:139` JS
+precedence verbatim); note line `:141-147`; empty sentence `:149-153`; footer
+`:160-164`; `Stat` `:171-178`.
+- **Red-first:** both spec files RED BY CONSTRUCTION (new components; the
+  imports do not resolve on `main`). Card 26 arms, dialog 14 arms, all green
+  after.
+- **Mutation-proven:** deleting the two R-E DOM re-syncs (`el.checked = …`,
+  `el.value = …`) reddens exactly the two failed-save arms (2 of 26).
+- **Mechanism translations, RECORDED:** R-E — each controlled control's change
+  handler takes its element and re-syncs it from the stored config after the
+  save settles (success or failure; on success Angular's binding agrees); the
+  checkbox is NOT optimistic (v4 `:200`). R-F — one key per save; the echo
+  over `DEFAULT_CONFIG`; a clobbered echo renders (spec arm). R-H — the report
+  dialog is v4's hand markup (no `role="dialog"`, no Escape, no backdrop
+  close), host reparented to `document.body`. R-J — no `RealtimeService`.
+  The roster query shares v5's `memoryKeys.characterCounts()`
+  (`['memories','character-counts']`; v4's key reads
+  `'character-memory-counts'`) so the two cards share one cache, as v4's do.
+- **Spec-harness note:** the field-commit helper renders between `input` and
+  `blur` (a browser always does); without it a blank field's binding never saw
+  the draft and could not restore the stored value — a harness artefact, not a
+  card defect. The card spec's `QueryClient` turns retries off so a read
+  failure surfaces at once.
