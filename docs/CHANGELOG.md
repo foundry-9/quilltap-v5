@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — test(web): P4.D256's route-line pins on the process-global capture rig; the typed-only construction census counts the item GET's two arms
+
+_No crate versions bumped._
+
+`p4d256_route_lines_are_v4s` failed in the workspace gate (green alone): the sibling oracle test in the same binary reached the callsites first with no subscriber, so the thread-scoped rig lost them (tracing's `Interest` cache). Both tests in `wardrobe_routes_equivalence` now install `test_support::global_capture` first and the pin captures through it. `tri_state_edges_share_the_decoder` records `wardrobe_routes.rs` 15 → 17 and the total 115 → 117 (the item GET's `WardrobeItemWearHistory` and its unknown-action 404-first `WardrobeItemGet`, both typed-only).
+
 #### 2026-10-08 — docs(wardrobe): record that no repository read tags `origin`, so the .qtap export's strip is inert (P4.D256 item 15)
 
 _Versions: core 0.0.1259._

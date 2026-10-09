@@ -554,7 +554,11 @@ const TYPED_ONLY_HAND_BUILT_CONSTRUCTIONS_BY_FILE: &[(&str, usize)] = &[
     // `Option<Option<Value>>` tri-states, so they go through
     // `request_envelope::request_envelope` — which is the rule this census
     // exists to enforce.
-    ("wardrobe_routes.rs", 15),
+    // P4.D256 (v4 `3ee3b1342`): 15 → 17. The item GET's `?action=` arms
+    // hand-build `CoreRequest::WardrobeItemWearHistory { scope, container_id,
+    // item_id }` and (for an unknown action's 404-first lookup) a second
+    // `WardrobeItemGet { item_id }` — typed-only, no tri-state.
+    ("wardrobe_routes.rs", 17),
 ];
 
 #[test]
@@ -591,8 +595,10 @@ fn typed_only_hand_built_construction_count_matches_the_recorded_table() {
 
     let total: usize = by_file.values().sum();
     assert_eq!(
-        total, 115,
-        "115 = 113 + P4.D217's two `scenario_builder_routes.rs` constructions \
+        total, 117,
+        "117 = 115 + P4.D256's two `wardrobe_routes.rs` constructions (the item GET's \
+         `WardrobeItemWearHistory` and its unknown-action 404-first `WardrobeItemGet`). \
+         115 = 113 + P4.D217's two `scenario_builder_routes.rs` constructions \
          (`ScenarioBuilderBuild`, `ScenarioBuilderAbort`); the line below is the \
          pre-P4.D217 arithmetic. 113 = 114 total `*_routes.rs` variant constructions minus the 1 CharacterRename \
          tri-state exception. 109 = 110 - 1 at the 2026-09-18 measurement; the `f45a517a9` \

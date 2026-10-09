@@ -446,6 +446,10 @@ fn decode_bytes(v: &Value) -> Vec<u8> {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn wardrobe_routes_equivalence() {
+    // [P4.D256] This binary also runs `p4d256_route_lines_are_v4s`, which
+    // captures the SAME callsites: install the process-global rig first so no
+    // callsite's `Interest` is cached as "never" (test_support's module doc).
+    quilltap_core::test_support::global_capture::install();
     let Some(oracle_path) = env_or_skip("QT_ORACLE_WARDROBE_ROUTES") else {
         return;
     };
@@ -661,6 +665,7 @@ async fn wardrobe_routes_equivalence() {
 /// (`Built wear history` silent, v4 `wear-ledger-routes.test.ts:197-206`).
 #[test]
 fn p4d256_route_lines_are_v4s() {
+    quilltap_core::test_support::global_capture::install();
     let spec: Spec = serde_json::from_str(&std::fs::read_to_string(spec_path()).unwrap()).unwrap();
     let base = spec
         .cases
@@ -672,7 +677,10 @@ fn p4d256_route_lines_are_v4s() {
     let id = |k: &str| raw["ids"][k].as_str().unwrap().to_string();
     let (aria, bram, group, project) = (id("aria"), id("bram"), id("group"), id("project"));
     let (g_coat, w_top, g_livery, p_scarf) = (id("gCoat"), id("wTop"), id("gLivery"), id("pScarf"));
-    let cap = |f: &dyn Fn() -> Response| quilltap_core::test_support::captured_with(f);
+    // The process-global rig (thread-armed): a thread-scoped `set_default`
+    // loses callsites the sibling oracle test reached first (the gate's
+    // `Interest`-cache race — red in the workspace run, green alone).
+    let cap = |f: &dyn Fn() -> Response| quilltap_core::test_support::global_capture::capture(f);
     let has = |lines: &[String], needle: &str| lines.iter().any(|l| l.contains(needle));
 
     // R-D: the group-tier read's one line, v4's keys in v4's order.
