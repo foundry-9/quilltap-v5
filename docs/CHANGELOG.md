@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(spa): wardrobe save-to-store wire + helpers (C2) — P4.D277 unit 5
+
+_Versions: SPA 0.5.827._
+
+`core-contract.ts` gains, inside a bracketed P4.D277 region, C2's two wardrobe save verbs: `wardrobeItemImageSaveTargets` and `wardrobeItemImageSaveToStore`. It also adds their response types, plus `PhotoAlbumKind` / `PhotoAlbumOption` as aliases of the existing `AlbumKind` / `AlbumOption`. Both variants join the request union. `wardrobe/item-images.api.ts`'s action union gains `save-targets` / `save-to-store` (v4 `01a83539d`).
+
+Two new helpers:
+
+- `listWardrobeSaveTargets` reads an absent `albums` as an empty list.
+- `saveWardrobeImageToStore` sends `{fileId, mountPointId, caption}`, omits a blank caption, and sends no tags.
+
+Five new spec arms.
+
 #### 2026-10-09 — refactor(spa): the chat gallery viewer onto the shared frame (v4 01a83539d) — P4.D277 unit 4
 
 _Versions: SPA 0.5.826._

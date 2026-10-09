@@ -175500,3 +175500,29 @@ Branch `claude/wardrobe-images-spa-viewer-4a334b` (worktree
   owned by no lane this round (only P4.D276's memory files are touched under
   `apps/web` besides this lane's), so it gets the identical R-B re-pin (one
   locator, same assertions) rather than shipping a red.
+
+### Unit 5 — the contract region + the API helpers (W4a)
+
+- `core-contract.ts` — ONLY two bracketed hunks (`// === P4.D277: wardrobe
+  picture save-to-store (append-only) ===` / `// === end ===`): after
+  `WardrobeItemImageDeleteRequest` (`:4503-4562`) — `PhotoAlbumKind` /
+  `PhotoAlbumOption` as ALIASES of `AlbumKind` / `AlbumOption` (R-D, no
+  duplicate shape), `WardrobeItemImageSaveTargetsRequest`,
+  `WardrobeItemImageSaveTargetsResponse { albums }`,
+  `WardrobeItemImageSaveToStoreRequest` (C2 key order; `scope:
+  WardrobeOriginScope`; doc lines quoting C2's refusals),
+  `WardrobeItemImageSaveResponse` (C2's 200 body, key order as C2); and in the
+  union after `| WardrobeItemImageDeleteRequest` (`:6183-6186`). `CoreRequest`
+  untouched; no other line moved.
+- `wardrobe/item-images.api.ts`: `WardrobeItemImageAction` gains
+  `'save-targets' | 'save-to-store'` (v4 `:51-57`; kept for
+  `wardrobeItemImagesUrl` parity); NEW `listWardrobeSaveTargets` (absent
+  `albums` → `[]`, v4 `SaveImageDialog.tsx:135-136`); NEW
+  `saveWardrobeImageToStore` (`caption` omitted when undefined, no `tags`);
+  module header's divergence list gains the verb-not-URL doors.
+- `item-images.api.spec.ts`: 5 NEW arms — **red on unported source** (TS2305 ×2
+  + TS2345 ×2: the build fails the file); green 12/12 after. Bodies pinned: a
+  character container `{type, scope:'character', containerId:'char-1',
+  itemId}`, General with NO `containerId`; `'caption' in body === false` when
+  blank; no `tags`; a `CoreDispatchError` propagates with `kind:'conflict'`,
+  `code:'ALREADY_SAVED'`, `keptAt` intact.
