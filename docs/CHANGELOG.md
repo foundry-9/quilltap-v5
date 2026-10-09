@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — docs(porting): P4.D264 lane record, LANE COMPLETE
+
+_No crate versions bumped._
+
+The lane-close record in `status-log.md`: the `collect.rs` union hunks for the unifier, the findings (two ruled and fixed in-lane, three recorded), the recorded deviation on item 10's `qtap_import` leg, the fixture inventory, the regen recipes, the gate, and the 💸 rows. The order's status header reads LANE COMPLETE; the `restore_vintage_state` test takes one `cargo fmt` hunk.
+
 #### 2026-10-08 — fix(import): a chats bundle assembles `chatDocuments` before `chatInforms`, as v4 does (P4.D264 unit G)
 
 _Versions: core 0.0.1259._

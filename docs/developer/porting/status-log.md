@@ -173557,3 +173557,129 @@ RED under the OLD vendored bytes (the family failed), GREEN under the new (1/1),
   a key-order divergence); green after the swap. 32 → 33 cases. `system_import_state` and the
   core importer unit tests (55) green.
 
+### Lane close (P4.D264)
+
+**Commits** (branch `claude/wardrobe-carriers-backup-restore-9acf61`, on `23cd7123b`):
+`11baa2214` unit A (schema) · `dfe46775a` unit B (backup / restore / remap) · `a8fb1ea3f`
+unit C (export) · `cdf784c93` unit D (import) · `d73f62606` unit E (the vintage trio) ·
+`215b324f5` unit F (the ruled archived-character fix) · `f7ef5d2ee` unit G (the ruled
+chats key-order fix) · the
+lane-close commit (this record, the order's status header, one `cargo fmt` hunk in
+`restore_vintage_state.rs`).
+
+**Corrections to the unit records above:** unit B's "`memories.json` ×6" is ×5 (the five
+non-compact cases; `backup_compact` nulls every embedding on both sides); unit D's preview
+sentence — ALL THREE `read_ndjson_wardrobe_wear_*` cases run v4's `previewImport`.
+
+**HANDOFF: (§R.10(e)) — the `collect.rs` union with P4.D258.** This lane's hunks in
+`services/backup/collect.rs`, all OUTSIDE the memory encoder region (`:406-468` at `main`),
+none touching it: (1) the module header — ONE new bullet ("No schema write on the SOURCE for
+the wear ledger", R-G) appended after the `characterPluginData.data` bullet; (2) `BackupData` —
+`pub wardrobe_wear: Vec<Value>` LAST, after `text_replacement_rules`, between `// === P4.D264`
+markers; (3) the `main_side` literal — `wardrobe_wear: …find_all()…` after
+`text_replacement_rules: query_all(…)?,`, and the DEBUG `Collected wardrobe wear ledger for
+backup` immediately after the `read_main` closure closes; (4) the final `BackupData { … }`
+literal — `wardrobe_wear: main_side.wardrobe_wear` after `text_replacement_rules:
+main_side.text_replacement_rules`; (5) `struct MainSide` — `wardrobe_wear: Vec<Value>` after
+`text_replacement_rules`; (6) a NEW test module `wardrobe_wear_collect_tests` appended at EOF
+after `strict_scope_tests`. All append-only — the union keeps both sides' lines.
+`restore/orchestrator.rs` `:3711` (P4.D258's `memories` written-rows count) UNTOUCHED.
+`system_restore_state.rs`'s `INDEX_KEYED_EMBEDDING` region UNTOUCHED; this lane's hunks there:
+`PHASE_ORDER_RESIDUAL` / `V5_STATS_GAP` rows, `archive_for` / `plant_sql_in` arms,
+`wear_ledger_ddl`, the two census-whitelist lines, the `seen` / `FRESH_STORE_CARVED_CASES` /
+tombstone-skip lines, the normalizer's chained substitution, and the appended
+`wardrobe_picture_tombstone_is_skipped`. The two restore census whitelists (TS + Rust) gain
+four lines; P4.D258's `Decoded index-keyed memory embedding` lands in BOTH lists too — different
+positions, both kept. P4.D258's `{}` restore row (its HANDOFF to this lane, into
+`system-restore.test.ts`) was NOT received in-lane — the unifier lands it.
+
+**FINDINGS for the human** (1 and 2 ruled and fixed in-lane; 3–5 unruled, no code moved):
+1. `ARCHIVED_CHARACTER_RESTORE` — RULED by the human (2026-10-08, "fix v5, keep archivedAt")
+   and FIXED in unit F (`215b324f5`): `archivedAt` now an equality with v4; the vault half (v5
+   keeps one, v4 refuses it) a pinned ruled divergence — the human confirmed it explicitly the
+   same day: "Keeping the vault is right, don't reproduce v4's refusal".
+2. The chats bundle's `chatInforms` / `chatDocuments` key order — RULED by the human ("fix the
+   chatInforms/chatDocuments key order too") and FIXED in unit G (`f7ef5d2ee`), which also
+   made `system_import_equivalence` compare the assembled payload as bytes (its `Value ==` had
+   never enforced key order).
+3. A SECOND `replace` restore of the same archive leaks `Failed to restore chat settings: UNIQUE
+   constraint failed: chat_settings.userId` (unit E) — v4 unmeasured.
+4. `UuidRemapper::mapping_object` does not enumerate integer-like keys first as JS does (unit B)
+   — the memo comparand only; no restored row affected.
+5. `services/delete_all.rs`'s `V5_EXTRA_MAIN_TABLES` comment ("`conversation_annotations`
+   appears in NO v4 delete path") is stale: v4 at the pin lists it in `mainTables`
+   (bug 10's convergence, already pinned as an equality in `system_delete_data_equivalence`).
+   Comment only.
+
+**Deviations from the order, recorded:**
+- Item 10's `qtap_import_equivalence` leg (NEW `qtap-import-wardrobe.qtap` + builder,
+  `build-qtap-import-fixture.ts` grown): NOT landed as written — its target mints every
+  character id, so a local wearer and a TAKEN file id are not plantable there. Every arm the
+  bullet names landed in `system_import_state` (`execute_wardrobe_pictures` +
+  `wear-ledger-live`) and the tier-1 family; `qtap_import_equivalence` is unchanged and green.
+- 22f-bis's legacy literal now carries the row's `imageFileId` (beyond the order's letter;
+  v4's `...itemData`), pinned by `restore_wardrobe_picture_new_account`.
+- `system_import_state` gained a `wardrobeLogs` comparand (v4's INFO / DEBUG lines) — the
+  order asked for capture pins; this is the differential form of the same pins.
+
+**Not differentially pinned (recorded):** the restore's `Failed to repoint wardrobe item picture
+after restore` arm (reachable in v4 only by a failing vault writer — not plantable without
+breaking every other mount write in the same restore); the export's `Failed to load wardrobe
+item pictures for export` (UNREACHABLE through v4's real read — `findByLinkedTo`'s fallback).
+Both arms are written to v4's text.
+
+**Tier 3 (deferred, as ordered):** 14 no transaction around `upsert_rows` (v4 has none); 15 no
+row-level restore counts for dropped / folded / cleared rows (v4 logs INFO only); 16
+`help/wardrobe-images.md` is P4.D260's, the committed `restore-archive*.zip` family NOT rebuilt,
+the SPA is P4.D261's; 17 the live proof is 💸 (below).
+
+**Fixtures changed and what reads them:** `harness/oracle/fixtures/uuid-remap-corpus.json`
+(regenerated — `backup_uuid_remap_equivalence` only); `harness/oracle/fixtures/qtap-schema-
+validate.json` (+6 mutations — `qtap_schema_validate_equivalence` only); the
+`migration-vintage/` trio (REBUILT, R-H — `restore_vintage_state` only); NEW
+`restore-archive-wardrobe-{wear,picture,picture-tombstone}.zip` + `derive-restore-archive-
+wardrobe.py` (read by `system_restore_equivalence` / `system_restore_state` /
+`restore_vintage_state`). No committed `system-data-*` / `restore-archive*.zip` / `qtap-import*`
+fixture was rewritten; no other family's oracle is invalidated.
+
+**Regen recipes** (each family's committed header is canonical; the sweep driver runs them —
+`python3 harness/tools/recipe_sweep.py --run <family> --v4 "$PIN" --v5w <spaceless path>`):
+`backup_uuid_remap_equivalence` (writes the corpus + NDJSON together), `system_backup_
+equivalence`, `system_restore_equivalence` / `system_restore_state` (one oracle),
+`qtap_schema_validate_equivalence`, `system_export_equivalence`, `system_import_equivalence`,
+`system_import_state`, and NEW `wardrobe_wear_import_remap_equivalence` (`cd $PIN && npx tsx
+"$V5W/harness/oracle/cases/wardrobe-wear-import-remap.ts" > /tmp/oracle-wardrobe-wear-import-
+remap.ndjson`; env `QT_ORACLE_WARDROBE_WEAR_IMPORT_REMAP`). In-lane every regen ran from
+`/tmp/qt-v4-pin-p4d264-f5e953a3f` into `/tmp/p4d264/` (lane-private copies of the headers).
+The vintage trio: `cd $PIN && QT_FIXTURE_MV_DIR=<worktree>/crates/quilltap-web/tests/fixtures/
+migration-vintage node --import tsx <worktree>/harness/oracle/fixtures/build-migration-vintage-
+fixture.ts`. The derived archives: `python3 harness/oracle/fixtures/derive-restore-archive-
+wardrobe.py` (from the repo root).
+
+### 💸 for the dogfood pass (the order's list, unchanged)
+
+The full backup of the Friday copy (`data/wardrobe-wear.json` = `SELECT COUNT(*)`, unattributed
+rows INCLUDED — `FIND_ALL_DROPS_NULLABLE`; the manifest count; a `replace` restore keeping every
+tally); a new-account restore into a fresh `setup` instance (rows remapped, a picture pointer
+repointed, an archived character's vault untouched AND the character still archived after
+the restore — unit F); a pre-ledger
+archive restoring with `wardrobeWear: 0`; the `.qtap` round trip of a character with pictures and
+wear (`_imageFiles`, `imageFileId`, archived items, trailing `wardrobe_wear`, footer
+`wardrobeWear`; re-minted pictures; a second import changing no tally); a pre-#81 bundle (no
+`wardrobeWear` count key) and a hand-edited malformed row (`Dropped 1 malformed wardrobe
+wear-ledger row(s).`).
+
+**Gate (the finished tree, `CARGO_INCREMENTAL=0`, env block = every oracle this lane regenerated
+from the pin + `QT_V4_CHECKOUT` / `QT_V4_ROOT` at the pin):** `cargo fmt --all --check` clean;
+`cargo clippy --workspace --all-targets -- -D warnings` and `--features quilltap-core/native-
+transport` both clean (after unit G's amend — the gate's first clippy pass caught
+`cmp_owned` on the new byte compare, whose suggestion would have restored the order-blind `==`;
+fixed with `serde_json::to_string` and folded into `f7ef5d2ee`); `cargo test --workspace
+--no-fail-fast`: 685 binaries / 4,550 passed / 3 failed / 3 ignored, zero `SKIP` — the three
+are §R.13 by-design reds OWNED ELSEWHERE: `provider_sdk_version_guard` (P4.D260),
+`system_backup_equivalence` (`data/memories.json` ×5 only — P4.D258) and `system_restore_state`
+(the five `INDEX_KEYED_EMBEDDING` / memories rows only — P4.D258); every P4.D264 arm in both is
+green. `recipe_sweep.py --self-test` 0 failures. Disk: 284 GiB free on the volume at the gate.
+
+**Versions at close:** core 0.0.1259 (A 1254 · B 1255 · C 1256 · D 1257 · F 1258 · G 1259; E
+moved no crate); harness frozen 0.0.1110; host 0.0.190, web 0.0.224, cli, tauri, SPA unchanged.

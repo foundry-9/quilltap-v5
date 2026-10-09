@@ -851,7 +851,8 @@ fn the_wear_ledger_restores_onto_the_migrated_table_without_doubling() {
     let pepper_hex = quilltap_core::dbkey::pepper_b64_to_key_hex(TEST_PEPPER).unwrap();
     let raw = |instance: &Path| {
         let conn = Connection::open(instance.join("quilltap.db")).unwrap();
-        conn.pragma_update(None, "key", format!("x'{pepper_hex}'")).unwrap();
+        conn.pragma_update(None, "key", format!("x'{pepper_hex}'"))
+            .unwrap();
         conn
     };
     {
@@ -863,7 +864,10 @@ fn the_wear_ledger_restores_onto_the_migrated_table_without_doubling() {
                 |r| r.get(0),
             )
             .expect("the vintage instance carries the migrated table");
-        assert!(ddl.contains("\"wearCount\" INTEGER NOT NULL DEFAULT 0"), "{ddl}");
+        assert!(
+            ddl.contains("\"wearCount\" INTEGER NOT NULL DEFAULT 0"),
+            "{ddl}"
+        );
         assert_eq!(
             count(
                 &conn,
@@ -929,4 +933,3 @@ fn the_wear_ledger_restores_onto_the_migrated_table_without_doubling() {
     }
 }
 // === end P4.D264 ===
-
