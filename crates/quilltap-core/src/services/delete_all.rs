@@ -366,7 +366,8 @@ fn delete_user_data_on_writer(
         for character_id in &characters {
             memory_ids.extend(memory_ids_for_character(main, character_id));
         }
-        memories.delete_many_with_unlink(&memory_ids)?;
+        memories
+            .delete_many_with_unlink(&memory_ids, crate::db::memories::CountSource::Repository)?;
     }
 
     // 3. The per-row entity deletes, in v4's `Promise.all` order (:126).

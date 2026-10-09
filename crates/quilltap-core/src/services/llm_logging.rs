@@ -421,7 +421,9 @@ pub fn map_task_type_to_log_type(task_type: Option<&str>) -> String {
         "memory-extraction-self"
         | "memory-extraction-other"
         | "batch-memory-extraction"
-        | "memory-keyword-extraction" => log_type::MEMORY_EXTRACTION,
+        | "memory-keyword-extraction"
+        // P4.D265 (v4 `d58548051`, `core-execution.ts:264`).
+        | "memory-consolidation" => log_type::MEMORY_EXTRACTION,
         "title-chat" | "title-from-summary" | "consider-title-update" => log_type::TITLE_GENERATION,
         "compress-conversation-history" | "compress-system-prompt" | "compress-memories" => {
             log_type::CONTEXT_COMPRESSION

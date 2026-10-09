@@ -107,7 +107,7 @@ fn memory_delete_tier2_matches_oracle() {
 
     let writer = Writer::open_writable(&work, &spec.test_pepper_base64)
         .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
-    {
+    let ((), lines) = quilltap_core::test_support::captured_with(|| {
         let repo = writer.memories();
         for op in &spec.ops {
             match op {
@@ -115,12 +115,61 @@ fn memory_delete_tier2_matches_oracle() {
                     repo.delete_with_unlink(id).expect("deleteMemoryWithUnlink");
                 }
                 Op::DeleteMemoriesWithUnlinkBatch { ids } => {
-                    repo.delete_many_with_unlink(ids)
-                        .expect("deleteMemoriesWithUnlinkBatch");
+                    repo.delete_many_with_unlink(
+                        ids,
+                        quilltap_core::db::memories::CountSource::Repository,
+                    )
+                    .expect("deleteMemoriesWithUnlinkBatch");
                 }
             }
         }
-    }
+    });
+
+    // P4.D265 (F8): the chokepoint's lines, in op order — `countSource` on the
+    // batch line between `deleted` and `neighboursTouched`; `durationMs` (real
+    // wall-clock on both sides) normalized. Compared from the message on (the
+    // target is v5's module path; v4's lines ride the root logger).
+    let normalize_line = |l: &str| -> String {
+        match l.find(" durationMs=") {
+            Some(at) => format!("{} durationMs=<n>", &l[..at]),
+            None => l.to_string(),
+        }
+    };
+    let got_lines: Vec<String> = lines
+        .iter()
+        .filter_map(|l| l.find("[MemoryGate] ").map(|at| (l, at)))
+        .map(|(l, at)| {
+            let level = l.split_whitespace().next().unwrap();
+            format!("{level} {}", normalize_line(&l[at..]))
+        })
+        .collect();
+    let want_lines: Vec<String> = oracle["lines"]
+        .as_array()
+        .expect("the oracle carries no `lines` — regenerate it (P4.D265)")
+        .iter()
+        .map(|l| {
+            let mut out = format!(
+                "{} {}",
+                l["level"].as_str().unwrap().to_uppercase(),
+                l["message"].as_str().unwrap()
+            );
+            for (k, v) in l["fields"].as_object().unwrap() {
+                let rendered = match v {
+                    Value::String(s) => s.clone(),
+                    other => other.to_string(),
+                };
+                out.push_str(&format!(" {k}={rendered}"));
+            }
+            normalize_line(&out)
+        })
+        .collect();
+    assert_eq!(got_lines, want_lines, "the chokepoint's lines");
+    assert!(
+        want_lines
+            .iter()
+            .any(|l| l.contains(" countSource=repository ")),
+        "the batch line carries countSource: {want_lines:#?}"
+    );
 
     let mut got = writer
         .dump_table_json("memories", "id")

@@ -12,6 +12,30 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(memory): KEYSTONE — P4.D265 the memory programme's data layer (v4 `01a83539d` pin)
+
+_Versions: core 0.0.1265, host 0.0.195, web 0.0.228._
+
+The shared surface the ten stage-2 lanes of the `01a83539d` round compile against (contract C1 + C2), each unit proven against v4's real code at the pin.
+
+- **D23 re-dump #7.** `fresh_schema.json` re-dumped from the pin: `memories` gains `tier` / `supersededById` / `consolidatedFrom` / `consolidatedAt`, `chats` gains `otherExtractionWatermarkMessageId`, and the mount index gains v4's UNIQUE `("name" COLLATE NOCASE)` store-name index (bug 186's index; the refusal and existing-instance ensure are P4.D274's). `migration_indexes.json` re-dumped through v4's real migration runner with a real `tsx server.ts` first boot as the cross-check (zero findings): `idx_memories_character_tier` (main 52 → 53). The chat-settings seed is byte-identical.
+- **Boot ensure.** `db::memory_tiers_repair::ensure_memory_tiers` re-homes v4 `d58548051`'s `add-memory-tiers-v1`: missing columns appended in the migration's text, the index from `migration_indexes.json`, the NULL-tier heal, the chat column. It is table-gated, idempotent and unstamped (R-A), runs before the index backfill, and is fatal on failure. v4's migration lines are NO-PORT; the host logs one `Fitted the memory tiers` line when it did anything.
+- **Committed fixtures widened in place.** 43 of 49 `*-main.db` pairs, through v4's real migration from the pin. The other six have neither table.
+- **Memory reads and writes.** `memories` rows carry 29 columns in `MemorySchema` order. `find_most_important` gets F4's ranking + the hot predicate + `limit <= 0`; the about-characters CTE and the tier legs get v4's hot predicates. The three raw reads drop rows v4's `MemorySchema` refuses (measured). New: five tier reads, `increment_reinforcement`, `update_tier_bulk`, `mark_considered`. `delete_many_with_unlink` takes F8's `countSource`. The create path applies v4's tier prefill. The Zod twin accepts `CONSOLIDATED` and checks the four new keys. Every changed or new read takes v4's fallback contract.
+- **Chat watermark:** read in its schema slot. ONE writer, `ChatsRepository::set_other_extraction_watermark`, held by a census.
+- **Settings:** `memoryConsolidation` / `memoryExtractionMode`, each with Zod-faithful parsers and v4's merge-then-write.
+- **Job kind:** `MEMORY_CONSOLIDATION` in the job, activity, topic and task-type tables, with no handler yet. An empty completion-hook region in `job_runner.rs`.
+- **Vector store tiers:** `set_tier`, `search_filtered` (the filter runs before top-K), `is_hot`.
+- **New pure leaves:** `memory_pools`, `commonplace_file` and `services::memory_access`.
+- **Search option types** (honoured from P4.D267).
+- **Wire:** eight new C2 verbs and two grown ones, each refusing with the agreed `not yet available (<owner>)` body until its owner lands.
+- **Oracle helper:** `apply-memory-tiers-migration.ts`, now on `memories_routes`' per-case copy on both sides.
+- **Restore 22a:** v4 `ed8b15b50`'s free store-name pick.
+
+New differential families: `memory_tiers_ensure`, `memory_settings_schemas`, `memory_pools`, `commonplace_file`, `vector_store_tiers`, plus the `other_extraction_watermark_writers_census` and the `p4_d265_wire_contract`. Grown: `memories_read`, `memories_tier2`, `repository_zod_messages`, `chats_read`, `chats_tier2`, `memory_delete_tier2`, `realtime_topics`, `instance_settings_json_warns`.
+
+Test fixtures: the `build_context` inter-character log tests now seed UUID ids, because the raw reads drop non-UUID rows as v4's `MemorySchema` does. `dispatch_wrong_type_census` has four more rows.
+
 #### 2026-10-09 — docs(porting): order the `01a83539d` memory-programme + bugs-183–186 + wardrobe-viewer drift catch-up round — fourteen work orders (P4.D265 → {P4.D266 … P4.D275} ∥ P4.D276 ∥ P4.D277 ∥ P4.D278)
 
 _Docs-only change._

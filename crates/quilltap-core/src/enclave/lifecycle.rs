@@ -1028,6 +1028,7 @@ mod tests {
             "commonplaceSceneCache TEXT",
             "commonplaceRecallHistory TEXT",
             "timelineMode TEXT",
+            "otherExtractionWatermarkMessageId TEXT",
             "budgetMaxTurns REAL",
             "budgetMaxTokens REAL",
             "budgetMaxWallClockMs REAL",

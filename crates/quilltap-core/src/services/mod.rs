@@ -129,6 +129,7 @@ pub mod llm_errors;
 pub mod llm_log_cleanup_job;
 pub mod llm_logging;
 pub mod maintenance;
+pub mod memory_access;
 pub mod memory_dedup;
 pub mod memory_extraction_job;
 pub mod memory_gate;

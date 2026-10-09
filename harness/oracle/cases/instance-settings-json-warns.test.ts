@@ -99,6 +99,9 @@ async function main(): Promise<void> {
     brahmaConsole: settings.getBrahmaConsoleSettings,
     taboo: settings.getTabooSettings,
     memoryExtractionLimits: settings.getMemoryExtractionLimits,
+    // P4.D265 (v4 `d58548051`).
+    memoryConsolidation: settings.getMemoryConsolidationSettings,
+    memoryExtractionMode: settings.getMemoryExtractionModeSettings,
   };
 
   await initializeDatabase();

@@ -200,7 +200,12 @@ async fn cascade_delete(db: &Db, memories: &[Value]) -> Result<CascadeDeleteResu
 
     let all_ids: Vec<String> = memories.iter().filter_map(id_of).collect();
     let deleted = db
-        .write(move |writers| writers.main().memories().delete_many_with_unlink(&all_ids))
+        .write(move |writers| {
+            writers
+                .main()
+                .memories()
+                .delete_many_with_unlink(&all_ids, crate::db::memories::CountSource::Repository)
+        })
         .await?;
 
     Ok(CascadeDeleteResult {
@@ -324,6 +329,11 @@ pub struct RecallContextInput {
     /// [`SemanticSearchOptions::now_ms`] in every caller: recall-replay passes
     /// the REPLAYED TURN's clock here and wall-clock now there.
     pub now_ms: Option<f64>,
+    /// P4.D265 (C1 §11, v4 `recallContext.presentParticipantNames`): the names
+    /// of the characters present this turn. Accepted; honoured from P4.D267
+    /// (this round, §R.14) — v4 `memory-service.ts:771-868`. Nothing reads it
+    /// before then.
+    pub present_participant_names: Vec<String>,
 }
 
 /// A query and the vector actually embedded for it (v4 `SearchQueryEmbedding`).
@@ -380,6 +390,19 @@ pub struct SemanticSearchOptions {
     /// The `Date.now()` seam used by `calculateEffectiveWeight` (epoch millis). The
     /// blend's time-decay reads it; injected so the differential is deterministic.
     pub now_ms: f64,
+    // P4.D265 (C1 §11): the four option fields of v4 `d58548051` /
+    // `3f7320138`'s search. Each is accepted; honoured from P4.D267 (this
+    // round, §R.14) — v4 `memory-service.ts:771-868`. Nothing reads them
+    // before then; P4.D268 sets them at its call sites.
+    /// v4 `includeCold`: search both tiers (default false — hot only).
+    pub include_cold: bool,
+    /// v4 `excludeMemoryIds`: ids never returned (the frozen archive's members).
+    pub exclude_memory_ids: Vec<String>,
+    /// v4 `headSize`: the dynamic head's entry cap for this search.
+    pub head_size: Option<usize>,
+    /// v4 `weightClockMs`: the effective-weight clock when it differs from
+    /// `now_ms` (replay).
+    pub weight_clock_ms: Option<i64>,
 }
 
 /// How the vector path failed (decides the text-fallback bump semantics).
@@ -1494,7 +1517,7 @@ mod tests {
             occurredAt TEXT, narrativeTime TEXT, entities TEXT DEFAULT '[]', kind TEXT DEFAULT 'semantic',
             sourceMessageId TEXT, lastAccessedAt TEXT, reinforcementCount REAL,
             lastReinforcedAt TEXT, relatedMemoryIds TEXT, reinforcedImportance REAL,
-            createdAt TEXT, updatedAt TEXT);
+            tier TEXT DEFAULT 'hot', supersededById TEXT, consolidatedFrom TEXT DEFAULT '[]', consolidatedAt TEXT, createdAt TEXT, updatedAt TEXT);
         CREATE TABLE vector_indices (
             id TEXT PRIMARY KEY, characterId TEXT, version REAL, dimensions REAL,
             createdAt TEXT, updatedAt TEXT);
@@ -1543,6 +1566,10 @@ mod tests {
                             last_reinforced_at: None,
                             related_memory_ids: s.related.iter().map(|r| r.to_string()).collect(),
                             reinforced_importance: 0.5,
+                            tier: "hot".to_string(),
+                            superseded_by_id: None,
+                            consolidated_from: Vec::new(),
+                            consolidated_at: None,
                         },
                         &CreateOptions {
                             id: s.id.to_string(),

@@ -375,6 +375,37 @@ memory('memory-embedding-string-element', { embedding: [0.25, 'x'] });
 memory('memory-embedding-empty', { embedding: [] });
 memory('memory-embedding-number', { embedding: 5 });
 memory('memory-c6-walk', { importance: 5, kind: 'bogus-kind' });
+// P4.D265 (v4 `d58548051`): the tier tail — `tier` (enum, `.default('hot')`),
+// `supersededById` (uuid, nullable-optional), `consolidatedFrom` (uuid[],
+// `.default([])`), `consolidatedAt` (timestamp, nullable-optional) — and the
+// `CONSOLIDATED` source. A `null` tier / consolidatedFrom is REFUSED by the raw
+// schema (a default replaces `undefined` only); the repository's create
+// prefill accepts it — `memories_tier2`'s tier phase drives that through v4's
+// REAL `create`.
+memory('memory-source-consolidated', { source: 'CONSOLIDATED' });
+memory('memory-tier-cold', { tier: 'cold' });
+memory('memory-tier-warm', { tier: 'warm' });
+memory('memory-tier-null', { tier: null });
+memory('memory-tier-number', { tier: 1 });
+memory('memory-superseded-ok', { supersededById: UUID_A });
+memory('memory-superseded-null', { supersededById: null });
+memory('memory-superseded-bad', { supersededById: 'nope' });
+memory('memory-superseded-number', { supersededById: 5 });
+memory('memory-consolidated-from-ok', { source: 'CONSOLIDATED', consolidatedFrom: [UUID_A, UUID_B] });
+memory('memory-consolidated-from-null', { consolidatedFrom: null });
+memory('memory-consolidated-from-string', { consolidatedFrom: 'x' });
+memory('memory-consolidated-from-bad-element', { consolidatedFrom: [UUID_A, 'nope'] });
+memory('memory-consolidated-at-ok', { consolidatedAt: '2026-02-03T04:05:06.000Z' });
+memory('memory-consolidated-at-null', { consolidatedAt: null });
+memory('memory-consolidated-at-bad', { consolidatedAt: 'yesterday' });
+memory('memory-consolidated-at-number', { consolidatedAt: 5 });
+memory('memory-tier-multi', {
+  tier: 'x',
+  supersededById: 'y',
+  consolidatedFrom: ['z'],
+  consolidatedAt: 'w',
+  reinforcedImportance: 2,
+});
 memory('memory-multi', {
   id: 'x',
   characterId: 7,

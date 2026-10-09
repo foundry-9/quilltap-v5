@@ -84,6 +84,8 @@ pub const JOB_TYPE_ACTIVITY: &[(&str, Option<ActivityKind>)] = &[
     ("MEMORY_REGENERATE_CHAT", Some(ActivityKind::Memory)),
     ("MEMORY_REGENERATE_ALL", Some(ActivityKind::Memory)),
     ("MEMORY_HOUSEKEEPING", Some(ActivityKind::Memory)),
+    // P4.D265 (v4 `d58548051`, `activity-kinds.ts:45`).
+    ("MEMORY_CONSOLIDATION", Some(ActivityKind::Memory)),
     ("CARINA_MEMORY_EXTRACTION", Some(ActivityKind::Memory)),
     // ── Emb ──────────────────────────────────────────────────────────────────
     ("EMBEDDING_GENERATE", Some(ActivityKind::Embedding)),

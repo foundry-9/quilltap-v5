@@ -900,8 +900,13 @@ pub fn zod_store_entity_issues(
     issues
 }
 
-/// v4 `MemorySourceEnum` (`lib/schemas/memory.types.ts:21`), in schema order.
-pub const MEMORY_SOURCE: [&str; 2] = ["AUTO", "MANUAL"];
+/// v4 `MemorySourceEnum` (`lib/schemas/memory.types.ts:29`), in schema order.
+/// P4.D265 (v4 `d58548051`): `CONSOLIDATED` — a digest the consolidation job
+/// writes (the 2026-10-09 walk's 365 refused digests were this twin's
+/// two-value enum).
+pub const MEMORY_SOURCE: [&str; 3] = ["AUTO", "MANUAL", "CONSOLIDATED"];
+/// v4 `MemoryTierEnum` (`memory.types.ts:67`, `d58548051`), in schema order.
+pub const MEMORY_TIER: [&str; 2] = ["hot", "cold"];
 /// v4 `WitnessedContextEnum` (`memory.types.ts:35`).
 pub const MEMORY_WITNESSED_CONTEXT: [&str; 3] = ["user_present", "autonomous_room", "manual"];
 /// v4 `MemoryKindEnum` (`memory.types.ts:47`).
@@ -1109,6 +1114,16 @@ pub fn zod_memory_issues(row: &serde_json::Map<String, Value>) -> Vec<ZodIssue> 
     nullable_timestamp_issues(row, "lastReinforcedAt", &mut issues);
     default_string_array_issues(row, "relatedMemoryIds", true, &mut issues);
     default_ranged_number_issues(row, "reinforcedImportance", 0, 1, &mut issues);
+    // P4.D265 (v4 `d58548051`): the tier tail, in schema order —
+    // `MemoryTierEnum.default('hot')`, `UUIDSchema.nullable().optional()`,
+    // `z.array(UUIDSchema).default([])`, `TimestampSchema.nullable().optional()`.
+    // A `null` tier / consolidatedFrom FAILS here (a default replaces
+    // `undefined` only); the repository's create prefill
+    // (`parse_create_memory`) turns them into `'hot'` / `[]` first.
+    enum_issues(row, "tier", &MEMORY_TIER, false, &mut issues);
+    zod_uuid_issues(row, "supersededById", true, &mut issues);
+    default_string_array_issues(row, "consolidatedFrom", true, &mut issues);
+    nullable_timestamp_issues(row, "consolidatedAt", &mut issues);
     zod_timestamp_issues(row, "createdAt", &mut issues);
     zod_timestamp_issues(row, "updatedAt", &mut issues);
     issues

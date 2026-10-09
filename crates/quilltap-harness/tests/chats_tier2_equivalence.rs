@@ -89,6 +89,14 @@ enum Op {
         #[serde(default)]
         verdict: Option<Value>,
     },
+    /// P4.D265 (v4 `d58548051`): the OTHER-pass watermark's ONE writer, vs
+    /// v4's `chats.update(id, {otherExtractionWatermarkMessageId})`.
+    #[serde(rename = "setOtherExtractionWatermark")]
+    SetOtherExtractionWatermark {
+        id: String,
+        #[serde(default, rename = "messageId")]
+        message_id: Option<String>,
+    },
 }
 
 #[derive(Deserialize)]
@@ -376,6 +384,16 @@ fn chats_tier2_matches_oracle() {
                     ledger.push(
                         json!({ "op": "setDangerClassification", "id": id, "updated": updated }),
                     );
+                }
+                Op::SetOtherExtractionWatermark { id, message_id } => {
+                    let updated = repo
+                        .set_other_extraction_watermark(id, message_id.as_deref())
+                        .expect("setOtherExtractionWatermark");
+                    ledger.push(json!({
+                        "op": "setOtherExtractionWatermark",
+                        "id": id,
+                        "updated": updated,
+                    }));
                 }
             }
         }

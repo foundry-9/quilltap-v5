@@ -17,6 +17,7 @@
  *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
  *   cp "$V5W/harness/oracle/cases/memories-routes.test.ts" "$TMPO/cases/"
  *   cp "$V5W/harness/oracle/fixtures/memories-web.json" "$TMPO/fixtures/"
+ *   cp "$V5W/harness/oracle/fixtures/apply-memory-tiers-migration.ts" "$TMPO/fixtures/"
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_MEM_MAIN=$V5W/crates/quilltap-web/tests/fixtures/memories-main.db \
  *   QT_FIXTURE_MEM_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/memories-mount.db \
@@ -30,6 +31,10 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+
+// C1 §13 (P4.D265): v4's REAL `add-memory-tiers-v1` on the per-case copy —
+// staged beside this case (`$TMPO/fixtures/`, see the header).
+import { applyMemoryTiersMigration } from '../fixtures/apply-memory-tiers-migration';
 
 interface Spec {
   testPepperBase64: string;
@@ -190,6 +195,12 @@ async function runCase(
   const mountWork = join(work, 'mount.db');
   copyFileSync(fixtures.main, mainWork);
   copyFileSync(fixtures.mount, mountWork);
+  // P4.D265 (C1 §13): the memory-tiers columns on the ENCRYPTED per-case copy,
+  // before the case's own v4 connection opens it — the twin of the Rust side's
+  // `ensure_memory_tiers_columns`. Idempotent on the widened committed pair
+  // (§R.3); the belt for plants and future pairs. P4.D266 / P4.D269 inherit
+  // this hunk and never edit it.
+  await applyMemoryTiersMigration(mainWork, { pepperBase64: spec.testPepperBase64 });
   process.env.SQLITE_PATH = mainWork;
   process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
 

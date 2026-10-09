@@ -356,6 +356,8 @@ where
         // stands in for the wall clock.)
         current_chat_id: Some(input.chat_id.to_string()),
         now_ms: Some(input.now_ms as f64),
+        // P4.D265 (mechanical): honoured from P4.D267; P4.D268 sets it.
+        present_participant_names: Vec::new(),
     };
 
     // Retrospective turns: multi-probe (entity string; paraphrase + resolved date

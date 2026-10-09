@@ -42,6 +42,23 @@
 //! identical on both sides (and SQLite, the same engine, matches identically).
 //! ASCII LIKE is case-insensitive by default, matching the regex `'i'` flag for
 //! the ASCII corpus.
+//!
+//! ## The memory tiers (P4.D265, v4 `d58548051` / `3f7320138`)
+//!
+//! Four columns joined the row (`tier`, `supersededById`, `consolidatedFrom`,
+//! `consolidatedAt`), and v4 has THREE hot-tier semantics — each read keeps its
+//! own (§R.4(b)): [`HOT_TIER_SQL`] (`COALESCE(tier, 'hot') = 'hot'`, NULL is
+//! hot) in `find_most_important`, `find_by_character_about_characters`,
+//! `find_hot_digests` and the two counts; an EXACT `tier = 'hot'` (NULL
+//! excluded) in `find_recent_by_importance_tier` and the paginated `tier`;
+//! `tier !== 'cold'` in services. The raw-SQL reads validate their rows the way
+//! v4's `hydrateRawRows` does ([`hydrate_raw_rows`] — the Q2 measurement is
+//! recorded there). `find_by_character_id` stays UNFILTERED (backup / export /
+//! restore carry cold rows).
+//!
+//! **NO-PORT (R-E):** v4's `findSupersededBy(digestId)`
+//! (`memories.repository.ts:934-941`) has no caller anywhere in v4 at the pin
+//! (re-grepped over `lib/ app/ packages/`, 2026-10-09).
 
 use rusqlite::types::ToSql;
 use rusqlite::{Connection, Row};
@@ -52,15 +69,26 @@ use super::DbError;
 use crate::chunk::{chunk_array, SQLITE_VARIABLE_CHUNK_SIZE};
 use crate::embedding_blob::blob_to_float32;
 
-/// All `memories` columns in schema order (indices 0..=24 in [`marshal_row`]).
+/// All `memories` columns in schema order (indices 0..=28 in [`marshal_row`]).
 /// The four episodic columns (v4 8bf3cb5f) sit between `witnessedContext` and
-/// `sourceMessageId` — their generateDDL/Zod-shape position — so the marshaled
-/// key order matches v4's parsed Memory object.
+/// `sourceMessageId`, and the four tier columns (v4 `d58548051`, P4.D265)
+/// between `reinforcedImportance` and `createdAt` — their generateDDL/Zod-shape
+/// positions — so the marshaled key order matches v4's parsed Memory object.
+/// Pinned against `fresh_schema.json`'s `memories` statement by the
+/// [`alignment_census`] tests.
 const COLS: &str = "id, characterId, aboutCharacterId, chatId, projectId, content, summary, \
      keywords, tags, importance, embedding, source, witnessedContext, \
      occurredAt, narrativeTime, entities, kind, sourceMessageId, \
      lastAccessedAt, reinforcementCount, lastReinforcedAt, relatedMemoryIds, reinforcedImportance, \
+     tier, supersededById, consolidatedFrom, consolidatedAt, \
      createdAt, updatedAt";
+
+/// v4's `HOT_TIER_SQL` (`memories.repository.ts:33`, `d58548051`): a NULL
+/// tier reads HOT. One of v4's THREE hot-tier semantics (§R.4(b)) — the raw
+/// reads and the counts use this; `find_recent_by_importance_tier` and the
+/// paginated `?tier=` use an exact `tier = 'hot'` (NULL excluded); services
+/// use `tier !== 'cold'`.
+pub const HOT_TIER_SQL: &str = "COALESCE(tier, 'hot') = 'hot'";
 
 /// Insert a required (always-present) string column.
 fn put_req_str(m: &mut Map<String, Value>, key: &str, v: String) {
@@ -69,9 +97,9 @@ fn put_req_str(m: &mut Map<String, Value>, key: &str, v: String) {
 
 /// Insert a nullable-optional string column. In the normal `findByFilter` path
 /// (`keep_nulls = false`) a NULL is **omitted** (v4's `undefined` dropped by
-/// `JSON.stringify`). In the raw-SQL `findByCharacterAboutCharacters` path
-/// (`keep_nulls = true`) the rawQuery row carries an explicit `null` which
-/// `MemorySchema.safeParse` keeps for a `.nullable()` field, so we emit `null`.
+/// `JSON.stringify`). In the raw-SQL path (`keep_nulls = true`) the rawQuery
+/// row carries an explicit `null` which `MemorySchema.safeParse` keeps for a
+/// `.nullable()` field, so we emit `null`.
 fn put_nullable_str(m: &mut Map<String, Value>, key: &str, v: Option<String>, keep_nulls: bool) {
     match v {
         Some(s) => {
@@ -97,6 +125,18 @@ fn json_array_or_empty(v: Option<String>) -> Value {
     }
 }
 
+/// A JSON-array column on the RAW path (v4 `hydrateRawRows`, `:393-418`): a
+/// string cell is `JSON.parse`d — WHATEVER it parses to, the schema then
+/// judges it — and a parse failure becomes `[]`; a SQL NULL stays `null`
+/// (which the array schema then refuses, `.default([])` replacing `undefined`
+/// only).
+fn raw_json_cell(v: Option<String>) -> Value {
+    match v {
+        Some(s) => serde_json::from_str::<Value>(&s).unwrap_or_else(|_| Value::Array(Vec::new())),
+        None => Value::Null,
+    }
+}
+
 /// A present, non-empty embedding BLOB → the `Float32Array` JSON-object shape
 /// `{"0":v0,"1":v1,…}` that `JSON.stringify(Float32Array)` produces in v4.
 /// It STAYS that shape after v4 bug 181 (`039f7017c`): v4 fixed the full
@@ -115,121 +155,189 @@ fn embedding_to_value(blob: &[u8]) -> Value {
 }
 
 /// Marshal one `memories` row (column order = [`COLS`]) to the net Memory JSON.
-/// `keep_nulls` distinguishes the normal omit-NULL path from the raw-SQL
-/// keep-NULL path (see [`put_nullable_str`]).
+///
+/// `keep_nulls = false` is the `findByFilter` path: v4's `hydrateRow` maps NULL
+/// → `undefined`, so a nullable-optional key is OMITTED and a `.default()` key
+/// takes its default (`tier` → `"hot"`, `consolidatedFrom` → `[]`, `kind` →
+/// `"semantic"`). `keep_nulls = true` is the RAW path (`rawQuery` keeps SQL
+/// NULLs as `null`): every NULL cell is an explicit `null` — including the
+/// required and `.default()` ones — and the JSON-array cells are parsed as
+/// [`raw_json_cell`] does, so [`hydrate_raw_rows`] can judge the row exactly
+/// as `MemorySchema.safeParse` does.
 fn marshal_row(row: &Row, keep_nulls: bool) -> Result<Value, rusqlite::Error> {
     let mut m = Map::new();
-    put_req_str(&mut m, "id", row.get::<_, String>(0)?);
-    put_req_str(&mut m, "characterId", row.get::<_, String>(1)?);
-    put_nullable_str(
-        &mut m,
-        "aboutCharacterId",
-        row.get::<_, Option<String>>(2)?,
-        keep_nulls,
-    );
-    put_nullable_str(
-        &mut m,
-        "chatId",
-        row.get::<_, Option<String>>(3)?,
-        keep_nulls,
-    );
-    put_nullable_str(
-        &mut m,
-        "projectId",
-        row.get::<_, Option<String>>(4)?,
-        keep_nulls,
-    );
-    put_req_str(&mut m, "content", row.get::<_, String>(5)?);
-    put_req_str(&mut m, "summary", row.get::<_, String>(6)?);
-    m.insert(
-        "keywords".to_string(),
-        json_array_or_empty(row.get::<_, Option<String>>(7)?),
-    );
-    m.insert(
-        "tags".to_string(),
-        json_array_or_empty(row.get::<_, Option<String>>(8)?),
-    );
-    m.insert(
-        "importance".to_string(),
-        js_number_to_json(row.get::<_, f64>(9)?),
-    );
-    match row.get::<_, Option<Vec<u8>>>(10)? {
-        Some(blob) if !blob.is_empty() => {
-            m.insert("embedding".to_string(), embedding_to_value(&blob));
-        }
-        _ => {
+    // A required / `.default()` string column: the raw path keeps a NULL as
+    // `null` (the schema judges it); the filter path reads it as before.
+    let req_str =
+        |m: &mut Map<String, Value>, key: &str, idx: usize| -> Result<(), rusqlite::Error> {
             if keep_nulls {
-                m.insert("embedding".to_string(), Value::Null);
+                let v: Option<String> = row.get(idx)?;
+                m.insert(key.to_string(), v.map(Value::String).unwrap_or(Value::Null));
+            } else {
+                put_req_str(m, key, row.get::<_, String>(idx)?);
             }
+            Ok(())
+        };
+    let num = |m: &mut Map<String, Value>, key: &str, idx: usize| -> Result<(), rusqlite::Error> {
+        if keep_nulls {
+            let v: Option<f64> = row.get(idx)?;
+            m.insert(
+                key.to_string(),
+                v.map(js_number_to_json).unwrap_or(Value::Null),
+            );
+        } else {
+            m.insert(key.to_string(), js_number_to_json(row.get::<_, f64>(idx)?));
         }
-    }
-    put_req_str(&mut m, "source", row.get::<_, String>(11)?);
-    put_nullable_str(
-        &mut m,
-        "witnessedContext",
-        row.get::<_, Option<String>>(12)?,
-        keep_nulls,
-    );
+        Ok(())
+    };
+    let arr = |m: &mut Map<String, Value>, key: &str, idx: usize| -> Result<(), rusqlite::Error> {
+        let v: Option<String> = row.get(idx)?;
+        m.insert(
+            key.to_string(),
+            if keep_nulls {
+                raw_json_cell(v)
+            } else {
+                json_array_or_empty(v)
+            },
+        );
+        Ok(())
+    };
+    // A `.default(<v>)` string column: NULL reads `<v>` on the filter path and
+    // stays `null` (refused) on the raw path.
+    let defaulted_str = |m: &mut Map<String, Value>,
+                         key: &str,
+                         idx: usize,
+                         default: &str|
+     -> Result<(), rusqlite::Error> {
+        let v: Option<String> = row.get(idx)?;
+        m.insert(
+            key.to_string(),
+            match (v, keep_nulls) {
+                (Some(s), _) => Value::String(s),
+                (None, true) => Value::Null,
+                (None, false) => Value::String(default.to_string()),
+            },
+        );
+        Ok(())
+    };
+    // The BLOB: present and non-empty → the Float32Array object; else omitted
+    // (filter path) / `null` (raw path).
+    let embedding =
+        |m: &mut Map<String, Value>, key: &str, idx: usize| -> Result<(), rusqlite::Error> {
+            match row.get::<_, Option<Vec<u8>>>(idx)? {
+                Some(blob) if !blob.is_empty() => {
+                    m.insert(key.to_string(), embedding_to_value(&blob));
+                }
+                _ => {
+                    if keep_nulls {
+                        m.insert(key.to_string(), Value::Null);
+                    }
+                }
+            }
+            Ok(())
+        };
+    req_str(&mut m, "id", 0)?;
+    req_str(&mut m, "characterId", 1)?;
+    put_nullable_str(&mut m, "aboutCharacterId", row.get(2)?, keep_nulls);
+    put_nullable_str(&mut m, "chatId", row.get(3)?, keep_nulls);
+    put_nullable_str(&mut m, "projectId", row.get(4)?, keep_nulls);
+    req_str(&mut m, "content", 5)?;
+    req_str(&mut m, "summary", 6)?;
+    arr(&mut m, "keywords", 7)?;
+    arr(&mut m, "tags", 8)?;
+    num(&mut m, "importance", 9)?;
+    embedding(&mut m, "embedding", 10)?;
+    req_str(&mut m, "source", 11)?;
+    put_nullable_str(&mut m, "witnessedContext", row.get(12)?, keep_nulls);
     // Episodic spine (v4 8bf3cb5f): occurredAt/narrativeTime nullable-optional;
     // entities a JSON string[] (default []); kind required-with-default —
     // the column carries DEFAULT 'semantic' so NULL never occurs on a
-    // v4-migrated or v5-written row, but read defensively (Zod's
-    // `.default('semantic')` would supply it for an absent value).
-    put_nullable_str(
-        &mut m,
-        "occurredAt",
-        row.get::<_, Option<String>>(13)?,
-        keep_nulls,
-    );
-    put_nullable_str(
-        &mut m,
-        "narrativeTime",
-        row.get::<_, Option<String>>(14)?,
-        keep_nulls,
-    );
-    m.insert(
-        "entities".to_string(),
-        json_array_or_empty(row.get::<_, Option<String>>(15)?),
-    );
-    put_req_str(
-        &mut m,
-        "kind",
-        row.get::<_, Option<String>>(16)?
-            .unwrap_or_else(|| "semantic".to_string()),
-    );
-    put_nullable_str(
-        &mut m,
-        "sourceMessageId",
-        row.get::<_, Option<String>>(17)?,
-        keep_nulls,
-    );
-    put_nullable_str(
-        &mut m,
-        "lastAccessedAt",
-        row.get::<_, Option<String>>(18)?,
-        keep_nulls,
-    );
-    m.insert(
-        "reinforcementCount".to_string(),
-        js_number_to_json(row.get::<_, f64>(19)?),
-    );
-    put_nullable_str(
-        &mut m,
-        "lastReinforcedAt",
-        row.get::<_, Option<String>>(20)?,
-        keep_nulls,
-    );
-    m.insert(
-        "relatedMemoryIds".to_string(),
-        json_array_or_empty(row.get::<_, Option<String>>(21)?),
-    );
-    m.insert(
-        "reinforcedImportance".to_string(),
-        js_number_to_json(row.get::<_, f64>(22)?),
-    );
-    put_req_str(&mut m, "createdAt", row.get::<_, String>(23)?);
-    put_req_str(&mut m, "updatedAt", row.get::<_, String>(24)?);
+    // v4-migrated or v5-written row, but read defensively on the filter path
+    // (Zod's `.default('semantic')` supplies it for an `undefined`); the raw
+    // path keeps the `null` the schema refuses.
+    put_nullable_str(&mut m, "occurredAt", row.get(13)?, keep_nulls);
+    put_nullable_str(&mut m, "narrativeTime", row.get(14)?, keep_nulls);
+    arr(&mut m, "entities", 15)?;
+    defaulted_str(&mut m, "kind", 16, "semantic")?;
+    put_nullable_str(&mut m, "sourceMessageId", row.get(17)?, keep_nulls);
+    put_nullable_str(&mut m, "lastAccessedAt", row.get(18)?, keep_nulls);
+    num(&mut m, "reinforcementCount", 19)?;
+    put_nullable_str(&mut m, "lastReinforcedAt", row.get(20)?, keep_nulls);
+    arr(&mut m, "relatedMemoryIds", 21)?;
+    num(&mut m, "reinforcedImportance", 22)?;
+    // P4.D265 (v4 `d58548051`): the tier columns. `tier` is
+    // `MemoryTierEnum.default('hot')` — NULL reads `"hot"` on the filter path
+    // and stays `null` (refused) on the raw path; `consolidatedFrom` is a
+    // `.default([])` JSON array like `relatedMemoryIds`; the other two are
+    // nullable-optional.
+    defaulted_str(&mut m, "tier", 23, "hot")?;
+    put_nullable_str(&mut m, "supersededById", row.get(24)?, keep_nulls);
+    arr(&mut m, "consolidatedFrom", 25)?;
+    put_nullable_str(&mut m, "consolidatedAt", row.get(26)?, keep_nulls);
+    req_str(&mut m, "createdAt", 27)?;
+    req_str(&mut m, "updatedAt", 28)?;
     Ok(Value::Object(m))
+}
+
+/// v4 `hydrateRawRows(rows, context)` (`memories.repository.ts:393-418`, R-D —
+/// measured at the pin, keystone survey Q2): the three RAW-SQL reads
+/// (`find_most_important` `most-important fetch`, `find_hot_digests` `hot
+/// digest fetch`, `find_by_character_about_characters` `partition fetch`)
+/// validate each row through `MemorySchema.safeParse` over its RAW cells — SQL
+/// NULLs as `null` ([`marshal_row`]'s keep-NULL path) — and DROP a failing row
+/// with WARN `` `Memory failed validation in ${context}` `` `{memoryId, error}`
+/// (`error` = the `ZodError.message` bytes). Zod 4's `.default()` replaces
+/// `undefined` only, so a `tier IS NULL` / `consolidatedFrom IS NULL` row (and
+/// any NULL `kind` / `source` / numeric cell) passes the SQL hot predicate and
+/// is then dropped here, where the `findByFilter` reads keep it with the
+/// default. MEASURED at `01a83539d`: a tier-NULL row and a
+/// consolidatedFrom-NULL row are dropped by all three raw reads (`invalid_value`
+/// enum / `invalid_type` array); `find_recent_by_importance_tier`'s exact
+/// `tier = 'hot'` EXCLUDES the tier-NULL row and KEEPS the
+/// consolidatedFrom-NULL one with `[]`; the paginated list (no `tier`) and
+/// `find_by_character_id` KEEP both, read as `'hot'` / `[]`.
+///
+/// The `embedding` BLOB is v4's `z.instanceof(Buffer)` union arm — always
+/// valid — so it is left out of the validated bag. A passing row is emitted as
+/// marshaled (explicit `null`s kept for the nullable keys — the parsed shape).
+fn hydrate_raw_rows(rows: Vec<Value>, context: &str) -> Vec<Value> {
+    use crate::api::zod_issues::{zod_error_message, zod_memory_issues};
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        let Some(obj) = row.as_object() else { continue };
+        let mut bag = obj.clone();
+        bag.remove("embedding");
+        let issues = zod_memory_issues(&bag);
+        if issues.is_empty() {
+            out.push(row);
+        } else {
+            let memory_id = obj.get("id").and_then(Value::as_str).unwrap_or_default();
+            tracing::warn!(
+                target: "quilltap::db",
+                memoryId = %memory_id,
+                error = %zod_error_message(&issues),
+                "Memory failed validation in {}",
+                context
+            );
+        }
+    }
+    out
+}
+
+/// Run a raw-path SELECT (keep-NULL marshaling) — the rows
+/// [`hydrate_raw_rows`] judges.
+fn query_raw_memories(
+    conn: &Connection,
+    sql: &str,
+    params: &[&dyn ToSql],
+) -> Result<Vec<Value>, DbError> {
+    let mut stmt = conn.prepare(sql)?;
+    let rows = stmt.query_map(params, |r| marshal_row(r, true))?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
 }
 
 /// Run a SELECT that returns full memory rows ([`COLS`] order) and marshal each
@@ -380,6 +488,10 @@ pub struct PaginateOptions<'a> {
     pub search: Option<&'a str>,
     pub source: Option<&'a str>,
     pub min_importance: Option<f64>,
+    /// P4.D265 (v4 `d58548051`): restrict to one tier — an EXACT `tier = ?`
+    /// (v4's `filter.tier = tier` through `findByFilter`), so a NULL-tier row
+    /// is in neither tier's listing. `None` lists both.
+    pub tier: Option<&'a str>,
 }
 
 /// Restrict a caller-supplied sort column to a known identifier (v4 interpolates
@@ -395,56 +507,72 @@ fn safe_sort_col(sort_by: &str) -> &'static str {
 }
 
 /// `findByCharacterIdPaginated` — SQL-filter by `characterId` (+ optional
-/// `source` / `importance >= min`), sort, fetch ALL, then in-memory `search`
-/// filter (lowercase `includes` on content/summary/keywords), `totalCount` after
-/// filter, `slice(offset, offset+limit)`. Returns `(page, totalCount)`.
+/// `source` / `importance >= min` / exact `tier`), sort, fetch ALL, then
+/// in-memory `search` filter (lowercase `includes` on content/summary/keywords),
+/// `totalCount` after filter, `slice(offset, offset+limit)`. Returns `(page,
+/// totalCount)`.
+///
+/// P4.D265 (R-I): v4's fallback contract. The body's read is a `findByFilter`
+/// (a fallback itself): outside the strict scope a failed read logs `Error
+/// finding entities by filter` and the page is `{memories: [], totalCount:
+/// 0}`; inside it that line rethrows and the method's own `Error finding
+/// paginated memories for character {characterId, limit, offset}` follows,
+/// both `strictFailures=true`, and the `Err` propagates.
 pub fn find_by_character_id_paginated(
     conn: &Connection,
     character_id: &str,
     opts: &PaginateOptions<'_>,
 ) -> Result<(Vec<Value>, i64), DbError> {
-    let mut where_clause = String::from("WHERE characterId = ?");
-    let mut params: Vec<Box<dyn ToSql>> = vec![Box::new(character_id.to_string())];
-    if let Some(src) = opts.source {
-        where_clause.push_str(" AND source = ?");
-        params.push(Box::new(src.to_string()));
-    }
-    if let Some(min) = opts.min_importance {
-        where_clause.push_str(" AND importance >= ?");
-        params.push(Box::new(min));
-    }
-    let dir = if opts.sort_order == "desc" {
-        "DESC"
-    } else {
-        "ASC"
-    };
-    let where_order = format!(
-        "{where_clause} ORDER BY {} {dir}",
-        safe_sort_col(opts.sort_by)
-    );
-    let param_refs: Vec<&dyn ToSql> = params.iter().map(|b| b.as_ref()).collect();
-    let all = query_memories(conn, &where_order, &param_refs)?;
+    super::fallback::paginated_memories_or_empty(character_id, opts.limit, opts.offset, || {
+        let all = super::fallback::find_by_filter_strict_aware("memories", || {
+            let mut where_clause = String::from("WHERE characterId = ?");
+            let mut params: Vec<Box<dyn ToSql>> = vec![Box::new(character_id.to_string())];
+            if let Some(src) = opts.source {
+                where_clause.push_str(" AND source = ?");
+                params.push(Box::new(src.to_string()));
+            }
+            if let Some(min) = opts.min_importance {
+                where_clause.push_str(" AND importance >= ?");
+                params.push(Box::new(min));
+            }
+            if let Some(tier) = opts.tier {
+                where_clause.push_str(" AND tier = ?");
+                params.push(Box::new(tier.to_string()));
+            }
+            let dir = if opts.sort_order == "desc" {
+                "DESC"
+            } else {
+                "ASC"
+            };
+            let where_order = format!(
+                "{where_clause} ORDER BY {} {dir}",
+                safe_sort_col(opts.sort_by)
+            );
+            let param_refs: Vec<&dyn ToSql> = params.iter().map(|b| b.as_ref()).collect();
+            query_memories(conn, &where_order, &param_refs)
+        })?;
 
-    let filtered: Vec<Value> = match opts.search {
-        Some(search) if !search.is_empty() => {
-            let needle = search.to_lowercase();
-            all.into_iter()
-                .filter(|m| memory_matches_search(m, &needle))
-                .collect()
-        }
-        _ => all,
-    };
-    let total = filtered.len() as i64;
-    let start = opts.offset.max(0) as usize;
-    let end = start
-        .saturating_add(opts.limit.max(0) as usize)
-        .min(filtered.len());
-    let page = if start >= filtered.len() {
-        Vec::new()
-    } else {
-        filtered[start..end].to_vec()
-    };
-    Ok((page, total))
+        let filtered: Vec<Value> = match opts.search {
+            Some(search) if !search.is_empty() => {
+                let needle = search.to_lowercase();
+                all.into_iter()
+                    .filter(|m| memory_matches_search(m, &needle))
+                    .collect()
+            }
+            _ => all,
+        };
+        let total = filtered.len() as i64;
+        let start = opts.offset.max(0) as usize;
+        let end = start
+            .saturating_add(opts.limit.max(0) as usize)
+            .min(filtered.len());
+        let page = if start >= filtered.len() {
+            Vec::new()
+        } else {
+            filtered[start..end].to_vec()
+        };
+        Ok((page, total))
+    })
 }
 
 /// In-memory search predicate: lowercase `includes` on content, summary, or any
@@ -527,22 +655,54 @@ pub fn find_recent(
     )
 }
 
-/// `findMostImportant` — sort `importance` DESC, limit.
+/// v4 `findMostImportant` (`memories.repository.ts:361-389`, F4 `3f7320138` +
+/// the hot predicate `d58548051`): a character's HOT memories (NULL tier reads
+/// hot — [`HOT_TIER_SQL`]) ranked `reinforcedImportance DESC,
+/// COALESCE(lastReinforcedAt, createdAt) DESC, id ASC`, `LIMIT`. `limit <= 0`
+/// → `[]` before any query (and no line). Raw SQL → the keep-NULL rows go
+/// through [`hydrate_raw_rows`] (`most-important fetch`), then DEBUG `Fetched
+/// most important memories {characterId, limit, returned}`. A failed read is
+/// v4's fallback: ERROR `Error finding most important memories {characterId,
+/// limit}` and `[]` (strict-aware, R-I).
 pub fn find_most_important(
     conn: &Connection,
     character_id: &str,
     limit: i64,
 ) -> Result<Vec<Value>, DbError> {
-    query_memories(
-        conn,
-        "WHERE characterId = ?1 ORDER BY importance DESC LIMIT ?2",
-        &[&character_id, &limit],
-    )
+    super::fallback::most_important_memories_or_empty(character_id, limit, || {
+        if limit <= 0 {
+            return Ok(Vec::new());
+        }
+        let sql = format!(
+            "SELECT {COLS} FROM memories \
+             WHERE characterId = ? AND {HOT_TIER_SQL} \
+             ORDER BY reinforcedImportance DESC, COALESCE(lastReinforcedAt, createdAt) DESC, id ASC \
+             LIMIT ?"
+        );
+        let rows = query_raw_memories(conn, &sql, &[&character_id, &limit])?;
+        let memories = hydrate_raw_rows(rows, "most-important fetch");
+        tracing::debug!(
+            target: "quilltap::db",
+            characterId = %character_id,
+            limit = limit,
+            returned = memories.len(),
+            "Fetched most important memories"
+        );
+        Ok(memories)
+    })
 }
 
 /// `findRecentByImportanceTier` — high (`≥0.7`, limit), medium (`≥0.3` then
 /// in-memory `< 0.7` on `reinforcedImportance ?? importance`, take), low
 /// (`<0.3`, limit). Returns `(high, medium, low)`.
+///
+/// P4.D265 (v4 `d58548051`): every leg gains `tier: 'hot'` — an EXACT
+/// `tier = 'hot'` through `findByFilter` (NOT [`HOT_TIER_SQL`]), so a NULL-tier
+/// row is EXCLUDED here (measured). Each leg is v4's own 4-argument fallback
+/// around a `findByFilter` (itself a fallback): outside the strict scope a
+/// failed leg logs `Error finding entities by filter` and answers `[]`; inside
+/// it the leg's own `Error finding <high|medium|low>-importance memories
+/// {characterId, limit}` follows and the `Err` propagates (R-I).
 #[allow(clippy::type_complexity)]
 pub fn find_recent_by_importance_tier(
     conn: &Connection,
@@ -551,35 +711,60 @@ pub fn find_recent_by_importance_tier(
     medium_limit: i64,
     low_limit: i64,
 ) -> Result<(Vec<Value>, Vec<Value>, Vec<Value>), DbError> {
+    use super::fallback::{
+        find_by_filter_strict_aware, importance_tier_leg_or_empty, ImportanceTierLeg,
+    };
     let thresh_high = 0.7_f64;
     let thresh_med = 0.3_f64;
-    let high = query_memories(
-        conn,
-        "WHERE characterId = ?1 AND importance >= ?2 ORDER BY createdAt DESC LIMIT ?3",
-        &[&character_id, &thresh_high, &high_limit],
+    let high =
+        importance_tier_leg_or_empty(ImportanceTierLeg::High, character_id, high_limit, || {
+            find_by_filter_strict_aware("memories", || {
+                query_memories(
+                    conn,
+                    "WHERE characterId = ?1 AND tier = 'hot' AND importance >= ?2 \
+                 ORDER BY createdAt DESC LIMIT ?3",
+                    &[&character_id, &thresh_high, &high_limit],
+                )
+            })
+        })?;
+    let medium = importance_tier_leg_or_empty(
+        ImportanceTierLeg::Medium,
+        character_id,
+        medium_limit,
+        || {
+            let all_above_low = find_by_filter_strict_aware("memories", || {
+                query_memories(
+                    conn,
+                    "WHERE characterId = ?1 AND tier = 'hot' AND importance >= ?2 \
+                     ORDER BY createdAt DESC",
+                    &[&character_id, &thresh_med],
+                )
+            })?;
+            Ok(all_above_low
+                .into_iter()
+                .filter(|m| {
+                    let eff = m
+                        .get("reinforcedImportance")
+                        .and_then(Value::as_f64)
+                        .or_else(|| m.get("importance").and_then(Value::as_f64))
+                        .unwrap_or(0.0);
+                    eff < 0.7
+                })
+                .take(medium_limit.max(0) as usize)
+                .collect())
+        },
     )?;
-    let all_above_low = query_memories(
-        conn,
-        "WHERE characterId = ?1 AND importance >= ?2 ORDER BY createdAt DESC",
-        &[&character_id, &thresh_med],
-    )?;
-    let medium: Vec<Value> = all_above_low
-        .into_iter()
-        .filter(|m| {
-            let eff = m
-                .get("reinforcedImportance")
-                .and_then(Value::as_f64)
-                .or_else(|| m.get("importance").and_then(Value::as_f64))
-                .unwrap_or(0.0);
-            eff < 0.7
-        })
-        .take(medium_limit.max(0) as usize)
-        .collect();
-    let low = query_memories(
-        conn,
-        "WHERE characterId = ?1 AND importance < ?2 ORDER BY createdAt DESC LIMIT ?3",
-        &[&character_id, &thresh_med, &low_limit],
-    )?;
+    let low =
+        importance_tier_leg_or_empty(ImportanceTierLeg::Low, character_id, low_limit, || {
+            find_by_filter_strict_aware("memories", || {
+                query_memories(
+                    conn,
+                    "WHERE characterId = ?1 AND tier = 'hot' AND importance < ?2 \
+                 ORDER BY createdAt DESC LIMIT ?3",
+                    &[&character_id, &thresh_med, &low_limit],
+                )
+            })
+        })?;
     Ok((high, medium, low))
 }
 
@@ -599,37 +784,44 @@ pub fn find_by_character_about_character(
 /// `findByCharacterAboutCharacters` — the window-function partition cap. Verbatim
 /// v4 SQL (ROW_NUMBER over `aboutCharacterId`, ranked by importance then
 /// `COALESCE(lastReinforcedAt, createdAt)`), `rn <= limitPerCharacter`.
+///
+/// P4.D265 (v4 `d58548051`): the CTE's WHERE gains [`HOT_TIER_SQL`] (the ORDER
+/// BY is unchanged — F4 did not touch it); `rn` is stripped (v4 deletes it) and
+/// the rows go through [`hydrate_raw_rows`] (`partition fetch`). A failed read
+/// is v4's fallback: ERROR `Error finding memories about characters
+/// {characterId, aboutCharacterCount, limitPerCharacter}` and `[]` (R-I).
 pub fn find_by_character_about_characters(
     conn: &Connection,
     character_id: &str,
     about_character_ids: &[String],
     limit_per_character: i64,
 ) -> Result<Vec<Value>, DbError> {
-    if about_character_ids.is_empty() || limit_per_character <= 0 {
-        return Ok(Vec::new());
-    }
-    let placeholders = about_character_ids
-        .iter()
-        .map(|_| "?")
-        .collect::<Vec<_>>()
-        .join(", ");
-    let sql = format!(
-        "WITH ranked AS (\n  SELECT {COLS},\n    ROW_NUMBER() OVER (\n      PARTITION BY aboutCharacterId\n      ORDER BY importance DESC,\n               COALESCE(lastReinforcedAt, createdAt) DESC\n    ) AS rn\n  FROM memories\n  WHERE characterId = ?\n    AND aboutCharacterId IN ({placeholders})\n)\nSELECT {COLS} FROM ranked WHERE rn <= ?"
-    );
-    let mut params: Vec<&dyn ToSql> = Vec::with_capacity(2 + about_character_ids.len());
-    params.push(&character_id);
-    for a in about_character_ids {
-        params.push(a);
-    }
-    params.push(&limit_per_character);
-    let mut stmt = conn.prepare(&sql)?;
-    // Raw-SQL path: rawQuery rows carry explicit NULLs which `safeParse` keeps.
-    let rows = stmt.query_map(params.as_slice(), |r| marshal_row(r, true))?;
-    let mut out = Vec::new();
-    for r in rows {
-        out.push(r?);
-    }
-    Ok(out)
+    super::fallback::memories_about_characters_or_empty(
+        character_id,
+        about_character_ids.len(),
+        limit_per_character,
+        || {
+            if about_character_ids.is_empty() || limit_per_character <= 0 {
+                return Ok(Vec::new());
+            }
+            let placeholders = about_character_ids
+                .iter()
+                .map(|_| "?")
+                .collect::<Vec<_>>()
+                .join(", ");
+            let sql = format!(
+                "WITH ranked AS (\n  SELECT {COLS},\n    ROW_NUMBER() OVER (\n      PARTITION BY aboutCharacterId\n      ORDER BY importance DESC,\n               COALESCE(lastReinforcedAt, createdAt) DESC\n    ) AS rn\n  FROM memories\n  WHERE characterId = ?\n    AND aboutCharacterId IN ({placeholders})\n    AND {HOT_TIER_SQL}\n)\nSELECT {COLS} FROM ranked WHERE rn <= ?"
+            );
+            let mut params: Vec<&dyn ToSql> = Vec::with_capacity(2 + about_character_ids.len());
+            params.push(&character_id);
+            for a in about_character_ids {
+                params.push(a);
+            }
+            params.push(&limit_per_character);
+            let rows = query_raw_memories(conn, &sql, params.as_slice())?;
+            Ok(hydrate_raw_rows(rows, "partition fetch"))
+        },
+    )
 }
 
 pub fn find_by_chat_id(conn: &Connection, chat_id: &str) -> Result<Vec<Value>, DbError> {
@@ -786,6 +978,146 @@ fn filter_truthy(v: Option<&str>) -> Option<&str> {
 
 pub fn count_by_character_id(conn: &Connection, character_id: &str) -> Result<i64, DbError> {
     query_count(conn, "WHERE characterId = ?1", &[&character_id])
+}
+
+// ============================================================================
+// Tiers and consolidation (P4.D265 — v4 `d58548051`, `memories.repository.ts:
+// 758-966`). Each a 4-argument FALLBACK `safeQuery` over a raw read — v4's
+// fallback value with its ERROR line, strict-aware (R-I).
+// ============================================================================
+
+/// v4 `countHotByCharacterId` (`:758-771`): `SELECT COUNT(*) AS n FROM
+/// memories WHERE characterId = ? AND` [`HOT_TIER_SQL`] — the number the
+/// housekeeping cap and the consolidation watermark are measured against.
+pub fn count_hot_by_character_id(conn: &Connection, character_id: &str) -> Result<i64, DbError> {
+    super::fallback::hot_memory_count_or_zero(character_id, || {
+        query_count(
+            conn,
+            &format!("WHERE characterId = ?1 AND {HOT_TIER_SQL}"),
+            &[&character_id],
+        )
+    })
+}
+
+/// v4 `countUnconsideredHot` (`:777-794`): hot, non-digest rows the
+/// consolidator has never considered (`consolidatedAt IS NULL AND source !=
+/// 'CONSOLIDATED'`) — the watermark trigger's count.
+pub fn count_unconsidered_hot(conn: &Connection, character_id: &str) -> Result<i64, DbError> {
+    super::fallback::unconsidered_hot_count_or_zero(character_id, || {
+        query_count(
+            conn,
+            &format!(
+                "WHERE characterId = ?1 AND {HOT_TIER_SQL} AND consolidatedAt IS NULL \
+                 AND source != 'CONSOLIDATED'"
+            ),
+            &[&character_id],
+        )
+    })
+}
+
+/// v4 `findColdIdsByCharacterId` (`:801-814`): `SELECT id FROM memories WHERE
+/// characterId = ? AND tier = 'cold'` — the vector store's tier stamp source.
+pub fn find_cold_ids_by_character_id(
+    conn: &Connection,
+    character_id: &str,
+) -> Result<Vec<String>, DbError> {
+    super::fallback::cold_memory_ids_or_empty(character_id, || {
+        query_ids(
+            conn,
+            "SELECT id FROM memories WHERE characterId = ?1 AND tier = 'cold'",
+            &[&character_id],
+        )
+    })
+}
+
+/// The subject bucket of [`find_hot_digests`] — v4's `subject: string | 'self'
+/// | 'any'`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DigestSubject {
+    /// Digests about the holder (`aboutCharacterId = characterId`).
+    SelfSubject,
+    /// Every hot digest (no subject clause).
+    Any,
+    /// Digests about this character id.
+    About(String),
+}
+
+impl DigestSubject {
+    /// v4's rendering in the ERROR line's `subject` field: `self` / `any` /
+    /// the id.
+    pub fn as_log_str(&self) -> &str {
+        match self {
+            DigestSubject::SelfSubject => "self",
+            DigestSubject::Any => "any",
+            DigestSubject::About(id) => id,
+        }
+    }
+}
+
+/// v4 `findHotDigests(characterId, subject, limit)` (`:824-860`): a
+/// character's HOT digests (`source = 'CONSOLIDATED'` AND [`HOT_TIER_SQL`]),
+/// best first `reinforcedImportance DESC, COALESCE(lastReinforcedAt,
+/// createdAt) DESC, id ASC`, `LIMIT`. `limit <= 0` → `[]` (no query). Raw rows
+/// through [`hydrate_raw_rows`] (`hot digest fetch`).
+pub fn find_hot_digests(
+    conn: &Connection,
+    character_id: &str,
+    subject: DigestSubject,
+    limit: i64,
+) -> Result<Vec<Value>, DbError> {
+    super::fallback::hot_digests_or_empty(character_id, subject.as_log_str(), limit, || {
+        if limit <= 0 {
+            return Ok(Vec::new());
+        }
+        let (subject_sql, subject_param): (&str, Option<&str>) = match &subject {
+            DigestSubject::SelfSubject => (" AND aboutCharacterId = ?", Some(character_id)),
+            DigestSubject::Any => ("", None),
+            DigestSubject::About(id) => (" AND aboutCharacterId = ?", Some(id.as_str())),
+        };
+        let sql = format!(
+            "SELECT {COLS} FROM memories \
+             WHERE characterId = ? AND source = 'CONSOLIDATED' AND {HOT_TIER_SQL}{subject_sql} \
+             ORDER BY reinforcedImportance DESC, COALESCE(lastReinforcedAt, createdAt) DESC, id ASC \
+             LIMIT ?"
+        );
+        let mut params: Vec<&dyn ToSql> = vec![&character_id];
+        if let Some(p) = &subject_param {
+            params.push(p);
+        }
+        params.push(&limit);
+        let rows = query_raw_memories(conn, &sql, &params)?;
+        Ok(hydrate_raw_rows(rows, "hot digest fetch"))
+    })
+}
+
+/// v4 `findExpiredColdIds(characterId, olderThan)` (`:947-965`): superseded,
+/// cold, non-MANUAL rows last touched before `olderThan` (a STRING compare on
+/// `updatedAt`) — the only rows `coldRetentionDays` may delete. CONSOLIDATED
+/// rows are included (`source != 'MANUAL'`, §R.4(e)).
+pub fn find_expired_cold_ids(
+    conn: &Connection,
+    character_id: &str,
+    older_than: &str,
+) -> Result<Vec<String>, DbError> {
+    super::fallback::expired_cold_ids_or_empty(character_id, older_than, || {
+        query_ids(
+            conn,
+            "SELECT id FROM memories WHERE characterId = ?1 AND tier = 'cold' \
+             AND supersededById IS NOT NULL AND source != 'MANUAL' AND updatedAt < ?2",
+            &[&character_id, &older_than],
+        )
+    })
+}
+
+/// Run a `SELECT id FROM memories …` and collect the ids.
+fn query_ids(conn: &Connection, sql: &str, params: &[&dyn ToSql]) -> Result<Vec<String>, DbError> {
+    let mut stmt = conn.prepare(sql)?;
+    let rows = stmt.query_map(params, |r| r.get::<_, String>(0))?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
 }
 
 /// `countCreatedSince` — `{ characterId, createdAt: { $gte: since } }`.
@@ -1140,5 +1472,133 @@ mod tests {
         });
         assert!(out.is_empty());
         assert!(lines.is_empty(), "no ids, no query, no line: {lines:?}");
+    }
+}
+
+// ============================================================================
+// The index↔column alignment census (P4.D265 — the `chats_read` shape)
+// ============================================================================
+
+#[cfg(test)]
+mod alignment_census {
+    use super::COLS;
+
+    /// This file's own source: [`super::marshal_row`] reads by POSITION, and
+    /// every statement in it names its JSON key right before its column index
+    /// (`req_str(&mut m, "id", 0)`, `put_nullable_str(&mut m, "chatId",
+    /// row.get(3)?, …)`), so the census pairs each index with that key.
+    const SOURCE: &str = include_str!("memories_read.rs");
+
+    /// The D23 dump — the single source of truth for the `memories` DDL.
+    const FRESH_SCHEMA: &str = include_str!("../services/provisioning/fresh_schema.json");
+
+    fn marshal_row_body() -> String {
+        let start = SOURCE
+            .find("fn marshal_row(row: &Row, keep_nulls: bool)")
+            .expect("marshal_row is defined in this file");
+        let open = start + SOURCE[start..].find('{').expect("marshal_row has a body");
+        let mut depth = 0usize;
+        let mut end = None;
+        for (offset, ch) in SOURCE[open..].char_indices() {
+            match ch {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = Some(open + offset);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        SOURCE[open..end.expect("balanced braces")]
+            .lines()
+            .map(|line| match line.find("//") {
+                Some(at) => &line[..at],
+                None => line,
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// Every `"<key>", <N>` / `"<key>", row.get(<N>)` pairing, in source order.
+    fn key_index_pairs() -> Vec<(usize, String)> {
+        let body = marshal_row_body();
+        let mut pairs = Vec::new();
+        let mut rest = body.as_str();
+        while let Some(q) = rest.find('"') {
+            let after = &rest[q + 1..];
+            let Some(close) = after.find('"') else { break };
+            let key = &after[..close];
+            let tail = after[close + 1..].trim_start();
+            if let Some(tail) = tail.strip_prefix(',') {
+                let tail = tail.trim_start();
+                let tail = tail.strip_prefix("row.get(").unwrap_or(tail);
+                let digits: String = tail.chars().take_while(char::is_ascii_digit).collect();
+                if !digits.is_empty()
+                    && key.chars().all(|c| c.is_ascii_alphanumeric())
+                    && key.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+                {
+                    pairs.push((digits.parse().unwrap(), key.to_string()));
+                }
+            }
+            rest = &after[close + 1..];
+        }
+        pairs
+    }
+
+    fn schema_columns() -> Vec<String> {
+        let schema: serde_json::Value =
+            serde_json::from_str(FRESH_SCHEMA).expect("fresh_schema.json parses");
+        let ddl = schema["main"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .find(|s| s.starts_with("CREATE TABLE \"memories\" ("))
+            .expect("the dump carries the memories DDL");
+        let inner = &ddl[ddl.find('(').unwrap() + 1..ddl.rfind(')').unwrap()];
+        inner
+            .lines()
+            .filter_map(|line| {
+                let t = line.trim();
+                t.strip_prefix('"')
+                    .and_then(|r| r.find('"').map(|e| r[..e].to_string()))
+            })
+            .collect()
+    }
+
+    fn selected_columns() -> Vec<String> {
+        COLS.split(',')
+            .map(|c| c.trim().to_string())
+            .filter(|c| !c.is_empty())
+            .collect()
+    }
+
+    /// `COLS` is EXACTLY the D23 dump's `memories` column list, in its order
+    /// (29 columns at `01a83539d`) — the marshaled key order is v4's parsed
+    /// Memory order because the two coincide.
+    #[test]
+    fn cols_is_the_d23_dump_memories_column_list_in_order() {
+        assert_eq!(selected_columns(), schema_columns());
+        assert_eq!(selected_columns().len(), 29);
+    }
+
+    /// …and every index `marshal_row` reads marshals the column at that
+    /// position under its own name. Swapping two indices reddens this.
+    #[test]
+    fn marshal_row_reads_each_column_at_its_own_index() {
+        let cols = selected_columns();
+        let pairs = key_index_pairs();
+        let mut indices: Vec<usize> = pairs.iter().map(|(i, _)| *i).collect();
+        indices.sort_unstable();
+        assert_eq!(indices, (0..cols.len()).collect::<Vec<_>>(), "{pairs:?}");
+        for (index, key) in &pairs {
+            assert_eq!(key, &cols[*index], "index {index}");
+        }
+        // Source order is schema order too (the JSON key order).
+        let in_order: Vec<usize> = pairs.iter().map(|(i, _)| *i).collect();
+        assert_eq!(in_order, (0..cols.len()).collect::<Vec<_>>());
     }
 }

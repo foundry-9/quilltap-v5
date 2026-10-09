@@ -2609,6 +2609,8 @@ where
                 // guard. (v4 passes `Date.now()`; the injected seam stands in.)
                 current_chat_id: Some(input.chat.id.clone()),
                 now_ms: Some(now_ms_f),
+                // P4.D265 (mechanical): honoured from P4.D267; P4.D268 sets it.
+                present_participant_names: Vec::new(),
             };
             // Retrospective multi-probe (mirrors the proactive path in
             // `pre_compute::proactive_recall_task`, now ported — P4.19).
@@ -4772,14 +4774,16 @@ mod inter_character_log_tests {
         let path = dir.path().join("quilltap.db");
         {
             let w = crate::db::Writer::open_writable(&path, PEPPER).expect("writable open");
+            // UUIDs throughout: P4.D265's raw reads validate every row through
+            // v4's `MemorySchema` (R-D), which drops a non-UUID id as v4 does.
             for i in 0..n {
                 w.connection()
                     .execute(
                         "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, \
-                         importance, createdAt, updatedAt) VALUES (?, 'char-a', 'char-b', ?, ?, ?, \
+                         importance, createdAt, updatedAt) VALUES (?, '11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222', ?, ?, ?, \
                          '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
                         rusqlite::params![
-                            format!("mem-{i}"),
+                            format!("33333333-3333-4333-8333-{i:012}"),
                             // Long enough that the inter-character budget cannot
                             // fit them all — that is what makes `includedCount`
                             // differ from `loadedCount`.
@@ -4824,13 +4828,19 @@ mod inter_character_log_tests {
     /// participant map and the message view) or none at all.
     fn a_turn(multi: bool, skip_memories: bool) -> BuildContextInput {
         let mut pcs: HashMap<String, ContextCharacter> = HashMap::new();
-        pcs.insert("char-a".to_string(), character("char-a", "Lyra"));
-        pcs.insert("char-b".to_string(), character("char-b", "Marek"));
+        pcs.insert(
+            "11111111-1111-4111-8111-111111111111".to_string(),
+            character("11111111-1111-4111-8111-111111111111", "Lyra"),
+        );
+        pcs.insert(
+            "22222222-2222-4222-8222-222222222222".to_string(),
+            character("22222222-2222-4222-8222-222222222222", "Marek"),
+        );
 
         BuildContextInput {
             model_context_limit: 32_000,
             user_id: "user".to_string(),
-            character: character("char-a", "Lyra"),
+            character: character("11111111-1111-4111-8111-111111111111", "Lyra"),
             user_character: None,
             chat: ContextChat {
                 id: "chat-1".to_string(),
@@ -4854,8 +4864,8 @@ mod inter_character_log_tests {
             }),
             all_participants: multi.then(|| {
                 vec![
-                    participant("participant-a", "char-a"),
-                    participant("participant-b", "char-b"),
+                    participant("participant-a", "11111111-1111-4111-8111-111111111111"),
+                    participant("participant-b", "22222222-2222-4222-8222-222222222222"),
                 ]
             }),
             participant_characters: multi.then_some(pcs),
@@ -4938,7 +4948,7 @@ mod inter_character_log_tests {
         assert!(line.starts_with("DEBUG quilltap::build_context"), "{line}");
         for field in [
             "chat_id=chat-1",
-            "character_id=char-a",
+            "character_id=11111111-1111-4111-8111-111111111111",
             "duration_ms=",
             &format!("loaded_count={INTER_CHAR_PER_CHARACTER_LIMIT}"),
             "included_count=",

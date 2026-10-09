@@ -17,6 +17,7 @@
 use rusqlite::{params, Connection};
 
 use super::DbError;
+use crate::api::zod_issues::ZodIssue;
 
 /// The `instance_settings` key that stores the Quilltap General mount-point id.
 const KEY_GENERAL_MOUNT_POINT_ID: &str = "generalMountPointId";
@@ -664,6 +665,627 @@ pub fn get_last_maintenance_sweep_at(main: &Connection) -> Result<Option<i64>, D
 /// regardless of per-sweep failures ("last attempted pass").
 pub fn set_last_maintenance_sweep_at(main: &Connection, when_iso: &str) -> Result<(), DbError> {
     write_setting(main, KEY_LAST_MAINTENANCE_SWEEP_AT, when_iso)
+}
+
+// ============================================================================
+// P4.D265 (v4 `d58548051`) — the two memory-programme settings:
+// `memoryConsolidation` and `memoryExtractionMode`
+// (`lib/schemas/settings.types.ts:219-262`, `lib/instance-settings/index.ts`).
+// The accessors and the Zod twin only; what the settings DO is P4.D270's /
+// P4.D271's, and the routes' `.partial()` semantics (v4's clobber, §R.4(c))
+// are P4.D271's.
+// ============================================================================
+
+/// v4 `KEY_MEMORY_CONSOLIDATION` (`index.ts:43`).
+pub const KEY_MEMORY_CONSOLIDATION: &str = "memoryConsolidation";
+/// v4 `KEY_MEMORY_EXTRACTION_MODE` (`index.ts:44`).
+pub const KEY_MEMORY_EXTRACTION_MODE: &str = "memoryExtractionMode";
+
+/// v4 `MemoryExtractionModeSettingsSchema.otherPass`'s enum, in schema order.
+pub const MEMORY_EXTRACTION_OTHER_PASS: [&str; 3] = ["turn", "fold", "hybrid"];
+
+/// v4 `MemoryConsolidationSettings` — the consolidation job's controls.
+/// Declaration order = wire order = v4's schema key order.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MemoryConsolidationSettings {
+    /// Master switch for the scheduled sweep and the watermark trigger.
+    pub enabled: bool,
+    /// Connection profile for the consolidation call; `None` → the cheap LLM.
+    pub connection_profile_id: Option<String>,
+    /// Cosine similarity at which two memories join a cluster (`0..=1`).
+    pub cluster_threshold: f64,
+    /// Smallest cluster worth a digest (int `>= 2`).
+    pub min_cluster_size: i64,
+    /// Largest cluster handed to one call (int `>= 2`).
+    pub max_cluster_size: i64,
+    /// Rows younger than this many days are left alone (`>= 0`).
+    pub mature_after_days: f64,
+    /// Upper bound on consolidation calls per run (int `> 0`).
+    pub max_clusters_per_run: i64,
+    /// Enqueue a run once this many hot rows were never considered (int `> 0`).
+    pub watermark: i64,
+    /// Delete superseded cold non-MANUAL rows older than this many days; `None`
+    /// → never delete (int `> 0` or null).
+    pub cold_retention_days: Option<i64>,
+}
+
+impl Default for MemoryConsolidationSettings {
+    /// v4 `MemoryConsolidationSettingsSchema.parse({})` (`index.ts:96-97`).
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            connection_profile_id: None,
+            cluster_threshold: 0.72,
+            min_cluster_size: 3,
+            max_cluster_size: 30,
+            mature_after_days: 7.0,
+            max_clusters_per_run: 40,
+            watermark: 150,
+            cold_retention_days: None,
+        }
+    }
+}
+
+impl MemoryConsolidationSettings {
+    /// v4's stored / returned JSON (`JSON.stringify(validated)`): declaration
+    /// order, `null` for the two nullables, numbers JS-rendered.
+    pub fn to_json(&self) -> serde_json::Value {
+        let mut m = serde_json::Map::new();
+        m.insert("enabled".into(), serde_json::Value::Bool(self.enabled));
+        m.insert(
+            "connectionProfileId".into(),
+            self.connection_profile_id
+                .clone()
+                .map(serde_json::Value::String)
+                .unwrap_or(serde_json::Value::Null),
+        );
+        m.insert(
+            "clusterThreshold".into(),
+            super::js_number_to_json(self.cluster_threshold),
+        );
+        m.insert("minClusterSize".into(), self.min_cluster_size.into());
+        m.insert("maxClusterSize".into(), self.max_cluster_size.into());
+        m.insert(
+            "matureAfterDays".into(),
+            super::js_number_to_json(self.mature_after_days),
+        );
+        m.insert("maxClustersPerRun".into(), self.max_clusters_per_run.into());
+        m.insert("watermark".into(), self.watermark.into());
+        m.insert(
+            "coldRetentionDays".into(),
+            self.cold_retention_days
+                .map(serde_json::Value::from)
+                .unwrap_or(serde_json::Value::Null),
+        );
+        serde_json::Value::Object(m)
+    }
+}
+
+/// The `.partial()` input of [`MemoryConsolidationSettings`] — every field
+/// optional, the two nullables `Option<Option<…>>` (`Some(None)` = an explicit
+/// `null`). What it MEANS when merged is P4.D271's (v4's clobber).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct MemoryConsolidationSettingsInput {
+    pub enabled: Option<bool>,
+    pub connection_profile_id: Option<Option<String>>,
+    pub cluster_threshold: Option<f64>,
+    pub min_cluster_size: Option<i64>,
+    pub max_cluster_size: Option<i64>,
+    pub mature_after_days: Option<f64>,
+    pub max_clusters_per_run: Option<i64>,
+    pub watermark: Option<i64>,
+    pub cold_retention_days: Option<Option<i64>>,
+}
+
+impl MemoryConsolidationSettingsInput {
+    /// The present keys, in declaration order — a patch for
+    /// [`set_memory_consolidation_settings`].
+    pub fn to_patch_json(&self) -> serde_json::Value {
+        let mut m = serde_json::Map::new();
+        if let Some(v) = self.enabled {
+            m.insert("enabled".into(), v.into());
+        }
+        if let Some(v) = &self.connection_profile_id {
+            m.insert("connectionProfileId".into(), v.clone().into());
+        }
+        if let Some(v) = self.cluster_threshold {
+            m.insert("clusterThreshold".into(), super::js_number_to_json(v));
+        }
+        if let Some(v) = self.min_cluster_size {
+            m.insert("minClusterSize".into(), v.into());
+        }
+        if let Some(v) = self.max_cluster_size {
+            m.insert("maxClusterSize".into(), v.into());
+        }
+        if let Some(v) = self.mature_after_days {
+            m.insert("matureAfterDays".into(), super::js_number_to_json(v));
+        }
+        if let Some(v) = self.max_clusters_per_run {
+            m.insert("maxClustersPerRun".into(), v.into());
+        }
+        if let Some(v) = self.watermark {
+            m.insert("watermark".into(), v.into());
+        }
+        if let Some(v) = self.cold_retention_days {
+            m.insert("coldRetentionDays".into(), v.into());
+        }
+        serde_json::Value::Object(m)
+    }
+}
+
+/// v4 `MemoryExtractionModeSettings` — the grain of the extractor's OTHER pass.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MemoryExtractionModeSettings {
+    /// `'turn'` | `'fold'` | `'hybrid'`.
+    pub other_pass: String,
+    /// Per-turn OTHER candidates below this importance are dropped in
+    /// `'hybrid'` (`0..=1`).
+    pub per_turn_other_floor: f64,
+    /// Fold-grain OTHER candidates kept per (observer, subject) (int `> 0`).
+    pub fold_candidates_per_subject: i64,
+}
+
+impl Default for MemoryExtractionModeSettings {
+    /// v4 `MemoryExtractionModeSettingsSchema.parse({})` (`index.ts:98-99`).
+    fn default() -> Self {
+        Self {
+            other_pass: "hybrid".to_string(),
+            per_turn_other_floor: 0.75,
+            fold_candidates_per_subject: 3,
+        }
+    }
+}
+
+impl MemoryExtractionModeSettings {
+    /// v4's stored / returned JSON, declaration order.
+    pub fn to_json(&self) -> serde_json::Value {
+        let mut m = serde_json::Map::new();
+        m.insert("otherPass".into(), self.other_pass.clone().into());
+        m.insert(
+            "perTurnOtherFloor".into(),
+            super::js_number_to_json(self.per_turn_other_floor),
+        );
+        m.insert(
+            "foldCandidatesPerSubject".into(),
+            self.fold_candidates_per_subject.into(),
+        );
+        serde_json::Value::Object(m)
+    }
+}
+
+/// The `.partial()` input of [`MemoryExtractionModeSettings`].
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct MemoryExtractionModeSettingsInput {
+    pub other_pass: Option<String>,
+    pub per_turn_other_floor: Option<f64>,
+    pub fold_candidates_per_subject: Option<i64>,
+}
+
+impl MemoryExtractionModeSettingsInput {
+    /// The present keys, in declaration order.
+    pub fn to_patch_json(&self) -> serde_json::Value {
+        let mut m = serde_json::Map::new();
+        if let Some(v) = &self.other_pass {
+            m.insert("otherPass".into(), v.clone().into());
+        }
+        if let Some(v) = self.per_turn_other_floor {
+            m.insert("perTurnOtherFloor".into(), super::js_number_to_json(v));
+        }
+        if let Some(v) = self.fold_candidates_per_subject {
+            m.insert("foldCandidatesPerSubject".into(), v.into());
+        }
+        serde_json::Value::Object(m)
+    }
+}
+
+/// One Zod 4 number field check, issues pushed in Zod's order. `int` is
+/// `.int()` (the integer gate ABORTS — `1.5` answers one issue; the
+/// safe-integer bounds then the range checks CONTINUE); `min` is `(bound,
+/// inclusive)` — `.positive()` is `(0, false)`; `max` is inclusive. `None`
+/// answer → the field failed (absent is the caller's arm).
+fn zod_number_field(
+    got: &serde_json::Value,
+    k: &str,
+    int: bool,
+    min: Option<(f64, bool)>,
+    max: Option<f64>,
+    issues: &mut Vec<ZodIssue>,
+) -> Option<f64> {
+    use crate::api::zod_issues::{key, MAX_SAFE_INTEGER};
+    let at = || vec![key(k)];
+    let Some(n) = got.as_f64() else {
+        issues.push(ZodIssue::invalid_type("number", at(), Some(got)));
+        return None;
+    };
+    let before = issues.len();
+    if int {
+        if n.fract() != 0.0 {
+            issues.push(ZodIssue::invalid_int_type(at(), Some(got)));
+            return None;
+        }
+        if n > MAX_SAFE_INTEGER {
+            issues.push(ZodIssue::too_big_int(at()));
+        } else if n < -MAX_SAFE_INTEGER {
+            issues.push(ZodIssue::too_small_int(at()));
+        }
+    }
+    if let Some((bound, inclusive)) = min {
+        let fails = if inclusive { n < bound } else { n <= bound };
+        if fails {
+            let minimum = super::js_number_to_json(bound);
+            issues.push(if inclusive {
+                ZodIssue::too_small_number(minimum, at())
+            } else {
+                ZodIssue::TooSmall {
+                    origin: "number",
+                    code: "too_small",
+                    message: format!("Too small: expected number to be >{minimum}"),
+                    minimum,
+                    inclusive: false,
+                    path: at(),
+                }
+            });
+        }
+    }
+    if let Some(bound) = max {
+        if n > bound {
+            issues.push(ZodIssue::too_big_number(
+                super::js_number_to_json(bound),
+                at(),
+            ));
+        }
+    }
+    (issues.len() == before).then_some(n)
+}
+
+/// v4 `MemoryConsolidationSettingsSchema.safeParse` — the parsed settings or
+/// Zod's issue list in schema key order (every field checked; a non-object
+/// root is ONE `invalid_type object` issue at `[]`). Every bound and byte is a
+/// recorded row of `memory_settings_schemas_equivalence` (v4's REAL schema).
+pub fn parse_memory_consolidation_settings(
+    value: &serde_json::Value,
+) -> Result<MemoryConsolidationSettings, Vec<ZodIssue>> {
+    use crate::api::zod_issues::key;
+    let Some(obj) = value.as_object() else {
+        return Err(vec![ZodIssue::invalid_type("object", vec![], Some(value))]);
+    };
+    let mut issues = Vec::new();
+    let mut out = MemoryConsolidationSettings::default();
+    match obj.get("enabled") {
+        None => {}
+        Some(serde_json::Value::Bool(b)) => out.enabled = *b,
+        got => issues.push(ZodIssue::invalid_type("boolean", vec![key("enabled")], got)),
+    }
+    match obj.get("connectionProfileId") {
+        None | Some(serde_json::Value::Null) => {}
+        Some(serde_json::Value::String(s)) => out.connection_profile_id = Some(s.clone()),
+        got => issues.push(ZodIssue::invalid_type(
+            "string",
+            vec![key("connectionProfileId")],
+            got,
+        )),
+    }
+    if let Some(v) = obj.get("clusterThreshold") {
+        if let Some(n) = zod_number_field(
+            v,
+            "clusterThreshold",
+            false,
+            Some((0.0, true)),
+            Some(1.0),
+            &mut issues,
+        ) {
+            out.cluster_threshold = n;
+        }
+    }
+    if let Some(v) = obj.get("minClusterSize") {
+        if let Some(n) = zod_number_field(
+            v,
+            "minClusterSize",
+            true,
+            Some((2.0, true)),
+            None,
+            &mut issues,
+        ) {
+            out.min_cluster_size = n as i64;
+        }
+    }
+    if let Some(v) = obj.get("maxClusterSize") {
+        if let Some(n) = zod_number_field(
+            v,
+            "maxClusterSize",
+            true,
+            Some((2.0, true)),
+            None,
+            &mut issues,
+        ) {
+            out.max_cluster_size = n as i64;
+        }
+    }
+    if let Some(v) = obj.get("matureAfterDays") {
+        if let Some(n) = zod_number_field(
+            v,
+            "matureAfterDays",
+            false,
+            Some((0.0, true)),
+            None,
+            &mut issues,
+        ) {
+            out.mature_after_days = n;
+        }
+    }
+    if let Some(v) = obj.get("maxClustersPerRun") {
+        if let Some(n) = zod_number_field(
+            v,
+            "maxClustersPerRun",
+            true,
+            Some((0.0, false)),
+            None,
+            &mut issues,
+        ) {
+            out.max_clusters_per_run = n as i64;
+        }
+    }
+    if let Some(v) = obj.get("watermark") {
+        if let Some(n) =
+            zod_number_field(v, "watermark", true, Some((0.0, false)), None, &mut issues)
+        {
+            out.watermark = n as i64;
+        }
+    }
+    match obj.get("coldRetentionDays") {
+        None | Some(serde_json::Value::Null) => {}
+        Some(v) => {
+            if let Some(n) = zod_number_field(
+                v,
+                "coldRetentionDays",
+                true,
+                Some((0.0, false)),
+                None,
+                &mut issues,
+            ) {
+                out.cold_retention_days = Some(n as i64);
+            }
+        }
+    }
+    if issues.is_empty() {
+        Ok(out)
+    } else {
+        Err(issues)
+    }
+}
+
+/// v4 `MemoryExtractionModeSettingsSchema.safeParse` — as
+/// [`parse_memory_consolidation_settings`].
+pub fn parse_memory_extraction_mode_settings(
+    value: &serde_json::Value,
+) -> Result<MemoryExtractionModeSettings, Vec<ZodIssue>> {
+    use crate::api::zod_issues::key;
+    let Some(obj) = value.as_object() else {
+        return Err(vec![ZodIssue::invalid_type("object", vec![], Some(value))]);
+    };
+    let mut issues = Vec::new();
+    let mut out = MemoryExtractionModeSettings::default();
+    match obj.get("otherPass") {
+        None => {}
+        Some(serde_json::Value::String(s))
+            if MEMORY_EXTRACTION_OTHER_PASS.contains(&s.as_str()) =>
+        {
+            out.other_pass = s.clone()
+        }
+        Some(_) => issues.push(ZodIssue::invalid_value(
+            &MEMORY_EXTRACTION_OTHER_PASS,
+            vec![key("otherPass")],
+        )),
+    }
+    if let Some(v) = obj.get("perTurnOtherFloor") {
+        if let Some(n) = zod_number_field(
+            v,
+            "perTurnOtherFloor",
+            false,
+            Some((0.0, true)),
+            Some(1.0),
+            &mut issues,
+        ) {
+            out.per_turn_other_floor = n;
+        }
+    }
+    if let Some(v) = obj.get("foldCandidatesPerSubject") {
+        if let Some(n) = zod_number_field(
+            v,
+            "foldCandidatesPerSubject",
+            true,
+            Some((0.0, false)),
+            None,
+            &mut issues,
+        ) {
+            out.fold_candidates_per_subject = n as i64;
+        }
+    }
+    if issues.is_empty() {
+        Ok(out)
+    } else {
+        Err(issues)
+    }
+}
+
+/// `{...current, ...patch}` over two JSON objects (a non-object patch spreads
+/// no schema key — its index keys, if any, are stripped by the parse).
+fn merge_patch(current: serde_json::Value, patch: &serde_json::Value) -> serde_json::Value {
+    let mut merged = match current {
+        serde_json::Value::Object(m) => m,
+        _ => serde_json::Map::new(),
+    };
+    if let Some(p) = patch.as_object() {
+        for (k, v) in p {
+            merged.insert(k.clone(), v.clone());
+        }
+    }
+    serde_json::Value::Object(merged)
+}
+
+/// v4 `getMemoryConsolidationSettings()` (`index.ts:245-251`): unwritten →
+/// the defaults SILENTLY; a stored value that fails `JSON.parse` or the schema
+/// → the defaults with v4's WARN `[InstanceSettings] memoryConsolidation failed
+/// to parse — using defaults` `{error}` ([`read_json_setting`]).
+pub fn get_memory_consolidation_settings(main: &Connection) -> MemoryConsolidationSettings {
+    read_json_setting(
+        main,
+        KEY_MEMORY_CONSOLIDATION,
+        |v| parse_memory_consolidation_settings(v).ok(),
+        MemoryConsolidationSettings::default,
+    )
+}
+
+/// v4 `setMemoryConsolidationSettings(value)` (`index.ts:253-261`): read the
+/// current settings, merge `{...current, ...patch}`, validate
+/// (`writeJsonSetting`'s `schema.parse` — a failure is `Err` carrying the
+/// `ZodError.message` bytes, unreachable from v4's route, which pre-parses the
+/// patch), store `JSON.stringify(validated)` in schema key order, answer the
+/// validated settings.
+pub fn set_memory_consolidation_settings(
+    main: &Connection,
+    patch: &serde_json::Value,
+) -> Result<MemoryConsolidationSettings, DbError> {
+    let merged = merge_patch(get_memory_consolidation_settings(main).to_json(), patch);
+    let validated = parse_memory_consolidation_settings(&merged)
+        .map_err(|issues| DbError::Internal(crate::api::zod_issues::zod_error_message(&issues)))?;
+    write_setting(
+        main,
+        KEY_MEMORY_CONSOLIDATION,
+        &validated.to_json().to_string(),
+    )?;
+    Ok(validated)
+}
+
+/// v4 `getMemoryExtractionModeSettings()` (`index.ts:267-273`) — as
+/// [`get_memory_consolidation_settings`].
+pub fn get_memory_extraction_mode_settings(main: &Connection) -> MemoryExtractionModeSettings {
+    read_json_setting(
+        main,
+        KEY_MEMORY_EXTRACTION_MODE,
+        |v| parse_memory_extraction_mode_settings(v).ok(),
+        MemoryExtractionModeSettings::default,
+    )
+}
+
+/// v4 `setMemoryExtractionModeSettings(value)` (`index.ts:275-283`) — as
+/// [`set_memory_consolidation_settings`].
+pub fn set_memory_extraction_mode_settings(
+    main: &Connection,
+    patch: &serde_json::Value,
+) -> Result<MemoryExtractionModeSettings, DbError> {
+    let merged = merge_patch(get_memory_extraction_mode_settings(main).to_json(), patch);
+    let validated = parse_memory_extraction_mode_settings(&merged)
+        .map_err(|issues| DbError::Internal(crate::api::zod_issues::zod_error_message(&issues)))?;
+    write_setting(
+        main,
+        KEY_MEMORY_EXTRACTION_MODE,
+        &validated.to_json().to_string(),
+    )?;
+    Ok(validated)
+}
+
+#[cfg(test)]
+mod memory_programme_settings_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn conn() -> Connection {
+        let c = Connection::open_in_memory().unwrap();
+        c.execute_batch(
+            "CREATE TABLE \"instance_settings\" (\"key\" TEXT PRIMARY KEY, \"value\" TEXT NOT NULL)",
+        )
+        .unwrap();
+        c
+    }
+
+    #[test]
+    fn defaults_are_v4s_parse_of_an_empty_object() {
+        let c = conn();
+        assert_eq!(
+            get_memory_consolidation_settings(&c).to_json().to_string(),
+            r#"{"enabled":false,"connectionProfileId":null,"clusterThreshold":0.72,"minClusterSize":3,"maxClusterSize":30,"matureAfterDays":7,"maxClustersPerRun":40,"watermark":150,"coldRetentionDays":null}"#
+        );
+        assert_eq!(
+            get_memory_extraction_mode_settings(&c)
+                .to_json()
+                .to_string(),
+            r#"{"otherPass":"hybrid","perTurnOtherFloor":0.75,"foldCandidatesPerSubject":3}"#
+        );
+    }
+
+    #[test]
+    fn a_round_trip_merges_and_stores_schema_order() {
+        let c = conn();
+        let s = set_memory_consolidation_settings(
+            &c,
+            &json!({"coldRetentionDays": 14, "enabled": true}),
+        )
+        .unwrap();
+        assert_eq!(s.cold_retention_days, Some(14));
+        let s = set_memory_consolidation_settings(&c, &json!({"coldRetentionDays": null})).unwrap();
+        assert_eq!(s.cold_retention_days, None);
+        assert!(s.enabled, "the earlier write survives the merge");
+        let stored: String = c
+            .query_row(
+                "SELECT value FROM instance_settings WHERE key = 'memoryConsolidation'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            stored,
+            r#"{"enabled":true,"connectionProfileId":null,"clusterThreshold":0.72,"minClusterSize":3,"maxClusterSize":30,"matureAfterDays":7,"maxClustersPerRun":40,"watermark":150,"coldRetentionDays":null}"#
+        );
+    }
+
+    #[test]
+    fn refusals_carry_v4s_issue_bytes() {
+        let issues = parse_memory_consolidation_settings(&json!({"watermark": 0})).unwrap_err();
+        assert_eq!(
+            serde_json::to_string(&issues).unwrap(),
+            r#"[{"origin":"number","code":"too_small","minimum":0,"inclusive":false,"path":["watermark"],"message":"Too small: expected number to be >0"}]"#
+        );
+        let issues =
+            parse_memory_consolidation_settings(&json!({"minClusterSize": 1.5})).unwrap_err();
+        assert_eq!(
+            serde_json::to_string(&issues).unwrap(),
+            r#"[{"expected":"int","format":"safeint","code":"invalid_type","path":["minClusterSize"],"message":"Invalid input: expected int, received number"}]"#
+        );
+        let issues =
+            parse_memory_extraction_mode_settings(&json!({"otherPass": "bogus"})).unwrap_err();
+        assert_eq!(
+            serde_json::to_string(&issues).unwrap(),
+            r#"[{"code":"invalid_value","values":["turn","fold","hybrid"],"path":["otherPass"],"message":"Invalid option: expected one of \"turn\"|\"fold\"|\"hybrid\""}]"#
+        );
+        let c = conn();
+        let err = set_memory_consolidation_settings(&c, &json!({"watermark": 0})).unwrap_err();
+        assert!(err.to_string().starts_with("[\n  {\n"), "{err}");
+    }
+
+    #[test]
+    fn a_corrupt_stored_value_reads_the_defaults_with_v4s_warn() {
+        let c = conn();
+        c.execute(
+            "INSERT INTO instance_settings (key, value) VALUES ('memoryExtractionMode', '{nope')",
+            [],
+        )
+        .unwrap();
+        let (s, lines) =
+            crate::test_support::captured_with(|| get_memory_extraction_mode_settings(&c));
+        assert_eq!(s, MemoryExtractionModeSettings::default());
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(
+            lines[0].contains(
+                "[InstanceSettings] memoryExtractionMode failed to parse — using defaults"
+            ),
+            "{lines:?}"
+        );
+        // Unwritten: the defaults, silently.
+        let (_, lines) =
+            crate::test_support::captured_with(|| get_memory_consolidation_settings(&c));
+        assert!(lines.is_empty(), "{lines:?}");
+    }
 }
 
 #[cfg(test)]

@@ -16,6 +16,13 @@
  * `<ts>` (a row left at the sentinel proves it was NOT touched). This case emits
  * the raw (un-collapsed) dump.
  *
+ * P4.D265 (v4 `3f7320138` F8): the chokepoint's lines are captured too (a
+ * transport spliced into the singleton logger) and emitted as `lines: [{level,
+ * message, fields}]` in op order — the batch line now carries `countSource`
+ * (`repository` on every parent-side call this oracle makes; the child's
+ * `resolved-ids` arm is unreachable here and is a v5 unit pin). `durationMs`
+ * is real wall-clock on both sides — the Rust harness normalizes it.
+ *
  * Run (Node 24, from the v4 checkout), AFTER building the fixture:
  *   N=~/.nvm/versions/node/v24.13.1/bin
  *   cd ~/source/quilltap-server
@@ -61,7 +68,25 @@ async function main(): Promise<void> {
   process.env.SQLITE_PATH = work;
   process.env.QUILLTAP_DATA_DIR = scratch;
   delete process.env.SQLITE_WAL_MODE;
-  process.env.LOG_LEVEL = 'error';
+  process.env.LOG_LEVEL = 'debug';
+
+  const CAPTURED = new Set([
+    '[MemoryGate] deleteMemoryWithUnlink complete',
+    '[MemoryGate] deleteMemoryWithUnlink touched an unusually large neighbour set',
+    '[MemoryGate] deleteMemoriesWithUnlinkBatch complete',
+    '[MemoryGate] deleteMemoriesWithUnlinkBatch touched an unusually large neighbour set',
+  ]);
+  const { logger } = await import('@/lib/logger');
+  const lines: Array<{ level: string; message: string; fields: Record<string, unknown> }> = [];
+  const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
+  internal.transports.splice(0, internal.transports.length, {
+    write: (d: unknown) => {
+      const data = d as { level: string; message: string; context?: Record<string, unknown> };
+      if (!CAPTURED.has(data.message)) return;
+      const { service: _s, environment: _e, ...fields } = data.context ?? {};
+      lines.push({ level: data.level, message: data.message, fields });
+    },
+  });
 
   const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
   const { deleteMemoryWithUnlink, deleteMemoriesWithUnlinkBatch } = await import(
@@ -91,7 +116,7 @@ async function main(): Promise<void> {
   await closeDatabase();
 
   const dump = canonicalizeRows({ table: 'memories', columns, rawRows, orderBy: 'id' });
-  process.stdout.write(JSON.stringify({ case: 'memory-delete-tier2', ...dump }) + '\n');
+  process.stdout.write(JSON.stringify({ case: 'memory-delete-tier2', ...dump, lines }) + '\n');
   process.exit(0);
 }
 

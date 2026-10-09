@@ -34,6 +34,7 @@
 //!   cp "$V5W/harness/oracle/cases/memories-routes.test.ts" "$TMPO/cases/"
 //!   cp "$V5W/harness/oracle/cases/memories-config.test.ts" "$TMPO/cases/"
 //!   cp "$V5W/harness/oracle/fixtures/memories-web.json" "$TMPO/fixtures/"
+//!   cp "$V5W/harness/oracle/fixtures/apply-memory-tiers-migration.ts" "$TMPO/fixtures/"
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_MEM_MAIN=$V5W/crates/quilltap-web/tests/fixtures/memories-main.db \
 //!   QT_FIXTURE_MEM_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/memories-mount.db \
@@ -273,6 +274,11 @@ fn fresh_db(spec: &Spec, tag: &str) -> ScratchDb {
         let w = quilltap_core::db::Writer::open_writable(&main, &spec.test_pepper_base64)
             .expect("open the fixture copy writable to heal it");
         quilltap_core::test_support::ensure_p4d171_columns(w.connection());
+        // P4.D265 (C1 §13): the memory-tiers columns — the twin of the oracle
+        // case's `applyMemoryTiersMigration` on ITS per-case copy. Idempotent on
+        // the widened committed pair (§R.3). P4.D266 / P4.D269 inherit this
+        // hunk and never edit it.
+        quilltap_core::test_support::ensure_memory_tiers_columns(w.connection());
     }
     let db = Db::open(
         DbPaths {

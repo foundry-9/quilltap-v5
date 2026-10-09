@@ -190,6 +190,21 @@ pub fn ensure_wear_ledger_on(conn: &rusqlite::Connection) {
         .expect("ensure the wardrobe wear ledger table on a test fixture");
 }
 
+/// C1 §2 (P4.D265): heal a fixture's main partition with v4's
+/// `add-memory-tiers-v1` (`d58548051`) — the four `memories` tier columns, the
+/// `(characterId, tier)` index, the NULL-tier heal and
+/// `chats.otherExtractionWatermarkMessageId` — through the REAL boot ensure
+/// (`db::memory_tiers_repair::ensure_memory_tiers`), so the healed copy is
+/// exactly what a booted pre-round instance carries. The Rust twin of the
+/// oracle helper `harness/oracle/fixtures/apply-memory-tiers-migration.ts`
+/// (C1 §13). The committed `*-main.db` pairs are WIDENED in place (§R.3), so
+/// this is for BUILDER outputs and in-case PLANTS; idempotent — harmless on a
+/// widened copy or a table-less partition.
+pub fn ensure_memory_tiers_columns(conn: &rusqlite::Connection) {
+    crate::db::memory_tiers_repair::ensure_memory_tiers(conn)
+        .expect("ensure the memory-tiers columns on a test fixture");
+}
+
 /// `job_runner.rs`'s holdout idiom: a process-global subscriber, armed once,
 /// with a per-thread buffer — see the module doc for why this is a
 /// genuinely different contract from [`captured`], not a copy that drifted.

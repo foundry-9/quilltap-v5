@@ -632,7 +632,8 @@ pub fn jobs_list(
     }
 }
 
-/// v4's `BackgroundJobTypeEnum` (23 values) — the enqueue type gate.
+/// v4's `BackgroundJobTypeEnum` (25 values at `01a83539d`, in v4's enum order)
+/// — the enqueue type gate.
 pub const JOB_TYPES: &[&str] = &[
     "MEMORY_EXTRACTION",
     "INTER_CHARACTER_MEMORY",
@@ -650,6 +651,8 @@ pub const JOB_TYPES: &[&str] = &[
     "WARDROBE_ITEM_IMAGE_GENERATION",
     "CONVERSATION_RENDER",
     "MEMORY_HOUSEKEEPING",
+    // P4.D265 (v4 `d58548051`, `job.types.ts:37`).
+    "MEMORY_CONSOLIDATION",
     "MEMORY_REGENERATE_CHAT",
     "MEMORY_REGENERATE_ALL",
     "WARDROBE_OUTFIT_ANNOUNCEMENT",

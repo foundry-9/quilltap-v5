@@ -273,6 +273,24 @@
           "updatedAt": "2026-01-01T00:00:00.000Z"
         }
       ]
+    },
+    {
+      "id": "c0000008-0000-4000-8000-000000000008",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Watermarked Salon",
+      "createdAt": "2026-01-02T00:00:00.000Z",
+      "updatedAt": "2026-01-02T00:00:00.000Z",
+      "chatType": "salon",
+      "participants": []
+    },
+    {
+      "id": "c0000009-0000-4000-8000-000000000009",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Unwatermarked Salon",
+      "createdAt": "2026-01-02T00:00:00.000Z",
+      "updatedAt": "2026-01-02T00:00:00.000Z",
+      "chatType": "salon",
+      "participants": []
     }
   ],
   "queries": [
@@ -341,6 +359,30 @@
       "characterId": "aaaa1111-1111-4111-8111-111111111111",
       "limit": 10,
       "excludeChatId": "c0000004-0000-4000-8000-000000000004"
+    },
+    {
+      "kind": "findById",
+      "id": "c0000008-0000-4000-8000-000000000008"
+    },
+    {
+      "kind": "findById",
+      "id": "c0000009-0000-4000-8000-000000000009"
+    }
+  ],
+  "updates": [
+    {
+      "id": "c0000008-0000-4000-8000-000000000008",
+      "data": {
+        "otherExtractionWatermarkMessageId": "d2650000-0000-4000-8000-0000000000e8"
+      },
+      "comment": "P4.D265 (v4 d58548051): the watermark set through v4's REAL chats.update (updatedAt preserved)"
+    },
+    {
+      "id": "c0000009-0000-4000-8000-000000000009",
+      "data": {
+        "otherExtractionWatermarkMessageId": null
+      },
+      "comment": "\u2026and explicitly null (omitted on read)"
     }
   ]
 }

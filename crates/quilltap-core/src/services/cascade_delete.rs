@@ -369,8 +369,8 @@ pub fn execute_cascade_delete(
             .iter()
             .filter_map(|m| m.get("id").and_then(Value::as_str).map(str::to_string))
             .collect();
-        deleted_memories =
-            crate::db::memories::MemoriesRepository::new(main).delete_many_with_unlink(&ids)?;
+        deleted_memories = crate::db::memories::MemoriesRepository::new(main)
+            .delete_many_with_unlink(&ids, crate::db::memories::CountSource::Repository)?;
     }
 
     // Vector index (embeddings).

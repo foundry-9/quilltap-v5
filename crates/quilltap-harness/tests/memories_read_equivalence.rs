@@ -12,6 +12,12 @@
 //! v4 drives the real repository methods (see the oracle). Each query yields a
 //! single JSON `result` Value of the kind-appropriate shape.
 //!
+//! P4.D265 (v4 `d58548051` / `3f7320138`): the tier corpus — a third character
+//! (cold rows, digests, the F4 tie rows, two planted NULL rows) — the five new
+//! reads, the paginated `tier`, and per query the raw-path lines (`Fetched most
+//! important memories`, `Memory failed validation in <context>`), compared
+//! line for line through the thread-scoped capture rig.
+//!
 //! Generate the oracle output + fixture (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   cd ~/source/quilltap-server
@@ -89,12 +95,51 @@ struct Query {
     low: Option<i64>,
     #[serde(default, rename = "chatIds")]
     chat_ids: Option<Vec<String>>,
+    // P4.D265
+    #[serde(default)]
+    tier: Option<String>,
+    #[serde(default)]
+    subject: Option<String>,
+    #[serde(default, rename = "olderThan")]
+    older_than: Option<String>,
 }
 
 #[derive(Deserialize)]
 struct OracleQuery {
     kind: String,
     result: Value,
+    /// P4.D265: v4's raw-path lines for this query (`Fetched most important
+    /// memories`, `Memory failed validation in <context>`).
+    #[serde(default)]
+    lines: Vec<OracleLine>,
+}
+
+#[derive(Deserialize)]
+struct OracleLine {
+    level: String,
+    message: String,
+    fields: serde_json::Map<String, Value>,
+}
+
+/// The messages the oracle captures (its `CAPTURED_PREFIXES`).
+const CAPTURED_PREFIXES: [&str; 2] = [
+    "Fetched most important memories",
+    "Memory failed validation in ",
+];
+
+/// v4's line rendered as v5's capture rig renders the port's: `LEVEL
+/// quilltap::db <message> k=v …`, fields in v4's key order, strings bare,
+/// numbers as JSON (JS) renders them.
+fn expected_line(l: &OracleLine) -> String {
+    let mut out = format!("{} quilltap::db {}", l.level.to_uppercase(), l.message);
+    for (k, v) in &l.fields {
+        let rendered = match v {
+            Value::String(s) => s.clone(),
+            other => other.to_string(),
+        };
+        out.push_str(&format!(" {k}={rendered}"));
+    }
+    out
 }
 #[derive(Deserialize)]
 struct Oracle {
@@ -136,6 +181,7 @@ fn run_query(writer: &Writer, q: &Query) -> Value {
                 search: q.search.as_deref(),
                 source: q.source.as_deref(),
                 min_importance: q.min_importance,
+                tier: q.tier.as_deref(),
             };
             let (page, total) = mr::find_by_character_id_paginated(conn, cid(), &opts)
                 .expect("findByCharacterIdPaginated");
@@ -264,6 +310,31 @@ fn run_query(writer: &Writer, q: &Query) -> Value {
             )
             .expect("searchByContentAboutCharacter"),
         ),
+        // === P4.D265 (v4 `d58548051`) ===
+        "findHotDigests" => {
+            let subject = match q.subject.as_deref().unwrap() {
+                "self" => mr::DigestSubject::SelfSubject,
+                "any" => mr::DigestSubject::Any,
+                id => mr::DigestSubject::About(id.to_string()),
+            };
+            Value::Array(
+                mr::find_hot_digests(conn, cid(), subject, q.limit.unwrap())
+                    .expect("findHotDigests"),
+            )
+        }
+        "countHotByCharacterId" => {
+            Value::from(mr::count_hot_by_character_id(conn, cid()).expect("countHotByCharacterId"))
+        }
+        "countUnconsideredHot" => {
+            Value::from(mr::count_unconsidered_hot(conn, cid()).expect("countUnconsideredHot"))
+        }
+        "findColdIdsByCharacterId" => Value::from(
+            mr::find_cold_ids_by_character_id(conn, cid()).expect("findColdIdsByCharacterId"),
+        ),
+        "findExpiredColdIds" => Value::from(
+            mr::find_expired_cold_ids(conn, cid(), q.older_than.as_deref().unwrap())
+                .expect("findExpiredColdIds"),
+        ),
         other => panic!("unknown query kind: {other}"),
     }
 }
@@ -330,9 +401,22 @@ fn memories_read_matches_oracle() {
         "query count: spec vs oracle"
     );
 
+    let mut lines_compared = 0usize;
     for (i, q) in queries.iter().enumerate() {
-        let got = run_query(&writer, q);
+        let (got, lines) = quilltap_core::test_support::captured_with(|| run_query(&writer, q));
         let oq = &oracle.queries[i];
+        // P4.D265: the raw-path lines, query by query.
+        let got_lines: Vec<String> = lines
+            .into_iter()
+            .filter(|l| CAPTURED_PREFIXES.iter().any(|p| l.contains(p)))
+            .collect();
+        let want_lines: Vec<String> = oq.lines.iter().map(expected_line).collect();
+        assert_eq!(
+            got_lines, want_lines,
+            "query {i} ({}): lines diverged",
+            q.kind
+        );
+        lines_compared += want_lines.len();
         assert_eq!(oq.kind, q.kind, "query {i}: kind mismatch");
         assert_eq!(
             got,
@@ -344,8 +428,12 @@ fn memories_read_matches_oracle() {
         );
     }
 
+    assert!(
+        lines_compared > 0,
+        "the oracle carried no raw-path line — the capture never compared anything"
+    );
     eprintln!(
-        "OK: memories read matched oracle ({} queries).",
+        "OK: memories read matched oracle ({} queries, {lines_compared} lines).",
         queries.len()
     );
 }

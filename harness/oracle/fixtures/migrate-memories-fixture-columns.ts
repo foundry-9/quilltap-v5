@@ -337,7 +337,41 @@
  *     --module migrations/scripts/add-chat-concierge-mode.ts#addChatConciergeModeMigration \
  *     [--report-only] $F/<every *-main.db carrying a chats table>
  *   (the list, the measured report and the four backfilled pairs are in the
- *   P4.D226 lane record in `status-log.md`)
+ *   P4.D226 lane record in `status-log.md`) *
+ * The P4.D265 widening (v4 `01a83539d`, `add-memory-tiers-v1` — `d58548051`'s
+ * four `memories` tier columns appended in the migration's text, the
+ * `chats.otherExtractionWatermarkMessageId` column, `idx_memories_character_tier`
+ * and the NULL-tier heal; widened in place 2026-10-09 from the round's pin,
+ * §R.3 / R-K):
+ *   cd /tmp/qt-v4-pin-p4d265-01a83539d
+ *   $N/node --import tsx $W/harness/oracle/fixtures/migrate-memories-fixture-columns.ts \
+ *     --module migrations/scripts/add-memory-tiers-v1.ts#addMemoryTiersMigration \
+ *     [--report-only] $F/<every *-main.db the report names WOULD RUN>
+ *   `--report-only` over all 49 committed `*-main.db`: 43 WOULD RUN, 6 `not
+ *   needed` (`llm-log-cleanup`, `mounts`, `profile`, `store-delete`,
+ *   `wardrobe-instructions`, `workbench` — no `memories`, no `chats`; NOT named
+ *   in the apply, since even a `not needed` pass re-encrypts page 1). As run
+ *   (one invocation per pair), every pair `+RAN`, no heal rows anywhere, zero
+ *   residue:
+ *   - 6 changes (four columns + index + chat column), 19 pairs:
+ *     `almanack`, `character-archive`, `character-generators`, `characters`,
+ *     `chat-admin`, `chat-delete`, `chat-dialogs`, `chat-send`,
+ *     `embedding-remainder`, `episodic-recall`, `headshoulders`, `home`,
+ *     `in-scene-voiced`, `memories`, `photos`, `post-office`, `salon-long`,
+ *     `salon`, `system-data`
+ *   - 5 changes (`memories` only — no `chats` table), 2 pairs:
+ *     `embedding-generate`, `embedding-profiles`
+ *   - 1 change (`chats` only — the watermark column; no `memories`), 22 pairs:
+ *     `attach-file`, `autonomous`, `avatar-rolls`, `brahma`, `chat-cast`,
+ *     `chat-compressed`, `chat-gallery`, `chat-scenario`,
+ *     `conversation-summaries-regen`, `cost-background`, `courier-images`,
+ *     `documents`, `files`, `groups-projects`, `help-chat`, `images`,
+ *     `inspector`, `inspector-nostore`, `pascal-run-custom`, `subprompts`,
+ *     `text-replacements`, `wardrobe-routes`
+ *   The `migration-vintage/` trio carries its OWN pepper (none of the known
+ *   test peppers opens it) and is healed on its scratch copy by
+ *   `restore_vintage_state`'s mirror boot — never rewritten. No `.meta.json`
+ *   moved (they hold minted ids, not digests) and no digest pin names a pair.
  */
 
 import { copyFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';

@@ -11,6 +11,15 @@
 //! also records five `createExpectError` rows (v4's REAL `create` over rows
 //! `MemorySchema` refuses) compared against `parse_create_memory`.
 //!
+//! P4.D265 (v4 `d58548051` / `70f9b495c`): the oracle also runs a TIER phase
+//! after the op sequence and before the dump, and emits it as `tier: [{op,
+//! returned, lines}]`; this side REPLAYS that exact op list (creates through
+//! `parse_create_memory` — v4's prefill + `MemorySchema` — then
+//! `MemoriesRepository::create`; `increment_reinforcement`, `update_tier_bulk`,
+//! `mark_considered` on the writer; `services::memory_access::
+//! mark_memories_accessed` over a `Db` on the same file) and compares each
+//! op's answer and its lines (level, message, fields in v4's key order).
+//!
 //! NORMALIZATION: minted-timestamp placeholder. ids + createdAt + every payload
 //! column are pinned; only `updatedAt` (bumped by every mutator) and
 //! `lastAccessedAt` (set by updateAccessTime{,Bulk}) are minted, so both are
@@ -212,6 +221,10 @@ impl CreateData {
             last_reinforced_at: self.last_reinforced_at.clone(),
             related_memory_ids: self.related_memory_ids.clone(),
             reinforced_importance: self.reinforced_importance,
+            tier: "hot".to_string(),
+            superseded_by_id: None,
+            consolidated_from: Vec::new(),
+            consolidated_at: None,
         }
     }
 }
@@ -227,6 +240,15 @@ impl PatchData {
             source: self.source.clone(),
             ..Default::default()
         }
+    }
+}
+
+/// A JS number as `JSON.stringify` writes it — an integral value without `.0`.
+fn js_number(n: f64) -> Value {
+    if n.fract() == 0.0 && n.abs() < 9_007_199_254_740_992.0 {
+        Value::from(n as i64)
+    } else {
+        Value::from(n)
     }
 }
 
@@ -357,6 +379,157 @@ fn memories_tier2_matches_oracle() {
         }
     }
 
+    // === P4.D265: the tier phase, replayed from the oracle's own op list ===
+    let tier_ops = oracle["tier"]
+        .as_array()
+        .cloned()
+        .expect("the oracle carries no `tier` phase — regenerate it (P4.D265)");
+    assert!(
+        tier_ops.len() >= 19,
+        "the tier phase shrank: {}",
+        tier_ops.len()
+    );
+    let mut tier_lines = 0usize;
+    for (i, t) in tier_ops.iter().enumerate() {
+        let op = &t["op"];
+        let kind = op["kind"].as_str().unwrap();
+        let s = |k: &str| op[k].as_str().unwrap().to_string();
+        let ids = || -> Vec<String> {
+            op["ids"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_str().unwrap().to_string())
+                .collect()
+        };
+        let (returned, lines): (Value, Vec<String>) = match kind {
+            "create" => {
+                let opts = &op["options"];
+                let id = opts["id"].as_str().unwrap();
+                let data = quilltap_core::db::memories::parse_create_memory(&op["data"], Some(id))
+                    .unwrap_or_else(|e| panic!("tier op {i}: v4 accepted, v5 refused: {e}"));
+                writer
+                    .memories()
+                    .create(
+                        &data,
+                        &CreateOptions {
+                            id: id.to_string(),
+                            created_at: opts["createdAt"].as_str().unwrap().to_string(),
+                            updated_at: opts["updatedAt"].as_str().unwrap().to_string(),
+                        },
+                    )
+                    .expect("tier create");
+                (Value::Null, Vec::new())
+            }
+            "plant" => {
+                writer
+                    .connection()
+                    .execute_batch(op["sql"].as_str().unwrap())
+                    .expect("plant");
+                (Value::Null, Vec::new())
+            }
+            "incrementReinforcement" => {
+                let (r, lines) = quilltap_core::test_support::captured_with(|| {
+                    writer
+                        .memories()
+                        .increment_reinforcement(&s("characterId"), &s("memoryId"), &s("at"))
+                        .expect("incrementReinforcement")
+                });
+                let v = match r {
+                    Some(r) => serde_json::json!({
+                        "reinforcementCount": js_number(r.reinforcement_count),
+                        "reinforcedImportance": js_number(r.reinforced_importance),
+                    }),
+                    None => Value::Null,
+                };
+                (v, lines)
+            }
+            "updateTierBulk" => {
+                let extra = &op["extra"];
+                let tri = |k: &str| match extra.get(k) {
+                    None => None,
+                    Some(Value::Null) => Some(None),
+                    Some(v) => Some(Some(v.as_str().unwrap().to_string())),
+                };
+                let (n, lines) = quilltap_core::test_support::captured_with(|| {
+                    writer
+                        .memories()
+                        .update_tier_bulk(
+                            &s("characterId"),
+                            &ids(),
+                            &s("tier"),
+                            quilltap_core::db::memories::TierExtra {
+                                superseded_by_id: tri("supersededById"),
+                                consolidated_at: tri("consolidatedAt"),
+                            },
+                        )
+                        .expect("updateTierBulk")
+                });
+                (Value::from(n), lines)
+            }
+            "markConsidered" => {
+                let (n, lines) = quilltap_core::test_support::captured_with(|| {
+                    writer
+                        .memories()
+                        .mark_considered(&s("characterId"), &ids(), &s("when"))
+                        .expect("markConsidered")
+                });
+                (Value::from(n), lines)
+            }
+            "markMemoriesAccessed" => {
+                let db = quilltap_core::db::runtime::Db::open_main(&work, &spec.test_pepper_base64)
+                    .expect("open a Db beside the writer");
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap();
+                let ((), lines) = quilltap_core::test_support::captured_with(|| {
+                    rt.block_on(
+                        quilltap_core::services::memory_access::mark_memories_accessed(
+                            &db,
+                            &s("characterId"),
+                            &ids(),
+                        ),
+                    )
+                });
+                (Value::Null, lines)
+            }
+            other => panic!("unknown tier op: {other}"),
+        };
+        assert_eq!(returned, t["returned"], "tier op {i} ({kind}): the answer");
+        let want: Vec<String> = t["lines"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|l| {
+                let message = l["message"].as_str().unwrap();
+                let target = if message.starts_with("[Memory]") {
+                    "quilltap::memories"
+                } else {
+                    "quilltap::db"
+                };
+                let mut out = format!(
+                    "{} {target} {message}",
+                    l["level"].as_str().unwrap().to_uppercase()
+                );
+                for (k, v) in l["fields"].as_object().unwrap() {
+                    let rendered = match v {
+                        Value::String(s) => s.clone(),
+                        other => other.to_string(),
+                    };
+                    out.push_str(&format!(" {k}={rendered}"));
+                }
+                out
+            })
+            .collect();
+        assert_eq!(lines, want, "tier op {i} ({kind}): the lines");
+        tier_lines += want.len();
+    }
+    assert!(
+        tier_lines >= 8,
+        "the tier phase compared only {tier_lines} lines"
+    );
+
     let mut got = writer
         .dump_table_json("memories", "id")
         .expect("dump memories");
@@ -402,7 +575,8 @@ fn memories_tier2_matches_oracle() {
         );
     }
     eprintln!(
-        "OK: memories tier-2 matched oracle ({n} rows, {} refusals).",
-        errors.len()
+        "OK: memories tier-2 matched oracle ({n} rows, {} refusals, {} tier ops / {tier_lines} lines).",
+        errors.len(),
+        tier_ops.len()
     );
 }

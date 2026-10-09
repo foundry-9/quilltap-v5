@@ -1097,11 +1097,27 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
+            // P4.D265 (R-G, C1 §12): a PRESENT growth field is refused until
+            // P4.D267 lands — it REPLACES this gate, not only the refusal.
+            Request::ChatRecallReplay {
+                memory_budget,
+                tuning,
+                signals,
+                as_of,
+                ..
+            } if memory_budget.is_some()
+                || tuning.is_some()
+                || signals.is_some()
+                || as_of.is_some() =>
+            {
+                p4d265_not_yet_available("chatRecallReplay", "P4.D267")
+            }
             Request::ChatRecallReplay {
                 chat_id,
                 turn_index,
                 character_id,
                 limit,
+                ..
             } => match self.ready_db_and_recall_replay() {
                 Ok((db, driver)) => {
                     super::recall_replay::recall_replay(
@@ -3730,11 +3746,17 @@ impl CoreEngine {
                 Err(r) => r,
             },
             // --- Memories (P4.6s) ---
+            // P4.D265 (R-G, C1 §12): a PRESENT `tier` is refused until P4.D269
+            // lands — it REPLACES this gate, not only the refusal.
+            Request::MemoryList { tier: Some(_), .. } => {
+                p4d265_not_yet_available("memoryList", "P4.D269")
+            }
             Request::MemoryList {
                 character_id,
                 search,
                 min_importance,
                 source,
+                tier: None,
                 sort_by,
                 sort_order,
                 limit,
@@ -5545,6 +5567,33 @@ impl CoreEngine {
                 Err(r) => r,
             },
             // === end P4.D255 ===
+            // === P4.D265: the 01a83539d round's wire (C2) — each arm the agreed
+            // refusal (R-G), replaced by its owner this round ===
+            Request::MemoryAnchorGateProbe { .. } => {
+                p4d265_not_yet_available("memoryAnchorGateProbe", "P4.D269")
+            }
+            Request::MemoryConsolidationConfigGet => {
+                p4d265_not_yet_available("memoryConsolidationConfigGet", "P4.D271")
+            }
+            Request::MemoryConsolidationConfigSet { .. } => {
+                p4d265_not_yet_available("memoryConsolidationConfigSet", "P4.D271")
+            }
+            Request::MemoryExtractionModeConfigGet => {
+                p4d265_not_yet_available("memoryExtractionModeConfigGet", "P4.D271")
+            }
+            Request::MemoryExtractionModeConfigSet { .. } => {
+                p4d265_not_yet_available("memoryExtractionModeConfigSet", "P4.D271")
+            }
+            Request::MemoryConsolidate { .. } => {
+                p4d265_not_yet_available("memoryConsolidate", "P4.D271")
+            }
+            Request::WardrobeItemImageSaveTargets { .. } => {
+                p4d265_not_yet_available("wardrobeItemImageSaveTargets", "P4.D275")
+            }
+            Request::WardrobeItemImageSaveToStore { .. } => {
+                p4d265_not_yet_available("wardrobeItemImageSaveToStore", "P4.D275")
+            }
+            // === end P4.D265 ===
             Request::WardrobeItemGet { item_id } => match self.ready_db() {
                 Ok(db) => super::wardrobe::wardrobe_item_get(&db, &item_id),
                 Err(r) => r,
@@ -7172,6 +7221,16 @@ impl CoreEngine {
 
 /// A production draw source over [`random_f64`] — one fresh OS draw per call, so
 /// a rotation of N seats consumes N independent values (P4.D172).
+/// P4.D265 (R-G): the ONE refusal body for the `01a83539d` round's new wire —
+/// agreed in advance under CLAUDE.md's no-stub rule (§R.14), each replaced by
+/// its named owner in this same round. The P4.D255 sentence shape.
+fn p4d265_not_yet_available(action: &str, owner: &str) -> Response {
+    Response::error(
+        ErrorKind::Internal,
+        format!("The '{action}' action is recognized but not yet available ({owner})."),
+    )
+}
+
 fn quilltap_draw_source() -> crate::weighted_random::DrawSource {
     crate::weighted_random::DrawSource::from_fn(random_f64)
 }
