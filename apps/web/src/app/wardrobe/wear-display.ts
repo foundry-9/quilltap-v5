@@ -1,7 +1,9 @@
 /**
  * Wear-ledger display helpers — a transcription of v4 `lib/wardrobe/wear-
- * display.ts` (`3ee3b1342`, read at the pin `f5e953a3f`), pinned case for
- * case by `wear-display.spec.ts`.
+ * display.ts` (`3ee3b1342`; bug 183's `formatWornRelative` from `ed8b15b50`;
+ * read at the pin `01a83539d`), pinned case for case by `wear-display.spec.ts`
+ * and row for row against v4's REAL module by `wear-display.oracle.spec.ts`
+ * (the `wear-display.ndjson` corpus).
  *
  * Client-safe, pure helpers for the operator-facing half of the wear ledger:
  * the one muted line under a wardrobe row (`Worn 4× · last …`), and the sort
@@ -66,13 +68,32 @@ export function formatWearLine(
 
 /**
  * A wear date as the ledger speaks of it — day-level and relative ("today",
- * "3 days ago", "last week"), the same ladder the character tools use. Empty
+ * "3 days ago", "a week ago"), the same ladder the character tools use. Empty
  * for a missing or unparseable date.
  */
 export function formatWornWhen(iso: string | null | undefined, nowMs: number = Date.now()): string {
   if (!iso) return '';
   const ts = Date.parse(iso);
-  return Number.isNaN(ts) ? '' : formatRelativeDays(ts, nowMs);
+  return Number.isNaN(ts) ? '' : formatWornRelative(ts, nowMs);
+}
+
+/**
+ * {@link formatRelativeDays} for a phrase that follows the word "last"
+ * (`Worn 4× · last …`, `…, last … by you.`). The shared ladder answers
+ * "last week" and "last month" for the 7–13 and 30–59 day rungs, which read
+ * "last last week" there (bug 183), so those two become "a week ago" and
+ * "a month ago". Every other rung passes through unchanged, and the
+ * memory-recall labels that share the ladder are untouched.
+ *
+ * (v4 `ed8b15b50`, `lib/wardrobe/wear-display.ts:71-84` at the pin
+ * `01a83539d`; `shared/format-date.ts`'s ladder stays untouched, as v4's
+ * `lib/format-time.ts` does.)
+ */
+export function formatWornRelative(ts: number, nowMs: number = Date.now()): string {
+  const phrase = formatRelativeDays(ts, nowMs);
+  if (phrase === 'last week') return 'a week ago';
+  if (phrase === 'last month') return 'a month ago';
+  return phrase;
 }
 
 // ============================================================================

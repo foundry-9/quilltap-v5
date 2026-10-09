@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { WardrobeWearSummary } from '../core/core-contract';
 import {
   formatWearLine,
+  formatWornRelative,
   formatWornWhen,
   isNeverWorn,
   sortAndFilterWardrobeItems,
@@ -69,12 +70,44 @@ describe('formatWearLine (v4 :37-59)', () => {
   });
 });
 
+describe('formatWearLine — bug 183 (v4 ed8b15b50, wear-display.test.ts:66-77 at the pin 01a83539d)', () => {
+  // Bug 183: the shared ladder's "last week" / "last month" rungs read
+  // "last last week" after the line's own "last".
+  it.each([
+    [9, 'Worn 8× · last a week ago'],
+    [13, 'Worn 8× · last a week ago'],
+    [30, 'Worn 8× · last a month ago'],
+    [59, 'Worn 8× · last a month ago'],
+  ])('does not double "last" %i days back', (days, line) => {
+    const at = new Date(NOW - days * 86_400_000).toISOString();
+    expect(formatWearLine(worn(8, at), NOW)).toBe(line);
+  });
+});
+
+describe('formatWornRelative (v4 wear-display.ts:79-84; test.ts:79-90 at the pin 01a83539d)', () => {
+  it('rewords only the two rungs that begin with "last"', () => {
+    const ago = (days: number) => NOW - days * 86_400_000;
+    expect(formatWornRelative(ago(0), NOW)).toBe('today');
+    expect(formatWornRelative(ago(1), NOW)).toBe('yesterday');
+    expect(formatWornRelative(ago(3), NOW)).toBe('3 days ago');
+    expect(formatWornRelative(ago(8), NOW)).toBe('a week ago');
+    expect(formatWornRelative(ago(15), NOW)).toBe('2 weeks ago');
+    expect(formatWornRelative(ago(45), NOW)).toBe('a month ago');
+    expect(formatWornRelative(ago(120), NOW)).toBe('4 months ago');
+  });
+});
+
 describe('formatWornWhen (v4 :61-70)', () => {
   it('is empty for a missing or unparseable date, never a weekday (R-E)', () => {
     expect(formatWornWhen(null, NOW)).toBe('');
     expect(formatWornWhen(undefined, NOW)).toBe('');
     expect(formatWornWhen('not a date', NOW)).toBe('');
     expect(formatWornWhen(new Date(NOW - 86400_000 * 1.5).toISOString(), NOW)).toBe('yesterday');
+  });
+
+  it("reads the two reworded rungs too — the item editor's Wear-history path (v4 :65-69, ed8b15b50)", () => {
+    expect(formatWornWhen(new Date(NOW - 9 * 86_400_000).toISOString(), NOW)).toBe('a week ago');
+    expect(formatWornWhen(new Date(NOW - 45 * 86_400_000).toISOString(), NOW)).toBe('a month ago');
   });
 });
 

@@ -175372,3 +175372,58 @@ server; nothing was lost and the row was redone cleanly after #153's fix.
 - **C5 RAN** on the human's authorization: Friday's `wardrobe_create` (switch ON) queued and drew *Leather Tool Belt* through the default desk (GROK `grok-imagine-image-2.0`) — the tool's `- Picture: … being drawn in the background …` sentence, one `WARDROBE_ITEM_IMAGE_GENERATION` job COMPLETED in 24 s, one `WARDROBE_ITEM_IMAGE` `llm_logs` row, the item's `imageFileId` set, the picture (Friday wearing the belt, 864×1152 webp) in the row thumbnail and the editor's Picture section. The walk has no HUMAN rows left.
 - **Filed upstream as v4 bugs 183 and 184** — `docs/developer/bugs/bug-183-wear-line-last-last-week.md` (Low: `last last week` / `last last month` at `wear-display.ts:57`, `wardrobe-read-handler.ts:179-183`, `WardrobeWearHistorySection.tsx:142`) and `bug-184-wardrobe-tools-household-wear-as-own.md` (Medium: `wardrobe_list`'s household `wear_count` / `last_worn_at` unlabelled, `wardrobe_read` never states the reader's own count) + their `bugs.md` rows, v4 commit `5abcd01ea` (docs-only, committed locally in the v4 checkout, NOT pushed — the bug-169 precedent); recorded as a NO-PORT row on the drift ledger. The read head's missing count is covered by 184 (the human's ruling).
 - **#159 RULED a bug** (the human, 2026-10-09: "we shouldn't orphan a vault that should be restored into") — ORDER-PENDING for the follow-ups round (the design and the differential's `new-account` carve on the findings row; not fixed in place because `system_restore_state` needs that carve and an oracle regen from a pin). **Filed upstream as v4 bug 185** (High; covers both restore modes — #141 was never filed to v4), v4 commit `3c56a41e7` (docs-only, local, NOT pushed); the drift ledger records it as a NO-PORT row.
+
+## P4.D277 — the wardrobe / images SPA of the `01a83539d` round (lane record)
+
+Branch `claude/wardrobe-images-spa-viewer-4a334b` (worktree
+`.claude/worktrees/wardrobe-images-spa-viewer-4a334b`), cut from `main` at
+`ff2252b83` (the orders' commit). `apps/web` only; no crate touched.
+
+### Lane start — the §2 probe (an observation, §R.2) and the pin
+
+- Probe at 2026-10-09 16:44 CDT: v4 checkout on `main`, tree CLEAN;
+  `01a83539d..main` = THREE commits; `1a2b2164c..bugfix` empty.
+  **v4 moved: `3e6e2f590` (docs + bugs 187–197 filed), `7a8d6dacc` (wardrobe
+  bugs 187/188/189/191) and `9ecebf986` (the wardrobe refactor; bugs 190,
+  192–197) observed at 2026-10-09 16:44 CDT** — out of scope by the pin rule;
+  never read, ported or pinned to; the next `/driftcheck` classifies them
+  (`9ecebf986` is new since planning).
+- Pin `/tmp/qt-v4-pin-p4d277-01a83539d`: `rev-parse HEAD` =
+  `01a83539dd1c2db31b056d6427b31a04f91563a7`; `ls -ld` a real directory;
+  `package.json` `4.10.0-dev.143`; `node_modules/openai/package.json` `7.30.0`
+  through the root symlink (the live lockfile differs from the pin's only in
+  the two version stamps — no dependency moved; the three symlink classes
+  added).
+
+### Unit 1 — bug 183: `formatWornRelative` + the SPA tier-1 oracle (W1)
+
+- `wardrobe/wear-display.ts`: NEW exported `formatWornRelative(ts, nowMs)`
+  (v4 `ed8b15b50`, `lib/wardrobe/wear-display.ts:71-84` at the pin, doc
+  carried); `formatWornWhen` delegates to it (doc `"a week ago"`, v4
+  `:60-64`). `shared/format-date.ts` UNTOUCHED (R-F). The three consumers
+  (`wardrobe-item-row.ts:402`, `item-editor/wear-history-section.ts:191`,
+  `screens/prospero/wardrobe/project-wardrobe-manager.ts:315`) move with no
+  edit.
+- NEW recorder `apps/web/oracle/wear-display.recorder.ts` over v4's REAL
+  module at the pin → `src/testing/fixtures/wear-display.ndjson`: **112 rows**
+  (32 `formatWornRelative` + 38 `formatWornWhen` + 42 `formatWearLine`);
+  `rm -f` first; `wc -l` 112 = the prediction; `grep -c 'a week ago'` 17,
+  `grep -c 'a month ago'` 14, `grep -c 'last week'` 0. README paragraph added.
+  Regen recipe: the recorder's header (`PIN=${PIN:?…}`, `cp` into the pin root,
+  `npx tsx wear-display.recorder.ts > …/wear-display.ndjson` under Node
+  24.13.1).
+- NEW `wardrobe/wear-display.oracle.spec.ts` (row-count guards 112/32/38/42).
+- **Red-first** (the test build type-checks every spec, so the unported module
+  was measured with a scratch passthrough `formatWornRelative = formatRelativeDays`
+  — main's exact behaviour — never committed): `wear-display.oracle.spec.ts`
+  **31 red rows** — `formatWornRelative` 9 (days 7, 9, 13, 13.9, 13.999, 30,
+  45, 59, 59.999: exactly the [7,14) / [30,60) rungs), `formatWornWhen` 10
+  (the same nine + the date-only `2026-09-30`, 7.5 days), `formatWearLine` 12
+  (counts 1/2/8 × days 9/13/30/59); `wear-display.spec.ts` **6 red** (v4
+  `wear-display.test.ts:66-77`'s four `it.each` rows, `:79-90`'s
+  `formatWornRelative` ladder, the new `formatWornWhen` 9/45-day arm);
+  `item-editor/wear-history-section.spec.ts` **1 red** (Tier 2 item 15: a
+  wearer 9 days back read `3×, last last week`). All green after.
+- Tier 2 item 15, Prospero: `project-wardrobe-manager.spec.ts` is outside
+  Ownership — RECORDED, not edited: the manager renders `formatWearLine(…)`
+  (`project-wardrobe-manager.ts:315`), which the oracle proves row for row.

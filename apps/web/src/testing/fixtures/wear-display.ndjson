@@ -1,0 +1,112 @@
+{"fn":"formatWornRelative","id":"days=-1","args":[1791460800000,1791374400000],"out":"today"}
+{"fn":"formatWornRelative","id":"days=0","args":[1791374400000,1791374400000],"out":"today"}
+{"fn":"formatWornRelative","id":"days=0.5","args":[1791331200000,1791374400000],"out":"today"}
+{"fn":"formatWornRelative","id":"days=0.999","args":[1791288086400,1791374400000],"out":"today"}
+{"fn":"formatWornRelative","id":"days=1","args":[1791288000000,1791374400000],"out":"yesterday"}
+{"fn":"formatWornRelative","id":"days=1.5","args":[1791244800000,1791374400000],"out":"yesterday"}
+{"fn":"formatWornRelative","id":"days=1.999","args":[1791201686400,1791374400000],"out":"yesterday"}
+{"fn":"formatWornRelative","id":"days=2","args":[1791201600000,1791374400000],"out":"2 days ago"}
+{"fn":"formatWornRelative","id":"days=3","args":[1791115200000,1791374400000],"out":"3 days ago"}
+{"fn":"formatWornRelative","id":"days=6.9","args":[1790778240000,1791374400000],"out":"6 days ago"}
+{"fn":"formatWornRelative","id":"days=6.999","args":[1790769686400,1791374400000],"out":"6 days ago"}
+{"fn":"formatWornRelative","id":"days=7","args":[1790769600000,1791374400000],"out":"a week ago"}
+{"fn":"formatWornRelative","id":"days=9","args":[1790596800000,1791374400000],"out":"a week ago"}
+{"fn":"formatWornRelative","id":"days=13","args":[1790251200000,1791374400000],"out":"a week ago"}
+{"fn":"formatWornRelative","id":"days=13.9","args":[1790173440000,1791374400000],"out":"a week ago"}
+{"fn":"formatWornRelative","id":"days=13.999","args":[1790164886400,1791374400000],"out":"a week ago"}
+{"fn":"formatWornRelative","id":"days=14","args":[1790164800000,1791374400000],"out":"2 weeks ago"}
+{"fn":"formatWornRelative","id":"days=15","args":[1790078400000,1791374400000],"out":"2 weeks ago"}
+{"fn":"formatWornRelative","id":"days=21","args":[1789560000000,1791374400000],"out":"3 weeks ago"}
+{"fn":"formatWornRelative","id":"days=29","args":[1788868800000,1791374400000],"out":"4 weeks ago"}
+{"fn":"formatWornRelative","id":"days=29.999","args":[1788782486400,1791374400000],"out":"4 weeks ago"}
+{"fn":"formatWornRelative","id":"days=30","args":[1788782400000,1791374400000],"out":"a month ago"}
+{"fn":"formatWornRelative","id":"days=45","args":[1787486400000,1791374400000],"out":"a month ago"}
+{"fn":"formatWornRelative","id":"days=59","args":[1786276800000,1791374400000],"out":"a month ago"}
+{"fn":"formatWornRelative","id":"days=59.999","args":[1786190486400,1791374400000],"out":"a month ago"}
+{"fn":"formatWornRelative","id":"days=60","args":[1786190400000,1791374400000],"out":"2 months ago"}
+{"fn":"formatWornRelative","id":"days=120","args":[1781006400000,1791374400000],"out":"4 months ago"}
+{"fn":"formatWornRelative","id":"days=364","args":[1759924800000,1791374400000],"out":"12 months ago"}
+{"fn":"formatWornRelative","id":"days=364.999","args":[1759838486400,1791374400000],"out":"12 months ago"}
+{"fn":"formatWornRelative","id":"days=365","args":[1759838400000,1791374400000],"out":"1 year ago"}
+{"fn":"formatWornRelative","id":"days=730","args":[1728302400000,1791374400000],"out":"2 years ago"}
+{"fn":"formatWornRelative","id":"days=800","args":[1722254400000,1791374400000],"out":"2 years ago"}
+{"fn":"formatWornWhen","id":"null","args":[null,1791374400000],"out":""}
+{"fn":"formatWornWhen","id":"undefined","args":[{"$undefined":true},1791374400000],"out":""}
+{"fn":"formatWornWhen","id":"empty","args":["",1791374400000],"out":""}
+{"fn":"formatWornWhen","id":"not a date","args":["not a date",1791374400000],"out":""}
+{"fn":"formatWornWhen","id":"out-of-range ISO","args":["2026-13-40T00:00:00Z",1791374400000],"out":""}
+{"fn":"formatWornWhen","id":"date-only (UTC)","args":["2026-09-30",1791374400000],"out":"a week ago"}
+{"fn":"formatWornWhen","id":"days=-1","args":["2026-10-08T12:00:00.000Z",1791374400000],"out":"today"}
+{"fn":"formatWornWhen","id":"days=0","args":["2026-10-07T12:00:00.000Z",1791374400000],"out":"today"}
+{"fn":"formatWornWhen","id":"days=0.5","args":["2026-10-07T00:00:00.000Z",1791374400000],"out":"today"}
+{"fn":"formatWornWhen","id":"days=0.999","args":["2026-10-06T12:01:26.400Z",1791374400000],"out":"today"}
+{"fn":"formatWornWhen","id":"days=1","args":["2026-10-06T12:00:00.000Z",1791374400000],"out":"yesterday"}
+{"fn":"formatWornWhen","id":"days=1.5","args":["2026-10-06T00:00:00.000Z",1791374400000],"out":"yesterday"}
+{"fn":"formatWornWhen","id":"days=1.999","args":["2026-10-05T12:01:26.400Z",1791374400000],"out":"yesterday"}
+{"fn":"formatWornWhen","id":"days=2","args":["2026-10-05T12:00:00.000Z",1791374400000],"out":"2 days ago"}
+{"fn":"formatWornWhen","id":"days=3","args":["2026-10-04T12:00:00.000Z",1791374400000],"out":"3 days ago"}
+{"fn":"formatWornWhen","id":"days=6.9","args":["2026-09-30T14:24:00.000Z",1791374400000],"out":"6 days ago"}
+{"fn":"formatWornWhen","id":"days=6.999","args":["2026-09-30T12:01:26.400Z",1791374400000],"out":"6 days ago"}
+{"fn":"formatWornWhen","id":"days=7","args":["2026-09-30T12:00:00.000Z",1791374400000],"out":"a week ago"}
+{"fn":"formatWornWhen","id":"days=9","args":["2026-09-28T12:00:00.000Z",1791374400000],"out":"a week ago"}
+{"fn":"formatWornWhen","id":"days=13","args":["2026-09-24T12:00:00.000Z",1791374400000],"out":"a week ago"}
+{"fn":"formatWornWhen","id":"days=13.9","args":["2026-09-23T14:24:00.000Z",1791374400000],"out":"a week ago"}
+{"fn":"formatWornWhen","id":"days=13.999","args":["2026-09-23T12:01:26.400Z",1791374400000],"out":"a week ago"}
+{"fn":"formatWornWhen","id":"days=14","args":["2026-09-23T12:00:00.000Z",1791374400000],"out":"2 weeks ago"}
+{"fn":"formatWornWhen","id":"days=15","args":["2026-09-22T12:00:00.000Z",1791374400000],"out":"2 weeks ago"}
+{"fn":"formatWornWhen","id":"days=21","args":["2026-09-16T12:00:00.000Z",1791374400000],"out":"3 weeks ago"}
+{"fn":"formatWornWhen","id":"days=29","args":["2026-09-08T12:00:00.000Z",1791374400000],"out":"4 weeks ago"}
+{"fn":"formatWornWhen","id":"days=29.999","args":["2026-09-07T12:01:26.400Z",1791374400000],"out":"4 weeks ago"}
+{"fn":"formatWornWhen","id":"days=30","args":["2026-09-07T12:00:00.000Z",1791374400000],"out":"a month ago"}
+{"fn":"formatWornWhen","id":"days=45","args":["2026-08-23T12:00:00.000Z",1791374400000],"out":"a month ago"}
+{"fn":"formatWornWhen","id":"days=59","args":["2026-08-09T12:00:00.000Z",1791374400000],"out":"a month ago"}
+{"fn":"formatWornWhen","id":"days=59.999","args":["2026-08-08T12:01:26.400Z",1791374400000],"out":"a month ago"}
+{"fn":"formatWornWhen","id":"days=60","args":["2026-08-08T12:00:00.000Z",1791374400000],"out":"2 months ago"}
+{"fn":"formatWornWhen","id":"days=120","args":["2026-06-09T12:00:00.000Z",1791374400000],"out":"4 months ago"}
+{"fn":"formatWornWhen","id":"days=364","args":["2025-10-08T12:00:00.000Z",1791374400000],"out":"12 months ago"}
+{"fn":"formatWornWhen","id":"days=364.999","args":["2025-10-07T12:01:26.400Z",1791374400000],"out":"12 months ago"}
+{"fn":"formatWornWhen","id":"days=365","args":["2025-10-07T12:00:00.000Z",1791374400000],"out":"1 year ago"}
+{"fn":"formatWornWhen","id":"days=730","args":["2024-10-07T12:00:00.000Z",1791374400000],"out":"2 years ago"}
+{"fn":"formatWornWhen","id":"days=800","args":["2024-07-29T12:00:00.000Z",1791374400000],"out":"2 years ago"}
+{"fn":"formatWearLine","id":"undefined","args":[{"$undefined":true},1791374400000],"out":"Never worn"}
+{"fn":"formatWearLine","id":"null","args":[null,1791374400000],"out":"Never worn"}
+{"fn":"formatWearLine","id":"count=0 days=null","args":[{"wearCount":0,"firstWornAt":null,"lastWornAt":null,"lastWornChatId":null},1791374400000],"out":"Never worn"}
+{"fn":"formatWearLine","id":"count=0 days=0","args":[{"wearCount":0,"firstWornAt":"2026-10-07T12:00:00.000Z","lastWornAt":"2026-10-07T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Never worn"}
+{"fn":"formatWearLine","id":"count=0 days=3","args":[{"wearCount":0,"firstWornAt":"2026-10-04T12:00:00.000Z","lastWornAt":"2026-10-04T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Never worn"}
+{"fn":"formatWearLine","id":"count=0 days=9","args":[{"wearCount":0,"firstWornAt":"2026-09-28T12:00:00.000Z","lastWornAt":"2026-09-28T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Never worn"}
+{"fn":"formatWearLine","id":"count=0 days=13","args":[{"wearCount":0,"firstWornAt":"2026-09-24T12:00:00.000Z","lastWornAt":"2026-09-24T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Never worn"}
+{"fn":"formatWearLine","id":"count=0 days=21","args":[{"wearCount":0,"firstWornAt":"2026-09-16T12:00:00.000Z","lastWornAt":"2026-09-16T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Never worn"}
+{"fn":"formatWearLine","id":"count=0 days=30","args":[{"wearCount":0,"firstWornAt":"2026-09-07T12:00:00.000Z","lastWornAt":"2026-09-07T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Never worn"}
+{"fn":"formatWearLine","id":"count=0 days=59","args":[{"wearCount":0,"firstWornAt":"2026-08-09T12:00:00.000Z","lastWornAt":"2026-08-09T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Never worn"}
+{"fn":"formatWearLine","id":"count=0 days=120","args":[{"wearCount":0,"firstWornAt":"2026-06-09T12:00:00.000Z","lastWornAt":"2026-06-09T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Never worn"}
+{"fn":"formatWearLine","id":"count=0 days=400","args":[{"wearCount":0,"firstWornAt":"2025-09-02T12:00:00.000Z","lastWornAt":"2025-09-02T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Never worn"}
+{"fn":"formatWearLine","id":"count=1 days=null","args":[{"wearCount":1,"firstWornAt":null,"lastWornAt":null,"lastWornChatId":null},1791374400000],"out":"Worn once"}
+{"fn":"formatWearLine","id":"count=1 days=0","args":[{"wearCount":1,"firstWornAt":"2026-10-07T12:00:00.000Z","lastWornAt":"2026-10-07T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Worn once · last today"}
+{"fn":"formatWearLine","id":"count=1 days=3","args":[{"wearCount":1,"firstWornAt":"2026-10-04T12:00:00.000Z","lastWornAt":"2026-10-04T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Worn once · last 3 days ago"}
+{"fn":"formatWearLine","id":"count=1 days=9","args":[{"wearCount":1,"firstWornAt":"2026-09-28T12:00:00.000Z","lastWornAt":"2026-09-28T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Worn once · last a week ago"}
+{"fn":"formatWearLine","id":"count=1 days=13","args":[{"wearCount":1,"firstWornAt":"2026-09-24T12:00:00.000Z","lastWornAt":"2026-09-24T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Worn once · last a week ago"}
+{"fn":"formatWearLine","id":"count=1 days=21","args":[{"wearCount":1,"firstWornAt":"2026-09-16T12:00:00.000Z","lastWornAt":"2026-09-16T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Worn once · last 3 weeks ago"}
+{"fn":"formatWearLine","id":"count=1 days=30","args":[{"wearCount":1,"firstWornAt":"2026-09-07T12:00:00.000Z","lastWornAt":"2026-09-07T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Worn once · last a month ago"}
+{"fn":"formatWearLine","id":"count=1 days=59","args":[{"wearCount":1,"firstWornAt":"2026-08-09T12:00:00.000Z","lastWornAt":"2026-08-09T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Worn once · last a month ago"}
+{"fn":"formatWearLine","id":"count=1 days=120","args":[{"wearCount":1,"firstWornAt":"2026-06-09T12:00:00.000Z","lastWornAt":"2026-06-09T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Worn once · last 4 months ago"}
+{"fn":"formatWearLine","id":"count=1 days=400","args":[{"wearCount":1,"firstWornAt":"2025-09-02T12:00:00.000Z","lastWornAt":"2025-09-02T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Worn once · last 1 year ago"}
+{"fn":"formatWearLine","id":"count=2 days=null","args":[{"wearCount":2,"firstWornAt":null,"lastWornAt":null,"lastWornChatId":null},1791374400000],"out":"Worn 2×"}
+{"fn":"formatWearLine","id":"count=2 days=0","args":[{"wearCount":2,"firstWornAt":"2026-10-07T12:00:00.000Z","lastWornAt":"2026-10-07T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Worn 2× · last today"}
+{"fn":"formatWearLine","id":"count=2 days=3","args":[{"wearCount":2,"firstWornAt":"2026-10-04T12:00:00.000Z","lastWornAt":"2026-10-04T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Worn 2× · last 3 days ago"}
+{"fn":"formatWearLine","id":"count=2 days=9","args":[{"wearCount":2,"firstWornAt":"2026-09-28T12:00:00.000Z","lastWornAt":"2026-09-28T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Worn 2× · last a week ago"}
+{"fn":"formatWearLine","id":"count=2 days=13","args":[{"wearCount":2,"firstWornAt":"2026-09-24T12:00:00.000Z","lastWornAt":"2026-09-24T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Worn 2× · last a week ago"}
+{"fn":"formatWearLine","id":"count=2 days=21","args":[{"wearCount":2,"firstWornAt":"2026-09-16T12:00:00.000Z","lastWornAt":"2026-09-16T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Worn 2× · last 3 weeks ago"}
+{"fn":"formatWearLine","id":"count=2 days=30","args":[{"wearCount":2,"firstWornAt":"2026-09-07T12:00:00.000Z","lastWornAt":"2026-09-07T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Worn 2× · last a month ago"}
+{"fn":"formatWearLine","id":"count=2 days=59","args":[{"wearCount":2,"firstWornAt":"2026-08-09T12:00:00.000Z","lastWornAt":"2026-08-09T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Worn 2× · last a month ago"}
+{"fn":"formatWearLine","id":"count=2 days=120","args":[{"wearCount":2,"firstWornAt":"2026-06-09T12:00:00.000Z","lastWornAt":"2026-06-09T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Worn 2× · last 4 months ago"}
+{"fn":"formatWearLine","id":"count=2 days=400","args":[{"wearCount":2,"firstWornAt":"2025-09-02T12:00:00.000Z","lastWornAt":"2025-09-02T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Worn 2× · last 1 year ago"}
+{"fn":"formatWearLine","id":"count=8 days=null","args":[{"wearCount":8,"firstWornAt":null,"lastWornAt":null,"lastWornChatId":null},1791374400000],"out":"Worn 8×"}
+{"fn":"formatWearLine","id":"count=8 days=0","args":[{"wearCount":8,"firstWornAt":"2026-10-07T12:00:00.000Z","lastWornAt":"2026-10-07T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Worn 8× · last today"}
+{"fn":"formatWearLine","id":"count=8 days=3","args":[{"wearCount":8,"firstWornAt":"2026-10-04T12:00:00.000Z","lastWornAt":"2026-10-04T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Worn 8× · last 3 days ago"}
+{"fn":"formatWearLine","id":"count=8 days=9","args":[{"wearCount":8,"firstWornAt":"2026-09-28T12:00:00.000Z","lastWornAt":"2026-09-28T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Worn 8× · last a week ago"}
+{"fn":"formatWearLine","id":"count=8 days=13","args":[{"wearCount":8,"firstWornAt":"2026-09-24T12:00:00.000Z","lastWornAt":"2026-09-24T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Worn 8× · last a week ago"}
+{"fn":"formatWearLine","id":"count=8 days=21","args":[{"wearCount":8,"firstWornAt":"2026-09-16T12:00:00.000Z","lastWornAt":"2026-09-16T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Worn 8× · last 3 weeks ago"}
+{"fn":"formatWearLine","id":"count=8 days=30","args":[{"wearCount":8,"firstWornAt":"2026-09-07T12:00:00.000Z","lastWornAt":"2026-09-07T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Worn 8× · last a month ago"}
+{"fn":"formatWearLine","id":"count=8 days=59","args":[{"wearCount":8,"firstWornAt":"2026-08-09T12:00:00.000Z","lastWornAt":"2026-08-09T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Worn 8× · last a month ago"}
+{"fn":"formatWearLine","id":"count=8 days=120","args":[{"wearCount":8,"firstWornAt":"2026-06-09T12:00:00.000Z","lastWornAt":"2026-06-09T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Worn 8× · last 4 months ago"}
+{"fn":"formatWearLine","id":"count=8 days=400","args":[{"wearCount":8,"firstWornAt":"2025-09-02T12:00:00.000Z","lastWornAt":"2025-09-02T12:00:00.000Z","lastWornChatId":null},1791374400000],"out":"Worn 8× · last 1 year ago"}

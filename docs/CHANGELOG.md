@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — fix(spa): wear dates never read "last last week" (bug 183) — P4.D277 unit 1
+
+_Versions: SPA 0.5.823._
+
+Ports v4 `ed8b15b50`'s `formatWornRelative` into `wardrobe/wear-display.ts`. The shared day ladder answers "last week" and "last month" for the 7–13 and 30–59 day rungs, which read "last last week" after the wear line's own "last". Those two rungs now read "a week ago" and "a month ago". `formatWornWhen` delegates to it, so the wardrobe row's wear line, the Prospero project wardrobe's line and the item editor's Wear-history dates all change. `shared/format-date.ts` is untouched (v4 leaves `lib/format-time.ts` alone).
+
+Proven by a new SPA tier-1 oracle: `apps/web/oracle/wear-display.recorder.ts` drives v4's real module at the `01a83539d` pin into `wear-display.ndjson` (112 rows over every ladder rung and rung edge), replayed by `wear-display.oracle.spec.ts`. v4's two new jest cases are transcribed into `wear-display.spec.ts`, plus one wear-history arm.
+
 #### 2026-10-09 — docs(porting): order the `01a83539d` memory-programme + bugs-183–186 + wardrobe-viewer drift catch-up round — fourteen work orders (P4.D265 → {P4.D266 … P4.D275} ∥ P4.D276 ∥ P4.D277 ∥ P4.D278)
 
 _Docs-only change._
