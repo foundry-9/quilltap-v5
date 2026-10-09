@@ -13,7 +13,7 @@
  *     `apply-outfit-selections.ledger.test.ts:109-198`, minus `llm_choose`,
  *     whose credit rides `outfit_llm_choose_tier3`);
  *   - `route` ops → the chat outfit route's `handleEquipSlot` (`set_all`'s
- *     `wornBundleIds` claim, the primitives' sources, the lost write's 500 —
+ *     `wornBundleIds` claim, the primitives' sources, a failed write's 500 (planted per op) —
  *     `outfit.test.ts`).
  * After each op it reads back the op's chat `equippedOutfit` and EVERY
  * `wardrobe_wear_stats` row (minus the minted `id` / `createdAt` /
@@ -48,6 +48,10 @@ interface Op {
   sourceChat?: string;
   selections?: Array<Record<string, unknown> & { who: 'caller' | 'recipient' }>;
   body?: Record<string, unknown> & { who: 'caller' | 'recipient' };
+  /** Raw SQL run just before the op (the unification's failed-write plant). */
+  plantSql?: string;
+  /** Raw SQL run right after the op, before the dumps. */
+  unplantSql?: string;
 }
 
 /** The messages this family compares (the ledger's write path, nothing else). */
@@ -125,6 +129,7 @@ async function main(): Promise<void> {
 
   const lines: string[] = [];
   for (const op of spec.ops) {
+    if (op.plantSql) await rawQuery(op.plantSql);
     captured.length = 0;
     let result: unknown = null;
     if (op.kind === 'commit') {
@@ -162,6 +167,7 @@ async function main(): Promise<void> {
       } as never);
       result = { status: res.status, body: await res.json() };
     }
+    if (op.unplantSql) await rawQuery(op.unplantSql);
     const equippedOutfit = (await repos.chats.getEquippedOutfit(op.chat)) ?? null;
     const ledger = (await rawQuery(
       `SELECT "itemId", "wearerCharacterId", "wearCount", "firstWornAt", "lastWornAt", "lastWornChatId"

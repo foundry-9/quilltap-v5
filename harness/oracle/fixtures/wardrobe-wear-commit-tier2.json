@@ -1,5 +1,5 @@
 {
-  "comment": "P4.D262 — the wear ledger's chokepoint, tier-2 (v4 `3ee3b1342`). A companion to wardrobe-tools.json, consumed by build-wardrobe-tools-fixture.ts through QT_WT_AVATAR_SPEC (it reads `imageProfile` + `scenarios` — one chat per scenario, each seeded with the caller's Blue Blouse, avatar generation OFF), by cases/wardrobe-wear-commit-tier2.ts and by wardrobe_wear_commit_tier2_equivalence.rs. `ops` drive v4's REAL WardrobeWearRepository.commitEquippedOutfit (`commit`), applyOutfitSelections (`apply`) and the chat outfit route's handleEquipSlot (`route`) in sequence on ONE copy; `who` names the caller / recipient. The shapes are v4's own jest cases: wardrobe-wear.repository.test.ts:237-330, apply-outfit-selections.ledger.test.ts:109-198, outfit.test.ts (set_all wornBundleIds, clear_slot take-off, the lost write's 500).",
+  "comment": "P4.D262 — the wear ledger's chokepoint, tier-2 (v4 `3ee3b1342`). A companion to wardrobe-tools.json, consumed by build-wardrobe-tools-fixture.ts through QT_WT_AVATAR_SPEC (it reads `imageProfile` + `scenarios` — one chat per scenario, each seeded with the caller's Blue Blouse, avatar generation OFF), by cases/wardrobe-wear-commit-tier2.ts and by wardrobe_wear_commit_tier2_equivalence.rs. `ops` drive v4's REAL WardrobeWearRepository.commitEquippedOutfit (`commit`), applyOutfitSelections (`apply`) and the chat outfit route's handleEquipSlot (`route`) in sequence on ONE copy; `who` names the caller / recipient. The shapes are v4's own jest cases: wardrobe-wear.repository.test.ts:237-330, apply-outfit-selections.ledger.test.ts:109-198, outfit.test.ts (set_all wornBundleIds, clear_slot take-off, the lost write's 500). Unification (`f5e953a3f`): `commit_missing_chat` / `apply_missing_chat` (renamed from `*_lost_write` — a missing chat is NOT a lost write in v4) and three FAILED-write ops whose `plantSql` plants a BEFORE UPDATE ON chats abort trigger for the one op (`unplantSql` drops it) — v4's real failed write, the route's 500.",
   "imageProfile": {
     "id": "eeeeeeee-0000-4000-8000-0000000000d2",
     "name": "Ledger Imagery",
@@ -250,7 +250,7 @@
       "at": "2026-03-14T09:00:00.000Z"
     },
     {
-      "name": "commit_lost_write",
+      "name": "commit_missing_chat",
       "kind": "commit",
       "chat": "bbbbbbbb-0000-4000-8000-0000000000ff",
       "who": "caller",
@@ -362,7 +362,7 @@
       ]
     },
     {
-      "name": "apply_lost_write",
+      "name": "apply_missing_chat",
       "kind": "apply",
       "chat": "bbbbbbbb-0000-4000-8000-0000000000ff",
       "selections": [
@@ -540,6 +540,52 @@
         },
         "wornBundleIds": "x"
       }
+    },
+    {
+      "name": "commit_failed_write",
+      "kind": "commit",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000009",
+      "who": "caller",
+      "nextSlots": {
+        "top": [
+          "a0000000-0000-4000-8000-000000000001"
+        ]
+      },
+      "source": "ui",
+      "at": "2026-03-10T12:00:00.000Z",
+      "plantSql": "CREATE TRIGGER qt_planted_failed_write BEFORE UPDATE ON chats BEGIN SELECT RAISE(ABORT, 'planted chat write failure'); END",
+      "unplantSql": "DROP TRIGGER qt_planted_failed_write"
+    },
+    {
+      "name": "apply_failed_write",
+      "kind": "apply",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000009",
+      "selections": [
+        {
+          "who": "caller",
+          "mode": "manual",
+          "slots": {
+            "top": [
+              "a0000000-0000-4000-8000-000000000001"
+            ]
+          }
+        }
+      ],
+      "source": "chat-start",
+      "plantSql": "CREATE TRIGGER qt_planted_failed_write BEFORE UPDATE ON chats BEGIN SELECT RAISE(ABORT, 'planted chat write failure'); END",
+      "unplantSql": "DROP TRIGGER qt_planted_failed_write"
+    },
+    {
+      "name": "route_wear_failed_write",
+      "kind": "route",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000009",
+      "body": {
+        "who": "caller",
+        "mode": "wear",
+        "itemId": "a0000000-0000-4000-8000-000000000001"
+      },
+      "plantSql": "CREATE TRIGGER qt_planted_failed_write BEFORE UPDATE ON chats BEGIN SELECT RAISE(ABORT, 'planted chat write failure'); END",
+      "unplantSql": "DROP TRIGGER qt_planted_failed_write"
     }
   ]
 }

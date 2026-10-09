@@ -118,6 +118,13 @@ struct Op {
     selections: Vec<Value>,
     #[serde(default)]
     body: Option<Value>,
+    /// Raw SQL run just before the op (the unification's failed-write plant —
+    /// a `BEFORE UPDATE ON chats` abort trigger).
+    #[serde(default, rename = "plantSql")]
+    plant_sql: Option<String>,
+    /// Raw SQL run right after the op, before the dumps.
+    #[serde(default, rename = "unplantSql")]
+    unplant_sql: Option<String>,
 }
 
 /// The messages this family compares (the oracle captures the same set).
@@ -341,6 +348,9 @@ fn wardrobe_wear_commit_matches_oracle() {
     for (op, want) in spec.ops.iter().zip(&oracle) {
         assert_eq!(want["name"], json!(op.name), "oracle row order");
         let ledger_before = ledger(main.connection());
+        if let Some(sql) = &op.plant_sql {
+            main.connection().execute_batch(sql).expect("plant");
+        }
 
         let (result, lines) = match op.kind.as_str() {
             "commit" => {
@@ -446,6 +456,10 @@ fn wardrobe_wear_commit_matches_oracle() {
             other => panic!("unknown op kind {other}"),
         };
 
+        if let Some(sql) = &op.unplant_sql {
+            main.connection().execute_batch(sql).expect("unplant");
+        }
+
         // ── result ──
         let want_result = &want["result"];
         let result_ok = if op.kind == "commit" && want_result.get("slots").is_some() {
@@ -522,6 +536,26 @@ fn wardrobe_wear_commit_matches_oracle() {
 
     assert!(failed.is_empty(), "wardrobe-wear-commit FAILED: {failed:?}");
     // Shape assertions — the corpus must exercise every kind and credit.
+    // The planted failed write really is v4's 500 (the unification's §3
+    // finding: no row had reached `[Chats v1] Error equipping wardrobe slot`)
+    // — so the row cannot go vacuous if the plant stops firing.
+    let failed_write = oracle
+        .iter()
+        .find(|r| r["name"] == "route_wear_failed_write")
+        .expect("the failed-write route row");
+    assert_eq!(
+        failed_write["result"]["status"],
+        json!(500),
+        "{failed_write}"
+    );
+    assert!(
+        failed_write["logs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|l| l["message"] == "[Chats v1] Error equipping wardrobe slot"),
+        "{failed_write}"
+    );
     assert!(apply_ops >= 7, "apply ops: {apply_ops}");
     assert!(route_ops >= 10, "route ops: {route_ops}");
     assert!(
