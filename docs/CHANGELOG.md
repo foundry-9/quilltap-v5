@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-08 — docs(porting): P4.D262 lane record, LANE COMPLETE; the wear date's fixed UTC classified in the host-zone census
+
+_No crate versions bumped._
+
+P4.D262 lane close. `host_zone_sites_census` gains a `UTC_ALLOWED` row for `tools/wardrobe_read.rs`. The wear tally's absolute date is a deliberate fixed-UTC label, because v4's `wearDate` passes `timeZone: 'UTC'` so a reader's locale cannot reshape it; it is not a host-zone display. The order's status header reads LANE COMPLETE, and the lane record in `status-log.md` covers the final regen batch from the pin, the gate (687 binaries, 4,559 passed, 4 failed: three by design and owned by P4.D256, P4.D260 and P4.D264, plus this lane's census row, now green), the handoffs to P4.D256 and P4.D263, the Tier 3 deferrals, the banked pre-existing gaps, the dogfood rows and the versions at close.
+
 #### 2026-10-08 — test(harness): the avatar-trigger family queues a wardrobe picture beside the avatar job (P4.D262 item 17)
 
 _No crate versions bumped._

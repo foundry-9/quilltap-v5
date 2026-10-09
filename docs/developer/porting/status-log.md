@@ -172922,3 +172922,119 @@ rows now compare through the positional uuid map (a picture payload names a
 minted item). The oracle holds v4's job host off as `wardrobe-tools.ts` does
 (statuses are still not compared). The exercised counts move to seven chats /
 eight jobs. KEYSTONE binary RED on the new scenario; green here.
+
+### Lane close
+
+- **Final regen batch** (after the second waiver), ONE invocation per family
+  from the pin `/tmp/qt-v4-pin-p4d262-f5e953a3f` (`rev-parse` f5e953a3f, clean),
+  outputs under `/tmp/p4d262/`: `wardrobe_tools`, `tool_definitions`,
+  `dissolve_bundles`, `chats_outfits_tier2`, `chat_cast_routes`,
+  `chat_create_capstone`, `outfit_llm_choose_tier3`,
+  `wardrobe_tools_avatar_trigger`, `characters_mutations`, `memory_weighting`,
+  NEW `wardrobe_wear_commit_tier2`, NEW `tool_image_generation`,
+  `project_roster_access` (re-run by name) — 13/13 exit 0. Stale-pass greps:
+  `never worn` 2 lines, `picture: ` 8, `wornBundleCount` 4,
+  `Committed equipped outfit` 26, `generate_image` 5.
+- fmt clean; clippy `--workspace --all-targets -D warnings` clean with AND
+  without `--features quilltap-core/native-transport`; `recipe_sweep.py
+  --self-test` 0 failures.
+- **`cargo test --workspace --no-fail-fast`** (`CARGO_INCREMENTAL=0`, the full
+  env block for every owned family + `QT_V4_CHECKOUT` / `QT_V4_ROOT` at the pin;
+  launched behind the two sibling gates by PID, never a pattern poll): **687
+  binaries / 4,559 passed / 4 failed / 3 ignored**, zero `SKIP:` lines. The
+  four: `characters_mutations_equivalence` — red ONLY on P4.D256's
+  `wardrobe_create` / `wardrobe_get` arms (§R.13(e); the cascade arm and its
+  tables green); `provider_sdk_version_guard` (P4.D260, §R.13(c)) and
+  `qtap_schema_embed_guard` (P4.D264, §R.13(d)) — both red by design at the
+  target, both also red at P4.D255's lane close; and
+  **`host_zone_sites_census` — THIS lane's**: `tools/wardrobe_read.rs`'s
+  `wear_date` holds a `TimeZone::UTC`. Not a display-zone defect: v4's
+  `wearDate` pins `timeZone: 'UTC'` on purpose ("so a reader's locale cannot
+  reshape it"). Classified into the census's `UTC_ALLOWED` table with that
+  sentence (a one-row edit to an unowned census, recorded here for the
+  unifier); 6/6 after.
+
+### HANDOFFs (for `/unify` §S.5)
+
+1. **R-G → P4.D263:** `services/tool_image_generation.rs`'s lane-local
+   `resolve_wardrobe_image_profile(main, user_id)` (`// HANDOFF(P4.D263)`) —
+   repoint `maybe_queue_wardrobe_tool_image`'s call at P4.D263's
+   `services::image_profile_resolution::resolve_wardrobe_image_profile` (no
+   override) and delete the lane-local fn; re-run `wardrobe_tools` +
+   `wardrobe_tools_avatar_trigger` by name.
+2. **§R.10(b) → P4.D256:** `tools/wardrobe_read.rs`'s lane-local
+   `resolve_wearers` + `WearerKind` (`// HANDOFF(P4.D256)`) — repoint
+   `build_wardrobe_read_wear` at P4.D256's
+   `services::wardrobe_wear_history::resolve_wearers` (avatars off; names +
+   kind only) and delete the copy; re-run `wardrobe_tools` (the `wear:`
+   paragraphs name a departed wearer and the unattributed row).
+3. **P4.D256's `wardrobe_routes_equivalence` corpus (FYI, no edit owed by this
+   lane):** at the target every `?action=equip` row commits through the
+   chokepoint. The committed `wardrobe-routes` pair predates the ledger, so on
+   BOTH sides a put-on that newly wears a garment writes the slots and then
+   FAILS its credit (`no such table`) → 500 `Failed to equip wardrobe slot`
+   (v4's `incrementWears` throws through `commitEquippedOutfit`; v5's
+   `WearCommitError::Credit` → the same outer catch). The family stays
+   v4-equal, but a corpus that wants the 200s back plants the table in-case
+   (as `chat_cast_routes` now does). The missing-chat `wear` row
+   (`c1000000-…-0000000000ff`) stays 200 (v4 credits it). No `Failed to update
+   equipped slot` pin existed anywhere in the tree.
+4. **R-I (P4.D258):** `tools/wardrobe_wear.rs`'s test module is untouched
+   (append-friendly) — P4.D258's compounding pin lands at EOF. Where two ops
+   compound on v5: `tools/executor.rs` `run_wardrobe_wear` → `wardrobe_write`
+   (one `Db::write`, the chokepoint's prior read on the writer's own
+   connection).
+5. **R-K carve:** recorded in Unit 4 (cascade region only).
+
+### Tier 3 deferrals (recorded)
+
+- 21 Bug 179 / `039f7017c`'s overlay: NO-PORT by architecture (§R.4(e)) —
+  P4.D258 proves it (R-I).
+- 22 `wardrobe_wear` / `wardrobe_take_off` / `wardrobe_archive` outputs
+  unchanged; their `wardrobe_tools` rows green.
+- 23 The job HANDLER, the `generate` route, `resolve_wardrobe_image_profile` —
+  P4.D263's; the queued jobs here are read back as rows, never run.
+- 24 `help/wardrobe.md`'s "The Ledger" — P4.D260's re-vendor.
+- 25 No builder-side `chat_settings` seed: the switch is planted in-case
+  through each side's real `updateForUser` (both families).
+
+### BANKED (pre-existing, recorded loudly)
+
+- v5's slot writer (`db/chats_outfits.rs`) does not log v4's `safeQuery`
+  ERROR `Failed to set equipped outfit` on a failed write (the chokepoint's
+  WARN fires; v4 logs both).
+- v5's tools never ported v4's `Wardrobe list/create/update completed` INFO
+  lines (so `neverWornCount`, `withPictureCount`, `imageGeneration`,
+  `changesLook` have no line).
+- v5's participant-add bag never validates `outfitSelection` against
+  `OutfitSelectionSchema` (v4's `addParticipantSchema` does); `wornBundleIds`
+  is read leniently there. The chat-create bag DOES validate it (this lane
+  added the `wornBundleIds` issues).
+- v5's equip route never ported v4's per-mode INFO lines (`Wardrobe item
+  worn` / `force-replaced` / `layered into slot` / `removed from slot` /
+  `slot cleared`); only `set_all`'s landed here (ordered).
+
+### 💸 for the dogfood pass
+
+- A real equip on a Salon turn (`wardrobe_wear`; the dialog's "Wear this
+  fitting" with a quick-picked outfit) crediting ONE wear per newly worn
+  garment + ONE bundle credit; `Committed equipped outfit` with `source`
+  `tool` / `ui`; a take-off crediting nothing; a chat merge writing slots with
+  `credited=0`.
+- `wardrobe_read`'s tally on the copy ("Worn 4 times, first 14 Mar 2026, last
+  3 days ago by you. Also worn by …") and `wardrobe_list`'s ` · last worn …`
+  after the seed.
+- A character delete folding her rows into the unattributed row (the DEBUG;
+  the totals unchanged; `wardrobe_read` naming "someone no longer in the
+  household").
+- `wardrobe_create` with the switch ON → `- Picture: A picture of this item is
+  being drawn…` + a PENDING `WARDROBE_ITEM_IMAGE_GENERATION` job; switch OFF +
+  `generate_image: true` → the `not-enabled` sentence and NO job.
+- A `set_all` whose slot write FAILS → 500 `Failed to equip wardrobe slot`, no
+  announcement (a missing chat is NOT that — v4 answers 200 and credits).
+
+### Versions at close
+
+core 0.0.1259 (+6 from P4.D255's 0.0.1253 — one per core-changing commit:
+`c9fb46023`, `cf38defa3`, `19fa478a7`, `fc1fcc499`, `58537ddfd`, `d0a590655`);
+harness frozen 0.0.1110; host / web / cli / tauri / SPA untouched.

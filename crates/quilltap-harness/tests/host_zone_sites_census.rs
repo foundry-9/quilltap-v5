@@ -292,6 +292,14 @@ const UTC_ALLOWED: &[(&str, usize, &str)] = &[
         1,
         "untouched precedent (Mandate 5): `local_date_stamp`'s fallback",
     ),
+    (
+        "tools/wardrobe_read.rs",
+        1,
+        "`wear_date` — v4's `wearDate` pins `timeZone: 'UTC'` ON PURPOSE \
+         (`wardrobe-read-handler.ts:144-153`, \"UTC, so a reader's locale cannot \
+         reshape it\"): the wear tally's absolute date is a fixed-zone label, not \
+         a host-zone display (P4.D262)",
+    ),
 ];
 
 /// `(path, production `civil_from_days(` + `div_euclid(86_400_000)` uses, why
