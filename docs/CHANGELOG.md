@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — docs(porting): P4.D276 lane close — the memory SPA lane record and status header
+
+_Docs-only change._
+
+Closes the P4.D276 lane: the lane record in `status-log.md` (gate results, ownership check, the two recorded divergences kept as-is — v5's extra Source link and the narrower realtime refresh — the mechanism translations, the five gated Playwright beats, and the dogfood rows), and the order's status header set to LANE COMPLETE.
+
 #### 2026-10-09 — test(e2e): P4.D276 M8 — the memory consolidation Playwright file (LIVE anchors + gated server beats)
 
 _Versions: SPA 0.5.829._

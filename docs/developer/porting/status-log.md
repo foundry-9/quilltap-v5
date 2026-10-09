@@ -175575,3 +175575,72 @@ heading lines after `Memory Housekeeping`.
   `skippedReason` — R-I's tripwire) + real run toast; Cleanup → Archived tier;
   the digest viewer over the R-K plant. **Unauthored beats:** none — every
   Mnemo / Orla consolidation leg is a 💸 row by R-I.
+
+### Lane close — P4.D276 (SPA 0.5.829)
+- **Commits (8):** `4511df1c3` M1+M2 · `ee80e7ab9` M3 · `9133f846d` M4a ·
+  `fe06305e6` M4b · `2964b5903` M4c · `19ec5ce30` M7 + Tier 2 item 16 ·
+  `ff99cc83b` M8 · this close commit. No crate version moved; SPA
+  `0.5.822` → `0.5.829` (the close commit bumps nothing).
+- **Gate:** `npm run lint` (incl. `check-qt-classes`) clean; `npm test` 481
+  files / 9,123 tests, exit 0, 0 `Unhandled Errors`; `npm run build` exit 0
+  (the only real type-check); Playwright by file as in M8. No Rust touched, so
+  `cargo fmt`/`clippy`/`test --workspace` are not this lane's gate;
+  `python3 harness/tools/recipe_sweep.py --self-test` exit 0.
+- **Ownership:** `git diff main --stat` names only `apps/web/src/app/memory/**`,
+  `screens/settings/memory/**`, `layout/activity-kinds*.ts`,
+  `layout/queue-status-badges.spec.ts`, `search/search.types.ts` +
+  `search-results.spec.ts`, `core/core-contract.ts` (hunks only at `:5715–6213`
+  — the memory appendix + its one bracketed union group; no `CoreRequest`), the
+  NEW e2e file, two lines of `e2e/settings-flow.spec.ts`, `package.json` + lock,
+  `docs/CHANGELOG.md`, `status-log.md`, this order's header. The diff over
+  `crates/ harness/ help/ docs/v4/ core/realtime-topic-map.ts ui/modal.ts
+  e2e/support e2e/global-setup.ts` is EMPTY. `mergeSimilar` survives only as
+  the contract's three documented keys, `DEFAULT_CONFIG`, and absence
+  assertions.
+- **R-A, both RECORDED, not changed:** (1) Source — v4 `memory-list.tsx:335-342`
+  passes no `onNavigateToSource`; v5 `memory/memory-list.ts` binds
+  `(navigateToSource)`. Kept; the digest viewer's `[showActions]="false"`
+  hides it as v4's handler-less card does. (2) Realtime — v4
+  `lib/realtime/topic-map.ts:94-98` refetches all of `queryKeys.memories`; v5
+  `core/realtime-topic-map.ts:136-144` narrows the unscoped `memories` hint to
+  `[chatKeys.all, memoryKeys.chatCounts()]` (P4.D177 §C.4). Consequence: after
+  "Consolidate for real" (or a housekeeping job) finishes, the Consolidate-now
+  roster's counts and the two new config queries are stale until the tab
+  remounts — a 💸 row (confirm, don't file).
+- **Recorded mechanism translations:** R-D `showActions` / `canViewDigest`;
+  R-E the DOM re-sync after a save settles (mutation-proven); R-H the two
+  overlays as v4's hand markup, body-reparented after first render; the roster
+  cache key `memoryKeys.characterCounts()` (`['memories','character-counts']`
+  vs v4's `'character-memory-counts'`) shared by both cards; `getErrorMessage`
+  homed once in `memory/memory-format.ts`. Nothing was restyled by the class
+  guard.
+- **HANDOFF:** none. **Deferred (Tier 3, by name):** R-A's two items (a later
+  ruling); the Mnemo / Orla consolidation legs (💸 only — R-I); `anchor-gate-
+  probe` (CLI-only, no SPA consumer in v4); the five gated beats until §S.9.
+  No beat left unauthored.
+- **💸 rows for the dogfood pass (Friday copy, after the union):**
+  - a character's Memories tab: `Filter by tier` → `Archived` lists v4's cold
+    rows with the `Archived` chip + `opacity-75`; `Consolidated (digests)` lists
+    digests with `Digest` + `Digested from N notes.`; a superseded row's
+    `Superseded by a digest` opens `The Digest` ABOVE the workspace chrome
+    (`elementFromPoint`) with no Edit/Delete; Close;
+  - `Cleanup` on a busy character: the `Archive` tile, `Archive N Memories`,
+    v4's toast with the demoted count, the moved rows under `Archived`, the
+    memory row count unchanged (nothing deleted);
+  - Settings → Memory: the Consolidation card on the live settings row; one
+    field saved shows v4's server-side clobber in the others (expected —
+    `PARTIAL_DEFAULTS_CLOBBER`), then restore; the profile labels and, if
+    the stored profile is gone, `(a profile that has since left the building)`;
+  - 💸 a consolidation DRY RUN on one character (one model call per selected
+    cluster): the report's stats, clusters, proposed digests, contradictions,
+    note line; row counts unchanged;
+  - Extraction Grain: the live mode, a change + reload, restore;
+  - the Mem chip tooltip names consolidation while a `MEMORY_CONSOLIDATION`
+    job runs; afterwards the roster's counts stay stale until a remount (R-A);
+  - editing a digest keeps `source = 'CONSOLIDATED'` (Tier 2 item 16).
+- **Gotchas worth keeping:** a jsdom `type=number` input sanitizes a padded
+  value (`' 200 '` → `''`), so a trim arm must seed the draft directly; a
+  spec that fires `input` then `blur` with no render between them leaves a
+  `[value]` binding unable to restore a cleared field (a browser always renders
+  between them); TanStack's default retry hides a read-failure arm for seconds —
+  `retry: false` in the spec's `QueryClient`.
