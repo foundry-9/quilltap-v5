@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(memory): P4.D266 U2 the gate counts every re-observation atomically and caps footnotes
+
+_Versions: core 0.0.1267._
+
+The memory gate's write side now matches v4 at the `01a83539d` pin (`3f7320138` F1/F3 and `70f9b495c` bug 182):
+
+- A near-duplicate (similarity ≥ 0.90) counts as a reinforcement. `absorb_near_duplicate` bumps the count, `lastReinforcedAt` and `reinforcedImportance`, and leaves the text and vector alone.
+- `reinforce_memory` counts through the keystone's atomic `increment_reinforcement` first, then writes content and anchors as a second patch. Two reinforcements from one snapshot now land 3, not 2.
+- Footnotes cap at 8. A row already at the cap is not re-embedded.
+- The entity union writes only when the list actually grew.
+- New shared helpers `count_reinforcement`, `patch_memory` and `reembed_memory`. The re-embed makes ONE provider call (no retry), and any failure is the non-fatal WARN `[MemoryGate] Failed to re-embed memory`. This closes P4.88's two recorded divergences.
+- `memory_gate_tier3` goes from red (the two near-duplicate rows) to green, and so do `memories_routes`' `create_near_duplicate` rows. Unit tests cover bug 182, the absorb and its WARN, the cap, the 12-entity row, a single provider call, and capture pins with silence legs.
+
 #### 2026-10-09 — feat(memory): P4.D266 U1 the pure footnote cap and memory-merge plan
 
 _Versions: core 0.0.1266._

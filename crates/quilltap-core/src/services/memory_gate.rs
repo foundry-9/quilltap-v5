@@ -10,7 +10,7 @@
 //!
 //! | Outcome | Band | Effect |
 //! |---|---|---|
-//! | `SkipNearDuplicate`   | `>= NEAR_DUPLICATE_THRESHOLD` | absorbed; no new row |
+//! | `SkipNearDuplicate`   | `>= NEAR_DUPLICATE_THRESHOLD` | counted on the existing row; no new row |
 //! | `Reinforce`           | `>= MERGE_THRESHOLD`          | boost the existing memory |
 //! | `InsertRelated`       | `>= RELATED_THRESHOLD`        | insert + link the related memories |
 //! | `Insert`              | below `RELATED_THRESHOLD`     | fresh memory |
@@ -52,7 +52,8 @@ use crate::db::vector_store::CharacterVectorStore;
 use crate::db::{memories_read, DbError};
 use crate::episodic::{build_memory_embedding_text, EpisodicAnchorView};
 use crate::memory_gate::{
-    calculate_reinforced_importance, extract_novel_details, occasions_are_distinct,
+    append_capped_footnotes, count_reinforcement_footnotes, extract_novel_details,
+    occasions_are_distinct, MAX_REINFORCEMENT_FOOTNOTES,
 };
 use crate::model::embedding::{EmbeddingPriority, EmbeddingProvider};
 use crate::services::activity_kinds::ActivityKind;
@@ -61,7 +62,10 @@ use crate::services::activity_registry::track_activity;
 use crate::db::runtime::Db;
 
 /// At or above this cosine similarity the candidate is an exact-or-near-exact
-/// restatement and is skipped entirely (not even reinforced).
+/// restatement of an existing memory. No new row is written and the existing
+/// text is left alone, but the observation still counts:
+/// [`absorb_near_duplicate`] bumps the row's reinforcement count (v4
+/// `3f7320138` F1).
 pub const NEAR_DUPLICATE_THRESHOLD: f64 = 0.90;
 /// At or above this the best match is reinforced instead of duplicated.
 pub const MERGE_THRESHOLD: f64 = 0.85;
@@ -276,15 +280,21 @@ pub async fn create_memory_with_gate<P: EmbeddingProvider>(
         GateDecision::SkipNearDuplicate {
             existing,
             similarity,
-        } => Ok(MemoryGateOutcome {
-            memory_id: id_of(&existing),
-            action: GateAction::SkipNearDuplicate,
-            novel_details: Vec::new(),
-            related_memory_ids: Vec::new(),
-            similarity: Some(similarity),
-            reason: None,
-            reinforcement_count: None,
-        }),
+        } => {
+            // v4 `3f7320138` F1: the observation still counts — the facts
+            // restated most faithfully must not be the ones that never accrue
+            // reinforcement. Text, links and vector stay untouched.
+            let absorbed = absorb_near_duplicate(db, &existing).await?;
+            Ok(MemoryGateOutcome {
+                memory_id: id_of(&absorbed),
+                action: GateAction::SkipNearDuplicate,
+                novel_details: Vec::new(),
+                related_memory_ids: Vec::new(),
+                similarity: Some(similarity),
+                reason: None,
+                reinforcement_count: None,
+            })
+        }
 
         GateDecision::SkipEmbeddingFailed { reason } => Ok(MemoryGateOutcome {
             memory_id: None,
@@ -651,14 +661,239 @@ async fn create_memory_direct_with_embedding(
     Ok(id)
 }
 
-/// Reinforce an existing memory (v4 `reinforceMemory`): extract novel details,
-/// append them as footnotes when any, bump `reinforcementCount` /
-/// `lastReinforcedAt` / `reinforcedImportance`, upgrade the episodic anchors
-/// when the retelling supplies better ones, and re-embed if the content OR the
-/// anchors changed. Returns `(memory_id, novel_details, count_for_log)` — the
-/// count the extraction driver's debug line reports (the new count, or the
-/// existing `reinforcementCount ?? 1` when the update failed and v4 returns the
-/// unchanged memory).
+/// What [`count_reinforcement`] wrote: v4's `Pick<Memory, 'reinforcementCount' |
+/// 'lastReinforcedAt' | 'reinforcedImportance'>`.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Counted {
+    pub reinforcement_count: f64,
+    pub reinforced_importance: f64,
+    pub last_reinforced_at: String,
+}
+
+impl Counted {
+    /// `{ ...memory, ...counted }` — the counted fields over a row's JSON.
+    fn merge_into(&self, memory: &Value) -> Value {
+        let mut merged = memory.clone();
+        if let Some(obj) = merged.as_object_mut() {
+            obj.insert(
+                "reinforcementCount".into(),
+                crate::db::js_number_to_json(self.reinforcement_count),
+            );
+            obj.insert(
+                "lastReinforcedAt".into(),
+                Value::String(self.last_reinforced_at.clone()),
+            );
+            obj.insert(
+                "reinforcedImportance".into(),
+                crate::db::js_number_to_json(self.reinforced_importance),
+            );
+        }
+        merged
+    }
+}
+
+/// Count one more observation of `memory` and return the row's reinforcement
+/// fields as they now stand (v4 `countReinforcement`, `70f9b495c`).
+///
+/// The count is incremented atomically against the row at write time
+/// ([`MemoriesRepository::increment_reinforcement`](crate::db::memories::MemoriesRepository::increment_reinforcement)),
+/// never written as an absolute value from the gate's snapshot — two jobs
+/// reinforcing the same row would otherwise both write N+1 (bug 182). `None`
+/// when the row is missing; a DB failure propagates (v4's rethrow). NO-PORT
+/// (§R.4(o)): v4's job-child buffered arm (`…Reinforcement buffered (job
+/// child)…`) — v5 has no child.
+pub(crate) async fn count_reinforcement(
+    db: &Db,
+    memory: &Value,
+) -> Result<Option<Counted>, DbError> {
+    let at = crate::clock::now_iso();
+    let character_id = str_field(memory, "characterId");
+    let memory_id = id_of(memory).unwrap_or_default();
+    let at_w = at.clone();
+    let counted = db
+        .write(move |writers| {
+            writers
+                .main()
+                .memories()
+                .increment_reinforcement(&character_id, &memory_id, &at_w)
+        })
+        .await?;
+    Ok(counted.map(|r| Counted {
+        reinforcement_count: r.reinforcement_count,
+        reinforced_importance: r.reinforced_importance,
+        last_reinforced_at: at,
+    }))
+}
+
+/// Count a near-duplicate re-observation (`SkipNearDuplicate`) as reinforcement
+/// (v4 `absorbNearDuplicate`, `3f7320138` F1).
+///
+/// The candidate restates the existing memory almost verbatim, so nothing about
+/// the row's text or vector changes: no footnotes, no anchor upgrades, no
+/// re-embed. Only the reinforcement signal moves — count, `lastReinforcedAt`,
+/// `reinforcedImportance` — which is what protection and ranking read. Returns
+/// the existing row with the counted fields merged in (its `updatedAt` stays
+/// the SNAPSHOT's, as v4's spread does).
+pub(crate) async fn absorb_near_duplicate(db: &Db, existing: &Value) -> Result<Value, DbError> {
+    let counted = count_reinforcement(db, existing).await?;
+    let memory_id = id_of(existing).unwrap_or_default();
+    let Some(counted) = counted else {
+        tracing::warn!(
+            memoryId = memory_id,
+            characterId = str_field(existing, "characterId"),
+            "[MemoryGate] Failed to reinforce near-duplicate memory"
+        );
+        return Ok(existing.clone());
+    };
+    tracing::debug!(
+        memoryId = memory_id,
+        reinforcementCount = counted.reinforcement_count,
+        reinforcedImportance = counted.reinforced_importance,
+        "[MemoryGate] Near-duplicate absorbed as reinforcement"
+    );
+    Ok(counted.merge_into(existing))
+}
+
+/// Persist a patch to a memory and return the row as it now stands (v4
+/// `patchMemory`). `None` only when the row is genuinely missing (or not the
+/// character's) — `update_for_character`'s not-found answer; a DB failure
+/// propagates (v4's `updateForCharacter` is a RETHROW-mode `safeQuery`). The
+/// re-read runs on the caller thread after the write commits. NO-PORT
+/// (§R.4(o)): v4's job-child buffered arm (`[MemoryGate] Memory patch
+/// buffered (job child); using local view`).
+pub(crate) async fn patch_memory(
+    db: &Db,
+    memory: &Value,
+    patch: MemUpdate,
+) -> Result<Option<Value>, DbError> {
+    let character_id = str_field(memory, "characterId");
+    let memory_id = id_of(memory).unwrap_or_default();
+    let id_w = memory_id.clone();
+    let updated = db
+        .write(move |writers| {
+            writers
+                .main()
+                .memories()
+                .update_for_character(&character_id, &id_w, &patch)
+        })
+        .await?;
+    if !updated {
+        return Ok(None);
+    }
+    db.read_main(|conn| memories_read::find_by_id(conn, &memory_id))
+}
+
+/// The episodic anchors a memory row carries (v4 passes the `Memory` itself
+/// as the `EpisodicAnchorView`).
+fn anchors_of(memory: &Value) -> EpisodicAnchorView {
+    EpisodicAnchorView {
+        occurred_at: str_opt_field(memory, "occurredAt"),
+        narrative_time: str_opt_field(memory, "narrativeTime"),
+        entities: str_array_field(memory, "entities"),
+    }
+}
+
+/// Regenerate a memory's embedding from its current summary / content /
+/// anchors and write it to both the row and the character's vector store (v4
+/// `reembedMemory`, `3f7320138` F3). ONE provider call — no retry (the gate's
+/// own candidate embedding keeps its one retry; this does not). Best-effort:
+/// ANY failure (the provider, the row write, the store) warns `[MemoryGate]
+/// Failed to re-embed memory` and leaves the old vector in place — the whole
+/// block is v4's one `try`. Both lines are emitted on the caller thread, after
+/// the write returns.
+///
+/// `error` renders v4's `String(error)`: a provider failure is an
+/// `EmbeddingError`, whose `this.name` makes it `EmbeddingError: <message>`;
+/// a v5 DB / store failure renders `Error: <display>` (no fixture reaches it).
+pub(crate) async fn reembed_memory<P: EmbeddingProvider>(
+    db: &Db,
+    provider: &P,
+    memory: &Value,
+    user_id: &str,
+    embedding_profile_id: Option<&str>,
+) -> bool {
+    let memory_id = id_of(memory).unwrap_or_default();
+    let text = build_memory_embedding_text(
+        &str_field(memory, "summary"),
+        &str_field(memory, "content"),
+        Some(&anchors_of(memory)),
+    );
+    let embedding = match provider
+        .generate_embedding_for_user(
+            &text,
+            user_id,
+            embedding_profile_id,
+            EmbeddingPriority::Background,
+        )
+        .await
+    {
+        Ok(result) => result.embedding,
+        Err(e) => {
+            tracing::warn!(
+                memoryId = memory_id,
+                error = format!("EmbeddingError: {}", e.message),
+                "[MemoryGate] Failed to re-embed memory"
+            );
+            return false;
+        }
+    };
+    let character_id = str_field(memory, "characterId");
+    let id_w = memory_id.clone();
+    let written = db
+        .write(move |writers| {
+            let main = writers.main();
+            let patch = MemUpdate {
+                embedding: Some(Some(embedding.clone())),
+                ..Default::default()
+            };
+            // v4 ignores `updateForCharacter`'s answer here and goes on to the
+            // store; only a throw reaches the catch.
+            main.memories()
+                .update_for_character(&character_id, &id_w, &patch)?;
+            let mut store = CharacterVectorStore::load(main.connection(), &character_id)?;
+            if store.has_vector(&id_w) {
+                store.update_vector(&id_w, embedding)?;
+            } else {
+                store.add_vector(&id_w, embedding)?;
+            }
+            store.flush(&main.vector_indices())?;
+            Ok(())
+        })
+        .await;
+    match written {
+        Ok(()) => {
+            tracing::debug!(memoryId = memory_id, "[MemoryGate] Re-embedded memory");
+            true
+        }
+        Err(e) => {
+            tracing::warn!(
+                memoryId = memory_id,
+                error = format!("Error: {e}"),
+                "[MemoryGate] Failed to re-embed memory"
+            );
+            false
+        }
+    }
+}
+
+/// Reinforce an existing memory with a new observation (v4 `reinforceMemory`,
+/// `memory-gate.ts:589-685` — `3f7320138` F3 rewritten by `70f9b495c`):
+///
+/// 1. extract the candidate's novel details and append them as `[+]`
+///    footnotes, up to [`MAX_REINFORCEMENT_FOOTNOTES`];
+/// 2. upgrade the episodic anchors when the retelling supplies better ones
+///    (fill a null `occurredAt` / `narrativeTime`; union new entities, bounded);
+/// 3. COUNT the observation through the atomic increment FIRST — counted
+///    atomically against the row at write time, never from the gate's
+///    snapshot (bug 182) — then write the content / anchors as a SECOND patch;
+/// 4. re-embed when the content or the anchor line changed — unless the row
+///    was already at the footnote cap: past the cap the vector is frozen until
+///    consolidation rewrites it (anchors still land on the row).
+///
+/// Returns `(memory_id, novel_details, count_for_log)`: the APPENDED (capped)
+/// details, and the count the extraction driver's debug line reports (the
+/// counted value, or the snapshot's `reinforcementCount ?? 1` when the count
+/// could not land and v4 returns the unchanged memory).
 #[allow(clippy::too_many_arguments)] // mirrors v4 reinforceMemory's shape
 async fn reinforce_memory<P: EmbeddingProvider>(
     db: &Db,
@@ -672,190 +907,135 @@ async fn reinforce_memory<P: EmbeddingProvider>(
     let existing_id = id_of(existing).unwrap_or_default();
     let existing_char = str_field(existing, "characterId");
     let existing_content = str_field(existing, "content");
-    let existing_summary = str_field(existing, "summary");
-    let existing_importance = num_field(existing, "importance").unwrap_or(0.5);
-    // v4: `existingMemory.reinforcementCount ?? 1`.
+    // v4: `existingMemory.reinforcementCount ?? 1` (the failed-count arm's log
+    // value).
     let existing_count = num_field(existing, "reinforcementCount").unwrap_or(1.0);
 
-    let novel_details = extract_novel_details(candidate_content, &existing_content);
-    let new_count = existing_count + 1.0;
-    let now = crate::clock::now_iso();
-    let new_reinforced_importance = calculate_reinforced_importance(existing_importance, new_count);
+    let all_novel_details = extract_novel_details(candidate_content, &existing_content);
+    let at_cap = count_reinforcement_footnotes(&existing_content) >= MAX_REINFORCEMENT_FOOTNOTES;
 
-    let new_content = if novel_details.is_empty() {
-        existing_content.clone()
-    } else {
-        let footnotes = novel_details
-            .iter()
-            .map(|d| format!("[+] {d}"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        format!("{existing_content}\n{footnotes}")
-    };
+    let (new_content, novel_details) =
+        append_capped_footnotes(&existing_content, &all_novel_details);
+    if novel_details.len() < all_novel_details.len() {
+        tracing::debug!(
+            memoryId = existing_id,
+            offered = all_novel_details.len(),
+            appended = novel_details.len(),
+            cap = MAX_REINFORCEMENT_FOOTNOTES,
+            "[MemoryGate] Reinforcement footnote cap reached; dropping extra details"
+        );
+    }
     let content_changed = new_content != existing_content;
 
+    // The count, lastReinforcedAt and reinforcedImportance are NOT in this
+    // patch: they move only through count_reinforcement's atomic increment.
+    let mut update = MemUpdate::default();
+    let mut has_update = false;
+    if content_changed {
+        update.content = Some(new_content);
+        has_update = true;
+    }
+
     // Anchor upgrades: a retelling that supplies when/where the original capture
-    // lacked should improve the row — today only footnote prose accumulates.
+    // lacked should improve the row — otherwise only footnote prose accumulates.
     // The date guard upstream already diverted candidates whose occurredAt
     // CONFLICTS with the existing one by > DATE_GUARD_DAYS, so filling a null is
     // safe here. Entities union (bounded) so repeated retellings converge.
-    let mut row_anchors = EpisodicAnchorView {
-        occurred_at: str_opt_field(existing, "occurredAt"),
-        narrative_time: str_opt_field(existing, "narrativeTime"),
-        entities: str_array_field(existing, "entities"),
-    };
+    let existing_anchors = anchors_of(existing);
     let mut anchors_changed = false;
-    let mut occurred_at_patch: Option<Option<String>> = None;
-    let mut narrative_time_patch: Option<Option<String>> = None;
-    let mut entities_patch: Option<Vec<String>> = None;
+    // Both sides JS-truthy: a present-but-empty anchor is "missing".
+    if let Some(occurred) = candidate_anchors
+        .occurred_at
+        .as_deref()
+        .filter(|s| !s.is_empty())
     {
-        // Both sides JS-truthy: a present-but-empty existing anchor is "missing".
-        let candidate_occurred = candidate_anchors
+        if existing_anchors
             .occurred_at
             .as_deref()
-            .filter(|s| !s.is_empty());
-        if let Some(occurred) = candidate_occurred {
-            if row_anchors.occurred_at.as_deref().is_none_or(str::is_empty) {
-                occurred_at_patch = Some(Some(occurred.to_string()));
-                row_anchors.occurred_at = Some(occurred.to_string());
-                anchors_changed = true;
-            }
+            .is_none_or(str::is_empty)
+        {
+            update.occurred_at = Some(Some(occurred.to_string()));
+            has_update = true;
+            anchors_changed = true;
         }
-        let candidate_narrative = candidate_anchors
+    }
+    if let Some(narrative) = candidate_anchors
+        .narrative_time
+        .as_deref()
+        .filter(|s| !s.is_empty())
+    {
+        if existing_anchors
             .narrative_time
             .as_deref()
-            .filter(|s| !s.is_empty());
-        if let Some(narrative) = candidate_narrative {
-            if row_anchors
-                .narrative_time
-                .as_deref()
-                .is_none_or(str::is_empty)
-            {
-                narrative_time_patch = Some(Some(narrative.to_string()));
-                row_anchors.narrative_time = Some(narrative.to_string());
-                anchors_changed = true;
-            }
+            .is_none_or(str::is_empty)
+        {
+            update.narrative_time = Some(Some(narrative.to_string()));
+            has_update = true;
+            anchors_changed = true;
         }
-        let candidate_entities: Vec<&str> = candidate_anchors
-            .entities
-            .iter()
-            .map(String::as_str)
-            .filter(|e| !crate::jsstr::js_trim(e).is_empty())
+    }
+    let candidate_entities: Vec<&str> = candidate_anchors
+        .entities
+        .iter()
+        .map(String::as_str)
+        .filter(|e| !crate::jsstr::js_trim(e).is_empty())
+        .collect();
+    if !candidate_entities.is_empty() {
+        let existing_entities = &existing_anchors.entities;
+        let existing_lower: Vec<String> =
+            existing_entities.iter().map(|e| e.to_lowercase()).collect();
+        let fresh: Vec<&str> = candidate_entities
+            .into_iter()
+            .filter(|e| !existing_lower.contains(&e.to_lowercase()))
             .collect();
-        if !candidate_entities.is_empty() {
-            let existing_lower: Vec<String> = row_anchors
-                .entities
-                .iter()
-                .map(|e| e.to_lowercase())
-                .collect();
-            let fresh: Vec<&str> = candidate_entities
-                .into_iter()
-                .filter(|e| !existing_lower.contains(&e.to_lowercase()))
-                .collect();
-            if !fresh.is_empty() {
-                let mut unioned = row_anchors.entities.clone();
-                unioned.extend(fresh.into_iter().map(str::to_string));
-                unioned.truncate(12);
-                entities_patch = Some(unioned.clone());
-                row_anchors.entities = unioned;
+        if !fresh.is_empty() {
+            let mut merged = existing_entities.clone();
+            merged.extend(fresh.into_iter().map(str::to_string));
+            merged.truncate(12);
+            // A row already holding 12 entities never "changes" — the bounded
+            // union is the same list, so no write and no re-embed.
+            if merged.len() > existing_entities.len() {
+                update.entities = Some(merged);
+                has_update = true;
                 anchors_changed = true;
             }
         }
     }
 
-    // The reinforcement update (bumps updatedAt).
-    {
-        let patch = MemUpdate {
-            reinforcement_count: Some(new_count),
-            last_reinforced_at: Some(Some(now.clone())),
-            reinforced_importance: Some(new_reinforced_importance),
-            content: if content_changed {
-                Some(new_content.clone())
-            } else {
-                None
-            },
-            occurred_at: occurred_at_patch,
-            narrative_time: narrative_time_patch,
-            entities: entities_patch,
-            ..Default::default()
-        };
-        let existing_char_w = existing_char.clone();
-        let existing_id_w = existing_id.clone();
-        let updated = db
-            .write(move |writers| {
-                writers.main().memories().update_for_character(
-                    &existing_char_w,
-                    &existing_id_w,
-                    &patch,
-                )
-            })
-            .await?;
-        // v4: if the update failed, return the existing memory unchanged.
-        if !updated {
-            // v4 `memory-gate.ts:382`. Log-only (P4.88).
-            tracing::warn!(
-                memoryId = existing_id,
-                characterId = existing_char,
-                "[MemoryGate] Failed to update memory during reinforcement"
-            );
-            return Ok((existing_id, novel_details, existing_count));
-        }
-    }
+    let Some(counted) = count_reinforcement(db, existing).await? else {
+        tracing::warn!(
+            memoryId = existing_id,
+            characterId = existing_char,
+            "[MemoryGate] Failed to update memory during reinforcement"
+        );
+        return Ok((existing_id, novel_details, existing_count));
+    };
 
-    // Re-embed if content OR anchors changed — the anchor line is part of the
-    // embedded text (v4 wraps this in a non-fatal try/catch). The builder sees
-    // the UPDATED row's anchors (v4 passes `updatedMemory`), which is exactly
-    // `row_anchors` after the upgrades applied above.
-    if content_changed || anchors_changed {
-        let reembed_text =
-            build_memory_embedding_text(&existing_summary, &new_content, Some(&row_anchors));
-        match generate_with_retry(provider, &reembed_text, user_id, embedding_profile_id).await {
-            Err(msg) => {
-                // v4 `memory-gate.ts:416` — the whole re-embed block's catch.
-                // Log-only (P4.88); `String(error)` on an `EmbeddingError` renders
-                // `"<name>: <message>"`, and that class sets `this.name`.
-                //
-                // ⚠ Two PRE-EXISTING shape divergences this line makes visible,
-                // neither this log-only unit's to change (recorded in P4.88's
-                // lane record): v4 calls `generateEmbeddingForUser` here ONCE
-                // where v5 reuses `generate_with_retry` (so v5 can make a second
-                // provider call v4 never makes, and the message logged is the
-                // SECOND attempt's), and v4's `try` also covers the row update
-                // and the vector-store writes — which v5 propagates with `?`
-                // rather than warning and continuing.
+    let mut updated_memory = counted.merge_into(existing);
+    if has_update {
+        match patch_memory(db, &updated_memory, update).await? {
+            None => {
                 tracing::warn!(
                     memoryId = existing_id,
-                    error = format!("EmbeddingError: {msg}"),
-                    "[MemoryGate] Failed to re-embed reinforced memory"
+                    characterId = existing_char,
+                    "[MemoryGate] Failed to update memory during reinforcement"
                 );
+                // The count landed; v4 returns the counted local view.
+                return Ok((existing_id, novel_details, counted.reinforcement_count));
             }
-            Ok(emb) => {
-                let existing_char = existing_char.clone();
-                let existing_id = existing_id.clone();
-                db.write(move |writers| {
-                    let main = writers.main();
-                    let patch = MemUpdate {
-                        embedding: Some(Some(emb.clone())),
-                        ..Default::default()
-                    };
-                    main.memories()
-                        .update_for_character(&existing_char, &existing_id, &patch)?;
-
-                    let mut store = CharacterVectorStore::load(main.connection(), &existing_char)?;
-                    if store.has_vector(&existing_id) {
-                        store.update_vector(&existing_id, emb)?;
-                    } else {
-                        store.add_vector(&existing_id, emb)?;
-                    }
-                    store.flush(&main.vector_indices())?;
-                    Ok(())
-                })
-                .await?;
-            }
+            Some(patched) => updated_memory = counted.merge_into(&patched),
         }
     }
 
-    Ok((existing_id, novel_details, new_count))
+    // Re-embed if content or anchors changed (the anchor line is embedded
+    // text). Past the footnote cap the row's vector is frozen until
+    // consolidation rewrites it — anchors still land on the row, they just
+    // don't re-embed.
+    if !at_cap && (content_changed || anchors_changed) {
+        reembed_memory(db, provider, &updated_memory, user_id, embedding_profile_id).await;
+    }
+
+    Ok((existing_id, novel_details, counted.reinforcement_count))
 }
 
 /// Bidirectionally link a new memory with related existing memories (v4
@@ -1306,14 +1486,96 @@ mod tests {
         assert_eq!(rc, 2.0);
     }
 
-    /// A best match at/above the near-duplicate threshold → SKIP_NEAR_DUPLICATE:
-    /// nothing is written; the existing memory is returned.
+    fn seed_row(db: &Db) -> Value {
+        db.read_main(|c| memories_read::find_by_id(c, "mem-seed"))
+            .unwrap()
+            .expect("the seed row")
+    }
+
+    fn cell<T: rusqlite::types::FromSql>(db: &Db, col: &str) -> T {
+        db.read_main(|c| {
+            Ok(c.query_row(
+                &format!("SELECT {col} FROM memories WHERE id = 'mem-seed'"),
+                [],
+                |r| r.get(0),
+            )?)
+        })
+        .unwrap()
+    }
+
+    async fn set_cells(db: &Db, sets: &str) {
+        let sql = format!("UPDATE memories SET {sets} WHERE id = 'mem-seed'");
+        db.write(move |w| {
+            w.main().connection().execute_batch(&sql)?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    }
+
+    fn vector_bytes(db: &Db) -> Vec<u8> {
+        db.read_main(|c| {
+            Ok(c.query_row(
+                "SELECT embedding FROM vector_entries WHERE id = 'mem-seed'",
+                [],
+                |r| r.get(0),
+            )?)
+        })
+        .unwrap()
+    }
+
+    /// A canned provider that RECORDS every text it is asked to embed — the
+    /// "exactly one provider call" / "no provider call" proofs.
+    #[derive(Clone)]
+    struct Recording {
+        inner: CannedEmbeddingProvider,
+        calls: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    }
+
+    impl Recording {
+        fn new(inner: CannedEmbeddingProvider) -> Self {
+            Self {
+                inner,
+                calls: Default::default(),
+            }
+        }
+        fn calls(&self) -> Vec<String> {
+            self.calls.lock().unwrap().clone()
+        }
+    }
+
+    impl EmbeddingProvider for Recording {
+        fn generate_embedding_for_user(
+            &self,
+            text: &str,
+            user_id: &str,
+            profile_id: Option<&str>,
+            priority: EmbeddingPriority,
+        ) -> impl std::future::Future<
+            Output = Result<
+                crate::model::embedding::EmbeddingResult,
+                crate::model::embedding::EmbeddingError,
+            >,
+        > + Send {
+            self.calls.lock().unwrap().push(text.to_string());
+            self.inner
+                .generate_embedding_for_user(text, user_id, profile_id, priority)
+        }
+    }
+
+    /// v4 `3f7320138` F1 (`memory-recall-housekeeping-fixes.test.ts:116-136`):
+    /// a best match at/above the near-duplicate threshold → SKIP_NEAR_DUPLICATE
+    /// writes no new row and leaves the text, the embedding and the vector
+    /// alone — but the observation COUNTS: `reinforcementCount` 2,
+    /// `reinforcedImportance` recomputed, `lastReinforcedAt` stamped.
     #[tokio::test]
-    async fn near_duplicate_skips_without_writing() {
+    async fn near_duplicate_absorbs_as_reinforcement() {
         let (_dir, db) = make_db(Some(("Mara trusts the crew.", "sum", vec![1.0, 0.0])));
+        let before_vector = vector_bytes(&db);
         // dot([0.97, 0.24310], [1,0]) = 0.97 >= 0.90 -> SKIP_NEAR_DUPLICATE.
         let provider = CannedEmbeddingProvider::new()
             .with_vector("sum\n\nMara trusts the crew.", vec![0.97, 0.243_1]);
+        let (guard, logs) = capture_guard();
         let outcome = create_memory_with_gate(
             &db,
             &provider,
@@ -1322,10 +1584,258 @@ mod tests {
         )
         .await
         .unwrap();
+        drop(guard);
         assert_eq!(outcome.action, GateAction::SkipNearDuplicate);
         assert_eq!(outcome.memory_id.as_deref(), Some("mem-seed"));
+        assert_eq!(
+            outcome.reinforcement_count, None,
+            "R-H: the shape does not grow"
+        );
         assert_eq!(count(&db, "memories"), 1);
         assert_eq!(count(&db, "vector_entries"), 1);
+        assert_eq!(cell::<f64>(&db, "reinforcementCount"), 2.0);
+        assert_eq!(
+            cell::<f64>(&db, "reinforcedImportance"),
+            crate::memory_gate::calculate_reinforced_importance(0.5, 2.0)
+        );
+        assert!(cell::<Option<String>>(&db, "lastReinforcedAt").is_some());
+        assert_eq!(cell::<String>(&db, "content"), "Mara trusts the crew.");
+        assert_eq!(cell::<Option<Vec<u8>>>(&db, "embedding"), None);
+        assert_eq!(vector_bytes(&db), before_vector, "the vector is untouched");
+        let lines = logs.lock().unwrap().clone();
+        let line = only_line(
+            &lines,
+            "[MemoryGate] Near-duplicate absorbed as reinforcement",
+        );
+        assert!(line.starts_with("DEBUG "), "{line:?}");
+        assert!(line.contains(" memoryId=mem-seed"), "{line:?}");
+        assert!(line.contains(" reinforcementCount=2"), "{line:?}");
+        assert!(
+            line.contains(&format!(
+                " reinforcedImportance={}",
+                crate::memory_gate::calculate_reinforced_importance(0.5, 2.0)
+            )),
+            "{line:?}"
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("Failed to reinforce near-duplicate")),
+            "silence leg: {lines:?}"
+        );
+    }
+
+    /// v4 `:147-159`: the row vanished between the search and the count → WARN
+    /// `[MemoryGate] Failed to reinforce near-duplicate memory` and the
+    /// snapshot comes back unchanged (no absorbed DEBUG).
+    #[tokio::test]
+    async fn a_vanished_near_duplicate_warns_and_returns_the_snapshot() {
+        let (_dir, db) = make_db(Some(("Mara trusts the crew.", "sum", vec![1.0, 0.0])));
+        let mut snapshot = seed_row(&db);
+        snapshot["id"] = Value::String("mem-gone".into());
+        let (guard, logs) = capture_guard();
+        let absorbed = absorb_near_duplicate(&db, &snapshot).await.unwrap();
+        drop(guard);
+        assert_eq!(absorbed, snapshot);
+        let lines = logs.lock().unwrap().clone();
+        let line = only_line(
+            &lines,
+            "[MemoryGate] Failed to reinforce near-duplicate memory",
+        );
+        assert!(line.starts_with("WARN "), "{line:?}");
+        assert!(line.contains(" memoryId=mem-gone"), "{line:?}");
+        assert!(line.contains(&format!(" characterId={CHAR}")), "{line:?}");
+        assert!(
+            !lines.iter().any(|l| l.contains("Near-duplicate absorbed")),
+            "silence leg: {lines:?}"
+        );
+    }
+
+    /// Bug 182 (v4 `70f9b495c`; the in-process analog of
+    /// `child-proxy-memory-housekeeping.test.ts:171-208`): two reinforcements
+    /// from the SAME snapshot both count — the increment reads the row at write
+    /// time, so the second lands 3, not a second absolute 2.
+    #[tokio::test]
+    async fn two_reinforcements_from_one_snapshot_both_count() {
+        let (_dir, db) = make_db(Some(("Mara trusts the crew.", "sum", vec![1.0, 0.0])));
+        let snapshot = seed_row(&db);
+        let provider = CannedEmbeddingProvider::new();
+        let anchors = EpisodicAnchorView::default();
+        for _ in 0..2 {
+            reinforce_memory(
+                &db,
+                &provider,
+                &snapshot,
+                "Mara trusts the crew.",
+                "user-1",
+                None,
+                &anchors,
+            )
+            .await
+            .unwrap();
+        }
+        assert_eq!(cell::<f64>(&db, "reinforcementCount"), 3.0);
+        assert_eq!(
+            cell::<f64>(&db, "reinforcedImportance"),
+            crate::memory_gate::calculate_reinforced_importance(0.5, 3.0)
+        );
+    }
+
+    /// v4 `:175-201`: a row AT the footnote cap still counts and still takes
+    /// its entity union, but appends nothing and is NOT re-embedded (no
+    /// provider call at all) — the vector is frozen until consolidation.
+    #[tokio::test]
+    async fn at_cap_counts_and_unions_entities_without_re_embedding() {
+        let (_dir, db) = make_db(Some(("x", "sum", vec![1.0, 0.0])));
+        let capped = format!(
+            "Mara sails.{}",
+            (0..8)
+                .map(|i| format!("\n[+] Detail{i}"))
+                .collect::<String>()
+        );
+        set_cells(
+            &db,
+            &format!("content = '{capped}', entities = '[\"Mara\"]'"),
+        )
+        .await;
+        let before_vector = vector_bytes(&db);
+        let snapshot = seed_row(&db);
+        let provider = Recording::new(CannedEmbeddingProvider::new());
+        let anchors = EpisodicAnchorView {
+            entities: vec!["Lisbon".into()],
+            ..Default::default()
+        };
+        let (guard, logs) = capture_guard();
+        let (_, novel, counted) = reinforce_memory(
+            &db,
+            &provider,
+            &snapshot,
+            "Mara sailed to Lisbon with Joao.",
+            "user-1",
+            None,
+            &anchors,
+        )
+        .await
+        .unwrap();
+        drop(guard);
+        assert!(novel.is_empty(), "nothing appended at the cap: {novel:?}");
+        assert_eq!(counted, 2.0);
+        assert_eq!(cell::<String>(&db, "content"), capped);
+        assert_eq!(cell::<String>(&db, "entities"), "[\"Mara\",\"Lisbon\"]");
+        assert!(provider.calls().is_empty(), "no provider call at the cap");
+        assert_eq!(vector_bytes(&db), before_vector);
+        let lines = logs.lock().unwrap().clone();
+        let line = only_line(
+            &lines,
+            "[MemoryGate] Reinforcement footnote cap reached; dropping extra details",
+        );
+        assert!(line.starts_with("DEBUG "), "{line:?}");
+        assert!(line.contains(" memoryId=mem-seed"), "{line:?}");
+        assert!(line.contains(" offered=2"), "{line:?}");
+        assert!(line.contains(" appended=0"), "{line:?}");
+        assert!(line.contains(" cap=8"), "{line:?}");
+        assert!(
+            !lines.iter().any(|l| l.contains("Re-embedded memory")),
+            "{lines:?}"
+        );
+    }
+
+    /// v4 `:202-222`: below the cap the details append (up to the cap) and the
+    /// row re-embeds through EXACTLY ONE provider call; the DEBUG
+    /// `[MemoryGate] Re-embedded memory` fires and the vector moves.
+    #[tokio::test]
+    async fn below_cap_appends_up_to_the_cap_and_re_embeds_once() {
+        let (_dir, db) = make_db(Some(("x", "sum", vec![1.0, 0.0])));
+        let seven = format!(
+            "Mara sails.{}",
+            (0..7)
+                .map(|i| format!("\n[+] Detail{i}"))
+                .collect::<String>()
+        );
+        set_cells(&db, &format!("content = '{seven}'")).await;
+        let before_vector = vector_bytes(&db);
+        let snapshot = seed_row(&db);
+        let expected_content = format!("{seven}\n[+] Lisbon");
+        let text = build_memory_embedding_text(
+            "sum",
+            &expected_content,
+            Some(&EpisodicAnchorView::default()),
+        );
+        let provider = Recording::new(
+            CannedEmbeddingProvider::new().with_vector(text.clone(), vec![0.0, 1.0]),
+        );
+        let anchors = EpisodicAnchorView::default();
+        let (guard, logs) = capture_guard();
+        let (_, novel, counted) = reinforce_memory(
+            &db,
+            &provider,
+            &snapshot,
+            "Mara sailed to Lisbon with Joao.",
+            "user-1",
+            None,
+            &anchors,
+        )
+        .await
+        .unwrap();
+        drop(guard);
+        assert_eq!(novel, vec!["Lisbon".to_string()], "capped at 8");
+        assert_eq!(counted, 2.0);
+        assert_eq!(cell::<String>(&db, "content"), expected_content);
+        assert_eq!(provider.calls(), vec![text], "exactly one provider call");
+        assert_ne!(
+            vector_bytes(&db),
+            before_vector,
+            "the re-embed rewrote the vector"
+        );
+        let lines = logs.lock().unwrap().clone();
+        let line = only_line(&lines, "[MemoryGate] Re-embedded memory");
+        assert!(line.starts_with("DEBUG "), "{line:?}");
+        assert!(line.contains(" memoryId=mem-seed"), "{line:?}");
+        assert!(
+            !lines.iter().any(|l| l.contains("Failed to re-embed")),
+            "silence leg: {lines:?}"
+        );
+        only_line(&lines, "Reinforcement footnote cap reached");
+    }
+
+    /// v4 `:612-626`: a row already holding 12 entities never "changes" — the
+    /// bounded union is the same list, so no entity write and no re-embed.
+    #[tokio::test]
+    async fn a_twelve_entity_row_takes_no_entity_write() {
+        let (_dir, db) = make_db(Some(("Mara trusts the crew.", "sum", vec![1.0, 0.0])));
+        let twelve: Vec<String> = (0..12).map(|i| format!("E{i}")).collect();
+        set_cells(
+            &db,
+            &format!("entities = '{}'", serde_json::to_string(&twelve).unwrap()),
+        )
+        .await;
+        let snapshot = seed_row(&db);
+        let provider = Recording::new(CannedEmbeddingProvider::new());
+        let anchors = EpisodicAnchorView {
+            entities: vec!["Fresh".into()],
+            ..Default::default()
+        };
+        reinforce_memory(
+            &db,
+            &provider,
+            &snapshot,
+            "Mara trusts the crew.",
+            "user-1",
+            None,
+            &anchors,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            cell::<String>(&db, "entities"),
+            serde_json::to_string(&twelve).unwrap()
+        );
+        assert!(
+            provider.calls().is_empty(),
+            "no re-embed: {:?}",
+            provider.calls()
+        );
+        assert_eq!(cell::<f64>(&db, "reinforcementCount"), 2.0);
     }
 
     /// The embedding provider failing on both attempts → SKIP_EMBEDDING_FAILED: no
@@ -1488,7 +1998,11 @@ mod tests {
         let lines = logs.lock().unwrap().clone();
         assert_eq!(id, "mem-seed");
         assert_eq!(count_for_log, 2.0, "the reinforcement itself still landed");
-        let line = only_line(&lines, "[MemoryGate] Failed to re-embed reinforced memory");
+        let line = only_line(&lines, "[MemoryGate] Failed to re-embed memory");
+        assert!(
+            !lines.iter().any(|l| l.contains("Re-embedded memory")),
+            "silence leg: {lines:?}"
+        );
         assert!(line.starts_with("WARN "), "v4 logs at warn: {line:?}");
         assert!(line.contains(" memoryId=mem-seed"), "{line:?}");
         assert!(
