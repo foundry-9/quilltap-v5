@@ -175558,3 +175558,28 @@ All are green BY NAME from the pin:
 - **Green.** `system_export_equivalence` is byte-exact on all 61 cases at the pin. That includes every `includeMemories` stream over the planted CONSOLIDATED digest / cold member, the chats streams' planted watermark in its slot, the NULL-omitting lines (§I.6 — v5's reader already omits them), and the instance-settings stream carrying the two planted settings rows raw (Tier 2 item 13). The fresh oracle has `grep -c '"consolidatedFrom"'` = 3 and `otherExtractionWatermarkMessageId` > 0.
   - On the tip it was 5 lines red; after the plants and before the dump the same 5.
 - **Neighbours:** `moderation_refusal_ledger_isolation_guard` 4/4 and `cargo test -p quilltap-core --lib qtap_export` 16/16 are green.
+
+### P4.D272 lane close — the gate, §I.3, the 💸 rows, versions
+- **§I.3 (the unmigrated failure shape, R-B's evidence).** Measured on the pre-widen `system-data-main.db` (`96cfdaaf7`):
+  - v4 (scratch oracle, migration removed): `execute_skip_all` / `execute_overwrite_all` import 0 memories, each `Failed to import memory: table memories has no column named tier`;
+  - v5 (throwaway test, v4's own merged payload): imported 0, the same three sentences byte for byte.
+  - The tails COINCIDE: the vacuity class. It cannot bite the committed triple, which P4.D265 widened, and R-B's per-copy migration guards a rebuilt pair.
+- **The lane's families, from the pin, regenerated fresh in one battery (`/tmp/p4d272/logs/final`), each green BY NAME with zero `SKIP`:**
+  - `qtap_schema_embed_guard` 2/2 (the live leg RAN);
+  - `qtap_schema_validate_equivalence` (70 rows);
+  - `system_export_equivalence` (61 cases);
+  - `qtap_import_equivalence`;
+  - `system_import_state` (64 cases; R-D carve only);
+  - `system_import_equivalence` (33 cases).
+  - Silent-stale greps are all > 0: export `consolidatedFrom` 3 (the lines are escaped JSON — grep the bare key) and watermark 3; import-execute `Imported memory` 10 lines, `execute_memory_tiers` 2; qtap-schema `memory_tier_off_enum` 1; the qtap-import dump carries non-empty `relatedMemoryIds`.
+- **Gate.**
+  - `cargo fmt --all --check`: clean. One unformatted assertion in MC.2's unit row was caught by the gate and folded into that commit.
+  - `cargo clippy --workspace --all-targets -D warnings` and the `quilltap-core/native-transport` variant: clean (with `apps/web/dist` built).
+  - `cargo test --workspace --no-fail-fast`, with the lane's oracle env block and `QT_V4_CHECKOUT` / `QT_V4_ROOT` = the pin: **707 binaries, 4,680 passed, 1 failed, 3 ignored.**
+    - The one red is `cli_differential`'s seven rows (`main help`, `completion bash|zsh|fish`, `recall-replay help|no chat|table`) — P4.D269's by design (§R.13(e)), the same seven P4.D265 recorded.
+  - `recipe_sweep.py --self-test` exits 0.
+- **Neighbours (item 11):** `system_import_equivalence`, `moderation_refusal_ledger_isolation_guard`, `import_warning_text_guard`, `fallback_home_guard`, `spelling_guard` and the `quilltap_import` / `qtap_export` / `qtap_schema` unit tests are green. `ai_import_tier3` is red ONLY on the unifier's `V4_APP_VERSION` stamp.
+- **HANDOFF:** none. The unifier LIFTS `RECONCILE_PENDING_UNION` here (§S.5) after P4.D274 + P4.D273.
+- **v4 moved:** `9ecebf986` observed at 2026-10-09 20:41 CDT (plus the planning-time `7a8d6dacc`, `3e6e2f590`). Not read, not ported.
+- **💸 for the dogfood pass (unchanged from the order):** a fresh `setup` instance's 42 seeded memories with 0 dangling `relatedMemoryIds` and `tier = 'hot'`; a Friday-copy `.qtap` export whose memory lines carry the four keys in slot and whose chats carry the watermark; that export re-imported into a fresh instance (`skip`) with every link resolving to the new ids and one `Imported memory` DEBUG per row; the hand-edited duplicate-id regression (R-A).
+- **Versions at close:** core 0.0.1268 (host / web / cli / tauri untouched; harness frozen 0.0.1110).

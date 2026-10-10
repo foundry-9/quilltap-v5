@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — docs(porting): P4.D272 lane close — gate, measurements, status header
+
+_Docs-only change._
+
+The P4.D272 order is marked LANE COMPLETE. The status log records:
+
+- **Unmigrated-fixture measurement.** Both engines fail every memory import with the same `no such column` tail, which is why the copies are migrated.
+- **Lane families.** All six are green from a fresh pin regeneration.
+- **Workspace gate.** The only red is `cli_differential`, owned by P4.D269.
+- **Versions at close.**
+
 #### 2026-10-09 — feat(export): P4.D272 re-dump schema-key-order.json at v4 01a83539d
 
 _Versions: core 0.0.1268._
