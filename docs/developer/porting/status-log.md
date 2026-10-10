@@ -175549,3 +175549,12 @@ All are green BY NAME from the pin:
 - **Two `qtap_schema.rs` unit rows:** a memory with `tier: "warm"` is invalid under `/data/memories/0/tier` (and `cold` is valid); a CONSOLIDATED digest with `consolidatedFrom: [uuid, uuid]` and a null `supersededById` is valid.
 - **MC.2b.** The ten mutation rows landed with the instrument commit. `qtap_schema_validate_equivalence` is green at the pin: 70 rows (24 valid, 46 invalid); 312 v4 errors vs 212 v5. The five rows that were red on the stale schema are green. The module doc records the new rows' count deltas.
 - **R-F, `ai_import_tier3` by hand at the pin.** The ONLY red is the `V4_APP_VERSION` stamp (`4.10.0-dev.143` vs `4.10.0-dev.117` — the unifier's, §S.2). With the stamp flipped locally (not committed), the family is green whole.
+
+### P4.D272 MC.3 — `schema-key-order.json` re-dumped at the pin (core 0.0.1268)
+- **Dump (R-H).** `cd $PIN && node --import tsx $V5W/harness/oracle/fixtures/dump-export-key-order.ts > …/qtap_export/schema-key-order.json` (staged at `/tmp/p4d272/schema-key-order.json` first; 7,500 → 7,621 B).
+  - The diff is EXACTLY five added lines: `chat` + `otherExtractionWatermarkMessageId` after `timelineMode`; `memory` + `tier`, `supersededById`, `consolidatedFrom`, `consolidatedAt` after `reinforcedImportance`.
+  - `python3 -I` counts: `memory` 29, `chat` 102, and `character` 46 / `chat_message` 41 / `chat_inform` 11 / `roleplay_template` 13 / `tag` 8 / `project` 24 / `group` 10 / `connection_profile` 32 / `image_profile` 13 / `embedding_profile` 14 unchanged.
+  - `key_order.rs`' doc records the regeneration.
+- **Green.** `system_export_equivalence` is byte-exact on all 61 cases at the pin. That includes every `includeMemories` stream over the planted CONSOLIDATED digest / cold member, the chats streams' planted watermark in its slot, the NULL-omitting lines (§I.6 — v5's reader already omits them), and the instance-settings stream carrying the two planted settings rows raw (Tier 2 item 13). The fresh oracle has `grep -c '"consolidatedFrom"'` = 3 and `otherExtractionWatermarkMessageId` > 0.
+  - On the tip it was 5 lines red; after the plants and before the dump the same 5.
+- **Neighbours:** `moderation_refusal_ledger_isolation_guard` 4/4 and `cargo test -p quilltap-core --lib qtap_export` 16/16 are green.

@@ -18,7 +18,11 @@
 //!
 //! The table is a byte-exact dump of v4's real schemas — regenerate it with
 //! `harness/oracle/fixtures/dump-export-key-order.ts` (recipe in that file's
-//! header) whenever a v4 schema drifts.
+//! header) whenever a v4 schema drifts. Last regenerated at v4 `01a83539d`
+//! (P4.D272, `d58548051`): `memory` gained `tier` / `supersededById` /
+//! `consolidatedFrom` / `consolidatedAt` after `reinforcedImportance` (25 → 29)
+//! and `chat` gained `otherExtractionWatermarkMessageId` after `timelineMode`
+//! (101 → 102) — exactly five lines; the other ten kinds did not move.
 
 use serde_json::{Map, Value};
 use std::sync::OnceLock;

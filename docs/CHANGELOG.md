@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(export): P4.D272 re-dump schema-key-order.json at v4 01a83539d
+
+_Versions: core 0.0.1268._
+
+The `.qtap` export's key-order table was regenerated from v4's real schemas at the pin. Memory lines carry `tier`, `supersededById`, `consolidatedFrom` and `consolidatedAt` after `reinforcedImportance`. Chat lines carry `otherExtractionWatermarkMessageId` after `timelineMode`. Before, these keys were appended at the end. The table diff is exactly five lines, and `system_export_equivalence` is byte-exact over planted tier values.
+
 #### 2026-10-09 — feat(schema): P4.D272 re-vendor qtap-export.schema.json at v4 01a83539d
 
 _Versions: core 0.0.1267._
