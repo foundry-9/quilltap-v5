@@ -175500,3 +175500,11 @@ All are green BY NAME from the pin:
   - `reset_frozen_archive_cache_for_tests()` keeps its signature.
 - The composition is `compose_frozen_archive` over injected reads, so the unit tests drive v4's mocked-repository cases on LOCAL cache instances with counting fetchers and never race the global. 23 tests: v4's 11 top-level and 5 `digest composition` cases verbatim, plus `size = 0`, the propagated `Err`, the code-unit presence sort, `localeCompare`, the capture pins for `Composed`/`Computed` and both invalidation lines with their silence legs, and the job hook's four v4 cases plus the `""`, non-string and `dryRun: "true"` edges. v4's catch WARN is pinned NEGATIVE.
 - `build_context` passes `&input.chat.id`, with `None` size and no present ids until unit 5.
+
+### Unit 1 landed — `048c45dfb`
+The status header records the R-A signatures.
+
+### Unit 2 — the region call (Tier 1 item 3; R-B)
+- `job_runner.rs` gains exactly one line, inside P4.D265's marker: `crate::services::frozen_archive::invalidate_frozen_archives_for_completed_job(&job.id, &job.job_type, &payload);`. Nothing else in the file moved.
+- **Red-first:** `frozen_archive::tests::runner::a_completed_housekeeping_job_drops_the_characters_archives` drives a stub `MEMORY_HOUSEKEEPING` handler through the real `JobRunner::pump_claim`. Before the line it FAILED (`the swept character's archive is gone` — the entry survived). After the line, all 24 `frozen_archive` tests pass.
+- **R-B, a recorded divergence on an arm unreachable in v4:** the region sits after both mark arms, so the hook fires even when `mark_completed` failed. v4 fires it only inside the `applyWritesAtomically` try. v5's handler writes committed before the mark, so invalidating is correct. There is no v4 output to compare, so there is no ruled table.

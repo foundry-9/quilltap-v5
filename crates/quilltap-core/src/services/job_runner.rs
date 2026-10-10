@@ -494,6 +494,11 @@ impl JobRunner {
                 // does). `job` and `payload` are in scope. One call each,
                 // appended by their owners; nothing else.
                 // === job-completion hooks (append-only; P4.D268, P4.D271) ===
+                crate::services::frozen_archive::invalidate_frozen_archives_for_completed_job(
+                    &job.id,
+                    &job.job_type,
+                    &payload,
+                );
                 // === end job-completion hooks ===
             }
             JobOutcome::Failed(message) => {

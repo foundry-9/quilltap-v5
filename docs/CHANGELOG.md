@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(jobs): P4.D268 a completed housekeeping or consolidation job invalidates the frozen archives
+
+_Versions: core 0.0.1267._
+
+The job runner's completion-hook region gets its one P4.D268 call, `invalidate_frozen_archives_for_completed_job(&job.id, &job.job_type, &payload)` (v4 `job-dispatcher.ts:256`). Every non-dry `MEMORY_HOUSEKEEPING` or `MEMORY_CONSOLIDATION` completion drops that character's archives, or every archive when there is no character id, whether or not the job changed anything. The hook runs after both arms of the mark, where v4 runs it only after a successful `markCompleted` (P4.D268 R-B). In v5 the handler's writes are committed before the mark either way.
+
+A new test in `frozen_archive.rs` drives a stub `MEMORY_HOUSEKEEPING` job through `JobRunner::pump_claim`. It was red before the line: the swept character's entry survived. It now passes: the entry is gone, another character's entry survives, and the hook's DEBUG line is captured.
+
 #### 2026-10-09 — feat(memory): P4.D268 the frozen archive keyed by chat, composed digests-first, with the three invalidation entry points
 
 _Versions: core 0.0.1266._

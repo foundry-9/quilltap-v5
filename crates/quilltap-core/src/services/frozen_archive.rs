@@ -473,7 +473,7 @@ fn memory_inputs(v: &Value) -> crate::memory_weighting::MemoryInputs {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::global_capture::capture;
+    use crate::test_support::global_capture::{capture, capture_async};
     use serde_json::json;
     use std::cell::RefCell;
 
@@ -1032,5 +1032,92 @@ mod tests {
         assert!(!lines
             .iter()
             .any(|l| l.contains("Failed to invalidate frozen memory archives")));
+    }
+
+    // ---- the in-process job runner end to end ----
+
+    mod runner {
+        use super::*;
+        use crate::db::background_jobs::{
+            BackgroundJob, BackgroundJobsRepository, BjCreate, CreateOptions,
+        };
+        use crate::services::job_runner::{
+            HandlerRegistry, JobFuture, JobHandler, JobOutcome, JobRunner,
+        };
+
+        const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+        const DDL: &str = "CREATE TABLE background_jobs (\
+            id TEXT PRIMARY KEY, userId TEXT NOT NULL, type TEXT NOT NULL, status TEXT NOT NULL, \
+            payload TEXT NOT NULL, priority REAL NOT NULL, attempts REAL NOT NULL, \
+            maxAttempts REAL NOT NULL, lastError TEXT, scheduledAt TEXT NOT NULL, \
+            startedAt TEXT, completedAt TEXT, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);";
+
+        struct Done;
+        impl JobHandler for Done {
+            fn handle<'a>(&'a self, _db: &'a Db, _job: &'a BackgroundJob) -> JobFuture<'a> {
+                Box::pin(async { JobOutcome::Completed(None) })
+            }
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn a_completed_housekeeping_job_drops_the_characters_archives() {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("main.db");
+            {
+                let w = crate::db::Writer::open_writable(&path, PEPPER).unwrap();
+                w.connection().execute_batch(DDL).unwrap();
+            }
+            let db = Db::open_main(&path, PEPPER).unwrap();
+            let create = BjCreate {
+                user_id: "u1".into(),
+                job_type: "MEMORY_HOUSEKEEPING".into(),
+                status: Some("PENDING".into()),
+                payload: json!({ "characterId": "fa-runner-char" }),
+                priority: 0.0,
+                attempts: 0.0,
+                max_attempts: 3.0,
+                last_error: None,
+                scheduled_at: "2020-01-01T00:00:00.000Z".into(),
+                started_at: None,
+                completed_at: None,
+            };
+            let opts = CreateOptions {
+                id: "fa-runner-job".into(),
+                created_at: "2020-01-01T00:00:00.000Z".into(),
+                updated_at: "2020-01-01T00:00:00.000Z".into(),
+            };
+            db.write(move |ws| {
+                BackgroundJobsRepository::new(ws.main().connection()).create(&create, &opts)
+            })
+            .await
+            .unwrap();
+
+            let mut registry = HandlerRegistry::new();
+            registry.register("MEMORY_HOUSEKEEPING", Box::new(Done));
+            let runner = JobRunner::new(db, registry);
+
+            {
+                let _s = GLOBAL_SERIAL.lock().unwrap_or_else(PoisonError::into_inner);
+                seed_global("fa-runner-char", "chat-1");
+                seed_global("fa-runner-other", "chat-1");
+            }
+            let (_, lines) = capture_async(runner.pump_claim()).await;
+            let _s = GLOBAL_SERIAL.lock().unwrap_or_else(PoisonError::into_inner);
+            assert!(
+                !global_has("fa-runner-char", "chat-1"),
+                "the swept character's archive is gone"
+            );
+            assert!(
+                global_has("fa-runner-other", "chat-1"),
+                "another character's survives"
+            );
+            assert!(
+                lines.iter().any(|l| l
+                    == "DEBUG quilltap::jobs Invalidated frozen memory archives after job \
+                        jobId=fa-runner-job type=MEMORY_HOUSEKEEPING characterId=fa-runner-char"),
+                "{lines:?}"
+            );
+            invalidate_frozen_archive("fa-runner-other");
+        }
     }
 }
