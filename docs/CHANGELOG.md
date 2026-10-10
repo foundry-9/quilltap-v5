@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-10 — docs(porting): P4.D275 lane close — sweep, gate and handoff records
+
+_Docs-only change._
+
+The P4.D275 order is marked LANE COMPLETE. The status log gains the lane-close record:
+
+- **Sweep:** the nine owned families from the pin are all ok, and the six hand-run families all green.
+- **Censuses:** all green.
+- **Workspace gate:** 709 binaries, 4,688 passed, 3 failed. Two reds are by design (P4.D269, P4.D272). The third is the KEYSTONE refusal pin for the two arms this lane filled, handed to the unifier.
+- **Also recorded:** the log lines ported this lane, the divergences and findings left for the follow-ups round, and the dogfood rows.
+
 #### 2026-10-09 — feat(wardrobe): P4.D275 B3+B4 — the picture viewer's save-targets / save-to-store on both transports
 
 _Versions: core 0.0.1270, web 0.0.229._

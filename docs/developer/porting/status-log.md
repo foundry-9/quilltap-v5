@@ -175542,4 +175542,40 @@ All are green BY NAME from the pin:
     - **Tier 2 #18:** the routes oracle now captures v4's `[Wardrobe Images v1]` lines (message plus meta keys), and the routes test asserts each save line's keys against `V4_SAVE_LINE_KEYS`, every line seen. v4's `Save to store rejected` key `message` is v5's `errorMessage` (the envelope-clobber rename).
   - **NOCASE index (§R.4(a)):** the item-images builder runs at the pin, so v4's own mount-index table-init already creates `idx_doc_mount_points_name_nocase` in the fixture. The booted copy therefore carries it. No plant depends on it.
   - **R-C / dogfood #156 (by code read, unchanged):** both new actions gate through `resolve_home` → `find_home` → `mount_conn(ws)?`. On a degraded mount index that is `DbError::PartitionUnavailable`, which `db_error_response` answers with a 500 — #156's class, pre-existing in P4.D263's gate, left for the follow-ups round (Tier 3 #20).
+- **P4.D275 lane close (2026-10-10).**
+  - **Sweep from the pin**: `recipe_sweep.py --run-all --force --v4 /tmp/qt-v4-pin-p4.d275-01a83539d`, one sweep, announced. All 9 owned families ok by name with zero SKIP: `tool_definitions`, `wardrobe_tools`, `project_roster_access`, `tool_image_generation`, `wardrobe_wear_stats_tier2`, `chat_gallery`, `wardrobe_item_images_routes`, the NEW `photo_album_options`, and `wardrobe_item_images_tier2` (3/3 incl. the new line pin).
+  - **Hand-copied recipes**, outputs under `/tmp/p4d275/nonowned/`, all green by name: `memory_weighting` (Phase-1, green on the KEYSTONE tip AND the lane tip), `courier_images_routes`, `wardrobe_wear_history`, `wardrobe_routes`, `group_wardrobe_routes` and `chat_admin_routes` (61/61).
+  - **Censuses**, by name, green: `web_edge_body_parse_guard` (the route's `COLLAPSE_CENSUS` row stays at 1), `fallback_home_guard`, `doc_mount_fallback_sites_census`, `host_zone_sites_census` (the `wardrobe_read.rs` `UTC_ALLOWED` row holds; `wear_date` untouched), `spelling_guard`, and `dispatch_wrong_type_census` (14/14, P4.D265's rows unmoved). `recipe_sweep.py --self-test` exits 0.
+  - **fmt and both clippy sets are clean.**
+  - **`cargo test --workspace --no-fail-fast`** (queued behind the sibling gates by PID; `QT_V4_CHECKOUT` / `QT_V4_ROOT` = the pin plus every owned family's env): 709 binaries, 4,688 passed, 3 failed, 3 ignored, zero `SKIP:`. The live-checkout guards are green against the pin (`public_schemas_vendor_guard`, `builtin_prompt_templates_guard`, `provider_sdk_version_guard`, `zod_version_guard`). The three reds:
+    - `qtap_schema_embed_guard` — by design, P4.D272 (§R.13; v4 102,523 vs vendored 101,092 bytes);
+    - `cli_differential` — by design, P4.D269: the same 7 rows P4.D265 recorded (`main help`, `completion bash|zsh|fish`, `recall-replay help|no chat|table`);
+    - **`p4_d265_wire_contract::every_new_arm_answers_its_agreed_refusal` — red BY CONSTRUCTION on this branch.** Its refusal table pins `wardrobeItemImageSaveTargets` / `wardrobeItemImageSaveToStore` to the KEYSTONE `not_available` sentence, which this lane replaces (the first arm now answers 404 `Wardrobe item not found` for its probe body). The file is P4.D265's, so it is not edited here; see the HANDOFF below.
+  - **HANDOFF (to the unifier, §S.5):** in `crates/quilltap-harness/tests/p4_d265_wire_contract.rs`, delete the two `(… "P4.D275")` rows of `every_new_arm_answers_its_agreed_refusal`'s case list — the `wardrobeItemImageSaveTargets` row and the `wardrobeItemImageSaveToStore` row. Keep the decode / tri-state pins in `p4_d265_contract_wire_shapes`; the arms' behaviour is pinned by `wardrobe_item_images_routes_equivalence` and core's `the_dispatch_body_reaches_v4s_parser`. Re-run the family by name. No other HANDOFF; no `help/` sentence needed changing (§R.10(j)).
+  - **Log lines ported (R-M — for the unifier's one `handler-logging-inventory.md` regeneration):**
+    - `wardrobe_list`: WARN `Wardrobe list tool validation failed`, INFO `Wardrobe list completed`, ERROR `Wardrobe list tool execution failed`.
+    - `wardrobe_read`: WARN `Wardrobe read tool validation failed`, ERROR `Wardrobe read tool execution failed`.
+    - The repository: DEBUG `Read wear summaries for wearer`, ERROR `Error reading wear summaries for wearer`.
+    - The message door: INFO `[SaveImage] saved`, INFO `[SaveImage] rejected`, ERROR `[SaveImage] failed`.
+    - DEBUG `[photo-album-options] Listed every store as a save target`, plus `Collected archived character vault mount points` (keys now camelCase).
+    - DEBUG `[Wardrobe Images v1] Listed save targets`; INFO `[Wardrobe Images v1] Refused to save a picture that is not the item's`, `… Refused to save into an archived character's vault`, `… Saved wardrobe picture to a store`, `… Save to store rejected`.
+  - **Recorded divergences / findings for the follow-ups round** (none fixed here):
+    - `ENABLED_STORE_ZOD_DROP`, `RAW_CHARACTER_ZOD_DROP`, `ENSURE_COLLECTION_RECREATES` (named both-ways carves in `photo_album_options_equivalence`);
+    - `TRAIL_ENTRY_KEY_ORDER` (named carve in the routes family);
+    - the gallery door's `message =` field clobbering the file record's envelope message;
+    - the meta key `message` → `errorMessage` on the two new rejected lines (KEY only);
+    - both wardrobe tools' output `error` strings still carry `sqlite error: …` (the log lines now render the bare text);
+    - dogfood #156 — `find_home`'s 500 on a degraded mount index, inherited by both new actions;
+    - Tier 3 #21 `chat_photo_albums` onto `PhotoAlbumOption` (not done; v4 unchanged);
+    - #22 the gallery door's snake_case keys;
+    - #24 `help/wardrobe.md` is P4.D278's re-vendor.
+  - **💸 for the dogfood pass:**
+    - a real Salon turn's `wardrobe_list` over shared garments (` · worn by you N×, last a week ago (M× in the household)`, ` · never worn by you (worn N× by others)`, no "last last week") and `Wardrobe list completed` with `neverWornByCallerCount` in `combined.log`;
+    - `wardrobe_read`'s reader-first paragraph;
+    - the new descriptions in the LLM Inspector;
+    - with P4.D277 on the union, the picture viewer's Save: the target list (General pre-selected and LAST; character albums named for their characters; no archived vault; a retired `… Version … Store` as a document store), a save into General (the sidecar's operator byline and the item's title as caption), the second save's 409 "already in this album", an archived character's garment copied OUT;
+    - a Salon message's Save Image twice → 409;
+    - `curl`: GET `?action=bogus` → 400 `availableActions: ["save-targets"]`; a POST list ending `save-to-store`; the 409 `{error, code, relativePath, keptAt}`.
+  - **Versions at close:** core 0.0.1270, web 0.0.229. Host, cli, tauri and SPA are untouched; the harness stays frozen at 0.0.1110.
+  - **Cleanup:** the red-first worktree and its target were removed; at close the pin worktree, the lane `target/` and `/tmp/p4d275/` are removed. Nothing pushed to `main`.
 
