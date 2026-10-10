@@ -288,11 +288,12 @@ fn js_iso_string(ms: f64) -> Option<String> {
     if !ms.is_finite() || ms.abs() > 8.64e15 {
         return None;
     }
-    // TimeClip: ToIntegerOrInfinity truncates toward zero.
-    let ms = ms.trunc() as i64;
-    let days = ms.div_euclid(86_400_000);
-    let rem = ms.rem_euclid(86_400_000);
-    let (y, mo, d) = crate::clock::civil_from_days(days);
+    // TimeClip: ToIntegerOrInfinity truncates toward zero. The civil split is
+    // `clock`'s own; only the year prefix is re-rendered in V8's form (the
+    // tail is the fixed 20-char `-MM-DDTHH:MM:SS.mmmZ`).
+    let iso = crate::clock::iso_from_unix_ms(ms.trunc() as i64);
+    let (year, tail) = iso.split_at(iso.len() - 20);
+    let y: i64 = year.parse().ok()?;
     let year = if (0..=9999).contains(&y) {
         format!("{y:04}")
     } else if y < 0 {
@@ -300,13 +301,7 @@ fn js_iso_string(ms: f64) -> Option<String> {
     } else {
         format!("+{y:06}")
     };
-    Some(format!(
-        "{year}-{mo:02}-{d:02}T{:02}:{:02}:{:02}.{:03}Z",
-        rem / 3_600_000,
-        (rem / 60_000) % 60,
-        (rem / 1000) % 60,
-        rem % 1000
-    ))
+    Some(format!("{year}{tail}"))
 }
 
 /// Run housekeeping on a character's memories (v4 `runHousekeeping`,

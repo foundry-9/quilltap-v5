@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-10 — fix(memory): P4.D266 the retention cutoff renders through the clock's ISO helper
+
+_Versions: core 0.0.1273._
+
+`housekeeping.rs`'s `js_iso_string` now formats through `clock::iso_from_unix_ms` and only rewrites the year prefix into V8's extended `±YYYYYY` form. Before, it did its own UTC civil-day arithmetic, which tripped the `host_zone_sites_census` (P4.153 guard: only listed files may do that maths). The output is unchanged, and the `js_iso_string_matches_v8` unit test is green.
+
 #### 2026-10-09 — fix(memory): P4.D266 the housekeep POST validates its options as v4's schema does
 
 _Versions: core 0.0.1272._
