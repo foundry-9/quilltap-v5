@@ -5,8 +5,9 @@
 Usage: extract-memory-task-prompts.py <v4-memory-tasks.ts> <out.rs>
 
 Emits the SELF / OTHER extraction bodies (`selfBodyForCap` /
-`otherBodyForCap`) and `FOLD_EPISODE_PROMPT`, each split at its one live
-interpolation (the candidate cap / `FOLD_EPISODE_CAP`). The constant blocks
+`otherBodyForCap`, the latter's leading `${grainBlock}` stripped), the constant
+`FOLD_GRAIN_OTHER_BLOCK`, and `FOLD_EPISODE_PROMPT`, each body split at its
+one live interpolation (the candidate cap / `FOLD_EPISODE_CAP`). The constant blocks
 the bodies interpolate (`ORIENTING_CONTEXT_SKIP_BULLET`,
 `AGREEMENTS_INSTRUCTION_BLOCK`, `EVENT_INSTRUCTION_BLOCK`,
 `TAGS_INSTRUCTION_BLOCK`) are substituted here. Template escapes are
@@ -93,8 +94,24 @@ def body(marker, cap, what):
 
 self_before, self_after = body(
     'function selfBodyForCap(maxMemories: number): string {\n  return ', 'maxMemories', 'self')
-other_before, other_after = body(
-    'function otherBodyForCap(perSubjectCap: number): string {\n  return ', 'perSubjectCap', 'other')
+# v4 `d58548051` gave `otherBodyForCap` a `grain` parameter: the fold grain
+# prepends `${FOLD_GRAIN_OTHER_BLOCK}\n\n` through a `grainBlock` local, and
+# the turn body is byte-identical to before. The script asserts that exact
+# shape, strips the leading `${grainBlock}` (and ONLY it), and emits the block
+# as its own constant — v5's `other_body_for_cap(cap, grain)` re-adds it.
+OTHER_GRAIN_PREAMBLE = (
+    "function otherBodyForCap(perSubjectCap: number, grain: 'turn' | 'fold' = 'turn'): string {\n"
+    "  const grainBlock = grain === 'fold' ? `${FOLD_GRAIN_OTHER_BLOCK}\\n\\n` : ''\n"
+    "  return "
+)
+if OTHER_GRAIN_PREAMBLE not in src:
+    raise SystemExit('otherBodyForCap: the grain preamble moved — teach the script')
+src_other_raw = template_after(OTHER_GRAIN_PREAMBLE)
+if not src_other_raw.startswith('${grainBlock}'):
+    raise SystemExit('otherBodyForCap: the body no longer opens with ${grainBlock} — teach the script')
+src = src.replace(OTHER_GRAIN_PREAMBLE + '`${grainBlock}', OTHER_GRAIN_PREAMBLE + '`', 1)
+other_before, other_after = body(OTHER_GRAIN_PREAMBLE, 'perSubjectCap', 'other')
+FOLD_GRAIN_OTHER_BLOCK = constant('FOLD_GRAIN_OTHER_BLOCK')
 fold_before, fold_after = body('const FOLD_EPISODE_PROMPT = ', 'FOLD_EPISODE_CAP', 'fold-episode')
 
 def raw_rs(s):
@@ -107,9 +124,10 @@ out = '''//! GENERATED — the verbatim prompt text of v4
 //! bodies (`selfBodyForCap` / `otherBodyForCap`, with the constant
 //! `ORIENTING_CONTEXT_SKIP_BULLET` / `AGREEMENTS_INSTRUCTION_BLOCK` /
 //! `EVENT_INSTRUCTION_BLOCK` / `TAGS_INSTRUCTION_BLOCK` interpolations already
-//! substituted and the template escapes evaluated) and `FOLD_EPISODE_PROMPT`,
-//! each split at its one live interpolation (the candidate cap /
-//! `FOLD_EPISODE_CAP`). Extracted mechanically by
+//! substituted and the template escapes evaluated; `otherBodyForCap`'s
+//! leading `${grainBlock}` stripped), the fold-grain `FOLD_GRAIN_OTHER_BLOCK`,
+//! and `FOLD_EPISODE_PROMPT`, each body split at its one live interpolation
+//! (the candidate cap / `FOLD_EPISODE_CAP`). Extracted mechanically by
 //! `harness/oracle/scripts/extract-memory-task-prompts.py` so no byte was
 //! transcribed by hand; the tier-1 differential (`memory_tasks_equivalence`)
 //! and the fold-episode families prove the bytes. Regenerate by re-running
@@ -126,6 +144,7 @@ for const_name, value in (
     ('OTHER_BODY_AFTER_CAP', other_after),
     ('FOLD_EPISODE_PROMPT_BEFORE_CAP', fold_before),
     ('FOLD_EPISODE_PROMPT_AFTER_CAP', fold_after),
+    ('FOLD_GRAIN_OTHER_BLOCK', FOLD_GRAIN_OTHER_BLOCK),
 ):
     out += f'pub(crate) const {const_name}: &str = {raw_rs(value)};\n'
 

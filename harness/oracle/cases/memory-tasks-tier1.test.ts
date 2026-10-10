@@ -9,7 +9,8 @@
  * `coerceMemoryCandidate` / `applyTargetingTags`, plus `stripCodeFences`).
  *
  * Drives v4's REAL `extractSelfMemoriesFromTurn` / `extractOtherMemoriesFromTurn`
- * with ONLY `executeCheapLLMTask` mocked — the same seam v4's own
+ * / `extractOtherMemoriesFromFold` (`d58548051`, the fold-grain OTHER call —
+ * its rows also record the executor's task type + character id) with ONLY `executeCheapLLMTask` mocked — the same seam v4's own
  * `__tests__/memory-extraction-tags.test.ts` uses. The mock captures the exact
  * messages the extractor built (proving the prompt bytes) and feeds the corpus
  * row's canned `responseText` straight into the real parser the extractor
@@ -39,18 +40,23 @@ jest.mock('@/lib/memory/cheap-llm-tasks/core-execution', () => ({
 import {
   extractSelfMemoriesFromTurn,
   extractOtherMemoriesFromTurn,
+  extractOtherMemoriesFromFold,
 } from '@/lib/memory/cheap-llm-tasks/memory-tasks';
 import { executeCheapLLMTask } from '@/lib/memory/cheap-llm-tasks/core-execution';
 
 interface CaseSpec {
-  kind: 'self' | 'other';
+  kind: 'self' | 'other' | 'fold-other';
   name: string;
-  transcript: unknown;
+  transcript?: unknown;
+  // fold-other (v4 `d58548051` `extractOtherMemoriesFromFold`) only:
+  windowMessages?: unknown[];
+  observer?: { id: string; name: string; pronouns: unknown };
+  perSubjectCap?: number;
   targetCharacterId?: string;
   canonBlock?: string;
   observerCharacterId?: string;
   subjects?: unknown[];
-  resolvedMaxTokens: number | null;
+  resolvedMaxTokens?: number | null;
   inAutonomousRoom: boolean;
   orienting?: { projectDescription?: string | null; chatContextSummary?: string | null };
   clock?: { nowIso: string; timelineMode: string; narrativeNow?: string | null };
@@ -76,15 +82,23 @@ test('memory-tasks tier-1 oracle', async () => {
   const lines: string[] = [];
 
   for (const c of spec.cases) {
-    const calls: Array<{ messages: Array<{ role: string; content: string }> }> = [];
+    const calls: Array<{
+      messages: Array<{ role: string; content: string }>;
+      taskType?: unknown;
+      characterId?: unknown;
+    }> = [];
     jest
       .mocked(executeCheapLLMTask)
-      .mockImplementation(async (_sel: unknown, messages: unknown, _uid: unknown, parse: unknown) => {
+      .mockImplementation(async (...args: unknown[]) => {
+        const [, messages, , parse, taskType, , , , , characterId] = args;
         calls.push({
           messages: (messages as Array<{ role: string; content: string }>).map((m) => ({
             role: m.role,
             content: m.content,
           })),
+          // The fold-grain call's task type + attributed character (the per-turn
+          // rows keep their pre-`d58548051` shape).
+          ...(c.kind === 'fold-other' ? { taskType, characterId } : {}),
         });
         return {
           success: true,
@@ -114,6 +128,24 @@ test('memory-tasks tier-1 oracle', async () => {
       success = r.success;
       hasUsage = r.usage !== undefined;
       result = r.result ?? null;
+    } else if (c.kind === 'fold-other') {
+      const r = await extractOtherMemoriesFromFold(
+        (c.windowMessages ?? []) as never,
+        c.observer as never,
+        (c.subjects ?? []) as never,
+        c.perSubjectCap!,
+        selection,
+        'user-1',
+        undefined,
+        'chat-1',
+        c.resolvedMaxTokens ?? undefined,
+        c.inAutonomousRoom,
+        c.orienting ?? undefined,
+        (c.clock ?? undefined) as never
+      );
+      success = r.success;
+      hasUsage = r.usage !== undefined;
+      result = r.result ? Object.fromEntries(r.result) : null;
     } else {
       const r = await extractOtherMemoriesFromTurn(
         c.transcript as never,

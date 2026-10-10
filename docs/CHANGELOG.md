@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(memory): P4.D270 E1 the fold-grain OTHER prompt — `ExtractionGrain`, `FOLD_GRAIN_OTHER_BLOCK`, `extract_other_memories_from_fold`
+
+_Versions: core 0.0.1266._
+
+Ports the prompt half of v4 `d58548051`'s fold-grain OTHER pass (pin `01a83539d`). `other_body_for_cap` and `get_other_memory_extraction_prompt` take a grain; the fold grain puts the six-line `GRAIN — READ THIS FIRST` block (after any autonomous preamble) before the OTHER body. The turn body is byte-identical to before. New `build_fold_other_extraction_messages` renders the window as `CONVERSATION STRETCH (N messages, in the order spoken)` through the same dated, 1,500-unit render as the fold-episode builder, now one shared function. The cap is raised to 1 and not clamped by the token budget. New `extract_other_memories_from_fold` runs it under the per-turn task type `memory-extraction-other`, attributed to the observer. No caller yet.
+
+`extract-memory-task-prompts.py` learns the pin's `otherBodyForCap(perSubjectCap, grain)` shape: it asserts the `grainBlock` preamble, strips the leading `${grainBlock}` and emits `FOLD_GRAIN_OTHER_BLOCK`. `prompt_text.rs` was regenerated from the pin. `memory_tasks_equivalence` gains six `extractOtherMemoriesFromFold` cases against v4's real extractor, including the executor's task type and character id.
+
 #### 2026-10-09 — docs(porting): P4.D265 lane close — real-instance note, gate and sweep records
 
 _Docs-only change._

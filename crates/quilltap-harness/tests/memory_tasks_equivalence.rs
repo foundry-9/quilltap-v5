@@ -1,7 +1,10 @@
 //! Tier-1 differential test: the memory-extraction pure leaves
 //! (`quilltap_core::memory_tasks` vs v4 `lib/memory/cheap-llm-tasks/
 //! memory-tasks.ts`) — the SELF/OTHER extraction prompt builders (preambles,
-//! orienting footer, turn-context renderer) and the candidate response parsers
+//! orienting footer, turn-context renderer), the fold-grain OTHER builder
+//! (`extractOtherMemoriesFromFold`, `d58548051` — the GRAIN block, the dated
+//! 1,500-unit window render, the uncapped-by-tokens cap) and the candidate
+//! response parsers
 //! (fence stripping, targeting-tag validation, candidate shaping, caps). Exact
 //! string / structural equality against the v4 oracle (which drives v4's REAL
 //! extractors with only `executeCheapLLMTask` mocked, capturing the built
@@ -27,11 +30,13 @@
 //!   QT_ORACLE_MEMORY_TASKS=/tmp/oracle-memory-tasks.ndjson \
 //!     cargo test -p quilltap-harness --test memory_tasks_equivalence
 
-use quilltap_core::memory_format::Pronouns;
+use quilltap_core::memory_format::{format_name_with_pronouns, Pronouns};
 use quilltap_core::memory_tasks::{
-    build_other_extraction_messages, build_self_extraction_messages, parse_memory_candidate_array,
-    parse_other_candidates_by_subject, resolve_max_memories, ExtractionClock, OrientingContext,
-    OtherSubjectInput, TurnCharacterSlice, TurnTranscript, ORDERED_TURN_TRANSCRIPT_HEADING,
+    build_fold_other_extraction_messages, build_other_extraction_messages,
+    build_self_extraction_messages, parse_memory_candidate_array,
+    parse_other_candidates_by_subject, resolve_max_memories, ExtractionClock, FoldOtherMessage,
+    OrientingContext, OtherSubjectInput, TurnCharacterSlice, TurnTranscript,
+    ORDERED_TURN_TRANSCRIPT_HEADING,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -159,7 +164,16 @@ impl ClockW {
 struct CaseW {
     kind: String,
     name: String,
-    transcript: TranscriptW,
+    /// Absent on the fold-other rows (they read a window, not a turn).
+    #[serde(default)]
+    transcript: Option<TranscriptW>,
+    /// fold-other (v4 `extractOtherMemoriesFromFold`) only.
+    #[serde(default)]
+    window_messages: Vec<FoldMessageW>,
+    #[serde(default)]
+    observer: Option<ObserverW>,
+    #[serde(default)]
+    per_subject_cap: Option<i64>,
     #[serde(default)]
     target_character_id: Option<String>,
     #[serde(default)]
@@ -179,14 +193,37 @@ struct CaseW {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FoldMessageW {
+    speaker: String,
+    content: String,
+    #[serde(default)]
+    created_at: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ObserverW {
+    id: String,
+    name: String,
+    #[serde(default)]
+    pronouns: Option<PronounsW>,
+}
+
+#[derive(Deserialize)]
 struct OracleMessage {
     role: String,
     content: String,
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct OracleCall {
     messages: Vec<OracleMessage>,
+    /// fold-other rows only: the executor's task type + attributed character.
+    #[serde(default)]
+    task_type: Option<String>,
+    #[serde(default)]
+    character_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -229,7 +266,7 @@ fn subjects_core(subjects: Vec<SubjectW>) -> Vec<OtherSubjectInput> {
 
 /// The user message (the rendered turn) of a corpus case's one call.
 fn built_messages(case: CaseW) -> Vec<(String, String)> {
-    let transcript = case.transcript.into_core();
+    let transcript = case.transcript.expect("a turn case").into_core();
     let messages = match case.kind.as_str() {
         "self" => build_self_extraction_messages(
             &transcript,
@@ -410,7 +447,7 @@ fn check_case(case: CaseW, oracle: OracleRow) {
     {
         let name = &case.name;
 
-        let transcript = case.transcript.into_core();
+        let transcript = case.transcript.map(TranscriptW::into_core);
         let orienting = case.orienting.map(|o| OrientingContext {
             project_description: o.project_description,
             chat_context_summary: o.chat_context_summary,
@@ -420,7 +457,7 @@ fn check_case(case: CaseW, oracle: OracleRow) {
         let (messages, result): (Option<Vec<_>>, Value) = match case.kind.as_str() {
             "self" => {
                 let messages = build_self_extraction_messages(
-                    &transcript,
+                    transcript.as_ref().expect("transcript"),
                     case.target_character_id
                         .as_deref()
                         .expect("targetCharacterId"),
@@ -455,7 +492,7 @@ fn check_case(case: CaseW, oracle: OracleRow) {
                     })
                     .collect();
                 let messages = build_other_extraction_messages(
-                    &transcript,
+                    transcript.as_ref().expect("transcript"),
                     case.observer_character_id
                         .as_deref()
                         .expect("observerCharacterId"),
@@ -471,6 +508,61 @@ fn check_case(case: CaseW, oracle: OracleRow) {
                         parse_other_candidates_by_subject(&case.response_text, &subjects, cap)
                     }
                     // v4's early return: an empty bucket per subject, no call.
+                    None => subjects
+                        .iter()
+                        .map(|s| (s.id.clone(), Vec::new()))
+                        .collect(),
+                };
+                let mut obj = serde_json::Map::new();
+                for (id, candidates) in buckets {
+                    obj.insert(id, serde_json::to_value(candidates).unwrap());
+                }
+                (messages, Value::Object(obj))
+            }
+            "fold-other" => {
+                let subjects = subjects_core(case.subjects);
+                let observer = case.observer.expect("observer");
+                let window: Vec<FoldOtherMessage> = case
+                    .window_messages
+                    .into_iter()
+                    .map(|m| FoldOtherMessage {
+                        speaker: m.speaker,
+                        content: m.content,
+                        created_at: m.created_at,
+                    })
+                    .collect();
+                let per_subject_cap = case.per_subject_cap.expect("perSubjectCap");
+                let pronouns = observer.pronouns.map(PronounsW::into_core);
+                let messages = build_fold_other_extraction_messages(
+                    &window,
+                    &format_name_with_pronouns(&observer.name, pronouns.as_ref()),
+                    &subjects,
+                    per_subject_cap,
+                    case.in_autonomous_room,
+                    orienting.as_ref(),
+                    clock.as_ref(),
+                );
+                // The executor arguments the Rust wrapper
+                // (`extract_other_memories_from_fold`) passes: the per-turn
+                // task type and the observer's id.
+                for call in &oracle.calls {
+                    assert_eq!(
+                        call.task_type.as_deref(),
+                        Some("memory-extraction-other"),
+                        "{name}: task type"
+                    );
+                    assert_eq!(
+                        call.character_id.as_deref(),
+                        Some(observer.id.as_str()),
+                        "{name}: attributed character"
+                    );
+                }
+                let buckets = match &messages {
+                    Some(_) => parse_other_candidates_by_subject(
+                        &case.response_text,
+                        &subjects,
+                        per_subject_cap.max(1),
+                    ),
                     None => subjects
                         .iter()
                         .map(|s| (s.id.clone(), Vec::new()))

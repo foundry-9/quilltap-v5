@@ -52,11 +52,12 @@ use crate::db::doc_mount_file_links::normalise_relative_path;
 use crate::db::memories_read;
 use crate::db::runtime::Db;
 use crate::jsnum::to_fixed;
-use crate::memory_format::Pronouns;
+use crate::memory_format::{format_name_with_pronouns, Pronouns};
 use crate::memory_tasks::{
-    build_other_extraction_messages, build_self_extraction_messages, parse_memory_candidate_array,
-    parse_other_candidates_by_subject, resolve_max_memories, ExtractionClock, MemoryCandidate,
-    OrientingContext, OtherSubjectInput, TurnTranscript,
+    build_fold_other_extraction_messages, build_other_extraction_messages,
+    build_self_extraction_messages, parse_memory_candidate_array,
+    parse_other_candidates_by_subject, resolve_max_memories, ExtractionClock, FoldOtherMessage,
+    MemoryCandidate, OrientingContext, OtherSubjectInput, TurnTranscript,
 };
 use crate::model::completion::CompletionProvider;
 use crate::model::embedding::EmbeddingProvider;
@@ -251,6 +252,64 @@ pub async fn extract_other_memories_from_turn<C: CompletionProvider>(
             uncensored_fallback,
             resolved_max_tokens,
             Some(observer_character_id),
+            Some("memory-extraction-other"),
+            CheapLlmTaskOptions::default(),
+        )
+        .await
+}
+
+/// v4 `extractOtherMemoriesFromFold` (`d58548051`): the fold-grain OTHER call —
+/// what one OBSERVER would retain about each SUBJECT after a whole stretch of
+/// conversation (the just-folded window, or the uncovered tail of an idle
+/// chat). Same prompt family and task type as the per-turn OTHER pass (so the
+/// LLM-log type, activity kind and timeout class are unchanged), told it is
+/// reading a stretch and should state each thread once. The empty-window /
+/// no-subject early return carries an empty bucket per subject and no usage.
+#[allow(clippy::too_many_arguments)]
+pub async fn extract_other_memories_from_fold<C: CompletionProvider>(
+    executor: &CheapLlmTaskExecutor,
+    completion: &C,
+    window_messages: &[FoldOtherMessage],
+    observer_id: &str,
+    observer_name: &str,
+    observer_pronouns: Option<&Pronouns>,
+    subjects: &[OtherSubjectInput],
+    per_subject_cap: i64,
+    selection: &CheapLlmSelection,
+    uncensored_fallback: Option<&UncensoredFallbackOptions<'_>>,
+    resolved_max_tokens: Option<f64>,
+    in_autonomous_room: bool,
+    orienting: Option<&OrientingContext>,
+    clock: Option<&ExtractionClock>,
+) -> CheapLlmTaskResult<Vec<(String, Vec<MemoryCandidate>)>> {
+    let observer_label = format_name_with_pronouns(observer_name, observer_pronouns);
+    let Some(messages) = build_fold_other_extraction_messages(
+        window_messages,
+        &observer_label,
+        subjects,
+        per_subject_cap,
+        in_autonomous_room,
+        orienting,
+        clock,
+    ) else {
+        return CheapLlmTaskResult::early(
+            subjects
+                .iter()
+                .map(|s| (s.id.clone(), Vec::new()))
+                .collect(),
+        );
+    };
+
+    let cap = per_subject_cap.max(1);
+    executor
+        .execute(
+            completion,
+            selection,
+            messages,
+            |content| parse_other_candidates_by_subject(content, subjects, cap),
+            uncensored_fallback,
+            resolved_max_tokens,
+            Some(observer_id),
             Some("memory-extraction-other"),
             CheapLlmTaskOptions::default(),
         )
