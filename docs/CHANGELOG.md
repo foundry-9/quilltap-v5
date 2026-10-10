@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(wardrobe): P4.D275 B3+B4 — the picture viewer's save-targets / save-to-store on both transports
+
+_Versions: core 0.0.1270, web 0.0.229._
+
+Ports v4 `01a83539d`'s wardrobe images route actions and fills the two `KEYSTONE` refusal arms.
+
+- **`save_targets`** answers `{albums}` from `list_all_photo_album_options`.
+- **`save_to_store`** runs in v4's order: the item's home, then the shared body schema, then "a picture not the item's" (400), then "an archived character's vault" (409 `{error}`), then the save. The item's title is the default caption (an empty caption is kept). The byline is the operator's (new `operator_attribution`), and the item itself is never written, so an archived character's picture can be copied out. Its answers go through the shared save-image responses, including the 409 `ALREADY_SAVED` riders. All five `[Wardrobe Images v1]` lines run on the caller thread.
+- **The dispatch arm** rebuilds the body from the raw `caption` / `tags` tri-states, so a JSON `null` is refused with v4's Zod sentence.
+- **The shared parser** refuses a non-object body with Zod's one fatal issue.
+- **The operator byline** keeps an empty `users.name`, as v4 does.
+- **The REST edge** runs GET action dispatch first (an unknown or bare `?action` is a 400 before the query), adds the POST `save-to-store` leg (an empty or unparseable body is `{}`), and renders the 409 riders on REST.
+
+The routes family grows 35 rows (save-targets, the GET dispatch, every save-to-store arm) and compares bodies as bytes. It also adds the `photos/` links and blobs to the dump, and a no-op lost-lock handler in the test.
+
 #### 2026-10-09 — feat(photos): P4.D275 B2 — every enabled store as a save target (photo_album_options)
 
 _Versions: core 0.0.1269._

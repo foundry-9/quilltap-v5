@@ -1,5 +1,5 @@
 {
-  "_comment": "P4.D263 routes corpus for v4 app/api/v1/wardrobe/[itemId]/images/route.ts over the wardrobe-item-images tier-2 fixture. `@x` container ids name spec ids; a {ref} fileId is resolved against the baked fixture (the tier-2 rules). driver `http` = the real router (v5: a booted host, `oneshot`); `direct` = the generate leg with the provider mocked below both sides (v5: `generate_on_home` + the route's `render`). No HTTP request ever reaches a provider.",
+  "_comment": "P4.D263 routes corpus for v4 app/api/v1/wardrobe/[itemId]/images/route.ts over the wardrobe-item-images tier-2 fixture. `@x` container ids name spec ids; a {ref} fileId is resolved against the baked fixture (the tier-2 rules). driver `http` = the real router (v5: a booted host, `oneshot`); `direct` = the generate leg with the provider mocked below both sides (v5: `generate_on_home` + the route's `render`). No HTTP request ever reaches a provider. P4.D275 (v4 `01a83539d`): GET `?action=save-targets` + the GET action dispatch (unknown / bare → 400 BEFORE the query), POST `?action=save-to-store`. A `{ref:{store:'@character'|'@archived'|'@project'|'@general'}}` names that entity's vault / official store / General; `{ref:{imageLink:<item>}}` the item's first `Wardrobe/images/` LINK id (not a `files.id`). `mountSql` plants the mount partition; `repeat` sends the request twice and records the second; `realStorage` un-mocks jest.setup's storage-manager stub on v4's side so `readImageBuffer` reads the picture's real mount blob, the bytes v5's `ProductionFileBytes` reads (M4). The dump grows the `photos/` links (their `extractedText` is the kept-image sidecar) and their blobs. The three listing `get_save_targets_*` rows run `direct` (v5: `resolve_home` + `save_targets_on_home` + the route's `render`): a BOOTED v5 host provisions the built-in Lantern Backgrounds + Quilltap Uploads stores into the fixture copy, which v4's unbooted oracle never has, and every enabled store is a save target. The GET dispatch's own rows (404, 400, unknown, bare) stay `http`.",
   "png": "iVBORw0KGgoAAAANSUhEUgAAAAMAAAADCAIAAADZSiLoAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEElEQVQImWNgZGKGIAYsLAADNgA3hQ4ykAAAAABJRU5ErkJggg==",
   "requests": [
     {
@@ -835,6 +835,829 @@
         "value": ""
       },
       "provider": "throw"
+    },
+    {
+      "name": "get_save_targets_character",
+      "method": "GET",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "direct",
+      "action": "save-targets"
+    },
+    {
+      "name": "get_save_targets_general",
+      "method": "GET",
+      "item": "apron",
+      "query": {
+        "scope": "general"
+      },
+      "driver": "direct",
+      "action": "save-targets"
+    },
+    {
+      "name": "get_save_targets_project",
+      "method": "GET",
+      "item": "smock",
+      "query": {
+        "scope": "project",
+        "id": "@project"
+      },
+      "driver": "direct",
+      "action": "save-targets"
+    },
+    {
+      "name": "get_save_targets_404",
+      "method": "GET",
+      "item": "coat",
+      "query": {
+        "scope": "group",
+        "id": "@group"
+      },
+      "driver": "http",
+      "action": "save-targets"
+    },
+    {
+      "name": "get_save_targets_400_query",
+      "method": "GET",
+      "item": "smock",
+      "query": {
+        "scope": "project"
+      },
+      "driver": "http",
+      "action": "save-targets"
+    },
+    {
+      "name": "get_unknown_action",
+      "method": "GET",
+      "item": "coat",
+      "query": {
+        "scope": "planet"
+      },
+      "driver": "http",
+      "action": "bogus"
+    },
+    {
+      "name": "get_bare_action",
+      "method": "GET",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": ""
+    },
+    {
+      "name": "save_to_store_ok",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "save-to-store",
+      "realStorage": true,
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "coat",
+              "nth": 0
+            }
+          },
+          "mountPointId": {
+            "ref": {
+              "store": "@general"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "save_to_store_with_caption",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "save-to-store",
+      "realStorage": true,
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "coat",
+              "nth": 0
+            }
+          },
+          "mountPointId": {
+            "ref": {
+              "store": "@general"
+            }
+          },
+          "caption": "Her best coat"
+        }
+      }
+    },
+    {
+      "name": "save_to_store_empty_caption",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "save-to-store",
+      "realStorage": true,
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "coat",
+              "nth": 0
+            }
+          },
+          "mountPointId": {
+            "ref": {
+              "store": "@general"
+            }
+          },
+          "caption": ""
+        }
+      }
+    },
+    {
+      "name": "save_to_store_with_tags",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "save-to-store",
+      "realStorage": true,
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "coat",
+              "nth": 0
+            }
+          },
+          "mountPointId": {
+            "ref": {
+              "store": "@general"
+            }
+          },
+          "tags": [
+            "velvet",
+            "winter"
+          ]
+        }
+      }
+    },
+    {
+      "name": "save_to_store_null_caption",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "save-to-store",
+      "realStorage": true,
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "coat",
+              "nth": 0
+            }
+          },
+          "mountPointId": {
+            "ref": {
+              "store": "@general"
+            }
+          },
+          "caption": null
+        }
+      }
+    },
+    {
+      "name": "save_to_store_null_tags",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "save-to-store",
+      "realStorage": true,
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "coat",
+              "nth": 0
+            }
+          },
+          "mountPointId": {
+            "ref": {
+              "store": "@general"
+            }
+          },
+          "tags": null
+        }
+      }
+    },
+    {
+      "name": "save_to_store_null_caption_and_tags",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "save-to-store",
+      "realStorage": true,
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "coat",
+              "nth": 0
+            }
+          },
+          "mountPointId": {
+            "ref": {
+              "store": "@general"
+            }
+          },
+          "caption": null,
+          "tags": null
+        }
+      }
+    },
+    {
+      "name": "save_to_store_number_caption",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "save-to-store",
+      "realStorage": true,
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "coat",
+              "nth": 0
+            }
+          },
+          "mountPointId": {
+            "ref": {
+              "store": "@general"
+            }
+          },
+          "caption": 5
+        }
+      }
+    },
+    {
+      "name": "save_to_store_tags_with_number",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "save-to-store",
+      "realStorage": true,
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "coat",
+              "nth": 0
+            }
+          },
+          "mountPointId": {
+            "ref": {
+              "store": "@general"
+            }
+          },
+          "tags": [
+            "a",
+            1
+          ]
+        }
+      }
+    },
+    {
+      "name": "save_to_store_foreign",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "save-to-store",
+      "realStorage": true,
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "scarf",
+              "nth": 0
+            }
+          },
+          "mountPointId": {
+            "ref": {
+              "store": "@general"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "save_to_store_document_file",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "save-to-store",
+      "realStorage": true,
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "doc": "coat"
+            }
+          },
+          "mountPointId": {
+            "ref": {
+              "store": "@general"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "save_to_store_link_id",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "save-to-store",
+      "realStorage": true,
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "imageLink": "coat"
+            }
+          },
+          "mountPointId": {
+            "ref": {
+              "store": "@general"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "save_to_store_archived_vault",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "save-to-store",
+      "realStorage": true,
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "coat",
+              "nth": 0
+            }
+          },
+          "mountPointId": {
+            "ref": {
+              "store": "@archived"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "save_to_store_already_saved",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "save-to-store",
+      "realStorage": true,
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "coat",
+              "nth": 0
+            }
+          },
+          "mountPointId": {
+            "ref": {
+              "store": "@general"
+            }
+          }
+        }
+      },
+      "repeat": true
+    },
+    {
+      "name": "save_to_store_mount_not_found",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "save-to-store",
+      "realStorage": true,
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "coat",
+              "nth": 0
+            }
+          },
+          "mountPointId": "ffffffff-0000-4000-8000-00000000dead"
+        }
+      }
+    },
+    {
+      "name": "save_to_store_missing_store",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "save-to-store",
+      "realStorage": true,
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "coat",
+              "nth": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "save_to_store_empty_body",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "save-to-store",
+      "realStorage": true,
+      "body": {
+        "type": "text",
+        "value": ""
+      }
+    },
+    {
+      "name": "save_to_store_invalid_json",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "save-to-store",
+      "realStorage": true,
+      "body": {
+        "type": "text",
+        "value": "{nope"
+      }
+    },
+    {
+      "name": "save_to_store_null_body",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "save-to-store",
+      "realStorage": true,
+      "body": {
+        "type": "text",
+        "value": "null"
+      }
+    },
+    {
+      "name": "save_to_store_array_body",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "save-to-store",
+      "realStorage": true,
+      "body": {
+        "type": "text",
+        "value": "[]"
+      }
+    },
+    {
+      "name": "save_to_store_404_before_body",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "group",
+        "id": "@group"
+      },
+      "driver": "http",
+      "action": "save-to-store",
+      "realStorage": true,
+      "body": {
+        "type": "text",
+        "value": "{nope"
+      }
+    },
+    {
+      "name": "save_to_store_400_query_first",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "project"
+      },
+      "driver": "http",
+      "action": "save-to-store",
+      "realStorage": true,
+      "body": {
+        "type": "text",
+        "value": "null"
+      }
+    },
+    {
+      "name": "save_to_store_archived_item_copied_out",
+      "method": "POST",
+      "item": "cloak",
+      "query": {
+        "scope": "character",
+        "id": "@archived"
+      },
+      "driver": "http",
+      "action": "save-to-store",
+      "realStorage": true,
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "cloak",
+              "nth": 0
+            }
+          },
+          "mountPointId": {
+            "ref": {
+              "store": "@general"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "save_to_store_project_scope",
+      "method": "POST",
+      "item": "smock",
+      "query": {
+        "scope": "project",
+        "id": "@project"
+      },
+      "driver": "http",
+      "action": "save-to-store",
+      "realStorage": true,
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "smock",
+              "nth": 1
+            }
+          },
+          "mountPointId": {
+            "ref": {
+              "store": "@character"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "save_to_store_unreadable_bytes",
+      "method": "POST",
+      "item": "smock",
+      "query": {
+        "scope": "project",
+        "id": "@project"
+      },
+      "driver": "http",
+      "action": "save-to-store",
+      "realStorage": true,
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "smock",
+              "nth": 0
+            }
+          },
+          "mountPointId": {
+            "ref": {
+              "store": "@character"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "save_to_store_into_project_store",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "save-to-store",
+      "realStorage": true,
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "coat",
+              "nth": 0
+            }
+          },
+          "mountPointId": {
+            "ref": {
+              "store": "@project"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "save_to_store_empty_user_name",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "save-to-store",
+      "realStorage": true,
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "coat",
+              "nth": 0
+            }
+          },
+          "mountPointId": {
+            "ref": {
+              "store": "@general"
+            }
+          }
+        }
+      },
+      "sql": [
+        "UPDATE users SET name = '' WHERE id = 'ffffffff-ffff-ffff-ffff-ffffffffffff'"
+      ]
+    },
+    {
+      "name": "save_to_store_null_user_name",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "save-to-store",
+      "realStorage": true,
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "coat",
+              "nth": 0
+            }
+          },
+          "mountPointId": {
+            "ref": {
+              "store": "@general"
+            }
+          }
+        }
+      },
+      "sql": [
+        "UPDATE users SET name = NULL WHERE id = 'ffffffff-ffff-ffff-ffff-ffffffffffff'"
+      ]
+    },
+    {
+      "name": "save_to_store_filesystem_store",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "save-to-store",
+      "realStorage": true,
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "coat",
+              "nth": 0
+            }
+          },
+          "mountPointId": "aa000000-0000-4000-8000-0000000000f5"
+        }
+      },
+      "mountSql": [
+        "INSERT INTO doc_mount_points SELECT 'aa000000-0000-4000-8000-0000000000f5', 'Desk Drawer', '/tmp/qt-wiir-nowhere-drawer', 'filesystem', storeType, includePatterns, excludePatterns, 1, lastScannedAt, scanStatus, lastScanError, conversionStatus, conversionError, 0, 0, 0, createdAt, updatedAt FROM doc_mount_points WHERE id = '4d5e6f70-0001-4000-8000-000000000001'"
+      ]
     }
   ]
 }

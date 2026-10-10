@@ -5587,12 +5587,58 @@ impl CoreEngine {
             Request::MemoryConsolidate { .. } => {
                 p4d265_not_yet_available("memoryConsolidate", "P4.D271")
             }
-            Request::WardrobeItemImageSaveTargets { .. } => {
-                p4d265_not_yet_available("wardrobeItemImageSaveTargets", "P4.D275")
-            }
-            Request::WardrobeItemImageSaveToStore { .. } => {
-                p4d265_not_yet_available("wardrobeItemImageSaveToStore", "P4.D275")
-            }
+            Request::WardrobeItemImageSaveTargets {
+                scope,
+                container_id,
+                item_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::wardrobe_item_images::save_targets(
+                        &db,
+                        scope,
+                        container_id.as_deref(),
+                        &item_id,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::WardrobeItemImageSaveToStore {
+                scope,
+                container_id,
+                item_id,
+                file_id,
+                mount_point_id,
+                caption,
+                tags,
+            } => match self.ready_save_image() {
+                Ok((db, bytes)) => {
+                    let body = super::wardrobe_item_images::save_to_store_body(
+                        file_id,
+                        mount_point_id,
+                        caption,
+                        tags,
+                    );
+                    super::wardrobe_item_images::save_to_store(
+                        &db,
+                        bytes,
+                        Arc::new(crate::photos::mount_embedding_effects::MountEmbeddingSideEffects::new(db.clone()))
+                            as Arc<
+                                dyn crate::photos::save_image_to_album::SaveImageSideEffects
+                                    + Send
+                                    + Sync,
+                            >,
+                        SINGLE_USER_ID,
+                        scope,
+                        container_id.as_deref(),
+                        &item_id,
+                        &body,
+                        &crate::clock::now_iso(),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
             // === end P4.D265 ===
             Request::WardrobeItemGet { item_id } => match self.ready_db() {
                 Ok(db) => super::wardrobe::wardrobe_item_get(&db, &item_id),

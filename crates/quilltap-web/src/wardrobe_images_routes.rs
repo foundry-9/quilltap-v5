@@ -2,11 +2,15 @@
 //! (P4.D263; v4 `app/api/v1/wardrobe/[itemId]/images/route.ts`, `7c8572869`).
 //! ONE route for every tier: the container rides in the query (`?scope=…&id=…`).
 //!
-//! - `GET` → `{ current, images }`.
-//! - `POST ?action=generate | upload | set-current | delete-image` (v4's
-//!   `withActionDispatch` with NO default: a bare POST is `Action parameter
-//!   required`, an unknown action `Unknown action: <a>`, both with
-//!   `availableActions`).
+//! - `GET` → `{ current, images }`; `GET ?action=save-targets` → `{ albums }`
+//!   (v4 `01a83539d`'s `withActionDispatch({ 'save-targets' }, handleList)`:
+//!   the dispatch runs FIRST, so an unknown or bare GET `?action` is the 400
+//!   `Unknown action: <a>` with `availableActions: ["save-targets"]` before
+//!   the query is even read — where it listed before).
+//! - `POST ?action=generate | upload | set-current | delete-image |
+//!   save-to-store` (v4's `withActionDispatch` with NO default: a bare POST is
+//!   `Action parameter required`, an unknown action `Unknown action: <a>`,
+//!   both with `availableActions`).
 //!
 //! The order is v4's: the container query (400 — Zod's own sentences joined
 //! `'; '`, then the refine's `id is required for this scope`), the item's home
@@ -15,6 +19,16 @@
 //! parse `{fileId}`; `upload` parses multipart). So the edge calls core's
 //! gate ([`resolve_home`]) once, then the action's `…_on_home` form —
 //! never the dispatch verb, which would gate a second time.
+//!
+//! `save-to-store` (P4.D275) reads its body as v4's `req.json().catch(() =>
+//! ({}))` does — an empty, unparseable or unreadable body is `{}` (two
+//! `received undefined` issues; NOT the 500 set-current / delete-image
+//! answer) — through the ONE shared `SaveImageRequestSchema` parser, then
+//! core's `save_to_store_on_home` over seams the edge builds itself (the
+//! host spine's own `ProductionFileBytes` shape — `engine.rs` stays frozen,
+//! P4.D275 R-G). Its 409 `ALREADY_SAVED` carries v4's `{error, code,
+//! relativePath, keptAt}` on REST as on the dispatch wire (R-A); the
+//! archived-vault 409 stays `{error}`.
 //!
 //! `upload` is a BINARY leg with no dispatch verb (contract C2 §6):
 //! `Expected a multipart upload` (v4 CATCHES `req.formData()` here, unlike
@@ -34,19 +48,29 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response as AxumResponse};
 use quilltap_core::api::types::{ErrorKind, Response as CoreResponse, WardrobeContainerScope};
 use quilltap_core::api::wardrobe_item_images::{
-    delete_on_home, generate_on_home, list_on_home, resolve_home, set_current_on_home,
-    upload_on_home,
+    delete_on_home, generate_on_home, list_on_home, resolve_home, save_targets_on_home,
+    save_to_store_on_home, set_current_on_home, upload_on_home,
 };
 use quilltap_core::db::runtime::Db;
 use quilltap_core::services::wardrobe_image_bridge::WardrobeImageKind;
 use serde_json::{json, Value};
 
 use crate::multipart::FormData;
-use crate::query::{dispatch_required_action, first, QueryPairs};
+use crate::query::{dispatch_action, dispatch_required_action, first, QueryPairs};
 use crate::state::SharedState;
 
-/// v4's `withActionDispatch` map, in its literal order.
-const ACTIONS: [&str; 4] = ["generate", "upload", "set-current", "delete-image"];
+/// v4's POST `withActionDispatch` map, in its literal order (`01a83539d`
+/// appended `save-to-store`).
+const ACTIONS: [&str; 5] = [
+    "generate",
+    "upload",
+    "set-current",
+    "delete-image",
+    "save-to-store",
+];
+/// v4's GET `withActionDispatch` map (`01a83539d`) — `handleList` is the
+/// fallback.
+const GET_ACTIONS: [&str; 1] = ["save-targets"];
 const ROUTE: &str = "/api/v1/wardrobe/[itemId]/images";
 const SCOPE_ISSUE: &str =
     "Invalid option: expected one of \"character\"|\"project\"|\"group\"|\"general\"";
@@ -66,7 +90,10 @@ fn error_json(status: StatusCode, message: &str) -> AxumResponse {
 
 /// A dispatch [`CoreResponse`] → v4's HTTP status and body. `success` is the
 /// action's success status (201 for `generate` / `upload`, else 200). An error
-/// renders `{ error, details? }` (v4 `errorResponse`); `generate`'s
+/// renders `{ error, details? }` (v4 `errorResponse`) — or, for the
+/// `ALREADY_SAVED` 409, v4's `saveImageErrorResponse` body `{error, code,
+/// relativePath, keptAt}` through the ONE home of that shape
+/// (`CoreError::already_saved_wire_body`, P4.D275 R-A); `generate`'s
 /// `Internal` carrying `details.refused === false` is v4's 502.
 pub fn render(generate: bool, resp: CoreResponse, success: StatusCode) -> (StatusCode, Value) {
     match resp {
@@ -90,7 +117,9 @@ pub fn render(generate: bool, resp: CoreResponse, success: StatusCode) -> (Statu
                 ErrorKind::Locked | ErrorKind::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
                 ErrorKind::Internal => StatusCode::INTERNAL_SERVER_ERROR,
             };
-            let mut body = json!({ "error": e.message });
+            let mut body = e
+                .already_saved_wire_body()
+                .unwrap_or_else(|| json!({ "error": e.message }));
             if let Some(d) = e.details {
                 body["details"] = *d;
             }
@@ -155,12 +184,17 @@ fn db_of(state: &SharedState) -> Result<Db, Box<AxumResponse>> {
     })
 }
 
-/// `GET /api/v1/wardrobe/{itemId}/images`.
+/// `GET /api/v1/wardrobe/{itemId}/images[?action=save-targets]`.
 pub async fn wardrobe_item_images_get(
     State(state): State<SharedState>,
     Path(item_id): Path<String>,
     Query(pairs): Query<QueryPairs>,
 ) -> AxumResponse {
+    // v4's dispatch runs before `findHome` — before the query is read.
+    let action = match dispatch_action(&pairs, &GET_ACTIONS, "GET", ROUTE) {
+        Ok(a) => a,
+        Err(r) => return *r,
+    };
     let (scope, container_id) = match read_container_query(&pairs) {
         Ok(q) => q,
         Err(msg) => return error_json(StatusCode::BAD_REQUEST, &msg),
@@ -173,7 +207,14 @@ pub async fn wardrobe_item_images_get(
         Ok(h) => h,
         Err(r) => return rendered(false, r, StatusCode::OK),
     };
-    rendered(false, list_on_home(&db, scope, &home).await, StatusCode::OK)
+    match action {
+        None => rendered(false, list_on_home(&db, scope, &home).await, StatusCode::OK),
+        Some(_) => rendered(
+            false,
+            save_targets_on_home(&db, scope, &home),
+            StatusCode::OK,
+        ),
+    }
 }
 
 /// `POST /api/v1/wardrobe/{itemId}/images?action=…`.
@@ -262,6 +303,49 @@ pub async fn wardrobe_item_images_post(
             } else {
                 delete_on_home(&db, scope, &home, &file_id).await
             };
+            rendered(false, resp, StatusCode::OK)
+        }
+        "save-to-store" => {
+            // v4 `await req.json().catch(() => ({}))`: a body that cannot be
+            // read or parsed is `{}`.
+            let body: Value = match Bytes::from_request(req, &state).await {
+                Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_else(|_| json!({})),
+                Err(_) => json!({}),
+            };
+            let parsed =
+                match quilltap_core::photos::save_attribution::parse_save_image_request(&body) {
+                    Ok(p) => p,
+                    Err(msg) => return error_json(StatusCode::BAD_REQUEST, &msg),
+                };
+            // R-G: the host spine's own byte store over this instance's files
+            // dir, and the production side effects.
+            let bytes: std::sync::Arc<
+                dyn quilltap_core::photos::save_image_to_album::FileBytesStore,
+            > = std::sync::Arc::new(quilltap_core::services::file_storage::ProductionFileBytes {
+                db: db.clone(),
+                backend: std::sync::Arc::new(quilltap_host::LocalStorageBackend::new(
+                    state.base_dir.join("files"),
+                )),
+                codec: std::sync::Arc::new(quilltap_host::HostImageCodec),
+            });
+            let side_effects: std::sync::Arc<
+                dyn quilltap_core::photos::save_image_to_album::SaveImageSideEffects + Send + Sync,
+            > = std::sync::Arc::new(
+                quilltap_core::photos::mount_embedding_effects::MountEmbeddingSideEffects::new(
+                    db.clone(),
+                ),
+            );
+            let resp = save_to_store_on_home(
+                &db,
+                bytes,
+                side_effects,
+                quilltap_core::api::engine::SINGLE_USER_ID,
+                scope,
+                &home,
+                parsed,
+                &quilltap_core::clock::now_iso(),
+            )
+            .await;
             rendered(false, resp, StatusCode::OK)
         }
         _ => unreachable!("dispatch_required_action answers only listed actions"),
@@ -446,5 +530,72 @@ mod tests {
             render(true, plain, StatusCode::CREATED).0,
             StatusCode::INTERNAL_SERVER_ERROR
         );
+    }
+
+    /// P4.D275 R-A: the `ALREADY_SAVED` 409 renders v4's four flat keys in
+    /// v4's order; the archived-vault 409 stays `{error}` (no `code`).
+    #[test]
+    fn the_already_saved_409_carries_its_riders() {
+        let saved = quilltap_core::photos::save_image_response::save_image_error_response(
+            quilltap_core::photos::save_image_to_album::SaveImageToAlbumError {
+                code: quilltap_core::photos::save_image_to_album::SaveImageErrorCode::AlreadySaved,
+                message: "Image already saved".into(),
+                existing_relative_path: Some("photos/a.webp".into()),
+                existing_created_at: Some("2026-10-09T00:00:00.000Z".into()),
+            },
+        );
+        let (status, body) = render(false, saved, StatusCode::OK);
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(
+            body.to_string(),
+            r#"{"error":"Image already saved","code":"ALREADY_SAVED","relativePath":"photos/a.webp","keptAt":"2026-10-09T00:00:00.000Z"}"#
+        );
+        let archived = CoreResponse::error(
+            ErrorKind::Conflict,
+            "That store belongs to an archived character and cannot be written to",
+        );
+        let (status, body) = render(false, archived, StatusCode::OK);
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(
+            body.to_string(),
+            r#"{"error":"That store belongs to an archived character and cannot be written to"}"#
+        );
+    }
+
+    /// The two action maps, in v4's literal order (`save-to-store` LAST).
+    #[test]
+    fn the_action_maps() {
+        assert_eq!(
+            ACTIONS,
+            [
+                "generate",
+                "upload",
+                "set-current",
+                "delete-image",
+                "save-to-store"
+            ]
+        );
+        assert_eq!(GET_ACTIONS, ["save-targets"]);
+        // The GET dispatch's three arms: absent → the list; save-targets;
+        // unknown / bare → the 400.
+        assert_eq!(
+            dispatch_action(&pairs(&[]), &GET_ACTIONS, "GET", ROUTE).unwrap(),
+            None
+        );
+        assert_eq!(
+            dispatch_action(
+                &pairs(&[("action", "save-targets")]),
+                &GET_ACTIONS,
+                "GET",
+                ROUTE
+            )
+            .unwrap(),
+            Some("save-targets")
+        );
+        for bad in ["bogus", ""] {
+            let r = dispatch_action(&pairs(&[("action", bad)]), &GET_ACTIONS, "GET", ROUTE)
+                .unwrap_err();
+            assert_eq!(r.status(), StatusCode::BAD_REQUEST, "{bad:?}");
+        }
     }
 }
