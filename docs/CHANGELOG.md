@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(memory): P4.D267 the recall multiplier retuning — capped/gated combine + recall_tuning (v4 `f7d8064be` pin `01a83539d`)
+
+_Versions: core 0.0.1266._
+
+Ports the pure half of v4's recall multiplier retuning.
+
+- `recall_tags`: the twelve free multiplier constants become one `RECALL_MULTIPLIERS` table (fresh boost 1.6/1.35 → 1.3/1.15) that every multiplier fn takes last. New `BoostGate`, `boost_gate_threshold`, `boost_gate_strength`, `RecallRelevance` and `recall_tuning_of`. `RecallContext` gains `tuning` and `present_participant_names`.
+- `combine_recall_multipliers` takes an optional relevance and splits boosts from penalties. The product of boosts is capped (1.4 by default, labelled `cap1.4`) even with no relevance; with a relevance and a gate, boosts fade below the gate (`gate×0.NN`); the fresh / window boosts can bypass the gate.
+- NEW `recall_tuning`: `ResolvedRecallTuning`, `DEFAULT_RECALL_TUNING`, `resolve_recall_tuning`, `select_specific_anchors`, `describe_recall_tuning`, and Zod-faithful validators for the replay's `tuning` and `signals` body fields.
+- `api/zod_issues` gains the `unrecognized_keys` issue (strict-object tail).
+- Search callers pass no relevance yet, so they get the cap but not the gate; the search knobs land next.
+
+Differentials: NEW `recall_tuning_equivalence` (115 rows); `recall_tags_equivalence` regenerated at the pin and grown by 96 data-driven gate / overridden-table / tuned-combine rows.
+
 #### 2026-10-09 — docs(porting): P4.D265 lane close — real-instance note, gate and sweep records
 
 _Docs-only change._

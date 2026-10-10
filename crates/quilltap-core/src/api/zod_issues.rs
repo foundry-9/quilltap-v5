@@ -223,6 +223,19 @@ pub enum ZodIssue {
         path: Vec<Value>,
         message: String,
     },
+    // === P4.D267: unrecognized_keys (append-only) ===
+    /// A `.strict()` object's extra keys — `code, keys, path, message`
+    /// (measured at zod 4.6.5 at the `01a83539d` pin through v4's
+    /// `RecallTuningInputSchema`). `keys` in INPUT order; raised AFTER the
+    /// object's own shape checks and continuable, so a field issue and the
+    /// unknown-key issue both report.
+    UnrecognizedKeys {
+        code: &'static str,
+        keys: Vec<String>,
+        path: Vec<Value>,
+        message: String,
+    },
+    // === end ===
 }
 
 /// JS `Number.MAX_SAFE_INTEGER` — the bound `z.number().int()` reports as
@@ -556,6 +569,25 @@ impl ZodIssue {
         }
     }
 
+    // === P4.D267: unrecognized_keys (append-only) ===
+    /// A `.strict()` object's unknown keys: `Unrecognized key: "k"` for one,
+    /// `Unrecognized keys: "a", "b"` for several (zod 4's own sentences).
+    pub fn unrecognized_keys(keys: Vec<String>, path: Vec<Value>) -> Self {
+        let quoted = keys
+            .iter()
+            .map(|k| format!("\"{k}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let noun = if keys.len() == 1 { "key" } else { "keys" };
+        Self::UnrecognizedKeys {
+            code: "unrecognized_keys",
+            message: format!("Unrecognized {noun}: {quoted}"),
+            keys,
+            path,
+        }
+    }
+    // === end ===
+
     /// This issue as a `serde_json::Value`, for the call sites that carry issue
     /// bags as raw JSON rather than as typed values. `preserve_order` keeps the
     /// key order the variant declares.
@@ -579,6 +611,8 @@ impl ZodIssue {
             | Self::TooSmallExact { path, .. }
             | Self::TooBigExact { path, .. }
             | Self::InvalidUnion { path, .. } => path,
+            // P4.D267: unrecognized_keys
+            Self::UnrecognizedKeys { path, .. } => path,
         }
     }
 
@@ -598,6 +632,8 @@ impl ZodIssue {
             | Self::TooSmallExact { message, .. }
             | Self::TooBigExact { message, .. }
             | Self::InvalidUnion { message, .. } => message,
+            // P4.D267: unrecognized_keys
+            Self::UnrecognizedKeys { message, .. } => message,
         }
     }
 }
@@ -1622,6 +1658,8 @@ pub fn zod_issue_aborts(issue: &ZodIssue) -> bool {
         | ZodIssue::TooSmallExact { .. }
         | ZodIssue::TooBigExact { .. }
         | ZodIssue::Custom { .. } => false,
+        // P4.D267: unrecognized_keys — the strict tail never aborts.
+        ZodIssue::UnrecognizedKeys { .. } => false,
     }
 }
 
@@ -2124,6 +2162,26 @@ mod tests {
                 ZodIssue::too_big_unknown(json!(100), vec![key("a")]),
                 r#"{"origin":"unknown","code":"too_big","maximum":100,"inclusive":true,"path":["a"],"message":"Too big: expected unknown to be <=100"}"#,
             ),
+            // === P4.D267: unrecognized_keys (append-only) ===
+            // Measured at the `01a83539d` pin (zod 4.6.5) through v4's
+            // `RecallTuningInputSchema`: one key, two keys (input order), and a
+            // nested strict object's tail.
+            (
+                "unrecognized_keys/one",
+                ZodIssue::unrecognized_keys(vec!["boostGateMarginX".into()], vec![]),
+                r#"{"code":"unrecognized_keys","keys":["boostGateMarginX"],"path":[],"message":"Unrecognized key: \"boostGateMarginX\""}"#,
+            ),
+            (
+                "unrecognized_keys/two",
+                ZodIssue::unrecognized_keys(vec!["zz".into(), "aa".into()], vec![]),
+                r#"{"code":"unrecognized_keys","keys":["zz","aa"],"path":[],"message":"Unrecognized keys: \"zz\", \"aa\""}"#,
+            ),
+            (
+                "unrecognized_keys/nested",
+                ZodIssue::unrecognized_keys(vec!["freshEvent12h".into()], vec![key("multipliers")]),
+                r#"{"code":"unrecognized_keys","keys":["freshEvent12h"],"path":["multipliers"],"message":"Unrecognized key: \"freshEvent12h\""}"#,
+            ),
+            // === end ===
         ];
         for (label, issue, want) in rows {
             assert_eq!(

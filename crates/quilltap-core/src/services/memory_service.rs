@@ -885,15 +885,14 @@ fn apply_recall_multipliers(
         recently_whispered_ids: rc.recently_whispered_ids.as_ref(),
         current_chat_id: rc.current_chat_id.as_deref(),
         now_ms: rc.now_ms,
+        tuning: None,
+        present_participant_names: &rc.present_participant_names,
     };
-    let adj = combine_recall_multipliers(&view, &ctx);
+    let adj = combine_recall_multipliers(&view, &ctx, None);
     if adj.exclude {
         return None;
     }
-    Some((
-        adj.multiplier,
-        adj.fired.iter().map(|s| s.to_string()).collect(),
-    ))
+    Some((adj.multiplier, adj.fired))
 }
 
 /// Item 5 — one-hop related-memory expansion (v4 `expandRelatedMemories`).
