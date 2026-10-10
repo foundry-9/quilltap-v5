@@ -67,6 +67,7 @@ pub mod cheap_llm_exec;
 pub mod cheap_llm_fallback;
 pub mod cold_chunk_reembed;
 pub mod collapse_stale_chat_caches;
+pub mod commonplace_digest_vault_bridge;
 pub mod commonplace_notifications;
 pub mod compression;
 pub mod compression_cache;

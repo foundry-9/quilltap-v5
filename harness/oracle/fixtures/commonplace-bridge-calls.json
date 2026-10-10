@@ -1,0 +1,544 @@
+{
+ "calls": [
+  {
+   "name": "first_write",
+   "input": {
+    "holderCharacterId": "0c010000-0000-4000-8000-000000000001",
+    "files": [
+     {
+      "subjectCharacterId": "0c010000-0000-4000-8000-000000000001",
+      "subjectName": "Friday",
+      "isSelf": true,
+      "digests": [
+       {
+        "content": "I keep the Estate ledgers in green ink.",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.6
+       },
+       {
+        "content": "I walked the sea wall with Laura.\nA storm came.",
+        "kind": "episodic",
+        "occurredAt": "2026-09-01T10:00:00.000Z",
+        "reinforcedImportance": 0.8
+       }
+      ]
+     },
+     {
+      "subjectCharacterId": "0c5b0000-0000-4000-8000-000000000001",
+      "subjectName": "Laura",
+      "isSelf": false,
+      "digests": [
+       {
+        "content": "Laura charts the northern coast.",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.7
+       },
+       {
+        "content": "Laura sails the Kittiwake.",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.55
+       },
+       {
+        "content": "  Laura   prefers tea.  ",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.9
+       }
+      ]
+     },
+     {
+      "subjectCharacterId": "0c5b0000-0000-4000-8000-000000000002",
+      "subjectName": "Self",
+      "isSelf": false,
+      "digests": []
+     }
+    ],
+    "updatedAt": "2026-10-08T12:00:00.000Z"
+   }
+  },
+  {
+   "name": "unchanged_rerun",
+   "input": {
+    "holderCharacterId": "0c010000-0000-4000-8000-000000000001",
+    "files": [
+     {
+      "subjectCharacterId": "0c010000-0000-4000-8000-000000000001",
+      "subjectName": "Friday",
+      "isSelf": true,
+      "digests": [
+       {
+        "content": "I keep the Estate ledgers in green ink.",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.6
+       },
+       {
+        "content": "I walked the sea wall with Laura.\nA storm came.",
+        "kind": "episodic",
+        "occurredAt": "2026-09-01T10:00:00.000Z",
+        "reinforcedImportance": 0.8
+       }
+      ]
+     },
+     {
+      "subjectCharacterId": "0c5b0000-0000-4000-8000-000000000001",
+      "subjectName": "Laura",
+      "isSelf": false,
+      "digests": [
+       {
+        "content": "Laura charts the northern coast.",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.7
+       },
+       {
+        "content": "Laura sails the Kittiwake.",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.55
+       },
+       {
+        "content": "  Laura   prefers tea.  ",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.9
+       }
+      ]
+     },
+     {
+      "subjectCharacterId": "0c5b0000-0000-4000-8000-000000000002",
+      "subjectName": "Self",
+      "isSelf": false,
+      "digests": []
+     }
+    ],
+    "updatedAt": "2026-10-09T12:00:00.000Z"
+   }
+  },
+  {
+   "name": "one_changed",
+   "input": {
+    "holderCharacterId": "0c010000-0000-4000-8000-000000000001",
+    "files": [
+     {
+      "subjectCharacterId": "0c010000-0000-4000-8000-000000000001",
+      "subjectName": "Friday",
+      "isSelf": true,
+      "digests": [
+       {
+        "content": "I keep the Estate ledgers in green ink.",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.6
+       },
+       {
+        "content": "I walked the sea wall with Laura.\nA storm came.",
+        "kind": "episodic",
+        "occurredAt": "2026-09-01T10:00:00.000Z",
+        "reinforcedImportance": 0.8
+       }
+      ]
+     },
+     {
+      "subjectCharacterId": "0c5b0000-0000-4000-8000-000000000001",
+      "subjectName": "Laura",
+      "isSelf": false,
+      "digests": [
+       {
+        "content": "Laura charts the northern coast.",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.7
+       },
+       {
+        "content": "Laura sails the Kittiwake.",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.55
+       },
+       {
+        "content": "  Laura   prefers tea.  ",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.9
+       },
+       {
+        "content": "Laura distrusts barometers.",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.4
+       }
+      ]
+     }
+    ],
+    "updatedAt": "2026-10-10T12:00:00.000Z"
+   }
+  },
+  {
+   "name": "subject_named_self",
+   "input": {
+    "holderCharacterId": "0c010000-0000-4000-8000-000000000001",
+    "files": [
+     {
+      "subjectCharacterId": "0c5b0000-0000-4000-8000-000000000002",
+      "subjectName": "Self",
+      "isSelf": false,
+      "digests": [
+       {
+        "content": "Self is a strange name for a person.",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.5
+       }
+      ]
+     },
+     {
+      "subjectCharacterId": "0c010000-0000-4000-8000-000000000001",
+      "subjectName": "Friday",
+      "isSelf": true,
+      "digests": [
+       {
+        "content": "I keep the Estate ledgers in green ink.",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.6
+       },
+       {
+        "content": "I walked the sea wall with Laura.\nA storm came.",
+        "kind": "episodic",
+        "occurredAt": "2026-09-01T10:00:00.000Z",
+        "reinforcedImportance": 0.8
+       }
+      ]
+     }
+    ],
+    "updatedAt": "2026-10-10T12:00:00.000Z"
+   }
+  },
+  {
+   "name": "per_file_failure",
+   "input": {
+    "holderCharacterId": "0c010000-0000-4000-8000-000000000001",
+    "files": [
+     {
+      "subjectCharacterId": "0c5b0000-0000-4000-8000-000000000001",
+      "subjectName": "Laura",
+      "isSelf": false,
+      "digests": [
+       {
+        "content": "FAILWRITE this note cannot be stored.",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.5
+       }
+      ]
+     },
+     {
+      "subjectCharacterId": "0c010000-0000-4000-8000-000000000001",
+      "subjectName": "Friday",
+      "isSelf": true,
+      "digests": [
+       {
+        "content": "I am the keeper.",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.5
+       }
+      ]
+     }
+    ],
+    "updatedAt": "2026-10-10T12:00:00.000Z"
+   }
+  },
+  {
+   "name": "missing_holder",
+   "input": {
+    "holderCharacterId": "0c5b0000-0000-4000-8000-0000000000bb",
+    "files": [
+     {
+      "subjectCharacterId": "0c5b0000-0000-4000-8000-000000000001",
+      "subjectName": "Laura",
+      "isSelf": false,
+      "digests": [
+       {
+        "content": "Laura charts the northern coast.",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.7
+       },
+       {
+        "content": "Laura sails the Kittiwake.",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.55
+       },
+       {
+        "content": "  Laura   prefers tea.  ",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.9
+       }
+      ]
+     },
+     {
+      "subjectCharacterId": "0c5b0000-0000-4000-8000-000000000001",
+      "subjectName": "Laura",
+      "isSelf": false,
+      "digests": []
+     }
+    ],
+    "updatedAt": "2026-10-08T12:00:00.000Z"
+   }
+  },
+  {
+   "name": "archived_holder",
+   "input": {
+    "holderCharacterId": "0c5b0000-0000-4000-8000-000000000003",
+    "files": [
+     {
+      "subjectCharacterId": "0c5b0000-0000-4000-8000-000000000001",
+      "subjectName": "Laura",
+      "isSelf": false,
+      "digests": [
+       {
+        "content": "Laura charts the northern coast.",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.7
+       },
+       {
+        "content": "Laura sails the Kittiwake.",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.55
+       },
+       {
+        "content": "  Laura   prefers tea.  ",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.9
+       }
+      ]
+     }
+    ],
+    "updatedAt": "2026-10-08T12:00:00.000Z"
+   }
+  },
+  {
+   "name": "store_type_mismatch",
+   "input": {
+    "holderCharacterId": "0c5b0000-0000-4000-8000-000000000004",
+    "files": [
+     {
+      "subjectCharacterId": "0c5b0000-0000-4000-8000-000000000001",
+      "subjectName": "Laura",
+      "isSelf": false,
+      "digests": [
+       {
+        "content": "Laura charts the northern coast.",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.7
+       },
+       {
+        "content": "Laura sails the Kittiwake.",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.55
+       },
+       {
+        "content": "  Laura   prefers tea.  ",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.9
+       }
+      ]
+     }
+    ],
+    "updatedAt": "2026-10-08T12:00:00.000Z"
+   }
+  },
+  {
+   "name": "filesystem_vault",
+   "input": {
+    "holderCharacterId": "0c5b0000-0000-4000-8000-000000000005",
+    "files": [
+     {
+      "subjectCharacterId": "0c5b0000-0000-4000-8000-000000000001",
+      "subjectName": "Laura",
+      "isSelf": false,
+      "digests": [
+       {
+        "content": "Laura charts the northern coast.",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.7
+       },
+       {
+        "content": "Laura sails the Kittiwake.",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.55
+       },
+       {
+        "content": "  Laura   prefers tea.  ",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.9
+       }
+      ]
+     }
+    ],
+    "updatedAt": "2026-10-08T12:00:00.000Z"
+   }
+  },
+  {
+   "name": "vaultless",
+   "input": {
+    "holderCharacterId": "0c5b0000-0000-4000-8000-000000000006",
+    "files": [
+     {
+      "subjectCharacterId": "0c5b0000-0000-4000-8000-000000000001",
+      "subjectName": "Laura",
+      "isSelf": false,
+      "digests": [
+       {
+        "content": "Laura charts the northern coast.",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.7
+       },
+       {
+        "content": "Laura sails the Kittiwake.",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.55
+       },
+       {
+        "content": "  Laura   prefers tea.  ",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.9
+       }
+      ]
+     }
+    ],
+    "updatedAt": "2026-10-08T12:00:00.000Z"
+   }
+  },
+  {
+   "name": "dangling_vault",
+   "input": {
+    "holderCharacterId": "0c5b0000-0000-4000-8000-000000000007",
+    "files": [
+     {
+      "subjectCharacterId": "0c5b0000-0000-4000-8000-000000000001",
+      "subjectName": "Laura",
+      "isSelf": false,
+      "digests": [
+       {
+        "content": "Laura charts the northern coast.",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.7
+       },
+       {
+        "content": "Laura sails the Kittiwake.",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.55
+       },
+       {
+        "content": "  Laura   prefers tea.  ",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.9
+       }
+      ]
+     }
+    ],
+    "updatedAt": "2026-10-08T12:00:00.000Z"
+   }
+  },
+  {
+   "name": "overwrite_stale",
+   "input": {
+    "holderCharacterId": "0c020000-0000-4000-8000-000000000001",
+    "files": [
+     {
+      "subjectCharacterId": "0c5b0000-0000-4000-8000-000000000001",
+      "subjectName": "Laura",
+      "isSelf": false,
+      "digests": [
+       {
+        "content": "Laura charts the northern coast.",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.7
+       },
+       {
+        "content": "Laura sails the Kittiwake.",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.55
+       },
+       {
+        "content": "  Laura   prefers tea.  ",
+        "kind": "semantic",
+        "occurredAt": null,
+        "reinforcedImportance": 0.9
+       }
+      ]
+     }
+    ],
+    "updatedAt": "2026-10-08T12:00:00.000Z"
+   }
+  },
+  {
+   "name": "no_files",
+   "input": {
+    "holderCharacterId": "0c010000-0000-4000-8000-000000000001",
+    "files": [],
+    "updatedAt": "2026-10-08T12:00:00.000Z"
+   }
+  },
+  {
+   "name": "only_empty_files",
+   "input": {
+    "holderCharacterId": "0c030000-0000-4000-8000-000000000001",
+    "files": [
+     {
+      "subjectCharacterId": "0c5b0000-0000-4000-8000-000000000001",
+      "subjectName": "Laura",
+      "isSelf": false,
+      "digests": []
+     },
+     {
+      "subjectCharacterId": "0c030000-0000-4000-8000-000000000001",
+      "subjectName": "Hollis",
+      "isSelf": true,
+      "digests": []
+     }
+    ],
+    "updatedAt": "2026-10-08T12:00:00.000Z"
+   }
+  }
+ ],
+ "projections": [
+  {
+   "name": "links",
+   "sql": "SELECT l.mountPointId, l.relativePath, l.fileName, f.fileType, f.sha256, f.fileSizeBytes, f.source, d.content, d.contentSha256, d.plainTextLength, l.chunkCount, l.conversionStatus, l.extractionStatus, l.plainTextLength AS linkPlainTextLength FROM doc_mount_file_links l JOIN doc_mount_files f ON f.id = l.fileId LEFT JOIN doc_mount_documents d ON d.fileId = f.id WHERE l.relativePath LIKE 'Commonplace/%' ORDER BY l.mountPointId, l.relativePath"
+  },
+  {
+   "name": "folders",
+   "sql": "SELECT f.mountPointId, f.name, f.path, p.path AS parentPath FROM doc_mount_folders f LEFT JOIN doc_mount_folders p ON p.id = f.parentId WHERE f.path LIKE 'Commonplace%' ORDER BY f.mountPointId, f.path"
+  },
+  {
+   "name": "chunks",
+   "sql": "SELECT c.mountPointId, l.relativePath, c.chunkIndex, c.content, c.tokenCount, c.headingContext FROM doc_mount_chunks c JOIN doc_mount_file_links l ON l.id = c.linkId WHERE l.relativePath LIKE 'Commonplace/%' ORDER BY c.mountPointId, l.relativePath, c.chunkIndex"
+  }
+ ]
+}

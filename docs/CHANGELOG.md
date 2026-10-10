@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(memory): P4.D271 the Commonplace digest vault bridge + the consolidation fixture
+
+_Versions: core 0.0.1269._
+
+New `services::commonplace_digest_vault_bridge`, a port of v4's mirror of a character's memory digests into `Commonplace/<Subject>.md` and `Commonplace/Self.md` in the holder's vault: archived / missing / no-vault guards, an unchanged file is left alone (the `updatedAt` line is ignored in the compare), and a failure on one file does not stop the others. The holder's vault is resolved through the overlay read, so a dangling vault logs v4's own warning text. A new consolidation fixture builder (through v4's real repositories) seeds the bridge, service and trigger families. New tier-2 family `commonplace_digest_vault_bridge_tier2_equivalence` (14 calls, their log lines, and the written documents, folders and chunks).
+
 #### 2026-10-09 — feat(memory): P4.D271 the consolidation write planner
 
 _Versions: core 0.0.1268._
