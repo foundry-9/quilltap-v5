@@ -217,6 +217,13 @@ fn maintenance_ops_match_oracle() {
             "unparseable": summary.orphaned_thumbnails_swept.unparseable,
         },
         "terminals": { "rows": summary.terminal_rows, "transcripts": summary.terminal_transcripts },
+        // P4.D270 (v4 `d58548051`): sweep 8, the fold-grain OTHER idle
+        // catch-up. Measured at the pin: the fixture's chats are outside the
+        // 2 h – 30 d window, so v4 enqueues nothing (`{0, 0}`).
+        "foldOtherCatchup": {
+            "enqueued": summary.fold_other_catchup.enqueued,
+            "deferred": summary.fold_other_catchup.deferred,
+        },
         "failures": summary.failures,
     });
     let want_summary = oracle_line(&oracle_text, "summary");

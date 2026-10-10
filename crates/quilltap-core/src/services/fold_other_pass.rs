@@ -742,6 +742,90 @@ async fn advance_watermark(
     }
 }
 
+/// v4 `FoldOtherCatchupSweepSummary`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FoldOtherCatchupSweepSummary {
+    /// Chats a catch-up job was enqueued for.
+    pub enqueued: usize,
+    /// Eligible chats beyond the per-sweep cap, left for the next sweep.
+    pub deferred: usize,
+}
+
+/// v4 `enqueueFoldOtherCatchups({ now, limit })`
+/// (`maintenance/fold-other-catchup.ts`): short chats never reach a fold, and
+/// a chat that went quiet mid-thread leaves its tail past the last fold; this
+/// sweep finds chats idle for more than two hours whose last message is past
+/// the watermark and enqueues one `MEMORY_EXTRACTION` job (`foldOtherCatchup:
+/// true`) per chat, so the LLM work runs as a job like every other extraction,
+/// not inline in the maintenance tick. Bounded by `limit` (default
+/// [`FOLD_OTHER_CATCHUP_MAX_CHATS`]). A candidate-search failure PROPAGATES
+/// (the sweep's `fold-other-catchup` failure); a per-chat enqueue failure is
+/// warned and skipped. v4's child logger (`module:
+/// 'maintenance.fold-other-catchup'`) is the `quilltap::maintenance` target —
+/// the established maintenance-line convention.
+pub async fn enqueue_fold_other_catchups(
+    db: &Db,
+    now_ms: i64,
+    limit: Option<usize>,
+) -> Result<FoldOtherCatchupSweepSummary, DbError> {
+    let limit = limit.unwrap_or(FOLD_OTHER_CATCHUP_MAX_CHATS);
+    let selection = find_fold_other_catchup_candidates(db, now_ms, limit)?;
+
+    let mut enqueued = 0usize;
+    for candidate in &selection.candidates {
+        let outcome = crate::services::queue_service::enqueue_memory_extraction_with(
+            db,
+            &candidate.user_id,
+            &crate::services::queue_service::MemoryExtractionEnqueue {
+                chat_id: &candidate.chat_id,
+                turn_opener_message_id: None,
+                extraction_anchor_message_id: Some(&candidate.last_message_id),
+                connection_profile_id: &candidate.connection_profile_id,
+                fold_other_catchup: true,
+            },
+        )
+        .await;
+        match outcome {
+            Ok(_) => {
+                enqueued += 1;
+                tracing::debug!(
+                    target: "quilltap::maintenance",
+                    chatId = %candidate.chat_id,
+                    lastMessageId = %candidate.last_message_id,
+                    "Enqueued fold-grain OTHER catch-up"
+                );
+            }
+            Err(error) => tracing::warn!(
+                target: "quilltap::maintenance",
+                chatId = %candidate.chat_id,
+                error = %error_text(&error),
+                "Failed to enqueue fold-grain OTHER catch-up"
+            ),
+        }
+    }
+
+    if selection.deferred > 0 {
+        tracing::info!(
+            target: "quilltap::maintenance",
+            enqueued = enqueued,
+            deferred = selection.deferred,
+            limit = limit,
+            "Fold-grain OTHER catch-up capped; remaining chats wait for the next sweep"
+        );
+    } else {
+        tracing::debug!(
+            target: "quilltap::maintenance",
+            enqueued = enqueued,
+            "Fold-grain OTHER catch-up sweep done"
+        );
+    }
+    Ok(FoldOtherCatchupSweepSummary {
+        enqueued,
+        deferred: selection.deferred,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

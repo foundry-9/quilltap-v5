@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(maintenance): P4.D270 E8 the fold-grain OTHER catch-up sweep — sweep 8, `enqueue_memory_extraction_with` and the summary line in v4's keys
+
+_Versions: core 0.0.1271._
+
+Ports the sweep half of v4 `d58548051` (pin `01a83539d`).
+
+- **`enqueue_memory_extraction_with`.** Takes a `MemoryExtractionEnqueue`. A catch-up payload is v4's literal with `"foldOtherCatchup": true` appended; a per-turn payload has no such key. The dedupe key gains v4's strict catch-up term, so a per-turn job and a catch-up on the same `(chat, null, anchor)` triple both enqueue. The six-argument `enqueue_memory_extraction` becomes a per-turn wrapper, and its one caller is unchanged.
+- **`enqueue_fold_other_catchups(db, now_ms, limit)`.** Enqueues one catch-up job per selected chat with v4's four sweep lines. A per-chat enqueue failure is warned and skipped; a selection failure propagates.
+- **Sweep 8.** `run_scheduled_maintenance` runs it LAST (failure name `fold-other-catchup`). The summary gains `foldOtherCatchup: {enqueued, deferred}`.
+- **The summary INFO line moves to v4's spread keys** (P4.D270 R-F): camelCase in v4's order, each object or array through the `…Json` convention, `orphanedThumbnailsSweptJson` included. The old snake_case unit pin moved with it. That module's three unit tests now use the process-global log capture, which removes a sibling-test race that dropped a line.
+
+`maintenance_ops_tier2` compares the new summary key. `fold_other_pass_tier3` now runs all 30 ops: the three sweep ops compare v4's real `enqueueFoldOtherCatchups` (payload bytes, the dedupe, the capped INFO), and the end-state tables compare (`memories`, the chats' watermarks and `updatedAt`, `background_jobs`). A completion-key consumption check and a v5-only dry-run check (no writes, candidates returned) close the family.
+
 #### 2026-10-09 — feat(memory): P4.D270 E7 the fold-grain OTHER idle catch-up — `find_fold_other_catchup_candidates`, `run_fold_other_catchup` and the `MEMORY_EXTRACTION` handler's `foldOtherCatchup` branch
 
 _Versions: core 0.0.1270._

@@ -51,25 +51,29 @@
 //!   QT_FIXTURE_FOP_MAIN=/tmp/qt-fop-main.db QT_FIXTURE_FOP_MOUNT=/tmp/qt-fop-mount.db \
 //!     cargo test -p quilltap-harness --test fold_other_pass_tier3_equivalence
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::sync::Mutex;
 
 use quilltap_core::cheap_llm::{get_cheap_llm_provider, CheapLlmConfig, CheapLlmProfile};
 use quilltap_core::context_budget::resolve_max_tokens;
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::db::{chats_messages_read, connection_profiles, instance_settings};
 use quilltap_core::model::completion::{
-    CannedCompletionProvider, CompletionMessage, CompletionRole, CompletionUsage,
+    canned_completion_key, canned_completion_key_with_attachments, CannedCompletionProvider,
+    CompletionError, CompletionMessage, CompletionParams, CompletionProvider, CompletionResponse,
+    CompletionRole, CompletionUsage,
 };
 use quilltap_core::model::embedding::CannedEmbeddingProvider;
 use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use quilltap_core::services::cost_estimation::MessageCostEstimator;
 use quilltap_core::services::fold_other_pass::{
-    find_fold_other_catchup_candidates, run_fold_other_pass, RunFoldOtherPassInput,
-    FOLD_OTHER_CATCHUP_MAX_CHATS,
+    enqueue_fold_other_catchups, find_fold_other_catchup_candidates, run_fold_other_pass,
+    RunFoldOtherPassInput, FOLD_OTHER_CATCHUP_MAX_CHATS,
 };
 use quilltap_core::services::memory_extraction_job::{
     handle_memory_extraction, MemoryExtractionPayload,
 };
+use quilltap_core::services::queue_service::enqueue_memory_extraction;
 use quilltap_core::test_support::global_capture;
 use serde::Deserialize;
 use serde_json::Value;
@@ -77,7 +81,7 @@ use serde_json::Value;
 /// Which op kinds this commit's port compares (the family landed with the
 /// pass, P4.D270 E5; the catch-up + handler ops with E7; the sweep + the end
 /// state with E8).
-const COMPARED_KINDS: &[&str] = &["pass", "find", "handler"];
+const COMPARED_KINDS: &[&str] = &["pass", "find", "enqueue", "handler"];
 
 const INSTANCE_SETTINGS_DDL: &str =
     "CREATE TABLE IF NOT EXISTS \"instance_settings\" (\n  \"key\" TEXT PRIMARY KEY,\n  \"value\" TEXT NOT NULL\n)";
@@ -120,8 +124,6 @@ const NEVER: &[&str] = &[
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-// The sweep fields are read once those ops compare (P4.D270 E8).
-#[allow(dead_code)]
 struct OpW {
     op: String,
     name: String,
@@ -186,6 +188,35 @@ struct CannedRowW {
 }
 
 type Line = (String, String, BTreeMap<String, String>);
+
+/// Records the canned key of every completion v5 makes, then delegates (the
+/// `memory_pipeline_jobs_tier3` wrapper): a canned MISS is a failure value
+/// inside the pass, so the key SET is compared at the end.
+struct KeyRecording<C> {
+    inner: C,
+    hit: Mutex<BTreeSet<String>>,
+}
+
+impl<C: CompletionProvider + Sync> CompletionProvider for KeyRecording<C> {
+    fn send_message(
+        &self,
+        provider: &str,
+        base_url: Option<&str>,
+        params: &CompletionParams,
+    ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + Send {
+        self.hit
+            .lock()
+            .unwrap()
+            .insert(canned_completion_key_with_attachments(
+                provider,
+                &params.model,
+                params.temperature,
+                &params.messages,
+                &params.attachments,
+            ));
+        self.inner.send_message(provider, base_url, params)
+    }
+}
 
 /// The handler's cost seam — the catch-up branch never estimates a cost.
 struct NullCost;
@@ -378,6 +409,20 @@ async fn fold_other_pass_tier3_matches_oracle() {
         }
     }
 
+    let want_keys: BTreeSet<String> = canned
+        .iter()
+        .map(|row| {
+            let messages: Vec<CompletionMessage> = row
+                .messages
+                .iter()
+                .map(|m| CompletionMessage {
+                    role: CompletionRole::from_v4_wire(&m.role).unwrap(),
+                    content: m.content.clone(),
+                })
+                .collect();
+            canned_completion_key(&row.provider, &row.model, row.temperature, &messages)
+        })
+        .collect();
     let mut completion = CannedCompletionProvider::new();
     for row in &canned {
         let messages: Vec<CompletionMessage> = row
@@ -410,6 +455,10 @@ async fn fold_other_pass_tier3_matches_oracle() {
             ),
         };
     }
+    let completion = KeyRecording {
+        inner: completion,
+        hit: Mutex::new(BTreeSet::new()),
+    };
     let mut embedding = CannedEmbeddingProvider::new();
     for (text, index, dim) in &embeddings {
         let mut vec = vec![0f32; *dim];
@@ -528,6 +577,25 @@ async fn fold_other_pass_tier3_matches_oracle() {
                     .unwrap_or_else(|e| panic!("{}: find: {e:?}", op.name));
                     (serde_json::to_value(selection).unwrap(), None)
                 }
+                "enqueue" => {
+                    if let Some(prior) = &op.prior_turn_job {
+                        let s = |k: &str| prior[k].as_str().unwrap().to_string();
+                        enqueue_memory_extraction(
+                            &db,
+                            &spec.user_id,
+                            &s("chatId"),
+                            None,
+                            Some(&s("lastMessageId")),
+                            &s("connectionProfileId"),
+                        )
+                        .await
+                        .unwrap();
+                    }
+                    let summary = enqueue_fold_other_catchups(&db, fixed_now_ms, op.limit)
+                        .await
+                        .unwrap_or_else(|e| panic!("{}: sweep: {e:?}", op.name));
+                    (serde_json::to_value(summary).unwrap(), None)
+                }
                 "handler" => {
                     let chat_id = op.chat_id.clone().unwrap();
                     if op.plant_last_message_at_now == Some(true) {
@@ -623,7 +691,242 @@ async fn fold_other_pass_tier3_matches_oracle() {
     );
     assert!(compared > 0, "no op compared");
 
-    // The end-state tables compare once the sweep + handler ops run (E8).
-    let _ = (&tables, fixed_now_ms);
+    // Consumption: v5 called exactly the completions v4 recorded (a canned
+    // miss is a failure VALUE inside the pass, so this is the backstop).
+    let got_keys = completion.hit.lock().unwrap().clone();
+    assert_eq!(
+        got_keys, want_keys,
+        "canned-key consumption diverges from the oracle"
+    );
+    compare_tables(&db, &tables);
+    dry_run_writes_nothing(&db, &completion, &embedding, &executor, &selection, &spec).await;
     eprintln!("OK: fold-other-pass matched the oracle ({compared} ops)");
+}
+
+/// The comparable end state: `memories` (minted ids / stamps tokenized; ids
+/// mapped in content order, both sides), the chats' watermark / `updatedAt` /
+/// `messageCount` (`lastMessageAt` masked — two handler ops plant it at each
+/// side's op time), and `background_jobs` (type / payload bytes / status).
+fn compare_tables(db: &Db, tables: &HashMap<String, Value>) {
+    use quilltap_core::db::dump_table_json_conn;
+    let mut got_memories = db
+        .read_main(|c| dump_table_json_conn(c, "memories", "content"))
+        .unwrap()["rows"]
+        .clone();
+    let mut want_memories = tables["memories"].clone();
+    for rows in [&mut got_memories, &mut want_memories] {
+        let rows = rows.as_array_mut().unwrap();
+        rows.sort_by_key(|r| {
+            format!(
+                "{}|{}",
+                r["content"].as_str().unwrap_or_default(),
+                r["characterId"].as_str().unwrap_or_default()
+            )
+        });
+        let mut ids: HashMap<String, String> = HashMap::new();
+        for r in rows.iter() {
+            let n = ids.len();
+            ids.entry(r["id"].as_str().unwrap().to_string())
+                .or_insert(format!("MEM_{n}"));
+        }
+        for r in rows.iter_mut() {
+            let o = r.as_object_mut().unwrap();
+            let id = o["id"].as_str().unwrap().to_string();
+            o.insert("id".into(), Value::String(ids[&id].clone()));
+            for k in [
+                "createdAt",
+                "updatedAt",
+                "lastAccessedAt",
+                "lastReinforcedAt",
+            ] {
+                if o.get(k).is_some_and(|v| !v.is_null()) {
+                    o.insert(k.into(), Value::String("<ts>".into()));
+                }
+            }
+            if let Some(Value::String(related)) = o.get("relatedMemoryIds").cloned() {
+                let mapped: Vec<Value> = serde_json::from_str::<Vec<String>>(&related)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|x| Value::String(ids.get(&x).cloned().unwrap_or(x)))
+                    .collect();
+                o.insert("relatedMemoryIds".into(), Value::Array(mapped));
+            }
+        }
+    }
+    assert!(
+        !want_memories.as_array().unwrap().is_empty(),
+        "the oracle wrote no memory"
+    );
+    if got_memories != want_memories {
+        for (g, w) in got_memories
+            .as_array()
+            .unwrap()
+            .iter()
+            .zip(want_memories.as_array().unwrap())
+        {
+            assert_eq!(g, w, "memories rows diverge");
+        }
+        panic!(
+            "memories row count diverges: {} vs {}",
+            got_memories.as_array().unwrap().len(),
+            want_memories.as_array().unwrap().len()
+        );
+    }
+
+    let got_chats = db
+        .read_main(|c| {
+            let mut stmt = c.prepare(
+                "SELECT id, \"otherExtractionWatermarkMessageId\", \"updatedAt\", \"messageCount\" FROM chats ORDER BY id",
+            )?;
+            let rows = stmt
+                .query_map([], |r| {
+                    Ok(serde_json::json!({
+                        "id": r.get::<_, String>(0)?,
+                        "otherExtractionWatermarkMessageId": r.get::<_, Option<String>>(1)?,
+                        "updatedAt": r.get::<_, Option<String>>(2)?,
+                        "messageCount": r.get::<_, Option<f64>>(3)?,
+                    }))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .unwrap();
+    let want_chats: Vec<Value> = tables["chats"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "id": r["id"],
+                "otherExtractionWatermarkMessageId": r["otherExtractionWatermarkMessageId"],
+                "updatedAt": r["updatedAt"],
+                "messageCount": r["messageCount"].as_f64(),
+            })
+        })
+        .collect();
+    assert_eq!(
+        got_chats, want_chats,
+        "chats (watermark / updatedAt) diverge"
+    );
+
+    let got_jobs = db
+        .read_main(|c| {
+            let mut stmt = c.prepare(
+                "SELECT type, payload, status, \"maxAttempts\", \"attempts\" FROM background_jobs ORDER BY payload, status",
+            )?;
+            let rows = stmt
+                .query_map([], |r| {
+                    Ok(serde_json::json!({
+                        "type": r.get::<_, String>(0)?,
+                        "payload": r.get::<_, String>(1)?,
+                        "status": r.get::<_, String>(2)?,
+                        "maxAttempts": r.get::<_, f64>(3)?,
+                        "attempts": r.get::<_, f64>(4)?,
+                    }))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .unwrap();
+    let norm_jobs = |rows: &[Value]| -> Vec<Value> {
+        rows.iter()
+            .map(|r| {
+                serde_json::json!({
+                    "type": r["type"],
+                    "payload": r["payload"],
+                    "status": r["status"],
+                    "maxAttempts": r["maxAttempts"].as_f64(),
+                    "attempts": r["attempts"].as_f64(),
+                })
+            })
+            .collect()
+    };
+    let want_jobs = norm_jobs(tables["background_jobs"].as_array().unwrap());
+    assert!(
+        want_jobs.iter().any(|j| j["payload"]
+            .as_str()
+            .unwrap()
+            .contains("\"foldOtherCatchup\":true")),
+        "the oracle enqueued no catch-up"
+    );
+    assert_eq!(norm_jobs(&got_jobs), want_jobs, "background_jobs diverge");
+}
+
+/// v5-only (P4.D270 Tier 2 item 17): a DRY run makes the calls, returns the
+/// candidates, and writes neither memories nor the watermark. v4 carries the
+/// same arms (`fold-other-pass.ts:404, :442`); no production caller sets it.
+async fn dry_run_writes_nothing<C: CompletionProvider + Sync>(
+    db: &Db,
+    completion: &C,
+    embedding: &CannedEmbeddingProvider,
+    executor: &CheapLlmTaskExecutor,
+    selection: &quilltap_core::cheap_llm::CheapLlmSelection,
+    spec: &SpecW,
+) {
+    // Re-run the `vault_canon` op's chat with its watermark cleared — its
+    // canned calls are recorded, so the dry run is answered.
+    let op = spec.ops.iter().find(|o| o.name == "vault_canon").unwrap();
+    let chat_id = op.chat_id.clone().unwrap();
+    let cid = chat_id.clone();
+    db.write(move |w| {
+        w.main()
+            .chats()
+            .set_other_extraction_watermark(&cid, None)
+            .map(|_| ())
+    })
+    .await
+    .unwrap();
+    let count = |db: &Db| -> i64 {
+        db.read_main(|c| Ok(c.query_row("SELECT COUNT(*) FROM memories", [], |r| r.get(0))?))
+            .unwrap()
+    };
+    let before = count(db);
+    let cid = chat_id.clone();
+    let window: Vec<Value> = db
+        .read_main(move |c| chats_messages_read::get_messages(c, &cid))
+        .unwrap()
+        .into_iter()
+        .filter(|m| m.get("type").and_then(Value::as_str) == Some("message"))
+        .collect();
+    let r = run_fold_other_pass(
+        db,
+        completion,
+        embedding,
+        executor,
+        selection,
+        None,
+        &RunFoldOtherPassInput {
+            chat_id: chat_id.clone(),
+            user_id: spec.user_id.clone(),
+            window_messages: window,
+            cheap_max_tokens: None,
+            timeline_mode: "realtime".into(),
+            project_id: None,
+            in_autonomous_room: false,
+            project_description: None,
+            chat_context_summary: Some(
+                "[op:vault_canon] The household is planning the harbor festival.".into(),
+            ),
+            cover_through_message_id: None,
+            dry_run: true,
+        },
+    )
+    .await;
+    assert_eq!(r.skipped_reason, None, "{r:?}");
+    assert_eq!(r.watermark_advanced_to, None, "a dry run advances nothing");
+    let extracted = r
+        .extracted_candidates
+        .expect("a dry run returns its candidates");
+    assert!(!extracted.is_empty(), "the dry run proposed nothing");
+    assert_eq!(count(db), before, "a dry run wrote memories");
+    let wm: Option<String> = db
+        .read_main(move |c| {
+            Ok(c.query_row(
+                "SELECT \"otherExtractionWatermarkMessageId\" FROM chats WHERE id = ?1",
+                [&chat_id],
+                |r| r.get(0),
+            )?)
+        })
+        .unwrap();
+    assert_eq!(wm, None, "a dry run wrote the watermark");
 }

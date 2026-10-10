@@ -111,9 +111,12 @@ pub struct MaintenanceSweepSummary {
     /// Terminal-session rows reaped / transcript files removed.
     pub terminal_rows: usize,
     pub terminal_transcripts: usize,
+    /// v4 `foldOtherCatchup` (`d58548051`): the fold-grain OTHER idle
+    /// catch-up sweep's `{ enqueued, deferred }`.
+    pub fold_other_catchup: crate::services::fold_other_pass::FoldOtherCatchupSweepSummary,
     /// Sweeps that threw (and were swallowed so the rest could run): `jobs` /
     /// `assets` / `caches` / `orphan-store-children` / `orphans` / `terminals` /
-    /// `orphan-thumbnails` (v4's failure vocabulary).
+    /// `orphan-thumbnails` / `fold-other-catchup` (v4's failure vocabulary).
     pub failures: Vec<String>,
 }
 
@@ -200,6 +203,7 @@ pub async fn run_scheduled_maintenance(
         orphaned_thumbnails_swept: Default::default(),
         terminal_rows: 0,
         terminal_transcripts: 0,
+        fold_other_catchup: Default::default(),
         failures: Vec::new(),
     };
 
@@ -360,6 +364,23 @@ pub async fn run_scheduled_maintenance(
         }
     }
 
+    // 8. Fold-grain OTHER catch-up (v4 `d58548051`, `scheduled-maintenance.ts:
+    // 256-260`), LAST: chats idle past two hours whose tail the fold-grain
+    // OTHER pass has not covered get one MEMORY_EXTRACTION catch-up job each.
+    // `now_ms` is the pass's one anchor (v4 passes no `now`, so its sweep reads
+    // the wall clock — the same instant).
+    match crate::services::fold_other_pass::enqueue_fold_other_catchups(db, now_ms, None).await {
+        Ok(r) => summary.fold_other_catchup = r,
+        Err(e) => {
+            tracing::warn!(
+                target: "quilltap::maintenance",
+                error = %e,
+                "Fold-grain OTHER catch-up failed — continuing",
+            );
+            summary.failures.push("fold-other-catchup".to_string());
+        }
+    }
+
     // Record the pass regardless of per-sweep failures ("last attempted pass").
     // A record failure is warned-and-swallowed in v4; same here.
     let stamp = iso_from_unix_ms(now_ms);
@@ -379,28 +400,52 @@ pub async fn run_scheduled_maintenance(
         );
     }
 
-    // v4 `scheduled-maintenance.ts:263` — the whole summary, unconditionally.
-    // Dogfood finding #110: this pass DELETES the operator's generated images
-    // (the stale-chat asset collapse), and before this line nothing anywhere
-    // said so.
+    // v4 `scheduled-maintenance.ts:270` — `moduleLogger.info('Scheduled
+    // maintenance pass complete', summary)`, the summary object spread: v4's
+    // camelCase keys in v4's order, each object / array through the `…Json`
+    // file-layer convention (P4.D270 R-F: the line gained `foldOtherCatchup`,
+    // so it moved whole — the snake_case flattened keys and the omitted
+    // `orphanedThumbnailsSwept` were pre-existing). Dogfood finding #110: this
+    // pass DELETES the operator's generated images (the stale-chat asset
+    // collapse), and before this line nothing anywhere said so.
+    let json = |v: serde_json::Value| v.to_string();
     tracing::info!(
         target: "quilltap::maintenance",
-        jobs_completed = summary.jobs_completed,
-        jobs_dead = summary.jobs_dead,
-        assets_stale_chats = summary.assets_stale_chats,
-        assets_chats_collapsed = summary.assets_chats_collapsed,
-        assets_files_deleted = summary.assets_files_deleted,
-        caches_stale_chats = summary.caches_stale_chats,
-        caches_chats_collapsed = summary.caches_chats_collapsed,
-        caches_chat_rows_cleared = summary.caches_chat_rows_cleared,
-        caches_message_rows_cleared = summary.caches_message_rows_cleared,
-        orphaned_store_children_links = summary.orphaned_store_children_swept.links,
-        orphaned_store_children_folders = summary.orphaned_store_children_swept.folders,
-        orphaned_store_children_documents = summary.orphaned_store_children_swept.documents,
-        orphaned_files_swept = summary.orphaned_files_swept,
-        terminal_rows = summary.terminal_rows,
-        terminal_transcripts = summary.terminal_transcripts,
-        failures = ?summary.failures,
+        jobsJson = %json(serde_json::json!({
+            "completed": summary.jobs_completed,
+            "dead": summary.jobs_dead,
+        })),
+        assetsJson = %json(serde_json::json!({
+            "staleChats": summary.assets_stale_chats,
+            "chatsCollapsed": summary.assets_chats_collapsed,
+            "filesDeleted": summary.assets_files_deleted,
+        })),
+        cachesJson = %json(serde_json::json!({
+            "staleChats": summary.caches_stale_chats,
+            "chatsCollapsed": summary.caches_chats_collapsed,
+            "chatRowsCleared": summary.caches_chat_rows_cleared,
+            "messageRowsCleared": summary.caches_message_rows_cleared,
+        })),
+        orphanedFilesSwept = summary.orphaned_files_swept,
+        orphanedStoreChildrenSweptJson = %json(serde_json::json!({
+            "links": summary.orphaned_store_children_swept.links,
+            "folders": summary.orphaned_store_children_swept.folders,
+            "documents": summary.orphaned_store_children_swept.documents,
+        })),
+        terminalsJson = %json(serde_json::json!({
+            "rows": summary.terminal_rows,
+            "transcripts": summary.terminal_transcripts,
+        })),
+        orphanedThumbnailsSweptJson = %json(serde_json::json!({
+            "scanned": summary.orphaned_thumbnails_swept.scanned,
+            "deleted": summary.orphaned_thumbnails_swept.deleted,
+            "unparseable": summary.orphaned_thumbnails_swept.unparseable,
+        })),
+        foldOtherCatchupJson = %json(serde_json::json!({
+            "enqueued": summary.fold_other_catchup.enqueued,
+            "deferred": summary.fold_other_catchup.deferred,
+        })),
+        failuresJson = %json(serde_json::json!(summary.failures)),
         "Scheduled maintenance pass complete",
     );
 
@@ -415,7 +460,12 @@ pub use queue_service::DAY_MS;
 mod tests {
     use super::*;
     use crate::db::runtime::Db;
-    use crate::test_support::captured_with as captured;
+    // The three tests here reach the same callsites; a thread-scoped capture
+    // in one loses lines when a sibling reaches a callsite first with no
+    // subscriber (tracing caches its `Interest` as "never" — memory note
+    // `capture-rig-writer-thread`, second trap). Every test installs the
+    // process-global capture, and the capturing one arms its own thread.
+    use crate::test_support::global_capture;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     /// A recording store that "removes" every transcript except a named one
@@ -477,7 +527,8 @@ mod tests {
             .enable_all()
             .build()
             .unwrap();
-        let (summary, lines) = captured(|| {
+        global_capture::install();
+        let (summary, lines) = global_capture::capture(|| {
             rt.block_on(run_scheduled_maintenance(
                 &db,
                 1_900_000_000_000,
@@ -518,8 +569,14 @@ mod tests {
             .find(|l| l.contains("Scheduled maintenance pass complete"))
             .unwrap();
         assert!(done.starts_with("INFO quilltap::maintenance"), "{done:?}");
-        assert!(done.contains("assets_files_deleted=0"), "{done:?}");
-        assert!(done.contains("failures="), "{done:?}");
+        // v4's spread keys (P4.D270 R-F — the snake_case pin moved with the line).
+        assert!(
+            done.contains(r#"assetsJson={"staleChats":0,"chatsCollapsed":0,"filesDeleted":0}"#),
+            "{done:?}"
+        );
+        assert!(done.contains("foldOtherCatchupJson="), "{done:?}");
+        assert!(done.contains("failuresJson="), "{done:?}");
+        assert!(!done.contains("assets_files_deleted"), "{done:?}");
 
         // And the failures the summary reports are the ones that were warned.
         assert!(summary.failures.contains(&"jobs".to_string()));
@@ -567,6 +624,7 @@ mod tests {
 
     #[test]
     fn cleanup_reaps_only_closed_old_sessions() {
+        global_capture::install();
         let (db, _scratch) = test_db();
         // Old + closed → reaped (transcript removed).
         seed_session(&db, "s-old", Some("2020-06-01T00:00:00.000Z"), None);
@@ -611,6 +669,7 @@ mod tests {
 
     #[test]
     fn full_pass_records_stamp_and_isolates_failures() {
+        global_capture::install();
         let (db, _scratch) = test_db();
         // instance_settings for the stamp; NO background_jobs / chats / files
         // tables → the jobs + assets sweeps fail and are isolated.
