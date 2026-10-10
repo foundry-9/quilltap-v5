@@ -1,0 +1,458 @@
+{
+  "_doc": "P4.D274 unit 4: the store-name reconcile's tier-2 scenarios. Both sides copy the builder's empty base pair (v4's real init at the pin, test pepper), plant these rows RAW (stores: id, name, storeType, createdAt = updatedAt; characters: id, userId, name, characterDocumentMountPointId, archivedAt, createdAt = updatedAt), apply the named plant, run the reconcile with the trigger, and dump. Names are pseudonymous (C<n>) but keep the real vault shapes.",
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "userId": "7e000000-0000-4000-8000-000000000001",
+  "scenarios": [
+    {
+      "name": "a-jest-swap",
+      "trigger": "boot",
+      "stores": [
+        {
+          "id": "5a000000-0000-4000-8000-000000000001",
+          "name": "Tester Character Vault",
+          "storeType": "character",
+          "createdAt": "2026-09-01T10:00:00.000Z"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000002",
+          "name": "Tester Character Vault (2)",
+          "storeType": "character",
+          "createdAt": "2026-10-01T10:00:00.000Z"
+        }
+      ],
+      "characters": [
+        {
+          "id": "6c000000-0000-4000-8000-000000000001",
+          "name": "Tester",
+          "characterDocumentMountPointId": "5a000000-0000-4000-8000-000000000002",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "name": "b-conforming",
+      "trigger": "boot",
+      "stores": [
+        {
+          "id": "5a000000-0000-4000-8000-000000000001",
+          "name": "Quilltap General",
+          "storeType": "documents",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000002",
+          "name": "Quilltap Uploads",
+          "storeType": "documents",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000003",
+          "name": "Abigail Character Vault",
+          "storeType": "character",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000004",
+          "name": "Abigail Version 2025-12-01T000000Z Store",
+          "storeType": "character",
+          "createdAt": "2025-12-01T00:00:00.000Z"
+        }
+      ],
+      "characters": [
+        {
+          "id": "6c000000-0000-4000-8000-000000000001",
+          "name": "Abigail",
+          "characterDocumentMountPointId": "5a000000-0000-4000-8000-000000000003",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "name": "c-v4test-at-scale",
+      "trigger": "boot",
+      "stores": [
+        {
+          "id": "5a000000-0000-4000-8000-000000000001",
+          "name": "Lorian Character Vault",
+          "storeType": "character",
+          "createdAt": "2026-09-01T10:00:00.000Z"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000002",
+          "name": "Lorian Character Vault (2)",
+          "storeType": "character",
+          "createdAt": "2026-09-15T10:00:00.000Z"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000003",
+          "name": "Lorian Character Vault (3)",
+          "storeType": "character",
+          "createdAt": "2026-10-01T10:00:00.000Z"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000004",
+          "name": "Quilltap General",
+          "storeType": "documents",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        }
+      ],
+      "characters": [
+        {
+          "id": "6c000000-0000-4000-8000-000000000001",
+          "name": "Lorian",
+          "characterDocumentMountPointId": "5a000000-0000-4000-8000-000000000003",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "name": "d-dropped-store-holds-a-wanted-name",
+      "trigger": "boot",
+      "stores": [
+        {
+          "id": "not-a-uuid-store",
+          "name": "Lorian Character Vault",
+          "storeType": "documents",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000002",
+          "name": "Lorian Character Vault (2)",
+          "storeType": "character",
+          "createdAt": "2026-10-01T10:00:00.000Z"
+        }
+      ],
+      "characters": [
+        {
+          "id": "6c000000-0000-4000-8000-000000000001",
+          "name": "Lorian",
+          "characterDocumentMountPointId": "5a000000-0000-4000-8000-000000000002",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "name": "e-dropped-character-row",
+      "trigger": "boot",
+      "stores": [
+        {
+          "id": "5a000000-0000-4000-8000-000000000001",
+          "name": "Mara Character Vault",
+          "storeType": "character",
+          "createdAt": "2026-02-02T02:02:02.000Z"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000002",
+          "name": "Quilltap General",
+          "storeType": "documents",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        }
+      ],
+      "characters": [
+        {
+          "id": "not-a-uuid-char",
+          "name": "Mara",
+          "characterDocumentMountPointId": "5a000000-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "name": "e2-characters-read-fails",
+      "trigger": "boot",
+      "plant": "characters-read-fails",
+      "stores": [
+        {
+          "id": "5a000000-0000-4000-8000-000000000001",
+          "name": "Mara Character Vault",
+          "storeType": "character",
+          "createdAt": "2026-02-02T02:02:02.000Z"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000002",
+          "name": "Old Character Vault",
+          "storeType": "character",
+          "createdAt": "2026-01-02T02:02:02.000Z"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000003",
+          "name": "Quilltap General",
+          "storeType": "documents",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        }
+      ],
+      "characters": [
+        {
+          "id": "6c000000-0000-4000-8000-000000000001",
+          "name": "Mara",
+          "characterDocumentMountPointId": "5a000000-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "name": "e2-stores-read-fails",
+      "trigger": "boot",
+      "plant": "stores-read-fails",
+      "stores": [
+        {
+          "id": "5a000000-0000-4000-8000-000000000001",
+          "name": "Mara Character Vault (2)",
+          "storeType": "character",
+          "createdAt": "2026-02-02T02:02:02.000Z"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000002",
+          "name": "Old Character Vault",
+          "storeType": "character",
+          "createdAt": "2026-01-02T02:02:02.000Z"
+        }
+      ],
+      "characters": [
+        {
+          "id": "6c000000-0000-4000-8000-000000000001",
+          "name": "Mara",
+          "characterDocumentMountPointId": "5a000000-0000-4000-8000-000000000001",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "name": "f-degraded-mount-index",
+      "trigger": "boot",
+      "plant": "mount-index-degraded",
+      "stores": [],
+      "characters": [
+        {
+          "id": "6c000000-0000-4000-8000-000000000001",
+          "name": "Mara",
+          "characterDocumentMountPointId": null,
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "name": "g-live-namesakes-archived-owner",
+      "trigger": "boot",
+      "stores": [
+        {
+          "id": "5a000000-0000-4000-8000-000000000001",
+          "name": "Ada Character Vault (5)",
+          "storeType": "character",
+          "createdAt": "2026-03-01T00:00:00.000Z"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000002",
+          "name": "Ada Character Vault",
+          "storeType": "character",
+          "createdAt": "2026-03-02T00:00:00.000Z"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000003",
+          "name": "Old Vault Name",
+          "storeType": "character",
+          "createdAt": "2026-03-03T00:00:00.000Z"
+        }
+      ],
+      "characters": [
+        {
+          "id": "6c000000-0000-4000-8000-000000000001",
+          "name": "Ada",
+          "characterDocumentMountPointId": "5a000000-0000-4000-8000-000000000001",
+          "createdAt": "2025-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "6c000000-0000-4000-8000-000000000002",
+          "name": "Ada",
+          "characterDocumentMountPointId": "5a000000-0000-4000-8000-000000000002",
+          "createdAt": "2025-06-01T00:00:00.000Z"
+        },
+        {
+          "id": "6c000000-0000-4000-8000-000000000003",
+          "name": "Archie",
+          "characterDocumentMountPointId": "5a000000-0000-4000-8000-000000000003",
+          "createdAt": "2025-02-01T00:00:00.000Z",
+          "archivedAt": "2026-05-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "name": "h-documents-squats-a-canonical-name",
+      "trigger": "boot",
+      "stores": [
+        {
+          "id": "5a000000-0000-4000-8000-000000000001",
+          "name": "vera character vault",
+          "storeType": "documents",
+          "createdAt": "2020-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000002",
+          "name": "Vera Character Vault (2)",
+          "storeType": "character",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        }
+      ],
+      "characters": [
+        {
+          "id": "6c000000-0000-4000-8000-000000000001",
+          "name": "Vera",
+          "characterDocumentMountPointId": "5a000000-0000-4000-8000-000000000002",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "name": "i-friday-shaped",
+      "trigger": "boot",
+      "stores": [
+        {
+          "id": "5a000000-0000-4000-8000-000000000001",
+          "name": "Quilltap General",
+          "storeType": "documents",
+          "createdAt": "2025-06-01T00:00:00.000Z"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000002",
+          "name": "Quilltap Uploads",
+          "storeType": "documents",
+          "createdAt": "2025-06-01T00:00:00.000Z"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000003",
+          "name": "Lantern Backgrounds",
+          "storeType": "documents",
+          "createdAt": "2025-06-01T00:00:00.000Z"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000004",
+          "name": "Project Files: P1",
+          "storeType": "documents",
+          "createdAt": "2025-07-01T00:00:00.000Z"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000005",
+          "name": "Group Files: G1",
+          "storeType": "documents",
+          "createdAt": "2025-07-02T00:00:00.000Z"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000006",
+          "name": "C1 Character Vault",
+          "storeType": "character",
+          "createdAt": "2025-08-01T08:00:00.000Z"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000007",
+          "name": "C1 Character Vault (2)",
+          "storeType": "character",
+          "createdAt": "2026-08-13T19:40:40.123Z"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000008",
+          "name": "C2 Character Vault",
+          "storeType": "character",
+          "createdAt": "2025-08-02T00:00:00.000Z"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000009",
+          "name": "c3 character vault",
+          "storeType": "character",
+          "createdAt": "2025-08-03T00:00:00.000Z"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000010",
+          "name": "C4 Character Vault (2) (2)",
+          "storeType": "character",
+          "createdAt": "2026-08-13T19:40:41.000Z"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000011",
+          "name": "C4 Character Vault",
+          "storeType": "character",
+          "createdAt": "2025-08-04T00:00:00.000Z"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000012",
+          "name": "C5 Version 2026-01-01T000000Z Store",
+          "storeType": "character",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000013",
+          "name": "C6 Character Vault",
+          "storeType": "character",
+          "createdAt": "2025-08-06T00:00:00.000Z"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000014",
+          "name": "C7's odds and ends",
+          "storeType": "character",
+          "createdAt": "2025-08-07T00:00:00.000Z"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000015",
+          "name": "C8 Character Vault",
+          "storeType": "character",
+          "createdAt": "2025-08-08T00:00:00.000Z"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000016",
+          "name": "C8 Character Vault (2)",
+          "storeType": "character",
+          "createdAt": "2025-09-08T00:00:00.000Z"
+        }
+      ],
+      "characters": [
+        {
+          "id": "6c000000-0000-4000-8000-000000000001",
+          "name": "C1",
+          "characterDocumentMountPointId": "5a000000-0000-4000-8000-000000000007",
+          "createdAt": "2025-08-01T00:00:00.000Z"
+        },
+        {
+          "id": "6c000000-0000-4000-8000-000000000002",
+          "name": "C2",
+          "characterDocumentMountPointId": "5a000000-0000-4000-8000-000000000008",
+          "createdAt": "2025-08-02T00:00:00.000Z"
+        },
+        {
+          "id": "6c000000-0000-4000-8000-000000000003",
+          "name": "C3",
+          "characterDocumentMountPointId": "5a000000-0000-4000-8000-000000000009",
+          "createdAt": "2025-08-03T00:00:00.000Z"
+        },
+        {
+          "id": "6c000000-0000-4000-8000-000000000004",
+          "name": "C4",
+          "characterDocumentMountPointId": "5a000000-0000-4000-8000-000000000011",
+          "createdAt": "2025-08-04T00:00:00.000Z"
+        },
+        {
+          "id": "6c000000-0000-4000-8000-000000000006",
+          "name": "C6",
+          "characterDocumentMountPointId": null,
+          "createdAt": "2025-08-06T00:00:00.000Z"
+        },
+        {
+          "id": "6c000000-0000-4000-8000-000000000008",
+          "name": "C8",
+          "characterDocumentMountPointId": "5a000000-0000-4000-8000-000000000015",
+          "createdAt": "2025-08-08T00:00:00.000Z"
+        },
+        {
+          "id": "6c000000-0000-4000-8000-000000000009",
+          "name": "C8",
+          "characterDocumentMountPointId": "5a000000-0000-4000-8000-000000000016",
+          "createdAt": "2025-09-08T00:00:00.000Z"
+        },
+        {
+          "id": "6c000000-0000-4000-8000-000000000010",
+          "name": "C9",
+          "characterDocumentMountPointId": null,
+          "createdAt": "2025-09-09T00:00:00.000Z"
+        }
+      ]
+    }
+  ]
+}

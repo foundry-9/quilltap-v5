@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(mount-index): P4.D274 units 3+4 — the store-name gate and the store-name reconcile (v4 `ed8b15b50`, bug 186)
+
+_Versions: core 0.0.1268._
+
+`DocMountPointsRepository::create` and `update` (when renaming) now refuse a name another store already holds, ignoring case and surrounding JS whitespace. They log v4's WARN and return the new `DbError::MountPointNameTaken`, whose message is v4's sentence. The holder lookup reads stores the way v4's `findAll()` does: a row v4's schema rejects is dropped with v4's two validation lines.
+
+New `db::store_name_reconcile::reconcile_store_names(main, mount, trigger)`, a port of v4's `reconcileStoreNames`. It plans every store's name with the store-name rules and applies the renames in one savepoint, in two phases so name swaps never trip the unique index. It logs v4's DEBUG plan line and one INFO per rename, and publishes one `mountPoints` hint. With no mount index it logs v4's skip WARN.
+
+A failed whole-table read now stops the reconcile (a v5-only WARN, nothing written) where v4 would retire every vault. This is recorded as `RECONCILE_READ_FAILURE_STRICT`. `reconcile_vault_names_or_warn` wraps it for the character hooks and never fails the caller.
+
+New tier-2 family `store_name_reconcile_equivalence`: 11 scenarios against v4's real reconcile, plus a two-way cross-run. v5 renames nothing on v4's result, and v4 renames nothing on v5's. `doc_mount_points_tier2_equivalence` gains the name-gate steps.
+
 #### 2026-10-09 — feat(mount-index): P4.D274 unit 2 — the unique store-name index ensure, the repair lines at WARN
 
 _Versions: core 0.0.1267._

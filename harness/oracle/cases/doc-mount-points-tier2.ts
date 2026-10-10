@@ -21,6 +21,16 @@
  * NORMALIZATION SPEC: none. Every id and timestamp is pinned on both sides, so
  * the dumps must match outright — no id remap, no timestamp placeholder.
  *
+ * P4.D274 (v4 `ed8b15b50`, bug 186) adds a SECOND line, `doc-mount-points-
+ * name-gate`: after the committed ops (whose line is unchanged), the steps of
+ * `fixtures/doc-mount-points-name-gate.json` run through the same REAL
+ * repository on the same working copy — the name chokepoint (`create` /
+ * `update` → `assertNameFree`, `findNameHolder` over the Zod-dropping
+ * `findAll`), mirroring v4's `doc-mount-points-find-by-name.test.ts:70-110`.
+ * Per step: the thrown message (or null), the captured lines (the gate's WARN
+ * and the drop lines, through a spliced logger transport — nothing reaches
+ * stdout), and every `(id, name)` by id.
+ *
  * Run from the v4 server checkout under Node 24, AFTER building the fixture:
  *   N=~/.nvm/versions/node/v24.13.1/bin
  *   cd ~/source/quilltap-server
@@ -79,7 +89,25 @@ async function main(): Promise<void> {
   process.env.SQLITE_MOUNT_INDEX_PATH = work; // the working copy we mutate + read
   process.env.QUILLTAP_DATA_DIR = scratch;
   delete process.env.SQLITE_WAL_MODE; // journal_mode = TRUNCATE on both DBs
-  process.env.LOG_LEVEL = 'error'; // keep the NDJSON pipe clean
+  process.env.LOG_LEVEL = 'warn'; // the gate's WARN; the transport splice keeps stdout clean
+
+  const { logger } = await import('@/lib/logger');
+  const CAPTURED = new Set([
+    'Refused a document-store name another store holds',
+    'Data validation failed',
+    'Safe validation failed',
+  ]);
+  let captured: Array<{ level: string; message: string; fields: Record<string, unknown> }> = [];
+  const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
+  internal.transports.splice(0, internal.transports.length, {
+    write: (d: unknown) => {
+      const data = d as { level: string; message: string; context?: Record<string, unknown>; error?: { message: string } };
+      if (!CAPTURED.has(data.message)) return;
+      const { service: _s, environment: _e, ...fields } = data.context ?? {};
+      if (data.error) fields.error = data.error.message;
+      captured.push({ level: data.level, message: data.message, fields });
+    },
+  });
 
   const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
   const { getRawMountIndexDatabase, closeMountIndexSQLiteClient } = await import(
@@ -116,6 +144,47 @@ async function main(): Promise<void> {
     .prepare('SELECT * FROM doc_mount_points')
     .all() as Array<Record<string, unknown>>;
 
+  // P4.D274: the name chokepoint, on the same working copy.
+  const gate = JSON.parse(
+    readFileSync(join(here, '..', 'fixtures', 'doc-mount-points-name-gate.json'), 'utf8'),
+  ) as {
+    stamp: string;
+    base: Record<string, unknown>;
+    steps: Array<{ label: string; kind: 'create' | 'update' | 'plantRaw'; id: string; name?: string }>;
+  };
+  const steps: unknown[] = [];
+  for (const step of gate.steps) {
+    captured = [];
+    let error: string | null = null;
+    try {
+      if (step.kind === 'create') {
+        await repo.create({ ...gate.base, name: step.name } as never, {
+          id: step.id,
+          createdAt: gate.stamp,
+          updatedAt: gate.stamp,
+        });
+      } else if (step.kind === 'update') {
+        const data: Record<string, unknown> = { updatedAt: gate.stamp };
+        if (step.name !== undefined) data.name = step.name;
+        else data.scanStatus = 'idle';
+        await repo.update(step.id, data as never);
+      } else {
+        midb
+          .prepare(
+            `INSERT INTO doc_mount_points (id, name, basePath, mountType, storeType, includePatterns,
+               excludePatterns, enabled, scanStatus, conversionStatus, fileCount, chunkCount,
+               totalSizeBytes, createdAt, updatedAt)
+             VALUES (?, ?, '', 'database', 'documents', '[]', '[]', 1, 'idle', 'idle', 0, 0, 0, ?, ?)`,
+          )
+          .run(step.id, step.name, gate.stamp, gate.stamp);
+      }
+    } catch (e) {
+      error = (e as Error).message;
+    }
+    const names = midb.prepare('SELECT id, name FROM doc_mount_points ORDER BY id').all();
+    steps.push({ label: step.label, error, lines: captured, names });
+  }
+
   closeMountIndexSQLiteClient();
   await closeDatabase();
 
@@ -129,6 +198,7 @@ async function main(): Promise<void> {
   process.stdout.write(
     JSON.stringify({ case: 'doc-mount-points-tier2', ...dump }) + '\n'
   );
+  process.stdout.write(JSON.stringify({ case: 'doc-mount-points-name-gate', steps }) + '\n');
   process.exit(0);
 }
 

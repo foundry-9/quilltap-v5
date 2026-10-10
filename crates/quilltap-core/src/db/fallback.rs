@@ -116,14 +116,22 @@ pub fn find_all_or_empty<T>(
     read: impl FnOnce() -> Result<Vec<T>, DbError>,
 ) -> Vec<T> {
     read().unwrap_or_else(|error| {
-        tracing::error!(
-            target: "quilltap::db",
-            collection = collection,
-            error = %error_text(&error),
-            "Error finding all entities"
-        );
+        log_find_all_failure(collection, &error, false);
         Vec::new()
     })
+}
+
+/// The ONE emitter of `Error finding all entities` (the plain twin and
+/// P4.D274's `find_all_logged_strict` log through it; `strictFailures` only
+/// when the strict scope is active, as v4's `safeQuery` adds it).
+fn log_find_all_failure(collection: &str, error: &DbError, strict: bool) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = collection,
+        error = %error_text(error),
+        strictFailures = strict.then_some(true),
+        "Error finding all entities"
+    );
 }
 
 /// v4 `BaseRepository.findByFilter` as its callers see it: `read()`'s `Err` logs
@@ -2767,3 +2775,28 @@ pub fn can_character_participate_or_false(
         }
     }
 }
+
+// === P4.D274 (append-only) — the store-name reconcile's strict read (R-A arm
+// 2, `RECONCILE_READ_FAILURE_STRICT`) ===
+
+/// v4 `_findAll`'s line WITHOUT its fallback (P4.D274 R-A arm 2): `read()`'s
+/// `Err` logs v4's SAME `Error finding all entities {collection, error}`
+/// ERROR — with `strictFailures=true` inside the strict scope, as v4's
+/// `safeQuery` adds it there (`safe-query.ts:57-71`) — and is handed back in
+/// AND out of the scope, never answered as `[]`. The store-name reconcile and
+/// its two sibling reads (the repository name gate, the mount-points PATCH
+/// owner check) read through it: v4's `[]` would plan every vault as unlinked
+/// and retire it, so v5 surfaces the failure and the caller skips (the
+/// recorded divergence `RECONCILE_READ_FAILURE_STRICT`, under the 2026-08-03
+/// write-path-reads-strict rule — P4.149 R-E's `strict-by-ruling(write-path)`
+/// class). A sibling of [`find_by_filter_strict_aware`], not a changed twin.
+pub fn find_all_logged_strict<T>(
+    collection: &'static str,
+    read: impl FnOnce() -> Result<Vec<T>, DbError>,
+) -> Result<Vec<T>, DbError> {
+    read().inspect_err(|error| {
+        log_find_all_failure(collection, error, strict_repository_failures_active());
+    })
+}
+
+// === end P4.D274 ===

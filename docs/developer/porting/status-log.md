@@ -175508,3 +175508,62 @@ Branch `claude/store-names-unique-index-reconcile-ede082`, worktree `.claude/wor
   - a pre-round index gains the index with ONE INFO, then is silent;
   - a TABLE squatting the index name is ONE `Failed to ensure doc_mount_points …` line plus one structural entry, and the pass goes on.
 - **M2 / R-B (`BUILTIN_REPROVISION_FREE_NAME`), MEASURED FIRST:** a dangling General pointer plus a squatting `quilltap general` store, with the ensure wired, fails `ensure_builtin_mounts_with` with `UNIQUE constraint failed: doc_mount_points.name`. It propagates even under `LogAndContinue` (`ensure_one_mount`'s `?`), so `seed_built_ins` and the boot are FATAL. The fix: the re-provision picks a free name over `find_all_names()`, giving `Quilltap General (2)`. Pinned both ways (squatted → `(2)`; unsquatted → plain).
+
+### PUBLISHED (2026-10-09 21:18 CDT, unit 4 compiled) — the signature P4.D273 codes against
+```rust
+// crates/quilltap-core/src/store_names.rs
+pub struct StoreNameRow { pub id: String, pub name: String, pub store_type: Option<String>, pub created_at: String }
+pub struct VaultOwnerRow { pub id: String, pub name: String, pub character_document_mount_point_id: Option<String>, pub created_at: String }
+pub enum StoreRenameReason { LiveVault, RetiredVault, Collision }   // as_str(): "live-vault" | "retired-vault" | "collision"
+pub struct StoreRename { pub id: String, pub from: String, pub to: String, pub reason: StoreRenameReason } // to_json(): id, from, to, reason
+pub fn plan_store_names(stores: &[StoreNameRow], characters: &[VaultOwnerRow]) -> Vec<StoreRename>;
+// crates/quilltap-core/src/db/store_name_reconcile.rs
+pub enum StoreNameSkipReason { MountIndexUnavailable, ReadFailed }  // as_str(): "mount-index-unavailable" | "read-failed"
+pub struct StoreNameReconcileResult { pub renamed: Vec<StoreRename>, pub skipped_reason: Option<StoreNameSkipReason> }
+pub fn reconcile_store_names(main: &Connection, mount: Option<&Connection>, trigger: &str) -> Result<StoreNameReconcileResult, DbError>;
+pub const TRIGGER_RESTORE: &str = "restore"; // + TRIGGER_BOOT, TRIGGER_QTAP_IMPORT, TRIGGER_CHARACTER_CREATED / _RENAMED / _DELETED
+```
+These are exactly the order's published spellings, so no `HANDOFF:` to P4.D273 is needed.
+
+### Units 3 + 4 — the repository gate (U3) and the reconcile (U4), one commit (the gate reads through the reconcile module's row-dropping read)
+- **U3:** `DbError::MountPointNameTaken {requested_name, holder_id, holder_name}` (R-D). `Display` is v4's sentence byte for byte (the holder's casing, U+2014). `MOUNT_POINT_NAME_TAKEN_CODE` is kept for the record only.
+  - `DocMountPointsRepository::find_name_holder(name, except_id)`: `js_trim` + `to_lowercase`; first in row order over the R-A / R-C read.
+  - `assert_name_free` in `create` (always) and in `update` when `name` is `Some` (before the existence check, as v4's runs before `_update`). WARN `Refused a document-store name another store holds {name, mountPointId, holderId}`, with `mountPointId=null` on a create.
+  - **Differential:** `doc_mount_points_tier2_equivalence` gains a SECOND oracle line, the 8 steps of NEW `fixtures/doc-mount-points-name-gate.json`, run after the committed ops on the same working copy. The first line is unchanged. Steps: create refused (`' tester character vault'`); update onto a peer refused; own re-case allowed; nameless update ungated; a raw non-uuid holder planted, which is Zod-dropped (v4's two drop lines, the ZodError bytes) and so NOT a holder, so its namesake's INSERT hits `UNIQUE constraint failed: doc_mount_points.name` on both sides.
+  - **Red-first:** with the two gate calls disabled, `create-refused-padded-lowercase` diverges — v5 WROTE `' tester character vault'`, which NOCASE does not fold (leading space). Green restored.
+- **U4:** NEW `db/store_name_reconcile.rs`.
+  - `reconcile_store_names(main, Option<mount>, trigger)`: the skip WARN; both reads (v4's `Promise.all`); DEBUG `planned`; ONE SAVEPOINT `qt_store_name_reconcile`, two phases, ONE `now_iso()`; per-rename INFO `{module, trigger, id, from, to, reason}` after the release; one `mountPoints` hint. A phase-2 `Err` rolls back with no INFO and no hint.
+  - `reconcile_vault_names_or_warn` (R-K's swallow); the six trigger consts; `find_vault_owner` (the PATCH's owner read); `read_store_name_rows` / `read_vault_owner_rows`.
+  - `fallback::find_all_logged_strict`, appended in a fenced `P4.D274` region: v4's `Error finding all entities` line (+ `strictFailures` inside the scope), and the `Err` handed back.
+  - **R-C predicates.** The store predicate is `DocMountPointSchema` WHOLE (18 fields over `hydrateRow`'s rules: JSON columns parsed or `undefined`, `enabled` / `is*` coerced, a BLOB as a Float32 array). The character predicate is the plan's subset plus the BLOB-cell class (`RECONCILE_CHARACTER_ROW_SUBSET`).
+  - The issue lists are built with `api::zod_issues`' public `ZodIssue` constructors + `zod_error_message`. Its field helpers are private to P4.D265's file (C1-frozen), so small local twins live in the reconcile module. The ZodError bytes match v4's on every drop row the families plant (non-uuid store id; non-uuid character id).
+- **The headline differential:** NEW `store_name_reconcile_equivalence` + `cases/store-name-reconcile.ts` + `fixtures/build-store-name-reconcile-fixture.ts` (an EMPTY base pair through v4's real init at the pin, lane-private `/tmp` dir, never committed) + `fixtures/store-name-reconcile-spec.json`.
+  - **11 scenarios**, every dump / result / line byte-equal:
+    - (a) the jest swap;
+    - (b) conforming, `planned` only;
+    - (c) V4test at scale;
+    - (d) a Zod-dropped store holding the wanted name → phase-2 `UNIQUE` → rollback, v4's thrown text = v5's `error_text`;
+    - (e) a Zod-dropped character → its vault RETIRED on both sides (R-A arm 1);
+    - (e2) ×2;
+    - (f) degraded → v4's skip WARN (v4 side: a GARBAGE mount-index file, so v4's own open ladder degrades — no mock);
+    - (g) live namesakes + an archived owner;
+    - (h) a documents store squatting a canonical name;
+    - (i) a 16-store pseudonymous Friday-shaped corpus (`C<n>` names keep the vault shapes).
+  - **`RECONCILE_READ_FAILURE_STRICT`** pinned both ways (`READ_FAILURE_STRICT`). The plant is a VIRTUAL generated column `json('not json')`, which makes v4's `SELECT *` throw `malformed JSON` instead of self-healing (a dropped table would be recreated by `ensureCollection`). On a characters failure, v4 RETIRES both vault-shaped stores; on a stores failure v4 plans nothing. v5 logs v4's ERROR + its skip WARN, answers `ReadFailed`, writes nothing.
+  - **The ping-pong proof:** v5 over each v4-reconciled pair renames NOTHING (10/10), and v4 over each v5-reconciled pair answers `renamed: []` (10/10). The exception is the strict characters row: there v5 skipped, so v4 replays exactly its own stage-1 plan (v5 lags v4; it never undoes it). That is asserted, not exempted silently.
+  - **Oracle artifact found and handled:** v4's repositories are module singletons whose `collectionInitialized` outlives `resetRepositories()`. After a per-scenario re-init, nothing re-registers `characters`' JSON / boolean columns with the NEW backend, so every row reads `'[]'` as a string and is Zod-dropped. The case re-registers with `ensureCollection('characters', CharacterSchema)`, as the character builders do. Production has one backend per process.
+  - Red by absence on the tip (the module did not exist).
+- **In-crate pins** (`store_name_reconcile::tests`):
+  - R-H: ONE `mountPoints` hint on a renaming run, SILENCE on the no-op second run (`HintCapture`);
+  - phase-2 rollback (names unchanged, both connections back in autocommit, no hint) + the hook wrapper's WARN;
+  - the `None` skip WARN.
+  - **R-H measurement:** `write_apply`'s post-commit hook serves `WritePlan` batches only; the reconcile is a raw writer-closure write, so its own publish is the only one it makes.
+- **M1 (Friday, 💸, read-only):** a COPY of the LIVE `~/iCloud/Quilltap/Friday/data` (main + mount index + `.dbkey`; a v4 server held it, journals empty), opened through a throwaway uncommitted probe (`dbkey::load_pepper` → read-only `PRAGMA key`, counts only).
+  - (a) **the copy ALREADY carries `idx_doc_mount_points_name_nocase`** — v4 HEAD has booted live Friday past `ed8b15b50`;
+  - (b) 77 stores / 55 characters, all kept;
+  - (c) v4's REAL `planStoreNames` over the same JSON: **0 renames**;
+  - (d) v5's `plan_store_names`: **0 renames, byte-equal**.
+  - So **v5's first boot after the round renames NOTHING on live Friday.** The dogfood copy (`~/qt-dogfood-friday`, per P4.D265's note) predates that v4 boot and may plan renames. Measure it at the dogfood pass before the first v5 boot.
+- **M6 (R-C) on Friday:** v4's REAL `docMountPoints.findAll()` / `characters.findAllRaw()` on a second clone (v4's `provisionDbKey` unwraps the key in-process; nothing printed) answer 77 / 55. That equals v5's predicate's 77 / 55: zero drops either side. The fixture half of M6 rides M5 (unit 7).
+- **Flake, not this lane's:** `services::activity_registry::tests::records_a_blip_once_a_span_outlives_the_threshold` failed once in the full core lib run (global counters under parallel tests), then passed 3/3 alone.
+- **`db/fallback.rs`, an edit outside the appended region (for the unifier).** `fallback_home_guard` requires ONE literal per home message. So `find_all_or_empty`'s inline `Error finding all entities` emit moved into a shared `log_find_all_failure(collection, error, strict)`, which the plain twin calls with `false`. The rendered line is unchanged (`strictFailures` is omitted when `None`). The new strict read calls the same emitter. Guard 2/2.
