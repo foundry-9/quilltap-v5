@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(memory): P4.D268 the frozen archive keyed by chat, composed digests-first, with the three invalidation entry points
+
+_Versions: core 0.0.1266._
+
+`services/frozen_archive.rs` is rewritten to v4 `01a83539d`'s `frozen-archive-cache.ts`:
+
+- The cache key is `(characterId, chatId)`. Generation, archive size and the sorted set of other characters present are freshness checks; a change in any of them replaces that chat's entry. The cache is LRU-bounded at 64 entries.
+- Composition is digests first: up to 3 hot digests about each other character present (in sorted id order), then up to 5 self digests, then the effective-weight fill over `find_most_important` (pool = 4 × size). The result is sorted by id with `localeCompare`.
+- New `invalidate_all_frozen_archives()` and `invalidate_frozen_archives_for_completed_job(job_id, job_type, payload)`. `invalidate_frozen_archive(character_id)` keeps its signature and now drops every chat's entry for the character.
+- v4's five DEBUG lines (`Composed archive`, `Computed archive`, the two invalidation lines, and the job hook's line), camelCase keys in v4's order.
+- 23 unit tests mirror v4's 16 cache cases and 4 job-hook cases, plus the `""` / non-string `characterId` and `dryRun: "true"` edges and the line capture pins.
+
+`build_context` passes the chat id. Its pool sizing and present characters come in a later commit.
+
 #### 2026-10-09 — docs(porting): P4.D265 lane close — real-instance note, gate and sweep records
 
 _Docs-only change._

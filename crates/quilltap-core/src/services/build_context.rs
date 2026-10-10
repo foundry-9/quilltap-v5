@@ -2455,8 +2455,10 @@ where
             crate::services::frozen_archive::get_or_compute_frozen_archive(
                 db,
                 &input.character.id,
+                &input.chat.id,
                 compaction_gen,
                 None,
+                &[],
                 now_ms_f,
             )
             .unwrap_or_default()

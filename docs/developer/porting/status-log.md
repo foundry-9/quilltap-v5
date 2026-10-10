@@ -175480,3 +175480,23 @@ All are green BY NAME from the pin:
 - fmt, both clippy sets and the censuses are clean at `KEYSTONE`. The Tier 2 commits touch tests and docs only.
 - **Versions:** core 0.0.1265, host 0.0.195, web 0.0.228. The harness stays frozen at 0.0.1110.
 - **Cleanup:** the lane `target/` was removed, the pin worktree `/tmp/qt-v4-pin-p4d265-01a83539d` removed, and lane scratch (incl. the Friday clone) deleted.
+
+## P4.D268 — context delivery: frozen archive, digests, pools, access stamps (lane `claude/p4-context-delivery-frozen-archive-d66e11`)
+
+### Lane start (2026-10-09)
+- **Base:** `18e41e403`, P4.D265's lane tip. It holds `KEYSTONE` `609d9d9f2` plus four tests/docs-only Tier 2 commits; the sibling stage-2 worktrees were cut at the same tip. C1 is unchanged after `KEYSTONE`.
+- **§R.2 probe (20:39 CDT):** v4 `main` checkout on `main`, tree clean. **v4 moved:** `3e6e2f590`, `7a8d6dacc` and `9ecebf986` observed past `01a83539d` at 20:39 CDT. `bugfix` unmoved (`1a2b2164c`). Out of scope (§R.1); recorded for `/driftcheck`.
+- **Pin:** `/tmp/qt-v4-pin-p4d268-01a83539d`, `rev-parse HEAD` = `01a83539dd1c2db31b056d6427b31a04f91563a7`, `package.json` `4.10.0-dev.143`, `node_modules/openai` `7.30.0`. The live lockfile differs from the pin's only in the version stamp, so the symlinked `node_modules` matches the pin.
+- **M1:** the region is at `job_runner.rs:496-497`, after the `topics_for_completed_job` loop in the Completed arm, outside the mark's `if/else`. `job` (`&BackgroundJob`) and `payload` (`Value`, parsed at `:484`) are in scope.
+- **M2:** `MemoryPoolSizing { head_token_budget: i64, head_entries: usize, archive_token_budget: i64, archive_size: usize }`. `DigestSubject { SelfSubject, Any, About(String) }`. `search_filtered`'s closure receives `(id, is_cold)`. `mark_memories_accessed` is async and returns `()`.
+
+### Unit 1 — `services/frozen_archive.rs` rewritten (Tier 1 item 2; R-A, R-C, R-I)
+- The cache is a lane-local `FrozenArchiveCache { entries: Vec<(String, CacheEntry)> }`: insertion-ordered, index 0 is the LRU, linear scans. The process-global `OnceLock<Mutex<…>>` wraps one instance and locks with `unwrap_or_else(PoisonError::into_inner)`.
+- `get_or_compute_frozen_archive(db, character_id, chat_id, compaction_generation, size, present_character_ids, now_ms)` follows R-C. Presence is a first-seen dedupe, dropping `""` and the responder, then a UTF-16 code-unit sort (R-I). The final order keeps `locale_compare`. An `Err` is propagated and not cached.
+- **The R-A API:**
+  - `pub fn invalidate_frozen_archive(character_id: &str)` — unchanged signature; drops every chat's entry for the character.
+  - `pub fn invalidate_all_frozen_archives()`.
+  - `pub fn invalidate_frozen_archives_for_completed_job(job_id: &str, job_type: &str, payload: &serde_json::Value)`.
+  - `reset_frozen_archive_cache_for_tests()` keeps its signature.
+- The composition is `compose_frozen_archive` over injected reads, so the unit tests drive v4's mocked-repository cases on LOCAL cache instances with counting fetchers and never race the global. 23 tests: v4's 11 top-level and 5 `digest composition` cases verbatim, plus `size = 0`, the propagated `Err`, the code-unit presence sort, `localeCompare`, the capture pins for `Composed`/`Computed` and both invalidation lines with their silence legs, and the job hook's four v4 cases plus the `""`, non-string and `dryRun: "true"` edges. v4's catch WARN is pinned NEGATIVE.
+- `build_context` passes `&input.chat.id`, with `None` size and no present ids until unit 5.
