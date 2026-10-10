@@ -454,6 +454,11 @@
       "op": "per_turn_conversations_recap_turn",
       "kind": "recap",
       "response": "Ada remembers the Lighthouse Point sketches and the card loops that followed."
+    },
+    {
+      "op": "p4d268_recap_digests_lead_the_high_bucket",
+      "kind": "recap",
+      "response": "Ada remembers the Lighthouse Point sketches and the card loops that followed."
     }
   ],
   "chat": {
@@ -4365,6 +4370,31 @@
       ],
       "unplantSql": [
         "DELETE FROM memories WHERE id IN ('d2680000-0000-4000-8000-000000000001', 'd2680000-0000-4000-8000-000000000002')"
+      ]
+    },
+    {
+      "_comment": "P4.D268 (v4 d58548051): the memory recap's HIGH bucket is digests-first. A plain high row (newest) and a consolidated digest (one day older) are planted; findRecentByImportanceTier orders them plain-then-digest by createdAt, and digestsFirst moves the digest ahead, so the recap prompt (the canned completion's recorded key) lists it first.",
+      "name": "p4d268_recap_digests_lead_the_high_bucket",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "How does the analytical engine work?",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "I'm curious about your engines."
+        }
+      ],
+      "skipMemories": false,
+      "compressionEnabled": false,
+      "distillEnabled": true,
+      "timestampMode": null,
+      "perTurnConversationSummaries": true,
+      "generateMemoryRecap": true,
+      "plantSql": [
+        "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('d2680000-0000-4000-8000-000000000021', 'ca000000-0000-4000-8000-0000000000a1', NULL, 'Ada noted a loose shard about the gears.', 'The newest loose shard.', '[]', '[]', 0.9, 'AUTO', 1, '[]', 0.9, 'semantic', '[]', 'hot', NULL, '[]', NULL, '2024-06-02T00:00:00.000Z', '2024-06-02T00:00:00.000Z')",
+        "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('d2680000-0000-4000-8000-000000000022', 'ca000000-0000-4000-8000-0000000000a1', NULL, 'A digest of the engine sketches.', 'Everything about the engine, gathered.', '[]', '[]', 0.9, 'CONSOLIDATED', 1, '[]', 0.9, 'semantic', '[]', 'hot', NULL, '[\"d2680000-0000-4000-8000-000000000121\", \"d2680000-0000-4000-8000-000000000122\"]', '2024-06-01T00:00:00.000Z', '2024-06-01T00:00:00.000Z', '2024-06-01T00:00:00.000Z')"
+      ],
+      "unplantSql": [
+        "DELETE FROM memories WHERE id IN ('d2680000-0000-4000-8000-000000000021', 'd2680000-0000-4000-8000-000000000022')"
       ]
     },
     {

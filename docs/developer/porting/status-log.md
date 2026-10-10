@@ -175573,3 +175573,23 @@ The recipe sweep ran from the pin against a scratch worktree at the base `18e41e
     - It is GREEN in isolation. **Mutation:** restoring `take(10)` reddens it (`length` 10 vs 12). The `limit` 90 vs 20 is not observable at a 12-row pool; the constant is P4.D265's tier-1 `memory_pools_equivalence`.
 - **UNION-PENDING(P4.D267) — `precompute_equivalence`, `spoke-then-window-searches`** (`preSearchedMemories[1].recallAdjustment.multiplier` 1.36 vs 1.105). This is unchanged from the KEYSTONE red. Because it is the second case, the loop stops there on this branch, so the pool row was measured with a local, uncommitted case filter.
 - **HANDOFFs received for the `precompute` files:** none at the time of this unit.
+
+### Unit 5 landed — `037b3372b`
+
+### Unit 6 — first-message + recap (Tier 1 item 7; R-J)
+- **`load_for_participant`:**
+  - the about-participant read filtered with `!memory_is_cold`, then `digests_first` before the take-3;
+  - the text fallback's `if memory_is_cold { continue }` BEFORE the dedupe and the `>= limit` break;
+  - the `(id, memory)` pairs kept through the stable sort and truncate;
+  - the stamp over the selected ids, awaited inline (R-D).
+- **Recap.** NEW `pub fn digests_first(Vec<Value>) -> Vec<Value>` in `memory_recap/mod.rs` (v4 `:248-252`, including the 0-or-all early return). `generate_memory_recap` applies it to `high` only. Unit tests mirror `memory-recap.test.ts:140-156`, plus the identity legs.
+- **`first_message_context` differential** (fixture rebuilt by its unchanged builder at the pin into `/tmp/p4d268/fmc/`; the spec is append-only):
+  - Per-case `plantSql` / `unplantSql`, and a per-case `accessLog` row (v4's logger debug patched; `setImmediate` flush) compared against v5's `global_capture` lines. The floor is ≥ 4 stamp lines.
+  - `p4d268_alice_digests_lead_cold_filtered` — **GREEN.** The output is `[0.95, 0.9, 0.7, general 0.5, 0.3 digest]`, stamp `count` 5.
+  - **UNION-PENDING(P4.D267) — `p4d268_carol_text_fallback_skips_cold`.** v5 delivers the planted cold row. KEYSTONE's `search_memories_text` (the semantic search's own fallback) is not hot-filtered, where v4's `:1448` is. So v5's semantic search "works" and the first-message text fallback never runs.
+    - With P4.D267's filter SIMULATED locally (one uncommitted `retain(!memory_is_cold)` in `search_memories_text`), the family is GREEN.
+    - With that simulation AND my skip removed, it is RED. So the row pins this lane's skip on the union.
+    - The case runs last, so every other case is evaluated on this branch.
+  - The planned Bob shape was replaced. Speaker Two's existing "Bob" note keeps v4's semantic search non-empty, so the first-message fallback could never run.
+- **Recap order via `build_context_tier3`:** the new op `p4d268_recap_digests_lead_the_high_bucket` plants a newest plain row (2024-06-02) and a digest (2024-06-01). v4's recap prompt lists the digest first. **GREEN; mutation:** dropping `digests_first` reddens the op. My three appended ops were reordered so the UNION-PENDING multi op runs LAST.
+- **Gate note:** `activity_registry::records_a_blip_once_a_span_outlives_the_threshold` failed once in the full core lib run and passed 3/3 alone. It is a pre-existing global-counter timing flake, not this lane's.

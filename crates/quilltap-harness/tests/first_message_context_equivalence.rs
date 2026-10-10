@@ -72,6 +72,11 @@ struct Case {
     project_id: Option<String>,
     #[serde(default)]
     participants: Vec<Participant>,
+    /// P4.D268: SQL planted before the case and undone after it.
+    #[serde(default, rename = "plantSql")]
+    plant_sql: Vec<String>,
+    #[serde(default, rename = "unplantSql")]
+    unplant_sql: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -211,76 +216,141 @@ async fn first_message_context_matches_oracle() {
     )
     .unwrap_or_else(|e| panic!("open fixture copies: {e}"));
 
+    let mut access_lines_seen = 0usize;
     for c in &spec.cases {
-        let got: Value = match c.kind.as_str() {
-            "loadParticipantMemories" => {
-                let others: Vec<ParticipantInfo> = c
-                    .other_participants
-                    .iter()
-                    .map(|p| ParticipantInfo {
-                        character_id: p.character_id.clone(),
-                        name: p.name.clone(),
-                        description: p.description.clone(),
-                        controlled_by: p.controlled_by.clone(),
-                    })
-                    .collect();
-                let mems = load_participant_memories(
-                    &db,
-                    &provider,
-                    c.speaking_character_id.as_deref().unwrap(),
-                    &others,
-                    &spec.user_id,
-                    None,
-                    5,
-                    spec.now_ms,
-                )
-                .await
-                .unwrap_or_else(|e| panic!("case {}: {e:?}", c.label));
-                json!({ "participantMemories": participant_memories_json(&mems) })
-            }
-            "loadProjectContext" => {
-                let ctx = load_project_context(&db, c.project_id.as_deref().unwrap())
+        for sql in &c.plant_sql {
+            let sql = sql.clone();
+            db.write(move |ws| {
+                ws.main()
+                    .connection()
+                    .execute_batch(&sql)
+                    .map_err(Into::into)
+            })
+            .await
+            .unwrap_or_else(|e| panic!("case {}: plant failed: {e}", c.label));
+        }
+        // P4.D268: every line the case logged on this (current-thread) runtime,
+        // through the process-global rig (tracing's `Interest` cache).
+        let (got, lines) = quilltap_core::test_support::global_capture::capture_async(async {
+            let got: Value = match c.kind.as_str() {
+                "loadParticipantMemories" => {
+                    let others: Vec<ParticipantInfo> = c
+                        .other_participants
+                        .iter()
+                        .map(|p| ParticipantInfo {
+                            character_id: p.character_id.clone(),
+                            name: p.name.clone(),
+                            description: p.description.clone(),
+                            controlled_by: p.controlled_by.clone(),
+                        })
+                        .collect();
+                    let mems = load_participant_memories(
+                        &db,
+                        &provider,
+                        c.speaking_character_id.as_deref().unwrap(),
+                        &others,
+                        &spec.user_id,
+                        None,
+                        5,
+                        spec.now_ms,
+                    )
+                    .await
                     .unwrap_or_else(|e| panic!("case {}: {e:?}", c.label));
-                json!({ "projectContext": project_context_json(&ctx) })
-            }
-            "buildFirstMessageContext" => {
-                let participants: Vec<ChatParticipantInput> = c
-                    .participants
-                    .iter()
-                    .map(|p| ChatParticipantInput {
-                        participant_type: p.participant_type.clone(),
-                        character_id: p.character_id.clone(),
-                        controlled_by: p.controlled_by.clone(),
+                    json!({ "participantMemories": participant_memories_json(&mems) })
+                }
+                "loadProjectContext" => {
+                    let ctx = load_project_context(&db, c.project_id.as_deref().unwrap())
+                        .unwrap_or_else(|e| panic!("case {}: {e:?}", c.label));
+                    json!({ "projectContext": project_context_json(&ctx) })
+                }
+                "buildFirstMessageContext" => {
+                    let participants: Vec<ChatParticipantInput> = c
+                        .participants
+                        .iter()
+                        .map(|p| ChatParticipantInput {
+                            participant_type: p.participant_type.clone(),
+                            character_id: p.character_id.clone(),
+                            controlled_by: p.controlled_by.clone(),
+                        })
+                        .collect();
+                    let res = build_first_message_context(
+                        &db,
+                        &provider,
+                        c.speaking_character_id.as_deref().unwrap(),
+                        &participants,
+                        &FirstMessageContextOptions {
+                            user_id: spec.user_id.clone(),
+                            project_id: c.project_id.clone(),
+                            embedding_profile_id: None,
+                            now_ms: spec.now_ms,
+                        },
+                    )
+                    .await
+                    .unwrap_or_else(|e| panic!("case {}: {e:?}", c.label));
+                    json!({
+                        "projectContext": project_context_json(&res.project_context),
+                        "participantMemories": participant_memories_json(&res.participant_memories),
                     })
-                    .collect();
-                let res = build_first_message_context(
-                    &db,
-                    &provider,
-                    c.speaking_character_id.as_deref().unwrap(),
-                    &participants,
-                    &FirstMessageContextOptions {
-                        user_id: spec.user_id.clone(),
-                        project_id: c.project_id.clone(),
-                        embedding_profile_id: None,
-                        now_ms: spec.now_ms,
-                    },
-                )
-                .await
-                .unwrap_or_else(|e| panic!("case {}: {e:?}", c.label));
-                json!({
-                    "projectContext": project_context_json(&res.project_context),
-                    "participantMemories": participant_memories_json(&res.participant_memories),
-                })
-            }
-            other => panic!("unknown case kind {other}"),
-        };
+                }
+                other => panic!("unknown case kind {other}"),
+            };
+            got
+        })
+        .await;
 
         let want = oracle_line(&oracle_text, &c.label);
         // Compare only the payload fields (strip the label).
         let mut want_payload = want.clone();
         want_payload.as_object_mut().unwrap().remove("label");
+        // P4.D268 (v4 `3f7320138` F6): the delivery stamp — `[Memory] Marking
+        // memories accessed {characterId, count}` per stamped participant, in
+        // order — compared beside the payload.
+        let want_access = want_payload
+            .as_object_mut()
+            .unwrap()
+            .remove("accessLog")
+            .unwrap_or_else(|| panic!("case {}: no accessLog — regenerate the oracle", c.label));
         assert_eq!(got, want_payload, "case {} diverged", c.label);
+        const MSG: &str = "[Memory] Marking memories accessed";
+        let got_access: Vec<String> = lines.iter().filter(|l| l.contains(MSG)).cloned().collect();
+        let want_access: Vec<String> = want_access
+            .as_array()
+            .expect("accessLog array")
+            .iter()
+            .map(|w| {
+                assert_eq!(w["message"], MSG);
+                let f = &w["fields"];
+                let keys: Vec<&str> = f.as_object().unwrap().keys().map(String::as_str).collect();
+                assert_eq!(keys, ["characterId", "count"], "v4's key order moved");
+                format!(
+                    "DEBUG quilltap::memories {MSG} characterId={} count={}",
+                    f["characterId"].as_str().unwrap(),
+                    f["count"]
+                )
+            })
+            .collect();
+        assert_eq!(
+            got_access, want_access,
+            "case {}: the delivery stamp",
+            c.label
+        );
+        access_lines_seen += want_access.len();
+        for sql in &c.unplant_sql {
+            let sql = sql.clone();
+            db.write(move |ws| {
+                ws.main()
+                    .connection()
+                    .execute_batch(&sql)
+                    .map_err(Into::into)
+            })
+            .await
+            .unwrap_or_else(|e| panic!("case {}: unplant failed: {e}", c.label));
+        }
     }
+    assert!(
+        access_lines_seen >= 4,
+        "the stamp capture is vacuous: {access_lines_seen}"
+    );
 
     drop(db);
     eprintln!("OK: first-message-context read-differential matched oracle.");

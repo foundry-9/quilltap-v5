@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(memory): P4.D268 first-message context drops cold rows, leads with digests and stamps what it selected; the recap's high bucket is digests-first
+
+_Versions: core 0.0.1271._
+
+Ported from v4 `d58548051` and `3f7320138` F6:
+
+- **First-message context.** `load_for_participant` filters the about-participant read to non-cold rows and puts digests first before the take-3. The text fallback skips a cold row before the dedupe and the limit break. The `(id, memory)` pairs now ride through the stable importance sort, and the selected ids are stamped through `mark_memories_accessed`.
+- **Recap.** New `memory_recap::digests_first`, v4's stable partition with its none-or-all early return. `generate_memory_recap` applies it to the HIGH bucket only.
+
+**Differentials:**
+
+- **`first_message_context`** compares a per-case `accessLog` (the `Marking memories accessed` line) and supports plant/unplant SQL. It adds an Alice case: a 0.99 cold row is excluded, and two low-importance digests lead the take-3, so the 0.3 digest survives the top-5. That case is green.
+- **A Carol case** pins the text-fallback skip. It is red on this branch because KEYSTONE's semantic text search returns the cold row (P4.D267's hot filter). With P4.D267's filter simulated locally it is green, and removing the skip reddens it.
+- **`build_context_tier3`** adds a recap op: a newest plain row and a one-day-older digest in the high bucket. The digest leads the recap prompt, and removing `digests_first` reddens the op.
+
 #### 2026-10-09 — feat(memory): P4.D268 proactive recall pulls the 90-memory pool and returns it whole; the orchestrator passes the present participants' names
 
 _Versions: core 0.0.1270._
