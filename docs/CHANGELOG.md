@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(import): P4.D272 mint memory ids up front on .qtap import and remap tier links
+
+_Versions: core 0.0.1266._
+
+The `.qtap` memory importer now follows v4 `d58548051`:
+
+- Every bundle memory's id is minted before the loop, keyed by the raw source id with JS `Map` semantics.
+- `relatedMemoryIds`, `consolidatedFrom` and `supersededById` are remapped through that map. A ref outside the bundle keeps its id.
+- `tier` defaults to `hot` and `consolidatedAt` to `null`.
+- Each row is created under its pre-minted id and logs v4's `Imported memory` DEBUG.
+
+The first-startup seed no longer writes 72 dangling `relatedMemoryIds` refs. As in v4, two bundle memories that share an id, or that both lack one, now import only the first. Existing instances are not healed.
+
 #### 2026-10-09 — test(import): P4.D272 carve bug 186's store-name moves in system_import_state until P4.D274 lands
 
 _No crate versions bumped._
