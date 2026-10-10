@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(cli): P4.D269 quilltap anchor-probe, the grown recall-replay, and the three completion templates at v4 `01a83539d`
+
+_Versions: cli 0.0.31._
+
+- NEW `quilltap anchor-probe <characterId>` (v4 `lib/anchor-probe-command.js`, `3f7320138`). It posts `memoryAnchorGateProbe` to `/api/dispatch` (no REST edge in v5 — R-A). It has v4's flags and refusals, the band and row tables (padded by the ANSI-stripped UTF-16 width, a JS `\s+` collapse, a 60-unit cut, the `▸` marker), `--json`, and v4's four failure sentences. It prints no `details` lines.
+- `recall-replay` grows to v4's `01a83539d` shape. New flags: `--memory-budget` (JS `Number` + `Number.isInteger`), `--tuning` / `--tuning-file`, `--signals-from` (v4's sentences, colours and order; V8's `JSON.parse` messages; Node's `readFileSync` error text for `ENOENT` / `EISDIR` / `EACCES`; a `null` file through the launcher's `Error:` catch) and `--as-of`. The output adds the `Harness` / `Tuning` header lines, `, head N`, and one line per `details` issue on a 400. Forwarded values are re-serialized JS-faithfully.
+- The help texts are now captured files (`recall_replay_help.txt`, `anchor_probe_help.txt`) instead of inline literals (R-B). `main_help.txt` gains the `anchor-probe` line, and `SUBCOMMANDS` + the dispatch gain `anchor-probe`. The three completion templates are re-copied whole at the pin (md5 equal to v4's).
+- `recall_replay_cmd.rs`'s private HTTP POST is folded into `http::post`.
+- Tier R (`cli_differential`) grows by the anchor-probe block and the grown recall-replay block. Each posting case byte-checks the wire body against v4's (R-I), and the dispatch-dialect stub bodies are built from core. `completion_behavior` reads the two captured help files and gains the new template cases.
+
 #### 2026-10-09 — feat(memory): P4.D269 the memories list's tier + CONSOLIDATED and the search's includeCold, CONSOLIDATED and Zod schema (v4 `d58548051`, pin `01a83539d`)
 
 _Versions: core 0.0.1267._

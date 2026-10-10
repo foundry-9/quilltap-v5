@@ -380,6 +380,186 @@ fn spawn_recall_stub(result_json: &'static str, error_arm: bool) -> u16 {
     port
 }
 
+// ---------------- P4.D269: the two-dialect wire stub ----------------
+//
+// `recall-replay` and `anchor-probe` post v4's REST URL from v4 and
+// `/api/dispatch` from v5 (R-A), so one stub answers each dialect its own
+// body and RECORDS every request (line + body) in arrival order. Each case
+// runs v4 then v5, so a posting case leaves exactly one (v4, v5) pair, and
+// `check_wire` asserts R-I's relation: v5's body is v4's with v5's `type`
+// (and, for the replay, `chatId`) spliced in front — key order and JS number
+// rendering included. The dispatch-dialect bodies are BUILT from core
+// (`Response` serialized, a validation refusal's `details` merged to the top
+// level exactly as `quilltap-web/src/dispatch.rs` does), never hand-written.
+
+type Wire = std::sync::Arc<std::sync::Mutex<Vec<(String, Vec<u8>)>>>;
+
+struct WireStub {
+    port: u16,
+    wire: Wire,
+}
+
+/// One dialect's canned answer: `(status, body)`.
+type Answer = (u16, String);
+
+/// A v5 dispatch success envelope, built from core.
+fn dispatch_ok(resp: quilltap_core::api::types::Response) -> Answer {
+    (200, serde_json::to_string(&resp).unwrap())
+}
+
+/// A v5 dispatch refusal, built from core: the typed envelope plus the
+/// validation body merged to the top level (the web transport's merge), at the
+/// transport's status.
+fn dispatch_err(resp: quilltap_core::api::types::Response) -> Answer {
+    use quilltap_core::api::types::{ErrorKind, Response};
+    let Response::Error(e) = &resp else {
+        panic!("dispatch_err wants an error response");
+    };
+    let status = match e.kind {
+        ErrorKind::BadRequest => 400,
+        ErrorKind::NotFound => 404,
+        ErrorKind::Internal => 500,
+        other => panic!("no Tier R case answers {other:?}"),
+    };
+    let mut body = serde_json::to_value(&resp).unwrap();
+    if let (Some(obj), Some(serde_json::Value::Object(wire))) =
+        (body.as_object_mut(), e.validation_wire_body())
+    {
+        for (k, v) in wire {
+            obj.insert(k, v);
+        }
+    }
+    (status, body.to_string())
+}
+
+fn spawn_wire_stub(v4: Answer, v5: Answer) -> WireStub {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let wire: Wire = Default::default();
+    let record = wire.clone();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            use std::io::{Read, Write};
+            let mut buf = Vec::new();
+            let mut tmp = [0u8; 4096];
+            loop {
+                match stream.read(&mut tmp) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        buf.extend_from_slice(&tmp[..n]);
+                        let text = String::from_utf8_lossy(&buf);
+                        if let Some(hdr_end) = text.find("\r\n\r\n") {
+                            let cl = text
+                                .lines()
+                                .find(|l| l.to_ascii_lowercase().starts_with("content-length:"))
+                                .and_then(|l| l.split(':').nth(1))
+                                .and_then(|v| v.trim().parse::<usize>().ok())
+                                .unwrap_or(0);
+                            if buf.len() >= hdr_end + 4 + cl {
+                                break;
+                            }
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+            let text = String::from_utf8_lossy(&buf).into_owned();
+            let line = text.lines().next().unwrap_or("").to_string();
+            let body_bytes = text
+                .find("\r\n\r\n")
+                .map(|i| buf[i + 4..].to_vec())
+                .unwrap_or_default();
+            let dispatch = line.starts_with("POST /api/dispatch ");
+            record.lock().unwrap().push((line, body_bytes));
+            let (status, body) = if dispatch { &v5 } else { &v4 };
+            let reason = match status {
+                200 => "OK",
+                400 => "Bad Request",
+                404 => "Not Found",
+                500 => "Internal Server Error",
+                _ => "Error",
+            };
+            let resp = format!(
+                "HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = stream.write_all(resp.as_bytes());
+        }
+    });
+    WireStub { port, wire }
+}
+
+/// What a case should have put on the wire.
+enum WireExpect<'a> {
+    /// The CLI refused before posting: no request at all.
+    Nothing,
+    /// One (v4, v5) pair: v4's request line, and v5's body prefix (everything
+    /// v5 puts before v4's first key, without the trailing comma).
+    Pair {
+        v4_line: &'a str,
+        v5_prefix: &'a str,
+    },
+}
+
+impl Ctx {
+    /// `case_with`, then R-I's wire assertion over what the stub recorded.
+    fn case_wire(
+        &mut self,
+        name: &str,
+        args: &[String],
+        opts: CaseOpts,
+        stub: &WireStub,
+        expect: WireExpect,
+    ) {
+        stub.wire.lock().unwrap().clear();
+        self.case_with(name, args, opts);
+        let captured: Vec<(String, Vec<u8>)> = std::mem::take(&mut *stub.wire.lock().unwrap());
+        match expect {
+            WireExpect::Nothing => {
+                if !captured.is_empty() {
+                    self.failures.push(format!(
+                        "[{name}] expected no request, got {}",
+                        captured.len()
+                    ));
+                }
+            }
+            WireExpect::Pair { v4_line, v5_prefix } => {
+                if captured.len() != 2 {
+                    self.failures.push(format!(
+                        "[{name}] expected one (v4, v5) request pair, got {}",
+                        captured.len()
+                    ));
+                    return;
+                }
+                let (l4, b4) = &captured[0];
+                let (l5, b5) = &captured[1];
+                if l4 != &format!("{v4_line} HTTP/1.1") {
+                    self.failures.push(format!(
+                        "[{name}] v4 request line {l4:?}, wanted {v4_line:?}"
+                    ));
+                }
+                if l5 != "POST /api/dispatch HTTP/1.1" {
+                    self.failures
+                        .push(format!("[{name}] v5 request line {l5:?}"));
+                }
+                let b4 = String::from_utf8_lossy(b4);
+                let want = if b4 == "{}" {
+                    format!("{v5_prefix}}}")
+                } else {
+                    format!("{v5_prefix},{}", &b4[1..])
+                };
+                let got = String::from_utf8_lossy(b5);
+                if got != want {
+                    self.failures.push(format!(
+                        "[{name}] wire body differs (R-I)\n--- v4 ---\n{b4}\n--- v5 want ---\n{want}\n--- v5 got ---\n{got}"
+                    ));
+                }
+            }
+        }
+    }
+}
+
 /// A one-answer HTTP stub: every request gets the same status and body.
 ///
 /// `db characters archive|rehydrate|export` post the SAME v4 URLs from both
@@ -4549,6 +4729,560 @@ fn cli_differential() {
                 "--port".to_string(),
                 dead_port.to_string(),
             ],
+            recall_opts(),
+        );
+    }
+
+    // ---------------- recall-replay grown (P4.D269: `3f7320138` + `f7d8064be`) ----------------
+    {
+        use quilltap_core::api::types::{ErrorKind, Response};
+        let s = |v: &[&str]| -> Vec<String> { v.iter().map(|x| x.to_string()).collect() };
+        let recall_opts = || CaseOpts {
+            normalize_recall: true,
+            ..Default::default()
+        };
+        const CID: &str = "cd000000-0000-4000-8000-000000000001";
+        let v4_line = format!("POST /api/v1/chats/{CID}?action=recall-replay");
+        let v5_prefix = format!("{{\"type\":\"chatRecallReplay\",\"chatId\":\"{CID}\"");
+        let pair = || WireExpect::Pair {
+            v4_line: &v4_line,
+            v5_prefix: &v5_prefix,
+        };
+        // A result grown by `f7d8064be`'s six keys (v4's order: after newPath).
+        let grown = |extra: &str| -> String {
+            let base = RECALL_CANNED_RESULT.strip_suffix('}').unwrap();
+            format!("{base},{extra}}}")
+        };
+        let replay_stub = |result: String| {
+            let v5 = dispatch_ok(Response::RecallReplay(
+                serde_json::from_str(&result).unwrap(),
+            ));
+            spawn_wire_stub((200, result), v5)
+        };
+
+        // The three table shapes.
+        for (name, result) in [
+            (
+                "recall-replay table defaults",
+                grown(
+                    r#""oldHeadSize":5,"newHeadSize":7,"tuning":"defaults","signalsPinned":false,"asOf":null,"excludedAfterAsOf":0"#,
+                ),
+            ),
+            (
+                "recall-replay table pinned as-of tuned",
+                grown(
+                    r#""oldHeadSize":5,"newHeadSize":12,"tuning":"cap=1.6 gate abs=0.45","signalsPinned":true,"asOf":"2026-06-10T08:00:00.000Z","excludedAfterAsOf":3"#,
+                ),
+            ),
+            (
+                "recall-replay table as-of without count",
+                grown(
+                    r#""oldHeadSize":5,"newHeadSize":5,"tuning":null,"signalsPinned":1,"asOf":"2026-06-10T08:00:00.000Z""#,
+                ),
+            ),
+            (
+                "recall-replay table old server",
+                RECALL_CANNED_RESULT.to_string(),
+            ),
+        ] {
+            let stub = replay_stub(result);
+            let port = stub.port.to_string();
+            ctx.case_wire(
+                name,
+                &s(&["recall-replay", CID, "--port", &port]),
+                recall_opts(),
+                &stub,
+                pair(),
+            );
+        }
+
+        // One stub for every posting arm below.
+        let stub = replay_stub(grown(
+            r#""oldHeadSize":5,"newHeadSize":7,"tuning":"defaults","signalsPinned":false,"asOf":null,"excludedAfterAsOf":0"#,
+        ));
+        let port = stub.port.to_string();
+
+        // --memory-budget refusals (PLAIN, no colour) — nothing posted.
+        for (name, value) in [
+            ("abc", Some("abc")),
+            ("zero", Some("0")),
+            ("fraction", Some("1.5")),
+            ("negative", Some("-3")),
+            ("empty", Some("")),
+            ("infinity", Some("Infinity")),
+            ("negative hex", Some("-0x10")),
+            ("missing", None),
+        ] {
+            let mut args = s(&["recall-replay", CID, "--port", &port, "--memory-budget"]);
+            if let Some(v) = value {
+                args.push(v.to_string());
+            }
+            ctx.case_wire(
+                &format!("recall-replay memory-budget {name}"),
+                &args,
+                recall_opts(),
+                &stub,
+                WireExpect::Nothing,
+            );
+        }
+        // --memory-budget accepts — posted, body parity checked.
+        for (name, value) in [
+            ("1e3", "1e3"),
+            ("hex", "0x10"),
+            ("binary", "0b11"),
+            ("leading space", " 12"),
+            ("trailing dot", "5."),
+            ("plain", "4000"),
+        ] {
+            ctx.case_wire(
+                &format!("recall-replay memory-budget {name}"),
+                &s(&[
+                    "recall-replay",
+                    CID,
+                    "--port",
+                    &port,
+                    "--memory-budget",
+                    value,
+                ]),
+                recall_opts(),
+                &stub,
+                pair(),
+            );
+        }
+
+        // --tuning: V8's parse messages; raw forwarding; the trailing flag.
+        for (name, value) in [
+            ("bad json brace", "{bad"),
+            ("bad json trailing comma", "[1,]"),
+            ("bad json trailing text", "{\"boostCap\":1}x"),
+            ("bad json empty", ""),
+            ("bad json bare word", "nul"),
+            ("bad json unterminated string", "{\"a\":\"b"),
+        ] {
+            ctx.case_wire(
+                &format!("recall-replay tuning {name}"),
+                &s(&["recall-replay", CID, "--port", &port, "--tuning", value]),
+                recall_opts(),
+                &stub,
+                WireExpect::Nothing,
+            );
+        }
+        for (name, value) in [
+            (
+                "object",
+                r#"{"boostGateAbs":0.450,"boostCap":1.0,"multipliers":{"past":-0,"ctx":1e2}}"#,
+            ),
+            ("array", "[1,2.50]"),
+            ("null", "null"),
+            ("string", "\"defaults\""),
+        ] {
+            ctx.case_wire(
+                &format!("recall-replay tuning {name}"),
+                &s(&["recall-replay", CID, "--port", &port, "--tuning", value]),
+                recall_opts(),
+                &stub,
+                pair(),
+            );
+        }
+        ctx.case_wire(
+            "recall-replay tuning trailing flag",
+            &s(&["recall-replay", CID, "--port", &port, "--tuning"]),
+            recall_opts(),
+            &stub,
+            pair(),
+        );
+        ctx.case_wire(
+            "recall-replay tuning both",
+            &s(&[
+                "recall-replay",
+                CID,
+                "--port",
+                &port,
+                "--tuning",
+                "{}",
+                "--tuning-file",
+                "/x.json",
+            ]),
+            recall_opts(),
+            &stub,
+            WireExpect::Nothing,
+        );
+
+        // --tuning-file / --signals-from over real files (absolute paths, the
+        // same on both sides, so the sentences that name them compare raw).
+        let files = tempfile::tempdir().unwrap();
+        let fdir = files.path().to_string_lossy().into_owned();
+        let write = |name: &str, text: &str| -> String {
+            let p = files.path().join(name);
+            std::fs::write(&p, text).unwrap();
+            p.to_string_lossy().into_owned()
+        };
+        let tuning_ok = write(
+            "tuning-ok.json",
+            "{\"boostCap\":1.6,\"multipliers\":{\"past\":1.0}}\n",
+        );
+        let tuning_bad = write("tuning-bad.json", "{\"boostCap\":}\n");
+        let tuning_bom = write("tuning-bom.json", "\u{feff}{\"boostCap\":1.6}");
+        let tuning_latin1 = files.path().join("tuning-latin1.json");
+        std::fs::write(&tuning_latin1, b"{\"label\":\"caf\xe9\"}").unwrap();
+        let tuning_latin1 = tuning_latin1.to_string_lossy().into_owned();
+        let missing = format!("{fdir}/no-such-file.json");
+        let locked = write("locked.json", "{}");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        }
+        for (name, path, posts) in [
+            ("missing", missing.as_str(), false),
+            ("directory", fdir.as_str(), false),
+            ("bad json", tuning_bad.as_str(), false),
+            ("bom", tuning_bom.as_str(), false),
+            ("unreadable", locked.as_str(), false),
+            ("lossy utf8", tuning_latin1.as_str(), true),
+            ("ok", tuning_ok.as_str(), true),
+        ] {
+            ctx.case_wire(
+                &format!("recall-replay tuning-file {name}"),
+                &s(&["recall-replay", CID, "--port", &port, "--tuning-file", path]),
+                recall_opts(),
+                &stub,
+                if posts { pair() } else { WireExpect::Nothing },
+            );
+        }
+
+        let signals = r#"{"keywords":["quay"],"temporal":"past","context":"history","paraphrase":"They remember the quay.","retrospective":true,"timeRange":null,"entities":["Gullwing Quay"],"weight":1.0}"#;
+        let sig_ok = write(
+            "sig-ok.json",
+            &format!("{{\"chatId\":\"{CID}\",\"turnIndex\":5,\"signals\":{signals}}}"),
+        );
+        let sig_envelope = write(
+            "sig-envelope.json",
+            &format!("{{\"data\":{{\"chatId\":\"{CID}\",\"turnIndex\":5,\"signals\":{signals}}}}}"),
+        );
+        let sig_none = write(
+            "sig-none.json",
+            &format!("{{\"chatId\":\"{CID}\",\"signals\":null}}"),
+        );
+        let sig_zero = write("sig-zero.json", "{\"signals\":0}");
+        let sig_other_chat = write(
+            "sig-other-chat.json",
+            &format!(
+                "{{\"chatId\":\"cd000000-0000-4000-8000-0000000000ff\",\"signals\":{signals}}}"
+            ),
+        );
+        let sig_numeric_chat = write(
+            "sig-numeric-chat.json",
+            &format!("{{\"chatId\":7,\"signals\":{signals}}}"),
+        );
+        let sig_null_turn = write(
+            "sig-null-turn.json",
+            &format!("{{\"chatId\":\"{CID}\",\"turnIndex\":null,\"signals\":{signals}}}"),
+        );
+        let sig_string_turn = write(
+            "sig-string-turn.json",
+            &format!("{{\"turnIndex\":\"5\",\"signals\":{signals}}}"),
+        );
+        let sig_null = write("sig-null.json", "null");
+        let sig_number = write("sig-number.json", "42");
+        for (name, path, turn, posts) in [
+            ("missing", missing.as_str(), None, false),
+            ("no signals", sig_none.as_str(), None, false),
+            ("falsy signals", sig_zero.as_str(), None, false),
+            ("other chat", sig_other_chat.as_str(), None, false),
+            ("numeric chat", sig_numeric_chat.as_str(), None, false),
+            ("other turn", sig_ok.as_str(), Some("4"), false),
+            ("null turn", sig_null_turn.as_str(), Some("4"), false),
+            ("string turn", sig_string_turn.as_str(), Some("5"), false),
+            ("null file", sig_null.as_str(), None, false),
+            ("number file", sig_number.as_str(), None, false),
+            ("envelope", sig_envelope.as_str(), Some("5"), true),
+            ("ok", sig_ok.as_str(), Some("5"), true),
+            ("ok no turn", sig_ok.as_str(), None, true),
+        ] {
+            let mut args = s(&[
+                "recall-replay",
+                CID,
+                "--port",
+                &port,
+                "--signals-from",
+                path,
+            ]);
+            if let Some(t) = turn {
+                args.extend(s(&["--turn", t]));
+            }
+            ctx.case_wire(
+                &format!("recall-replay signals-from {name}"),
+                &args,
+                recall_opts(),
+                &stub,
+                if posts { pair() } else { WireExpect::Nothing },
+            );
+        }
+        ctx.case_wire(
+            "recall-replay signals-from trailing flag",
+            &s(&["recall-replay", CID, "--port", &port, "--signals-from"]),
+            recall_opts(),
+            &stub,
+            pair(),
+        );
+        ctx.case_wire(
+            "recall-replay tuning error beats signals error",
+            &s(&[
+                "recall-replay",
+                CID,
+                "--port",
+                &port,
+                "--signals-from",
+                &missing,
+                "--tuning",
+                "{bad",
+            ]),
+            recall_opts(),
+            &stub,
+            WireExpect::Nothing,
+        );
+        ctx.case_wire(
+            "recall-replay as-of",
+            &s(&["recall-replay", CID, "--port", &port, "--as-of"]),
+            recall_opts(),
+            &stub,
+            pair(),
+        );
+        ctx.case_wire(
+            "recall-replay every flag",
+            &s(&[
+                "recall-replay",
+                CID,
+                "--port",
+                &port,
+                "--as-of",
+                "--turn",
+                "5",
+                "--char",
+                "c1000000-0000-4000-8000-0000000000e1",
+                "--limit",
+                "30",
+                "--memory-budget",
+                "8000",
+                "--tuning",
+                "{\"boostCap\":1.6}",
+                "--signals-from",
+                &sig_ok,
+                "--json",
+            ]),
+            recall_opts(),
+            &stub,
+            pair(),
+        );
+
+        // A 400 with `details`: a nested path, a numeric element, an empty one.
+        {
+            use quilltap_core::api::zod_issues::{key, zod_issue_details, ZodIssue};
+            let issues = vec![
+                ZodIssue::too_big_number(
+                    serde_json::json!(4),
+                    vec![key("tuning"), key("multipliers"), key("past")],
+                ),
+                ZodIssue::invalid_type(
+                    "string",
+                    vec![key("signals"), key("keywords"), serde_json::json!(0)],
+                    Some(&serde_json::json!(5)),
+                ),
+                ZodIssue::invalid_type("object", vec![], None),
+            ];
+            let details = zod_issue_details(&issues);
+            let v4 =
+                serde_json::json!({ "error": "Validation error", "details": details }).to_string();
+            let stub =
+                spawn_wire_stub((400, v4), dispatch_err(Response::validation_error(details)));
+            let port = stub.port.to_string();
+            ctx.case_wire(
+                "recall-replay details",
+                &s(&[
+                    "recall-replay",
+                    CID,
+                    "--port",
+                    &port,
+                    "--tuning",
+                    "{\"multipliers\":{\"past\":9}}",
+                ]),
+                recall_opts(),
+                &stub,
+                pair(),
+            );
+            // The plain-refusal arm through the core-built dispatch envelope.
+            let stub = spawn_wire_stub(
+                (400, "{\"error\":\"asOf must be a boolean\"}".to_string()),
+                dispatch_err(Response::error(
+                    ErrorKind::BadRequest,
+                    "asOf must be a boolean",
+                )),
+            );
+            let port = stub.port.to_string();
+            ctx.case_wire(
+                "recall-replay plain refusal",
+                &s(&["recall-replay", CID, "--port", &port, "--as-of"]),
+                recall_opts(),
+                &stub,
+                pair(),
+            );
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o600));
+        }
+    }
+
+    // ---------------- anchor-probe (P4.D269) ----------------
+    {
+        use quilltap_core::api::types::{ErrorKind, Response};
+        let s = |v: &[&str]| -> Vec<String> { v.iter().map(|x| x.to_string()).collect() };
+        let recall_opts = || CaseOpts {
+            normalize_recall: true,
+            ..Default::default()
+        };
+        const CHAR: &str = "c1000000-0000-4000-8000-0000000000e1";
+        let v4_line = "POST /api/v1/memories?action=anchor-gate-probe";
+        let v5_prefix = "{\"type\":\"memoryAnchorGateProbe\"";
+        let pair = || WireExpect::Pair { v4_line, v5_prefix };
+
+        ctx.case("anchor-probe help", &["anchor-probe", "--help"]);
+        ctx.case("anchor-probe -h", &["anchor-probe", "-h"]);
+        ctx.case("anchor-probe no id", &["anchor-probe"]);
+        ctx.case("anchor-probe two ids", &["anchor-probe", "a", "b"]);
+        ctx.case(
+            "anchor-probe bad limit zero",
+            &["anchor-probe", CHAR, "--limit", "0"],
+        );
+        ctx.case(
+            "anchor-probe bad limit 201",
+            &["anchor-probe", CHAR, "--limit", "201"],
+        );
+        ctx.case(
+            "anchor-probe bad limit nan",
+            &["anchor-probe", CHAR, "--limit", "abc"],
+        );
+        ctx.case(
+            "anchor-probe bad limit missing",
+            &["anchor-probe", CHAR, "--limit"],
+        );
+        ctx.case(
+            "anchor-probe bad port",
+            &["anchor-probe", CHAR, "--port", "0"],
+        );
+        ctx.case(
+            "anchor-probe unknown option",
+            &["anchor-probe", CHAR, "--frob"],
+        );
+        ctx.case(
+            "anchor-probe unknown option before help",
+            &["anchor-probe", "--frob", "--help"],
+        );
+
+        let canned = r#"{"characterId":"c1000000-0000-4000-8000-0000000000e1","sampled":7,"anchoredRows":5,"thresholds":{"reinforce":0.85,"nearDuplicate":0.9},"anchored":{"reinforce":2,"nearDuplicate":1},"anchorFree":{"reinforce":3,"nearDuplicate":1},"crossedOnlyWithoutAnchors":1,"embeddingsGenerated":17,"rows":[{"memoryId":"m1","summary":"Skipped: the store was another width.","createdAt":"2026-06-01T00:00:00.000Z","hasAnchorLine":true,"anchoredBest":null,"anchoredBestId":null,"anchorFreeBest":null,"anchorFreeBestId":null},{"memoryId":"m2","summary":"Bought the brass sextant.","createdAt":"2026-06-02T00:00:00.000Z","hasAnchorLine":true,"anchoredBest":0.912345,"anchoredBestId":"m9","anchorFreeBest":0.8,"anchorFreeBestId":"m9"},{"memoryId":"m3","summary":"The tide ledger.","createdAt":"2026-06-03T00:00:00.000Z","hasAnchorLine":false,"anchoredBest":0.5,"anchoredBestId":"m8","anchorFreeBest":0.4996,"anchorFreeBestId":"m8"},{"memoryId":"m4","summary":"The\tharbour\n\nmaster kept ledgers of every brass sextant sold😀 at Gullwing Quay","createdAt":"2026-06-04T00:00:00.000Z","hasAnchorLine":true,"anchoredBest":0.8,"anchoredBestId":"m7","anchorFreeBest":0.87,"anchorFreeBestId":"m7"},{"memoryId":"m5","summary":"","createdAt":"2026-06-05T00:00:00.000Z","hasAnchorLine":true,"anchoredBest":0.7,"anchoredBestId":"m6","anchorFreeBest":0.7,"anchorFreeBestId":"m6"},{"memoryId":"m6","summary":"Anchored only.","createdAt":"2026-06-06T00:00:00.000Z","hasAnchorLine":true,"anchoredBest":0.9,"anchoredBestId":"m5","anchorFreeBest":null,"anchorFreeBestId":null},{"memoryId":"m7","summary":"Both above.","createdAt":"2026-06-07T00:00:00.000Z","hasAnchorLine":true,"anchoredBest":0.95,"anchoredBestId":"m4","anchorFreeBest":0.97,"anchorFreeBestId":"m4"}]}"#;
+        let empty = r#"{"characterId":"c1000000-0000-4000-8000-0000000000f1","sampled":0,"anchoredRows":0,"thresholds":{"reinforce":0.85,"nearDuplicate":0.9},"anchored":{"reinforce":0,"nearDuplicate":0},"anchorFree":{"reinforce":0,"nearDuplicate":0},"crossedOnlyWithoutAnchors":0,"embeddingsGenerated":0,"rows":[]}"#;
+        let probe_stub = |result: &str| {
+            let v5 = dispatch_ok(Response::Memory(serde_json::from_str(result).unwrap()));
+            spawn_wire_stub((200, result.to_string()), v5)
+        };
+
+        let stub = probe_stub(canned);
+        let port = stub.port.to_string();
+        ctx.case_wire(
+            "anchor-probe table",
+            &s(&["anchor-probe", CHAR, "--port", &port]),
+            recall_opts(),
+            &stub,
+            pair(),
+        );
+        ctx.case_wire(
+            "anchor-probe json",
+            &s(&["anchor-probe", CHAR, "--port", &port, "--json"]),
+            recall_opts(),
+            &stub,
+            pair(),
+        );
+        for (name, value) in [
+            ("limit 20", "20"),
+            ("limit 1e2", "1e2"),
+            ("limit 200", "200"),
+        ] {
+            ctx.case_wire(
+                &format!("anchor-probe {name}"),
+                &s(&["anchor-probe", CHAR, "--port", &port, "--limit", value]),
+                recall_opts(),
+                &stub,
+                pair(),
+            );
+        }
+        let stub = probe_stub(empty);
+        let port = stub.port.to_string();
+        ctx.case_wire(
+            "anchor-probe empty rows",
+            &s(&["anchor-probe", CHAR, "--port", &port]),
+            recall_opts(),
+            &stub,
+            pair(),
+        );
+
+        // The refusals: 404, 500, a 400 (NO details lines), success:false, a
+        // non-JSON body.
+        {
+            use quilltap_core::api::zod_issues::{key, zod_issue_details, ZodIssue};
+            let details = zod_issue_details(&[ZodIssue::invalid_uuid(vec![key("characterId")])]);
+            for (name, v4, v5) in [
+                (
+                    "404",
+                    (404, "{\"error\":\"Character not found\"}".to_string()),
+                    dispatch_err(Response::error(ErrorKind::NotFound, "Character not found")),
+                ),
+                (
+                    "500",
+                    (500, "{\"error\":\"Anchor gate probe failed\"}".to_string()),
+                    dispatch_err(Response::error(
+                        ErrorKind::Internal,
+                        "Anchor gate probe failed",
+                    )),
+                ),
+                (
+                    "400",
+                    (
+                        400,
+                        serde_json::json!({ "error": "Validation error", "details": details })
+                            .to_string(),
+                    ),
+                    dispatch_err(Response::validation_error(details.clone())),
+                ),
+                (
+                    "success false",
+                    (200, "{\"success\":false,\"error\":\"nope\"}".to_string()),
+                    (200, "{\"success\":false,\"error\":\"nope\"}".to_string()),
+                ),
+                (
+                    "non-json",
+                    (502, "<html>bad gateway</html>".to_string()),
+                    (502, "<html>bad gateway</html>".to_string()),
+                ),
+            ] {
+                let stub = spawn_wire_stub(v4, v5);
+                let port = stub.port.to_string();
+                ctx.case_wire(
+                    &format!("anchor-probe {name}"),
+                    &s(&["anchor-probe", CHAR, "--port", &port]),
+                    recall_opts(),
+                    &stub,
+                    pair(),
+                );
+            }
+        }
+        let dead = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let dead_port = dead.local_addr().unwrap().port().to_string();
+        drop(dead);
+        ctx.case_with(
+            "anchor-probe unreachable",
+            &s(&["anchor-probe", CHAR, "--port", &dead_port]),
             recall_opts(),
         );
     }

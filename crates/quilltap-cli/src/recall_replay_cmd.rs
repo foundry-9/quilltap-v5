@@ -1,7 +1,10 @@
 //! `quilltap recall-replay <chatId>` — the §3 replay CLI (P4.d13; v4
 //! `packages/quilltap/lib/recall-replay-command.js`, ported line-for-line:
 //! flag parsing, the help text, the stderr progress line, the ANSI old/new
-//! candidate tables, `--json`).
+//! candidate tables, `--json`). P4.D269 grew it to v4 `01a83539d`'s shape
+//! (`3f7320138` + `f7d8064be`): `--memory-budget`, `--tuning` /
+//! `--tuning-file`, `--signals-from`, `--as-of`, the `Harness` and `Tuning`
+//! header lines, `, head N` in each path title, and the 400 `details` lines.
 //!
 //! Like v4's, this is a thin HTTP wrapper over the running server — v4 POSTs
 //! `/api/v1/chats/<id>?action=recall-replay`; v5 POSTs the same verb through
@@ -9,12 +12,22 @@
 //! `payload.data ?? payload` unwrap is v4's own line and handles both
 //! envelopes; the error-message extraction adds the dispatch envelope's
 //! `data.message` arm (v5's error shape — a documented adaptation, the
-//! rendering around it is byte-identical). No direct-core mode: v4's command
-//! has none (the replay needs the live host's cheap-LLM providers).
+//! rendering around it is byte-identical). The dispatch transport merges a
+//! validation refusal's `details` to the envelope's top level, so the
+//! per-issue lines read `payload.details` exactly as v4's do. No direct-core
+//! mode: v4's command has none (the replay needs the live host's cheap-LLM
+//! providers).
+//!
+//! The forwarded `tuning` / `signals` values are re-serialized JS-faithfully
+//! ([`nodefmt::js_faithful_json`]), so the posted body is v4's
+//! `JSON.stringify(body)` with v5's `type` + `chatId` in front (P4.D269 R-I —
+//! Tier R byte-checks it).
 
+use crate::http;
 use crate::nodefmt;
 use crate::nodefmt::slice_utf16;
 use crate::out;
+use serde_json::Value;
 
 const RESET: &str = "\x1b[0m";
 const BOLD: &str = "\x1b[1m";
@@ -24,38 +37,23 @@ const RED: &str = "\x1b[31m";
 const YELLOW: &str = "\x1b[33m";
 const CYAN: &str = "\x1b[36m";
 
-/// v4 `printRecallReplayHelp` — the template literal starts and ends with a
-/// newline and `console.log` appends one more (hence the double trailing).
-const HELP: &str = "
-Quilltap recall-replay Tool
-
-Usage: quilltap recall-replay <chatId> [options]
-
-Replays the per-turn memory recall for a chat turn against the running
-Quilltap server and prints the full candidate table twice — the pre-overhaul
-ranking and the episodic (retrospective/time-window/entity) ranking — so the
-recall constants can be tuned against real \"the character forgot\" turns.
-
-Options:
-      --turn <number>        1-based interchange to replay at (default: last)
-      --char <characterId>   Character whose memories are searched
-                             (default: first LLM-controlled participant)
-      --limit <number>       Candidate rows per path (default: 25, max: 100)
-      --port <number>        Server port for API calls (default: 3000)
-      --json                 Print the raw JSON result instead of tables
-  -h, --help                 Show this help
-
-Examples:
-  quilltap recall-replay <chatId>
-  quilltap recall-replay <chatId> --turn 42
-  quilltap recall-replay <chatId> --turn 42 --json > replay.json
-
-";
+/// v4 `printRecallReplayHelp` — a BYTE CAPTURE of `node
+/// packages/quilltap/bin/quilltap.js recall-replay --help` stdout at v4
+/// `01a83539d` (P4.D269 R-B). The template literal starts and ends with a
+/// newline and `console.log` appends one more; its `\`-continued example line
+/// is a JS line continuation, which the capture keeps exactly as Node prints it
+/// (an inline Rust literal would have to re-derive it).
+const HELP: &str = include_str!("help/recall_replay_help.txt");
 
 struct Flags {
     turn: Option<i64>,
     char_id: Option<String>,
     limit: Option<i64>,
+    memory_budget: Option<f64>,
+    tuning: Option<String>,
+    tuning_file: Option<String>,
+    signals_from: Option<String>,
+    as_of: bool,
     port: i64,
     json: bool,
     help: bool,
@@ -68,6 +66,11 @@ fn parse_flags(args: &[String]) -> (Flags, Vec<String>) {
         turn: None,
         char_id: None,
         limit: None,
+        memory_budget: None,
+        tuning: None,
+        tuning_file: None,
+        signals_from: None,
+        as_of: false,
         port: 3000,
         json: false,
         help: false,
@@ -102,6 +105,36 @@ fn parse_flags(args: &[String]) -> (Flags, Vec<String>) {
                     }
                 }
             }
+            "--memory-budget" => {
+                // v4 `Number(args[++i])` + `Number.isInteger(n) && n >= 1`
+                // (`Number(undefined)` is NaN; `' 12'`, `1e3`, `0x10`, `5.`
+                // are integers; `''` is 0).
+                i += 1;
+                let n = args
+                    .get(i)
+                    .map(|a| quilltap_core::jsnum::number_from_str(a))
+                    .unwrap_or(f64::NAN);
+                if !(n.is_finite() && n.trunc() == n && n >= 1.0) {
+                    out::elog("Error: --memory-budget must be a positive integer");
+                    out::exit(1);
+                }
+                flags.memory_budget = Some(n);
+            }
+            // The three value flags take `args[++i]` VERBATIM — a missing value
+            // leaves the flag undefined, i.e. not passed (no error).
+            "--tuning" => {
+                i += 1;
+                flags.tuning = args.get(i).cloned();
+            }
+            "--tuning-file" => {
+                i += 1;
+                flags.tuning_file = args.get(i).cloned();
+            }
+            "--signals-from" => {
+                i += 1;
+                flags.signals_from = args.get(i).cloned();
+            }
+            "--as-of" => flags.as_of = true,
             "--port" => {
                 i += 1;
                 let n = nodefmt::js_parse_int(args.get(i).map(String::as_str));
@@ -158,10 +191,15 @@ fn get_str<'a>(row: &'a serde_json::Value, key: &str) -> Option<&'a str> {
     row.get(key).and_then(serde_json::Value::as_str)
 }
 
-/// v4 `printPath`.
-fn print_path(label: &str, rows: &[serde_json::Value]) {
+/// v4 `printPath(label, rows, headSize)` — `, head N` only when the server
+/// sent a number (`typeof headSize === 'number'`; an old server sends none).
+fn print_path(label: &str, rows: &[serde_json::Value], head_size: Option<&Value>) {
+    let head = match head_size {
+        Some(Value::Number(_)) => format!(", head {}", nodefmt::js_string(head_size)),
+        _ => String::new(),
+    };
     out::log(&format!(
-        "\n{BOLD}{label}{RESET} ({} candidates)",
+        "\n{BOLD}{label}{RESET} ({} candidates{head})",
         rows.len()
     ));
     if rows.is_empty() {
@@ -228,50 +266,99 @@ fn print_path(label: &str, rows: &[serde_json::Value]) {
     }
 }
 
-/// Minimal HTTP/1.1 POST to localhost (JSON in/out, Connection: close). Kept
-/// dependency-free — the CLI links no async runtime or HTTP client.
-fn http_post_json(port: i64, path: &str, body: &str) -> Result<(u16, String), String> {
-    use std::io::{Read, Write};
-    let addr = format!("localhost:{port}");
-    let mut stream = std::net::TcpStream::connect(&addr).map_err(|e| e.to_string())?;
-    let req = format!(
-        "POST {path} HTTP/1.1\r\nHost: {addr}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-        body.len()
-    );
-    stream
-        .write_all(req.as_bytes())
-        .map_err(|e| e.to_string())?;
-    let mut raw = Vec::new();
-    stream.read_to_end(&mut raw).map_err(|e| e.to_string())?;
-    let text = String::from_utf8_lossy(&raw);
-    let mut parts = text.splitn(2, "\r\n\r\n");
-    let head = parts.next().unwrap_or("");
-    let mut payload = parts.next().unwrap_or("").to_string();
-    let status: u16 = head
-        .lines()
-        .next()
-        .and_then(|l| l.split_whitespace().nth(1))
-        .and_then(|s| s.parse().ok())
-        .ok_or_else(|| "malformed HTTP response".to_string())?;
-    // Minimal chunked-transfer decode (axum may chunk when no length is set).
-    if head
-        .lines()
-        .any(|l| l.to_ascii_lowercase().starts_with("transfer-encoding:") && l.contains("chunked"))
-    {
-        let mut decoded = String::new();
-        let mut rest = payload.as_str();
-        while let Some(nl) = rest.find("\r\n") {
-            let size = usize::from_str_radix(rest[..nl].trim(), 16).unwrap_or(0);
-            if size == 0 {
-                break;
-            }
-            let start = nl + 2;
-            decoded.push_str(rest.get(start..start + size).unwrap_or(""));
-            rest = rest.get(start + size + 2..).unwrap_or("");
+/// v4 `readJson(text, what)`: `JSON.parse` or the RED refusal carrying V8's
+/// message (`jsstr::v8_json_parse_message`; where V8 would ACCEPT what serde
+/// refuses — `1e400`, a lone surrogate — serde's message stands in, the
+/// recorded class).
+fn read_json(text: &str, what: &str) -> Value {
+    match serde_json::from_str::<Value>(text) {
+        Ok(v) => nodefmt::js_faithful_json(&v),
+        Err(e) => {
+            let message =
+                quilltap_core::jsstr::v8_json_parse_message(text).unwrap_or_else(|| e.to_string());
+            out::elog(&format!(
+                "{RED}Could not parse {what} as JSON: {message}{RESET}"
+            ));
+            out::exit(1);
         }
-        payload = decoded;
     }
-    Ok((status, payload))
+}
+
+/// v4 `readJsonFile(path, what)` — Node's `readFileSync(path, 'utf8')`, then
+/// [`read_json`] naming `<what> <path>`.
+fn read_json_file(path: &str, what: &str) -> Value {
+    match nodefmt::node_read_file_utf8(path) {
+        Ok(text) => read_json(&text, &format!("{what} {path}")),
+        Err(message) => {
+            out::elog(&format!(
+                "{RED}Could not read {what} {path}: {message}{RESET}"
+            ));
+            out::exit(1);
+        }
+    }
+}
+
+/// v4 `loadTuning(flags)` — the tuning object from `--tuning` or
+/// `--tuning-file` (never both; that refusal is PLAIN, no colour).
+fn load_tuning(flags: &Flags) -> Option<Value> {
+    if flags.tuning.is_some() && flags.tuning_file.is_some() {
+        out::elog("Error: pass --tuning or --tuning-file, not both");
+        out::exit(1);
+    }
+    if let Some(text) = &flags.tuning {
+        return Some(read_json(text, "--tuning"));
+    }
+    flags
+        .tuning_file
+        .as_deref()
+        .map(|path| read_json_file(path, "--tuning-file"))
+}
+
+/// v4 `loadSignals(path, chatId, turn)` — the signals saved in a previous
+/// `--json` replay. Refuses a file from another chat or turn (reusing its
+/// signals would replay a different question).
+fn load_signals(path: &str, chat_id: &str, turn: Option<i64>) -> Value {
+    let saved = read_json_file(path, "--signals-from");
+    // `saved.data ?? saved` — a file holding `null` throws a TypeError that
+    // the launcher's generic catch prints as `Error: <message>`.
+    if saved.is_null() {
+        out::elog("Error: Cannot read properties of null (reading 'data')");
+        out::exit(1);
+    }
+    let result = match saved.get("data") {
+        Some(d) if !d.is_null() => d.clone(),
+        _ => saved,
+    };
+    if !nodefmt::js_truthy(result.get("signals")) {
+        out::elog(&format!(
+            "{RED}{path} has no saved signals (its distillation failed); replay without --signals-from{RESET}"
+        ));
+        out::exit(1);
+    }
+    let saved_chat = result.get("chatId");
+    if nodefmt::js_truthy(saved_chat) && saved_chat != Some(&Value::String(chat_id.to_string())) {
+        out::elog(&format!(
+            "{RED}{path} is a replay of chat {}, not {chat_id}{RESET}",
+            nodefmt::js_string(saved_chat)
+        ));
+        out::exit(1);
+    }
+    if let Some(turn) = turn {
+        // `result.turnIndex !== undefined && result.turnIndex !== turn` — a
+        // strict compare: `null` and `"5"` both mismatch.
+        let saved_turn = result.get("turnIndex");
+        let same = saved_turn
+            .and_then(Value::as_f64)
+            .is_some_and(|t| t == turn as f64);
+        if saved_turn.is_some() && !same {
+            out::elog(&format!(
+                "{RED}{path} is a replay of turn {}, not {turn}{RESET}",
+                nodefmt::js_string(saved_turn)
+            ));
+            out::exit(1);
+        }
+    }
+    result.get("signals").cloned().unwrap_or(Value::Null)
 }
 
 pub fn run(args: &[String]) {
@@ -310,13 +397,33 @@ pub fn run(args: &[String]) {
     if let Some(limit) = flags.limit {
         body.insert("limit".to_string(), serde_json::Value::from(limit));
     }
+    if let Some(budget) = flags.memory_budget {
+        body.insert(
+            "memoryBudget".to_string(),
+            nodefmt::js_number_to_json(budget),
+        );
+    }
+    // v4's order: the tuning's refusals precede the signals'; both precede the
+    // stderr line.
+    if let Some(tuning) = load_tuning(&flags) {
+        body.insert("tuning".to_string(), tuning);
+    }
+    if let Some(path) = &flags.signals_from {
+        body.insert(
+            "signals".to_string(),
+            load_signals(path, chat_id, flags.turn),
+        );
+    }
+    if flags.as_of {
+        body.insert("asOf".to_string(), serde_json::Value::Bool(true));
+    }
     let body_text = serde_json::Value::Object(body).to_string();
 
     out::write_stderr(&format!(
         "{BOLD}Replaying recall{RESET} for chat {DIM}{chat_id}{RESET} via {DIM}{url}{RESET}\n"
     ));
 
-    let (status, payload_text) = match http_post_json(flags.port, "/api/dispatch", &body_text) {
+    let (status, payload_text) = match http::post(flags.port, "/api/dispatch", Some(&body_text)) {
         Ok(r) => r,
         Err(message) => {
             out::elog(&format!(
@@ -329,7 +436,8 @@ pub fn run(args: &[String]) {
     };
 
     let payload: serde_json::Value = match serde_json::from_str(&payload_text) {
-        Ok(v) => v,
+        // `res.json()` is `JSON.parse`: re-shape the numbers the JS way.
+        Ok(v) => nodefmt::js_faithful_json(&v),
         Err(_) => {
             out::elog(&format!(
                 "{RED}Server returned a non-JSON response (status {status}){RESET}"
@@ -357,6 +465,40 @@ pub fn run(args: &[String]) {
         out::elog(&format!(
             "{RED}Replay failed (status {status}): {message}{RESET}"
         ));
+        // v4: `Array.isArray(payload?.details)` → one uncoloured line per
+        // issue, `  ${(issue.path || []).join('.') || '(body)'}: ${issue.message}`.
+        if let Some(details) = payload.get("details").and_then(Value::as_array) {
+            for issue in details {
+                if issue.is_null() {
+                    // `null.path` throws into the launcher's generic catch.
+                    out::elog("Error: Cannot read properties of null (reading 'path')");
+                    out::exit(1);
+                }
+                // `Array#join('.')`: each element through `String`, a `null`
+                // element empty. (A truthy NON-array `path` would throw in v4;
+                // v5's server never sends one — out of corpus.)
+                let path = match issue.get("path") {
+                    Some(Value::Array(items)) => items
+                        .iter()
+                        .map(|p| match p {
+                            Value::Null => String::new(),
+                            other => nodefmt::js_string(Some(other)),
+                        })
+                        .collect::<Vec<_>>()
+                        .join("."),
+                    _ => String::new(),
+                };
+                let path = if path.is_empty() {
+                    "(body)".to_string()
+                } else {
+                    path
+                };
+                out::elog(&format!(
+                    "  {path}: {}",
+                    nodefmt::js_string(issue.get("message"))
+                ));
+            }
+        }
         out::exit(1);
     }
 
@@ -434,6 +576,35 @@ pub fn run(args: &[String]) {
         }
     }
 
+    // v4 `f7d8064be`: the harness + tuning lines.
+    let pinned = if nodefmt::js_truthy(result.get("signalsPinned")) {
+        format!("{CYAN}pinned{RESET}")
+    } else {
+        format!("{DIM}fresh distillation{RESET}")
+    };
+    let as_of = if nodefmt::js_truthy(result.get("asOf")) {
+        format!(
+            "{CYAN}as of {}{RESET} {DIM}({} later memories left out){RESET}",
+            nodefmt::js_string(result.get("asOf")),
+            nodefmt::js_string(result.get("excludedAfterAsOf"))
+        )
+    } else {
+        format!("{DIM}whole corpus{RESET}")
+    };
+    out::log(&format!(
+        "{BOLD}Harness{RESET}   signals {pinned} · {as_of}"
+    ));
+    let tuning = result.get("tuning");
+    let tuning =
+        if tuning == Some(&Value::String("defaults".to_string())) || !nodefmt::js_truthy(tuning) {
+            format!("{DIM}defaults{RESET}")
+        } else {
+            format!("{YELLOW}{}{RESET}", nodefmt::js_string(tuning))
+        };
+    out::log(&format!(
+        "{BOLD}Tuning{RESET}    {tuning} {DIM}(new path only){RESET}"
+    ));
+
     let rows = |k: &str| {
         result
             .get(k)
@@ -441,10 +612,15 @@ pub fn run(args: &[String]) {
             .cloned()
             .unwrap_or_default()
     };
-    print_path("OLD PATH (episodic signals inert)", &rows("oldPath"));
+    print_path(
+        "OLD PATH (episodic signals inert)",
+        &rows("oldPath"),
+        result.get("oldHeadSize"),
+    );
     print_path(
         "NEW PATH (retrospective/window/entities live)",
         &rows("newPath"),
+        result.get("newHeadSize"),
     );
     out::log("");
     out::exit(0);

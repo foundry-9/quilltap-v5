@@ -1,13 +1,12 @@
 //! The CLI's one HTTP client: a minimal HTTP/1.1 POST to localhost, kept
 //! dependency-free (the binary links no async runtime and no HTTP client).
 //!
-//! Used by the `db characters` archive/rehydrate/export proxies (P4.D66).
-//! ⚠ `recall_replay_cmd.rs` still carries its OWN TcpStream POST + chunked
-//! decoder (`http_post_json`) — a pre-existing near-duplicate this module was
-//! wrongly recorded as replacing; consolidating it is a post-port cleanup
-//! (the recall-replay Tier R cases pin its behavior, so the fold must re-run
-//! them). A `None` body sends no `Content-Type` and no bytes, which is what
-//! v4's bare `fetch(url, { method: 'POST' })` puts on the wire.
+//! Used by the `db characters` archive/rehydrate/export proxies (P4.D66),
+//! `recall-replay` and `anchor-probe` (P4.D269 folded `recall_replay_cmd.rs`'s
+//! private TcpStream POST + chunked decoder into this one, re-running every
+//! recall-replay Tier R case). A `None` body sends no `Content-Type` and no
+//! bytes, which is what v4's bare `fetch(url, { method: 'POST' })` puts on the
+//! wire.
 
 use std::io::{Read, Write};
 
