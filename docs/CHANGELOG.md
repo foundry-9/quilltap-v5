@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-10 — docs(porting): P4.D266 lane close — M5, the gate, HANDOFFs and corrections
+
+_Docs-only change._
+
+P4.D266 is marked LANE COMPLETE. Its lane record covers:
+
+- the M5 measurement of P4.D270's families (every red has a P4.D270 cause);
+- the full workspace gate: 709 binaries, 4,705 passed, and the 3 reds — two by design, one fixed in `c6fd8dd1a`;
+- the named ruled-divergence rows;
+- the R-B and R-E measurements;
+- the HANDOFF(P4.D268) frozen-archive probes;
+- the corrections to the order.
+
 #### 2026-10-10 — fix(memory): P4.D266 the retention cutoff renders through the clock's ISO helper
 
 _Versions: core 0.0.1273._

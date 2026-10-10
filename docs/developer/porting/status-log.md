@@ -175616,3 +175616,45 @@ All are green BY NAME from the pin:
   - the booleans `mergeSimilar` / `dryRun`.
 - A failure answers 400 `Validation error` (the recorded no-details class). The old `Invalid housekeeping options: …` serde refusal can no longer be reached.
 - `memories-config.test.ts` + the Rust family gain `housekeep_invalid_max_memories`, `housekeep_invalid_merge_threshold` and `housekeep_invalid_character_id`. All three are green (400). On the pre-change code they would have answered 200, 200 and 404.
+
+### P4.D266 M5 — the P4.D270 families measured on this branch (§R.13(b)/(f) — not regenerated in place, not edited)
+- Regenerated from the pin through hand-copied recipes with every `/tmp` path under `/tmp/p4d266/m5/`. Each family was then run on this branch:
+  - `carina_memory_extraction_tier3`: **green**.
+  - `fold_episode_tier3`: **green** (results + the `[FoldEpisodePass]` lines + 3 tables).
+  - `context_summary_service_tier3`: **RED on `chats`**. The first divergence is `otherExtractionWatermarkMessageId` (v4 writes `dd000001-…-000000000015`; this branch leaves NULL). That is P4.D270's OTHER-extraction watermark writer.
+  - `memory_pipeline_jobs_tier3`: **RED on `chats`**. Index 5/6 `otherExtractionWatermarkMessageId` is NULL vs `e600000a…` / `e7000002…` — the same P4.D270 cause.
+  - `memory_processor_tier3`: **RED on the result**. It reports `memoriesCreatedCount` 6 vs v4's 3 (the hybrid OTHER pass, a P4.D270 cause). `memoriesReinforcedCount` 1 = 1 and `reinforcedMemoryIds` agree.
+- **This lane's share:** the oracles' memory dumps carry rows with `reinforcementCount >= 2`: context-summary 1, pipeline-jobs 1, processor 2, carina 0, fold-episode 0. That is where the SKIP-band count write and the REINFORCE count can show.
+  - Each red family stops at its FIRST red table (`chats` or the result), so the `memories` comparison is not reached on this branch. The per-row attribution of those counts is left to the union.
+  - Every red above has a P4.D270 cause. A family both lanes move is green only on the union (§R.13).
+
+### P4.D266 lane close — the gate, every record the order asked for, the versions
+- **Gate (2026-10-09 23:31 → 2026-10-10 02:29 CDT):** `cargo test --workspace --no-fail-fast` with `CARGO_INCREMENTAL=0`, `QT_V4_CHECKOUT`/`QT_V4_ROOT` = the pin, and every owned family's oracle env set. **709 binaries / 4,705 passed / 3 failed / 3 ignored, zero `SKIP`.** Full log `/tmp/p4d266/gate-workspace.log`. The 3 reds:
+  - `cli_differential`: exactly the 7 rows `main help`, `completion bash|zsh|fish`, `recall-replay help|no chat|table`. By design, owner P4.D269 (§R.13(e)).
+  - `qtap_schema_embed_guard`: 102,523 vs 101,092 bytes. By design, owner P4.D272.
+  - `host_zone_sites_census`: **this lane's — fixed** (`c6fd8dd1a`). `js_iso_string` had done its own `civil_from_days` maths in `housekeeping.rs`, and now goes through `clock::iso_from_unix_ms`. Afterwards the census is 6/6, the housekeeping units 15/15, the family green, the host binary 6/6, and clippy/fmt clean. **The workspace gate was NOT re-run in full after this last commit**: it is a one-function change, and every binary that touches it was re-run by name.
+- **Green by name in the gate:**
+  - the live-checkout guards against the pin: `public_schemas_vendor_guard`, `builtin_prompt_templates_guard`, `provider_sdk_version_guard`, `zod_version_guard`;
+  - `activity_span_sites_guard`; `job_runner`'s `end_to_end_real_handler_dispatch_and_complete` (UNEDITED);
+  - `memory_merge_plan`, `memory_gate_tier3`, `memory_watermark_tier3`, `memory_housekeeping_tier2`, `memory_dedup`, `memories_routes` (ALL rows, incl. list/search — nothing red for P4.D269 on this branch), `memory_name_helpers`, `extract_novel_details`.
+- fmt, clippy (both feature sets) and `recipe_sweep.py --self-test` are clean. `--collisions` shows none on this lane's paths.
+- **Ruled divergences landed as named rows (R-A):** `RETENTION_DELETES_SUPERSEDED_DIGEST` (the housekeeping H7 `d7000002`), `DEDUP_CROSSES_TIERS` and `DEDUP_DELETES_DIGEST` (dedup plants D/E). Each is faithful to v4 at `01a83539d`, and a v4 fix flips its row. All are v4-filing candidates for the human.
+- **R-B (NO-PORT, measured):** a fresh `CharacterVectorStore::load(…).is_hot` answers `false` after a demotion and `true` after a promotion (unit tests in both modules).
+- **R-E (NO-PORT, measured):** dedup plant C's survivor keeps `[d…001, e…20]` after its cross-cluster link `e…21` is scrubbed. Green, so no scrub-order red.
+- **HANDOFFs:**
+  - `HANDOFF(P4.D268)`: two `seed_frozen_archive_for_test`-style probes call `main`'s `get_or_compute_frozen_archive(db, character_id, 7, None, now_ms)` — `services/housekeeping.rs` tests `seed_frozen_archive_for_test`, and the `services/memory_dedup.rs` test `a_failed_fold_keeps_its_losers_and_still_invalidates` (closure `archive`). Re-point both to the `(character, chat)` signature at union (§S.5).
+  - No `job_runner.rs` edit. The job-completion hook is P4.D268's (Tier 3 #20).
+- **Corrections to the order:**
+  - R-J's `coldRetentionDays: 100000000` does not throw at today's clock (−8.638e15 is in range); 200,000,000 does.
+  - M4 is moot on the widened pair.
+  - The F8 label line is emitted on the writer thread, which `global_capture` cannot see. It is pinned by a process-global rig in the new host binary.
+  - `housekeep_run_demotes` was not added: it depends on the wall clock.
+- **v4 moved:** `3e6e2f590`, `7a8d6dacc` and `9ecebf986`, observed 2026-10-09 20:38 (recorded at lane start). None were read or ported.
+- **💸 for `/dogfood`** — the order's six rows stand:
+  - a real post-turn `MEMORY_HOUSEKEEPING` demoting with no deletes, with `Completed sweep for character … demoted= cold=`;
+  - the preview's `wouldDemote` / `coldCount`;
+  - a `coldRetentionDays` clone sweep with `countSource=resolved-ids` on the job path;
+  - a ≥0.90 extraction absorb (`Near-duplicate absorbed as reinforcement`);
+  - a consolidated member's re-observation counting on its digest, and a demoted row promoted on re-observation;
+  - a dedup preview and run with ONE re-embed per changed survivor and `Bulk deleted memories`.
+- **Versions at close:** core **0.0.1273**, host **0.0.196**. The harness stays frozen at 0.0.1110; web, cli, tauri and the SPA are untouched.
