@@ -175604,3 +175604,18 @@ The recipe sweep ran from the pin against a scratch worktree at the base `18e41e
   - Each Rust side captures with `global_capture` (`capture_async` for Carina; a `p4d268_cap` wrapper around `rt.block_on` for the two sync families) and compares the lines, with a non-vacuous floor.
   - **All three GREEN:** `carina_query_tier3` (63 rows, 1 stamp line), `announcer_tier3` (15 cases, 13 stamp lines), `in_scene_voiced_tier3` (28 rows, 13 stamp lines).
   - **R-E's predicted `bumped` UNION-PENDING rows did NOT materialise.** In every case of these corpora the delivered set equals the returned set, so KEYSTONE's search-wide bump and v4's delivered-only stamp mark the same rows. No UNION-PENDING row is recorded for these families.
+
+### Unit 7 landed — `e5acfc10a`
+
+### Unit 8 — the `search` tool (Tier 1 item 9)
+- **Source:** `include_cold: true` on the memory search's options. NEW `pub fn memory_archived_label(&Value) -> Option<String>`: `!memory_is_cold` → `None`; a non-empty string `supersededById` → `(archived — superseded by {id})` (U+2014); else `(archived)`. `memory_result` inserts `archivedLabel` after `source` only when `Some`. The formatter header is `[Result {n} - Memory{ archived}]` (truthy). The post-truncate stamp is gated on `context.character_id`, before the INFO (R-D).
+- **Differential** (`search_tools`; fixture built at the pin by its unchanged builder into `/tmp/p4d268/st/`; both oracles regenerated; `grep -c 'archived —'` = 3):
+  - 5 `p4d268_label_*` rows run v4's REAL `memoryArchivedLabel`: its four jest shapes plus an empty `supersededById` → `(archived)`.
+  - `p4d268_format_archived_header` runs v4's jest case 4 through the REAL formatter.
+  - `p4d268_search_archived_labels` returns the two planted cold rows with labels, byte-compared through `to_string`, key order included.
+  - `p4d268_search_limit_cuts_a_memory` plants a hot memory with its own 8-d Float32 vector on the celestial axis (score 0.5). `limit: 2` cuts it below two knowledge hits. v4's `accessLog` is `[]`.
+  - Every search case compares the `[Memory] Marking memories accessed` line, a new `accessLog` row field. The Rust `Capture` layer also takes the `quilltap::memories` target. The plants and inputs ride the oracle rows, so each is written ONCE.
+  - `info_cases_run` 30 → 32.
+- **GREEN.** The cold rows' presence is green on this branch because KEYSTONE's search is unfiltered.
+- **Mutation:** stamping the pre-cut list reddens exactly `p4d268_search_limit_cuts_a_memory` (v4 `[]`, v5 `count=1`).
+- **Retired design:** the first limit-cut shape could not discriminate. Its planted memory had no vector, so it never reached the pre-cut list.

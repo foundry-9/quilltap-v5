@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(tools): P4.D268 the search tool sees archived memories with labels and stamps only what survives the cut
+
+_Versions: core 0.0.1273._
+
+The `search` tool's memory search now sets `include_cold: true`, so the drill-down sees the archive (v4 `d58548051`; P4.D267 honours the flag in the search engine). A cold result's metadata carries `archivedLabel`, placed between `source` and `occurredAt`. The label reads `(archived — superseded by <digest id>)` when `supersededById` is set, `(archived)` otherwise, and is absent for hot rows. It comes from the new `pub fn memory_archived_label`. The result header reads `[Result N - Memory (archived …)]`.
+
+After the cross-source sort and limit, the memories that survived are stamped through `mark_memories_accessed`, before the `Search scriptorium completed` INFO (v4 `3f7320138` F6).
+
+The `search_tools` differential adds five `memoryArchivedLabel` shapes and the header format row from v4's jest file. It adds a planted search returning a superseded cold shard and a plain cold row with their labels. It adds a mixed search where `limit: 2` cuts a planted memory (score 0.5) below two knowledge hits: v4 stamps nothing, and stamping before the cut reddens that row. Every search case now compares the stamp line.
+
 #### 2026-10-09 — feat(memory): P4.D268 Carina and voice-rewrite recall stamp only the memories they deliver
 
 _Versions: core 0.0.1272._
