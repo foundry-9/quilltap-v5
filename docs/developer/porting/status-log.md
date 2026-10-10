@@ -175546,3 +175546,24 @@ All are green BY NAME from the pin:
   - Builder line: `35 memories, 5 metas, 15 entries`. Hand counts: 32 rows, 13 entries.
   - Red at `KEYSTONE` (M1), **green** now.
 - **`memories_routes`:** `housekeep_{preview,dryrun,run}` are green, plus a new byte-wise key-order check on each, all three `bytes OK`. **`housekeep_run_demotes` NOT added, by the order's own condition:** which MNEMO rows a cap demotes rides the protection score and effective weight, and both decay with wall-clock age between the oracle run and the Rust run. Demotion is proven by `memory_housekeeping_tier2`.
+
+### P4.D266 U5b — the `MEMORY_HOUSEKEEPING` handler + the outcome cache (+ Tier 2 item 15, the handler's four lines)
+- **`spine.rs` `MemoryHousekeepingHandler`:**
+  - `count_source: Some(CountSource::ResolvedIds)` (R-C).
+  - `record_housekeeping_outcome(cid, (demoted + deleted) as f64, …)`.
+  - R-F's two merge resolutions are kept and passed.
+  - v4's four lines with keys in v4's order:
+    - ERROR `[Housekeeping] Failed to enumerate characters for user {jobId, userId, error}`, then `Completed(None)`;
+    - INFO `[Housekeeping] Completed sweep for character {jobId, userId, characterId, reason ?? 'unknown', dryRun ?? false, totalBefore, totalAfter, demoted, deleted, cold, merged, kept}`;
+    - ERROR `[Housekeeping] Sweep failed for character {jobId, userId, characterId, error}`, after which the sweep continues;
+    - INFO `[Housekeeping] Job complete {jobId, userId, charactersSwept, totalDemoted, totalDeleted, totalMerged, reason}`.
+  - The auto-disabled early return logs nothing (v4 `:25-32`).
+  - NO-PORT (§R.4(o)): the non-finite `deleted` guard DEBUG.
+- **`housekeeping_outcome_cache.rs`:** `deleted.is_finite() ? deleted : 0`, and the doc now says "demoted (or deleted)". New unit test `a_non_finite_count_arms_the_backoff` (v4 `:326-335`).
+- **NEW `crates/quilltap-host/tests/memory_housekeeping_handler.rs` (5/5):**
+  - Tests: a demote-only sweep of 12 is EFFECTIVE; a dry run records nothing and logs `reason=unknown`; the enumerate failure on a main-only `Db`; a per-character failure (R-J's `Invalid time value`) logs and continues; the F8 labels.
+  - **F8 label pins (Tier 1 item 13):** the batch-delete DEBUG is emitted on the WRITER thread, which `test_support::global_capture` (a thread-local buffer) cannot see either. The order's "use `global_capture`" therefore cannot capture it. This binary installs its own PROCESS-wide capture layer, records every thread while armed, and serializes its tests on a tokio mutex.
+  - The job path asserts `countSource=resolved-ids`, and `run_housekeeping` with `Some(Repository)` asserts `countSource=repository`. Each has the opposite label as its silence leg.
+  - The API's own choice (`Some(Repository)`) is one literal in `memory_housekeep`, which is not driven here: it needs a vault-backed character on the fresh instance. The routes family drives that handler.
+- **Mutation proof:** recording `result.deleted` alone turns `a_demote_only_sweep_records_an_effective_outcome` red.
+- `job_runner`'s `end_to_end_real_handler_dispatch_and_complete` is green UNEDITED.

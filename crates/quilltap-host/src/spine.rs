@@ -141,6 +141,7 @@ use quilltap_core::services::embedding_generate_job::{
     handle_embedding_generate, EmbeddingGeneratePayload,
 };
 // === end P4.6BL ===
+use quilltap_core::db::memories::CountSource;
 use quilltap_core::services::embedding_provider::ApiEmbeddingProvider;
 use quilltap_core::services::file_storage::{
     ProductionFileBytes, RealProjectImageUpload, StorageBackend,
@@ -2981,7 +2982,12 @@ impl JobHandler for MemoryHousekeepingHandler {
                     ),
                     Err(e) => {
                         // v4 logs and RETURNS (a completed no-op).
-                        let _ = e;
+                        tracing::error!(
+                            jobId = %job.id,
+                            userId = %job.user_id,
+                            error = %e,
+                            "[Housekeeping] Failed to enumerate characters for user"
+                        );
                         return JobOutcome::Completed(None);
                     }
                 }
@@ -3003,6 +3009,10 @@ impl JobHandler for MemoryHousekeepingHandler {
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
 
+            // v4 `payload.reason ?? 'unknown'` / `payload.dryRun ?? false`.
+            let reason_label = reason.unwrap_or("unknown");
+            let (mut total_demoted, mut total_deleted, mut total_merged) = (0i64, 0i64, 0usize);
+
             for character_id in &targets {
                 let per_char_cap = payload
                     .get("maxMemories")
@@ -3016,23 +3026,75 @@ impl JobHandler for MemoryHousekeepingHandler {
                     .or_else(|| g(auto.as_ref(), "perCharacterCap").and_then(|v| v.as_f64()));
                 let options = HousekeepingOptions {
                     max_memories: per_char_cap.map(|v| v as usize),
+                    // R-F: both merge resolutions are kept and passed — the
+                    // sweep accepts and ignores them (`mergeSimilar: true`
+                    // logs its one retired-pass DEBUG).
                     merge_threshold,
                     merge_similar,
                     dry_run: Some(dry_run),
+                    // R-C: the job path is v4's CHILD, whose buffered
+                    // `bulkDelete` returns nothing, so its batch lines read
+                    // `countSource: 'resolved-ids'`.
+                    count_source: Some(CountSource::ResolvedIds),
                     ..Default::default()
                 };
                 // v4 catches per-character errors and continues the sweep.
-                if let Ok(result) = run_housekeeping(db, character_id, &options).await {
-                    if !dry_run {
-                        record_housekeeping_outcome(
-                            character_id,
-                            result.deleted as f64,
-                            result.total_before as f64,
-                            result.cap_used as f64,
+                // NO-PORT (§R.4(o)): v4's non-finite `deleted` guard (DEBUG
+                // `[Housekeeping] Non-finite deleted count; using deleted id
+                // count`) — v5's count is the repository's real count.
+                match run_housekeeping(db, character_id, &options).await {
+                    Ok(result) => {
+                        total_demoted += result.demoted;
+                        total_deleted += result.deleted;
+                        total_merged += result.merged;
+                        // A demote-only sweep is EFFECTIVE (v4 `d58548051`):
+                        // the backoff measures demoted + deleted. Dry runs
+                        // don't count — they don't reduce the hot tier.
+                        if !dry_run {
+                            record_housekeeping_outcome(
+                                character_id,
+                                (result.demoted + result.deleted) as f64,
+                                result.total_before as f64,
+                                result.cap_used as f64,
+                            );
+                        }
+                        tracing::info!(
+                            jobId = %job.id,
+                            userId = %job.user_id,
+                            characterId = %character_id,
+                            reason = reason_label,
+                            dryRun = dry_run,
+                            totalBefore = result.total_before,
+                            totalAfter = result.total_after,
+                            demoted = result.demoted,
+                            deleted = result.deleted,
+                            cold = result.cold_count,
+                            merged = result.merged,
+                            kept = result.kept,
+                            "[Housekeeping] Completed sweep for character"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            jobId = %job.id,
+                            userId = %job.user_id,
+                            characterId = %character_id,
+                            error = %e,
+                            "[Housekeeping] Sweep failed for character"
                         );
                     }
                 }
             }
+            tracing::info!(
+                jobId = %job.id,
+                userId = %job.user_id,
+                charactersSwept = targets.len(),
+                totalDemoted = total_demoted,
+                totalDeleted = total_deleted,
+                totalMerged = total_merged,
+                reason = reason_label,
+                "[Housekeeping] Job complete"
+            );
             JobOutcome::Completed(None)
         })
     }

@@ -38,8 +38,13 @@ fn outcomes() -> &'static Mutex<HashMap<String, SweepOutcome>> {
 }
 
 /// v4 `recordHousekeepingOutcome`: note a completed sweep's effect for the
-/// watermark gate. Called by the housekeeping job driver after a sweep.
+/// watermark gate. Called by the housekeeping job driver after a sweep, with
+/// what the sweep moved out of the hot tier — effective when it demoted (or
+/// deleted) rows (v4 `d58548051`: the driver passes `demoted + deleted`).
 pub fn record_housekeeping_outcome(character_id: &str, deleted: f64, total_before: f64, cap: f64) {
+    // A non-finite count would make every "ineffective?" comparison false and
+    // silently disarm the backoff; treat it as nothing deleted.
+    let deleted = if deleted.is_finite() { deleted } else { 0.0 };
     outcomes().lock().expect("outcome cache lock").insert(
         character_id.to_string(),
         SweepOutcome {
@@ -84,5 +89,14 @@ mod tests {
 
         // Unknown character: never skipped.
         assert!(!should_skip_watermark_sweep("cache-test-unknown"));
+    }
+
+    /// v4 `3f7320138` F8 (`memory-recall-housekeeping-fixes.test.ts:326-335`): a
+    /// non-finite count is recorded as nothing deleted, so the backoff ARMS
+    /// rather than every comparison going false.
+    #[test]
+    fn a_non_finite_count_arms_the_backoff() {
+        record_housekeeping_outcome("cache-test-nan", f64::NAN, 100.0, 4.0);
+        assert!(should_skip_watermark_sweep("cache-test-nan"));
     }
 }

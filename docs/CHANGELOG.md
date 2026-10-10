@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(host): P4.D266 U5b the housekeeping job counts demotions and logs v4's four lines
+
+_Versions: core 0.0.1270, host 0.0.196._
+
+`MemoryHousekeepingHandler` (v4 `memory-housekeeping.ts` at `01a83539d`):
+
+- The outcome cache now records `demoted + deleted`. A sweep that only demotes rows counts as effective, so the watermark backoff no longer arms after it.
+- The retention delete is labelled `countSource: 'resolved-ids'` (R-C), because v4 runs this path in its job child.
+- The handler now logs v4's four lines, which were missing before:
+  - the ERROR when enumerating characters fails (the job then completes as a no-op);
+  - the per-character INFO `Completed sweep for character`, which gains `demoted` and `cold`;
+  - the per-character ERROR `Sweep failed for character`, which replaces a silent swallow, and the sweep continues;
+  - the closing INFO `Job complete`, which gains `totalDemoted`.
+- `record_housekeeping_outcome` stores a non-finite count as 0, so the backoff stays armed.
+
+New host test `memory_housekeeping_handler.rs` (5 tests). It uses a process-wide capture so it can see the batch-delete line emitted on the writer thread, and it pins the `resolved-ids` and `repository` labels. A mutation proof (recording `deleted` alone) turns the effective-outcome test red.
+
 #### 2026-10-09 — feat(memory): P4.D266 U4 housekeeping demotes to the cold tier; the housekeep wire moves
 
 _Versions: core 0.0.1269._

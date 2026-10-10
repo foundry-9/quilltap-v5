@@ -1,0 +1,396 @@
+//! P4.D266 — the `MEMORY_HOUSEKEEPING` job handler (`spine.rs`
+//! `MemoryHousekeepingHandler`, v4 `lib/background-jobs/handlers/
+//! memory-housekeeping.ts` at `01a83539d`) and the F8 `countSource` label per
+//! path (R-C).
+//!
+//! - **The outcome cache now measures `demoted + deleted`** (v4 `d58548051`):
+//!   a demote-only sweep is EFFECTIVE, so the watermark backoff no longer
+//!   misfires after a sweep that moved ten rows to the cold tier and deleted
+//!   none.
+//! - **v4's four handler lines** — the enumerate-failure ERROR, the per-character
+//!   `Completed sweep for character` INFO, the per-character `Sweep failed for
+//!   character` ERROR (the sweep continues), and the closing `Job complete`
+//!   INFO — with their keys in v4's order, and silence legs.
+//! - **The F8 label (R-C):** v4 runs the job in its forked child, whose buffered
+//!   `bulkDelete` returns nothing, so the retention delete's batch lines say
+//!   `countSource: 'resolved-ids'`; the Memories API (`?action=housekeep`) and
+//!   dedup run in v4's parent and say `'repository'`.
+//!
+//! The batch-delete DEBUG is emitted INSIDE a `Db::write` closure, on the
+//! writer THREAD, which neither of core's thread-scoped capture rigs can see
+//! (memory note `capture-rig-writer-thread`). This binary therefore owns its
+//! global subscriber outright: one PROCESS-wide capturing layer that records
+//! every thread's events while a test holds the capture lock, so the
+//! writer-thread line is captured too. The tests serialize on that lock.
+
+use std::sync::{Mutex, Once};
+
+use quilltap_core::db::background_jobs::BackgroundJob;
+use quilltap_core::db::runtime::{Db, DbPaths};
+use quilltap_core::services::housekeeping_outcome_cache::should_skip_watermark_sweep;
+use quilltap_core::services::job_runner::{JobHandler, JobOutcome};
+use quilltap_core::services::provisioning::provision_fresh_instance;
+use quilltap_host::spine::MemoryHousekeepingHandler;
+use serde_json::{json, Value};
+use tempfile::TempDir;
+
+const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+const USER: &str = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+const OLD: &str = "2020-01-01T00:00:00.000Z";
+
+// ---------------------------------------------------------------------------
+// The process-global capture (every thread, while armed).
+// ---------------------------------------------------------------------------
+
+static LINES: Mutex<Option<Vec<String>>> = Mutex::new(None);
+/// Async-aware: held across the handler's awaits.
+static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+struct GlobalLayer;
+
+impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for GlobalLayer {
+    fn on_event(
+        &self,
+        event: &tracing::Event<'_>,
+        _ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        let mut guard = LINES.lock().unwrap_or_else(|p| p.into_inner());
+        let Some(buf) = guard.as_mut() else {
+            return;
+        };
+        let meta = event.metadata();
+        let mut visitor = quilltap_core::test_support::FieldVisitor(format!(
+            "{} {}",
+            meta.level(),
+            meta.target()
+        ));
+        event.record(&mut visitor);
+        buf.push(visitor.0);
+    }
+}
+
+fn install() {
+    static INIT: Once = Once::new();
+    INIT.call_once(|| {
+        use tracing_subscriber::layer::SubscriberExt;
+        tracing::subscriber::set_global_default(tracing_subscriber::registry().with(GlobalLayer))
+            .expect("this binary owns its global subscriber");
+    });
+}
+
+/// Serialize the test and arm the global buffer.
+async fn arm() -> tokio::sync::MutexGuard<'static, ()> {
+    install();
+    let serial = SERIAL.lock().await;
+    *LINES.lock().unwrap() = Some(Vec::new());
+    serial
+}
+
+fn disarm() -> Vec<String> {
+    LINES.lock().unwrap().take().unwrap_or_default()
+}
+
+fn only_line(lines: &[String], needle: &str) -> String {
+    let hits: Vec<&String> = lines.iter().filter(|l| l.contains(needle)).collect();
+    assert_eq!(hits.len(), 1, "expected exactly one {needle:?}: {lines:#?}");
+    hits[0].clone()
+}
+
+// ---------------------------------------------------------------------------
+// A real provisioned instance + planted memories.
+// ---------------------------------------------------------------------------
+
+fn instance() -> (TempDir, Db) {
+    let dir = tempfile::tempdir().unwrap();
+    provision_fresh_instance(dir.path(), PEPPER).expect("provision a fresh instance");
+    let db = Db::open(
+        DbPaths {
+            main: dir.path().join("quilltap.db"),
+            mount_index: Some(dir.path().join("quilltap-mount-index.db")),
+            llm_logs: Some(dir.path().join("quilltap-llm-logs.db")),
+        },
+        PEPPER,
+    )
+    .expect("open the instance");
+    (dir, db)
+}
+
+/// A main-only `Db` (no mount-index partition) — enumerating characters fails.
+fn main_only() -> (TempDir, Db) {
+    let (dir, _db) = instance();
+    drop(_db);
+    let db = Db::open_main(dir.path().join("quilltap.db"), PEPPER).unwrap();
+    (dir, db)
+}
+
+struct Plant {
+    id: String,
+    importance: f64,
+    tier: &'static str,
+    superseded_by: Option<&'static str>,
+}
+
+fn hot_low(id: String) -> Plant {
+    Plant {
+        id,
+        importance: 0.1,
+        tier: "hot",
+        superseded_by: None,
+    }
+}
+
+async fn plant(db: &Db, character_id: &str, rows: Vec<Plant>) {
+    let cid = character_id.to_string();
+    db.write(move |w| {
+        for p in &rows {
+            w.main().connection().execute(
+                "INSERT INTO memories (id, characterId, content, summary, keywords, tags, \
+                 importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, \
+                 tier, supersededById, consolidatedFrom, entities, kind, createdAt, updatedAt) \
+                 VALUES (?1, ?2, 'c', 's', '[]', '[]', ?3, 'AUTO', 1, '[]', ?3, ?4, ?5, '[]', \
+                 '[]', 'semantic', ?6, ?6)",
+                rusqlite::params![p.id, cid, p.importance, p.tier, p.superseded_by, OLD],
+            )?;
+        }
+        Ok(())
+    })
+    .await
+    .unwrap();
+}
+
+async fn set_retention(db: &Db, days: i64) {
+    db.write(move |w| {
+        quilltap_core::db::instance_settings::set_memory_consolidation_settings(
+            w.main().connection(),
+            &json!({ "coldRetentionDays": days }),
+        )?;
+        Ok(())
+    })
+    .await
+    .unwrap();
+}
+
+fn job(payload: Value) -> BackgroundJob {
+    BackgroundJob {
+        id: "a0000000-0000-4000-8000-0000000000d1".into(),
+        user_id: USER.into(),
+        job_type: "MEMORY_HOUSEKEEPING".into(),
+        status: "PROCESSING".into(),
+        payload: payload.to_string(),
+        priority: 0.0,
+        attempts: 1.0,
+        max_attempts: 3.0,
+        last_error: None,
+        scheduled_at: OLD.into(),
+        started_at: None,
+        completed_at: None,
+        created_at: OLD.into(),
+        updated_at: OLD.into(),
+    }
+}
+
+fn uuid(prefix: &str, n: usize) -> String {
+    format!("{prefix}000000-0000-4000-8000-{n:012}")
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+/// v4 `d58548051` (`memory-housekeeping.ts:100-107`): the outcome cache records
+/// `demoted + deleted`. Twelve pass-1 demotions and zero deletions is an
+/// EFFECTIVE sweep — the watermark backoff stays disarmed (on the old
+/// `deleted`-only record it would have armed for an hour).
+#[tokio::test]
+async fn a_demote_only_sweep_records_an_effective_outcome() {
+    let _serial = arm().await;
+    let (_d, db) = instance();
+    let cid = uuid("a1", 1);
+    plant(&db, &cid, (0..12).map(|i| hot_low(uuid("b1", i))).collect()).await;
+    let outcome = MemoryHousekeepingHandler
+        .handle(&db, &job(json!({ "characterId": cid, "reason": "manual" })))
+        .await;
+    let lines = disarm();
+    assert!(matches!(outcome, JobOutcome::Completed(None)));
+    assert!(
+        !should_skip_watermark_sweep(&cid),
+        "a demote-only sweep of 12 is effective: {lines:#?}"
+    );
+    let line = only_line(&lines, "[Housekeeping] Completed sweep for character");
+    assert!(line.starts_with("INFO "), "{line:?}");
+    assert!(
+        line.contains(&format!(
+            " jobId=a0000000-0000-4000-8000-0000000000d1 userId={USER} characterId={cid} \
+             reason=manual dryRun=false totalBefore=12 totalAfter=0 demoted=12 deleted=0 \
+             cold=0 merged=0 kept=0"
+        )),
+        "v4's keys in v4's order: {line:?}"
+    );
+    let done = only_line(&lines, "[Housekeeping] Job complete");
+    assert!(
+        done.contains(&format!(
+            " jobId=a0000000-0000-4000-8000-0000000000d1 userId={USER} charactersSwept=1 \
+             totalDemoted=12 totalDeleted=0 totalMerged=0 reason=manual"
+        )),
+        "{done:?}"
+    );
+    for silent in [
+        "Sweep failed for character",
+        "Failed to enumerate characters",
+    ] {
+        assert!(
+            !lines.iter().any(|l| l.contains(silent)),
+            "{silent}: {lines:#?}"
+        );
+    }
+}
+
+/// A reason-less payload logs `reason=unknown` (v4 `payload.reason ??
+/// 'unknown'`); a dry run records no outcome and logs `dryRun=true`.
+#[tokio::test]
+async fn a_dry_run_records_nothing_and_logs_unknown_reason() {
+    let _serial = arm().await;
+    let (_d, db) = instance();
+    let cid = uuid("a2", 1);
+    plant(&db, &cid, (0..3).map(|i| hot_low(uuid("b2", i))).collect()).await;
+    MemoryHousekeepingHandler
+        .handle(&db, &job(json!({ "characterId": cid, "dryRun": true })))
+        .await;
+    let lines = disarm();
+    let line = only_line(&lines, "[Housekeeping] Completed sweep for character");
+    assert!(line.contains(" reason=unknown dryRun=true "), "{line:?}");
+    assert!(
+        !should_skip_watermark_sweep(&cid),
+        "a dry run records no outcome at all"
+    );
+}
+
+/// v4 `:44-49`: a character enumeration that fails logs the ERROR and RETURNS
+/// (a completed no-op — no `Job complete` line).
+#[tokio::test]
+async fn a_failed_enumeration_logs_and_returns() {
+    let _serial = arm().await;
+    let (_d, db) = main_only();
+    let outcome = MemoryHousekeepingHandler
+        .handle(&db, &job(json!({ "reason": "manual" })))
+        .await;
+    let lines = disarm();
+    assert!(matches!(outcome, JobOutcome::Completed(None)));
+    let line = only_line(
+        &lines,
+        "[Housekeeping] Failed to enumerate characters for user",
+    );
+    assert!(line.starts_with("ERROR "), "{line:?}");
+    assert!(
+        line.contains(&format!(
+            " jobId=a0000000-0000-4000-8000-0000000000d1 userId={USER} error="
+        )),
+        "{line:?}"
+    );
+    assert!(
+        !lines.iter().any(|l| l.contains("Job complete")),
+        "{lines:#?}"
+    );
+}
+
+/// v4 `:123-131` + R-J: a character whose sweep throws (an out-of-range
+/// retention cutoff → `Invalid time value`) logs `Sweep failed for character`
+/// and the job continues to `Job complete`.
+#[tokio::test]
+async fn a_failed_character_sweep_logs_and_continues() {
+    let _serial = arm().await;
+    let (_d, db) = instance();
+    let cid = uuid("a3", 1);
+    plant(&db, &cid, vec![hot_low(uuid("b3", 0))]).await;
+    set_retention(&db, 200_000_000).await;
+    let outcome = MemoryHousekeepingHandler
+        .handle(&db, &job(json!({ "characterId": cid, "reason": "manual" })))
+        .await;
+    let lines = disarm();
+    assert!(matches!(outcome, JobOutcome::Completed(None)));
+    let line = only_line(&lines, "[Housekeeping] Sweep failed for character");
+    assert!(line.starts_with("ERROR "), "{line:?}");
+    assert!(
+        line.contains(&format!(
+            " jobId=a0000000-0000-4000-8000-0000000000d1 userId={USER} characterId={cid} \
+             error=Invalid time value"
+        )),
+        "{line:?}"
+    );
+    only_line(&lines, "[Housekeeping] Job complete");
+    assert!(
+        !lines
+            .iter()
+            .any(|l| l.contains("Completed sweep for character")),
+        "{lines:#?}"
+    );
+}
+
+/// R-C: the retention delete on the JOB path logs `countSource=resolved-ids`
+/// on the batch line (emitted on the writer thread — this binary's global rig
+/// sees it); the Memories API path logs `countSource=repository`.
+#[tokio::test]
+async fn the_job_path_labels_resolved_ids_and_the_api_path_repository() {
+    let _serial = arm().await;
+    let (_d, db) = instance();
+    let cid = uuid("a4", 1);
+    plant(
+        &db,
+        &cid,
+        vec![Plant {
+            id: uuid("b4", 0),
+            importance: 0.1,
+            tier: "cold",
+            superseded_by: Some("c4000000-0000-4000-8000-000000000001"),
+        }],
+    )
+    .await;
+    set_retention(&db, 90).await;
+    MemoryHousekeepingHandler
+        .handle(&db, &job(json!({ "characterId": cid, "reason": "manual" })))
+        .await;
+    let lines = disarm();
+    let batch = only_line(
+        &lines,
+        "[MemoryGate] deleteMemoriesWithUnlinkBatch complete",
+    );
+    assert!(
+        batch.contains(" countSource=resolved-ids "),
+        "the job path mirrors v4's child: {batch:?}"
+    );
+    assert!(!batch.contains("countSource=repository"), "{batch:?}");
+
+    // The Memories API path, over a second character planted the same way.
+    let _ = &_serial;
+    *LINES.lock().unwrap() = Some(Vec::new());
+    let cid2 = uuid("a5", 1);
+    plant(
+        &db,
+        &cid2,
+        vec![Plant {
+            id: uuid("b5", 0),
+            importance: 0.1,
+            tier: "cold",
+            superseded_by: Some("c5000000-0000-4000-8000-000000000001"),
+        }],
+    )
+    .await;
+    let r = quilltap_core::services::housekeeping::run_housekeeping(
+        &db,
+        &cid2,
+        &quilltap_core::services::housekeeping::HousekeepingOptions {
+            count_source: Some(quilltap_core::db::memories::CountSource::Repository),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let lines = disarm();
+    assert_eq!(r.deleted, 1);
+    let batch = only_line(
+        &lines,
+        "[MemoryGate] deleteMemoriesWithUnlinkBatch complete",
+    );
+    assert!(batch.contains(" countSource=repository "), "{batch:?}");
+    assert!(!batch.contains("resolved-ids"), "{batch:?}");
+}
