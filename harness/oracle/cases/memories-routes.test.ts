@@ -229,6 +229,90 @@ async function runCase(
   }
 }
 
+// === P4.D269: list/search rows (append-only) ===
+/** The plant every P4.D269 row runs on its copy (the Rust twin is
+ *  `P4D269_PLANT` in memories_routes_equivalence.rs): two cold rows (one
+ *  superseded by a hot row), a CONSOLIDATED hot digest, a NULL-tier row. */
+const P4D269_PLANT = [
+  "UPDATE memories SET tier = 'cold', supersededById = 'b2000000-0000-4000-8000-0000000000e0' WHERE id = 'b2000000-0000-4000-8000-0000000000e1'",
+  "UPDATE memories SET tier = 'cold' WHERE id = 'b2000000-0000-4000-8000-100000000016'",
+  "UPDATE memories SET source = 'CONSOLIDATED', consolidatedFrom = '[\"b2000000-0000-4000-8000-0000000000f0\",\"b2000000-0000-4000-8000-0000000000f1\"]', consolidatedAt = '2026-03-02T00:00:00.000Z' WHERE id = 'b2000000-0000-4000-8000-0000000000a1'",
+  "UPDATE memories SET tier = NULL WHERE id = 'b2000000-0000-4000-8000-0000000000b3'",
+];
+
+async function p4d269Plant(): Promise<void> {
+  // A DEDICATED connection on the case's own copy (`SQLITE_PATH`, keyed with
+  // the test pepper): the raw client's handle is a cross-case singleton that
+  // can still point at the PREVIOUS case's copy here (measured), and
+  // `manager.rawQuery` saw the same stale file.
+  const Driver = require(
+    require('node:path').join(process.cwd(), 'packages/quilltap/node_modules/better-sqlite3-multiple-ciphers'),
+  );
+  const db = new Driver(process.env.SQLITE_PATH);
+  const hex = Buffer.from(process.env.ENCRYPTION_MASTER_PEPPER ?? '', 'base64').toString('hex');
+  db.pragma(`key = "x'${hex}'"`);
+  try {
+    for (const sql of P4D269_PLANT) db.prepare(sql).run();
+  } finally {
+    db.close();
+  }
+  // Re-open v4's own connection so it reads the planted file fresh (without
+  // this, a later user read intermittently missed — measured).
+  const { closeDatabase, initializeDatabase } = await import('@/lib/database/manager');
+  await closeDatabase();
+  await initializeDatabase();
+}
+
+function P4D269_LIST_SEARCH_CASES(
+  listGet: (qs: string) => Promise<{ status: number; body: unknown }>,
+): CaseSpec[] {
+  const B = 'http://localhost/api/v1/memories';
+  const M = 'b1000000-0000-4000-8000-000000000001';
+  const list = (name: string, qs: string): CaseSpec => ({
+    name,
+    run: async () => {
+      await p4d269Plant();
+      return listGet(qs);
+    },
+  });
+  const search = (name: string, body: unknown): CaseSpec => ({
+    name,
+    clock: true,
+    run: async () => {
+      await p4d269Plant();
+      return respond(
+        await (await loadRoute('@/app/api/v1/memories/route')).POST(
+          mockRequest(`${B}?action=search`, body),
+        ),
+      );
+    },
+  });
+  return [
+    list('list_paginated_tier_hot', `characterId=${M}&limit=50&tier=hot`),
+    list('list_paginated_tier_cold', `characterId=${M}&limit=50&tier=cold`),
+    list('list_paginated_tier_bogus', `characterId=${M}&limit=50&tier=warm`),
+    list('list_paginated_source_consolidated', `characterId=${M}&limit=50&source=CONSOLIDATED`),
+    list('list_paginated_tier_cold_search', `characterId=${M}&limit=50&search=reef&tier=cold`),
+    list('list_paginated_null_tier', `characterId=${M}&limit=50&search=Unindexed&tier=hot`),
+    list('list_legacy_tier_hot', `characterId=${M}&tier=hot`),
+    list('list_legacy_tier_cold', `characterId=${M}&tier=cold`),
+    list('list_legacy_source_consolidated', `characterId=${M}&source=CONSOLIDATED`),
+    list('list_legacy_null_tier', `characterId=${M}&search=Unindexed&tier=hot`),
+    search('search_include_cold', { characterId: M, query: 'smuggler cove hidden by the reef', limit: 5 }),
+    search('search_source_consolidated', {
+      characterId: M,
+      query: 'Alden trusts the harbor master',
+      source: 'CONSOLIDATED',
+    }),
+    search('search_source_bogus', { characterId: M, query: 'reef', source: 'BOGUS' }),
+    search('search_query_empty', { characterId: M, query: '' }),
+    search('search_bad_uuid', { characterId: 'nope', query: 'reef' }),
+    search('search_limit_101', { characterId: M, query: 'reef', limit: 101 }),
+    search('search_many_issues', { characterId: 5, query: 5, limit: '5', minScore: -1, source: null }),
+  ];
+}
+// === end ===
+
 async function main(): Promise<void> {
   const here = dirname(fileURLToPath(import.meta.url));
   const spec = JSON.parse(
@@ -400,6 +484,13 @@ async function main(): Promise<void> {
           ),
         ),
     },
+    // === P4.D269: list/search rows (append-only) ===
+    // v4 `d58548051`: the list's `?tier=` (TWO code paths with different
+    // NULL-tier rules) + `source=CONSOLIDATED`; the search's `includeCold:
+    // true` + the CONSOLIDATED enum + its Zod refusals (R-E). Every row plants
+    // P4D269_PLANT on its copy first (after the shared tier migration).
+    ...P4D269_LIST_SEARCH_CASES(listGet),
+    // === end ===
   ];
 
   const lines: string[] = [];

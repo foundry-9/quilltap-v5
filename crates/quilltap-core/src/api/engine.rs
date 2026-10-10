@@ -3746,17 +3746,13 @@ impl CoreEngine {
                 Err(r) => r,
             },
             // --- Memories (P4.6s) ---
-            // P4.D265 (R-G, C1 §12): a PRESENT `tier` is refused until P4.D269
-            // lands — it REPLACES this gate, not only the refusal.
-            Request::MemoryList { tier: Some(_), .. } => {
-                p4d265_not_yet_available("memoryList", "P4.D269")
-            }
+            // P4.D269 (v4 `d58548051`): `tier` honoured on both paths.
             Request::MemoryList {
                 character_id,
                 search,
                 min_importance,
                 source,
-                tier: None,
+                tier,
                 sort_by,
                 sort_order,
                 limit,
@@ -3768,6 +3764,7 @@ impl CoreEngine {
                     search.as_deref(),
                     min_importance,
                     source.as_deref(),
+                    tier.as_deref(),
                     sort_by.as_deref(),
                     sort_order.as_deref(),
                     limit,

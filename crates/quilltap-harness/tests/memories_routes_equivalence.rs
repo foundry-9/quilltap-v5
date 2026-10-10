@@ -75,6 +75,18 @@ const MISSING: &str = "00000000-0000-4000-8000-0000000000ff";
 /// The wall-clock the search recency ranking is pinned to (mirrors the oracle).
 const FIXED_NOW_MS: f64 = 1_783_000_000_000.0;
 
+// === P4.D269: list/search rows (append-only) ===
+/// The plant every P4.D269 row runs on its copy — the twin of the oracle
+/// case's `P4D269_PLANT`: two cold rows (one superseded by a hot row), a
+/// CONSOLIDATED hot digest, a NULL-tier row.
+const P4D269_PLANT: &[&str] = &[
+    "UPDATE memories SET tier = 'cold', supersededById = 'b2000000-0000-4000-8000-0000000000e0' WHERE id = 'b2000000-0000-4000-8000-0000000000e1'",
+    "UPDATE memories SET tier = 'cold' WHERE id = 'b2000000-0000-4000-8000-100000000016'",
+    "UPDATE memories SET source = 'CONSOLIDATED', consolidatedFrom = '[\"b2000000-0000-4000-8000-0000000000f0\",\"b2000000-0000-4000-8000-0000000000f1\"]', consolidatedAt = '2026-03-02T00:00:00.000Z' WHERE id = 'b2000000-0000-4000-8000-0000000000a1'",
+    "UPDATE memories SET tier = NULL WHERE id = 'b2000000-0000-4000-8000-0000000000b3'",
+];
+// === end ===
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Spec {
@@ -433,7 +445,18 @@ fn memories_routes_match_oracle() {
         let db = fresh_db(&spec, "lp");
         check_body(
             "list_paginated",
-            &memories::memory_list(&db, MNEMO, None, None, None, None, None, Some(20), Some(0)),
+            &memories::memory_list(
+                &db,
+                MNEMO,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(20),
+                Some(0),
+            ),
             &mut failed,
         );
     }
@@ -441,7 +464,18 @@ fn memories_routes_match_oracle() {
         let db = fresh_db(&spec, "lp2");
         check_body(
             "list_paginated_p2",
-            &memories::memory_list(&db, MNEMO, None, None, None, None, None, Some(20), Some(20)),
+            &memories::memory_list(
+                &db,
+                MNEMO,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(20),
+                Some(20),
+            ),
             &mut failed,
         );
     }
@@ -452,6 +486,7 @@ fn memories_routes_match_oracle() {
             &memories::memory_list(
                 &db,
                 MNEMO,
+                None,
                 None,
                 None,
                 None,
@@ -475,6 +510,7 @@ fn memories_routes_match_oracle() {
                 None,
                 None,
                 None,
+                None,
                 Some(50),
                 None,
             ),
@@ -490,6 +526,7 @@ fn memories_routes_match_oracle() {
                 MNEMO,
                 None,
                 Some(0.7),
+                None,
                 None,
                 None,
                 None,
@@ -511,6 +548,7 @@ fn memories_routes_match_oracle() {
                 Some("MANUAL"),
                 None,
                 None,
+                None,
                 Some(50),
                 None,
             ),
@@ -522,7 +560,7 @@ fn memories_routes_match_oracle() {
         let db = fresh_db(&spec, "ll");
         check_body(
             "list_legacy",
-            &memories::memory_list(&db, ORLA, None, None, None, None, None, None, None),
+            &memories::memory_list(&db, ORLA, None, None, None, None, None, None, None, None),
             &mut failed,
         );
     }
@@ -540,6 +578,7 @@ fn memories_routes_match_oracle() {
                 None,
                 None,
                 None,
+                None,
             ),
             &mut failed,
         );
@@ -548,7 +587,7 @@ fn memories_routes_match_oracle() {
         let db = fresh_db(&spec, "lmc");
         check_error(
             "list_missing_character",
-            &memories::memory_list(&db, MISSING, None, None, None, None, None, None, None),
+            &memories::memory_list(&db, MISSING, None, None, None, None, None, None, None, None),
             &mut failed,
         );
     }
@@ -1256,6 +1295,191 @@ fn memories_routes_match_oracle() {
             .unwrap();
         check_tables("backfill_start", &dump, &mut failed);
     }
+
+    // === P4.D269: list/search rows (append-only) ===
+    // v4 `d58548051`: the list's `?tier=` on BOTH paths (the paginated exact
+    // `"tier" = ?` lists a NULL-tier row under neither tier; the legacy
+    // `(m.tier ?? 'hot') === tier` lists it as hot) + `source=CONSOLIDATED`;
+    // the search's `includeCold: true` + the CONSOLIDATED enum + its Zod
+    // refusals (R-E). Every row plants `P4D269_PLANT` (the oracle's twin) on
+    // its copy after the shared tier migration. Bodies compare by BYTES in
+    // wire key order (memory note `serde-json-map-eq-ignores-order`): the
+    // search rows round floats to 6 places first, nothing is key-sorted.
+    {
+        let planted = |tag: &str| {
+            let db = fresh_db(&spec, tag);
+            rt.block_on(db.write(|w| {
+                for sql in P4D269_PLANT {
+                    w.main()
+                        .connection()
+                        .execute_batch(sql)
+                        .map_err(quilltap_core::db::DbError::from)?;
+                }
+                Ok(())
+            }))
+            .expect("plant the P4.D269 rows");
+            db
+        };
+        let check_bytes = |name: &str, got: &Response, rounded: bool, failed: &mut Vec<String>| {
+            let rec = &oracle[name];
+            let want_status = rec["status"].as_u64().unwrap_or(0) as u16;
+            let (got_status, mut got_body) = match got {
+                Response::Error(e) => (
+                    status_of(e.kind),
+                    e.validation_wire_body()
+                        .unwrap_or_else(|| json!({ "error": e.message })),
+                ),
+                other => (200, response_data(other)),
+            };
+            let mut want_body = rec["body"].clone();
+            for v in [&mut got_body, &mut want_body] {
+                if rounded {
+                    round_floats(v);
+                }
+                canon_numbers(v);
+            }
+            let (g, w) = (
+                serde_json::to_string_pretty(&got_body).unwrap(),
+                serde_json::to_string_pretty(&want_body).unwrap(),
+            );
+            if got_status != want_status || g != w {
+                eprintln!(
+                    "[{name}] MISMATCH (status {got_status} vs {want_status}):\n{}",
+                    first_diff(&g, &w)
+                );
+                failed.push(name.to_string());
+            } else {
+                eprintln!("[{name}] OK.");
+            }
+        };
+        let list = |tag: &str,
+                    search: Option<&str>,
+                    source: Option<&str>,
+                    tier: Option<&str>,
+                    limit: Option<i64>| {
+            let db = planted(tag);
+            memories::memory_list(
+                &db, MNEMO, search, None, source, tier, None, None, limit, None,
+            )
+        };
+        for (name, search, source, tier, limit) in [
+            ("list_paginated_tier_hot", None, None, Some("hot"), Some(50)),
+            (
+                "list_paginated_tier_cold",
+                None,
+                None,
+                Some("cold"),
+                Some(50),
+            ),
+            (
+                "list_paginated_tier_bogus",
+                None,
+                None,
+                Some("warm"),
+                Some(50),
+            ),
+            (
+                "list_paginated_source_consolidated",
+                None,
+                Some("CONSOLIDATED"),
+                None,
+                Some(50),
+            ),
+            (
+                "list_paginated_tier_cold_search",
+                Some("reef"),
+                None,
+                Some("cold"),
+                Some(50),
+            ),
+            (
+                "list_paginated_null_tier",
+                Some("Unindexed"),
+                None,
+                Some("hot"),
+                Some(50),
+            ),
+            ("list_legacy_tier_hot", None, None, Some("hot"), None),
+            ("list_legacy_tier_cold", None, None, Some("cold"), None),
+            (
+                "list_legacy_source_consolidated",
+                None,
+                Some("CONSOLIDATED"),
+                None,
+                None,
+            ),
+            (
+                "list_legacy_null_tier",
+                Some("Unindexed"),
+                None,
+                Some("hot"),
+                None,
+            ),
+        ] {
+            check_bytes(
+                name,
+                &list(name, search, source, tier, limit),
+                false,
+                &mut failed,
+            );
+        }
+        let search = |tag: &str, body: Value| {
+            let db = planted(tag);
+            let p = provider(&db);
+            rt.block_on(memories::memory_search(&db, &p, &uid, FIXED_NOW_MS, body))
+        };
+        for (name, body) in [
+            (
+                "search_include_cold",
+                json!({ "characterId": MNEMO, "query": "smuggler cove hidden by the reef", "limit": 5 }),
+            ),
+            (
+                "search_source_consolidated",
+                json!({ "characterId": MNEMO, "query": "Alden trusts the harbor master", "source": "CONSOLIDATED" }),
+            ),
+            (
+                "search_source_bogus",
+                json!({ "characterId": MNEMO, "query": "reef", "source": "BOGUS" }),
+            ),
+            (
+                "search_query_empty",
+                json!({ "characterId": MNEMO, "query": "" }),
+            ),
+            (
+                "search_bad_uuid",
+                json!({ "characterId": "nope", "query": "reef" }),
+            ),
+            (
+                "search_limit_101",
+                json!({ "characterId": MNEMO, "query": "reef", "limit": 101 }),
+            ),
+            (
+                "search_many_issues",
+                json!({ "characterId": 5, "query": 5, "limit": "5", "minScore": -1, "source": null }),
+            ),
+        ] {
+            check_bytes(name, &search(name, body), true, &mut failed);
+        }
+        // The two pre-existing search rows, byte-compared too (Tier 2 #15 —
+        // `{...memory, score, usedEmbedding, tagDetails}`; their `check_rounded`
+        // above sorts keys, so it could not see the order).
+        for (name, body) in [
+            (
+                "search",
+                json!({ "characterId": MNEMO, "query": "smuggler cove hidden by the reef", "limit": 5 }),
+            ),
+            (
+                "search_min_importance",
+                json!({ "characterId": MNEMO, "query": "lighthouse keeper storm beacon", "limit": 10, "minImportance": 0.7 }),
+            ),
+        ] {
+            let db = fresh_db(&spec, &format!("{name}-bytes"));
+            let p = provider(&db);
+            let resp = rt.block_on(memories::memory_search(&db, &p, &uid, FIXED_NOW_MS, body));
+            check_bytes(name, &resp, true, &mut failed);
+        }
+    }
+    // === end ===
 
     assert!(failed.is_empty(), "mismatched cases: {failed:?}");
 }

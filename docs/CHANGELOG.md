@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(memory): P4.D269 the memories list's tier + CONSOLIDATED and the search's includeCold, CONSOLIDATED and Zod schema (v4 `d58548051`, pin `01a83539d`)
+
+_Versions: core 0.0.1267._
+
+- `memoryList` honours `tier` (only `hot` / `cold`; anything else lists both, never a refusal), replacing the keystone's present-`tier` refusal. It keeps v4's two NULL-tier rules: the paginated path's exact `"tier" = ?` lists a NULL-tier row under neither tier, while the legacy `(m.tier ?? 'hot') === tier` lists it as hot. `source` accepts `CONSOLIDATED`.
+- `memorySearch` passes `include_cold: true` (v4's comment carried; its stale access-bump comment is not). Its body is validated by a Zod-faithful port of v4's `searchMemorySchema` (the custom `Character ID is required` on both the type and the format issue, `Search query is required`, limit 1..100 with a prefault of 20, the CONSOLIDATED enum where `null` is `invalid_value`), and refusals answer 400 `Validation error` + `details`. Each row is now `{...memory, score, usedEmbedding, tagDetails}` in v4's key order.
+- `memories_routes_equivalence` gains 17 rows on both sides (10 list, 7 search), plus byte compares of the two existing search rows. The rows are planted with two cold rows, a CONSOLIDATED digest and a NULL-tier row, and compared by BYTES in wire order. The existing list calls take the new `tier` argument.
+
 #### 2026-10-09 — feat(memory): P4.D269 the F2 anchor-gate probe and its memoryAnchorGateProbe arm (v4 `3f7320138`, pin `01a83539d`)
 
 _Versions: core 0.0.1266._
