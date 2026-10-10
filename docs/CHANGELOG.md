@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(restore): P4.D273 the store claim map (v4 bug 185's makeStoreClaimMap)
+
+_Versions: core 0.0.1266._
+
+Adds `services/backup/restore/store_claims.rs`, a port of v4's `lib/backup/restore/store-claims.ts`. It decides, for each character, project or group being restored, whether the entity keeps the store its archived pointer names. The four fallback reasons are `no-pointer`, `not-carried`, `wrong-kind` and `already-claimed`. The first claimant wins, and the holder is recorded at claim time. A store with no `storeType` fits every kind.
+
+One ruled divergence (`DUP_STORE_ID_FIRST_ROW`): when an archive carries two rows under one store id, v5 judges the claim by the FIRST row, which is the one 22a actually restores. v4 judges by the last row.
+
+The new tier-1 family `store_claims_equivalence` runs v4's real module over a 20-case shared corpus. It matches on every case, and the ruled divergence is asserted in both directions. The orchestrator does not use the module yet.
+
 #### 2026-10-09 — docs(porting): P4.D265 lane close — real-instance note, gate and sweep records
 
 _Docs-only change._

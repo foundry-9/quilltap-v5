@@ -1,0 +1,799 @@
+{
+  "$note": "P4.D273 tier-1 corpus for v4 makeStoreClaimMap (lib/backup/restore/store-claims.ts). Each case builds ONE claim map from `carried` and runs `claims` in order. The pointer sentinel \"__ABSENT__\" means undefined (the argument omitted); a storeType of \"__ABSENT__\" never appears \u2014 an absent storeType is a row without the key. Read by harness/oracle/cases/store-claims.ts and crates/quilltap-harness/tests/store_claims_equivalence.rs.",
+  "cases": [
+    {
+      "name": "jest_binds_to_the_carried_store",
+      "carried": [
+        {
+          "id": "vault",
+          "storeType": "character"
+        },
+        {
+          "id": "docs",
+          "storeType": "documents"
+        },
+        {
+          "id": "untyped",
+          "storeType": null
+        }
+      ],
+      "claims": [
+        {
+          "kind": "character",
+          "entityId": "c1",
+          "pointer": "vault"
+        },
+        {
+          "kind": "project",
+          "entityId": "p1",
+          "pointer": "docs"
+        }
+      ]
+    },
+    {
+      "name": "jest_no_pointer_or_not_carried",
+      "carried": [
+        {
+          "id": "vault",
+          "storeType": "character"
+        },
+        {
+          "id": "docs",
+          "storeType": "documents"
+        },
+        {
+          "id": "untyped",
+          "storeType": null
+        }
+      ],
+      "claims": [
+        {
+          "kind": "character",
+          "entityId": "c1",
+          "pointer": null
+        },
+        {
+          "kind": "group",
+          "entityId": "g1",
+          "pointer": "elsewhere"
+        }
+      ]
+    },
+    {
+      "name": "jest_wrong_kind_both_ways",
+      "carried": [
+        {
+          "id": "vault",
+          "storeType": "character"
+        },
+        {
+          "id": "docs",
+          "storeType": "documents"
+        },
+        {
+          "id": "untyped",
+          "storeType": null
+        }
+      ],
+      "claims": [
+        {
+          "kind": "group",
+          "entityId": "g1",
+          "pointer": "vault"
+        },
+        {
+          "kind": "character",
+          "entityId": "c1",
+          "pointer": "docs"
+        }
+      ]
+    },
+    {
+      "name": "jest_untyped_character",
+      "carried": [
+        {
+          "id": "vault",
+          "storeType": "character"
+        },
+        {
+          "id": "docs",
+          "storeType": "documents"
+        },
+        {
+          "id": "untyped",
+          "storeType": null
+        }
+      ],
+      "claims": [
+        {
+          "kind": "character",
+          "entityId": "c1",
+          "pointer": "untyped"
+        }
+      ]
+    },
+    {
+      "name": "jest_untyped_project",
+      "carried": [
+        {
+          "id": "vault",
+          "storeType": "character"
+        },
+        {
+          "id": "docs",
+          "storeType": "documents"
+        },
+        {
+          "id": "untyped",
+          "storeType": null
+        }
+      ],
+      "claims": [
+        {
+          "kind": "project",
+          "entityId": "p1",
+          "pointer": "untyped"
+        }
+      ]
+    },
+    {
+      "name": "jest_first_claimant_across_kinds",
+      "carried": [
+        {
+          "id": "vault",
+          "storeType": "character"
+        },
+        {
+          "id": "docs",
+          "storeType": "documents"
+        },
+        {
+          "id": "untyped",
+          "storeType": null
+        }
+      ],
+      "claims": [
+        {
+          "kind": "project",
+          "entityId": "p1",
+          "pointer": "untyped"
+        },
+        {
+          "kind": "character",
+          "entityId": "c1",
+          "pointer": "untyped"
+        }
+      ]
+    },
+    {
+      "name": "falsy_pointers_are_no_pointer",
+      "carried": [
+        {
+          "id": "vault",
+          "storeType": "character"
+        },
+        {
+          "id": "docs",
+          "storeType": "documents"
+        },
+        {
+          "id": "untyped",
+          "storeType": null
+        }
+      ],
+      "claims": [
+        {
+          "kind": "character",
+          "entityId": "c1",
+          "pointer": ""
+        },
+        {
+          "kind": "character",
+          "entityId": "c2",
+          "pointer": null
+        },
+        {
+          "kind": "character",
+          "entityId": "c3",
+          "pointer": "__ABSENT__"
+        },
+        {
+          "kind": "project",
+          "entityId": "p1",
+          "pointer": 0
+        },
+        {
+          "kind": "group",
+          "entityId": "g1",
+          "pointer": false
+        }
+      ]
+    },
+    {
+      "name": "non_string_pointer_is_not_carried",
+      "carried": [
+        {
+          "id": "vault",
+          "storeType": "character"
+        },
+        {
+          "id": "docs",
+          "storeType": "documents"
+        },
+        {
+          "id": "untyped",
+          "storeType": null
+        }
+      ],
+      "claims": [
+        {
+          "kind": "project",
+          "entityId": "p1",
+          "pointer": 7
+        },
+        {
+          "kind": "character",
+          "entityId": "c1",
+          "pointer": true
+        }
+      ]
+    },
+    {
+      "name": "character_on_every_store_type",
+      "carried": [
+        {
+          "id": "t-empty",
+          "storeType": ""
+        },
+        {
+          "id": "t-null",
+          "storeType": null
+        },
+        {
+          "id": "t-absent"
+        },
+        {
+          "id": "t-database",
+          "storeType": "database"
+        },
+        {
+          "id": "t-num5",
+          "storeType": 5
+        },
+        {
+          "id": "t-num0",
+          "storeType": 0
+        },
+        {
+          "id": "t-false",
+          "storeType": false
+        },
+        {
+          "id": "t-true",
+          "storeType": true
+        },
+        {
+          "id": "t-Character",
+          "storeType": "Character"
+        },
+        {
+          "id": "t-character",
+          "storeType": "character"
+        },
+        {
+          "id": "t-documents",
+          "storeType": "documents"
+        }
+      ],
+      "claims": [
+        {
+          "kind": "character",
+          "entityId": "c-t-empty",
+          "pointer": "t-empty"
+        },
+        {
+          "kind": "character",
+          "entityId": "c-t-null",
+          "pointer": "t-null"
+        },
+        {
+          "kind": "character",
+          "entityId": "c-t-absent",
+          "pointer": "t-absent"
+        },
+        {
+          "kind": "character",
+          "entityId": "c-t-database",
+          "pointer": "t-database"
+        },
+        {
+          "kind": "character",
+          "entityId": "c-t-num5",
+          "pointer": "t-num5"
+        },
+        {
+          "kind": "character",
+          "entityId": "c-t-num0",
+          "pointer": "t-num0"
+        },
+        {
+          "kind": "character",
+          "entityId": "c-t-false",
+          "pointer": "t-false"
+        },
+        {
+          "kind": "character",
+          "entityId": "c-t-true",
+          "pointer": "t-true"
+        },
+        {
+          "kind": "character",
+          "entityId": "c-t-Character",
+          "pointer": "t-Character"
+        },
+        {
+          "kind": "character",
+          "entityId": "c-t-character",
+          "pointer": "t-character"
+        },
+        {
+          "kind": "character",
+          "entityId": "c-t-documents",
+          "pointer": "t-documents"
+        }
+      ]
+    },
+    {
+      "name": "project_on_every_store_type",
+      "carried": [
+        {
+          "id": "t-empty",
+          "storeType": ""
+        },
+        {
+          "id": "t-null",
+          "storeType": null
+        },
+        {
+          "id": "t-absent"
+        },
+        {
+          "id": "t-database",
+          "storeType": "database"
+        },
+        {
+          "id": "t-num5",
+          "storeType": 5
+        },
+        {
+          "id": "t-num0",
+          "storeType": 0
+        },
+        {
+          "id": "t-false",
+          "storeType": false
+        },
+        {
+          "id": "t-true",
+          "storeType": true
+        },
+        {
+          "id": "t-Character",
+          "storeType": "Character"
+        },
+        {
+          "id": "t-character",
+          "storeType": "character"
+        },
+        {
+          "id": "t-documents",
+          "storeType": "documents"
+        }
+      ],
+      "claims": [
+        {
+          "kind": "project",
+          "entityId": "p-t-empty",
+          "pointer": "t-empty"
+        },
+        {
+          "kind": "project",
+          "entityId": "p-t-null",
+          "pointer": "t-null"
+        },
+        {
+          "kind": "project",
+          "entityId": "p-t-absent",
+          "pointer": "t-absent"
+        },
+        {
+          "kind": "project",
+          "entityId": "p-t-database",
+          "pointer": "t-database"
+        },
+        {
+          "kind": "project",
+          "entityId": "p-t-num5",
+          "pointer": "t-num5"
+        },
+        {
+          "kind": "project",
+          "entityId": "p-t-num0",
+          "pointer": "t-num0"
+        },
+        {
+          "kind": "project",
+          "entityId": "p-t-false",
+          "pointer": "t-false"
+        },
+        {
+          "kind": "project",
+          "entityId": "p-t-true",
+          "pointer": "t-true"
+        },
+        {
+          "kind": "project",
+          "entityId": "p-t-Character",
+          "pointer": "t-Character"
+        },
+        {
+          "kind": "project",
+          "entityId": "p-t-character",
+          "pointer": "t-character"
+        },
+        {
+          "kind": "project",
+          "entityId": "p-t-documents",
+          "pointer": "t-documents"
+        }
+      ]
+    },
+    {
+      "name": "group_on_every_store_type",
+      "carried": [
+        {
+          "id": "t-empty",
+          "storeType": ""
+        },
+        {
+          "id": "t-null",
+          "storeType": null
+        },
+        {
+          "id": "t-absent"
+        },
+        {
+          "id": "t-database",
+          "storeType": "database"
+        },
+        {
+          "id": "t-num5",
+          "storeType": 5
+        },
+        {
+          "id": "t-num0",
+          "storeType": 0
+        },
+        {
+          "id": "t-false",
+          "storeType": false
+        },
+        {
+          "id": "t-true",
+          "storeType": true
+        },
+        {
+          "id": "t-Character",
+          "storeType": "Character"
+        },
+        {
+          "id": "t-character",
+          "storeType": "character"
+        },
+        {
+          "id": "t-documents",
+          "storeType": "documents"
+        }
+      ],
+      "claims": [
+        {
+          "kind": "group",
+          "entityId": "g-t-empty",
+          "pointer": "t-empty"
+        },
+        {
+          "kind": "group",
+          "entityId": "g-t-null",
+          "pointer": "t-null"
+        },
+        {
+          "kind": "group",
+          "entityId": "g-t-absent",
+          "pointer": "t-absent"
+        },
+        {
+          "kind": "group",
+          "entityId": "g-t-database",
+          "pointer": "t-database"
+        },
+        {
+          "kind": "group",
+          "entityId": "g-t-num5",
+          "pointer": "t-num5"
+        },
+        {
+          "kind": "group",
+          "entityId": "g-t-num0",
+          "pointer": "t-num0"
+        },
+        {
+          "kind": "group",
+          "entityId": "g-t-false",
+          "pointer": "t-false"
+        },
+        {
+          "kind": "group",
+          "entityId": "g-t-true",
+          "pointer": "t-true"
+        },
+        {
+          "kind": "group",
+          "entityId": "g-t-Character",
+          "pointer": "t-Character"
+        },
+        {
+          "kind": "group",
+          "entityId": "g-t-character",
+          "pointer": "t-character"
+        },
+        {
+          "kind": "group",
+          "entityId": "g-t-documents",
+          "pointer": "t-documents"
+        }
+      ]
+    },
+    {
+      "name": "holder_across_three_kinds",
+      "carried": [
+        {
+          "id": "vault",
+          "storeType": "character"
+        },
+        {
+          "id": "docs",
+          "storeType": "documents"
+        },
+        {
+          "id": "untyped",
+          "storeType": null
+        }
+      ],
+      "claims": [
+        {
+          "kind": "character",
+          "entityId": "c1",
+          "pointer": "untyped"
+        },
+        {
+          "kind": "project",
+          "entityId": "p1",
+          "pointer": "untyped"
+        },
+        {
+          "kind": "group",
+          "entityId": "g1",
+          "pointer": "untyped"
+        }
+      ]
+    },
+    {
+      "name": "same_entity_claims_twice",
+      "carried": [
+        {
+          "id": "vault",
+          "storeType": "character"
+        },
+        {
+          "id": "docs",
+          "storeType": "documents"
+        },
+        {
+          "id": "untyped",
+          "storeType": null
+        }
+      ],
+      "claims": [
+        {
+          "kind": "character",
+          "entityId": "c1",
+          "pointer": "vault"
+        },
+        {
+          "kind": "character",
+          "entityId": "c1",
+          "pointer": "vault"
+        }
+      ]
+    },
+    {
+      "name": "wrong_kind_records_no_holder",
+      "carried": [
+        {
+          "id": "vault",
+          "storeType": "character"
+        },
+        {
+          "id": "docs",
+          "storeType": "documents"
+        },
+        {
+          "id": "untyped",
+          "storeType": null
+        }
+      ],
+      "claims": [
+        {
+          "kind": "character",
+          "entityId": "c1",
+          "pointer": "docs"
+        },
+        {
+          "kind": "project",
+          "entityId": "p1",
+          "pointer": "docs"
+        },
+        {
+          "kind": "group",
+          "entityId": "g1",
+          "pointer": "docs"
+        }
+      ]
+    },
+    {
+      "name": "not_carried_records_no_holder",
+      "carried": [
+        {
+          "id": "vault",
+          "storeType": "character"
+        },
+        {
+          "id": "docs",
+          "storeType": "documents"
+        },
+        {
+          "id": "untyped",
+          "storeType": null
+        }
+      ],
+      "claims": [
+        {
+          "kind": "project",
+          "entityId": "p1",
+          "pointer": "gone"
+        },
+        {
+          "kind": "group",
+          "entityId": "g1",
+          "pointer": "gone"
+        }
+      ]
+    },
+    {
+      "name": "non_string_carried_id_is_unmatchable",
+      "carried": [
+        {
+          "id": 5,
+          "storeType": "documents"
+        },
+        {
+          "id": null,
+          "storeType": "documents"
+        }
+      ],
+      "claims": [
+        {
+          "kind": "project",
+          "entityId": "p1",
+          "pointer": "5"
+        },
+        {
+          "kind": "group",
+          "entityId": "g1",
+          "pointer": "null"
+        }
+      ]
+    },
+    {
+      "name": "dup_store_id_vault_first",
+      "carried": [
+        {
+          "id": "vault-1",
+          "storeType": "character"
+        },
+        {
+          "id": "vault-1",
+          "storeType": "documents"
+        }
+      ],
+      "claims": [
+        {
+          "kind": "character",
+          "entityId": "c1",
+          "pointer": "vault-1"
+        },
+        {
+          "kind": "project",
+          "entityId": "p1",
+          "pointer": "vault-1"
+        }
+      ]
+    },
+    {
+      "name": "dup_store_id_documents_first",
+      "carried": [
+        {
+          "id": "vault-1",
+          "storeType": "documents"
+        },
+        {
+          "id": "vault-1",
+          "storeType": "character"
+        }
+      ],
+      "claims": [
+        {
+          "kind": "character",
+          "entityId": "c1",
+          "pointer": "vault-1"
+        },
+        {
+          "kind": "project",
+          "entityId": "p1",
+          "pointer": "vault-1"
+        }
+      ]
+    },
+    {
+      "name": "dup_store_id_same_type",
+      "carried": [
+        {
+          "id": "store-1",
+          "storeType": "documents"
+        },
+        {
+          "id": "store-1",
+          "storeType": "documents"
+        }
+      ],
+      "claims": [
+        {
+          "kind": "group",
+          "entityId": "g1",
+          "pointer": "store-1"
+        },
+        {
+          "kind": "project",
+          "entityId": "p1",
+          "pointer": "store-1"
+        }
+      ]
+    },
+    {
+      "name": "empty_archive",
+      "carried": [],
+      "claims": [
+        {
+          "kind": "character",
+          "entityId": "c1",
+          "pointer": "vault"
+        },
+        {
+          "kind": "project",
+          "entityId": "p1",
+          "pointer": null
+        }
+      ]
+    }
+  ]
+}
