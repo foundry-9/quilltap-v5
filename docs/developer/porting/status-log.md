@@ -175480,3 +175480,20 @@ All are green BY NAME from the pin:
 - fmt, both clippy sets and the censuses are clean at `KEYSTONE`. The Tier 2 commits touch tests and docs only.
 - **Versions:** core 0.0.1265, host 0.0.195, web 0.0.228. The harness stays frozen at 0.0.1110.
 - **Cleanup:** the lane `target/` was removed, the pin worktree `/tmp/qt-v4-pin-p4d265-01a83539d` removed, and lane scratch (incl. the Friday clone) deleted.
+
+## P4.D274 — store names (bug 186 of `ed8b15b50`) + the sync line (`197104649`) — lane record (2026-10-09)
+
+Branch `claude/store-names-unique-index-reconcile-ede082`, worktree `.claude/worktrees/store-names-unique-index-reconcile-ede082` (spaceless via `~/source/quilltap-v5/…`). Cut at `18e41e403` — P4.D265's lane tip, which sits on `KEYSTONE` `609d9d9f2` plus P4.D265's own Tier 2 test/doc commits. That is harmless for the pick: the unifier picks P4.D265 whole first. Pin `/tmp/qt-v4-pin-p4.d274-01a83539d` (`01a83539dd1c…`, `package.json` `4.10.0-dev.143`, `openai` 7.30.0 through the root symlink).
+
+### §R.2 probe (lane start, 2026-10-09 20:43 CDT)
+- v4 checkout on `main`, tree clean; `bugfix` unmoved past `1a2b2164c`.
+- **v4 moved:** `3e6e2f590`, `7a8d6dacc` and `9ecebf986` (the wardrobe refactor, bugs 187–197), observed 20:43. Not this round's; never read. The live `package.json` moves are version stamps only, so the root `node_modules` symlink still matches the pin's lockfile.
+
+### Unit 1 — the naming leaf (U1)
+- NEW `quilltap_core::store_names`: `character_vault_name`, `vault_base_name` (v4's `VAULT_NAME_PATTERN` matched by hand, with JS's classes), `store_name_timestamp`, `retired_vault_name`, the four types and `plan_store_names`. `next_unique_mount_point_name` now trims with `jsstr::js_trim`.
+- **Red-first.**
+  - By absence: `store_names_equivalence` did not compile on the tip (`unresolved import quilltap_core::store_names`).
+  - With the module wired but the suffixer still on Rust `trim`: **4 red**, exactly the four exotic-whitespace `nextUniqueMountPointName` rows (`Store\u{FEFF}` / `Store\u{85}` taken; `\u{FEFF}Store` / `Store\u{85}` desired). Every plan row was already green.
+  - After the convergence: 117/117.
+- **Covered caller:** restore 22a's free-name pick (C1 §14, P4.D265's hunk) calls the same suffixer, so the convergence moves it toward v4's JS `trim`. The suffixer rows cover it; `system_restore_state` is re-run by name at the gate.
+- **`STORE_STAMP_UNREACHABLE_FORMS`** (R-E), both ways: V8's legacy `Oct 9 2026` / RFC-1123 forms and the extended years `±YYYYYY`. v4's measured outputs are pinned beside v5's fallback outputs.

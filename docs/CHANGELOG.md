@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(mount-index): P4.D274 unit 1 — the document-store naming leaf (v4 `ed8b15b50`, bug 186)
+
+_Versions: core 0.0.1266._
+
+New `quilltap_core::store_names`, a port of v4's `lib/mount-index/store-names.ts`: `character_vault_name`, `vault_base_name`, `store_name_timestamp`, `retired_vault_name` and `plan_store_names`. The planner names each live vault `<Name> Character Vault`, suffixes namesakes ` (N)`, and retires an unlinked vault-shaped `character` store to `<Name> Version <stamp> Store`. v4's vault-name regex is matched by hand with JS's character classes (`\s` includes U+FEFF but not U+0085; `/i` folds ASCII only).
+
+`next_unique_mount_point_name` now trims with JS's `trim` rather than Rust's. That also covers restore 22a's free-name pick.
+
+New tier-1 family `store_names_equivalence` runs a committed corpus through v4's real module: 117 rows, with each plan's idempotence pass. The V8 date forms a stored `createdAt` cannot take are pinned both ways as `STORE_STAMP_UNREACHABLE_FORMS`.
+
 #### 2026-10-09 — docs(porting): P4.D265 lane close — real-instance note, gate and sweep records
 
 _Docs-only change._
