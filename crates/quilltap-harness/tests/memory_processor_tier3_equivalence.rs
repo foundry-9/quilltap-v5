@@ -18,6 +18,14 @@
 //!      `vector_entries`) are diffed in the shared-cross-table id-map remap
 //!      form (as the memory-gate test).
 //!
+//! P4.D270 (v4 `d58548051`): the per-turn OTHER pass reads the REAL
+//! `memoryExtractionMode` on both sides. Every pre-round call runs row-less
+//! (`hybrid` — sub-0.75 OTHER candidates dropped with the persisted `Hybrid
+//! floor dropped …` debug-log line, BEFORE the throttle); three calls over the
+//! `main_turn` shape plant a patch: `mode_turn` (the pre-round output),
+//! `mode_fold` (no per-turn OTHER call, the fold-only debug-log line) and
+//! `mode_hybrid_floor_half` (a 0.5 floor — the value is read, not hard-coded).
+//!
 //! Also the first differential to exercise the gate's now-ported
 //! `applyNamePresenceCheck` lookup branch: one OTHER candidate deliberately
 //! fails the subject-name presence check and lands with `aboutCharacterId`
@@ -236,6 +244,11 @@ struct CallW {
     in_autonomous_room: bool,
     participant_ids: Vec<String>,
     transcript: TranscriptW,
+    /// P4.D270 R-E: a `memoryExtractionMode` patch planted through the REAL
+    /// setter before the call and deleted after it (absent → no row → v4's
+    /// default `hybrid` on both sides).
+    #[serde(default)]
+    memory_extraction_mode: Option<serde_json::Value>,
 }
 
 #[derive(Deserialize)]
@@ -401,10 +414,29 @@ fn is_v5_failed_call_row(row: &Value) -> bool {
     parsed.get("error").map(|e| !e.is_null()).unwrap_or(false)
 }
 
-fn normalize_result(result: &mut Value) {
+fn normalize_result(result: &mut Value, minted: &mut HashMap<String, String>) {
     if let Some(Value::Array(ids)) = result.get_mut("createdMemoryIds") {
         for (i, id) in ids.iter_mut().enumerate() {
+            // P4.D270: a later call over the same transcript (the R-E mode
+            // calls re-run `main_turn`'s) is absorbed into a row an EARLIER
+            // call minted, and its debug line names that id — so each side
+            // keeps its minted ids, in order, and later lines read the token.
+            if let Some(raw) = id.as_str() {
+                let token = format!("MINTED_{}", minted.len());
+                minted.entry(raw.to_string()).or_insert(token);
+            }
             *id = Value::String(format!("CREATED_{i}"));
+        }
+    }
+    if let Some(Value::Array(lines)) = result.get_mut("debugLogs") {
+        for line in lines.iter_mut() {
+            if let Some(text) = line.as_str() {
+                let mut text = text.to_string();
+                for (raw, token) in minted.iter() {
+                    text = text.replace(raw.as_str(), token);
+                }
+                *line = Value::String(text);
+            }
         }
     }
 }
@@ -567,6 +599,8 @@ async fn memory_processor_tier3_matches_oracle() {
         "call-count mismatch — regenerate the oracle NDJSON"
     );
 
+    let mut got_minted: HashMap<String, String> = HashMap::new();
+    let mut want_minted: HashMap<String, String> = HashMap::new();
     for (call, (oracle_name, oracle_result)) in spec.calls.into_iter().zip(oracle_results) {
         assert_eq!(call.name, oracle_name, "call order mismatch");
         let name = call.name.clone();
@@ -636,11 +670,43 @@ async fn memory_processor_tier3_matches_oracle() {
             registry_cheapest_for_current: None,
         };
 
+        let mode_patch = call.memory_extraction_mode.clone();
+        if let Some(patch) = mode_patch.clone() {
+            db.write(move |w| {
+                // The builder-built fixture has no `instance_settings` table
+                // (measured); the plant creates it with `fresh_schema.json`'s
+                // DDL, as the oracle does.
+                w.main().connection().execute_batch(
+                    "CREATE TABLE IF NOT EXISTS \"instance_settings\" (\n  \"key\" TEXT PRIMARY KEY,\n  \"value\" TEXT NOT NULL\n)",
+                )?;
+                quilltap_core::db::instance_settings::set_memory_extraction_mode_settings(
+                    w.main().connection(),
+                    &patch,
+                )
+                .map(|_| ())
+            })
+            .await
+            .unwrap_or_else(|e| panic!("{name}: plant memoryExtractionMode: {e:?}"));
+        }
         let result = process_turn_for_memory(&db, &completion, &embedding, &executor, &ctx).await;
+        if mode_patch.is_some() {
+            db.write(|w| {
+                w.main()
+                    .connection()
+                    .execute(
+                        "DELETE FROM \"instance_settings\" WHERE \"key\" = 'memoryExtractionMode'",
+                        [],
+                    )
+                    .map(|_| ())
+                    .map_err(Into::into)
+            })
+            .await
+            .unwrap_or_else(|e| panic!("{name}: unplant memoryExtractionMode: {e:?}"));
+        }
         let mut got = serde_json::to_value(&result).expect("serialize result");
         let mut want = oracle_result;
-        normalize_result(&mut got);
-        normalize_result(&mut want);
+        normalize_result(&mut got, &mut got_minted);
+        normalize_result(&mut want, &mut want_minted);
         assert_eq!(got, want, "{name}: result object diverges");
     }
 

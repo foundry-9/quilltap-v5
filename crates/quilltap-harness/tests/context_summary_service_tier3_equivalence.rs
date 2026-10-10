@@ -622,6 +622,43 @@ fn seed_ids_of(dump: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// P4.D270 — the RULED stored-byte divergence (`memory_pipeline_jobs_tier3`'s
+/// `STORED_BYTE_DIVERGENCES`, ruled 2026-10-02): the number of `llm_logs` rows
+/// whose stored compressed bytes differ from v4's while decoding to the
+/// identical text. Here: the fold-grain OTHER calls' MEMORY_EXTRACTION
+/// `request` cells. A converged codec trips it (retire the pin); a corpus
+/// change trips it (re-measure, confirm every moved row still decodes
+/// identically, update the number).
+const STORED_BYTE_DIVERGENCES: usize = 5;
+
+/// A dumped compressed BLOB cell (hex) → the text it stores.
+fn decoded_cell(v: &Value) -> Option<String> {
+    let s = v.as_str()?;
+    let bytes = hex::decode(s).ok()?;
+    quilltap_core::db::text_compression::is_compressed_text_blob(&bytes)
+        .then(|| quilltap_core::db::text_compression::decode_blob(&bytes))
+}
+
+/// Each row paired with its decoded twin, sorted by the decoded twin.
+fn decode_llm_log_rows(rows: Vec<Value>) -> Vec<(Value, Value)> {
+    let mut pairs: Vec<(Value, Value)> = rows
+        .into_iter()
+        .map(|row| {
+            let mut decoded = row.clone();
+            if let Some(obj) = decoded.as_object_mut() {
+                for v in obj.values_mut() {
+                    if let Some(text) = decoded_cell(v) {
+                        *v = Value::String(text);
+                    }
+                }
+            }
+            (decoded, row)
+        })
+        .collect();
+    pairs.sort_by_key(|(decoded, _)| serde_json::to_string(decoded).unwrap());
+    pairs
+}
+
 #[tokio::test]
 async fn context_summary_service_tier3_matches_oracle() {
     // P4.133 (dogfood #133; pre-written for the unifier — P4.D242 owns this
@@ -1058,12 +1095,32 @@ async fn context_summary_service_tier3_matches_oracle() {
         &want_logs,
         "context_summary_service_tier3",
     );
+    // P4.D270: the fold-grain OTHER call (v4 `d58548051`) logs a
+    // MEMORY_EXTRACTION row per call whose ~9 KB `request` crosses the RULED
+    // brotli stored-byte divergence (`memory_pipeline_jobs_tier3`'s
+    // `STORED_BYTE_DIVERGENCES`, ruled 2026-10-02: both sides decode each
+    // other's bytes to the same text). So the rows compare DECODED and the
+    // count of stored-byte differences is pinned in both directions.
+    let got_pairs = decode_llm_log_rows(got_logs);
+    let want_pairs = decode_llm_log_rows(want_logs);
+    let got_decoded: Vec<&Value> = got_pairs.iter().map(|(d, _)| d).collect();
+    let want_decoded: Vec<&Value> = want_pairs.iter().map(|(d, _)| d).collect();
     assert_eq!(
-        got_logs,
-        want_logs,
+        got_decoded,
+        want_decoded,
         "llm_logs rows diverge (got {} vs oracle {})",
-        got_logs.len(),
-        want_logs.len()
+        got_decoded.len(),
+        want_decoded.len()
+    );
+    let stored_byte_divergences = got_pairs
+        .iter()
+        .zip(want_pairs.iter())
+        .filter(|((_, g), (_, w))| g != w)
+        .count();
+    assert_eq!(
+        stored_byte_divergences, STORED_BYTE_DIVERGENCES,
+        "llm_logs rows whose stored brotli bytes differ from v4's (decoded text identical) \
+         moved from the ruled count — see `STORED_BYTE_DIVERGENCES`"
     );
 
     drop(db);

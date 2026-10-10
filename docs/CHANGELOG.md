@@ -12,6 +12,35 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(memory): P4.D270 E3+E5+E6 OTHER extraction moves to the fold grain — the `hybrid` floor, the fold-grain OTHER pass and its fold hook
+
+_Versions: core 0.0.1269._
+
+Ports the extraction half of v4 `d58548051` (pin `01a83539d`). These land in one commit because the floor without the fold pass would silently drop every sub-0.75 OTHER observation.
+
+- **Per-turn OTHER pass.** Each turn reads the operator's `memoryExtractionMode`, logging `[Memory] OTHER pass mode resolved`.
+  - `hybrid` (the default) drops OTHER candidates below `perTurnOtherFloor` (0.75) before the throttle, with the persisted `Hybrid floor dropped …` debug-log line.
+  - `fold` skips the per-turn OTHER call entirely and logs that it runs at fold grain only.
+  - `turn` behaves as before.
+  - A failed settings read keeps the per-turn pass (`turn`) with v4's WARN.
+  - The SELF pass is never floored.
+- **New `services/fold_other_pass.rs`.** `run_fold_other_pass` runs over a folded window. It drops what the chat's OTHER watermark already covers and keeps the newest 60 eligible spoken lines. Each observer who spoke gets one cheap call about the other characters, plus the silent user character. The call carries the GRAIN block and the Commonplace-aware canon. Each pair keeps at most `foldCandidatesPerSubject` candidates, and they are written through the shared candidate writer.
+  - The watermark advances through the one column writer unless a pass was lost to a timeout.
+  - The pass never fails into the fold. A failed gate write logs v4's non-fatal WARN.
+  - Every `[FoldOtherPass]` line matches v4's level, bytes and key order.
+- **The fold hook.** `ContextSummarySeams::run_fold_other_pass` runs after the episode pass on every fold, help chats included. It resolves the Concierge policy and passes the uncensored fallback as v4 does. It is live in both real seams and a no-op in `NoopSeams`. v4's `[Context Summary] Fold OTHER pass failed:` line is unreachable and not ported.
+
+Differentials:
+- New `fold_other_pass_tier3` family (builder, jest oracle, Rust test): its 18 direct-pass ops match v4's real `runFoldOtherPass` on results and every line.
+- `memory_processor_tier3` gains three `memoryExtractionMode` ops. The builder fixtures had no `instance_settings` table, so the plant creates it on both sides.
+- `memory_pipeline_jobs_tier3` gains a `turn`-mode fold.
+- `context_summary_service_tier3` answers the fold OTHER call through a new `fold-other` rule. Its decoded `llm_logs` carry the ruled stored-byte divergence, pinned at 5.
+- `enclave_step_tier3` also compares its `llm_logs` decoded, with the stored-byte count pinned at 2.
+- `courier_images_routes`'s oracle now answers the fold OTHER call with `[]`.
+- The `get_messages` caller census gains the new fallback site.
+
+`memory_processor_tier3`, `memory_pipeline_jobs_tier3` and `context_summary_service_tier3` stay red only on P4.D266's near-duplicate reinforcement write, plus memory_processor's standing `llm_logs` byte red. `enclave_step_tier3` stays red only on P4.D275's tool-definition hash. Proven by masked measurement runs; the masks were not committed.
+
 #### 2026-10-09 — refactor(memory): P4.D270 E4 `CandidateWriteContext` — one candidate writer for both extraction grains
 
 _Versions: core 0.0.1268._

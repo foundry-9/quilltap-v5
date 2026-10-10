@@ -263,6 +263,11 @@ const CENSUS: &[(&str, &str, Variant)] = &[
         "process_help_response",
         F,
     ),
+    // P4.D270 (v4 `d58548051`): the fold-grain OTHER pass reads the chat's
+    // `type === 'message'` rows through v4's `repos.chats.getMessages` — the
+    // FALLBACK read (a failed query is `[]`): the watermark filter, the idle
+    // catch-up's inspection and its window all go through this one helper.
+    ("services/fold_other_pass.rs", "chat_message_events", F),
     ("services/help_chat/orchestrator.rs", "message_count", S),
     ("services/markdown_transcript.rs", "chat_export_markdown", F),
     (
@@ -493,8 +498,10 @@ fn every_get_messages_call_site_has_chosen_its_variant() {
     // one unit-test fallback call in that same file (the six retired kinds'
     // read-back): 80 and 51. P4.D228 added ONE fallback call site in an
     // existing file (`api/chat_media.rs`'s picture retry): 81 and 51.
-    assert_eq!((swallowing, strict), (81, 7), "census totals");
-    assert_eq!(file_count, 51, "census files");
+    // P4.D270 added ONE fallback call site in ONE new file
+    // (`services/fold_other_pass.rs`'s `chat_message_events`): 82 and 52.
+    assert_eq!((swallowing, strict), (82, 7), "census totals");
+    assert_eq!(file_count, 52, "census files");
 }
 
 /// The scanner itself: comments skipped, definitions are declarations not

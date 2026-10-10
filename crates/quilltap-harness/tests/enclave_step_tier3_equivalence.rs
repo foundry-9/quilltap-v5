@@ -647,6 +647,18 @@ fn enclave_step_tier3_matches_oracle() {
     normalize_jobs(&mut want_jobs, &want_ids);
     normalize_llm_logs(&mut got_logs, &got_ids);
     normalize_llm_logs(&mut want_logs, &want_ids);
+    // P4.D270: the fold-grain OTHER call (v4 `d58548051`) the in-loop summary
+    // check now makes logs a ~9 KB MEMORY_EXTRACTION `request` that crosses the
+    // RULED brotli stored-byte divergence (`memory_pipeline_jobs_tier3`'s
+    // `STORED_BYTE_DIVERGENCES`, ruled 2026-10-02: both sides decode each
+    // other's bytes to the same text) — so the rows compare DECODED and the
+    // number of stored-byte differences is pinned in both directions.
+    let stored_byte_divergences = decode_compressed_cells(&mut got_logs, &mut want_logs);
+    assert_eq!(
+        stored_byte_divergences, STORED_BYTE_DIVERGENCES,
+        "llm_logs rows whose stored brotli bytes differ from v4's (decoded text identical) \
+         moved from the ruled count — see `STORED_BYTE_DIVERGENCES`"
+    );
 
     assert_table_eq("chats", &got_chats, &want_chats);
     assert_table_eq("chat_messages", &got_msgs, &want_msgs);
@@ -883,6 +895,58 @@ fn normalize_llm_logs(dump: &mut Value, ids: &HashMap<String, String>) {
         }
         rows.sort_by_key(|r| serde_json::to_string(r).unwrap());
     }
+}
+
+/// P4.D270 — the RULED stored-byte divergence (ruled 2026-10-02, see
+/// `memory_pipeline_jobs_tier3`): `llm_logs` rows whose stored compressed bytes
+/// differ from v4's while decoding to the identical text. A converged codec
+/// trips it (retire the pin); a corpus change trips it (re-measure).
+const STORED_BYTE_DIVERGENCES: usize = 2;
+
+/// A dumped compressed BLOB cell (hex) → the text it stores.
+fn decoded_cell(v: &Value) -> Option<String> {
+    let s = v.as_str()?;
+    let bytes = hex::decode(s).ok()?;
+    quilltap_core::db::text_compression::is_compressed_text_blob(&bytes)
+        .then(|| quilltap_core::db::text_compression::decode_blob(&bytes))
+}
+
+/// Replace every compressed cell on both sides by its text, re-sort both, and
+/// count the rows whose STORED bytes differed (pairs matched by decoded row).
+fn decode_compressed_cells(got: &mut Value, want: &mut Value) -> usize {
+    fn decode(dump: &mut Value) -> Vec<(Value, Value)> {
+        let rows = dump
+            .get_mut("rows")
+            .and_then(Value::as_array_mut)
+            .map(std::mem::take)
+            .unwrap_or_default();
+        let mut pairs: Vec<(Value, Value)> = rows
+            .into_iter()
+            .map(|row| {
+                let mut decoded = row.clone();
+                if let Some(obj) = decoded.as_object_mut() {
+                    for v in obj.values_mut() {
+                        if let Some(text) = decoded_cell(v) {
+                            *v = Value::String(text);
+                        }
+                    }
+                }
+                (decoded, row)
+            })
+            .collect();
+        pairs.sort_by_key(|(d, _)| serde_json::to_string(d).unwrap());
+        pairs
+    }
+    let g = decode(got);
+    let w = decode(want);
+    let diverging = g
+        .iter()
+        .zip(w.iter())
+        .filter(|((gd, gr), (wd, wr))| gd == wd && gr != wr)
+        .count();
+    got["rows"] = Value::Array(g.into_iter().map(|(d, _)| d).collect());
+    want["rows"] = Value::Array(w.into_iter().map(|(d, _)| d).collect());
+    diverging
 }
 
 fn assert_table_eq(name: &str, got: &Value, want: &Value) {

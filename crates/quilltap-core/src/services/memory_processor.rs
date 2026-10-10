@@ -56,8 +56,9 @@ use crate::commonplace_file::{
 use crate::context_budget::resolve_max_tokens;
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
 use crate::db::doc_mount_file_links::normalise_relative_path;
-use crate::db::memories_read;
+use crate::db::fallback::error_text;
 use crate::db::runtime::Db;
+use crate::db::{instance_settings, memories_read};
 use crate::jsnum::to_fixed;
 use crate::memory_format::{format_name_with_pronouns, Pronouns};
 use crate::memory_tasks::{
@@ -918,6 +919,42 @@ fn character_str_field<'a>(
         .and_then(Value::as_str)
 }
 
+/// The per-turn OTHER pass's mode (v4 `memory-processor.ts:598-623`): the
+/// operator's `memoryExtractionMode.otherPass` and `perTurnOtherFloor`, read
+/// fresh every turn, then ALWAYS the `[Memory] OTHER pass mode resolved` DEBUG
+/// (the floor only for `hybrid`, else v4's explicit `null` — a DEFINED field,
+/// rendered). A failed settings read falls back to today's behaviour (`turn`,
+/// floor 0) rather than silently going quiet. v4's getter never throws
+/// (`readSetting` / `readJsonSetting` catch and default — a missing table is
+/// defaults, not a failure), so its WARN is unreachable there; v5 keeps the arm
+/// for the one v5-only failure, a read-pool checkout that fails (P4.D270 R-D).
+pub(crate) fn resolve_other_pass_mode(db: &Db, chat_id: &str) -> (String, f64) {
+    let (mode, floor) =
+        match db.read_main(|c| Ok(instance_settings::get_memory_extraction_mode_settings(c))) {
+            Ok(mode) => (mode.other_pass, mode.per_turn_other_floor),
+            Err(error) => {
+                tracing::warn!(
+                    chatId = %chat_id,
+                    error = %error_text(&error),
+                    "[Memory] Extraction-mode lookup failed; keeping per-turn OTHER pass"
+                );
+                ("turn".to_string(), 0.0)
+            }
+        };
+    let floor_field = if mode == "hybrid" {
+        floor.to_string()
+    } else {
+        "null".to_string()
+    };
+    tracing::debug!(
+        chatId = %chat_id,
+        otherPassMode = %mode,
+        perTurnOtherFloor = %floor_field,
+        "[Memory] OTHER pass mode resolved"
+    );
+    (mode, floor)
+}
+
 /// Run all extraction passes for a single turn (v4 `processTurnForMemory`).
 pub async fn process_turn_for_memory<C: CompletionProvider, E: EmbeddingProvider>(
     db: &Db,
@@ -1263,13 +1300,36 @@ async fn run_passes<C: CompletionProvider, E: EmbeddingProvider>(
         }
     }
 
+    // Where does the OTHER pass live? 'turn' = here, as ever; 'hybrid' = here
+    // but only for what clears the high floor (commitments, agreements, new
+    // standing facts), the rest being left to the fold-grain pass; 'fold' =
+    // nowhere here at all. A failed settings read falls back to today's
+    // behaviour ('turn') rather than silently going quiet. (v4's getter never
+    // throws — `readSetting` / `readJsonSetting` catch and default — so its
+    // WARN is unreachable there; v5 keeps the arm for the one v5-only failure,
+    // a pool checkout that fails.)
+    let (other_pass_mode, per_turn_other_floor) = resolve_other_pass_mode(db, &ctx.chat_id);
+    let is_hybrid = other_pass_mode == "hybrid";
+    let run_per_turn_other = other_pass_mode != "fold";
+    if !run_per_turn_other {
+        state.debug_logs.push(
+            "[Memory] OTHER pass runs at fold grain only (otherPass=fold); skipping per-turn OTHER"
+                .to_string(),
+        );
+    }
+
     // ---------------------------------------------------------------------
     // Pass 2: OTHER memories (one multi-subject call per observer). Each
     // subject's canon block comes from the observer's vault
     // `Others/<subject>.md` first, then the subject's identity property; the
     // canon source is preserved per subject for the debug attribution.
     // ---------------------------------------------------------------------
-    for observer in &allowed_slices {
+    let observers: &[&crate::memory_tasks::TurnCharacterSlice] = if run_per_turn_other {
+        &allowed_slices
+    } else {
+        &[]
+    };
+    for observer in observers {
         let rl = &rate_limits[&observer.character_id];
         let observer_mount = character_str_field(
             &ctx.participant_characters,
@@ -1372,17 +1432,32 @@ async fn run_passes<C: CompletionProvider, E: EmbeddingProvider>(
                 .map(|(_, c)| c.clone())
                 .unwrap_or_default();
             let raw_len = raw_candidates.len();
+            let floored_candidates = if is_hybrid {
+                let floored = apply_importance_floor(raw_candidates, per_turn_other_floor);
+                if floored.len() < raw_len {
+                    state.debug_logs.push(format!(
+                        "[Memory] Hybrid floor dropped {} OTHER candidate(s) for {} about {} below importance {per_turn_other_floor} (left to the fold-grain pass)",
+                        raw_len - floored.len(),
+                        observer.character_name,
+                        subject.subject_name
+                    ));
+                }
+                floored
+            } else {
+                raw_candidates
+            };
+            let floored_len = floored_candidates.len();
             let candidates = match rl {
                 RateLimitDecision::Throttle { floor, .. } => {
-                    apply_importance_floor(raw_candidates, *floor)
+                    apply_importance_floor(floored_candidates, *floor)
                 }
-                _ => raw_candidates,
+                _ => floored_candidates,
             };
             if let RateLimitDecision::Throttle { floor, .. } = rl {
-                if candidates.len() < raw_len {
+                if candidates.len() < floored_len {
                     state.debug_logs.push(format!(
                         "[Memory] Throttle dropped {} OTHER candidate(s) for {} about {} below importance {floor}",
-                        raw_len - candidates.len(),
+                        floored_len - candidates.len(),
                         observer.character_name,
                         subject.subject_name
                     ));
@@ -1431,4 +1506,124 @@ async fn run_passes<C: CompletionProvider, E: EmbeddingProvider>(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod other_pass_mode_tests {
+    use super::*;
+    use crate::test_support::captured_with;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    fn test_db(row: Option<&str>) -> (Db, tempfile::TempDir) {
+        let dir = tempfile::Builder::new()
+            .prefix("qt-other-pass-mode-")
+            .tempdir()
+            .expect("tempdir");
+        let db = Db::open_main(dir.path().join("main.db"), PEPPER).unwrap();
+        let row = row.map(str::to_string);
+        db.write_blocking(move |writers| {
+            let c = writers.main().connection();
+            c.execute_batch(
+                "CREATE TABLE \"instance_settings\" (\"key\" TEXT PRIMARY KEY, \"value\" TEXT NOT NULL)",
+            )?;
+            if let Some(value) = row {
+                c.execute(
+                    "INSERT INTO instance_settings (key, value) VALUES ('memoryExtractionMode', ?1)",
+                    [value],
+                )?;
+            }
+            Ok(())
+        })
+        .unwrap();
+        (db, dir)
+    }
+
+    fn lines_with<'a>(lines: &'a [String], message: &str) -> Vec<&'a String> {
+        lines.iter().filter(|l| l.contains(message)).collect()
+    }
+
+    #[test]
+    fn no_row_reads_hybrid_and_renders_the_floor() {
+        let (db, _dir) = test_db(None);
+        let (mode, lines) = captured_with(|| resolve_other_pass_mode(&db, "chat-1"));
+        assert_eq!(mode, ("hybrid".to_string(), 0.75));
+        let resolved = lines_with(&lines, "[Memory] OTHER pass mode resolved");
+        assert_eq!(resolved.len(), 1, "{lines:?}");
+        assert!(resolved[0].starts_with("DEBUG "), "{:?}", resolved[0]);
+        assert!(
+            resolved[0].ends_with("chatId=chat-1 otherPassMode=hybrid perTurnOtherFloor=0.75"),
+            "{:?}",
+            resolved[0]
+        );
+        // Silence leg: a healthy read never takes the failure arm.
+        assert!(lines_with(&lines, "Extraction-mode lookup failed").is_empty());
+    }
+
+    #[test]
+    fn turn_and_fold_render_an_explicit_null_floor() {
+        for (row, mode) in [
+            (
+                r#"{"otherPass":"turn","perTurnOtherFloor":0.5,"foldCandidatesPerSubject":3}"#,
+                "turn",
+            ),
+            (
+                r#"{"otherPass":"fold","perTurnOtherFloor":0.5,"foldCandidatesPerSubject":3}"#,
+                "fold",
+            ),
+        ] {
+            let (db, _dir) = test_db(Some(row));
+            let (got, lines) = captured_with(|| resolve_other_pass_mode(&db, "chat-2"));
+            assert_eq!(got, (mode.to_string(), 0.5));
+            let resolved = lines_with(&lines, "[Memory] OTHER pass mode resolved");
+            assert!(
+                resolved[0].ends_with(&format!(
+                    "chatId=chat-2 otherPassMode={mode} perTurnOtherFloor=null"
+                )),
+                "{:?}",
+                resolved[0]
+            );
+        }
+    }
+
+    /// R-D: the one v5-only failure (a read-pool checkout that cannot open the
+    /// main database) falls back to `turn` — today's behaviour, NOT `hybrid` —
+    /// with v4's WARN, and still logs the resolved line.
+    #[test]
+    fn a_failed_read_keeps_the_per_turn_pass() {
+        let (db, dir) = test_db(None);
+        std::fs::rename(dir.path().join("main.db"), dir.path().join("moved.db")).unwrap();
+        let (got, lines) = captured_with(|| resolve_other_pass_mode(&db, "chat-3"));
+        assert_eq!(got, ("turn".to_string(), 0.0));
+        let warn = lines_with(
+            &lines,
+            "[Memory] Extraction-mode lookup failed; keeping per-turn OTHER pass",
+        );
+        assert_eq!(warn.len(), 1, "{lines:?}");
+        assert!(warn[0].starts_with("WARN "), "{:?}", warn[0]);
+        assert!(warn[0].contains("chatId=chat-3 error="), "{:?}", warn[0]);
+        let resolved = lines_with(&lines, "[Memory] OTHER pass mode resolved");
+        assert!(
+            resolved[0].ends_with("chatId=chat-3 otherPassMode=turn perTurnOtherFloor=null"),
+            "{:?}",
+            resolved[0]
+        );
+    }
+
+    /// R-K: the floor in the two debug-log lines renders through Rust `{}`,
+    /// which equals JS `String(n)` for every schema-valid floor except below
+    /// `1e-6` (JS switches to exponent form) — an accepted edge, pinned here.
+    #[test]
+    fn floor_display_matches_js_except_below_one_millionth() {
+        for (v, js) in [
+            (0.75, "0.75"),
+            (0.5, "0.5"),
+            (1.0, "1"),
+            (0.0, "0"),
+            (0.000001, "0.000001"),
+        ] {
+            assert_eq!(format!("{v}"), js);
+        }
+        assert_eq!(format!("{}", 0.0000001_f64), "0.0000001"); // JS: "1e-7"
+    }
 }

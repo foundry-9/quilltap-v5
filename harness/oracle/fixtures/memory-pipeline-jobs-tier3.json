@@ -206,6 +206,7 @@
     { "name": "cs_fold", "chatId": "d1000006-0000-4000-8000-000000000006" },
     { "name": "cs_below_gate", "chatId": "d1000007-0000-4000-8000-000000000007" },
     { "name": "cs_force", "chatId": "d1000007-0000-4000-8000-000000000007", "forceRegenerate": true },
+    { "name": "cs_force_turn_mode", "chatId": "d1000007-0000-4000-8000-000000000007", "forceRegenerate": true, "memoryExtractionMode": { "otherPass": "turn" } },
     { "name": "cs_missing_chat", "chatId": "d1ffffff-0000-4000-8000-0000000000ff" }
   ]
 }

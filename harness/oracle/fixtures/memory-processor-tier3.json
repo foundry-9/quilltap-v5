@@ -835,6 +835,286 @@
         "latestAssistantMessageId": "1a000000-0000-4000-8000-00000000aab2"
       },
       "$comment": "P4.D136 (v4 a1d88aa3a, bug 107): Aria's SELF extraction pass TIMES OUT while every other pass answers. Aria's SELF pass AND Bram's OTHER pass both time out, so the result must carry passesLostToTimeout: 2 and BOTH SELF debug lines (v4 pushes the new LOST line and then falls through to the existing `failed` line), while `success` stays true — which is exactly the shape that used to report a clean finish over a hole in the data. dryRun so no memory rows are written and the existing table comparands are untouched. The OTHER arm is the other half: v4 REWROTE its existing sentence to interpolate `was LOST to a timeout` in place of `failed`, one line rather than the SELF arm's two."
+    },
+    {
+      "name": "mode_turn",
+      "chatId": "1c000000-0000-4000-8000-00000000c4a7",
+      "projectId": "1d000000-0000-4000-8000-00000000d123",
+      "projectDescription": "The Clockwork Opera restoration.",
+      "chatContextSummary": null,
+      "cheapLLMSettings": {
+        "strategy": "PROVIDER_CHEAPEST",
+        "fallbackToLocal": false
+      },
+      "concierge": {
+        "enabled": true,
+        "uncensoredTextProfileId": "bb000000-0000-4000-8000-00000000c003"
+      },
+      "conciergeMode": "moderated",
+      "isDangerousChat": false,
+      "memoryExtractionLimits": {
+        "enabled": true,
+        "maxPerHour": 4,
+        "softStartFraction": 0.5,
+        "softFloor": 0.55
+      },
+      "sourceMessageTimestamp": "2023-05-05T12:00:00.000Z",
+      "dryRun": false,
+      "inAutonomousRoom": false,
+      "participantIds": [
+        "dd000000-0000-4000-8000-00000000c4a5",
+        "aa000000-0000-4000-8000-00000000a21a",
+        "bb000000-0000-4000-8000-00000000b4a3",
+        "cc000000-0000-4000-8000-00000000ca55"
+      ],
+      "transcript": {
+        "turnOpenerMessageId": "1a000000-0000-4000-8000-00000000aaa1",
+        "userMessage": "Report, everyone. What changed today?",
+        "userCharacterId": "dd000000-0000-4000-8000-00000000c4a5",
+        "userCharacterName": "Charlie",
+        "userCharacterPronouns": {
+          "subject": "he",
+          "object": "him",
+          "possessive": "his"
+        },
+        "characterSlices": [
+          {
+            "characterId": "dd000000-0000-4000-8000-00000000c4a5",
+            "characterName": "Charlie",
+            "characterPronouns": {
+              "subject": "he",
+              "object": "him",
+              "possessive": "his"
+            },
+            "text": "Report, everyone. What changed today?",
+            "contributingMessageIds": [
+              "1a000000-0000-4000-8000-00000000aaa1"
+            ],
+            "isUserControlled": true
+          },
+          {
+            "characterId": "aa000000-0000-4000-8000-00000000a21a",
+            "characterName": "Aria",
+            "characterPronouns": {
+              "subject": "she",
+              "object": "her",
+              "possessive": "her"
+            },
+            "text": "I retuned the overture and fought the balcony draft.",
+            "contributingMessageIds": [
+              "1a000000-0000-4000-8000-00000000aaa2"
+            ]
+          },
+          {
+            "characterId": "bb000000-0000-4000-8000-00000000b4a3",
+            "characterName": "Bram",
+            "text": "The hives held. I wired a bell to the door.",
+            "contributingMessageIds": [
+              "1a000000-0000-4000-8000-00000000aaa3",
+              "1a000000-0000-4000-8000-00000000aaa4"
+            ]
+          },
+          {
+            "characterId": "cc000000-0000-4000-8000-00000000ca55",
+            "characterName": "Cass",
+            "text": "The underrails are quiet.",
+            "contributingMessageIds": [
+              "1a000000-0000-4000-8000-00000000aaa5"
+            ]
+          }
+        ],
+        "latestAssistantMessageId": "1a000000-0000-4000-8000-00000000aaa5"
+      },
+      "memoryExtractionMode": {
+        "otherPass": "turn"
+      }
+    },
+    {
+      "name": "mode_fold",
+      "chatId": "1c000000-0000-4000-8000-00000000c4a7",
+      "projectId": "1d000000-0000-4000-8000-00000000d123",
+      "projectDescription": "The Clockwork Opera restoration.",
+      "chatContextSummary": null,
+      "cheapLLMSettings": {
+        "strategy": "PROVIDER_CHEAPEST",
+        "fallbackToLocal": false
+      },
+      "concierge": {
+        "enabled": true,
+        "uncensoredTextProfileId": "bb000000-0000-4000-8000-00000000c003"
+      },
+      "conciergeMode": "moderated",
+      "isDangerousChat": false,
+      "memoryExtractionLimits": {
+        "enabled": true,
+        "maxPerHour": 4,
+        "softStartFraction": 0.5,
+        "softFloor": 0.55
+      },
+      "sourceMessageTimestamp": "2023-05-05T12:00:00.000Z",
+      "dryRun": false,
+      "inAutonomousRoom": false,
+      "participantIds": [
+        "dd000000-0000-4000-8000-00000000c4a5",
+        "aa000000-0000-4000-8000-00000000a21a",
+        "bb000000-0000-4000-8000-00000000b4a3",
+        "cc000000-0000-4000-8000-00000000ca55"
+      ],
+      "transcript": {
+        "turnOpenerMessageId": "1a000000-0000-4000-8000-00000000aaa1",
+        "userMessage": "Report, everyone. What changed today?",
+        "userCharacterId": "dd000000-0000-4000-8000-00000000c4a5",
+        "userCharacterName": "Charlie",
+        "userCharacterPronouns": {
+          "subject": "he",
+          "object": "him",
+          "possessive": "his"
+        },
+        "characterSlices": [
+          {
+            "characterId": "dd000000-0000-4000-8000-00000000c4a5",
+            "characterName": "Charlie",
+            "characterPronouns": {
+              "subject": "he",
+              "object": "him",
+              "possessive": "his"
+            },
+            "text": "Report, everyone. What changed today?",
+            "contributingMessageIds": [
+              "1a000000-0000-4000-8000-00000000aaa1"
+            ],
+            "isUserControlled": true
+          },
+          {
+            "characterId": "aa000000-0000-4000-8000-00000000a21a",
+            "characterName": "Aria",
+            "characterPronouns": {
+              "subject": "she",
+              "object": "her",
+              "possessive": "her"
+            },
+            "text": "I retuned the overture and fought the balcony draft.",
+            "contributingMessageIds": [
+              "1a000000-0000-4000-8000-00000000aaa2"
+            ]
+          },
+          {
+            "characterId": "bb000000-0000-4000-8000-00000000b4a3",
+            "characterName": "Bram",
+            "text": "The hives held. I wired a bell to the door.",
+            "contributingMessageIds": [
+              "1a000000-0000-4000-8000-00000000aaa3",
+              "1a000000-0000-4000-8000-00000000aaa4"
+            ]
+          },
+          {
+            "characterId": "cc000000-0000-4000-8000-00000000ca55",
+            "characterName": "Cass",
+            "text": "The underrails are quiet.",
+            "contributingMessageIds": [
+              "1a000000-0000-4000-8000-00000000aaa5"
+            ]
+          }
+        ],
+        "latestAssistantMessageId": "1a000000-0000-4000-8000-00000000aaa5"
+      },
+      "memoryExtractionMode": {
+        "otherPass": "fold"
+      }
+    },
+    {
+      "name": "mode_hybrid_floor_half",
+      "chatId": "1c000000-0000-4000-8000-00000000c4a7",
+      "projectId": "1d000000-0000-4000-8000-00000000d123",
+      "projectDescription": "The Clockwork Opera restoration.",
+      "chatContextSummary": null,
+      "cheapLLMSettings": {
+        "strategy": "PROVIDER_CHEAPEST",
+        "fallbackToLocal": false
+      },
+      "concierge": {
+        "enabled": true,
+        "uncensoredTextProfileId": "bb000000-0000-4000-8000-00000000c003"
+      },
+      "conciergeMode": "moderated",
+      "isDangerousChat": false,
+      "memoryExtractionLimits": {
+        "enabled": true,
+        "maxPerHour": 4,
+        "softStartFraction": 0.5,
+        "softFloor": 0.55
+      },
+      "sourceMessageTimestamp": "2023-05-05T12:00:00.000Z",
+      "dryRun": false,
+      "inAutonomousRoom": false,
+      "participantIds": [
+        "dd000000-0000-4000-8000-00000000c4a5",
+        "aa000000-0000-4000-8000-00000000a21a",
+        "bb000000-0000-4000-8000-00000000b4a3",
+        "cc000000-0000-4000-8000-00000000ca55"
+      ],
+      "transcript": {
+        "turnOpenerMessageId": "1a000000-0000-4000-8000-00000000aaa1",
+        "userMessage": "Report, everyone. What changed today?",
+        "userCharacterId": "dd000000-0000-4000-8000-00000000c4a5",
+        "userCharacterName": "Charlie",
+        "userCharacterPronouns": {
+          "subject": "he",
+          "object": "him",
+          "possessive": "his"
+        },
+        "characterSlices": [
+          {
+            "characterId": "dd000000-0000-4000-8000-00000000c4a5",
+            "characterName": "Charlie",
+            "characterPronouns": {
+              "subject": "he",
+              "object": "him",
+              "possessive": "his"
+            },
+            "text": "Report, everyone. What changed today?",
+            "contributingMessageIds": [
+              "1a000000-0000-4000-8000-00000000aaa1"
+            ],
+            "isUserControlled": true
+          },
+          {
+            "characterId": "aa000000-0000-4000-8000-00000000a21a",
+            "characterName": "Aria",
+            "characterPronouns": {
+              "subject": "she",
+              "object": "her",
+              "possessive": "her"
+            },
+            "text": "I retuned the overture and fought the balcony draft.",
+            "contributingMessageIds": [
+              "1a000000-0000-4000-8000-00000000aaa2"
+            ]
+          },
+          {
+            "characterId": "bb000000-0000-4000-8000-00000000b4a3",
+            "characterName": "Bram",
+            "text": "The hives held. I wired a bell to the door.",
+            "contributingMessageIds": [
+              "1a000000-0000-4000-8000-00000000aaa3",
+              "1a000000-0000-4000-8000-00000000aaa4"
+            ]
+          },
+          {
+            "characterId": "cc000000-0000-4000-8000-00000000ca55",
+            "characterName": "Cass",
+            "text": "The underrails are quiet.",
+            "contributingMessageIds": [
+              "1a000000-0000-4000-8000-00000000aaa5"
+            ]
+          }
+        ],
+        "latestAssistantMessageId": "1a000000-0000-4000-8000-00000000aaa5"
+      },
+      "memoryExtractionMode": {
+        "perTurnOtherFloor": 0.5
+      }
     }
-  ]
+  ],
+  "_memoryExtractionModeNote": "P4.D270 R-E: every call without `memoryExtractionMode` runs row-less (v4's default `hybrid`, read through the REAL getter on both sides). A call WITH it plants the patch through each side's REAL setter (v4 `setMemoryExtractionModeSettings`, v5 `set_memory_extraction_mode_settings`) before the call and deletes the row after it. `mode_turn` is the pre-round behaviour; `mode_fold` runs no per-turn OTHER call; `mode_hybrid_floor_half` proves the floor is read, not hard-coded."
 }
