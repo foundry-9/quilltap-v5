@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — docs(porting): P4.D270 status header records the canon seam at `b0dcad2a1`
+
+_Docs-only change._
+
+The P4.D270 order's status header now records the three `pub` canon loader signatures and `CanonSubject` landed at `b0dcad2a1`. P4.D271's lane-local copy is coded against them.
+
 #### 2026-10-09 — feat(memory): P4.D270 E2 the Commonplace canon — the digest in both canon blocks under a 2,500-token cap, and the `pub` OTHER canon seam
 
 _Versions: core 0.0.1267._
