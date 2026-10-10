@@ -22,7 +22,9 @@
  *     Concierge on duty with the desk;
  *   - a vector entry for every embedded memory (the store the run loads);
  *   - a mount-index trigger plant failing any document write whose content
- *     carries the plant's marker (the bridge's per-file catch).
+ *     carries the plant's marker (the bridge's per-file catch);
+ *   - the `instance_settings` and `background_jobs` tables (the settings and
+ *     the trigger family's enqueues).
  *
  * Run from the v4 checkout (or the round's pin) under Node 24:
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
@@ -165,6 +167,10 @@ async function main(): Promise<void> {
   ] as Array<[string, unknown]>) {
     for (const sql of generateDDL(name, schema as never)) maindb.exec(sql);
   }
+  // The instance_settings table the consolidation settings live in (v4's
+  // `create-instance-settings-table` migration's DDL; a builder runs no
+  // migrations).
+  maindb.exec('CREATE TABLE IF NOT EXISTS "instance_settings" ("key" TEXT PRIMARY KEY, "value" TEXT NOT NULL)');
   // The background_jobs table the trigger family's enqueues land in (v4 creates
   // it lazily; both sides start from the same empty table).
   const { BackgroundJobSchema } = await import('@/lib/schemas/types');

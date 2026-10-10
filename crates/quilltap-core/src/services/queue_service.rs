@@ -72,6 +72,20 @@ pub async fn enqueue_job(
     payload: Value,
     max_attempts: f64,
 ) -> Result<String, DbError> {
+    enqueue_job_at(db, user_id, job_type, payload, max_attempts, None).await
+}
+
+/// P4.D271 (R-G): [`enqueue_job`] with v4's `options.scheduledAt` —
+/// `scheduledAt: options?.scheduledAt?.toISOString() ?? now`
+/// (`queue-service.ts:490`). `None` stamps now.
+pub async fn enqueue_job_at(
+    db: &Db,
+    user_id: &str,
+    job_type: &str,
+    payload: Value,
+    max_attempts: f64,
+    scheduled_at: Option<String>,
+) -> Result<String, DbError> {
     let now = now_iso();
     let id = uuid::Uuid::new_v4().to_string();
     let create = BjCreate {
@@ -83,7 +97,7 @@ pub async fn enqueue_job(
         attempts: 0.0,
         max_attempts,
         last_error: None,
-        scheduled_at: now.clone(),
+        scheduled_at: scheduled_at.unwrap_or_else(|| now.clone()),
         started_at: None,
         completed_at: None,
     };
@@ -115,6 +129,18 @@ pub async fn enqueue_memory_housekeeping(
     user_id: &str,
     payload: Value,
 ) -> Result<String, DbError> {
+    enqueue_memory_housekeeping_at(db, user_id, payload, None).await
+}
+
+/// P4.D271 (R-G): [`enqueue_memory_housekeeping`] with v4's `options` passed
+/// through — the scheduled pass defers housekeeping behind consolidation. An
+/// in-flight job's id is returned unchanged (v4 does not reschedule it).
+pub async fn enqueue_memory_housekeeping_at(
+    db: &Db,
+    user_id: &str,
+    payload: Value,
+    scheduled_at: Option<String>,
+) -> Result<String, DbError> {
     // De-dupe against in-flight jobs. v4 wraps the check in a try/catch and
     // falls through to enqueue on failure — double work beats none.
     let uid = user_id.to_string();
@@ -140,8 +166,135 @@ pub async fn enqueue_memory_housekeeping(
         }
     }
 
-    enqueue_job(db, user_id, "MEMORY_HOUSEKEEPING", payload, 1.0).await
+    enqueue_job_at(
+        db,
+        user_id,
+        "MEMORY_HOUSEKEEPING",
+        payload,
+        1.0,
+        scheduled_at,
+    )
+    .await
 }
+
+// === P4.D271: the memory-consolidation enqueue (append-only) ===
+/// v4 `MemoryConsolidationPayload` (`queue-service.ts:650-660`): one job per
+/// character. The STORED payload is the caller's literal — v4's
+/// `JSON.stringify` drops an `undefined` key, so absent keys are OMITTED, in
+/// v4's order `characterId, [dryRun], [maxClustersPerRun], trigger`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MemoryConsolidationPayload {
+    pub character_id: String,
+    /// Run clustering and the model calls, write nothing, log the report.
+    pub dry_run: Option<bool>,
+    /// Override `memoryConsolidation.maxClustersPerRun` for this run.
+    pub max_clusters_per_run: Option<f64>,
+    /// `scheduled` | `watermark` | `manual` — automatic triggers bail when
+    /// consolidation is disabled.
+    pub trigger: Option<String>,
+}
+
+impl MemoryConsolidationPayload {
+    pub fn to_json(&self) -> Value {
+        let mut m = serde_json::Map::new();
+        m.insert(
+            "characterId".into(),
+            Value::String(self.character_id.clone()),
+        );
+        if let Some(d) = self.dry_run {
+            m.insert("dryRun".into(), Value::Bool(d));
+        }
+        if let Some(n) = self.max_clusters_per_run {
+            m.insert("maxClustersPerRun".into(), crate::db::js_number_to_json(n));
+        }
+        if let Some(t) = &self.trigger {
+            m.insert("trigger".into(), Value::String(t.clone()));
+        }
+        Value::Object(m)
+    }
+
+    /// A stored job payload, read as v4's handler casts it (`payload as
+    /// MemoryConsolidationPayload`): a missing / non-string `characterId` is
+    /// `None` (the handler's no-`characterId` arm).
+    pub fn decode(payload: &Value) -> Option<Self> {
+        let character_id = payload
+            .get("characterId")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())?
+            .to_string();
+        Some(Self {
+            character_id,
+            dry_run: payload.get("dryRun").and_then(Value::as_bool),
+            max_clusters_per_run: payload.get("maxClustersPerRun").and_then(Value::as_f64),
+            trigger: payload
+                .get("trigger")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+        })
+    }
+}
+
+/// v4 `enqueueMemoryConsolidation` (`queue-service.ts:662-708`): dedupe against
+/// the user's PENDING + PROCESSING `MEMORY_CONSOLIDATION` jobs for the same
+/// character AND the same dry-run flag — a dry run never stands in for a real
+/// run, or vice versa — then enqueue with `maxAttempts` 1 (retry-hostile like
+/// housekeeping: a rerun redoes every model call, and the next scheduled or
+/// watermark pass picks up whatever this one left).
+pub async fn enqueue_memory_consolidation(
+    db: &Db,
+    user_id: &str,
+    payload: &MemoryConsolidationPayload,
+) -> Result<String, DbError> {
+    let dry_run = payload.dry_run == Some(true);
+    let uid = user_id.to_string();
+    let in_flight = db.read_main(|conn| {
+        let repo = crate::db::background_jobs::BackgroundJobsRepository::new(conn);
+        let mut jobs = repo.find_by_user_id(&uid, Some("PENDING"))?;
+        jobs.extend(repo.find_by_user_id(&uid, Some("PROCESSING"))?);
+        Ok(jobs)
+    });
+    match in_flight {
+        Ok(jobs) => {
+            let existing = jobs.iter().find(|j| {
+                if j.job_type != "MEMORY_CONSOLIDATION" {
+                    return false;
+                }
+                let p: Value = serde_json::from_str(&j.payload).unwrap_or(Value::Null);
+                p.get("characterId").and_then(Value::as_str) == Some(payload.character_id.as_str())
+                    && (p.get("dryRun") == Some(&Value::Bool(true))) == dry_run
+            });
+            if let Some(existing) = existing {
+                // v4's `trigger: payload.trigger` — an absent trigger is OMITTED.
+                match payload.trigger.as_deref() {
+                    Some(trigger) => tracing::debug!(
+                        characterId = %payload.character_id,
+                        existingJobId = %existing.id,
+                        trigger = %trigger,
+                        dryRun = dry_run,
+                        "[Consolidation] Job already in flight for character; not enqueuing another"
+                    ),
+                    None => tracing::debug!(
+                        characterId = %payload.character_id,
+                        existingJobId = %existing.id,
+                        dryRun = dry_run,
+                        "[Consolidation] Job already in flight for character; not enqueuing another"
+                    ),
+                }
+                return Ok(existing.id.clone());
+            }
+        }
+        Err(e) => {
+            // Fall through — a duplicate run is wasteful, not harmful.
+            tracing::warn!(
+                characterId = %payload.character_id,
+                error = %crate::db::fallback::error_text(&e),
+                "[Consolidation] Failed to check for existing jobs during enqueue"
+            );
+        }
+    }
+    enqueue_job(db, user_id, "MEMORY_CONSOLIDATION", payload.to_json(), 1.0).await
+}
+// === end P4.D271 ===
 
 /// v4 `enqueueMemoryRegenerateAll` (P4.6s) — the single fan-out job, deduped on
 /// an in-flight `MEMORY_REGENERATE_ALL` for the user (a double-click yields the
@@ -1190,15 +1343,67 @@ pub async fn cleanup_finished_jobs(db: &Db, now_ms: i64) -> Result<(usize, usize
 // Scheduler sweep bodies (v4 `scheduled-*.ts` — the portable enqueuer loops)
 // ============================================================================
 
-/// v4 `runScheduledHousekeeping()` — for every user whose
-/// `autoHousekeepingSettings.enabled` is true, enqueue one `MEMORY_HOUSEKEEPING`
-/// job (`{ reason: 'scheduled' }`). The enqueue helper dedupes against in-flight
-/// jobs for the same (userId, characterId). Returns `(usersProcessed,
-/// jobsEnqueued)` (equal here — one enqueue per enabled user, a per-user enqueue
-/// failure swallowed and counted for neither). The host driver calls this on the
-/// daily cadence.
+/// v4 `HOUSEKEEPING_AFTER_CONSOLIDATION_DELAY_MS` (`scheduled-housekeeping.ts:41`):
+/// when the scheduled pass enqueued consolidation, housekeeping waits this
+/// long so it sweeps the post-consolidation corpus.
+pub const HOUSEKEEPING_AFTER_CONSOLIDATION_DELAY_MS: i64 = 30 * 60 * 1000;
+
+/// v4 `runScheduledHousekeeping()` (`scheduled-housekeeping.ts:133-195`, P4.D271):
+/// consolidation FIRST (its own enabled switch; a failure never blocks
+/// housekeeping), then — for every user whose `autoHousekeepingSettings.enabled`
+/// is true — one `MEMORY_HOUSEKEEPING` job (`{ reason: 'scheduled' }`),
+/// deferred 30 minutes when the consolidation pass enqueued anything (a dedupe
+/// hit counts — v4's `charactersEnqueued`). The enqueue helper dedupes against
+/// in-flight jobs for the same (userId, characterId). Returns
+/// `(usersProcessed, jobsEnqueued)`. The host driver calls this on the daily
+/// cadence. v4's four pre-existing lines (the start INFO, the per-user WARN,
+/// the completion INFO, the outer ERROR + rethrow) are carried with the
+/// consolidation ones, under v4's child `module: 'scheduled-housekeeping'`.
 pub async fn run_scheduled_housekeeping(db: &Db) -> Result<(usize, usize), DbError> {
-    let settings = db.read_main(crate::db::chat_settings::find_all_scheduler_settings)?;
+    const MODULE: &str = "scheduled-housekeeping";
+    tracing::info!(
+        module = MODULE,
+        "Starting scheduled memory housekeeping pass"
+    );
+
+    // Consolidation first (its own enabled switch; never blocks housekeeping).
+    let consolidation_enqueued =
+        match crate::services::consolidation_triggers::run_scheduled_consolidation(db).await {
+            Ok(r) => r.characters_enqueued,
+            Err(e) => {
+                tracing::warn!(
+                    module = MODULE,
+                    error = %crate::db::fallback::error_text(&e),
+                    "Scheduled consolidation pass failed; housekeeping continues"
+                );
+                0
+            }
+        };
+    let scheduled_at = (consolidation_enqueued > 0).then(|| {
+        crate::clock::iso_from_unix_ms(
+            crate::clock::now_unix_ms() + HOUSEKEEPING_AFTER_CONSOLIDATION_DELAY_MS,
+        )
+    });
+    if scheduled_at.is_some() {
+        tracing::debug!(
+            module = MODULE,
+            consolidationEnqueued = consolidation_enqueued,
+            delayMs = HOUSEKEEPING_AFTER_CONSOLIDATION_DELAY_MS,
+            "Housekeeping deferred behind consolidation"
+        );
+    }
+
+    let settings = match db.read_main(crate::db::chat_settings::find_all_scheduler_settings) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::error!(
+                module = MODULE,
+                error = %crate::db::fallback::error_text(&e),
+                "Scheduled housekeeping pass failed"
+            );
+            return Err(e);
+        }
+    };
     let mut users_processed = 0usize;
     let mut jobs_enqueued = 0usize;
     for s in &settings {
@@ -1213,14 +1418,28 @@ pub async fn run_scheduled_housekeeping(db: &Db) -> Result<(usize, usize), DbErr
         }
         // v4 passes `{ reason: 'scheduled' }`; the payload otherwise defaults.
         let payload = serde_json::json!({ "reason": "scheduled" });
-        match enqueue_memory_housekeeping(db, &s.user_id, payload).await {
+        match enqueue_memory_housekeeping_at(db, &s.user_id, payload, scheduled_at.clone()).await {
             Ok(_) => {
                 jobs_enqueued += 1;
                 users_processed += 1;
             }
-            Err(_) => { /* v4 warns + continues */ }
+            Err(e) => {
+                tracing::warn!(
+                    module = MODULE,
+                    userId = %s.user_id,
+                    error = %crate::db::fallback::error_text(&e),
+                    "Failed to enqueue scheduled housekeeping for user"
+                );
+            }
         }
     }
+    tracing::info!(
+        module = MODULE,
+        usersProcessed = users_processed,
+        jobsEnqueued = jobs_enqueued,
+        totalUsers = settings.len(),
+        "Scheduled housekeeping pass complete"
+    );
     Ok((users_processed, jobs_enqueued))
 }
 

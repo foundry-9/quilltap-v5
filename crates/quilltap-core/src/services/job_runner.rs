@@ -494,6 +494,11 @@ impl JobRunner {
                 // does). `job` and `payload` are in scope. One call each,
                 // appended by their owners; nothing else.
                 // === job-completion hooks (append-only; P4.D268, P4.D271) ===
+                crate::services::consolidation_triggers::check_consolidation_watermark_after_job(
+                    &self.inner.db,
+                    job,
+                )
+                .await;
                 // === end job-completion hooks ===
             }
             JobOutcome::Failed(message) => {

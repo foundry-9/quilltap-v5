@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(memory): P4.D271 consolidation triggers, queue and job handler
+
+_Versions: core 0.0.1271, host 0.0.196._
+
+The `MEMORY_CONSOLIDATION` job now runs. New `enqueue_memory_consolidation` (deduped per character and per dry-run flag, one attempt), `enqueue_job_at` / `enqueue_memory_housekeeping_at` (a scheduled start time), the job handler (automatic runs exit when consolidation is disabled; a dry run logs its clusters), and the host registration, which also installs the process-wide consolidation runner. Triggers: the daily housekeeping pass now runs scheduled consolidation first and delays housekeeping 30 minutes when it enqueued anything, and after a job completes, characters whose memory rows were inserted during it are checked against the watermark (debounced 10 minutes, throttled 6 hours). The housekeeping pass also gains v4's start, per-user and completion log lines. New tier-2 family `consolidation_triggers_tier2_equivalence`, including the recorded insert-window divergence table.
+
 #### 2026-10-09 — feat(memory): P4.D271 the consolidation service
 
 _Versions: core 0.0.1270._
