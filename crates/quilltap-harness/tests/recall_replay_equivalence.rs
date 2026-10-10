@@ -12,6 +12,18 @@
 //! Floats compare at 1e-12 (the TF-IDF vocab doubles come from the same JSON on
 //! both sides; cosines accumulate in doubles over the same stored f32 bits).
 //!
+//! P4.D267 (v4 `f7d8064be` / `3f7320138` / `d58548051`, pin `01a83539d`): the
+//! R7 harness fields (`memoryBudget`, strict `tuning`, pinned `signals`,
+//! `asOf`) — each case body is decoded through the REAL dispatch `Request`
+//! (so a JSON `null` reaches the route as v4 sees it); a validation 400's
+//! `details` are byte-compared; the distill-call count is compared (a pinned
+//! case makes none); the route's two `[Chats v1]` lines, the RecallReplay
+//! service's three and the search's `[Memory]` lines are compared (v4's
+//! transports splice / v5's `global_capture`). Each copy gets the tier
+//! migration on both sides (v4 `applyMemoryTiersMigration`, v5
+//! `ensure_memory_tiers_columns` — idempotent on the widened pair), then the
+//! case's `plantSql`.
+//!
 //! Generate the oracle (Node 24, from the v4 checkout; STAGE the case outside
 //! `.claude/` — v4's jest ignores those paths), against /tmp COPIES of the
 //! COMMITTED episodic-recall fixture. Do NOT run
@@ -25,6 +37,7 @@
 //!   cp $V5W/harness/oracle/cases/recall-replay.test.ts $STAGE/harness/oracle/cases/
 //!   cp $V5W/harness/oracle/fixtures/recall-replay-cases.json $STAGE/harness/oracle/fixtures/
 //!   cp $V5W/harness/oracle/fixtures/episodic-recall.json $STAGE/harness/oracle/fixtures/
+//!   cp $V5W/harness/oracle/fixtures/apply-memory-tiers-migration.ts $STAGE/harness/oracle/fixtures/
 //!   cp $V5W/crates/quilltap-web/tests/fixtures/episodic-recall-main.db  $STAGE/db/
 //!   cp $V5W/crates/quilltap-web/tests/fixtures/episodic-recall-mount.db $STAGE/db/
 //!   cd ~/source/quilltap-server
@@ -32,7 +45,7 @@
 //!   QT_FIXTURE_ER_MOUNT=$STAGE/db/episodic-recall-mount.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-recall-replay.ndjson \
 //!     $N/npx jest --silent --watchman=false --testTimeout=240000 \
-//!       --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- recall-replay
+//!       --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- "harness/oracle/cases/recall-replay\.test\.ts$"
 //! Run:
 //!   QT_ORACLE_RECALL_REPLAY=/tmp/oracle-recall-replay.ndjson \
 //!     cargo test -p quilltap-harness --test recall_replay_equivalence
@@ -42,8 +55,10 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use quilltap_core::api::recall_replay::{recall_replay, RecallReplayDriver};
-use quilltap_core::api::{ErrorKind, Response};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use quilltap_core::api::recall_replay::{recall_replay, RecallReplayArgs, RecallReplayDriver};
+use quilltap_core::api::{ErrorKind, Request, Response};
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::model::completion::{
     CompletionError, CompletionParams, CompletionProvider, CompletionResponse, CompletionUsage,
@@ -75,6 +90,8 @@ struct CaseSpec {
     delete_chat_settings: bool,
     #[serde(default)]
     delete_connections: bool,
+    #[serde(default)]
+    plant_sql: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -99,12 +116,72 @@ struct OracleRow {
     name: String,
     status: i64,
     body: Value,
+    #[serde(rename = "distillCalls")]
+    distill_calls: usize,
+    lines: Vec<Value>,
+}
+
+/// The lines this family pins (v4's exact messages), each with the v5 target
+/// that stands for v4's logger (R-M: the RecallReplay service logger's
+/// `{service, module}` context is the target).
+const PINNED_LINES: [(&str, &str); 8] = [
+    ("[Chats v1] Recall replay requested", "quilltap::chats"),
+    ("[Chats v1] Recall replay failed", "quilltap::chats"),
+    (
+        "Recall replay using pinned signals",
+        "quilltap::recall_replay",
+    ),
+    ("Recall replay corpus cutoff", "quilltap::recall_replay"),
+    ("Recall replay complete", "quilltap::recall_replay"),
+    (
+        "[Memory] TF-IDF embeddings: recall boost gate off",
+        "quilltap::memories",
+    ),
+    (
+        "[Memory] Specific entity anchors chosen",
+        "quilltap::memories",
+    ),
+    ("[Memory] Background reservation (R6)", "quilltap::memories"),
+];
+
+/// v4's captured line as v5's capture rig renders it: `LEVEL target message
+/// k=v …`, `module` dropped (it is the target), arrays / objects as `…Json`,
+/// numbers as JS prints them, `null` as the house `null`.
+fn expected_line(line: &Value) -> String {
+    let message = line["message"].as_str().unwrap();
+    let target = PINNED_LINES
+        .iter()
+        .find(|(m, _)| *m == message)
+        .map(|(_, t)| *t)
+        .unwrap_or_else(|| panic!("unpinned oracle line {message}"));
+    let mut out = format!(
+        "{} {target} {message}",
+        line["level"].as_str().unwrap().to_ascii_uppercase()
+    );
+    for (k, v) in line["fields"].as_object().unwrap() {
+        if k == "module" {
+            continue;
+        }
+        match v {
+            Value::String(s) => out.push_str(&format!(" {k}={s}")),
+            Value::Array(_) | Value::Object(_) => {
+                out.push_str(&format!(" {k}Json={}", serde_json::to_string(v).unwrap()))
+            }
+            Value::Number(n) => out.push_str(&format!(
+                " {k}={}",
+                quilltap_core::pascal::js_value::number_to_string(n.as_f64().unwrap())
+            )),
+            other => out.push_str(&format!(" {k}={other}")),
+        }
+    }
+    out
 }
 
 /// A completion provider that always answers the canned text (the distill is
 /// the only completion this surface makes) or always fails.
 struct CannedDistillProvider {
     response: Option<String>,
+    calls: Arc<AtomicUsize>,
 }
 
 impl CompletionProvider for CannedDistillProvider {
@@ -114,6 +191,7 @@ impl CompletionProvider for CannedDistillProvider {
         _base_url: Option<&str>,
         _params: &CompletionParams,
     ) -> impl Future<Output = Result<CompletionResponse, CompletionError>> + Send {
+        self.calls.fetch_add(1, Ordering::SeqCst);
         let response = self.response.clone();
         async move {
             match response {
@@ -139,6 +217,7 @@ impl CompletionProvider for CannedDistillProvider {
 struct TestDriver {
     db: Db,
     response: Option<String>,
+    calls: Arc<AtomicUsize>,
 }
 
 impl RecallReplayDriver for TestDriver {
@@ -149,6 +228,7 @@ impl RecallReplayDriver for TestDriver {
         Box::pin(async move {
             let completion = CannedDistillProvider {
                 response: self.response.clone(),
+                calls: self.calls.clone(),
             };
             let executor = CheapLlmTaskExecutor::new();
             let embedding = ErasedEmbeddingProvider::new(ApiEmbeddingProvider::new(
@@ -222,6 +302,7 @@ fn assert_value_eq(got: &Value, want: &Value, path: &str, name: &str) {
 
 #[tokio::test]
 async fn recall_replay_matches_oracle() {
+    quilltap_core::test_support::global_capture::install();
     let Ok(oracle_path) = std::env::var("QT_ORACLE_RECALL_REPLAY") else {
         eprintln!("QT_ORACLE_RECALL_REPLAY not set — skipping recall-replay differential");
         return;
@@ -279,6 +360,24 @@ async fn recall_replay_matches_oracle() {
         )
         .expect("open fixture copy");
 
+        // §R.3: the tier migration on the copy (a no-op on the widened pair),
+        // then the case's plant — identically on the oracle side.
+        db.write(|w| {
+            quilltap_core::test_support::ensure_memory_tiers_columns(w.main().connection());
+            Ok(())
+        })
+        .await
+        .expect("ensure the tier columns");
+        if let Some(sql) = case.plant_sql.clone() {
+            db.write(move |w| {
+                w.main()
+                    .connection()
+                    .execute_batch(&sql)
+                    .map_err(quilltap_core::db::DbError::from)
+            })
+            .await
+            .expect("plant");
+        }
         if case.delete_chat_settings {
             db.write(|w| {
                 w.main()
@@ -302,25 +401,75 @@ async fn recall_replay_matches_oracle() {
             .expect("delete connections");
         }
 
+        let calls = Arc::new(AtomicUsize::new(0));
         let driver: Arc<dyn RecallReplayDriver> = Arc::new(TestDriver {
             db: db.clone(),
             response: match case.distill.kind.as_str() {
                 "json" => Some(case.distill.text.clone().unwrap_or_default()),
                 _ => None,
             },
+            calls: calls.clone(),
         });
 
-        let response = recall_replay(
-            &db,
-            Some(&driver),
-            &spec.user_id,
-            &spec.chat_id,
-            case.body.get("turnIndex"),
-            case.body.get("characterId"),
-            case.body.get("limit"),
-            spec.now_ms,
-        )
-        .await;
+        // The body through the REAL dispatch decode — the carriers the arm
+        // hands the route (`double_option` keeps a JSON `null` present).
+        let mut wire = serde_json::json!({"type": "chatRecallReplay", "chatId": spec.chat_id});
+        for (k, v) in case.body.as_object().unwrap() {
+            wire[k] = v.clone();
+        }
+        let Request::ChatRecallReplay {
+            turn_index,
+            character_id,
+            limit,
+            memory_budget,
+            tuning,
+            signals,
+            as_of,
+            ..
+        } = serde_json::from_value::<Request>(wire).expect("decode the case body")
+        else {
+            panic!("{name}: not a chatRecallReplay");
+        };
+        let (response, lines) =
+            quilltap_core::test_support::global_capture::capture_async(recall_replay(
+                &db,
+                Some(&driver),
+                &spec.user_id,
+                &spec.chat_id,
+                RecallReplayArgs {
+                    turn_index: turn_index.as_ref(),
+                    character_id: character_id.as_ref(),
+                    limit: limit.as_ref(),
+                    memory_budget: memory_budget.as_ref(),
+                    tuning: tuning.as_ref().map(Option::as_ref),
+                    signals: signals.as_ref().map(Option::as_ref),
+                    as_of: as_of.as_ref().map(Option::as_ref),
+                },
+                spec.now_ms,
+            ))
+            .await;
+
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            oracle.distill_calls,
+            "{name}: distill calls"
+        );
+        let got_lines: Vec<&str> = lines
+            .iter()
+            .map(String::as_str)
+            .filter(|l| {
+                PINNED_LINES.iter().any(|(m, t)| {
+                    l.split_once(' ')
+                        .is_some_and(|(_, rest)| rest.starts_with(&format!("{t} {m}")))
+                })
+            })
+            .collect();
+        let want_lines: Vec<String> = oracle.lines.iter().map(expected_line).collect();
+        assert_eq!(
+            got_lines,
+            want_lines.iter().map(String::as_str).collect::<Vec<_>>(),
+            "{name}: captured lines"
+        );
 
         match &response {
             Response::RecallReplay(result) => {
@@ -344,6 +493,17 @@ async fn recall_replay_matches_oracle() {
                     .and_then(Value::as_str)
                     .unwrap_or("");
                 assert_eq!(e.message, want_error, "{name}: error message diverges");
+                // A validation 400's issues, byte for byte (key order is a
+                // comparand — serde_json's `Map` equality is order-blind).
+                let got_details = e
+                    .details
+                    .as_ref()
+                    .map(|d| serde_json::to_string(d).unwrap());
+                let want_details = oracle
+                    .body
+                    .get("details")
+                    .map(|d| serde_json::to_string(d).unwrap());
+                assert_eq!(got_details, want_details, "{name}: details diverge");
             }
             other => panic!("{name}: unexpected response variant: {other:?}"),
         }

@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(memory): P4.D267 chatRecallReplay honours memoryBudget, tuning, pinned signals and asOf (v4 `f7d8064be` R7)
+
+_Versions: core 0.0.1268._
+
+The recall-replay verb gains v4's four harness fields.
+
+- **`memoryBudget`** sizes the new path's head through `size_memory_pools` (e.g. 8000 on a retrospective turn → head 30). The default table limit becomes `max(25, head + 10)`.
+- **`tuning`** is validated against v4's strict schema (refusals are 400 `Validation error` with Zod's issues in `details`) and applies to the new path only.
+- **`signals`** reuses a saved distillation, so no cheap-LLM call is made; the chat-settings / profile checks still run, as in v4.
+- **`asOf`** leaves out memories created at or after the turn's opening message and weights the rest at the turn's clock.
+- A JSON `null` for `tuning`, `signals` or `asOf` is refused as v4 refuses it.
+- Replay embeddings are memoized for the life of the process (500 entries, oldest dropped first), so repeat runs embed identical vectors.
+- The result gains `oldHeadSize`, `newHeadSize`, `tuning`, `signalsPinned`, `asOf` and `excludedAfterAsOf`.
+- New log lines: v4's `[Chats v1] Recall replay requested` / `… failed` and the service's pinned-signals, corpus-cutoff and completion lines.
+
+Differential: `recall_replay_equivalence` grows from 15 to 41 cases (budgets, tunings incl. `{}` and LEGACY, strict refusals, pinned signals, `asOf` with a planted newer memory). It now also compares the distill-call count, the validation `details` and 182 captured log lines.
+
 #### 2026-10-09 — feat(memory): P4.D267 hot-only semantic search with the retuning knobs; search stops stamping (v4 `f7d8064be` / `d58548051` / `3f7320138`)
 
 _Versions: core 0.0.1267._

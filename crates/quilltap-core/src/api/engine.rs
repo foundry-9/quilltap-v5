@@ -1097,27 +1097,18 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
-            // P4.D265 (R-G, C1 §12): a PRESENT growth field is refused until
-            // P4.D267 lands — it REPLACES this gate, not only the refusal.
-            Request::ChatRecallReplay {
-                memory_budget,
-                tuning,
-                signals,
-                as_of,
-                ..
-            } if memory_budget.is_some()
-                || tuning.is_some()
-                || signals.is_some()
-                || as_of.is_some() =>
-            {
-                p4d265_not_yet_available("chatRecallReplay", "P4.D267")
-            }
+            // P4.D267 (C1 §12): the arm honours the four R7 growth fields —
+            // P4.D265's present-field refusal gate is REPLACED, not just its
+            // refusal (the route validates the raw values, v4's bytes).
             Request::ChatRecallReplay {
                 chat_id,
                 turn_index,
                 character_id,
                 limit,
-                ..
+                memory_budget,
+                tuning,
+                signals,
+                as_of,
             } => match self.ready_db_and_recall_replay() {
                 Ok((db, driver)) => {
                     super::recall_replay::recall_replay(
@@ -1125,9 +1116,15 @@ impl CoreEngine {
                         driver.as_ref(),
                         SINGLE_USER_ID,
                         &chat_id,
-                        turn_index.as_ref(),
-                        character_id.as_ref(),
-                        limit.as_ref(),
+                        super::recall_replay::RecallReplayArgs {
+                            turn_index: turn_index.as_ref(),
+                            character_id: character_id.as_ref(),
+                            limit: limit.as_ref(),
+                            memory_budget: memory_budget.as_ref(),
+                            tuning: tuning.as_ref().map(Option::as_ref),
+                            signals: signals.as_ref().map(Option::as_ref),
+                            as_of: as_of.as_ref().map(Option::as_ref),
+                        },
                         crate::clock::now_unix_ms() as f64,
                     )
                     .await
