@@ -77,6 +77,10 @@ pub struct ProactiveRecallInput<'a> {
     /// v4 `presentAboutCharacterIds` — the responding character + every other
     /// character participant, for the participant-aware recall boost (item 4).
     pub present_about_character_ids: &'a [String],
+    /// v4 `presentParticipantNames` (`f7d8064be`) — display names of those same
+    /// characters; R4's entity anchors skip a name that merely names someone in
+    /// the room (honoured by P4.D267).
+    pub present_participant_names: &'a [String],
     /// v4 `isContinueMode` — a continue turn has no just-saved user message to push.
     pub is_continue_mode: bool,
     /// v4 `content` — the verbatim user-message text for this turn (empty in
@@ -356,8 +360,7 @@ where
         // stands in for the wall clock.)
         current_chat_id: Some(input.chat_id.to_string()),
         now_ms: Some(input.now_ms as f64),
-        // P4.D265 (mechanical): honoured from P4.D267; P4.D268 sets it.
-        present_participant_names: Vec::new(),
+        present_participant_names: input.present_participant_names.to_vec(),
     };
 
     // Retrospective turns: multi-probe (entity string; paraphrase + resolved date
@@ -392,7 +395,12 @@ where
         &search_query,
         &SemanticSearchOptions {
             user_id: input.user_id.to_string(),
-            limit: Some(20),
+            // The context builder drops every candidate already in the frozen
+            // archive, then fills the head from what is left — and does not
+            // search again. Pull enough that a full archive overlap still
+            // leaves the largest head it can ask for (a retrospective turn:
+            // 2 × max). v4 `3f7320138` F7.
+            limit: Some(crate::memory_pools::PROACTIVE_RECALL_POOL_SIZE),
             min_importance: Some(0.3),
             recall_context: Some(recall_context),
             // Episodic recall: entity anchoring always (a verbatim place name cannot
@@ -414,7 +422,8 @@ where
     )
     .await;
 
-    // v4: on non-empty results → `{ memories: results.slice(0, 10), signals }`; on
+    // v4: on non-empty results → `{ memories: results, signals }` (the whole
+    // pool — `3f7320138` dropped the `.slice(0, 10)`); on
     // empty OR a throw → `{ memories: undefined, signals }` (signals STILL flow).
     // The captured vector rides BOTH arms (v4 `870a57fa` returns `queryEmbedding`
     // on the success slice AND the memories-`undefined` fall-through).
@@ -425,8 +434,9 @@ where
     ))
 }
 
-/// v4's search-outcome shaping (`pre-compute.service.ts:328-339`): non-empty
-/// results become the memories capped at 10 (`.slice(0, 10)`); an empty list
+/// v4's search-outcome shaping (`pre-compute.service.ts:359-371`): non-empty
+/// results become the memories WHOLE (the proactive pool, so archive overlap
+/// cannot starve the head — v4 `3f7320138` removed the `.slice(0, 10)`); an empty list
 /// yields `memories: None` — but the signals STILL flow so the retrospective
 /// cadence fires. (v5 collapses the empty-and-throw arms here: `search.
 /// unwrap_or_default()` maps a search error to the empty list, which v4's `catch`
@@ -439,7 +449,7 @@ fn finish_outcome(
     let memories = if results.is_empty() {
         None
     } else {
-        Some(results.into_iter().take(10).collect())
+        Some(results)
     };
     ProactiveRecallOutcome {
         memories,
@@ -452,8 +462,8 @@ fn finish_outcome(
 mod tests {
     //! Unit specs porting v4's `proactiveRecallTask` jest suite
     //! (`pre-compute.service.test.ts:138-264`). The guard/windowing cases run
-    //! against the pure [`messages_since_last_spoke`] helper and the 10-cap
-    //! against [`finish_outcome`]; the distill/search legs (jest
+    //! against the pure [`messages_since_last_spoke`] helper and the whole-pool return
+    //! against [`finish_outcome`] (now the whole pool); the distill/search legs (jest
     //! "extracts-then-searches" / "extraction fails" / "search throws" /
     //! search-empty-signals-flow / multi-character) are proven end-to-end against
     //! v4's REAL code by the tier-3 `precompute` differential
@@ -476,13 +486,15 @@ mod tests {
         }
     }
 
-    /// jest "caps the returned memory list at 10".
+    /// jest "returns the whole proactive pool so archive overlap cannot starve
+    /// the head" (v4 `3f7320138`, which retired "caps the returned memory list
+    /// at 10").
     #[test]
-    fn caps_memories_at_ten() {
+    fn returns_the_whole_proactive_pool() {
         let many: Vec<SemanticSearchResult> =
             (0..15).map(|i| fake_result(&format!("m{i}"))).collect();
         let out = finish_outcome(many, DistilledSearch::default(), None);
-        assert_eq!(out.memories.expect("memories").len(), 10);
+        assert_eq!(out.memories.expect("memories").len(), 15);
     }
 
     /// An empty result set → `memories: None`, but the signals STILL flow (v4's

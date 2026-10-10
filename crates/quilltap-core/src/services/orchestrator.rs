@@ -2354,6 +2354,16 @@ where
         }
         out
     };
+    // Their names too (v4 `f7d8064be`, `orchestrator.service.ts:1136-1137`):
+    // R4's entity anchors skip a name that merely names someone in the room.
+    let present_participant_names: Vec<String> = std::iter::once(character_name.clone())
+        .chain(
+            participant_characters
+                .values()
+                .filter_map(|c| c.get("name").and_then(Value::as_str).map(str::to_string)),
+        )
+        .filter(|name| !name.is_empty())
+        .collect();
     let (pre_searched_memories, recall_signals, pre_searched_query_embedding) = {
         // The two status frames (`recalling_keywords`, `recalling_memories`) v4 emits
         // from inside `proactiveRecallTask`; the closure stamps the character name/id.
@@ -2372,6 +2382,7 @@ where
             character_name: &character_name,
             character_participant_id: &character_participant_id,
             present_about_character_ids: &present_about_character_ids,
+            present_participant_names: &present_participant_names,
             is_continue_mode,
             content: &content,
             existing_messages: &existing_messages,

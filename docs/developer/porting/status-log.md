@@ -175560,3 +175560,16 @@ The recipe sweep ran from the pin against a scratch worktree at the base `18e41e
     - The planted COLD row about Bea (`…000005`) reaches v5's dynamic head (`headUsed` 1 vs 0; head stamp `count` 33 vs 32).
     - It also reaches the inter-character relevance half (inter stamp `count` 5 vs 4). Both arrive via KEYSTONE's unfiltered `search_memories_semantic` (text fallback, score 0.00625).
     - With the delivery assert relaxed, the built-context diff was exactly those two entries, plus `memories` / `total` token counts and `memoriesIncluded` 38 vs 36. The archive and the inter importance half exclude the cold row on both sides. P4.D267's hot filter turns the op green on the union.
+
+### Unit 4 landed — `0336c29ec`
+
+### Unit 5 — pre-compute + orchestrator (Tier 1 item 6; R-G)
+- **Pre-compute.** `ProactiveRecallInput.present_participant_names: &'a [String]` is threaded into `RecallContextInput`. The search uses `limit: Some(PROACTIVE_RECALL_POOL_SIZE)` (90). `finish_outcome` returns ALL results; the `take(10)` and its doc were removed. The unit test `caps_memories_at_ten` became `returns_the_whole_proactive_pool` (v4's renamed jest case).
+- **Orchestrator.** It builds `present_participant_names` (the `character_name`, then every `participant_characters` value's `name`, non-empty) and passes it. The `build_context.rs` test literal gains `present_participant_names: &[]`.
+- **`precompute` family** (R-G — this lane's files; regenerated at the pin from the committed `episodic-recall` pair copied into `/tmp/p4d268/`):
+  - The marked `// === P4.D268: pool-size rows (append-only) ===` blocks on both sides add per-case `plantSql`, executed on the case's copy, and the optional `presentParticipantNames` key (absent from the corpus, so v4 sees `undefined`).
+  - New case `p4d268-pool-returns-whole-pool`: 9 clones (memories and `vector_entries`) of the three memories the query matches, giving a 12-row pool.
+    - It is compared by length plus the SORTED id set; the other four fields are compared whole.
+    - It is GREEN in isolation. **Mutation:** restoring `take(10)` reddens it (`length` 10 vs 12). The `limit` 90 vs 20 is not observable at a 12-row pool; the constant is P4.D265's tier-1 `memory_pools_equivalence`.
+- **UNION-PENDING(P4.D267) — `precompute_equivalence`, `spoke-then-window-searches`** (`preSearchedMemories[1].recallAdjustment.multiplier` 1.36 vs 1.105). This is unchanged from the KEYSTONE red. Because it is the second case, the loop stops there on this branch, so the pool row was measured with a local, uncommitted case filter.
+- **HANDOFFs received for the `precompute` files:** none at the time of this unit.

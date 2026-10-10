@@ -4735,6 +4735,7 @@ mod distill_latency_tests {
                 character_name: "Lyra",
                 character_participant_id: "participant-a",
                 present_about_character_ids: &present,
+                present_participant_names: &[],
                 is_continue_mode: false,
                 content: "No, no. I mean the mission today.",
                 existing_messages: &existing,

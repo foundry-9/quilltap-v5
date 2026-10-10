@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(memory): P4.D268 proactive recall pulls the 90-memory pool and returns it whole; the orchestrator passes the present participants' names
+
+_Versions: core 0.0.1270._
+
+**Pre-compute.** The proactive recall search uses `limit = PROACTIVE_RECALL_POOL_SIZE` (90), up from 20, and returns every result. The `.slice(0, 10)` is gone (v4 `3f7320138` F7), because the context builder drops archive overlap and never searches again. `ProactiveRecallInput` gains `present_participant_names`, which is threaded into the recall context (v4 `f7d8064be`; P4.D267 consumes it).
+
+**Orchestrator.** It builds the names list (the responder, then every participant character's name, non-empty only) beside the present-character ids. The pre-compute unit test now pins the whole-pool return.
+
+**Differential.** `precompute` gains a marked append-only block on both sides: per-case `plantSql`, plus a `p4d268-pool-returns-whole-pool` case that clones the three matching memories nine times, vectors included. That case is compared by length plus the sorted id set (12 ids; v4 returns them all). It is green in isolation, and restoring the 10-cap reddens it by length. The family as a whole stays red on `spoke-then-window-searches`'s recall multiplier (1.36 vs 1.105), which is P4.D267's retuning.
+
 #### 2026-10-09 — feat(memory): P4.D268 buildContext sizes its memory pools from the budget, keys the archive by chat and presence, and stamps only what it delivered
 
 _Versions: core 0.0.1269._
