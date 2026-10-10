@@ -770,12 +770,14 @@ const REPO_LOG_MESSAGES = new Set([
 
 /**
  * [P4.158 R-G] Every message `lib/backup/restore/restore.ts` logs through its
- * `moduleLogger` — all 68 sites at `f5e953a3f`, each message distinct
- * (counted at the pin: 46 warn, 6 info, 16 debug, 0 error). P4.158 counted
+ * `moduleLogger` — all 80 sites at `01a83539d`, each message distinct
+ * (counted at the pin: 52 warn, 7 info, 19 debug, 2 error). P4.158 counted
  * 63 (44 / 5 / 14); P4.D264 added four (22n-bis and 22f-ter: +2 warn, +1
  * info, +1 debug) and P4.D258 bug 181's `Decoded index-keyed memory
- * embedding` DEBUG (landed at the unification). EVERY restore case records
- * them, at every level, so the census is compared across the whole corpus.
+ * embedding` DEBUG (landed at the unification) — 68 at `f5e953a3f`; P4.D273
+ * adds `ed8b15b50`'s twelve (bug 185's store binding + 23a's reconcile:
+ * +6 warn, +1 info, +3 debug, +2 error). EVERY restore case records them, at
+ * every level, so the census is compared across the whole corpus.
  */
 const RESTORE_TS_MESSAGES = [
   "All entities restored with preserved IDs - no reconciliation needed",
@@ -847,6 +849,49 @@ const RESTORE_TS_MESSAGES = [
   "Starting restore operation",
   "Translated pre-4.10 Concierge settings for restore",
   "Translated the retired impersonated-line voice toggle for restore",
+  // [P4.D273] v4 `ed8b15b50` (bug 185's store binding, 22a's free name, 22a-i,
+  // the deferred project files, 23a's store-name reconcile) — 68 → 80.
+  "Archived character vault failed to restore; tombstone left unhealed",
+  "Failed to re-provision character vault after restore",
+  "Failed to re-provision official store after restore",
+  "Failed to restore deferred project file",
+  "Post-restore store-name reconcile complete",
+  "Post-restore store-name reconcile failed",
+  "Re-provisioned a character vault whose archived store failed to restore",
+  "Re-provisioned an official store whose archived store failed to restore",
+  "Replayed deferred project files",
+  "Restored document store under a free name",
+  "Restored entities bound to their archived stores",
+  "Restored entity falls back to a fresh store",
+];
+
+/**
+ * [P4.D273] The bound creates' repository lines (v4 `ed8b15b50`:
+ * `CharactersRepository.createBoundToVault`, the store-backed
+ * `createBoundToStore`) — the INFO on success, the `safeQuery` wrap on a
+ * refusal. Recorded and compared on EVERY case.
+ */
+const BOUND_CREATE_MESSAGES = [
+  'Character restored bound to its archived vault',
+  'Project restored bound to its archived store',
+  'Group restored bound to its archived store',
+  'Error restoring character bound to its vault',
+  'Error restoring project bound to its store',
+  'Error restoring group bound to its store',
+];
+
+/**
+ * [P4.D273 R-D] The store-name reconcile's lines (v4 `ed8b15b50`,
+ * `reconcile-store-names.ts` + the characters repository's
+ * `reconcileVaultNames`). Recorded on every case; the Rust side masks them on
+ * BOTH sides under `RECONCILE_PENDING_UNION` until the unifier applies the
+ * 23a call (P4.D274's `reconcile_store_names`) and lifts the carve.
+ */
+const RECONCILE_MESSAGES = [
+  'Store-name reconcile planned',
+  'Renamed document store to its rightful name',
+  'Store-name reconcile after a character change failed',
+  'Store-name reconcile skipped: mount-index database unavailable',
 ];
 
 /**
@@ -1112,7 +1157,7 @@ async function runRestoreCase(
     // [P4.158 R-G] every case records the census; the refused-chat cases also
     // emit `repoLogs` (P4.143's shape), projected from the same recording.
     ({ out: summary, logs } = await withLogs(
-      [...RESTORE_TS_MESSAGES, ...REPO_LEVEL_MESSAGES],
+      [...RESTORE_TS_MESSAGES, ...REPO_LEVEL_MESSAGES, ...BOUND_CREATE_MESSAGES, ...RECONCILE_MESSAGES],
       run,
     ));
     if (c.recordRepoLogs) {

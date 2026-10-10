@@ -12,6 +12,31 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(restore): P4.D273 the restore binds every entity to its archived store, in both modes (v4 bug 185)
+
+_Versions: core 0.0.1269._
+
+Fixes dogfood #141 and #159 by converging on v4 `ed8b15b50`. A restore used to give every restored character, project and group a fresh, empty store. The store the archive carried for it was restored too, but nothing pointed at it. Now each one is bound to the store the archive carries, in both `replace` and `new-account` mode, with no `replace`-only special case.
+
+- **Claim map.** One claim map over the archive's stores (remapped, in `new-account` mode) decides each binding. The claim comes before validation, as in v4.
+- **Bound creates.** A character goes through a create local to the restore. A project or group goes through `create_bound_to_store`.
+- **Fallback warning.** Any other entity gets v4's warning, `The <kind> "<name>" was given a fresh, empty store because …`, and the WARN `Restored entity falls back to a fresh store`.
+- **Doc mount points (step 22a).** The archive's `createdAt` is kept, and the restore records which stores it restored. A non-string archived name is refused with v4's error text.
+- **Re-provision (new step 22a-i).** A bound store whose own row failed to restore gets a fresh store built from the backup row. An archived character is never given one; it gets v4's warning instead. Every restore that reaches the doc-store family now logs `Restored entities bound to their archived stores`.
+- **Deferred files.** Files of a bound project that still need their bytes re-ingested are deferred to a second pass, with v4's lines.
+- **Completeness backfill.** P4.158's backfill now runs in both modes, and skips a re-provisioned store.
+
+`system_restore_state` was reshaped by measurement:
+
+- **Retired:** `FRESH_STORE_RESIDUAL` and its fold, shared-content, claim-WARN and backfill-shared-content companions, plus the compact `REPLAY_DEDUPE` entries.
+- **New ruled divergence:** `DUP_STORE_ID_FIRST_ROW`.
+- **Re-pinned:** `PRESERVE_BACKFILL`, now as v5-ahead.
+- **Lane-local mask:** `RECONCILE_PENDING_UNION` covers v4's store-name reconcile until the union applies it.
+- **Tombstone case:** now in the bulk diff.
+- **Census:** grows from 68 to 80 v4 lines, plus the bound creates' lines.
+
+All 45 cases match v4 at the pin.
+
 #### 2026-10-09 — feat(db): P4.D273 the store-backed bound create and provisionOfficialStore
 
 _Versions: core 0.0.1268._

@@ -77,6 +77,28 @@
 //! `index_keyed_embedding_equivalence` pins the decoder against v4's REAL
 //! one).
 //!
+//! ## The restore store binding — CONVERGED (P4.D273, v4 `ed8b15b50` bug 185)
+//!
+//! P4.147 ruled #141 (a restore minted a fresh vault / official store beside
+//! the archive's orphaned one) and pinned it both ways as
+//! `FRESH_STORE_RESIDUAL`; the port filed it as v4 bug 185 (with #159, its
+//! `new-account` half). v4 fixed it with ONE claim map over the (remapped)
+//! archive stores, in both modes, and the tripwire fired on the `01a83539d`
+//! oracle as designed. v5 converged onto v4's design
+//! (`services::backup::restore::store_claims`): `FRESH_STORE_RESIDUAL`,
+//! `FRESH_STORE_FOLD_COLLISIONS`, `FRESH_STORE_SHARED_CONTENT`,
+//! `CLAIMED_STORE_WARNS`, `PRESERVE_BACKFILL_SHARED_CONTENT` and the compact
+//! `REPLAY_DEDUPE` entries are RETIRED by measurement; every `*_new_account`
+//! case binds and compares row for row. What the binding leaves:
+//!
+//! - [`DUP_STORE_ID_FIRST_ROW`] — RULED (P4.D273 R-A): v4's map keeps the LAST
+//!   row of a duplicated store id, v5 the FIRST (the one 22a restores).
+//! - [`PRESERVE_BACKFILL`] — RULED, re-pinned v5-ahead (R-B): v4 binds a
+//!   damaged store and leaves it blank; v5 completes its managed files.
+//! - `RECONCILE_PENDING_UNION` ([`mask_reconcile_pending_union`]) — lane-local
+//!   (R-D): v4's store-name reconcile has no caller on this branch; the
+//!   unifier applies the 23a hunk and LIFTS it.
+//!
 //! ## ⚠ What is left, and why each is not simply "fixed here"
 //!
 //! - [`PHASE_ORDER_RESIDUAL`] — the two orderings write the SAME ROWS with the
@@ -208,6 +230,35 @@ const TEST_PEPPER: &str = "3q2+796tvu/erb7v3q2+796tvu/erb7v3q2+796tvu8=";
 /// insertion order. Not a new divergence — the ruled one, reached by a second
 /// case of the same shape.
 const PHASE_ORDER_RESIDUAL: &[(&str, &str, &str)] = &[
+    // [P4.D273] The compact archive, both modes, left `REPLAY_DEDUPE` by
+    // measurement (v4 `ed8b15b50` no longer phantoms its >3 MB project file).
+    // What remains is exactly this residual: v4's `22a-bis` replays the
+    // legacy-disk-key `portrait.png` before the archived rows, v5's slot after
+    // them — the same rows, another insertion order. In `replace` mode the
+    // replay's `restored/` folder rides it too.
+    ("restore_compact_replace", "mountIndex", "doc_mount_blobs"),
+    (
+        "restore_compact_replace",
+        "mountIndex",
+        "doc_mount_file_links",
+    ),
+    ("restore_compact_replace", "mountIndex", "doc_mount_files"),
+    ("restore_compact_replace", "mountIndex", "doc_mount_folders"),
+    (
+        "restore_compact_new_account",
+        "mountIndex",
+        "doc_mount_blobs",
+    ),
+    (
+        "restore_compact_new_account",
+        "mountIndex",
+        "doc_mount_file_links",
+    ),
+    (
+        "restore_compact_new_account",
+        "mountIndex",
+        "doc_mount_files",
+    ),
     // [P4.D152] The bug-117 archive replays a legacy-disk-key `portrait.png` —
     // the exact shape this residual describes — so the two file phases write its
     // content row, link and blob at different points in the insertion order. Not
@@ -322,6 +373,24 @@ const PHASE_ORDER_RESIDUAL: &[(&str, &str, &str)] = &[
         "mountIndex",
         "doc_mount_files",
     ),
+    // [P4.D273] The tombstone twin joined the bulk diff (the bound arm of
+    // `ARCHIVED_CHARACTER_RESTORE` converged): the same archive family, the
+    // same one legacy-disk-key replay, the same ruled placement.
+    (
+        "restore_wardrobe_picture_tombstone_new_account",
+        "mountIndex",
+        "doc_mount_blobs",
+    ),
+    (
+        "restore_wardrobe_picture_tombstone_new_account",
+        "mountIndex",
+        "doc_mount_file_links",
+    ),
+    (
+        "restore_wardrobe_picture_tombstone_new_account",
+        "mountIndex",
+        "doc_mount_files",
+    ),
 ];
 
 /// ## A pre-existing v5 gap, newly VISIBLE — not this lane's to fix
@@ -378,6 +447,11 @@ const V5_STATS_GAP: &[(&str, &str)] = &[
     // own uploads mount — the existing deferral, two more cases of the shape.
     ("restore_wardrobe_wear_new_account", "Quilltap Uploads"),
     ("restore_wardrobe_picture_new_account", "Quilltap Uploads"),
+    // [P4.D273] the tombstone twin, in the bulk diff now.
+    (
+        "restore_wardrobe_picture_tombstone_new_account",
+        "Quilltap Uploads",
+    ),
 ];
 
 /// The columns [`V5_STATS_GAP`] makes incomparable on its named rows.
@@ -420,14 +494,12 @@ const REPLAY_DEDUPE: &[&str] = &[
     // (`new_account` remaps every mount, so there is no collision and the uploads
     // archive converges fully — it is NOT here.)
     "restore_uploads_replace",
-    // [P4.D46 → P4.D51] The compact archive carries a >3 MB store-backed file; v4
-    // fails to dedup it and phantoms a doc-store copy, in BOTH modes.
-    "restore_compact_replace",
-    "restore_compact_new_account",
-    // [P4.147] the same archive into a FRESH target: the >3 MB phantom is the
-    // project-bound file, which never touches the Uploads pointer, so #142's
-    // fix leaves it exactly as `restore_compact_replace` has it.
-    "restore_compact_fresh_replace",
+    // The three compact cases (`restore_compact_replace`, `_new_account`,
+    // `_fresh_replace` — P4.D46 → P4.D51, P4.147) are RETIRED BY MEASUREMENT
+    // (P4.D273): their >3 MB phantom was a PROJECT-bound file, and v4
+    // `ed8b15b50` (bug 185) extended carried-row detection to project files,
+    // so v4 no longer re-ingests it. The retire tripwire fired on all three at
+    // the `01a83539d` oracle; they compare row for row now.
 ];
 
 /// The tables [`REPLAY_DEDUPE`] makes incomparable row for row on its cases:
@@ -461,15 +533,10 @@ const REPLAY_DEDUPE_SUMMARY_KEYS: &[&str] = &["docMountFolders", "docMountFileLi
 /// `restored` folder v5's portrait replay created — a carve gap, fixed there —
 /// so it comes back under diff, and the case's warnings and summary keys with
 /// it. `assert_replay_dedupe` still holds the case both ways.
-const REPLAY_DEDUPE_NARROWED: &[(&str, &[(&str, &str)])] = &[(
-    "restore_compact_fresh_replace",
-    &[
-        ("main", "files"),
-        ("mountIndex", "doc_mount_blobs"),
-        ("mountIndex", "doc_mount_files"),
-        ("mountIndex", "doc_mount_file_links"),
-    ],
-)];
+///
+/// P4.D273: its one entry (`restore_compact_fresh_replace`) retired with the
+/// compact cases above — the table stays, empty, for the next narrowed case.
+const REPLAY_DEDUPE_NARROWED: &[(&str, &[(&str, &str)])] = &[];
 
 /// The tables [`REPLAY_DEDUPE`] carves on `name`.
 fn replay_dedupe_tables(name: &str) -> &'static [(&'static str, &'static str)] {
@@ -1616,7 +1683,8 @@ fn system_restore_state_equivalence() {
     let mut seen = 0usize;
     let mut repo_log_cases = 0usize;
     let mut restore_log_cases = 0usize;
-    let mut fresh_store_carved = 0usize;
+    let mut dup_store_carved = 0usize;
+    let mut reconcile_masked: Vec<(String, usize)> = Vec::new();
     let mut empty_embedding_seen = 0usize;
 
     for case in &cases {
@@ -1624,11 +1692,10 @@ fn system_restore_state_equivalence() {
         if !name.starts_with("restore_") {
             continue;
         }
-        // [P4.D264] compared on its 22f-ter facts alone — see
-        // `wardrobe_picture_tombstone_is_skipped`.
-        if name == TOMBSTONE_CASE {
-            continue;
-        }
+        // [P4.D264 → P4.D273] The tombstone case used to be compared on its
+        // 22f-ter facts alone (`wardrobe_picture_tombstone_is_skipped`); the
+        // bound arm of `ARCHIVED_CHARACTER_RESTORE` converged, so it now takes
+        // the bulk diff too.
         if name == EMPTY_EMBEDDING_CASE {
             empty_embedding_seen += 1;
         }
@@ -1774,21 +1841,39 @@ fn system_restore_state_equivalence() {
         let mut got_state = read_state(&instance);
         let mut want_owned = case["state"].clone();
 
-        // [P4.147] The two ruled divergences, asserted both ways on the RAW
+        // [P4.D273 R-D] `RECONCILE_PENDING_UNION` — v4's store-name reconcile
+        // (23a + the characters create path's) has no v5 caller on this
+        // branch; its moves are masked on BOTH sides until the unifier lifts
+        // the carve. Counted per case: a vacuous carve fails.
+        let mut summary_carve = SummaryCarve::default();
+        let masked = reconcile_pending_union_count(&got_state, &want_owned, &case["logs"]);
+        if masked == 0 {
+            failures.push(format!(
+                "[{name}] RECONCILE_PENDING_UNION masked nothing — the carve went vacuous"
+            ));
+        }
+        reconcile_masked.push((name.to_string(), masked));
+        // [P4.D273 R-A] The ruled divergence, asserted both ways on the RAW
         // dumps and then carved — BEFORE any normalization, so the
         // `<minted-N>` first-encounter labels of the remaining rows line up.
-        let mut summary_carve = SummaryCarve::default();
-        if mode_for(name) == RestoreMode::Replace {
-            if let Some(shared) = carve_fresh_store_residual(
-                name,
-                &zip,
-                &host.temp_dir(),
-                &mut got_state,
-                &mut want_owned,
-                &mut failures,
-            ) {
-                fresh_store_carved += 1;
-                summary_carve.shared_content = shared > 0;
+        if let Some(shared) = carve_dup_store_id_first_row(
+            name,
+            &zip,
+            &host.temp_dir(),
+            &case["summary"],
+            &mut got_state,
+            &mut want_owned,
+            &mut summary_carve,
+            &mut failures,
+        ) {
+            dup_store_carved += 1;
+            // `FRESH_STORE_SHARED_CONTENT` retired with `FRESH_STORE_RESIDUAL`:
+            // the one remaining fresh vault shares no content row.
+            if shared > 0 {
+                failures.push(format!(
+                    "[{name}] DUP_STORE_ID_FIRST_ROW (v4): the carved vault shares {shared} \
+                     content row(s) — measure and reshape"
+                ));
             }
         }
         // [P4.158 R-A] the backfilled managed files, both ways.
@@ -1796,18 +1881,8 @@ fn system_restore_state_equivalence() {
             name,
             &zip,
             &host.temp_dir(),
-            &got_state,
+            &mut got_state,
             &want_owned,
-            &mut failures,
-        );
-        // [P4.161 Tier 2 item 10] the backfill's shared content rows, both
-        // ways, then collapsed on v4's side.
-        collapse_backfill_shared_content(
-            name,
-            &zip,
-            &host.temp_dir(),
-            &got_state,
-            &mut want_owned,
             &mut failures,
         );
         carve_fresh_target_uploads(
@@ -1934,15 +2009,17 @@ fn system_restore_state_equivalence() {
     // ledger both modes + its refused arm, the picture pointer both modes; the
     // tombstone twin is the dedicated `wardrobe_picture_tombstone_is_skipped`).
     // 43 + 1 = 44: P4.D258's empty-embedding arm (its case line landed at the
-    // `f5e953a3f` unification — the P4.D258 HANDOFF).
+    // `f5e953a3f` unification — the P4.D258 HANDOFF). 44 + 1 = 45: P4.D273
+    // lets the P4.D264 tombstone twin into the bulk diff (the bound arm of
+    // `ARCHIVED_CHARACTER_RESTORE` converged).
     assert_eq!(
         empty_embedding_seen, 1,
         "{EMPTY_EMBEDDING_CASE} is missing from the oracle — regenerate it"
     );
     assert_eq!(
         seen,
-        44,
-        "expected all forty-four restore cases in the oracle (ten + the #58 orphan-links arm \
+        45,
+        "expected all forty-five restore cases in the oracle (ten + the #58 orphan-links arm \
          + P4.D46's two compact arms + P4.D126's bug-103 legacy-profiles arm \
          + P4.D145's bug-114 duplicate-folders arm + P4.D152's bug-117 arm \
          + P4.D158's two bag-key arms + P4.D208's bug-158 arm \
@@ -1951,13 +2028,22 @@ fn system_restore_state_equivalence() {
          + P4.147's three fresh-target arms, bag-nulls, informs and SQLite-tail arms \
          + P4.158's damaged-store, two-claimants, dup-store-id, general-pointer and phase-warns arms \
          + P4.161's memory-, inform-, entity- and kind-refusal arms \
-         + P4.D264's five wardrobe-carrier arms + P4.D258's empty-embedding arm)"
+         + P4.D264's five wardrobe-carrier arms + its tombstone twin + P4.D258's \
+         empty-embedding arm)"
     );
-    // [P4.147] Every ruled #141 case actually carved (red-first measured, then
-    // both directions held) — the arm cannot go vacuous.
+    for f in &failures {
+        eprintln!("FAILURE {f}");
+    }
+    // [P4.D273 R-D] the per-case mask counts, for the lane record.
+    for (case, n) in &reconcile_masked {
+        println!("  RECONCILE_PENDING_UNION {case}: {n} masked");
+    }
+    // [P4.D273 R-A] Every `DUP_STORE_ID_FIRST_ROW` case actually carved — the
+    // arm cannot go vacuous.
     assert_eq!(
-        fresh_store_carved, FRESH_STORE_CARVED_CASES,
-        "replace cases whose v4 dump carried a #141 fresh store to carve"
+        dup_store_carved,
+        DUP_STORE_ID_FIRST_ROW.len(),
+        "cases whose v4 dump carried the DUP_STORE_ID_FIRST_ROW fresh vault to carve"
     );
     assert!(
         failures.is_empty(),
@@ -3806,24 +3892,10 @@ struct CarveOutcome {
     unlisted_collisions: Vec<String>,
 }
 
-/// ## The legacy fold, landing on the ARCHIVE's vault — part of #141's ruling
-///
-/// 22f-bis folds a legacy archive's outfit presets into wardrobe items through
-/// the character's CURRENT vault. On v4 that is the fresh one, where the item's
-/// path is free. On v5 it is the archive's own vault — and
-/// `restore-archive-legacy.zip`'s vault ALREADY carries `Wardrobe/Travelling
-/// Coat.md` (the fixture is a modern archive plus `outfit-presets.json`), so
-/// the wardrobe create uniquifies the fold to `Travelling Coat-1.md`, exactly
-/// as v4's own create would on a vault that held it. Same document, another
-/// path. Each entry is `(case, the path v4 wrote, the path v5 wrote)`: v4's
-/// re-homed link takes v5's path so its content stays under diff, and both
-/// directions are asserted (the entry must be USED on v4's side, and v5 must
-/// carry the renamed link).
-const FRESH_STORE_FOLD_COLLISIONS: &[(&str, &str, &str)] = &[(
-    "restore_legacy_archive",
-    "Wardrobe/Travelling Coat.md",
-    "Wardrobe/Travelling Coat-1.md",
-)];
+// `FRESH_STORE_FOLD_COLLISIONS` (`restore_legacy_archive`'s legacy fold landing
+// on the ARCHIVE's vault, uniquified to `Travelling Coat-1.md`) — RETIRED BY
+// MEASUREMENT with `FRESH_STORE_RESIDUAL` (P4.D273): v4 now binds the vault
+// too, so its fold collides and uniquifies exactly as v5's does.
 
 /// Carve v4's #141 fresh stores (`fresh → archive`, keyed by the fresh store's
 /// id) out of its dump, re-homing what v4 wrote into a fresh store that the
@@ -3845,7 +3917,8 @@ const FRESH_STORE_FOLD_COLLISIONS: &[(&str, &str, &str)] = &[(
 /// with a SURVIVING link stays (`doc_mount_files` is global and sha-keyed: a
 /// later store's identical file reuses v4's earlier row) — it keeps its v4
 /// rowid, earlier than v5's own copy, which is why those two tables then
-/// compare order-insensitively on that case ([`FRESH_STORE_SHARED_CONTENT`]).
+/// compare order-insensitively on that case (the retired
+/// `FRESH_STORE_SHARED_CONTENT`; [`carve_dup_store_id_first_row`] requires none).
 fn carve_fresh_stores(
     dump: &mut Value,
     fresh_to_archive: &BTreeMap<String, String>,
@@ -4024,265 +4097,226 @@ fn point_exists(dump: &Value, id: &str) -> bool {
         .any(|r| str_at(r, "id") == Some(id))
 }
 
-/// ## ⚠ THE RULED #141 DIVERGENCE — `FRESH_STORE_RESIDUAL` (P4.147, 2026-10-05)
+/// ## `FRESH_STORE_RESIDUAL` — RETIRED BY MEASUREMENT (P4.D273, v4 `ed8b15b50`)
 ///
-/// v4 restores every character, project and group through its CREATE path,
-/// which drops the archived `characterDocumentMountPointId` /
-/// `officialMountPointId` and provisions a FRESH vault / official store
-/// (`characters.repository.ts:262-296`, `restore.ts:315-345`); 22a then
-/// restores the archive's own store under its archived id beside it, orphaned.
-/// So every `replace` restore of an archive that carries a pointed store lands
-/// TWO stores for the entity and points it at the empty one (dogfood #141:
-/// 144 stores from a 77-store archive, Friday's pointer on a 12-file vault
-/// while her real 805-link one sat orphaned).
+/// P4.147 ruled #141 (v4 restored every character / project / group through
+/// its create path, minting a fresh store beside the archive's orphaned one)
+/// and pinned it both ways on 32 `replace` cases. This port filed it as v4 bug
+/// 185; v4 fixed it in `ed8b15b50` with a claim map that binds every entity to
+/// the store its (remapped) pointer names, in BOTH modes. The tripwire fired
+/// on the first oracle regenerated at `01a83539d` exactly as designed (v4 now
+/// keeps the archive's store for every carved entity on 30 of the 32 cases;
+/// the other two are the cases below and `restore_entity_refusals_replace`,
+/// whose fresh store is now the v4-faithful `already-claimed` fallback on BOTH
+/// sides). The carve is gone; the pointers, the fallback arm's fresh stores and
+/// v4's `noteStoreFallback` warnings compare as plain equalities.
 ///
-/// Under the standing backup/restore ruling (`backup-restore-fix-dont-match`,
-/// 2026-08-03) v5 FIXES it on the READ side (Shape A, preserve-at-create): when
-/// the archive carries the pointed store, the entity's slim row keeps the
-/// pointer and no fresh store is minted. `replace` mode only (ruling R-B).
+/// ## ⚠ THE RULED DIVERGENCE — `DUP_STORE_ID_FIRST_ROW` (P4.D273 R-A)
 ///
-/// Asserted BOTH ways on the RAW dumps, per entity whose archived pointer names
-/// an archived store:
+/// v4's claim map keeps the LAST row of a duplicated store id
+/// (`store-claims.ts:65`, `new Map(…)`), while both engines' 22a primary key
+/// keeps the FIRST and refuses the second. So on
+/// `restore-archive-dup-store-id.zip` (Lorian's vault id re-appended LAST as a
+/// `documents` row) v4 calls Lorian `wrong-kind`, mints her a fresh vault and
+/// warns, while her real vault restores orphaned — the #141 symptom by another
+/// road. v5 keeps the FIRST row (P4.158 R-B) and binds her.
 ///
-/// - **v5:** the pointer IS the archive's. (So nothing is carved from v5.)
-/// - **v4:** the pointer is NOT the archive's and names a store v4 minted; that
-///   store and every mount-index row keyed by it are carved from v4's dump and
-///   v4's pointer cell is set to the archive's, so the remainder diffs row for
-///   row. **If v4 ever preserves, the v4 direction fires — retire the carve.**
+/// Each entry: `(case, entity table, entity id, the archived store, v4's
+/// warning, v4's census records)`. Asserted BOTH ways on the RAW dumps:
 ///
-/// The FALLBACK arm stays v4-convergent and is pinned as such: an entity whose
-/// archived pointer is absent or names a store the archive does not carry
-/// (`restore_minimal`, `restore_legacy_profiles_replace`, Riya in
-/// `restore_orphan_links_replace`, the project and group in
-/// `restore_bag_nulls_replace`) is carved on NEITHER side, and both sides must
-/// have minted it a store. Returns `Some(shared content rows kept)` when v4's
-/// dump was carved.
-fn carve_fresh_store_residual(
+/// - **v5:** the entity points at the archived store, and v5 logged none of
+///   v4's lines.
+/// - **v4:** the entity points at a store v4 MINTED; that store and every
+///   mount-index row keyed by it are carved from v4's dump, v4's pointer cell
+///   is set to the archive's, and v4's warning + census records (the
+///   `wrong-kind` WARN, the free-name DEBUG its fresh vault forced on the
+///   archived one) must be present and leave v4's side — so the rest diffs
+///   row for row. **If v4 adopts the first row, the v4 direction fires —
+///   retire the table** (a v4-filing candidate: the human's call).
+type DupStoreEntry = (
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static [&'static str],
+    &'static [&'static str],
+);
+const DUP_STORE_ID_FIRST_ROW: &[DupStoreEntry] = &[(
+    "restore_dup_store_id_replace",
+    "characters",
+    "a1000000-0000-4000-8000-000000000001",
+    "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+    "The character \"Lorian\" was given a fresh, empty store because the store it pointed at \
+     is the wrong kind",
+    &[
+        r#"{"level":"warn","message":"Restored entity falls back to a fresh store","kind":"character","id":"a1000000-0000-4000-8000-000000000001","reason":"wrong-kind"}"#,
+        r#"{"level":"debug","message":"Restored document store under a free name","mountPointId":"aff3114e-ed90-4d5b-99c1-ef3fa20203fc","archived":"Lorian Character Vault","name":"Lorian Character Vault (2)"}"#,
+        r#"{"level":"info","message":"Restored entities bound to their archived stores","characters":1,"projects":1,"groups":1,"storesCarried":5,"storesRestored":4}"#,
+    ],
+    // v5's own record of the divergence: the bound create's INFO for Lorian,
+    // and the summary counting her.
+    &[
+        r#"{"level":"info","message":"Character restored bound to its archived vault","characterId":"a1000000-0000-4000-8000-000000000001","userId":"ffffffff-ffff-ffff-ffff-ffffffffffff","mountPointId":"aff3114e-ed90-4d5b-99c1-ef3fa20203fc"}"#,
+        r#"{"level":"info","message":"Restored entities bound to their archived stores","characters":2,"projects":1,"groups":1,"storesCarried":5,"storesRestored":4}"#,
+    ],
+)];
+
+#[allow(clippy::too_many_arguments)]
+fn carve_dup_store_id_first_row(
     name: &str,
     zip: &Path,
     temp_root: &Path,
+    want_summary: &Value,
     got: &mut BTreeMap<String, BTreeMap<String, Vec<Value>>>,
     want: &mut Value,
+    summary_carve: &mut SummaryCarve,
     failures: &mut Vec<String>,
 ) -> Option<usize> {
+    let (_, table, id, archived, warning, census, v5_census) =
+        DUP_STORE_ID_FIRST_ROW.iter().find(|(c, ..)| *c == name)?;
+    let column = POINTER_COLUMNS
+        .iter()
+        .find(|(t, _)| t == table)
+        .map(|(_, c)| *c)
+        .expect("a pointer column");
     let a = archive_stores(zip, temp_root);
     let got_v = serde_json::to_value(&*got).expect("dump serializes");
+    let g = pointer_on(&got_v, table, column, id);
+    if g != Some(Some((*archived).to_string())) {
+        failures.push(format!(
+            "[{name}] DUP_STORE_ID_FIRST_ROW (v5): {table} {id} points at {g:?}, but its FIRST \
+             archived row binds it to {archived}"
+        ));
+    }
     let mut carve: BTreeMap<String, String> = BTreeMap::new();
-    let mut preserved = 0usize;
-    // [P4.158 R-B] First claim wins: `a.pointers` is in phase order
-    // (characters 6, projects 13, groups 13a — `POINTER_COLUMNS`) then the
-    // archive's row order, so the first entity to name a store keeps it and a
-    // later one is expected on the fallback arm, on BOTH sides (v4 mints for
-    // everyone). Claims are counted only for entities that restored on both
-    // sides, as v5 counts only the ones that reached the preserve check.
-    let mut claimed: HashSet<String> = HashSet::new();
-    for (table, column, id, archived) in &a.pointers {
-        let (g, w) = (
-            pointer_on(&got_v, table, column, id),
-            pointer_on(want, table, column, id),
-        );
-        // An entity that did not restore on a side (a refused row) has no
-        // pointer to judge; the row diff reports its absence.
-        let (Some(g), Some(w)) = (g, w) else {
-            continue;
-        };
-        let first_claim = archived
-            .as_ref()
-            .filter(|p| a.point_ids.contains(*p))
-            .filter(|p| claimed.insert((*p).clone()));
-        match first_claim {
-            Some(archived) => {
-                preserved += 1;
-                if g.as_deref() != Some(archived.as_str()) {
-                    failures.push(format!(
-                        "[{name}] FRESH_STORE_RESIDUAL (v5): {table} {id} points at {g:?}, but \
-                         the archive restored its store {archived} — the #141 preserve arm did \
-                         not hold"
-                    ));
-                }
-                match w {
-                    Some(w) if w == *archived => failures.push(format!(
-                        "[{name}] FRESH_STORE_RESIDUAL (v4): {table} {id} now keeps the \
-                         archive's store {archived} — v4 has fixed #141; retire the carve"
-                    )),
-                    Some(w) if !point_exists(want, &w) => failures.push(format!(
-                        "[{name}] FRESH_STORE_RESIDUAL (v4): {table} {id} points at {w}, which \
-                         names no store on v4's side — not the ruled shape"
-                    )),
-                    Some(w) => {
-                        if carve.insert(w.clone(), archived.clone()).is_some() {
-                            failures.push(format!(
-                                "[{name}] FRESH_STORE_RESIDUAL (v4): two entities share the \
-                                 fresh store {w}"
-                            ));
-                        }
-                    }
-                    None => failures.push(format!(
-                        "[{name}] FRESH_STORE_RESIDUAL (v4): {table} {id} has NO pointer — not \
-                         the ruled shape"
-                    )),
-                }
-                // Point v4's cell at the archive's store so the remainder diffs.
-                if let Some(row) = want["main"][*table]
-                    .as_array_mut()
-                    .and_then(|rows| rows.iter_mut().find(|r| str_at(r, "id") == Some(id)))
-                {
-                    row[*column] = json!(archived);
-                }
-            }
-            None => {
-                // The fallback arm: both sides minted a store, neither carved —
-                // an archived pointer the archive does not carry, or (R-B) one
-                // an earlier entity already claimed.
-                for (side, p, dump) in [("v5", &g, &got_v), ("v4", &w, &*want)] {
-                    let ok = p
-                        .as_ref()
-                        .is_some_and(|p| !a.point_ids.contains(p) && point_exists(dump, p));
-                    if !ok {
-                        failures.push(format!(
-                            "[{name}] FRESH_STORE_RESIDUAL fallback arm ({side}): {table} {id} \
-                             (archived pointer {archived:?}, not in the archive or already \
-                             claimed) points at {p:?} — both sides must mint it a fresh store"
-                        ));
-                    }
-                }
-            }
+    match pointer_on(want, table, column, id) {
+        Some(Some(w)) if w == *archived => failures.push(format!(
+            "[{name}] DUP_STORE_ID_FIRST_ROW (v4): {table} {id} now keeps {archived} — v4 judges \
+             the FIRST row; retire the table"
+        )),
+        Some(Some(w)) if point_exists(want, &w) && !a.point_ids.contains(&w) => {
+            carve.insert(w, (*archived).to_string());
         }
+        other => failures.push(format!(
+            "[{name}] DUP_STORE_ID_FIRST_ROW (v4): {table} {id} points at {other:?} — not a \
+             store v4 minted"
+        )),
     }
-    if preserved > 0 && carve.len() != preserved {
+    if let Some(row) = want["main"][*table]
+        .as_array_mut()
+        .and_then(|rows| rows.iter_mut().find(|r| str_at(r, "id") == Some(id)))
+    {
+        row[column] = json!(archived);
+    }
+    let has_warning = want_summary["warnings"]
+        .as_array()
+        .is_some_and(|ws| ws.iter().any(|w| w.as_str() == Some(warning)));
+    if !has_warning {
         failures.push(format!(
-            "[{name}] FRESH_STORE_RESIDUAL (v4): {preserved} preservable entities but {} fresh \
-             store(s) to carve — every one must get its own",
-            carve.len()
+            "[{name}] DUP_STORE_ID_FIRST_ROW (v4): no {warning:?} warning"
         ));
     }
-    let collisions: Vec<(&str, &str)> = FRESH_STORE_FOLD_COLLISIONS
-        .iter()
-        .filter(|(c, _, _)| *c == name)
-        .map(|(_, from, to)| (*from, *to))
-        .collect();
-    let outcome = carve_fresh_stores(want, &carve, &a.link_ids, &collisions);
-    if !outcome.unlisted_collisions.is_empty() {
-        failures.push(format!(
-            "[{name}] FRESH_STORE_RESIDUAL (v4): fresh-store link(s) written after 22d at a path \
-             the archive's store also carries, with no FRESH_STORE_FOLD_COLLISIONS entry: {:?}",
-            outcome.unlisted_collisions
-        ));
-    }
-    if outcome.renamed != collisions.len() {
-        failures.push(format!(
-            "[{name}] FRESH_STORE_FOLD_COLLISIONS: {} entr(ies) for this case, {} used on v4's \
-             side — a stale entry",
-            collisions.len(),
-            outcome.renamed
-        ));
-    }
-    let mut got_v = got_v;
-    for (from, to) in &collisions {
-        let on_v5 = rows_of(&got_v, "mountIndex", "doc_mount_file_links")
+    summary_carve.drop_v4_warnings.push((*warning).to_string());
+    summary_carve.drop_v4_census.extend(
+        census
             .iter()
-            .any(|l| str_at(l, "relativePath") == Some(to));
-        if !on_v5 {
-            failures.push(format!(
-                "[{name}] FRESH_STORE_FOLD_COLLISIONS (v5): no link at {to:?} — the fold no \
-                 longer collides on the archive's vault; retire the entry"
-            ));
-        }
-        // The fold re-projects the vault's WHOLE wardrobe (v4's own
-        // `createAtLocation`), so on v5 the archive's item already at `from` is
-        // rewritten too: its link's `lastModified` takes the write clock and
-        // chunk-on-write adds one chunk for it ahead of 22g's archived chunk.
-        // Both asserted, then carved, so the rest of the link and every other
-        // chunk stay under diff.
-        let archive_link = rows_of(&got_v, "mountIndex", "doc_mount_file_links")
+            .map(|r| serde_json::from_str(r).expect("census JSON")),
+    );
+    summary_carve.drop_v5_census.extend(
+        v5_census
             .iter()
-            .find(|l| {
-                str_at(l, "relativePath") == Some(from)
-                    && str_at(l, "id").is_some_and(|i| a.link_ids.contains(i))
-            })
-            .and_then(|l| str_at(l, "id").map(str::to_string));
-        let v4_modified = archive_link.as_ref().and_then(|id| {
-            rows_of(want, "mountIndex", "doc_mount_file_links")
-                .iter()
-                .find(|l| str_at(l, "id") == Some(id))
-                .map(|l| l["lastModified"].clone())
-        });
-        let (Some(link), Some(v4_modified)) = (archive_link, v4_modified) else {
-            failures.push(format!(
-                "[{name}] FRESH_STORE_FOLD_COLLISIONS: no archived link at {from:?} on both sides"
-            ));
-            continue;
-        };
-        let chunk_ids: HashSet<String> = rows_of(&got_v, "mountIndex", "doc_mount_chunks")
-            .iter()
-            .filter(|c| str_at(c, "linkId") == Some(link.as_str()))
-            .filter_map(|c| str_at(c, "id").map(str::to_string))
-            .collect();
-        let archived_chunks: HashSet<String> = rows_of(want, "mountIndex", "doc_mount_chunks")
-            .iter()
-            .filter(|c| str_at(c, "linkId") == Some(link.as_str()))
-            .filter_map(|c| str_at(c, "id").map(str::to_string))
-            .collect();
-        let extra: HashSet<String> = chunk_ids.difference(&archived_chunks).cloned().collect();
-        if extra.len() != 1 {
-            failures.push(format!(
-                "[{name}] FRESH_STORE_FOLD_COLLISIONS (v5): {} re-projection chunk(s) on the \
-                 archived {from:?}, expected exactly 1",
-                extra.len()
-            ));
-        }
-        retain_rows(&mut got_v, "mountIndex", "doc_mount_chunks", |c| {
-            !str_at(c, "id").is_some_and(|i| extra.contains(i))
-        });
-        if let Some(row) = got_v["mountIndex"]["doc_mount_file_links"]
-            .as_array_mut()
-            .and_then(|rows| {
-                rows.iter_mut()
-                    .find(|l| str_at(l, "id") == Some(link.as_str()))
-            })
-        {
-            if row["lastModified"] == v4_modified {
-                failures.push(format!(
-                    "[{name}] FRESH_STORE_FOLD_COLLISIONS (v5): the archived {from:?} kept its \
-                     lastModified — the fold no longer re-projects it; narrow the entry"
-                ));
-            }
-            row["lastModified"] = v4_modified;
-        }
-    }
-    if !collisions.is_empty() {
-        *got = serde_json::from_value(got_v).expect("dump round-trips");
-    }
-    if !carve.is_empty() && outcome.removed < carve.len() {
-        failures.push(format!(
-            "[{name}] FRESH_STORE_RESIDUAL (v4): carved only {} row(s) for {} store(s)",
-            outcome.removed,
-            carve.len()
-        ));
-    }
-    if !carve.is_empty() {
-        println!(
-            "  carve {name}: {} fresh store(s), {} row(s) carved, {} re-homed, {} shared \
-             content row(s) kept",
-            carve.len(),
-            outcome.removed,
-            outcome.rehomed,
-            outcome.shared_content
-        );
-    }
+            .map(|r| serde_json::from_str(r).expect("census JSON")),
+    );
+    let outcome = carve_fresh_stores(want, &carve, &a.link_ids, &[]);
+    println!(
+        "  carve {name} (DUP_STORE_ID_FIRST_ROW): {} fresh store(s), {} row(s) carved, {} \
+         re-homed, {} shared content row(s) kept",
+        carve.len(),
+        outcome.removed,
+        outcome.rehomed,
+        outcome.shared_content
+    );
     (!carve.is_empty()).then_some(outcome.shared_content)
 }
 
-/// The `replace` cases whose v4 dump carries a #141 fresh store to carve —
-/// every `replace` case whose archive carries a store some entity points at
-/// (measured, P4.147). A case falling out of the count is the carve going
-/// vacuous.
-/// P4.161: + its four refusal archives (all `restore-archive.zip` derivations).
-/// P4.D264: + its two `replace` wardrobe archives (both `restore-archive.zip`
-/// derivations) and its refused-ledger arm — measured 28 → 31.
-/// P4.D258: + its empty-embedding `replace` (a `restore-archive.zip`
-/// derivation) — 31 → 32 at the `f5e953a3f` unification.
-const FRESH_STORE_CARVED_CASES: usize = 32;
+/// ## ⚠ `RECONCILE_PENDING_UNION` — lane-local, LIFTED by the unifier (P4.D273 R-D)
+///
+/// v4 at `01a83539d` renames document stores where this branch cannot: 23a's
+/// `reconcileStoreNames('restore')` and the characters create / delete paths'
+/// `character-created` / `character-deleted` reconciles (bug 186). The
+/// reconcile is P4.D274's `reconcile_store_names`, which is not on this
+/// branch's `KEYSTONE` base, so the 23a call is a recorded `HANDOFF:` hunk the
+/// unifier applies (§S.5). Until then, on EVERY case and BOTH sides, this
+/// masks exactly: (1) every `mountIndex.doc_mount_points` `name` and
+/// `updatedAt` cell ([`mask_reconcile_pending_union`], in [`compare_case`]); (2) the census records of the reconcile's lines
+/// ([`RECONCILE_MESSAGES`] and 23a's two — [`compare_restore_logs`]); (3) a
+/// `Failed to tidy document-store names after restore: …` warning
+/// ([`compare_case`]). Nothing else — `createdAt`, `id` and every pointer stay
+/// compared. Returns the cells (1) plus v4's census records (2) it masks,
+/// which the caller requires > 0.
+///
+/// **The unifier deletes this carve** after picking P4.D274 and P4.D273 (with
+/// the 23a hunk applied) and re-runs this family by name: every case must then
+/// match v4's reconcile byte for byte.
+fn reconcile_pending_union_count(
+    got: &BTreeMap<String, BTreeMap<String, Vec<Value>>>,
+    want: &Value,
+    want_logs: &Value,
+) -> usize {
+    let cells = |rows: &[Value]| -> usize {
+        rows.iter()
+            .map(|r| {
+                ["name", "updatedAt"]
+                    .iter()
+                    .filter(|k| r.get(**k).is_some())
+                    .count()
+            })
+            .sum()
+    };
+    let got_rows = got
+        .get("mountIndex")
+        .and_then(|p| p.get("doc_mount_points"))
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    let mut messages: Vec<&str> = RECONCILE_MESSAGES.to_vec();
+    messages.extend_from_slice(RECONCILE_23A_MESSAGES);
+    let census = want_logs
+        .as_array()
+        .map(|w| v4_log_records(w, &messages).len())
+        .unwrap_or(0);
+    cells(got_rows) + cells(rows_of(want, "mountIndex", "doc_mount_points")) + census
+}
+
+/// [`RECONCILE_PENDING_UNION`]'s cell half, applied by [`compare_case`] to
+/// both sides' `doc_mount_points` rows AFTER the `V5_STATS_GAP` lookups (they
+/// find the uploads store by name).
+fn mask_reconcile_pending_union(rows: &mut [Value]) {
+    for r in rows.iter_mut() {
+        for k in ["name", "updatedAt"] {
+            if r.get(k).is_some() {
+                r[k] = json!("<RECONCILE_PENDING_UNION>");
+            }
+        }
+    }
+}
+
+/// [`RECONCILE_PENDING_UNION`]'s census half: the store-name reconcile's own
+/// lines (v4 `reconcile-store-names.ts` + the characters repository's
+/// `reconcileVaultNames`), recorded by the oracle on every case.
+const RECONCILE_MESSAGES: &[&str] = &[
+    "Store-name reconcile planned",
+    "Renamed document store to its rightful name",
+    "Store-name reconcile after a character change failed",
+    "Store-name reconcile skipped: mount-index database unavailable",
+];
+
+/// 23a's two `restore.ts` lines, masked with the reconcile (R-D) — they stay
+/// in [`RESTORE_TS_MESSAGES`] (the census counts 80).
+const RECONCILE_23A_MESSAGES: &[&str] = &[
+    "Post-restore store-name reconcile complete",
+    "Post-restore store-name reconcile failed",
+];
 
 /// The `summary` adjustments a ruled carve makes: v5 leads v4's `files`
 /// counter by `files_lead`, and these v4 warnings are the divergence itself.
@@ -4290,18 +4324,14 @@ const FRESH_STORE_CARVED_CASES: usize = 32;
 struct SummaryCarve {
     files_lead: i64,
     drop_v4_warnings: Vec<String>,
-    /// [`FRESH_STORE_SHARED_CONTENT`] applies on this case.
-    shared_content: bool,
+    /// v4 census records that ARE a ruled divergence (`DUP_STORE_ID_FIRST_ROW`)
+    /// — each must be present on v4's side, and leaves it.
+    drop_v4_census: Vec<Value>,
+    /// The same divergence's v5-side records — each present on v5's side only.
+    drop_v5_census: Vec<Value>,
     /// [`PRESERVE_BACKFILL`] applies on this case.
     preserve_backfill: bool,
 }
-
-/// The two content tables a [`carve_fresh_stores`] that kept a SHARED content
-/// row compares order-insensitively (canonical labelling, every value still
-/// compared): v4's fresh store created that row first, so it keeps an earlier
-/// rowid than v5's own later copy — the same row, another insertion slot.
-/// Part of `FRESH_STORE_RESIDUAL`, not a divergence of its own.
-const FRESH_STORE_SHARED_CONTENT: &[&str] = &["doc_mount_files", "doc_mount_documents"];
 
 const UPLOADS_UNPROVISIONED: &str = "Quilltap Uploads mount has not been provisioned";
 
@@ -4588,29 +4618,38 @@ fn classify_message_serde_arm(
     (carve(got), carve(want))
 }
 
-/// ## ⚠ THE RULED R-A DIVERGENCE — `PRESERVE_BACKFILL` (P4.158, 2026-10-06)
+/// ## ⚠ THE RULED R-A DIVERGENCE — `PRESERVE_BACKFILL` (P4.158, 2026-10-06;
+/// ## RE-PINNED v5-ahead by P4.D273 R-B)
 ///
-/// A preserved store (P4.147's #141 preserve arm) can be INCOMPLETE — an
-/// archive whose vault lacks a managed file (`restore-archive-damaged-store
-/// .zip` drops `description.md` from Lorian's vault and from the project and
-/// group stores). v4 cannot reach the state: it never preserves, it projects
-/// every managed field from the archived row into a FRESH store, so each
-/// description comes back from the row. v5 keeps the archive's store and,
-/// since R-A, BACKFILLS each missing managed file from the same row after the
-/// mount family — so the restored entity reads what the archive's row said
-/// (refusing the preserve instead would lose the store's OTHER files).
+/// A bound store can be INCOMPLETE — an archive whose vault lacks a managed
+/// file (`restore-archive-damaged-store.zip` drops `description.md` and the
+/// other managed files from Lorian's vault and from the project and group
+/// stores). Since bug 185 (v4 `ed8b15b50`) v4 BINDS the entity to that store
+/// too, and never backfills: the entity reads the field blank. (Before it, v4
+/// projected every managed field into a FRESH store, and the files came back
+/// from the row.) v5 keeps P4.158's completeness pass, in both modes: each
+/// missing managed file is written from the archived row after the mount
+/// family, so the restored entity reads what the archive's row said.
 ///
-/// Each entry is `(case, [(table, entity id, store id, path)])`. Both ways on
-/// the dumps: **both** sides carry the file on the archive's store holding the
-/// archived row's `description` — or, for every other managed file (P4.161),
-/// v4's projected bytes (v4's after the #141 carve re-homed its fresh
-/// projection — so a v4 that stops projecting fails here too); **v5**'s link is
-/// written AFTER the archive's own links (a backfill), **v4**'s BEFORE them (the
-/// phase-6/13 projection) — the insertion-order difference this divergence IS,
-/// so [`PRESERVE_BACKFILL_TABLES`] then compare order-insensitively (every value
-/// still compared).
-/// `(table, entity id, store id, path)`.
-type BackfillEntry = (&'static str, &'static str, &'static str, &'static str);
+/// Each entry is `(case, [(table, entity id, store id, path, bytes)])`, `bytes`
+/// `None` for `description.md` (pinned to the archived row's `description`)
+/// and otherwise the backfill's measured bytes — proven equal to v4's
+/// projection of the same row while v4 still projected (P4.161 Tier 2 item 10,
+/// against the `f5e953a3f` oracle). Both ways on the dumps: **v5** — the
+/// entity points at the store, and the file sits on it AFTER the archive's own
+/// links (a backfill) with those bytes; **v4** — the entity points at the SAME
+/// store (bound) and the store has NO such file. If v4 starts backfilling, the
+/// v4 direction fires. Then v5's backfilled rows (the link, its chunks, and a
+/// content row no other link references) leave v5's dump, so the rest diffs
+/// row for row.
+/// `(table, entity id, store id, path, the bytes — None = the row's description)`.
+type BackfillEntry = (
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static str,
+    Option<&'static str>,
+);
 
 const PRESERVE_BACKFILL: &[(&str, &[BackfillEntry])] = &[(
     "restore_damaged_store_replace",
@@ -4620,18 +4659,21 @@ const PRESERVE_BACKFILL: &[(&str, &[BackfillEntry])] = &[(
             "a1000000-0000-4000-8000-000000000001",
             "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
             "description.md",
+            None,
         ),
         (
             "projects",
             "a3000000-0000-4000-8000-000000000001",
             "5c17e916-5f79-4cca-a134-ec09c05924e9",
             "description.md",
+            None,
         ),
         (
             "groups",
             "a2000000-0000-4000-8000-000000000001",
             "60a8194d-f8ea-4540-af77-5e13e7ed0e9b",
             "description.md",
+            None,
         ),
         // [P4.161 Tier 2 item 10] the backfill's OTHER managed files, one of
         // each kind (the re-derived archive strips them too).
@@ -4640,167 +4682,85 @@ const PRESERVE_BACKFILL: &[(&str, &[BackfillEntry])] = &[(
             "a1000000-0000-4000-8000-000000000001",
             "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
             "properties.json",
+            Some("{\n  \"pronouns\": null,\n  \"aliases\": [],\n  \"title\": null,\n  \"firstMessage\": null,\n  \"talkativeness\": 0.5,\n  \"canChooseOutfit\": false\n}"),
         ),
         (
             "characters",
             "a1000000-0000-4000-8000-000000000001",
             "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
             "metadata.json",
+            Some("{}"),
         ),
         (
             "characters",
             "a1000000-0000-4000-8000-000000000001",
             "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
             "identity.md",
+            Some(""),
         ),
         (
             "characters",
             "a1000000-0000-4000-8000-000000000001",
             "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
             "manifesto.md",
+            Some(""),
         ),
         (
             "characters",
             "a1000000-0000-4000-8000-000000000001",
             "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
             "personality.md",
+            Some(""),
         ),
         (
             "characters",
             "a1000000-0000-4000-8000-000000000001",
             "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
             "example-dialogues.md",
+            Some(""),
         ),
         (
             "characters",
             "a1000000-0000-4000-8000-000000000001",
             "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
             "physical-description.md",
+            Some(""),
         ),
         (
             "characters",
             "a1000000-0000-4000-8000-000000000001",
             "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
             "physical-prompts.json",
+            Some("{\n  \"headAndShoulders\": null,\n  \"short\": null,\n  \"medium\": null,\n  \"long\": null,\n  \"complete\": null\n}"),
         ),
         (
             "projects",
             "a3000000-0000-4000-8000-000000000001",
             "5c17e916-5f79-4cca-a134-ec09c05924e9",
             "properties.json",
+            Some("{\n  \"allowAnyCharacter\": false,\n  \"characterRoster\": [\n    \"a1000000-0000-4000-8000-000000000001\",\n    \"a1000000-0000-4000-8000-000000000002\"\n  ],\n  \"color\": \"#334455\",\n  \"defaultDisabledTools\": [],\n  \"defaultDisabledToolGroups\": [],\n  \"backgroundDisplayMode\": \"theme\"\n}"),
         ),
         (
             "projects",
             "a3000000-0000-4000-8000-000000000001",
             "5c17e916-5f79-4cca-a134-ec09c05924e9",
             "state.json",
+            Some("{}"),
         ),
         (
             "groups",
             "a2000000-0000-4000-8000-000000000001",
             "60a8194d-f8ea-4540-af77-5e13e7ed0e9b",
             "instructions.md",
+            Some(""),
         ),
     ],
 )];
 
-/// ## ⚠ THE RULED R-A DIVERGENCE, ITS CONTENT ROWS — `PRESERVE_BACKFILL_SHARED_CONTENT` (P4.161)
-///
-/// A backfilled managed file whose BYTES the archive already holds (the empty
-/// `""` markdown, the `{}` JSON, a `properties.json` the projection renders
-/// identically) shares the archive's content row on v5: the backfill runs
-/// AFTER 22b restored the archive's `doc_mount_files` / `doc_mount_documents`,
-/// and the write path dedupes by sha256. v4 projects the same file in phase
-/// 6 / 13, BEFORE 22b, so its projection mints its own content row and 22b
-/// then adds the archive's — two rows with one sha256, each link reading the
-/// same bytes. Measured on the re-derived `restore-archive-damaged-store.zip`
-/// (P4.161 Tier 2 item 10 — the original `description.md` damage never hit
-/// it: every description's bytes are unique in the archive).
-///
-/// Each entry is `(case, [sha256])`. Both ways: **v4** carries EXACTLY two
-/// `doc_mount_files` rows per listed sha (one of them the archive's), **v5**
-/// exactly one (the archive's) — a v4 that stops duplicating, or a v5 that
-/// starts, fails here. Then v4's minted duplicate is folded onto the archive's
-/// row (its `doc_mount_documents` row dropped, its links repointed) so the
-/// content tables diff row for row.
-const PRESERVE_BACKFILL_SHARED_CONTENT: &[(&str, &[&str])] = &[(
-    "restore_damaged_store_replace",
-    &[
-        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
-        "70eb827a041e489d4478af17c56a212827a3933ad946999d49bb026aacab67bc",
-    ],
-)];
-
-fn collapse_backfill_shared_content(
-    name: &str,
-    zip: &Path,
-    temp_root: &Path,
-    got: &BTreeMap<String, BTreeMap<String, Vec<Value>>>,
-    want: &mut Value,
-    failures: &mut Vec<String>,
-) {
-    let Some((_, shas)) = PRESERVE_BACKFILL_SHARED_CONTENT
-        .iter()
-        .find(|(c, _)| *c == name)
-    else {
-        return;
-    };
-    let extracted = quilltap_core::services::backup::restore::parse_backup_zip(zip, temp_root)
-        .expect("parse archive for its content rows");
-    let archived: HashSet<String> = extracted
-        .data
-        .doc_mount_files
-        .iter()
-        .filter_map(|f| str_at(f, "id").map(str::to_string))
-        .collect();
-    let got_v = serde_json::to_value(got).expect("dump serializes");
-    let mut fold: BTreeMap<String, String> = BTreeMap::new();
-    for sha in *shas {
-        let ids = |dump: &Value| -> Vec<String> {
-            rows_of(dump, "mountIndex", "doc_mount_files")
-                .iter()
-                .filter(|f| str_at(f, "sha256") == Some(sha))
-                .filter_map(|f| str_at(f, "id").map(str::to_string))
-                .collect()
-        };
-        let (g, w) = (ids(&got_v), ids(want));
-        let g_ok = g.len() == 1 && archived.contains(&g[0]);
-        let w_archive: Vec<&String> = w.iter().filter(|i| archived.contains(*i)).collect();
-        if !g_ok || w.len() != 2 || w_archive.len() != 1 {
-            failures.push(format!(
-                "[{name}] PRESERVE_BACKFILL_SHARED_CONTENT {sha}: v5 rows {g:?} (want the \
-                 archive's one), v4 rows {w:?} (want the archive's + one minted) — if v4 \
-                 converged, retire the entry"
-            ));
-            continue;
-        }
-        let keep = w_archive[0].clone();
-        for id in w.iter().filter(|i| **i != keep) {
-            fold.insert(id.clone(), keep.clone());
-        }
-    }
-    if fold.is_empty() {
-        return;
-    }
-    for table in ["doc_mount_files", "doc_mount_documents"] {
-        let key = if table == "doc_mount_files" {
-            "id"
-        } else {
-            "fileId"
-        };
-        if let Some(rows) = want["mountIndex"][table].as_array_mut() {
-            rows.retain(|r| !str_at(r, key).is_some_and(|id| fold.contains_key(id)));
-        }
-    }
-    if let Some(rows) = want["mountIndex"]["doc_mount_file_links"].as_array_mut() {
-        for r in rows.iter_mut() {
-            if let Some(to) = str_at(r, "fileId").and_then(|f| fold.get(f)).cloned() {
-                r["fileId"] = Value::String(to);
-            }
-        }
-    }
-}
+// `PRESERVE_BACKFILL_SHARED_CONTENT` (P4.161 — v4's phase-6/13 projection
+// minted a second content row for bytes the archive already held) — RETIRED BY
+// MEASUREMENT (P4.D273): v4 no longer projects into a bound store, so it
+// carries exactly the archive's one row per sha, as v5 does.
 
 /// The four tables a backfill writes into, compared order-insensitively on a
 /// [`PRESERVE_BACKFILL`] case.
@@ -4830,7 +4790,7 @@ fn assert_preserve_backfill(
     name: &str,
     zip: &Path,
     temp_root: &Path,
-    got: &BTreeMap<String, BTreeMap<String, Vec<Value>>>,
+    got: &mut BTreeMap<String, BTreeMap<String, Vec<Value>>>,
     want: &Value,
     failures: &mut Vec<String>,
 ) -> bool {
@@ -4841,61 +4801,102 @@ fn assert_preserve_backfill(
         .expect("parse archive for its rows");
     let d = &extracted.data;
     let a = archive_stores(zip, temp_root);
-    let got_v = serde_json::to_value(got).expect("dump serializes");
-    for (table, id, store, path) in *entries {
+    let mut got_v = serde_json::to_value(&*got).expect("dump serializes");
+    let mut backfilled_links: HashSet<String> = HashSet::new();
+    for (table, id, store, path, bytes) in *entries {
         let rows = match *table {
             "characters" => &d.characters,
             "projects" => &d.projects,
             _ => &d.groups,
         };
-        // `description.md` is pinned to the archived row's value (P4.158);
-        // every other managed file (P4.161 Tier 2 item 10) to v4's projected
-        // bytes on the same store and path — the backfill must render what
-        // the projection renders.
-        let archived = if *path == "description.md" {
-            rows.iter()
+        let column = POINTER_COLUMNS
+            .iter()
+            .find(|(t, _)| t == table)
+            .map(|(_, c)| *c)
+            .expect("a pointer column");
+        let expected = match bytes {
+            Some(b) => Some((*b).to_string()),
+            None => rows
+                .iter()
                 .find(|r| str_at(r, "id") == Some(id))
                 .and_then(|r| str_at(r, "description"))
-                .map(str::to_string)
-        } else {
-            store_file(want, store, path).and_then(|(_, c)| c)
+                .map(str::to_string),
         };
-        // The store's links in the archive, so "before/after 22d" is measured
-        // against the archive's own first link on that store.
-        let first_archive_link = |dump: &Value| {
-            rows_of(dump, "mountIndex", "doc_mount_file_links")
-                .iter()
-                .position(|l| {
-                    str_at(l, "mountPointId") == Some(store)
-                        && str_at(l, "id").is_some_and(|i| a.link_ids.contains(i))
-                })
-        };
-        for (side, dump, written_after) in [("v5", &got_v, true), ("v4", want, false)] {
-            match (store_file(dump, store, path), first_archive_link(dump)) {
-                (Some((i, content)), Some(first)) => {
-                    if content != archived {
-                        failures.push(format!(
-                            "[{name}] PRESERVE_BACKFILL ({side}): {table} {id} {path} on {store} \
-                             reads {content:?}, the archived row says {archived:?}"
-                        ));
-                    }
-                    if (i > first) != written_after {
-                        failures.push(format!(
-                            "[{name}] PRESERVE_BACKFILL ({side}): {table} {id} {path} sits at \
-                             rowid slot {i}, the archive's first link at {first} — expected it \
-                             {} the archive's links",
-                            if written_after { "after" } else { "before" }
-                        ));
-                    }
-                }
-                (file, first) => failures.push(format!(
-                    "[{name}] PRESERVE_BACKFILL ({side}): {table} {id} has no {path} on {store} \
-                     ({file:?}, first archived link {first:?}) — the backfill (v5) / the fresh \
-                     projection (v4) did not land it"
-                )),
+        // Both sides BIND the entity to the archived store.
+        for (side, dump) in [("v5", &got_v), ("v4", want)] {
+            let p = pointer_on(dump, table, column, id);
+            if p != Some(Some((*store).to_string())) {
+                failures.push(format!(
+                    "[{name}] PRESERVE_BACKFILL ({side}): {table} {id} points at {p:?}, not its \
+                     archived store {store}"
+                ));
             }
         }
+        // v5: the backfill, after the archive's own links, with the bytes.
+        let first_archive_link = rows_of(&got_v, "mountIndex", "doc_mount_file_links")
+            .iter()
+            .position(|l| {
+                str_at(l, "mountPointId") == Some(store)
+                    && str_at(l, "id").is_some_and(|i| a.link_ids.contains(i))
+            });
+        match (store_file(&got_v, store, path), first_archive_link) {
+            (Some((i, content)), Some(first)) => {
+                if content != expected {
+                    failures.push(format!(
+                        "[{name}] PRESERVE_BACKFILL (v5): {table} {id} {path} on {store} reads \
+                         {content:?}, expected {expected:?}"
+                    ));
+                }
+                if i <= first {
+                    failures.push(format!(
+                        "[{name}] PRESERVE_BACKFILL (v5): {table} {id} {path} sits at rowid slot \
+                         {i}, before the archive's first link at {first} — not a backfill"
+                    ));
+                }
+                if let Some(link) = rows_of(&got_v, "mountIndex", "doc_mount_file_links")
+                    .get(i)
+                    .and_then(|l| str_at(l, "id"))
+                {
+                    backfilled_links.insert(link.to_string());
+                }
+            }
+            (file, first) => failures.push(format!(
+                "[{name}] PRESERVE_BACKFILL (v5): {table} {id} has no {path} on {store} \
+                 ({file:?}, first archived link {first:?}) — the backfill did not land it"
+            )),
+        }
+        // v4: bound, and never backfills.
+        if store_file(want, store, path).is_some() {
+            failures.push(format!(
+                "[{name}] PRESERVE_BACKFILL (v4): {table} {id} now carries {path} on {store} — v4 \
+                 completes a bound store too; retire the entry"
+            ));
+        }
     }
+    // Carve v5's backfilled rows so the rest diffs row for row.
+    let gone_files: HashSet<String> = rows_of(&got_v, "mountIndex", "doc_mount_file_links")
+        .iter()
+        .filter(|l| str_at(l, "id").is_some_and(|i| backfilled_links.contains(i)))
+        .filter_map(|l| str_at(l, "fileId").map(str::to_string))
+        .collect();
+    retain_rows(&mut got_v, "mountIndex", "doc_mount_file_links", |l| {
+        !str_at(l, "id").is_some_and(|i| backfilled_links.contains(i))
+    });
+    retain_rows(&mut got_v, "mountIndex", "doc_mount_chunks", |c| {
+        !str_at(c, "linkId").is_some_and(|i| backfilled_links.contains(i))
+    });
+    let still_used: HashSet<String> = rows_of(&got_v, "mountIndex", "doc_mount_file_links")
+        .iter()
+        .filter_map(|l| str_at(l, "fileId").map(str::to_string))
+        .collect();
+    let orphaned: HashSet<String> = gone_files.difference(&still_used).cloned().collect();
+    retain_rows(&mut got_v, "mountIndex", "doc_mount_files", |f| {
+        !str_at(f, "id").is_some_and(|i| orphaned.contains(i))
+    });
+    retain_rows(&mut got_v, "mountIndex", "doc_mount_documents", |f| {
+        !str_at(f, "fileId").is_some_and(|i| orphaned.contains(i))
+    });
+    *got = serde_json::from_value(got_v).expect("dump round-trips");
     true
 }
 
@@ -5031,26 +5032,14 @@ fn carve_general_pointer_preapply(
     println!("  general-pointer {name}: {moved} v4 row(s) re-homed from {dangling}");
 }
 
-/// ## [P4.158 R-B] The v5-only claim WARN — pinned, with its silence leg
-///
-/// v4 cannot reach a second claimant: its create drops every archived pointer
-/// and mints a fresh store (`characters.repository.ts:253`,
-/// `store-backed.repository.ts:137`), so it logs nothing a v5 line could match
-/// — this is a RECORDED v5-only line. Each entry is `(case, [the line's fields
-/// after the message, in order])`; every case NOT listed must log none.
-const CLAIMED_STORE_WARN: &str =
-    "WARN quilltap::restore Archived store already claimed by an earlier entity; falling back to a fresh store";
-const CLAIMED_STORE_WARNS: &[(&str, &[&str])] = &[(
-    "restore_two_claimants_replace",
-    &[
-        "entity=character entityId=a1000000-0000-4000-8000-000000000002 \
-         mountPointId=aff3114e-ed90-4d5b-99c1-ef3fa20203fc \
-         claimedBy=a1000000-0000-4000-8000-000000000001",
-        "entity=group entityId=a2000000-0000-4000-8000-000000000001 \
-         mountPointId=5c17e916-5f79-4cca-a134-ec09c05924e9 \
-         claimedBy=a3000000-0000-4000-8000-000000000001",
-    ],
-)];
+// `CLAIMED_STORE_WARNS` (P4.158 R-B's v5-only `Archived store already claimed
+// by an earlier entity; falling back to a fresh store` WARN on
+// `restore_two_claimants_replace`) — CONVERGED and RETIRED (P4.D273): v4's
+// claim map reaches the state now and logs `Restored entity falls back to a
+// fresh store {kind, id, reason: already-claimed, claimedBy}` with its
+// `The <kind> "<name>" was given a fresh, empty store because its store is
+// already claimed by <kind> <id>` warning; v5 logs the same, compared as plain
+// equalities by the census and the warnings diff.
 
 /// ## [P4.158 R-A] The v5-only backfill WARN — pinned, with its silence leg
 ///
@@ -5099,10 +5088,7 @@ const BACKFILL_WARNS: &[(&str, &[&str])] = &[(
 /// `(case, the field tails it logs)`.
 type V5OnlyCases = &'static [(&'static str, &'static [&'static str])];
 
-const V5_ONLY_RESTORE_LINES: &[(&str, V5OnlyCases)] = &[
-    (CLAIMED_STORE_WARN, CLAIMED_STORE_WARNS),
-    (BACKFILL_WARN, BACKFILL_WARNS),
-];
+const V5_ONLY_RESTORE_LINES: &[(&str, V5OnlyCases)] = &[(BACKFILL_WARN, BACKFILL_WARNS)];
 
 fn assert_claimed_store_warns(name: &str, lines: &[String], failures: &mut Vec<String>) {
     for (prefix, cases) in V5_ONLY_RESTORE_LINES {
@@ -5127,9 +5113,10 @@ fn assert_claimed_store_warns(name: &str, lines: &[String], failures: &mut Vec<S
 /// ## [P4.158 R-G] The restore's log census — every `moduleLogger` line of
 /// ## v4's `restore.ts`, on every case
 ///
-/// All 68 sites at `f5e953a3f` (46 warn, 6 info, 16 debug — each message
-/// distinct; P4.158's 63, + P4.D264's four for 22n-bis / 22f-ter, + P4.D258's
-/// `039f7017c` `Decoded index-keyed memory embedding`), recorded
+/// All 80 sites at `01a83539d` (52 warn, 7 info, 19 debug, 2 error — each
+/// message distinct; P4.158's 63, + P4.D264's four for 22n-bis / 22f-ter, +
+/// P4.D258's `039f7017c` `Decoded index-keyed memory embedding` = 68 at
+/// `f5e953a3f`, + P4.D273's twelve from `ed8b15b50`), recorded
 /// by the oracle on every case with every context key. v5 must log the same
 /// lines, in the same order, with the same fields (an Error recorded as its
 /// message; an object / array through the `…Json` file-layer convention).
@@ -5205,6 +5192,32 @@ const RESTORE_TS_MESSAGES: &[&str] = &[
     "Starting restore operation",
     "Translated pre-4.10 Concierge settings for restore",
     "Translated the retired impersonated-line voice toggle for restore",
+    // [P4.D273] v4 `ed8b15b50` — bug 185's store binding, 22a's free name,
+    // 22a-i, the deferred project files, 23a's store-name reconcile (68 → 80).
+    "Archived character vault failed to restore; tombstone left unhealed",
+    "Failed to re-provision character vault after restore",
+    "Failed to re-provision official store after restore",
+    "Failed to restore deferred project file",
+    "Post-restore store-name reconcile complete",
+    "Post-restore store-name reconcile failed",
+    "Re-provisioned a character vault whose archived store failed to restore",
+    "Re-provisioned an official store whose archived store failed to restore",
+    "Replayed deferred project files",
+    "Restored document store under a free name",
+    "Restored entities bound to their archived stores",
+    "Restored entity falls back to a fresh store",
+];
+
+/// [P4.D273] The bound creates' repository lines (v4 `ed8b15b50`:
+/// `createBoundToVault` / `createBoundToStore`) — the INFO on success and the
+/// `safeQuery` wrap on a refusal, compared on EVERY case.
+const BOUND_CREATE_MESSAGES: &[&str] = &[
+    "Character restored bound to its archived vault",
+    "Project restored bound to its archived store",
+    "Group restored bound to its archived store",
+    "Error restoring character bound to its vault",
+    "Error restoring project bound to its store",
+    "Error restoring group bound to its store",
 ];
 
 /// The repository-level lines (validation, `_create`'s rethrow, the chats
@@ -5378,6 +5391,7 @@ fn compare_restore_logs(
     if REPO_LEVEL_CASES.contains(&name) {
         messages.extend_from_slice(REPO_LEVEL_MESSAGES);
     }
+    messages.extend_from_slice(BOUND_CREATE_MESSAGES);
     let (mut g, mut w) = (
         v5_log_records(got_lines, &messages),
         v4_log_records(want, &messages),
@@ -5420,6 +5434,80 @@ fn compare_restore_logs(
                     }
                 }
             }
+        }
+    }
+    // [P4.D273 R-D] `RECONCILE_PENDING_UNION`: 23a's two lines leave BOTH
+    // sides; the reconcile's own lines are never in `messages` — counted here
+    // for the record, and v5 (no reconcile on this branch) must log none.
+    let is_23a = |r: &Value| RECONCILE_23A_MESSAGES.contains(&r["message"].as_str().unwrap_or(""));
+    let census_masked = g.iter().filter(|r| is_23a(r)).count()
+        + w.iter().filter(|r| is_23a(r)).count()
+        + v4_log_records(want, RECONCILE_MESSAGES).len();
+    println!("  RECONCILE_PENDING_UNION {name}: {census_masked} census record(s) masked");
+    let v5_reconcile = v5_log_records(got_lines, RECONCILE_MESSAGES);
+    if !v5_reconcile.is_empty() {
+        failures.push(format!(
+            "[{name}] RECONCILE_PENDING_UNION: v5 logged reconcile lines {v5_reconcile:?} — the \
+             union has landed; lift the carve"
+        ));
+    }
+    g.retain(|r| !is_23a(r));
+    w.retain(|r| !is_23a(r));
+    // [P4.D273 R-A] `DUP_STORE_ID_FIRST_ROW`'s v4 records — each present, then
+    // gone — and v5 logged none of them.
+    for drop in &carve.drop_v4_census {
+        let render = |r: &Value| -> Value {
+            let mut o = Map::new();
+            for (k, v) in r.as_object().into_iter().flatten() {
+                o.insert(
+                    k.clone(),
+                    json!(match v {
+                        Value::String(s) => s.clone(),
+                        other => other.to_string(),
+                    }),
+                );
+            }
+            Value::Object(o)
+        };
+        let drop = render(drop);
+        match w.iter().position(|r| *r == drop) {
+            Some(i) => {
+                w.remove(i);
+            }
+            None => failures.push(format!(
+                "[{name}] DUP_STORE_ID_FIRST_ROW (v4): census record {drop} is gone — re-measure"
+            )),
+        }
+        if g.contains(&drop) {
+            failures.push(format!(
+                "[{name}] DUP_STORE_ID_FIRST_ROW (v5): logged v4's divergent record {drop}"
+            ));
+        }
+    }
+    for drop in &carve.drop_v5_census {
+        let drop = drop.clone();
+        let rendered: Value = {
+            let mut o = Map::new();
+            for (k, v) in drop.as_object().into_iter().flatten() {
+                o.insert(
+                    k.clone(),
+                    json!(v.as_str().map(str::to_string).unwrap_or(v.to_string())),
+                );
+            }
+            Value::Object(o)
+        };
+        match g.iter().position(|r| *r == rendered) {
+            Some(i) => {
+                g.remove(i);
+            }
+            None => failures.push(format!(
+                "[{name}] DUP_STORE_ID_FIRST_ROW (v5): census record {rendered} is gone"
+            )),
+        }
+        if w.contains(&rendered) {
+            failures.push(format!(
+                "[{name}] DUP_STORE_ID_FIRST_ROW (v4): logs v5's record {rendered} — v4 converged"
+            ));
         }
     }
     // The ruled divergences whose v4 warnings are carved from the summary
@@ -5822,15 +5910,25 @@ fn assert_refusals_restored(
                     }
                 }
             }
-            let voyage = rows_of(&got_v, "main", "projects")
-                .iter()
-                .find(|r| r["id"] == "a3000000-0000-4000-8000-000000000001")
-                .map(|r| r["officialMountPointId"].clone());
-            if voyage != Some(json!("5c17e916-5f79-4cca-a134-ec09c05924e9")) {
-                failures.push(format!(
-                    "[{name}] v5: The Voyage must keep its archived store (the refused \
-                     project that named it claims nothing): {voyage:?}"
-                ));
+            // [P4.D273 R-I] v4's claim comes BEFORE validation, so the refused
+            // over-long project (`…e1`, first to name the store) still HOLDS
+            // it: The Voyage falls back `already-claimed` to a fresh store on
+            // BOTH sides (P4.161 had pinned v5's old validate-first order,
+            // where the refused project claimed nothing).
+            for (side, dump) in [("v5", &got_v), ("v4", want)] {
+                let voyage = rows_of(dump, "main", "projects")
+                    .iter()
+                    .find(|r| r["id"] == "a3000000-0000-4000-8000-000000000001")
+                    .and_then(|r| r["officialMountPointId"].as_str().map(str::to_string));
+                let fresh = voyage.as_deref().is_some_and(|v| {
+                    v != "5c17e916-5f79-4cca-a134-ec09c05924e9" && point_exists(dump, v)
+                });
+                if !fresh {
+                    failures.push(format!(
+                        "[{name}] {side}: The Voyage must take a FRESH store — its archived \
+                         one is held by the refused project that claimed it first: {voyage:?}"
+                    ));
+                }
             }
         }
         _ => {}
@@ -5875,6 +5973,22 @@ fn compare_case(
             continue;
         }
         if k == "warnings" {
+            // [P4.D273 R-D] `RECONCILE_PENDING_UNION`'s warning half: 23a's
+            // `Failed to tidy document-store names after restore: …` leaves
+            // both sides (v5 cannot log it before the union).
+            let tidy = |v: &Value| -> Value {
+                let mut v = v.clone();
+                if let Some(ws) = v.as_array_mut() {
+                    ws.retain(|w| {
+                        !w.as_str().is_some_and(|w| {
+                            w.starts_with("Failed to tidy document-store names after restore: ")
+                        })
+                    });
+                }
+                v
+            };
+            let (gv_tidy, wv_tidy) = (tidy(gv), tidy(wv));
+            let (gv, wv) = (&gv_tidy, &wv_tidy);
             // [P4.147] the v4 warnings that ARE the #142 divergence.
             let mut wv = wv.clone();
             if let Some(ws) = wv.as_array_mut() {
@@ -6123,14 +6237,17 @@ fn compare_case(
                 mask_stats(&mut g_rows);
                 mask_stats(&mut w_rows);
             }
+            // [P4.D273 R-D] after the stats lookups, which read names.
+            if table == "doc_mount_points" {
+                mask_reconcile_pending_union(&mut g_rows);
+                mask_reconcile_pending_union(&mut w_rows);
+            }
             let g = n_got.value(&Value::Array(g_rows.clone()));
             let wnt = n_want.value(&Value::Array(w_rows.clone()));
-            // [P4.147] A shared content row the #141 carve kept: same rows,
-            // compared under a canonical order (see FRESH_STORE_SHARED_CONTENT).
-            if ((summary_carve.shared_content
-                && FRESH_STORE_SHARED_CONTENT.contains(&table.as_str()))
-                || (summary_carve.preserve_backfill
-                    && PRESERVE_BACKFILL_TABLES.contains(&table.as_str())))
+            // [P4.161] The backfill's content rows: same rows, compared under a
+            // canonical order (see PRESERVE_BACKFILL_TABLES).
+            if (summary_carve.preserve_backfill
+                && PRESERVE_BACKFILL_TABLES.contains(&table.as_str()))
                 && partition == "mountIndex"
                 && !residual.contains(table.as_str())
             {
@@ -6145,7 +6262,7 @@ fn compare_case(
                         .unwrap_or_else(|| format!(" row count {} vs {}", cg.len(), cw.len()));
                     failures.push(format!(
                         "[{name}] mountIndex.{table} differs (canonical order — \
-                         FRESH_STORE_SHARED_CONTENT / PRESERVE_BACKFILL){detail}"
+                         PRESERVE_BACKFILL){detail}"
                     ));
                 }
                 continue;
@@ -6198,16 +6315,14 @@ const TOMBSTONE_CASE: &str = "restore_wardrobe_picture_tombstone_new_account";
 /// INFO line's fields, and the coat document in both final states still
 /// naming `f0000001-…0001`.
 ///
-/// The bulk row-for-row diff is NOT run on this case: the archive is an
-/// ARCHIVED character's, and the two engines disagree on its vault —
-/// `ARCHIVED_CHARACTER_RESTORE`, RULED (the human, 2026-10-08: "fix v5, keep
-/// archivedAt"; see `restore_one_character`'s `keep_archive_columns`). Both
-/// keep the tombstone's `archivedAt` (an EQUALITY — v5 used to drop it, the
-/// P4.D264 finding); v4 then refuses the archived character's store (`Failed
-/// to restore character "Lorian": Character … is archived: this character is
-/// archived; rehydrate it to continue`, and the same refusal for a legacy item
-/// on him) and leaves the pointer NULL, where v5 keeps a vault and warns
-/// nothing. That vault half is pinned both ways, so a v4 change trips it.
+/// P4.D273: the bulk row-for-row diff now runs on this case too (in
+/// [`system_restore_state_equivalence`]) — the reason it was skipped is gone.
+/// The archive is an ARCHIVED character's, and `ARCHIVED_CHARACTER_RESTORE`
+/// (RULED, the human, 2026-10-08: "fix v5, keep archivedAt") had v4 refuse
+/// the tombstone's store and leave its pointer NULL. Since bug 185 (v4
+/// `ed8b15b50`) v4 binds the tombstone to its archived vault and keeps
+/// `archivedAt`, exactly as v5 does: the BOUND arm converged (R-F (a)), an
+/// equality below. The fallback arm stays ruled (`restore_store_binding_*`).
 #[test]
 fn wardrobe_picture_tombstone_is_skipped() {
     let _serial = serial();
@@ -6331,35 +6446,55 @@ fn wardrobe_picture_tombstone_is_skipped() {
             got_lorian["archivedAt"], want_lorian["archivedAt"]
         ));
     }
-    // …and the vault half, both ways: v4 refuses the store, v5 keeps one.
-    let v4_refused = case["summary"]["warnings"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|w| {
-            w.as_str().is_some_and(|w| {
-                w.starts_with("Failed to restore character \"Lorian\": Character ")
-                    && w.ends_with(
-                        " is archived: this character is archived; rehydrate it to continue",
-                    )
-            })
-        });
-    if !v4_refused || !want_lorian["characterDocumentMountPointId"].is_null() {
-        failures.push(
-            "ARCHIVED_CHARACTER_RESTORE (v4): v4 no longer refuses the archived character's store — v4 converged; re-measure"
-                .to_string(),
-        );
-    }
-    if got_lorian["characterDocumentMountPointId"].is_null() {
-        failures.push(
-            "ARCHIVED_CHARACTER_RESTORE (v5): the restored tombstone lost its vault".to_string(),
-        );
-    }
-    if summary.warnings.iter().any(|w| w.contains("is archived")) {
-        failures.push(format!(
-            "ARCHIVED_CHARACTER_RESTORE (v5): v5 now refuses the archived character: {:?}",
-            summary.warnings
-        ));
+    // …and the vault half — its BOUND arm CONVERGED (P4.D273 R-F (a)): v4
+    // `ed8b15b50` binds the tombstone to its archived vault through
+    // `createBoundToVault`, whose `withCreateDefaults` spreads the archive
+    // row, so v4 keeps `archivedAt` AND the vault, as v5 does. An equality on
+    // both sides now: the pointer names a store each side restored, and
+    // neither refuses the archived character. (The FALLBACK arm — an archived
+    // character with no pointer — stays RULED, pinned both ways on
+    // `restore_store_binding_*`.)
+    for (side, row, dump_points, warnings) in [
+        (
+            "v5",
+            &got_lorian,
+            state["mountIndex"]["doc_mount_points"].as_slice(),
+            summary
+                .warnings
+                .iter()
+                .map(|w| json!(w))
+                .collect::<Vec<_>>(),
+        ),
+        (
+            "v4",
+            &want_lorian,
+            case["state"]["mountIndex"]["doc_mount_points"]
+                .as_array()
+                .map(Vec::as_slice)
+                .unwrap_or(&[]),
+            case["summary"]["warnings"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default(),
+        ),
+    ] {
+        let vault = row["characterDocumentMountPointId"].as_str();
+        let restored = vault.is_some_and(|v| dump_points.iter().any(|p| p["id"] == v));
+        if !restored {
+            failures.push(format!(
+                "ARCHIVED_CHARACTER_RESTORE ({side}): the bound tombstone points at {vault:?}, \
+                 not a store it restored"
+            ));
+        }
+        if warnings
+            .iter()
+            .any(|w| w.as_str().is_some_and(|w| w.contains("is archived")))
+        {
+            failures.push(format!(
+                "ARCHIVED_CHARACTER_RESTORE ({side}): refuses the bound archived character: \
+                 {warnings:?}"
+            ));
+        }
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
     println!(

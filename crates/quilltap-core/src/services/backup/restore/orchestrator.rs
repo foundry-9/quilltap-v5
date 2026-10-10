@@ -39,6 +39,7 @@ use serde_json::Value;
 
 use super::archive::{get_file_from_extracted_backup, parse_backup_zip, ExtractedBackup};
 use super::rows::{b, de_or_default, embedding, n, ob, obj, on, os, s, sa};
+use super::store_claims::{FallbackReason, StoreClaim, StoreOwnerKind};
 use super::{ProfileCounts, RestoreSummary, TemplateCounts};
 use crate::db::runtime::{Db, WriterSet};
 use crate::db::DbError;
@@ -635,84 +636,46 @@ fn restore_on_writer(
     // file-replay dedupe". Aligning the two phase orders fails
     // `system_restore_state` deliberately.
 
-    // ── The archived-store map (P4.147, dogfood #141) ────────────────────────
+    // ── The store claim map (bug 185 — v4 `ed8b15b50`, P4.D273) ──────────────
     //
-    // ## ⚠ RULED DIVERGENCE (P4.147, 2026-10-05) — a restored entity keeps the
-    // ## store the archive restores
+    // A character's vault and a project's or group's official store travel in
+    // the archive beside the entity, and come back at 22a–22f. The entities'
+    // create paths would mint a fresh store and leave the archive's orphaned
+    // (dogfood #141, this port's filing as v4 bug 185 — #159 its `new-account`
+    // half), so each entity whose archived pointer names a carried store is
+    // written bound to it instead (first claim wins; see `store_claims`). In
+    // `new-account` mode the pointers were remapped with the stores' own ids
+    // (`uuid_remap`), so ONE map over the (remapped) `data` serves both modes —
+    // v4's design, which SUPERSEDES P4.147's `replace`-only map and #159's
+    // raw→restored id map (P4.D273 R-C).
     //
-    // v4 restores every character (6), project (13) and group (13a) through its
-    // CREATE path, which drops the archived `characterDocumentMountPointId` /
-    // `officialMountPointId` and provisions a FRESH vault / official store
-    // (`characters.repository.ts:262-296`, `restore.ts:315-345`); 22a then
-    // restores the archive's real store under its archived id BESIDE it,
-    // orphaned. Measured on the dogfood copy (#141): 144 stores from a 77-store
-    // archive, Friday's pointer on a 12-file vault while her 805-link one sat
-    // unreferenced. Under the standing backup/restore ruling (v5 fixes v4's bugs
-    // on the READ side) a `replace` restore now PRESERVES the pointer whenever
-    // the archive carries the pointed store — a character's must be a
-    // `storeType: 'character'` vault — and mints nothing (Shape A,
-    // preserve-at-create). Between here and 22a such a row carries an FK to a
-    // store that does not exist yet; nothing in phases 7–22 reads a vault (22f-bis
-    // runs after 22a, inside the mount family). Otherwise — no stores in the
-    // archive, or a pointer naming a store it does not carry — the create path
-    // runs unchanged and stays v4-convergent. `replace` only (ruling R-B): in
-    // `new-account` mode the store pointers are never remapped, so preserving
-    // would need its own translation and its own ruling.
-    //
-    // Keyed by the archive's RAW rows, exactly as 22a will create them.
-    // `system_restore_state` pins it both ways (`FRESH_STORE_RESIDUAL`).
-    //
-    // ## One truth for a duplicated id (P4.158, ruling R-B)
-    //
-    // An archive can carry two `doc_mount_points` rows under one id. 22a
-    // creates them in order and the primary key keeps the FIRST, refusing the
-    // second (`UNIQUE constraint failed: doc_mount_points.id` — on v4 too). A
-    // plain `collect()` kept the LAST, so the map could call a store by a type
-    // 22a never restored it as (`restore-archive-dup-store-id.zip`: Lorian's
-    // vault id duplicated as a `documents` row dropped her onto a fresh vault).
-    // The map now keeps the first row per id — still keyed by the raw rows,
-    // now agreeing with 22a on which one is real.
-    let archived_stores: std::collections::HashMap<String, String> = if replace_mode {
-        let mut map = std::collections::HashMap::new();
-        for mp in &data.doc_mount_points {
-            map.entry(id_of(mp))
-                .or_insert_with(|| str_or(mp, "storeType", "documents"));
-        }
-        map
-    } else {
-        std::collections::HashMap::new()
-    };
-    // ## First claim wins (P4.158, ruling R-B)
-    //
-    // Nothing stops two archived entities naming ONE store (a hand-edited or
-    // damaged archive). Preserving both would cross-link unrelated content —
-    // the very thing v4's create refuses by always minting fresh
-    // (`characters.repository.ts:253`). So the first entity to claim a store
-    // keeps it — phase order (characters 6, projects 13, groups 13a), then the
-    // archive's row order — and a later claimant takes the v4-convergent
-    // fresh-store arm with a v5-only WARN (`system_restore_state`'s
-    // `CLAIMED_STORE_WARNS`; v4 cannot reach the state, so it has no line).
-    let mut claims = StoreClaims::default();
-    // The entities the preserve arm kept on an archived store, for the
-    // completeness pass after the mount family (P4.158 R-A).
-    let mut preserved: Vec<PreservedStore> = Vec::new();
+    // A duplicated store id keeps its FIRST row, as 22a does (the ruled
+    // `DUP_STORE_ID_FIRST_ROW`, P4.D273 R-A — v4's map keeps the last).
+    let mut claims = super::store_claims::make_store_claim_map(&data.doc_mount_points);
+    // The archive's carried store ids — `preapply_builtin_pointers` (22a-ter,
+    // `replace` only, P4.158 R-C) keys on them.
+    let carried_store_ids = id_set(&data.doc_mount_points);
+    // Entities bound to an archived store, kept so a store whose own row fails
+    // to restore at 22a can be replaced before anything reads through it
+    // (22a-i), and so the completeness pass can find them (P4.158 R-A).
+    let mut bound = BoundEntities::default();
 
     // ── 6. Characters (vault-backed) ─────────────────────────────────────────
     //
-    // The vault is preserved when the archive carries it (see the map above);
-    // otherwise `create` provisions a fresh one, as v4 always does.
+    // One bound to its archived vault is written as a slim row only; its vault
+    // arrives at 22a–22f, so nothing may read it through the overlay before
+    // then (memories below check ownership by id for that reason). Anything
+    // else is created with a fresh vault, as before.
     if let Some(mount) = mount {
         for ch in &data.characters {
             let name = s(ch, "name");
-            match restore_one_character(
-                main,
-                mount,
-                target_user_id,
-                ch,
-                &archived_stores,
-                &mut claims,
-            ) {
-                Ok(Some(vault)) => preserved.push(PreservedStore::new("character", ch, vault)),
+            let claim = claims.claim_value(
+                StoreOwnerKind::Character,
+                &id_of(ch),
+                ch.get("characterDocumentMountPointId"),
+            );
+            match restore_one_character(main, mount, target_user_id, ch, &claim, &mut w) {
+                Ok(Some(b)) => bound.characters.push(b),
                 Ok(None) => {}
                 Err(e) => {
                     let error = e.warn_text();
@@ -1081,56 +1044,69 @@ fn restore_on_writer(
 
     // ── 13 / 13a. Projects and groups (store-backed) ─────────────────────────
     //
-    // **The preserve arm (P4.147 — see the archived-store map above):** when the
-    // archived `officialMountPointId` names a store the archive carries, the slim
-    // row is written with that pointer and NOTHING is provisioned — the store,
-    // its `properties.json` / `description.md` / … and its
-    // `project_/group_doc_mount_links` row all restore under their archived ids
-    // at 22a–22h.
+    // Bound to the archived official store when the archive carries it (bug
+    // 185, v4 `ed8b15b50` `restore.ts:396-442`) — slim row only, no fresh store
+    // and no link; the archive's link rows arrive at 22h. Otherwise a fresh
+    // store, as before. The claim is taken FIRST, before the entity is
+    // validated, as v4's does (R-I): a refused bound create still holds its
+    // store, so a later claimant is told `already-claimed`.
     //
-    // **Otherwise (v4-convergent):** `create` provisions a fresh store and writes
-    // the hydrated description/instructions/state and the WHOLE property bag into
-    // it (v4 `:315-345` hands `create` the whole row; P4.147 item 8 — the old
-    // six-key copy dropped ten project values, and a group's `null` colour landed
-    // absent). The bag is parsed BEFORE any row is written, so a value v4's
-    // schema would refuse skips the entity with no slim row left behind. In the
-    // differential the minted store ids are labelled by ORIGIN (an id the archive
-    // does not carry), not by column.
+    // **The bound arm:** `create_bound_to_store` validates the WHOLE entity
+    // (v4's `_create`) and writes the slim row carrying the pointer.
+    //
+    // **The fallback arm (v4-convergent):** v4's `noteStoreFallback` sentence +
+    // WARN, then `create` — which provisions a fresh store and writes the
+    // hydrated description/instructions/state and the WHOLE property bag into
+    // it (P4.147 item 8). The bag is parsed BEFORE any row is written, so a
+    // value v4's schema would refuse skips the entity with no slim row left
+    // behind (v4's three repository ERRORs). In the differential the minted
+    // store ids are labelled by ORIGIN (an id the archive does not carry), not
+    // by column.
     if let Some(mount) = mount {
         use crate::db::document_store_overlay::StoreEntity;
         use crate::db::groups::GroupEntity;
         use crate::db::projects::ProjectEntity;
-        // A project's / group's official store is a `storeType: 'documents'`
-        // store, as a character's is a `'character'` vault (phase 6) — a pointer
-        // at any other kind takes the fallback arm, as does one an earlier
-        // entity already claimed (R-B).
-        let mut archived_store = |row: &Value, entity: &'static str| {
-            os(row, "officialMountPointId")
-                .filter(|id| archived_stores.get(id).map(String::as_str) == Some("documents"))
-                .filter(|store| claims.claim(store, entity, &id_of(row)))
-        };
 
         let projects = crate::db::projects::ProjectsRepository::new(main, mount);
         let slim_projects =
             crate::db::store_backed::StoreBackedRepository::<ProjectEntity>::new(main, mount);
         for p in &data.projects {
             let label = format!("Failed to restore project \"{}\"", s(p, "name"));
-            // v4's `_create` validates the WHOLE entity on both of v5's arms
-            // (`store-backed.repository.ts:142-144`): the row keys (`name`
-            // 1–100 code points, `description` ≤ 2000, `instructions` ≤ 10000,
-            // `state` a record, the claimed `id`) THEN the bag after its
-            // create seed — so a row v4's schema refuses skips the project on
-            // the preserve arm too, with nothing written: no slim row, no
-            // store claim, no backfill entry (P4.161, P4.155's R-B — the arm
-            // used to validate the BAG alone, so a 101-code-point name
-            // restored). A refusal logs v4's three repository ERRORs (no
-            // `strictFailures` — outside the strict scope).
             let entity = crate::services::quilltap_import::store_create_payload(p, None);
             let claimed = id_of(p);
-            if let Err(e) = crate::db::projects::parse_create_entity(
-                &entity,
-                Some(claimed.as_str()).filter(|id| !id.is_empty()),
-            ) {
+            let claimed_id = Some(claimed.as_str()).filter(|id| !id.is_empty());
+            let claim = claims.claim_value(
+                StoreOwnerKind::Project,
+                &claimed,
+                p.get("officialMountPointId"),
+            );
+            if let StoreClaim::Bound { mount_point_id } = &claim {
+                match slim_projects.create_bound_to_store(
+                    &entity,
+                    claimed_id,
+                    mount_point_id,
+                    &store_opts(id_of(p)),
+                ) {
+                    Ok(_) => {
+                        c.projects += 1;
+                        bound.projects.push(BoundStore::new(p, mount_point_id));
+                    }
+                    Err(e) => {
+                        let error = e.warn_text();
+                        w.push(format!("{label}: {error}"));
+                        project_warn(p, &error);
+                    }
+                }
+                continue;
+            }
+            note_store_fallback(&mut w, StoreOwnerKind::Project, p, &claim);
+            // v4's `_create` validates the WHOLE entity (`store-backed.
+            // repository.ts:142-144`): the row keys (`name` 1–100 code points,
+            // `description` ≤ 2000, `instructions` ≤ 10000, `state` a record,
+            // the claimed `id`) THEN the bag after its create seed (P4.161,
+            // P4.155's R-B). A refusal logs v4's three repository ERRORs (no
+            // `strictFailures` — outside the strict scope).
+            if let Err(e) = crate::db::projects::parse_create_entity(&entity, claimed_id) {
                 crate::db::document_store_overlay::log_refused_store_create(
                     crate::db::document_store_overlay::StoreKind::Project,
                     entity.get("name"),
@@ -1144,25 +1120,6 @@ fn restore_on_writer(
                 p,
                 ProjectEntity::property_keys(),
             );
-            if let Some(store) = archived_store(p, "project") {
-                match slim_projects.create_bound_to_store(
-                    &entity,
-                    Some(claimed.as_str()).filter(|id| !id.is_empty()),
-                    &store,
-                    &store_opts(id_of(p)),
-                ) {
-                    Ok(_) => {
-                        c.projects += 1;
-                        preserved.push(PreservedStore::new("project", p, store));
-                    }
-                    Err(e) => {
-                        let error = e.warn_text();
-                        w.push(format!("{label}: {error}"));
-                        project_warn(p, &error);
-                    }
-                }
-                continue;
-            }
             let input = crate::db::projects::ProjectCreateInput {
                 name: s(p, "name"),
                 description: os(p, "description"),
@@ -1185,14 +1142,37 @@ fn restore_on_writer(
             crate::db::store_backed::StoreBackedRepository::<GroupEntity>::new(main, mount);
         for g in &data.groups {
             let label = format!("Failed to restore group \"{}\"", s(g, "name"));
-            // Validated WHOLE on both arms, as the projects above (v4's groups
-            // have no create seed; P4.161 — the bag alone before).
             let entity = crate::services::quilltap_import::store_create_payload(g, None);
             let claimed = id_of(g);
-            let properties = match crate::db::groups::parse_create_entity(
-                &entity,
-                Some(claimed.as_str()).filter(|id| !id.is_empty()),
-            ) {
+            let claimed_id = Some(claimed.as_str()).filter(|id| !id.is_empty());
+            let claim = claims.claim_value(
+                StoreOwnerKind::Group,
+                &claimed,
+                g.get("officialMountPointId"),
+            );
+            if let StoreClaim::Bound { mount_point_id } = &claim {
+                match slim_groups.create_bound_to_store(
+                    &entity,
+                    claimed_id,
+                    mount_point_id,
+                    &store_opts(id_of(g)),
+                ) {
+                    Ok(_) => {
+                        c.groups += 1;
+                        bound.groups.push(BoundStore::new(g, mount_point_id));
+                    }
+                    Err(e) => {
+                        let error = e.warn_text();
+                        w.push(format!("{label}: {error}"));
+                        group_warn(g, &error);
+                    }
+                }
+                continue;
+            }
+            note_store_fallback(&mut w, StoreOwnerKind::Group, g, &claim);
+            // Validated WHOLE, as the projects above (v4's groups have no
+            // create seed; P4.161).
+            let properties = match crate::db::groups::parse_create_entity(&entity, claimed_id) {
                 Ok(bag) => bag,
                 Err(e) => {
                     crate::db::document_store_overlay::log_refused_store_create(
@@ -1205,25 +1185,6 @@ fn restore_on_writer(
                     continue;
                 }
             };
-            if let Some(store) = archived_store(g, "group") {
-                match slim_groups.create_bound_to_store(
-                    &entity,
-                    Some(claimed.as_str()).filter(|id| !id.is_empty()),
-                    &store,
-                    &store_opts(id_of(g)),
-                ) {
-                    Ok(_) => {
-                        c.groups += 1;
-                        preserved.push(PreservedStore::new("group", g, store));
-                    }
-                    Err(e) => {
-                        let error = e.warn_text();
-                        w.push(format!("{label}: {error}"));
-                        group_warn(g, &error);
-                    }
-                }
-                continue;
-            }
             let input = crate::db::groups::GroupCreateInput {
                 name: s(g, "name"),
                 description: os(g, "description"),
@@ -1547,24 +1508,32 @@ fn restore_on_writer(
 
     // ── 22a-22h. The format-3 doc-store family (mount-index partition) ───────
     if let Some(mount) = mount {
-        restore_mount_family(
+        let restored_mount_point_ids = restore_mount_family(
             main,
             mount,
             data,
             &extracted.data,
             &root_path,
-            replace_mode.then_some(&archived_stores),
+            replace_mode.then_some(&carried_store_ids),
+            &bound,
             &wardrobe_image_pointer_fixes,
             &mut c,
             &mut w,
         );
-        // ── 22h-iii. The preserve arm's completeness pass (P4.158 R-A) ───────
+        // ── 22h-iii. The bound stores' completeness pass (P4.158 R-A) ────────
         //
-        // Every preserved store now holds whatever the archive restored into
-        // it. One that LACKS a managed file is completed from the archived
-        // row — see `backfill_preserved_store`.
-        for p in &preserved {
-            backfill_preserved_store(mount, p, &mut w);
+        // ## ⚠ RULED DIVERGENCE (P4.D273 R-B) — kept in BOTH modes, v5-ahead
+        //
+        // Every bound store now holds whatever the archive restored into it.
+        // One that LACKS a managed file is completed from the archived row —
+        // see `backfill_preserved_store`. v4 binds the same store and leaves
+        // the field reading blank (it never backfills). A store re-provisioned
+        // at 22a-i is skipped: its archived id no longer exists, and the fresh
+        // store was populated from the row already.
+        for p in bound.preserved() {
+            if restored_mount_point_ids.contains(&p.store) {
+                backfill_preserved_store(mount, &p, &mut w);
+            }
         }
     } else {
         w.push(
@@ -1586,33 +1555,96 @@ fn restore_on_writer(
     // on-disk names use) and writes the row from `data.files` (remapped in
     // new-account mode). `replace` mode makes the two identical; the pairing is
     // explicit because new-account needs it.
+    //
+    // ## The deferred project files (bug 185, v4 `ed8b15b50` 22a-bis / 22h-bis)
+    //
+    // A project bound to its archived store (13) has no link to it until 22h,
+    // and the bridge finds a project's store through its links — so v4 defers
+    // a file of that project that still needs its bytes re-ingested until
+    // after 22h, when it lands as an ordinary write into the populated store.
+    // v5's ruled slot already runs after the WHOLE family (so "after the
+    // links" holds for every file); the CLASSIFICATION and the lines are
+    // ported in v4's order (P4.D273 R-G): a first pass replays every file but
+    // a non-carried file of a bound project, a second pass replays those —
+    // so `files` rowids match v4's (the deferred rows last).
     if let Some(mount) = mount {
-        for (i, file) in data.files.iter().enumerate() {
+        let bound_project_ids: HashSet<String> =
+            bound.projects.iter().map(|p| id_of(&p.row)).collect();
+        let mut deferred: Vec<usize> = Vec::new();
+        let replay = |i: usize, file: &Value, w: &mut Vec<String>| {
             let name = s(file, "originalFilename");
             // The on-disk lookup MUST use the original row: new-account remaps
             // the id, the archive's file names do not move (v4 `:133-136`).
             let on_disk = extracted.data.files.get(i).unwrap_or(file);
             // ⚠ RULED DIVERGENCE (2026-07-26) — see `carried_store_rows`.
             let carried = carried_store_rows(mount, data, &extracted.data, on_disk);
-            match get_file_from_extracted_backup(&root_path, on_disk, backup_format) {
-                Some(bytes) => warn_row!(
+            let outcome = match get_file_from_extracted_backup(&root_path, on_disk, backup_format) {
+                Some(bytes) => Some(restore_one_file(
+                    main,
+                    mount,
+                    codec.as_ref(),
+                    target_user_id,
+                    file,
+                    &bytes,
+                    carried.as_ref(),
+                )),
+                None => {
+                    w.push(format!("File not found in backup: {name}"));
+                    None
+                }
+            };
+            outcome
+        };
+        for (i, file) in data.files.iter().enumerate() {
+            let on_disk = extracted.data.files.get(i).unwrap_or(file);
+            // v4's first pass: a carried file restores now (its archived
+            // store rows are the file); a non-carried file of a bound project
+            // waits for the second pass.
+            let deferrable = os(file, "projectId").is_some_and(|p| bound_project_ids.contains(&p))
+                && carried_store_rows(mount, data, &extracted.data, on_disk).is_none();
+            if deferrable {
+                deferred.push(i);
+                continue;
+            }
+            if let Some(outcome) = replay(i, file, &mut w) {
+                warn_row!(
                     w,
                     c.files,
-                    format!("Failed to restore file \"{name}\""),
-                    restore_one_file(
-                        main,
-                        mount,
-                        codec.as_ref(),
-                        target_user_id,
-                        file,
-                        &bytes,
-                        carried.as_ref()
-                    ),
+                    format!("Failed to restore file \"{}\"", s(file, "originalFilename")),
+                    outcome,
                     "Failed to restore file",
                     fileId = id_of(file),
-                ),
-                None => w.push(format!("File not found in backup: {name}")),
+                );
             }
+        }
+        // v4's 22h-bis: the deferred files, after the project links.
+        for &i in &deferred {
+            let file = &data.files[i];
+            match replay(i, file, &mut w) {
+                Some(Ok(())) => c.files += 1,
+                Some(Err(e)) => {
+                    let error = e.warn_text();
+                    w.push(format!(
+                        "Failed to restore file \"{}\": {error}",
+                        s(file, "originalFilename")
+                    ));
+                    tracing::warn!(
+                        target: "quilltap::restore",
+                        fileId = %id_of(file),
+                        projectId = %s(file, "projectId"),
+                        error = %error,
+                        "Failed to restore deferred project file"
+                    );
+                }
+                None => {}
+            }
+        }
+        if !deferred.is_empty() {
+            tracing::debug!(
+                target: "quilltap::restore",
+                count = deferred.len(),
+                "Replayed deferred project files"
+            );
         }
     } else if !data.files.is_empty() {
         w.push("Files were not restored — mount-index database is unavailable".to_string());
@@ -2192,11 +2224,12 @@ fn restore_mount_family(
     data: &crate::services::backup::BackupData,
     original: &crate::services::backup::BackupData,
     root_path: &Path,
-    archived_stores: Option<&std::collections::HashMap<String, String>>,
+    preapply_carried: Option<&HashSet<String>>,
+    bound: &BoundEntities,
     wardrobe_image_pointer_fixes: &[crate::services::backup::uuid_remap::WardrobeImagePointerFix],
     c: &mut Counters,
     w: &mut Vec<String>,
-) {
+) -> HashSet<String> {
     // ## ⚠ DELIBERATE DIVERGENCE (dogfood #58, 2026-08-03) — an archive can be
     // ## referentially broken, and a restore must say so in words
     //
@@ -2260,8 +2293,16 @@ fn restore_mount_family(
     // `next_unique_mount_point_name` per row (DEBUG `Restored document store
     // under a free name {mountPointId, archived, name}` when it moved), creates
     // under that name, and adds it to the set only after a SUCCESSFUL create.
-    // The failure warning keeps the ARCHIVED name. The kept archive
-    // `createdAt`, the restored set and the claim map are P4.D273's.
+    // The failure warning keeps the ARCHIVED name.
+    //
+    // P4.D273 (the rest of v4's 22a, `restore.ts:589-618`): store names are
+    // one case-insensitive namespace (bug 186) — a store keeps its archived
+    // name when it is free, otherwise takes the next ` (N)`, the case in
+    // `new-account` mode, where the archive's stores arrive beside the
+    // instance's own. The archive's `createdAt` is kept, since a retired
+    // vault's name is stamped with it. Each store restored joins
+    // `restored_mount_point_ids`, which 22a-i and the summary read.
+    let mut restored_mount_point_ids: HashSet<String> = HashSet::new();
     {
         let repo = crate::db::doc_mount_points::DocMountPointsRepository::new(mount);
         let mut taken: std::collections::HashSet<String> =
@@ -2270,7 +2311,31 @@ fn restore_mount_family(
                 .collect();
         for raw in &data.doc_mount_points {
             let mp = &super::mount_index_coercion::coerce_doc_mount_point_row(raw);
-            let archived = s(mp, "name");
+            // v4's `nextUniqueMountPointName(taken, mpData.name)` calls
+            // `desired.trim()`, so a non-string archived name throws V8's
+            // TypeError and the row is refused through the per-row catch (the
+            // tag phase's `toLowerCase` precedent; P4.D273 R-H).
+            let archived = match mp.get("name") {
+                Some(Value::String(n)) => n.clone(),
+                other => {
+                    let error = match other {
+                        None => "Cannot read properties of undefined (reading 'trim')",
+                        Some(Value::Null) => "Cannot read properties of null (reading 'trim')",
+                        Some(_) => "desired.trim is not a function",
+                    };
+                    w.push(format!(
+                        "Failed to restore document store \"{}\": {error}",
+                        crate::services::quilltap_import::js_display_name(raw)
+                    ));
+                    tracing::warn!(
+                        target: "quilltap::restore",
+                        mountPointId = %id_of(mp),
+                        error = %error,
+                        "Failed to restore doc mount point"
+                    );
+                    continue;
+                }
+            };
             let name =
                 crate::db::ensure_official_store::next_unique_mount_point_name(&taken, &archived);
             if name != archived {
@@ -2308,7 +2373,13 @@ fn restore_mount_family(
                     &create,
                     &crate::db::doc_mount_points::CreateOptions {
                         id: id_of(mp),
-                        created_at: now(),
+                        // v4 `{ id, ...(createdAt ? { createdAt } : {}) }`.
+                        created_at: mp
+                            .get("createdAt")
+                            .and_then(Value::as_str)
+                            .filter(|t| !t.is_empty())
+                            .map(str::to_string)
+                            .unwrap_or_else(now),
                         updated_at: now(),
                     },
                 ),
@@ -2317,14 +2388,25 @@ fn restore_mount_family(
             );
             if c.doc_mount_points > restored_before {
                 taken.insert(name);
+                restored_mount_point_ids.insert(id_of(mp));
             }
         }
     }
 
+    // 22a-i. Re-provision a bound store whose row failed, then the summary.
+    reprovision_unrestored_bound_stores(
+        main,
+        mount,
+        bound,
+        &restored_mount_point_ids,
+        data.doc_mount_points.len(),
+        w,
+    );
+
     // 22a-ter. The archive's built-in pointers — `replace` only (`None` in
     // `new-account`, ruling R-B of P4.147).
-    if let Some(archived_stores) = archived_stores {
-        preapply_builtin_pointers(main, mount, data, archived_stores);
+    if let Some(carried) = preapply_carried {
+        preapply_builtin_pointers(main, mount, data, carried);
     }
 
     // 22b. Folders — sorted by path length so parents precede children (`:446`).
@@ -2762,6 +2844,7 @@ fn restore_mount_family(
             );
         }
     }
+    restored_mount_point_ids
 }
 
 /// ## 22a-ter — the archive's built-in pointers, pre-applied (P4.147, #142)
@@ -2806,7 +2889,7 @@ fn preapply_builtin_pointers(
     main: &Connection,
     mount: &Connection,
     data: &crate::services::backup::BackupData,
-    archived_stores: &std::collections::HashMap<String, String>,
+    carried: &HashSet<String>,
 ) {
     let points = crate::db::doc_mount_points::DocMountPointsRepository::new(mount);
     for key in crate::services::backup::uuid_remap::MOUNT_POINT_SETTING_KEYS {
@@ -2814,7 +2897,7 @@ fn preapply_builtin_pointers(
             continue;
         };
         let value = s(row, "value");
-        if !archived_stores.contains_key(&value) || !points.exists(&value).unwrap_or(false) {
+        if !carried.contains(&value) || !points.exists(&value).unwrap_or(false) {
             continue;
         }
         let _ = main.execute(
@@ -3059,30 +3142,31 @@ fn restore_one_file(
     )
 }
 
-/// Phase 6's body for one character (v4 `:200`).
+/// Phase 6's body for one character (v4 `restore.ts:228-253`), its claim
+/// already taken (the claim comes FIRST, as v4's does — P4.D273 R-I).
 ///
-/// **The preserve arm (P4.147, a ruled divergence):** when the archived
-/// `characterDocumentMountPointId` names a `storeType: 'character'` store the
-/// archive carries (`archived_stores`, `replace` mode only), the slim row is
-/// written WITH that pointer and no vault is provisioned — the archive's own
-/// vault, its files and their projected managed fields restore under their
-/// archived ids at 22a–22g.
+/// **Bound** (the archived vault is carried, of the right kind, unclaimed): the
+/// slim row is written WITH that pointer and nothing is provisioned — the
+/// archive's own vault, its files and their projected managed fields restore
+/// under their archived ids at 22a–22g ([`create_bound_to_vault`]). Answers the
+/// bound character for 22a-i and the completeness pass.
 ///
-/// **Otherwise (v4-convergent):** `create_character_with_options` inserts the
-/// slim row, provisions a FRESH vault (dropping any incoming pointer, as v4's
-/// `repos.characters.create` does), and projects the managed fields into it.
+/// **Otherwise (v4-convergent):** v4's `noteStoreFallback` sentence + WARN,
+/// then `create_character_with_options` inserts the slim row, provisions a
+/// FRESH vault (dropping any incoming pointer, as v4's `repos.characters.
+/// create` does), and projects the managed fields into it.
 ///
-/// The vault fields are decoded on BOTH arms, so a row v4's schema would refuse
-/// is refused on either. Answers the vault id when the preserve arm kept it
-/// (for the R-A completeness pass), `None` on the fresh arm.
+/// The vault fields are decoded on BOTH arms (after the claim), so a row v5's
+/// decode refuses is refused on either — v5's serde text (no v4 Zod twin for
+/// the character row exists in v5; pre-existing, recorded).
 fn restore_one_character(
     main: &Connection,
     mount: &Connection,
     target_user_id: &str,
     ch: &Value,
-    archived_stores: &std::collections::HashMap<String, String>,
-    claims: &mut StoreClaims,
-) -> Result<Option<String>, DbError> {
+    claim: &StoreClaim,
+    w: &mut Vec<String>,
+) -> Result<Option<BoundCharacter>, DbError> {
     let slim = crate::db::characters::CharacterCreate {
         user_id: target_user_id.to_string(),
         name: s(ch, "name"),
@@ -3110,29 +3194,356 @@ fn restore_one_character(
         tags: sa(ch, "tags"),
         avatar_overrides: de_or_default(ch, "avatarOverrides"),
     };
-    let vault: crate::db::vault_character_write::CharacterVaultWriteInput =
-        serde_json::from_value(ch.clone())
-            .map_err(|e| DbError::Internal(format!("character vault fields: {e}")))?;
     let opts = crate::db::characters::CreateOptions {
         id: id_of(ch),
         created_at: now(),
         updated_at: now(),
     };
-    if let Some(vault_id) = os(ch, "characterDocumentMountPointId")
-        .filter(|id| archived_stores.get(id).map(String::as_str) == Some("character"))
-        .filter(|vault| claims.claim(vault, "character", &opts.id))
-    {
-        let slim = crate::db::characters::CharacterCreate {
-            character_document_mount_point_id: Some(vault_id.clone()),
-            ..slim
+    let decode =
+        || -> Result<crate::db::vault_character_write::CharacterVaultWriteInput, DbError> {
+            serde_json::from_value(ch.clone())
+                .map_err(|e| DbError::Internal(format!("character vault fields: {e}")))
         };
-        crate::db::characters::CharactersRepository::new(main).create(&slim, &opts)?;
-        keep_archive_columns(main, ch, &opts.id)?;
-        return Ok(Some(vault_id));
+    if let StoreClaim::Bound { mount_point_id } = claim {
+        let vault = decode()
+            .inspect_err(|e| bound_vault_create_failed(target_user_id, ch, mount_point_id, e))?;
+        create_bound_to_vault(main, &slim, ch, mount_point_id, &opts)?;
+        return Ok(Some(BoundCharacter {
+            row: ch.clone(),
+            mount_point_id: mount_point_id.clone(),
+            vault,
+        }));
     }
+    note_store_fallback(w, StoreOwnerKind::Character, ch, claim);
+    let vault = decode()?;
     crate::db::character_vault::create_character_with_options(main, mount, &slim, &vault, &opts)?;
     keep_archive_columns(main, ch, &opts.id)?;
     Ok(None)
+}
+
+/// v4 `CharactersRepository.createBoundToVault` (`characters.repository.ts:
+/// 326-359`, `ed8b15b50`, bug 185) — kept LOCAL to the restore (P4.D273
+/// §R.10(k): the characters create paths are P4.D274's).
+///
+/// The one sanctioned exception to the create path's fresh-vault rule, and
+/// only for the restore: the archive's own vault for this character is being
+/// restored alongside the row, so minting a fresh one would leave the row
+/// pointing at an empty vault and the archived one orphaned (bug 185). The
+/// claim map guarantees no two rows are given the same vault.
+///
+/// Writes the slim row with `characterDocumentMountPointId` set and does
+/// nothing else — no provisioning, no projection of managed fields (the
+/// archived vault already holds them), no store-name reconcile. v4's
+/// `withCreateDefaults` spreads the WHOLE archive row, so a bound tombstone
+/// keeps `archivedAt` / `archiveFileId` / `archivedAvatarFileId`
+/// ([`keep_archive_columns`] — `ARCHIVED_CHARACTER_RESTORE`'s bound arm
+/// CONVERGES, P4.D273 R-F (a)). INFO `Character restored bound to its
+/// archived vault {characterId, userId, mountPointId}`; a failure logs v4's
+/// `safeQuery` wrap `Error restoring character bound to its vault
+/// {collection, userId, name, mountPointId, error}` (the bare message).
+fn create_bound_to_vault(
+    main: &Connection,
+    slim: &crate::db::characters::CharacterCreate,
+    ch: &Value,
+    mount_point_id: &str,
+    opts: &crate::db::characters::CreateOptions,
+) -> Result<(), DbError> {
+    let bound = crate::db::characters::CharacterCreate {
+        character_document_mount_point_id: Some(mount_point_id.to_string()),
+        ..slim.clone()
+    };
+    let written = crate::db::characters::CharactersRepository::new(main)
+        .create(&bound, opts)
+        .map(|_| ())
+        .and_then(|()| keep_archive_columns(main, ch, &opts.id));
+    match &written {
+        Ok(()) => tracing::info!(
+            target: "quilltap::db",
+            characterId = %opts.id,
+            userId = %slim.user_id,
+            mountPointId = %mount_point_id,
+            "Character restored bound to its archived vault"
+        ),
+        Err(e) => bound_vault_create_failed(&slim.user_id, ch, mount_point_id, e),
+    }
+    written
+}
+
+/// [`create_bound_to_vault`]'s `safeQuery` wrap (v4 `characters.repository.ts:
+/// 356-357`): `{collection, userId, name, mountPointId, error}` — `name` the
+/// row's, omitted when absent (winston drops `undefined`).
+fn bound_vault_create_failed(user_id: &str, ch: &Value, mount_point_id: &str, e: &DbError) {
+    let name = ch.get("name").map(|v| match v {
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
+    });
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "characters",
+        userId = %user_id,
+        name = name.as_deref().map(tracing::field::display),
+        mountPointId = %mount_point_id,
+        error = %crate::db::fallback::error_text(e),
+        "Error restoring character bound to its vault"
+    );
+}
+
+/// v4's `noteStoreFallback` (`restore.ts:127-137`): silent for a bound claim
+/// and for `no-pointer`; otherwise the warning `The <kind> "<name>" was given a
+/// fresh, empty store because <why>` and WARN `Restored entity falls back to a
+/// fresh store {kind, id, reason, claimedBy?}` — `claimedBy` only for
+/// `already-claimed` (an object, so `claimedByJson`; winston drops it as
+/// `undefined` for the other reasons). It replaces P4.158's v5-only
+/// `Archived store already claimed by an earlier entity` WARN, retired.
+fn note_store_fallback(w: &mut Vec<String>, kind: StoreOwnerKind, row: &Value, claim: &StoreClaim) {
+    let StoreClaim::Fallback { reason, claimed_by } = claim else {
+        return;
+    };
+    let why = match reason {
+        FallbackReason::NoPointer => return,
+        FallbackReason::NotCarried => {
+            "the backup does not carry the store it pointed at".to_string()
+        }
+        FallbackReason::WrongKind => "the store it pointed at is the wrong kind".to_string(),
+        FallbackReason::AlreadyClaimed => {
+            let (holder_kind, holder_id) = claimed_by
+                .as_ref()
+                .map(|(k, id)| (k.as_str(), id.as_str()))
+                .unwrap_or(("undefined", "undefined"));
+            format!("its store is already claimed by {holder_kind} {holder_id}")
+        }
+    };
+    w.push(format!(
+        "The {} \"{}\" was given a fresh, empty store because {why}",
+        kind.as_str(),
+        crate::services::quilltap_import::js_display_name(row)
+    ));
+    let claimed_by_json = claimed_by
+        .as_ref()
+        .map(|(k, id)| serde_json::json!({"kind": k.as_str(), "id": id}).to_string());
+    tracing::warn!(
+        target: "quilltap::restore",
+        kind = kind.as_str(),
+        id = %id_of(row),
+        reason = reason.as_str(),
+        claimedByJson = claimed_by_json.as_deref().map(tracing::field::display),
+        "Restored entity falls back to a fresh store"
+    );
+}
+
+/// A character bound to its archived vault (phase 6), for 22a-i and the
+/// completeness pass.
+struct BoundCharacter {
+    row: Value,
+    mount_point_id: String,
+    vault: crate::db::vault_character_write::CharacterVaultWriteInput,
+}
+
+/// A project or group bound to its archived official store (13 / 13a).
+struct BoundStore {
+    row: Value,
+    mount_point_id: String,
+}
+
+impl BoundStore {
+    fn new(row: &Value, mount_point_id: &str) -> Self {
+        Self {
+            row: row.clone(),
+            mount_point_id: mount_point_id.to_string(),
+        }
+    }
+}
+
+/// Every entity bound to an archived store this restore (v4's
+/// `boundCharacters` / `boundProjects` / `boundGroups`).
+#[derive(Default)]
+struct BoundEntities {
+    characters: Vec<BoundCharacter>,
+    projects: Vec<BoundStore>,
+    groups: Vec<BoundStore>,
+}
+
+impl BoundEntities {
+    /// Every bound entity as a completeness-pass entry, characters → projects
+    /// → groups (P4.158 R-A, both modes since P4.D273 R-B).
+    fn preserved(&self) -> Vec<PreservedStore> {
+        let chars = self
+            .characters
+            .iter()
+            .map(|b| PreservedStore::new("character", &b.row, b.mount_point_id.clone()));
+        let projects = self
+            .projects
+            .iter()
+            .map(|b| PreservedStore::new("project", &b.row, b.mount_point_id.clone()));
+        let groups = self
+            .groups
+            .iter()
+            .map(|b| PreservedStore::new("group", &b.row, b.mount_point_id.clone()));
+        chars.chain(projects).chain(groups).collect()
+    }
+}
+
+/// 22a-i (v4 `restore.ts:620-662`, `ed8b15b50`): an entity bound to an archived
+/// store (6 / 13 / 13a) whose store row just failed to restore would point at
+/// nothing, and every read of it would throw. Give it a fresh store populated
+/// from its backup row — what the create path would have done. Characters
+/// first (archive order), then projects, then groups. Then the summary INFO,
+/// on EVERY restore that reaches the doc-store family (zeros included).
+fn reprovision_unrestored_bound_stores(
+    main: &Connection,
+    mount: &Connection,
+    bound: &BoundEntities,
+    restored: &HashSet<String>,
+    stores_carried: usize,
+    w: &mut Vec<String>,
+) {
+    use crate::db::document_store_overlay::{fold_properties, ManagedFields, StoreEntity};
+    for b in &bound.characters {
+        if restored.contains(&b.mount_point_id) {
+            continue;
+        }
+        let id = id_of(&b.row);
+        let name = crate::services::quilltap_import::js_display_name(&b.row);
+        // An archived character is a tombstone: never provision it a vault
+        // (v4-faithful — P4.D273 R-F (c)).
+        if crate::api::system_qtap::js_truthy(b.row.get("archivedAt")) {
+            w.push(format!(
+                "The archived character \"{name}\" could not be restored readable, because \
+                 its vault could not be restored"
+            ));
+            tracing::warn!(
+                target: "quilltap::restore",
+                characterId = %id,
+                mountPointId = %b.mount_point_id,
+                "Archived character vault failed to restore; tombstone left unhealed"
+            );
+            continue;
+        }
+        // v4 `ensureCharacterVault({ ...character, characterDocumentMountPointId:
+        // null })` — the pointer treated as absent, so a fresh vault is
+        // provisioned (or an orphan adopted) and the row re-pointed at it.
+        match crate::db::character_vault::ensure_character_vault(
+            main,
+            mount,
+            &id,
+            &s(&b.row, "name"),
+            &b.vault,
+            None,
+        ) {
+            Ok(_) => {
+                w.push(format!(
+                    "The character \"{name}\" was given a fresh vault because its own could not \
+                     be restored"
+                ));
+                tracing::warn!(
+                    target: "quilltap::restore",
+                    characterId = %id,
+                    mountPointId = %b.mount_point_id,
+                    "Re-provisioned a character vault whose archived store failed to restore"
+                );
+            }
+            Err(e) => {
+                w.push(format!(
+                    "Failed to give the character \"{name}\" a vault: {}",
+                    e.warn_text()
+                ));
+                // v4 passes the Error as the logger's THIRD argument, outside
+                // the context — the context (all the census records) is two
+                // keys; the error text rides the warning above.
+                tracing::error!(
+                    target: "quilltap::restore",
+                    characterId = %id,
+                    mountPointId = %b.mount_point_id,
+                    "Failed to re-provision character vault after restore"
+                );
+            }
+        }
+    }
+    let provision = |kind: StoreOwnerKind, row: &Value| -> Result<String, String> {
+        let fields = |properties: Value| ManagedFields {
+            properties,
+            description: os(row, "description"),
+            instructions: os(row, "instructions"),
+            state: obj(row, "state", serde_json::json!({})),
+        };
+        let (id, name) = (id_of(row), s(row, "name"));
+        match kind {
+            StoreOwnerKind::Project => {
+                // The created entity v4 hands `provisionOfficialStore` carries
+                // the create seed (`prepareCreateData`).
+                let bag = crate::db::projects::parse_create_properties(&fold_properties(
+                    row,
+                    crate::db::projects::ProjectEntity::property_keys(),
+                ))
+                .and_then(|p| serde_json::to_value(p).map_err(|e| e.to_string()))?;
+                crate::db::store_backed::StoreBackedRepository::<
+                    crate::db::projects::ProjectEntity,
+                >::new(main, mount)
+                .provision_official_store(&id, &name, &fields(bag))
+                .map_err(|e| e.warn_text())
+            }
+            _ => {
+                let bag = fold_properties(row, crate::db::groups::GroupEntity::property_keys());
+                crate::db::store_backed::StoreBackedRepository::<crate::db::groups::GroupEntity>::new(
+                    main, mount,
+                )
+                .provision_official_store(&id, &name, &fields(bag))
+                .map_err(|e| e.warn_text())
+            }
+        }
+    };
+    let stores = bound
+        .projects
+        .iter()
+        .map(|b| (StoreOwnerKind::Project, b))
+        .chain(bound.groups.iter().map(|b| (StoreOwnerKind::Group, b)));
+    for (kind, b) in stores {
+        if restored.contains(&b.mount_point_id) {
+            continue;
+        }
+        let (id, name) = (
+            id_of(&b.row),
+            crate::services::quilltap_import::js_display_name(&b.row),
+        );
+        match provision(kind, &b.row) {
+            Ok(_) => {
+                w.push(format!(
+                    "The {} \"{name}\" was given a fresh store because its own could not be \
+                     restored",
+                    kind.as_str()
+                ));
+                tracing::warn!(
+                    target: "quilltap::restore",
+                    kind = kind.as_str(),
+                    id = %id,
+                    mountPointId = %b.mount_point_id,
+                    "Re-provisioned an official store whose archived store failed to restore"
+                );
+            }
+            Err(error) => {
+                w.push(format!(
+                    "Failed to give the {} \"{name}\" a store: {error}",
+                    kind.as_str()
+                ));
+                tracing::error!(
+                    target: "quilltap::restore",
+                    kind = kind.as_str(),
+                    id = %id,
+                    mountPointId = %b.mount_point_id,
+                    "Failed to re-provision official store after restore"
+                );
+            }
+        }
+    }
+    tracing::info!(
+        target: "quilltap::restore",
+        characters = bound.characters.len(),
+        projects = bound.projects.len(),
+        groups = bound.groups.len(),
+        storesCarried = stores_carried,
+        storesRestored = restored.len(),
+        "Restored entities bound to their archived stores"
+    );
 }
 
 /// ## ⚠ RULED DIVERGENCE — `ARCHIVED_CHARACTER_RESTORE` (the human, 2026-10-08:
@@ -3150,7 +3561,7 @@ fn restore_one_character(
 /// `restore-archive-wardrobe-picture-tombstone.zip`). The ruling keeps the
 /// tombstone a tombstone: the three columns are written exactly as the
 /// archive row carries them (only the ones it names — v4's `$set`), on BOTH
-/// arms, right after the create. The vault is kept (the preserve arm's archived
+/// arms, right after the create. The vault is kept (the bound arm's archived
 /// store, or the fresh arm's), so the restored tombstone stays readable — v4's
 /// refusal is NOT reproduced. Pinned both ways in `system_restore_state`'s
 /// `wardrobe_picture_tombstone_is_skipped`.
@@ -3326,7 +3737,7 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> std::io::Result<()> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// v4's per-project / per-group catch WARN (`restore.ts:325`, `:343`) for the
-/// arms that refuse before `create` (the bag parse, the preserve arm's slim
+/// arms that refuse before `create` (the bag parse, the bound arm's slim
 /// write) — the fallback arm's `create` logs it through [`warn_row!`].
 fn project_warn(row: &Value, error: &str) {
     tracing::warn!(
@@ -3358,7 +3769,8 @@ fn blob_failed(w: &mut Vec<String>, id: &str, error: &str) {
     );
 }
 
-/// One entity the preserve arm kept on an archived store (P4.158 R-A).
+/// One entity bound to an archived store, as the completeness pass sees it
+/// (P4.158 R-A; every bound entity, both modes, since P4.D273 R-B).
 struct PreservedStore {
     /// `character` / `project` / `group` — the WARN's `entity` field.
     entity: &'static str,
@@ -3379,17 +3791,18 @@ impl PreservedStore {
     }
 }
 
-/// ## ⚠ RULED DIVERGENCE (P4.158 R-A, 2026-10-06) — a preserved store is
-/// ## COMPLETED from the archived row
+/// ## ⚠ RULED DIVERGENCE (P4.158 R-A, 2026-10-06; re-pinned v5-ahead by
+/// ## P4.D273 R-B) — a bound store is COMPLETED from the archived row
 ///
-/// The preserve arm (P4.147) keeps an entity on the store the archive carries
-/// and projects nothing, trusting the archive to restore the store whole. A
-/// damaged archive can carry a store that LACKS a managed file; left alone, the
-/// restored entity reads that field blank, where v4 — which never preserves,
-/// it projects every managed field from the archived row into a FRESH store
-/// (`characters.repository.ts:262-296`, `store-backed.repository.ts:156`) —
-/// reads the row's value. Refusing the preserve instead would lose the store's
-/// OTHER files (the reason #141 exists), so each MISSING managed file is
+/// The bound arm (bug 185 — v4 `ed8b15b50` and v5 alike) keeps an entity on
+/// the store the archive carries and projects nothing, trusting the archive to
+/// restore the store whole. A damaged archive can carry a store that LACKS a
+/// managed file; left alone, the restored entity reads that field blank — which
+/// is what v4 at `01a83539d` does: it binds the same store and never backfills.
+/// Before bug 185 v4 projected every managed field from the archived row into
+/// a FRESH store, so the field read the row's value; v5 keeps that reading.
+/// Refusing the binding instead would lose the store's OTHER files (the reason
+/// #141 exists), so each MISSING managed file is
 /// written from the row, through the same write path the projection uses (so
 /// it is chunked on write like the projection's), and a file the store
 /// carries is never touched.
@@ -3399,8 +3812,8 @@ impl PreservedStore {
 /// project's / group's official store holds `properties.json` (the bag through
 /// the create-time parse, the fallback arm's bytes), `description.md`,
 /// `instructions.md` (`""` when absent) and `state.json` (v4
-/// `writeManagedFields`). Each file written logs a v5-only WARN (v4 cannot
-/// reach the state); a write that fails is one warning and the entity keeps
+/// `writeManagedFields`). Each file written logs a v5-only WARN (v4 never
+/// backfills); a write that fails is one warning and the entity keeps
 /// what the archive gave it. `system_restore_state` pins it both ways
 /// (`PRESERVE_BACKFILL`, `BACKFILL_WARNS`).
 fn backfill_preserved_store(mount: &Connection, p: &PreservedStore, w: &mut Vec<String>) {
@@ -3623,36 +4036,6 @@ mod backfill_official_store_tests {
     }
 }
 
-/// The archived stores the preserve arm has handed out so far (P4.158, ruling
-/// R-B): store id → the entity that claimed it first.
-#[derive(Default)]
-struct StoreClaims(std::collections::HashMap<String, String>);
-
-impl StoreClaims {
-    /// Claim `store` for `entity_id`; `true` when it was free. A taken store
-    /// logs the v5-only WARN naming both claimants and answers `false`, so the
-    /// caller takes the fresh-store arm.
-    fn claim(&mut self, store: &str, entity: &'static str, entity_id: &str) -> bool {
-        match self.0.get(store) {
-            None => {
-                self.0.insert(store.to_string(), entity_id.to_string());
-                true
-            }
-            Some(first) => {
-                tracing::warn!(
-                    target: "quilltap::restore",
-                    entity,
-                    entityId = %entity_id,
-                    mountPointId = %store,
-                    claimedBy = %first,
-                    "Archived store already claimed by an earlier entity; falling back to a fresh store"
-                );
-                false
-            }
-        }
-    }
-}
-
 fn store_opts(id: String) -> crate::db::store_backed::StoreCreateOptions {
     crate::db::store_backed::StoreCreateOptions {
         id: Some(id),
@@ -3861,10 +4244,12 @@ fn json_text_of(row: &Value, key: &str) -> String {
     }
 }
 
-/// v4's user-scoped `charactersRepo.findById(characterId)` as the memories
-/// create uses it: the character exists and belongs to `user_id`. A failed
-/// read answers `false` (v4's `findById` is a fallback read — it logs and
-/// answers `null`).
+/// v4's memory owner check (`restore.ts:299-349`, `ed8b15b50`): a character
+/// this restore wrote is the target user's; any other must already belong to
+/// them, read RAW by id (`globalRepos.characters.findByIdRaw(id)?.userId ===
+/// targetUserId` — no overlay, which would throw for a character bound to a
+/// vault not yet restored at 22a). Both reduce to "a `characters` row with
+/// this id and this `userId` exists". A failed read answers `false`.
 fn character_owned_by(main: &Connection, character_id: &str, user_id: &str) -> bool {
     main.query_row(
         "SELECT 1 FROM characters WHERE id = ?1 AND userId = ?2",
@@ -4226,7 +4611,7 @@ mod free_store_name_tests {
         ]);
         let mut c = Counters::default();
         let mut w: Vec<String> = Vec::new();
-        let ((), lines) = crate::test_support::captured_with(|| {
+        let (restored, lines) = crate::test_support::captured_with(|| {
             restore_mount_family(
                 main.connection(),
                 mount.connection(),
@@ -4234,12 +4619,34 @@ mod free_store_name_tests {
                 &archive,
                 dir.path(),
                 None,
+                &BoundEntities::default(),
                 &[],
                 &mut c,
                 &mut w,
             )
         });
         assert!(w.is_empty(), "{w:?}");
+        // P4.D273: every store restored joins the restored set, and keeps the
+        // archive's `createdAt` (v4 `{ id, ...(createdAt ? { createdAt } : {}) }`).
+        let mut restored: Vec<String> = restored.into_iter().collect();
+        restored.sort();
+        assert_eq!(restored, ["a1", "a2", "a3"]);
+        let created_at: String = mount
+            .connection()
+            .query_row(
+                "SELECT createdAt FROM doc_mount_points WHERE id = 'a2'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(created_at, "2026-01-01T00:00:00.000Z");
+        // The summary INFO fires on every restore, zeros included.
+        assert!(
+            lines.iter().any(|l| l
+                == "INFO quilltap::restore Restored entities bound to their archived stores \
+                    characters=0 projects=0 groups=0 storesCarried=3 storesRestored=3"),
+            "{lines:?}"
+        );
         let name_of = |id: &str| -> String {
             mount
                 .connection()
