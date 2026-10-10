@@ -41,6 +41,8 @@ const TASK_TYPES: Array<string | null> = [
   'memory-extraction-other',
   'batch-memory-extraction',
   'memory-keyword-extraction',
+  // P4.D271: the consolidation task (`d58548051`).
+  'memory-consolidation',
   'title-chat',
   'title-from-summary',
   'consider-title-update',

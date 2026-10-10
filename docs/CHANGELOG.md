@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — test(logging): P4.D271 cover the memory-consolidation task type in the log-type corpus
+
+_No crate versions bumped._
+
+`task_type_log_mapping_equivalence` asks v4 about every task type v5's log-type map names; `memory-consolidation` was missing from its corpus, so the family failed. Added in v4's declaration order; green.
+
 #### 2026-10-09 — test(memory): P4.D271 pin the two unreachable consolidation catches negative
 
 _Versions: core 0.0.1273._
