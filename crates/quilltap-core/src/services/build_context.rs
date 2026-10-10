@@ -140,9 +140,10 @@ use crate::db::runtime::Db;
 use crate::db::DbError;
 use crate::memory_injector::{
     format_current_scene_state, format_dynamic_memory_head, format_frozen_memory_archive,
-    format_inter_character_memories_for_context, DebugInterCharacterMemoryInfo, DebugMemoryInfo,
-    InjectorMemory, InjectorResult, RecallAdjustment, SceneState, SceneStateEmissionEntry,
-    DYNAMIC_HEAD_DEFAULT_SIZE, DYNAMIC_HEAD_TOKEN_BUDGET, RETRO_HEAD_SIZE, RETRO_HEAD_TOKEN_BUDGET,
+    format_inter_character_memories_for_context, injector_memory_from_json,
+    DebugInterCharacterMemoryInfo, DebugMemoryInfo, InjectorMemory, InjectorResult,
+    RecallAdjustment, SceneState, SceneStateEmissionEntry, DYNAMIC_HEAD_DEFAULT_SIZE,
+    DYNAMIC_HEAD_TOKEN_BUDGET, RETRO_HEAD_SIZE, RETRO_HEAD_TOKEN_BUDGET,
 };
 use crate::message_attribution::{
     attribute_messages_for_character, filter_messages_by_history_access, filter_whisper_messages,
@@ -1095,49 +1096,6 @@ fn build_recent_window_query(
 fn json_str(v: &Value, key: &str) -> Option<String> {
     v.get(key).and_then(Value::as_str).map(str::to_string)
 }
-fn json_f64(v: &Value, key: &str) -> Option<f64> {
-    v.get(key).and_then(Value::as_f64)
-}
-fn json_ms(v: &Value, key: &str) -> Option<f64> {
-    v.get(key)
-        .and_then(Value::as_str)
-        .and_then(crate::clock::iso_to_ms)
-        .map(|ms| ms as f64)
-}
-fn json_str_array(v: &Value, key: &str) -> Vec<String> {
-    v.get(key)
-        .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(|e| e.as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-/// Build an [`InjectorMemory`] from a net memory JSON row (the shape the read
-/// repos return). `graph_degree` = `relatedMemoryIds.length`.
-fn injector_memory_from_json(v: &Value) -> InjectorMemory {
-    InjectorMemory {
-        id: json_str(v, "id").unwrap_or_default(),
-        content: json_str(v, "content"),
-        summary: json_str(v, "summary").unwrap_or_default(),
-        importance: json_f64(v, "importance").unwrap_or(0.0),
-        keywords: json_str_array(v, "keywords"),
-        about_character_id: json_str(v, "aboutCharacterId"),
-        reinforced_importance: json_f64(v, "reinforcedImportance"),
-        created_at_ms: json_ms(v, "createdAt").unwrap_or(0.0),
-        last_reinforced_at_ms: json_ms(v, "lastReinforcedAt"),
-        last_accessed_at_ms: json_ms(v, "lastAccessedAt"),
-        reinforcement_count: json_f64(v, "reinforcementCount").map(|n| n as u64),
-        graph_degree: json_str_array(v, "relatedMemoryIds").len(),
-        // Episodic spine (v4 8bf3cb5f): the declared kind + the event clock.
-        kind_episodic: json_str(v, "kind").as_deref() == Some("episodic"),
-        occurred_at_ms: crate::episodic::event_time_ms(v.get("occurredAt").and_then(Value::as_str)),
-        narrative_time: json_str(v, "narrativeTime"),
-    }
-}
-
 /// Project a [`SemanticSearchResult`](crate::services::memory_service::SemanticSearchResult)
 /// into an [`InjectorResult`] the formatters read.
 fn injector_result_from_search(

@@ -12,6 +12,26 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(memory): P4.D268 digest provenance suffix, memoryId on every debug entry, digests lead the inter-character importance half
+
+_Versions: core 0.0.1268._
+
+The memory injector follows v4 `d58548051` and `3f7320138`:
+
+- **Provenance suffix.** New `format_digest_provenance(source, consolidated_from_len)` renders ` (from N note|notes)` for a `CONSOLIDATED` row with sources, and nothing otherwise. It is printed on the inter-character, frozen-archive and dynamic-head lines, before the metadata tag, and counted in each line's token estimate. `format_memories_for_context` (Carina's formatter) never prints it.
+- **Debug ids.** Every formatter now sets the debug `memoryId`. `DebugInterCharacterMemoryInfo` gains `memory_id`.
+- **Inter-character sort.** The importance half puts digests first, then sorts by effective weight (stable sort).
+- **One projection.** `injector_memory_from_json` is now a single `pub fn` in `memory_injector.rs`, gaining `source` and `consolidated_from_len`. The two byte-identical copies in `build_context.rs` and `carina_query.rs` are gone. Two predicates sit beside it: `memory_is_cold` (`tier == "cold"`) and `memory_is_digest`.
+
+The `memory_injector` differential grows to 110 rows:
+
+- the 6 `formatDigestProvenance` shapes;
+- a digest through each of the four formatters;
+- frozen and head rows where the suffix tips the budget, so the break comes one line earlier;
+- digests leading the inter-character importance half, including a lower-weight digest and two digests ordered by weight.
+
+Floors pin the provenance rows, the printed suffix lines and the debug `memoryId` entries.
+
 #### 2026-10-09 — feat(jobs): P4.D268 a completed housekeeping or consolidation job invalidates the frozen archives
 
 _Versions: core 0.0.1267._

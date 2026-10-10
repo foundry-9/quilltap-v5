@@ -15,12 +15,12 @@
 //!     cargo test -p quilltap-harness --test memory_injector_equivalence
 
 use quilltap_core::memory_injector::{
-    format_current_scene_state, format_dynamic_memory_head, format_frozen_memory_archive,
-    format_inter_character_memories_for_context, format_memories_for_context,
-    format_memory_metadata_tag, format_memory_subject_prefix, format_summary_for_context,
-    DebugInterCharacterMemoryInfo, DebugMemoryInfo, InjectorMemory, InjectorResult,
-    MemorySubjectContext, MetadataTagOpts, RecallAdjustment, SceneState, SceneStateCharacter,
-    SceneStateEmissionEntry,
+    format_current_scene_state, format_digest_provenance, format_dynamic_memory_head,
+    format_frozen_memory_archive, format_inter_character_memories_for_context,
+    format_memories_for_context, format_memory_metadata_tag, format_memory_subject_prefix,
+    format_summary_for_context, DebugInterCharacterMemoryInfo, DebugMemoryInfo, InjectorMemory,
+    InjectorResult, MemorySubjectContext, MetadataTagOpts, RecallAdjustment, SceneState,
+    SceneStateCharacter, SceneStateEmissionEntry,
 };
 use serde::Deserialize;
 
@@ -56,6 +56,11 @@ struct WireMem {
     occurred_at_ms: Option<f64>,
     #[serde(rename = "narrativeTime", default)]
     narrative_time: Option<String>,
+    // P4.D268 (v4 `d58548051`): the digest provenance inputs.
+    #[serde(default)]
+    source: Option<String>,
+    #[serde(rename = "consolidatedFromLen", default)]
+    consolidated_from_len: usize,
 }
 
 impl WireMem {
@@ -76,6 +81,8 @@ impl WireMem {
             kind_episodic: self.kind_episodic,
             occurred_at_ms: self.occurred_at_ms,
             narrative_time: self.narrative_time,
+            source: self.source,
+            consolidated_from_len: self.consolidated_from_len,
         }
     }
 }
@@ -151,6 +158,8 @@ struct WireDebugMem {
 
 #[derive(Deserialize)]
 struct WireDebugInter {
+    #[serde(rename = "memoryId", default)]
+    memory_id: Option<String>,
     #[serde(rename = "aboutCharacterName")]
     about_character_name: String,
     summary: String,
@@ -311,6 +320,12 @@ enum Row {
         subject: WireSubject,
         out: WireMemOut,
     },
+    #[serde(rename = "provenance")]
+    Provenance {
+        id: String,
+        memory: WireMem,
+        out: String,
+    },
     #[serde(rename = "summary")]
     Summary {
         id: String,
@@ -439,6 +454,11 @@ fn memory_injector_matches_oracle() {
     let mut prefixed_memories = 0usize;
     let mut prefixed_frozen = 0usize;
     let mut prefixed_head = 0usize;
+    // P4.D268: the provenance rows, and every line that PRINTS a suffix — a
+    // regenerated oracle that lost them would otherwise pass vacuously.
+    let mut provenance_rows = 0usize;
+    let mut suffixed_lines = 0usize;
+    let mut debug_ids = 0usize;
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let row: Row = serde_json::from_str(line)
             .unwrap_or_else(|e| panic!("parse error on line: {e}\n{line}"));
@@ -546,6 +566,14 @@ fn memory_injector_matches_oracle() {
                 let got =
                     format_memories_for_context(&results, max_tokens, now_ms, &subject.into_ctx());
                 assert_eq!(got.content, out.content, "memories '{id}' content");
+                if id == "mem-digest-no-suffix" {
+                    // formatMemoriesForContext never prints the provenance suffix.
+                    assert!(
+                        got.memories_used == 2 && !got.content.contains(" (from "),
+                        "mem-digest-no-suffix: {:?}",
+                        got.content
+                    );
+                }
                 assert_eq!(
                     got.token_count, out.token_count,
                     "memories '{id}' tokenCount"
@@ -560,6 +588,11 @@ fn memory_injector_matches_oracle() {
                     prefixed_memories += 1;
                 }
                 assert_debug_mem(&got.debug_memories, &out.debug_memories, &id);
+                debug_ids += got
+                    .debug_memories
+                    .iter()
+                    .filter(|d| d.memory_id.is_some())
+                    .count();
             }
             Row::Inter {
                 id,
@@ -588,6 +621,12 @@ fn memory_injector_matches_oracle() {
                     now_ms,
                 );
                 assert_eq!(got.content, out.content, "inter '{id}' content");
+                suffixed_lines += got.content.matches(" (from ").count();
+                debug_ids += got
+                    .debug_memories
+                    .iter()
+                    .filter(|d| d.memory_id.is_some())
+                    .count();
                 assert_eq!(got.token_count, out.token_count, "inter '{id}' tokenCount");
                 assert_eq!(
                     got.memories_used, out.memories_used,
@@ -605,6 +644,7 @@ fn memory_injector_matches_oracle() {
                     .enumerate()
                 {
                     let want = DebugInterCharacterMemoryInfo {
+                        memory_id: w.memory_id.clone(),
                         about_character_name: w.about_character_name.clone(),
                         summary: w.summary.clone(),
                         importance: w.importance,
@@ -623,6 +663,7 @@ fn memory_injector_matches_oracle() {
                     memories.into_iter().map(|m| m.into_mem()).collect();
                 let got = format_frozen_memory_archive(&mems, max_tokens, &subject.into_ctx());
                 assert_eq!(got.content, out.content, "frozen '{id}' content");
+                suffixed_lines += got.content.matches(" (from ").count();
                 assert_eq!(got.token_count, out.token_count, "frozen '{id}' tokenCount");
                 assert_eq!(
                     got.memories_used, out.memories_used,
@@ -634,6 +675,11 @@ fn memory_injector_matches_oracle() {
                     prefixed_frozen += 1;
                 }
                 assert_debug_mem(&got.debug_memories, &out.debug_memories, &id);
+                debug_ids += got
+                    .debug_memories
+                    .iter()
+                    .filter(|d| d.memory_id.is_some())
+                    .count();
             }
             Row::Head {
                 id,
@@ -653,6 +699,7 @@ fn memory_injector_matches_oracle() {
                     &subject.into_ctx(),
                 );
                 assert_eq!(got.content, out.content, "head '{id}' content");
+                suffixed_lines += got.content.matches(" (from ").count();
                 assert_eq!(got.token_count, out.token_count, "head '{id}' tokenCount");
                 assert_eq!(
                     got.memories_used, out.memories_used,
@@ -664,6 +711,19 @@ fn memory_injector_matches_oracle() {
                     prefixed_head += 1;
                 }
                 assert_debug_mem(&got.debug_memories, &out.debug_memories, &id);
+                debug_ids += got
+                    .debug_memories
+                    .iter()
+                    .filter(|d| d.memory_id.is_some())
+                    .count();
+            }
+            Row::Provenance { id, memory, out } => {
+                let got = format_digest_provenance(
+                    memory.source.as_deref(),
+                    memory.consolidated_from_len,
+                );
+                assert_eq!(got, out, "provenance '{id}'");
+                provenance_rows += 1;
             }
             Row::Summary {
                 id,
@@ -687,6 +747,20 @@ fn memory_injector_matches_oracle() {
         prefixed_memories >= 2 && prefixed_frozen >= 2 && prefixed_head >= 2,
         "a self-facing formatter has no rows that actually PRINT a subject prefix \
          (memories {prefixed_memories}, frozen {prefixed_frozen}, head {prefixed_head})"
+    );
+    // P4.D268: 6 provenance rows; the suffix printed by the inter / frozen /
+    // head digest rows; `memoryId` on the debug entries of every formatter.
+    assert!(
+        provenance_rows >= 6,
+        "provenance rows lost: {provenance_rows} < 6"
+    );
+    assert!(
+        suffixed_lines >= 6,
+        "digest suffix lines lost: {suffixed_lines} < 6"
+    );
+    assert!(
+        debug_ids >= 20,
+        "debug memoryId entries lost: {debug_ids} < 20"
     );
     eprintln!(
         "OK: memory-injector matched oracle ({count} rows; {prefix_rows} prefix, \

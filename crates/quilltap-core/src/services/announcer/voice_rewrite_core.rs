@@ -81,7 +81,7 @@ pub fn format_name_list(names: &[String]) -> String {
 /// reads (mirrors `build_context`'s private `injector_result_from_search`).
 fn injector_result_from_search(r: &SemanticSearchResult) -> InjectorResult {
     InjectorResult {
-        memory: crate::services::carina_query::injector_memory_from_json(&r.memory),
+        memory: crate::memory_injector::injector_memory_from_json(&r.memory),
         score: r.score,
         effective_weight: Some(r.effective_weight),
         raw_weight: Some(r.raw_weight),

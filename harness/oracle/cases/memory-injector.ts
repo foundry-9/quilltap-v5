@@ -54,6 +54,7 @@ import {
   formatFrozenMemoryArchive,
   formatDynamicMemoryHead,
   formatSummaryForContext,
+  formatDigestProvenance,
   type MemorySubjectContext,
   type SceneStateEmissionEntry,
 } from '@/lib/chat/context/memory-injector';
@@ -108,6 +109,10 @@ function wireMem(m: Memory): Record<string, unknown> {
         ? Date.parse(mm.occurredAt as string)
         : null,
     narrativeTime: mm.narrativeTime ?? null,
+    // P4.D268 (v4 `d58548051`): the digest provenance inputs — `source` and
+    // v4's own `consolidatedFrom?.length ?? 0`.
+    source: mm.source ?? null,
+    consolidatedFromLen: (mm.consolidatedFrom as unknown[] | undefined)?.length ?? 0,
   };
 }
 
@@ -950,6 +955,78 @@ summaryCase('sum-fits', 'A short recap of the tale so far.', 1000);
 summaryCase('sum-truncate', 'word '.repeat(200).trim(), 30);
 summaryCase('sum-truncate-tiny', 'word '.repeat(200).trim(), 12);
 summaryCase('sum-astral', '🎩 A soirée with Zöe and a café.', 1000);
+
+// ===========================================================================
+// P4.D268 — v4 `d58548051`'s digest provenance + `3f7320138` F6's debug
+// `memoryId` on every formatter (append-only).
+// ===========================================================================
+const provenanceCases: Array<[string, Record<string, unknown>]> = [
+  ['prov-14', { source: 'CONSOLIDATED', consolidatedFrom: Array.from({ length: 14 }, (_, i) => `s${i}`) }],
+  ['prov-1', { source: 'CONSOLIDATED', consolidatedFrom: ['s0'] }],
+  ['prov-auto-empty', { source: 'AUTO', consolidatedFrom: [] }],
+  ['prov-consolidated-empty', { source: 'CONSOLIDATED', consolidatedFrom: [] }],
+  ['prov-manual-nonempty', { source: 'MANUAL', consolidatedFrom: ['s0', 's1'] }],
+  ['prov-consolidated-absent', { source: 'CONSOLIDATED' }],
+];
+for (const [id, fields] of provenanceCases) {
+  const mm = mem(fields);
+  emit({ kind: 'provenance', id, memory: wireMem(mm), out: formatDigestProvenance(mm) });
+}
+
+const dg = (id: string, n: number, fields: Record<string, unknown>) =>
+  m(id, { source: 'CONSOLIDATED', consolidatedFrom: Array.from({ length: n }, (_, i) => `${id}-s${i}`), ...fields });
+
+// A digest through each formatter: the suffix rides three templates, never
+// formatMemoriesForContext's.
+memoriesCase('mem-digest-no-suffix', [
+  res(dg('mdg1', 14, { content: 'The brass orrery winds at dusk.', importance: 0.9 }), 0.8),
+  res(m('mdg2', { content: 'An ordinary note.', importance: 0.7 }), 0.6),
+], 2000);
+frozenCase('frozen-digest-suffix', [
+  dg('fdg1', 14, { summary: 'Keeps the orrery wound.', importance: 0.9 }),
+  dg('fdg2', 1, { summary: 'Once oiled the gears.', importance: 0.8 }),
+  m('fdg3', { summary: 'A plain anchor.', importance: 0.7 }),
+], 2000);
+headCase('head-digest-suffix', [
+  res(dg('hdg1aaa', 3, { summary: 'Digest of three.', importance: 0.9 }), 0.8),
+  res(m('hdg2bbb', { summary: 'Plain head entry.', importance: 0.85 }), 0.7),
+], {});
+// The suffix tips the budget: at the budget that exactly fits both lines
+// WITHOUT the suffix, the digest line no longer fits (the break is one line
+// earlier).
+{
+  const plainA = m('tip1', { summary: 'First line of the archive.', importance: 0.9 });
+  const plainB = m('tip2', { summary: 'Second line, later a digest.', importance: 0.8 });
+  const fits = formatFrozenMemoryArchive([plainA, plainB], 100000, undefined as never, SELF_SUBJECT).tokenCount;
+  frozenCase('frozen-digest-tips-budget-plain', [plainA, plainB], fits);
+  frozenCase('frozen-digest-tips-budget', [plainA, dg('tip2', 14, { summary: 'Second line, later a digest.', importance: 0.8 })], fits);
+  const hA = res(m('tiph1aa', { summary: 'Head line one.', importance: 0.9 }), 0.9);
+  const hB = m('tiph2bb', { summary: 'Head line two.', importance: 0.8 });
+  const hFits = formatDynamicMemoryHead([hA, res(hB, 0.8)], undefined as never, SELF_SUBJECT, { maxTokens: 100000 }).tokenCount;
+  headCase('head-digest-tips-budget-plain', [hA, res(hB, 0.8)], { maxTokens: hFits });
+  headCase('head-digest-tips-budget', [hA, res(dg('tiph2bb', 14, { summary: 'Head line two.', importance: 0.8 }), 0.8)], { maxTokens: hFits });
+}
+// Inter-character: the suffix on the line, and the importance half sorts
+// digests FIRST — even a lower-weight one — then by weight between digests.
+interCase(
+  'inter-digests-lead',
+  [
+    m('idg-plain-hi', { aboutCharacterId: 'cA', content: 'A plain, weighty note about A.', importance: 0.95 }),
+    dg('idg-low', 5, { aboutCharacterId: 'cA', content: 'A low-weight digest about A.', importance: 0.3 }),
+    dg('idg-mid', 2, { aboutCharacterId: 'cA', content: 'A middling digest about A.', importance: 0.6 }),
+    m('idg-plain-lo', { aboutCharacterId: 'cA', content: 'A plain, light note about A.', importance: 0.2 }),
+  ],
+  [['cA', 'Ada']],
+  4000,
+  [],
+);
+interCase(
+  'inter-digest-with-relevance',
+  [dg('idr-dig', 1, { aboutCharacterId: 'cA', content: 'A one-note digest.', importance: 0.4 })],
+  [['cA', 'Ada']],
+  4000,
+  [res(m('idr-rel', { aboutCharacterId: 'cA', content: 'A relevant note.', importance: 0.8 }), 0.9)],
+);
 
 // ---- emit ------------------------------------------------------------------
 for (const r of rows) process.stdout.write(JSON.stringify(r) + '\n');

@@ -153,6 +153,24 @@ pub fn format_memory_metadata_tag(opts: &MetadataTagOpts) -> String {
     format!(" _({})_", parts.join(" · "))
 }
 
+/// v4 `formatDigestProvenance(memory)` (`d58548051`): provenance suffix for a
+/// consolidated digest, ` (from 14 notes)`. Empty for every other memory.
+/// Derived only from the digest's own static fields, so it is safe on the
+/// byte-stable frozen archive. It rides three templates only — the
+/// inter-character, archive and dynamic-head lines — never
+/// [`format_memories_for_context`]'s.
+pub fn format_digest_provenance(source: Option<&str>, consolidated_from_len: usize) -> String {
+    if source != Some("CONSOLIDATED") || consolidated_from_len == 0 {
+        return String::new();
+    }
+    let noun = if consolidated_from_len == 1 {
+        "note"
+    } else {
+        "notes"
+    };
+    format!(" (from {consolidated_from_len} {noun})")
+}
+
 // ---------------------------------------------------------------------------
 // The memory-subject prefix (v4 d883a5ee1, bug 122)
 // ---------------------------------------------------------------------------
@@ -262,6 +280,11 @@ pub struct InjectorMemory {
     pub occurred_at_ms: Option<f64>,
     /// Free-text in-story time — rides the age tag verbatim when present.
     pub narrative_time: Option<String>,
+    /// v4 `memory.source` (`AUTO` / `MANUAL` / `CONSOLIDATED`) — read by the
+    /// digest provenance suffix and the inter-character digests-first sort.
+    pub source: Option<String>,
+    /// v4 `memory.consolidatedFrom?.length ?? 0` (a non-array → 0).
+    pub consolidated_from_len: usize,
 }
 
 impl InjectorMemory {
@@ -277,6 +300,15 @@ impl InjectorMemory {
             kind_episodic: self.kind_episodic,
             occurred_at_ms: self.occurred_at_ms,
         }
+    }
+
+    /// v4 `formatDigestProvenance(memory)` over this memory's own fields.
+    fn digest_provenance(&self) -> String {
+        format_digest_provenance(self.source.as_deref(), self.consolidated_from_len)
+    }
+
+    fn is_digest(&self) -> bool {
+        self.source.as_deref() == Some("CONSOLIDATED")
     }
 
     fn effective_weight(&self, now_ms: f64) -> f64 {
@@ -307,6 +339,67 @@ impl InjectorMemory {
     }
 }
 
+/// Build an [`InjectorMemory`] from a net memory JSON row (the shape the read
+/// repos return) — the ONE projection every delivery site uses (P4.D268 R-F).
+/// `graph_degree` = `relatedMemoryIds.length`; `consolidated_from_len` = v4's
+/// `consolidatedFrom?.length ?? 0` (a non-array → 0).
+pub fn injector_memory_from_json(v: &serde_json::Value) -> InjectorMemory {
+    use serde_json::Value;
+    let s = |key: &str| v.get(key).and_then(Value::as_str).map(str::to_string);
+    let f = |key: &str| v.get(key).and_then(Value::as_f64);
+    let ms = |key: &str| {
+        v.get(key)
+            .and_then(Value::as_str)
+            .and_then(crate::clock::iso_to_ms)
+            .map(|ms| ms as f64)
+    };
+    let str_array = |key: &str| -> Vec<String> {
+        v.get(key)
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(|e| e.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    InjectorMemory {
+        id: s("id").unwrap_or_default(),
+        content: s("content"),
+        summary: s("summary").unwrap_or_default(),
+        importance: f("importance").unwrap_or(0.0),
+        keywords: str_array("keywords"),
+        about_character_id: s("aboutCharacterId"),
+        reinforced_importance: f("reinforcedImportance"),
+        created_at_ms: ms("createdAt").unwrap_or(0.0),
+        last_reinforced_at_ms: ms("lastReinforcedAt"),
+        last_accessed_at_ms: ms("lastAccessedAt"),
+        reinforcement_count: f("reinforcementCount").map(|n| n as u64),
+        graph_degree: str_array("relatedMemoryIds").len(),
+        // Episodic spine (v4 8bf3cb5f): the declared kind + the event clock.
+        kind_episodic: s("kind").as_deref() == Some("episodic"),
+        occurred_at_ms: crate::episodic::event_time_ms(v.get("occurredAt").and_then(Value::as_str)),
+        narrative_time: s("narrativeTime"),
+        source: s("source"),
+        consolidated_from_len: v
+            .get("consolidatedFrom")
+            .and_then(Value::as_array)
+            .map(Vec::len)
+            .unwrap_or(0),
+    }
+}
+
+/// v4's service-side cold test, `m.tier === 'cold'` (the JS `m.tier !==
+/// 'cold'` hot reading, §R.4(b)): NULL / absent / `"hot"` are all hot.
+pub fn memory_is_cold(v: &serde_json::Value) -> bool {
+    v.get("tier").and_then(serde_json::Value::as_str) == Some("cold")
+}
+
+/// v4 `m.source === 'CONSOLIDATED'` — a consolidated digest.
+pub fn memory_is_digest(v: &serde_json::Value) -> bool {
+    v.get("source").and_then(serde_json::Value::as_str) == Some("CONSOLIDATED")
+}
+
 /// The `recallAdjustment` record carried on a semantic search result.
 #[derive(Clone, Default)]
 pub struct RecallAdjustment {
@@ -335,7 +428,9 @@ pub struct InjectorResult {
 /// Debug info for included memories.
 #[derive(Clone, Debug, PartialEq)]
 pub struct DebugMemoryInfo {
-    /// v4 `memoryId?` — omitted (None) except in the dynamic head.
+    /// v4 `memoryId?` — the memory's id, set by every formatter (v4
+    /// `3f7320138` F6), so callers can mark the entries actually delivered as
+    /// accessed.
     pub memory_id: Option<String>,
     pub summary: String,
     pub importance: f64,
@@ -351,6 +446,9 @@ pub struct DebugMemoryInfo {
 /// Debug info for inter-character memories.
 #[derive(Clone, Debug, PartialEq)]
 pub struct DebugInterCharacterMemoryInfo {
+    /// v4 `memoryId?` (`3f7320138` F6) — lets callers mark the entries actually
+    /// delivered as accessed.
+    pub memory_id: Option<String>,
     pub about_character_name: String,
     pub summary: String,
     pub importance: f64,
@@ -652,7 +750,7 @@ pub fn format_memories_for_context(
         current_tokens += line_tokens;
         memories_used += 1;
         debug_memories.push(DebugMemoryInfo {
-            memory_id: None,
+            memory_id: Some(r.memory.id.clone()),
             summary: r.memory.summary.clone(),
             importance: r.memory.importance,
             score: r.score,
@@ -797,7 +895,13 @@ pub fn format_inter_character_memories_for_context(
                 relevance: None,
             })
             .collect();
-        importance_entries.sort_by(|a, b| cmp_num(b.weight - a.weight));
+        // Consolidated digests lead, then effective weight (v4 `d58548051`:
+        // `db - da || b.weight - a.weight`, a stable sort).
+        importance_entries.sort_by(|a, b| {
+            let da = if a.memory.is_digest() { 1.0 } else { 0.0 };
+            let db = if b.memory.is_digest() { 1.0 } else { 0.0 };
+            cmp_num(db - da).then_with(|| cmp_num(b.weight - a.weight))
+        });
 
         // Interleave relevance-first.
         let mut ordered: Vec<Entry> = Vec::new();
@@ -834,7 +938,10 @@ pub fn format_inter_character_memories_for_context(
                 keywords: Some(&memory.keywords),
                 adjustments: None,
             });
-            let memory_line = format!("- About {character_name}: [{age}] {body}{meta}");
+            let memory_line = format!(
+                "- About {character_name}: [{age}] {body}{}{meta}",
+                memory.digest_provenance()
+            );
             let line_tokens = estimate_tokens(&format!("{memory_line}\n"));
 
             if current_tokens + line_tokens > max_tokens {
@@ -845,6 +952,7 @@ pub fn format_inter_character_memories_for_context(
             current_tokens += line_tokens;
             memories_used += 1;
             debug_memories.push(DebugInterCharacterMemoryInfo {
+                memory_id: Some(memory.id.clone()),
                 about_character_name: character_name.clone(),
                 summary: memory.summary.clone(),
                 importance: memory.importance,
@@ -908,7 +1016,7 @@ pub fn format_frozen_memory_archive(
         // costs the archive none of its byte-stability. It is built BEFORE the
         // estimate, so it is paid for out of the block's budget.
         let prefix = format_memory_subject_prefix(memory.about_character_id.as_deref(), subject);
-        let memory_line = format!("- {prefix}{summary}{meta}");
+        let memory_line = format!("- {prefix}{summary}{}{meta}", memory.digest_provenance());
         let line_tokens = estimate_tokens(&format!("{memory_line}\n"));
         if current_tokens + line_tokens > max_tokens {
             break;
@@ -918,7 +1026,7 @@ pub fn format_frozen_memory_archive(
         current_tokens += line_tokens;
         memories_used += 1;
         debug_memories.push(DebugMemoryInfo {
-            memory_id: None,
+            memory_id: Some(memory.id.clone()),
             summary: memory.summary.clone(),
             importance: memory.importance,
             score: 0.0,
@@ -1040,7 +1148,10 @@ pub fn format_dynamic_memory_head(
             adjustments: fired.as_deref(),
         });
         let prefix = format_memory_subject_prefix(r.memory.about_character_id.as_deref(), subject);
-        let entry = format!("{id_tag} {when_tag} {prefix}{summary}{meta}");
+        let entry = format!(
+            "{id_tag} {when_tag} {prefix}{summary}{}{meta}",
+            r.memory.digest_provenance()
+        );
         // Estimated on the PREFIXED entry — v4 takes it there too.
         let candidate_tokens = estimate_tokens(&format!("{entry}\n"));
         if current_tokens + candidate_tokens > max_tokens {
@@ -1159,6 +1270,8 @@ mod episodic_visibility_tests {
                 kind_episodic: true,
                 occurred_at_ms: Some(NOW_MS - occurred_offset_ms),
                 narrative_time: narrative_time.map(str::to_string),
+                source: None,
+                consolidated_from_len: 0,
             },
             score: 0.8,
             effective_weight: Some(0.7),
@@ -1263,6 +1376,8 @@ mod intransitive_comparator_regression {
                     kind_episodic: false,
                     occurred_at_ms: None,
                     narrative_time: None,
+                    source: None,
+                    consolidated_from_len: 0,
                 },
                 score: 1.0 - (i as f64) * 0.001,
                 effective_weight: Some((i as f64) * 0.04),

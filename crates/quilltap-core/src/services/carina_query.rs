@@ -248,9 +248,6 @@ fn s(v: &Value, key: &str) -> Option<String> {
 fn b(v: &Value, key: &str) -> Option<bool> {
     v.get(key).and_then(Value::as_bool)
 }
-fn f(v: &Value, key: &str) -> Option<f64> {
-    v.get(key).and_then(Value::as_f64)
-}
 fn str_array(v: &Value, key: &str) -> Vec<String> {
     v.get(key)
         .and_then(Value::as_array)
@@ -1351,38 +1348,11 @@ fn injector_result_from_search(
     r: &crate::services::memory_service::SemanticSearchResult,
 ) -> crate::memory_injector::InjectorResult {
     crate::memory_injector::InjectorResult {
-        memory: injector_memory_from_json(&r.memory),
+        memory: crate::memory_injector::injector_memory_from_json(&r.memory),
         score: r.score,
         effective_weight: Some(r.effective_weight),
         raw_weight: Some(r.raw_weight),
         recall_adjustment: None,
-    }
-}
-
-pub(crate) fn injector_memory_from_json(v: &Value) -> crate::memory_injector::InjectorMemory {
-    let ms = |key: &str| {
-        v.get(key)
-            .and_then(Value::as_str)
-            .and_then(crate::clock::iso_to_ms)
-            .map(|ms| ms as f64)
-    };
-    crate::memory_injector::InjectorMemory {
-        id: s(v, "id").unwrap_or_default(),
-        content: s(v, "content"),
-        summary: s(v, "summary").unwrap_or_default(),
-        importance: f(v, "importance").unwrap_or(0.0),
-        keywords: str_array(v, "keywords"),
-        about_character_id: s(v, "aboutCharacterId"),
-        reinforced_importance: f(v, "reinforcedImportance"),
-        created_at_ms: ms("createdAt").unwrap_or(0.0),
-        last_reinforced_at_ms: ms("lastReinforcedAt"),
-        last_accessed_at_ms: ms("lastAccessedAt"),
-        reinforcement_count: f(v, "reinforcementCount").map(|n| n as u64),
-        graph_degree: str_array(v, "relatedMemoryIds").len(),
-        // Episodic spine (v4 8bf3cb5f): the declared kind + the event clock.
-        kind_episodic: s(v, "kind").as_deref() == Some("episodic"),
-        occurred_at_ms: crate::episodic::event_time_ms(v.get("occurredAt").and_then(Value::as_str)),
-        narrative_time: s(v, "narrativeTime"),
     }
 }
 

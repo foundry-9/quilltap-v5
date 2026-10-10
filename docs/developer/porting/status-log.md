@@ -175508,3 +175508,27 @@ The status header records the R-A signatures.
 - `job_runner.rs` gains exactly one line, inside P4.D265's marker: `crate::services::frozen_archive::invalidate_frozen_archives_for_completed_job(&job.id, &job.job_type, &payload);`. Nothing else in the file moved.
 - **Red-first:** `frozen_archive::tests::runner::a_completed_housekeeping_job_drops_the_characters_archives` drives a stub `MEMORY_HOUSEKEEPING` handler through the real `JobRunner::pump_claim`. Before the line it FAILED (`the swept character's archive is gone` — the entry survived). After the line, all 24 `frozen_archive` tests pass.
 - **R-B, a recorded divergence on an arm unreachable in v4:** the region sits after both mark arms, so the hook fires even when `mark_completed` failed. v4 fires it only inside the `applyWritesAtomically` try. v5's handler writes committed before the mark, so invalidating is correct. There is no v4 output to compare, so there is no ruled table.
+
+### Red-first at the KEYSTONE tip (Tier 1 item 1)
+The recipe sweep ran from the pin against a scratch worktree at the base `18e41e403`: 19 families, results in `/tmp/p4d268/redfirst-keystone.json`. 6 red, 13 ok.
+- **RED, this lane's cause:**
+  - `memory_injector` — `debug[0].memoryId` is `None` vs v4's `Some` (F6).
+  - `build_context_tier3` — `plain_single_char_turn`'s archive carried a predecessor op's "Pantry crate" rows, from the character-keyed cache with no reset. `memoriesIncluded` 28 vs 30.
+- **RED, a sibling's cause:**
+  - `precompute` — `spoke-then-window-searches` `recallAdjustment.multiplier` 1.36 vs 1.105. P4.D267's retuning (§R.13(c)).
+  - `orchestrator_tier3` — `simple_json_then_native_tool_call`: v4 consumed two `key-textblock` streams vs one. P4.D270's fold OTHER call (§R.13(f)).
+  - `enclave_step_tier3` — `chats.otherExtractionWatermarkMessageId`: null vs set. P4.D270 (§R.13(f)).
+  - `brahma_orchestrator_tier3` — 9 rows, `no canned stream queued (2 msgs)`. Classified after unit 5.
+- **OK at KEYSTONE:** `first_message_context`, `search_tools`, `carina_query_tier3`, `character_optimizer_tier3`, `announcer_tier3`, `in_scene_voiced_tier3`, `help_chat_orchestrator_tier3`, `answer_confirmation_tier3`, `regenerate_swipe_tier3`, `primary_stream_tier3`, `salon_swipe_generate`, `turn_orchestrator_tier2`, `chat_continuation_tier2`. None of their corpora holds a digest or a cold row; this lane's rows add them.
+
+### Unit 2 landed — `42fa387c0`
+
+### Unit 3 — the injector (Tier 1 item 4; R-F, R-H, R-J)
+- New `format_digest_provenance`. The suffix sits on the inter, archive and head lines only, inside the token estimate.
+- The debug `memoryId` is set on all four formatters, plus `DebugInterCharacterMemoryInfo.memory_id`.
+- The inter importance half sorts digests first, then by weight (stable).
+- There is ONE `injector_memory_from_json`, with `source` and `consolidated_from_len`, plus `memory_is_cold` and `memory_is_digest`. Carina's and build_context's copies were removed; voice-rewrite repoints at the shared projection. Carina's `injector_result_from_search` still drops `recall_adjustment` (R-F).
+- **Differential:** `memory-injector.ts` + `memory_injector_equivalence.rs`, regenerated from the pin: 110 rows, `grep -c 'from 14 notes'` = 2. The `wireMem` row carries `source` + `consolidatedFromLen`.
+  - Added: 6 `provenance` rows; `mem-digest-no-suffix`, `frozen-digest-suffix` and `head-digest-suffix`; the two tips-budget pairs (frozen: 2 → 1 used at the plain budget of 38); `inter-digests-lead`; `inter-digest-with-relevance`.
+  - Floors: provenance ≥ 6, printed suffix lines ≥ 6, debug `memoryId` ≥ 20.
+  - RED at KEYSTONE (memoryId), green here. **Mutation:** reverting the digests-first sort reddens `inter-digests-lead`.
