@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — test(memory): P4.D271 pin the two unreachable consolidation catches negative
+
+_Versions: core 0.0.1273._
+
+A core unit test asserts no core source emits v4's two consolidation log lines that v4's own code can never reach (the dispatcher's watermark-check catch and the service's mirror-failure catch), so neither gets ported by mistake.
+
 #### 2026-10-09 — feat(memory): P4.D271 the consolidation API actions
 
 _Versions: core 0.0.1272._

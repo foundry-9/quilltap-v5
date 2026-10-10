@@ -388,6 +388,47 @@ mod tests {
         assert_eq!(claim_mark(&marks, 99), None);
     }
 
+    /// §R.5 / Tier 2 #12: v4's two consolidation catches that are UNREACHABLE
+    /// through v4's real code are pinned NEGATIVE — no v5 source emits them.
+    /// `Consolidation watermark check skipped after job` (the dispatcher's
+    /// catch around `maybeEnqueueConsolidationAfterCommit`, whose callee
+    /// catches everything) and `Commonplace mirror failed after consolidation
+    /// (digests are still written)` (the service's catch around the bridge,
+    /// which never throws in-process — only v4's NO-PORT host-RPC arm could).
+    /// Porting either would add a line no v4 run can produce.
+    #[test]
+    fn the_unreachable_catches_have_no_port() {
+        let needles = [
+            // As string LITERALS (a log call's message) — the docs may name them.
+            concat!("\"Consolidation watermark check ", "skipped after job\""),
+            concat!(
+                "\"Commonplace mirror failed after ",
+                "consolidation (digests are still written)\""
+            ),
+        ];
+        let mut stack = vec![std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src")];
+        let mut scanned = 0;
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+                    scanned += 1;
+                    let text = std::fs::read_to_string(&path).unwrap();
+                    for n in needles {
+                        assert!(
+                            !text.contains(n),
+                            "{} emits the unreachable `{n}`",
+                            path.display()
+                        );
+                    }
+                }
+            }
+        }
+        assert!(scanned > 100, "scanned {scanned} sources");
+    }
+
     #[test]
     fn prune_keeps_the_newest() {
         let mut marks = vec![(0, 1), (10, 2)];
