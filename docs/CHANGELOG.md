@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — test(import): P4.D272 memory-carrier instrument — tier-migrated copies, link comparands, new tier cases
+
+_No crate versions bumped._
+
+Harness and oracle changes only, measured red on the `KEYSTONE` tip before any port:
+
+- The `system-import-execute`, `system-export` and `system-import` fixture copies run the memory-tier migration on both sides. It is a no-op on the widened committed pair, and it keeps a rebuilt pair from passing vacuously.
+- `qtap_import_equivalence` compares `relatedMemoryIds` / `consolidatedFrom` / `supersededById` by relationship and counts dangling refs. On the seed, v5 leaves 72 and v4 0.
+- `system_import_state` compares v4's `Imported memory` DEBUG on every execute case and checks that the logged ids are the created rows. It gains `execute_memory_tiers`, its preserve variant and `execute_chat_watermark`.
+- `system_export` plants a CONSOLIDATED digest, a cold member, a chat watermark and the two new settings rows on both sides.
+- `qtap-schema-validate.json` gains ten tier / watermark mutation rows.
+
 #### 2026-10-09 — docs(porting): P4.D265 lane close — real-instance note, gate and sweep records
 
 _Docs-only change._

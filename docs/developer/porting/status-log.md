@@ -175480,3 +175480,34 @@ All are green BY NAME from the pin:
 - fmt, both clippy sets and the censuses are clean at `KEYSTONE`. The Tier 2 commits touch tests and docs only.
 - **Versions:** core 0.0.1265, host 0.0.195, web 0.0.228. The harness stays frozen at 0.0.1110.
 - **Cleanup:** the lane `target/` was removed, the pin worktree `/tmp/qt-v4-pin-p4d265-01a83539d` removed, and lane scratch (incl. the Friday clone) deleted.
+
+### P4.D272 lane start — the probe, the pin, the helper check, and the red-first set (instrument commit)
+- **Base.** This worktree sits on P4.D265's lane-close tip `18e41e403`, which is `KEYSTONE` `609d9d9f2` plus three test/docs commits that move no C1 surface. It is not `main`.
+- **§R.2 probe (2026-10-09 20:41 CDT).** The checkout is on `main` and clean. `log 01a83539d..main` shows **v4 moved: `9ecebf986`** (the wardrobe refactor, bugs 190 and 192–197), plus `7a8d6dacc` and `3e6e2f590` (both already noted at planning). `log 1a2b2164c..bugfix` is empty. The pin is usable: `rev-parse` = `01a83539dd1c…`, `package.json` = `4.10.0-dev.143`, `openai` = `7.30.0`. The pin is `/tmp/qt-v4-pin-p4.d272-01a83539d` with the three symlink classes. The lockfile diff `01a83539d..main` is two version-stamp lines.
+- **Helper check (Tier 1 item 1, C1 §13).** `applyMemoryTiersMigration(copy, {pepperBase64, ledger:false})` on an ENCRYPTED copy:
+  - the committed `system-data-main.db` → `not needed` (P4.D265 widened the triple in place at `KEYSTONE`: four columns, the watermark and the index were already present);
+  - the PRE-widen blob (`git show 96cfdaaf7:…/system-data-main.db`) → `+RAN add-memory-tiers-v1 (Memory tiers in place (6 changes))`, with all four columns, the watermark and `idx_memories_character_tier` present after.
+  - So the helper works both ways. R-B's per-copy migration is therefore a NO-OP today on both sides. It is kept as ordered (idempotent; §R.3 calls this harmless), so a rebuilt or vintage pair cannot go vacuous.
+- **§I.2 (seed vintage).** `qtap_schema_validate` regenerated at the pin: all 16 seed rows present, `"tier":"hot"` on 39 lines, no `no such column`. No migration is needed for that family, and it gets none.
+- **§I.6.** v4's export lines OMIT a NULL `supersededById` / `consolidatedAt` (MEM_2's line carries neither key) and a NULL chat watermark. A planted value rides in v4's `MemorySchema` slot.
+- **§I.7.** `preserveIds` with a repeated memory id: the preflight refuses the WHOLE import (`Preserve IDs collision for memory … (also seen as memory)`). So `execute_memory_tiers_preserve` drops items 12–13. The id-less pair 14–15 stays, and under preserve both land (each `_create` mints).
+- **§I.4 (v4's tails, through the real `executeImport`):** `Failed to import memory: UNIQUE constraint failed: memories.id`. The id-less one's WARN carries NO `memoryId`. The two TypeError sentences are `(memory.consolidatedFrom ?? []).map is not a function` and `(memory.relatedMemoryIds ?? []).map is not a function`. Item 9's related sentence wins, and item 17's tags sentence wins. `execute_memory_tiers`: imported 8, skipped 9.
+- **Instrument (this commit, harness + oracle only).**
+  - R-B on `system-import-execute` / `system-export` / `system-import` (oracle `applyMemoryTiersMigration`; Rust `ensure_memory_tiers_columns`).
+  - R-C: `qtap_import_equivalence`'s `array_id_columns` + `supersededById` + `dangling_memory_refs`; `system_import_state`'s `memoryLogs` with `<minted>` masking and the per-side created-ids assertion.
+  - The new cases `execute_memory_tiers`, `execute_memory_tiers_preserve` and `execute_chat_watermark` (Tier 2 item 12), with the oracle-row non-vacuity checks.
+  - `system_export`'s shared `MEMORY_TIERS_PLANT_SQL`, including the two settings rows (Tier 2 item 13).
+  - Ten `qtap-schema-validate.json` mutation rows (MC.2b).
+  - Counters: cases 61 → 64, import WARNs 48/30 → 51/44, wardrobe 48 → 51, repo-log cases 11 → 13, NEW memory logs 51/39.
+- **Red-first on the `KEYSTONE` tip, from the pin (staged under `/tmp/p4d272/`):**
+  - `qtap_schema_embed_guard`: 1 red (`v4 102523 bytes, vendored 101092`). `the_embedded_schema_is_self_consistent` is green.
+  - `qtap_schema_validate_equivalence`: 5 rows red on `valid` (`memory_tier_off_enum`, `memory_superseded_by_not_uuid`, `memory_consolidated_from_item_not_uuid`, `memory_consolidated_from_not_array`, `memory_consolidated_at_bad_date`).
+  - `system_export_equivalence`: 5 lines (the three chats streams' line 1 — the watermark appended at the end — and two memory streams' line 39 — the four keys after `updatedAt`).
+  - `qtap_import_equivalence`: `dangling memory refs: rust 72 vs oracle 0`.
+  - `system_import_state`: **49 differences over 13 cases.**
+    - Every memory-importing arm's `memoryLogs` (8 arms × 2).
+    - `execute_memory_tiers` 7 and `execute_memory_tiers_preserve` 7.
+    - **NOT predicted — a FINDING, attributed:** `execute_wardrobe_overwrite` 4, `execute_overwrite_all` 9 and `route_replace_remap` 7 (`doc_mount_*` rows), plus `store_identity_same_name_new_id` 1 (`Identity Store (2)`).
+    - A scratch oracle with v4's `reconcileStoreNames` jest-stubbed to a no-op makes all three overwrite arms' `doc_mount_*` reds VANISH. They are bug 186's end-of-import reconcile (`execute.ts:990-991`, P4.D274's hunk). The store-identity row stays: it is `import-document-stores`' free-name `(2)` (also P4.D274's).
+    - R-D applies (shaped after the port; see the carve record).
+  - `system_import_equivalence`: green. `execute_chat_watermark` was already green: the keystone's `ChatCreate` field carries the watermark through `entities.rs`' serde decode with no code here.

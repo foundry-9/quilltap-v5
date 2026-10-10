@@ -28,6 +28,7 @@
  *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
  *   cp "$V5W/harness/oracle/cases/system-import.test.ts" "$TMPO/cases/"
  *   cp "$V5W/harness/oracle/fixtures/system-data.json" "$TMPO/fixtures/"
+ *   cp "$V5W/harness/oracle/fixtures/apply-memory-tiers-migration.ts" "$TMPO/fixtures/"
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_SD_MAIN=$V5W/crates/quilltap-web/tests/fixtures/system-data-main.db \
  *   QT_FIXTURE_SD_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/system-data-mount.db \
@@ -41,6 +42,7 @@ import * as fs from 'fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
+import { applyMemoryTiersMigration } from '../fixtures/apply-memory-tiers-migration';
 import { tmpdir } from 'node:os';
 
 interface Spec {
@@ -574,6 +576,9 @@ async function runCase(
   copyFileSync(fixtures.main, mainWork);
   copyFileSync(fixtures.mount, mountWork);
   copyFileSync(fixtures.llm, llmWork);
+  // [P4.D272 R-B] tier-MIGRATED through v4's REAL `add-memory-tiers-v1` (see
+  // `system-import-execute.test.ts`'s `runCase`); a no-op on the widened pair.
+  await applyMemoryTiersMigration(mainWork, { pepperBase64: spec.testPepperBase64, ledger: false });
   process.env.SQLITE_PATH = mainWork;
   process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
   process.env.SQLITE_LLM_LOGS_PATH = llmWork;

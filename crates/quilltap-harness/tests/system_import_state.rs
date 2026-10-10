@@ -213,6 +213,17 @@ fn fresh_fixture(tag: &str) -> Scratch {
         let w =
             quilltap_core::db::Writer::open_writable(&root.join("main.db"), TEST_PEPPER).unwrap();
         plant_p4d171_values(w.connection());
+        // [P4.D272 R-B] The copy is tier-MIGRATED on BOTH sides (the oracle's
+        // `runCase` runs v4's REAL `add-memory-tiers-v1` on its copy). v4's
+        // `memories.create` writes `tier` + `consolidatedFrom` on every insert
+        // and v4 never ALTERs at run time; v5 reads all 29 memory columns by
+        // name. On a pre-tier copy every memory-importing arm would fail the
+        // same way on both engines and pass for the wrong reason — measured on
+        // the pre-widen triple (`96cfdaaf7`'s `system-data-main.db`): see the
+        // P4.D272 lane record. P4.D265 widened the committed triple in place
+        // (KEYSTONE `609d9d9f2`), so this is a no-op today; it stays so a
+        // rebuilt or vintage pair cannot go vacuous.
+        quilltap_core::test_support::ensure_memory_tiers_columns(w.connection());
         // [P4.106 item 6] The committed triple predates Inform (`e7d77bb60`) too.
         // A live v5 instance has `chat_informs` before any import runs — the
         // boot chain's `ensure_chat_informs_table` — while v4's repository
@@ -1033,6 +1044,96 @@ fn v5_wardrobe_logs(lines: &[String]) -> Vec<String> {
 static WARDROBE_LOG_CASES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 static WARDROBE_LOGS_FIRED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
+/// [P4.D272] The oracle's `MEMORY_LOG_MESSAGES` — `importMemories`' per-row
+/// DEBUG (v4 `d58548051`, `import-entities.ts:531`), compared on every case
+/// whose oracle row carries `memoryLogs` as `"debug Imported memory
+/// memoryId=<L> tier=<t> source=<s>"`, where `<L>` is the id when it is a
+/// literal of the case (the pre-import fixture or the payload — every
+/// preserveIds row) and `<minted>` otherwise.
+const MEMORY_LOG_MESSAGE: &str = "Imported memory";
+
+/// v5's captured `DEBUG` lines for [`MEMORY_LOG_MESSAGE`], in the oracle's
+/// string shape (lower-case level, target dropped).
+fn v5_memory_logs(lines: &[String]) -> Vec<String> {
+    lines
+        .iter()
+        .filter_map(|l| {
+            let (level, rest) = l.split_once(' ')?;
+            if level != "INFO" && level != "DEBUG" {
+                return None;
+            }
+            let (_target, rest) = rest.split_once(' ')?;
+            (rest == MEMORY_LOG_MESSAGE || rest.starts_with(&format!("{MEMORY_LOG_MESSAGE} ")))
+                .then(|| format!("{} {rest}", level.to_lowercase()))
+        })
+        .collect()
+}
+
+/// The `memoryId=` value of one memory log line.
+fn memory_log_id(line: &str) -> Option<&str> {
+    let (_, tail) = line.split_once(" memoryId=")?;
+    Some(tail.split(' ').next().unwrap_or(tail))
+}
+
+/// [`memory_log_id`] masked: a minted id → `<minted>` (R-C).
+fn mask_memory_log(line: &str, literals: &HashSet<String>) -> String {
+    match memory_log_id(line) {
+        Some(id) if !literals.contains(id) => {
+            line.replacen(&format!(" memoryId={id}"), " memoryId=<minted>", 1)
+        }
+        _ => line.to_string(),
+    }
+}
+
+/// The ids of the `memories` rows an import CREATED — the post-import rows
+/// not present, whole, in the pre-import dump — sorted (a multiset).
+fn created_memory_ids(pre: &StateDump, state: &StateDump) -> Vec<String> {
+    let rows = |d: &StateDump| -> Vec<Value> {
+        d.get("main")
+            .and_then(|t| t.get("memories"))
+            .cloned()
+            .unwrap_or_default()
+    };
+    let before = rows(pre);
+    let mut ids: Vec<String> = rows(state)
+        .into_iter()
+        .filter(|r| !before.contains(r))
+        .filter_map(|r| r.get("id").and_then(Value::as_str).map(str::to_string))
+        .collect();
+    ids.sort();
+    ids
+}
+
+/// The per-side R-C assertion: the multiset of logged `memoryId`s equals the
+/// ids of the rows the import created.
+fn assert_logged_ids_created(
+    name: &str,
+    side: &str,
+    lines: &[String],
+    pre: &StateDump,
+    state: &StateDump,
+    failures: &mut Vec<String>,
+) {
+    let mut logged: Vec<String> = lines
+        .iter()
+        .filter_map(|l| memory_log_id(l).map(str::to_string))
+        .collect();
+    logged.sort();
+    let created = created_memory_ids(pre, state);
+    if logged != created {
+        failures.push(format!(
+            "[{name}] {side}: the `Imported memory` ids are not the created rows
+               logged:  {logged:?}
+  created: {created:?}"
+        ));
+    }
+}
+
+/// [P4.D272] How many cases compared `memoryLogs`, and how many v4 lines fired
+/// across them (non-vacuity, asserted after the run).
+static MEMORY_LOG_CASES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static MEMORY_LOGS_FIRED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
 /// v5's captured WARN lines (`WARN <target> <message> k=v …`) for those
 /// messages, with the level and target dropped — the oracle's string shape.
 fn v5_import_warns(lines: &[String]) -> Vec<String> {
@@ -1659,7 +1760,9 @@ fn system_import_execute_state_equivalence() {
     // …+ `execute_tag_refusals` (54 + 1 = 55).
     // …+ `execute_file_refusals` (55 + 1 = 56).
     // …+ P4.D264's five `execute_wardrobe_*` arms (56 + 5 = 61).
-    assert_eq!(ran, 61, "expected 61 cases, ran {ran}");
+    // …+ P4.D272's `execute_memory_tiers{,_preserve}` and
+    // `execute_chat_watermark` (61 + 3 = 64).
+    assert_eq!(ran, 64, "expected 64 cases, ran {ran}");
     // [P4.161 Tier 2, R-E] Non-vacuity: v4 refused four file rows AFTER their
     // bytes landed (three repository ERRORs each, `skipped` counted) and
     // landed the sound copy; the store contents are the whole-state diff's.
@@ -2290,22 +2393,26 @@ fn system_import_execute_state_equivalence() {
     // the unification review's numeric-name row, one more.
     // [P4.D264] + the five wardrobe-carrier arms (48), and the no-table
     // arm's phase-7e WARN (30).
+    // [P4.D272] + `execute_memory_tiers{,_preserve}` and
+    // `execute_chat_watermark` (51): eight `Failed to import memory` lines on
+    // the tiers arm (two of them the R-A UNIQUE tails, one id-less) and six on
+    // the preserve arm (44).
     assert_eq!(
         IMPORT_WARN_CASES.load(Ordering::SeqCst),
-        48,
+        51,
         "cases comparing the import WARNs"
     );
     assert_eq!(
         IMPORT_WARNS_FIRED.load(Ordering::SeqCst),
-        30,
+        44,
         "v4 import WARN lines fired"
     );
     // [P4.D264] every execute case compares `wardrobeLogs`; six lines fire
     // (the skip arm's INFO + DEBUG, the overwrite and duplicate INFOs, the
-    // pictures arm's ledger INFO + picture INFO).
+    // pictures arm's ledger INFO + picture INFO). [P4.D272] 48 → 51 cases.
     assert_eq!(
         WARDROBE_LOG_CASES.load(Ordering::SeqCst),
-        48,
+        51,
         "cases comparing the wardrobe carriers' import lines"
     );
     assert_eq!(
@@ -2313,12 +2420,27 @@ fn system_import_execute_state_equivalence() {
         6,
         "v4 wardrobe carrier import lines fired"
     );
+    // [P4.D272] every execute case compares `memoryLogs` (51); v4's DEBUG
+    // fires 39 times across ten memory-importing arms — three each on the
+    // seven merged-payload arms and `execute_memory_refusals`, two on
+    // `execute_legacy_folds`, eight each on the two tiers arms.
+    assert_eq!(
+        MEMORY_LOG_CASES.load(Ordering::SeqCst),
+        51,
+        "cases comparing the `Imported memory` lines"
+    );
+    assert_eq!(
+        MEMORY_LOGS_FIRED.load(Ordering::SeqCst),
+        39,
+        "v4 `Imported memory` lines fired"
+    );
     // [P4.155 R-A] …+ the two property-refusal arms (5).
     // [P4.161] …+ the memory and inform refusal arms (7), + Tier 2's
     // prompt-template arm (8).
+    // [P4.D272] …+ the two memory-tiers arms (13).
     assert_eq!(
         REPO_LOG_CASES.load(Ordering::SeqCst),
-        11,
+        13,
         "cases that compared a refused create's repository lines"
     );
     assert_eq!(
@@ -2732,7 +2854,10 @@ fn run_execute_case(
     // `IMPORT_WARN_MESSAGES` lines — capture v5's for the same compare.
     let capture_import_warns = case.get("importWarns").is_some();
     let capture_wardrobe_logs = case.get("wardrobeLogs").is_some();
-    let capture = capture_repo_logs || capture_import_warns || capture_wardrobe_logs;
+    // [P4.D272] …and `importMemories`' per-row DEBUG.
+    let capture_memory_logs = case.get("memoryLogs").is_some();
+    let capture =
+        capture_repo_logs || capture_import_warns || capture_wardrobe_logs || capture_memory_logs;
     let db = open_db(&scratch);
     let (results, repo_lines) = db
         .write_blocking(move |ws| {
@@ -2842,6 +2967,39 @@ fn run_execute_case(
     let want_state = state_from_value(&case["state"]);
     let literals = literals_for(&pre, &case["exportData"]);
 
+    if capture_memory_logs {
+        let want_raw: Vec<String> = case["memoryLogs"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|w| w.as_str().map(str::to_string))
+            .collect();
+        let got_raw = v5_memory_logs(&repo_lines);
+        let got: Vec<String> = got_raw
+            .iter()
+            .map(|l| mask_memory_log(l, &literals))
+            .collect();
+        let want: Vec<String> = want_raw
+            .iter()
+            .map(|l| mask_memory_log(l, &literals))
+            .collect();
+        if got != want {
+            failures.push(format!(
+                "[{name}] the `Imported memory` lines differ\n  rust:   {got:?}\n  oracle: {want:?}"
+            ));
+        }
+        assert_logged_ids_created(name, "rust", &got_raw, &pre, &got_state, failures);
+        assert_logged_ids_created(name, "oracle", &want_raw, &want_pre, &want_state, failures);
+        MEMORY_LOG_CASES.fetch_add(1, Ordering::SeqCst);
+        MEMORY_LOGS_FIRED.fetch_add(want_raw.len(), Ordering::SeqCst);
+    }
+    if name == "execute_memory_tiers" {
+        assert_memory_tier_links(name, &case["result"], &want_state, failures);
+    }
+    if name == "execute_chat_watermark" {
+        assert_chat_watermark_lands(name, &want_pre, &want_state, failures);
+    }
+
     // [P4.33 → bug 11] The folder-clear and store-create divergences RETIRED:
     // v4 converged, so every whole-state arm is a plain equality (no folder or
     // store labelling, no comparand subtraction).
@@ -2908,6 +3066,90 @@ fn run_execute_case(
 
     if name == "execute_duplicate_all" {
         assert_phantom_dangles(name, &literals, &got_state, failures);
+    }
+}
+
+/// [P4.D272 (e)] Non-vacuity on the ORACLE row of `execute_memory_tiers`: at
+/// least six memories land, the digest D's stored `consolidatedFrom` carries
+/// three elements of which exactly two resolve to rows (M was skipped, so its
+/// minted id dangles by construction), and member A's `supersededById` names
+/// D. The plain state equality then proves v5 wrote the same relationships.
+fn assert_memory_tier_links(
+    name: &str,
+    result: &Value,
+    state: &StateDump,
+    failures: &mut Vec<String>,
+) {
+    let imported = result["imported"]["memories"].as_i64().unwrap_or(0);
+    if imported < 6 {
+        failures.push(format!(
+            "[{name}] only {imported} memories imported (≥ 6 expected)"
+        ));
+    }
+    let rows = state
+        .get("main")
+        .and_then(|t| t.get("memories"))
+        .cloned()
+        .unwrap_or_default();
+    let ids: HashSet<&str> = rows.iter().filter_map(|r| r["id"].as_str()).collect();
+    let by_summary = |s: &str| rows.iter().find(|r| r["summary"].as_str() == Some(s));
+    let (Some(a), Some(d)) = (by_summary("Tier memory 1"), by_summary("Tier memory 3")) else {
+        failures.push(format!(
+            "[{name}] the oracle state lacks member A or digest D"
+        ));
+        return;
+    };
+    let from: Vec<String> = d["consolidatedFrom"]
+        .as_str()
+        .and_then(|t| serde_json::from_str::<Vec<String>>(t).ok())
+        .unwrap_or_default();
+    let resolving = from.iter().filter(|f| ids.contains(f.as_str())).count();
+    if from.len() != 3 || resolving != 2 {
+        failures.push(format!(
+            "[{name}] D's consolidatedFrom should carry 3 elements, 2 resolving: {from:?} ({resolving})"
+        ));
+    }
+    if a["supersededById"] != d["id"] {
+        failures.push(format!(
+            "[{name}] A's supersededById should name D: {} vs {}",
+            a["supersededById"], d["id"]
+        ));
+    }
+}
+
+/// [P4.D272 Tier 2 item 12] Non-vacuity on the ORACLE row of
+/// `execute_chat_watermark`: a chat the import created carries a watermark,
+/// and it names a message of THAT chat.
+fn assert_chat_watermark_lands(
+    name: &str,
+    pre: &StateDump,
+    state: &StateDump,
+    failures: &mut Vec<String>,
+) {
+    let table = |d: &StateDump, t: &str| -> Vec<Value> {
+        d.get("main")
+            .and_then(|m| m.get(t))
+            .cloned()
+            .unwrap_or_default()
+    };
+    let before = table(pre, "chats");
+    let messages = table(state, "chat_messages");
+    let landed = table(state, "chats")
+        .into_iter()
+        .filter(|c| !before.contains(c))
+        .any(|c| {
+            c["otherExtractionWatermarkMessageId"]
+                .as_str()
+                .is_some_and(|w| {
+                    messages
+                        .iter()
+                        .any(|m| m["id"].as_str() == Some(w) && m["chatId"] == c["id"])
+                })
+        });
+    if !landed {
+        failures.push(format!(
+            "[{name}] no imported chat carries a watermark naming one of its own messages"
+        ));
     }
 }
 

@@ -30,6 +30,20 @@
 //! table (deterministic relativePath / fileName per file) carries the structural
 //! diff.
 //!
+//! THE MEMORY LINKS (P4.D272 R-C, v4 `d58548051`): v4's `importMemories` now
+//! mints every bundle memory's id UP FRONT and remaps `relatedMemoryIds` /
+//! `supersededById` / `consolidatedFrom` through that one map. The seed
+//! carries 42 memories, 21 of them with `relatedMemoryIds` — 72 refs in all,
+//! every one to an in-bundle memory — so v5 before the port wrote 72 raw
+//! source ids that matched no row (measured: `dangling memory refs: rust 72
+//! vs oracle 0` on the `KEYSTONE` tip). Minted ids differ across engines, so
+//! links compare by RELATIONSHIP: `supersededById` is an id column, the two
+//! JSON-text arrays are `array_id_columns` whose elements go through the SAME
+//! token map, and [`dangling_memory_refs`] asserts on the RAW dumps that every
+//! link resolves on each side (equal across sides, and 0 for v4). The four
+//! tier columns themselves (`tier` `hot`, `consolidatedFrom` `[]`, the two
+//! NULLs) compare as ordinary cells.
+//!
 //! Also exercises the `skip` branch: a re-import of the seed on the imported DB
 //! must skip both characters (name-match) and re-create no wardrobe/vault, while
 //! memories (remap-only, always-insert) double — asserted Rust-side against the
@@ -95,6 +109,9 @@ struct TableSpec {
     oracle_key: &'static str,
     order_by: &'static str,
     id_columns: &'static [&'static str],
+    /// [P4.D272 R-C] JSON-text array cells whose ELEMENTS are ids — parsed and
+    /// mapped through the same shared token map, after the scalar id columns.
+    array_id_columns: &'static [&'static str],
     ts_columns: &'static [&'static str],
     from_mount: bool,
     pin_chunk_count: bool,
@@ -106,6 +123,7 @@ const TABLES: &[TableSpec] = &[
         oracle_key: "characters",
         order_by: "name",
         id_columns: &["id", "characterDocumentMountPointId"],
+        array_id_columns: &[],
         ts_columns: &["createdAt", "updatedAt"],
         from_mount: false,
         pin_chunk_count: false,
@@ -115,6 +133,7 @@ const TABLES: &[TableSpec] = &[
         oracle_key: "wardrobe",
         order_by: "title",
         id_columns: &["id", "characterId"],
+        array_id_columns: &[],
         ts_columns: &["createdAt", "updatedAt"],
         from_mount: false,
         pin_chunk_count: false,
@@ -124,6 +143,7 @@ const TABLES: &[TableSpec] = &[
         oracle_key: "points",
         order_by: "name",
         id_columns: &["id"],
+        array_id_columns: &[],
         ts_columns: &["createdAt", "updatedAt", "lastScannedAt"],
         from_mount: true,
         pin_chunk_count: false,
@@ -133,6 +153,7 @@ const TABLES: &[TableSpec] = &[
         oracle_key: "folders",
         order_by: "path",
         id_columns: &["id", "parentId", "mountPointId"],
+        array_id_columns: &[],
         ts_columns: &["createdAt", "updatedAt"],
         from_mount: true,
         pin_chunk_count: false,
@@ -142,6 +163,7 @@ const TABLES: &[TableSpec] = &[
         oracle_key: "links",
         order_by: "relativePath",
         id_columns: &["id", "fileId", "folderId", "mountPointId"],
+        array_id_columns: &[],
         ts_columns: &[
             "lastModified",
             "descriptionUpdatedAt",
@@ -157,7 +179,8 @@ const TABLES: &[TableSpec] = &[
         table: "memories",
         oracle_key: "memories",
         order_by: "content",
-        id_columns: &["id", "characterId", "aboutCharacterId"],
+        id_columns: &["id", "characterId", "aboutCharacterId", "supersededById"],
+        array_id_columns: &["relatedMemoryIds", "consolidatedFrom"],
         // Only the MINTED timestamps are placeholdered — `lastReinforcedAt` /
         // `lastAccessedAt` pass through from the seed and are diffed exactly.
         ts_columns: &["createdAt", "updatedAt"],
@@ -256,6 +279,26 @@ fn normalize_table(dump: &mut Value, spec: &TableSpec, id_map: &mut HashMap<Stri
                 obj.insert((*col).to_string(), Value::String(token));
             }
         }
+        for col in spec.array_id_columns {
+            let Some(Value::String(text)) = obj.get(*col) else {
+                continue;
+            };
+            let Ok(Value::Array(items)) = serde_json::from_str::<Value>(text) else {
+                continue;
+            };
+            let mapped: Vec<Value> = items
+                .into_iter()
+                .map(|item| match item {
+                    Value::String(raw) => {
+                        let next = format!("ID_{}", id_map.len());
+                        Value::String(id_map.entry(raw).or_insert(next).clone())
+                    }
+                    other => other,
+                })
+                .collect();
+            let text = serde_json::to_string(&mapped).expect("re-serialize an id array");
+            obj.insert((*col).to_string(), Value::String(text));
+        }
         for col in spec.ts_columns {
             if obj.get(*col).map(|v| !v.is_null()).unwrap_or(false) {
                 obj.insert((*col).to_string(), Value::String("<ts>".to_string()));
@@ -265,6 +308,51 @@ fn normalize_table(dump: &mut Value, spec: &TableSpec, id_map: &mut HashMap<Stri
             obj.insert("chunkCount".to_string(), Value::String("<cc>".to_string()));
         }
     }
+}
+
+/// [P4.D272 R-C] Over a RAW `memories` dump (before normalization): how many
+/// `relatedMemoryIds` / `consolidatedFrom` elements and non-null
+/// `supersededById` values name no `memories.id` in the same dump. The seed's
+/// 21 linked memories carry 72 `relatedMemoryIds` refs, every one to an
+/// in-bundle memory — so after v4 `d58548051`'s up-front mint every one must
+/// resolve (0), where the raw source ids v5 wrote before dangled (72).
+fn dangling_memory_refs(dump: &Value) -> usize {
+    let rows = dump["rows"].as_array().cloned().unwrap_or_default();
+    let ids: std::collections::HashSet<String> = rows
+        .iter()
+        .filter_map(|r| r["id"].as_str().map(str::to_string))
+        .collect();
+    let mut refs: Vec<String> = Vec::new();
+    for r in &rows {
+        for col in ["relatedMemoryIds", "consolidatedFrom"] {
+            if let Some(Value::Array(items)) = r[col]
+                .as_str()
+                .and_then(|t| serde_json::from_str::<Value>(t).ok())
+            {
+                refs.extend(items.iter().filter_map(|i| i.as_str().map(str::to_string)));
+            }
+        }
+        if let Some(s) = r["supersededById"].as_str() {
+            refs.push(s.to_string());
+        }
+    }
+    refs.iter().filter(|r| !ids.contains(*r)).count()
+}
+
+/// How many link refs a RAW `memories` dump carries in all (non-vacuity for
+/// [`dangling_memory_refs`]).
+fn memory_ref_count(dump: &Value) -> usize {
+    dump["rows"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|r| {
+            r["relatedMemoryIds"]
+                .as_str()
+                .and_then(|t| serde_json::from_str::<Vec<Value>>(t).ok())
+                .map_or(0, |v| v.len())
+        })
+        .sum()
 }
 
 fn normalize_all(dumps: &mut [Value]) {
@@ -399,6 +487,30 @@ fn qtap_import_tier2_matches_oracle() {
                 .unwrap_or_else(|| panic!("oracle missing dump for {}", s.oracle_key))
         })
         .collect();
+
+    // [P4.D272 R-C] Links compare by RELATIONSHIP (minted ids differ across
+    // engines): the token map above covers the arrays, and this asserts on the
+    // RAW dumps that every link resolves on each side.
+    let mem_i = TABLES
+        .iter()
+        .position(|t| t.oracle_key == "memories")
+        .unwrap();
+    let (got_dangling, want_dangling) = (
+        dangling_memory_refs(&got[mem_i]),
+        dangling_memory_refs(&want[mem_i]),
+    );
+    assert!(
+        memory_ref_count(&want[mem_i]) >= 72,
+        "the seed's 72 relatedMemoryIds refs are missing from the oracle dump"
+    );
+    assert_eq!(
+        got_dangling, want_dangling,
+        "dangling memory refs: rust {got_dangling} vs oracle {want_dangling}"
+    );
+    assert_eq!(
+        want_dangling, 0,
+        "v4 left dangling memory refs on the seed import"
+    );
 
     normalize_all(&mut got);
     normalize_all(&mut want);

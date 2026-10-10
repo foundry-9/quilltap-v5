@@ -26,6 +26,7 @@
  *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
  *   cp "$V5W/harness/oracle/cases/system-import-execute.test.ts" "$TMPO/cases/"
  *   cp "$V5W/harness/oracle/fixtures/system-data.json" "$TMPO/fixtures/"
+ *   cp "$V5W/harness/oracle/fixtures/apply-memory-tiers-migration.ts" "$TMPO/fixtures/"
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_SD_MAIN=$V5W/crates/quilltap-web/tests/fixtures/system-data-main.db \
  *   QT_FIXTURE_SD_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/system-data-mount.db \
@@ -41,6 +42,7 @@ import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
+import { applyMemoryTiersMigration } from '../fixtures/apply-memory-tiers-migration';
 
 interface Spec {
   testPepperBase64: string;
@@ -1427,6 +1429,16 @@ async function runCase(
   copyFileSync(fixtures.main, mainWork);
   copyFileSync(fixtures.mount, mountWork);
   copyFileSync(fixtures.llm, llmWork);
+  // [P4.D272 R-B] The copy is tier-MIGRATED through v4's REAL
+  // `add-memory-tiers-v1` before v4 opens it (v5: `ensure_memory_tiers_columns`
+  // beside its plants). v4's `memories.create` writes `tier` +
+  // `consolidatedFrom` on EVERY insert and `ensureCollection` never ALTERs, so
+  // on a pre-tier copy every memory import fails `table memories has no column
+  // named tier` — on BOTH engines, which is a vacuously green arm. P4.D265
+  // widened the committed triple in place (KEYSTONE `609d9d9f2`), so today this
+  // reports `not needed`; it stays so a rebuilt or vintage pair cannot go
+  // vacuous. `ledger: false` — no `migrations_state` row the v5 side lacks.
+  await applyMemoryTiersMigration(mainWork, { pepperBase64: spec.testPepperBase64, ledger: false });
   process.env.SQLITE_PATH = mainWork;
   process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
   process.env.SQLITE_LLM_LOGS_PATH = llmWork;
@@ -1740,6 +1752,115 @@ function memoryRefusalsPayload(merged: {
       ],
     },
   };
+}
+
+/**
+ * [P4.D272] The memory-tier carriers — v4 `d58548051`'s `importMemories`
+ * hunk (`import-entities.ts:449-453, 509-531` at `01a83539d`): every bundle
+ * memory's id is minted UP FRONT, before the loop, into one JS `Map`; the
+ * three link fields are remapped through it; `tier ?? 'hot'` and
+ * `consolidatedAt ?? null` default; every create runs under the pre-minted id;
+ * and each created row logs the `Imported memory` DEBUG. Built from the merged
+ * payload's first memory (the `memoryRefusalsPayload` shape), the merged
+ * characters riding along so `skip` maps them. In bundle order:
+ *
+ *  1. member A — cold, superseded by D, listed BEFORE D (the forward ref);
+ *  2. member B — cold, superseded by D, related to A;
+ *  3. digest D — CONSOLIDATED, hot, consolidated from [A, B, M], related [A, B];
+ *  4. a pre-tier memory — the four keys deleted (hot / null / [] / null);
+ *  5. superseded by a uuid in NO bundle, related [that uuid, A] — an unknown
+ *     ref keeps its SOURCE id;
+ *  6. `supersededById: ""`, `tier: null` → `null` / `'hot'` (JS truthiness);
+ *  7. `tier: 'warm'` — the Zod refusal;
+ *  8. `consolidatedFrom: 'x'` — the payload literal's TypeError;
+ *  9. `relatedMemoryIds: 5` + `consolidatedFrom: 'x'` — related's wins
+ *     (evaluation order);
+ * 10. `consolidatedFrom: [null]` — the element maps to itself; Zod refuses;
+ * 11. member M under an UNMAPPED character — skipped, so D's
+ *     `consolidatedFrom` carries M's MINTED id, dangling by construction;
+ * 12–13. two sound memories sharing one source id — `Map.set` keeps the LAST
+ *     mint, so both resolve to ONE id: the first lands, the second fails the
+ *     insert (R-A — the behaviour change, a v4-filing candidate);
+ * 14–15. two sound ID-LESS memories — the same, through the `undefined` key;
+ * 16. `supersededById: 5` — truthy, remaps to itself; Zod refuses;
+ * 17. `tags: 'x'` + `relatedMemoryIds: 'y'` — the tags TypeError wins (the
+ *     tags are built before the payload literal).
+ */
+function memoryTiersPayload(merged: {
+  manifest: unknown;
+  data: Record<string, unknown[]>;
+}): { manifest: unknown; data: Record<string, unknown[]> } {
+  const template = (merged.data.memories ?? [])[0] as Record<string, unknown> | undefined;
+  if (!template) throw new Error('memory tiers payload needs a merged memory');
+  const id = (n: number) => `f2720000-0000-4000-8000-0000000001${String(n).padStart(2, '0')}`;
+  const [A, B, D, M] = [id(1), id(2), id(3), id(11)];
+  const UNKNOWN = 'f2720000-0000-4000-8000-0000000002ff';
+  const AT = '2026-01-01T00:00:00.000Z';
+  const item = (n: number, patch: Record<string, unknown>, drop: string[] = []) => {
+    const m: Record<string, unknown> = {
+      ...JSON.parse(JSON.stringify(template)),
+      id: id(n),
+      summary: `Tier memory ${n}`,
+      relatedMemoryIds: [],
+      tier: 'hot',
+      supersededById: null,
+      consolidatedFrom: [],
+      consolidatedAt: null,
+      ...patch,
+    };
+    for (const k of drop) delete m[k];
+    return m;
+  };
+  return {
+    manifest: merged.manifest,
+    data: {
+      characters: merged.data.characters ?? [],
+      memories: [
+        item(1, { tier: 'cold', supersededById: D, consolidatedAt: AT }),
+        item(2, { tier: 'cold', supersededById: D, relatedMemoryIds: [A] }),
+        item(3, {
+          source: 'CONSOLIDATED',
+          tier: 'hot',
+          consolidatedFrom: [A, B, M],
+          relatedMemoryIds: [A, B],
+          consolidatedAt: AT,
+        }),
+        item(4, {}, ['tier', 'supersededById', 'consolidatedFrom', 'consolidatedAt']),
+        item(5, { supersededById: UNKNOWN, relatedMemoryIds: [UNKNOWN, A] }),
+        item(6, { supersededById: '', tier: null }),
+        item(7, { tier: 'warm' }),
+        item(8, { consolidatedFrom: 'x' }),
+        item(9, { relatedMemoryIds: 5, consolidatedFrom: 'x' }),
+        item(10, { consolidatedFrom: [null] }),
+        item(11, { characterId: 'a1000000-0000-4000-8000-0000000000ff' }),
+        { ...item(12, {}), id: id(12) },
+        { ...item(13, {}), id: id(12) },
+        item(14, {}, ['id']),
+        item(15, {}, ['id']),
+        item(16, { supersededById: 5 }),
+        item(17, { tags: 'x', relatedMemoryIds: 'y' }),
+      ],
+    },
+  };
+}
+
+/**
+ * [P4.D272 Tier 2 item 12] The chat watermark through the `.qtap` import:
+ * the fixture's chats export with `otherExtractionWatermarkMessageId` set on
+ * the first chat that carries messages, to that chat's FIRST message id.
+ * `importChats` spreads the key raw and `addMessage` keeps each message's id,
+ * so the new chat row's watermark must name a message the import wrote. Ids
+ * are rewritten (the cross-instance shape) so the `duplicate` import's
+ * messages land at fresh ids rather than colliding with the fixture's.
+ */
+function chatWatermarkPayload(base: { manifest: unknown; data: Record<string, unknown[]> }) {
+  const p = JSON.parse(JSON.stringify(base)) as { manifest: unknown; data: Record<string, unknown[]> };
+  const chat = (p.data.chats ?? []).find(
+    (c) => ((c as { messages?: unknown[] }).messages ?? []).length > 0,
+  ) as { messages: Array<{ id: string }>; otherExtractionWatermarkMessageId?: string } | undefined;
+  if (!chat) throw new Error('chat watermark payload needs a chat with messages');
+  chat.otherExtractionWatermarkMessageId = chat.messages[0].id;
+  return rewriteIds(p);
 }
 
 /**
@@ -2295,13 +2416,24 @@ const WARDROBE_LOG_MESSAGES = new Set([
   'No imported vault for character; wardrobe pictures not carried',
 ]);
 
+/**
+ * [P4.D272] `importMemories`' per-row DEBUG (`d58548051`,
+ * `import-entities.ts:531`) — `memoryLogs` on every execute case, the same
+ * `"<level> <message> k=v …"` shape. The Rust side masks a `memoryId` that is
+ * not a literal of the case as `<minted>`, and asserts per side that the
+ * logged ids are exactly the memory rows the import created.
+ */
+const MEMORY_LOG_MESSAGES = new Set(['Imported memory']);
+
 async function withImportWarns<T>(
   body: () => Promise<T>,
-): Promise<{ out: T; importWarns: string[]; wardrobeLogs: string[] }> {
+): Promise<{ out: T; importWarns: string[]; wardrobeLogs: string[]; memoryLogs: string[] }> {
   const { Logger } = await import('@/lib/logger');
   const importWarns: string[] = [];
   // [P4.D264] the info / debug half, for `WARDROBE_LOG_MESSAGES` only.
   const wardrobeLogs: string[] = [];
+  // [P4.D272] …and for `MEMORY_LOG_MESSAGES`.
+  const memoryLogs: string[] = [];
   const quiet = { info: Logger.prototype.info, debug: Logger.prototype.debug };
   for (const level of ['info', 'debug'] as const) {
     const orig = quiet[level];
@@ -2311,13 +2443,18 @@ async function withImportWarns<T>(
       context?: Record<string, unknown>,
       ...rest: unknown[]
     ) {
-      if (WARDROBE_LOG_MESSAGES.has(message)) {
+      const sink = WARDROBE_LOG_MESSAGES.has(message)
+        ? wardrobeLogs
+        : MEMORY_LOG_MESSAGES.has(message)
+          ? memoryLogs
+          : null;
+      if (sink) {
         let line = `${level} ${message}`;
         for (const [k, v] of Object.entries(context ?? {})) {
           if (k === 'module' || v === undefined) continue;
           line += ` ${k}=${v instanceof Error ? v.message : String(v)}`;
         }
-        wardrobeLogs.push(line);
+        sink.push(line);
       }
       return (orig as (...a: unknown[]) => void).call(this, message, context, ...rest);
     } as never;
@@ -2340,7 +2477,7 @@ async function withImportWarns<T>(
     return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
   } as never;
   try {
-    return { out: await body(), importWarns, wardrobeLogs };
+    return { out: await body(), importWarns, wardrobeLogs, memoryLogs };
   } finally {
     Logger.prototype.warn = original;
     Logger.prototype.info = quiet.info;
@@ -2367,6 +2504,7 @@ function executeCase(
         out: { out: result, repoLogs },
         importWarns,
         wardrobeLogs,
+        memoryLogs,
       } = await withImportWarns(async () =>
         recordRepoLogs ? await withRepoLogs(run) : { out: await run(), repoLogs: undefined },
       );
@@ -2381,6 +2519,7 @@ function executeCase(
         ...(repoLogs ? { repoLogs } : {}),
         importWarns,
         wardrobeLogs,
+        memoryLogs,
       };
     },
   };
@@ -2683,6 +2822,7 @@ function executePreppedCase(
         out: { out: result, repoLogs },
         importWarns,
         wardrobeLogs,
+        memoryLogs,
       } = await withImportWarns(async () =>
         recordRepoLogs ? await withRepoLogs(run) : { out: await run(), repoLogs: undefined },
       );
@@ -2690,6 +2830,7 @@ function executePreppedCase(
       return {
         importWarns,
         wardrobeLogs,
+        memoryLogs,
         kind: 'execute_prepped',
         prep,
         exportData,
@@ -3274,6 +3415,44 @@ async function main(): Promise<void> {
       { conflictStrategy: 'skip', includeMemories: true, includeRelatedEntities: false },
       true,
     ),
+    // [P4.D272] The memory-tier carriers (`memoryTiersPayload`), with the
+    // refused items' repository lines recorded. The preserve variant carries
+    // the same bundle under fresh ids (`rewriteIds` — the merged characters
+    // already live here, and preserveIds refuses on collision): the map is the
+    // identity there, so every source id is kept and every ref is unchanged.
+    // It drops items 12–13 (measured, §I.7: the preflight refuses the WHOLE
+    // import on a repeated memory id — `Preserve IDs collision for memory …
+    // (also seen as memory)`); the id-less pair 14–15 stays, and both of them
+    // land there (each `_create` mints: `options?.id || generateId()`).
+    executeCase(
+      'execute_memory_tiers',
+      () => memoryTiersPayload(mergedPayload),
+      { conflictStrategy: 'skip', includeMemories: true, includeRelatedEntities: false },
+      true,
+    ),
+    executeCase(
+      'execute_memory_tiers_preserve',
+      () => {
+        const p = memoryTiersPayload(mergedPayload);
+        p.data.memories = p.data.memories.filter(
+          (m) => !['Tier memory 12', 'Tier memory 13'].includes((m as { summary: string }).summary),
+        );
+        return rewriteIds(p);
+      },
+      {
+        conflictStrategy: 'skip',
+        includeMemories: true,
+        includeRelatedEntities: false,
+        preserveIds: true,
+      },
+      true,
+    ),
+    // [P4.D272 Tier 2 item 12] The chat watermark rides `importChats` raw.
+    executeCase('execute_chat_watermark', () => chatWatermarkPayload(chatsInformsPayload), {
+      conflictStrategy: 'duplicate',
+      includeMemories: false,
+      includeRelatedEntities: false,
+    }),
     executeCase(
       'execute_inform_refusals',
       () => informRefusalsPayload(chatsInformsPayload),
