@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-10 — docs(porting): P4.D270 lane close — gate, sweep and measurement records
+
+_Docs-only change._
+
+The P4.D270 order is marked LANE COMPLETE, and the status log gains the lane-close record:
+
+- **Workspace gate.** 709 binaries, 4,676 passed, 2 failed, 3 ignored. Both failures are by design: Tier R's help, completion and recall-replay cases (P4.D269) and the export-schema embed guard (P4.D272).
+- **Own-family sweep from the pin.** 11 of 15 families pass. Each of the other four fails only on sibling residue (P4.D266's near-duplicate reinforcement write, P4.D275's tool-definition hash) or memory_processor's long-standing `llm_logs` byte red.
+- **Also recorded:** the order's seven measurements, the mode-row table, the `patchOnlyFields` no-analog record, the host `jobId` handoff, and the deferred regenerate rebuild.
+
 #### 2026-10-09 — feat(brahma): P4.D270 R1 the Brahma SQL prompt names the memory tiers
 
 _Versions: core 0.0.1272._
