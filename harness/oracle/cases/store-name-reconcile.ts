@@ -31,7 +31,8 @@
  * CROSS mode (`QT_SNR_CROSS_DIR` set): instead of planting, each scenario's
  * pair is copied from `QT_SNR_CROSS_DIR/<scenario>-{main,mount}.db` (v5's
  * AFTER pairs, written by the Rust test) and v4's reconcile runs over it once
- * more — the v5-then-v4 half of the ping-pong proof. Output lines are
+ * more — the v5-then-v4 half of the ping-pong proof (an `ops` scenario's
+ * cross run is a plain reconcile too). Output lines are
  * `{case: "cross", scenario, …}`.
  *
  * The job host is parked; `QUILLTAP_JOB_CHILD` is unset. Writes ZERO
@@ -73,9 +74,21 @@ interface CharRow {
   createdAt: string;
   archivedAt?: string;
 }
+interface Op {
+  kind: 'create' | 'rename' | 'archive' | 'delete' | 'wipe' | 'import';
+  alias?: string;
+  name?: string;
+  /** `import`: the conflict strategy and the payload's `mountPoints`. */
+  strategy?: 'skip' | 'overwrite' | 'duplicate';
+  mountPoints?: unknown[];
+}
 interface Scenario {
   name: string;
   trigger: string;
+  /** P4.D274 unit 5: the character hooks — v4's REAL CharactersRepository
+   * (create / rename / delete) and `deleteUserData` (the wipe) instead of a
+   * direct `reconcileStoreNames`. */
+  ops?: Op[];
   plant?: 'characters-read-fails' | 'stores-read-fails' | 'mount-index-degraded';
   stores: StoreRow[];
   characters: CharRow[];
@@ -96,6 +109,8 @@ const CAPTURED = new Set([
   'Error finding all entities',
   'Mount-index case repair: renamed document store whose name collided with a peer except for casing',
   'Mount-index: created the unique document-store name index',
+  'Character created',
+  'Character deleted',
 ]);
 
 async function main(): Promise<void> {
@@ -145,17 +160,22 @@ async function main(): Promise<void> {
   const { getRepositories, resetRepositories } = await import('@/lib/repositories/factory');
   const { reconcileStoreNames } = await import('@/lib/mount-index/reconcile-store-names');
 
+  // Planted rows by id; rows a create MINTED (unknown to the plant) after
+  // them in insertion order, their stamps `<now>` (the Rust side remaps the
+  // minted ids, both sides, by that order).
   const dumpStores = (planted: Map<string, string>): unknown[] => {
     const db = mic.getRawMountIndexDatabase();
     if (!db) return [];
     const rows = db
-      .prepare('SELECT id, name, storeType, createdAt, updatedAt FROM doc_mount_points ORDER BY id')
+      .prepare('SELECT id, name, storeType, createdAt, updatedAt FROM doc_mount_points ORDER BY rowid')
       .all() as Array<Record<string, unknown>>;
-    return rows.map((r) => ({
+    const known = rows.filter((r) => planted.has(r.id as string)).sort((a, b) => ((a.id as string) < (b.id as string) ? -1 : 1));
+    const minted = rows.filter((r) => !planted.has(r.id as string));
+    return [...known, ...minted].map((r) => ({
       id: r.id,
       name: r.name,
       storeType: r.storeType,
-      createdAt: r.createdAt,
+      createdAt: planted.has(r.id as string) ? r.createdAt : '<now>',
       updatedAt: r.updatedAt === planted.get(r.id as string) ? r.updatedAt : '<now>',
     }));
   };
@@ -226,13 +246,66 @@ async function main(): Promise<void> {
     capturing = true;
     let result: unknown = null;
     let error: string | null = null;
+    const ids: Record<string, string> = {};
+    const opResults: unknown[] = [];
     try {
-      result = await reconcileStoreNames(sc.trigger);
+      if (!sc.ops || crossDir) {
+        result = await reconcileStoreNames(sc.trigger);
+      } else {
+        for (const op of sc.ops) {
+          try {
+            if (op.kind === 'create') {
+              const c = await repos.characters.create({ userId: spec.userId, name: op.name! } as never);
+              ids[op.alias!] = c.id;
+              opResults.push({ op: op.kind, alias: op.alias, ok: true });
+            } else if (op.kind === 'rename') {
+              await repos.characters.update(ids[op.alias!], { name: op.name! } as never);
+              opResults.push({ op: op.kind, alias: op.alias, ok: true });
+            } else if (op.kind === 'archive') {
+              main
+                .prepare('UPDATE characters SET archivedAt = ? WHERE id = ?')
+                .run('2026-05-01T00:00:00.000Z', ids[op.alias!]);
+              opResults.push({ op: op.kind, alias: op.alias, ok: true });
+            } else if (op.kind === 'delete') {
+              const deleted = await repos.characters.delete(ids[op.alias!]);
+              opResults.push({ op: op.kind, alias: op.alias, ok: deleted });
+            } else if (op.kind === 'import') {
+              const { executeImport } = await import('@/lib/import/quilltap-import/execute');
+              const r = (await executeImport(
+                spec.userId,
+                {
+                  manifest: {
+                    format: 'quilltap-export',
+                    version: '1.0',
+                    exportType: 'document-stores',
+                    createdAt: '2026-01-01T00:00:00.000Z',
+                    appVersion: '4.10.0',
+                    settings: { includeMemories: false, scope: 'all' },
+                    counts: { documentStores: op.mountPoints!.length },
+                  },
+                  data: { mountPoints: op.mountPoints, documents: [], blobs: [] },
+                } as never,
+                { conflictStrategy: op.strategy!, includeMemories: false, includeRelatedEntities: false } as never,
+              )) as { success: boolean; warnings: string[] };
+              opResults.push({ op: op.kind, success: r.success, warnings: r.warnings });
+            } else {
+              const { deleteUserData } = await import('@/lib/backup/restore/delete-service');
+              await deleteUserData(spec.userId);
+              opResults.push({ op: op.kind, ok: true });
+            }
+          } catch (e) {
+            opResults.push({ op: op.kind, alias: op.alias, error: (e as Error).message });
+          }
+        }
+      }
     } catch (e) {
       error = (e as Error).message;
     }
     capturing = false;
     const after = dumpStores(planted);
+    const characterRows = sc.ops
+      ? (main.prepare('SELECT id, name, characterDocumentMountPointId FROM characters ORDER BY rowid').all() as unknown[])
+      : undefined;
 
     process.stdout.write(
       JSON.stringify({
@@ -243,6 +316,7 @@ async function main(): Promise<void> {
         result,
         error,
         lines: captured,
+        ...(sc.ops ? { ids, opResults, characters: characterRows } : {}),
       }) + '\n',
     );
 

@@ -18,7 +18,6 @@
 use rusqlite::{params, Connection};
 use serde_json::Value;
 
-use crate::db::characters::CharactersRepository;
 use crate::db::chats::ChatsRepository;
 use crate::db::files::FilesRepository;
 use crate::db::vector_indices::VectorIndicesRepository;
@@ -384,8 +383,9 @@ pub fn execute_cascade_delete(
 
     fold_departed_wearer(main, character_id);
 
-    // Finally the character (slim row).
-    CharactersRepository::new(main).delete(character_id)?;
+    // Finally the character (slim row) — through the wrapper that retires its
+    // vault's name (v4 `CharactersRepository.delete`'s reconcile, bug 186).
+    crate::db::character_vault::delete_character_and_reconcile(main, Some(mount), character_id)?;
 
     Ok((true, deleted_chats, deleted_images, deleted_memories))
 }

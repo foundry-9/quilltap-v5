@@ -26,6 +26,14 @@
  * dropped `isLimaEnvironment()` from `isContainerized()`; the probe is now the
  * Docker one alone.)
  *
+ * P4.D274 (v4 `ed8b15b50`, bug 186): the name-clash rows now carry `logs` —
+ * the route's `[Mount Points v1] Rejected duplicate …` WARNs (and any
+ * repository `Refused a document-store name …` WARN / PATCH catch-all ERROR),
+ * recorded off the `Logger` prototype with EVERY field in v4's order — and four
+ * NEW live-vault rows plant a character (raw, through v4's own main handle)
+ * whose `characterDocumentMountPointId` names the store: a rename → 409, a
+ * re-casing → 409, the EXACT name → 200, an archived owner → 409.
+ *
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
  *   TMPO=/tmp/qt-mount-points-routes-oracle
@@ -214,6 +222,71 @@ async function withChunksPlant(
   return { ...out, logs };
 }
 
+/** The route / repository lines the store-name rows compare (P4.D274). */
+const ROUTE_CAPTURED = new Set([
+  '[Mount Points v1] Rejected duplicate mount point name',
+  '[Mount Points v1] Rejected duplicate mount point rename',
+  '[Mount Points v1] Rejected rename of a live character vault',
+  '[Mount Points v1] Error updating mount point',
+  '[Mount Points v1] Failed to update mount point',
+  'Refused a document-store name another store holds',
+]);
+
+/** Record ROUTE_CAPTURED lines (every field, in v4's order) while `call` runs. */
+async function withRouteLogs(
+  call: () => Promise<{ status: number; body: unknown }>,
+): Promise<{ status: number; body: unknown; logs: unknown }> {
+  const { Logger } = await import('@/lib/logger');
+  const logs: Array<Record<string, unknown>> = [];
+  const originals: Array<[string, unknown]> = [];
+  for (const level of ['error', 'warn', 'info'] as const) {
+    const original = Logger.prototype[level];
+    originals.push([level, original]);
+    Logger.prototype[level] = function (
+      this: unknown,
+      message: string,
+      context?: Record<string, unknown>,
+      ...rest: unknown[]
+    ) {
+      if (ROUTE_CAPTURED.has(message)) {
+        const fields: Array<[string, string]> = Object.entries(context ?? {}).map(([k, v]) => [
+          k,
+          v === null ? 'null' : String(v),
+        ]);
+        logs.push({ level, message, fields });
+      }
+      return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+    } as never;
+  }
+  try {
+    const out = await call();
+    return { ...out, logs };
+  } finally {
+    for (const [level, original] of originals) {
+      (Logger.prototype as unknown as Record<string, unknown>)[level] = original;
+    }
+  }
+}
+
+const OWNER_ID = 'c4000000-0000-4000-8000-000000000001';
+
+/** Plant a character whose vault pointer names `mountPointId` (raw, v4's handle). */
+async function plantOwner(spec: Spec, mountPointId: string, archived: boolean): Promise<void> {
+  const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+  const db = getRawDatabase() as { prepare: (s: string) => { run: (...a: unknown[]) => unknown } };
+  db.prepare(
+    'INSERT INTO characters (id, userId, name, characterDocumentMountPointId, archivedAt, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
+  ).run(
+    OWNER_ID,
+    spec.userId,
+    'Gale Owner',
+    mountPointId,
+    archived ? '2026-05-01T00:00:00.000Z' : null,
+    '2026-01-01T00:00:00.000Z',
+    '2026-01-01T00:00:00.000Z',
+  );
+}
+
 async function loadRoute(
   path: string,
 ): Promise<Record<string, (...a: unknown[]) => Promise<unknown>>> {
@@ -319,13 +392,15 @@ async function main(): Promise<void> {
     {
       name: 'create_name_clash',
       run: async () =>
-        respond(
-          await (await coll()).POST(
-            mockRequest(B, {
-              name: 'gamma extra store',
-              mountType: 'database',
-              storeType: 'documents',
-            }),
+        withRouteLogs(async () =>
+          respond(
+            await (await coll()).POST(
+              mockRequest(B, {
+                name: 'gamma extra store',
+                mountType: 'database',
+                storeType: 'documents',
+              }),
+            ),
           ),
         ),
     },
@@ -334,10 +409,12 @@ async function main(): Promise<void> {
     {
       name: 'patch_name_clash',
       run: async () =>
-        respond(
-          await (await idRoute()).PATCH(
-            mockRequest(`${B}/${MP_INDEXED}`, { name: 'GAMMA EXTRA STORE' }),
-            params(MP_INDEXED),
+        withRouteLogs(async () =>
+          respond(
+            await (await idRoute()).PATCH(
+              mockRequest(`${B}/${MP_INDEXED}`, { name: 'GAMMA EXTRA STORE' }),
+              params(MP_INDEXED),
+            ),
           ),
         ),
     },
@@ -346,12 +423,73 @@ async function main(): Promise<void> {
     {
       name: 'patch_name_case_only_self',
       run: async () =>
-        respond(
-          await (await idRoute()).PATCH(
-            mockRequest(`${B}/${GAMMA_EXTRA_MP}`, { name: 'GAMMA EXTRA STORE' }),
-            params(GAMMA_EXTRA_MP),
+        withRouteLogs(async () =>
+          respond(
+            await (await idRoute()).PATCH(
+              mockRequest(`${B}/${GAMMA_EXTRA_MP}`, { name: 'GAMMA EXTRA STORE' }),
+              params(GAMMA_EXTRA_MP),
+            ),
           ),
         ),
+    },
+    // [P4.D274 / ed8b15b50] A live character vault is named after its
+    // character: renaming it (or re-casing it) is refused; its EXACT name passes
+    // the owner check; an archived owner still owns.
+    {
+      name: 'patch_live_vault_rename',
+      run: async () => {
+        await plantOwner(spec, GAMMA_EXTRA_MP, false);
+        return withRouteLogs(async () =>
+          respond(
+            await (await idRoute()).PATCH(
+              mockRequest(`${B}/${GAMMA_EXTRA_MP}`, { name: 'A Brand New Name' }),
+              params(GAMMA_EXTRA_MP),
+            ),
+          ),
+        );
+      },
+    },
+    {
+      name: 'patch_live_vault_recase',
+      run: async () => {
+        await plantOwner(spec, GAMMA_EXTRA_MP, false);
+        return withRouteLogs(async () =>
+          respond(
+            await (await idRoute()).PATCH(
+              mockRequest(`${B}/${GAMMA_EXTRA_MP}`, { name: 'GAMMA EXTRA STORE' }),
+              params(GAMMA_EXTRA_MP),
+            ),
+          ),
+        );
+      },
+    },
+    {
+      name: 'patch_live_vault_exact_name',
+      run: async () => {
+        await plantOwner(spec, GAMMA_EXTRA_MP, false);
+        return withRouteLogs(async () =>
+          respond(
+            await (await idRoute()).PATCH(
+              mockRequest(`${B}/${GAMMA_EXTRA_MP}`, { name: 'Gamma Extra Store', enabled: false }),
+              params(GAMMA_EXTRA_MP),
+            ),
+          ),
+        );
+      },
+    },
+    {
+      name: 'patch_archived_owner_vault',
+      run: async () => {
+        await plantOwner(spec, GAMMA_EXTRA_MP, true);
+        return withRouteLogs(async () =>
+          respond(
+            await (await idRoute()).PATCH(
+              mockRequest(`${B}/${GAMMA_EXTRA_MP}`, { name: 'A Brand New Name' }),
+              params(GAMMA_EXTRA_MP),
+            ),
+          ),
+        );
+      },
     },
     {
       name: 'create_filesystem_warning',
@@ -426,10 +564,12 @@ async function main(): Promise<void> {
     {
       name: 'patch_happy',
       run: async () =>
-        respond(
-          await (await idRoute()).PATCH(
-            mockRequest(`${B}/${GAMMA_EXTRA_MP}`, { name: 'Gamma Store Renamed', enabled: false }),
-            params(GAMMA_EXTRA_MP),
+        withRouteLogs(async () =>
+          respond(
+            await (await idRoute()).PATCH(
+              mockRequest(`${B}/${GAMMA_EXTRA_MP}`, { name: 'Gamma Store Renamed', enabled: false }),
+              params(GAMMA_EXTRA_MP),
+            ),
           ),
         ),
     },

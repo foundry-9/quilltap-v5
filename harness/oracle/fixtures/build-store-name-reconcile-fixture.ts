@@ -2,10 +2,11 @@
  * Tier-2 fixture builder for `store_name_reconcile_equivalence` (P4.D274 unit
  * 4): the EMPTY base pair every scenario starts from — a main DB and a
  * mount-index DB, both keyed with the spec's test pepper, built by v4's REAL
- * initialization at the pin (`initializeDatabase`, then the two repositories'
+ * initialization at the pin (`initializeDatabase`, then EVERY repository's
  * first access, which runs `ensureCollection` / `onTableEnsured` — so the
  * mount index carries `idx_doc_mount_points_name_nocase` exactly as v4
- * creates it). Never committed: built per run under the lane's own /tmp dir
+ * creates it, and every table a scenario's real create / delete / wipe
+ * touches exists). Never committed: built per run under the lane's own /tmp dir
  * (the scenario rows are planted by the case and the Rust test alike, from
  * `store-name-reconcile-spec.json`).
  *
@@ -47,9 +48,14 @@ async function main(): Promise<void> {
   const { getRepositories } = await import('@/lib/repositories/factory');
 
   await initializeDatabase();
-  const repos = getRepositories();
-  await repos.docMountPoints.findAll();
-  await repos.characters.findAllRaw();
+  // Every repository's first access runs its table init, so the pair carries
+  // every table the scenarios' real creates / deletes / wipe touch (the
+  // vault's folders, files, links, documents; the wipe's whole read set).
+  const repos = getRepositories() as unknown as Record<string, { findAll?: () => Promise<unknown> }>;
+  for (const key of Object.keys(repos).sort()) {
+    const repo = repos[key];
+    if (typeof repo?.findAll === 'function') await repo.findAll().catch(() => undefined);
+  }
   closeMountIndexSQLiteClient();
   await closeDatabase();
 

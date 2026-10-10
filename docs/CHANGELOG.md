@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(mount-index): P4.D274 units 5+6 — store-name reconcile on character create/rename/delete, the mount-points routes and the import
+
+_Versions: core 0.0.1269._
+
+Creating, renaming or deleting a character now reconciles document-store names, as v4's `CharactersRepository` does. A new character's vault takes the plain `<Name> Character Vault` and an older orphan is retired. A rename renames the vault. A deleted character's vault is retired to `<Name> Version <stamp> Store`. The reconcile never fails the character write: an error is logged as v4's WARN.
+
+New `character_vault::delete_character_and_reconcile` is the one wrapper for a per-character delete; the cascade delete and the `.qtap` import overwrite use it. A new census test holds that. The full-data wipe deletes every character and then replays v4's measured concurrent reconcile cadence. Creates and deletes log v4's `Character created` / `Character deleted` INFO lines.
+
+The vault provisioning's adopt lookup and taken-name set now read stores the way v4 does (schema-refused rows dropped, JS trim).
+
+The mount-points routes now read the name holder through the repository and log v4's `Rejected duplicate mount point name` / `… rename` WARNs. PATCH refuses to rename (or re-case) a live character vault with v4's 409 sentence and WARN; an archived owner still counts. A name the repository gate refuses after the route's own check answers v4's catch-all 500 with its ERROR.
+
+The `.qtap` import reconciles store names at the end of the run; a failure becomes v4's warning. An overwritten store takes the archive's name unless another store holds it (`Name (2)`). Inside the import's strict scope a failed read skips the reconcile with no warning, where v4 pushes one (`RECONCILE_READ_FAILURE_STRICT`).
+
+`store_name_reconcile_equivalence` adds seven scenarios through v4's real character repository, `deleteUserData` and `executeImport`. `mount_points_routes_equivalence` adds four live-vault rows and compares the clash rows' WARNs.
+
 #### 2026-10-09 — feat(mount-index): P4.D274 units 3+4 — the store-name gate and the store-name reconcile (v4 `ed8b15b50`, bug 186)
 
 _Versions: core 0.0.1268._

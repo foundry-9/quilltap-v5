@@ -57,7 +57,6 @@ const BOGUS: &str = "b0000000-0000-4000-8000-0000000000ee";
 #[serde(rename_all = "camelCase")]
 struct Spec {
     test_pepper_base64: String,
-    #[allow(dead_code)]
     user_id: String,
 }
 
@@ -250,6 +249,83 @@ fn plant_lines_match(name: &str, v4: &Value, v5: &[String]) -> Result<(), String
         return Err(format!("{name}: lines\n  v5: {got:#?}\n  v4: {want:#?}"));
     }
     Ok(())
+}
+
+/// P4.D274 — the route / repository lines the store-name rows compare.
+const ROUTE_CAPTURED: &[&str] = &[
+    "[Mount Points v1] Rejected duplicate mount point name",
+    "[Mount Points v1] Rejected duplicate mount point rename",
+    "[Mount Points v1] Rejected rename of a live character vault",
+    "[Mount Points v1] Error updating mount point",
+    "[Mount Points v1] Failed to update mount point",
+    "Refused a document-store name another store holds",
+];
+
+/// v4's `{level, message, fields: [[k, v]…]}` records against v5's capture,
+/// both kept to [`ROUTE_CAPTURED`], rendered `LEVEL message k=v …` (the
+/// tracing target dropped; every field, in order).
+fn route_lines_match(name: &str, v4: &Value, v5: &[String]) -> Result<(), String> {
+    let want: Vec<String> = v4
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .iter()
+        .map(|rec| {
+            let mut line = format!(
+                "{} {}",
+                rec["level"].as_str().unwrap_or_default().to_uppercase(),
+                rec["message"].as_str().unwrap_or_default()
+            );
+            for pair in rec["fields"].as_array().cloned().unwrap_or_default() {
+                let key = pair[0].as_str().unwrap_or_default();
+                // v5 is single-user: its `userId` is `SINGLE_USER_ID` where v4
+                // logs the session's (the `projects_routes` precedent).
+                let value = if key == "userId" {
+                    quilltap_core::api::SINGLE_USER_ID
+                } else {
+                    pair[1].as_str().unwrap_or_default()
+                };
+                line.push_str(&format!(" {key}={value}"));
+            }
+            line
+        })
+        .collect();
+    let got: Vec<String> = v5
+        .iter()
+        .filter_map(|l| {
+            let (level, rest) = l.split_once(' ')?;
+            let (_target, rest) = rest.split_once(' ')?;
+            ROUTE_CAPTURED
+                .iter()
+                .any(|m| rest.starts_with(m))
+                .then(|| format!("{level} {rest}"))
+        })
+        .collect();
+    if got != want {
+        return Err(format!("{name}: lines\n  v5: {got:#?}\n  v4: {want:#?}"));
+    }
+    Ok(())
+}
+
+/// P4.D274 — the live-vault rows' plant: a character whose vault pointer names
+/// `mount_point_id` (raw, on this case's fresh copy), as the oracle plants it.
+const OWNER_ID: &str = "c4000000-0000-4000-8000-000000000001";
+fn plant_owner(db: &Db, spec: &Spec, mount_point_id: &str, archived: bool) {
+    let user = spec.user_id.clone();
+    let mp = mount_point_id.to_string();
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(db.write(move |w| {
+            w.main().connection().execute(
+                "INSERT INTO characters (id, userId, name, characterDocumentMountPointId, archivedAt, createdAt, updatedAt) \
+                 VALUES (?1, ?2, 'Gale Owner', ?3, ?4, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+                rusqlite::params![OWNER_ID, user, mp, archived.then_some("2026-05-01T00:00:00.000Z")],
+            )?;
+            Ok(())
+        }))
+        .expect("plant the owner");
 }
 
 fn dump_folders(db: &Db, mount_id: &str) -> Value {
@@ -495,27 +571,39 @@ fn mount_points_routes_match_oracle() {
         )),
         &mut failed,
     );
-    // [0a0419f5] case-insensitive store-name clash on create → 409.
-    err(
-        "create_name_clash",
-        &rt.block_on(mp::mount_point_create(
-            &fresh_db(&spec, "cnc"),
-            json!({ "name": "gamma extra store", "mountType": "database", "storeType": "documents" }),
-        )),
-        &mut failed,
-    );
+    // [0a0419f5] case-insensitive store-name clash on create → 409, with
+    // v4's `Rejected duplicate mount point name` WARN (P4.D274).
+    let lines_ok = |name: &str, lines: &[String], failed: &mut Vec<String>| {
+        if let Err(e) = route_lines_match(name, &oracle[name]["logs"], lines) {
+            eprintln!("[{name}] {e}");
+            failed.push(format!("{name}:lines"));
+        }
+    };
+    {
+        let db = fresh_db(&spec, "cnc");
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(mp::mount_point_create(
+                &db,
+                json!({ "name": "gamma extra store", "mountType": "database", "storeType": "documents" }),
+            ))
+        });
+        err("create_name_clash", &resp, &mut failed);
+        lines_ok("create_name_clash", &lines, &mut failed);
+    }
 
     // --- Patch ---
-    ok(
-        "patch_happy",
-        &rt.block_on(mp::mount_point_update(
-            &fresh_db(&spec, "ph"),
-            GAMMA_EXTRA_MP,
-            json!({ "name": "Gamma Store Renamed", "enabled": false }),
-        )),
-        UPDATED,
-        &mut failed,
-    );
+    {
+        let db = fresh_db(&spec, "ph");
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(mp::mount_point_update(
+                &db,
+                GAMMA_EXTRA_MP,
+                json!({ "name": "Gamma Store Renamed", "enabled": false }),
+            ))
+        });
+        ok("patch_happy", &resp, UPDATED, &mut failed);
+        lines_ok("patch_happy", &lines, &mut failed);
+    }
     err(
         "patch_zod_500",
         &rt.block_on(mp::mount_point_update(
@@ -550,26 +638,72 @@ fn mount_points_routes_match_oracle() {
     );
     // [0a0419f5] renaming Indexed Store to a case-variant of Gamma Extra Store
     // (another store) → 409; the clash excludes the store itself.
-    err(
-        "patch_name_clash",
-        &rt.block_on(mp::mount_point_update(
-            &fresh_db(&spec, "pnc"),
-            MP_INDEXED,
-            json!({ "name": "GAMMA EXTRA STORE" }),
-        )),
-        &mut failed,
-    );
+    {
+        let db = fresh_db(&spec, "pnc");
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(mp::mount_point_update(
+                &db,
+                MP_INDEXED,
+                json!({ "name": "GAMMA EXTRA STORE" }),
+            ))
+        });
+        err("patch_name_clash", &resp, &mut failed);
+        lines_ok("patch_name_clash", &lines, &mut failed);
+    }
     // [0a0419f5] renaming a store to a case-variant of its OWN name is allowed.
-    ok(
-        "patch_name_case_only_self",
-        &rt.block_on(mp::mount_point_update(
-            &fresh_db(&spec, "pncs"),
-            GAMMA_EXTRA_MP,
+    {
+        let db = fresh_db(&spec, "pncs");
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(mp::mount_point_update(
+                &db,
+                GAMMA_EXTRA_MP,
+                json!({ "name": "GAMMA EXTRA STORE" }),
+            ))
+        });
+        ok("patch_name_case_only_self", &resp, UPDATED, &mut failed);
+        lines_ok("patch_name_case_only_self", &lines, &mut failed);
+    }
+    // [P4.D274 / ed8b15b50] a live character vault cannot be renamed — nor
+    // re-cased — through the route; its EXACT name passes the owner check; an
+    // archived owner still owns.
+    for (name, body, archived, expect_ok) in [
+        (
+            "patch_live_vault_rename",
+            json!({ "name": "A Brand New Name" }),
+            false,
+            false,
+        ),
+        (
+            "patch_live_vault_recase",
             json!({ "name": "GAMMA EXTRA STORE" }),
-        )),
-        UPDATED,
-        &mut failed,
-    );
+            false,
+            false,
+        ),
+        (
+            "patch_live_vault_exact_name",
+            json!({ "name": "Gamma Extra Store", "enabled": false }),
+            false,
+            true,
+        ),
+        (
+            "patch_archived_owner_vault",
+            json!({ "name": "A Brand New Name" }),
+            true,
+            false,
+        ),
+    ] {
+        let db = fresh_db(&spec, name);
+        plant_owner(&db, &spec, GAMMA_EXTRA_MP, archived);
+        let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+            rt.block_on(mp::mount_point_update(&db, GAMMA_EXTRA_MP, body))
+        });
+        if expect_ok {
+            ok(name, &resp, UPDATED, &mut failed);
+        } else {
+            err(name, &resp, &mut failed);
+        }
+        lines_ok(name, &lines, &mut failed);
+    }
 
     // --- Delete ---
     {
@@ -606,6 +740,10 @@ fn mount_points_routes_match_oracle() {
         "patch_404",
         "patch_name_clash",
         "patch_name_case_only_self",
+        "patch_live_vault_rename",
+        "patch_live_vault_recase",
+        "patch_live_vault_exact_name",
+        "patch_archived_owner_vault",
         "delete",
         "delete_404",
         "list_chunks_plant",

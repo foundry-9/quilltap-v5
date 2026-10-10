@@ -242,6 +242,94 @@ pub fn reconcile_vault_names_or_warn(
     }
 }
 
+/// v4's wipe-time cadence (`delete-service.ts:171-189`, P4.D274 R-F): N
+/// `characters.delete` calls inside ONE `Promise.all`, each awaiting its own
+/// `reconcileVaultNames('character-deleted', id)`. MEASURED at the pin (five
+/// identical runs): all N reconciles read BEFORE any of them writes, so each
+/// plans the SAME renames from the post-delete state and each logs the whole
+/// list — `planned`, then (when the plan is non-empty) the two-phase apply,
+/// the INFO lines and a hint, N times over; a failing apply logs the wrapper's
+/// WARN per character. v5 reads once and replays that plan per deleted
+/// character, in delete order. Re-applying a rename onto a store already
+/// carrying its target is state-identical (both phases re-run), as v4's later
+/// writes are. A whole-query read failure or an unavailable mount index runs
+/// each reconcile in full instead, so each logs its own lines, as v4's do.
+pub fn reconcile_vault_names_after_concurrent_deletes(
+    main: &Connection,
+    mount: Option<&Connection>,
+    character_ids: &[String],
+) {
+    let trigger = TRIGGER_CHARACTER_DELETED;
+    let Some(mount_conn) = mount else {
+        for id in character_ids {
+            reconcile_vault_names_or_warn(main, mount, trigger, id);
+        }
+        return;
+    };
+    let stores =
+        fallback::find_all_logged_strict("doc_mount_points", || read_store_name_rows(mount_conn));
+    let characters = fallback::find_all_logged_strict("characters", || read_vault_owner_rows(main));
+    let (stores, characters) = match (stores, characters) {
+        (Ok(s), Ok(c)) => (s, c),
+        (Err(e), _) | (_, Err(e)) => {
+            // The first reconcile's read lines are the ones just logged (its
+            // skip WARN names the first failed read); the rest re-read (and
+            // re-fail) on their own, as v4's each do.
+            let collection = if read_store_name_rows(mount_conn).is_err() {
+                "doc_mount_points"
+            } else {
+                "characters"
+            };
+            for (i, id) in character_ids.iter().enumerate() {
+                if i == 0 {
+                    read_failed(trigger, collection, &e);
+                } else {
+                    reconcile_vault_names_or_warn(main, mount, trigger, id);
+                }
+            }
+            return;
+        }
+    };
+    let renames = plan_store_names(&stores, &characters);
+    for id in character_ids {
+        tracing::debug!(
+            target: "quilltap::mount_index",
+            module = MODULE,
+            trigger = trigger,
+            storeCount = stores.len(),
+            characterCount = characters.len(),
+            renameCount = renames.len(),
+            "Store-name reconcile planned"
+        );
+        if renames.is_empty() {
+            continue;
+        }
+        if let Err(error) = apply_renames(mount_conn, &renames) {
+            tracing::warn!(
+                target: "quilltap::db",
+                trigger = trigger,
+                characterId = %id,
+                error = %fallback::error_text(&error),
+                "Store-name reconcile after a character change failed"
+            );
+            continue;
+        }
+        for rename in &renames {
+            tracing::info!(
+                target: "quilltap::mount_index",
+                module = MODULE,
+                trigger = trigger,
+                id = %rename.id,
+                from = %rename.from,
+                to = %rename.to,
+                reason = rename.reason.as_str(),
+                "Renamed document store to its rightful name"
+            );
+        }
+        publish_realtime(RealtimeTopic::MountPoints, None);
+    }
+}
+
 // ============================================================================
 // The reads
 // ============================================================================
@@ -298,10 +386,11 @@ fn hydrate(cell: ValueRef<'_>, json_column: bool, boolean_column: bool) -> Optio
 fn read_bags(
     conn: &Connection,
     table: &str,
+    filter: &str,
     json_columns: &[&str],
     boolean_column: impl Fn(&str) -> bool,
 ) -> Result<Vec<Map<String, Value>>, DbError> {
-    let mut stmt = conn.prepare(&format!("SELECT * FROM \"{table}\""))?;
+    let mut stmt = conn.prepare(&format!("SELECT * FROM \"{table}\"{filter}"))?;
     let names: Vec<String> = stmt
         .column_names()
         .into_iter()
@@ -491,9 +580,22 @@ fn doc_mount_point_issues(bag: &Map<String, Value>) -> Vec<ZodIssue> {
 /// a refused row DROPPED with v4's two lines. A whole-query failure is the
 /// `Err` (the caller decides the fallback).
 pub fn read_store_name_rows(mount: &Connection) -> Result<Vec<StoreNameRow>, DbError> {
+    read_store_rows_where(mount, "")
+}
+
+/// v4 `docMountPoints.findEnabled()` (`findByFilter({enabled: true})`) as the
+/// vault provisioning's adopt lookup sees it: the ENABLED rows that pass
+/// `DocMountPointSchema`, in row order; a refused row DROPPED with v4's two
+/// lines.
+pub fn read_enabled_store_name_rows(mount: &Connection) -> Result<Vec<StoreNameRow>, DbError> {
+    read_store_rows_where(mount, " WHERE \"enabled\" = 1")
+}
+
+fn read_store_rows_where(mount: &Connection, filter: &str) -> Result<Vec<StoreNameRow>, DbError> {
     let bags = read_bags(
         mount,
         "doc_mount_points",
+        filter,
         &["includePatterns", "excludePatterns"],
         |c| c == "enabled" || c.starts_with("is"),
     )?;

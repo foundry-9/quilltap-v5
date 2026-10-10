@@ -35,11 +35,22 @@
 //!   cd $V5W
 //!   QT_ORACLE_STORE_NAME_RECONCILE=/tmp/oracle-store-name-reconcile.ndjson QT_ORACLE_STORE_NAME_RECONCILE_CROSS=/tmp/oracle-store-name-reconcile-cross.ndjson QT_FIXTURE_SNR_DIR=/tmp/qt-store-name-reconcile QT_SNR_V4_AFTER_DIR=/tmp/qt-store-name-reconcile/v4-after QT_SNR_V5_AFTER_DIR=/tmp/qt-store-name-reconcile/v5-after cargo test -p quilltap-harness --test store_name_reconcile_equivalence -- --nocapture
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+use quilltap_core::db::character_vault::{create_character, delete_character_and_reconcile};
+use quilltap_core::db::characters::CharacterCreate;
+use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::db::store_name_reconcile::{reconcile_store_names, StoreNameReconcileResult};
+use quilltap_core::db::vault_character_update::update_character;
+use quilltap_core::db::vault_character_write::CharacterVaultWriteInput;
 use quilltap_core::db::Writer;
+use quilltap_core::services::delete_all::{delete_user_data_on_writer, DeleteUserDataOptions};
+use quilltap_core::services::file_storage::PassthroughPixelCodec;
+use quilltap_core::services::quilltap_import::{
+    execute_import, parse_export_file, ConflictStrategy, ImportOptions, PreserveIdsMode,
+};
+use quilltap_core::store_names::store_name_timestamp;
 use rusqlite::{params, Connection};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -53,11 +64,25 @@ struct Spec {
     scenarios: Vec<Scenario>,
 }
 
+#[derive(Deserialize, Clone)]
+struct Op {
+    kind: String,
+    alias: Option<String>,
+    name: Option<String>,
+    /// `import`: the conflict strategy and the payload's `mountPoints`.
+    strategy: Option<String>,
+    #[serde(rename = "mountPoints")]
+    mount_points: Option<Value>,
+}
+
 #[derive(Deserialize)]
 struct Scenario {
     name: String,
     trigger: String,
     plant: Option<String>,
+    /// Unit 5: the character hooks (real create / rename / delete, the wipe)
+    /// instead of a direct reconcile.
+    ops: Option<Vec<Op>>,
     stores: Vec<StoreRow>,
     characters: Vec<CharRow>,
 }
@@ -131,34 +156,209 @@ fn render_v4_line(l: &Value) -> String {
     out
 }
 
-/// v5's captured line with the tracing target dropped.
-fn drop_target(line: &str) -> String {
-    let (level, rest) = line.split_once(' ').unwrap();
-    let (_target, rest) = rest.split_once(' ').unwrap();
-    format!("{level} {rest}")
+/// `RECONCILE_READ_FAILURE_STRICT`'s import half, both ways: inside the
+/// `.qtap` import's strict scope a failed characters read throws out of v4's
+/// reconcile (its ERROR gains `strictFailures=true`) and v4 pushes the warning;
+/// v5 logs the same ERROR, then its skip WARN, and pushes nothing.
+/// `(scenario, v4's warning, v5's lines)`.
+const IMPORT_READ_FAILURE_STRICT: &[(&str, &str, &[&str])] = &[(
+    "q-import-strict-characters-read-fails",
+    "Failed to tidy document-store names after import: malformed JSON",
+    &[
+        "ERROR Error finding all entities collection=characters error=malformed JSON strictFailures=true",
+        "WARN Store-name reconcile skipped: a store or character read failed module=mount-index:reconcile-store-names trigger=qtap-import collection=characters error=malformed JSON",
+    ],
+)];
+
+/// The messages both sides compare (the oracle's `CAPTURED` set); v5's
+/// capture keeps every line, so it is filtered to these.
+const CAPTURED: &[&str] = &[
+    "Store-name reconcile planned",
+    "Renamed document store to its rightful name",
+    "Store-name reconcile skipped: mount-index database unavailable",
+    "Store-name reconcile skipped: a store or character read failed",
+    "Store-name reconcile after a character change failed",
+    "Data validation failed",
+    "Safe validation failed",
+    "Error finding all entities",
+    "Mount-index case repair: renamed document store whose name collided with a peer except for casing",
+    "Mount-index: created the unique document-store name index",
+    "Character created",
+    "Character deleted",
+];
+
+/// v5's captured lines with the tracing target dropped, kept to [`CAPTURED`].
+fn v5_lines(lines: &[String]) -> Vec<String> {
+    lines
+        .iter()
+        .filter_map(|line| {
+            let (level, rest) = line.split_once(' ')?;
+            let (_target, rest) = rest.split_once(' ')?;
+            CAPTURED
+                .iter()
+                .any(|m| rest.starts_with(m))
+                .then(|| format!("{level} {rest}"))
+        })
+        .collect()
 }
 
+/// Replace every uuid-shaped token outside `known` with `<id-N>` (N by first
+/// appearance in `order`) and every compact store stamp outside `stamps` with
+/// `<stamp>`: the ids a create MINTS and the retired names built from a minted
+/// vault's `createdAt` differ run to run, on both sides.
+fn normalize(
+    v: &Value,
+    known: &HashSet<String>,
+    stamps: &HashSet<String>,
+    order: &mut Vec<String>,
+) -> Value {
+    match v {
+        Value::String(s) => Value::String(normalize_str(s, known, stamps, order)),
+        Value::Array(a) => Value::Array(
+            a.iter()
+                .map(|x| normalize(x, known, stamps, order))
+                .collect(),
+        ),
+        Value::Object(o) => Value::Object(
+            o.iter()
+                .map(|(k, x)| (k.clone(), normalize(x, known, stamps, order)))
+                .collect(),
+        ),
+        other => other.clone(),
+    }
+}
+
+fn normalize_str(
+    s: &str,
+    known: &HashSet<String>,
+    stamps: &HashSet<String>,
+    order: &mut Vec<String>,
+) -> String {
+    let b = s.as_bytes();
+    let is_hex = |c: u8| c.is_ascii_digit() || (b'a'..=b'f').contains(&c);
+    let mut out = String::new();
+    let mut i = 0;
+    while i < b.len() {
+        if i + 36 <= b.len() && s.is_char_boundary(i) && s.is_char_boundary(i + 36) {
+            let uuid = b[i..i + 36].iter().enumerate().all(|(j, &c)| {
+                if [8, 13, 18, 23].contains(&j) {
+                    c == b'-'
+                } else {
+                    is_hex(c)
+                }
+            });
+            if uuid {
+                let id = &s[i..i + 36];
+                if known.contains(id) {
+                    out.push_str(id);
+                } else {
+                    let n = order.iter().position(|x| x == id).unwrap_or_else(|| {
+                        order.push(id.to_string());
+                        order.len() - 1
+                    });
+                    out.push_str(&format!("<id-{n}>"));
+                }
+                i += 36;
+                continue;
+            }
+        }
+        if i + 18 <= b.len() && s.is_char_boundary(i) && s.is_char_boundary(i + 18) {
+            let stamp = b[i..i + 18].iter().enumerate().all(|(j, &x)| match j {
+                4 | 7 => x == b'-',
+                10 => x == b'T',
+                17 => x == b'Z',
+                _ => x.is_ascii_digit(),
+            });
+            if stamp {
+                let t = &s[i..i + 18];
+                out.push_str(if stamps.contains(t) { t } else { "<stamp>" });
+                i += 18;
+                continue;
+            }
+        }
+        let ch = s[i..].chars().next().unwrap();
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    out
+}
+
+/// The oracle's dump: planted rows by id, then the rows a create MINTED in
+/// insertion order (their stamps `<now>`).
 fn dump_stores(mount: &Connection, planted: &HashMap<String, String>) -> Value {
     let mut stmt = mount
         .prepare(
-            "SELECT id, name, storeType, createdAt, updatedAt FROM doc_mount_points ORDER BY id",
+            "SELECT id, name, storeType, createdAt, updatedAt FROM doc_mount_points ORDER BY rowid",
         )
         .unwrap();
-    let rows = stmt
+    let rows: Vec<Value> = stmt
         .query_map([], |r| {
             let id: String = r.get(0)?;
             let updated: String = r.get(4)?;
+            let known = planted.contains_key(&id);
             let moved = planted.get(&id) != Some(&updated);
             Ok(json!({
                 "id": id,
                 "name": r.get::<_, String>(1)?,
                 "storeType": r.get::<_, Option<String>>(2)?,
-                "createdAt": r.get::<_, String>(3)?,
+                "createdAt": if known { json!(r.get::<_, String>(3)?) } else { json!("<now>") },
                 "updatedAt": if moved { json!("<now>") } else { json!(updated) },
+            }))
+        })
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect();
+    let (mut known, minted): (Vec<Value>, Vec<Value>) = rows
+        .into_iter()
+        .partition(|r| planted.contains_key(r["id"].as_str().unwrap()));
+    known.sort_by(|a, b| a["id"].as_str().cmp(&b["id"].as_str()));
+    Value::Array(known.into_iter().chain(minted).collect())
+}
+
+fn character_rows(main: &Connection) -> Value {
+    let mut stmt = main
+        .prepare("SELECT id, name, characterDocumentMountPointId FROM characters ORDER BY rowid")
+        .unwrap();
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(json!({
+                "id": r.get::<_, String>(0)?,
+                "name": r.get::<_, String>(1)?,
+                "characterDocumentMountPointId": r.get::<_, Option<String>>(2)?,
             }))
         })
         .unwrap();
     Value::Array(rows.map(|r| r.unwrap()).collect())
+}
+
+fn slim(user_id: &str, name: &str) -> CharacterCreate {
+    CharacterCreate {
+        user_id: user_id.to_string(),
+        name: name.to_string(),
+        default_image_id: None,
+        default_connection_profile_id: None,
+        default_partner_id: None,
+        default_roleplay_template_id: None,
+        default_image_profile_id: None,
+        silly_tavern_data: None,
+        is_favorite: false,
+        npc: false,
+        controlled_by: "llm".into(),
+        default_agent_mode_enabled: None,
+        default_help_tools_enabled: None,
+        default_timestamp_config: None,
+        default_scenario_id: None,
+        default_system_prompt_id: None,
+        character_document_mount_point_id: None,
+        can_dress_themselves: None,
+        can_create_outfits: None,
+        system_transparency: None,
+        core_whisper_enabled: None,
+        can_be_carina: None,
+        partner_links: Vec::new(),
+        tags: Vec::new(),
+        avatar_overrides: Vec::new(),
+    }
 }
 
 fn result_json(r: &StoreNameReconcileResult) -> Value {
@@ -174,10 +374,16 @@ struct Run {
     result: Value,
     error: Value,
     lines: Vec<String>,
+    /// Ops scenarios: alias → minted character id (alias order), each op's
+    /// outcome, and the character rows after.
+    ids: Value,
+    op_results: Value,
+    characters: Value,
 }
 
-/// Copy the pair under `work`, plant the scenario when `plant`, reconcile on
-/// the caller thread (so `captured_with` sees every line), and dump.
+/// Copy the pair under `work`, plant the scenario when `plant`, run it (a
+/// reconcile on the caller thread, so `captured_with` sees every line; or, for
+/// an `ops` scenario when `plant`, the character hooks), and dump.
 fn run_pair(
     spec: &Spec,
     sc: &Scenario,
@@ -250,33 +456,200 @@ fn run_pair(
         .as_ref()
         .map(|m| dump_stores(m.connection(), &planted))
         .unwrap_or(json!([]));
-    let (outcome, lines) = quilltap_core::test_support::captured_with(|| {
-        reconcile_store_names(
-            main.connection(),
-            mount.as_ref().map(|m| m.connection()),
-            &sc.trigger,
-        )
-    });
-    let after = mount
-        .as_ref()
-        .map(|m| dump_stores(m.connection(), &planted))
-        .unwrap_or(json!([]));
-    let (result, error) = match outcome {
-        Ok(r) => (result_json(&r), Value::Null),
-        Err(e) => (
-            Value::Null,
-            json!(quilltap_core::db::fallback::error_text(&e)),
-        ),
+    let Some(ops) = sc.ops.as_ref().filter(|_| plant) else {
+        let (outcome, lines) = quilltap_core::test_support::captured_with(|| {
+            reconcile_store_names(
+                main.connection(),
+                mount.as_ref().map(|m| m.connection()),
+                &sc.trigger,
+            )
+        });
+        let after = mount
+            .as_ref()
+            .map(|m| dump_stores(m.connection(), &planted))
+            .unwrap_or(json!([]));
+        let (result, error) = match outcome {
+            Ok(r) => (result_json(&r), Value::Null),
+            Err(e) => (
+                Value::Null,
+                json!(quilltap_core::db::fallback::error_text(&e)),
+            ),
+        };
+        drop(main);
+        drop(mount);
+        return (
+            Run {
+                before,
+                after,
+                result,
+                error,
+                lines: v5_lines(&lines),
+                ids: Value::Null,
+                op_results: Value::Null,
+                characters: Value::Null,
+            },
+            main_path,
+            mount_path,
+        );
     };
+
+    // The hooks: every op on the caller thread, except the wipe, which runs
+    // on the writer thread of a `Db` over the same files (captured there).
+    let mut ids = serde_json::Map::new();
+    let mut op_results = Vec::new();
+    let mut lines = Vec::new();
+    let mut main = Some(main);
+    let mut mount = mount;
+    for op in ops {
+        let alias = op.alias.clone().unwrap_or_default();
+        let id_of = |ids: &serde_json::Map<String, Value>| {
+            ids.get(&alias)
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string()
+        };
+        if op.kind == "import" {
+            let m = main.as_ref().unwrap().connection();
+            let mi = mount.as_ref().unwrap().connection();
+            let payload = json!({
+                "manifest": {
+                    "format": "quilltap-export",
+                    "version": "1.0",
+                    "exportType": "document-stores",
+                    "createdAt": "2026-01-01T00:00:00.000Z",
+                    "appVersion": "4.10.0",
+                    "settings": { "includeMemories": false, "scope": "all" },
+                    "counts": { "documentStores": op.mount_points.as_ref().and_then(Value::as_array).map(Vec::len).unwrap_or(0) }
+                },
+                "data": { "mountPoints": op.mount_points.clone().unwrap_or(json!([])), "documents": [], "blobs": [] }
+            });
+            let export = parse_export_file(&payload.to_string()).expect("parse payload");
+            let options = ImportOptions {
+                conflict_strategy: match op.strategy.as_deref() {
+                    Some("overwrite") => ConflictStrategy::Overwrite,
+                    Some("duplicate") => ConflictStrategy::Duplicate,
+                    _ => ConflictStrategy::Skip,
+                },
+                include_memories: false,
+                include_related_entities: false,
+                selected_ids: None,
+                preserve_ids: false,
+                preserve_ids_mode: PreserveIdsMode::RefuseOnCollision,
+            };
+            let (result, captured) = quilltap_core::test_support::captured_with(|| {
+                execute_import(
+                    m,
+                    mi,
+                    &spec.user_id,
+                    &export,
+                    &options,
+                    &PassthroughPixelCodec {
+                        width: 1,
+                        height: 1,
+                    },
+                )
+            });
+            lines.extend(captured);
+            let r = result.expect("execute_import");
+            op_results.push(json!({"op": "import", "success": r.success, "warnings": r.warnings}));
+            continue;
+        }
+        if op.kind == "wipe" {
+            drop(main.take());
+            drop(mount.take());
+            let db = Db::open(
+                DbPaths {
+                    main: main_path.clone(),
+                    mount_index: Some(mount_path.clone()),
+                    llm_logs: None,
+                },
+                &spec.pepper,
+            )
+            .expect("open Db");
+            let user = spec.user_id.clone();
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let (outcome, wiped) = rt
+                .block_on(db.write(move |ws| {
+                    Ok(quilltap_core::test_support::global_capture::capture(|| {
+                        delete_user_data_on_writer(
+                            ws,
+                            &user,
+                            DeleteUserDataOptions {
+                                keep_archived_character_bundles: None,
+                            },
+                        )
+                    }))
+                }))
+                .expect("writer");
+            drop(db);
+            drop(rt);
+            lines.extend(wiped);
+            op_results.push(match outcome {
+                Ok(()) => json!({"op": "wipe", "ok": true}),
+                Err(e) => json!({"op": "wipe", "error": e.to_string()}),
+            });
+            main = Some(Writer::open_writable(&main_path, &spec.pepper).expect("reopen main"));
+            mount = Some(Writer::open_writable(&mount_path, &spec.pepper).expect("reopen mount"));
+            continue;
+        }
+        let m = main.as_ref().unwrap().connection();
+        let mi = mount.as_ref().unwrap().connection();
+        let kind = op.kind.as_str();
+        let (result, captured) = quilltap_core::test_support::captured_with(|| match kind {
+            "create" => create_character(
+                m,
+                mi,
+                &slim(&spec.user_id, op.name.as_deref().unwrap()),
+                &CharacterVaultWriteInput::default(),
+            )
+            .map(|id| json!(id))
+            .map_err(|e| e.to_string()),
+            "rename" => {
+                let mut patch = serde_json::Map::new();
+                patch.insert("name".into(), json!(op.name.clone().unwrap()));
+                update_character(m, mi, &id_of(&ids), &patch)
+                    .map(|_| json!(true))
+                    .map_err(|e| e.to_string())
+            }
+            "archive" => m
+                .execute(
+                    "UPDATE characters SET archivedAt = '2026-05-01T00:00:00.000Z' WHERE id = ?1",
+                    [id_of(&ids)],
+                )
+                .map(|_| json!(true))
+                .map_err(|e| e.to_string()),
+            "delete" => delete_character_and_reconcile(m, Some(mi), &id_of(&ids))
+                .map(|d| json!(d))
+                .map_err(|e| e.to_string()),
+            other => panic!("unknown op {other}"),
+        });
+        lines.extend(captured);
+        op_results.push(match result {
+            Ok(v) if kind == "create" => {
+                ids.insert(alias.clone(), v);
+                json!({"op": kind, "alias": alias, "ok": true})
+            }
+            Ok(v) if kind == "delete" => json!({"op": kind, "alias": alias, "ok": v}),
+            Ok(_) => json!({"op": kind, "alias": alias, "ok": true}),
+            Err(e) => json!({"op": kind, "alias": alias, "error": e}),
+        });
+    }
+    let main = main.unwrap();
+    let mount = mount.unwrap();
+    let after = dump_stores(mount.connection(), &planted);
+    let characters = character_rows(main.connection());
     drop(main);
     drop(mount);
     (
         Run {
             before,
             after,
-            result,
-            error,
-            lines: lines.iter().map(|l| drop_target(l)).collect(),
+            result: Value::Null,
+            error: Value::Null,
+            lines: v5_lines(&lines),
+            ids: Value::Object(ids),
+            op_results: Value::Array(op_results),
+            characters,
         },
         main_path,
         mount_path,
@@ -304,6 +677,9 @@ fn store_name_reconcile_matches_oracle() {
         eprintln!("SKIP: set QT_ORACLE_STORE_NAME_RECONCILE and QT_FIXTURE_SNR_DIR (see header).");
         return;
     };
+    // The wipe's lines are captured on the writer thread (`global_capture`),
+    // so the global rig owns this binary from the first callsite on.
+    quilltap_core::test_support::global_capture::install();
     let spec = spec();
     let oracle = oracle_lines(&oracle_path);
     let base = PathBuf::from(&base_dir);
@@ -369,6 +745,71 @@ fn store_name_reconcile_matches_oracle() {
                 "{}: v5 wrote on a failed read",
                 sc.name
             );
+        } else if let Some((_, v4_warning, v5_lines)) = IMPORT_READ_FAILURE_STRICT
+            .iter()
+            .find(|(n, ..)| *n == sc.name)
+        {
+            // v4's side, as recorded: the warning, and the ERROR first.
+            assert_eq!(
+                want["opResults"][0]["warnings"],
+                json!([v4_warning]),
+                "IMPORT_READ_FAILURE_STRICT {}: v4's warning moved — v4 converged? re-measure",
+                sc.name
+            );
+            assert_eq!(
+                want_lines.first().map(String::as_str),
+                v5_lines.first().copied(),
+                "{}: v4's ERROR",
+                sc.name
+            );
+            // v5's side: the ERROR + the skip WARN, no warning, nothing renamed.
+            assert_eq!(run.lines, *v5_lines, "{}: v5 lines", sc.name);
+            assert_eq!(run.op_results[0]["warnings"], json!([]), "{}", sc.name);
+            assert_eq!(run.after, want["after"], "{}: the stores", sc.name);
+        } else if sc.ops.is_some() {
+            // Minted ids and stamps normalized, both sides, by first appearance
+            // in the same traversal.
+            let mut known: HashSet<String> = sc.stores.iter().map(|s| s.id.clone()).collect();
+            known.extend(sc.characters.iter().map(|c| c.id.clone()));
+            known.insert(spec.user_id.clone());
+            let stamps: HashSet<String> = sc
+                .stores
+                .iter()
+                .map(|s| store_name_timestamp(&s.created_at))
+                .collect();
+            let shape = |ids: &Value, after: &Value, chars: &Value, lines: Value, ops: &Value| json!({"ids": ids, "after": after, "characters": chars, "lines": lines, "opResults": ops});
+            let got = normalize(
+                &shape(
+                    &run.ids,
+                    &run.after,
+                    &run.characters,
+                    json!(run.lines),
+                    &run.op_results,
+                ),
+                &known,
+                &stamps,
+                &mut Vec::new(),
+            );
+            let exp = normalize(
+                &shape(
+                    &want["ids"],
+                    &want["after"],
+                    &want["characters"],
+                    json!(want_lines),
+                    &want["opResults"],
+                ),
+                &known,
+                &stamps,
+                &mut Vec::new(),
+            );
+            if serde_json::to_string(&got).unwrap() != serde_json::to_string(&exp).unwrap() {
+                failures.push(format!(
+                    "{} (ops):\n  v5 {}\n  v4 {}",
+                    sc.name,
+                    serde_json::to_string_pretty(&got).unwrap(),
+                    serde_json::to_string_pretty(&exp).unwrap()
+                ));
+            }
         } else {
             for (label, got, exp) in [
                 ("before", &run.before, &want["before"]),
@@ -438,6 +879,20 @@ fn store_name_reconcile_matches_oracle() {
                 );
                 continue;
             }
+            if IMPORT_READ_FAILURE_STRICT.iter().any(|(n, ..)| *n == name) {
+                // Outside the import's strict scope v4's failed characters read
+                // answers `[]` and its reconcile RETIRES the unlinked vaults v5
+                // left alone — the same divergence, lagging: only retirements.
+                let all_retired = v["result"]["renamed"].as_array().is_some_and(|r| {
+                    !r.is_empty() && r.iter().all(|x| x["reason"] == "retired-vault")
+                });
+                assert!(
+                    all_retired,
+                    "IMPORT_READ_FAILURE_STRICT {name}: v4 over v5's pair should only retire: {}",
+                    v["result"]
+                );
+                continue;
+            }
             if renamed != 0 || v["before"] != v["after"] {
                 failures.push(format!(
                     "{name} cross v5→v4: v4 renamed {renamed}: {}",
@@ -454,7 +909,7 @@ fn store_name_reconcile_matches_oracle() {
         failures.len(),
         failures.join("\n")
     );
-    assert_eq!(checked, 11, "scenario count");
+    assert_eq!(checked, 18, "scenario count");
     eprintln!(
         "OK: store-name reconcile matched oracle ({checked} scenarios; {} RECONCILE_READ_FAILURE_STRICT both ways; cross v4→v5 {cross_checked}, v5→v4 {v4_cross}).",
         READ_FAILURE_STRICT.len()

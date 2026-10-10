@@ -38,26 +38,29 @@ fn conflict(msg: impl Into<String>) -> Response {
     Response::error(ErrorKind::Conflict, msg)
 }
 
-/// The stored-casing name of the store (if any) whose trimmed/lowercased name
-/// matches `desired`, excluding `exclude_id` (for renames). Store names form one
-/// case-insensitive namespace (v4 `0a0419f5`).
-fn find_store_name_clash(
+/// The store (if any) other than `exclude_id` that holds `desired` ignoring
+/// case — `(id, stored name)` — through the repository's ONE holder read, v4's
+/// `findNameHolder` (`ed8b15b50`, bug 186: both routes call it). Store names
+/// form one case-insensitive namespace (v4 `0a0419f5`). A whole-query read
+/// failure is the `Err` (`RECONCILE_READ_FAILURE_STRICT`, R-A arm 3).
+fn store_name_holder(
     db: &Db,
     desired: &str,
     exclude_id: Option<&str>,
-) -> Result<Option<String>, crate::db::DbError> {
-    let desired_lower = desired.trim().to_lowercase();
+) -> Result<Option<(String, String)>, crate::db::DbError> {
+    let desired = desired.to_string();
     let exclude = exclude_id.map(str::to_string);
     db.read_mount_index(move |conn| {
-        let mut stmt = conn.prepare("SELECT id, name FROM doc_mount_points")?;
-        let rows = stmt
-            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
-            .collect::<Result<Vec<(String, String)>, _>>()?;
-        Ok(rows.into_iter().find_map(|(id, name)| {
-            let excluded = exclude.as_deref() == Some(id.as_str());
-            (!excluded && name.trim().to_lowercase() == desired_lower).then_some(name)
-        }))
+        DocMountPointsRepository::new(conn).find_name_holder(&desired, exclude.as_deref())
     })
+}
+
+/// v4's taken-name sentence (`MountPointNameTakenError`'s message, which both
+/// routes' 409s reuse) — the HOLDER's stored casing.
+fn name_taken(holder_name: &str) -> Response {
+    conflict(format!(
+        "A document store named \"{holder_name}\" already exists. Names are matched without regard to case — please choose a different name."
+    ))
 }
 
 const DEFAULT_INCLUDE: [&str; 4] = ["*.md", "*.txt", "*.pdf", "*.docx"];
@@ -197,12 +200,18 @@ pub async fn mount_point_create(db: &Db, body: Value) -> Response {
         Err(r) => return r,
     };
     // Document-store names form one case-insensitive namespace: no store may
-    // share a name with a peer, even in a different casing (v4 `0a0419f5`).
-    match find_store_name_clash(db, &fields.name, None) {
-        Ok(Some(clash_name)) => {
-            return conflict(format!(
-                "A document store named \"{clash_name}\" already exists. Names are matched without regard to case — please choose a different name."
-            ));
+    // share a name with a peer, even in a different casing (v4 `0a0419f5`;
+    // `ed8b15b50` moved the scan onto the repository's `findNameHolder` and
+    // added the WARN, `route.ts:167-179`).
+    match store_name_holder(db, &fields.name, None) {
+        Ok(Some((holder_id, holder_name))) => {
+            tracing::warn!(
+                name = %fields.name,
+                clashesWith = %holder_id,
+                userId = crate::api::SINGLE_USER_ID,
+                "[Mount Points v1] Rejected duplicate mount point name"
+            );
+            return name_taken(&holder_name);
         }
         Ok(None) => {}
         Err(e) => return internal(e),
@@ -364,7 +373,8 @@ pub async fn mount_point_update(db: &Db, mount_point_id: &str, body: Value) -> R
     };
     // The whole PATCH handler is one try/catch → a validation failure is a 500,
     // not a 400.
-    let update_failed = || internal("Failed to update mount point");
+    // P4.D274: v4's catch-all logs its ERROR too (`:174-176`).
+    let update_failed = || update_catch_all(mount_point_id);
     let Some(body_obj) = body.as_object() else {
         return update_failed();
     };
@@ -462,18 +472,54 @@ pub async fn mount_point_update(db: &Db, mount_point_id: &str, body: Value) -> R
     let flipped =
         existing_store != "character" && new_store == "character" && new_type == "database";
 
-    // Renames stay inside the case-insensitive name namespace: no store may take
-    // a name a peer already holds, even in a different casing (v4 `0a0419f5`).
-    // Only when `name` is present; the clash excludes the store itself.
-    if let Some(desired) = patch.name.clone() {
-        match find_store_name_clash(db, &desired, Some(mount_point_id)) {
-            Ok(Some(clash_name)) => {
+    // v4 `[id]/route.ts:104-120` (`ed8b15b50`, bug 186): a live character
+    // vault is named after its character, so renaming the vault alone would be
+    // undone by the next store-name reconcile. Only a name that DIFFERS from the
+    // stored one (an exact compare — a re-casing is caught); the owner is the
+    // first character, in row order, whose vault pointer names this store
+    // (archived characters included). A read failure is the PATCH's catch-all
+    // (R-A arm 3).
+    let stored_name = existing.get("name").and_then(Value::as_str).unwrap_or("");
+    if patch.name.as_deref().is_some_and(|d| d != stored_name) {
+        let id = mount_point_id.to_string();
+        let owner =
+            db.read_main(move |conn| crate::db::store_name_reconcile::find_vault_owner(conn, &id));
+        match owner {
+            Ok(Some(owner)) => {
+                tracing::warn!(
+                    mountPointId = %mount_point_id,
+                    characterId = %owner.id,
+                    userId = crate::api::SINGLE_USER_ID,
+                    "[Mount Points v1] Rejected rename of a live character vault"
+                );
                 return conflict(format!(
-                    "A document store named \"{clash_name}\" already exists. Names are matched without regard to case — please choose a different name."
+                    "This vault belongs to {} and is named after them. Rename the character to rename the vault.",
+                    owner.name
                 ));
             }
             Ok(None) => {}
-            Err(e) => return internal(e),
+            Err(_) => return update_catch_all(mount_point_id),
+        }
+    }
+
+    // Renames stay inside the case-insensitive name namespace: no store may take
+    // a name a peer already holds, even in a different casing (v4 `0a0419f5`;
+    // `ed8b15b50`'s `findNameHolder` + WARN, `:124-137`). Only when `name` is
+    // present; the holder excludes the store itself.
+    if let Some(desired) = patch.name.clone() {
+        match store_name_holder(db, &desired, Some(mount_point_id)) {
+            Ok(Some((holder_id, holder_name))) => {
+                tracing::warn!(
+                    mountPointId = %mount_point_id,
+                    name = %desired,
+                    clashesWith = %holder_id,
+                    userId = crate::api::SINGLE_USER_ID,
+                    "[Mount Points v1] Rejected duplicate mount point rename"
+                );
+                return name_taken(&holder_name);
+            }
+            Ok(None) => {}
+            Err(_) => return update_catch_all(mount_point_id),
         }
     }
 
@@ -493,10 +539,32 @@ pub async fn mount_point_update(db: &Db, mount_point_id: &str, body: Value) -> R
         .await;
     match write {
         Ok(true) => Response::MountPoint(json!({ "mountPoint": merged })),
-        // update returning false → v4 logs + serverError (500).
-        Ok(false) => update_failed(),
+        // update returning false → v4 logs ERROR `[Mount Points v1] Failed to
+        // update mount point` `{mountPointId}` + serverError (500), `:139-144`.
+        Ok(false) => {
+            tracing::error!(
+                mountPointId = %mount_point_id,
+                "[Mount Points v1] Failed to update mount point"
+            );
+            internal("Failed to update mount point")
+        }
+        // A name the repository gate refuses AFTER the pre-check above (a
+        // holder raced in between) throws `MountPointNameTakenError` into v4's
+        // catch-all (`:174-176`): its ERROR and 500, not the sentence.
+        Err(DbError::MountPointNameTaken { .. }) => update_catch_all(mount_point_id),
         Err(e) => internal(e),
     }
+}
+
+/// v4's PATCH catch-all (`[id]/route.ts:174-176`): ERROR `[Mount Points v1]
+/// Error updating mount point` `{mountPointId}` and 500 `Failed to update mount
+/// point`.
+fn update_catch_all(mount_point_id: &str) -> Response {
+    tracing::error!(
+        mountPointId = %mount_point_id,
+        "[Mount Points v1] Error updating mount point"
+    );
+    internal("Failed to update mount point")
 }
 
 /// v4 `DELETE /api/v1/mount-points/[id]` — 404 / the cascade → `{message}`.

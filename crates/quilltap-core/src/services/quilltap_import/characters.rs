@@ -21,9 +21,7 @@ use serde_json::{json, Value};
 use super::{ConflictStrategy, IdMaps, ImportOptions};
 use crate::db::character_plugin_data::CharacterPluginDataRepository;
 use crate::db::character_vault::create_character_with_options;
-use crate::db::characters::{
-    AvatarOverride, CharacterCreate, CharactersRepository, PartnerLink, TimestampConfig,
-};
+use crate::db::characters::{AvatarOverride, CharacterCreate, PartnerLink, TimestampConfig};
 use crate::db::characters_read;
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
 use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
@@ -288,9 +286,14 @@ pub(super) fn import_characters(
                         id_maps
                             .characters
                             .set(source_id.clone(), existing_id.clone());
-                        CharactersRepository::new(main)
-                            .delete(&existing_id)
-                            .map_err(|e| super::item_error_text(&e))?;
+                        // v4 `import-characters.ts:138` → `characters.delete`,
+                        // which reconciles store names (bug 186).
+                        crate::db::character_vault::delete_character_and_reconcile(
+                            main,
+                            Some(mount),
+                            &existing_id,
+                        )
+                        .map_err(|e| super::item_error_text(&e))?;
                         // Remove from the name map so we don't re-match.
                         existing_by_name.retain(|(n, _)| *n != name.to_lowercase());
                     }

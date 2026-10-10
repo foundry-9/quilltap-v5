@@ -312,7 +312,7 @@ pub async fn delete_user_data(
 
 /// The wipe body, on the writer thread. Reads run over the writer's own
 /// connections so the collect → delete sequence sees one consistent view.
-fn delete_user_data_on_writer(
+pub fn delete_user_data_on_writer(
     ws: &mut WriterSet,
     user_id: &str,
     options: DeleteUserDataOptions,
@@ -371,11 +371,29 @@ fn delete_user_data_on_writer(
     }
 
     // 3. The per-row entity deletes, in v4's `Promise.all` order (:126).
+    //
+    //    Each v4 `characters.delete` logs INFO `Character deleted` and then
+    //    awaits `reconcileVaultNames('character-deleted', id)` (bug 186). Under
+    //    the `Promise.all`, MEASURED at the pin (P4.D274 R-F, M3 — five runs,
+    //    identical): every delete's line first, then N reconciles that EACH
+    //    plan from the same post-delete read (all N reads land before the
+    //    first write) and EACH log the whole rename list. The renames are
+    //    state-inert here (`clear_format3_entities` below deletes every
+    //    `doc_mount_points` row) but the lines are not, so v5 replays that
+    //    cadence literally: the delete loop, then
+    //    `reconcile_vault_names_after_concurrent_deletes`.
     {
         let repo = CharactersRepository::new(main);
+        let mut deleted: Vec<String> = Vec::new();
         for id in &characters {
-            repo.delete(id)?;
+            if repo.delete(id)? {
+                tracing::info!(target: "quilltap::db", characterId = %id, "Character deleted");
+                deleted.push(id.clone());
+            }
         }
+        crate::db::store_name_reconcile::reconcile_vault_names_after_concurrent_deletes(
+            main, mount, &deleted,
+        );
     }
     {
         // v4 passes `{ syncVaults: false }`; v5's chat delete never runs the

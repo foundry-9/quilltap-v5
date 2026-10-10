@@ -1,5 +1,5 @@
 {
-  "_doc": "P4.D274 unit 4: the store-name reconcile's tier-2 scenarios. Both sides copy the builder's empty base pair (v4's real init at the pin, test pepper), plant these rows RAW (stores: id, name, storeType, createdAt = updatedAt; characters: id, userId, name, characterDocumentMountPointId, archivedAt, createdAt = updatedAt), apply the named plant, run the reconcile with the trigger, and dump. Names are pseudonymous (C<n>) but keep the real vault shapes.",
+  "_doc": "P4.D274 unit 4: the store-name reconcile's tier-2 scenarios. Both sides copy the builder's empty base pair (v4's real init at the pin, test pepper), plant these rows RAW (stores: id, name, storeType, createdAt = updatedAt; characters: id, userId, name, characterDocumentMountPointId, archivedAt, createdAt = updatedAt), apply the named plant, run the reconcile with the trigger, and dump. Names are pseudonymous (C<n>) but keep the real vault shapes. Scenarios with `ops` (P4.D274 unit 5) run v4's REAL CharactersRepository create / update (rename) / delete and deleteUserData (the wipe) instead of a direct reconcile; `archive` sets archivedAt raw. An `import` op runs v4's REAL executeImport over a document-stores payload carrying the op's `mountPoints` (no folders/documents/blobs), with the op's conflict strategy.",
   "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
   "userId": "7e000000-0000-4000-8000-000000000001",
   "scenarios": [
@@ -451,6 +451,204 @@
           "name": "C9",
           "characterDocumentMountPointId": null,
           "createdAt": "2025-09-09T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "name": "k-create-over-an-orphan",
+      "trigger": "character-created",
+      "stores": [
+        {
+          "id": "5a000000-0000-4000-8000-000000000001",
+          "name": "Xander Character Vault",
+          "storeType": "character",
+          "createdAt": "2026-02-02T02:02:02.000Z"
+        }
+      ],
+      "characters": [],
+      "ops": [
+        {
+          "kind": "create",
+          "alias": "x",
+          "name": "Xander"
+        }
+      ]
+    },
+    {
+      "name": "l-rename-follows-and-archived-refused",
+      "trigger": "character-renamed",
+      "stores": [],
+      "characters": [],
+      "ops": [
+        {
+          "kind": "create",
+          "alias": "x",
+          "name": "Lena"
+        },
+        {
+          "kind": "rename",
+          "alias": "x",
+          "name": "Lenora"
+        },
+        {
+          "kind": "archive",
+          "alias": "x"
+        },
+        {
+          "kind": "rename",
+          "alias": "x",
+          "name": "Lenny"
+        }
+      ]
+    },
+    {
+      "name": "m-delete-retires",
+      "trigger": "character-deleted",
+      "stores": [],
+      "characters": [],
+      "ops": [
+        {
+          "kind": "create",
+          "alias": "x",
+          "name": "Moss"
+        },
+        {
+          "kind": "delete",
+          "alias": "x"
+        }
+      ]
+    },
+    {
+      "name": "n-reconcile-failure-during-create",
+      "trigger": "character-created",
+      "stores": [
+        {
+          "id": "5a000000-0000-4000-8000-000000000001",
+          "name": "Nell Character Vault",
+          "storeType": "character",
+          "createdAt": "2026-02-02T02:02:02.000Z"
+        },
+        {
+          "id": "not-a-uuid-nell",
+          "name": "Nell Version 2026-02-02T020202Z Store",
+          "storeType": "documents",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        }
+      ],
+      "characters": [],
+      "ops": [
+        {
+          "kind": "create",
+          "alias": "x",
+          "name": "Nell"
+        }
+      ]
+    },
+    {
+      "name": "o-wipe",
+      "trigger": "character-deleted",
+      "stores": [],
+      "characters": [],
+      "ops": [
+        {
+          "kind": "create",
+          "alias": "a",
+          "name": "Wren"
+        },
+        {
+          "kind": "create",
+          "alias": "b",
+          "name": "Wynn"
+        },
+        {
+          "kind": "create",
+          "alias": "c",
+          "name": "Wade"
+        },
+        {
+          "kind": "wipe"
+        }
+      ]
+    },
+    {
+      "name": "p-import-overwrite-takes-a-free-name",
+      "trigger": "qtap-import",
+      "stores": [
+        {
+          "id": "5a000000-0000-4000-8000-000000000021",
+          "name": "Project Notes",
+          "storeType": "documents",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000022",
+          "name": "Lore",
+          "storeType": "documents",
+          "createdAt": "2026-01-02T00:00:00.000Z"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000023",
+          "name": "Ghost Character Vault",
+          "storeType": "character",
+          "createdAt": "2026-01-03T03:03:03.000Z"
+        }
+      ],
+      "characters": [],
+      "ops": [
+        {
+          "kind": "import",
+          "strategy": "overwrite",
+          "mountPoints": [
+            {
+              "id": "5a000000-0000-4000-8000-000000000021",
+              "name": "Lore",
+              "basePath": "",
+              "mountType": "database",
+              "storeType": "documents",
+              "includePatterns": [],
+              "excludePatterns": [],
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "q-import-strict-characters-read-fails",
+      "trigger": "qtap-import",
+      "plant": "characters-read-fails",
+      "stores": [
+        {
+          "id": "5a000000-0000-4000-8000-000000000023",
+          "name": "Ghost Character Vault",
+          "storeType": "character",
+          "createdAt": "2026-01-03T03:03:03.000Z"
+        }
+      ],
+      "characters": [
+        {
+          "id": "6c000000-0000-4000-8000-000000000031",
+          "name": "Ghost",
+          "characterDocumentMountPointId": null,
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        }
+      ],
+      "ops": [
+        {
+          "kind": "import",
+          "strategy": "skip",
+          "mountPoints": [
+            {
+              "id": "5a000000-0000-4000-8000-000000000024",
+              "name": "Fresh Imported Store",
+              "basePath": "",
+              "mountType": "database",
+              "storeType": "documents",
+              "includePatterns": [],
+              "excludePatterns": [],
+              "enabled": true
+            }
+          ]
         }
       ]
     }
