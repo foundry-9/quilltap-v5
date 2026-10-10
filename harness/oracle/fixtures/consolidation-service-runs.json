@@ -1,0 +1,165 @@
+{
+ "runs": [
+  {
+   "name": "dry_all",
+   "characterId": "0c010000-0000-4000-8000-000000000001",
+   "opts": {
+    "dryRun": true,
+    "trigger": "manual",
+    "now": "2026-10-08T12:00:00.000Z"
+   },
+   "answers": "valid"
+  },
+  {
+   "name": "real_all",
+   "characterId": "0c020000-0000-4000-8000-000000000001",
+   "opts": {
+    "dryRun": false,
+    "trigger": "scheduled",
+    "now": "2026-10-08T12:00:00.000Z"
+   },
+   "answers": "valid"
+  },
+  {
+   "name": "real_rerun",
+   "characterId": "0c020000-0000-4000-8000-000000000001",
+   "opts": {
+    "dryRun": false,
+    "trigger": "watermark",
+    "now": "2026-10-22T12:00:00.000Z"
+   },
+   "answers": "rerun"
+  },
+  {
+   "name": "failures",
+   "characterId": "0c030000-0000-4000-8000-000000000001",
+   "opts": {
+    "dryRun": false,
+    "trigger": "manual",
+    "now": "2026-10-08T12:00:00.000Z"
+   },
+   "answers": "failures"
+  },
+  {
+   "name": "embed_fail",
+   "characterId": "0c040000-0000-4000-8000-000000000001",
+   "opts": {
+    "dryRun": false,
+    "trigger": "manual",
+    "now": "2026-10-08T12:00:00.000Z"
+   },
+   "answers": "embed_fail"
+  },
+  {
+   "name": "no_model",
+   "characterId": "0c050000-0000-4000-8000-000000000001",
+   "opts": {
+    "dryRun": false,
+    "trigger": "manual",
+    "now": "2026-10-08T12:00:00.000Z",
+    "userId": "0c000000-0000-4000-8000-0000000000ff"
+   },
+   "answers": "valid"
+  },
+  {
+   "name": "configured_profile",
+   "characterId": "0c060000-0000-4000-8000-000000000001",
+   "opts": {
+    "dryRun": true,
+    "trigger": "manual",
+    "now": "2026-10-08T12:00:00.000Z",
+    "settings": {
+     "connectionProfileId": "0cf00000-0000-4000-8000-000000000002",
+     "clusterThreshold": 0.8
+    }
+   },
+   "answers": "valid"
+  },
+  {
+   "name": "missing_profile",
+   "characterId": "0c070000-0000-4000-8000-000000000001",
+   "opts": {
+    "dryRun": true,
+    "trigger": "manual",
+    "now": "2026-10-08T12:00:00.000Z",
+    "maxClustersPerRun": 3,
+    "settings": {
+     "connectionProfileId": "0cf00000-0000-4000-8000-0000000000ff"
+    }
+   },
+   "answers": "valid"
+  },
+  {
+   "name": "budget",
+   "characterId": "0c080000-0000-4000-8000-000000000001",
+   "opts": {
+    "dryRun": false,
+    "trigger": "manual",
+    "now": "2026-10-08T12:00:00.000Z",
+    "timeBudgetMs": -1
+   },
+   "answers": "valid"
+  },
+  {
+   "name": "max_zero",
+   "characterId": "0c090000-0000-4000-8000-000000000001",
+   "opts": {
+    "dryRun": false,
+    "trigger": "manual",
+    "now": "2026-10-08T12:00:00.000Z",
+    "maxClustersPerRun": 0
+   },
+   "answers": "valid"
+  },
+  {
+   "name": "cap_dry",
+   "characterId": "0c5b0000-0000-4000-8000-000000000008",
+   "opts": {
+    "dryRun": true,
+    "trigger": "manual",
+    "now": "2026-10-08T12:00:00.000Z"
+   },
+   "answers": "valid"
+  },
+  {
+   "name": "cap_real",
+   "characterId": "0c5b0000-0000-4000-8000-000000000008",
+   "opts": {
+    "dryRun": false,
+    "trigger": "manual",
+    "now": "2026-10-08T12:00:00.000Z"
+   },
+   "answers": "valid"
+  },
+  {
+   "name": "archived",
+   "characterId": "0c5b0000-0000-4000-8000-000000000003",
+   "opts": {
+    "dryRun": true,
+    "trigger": "manual",
+    "now": "2026-10-08T12:00:00.000Z"
+   },
+   "answers": "valid"
+  },
+  {
+   "name": "not_found",
+   "characterId": "0c5b0000-0000-4000-8000-0000000000cc",
+   "opts": {
+    "dryRun": true,
+    "trigger": "scheduled",
+    "now": "2026-10-08T12:00:00.000Z"
+   },
+   "answers": "valid"
+  },
+  {
+   "name": "quiet",
+   "characterId": "0c5b0000-0000-4000-8000-000000000009",
+   "opts": {
+    "dryRun": false,
+    "trigger": "manual",
+    "now": "2026-10-08T12:00:00.000Z"
+   },
+   "answers": "valid"
+  }
+ ]
+}

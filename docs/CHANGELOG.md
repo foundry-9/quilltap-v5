@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(memory): P4.D271 the consolidation service
+
+_Versions: core 0.0.1270._
+
+New `services::consolidation::run_consolidation`, a port of v4's memory consolidation run: load the hot corpus by subject bucket, cluster it, pick the clusters to fold, ask the model once per cluster under the Concierge posture of the members' chats, plan the digests, embed them (a cluster whose digest cannot be embedded is dropped), write the whole plan in one transaction, and mirror the touched buckets into the holder's vault. A dry run reports what it would do and writes nothing. Also a process-wide `ConsolidationRunner` slot the host fills, so the API's dry run can reach the model. New tier-3 family `consolidation_service_tier3_equivalence` (15 runs: reports, 209 log lines, the memory and vector tables, the mirror files and the LLM log counts).
+
 #### 2026-10-09 — feat(memory): P4.D271 the Commonplace digest vault bridge + the consolidation fixture
 
 _Versions: core 0.0.1269._

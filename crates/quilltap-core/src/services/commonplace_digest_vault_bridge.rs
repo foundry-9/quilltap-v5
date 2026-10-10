@@ -125,7 +125,7 @@ fn strip_updated_at(content: &str) -> String {
 /// v4 `readDatabaseDocumentIfExists` (`database-store.ts:88-102`): `None` only
 /// for NOT_FOUND (with v4's debug line); every other failure propagates. Runs on
 /// the caller's thread.
-fn read_database_document_if_exists(
+pub(crate) fn read_database_document_if_exists(
     db: &Db,
     mount_point_id: &str,
     relative_path: &str,
