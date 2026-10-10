@@ -175648,3 +175648,40 @@ The recipe sweep ran from the pin against a scratch worktree at the base `18e41e
 - **RED at KEYSTONE.** Measured in the scratch base worktree at `18e41e403`, after unit 1 had landed — the KEYSTONE code is identical, so the measurement is equivalent to "before item 2's commit". The family does not compile: `E0432` (`invalidate_all_frozen_archives`, `invalidate_frozen_archives_for_completed_job` unresolved) + `E0061` (5 arguments, not 7). 2 errors.
 - **Mutations:** a code-unit final sort reddens 16 ops; dropping the presence freshness check reddens 1 op.
 - `recipe_sweep.py --self-test` exits 0; the header extracts via `--show`.
+
+### Unit 10 landed — `192ea8af8`
+The first commit `ff9d903f8` was amended to `192ea8af8` before anything consumed it. Its doc comment tripped clippy's `doc_lazy_continuation`, and the commit had slipped through because the clippy pipe went into `grep`, which masked the exit code.
+
+### P4.D268 lane close (2026-10-10)
+- **Lane-close sweep.** One sweep, announced, from the pin against this branch: 20 families, results in `/tmp/p4d268/final-sweep.json`. **14 ok, 6 red.** Each red is either its unchanged KEYSTONE red or a named `UNION-PENDING` row.
+  - **ok:** `frozen_archive_tier2` (NEW), `memory_injector`, `search_tools`, `carina_query_tier3`, `character_optimizer_tier3`, `announcer_tier3`, `in_scene_voiced_tier3`, `help_chat_orchestrator_tier3`, `answer_confirmation_tier3`, `regenerate_swipe_tier3`, `primary_stream_tier3`, `salon_swipe_generate`, `turn_orchestrator_tier2`, `chat_continuation_tier2`.
+  - **UNION-PENDING(P4.D267)** — this lane's planted rows; P4.D267's hot filter turns them green:
+    - `build_context_tier3` `p4d268_multi_character_digests_lead` (the cold row via the unfiltered search: head 1 vs 0, inter relevance 5 vs 4 delivered);
+    - `first_message_context` `p4d268_carol_text_fallback_skips_cold` (KEYSTONE's `search_memories_text` not hot-filtered; green with P4.D267's filter simulated).
+    - Both are the LAST row of their family, so every other row is proven on this branch.
+  - **UNION-PENDING(P4.D267), unchanged since KEYSTONE:** `precompute` `spoke-then-window-searches` (multiplier 1.36 vs 1.105). This lane's pool row `p4d268-pool-returns-whole-pool` is green in isolation (unit 5).
+  - **UNION-PENDING(P4.D270), unchanged since KEYSTONE:**
+    - `orchestrator_tier3` `simple_json_then_native_tool_call` (v4 consumed two `key-textblock` streams — the fold OTHER call, §R.13(f));
+    - `enclave_step_tier3` `chats.otherExtractionWatermarkMessageId` (null vs set).
+    - **Not proven by row here:** these families stop at the first divergence. This lane's pool-sizing share in `orchestrator_tier3` (§R.13(d)) cannot be seen past P4.D270's first row, so the unifier measures it on the union.
+  - **`brahma_orchestrator_tier3`** fails the same 9 rows (`no canned stream queued … (2 msgs)`) as at KEYSTONE, so this lane did not introduce it. Its owner is NOT identified here; the likely owner is P4.D270, whose `brahma_console/prompt_text.rs` is in §R.13(f)'s family. It is flagged for the unifier to classify on the union.
+- **M6 — other buildContext-caller families measured** (KEYSTONE and close): `help_chat_orchestrator_tier3`, `brahma_orchestrator_tier3`, `answer_confirmation_tier3`, `regenerate_swipe_tier3`, `primary_stream_tier3`, `enclave_step_tier3`, `salon_swipe_generate`, `turn_orchestrator_tier2`, `chat_continuation_tier2`. No pool-sizing red was caused by this lane in any of them. `help_chat_orchestrator_tier3` is GREEN at both tips; the P4.D270 fold-OTHER residue §R.13 predicted there did not appear on this branch.
+- **M3.** No family of this lane failed on `no such column: tier`; P4.D265's in-place widen covered every committed pair. The NEW family still applies both healers (§R.3's belt).
+- **M4.** The 200k test model gives `memoryBudget` 8,000 (head 1,200 / 15, archive 60). The 2,000 floor is reachable through an 8,000-token profile window (head 300 / 8, archive 28 / 1,700). `build_context_tier3`'s corpus holds 31 hot Ada rows, so the archive bites at 28.
+- **M5.** v4's `[Memory] Marking memories accessed` and `[FrozenArchive]` lines are capturable in every jest case: a `logger.debug` patch, or the transport splice for the dispatcher child. The comparand is wired in all six delivery families plus the new one, so Tier 2 item 14 is not needed.
+- **Tier 2 item 13 — v4 doc comments carried:**
+  - the archive's prefix-cache rationale and its chat-keying rationale (`frozen_archive.rs` module doc);
+  - the job hook's commit-moment doc, reworded for the in-process runner;
+  - F6's "search no longer stamps its over-fetched candidates" at the buildContext and `search` stamp sites;
+  - the ordinary-split archive-stability note;
+  - the provenance "static fields, byte-stable" note.
+- **Checks:**
+  - fmt and clippy (both feature sets) are clean.
+  - `recipe_sweep.py --self-test` exits 0.
+  - `cargo test -p quilltap-core -p quilltap-host -p quilltap-web -p quilltap-cli --no-fail-fast` with `QT_V4_CHECKOUT` / `QT_V4_ROOT` at the pin: 113 binaries, 3,860 passed, 1 failed, 1 ignored. The failure is `cli_differential`, the 7 by-design Tier R rows (§R.3, P4.D269): `main help`, `completion bash|zsh|fish`, `recall-replay help|no chat|table`.
+- **R-H literal:** `orchestrator.rs`'s `DebugInterCharacterOut` test literal gains `memory_id: None`. **R-L:** the inter-character DEBUG pin moved to camelCase.
+- **HANDOFFs received for the `precompute` files (R-G):** none. **HANDOFFs issued:** none.
+- **💸 dogfood rows:** carried unchanged from the order's 💸 section.
+- **Versions at close:** core 0.0.1274 (+9 over KEYSTONE's 0.0.1265), host 0.0.195, web 0.0.228. The harness stays frozen at 0.0.1110.
+- **`cargo test --workspace --no-fail-fast` RAN after close (2026-10-10):** pin `QT_V4_CHECKOUT`/`QT_V4_ROOT`, `QT_ORACLE_FROZEN_ARCHIVE` set, `CARGO_INCREMENTAL=0`. 708 binaries, 4,692 passed, 2 failed, 3 ignored, zero `SKIP:` for `frozen_archive_tier2` (ran, ok). Both reds are by design per the order (`:1040`): `cli_differential` (7 rows, P4.D269) and `qtap_schema_embed_guard` (the pin's `qtap-export.schema.json` is 102,523 bytes vs 101,092 vendored; P4.D272 re-vendors it). No lane-caused red.
+- **v4 moved during the lane:** `3e6e2f590`, `7a8d6dacc`, `9ecebf986` (observed at lane start; recorded only).

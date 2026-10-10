@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-10 — docs(porting): P4.D268 lane close — sweep, gate and union-pending records
+
+_Docs-only change._
+
+The P4.D268 order is marked LANE COMPLETE. The status log gains the lane-close record:
+
+- **Lane-close sweep.** 20 families: 14 pass and 6 fail. Each failure is either unchanged since KEYSTONE or a named row that is green only on the union with P4.D267 or P4.D270.
+- **Measurements.** The order's M1–M6 measurements are recorded.
+- **Crate tests.** Only the 7 by-design CLI differential rows owned by P4.D269 fail.
+- **Workspace gate.** 708 binaries, 4,692 passed, 3 ignored. The 2 failures are by design: the CLI differential (P4.D269) and the export-schema embed guard (P4.D272 re-vendors the schema).
+
 #### 2026-10-09 — test(memory): P4.D268 the frozen_archive_tier2 differential against v4's real cache and job hook
 
 _No crate versions bumped._
