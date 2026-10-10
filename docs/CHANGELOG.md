@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(brahma): P4.D270 R1 the Brahma SQL prompt names the memory tiers
+
+_Versions: core 0.0.1272._
+
+`prompt_text.rs` was regenerated from the `01a83539d` pin with `gen-brahma-prompts.mjs`. It is not hand-edited. The `memories` paragraph now lists `source` as `'AUTO'|'MANUAL'|'CONSOLIDATED'` digests. It adds `tier` (`'hot'|'cold'`, with cold rows being consolidated members hidden from recall), `supersededById` and `consolidatedFrom`, as v4 `d58548051` does. The prompt grows from 8,026 to 8,231 UTF-16 units. `brahma_console_tier3`, which was red at red-first, and `brahma_console_routes` are green.
+
 #### 2026-10-09 — feat(maintenance): P4.D270 E8 the fold-grain OTHER catch-up sweep — sweep 8, `enqueue_memory_extraction_with` and the summary line in v4's keys
 
 _Versions: core 0.0.1271._
