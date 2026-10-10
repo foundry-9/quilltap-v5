@@ -12,6 +12,15 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(memory): P4.D269 the F2 anchor-gate probe and its memoryAnchorGateProbe arm (v4 `3f7320138`, pin `01a83539d`)
+
+_Versions: core 0.0.1266._
+
+- NEW `services::anchor_gate_probe` ports v4 `lib/memory/anchor-gate-probe.ts` line for line. It is measurement only and writes nothing. It samples `findRecent` over both tiers and searches the unfiltered store at 20 then top 5. It compares the anchored and anchor-free re-embeds through a per-id cache filled on success. An anchor-free neighbour of the probe's width is scored on its stored `memories.embedding`. A failed embed leaves a partial row in place. `embeddingsGenerated` counts before each call. It logs v4's two WARNs and its INFO (`anchoredJson` / `anchorFreeJson`).
+- `memoryAnchorGateProbe` now runs `api::memories::memory_anchor_gate_probe`, replacing the keystone refusal. It applies v4's Zod gate (uuid; int 1..200, where a non-integer aborts the bounds and an unsafe integer does not), then the 404 `Character not found`, the DEBUG (`limit` omitted when absent), and 500 `Anchor gate probe failed` with v4's ERROR.
+- NEW tier-3 family `anchor_gate_probe_tier3_equivalence` (20 cases) over the episodic-recall pair with real TF-IDF embeddings on both sides, driving v4's real probe and real POST route. Its corpus is `anchor-gate-probe-cases.json`. One named both-ways divergence, `PROBE_STORE_LOAD_FAILURE`: v4's store load never rejects, while v5's answers 500.
+- The two row helpers are lane-local copies of `memory_service`'s private `anchor_view_of` / `embedding_vec_of`, handed off to P4.D267.
+
 #### 2026-10-09 — feat(memory): KEYSTONE — P4.D265 the memory programme's data layer (v4 `01a83539d` pin)
 
 _Versions: core 0.0.1265, host 0.0.195, web 0.0.228._

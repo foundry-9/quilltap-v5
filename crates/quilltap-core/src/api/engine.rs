@@ -5569,9 +5569,23 @@ impl CoreEngine {
             // === end P4.D255 ===
             // === P4.D265: the 01a83539d round's wire (C2) — each arm the agreed
             // refusal (R-G), replaced by its owner this round ===
-            Request::MemoryAnchorGateProbe { .. } => {
-                p4d265_not_yet_available("memoryAnchorGateProbe", "P4.D269")
-            }
+            // P4.D269: v4 `handleAnchorGateProbe` (`route.ts:596-633`).
+            Request::MemoryAnchorGateProbe {
+                character_id,
+                limit,
+            } => match self.ready_memory_embedding() {
+                Ok((db, provider)) => {
+                    super::memories::memory_anchor_gate_probe(
+                        &db,
+                        &provider,
+                        SINGLE_USER_ID,
+                        &character_id,
+                        limit,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
             Request::MemoryConsolidationConfigGet => {
                 p4d265_not_yet_available("memoryConsolidationConfigGet", "P4.D271")
             }

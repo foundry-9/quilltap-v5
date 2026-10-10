@@ -1883,6 +1883,113 @@ pub async fn chat_queue_memories(db: &Db, user_id: &str, chat_id: &str) -> Respo
 
 // === end P4.6BM ===
 
+// === P4.D269: anchor-gate probe (append-only) ===
+
+use super::zod_issues::{key as zod_key, zod_issue_details, zod_uuid_ok, ZodIssue};
+use crate::services::anchor_gate_probe::{run_anchor_gate_probe, RunAnchorGateProbeInput};
+
+/// The issues of v4's `anchorGateProbeSchema` (`route.ts:585-588` —
+/// `z.object({ characterId: z.string().uuid(), limit:
+/// z.number().int().min(1).max(200).optional() })`), in schema order. The
+/// wire types `characterId` as a `String` and `limit` as an `f64` (P4.D269
+/// R-F), so a non-string id or a non-number limit is the dispatch layer's
+/// refusal; everything Zod checks past the type is reproduced here.
+fn anchor_gate_probe_issues(character_id: &str, limit: Option<f64>) -> Vec<ZodIssue> {
+    let mut issues = Vec::new();
+    if !zod_uuid_ok(character_id) {
+        issues.push(ZodIssue::invalid_uuid(vec![zod_key("characterId")]));
+    }
+    if let Some(n) = limit {
+        let path = || vec![zod_key("limit")];
+        if !(n.is_finite() && n.fract() == 0.0) {
+            // `z.int()` on a non-integer: the issue ABORTS the number's later
+            // checks (measured at the pin — `-0.5` carries this issue alone).
+            let as_value = crate::db::js_number_to_json(n);
+            issues.push(ZodIssue::invalid_int_type(path(), Some(&as_value)));
+        } else {
+            // An integer past the safe range keeps going (non-fatal) — `1e20`
+            // carries the safe-int ceiling AND `.max(200)`.
+            if n > MAX_SAFE_INTEGER {
+                issues.push(ZodIssue::too_big_int(path()));
+            }
+            if n < -MAX_SAFE_INTEGER {
+                issues.push(ZodIssue::too_small_int(path()));
+            }
+            if n < 1.0 {
+                issues.push(ZodIssue::too_small_number(json!(1), path()));
+            }
+            if n > 200.0 {
+                issues.push(ZodIssue::too_big_number(json!(200), path()));
+            }
+        }
+    }
+    issues
+}
+
+/// JS `Number.MAX_SAFE_INTEGER`.
+const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
+
+/// v4 `POST /api/v1/memories?action=anchor-gate-probe` — `handleAnchorGateProbe`
+/// (`route.ts:596-633`): the Zod gate (400 `Validation error` + `details`),
+/// the character gate (404 `Character not found`), DEBUG `[Memories API]
+/// Running anchor gate probe {characterId, limit}` (`limit` omitted when
+/// absent), then `runAnchorGateProbe` with NO `embeddingProfileId` → the result
+/// BARE; a failure logs ERROR `[Memories API] Anchor gate probe failed
+/// {characterId, error}` and answers 500 `Anchor gate probe failed`.
+pub async fn memory_anchor_gate_probe<P: EmbeddingProvider + Sync>(
+    db: &Db,
+    provider: &P,
+    user_id: &str,
+    character_id: &str,
+    limit: Option<f64>,
+) -> Response {
+    let issues = anchor_gate_probe_issues(character_id, limit);
+    if !issues.is_empty() {
+        return Response::validation_error(zod_issue_details(&issues));
+    }
+    match character_exists(db, character_id) {
+        Ok(true) => {}
+        Ok(false) => return not_found("Character"),
+        Err(e) => return internal(e),
+    }
+    match limit {
+        Some(n) => tracing::debug!(
+            characterId = character_id,
+            limit = %crate::db::js_number_to_json(n),
+            "[Memories API] Running anchor gate probe"
+        ),
+        None => tracing::debug!(
+            characterId = character_id,
+            "[Memories API] Running anchor gate probe"
+        ),
+    }
+    let input = RunAnchorGateProbeInput {
+        character_id: character_id.to_string(),
+        user_id: user_id.to_string(),
+        limit,
+        embedding_profile_id: None,
+    };
+    match run_anchor_gate_probe(db, provider, &input).await {
+        Ok(result) => match serde_json::to_value(&result) {
+            Ok(body) => Response::Memory(body),
+            Err(e) => anchor_gate_probe_failed(character_id, &e.to_string()),
+        },
+        Err(e) => anchor_gate_probe_failed(character_id, &crate::db::fallback::error_text(&e)),
+    }
+}
+
+/// v4's catch arm: the ERROR line (no error-object argument) + the 500.
+fn anchor_gate_probe_failed(character_id: &str, error: &str) -> Response {
+    tracing::error!(
+        characterId = character_id,
+        error = error,
+        "[Memories API] Anchor gate probe failed"
+    );
+    Response::error(ErrorKind::Internal, "Anchor gate probe failed")
+}
+
+// === end P4.D269 ===
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2001,4 +2108,138 @@ mod tests {
             "{lines:?}"
         );
     }
+
+    // === P4.D269: anchor-gate probe handler pins (append-only) ===
+    struct OneDim;
+    impl crate::model::embedding::EmbeddingProvider for OneDim {
+        async fn generate_embedding_for_user(
+            &self,
+            _text: &str,
+            _user_id: &str,
+            _profile_id: Option<&str>,
+            _priority: crate::model::embedding::EmbeddingPriority,
+        ) -> Result<crate::model::embedding::EmbeddingResult, crate::model::embedding::EmbeddingError>
+        {
+            Ok(crate::model::embedding::EmbeddingResult {
+                embedding: vec![1.0],
+                model: "m".into(),
+                dimensions: 1,
+                provider: "SCRIPTED".into(),
+            })
+        }
+    }
+
+    /// `provisioned()` plus the character the probe's gate looks up.
+    fn provisioned_with_character() -> (tempfile::TempDir, Db) {
+        let (dir, db) = provisioned();
+        let main = dir.path().join("data/quilltap.db");
+        let w = crate::db::Writer::open_writable(&main, PEPPER).unwrap();
+        w.connection()
+            .execute(
+                "INSERT INTO \"characters\" (\"id\", \"userId\", \"name\", \"createdAt\", \"updatedAt\") \
+                 VALUES (?1, ?2, 'A', '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z')",
+                rusqlite::params![CHAR_A, crate::services::provisioning::SINGLE_USER_ID],
+            )
+            .unwrap();
+        (dir, db)
+    }
+
+    fn probe_lines(lines: &[String]) -> Vec<String> {
+        lines
+            .iter()
+            .filter(|l| l.contains("[Memories API]"))
+            .cloned()
+            .collect()
+    }
+
+    /// v4's DEBUG `{characterId, limit}` — `limit` OMITTED when absent (§R.5).
+    #[tokio::test]
+    async fn anchor_probe_logs_v4s_debug_with_and_without_limit() {
+        let (_dir, db) = provisioned_with_character();
+        for (limit, tail) in [(Some(4.0), " limit=4"), (None, "")] {
+            let (guard, logs) = capture_guard();
+            let resp = memory_anchor_gate_probe(&db, &OneDim, "u", CHAR_A, limit).await;
+            drop(guard);
+            assert!(matches!(resp, Response::Memory(_)), "{resp:?}");
+            assert_eq!(
+                probe_lines(&logs.lock().unwrap()),
+                [format!(
+                    "DEBUG quilltap_core::api::memories [Memories API] Running anchor gate probe characterId={CHAR_A}{tail}"
+                )]
+            );
+        }
+    }
+
+    /// The Zod gate and the character gate both answer BEFORE the debug line.
+    #[tokio::test]
+    async fn anchor_probe_refusals_are_silent() {
+        let (_dir, db) = provisioned_with_character();
+        for (id, limit, status) in [
+            ("nope", None, ErrorKind::BadRequest),
+            (CHAR_A, Some(1.5), ErrorKind::BadRequest),
+            (
+                "a0000000-0000-4000-8000-0000000000ff",
+                None,
+                ErrorKind::NotFound,
+            ),
+        ] {
+            let (guard, logs) = capture_guard();
+            let resp = memory_anchor_gate_probe(&db, &OneDim, "u", id, limit).await;
+            drop(guard);
+            assert!(
+                matches!(&resp, Response::Error(e) if e.kind == status),
+                "{resp:?}"
+            );
+            assert!(probe_lines(&logs.lock().unwrap()).is_empty());
+        }
+    }
+
+    /// v5's only `Err` (a vector-index load failure) → v4's ERROR line and 500
+    /// `Anchor gate probe failed` (P4.D269 R-G: v4's own load never rejects —
+    /// the harness pins that both ways as `PROBE_STORE_LOAD_FAILURE`).
+    #[tokio::test]
+    async fn anchor_probe_store_failure_logs_v4s_error_and_answers_500() {
+        let (dir, db) = provisioned_with_character();
+        {
+            let w = crate::db::Writer::open_writable(&dir.path().join("data/quilltap.db"), PEPPER)
+                .unwrap();
+            w.connection()
+                .execute_batch("DROP TABLE \"vector_entries\"")
+                .unwrap();
+        }
+        let (guard, logs) = capture_guard();
+        let resp = memory_anchor_gate_probe(&db, &OneDim, "u", CHAR_A, None).await;
+        drop(guard);
+        assert!(
+            matches!(&resp, Response::Error(e) if e.kind == ErrorKind::Internal && e.message == "Anchor gate probe failed"),
+            "{resp:?}"
+        );
+        let lines = probe_lines(&logs.lock().unwrap());
+        assert_eq!(
+            lines.last().unwrap(),
+            &format!(
+                "ERROR quilltap_core::api::memories [Memories API] Anchor gate probe failed characterId={CHAR_A} error=no such table: vector_entries"
+            )
+        );
+    }
+
+    /// The probe's Zod issues in schema order, measured at the pin.
+    #[test]
+    fn anchor_probe_issues_follow_zod_4() {
+        let render = |id: &str, limit: Option<f64>| {
+            serde_json::to_string(&zod_issue_details(&anchor_gate_probe_issues(id, limit))).unwrap()
+        };
+        assert_eq!(render(CHAR_A, Some(200.0)), "[]");
+        // A non-integer ABORTS the bounds (`-0.5` carries one issue).
+        assert_eq!(
+            render(CHAR_A, Some(-0.5)),
+            r#"[{"expected":"int","format":"safeint","code":"invalid_type","path":["limit"],"message":"Invalid input: expected int, received number"}]"#
+        );
+        // An unsafe integer keeps going.
+        assert!(render(CHAR_A, Some(1e20)).contains(r#""origin":"int""#));
+        assert!(render(CHAR_A, Some(1e20)).contains(r#""maximum":200"#));
+        let both = render("nope", Some(0.0));
+        assert!(both.find("invalid_format").unwrap() < both.find("too_small").unwrap());
+    }
+    // === end ===
 }
