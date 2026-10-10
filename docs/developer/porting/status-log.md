@@ -175629,3 +175629,7 @@ These are exactly the order's published spellings, so no `HANDOFF:` to P4.D273 i
 - **Pins** (in-crate, `captured_with`; not a writer closure): a disk read logs the line exactly once and answers the bytes; an escaping path errs and logs nothing.
 - **Red-first:** by absence (`read_disk_file` did not exist).
 - `sync_engine_equivalence` re-run BY NAME from the pin (lane-private jest mirror): `ok`, 47 scenarios. Its oracle mocks `logger.*`, so no family moves (as the survey predicted).
+
+### Tier 2 item 11 — the store-name writers census
+- NEW `doc_mount_points_name_writers_census`: every production SQL literal that `INSERT`s into `doc_mount_points`, or `UPDATE`s it setting `name`, lives in `db/doc_mount_points.rs`, `db/mount_index_case_repair.rs`, `db/store_name_reconcile.rs` or `services/builtin_mounts.rs` (the four sanctioned writers). **Measured: no other writer** (the expected "none"), and the census sees all four sanctioned ones. A detector self-test covers both write shapes and the lexer's escaped-quote source spelling. 2/2.
+- Tier 2 items 9 (R-L's INFO lines) and 10 (the PATCH raced gate) landed inside units 5 and 6.

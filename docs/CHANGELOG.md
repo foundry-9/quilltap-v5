@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — test(mount-index): P4.D274 the store-name writers census
+
+_No crate versions bumped._
+
+New census `doc_mount_points_name_writers_census`: only the repository, the store-name reconcile, the boot case repair and the built-in re-provision may write a document-store name with raw SQL. No other writer exists.
+
 #### 2026-10-09 — feat(mount-index): P4.D274 unit 8 — the sync engine's disk-read DEBUG line (v4 `197104649`)
 
 _Versions: core 0.0.1271._
