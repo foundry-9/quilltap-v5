@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(wardrobe): P4.D275 A1/A3/A4/A5 — the wear readout from the reader's side (bugs 183 + 184)
+
+_Versions: core 0.0.1267._
+
+Converges the wardrobe tools on v4 `ed8b15b50`, this port's own bug filings 183 and 184:
+
+- **`format_time::format_worn_relative`** (bug 183): the day ladder for a phrase after "last". "last week" becomes "a week ago" and "last month" becomes "a month ago". The shared ladder and the memory-recall labels are untouched.
+- **`wardrobe_list`** (bug 184): reads the ledger through `find_summaries_for_wearer`. Each item gains `worn_by_you` / `last_worn_by_you_at` after the household's `wear_count` / `last_worn_at`. The note is v4's caller-first `formatWardrobeListWearNote` with `listTimes` (`once` / `N×`).
+- **`wardrobe_read`**: v4's reader-first `formatWardrobeWearParagraph` ("You have worn it …; Worn N times in all …").
+- **Descriptions**: both tools' descriptions are regenerated into `data.rs` through `gen-tool-catalog.mjs`. Exactly the two literals moved.
+- **Handler lines** (missing until now): `Wardrobe list completed` (thirteen keys, incl. the new `neverWornByCallerCount`), plus the validation WARN and execution ERROR of both tools. The ERROR carries the bare SQLite text.
+
+`tool_image_generation` gains a `worn_relative` kind, four-field `list_note` rows and v4's jest paragraph shapes (baseline `p4.d275-tool-image-generation`). `wardrobe_tools`, `project_roster_access`, `tool_definitions` and `chat_admin_routes` were regenerated at the pin with no corpus change. All are green.
+
 #### 2026-10-09 — feat(wardrobe): P4.D275 A2 — find_summaries_for_wearer keeps the reader's share apart (bug 184)
 
 _Versions: core 0.0.1266._

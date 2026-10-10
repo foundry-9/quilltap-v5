@@ -270,6 +270,26 @@ pub fn format_relative_days(ts_ms: f64, now_ms: f64) -> String {
     }
 }
 
+/// v4 `formatWornRelative(ts, nowMs = Date.now())` (`lib/wardrobe/
+/// wear-display.ts:79-84`, `ed8b15b50` — bug 183) — [`format_relative_days`]
+/// for a phrase that follows the word "last" (`Worn 4× · last …`, `…, last …
+/// by you.`).
+///
+/// v4's why, carried: the shared ladder answers "last week" and "last month"
+/// for the 7–13 and 30–59 day rungs, which read "last last week" after the
+/// line's own "last", so those two become "a week ago" and "a month ago".
+/// Every other rung passes through unchanged, and the memory-recall labels
+/// that share the ladder ([`crate::memory_weighting::format_relative_age`])
+/// are untouched.
+pub fn format_worn_relative(ts_ms: f64, now_ms: f64) -> String {
+    let phrase = format_relative_days(ts_ms, now_ms);
+    match phrase.as_str() {
+        "last week" => "a week ago".to_string(),
+        "last month" => "a month ago".to_string(),
+        _ => phrase,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -298,6 +318,27 @@ mod tests {
         assert_eq!(at(364.9), "12 months ago");
         assert_eq!(at(365.0), "1 year ago");
         assert_eq!(at(730.0), "2 years ago");
+    }
+
+    /// v4's `wear-display.test.ts` `formatWornRelative` rungs (0/1/3/8/15/45/
+    /// 120 days, `ed8b15b50`): only "last week" / "last month" are re-worded
+    /// (the differential over v4's real function is
+    /// `tool_image_generation_equivalence`'s `worn_relative` rows).
+    #[test]
+    fn format_worn_relative_rewords_only_the_two_last_rungs() {
+        const DAY: f64 = 86_400_000.0;
+        let now = 1_800_000_000_000.0;
+        let at = |days: f64| format_worn_relative(now - days * DAY, now);
+        assert_eq!(at(0.0), "today");
+        assert_eq!(at(1.0), "yesterday");
+        assert_eq!(at(3.0), "3 days ago");
+        assert_eq!(at(8.0), "a week ago");
+        assert_eq!(at(15.0), "2 weeks ago");
+        assert_eq!(at(45.0), "a month ago");
+        assert_eq!(at(120.0), "4 months ago");
+        // The shared ladder itself is unchanged.
+        assert_eq!(format_relative_days(now - 8.0 * DAY, now), "last week");
+        assert_eq!(format_relative_days(now - 45.0 * DAY, now), "last month");
     }
 
     fn chicago() -> TimeZone {
