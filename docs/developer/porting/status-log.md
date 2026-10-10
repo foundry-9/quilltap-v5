@@ -175629,3 +175629,22 @@ The recipe sweep ran from the pin against a scratch worktree at the base `18e41e
   - **GREEN.**
   - **Mutations:** removing both filters reddens all three new cases. Removing only the tier filter reddens `no_query` and `text`. `semantic` stays green because the vector pre-filter still drops the row.
   - **Recorded gap:** the vector pre-filter in isolation is not observable. The tier filter after the semantic branch drops the same row, and "before the top-500" only matters past 500 entries. This lane is fully responsible for the gap (no `memory_service` call on this path).
+
+### Unit 9 landed — `883281ba4`
+
+### Unit 10 — NEW `frozen_archive_tier2_equivalence` (Tier 1 item 11)
+- **Files.** `crates/quilltap-harness/tests/frozen_archive_tier2_equivalence.rs`, `harness/oracle/cases/frozen-archive-tier2.test.ts` (jest, real DB) and `harness/oracle/fixtures/frozen-archive-tier2.json` (33 plant statements, 99 ops).
+- **The v4 side.** It drives v4's REAL cache fns and REAL `invalidateFrozenArchivesForCompletedJob` (`processor-host` doMocked as in v4's own test). It runs over a COPY of the committed `memories` pair with `applyMemoryTiersMigration` applied (encrypted copy). Lines are captured through a transport spliced into the singleton's SHARED transport array, so the `jobs:dispatcher` child is captured, with `module` / `service` / `environment` dropped. Only `Date` is frozen (`nowMs` 2026-06-01).
+- **The v5 side.** `ensure_memory_tiers_columns` runs on the copy, then the same plants, then the same ops through the public fns, with `global_capture` and the per-op ids + lines compared.
+- **Corpus.**
+  - 4 digests about A, 3 about B, 6 self digests: the caps 3 and 5 bite, and `a0004` returns via the fill.
+  - A cold digest and a cold shard, never selected.
+  - A NULL-tier row: v4's `hydrateRawRows` drops it, and so does v5 — KEYSTONE Q2's measurement holds.
+  - A `reinforcedImportance` tie (id ASC), and old-important vs fresh-middling.
+  - An UPPER-CASE id `F2680000-…-0000000C9999`. v4's `MemorySchema` accepts it. `localeCompare` sorts it after `…c0006`; code-unit order sorts it first. The planned `…E0AA` id sorted first under both orders and was replaced.
+  - 10 fillers and two rows for O.
+  - Ops: sizes 4 / 25 / 28 / 60 / default; present `[]`, `[A]`, `[B, A, R]`, `[A, B]`; hits; a generation bump; a size change; a presence change; two chats then `invalidate` (O survives); `invalidateAll` twice (the second is silent); a silent `invalidate`; the 64-chat LRU walk (touch, overflow, hit, miss); the hook for HOUSEKEEPING {O, user-wide, `dryRun: true`, `""`}, CONSOLIDATION {R} and EXTRACTION (no-op), each followed by a `get` that shows a hit or a miss.
+- **Result:** 99/99 GREEN. Fresh NDJSON at `/tmp/p4d268/fa/oracle.ndjson`: `grep -c 'Composed archive'` = 81, `grep -c 'Invalidated frozen memory archives after job'` = 4. All five line classes appear; ≥ 5 hits.
+- **RED at KEYSTONE.** Measured in the scratch base worktree at `18e41e403`, after unit 1 had landed — the KEYSTONE code is identical, so the measurement is equivalent to "before item 2's commit". The family does not compile: `E0432` (`invalidate_all_frozen_archives`, `invalidate_frozen_archives_for_completed_job` unresolved) + `E0061` (5 arguments, not 7). 2 errors.
+- **Mutations:** a code-unit final sort reddens 16 ops; dropping the presence freshness check reddens 1 op.
+- `recipe_sweep.py --self-test` exits 0; the header extracts via `--show`.

@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — test(memory): P4.D268 the frozen_archive_tier2 differential against v4's real cache and job hook
+
+_No crate versions bumped._
+
+New family `frozen_archive_tier2_equivalence`. A jest real-DB case drives v4's real `getOrComputeFrozenArchive`, `invalidateFrozenArchive`, `invalidateAllFrozenArchives` and the job dispatcher's `invalidateFrozenArchivesForCompletedJob`, with `processor-host` mocked as v4's own test does. It runs over a copy of the committed `memories` pair, with v4's real tier migration applied and 33 planted rows. The Rust side replays the same plants and the same 99 ops through v5's cache.
+
+Each op compares the returned ids in order and every `[FrozenArchive]` and job-hook line, including message, key order and values. The corpus covers:
+
+- the digest caps biting, cold rows never selected, and the NULL-tier row v4 drops;
+- the reinforcedImportance id tie-break, and an effective-weight order that differs from importance order;
+- an upper-case id that sorts differently under `localeCompare` and code-unit order;
+- a cache hit, a generation bump, a size change and a presence change;
+- invalidating one character, and invalidating everything twice;
+- the LRU walk, and the job hook's six payload shapes.
+
+All 99 ops match. At the KEYSTONE tip the family does not compile: the two new functions are missing and the archive function takes 5 arguments, not 7. Switching the final sort to code-unit order reddens 16 ops; dropping the presence freshness check reddens 1.
+
 #### 2026-10-09 — feat(generators): P4.D268 the character optimizer learns from hot memories only
 
 _Versions: core 0.0.1274._

@@ -1,0 +1,850 @@
+{
+  "$comment": "P4.D268 (v4 01a83539d: 3f7320138 F5 + d58548051): the frozen archive over the committed memories-{main,mount}.db pair. `plantSql` is executed identically on both sides (explicit uuids + timestamps): R holds four digests about A (the cap of 3 bites), three about B, six self digests (the cap of 5 bites), a COLD digest about A and a cold shard (never selected), a NULL-tier row (v4's hydrateRawRows drops it), a reinforcedImportance tie (the id ASC tie-break), an old-but-important vs fresh-and-middling pair (effective-weight order differs from reinforcedImportance order), an UPPER-CASE id (localeCompare vs code-unit order) and ten fillers; O holds two rows. `ops` run in order against ONE process-global cache per side (reset at case start). Comparands per op: the returned ids (ORDER) and every [FrozenArchive] / job-hook line.",
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "nowMs": 1780272000000,
+  "plantSql": [
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000a0001', 'f2680000-0000-4000-8000-000000000001', 'f2680000-0000-4000-8000-000000000002', 'Content of Digest about A 1.', 'Digest about A 1', '[]', '[]', 0.9, 'CONSOLIDATED', 1, '[]', 0.9, 'semantic', '[]', 'hot', NULL, '[\"f2680000-0000-4000-8000-0000000e0001\", \"f2680000-0000-4000-8000-0000000e0002\", \"f2680000-0000-4000-8000-0000000e0003\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000a0002', 'f2680000-0000-4000-8000-000000000001', 'f2680000-0000-4000-8000-000000000002', 'Content of Digest about A 2.', 'Digest about A 2', '[]', '[]', 0.8, 'CONSOLIDATED', 1, '[]', 0.8, 'semantic', '[]', 'hot', NULL, '[\"f2680000-0000-4000-8000-0000000e0001\", \"f2680000-0000-4000-8000-0000000e0002\", \"f2680000-0000-4000-8000-0000000e0003\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000a0003', 'f2680000-0000-4000-8000-000000000001', 'f2680000-0000-4000-8000-000000000002', 'Content of Digest about A 3.', 'Digest about A 3', '[]', '[]', 0.7, 'CONSOLIDATED', 1, '[]', 0.7, 'semantic', '[]', 'hot', NULL, '[\"f2680000-0000-4000-8000-0000000e0001\", \"f2680000-0000-4000-8000-0000000e0002\", \"f2680000-0000-4000-8000-0000000e0003\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000a0004', 'f2680000-0000-4000-8000-000000000001', 'f2680000-0000-4000-8000-000000000002', 'Content of Digest about A 4.', 'Digest about A 4', '[]', '[]', 0.6, 'CONSOLIDATED', 1, '[]', 0.6, 'semantic', '[]', 'hot', NULL, '[\"f2680000-0000-4000-8000-0000000e0001\", \"f2680000-0000-4000-8000-0000000e0002\", \"f2680000-0000-4000-8000-0000000e0003\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000b0001', 'f2680000-0000-4000-8000-000000000001', 'f2680000-0000-4000-8000-000000000003', 'Content of Digest about B 1.', 'Digest about B 1', '[]', '[]', 0.85, 'CONSOLIDATED', 1, '[]', 0.85, 'semantic', '[]', 'hot', NULL, '[\"f2680000-0000-4000-8000-0000000e0004\", \"f2680000-0000-4000-8000-0000000e0005\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000b0002', 'f2680000-0000-4000-8000-000000000001', 'f2680000-0000-4000-8000-000000000003', 'Content of Digest about B 2.', 'Digest about B 2', '[]', '[]', 0.75, 'CONSOLIDATED', 1, '[]', 0.75, 'semantic', '[]', 'hot', NULL, '[\"f2680000-0000-4000-8000-0000000e0004\", \"f2680000-0000-4000-8000-0000000e0005\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000b0003', 'f2680000-0000-4000-8000-000000000001', 'f2680000-0000-4000-8000-000000000003', 'Content of Digest about B 3.', 'Digest about B 3', '[]', '[]', 0.65, 'CONSOLIDATED', 1, '[]', 0.65, 'semantic', '[]', 'hot', NULL, '[\"f2680000-0000-4000-8000-0000000e0004\", \"f2680000-0000-4000-8000-0000000e0005\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000c0001', 'f2680000-0000-4000-8000-000000000001', 'f2680000-0000-4000-8000-000000000001', 'Content of Self digest 1.', 'Self digest 1', '[]', '[]', 0.95, 'CONSOLIDATED', 1, '[]', 0.95, 'semantic', '[]', 'hot', NULL, '[\"f2680000-0000-4000-8000-0000000e0006\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000c0002', 'f2680000-0000-4000-8000-000000000001', 'f2680000-0000-4000-8000-000000000001', 'Content of Self digest 2.', 'Self digest 2', '[]', '[]', 0.88, 'CONSOLIDATED', 1, '[]', 0.88, 'semantic', '[]', 'hot', NULL, '[\"f2680000-0000-4000-8000-0000000e0006\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000c0003', 'f2680000-0000-4000-8000-000000000001', 'f2680000-0000-4000-8000-000000000001', 'Content of Self digest 3.', 'Self digest 3', '[]', '[]', 0.78, 'CONSOLIDATED', 1, '[]', 0.78, 'semantic', '[]', 'hot', NULL, '[\"f2680000-0000-4000-8000-0000000e0006\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000c0004', 'f2680000-0000-4000-8000-000000000001', 'f2680000-0000-4000-8000-000000000001', 'Content of Self digest 4.', 'Self digest 4', '[]', '[]', 0.68, 'CONSOLIDATED', 1, '[]', 0.68, 'semantic', '[]', 'hot', NULL, '[\"f2680000-0000-4000-8000-0000000e0006\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000c0005', 'f2680000-0000-4000-8000-000000000001', 'f2680000-0000-4000-8000-000000000001', 'Content of Self digest 5.', 'Self digest 5', '[]', '[]', 0.58, 'CONSOLIDATED', 1, '[]', 0.58, 'semantic', '[]', 'hot', NULL, '[\"f2680000-0000-4000-8000-0000000e0006\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000c0006', 'f2680000-0000-4000-8000-000000000001', 'f2680000-0000-4000-8000-000000000001', 'Content of Self digest 6.', 'Self digest 6', '[]', '[]', 0.48, 'CONSOLIDATED', 1, '[]', 0.48, 'semantic', '[]', 'hot', NULL, '[\"f2680000-0000-4000-8000-0000000e0006\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000d0001', 'f2680000-0000-4000-8000-000000000001', 'f2680000-0000-4000-8000-000000000002', 'Content of Cold digest about A.', 'Cold digest about A', '[]', '[]', 0.99, 'CONSOLIDATED', 1, '[]', 0.99, 'semantic', '[]', 'cold', NULL, '[\"f2680000-0000-4000-8000-0000000e0007\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000d0002', 'f2680000-0000-4000-8000-000000000001', NULL, 'Content of Cold shard.', 'Cold shard', '[]', '[]', 0.98, 'AUTO', 1, '[]', 0.98, 'semantic', '[]', 'cold', 'f2680000-0000-4000-8000-0000000c0001', '[]', NULL, '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000d0003', 'f2680000-0000-4000-8000-000000000001', NULL, 'Content of Null-tier row.', 'Null-tier row', '[]', '[]', 0.97, 'AUTO', 1, '[]', 0.97, 'semantic', '[]', NULL, NULL, '[]', NULL, '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000e00b1', 'f2680000-0000-4000-8000-000000000001', NULL, 'Content of Tie one.', 'Tie one', '[]', '[]', 0.5, 'AUTO', 1, '[]', 0.5, 'semantic', '[]', 'hot', NULL, '[]', NULL, '2026-04-01T00:00:00.000Z', '2026-04-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000e00b2', 'f2680000-0000-4000-8000-000000000001', NULL, 'Content of Tie two.', 'Tie two', '[]', '[]', 0.5, 'AUTO', 1, '[]', 0.5, 'semantic', '[]', 'hot', NULL, '[]', NULL, '2026-04-01T00:00:00.000Z', '2026-04-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000e00f1', 'f2680000-0000-4000-8000-000000000001', NULL, 'Content of Old but important.', 'Old but important', '[]', '[]', 0.92, 'AUTO', 1, '[]', 0.92, 'semantic', '[]', 'hot', NULL, '[]', NULL, '2024-01-01T00:00:00.000Z', '2024-01-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000e00f2', 'f2680000-0000-4000-8000-000000000001', NULL, 'Content of Fresh and middling.', 'Fresh and middling', '[]', '[]', 0.72, 'AUTO', 1, '[]', 0.72, 'semantic', '[]', 'hot', NULL, '[]', NULL, '2026-05-30T00:00:00.000Z', '2026-05-30T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('F2680000-0000-4000-8000-0000000C9999', 'f2680000-0000-4000-8000-000000000001', NULL, 'Content of Upper-case id.', 'Upper-case id', '[]', '[]', 0.55, 'AUTO', 1, '[]', 0.55, 'semantic', '[]', 'hot', NULL, '[]', NULL, '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000e1000', 'f2680000-0000-4000-8000-000000000001', NULL, 'Content of Filler 0.', 'Filler 0', '[]', '[]', 0.3, 'AUTO', 1, '[]', 0.3, 'semantic', '[]', 'hot', NULL, '[]', NULL, '2026-01-10T00:00:00.000Z', '2026-01-10T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000e1001', 'f2680000-0000-4000-8000-000000000001', NULL, 'Content of Filler 1.', 'Filler 1', '[]', '[]', 0.315, 'AUTO', 1, '[]', 0.315, 'semantic', '[]', 'hot', NULL, '[]', NULL, '2026-02-11T00:00:00.000Z', '2026-02-11T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000e1002', 'f2680000-0000-4000-8000-000000000001', NULL, 'Content of Filler 2.', 'Filler 2', '[]', '[]', 0.33, 'AUTO', 1, '[]', 0.33, 'semantic', '[]', 'hot', NULL, '[]', NULL, '2026-03-12T00:00:00.000Z', '2026-03-12T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000e1003', 'f2680000-0000-4000-8000-000000000001', NULL, 'Content of Filler 3.', 'Filler 3', '[]', '[]', 0.345, 'AUTO', 1, '[]', 0.345, 'semantic', '[]', 'hot', NULL, '[]', NULL, '2026-04-13T00:00:00.000Z', '2026-04-13T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000e1004', 'f2680000-0000-4000-8000-000000000001', NULL, 'Content of Filler 4.', 'Filler 4', '[]', '[]', 0.36, 'AUTO', 1, '[]', 0.36, 'semantic', '[]', 'hot', NULL, '[]', NULL, '2026-05-14T00:00:00.000Z', '2026-05-14T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000e1005', 'f2680000-0000-4000-8000-000000000001', NULL, 'Content of Filler 5.', 'Filler 5', '[]', '[]', 0.375, 'AUTO', 1, '[]', 0.375, 'semantic', '[]', 'hot', NULL, '[]', NULL, '2026-01-15T00:00:00.000Z', '2026-01-15T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000e1006', 'f2680000-0000-4000-8000-000000000001', NULL, 'Content of Filler 6.', 'Filler 6', '[]', '[]', 0.39, 'AUTO', 1, '[]', 0.39, 'semantic', '[]', 'hot', NULL, '[]', NULL, '2026-02-16T00:00:00.000Z', '2026-02-16T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000e1007', 'f2680000-0000-4000-8000-000000000001', NULL, 'Content of Filler 7.', 'Filler 7', '[]', '[]', 0.405, 'AUTO', 1, '[]', 0.405, 'semantic', '[]', 'hot', NULL, '[]', NULL, '2026-03-17T00:00:00.000Z', '2026-03-17T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000e1008', 'f2680000-0000-4000-8000-000000000001', NULL, 'Content of Filler 8.', 'Filler 8', '[]', '[]', 0.42, 'AUTO', 1, '[]', 0.42, 'semantic', '[]', 'hot', NULL, '[]', NULL, '2026-04-18T00:00:00.000Z', '2026-04-18T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000e1009', 'f2680000-0000-4000-8000-000000000001', NULL, 'Content of Filler 9.', 'Filler 9', '[]', '[]', 0.435, 'AUTO', 1, '[]', 0.435, 'semantic', '[]', 'hot', NULL, '[]', NULL, '2026-05-19T00:00:00.000Z', '2026-05-19T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000f0001', 'f2680000-0000-4000-8000-000000000004', NULL, 'Content of Other one.', 'Other one', '[]', '[]', 0.6, 'AUTO', 1, '[]', 0.6, 'semantic', '[]', 'hot', NULL, '[]', NULL, '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000f0002', 'f2680000-0000-4000-8000-000000000004', 'f2680000-0000-4000-8000-000000000004', 'Content of Other self digest.', 'Other self digest', '[]', '[]', 0.7, 'CONSOLIDATED', 1, '[]', 0.7, 'semantic', '[]', 'hot', NULL, '[\"f2680000-0000-4000-8000-0000000e0008\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')"
+  ],
+  "ops": [
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000001",
+      "chatId": "chat-1",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000001",
+      "chatId": "chat-1",
+      "generation": 0,
+      "size": 25,
+      "present": [
+        "f2680000-0000-4000-8000-000000000002"
+      ]
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000001",
+      "chatId": "chat-1",
+      "generation": 0,
+      "size": 25,
+      "present": [
+        "f2680000-0000-4000-8000-000000000002"
+      ]
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000001",
+      "chatId": "chat-1",
+      "generation": 1,
+      "size": 25,
+      "present": [
+        "f2680000-0000-4000-8000-000000000002"
+      ]
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000001",
+      "chatId": "chat-1",
+      "generation": 1,
+      "size": 28,
+      "present": [
+        "f2680000-0000-4000-8000-000000000002"
+      ]
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000001",
+      "chatId": "chat-1",
+      "generation": 1,
+      "size": 28,
+      "present": [
+        "f2680000-0000-4000-8000-000000000003",
+        "f2680000-0000-4000-8000-000000000002",
+        "f2680000-0000-4000-8000-000000000001"
+      ]
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000001",
+      "chatId": "chat-1",
+      "generation": 1,
+      "size": 28,
+      "present": [
+        "f2680000-0000-4000-8000-000000000002",
+        "f2680000-0000-4000-8000-000000000003"
+      ]
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000001",
+      "chatId": "chat-2",
+      "generation": 0,
+      "size": 60,
+      "present": [
+        "f2680000-0000-4000-8000-000000000002",
+        "f2680000-0000-4000-8000-000000000003"
+      ]
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000001",
+      "chatId": "chat-3",
+      "generation": 0
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "chat-1",
+      "generation": 0,
+      "size": 25,
+      "present": []
+    },
+    {
+      "kind": "invalidate",
+      "characterId": "f2680000-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000001",
+      "chatId": "chat-1",
+      "generation": 1,
+      "size": 28,
+      "present": [
+        "f2680000-0000-4000-8000-000000000002",
+        "f2680000-0000-4000-8000-000000000003"
+      ]
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "chat-1",
+      "generation": 0,
+      "size": 25,
+      "present": []
+    },
+    {
+      "kind": "invalidateAll"
+    },
+    {
+      "kind": "invalidateAll"
+    },
+    {
+      "kind": "invalidate",
+      "characterId": "f2680000-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-0",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-1",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-2",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-3",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-4",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-5",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-6",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-7",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-8",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-9",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-10",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-11",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-12",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-13",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-14",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-15",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-16",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-17",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-18",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-19",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-20",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-21",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-22",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-23",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-24",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-25",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-26",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-27",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-28",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-29",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-30",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-31",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-32",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-33",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-34",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-35",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-36",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-37",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-38",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-39",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-40",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-41",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-42",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-43",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-44",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-45",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-46",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-47",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-48",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-49",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-50",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-51",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-52",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-53",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-54",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-55",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-56",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-57",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-58",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-59",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-60",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-61",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-62",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-63",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-0",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-overflow",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-0",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "lru-1",
+      "generation": 0,
+      "size": 4,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000001",
+      "chatId": "chat-1",
+      "generation": 0,
+      "size": 25,
+      "present": [
+        "f2680000-0000-4000-8000-000000000002"
+      ]
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "chat-1",
+      "generation": 0,
+      "size": 25,
+      "present": []
+    },
+    {
+      "kind": "hook",
+      "jobId": "job-1",
+      "type": "MEMORY_HOUSEKEEPING",
+      "payload": {
+        "characterId": "f2680000-0000-4000-8000-000000000004"
+      }
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000001",
+      "chatId": "chat-1",
+      "generation": 0,
+      "size": 25,
+      "present": [
+        "f2680000-0000-4000-8000-000000000002"
+      ]
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000004",
+      "chatId": "chat-1",
+      "generation": 0,
+      "size": 25,
+      "present": []
+    },
+    {
+      "kind": "hook",
+      "jobId": "job-1",
+      "type": "MEMORY_HOUSEKEEPING",
+      "payload": {
+        "reason": "scheduled"
+      }
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000001",
+      "chatId": "chat-1",
+      "generation": 0,
+      "size": 25,
+      "present": [
+        "f2680000-0000-4000-8000-000000000002"
+      ]
+    },
+    {
+      "kind": "hook",
+      "jobId": "job-1",
+      "type": "MEMORY_HOUSEKEEPING",
+      "payload": {
+        "characterId": "f2680000-0000-4000-8000-000000000001",
+        "dryRun": true
+      }
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000001",
+      "chatId": "chat-1",
+      "generation": 0,
+      "size": 25,
+      "present": [
+        "f2680000-0000-4000-8000-000000000002"
+      ]
+    },
+    {
+      "kind": "hook",
+      "jobId": "job-1",
+      "type": "MEMORY_HOUSEKEEPING",
+      "payload": {
+        "characterId": ""
+      }
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000001",
+      "chatId": "chat-1",
+      "generation": 0,
+      "size": 25,
+      "present": [
+        "f2680000-0000-4000-8000-000000000002"
+      ]
+    },
+    {
+      "kind": "hook",
+      "jobId": "job-1",
+      "type": "MEMORY_CONSOLIDATION",
+      "payload": {
+        "characterId": "f2680000-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000001",
+      "chatId": "chat-1",
+      "generation": 0,
+      "size": 25,
+      "present": [
+        "f2680000-0000-4000-8000-000000000002"
+      ]
+    },
+    {
+      "kind": "hook",
+      "jobId": "job-1",
+      "type": "MEMORY_EXTRACTION",
+      "payload": {
+        "characterId": "f2680000-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "kind": "get",
+      "characterId": "f2680000-0000-4000-8000-000000000001",
+      "chatId": "chat-1",
+      "generation": 0,
+      "size": 25,
+      "present": [
+        "f2680000-0000-4000-8000-000000000002"
+      ]
+    }
+  ]
+}
