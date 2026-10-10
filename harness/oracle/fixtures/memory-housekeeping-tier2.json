@@ -6,7 +6,11 @@
     "charH1": "77777777-7777-4777-8777-777777777777",
     "charH2": "88888888-8888-4888-8888-888888888888",
     "charH3": "99999999-9999-4999-8999-999999999999",
-    "charH4": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    "charH4": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    "charH5": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    "charH6": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    "charH7": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+    "charH8": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
   },
   "seedMemories": [
     { "id": "a1000001-0000-4000-8000-000000000001", "characterId": "77777777-7777-4777-8777-777777777777", "importance": 0.1, "reinforcedImportance": 0.1, "source": "AUTO", "createdAt": "2020-01-01T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": ["a1000006-0000-4000-8000-000000000006"], "vector": [1, 0, 0] },
@@ -28,13 +32,29 @@
     {"id": "a4000002-0000-4000-8000-000000000002", "characterId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "importance": 0.6, "reinforcedImportance": 0.6, "source": "AUTO", "createdAt": "2026-06-30T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": [0.95, 0.31225, 0], "occurredAt": "2026-07-14T00:00:00.000Z", "kind": "episodic"},
     {"id": "a4000003-0000-4000-8000-000000000003", "characterId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "importance": 0.7, "reinforcedImportance": 0.7, "source": "AUTO", "createdAt": "2026-06-30T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": [0, 0, 1], "occurredAt": "2026-07-14T00:00:00.000Z", "kind": "episodic"},
     {"id": "a4000004-0000-4000-8000-000000000004", "characterId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "importance": 0.5, "reinforcedImportance": 0.5, "source": "AUTO", "createdAt": "2026-06-30T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": [0, 0.31225, 0.95], "occurredAt": "2026-07-16T00:00:00.000Z", "kind": "episodic"},
-    {"comment": "P4.d27 / v4 7391404e — a vector from a PREVIOUS embedding profile: four components where this store's meta says three. Its first three components make it a 95%-cosine near-duplicate of a4000001, so if the merge pass ever compared it, it would fold one of them away. It must not: v4's search already returns [] on a dimension-mismatched query, so the new skip is outcome-NEUTRAL (it replaces one warn per entry per sweep with one summary line and saves the call). This seed is what proves the neutrality — and what turns the family red if the skip's condition is ever inverted onto conforming entries.", "id": "a4000005-0000-4000-8000-000000000005", "characterId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "importance": 0.4, "reinforcedImportance": 0.4, "source": "AUTO", "createdAt": "2026-06-30T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": [0.95, 0.31225, 0, 0.001], "occurredAt": "2026-07-16T00:00:00.000Z", "kind": "episodic"}
+    {"comment": "P4.d27 / v4 7391404e — a vector from a PREVIOUS embedding profile: four components where this store's meta says three. Its first three components make it a 95%-cosine near-duplicate of a4000001, so if the merge pass ever compared it, it would fold one of them away. It must not: v4's search already returns [] on a dimension-mismatched query, so the new skip is outcome-NEUTRAL (it replaces one warn per entry per sweep with one summary line and saves the call). This seed is what proves the neutrality — and what turns the family red if the skip's condition is ever inverted onto conforming entries.", "id": "a4000005-0000-4000-8000-000000000005", "characterId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "importance": 0.4, "reinforcedImportance": 0.4, "source": "AUTO", "createdAt": "2026-06-30T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": [0.95, 0.31225, 0, 0.001], "occurredAt": "2026-07-16T00:00:00.000Z", "kind": "episodic"},
+    { "id": "b5000001-0000-4000-8000-000000000001", "characterId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "importance": 0.8, "reinforcedImportance": 0.8, "source": "AUTO", "createdAt": "2026-06-30T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": null },
+    { "id": "b5000002-0000-4000-8000-000000000002", "characterId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "importance": 0.7, "reinforcedImportance": 0.7, "source": "AUTO", "createdAt": "2026-06-30T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": null },
+    { "id": "b5000003-0000-4000-8000-000000000003", "characterId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "importance": 0.1, "reinforcedImportance": 0.1, "source": "AUTO", "createdAt": "2020-01-01T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": null, "tier": "cold" },
+    { "id": "b5000004-0000-4000-8000-000000000004", "characterId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "importance": 0.1, "reinforcedImportance": 0.1, "source": "AUTO", "createdAt": "2020-01-01T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": null, "tier": "cold" },
+    { "id": "b5000005-0000-4000-8000-000000000005", "characterId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "importance": 0.1, "reinforcedImportance": 0.1, "source": "AUTO", "createdAt": "2020-01-01T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": null, "tier": "cold" },
+    { "id": "c6000001-0000-4000-8000-000000000001", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "importance": 0.1, "reinforcedImportance": 0.1, "source": "CONSOLIDATED", "createdAt": "2020-01-01T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": null },
+    { "id": "c6000002-0000-4000-8000-000000000002", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "importance": 0.1, "reinforcedImportance": 0.1, "source": "CONSOLIDATED", "createdAt": "2020-01-01T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": null },
+    { "id": "c6000003-0000-4000-8000-000000000003", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "importance": 0.1, "reinforcedImportance": 0.1, "source": "AUTO", "createdAt": "2020-01-01T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": null },
+    { "id": "d7000001-0000-4000-8000-000000000001", "characterId": "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "importance": 0.1, "reinforcedImportance": 0.1, "source": "AUTO", "createdAt": "2020-01-01T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": [1, 0, 0], "tier": "cold", "supersededById": "d7000009-0000-4000-8000-000000000009" },
+    { "id": "d7000002-0000-4000-8000-000000000002", "characterId": "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "importance": 0.1, "reinforcedImportance": 0.1, "source": "CONSOLIDATED", "createdAt": "2020-01-01T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": [0, 1, 0], "tier": "cold", "supersededById": "d7000009-0000-4000-8000-000000000009", "consolidatedFrom": ["d7000008-0000-4000-8000-000000000008"] },
+    { "id": "d7000003-0000-4000-8000-000000000003", "characterId": "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "importance": 0.1, "reinforcedImportance": 0.1, "source": "MANUAL", "createdAt": "2020-01-01T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": null, "tier": "cold", "supersededById": "d7000009-0000-4000-8000-000000000009" },
+    { "id": "d7000004-0000-4000-8000-000000000004", "characterId": "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "importance": 0.1, "reinforcedImportance": 0.1, "source": "AUTO", "createdAt": "2020-01-01T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": ["d7000001-0000-4000-8000-000000000001"], "vector": null, "tier": "cold" },
+    { "id": "d7000005-0000-4000-8000-000000000005", "characterId": "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "importance": 0.1, "reinforcedImportance": 0.1, "source": "AUTO", "createdAt": "2020-01-01T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": [0, 0, 1], "tier": "cold", "supersededById": "d7000009-0000-4000-8000-000000000009", "updatedAt": "2099-01-01T00:00:00.000Z" },
+    { "id": "e8000001-0000-4000-8000-000000000001", "characterId": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", "importance": 0.9, "reinforcedImportance": 0.9, "source": "MANUAL", "createdAt": "2026-06-30T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": null },
+    { "id": "e8000002-0000-4000-8000-000000000002", "characterId": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", "importance": 0.1, "reinforcedImportance": 0.1, "source": "AUTO", "createdAt": "2020-01-01T00:00:00.000Z", "lastAccessedAt": null, "lastReinforcedAt": null, "reinforcementCount": 1, "relatedMemoryIds": [], "vector": null, "tier": "cold", "supersededById": "e8000009-0000-4000-8000-000000000009" }
   ],
   "seedMetaCharacterIds": [
     "77777777-7777-4777-8777-777777777777",
     "88888888-8888-4888-8888-888888888888",
     "99999999-9999-4999-8999-999999999999",
-    "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
   ],
   "ops": [
     { "kind": "runHousekeeping", "characterId": "99999999-9999-4999-8999-999999999999", "options": { "maxMemories": 3, "dryRun": true } },
@@ -49,6 +69,15 @@
       "options": {
         "mergeSimilar": true
       }
-    }
+    },
+    { "kind": "runHousekeeping", "characterId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "options": { "maxMemories": 2 } },
+    { "kind": "needsHousekeeping", "characterId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "options": { "maxMemories": 5 } },
+    { "kind": "runHousekeeping", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "options": { "maxMemories": 1 } },
+    { "kind": "needsHousekeeping", "characterId": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", "options": { "maxMemories": 100 } },
+    { "kind": "setRetention", "days": 90 },
+    { "kind": "runHousekeeping", "characterId": "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "options": { "dryRun": true } },
+    { "kind": "runHousekeeping", "characterId": "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "options": {} },
+    { "kind": "needsHousekeeping", "characterId": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", "options": { "maxMemories": 100 } },
+    { "kind": "runHousekeeping", "characterId": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", "options": {} }
   ]
 }

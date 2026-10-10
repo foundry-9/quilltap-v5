@@ -1525,6 +1525,7 @@ mod tests {
     /// Build a fresh encrypted DB with the three tables, optionally seeding one
     /// existing memory + its vector, then open a `Db` over it.
     fn make_db(seed: Option<(&str, &str, Vec<f32>)>) -> (TempDir, Db) {
+        crate::test_support::global_capture::install();
         let dir = tempdir().unwrap();
         let path = dir.path().join("main.db");
         {
@@ -1747,16 +1748,15 @@ mod tests {
         // dot([0.97, 0.24310], [1,0]) = 0.97 >= 0.90 -> SKIP_NEAR_DUPLICATE.
         let provider = CannedEmbeddingProvider::new()
             .with_vector("sum\n\nMara trusts the crew.", vec![0.97, 0.243_1]);
-        let (guard, logs) = capture_guard();
-        let outcome = create_memory_with_gate(
-            &db,
-            &provider,
-            &candidate("Mara trusts the crew.", "sum"),
-            &opts(),
-        )
-        .await
-        .unwrap();
-        drop(guard);
+        let (outcome, lines) =
+            crate::test_support::global_capture::capture_async(create_memory_with_gate(
+                &db,
+                &provider,
+                &candidate("Mara trusts the crew.", "sum"),
+                &opts(),
+            ))
+            .await;
+        let outcome = outcome.unwrap();
         assert_eq!(outcome.action, GateAction::SkipNearDuplicate);
         assert_eq!(outcome.memory_id.as_deref(), Some("mem-seed"));
         assert_eq!(
@@ -1774,7 +1774,6 @@ mod tests {
         assert_eq!(cell::<String>(&db, "content"), "Mara trusts the crew.");
         assert_eq!(cell::<Option<Vec<u8>>>(&db, "embedding"), None);
         assert_eq!(vector_bytes(&db), before_vector, "the vector is untouched");
-        let lines = logs.lock().unwrap().clone();
         let line = only_line(
             &lines,
             "[MemoryGate] Near-duplicate absorbed as reinforcement",
@@ -1805,11 +1804,12 @@ mod tests {
         let (_dir, db) = make_db(Some(("Mara trusts the crew.", "sum", vec![1.0, 0.0])));
         let mut snapshot = seed_row(&db);
         snapshot["id"] = Value::String("mem-gone".into());
-        let (guard, logs) = capture_guard();
-        let absorbed = absorb_near_duplicate(&db, &snapshot).await.unwrap();
-        drop(guard);
+        let (absorbed, lines) = crate::test_support::global_capture::capture_async(
+            absorb_near_duplicate(&db, &snapshot),
+        )
+        .await;
+        let absorbed = absorbed.unwrap();
         assert_eq!(absorbed, snapshot);
-        let lines = logs.lock().unwrap().clone();
         let line = only_line(
             &lines,
             "[MemoryGate] Failed to reinforce near-duplicate memory",
@@ -1877,8 +1877,7 @@ mod tests {
             entities: vec!["Lisbon".into()],
             ..Default::default()
         };
-        let (guard, logs) = capture_guard();
-        let (_, novel, counted) = reinforce_memory(
+        let (res, lines) = crate::test_support::global_capture::capture_async(reinforce_memory(
             &db,
             &provider,
             &snapshot,
@@ -1886,17 +1885,15 @@ mod tests {
             "user-1",
             None,
             &anchors,
-        )
-        .await
-        .unwrap();
-        drop(guard);
+        ))
+        .await;
+        let (_, novel, counted) = res.unwrap();
         assert!(novel.is_empty(), "nothing appended at the cap: {novel:?}");
         assert_eq!(counted, 2.0);
         assert_eq!(cell::<String>(&db, "content"), capped);
         assert_eq!(cell::<String>(&db, "entities"), "[\"Mara\",\"Lisbon\"]");
         assert!(provider.calls().is_empty(), "no provider call at the cap");
         assert_eq!(vector_bytes(&db), before_vector);
-        let lines = logs.lock().unwrap().clone();
         let line = only_line(
             &lines,
             "[MemoryGate] Reinforcement footnote cap reached; dropping extra details",
@@ -1937,8 +1934,7 @@ mod tests {
             CannedEmbeddingProvider::new().with_vector(text.clone(), vec![0.0, 1.0]),
         );
         let anchors = EpisodicAnchorView::default();
-        let (guard, logs) = capture_guard();
-        let (_, novel, counted) = reinforce_memory(
+        let (res, lines) = crate::test_support::global_capture::capture_async(reinforce_memory(
             &db,
             &provider,
             &snapshot,
@@ -1946,10 +1942,9 @@ mod tests {
             "user-1",
             None,
             &anchors,
-        )
-        .await
-        .unwrap();
-        drop(guard);
+        ))
+        .await;
+        let (_, novel, counted) = res.unwrap();
         assert_eq!(novel, vec!["Lisbon".to_string()], "capped at 8");
         assert_eq!(counted, 2.0);
         assert_eq!(cell::<String>(&db, "content"), expected_content);
@@ -1959,7 +1954,6 @@ mod tests {
             before_vector,
             "the re-embed rewrote the vector"
         );
-        let lines = logs.lock().unwrap().clone();
         let line = only_line(&lines, "[MemoryGate] Re-embedded memory");
         assert!(line.starts_with("DEBUG "), "{line:?}");
         assert!(line.contains(" memoryId=mem-seed"), "{line:?}");
@@ -2045,6 +2039,7 @@ mod tests {
     }
 
     fn make_tier_db(seeds: &[TierSeed]) -> (TempDir, Db) {
+        crate::test_support::global_capture::install();
         let dir = tempdir().unwrap();
         let path = dir.path().join("main.db");
         {
@@ -2208,15 +2203,13 @@ mod tests {
     #[tokio::test]
     async fn a_vanished_digest_falls_back_to_the_cold_row_unpromoted() {
         let (_d, db) = make_tier_db(&[tier_seed("cold", "cold", Some("gone"), Some(0.95))]);
-        let (guard, logs) = capture_guard();
-        let d = run_cold_gate(&db).await;
-        drop(guard);
+        let (d, lines) =
+            crate::test_support::global_capture::capture_async(run_cold_gate(&db)).await;
         assert_eq!(
             decided(&d),
             ("SKIP_NEAR_DUPLICATE", vec!["cold".to_string()])
         );
         assert_eq!(tier_of(&db, "cold"), ("cold".into(), Some("gone".into())));
-        let lines = logs.lock().unwrap().clone();
         let line = only_line(
             &lines,
             "[MemoryGate] Superseding digest missing; falling back to cold row",
@@ -2241,9 +2234,8 @@ mod tests {
             .read_main(|c| Ok(CharacterVectorStore::load(c, CHAR)?.is_hot("cold")))
             .unwrap();
         assert!(!before, "the store loads it cold first");
-        let (guard, logs) = capture_guard();
-        let d = run_cold_gate(&db).await;
-        drop(guard);
+        let (d, lines) =
+            crate::test_support::global_capture::capture_async(run_cold_gate(&db)).await;
         assert_eq!(decided(&d), ("REINFORCE", vec!["cold".to_string()]));
         let GateDecision::Reinforce { existing } = &d else {
             unreachable!()
@@ -2255,7 +2247,6 @@ mod tests {
             .read_main(|c| Ok(CharacterVectorStore::load(c, CHAR)?.is_hot("cold")))
             .unwrap();
         assert!(after, "R-B: a fresh load answers the promoted row hot");
-        let lines = logs.lock().unwrap().clone();
         let line = only_line(
             &lines,
             "[MemoryGate] Promoted cold memory to hot on re-observation",
@@ -2344,19 +2335,6 @@ mod tests {
     // so the capturing layer over the REAL function is the only proof.
     // -----------------------------------------------------------------------
 
-    /// Install a thread-scoped capturing layer whose guard is held across an
-    /// `await` (the reason this is not `test_support::captured_with`).
-    fn capture_guard() -> (
-        tracing::subscriber::DefaultGuard,
-        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
-    ) {
-        use tracing_subscriber::layer::SubscriberExt;
-        let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
-        let sub =
-            tracing_subscriber::registry().with(crate::test_support::CaptureLayer(logs.clone()));
-        (tracing::subscriber::set_default(sub), logs)
-    }
-
     fn only_line(lines: &[String], needle: &str) -> String {
         let hits: Vec<&String> = lines.iter().filter(|l| l.contains(needle)).collect();
         assert_eq!(hits.len(), 1, "expected exactly one {needle:?}: {lines:?}");
@@ -2372,12 +2350,11 @@ mod tests {
         let provider = CannedEmbeddingProvider::new()
             .with_failure("s\n\nc")
             .with_failure_message("provider exploded");
-        let (guard, logs) = capture_guard();
-        let outcome = create_memory_with_gate(&db, &provider, &candidate("c", "s"), &opts())
-            .await
-            .unwrap();
-        drop(guard);
-        let lines = logs.lock().unwrap().clone();
+        let (outcome, lines) = crate::test_support::global_capture::capture_async(
+            create_memory_with_gate(&db, &provider, &candidate("c", "s"), &opts()),
+        )
+        .await;
+        let outcome = outcome.unwrap();
         assert_eq!(outcome.action, GateAction::SkipEmbeddingFailed);
         let line = only_line(
             &lines,
@@ -2415,8 +2392,7 @@ mod tests {
             "reinforcementCount": 1.0,
         });
         let anchors = crate::episodic::EpisodicAnchorView::default();
-        let (guard, logs) = capture_guard();
-        let (id, _novel, count_for_log) = reinforce_memory(
+        let (res, lines) = crate::test_support::global_capture::capture_async(reinforce_memory(
             &db,
             &provider,
             &existing,
@@ -2424,11 +2400,9 @@ mod tests {
             "user-1",
             None,
             &anchors,
-        )
-        .await
-        .unwrap();
-        drop(guard);
-        let lines = logs.lock().unwrap().clone();
+        ))
+        .await;
+        let (id, _novel, count_for_log) = res.unwrap();
         assert_eq!(id, "mem-seed");
         assert_eq!(
             count_for_log, 1.0,
@@ -2466,8 +2440,7 @@ mod tests {
             occurred_at: Some("2021-05-05T00:00:00.000Z".to_string()),
             ..Default::default()
         };
-        let (guard, logs) = capture_guard();
-        let (id, _novel, count_for_log) = reinforce_memory(
+        let (res, lines) = crate::test_support::global_capture::capture_async(reinforce_memory(
             &db,
             &provider,
             &existing,
@@ -2475,11 +2448,9 @@ mod tests {
             "user-1",
             None,
             &anchors,
-        )
-        .await
-        .unwrap();
-        drop(guard);
-        let lines = logs.lock().unwrap().clone();
+        ))
+        .await;
+        let (id, _novel, count_for_log) = res.unwrap();
         assert_eq!(id, "mem-seed");
         assert_eq!(count_for_log, 2.0, "the reinforcement itself still landed");
         let line = only_line(&lines, "[MemoryGate] Failed to re-embed memory");

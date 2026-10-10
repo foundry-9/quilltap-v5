@@ -16,6 +16,25 @@
 //! proven by op 4's totalBefore). The `needsHousekeeping` ops bank both the
 //! preview-driven false and the 80%-watermark true.
 //!
+//! ## P4.D266 — housekeeping DEMOTES (v4 `d58548051`, pin `01a83539d`)
+//!
+//! Every former deletion is now a demotion to the cold tier (`demoted` /
+//! `demotedIds` / `coldCount` in the result, `tier = 'cold'` in the dump); the
+//! merge pass is retired (`mergeSimilar: true` accepted and ignored — H2/H4).
+//! Four new characters: H5 (cold rows excluded from the cap + `coldCount`; a
+//! `needsHousekeeping` whose all-tier count would trip the 80% check but whose
+//! HOT count does not), H6 (CONSOLIDATED digests protected over the cap), H7 (a
+//! zero-hot, cold-only character — no early return — swept by the retention
+//! pass after a `setRetention` op writes `memoryConsolidation.coldRetentionDays`
+//! through v4's REAL `setMemoryConsolidationSettings` / v5's C1 setter: the
+//! superseded AUTO row AND the superseded CONSOLIDATED digest go —
+//! `RETENTION_DELETES_SUPERSEDED_DIGEST`, faithful to v4 at `01a83539d`; a v4
+//! fix flips this row — while MANUAL, unsuperseded and FUTURE-`updatedAt`
+//! rows stay; a dry run first), H8 (the only work is retention:
+//! `needsHousekeeping` false before the setting, true after). The results are
+//! compared BYTE-wise in v4's key order; the fixture's `instance_settings`
+//! table comes from v4's own `create-instance-settings-table` migration (M2).
+//!
 //! NORMALIZATION: sentinel-aware minted-`updatedAt` placeholder on the
 //! `memories` / `vector_indices` dumps (chokepoint neighbour scrub / store
 //! flush mint), and in the RESULTS the age/inactive month numbers inside detail
@@ -69,15 +88,21 @@ struct Spec {
     test_pepper_base64: String,
     #[serde(rename = "seedTimestamp")]
     seed_timestamp: String,
+    #[serde(rename = "seedMemories")]
+    seed_memories: Vec<Value>,
     ops: Vec<Op>,
 }
 
 #[derive(Deserialize)]
 struct Op {
     kind: String,
-    #[serde(rename = "characterId")]
+    #[serde(rename = "characterId", default)]
     character_id: String,
+    #[serde(default)]
     options: Value,
+    /// `setRetention` (P4.D266): `memoryConsolidation.coldRetentionDays`.
+    #[serde(default)]
+    days: Option<i64>,
 }
 
 fn options_from_json(v: &Value) -> HousekeepingOptions {
@@ -92,26 +117,44 @@ fn options_from_json(v: &Value) -> HousekeepingOptions {
         merge_similar: v.get("mergeSimilar").and_then(Value::as_bool),
         merge_threshold: v.get("mergeThreshold").and_then(Value::as_f64),
         dry_run: v.get("dryRun").and_then(Value::as_bool),
+        count_source: None,
     }
 }
 
+/// v4's `HousekeepingResult` in ITS key order (`d58548051`: `deleted, demoted,
+/// merged, kept, totalBefore, totalAfter, coldCount, capUsed, deletedIds,
+/// demotedIds, mergedIds, details`) — the comparison is BYTE-wise, so the order
+/// is part of the comparand. A detail's `summary` is omitted when absent (the
+/// retention rows carry none).
 fn result_to_json(r: &HousekeepingResult) -> Value {
-    json!({
-        "deleted": r.deleted,
-        "merged": r.merged,
-        "kept": r.kept,
-        "totalBefore": r.total_before,
-        "totalAfter": r.total_after,
-        "capUsed": r.cap_used,
-        "deletedIds": r.deleted_ids,
-        "mergedIds": r.merged_ids,
-        "details": r.details.iter().map(|d| json!({
-            "memoryId": d.memory_id,
-            "action": d.action,
-            "reason": d.reason,
-            "summary": d.summary,
-        })).collect::<Vec<_>>(),
-    })
+    let details: Vec<Value> = r
+        .details
+        .iter()
+        .map(|d| {
+            let mut o = serde_json::Map::new();
+            o.insert("memoryId".into(), json!(d.memory_id));
+            o.insert("action".into(), json!(d.action));
+            o.insert("reason".into(), json!(d.reason));
+            if let Some(summary) = &d.summary {
+                o.insert("summary".into(), json!(summary));
+            }
+            Value::Object(o)
+        })
+        .collect();
+    let mut o = serde_json::Map::new();
+    o.insert("deleted".into(), json!(r.deleted));
+    o.insert("demoted".into(), json!(r.demoted));
+    o.insert("merged".into(), json!(r.merged));
+    o.insert("kept".into(), json!(r.kept));
+    o.insert("totalBefore".into(), json!(r.total_before));
+    o.insert("totalAfter".into(), json!(r.total_after));
+    o.insert("coldCount".into(), json!(r.cold_count));
+    o.insert("capUsed".into(), json!(r.cap_used));
+    o.insert("deletedIds".into(), json!(r.deleted_ids));
+    o.insert("demotedIds".into(), json!(r.demoted_ids));
+    o.insert("mergedIds".into(), json!(r.merged_ids));
+    o.insert("details".into(), Value::Array(details));
+    Value::Object(o)
 }
 
 /// Placeholder every "<number> months" in a reason string — the month values
@@ -153,8 +196,10 @@ fn normalize_results(results: &mut Value) {
     }
 }
 
-/// Collapse a non-sentinel `updatedAt` to `<ts>`, in place (sentinel = seed value).
-fn normalize_dump(dump: &mut Value, sentinel: &str, label: &str) {
+/// Collapse a non-sentinel `updatedAt` to `<ts>`, in place. The sentinels are
+/// the seed timestamp plus every seed's own pinned `updatedAt` (P4.D266: the
+/// retention corpus pins a FUTURE one).
+fn normalize_dump(dump: &mut Value, sentinels: &[String], label: &str) {
     let rows = dump
         .get_mut("rows")
         .and_then(Value::as_array_mut)
@@ -163,7 +208,7 @@ fn normalize_dump(dump: &mut Value, sentinel: &str, label: &str) {
         let obj = row
             .as_object_mut()
             .unwrap_or_else(|| panic!("{label}: row is not an object"));
-        let bump = matches!(obj.get("updatedAt"), Some(Value::String(s)) if s != sentinel);
+        let bump = matches!(obj.get("updatedAt"), Some(Value::String(s)) if !sentinels.contains(s));
         if bump {
             obj.insert("updatedAt".to_string(), Value::String("<ts>".to_string()));
         }
@@ -242,6 +287,18 @@ async fn memory_housekeeping_tier2_matches_oracle() {
                     .unwrap_or_else(|e| panic!("op[{i}] needsHousekeeping: {e:?}"));
                 got_results.push(Value::Bool(b));
             }
+            "setRetention" => {
+                let days = op.days.expect("setRetention carries days");
+                db.write(move |w| {
+                    quilltap_core::db::instance_settings::set_memory_consolidation_settings(
+                        w.main().connection(),
+                        &json!({ "coldRetentionDays": days }),
+                    )
+                })
+                .await
+                .unwrap_or_else(|e| panic!("op[{i}] setRetention: {e:?}"));
+                got_results.push(Value::Null);
+            }
             other => panic!("unknown op kind {other}"),
         }
     }
@@ -261,10 +318,29 @@ async fn memory_housekeeping_tier2_matches_oracle() {
         oracle_line(&oracle_text, |v| v.get("results").is_some(), "results")["results"].clone();
     normalize_results(&mut got_results);
     normalize_results(&mut want_results);
+    // BYTE-wise (a `preserve_order` map's `==` is order-blind).
+    let (got_s, want_s) = (got_results.to_string(), want_results.to_string());
     assert_eq!(
-        got_results, want_results,
-        "per-op results diverged\n  rust:   {got_results}\n  oracle: {want_results}"
+        got_s, want_s,
+        "per-op results diverged\n  rust:   {got_s}\n  oracle: {want_s}"
     );
+    // Silent-stale guard: the rebuilt corpus really demotes and really deletes
+    // through the retention sweep.
+    assert!(
+        want_s.contains("\"demoted\":"),
+        "no `demoted` key — a stale oracle?"
+    );
+    assert!(
+        want_s.contains("retention window"),
+        "no retention delete in the oracle — the setting never landed?"
+    );
+
+    let mut sentinels: Vec<String> = vec![spec.seed_timestamp.clone()];
+    for seed in &spec.seed_memories {
+        if let Some(u) = seed.get("updatedAt").and_then(Value::as_str) {
+            sentinels.push(u.to_string());
+        }
+    }
 
     // Dumps: sentinel-aware minted-updatedAt placeholder.
     for (i, t) in TABLES.iter().enumerate() {
@@ -273,12 +349,8 @@ async fn memory_housekeeping_tier2_matches_oracle() {
             |v| v.get("table").and_then(Value::as_str) == Some(t),
             t,
         );
-        normalize_dump(
-            &mut got_dumps[i],
-            &spec.seed_timestamp,
-            &format!("rust {t}"),
-        );
-        normalize_dump(&mut want, &spec.seed_timestamp, &format!("oracle {t}"));
+        normalize_dump(&mut got_dumps[i], &sentinels, &format!("rust {t}"));
+        normalize_dump(&mut want, &sentinels, &format!("oracle {t}"));
         assert_eq!(
             got_dumps[i]["columns"], want["columns"],
             "{t} column set / order"
@@ -290,27 +362,24 @@ async fn memory_housekeeping_tier2_matches_oracle() {
         );
     }
 
-    // Sanity (fresh-date corpus): H1 keeps 4 of 7, H2 keeps 2 of 3, H3 keeps 3
-    // of 5 → 9 memories. H4 (the episodic date-guard character) keeps 4 of 5:
-    // its same-occasion near-duplicate pair merges, its >7-days-apart pair does
-    // NOT — the guard — and its P4.d27 mismatched-width seed survives untouched.
+    // Sanity (fresh-date corpus). P4.D266 (`d58548051`): housekeeping DEMOTES,
+    // so the twenty pre-round seeds all survive (H1's / H3's former deletions
+    // are now `tier = 'cold'` rows, and the retired merge pass folds nothing).
+    // The fifteen new seeds lose exactly the two expired superseded cold rows
+    // of H7 (AUTO + the CONSOLIDATED digest — RETENTION_DELETES_SUPERSEDED_DIGEST)
+    // and H8's one: 20 + 15 − 3 = 32 memories; 12 + 3 − 2 = 13 entries (H7's
+    // two deleted rows carried vectors).
     //
     // ⚠ These are HAND COUNTS after a passing row diff, so they check the CORPUS,
-    // not the port (`harness-corpus-shape-constants-rot`). The memories number was
-    // already stale when P4.d27 arrived — the committed 13 against an actual 12 —
-    // which nothing noticed because the family SKIPs without its env vars. Both
-    // numbers were re-measured against the pre-seed corpus at that point (12 / 7)
-    // and again after (13 / 8), and the +1 each is exactly the new seed and its
-    // entry: `deletedIds` and `mergedIds` are IDENTICAL across the two runs, which
-    // is the proof that the mismatched-width seed changes no merge decision.
+    // not the port (`harness-corpus-shape-constants-rot`).
     assert_eq!(
         got_dumps[0]["rows"].as_array().unwrap().len(),
-        13,
+        32,
         "memories survivors"
     );
     assert_eq!(
         got_dumps[2]["rows"].as_array().unwrap().len(),
-        8,
+        13,
         "vector_entries survivors"
     );
 

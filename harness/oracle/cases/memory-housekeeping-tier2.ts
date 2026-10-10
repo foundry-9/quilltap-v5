@@ -36,9 +36,11 @@ import { tmpdir } from 'node:os';
 import { canonicalizeRows } from '../lib/tier2.js';
 
 interface Op {
-  kind: 'runHousekeeping' | 'needsHousekeeping';
-  characterId: string;
-  options: Record<string, unknown>;
+  kind: 'runHousekeeping' | 'needsHousekeeping' | 'setRetention';
+  characterId?: string;
+  options?: Record<string, unknown>;
+  /** setRetention: `memoryConsolidation.coldRetentionDays` (P4.D266). */
+  days?: number;
 }
 interface Spec {
   testPepperBase64: string;
@@ -71,6 +73,7 @@ async function main(): Promise<void> {
 
   const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
   const { runHousekeeping, needsHousekeeping } = await import('@/lib/memory/housekeeping');
+  const { setMemoryConsolidationSettings } = await import('@/lib/instance-settings');
 
   await initializeDatabase();
 
@@ -78,10 +81,16 @@ async function main(): Promise<void> {
   for (const op of spec.ops) {
     switch (op.kind) {
       case 'runHousekeeping':
-        results.push(await runHousekeeping(op.characterId, op.options));
+        results.push(await runHousekeeping(op.characterId!, op.options));
         break;
       case 'needsHousekeeping':
-        results.push(await needsHousekeeping(op.characterId, op.options));
+        results.push(await needsHousekeeping(op.characterId!, op.options));
+        break;
+      case 'setRetention':
+        // v4's REAL settings writer (the merge-then-validate the Rust side's
+        // `set_memory_consolidation_settings` mirrors).
+        await setMemoryConsolidationSettings({ coldRetentionDays: op.days });
+        results.push(null);
         break;
       default:
         throw new Error(`unknown op kind: ${(op as Op).kind}`);

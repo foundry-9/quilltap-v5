@@ -1,29 +1,30 @@
 //! The **memory housekeeping** service — v4 `lib/memory/housekeeping.ts`
-//! (`runHousekeeping` / `getHousekeepingPreview` / `needsHousekeeping`): the
-//! retention sweep the `MEMORY_HOUSEKEEPING` job runs (v4's original reason for
-//! the child-process writer).
+//! (`runHousekeeping` / `getHousekeepingPreview` / `needsHousekeeping`) at the
+//! `01a83539d` pin: the sweep the `MEMORY_HOUSEKEEPING` job and the Memories
+//! API's `?action=housekeep` run.
 //!
-//! Three passes over a character's memories, then one gated apply:
+//! Since v4 `d58548051` housekeeping keeps the HOT tier within its cap by
+//! DEMOTING rows to the cold tier; it never destroys history by policy. Over
+//! the character's hot rows (cold rows are the archive — counted as
+//! `coldCount`, never demoted):
 //!
-//! 1. **Retention policy** — every memory is scored by the blended protection
-//!    gate (`source == "MANUAL"` is a hard override; otherwise
-//!    [`calculate_protection_score`] `>= PROTECTION_THRESHOLD`), and an
-//!    unprotected memory is deleted only when it is BOTH below the importance
-//!    floor AND old AND inactive (no `lastAccessedAt`, or inactive past the
-//!    window).
-//! 2. **Similarity merge** (opt-in `merge_similar`) — searches the character's
-//!    stored vector index against itself (no model call: the embeddings are
-//!    already persisted) and folds near-duplicates (`>= merge_threshold`) into
-//!    the more-important / newer survivor. Note the merge pass does NOT consult
-//!    the protection gate — faithful to v4.
-//! 3. **Cap enforcement** — if still over `max_memories`, deletes the
-//!    lowest-effective-weight unprotected memories from the tail. Skipped
-//!    entirely when every remaining memory is protected (v4's cheap pre-check).
+//! 1. **Retention policy** — every hot memory is scored by the blended
+//!    protection gate (`MANUAL` and `CONSOLIDATED` are hard overrides;
+//!    otherwise [`calculate_protection_score`] `>= PROTECTION_THRESHOLD`), and
+//!    an unprotected memory is demoted only when it is BOTH below the
+//!    importance floor AND old AND inactive.
+//! 2. **Similarity merge** — RETIRED in favour of consolidation; `mergeSimilar`
+//!    is accepted and ignored (one DEBUG).
+//! 3. **Cap enforcement** — if still over `max_memories`, demotes the
+//!    lowest-effective-weight unprotected rows from the tail, rewriting the
+//!    pass-1 detail in place.
 //!
-//! The apply (skipped on `dry_run`) deletes through the chokepoint
-//! (`delete_many_with_unlink`, so neighbours' `relatedMemoryIds` are scrubbed)
-//! and then removes the deleted ids from the vector store (non-fatal, like v4's
-//! try/catch). Reasons are formatted with the ported JS `toFixed`
+//! The only deletion is the opt-in **retention sweep**
+//! (`memoryConsolidation.coldRetentionDays`): superseded cold non-MANUAL rows
+//! older than the window go through the chokepoint
+//! (`delete_many_with_unlink`), then out of the vector store (non-fatal, v4's
+//! WARN). A sweep that changed anything invalidates the character's frozen
+//! archive. Reasons are formatted with the ported JS `toFixed`
 //! ([`crate::jsnum::to_fixed`]) so the detail strings match v4 byte-for-byte at
 //! equal wall-clock.
 //!
@@ -36,6 +37,7 @@ use std::collections::{HashMap, HashSet};
 
 use serde_json::Value;
 
+use crate::db::memories::{CountSource, TierExtra};
 use crate::db::runtime::Db;
 use crate::db::vector_store::CharacterVectorStore;
 use crate::db::{memories_read, DbError};
@@ -57,20 +59,27 @@ const MS_PER_MONTH: f64 = 1000.0 * 60.0 * 60.0 * 24.0 * 30.0;
 /// Housekeeping options (v4 `HousekeepingOptions`); `None` takes the v4 default.
 #[derive(Debug, Clone, Default)]
 pub struct HousekeepingOptions {
-    /// Maximum number of memories to keep (default 2000).
+    /// Maximum number of HOT memories to keep (default 2000).
     pub max_memories: Option<usize>,
-    /// Delete unimportant memories older than this many months (default 6).
+    /// Demote unimportant memories older than this many months (default 6).
     pub max_age_months: Option<f64>,
     /// ... and not accessed in this many months (default 6).
     pub max_inactive_months: Option<f64>,
     /// Importance floor below which old/inactive memories go (default 0.3).
     pub min_importance: Option<f64>,
-    /// Merge semantically similar memories (default false).
+    /// Retired in favour of consolidation: accepted, ignored (default false;
+    /// `true` logs one DEBUG — R-F).
     pub merge_similar: Option<bool>,
-    /// Similarity threshold for merging (default 0.9).
+    /// Retired with the merge pass: accepted, read by nothing (v4's `0.9`
+    /// survives in its `DEFAULT_OPTIONS` only — R-F).
     pub merge_threshold: Option<f64>,
     /// Preview without applying (default false).
     pub dry_run: Option<bool>,
+    /// The F8 `countSource` label on the retention delete's batch lines (R-C):
+    /// `None` → [`CountSource::Repository`] (v4's parent — the Memories API);
+    /// the `MEMORY_HOUSEKEEPING` job passes [`CountSource::ResolvedIds`] (v4's
+    /// child).
+    pub count_source: Option<CountSource>,
 }
 
 /// The resolved defaults (v4 `DEFAULT_OPTIONS`).
@@ -80,8 +89,8 @@ struct ResolvedOptions {
     max_inactive_months: f64,
     min_importance: f64,
     merge_similar: bool,
-    merge_threshold: f64,
     dry_run: bool,
+    count_source: CountSource,
 }
 
 impl HousekeepingOptions {
@@ -92,8 +101,8 @@ impl HousekeepingOptions {
             max_inactive_months: self.max_inactive_months.unwrap_or(6.0),
             min_importance: self.min_importance.unwrap_or(0.3),
             merge_similar: self.merge_similar.unwrap_or(false),
-            merge_threshold: self.merge_threshold.unwrap_or(0.9),
             dry_run: self.dry_run.unwrap_or(false),
+            count_source: self.count_source.unwrap_or(CountSource::Repository),
         }
     }
 }
@@ -102,24 +111,37 @@ impl HousekeepingOptions {
 #[derive(Debug, Clone, PartialEq)]
 pub struct HousekeepingDetail {
     pub memory_id: String,
-    /// `"deleted"` / `"merged"` / `"kept"`.
+    /// `"deleted"` / `"demoted"` / `"merged"` / `"kept"` (`"merged"` is
+    /// retired — no path emits it since `d58548051`).
     pub action: &'static str,
     pub reason: String,
     pub summary: Option<String>,
 }
 
-/// The sweep's result (v4 `HousekeepingResult`).
+/// The sweep's result (v4 `HousekeepingResult`; every serializer writes v4's
+/// key order: `deleted, demoted, merged, kept, totalBefore, totalAfter,
+/// coldCount, capUsed, deletedIds, demotedIds, mergedIds, details`).
 #[derive(Debug, Clone, Default)]
 pub struct HousekeepingResult {
+    /// Rows deleted — the retention sweep only (expired, superseded cold rows).
     pub deleted: i64,
+    /// Hot rows moved to the cold tier.
+    pub demoted: i64,
+    /// Retired: always 0.
     pub merged: usize,
     pub kept: i64,
+    /// HOT rows before the sweep (the number the cap is measured against).
     pub total_before: usize,
+    /// HOT rows after the sweep.
     pub total_after: i64,
+    /// Cold (archived) rows the character holds, untouched by demotion.
+    pub cold_count: usize,
     /// The effective cap used for this sweep.
     pub cap_used: usize,
     pub deleted_ids: Vec<String>,
-    /// Source memories that were merged into others.
+    /// Ids moved to the cold tier (pass-1 then pass-3 insertion order).
+    pub demoted_ids: Vec<String>,
+    /// Retired: always empty.
     pub merged_ids: Vec<String>,
     pub details: Vec<HousekeepingDetail>,
 }
@@ -133,9 +155,8 @@ struct Mem {
     created_at_ms: f64,
     inputs: MemoryInputs,
     last_accessed_at_ms: Option<f64>,
-    /// The raw `occurredAt` string, for the merge pass's episodic date guard
-    /// (`occasionsAreDistinct` parses the ISO text itself).
-    occurred_at: Option<String>,
+    /// v4's services-side `m.tier === 'cold'` (§R.4(b)): NULL / absent is hot.
+    cold: bool,
 }
 
 fn parse_mem(v: &Value) -> Mem {
@@ -176,22 +197,24 @@ fn parse_mem(v: &Value) -> Mem {
             ),
         },
         last_accessed_at_ms,
-        occurred_at: str_of("occurredAt"),
+        cold: v.get("tier").and_then(Value::as_str) == Some("cold"),
     }
 }
 
-/// v4 `isProtectedMemory`: MANUAL is a hard override; otherwise the blended
-/// protection score decides.
+/// v4 `isProtectedMemory`: MANUAL is explicit user intent and CONSOLIDATED
+/// digests are the surviving record of their archived members — neither is
+/// ever demoted by policy; otherwise the blended protection score decides.
 fn is_protected(mem: &Mem, now_ms: f64) -> bool {
-    if mem.source == "MANUAL" {
+    if mem.source == "MANUAL" || mem.source == "CONSOLIDATED" {
         return true;
     }
     calculate_protection_score(&mem.inputs, &DEFAULT_PROTECTION_CONFIG, now_ms).score
         >= PROTECTION_THRESHOLD
 }
 
-/// v4 `shouldDeleteMemory`: the retention-policy check for one memory.
-/// Returns `(should_delete, reason)`.
+/// v4 `shouldDeleteMemory`: the retention-policy check for one memory — since
+/// `d58548051` its verdict means DEMOTE (the reasons are unchanged). Returns
+/// `(should_demote, reason)`.
 fn should_delete(
     mem: &Mem,
     now_ms: f64,
@@ -237,15 +260,16 @@ fn should_delete(
     (false, "within retention policy".to_string())
 }
 
-/// Insertion-ordered delete set (JS `Set` keeps insertion order, and
-/// `deletedIds = Array.from(deleteSet)` depends on it).
+/// Insertion-ordered demote set (JS `Set` keeps insertion order, and
+/// `demotedIds = Array.from(demoteSet)` depends on it — pass-1 ids, then
+/// pass-3's).
 #[derive(Default)]
-struct DeleteSet {
+struct DemoteSet {
     ids: Vec<String>,
     index: HashSet<String>,
 }
 
-impl DeleteSet {
+impl DemoteSet {
     fn insert(&mut self, id: &str) {
         if self.index.insert(id.to_string()) {
             self.ids.push(id.to_string());
@@ -256,7 +280,55 @@ impl DeleteSet {
     }
 }
 
-/// Run housekeeping on a character's memories (v4 `runHousekeeping`).
+/// JS `new Date(ms).toISOString()` for the retention cutoff (R-J): `None` is
+/// v4's `RangeError: Invalid time value` (a non-finite value, or one outside
+/// ECMAScript's ±8.64e15 ms time range); years outside 0–9999 render in the
+/// extended `±YYYYYY` form, as V8 prints them.
+fn js_iso_string(ms: f64) -> Option<String> {
+    if !ms.is_finite() || ms.abs() > 8.64e15 {
+        return None;
+    }
+    // TimeClip: ToIntegerOrInfinity truncates toward zero.
+    let ms = ms.trunc() as i64;
+    let days = ms.div_euclid(86_400_000);
+    let rem = ms.rem_euclid(86_400_000);
+    let (y, mo, d) = crate::clock::civil_from_days(days);
+    let year = if (0..=9999).contains(&y) {
+        format!("{y:04}")
+    } else if y < 0 {
+        format!("-{:06}", -y)
+    } else {
+        format!("+{y:06}")
+    };
+    Some(format!(
+        "{year}-{mo:02}-{d:02}T{:02}:{:02}:{:02}.{:03}Z",
+        rem / 3_600_000,
+        (rem / 60_000) % 60,
+        (rem / 1000) % 60,
+        rem % 1000
+    ))
+}
+
+/// Run housekeeping on a character's memories (v4 `runHousekeeping`,
+/// `housekeeping.ts:195-436` at `01a83539d` — the `d58548051` rewrite).
+///
+/// Housekeeping keeps the HOT tier within its cap by moving the least valuable
+/// rows to the COLD tier (the archive). It never destroys history by policy:
+/// the only deletion is the retention sweep, which removes cold rows that a
+/// digest has superseded once they are older than
+/// `memoryConsolidation.coldRetentionDays` (default: never).
+///
+/// - Pass 1 demotes low-importance, old, inactive rows.
+/// - Pass 2 (`mergeSimilar`) is retired in favour of consolidation; the option
+///   is still accepted for back-compat but does nothing (one DEBUG, R-F).
+/// - Pass 3 demotes the lowest-weighted unprotected rows until the hot tier
+///   fits the cap — MUTATING the pass-1 detail in place.
+/// - Retention deletes expired, superseded, cold non-MANUAL rows (R-A: v4's
+///   SQL is `source != 'MANUAL'`, so a superseded CONSOLIDATED digest goes too
+///   — faithful at `01a83539d`).
+///
+/// MANUAL rows and CONSOLIDATED digests are never demoted here. A sweep that
+/// changed anything invalidates the character's frozen archive.
 pub async fn run_housekeeping(
     db: &Db,
     character_id: &str,
@@ -270,256 +342,214 @@ pub async fn run_housekeeping(
     let batches = db.read_main(move |conn| {
         memories_read::find_by_character_id_in_batches(conn, &char_id, LOAD_BATCH_SIZE)
     })?;
-    let memories: Vec<Mem> = batches.iter().flatten().map(parse_mem).collect();
+    let all: Vec<Mem> = batches.iter().flatten().map(parse_mem).collect();
+    // The cap, the passes and the counts below all speak of the hot tier; cold
+    // rows are the archive and are only touched by the retention sweep.
+    let all_count = all.len();
+    let memories: Vec<Mem> = all.into_iter().filter(|m| !m.cold).collect();
+    let cold_count = all_count - memories.len();
     let total_before = memories.len();
 
     let mut result = HousekeepingResult {
+        total_before,
         total_after: total_before as i64,
+        cold_count,
         cap_used: opts.max_memories,
         ..Default::default()
     };
-    result.total_before = total_before;
 
-    if memories.is_empty() {
-        return Ok(result);
-    }
+    tracing::debug!(
+        characterId = character_id,
+        hot = total_before,
+        cold = cold_count,
+        cap = opts.max_memories,
+        dryRun = opts.dry_run,
+        "[Housekeeping] Starting sweep"
+    );
 
-    // Importance descending, then createdAt DESCENDING on ties (the v4 comment
-    // says "creation date ascending" but the code subtracts the other way —
-    // port the code, not the comment). Stable sort matches V8.
-    let mut sorted: Vec<&Mem> = memories.iter().collect();
-    sorted.sort_by(|a, b| {
-        b.importance
-            .partial_cmp(&a.importance)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then(
-                b.created_at_ms
-                    .partial_cmp(&a.created_at_ms)
-                    .unwrap_or(std::cmp::Ordering::Equal),
-            )
-    });
-
-    let mut delete_set = DeleteSet::default();
-    let mut merge_pairs: Vec<(String, String)> = Vec::new(); // (sourceId, targetId)
-    let mut merge_source_set: HashSet<String> = HashSet::new();
-    // Protection is expensive; pass 1 caches for the cap pass (v4 protectedMap).
-    let mut protected_map: HashMap<String, bool> = HashMap::new();
-
-    // Pass 1: retention policy.
-    for mem in &sorted {
-        let protected = is_protected(mem, now_ms);
-        protected_map.insert(mem.id.clone(), protected);
-        let (doomed, reason) = should_delete(mem, now_ms, &opts, protected);
-        if doomed {
-            delete_set.insert(&mem.id);
-        }
-        result.details.push(HousekeepingDetail {
-            memory_id: mem.id.clone(),
-            action: if doomed { "deleted" } else { "kept" },
-            reason,
-            summary: mem.summary.clone(),
-        });
-    }
-
-    // Pass 2: similarity merge over the stored vector index (opt-in; no model
-    // call). Non-fatal: a store load failure skips the pass, like v4's catch.
     if opts.merge_similar {
-        let remaining: Vec<&Mem> = sorted
-            .iter()
-            .copied()
-            .filter(|m| !delete_set.contains(&m.id))
-            .collect();
-        let mem_by_id: HashMap<&str, &Mem> =
-            remaining.iter().map(|m| (m.id.as_str(), *m)).collect();
-
-        let char_id = character_id.to_string();
-        let store = db.read_main(move |conn| CharacterVectorStore::load(conn, &char_id));
-        if let Ok(store) = store {
-            let entry_by_id: HashMap<&str, &[f32]> = store.all_entries().collect();
-            // P4.d27 / v4 `7391404e`.
-            let store_dimensions = store.dimensions();
-            let mut nonconforming_skipped = 0usize;
-
-            for mem in &remaining {
-                if delete_set.contains(&mem.id) {
-                    continue;
-                }
-                let Some(embedding) = entry_by_id.get(mem.id.as_str()) else {
-                    continue;
-                };
-                // A stored vector from a previous embedding profile cannot be
-                // compared against this index — skip it quietly, once, instead of
-                // handing `search` a query it will reject with a warning on every
-                // call. It is dead weight until the reindex re-embeds it.
-                //
-                // ⚠ OUTCOME-NEUTRAL by construction: `search` already returns an
-                // empty result for a dimension-mismatched query (both here and in
-                // v4), so this changes no merge decision — only the log volume and
-                // the wasted scan. The differential's corpus carries a
-                // mismatched-width entry precisely to PIN that neutrality; invert
-                // this condition onto conforming entries and the family goes red.
-                if store_dimensions.is_some_and(|d| embedding.len() != d) {
-                    nonconforming_skipped += 1;
-                    continue;
-                }
-                let matches = store.search(embedding, 10);
-
-                for m in &matches {
-                    if m.id == mem.id {
-                        continue;
-                    }
-                    if m.score < opts.merge_threshold {
-                        continue;
-                    }
-                    if delete_set.contains(&m.id) {
-                        continue;
-                    }
-                    if merge_source_set.contains(&m.id) {
-                        continue;
-                    }
-                    let Some(match_mem) = mem_by_id.get(m.id.as_str()) else {
-                        continue;
-                    };
-
-                    // Episodic date guard (mirrors the write-side memory gate):
-                    // two memories of the same activity on occasions > 7 days
-                    // apart are distinct events — never merge them, however
-                    // similar the prose.
-                    if crate::memory_gate::occasions_are_distinct(
-                        mem.occurred_at.as_deref(),
-                        match_mem.occurred_at.as_deref(),
-                    ) {
-                        continue;
-                    }
-
-                    let keep_current = mem.importance > match_mem.importance
-                        || (mem.importance == match_mem.importance
-                            && mem.created_at_ms > match_mem.created_at_ms);
-
-                    let similarity_pct = to_fixed(m.score * 100.0, 0);
-                    if keep_current {
-                        merge_pairs.push((match_mem.id.clone(), mem.id.clone()));
-                        merge_source_set.insert(match_mem.id.clone());
-                        delete_set.insert(&match_mem.id);
-                        result.details.push(HousekeepingDetail {
-                            memory_id: match_mem.id.clone(),
-                            action: "merged",
-                            reason: format!(
-                                "Similar to memory {} ({similarity_pct}% similarity)",
-                                mem.id
-                            ),
-                            summary: match_mem.summary.clone(),
-                        });
-                    } else {
-                        merge_pairs.push((mem.id.clone(), match_mem.id.clone()));
-                        merge_source_set.insert(mem.id.clone());
-                        delete_set.insert(&mem.id);
-                        result.details.push(HousekeepingDetail {
-                            memory_id: mem.id.clone(),
-                            action: "merged",
-                            reason: format!(
-                                "Similar to memory {} ({similarity_pct}% similarity)",
-                                match_mem.id
-                            ),
-                            summary: mem.summary.clone(),
-                        });
-                        break;
-                    }
-                }
-            }
-
-            // ONE summary line per character instead of one warning per entry per
-            // sweep (v4 `7391404e`) — on the corpus that prompted the fix this was
-            // thousands of lines a pass.
-            if nonconforming_skipped > 0 {
-                tracing::info!(
-                    target: "quilltap::memory",
-                    character_id = %character_id,
-                    nonconforming_skipped,
-                    store_dimensions = store_dimensions.unwrap_or(0),
-                    "[Housekeeping] Skipped non-conforming vectors in merge pass — awaiting re-embed",
-                );
-            }
-        }
+        tracing::debug!(
+            characterId = character_id,
+            "[Housekeeping] mergeSimilar is retired in favour of consolidation; skipping the merge pass"
+        );
     }
 
-    // Pass 3: enforce the hard cap — over the LOAD order, not the sorted order
-    // (v4 filters `memories`, not `sortedMemories`, here). Cheap pre-check: if
-    // every remaining memory is protected, skip the scoring pass entirely.
-    let remaining_after_deletion: Vec<&Mem> = memories
-        .iter()
-        .filter(|m| !delete_set.contains(&m.id))
-        .collect();
-    let has_deletion_candidate = remaining_after_deletion.len() > opts.max_memories
-        && remaining_after_deletion.iter().any(|m| {
-            !protected_map
-                .get(&m.id)
-                .copied()
-                .unwrap_or_else(|| is_protected(m, now_ms))
-        });
-    if has_deletion_candidate {
-        let mut scored: Vec<(&Mem, f64)> = remaining_after_deletion
-            .iter()
-            .map(|m| {
-                let ew = calculate_effective_weight(&m.inputs, &DEFAULT_WEIGHTING_CONFIG, now_ms);
-                (*m, ew.effective_weight)
-            })
-            .collect();
-        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    let mut demote_set = DemoteSet::default();
 
-        let excess = remaining_after_deletion.len() - opts.max_memories;
-        let mut deleted_for_limit = 0usize;
-        for (mem, _) in scored.iter().rev() {
-            if deleted_for_limit >= excess {
-                break;
+    if !memories.is_empty() {
+        // Importance descending, then createdAt DESCENDING on ties (the v4
+        // comment says "creation date ascending" but the code subtracts the
+        // other way — port the code, not the comment). Stable sort matches V8.
+        let mut sorted: Vec<&Mem> = memories.iter().collect();
+        sorted.sort_by(|a, b| {
+            b.importance
+                .partial_cmp(&a.importance)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(
+                    b.created_at_ms
+                        .partial_cmp(&a.created_at_ms)
+                        .unwrap_or(std::cmp::Ordering::Equal),
+                )
+        });
+
+        // Protection is expensive; pass 1 caches for the cap pass (v4
+        // `protectedMap`).
+        let mut protected_map: HashMap<String, bool> = HashMap::new();
+
+        // Pass 1: the retention policy — its verdict now means DEMOTE.
+        for mem in &sorted {
+            let protected = is_protected(mem, now_ms);
+            protected_map.insert(mem.id.clone(), protected);
+            let (demote, reason) = should_delete(mem, now_ms, &opts, protected);
+            if demote {
+                demote_set.insert(&mem.id);
             }
-            if delete_set.contains(&mem.id) {
-                continue;
-            }
-            let protected = protected_map
-                .get(&mem.id)
-                .copied()
-                .unwrap_or_else(|| is_protected(mem, now_ms));
-            if protected {
-                continue;
-            }
-            delete_set.insert(&mem.id);
             result.details.push(HousekeepingDetail {
                 memory_id: mem.id.clone(),
-                action: "deleted",
-                reason: format!("Exceeded memory limit ({})", opts.max_memories),
+                action: if demote { "demoted" } else { "kept" },
+                reason,
                 summary: mem.summary.clone(),
             });
-            deleted_for_limit += 1;
+        }
+
+        // Pass 3: enforce the hot-tier cap — over the LOAD order, not the
+        // sorted order (v4 filters `memories`, not `sortedMemories`). Cheap
+        // pre-check: if every remaining memory is protected, skip the scoring.
+        let remaining: Vec<&Mem> = memories
+            .iter()
+            .filter(|m| !demote_set.contains(&m.id))
+            .collect();
+        let has_candidate = remaining.len() > opts.max_memories
+            && remaining.iter().any(|m| {
+                !protected_map
+                    .get(&m.id)
+                    .copied()
+                    .unwrap_or_else(|| is_protected(m, now_ms))
+            });
+        if has_candidate {
+            let mut scored: Vec<(&Mem, f64)> = remaining
+                .iter()
+                .map(|m| {
+                    let ew =
+                        calculate_effective_weight(&m.inputs, &DEFAULT_WEIGHTING_CONFIG, now_ms);
+                    (*m, ew.effective_weight)
+                })
+                .collect();
+            scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+            let excess = remaining.len() - opts.max_memories;
+            let mut demoted_for_limit = 0usize;
+            for (mem, _) in scored.iter().rev() {
+                if demoted_for_limit >= excess {
+                    break;
+                }
+                if demote_set.contains(&mem.id) {
+                    continue;
+                }
+                let protected = protected_map
+                    .get(&mem.id)
+                    .copied()
+                    .unwrap_or_else(|| is_protected(mem, now_ms));
+                if protected {
+                    continue;
+                }
+                demote_set.insert(&mem.id);
+                let reason = format!("Exceeded hot-memory limit ({})", opts.max_memories);
+                // Pass 1 recorded a detail for EVERY hot row, so v4's `find`
+                // always hits and the detail is mutated in place (its `else
+                // push` arm is dead).
+                match result.details.iter_mut().find(|d| d.memory_id == mem.id) {
+                    Some(existing) => {
+                        existing.action = "demoted";
+                        existing.reason = reason;
+                    }
+                    None => result.details.push(HousekeepingDetail {
+                        memory_id: mem.id.clone(),
+                        action: "demoted",
+                        reason,
+                        summary: mem.summary.clone(),
+                    }),
+                }
+                demoted_for_limit += 1;
+            }
         }
     }
 
-    let deleted_ids = delete_set.ids;
+    let demoted_ids = demote_set.ids;
 
-    if !opts.dry_run && !deleted_ids.is_empty() {
+    // Retention: the only deletion. Cold, superseded, non-MANUAL rows past the
+    // window. The setting is read on EVERY sweep, dry runs included.
+    let settings = db.read_main(|conn| {
+        Ok(crate::db::instance_settings::get_memory_consolidation_settings(conn))
+    })?;
+    let mut expired_ids: Vec<String> = Vec::new();
+    if let Some(days) = settings.cold_retention_days.filter(|d| *d > 0) {
+        // R-J: v4's `new Date(now - days * 86_400_000).toISOString()` in f64;
+        // out of range is v4's `RangeError: Invalid time value` (the job's
+        // per-character ERROR, the API's 500) — never a panic or a saturated
+        // date.
+        let cutoff = js_iso_string(now_ms - days as f64 * 86_400_000.0)
+            .ok_or_else(|| DbError::Internal("Invalid time value".to_string()))?;
+        let char_id = character_id.to_string();
+        expired_ids = db
+            .read_main(move |conn| memories_read::find_expired_cold_ids(conn, &char_id, &cutoff))?;
+        for id in &expired_ids {
+            result.details.push(HousekeepingDetail {
+                memory_id: id.clone(),
+                action: "deleted",
+                reason: format!(
+                    "Superseded archive row older than the {days}-day retention window"
+                ),
+                summary: None,
+            });
+        }
+    }
+
+    let mut vector_store_dirty = false;
+    if !opts.dry_run && !demoted_ids.is_empty() {
+        let (cid, ids) = (character_id.to_string(), demoted_ids.clone());
+        db.write(move |writers| {
+            writers
+                .main()
+                .memories()
+                .update_tier_bulk(&cid, &ids, "cold", TierExtra::default())
+        })
+        .await?;
+        // R-B (NO-PORT by architecture): v4 re-stamps its cached vector store
+        // here (`setTier`, + the WARN `[Housekeeping] Failed to re-stamp vector
+        // tier after demotion`). v5 keeps no cached store — every path calls
+        // `CharacterVectorStore::load`, which stamps `cold` from the column —
+        // so the column write IS the re-stamp.
+        result.demoted = demoted_ids.len() as i64;
+        result.demoted_ids = demoted_ids.clone();
+        vector_store_dirty = true;
+    } else if opts.dry_run {
+        result.demoted = demoted_ids.len() as i64;
+        result.demoted_ids = demoted_ids.clone();
+    }
+
+    if !opts.dry_run && !expired_ids.is_empty() {
         // Delete through the chokepoint so neighbours' relatedMemoryIds are
-        // scrubbed before the rows go away.
-        let ids = deleted_ids.clone();
+        // scrubbed before the rows go away. R-C: the label is the PATH's — the
+        // MEMORY_HOUSEKEEPING job mirrors v4's child (`resolved-ids`), the
+        // Memories API v4's parent (`repository`).
+        let ids = expired_ids.clone();
+        let count_source = opts.count_source;
         let deleted_count = db
-            // P4.D265 (R-C): this ONE function serves BOTH of v4's paths — the
-            // API `?action=housekeep` (parent → `repository`) and the
-            // MEMORY_HOUSEKEEPING job (v4's child → `resolved-ids`). Threading
-            // `ResolvedIds` on the job path is P4.D266's (it owns this file).
             .write(move |writers| {
                 writers
                     .main()
                     .memories()
-                    .delete_many_with_unlink(&ids, crate::db::memories::CountSource::Repository)
+                    .delete_many_with_unlink(&ids, count_source)
             })
             .await?;
 
-        // Vector-store cleanup — non-fatal (v4 logs a warn and keeps the result).
-        let char_id = character_id.to_string();
-        let ids = deleted_ids.clone();
-        let _ = db
+        // Vector-store cleanup — non-fatal (v4's try/catch → WARN).
+        let (cid, ids) = (character_id.to_string(), expired_ids.clone());
+        let cleaned = db
             .write(move |writers| {
                 let main = writers.main();
-                let mut store = CharacterVectorStore::load(main.connection(), &char_id)?;
+                let mut store = CharacterVectorStore::load(main.connection(), &cid)?;
                 for id in &ids {
                     store.remove_vector(id);
                 }
@@ -527,20 +557,39 @@ pub async fn run_housekeeping(
                 Ok(())
             })
             .await;
-
+        if let Err(e) = cleaned {
+            tracing::warn!(
+                characterId = character_id,
+                error = format!("Error: {e}"),
+                "[Housekeeping] Failed to clean up vector store"
+            );
+        }
         result.deleted = deleted_count;
-        result.merged = merge_pairs.len();
-        result.deleted_ids = deleted_ids.clone();
-        result.merged_ids = merge_pairs.iter().map(|(src, _)| src.clone()).collect();
+        result.deleted_ids = expired_ids.clone();
+        vector_store_dirty = true;
     } else if opts.dry_run {
-        result.deleted = deleted_ids.len() as i64;
-        result.merged = merge_pairs.len();
-        result.deleted_ids = deleted_ids.clone();
-        result.merged_ids = merge_pairs.iter().map(|(src, _)| src.clone()).collect();
+        result.deleted = expired_ids.len() as i64;
+        result.deleted_ids = expired_ids.clone();
     }
 
-    result.kept = total_before as i64 - deleted_ids.len() as i64;
+    if vector_store_dirty {
+        // The corpus just changed under every cached archive for this
+        // character. (P4.D268's job-completion hook ALSO invalidates on every
+        // non-dry MEMORY_HOUSEKEEPING completion, changed or not.)
+        crate::services::frozen_archive::invalidate_frozen_archive(character_id);
+    }
+
+    result.kept = total_before as i64 - demoted_ids.len() as i64;
     result.total_after = result.kept;
+
+    tracing::debug!(
+        characterId = character_id,
+        dryRun = opts.dry_run,
+        demoted = result.demoted,
+        deleted = result.deleted,
+        hotAfter = result.total_after,
+        "[Housekeeping] Sweep computed"
+    );
 
     Ok(result)
 }
@@ -556,8 +605,8 @@ pub async fn get_housekeeping_preview(
     run_housekeeping(db, character_id, &opts).await
 }
 
-/// Whether housekeeping is needed (v4 `needsHousekeeping`): at/over 80% of the
-/// cap, or a preview finds something to delete.
+/// Whether housekeeping is needed (v4 `needsHousekeeping`): the HOT count at or
+/// over 80% of the cap, or a preview finds something to demote or delete.
 pub async fn needs_housekeeping(
     db: &Db,
     character_id: &str,
@@ -566,14 +615,15 @@ pub async fn needs_housekeeping(
     let max_memories = options.max_memories.unwrap_or(2000);
 
     let char_id = character_id.to_string();
-    let count = db.read_main(move |conn| memories_read::count_by_character_id(conn, &char_id))?;
+    let count =
+        db.read_main(move |conn| memories_read::count_hot_by_character_id(conn, &char_id))?;
     if count as f64 >= (max_memories as f64) * 0.8 {
         return Ok(true);
     }
 
     if count > 0 {
         let preview = get_housekeeping_preview(db, character_id, options).await?;
-        return Ok(preview.deleted > 0);
+        return Ok(preview.demoted + preview.deleted > 0);
     }
 
     Ok(false)
@@ -589,8 +639,8 @@ mod tests {
 
     /// A throwaway base64 pepper keys the fresh encrypted DB (never a real one).
     const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
-    const CHAR: &str = "char-hk";
     const OLD: &str = "2020-01-01T00:00:00.000Z";
+    const FUTURE: &str = "2099-01-01T00:00:00.000Z";
 
     const DDL: &str = "
         CREATE TABLE memories (
@@ -606,18 +656,42 @@ mod tests {
             createdAt TEXT, updatedAt TEXT);
         CREATE TABLE vector_entries (
             id TEXT PRIMARY KEY, characterId TEXT, embedding BLOB, createdAt TEXT);
+        CREATE TABLE instance_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     ";
 
+    #[derive(Clone)]
     struct Seed {
-        id: &'static str,
+        id: String,
         importance: f64,
         source: &'static str,
         created_at: &'static str,
+        updated_at: &'static str,
         last_accessed_at: Option<&'static str>,
+        tier: &'static str,
+        superseded_by: Option<&'static str>,
         vector: Option<Vec<f32>>,
     }
 
-    fn make_db(seeds: &[Seed]) -> (TempDir, Db) {
+    /// v4's `makeMemory` default: an old, low-importance, never-accessed hot
+    /// AUTO row (`housekeeping-demotion.test.ts:24-50`).
+    fn seed(id: &str) -> Seed {
+        Seed {
+            id: id.to_string(),
+            importance: 0.2,
+            source: "AUTO",
+            created_at: OLD,
+            updated_at: OLD,
+            last_accessed_at: None,
+            tier: "hot",
+            superseded_by: None,
+            vector: None,
+        }
+    }
+
+    fn make_db(character: &str, seeds: &[Seed]) -> (TempDir, Db) {
+        // Every test reaches the sweep's callsites through here, so the global
+        // rig is installed before any of them registers (the `Interest` race).
+        crate::test_support::global_capture::install();
         let dir = tempdir().unwrap();
         let path = dir.path().join("main.db");
         {
@@ -627,7 +701,7 @@ mod tests {
                 w.memories()
                     .create(
                         &MemCreate {
-                            character_id: CHAR.to_string(),
+                            character_id: character.to_string(),
                             about_character_id: None,
                             chat_id: None,
                             project_id: None,
@@ -649,24 +723,24 @@ mod tests {
                             last_reinforced_at: None,
                             related_memory_ids: vec![],
                             reinforced_importance: s.importance,
-                            tier: "hot".to_string(),
-                            superseded_by_id: None,
+                            tier: s.tier.to_string(),
+                            superseded_by_id: s.superseded_by.map(str::to_string),
                             consolidated_from: Vec::new(),
                             consolidated_at: None,
                         },
                         &CreateOptions {
-                            id: s.id.to_string(),
+                            id: s.id.clone(),
                             created_at: s.created_at.to_string(),
-                            updated_at: s.created_at.to_string(),
+                            updated_at: s.updated_at.to_string(),
                         },
                     )
                     .unwrap();
                 if let Some(vec) = &s.vector {
                     let vi = w.vector_indices();
-                    vi.save_meta(CHAR, vec.len() as f64).unwrap();
+                    vi.save_meta(character, vec.len() as f64).unwrap();
                     vi.add_entry(&VectorEntryInput {
-                        id: s.id.to_string(),
-                        character_id: CHAR.to_string(),
+                        id: s.id.clone(),
+                        character_id: character.to_string(),
                         embedding: Some(vec.clone()),
                     })
                     .unwrap();
@@ -677,165 +751,503 @@ mod tests {
         (dir, db)
     }
 
-    fn count(db: &Db, table: &str) -> i64 {
-        let sql = format!("SELECT COUNT(*) FROM {table}");
+    async fn set_retention(db: &Db, days: i64) {
+        db.write(move |w| {
+            crate::db::instance_settings::set_memory_consolidation_settings(
+                w.main().connection(),
+                &serde_json::json!({ "coldRetentionDays": days }),
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    }
+
+    fn count(db: &Db, sql: &str) -> i64 {
+        let sql = sql.to_string();
         db.read_main(move |c| Ok(c.query_row(&sql, [], |r| r.get(0))?))
             .unwrap()
     }
 
-    /// Retention policy: an old low-importance AUTO memory goes; MANUAL and
-    /// recent/important ones stay. The dry run reports the same without writing.
-    #[tokio::test]
-    async fn retention_deletes_old_unimportant_and_dry_run_writes_nothing() {
-        let seeds = [
-            Seed {
-                id: "hk-old-low",
-                importance: 0.1,
-                source: "AUTO",
-                created_at: OLD,
-                last_accessed_at: None,
-                vector: Some(vec![1.0, 0.0]),
-            },
-            Seed {
-                id: "hk-manual",
-                importance: 0.1,
-                source: "MANUAL",
-                created_at: OLD,
-                last_accessed_at: None,
-                vector: None,
-            },
-            Seed {
-                id: "hk-important",
-                importance: 0.9,
-                source: "AUTO",
-                created_at: OLD,
-                last_accessed_at: None,
-                vector: None,
-            },
-        ];
-
-        let (_dir, db) = make_db(&seeds);
-        let preview = get_housekeeping_preview(&db, CHAR, &HousekeepingOptions::default())
-            .await
-            .unwrap();
-        assert_eq!(preview.deleted, 1);
-        assert_eq!(preview.deleted_ids, vec!["hk-old-low".to_string()]);
-        assert_eq!(count(&db, "memories"), 3, "dry run writes nothing");
-
-        let result = run_housekeeping(&db, CHAR, &HousekeepingOptions::default())
-            .await
-            .unwrap();
-        assert_eq!(result.deleted, 1);
-        assert_eq!(result.kept, 2);
-        assert_eq!(result.total_after, 2);
-        assert_eq!(count(&db, "memories"), 2);
-        assert_eq!(count(&db, "vector_entries"), 0, "deleted vector removed");
-        let detail = result
-            .details
-            .iter()
-            .find(|d| d.memory_id == "hk-old-low")
-            .unwrap();
-        assert_eq!(detail.action, "deleted");
-        assert!(detail.reason.starts_with("Low importance (10%) and old ("));
-        let manual = result
-            .details
-            .iter()
-            .find(|d| d.memory_id == "hk-manual")
-            .unwrap();
-        assert_eq!(manual.reason, "protected");
+    fn tier(db: &Db, id: &str) -> String {
+        let sql = format!("SELECT tier FROM memories WHERE id = '{id}'");
+        db.read_main(move |c| Ok(c.query_row(&sql, [], |r| r.get(0))?))
+            .unwrap()
     }
 
-    /// The merge pass folds a near-duplicate into the more important memory
-    /// using only stored vectors, and reports it as merged (not policy-deleted).
-    #[tokio::test]
-    async fn merge_pass_folds_near_duplicates() {
-        let recent = "2026-06-30T00:00:00.000Z";
-        let seeds = [
-            Seed {
-                id: "hk-keep",
-                importance: 0.8,
-                source: "AUTO",
-                created_at: recent,
-                last_accessed_at: None,
-                vector: Some(vec![1.0, 0.0]),
-            },
-            Seed {
-                id: "hk-dup",
-                importance: 0.6,
-                source: "AUTO",
-                created_at: recent,
-                last_accessed_at: None,
-                vector: Some(vec![0.95, 0.312_25]),
-            },
-            Seed {
-                id: "hk-other",
-                importance: 0.7,
-                source: "AUTO",
-                created_at: recent,
-                last_accessed_at: None,
-                vector: Some(vec![0.0, 1.0]),
-            },
-        ];
-
-        let (_dir, db) = make_db(&seeds);
-        let opts = HousekeepingOptions {
-            merge_similar: Some(true),
-            ..Default::default()
-        };
-        let result = run_housekeeping(&db, CHAR, &opts).await.unwrap();
-        assert_eq!(result.merged, 1);
-        assert_eq!(result.merged_ids, vec!["hk-dup".to_string()]);
-        assert_eq!(result.deleted, 1, "merge sources are deleted rows");
-        assert_eq!(count(&db, "memories"), 2);
-        assert_eq!(count(&db, "vector_entries"), 2);
-        // Pass 1 records hk-dup as "kept" (it passes retention); the merge pass
-        // then appends the "merged" detail — v4 keeps both entries.
-        let merged = result
-            .details
-            .iter()
-            .find(|d| d.memory_id == "hk-dup" && d.action == "merged")
-            .unwrap();
-        assert_eq!(merged.reason, "Similar to memory hk-keep (95% similarity)");
+    fn only_line(lines: &[String], needle: &str) -> String {
+        let hits: Vec<&String> = lines.iter().filter(|l| l.contains(needle)).collect();
+        assert_eq!(hits.len(), 1, "expected exactly one {needle:?}: {lines:?}");
+        hits[0].clone()
     }
 
-    /// Cap enforcement deletes the lowest-effective-weight unprotected memories
-    /// from the tail, and needsHousekeeping reflects the 80% watermark.
+    /// v4 `housekeeping-demotion.test.ts:93-102`: pass 1 DEMOTES a
+    /// low-importance, old, inactive row instead of deleting it. R-B: a FRESH
+    /// store load answers it cold — the column write is the re-stamp.
     #[tokio::test]
-    async fn cap_enforcement_and_needs_housekeeping() {
-        let recent = "2026-06-30T00:00:00.000Z";
-        let seeds: Vec<Seed> = [0.9, 0.8, 0.7, 0.6, 0.5]
-            .iter()
-            .enumerate()
-            .map(|(i, &imp)| Seed {
-                id: Box::leak(format!("hk-cap-{i}").into_boxed_str()),
-                importance: imp,
-                source: "AUTO",
-                created_at: recent,
-                last_accessed_at: None,
-                vector: None,
+    async fn pass_one_demotes_instead_of_deleting() {
+        const CHAR: &str = "hk-pass-one";
+        let mut stale = seed("stale");
+        stale.importance = 0.1;
+        stale.vector = Some(vec![1.0, 0.0]);
+        let (_d, db) = make_db(CHAR, &[stale]);
+        let (r, lines) = crate::test_support::global_capture::capture_async(run_housekeeping(
+            &db,
+            CHAR,
+            &HousekeepingOptions::default(),
+        ))
+        .await;
+        let r = r.unwrap();
+        assert_eq!(r.demoted, 1);
+        assert_eq!(r.demoted_ids, vec!["stale".to_string()]);
+        assert_eq!(r.deleted, 0);
+        assert_eq!((r.kept, r.total_before, r.total_after), (0, 1, 0));
+        assert_eq!(r.details.len(), 1);
+        assert_eq!(r.details[0].action, "demoted");
+        assert!(r.details[0]
+            .reason
+            .starts_with("Low importance (10%) and old ("));
+        assert_eq!(tier(&db, "stale"), "cold");
+        assert_eq!(
+            count(&db, "SELECT COUNT(*) FROM memories"),
+            1,
+            "nothing deleted"
+        );
+        assert_eq!(count(&db, "SELECT COUNT(*) FROM vector_entries"), 1);
+        let hot = db
+            .read_main(|c| Ok(CharacterVectorStore::load(c, CHAR)?.is_hot("stale")))
+            .unwrap();
+        assert!(!hot, "R-B: a fresh load answers the demoted row cold");
+        let start = only_line(&lines, "[Housekeeping] Starting sweep");
+        assert!(start.starts_with("DEBUG "), "{start:?}");
+        assert!(
+            start.contains(&format!(
+                " characterId={CHAR} hot=1 cold=0 cap=2000 dryRun=false"
+            )),
+            "{start:?}"
+        );
+        let done = only_line(&lines, "[Housekeeping] Sweep computed");
+        assert!(
+            done.contains(&format!(
+                " characterId={CHAR} dryRun=false demoted=1 deleted=0 hotAfter=0"
+            )),
+            "{done:?}"
+        );
+        assert!(
+            !lines.iter().any(|l| l.contains("mergeSimilar is retired")),
+            "silence leg: {lines:?}"
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("Failed to clean up vector store")),
+            "{lines:?}"
+        );
+    }
+
+    /// v4 `:104-114`: pass 3 demotes the excess over the cap, deletes nothing,
+    /// and MUTATES the pass-1 detail in place (no second entry per demotion).
+    #[tokio::test]
+    async fn pass_three_demotes_the_excess_in_place() {
+        const CHAR: &str = "hk-pass-three";
+        let seeds: Vec<Seed> = (0..10)
+            .map(|i| {
+                let mut s = seed(&format!("h{i}"));
+                s.importance = 0.8;
+                s
             })
             .collect();
-
-        let (_dir, db) = make_db(&seeds);
+        let (_d, db) = make_db(CHAR, &seeds);
         let opts = HousekeepingOptions {
             max_memories: Some(3),
             ..Default::default()
         };
-        assert!(needs_housekeeping(&db, CHAR, &opts).await.unwrap());
-
-        let result = run_housekeeping(&db, CHAR, &opts).await.unwrap();
-        assert_eq!(result.deleted, 2);
+        let r = run_housekeeping(&db, CHAR, &opts).await.unwrap();
+        assert_eq!(r.demoted, 7);
+        assert_eq!((r.total_before, r.total_after), (10, 3));
+        assert_eq!(r.deleted, 0);
         assert_eq!(
-            result.deleted_ids,
-            vec!["hk-cap-4".to_string(), "hk-cap-3".to_string()],
-            "lowest effective weight first (tail of the score-desc order)"
+            r.details.len(),
+            10,
+            "one detail per hot row — mutated, not pushed"
         );
-        assert_eq!(result.cap_used, 3);
-        assert_eq!(count(&db, "memories"), 3);
-        for d in &result.details {
-            if d.action == "deleted" {
-                assert_eq!(d.reason, "Exceeded memory limit (3)");
-            }
+        let demoted: Vec<_> = r.details.iter().filter(|d| d.action == "demoted").collect();
+        assert_eq!(demoted.len(), 7);
+        for d in demoted {
+            assert_eq!(d.reason, "Exceeded hot-memory limit (3)");
         }
+        assert_eq!(
+            count(&db, "SELECT COUNT(*) FROM memories WHERE tier = 'cold'"),
+            7
+        );
+        assert_eq!(count(&db, "SELECT COUNT(*) FROM memories"), 10);
+    }
+
+    /// v4 `:116-127`: only hot rows count against the cap; the cold rows are
+    /// reported as `coldCount` and never touched.
+    #[tokio::test]
+    async fn only_hot_rows_count_against_the_cap() {
+        const CHAR: &str = "hk-hot-only";
+        let mut seeds: Vec<Seed> = (0..3)
+            .map(|i| {
+                let mut s = seed(&format!("h{i}"));
+                s.importance = 0.8;
+                s
+            })
+            .collect();
+        for i in 0..20 {
+            let mut s = seed(&format!("c{i}"));
+            s.tier = "cold";
+            s.superseded_by = Some("d");
+            seeds.push(s);
+        }
+        let (_d, db) = make_db(CHAR, &seeds);
+        let opts = HousekeepingOptions {
+            max_memories: Some(3),
+            ..Default::default()
+        };
+        let r = run_housekeeping(&db, CHAR, &opts).await.unwrap();
+        assert_eq!((r.total_before, r.cold_count, r.demoted), (3, 20, 0));
+        assert_eq!(r.details.len(), 3, "cold rows get no detail");
+    }
+
+    /// v4 `:129-137`: MANUAL rows and CONSOLIDATED digests are never demoted,
+    /// even over the cap.
+    #[tokio::test]
+    async fn never_demotes_manual_or_consolidated() {
+        const CHAR: &str = "hk-protected";
+        let mut manual = seed("manual");
+        manual.importance = 0.1;
+        manual.source = "MANUAL";
+        let mut digest = seed("digest");
+        digest.importance = 0.1;
+        digest.source = "CONSOLIDATED";
+        let (_d, db) = make_db(CHAR, &[manual, digest]);
+        let opts = HousekeepingOptions {
+            max_memories: Some(1),
+            ..Default::default()
+        };
+        let r = run_housekeeping(&db, CHAR, &opts).await.unwrap();
+        assert_eq!(r.demoted, 0);
+        assert!(r.details.iter().all(|d| d.reason == "protected"));
+        assert_eq!(
+            count(&db, "SELECT COUNT(*) FROM memories WHERE tier = 'hot'"),
+            2
+        );
+    }
+
+    /// v4 `:139-145`: a dry run reports demotions but writes nothing.
+    #[tokio::test]
+    async fn a_dry_run_reports_demotions_but_writes_nothing() {
+        const CHAR: &str = "hk-dry";
+        let mut stale = seed("stale");
+        stale.importance = 0.1;
+        let (_d, db) = make_db(CHAR, &[stale]);
+        let r = get_housekeeping_preview(&db, CHAR, &HousekeepingOptions::default())
+            .await
+            .unwrap();
+        assert_eq!(r.demoted, 1);
+        assert_eq!(r.demoted_ids, vec!["stale".to_string()]);
+        assert_eq!(tier(&db, "stale"), "hot");
+    }
+
+    /// v4 `:147-152` + R-F: `mergeSimilar` is accepted and ignored — nothing is
+    /// merged — and the retired pass logs its one DEBUG.
+    #[tokio::test]
+    async fn merge_similar_is_accepted_and_ignored() {
+        const CHAR: &str = "hk-merge-retired";
+        let mut a = seed("a");
+        a.importance = 0.8;
+        a.created_at = "2026-06-30T00:00:00.000Z";
+        a.vector = Some(vec![1.0, 0.0]);
+        let mut b = a.clone();
+        b.id = "b".into();
+        b.vector = Some(vec![1.0, 0.0]);
+        let (_d, db) = make_db(CHAR, &[a, b]);
+        let opts = HousekeepingOptions {
+            merge_similar: Some(true),
+            merge_threshold: Some(0.8),
+            ..Default::default()
+        };
+        let (r, lines) =
+            crate::test_support::global_capture::capture_async(run_housekeeping(&db, CHAR, &opts))
+                .await;
+        let r = r.unwrap();
+        assert_eq!((r.merged, r.demoted), (0, 0));
+        assert!(r.merged_ids.is_empty());
+        assert_eq!(count(&db, "SELECT COUNT(*) FROM memories"), 2);
+        let line = only_line(
+            &lines,
+            "[Housekeeping] mergeSimilar is retired in favour of consolidation; skipping the merge pass",
+        );
+        assert!(line.starts_with("DEBUG "), "{line:?}");
+        assert!(line.contains(&format!(" characterId={CHAR}")), "{line:?}");
+    }
+
+    /// v4 `:154-159`: with retention unset, nothing is ever deleted — not even
+    /// an ancient superseded cold row.
+    #[tokio::test]
+    async fn retention_unset_deletes_nothing() {
+        const CHAR: &str = "hk-retention-unset";
+        let mut cold = seed("old-cold");
+        cold.tier = "cold";
+        cold.superseded_by = Some("digest");
+        let (_d, db) = make_db(CHAR, &[cold]);
+        let r = run_housekeeping(&db, CHAR, &HousekeepingOptions::default())
+            .await
+            .unwrap();
+        assert_eq!(r.deleted, 0);
+        assert_eq!(count(&db, "SELECT COUNT(*) FROM memories"), 1);
+    }
+
+    /// v4 `:161-172` + R-A: with retention set, exactly the expired, superseded,
+    /// cold, NON-MANUAL rows go — a superseded CONSOLIDATED digest too
+    /// (faithful to v4 at `01a83539d`) — through the chokepoint and out of the
+    /// vector store; their details carry no `summary`. A zero-hot character
+    /// still runs the sweep (no early return).
+    #[tokio::test]
+    async fn retention_deletes_only_expired_superseded_cold_non_manual_rows() {
+        const CHAR: &str = "hk-retention";
+        let cold =
+            |id: &str, source: &'static str, sup: Option<&'static str>, updated: &'static str| {
+                let mut s = seed(id);
+                s.tier = "cold";
+                s.source = source;
+                s.superseded_by = sup;
+                s.updated_at = updated;
+                s.vector = Some(vec![1.0, 0.0]);
+                s
+            };
+        let (_d, db) = make_db(
+            CHAR,
+            &[
+                cold("auto-old", "AUTO", Some("dg"), OLD),
+                cold("digest-old", "CONSOLIDATED", Some("dg2"), OLD),
+                cold("manual-old", "MANUAL", Some("dg"), OLD),
+                cold("unsuperseded-old", "AUTO", None, OLD),
+                cold("auto-future", "AUTO", Some("dg"), FUTURE),
+            ],
+        );
+        set_retention(&db, 90).await;
+        let preview = get_housekeeping_preview(&db, CHAR, &HousekeepingOptions::default())
+            .await
+            .unwrap();
+        assert_eq!(preview.deleted, 2, "a dry run counts the expired ids");
+        assert_eq!(count(&db, "SELECT COUNT(*) FROM memories"), 5);
+
+        let r = run_housekeeping(&db, CHAR, &HousekeepingOptions::default())
+            .await
+            .unwrap();
+        let mut deleted = r.deleted_ids.clone();
+        deleted.sort();
+        assert_eq!(
+            deleted,
+            vec!["auto-old".to_string(), "digest-old".to_string()]
+        );
+        assert_eq!(r.deleted, 2);
+        assert_eq!((r.total_before, r.cold_count), (0, 5));
+        assert_eq!(r.details.len(), 2);
+        for d in &r.details {
+            assert_eq!(d.action, "deleted");
+            assert_eq!(
+                d.reason,
+                "Superseded archive row older than the 90-day retention window"
+            );
+            assert_eq!(d.summary, None);
+        }
+        assert_eq!(count(&db, "SELECT COUNT(*) FROM memories"), 3);
+        assert_eq!(count(&db, "SELECT COUNT(*) FROM vector_entries"), 3);
+    }
+
+    /// The vector-store cleanup after a retention delete is non-fatal: a store
+    /// that cannot load warns v4's `[Housekeeping] Failed to clean up vector
+    /// store` and the sweep still answers.
+    #[tokio::test]
+    async fn a_failed_vector_cleanup_warns() {
+        const CHAR: &str = "hk-cleanup-warn";
+        let mut s = seed("auto-old");
+        s.tier = "cold";
+        s.superseded_by = Some("dg");
+        let (_d, db) = make_db(CHAR, &[s]);
+        set_retention(&db, 90).await;
+        db.write(|w| {
+            w.main()
+                .connection()
+                .execute_batch("DROP TABLE vector_entries")?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+        let (r, lines) = crate::test_support::global_capture::capture_async(run_housekeeping(
+            &db,
+            CHAR,
+            &HousekeepingOptions::default(),
+        ))
+        .await;
+        let r = r.unwrap();
+        assert_eq!(r.deleted, 1);
+        let line = only_line(&lines, "[Housekeeping] Failed to clean up vector store");
+        assert!(line.starts_with("WARN "), "{line:?}");
+        assert!(line.contains(&format!(" characterId={CHAR}")), "{line:?}");
+        assert!(line.contains(" error=Error: "), "{line:?}");
+    }
+
+    /// R-J: v4 computes the cutoff in f64 and `toISOString()` throws `RangeError:
+    /// Invalid time value` outside JS's ±8.64e15 ms range — an `Err`, never a
+    /// panic. (100,000,000 days still lands INSIDE the range at the current
+    /// clock — year -271,8xx — so the out-of-range row uses 200,000,000.)
+    #[tokio::test]
+    async fn an_out_of_range_retention_cutoff_is_invalid_time_value() {
+        const CHAR: &str = "hk-retention-range";
+        let (_d, db) = make_db(CHAR, &[seed("x")]);
+        set_retention(&db, 200_000_000).await;
+        let err = run_housekeeping(&db, CHAR, &HousekeepingOptions::default())
+            .await
+            .unwrap_err();
+        assert_eq!(err.to_string(), "Invalid time value");
+        set_retention(&db, 100_000_000).await;
+        run_housekeeping(&db, CHAR, &HousekeepingOptions::default())
+            .await
+            .expect("an extended-year cutoff is still a valid date");
+    }
+
+    /// JS `toISOString()` at the ends of the time range, and extended years.
+    #[test]
+    fn js_iso_string_matches_v8() {
+        assert_eq!(js_iso_string(0.0).unwrap(), "1970-01-01T00:00:00.000Z");
+        assert_eq!(
+            js_iso_string(-8.64e15).unwrap(),
+            "-271821-04-20T00:00:00.000Z"
+        );
+        assert_eq!(
+            js_iso_string(8.64e15).unwrap(),
+            "+275760-09-13T00:00:00.000Z"
+        );
+        assert_eq!(
+            js_iso_string(-62_198_755_200_000.0).unwrap(),
+            "-000001-01-01T00:00:00.000Z"
+        );
+        assert_eq!(js_iso_string(8.64e15 + 1.0), None);
+        assert_eq!(js_iso_string(f64::NAN), None);
+    }
+
+    /// R-I: a sweep that changed anything invalidates the character's frozen
+    /// archive; a no-op sweep leaves it cached. The proof: seed the cache, add a
+    /// row behind its back, and see whether the next lookup recomputes.
+    // HANDOFF(P4.D268): re-point to the (character, chat) signature at union.
+    fn seed_frozen_archive_for_test(db: &Db, character_id: &str) -> Vec<String> {
+        crate::services::frozen_archive::get_or_compute_frozen_archive(
+            db,
+            character_id,
+            7,
+            None,
+            crate::clock::now_unix_ms() as f64,
+        )
+        .unwrap()
+        .iter()
+        .filter_map(|m| m.get("id").and_then(Value::as_str).map(str::to_string))
+        .collect()
+    }
+
+    async fn plant_hot_row(db: &Db, character_id: &str, id: &str) {
+        let (cid, id) = (character_id.to_string(), id.to_string());
+        db.write(move |w| {
+            w.main().connection().execute(
+                "INSERT INTO memories (id, characterId, content, summary, keywords, tags, \
+                 importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, \
+                 tier, consolidatedFrom, createdAt, updatedAt) VALUES (?1, ?2, 'planted', \
+                 'planted', '[]', '[]', 0.9, 'MANUAL', 1, '[]', 0.9, 'hot', '[]', ?3, ?3)",
+                rusqlite::params![id, cid, OLD],
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_dirty_sweep_invalidates_the_frozen_archive_and_a_noop_does_not() {
+        const DIRTY: &str = "c0000000-0000-4000-8000-0000000000f1";
+        // UUID ids (characters too): the archive's raw read drops a non-UUID row.
+        let mut stale = seed("f0000000-0000-4000-8000-000000000001");
+        stale.importance = 0.1;
+        let mut keeper = seed("f0000000-0000-4000-8000-000000000002");
+        keeper.source = "MANUAL";
+        let (_d, db) = make_db(DIRTY, &[stale, keeper]);
+        let before = seed_frozen_archive_for_test(&db, DIRTY);
+        assert!(!before.is_empty(), "the probe archive is not empty");
+        plant_hot_row(&db, DIRTY, "f0000000-0000-4000-8000-000000000003").await;
+        run_housekeeping(&db, DIRTY, &HousekeepingOptions::default())
+            .await
+            .unwrap();
+        assert_ne!(
+            seed_frozen_archive_for_test(&db, DIRTY),
+            before,
+            "the demotion invalidated the cached archive"
+        );
+
+        const CLEAN: &str = "c0000000-0000-4000-8000-0000000000f2";
+        let mut keeper = seed("f0000000-0000-4000-8000-000000000004");
+        keeper.source = "MANUAL";
+        let (_d2, db2) = make_db(CLEAN, &[keeper]);
+        let before = seed_frozen_archive_for_test(&db2, CLEAN);
+        assert!(!before.is_empty(), "the probe archive is not empty");
+        plant_hot_row(&db2, CLEAN, "f0000000-0000-4000-8000-000000000005").await;
+        run_housekeeping(&db2, CLEAN, &HousekeepingOptions::default())
+            .await
+            .unwrap();
+        assert_eq!(
+            seed_frozen_archive_for_test(&db2, CLEAN),
+            before,
+            "a sweep that changed nothing keeps the cache"
+        );
+    }
+
+    /// `needsHousekeeping`: the HOT count at 80% of the cap trips it (the cold
+    /// rows never count), and a character whose only work is retention trips
+    /// it through the preview's `demoted + deleted`.
+    #[tokio::test]
+    async fn needs_housekeeping_counts_hot_rows_and_retention() {
+        const CHAR: &str = "hk-needs";
+        let mut seeds: Vec<Seed> = (0..3)
+            .map(|i| {
+                let mut s = seed(&format!("h{i}"));
+                s.importance = 0.9;
+                s.source = "MANUAL";
+                s
+            })
+            .collect();
+        for i in 0..5 {
+            let mut s = seed(&format!("c{i}"));
+            s.tier = "cold";
+            seeds.push(s);
+        }
+        let (_d, db) = make_db(CHAR, &seeds);
+        let cap = |n| HousekeepingOptions {
+            max_memories: Some(n),
+            ..Default::default()
+        };
+        assert!(
+            needs_housekeeping(&db, CHAR, &cap(3)).await.unwrap(),
+            "3 hot ≥ 2.4"
+        );
+        assert!(
+            !needs_housekeeping(&db, CHAR, &cap(5)).await.unwrap(),
+            "3 hot < 4 — the 5 cold rows do not count, and nothing is demotable"
+        );
+
+        const RET: &str = "hk-needs-retention";
+        let mut keep = seed("keep");
+        keep.source = "MANUAL";
+        let mut expired = seed("expired");
+        expired.tier = "cold";
+        expired.superseded_by = Some("dg");
+        let (_d2, db2) = make_db(RET, &[keep, expired]);
+        assert!(!needs_housekeeping(&db2, RET, &cap(100)).await.unwrap());
+        set_retention(&db2, 90).await;
+        assert!(
+            needs_housekeeping(&db2, RET, &cap(100)).await.unwrap(),
+            "the only work is retention"
+        );
     }
 }

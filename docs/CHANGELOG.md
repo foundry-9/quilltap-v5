@@ -12,6 +12,36 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(memory): P4.D266 U4 housekeeping demotes to the cold tier; the housekeep wire moves
+
+_Versions: core 0.0.1269._
+
+Housekeeping follows v4 `d58548051` at the `01a83539d` pin. It now demotes rows to the cold tier instead of deleting them.
+
+**The sweep**
+- **Hot rows only.** The sweep reads only hot rows. Cold rows are counted as `coldCount`, and the empty early return is gone.
+- **Protection.** CONSOLIDATED digests are protected, as MANUAL rows already were.
+- **Pass 1** demotes stale rows.
+- **Pass 2.** The merge pass is retired: `mergeSimilar` is accepted and ignored, with one DEBUG line. The `merged` count is always 0.
+- **Pass 3** demotes the rows over the cap and rewrites the pass-1 detail in place, with the reason `Exceeded hot-memory limit (N)`.
+- **Retention.** The only deletion is the opt-in retention sweep (`memoryConsolidation.coldRetentionDays`). It removes superseded cold non-MANUAL rows past the window, so CONSOLIDATED digests go too — faithful to v4. A cutoff out of JS's date range returns `Invalid time value`.
+- **Cache.** A sweep that changed anything invalidates the character's frozen archive.
+- **Logging and plumbing.**
+  - The DEBUG lines `Starting sweep` and `Sweep computed` are added.
+  - So is the WARN for a failed vector cleanup.
+  - The `countSource` label is now threaded through `HousekeepingOptions.count_source`.
+- **`needs_housekeeping`** counts hot rows only, and reports work when `demoted + deleted` is non-zero.
+
+**The API**
+- The housekeep preview now returns `wouldDemote` and `coldCount`.
+- The POST now returns `demoted`, `coldCount` and `demotedIds`, in v4's key order.
+- The retention rows have no `summary`.
+
+**Tests**
+- The housekeeping fixture is rebuilt at the pin. It gains tier seeds, a per-seed `updatedAt`, and `instance_settings` created by v4's own migration.
+- The corpus gains four characters and a `setRetention` op. Results are now compared byte for byte.
+- `memories_routes` gains byte-order checks on the three housekeep bodies.
+
 #### 2026-10-09 — feat(memory): P4.D266 U3 the memory gate's cold tier
 
 _Versions: core 0.0.1268._

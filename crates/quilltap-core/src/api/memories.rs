@@ -812,7 +812,8 @@ pub async fn memory_search<P: EmbeddingProvider + Sync>(
 // ===========================================================================
 
 /// One `HousekeepingResult` detail → v4's `{memoryId, action, reason, summary?}`
-/// (summary omitted when null).
+/// (`summary` omitted when absent — the retention sweep's `deleted` rows carry
+/// none).
 fn hk_details(r: &HousekeepingResult) -> Vec<Value> {
     r.details
         .iter()
@@ -831,8 +832,10 @@ fn hk_details(r: &HousekeepingResult) -> Vec<Value> {
 
 /// v4 GET `?action=housekeep` — `handleHousekeepPreview`. Query params
 /// `maxMemories`/`maxAgeMonths`/`minImportance`/`mergeSimilar` (manual range
-/// validation, NOT Zod). Envelope `{success, preview: {wouldDelete, wouldMerge,
-/// wouldKeep, totalBefore, totalAfter, details}}`.
+/// validation, NOT Zod). Envelope `{success, preview: {wouldDemote, wouldDelete,
+/// wouldMerge, wouldKeep, totalBefore, totalAfter, coldCount, details}}` (v4
+/// `d58548051`). `mergeSimilar` is still parsed and passed — the sweep ignores
+/// it (R-F).
 pub async fn memory_housekeep_preview(
     db: &Db,
     character_id: &str,
@@ -873,11 +876,13 @@ pub async fn memory_housekeep_preview(
         Ok(r) => Response::Memory(json!({
             "success": true,
             "preview": {
+                "wouldDemote": r.demoted,
                 "wouldDelete": r.deleted,
                 "wouldMerge": r.merged,
                 "wouldKeep": r.kept,
                 "totalBefore": r.total_before,
                 "totalAfter": r.total_after,
+                "coldCount": r.cold_count,
                 "details": hk_details(&r),
             },
         })),
@@ -927,6 +932,9 @@ pub async fn memory_housekeep(db: &Db, bag: Value) -> Response {
         merge_similar: bag.merge_similar,
         merge_threshold: bag.merge_threshold,
         dry_run: bag.dry_run,
+        // R-C: the Memories API is v4's PARENT path → `countSource:
+        // 'repository'` on the retention delete's batch lines.
+        count_source: Some(crate::db::memories::CountSource::Repository),
     };
     let result = if dry_run {
         get_housekeeping_preview(db, &bag.character_id, &opts).await
@@ -935,12 +943,16 @@ pub async fn memory_housekeep(db: &Db, bag: Value) -> Response {
     };
     match result {
         Ok(r) => {
+            // v4 `d58548051`'s key order.
             let mut result_obj = serde_json::Map::new();
+            result_obj.insert("demoted".into(), json!(r.demoted));
             result_obj.insert("deleted".into(), json!(r.deleted));
             result_obj.insert("merged".into(), json!(r.merged));
             result_obj.insert("kept".into(), json!(r.kept));
             result_obj.insert("totalBefore".into(), json!(r.total_before));
             result_obj.insert("totalAfter".into(), json!(r.total_after));
+            result_obj.insert("coldCount".into(), json!(r.cold_count));
+            result_obj.insert("demotedIds".into(), json!(r.demoted_ids));
             result_obj.insert("deletedIds".into(), json!(r.deleted_ids));
             result_obj.insert("mergedIds".into(), json!(r.merged_ids));
             // v4: `details: options.dryRun ? result.details : undefined` — undefined

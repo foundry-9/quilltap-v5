@@ -175517,3 +175517,32 @@ All are green BY NAME from the pin:
   - `memory-gate-tier3.json` +14 scenarios: `absorb_counts`, `cap_reached_mid_append`, `at_cap_anchor_fill`, `twelve_entities`, `cold_superseded_skip`, `cold_superseded_reinforce_band`, `cold_digest_missing`, `cold_demoted_promoted_reinforce`, `cold_demoted_promoted_skip`, `cold_related_collapse`, `cold_related_only`, `cold_chain_four_hops`, `cold_chain_ends_cold_unsuperseded`, `date_guard_superseded_cold`. The canned candidate and re-embed texts were computed by a scratch generator through v4's REAL `buildMemoryEmbeddingText` / `extractNovelDetails` / `appendCappedFootnotes` at the pin, then spliced in one line each so the existing bytes are unchanged. The builder's last line reads `34 seed memories, 25 seed vectors`. The Rust sanity counts are 43 rows and 34 entries, plus a guard that some dumped row is `tier: "cold"`.
   - `build-memory-watermark-fixture.ts` seeds take an optional `tier`. `memory-watermark-tier3.json` gains `cold_rows_not_counted`: one hot and two cold seeds at cap 4, so hot 2 < floor 3 while all tiers 4 ≥ 3.
   - **Red-first:** the U2 tip (pre-U3 `memory_gate.rs`) against the grown oracles is RED. The gate fails at `scenario cold_superseded_reinforce_band action` (REINFORCE where v4 says SKIP_NEAR_DUPLICATE), and the watermark fails on `background_jobs rows diverge` (an extra MEMORY_HOUSEKEEPING job). With U3 both are **green**, and v4's own `expectedAction` checks pass for all 26 gate scenarios.
+
+### P4.D266 U4 + U5a — housekeeping DEMOTES (`d58548051`); the Memories API housekeep wire (C2)
+- **`services/housekeeping.rs`** is v4 `:195-475` at the pin:
+  - `Mem.cold`, and the hot filter with `cold_count` (no early return).
+  - `HousekeepingResult` gains `demoted`, `cold_count` and `demoted_ids`. `HousekeepingDetail.action` gains `"demoted"`.
+  - `is_protected` now also covers CONSOLIDATED.
+  - Pass 2 and the P4.d27 dim skip are DELETED.
+  - Pass 3 mutates the pass-1 detail with `Exceeded hot-memory limit ({max})`.
+  - Retention reads `get_memory_consolidation_settings` on every sweep, and `find_expired_cold_ids` gives details with no `summary`.
+  - Apply: `update_tier_bulk(…, "cold", TierExtra::default())`, then `delete_many_with_unlink(ids, opts.count_source)`, then the vector cleanup, which WARNs on failure. The frozen archive is invalidated when the sweep was dirty.
+  - DEBUG `[Housekeeping] Starting sweep {characterId, hot, cold, cap, dryRun}`, the retired-merge DEBUG `{characterId}`, and DEBUG `[Housekeeping] Sweep computed {characterId, dryRun, demoted, deleted, hotAfter}`.
+  - `needs_housekeeping` → `count_hot_by_character_id` + `demoted + deleted > 0`.
+  - `HousekeepingOptions` gains `count_source: Option<CountSource>`, and `None` means repository. `#[derive(Default)]` is kept, so `job_runner.rs`'s test compiles untouched and stays green unedited. Per R-F, the `merge_*` fields are kept, accepted and read by nothing.
+- **R-J:** the cutoff is computed in f64 through a local JS-faithful `js_iso_string` (±8.64e15 range, extended `±YYYYYY` years). Out of range → `Err(Internal("Invalid time value"))`. **Correction to the order:** `coldRetentionDays: 100000000` does NOT throw at today's clock. 1e8 × 86,400,000 = 8.64e15 exactly, and `now − 8.64e15` ≈ −8.638e15 is inside the range (year −271,8xx). The unit row uses 200,000,000 (`Invalid time value`) and also pins that 100,000,000 succeeds.
+- **R-B measured:** `pass_one_demotes_instead_of_deleting` asserts that a fresh `CharacterVectorStore::load(…).is_hot("stale")` is `false` after the demotion. NO-PORT, log-only: the WARN `[Housekeeping] Failed to re-stamp vector tier after demotion`.
+- **R-I:** `seed_frozen_archive_for_test` is marked `// HANDOFF(P4.D268): re-point to the (character, chat) signature at union` and calls `main`'s `get_or_compute_frozen_archive`. `a_dirty_sweep_invalidates_the_frozen_archive_and_a_noop_does_not` compares archive id sets: a dirty sweep recomputes, and a no-op keeps the cache. The ids are UUIDs because the archive's raw read drops non-UUID ids and characters (memory note `memory-raw-reads-drop-non-uuid-fixtures`).
+- **Unit tests (14):** v4 `housekeeping-demotion.test.ts:93-172` row for row (8), plus retention with CONSOLIDATED, the failed-cleanup WARN, R-J, `js_iso_string`, the frozen archive, and `needs_housekeeping`. The capture pins moved to `test_support::global_capture` (install in `make_db`) after the first run lost the `Starting sweep` callsite to the thread-scoped rig's `Interest` race. The gate module's pins were moved the same way.
+- **`api/memories.rs`:**
+  - The preview returns `{wouldDemote, wouldDelete, wouldMerge, wouldKeep, totalBefore, totalAfter, coldCount, details}`.
+  - The POST returns `{demoted, deleted, merged, kept, totalBefore, totalAfter, coldCount, demotedIds, deletedIds, mergedIds, details?}`.
+  - The POST passes `count_source: Some(Repository)`.
+- **Differential `memory_housekeeping_tier2` (rebuilt at the pin):**
+  - The builder adds optional `tier` / `supersededById` / `consolidatedFrom` / `updatedAt`, and v4's `create-instance-settings-table` migration via `runV4Migrations`. This is M2's cure: the builder logs `+RAN create-instance-settings-table-v1`, and the "Raw query failed" lines are gone.
+  - Four new characters (H5–H8) and five new op kinds/rows, incl. `setRetention` through v4's REAL `setMemoryConsolidationSettings`. The named row `RETENTION_DELETES_SUPERSEDED_DIGEST` (H7's `d7000002`) is faithful to v4 at `01a83539d`; a v4 fix flips it.
+  - Results are compared BYTE-wise in v4's twelve-key order, `summary` omitted when absent. The sentinel set covers every seed's pinned `updatedAt`.
+  - Silent-stale guards: the `"demoted":` key and a `retention window` reason must be present.
+  - Builder line: `35 memories, 5 metas, 15 entries`. Hand counts: 32 rows, 13 entries.
+  - Red at `KEYSTONE` (M1), **green** now.
+- **`memories_routes`:** `housekeep_{preview,dryrun,run}` are green, plus a new byte-wise key-order check on each, all three `bytes OK`. **`housekeep_run_demotes` NOT added, by the order's own condition:** which MNEMO rows a cap demotes rides the protection score and effective weight, and both decay with wall-clock age between the oracle run and the Rust run. Demotion is proven by `memory_housekeeping_tier2`.
