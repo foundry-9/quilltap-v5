@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — docs(porting): P4.D267 lane close — gate, R-D table, handoffs
+
+_Docs-only change._
+
+The P4.D267 order is marked LANE COMPLETE. The status log records:
+
+- **Workspace gate:** 709 binaries, 4,669 passed, 8 failed. Every red is a sibling's by design or a recorded handoff.
+- **Own-family sweep from the pin:** 4/4 passing, plus `precompute` 12/12 from a lane-private recipe copy.
+- **Cross-lane measurements:** the R-D families before and after this lane.
+- **Handoffs:** two stale doc comments for P4.D268, and the `p4_d265_wire_contract` refusal rows for the unifier.
+- **Dogfood:** the 💸 rows for the next pass.
+
 #### 2026-10-09 — feat(memory): P4.D267 chatRecallReplay honours memoryBudget, tuning, pinned signals and asOf (v4 `f7d8064be` R7)
 
 _Versions: core 0.0.1268._
