@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(schema): P4.D272 re-vendor qtap-export.schema.json at v4 01a83539d
+
+_Versions: core 0.0.1267._
+
+The vendored `.qtap` export schema is byte-identical to v4's at `01a83539d` (102,523 bytes). It adds `ExportedChat.otherExtractionWatermarkMessageId`, plus `Memory.tier`, `supersededById`, `consolidatedFrom` and `consolidatedAt`. Both size pins moved. The only behavioral consumer is the AI import's validator, which now refuses an off-enum tier, non-UUID links, a bad `consolidatedAt` or a non-string watermark. New unit rows and ten validator differential rows cover the change.
+
 #### 2026-10-09 — feat(import): P4.D272 mint memory ids up front on .qtap import and remap tier links
 
 _Versions: core 0.0.1266._

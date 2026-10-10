@@ -45,7 +45,13 @@ mod common;
 /// `counts.wardrobeWear` and `$defs.WardrobeWear`; `7c8572869` (#82) added
 /// `WardrobeItem.imageFileId` and `WardrobeItem._imageFiles` (documentation —
 /// `$defs.WardrobeItem` was already `additionalProperties: true`).
-const VENDORED_BYTES: usize = 101_092;
+/// P4.D272: 102,523 at v4 `01a83539d` (`d58548051`:
+/// `ExportedChat.otherExtractionWatermarkMessageId`, `Memory.tier` /
+/// `supersededById` / `consolidatedFrom` / `consolidatedAt`, the `source`
+/// description). Both `$defs` are `additionalProperties: true`, so the move is
+/// an acceptance tightening for PRESENT keys, never a new-key refusal; its
+/// only behavioural consumer is the AI import's validator.
+const VENDORED_BYTES: usize = 102_523;
 
 #[test]
 fn the_embedded_schema_is_self_consistent() {

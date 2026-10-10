@@ -181,7 +181,63 @@ mod tests {
         // on the characters and document-stores data objects, `counts.
         // wardrobeWear`, `$defs.WardrobeWear`; `7c8572869` #82: `WardrobeItem.
         // imageFileId` and `_imageFiles`).
-        assert_eq!(QTAP_EXPORT_SCHEMA_JSON.len(), 101_092);
+        // P4.D272: 102,523 at v4 `01a83539d` (`d58548051`:
+        // `ExportedChat.otherExtractionWatermarkMessageId`, `Memory.tier` /
+        // `supersededById` / `consolidatedFrom` / `consolidatedAt`, the
+        // `source` description).
+        assert_eq!(QTAP_EXPORT_SCHEMA_JSON.len(), 102_523);
+    }
+
+    /// The export with one memory of `minimal_characters_export`'s character.
+    fn export_with_memory(memory_patch: serde_json::Value) -> serde_json::Value {
+        let mut export = minimal_characters_export();
+        let character_id = export["data"]["characters"][0]["id"].clone();
+        let mut memory = json!({
+            "id": "ad000000-0000-4000-8000-000000000001",
+            "characterId": character_id,
+            "content": "c",
+            "summary": "s",
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+        });
+        for (k, v) in memory_patch.as_object().unwrap() {
+            memory[k] = v.clone();
+        }
+        export["data"]["memories"] = json!([memory]);
+        export["manifest"]["counts"]["memories"] = json!(1);
+        export
+    }
+
+    #[test]
+    fn an_off_enum_memory_tier_is_invalid() {
+        // P4.D272 (v4 `d58548051`): `Memory.tier` is `{enum: [hot, cold]}` —
+        // an acceptance tightening for a PRESENT key.
+        let r = validate_qtap_export(&export_with_memory(json!({ "tier": "warm" })));
+        assert!(!r.valid);
+        assert!(
+            r.errors
+                .iter()
+                .any(|e| e.starts_with("/data/memories/0/tier: ")),
+            "{:?}",
+            r.errors
+        );
+        let ok = validate_qtap_export(&export_with_memory(json!({ "tier": "cold" })));
+        assert!(ok.valid, "{:?}", ok.errors);
+    }
+
+    #[test]
+    fn a_consolidated_digest_validates() {
+        let r = validate_qtap_export(&export_with_memory(json!({
+            "source": "CONSOLIDATED",
+            "tier": "hot",
+            "consolidatedFrom": [
+                "ad000000-0000-4000-8000-000000000002",
+                "ad000000-0000-4000-8000-000000000003"
+            ],
+            "consolidatedAt": "2026-01-01T00:00:00.000Z",
+            "supersededById": null
+        })));
+        assert!(r.valid, "unexpected errors: {:?}", r.errors);
     }
 
     #[test]

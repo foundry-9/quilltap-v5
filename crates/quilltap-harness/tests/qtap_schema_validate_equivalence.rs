@@ -36,6 +36,22 @@
 //!   row — asserted — while v4's per-path COUNT is never below v5's, also
 //!   asserted. Anything else is a real divergence and fails here.
 //!
+//! **[P4.D272] The memory-tier rows** (v4 `d58548051`; the schema re-vendored at
+//! `01a83539d`, 102,523 B). Both `$defs` are `additionalProperties: true`, so
+//! the move is an acceptance TIGHTENING for present keys, proven by ten
+//! mutation rows — eight from `characters_valid_rich` (`memory_tier_off_enum`,
+//! `memory_tier_cold_valid`, `memory_superseded_by_not_uuid`,
+//! `memory_superseded_by_null_valid`, `memory_consolidated_from_item_not_uuid`,
+//! `memory_consolidated_from_not_array`, `memory_consolidated_at_bad_date`,
+//! `memory_consolidated_digest_valid`) and two from `chats_all_memories`
+//! (`chat_watermark_not_string`, `chat_watermark_null_valid` — that seed is
+//! already invalid, so the null row only proves the verdict is unchanged).
+//! Five went RED on the stale schema (v4 invalid, v5 valid) and green after
+//! the re-vendor. Their RECORDED count deltas, ajv vs the crate: the five
+//! invalid memory rows 2/1, 4/1, 2/1, 2/1, 4/1 (the `then` wrapper, plus
+//! `anyOf`'s two branch errors on the two nullable keys); the watermark rows
+//! 4/3 and 3/2.
+//!
 //! Regenerate the oracle (Node 24, from the v4 checkout — see the .ts header):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   V5W=${V5W:-$HOME/source/quilltap-v5}
