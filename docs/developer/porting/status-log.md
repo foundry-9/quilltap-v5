@@ -175497,3 +175497,14 @@ Branch `claude/store-names-unique-index-reconcile-ede082`, worktree `.claude/wor
   - After the convergence: 117/117.
 - **Covered caller:** restore 22a's free-name pick (C1 §14, P4.D265's hunk) calls the same suffixer, so the convergence moves it toward v4's JS `trim`. The suffixer rows cover it; `system_restore_state` is re-run by name at the gate.
 - **`STORE_STAMP_UNREACHABLE_FORMS`** (R-E), both ways: V8's legacy `Oct 9 2026` / RFC-1123 forms and the extended years `±YYYYYY`. v4's measured outputs are pinned beside v5's fallback outputs.
+
+### Unit 2 — the name-index ensure + the R-G rider (U2)
+- `ensure_mount_point_name_unique_index` (repair → validity → `DROP INDEX IF EXISTS` + `CREATE UNIQUE INDEX` → INFO) and `MOUNT_POINT_NAME_NOCASE_INDEX`. The CREATE text is pinned byte-equal to P4.D265's `fresh_schema.json` line. The header's "no DB index" rule is reversed.
+- `builtin_mounts`' `doc_mount_points` lazy ensure now runs the ensure in place of the bare repair: still one closure and one ensure-failure line.
+- **R-G:** the store / folder / link repair lines move to WARN with v4's camelCase keys in v4's order. The store repair's three trims move to `js_trim`. Nothing pinned the old shape (grep: zero hits).
+- **Differential:** `mount_case_repair_equivalence` is EXTENDED. 5 new `mountpoints-index` spec rows are appended as text, so the old rows are byte-unchanged: the jest case + probe insert, a tampered stand-in, a preset-valid index, idempotence, and the JS-trim key. The index dump widens to `doc_mount_points`, and every case's log lines are captured (v4: a spliced transport; v5: `captured_with`, rendered `LEVEL message k=v` in key order). 12/12, plus the naming leaf. Red on the tip by absence (`ensure_mount_point_name_unique_index` unresolved).
+- **In-file pins** (`builtin_mounts`):
+  - a fresh instance (fresh-schema DDL) logs no INFO;
+  - a pre-round index gains the index with ONE INFO, then is silent;
+  - a TABLE squatting the index name is ONE `Failed to ensure doc_mount_points …` line plus one structural entry, and the pass goes on.
+- **M2 / R-B (`BUILTIN_REPROVISION_FREE_NAME`), MEASURED FIRST:** a dangling General pointer plus a squatting `quilltap general` store, with the ensure wired, fails `ensure_builtin_mounts_with` with `UNIQUE constraint failed: doc_mount_points.name`. It propagates even under `LogAndContinue` (`ensure_one_mount`'s `?`), so `seed_built_ins` and the boot are FATAL. The fix: the re-provision picks a free name over `find_all_names()`, giving `Quilltap General (2)`. Pinned both ways (squatted → `(2)`; unsquatted → plain).

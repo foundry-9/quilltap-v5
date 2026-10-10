@@ -10,10 +10,14 @@
 //!
 //! - folder siblings: UNIQUE (mountPointId, parentId, name COLLATE NOCASE)
 //! - file links: UNIQUE (mountPointId, relativePath COLLATE NOCASE)
-//! - vault names: app-level (see the mount-points routes and
-//!   `next_unique_mount_point_name`) plus the repair below — no DB index,
-//!   because backup restore must be able to recreate legacy rows verbatim
-//!   before repair runs.
+//! - store (mount-point) names: UNIQUE (name COLLATE NOCASE) — v4
+//!   `ed8b15b50` (bug 186) REVERSED the old "no DB index, because backup
+//!   restore must be able to recreate legacy rows verbatim" rule: every write
+//!   chokepoint now refuses a taken name (`DocMountPointsRepository::create` /
+//!   `update`), the restore and the import pick free names before inserting,
+//!   and the index ([`ensure_mount_point_name_unique_index`]) is the backstop.
+//!   (v4's own module header still carries the old sentence — a stale comment
+//!   in v4, a filing candidate; the section comment there is current.)
 //!
 //! The `ensure_*_nocase_unique_index` helpers are wired into the boot hook
 //! [`crate::services::builtin_mounts`] (`ensure_mount_index_tables`), which runs
@@ -57,6 +61,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 use super::DbError;
 use crate::collation::locale_compare;
+use crate::jsstr::js_trim;
 
 pub const FOLDER_NOCASE_INDEX: &str = "idx_doc_mount_folders_mp_parent_name_nocase";
 const FOLDER_LEGACY_INDEX: &str = "idx_doc_mount_folders_mp_parent_name";
@@ -319,13 +324,15 @@ fn repair_folder_case_collisions(db: &Connection) -> Result<u64, DbError> {
             let new_name = next_suffixed_name(&mut sibling_lower, &loser.name);
             rename_folder_row(db, loser, &new_name)?;
             renamed += 1;
-            tracing::info!(
+            // v4 `:183-189` — WARN with camelCase keys (P4.D274 R-G; v5 had
+            // logged INFO with snake_case keys).
+            tracing::warn!(
                 target: "quilltap::mount_repair",
-                mount_point_id = %loser.mount_point_id,
-                kept_folder = %keeper.name,
-                old_name = %loser.name,
-                new_name = %new_name,
-                old_path = %loser.path,
+                mountPointId = %loser.mount_point_id,
+                keptFolder = %keeper.name,
+                oldName = %loser.name,
+                newName = %new_name,
+                oldPath = %loser.path,
                 "Mount-index case repair: renamed folder that collided with a sibling except for casing",
             );
         }
@@ -434,12 +441,13 @@ fn repair_link_case_collisions(db: &Connection) -> Result<u64, DbError> {
                 params![new_rel, new_file_name, loser.id],
             )?;
             renamed += 1;
-            tracing::info!(
+            // v4 `:261-266` — WARN, camelCase (P4.D274 R-G).
+            tracing::warn!(
                 target: "quilltap::mount_repair",
-                mount_point_id = %loser.mount_point_id,
-                kept_path = %keeper.relative_path,
-                old_path = %loser.relative_path,
-                new_path = %new_rel,
+                mountPointId = %loser.mount_point_id,
+                keptPath = %keeper.relative_path,
+                oldPath = %loser.relative_path,
+                newPath = %new_rel,
                 "Mount-index case repair: renamed file that collided with a sibling except for casing",
             );
         }
@@ -521,8 +529,46 @@ pub fn ensure_link_group_column(db: &Connection) -> Result<(), DbError> {
 }
 
 // ============================================================================
-// Vault (mount-point) names — app-level uniqueness, repaired at boot
+// Store (mount-point) names: UNIQUE (name COLLATE NOCASE)
 // ============================================================================
+
+/// v4 `MOUNT_POINT_NAME_NOCASE_INDEX` (`ed8b15b50`).
+pub const MOUNT_POINT_NAME_NOCASE_INDEX: &str = "idx_doc_mount_points_name_nocase";
+
+/// The index's CREATE text — byte-identical to the line v4's `generateDDL`
+/// emits (P4.D265's re-dumped `fresh_schema.json`, pinned in this module's
+/// tests), so a fresh instance and a healed one carry the same definition.
+const MOUNT_POINT_NAME_NOCASE_INDEX_SQL: &str =
+    "CREATE UNIQUE INDEX \"idx_doc_mount_points_name_nocase\" ON \"doc_mount_points\" (\"name\" COLLATE NOCASE)";
+
+/// Repair surviving name collisions, then make sure the unique name index is in
+/// place — v4 `ensureMountPointNameUniqueIndex` (`mount-index-case-repair.ts:
+/// 343-352`). Every write chokepoint already refuses a taken name
+/// (`DocMountPointsRepository::create` / `update`), and a restore picks free
+/// names before inserting; the index is the backstop for anything that slips
+/// past them. NOCASE folds ASCII only — the JS-side checks fold the rest.
+///
+/// The repair runs FIRST and unconditionally (the index cannot be created over
+/// a collision); then a genuine UNIQUE + NOCASE definition is trusted, anything
+/// else (absent, or a tampered stand-in under the name) is dropped and
+/// recreated — two statements, no transaction, as v4's two `db.exec`s — and v4's
+/// INFO (root logger, no fields) is logged. On a fresh instance (P4.D265's DDL
+/// carries the index) it is a no-op scan and logs nothing.
+pub fn ensure_mount_point_name_unique_index(db: &Connection) -> Result<(), DbError> {
+    repair_mount_point_name_collisions(db)?;
+    if nocase_unique_index_is_valid(db, MOUNT_POINT_NAME_NOCASE_INDEX)? {
+        return Ok(());
+    }
+    db.execute_batch(&format!(
+        "DROP INDEX IF EXISTS \"{MOUNT_POINT_NAME_NOCASE_INDEX}\""
+    ))?;
+    db.execute_batch(MOUNT_POINT_NAME_NOCASE_INDEX_SQL)?;
+    tracing::info!(
+        target: "quilltap::mount_repair",
+        "Mount-index: created the unique document-store name index"
+    );
+    Ok(())
+}
 
 struct MountPointNameRow {
     id: String,
@@ -530,11 +576,14 @@ struct MountPointNameRow {
     created_at: String,
 }
 
-/// Rename vaults whose names collide with a peer's except for casing (or exactly
+/// Rename stores whose names collide with a peer's except for casing (or exactly
 /// — legacy rows predate any uniqueness at all). Keep-oldest wins; losers get the
-/// standard ` (N)` suffix. Cheap no-op scan when the invariant already holds, so
-/// the boot hook runs it on every startup — that also mops up duplicates
-/// reintroduced by a backup restore. Returns 0 if the table is absent.
+/// standard ` (N)` suffix. Cheap no-op scan when the invariant already holds;
+/// runs on every boot ahead of the unique index, which cannot be created over a
+/// collision. The character-aware naming (live vault names, retired vaults) is
+/// `db::store_name_reconcile` (P4.D274), which needs the main database and so
+/// runs later in boot. Returns 0 if the table is absent. The grouping key, the
+/// taken set and the loser name are JS-trimmed ([`js_trim`]), as v4's `.trim()`.
 pub fn repair_mount_point_name_collisions(db: &Connection) -> Result<u64, DbError> {
     if !table_exists(db, "doc_mount_points")? {
         return Ok(0);
@@ -555,7 +604,7 @@ pub fn repair_mount_point_name_collisions(db: &Connection) -> Result<u64, DbErro
     let mut groups: HashMap<String, Vec<usize>> = HashMap::new();
     for (idx, row) in rows.iter().enumerate() {
         // trim applies to vault names only (folders/links are not trimmed).
-        let key = row.name.trim().to_lowercase();
+        let key = js_trim(&row.name).to_lowercase();
         groups.entry(key.clone()).or_insert_with(|| {
             order.push(key.clone());
             Vec::new()
@@ -564,8 +613,10 @@ pub fn repair_mount_point_name_collisions(db: &Connection) -> Result<u64, DbErro
     }
 
     let mut renamed = 0u64;
-    let mut taken_lower: HashSet<String> =
-        rows.iter().map(|r| r.name.trim().to_lowercase()).collect();
+    let mut taken_lower: HashSet<String> = rows
+        .iter()
+        .map(|r| js_trim(&r.name).to_lowercase())
+        .collect();
     for key in &order {
         let mut group: Vec<usize> = groups[key].clone();
         if group.len() < 2 {
@@ -582,18 +633,19 @@ pub fn repair_mount_point_name_collisions(db: &Connection) -> Result<u64, DbErro
         let keeper_id = rows[group[0]].id.clone();
         for &loser_idx in &group[1..] {
             let loser = &rows[loser_idx];
-            let new_name = next_suffixed_name(&mut taken_lower, loser.name.trim());
+            let new_name = next_suffixed_name(&mut taken_lower, js_trim(&loser.name));
             db.execute(
                 "UPDATE doc_mount_points SET name = ?1 WHERE id = ?2",
                 params![new_name, loser.id],
             )?;
             renamed += 1;
-            tracing::info!(
+            // v4 `:395-400` — WARN, camelCase (P4.D274 R-G).
+            tracing::warn!(
                 target: "quilltap::mount_repair",
-                mount_point_id = %loser.id,
-                kept_mount_point_id = %keeper_id,
-                old_name = %loser.name,
-                new_name = %new_name,
+                mountPointId = %loser.id,
+                keptMountPointId = %keeper_id,
+                oldName = %loser.name,
+                newName = %new_name,
                 "Mount-index case repair: renamed document store whose name collided with a peer except for casing",
             );
         }
@@ -673,5 +725,115 @@ mod link_group_column_tests {
         let db = Connection::open_in_memory().unwrap();
         ensure_link_group_column(&db).unwrap();
         assert!(index_sql(&db).is_none());
+    }
+}
+
+#[cfg(test)]
+mod name_index_tests {
+    use super::*;
+
+    fn db_with(names: &[(&str, &str, &str)]) -> Connection {
+        let db = Connection::open_in_memory().unwrap();
+        db.execute_batch(
+            "CREATE TABLE doc_mount_points (id TEXT PRIMARY KEY, name TEXT NOT NULL, createdAt TEXT NOT NULL)",
+        )
+        .unwrap();
+        for (id, name, created) in names {
+            db.execute(
+                "INSERT INTO doc_mount_points (id, name, createdAt) VALUES (?1, ?2, ?3)",
+                params![id, name, created],
+            )
+            .unwrap();
+        }
+        db
+    }
+
+    fn index_sql(db: &Connection) -> Option<String> {
+        db.query_row(
+            "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?1",
+            params![MOUNT_POINT_NAME_NOCASE_INDEX],
+            |r| r.get(0),
+        )
+        .optional()
+        .unwrap()
+    }
+
+    /// The ensure's CREATE text is byte-identical to the line P4.D265's D23
+    /// re-dump carries, so a fresh instance and a healed one hold one
+    /// definition.
+    #[test]
+    fn create_text_matches_the_fresh_schema_dump() {
+        let dump: serde_json::Value =
+            serde_json::from_str(include_str!("../services/provisioning/fresh_schema.json"))
+                .unwrap();
+        let lines: Vec<&str> = dump["mountIndex"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|v| v.as_str())
+            .filter(|s| s.contains(MOUNT_POINT_NAME_NOCASE_INDEX))
+            .collect();
+        assert_eq!(lines, vec![MOUNT_POINT_NAME_NOCASE_INDEX_SQL]);
+    }
+
+    #[test]
+    fn repairs_then_creates_the_index_once() {
+        let db = db_with(&[
+            ("a", "Tester Character Vault", "2024-01-01T00:00:00.000Z"),
+            ("b", "tester character vault", "2024-02-01T00:00:00.000Z"),
+        ]);
+        let ((), lines) = crate::test_support::captured_with(|| {
+            ensure_mount_point_name_unique_index(&db).unwrap();
+        });
+        assert_eq!(
+            index_sql(&db).as_deref(),
+            Some(MOUNT_POINT_NAME_NOCASE_INDEX_SQL)
+        );
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert!(lines[0].starts_with(
+            "WARN quilltap::mount_repair Mount-index case repair: renamed document store"
+        ));
+        assert!(lines[0].ends_with(
+            "mountPointId=b keptMountPointId=a oldName=tester character vault newName=tester character vault (2)"
+        ));
+        assert_eq!(
+            lines[1],
+            "INFO quilltap::mount_repair Mount-index: created the unique document-store name index"
+        );
+        let err = db
+            .execute(
+                "INSERT INTO doc_mount_points (id, name, createdAt) VALUES ('c', 'TESTER CHARACTER VAULT', 'x')",
+                [],
+            )
+            .unwrap_err();
+        assert!(err.to_string().contains("UNIQUE"), "{err}");
+        // Idempotent: a second pass renames nothing and logs nothing.
+        let ((), again) = crate::test_support::captured_with(|| {
+            ensure_mount_point_name_unique_index(&db).unwrap();
+        });
+        assert!(again.is_empty(), "{again:?}");
+    }
+
+    #[test]
+    fn a_tampered_stand_in_is_replaced_and_a_valid_index_is_trusted() {
+        let db = db_with(&[("a", "Lore", "2024-01-01T00:00:00.000Z")]);
+        db.execute_batch(&format!(
+            "CREATE INDEX \"{MOUNT_POINT_NAME_NOCASE_INDEX}\" ON \"doc_mount_points\" (\"name\")"
+        ))
+        .unwrap();
+        ensure_mount_point_name_unique_index(&db).unwrap();
+        assert_eq!(
+            index_sql(&db).as_deref(),
+            Some(MOUNT_POINT_NAME_NOCASE_INDEX_SQL)
+        );
+
+        let fresh = db_with(&[]);
+        fresh
+            .execute_batch(MOUNT_POINT_NAME_NOCASE_INDEX_SQL)
+            .unwrap();
+        let ((), lines) = crate::test_support::captured_with(|| {
+            ensure_mount_point_name_unique_index(&fresh).unwrap();
+        });
+        assert!(lines.is_empty(), "{lines:?}");
     }
 }

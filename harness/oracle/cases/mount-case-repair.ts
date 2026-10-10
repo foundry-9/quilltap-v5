@@ -10,6 +10,17 @@
  * `freshDb()` does, plants the colliding rows, runs the named repair, and dumps
  * post-repair rows + the two tables' `sqlite_master` index rows.
  *
+ * P4.D274 (v4 `ed8b15b50`, bug 186) extends it: the run `mountpoints-index`
+ * drives v4's REAL `ensureMountPointNameUniqueIndex` (repair → validity → DROP
+ * + CREATE the `idx_doc_mount_points_name_nocase` UNIQUE NOCASE index → INFO);
+ * `presetNameIndex` plants the genuine index first (a no-op, no line),
+ * `tamperNameIndex` a non-unique stand-in under its name (DROP + CREATE), and
+ * `probeInsert` is inserted AFTER the run, its error text (or `null`) dumped as
+ * `probeError`. The index dump now covers `doc_mount_points` too (the earlier
+ * cases plant no index there, so their rows are unchanged), and EVERY case
+ * dumps `lines` — the log lines v4 emitted, captured by splicing a transport
+ * into the singleton logger: `{level, message, fields}` in v4's key order.
+ *
  * The Rust diff (`crates/quilltap-harness/tests/mount_case_repair_equivalence.rs`)
  * reads the SAME spec, replays the identical setup with the ported repair, and
  * field-diffs against this NDJSON.
@@ -30,8 +41,11 @@ import { createRequire } from 'node:module';
 import {
   ensureFolderNocaseUniqueIndex,
   ensureLinkNocaseUniqueIndex,
+  ensureMountPointNameUniqueIndex,
+  MOUNT_POINT_NAME_NOCASE_INDEX,
   repairMountPointNameCollisions,
 } from '@/lib/database/repositories/mount-index-case-repair';
+import { logger } from '@/lib/logger';
 import { nextUniqueMountPointName } from '@/lib/mount-index/unique-mount-point-name';
 
 // nextUniqueMountPointName — the naming leaf (case-insensitive + trimmed). Kept
@@ -74,9 +88,12 @@ interface MountPointSpec {
 }
 interface Case {
   name: string;
-  run: 'folder' | 'link' | 'mountpoints';
+  run: 'folder' | 'link' | 'mountpoints' | 'mountpoints-index';
   runTwice?: boolean;
   tamperFolderIndex?: boolean;
+  presetNameIndex?: boolean;
+  tamperNameIndex?: boolean;
+  probeInsert?: MountPointSpec;
   folders?: FolderSpec[];
   links?: LinkSpec[];
   mountPoints?: MountPointSpec[];
@@ -87,6 +104,20 @@ interface Spec {
 }
 
 const MP = SPEC.mountPointId;
+
+// Every line v4 logs lands here (child loggers share the singleton's
+// transports), so nothing reaches stdout; `runCase` drains it per case.
+type Line = { level: string; message: string; fields: Record<string, unknown> };
+let captured: Line[] = [];
+const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
+internal.transports.splice(0, internal.transports.length, {
+  write: (d: unknown) => {
+    const data = d as { level: string; message: string; context?: Record<string, unknown>; error?: { message: string } };
+    const { service: _s, environment: _e, ...fields } = data.context ?? {};
+    if (data.error) fields.error = data.error.message;
+    captured.push({ level: data.level, message: data.message, fields });
+  },
+});
 const FOLDER_NOCASE_INDEX = 'idx_doc_mount_folders_mp_parent_name_nocase';
 
 function freshDb(): any {
@@ -129,7 +160,16 @@ function freshDb(): any {
 
 function runCase(c: Case): unknown {
   const db = freshDb();
+  captured = [];
   try {
+    if (c.presetNameIndex) {
+      db.exec(
+        `CREATE UNIQUE INDEX "${MOUNT_POINT_NAME_NOCASE_INDEX}" ON "doc_mount_points" ("name" COLLATE NOCASE)`,
+      );
+    }
+    if (c.tamperNameIndex) {
+      db.exec(`CREATE INDEX "${MOUNT_POINT_NAME_NOCASE_INDEX}" ON "doc_mount_points" ("name")`);
+    }
     if (c.tamperFolderIndex) {
       // Simulate manual tampering: drop the legacy index and plant a non-unique
       // stand-in under the NOCASE index's name.
@@ -159,10 +199,24 @@ function runCase(c: Case): unknown {
     const runOnce = () => {
       if (c.run === 'folder') ensureFolderNocaseUniqueIndex(db);
       else if (c.run === 'link') ensureLinkNocaseUniqueIndex(db);
+      else if (c.run === 'mountpoints-index') ensureMountPointNameUniqueIndex(db);
       else repairMountPointNameCollisions(db);
     };
     runOnce();
     if (c.runTwice) runOnce();
+
+    let probeError: string | null = null;
+    if (c.probeInsert) {
+      try {
+        db.prepare(`INSERT INTO doc_mount_points (id, name, createdAt) VALUES (?, ?, ?)`).run(
+          c.probeInsert.id,
+          c.probeInsert.name,
+          c.probeInsert.createdAt,
+        );
+      } catch (e) {
+        probeError = (e as Error).message;
+      }
+    }
 
     const folders = db
       .prepare(`SELECT id, parentId, name, path FROM doc_mount_folders ORDER BY id`)
@@ -174,11 +228,13 @@ function runCase(c: Case): unknown {
     const indexes = db
       .prepare(
         `SELECT name, sql FROM sqlite_master WHERE type = 'index'
-           AND tbl_name IN ('doc_mount_folders', 'doc_mount_file_links')
+           AND tbl_name IN ('doc_mount_folders', 'doc_mount_file_links', 'doc_mount_points')
            AND sql IS NOT NULL ORDER BY name`,
       )
       .all();
-    return { case: c.name, folders, links, mountPoints, indexes };
+    const out: Record<string, unknown> = { case: c.name, folders, links, mountPoints, indexes, lines: captured };
+    if (c.probeInsert) out.probeError = probeError;
+    return out;
   } finally {
     db.close();
   }

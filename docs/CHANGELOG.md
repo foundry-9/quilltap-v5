@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(mount-index): P4.D274 unit 2 — the unique store-name index ensure, the repair lines at WARN
+
+_Versions: core 0.0.1267._
+
+Ports v4's `ensureMountPointNameUniqueIndex`. It repairs case-insensitive store-name collisions, then makes sure the `idx_doc_mount_points_name_nocase` UNIQUE NOCASE index exists (recreating a tampered stand-in), and logs v4's INFO when it creates the index. The boot's `doc_mount_points` lazy ensure now calls it in place of the bare repair. A fresh instance already has the index, so nothing is logged there.
+
+The three case-repair lines (store, folder, link) now log at WARN with v4's camelCase keys, and the store repair trims with JS's `trim`.
+
+A built-in store re-provisioned over a dangling pointer now picks a free name (`Quilltap General (2)`) instead of failing the boot on the new index. This is a v5-only path, recorded as `BUILTIN_REPROVISION_FREE_NAME`.
+
+`mount_case_repair_equivalence` gains five index rows and compares every case's log lines against v4's.
+
 #### 2026-10-09 — feat(mount-index): P4.D274 unit 1 — the document-store naming leaf (v4 `ed8b15b50`, bug 186)
 
 _Versions: core 0.0.1266._
