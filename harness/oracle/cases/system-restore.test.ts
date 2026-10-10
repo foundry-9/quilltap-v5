@@ -592,6 +592,39 @@ const RESTORE_CASES: Array<{
   // `fixtures/derive-restore-archive-dup-store-id.py`.
   { name: 'restore_dup_store_id_replace', archive: 'restore-archive-dup-store-id.zip' },
 
+  // ── P4.D273: v4 `ed8b15b50` (bug 185) — the store claim map's arms ────────
+  //
+  // `restore-archive-store-binding.zip` (`fixtures/derive-restore-archive-
+  // store-binding.py`): an UNTYPED vault that still binds (Lorian), a
+  // `not-carried` pointer on an ARCHIVED character (Riya — the ruled
+  // fallback arm of ARCHIVED_CHARACTER_RESTORE), a `wrong-kind` group pointer
+  // (Riya's vault), and a bound project with a CARRIED file and a LOOSE one
+  // its restore defers until after the project's links.
+  { name: 'restore_store_binding_replace', archive: 'restore-archive-store-binding.zip' },
+  {
+    name: 'restore_store_binding_new_account',
+    archive: 'restore-archive-store-binding.zip',
+    mode: 'new-account',
+  },
+  // `restore-archive-store-row-fails.zip`: four bound stores whose ROW fails
+  // at 22a (a null `name`) — three re-provisioned at 22a-i, and one archived
+  // character's left unhealed.
+  { name: 'restore_store_row_fails_replace', archive: 'restore-archive-store-row-fails.zip' },
+  {
+    name: 'restore_store_row_fails_new_account',
+    archive: 'restore-archive-store-row-fails.zip',
+    mode: 'new-account',
+  },
+  // `restore-archive-memory-tiers.zip`: v4 `d58548051`'s tiers through the
+  // restore — a CONSOLIDATED digest, its two cold members, a pre-tier row, a
+  // refused `tier: 'warm'`, and a chat's other-extraction watermark.
+  { name: 'restore_memory_tiers_replace', archive: 'restore-archive-memory-tiers.zip' },
+  {
+    name: 'restore_memory_tiers_new_account',
+    archive: 'restore-archive-memory-tiers.zip',
+    mode: 'new-account',
+  },
+
 
   // ── P4.D264 (v4 `3ee3b1342` #81): the wear ledger, both modes ──────────
   //

@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — test(restore): P4.D273 three derived restore archives pin the claim map's arms, 22a-i and the memory tiers
+
+_No crate versions bumped._
+
+Three committed derive scripts build three new restore archives, and `system_restore_state` gains six cases (both modes each), bringing it to 51:
+
+- **`restore-archive-store-binding.zip`** covers an untyped vault that still binds, a `not-carried` pointer on an archived character, and a `wrong-kind` group pointer. It also has a bound project with a carried file and a deferred loose file.
+- **`restore-archive-store-row-fails.zip`** has four bound stores whose rows fail at step 22a. Three are re-provisioned, and one archived character's vault is left unhealed.
+- **`restore-archive-memory-tiers.zip`** has a `CONSOLIDATED` digest with its cold members, a pre-tier memory, a refused `warm` tier, and a chat's other-extraction watermark.
+
+New by-name pins assert each arm on both sides. The ruled fallback arm of `ARCHIVED_CHARACTER_RESTORE` is pinned in both directions. All 51 cases match v4 at the pin.
+
 #### 2026-10-09 — feat(restore): P4.D273 the restore binds every entity to its archived store, in both modes (v4 bug 185)
 
 _Versions: core 0.0.1269._

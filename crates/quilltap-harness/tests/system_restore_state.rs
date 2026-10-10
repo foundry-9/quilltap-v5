@@ -391,6 +391,53 @@ const PHASE_ORDER_RESIDUAL: &[(&str, &str, &str)] = &[
         "mountIndex",
         "doc_mount_files",
     ),
+    // [P4.D273] the three new archives' `new-account` cases replay the same
+    // seeded legacy-disk-key `portrait.png` — the ruled placement again.
+    (
+        "restore_store_binding_new_account",
+        "mountIndex",
+        "doc_mount_blobs",
+    ),
+    (
+        "restore_store_binding_new_account",
+        "mountIndex",
+        "doc_mount_file_links",
+    ),
+    (
+        "restore_store_binding_new_account",
+        "mountIndex",
+        "doc_mount_files",
+    ),
+    (
+        "restore_store_row_fails_new_account",
+        "mountIndex",
+        "doc_mount_blobs",
+    ),
+    (
+        "restore_store_row_fails_new_account",
+        "mountIndex",
+        "doc_mount_file_links",
+    ),
+    (
+        "restore_store_row_fails_new_account",
+        "mountIndex",
+        "doc_mount_files",
+    ),
+    (
+        "restore_memory_tiers_new_account",
+        "mountIndex",
+        "doc_mount_blobs",
+    ),
+    (
+        "restore_memory_tiers_new_account",
+        "mountIndex",
+        "doc_mount_file_links",
+    ),
+    (
+        "restore_memory_tiers_new_account",
+        "mountIndex",
+        "doc_mount_files",
+    ),
 ];
 
 /// ## A pre-existing v5 gap, newly VISIBLE — not this lane's to fix
@@ -452,6 +499,18 @@ const V5_STATS_GAP: &[(&str, &str)] = &[
         "restore_wardrobe_picture_tombstone_new_account",
         "Quilltap Uploads",
     ),
+    // [P4.D273] the new archives' `new-account` replays of the same seeded
+    // `files/portrait.png`, and the store-binding archive's DEFERRED project
+    // file — replayed through the bridge into the bound project's store, where
+    // v4's `refreshStats` runs and v5's (the same deferral) does not.
+    ("restore_store_binding_replace", "Project Files: The Voyage"),
+    ("restore_store_binding_new_account", "Quilltap Uploads"),
+    (
+        "restore_store_binding_new_account",
+        "Project Files: The Voyage",
+    ),
+    ("restore_store_row_fails_new_account", "Quilltap Uploads"),
+    ("restore_memory_tiers_new_account", "Quilltap Uploads"),
 ];
 
 /// The columns [`V5_STATS_GAP`] makes incomparable on its named rows.
@@ -1162,6 +1221,16 @@ fn archive_for(name: &str) -> &'static str {
         // [P4.158 item 2, R-B] Lorian's vault id duplicated as a `documents`
         // row — `derive-restore-archive-dup-store-id.py`.
         "restore_dup_store_id_replace" => "restore-archive-dup-store-id.zip",
+        // [P4.D273] the store claim map's arms, 22a-i, and the memory tiers.
+        "restore_store_binding_replace" | "restore_store_binding_new_account" => {
+            "restore-archive-store-binding.zip"
+        }
+        "restore_store_row_fails_replace" | "restore_store_row_fails_new_account" => {
+            "restore-archive-store-row-fails.zip"
+        }
+        "restore_memory_tiers_replace" | "restore_memory_tiers_new_account" => {
+            "restore-archive-memory-tiers.zip"
+        }
         // [P4.158 item 3, R-C] gen2 plus one shared legacy preset, into a fresh
         // target — `derive-restore-archive-general-pointer.py`.
         "restore_general_pointer_fresh_replace" => "restore-archive-general-pointer.zip",
@@ -1535,9 +1604,12 @@ fn assert_memory_graph_intact(
     // `assert_refusals_restored` names exactly which land.
     // [P4.D258] the empty-embedding archive refuses its `{}` memory on BOTH
     // sides; `assert_refusals_restored` names which land.
+    // [P4.D273] the memory-tiers archive refuses its `tier: 'warm'` row on
+    // BOTH sides by design; `assert_memory_tiers_restored` names the rest.
     if name == "restore_phase_warns_replace"
         || name == "restore_memory_refusals_replace"
         || name == EMPTY_EMBEDDING_CASE
+        || MEMORY_TIERS_CASES.contains(&name)
     {
         return;
     }
@@ -1876,6 +1948,15 @@ fn system_restore_state_equivalence() {
                 ));
             }
         }
+        // [P4.D273 R-F (b)] the archived character on the FALLBACK arm.
+        carve_archived_character_fallback(
+            name,
+            &case["summary"],
+            &mut got_state,
+            &mut want_owned,
+            &mut summary_carve,
+            &mut failures,
+        );
         // [P4.158 R-A] the backfilled managed files, both ways.
         summary_carve.preserve_backfill = assert_preserve_backfill(
             name,
@@ -1904,6 +1985,26 @@ fn system_restore_state_equivalence() {
         // EVERY case, not just the memory-graph ones — the other archives' edge
         // sets are empty, so it is cheap there and guards the id preservation.
         assert_memory_graph_intact(name, &zip, &host.temp_dir(), &got_state, &mut failures);
+        // [P4.D273 item 13] the claim map's arms and 22a-i, by name.
+        assert_store_binding_arms(
+            name,
+            &summary,
+            &case["summary"],
+            &got_state,
+            want_state,
+            &mut failures,
+        );
+        // [P4.D273 item 14] the CONSOLIDATED acceptance pin, by name.
+        assert_memory_tiers_restored(
+            name,
+            &zip,
+            &host.temp_dir(),
+            &summary,
+            &case["summary"],
+            &got_state,
+            want_state,
+            &mut failures,
+        );
 
         // [P4.D152] bug 117's own comparand, taken from the RAW dumps.
         assert_bug117_stored_sha(name, &got_state, want_state, &mut failures);
@@ -2011,15 +2112,17 @@ fn system_restore_state_equivalence() {
     // 43 + 1 = 44: P4.D258's empty-embedding arm (its case line landed at the
     // `f5e953a3f` unification — the P4.D258 HANDOFF). 44 + 1 = 45: P4.D273
     // lets the P4.D264 tombstone twin into the bulk diff (the bound arm of
-    // `ARCHIVED_CHARACTER_RESTORE` converged).
+    // `ARCHIVED_CHARACTER_RESTORE` converged). 45 + 6 = 51: P4.D273's three
+    // derived archives in both modes (the store claim map's arms, 22a-i, the
+    // memory tiers).
     assert_eq!(
         empty_embedding_seen, 1,
         "{EMPTY_EMBEDDING_CASE} is missing from the oracle — regenerate it"
     );
     assert_eq!(
         seen,
-        45,
-        "expected all forty-five restore cases in the oracle (ten + the #58 orphan-links arm \
+        51,
+        "expected all fifty-one restore cases in the oracle (ten + the #58 orphan-links arm \
          + P4.D46's two compact arms + P4.D126's bug-103 legacy-profiles arm \
          + P4.D145's bug-114 duplicate-folders arm + P4.D152's bug-117 arm \
          + P4.D158's two bag-key arms + P4.D208's bug-158 arm \
@@ -2029,7 +2132,8 @@ fn system_restore_state_equivalence() {
          + P4.158's damaged-store, two-claimants, dup-store-id, general-pointer and phase-warns arms \
          + P4.161's memory-, inform-, entity- and kind-refusal arms \
          + P4.D264's five wardrobe-carrier arms + its tombstone twin + P4.D258's \
-         empty-embedding arm)"
+         empty-embedding arm + P4.D273's store-binding, store-row-fails and memory-tiers \
+         arms in both modes)"
     );
     for f in &failures {
         eprintln!("FAILURE {f}");
@@ -4238,6 +4342,418 @@ fn carve_dup_store_id_first_row(
         outcome.shared_content
     );
     (!carve.is_empty()).then_some(outcome.shared_content)
+}
+
+/// ## ⚠ THE RULED DIVERGENCE, ITS FALLBACK ARM — `ARCHIVED_CHARACTER_FALLBACK`
+/// ## (the human, 2026-10-08: "fix v5, keep archivedAt"; P4.D273 R-F (b))
+///
+/// `ARCHIVED_CHARACTER_RESTORE`'s BOUND arm converged (v4 `ed8b15b50` binds a
+/// tombstone to its archived vault). Its FALLBACK arm — an archived character
+/// whose pointer is absent, not carried, the wrong kind or already claimed —
+/// stays ruled: v4's create provisions a vault, then refuses the archived
+/// character (`Failed to restore character "<name>": Character <id> is
+/// archived: this character is archived; rehydrate it to continue`, + the WARN
+/// `Failed to restore character`) and leaves its pointer NULL, the vault
+/// orphaned; v5 keeps the vault and warns nothing.
+///
+/// Each entry: `(case, the character's name)`. Asserted BOTH ways on the RAW
+/// dumps (the character's id read off each side — `new-account` remaps it):
+/// **v5** points it at a store it holds and logs neither line; **v4** has the
+/// warning, the WARN and a NULL pointer. Then v5's pointer cell is nulled and
+/// v4's two lines leave its side, so the rest diffs row for row.
+const ARCHIVED_CHARACTER_FALLBACK: &[(&str, &str)] = &[
+    ("restore_store_binding_replace", "Riya"),
+    ("restore_store_binding_new_account", "Riya"),
+];
+
+fn carve_archived_character_fallback(
+    name: &str,
+    want_summary: &Value,
+    got: &mut BTreeMap<String, BTreeMap<String, Vec<Value>>>,
+    want: &mut Value,
+    summary_carve: &mut SummaryCarve,
+    failures: &mut Vec<String>,
+) {
+    let Some((_, character)) = ARCHIVED_CHARACTER_FALLBACK.iter().find(|(c, _)| *c == name) else {
+        return;
+    };
+    let row_of = |dump: &Value| -> Option<Value> {
+        rows_of(dump, "main", "characters")
+            .iter()
+            .find(|r| str_at(r, "name") == Some(character))
+            .cloned()
+    };
+    let mut got_v = serde_json::to_value(&*got).expect("dump serializes");
+    let (Some(g), Some(w)) = (row_of(&got_v), row_of(want)) else {
+        failures.push(format!(
+            "[{name}] ARCHIVED_CHARACTER_FALLBACK: {character} did not restore on both sides"
+        ));
+        return;
+    };
+    for (side, row) in [("v5", &g), ("v4", &w)] {
+        if row["archivedAt"].is_null() {
+            failures.push(format!(
+                "[{name}] ARCHIVED_CHARACTER_FALLBACK ({side}): {character} lost archivedAt"
+            ));
+        }
+    }
+    let g_vault = str_at(&g, "characterDocumentMountPointId").map(str::to_string);
+    if !g_vault.as_deref().is_some_and(|v| point_exists(&got_v, v)) {
+        failures.push(format!(
+            "[{name}] ARCHIVED_CHARACTER_FALLBACK (v5): {character} points at {g_vault:?}, not a \
+             vault v5 holds"
+        ));
+    }
+    if !w["characterDocumentMountPointId"].is_null() {
+        failures.push(format!(
+            "[{name}] ARCHIVED_CHARACTER_FALLBACK (v4): {character} now keeps a vault ({}) — v4 \
+             converged; retire the table",
+            w["characterDocumentMountPointId"]
+        ));
+    }
+    let (Some(g_id), Some(w_id)) = (str_at(&g, "id"), str_at(&w, "id")) else {
+        return;
+    };
+    let w_id = w_id.to_string();
+    let error = format!(
+        "Character {w_id} is archived: this character is archived; rehydrate it to continue"
+    );
+    let warning = format!("Failed to restore character \"{character}\": {error}");
+    let has_warning = want_summary["warnings"]
+        .as_array()
+        .is_some_and(|ws| ws.iter().any(|x| x.as_str() == Some(warning.as_str())));
+    if !has_warning {
+        failures.push(format!(
+            "[{name}] ARCHIVED_CHARACTER_FALLBACK (v4): no {warning:?} warning"
+        ));
+    }
+    summary_carve.drop_v4_warnings.push(warning);
+    summary_carve.drop_v4_census.push(json!({
+        "level": "warn",
+        "message": "Failed to restore character",
+        "characterId": w_id,
+        "error": error,
+    }));
+    // v5's pointer cell, nulled so the rest diffs.
+    let g_id = g_id.to_string();
+    if let Some(row) = got_v["main"]["characters"].as_array_mut().and_then(|rows| {
+        rows.iter_mut()
+            .find(|r| str_at(r, "id") == Some(g_id.as_str()))
+    }) {
+        row["characterDocumentMountPointId"] = Value::Null;
+    }
+    *got = serde_json::from_value(got_v).expect("dump round-trips");
+}
+
+/// ## [P4.D273 item 13] The store claim map's arms and 22a-i — by name, both sides
+///
+/// The bulk diff already compares these cases row for row; this names what
+/// each archive exists to prove, so neither arm can go vacuous.
+///
+/// - `restore_store_binding_*`: Lorian binds through an UNTYPED vault, Riya
+///   falls back `not-carried`, the group `wrong-kind` — v4's two warnings,
+///   verbatim, on both sides — and the bound project's CARRIED file row lands
+///   before its DEFERRED loose one (`files` rowids).
+/// - `restore_store_row_fails_*`: the three re-provision warnings and the
+///   tombstone's, on both sides; Lorian, the project and the group each point
+///   at a FRESH store (not the archived id) whose `description.md` reads the
+///   archived row's `description`; the tombstone's pointer still names its
+///   failed archived vault.
+fn assert_store_binding_arms(
+    name: &str,
+    got_summary: &RestoreSummary,
+    want_summary: &Value,
+    got: &BTreeMap<String, BTreeMap<String, Vec<Value>>>,
+    want: &Value,
+    failures: &mut Vec<String>,
+) {
+    let binding = name.starts_with("restore_store_binding_");
+    let row_fails = name.starts_with("restore_store_row_fails_");
+    if !binding && !row_fails {
+        return;
+    }
+    let expected: &[&str] = if binding {
+        &[
+            "The character \"Riya\" was given a fresh, empty store because the backup does not \
+             carry the store it pointed at",
+            "The group \"The Crew\" was given a fresh, empty store because the store it pointed at \
+             is the wrong kind",
+        ]
+    } else {
+        &[
+            "The character \"Lorian\" was given a fresh vault because its own could not be \
+             restored",
+            "The archived character \"Riya\" could not be restored readable, because its vault \
+             could not be restored",
+            "The project \"The Voyage\" was given a fresh store because its own could not be \
+             restored",
+            "The group \"The Crew\" was given a fresh store because its own could not be restored",
+        ]
+    };
+    let got_v = serde_json::to_value(got).expect("dump serializes");
+    let want_w: Vec<String> = want_summary["warnings"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|w| w.as_str().map(str::to_string))
+        .collect();
+    for (side, warnings, dump) in [("v5", &got_summary.warnings, &got_v), ("v4", &want_w, want)] {
+        for e in expected {
+            if !warnings.iter().any(|w| w == e) {
+                failures.push(format!("[{name}] STORE BINDING ({side}): no warning {e:?}"));
+            }
+        }
+        let character = |n: &str| -> Option<Value> {
+            rows_of(dump, "main", "characters")
+                .iter()
+                .find(|r| str_at(r, "name") == Some(n))
+                .cloned()
+        };
+        if binding {
+            // The untyped vault binds Lorian (an archived id — a literal on
+            // `replace`, a remapped one on `new-account`): a store this side
+            // holds that is NOT freshly provisioned (its `createdAt` is kept).
+            let lorian = character("Lorian");
+            let vault = lorian
+                .as_ref()
+                .and_then(|r| str_at(r, "characterDocumentMountPointId"));
+            let kept = vault.and_then(|v| {
+                rows_of(dump, "mountIndex", "doc_mount_points")
+                    .iter()
+                    .find(|p| str_at(p, "id") == Some(v))
+                    .and_then(|p| str_at(p, "createdAt"))
+                    .map(str::to_string)
+            });
+            if kept.as_deref() != Some("2026-07-24T20:50:56.976Z") {
+                failures.push(format!(
+                    "[{name}] STORE BINDING ({side}): Lorian is not on her archived (untyped) \
+                     vault — {vault:?} created {kept:?}"
+                ));
+            }
+            let order: Vec<&str> = rows_of(dump, "main", "files")
+                .iter()
+                .filter_map(|f| str_at(f, "originalFilename"))
+                .filter(|n| *n == "chart-blank.bin" || *n == "voyage-notes.txt")
+                .collect();
+            if order != ["chart-blank.bin", "voyage-notes.txt"] {
+                failures.push(format!(
+                    "[{name}] STORE BINDING ({side}): the carried file must land before the \
+                     deferred one — got {order:?}"
+                ));
+            }
+        } else {
+            let archived_points: HashSet<&str> = [
+                "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+                "5c17e916-5f79-4cca-a134-ec09c05924e9",
+                "60a8194d-f8ea-4540-af77-5e13e7ed0e9b",
+            ]
+            .into_iter()
+            .collect();
+            let fresh = |table: &str, column: &str, entity: &str, description: &str| {
+                let pointer = rows_of(dump, "main", table)
+                    .iter()
+                    .find(|r| str_at(r, "name") == Some(entity))
+                    .and_then(|r| str_at(r, column).map(str::to_string));
+                let read = pointer
+                    .as_deref()
+                    .filter(|p| !archived_points.contains(p) && point_exists(dump, p))
+                    .and_then(|p| store_file(dump, p, "description.md"))
+                    .and_then(|(_, c)| c);
+                (read.as_deref() == Some(description))
+                    .then_some(())
+                    .ok_or(pointer)
+            };
+            // `(table, pointer column, name, the archived row's description)`.
+            for (table, column, entity, description) in [
+                (
+                    "characters",
+                    "characterDocumentMountPointId",
+                    "Lorian",
+                    "Lorian of the fixture.",
+                ),
+                (
+                    "projects",
+                    "officialMountPointId",
+                    "The Voyage",
+                    "A fixture project.",
+                ),
+                (
+                    "groups",
+                    "officialMountPointId",
+                    "The Crew",
+                    "A fixture group.",
+                ),
+            ] {
+                if let Err(pointer) = fresh(table, column, entity, description) {
+                    failures.push(format!(
+                        "[{name}] STORE ROW FAILS ({side}): {entity} points at {pointer:?} — not a \
+                         fresh store reading its archived description"
+                    ));
+                }
+            }
+            if character("Riya")
+                .and_then(|r| str_at(&r, "characterDocumentMountPointId").map(str::to_string))
+                .is_some_and(|p| point_exists(dump, &p))
+            {
+                failures.push(format!(
+                    "[{name}] STORE ROW FAILS ({side}): the tombstone was healed — v4 leaves it \
+                     pointing at its failed vault"
+                ));
+            }
+        }
+    }
+}
+
+/// The `restore-archive-memory-tiers.zip` cases (P4.D273 R-K, item 14).
+const MEMORY_TIERS_CASES: &[&str] = &[
+    "restore_memory_tiers_replace",
+    "restore_memory_tiers_new_account",
+];
+
+/// ## [P4.D273 item 14] The `CONSOLIDATED` acceptance pin — by name, both sides
+///
+/// The dogfood Friday copy's 365 `CONSOLIDATED` digests were REFUSED by the
+/// `f5e953a3f` baseline's restore; P4.D265's grown `parse_create_memory`
+/// accepts them. On `restore-archive-memory-tiers.zip` (rows found by their
+/// archived `content`, so `new-account`'s remap is followed): the digest keeps
+/// `source: 'CONSOLIDATED'`, `tier: 'hot'`, `consolidatedAt`, and a
+/// `consolidatedFrom` naming its two members' RESTORED ids; each member is
+/// `tier: 'cold'` with `supersededById` the digest's restored id; the pre-tier
+/// row is `tier: 'hot'`, `consolidatedFrom: '[]'` (v4's create prefill); the
+/// `tier: 'warm'` row is refused (absent, with v4's ZodError — the ONLY `Failed
+/// to restore memory` warning on either side); the chat's watermark names its
+/// own restored message.
+#[allow(clippy::too_many_arguments)]
+fn assert_memory_tiers_restored(
+    name: &str,
+    zip: &Path,
+    temp_root: &Path,
+    got_summary: &RestoreSummary,
+    want_summary: &Value,
+    got: &BTreeMap<String, BTreeMap<String, Vec<Value>>>,
+    want: &Value,
+    failures: &mut Vec<String>,
+) {
+    if !MEMORY_TIERS_CASES.contains(&name) {
+        return;
+    }
+    const DIGEST: &str = "ae000000-0000-4000-8000-000000000002";
+    const MEMBERS: [&str; 2] = [
+        "ae000000-0000-4000-8000-000000000001",
+        "ad000000-0000-4000-8000-000000000001",
+    ];
+    const PRE_TIER: &str = "ad000000-0000-4000-8000-000000000002";
+    const WARM: &str = "ae000000-0000-4000-8000-000000000004";
+    const CHAT_TITLE: &str = "A Lesson in Lift";
+    const WATERMARK: &str = "d1000000-0000-4000-8000-000000000002";
+    let extracted = quilltap_core::services::backup::restore::parse_backup_zip(zip, temp_root)
+        .expect("parse archive for its memories");
+    let content_of = |id: &str| -> String {
+        extracted
+            .data
+            .memories
+            .iter()
+            .find(|m| str_at(m, "id") == Some(id))
+            .and_then(|m| str_at(m, "content"))
+            .expect("archived memory content")
+            .to_string()
+    };
+    let message_content = extracted
+        .data
+        .chats
+        .iter()
+        .flat_map(|c| c["messages"].as_array().cloned().unwrap_or_default())
+        .find(|m| str_at(m, "id") == Some(WATERMARK))
+        .and_then(|m| str_at(&m, "content").map(str::to_string))
+        .expect("the watermark message");
+    let got_v = serde_json::to_value(got).expect("dump serializes");
+    let warnings = |w: Vec<String>| -> Vec<String> {
+        w.into_iter()
+            .filter(|w| w.starts_with("Failed to restore memory"))
+            .collect()
+    };
+    let got_w = warnings(got_summary.warnings.clone());
+    let want_w = warnings(
+        want_summary["warnings"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|w| w.as_str().map(str::to_string))
+            .collect(),
+    );
+    for (side, dump, refused) in [("v5", &got_v, &got_w), ("v4", want, &want_w)] {
+        let memories = rows_of(dump, "main", "memories");
+        let by_content = |id: &str| -> Option<&Value> {
+            let c = content_of(id);
+            memories
+                .iter()
+                .find(|m| str_at(m, "content") == Some(c.as_str()))
+        };
+        let (Some(digest), Some(pre)) = (by_content(DIGEST), by_content(PRE_TIER)) else {
+            failures.push(format!(
+                "[{name}] MEMORY TIERS ({side}): the digest or the pre-tier row did not restore"
+            ));
+            continue;
+        };
+        let digest_id = str_at(digest, "id").unwrap_or("");
+        let member_ids: Vec<String> = MEMBERS
+            .iter()
+            .filter_map(|m| by_content(m).and_then(|r| str_at(r, "id").map(str::to_string)))
+            .collect();
+        let from: Option<Vec<String>> =
+            str_at(digest, "consolidatedFrom").and_then(|t| serde_json::from_str(t).ok());
+        if str_at(digest, "source") != Some("CONSOLIDATED")
+            || str_at(digest, "tier") != Some("hot")
+            || str_at(digest, "consolidatedAt") != Some("2026-07-30T12:00:00.000Z")
+            || from.as_deref() != Some(member_ids.as_slice())
+            || member_ids.len() != 2
+        {
+            failures.push(format!(
+                "[{name}] MEMORY TIERS ({side}): the digest restored as {digest} (members \
+                 {member_ids:?})"
+            ));
+        }
+        for m in MEMBERS {
+            let ok = by_content(m).is_some_and(|r| {
+                str_at(r, "tier") == Some("cold") && str_at(r, "supersededById") == Some(digest_id)
+            });
+            if !ok {
+                failures.push(format!(
+                    "[{name}] MEMORY TIERS ({side}): member {m} is not cold under the digest"
+                ));
+            }
+        }
+        if str_at(pre, "tier") != Some("hot") || str_at(pre, "consolidatedFrom") != Some("[]") {
+            failures.push(format!(
+                "[{name}] MEMORY TIERS ({side}): the pre-tier row restored as {pre}"
+            ));
+        }
+        if by_content(WARM).is_some() {
+            failures.push(format!(
+                "[{name}] MEMORY TIERS ({side}): the `tier: 'warm'` row restored"
+            ));
+        }
+        if refused.len() != 1 || !refused[0].contains("\"path\": [\n      \"tier\"\n    ]") {
+            failures.push(format!(
+                "[{name}] MEMORY TIERS ({side}): expected exactly the warm row's refusal, got \
+                 {refused:?}"
+            ));
+        }
+        let chat = rows_of(dump, "main", "chats")
+            .iter()
+            .find(|c| str_at(c, "title") == Some(CHAT_TITLE));
+        let message_id = rows_of(dump, "main", "chat_messages")
+            .iter()
+            .find(|m| str_at(m, "content") == Some(message_content.as_str()))
+            .and_then(|m| str_at(m, "id"));
+        let watermark = chat.and_then(|c| str_at(c, "otherExtractionWatermarkMessageId"));
+        if watermark.is_none() || watermark != message_id {
+            failures.push(format!(
+                "[{name}] MEMORY TIERS ({side}): the watermark {watermark:?} does not name its \
+                 restored message {message_id:?}"
+            ));
+        }
+    }
 }
 
 /// ## ⚠ `RECONCILE_PENDING_UNION` — lane-local, LIFTED by the unifier (P4.D273 R-D)
