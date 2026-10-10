@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(mount-index): P4.D274 unit 8 — the sync engine's disk-read DEBUG line (v4 `197104649`)
+
+_Versions: core 0.0.1271._
+
+The document-store sync engine now reads a disk file through one `read_disk_file`, as v4's `readDiskFile` does. It checks containment first, then logs v4's DEBUG `[Sync] Reading disk file` with the relative path, then reads. Two in-crate tests pin the line and its silence on an escaping path.
+
 #### 2026-10-09 — feat(host): P4.D274 unit 7 — the boot store-name reconcile
 
 _Versions: core 0.0.1270, host 0.0.196._

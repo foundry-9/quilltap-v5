@@ -175623,3 +175623,9 @@ These are exactly the order's published spellings, so no `HANDOFF:` to P4.D273 i
   - (d) R-B → `Quilltap General (2)`.
 - **Red-first** (the test over the committed `host.rs`): (a), (b), (c) FAILED; (d) passed, since R-B's fix is core (unit 2), whose red is M2. Green 4/4.
 - **Moved counts:** the `type = 'index'` counts in `host_boot_*.rs` and `system_restore_state` are NAME-scoped, so none moves. `migration_index_backfill`'s whole-set dump is re-run by name at the gate.
+
+### Unit 8 — the sync line (U9, `197104649` whole)
+- NEW `apply_disk::read_disk_file(target, rel)` (`pub(crate)`) runs `resolve_in_target` FIRST (an escape errs with no line), then DEBUG `[Sync] Reading disk file {relativePath}` (target `quilltap::mount_index`), then `std::fs::read` with the existing `node_io_message(…, "open", …)` mapping. `bytes_for`'s disk side delegates to it. v4's `disk-boundary.test.ts` is an import guard with nothing to port (v5's `sync/` already reads only through `apply_disk`).
+- **Pins** (in-crate, `captured_with`; not a writer closure): a disk read logs the line exactly once and answers the bytes; an escaping path errs and logs nothing.
+- **Red-first:** by absence (`read_disk_file` did not exist).
+- `sync_engine_equivalence` re-run BY NAME from the pin (lane-private jest mirror): `ok`, 47 scenarios. Its oracle mocks `logger.*`, so no family moves (as the survey predicted).
