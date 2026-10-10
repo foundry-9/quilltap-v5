@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-10 — docs(porting): P4.D271 lane close — gate, sweep, handoffs
+
+_Docs-only change._
+
+The P4.D271 order is marked LANE COMPLETE, and the status log gains the lane-close record: the red-first results, how each ruling was built (R-I overturned by measurement), the hand-offs to P4.D270 and the unifier, all nine measurements, v4 commits observed past the pin, the dogfood rows and the closing versions.
+
 #### 2026-10-10 — test(memory): P4.D271 make the consolidation families independent of fixture rebuilds
 
 _No crate versions bumped._
