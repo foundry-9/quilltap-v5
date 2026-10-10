@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-10 — test(memory): P4.D271 make the consolidation families independent of fixture rebuilds
+
+_No crate versions bumped._
+
+The bridge, service and trigger families share one fixture pair that each recipe rebuilds, and every rebuild mints new vault ids. Two comparands depended on those ids, and the template's memory ids could sort behind ids minted during a run. The vault ids are now masked, the document projections are ordered by path and content, and the template ids sort first. All three families pass against any rebuild.
+
 #### 2026-10-09 — test(logging): P4.D271 cover the memory-consolidation task type in the log-type corpus
 
 _No crate versions bumped._

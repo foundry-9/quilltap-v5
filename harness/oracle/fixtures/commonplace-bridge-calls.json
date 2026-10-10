@@ -530,15 +530,15 @@
  "projections": [
   {
    "name": "links",
-   "sql": "SELECT l.mountPointId, l.relativePath, l.fileName, f.fileType, f.sha256, f.fileSizeBytes, f.source, d.content, d.contentSha256, d.plainTextLength, l.chunkCount, l.conversionStatus, l.extractionStatus, l.plainTextLength AS linkPlainTextLength FROM doc_mount_file_links l JOIN doc_mount_files f ON f.id = l.fileId LEFT JOIN doc_mount_documents d ON d.fileId = f.id WHERE l.relativePath LIKE 'Commonplace/%' ORDER BY l.mountPointId, l.relativePath"
+   "sql": "SELECT l.mountPointId, l.relativePath, l.fileName, f.fileType, f.sha256, f.fileSizeBytes, f.source, d.content, d.contentSha256, d.plainTextLength, l.chunkCount, l.conversionStatus, l.extractionStatus, l.plainTextLength AS linkPlainTextLength FROM doc_mount_file_links l JOIN doc_mount_files f ON f.id = l.fileId LEFT JOIN doc_mount_documents d ON d.fileId = f.id WHERE l.relativePath LIKE 'Commonplace/%' ORDER BY l.relativePath, d.content"
   },
   {
    "name": "folders",
-   "sql": "SELECT f.mountPointId, f.name, f.path, p.path AS parentPath FROM doc_mount_folders f LEFT JOIN doc_mount_folders p ON p.id = f.parentId WHERE f.path LIKE 'Commonplace%' ORDER BY f.mountPointId, f.path"
+   "sql": "SELECT f.mountPointId, f.name, f.path, p.path AS parentPath FROM doc_mount_folders f LEFT JOIN doc_mount_folders p ON p.id = f.parentId WHERE f.path LIKE 'Commonplace%' ORDER BY f.path, f.mountPointId"
   },
   {
    "name": "chunks",
-   "sql": "SELECT c.mountPointId, l.relativePath, c.chunkIndex, c.content, c.tokenCount, c.headingContext FROM doc_mount_chunks c JOIN doc_mount_file_links l ON l.id = c.linkId WHERE l.relativePath LIKE 'Commonplace/%' ORDER BY c.mountPointId, l.relativePath, c.chunkIndex"
+   "sql": "SELECT c.mountPointId, l.relativePath, c.chunkIndex, c.content, c.tokenCount, c.headingContext FROM doc_mount_chunks c JOIN doc_mount_file_links l ON l.id = c.linkId WHERE l.relativePath LIKE 'Commonplace/%' ORDER BY l.relativePath, c.content, c.chunkIndex"
   }
  ]
 }

@@ -123,7 +123,7 @@ fn fixtures_dir() -> PathBuf {
 }
 
 /// Every 36-char UUID in `s` that is not a committed value (spec text, or the
-/// deterministic `0d…` template ids) → `<id>`.
+/// deterministic `000000…` template ids / `0d…` plants) → `<id>`.
 fn mask_minted(s: &str, known: &str) -> String {
     let bytes = s.as_bytes();
     let mut out = String::new();
@@ -136,7 +136,8 @@ fn mask_minted(s: &str, known: &str) -> String {
                 _ => c.is_ascii_hexdigit(),
             });
             if is_uuid {
-                let committed = known.contains(cand) || cand.starts_with("0d");
+                let committed =
+                    known.contains(cand) || (cand.starts_with("0d") || cand.starts_with("000000"));
                 out.push_str(if committed { cand } else { "<id>" });
                 i += 36;
                 continue;
@@ -533,7 +534,7 @@ async fn consolidation_service_tier3_matches_oracle() {
         &db,
         "SELECT l.mountPointId, l.relativePath, d.content FROM doc_mount_file_links l \
          JOIN doc_mount_documents d ON d.fileId = l.fileId \
-         WHERE l.relativePath LIKE 'Commonplace/%' ORDER BY l.mountPointId, l.relativePath",
+         WHERE l.relativePath LIKE 'Commonplace/%' ORDER BY l.relativePath, d.content",
         true,
     );
     let docs: Vec<Value> = docs
@@ -544,7 +545,14 @@ async fn consolidation_service_tier3_matches_oracle() {
         .iter()
         .find(|o| o["kind"] == "projection")
         .expect("oracle commonplace projection");
-    if Value::Array(docs.clone()) != want_docs["rows"] {
+    // The vault mount point ids are minted by each fixture build (masked).
+    let docs: Vec<Value> = docs
+        .iter()
+        .map(|r| serde_json::from_str(&mask_minted(&r.to_string(), &spec_text)).unwrap())
+        .collect();
+    let want_rows: Value =
+        serde_json::from_str(&mask_minted(&want_docs["rows"].to_string(), &spec_text)).unwrap();
+    if Value::Array(docs.clone()) != want_rows {
         failures.push(format!(
             "commonplace documents:\n  v5 {docs:?}\n  v4 {}",
             want_docs["rows"]

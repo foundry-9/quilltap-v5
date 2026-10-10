@@ -241,7 +241,7 @@ async function main(): Promise<void> {
       .prepare(
         `SELECT l.mountPointId, l.relativePath, d.content FROM doc_mount_file_links l
            JOIN doc_mount_documents d ON d.fileId = l.fileId
-          WHERE l.relativePath LIKE 'Commonplace/%' ORDER BY l.mountPointId, l.relativePath`,
+          WHERE l.relativePath LIKE 'Commonplace/%' ORDER BY l.relativePath, d.content`,
       )
       .raw(true)
       .all();

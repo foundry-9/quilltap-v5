@@ -4,8 +4,9 @@
  * writes them through v4's REAL repositories) and the consolidation oracles
  * (which need the topic markers and the canned-embedding rule).
  *
- * Each holder gets the same ~34-row template under its own id prefix (`0d<hh>…`,
- * so `findByCharacterIdInBatches`' id-ASC order is the template order):
+ * Each holder gets the same ~34-row template under its own id prefix
+ * (`000000<hh>…`, so `findByCharacterIdInBatches`' id-ASC order is the template
+ * order, ahead of every digest id a run mints):
  *
  *   other:Laura  A1–A4 semantic topic A (plain chat) · DGB an existing
  *                CONSOLIDATED digest (topic B) + B1 (Locked chat), B2 · DGX a
@@ -81,7 +82,9 @@ export function cannedEmbeddingFor(text: string): number[] | null {
 
 export function memoryId(holderIndex: number, row: number): string {
   const hh = holderIndex.toString(16).padStart(2, '0');
-  return `0d${hh}0000-0000-4000-8000-${row.toString(16).padStart(12, '0')}`;
+  // `000000<hh>` so the template rows sort (id ASC — the run's load order)
+  // ahead of any digest id a run mints at random: bucket order is first-seen.
+  return `000000${hh}-0000-4000-8000-${row.toString(16).padStart(12, '0')}`;
 }
 
 export interface TemplateRow {

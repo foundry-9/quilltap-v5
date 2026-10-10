@@ -333,7 +333,7 @@ async function main(): Promise<void> {
     };
     await vectors.saveMeta(spec.hoarder.id, spec.hoarder.dims);
     for (let i = 0; i < spec.hoarder.rows; i++) {
-      const id = `0dfe0000-0000-4000-8000-${(i + 1).toString(16).padStart(12, '0')}`;
+      const id = `000000fe-0000-4000-8000-${(i + 1).toString(16).padStart(12, '0')}`;
       const raw = Array.from({ length: spec.hoarder.dims }, gauss);
       const n = Math.sqrt(raw.reduce((s, x) => s + x * x, 0));
       const embedding = raw.map((x) => Math.fround(x / n));

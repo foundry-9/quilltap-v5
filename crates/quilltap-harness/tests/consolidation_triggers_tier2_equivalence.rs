@@ -128,11 +128,15 @@ fn mask_minted(s: &str, known: &str) -> String {
                 _ => c.is_ascii_hexdigit(),
             });
             if is_uuid {
-                out.push_str(if known.contains(cand) || cand.starts_with("0d") {
-                    cand
-                } else {
-                    "<id>"
-                });
+                out.push_str(
+                    if known.contains(cand)
+                        || (cand.starts_with("0d") || cand.starts_with("000000"))
+                    {
+                        cand
+                    } else {
+                        "<id>"
+                    },
+                );
                 i += 36;
                 continue;
             }

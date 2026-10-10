@@ -62,6 +62,32 @@ const CAPTURED: &[&str] = &[
     "Failed to resolve character vault store",
 ];
 
+/// Every 36-char UUID not in the committed spec text → `<id>`: the vault mount
+/// point ids are minted by each fixture build, so a rebuilt pair (each
+/// consolidation family's recipe rebuilds it) must not move a comparand.
+fn mask_minted(s: &str, known: &str) -> String {
+    let mut out = String::new();
+    let mut i = 0;
+    while i < s.len() {
+        if i + 36 <= s.len() && s.is_char_boundary(i) && s.is_char_boundary(i + 36) {
+            let cand = &s[i..i + 36];
+            let is_uuid = cand.bytes().enumerate().all(|(j, c)| match j {
+                8 | 13 | 18 | 23 => c == b'-',
+                _ => c.is_ascii_hexdigit(),
+            });
+            if is_uuid {
+                out.push_str(if known.contains(cand) { cand } else { "<id>" });
+                i += 36;
+                continue;
+            }
+        }
+        let ch = s[i..].chars().next().unwrap();
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    out
+}
+
 fn fixtures_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../harness/oracle/fixtures")
 }
@@ -170,10 +196,9 @@ async fn commonplace_digest_vault_bridge_matches_oracle() {
         return;
     };
     global_capture::install();
-    let spec: Value = serde_json::from_str(
-        &std::fs::read_to_string(fixtures_dir().join("consolidation-tier3.json")).unwrap(),
-    )
-    .unwrap();
+    let spec_text =
+        std::fs::read_to_string(fixtures_dir().join("consolidation-tier3.json")).unwrap();
+    let spec: Value = serde_json::from_str(&spec_text).unwrap();
     let calls: Value = serde_json::from_str(
         &std::fs::read_to_string(fixtures_dir().join("commonplace-bridge-calls.json")).unwrap(),
     )
@@ -227,12 +252,16 @@ async fn commonplace_digest_vault_bridge_matches_oracle() {
                 want["result"]
             ));
         }
-        let got: Vec<String> = captured.into_iter().filter(|l| is_captured(l)).collect();
+        let got: Vec<String> = captured
+            .into_iter()
+            .filter(|l| is_captured(l))
+            .map(|l| mask_minted(&l, &spec_text))
+            .collect();
         let expected: Vec<String> = want["lines"]
             .as_array()
             .unwrap()
             .iter()
-            .map(render_oracle_line)
+            .map(|l| mask_minted(&render_oracle_line(l), &spec_text))
             .collect();
         lines_seen += expected.len();
         if got != expected {
@@ -244,8 +273,12 @@ async fn commonplace_digest_vault_bridge_matches_oracle() {
             .iter()
             .find(|o| o["kind"] == "projection" && o["name"] == p.0.as_str())
             .unwrap_or_else(|| panic!("oracle has no projection {}", p.0));
-        let got = projection(&db, &p.1);
-        if !cells_eq(&got, &want["rows"]) {
+        let got: Value =
+            serde_json::from_str(&mask_minted(&projection(&db, &p.1).to_string(), &spec_text))
+                .unwrap();
+        let want_rows: Value =
+            serde_json::from_str(&mask_minted(&want["rows"].to_string(), &spec_text)).unwrap();
+        if !cells_eq(&got, &want_rows) {
             failures.push(format!(
                 "projection {}:\n  v5 {got}\n  v4 {}",
                 p.0, want["rows"]
