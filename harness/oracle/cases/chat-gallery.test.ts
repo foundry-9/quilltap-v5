@@ -23,7 +23,9 @@
  * link id resolves in the collector but names no ENTRY, so the membership guard
  * refuses it), the schema sentences, the 404, and the MESSAGE-scoped leg's
  * newly-shared schema (`86d59660c` deleted its private uuid schema, so a
- * non-uuid `fileId` now passes the parse and fails at the attachment guard).
+ * non-uuid `fileId` now passes the parse and fails at the attachment guard),
+ * and (P4.D275, `01a83539d`) the message leg's ALREADY_SAVED — now the same 409
+ * as the gallery door's.
  *
  * Two more arms carry API.md's claim that `DELETE /api/v1/chat-files/[id]`
  * accepts only the `"file"` species: a `doc_mount_file_links.id` is a 404 there
@@ -522,6 +524,27 @@ async function main(): Promise<void> {
             { params: Promise.resolve({ id: CHAT, messageId: M_GEN }) },
           ),
         ),
+    },
+    // P4.D275 (`01a83539d`): the message door's ALREADY_SAVED moves 400 →
+    // the gallery door's 409 `{error, code, relativePath, keptAt}` (the shared
+    // `saveImageErrorResponse`). The same save twice; the second is recorded.
+    {
+      name: 'message_save_already',
+      freezeClock: true,
+      run: async () => {
+        const post = async () =>
+          respond(
+            await (await loadRoute(MSG_ROUTE)).POST(
+              mockRequest(`${B}/chats/${CHAT}/messages/${M_GEN}?action=save-image`, {
+                fileId: F_GEN,
+                mountPointId: meta.generalMp,
+              }),
+              { params: Promise.resolve({ id: CHAT, messageId: M_GEN }) },
+            ),
+          );
+        await post();
+        return post();
+      },
     },
   ];
 

@@ -22,6 +22,8 @@
 //! - [`chat_gallery`] — the chat gallery enumerator (v4 `chat-gallery.ts`), the
 //!   nine-source roll behind `chatGallery`, and the message-attachment walk
 //!   `chatFilesList` shares with it (P4.D174).
+//! - [`save_image_response`] — the answers every save-image door gives (v4
+//!   `save-image-response.ts`, `01a83539d`; P4.D275).
 
 pub mod auto_describe_attachment;
 // === P4.D185 ===
@@ -41,5 +43,8 @@ pub mod resolve_character_avatar;
 // === P4.D174 ===
 pub mod save_attribution;
 // === /P4.D174 ===
+// === P4.D275 ===
+pub mod save_image_response;
+// === /P4.D275 ===
 pub mod save_image_to_album;
 pub mod user_gallery_service;

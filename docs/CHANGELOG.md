@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(photos): P4.D275 B1 — the shared save-image responses; the message door's ALREADY_SAVED is a 409
+
+_Versions: core 0.0.1268._
+
+New `photos::save_image_response` (v4 `01a83539d`'s `lib/photos/save-image-response.ts`). It has three parts:
+
+- `saved_image_body`: the 200 `{saved, mountPoint, relativePath, linkId, keptAt, fileId, sha256}`.
+- `save_image_error_response`: `ALREADY_SAVED` is a 409 carrying `code` and the `relativePath` / `keptAt` riders; any other code is a 400.
+- `save_image_error_code`: v4's wire strings.
+
+The chat gallery door now answers through both helpers, with byte-identical responses. The message door's `ALREADY_SAVED` moves from 400 to the same 409. The message door also gains v4's `[SaveImage] saved` / `[SaveImage] rejected` INFO lines, and its catch-all becomes v4's ERROR `[SaveImage] failed` with the fixed 500 `Failed to save image` (it had rendered the DB's own text). The rejected line's `message` key is logged as `errorMessage`: a tracing field named `message` would replace the file record's envelope message (recorded key divergence).
+
+`chat_gallery_equivalence` gains `message_save_already`: 400 on the unported tip, 409 now. The gallery rows are unchanged.
+
 #### 2026-10-09 — feat(wardrobe): P4.D275 A1/A3/A4/A5 — the wear readout from the reader's side (bugs 183 + 184)
 
 _Versions: core 0.0.1267._

@@ -18,6 +18,11 @@
 //! leg), the cast order R-A rests on (measured against v4's `findByIds`), and
 //! the gallery resolver's step-by-step degrade on a dropped link table.
 //!
+//! P4.D275 (v4 `01a83539d`) adds `message_save_already`: the message door's
+//! ALREADY_SAVED is now the gallery door's 409 `{error, code, relativePath,
+//! keptAt}` (both doors answer through `photos::save_image_response`); the
+//! gallery rows are byte-unchanged by that refactor.
+//!
 //! Save-image reads a `files` id through a canned [`FileBytesStore`] returning
 //! the bytes the oracle recorded (jest.setup's storage-manager stub); a
 //! `doc_mount_file_links` id resolves its bytes from the fixture's own blob, on
@@ -423,8 +428,8 @@ fn chat_gallery_equivalence() {
         oracle.insert(v["name"].as_str().unwrap().to_string(), v);
     }
     assert!(
-        oracle.len() >= 20,
-        "stale oracle: {} cases (expected the family's 20+)",
+        oracle.contains_key("message_save_already") && oracle.len() >= 21,
+        "stale oracle: {} cases (expected the family's 21+, incl. P4.D275's message_save_already)",
         oracle.len()
     );
 
@@ -744,6 +749,35 @@ fn chat_gallery_equivalence() {
         json!({ "fileId": "not-a-uuid", "mountPointId": "also-not-a-uuid" }),
     );
     msg_save(&mut failed, "message_save_empty_body", "msgeb", json!({}));
+    // P4.D275 (`01a83539d`): the message door's ALREADY_SAVED is the shared
+    // 409 `{error, code, relativePath, keptAt}` (it was a 400) — the SAME save
+    // twice on one fresh DB, the second the answer, rendered through
+    // `status_body` (the production rider home).
+    {
+        let (db, _scratch) = fresh_db(&spec, "msgalready");
+        let body = json!({ "fileId": F_GEN, "mountPointId": meta.general_mp });
+        let send = || {
+            rt.block_on(chat_media::message_save_image(
+                &db,
+                USER,
+                CHAT,
+                M_GEN,
+                &body,
+                bytes.clone(),
+                no_fx.clone(),
+                &kept_at,
+            ))
+        };
+        let _ = send();
+        let r = send();
+        check(
+            &mut failed,
+            &oracle,
+            "message_save_already",
+            &r,
+            Norm::Timestamps,
+        );
+    }
 
     // --- The delete guard the gallery modal relies on (API.md: only the
     //     `"file"` species) ---
@@ -1032,5 +1066,103 @@ fn a_dropped_link_table_falls_through_to_the_legacy_file() {
             .iter()
             .any(|l| l.contains("Avatar id did not resolve")),
         "the resolve no longer throws, so the debug-on-throw arm is silent: {lines:#?}"
+    );
+}
+
+/// P4.D275 — the message door's lines (v4 `messages/[messageId]/route.ts:
+/// 343-368` at `01a83539d`), capture-pinned on the caller's thread (after the
+/// write returns): INFO `[SaveImage] saved` `{chatId, messageId, fileId,
+/// mountPointId, relativePath, linkId}`; on the second save INFO `[SaveImage]
+/// rejected` `{chatId, messageId, code, errorMessage}` (v4 `message` — the
+/// file-envelope clobber forces the rename) and the 409; and the
+/// catch-all ERROR `[SaveImage] failed` `{chatId, messageId, error}` with the
+/// fixed 500 `Failed to save image` (here: no mount index to write through).
+/// A refused body logs none of them.
+#[test]
+fn the_message_door_lines_are_v4s() {
+    use quilltap_core::test_support::global_capture;
+    global_capture::install();
+    let spec: Spec = serde_json::from_str(&std::fs::read_to_string(spec_path()).unwrap()).unwrap();
+    let meta: Meta = serde_json::from_str(
+        &std::fs::read_to_string(fixtures_dir().join("chat-gallery-main.db.meta.json")).unwrap(),
+    )
+    .unwrap();
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let kept_at = quilltap_core::clock::iso_from_unix_ms(NOW_MS);
+    let bytes: Arc<dyn FileBytesStore> = Arc::new(CannedBytes {
+        bytes: b"mock file content".to_vec(),
+    });
+    let no_fx: Arc<dyn SaveImageSideEffects + Send + Sync> = Arc::new(NoSideEffects);
+    let body = json!({ "fileId": F_GEN, "mountPointId": meta.general_mp });
+    let door = |db: &Db, body: &Value| {
+        global_capture::capture(|| {
+            rt.block_on(chat_media::message_save_image(
+                db,
+                USER,
+                CHAT,
+                M_GEN,
+                body,
+                bytes.clone(),
+                no_fx.clone(),
+                &kept_at,
+            ))
+        })
+    };
+    let save_lines = |lines: Vec<String>| -> Vec<String> {
+        lines
+            .into_iter()
+            .filter(|l| l.contains("[SaveImage]"))
+            .collect()
+    };
+
+    let (db, _scratch) = fresh_db(&spec, "msglines");
+    let (first, lines) = door(&db, &body);
+    let (status, saved) = status_body(&first);
+    assert_eq!(status, 200);
+    assert_eq!(
+        save_lines(lines),
+        vec![format!(
+            "INFO quilltap_core::api::chat_media [SaveImage] saved chatId={CHAT} messageId={M_GEN} fileId={F_GEN} mountPointId={} relativePath={} linkId={}",
+            meta.general_mp,
+            saved["relativePath"].as_str().unwrap(),
+            saved["linkId"].as_str().unwrap()
+        )]
+    );
+    let (second, lines) = door(&db, &body);
+    let (status, refused) = status_body(&second);
+    assert_eq!(status, 409);
+    assert_eq!(
+        save_lines(lines),
+        vec![format!(
+            "INFO quilltap_core::api::chat_media [SaveImage] rejected chatId={CHAT} messageId={M_GEN} code=ALREADY_SAVED errorMessage={}",
+            refused["error"].as_str().unwrap()
+        )]
+    );
+    // Silence: a refused body never reaches the save.
+    let (_, lines) = door(&db, &json!({}));
+    assert!(save_lines(lines).is_empty());
+
+    // The catch-all: the chat and message read, the write cannot reach a
+    // mount index.
+    let scratch = tempfile::tempdir().unwrap();
+    let main = scratch.path().join("main.db");
+    std::fs::copy(fixtures_dir().join("chat-gallery-main.db"), &main).unwrap();
+    let db = Db::open(DbPaths::main_only(main), &spec.test_pepper_base64).unwrap();
+    let (failed, lines) = door(&db, &body);
+    let (status, body) = status_body(&failed);
+    assert_eq!(
+        (status, body["error"].as_str()),
+        (500, Some("Failed to save image"))
+    );
+    let lines = save_lines(lines);
+    assert_eq!(lines.len(), 1, "{lines:#?}");
+    assert!(
+        lines[0].starts_with(&format!(
+            "ERROR quilltap_core::api::chat_media [SaveImage] failed chatId={CHAT} messageId={M_GEN} error="
+        )),
+        "{lines:#?}"
     );
 }
