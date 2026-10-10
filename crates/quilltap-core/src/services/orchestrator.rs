@@ -5413,6 +5413,7 @@ mod tests {
             "recallFired": true,
         })];
         let inter = vec![build_context::DebugInterCharacterOut {
+            memory_id: None,
             about_character_name: "Jeeves".to_string(),
             summary: "shared the umbrella".to_string(),
             importance: 0.6,

@@ -4339,6 +4339,138 @@
       "skipMemories": true,
       "compressionEnabled": false,
       "timestampMode": null
+    },
+    {
+      "name": "p4d268_archive_bites_at_floor_with_self_digest",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "How does the analytical engine work?",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Tell me about your work."
+        },
+        {
+          "role": "assistant",
+          "content": "I design engines of thought."
+        }
+      ],
+      "skipMemories": false,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "_comment": "P4.D268 (v4 3f7320138 F7 + d58548051): an 8,000-token profile window puts the memory budget at the 2,000 floor, so the archive holds 28 of Ada's 31 hot rows (it bites). A planted CONSOLIDATED self digest (three sources) is selected FIRST and printed with ` (from 3 notes)`; a planted COLD row of top importance is never delivered. The pools line and the delivered stamp are compared.",
+      "profileMaxContext": 8000,
+      "plantSql": [
+        "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('d2680000-0000-4000-8000-000000000001', 'ca000000-0000-4000-8000-0000000000a1', 'ca000000-0000-4000-8000-0000000000a1', 'Ada''s working notes on the engine, gathered into one account.', 'Ada''s gathered engine notes.', '[]', '[]', 0.6, 'CONSOLIDATED', 1, '[]', 0.6, 'semantic', '[]', 'hot', NULL, '[\"d2680000-0000-4000-8000-000000000101\", \"d2680000-0000-4000-8000-000000000102\", \"d2680000-0000-4000-8000-000000000103\"]', '2024-01-01T00:00:00.000Z', '2024-01-01T00:00:00.000Z', '2024-01-01T00:00:00.000Z')",
+        "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('d2680000-0000-4000-8000-000000000002', 'ca000000-0000-4000-8000-0000000000a1', NULL, 'A cold, superseded note about the engine.', 'A cold note that must never be delivered.', '[]', '[]', 0.99, 'AUTO', 1, '[]', 0.99, 'semantic', '[]', 'cold', 'd2680000-0000-4000-8000-000000000001', '[]', NULL, '2024-01-01T00:00:00.000Z', '2024-01-01T00:00:00.000Z')"
+      ],
+      "unplantSql": [
+        "DELETE FROM memories WHERE id IN ('d2680000-0000-4000-8000-000000000001', 'd2680000-0000-4000-8000-000000000002')"
+      ]
+    },
+    {
+      "name": "p4d268_multi_character_digests_lead",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "Bea, tell Ada about the bees.",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Welcome to the salon, everyone."
+        },
+        {
+          "role": "assistant",
+          "content": "Delighted to be here among the engines."
+        },
+        {
+          "role": "assistant",
+          "content": "I have been sketching card loops all morning."
+        }
+      ],
+      "respondingParticipantId": "ba000000-0000-4000-8000-0000000000f1",
+      "activeUserParticipantId": "ba000000-0000-4000-8000-0000000000f3",
+      "participants": [
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f1",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f2",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a2",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f3",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a3",
+          "controlledBy": "user",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+      ],
+      "messagesWithParticipants": [
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e1",
+          "role": "USER",
+          "content": "Welcome to the salon, everyone.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:00:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e2",
+          "role": "ASSISTANT",
+          "content": "Delighted to be here among the engines.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-02T00:01:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e3",
+          "role": "ASSISTANT",
+          "content": "I have been sketching card loops all morning.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f1",
+          "createdAt": "2024-01-02T00:02:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e4",
+          "role": "USER",
+          "content": "A private aside meant only for Bea.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:03:00.000Z",
+          "targetParticipantIds": [
+            "ba000000-0000-4000-8000-0000000000f2"
+          ]
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e5",
+          "role": "USER",
+          "content": "A whisper meant for Ada alone.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:04:00.000Z",
+          "targetParticipantIds": [
+            "ba000000-0000-4000-8000-0000000000f1"
+          ]
+        }
+      ],
+      "skipMemories": false,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "_comment": "P4.D268 (v4 d58548051): Ada holds two hot digests about Bea (3 and 2 sources) and a COLD row about Bea of top importance. The inter-character importance half fetches the digests FIRST (INTER_CHAR_DIGEST_LIMIT 2) and sorts them ahead of the heavier partition row; the cold row reaches neither the archive nor the inter block. The archive (8k sizing on the 200k model) takes the digests about the present Bea first.",
+      "plantSql": [
+        "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('d2680000-0000-4000-8000-000000000003', 'ca000000-0000-4000-8000-0000000000a1', 'ca000000-0000-4000-8000-0000000000a2', 'Everything Ada knows of Bea''s winter hive, gathered.', 'Bea''s hive, gathered.', '[]', '[]', 0.4, 'CONSOLIDATED', 1, '[]', 0.4, 'semantic', '[]', 'hot', NULL, '[\"d2680000-0000-4000-8000-000000000104\", \"d2680000-0000-4000-8000-000000000105\", \"d2680000-0000-4000-8000-000000000106\"]', '2024-01-01T00:00:00.000Z', '2024-01-01T00:00:00.000Z', '2024-01-01T00:00:00.000Z')",
+        "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('d2680000-0000-4000-8000-000000000004', 'ca000000-0000-4000-8000-0000000000a1', 'ca000000-0000-4000-8000-0000000000a2', 'Bea keeps her ledgers in copperplate, gathered.', 'Bea''s ledger habits, gathered.', '[]', '[]', 0.5, 'CONSOLIDATED', 1, '[]', 0.5, 'semantic', '[]', 'hot', NULL, '[\"d2680000-0000-4000-8000-000000000107\", \"d2680000-0000-4000-8000-000000000108\"]', '2024-01-01T00:00:00.000Z', '2024-01-01T00:00:00.000Z', '2024-01-01T00:00:00.000Z')",
+        "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('d2680000-0000-4000-8000-000000000005', 'ca000000-0000-4000-8000-0000000000a1', 'ca000000-0000-4000-8000-0000000000a2', 'A cold, superseded note about Bea.', 'A cold note about Bea, never delivered.', '[]', '[]', 0.99, 'AUTO', 1, '[]', 0.99, 'semantic', '[]', 'cold', 'd2680000-0000-4000-8000-000000000003', '[]', NULL, '2024-01-01T00:00:00.000Z', '2024-01-01T00:00:00.000Z')"
+      ],
+      "unplantSql": [
+        "DELETE FROM memories WHERE id IN ('d2680000-0000-4000-8000-000000000003', 'd2680000-0000-4000-8000-000000000004', 'd2680000-0000-4000-8000-000000000005')"
+      ]
     }
   ],
   "vaultConversationSummaries": [

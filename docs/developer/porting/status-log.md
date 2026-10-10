@@ -175532,3 +175532,31 @@ The recipe sweep ran from the pin against a scratch worktree at the base `18e41e
   - Added: 6 `provenance` rows; `mem-digest-no-suffix`, `frozen-digest-suffix` and `head-digest-suffix`; the two tips-budget pairs (frozen: 2 → 1 used at the plain budget of 38); `inter-digests-lead`; `inter-digest-with-relevance`.
   - Floors: provenance ≥ 6, printed suffix lines ≥ 6, debug `memoryId` ≥ 20.
   - RED at KEYSTONE (memoryId), green here. **Mutation:** reverting the digests-first sort reddens `inter-digests-lead`.
+
+### Unit 3 landed — `7f09383ce`
+
+### Unit 4 — buildContext (Tier 1 item 5; R-D, R-H, R-K, R-L)
+- **Sizing.** `ordinary_sizing` / `retro_sizing` = `size_memory_pools(budget.memory_budget as f64, …)`, computed before the archive.
+- **The archive call.** It takes `&input.chat.id`, `Some(ordinary.archive_size)`, and the present ids: the `participant_characters` keys minus the responder, or none.
+- **The fallback search.** Its limit is `(retro|ordinary).head_entries * 3`. `present_participant_names` = `[character.name, …participant names]`, non-empty only.
+- **The turn's sizing.** `turn_sizing` supplies the head and archive budgets and `max_entries`.
+- **The lines.** `[ContextManager] Memory pools sized` has 10 keys in v4's order. The inter DEBUG line moved to camelCase keys (R-L, the unit pin moved).
+- **The stamps** (archive + head, then inter), awaited inline (R-D).
+- **Inter digests.** `INTER_CHAR_DIGEST_LIMIT = 2`; inter digests are fetched per other id, then the partition, then a first-seen dedupe.
+- **R-H.** `DebugInterCharacterOut.memory_id`, skipped when `None`. `orchestrator.rs:5415`'s test literal gains `memory_id: None` mechanically. `loaded_memories_from_debug` is unchanged.
+- **R-K, unchanged.** The archive's `.unwrap_or_default()` and the inter reads' `?` stay (v4 pushes warnings — the Tier 3 item 19 deferral).
+- **Unit pin:** `inter_character_log_tests::the_pools_line_and_the_delivered_stamp`.
+  - The pools line has exact keys and values at the 2,000 floor (head 300/8, archive 1,700/28). The stamp `count` equals `headUsed + archiveUsed`. A `skipMemories` turn logs neither line.
+  - The pin uses its own chat id. The archive cache is process-global and its siblings build `chat-1` for the same character, which made the pin flake in the full lib run.
+- **Differential `build_context_tier3`** (fixture + oracle regenerated at the pin into `/tmp/p4d268/bc/`; 283 rows; `grep -c 'from 3 notes'` = 4; `Memory pools sized` 27; `Marking memories accessed` 27):
+  - The cache is RESET per op on both sides.
+  - New per-op `deliveryLog` rows: `Composed` / `Computed archive`, the pools line and the stamp, with message, key order and values. Floors require every message to appear.
+  - The spec is append-only; `plantSql` / `unplantSql` were added to the op shape on both sides.
+  - Two ops were added:
+    - `p4d268_archive_bites_at_floor_with_self_digest` — profile window 8,000, so `memoryBudget` is 2,000 and the archive is 28 of 31 hot rows. A self digest with three sources is selected first and prints ` (from 3 notes)`; a cold 0.99 row is absent. **GREEN.**
+    - `p4d268_multi_character_digests_lead` — two digests about Bea (3 and 2 sources, importance 0.4 and 0.5) lead the inter importance half ahead of the 0.7 partition row. The archive takes them first (8k split, size 60).
+  - **Result:** all 68 prior ops are GREEN, including KEYSTONE's red `plain_single_char_turn`. That op's KEYSTONE red was the FIXED 25-row archive vs v4's budget-sized 60, which cut `Sketched…` (0.8) behind the 0.95 pantry crates — F7, this lane. It was not cross-op cache bleed, as the red-first note guessed.
+  - **UNION-PENDING(P4.D267) — `p4d268_multi_character_digests_lead`, two rows:**
+    - The planted COLD row about Bea (`…000005`) reaches v5's dynamic head (`headUsed` 1 vs 0; head stamp `count` 33 vs 32).
+    - It also reaches the inter-character relevance half (inter stamp `count` 5 vs 4). Both arrive via KEYSTONE's unfiltered `search_memories_semantic` (text fallback, score 0.00625).
+    - With the delivery assert relaxed, the built-context diff was exactly those two entries, plus `memories` / `total` token counts and `memoriesIncluded` 38 vs 36. The archive and the inter importance half exclude the cold row on both sides. P4.D267's hot filter turns the op green on the union.

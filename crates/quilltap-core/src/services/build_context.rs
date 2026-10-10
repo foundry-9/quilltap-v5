@@ -142,9 +142,9 @@ use crate::memory_injector::{
     format_current_scene_state, format_dynamic_memory_head, format_frozen_memory_archive,
     format_inter_character_memories_for_context, injector_memory_from_json,
     DebugInterCharacterMemoryInfo, DebugMemoryInfo, InjectorMemory, InjectorResult,
-    RecallAdjustment, SceneState, SceneStateEmissionEntry, DYNAMIC_HEAD_DEFAULT_SIZE,
-    DYNAMIC_HEAD_TOKEN_BUDGET, RETRO_HEAD_SIZE, RETRO_HEAD_TOKEN_BUDGET,
+    RecallAdjustment, SceneState, SceneStateEmissionEntry,
 };
+use crate::memory_pools::size_memory_pools;
 use crate::message_attribution::{
     attribute_messages_for_character, filter_messages_by_history_access, filter_whisper_messages,
     find_user_participant_name, AttributionMessage, AttributionParticipant,
@@ -171,6 +171,9 @@ const CONTEXT_HISTORY_BUDGET_RATIO: f64 = 0.50;
 const MEMORY_BUDGET_RATIO: f64 = 0.20;
 /// v4 `INTER_CHAR_PER_CHARACTER_LIMIT`.
 const INTER_CHAR_PER_CHARACTER_LIMIT: i64 = 5;
+/// v4 `INTER_CHAR_DIGEST_LIMIT` (`d58548051`): hot digests about each other
+/// character fetched ahead of the partition query.
+const INTER_CHAR_DIGEST_LIMIT: i64 = 2;
 /// v4 `INTER_CHAR_RELEVANCE_PER_CHARACTER_LIMIT`.
 const INTER_CHAR_RELEVANCE_PER_CHARACTER_LIMIT: usize = 5;
 /// v4 `RECENT_WINDOW_QUERY_MAX_CHARS`.
@@ -283,6 +286,9 @@ pub struct TokenUsage {
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DebugInterCharacterOut {
+    /// v4 `DebugInterCharacterMemoryInfo.memoryId?` (`3f7320138` F6).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory_id: Option<String>,
     pub about_character_name: String,
     pub summary: String,
     #[serde(serialize_with = "serialize_js_number")]
@@ -2404,19 +2410,42 @@ where
     if !input.skip_memories && !input.character.id.is_empty() {
         let compaction_gen = input.chat.compaction_generation;
 
-        // v4 `getOrComputeFrozenArchive` (W4.6a) — the effective-weight-ranked
-        // top-25, byte-stable within a compactionGeneration (process-cached).
-        // Budgets are decided AFTER the search below (recall-on-reference: the
-        // retrospective head sizing needs the turn signals), so only the fetch
-        // happens here; the archive formats once the budgets are known.
+        // Pool sizes scale with the memory budget (v4 `3f7320138` F7). The
+        // archive's size is fixed by the ordinary (non-retrospective) split so
+        // its membership stays stable across turns; the head is resized once
+        // the turn's signals are known, below. The search limit uses the
+        // ordinary head size until then — a retrospective fallback turn bumps
+        // it once the distillation says so.
+        let ordinary_sizing = size_memory_pools(budget.memory_budget as f64, false);
+        let retro_sizing = size_memory_pools(budget.memory_budget as f64, true);
+
+        // v4 `getOrComputeFrozenArchive(character.id, chat.id, compactionGen,
+        // { size, presentCharacterIds })` — byte-stable within a chat and a
+        // compactionGeneration (process-cached). Digests about the people in
+        // the room ride in the archive. Budgets are decided AFTER the search
+        // below (recall-on-reference: the retrospective head sizing needs the
+        // turn signals), so only the fetch happens here; the archive formats
+        // once the budgets are known. A read failure is v4's outer catch
+        // (`Failed to retrieve memories` → `warnings`); v5 keeps its
+        // pre-existing empty archive (P4.D268 R-K).
+        let archive_present_ids: Vec<String> = input
+            .participant_characters
+            .as_ref()
+            .map(|pc| {
+                pc.keys()
+                    .filter(|id| **id != input.character.id)
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
         let frozen_archive: Vec<InjectorMemory> =
             crate::services::frozen_archive::get_or_compute_frozen_archive(
                 db,
                 &input.character.id,
                 &input.chat.id,
                 compaction_gen,
-                None,
-                &[],
+                Some(ordinary_sizing.archive_size),
+                &archive_present_ids,
                 now_ms_f,
             )
             .unwrap_or_default()
@@ -2541,6 +2570,19 @@ where
                 }
             }
 
+            // v4 `[character.name, ...participantCharacters.values().map(c =>
+            // c.name)].filter(non-empty string)`.
+            let present_participant_names: Vec<String> = std::iter::once(&input.character.name)
+                .chain(
+                    input
+                        .participant_characters
+                        .iter()
+                        .flat_map(|pc| pc.values().map(|c| &c.name)),
+                )
+                .filter(|name| !name.is_empty())
+                .cloned()
+                .collect();
+
             // Assemble the full per-turn recall context so the dynamic head
             // reads the targeting tags back (see recall_tags). chat.projectId is
             // the rename-proof comparand for scope: narrow gating. (The settings
@@ -2569,8 +2611,10 @@ where
                 // guard. (v4 passes `Date.now()`; the injected seam stands in.)
                 current_chat_id: Some(input.chat.id.clone()),
                 now_ms: Some(now_ms_f),
-                // P4.D265 (mechanical): honoured from P4.D267; P4.D268 sets it.
-                present_participant_names: Vec::new(),
+                // Their names too: R4's entity anchors skip a name that merely
+                // names someone in the room (the participant boost already
+                // covers them). v4 `f7d8064be`; honoured by P4.D267.
+                present_participant_names,
             };
             // Retrospective multi-probe (mirrors the proactive path in
             // `pre_compute::proactive_recall_task`, now ported — P4.19).
@@ -2605,9 +2649,9 @@ where
                     // proportionally more.
                     limit: Some(
                         (if fallback_retro {
-                            RETRO_HEAD_SIZE
+                            retro_sizing.head_entries
                         } else {
-                            DYNAMIC_HEAD_DEFAULT_SIZE
+                            ordinary_sizing.head_entries
                         }) * 3,
                     ),
                     min_importance: Some(input.min_memory_importance),
@@ -2647,13 +2691,13 @@ where
         let is_retrospective_turn = turn_recall_signals
             .as_ref()
             .is_some_and(|s| s.retrospective);
-        let dynamic_head_budget = (if is_retrospective_turn {
-            RETRO_HEAD_TOKEN_BUDGET
+        let turn_sizing = if is_retrospective_turn {
+            &retro_sizing
         } else {
-            DYNAMIC_HEAD_TOKEN_BUDGET
-        })
-        .min(budget.memory_budget);
-        let archive_budget = (budget.memory_budget - dynamic_head_budget).max(0);
+            &ordinary_sizing
+        };
+        let dynamic_head_budget = turn_sizing.head_token_budget;
+        let archive_budget = turn_sizing.archive_token_budget;
 
         // Both pools below are keyed on `characterId` alone, so each carries this
         // character's memories ABOUT other people alongside their own — and both
@@ -2692,13 +2736,23 @@ where
         let head_formatted = format_dynamic_memory_head(
             &dynamic_head_results,
             Some(dynamic_head_budget),
-            Some(if is_retrospective_turn {
-                RETRO_HEAD_SIZE
-            } else {
-                DYNAMIC_HEAD_DEFAULT_SIZE
-            }),
+            Some(turn_sizing.head_entries),
             now_ms_f,
             &memory_subject,
+        );
+        tracing::debug!(
+            target: "quilltap::build_context",
+            chatId = %input.chat.id,
+            characterId = %input.character.id,
+            memoryBudget = budget.memory_budget,
+            retrospective = is_retrospective_turn,
+            headTokenBudget = dynamic_head_budget,
+            headEntries = turn_sizing.head_entries as u64,
+            archiveTokenBudget = archive_budget,
+            archiveSize = ordinary_sizing.archive_size as u64,
+            headUsed = head_formatted.memories_used as u64,
+            archiveUsed = archive_formatted.memories_used as u64,
+            "[ContextManager] Memory pools sized"
         );
 
         whispered_memory_ids = head_formatted
@@ -2707,6 +2761,24 @@ where
             .filter_map(|d| d.memory_id.clone())
             .filter(|id| !id.is_empty())
             .collect();
+
+        // Only what cleared the token budgets reached the model — those, and
+        // only those, count as accessed (v4 `3f7320138` F6). Search no longer
+        // stamps its over-fetched candidates. Awaited inline at v4's statement
+        // position (P4.D268 R-D).
+        let delivered_ids: Vec<String> = archive_formatted
+            .debug_memories
+            .iter()
+            .chain(head_formatted.debug_memories.iter())
+            .filter_map(|d| d.memory_id.clone())
+            .filter(|id| !id.is_empty())
+            .collect();
+        crate::services::memory_access::mark_memories_accessed(
+            db,
+            &input.character.id,
+            &delivered_ids,
+        )
+        .await;
 
         let mut sections: Vec<String> = Vec::new();
         if !archive_formatted.content.is_empty() {
@@ -2805,19 +2877,39 @@ where
                 as i64;
 
         if !other_character_ids.is_empty() && inter_character_budget > 0 {
+            // Importance/recency half — direct DB query, top-N per other
+            // character. Hot digests about each other character lead
+            // (consolidation spec §5), then the ordinary partition query; both
+            // are hot-only, deduped by id (first seen). A read failure keeps
+            // v5's pre-existing `?` (v4 pushes a warning — P4.D268 R-K).
+            let mut importance_rows: Vec<Value> = Vec::new();
+            for other_id in &other_character_ids {
+                let cid = input.character.id.clone();
+                let subject = crate::db::memories_read::DigestSubject::About(other_id.clone());
+                importance_rows.extend(db.read_main(move |conn| {
+                    crate::db::memories_read::find_hot_digests(
+                        conn,
+                        &cid,
+                        subject,
+                        INTER_CHAR_DIGEST_LIMIT,
+                    )
+                })?);
+            }
             let ids = other_character_ids.clone();
             let cid = input.character.id.clone();
-            let importance_rows = db.read_main(move |conn| {
+            importance_rows.extend(db.read_main(move |conn| {
                 crate::db::memories_read::find_by_character_about_characters(
                     conn,
                     &cid,
                     &ids,
                     INTER_CHAR_PER_CHARACTER_LIMIT,
                 )
-            })?;
+            })?);
+            let mut inter_seen: HashSet<String> = HashSet::new();
             let importance_memories: Vec<InjectorMemory> = importance_rows
                 .iter()
                 .map(injector_memory_from_json)
+                .filter(|m| inter_seen.insert(m.id.clone()))
                 .collect();
 
             // Relevance half — semantic search per other character.
@@ -2868,6 +2960,19 @@ where
                 inter_character_memory_tokens = formatted.token_count;
                 inter_character_memories_included = formatted.memories_used;
                 debug_inter_character_memories = formatted.debug_memories;
+                // Only the delivered entries count as accessed (v4 F6),
+                // awaited inline at v4's statement position (P4.D268 R-D).
+                let delivered_ids: Vec<String> = debug_inter_character_memories
+                    .iter()
+                    .filter_map(|d| d.memory_id.clone())
+                    .filter(|id| !id.is_empty())
+                    .collect();
+                crate::services::memory_access::mark_memories_accessed(
+                    db,
+                    &input.character.id,
+                    &delivered_ids,
+                )
+                .await;
             }
         }
     }
@@ -2881,15 +2986,17 @@ where
     if is_multi_character {
         tracing::debug!(
             target: "quilltap::build_context",
-            chat_id = %input.chat.id,
-            character_id = %input.character.id,
+            // v4's camelCase keys (P4.D268 R-L — the snake_case spelling was
+            // a defect; the unit pin moved with it).
+            chatId = %input.chat.id,
+            characterId = %input.character.id,
             // v4 `Math.round(performance.now() - tInterStart)`. `Instant` is
             // `performance.now()`'s twin — monotonic, and NOT the wall clock the
             // P4.D49 llm-log durations take — and `f64::round` agrees with JS
             // `Math.round` over the non-negative range a duration occupies.
-            duration_ms = (t_inter_start.elapsed().as_secs_f64() * 1000.0).round() as u64,
-            loaded_count = inter_character_loaded_count as u64,
-            included_count = inter_character_memories_included as u64,
+            durationMs = (t_inter_start.elapsed().as_secs_f64() * 1000.0).round() as u64,
+            loadedCount = inter_character_loaded_count as u64,
+            includedCount = inter_character_memories_included as u64,
             "[ContextManager] Inter-character memory retrieval complete"
         );
     }
@@ -3901,6 +4008,7 @@ where
                 debug_inter_character_memories
                     .into_iter()
                     .map(|d| DebugInterCharacterOut {
+                        memory_id: d.memory_id,
                         about_character_name: d.about_character_name,
                         summary: d.summary,
                         importance: d.importance,
@@ -4907,11 +5015,11 @@ mod inter_character_log_tests {
 
         assert!(line.starts_with("DEBUG quilltap::build_context"), "{line}");
         for field in [
-            "chat_id=chat-1",
-            "character_id=11111111-1111-4111-8111-111111111111",
-            "duration_ms=",
-            &format!("loaded_count={INTER_CHAR_PER_CHARACTER_LIMIT}"),
-            "included_count=",
+            "chatId=chat-1",
+            "characterId=11111111-1111-4111-8111-111111111111",
+            "durationMs=",
+            &format!("loadedCount={INTER_CHAR_PER_CHARACTER_LIMIT}"),
+            "includedCount=",
         ] {
             assert!(line.contains(field), "missing {field} in: {line}");
         }
@@ -4923,8 +5031,8 @@ mod inter_character_log_tests {
                 .and_then(|t| t.parse().ok())
                 .unwrap_or_else(|| panic!("no {key} in: {line}"))
         };
-        let loaded = field_value("loaded_count=");
-        let included = field_value("included_count=");
+        let loaded = field_value("loadedCount=");
+        let included = field_value("includedCount=");
         assert!(
             included > 0 && included < loaded,
             "the budget must truncate for this arm to discriminate — included={included}, \
@@ -4945,6 +5053,68 @@ mod inter_character_log_tests {
         );
     }
 
+    /// P4.D268 — v4 `3f7320138` F7's `[ContextManager] Memory pools sized`
+    /// DEBUG (ten keys, v4's order, after both formatters) and F6's stamp of
+    /// exactly the delivered archive + head entries; then the silence leg
+    /// (`skipMemories` → neither line).
+    #[tokio::test]
+    async fn the_pools_line_and_the_delivered_stamp() {
+        // Its own chat id: the archive cache is process-global, and sibling
+        // tests here build `chat-1` for the same character over other corpora.
+        let (_dir, db) = db_with_inter_character_memories(6);
+        let mut turn = a_turn(false, false);
+        turn.chat.id = "chat-pools-line".to_string();
+        let lines = captured_build(&db, &turn).await;
+        let pools: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("[ContextManager] Memory pools sized"))
+            .collect();
+        assert_eq!(pools.len(), 1, "{lines:?}");
+        let line = pools[0];
+        let sizing = crate::memory_pools::size_memory_pools(2000.0, false);
+        let want_prefix = format!(
+            "DEBUG quilltap::build_context [ContextManager] Memory pools sized chatId=chat-pools-line \
+             characterId=11111111-1111-4111-8111-111111111111 memoryBudget=2000 retrospective=false \
+             headTokenBudget={} headEntries={} archiveTokenBudget={} archiveSize={} headUsed=",
+            sizing.head_token_budget, sizing.head_entries, sizing.archive_token_budget, sizing.archive_size
+        );
+        assert!(
+            line.starts_with(&want_prefix),
+            "{line}\nwant prefix {want_prefix}"
+        );
+        let field = |key: &str| -> usize {
+            line.split(key)
+                .nth(1)
+                .and_then(|t| t.split_whitespace().next())
+                .and_then(|t| t.parse().ok())
+                .unwrap_or_else(|| panic!("no {key} in: {line}"))
+        };
+        let delivered = field("headUsed=") + field("archiveUsed=");
+        assert_eq!(field("archiveUsed="), 6, "{line}");
+        let marks: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("[Memory] Marking memories accessed"))
+            .collect();
+        assert_eq!(
+            marks,
+            vec![&format!(
+                "DEBUG quilltap::memories [Memory] Marking memories accessed \
+                 characterId=11111111-1111-4111-8111-111111111111 count={delivered}"
+            )],
+            "{lines:?}"
+        );
+
+        let mut skipped = a_turn(false, true);
+        skipped.chat.id = "chat-pools-line".to_string();
+        let silent = captured_build(&db, &skipped).await;
+        assert!(
+            !silent.iter().any(
+                |l| l.contains("Memory pools sized") || l.contains("Marking memories accessed")
+            ),
+            "skipMemories logs neither line: {silent:?}"
+        );
+    }
+
     /// Arm 3 — `skipMemories` bypasses the retrieval block, but NOT the report:
     /// v4's conditional sits outside that guard, so the line still fires and its
     /// zeroes are the fact. This is the arm that reddens if the line is tucked
@@ -4954,8 +5124,8 @@ mod inter_character_log_tests {
         let (_dir, db) = db_with_inter_character_memories(8);
         let lines = captured_build(&db, &a_turn(true, true)).await;
         let line = the_line(&lines).unwrap_or_else(|| panic!("no line; captured: {lines:?}"));
-        assert!(line.contains("loaded_count=0"), "{line}");
-        assert!(line.contains("included_count=0"), "{line}");
+        assert!(line.contains("loadedCount=0"), "{line}");
+        assert!(line.contains("includedCount=0"), "{line}");
     }
 
     /// P4.D243 (v4 `ca363178d`) — the chained-turn scene note at the

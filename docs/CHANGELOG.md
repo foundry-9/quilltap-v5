@@ -12,6 +12,28 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(memory): P4.D268 buildContext sizes its memory pools from the budget, keys the archive by chat and presence, and stamps only what it delivered
+
+_Versions: core 0.0.1269._
+
+`build_context` follows v4 `3f7320138` (F5/F6/F7), `d58548051` and `f7d8064be`:
+
+- **Pool sizing.** `size_memory_pools` is computed from `memoryBudget` for the ordinary and retrospective splits. The archive is sized from the ordinary split. The fallback search limit is the turn's `head_entries × 3`. The head budget, archive budget and head entry cap come from the turn's sizing. The fixed floor constants are no longer imported.
+- **Archive call.** The archive is fetched with the chat id, the budget-sized size, and the other characters present.
+- **New DEBUG line.** `[ContextManager] Memory pools sized`, with v4's ten camelCase keys in order, after both formatters.
+- **Stamps.** The archive and head stamp, and the inter-character stamp, call `mark_memories_accessed` for exactly the delivered ids, awaited inline.
+- **Inter-character digests.** Up to 2 hot digests about each other character are fetched before the partition query, then deduped by id (first seen). `loadedCount` counts the deduped list.
+- **Debug wire.** `DebugInterCharacterOut` gains `memoryId`.
+- **Recall context.** `present_participant_names` (the responder plus every participant's name) is now set on the fallback recall context.
+- **Inter-character DEBUG keys.** The line's keys move to v4's camelCase (`chatId`, `characterId`, `durationMs`, `loadedCount`, `includedCount`). The unit pin moves with them.
+
+**Differential.** `build_context_tier3` resets the archive cache before every op on both sides. It compares a new per-op `deliveryLog` row: the two `[FrozenArchive]` lines, the pools line and the stamp line, with message, key order and values. It adds two planted ops:
+
+- At the 2,000-token floor, the archive bites at 28 and a CONSOLIDATED self digest prints ` (from 3 notes)`.
+- On the 8k split, two digests about Bea lead the inter-character block.
+
+Both plants include a cold row that is never delivered from the archive or the importance half. The 68 prior ops and the floor op match. The multi-character op is red only where v5's not-yet-hot-filtered semantic search returns the planted cold row: one head entry and one inter relevance entry. That is P4.D267's share, recorded as UNION-PENDING.
+
 #### 2026-10-09 — feat(memory): P4.D268 digest provenance suffix, memoryId on every debug entry, digests lead the inter-character importance half
 
 _Versions: core 0.0.1268._
