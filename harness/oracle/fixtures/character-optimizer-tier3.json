@@ -505,6 +505,90 @@
         "outputMode": "suggestions-file"
       },
       "calls": []
+    },
+    {
+      "name": "p4d268_cold_excluded_no_query",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "body": {
+        "connectionProfileId": "c0000002-0000-4000-8000-000000000001"
+      },
+      "calls": [
+        "analysis",
+        "general",
+        "harbor",
+        "market",
+        "default",
+        "terse",
+        "physical",
+        "wardrobe",
+        "properties",
+        "newPrompts"
+      ],
+      "$comment": "P4.D268 (v4 d58548051): a reinforced, top-importance COLD about-self row is dropped after the no-query branch (`m.tier !== 'cold'`) — the prompts equal apply_happy's.",
+      "plantSql": [
+        "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, createdAt, updatedAt) VALUES ('d2680000-0000-4000-8000-000000000501', 'a2000002-0000-4000-8000-000000000001', 'a2000002-0000-4000-8000-000000000001', 'Mira once swore off the lantern and the brass ring forever.', 'An archived lantern-and-ring vow.', '[]', '[]', 0.99, 'AUTO', 9, '[]', 0.99, 'semantic', '[]', 'cold', 'd2680000-0000-4000-8000-000000000502', '[]', '2026-02-12T00:00:00.000Z', '2026-02-12T00:00:00.000Z')",
+        "INSERT INTO vector_entries (id, characterId, embedding, createdAt) VALUES ('d2680000-0000-4000-8000-000000000501', 'a2000002-0000-4000-8000-000000000001', X'00000000000000000000803F00000000', '2026-02-12T00:00:00.000Z')"
+      ]
+    },
+    {
+      "name": "p4d268_cold_excluded_text",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "body": {
+        "connectionProfileId": "c0000002-0000-4000-8000-000000000001",
+        "searchQuery": "lantern",
+        "useSemanticSearch": false
+      },
+      "calls": [
+        "analysis",
+        "general",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]"
+      ],
+      "$comment": "P4.D268: the same cold row matches the text search ('lantern') and is dropped after the text branch.",
+      "plantSql": [
+        "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, createdAt, updatedAt) VALUES ('d2680000-0000-4000-8000-000000000501', 'a2000002-0000-4000-8000-000000000001', 'a2000002-0000-4000-8000-000000000001', 'Mira once swore off the lantern and the brass ring forever.', 'An archived lantern-and-ring vow.', '[]', '[]', 0.99, 'AUTO', 9, '[]', 0.99, 'semantic', '[]', 'cold', 'd2680000-0000-4000-8000-000000000502', '[]', '2026-02-12T00:00:00.000Z', '2026-02-12T00:00:00.000Z')",
+        "INSERT INTO vector_entries (id, characterId, embedding, createdAt) VALUES ('d2680000-0000-4000-8000-000000000501', 'a2000002-0000-4000-8000-000000000001', X'00000000000000000000803F00000000', '2026-02-12T00:00:00.000Z')"
+      ]
+    },
+    {
+      "name": "p4d268_cold_excluded_semantic",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "body": {
+        "connectionProfileId": "c0000002-0000-4000-8000-000000000001",
+        "searchQuery": "the brass ring",
+        "useSemanticSearch": true
+      },
+      "embeddings": {
+        "the brass ring": [
+          0,
+          0,
+          1,
+          0
+        ]
+      },
+      "calls": [
+        "analysis",
+        "general",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "physical",
+        "[]",
+        "[]",
+        "[]"
+      ],
+      "$comment": "P4.D268: the same cold row's vector sits on the query axis; the hot-vector filter drops it BEFORE the top-500 and the tier filter after the semantic branch.",
+      "plantSql": [
+        "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, createdAt, updatedAt) VALUES ('d2680000-0000-4000-8000-000000000501', 'a2000002-0000-4000-8000-000000000001', 'a2000002-0000-4000-8000-000000000001', 'Mira once swore off the lantern and the brass ring forever.', 'An archived lantern-and-ring vow.', '[]', '[]', 0.99, 'AUTO', 9, '[]', 0.99, 'semantic', '[]', 'cold', 'd2680000-0000-4000-8000-000000000502', '[]', '2026-02-12T00:00:00.000Z', '2026-02-12T00:00:00.000Z')",
+        "INSERT INTO vector_entries (id, characterId, embedding, createdAt) VALUES ('d2680000-0000-4000-8000-000000000501', 'a2000002-0000-4000-8000-000000000001', X'00000000000000000000803F00000000', '2026-02-12T00:00:00.000Z')"
+      ]
     }
   ]
 }

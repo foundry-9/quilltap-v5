@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(generators): P4.D268 the character optimizer learns from hot memories only
+
+_Versions: core 0.0.1274._
+
+The optimizer's semantic branch now searches the vector store with a hot-only filter applied before the top-500 cut (`search_filtered`, v4 `isHotVector`). After the semantic, text and no-query branches, cold rows are dropped before the date filters (v4 `d58548051`).
+
+`character_optimizer_tier3` gains three cases, one per branch. Each plants a reinforced, top-importance cold about-self row, with a vector on the query axis for the semantic case, and its prompts match the base case's. Removing both filters reddens the new cases. Removing the tier filter alone reddens the no-query and text cases. The vector pre-filter alone is not observable below 500 entries.
+
 #### 2026-10-09 — feat(tools): P4.D268 the search tool sees archived memories with labels and stamps only what survives the cut
 
 _Versions: core 0.0.1273._

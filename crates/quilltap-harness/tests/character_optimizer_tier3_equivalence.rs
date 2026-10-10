@@ -119,6 +119,9 @@ struct Case {
     embeddings: HashMap<String, Vec<f32>>,
     #[serde(default)]
     embedding_throws: bool,
+    /// P4.D268: SQL planted on the case's fresh pair (one statement each).
+    #[serde(default)]
+    plant_sql: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -638,6 +641,23 @@ fn first_diff(got: &str, want: &str) -> String {
 /// so the thread-scoped rig sees every line).
 fn run_case(spec: &Spec, corpus: &Corpus, c: &Case) -> Value {
     let (db, scratch) = fresh_pair(spec, &c.name);
+    // P4.D268: the case's plants, before anything reads.
+    if !c.plant_sql.is_empty() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        for sql in &c.plant_sql {
+            let sql = sql.clone();
+            rt.block_on(db.write(move |ws| {
+                ws.main()
+                    .connection()
+                    .execute_batch(&sql)
+                    .map_err(Into::into)
+            }))
+            .unwrap_or_else(|e| panic!("{}: plant failed: {e}", c.name));
+        }
+    }
     let live = live_ids(&db, &corpus.placeholder_character_id);
     let completion = Arc::new(ScriptedProvider {
         script: c

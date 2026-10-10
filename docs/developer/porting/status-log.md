@@ -175619,3 +175619,13 @@ The recipe sweep ran from the pin against a scratch worktree at the base `18e41e
 - **GREEN.** The cold rows' presence is green on this branch because KEYSTONE's search is unfiltered.
 - **Mutation:** stamping the pre-cut list reddens exactly `p4d268_search_limit_cuts_a_memory` (v4 `[]`, v5 `count=1`).
 - **Retired design:** the first limit-cut shape could not discriminate. Its planted memory had no vector, so it never reached the pre-cut list.
+
+### Unit 8 landed — `f00572660`
+
+### Unit 9 — the optimizer hot-only (Tier 1 item 10)
+- **M2 applied.** `store.search_filtered(&embedding, 500, |_id, is_cold| !is_cold)`; P4.D265's closure takes `(id, is_cold)`. `candidate_memories.retain(|m| !memory_is_cold(m))` runs after the three branches, before the date filters.
+- **Differential `character_optimizer_tier3`.** Regenerated at the pin from the committed `character-generators` pair, copied into `/tmp/p4d268/opt/`; 31 cases. Per-case `plantSql` runs on both sides (a Rust current-thread `block_on` over `Db::write`).
+  - Three new cases: `p4d268_cold_excluded_no_query`, `…_text` and `…_semantic`. Each plants one reinforced (rc 9), importance-0.99 COLD about-self row whose text matches `lantern` and whose 4-d Float32 vector sits on the `the brass ring` axis.
+  - **GREEN.**
+  - **Mutations:** removing both filters reddens all three new cases. Removing only the tier filter reddens `no_query` and `text`. `semantic` stays green because the vector pre-filter still drops the row.
+  - **Recorded gap:** the vector pre-filter in isolation is not observable. The tier filter after the semantic branch drops the same row, and "before the top-500" only matters past 500 entries. This lane is fully responsible for the gap (no `memory_service` call on this path).

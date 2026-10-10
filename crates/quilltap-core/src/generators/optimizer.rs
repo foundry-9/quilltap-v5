@@ -1640,8 +1640,10 @@ async fn semantic_candidates<EMB: EmbeddingProvider>(
     let store = db
         .read_main(move |c| CharacterVectorStore::load(c, &cid))
         .map_err(|e| e.to_string())?;
+    // Hot vectors only, filtered BEFORE the top-500 (v4 `vectorStore.search(…,
+    // 500, isHotVector)`, `d58548051`): archived shards were folded into digests.
     let matched: HashSet<String> = store
-        .search(&embedding_result.embedding, 500)
+        .search_filtered(&embedding_result.embedding, 500, |_id, is_cold| !is_cold)
         .into_iter()
         .map(|r| r.id)
         .collect();
@@ -1807,6 +1809,10 @@ async fn run_optimizer_inner<CMP: CompletionProvider, EMB: EmbeddingProvider>(
         db.read_main(move |c| find_by_character_about_character(c, &cid, &cid))
             .map_err(db_msg)?
     };
+
+    // Hot tier only: archived shards were folded into digests (v4
+    // `d58548051`, `m.tier !== 'cold'`, after all three branches).
+    candidate_memories.retain(|m| !crate::memory_injector::memory_is_cold(m));
 
     // Apply date filters (`if (sinceDate)` — JS truthy, so `''` is no filter;
     // an unparsable day is `NaN`, against which every comparison is false).
