@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — docs(porting): P4.D265 lane close — real-instance note, gate and sweep records
+
+_Docs-only change._
+
+The P4.D265 order is marked LANE COMPLETE, and the status log gains the lane-close records:
+
+- **Real-instance note**, from a read-only probe of a clone of the dogfood Friday instance. It already has v4's appended tier columns, the index and v4's ledger row, so v5's boot ensure is a no-op. It has no case-insensitive duplicate store names.
+- **Full workspace gate.** The only reds left are by design, owned by P4.D269 and P4.D272.
+- **Own-family sweep.** 23 of 25 families pass; the other two are by design, owned by P4.D266 and P4.D273.
+
 #### 2026-10-09 — test(restore): P4.D265 the vintage restore fixture runs the memory-tiers boot ensure
 
 _No crate versions bumped._
