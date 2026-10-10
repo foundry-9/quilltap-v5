@@ -46,6 +46,41 @@ pub fn calculate_reinforced_importance(base_importance: f64, reinforcement_count
     1.0_f64.min(base_importance + (reinforcement_count + 1.0).log2() * 0.05)
 }
 
+/// Most `[+]` footnote lines a memory may carry (v4 `MAX_REINFORCEMENT_FOOTNOTES`,
+/// `3f7320138` F3). Past this, reinforcement still bumps count/importance and
+/// unions entities, but appends no more prose and skips the re-embed — an
+/// unbounded tail drifts the row's vector toward a bag of proper nouns.
+pub const MAX_REINFORCEMENT_FOOTNOTES: usize = 8;
+
+/// Number of `[+]` footnote lines already appended to a memory's content (v4
+/// `countReinforcementFootnotes`): the lines of `content.split('\n')` that
+/// start with `[+] ` (a `[+]x` line with no space is prose, and a `\r\n`
+/// content's lines keep their `\r` at the END, so they still count).
+pub fn count_reinforcement_footnotes(content: &str) -> usize {
+    content
+        .split('\n')
+        .filter(|line| line.starts_with("[+] "))
+        .count()
+}
+
+/// Append novel details to `content` as `[+]` footnotes, stopping at
+/// [`MAX_REINFORCEMENT_FOOTNOTES`] (v4 `appendCappedFootnotes`). Returns the new
+/// content and the details actually appended (a prefix of `details`, possibly
+/// empty — then the content comes back unchanged).
+pub fn append_capped_footnotes(content: &str, details: &[String]) -> (String, Vec<String>) {
+    let room = MAX_REINFORCEMENT_FOOTNOTES.saturating_sub(count_reinforcement_footnotes(content));
+    let appended: Vec<String> = details.iter().take(room).cloned().collect();
+    if appended.is_empty() {
+        return (content.to_string(), appended);
+    }
+    let footnotes = appended
+        .iter()
+        .map(|d| format!("[+] {d}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    (format!("{content}\n{footnotes}"), appended)
+}
+
 /// Stop words filtered out of the proper-noun and acronym detail candidates.
 /// Verbatim from v4's `STOP_WORDS` set, same order (order is irrelevant for a
 /// set but kept for an easy diff against the source).

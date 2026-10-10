@@ -175480,3 +175480,18 @@ All are green BY NAME from the pin:
 - fmt, both clippy sets and the censuses are clean at `KEYSTONE`. The Tier 2 commits touch tests and docs only.
 - **Versions:** core 0.0.1265, host 0.0.195, web 0.0.228. The harness stays frozen at 0.0.1110.
 - **Cleanup:** the lane `target/` was removed, the pin worktree `/tmp/qt-v4-pin-p4d265-01a83539d` removed, and lane scratch (incl. the Friday clone) deleted.
+
+### P4.D266 lane start — the §R.2 probe, the pin, and the red-first set (M1)
+- **Branch** `claude/p4-memory-gate-cold-tier-083733`, stacked on P4.D265's lane tip `18e41e403` (= `KEYSTONE` `609d9d9f2` + P4.D265's Tier 2 tests/docs, no C1 change).
+- **§R.2 probe (2026-10-09 20:38 CDT):** checkout `main`, tree CLEAN; `01a83539d..main` = THREE commits. **v4 moved: `3e6e2f590`, `7a8d6dacc`, `9ecebf986` (wardrobe bugs 187–197 + refactor) observed at 2026-10-09 20:38.** Not ported, not read. `1a2b2164c..bugfix` is empty. The post-pin commits move only version stamps in `package.json` / `packages/quilltap/package.json` / the lock (no dependency move).
+- **Pin:** `/tmp/qt-v4-pin-p4.d266-01a83539d`, `rev-parse HEAD` = `01a83539dd1c…`, with the three symlink classes; `node_modules/openai/package.json` reads `7.30.0`. Every regen stages under `/tmp/p4d266/out` through a lane-private script that mirrors each family's header recipe.
+- **M1, the red set at the `KEYSTONE` tip** (oracles regenerated from the pin, Rust from the tip; my only edits at that point were the additive pure U1 helpers):
+  - GREEN: `memory_name_helpers` (19 rows), `extract_novel_details` (15), `memory_watermark_tier3` (current 7 scenarios), `memory_dedup` (preview + apply, the current corpus).
+  - RED: `memory_gate_tier3` — exactly the two SKIP_NEAR_DUPLICATE rows (`reinforcementCount` 1→2, `reinforcedImportance` 0.5→0.5792…, `lastReinforcedAt` minted); `memory_housekeeping_tier2` — the per-op results (deletes → demotions, the new result keys); `memories_routes` — exactly `create_near_duplicate`, `create_near_duplicate_tables`, `housekeep_preview`, `housekeep_dryrun`, `housekeep_run`.
+- **M2:** the housekeeping builder's fixture has NO `instance_settings` table — v4's run logs `Raw query failed … no such table: instance_settings` once per `getMemoryConsolidationSettings` read and falls back to defaults. The gate and watermark paths never read `instance_settings`.
+
+### P4.D266 U1 — the pure footnote cap + `memory_merge.rs` (tier-1)
+- `memory_gate.rs`: `MAX_REINFORCEMENT_FOOTNOTES`, `count_reinforcement_footnotes`, `append_capped_footnotes`. NEW `memory_merge.rs`: `MemoryMergePlan` (+ `to_mem_update`) and `plan_memory_merge`, which is v4 `:75-129` exactly.
+- NEW family `memory_merge_plan_equivalence` + oracle `harness/oracle/cases/memory-merge-plan.ts` (tsx; v4's real `planMemoryMerge`, `appendCappedFootnotes`, `countReinforcementFootnotes`, `MAX_REINFORCEMENT_FOOTNOTES`). Result: **1 constant, 17 append, 35 plan rows — green.** The patch is byte-compared.
+- Red-first: the family could not compile before the module existed. Mutation proofs: a `Date.parse` compare for `lastReinforcedAt` → `lra-string-vs-date`, `lra-z-vs-offset`, `lra-astral-vs-bmp` red; `str::cmp` → `lra-astral-vs-bmp`, `lra-bmp-vs-astral` red. Both reverted.
+- Regen: `cd <pin> && PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH npx tsx $V5W/harness/oracle/cases/memory-merge-plan.ts > /tmp/oracle-memory-merge-plan.ndjson`; run with `QT_ORACLE_MEMORY_MERGE_PLAN`.

@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(memory): P4.D266 U1 the pure footnote cap and memory-merge plan
+
+_Versions: core 0.0.1266._
+
+Ports the pure half of v4's memory-merge work (`3f7320138` F3/F9, at the `01a83539d` pin):
+
+- `memory_gate.rs` gains `MAX_REINFORCEMENT_FOOTNOTES = 8`, `count_reinforcement_footnotes` and `append_capped_footnotes`.
+- New `memory_merge.rs` holds `plan_memory_merge` and `MemoryMergePlan`. The plan folds losers into a survivor: capped footnotes, summed counts (`?? 1` only for absent/null), the link union minus the group, the earliest `occurredAt` by `Date.parse`, and the UTF-16 string max of `lastReinforcedAt`. The patch keeps v4's key order.
+- New tier-1 family `memory_merge_plan_equivalence` with oracle `memory-merge-plan.ts`, driving v4's real `planMemoryMerge` and footnote helpers: 1 constant, 17 append and 35 plan rows, with the patch compared byte-wise. Mutation proofs: a date compare for `lastReinforcedAt` turns 3 rows red, and `str::cmp` turns the 2 astral rows red.
+
 #### 2026-10-09 — docs(porting): P4.D265 lane close — real-instance note, gate and sweep records
 
 _Docs-only change._
