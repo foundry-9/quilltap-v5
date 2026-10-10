@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — refactor(memory): P4.D270 E4 `CandidateWriteContext` — one candidate writer for both extraction grains
+
+_Versions: core 0.0.1268._
+
+A pure refactor ahead of the fold-grain OTHER pass. `write_candidate` takes a `CandidateWriteContext` (v4 `d58548051`): chat, user, project, source-message timestamp, timeline mode, dry run, autonomous room and an optional turn timestamp. The per-turn context provides one through `TurnMemoryExtractionContext::write_ctx()`. The occurredAt anchor chain is unchanged: the source message's `createdAt`, then the batch override, then the turn timestamp, then now. The turn timestamp is now optional, as v4's `transcript?.turnTimestamp`. `RunState`, `WriteArgs`, `RateLimitDecision`, `resolve_extraction_rate_limit` and `apply_importance_floor` become `pub(crate)` for the fold pass. No output moves: `carina_memory_extraction_tier3` and `fold_episode_tier3` stay green, and the red-first families fail at the same comparands.
+
 #### 2026-10-09 — docs(porting): P4.D270 status header records the canon seam at `b0dcad2a1`
 
 _Docs-only change._

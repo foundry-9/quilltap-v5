@@ -572,7 +572,9 @@ pub struct TurnMemoryProcessingResult {
     pub passes_lost_to_timeout: usize,
 }
 
-enum RateLimitDecision {
+/// v4 `RateLimitDecision` (exported at `d58548051` — the fold-grain pass
+/// resolves its observers' limits through the same rule).
+pub(crate) enum RateLimitDecision {
     Allow,
     Throttle {
         floor: f64,
@@ -589,7 +591,7 @@ enum RateLimitDecision {
 /// the last wall-clock hour; at/over the cap skip, past the soft-start
 /// fraction throttle to the floor. A lookup failure allows (v4 warns and
 /// falls through).
-fn resolve_extraction_rate_limit(
+pub(crate) fn resolve_extraction_rate_limit(
     db: &Db,
     character_id: &str,
     limits: Option<&MemoryExtractionLimits>,
@@ -626,8 +628,12 @@ fn resolve_extraction_rate_limit(
     RateLimitDecision::Allow
 }
 
-/// v4 `applyImportanceFloor`.
-fn apply_importance_floor(candidates: Vec<MemoryCandidate>, floor: f64) -> Vec<MemoryCandidate> {
+/// v4 `applyImportanceFloor`: keep candidates whose importance (`?? 0.5`)
+/// clears the floor.
+pub(crate) fn apply_importance_floor(
+    candidates: Vec<MemoryCandidate>,
+    floor: f64,
+) -> Vec<MemoryCandidate> {
     candidates
         .into_iter()
         .filter(|c| c.importance_f64() >= floor)
@@ -640,14 +646,16 @@ fn js_interp(value: Option<&str>) -> &str {
     value.unwrap_or("undefined")
 }
 
-struct RunState {
-    debug_logs: Vec<String>,
+/// The accumulators one extraction run threads through [`write_candidate`].
+#[derive(Default)]
+pub(crate) struct RunState {
+    pub(crate) debug_logs: Vec<String>,
     /// Passes that never happened, as distinct from passes that found nothing.
-    passes_lost_to_timeout: usize,
-    created_memory_ids: Vec<String>,
-    reinforced_memory_ids: Vec<String>,
-    collected_candidates: Vec<ExtractedCandidate>,
-    total_usage: UsageTotals,
+    pub(crate) passes_lost_to_timeout: usize,
+    pub(crate) created_memory_ids: Vec<String>,
+    pub(crate) reinforced_memory_ids: Vec<String>,
+    pub(crate) collected_candidates: Vec<ExtractedCandidate>,
+    pub(crate) total_usage: UsageTotals,
 }
 
 impl RunState {
@@ -660,17 +668,53 @@ impl RunState {
     }
 }
 
-struct WriteArgs<'a> {
-    character_id: &'a str,
-    character_name: &'a str,
-    about_character_id: &'a str,
-    about_character_name: &'a str,
-    pass: &'a str,
-    candidate: &'a MemoryCandidate,
-    pass_label: String,
-    source_message_id: Option<String>,
+/// v4 `WriteOptions` (minus the context and the accumulators).
+pub(crate) struct WriteArgs<'a> {
+    pub(crate) character_id: &'a str,
+    pub(crate) character_name: &'a str,
+    pub(crate) about_character_id: &'a str,
+    pub(crate) about_character_name: &'a str,
+    pub(crate) pass: &'a str,
+    pub(crate) candidate: &'a MemoryCandidate,
+    pub(crate) pass_label: String,
+    pub(crate) source_message_id: Option<String>,
     /// `createdAt` of the source message — the wall-clock anchor for `occurredAt`.
-    source_message_created_at: Option<String>,
+    pub(crate) source_message_created_at: Option<String>,
+}
+
+/// v4 `CandidateWriteContext` (`d58548051`): the slice of an extraction
+/// context the candidate writer needs. A per-turn
+/// [`TurnMemoryExtractionContext`] satisfies it ([`TurnMemoryExtractionContext::write_ctx`]),
+/// and so does the fold-grain OTHER pass, which has no turn transcript — the
+/// one write path serves both grains, so witnessedContext / occurredAt
+/// stamping cannot drift between them.
+pub(crate) struct CandidateWriteContext<'a> {
+    pub(crate) chat_id: &'a str,
+    pub(crate) user_id: &'a str,
+    pub(crate) project_id: Option<&'a str>,
+    pub(crate) source_message_timestamp: Option<&'a str>,
+    pub(crate) timeline_mode: Option<&'a str>,
+    pub(crate) dry_run: bool,
+    pub(crate) in_autonomous_room: bool,
+    /// v4 `transcript?.turnTimestamp` — the turn's own timestamp per-turn, the
+    /// window's newest stamp on the fold grain.
+    pub(crate) turn_timestamp: Option<&'a str>,
+}
+
+impl TurnMemoryExtractionContext {
+    /// The per-turn context as a [`CandidateWriteContext`].
+    pub(crate) fn write_ctx(&self) -> CandidateWriteContext<'_> {
+        CandidateWriteContext {
+            chat_id: &self.chat_id,
+            user_id: &self.user_id,
+            project_id: self.project_id.as_deref(),
+            source_message_timestamp: self.source_message_timestamp.as_deref(),
+            timeline_mode: self.timeline_mode.as_deref(),
+            dry_run: self.dry_run,
+            in_autonomous_room: self.in_autonomous_room,
+            turn_timestamp: self.transcript.turn_timestamp.as_deref(),
+        }
+    }
 }
 
 /// Resolve a candidate's episodic anchors against the source turn's clock (v4
@@ -709,10 +753,10 @@ fn resolve_candidate_anchors(
 
 /// v4 `writeCandidate`: dry-run collection, or a write through the memory gate
 /// with the per-outcome debug line.
-async fn write_candidate<E: EmbeddingProvider>(
+pub(crate) async fn write_candidate<E: EmbeddingProvider>(
     db: &Db,
     embedding: &E,
-    ctx: &TurnMemoryExtractionContext,
+    ctx: &CandidateWriteContext<'_>,
     state: &mut RunState,
     args: WriteArgs<'_>,
 ) -> Result<(), crate::db::DbError> {
@@ -721,13 +765,15 @@ async fn write_candidate<E: EmbeddingProvider>(
 
     // Episodic spine: resolve the candidate's anchors against the source turn's
     // clock. v4's `??` chain — the slice's own message timestamp first, then the
-    // batch-backfill override, then the turn timestamp, then the write clock.
-    let timeline_mode = ctx.timeline_mode.as_deref().unwrap_or("realtime");
+    // batch-backfill override, then the turn timestamp (`transcript?.` — a
+    // transcript-less fold context carries the window's stamp), then the
+    // write clock.
+    let timeline_mode = ctx.timeline_mode.unwrap_or("realtime");
     let anchor_iso = args
         .source_message_created_at
         .clone()
-        .or_else(|| ctx.source_message_timestamp.clone())
-        .or_else(|| ctx.transcript.turn_timestamp.clone())
+        .or_else(|| ctx.source_message_timestamp.map(str::to_string))
+        .or_else(|| ctx.turn_timestamp.map(str::to_string))
         .unwrap_or_else(clock::now_iso);
     let (occurred_at, narrative_time) =
         resolve_candidate_anchors(candidate, Some(&anchor_iso), timeline_mode);
@@ -773,15 +819,15 @@ async fn write_candidate<E: EmbeddingProvider>(
         &CreateMemoryOptions {
             character_id: args.character_id.to_string(),
             about_character_id: Some(args.about_character_id.to_string()),
-            chat_id: Some(ctx.chat_id.clone()),
-            project_id: ctx.project_id.clone(),
+            chat_id: Some(ctx.chat_id.to_string()),
+            project_id: ctx.project_id.map(str::to_string),
             content: candidate.content.clone().unwrap_or_default(),
             summary: candidate.summary.clone().unwrap_or_default(),
             keywords: candidate.keywords.clone(),
             importance: Some(importance),
             source: Some("AUTO".to_string()),
             source_message_id: args.source_message_id.clone(),
-            source_message_timestamp: ctx.source_message_timestamp.clone(),
+            source_message_timestamp: ctx.source_message_timestamp.map(str::to_string),
             tags: Vec::new(),
             // 4.6 Private Character Rooms: provenance for auto-extracted
             // memories — autonomous rooms get explicit attribution; ordinary
@@ -801,7 +847,7 @@ async fn write_candidate<E: EmbeddingProvider>(
             kind: Some(candidate.kind.clone()),
         },
         &MemoryServiceOptions {
-            user_id: ctx.user_id.clone(),
+            user_id: ctx.user_id.to_string(),
             embedding_profile_id: None,
         },
     )
@@ -880,14 +926,7 @@ pub async fn process_turn_for_memory<C: CompletionProvider, E: EmbeddingProvider
     executor: &CheapLlmTaskExecutor,
     ctx: &TurnMemoryExtractionContext,
 ) -> TurnMemoryProcessingResult {
-    let mut state = RunState {
-        passes_lost_to_timeout: 0,
-        debug_logs: Vec::new(),
-        created_memory_ids: Vec::new(),
-        reinforced_memory_ids: Vec::new(),
-        collected_candidates: Vec::new(),
-        total_usage: UsageTotals::default(),
-    };
+    let mut state = RunState::default();
     let source_message_id = ctx.transcript.latest_assistant_message_id.clone();
 
     match run_passes(db, completion, embedding, executor, ctx, &mut state).await {
@@ -929,6 +968,7 @@ async fn run_passes<C: CompletionProvider, E: EmbeddingProvider>(
     state: &mut RunState,
 ) -> Result<(), crate::db::DbError> {
     let source_message_id = ctx.transcript.latest_assistant_message_id.clone();
+    let write_ctx = ctx.write_ctx();
 
     if ctx.transcript.character_slices.is_empty() {
         state
@@ -1194,7 +1234,7 @@ async fn run_passes<C: CompletionProvider, E: EmbeddingProvider>(
                 write_candidate(
                     db,
                     embedding,
-                    ctx,
+                    &write_ctx,
                     state,
                     WriteArgs {
                         character_id: &slice.character_id,
@@ -1364,7 +1404,7 @@ async fn run_passes<C: CompletionProvider, E: EmbeddingProvider>(
                 write_candidate(
                     db,
                     embedding,
-                    ctx,
+                    &write_ctx,
                     state,
                     WriteArgs {
                         character_id: &observer.character_id,
