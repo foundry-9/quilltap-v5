@@ -1,0 +1,107 @@
+{
+  "$comment": [
+    "P4.D275 tier-2 spec for v4's `listAllPhotoAlbumOptions` (`lib/photos/photo-album-options.ts`, `01a83539d`) — the wardrobe picture viewer's every-store save-target list. Base: the item-images tier-2 builder's pair (`build-wardrobe-item-images-fixture.ts`), built into this family's OWN paths. Per case both sides run the same `main` / `mount` SQL plants on a FRESH copy (stores planted `INSERT … SELECT` from General's row with overrides, so every NOT NULL column and v4's Zod see a valid row; every planted name is NOCASE-distinct — P4.D275 R-L), then ONE `listAllPhotoAlbumOptions` call. Compared: the `{albums}` bytes (key order included) and the ordered log lines of the call (v4's backend `Raw query failed` dropped by the standing convention).",
+    "Base fixture: General (rowid 4), Abigail's live LLM vault (rowid 1), the ARCHIVED Bartholomew's vault (rowid 2, skipped), the stranger's live vault (rowid 3 — v4 does not filter by owner), the project's official store (rowid 5) and the group's (rowid 6 — a plain document-store)."
+  ],
+  "abigailId": "1a2b3c4d-0001-4000-8000-000000000001",
+  "strangerId": "1a2b3c4d-0003-4000-8000-000000000003",
+  "cases": [
+    { "name": "base", "main": [], "mount": [] },
+    {
+      "name": "user_controlled_vault",
+      "main": ["UPDATE characters SET controlledBy = 'user' WHERE id = '1a2b3c4d-0001-4000-8000-000000000001'"],
+      "mount": []
+    },
+    {
+      "name": "plain_document_store",
+      "main": [],
+      "mount": ["INSERT INTO doc_mount_points SELECT 'aa000000-0000-4000-8000-000000000001', 'Field Notes', basePath, mountType, storeType, includePatterns, excludePatterns, 1, lastScannedAt, scanStatus, lastScanError, conversionStatus, conversionError, 0, 0, 0, createdAt, updatedAt FROM doc_mount_points WHERE id = '4d5e6f70-0001-4000-8000-000000000001'"]
+    },
+    {
+      "name": "retired_unlinked_vault",
+      "main": [],
+      "mount": ["INSERT INTO doc_mount_points SELECT 'aa000000-0000-4000-8000-000000000002', 'Abigail Pennyworth Version 2026-01-01T000000Z Store', basePath, mountType, 'character', includePatterns, excludePatterns, 1, lastScannedAt, scanStatus, lastScanError, conversionStatus, conversionError, 0, 0, 0, createdAt, updatedAt FROM doc_mount_points WHERE id = '4d5e6f70-0001-4000-8000-000000000001'"]
+    },
+    {
+      "name": "disabled_store",
+      "main": [],
+      "mount": ["INSERT INTO doc_mount_points SELECT 'aa000000-0000-4000-8000-000000000003', 'Mothballed Notes', basePath, mountType, storeType, includePatterns, excludePatterns, 0, lastScannedAt, scanStatus, lastScanError, conversionStatus, conversionError, 0, 0, 0, createdAt, updatedAt FROM doc_mount_points WHERE id = '4d5e6f70-0001-4000-8000-000000000001'"]
+    },
+    {
+      "name": "filesystem_mount",
+      "main": [],
+      "mount": ["INSERT INTO doc_mount_points SELECT 'aa000000-0000-4000-8000-000000000004', 'Desk Drawer', '/tmp/qt-pao-nowhere', 'filesystem', storeType, includePatterns, excludePatterns, 1, lastScannedAt, scanStatus, lastScanError, conversionStatus, conversionError, 0, 0, 0, createdAt, updatedAt FROM doc_mount_points WHERE id = '4d5e6f70-0001-4000-8000-000000000001'"]
+    },
+    {
+      "name": "shared_vault_pointer_last_wins",
+      "main": ["UPDATE characters SET characterDocumentMountPointId = (SELECT characterDocumentMountPointId FROM characters WHERE id = '1a2b3c4d-0001-4000-8000-000000000001') WHERE id = '1a2b3c4d-0003-4000-8000-000000000003'"],
+      "mount": []
+    },
+    {
+      "name": "two_characters_same_name",
+      "main": ["UPDATE characters SET name = 'Abigail Pennyworth' WHERE id = '1a2b3c4d-0003-4000-8000-000000000003'"],
+      "mount": []
+    },
+    {
+      "name": "nfc_nfd_cafe_pair",
+      "main": [],
+      "mount": [
+        "INSERT INTO doc_mount_points SELECT 'aa000000-0000-4000-8000-000000000005', 'Café', basePath, mountType, storeType, includePatterns, excludePatterns, 1, lastScannedAt, scanStatus, lastScanError, conversionStatus, conversionError, 0, 0, 0, createdAt, updatedAt FROM doc_mount_points WHERE id = '4d5e6f70-0001-4000-8000-000000000001'",
+        "INSERT INTO doc_mount_points SELECT 'aa000000-0000-4000-8000-000000000006', 'Café', basePath, mountType, storeType, includePatterns, excludePatterns, 1, lastScannedAt, scanStatus, lastScanError, conversionStatus, conversionError, 0, 0, 0, createdAt, updatedAt FROM doc_mount_points WHERE id = '4d5e6f70-0001-4000-8000-000000000001'"
+      ]
+    },
+    {
+      "name": "rowid_vs_name_order",
+      "main": [],
+      "mount": [
+        "INSERT INTO doc_mount_points SELECT 'aa000000-0000-4000-8000-000000000007', 'Zeta Notes', basePath, mountType, storeType, includePatterns, excludePatterns, 1, lastScannedAt, scanStatus, lastScanError, conversionStatus, conversionError, 0, 0, 0, createdAt, updatedAt FROM doc_mount_points WHERE id = '4d5e6f70-0001-4000-8000-000000000001'",
+        "INSERT INTO doc_mount_points SELECT 'aa000000-0000-4000-8000-000000000008', 'alpha notes', basePath, mountType, storeType, includePatterns, excludePatterns, 1, lastScannedAt, scanStatus, lastScanError, conversionStatus, conversionError, 0, 0, 0, createdAt, updatedAt FROM doc_mount_points WHERE id = '4d5e6f70-0001-4000-8000-000000000001'",
+        "INSERT INTO doc_mount_points SELECT 'aa000000-0000-4000-8000-000000000009', 'Beta Notes', basePath, mountType, storeType, includePatterns, excludePatterns, 1, lastScannedAt, scanStatus, lastScanError, conversionStatus, conversionError, 0, 0, 0, createdAt, updatedAt FROM doc_mount_points WHERE id = '4d5e6f70-0001-4000-8000-000000000001'"
+      ]
+    },
+    {
+      "name": "no_general",
+      "main": ["DELETE FROM instance_settings WHERE key = 'generalMountPointId'"],
+      "mount": []
+    },
+    {
+      "name": "no_general_no_character_no_project",
+      "main": [
+        "DELETE FROM instance_settings WHERE key = 'generalMountPointId'",
+        "UPDATE characters SET characterDocumentMountPointId = NULL",
+        "UPDATE projects SET officialMountPointId = 'ffffffff-0000-4000-8000-00000000dead'"
+      ],
+      "mount": []
+    },
+    {
+      "name": "empty_instance",
+      "main": [],
+      "mount": ["DELETE FROM doc_mount_points"]
+    },
+    {
+      "name": "dropped_mount_points_table",
+      "main": [],
+      "mount": ["DROP TABLE doc_mount_points"]
+    },
+    {
+      "name": "project_store_unreadable",
+      "main": ["UPDATE projects SET officialMountPointId = 'ffffffff-0000-4000-8000-00000000dead'"],
+      "mount": []
+    },
+    {
+      "name": "project_store_document_gone",
+      "main": [],
+      "mount": ["DELETE FROM doc_mount_file_links WHERE relativePath = 'properties.json' AND mountPointId = (SELECT id FROM doc_mount_points WHERE name = 'Project Files: Images Project')"]
+    },
+    {
+      "name": "malformed_store_row",
+      "main": [],
+      "mount": ["INSERT INTO doc_mount_points SELECT 'aa000000-0000-4000-8000-00000000000a', 'Odd Shelf', basePath, 'bogus', storeType, includePatterns, excludePatterns, 1, lastScannedAt, scanStatus, lastScanError, conversionStatus, conversionError, 0, 0, 0, createdAt, updatedAt FROM doc_mount_points WHERE id = '4d5e6f70-0001-4000-8000-000000000001'"]
+    },
+    {
+      "name": "archived_with_empty_vault_pointer",
+      "main": ["UPDATE characters SET characterDocumentMountPointId = '' WHERE id = '1a2b3c4d-0002-4000-8000-000000000002'"],
+      "mount": []
+    }
+  ]
+}

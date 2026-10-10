@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(photos): P4.D275 B2 — every enabled store as a save target (photo_album_options)
+
+_Versions: core 0.0.1269._
+
+New `photos::photo_album_options` (v4 `01a83539d`'s `lib/photos/photo-album-options.ts`): `PhotoAlbumKind`, `PhotoAlbumOption` (v4's key order, `isDefault` last) and `list_all_photo_album_options`. It is the wardrobe picture viewer's instance-wide album list:
+
+- Archived characters' vaults are left out.
+- A character vault is named for its character; when several characters share one vault, the last one wins.
+- A project's official store is `project`; General is `general` and the default; anything else is a `document-store`.
+- The list is sorted by kind, then `localeCompare`, with a stable sort.
+- With no General configured, the first option is the default.
+
+Each of the five reads answers v4's fallback, including the degraded mount index's DEBUG. The line ends with v4's DEBUG `[photo-album-options] Listed every store as a save target`. The archived-vault DEBUG keys move to v4's camelCase (`archivedWithVault`, `charactersScanned`).
+
+New tier-2 family `photo_album_options_equivalence` runs 18 planted cases against v4's real function at the pin, comparing the albums' bytes and the ordered log lines. Three measured divergences are named both-ways carves: `ENABLED_STORE_ZOD_DROP`, `RAW_CHARACTER_ZOD_DROP` and `ENSURE_COLLECTION_RECREATES`. A v5-only pin covers the degraded mount index.
+
 #### 2026-10-09 — feat(photos): P4.D275 B1 — the shared save-image responses; the message door's ALREADY_SAVED is a 409
 
 _Versions: core 0.0.1268._

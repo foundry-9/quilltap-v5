@@ -24,6 +24,9 @@
 //!   `chatFilesList` shares with it (P4.D174).
 //! - [`save_image_response`] — the answers every save-image door gives (v4
 //!   `save-image-response.ts`, `01a83539d`; P4.D275).
+//! - [`photo_album_options`] — every enabled store as a save target, the
+//!   wardrobe picture viewer's album list (v4 `photo-album-options.ts`,
+//!   `01a83539d`; P4.D275).
 
 pub mod auto_describe_attachment;
 // === P4.D185 ===
@@ -37,6 +40,9 @@ pub mod keep_image_markdown;
 // === P4.120 ===
 pub mod mount_embedding_effects;
 // === /P4.120 ===
+// === P4.D275 ===
+pub mod photo_album_options;
+// === /P4.D275 ===
 pub mod photo_link_summary;
 pub mod photos_paths;
 pub mod resolve_character_avatar;
