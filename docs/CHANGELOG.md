@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-10 — docs(porting): P4.D274 lane close — gate, sweep and measurement records
+
+_Docs-only change._
+
+The P4.D274 order is marked LANE COMPLETE. The status log records the full workspace gate (four failures, all other lanes' by-design reds), the 19-family sweep from the pin, the named divergences, the deferrals, and the dogfood rows.
+
 #### 2026-10-09 — test(mount-index): P4.D274 the store-name writers census
 
 _No crate versions bumped._

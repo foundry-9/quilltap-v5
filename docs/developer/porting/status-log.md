@@ -175633,3 +175633,46 @@ These are exactly the order's published spellings, so no `HANDOFF:` to P4.D273 i
 ### Tier 2 item 11 — the store-name writers census
 - NEW `doc_mount_points_name_writers_census`: every production SQL literal that `INSERT`s into `doc_mount_points`, or `UPDATE`s it setting `name`, lives in `db/doc_mount_points.rs`, `db/mount_index_case_repair.rs`, `db/store_name_reconcile.rs` or `services/builtin_mounts.rs` (the four sanctioned writers). **Measured: no other writer** (the expected "none"), and the census sees all four sanctioned ones. A detector self-test covers both write shapes and the lexer's escaped-quote source spelling. 2/2.
 - Tier 2 items 9 (R-L's INFO lines) and 10 (the PATCH raced gate) landed inside units 5 and 6.
+
+### Named divergences (each a both-ways pin)
+- **`RECONCILE_READ_FAILURE_STRICT`** (R-A arm 2), in `store_name_reconcile_equivalence`:
+  - `READ_FAILURE_STRICT`: (e2) characters / stores whole-query failures. v4 retires 2 / plans 0; v5 logs v4's ERROR + skip WARN, `ReadFailed`, writes nothing.
+  - `IMPORT_READ_FAILURE_STRICT`: (q), inside the import's strict scope. v4 pushes `Failed to tidy …: malformed JSON`; v5 pushes nothing.
+  - In the cross-run v4 over v5's pair only ever replays / retires: v5 lags v4 and never undoes it.
+- **`BUILTIN_REPROVISION_FREE_NAME`** (R-B): `builtin_mounts::tests::builtin_reprovision_free_name_both_ways` and the host arm (d). v5-only; no v4 comparand.
+- **`RECONCILE_CHARACTER_ROW_SUBSET`** (R-C): the character predicate is the plan's subset plus the BLOB-cell class. M6: drop counts equal to v4's REAL `findAllRaw()` on the Friday copy (55 = 55, 0 drops) and zero drops on every committed fixture pair. A BLOB-only refusal's line carries rusqlite's sentence where v4's carries the full-schema ZodError.
+- **`STORE_STAMP_UNREACHABLE_FORMS`** (R-E): `store_names_equivalence`, 4 V8 forms pinned both ways.
+- **`WIPE_RECONCILE_CADENCE`: NOT NEEDED.** M3 measured a deterministic sequence (5/5), ported literally.
+
+### Deferrals (Tier 3, recorded, never silent)
+- **The job-child arm (R-J): NO-PORT.** v5 has no job child, and v4's character triggers never reach it. `StoreNameSkipReason` carries `MountIndexUnavailable` + the v5-only `ReadFailed`, and no job-child reason.
+- **Restore:** 22a's free-name pick is P4.D265's (C1 §14). The rest of 22a and the 23a `reconcile_store_names(…, "restore")` call are P4.D273's `HANDOFF:` (§S.5). The published signature is unchanged since publication.
+- **Dogfood #156:** under a degraded mount index v5's character rename / delete routes 500 before they reach the reconcile, where v4 reaches it and logs the skip WARN. Recorded under #156 (ORDER-PENDING, follow-ups round), not fixed here.
+- **v4's stale `mount-index-case-repair.ts:12-15` header** ("no DB index"): a v4-filing candidate. v5's header is reversed.
+- **The create route's raced-gate shape:** recorded, not measured (see unit 6).
+- **The PATCH's general catch-all:** only the validation-failure, `MountPointNameTaken` and owner/holder-read-failure arms now take v4's catch-all ERROR + 500. Other write errors keep `internal(e)` (pre-existing; outside bug 186).
+- **`help/mount-points.md`, `DDL.md`, v4's CLAUDE.md bullet:** P4.D278's vendored copies. No help sentence changes (the copy is byte-exact from the pin), so there is no `HANDOFF:`.
+- **Drafted v5 CLAUDE.md standing rule (the unifier's call, §S.7):** "Document-store names are one case-insensitive namespace (`idx_doc_mount_points_name_nocase`, the repository gate). Pick a free name with `next_unique_mount_point_name`, never insert one raw (`doc_mount_points_name_writers_census`); a path that creates, renames or deletes a character goes through the hooks (`create_character_with_options` / `update_character` / `delete_character_and_reconcile`) so `reconcile_store_names` runs."
+
+### 💸 for the dogfood pass
+- **Friday copy, first v5 boot after the round.** M1 measured the LIVE instance (a copy taken while v4 HEAD held it): the NOCASE index is already present and v5's plan = v4's plan = **0 renames**. So the first v5 boot renames nothing there. The dogfood copy `~/qt-dogfood-friday` is OLDER (P4.D265 saw no index on it), so re-run M1's probe on THAT copy before its first v5 boot and diff afterwards. Then boot v4 HEAD on the same copy → zero renames, and v5 again → zero.
+- **Create a character** named after an orphaned vault on a clone → the new vault plain, the orphan `… Version <stamp> Store`. Rename → the vault follows. Delete → retired. Watch the Scriptorium list update live (the `mountPoints` hint).
+- **Scriptorium:** rename a live vault → the 409 sentence verbatim; re-case it → 409. Rename a project store onto a vault's name in another casing → the "matched without regard to case" 409.
+- **R-A plants:** a character row with a non-uuid id on a clone → v4 and v5 both retire exactly its vault. A VIRTUAL generated column `json('not json')` on `characters` on a second clone → v5 boots with the ERROR + skip WARN and renames nothing (`RECONCILE_READ_FAILURE_STRICT`).
+- **R-B plant:** a dangling General pointer + a squatting `quilltap general` store → v5 boots, provisioning `Quilltap General (2)`.
+- **A `.qtap` re-import with `overwrite`** onto a store whose archived name another store now holds → `(2)`, no warning.
+- **A sync run** with `LOG_LEVEL=debug` → one `[Sync] Reading disk file` per disk-side create/modify.
+
+### Lane close — the gate
+- **fmt** clean. **clippy** (`--workspace --all-targets -D warnings`) clean; with `--features quilltap-core/native-transport` clean (`apps/web/dist` copied from main's build; no SPA file touched).
+- **`cargo test --workspace --no-fail-fast`** (`CARGO_INCREMENTAL=0`; queued on the two running gates' PIDs; full log lane-private): 712 binaries, **4,693 passed, 4 failed, 3 ignored, zero `SKIP`**. The env block set `QT_V4_CHECKOUT` / `QT_V4_ROOT` to the pin and every lane oracle on its lane-private path. All 4 failures are §R.13 reds owned by other lanes:
+  - `cli_differential`: 7 rows (`main help`, `completion bash|zsh|fish`, `recall-replay`), v4's `memories` subcommand. P4.D269.
+  - `qtap_schema_embed_guard`: P4.D272.
+  - `system_restore_state` ×2: `FRESH_STORE_RESIDUAL` 2 vs 32 and the `ARCHIVED_CHARACTER_RESTORE` tripwire. P4.D273, under `RECONCILE_PENDING_UNION`. The same two P4.D265 recorded at its close (re-run by name from the pin once, before the gate: identical).
+- **Live-checkout guards against the pin:** `public_schemas_vendor_guard`, `builtin_prompt_templates_guard`, `provider_sdk_version_guard`, `zod_version_guard` all GREEN. No other red.
+- **Sweep 3 from the pin** (`recipe_sweep.py --run-all`): 19/19 `ok`, zero SKIP, every `OK:` line printed. The families: `store_names`, `store_name_reconcile`, `mount_case_repair`, `doc_mount_points_tier2`, `mount_points_routes`, `sync_engine`, the 12 character families, and `migration_index_backfill` (the NOCASE index moves no count there).
+- **By hand from the pin:** `system_import_state` `ok`; `qtap_import_equivalence` red only at `memories` (P4.D272).
+- **Censuses:** `characters_delete_callers_census` 2/2, `doc_mount_points_name_writers_census` 2/2, `fallback_home_guard` 2/2, `doc_mount_fallback_sites_census` 6/6, `spelling_guard`, `realtime_publish_sites_guard` all green. `recipe_sweep.py --self-test` exits 0; every new / extended family extracts `ok` / `ok_restored`.
+- **v4 moved during the lane:** `3e6e2f590`, `7a8d6dacc`, `9ecebf986`, observed 2026-10-09 20:43 (never read).
+- **Versions at close:** core 0.0.1271, host 0.0.196 (web / cli / tauri / SPA untouched; harness frozen 0.0.1110).
+- **Cleanup:** the pin worktree `/tmp/qt-v4-pin-p4.d274-01a83539d` removed; lane scratch `/tmp/p4.d274` deleted (incl. both Friday copies and the plan JSON); this lane's `target/` deleted. Nothing pushed to `main`.
