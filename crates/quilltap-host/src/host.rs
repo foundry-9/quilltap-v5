@@ -1275,8 +1275,13 @@ fn seed_built_ins(db: &Db) -> Result<EnsureFailures, String> {
     use quilltap_core::services::{builtin_mounts, builtin_templates};
 
     let db = db.clone();
+    // P4.D274: whether the mount index booted DEGRADED (the boot reconcile's
+    // skip arm below), read before the writer closure, which must be 'static.
+    let mount_index_degraded = db
+        .partition_state(quilltap_core::db::table_shape::Partition::MountIndex)
+        == quilltap_core::db::runtime::PartitionState::Degraded;
     std::thread::spawn(move || -> Result<EnsureFailures, DbError> {
-        db.write_blocking(|ws| {
+        db.write_blocking(move |ws| {
             let main = ws.main().connection();
             let mut ensure_failures = EnsureFailures::default();
             // === P4.134 (dogfood #134(b)) ===
@@ -1983,12 +1988,59 @@ fn seed_built_ins(db: &Db) -> Result<EnsureFailures, String> {
                 // The scan narrates itself (v4's `scanning` / `enqueue
                 // complete` lines); `instrumentation.ts` logs nothing after
                 // the `await`, so neither does this site.
-                let _ =
-                    quilltap_core::services::headshoulders_backfill_enqueue::enqueue_headshoulders_backfill(
-                        main,
-                        mount_index,
-                    );
+                //
+                // === P4.D274 (v4 `ed8b15b50`, bug 186) ===
+                // The boot store-name reconcile is the FIRST statement of the
+                // same `.then` chain (`instrumentation.ts:635-645`), ahead of
+                // this enqueue: each live vault named after its character, every
+                // unlinked vault retired. v5 has no vault-backfill stage; the
+                // lazy adopt in `ensure_character_vault` stands in, and the plan
+                // never retires a name a vault-less character bears
+                // (`adoptableNames`), so v4's adopt-first order holds without
+                // it. A failure is v4's chain catch (`:683-688`): WARN `Error
+                // during character vault backfill or physical-file migration`
+                // `{context, error}`, and the rest of the chain — this enqueue
+                // — is SKIPPED, as v4's `.then` stops. The same recorded
+                // mechanism divergence as the enqueue: v5 JOINS this (two reads
+                // and a pure plan), where v4 runs it in a non-blocking `.then`.
+                let chain_ok = match quilltap_core::db::store_name_reconcile::reconcile_store_names(
+                    main,
+                    Some(mount_index),
+                    quilltap_core::db::store_name_reconcile::TRIGGER_BOOT,
+                ) {
+                    Ok(_) => true,
+                    Err(e) => {
+                        tracing::warn!(
+                            context = "instrumentation.register",
+                            error = %quilltap_core::db::fallback::error_text(&e),
+                            "Error during character vault backfill or physical-file migration"
+                        );
+                        false
+                    }
+                };
+                // === end P4.D274 ===
+                if chain_ok {
+                    let _ =
+                        quilltap_core::services::headshoulders_backfill_enqueue::enqueue_headshoulders_backfill(
+                            main,
+                            mount_index,
+                        );
+                }
                 // === end P4.82 ===
+            } else if mount_index_degraded {
+                // === P4.D274 ===
+                // A DEGRADED mount index (P4.159) skips the whole block, but v4
+                // still reaches its boot reconcile, which logs its own skip
+                // WARN (`Store-name reconcile skipped: mount-index database
+                // unavailable` `{trigger: 'boot'}`) — so does v5. An ABSENT
+                // partition (a main-only test instance; v4 always has the file)
+                // logs nothing, recorded.
+                let _ = quilltap_core::db::store_name_reconcile::reconcile_store_names(
+                    main,
+                    None,
+                    quilltap_core::db::store_name_reconcile::TRIGGER_BOOT,
+                );
+                // === end P4.D274 ===
             }
             // === P4.D248 (v4 `e5c6bd0c0`, bug 176) ===
             // v4's PHASE 3.1 runs each structural repository's `ensureTable`

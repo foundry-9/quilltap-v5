@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(host): P4.D274 unit 7 — the boot store-name reconcile
+
+_Versions: core 0.0.1270, host 0.0.196._
+
+The host boot now runs the store-name reconcile just before the head-and-shoulders backfill enqueue, as v4's startup chain does. A failure logs v4's chain WARN and skips the enqueue. With a degraded mount index the boot logs v4's skip WARN.
+
+The reconcile's reads treat a missing `characters` or `doc_mount_points` table as empty, as v4 (which would create it) reads it.
+
+New host test `host_boot_store_name_reconcile`: the retirement once, the degraded skip, the failed-reconcile chain, and the built-in re-provision's free name.
+
 #### 2026-10-09 — feat(mount-index): P4.D274 units 5+6 — store-name reconcile on character create/rename/delete, the mount-points routes and the import
 
 _Versions: core 0.0.1269._

@@ -175607,3 +175607,19 @@ These are exactly the order's published spellings, so no `HANDOFF:` to P4.D273 i
     - `system_import_state`: `ok`;
     - `qtap_import_equivalence`: red ONLY at `memories`, which is P4.D272's §R.13(h) red by design (the tier columns). Its `characters`, `wardrobe_items` and `doc_mount_points` tables, compared before `memories`, are all green, so this lane's import hunk moves no row there. No `HANDOFF:` to P4.D272 is needed.
 - **Flake, not this lane's:** `api::chat_informs::safe_query_and_log_tests::the_posted_inform_line_renders_both_ids_as_json` captured `[]` once in the full core lib run (the thread-scoped capture race); green 3/3 alone and in the previous full run.
+
+### Unit 7 — the boot reconcile (U7) + R-M
+- **M5 / R-M — MEASURED before wiring.** A throwaway uncommitted probe opened every committed `quilltap-web/tests/fixtures/*-main.db` / `*-mount.db` pair (each committed test pepper tried in turn), ran v5's R-A/R-C reads and `plan_store_names`. **Every pair plans 0 renames**, so the prediction "none" holds and no family needs a boot mirror; no `HANDOFF:` is needed. 43 pairs carry both tables. `chat-compressed` has no `doc_mount_points`; `inspector-nostore` / `llm-log-cleanup` have no mount pair.
+- **M6 on the fixtures:** v5's predicate drops ZERO rows on every pair (stores N/N, characters N/N).
+- **Finding, a convergence:** five fixtures (`brahma`, `mounts`, `profile`, `store-delete`, `text-replacements`) have NO `characters` table. v4's `findAllRaw()` would CREATE it (`ensureCollection`) and read `[]`; it is not a whole-query failure. v5's reads now treat an absent `characters` / `doc_mount_points` table as empty (`table_absent`), which plans identically (0 renames, measured). Without this, those fixtures' boots would log the strict ERROR + skip WARN.
+- **Content** (`host.rs` `seed_built_ins`, P4.D265's region left alone):
+  - in the mount-aware block, immediately before the P4.82 enqueue: `reconcile_store_names(main, Some(mount_index), "boot")`. An `Err` logs v4's chain WARN `Error during character vault backfill or physical-file migration {context: "instrumentation.register", error}` and SKIPS the enqueue (v4's `.then` stops).
+  - The degraded `else` arm (`mount_index_degraded`, read before the `'static` writer closure, which became `move`) calls `reconcile_store_names(main, None, "boot")`, so v4's skip WARN is logged.
+  - **`Absent` → silent:** through `Host::start` the mount partition is never absent (the host always opens the mount path, and SQLite creates the file), so that arm has no host pin. The `None`-without-degraded path logs nothing by construction.
+- **Host tests:** NEW `host_boot_store_name_reconcile` (real `Host::start`):
+  - (a) a planted orphan vault retired exactly once, the second boot `planned … renameCount=0` only;
+  - (b) a garbage mount index → v4's skip WARN;
+  - (c) a planted phase-2 failure → v4's chain WARN, the head-shoulders flag UNSET (the control boot sets it), the savepoint rolled back;
+  - (d) R-B → `Quilltap General (2)`.
+- **Red-first** (the test over the committed `host.rs`): (a), (b), (c) FAILED; (d) passed, since R-B's fix is core (unit 2), whose red is M2. Green 4/4.
+- **Moved counts:** the `type = 'index'` counts in `host_boot_*.rs` and `system_restore_state` are NAME-scoped, so none moves. `migration_index_backfill`'s whole-set dump is re-run by name at the gate.

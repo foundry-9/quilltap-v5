@@ -49,7 +49,7 @@
 //! [`StoreNameSkipReason`] carries no job-child reason.
 
 use rusqlite::types::ValueRef;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::{json, Map, Value};
 
 use super::fallback;
@@ -591,7 +591,25 @@ pub fn read_enabled_store_name_rows(mount: &Connection) -> Result<Vec<StoreNameR
     read_store_rows_where(mount, " WHERE \"enabled\" = 1")
 }
 
+/// A table v4's `getCollection()` would CREATE on first access
+/// (`ensureCollection`) — so its read answers `[]`, never a failure. v5 does
+/// not create it; it reads it as empty (measured on five committed fixtures
+/// with no `characters` table: the plan is identical — no renames).
+fn table_absent(conn: &Connection, table: &str) -> Result<bool, DbError> {
+    Ok(conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1",
+            [table],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_none())
+}
+
 fn read_store_rows_where(mount: &Connection, filter: &str) -> Result<Vec<StoreNameRow>, DbError> {
+    if table_absent(mount, "doc_mount_points")? {
+        return Ok(Vec::new());
+    }
     let bags = read_bags(
         mount,
         "doc_mount_points",
@@ -663,6 +681,9 @@ fn vault_owner_issues(bag: &Map<String, Value>) -> Vec<ZodIssue> {
 /// passes R-C's predicate, in row order; a refused row DROPPED with v4's two
 /// lines. A whole-query failure is the `Err`.
 pub fn read_vault_owner_rows(main: &Connection) -> Result<Vec<VaultOwnerRow>, DbError> {
+    if table_absent(main, "characters")? {
+        return Ok(Vec::new());
+    }
     let mut stmt = main.prepare("SELECT * FROM \"characters\"")?;
     let names: Vec<String> = stmt
         .column_names()
