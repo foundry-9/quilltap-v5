@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(memory): P4.D271 the consolidation clusterer
+
+_Versions: core 0.0.1266._
+
+New `consolidation_clustering` module, a port of v4's memory-consolidation clusterer: digest attraction, average-linkage agglomeration with the Lance–Williams update, the one-day episodic window, the age-based size floor, the "anything new?" check and the per-run budget. Pairwise similarities are stored as f32, as v4 stores them in a `Float32Array`. New tier-1 family `consolidation_clustering_equivalence` (113 rows from v4's real functions) includes a pair whose similarity clusters only because of the f32 rounding.
+
 #### 2026-10-09 — docs(porting): P4.D265 lane close — real-instance note, gate and sweep records
 
 _Docs-only change._

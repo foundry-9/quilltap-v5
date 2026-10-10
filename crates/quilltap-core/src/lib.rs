@@ -165,6 +165,7 @@ pub mod chunk;
 pub mod clock;
 pub mod collation;
 pub mod commonplace_file;
+pub mod consolidation_clustering;
 pub mod content_disposition;
 pub mod context_budget;
 pub mod context_compression;
