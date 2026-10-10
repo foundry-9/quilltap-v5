@@ -175509,3 +175509,69 @@ Branch `claude/store-binding-uuid-remap-e47048` (worktree `.claude/worktrees/sto
 **Unit 5 — the three derived archives + six cases (R-K, items 13 / 14 / Tier 2 #16).** Committed derive scripts (sources md5-checked unchanged; the derives are deterministic — re-run byte-identical): `restore-archive-store-binding.zip` (`a42a35e4…`): Lorian's vault UNTYPED (binds), Riya `not-carried` (`dead0000-…0001`) AND archived (the lane's pick for R-F (b)'s fallback tombstone — Riya rather than a third row, which keeps every other arm), the group pointer on Riya's vault (`wrong-kind`), the bound project with a CARRIED `files` row (`mount-blob:<its store>:bc000000-…0001`, bytes planted under `files/` as real backups write them) and a LOOSE one (`voyage-notes.txt`, a legacy key) — the manifest's `files` 1 → 3. `restore-archive-store-row-fails.zip` (`e145ba22…`): the `name` of Lorian's, Riya's, the project's and the group's stores nulled; Riya archived. `restore-archive-memory-tiers.zip` (`1ddc7cc6…`, from `restore-archive-memory-graph.zip`): a CONSOLIDATED digest (`ae…02`), its two cold members (both listed BEFORE it), a pre-tier row, a modern hot row, a refused `tier: 'warm'` row (Tier 2 #16), and chat `c1…01`'s watermark on its own message. Six cases both sides (`restore_store_binding_*`, `restore_store_row_fails_*`, `restore_memory_tiers_*`); `seen` 45 → 51. **v4 at the pin, measured before committing (R-H):** the null names read IDENTICALLY on both sides — `Failed to restore document store "null": Cannot read properties of null (reading 'trim')` + WARN `Failed to restore doc mount point` ×4; 22a-i's three re-provision warnings + the tombstone's; the four claim outcomes; `Replayed deferred project files {count: 1}`; the warm row's Zod-4 refusal; the digest, members, pre-tier prefill and watermark. NEW by-name pins: `assert_store_binding_arms` (v4's two fallback warnings verbatim on both sides, Lorian on her untyped archived vault — its kept `createdAt`, the carried file before the deferred one in `files` rowids; the three re-provisioned stores fresh and reading the archived row's `description`, the tombstone left pointing at its failed vault) and `assert_memory_tiers_restored` (item 14's CONSOLIDATED acceptance pin, rows found by `content` so `new-account`'s remap is followed — the ONLY `Failed to restore memory` warning on either side is the warm row's). NEW named both-ways table `ARCHIVED_CHARACTER_FALLBACK` (R-F (b), ruled): v4 provisions Riya a vault, refuses the archived character (warning + WARN) and leaves her pointer NULL; v5 keeps the vault; asserted both ways, then v5's pointer cell nulled and v4's two lines carved. Standing-shape rows added for the new cases: `PHASE_ORDER_RESIDUAL` ×9 (the three `new-account` cases' seeded portrait replay) and `V5_STATS_GAP` ×5 (those replays + the deferred project file's bridge write into the bound store). **`system_restore_state` 4/4, all 51 cases.** Mutation proofs: skipping 22a-i's character arm and silencing the `wrong-kind` note each turn the new pins RED by name (`STORE BINDING (v5): no warning …`, `STORE ROW FAILS (v5): Lorian points at …`), source restored. **Measurement 5:** the memory-tiers `replace` case's digest / members / pre-tier / watermark rows restore through P4.D265's `parse_create_memory` + `ChatCreate` with no restore-side change in this lane (phase 9 untouched bar its doc comment) — no C1 gap.
 
 **FINDING (pre-existing, recorded, not fixed — out of this order's scope):** v4's carried-file arm (`restore.ts:762-775`) keeps the ARCHIVE ROW's `mimeType` / `size` and takes only `sha256` from the blob; v5's (`restore_one_file`'s carried arm) takes `storedMimeType` / `sizeBytes` from the restored blob. Invisible on every committed archive (each carried row describes its blob exactly); a hand-derived row whose size disagreed with its blob surfaced it (the derive now writes a consistent row). A follow-ups-round candidate for the human: converge, or rule v5's "describe what is in the store" reading.
+
+**Lane close — P4.D273 (2026-10-10).**
+
+- **The gate** (`cargo test --workspace --no-fail-fast`, `CARGO_INCREMENTAL=0`, the four lane oracles frozen under `/tmp/p4.d273/gate/`, `QT_V4_CHECKOUT` / `QT_V4_ROOT` = the pin): **708 binaries, 4,681 passed, 2 failed, 3 ignored, zero `SKIP`.** The two reds are other lanes', by design (§R.13), and are the same pair P4.D265 recorded: `qtap_schema_embed_guard` (v4's schema is 102,523 bytes vs 101,092 vendored, owner P4.D272) and Tier R `cli_differential` (exactly 7 rows: `main help`, `completion bash|zsh|fish`, `recall-replay help|no chat|table`, owner P4.D269). There is no lane-caused red.
+- **fmt and clippy.** `cargo fmt --all --check` and both clippy sets (`--workspace --all-targets`, plus `--features quilltap-core/native-transport`) are clean. `recipe_sweep.py --self-test` reports 0 failures.
+- **The lane's families by name, from the pin:**
+  - `system_restore_state` 4/4 (51 cases);
+  - `system_restore_equivalence` 1/1;
+  - `backup_uuid_remap_equivalence` 1/1 (35 cases);
+  - `system_backup_equivalence` 1/1;
+  - `restore_vintage_state` 9/9;
+  - `p4_9g6_seam_contract` 2/2;
+  - NEW `store_claims_equivalence` 1/1 (20 cases).
+- **The guards by name:** `generation_key_travels_as_is_guard` 4/4, `import_warning_text_guard` 3/3, `doc_mount_fallback_sites_census` 6/6 (no row moved), `fallback_home_guard` 2/2, `spelling_guard` 1/1.
+- **R-A filing evidence (the human's call).** On `restore-archive-dup-store-id.zip`, v4 at `01a83539d`:
+  - calls Lorian `wrong-kind` and mints her a vault;
+  - warns `The character "Lorian" was given a fresh, empty store because the store it pointed at is the wrong kind`;
+  - logs the WARN `{kind: character, id: a1…01, reason: wrong-kind}`;
+  - restores her real vault `aff3114e-…` as `Lorian Character Vault (2)`, which the reconcile then retires to `Lorian Version 2026-07-24T205056Z Store`.
+
+  The tier-1 rows say the same: v4 answers by the LAST row of a duplicated id.
+- **R-D mask counts per case** (cells + v4 census records, all > 0): `restore_replace` 18, `restore_legacy_archive` 18, `restore_minimal` 12, `restore_new_account` 30, `restore_uploads_replace` 30, `restore_uploads_new_account` 42, `restore_gen2_replace` 48, `restore_gen2_new_account` 60, `restore_bug117_new_account` 46, `restore_memory_graph_replace` 18, `restore_memory_graph_new_account` 30, `restore_orphan_links_replace` 19, `restore_compact_replace` 26, `restore_compact_new_account` 38, `restore_bug158_replace` 18, `restore_concierge_legacy_replace` 18, `restore_concierge_bogus_replace` 18, `restore_chat_serde_arm_replace` 18, `restore_voice_legacy_replace` 18, `restore_legacy_profiles_replace` 12, `restore_duplicate_folders_replace` 18, `restore_bag_keys_replace` 18, `restore_bag_keys_new_account` 30, `restore_uploads_fresh_replace` 30, `restore_compact_fresh_replace` 26, `restore_gen2_fresh_replace` 48, `restore_bag_nulls_replace` 18, `restore_informs_replace` 18, `restore_memory_refusals_replace` 18, `restore_inform_refusals_replace` 18, `restore_entity_refusals_replace` 30, `restore_kind_refusals_replace` 18, `restore_empty_embedding_replace` 18, `restore_sqlite_tail_replace` 18, `restore_damaged_store_replace` 18, `restore_phase_warns_replace` 2, `restore_two_claimants_replace` 28, `restore_dup_store_id_replace` 22, `restore_store_binding_replace` 26, `restore_store_binding_new_account` 38, `restore_store_row_fails_replace` 14, `restore_store_row_fails_new_account` 26, `restore_memory_tiers_replace` 18, `restore_memory_tiers_new_account` 30, `restore_wardrobe_wear_replace` 18, `restore_wardrobe_wear_new_account` 30, `restore_wardrobe_wear_refused_replace` 18, `restore_wardrobe_picture_replace` 18, `restore_wardrobe_picture_new_account` 30, `restore_wardrobe_picture_tombstone_new_account` 30, `restore_general_pointer_fresh_replace` 48.
+- **Rulings applied as ordered:** R-A, R-B, R-C, R-D, R-E, R-F (a) converged, (b) pinned both ways (`ARCHIVED_CHARACTER_FALLBACK`), (c) v4-faithful, R-G, R-H (the non-string name arm added; no committed archive carries one), R-I, R-J, R-K, R-L (no heal INFO ported).
+- **`db/document_store_overlay.rs`** is UNTOUCHED. No visibility change was needed, because the refusal lines' homes are callable from `db::fallback`.
+- **Deferred, loudly:**
+  - Tier 2 #17 `restore_dup_store_id_new_account` was NOT landed. `DUP_STORE_ID_FIRST_ROW` matches by literal ids and census records, and in `new-account` both sides mint different random ids, so the carve needs a per-side id lookup. That is follow-ups work.
+  - Tier 3 #20: the 23a call is the HANDOFF below.
+  - #21: the heal and created INFO lines of `ensure_official_store` are NOT logged by v5. That gap spans about 15 callers and is for the follow-ups round.
+  - #22: step 2 of `ensureOfficialStore` (adopt a linked store) stays deferred, and is unreachable at 22a-i.
+  - #23: a restore on a DEGRADED mount index was not measured. v5 logs no summary INFO there.
+  - #24: the `js_trim` convergence of `next_unique_mount_point_name` rides the union (P4.D274's leaf).
+- **FINDING, recorded in unit 5:** the carried-file arm's `mimeType` / `size` (v4 keeps the row's, v5 the blob's).
+- **💸 rows** are as ordered: the Friday-copy backup → restore in BOTH modes (365 CONSOLIDATED digests, 77 → 77 stores, Friday on her 847-link vault, `storesCarried == storesRestored`, zero unexplained `fresh, empty store` warnings, and post-union `renamed: 0`). Then a namesake-store `new-account` restore, the nulled-name damage plants, and a bound project's loose files.
+- **v4 moved:** `3e6e2f590`, `7a8d6dacc`, `9ecebf986` were seen at the lane-start probe (recorded above, not ported).
+- **Versions at close:** core 0.0.1269; host 0.0.195, web 0.0.228 and the rest are unchanged; harness frozen at 0.0.1110.
+- **Branch:** `claude/store-binding-uuid-remap-e47048`.
+
+
+**HANDOFF: orchestrator.rs 23a** (R-E — `reconcile_store_names` is P4.D274's, not on this `KEYSTONE`-based branch; the unifier applies this hunk at §S.5 after picking P4.D274 then P4.D273, then lifts `RECONCILE_PENDING_UNION`). Insert in `crates/quilltap-core/src/services/backup/restore/orchestrator.rs`, `restore_on_writer`, immediately AFTER the `All entities restored with preserved IDs - no reconciliation needed` INFO (line 2044-2047 on this branch) and BEFORE the `── 24a.` comment. Signature measured on P4.D274's branch (`38315d8be`): `crate::db::store_name_reconcile::reconcile_store_names(main: &Connection, mount: Option<&Connection>, trigger: &str) -> Result<StoreNameReconcileResult { renamed: Vec<StoreRename>, skipped_reason: Option<StoreNameSkipReason> }, DbError>`, `StoreNameSkipReason::as_str()`. `None` renders as v4's `null` by this file's convention (measurement 6 — `Post-restore embedding reconcile complete`'s `skippedReason`):
+
+```rust
+    // 23a. Store names (bug 186, v4 `ed8b15b50` `restore.ts:1279-1290`): each
+    // live vault named after its character, every vault no character points
+    // at retired, no two stores alike.
+    match crate::db::store_name_reconcile::reconcile_store_names(main, mount, "restore") {
+        Ok(result) => tracing::debug!(
+            target: "quilltap::restore",
+            renamed = result.renamed.len(),
+            skippedReason = result.skipped_reason.map_or("null", |r| r.as_str()),
+            "Post-restore store-name reconcile complete"
+        ),
+        Err(e) => {
+            let error = e.warn_text();
+            w.push(format!(
+                "Failed to tidy document-store names after restore: {error}"
+            ));
+            tracing::warn!(
+                target: "quilltap::restore",
+                error = %error,
+                "Post-restore store-name reconcile failed"
+            );
+        }
+    }
+```
+
+Then delete `RECONCILE_PENDING_UNION` in `system_restore_state.rs` — `reconcile_pending_union_count` + its call/assert/`reconcile_masked` print in the main loop, `mask_reconcile_pending_union` + its call in `compare_case`, the 23a retain + census count/print + the v5-reconcile silence check in `compare_restore_logs`, the `Failed to tidy …` filter in `compare_case`; KEEP `RECONCILE_MESSAGES` (move it into `messages` so the reconcile lines are compared) — and re-run `system_restore_state` by name against a pin-regenerated oracle: every case must match v4's reconcile byte for byte (names, `updatedAt`, the census).

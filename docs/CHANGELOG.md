@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-10 — docs(porting): P4.D273 lane close — gate, measurements, the 23a handoff
+
+_Docs-only change._
+
+The P4.D273 order is marked LANE COMPLETE, and the status log gains the lane-close records:
+
+- **Workspace gate.** 708 binaries ran: 4,681 passed, 2 failed, 3 ignored. The two failures belong to other lanes by design: P4.D272's schema guard and P4.D269's 7 CLI rows.
+- **Ruling evidence.** The R-A filing evidence and R-D's mask count for each case.
+- **Deferrals,** each recorded by name.
+- **The 23a hunk,** handed to the unifier. It calls P4.D274's `reconcile_store_names`, which this branch does not have.
+
 #### 2026-10-09 — test(restore): P4.D273 a QT_DEBUG_RESTORE_CLAIMS dump of every claim outcome
 
 _No crate versions bumped._
