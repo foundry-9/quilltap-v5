@@ -2,7 +2,8 @@
   "$comment": [
     "Tier-2 spec for the wardrobe wear ledger's DATA layer (P4.D255; v4 `wardrobe-wear.repository.ts` minus the chokepoint, `3ee3b1342`). ONE committed file drives BOTH sides: the oracle case `harness/oracle/cases/wardrobe-wear-stats-tier2.ts` builds the base DB per run at the pin (the table through v4's REAL `addWardrobeWearStatsTableMigration.run()` — never the repository), writes it to `QT_FIXTURE_OUT_DIR/base.db`, then runs `ops` through v4's REAL `WardrobeWearRepository`; the Rust test runs the same ops on a copy through `db::wardrobe_wear_stats`.",
     "Each op's result (minted `id` / `createdAt` / `updatedAt` stripped from rows), its thrown message, and its log lines (level + message + the call's context, in v4's key order) are compared; then the table dump (rowid order, minus the three minted/clocked columns). The `absent` phase (after `dropTable`) compares results and lines only.",
-    "Shapes from v4's own spec (`__tests__/unit/lib/database/repositories/wardrobe-wear.repository.test.ts:90-235`): a later wear moves last forward; an EARLIER wear landing late never rewinds; a bad row rejects the whole batch (here a planted trigger refuses item `bad` — the Rust type cannot carry v4's `itemId: null`; recorded); one row per wearer; two NULL-wearer increments are one row; the fold sums / min / max-and-chat, and rolls back whole when its final DELETE fails (a planted BEFORE DELETE trigger on wearer `Z`); summaries total across wearers and an unknown id is never-worn; history most recent first incl. a lastWornAt TIE (stable); deleteByItemIds drops only those; upsertRows REPLACE semantics; findRowsForItems / findRowsForWearer; findAll; then the absent table."
+    "Shapes from v4's own spec (`__tests__/unit/lib/database/repositories/wardrobe-wear.repository.test.ts:90-235`): a later wear moves last forward; an EARLIER wear landing late never rewinds; a bad row rejects the whole batch (here a planted trigger refuses item `bad` — the Rust type cannot carry v4's `itemId: null`; recorded); one row per wearer; two NULL-wearer increments are one row; the fold sums / min / max-and-chat, and rolls back whole when its final DELETE fails (a planted BEFORE DELETE trigger on wearer `Z`); summaries total across wearers and an unknown id is never-worn; history most recent first incl. a lastWornAt TIE (stable); deleteByItemIds drops only those; upsertRows REPLACE semantics; findRowsForItems / findRowsForWearer; findAll; then the absent table.",
+    "P4.D275 (`ed8b15b50`, bug 184): `findSummariesForWearer` — v4's jest corpus (coat worn by A with a chat and by B, hat by B alone, `never`), the unattributed rows (the household's, never anyone's own), a `wearCount 0` row (counted in `wornCount`, in neither sum), duplicate + empty ids, the empty-ids early return (no read, no line), `wearer = ''`, a wearer with no rows, the `scarf` lastWornAt TIE (the household keeps the FIRST row's chat), and — after `dropTable` — the absent-table fallback (ERROR with `wearerCharacterId`). Results are each map's ordered entries; the DEBUG `Read wear summaries for wearer` is compared line for line."
   ],
   "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
   "ops": [
@@ -19,6 +20,15 @@
     {"kind": "findHistory", "label": "history scarf (tie)", "itemId": "scarf"},
     {"kind": "findHistory", "label": "history never worn", "itemId": "nope"},
     {"kind": "findRowsForItems", "label": "rows for items", "itemIds": ["scarf", "coat", "scarf", ""]},
+    {"kind": "increment", "label": "wearer: hat worn by B alone", "entries": [{"itemId": "hat", "wearerCharacterId": "B", "chatId": "chat-9", "at": "2026-05-01T00:00:00.000Z"}]},
+    {"kind": "upsertRows", "label": "wearer: a wearCount 0 row", "rows": [{"id": "33333333-3333-4333-8333-333333333333", "itemId": "boots", "wearerCharacterId": "A", "wearCount": 0, "firstWornAt": "2026-01-01T00:00:00.000Z", "lastWornAt": "2026-01-02T00:00:00.000Z", "lastWornChatId": "chat-z", "createdAt": "2026-01-01T00:00:00.000Z", "updatedAt": "2026-01-02T00:00:00.000Z"}]},
+    {"kind": "findSummariesForWearer", "label": "wearer A: household + own (dup + empty ids)", "itemIds": ["coat", "hat", "never", "scarf", "boots", "", "coat"], "characterId": "A"},
+    {"kind": "findSummariesForWearer", "label": "wearer B", "itemIds": ["coat", "hat", "never", "scarf", "boots", "", "coat"], "characterId": "B"},
+    {"kind": "findSummariesForWearer", "label": "wearer C: the scarf tie", "itemIds": ["scarf"], "characterId": "C"},
+    {"kind": "findSummariesForWearer", "label": "wearer '': no row is anyone's", "itemIds": ["coat", "hat", "never", "scarf", "boots", "", "coat"], "characterId": ""},
+    {"kind": "findSummariesForWearer", "label": "a wearer with no rows", "itemIds": ["coat", "hat", "never", "scarf", "boots", "", "coat"], "characterId": "nobody"},
+    {"kind": "findSummariesForWearer", "label": "no ids: no read, no line", "itemIds": [], "characterId": "A"},
+    {"kind": "findSummariesForWearer", "label": "only empty ids: no read, no line", "itemIds": ["", ""], "characterId": "A"},
     {"kind": "findRowsForWearer", "label": "rows for wearer A", "characterId": "A"},
     {"kind": "fold", "label": "fold wearer A", "characterId": "A"},
     {"kind": "fold", "label": "fold nobody", "characterId": "nobody"},
@@ -37,6 +47,7 @@
     {"kind": "dropTable", "label": "drop the table"},
     {"kind": "findSummaries", "label": "absent: summaries fall back", "itemIds": ["coat"]},
     {"kind": "findHistory", "label": "absent: history falls back", "itemId": "coat"},
-    {"kind": "findRowsForItems", "label": "absent: rows throw", "itemIds": ["coat"]}
+    {"kind": "findRowsForItems", "label": "absent: rows throw", "itemIds": ["coat"]},
+    {"kind": "findSummariesForWearer", "label": "absent: summaries for wearer fall back", "itemIds": ["coat", "hat"], "characterId": "A"}
   ]
 }

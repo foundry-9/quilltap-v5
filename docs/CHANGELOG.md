@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(wardrobe): P4.D275 A2 — find_summaries_for_wearer keeps the reader's share apart (bug 184)
+
+_Versions: core 0.0.1266._
+
+Ports v4 `ed8b15b50`'s `WardrobeWearRepository.findSummariesForWearer`. New `WardrobeWearPerspective { household, yours }` and `find_summaries_for_wearer(item_ids, wearer_character_id)`. The household totals and the caller's own share come from ONE ledger read: the same chunked SELECT `find_summaries` makes, split in memory. An unattributed row never counts as anyone's own. Empty ids return with no read and no line.
+
+On success it logs v4's DEBUG `Read wear summaries for wearer {itemCount, wornCount, wearerCharacterId}`. A failed read logs v4's fallback `Error reading wear summaries for wearer` with `wearerCharacterId` and answers the pre-filled map. `find_summaries` now groups through the shared private `find_rows_by_item` with no behaviour change. `log_read_failure` takes a key-set enum for its three shapes.
+
+The tier-2 family `wardrobe_wear_stats_tier2` gains nine ops plus an absent-table op. They run against v4's real repository at the `01a83539d` pin, and the results and every log line match.
+
 #### 2026-10-09 — docs(porting): P4.D265 lane close — real-instance note, gate and sweep records
 
 _Docs-only change._

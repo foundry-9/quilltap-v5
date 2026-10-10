@@ -166,6 +166,19 @@ pub fn never_worn_summary() -> WardrobeWearSummary {
     }
 }
 
+/// One item's wear as a reader sees it (v4 `WardrobeWearPerspective`,
+/// `wardrobe-wear.types.ts:74-85`, `ed8b15b50`): the household's totals and
+/// the reading character's own share, side by side. v4's why (bug 184): a
+/// shared item's count is never handed to a reader as if it were their own.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WardrobeWearPerspective {
+    /// Every wearer's rows folded together.
+    pub household: WardrobeWearSummary,
+    /// The reading character's own row, or the zero summary.
+    pub yours: WardrobeWearSummary,
+}
+
 /// One wearer's share of an item's tally (v4 `WardrobeWearer`). `None` =
 /// unattributed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -448,29 +461,44 @@ pub(crate) fn run_atomically<R>(
     }
 }
 
-/// v4's fallback `safeQuery` line for the two ledger reads (`Error reading
-/// wear summaries` / `Error reading wear history`): `{collection, <key>,
-/// error}` with the bare SQLite text. The repository is v4's `safeQuery`
-/// collection-enriched wrap, so `collection` leads.
-fn log_read_failure(
-    message: &'static str,
-    error: &DbError,
-    item_count: Option<usize>,
-    item_id: Option<&str>,
-) {
+/// The key set a ledger read's fallback line carries after `collection` —
+/// v4's `safeQuery` context object for each read.
+enum ReadFailureKeys<'a> {
+    /// `findSummaries`: `{itemCount}`.
+    Summaries(usize),
+    /// `findHistory`: `{itemId}`.
+    History(&'a str),
+    /// `findSummariesForWearer`: `{itemCount, wearerCharacterId}`.
+    SummariesForWearer(usize, &'a str),
+}
+
+/// v4's fallback `safeQuery` line for the three ledger reads (`Error reading
+/// wear summaries` / `Error reading wear history` / `Error reading wear
+/// summaries for wearer`): `{collection, <keys>, error}` with the bare SQLite
+/// text. The repository is v4's `safeQuery` collection-enriched wrap, so
+/// `collection` leads.
+fn log_read_failure(message: &'static str, error: &DbError, keys: ReadFailureKeys<'_>) {
     let error = super::fallback::error_text(error);
-    match (item_count, item_id) {
-        (Some(item_count), _) => tracing::error!(
+    match keys {
+        ReadFailureKeys::Summaries(item_count) => tracing::error!(
             target: "quilltap::db",
             collection = WARDROBE_WEAR_STATS_TABLE,
             itemCount = item_count,
             error = %error,
             "{message}"
         ),
-        (None, item_id) => tracing::error!(
+        ReadFailureKeys::History(item_id) => tracing::error!(
             target: "quilltap::db",
             collection = WARDROBE_WEAR_STATS_TABLE,
-            itemId = item_id.unwrap_or_default(),
+            itemId = item_id,
+            error = %error,
+            "{message}"
+        ),
+        ReadFailureKeys::SummariesForWearer(item_count, wearer_character_id) => tracing::error!(
+            target: "quilltap::db",
+            collection = WARDROBE_WEAR_STATS_TABLE,
+            itemCount = item_count,
+            wearerCharacterId = wearer_character_id,
             error = %error,
             "{message}"
         ),
@@ -638,7 +666,7 @@ impl<'a> WardrobeWearStatsRepository<'a> {
         Ok(())
     }
 
-    /// v4 `findSummaries(itemIds)` (`:408-430`) — totals for list views. Every
+    /// v4 `findSummaries(itemIds)` (`:409-426`) — totals for list views. Every
     /// requested (distinct, non-empty) id is in the map; one never worn maps
     /// to [`never_worn_summary`]. A failed read — a missing table included —
     /// logs v4's `Error reading wear summaries` (`itemCount`) and answers the
@@ -653,17 +681,8 @@ impl<'a> WardrobeWearStatsRepository<'a> {
         if ids.is_empty() {
             return result;
         }
-        match self.find_rows_for_items(&ids) {
-            Ok(rows) => {
-                // v4 groups into a Map (insertion order) then summarizes each
-                // group in SELECT order — the order `summarize`'s tie rule sees.
-                let mut by_item: Vec<(String, Vec<WardrobeWearStatsRow>)> = Vec::new();
-                for row in rows {
-                    match by_item.iter_mut().find(|(id, _)| *id == row.item_id) {
-                        Some((_, list)) => list.push(row),
-                        None => by_item.push((row.item_id.clone(), vec![row])),
-                    }
-                }
+        match self.find_rows_by_item(&ids) {
+            Ok(by_item) => {
                 for (item_id, rows) in by_item {
                     result.insert(item_id, summarize(&rows));
                 }
@@ -673,12 +692,102 @@ impl<'a> WardrobeWearStatsRepository<'a> {
                 log_read_failure(
                     "Error reading wear summaries",
                     &error,
-                    Some(ids.len()),
-                    None,
+                    ReadFailureKeys::Summaries(ids.len()),
                 );
                 result
             }
         }
+    }
+
+    /// v4 `findSummariesForWearer(itemIds, wearerCharacterId)` (`:434-464`,
+    /// `ed8b15b50` — bug 184) — each item's household totals AND the reading
+    /// character's own share, from ONE ledger read (the same chunked SELECT
+    /// [`find_summaries`](Self::find_summaries) makes, split in memory). Every
+    /// requested (distinct, non-empty) id is in the map, pre-filled with two
+    /// zero summaries; no ids → the empty map with NO read and NO line. An
+    /// unattributed row (`wearerCharacterId` NULL) never counts as anyone's
+    /// own, nor does any row for an empty `wearer_character_id`. On success
+    /// v4's DEBUG `Read wear summaries for wearer` (`itemCount`, `wornCount` =
+    /// items WITH ROWS — a `wearCount 0` row counts — `wearerCharacterId`); a
+    /// failed read logs v4's `Error reading wear summaries for wearer` and
+    /// answers the pre-filled map.
+    pub fn find_summaries_for_wearer(
+        &self,
+        item_ids: &[String],
+        wearer_character_id: &str,
+    ) -> HashMap<String, WardrobeWearPerspective> {
+        let ids = distinct_ids(item_ids);
+        let mut result: HashMap<String, WardrobeWearPerspective> = ids
+            .iter()
+            .map(|id| {
+                (
+                    id.clone(),
+                    WardrobeWearPerspective {
+                        household: never_worn_summary(),
+                        yours: never_worn_summary(),
+                    },
+                )
+            })
+            .collect();
+        if ids.is_empty() {
+            return result;
+        }
+        match self.find_rows_by_item(&ids) {
+            Ok(by_item) => {
+                let worn_count = by_item.len();
+                for (item_id, rows) in by_item {
+                    let own: Vec<WardrobeWearStatsRow> = rows
+                        .iter()
+                        .filter(|row| {
+                            row.wearer_character_id.as_deref() == Some(wearer_character_id)
+                        })
+                        .cloned()
+                        .collect();
+                    result.insert(
+                        item_id,
+                        WardrobeWearPerspective {
+                            household: summarize(&rows),
+                            yours: summarize(&own),
+                        },
+                    );
+                }
+                tracing::debug!(
+                    target: "quilltap::wardrobe_wear",
+                    module = "wardrobe-wear",
+                    itemCount = ids.len(),
+                    wornCount = worn_count,
+                    wearerCharacterId = wearer_character_id,
+                    "Read wear summaries for wearer"
+                );
+                result
+            }
+            Err(error) => {
+                log_read_failure(
+                    "Error reading wear summaries for wearer",
+                    &error,
+                    ReadFailureKeys::SummariesForWearer(ids.len(), wearer_character_id),
+                );
+                result
+            }
+        }
+    }
+
+    /// v4's private `findRowsByItem(itemIds)` (`:491-499`, `ed8b15b50`) —
+    /// [`find_rows_for_items`](Self::find_rows_for_items) grouped per item, in
+    /// insertion order (v4's `Map`): the groups in first-row order, each
+    /// group's rows in SELECT order — the order `summarize`'s tie rule sees.
+    fn find_rows_by_item(
+        &self,
+        item_ids: &[String],
+    ) -> Result<Vec<(String, Vec<WardrobeWearStatsRow>)>, DbError> {
+        let mut by_item: Vec<(String, Vec<WardrobeWearStatsRow>)> = Vec::new();
+        for row in self.find_rows_for_items(item_ids)? {
+            match by_item.iter_mut().find(|(id, _)| *id == row.item_id) {
+                Some((_, list)) => list.push(row),
+                None => by_item.push((row.item_id.clone(), vec![row])),
+            }
+        }
+        Ok(by_item)
     }
 
     /// v4 `findHistory(itemId)` (`:433-454`) — totals plus the per-wearer rows,
@@ -710,7 +819,11 @@ impl<'a> WardrobeWearStatsRepository<'a> {
                 WardrobeWearHistory::from_summary(summarize(&rows), wearers)
             }
             Err(error) => {
-                log_read_failure("Error reading wear history", &error, None, Some(item_id));
+                log_read_failure(
+                    "Error reading wear history",
+                    &error,
+                    ReadFailureKeys::History(item_id),
+                );
                 empty()
             }
         }
@@ -1039,6 +1152,83 @@ mod tests {
         assert!(repo.find_history("nope").wearers.is_empty());
     }
 
+    /// v4's `findSummariesForWearer` spec (`ed8b15b50`): coat worn by A (with
+    /// CHAT_1) and twice by B, hat by B, `never` never — the household totals
+    /// and A's own share side by side; plus the unattributed row and a
+    /// `wearCount 0` row (counted in `wornCount`, in neither sum), and the
+    /// DEBUG with its three keys on the caller's thread.
+    #[test]
+    fn summaries_for_wearer_keep_the_readers_share_apart() {
+        let conn = ledger();
+        let repo = WardrobeWearStatsRepository::new(&conn);
+        repo.increment_wears(&[
+            inc(
+                "coat",
+                Some("A"),
+                Some("CHAT_1"),
+                "2026-01-01T00:00:00.000Z",
+            ),
+            inc(
+                "coat",
+                Some("B"),
+                Some("CHAT_2"),
+                "2026-02-01T00:00:00.000Z",
+            ),
+            inc(
+                "coat",
+                Some("B"),
+                Some("CHAT_2"),
+                "2026-03-01T00:00:00.000Z",
+            ),
+            inc("hat", Some("B"), Some("CHAT_2"), "2026-01-05T00:00:00.000Z"),
+            inc("scarf", None, None, "2026-01-07T00:00:00.000Z"),
+        ])
+        .unwrap();
+        let mut zero = repo.find_rows_for_items(&["hat".into()]).unwrap()[0].clone();
+        zero.id = "zero-row".into();
+        zero.item_id = "boots".into();
+        zero.wearer_character_id = Some("A".into());
+        zero.wear_count = 0;
+        repo.upsert_rows(std::slice::from_ref(&zero)).unwrap();
+
+        let ids: Vec<String> = ["coat", "hat", "never", "scarf", "boots", "", "coat"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let (wear, lines) = captured_with(|| repo.find_summaries_for_wearer(&ids, "A"));
+        assert_eq!(wear.len(), 5);
+        assert_eq!(wear["coat"].household.wear_count, 3);
+        assert_eq!(wear["coat"].yours.wear_count, 1);
+        assert_eq!(
+            wear["coat"].yours.last_worn_chat_id.as_deref(),
+            Some("CHAT_1")
+        );
+        assert_eq!(
+            wear["coat"].yours.last_worn_at.as_deref(),
+            Some("2026-01-01T00:00:00.000Z")
+        );
+        assert_eq!(wear["hat"].household.wear_count, 1);
+        assert_eq!(wear["hat"].yours, never_worn_summary());
+        assert_eq!(wear["never"].household, never_worn_summary());
+        assert_eq!(wear["never"].yours, never_worn_summary());
+        // The unattributed row is the household's, never anyone's own.
+        assert_eq!(wear["scarf"].household.wear_count, 1);
+        assert_eq!(wear["scarf"].yours, never_worn_summary());
+        assert_eq!(wear["boots"].household, never_worn_summary());
+        assert_eq!(
+            lines,
+            vec!["DEBUG quilltap::wardrobe_wear Read wear summaries for wearer module=wardrobe-wear itemCount=5 wornCount=4 wearerCharacterId=A".to_string()]
+        );
+        // The household half is `find_summaries`' answer, exactly.
+        let household = repo.find_summaries(&ids);
+        for (id, perspective) in &wear {
+            assert_eq!(&perspective.household, &household[id], "{id}");
+        }
+        // An empty wearer matches no row (not even the unattributed one).
+        let (blank, _) = captured_with(|| repo.find_summaries_for_wearer(&ids, ""));
+        assert!(blank.values().all(|p| p.yours == never_worn_summary()));
+    }
+
     /// The strict-`>` tie: the FIRST row (SELECT order) keeps `lastWornChatId`;
     /// the history sort is stable on the same tie.
     #[test]
@@ -1197,9 +1387,19 @@ mod tests {
         );
         assert!(repo.find_rows_for_items(&["coat".into()]).is_err());
         assert!(repo.find_rows_for_wearer("A").is_err());
+        let (wear, lines) = captured_with(|| repo.find_summaries_for_wearer(&["coat".into()], "A"));
+        assert_eq!(wear["coat"].household, never_worn_summary());
+        assert_eq!(wear["coat"].yours, never_worn_summary());
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error reading wear summaries for wearer collection=wardrobe_wear_stats itemCount=1 wearerCharacterId=A error=no such table: wardrobe_wear_stats".to_string()]
+        );
         // No ids: no read, no line.
         let (sums, lines) = captured_with(|| repo.find_summaries(&[]));
         assert!(sums.is_empty());
+        assert!(lines.is_empty());
+        let (wear, lines) = captured_with(|| repo.find_summaries_for_wearer(&["".into()], "A"));
+        assert!(wear.is_empty());
         assert!(lines.is_empty());
     }
 
