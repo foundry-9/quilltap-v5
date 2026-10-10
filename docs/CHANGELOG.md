@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — test(restore): P4.D273 a QT_DEBUG_RESTORE_CLAIMS dump of every claim outcome
+
+_No crate versions bumped._
+
+When `QT_DEBUG_RESTORE_CLAIMS` is set, `system_restore_state` prints every claim outcome v5 logged for each case: the bound INFOs, the fallback WARNs and the summary INFO. It is kept for the next drift round's measurement.
+
 #### 2026-10-09 — test(restore): P4.D273 three derived restore archives pin the claim map's arms, 22a-i and the memory tiers
 
 _No crate versions bumped._

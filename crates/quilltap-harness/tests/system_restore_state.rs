@@ -2024,6 +2024,17 @@ fn system_restore_state_equivalence() {
 
         // [P4.143 Tier 2 item 10] the refused chat create's repository lines.
         let lines = std::mem::take(&mut *log_buf.lock().unwrap());
+        // [P4.D273 Tier 2 #19] every claim outcome v5 logged, per case — kept
+        // for the next drift round's measurement.
+        if std::env::var_os("QT_DEBUG_RESTORE_CLAIMS").is_some() {
+            for l in lines.iter().filter(|l| {
+                l.contains("restored bound to its archived")
+                    || l.contains("Restored entity falls back to a fresh store")
+                    || l.contains("Restored entities bound to their archived stores")
+            }) {
+                eprintln!("  claims [{name}] {l}");
+            }
+        }
         if case.get("repoLogs").is_some() {
             let serde = (name == SERDE_ROOM_CASE).then_some(("scenarioText", SERDE_ROOM_V5_PREFIX));
             // Restore runs OUTSIDE `withStrictRepositoryFailures`: no line
