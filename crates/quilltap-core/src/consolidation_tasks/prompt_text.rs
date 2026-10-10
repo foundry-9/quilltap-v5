@@ -11,7 +11,7 @@
 //!     <v4>/lib/memory/cheap-llm-tasks/consolidation-tasks.ts \
 //!     crates/quilltap-core/src/consolidation_tasks/prompt_text.rs
 
-pub(crate) const CONSOLIDATION_SYSTEM_PROMPT: &str = r####"You are the binder of a character's Commonplace Book — the private ledger
+pub const CONSOLIDATION_SYSTEM_PROMPT: &str = r####"You are the binder of a character's Commonplace Book — the private ledger
 in which the HOLDER keeps what they know. Over many conversations the ledger
 has filled with loose slips about one SUBJECT, written a line at a time, the
 same thread often set down five times in five sets of words. Your office is

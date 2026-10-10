@@ -67,6 +67,6 @@ header = '''//! GENERATED — the verbatim system prompt of v4
 '''
 with open(sys.argv[2], 'w', encoding='utf-8') as f:
     f.write(header)
-    f.write('pub(crate) const CONSOLIDATION_SYSTEM_PROMPT: &str = r####"')
+    f.write('pub const CONSOLIDATION_SYSTEM_PROMPT: &str = r####"')
     f.write(text)
     f.write('"####;\n')

@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(memory): P4.D271 the consolidation prompt family
+
+_Versions: core 0.0.1267._
+
+New `consolidation_tasks` module, a port of v4's one-call-per-cluster consolidation task: the system prompt (generated mechanically from v4's source by a new extraction script), the user-message builder, a Zod-faithful validator for the model's answer with v4's reason strings, and the async task runner (`memory-consolidation`, 4,000 tokens). A new `llm_json` helper renders V8's `JSON.parse` failure text for an object-slice parse, which is what v4's "unparseable JSON" reason carries. New tier-1 family `consolidation_tasks_equivalence` (111 rows from v4's real functions).
+
 #### 2026-10-09 — feat(memory): P4.D271 the consolidation clusterer
 
 _Versions: core 0.0.1266._

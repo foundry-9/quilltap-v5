@@ -247,6 +247,31 @@ pub fn parse_llm_json_object(text: &str) -> Result<Value, LlmJsonError> {
     parse_llm_json(json_text)
 }
 
+// === P4.D271: parseLLMJsonObject's V8 failure wording (append-only) ===
+/// The message v4's `parseLLMJsonObject(text)` throws when nothing parses:
+/// the LAST `JSON.parse` in `parseLLMJson`'s chain runs over the repaired
+/// text of the OBJECT SLICE (fence body, first `{` to last `}`), and that
+/// `SyntaxError`'s V8 wording is what a caller's `error.message` reads. `err`
+/// is the `Err` [`parse_llm_json_object`] answered for the same `text`; its
+/// serde wording is the fallback only where V8 would have ACCEPTED the text
+/// (see [`crate::jsstr::v8_json_parse_message`]).
+pub fn parse_llm_json_object_failure_message(text: &str, err: &LlmJsonError) -> String {
+    let trimmed = js_trim(text);
+    let body: &str = match ANY_FENCE.captures(trimmed) {
+        Some(c) => js_trim(c.get(1).map(|m| m.as_str()).unwrap_or("")),
+        None => trimmed,
+    };
+    let json_text = match (body.find('{'), body.rfind('}')) {
+        (Some(s), Some(e)) if e > s => &body[s..=e],
+        _ => body,
+    };
+    let repaired = repair_truncated_json(&escape_control_chars_in_strings(&strip_code_fences(
+        json_text,
+    )));
+    crate::jsstr::v8_json_parse_message(&repaired).unwrap_or_else(|| err.message.clone())
+}
+// === end P4.D271 ===
+
 /// v4 `parseLLMJson` — "Parse JSON from LLM output, handling code fences,
 /// truncated output, and common formatting issues from LLM responses."
 ///
