@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(memory): P4.D271 the consolidation write planner
+
+_Versions: core 0.0.1268._
+
+New `consolidation_plan` module, a port of v4's pure consolidation write planner: digest ids, supersession and contradictions with the five-hop remap, the create and update shapes in v4's key order, tier moves, standalones and inbound-link rewiring. New tier-1 family `consolidation_plan_equivalence` compares 17 whole plans and 30 helper rows against v4's real functions.
+
 #### 2026-10-09 — feat(memory): P4.D271 the consolidation prompt family
 
 _Versions: core 0.0.1267._
