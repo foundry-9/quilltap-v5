@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(memory): P4.D271 the consolidation API actions
+
+_Versions: core 0.0.1272._
+
+The five memory-consolidation dispatch verbs now answer: get/set the consolidation settings, get/set the extraction-mode settings, and `memoryConsolidate` (a dry run in-process through the host's runner, or a queued real run). The settings POSTs keep v4's behaviour where any POST resets every unsent field to its default; a new test table records that so a v4 fix shows up. New family `memory_consolidation_routes_equivalence` (30 cases). The P4.D265 wire-contract test drops the five refusal rows these verbs replaced.
+
 #### 2026-10-09 — feat(memory): P4.D271 consolidation triggers, queue and job handler
 
 _Versions: core 0.0.1271, host 0.0.196._

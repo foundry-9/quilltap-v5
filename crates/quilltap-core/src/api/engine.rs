@@ -5572,21 +5572,26 @@ impl CoreEngine {
             Request::MemoryAnchorGateProbe { .. } => {
                 p4d265_not_yet_available("memoryAnchorGateProbe", "P4.D269")
             }
-            Request::MemoryConsolidationConfigGet => {
-                p4d265_not_yet_available("memoryConsolidationConfigGet", "P4.D271")
-            }
-            Request::MemoryConsolidationConfigSet { .. } => {
-                p4d265_not_yet_available("memoryConsolidationConfigSet", "P4.D271")
-            }
-            Request::MemoryExtractionModeConfigGet => {
-                p4d265_not_yet_available("memoryExtractionModeConfigGet", "P4.D271")
-            }
-            Request::MemoryExtractionModeConfigSet { .. } => {
-                p4d265_not_yet_available("memoryExtractionModeConfigSet", "P4.D271")
-            }
-            Request::MemoryConsolidate { .. } => {
-                p4d265_not_yet_available("memoryConsolidate", "P4.D271")
-            }
+            Request::MemoryConsolidationConfigGet => match self.ready_db() {
+                Ok(db) => super::memory_consolidation::memory_consolidation_config_get(&db),
+                Err(r) => r,
+            },
+            Request::MemoryConsolidationConfigSet { config } => match self.ready_db() {
+                Ok(db) => super::memory_consolidation::memory_consolidation_config_set(&db, config).await,
+                Err(r) => r,
+            },
+            Request::MemoryExtractionModeConfigGet => match self.ready_db() {
+                Ok(db) => super::memory_consolidation::memory_extraction_mode_config_get(&db),
+                Err(r) => r,
+            },
+            Request::MemoryExtractionModeConfigSet { config } => match self.ready_db() {
+                Ok(db) => super::memory_consolidation::memory_extraction_mode_config_set(&db, config).await,
+                Err(r) => r,
+            },
+            Request::MemoryConsolidate { options } => match self.ready_db() {
+                Ok(db) => super::memory_consolidation::memory_consolidate(&db, SINGLE_USER_ID, options).await,
+                Err(r) => r,
+            },
             Request::WardrobeItemImageSaveTargets { .. } => {
                 p4d265_not_yet_available("wardrobeItemImageSaveTargets", "P4.D275")
             }

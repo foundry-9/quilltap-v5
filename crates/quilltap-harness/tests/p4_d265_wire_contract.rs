@@ -223,31 +223,9 @@ async fn every_new_arm_answers_its_agreed_refusal() {
             "memoryAnchorGateProbe",
             "P4.D269",
         ),
-        (
-            json!({"type":"memoryConsolidationConfigGet"}),
-            "memoryConsolidationConfigGet",
-            "P4.D271",
-        ),
-        (
-            json!({"type":"memoryConsolidationConfigSet","config":{}}),
-            "memoryConsolidationConfigSet",
-            "P4.D271",
-        ),
-        (
-            json!({"type":"memoryExtractionModeConfigGet"}),
-            "memoryExtractionModeConfigGet",
-            "P4.D271",
-        ),
-        (
-            json!({"type":"memoryExtractionModeConfigSet","config":{}}),
-            "memoryExtractionModeConfigSet",
-            "P4.D271",
-        ),
-        (
-            json!({"type":"memoryConsolidate","options":{"characterId":"c1"}}),
-            "memoryConsolidate",
-            "P4.D271",
-        ),
+        // P4.D271 filled its five arms (`memoryConsolidationConfigGet/Set`,
+        // `memoryExtractionModeConfigGet/Set`, `memoryConsolidate`); their
+        // behaviour is pinned by `memory_consolidation_routes_equivalence`.
         (
             json!({"type":"wardrobeItemImageSaveTargets","scope":"general","itemId":"i1"}),
             "wardrobeItemImageSaveTargets",
