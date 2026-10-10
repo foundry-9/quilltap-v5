@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — fix(memory): P4.D266 the housekeep POST validates its options as v4's schema does
+
+_Versions: core 0.0.1272._
+
+`?action=housekeep` (POST) now checks the body against v4's `housekeepingOptionsSchema` before it looks up the character. Any check that fails answers v4's 400 `Validation error`; before, the sweep ran with the bad values or the request fell to a 404. The checks:
+
+- `characterId` must be an RFC uuid;
+- `maxMemories` must be 10–10000, and a float is accepted then floored;
+- the two month bounds must be 1–120, `minImportance` 0–1 and `mergeThreshold` 0.8–1;
+- `mergeSimilar` and `dryRun` must be booleans.
+
+`memories_routes` gains three config rows (`maxMemories: 5`, `mergeThreshold: 0.5`, a non-uuid id), all green.
+
 #### 2026-10-09 — feat(memory): P4.D266 U6 dedup folds each cluster into its survivor before deleting
 
 _Versions: core 0.0.1271._

@@ -175607,3 +175607,12 @@ All are green BY NAME from the pin:
   - A failed fold keeps its losers, logs the WARN pair and `requested=0`, and still invalidates the archive (R-I, `HANDOFF(P4.D268)`).
   - `apply_memory_merge`'s three log arms.
 - **Host pins (`memory_housekeeping_handler.rs`, now 6/6):** dedup on a provisioned instance with a real `character_create` logs `countSource=repository` on the writer-thread batch line, plus the Starting / complete / Bulk deleted INFO lines.
+
+### P4.D266 Tier 2 #16 — `housekeepingOptionsSchema` on the housekeep POST (a pre-existing gap)
+- `api/memories.rs` `validate_housekeep_options` runs before the character lookup, in v4's order:
+  - `characterId` through `zod_uuid_ok`;
+  - `maxMemories` 10–10000 (a float is accepted; `HousekeepBag.max_memories` is now `Option<f64>` and is floored. For an integer row count `remaining > 10.5 ⟺ remaining > 10`, and the excess loop demotes the same number of rows);
+  - months 1–120, `minImportance` 0–1, `mergeThreshold` 0.8–1;
+  - the booleans `mergeSimilar` / `dryRun`.
+- A failure answers 400 `Validation error` (the recorded no-details class). The old `Invalid housekeeping options: …` serde refusal can no longer be reached.
+- `memories-config.test.ts` + the Rust family gain `housekeep_invalid_max_memories`, `housekeep_invalid_merge_threshold` and `housekeep_invalid_character_id`. All three are green (400). On the pre-change code they would have answered 200, 200 and 404.

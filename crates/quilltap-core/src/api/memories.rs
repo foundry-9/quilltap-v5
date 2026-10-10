@@ -890,13 +890,57 @@ pub async fn memory_housekeep_preview(
     }
 }
 
-/// v4 `housekeepingOptionsSchema` (POST `?action=housekeep`).
+/// v4 `housekeepingOptionsSchema` (`route.ts:99-108`) — `safeParse`d BEFORE the
+/// character lookup (P4.D266 Tier 2): `characterId` an RFC uuid (message
+/// `Character ID is required`), `maxMemories` 10–10000 (a float accepted — no
+/// `.int()`), the two month bounds 1–120, `minImportance` 0–1,
+/// `mergeThreshold` 0.8–1, the two booleans; every field but `characterId` is
+/// `.optional()` (a present `null` is `invalid_type`). A non-object body is
+/// v4's `req.json().catch(() => ({}))` → `{}` → the missing `characterId`.
+/// Answers v4's `validationError` message (the recorded no-details class, as
+/// [`validate_housekeeping_config`]).
+fn validate_housekeep_options(bag: &Value) -> Result<(), Response> {
+    let empty = serde_json::Map::new();
+    let obj = bag.as_object().unwrap_or(&empty);
+    match obj.get("characterId").and_then(Value::as_str) {
+        Some(id) if crate::api::zod_issues::zod_uuid_ok(id) => {}
+        _ => return Err(bad_request("Validation error")),
+    }
+    let ranges: [(&str, f64, f64); 5] = [
+        ("maxMemories", 10.0, 10_000.0),
+        ("maxAgeMonths", 1.0, 120.0),
+        ("maxInactiveMonths", 1.0, 120.0),
+        ("minImportance", 0.0, 1.0),
+        ("mergeThreshold", 0.8, 1.0),
+    ];
+    for (key, min, max) in ranges {
+        if let Some(v) = obj.get(key) {
+            match zod_number(v) {
+                Some(f) if (min..=max).contains(&f) => {}
+                _ => return Err(bad_request("Validation error")),
+            }
+        }
+    }
+    for key in ["mergeSimilar", "dryRun"] {
+        if let Some(v) = obj.get(key) {
+            if !v.is_boolean() {
+                return Err(bad_request("Validation error"));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The validated POST bag (after [`validate_housekeep_options`]).
 #[derive(Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 struct HousekeepBag {
     character_id: String,
+    /// `z.number()` — a float passes; the cap is floored (`remaining > 10.5`
+    /// and `remaining > 10` agree for an integer count, and the excess loop
+    /// demotes the same number of rows).
     #[serde(default)]
-    max_memories: Option<usize>,
+    max_memories: Option<f64>,
     #[serde(default)]
     max_age_months: Option<f64>,
     #[serde(default)]
@@ -914,6 +958,9 @@ struct HousekeepBag {
 /// v4 POST `?action=housekeep` — `handleHousekeep`. dryRun → preview else run.
 /// `{success, dryRun, result: {…, details?}}` — `details` ONLY on dryRun.
 pub async fn memory_housekeep(db: &Db, bag: Value) -> Response {
+    if let Err(refusal) = validate_housekeep_options(&bag) {
+        return refusal;
+    }
     let bag: HousekeepBag = match serde_json::from_value(bag) {
         Ok(b) => b,
         Err(e) => return bad_request(format!("Invalid housekeeping options: {e}")),
@@ -925,7 +972,7 @@ pub async fn memory_housekeep(db: &Db, bag: Value) -> Response {
     }
     let dry_run = bag.dry_run.unwrap_or(false);
     let opts = HousekeepingOptions {
-        max_memories: bag.max_memories,
+        max_memories: bag.max_memories.map(|f| f.floor() as usize),
         max_age_months: bag.max_age_months,
         max_inactive_months: bag.max_inactive_months,
         min_importance: bag.min_importance,

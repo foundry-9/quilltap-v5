@@ -848,6 +848,25 @@ fn memories_routes_match_oracle() {
         check_body("housekeep_run", &resp, &mut failed);
         check_key_order("housekeep_run", &resp, &mut failed);
     }
+    // P4.D266 (Tier 2): the POST's `housekeepingOptionsSchema` refusals.
+    for (name, body) in [
+        (
+            "housekeep_invalid_max_memories",
+            json!({ "characterId": MNEMO, "maxMemories": 5 }),
+        ),
+        (
+            "housekeep_invalid_merge_threshold",
+            json!({ "characterId": MNEMO, "mergeThreshold": 0.5 }),
+        ),
+        (
+            "housekeep_invalid_character_id",
+            json!({ "characterId": "not-a-uuid" }),
+        ),
+    ] {
+        let db = fresh_db(&spec, "hkv");
+        let resp = rt.block_on(memories::memory_housekeep(&db, body));
+        check_error(name, &resp, &mut failed);
+    }
     {
         let db = fresh_db(&spec, "hks");
         let resp = rt.block_on(memories::memory_housekeep_sweep(&db, &uid));

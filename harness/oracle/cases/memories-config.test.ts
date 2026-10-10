@@ -367,6 +367,24 @@ async function main(): Promise<void> {
           ),
         ),
     },
+    // P4.D266 (Tier 2): `housekeepingOptionsSchema` refusals — one bound on
+    // each side of the schema (a too-small cap, a too-small merge threshold)
+    // and a non-uuid character id; each is v4's `validationError`.
+    ...(
+      [
+        ['housekeep_invalid_max_memories', { characterId: MNEMO, maxMemories: 5 }],
+        ['housekeep_invalid_merge_threshold', { characterId: MNEMO, mergeThreshold: 0.5 }],
+        ['housekeep_invalid_character_id', { characterId: 'not-a-uuid' }],
+      ] as Array<[string, Record<string, unknown>]>
+    ).map(([name, body]) => ({
+      name,
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/memories/route')).POST(
+            mockRequest(`${B}?action=housekeep`, body),
+          ),
+        ),
+    })),
     // --- Configs ---
     { name: 'housekeeping_config_get', run: () => listGet(`action=housekeeping-config`) },
     {
