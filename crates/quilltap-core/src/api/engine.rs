@@ -3191,17 +3191,32 @@ impl CoreEngine {
             },
 
             // --- Memory maintenance (P4.9H2A tier 2 — landed P4.43) ---------
-            Request::MemoryDedupPreview { threshold } => match self.ready_db() {
-                Ok(db) => {
-                    super::memory_maintenance::memory_dedup(&db, SINGLE_USER_ID, threshold, true)
-                        .await
+            // P4.D266 (R-D): the dedup fold re-embeds changed survivors through
+            // the OPTIONAL memory embedding seam (the photo-gallery shape —
+            // never the refusing `ready_memory_embedding`).
+            Request::MemoryDedupPreview { threshold } => match self.ready_db_and_memory_embedding() {
+                Ok((db, embedding)) => {
+                    super::memory_maintenance::memory_dedup(
+                        &db,
+                        embedding.as_ref(),
+                        SINGLE_USER_ID,
+                        threshold,
+                        true,
+                    )
+                    .await
                 }
                 Err(r) => r,
             },
-            Request::MemoryDedupRun { threshold } => match self.ready_db() {
-                Ok(db) => {
-                    super::memory_maintenance::memory_dedup(&db, SINGLE_USER_ID, threshold, false)
-                        .await
+            Request::MemoryDedupRun { threshold } => match self.ready_db_and_memory_embedding() {
+                Ok((db, embedding)) => {
+                    super::memory_maintenance::memory_dedup(
+                        &db,
+                        embedding.as_ref(),
+                        SINGLE_USER_ID,
+                        threshold,
+                        false,
+                    )
+                    .await
                 }
                 Err(r) => r,
             },

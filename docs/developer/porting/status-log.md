@@ -175567,3 +175567,43 @@ All are green BY NAME from the pin:
   - The API's own choice (`Some(Repository)`) is one literal in `memory_housekeep`, which is not driven here: it needs a vault-backed character on the fresh instance. The routes family drives that handler.
 - **Mutation proof:** recording `result.deleted` alone turns `a_demote_only_sweep_records_an_effective_outcome` red.
 - `job_runner`'s `end_to_end_real_handler_dispatch_and_complete` is green UNEDITED.
+
+### P4.D266 U6 — the dedup FOLD (`3f7320138` F9) + Tier 2 item 17 (dedup's lines)
+- **`services/memory_gate.rs`:**
+  - `pub(crate) apply_memory_merge(db, provider: Option<&P>, survivor, plan, user_id, embedding_profile_id)` is v4 `:139-176`:
+    - an empty patch → DEBUG `[MemoryMerge] Nothing to fold into survivor {survivorId}`;
+    - `patch_memory` → `None` → WARN `[MemoryMerge] Failed to update survivor {survivorId, characterId}`, and `Err` propagates;
+    - `needs_reembed = content_changed || patch has occurredAt`;
+    - no userId → WARN `[MemoryMerge] Survivor changed but no userId to re-embed with {survivorId}`. This is unreachable through dedup, so it is pinned at unit level only and recorded;
+    - a `None` seam → WARN `[MemoryGate] Failed to re-embed memory {memoryId, error: "Error: memory embedding not assembled (dedup re-embed seam)"}` (R-D, a v5-only text);
+    - DEBUG `[MemoryMerge] Folded losers into survivor {survivorId, fieldsJson, mergedDetails, reembedded}`, where `reembedded = needs && userId` as in v4.
+  - **`reembed_memory` split into two writes** (row, then store): v4's row `updateForCharacter` has committed before the store work, so a store failure must not roll it back.
+- **`services/memory_dedup.rs`:**
+  - The read goes through `memories_read::find_by_character_id`; the embedding is decoded from the row's `{"0":…}` object, exact. The preview row stayed green after the read swap.
+  - The preview count is the capped `plan_memory_merge`.
+  - Apply runs only when `!dry_run && !all_remove_ids.is_empty()`: fold, then the kept set, then `delete_many_with_unlink(remove_ids, CountSource::Repository)`, the INFO `[MemoryDedup] Bulk deleted memories {context, characterId, requested, deleted}` (always), the vector cleanup WARN, and `invalidate_frozen_archive`.
+  - `removedCount` is the kept-filtered length.
+  - INFO `Starting deduplication for all characters` / `Deduplication complete` with v4's keys. The per-character ERROR is now camelCase `{context, characterId, characterName, error}`; no pin existed on the old snake_case.
+  - R-E's NO-PORT comment is at the call site.
+- **`api/memory_maintenance.rs`:** `memory_dedup<P>(db, provider: Option<&P>, …)`. **`api/engine.rs`:** the two `MemoryDedup*` arm bodies now use `ready_db_and_memory_embedding()` (R-D).
+- **M3 (measured):** in the `embedding-profiles` pair, Aria's memories are 8-dim (her vector store is the only one: 8 dims, one entry), and Bram's and Cleo's are 4-dim. The blobs use v4's quantized codec (`eb01…`, decoded through v4's `blobToFloat32` in a read-only probe from the pin).
+- **M4 (measured — MOOT):** the committed pair already carries the four tier columns and `idx_memories_character_tier`, because P4.D265 widened it in place (§R.3). `applyMemoryTiersMigration` / `ensure_memory_tiers_columns` on the copy are therefore idempotent no-ops. The "without it every fold fails" condition cannot arise on this pair, so the copy-time migration is NOT load-bearing here. It is applied on both sides as ordered.
+- **Differential `memory_dedup` (grown):**
+  - NEW `harness/oracle/fixtures/memory-dedup-plants.json`: 16 plants on Aria across six clusters on axes 2–7.
+    - A: the cap — 7 footnotes plus Lisbon/Porto/Faro, of which ONE is appended, with a re-embed.
+    - B: counts 2+3+1 and an earlier loser `occurredAt`, with a re-embed.
+    - C: R-E — the survivor links a loser of cluster B. The delete scrubs it, and the link survives as `[d…001, e…20]`.
+    - D: `DEDUP_CROSSES_TIERS` — a hot loser folds into a COLD survivor.
+    - E: `DEDUP_DELETES_DIGEST` — the CONSOLIDATED digest `e…51` is deleted and its member `e…52` keeps a dangling `supersededById`.
+    - F: a planted `BEFORE UPDATE` abort on `e…60` — `e…61` is kept, and `e…62`'s link to it survives.
+  - The plants are created on both sides through the REAL repositories. The trigger is planted on both. `MEM_COLS` is widened by 7 columns on both sides, and the REAL columns render JS-style.
+  - R-D: v4's mock records `embedCalls`; v5 registers exactly those texts and records its own. **Apply: 3 calls, texts equal.** Result bodies and dumps are compared byte-wise.
+  - Silent-stale: `reinforcementCount` is in the NDJSON, and `embedCalls` is non-empty in the apply row.
+  - **Green (preview 23 rows, apply 14 rows).**
+  - Mutation proofs: skipping `apply_memory_merge` → apply `embedCalls`, result and memories red; ignoring the kept set → apply result and memories red.
+  - Recipe: the header recipe plus `mkdir -p "$TMPO/fixtures"` and copies of `apply-memory-tiers-migration.ts` and `memory-dedup-plants.json`.
+- **Unit tests (4 new in `memory_dedup.rs`):**
+  - v4 F9 `:338-402`: the fold carries details, counts, links and the earliest `occurredAt`, with one re-embed; at the cap only the counts move and nothing re-embeds.
+  - A failed fold keeps its losers, logs the WARN pair and `requested=0`, and still invalidates the archive (R-I, `HANDOFF(P4.D268)`).
+  - `apply_memory_merge`'s three log arms.
+- **Host pins (`memory_housekeeping_handler.rs`, now 6/6):** dedup on a provisioned instance with a real `character_create` logs `countSource=repository` on the writer-thread batch line, plus the Starting / complete / Bulk deleted INFO lines.

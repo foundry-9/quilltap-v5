@@ -1007,29 +1007,44 @@ pub(crate) async fn reembed_memory<P: EmbeddingProvider>(
             return false;
         }
     };
+    // Two writes, as v4's two awaits: the row's embedding commits FIRST, so a
+    // store failure after it leaves the row re-embedded (v4's catch fires after
+    // `updateForCharacter` has already landed).
     let character_id = str_field(memory, "characterId");
-    let id_w = memory_id.clone();
-    let written = db
+    let (cid_row, id_row, emb_row) = (character_id.clone(), memory_id.clone(), embedding.clone());
+    let row_written = db
         .write(move |writers| {
-            let main = writers.main();
             let patch = MemUpdate {
-                embedding: Some(Some(embedding.clone())),
+                embedding: Some(Some(emb_row)),
                 ..Default::default()
             };
             // v4 ignores `updateForCharacter`'s answer here and goes on to the
             // store; only a throw reaches the catch.
-            main.memories()
-                .update_for_character(&character_id, &id_w, &patch)?;
-            let mut store = CharacterVectorStore::load(main.connection(), &character_id)?;
-            if store.has_vector(&id_w) {
-                store.update_vector(&id_w, embedding)?;
-            } else {
-                store.add_vector(&id_w, embedding)?;
-            }
-            store.flush(&main.vector_indices())?;
+            writers
+                .main()
+                .memories()
+                .update_for_character(&cid_row, &id_row, &patch)?;
             Ok(())
         })
         .await;
+    let id_w = memory_id.clone();
+    let written = match row_written {
+        Err(e) => Err(e),
+        Ok(()) => {
+            db.write(move |writers| {
+                let main = writers.main();
+                let mut store = CharacterVectorStore::load(main.connection(), &character_id)?;
+                if store.has_vector(&id_w) {
+                    store.update_vector(&id_w, embedding)?;
+                } else {
+                    store.add_vector(&id_w, embedding)?;
+                }
+                store.flush(&main.vector_indices())?;
+                Ok(())
+            })
+            .await
+        }
+    };
     match written {
         Ok(()) => {
             tracing::debug!(memoryId = memory_id, "[MemoryGate] Re-embedded memory");
@@ -1044,6 +1059,84 @@ pub(crate) async fn reembed_memory<P: EmbeddingProvider>(
             false
         }
     }
+}
+
+/// The `error` v5's dedup re-embed reports when its embedding seam is not
+/// assembled (R-D — a recorded v5-only text, unreachable on a full host).
+pub(crate) const DEDUP_REEMBED_SEAM_MISSING: &str =
+    "Error: memory embedding not assembled (dedup re-embed seam)";
+
+/// Apply a merge plan to the survivor and re-embed it when its content (or its
+/// anchor date) changed (v4 `applyMemoryMerge`, `memory-merge.ts:139-176`,
+/// `3f7320138` F9). Returns the survivor as it now stands, or `None` when the
+/// row could not be updated (a DB failure PROPAGATES — v4's rethrow).
+///
+/// `user_id` is needed for the re-embed; without it a changed survivor keeps
+/// its old vector (logged) until the next reindex — unreachable through dedup,
+/// which always passes one. `provider` is dedup's optional embedding seam
+/// (R-D): `None` makes the re-embed fail NON-FATALLY with v4's WARN (v4 dedup
+/// never refuses for embedding reasons, so neither does v5), and the closing
+/// DEBUG still says `reembedded: true` — v4's `needsReembed && !!userId`, true
+/// even when the re-embed failed.
+pub(crate) async fn apply_memory_merge<P: EmbeddingProvider>(
+    db: &Db,
+    provider: Option<&P>,
+    survivor: &Value,
+    plan: &crate::memory_merge::MemoryMergePlan,
+    user_id: Option<&str>,
+    embedding_profile_id: Option<&str>,
+) -> Result<Option<Value>, DbError> {
+    let survivor_id = id_of(survivor).unwrap_or_default();
+    if plan.patch.is_empty() {
+        tracing::debug!(
+            survivorId = survivor_id,
+            "[MemoryMerge] Nothing to fold into survivor"
+        );
+        return Ok(Some(survivor.clone()));
+    }
+
+    let Some(updated) = patch_memory(db, survivor, plan.to_mem_update()).await? else {
+        tracing::warn!(
+            survivorId = survivor_id,
+            characterId = str_field(survivor, "characterId"),
+            "[MemoryMerge] Failed to update survivor"
+        );
+        return Ok(None);
+    };
+
+    let needs_reembed = plan.content_changed || plan.patch.contains_key("occurredAt");
+    if needs_reembed {
+        match user_id {
+            Some(uid) => match provider {
+                Some(p) => {
+                    reembed_memory(db, p, &updated, uid, embedding_profile_id).await;
+                }
+                None => {
+                    tracing::warn!(
+                        memoryId = survivor_id,
+                        error = DEDUP_REEMBED_SEAM_MISSING,
+                        "[MemoryGate] Failed to re-embed memory"
+                    );
+                }
+            },
+            None => {
+                tracing::warn!(
+                    survivorId = survivor_id,
+                    "[MemoryMerge] Survivor changed but no userId to re-embed with"
+                );
+            }
+        }
+    }
+
+    let fields: Vec<&String> = plan.patch.keys().collect();
+    tracing::debug!(
+        survivorId = survivor_id,
+        fieldsJson = %serde_json::to_string(&fields).unwrap_or_default(),
+        mergedDetails = plan.merged_details.len(),
+        reembedded = needs_reembed && user_id.is_some(),
+        "[MemoryMerge] Folded losers into survivor"
+    );
+    Ok(Some(updated))
 }
 
 /// Reinforce an existing memory with a new observation (v4 `reinforceMemory`,

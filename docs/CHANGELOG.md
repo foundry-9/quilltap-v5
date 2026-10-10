@@ -12,6 +12,24 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(memory): P4.D266 U6 dedup folds each cluster into its survivor before deleting
+
+_Versions: core 0.0.1271._
+
+Memory deduplication follows v4 `3f7320138` F9 at the `01a83539d` pin.
+
+- **Read.** Memories are read through `memories_read::find_by_character_id`: v4's order, all tiers, Zod-faithful drops.
+- **Preview count.** The preview's detail count is the capped `plan_memory_merge` count.
+- **Apply** runs only when something is to be removed. For each cluster:
+  - It first folds the losers into the survivor through the new `apply_memory_merge`: capped footnotes, summed counts with recomputed importance, unioned links, the earliest `occurredAt`, and ONE re-embed when the content or anchor date changed.
+  - If a fold fails, its losers are kept and two WARNs are logged.
+  - It then deletes through the chokepoint, cleans the vector store (WARN on failure), and invalidates the character's frozen archive.
+- **Embedding seam.** The two `MemoryDedup*` engine arms now pass the optional memory embedding seam (R-D). A missing seam fails each re-embed with a WARN and never refuses the request.
+- **Logging.** The all-characters driver logs v4's two INFO lines and a camelCase per-character ERROR.
+- **Re-embed write order.** `reembed_memory` now writes the row's embedding before the vector store, as v4 does, so a store failure leaves the row updated.
+
+`memory_dedup_equivalence` grows. Both copies get the tier migration, 16 planted rows through the real repositories, a planted abort trigger, and a mocked re-embed whose texts and call count are compared (3 calls). Bodies and dumps are compared byte for byte, and two mutation proofs turn it red. There are new unit tests and host-binary pins for the `repository` label and dedup's INFO lines.
+
 #### 2026-10-09 — feat(host): P4.D266 U5b the housekeeping job counts demotions and logs v4's four lines
 
 _Versions: core 0.0.1270, host 0.0.196._

@@ -394,3 +394,127 @@ async fn the_job_path_labels_resolved_ids_and_the_api_path_repository() {
     assert!(batch.contains(" countSource=repository "), "{batch:?}");
     assert!(!batch.contains("resolved-ids"), "{batch:?}");
 }
+
+/// R-C + Tier 2 item 17: dedup runs in v4's PARENT, so its batch line says
+/// `countSource=repository`; and the all-characters driver logs v4's two INFO
+/// lines (`Starting deduplication for all characters`, `Deduplication
+/// complete`) with v4's keys, plus the per-character `Bulk deleted memories`.
+#[tokio::test]
+async fn dedup_labels_repository_and_logs_its_info_lines() {
+    let _serial = arm().await;
+    let (_d, db) = instance();
+    let created = quilltap_core::api::characters::character_create(
+        &db,
+        quilltap_core::services::provisioning::SINGLE_USER_ID,
+        json!({ "name": "Dedupe" }),
+    )
+    .await;
+    let created = serde_json::to_value(&created).unwrap();
+    let cid = created["data"]["character"]["id"]
+        .as_str()
+        .unwrap_or_else(|| panic!("character create answered {created}"))
+        .to_string();
+    // Two memories on one vector — one cluster, one loser.
+    let cid_w = cid.clone();
+    db.write(move |w| {
+        for (id, content, importance) in [
+            (
+                uuid("b6", 0),
+                "the survivor row with the longest words.",
+                0.9,
+            ),
+            (uuid("b6", 1), "the loser row.", 0.2),
+        ] {
+            w.main().memories().create(
+                &quilltap_core::db::memories::MemCreate {
+                    character_id: cid_w.clone(),
+                    about_character_id: None,
+                    chat_id: None,
+                    project_id: None,
+                    content: content.into(),
+                    summary: "s".into(),
+                    keywords: vec![],
+                    tags: vec![],
+                    importance,
+                    embedding: Some(vec![1.0, 0.0]),
+                    source: "AUTO".into(),
+                    witnessed_context: None,
+                    occurred_at: None,
+                    narrative_time: None,
+                    entities: vec![],
+                    kind: "semantic".into(),
+                    source_message_id: None,
+                    last_accessed_at: None,
+                    reinforcement_count: 1.0,
+                    last_reinforced_at: None,
+                    related_memory_ids: vec![],
+                    reinforced_importance: importance,
+                    tier: "hot".into(),
+                    superseded_by_id: None,
+                    consolidated_from: vec![],
+                    consolidated_at: None,
+                },
+                &quilltap_core::db::memories::CreateOptions {
+                    id: id.clone(),
+                    created_at: OLD.into(),
+                    updated_at: OLD.into(),
+                },
+            )?;
+        }
+        Ok(())
+    })
+    .await
+    .unwrap();
+    *LINES.lock().unwrap() = Some(Vec::new());
+    let result = quilltap_core::services::memory_dedup::deduplicate_all_memories(
+        &db,
+        None::<&quilltap_core::model::embedding::CannedEmbeddingProvider>,
+        quilltap_core::services::provisioning::SINGLE_USER_ID,
+        0.8,
+        false,
+    )
+    .await
+    .unwrap();
+    let lines = disarm();
+    assert_eq!(result["totalRemoved"], 1, "{result}");
+    let batch = only_line(
+        &lines,
+        "[MemoryGate] deleteMemoriesWithUnlinkBatch complete",
+    );
+    assert!(batch.contains(" countSource=repository "), "{batch:?}");
+    let start = only_line(
+        &lines,
+        "[MemoryDedup] Starting deduplication for all characters",
+    );
+    assert!(start.starts_with("INFO "), "{start:?}");
+    assert!(
+        start.contains(
+            " context=memory-dedup.deduplicateAllMemories userId=ffffffff-ffff-ffff-ffff-ffffffffffff \
+             threshold=0.8 dryRun=false"
+        ),
+        "{start:?}"
+    );
+    let done = only_line(&lines, "[MemoryDedup] Deduplication complete");
+    assert!(
+        done.contains(
+            " context=memory-dedup.deduplicateAllMemories userId=ffffffff-ffff-ffff-ffff-ffffffffffff \
+             characterCount=1 totalOriginal=2 totalRemoved=1 totalMergedDetails=0 totalFinal=1 \
+             dryRun=false"
+        ),
+        "{done:?}"
+    );
+    let deleted = only_line(&lines, "[MemoryDedup] Bulk deleted memories");
+    assert!(
+        deleted.contains(&format!(
+            " context=memory-dedup.deduplicateCharacterMemories characterId={cid} requested=1 \
+             deleted=1"
+        )),
+        "{deleted:?}"
+    );
+    assert!(
+        !lines
+            .iter()
+            .any(|l| l.contains("Failed to deduplicate character")),
+        "{lines:#?}"
+    );
+}

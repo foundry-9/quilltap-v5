@@ -9,19 +9,33 @@
  *     content rewritten with `[+]` footnotes, discards deleted, neighbours'
  *     relatedMemoryIds scrubbed through `deleteMemoriesWithUnlinkBatch`).
  *
- * Deterministic — NO LLM, NO jobs. The only seam mocks are `requireActual`
+ * Deterministic — NO LLM, NO jobs. The seam mocks are `requireActual`
  * pass-throughs so the DB manager, repositories, embedding-service
  * (`cosineSimilarity`), memory-gate (`extractNovelDetails` /
- * `deleteMemoriesWithUnlinkBatch`), vector-store, and the dedup tool itself run
- * v4's REAL code against the REAL fixture DBs. `processedAt` is normalized;
- * per-row `createdAt` / `updatedAt` are omitted from the memories dump (a
- * survivor's `updatedAt` is minted on apply).
+ * `deleteMemoriesWithUnlinkBatch`), memory-merge, vector-store, and the dedup
+ * tool itself run v4's REAL code against the REAL fixture DBs — EXCEPT
+ * `generateEmbeddingForUser`, which answers ONE text-independent canned vector
+ * and RECORDS every text it is asked for (`embedCalls`; P4.D266 R-D — the fold
+ * re-embeds a changed survivor). `processedAt` is normalized; per-row
+ * `createdAt` / `updatedAt` are omitted from the memories dump (a survivor's
+ * `updatedAt` is minted on apply).
+ *
+ * P4.D266 (pin `01a83539d`, `3f7320138` F9): the fold. On each COPY, v4's REAL
+ * `add-memory-tiers-v1` runs first (`applyMemoryTiersMigration` — idempotent;
+ * the committed pair already carries the columns since P4.D265's in-place
+ * widen), then `memory-dedup-plants.json` is created through v4's REAL
+ * `MemoriesRepository.create` (six clusters on Aria: the footnote cap, summed
+ * counts + an earlier occurredAt, a cross-cluster link, DEDUP_CROSSES_TIERS,
+ * DEDUP_DELETES_DIGEST, and a failed fold via a planted BEFORE UPDATE trigger).
  *
  * Run from the v4 checkout under Node 24 (cp to a /tmp mirror; jest ignores
  * .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
  *   TMPO=/tmp/qt-dedup-oracle ; rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
+ *   mkdir -p "$TMPO/fixtures"
  *   cp $V5W/harness/oracle/cases/memory-dedup.test.ts "$TMPO/cases/"
+ *   cp $V5W/harness/oracle/fixtures/apply-memory-tiers-migration.ts "$TMPO/fixtures/"
+ *   cp $V5W/harness/oracle/fixtures/memory-dedup-plants.json "$TMPO/fixtures/"
  *   cd ~/source/quilltap-server
  *   QT_EP_MGMT_MAIN=$V5W/crates/quilltap-web/tests/fixtures/embedding-profiles-main.db \
  *   QT_EP_MGMT_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/embedding-profiles-mount.db \
@@ -31,9 +45,38 @@
  */
 
 import * as fs from 'fs';
-import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { applyMemoryTiersMigration } from '../fixtures/apply-memory-tiers-migration';
+
+interface Plant {
+  id: string;
+  characterId: string;
+  content: string;
+  summary: string;
+  importance: number;
+  embedding: number[] | null;
+  source: 'AUTO' | 'MANUAL' | 'CONSOLIDATED';
+  tier: 'hot' | 'cold';
+  supersededById: string | null;
+  consolidatedFrom: string[];
+  reinforcementCount: number;
+  relatedMemoryIds: string[];
+  occurredAt: string | null;
+  lastReinforcedAt: string | null;
+}
+const PLANTS = JSON.parse(
+  readFileSync(join(__dirname, '..', 'fixtures', 'memory-dedup-plants.json'), 'utf8'),
+) as {
+  createdAt: string;
+  failTriggerSurvivorId: string;
+  cannedEmbedding: number[];
+  plants: Plant[];
+};
+
+/** Every text v4's fold asked to embed, in call order (reset per mode). */
+let embedCalls: string[] = [];
 
 const PEPPER = 'ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=';
 const USER_ID = 'aa000000-0000-4000-8000-0000000000aa';
@@ -54,15 +97,32 @@ function applyMocks(): void {
     '@/lib/database/backends/sqlite/introspection',
     '@/lib/paths',
     '@/lib/tools/memory-dedup',
-    // The jest-incomplete `embedding-service` trap: `deduplicateCharacterMemories`
-    // calls `cosineSimilarity` from it, which is `undefined` under the default
-    // jest mock. Force the real module (see [[p4.9h2a-embedding-profiles-lane]]).
-    '@/lib/embedding/embedding-service',
     '@/lib/memory/memory-gate',
+    '@/lib/memory/memory-merge',
     '@/lib/embedding/vector-store',
   ]) {
     jest.doMock(m, () => jest.requireActual(m));
   }
+  // The jest-incomplete `embedding-service` trap: `deduplicateCharacterMemories`
+  // calls `cosineSimilarity` from it, which is `undefined` under the default
+  // jest mock — so the REAL module, with only `generateEmbeddingForUser`
+  // canned + recorded (P4.D266 R-D).
+  jest.doMock('@/lib/embedding/embedding-service', () => {
+    const actual = jest.requireActual('@/lib/embedding/embedding-service');
+    return {
+      __esModule: true,
+      ...actual,
+      generateEmbeddingForUser: async (text: string) => {
+        embedCalls.push(text);
+        return {
+          embedding: new Float32Array(PLANTS.cannedEmbedding),
+          model: 'canned',
+          dimensions: PLANTS.cannedEmbedding.length,
+          provider: 'canned',
+        };
+      },
+    };
+  });
   jest.doMock('@/lib/startup/startup-state', () => {
     const a = jest.requireActual('@/lib/startup/startup-state');
     return {
@@ -98,6 +158,14 @@ const MEM_COLS = [
   'keywords',
   'tags',
   'relatedMemoryIds',
+  // P4.D266: the fold's count fields and the tier columns.
+  'reinforcementCount',
+  'reinforcedImportance',
+  'lastReinforcedAt',
+  'tier',
+  'supersededById',
+  'consolidatedFrom',
+  'consolidatedAt',
 ];
 
 async function dumpMemories(): Promise<unknown> {
@@ -119,9 +187,16 @@ async function dumpMemories(): Promise<unknown> {
 async function runOne(
   mode: 'preview' | 'apply',
   fixtures: { main: string; mount: string },
-): Promise<{ mode: string; threshold: number; result: unknown; memories: unknown }> {
+): Promise<{
+  mode: string;
+  threshold: number;
+  result: unknown;
+  memories: unknown;
+  embedCalls: string[];
+}> {
   jest.resetModules();
   applyMocks();
+  embedCalls = [];
 
   const scratch = mkdtempSync(join(tmpdir(), `qt-dedup-${mode}-`));
   mkdirSync(join(scratch, 'data'), { recursive: true });
@@ -132,6 +207,8 @@ async function runOne(
   const mountWork = join(scratch, 'data', 'quilltap-mount-index.db');
   copyFileSync(fixtures.main, mainWork);
   copyFileSync(fixtures.mount, mountWork);
+  // v4's REAL `add-memory-tiers-v1` on the COPY (idempotent on the widened pair).
+  await applyMemoryTiersMigration(mainWork, { pepperBase64: PEPPER });
 
   process.env.ENCRYPTION_MASTER_PEPPER = PEPPER;
   process.env.SQLITE_PATH = mainWork;
@@ -144,6 +221,51 @@ async function runOne(
   const { deduplicateAllMemories } = await import('@/lib/tools/memory-dedup');
 
   await initializeDatabase();
+
+  // The plants, through v4's REAL repository (pinned ids + timestamps).
+  const { MemoriesRepository } = await import('@/lib/database/repositories/memories.repository');
+  const repo = new MemoriesRepository();
+  for (const p of PLANTS.plants) {
+    await repo.create(
+      {
+        characterId: p.characterId,
+        aboutCharacterId: null,
+        chatId: null,
+        projectId: null,
+        content: p.content,
+        summary: p.summary,
+        keywords: [],
+        tags: [],
+        importance: p.importance,
+        embedding: p.embedding ? new Float32Array(p.embedding) : null,
+        source: p.source,
+        witnessedContext: null,
+        occurredAt: p.occurredAt,
+        narrativeTime: null,
+        entities: [],
+        kind: 'semantic',
+        sourceMessageId: null,
+        lastAccessedAt: null,
+        reinforcementCount: p.reinforcementCount,
+        lastReinforcedAt: p.lastReinforcedAt,
+        relatedMemoryIds: p.relatedMemoryIds,
+        reinforcedImportance: p.importance,
+        tier: p.tier,
+        supersededById: p.supersededById,
+        consolidatedFrom: p.consolidatedFrom,
+        consolidatedAt: null,
+      } as never,
+      { id: p.id, createdAt: PLANTS.createdAt, updatedAt: PLANTS.createdAt },
+    );
+  }
+  // The failed fold: any UPDATE of that survivor aborts.
+  const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+  (getRawDatabase() as unknown as { exec: (s: string) => void }).exec(
+    `CREATE TRIGGER p4d266_planted_fold_failure BEFORE UPDATE ON memories ` +
+      `WHEN OLD.id = '${PLANTS.failTriggerSurvivorId}' ` +
+      `BEGIN SELECT RAISE(ABORT, 'planted fold failure'); END`,
+  );
+
   const result = (await deduplicateAllMemories(USER_ID, THRESHOLD, mode === 'preview')) as Record<
     string,
     unknown
@@ -155,7 +277,7 @@ async function runOne(
   result.processedAt = '<processedAt>';
 
   rmSync(scratch, { recursive: true, force: true });
-  return { mode, threshold: THRESHOLD, result, memories };
+  return { mode, threshold: THRESHOLD, result, memories, embedCalls: [...embedCalls] };
 }
 
 async function main(): Promise<void> {
