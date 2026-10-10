@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(memory): P4.D270 E2 the Commonplace canon — the digest in both canon blocks under a 2,500-token cap, and the `pub` OTHER canon seam
+
+_Versions: core 0.0.1267._
+
+Ports v4 `d58548051`'s Commonplace reads (pin `01a83539d`). The SELF canon appends the character's own `Commonplace/Self.md` digest after the card fields. The OTHER canon appends the observer's `Commonplace/<Subject>.md` digest after the hand canon (the `Others/` file, else identity, else description). Each block is capped at 2,500 tokens (`CANON_BLOCK_TOKEN_CAP`); only the digest is trimmed, line by line, then by a proportional cut, and hand prose is never cut.
+
+- With a digest and no card fields, the SELF block drops the no-canon fallback line.
+- An OTHER canon with nothing hand-written but a digest renders the digest alone.
+- Both renderers now trim with JS `trim()` rules. Rust's `trim` differed on U+FEFF and U+0085.
+
+The loaders now live in `services::memory_processor`: `load_commonplace_canon`, `load_canon_for_self_with_commonplace`, and a `pub` `load_canon_for_observer_about_subject(…, include_commonplace)`. The consolidation engine (P4.D271) passes `false`. The per-turn SELF and OTHER passes read the digests. A loaded digest logs v4's `[Canon] Commonplace digest loaded into canon` DEBUG. v4's unreachable "digest unavailable" catch line is not ported.
+
+New `canon_commonplace_tier2` family: v4's real loaders over a vault fixture built through v4's real character create + `linkDocumentContent` (builder `build-canon-commonplace-fixture.ts`, case `canon-commonplace-tier2.ts`). It checks 18 ops, including the `[Canon]` lines. `canon_scenario` gains 21 Commonplace rows plus the cap constant.
+
 #### 2026-10-09 — feat(memory): P4.D270 E1 the fold-grain OTHER prompt — `ExtractionGrain`, `FOLD_GRAIN_OTHER_BLOCK`, `extract_other_memories_from_fold`
 
 _Versions: core 0.0.1266._

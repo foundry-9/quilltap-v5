@@ -18,10 +18,14 @@
 //! parameters: completions ([`CompletionProvider`]) for the extraction calls,
 //! embeddings ([`EmbeddingProvider`]) for the gate.
 //!
-//! Also hosts `load_canon_for_observer_about_subject` + `read_vault_text_file`
-//! (v4 `cheap-llm-tasks/canon.ts` / `vault-overlay/vault-readers.ts`) — the
-//! OTHER-pass canon loader is the one stateful piece of the canon module, so
-//! it lives with its only consumer; the pure renderers are in [`crate::canon`].
+//! Also hosts the canon LOADERS + `read_vault_text_file` (v4
+//! `cheap-llm-tasks/canon.ts` / `vault-overlay/vault-readers.ts`) — the
+//! stateful half of the canon module: `pub`
+//! [`load_canon_for_observer_about_subject`] (three consumers — the per-turn
+//! OTHER pass, the fold-grain OTHER pass, and the consolidation engine with
+//! `include_commonplace: false`), [`load_canon_for_self_with_commonplace`]
+//! and [`load_commonplace_canon`] (v4 `d58548051`'s Commonplace reads); the
+//! pure renderers are in [`crate::canon`].
 //!
 //! ## Deferred (tracked, out of scope for this unit)
 //!
@@ -39,13 +43,16 @@ use serde_json::Value;
 
 use crate::canon::{
     load_canon_for_self, render_other_canon_block, render_self_canon_block, CanonSource,
-    CanonSourceKind,
+    CanonSourceKind, SelfCanon,
 };
 use crate::cheap_llm::{
     get_cheap_llm_provider, resolve_uncensored_cheap_llm_selection, CheapLlmConfig,
     CheapLlmProfile, CheapLlmSelection, UncensoredFallbackOptions,
 };
 use crate::clock;
+use crate::commonplace_file::{
+    commonplace_file_to_canon_text, commonplace_path_for, CommonplaceSubject,
+};
 use crate::context_budget::resolve_max_tokens;
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
 use crate::db::doc_mount_file_links::normalise_relative_path;
@@ -104,14 +111,125 @@ struct Subject {
     is_user: bool,
 }
 
-/// v4 `loadCanonForObserverAboutSubject`: the observer's vault
-/// `Others/<sanitized-subject-name>.md` first, then the subject's identity,
-/// then description — never personality or manifesto (no observer sees another
-/// character's interior or axiomatic core).
-fn load_canon_for_observer_about_subject(
+impl Subject {
+    fn canon_subject(&self) -> CanonSubject {
+        CanonSubject {
+            id: self.id.clone(),
+            name: self.name.clone(),
+            identity: self.identity.clone(),
+            description: self.description.clone(),
+        }
+    }
+}
+
+/// The subject an OTHER canon is loaded for (v4 `loadCanonForObserverAbout
+/// Subject`'s `subject: { id, name, identity, description }`).
+#[derive(Clone, Debug)]
+pub struct CanonSubject {
+    pub id: String,
+    pub name: String,
+    pub identity: Option<String>,
+    pub description: Option<String>,
+}
+
+/// v4 `loadCommonplaceCanon(holder, subject)` (`canon.ts:201-228`, `d58548051`):
+/// read a Commonplace digest mirror from a holder's vault and return it as
+/// canon text (frontmatter and heading stripped), or `None` when there is no
+/// vault or no file. Never fails — a missing digest is not an error.
+///
+/// v4's catch line `[Canon] Commonplace digest unavailable; canon continues
+/// without it` is NOT ported: it cannot fire. `readVaultTextFile` catches every
+/// error itself (`vault-readers.ts:53-69` — WARN `Failed to read vault file` →
+/// `null`), so the loader's own `try` never sees a throw; the
+/// `canon_commonplace_tier2` family pins it negative.
+pub fn load_commonplace_canon(
+    db: &Db,
+    holder_character_id: &str,
+    holder_mount_point_id: Option<&str>,
+    subject: &CommonplaceSubject,
+) -> Option<String> {
+    let mount_point_id = holder_mount_point_id.filter(|m| !m.is_empty())?;
+    let path = commonplace_path_for(subject);
+    let raw = read_vault_text_file(db, mount_point_id, &path);
+    let text = commonplace_file_to_canon_text(raw.as_deref());
+    if let Some(text) = &text {
+        tracing::debug!(
+            characterId = %holder_character_id,
+            path = %path,
+            chars = crate::jsstr::utf16_len(text),
+            "[Canon] Commonplace digest loaded into canon"
+        );
+    }
+    text
+}
+
+/// v4 `loadCanonForSelfWithCommonplace` (`canon.ts:233-247`): SELF-pass canon
+/// with the character's own `Commonplace/Self.md` appended after the card
+/// fields. Same shape as [`crate::canon::load_canon_for_self`]; the extra
+/// `mount_point_id` is the character's own vault. v4 spreads the digest only
+/// when truthy, so an empty digest reads as absent.
+#[allow(clippy::too_many_arguments)]
+pub fn load_canon_for_self_with_commonplace(
+    db: &Db,
+    id: &str,
+    name: &str,
+    manifesto: Option<&str>,
+    personality: Option<&str>,
+    description: Option<&str>,
+    identity: Option<&str>,
+    mount_point_id: Option<&str>,
+) -> SelfCanon {
+    let mut canon = load_canon_for_self(id, name, manifesto, personality, description, identity);
+    canon.commonplace =
+        load_commonplace_canon(db, id, mount_point_id, &CommonplaceSubject::SelfFile)
+            .filter(|c| !c.is_empty());
+    canon
+}
+
+/// v4 `loadCanonForObserverAboutSubject(observer, subject, options)`
+/// (`canon.ts:255-271`): the hand canon first — the observer's vault
+/// `Others/<sanitized-subject-name>.md`, then the subject's identity, then
+/// description, never personality or manifesto (no observer sees another
+/// character's interior or axiomatic core) — then, unless
+/// `include_commonplace` is false, the observer's `Commonplace/<subject>.md`
+/// digest, the order the block renders in. The per-turn and fold-grain OTHER
+/// passes pass `true` (v4's default); only the consolidation call passes
+/// `false` (it is handed the digests directly).
+pub fn load_canon_for_observer_about_subject(
     db: &Db,
     observer_mount_point_id: Option<&str>,
-    subject: &Subject,
+    observer_character_id: &str,
+    subject: &CanonSubject,
+    include_commonplace: bool,
+) -> CanonSource {
+    let hand = load_hand_canon(db, observer_mount_point_id, subject);
+    if !include_commonplace {
+        return hand;
+    }
+    let commonplace = load_commonplace_canon(
+        db,
+        observer_character_id,
+        observer_mount_point_id,
+        &CommonplaceSubject::Other {
+            id: subject.id.clone(),
+            name: subject.name.clone(),
+        },
+    );
+    match commonplace.filter(|c| !c.is_empty()) {
+        Some(c) => CanonSource {
+            commonplace: Some(c),
+            ..hand
+        },
+        None => hand,
+    }
+}
+
+/// v4 `loadHandCanon` (`canon.ts:274-322`): the hand-written half of OTHER
+/// canon — vault `Others/` file, else identity, else description.
+fn load_hand_canon(
+    db: &Db,
+    observer_mount_point_id: Option<&str>,
+    subject: &CanonSubject,
 ) -> CanonSource {
     if let Some(mount_id) = observer_mount_point_id.filter(|s| !s.is_empty()) {
         let path = format!("{OTHERS_FOLDER}/{}.md", sanitize_file_name(&subject.name));
@@ -123,6 +241,7 @@ fn load_canon_for_observer_about_subject(
                     character_name: subject.name.clone(),
                     body: Some(trimmed.to_string()),
                     source: CanonSourceKind::Vault,
+                    commonplace: None,
                 };
             }
         }
@@ -139,6 +258,7 @@ fn load_canon_for_observer_about_subject(
             character_name: subject.name.clone(),
             body: Some(identity.to_string()),
             source: CanonSourceKind::Identity,
+            commonplace: None,
         };
     }
 
@@ -153,6 +273,7 @@ fn load_canon_for_observer_about_subject(
             character_name: subject.name.clone(),
             body: Some(description.to_string()),
             source: CanonSourceKind::Description,
+            commonplace: None,
         };
     }
 
@@ -161,6 +282,7 @@ fn load_canon_for_observer_about_subject(
         character_name: subject.name.clone(),
         body: None,
         source: CanonSourceKind::None,
+        commonplace: None,
     }
 }
 
@@ -983,7 +1105,10 @@ async fn run_passes<C: CompletionProvider, E: EmbeddingProvider>(
     // ---------------------------------------------------------------------
     for slice in &allowed_slices {
         let rl = &rate_limits[&slice.character_id];
-        let self_canon_block = render_self_canon_block(&load_canon_for_self(
+        // Card fields, then the character's own Commonplace digest (Self.md):
+        // once a fact is digested the extractor sees it as already established.
+        let self_canon_block = render_self_canon_block(&load_canon_for_self_with_commonplace(
+            db,
             &slice.character_id,
             &slice.character_name,
             character_str_field(
@@ -1002,6 +1127,11 @@ async fn run_passes<C: CompletionProvider, E: EmbeddingProvider>(
                 "description",
             ),
             character_str_field(&ctx.participant_characters, &slice.character_id, "identity"),
+            character_str_field(
+                &ctx.participant_characters,
+                &slice.character_id,
+                "characterDocumentMountPointId",
+            ),
         ));
 
         let self_result = extract_self_memories_from_turn(
@@ -1124,7 +1254,13 @@ async fn run_passes<C: CompletionProvider, E: EmbeddingProvider>(
         }
         let mut resolved_subjects: Vec<ResolvedSubject> = Vec::new();
         for subject in &observer_subjects {
-            let canon = load_canon_for_observer_about_subject(db, observer_mount, subject);
+            let canon = load_canon_for_observer_about_subject(
+                db,
+                observer_mount,
+                &observer.character_id,
+                &subject.canon_subject(),
+                true,
+            );
             let subject_canon_block = render_other_canon_block(&canon);
             let pronouns: Option<Pronouns> = if subject.is_user {
                 ctx.transcript.user_character_pronouns.clone()
