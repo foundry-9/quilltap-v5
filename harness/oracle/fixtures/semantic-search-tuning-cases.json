@@ -1,0 +1,1012 @@
+{
+  "$comment": "P4.D267 semantic_search_tuning_tier3_equivalence corpus. embed: text \u2192 {vector, provider} or {throw:true} (scripted on both sides). memo:true calls share ONE memo within the case. recallContext.tuningInput is validated + resolved on each side; arrays stand for v4 Sets.",
+  "$nowMs": 1791460800000,
+  "userId": "a2000000-0000-4000-8000-000000000001",
+  "cases": [
+    {
+      "name": "defaults_openai",
+      "embed": {
+        "q": {
+          "vector": [
+            1,
+            0
+          ],
+          "provider": "OPENAI"
+        }
+      },
+      "calls": [
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000001",
+          "query": "q",
+          "options": {
+            "limit": 10,
+            "recallContext": {
+              "currentProjectId": "ab200000-0000-4000-8000-000000000001",
+              "scopePolicy": "down-weight",
+              "turnContext": "information",
+              "presentAboutCharacterIds": [
+                "c2000000-0000-4000-8000-000000000009"
+              ],
+              "currentChatId": "cd200000-0000-4000-8000-000000000001",
+              "nowMs": 1791460800000
+            }
+          }
+        }
+      ],
+      "$comment": "R1 at the cap14 defaults on a neural label: the stacked low-cosine row is stripped (gate\u00d70.00); R4 logs counted/chosen as []"
+    },
+    {
+      "name": "defaults_builtin",
+      "embed": {
+        "q": {
+          "vector": [
+            1,
+            0
+          ],
+          "provider": "BUILTIN"
+        }
+      },
+      "calls": [
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000001",
+          "query": "q",
+          "options": {
+            "limit": 10,
+            "recallContext": {
+              "currentProjectId": "ab200000-0000-4000-8000-000000000001",
+              "scopePolicy": "down-weight",
+              "turnContext": "information",
+              "presentAboutCharacterIds": [
+                "c2000000-0000-4000-8000-000000000009"
+              ],
+              "currentChatId": "cd200000-0000-4000-8000-000000000001",
+              "nowMs": 1791460800000
+            }
+          }
+        }
+      ],
+      "$comment": "TF-IDF label, no explicit tuning: the gate-off DEBUG, no gate\u00d7, the 1.4 cap kept"
+    },
+    {
+      "name": "builtin_explicit_tuning",
+      "embed": {
+        "q": {
+          "vector": [
+            1,
+            0
+          ],
+          "provider": "BUILTIN"
+        }
+      },
+      "calls": [
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000001",
+          "query": "q",
+          "options": {
+            "limit": 10,
+            "recallContext": {
+              "currentProjectId": "ab200000-0000-4000-8000-000000000001",
+              "scopePolicy": "down-weight",
+              "turnContext": "information",
+              "presentAboutCharacterIds": [
+                "c2000000-0000-4000-8000-000000000009"
+              ],
+              "currentChatId": "cd200000-0000-4000-8000-000000000001",
+              "nowMs": 1791460800000,
+              "tuningInput": {
+                "boostGateAbs": 0.45,
+                "boostGateMargin": 0.15,
+                "boostGateRamp": 0.1
+              }
+            }
+          }
+        }
+      ],
+      "$comment": "an explicit tuning turns the gate back on under BUILTIN (no gate-off line)"
+    },
+    {
+      "name": "builtin_empty_tuning",
+      "embed": {
+        "q": {
+          "vector": [
+            1,
+            0
+          ],
+          "provider": "BUILTIN"
+        }
+      },
+      "calls": [
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000001",
+          "query": "q",
+          "options": {
+            "limit": 10,
+            "recallContext": {
+              "currentProjectId": "ab200000-0000-4000-8000-000000000001",
+              "scopePolicy": "down-weight",
+              "turnContext": "information",
+              "presentAboutCharacterIds": [
+                "c2000000-0000-4000-8000-000000000009"
+              ],
+              "currentChatId": "cd200000-0000-4000-8000-000000000001",
+              "nowMs": 1791460800000,
+              "tuningInput": {}
+            }
+          }
+        }
+      ],
+      "$comment": "tuning {} is truthy: gate ON under BUILTIN"
+    },
+    {
+      "name": "exclude_vector_scan",
+      "embed": {
+        "q": {
+          "vector": [
+            1,
+            0
+          ],
+          "provider": "OPENAI"
+        }
+      },
+      "calls": [
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000001",
+          "query": "q",
+          "options": {
+            "limit": 1,
+            "recallContext": {
+              "currentProjectId": null,
+              "scopePolicy": "down-weight"
+            },
+            "excludeMemoryIds": [
+              "e2000000-0000-4000-8000-000000000001",
+              "e2000000-0000-4000-8000-000000000005",
+              "e2000000-0000-4000-8000-000000000003"
+            ]
+          }
+        }
+      ],
+      "$comment": "excluded inside the scan: the top-3 (limit*3) is drawn from the remainder"
+    },
+    {
+      "name": "exclude_anchor_union",
+      "embed": {
+        "q": {
+          "vector": [
+            1,
+            0
+          ],
+          "provider": "OPENAI"
+        }
+      },
+      "calls": [
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000001",
+          "query": "q",
+          "options": {
+            "limit": 10,
+            "recallContext": {
+              "currentProjectId": null,
+              "scopePolicy": "down-weight"
+            },
+            "entityAnchors": [
+              "Tessarium"
+            ],
+            "excludeMemoryIds": [
+              "e2000000-0000-4000-8000-000000000008"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "weight_clock",
+      "embed": {
+        "q": {
+          "vector": [
+            1,
+            0
+          ],
+          "provider": "OPENAI"
+        }
+      },
+      "calls": [
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000001",
+          "query": "q",
+          "options": {
+            "limit": 10,
+            "recallContext": {
+              "currentProjectId": null,
+              "scopePolicy": "down-weight"
+            },
+            "weightClockMs": 1775001600000
+          }
+        },
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000001",
+          "query": "q",
+          "options": {
+            "limit": 10,
+            "recallContext": {
+              "currentProjectId": null,
+              "scopePolicy": "down-weight"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "r4_counted_chosen",
+      "embed": {
+        "q": {
+          "vector": [
+            1,
+            0
+          ],
+          "provider": "OPENAI"
+        }
+      },
+      "calls": [
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000001",
+          "query": "q",
+          "options": {
+            "limit": 10,
+            "recallContext": {
+              "currentProjectId": null,
+              "scopePolicy": "down-weight",
+              "presentParticipantNames": [
+                " amy ",
+                ""
+              ]
+            },
+            "entityAnchors": [
+              "Amy",
+              "Steinway",
+              "Tessarium",
+              "Prospero",
+              "X"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "r4_distiller_minhits_duplicate",
+      "embed": {
+        "q": {
+          "vector": [
+            1,
+            0
+          ],
+          "provider": "OPENAI"
+        }
+      },
+      "calls": [
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000001",
+          "query": "q",
+          "options": {
+            "limit": 10,
+            "recallContext": {
+              "currentProjectId": null,
+              "scopePolicy": "down-weight",
+              "tuningInput": {
+                "anchorOrder": "distiller",
+                "anchorMinHits": 2
+              }
+            },
+            "entityAnchors": [
+              "X",
+              "Tessarium",
+              "Tessarium",
+              "Amy",
+              "Prospero"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "r4_off_filter_then_slice",
+      "embed": {
+        "q": {
+          "vector": [
+            1,
+            0
+          ],
+          "provider": "OPENAI"
+        }
+      },
+      "calls": [
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000001",
+          "query": "q",
+          "options": {
+            "limit": 10,
+            "recallContext": {
+              "currentProjectId": null,
+              "scopePolicy": "down-weight",
+              "presentParticipantNames": [
+                "Amy"
+              ],
+              "tuningInput": {
+                "specificAnchors": false
+              }
+            },
+            "entityAnchors": [
+              "X",
+              "Amy",
+              "Steinway",
+              "Tessarium",
+              "Prospero"
+            ]
+          }
+        }
+      ],
+      "$comment": "a 1-char phrase among the first three: v4 filters THEN slices"
+    },
+    {
+      "name": "no_recall_context",
+      "embed": {
+        "q": {
+          "vector": [
+            1,
+            0
+          ],
+          "provider": "OPENAI"
+        }
+      },
+      "calls": [
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000001",
+          "query": "q",
+          "options": {
+            "limit": 10,
+            "entityAnchors": [
+              "X",
+              "Amy",
+              "Steinway",
+              "Tessarium",
+              "Prospero"
+            ]
+          }
+        }
+      ],
+      "$comment": "tool-shaped: no tuning, no R4, no line; the first three filtered phrases"
+    },
+    {
+      "name": "r6_reserve",
+      "embed": {
+        "q": {
+          "vector": [
+            1,
+            0
+          ],
+          "provider": "OPENAI"
+        }
+      },
+      "calls": [
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000002",
+          "query": "q",
+          "options": {
+            "limit": 4,
+            "headSize": 3,
+            "occurredWithin": {
+              "from": "2026-10-06T00:00:00.000Z",
+              "to": "2026-10-06T23:59:59.000Z"
+            },
+            "recallContext": {
+              "currentProjectId": null,
+              "scopePolicy": "down-weight",
+              "tuningInput": {
+                "boostGateAbs": 0.45,
+                "boostGateMargin": 0.15,
+                "boostGateRamp": 0.1,
+                "backgroundReserve": 0.34
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "r6_no_reserve",
+      "embed": {
+        "q": {
+          "vector": [
+            1,
+            0
+          ],
+          "provider": "OPENAI"
+        }
+      },
+      "calls": [
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000002",
+          "query": "q",
+          "options": {
+            "limit": 4,
+            "headSize": 3,
+            "occurredWithin": {
+              "from": "2026-10-06T00:00:00.000Z",
+              "to": "2026-10-06T23:59:59.000Z"
+            },
+            "recallContext": {
+              "currentProjectId": null,
+              "scopePolicy": "down-weight",
+              "tuningInput": {
+                "boostGateAbs": 0.45,
+                "boostGateMargin": 0.15
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "r6_gate_off_inert",
+      "embed": {
+        "q": {
+          "vector": [
+            1,
+            0
+          ],
+          "provider": "BUILTIN"
+        }
+      },
+      "calls": [
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000002",
+          "query": "q",
+          "options": {
+            "limit": 4,
+            "headSize": 3,
+            "occurredWithin": {
+              "from": "2026-10-06T00:00:00.000Z",
+              "to": "2026-10-06T23:59:59.000Z"
+            },
+            "recallContext": {
+              "currentProjectId": null,
+              "scopePolicy": "down-weight",
+              "tuningInput": {
+                "boostGateAbs": 0,
+                "boostGateMargin": 0,
+                "backgroundReserve": 0.34
+              }
+            }
+          }
+        }
+      ],
+      "$comment": "R6 is inert while the gate is off"
+    },
+    {
+      "name": "memo_shared",
+      "embed": {
+        "q": {
+          "vector": [
+            1,
+            0
+          ],
+          "provider": "OPENAI"
+        },
+        "p": {
+          "vector": [
+            0.6,
+            0.8
+          ],
+          "provider": "OPENAI"
+        }
+      },
+      "calls": [
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000001",
+          "query": "q",
+          "options": {
+            "limit": 10,
+            "recallContext": {
+              "currentProjectId": null,
+              "scopePolicy": "down-weight"
+            },
+            "extraProbes": [
+              "p"
+            ]
+          },
+          "memo": true
+        },
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000001",
+          "query": "q",
+          "options": {
+            "limit": 10,
+            "recallContext": {
+              "currentProjectId": null,
+              "scopePolicy": "down-weight"
+            },
+            "extraProbes": [
+              "p"
+            ]
+          },
+          "memo": true
+        }
+      ]
+    },
+    {
+      "name": "memo_absent",
+      "embed": {
+        "q": {
+          "vector": [
+            1,
+            0
+          ],
+          "provider": "OPENAI"
+        },
+        "p": {
+          "vector": [
+            0.6,
+            0.8
+          ],
+          "provider": "OPENAI"
+        }
+      },
+      "calls": [
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000001",
+          "query": "q",
+          "options": {
+            "limit": 10,
+            "recallContext": {
+              "currentProjectId": null,
+              "scopePolicy": "down-weight"
+            },
+            "extraProbes": [
+              "p"
+            ]
+          }
+        },
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000001",
+          "query": "q",
+          "options": {
+            "limit": 10,
+            "recallContext": {
+              "currentProjectId": null,
+              "scopePolicy": "down-weight"
+            },
+            "extraProbes": [
+              "p"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "hot_default",
+      "embed": {
+        "Lighthouse": {
+          "vector": [
+            1,
+            0
+          ],
+          "provider": "OPENAI"
+        }
+      },
+      "calls": [
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000003",
+          "query": "Lighthouse",
+          "options": {
+            "limit": 10,
+            "applyLiteralPhraseBoost": true,
+            "recallContext": {
+              "currentProjectId": null,
+              "scopePolicy": "down-weight",
+              "expandRelated": true
+            }
+          }
+        }
+      ],
+      "$comment": "cold rows absent from the scan, the literal hits (indexed and un-indexed) and the related neighbour"
+    },
+    {
+      "name": "include_cold",
+      "embed": {
+        "Lighthouse": {
+          "vector": [
+            1,
+            0
+          ],
+          "provider": "OPENAI"
+        }
+      },
+      "calls": [
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000003",
+          "query": "Lighthouse",
+          "options": {
+            "limit": 10,
+            "applyLiteralPhraseBoost": true,
+            "recallContext": {
+              "currentProjectId": null,
+              "scopePolicy": "down-weight",
+              "expandRelated": true
+            },
+            "includeCold": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "cold_plus_exclude",
+      "embed": {
+        "Lighthouse": {
+          "vector": [
+            1,
+            0
+          ],
+          "provider": "OPENAI"
+        }
+      },
+      "calls": [
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000003",
+          "query": "Lighthouse",
+          "options": {
+            "limit": 10,
+            "applyLiteralPhraseBoost": true,
+            "recallContext": {
+              "currentProjectId": null,
+              "scopePolicy": "down-weight",
+              "expandRelated": true
+            },
+            "includeCold": true,
+            "excludeMemoryIds": [
+              "e2000000-0000-4000-8000-000000000021"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "tool_path_hot",
+      "embed": {
+        "Lighthouse": {
+          "vector": [
+            1,
+            0
+          ],
+          "provider": "OPENAI"
+        }
+      },
+      "calls": [
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000003",
+          "query": "Lighthouse",
+          "options": {
+            "limit": 10,
+            "applyLiteralPhraseBoost": true
+          }
+        }
+      ],
+      "$comment": "no recall context: plain sort, cold still dropped"
+    },
+    {
+      "name": "r5_floor",
+      "embed": {
+        "q": {
+          "vector": [
+            1,
+            0
+          ],
+          "provider": "OPENAI"
+        },
+        "p": {
+          "vector": [
+            0.6,
+            0.8
+          ],
+          "provider": "OPENAI"
+        }
+      },
+      "calls": [
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000001",
+          "query": "q",
+          "options": {
+            "limit": 10,
+            "recallContext": {
+              "currentProjectId": null,
+              "scopePolicy": "down-weight",
+              "expandRelated": true
+            },
+            "entityAnchors": [
+              "Tessarium"
+            ],
+            "extraProbes": [
+              "p"
+            ]
+          }
+        }
+      ],
+      "$comment": "entity and probe hits below the neural floor dropped; related\u2197 exempt"
+    },
+    {
+      "name": "text_fallback_hot",
+      "embed": {
+        "Lighthouse": {
+          "throw": true
+        }
+      },
+      "calls": [
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000003",
+          "query": "Lighthouse",
+          "options": {
+            "limit": 10,
+            "recallContext": {
+              "currentProjectId": null,
+              "scopePolicy": "down-weight"
+            },
+            "weightClockMs": 1775001600000
+          }
+        }
+      ],
+      "$comment": "the embed throws: catch WARN, text search, cold filtered, weight on the wall clock"
+    },
+    {
+      "name": "text_fallback_cold",
+      "embed": {
+        "Lighthouse": {
+          "throw": true
+        }
+      },
+      "calls": [
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000003",
+          "query": "Lighthouse",
+          "options": {
+            "limit": 10,
+            "includeCold": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "dim_mismatch",
+      "embed": {
+        "q": {
+          "vector": [
+            1,
+            0,
+            0
+          ],
+          "provider": "OPENAI"
+        }
+      },
+      "calls": [
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000003",
+          "query": "q",
+          "options": {
+            "limit": 10,
+            "recallContext": {
+              "currentProjectId": null,
+              "scopePolicy": "down-weight"
+            }
+          }
+        },
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000003",
+          "query": "q",
+          "options": {
+            "limit": 10,
+            "recallContext": {
+              "currentProjectId": null,
+              "scopePolicy": "down-weight"
+            }
+          }
+        }
+      ],
+      "$comment": "the once-per-key dimension-mismatch WARN, then text search"
+    },
+    {
+      "name": "probe_fail",
+      "embed": {
+        "q": {
+          "vector": [
+            1,
+            0
+          ],
+          "provider": "OPENAI"
+        },
+        "boom": {
+          "throw": true
+        }
+      },
+      "calls": [
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000001",
+          "query": "q",
+          "options": {
+            "limit": 10,
+            "recallContext": {
+              "currentProjectId": null,
+              "scopePolicy": "down-weight"
+            },
+            "extraProbes": [
+              "boom"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "fresh_capped",
+      "embed": {
+        "q": {
+          "vector": [
+            1,
+            0
+          ],
+          "provider": "OPENAI"
+        }
+      },
+      "calls": [
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000001",
+          "query": "q",
+          "options": {
+            "limit": 10,
+            "recallContext": {
+              "currentProjectId": null,
+              "scopePolicy": "down-weight",
+              "currentChatId": "cd200000-0000-4000-8000-000000000001",
+              "nowMs": 1791460800000
+            }
+          }
+        }
+      ],
+      "$comment": "fresh48 at 1.15 under the defaults"
+    }
+  ],
+  "reserve": [
+    {
+      "name": "jest_third",
+      "ranked": [
+        [
+          "a",
+          0.9
+        ],
+        [
+          "b",
+          0.8
+        ],
+        [
+          "c",
+          0.7
+        ],
+        [
+          "d",
+          0.6
+        ],
+        [
+          "e",
+          0.5
+        ],
+        [
+          "f",
+          0.4
+        ]
+      ],
+      "background": [
+        [
+          "x",
+          0.65
+        ],
+        [
+          "y",
+          0.3
+        ]
+      ],
+      "headSize": 6,
+      "fraction": 0.3333333333333333
+    },
+    {
+      "name": "jest_unused",
+      "ranked": [
+        [
+          "a",
+          0.9
+        ],
+        [
+          "b",
+          0.8
+        ],
+        [
+          "c",
+          0.7
+        ]
+      ],
+      "background": [
+        [
+          "x",
+          0.2
+        ]
+      ],
+      "headSize": 3,
+      "fraction": 0.5
+    },
+    {
+      "name": "jest_empty",
+      "ranked": [
+        [
+          "a",
+          0.9
+        ],
+        [
+          "b",
+          0.8
+        ],
+        [
+          "c",
+          0.7
+        ]
+      ],
+      "background": [],
+      "headSize": 3,
+      "fraction": 0.5
+    },
+    {
+      "name": "reserve_floor_zero",
+      "ranked": [
+        [
+          "a",
+          0.9
+        ],
+        [
+          "b",
+          0.8
+        ]
+      ],
+      "background": [
+        [
+          "x",
+          0.95
+        ]
+      ],
+      "headSize": 2,
+      "fraction": 0.34
+    },
+    {
+      "name": "ties_keep_order",
+      "ranked": [
+        [
+          "a",
+          0.5
+        ],
+        [
+          "b",
+          0.5
+        ],
+        [
+          "c",
+          0.5
+        ]
+      ],
+      "background": [
+        [
+          "x",
+          0.5
+        ],
+        [
+          "y",
+          0.5
+        ]
+      ],
+      "headSize": 4,
+      "fraction": 0.5
+    }
+  ]
+}

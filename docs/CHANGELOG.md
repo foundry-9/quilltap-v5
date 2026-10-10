@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(memory): P4.D267 hot-only semantic search with the retuning knobs; search stops stamping (v4 `f7d8064be` / `d58548051` / `3f7320138`)
+
+_Versions: core 0.0.1267._
+
+`search_memories_semantic` now runs v4's recall-retuning knobs and its hot-only rule.
+
+- **Relevance gate (R1)** on every candidate, including related-expansion neighbours (gated on their own cosine). It is OFF when the query embedded through `BUILTIN` (TF-IDF) and no tuning was given, with v4's debug line. An explicit tuning turns it back on.
+- **Specific entity anchors (R4):** every entity phrase is counted through a per-phrase hit cache; present participants and zero-hit names are dropped and the rarest are chosen, with v4's debug line. Without R4 the phrases are filtered before the first three are taken (was: take three, then filter).
+- **Background reservation (R6)**, a new pure `reserve_background_slots`. Inert at the defaults.
+- **Hot-only:** `include_cold` (default false) is honoured in the vector scan (filtered before top-K), the anchor / literal hits, hydration, related expansion and the text fallback.
+- **The other harness knobs:** `exclude_memory_ids` (filtered inside the scan), `weight_clock_ms` (not on the text fallback, which stays on the wall clock), and a new `embedding_memo` + `recall_tuning` on `SemanticSearchOptions`.
+- **No more stamping:** search no longer writes `lastAccessedAt` (v4 F6). `bump_access_times` is deleted. Delivery sites stamp what they deliver (P4.D268).
+- **Three v4 lines the search never ported:** the once-per-key embedding-dimension-mismatch WARN, the probe-failure DEBUG and the semantic-failure WARN.
+
+Differential: NEW `semantic_search_tuning_tier3_equivalence` over a NEW committed `semantic-search-tuning-main.db`, built at the pin through v4's real repositories and vector store. It has 26 cases and 5 pure reserve rows, and a scripted embedding boundary on both sides.
+
 #### 2026-10-09 — feat(memory): P4.D267 the recall multiplier retuning — capped/gated combine + recall_tuning (v4 `f7d8064be` pin `01a83539d`)
 
 _Versions: core 0.0.1266._

@@ -45,10 +45,23 @@
 //! `searchByContent` union path — anchors union, only the tool-path literal
 //! phrase boosts), and the retrospective `extra_probes` multi-probe union
 //! (cap 2 extras, per-memory max cosine). Everything else was already
-//! faithful: the one-retry-free embed, the dimension-mismatch → text fallback
-//! (WITHOUT the access-time bump — v4 returns `searchMemoriesText` directly
-//! there), the min-score / min-importance / source / aboutCharacterId filters,
-//! and the `bumpAccessTimes` side-effect (final slice only).
+//! faithful: the one-retry-free embed, the dimension-mismatch → text fallback,
+//! and the min-score / min-importance / source / aboutCharacterId filters.
+//!
+//! Since P4.D267 (v4 `f7d8064be` / `d58548051` / `3f7320138` at the
+//! `01a83539d` pin) the search also carries the recall multiplier retuning
+//! (R1's relevance gate — OFF under TF-IDF unless a tuning is explicit — R2's
+//! cap, R4's specific entity anchors, R6's background reservation), the
+//! harness knobs (`exclude_memory_ids`, `head_size`, `weight_clock_ms`, the
+//! embedding memo) and HOT-ONLY recall (`include_cold`: cold rows are filtered
+//! inside the vector scan, from every anchor / literal hit, at hydration, from
+//! related expansion and from the text fallback).
+//!
+//! **Search stamps NOTHING** (v4 `3f7320138`, F6): consumers stamp what they
+//! DELIVER (`services::memory_access::mark_memories_accessed`). The dynamic
+//! head over-fetches ~3× what it shows, and stamping every candidate left 83 %
+//! of a corpus "recently accessed", so the recent-access protection bonus no
+//! longer discriminated.
 
 use serde_json::Value;
 
@@ -61,11 +74,14 @@ use crate::memory_weighting::{
     calculate_effective_weight, compute_ranking_blend, default_min_cosine_for_provider,
     MemoryInputs, DEFAULT_WEIGHTING_CONFIG,
 };
+use crate::model::embedding::{EmbeddingError, EmbeddingResult};
 use crate::model::embedding::{EmbeddingPriority, EmbeddingProvider};
 use crate::recall_tags::{
-    combine_recall_multipliers, ContextTag, MemoryTagView, RecallContext, ScopePolicy, TemporalTag,
-    TimeWindow, RELATED_EXPANSION_MAX_PER_HIT, RELATED_EXPANSION_MAX_TOTAL,
+    boost_gate_threshold, combine_recall_multipliers, ContextTag, MemoryTagView, RecallContext,
+    RecallRelevance, ScopePolicy, TemporalTag, TimeWindow, RELATED_EXPANSION_MAX_PER_HIT,
+    RELATED_EXPANSION_MAX_TOTAL,
 };
+use crate::recall_tuning::{select_specific_anchors, ResolvedRecallTuning, DEFAULT_RECALL_TUNING};
 
 /// Result of a source-message / swipe-group cascade (v4's
 /// `{ deleted, vectorsRemoved }`).
@@ -403,17 +419,92 @@ pub struct SemanticSearchOptions {
     /// v4 `weightClockMs`: the effective-weight clock when it differs from
     /// `now_ms` (replay).
     pub weight_clock_ms: Option<i64>,
+    /// v4 `recallContext.tuning` (R-E: carried here, not on
+    /// [`RecallContextInput`], so P4.D268's full `RecallContextInput` literals
+    /// stay compilable): the retuning knobs (R1–R6). READ ONLY when
+    /// `recall_context` is `Some` — v4's tuning lives on the context. `None` →
+    /// the retuned defaults ([`DEFAULT_RECALL_TUNING`]), with R1's gate turned
+    /// OFF when the query embedded through `BUILTIN` (TF-IDF cosines are on
+    /// another scale). `Some` — even a value-equal default — keeps the gate.
+    pub recall_tuning: Option<ResolvedRecallTuning>,
+    /// v4 `embeddingMemo`: reuse embeddings by text across calls (main query
+    /// and extra probes), keyed `` `${embeddingProfileId ?? 'default'}|${text}` ``.
+    /// The provider's vectors for one text can differ slightly from call to
+    /// call; the recall-replay harness passes one memo so every run it compares
+    /// embeds the same vectors. Live recall leaves it off.
+    pub embedding_memo: Option<EmbeddingMemo>,
 }
 
-/// How the vector path failed (decides the text-fallback bump semantics).
+/// The insertion-ordered text → embedding map behind [`EmbeddingMemo`] (v4's
+/// `Map<string, EmbeddingResult>`): a re-set keeps the key's position, and
+/// [`EmbeddingMemoMap::trim_to`] drops the OLDEST first. No new dependency —
+/// an order queue beside a `HashMap`.
+#[derive(Debug, Default)]
+pub struct EmbeddingMemoMap {
+    order: std::collections::VecDeque<String>,
+    map: std::collections::HashMap<String, EmbeddingResult>,
+}
+
+impl EmbeddingMemoMap {
+    /// v4 `memo.get(key)` (a clone — the lock is never held across an await).
+    pub fn get(&self, key: &str) -> Option<EmbeddingResult> {
+        self.map.get(key).cloned()
+    }
+
+    /// v4 `memo.set(key, value)`.
+    pub fn set(&mut self, key: String, value: EmbeddingResult) {
+        if !self.map.contains_key(&key) {
+            self.order.push_back(key.clone());
+        }
+        self.map.insert(key, value);
+    }
+
+    /// v4 `memo.size`.
+    pub fn len(&self) -> usize {
+        self.map.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty()
+    }
+
+    /// Drop the oldest entries `while len > max` (v4 `boundedMemo()`).
+    pub fn trim_to(&mut self, max: usize) {
+        while self.map.len() > max {
+            let Some(oldest) = self.order.pop_front() else {
+                break;
+            };
+            self.map.remove(&oldest);
+        }
+    }
+}
+
+/// v4 `options.embeddingMemo` — shared, so one memo can serve several
+/// searches (and runs). Never lock it across an `.await`.
+pub type EmbeddingMemo = std::sync::Arc<std::sync::Mutex<EmbeddingMemoMap>>;
+
+/// How the vector path failed.
 enum SemanticFail {
     /// v4's dimension-mismatch early return: `return searchMemoriesText(...)`
-    /// — WITHOUT an access-time bump.
+    /// (its WARN already logged, once per key).
     DimMismatch,
-    /// Any thrown error (embed failure, DB error) → the catch-block fallback,
-    /// which DOES bump.
-    Other,
+    /// Any thrown error (embed failure, DB error) → the catch block's WARN and
+    /// the text fallback. Carries v4's `String(error)`.
+    Other(String),
 }
+
+impl From<DbError> for SemanticFail {
+    fn from(e: DbError) -> Self {
+        SemanticFail::Other(format!("Error: {e}"))
+    }
+}
+
+/// v4 `String(error)` for an `EmbeddingError` (`name = 'EmbeddingError'`).
+fn embedding_error_string(e: &EmbeddingError) -> String {
+    format!("EmbeddingError: {}", e.message)
+}
+
+const MEMORY_LOG_TARGET: &str = "quilltap::memories";
 
 /// v4 `searchMemoriesSemantic`. Tries the vector path first (embed → search →
 /// [multi-probe union] → [anchor-phrase union] → hydrate → blend →
@@ -445,34 +536,135 @@ pub async fn search_memories_semantic<P: EmbeddingProvider>(
     .await;
 
     match semantic {
+        // v4 `return results.slice(0, limit)` — no access bump (F6).
         Ok(Some(mut results)) => {
-            // v4: `finalResults = results.slice(0, limit)` then bump ONLY the
-            // final slice's ids.
             results.truncate(limit);
-            let ids: Vec<String> = results.iter().filter_map(|r| id_of(&r.memory)).collect();
-            bump_access_times(db, character_id, &ids).await;
             Ok(results)
         }
-        // v4's dimension-mismatch arm returns the text results DIRECTLY —
-        // no access-time bump on this path.
+        // v4's dimension-mismatch arm returns the text results directly.
         Err(SemanticFail::DimMismatch) => {
             search_memories_text(db, character_id, query, options).await
         }
         // `Ok(None)` = the vector pool was empty (v4 falls through past the
         // `if (augmentedVectorResults.length > 0)` block to the text fallback);
-        // `Err(Other)` = the catch block. Both bump.
-        Ok(None) | Err(SemanticFail::Other) => {
-            let text = search_memories_text(db, character_id, query, options).await?;
-            let ids: Vec<String> = text.iter().filter_map(|r| id_of(&r.memory)).collect();
-            bump_access_times(db, character_id, &ids).await;
-            Ok(text)
+        // `Err(Other)` = the catch block, which WARNs first.
+        Ok(None) => search_memories_text(db, character_id, query, options).await,
+        Err(SemanticFail::Other(error)) => {
+            tracing::warn!(
+                target: MEMORY_LOG_TARGET,
+                characterId = %character_id,
+                query = %crate::jsstr::utf16_truncate(query, 100),
+                userId = %options.user_id,
+                error = %error,
+                "[Memory] Semantic search failed, falling back to text search"
+            );
+            search_memories_text(db, character_id, query, options).await
         }
     }
 }
 
-/// The vector path. `Ok(Some(sorted))` on a non-empty pool, `Ok(None)` when the pool
-/// is empty (→ text fallback), `Err` on embed failure / dimension mismatch (→ text
-/// fallback, with [`SemanticFail`] deciding the bump semantics).
+/// One-time-per-key throttle for the embedding dimension-mismatch warning
+/// (v4 `dimensionMismatchWarned`, process-lifetime). When a character's stored
+/// vector index was built with a different embedding profile than the one now
+/// searching, vector search silently returns nothing and we fall back to text
+/// search — a badly degraded relevance path. Surfaced loudly (warn level,
+/// actionable) but only once per (character, dimension pair) so it is not
+/// buried under per-turn spam. Keyed `${characterId}:${stored}->${query}`.
+static DIMENSION_MISMATCH_WARNED: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashSet<String>>,
+> = std::sync::LazyLock::new(Default::default);
+
+/// v4's `embed(text)` closure: the memo first (key
+/// `` `${embeddingProfileId ?? 'default'}|${text}` ``), else the provider, then
+/// `memo.set`. Used for the main query AND every extra probe. The memo lock is
+/// never held across the provider's `.await` (get → drop → embed → lock → set).
+async fn embed_text<P: EmbeddingProvider>(
+    provider: &P,
+    options: &SemanticSearchOptions,
+    text: &str,
+) -> Result<EmbeddingResult, EmbeddingError> {
+    let key = format!(
+        "{}|{text}",
+        options.embedding_profile_id.as_deref().unwrap_or("default")
+    );
+    if let Some(memo) = &options.embedding_memo {
+        if let Some(hit) = memo.lock().unwrap_or_else(|p| p.into_inner()).get(&key) {
+            return Ok(hit);
+        }
+    }
+    let result = provider
+        .generate_embedding_for_user(
+            text,
+            &options.user_id,
+            options.embedding_profile_id.as_deref(),
+            EmbeddingPriority::Interactive,
+        )
+        .await?;
+    if let Some(memo) = &options.embedding_memo {
+        memo.lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .set(key, result.clone());
+    }
+    Ok(result)
+}
+
+/// v4 `m.tier === 'cold'` over a memory row (a NULL / absent tier is hot).
+fn is_cold_row(memory: &Value) -> bool {
+    memory.get("tier").and_then(Value::as_str) == Some("cold")
+}
+
+/// Descending by post-adjustment blended score, stable (v4 `byBlendedAfter`:
+/// `(b.blendedAfter ?? 0) - (a.blendedAfter ?? 0)`).
+fn sort_by_blended_after(pool: &mut [SemanticSearchResult]) {
+    let after = |r: &SemanticSearchResult| {
+        r.recall_adjustment
+            .as_ref()
+            .map(|x| x.blended_after)
+            .unwrap_or(0.0)
+    };
+    pool.sort_by(|a, b| {
+        after(b)
+            .partial_cmp(&after(a))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+}
+
+/// R6 — reserve up to `fraction` of the head for qualifying background rows
+/// (v4 `reserveBackgroundSlots`, pure, exported). The head becomes the top
+/// `head_size − k` ranked rows plus the top `k` background rows (`k` =
+/// reserve, or fewer when fewer qualify — unused slots go back to the ranked
+/// rows), each part ranked as before and the head re-sorted by score.
+/// Everything else follows in score order. (`fraction` is schema-bounded to
+/// `[0, 0.5]`, so `head_size − k` never goes negative.)
+pub fn reserve_background_slots(
+    ranked: Vec<SemanticSearchResult>,
+    background: Vec<SemanticSearchResult>,
+    head_size: usize,
+    fraction: f64,
+) -> Vec<SemanticSearchResult> {
+    let reserve = (head_size as f64 * fraction).floor().max(0.0) as usize;
+    let taken = reserve.min(background.len());
+    if taken == 0 {
+        return ranked;
+    }
+    let cut = head_size.saturating_sub(taken).min(ranked.len());
+    let mut ranked = ranked;
+    let mut background = background;
+    let ranked_tail = ranked.split_off(cut);
+    let background_tail = background.split_off(taken);
+    let mut head = ranked;
+    head.extend(background);
+    sort_by_blended_after(&mut head);
+    let mut tail = ranked_tail;
+    tail.extend(background_tail);
+    sort_by_blended_after(&mut tail);
+    head.extend(tail);
+    head
+}
+
+/// The vector path. `Ok(Some(sorted))` on a non-empty pool, `Ok(None)` when
+/// the pool is empty (→ text fallback), `Err` on embed failure / dimension
+/// mismatch / a DB error (→ text fallback).
 #[allow(clippy::too_many_arguments)]
 async fn try_semantic<P: EmbeddingProvider>(
     db: &Db,
@@ -484,15 +676,9 @@ async fn try_semantic<P: EmbeddingProvider>(
     explicit_min_score: Option<f64>,
     capture_query_embedding: Option<&mut Option<SearchQueryEmbedding>>,
 ) -> Result<Option<Vec<SemanticSearchResult>>, SemanticFail> {
-    let embed = provider
-        .generate_embedding_for_user(
-            query,
-            &options.user_id,
-            options.embedding_profile_id.as_deref(),
-            EmbeddingPriority::Interactive,
-        )
+    let embed = embed_text(provider, options, query)
         .await
-        .map_err(|_| SemanticFail::Other)?;
+        .map_err(|e| SemanticFail::Other(embedding_error_string(&e)))?;
 
     // Hand the caller the vector we just paid for, so a companion search in the
     // same turn (the per-turn conversation-summary list) can reuse it instead of
@@ -513,32 +699,105 @@ async fn try_semantic<P: EmbeddingProvider>(
         });
     }
 
+    // Relevance floor on the raw cosine, applied before the importance/recency
+    // blend so a low-cosine memory can't be smuggled into recall by its weight.
+    // Profile-aware: a single global floor would silently break either the
+    // neural or the TF-IDF scale.
     let min_score = explicit_min_score
         .unwrap_or_else(|| default_min_cosine_for_provider(Some(&embed.provider)));
 
     // Load the store off the read pool; searches run in-memory on the loaded
-    // store (v4 loads the store once and searches it per probe).
+    // store (v4 loads the store once and searches it per probe). The load
+    // stamps each entry's tier from the DB, so the hot filter is always current.
     let query_embedding = embed.embedding.clone();
     let store = {
         let cid = character_id.to_string();
-        db.read_main(move |conn| CharacterVectorStore::load(conn, &cid))
-            .map_err(|_| SemanticFail::Other)?
+        db.read_main(move |conn| CharacterVectorStore::load(conn, &cid))?
     };
     // The store's known dimension: the length of any stored entry (all entries
     // share it; v4 resolves it from the index metadata / first entry the same
     // way). `None` on an empty store → no mismatch guard.
     let stored_dimensions = store.all_entries().next().map(|(_, v)| v.len());
 
-    // Dimension mismatch → text fallback (v4 returns searchMemoriesText
-    // immediately, WITHOUT the access-time bump).
+    // Dimension mismatch → text fallback: v4 returns searchMemoriesText
+    // immediately rather than silently returning empty results — after its
+    // once-per-key WARN.
     if let Some(dims) = stored_dimensions {
         if query_embedding.len() != dims {
+            let warn_key = format!("{character_id}:{dims}->{}", query_embedding.len());
+            let first = DIMENSION_MISMATCH_WARNED
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .insert(warn_key);
+            if first {
+                // Surfaced once per (character, dimension pair): this is a
+                // degraded relevance state, not a normal fallback. Memory recall
+                // is running on keyword text search, NOT embeddings — reindex
+                // this character's embeddings or switch back to the profile the
+                // index was built with.
+                tracing::warn!(
+                    target: MEMORY_LOG_TARGET,
+                    characterId = %character_id,
+                    query = %crate::jsstr::utf16_truncate(query, 100),
+                    storedDimensions = dims,
+                    queryDimensions = query_embedding.len(),
+                    userId = %options.user_id,
+                    embeddingProfileId = %options.embedding_profile_id.as_deref().unwrap_or("default"),
+                    provider = %embed.provider,
+                    "[Memory] Embedding dimension mismatch — recall is degraded to TEXT search (embeddings ignored). Reindex this character or restore the matching embedding profile."
+                );
+            }
             return Err(SemanticFail::DimMismatch);
         }
     }
 
+    let excluded: std::collections::HashSet<&str> = options
+        .exclude_memory_ids
+        .iter()
+        .map(String::as_str)
+        .collect();
+    let include_cold = options.include_cold;
+    // Hot-only unless the caller asked for the archive: cold rows are filtered
+    // inside the (brute-force) vector scan, so the top-K is drawn from hot
+    // rows; exclusions likewise (v4 `vectorFilter`). With neither in force the
+    // predicate is always true — the unfiltered search.
+    let vector_filter = |id: &str, is_cold: bool| -> bool {
+        (excluded.is_empty() || !excluded.contains(id)) && (include_cold || !is_cold)
+    };
+
+    // The ranking knobs: the context's own tuning, else the retuned defaults.
+    // The R1 gate's constants are on the neural cosine scale; TF-IDF
+    // (`BUILTIN`) cosines distribute very differently, so the gate stays off
+    // there until its own scale is derived (recall-multiplier-retuning.md, R1).
+    // No recall context → no tuning → no R4, no gate.
+    let tuning: Option<ResolvedRecallTuning> = match &options.recall_context {
+        None => None,
+        Some(_) => Some(match &options.recall_tuning {
+            Some(t) => t.clone(),
+            None if embed.provider == "BUILTIN" => {
+                tracing::debug!(
+                    target: MEMORY_LOG_TARGET,
+                    characterId = %character_id,
+                    "[Memory] TF-IDF embeddings: recall boost gate off"
+                );
+                ResolvedRecallTuning {
+                    boost_gate: None,
+                    ..DEFAULT_RECALL_TUNING
+                }
+            }
+            None => DEFAULT_RECALL_TUNING,
+        }),
+    };
+    // The decay clock for every candidate's weight (v4 `weightClock`); the
+    // text fallback keeps the wall clock.
+    let weight_now = options
+        .weight_clock_ms
+        .map(|ms| ms as f64)
+        .unwrap_or(options.now_ms);
+
     // v4 searches limit*3 candidates.
-    let mut vector_results = store.search(&query_embedding, limit.saturating_mul(3));
+    let mut vector_results =
+        store.search_filtered(&query_embedding, limit.saturating_mul(3), vector_filter);
 
     // Multi-probe union (retrospective turns): embed each extra probe, union
     // its top-K pool with the main query's, keep each memory's max cosine.
@@ -563,21 +822,27 @@ async fn try_semantic<P: EmbeddingProvider>(
         }
         for probe in &extra_probes {
             // A failed probe embedding is skipped (v4's per-probe try/catch).
-            let Ok(probe_result) = provider
-                .generate_embedding_for_user(
-                    probe,
-                    &options.user_id,
-                    options.embedding_profile_id.as_deref(),
-                    EmbeddingPriority::Interactive,
-                )
-                .await
-            else {
-                continue;
+            let probe_result = match embed_text(provider, options, probe).await {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::debug!(
+                        target: MEMORY_LOG_TARGET,
+                        characterId = %character_id,
+                        probe = %crate::jsstr::utf16_truncate(probe, 80),
+                        error = %e.message,
+                        "[Memory] Extra probe embedding failed; skipping probe"
+                    );
+                    continue;
+                }
             };
             if probe_result.embedding.len() != query_embedding.len() {
                 continue;
             }
-            for vr in store.search(&probe_result.embedding, limit.saturating_mul(3)) {
+            for vr in store.search_filtered(
+                &probe_result.embedding,
+                limit.saturating_mul(3),
+                vector_filter,
+            ) {
                 match by_id.get(&vr.id) {
                     Some(existing) if vr.score <= *existing => {}
                     Some(_) => {
@@ -599,12 +864,15 @@ async fn try_semantic<P: EmbeddingProvider>(
             .collect();
     }
 
-    // Hybrid step: union literal text hits into the candidate pool. Two
-    // sources of literal phrases: the whole query (tool path,
-    // `apply_literal_phrase_boost`) and the turn's entity anchors (injector
-    // path) — a verbatim place name must not be sliced off by the cosine
-    // floor. Anchors only UNION; the cosine boost below stays gated on the
-    // tool-path literal phrase.
+    // Hybrid step: union literal text hits into the candidate pool.
+    // searchByContent runs a case-insensitive match against content+summary,
+    // so this captures all direct hits regardless of where they ranked in the
+    // vector top-K — a buried exact match cannot stay buried because the
+    // vector store's candidate cap excluded it. Two sources of literal
+    // phrases: the whole query (tool path, `apply_literal_phrase_boost`) and
+    // the turn's entity anchors (injector path) — a verbatim place name must
+    // not be sliced off by the cosine floor. Anchors only UNION; the cosine
+    // boost below stays gated on the tool-path literal phrase.
     let literal_phrase = if options.apply_literal_phrase_boost {
         get_literal_phrase(Some(query))
     } else {
@@ -615,11 +883,72 @@ async fn try_semantic<P: EmbeddingProvider>(
         // v4 `query.trim()` — JS trim (Unicode whitespace class).
         anchor_phrases.push(crate::jsstr::js_trim(query).to_string());
     }
-    for entity in options.entity_anchors.iter().take(3) {
-        let trimmed = crate::jsstr::js_trim(entity);
-        if !trimmed.is_empty() && crate::jsstr::utf16_len(trimmed) >= 2 {
-            anchor_phrases.push(trimmed.to_string());
+    // v4 filters THEN slices (`f7d8064be`): a one-character phrase among the
+    // first three no longer costs an anchor slot.
+    let entity_phrases: Vec<String> = options
+        .entity_anchors
+        .iter()
+        .map(|e| crate::jsstr::js_trim(e).to_string())
+        .filter(|p| crate::jsstr::utf16_len(p) >= 2)
+        .collect();
+    // Content hits per phrase, fetched once and reused by the union below —
+    // excluded ids and (unless asked for) cold rows already dropped.
+    let mut content_hits: std::collections::HashMap<String, Vec<Value>> =
+        std::collections::HashMap::new();
+    let mut hits_for = |phrase: &str| -> Result<Vec<Value>, SemanticFail> {
+        if let Some(hits) = content_hits.get(phrase) {
+            return Ok(hits.clone());
         }
+        let cid = character_id.to_string();
+        let ph = phrase.to_string();
+        let hits: Vec<Value> = db
+            .read_main(move |conn| memories_read::search_by_content(conn, &cid, &ph))?
+            .into_iter()
+            .filter(|m| {
+                let id = m.get("id").and_then(Value::as_str).unwrap_or("");
+                !excluded.contains(id) && (include_cold || !is_cold_row(m))
+            })
+            .collect();
+        content_hits.insert(phrase.to_string(), hits.clone());
+        Ok(hits)
+    };
+    match tuning.as_ref().filter(|t| t.specific_anchors) {
+        Some(t) => {
+            // R4 — prefer the names that narrow the search over the first
+            // three: every entity phrase is counted (duplicates included).
+            let mut counted: Vec<(String, usize)> = Vec::new();
+            for phrase in &entity_phrases {
+                counted.push((phrase.clone(), hits_for(phrase)?.len()));
+            }
+            let present: &[String] = options
+                .recall_context
+                .as_ref()
+                .map(|rc| rc.present_participant_names.as_slice())
+                .unwrap_or(&[]);
+            let chosen = select_specific_anchors(
+                &counted,
+                present,
+                3,
+                Some(t.anchor_min_hits),
+                Some(t.anchor_order),
+            );
+            let counted_json = serde_json::to_string(
+                &counted
+                    .iter()
+                    .map(|(phrase, count)| serde_json::json!({"phrase": phrase, "count": count}))
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap_or_default();
+            tracing::debug!(
+                target: MEMORY_LOG_TARGET,
+                characterId = %character_id,
+                countedJson = %counted_json,
+                chosenJson = %serde_json::to_string(&chosen).unwrap_or_default(),
+                "[Memory] Specific entity anchors chosen"
+            );
+            anchor_phrases.extend(chosen);
+        }
+        None => anchor_phrases.extend(entity_phrases.iter().take(3).cloned()),
     }
 
     let mut literal_hit_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -635,12 +964,7 @@ async fn try_semantic<P: EmbeddingProvider>(
         let mut direct_hit_memories: Vec<Value> = Vec::new();
         let mut direct_seen: std::collections::HashSet<String> = std::collections::HashSet::new();
         for phrase in &anchor_phrases {
-            let cid = character_id.to_string();
-            let ph = phrase.clone();
-            let hits = db
-                .read_main(move |conn| memories_read::search_by_content(conn, &cid, &ph))
-                .map_err(|_| SemanticFail::Other)?;
-            for m in hits {
+            for m in hits_for(phrase)? {
                 let Some(id) = id_of(&m) else { continue };
                 literal_hit_ids.insert(id.clone());
                 if direct_seen.insert(id) {
@@ -671,21 +995,27 @@ async fn try_semantic<P: EmbeddingProvider>(
 
     // Hydrate the matched ids (only the top-K).
     let matched_ids: Vec<String> = augmented.iter().map(|(id, _)| id.clone()).collect();
-    let memories = db
-        .read_main(move |conn| memories_read::find_by_ids(conn, &matched_ids))
-        .map_err(|_| SemanticFail::Other)?;
+    let memories = db.read_main(move |conn| memories_read::find_by_ids(conn, &matched_ids))?;
     let mut memory_map: std::collections::HashMap<String, Value> = std::collections::HashMap::new();
     for m in memories {
         if let Some(id) = id_of(&m) {
             memory_map.insert(id, m);
         }
     }
+    // Raw cosine per candidate, before any literal boost — R1 gates on it.
+    let raw_cosine: std::collections::HashMap<&str, f64> = augmented
+        .iter()
+        .map(|(id, score)| (id.as_str(), *score))
+        .collect();
 
     let mut results: Vec<SemanticSearchResult> = Vec::new();
     for (id, raw_score) in &augmented {
         let Some(memory) = memory_map.get(id) else {
             continue;
         };
+        if !include_cold && is_cold_row(memory) {
+            continue;
+        }
         let literal_hit = match &literal_phrase {
             Some(phrase) => {
                 literal_hit_ids.contains(id)
@@ -709,7 +1039,7 @@ async fn try_semantic<P: EmbeddingProvider>(
         let ew = calculate_effective_weight(
             &memory_inputs(memory),
             &DEFAULT_WEIGHTING_CONFIG,
-            options.now_ms,
+            weight_now,
         );
         results.push(SemanticSearchResult {
             memory: memory.clone(),
@@ -741,6 +1071,23 @@ async fn try_semantic<P: EmbeddingProvider>(
         });
     }
 
+    // R1's reference point: the best raw cosine in the floor-filtered pool
+    // (v4 `results.reduce((best, r) => Math.max(best, …), 0)`).
+    let cosine_of = |r: &SemanticSearchResult| {
+        id_of(&r.memory)
+            .and_then(|id| raw_cosine.get(id.as_str()).copied())
+            .unwrap_or(r.score)
+    };
+    let best_cosine = results
+        .iter()
+        .fold(0.0_f64, |best, r| best.max(cosine_of(r)));
+    let relevance_of = |r: &SemanticSearchResult| RecallRelevance {
+        cosine: cosine_of(r),
+        best_cosine,
+    };
+    // R6 needs the out-of-window remainder when the window turns hard.
+    let mut out_of_window: Vec<SemanticSearchResult> = Vec::new();
+
     // Event-time window (episodic recall) — two-stage on the injector path:
     // filter to the window first; if fewer than `limit` survive, fall back
     // to the unfiltered pool and let window hits take the bounded
@@ -762,17 +1109,22 @@ async fn try_semantic<P: EmbeddingProvider>(
                         None => false,
                     }
                 };
-                let window_hits: Vec<SemanticSearchResult> =
-                    results.iter().filter(|r| in_window(r)).cloned().collect();
-                // Tool path (no recall context): a plain hard filter. Injector
-                // path: hard filter only while it can still fill the head;
-                // starved → keep the full pool and let the multiplier loop
-                // apply the soft ×OCCURRED_WITHIN_WINDOW boost to window hits
-                // (v4 folds occurredWithin into the effective context).
-                if options.recall_context.is_none() || window_hits.len() >= limit {
-                    results = window_hits;
+                if options.recall_context.is_none() {
+                    results.retain(in_window);
                 } else {
-                    soft_window = Some(win);
+                    let window_hits = results.iter().filter(|r| in_window(r)).count();
+                    if window_hits >= limit {
+                        let (inside, outside): (Vec<_>, Vec<_>) =
+                            results.into_iter().partition(|r| in_window(r));
+                        results = inside;
+                        out_of_window = outside;
+                    } else {
+                        // Starved: keep the full pool and let the multiplier
+                        // loop apply the soft ×OCCURRED_WITHIN_WINDOW boost to
+                        // window hits (v4 folds occurredWithin into the
+                        // effective context).
+                        soft_window = Some(win);
+                    }
                 }
             }
         }
@@ -784,53 +1136,94 @@ async fn try_semantic<P: EmbeddingProvider>(
     // score *after* it is computed, so semantic relevance and recency keep
     // their relative footing and each adjustment is auditable in isolation.
     // No recall context → the exact historical sort, byte-for-byte.
-    if let Some(rc) = &options.recall_context {
-        let mut adjusted: Vec<SemanticSearchResult> = Vec::new();
-        for mut r in results {
-            let blended_before = compute_ranking_blend(r.score, r.raw_weight);
-            let adj = apply_recall_multipliers(&r.memory, rc, soft_window);
-            let Some(adj) = adj else {
-                continue; // excluded (cross-project narrow + exclude policy)
-            };
-            let blended_after = blended_before * adj.0;
-            r.recall_adjustment = Some(RecallAdjustment {
-                multiplier: adj.0,
-                fired: adj.1,
-                blended_before,
-                blended_after,
-            });
-            adjusted.push(r);
-        }
-        adjusted.sort_by(|a, b| {
-            let sa = a
-                .recall_adjustment
-                .as_ref()
-                .map(|x| x.blended_after)
-                .unwrap_or(0.0);
-            let sb = b
-                .recall_adjustment
-                .as_ref()
-                .map(|x| x.blended_after)
-                .unwrap_or(0.0);
-            sb.partial_cmp(&sa).unwrap_or(std::cmp::Ordering::Equal)
-        });
+    if let (Some(rc), Some(tuning)) = (&options.recall_context, tuning.as_ref()) {
+        let adjust = |pool: Vec<SemanticSearchResult>, extra_fired: &[&str]| {
+            let mut out: Vec<SemanticSearchResult> = Vec::new();
+            for mut r in pool {
+                let blended_before = compute_ranking_blend(r.score, r.raw_weight);
+                let Some((multiplier, mut fired)) = apply_recall_multipliers(
+                    &r.memory,
+                    rc,
+                    soft_window,
+                    tuning,
+                    Some(relevance_of(&r)),
+                ) else {
+                    continue; // excluded (cross-project narrow + exclude policy)
+                };
+                fired.extend(extra_fired.iter().map(|f| f.to_string()));
+                r.recall_adjustment = Some(RecallAdjustment {
+                    multiplier,
+                    fired,
+                    blended_before,
+                    blended_after: blended_before * multiplier,
+                });
+                out.push(r);
+            }
+            sort_by_blended_after(&mut out);
+            out
+        };
+        let adjusted = adjust(results, &[]);
 
         // Item 5 — one-hop related-memory expansion (only when the caller
         // opts in via recall_context.expand_related).
-        let final_results = if rc.expand_related {
+        let mut final_results = if rc.expand_related {
             expand_related_memories(
                 db,
                 adjusted,
-                limit,
-                &query_embedding,
-                rc,
-                soft_window,
-                options,
-                character_id,
+                &ExpansionInputs {
+                    limit,
+                    query_embedding: &query_embedding,
+                    rc,
+                    soft_window,
+                    tuning,
+                    options,
+                    excluded: &excluded,
+                    character_id,
+                    best_cosine,
+                    weight_now,
+                },
             )?
         } else {
             adjusted
         };
+
+        // R6 — when the window filtered hard, keep room in the head for
+        // out-of-window background that clears the gate at full strength.
+        if let (Some(gate), Some(head_size)) = (
+            tuning.boost_gate.as_ref(),
+            options.head_size.filter(|h| *h > 0),
+        ) {
+            if tuning.background_reserve > 0.0 && !out_of_window.is_empty() {
+                let threshold = boost_gate_threshold(gate, best_cosine);
+                // Expansion may already have pulled an out-of-window row in.
+                let present: std::collections::HashSet<String> = final_results
+                    .iter()
+                    .filter_map(|r| id_of(&r.memory))
+                    .collect();
+                let qualifying: Vec<SemanticSearchResult> = out_of_window
+                    .into_iter()
+                    .filter(|r| {
+                        !id_of(&r.memory).is_some_and(|id| present.contains(&id))
+                            && relevance_of(r).cosine >= threshold
+                    })
+                    .collect();
+                let background = adjust(qualifying, &["bg↺"]);
+                tracing::debug!(
+                    target: MEMORY_LOG_TARGET,
+                    characterId = %character_id,
+                    threshold = threshold,
+                    qualifying = background.len(),
+                    reserve = (head_size as f64 * tuning.background_reserve).floor() as u64,
+                    "[Memory] Background reservation (R6)"
+                );
+                final_results = reserve_background_slots(
+                    final_results,
+                    background,
+                    head_size,
+                    tuning.background_reserve,
+                );
+            }
+        }
         return Ok(Some(final_results));
     }
 
@@ -846,12 +1239,15 @@ async fn try_semantic<P: EmbeddingProvider>(
 }
 
 /// Run [`combine_recall_multipliers`] for one memory row (net JSON) against the
-/// owned recall context (+ the soft window when the two-stage filter starved).
-/// `None` = excluded. Returns `(multiplier, fired)` otherwise.
+/// owned recall context (+ the soft window when the two-stage filter starved),
+/// under the search's effective tuning and the candidate's relevance. `None` =
+/// excluded. Returns `(multiplier, fired)` otherwise.
 fn apply_recall_multipliers(
     memory: &Value,
     rc: &RecallContextInput,
     soft_window: Option<&TimeWindow>,
+    tuning: &ResolvedRecallTuning,
+    relevance: Option<RecallRelevance>,
 ) -> Option<(f64, Vec<String>)> {
     let keywords: Vec<String> = memory
         .get("keywords")
@@ -885,14 +1281,29 @@ fn apply_recall_multipliers(
         recently_whispered_ids: rc.recently_whispered_ids.as_ref(),
         current_chat_id: rc.current_chat_id.as_deref(),
         now_ms: rc.now_ms,
-        tuning: None,
+        tuning: Some(tuning),
         present_participant_names: &rc.present_participant_names,
     };
-    let adj = combine_recall_multipliers(&view, &ctx, None);
+    let adj = combine_recall_multipliers(&view, &ctx, relevance);
     if adj.exclude {
         return None;
     }
     Some((adj.multiplier, adj.fired))
+}
+
+/// What one-hop expansion reads from the search (v4 passes these as
+/// positional arguments).
+struct ExpansionInputs<'a> {
+    limit: usize,
+    query_embedding: &'a [f32],
+    rc: &'a RecallContextInput,
+    soft_window: Option<&'a TimeWindow>,
+    tuning: &'a ResolvedRecallTuning,
+    options: &'a SemanticSearchOptions,
+    excluded: &'a std::collections::HashSet<&'a str>,
+    character_id: &'a str,
+    best_cosine: f64,
+    weight_now: f64,
 }
 
 /// Item 5 — one-hop related-memory expansion (v4 `expandRelatedMemories`).
@@ -902,21 +1313,19 @@ fn apply_recall_multipliers(
 /// top hits in as extra candidates, score them against the same query
 /// embedding, run them through the same blend + recall multipliers, union
 /// them with the pool, and re-rank. Bounded on every axis
-/// (`RELATED_EXPANSION_*`); neighbors already in the pool are skipped;
-/// neighbors without a dimension-matching embedding are skipped; the same
+/// (`RELATED_EXPANSION_*`); neighbors already in the pool are skipped; an
+/// excluded neighbour is skipped WITHOUT consuming its seed's quota; a cold
+/// neighbour is skipped unless the caller asked for the archive; neighbors
+/// without a dimension-matching embedding are skipped; the same
 /// `min_importance`/`source` filters apply. `min_score` is intentionally NOT
 /// re-applied — a low-cosine neighbor relevant purely by association is the
-/// whole point of expansion.
-#[allow(clippy::too_many_arguments)]
+/// whole point of expansion. But it is gated on its OWN cosine like any
+/// candidate (R1): association may earn a neighbour its place in the pool, not
+/// a boost past better matches.
 fn expand_related_memories(
     db: &Db,
     ranked: Vec<SemanticSearchResult>,
-    limit: usize,
-    query_embedding: &[f32],
-    rc: &RecallContextInput,
-    soft_window: Option<&TimeWindow>,
-    options: &SemanticSearchOptions,
-    character_id: &str,
+    x: &ExpansionInputs<'_>,
 ) -> Result<Vec<SemanticSearchResult>, SemanticFail> {
     let in_pool: std::collections::HashSet<String> =
         ranked.iter().filter_map(|r| id_of(&r.memory)).collect();
@@ -924,7 +1333,7 @@ fn expand_related_memories(
     // Collect capped neighbor ids from the top hits only.
     let mut neighbor_ids: Vec<String> = Vec::new();
     let mut neighbor_set: std::collections::HashSet<String> = std::collections::HashSet::new();
-    'seeds: for seed in ranked.iter().take(limit) {
+    'seeds: for seed in ranked.iter().take(x.limit) {
         let mut pulled_from_seed = 0usize;
         let related = seed
             .memory
@@ -947,6 +1356,9 @@ fn expand_related_memories(
             if in_pool.contains(&neighbor_id) || neighbor_set.contains(&neighbor_id) {
                 continue;
             }
+            if x.excluded.contains(neighbor_id.as_str()) {
+                continue;
+            }
             neighbor_set.insert(neighbor_id.clone());
             neighbor_ids.push(neighbor_id);
             pulled_from_seed += 1;
@@ -959,16 +1371,18 @@ fn expand_related_memories(
 
     let neighbors = {
         let ids = neighbor_ids.clone();
-        db.read_main(move |conn| memories_read::find_by_ids(conn, &ids))
-            .map_err(|_| SemanticFail::Other)?
+        db.read_main(move |conn| memories_read::find_by_ids(conn, &ids))?
     };
     let mut survivors: Vec<SemanticSearchResult> = Vec::new();
     for memory in neighbors {
         // Character-scope + filter guards mirror the main pool.
-        if memory.get("characterId").and_then(Value::as_str) != Some(character_id) {
+        if memory.get("characterId").and_then(Value::as_str) != Some(x.character_id) {
             continue;
         }
-        if let Some(min_imp) = options.min_importance {
+        if !x.options.include_cold && is_cold_row(&memory) {
+            continue;
+        }
+        if let Some(min_imp) = x.options.min_importance {
             if memory
                 .get("importance")
                 .and_then(Value::as_f64)
@@ -978,7 +1392,7 @@ fn expand_related_memories(
                 continue;
             }
         }
-        if let Some(src) = &options.source {
+        if let Some(src) = &x.options.source {
             if memory.get("source").and_then(Value::as_str) != Some(src.as_str()) {
                 continue;
             }
@@ -986,20 +1400,28 @@ fn expand_related_memories(
         let Some(emb) = memory_embedding(&memory) else {
             continue;
         };
-        if emb.len() != query_embedding.len() {
+        if emb.len() != x.query_embedding.len() {
             continue;
         }
-        let Ok(cosine_score) = cosine_similarity(query_embedding, &emb) else {
+        let Ok(cosine_score) = cosine_similarity(x.query_embedding, &emb) else {
             continue;
         };
         let ew = calculate_effective_weight(
             &memory_inputs(&memory),
             &DEFAULT_WEIGHTING_CONFIG,
-            options.now_ms,
+            x.weight_now,
         );
         let blended_before = compute_ranking_blend(cosine_score, ew.raw_weight);
-        let Some((multiplier, mut fired)) = apply_recall_multipliers(&memory, rc, soft_window)
-        else {
+        let Some((multiplier, mut fired)) = apply_recall_multipliers(
+            &memory,
+            x.rc,
+            x.soft_window,
+            x.tuning,
+            Some(RecallRelevance {
+                cosine: cosine_score,
+                best_cosine: x.best_cosine,
+            }),
+        ) else {
             continue;
         };
         let blended_after = blended_before * multiplier;
@@ -1025,19 +1447,7 @@ fn expand_related_memories(
 
     let mut union: Vec<SemanticSearchResult> = ranked;
     union.extend(survivors);
-    union.sort_by(|a, b| {
-        let sa = a
-            .recall_adjustment
-            .as_ref()
-            .map(|x| x.blended_after)
-            .unwrap_or(0.0);
-        let sb = b
-            .recall_adjustment
-            .as_ref()
-            .map(|x| x.blended_after)
-            .unwrap_or(0.0);
-        sb.partial_cmp(&sa).unwrap_or(std::cmp::Ordering::Equal)
-    });
+    sort_by_blended_after(&mut union);
     Ok(union)
 }
 
@@ -1084,7 +1494,11 @@ async fn search_memories_text(
         }
     }
 
-    // Filters.
+    // Filters — hot-only FIRST (after the broadening, whose `< limit` test
+    // counted cold rows too; v4 `:1447`).
+    if !options.include_cold {
+        memories.retain(|m| !is_cold_row(m));
+    }
     if let Some(min_imp) = options.min_importance {
         memories.retain(|m| m.get("importance").and_then(Value::as_f64).unwrap_or(0.0) >= min_imp);
     }
@@ -1235,25 +1649,6 @@ fn memory_embedding(v: &Value) -> Option<Vec<f32>> {
         .collect();
     pairs.sort_by_key(|(i, _)| *i);
     Some(pairs.into_iter().map(|(_, f)| f).collect())
-}
-
-/// Fire-and-forget `updateAccessTimeBulk` (v4 `bumpAccessTimes`). Non-fatal: a
-/// failure is swallowed. Awaited here (v4 `void`s the promise) — same committed
-/// effect once settled.
-async fn bump_access_times(db: &Db, character_id: &str, memory_ids: &[String]) {
-    if memory_ids.is_empty() {
-        return;
-    }
-    let cid = character_id.to_string();
-    let ids = memory_ids.to_vec();
-    let _ = db
-        .write(move |writers| {
-            writers
-                .main()
-                .memories()
-                .update_access_time_bulk(&cid, &ids)
-        })
-        .await;
 }
 
 // ============================================================================
