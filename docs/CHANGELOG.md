@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — test(import): P4.D272 carve bug 186's store-name moves in system_import_state until P4.D274 lands
+
+_No crate versions bumped._
+
+At the pin, v4's `.qtap` import ends with a store-name reconcile and picks free `(2)` names (bug 186). That is P4.D274's port, not this lane's. Three overwrite arms' document-store tables and one store-identity name therefore differ from v5, which was confirmed by stubbing v4's reconcile in a scratch oracle. They are masked under the round's one named carve, `RECONCILE_PENDING_UNION`. The carve fails if a row stops differing or differs in a different way. The unifier removes it once P4.D274 is in.
+
 #### 2026-10-09 — test(import): P4.D272 memory-carrier instrument — tier-migrated copies, link comparands, new tier cases
 
 _No crate versions bumped._

@@ -175511,3 +175511,15 @@ All are green BY NAME from the pin:
     - A scratch oracle with v4's `reconcileStoreNames` jest-stubbed to a no-op makes all three overwrite arms' `doc_mount_*` reds VANISH. They are bug 186's end-of-import reconcile (`execute.ts:990-991`, P4.D274's hunk). The store-identity row stays: it is `import-document-stores`' free-name `(2)` (also P4.D274's).
     - R-D applies (shaped after the port; see the carve record).
   - `system_import_equivalence`: green. `execute_chat_watermark` was already green: the keystone's `ChatCreate` field carries the watermark through `entities.rs`' serde decode with no code here.
+
+### P4.D272 R-D — `RECONCILE_PENDING_UNION` on `system_import_state` (carve commit)
+- **Measured (§I.5).** On the `KEYSTONE` tip, `execute_wardrobe_overwrite` (4 tables), `execute_overwrite_all` (7) and `route_replace_remap` (7) were red outside every memory comparand. So was `store_identity_same_name_new_id` (v4 `Identity Store (2)`, v5 `Identity Store`).
+  - A scratch oracle with v4's `reconcileStoreNames` jest-stubbed (`jest.doMock('@/lib/mount-index/reconcile-store-names', …)`) made all three overwrite arms' rows vanish. The store-identity row stays: it is `import-document-stores`' free-name pick.
+  - Both are bug 186 (`ed8b15b50`), P4.D274's `quilltap_import/{mod,document_stores}.rs` hunks.
+  - In each overwrite arm, v4's reconcile keeps the archive vault's PRE-import `properties.json` file row (`d415a97c…`, 132 bytes) where v5 writes a fresh one. Every later minted label in the partition walk shifts with it.
+- **The carve.** `RECONCILE_PENDING_UNION` (case → tables, the 18 (case, table) rows listed) and `RECONCILE_PENDING_UNION_STORE_NAMES` (the one store cell), both in a fenced append-only region of `system_import_state.rs`. Pinned both ways:
+  - VANISHED when a listed table compares equal, or the store names agree;
+  - WRONG SHAPE unless v4 keeps `d415a97c…` and v5 does not, or unless the names are exactly `Identity Store (2)` / `Identity Store`.
+  - Proven against the stubbed oracle: every row reports VANISHED, plus the three WRONG SHAPE lines.
+  - **The unifier LIFTS it** after P4.D274 + P4.D273 (§S.5), deleting it here and in P4.D273's restore families, then re-runs `system_import_state` by name.
+- **`qtap_import_equivalence`: no reconcile move measured** — the family is green whole after MC.1 at the pin (the seed's fresh vaults take their plain names on both sides). No carve there.

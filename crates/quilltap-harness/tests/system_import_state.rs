@@ -1583,7 +1583,9 @@ fn run_store_identity_case(name: &str, case: &Value, user_id: &str, failures: &m
     let got_v5 = classify_identity_dump(&stores, &docs, &pre_ids);
     let oracle_stores = case["stores"].as_array().cloned().unwrap_or_default();
     let oracle_docs = case["docs"].as_array().cloned().unwrap_or_default();
-    let got_v4 = classify_identity_dump(&oracle_stores, &oracle_docs, &pre_ids);
+    let mut got_v4 = classify_identity_dump(&oracle_stores, &oracle_docs, &pre_ids);
+    // [P4.D272 R-D] bug 186's free-name pick, carved until P4.D274 lands.
+    carve_reconcile_pending_store_names(name, &got_v5, &mut got_v4, failures);
 
     // The classification must actually key on a PRESERVED archive id — otherwise
     // everything folds to `minted` and the equality below is vacuous. Every arm's
@@ -3190,8 +3192,175 @@ fn compare_execute(
         ));
     }
     record_v5_transcript_counters(&got_norm_state);
+    let (got_norm_state, want_norm_state) = carve_reconcile_pending(
+        name,
+        got_state,
+        want_state,
+        got_norm_state,
+        want_norm_state,
+        failures,
+    );
     diff_states(name, &got_norm_state, &want_norm_state, failures);
 }
+
+// === P4.D272 R-D: RECONCILE_PENDING_UNION (append-only; LIFTED by the unifier, §S.5) ===
+
+/// [P4.D272 R-D] The round's ONE named carve (P4.D273 R-D), on this family's
+/// rows. At the pin v4's `.qtap` import ends with `reconcileStoreNames
+/// ('qtap-import')` (`execute.ts:990-991`, bug 186 — `ed8b15b50`) and its
+/// `import-document-stores` picks a free `… (2)` name; neither is ported until
+/// P4.D274 (`quilltap_import/{mod,document_stores}.rs`, §R.10(l)), which this
+/// lane does not touch.
+///
+/// **Measured, not assumed:** on the `KEYSTONE` tip these four arms were red
+/// outside every memory comparand, and a scratch oracle with v4's
+/// `reconcileStoreNames` jest-stubbed to a no-op made the three overwrite
+/// arms' rows VANISH (the store-identity row is the free-name pick, which the
+/// stub does not touch). In each overwrite arm v4's reconcile leaves the
+/// archive vault's PRE-import `properties.json` file row (`d415a97c…`, 132
+/// bytes) in place where v5 writes a fresh one, and every later minted label
+/// in the partition walk shifts with it — so the carve is per (case, table),
+/// listing exactly the tables that differ.
+///
+/// Pinned BOTH ways: a listed table that compares EQUAL is VANISHED (v4
+/// stopped moving it, or v5 already matches — lift the row), and a case whose
+/// v4 state does not keep that pre-import file row, or whose v5 state already
+/// does, is WRONG SHAPE. The unifier deletes this table (and P4.D273's twin)
+/// after picking P4.D274 + P4.D273, then re-runs `system_import_state` by name
+/// (§S.5).
+const RECONCILE_PENDING_UNION: &[(&str, &[&str])] = &[
+    (
+        "execute_wardrobe_overwrite",
+        &[
+            "mountIndex.doc_mount_documents",
+            "mountIndex.doc_mount_file_links",
+            "mountIndex.doc_mount_files",
+            "mountIndex.doc_mount_folders",
+        ],
+    ),
+    (
+        "execute_overwrite_all",
+        &[
+            "mountIndex.doc_mount_documents",
+            "mountIndex.doc_mount_file_links",
+            "mountIndex.doc_mount_files",
+            "mountIndex.doc_mount_folders",
+            "mountIndex.group_character_members",
+            "mountIndex.group_doc_mount_links",
+            "mountIndex.project_doc_mount_links",
+        ],
+    ),
+    (
+        "route_replace_remap",
+        &[
+            "mountIndex.doc_mount_documents",
+            "mountIndex.doc_mount_file_links",
+            "mountIndex.doc_mount_files",
+            "mountIndex.doc_mount_folders",
+            "mountIndex.group_character_members",
+            "mountIndex.group_doc_mount_links",
+            "mountIndex.project_doc_mount_links",
+        ],
+    ),
+];
+
+/// The archive vault's pre-import `properties.json` file row v4's reconcile
+/// keeps (the carve's shape signature).
+const RECONCILE_KEPT_FILE_ID: &str = "d415a97c-9bf9-4b54-b61e-b1c0f465b1ce";
+
+/// [P4.D272 R-D] The store-identity arm's carved cell: v4's free-name pick
+/// names the second same-named store `Identity Store (2)`; v5 keeps
+/// `Identity Store` until P4.D274. (case, store class, v4 name, v5 name).
+const RECONCILE_PENDING_UNION_STORE_NAMES: &[(&str, &str, &str, &str)] = &[(
+    "store_identity_same_name_new_id",
+    "archive-2",
+    "Identity Store (2)",
+    "Identity Store",
+)];
+
+/// Apply [`RECONCILE_PENDING_UNION`] to one case's normalized states (a no-op
+/// for an unlisted case).
+fn carve_reconcile_pending(
+    name: &str,
+    got_raw: &StateDump,
+    want_raw: &StateDump,
+    mut got: StateDump,
+    mut want: StateDump,
+    failures: &mut Vec<String>,
+) -> (StateDump, StateDump) {
+    let Some((_, tables)) = RECONCILE_PENDING_UNION.iter().find(|(c, _)| *c == name) else {
+        return (got, want);
+    };
+    let keeps = |d: &StateDump| {
+        d.get("mountIndex")
+            .and_then(|t| t.get("doc_mount_files"))
+            .is_some_and(|rows| rows.iter().any(|r| r["id"] == RECONCILE_KEPT_FILE_ID))
+    };
+    if !keeps(want_raw) || keeps(got_raw) {
+        failures.push(format!(
+            "[{name}] RECONCILE_PENDING_UNION WRONG SHAPE: expected v4 to keep the pre-import \
+             file row {RECONCILE_KEPT_FILE_ID} and v5 not to (v4 keeps: {}, v5 keeps: {})",
+            keeps(want_raw),
+            keeps(got_raw)
+        ));
+    }
+    for qualified in *tables {
+        let (part, table) = qualified.split_once('.').expect("partition.table");
+        let take = |d: &mut StateDump| d.get_mut(part).and_then(|t| t.remove(table));
+        let (g, w) = (take(&mut got), take(&mut want));
+        if g == w {
+            failures.push(format!(
+                "[{name}] RECONCILE_PENDING_UNION VANISHED: {qualified} now compares equal — lift \
+                 the row (P4.D274's reconcile landed, or v4 stopped moving it)"
+            ));
+        }
+    }
+    (got, want)
+}
+
+/// Apply [`RECONCILE_PENDING_UNION_STORE_NAMES`] to the store-identity arm's
+/// classified dumps: pin both cells, then put v5's name in v4's slot.
+fn carve_reconcile_pending_store_names(
+    name: &str,
+    got_v5: &Value,
+    got_v4: &mut Value,
+    failures: &mut Vec<String>,
+) {
+    for (case, class, v4_name, v5_name) in RECONCILE_PENDING_UNION_STORE_NAMES {
+        if *case != name {
+            continue;
+        }
+        let name_of = |d: &Value| -> Option<String> {
+            d["stores"]
+                .as_array()?
+                .iter()
+                .find(|s| s["id"] == *class)
+                .and_then(|s| s["name"].as_str().map(str::to_string))
+        };
+        let (v5, v4) = (name_of(got_v5), name_of(got_v4));
+        if v4 == v5 {
+            failures.push(format!(
+                "[{name}] RECONCILE_PENDING_UNION VANISHED: store {class} reads {v4:?} on both \
+                 sides — lift the row"
+            ));
+            continue;
+        }
+        if v4.as_deref() != Some(*v4_name) || v5.as_deref() != Some(*v5_name) {
+            failures.push(format!(
+                "[{name}] RECONCILE_PENDING_UNION WRONG SHAPE: store {class} v4 {v4:?} (want \
+                 {v4_name:?}), v5 {v5:?} (want {v5_name:?})"
+            ));
+            continue;
+        }
+        // The carve: v4's free-name pick rewrites the store's name wherever
+        // the classified dump carries it (the store row and its documents).
+        let text = serde_json::to_string(&*got_v4).expect("classified dump");
+        let swapped = text.replace(&format!("\"{v4_name}\""), &format!("\"{v5_name}\""));
+        *got_v4 = serde_json::from_str(&swapped).expect("classified dump");
+    }
+}
+
+// === end P4.D272 R-D ===
 
 fn run_route_case(
     name: &str,
