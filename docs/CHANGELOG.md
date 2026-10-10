@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-10 — docs(porting): P4.D269 lane close — gate record, handoffs, status header
+
+_Docs-only change._
+
+The P4.D269 lane record in `status-log.md`: the workspace gate (707 binaries, 4,683 passed, 8 failed, each attributed to a sibling or the union), the three handoffs, the Tier 3 deferrals, and the order's status header set to LANE COMPLETE.
+
 #### 2026-10-09 — feat(cli): P4.D269 quilltap anchor-probe, the grown recall-replay, and the three completion templates at v4 `01a83539d`
 
 _Versions: cli 0.0.31._
