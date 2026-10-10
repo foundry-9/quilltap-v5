@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(memory): P4.D268 Carina and voice-rewrite recall stamp only the memories they deliver
+
+_Versions: core 0.0.1272._
+
+Carina's memory recall now calls `mark_memories_accessed` for the formatted entries' ids, after its empty-result return (v4 `3f7320138` F6). The voice-rewrite `recall_for_seed` does the same after its empty-content return. Both calls are awaited inline. Because voice-rewrite formats through the dynamic head, a recalled digest now carries the ` (from N notes)` suffix there, as it does in v4.
+
+`carina_query_tier3`, `announcer_tier3` and `in_scene_voiced_tier3` each compare v4's `[Memory] Marking memories accessed` lines per case: Carina 1, announcer 13, in-scene 13. The v4 side gets a `setImmediate` flush, because v4's bulk update is not awaited, before the `bumped` table dump. All three families pass, including the `bumped` dumps.
+
 #### 2026-10-09 — feat(memory): P4.D268 first-message context drops cold rows, leads with digests and stamps what it selected; the recap's high bucket is digests-first
 
 _Versions: core 0.0.1271._

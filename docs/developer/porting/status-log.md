@@ -175593,3 +175593,14 @@ The recipe sweep ran from the pin against a scratch worktree at the base `18e41e
   - The planned Bob shape was replaced. Speaker Two's existing "Bob" note keeps v4's semantic search non-empty, so the first-message fallback could never run.
 - **Recap order via `build_context_tier3`:** the new op `p4d268_recap_digests_lead_the_high_bucket` plants a newest plain row (2024-06-02) and a digest (2024-06-01). v4's recap prompt lists the digest first. **GREEN; mutation:** dropping `digests_first` reddens the op. My three appended ops were reordered so the UNION-PENDING multi op runs LAST.
 - **Gate note:** `activity_registry::records_a_blip_once_a_span_outlives_the_threshold` failed once in the full core lib run and passed 3/3 alone. It is a pre-existing global-counter timing flake, not this lane's.
+
+### Unit 6 landed — `b5f509ab5`
+
+### Unit 7 — Carina + voice-rewrite stamps (Tier 1 item 8; R-D, R-J)
+- **Carina.** `load_carina_memory_recall` stamps the formatted `debug_memories` ids (`!!id`) after the `content.is_empty() || memories_used == 0` return.
+- **Voice-rewrite.** `recall_for_seed` stamps after the `content.is_empty()` return. It formats through the head, so a digest carries the suffix — a recorded consequence (R-J).
+- **Differentials, regenerated at the pin into `/tmp/p4d268/fam/`:**
+  - Each oracle patches v4's `logger.debug` for `[Memory] Marking memories accessed`, emits it per case (`accessLog`), and flushes with `setImmediate` before its `bumped` dump.
+  - Each Rust side captures with `global_capture` (`capture_async` for Carina; a `p4d268_cap` wrapper around `rt.block_on` for the two sync families) and compares the lines, with a non-vacuous floor.
+  - **All three GREEN:** `carina_query_tier3` (63 rows, 1 stamp line), `announcer_tier3` (15 cases, 13 stamp lines), `in_scene_voiced_tier3` (28 rows, 13 stamp lines).
+  - **R-E's predicted `bumped` UNION-PENDING rows did NOT materialise.** In every case of these corpora the delivered set equals the returned set, so KEYSTONE's search-wide bump and v4's delivered-only stamp mark the same rows. No UNION-PENDING row is recorded for these families.

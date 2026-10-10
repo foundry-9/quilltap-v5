@@ -163,6 +163,17 @@ where
     if formatted.content.is_empty() {
         return String::new();
     }
+    // Only the delivered entries count as accessed (v4 `3f7320138` F6, the
+    // `!!id` filter; awaited inline, P4.D268 R-D). Formatting through the
+    // dynamic head also gives a digest its ` (from N notes)` suffix here
+    // (v4 `d58548051`).
+    let delivered: Vec<String> = formatted
+        .debug_memories
+        .iter()
+        .filter_map(|d| d.memory_id.clone())
+        .filter(|id| !id.is_empty())
+        .collect();
+    crate::services::memory_access::mark_memories_accessed(db, character_id, &delivered).await;
     build_commonplace_llm_context(&CommonplaceParts {
         relevant: Some(formatted.content),
         ..Default::default()

@@ -321,6 +321,24 @@ async function runCase(
   );
   await initializeDatabase();
 
+  // P4.D268 (v4 `3f7320138` F6): the delivery stamp's DEBUG line, captured off
+  // the logger singleton this registry generation's services import.
+  const { logger: p4d268Logger } = await import('@/lib/logger');
+  const accessLog: Array<{ message: string; fields: Record<string, unknown> }> = [];
+  const p4d268PriorDebug = (p4d268Logger as unknown as { debug: (...a: unknown[]) => unknown }).debug;
+  (p4d268Logger as unknown as { debug: unknown }).debug = (message: string, fields?: unknown) => {
+    if (message === '[Memory] Marking memories accessed') {
+      accessLog.push(JSON.parse(JSON.stringify({ message, fields: fields ?? {} })));
+    }
+    return p4d268PriorDebug.call(p4d268Logger, message, fields);
+  };
+  // v4's `markMemoriesAccessed` does not await its bulk UPDATE: let it land
+  // before the `bumped` dump reads the table.
+  const flushAccess = async () => {
+    await new Promise((resolve) => setImmediate(resolve));
+    return accessLog;
+  };
+
   // [P4.D201 / v4 `baa85e19b`] The stale-column plant, on the per-case COPY.
   if (c.plantStaleDefaultColumn) {
     await rawQuery('UPDATE characters SET defaultSystemPromptId = ? WHERE id = ?', [
@@ -366,6 +384,7 @@ async function runCase(
         status: resp.status,
         body: await resp.json(),
         canned: [...cannedRecorded.values()],
+        accessLog: await flushAccess(),
         tables: { memories: await readMemoryBumps(spec.seedTimestamp) },
       };
     }
@@ -406,7 +425,8 @@ async function runCase(
       name: c.name,
       result,
       canned: [...cannedRecorded.values()],
-      tables: { memories: await readMemoryBumps(spec.seedTimestamp) },
+      accessLog: await flushAccess(),
+        tables: { memories: await readMemoryBumps(spec.seedTimestamp) },
     };
   } finally {
     global.Date = RealDate;

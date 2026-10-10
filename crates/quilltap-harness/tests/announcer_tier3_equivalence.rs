@@ -439,7 +439,9 @@ fn announcer_tier3_matches_oracle() {
     let mut failed: Vec<String> = Vec::new();
     let mut driven: BTreeSet<String> = BTreeSet::new();
 
+    let mut access_lines_seen = 0usize;
     for case in CASES {
+        let mut captured: Vec<String> = Vec::new();
         driven.insert(case.name.to_string());
         let Some(want) = oracle.get(case.name) else {
             failed.push(format!("{}_MISSING_FROM_ORACLE", case.name));
@@ -512,19 +514,21 @@ fn announcer_tier3_matches_oracle() {
                 executor: Arc::new(executor),
                 now_ms: Some(NOW_MS as f64),
             });
-            let resp = rt.block_on(chat_announcement_preview(
-                &db,
-                Some(&driver),
-                USER,
-                case.chat_id,
-                case.seed_markdown,
-                case.character_id,
-                case.profile_id,
-                None,
-                case.target_participant_ids
-                    .map(|ids| ids.iter().map(|s| s.to_string()).collect::<Vec<_>>())
-                    .as_deref(),
-            ));
+            let resp = p4d268_cap(&mut captured, || {
+                rt.block_on(chat_announcement_preview(
+                    &db,
+                    Some(&driver),
+                    USER,
+                    case.chat_id,
+                    case.seed_markdown,
+                    case.character_id,
+                    case.profile_id,
+                    None,
+                    case.target_participant_ids
+                        .map(|ids| ids.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+                        .as_deref(),
+                ))
+            });
             let (status, body) = status_body(&resp);
             let want_status = want["status"].as_u64().unwrap() as u16;
             if status != want_status {
@@ -542,22 +546,24 @@ fn announcer_tier3_matches_oracle() {
                 eprintln!("[{}] body OK.", case.name);
             }
         } else {
-            let result = rt.block_on(generate_character_voiced_announcement(
-                &db,
-                provider.as_ref(),
-                &embedding,
-                &executor,
-                &CharacterVoicedAnnouncementParams {
-                    chat_id: case.chat_id,
-                    character: &character,
-                    profile: &profile,
-                    seed_markdown: case.seed_markdown,
-                    system_prompt_id: None,
-                    user_id: USER,
-                    audience_names: &audience_names,
-                    now_ms: NOW_MS as f64,
-                },
-            ));
+            let result = p4d268_cap(&mut captured, || {
+                rt.block_on(generate_character_voiced_announcement(
+                    &db,
+                    provider.as_ref(),
+                    &embedding,
+                    &executor,
+                    &CharacterVoicedAnnouncementParams {
+                        chat_id: case.chat_id,
+                        character: &character,
+                        profile: &profile,
+                        seed_markdown: case.seed_markdown,
+                        system_prompt_id: None,
+                        user_id: USER,
+                        audience_names: &audience_names,
+                        now_ms: NOW_MS as f64,
+                    },
+                ))
+            });
 
             let got_result = json!({
                 "success": result.success,
@@ -611,6 +617,21 @@ fn announcer_tier3_matches_oracle() {
         } else {
             eprintln!("[{} tables] OK.", case.name);
         }
+
+        // P4.D268: the delivery stamp (count = delivered entries, not results).
+        let want_access = p4d268_access_lines(&want["accessLog"]);
+        if p4d268_got_access_lines(&captured) != want_access {
+            eprintln!(
+                "[{} access] MISMATCH: v5 {:?} v4 {:?}",
+                case.name,
+                p4d268_got_access_lines(&captured),
+                want_access
+            );
+            failed.push(format!("{}_access", case.name));
+        } else {
+            eprintln!("[{} access] OK.", case.name);
+        }
+        access_lines_seen += want_access.len();
     }
 
     let recorded: BTreeSet<String> = oracle.keys().cloned().collect();
@@ -623,4 +644,48 @@ fn announcer_tier3_matches_oracle() {
     eprintln!("announcer-tier3: {} cases driven.", driven.len());
 
     assert!(failed.is_empty(), "announcer-tier3 FAILED: {failed:?}");
+    // P4.D268: the stamp comparand is non-vacuous.
+    assert!(
+        access_lines_seen >= 1,
+        "no `Marking memories accessed` line in the oracle"
+    );
+}
+
+/// P4.D268 (v4 `3f7320138` F6): the delivery stamp — v4's `[Memory] Marking
+/// memories accessed {characterId, count}` lines, in order, rendered the way
+/// v5's capture rig renders its own.
+fn p4d268_access_lines(want: &Value) -> Vec<String> {
+    const MSG: &str = "[Memory] Marking memories accessed";
+    want.as_array()
+        .unwrap_or_else(|| panic!("accessLog is not a list — regenerate the oracle: {want}"))
+        .iter()
+        .map(|w| {
+            assert_eq!(w["message"], MSG);
+            let f = &w["fields"];
+            let keys: Vec<&str> = f.as_object().unwrap().keys().map(String::as_str).collect();
+            assert_eq!(keys, ["characterId", "count"], "v4's key order moved");
+            format!(
+                "DEBUG quilltap::memories {MSG} characterId={} count={}",
+                f["characterId"].as_str().unwrap(),
+                f["count"]
+            )
+        })
+        .collect()
+}
+
+/// v5's own stamp lines out of a capture.
+fn p4d268_got_access_lines(lines: &[String]) -> Vec<String> {
+    lines
+        .iter()
+        .filter(|l| l.contains("[Memory] Marking memories accessed"))
+        .cloned()
+        .collect()
+}
+
+/// P4.D268: run `f` under the process-global capture rig (tracing's `Interest`
+/// cache makes a thread-scoped subscriber unreliable here) and keep its lines.
+fn p4d268_cap<T>(acc: &mut Vec<String>, f: impl FnOnce() -> T) -> T {
+    let (t, lines) = quilltap_core::test_support::global_capture::capture(f);
+    acc.extend(lines);
+    t
 }

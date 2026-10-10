@@ -1132,6 +1132,15 @@ where
     if formatted.content.is_empty() || formatted.memories_used == 0 {
         return None;
     }
+    // Only the delivered entries count as accessed (v4 `3f7320138` F6, the
+    // `!!id` filter; awaited inline, P4.D268 R-D).
+    let delivered: Vec<String> = formatted
+        .debug_memories
+        .iter()
+        .filter_map(|d| d.memory_id.clone())
+        .filter(|id| !id.is_empty())
+        .collect();
+    crate::services::memory_access::mark_memories_accessed(deps.db, character_id, &delivered).await;
     Some(
         crate::services::commonplace_notifications::build_commonplace_llm_context(
             &crate::services::commonplace_notifications::CommonplaceParts {

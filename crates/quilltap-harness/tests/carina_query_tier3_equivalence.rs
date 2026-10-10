@@ -513,6 +513,7 @@ async fn carina_query_tier3_matches_oracle() {
     let mut oracle_events: HashMap<String, Value> = HashMap::new();
     let mut oracle_streams: Vec<CannedStreamW> = Vec::new();
     let mut oracle_tables: HashMap<String, Value> = HashMap::new();
+    let mut oracle_access: HashMap<String, Value> = HashMap::new();
     for line in oracle_text.lines() {
         let line = line.trim();
         if line.is_empty() {
@@ -531,6 +532,9 @@ async fn carina_query_tier3_matches_oracle() {
             }
             Some("table") => {
                 oracle_tables.insert(v["table"].as_str().unwrap().to_string(), v);
+            }
+            Some("accessLog") => {
+                oracle_access.insert(v["call"].as_str().unwrap().to_string(), v["lines"].clone());
             }
             other => panic!("unknown oracle row kind {other:?}"),
         }
@@ -610,6 +614,7 @@ async fn carina_query_tier3_matches_oracle() {
     // message. Asserted as a floor after the loop so the placement arm below
     // cannot go vacuous the day an answerer stops carrying progressions.
     let mut cases_reporting_progressions = 0usize;
+    let mut access_lines_seen = 0usize;
 
     for case in &spec.cases {
         let sink = RecordingSink::new();
@@ -635,7 +640,23 @@ async fn carina_query_tier3_matches_oracle() {
             operator_initiated: case.operator_initiated,
         };
 
-        let result = run_carina_query(&deps, &opts).await;
+        let (result, captured) = quilltap_core::test_support::global_capture::capture_async(
+            run_carina_query(&deps, &opts),
+        )
+        .await;
+        // P4.D268: the delivery stamp (count = delivered entries, not results).
+        let want_access = p4d268_access_lines(
+            oracle_access
+                .get(&case.name)
+                .unwrap_or_else(|| panic!("{}: no accessLog — regenerate the oracle", case.name)),
+        );
+        assert_eq!(
+            p4d268_got_access_lines(&captured),
+            want_access,
+            "{}: the delivery stamp",
+            case.name
+        );
+        access_lines_seen += want_access.len();
 
         // Result diff.
         let mut got = carina_result_to_json(&result);
@@ -714,6 +735,11 @@ async fn carina_query_tier3_matches_oracle() {
         "no case put a progressions report on the user message — the placement \
          arms are vacuous (did the forced call stop firing?)"
     );
+    // P4.D268: the stamp comparand is non-vacuous.
+    assert!(
+        access_lines_seen >= 1,
+        "no `Marking memories accessed` line in the oracle"
+    );
 
     // Dump + diff the three tables in the shared-id-map remap form.
     let mut got_cm = db
@@ -756,4 +782,35 @@ async fn carina_query_tier3_matches_oracle() {
         assert_eq!(got["columns"], want["columns"], "{name} column set / order");
         assert_eq!(got["rows"], want["rows"], "{name} rows diverge");
     }
+}
+
+/// P4.D268 (v4 `3f7320138` F6): the delivery stamp — v4's `[Memory] Marking
+/// memories accessed {characterId, count}` lines, in order, rendered the way
+/// v5's capture rig renders its own.
+fn p4d268_access_lines(want: &Value) -> Vec<String> {
+    const MSG: &str = "[Memory] Marking memories accessed";
+    want.as_array()
+        .unwrap_or_else(|| panic!("accessLog is not a list — regenerate the oracle: {want}"))
+        .iter()
+        .map(|w| {
+            assert_eq!(w["message"], MSG);
+            let f = &w["fields"];
+            let keys: Vec<&str> = f.as_object().unwrap().keys().map(String::as_str).collect();
+            assert_eq!(keys, ["characterId", "count"], "v4's key order moved");
+            format!(
+                "DEBUG quilltap::memories {MSG} characterId={} count={}",
+                f["characterId"].as_str().unwrap(),
+                f["count"]
+            )
+        })
+        .collect()
+}
+
+/// v5's own stamp lines out of a capture.
+fn p4d268_got_access_lines(lines: &[String]) -> Vec<String> {
+    lines
+        .iter()
+        .filter(|l| l.contains("[Memory] Marking memories accessed"))
+        .cloned()
+        .collect()
 }
