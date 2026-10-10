@@ -12,6 +12,28 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(memory): P4.D266 U3 the memory gate's cold tier
+
+_Versions: core 0.0.1268._
+
+The memory gate handles cold matches the way v4 does at `01a83539d` (`d58548051`):
+
+- **Superseded members.** A superseded cold member's absorption is redirected to its digest (up to 3 hops). In the REINFORCE band a redirect becomes a count-only `SKIP_NEAR_DUPLICATE`, with no footnote on the digest.
+- **Demoted rows.** A cap-demoted (unsuperseded) cold row is promoted back to hot when it is re-observed.
+- **Vanished digest.** If the digest is gone, the gate absorbs into the cold row without promoting it.
+- **Related band.** Matches collapse onto their digests, keeping the first-seen order and the maximum similarity. A cold row seen only in the related band is never promoted.
+- **Date guard.** It links the digest of a superseded best match.
+- **Watermark.** It now counts hot rows only.
+
+There is no vector-store re-stamp, because v5 has no cached store (R-B). A fresh `CharacterVectorStore::load` reads the column, and a unit test proves it.
+
+Testing:
+
+- Nine new unit tests mirror v4's `gate-cold-tier.test.ts`, plus a 4-hop chain and a chain that ends on a cold digest.
+- `memory-gate-tier3.json` grows by 14 scenarios: the cap, absorb and cold-tier cases. Their canned texts come from v4's real helpers. The gate builder takes optional tier, source, count and link seed fields, and a seed may now have no vector.
+- `memory-watermark-tier3.json` gains `cold_rows_not_counted`.
+- Both families fail on the pre-U3 code and pass with this commit.
+
 #### 2026-10-09 — feat(memory): P4.D266 U2 the gate counts every re-observation atomically and caps footnotes
 
 _Versions: core 0.0.1267._

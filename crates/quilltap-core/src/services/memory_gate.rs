@@ -47,7 +47,7 @@ use serde_json::Value;
 
 use crate::about_character::resolve_about_character_id;
 use crate::db::characters_read;
-use crate::db::memories::{CreateOptions, MemCreate, MemUpdate};
+use crate::db::memories::{CreateOptions, MemCreate, MemUpdate, TierExtra};
 use crate::db::vector_store::CharacterVectorStore;
 use crate::db::{memories_read, DbError};
 use crate::episodic::{build_memory_embedding_text, EpisodicAnchorView};
@@ -224,7 +224,6 @@ enum GateDecision {
 
 struct RelatedMatch {
     memory: Value,
-    #[allow(dead_code)]
     similarity: f64,
 }
 
@@ -476,10 +475,13 @@ async fn run_memory_gate_inner<P: EmbeddingProvider>(
                 best_memory.get("occurredAt").and_then(Value::as_str),
             );
         if distinct_occasion {
+            // The guard judges the BEST match's own `occurredAt` (a cold row's
+            // too), then links its live digest when it is a superseded member.
+            let link_target = redirect_cold_link(db, best_memory.clone())?;
             return Ok(GateResult {
                 decision: GateDecision::InsertRelated {
                     related: vec![RelatedMatch {
-                        memory: best_memory.clone(),
+                        memory: link_target,
                         similarity: best.score,
                     }],
                 },
@@ -490,9 +492,10 @@ async fn run_memory_gate_inner<P: EmbeddingProvider>(
 
     if best.score >= NEAR_DUPLICATE_THRESHOLD {
         if let Some(existing) = best_mem {
+            let (target, _redirected) = resolve_cold_for_absorb(db, existing).await?;
             return Ok(GateResult {
                 decision: GateDecision::SkipNearDuplicate {
-                    existing,
+                    existing: target,
                     similarity: best.score,
                 },
                 embedding: Some(embedding),
@@ -502,24 +505,57 @@ async fn run_memory_gate_inner<P: EmbeddingProvider>(
 
     if best.score >= MERGE_THRESHOLD {
         if let Some(existing) = best_mem {
+            let (target, redirected) = resolve_cold_for_absorb(db, existing).await?;
+            if redirected {
+                // A digest is reinforced by count only: no [+] footnote (the
+                // next consolidation folds any novel detail in).
+                // SKIP_NEAR_DUPLICATE is the count-only absorption path.
+                return Ok(GateResult {
+                    decision: GateDecision::SkipNearDuplicate {
+                        existing: target,
+                        similarity: best.score,
+                    },
+                    embedding: Some(embedding),
+                });
+            }
             return Ok(GateResult {
-                decision: GateDecision::Reinforce { existing },
+                decision: GateDecision::Reinforce { existing: target },
                 embedding: Some(embedding),
             });
         }
     }
 
     // Related band: [RELATED_THRESHOLD, MERGE_THRESHOLD), in score-desc order.
-    let related: Vec<RelatedMatch> = results
+    // A cold, superseded member is linked via its digest; duplicates (several
+    // members of one cluster) collapse onto the digest at its best similarity
+    // — v4's `Map` keyed by target id, whose overwrite keeps the FIRST
+    // insertion position. A cold row seen only here is never promoted:
+    // linking a new row to a cold row is not a promotion.
+    let mut related: Vec<RelatedMatch> = Vec::new();
+    for r in results
         .iter()
         .filter(|r| r.score >= RELATED_THRESHOLD && r.score < MERGE_THRESHOLD)
-        .filter_map(|r| {
-            memory_map.get(&r.id).cloned().map(|memory| RelatedMatch {
-                memory,
+    {
+        let Some(memory) = memory_map.get(&r.id).cloned() else {
+            continue;
+        };
+        let target = redirect_cold_link(db, memory)?;
+        let target_id = id_of(&target);
+        match related.iter_mut().find(|m| id_of(&m.memory) == target_id) {
+            Some(prior) => {
+                if r.score > prior.similarity {
+                    *prior = RelatedMatch {
+                        memory: target,
+                        similarity: r.score,
+                    };
+                }
+            }
+            None => related.push(RelatedMatch {
+                memory: target,
                 similarity: r.score,
-            })
-        })
-        .collect();
+            }),
+        }
+    }
 
     if !related.is_empty() {
         return Ok(GateResult {
@@ -532,6 +568,140 @@ async fn run_memory_gate_inner<P: EmbeddingProvider>(
         decision: GateDecision::Insert,
         embedding: Some(embedding),
     })
+}
+
+/// Longest supersession chain the gate will follow to a live digest (v4
+/// `MAX_DIGEST_HOPS`).
+const MAX_DIGEST_HOPS: usize = 3;
+
+/// "Cold" is v4's services-side `m.tier === 'cold'` (§R.4(b)'s third
+/// semantic): a NULL or absent tier is hot.
+fn is_cold(memory: &Value) -> bool {
+    memory.get("tier").and_then(Value::as_str) == Some("cold")
+}
+
+/// `memory.supersededById`, JS-truthy (an empty string is no digest).
+fn superseded_by(memory: &Value) -> Option<String> {
+    str_opt_field(memory, "supersededById").filter(|s| !s.is_empty())
+}
+
+/// Gate-side handling of a COLD best match (v4 `resolveColdForAbsorb`,
+/// `d58548051`, `memory-gate.ts:186-216`). The gate searches both tiers so a
+/// cold row still stops re-insertion; what it does with one depends on why the
+/// row is cold:
+///
+/// - superseded (`supersededById`): the observation belongs to the digest
+///   that replaced it, so absorption is redirected there (≤ 3 hops) and the
+///   result is flagged `redirected`;
+/// - demoted by cap pressure (no `supersededById`): the world asked for it
+///   again, so it is promoted back to hot.
+///
+/// Hot rows pass through untouched. The code, not v4's doc comment, is the
+/// spec: a VANISHED digest stops the walk on the cold row whose
+/// `supersededById` is still set, so that row is NOT promoted (v4's own
+/// `gate-cold-tier.test.ts:109-116`); a found digest that is itself cold and
+/// unsuperseded IS promoted, with `redirected` still true; a longer chain
+/// stops at the third hop on a cold, superseded row and absorbs there.
+async fn resolve_cold_for_absorb(db: &Db, memory: Value) -> Result<(Value, bool), DbError> {
+    if !is_cold(&memory) {
+        return Ok((memory, false));
+    }
+    let mut current = memory;
+    let mut redirected = false;
+    for _ in 0..MAX_DIGEST_HOPS {
+        if !is_cold(&current) {
+            break;
+        }
+        let Some(digest_id) = superseded_by(&current) else {
+            break;
+        };
+        let ids = vec![digest_id.clone()];
+        let digest = db
+            .read_main(move |conn| memories_read::find_by_ids(conn, &ids))?
+            .into_iter()
+            .next();
+        let Some(digest) = digest else {
+            tracing::debug!(
+                memoryId = id_of(&current).unwrap_or_default(),
+                supersededById = digest_id,
+                "[MemoryGate] Superseding digest missing; falling back to cold row"
+            );
+            break;
+        };
+        current = digest;
+        redirected = true;
+    }
+
+    if is_cold(&current) && superseded_by(&current).is_none() {
+        let promoted = promote_cold_memory(db, current).await?;
+        return Ok((promoted, redirected));
+    }
+    Ok((current, redirected))
+}
+
+/// Move a cold, non-superseded memory back to the hot tier (v4
+/// `promoteColdMemory`, `:224-241`) and return the LOCAL view — `tier: 'hot'`,
+/// `supersededById: null`, `updatedAt` not refreshed (v4 spreads the snapshot).
+///
+/// R-B (NO-PORT by architecture): v4 then re-stamps its cached vector store
+/// (`setTier`, with its `Re-stamped vector tiers` debug and the WARN
+/// `[MemoryGate] Failed to re-stamp vector tier after promotion`). v5 keeps no
+/// cached store — every path calls `CharacterVectorStore::load`, which stamps
+/// `cold` from the column — so the column write IS the re-stamp.
+async fn promote_cold_memory(db: &Db, memory: Value) -> Result<Value, DbError> {
+    let character_id = str_field(&memory, "characterId");
+    let memory_id = id_of(&memory).unwrap_or_default();
+    let (cid, ids) = (character_id.clone(), vec![memory_id.clone()]);
+    db.write(move |writers| {
+        writers.main().memories().update_tier_bulk(
+            &cid,
+            &ids,
+            "hot",
+            TierExtra {
+                superseded_by_id: Some(None),
+                consolidated_at: None,
+            },
+        )
+    })
+    .await?;
+    tracing::debug!(
+        memoryId = memory_id,
+        characterId = character_id,
+        "[MemoryGate] Promoted cold memory to hot on re-observation"
+    );
+    let mut promoted = memory;
+    if let Some(obj) = promoted.as_object_mut() {
+        obj.insert("tier".into(), Value::String("hot".into()));
+        obj.insert("supersededById".into(), Value::Null);
+    }
+    Ok(promoted)
+}
+
+/// The INSERT_RELATED target for a match (v4 `redirectColdLink`, `:248-258`):
+/// a cold, superseded member is replaced by its live digest (≤ 3 hops);
+/// anything else (hot, cold-unsuperseded, digest gone) links as-is. Never
+/// writes — linking a new row to a cold row is not a promotion — and a
+/// missing digest stops the walk silently.
+fn redirect_cold_link(db: &Db, memory: Value) -> Result<Value, DbError> {
+    let mut current = memory;
+    for _ in 0..MAX_DIGEST_HOPS {
+        if !is_cold(&current) {
+            break;
+        }
+        let Some(digest_id) = superseded_by(&current) else {
+            break;
+        };
+        let ids = vec![digest_id];
+        let digest = db
+            .read_main(move |conn| memories_read::find_by_ids(conn, &ids))?
+            .into_iter()
+            .next();
+        match digest {
+            Some(d) => current = d,
+            None => break,
+        }
+    }
+    Ok(current)
 }
 
 /// Generate an embedding with v4's one-retry-on-failure (`SKIP_EMBEDDING_FAILED`
@@ -1228,8 +1398,10 @@ async fn maybe_enqueue_housekeeping_inner(
         .or_else(|| auto.get("perCharacterCap").and_then(Value::as_f64))
         .unwrap_or(2000.0);
 
+    // v4 `d58548051`: the watermark counts HOT rows only — the cold tier is
+    // not what the cap governs.
     let cid = character_id.to_string();
-    let count = db.read_main(|conn| memories_read::count_by_character_id(conn, &cid))?;
+    let count = db.read_main(|conn| memories_read::count_hot_by_character_id(conn, &cid))?;
     if (count as f64) < (cap * HOUSEKEEPING_WATERMARK).floor() {
         return Ok(());
     }
@@ -1836,6 +2008,318 @@ mod tests {
             provider.calls()
         );
         assert_eq!(cell::<f64>(&db, "reinforcementCount"), 2.0);
+    }
+
+    // -----------------------------------------------------------------------
+    // The gate's cold tier (v4 `d58548051`) — `gate-cold-tier.test.ts:79-145`
+    // row for row, over a real DB: the candidate embeds to [1, 0], and each
+    // seeded vector is the unit vector at the wanted cosine.
+    // -----------------------------------------------------------------------
+
+    struct TierSeed {
+        id: &'static str,
+        tier: &'static str,
+        superseded_by: Option<&'static str>,
+        source: &'static str,
+        /// The cosine to the candidate; `None` → no vector (a digest).
+        score: Option<f32>,
+    }
+
+    fn tier_seed(
+        id: &'static str,
+        tier: &'static str,
+        superseded_by: Option<&'static str>,
+        score: Option<f32>,
+    ) -> TierSeed {
+        TierSeed {
+            id,
+            tier,
+            superseded_by,
+            source: if id.starts_with("digest") {
+                "CONSOLIDATED"
+            } else {
+                "AUTO"
+            },
+            score,
+        }
+    }
+
+    fn make_tier_db(seeds: &[TierSeed]) -> (TempDir, Db) {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("main.db");
+        {
+            let w = Writer::open_writable(&path, PEPPER).unwrap();
+            w.connection().execute_batch(DDL).unwrap();
+            w.vector_indices().save_meta(CHAR, 2.0).unwrap();
+            for seed in seeds {
+                w.memories()
+                    .create(
+                        &MemCreate {
+                            character_id: CHAR.to_string(),
+                            about_character_id: None,
+                            chat_id: None,
+                            project_id: None,
+                            content: format!("content {}", seed.id),
+                            summary: "summary".to_string(),
+                            keywords: vec![],
+                            tags: vec![],
+                            importance: 0.6,
+                            embedding: None,
+                            source: seed.source.to_string(),
+                            witnessed_context: None,
+                            occurred_at: None,
+                            narrative_time: None,
+                            entities: Vec::new(),
+                            kind: "semantic".to_string(),
+                            source_message_id: None,
+                            last_accessed_at: None,
+                            reinforcement_count: 1.0,
+                            last_reinforced_at: None,
+                            related_memory_ids: vec![],
+                            reinforced_importance: 0.6,
+                            tier: seed.tier.to_string(),
+                            superseded_by_id: seed.superseded_by.map(str::to_string),
+                            consolidated_from: Vec::new(),
+                            consolidated_at: None,
+                        },
+                        &CreateOptions {
+                            id: seed.id.to_string(),
+                            created_at: "2026-01-01T00:00:00.000Z".to_string(),
+                            updated_at: "2026-01-01T00:00:00.000Z".to_string(),
+                        },
+                    )
+                    .unwrap();
+                if let Some(score) = seed.score {
+                    w.vector_indices()
+                        .add_entry(&VectorEntryInput {
+                            id: seed.id.to_string(),
+                            character_id: CHAR.to_string(),
+                            embedding: Some(vec![score, (1.0 - score * score).sqrt()]),
+                        })
+                        .unwrap();
+                }
+            }
+        }
+        let db = Db::open_main(&path, PEPPER).unwrap();
+        (dir, db)
+    }
+
+    /// Run the gate for a candidate that embeds to [1, 0].
+    async fn run_cold_gate(db: &Db) -> GateDecision {
+        let provider =
+            CannedEmbeddingProvider::new().with_vector("summary\n\ncontent", vec![1.0, 0.0]);
+        run_memory_gate(
+            db,
+            &provider,
+            CHAR,
+            "content",
+            "summary",
+            "user-1",
+            None,
+            &EpisodicAnchorView::default(),
+        )
+        .await
+        .unwrap()
+        .decision
+    }
+
+    fn tier_of(db: &Db, id: &str) -> (String, Option<String>) {
+        let id = id.to_string();
+        db.read_main(move |c| {
+            Ok(c.query_row(
+                "SELECT tier, supersededById FROM memories WHERE id = ?",
+                [&id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )?)
+        })
+        .unwrap()
+    }
+
+    fn decided(decision: &GateDecision) -> (&'static str, Vec<String>) {
+        match decision {
+            GateDecision::Insert => ("INSERT", vec![]),
+            GateDecision::Reinforce { existing } => ("REINFORCE", vec![id_of(existing).unwrap()]),
+            GateDecision::SkipNearDuplicate { existing, .. } => {
+                ("SKIP_NEAR_DUPLICATE", vec![id_of(existing).unwrap()])
+            }
+            GateDecision::InsertRelated { related } => (
+                "INSERT_RELATED",
+                related.iter().map(|r| id_of(&r.memory).unwrap()).collect(),
+            ),
+            GateDecision::SkipEmbeddingFailed { .. } => ("SKIP_EMBEDDING_FAILED", vec![]),
+        }
+    }
+
+    /// v4 `:79-86`: a near-duplicate of a superseded cold row → its digest; no
+    /// tier move.
+    #[tokio::test]
+    async fn cold_superseded_near_duplicate_redirects_to_the_digest() {
+        let (_d, db) = make_tier_db(&[
+            tier_seed("cold", "cold", Some("digest"), Some(0.95)),
+            tier_seed("digest", "hot", None, None),
+        ]);
+        let d = run_cold_gate(&db).await;
+        assert_eq!(
+            decided(&d),
+            ("SKIP_NEAR_DUPLICATE", vec!["digest".to_string()])
+        );
+        assert_eq!(tier_of(&db, "cold"), ("cold".into(), Some("digest".into())));
+    }
+
+    /// v4 `:88-94`: a REINFORCE-band match redirected to the digest is a
+    /// count-only absorption (SKIP_NEAR_DUPLICATE — no footnote path).
+    #[tokio::test]
+    async fn cold_superseded_reinforce_band_is_count_only_on_the_digest() {
+        let (_d, db) = make_tier_db(&[
+            tier_seed("cold", "cold", Some("digest"), Some(0.87)),
+            tier_seed("digest", "hot", None, None),
+        ]);
+        let d = run_cold_gate(&db).await;
+        assert_eq!(
+            decided(&d),
+            ("SKIP_NEAR_DUPLICATE", vec!["digest".to_string()])
+        );
+    }
+
+    /// v4 `:96-107`: two members of one digest in the related band → ONE link,
+    /// onto the digest, at the higher similarity.
+    #[tokio::test]
+    async fn cold_members_collapse_onto_their_digest_in_the_related_band() {
+        let (_d, db) = make_tier_db(&[
+            tier_seed("cold1", "cold", Some("digest"), Some(0.78)),
+            tier_seed("cold2", "cold", Some("digest"), Some(0.74)),
+            tier_seed("digest", "hot", None, None),
+        ]);
+        let d = run_cold_gate(&db).await;
+        assert_eq!(decided(&d), ("INSERT_RELATED", vec!["digest".to_string()]));
+        let GateDecision::InsertRelated { related } = d else {
+            unreachable!()
+        };
+        assert!(
+            (related[0].similarity - 0.78).abs() < 1e-5,
+            "{}",
+            related[0].similarity
+        );
+    }
+
+    /// v4 `:109-116`: a vanished digest → absorb into the cold row itself, and
+    /// it is NOT promoted (its `supersededById` is still set — the code, not
+    /// v4's doc comment).
+    #[tokio::test]
+    async fn a_vanished_digest_falls_back_to_the_cold_row_unpromoted() {
+        let (_d, db) = make_tier_db(&[tier_seed("cold", "cold", Some("gone"), Some(0.95))]);
+        let (guard, logs) = capture_guard();
+        let d = run_cold_gate(&db).await;
+        drop(guard);
+        assert_eq!(
+            decided(&d),
+            ("SKIP_NEAR_DUPLICATE", vec!["cold".to_string()])
+        );
+        assert_eq!(tier_of(&db, "cold"), ("cold".into(), Some("gone".into())));
+        let lines = logs.lock().unwrap().clone();
+        let line = only_line(
+            &lines,
+            "[MemoryGate] Superseding digest missing; falling back to cold row",
+        );
+        assert!(line.starts_with("DEBUG "), "{line:?}");
+        assert!(line.contains(" memoryId=cold"), "{line:?}");
+        assert!(line.contains(" supersededById=gone"), "{line:?}");
+        assert!(
+            !lines.iter().any(|l| l.contains("Promoted cold memory")),
+            "{lines:?}"
+        );
+    }
+
+    /// v4 `:118-128`: a non-superseded cold row re-observed at the merge
+    /// threshold is promoted (column `hot`, `supersededById` NULL) and then
+    /// reinforced normally. R-B: a FRESH store load answers it hot — the column
+    /// write is the re-stamp.
+    #[tokio::test]
+    async fn a_demoted_cold_row_is_promoted_and_reinforced() {
+        let (_d, db) = make_tier_db(&[tier_seed("cold", "cold", None, Some(0.87))]);
+        let before = db
+            .read_main(|c| Ok(CharacterVectorStore::load(c, CHAR)?.is_hot("cold")))
+            .unwrap();
+        assert!(!before, "the store loads it cold first");
+        let (guard, logs) = capture_guard();
+        let d = run_cold_gate(&db).await;
+        drop(guard);
+        assert_eq!(decided(&d), ("REINFORCE", vec!["cold".to_string()]));
+        let GateDecision::Reinforce { existing } = &d else {
+            unreachable!()
+        };
+        assert_eq!(existing["tier"], "hot");
+        assert_eq!(existing["supersededById"], Value::Null);
+        assert_eq!(tier_of(&db, "cold"), ("hot".into(), None));
+        let after = db
+            .read_main(|c| Ok(CharacterVectorStore::load(c, CHAR)?.is_hot("cold")))
+            .unwrap();
+        assert!(after, "R-B: a fresh load answers the promoted row hot");
+        let lines = logs.lock().unwrap().clone();
+        let line = only_line(
+            &lines,
+            "[MemoryGate] Promoted cold memory to hot on re-observation",
+        );
+        assert!(line.starts_with("DEBUG "), "{line:?}");
+        assert!(line.contains(" memoryId=cold"), "{line:?}");
+        assert!(line.contains(&format!(" characterId={CHAR}")), "{line:?}");
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("Superseding digest missing")),
+            "{lines:?}"
+        );
+    }
+
+    /// v4 `:130-136`: a cold row seen only in the related band is linked as-is
+    /// and never promoted.
+    #[tokio::test]
+    async fn a_related_band_cold_row_is_linked_not_promoted() {
+        let (_d, db) = make_tier_db(&[tier_seed("cold", "cold", None, Some(0.75))]);
+        let d = run_cold_gate(&db).await;
+        assert_eq!(decided(&d), ("INSERT_RELATED", vec!["cold".to_string()]));
+        assert_eq!(tier_of(&db, "cold"), ("cold".into(), None));
+    }
+
+    /// v4 `:138-144`: hot matches exactly as before.
+    #[tokio::test]
+    async fn hot_matches_are_untouched() {
+        let (_d, db) = make_tier_db(&[tier_seed("hot", "hot", None, Some(0.87))]);
+        let d = run_cold_gate(&db).await;
+        assert_eq!(decided(&d), ("REINFORCE", vec!["hot".to_string()]));
+        assert_eq!(tier_of(&db, "hot"), ("hot".into(), None));
+    }
+
+    /// A 4-hop chain (A→B→C→D→E) stops at the third hop, on D — a cold,
+    /// superseded row — and absorbs there (redirected → SKIP in the 0.85 band).
+    #[tokio::test]
+    async fn a_four_hop_chain_absorbs_on_the_third_hop() {
+        let (_d, db) = make_tier_db(&[
+            tier_seed("a", "cold", Some("b"), Some(0.87)),
+            tier_seed("b", "cold", Some("c"), None),
+            tier_seed("c", "cold", Some("d"), None),
+            tier_seed("d", "cold", Some("e"), None),
+            tier_seed("e", "hot", None, None),
+        ]);
+        let d = run_cold_gate(&db).await;
+        assert_eq!(decided(&d), ("SKIP_NEAR_DUPLICATE", vec!["d".to_string()]));
+        assert_eq!(tier_of(&db, "d"), ("cold".into(), Some("e".into())));
+    }
+
+    /// A chain ending on a cold, UNsuperseded digest promotes it with
+    /// `redirected` still true → SKIP (count-only) in the 0.85 band.
+    #[tokio::test]
+    async fn a_chain_ending_cold_unsuperseded_promotes_and_skips() {
+        let (_d, db) = make_tier_db(&[
+            tier_seed("cold", "cold", Some("digest"), Some(0.87)),
+            tier_seed("digest", "cold", None, None),
+        ]);
+        let d = run_cold_gate(&db).await;
+        assert_eq!(
+            decided(&d),
+            ("SKIP_NEAR_DUPLICATE", vec!["digest".to_string()])
+        );
+        assert_eq!(tier_of(&db, "digest"), ("hot".into(), None));
     }
 
     /// The embedding provider failing on both attempts → SKIP_EMBEDDING_FAILED: no

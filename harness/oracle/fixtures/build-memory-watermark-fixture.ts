@@ -31,7 +31,14 @@ interface Spec {
     userId: string;
     autoHousekeepingSettings: Record<string, unknown>;
   }>;
-  seedMemories: Array<{ id: string; characterId: string; content: string; summary: string }>;
+  seedMemories: Array<{
+    id: string;
+    characterId: string;
+    content: string;
+    summary: string;
+    /** P4.D266 (`d58548051`): absent → `'hot'`, so the pre-round seeds do not move. */
+    tier?: 'hot' | 'cold';
+  }>;
   seedJobs: Array<{
     id: string;
     userId: string;
@@ -112,6 +119,7 @@ async function main(): Promise<void> {
         lastReinforcedAt: null,
         relatedMemoryIds: [],
         reinforcedImportance: 0.5,
+        tier: seed.tier ?? 'hot',
       } as never,
       { id: seed.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }
     );
