@@ -191,6 +191,11 @@ pub fn remap_backup_data(
 
     // Remap memories — note: NO `userId` rewrite. v4 leaves the backup's own
     // value in place for this collection.
+    //
+    // `supersededById` and `consolidatedFrom` are memory-id references (digest
+    // <-> cold members), remapped in lockstep with `id` exactly like
+    // `relatedMemoryIds` (v4 `d58548051`). Old backups lack them;
+    // remapFields/remapArrayFields skip absent or null values.
     let memories = each(&data.memories, |m| {
         chain(
             r,
@@ -202,8 +207,9 @@ pub fn remap_backup_data(
                 "chatId",
                 "sourceMessageId",
                 "projectId",
+                "supersededById",
             ],
-            &["tags", "relatedMemoryIds"],
+            &["tags", "relatedMemoryIds", "consolidatedFrom"],
         )
     });
 
@@ -225,8 +231,12 @@ pub fn remap_backup_data(
         chain_owned(
             r,
             p,
+            // officialMountPointId remapped in lockstep with the store's own
+            // row, so the restore can bind the project to its archived store
+            // (bug 185, v4 `ed8b15b50`).
             &[
                 "id",
+                "officialMountPointId",
                 "staticBackgroundImageId",
                 "storyBackgroundImageId",
                 "defaultImageProfileId",
@@ -237,10 +247,13 @@ pub fn remap_backup_data(
         )
     });
 
-    // Remap groups. Only the id needs remapping — like projects, the
-    // officialMountPointId is discarded and re-provisioned by `groups.create`, so
-    // it's intentionally left alone (membership/links carry the group id forward).
-    let groups = each(&data.groups, |g| r.remap_fields(g, &["id"]));
+    // Remap groups. Like projects, officialMountPointId is remapped in lockstep
+    // with the store's own row so the restore binds the group to its archived
+    // store rather than minting a fresh one (bug 185, v4 `ed8b15b50`);
+    // membership and links carry the group id forward.
+    let groups = each(&data.groups, |g| {
+        r.remap_fields(g, &["id", "officialMountPointId"])
+    });
 
     // Remap LLM logs.
     // `connectionProfileId` / `imageProfileId` must be in this list (v4
@@ -669,8 +682,14 @@ fn remap_character(r: &mut UuidRemapper, char_row: &Value, target_user_id: &str)
     let mut remapped = chain_owned(
         r,
         char_row,
+        // The vault pointer is remapped like any FK (bug 185, v4 `ed8b15b50`):
+        // the remapper maps one original id to one new id everywhere, so the
+        // pointer names the id its vault's mount-point row is restored under,
+        // and the restore binds the character to that vault rather than
+        // minting one.
         &[
             "id",
+            "characterDocumentMountPointId",
             "defaultImageId",
             "defaultConnectionProfileId",
             "defaultPartnerId",
@@ -804,6 +823,10 @@ fn remap_chat(r: &mut UuidRemapper, chat: &Value, target_user_id: &str) -> Value
             "projectId",
             "storyBackgroundImageId",
             "imageProfileId",
+            // Message-id reference: messages are remapped below, so the
+            // "other-subject" extraction watermark must follow its message
+            // (v4 `d58548051`).
+            "otherExtractionWatermarkMessageId",
         ],
         &["tags", "impersonatingParticipantIds"],
         target_user_id,

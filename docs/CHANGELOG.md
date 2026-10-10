@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(restore): P4.D273 the new-account remap rewrites every store pointer and the memory-tier references
+
+_Versions: core 0.0.1267._
+
+The `new-account` UUID remap now rewrites six more fields, following v4 `ed8b15b50` (bug 185) and `d58548051`:
+
+- a character's `characterDocumentMountPointId`;
+- a project's and a group's `officialMountPointId`;
+- a memory's `supersededById` and `consolidatedFrom`;
+- a chat's `otherExtractionWatermarkMessageId`.
+
+Each is rewritten in lockstep with the row it names, so a pointer and its store share one id space. That lets the restore bind each entity to its archived store. Absent and null values are skipped, so a memory from before the tier columns gains no key.
+
+The `backup_uuid_remap_equivalence` corpus gains four cases that mirror v4's jest tests. The corpus and the oracle were regenerated together, and all 35 cases are byte-identical with v4's real `remapBackupData`.
+
 #### 2026-10-09 — feat(restore): P4.D273 the store claim map (v4 bug 185's makeStoreClaimMap)
 
 _Versions: core 0.0.1266._

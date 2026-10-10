@@ -700,7 +700,7 @@ function edgeCases(): Case[] {
     },
     {
       name: 'groups_official_mount_point',
-      note: 'ONLY the group id is remapped — officialMountPointId is deliberately left alone (groups.create discards it and provisions a fresh store), and groups get NO userId rewrite',
+      note: 'the group id AND officialMountPointId are remapped (v4 `ed8b15b50` bug 185 — in lockstep with the store row, so the restore binds the group to its archived store); groups get NO userId rewrite',
       targetUserId: t,
       data: bag({
         groups: [
@@ -709,6 +709,65 @@ function edgeCases(): Case[] {
         groupDocMountLinks: [{ id: 'gdml-1', groupId: 'group-1', mountPointId: 'mount-1' }],
         groupCharacterMembers: [{ id: 'gcm-1', groupId: 'group-1', characterId: 'char-1' }],
         docMountPoints: [{ id: 'mount-1', name: 'store' }],
+      }),
+    },
+    // ── P4.D273: v4 `ed8b15b50` (bug 185) + `d58548051` remap moves ─────────
+    {
+      name: 'store_pointers_lockstep',
+      note: 'a character vault pointer and a project / group official store pointer each equal the NEW id of the store row they name (v4 jest `uuid-remapper.test.ts:479-496`); the three pointers are minted at the entity passes and REUSED by the docMountPoints pass',
+      targetUserId: t,
+      data: bag({
+        characters: [{ id: 'char-old', name: 'Friday', characterDocumentMountPointId: 'vault-old' }],
+        projects: [{ id: 'proj-old', name: 'P', officialMountPointId: 'pstore-old' }],
+        groups: [{ id: 'group-old', name: 'G', officialMountPointId: 'gstore-old' }],
+        docMountPoints: [
+          { id: 'vault-old', name: 'Friday Character Vault', storeType: 'character' },
+          { id: 'pstore-old', name: 'Project Files: P', storeType: 'documents' },
+          { id: 'gstore-old', name: 'Group Files: G', storeType: 'documents' },
+        ],
+      }),
+    },
+    {
+      name: 'consolidation_references',
+      note: 'supersededById and consolidatedFrom are memory-id references remapped in lockstep with id (v4 `d58548051`); m1 is listed BEFORE its digest, so its supersededById mints the digest id the digest row then reuses',
+      targetUserId: t,
+      data: bag({
+        memories: [
+          { id: 'm1-old', characterId: 'c', tier: 'cold', supersededById: 'digest-old', consolidatedFrom: [] },
+          {
+            id: 'digest-old',
+            characterId: 'c',
+            source: 'CONSOLIDATED',
+            tier: 'hot',
+            consolidatedFrom: ['m1-old', 'm2-old'],
+            supersededById: null,
+          },
+          { id: 'm2-old', characterId: 'c', tier: 'cold', supersededById: 'digest-old', consolidatedFrom: [] },
+        ],
+      }),
+    },
+    {
+      name: 'pre_tier_memory_untouched',
+      note: 'a memory from before the tier columns gains NO supersededById / consolidatedFrom key (remapFields / remapArrayFields skip absent values)',
+      targetUserId: t,
+      data: bag({
+        memories: [{ id: 'old', characterId: 'c' }],
+      }),
+    },
+    {
+      name: 'chat_other_watermark',
+      note: "a chat's otherExtractionWatermarkMessageId is minted at the chat's scalar pass (LAST in the list) and REUSED by its message (v4 `d58548051`)",
+      targetUserId: t,
+      data: bag({
+        chats: [
+          {
+            id: 'chat-old',
+            participants: [],
+            tags: [],
+            otherExtractionWatermarkMessageId: 'msg-old',
+            messages: [{ id: 'msg-old', type: 'message' }],
+          },
+        ],
       }),
     },
     {
