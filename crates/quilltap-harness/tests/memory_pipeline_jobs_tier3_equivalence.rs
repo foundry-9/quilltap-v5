@@ -627,6 +627,9 @@ async fn memory_pipeline_jobs_tier3_matches_oracle() {
             turn_opener_message_id: case.turn_opener_message_id.clone(),
             extraction_anchor_message_id: case.extraction_anchor_message_id.clone(),
             connection_profile_id: spec.connection_profile_id.clone(),
+            // P4.D270: per-turn jobs (no `foldOtherCatchup`); the host fills
+            // `job_id` (a HANDOFF until unification), so these run without one.
+            ..Default::default()
         };
         let executor = executor_for(&case.chat_id);
         let got = handle_memory_extraction(

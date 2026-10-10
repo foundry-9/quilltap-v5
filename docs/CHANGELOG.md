@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(memory): P4.D270 E7 the fold-grain OTHER idle catch-up — `find_fold_other_catchup_candidates`, `run_fold_other_catchup` and the `MEMORY_EXTRACTION` handler's `foldOtherCatchup` branch
+
+_Versions: core 0.0.1270._
+
+Ports v4 `d58548051`'s catch-up half (pin `01a83539d`).
+
+- **`find_fold_other_catchup_candidates(db, now_ms, limit)`.** Selects chats idle for more than 2 hours and active within 30 days (both strict). Help and Brahma chats and chats with fewer than two messages are excluded. Chats are sorted newest first. Each kept chat's last message must be past its OTHER watermark, and it needs a seat with a connection profile (an LLM character seat first, else any seat). Chats past `limit` are counted as deferred without being read. `otherPass: turn` selects nothing.
+- **`run_fold_other_catchup`.** Rechecks idleness unless told to ignore it, using an injectable clock. It builds the window past the watermark, resolves the Concierge-aware cheap selection as the per-turn handler does, and runs the pass, covering through the chat's last message. A read error fails the job, as v4's throw does.
+- **The handler branch.** `MemoryExtractionPayload` gains `fold_other_catchup` (JS-truthy, so `"yes"` enters), `fold_other_ignore_idle` (strictly `true`) and `job_id`. The branch runs after the two throwing reads and before the chat read. It logs v4's `[MemoryExtraction] Fold-grain OTHER catch-up processed` INFO. A pass lost to a timeout fails the job with `Cheap LLM task "fold-other-catchup" timed out and was not retried successfully: N pass(es) timed out`.
+- **`jobId` on the handler's lines.** The new INFO and the existing lost-to-timeout ERROR (now camelCase in v4's key order) carry `jobId` first when the host fills `payload.job_id`; otherwise it is omitted. The one host line that fills it is recorded as a `HANDOFF:` for unification.
+
+`fold_other_pass_tier3` now also compares its three selection ops and six handler ops against v4's real `findFoldOtherCatchupCandidates` and `handleMemoryExtraction`. The corpus generator is committed as `harness/oracle/scripts/gen-fold-other-pass-spec.py`.
+
 #### 2026-10-09 — feat(memory): P4.D270 E3+E5+E6 OTHER extraction moves to the fold grain — the `hybrid` floor, the fold-grain OTHER pass and its fold hook
 
 _Versions: core 0.0.1269._

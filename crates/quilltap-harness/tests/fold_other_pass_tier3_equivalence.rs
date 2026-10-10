@@ -62,7 +62,14 @@ use quilltap_core::model::completion::{
 };
 use quilltap_core::model::embedding::CannedEmbeddingProvider;
 use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
-use quilltap_core::services::fold_other_pass::{run_fold_other_pass, RunFoldOtherPassInput};
+use quilltap_core::services::cost_estimation::MessageCostEstimator;
+use quilltap_core::services::fold_other_pass::{
+    find_fold_other_catchup_candidates, run_fold_other_pass, RunFoldOtherPassInput,
+    FOLD_OTHER_CATCHUP_MAX_CHATS,
+};
+use quilltap_core::services::memory_extraction_job::{
+    handle_memory_extraction, MemoryExtractionPayload,
+};
 use quilltap_core::test_support::global_capture;
 use serde::Deserialize;
 use serde_json::Value;
@@ -70,7 +77,7 @@ use serde_json::Value;
 /// Which op kinds this commit's port compares (the family landed with the
 /// pass, P4.D270 E5; the catch-up + handler ops with E7; the sweep + the end
 /// state with E8).
-const COMPARED_KINDS: &[&str] = &["pass"];
+const COMPARED_KINDS: &[&str] = &["pass", "find", "handler"];
 
 const INSTANCE_SETTINGS_DDL: &str =
     "CREATE TABLE IF NOT EXISTS \"instance_settings\" (\n  \"key\" TEXT PRIMARY KEY,\n  \"value\" TEXT NOT NULL\n)";
@@ -113,8 +120,7 @@ const NEVER: &[&str] = &[
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-// The catch-up / sweep / handler fields are read once those ops compare
-// (P4.D270 E7 / E8).
+// The sweep fields are read once those ops compare (P4.D270 E8).
 #[allow(dead_code)]
 struct OpW {
     op: String,
@@ -180,6 +186,22 @@ struct CannedRowW {
 }
 
 type Line = (String, String, BTreeMap<String, String>);
+
+/// The handler's cost seam — the catch-up branch never estimates a cost.
+struct NullCost;
+
+impl MessageCostEstimator for NullCost {
+    async fn estimate(
+        &self,
+        _provider: &str,
+        _model: &str,
+        _prompt_tokens: i64,
+        _completion_tokens: i64,
+        _user_id: &str,
+    ) -> Option<f64> {
+        None
+    }
+}
 
 /// A rig line (`LEVEL target message k=v …`) → `(level, message, fields)`;
 /// `None` for a line outside [`MESSAGES`].
@@ -496,6 +518,61 @@ async fn fold_other_pass_tier3_matches_oracle() {
                     )
                     .await;
                     (serde_json::to_value(r).unwrap(), None)
+                }
+                "find" => {
+                    let selection = find_fold_other_catchup_candidates(
+                        &db,
+                        fixed_now_ms,
+                        op.limit.unwrap_or(FOLD_OTHER_CATCHUP_MAX_CHATS),
+                    )
+                    .unwrap_or_else(|e| panic!("{}: find: {e:?}", op.name));
+                    (serde_json::to_value(selection).unwrap(), None)
+                }
+                "handler" => {
+                    let chat_id = op.chat_id.clone().unwrap();
+                    if op.plant_last_message_at_now == Some(true) {
+                        // R-J: `lastMessageAt` planted at THIS side's op time.
+                        let (cid, now) = (chat_id.clone(), quilltap_core::clock::now_iso());
+                        db.write(move |w| {
+                            w.main()
+                                .connection()
+                                .execute(
+                                    "UPDATE \"chats\" SET \"lastMessageAt\" = ?1 WHERE \"id\" = ?2",
+                                    [&now, &cid],
+                                )
+                                .map(|_| ())
+                                .map_err(Into::into)
+                        })
+                        .await
+                        .unwrap();
+                    }
+                    let mut raw = serde_json::json!({
+                        "chatId": chat_id,
+                        "turnOpenerMessageId": null,
+                        "extractionAnchorMessageId": null,
+                        "connectionProfileId": spec.connection_profile_id,
+                        "foldOtherCatchup": op.fold_other_catchup.clone().unwrap_or(Value::Null),
+                    });
+                    if let Some(ignore) = op.fold_other_ignore_idle {
+                        raw["foldOtherIgnoreIdle"] = Value::Bool(ignore);
+                    }
+                    let mut payload = MemoryExtractionPayload::decode(&raw);
+                    // The host's line (a HANDOFF until unification) fills the
+                    // job id; the oracle's job is `job-<name>`.
+                    payload.job_id = Some(format!("job-{}", op.name));
+                    let got = handle_memory_extraction(
+                        &db,
+                        &completion,
+                        &embedding,
+                        &executor,
+                        &NullCost,
+                        &spec.user_id,
+                        &payload,
+                        None,
+                    )
+                    .await
+                    .err();
+                    (Value::Null, got)
                 }
                 other => panic!("{}: op kind {other} not compared at this commit", op.name),
             }

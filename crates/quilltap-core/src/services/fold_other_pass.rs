@@ -66,7 +66,11 @@ use std::collections::{HashMap, HashSet};
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::cheap_llm::{CheapLlmSelection, UncensoredFallbackOptions};
+use crate::cheap_llm::{
+    get_cheap_llm_provider, resolve_uncensored_cheap_llm_selection, CheapLlmConfig,
+    CheapLlmProfile, CheapLlmSelection, UncensoredFallbackOptions,
+};
+use crate::context_budget::resolve_max_tokens;
 use crate::db::fallback::error_text;
 use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_messages_read, chats_read, instance_settings, DbError};
@@ -76,12 +80,15 @@ use crate::memory_tasks::{ExtractionClock, FoldOtherMessage, OrientingContext, O
 use crate::model::completion::CompletionProvider;
 use crate::model::embedding::EmbeddingProvider;
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
+use crate::services::dangerous_content::chat_override::should_use_uncensored_route;
+use crate::services::dangerous_content::resolver::resolve_concierge_settings;
+use crate::services::image_job_common::cheap_llm_profile_from_value;
 use crate::services::memory_extraction_job::limits_from_value;
 use crate::services::memory_processor::{
     apply_importance_floor, extract_other_memories_from_fold,
     load_canon_for_observer_about_subject, resolve_extraction_rate_limit, write_candidate,
-    CandidateWriteContext, CanonSubject, ExtractedCandidate, RateLimitDecision, RunState,
-    UsageTotals, WriteArgs,
+    CandidateWriteContext, CanonSubject, CheapLlmSettings, ExtractedCandidate, RateLimitDecision,
+    RunState, UsageTotals, WriteArgs,
 };
 use crate::services::speaker_names::{resolve_speaker_names, speaker_label};
 use crate::services::turn_transcript::{
@@ -803,4 +810,301 @@ mod tests {
         )));
         assert!(!is_fold_other_eligible_message(&with("content", json!(42))));
     }
+}
+
+// ============================================================================
+// Idle catch-up (daily maintenance sweep)
+// ============================================================================
+
+/// v4 `FoldOtherCatchupCandidate`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FoldOtherCatchupCandidate {
+    pub chat_id: String,
+    pub user_id: String,
+    /// The chat's last conversation message — the watermark target and the
+    /// job's dedupe anchor.
+    pub last_message_id: String,
+    pub connection_profile_id: String,
+}
+
+/// v4 `FoldOtherCatchupSelection`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FoldOtherCatchupSelection {
+    pub candidates: Vec<FoldOtherCatchupCandidate>,
+    /// Eligible chats beyond the per-sweep cap, left for the next sweep.
+    pub deferred: usize,
+}
+
+/// v4 `pickConnectionProfileId`: the first CHARACTER seat not controlled by
+/// the user that carries a profile, else ANY seat that carries one.
+fn pick_connection_profile_id(chat: &Value) -> Option<String> {
+    let participants = chat.get("participants").and_then(Value::as_array)?;
+    let has_profile = |p: &&Value| truthy(p.get("connectionProfileId"));
+    let llm_seat = participants.iter().find(|p| {
+        str_field(p, "type") == Some("CHARACTER")
+            && str_field(p, "controlledBy") != Some("user")
+            && has_profile(p)
+    });
+    llm_seat
+        .or_else(|| participants.iter().find(has_profile))
+        .and_then(|p| str_field(p, "connectionProfileId"))
+        .map(str::to_string)
+}
+
+/// v4 `findFoldOtherCatchupCandidates({ now, limit })`: chats whose tail the
+/// fold-grain pass has not covered — idle for more than
+/// [`FOLD_OTHER_CATCHUP_IDLE_MS`], last message past the watermark, not a
+/// help/brahma chat, and (cheap prefilter) active within the lookback. Mode
+/// `turn` selects nothing. Most recently active first, bounded by `limit`.
+///
+/// v4's reads here are all FALLBACKS (`chats.findAll` → `[]`, `getMessages` →
+/// `[]`, the mode getter → defaults), so its search never throws; v5's only
+/// `Err` is a pool checkout that fails.
+pub fn find_fold_other_catchup_candidates(
+    db: &Db,
+    now_ms: i64,
+    limit: usize,
+) -> Result<FoldOtherCatchupSelection, DbError> {
+    let mode = db.read_main(|c| Ok(instance_settings::get_memory_extraction_mode_settings(c)))?;
+    if mode.other_pass == "turn" {
+        tracing::debug!("[FoldOtherCatchup] otherPass=turn; no catch-up needed");
+        return Ok(FoldOtherCatchupSelection::default());
+    }
+
+    let chats =
+        crate::db::fallback::find_all_or_empty("chats", || db.read_main(chats_read::find_all));
+    let mut prefiltered: Vec<(&Value, i64)> = chats
+        .iter()
+        .filter(|c| !crate::chat_predicates::is_help_like_chat_type(str_field(c, "chatType")))
+        .filter(|c| c.get("messageCount").and_then(Value::as_f64).unwrap_or(0.0) >= 2.0)
+        .filter_map(|c| {
+            let last = str_field(c, "lastMessageAt")
+                .filter(|s| !s.is_empty())
+                .and_then(crate::episodic::js_date_parse_ms)?;
+            Some((c, last))
+        })
+        .filter(|(_, last)| {
+            now_ms - last > FOLD_OTHER_CATCHUP_IDLE_MS
+                && now_ms - last < FOLD_OTHER_CATCHUP_LOOKBACK_MS
+        })
+        .collect();
+    // `(a, b) => b.last - a.last` — a STABLE sort, newest first.
+    prefiltered.sort_by_key(|x| std::cmp::Reverse(x.1));
+
+    let mut selection = FoldOtherCatchupSelection::default();
+    for (chat, _) in &prefiltered {
+        let chat_id = str_field(chat, "id").unwrap_or_default();
+        if selection.candidates.len() >= limit {
+            // Counted without reading their messages; some may turn out covered.
+            selection.deferred += 1;
+            continue;
+        }
+        let messages = match chat_message_events(db, chat_id) {
+            Ok(messages) => messages,
+            Err(error) => {
+                tracing::warn!(
+                    chatId = %chat_id,
+                    error = %error_text(&error),
+                    "[FoldOtherCatchup] Could not inspect chat; skipping"
+                );
+                continue;
+            }
+        };
+        let Some(last_id) = messages
+            .last()
+            .map(|m| str_field(m, "id").unwrap_or_default())
+        else {
+            continue;
+        };
+        if str_field(chat, "otherExtractionWatermarkMessageId") == Some(last_id) {
+            continue;
+        }
+        let Some(profile_id) = pick_connection_profile_id(chat) else {
+            tracing::debug!(
+                chatId = %chat_id,
+                "[FoldOtherCatchup] No connection profile on any seat; skipping chat"
+            );
+            continue;
+        };
+        selection.candidates.push(FoldOtherCatchupCandidate {
+            chat_id: chat_id.to_string(),
+            user_id: str_field(chat, "userId").unwrap_or_default().to_string(),
+            last_message_id: last_id.to_string(),
+            connection_profile_id: profile_id,
+        });
+    }
+
+    tracing::debug!(
+        scanned = chats.len(),
+        idleAndRecent = prefiltered.len(),
+        selected = selection.candidates.len(),
+        deferred = selection.deferred,
+        "[FoldOtherCatchup] Selection complete"
+    );
+    Ok(selection)
+}
+
+/// v4 `RunFoldOtherCatchupInput`.
+pub struct RunFoldOtherCatchupInput<'a> {
+    pub chat_id: &'a str,
+    pub user_id: &'a str,
+    /// The job's connection profile row.
+    pub connection_profile: &'a Value,
+    /// The user's `chatSettings.cheapLLMSettings`.
+    pub cheap_llm_settings: &'a CheapLlmSettings,
+    /// The user's connection profile rows.
+    pub available_profiles: &'a [Value],
+    /// Skip the idle recheck (the deferred regenerate rebuild, tests).
+    pub ignore_idle: bool,
+    /// v4 `input.now ?? Date.now()` (P4.D270 R-J — injectable).
+    pub now_ms: Option<i64>,
+}
+
+/// v4 `runFoldOtherCatchup`: catch up one idle chat — build the window of
+/// messages past the watermark, resolve the cheap LLM (Concierge-aware, as the
+/// per-turn handler does) and run the pass. Called by the `MEMORY_EXTRACTION`
+/// handler's `foldOtherCatchup` branch. v4 has NO catch here — a read error is
+/// the job's (every read it makes is a fallback in v4, so only v5's pool
+/// failure reaches `Err`).
+pub async fn run_fold_other_catchup<C: CompletionProvider, E: EmbeddingProvider>(
+    db: &Db,
+    completion: &C,
+    embedding: &E,
+    executor: &CheapLlmTaskExecutor,
+    input: &RunFoldOtherCatchupInput<'_>,
+) -> Result<FoldOtherPassResult, DbError> {
+    let chat_id = input.chat_id;
+    let Some(chat) = crate::db::fallback::find_by_id_or_none("chats", chat_id, || {
+        db.read_main(|conn| chats_read::find_by_id(conn, chat_id))
+    }) else {
+        return Ok(empty_result(Some("no-chat")));
+    };
+
+    let now = input.now_ms.unwrap_or_else(crate::clock::now_unix_ms);
+    let last_at = str_field(&chat, "lastMessageAt")
+        .filter(|s| !s.is_empty())
+        .and_then(crate::episodic::js_date_parse_ms);
+    if let (false, Some(last_at)) = (input.ignore_idle, last_at) {
+        if now - last_at <= FOLD_OTHER_CATCHUP_IDLE_MS {
+            tracing::debug!(
+                chatId = %chat_id,
+                "[FoldOtherCatchup] Chat active again since the sweep; leaving it to the fold"
+            );
+            return Ok(empty_result(Some("not-idle")));
+        }
+    }
+
+    let messages = chat_message_events(db, chat_id)?;
+    let watermark = str_field(&chat, "otherExtractionWatermarkMessageId");
+    let window = messages_past_watermark(&messages, watermark);
+    if window.is_empty() {
+        return Ok(empty_result(Some("behind-watermark")));
+    }
+
+    let profiles: Vec<CheapLlmProfile> = input
+        .available_profiles
+        .iter()
+        .map(cheap_llm_profile_from_value)
+        .collect();
+    let connection_profile = cheap_llm_profile_from_value(input.connection_profile);
+    let selection = get_cheap_llm_provider(
+        &connection_profile,
+        &CheapLlmConfig {
+            strategy: input.cheap_llm_settings.strategy.clone(),
+            // v4 `userDefinedProfileId ?? undefined` — `getCheapLLMProvider`'s
+            // own guard drops an empty string, so the net effect is the filter.
+            user_defined_profile_id: input
+                .cheap_llm_settings
+                .user_defined_profile_id
+                .clone()
+                .filter(|s| !s.is_empty()),
+            default_cheap_profile_id: None,
+            fallback_to_local: input.cheap_llm_settings.fallback_to_local,
+        },
+        &profiles,
+        false,
+        None,
+    );
+    // v4 `chatSettings.findByUserId` — a FALLBACK read (ERROR + `null`).
+    let chat_settings =
+        match db.read_main(|c| crate::db::chat_settings::find_by_user_id(c, input.user_id)) {
+            Ok(row) => row,
+            Err(e) => {
+                tracing::error!(
+                    target: "quilltap::db",
+                    collection = "chat_settings",
+                    userId = %input.user_id,
+                    error = %error_text(&e),
+                    "Error finding chat settings by user ID"
+                );
+                None
+            }
+        };
+    let policy = resolve_concierge_settings(chat_settings.as_ref(), Some(&chat));
+    let selection = resolve_uncensored_cheap_llm_selection(
+        selection,
+        should_use_uncensored_route(Some(&chat)),
+        Some(&policy),
+        &profiles,
+    );
+
+    // Background only; a read failure degrades to no description, silently.
+    let mut project_description: Option<String> = None;
+    if let Some(project_id) = str_field(&chat, "projectId").filter(|s| !s.is_empty()) {
+        let read = db.read_main(|main| {
+            db.read_mount_index(|mount| {
+                Ok(crate::db::projects::ProjectsRepository::new(main, mount)
+                    .find_by_id(project_id)
+                    .ok()
+                    .flatten())
+            })
+        });
+        if let Ok(Some(project)) = read {
+            project_description = str_field(&project, "description").map(str::to_string);
+        }
+    }
+
+    tracing::debug!(
+        chatId = %chat_id,
+        windowMessages = window.len(),
+        watermark = %watermark.unwrap_or("null"),
+        "[FoldOtherCatchup] Running catch-up pass"
+    );
+    let fallback = UncensoredFallbackOptions {
+        concierge_policy: &policy,
+        available_profiles: &profiles,
+        is_dangerous_chat: None,
+    };
+    Ok(run_fold_other_pass(
+        db,
+        completion,
+        embedding,
+        executor,
+        &selection,
+        Some(&fallback),
+        &RunFoldOtherPassInput {
+            chat_id: chat_id.to_string(),
+            user_id: input.user_id.to_string(),
+            window_messages: window.to_vec(),
+            cheap_max_tokens: Some(resolve_max_tokens(
+                connection_profile.max_tokens.map(|v| v as i64),
+                connection_profile.model_class.as_deref(),
+            )),
+            timeline_mode: str_field(&chat, "timelineMode")
+                .unwrap_or("realtime")
+                .to_string(),
+            project_id: str_field(&chat, "projectId").map(str::to_string),
+            in_autonomous_room: str_field(&chat, "chatType") == Some("autonomous"),
+            project_description,
+            chat_context_summary: str_field(&chat, "contextSummary").map(str::to_string),
+            cover_through_message_id: messages
+                .last()
+                .and_then(|m| str_field(m, "id"))
+                .map(str::to_string),
+            dry_run: false,
+        },
+    )
+    .await)
 }
