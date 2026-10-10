@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — feat(db): P4.D273 the store-backed bound create and provisionOfficialStore
+
+_Versions: core 0.0.1268._
+
+Two methods on the store-backed repository (projects and groups), ported from v4 `ed8b15b50`:
+
+- `create_bound_to_store` (v4 `createBoundToStore`) restores a project or group row already pointing at the official store its archive carries. It validates the whole entity first, as v4's create does. It then writes the slim row with `officialMountPointId` in a single INSERT and provisions nothing. On success it logs `<Label> restored bound to its archived store`. On a refusal it logs v4's validation and create lines, then `Error restoring <kind> bound to its store`.
+- `provision_official_store` (v4 `provisionOfficialStore`) is factored out of `create`. When the row is missing it now fails with v4's sentence, `Failed to provision official document store for … refusing to return a storeless …`.
+
+The restore's old two-statement `create_slim_linked` is removed.
+
 #### 2026-10-09 — feat(restore): P4.D273 the new-account remap rewrites every store pointer and the memory-tier references
 
 _Versions: core 0.0.1267._

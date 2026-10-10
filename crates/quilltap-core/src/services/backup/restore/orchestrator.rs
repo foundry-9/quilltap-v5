@@ -1145,8 +1145,12 @@ fn restore_on_writer(
                 ProjectEntity::property_keys(),
             );
             if let Some(store) = archived_store(p, "project") {
-                match slim_projects.create_slim_linked(&s(p, "name"), &store_opts(id_of(p)), &store)
-                {
+                match slim_projects.create_bound_to_store(
+                    &entity,
+                    Some(claimed.as_str()).filter(|id| !id.is_empty()),
+                    &store,
+                    &store_opts(id_of(p)),
+                ) {
                     Ok(_) => {
                         c.projects += 1;
                         preserved.push(PreservedStore::new("project", p, store));
@@ -1202,7 +1206,12 @@ fn restore_on_writer(
                 }
             };
             if let Some(store) = archived_store(g, "group") {
-                match slim_groups.create_slim_linked(&s(g, "name"), &store_opts(id_of(g)), &store) {
+                match slim_groups.create_bound_to_store(
+                    &entity,
+                    Some(claimed.as_str()).filter(|id| !id.is_empty()),
+                    &store,
+                    &store_opts(id_of(g)),
+                ) {
                     Ok(_) => {
                         c.groups += 1;
                         preserved.push(PreservedStore::new("group", g, store));

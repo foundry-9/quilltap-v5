@@ -144,42 +144,23 @@ impl<'c, E: StoreEntity> StoreBackedRepository<'c, E> {
         Ok(())
     }
 
-    /// P4.147 (dogfood #141) — the restore's PRESERVE arm: insert the slim row and
-    /// point it at `mount_point_id`, provisioning, linking and overlaying
-    /// NOTHING. Returns the row's id.
-    ///
-    /// For a `replace` restore whose archive carries this entity's official
-    /// store: that store, its files (`properties.json`, `description.md`, …) and
-    /// its `project_/group_doc_mount_links` row are all restored under their
-    /// archived ids later in the same restore (22a–22h), so [`Self::create`]'s
-    /// fresh store would only orphan the real one (v4 shares the defect —
-    /// `restore.ts:315-345`; a RULED v5 divergence, `system_restore_state`'s
-    /// `FRESH_STORE_RESIDUAL`). Until 22a runs, the row's FK names a store that
-    /// does not exist yet — nothing between reads it.
-    ///
-    /// The slim INSERT and the pointer UPDATE run under ONE transaction
-    /// (P4.158 R-D): a failing second statement must not leave a pointer-less
-    /// slim row the restore then reports as refused. (Main partition only —
-    /// nothing here touches the store.)
-    pub fn create_slim_linked(
-        &self,
-        name: &str,
-        opts: &StoreCreateOptions,
-        mount_point_id: &str,
-    ) -> Result<String, DbError> {
-        let tx = self.main.unchecked_transaction()?;
-        let (id, _) = self.create_slim(name, opts)?;
-        self.set_official_mount_point_id(&id, mount_point_id)?;
-        tx.commit()?;
-        Ok(id)
-    }
-
     /// Insert the slim row with a NULL FK (v4 store-aware `_create`). Mints id +
     /// timestamps unless pinned. Returns the created `(id, name)`.
     fn create_slim(
         &self,
         name: &str,
         opts: &StoreCreateOptions,
+    ) -> Result<(String, String), DbError> {
+        self.insert_slim(name, opts, None)
+    }
+
+    /// The slim INSERT itself, its `officialMountPointId` given (`None` →
+    /// NULL — every create but the restore's bound one).
+    fn insert_slim(
+        &self,
+        name: &str,
+        opts: &StoreCreateOptions,
+        official_mount_point_id: Option<&str>,
     ) -> Result<(String, String), DbError> {
         let now = crate::clock::now_iso();
         let id = opts
@@ -191,10 +172,10 @@ impl<'c, E: StoreEntity> StoreBackedRepository<'c, E> {
         self.main.execute(
             &format!(
                 "INSERT INTO {} (id, name, officialMountPointId, createdAt, updatedAt) \
-                 VALUES (?1, ?2, NULL, ?3, ?4)",
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
                 E::slim_table()
             ),
-            params![id, name, created_at, updated_at],
+            params![id, name, official_mount_point_id, created_at, updated_at],
         )?;
         Ok((id, name.to_string()))
     }
@@ -273,20 +254,117 @@ impl<'c, E: StoreEntity> StoreBackedRepository<'c, E> {
         E::parse_properties(&fields.properties)
             .map_err(|d| OverlayError::Db(DbError::Internal(d)))?;
         let (id, name) = self.create_slim(name, opts)?;
-        let ensured =
-            ensure_official_store::<E>(self.main, self.mount, &id, &name)?.ok_or_else(|| {
-                OverlayError::Db(DbError::Internal(format!(
-                    "{} {id} disappeared during store provisioning",
-                    E::entity_label()
-                )))
-            })?;
-        overlay::write_managed_fields::<E>(self.mount, &ensured.mount_point_id, fields)?;
+        self.provision_official_store(&id, &name, fields)?;
         self.find_by_id(&id)?.ok_or_else(|| {
             OverlayError::Db(DbError::Internal(format!(
                 "{} {id} disappeared immediately after creation",
                 E::entity_label()
             )))
         })
+    }
+
+    /// Provision the entity's official store and write its store-resident
+    /// fields from `fields` (the in-memory payload, not a re-read) — v4
+    /// `provisionOfficialStore` (`store-backed.repository.ts:175-189`,
+    /// `ed8b15b50`), factored out of `create`. `ensure_official_store` sets
+    /// `officialMountPointId` on the row; a pointer naming a missing store is
+    /// healed rather than trusted. Fails hard rather than leave the entity
+    /// storeless, which would throw on every read. Returns the store's id.
+    ///
+    /// Two callers: [`Self::create`], and the restore's 22a-i, which gives a
+    /// bound entity whose archived store row failed to restore a fresh store
+    /// populated from its backup row.
+    pub fn provision_official_store(
+        &self,
+        id: &str,
+        name: &str,
+        fields: &ManagedFields,
+    ) -> Result<String, OverlayError> {
+        let lower = E::entity_label();
+        let ensured =
+            ensure_official_store::<E>(self.main, self.mount, id, name)?.ok_or_else(|| {
+                OverlayError::Db(DbError::Internal(format!(
+                    "Failed to provision official document store for {lower} {id}; \
+                     refusing to return a storeless {lower}."
+                )))
+            })?;
+        overlay::write_managed_fields::<E>(self.mount, &ensured.mount_point_id, fields)?;
+        Ok(ensured.mount_point_id)
+    }
+
+    /// Restore an entity row bound to the official store a backup carries for
+    /// it — v4 `createBoundToStore` (`store-backed.repository.ts:191-229`,
+    /// `ed8b15b50`, bug 185).
+    ///
+    /// The one sanctioned exception to [`Self::create`]'s fresh-store rule, and
+    /// only for the restore: the archive's own store for this entity is being
+    /// restored alongside the row, so minting a fresh one would leave the row
+    /// pointing at an empty store and the archived one orphaned (bug 185). The
+    /// restore's claim map guarantees no two rows are given the same store.
+    ///
+    /// Writes the slim row with `officialMountPointId` set — ONE insert
+    /// carrying the FK — and does nothing else: no provisioning, no link, no
+    /// store writes (the archive carries the store's files and its link rows).
+    /// The store's rows usually arrive later in the restore than the
+    /// entity's, so the row is never read back through the overlay, which
+    /// would throw until they do.
+    ///
+    /// `entity` is the create payload (the archive row minus `id` /
+    /// `createdAt` / `updatedAt`), validated WHOLE first as v4's `_create`
+    /// does — the project's create seed applied, the group's none
+    /// ([`crate::db::projects::parse_create_entity`] /
+    /// [`crate::db::groups::parse_create_entity`]). A refusal logs v4's
+    /// `Data validation failed` and `Error creating <kind> entity`, then the
+    /// bound wrap `Error restoring <kind> bound to its store {collection,
+    /// name, mountPointId, error}`; a failed INSERT logs the last two. On
+    /// success, INFO `<Label> restored bound to its archived store
+    /// {projectId|groupId, name, officialMountPointId}`. Returns the row's id.
+    pub fn create_bound_to_store(
+        &self,
+        entity: &Value,
+        claimed_id: Option<&str>,
+        mount_point_id: &str,
+        opts: &StoreCreateOptions,
+    ) -> Result<String, OverlayError> {
+        let kind = match E::entity_label() {
+            "project" => overlay::StoreKind::Project,
+            _ => overlay::StoreKind::Group,
+        };
+        let validated = match kind {
+            overlay::StoreKind::Project => {
+                crate::db::projects::parse_create_entity(entity, claimed_id).map(|_| ())
+            }
+            overlay::StoreKind::Group => {
+                crate::db::groups::parse_create_entity(entity, claimed_id).map(|_| ())
+            }
+        };
+        let created = validated
+            .inspect_err(|zod| {
+                tracing::error!(
+                    target: "quilltap::db",
+                    collection = E::slim_table(),
+                    error = %zod,
+                    "Data validation failed"
+                );
+            })
+            .and_then(|()| {
+                let name = entity.get("name").and_then(Value::as_str).unwrap_or("");
+                self.insert_slim(name, opts, Some(mount_point_id))
+                    .map_err(|e| crate::db::fallback::error_text(&e))
+            })
+            .inspect_err(|error| {
+                crate::db::fallback::log_store_entity_create_failure(kind, error);
+            });
+        match created {
+            Ok((id, name)) => {
+                bound_create_info(kind, &id, &name, mount_point_id);
+                Ok(id)
+            }
+            Err(error) => {
+                bound_create_wrap(kind, entity.get("name"), mount_point_id, &error);
+                Err(OverlayError::Db(DbError::Internal(error)))
+            }
+        }
     }
 
     /// Update: store-resident fields routed to the store, the DB-only remainder
@@ -312,6 +390,62 @@ impl<'c, E: StoreEntity> StoreBackedRepository<'c, E> {
             params![id],
         )?;
         Ok(affected > 0)
+    }
+}
+
+/// [`StoreBackedRepository::create_bound_to_store`]'s success INFO (v4
+/// `store-backed.repository.ts:219-223`).
+fn bound_create_info(kind: overlay::StoreKind, id: &str, name: &str, mount_point_id: &str) {
+    match kind {
+        overlay::StoreKind::Project => tracing::info!(
+            target: "quilltap::db",
+            projectId = %id,
+            name = %name,
+            officialMountPointId = %mount_point_id,
+            "Project restored bound to its archived store"
+        ),
+        overlay::StoreKind::Group => tracing::info!(
+            target: "quilltap::db",
+            groupId = %id,
+            name = %name,
+            officialMountPointId = %mount_point_id,
+            "Group restored bound to its archived store"
+        ),
+    }
+}
+
+/// [`StoreBackedRepository::create_bound_to_store`]'s `safeQuery` wrap (v4
+/// `store-backed.repository.ts:226-227`): `{collection, name, mountPointId,
+/// error}` — `name` the payload's, omitted when absent (winston drops
+/// `undefined`), a non-string rendered as its JSON text.
+fn bound_create_wrap(
+    kind: overlay::StoreKind,
+    name: Option<&Value>,
+    mount_point_id: &str,
+    error: &str,
+) {
+    let name = name.map(|v| match v {
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
+    });
+    let name = name.as_deref().map(tracing::field::display);
+    match kind {
+        overlay::StoreKind::Project => tracing::error!(
+            target: "quilltap::db",
+            collection = "projects",
+            name = name,
+            mountPointId = %mount_point_id,
+            error = %error,
+            "Error restoring project bound to its store"
+        ),
+        overlay::StoreKind::Group => tracing::error!(
+            target: "quilltap::db",
+            collection = "groups",
+            name = name,
+            mountPointId = %mount_point_id,
+            error = %error,
+            "Error restoring group bound to its store"
+        ),
     }
 }
 
@@ -524,7 +658,7 @@ mod find_by_ids_tests {
 
 #[cfg(test)]
 mod create_order_tests {
-    //! P4.158 R-D / R-E — the two create paths leave NOTHING behind when they
+    //! P4.158 R-E + P4.D273 — the create paths leave NOTHING behind when they
     //! fail, over a real provisioned instance (a temp COPY, never live data).
     use super::*;
     use crate::db::projects::ProjectEntity;
@@ -557,32 +691,172 @@ mod create_order_tests {
         }
     }
 
-    /// R-D: the restore's preserve-arm create is two statements (the slim
-    /// INSERT, then the pointer UPDATE). A failing SECOND statement — planted
-    /// as a `BEFORE UPDATE` trigger on the slim table — must leave no slim row
-    /// behind (the two run under one transaction).
+    fn lines_with(lines: &[String], needle: &str) -> Vec<String> {
+        lines
+            .iter()
+            .filter(|l| l.contains(needle))
+            .cloned()
+            .collect()
+    }
+
+    /// P4.D273 — v4 `createBoundToStore`: ONE slim INSERT carrying the FK,
+    /// nothing provisioned or linked, v4's INFO — and none of the refusal lines.
     #[test]
-    fn create_slim_linked_is_atomic() {
+    fn create_bound_to_store_writes_one_bound_row_and_its_info() {
         let (_dir, main, mount) = instance();
-        main.connection()
-            .execute_batch(
-                "CREATE TRIGGER planted_pointer_failure BEFORE UPDATE ON projects \
-                 BEGIN SELECT RAISE(ABORT, 'planted second-statement failure'); END;",
+        let (points, links) = (
+            count(mount.connection(), "doc_mount_points"),
+            count(mount.connection(), "doc_mount_file_links"),
+        );
+        let repo =
+            StoreBackedRepository::<ProjectEntity>::new(main.connection(), mount.connection());
+        let (id, lines) = crate::test_support::captured_with(|| {
+            repo.create_bound_to_store(
+                &serde_json::json!({ "name": "The Voyage", "color": "#334455" }),
+                Some("a3000000-0000-4000-8000-000000000001"),
+                "mp-archived",
+                &pinned("a3000000-0000-4000-8000-000000000001"),
+            )
+            .unwrap()
+        });
+        assert_eq!(id, "a3000000-0000-4000-8000-000000000001");
+        let fk: Option<String> = main
+            .connection()
+            .query_row(
+                "SELECT officialMountPointId FROM projects WHERE id = ?1",
+                params![id],
+                |r| r.get(0),
             )
             .unwrap();
+        assert_eq!(fk.as_deref(), Some("mp-archived"));
+        assert_eq!(
+            count(mount.connection(), "doc_mount_points"),
+            points,
+            "no store"
+        );
+        assert_eq!(
+            count(mount.connection(), "doc_mount_file_links"),
+            links,
+            "no link"
+        );
+        assert_eq!(
+            lines_with(&lines, "restored bound to its archived store"),
+            vec![
+                "INFO quilltap::db Project restored bound to its archived store \
+                 projectId=a3000000-0000-4000-8000-000000000001 name=The Voyage \
+                 officialMountPointId=mp-archived"
+                    .to_string()
+            ]
+        );
+        assert!(
+            !lines.iter().any(|l| l.starts_with("ERROR")),
+            "the silence leg: {lines:?}"
+        );
+    }
+
+    /// A refused entity (v4's `_create` validates first): no row, and v4's
+    /// three lines in order — `Data validation failed`, `Error creating group
+    /// entity`, the bound wrap — with no INFO.
+    #[test]
+    fn create_bound_to_store_refuses_with_three_lines_and_no_row() {
+        let (_dir, main, mount) = instance();
+        let repo = StoreBackedRepository::<crate::db::groups::GroupEntity>::new(
+            main.connection(),
+            mount.connection(),
+        );
+        let long = "x".repeat(101);
+        let (refused, lines) = crate::test_support::captured_with(|| {
+            repo.create_bound_to_store(
+                &serde_json::json!({ "name": long }),
+                Some("a2000000-0000-4000-8000-000000000001"),
+                "mp-archived",
+                &pinned("a2000000-0000-4000-8000-000000000001"),
+            )
+        });
+        assert!(refused.is_err());
+        assert_eq!(count(main.connection(), "groups"), 0, "no slim row");
+        let messages: Vec<&str> = lines
+            .iter()
+            .filter(|l| l.starts_with("ERROR") || l.starts_with("INFO"))
+            .map(|l| {
+                [
+                    "Data validation failed",
+                    "Error creating group entity",
+                    "Error restoring group bound to its store",
+                    "Group restored bound to its archived store",
+                ]
+                .into_iter()
+                .find(|m| l.contains(m))
+                .unwrap_or(l.as_str())
+            })
+            .collect();
+        assert_eq!(
+            messages,
+            vec![
+                "Data validation failed",
+                "Error creating group entity",
+                "Error restoring group bound to its store"
+            ]
+        );
+        let wrap = lines_with(&lines, "Error restoring group bound to its store");
+        assert!(
+            wrap[0].contains(&format!(
+                "collection=groups name={long} mountPointId=mp-archived error="
+            )),
+            "{wrap:?}"
+        );
+    }
+
+    /// A failed INSERT (the id already taken) skips validation's line and logs
+    /// the rethrow + the wrap, with SQLite's bare message.
+    #[test]
+    fn create_bound_to_store_insert_failure_logs_the_bare_message() {
+        let (_dir, main, mount) = instance();
+        let repo =
+            StoreBackedRepository::<ProjectEntity>::new(main.connection(), mount.connection());
+        const DUP: &str = "a3000000-0000-4000-8000-0000000000dd";
+        let entity = serde_json::json!({ "name": "Twice" });
+        repo.create_bound_to_store(&entity, Some(DUP), "mp-1", &pinned(DUP))
+            .unwrap();
+        let (refused, lines) = crate::test_support::captured_with(|| {
+            repo.create_bound_to_store(&entity, Some(DUP), "mp-2", &pinned(DUP))
+        });
+        assert!(refused.is_err());
+        assert!(lines_with(&lines, "Data validation failed").is_empty());
+        assert_eq!(
+            lines_with(&lines, "Error restoring project bound to its store"),
+            vec![
+                "ERROR quilltap::db Error restoring project bound to its store collection=projects \
+                 name=Twice mountPointId=mp-2 error=UNIQUE constraint failed: projects.id"
+                    .to_string()
+            ]
+        );
+        assert_eq!(lines_with(&lines, "Error creating project entity").len(), 1);
+    }
+
+    /// v4's refusing sentence when the row to provision is gone
+    /// (`provisionOfficialStore`, `store-backed.repository.ts:178-182`).
+    #[test]
+    fn provision_official_store_refuses_a_missing_row_with_v4s_sentence() {
+        let (_dir, main, mount) = instance();
         let repo =
             StoreBackedRepository::<ProjectEntity>::new(main.connection(), mount.connection());
         let err = repo
-            .create_slim_linked("The Voyage", &pinned("p-atomic"), "mp-archived")
+            .provision_official_store(
+                "p-gone",
+                "Gone",
+                &ManagedFields {
+                    properties: serde_json::json!({}),
+                    description: None,
+                    instructions: None,
+                    state: serde_json::json!({}),
+                },
+            )
             .unwrap_err();
-        assert!(
-            err.to_string().contains("planted second-statement failure"),
-            "{err}"
-        );
         assert_eq!(
-            count(main.connection(), "projects"),
-            0,
-            "no half-written slim row"
+            err.to_string(),
+            "Failed to provision official document store for project p-gone; \
+             refusing to return a storeless project."
         );
     }
 
