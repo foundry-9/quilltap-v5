@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-09 — test(restore): P4.D265 the vintage restore fixture runs the memory-tiers boot ensure
+
+_No crate versions bumped._
+
+`restore_vintage_state` mirrors boot on its migration-vintage instance before restoring. It now also runs `ensure_memory_tiers`, so restored chats and memories no longer hit `no such column` on `otherExtractionWatermarkMessageId` / `tier`. Five arms were red at the workspace gate; all nine are green.
+
 #### 2026-10-09 — test(memory): P4.D265 host boot test for the memory-tiers ensure + mutation proofs
 
 _No crate versions bumped._
