@@ -109,6 +109,12 @@ interface CsCase {
   name: string;
   chatId: string;
   forceRegenerate?: boolean;
+  /**
+   * P4.D270 R-E: a `memoryExtractionMode` patch planted through v4's REAL
+   * `setMemoryExtractionModeSettings` before the case and deleted after it;
+   * absent → no row (v4's default `hybrid`, read by the REAL getter).
+   */
+  memoryExtractionMode?: Record<string, unknown>;
 }
 interface Spec {
   testPepperBase64: string;
@@ -333,7 +339,15 @@ async function main(): Promise<void> {
     lines.push(JSON.stringify({ kind: 'ran', call: call.name, error }));
   }
 
+  const { setMemoryExtractionModeSettings } = await import('@/lib/instance-settings');
   for (const call of spec.csCases) {
+    if (call.memoryExtractionMode) {
+      // The builder-built fixture has no `instance_settings` table (measured:
+      // v4's `writeSetting` throws `no such table`); the plant creates it with
+      // `fresh_schema.json`'s DDL — the Rust side does the same.
+      await rawQuery('CREATE TABLE IF NOT EXISTS "instance_settings" (\n  "key" TEXT PRIMARY KEY,\n  "value" TEXT NOT NULL\n)');
+      await setMemoryExtractionModeSettings(call.memoryExtractionMode as never);
+    }
     const job = {
       id: `job-${call.name}`,
       userId: spec.userId,
@@ -351,6 +365,9 @@ async function main(): Promise<void> {
       error = e instanceof Error ? e.message : String(e);
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
+    if (call.memoryExtractionMode) {
+      await rawQuery(`DELETE FROM "instance_settings" WHERE "key" = 'memoryExtractionMode'`);
+    }
     lines.push(JSON.stringify({ kind: 'ran', call: call.name, error }));
   }
 

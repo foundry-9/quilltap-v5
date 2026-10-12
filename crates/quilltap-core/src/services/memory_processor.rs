@@ -18,10 +18,14 @@
 //! parameters: completions ([`CompletionProvider`]) for the extraction calls,
 //! embeddings ([`EmbeddingProvider`]) for the gate.
 //!
-//! Also hosts `load_canon_for_observer_about_subject` + `read_vault_text_file`
-//! (v4 `cheap-llm-tasks/canon.ts` / `vault-overlay/vault-readers.ts`) — the
-//! OTHER-pass canon loader is the one stateful piece of the canon module, so
-//! it lives with its only consumer; the pure renderers are in [`crate::canon`].
+//! Also hosts the canon LOADERS + `read_vault_text_file` (v4
+//! `cheap-llm-tasks/canon.ts` / `vault-overlay/vault-readers.ts`) — the
+//! stateful half of the canon module: `pub`
+//! [`load_canon_for_observer_about_subject`] (three consumers — the per-turn
+//! OTHER pass, the fold-grain OTHER pass, and the consolidation engine with
+//! `include_commonplace: false`), [`load_canon_for_self_with_commonplace`]
+//! and [`load_commonplace_canon`] (v4 `d58548051`'s Commonplace reads); the
+//! pure renderers are in [`crate::canon`].
 //!
 //! ## Deferred (tracked, out of scope for this unit)
 //!
@@ -39,24 +43,29 @@ use serde_json::Value;
 
 use crate::canon::{
     load_canon_for_self, render_other_canon_block, render_self_canon_block, CanonSource,
-    CanonSourceKind,
+    CanonSourceKind, SelfCanon,
 };
 use crate::cheap_llm::{
     get_cheap_llm_provider, resolve_uncensored_cheap_llm_selection, CheapLlmConfig,
     CheapLlmProfile, CheapLlmSelection, UncensoredFallbackOptions,
 };
 use crate::clock;
+use crate::commonplace_file::{
+    commonplace_file_to_canon_text, commonplace_path_for, CommonplaceSubject,
+};
 use crate::context_budget::resolve_max_tokens;
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
 use crate::db::doc_mount_file_links::normalise_relative_path;
-use crate::db::memories_read;
+use crate::db::fallback::error_text;
 use crate::db::runtime::Db;
+use crate::db::{instance_settings, memories_read};
 use crate::jsnum::to_fixed;
-use crate::memory_format::Pronouns;
+use crate::memory_format::{format_name_with_pronouns, Pronouns};
 use crate::memory_tasks::{
-    build_other_extraction_messages, build_self_extraction_messages, parse_memory_candidate_array,
-    parse_other_candidates_by_subject, resolve_max_memories, ExtractionClock, MemoryCandidate,
-    OrientingContext, OtherSubjectInput, TurnTranscript,
+    build_fold_other_extraction_messages, build_other_extraction_messages,
+    build_self_extraction_messages, parse_memory_candidate_array,
+    parse_other_candidates_by_subject, resolve_max_memories, ExtractionClock, FoldOtherMessage,
+    MemoryCandidate, OrientingContext, OtherSubjectInput, TurnTranscript,
 };
 use crate::model::completion::CompletionProvider;
 use crate::model::embedding::EmbeddingProvider;
@@ -103,14 +112,125 @@ struct Subject {
     is_user: bool,
 }
 
-/// v4 `loadCanonForObserverAboutSubject`: the observer's vault
-/// `Others/<sanitized-subject-name>.md` first, then the subject's identity,
-/// then description — never personality or manifesto (no observer sees another
-/// character's interior or axiomatic core).
-fn load_canon_for_observer_about_subject(
+impl Subject {
+    fn canon_subject(&self) -> CanonSubject {
+        CanonSubject {
+            id: self.id.clone(),
+            name: self.name.clone(),
+            identity: self.identity.clone(),
+            description: self.description.clone(),
+        }
+    }
+}
+
+/// The subject an OTHER canon is loaded for (v4 `loadCanonForObserverAbout
+/// Subject`'s `subject: { id, name, identity, description }`).
+#[derive(Clone, Debug)]
+pub struct CanonSubject {
+    pub id: String,
+    pub name: String,
+    pub identity: Option<String>,
+    pub description: Option<String>,
+}
+
+/// v4 `loadCommonplaceCanon(holder, subject)` (`canon.ts:201-228`, `d58548051`):
+/// read a Commonplace digest mirror from a holder's vault and return it as
+/// canon text (frontmatter and heading stripped), or `None` when there is no
+/// vault or no file. Never fails — a missing digest is not an error.
+///
+/// v4's catch line `[Canon] Commonplace digest unavailable; canon continues
+/// without it` is NOT ported: it cannot fire. `readVaultTextFile` catches every
+/// error itself (`vault-readers.ts:53-69` — WARN `Failed to read vault file` →
+/// `null`), so the loader's own `try` never sees a throw; the
+/// `canon_commonplace_tier2` family pins it negative.
+pub fn load_commonplace_canon(
+    db: &Db,
+    holder_character_id: &str,
+    holder_mount_point_id: Option<&str>,
+    subject: &CommonplaceSubject,
+) -> Option<String> {
+    let mount_point_id = holder_mount_point_id.filter(|m| !m.is_empty())?;
+    let path = commonplace_path_for(subject);
+    let raw = read_vault_text_file(db, mount_point_id, &path);
+    let text = commonplace_file_to_canon_text(raw.as_deref());
+    if let Some(text) = &text {
+        tracing::debug!(
+            characterId = %holder_character_id,
+            path = %path,
+            chars = crate::jsstr::utf16_len(text),
+            "[Canon] Commonplace digest loaded into canon"
+        );
+    }
+    text
+}
+
+/// v4 `loadCanonForSelfWithCommonplace` (`canon.ts:233-247`): SELF-pass canon
+/// with the character's own `Commonplace/Self.md` appended after the card
+/// fields. Same shape as [`crate::canon::load_canon_for_self`]; the extra
+/// `mount_point_id` is the character's own vault. v4 spreads the digest only
+/// when truthy, so an empty digest reads as absent.
+#[allow(clippy::too_many_arguments)]
+pub fn load_canon_for_self_with_commonplace(
+    db: &Db,
+    id: &str,
+    name: &str,
+    manifesto: Option<&str>,
+    personality: Option<&str>,
+    description: Option<&str>,
+    identity: Option<&str>,
+    mount_point_id: Option<&str>,
+) -> SelfCanon {
+    let mut canon = load_canon_for_self(id, name, manifesto, personality, description, identity);
+    canon.commonplace =
+        load_commonplace_canon(db, id, mount_point_id, &CommonplaceSubject::SelfFile)
+            .filter(|c| !c.is_empty());
+    canon
+}
+
+/// v4 `loadCanonForObserverAboutSubject(observer, subject, options)`
+/// (`canon.ts:255-271`): the hand canon first — the observer's vault
+/// `Others/<sanitized-subject-name>.md`, then the subject's identity, then
+/// description, never personality or manifesto (no observer sees another
+/// character's interior or axiomatic core) — then, unless
+/// `include_commonplace` is false, the observer's `Commonplace/<subject>.md`
+/// digest, the order the block renders in. The per-turn and fold-grain OTHER
+/// passes pass `true` (v4's default); only the consolidation call passes
+/// `false` (it is handed the digests directly).
+pub fn load_canon_for_observer_about_subject(
     db: &Db,
     observer_mount_point_id: Option<&str>,
-    subject: &Subject,
+    observer_character_id: &str,
+    subject: &CanonSubject,
+    include_commonplace: bool,
+) -> CanonSource {
+    let hand = load_hand_canon(db, observer_mount_point_id, subject);
+    if !include_commonplace {
+        return hand;
+    }
+    let commonplace = load_commonplace_canon(
+        db,
+        observer_character_id,
+        observer_mount_point_id,
+        &CommonplaceSubject::Other {
+            id: subject.id.clone(),
+            name: subject.name.clone(),
+        },
+    );
+    match commonplace.filter(|c| !c.is_empty()) {
+        Some(c) => CanonSource {
+            commonplace: Some(c),
+            ..hand
+        },
+        None => hand,
+    }
+}
+
+/// v4 `loadHandCanon` (`canon.ts:274-322`): the hand-written half of OTHER
+/// canon — vault `Others/` file, else identity, else description.
+fn load_hand_canon(
+    db: &Db,
+    observer_mount_point_id: Option<&str>,
+    subject: &CanonSubject,
 ) -> CanonSource {
     if let Some(mount_id) = observer_mount_point_id.filter(|s| !s.is_empty()) {
         let path = format!("{OTHERS_FOLDER}/{}.md", sanitize_file_name(&subject.name));
@@ -122,6 +242,7 @@ fn load_canon_for_observer_about_subject(
                     character_name: subject.name.clone(),
                     body: Some(trimmed.to_string()),
                     source: CanonSourceKind::Vault,
+                    commonplace: None,
                 };
             }
         }
@@ -138,6 +259,7 @@ fn load_canon_for_observer_about_subject(
             character_name: subject.name.clone(),
             body: Some(identity.to_string()),
             source: CanonSourceKind::Identity,
+            commonplace: None,
         };
     }
 
@@ -152,6 +274,7 @@ fn load_canon_for_observer_about_subject(
             character_name: subject.name.clone(),
             body: Some(description.to_string()),
             source: CanonSourceKind::Description,
+            commonplace: None,
         };
     }
 
@@ -160,6 +283,7 @@ fn load_canon_for_observer_about_subject(
         character_name: subject.name.clone(),
         body: None,
         source: CanonSourceKind::None,
+        commonplace: None,
     }
 }
 
@@ -251,6 +375,64 @@ pub async fn extract_other_memories_from_turn<C: CompletionProvider>(
             uncensored_fallback,
             resolved_max_tokens,
             Some(observer_character_id),
+            Some("memory-extraction-other"),
+            CheapLlmTaskOptions::default(),
+        )
+        .await
+}
+
+/// v4 `extractOtherMemoriesFromFold` (`d58548051`): the fold-grain OTHER call —
+/// what one OBSERVER would retain about each SUBJECT after a whole stretch of
+/// conversation (the just-folded window, or the uncovered tail of an idle
+/// chat). Same prompt family and task type as the per-turn OTHER pass (so the
+/// LLM-log type, activity kind and timeout class are unchanged), told it is
+/// reading a stretch and should state each thread once. The empty-window /
+/// no-subject early return carries an empty bucket per subject and no usage.
+#[allow(clippy::too_many_arguments)]
+pub async fn extract_other_memories_from_fold<C: CompletionProvider>(
+    executor: &CheapLlmTaskExecutor,
+    completion: &C,
+    window_messages: &[FoldOtherMessage],
+    observer_id: &str,
+    observer_name: &str,
+    observer_pronouns: Option<&Pronouns>,
+    subjects: &[OtherSubjectInput],
+    per_subject_cap: i64,
+    selection: &CheapLlmSelection,
+    uncensored_fallback: Option<&UncensoredFallbackOptions<'_>>,
+    resolved_max_tokens: Option<f64>,
+    in_autonomous_room: bool,
+    orienting: Option<&OrientingContext>,
+    clock: Option<&ExtractionClock>,
+) -> CheapLlmTaskResult<Vec<(String, Vec<MemoryCandidate>)>> {
+    let observer_label = format_name_with_pronouns(observer_name, observer_pronouns);
+    let Some(messages) = build_fold_other_extraction_messages(
+        window_messages,
+        &observer_label,
+        subjects,
+        per_subject_cap,
+        in_autonomous_room,
+        orienting,
+        clock,
+    ) else {
+        return CheapLlmTaskResult::early(
+            subjects
+                .iter()
+                .map(|s| (s.id.clone(), Vec::new()))
+                .collect(),
+        );
+    };
+
+    let cap = per_subject_cap.max(1);
+    executor
+        .execute(
+            completion,
+            selection,
+            messages,
+            |content| parse_other_candidates_by_subject(content, subjects, cap),
+            uncensored_fallback,
+            resolved_max_tokens,
+            Some(observer_id),
             Some("memory-extraction-other"),
             CheapLlmTaskOptions::default(),
         )
@@ -391,7 +573,9 @@ pub struct TurnMemoryProcessingResult {
     pub passes_lost_to_timeout: usize,
 }
 
-enum RateLimitDecision {
+/// v4 `RateLimitDecision` (exported at `d58548051` — the fold-grain pass
+/// resolves its observers' limits through the same rule).
+pub(crate) enum RateLimitDecision {
     Allow,
     Throttle {
         floor: f64,
@@ -408,7 +592,7 @@ enum RateLimitDecision {
 /// the last wall-clock hour; at/over the cap skip, past the soft-start
 /// fraction throttle to the floor. A lookup failure allows (v4 warns and
 /// falls through).
-fn resolve_extraction_rate_limit(
+pub(crate) fn resolve_extraction_rate_limit(
     db: &Db,
     character_id: &str,
     limits: Option<&MemoryExtractionLimits>,
@@ -445,8 +629,12 @@ fn resolve_extraction_rate_limit(
     RateLimitDecision::Allow
 }
 
-/// v4 `applyImportanceFloor`.
-fn apply_importance_floor(candidates: Vec<MemoryCandidate>, floor: f64) -> Vec<MemoryCandidate> {
+/// v4 `applyImportanceFloor`: keep candidates whose importance (`?? 0.5`)
+/// clears the floor.
+pub(crate) fn apply_importance_floor(
+    candidates: Vec<MemoryCandidate>,
+    floor: f64,
+) -> Vec<MemoryCandidate> {
     candidates
         .into_iter()
         .filter(|c| c.importance_f64() >= floor)
@@ -459,14 +647,16 @@ fn js_interp(value: Option<&str>) -> &str {
     value.unwrap_or("undefined")
 }
 
-struct RunState {
-    debug_logs: Vec<String>,
+/// The accumulators one extraction run threads through [`write_candidate`].
+#[derive(Default)]
+pub(crate) struct RunState {
+    pub(crate) debug_logs: Vec<String>,
     /// Passes that never happened, as distinct from passes that found nothing.
-    passes_lost_to_timeout: usize,
-    created_memory_ids: Vec<String>,
-    reinforced_memory_ids: Vec<String>,
-    collected_candidates: Vec<ExtractedCandidate>,
-    total_usage: UsageTotals,
+    pub(crate) passes_lost_to_timeout: usize,
+    pub(crate) created_memory_ids: Vec<String>,
+    pub(crate) reinforced_memory_ids: Vec<String>,
+    pub(crate) collected_candidates: Vec<ExtractedCandidate>,
+    pub(crate) total_usage: UsageTotals,
 }
 
 impl RunState {
@@ -479,17 +669,53 @@ impl RunState {
     }
 }
 
-struct WriteArgs<'a> {
-    character_id: &'a str,
-    character_name: &'a str,
-    about_character_id: &'a str,
-    about_character_name: &'a str,
-    pass: &'a str,
-    candidate: &'a MemoryCandidate,
-    pass_label: String,
-    source_message_id: Option<String>,
+/// v4 `WriteOptions` (minus the context and the accumulators).
+pub(crate) struct WriteArgs<'a> {
+    pub(crate) character_id: &'a str,
+    pub(crate) character_name: &'a str,
+    pub(crate) about_character_id: &'a str,
+    pub(crate) about_character_name: &'a str,
+    pub(crate) pass: &'a str,
+    pub(crate) candidate: &'a MemoryCandidate,
+    pub(crate) pass_label: String,
+    pub(crate) source_message_id: Option<String>,
     /// `createdAt` of the source message — the wall-clock anchor for `occurredAt`.
-    source_message_created_at: Option<String>,
+    pub(crate) source_message_created_at: Option<String>,
+}
+
+/// v4 `CandidateWriteContext` (`d58548051`): the slice of an extraction
+/// context the candidate writer needs. A per-turn
+/// [`TurnMemoryExtractionContext`] satisfies it ([`TurnMemoryExtractionContext::write_ctx`]),
+/// and so does the fold-grain OTHER pass, which has no turn transcript — the
+/// one write path serves both grains, so witnessedContext / occurredAt
+/// stamping cannot drift between them.
+pub(crate) struct CandidateWriteContext<'a> {
+    pub(crate) chat_id: &'a str,
+    pub(crate) user_id: &'a str,
+    pub(crate) project_id: Option<&'a str>,
+    pub(crate) source_message_timestamp: Option<&'a str>,
+    pub(crate) timeline_mode: Option<&'a str>,
+    pub(crate) dry_run: bool,
+    pub(crate) in_autonomous_room: bool,
+    /// v4 `transcript?.turnTimestamp` — the turn's own timestamp per-turn, the
+    /// window's newest stamp on the fold grain.
+    pub(crate) turn_timestamp: Option<&'a str>,
+}
+
+impl TurnMemoryExtractionContext {
+    /// The per-turn context as a [`CandidateWriteContext`].
+    pub(crate) fn write_ctx(&self) -> CandidateWriteContext<'_> {
+        CandidateWriteContext {
+            chat_id: &self.chat_id,
+            user_id: &self.user_id,
+            project_id: self.project_id.as_deref(),
+            source_message_timestamp: self.source_message_timestamp.as_deref(),
+            timeline_mode: self.timeline_mode.as_deref(),
+            dry_run: self.dry_run,
+            in_autonomous_room: self.in_autonomous_room,
+            turn_timestamp: self.transcript.turn_timestamp.as_deref(),
+        }
+    }
 }
 
 /// Resolve a candidate's episodic anchors against the source turn's clock (v4
@@ -528,10 +754,10 @@ fn resolve_candidate_anchors(
 
 /// v4 `writeCandidate`: dry-run collection, or a write through the memory gate
 /// with the per-outcome debug line.
-async fn write_candidate<E: EmbeddingProvider>(
+pub(crate) async fn write_candidate<E: EmbeddingProvider>(
     db: &Db,
     embedding: &E,
-    ctx: &TurnMemoryExtractionContext,
+    ctx: &CandidateWriteContext<'_>,
     state: &mut RunState,
     args: WriteArgs<'_>,
 ) -> Result<(), crate::db::DbError> {
@@ -540,13 +766,15 @@ async fn write_candidate<E: EmbeddingProvider>(
 
     // Episodic spine: resolve the candidate's anchors against the source turn's
     // clock. v4's `??` chain — the slice's own message timestamp first, then the
-    // batch-backfill override, then the turn timestamp, then the write clock.
-    let timeline_mode = ctx.timeline_mode.as_deref().unwrap_or("realtime");
+    // batch-backfill override, then the turn timestamp (`transcript?.` — a
+    // transcript-less fold context carries the window's stamp), then the
+    // write clock.
+    let timeline_mode = ctx.timeline_mode.unwrap_or("realtime");
     let anchor_iso = args
         .source_message_created_at
         .clone()
-        .or_else(|| ctx.source_message_timestamp.clone())
-        .or_else(|| ctx.transcript.turn_timestamp.clone())
+        .or_else(|| ctx.source_message_timestamp.map(str::to_string))
+        .or_else(|| ctx.turn_timestamp.map(str::to_string))
         .unwrap_or_else(clock::now_iso);
     let (occurred_at, narrative_time) =
         resolve_candidate_anchors(candidate, Some(&anchor_iso), timeline_mode);
@@ -592,15 +820,15 @@ async fn write_candidate<E: EmbeddingProvider>(
         &CreateMemoryOptions {
             character_id: args.character_id.to_string(),
             about_character_id: Some(args.about_character_id.to_string()),
-            chat_id: Some(ctx.chat_id.clone()),
-            project_id: ctx.project_id.clone(),
+            chat_id: Some(ctx.chat_id.to_string()),
+            project_id: ctx.project_id.map(str::to_string),
             content: candidate.content.clone().unwrap_or_default(),
             summary: candidate.summary.clone().unwrap_or_default(),
             keywords: candidate.keywords.clone(),
             importance: Some(importance),
             source: Some("AUTO".to_string()),
             source_message_id: args.source_message_id.clone(),
-            source_message_timestamp: ctx.source_message_timestamp.clone(),
+            source_message_timestamp: ctx.source_message_timestamp.map(str::to_string),
             tags: Vec::new(),
             // 4.6 Private Character Rooms: provenance for auto-extracted
             // memories — autonomous rooms get explicit attribution; ordinary
@@ -620,7 +848,7 @@ async fn write_candidate<E: EmbeddingProvider>(
             kind: Some(candidate.kind.clone()),
         },
         &MemoryServiceOptions {
-            user_id: ctx.user_id.clone(),
+            user_id: ctx.user_id.to_string(),
             embedding_profile_id: None,
         },
     )
@@ -691,6 +919,42 @@ fn character_str_field<'a>(
         .and_then(Value::as_str)
 }
 
+/// The per-turn OTHER pass's mode (v4 `memory-processor.ts:598-623`): the
+/// operator's `memoryExtractionMode.otherPass` and `perTurnOtherFloor`, read
+/// fresh every turn, then ALWAYS the `[Memory] OTHER pass mode resolved` DEBUG
+/// (the floor only for `hybrid`, else v4's explicit `null` — a DEFINED field,
+/// rendered). A failed settings read falls back to today's behaviour (`turn`,
+/// floor 0) rather than silently going quiet. v4's getter never throws
+/// (`readSetting` / `readJsonSetting` catch and default — a missing table is
+/// defaults, not a failure), so its WARN is unreachable there; v5 keeps the arm
+/// for the one v5-only failure, a read-pool checkout that fails (P4.D270 R-D).
+pub(crate) fn resolve_other_pass_mode(db: &Db, chat_id: &str) -> (String, f64) {
+    let (mode, floor) =
+        match db.read_main(|c| Ok(instance_settings::get_memory_extraction_mode_settings(c))) {
+            Ok(mode) => (mode.other_pass, mode.per_turn_other_floor),
+            Err(error) => {
+                tracing::warn!(
+                    chatId = %chat_id,
+                    error = %error_text(&error),
+                    "[Memory] Extraction-mode lookup failed; keeping per-turn OTHER pass"
+                );
+                ("turn".to_string(), 0.0)
+            }
+        };
+    let floor_field = if mode == "hybrid" {
+        floor.to_string()
+    } else {
+        "null".to_string()
+    };
+    tracing::debug!(
+        chatId = %chat_id,
+        otherPassMode = %mode,
+        perTurnOtherFloor = %floor_field,
+        "[Memory] OTHER pass mode resolved"
+    );
+    (mode, floor)
+}
+
 /// Run all extraction passes for a single turn (v4 `processTurnForMemory`).
 pub async fn process_turn_for_memory<C: CompletionProvider, E: EmbeddingProvider>(
     db: &Db,
@@ -699,14 +963,7 @@ pub async fn process_turn_for_memory<C: CompletionProvider, E: EmbeddingProvider
     executor: &CheapLlmTaskExecutor,
     ctx: &TurnMemoryExtractionContext,
 ) -> TurnMemoryProcessingResult {
-    let mut state = RunState {
-        passes_lost_to_timeout: 0,
-        debug_logs: Vec::new(),
-        created_memory_ids: Vec::new(),
-        reinforced_memory_ids: Vec::new(),
-        collected_candidates: Vec::new(),
-        total_usage: UsageTotals::default(),
-    };
+    let mut state = RunState::default();
     let source_message_id = ctx.transcript.latest_assistant_message_id.clone();
 
     match run_passes(db, completion, embedding, executor, ctx, &mut state).await {
@@ -748,6 +1005,7 @@ async fn run_passes<C: CompletionProvider, E: EmbeddingProvider>(
     state: &mut RunState,
 ) -> Result<(), crate::db::DbError> {
     let source_message_id = ctx.transcript.latest_assistant_message_id.clone();
+    let write_ctx = ctx.write_ctx();
 
     if ctx.transcript.character_slices.is_empty() {
         state
@@ -924,7 +1182,10 @@ async fn run_passes<C: CompletionProvider, E: EmbeddingProvider>(
     // ---------------------------------------------------------------------
     for slice in &allowed_slices {
         let rl = &rate_limits[&slice.character_id];
-        let self_canon_block = render_self_canon_block(&load_canon_for_self(
+        // Card fields, then the character's own Commonplace digest (Self.md):
+        // once a fact is digested the extractor sees it as already established.
+        let self_canon_block = render_self_canon_block(&load_canon_for_self_with_commonplace(
+            db,
             &slice.character_id,
             &slice.character_name,
             character_str_field(
@@ -943,6 +1204,11 @@ async fn run_passes<C: CompletionProvider, E: EmbeddingProvider>(
                 "description",
             ),
             character_str_field(&ctx.participant_characters, &slice.character_id, "identity"),
+            character_str_field(
+                &ctx.participant_characters,
+                &slice.character_id,
+                "characterDocumentMountPointId",
+            ),
         ));
 
         let self_result = extract_self_memories_from_turn(
@@ -1005,7 +1271,7 @@ async fn run_passes<C: CompletionProvider, E: EmbeddingProvider>(
                 write_candidate(
                     db,
                     embedding,
-                    ctx,
+                    &write_ctx,
                     state,
                     WriteArgs {
                         character_id: &slice.character_id,
@@ -1034,13 +1300,36 @@ async fn run_passes<C: CompletionProvider, E: EmbeddingProvider>(
         }
     }
 
+    // Where does the OTHER pass live? 'turn' = here, as ever; 'hybrid' = here
+    // but only for what clears the high floor (commitments, agreements, new
+    // standing facts), the rest being left to the fold-grain pass; 'fold' =
+    // nowhere here at all. A failed settings read falls back to today's
+    // behaviour ('turn') rather than silently going quiet. (v4's getter never
+    // throws — `readSetting` / `readJsonSetting` catch and default — so its
+    // WARN is unreachable there; v5 keeps the arm for the one v5-only failure,
+    // a pool checkout that fails.)
+    let (other_pass_mode, per_turn_other_floor) = resolve_other_pass_mode(db, &ctx.chat_id);
+    let is_hybrid = other_pass_mode == "hybrid";
+    let run_per_turn_other = other_pass_mode != "fold";
+    if !run_per_turn_other {
+        state.debug_logs.push(
+            "[Memory] OTHER pass runs at fold grain only (otherPass=fold); skipping per-turn OTHER"
+                .to_string(),
+        );
+    }
+
     // ---------------------------------------------------------------------
     // Pass 2: OTHER memories (one multi-subject call per observer). Each
     // subject's canon block comes from the observer's vault
     // `Others/<subject>.md` first, then the subject's identity property; the
     // canon source is preserved per subject for the debug attribution.
     // ---------------------------------------------------------------------
-    for observer in &allowed_slices {
+    let observers: &[&crate::memory_tasks::TurnCharacterSlice] = if run_per_turn_other {
+        &allowed_slices
+    } else {
+        &[]
+    };
+    for observer in observers {
         let rl = &rate_limits[&observer.character_id];
         let observer_mount = character_str_field(
             &ctx.participant_characters,
@@ -1065,7 +1354,13 @@ async fn run_passes<C: CompletionProvider, E: EmbeddingProvider>(
         }
         let mut resolved_subjects: Vec<ResolvedSubject> = Vec::new();
         for subject in &observer_subjects {
-            let canon = load_canon_for_observer_about_subject(db, observer_mount, subject);
+            let canon = load_canon_for_observer_about_subject(
+                db,
+                observer_mount,
+                &observer.character_id,
+                &subject.canon_subject(),
+                true,
+            );
             let subject_canon_block = render_other_canon_block(&canon);
             let pronouns: Option<Pronouns> = if subject.is_user {
                 ctx.transcript.user_character_pronouns.clone()
@@ -1137,17 +1432,32 @@ async fn run_passes<C: CompletionProvider, E: EmbeddingProvider>(
                 .map(|(_, c)| c.clone())
                 .unwrap_or_default();
             let raw_len = raw_candidates.len();
+            let floored_candidates = if is_hybrid {
+                let floored = apply_importance_floor(raw_candidates, per_turn_other_floor);
+                if floored.len() < raw_len {
+                    state.debug_logs.push(format!(
+                        "[Memory] Hybrid floor dropped {} OTHER candidate(s) for {} about {} below importance {per_turn_other_floor} (left to the fold-grain pass)",
+                        raw_len - floored.len(),
+                        observer.character_name,
+                        subject.subject_name
+                    ));
+                }
+                floored
+            } else {
+                raw_candidates
+            };
+            let floored_len = floored_candidates.len();
             let candidates = match rl {
                 RateLimitDecision::Throttle { floor, .. } => {
-                    apply_importance_floor(raw_candidates, *floor)
+                    apply_importance_floor(floored_candidates, *floor)
                 }
-                _ => raw_candidates,
+                _ => floored_candidates,
             };
             if let RateLimitDecision::Throttle { floor, .. } = rl {
-                if candidates.len() < raw_len {
+                if candidates.len() < floored_len {
                     state.debug_logs.push(format!(
                         "[Memory] Throttle dropped {} OTHER candidate(s) for {} about {} below importance {floor}",
-                        raw_len - candidates.len(),
+                        floored_len - candidates.len(),
                         observer.character_name,
                         subject.subject_name
                     ));
@@ -1169,7 +1479,7 @@ async fn run_passes<C: CompletionProvider, E: EmbeddingProvider>(
                 write_candidate(
                     db,
                     embedding,
-                    ctx,
+                    &write_ctx,
                     state,
                     WriteArgs {
                         character_id: &observer.character_id,
@@ -1196,4 +1506,124 @@ async fn run_passes<C: CompletionProvider, E: EmbeddingProvider>(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod other_pass_mode_tests {
+    use super::*;
+    use crate::test_support::captured_with;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    fn test_db(row: Option<&str>) -> (Db, tempfile::TempDir) {
+        let dir = tempfile::Builder::new()
+            .prefix("qt-other-pass-mode-")
+            .tempdir()
+            .expect("tempdir");
+        let db = Db::open_main(dir.path().join("main.db"), PEPPER).unwrap();
+        let row = row.map(str::to_string);
+        db.write_blocking(move |writers| {
+            let c = writers.main().connection();
+            c.execute_batch(
+                "CREATE TABLE \"instance_settings\" (\"key\" TEXT PRIMARY KEY, \"value\" TEXT NOT NULL)",
+            )?;
+            if let Some(value) = row {
+                c.execute(
+                    "INSERT INTO instance_settings (key, value) VALUES ('memoryExtractionMode', ?1)",
+                    [value],
+                )?;
+            }
+            Ok(())
+        })
+        .unwrap();
+        (db, dir)
+    }
+
+    fn lines_with<'a>(lines: &'a [String], message: &str) -> Vec<&'a String> {
+        lines.iter().filter(|l| l.contains(message)).collect()
+    }
+
+    #[test]
+    fn no_row_reads_hybrid_and_renders_the_floor() {
+        let (db, _dir) = test_db(None);
+        let (mode, lines) = captured_with(|| resolve_other_pass_mode(&db, "chat-1"));
+        assert_eq!(mode, ("hybrid".to_string(), 0.75));
+        let resolved = lines_with(&lines, "[Memory] OTHER pass mode resolved");
+        assert_eq!(resolved.len(), 1, "{lines:?}");
+        assert!(resolved[0].starts_with("DEBUG "), "{:?}", resolved[0]);
+        assert!(
+            resolved[0].ends_with("chatId=chat-1 otherPassMode=hybrid perTurnOtherFloor=0.75"),
+            "{:?}",
+            resolved[0]
+        );
+        // Silence leg: a healthy read never takes the failure arm.
+        assert!(lines_with(&lines, "Extraction-mode lookup failed").is_empty());
+    }
+
+    #[test]
+    fn turn_and_fold_render_an_explicit_null_floor() {
+        for (row, mode) in [
+            (
+                r#"{"otherPass":"turn","perTurnOtherFloor":0.5,"foldCandidatesPerSubject":3}"#,
+                "turn",
+            ),
+            (
+                r#"{"otherPass":"fold","perTurnOtherFloor":0.5,"foldCandidatesPerSubject":3}"#,
+                "fold",
+            ),
+        ] {
+            let (db, _dir) = test_db(Some(row));
+            let (got, lines) = captured_with(|| resolve_other_pass_mode(&db, "chat-2"));
+            assert_eq!(got, (mode.to_string(), 0.5));
+            let resolved = lines_with(&lines, "[Memory] OTHER pass mode resolved");
+            assert!(
+                resolved[0].ends_with(&format!(
+                    "chatId=chat-2 otherPassMode={mode} perTurnOtherFloor=null"
+                )),
+                "{:?}",
+                resolved[0]
+            );
+        }
+    }
+
+    /// R-D: the one v5-only failure (a read-pool checkout that cannot open the
+    /// main database) falls back to `turn` — today's behaviour, NOT `hybrid` —
+    /// with v4's WARN, and still logs the resolved line.
+    #[test]
+    fn a_failed_read_keeps_the_per_turn_pass() {
+        let (db, dir) = test_db(None);
+        std::fs::rename(dir.path().join("main.db"), dir.path().join("moved.db")).unwrap();
+        let (got, lines) = captured_with(|| resolve_other_pass_mode(&db, "chat-3"));
+        assert_eq!(got, ("turn".to_string(), 0.0));
+        let warn = lines_with(
+            &lines,
+            "[Memory] Extraction-mode lookup failed; keeping per-turn OTHER pass",
+        );
+        assert_eq!(warn.len(), 1, "{lines:?}");
+        assert!(warn[0].starts_with("WARN "), "{:?}", warn[0]);
+        assert!(warn[0].contains("chatId=chat-3 error="), "{:?}", warn[0]);
+        let resolved = lines_with(&lines, "[Memory] OTHER pass mode resolved");
+        assert!(
+            resolved[0].ends_with("chatId=chat-3 otherPassMode=turn perTurnOtherFloor=null"),
+            "{:?}",
+            resolved[0]
+        );
+    }
+
+    /// R-K: the floor in the two debug-log lines renders through Rust `{}`,
+    /// which equals JS `String(n)` for every schema-valid floor except below
+    /// `1e-6` (JS switches to exponent form) — an accepted edge, pinned here.
+    #[test]
+    fn floor_display_matches_js_except_below_one_millionth() {
+        for (v, js) in [
+            (0.75, "0.75"),
+            (0.5, "0.5"),
+            (1.0, "1"),
+            (0.0, "0"),
+            (0.000001, "0.000001"),
+        ] {
+            assert_eq!(format!("{v}"), js);
+        }
+        assert_eq!(format!("{}", 0.0000001_f64), "0.0000001"); // JS: "1e-7"
+    }
 }

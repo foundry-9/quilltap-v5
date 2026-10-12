@@ -3,9 +3,10 @@
 //! bodies (`selfBodyForCap` / `otherBodyForCap`, with the constant
 //! `ORIENTING_CONTEXT_SKIP_BULLET` / `AGREEMENTS_INSTRUCTION_BLOCK` /
 //! `EVENT_INSTRUCTION_BLOCK` / `TAGS_INSTRUCTION_BLOCK` interpolations already
-//! substituted and the template escapes evaluated) and `FOLD_EPISODE_PROMPT`,
-//! each split at its one live interpolation (the candidate cap /
-//! `FOLD_EPISODE_CAP`). Extracted mechanically by
+//! substituted and the template escapes evaluated; `otherBodyForCap`'s
+//! leading `${grainBlock}` stripped), the fold-grain `FOLD_GRAIN_OTHER_BLOCK`,
+//! and `FOLD_EPISODE_PROMPT`, each body split at its one live interpolation
+//! (the candidate cap / `FOLD_EPISODE_CAP`). Extracted mechanically by
 //! `harness/oracle/scripts/extract-memory-task-prompts.py` so no byte was
 //! transcribed by hand; the tier-1 differential (`memory_tasks_equivalence`)
 //! and the fold-episode families prove the bytes. Regenerate by re-running
@@ -402,3 +403,9 @@ For each episode:
 An episode records what was said and done, not what was agreed: attribute proposals and conditions to their speaker, and record an agreement only where the agreeing party's own assent appears in the window.
 
 Return a JSON array only. No prose, no code fences. If nothing qualifies, return []."####;
+pub(crate) const FOLD_GRAIN_OTHER_BLOCK: &str = r####"GRAIN — READ THIS FIRST
+What follows is a STRETCH of conversation spanning many turns, not a single
+exchange. State each thread ONCE, as it stands at the end of the stretch:
+the settled outcome, not each beat on the way there. If a subject changed
+their mind mid-stretch, record where they landed. Where the instructions
+below say "this exchange" or "this turn", read "this stretch"."####;

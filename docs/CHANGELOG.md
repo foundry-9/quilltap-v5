@@ -435,6 +435,110 @@ _Versions: core 0.0.1266._
 - 23 unit tests mirror v4's 16 cache cases and 4 job-hook cases, plus the `""` / non-string `characterId` and `dryRun: "true"` edges and the line capture pins.
 
 `build_context` passes the chat id. Its pool sizing and present characters come in a later commit.
+#### 2026-10-10 — docs(porting): P4.D270 lane close — gate, sweep and measurement records
+
+_Docs-only change._
+
+The P4.D270 order is marked LANE COMPLETE, and the status log gains the lane-close record:
+
+- **Workspace gate.** 709 binaries, 4,676 passed, 2 failed, 3 ignored. Both failures are by design: Tier R's help, completion and recall-replay cases (P4.D269) and the export-schema embed guard (P4.D272).
+- **Own-family sweep from the pin.** 11 of 15 families pass. Each of the other four fails only on sibling residue (P4.D266's near-duplicate reinforcement write, P4.D275's tool-definition hash) or memory_processor's long-standing `llm_logs` byte red.
+- **Also recorded:** the order's seven measurements, the mode-row table, the `patchOnlyFields` no-analog record, the host `jobId` handoff, and the deferred regenerate rebuild.
+
+#### 2026-10-09 — feat(brahma): P4.D270 R1 the Brahma SQL prompt names the memory tiers
+
+_Versions: core 0.0.1272._
+
+`prompt_text.rs` was regenerated from the `01a83539d` pin with `gen-brahma-prompts.mjs`. It is not hand-edited. The `memories` paragraph now lists `source` as `'AUTO'|'MANUAL'|'CONSOLIDATED'` digests. It adds `tier` (`'hot'|'cold'`, with cold rows being consolidated members hidden from recall), `supersededById` and `consolidatedFrom`, as v4 `d58548051` does. The prompt grows from 8,026 to 8,231 UTF-16 units. `brahma_console_tier3`, which was red at red-first, and `brahma_console_routes` are green.
+
+#### 2026-10-09 — feat(maintenance): P4.D270 E8 the fold-grain OTHER catch-up sweep — sweep 8, `enqueue_memory_extraction_with` and the summary line in v4's keys
+
+_Versions: core 0.0.1271._
+
+Ports the sweep half of v4 `d58548051` (pin `01a83539d`).
+
+- **`enqueue_memory_extraction_with`.** Takes a `MemoryExtractionEnqueue`. A catch-up payload is v4's literal with `"foldOtherCatchup": true` appended; a per-turn payload has no such key. The dedupe key gains v4's strict catch-up term, so a per-turn job and a catch-up on the same `(chat, null, anchor)` triple both enqueue. The six-argument `enqueue_memory_extraction` becomes a per-turn wrapper, and its one caller is unchanged.
+- **`enqueue_fold_other_catchups(db, now_ms, limit)`.** Enqueues one catch-up job per selected chat with v4's four sweep lines. A per-chat enqueue failure is warned and skipped; a selection failure propagates.
+- **Sweep 8.** `run_scheduled_maintenance` runs it LAST (failure name `fold-other-catchup`). The summary gains `foldOtherCatchup: {enqueued, deferred}`.
+- **The summary INFO line moves to v4's spread keys** (P4.D270 R-F): camelCase in v4's order, each object or array through the `…Json` convention, `orphanedThumbnailsSweptJson` included. The old snake_case unit pin moved with it. That module's three unit tests now use the process-global log capture, which removes a sibling-test race that dropped a line.
+
+`maintenance_ops_tier2` compares the new summary key. `fold_other_pass_tier3` now runs all 30 ops: the three sweep ops compare v4's real `enqueueFoldOtherCatchups` (payload bytes, the dedupe, the capped INFO), and the end-state tables compare (`memories`, the chats' watermarks and `updatedAt`, `background_jobs`). A completion-key consumption check and a v5-only dry-run check (no writes, candidates returned) close the family.
+
+#### 2026-10-09 — feat(memory): P4.D270 E7 the fold-grain OTHER idle catch-up — `find_fold_other_catchup_candidates`, `run_fold_other_catchup` and the `MEMORY_EXTRACTION` handler's `foldOtherCatchup` branch
+
+_Versions: core 0.0.1270._
+
+Ports v4 `d58548051`'s catch-up half (pin `01a83539d`).
+
+- **`find_fold_other_catchup_candidates(db, now_ms, limit)`.** Selects chats idle for more than 2 hours and active within 30 days (both strict). Help and Brahma chats and chats with fewer than two messages are excluded. Chats are sorted newest first. Each kept chat's last message must be past its OTHER watermark, and it needs a seat with a connection profile (an LLM character seat first, else any seat). Chats past `limit` are counted as deferred without being read. `otherPass: turn` selects nothing.
+- **`run_fold_other_catchup`.** Rechecks idleness unless told to ignore it, using an injectable clock. It builds the window past the watermark, resolves the Concierge-aware cheap selection as the per-turn handler does, and runs the pass, covering through the chat's last message. A read error fails the job, as v4's throw does.
+- **The handler branch.** `MemoryExtractionPayload` gains `fold_other_catchup` (JS-truthy, so `"yes"` enters), `fold_other_ignore_idle` (strictly `true`) and `job_id`. The branch runs after the two throwing reads and before the chat read. It logs v4's `[MemoryExtraction] Fold-grain OTHER catch-up processed` INFO. A pass lost to a timeout fails the job with `Cheap LLM task "fold-other-catchup" timed out and was not retried successfully: N pass(es) timed out`.
+- **`jobId` on the handler's lines.** The new INFO and the existing lost-to-timeout ERROR (now camelCase in v4's key order) carry `jobId` first when the host fills `payload.job_id`; otherwise it is omitted. The one host line that fills it is recorded as a `HANDOFF:` for unification.
+
+`fold_other_pass_tier3` now also compares its three selection ops and six handler ops against v4's real `findFoldOtherCatchupCandidates` and `handleMemoryExtraction`. The corpus generator is committed as `harness/oracle/scripts/gen-fold-other-pass-spec.py`.
+
+#### 2026-10-09 — feat(memory): P4.D270 E3+E5+E6 OTHER extraction moves to the fold grain — the `hybrid` floor, the fold-grain OTHER pass and its fold hook
+
+_Versions: core 0.0.1269._
+
+Ports the extraction half of v4 `d58548051` (pin `01a83539d`). These land in one commit because the floor without the fold pass would silently drop every sub-0.75 OTHER observation.
+
+- **Per-turn OTHER pass.** Each turn reads the operator's `memoryExtractionMode`, logging `[Memory] OTHER pass mode resolved`.
+  - `hybrid` (the default) drops OTHER candidates below `perTurnOtherFloor` (0.75) before the throttle, with the persisted `Hybrid floor dropped …` debug-log line.
+  - `fold` skips the per-turn OTHER call entirely and logs that it runs at fold grain only.
+  - `turn` behaves as before.
+  - A failed settings read keeps the per-turn pass (`turn`) with v4's WARN.
+  - The SELF pass is never floored.
+- **New `services/fold_other_pass.rs`.** `run_fold_other_pass` runs over a folded window. It drops what the chat's OTHER watermark already covers and keeps the newest 60 eligible spoken lines. Each observer who spoke gets one cheap call about the other characters, plus the silent user character. The call carries the GRAIN block and the Commonplace-aware canon. Each pair keeps at most `foldCandidatesPerSubject` candidates, and they are written through the shared candidate writer.
+  - The watermark advances through the one column writer unless a pass was lost to a timeout.
+  - The pass never fails into the fold. A failed gate write logs v4's non-fatal WARN.
+  - Every `[FoldOtherPass]` line matches v4's level, bytes and key order.
+- **The fold hook.** `ContextSummarySeams::run_fold_other_pass` runs after the episode pass on every fold, help chats included. It resolves the Concierge policy and passes the uncensored fallback as v4 does. It is live in both real seams and a no-op in `NoopSeams`. v4's `[Context Summary] Fold OTHER pass failed:` line is unreachable and not ported.
+
+Differentials:
+- New `fold_other_pass_tier3` family (builder, jest oracle, Rust test): its 18 direct-pass ops match v4's real `runFoldOtherPass` on results and every line.
+- `memory_processor_tier3` gains three `memoryExtractionMode` ops. The builder fixtures had no `instance_settings` table, so the plant creates it on both sides.
+- `memory_pipeline_jobs_tier3` gains a `turn`-mode fold.
+- `context_summary_service_tier3` answers the fold OTHER call through a new `fold-other` rule. Its decoded `llm_logs` carry the ruled stored-byte divergence, pinned at 5.
+- `enclave_step_tier3` also compares its `llm_logs` decoded, with the stored-byte count pinned at 2.
+- `courier_images_routes`'s oracle now answers the fold OTHER call with `[]`.
+- The `get_messages` caller census gains the new fallback site.
+
+`memory_processor_tier3`, `memory_pipeline_jobs_tier3` and `context_summary_service_tier3` stay red only on P4.D266's near-duplicate reinforcement write, plus memory_processor's standing `llm_logs` byte red. `enclave_step_tier3` stays red only on P4.D275's tool-definition hash. Proven by masked measurement runs; the masks were not committed.
+
+#### 2026-10-09 — refactor(memory): P4.D270 E4 `CandidateWriteContext` — one candidate writer for both extraction grains
+
+_Versions: core 0.0.1268._
+
+A pure refactor ahead of the fold-grain OTHER pass. `write_candidate` takes a `CandidateWriteContext` (v4 `d58548051`): chat, user, project, source-message timestamp, timeline mode, dry run, autonomous room and an optional turn timestamp. The per-turn context provides one through `TurnMemoryExtractionContext::write_ctx()`. The occurredAt anchor chain is unchanged: the source message's `createdAt`, then the batch override, then the turn timestamp, then now. The turn timestamp is now optional, as v4's `transcript?.turnTimestamp`. `RunState`, `WriteArgs`, `RateLimitDecision`, `resolve_extraction_rate_limit` and `apply_importance_floor` become `pub(crate)` for the fold pass. No output moves: `carina_memory_extraction_tier3` and `fold_episode_tier3` stay green, and the red-first families fail at the same comparands.
+
+#### 2026-10-09 — docs(porting): P4.D270 status header records the canon seam at `b0dcad2a1`
+
+_Docs-only change._
+
+The P4.D270 order's status header now records the three `pub` canon loader signatures and `CanonSubject` landed at `b0dcad2a1`. P4.D271's lane-local copy is coded against them.
+
+#### 2026-10-09 — feat(memory): P4.D270 E2 the Commonplace canon — the digest in both canon blocks under a 2,500-token cap, and the `pub` OTHER canon seam
+
+_Versions: core 0.0.1267._
+
+Ports v4 `d58548051`'s Commonplace reads (pin `01a83539d`). The SELF canon appends the character's own `Commonplace/Self.md` digest after the card fields. The OTHER canon appends the observer's `Commonplace/<Subject>.md` digest after the hand canon (the `Others/` file, else identity, else description). Each block is capped at 2,500 tokens (`CANON_BLOCK_TOKEN_CAP`); only the digest is trimmed, line by line, then by a proportional cut, and hand prose is never cut.
+
+- With a digest and no card fields, the SELF block drops the no-canon fallback line.
+- An OTHER canon with nothing hand-written but a digest renders the digest alone.
+- Both renderers now trim with JS `trim()` rules. Rust's `trim` differed on U+FEFF and U+0085.
+
+The loaders now live in `services::memory_processor`: `load_commonplace_canon`, `load_canon_for_self_with_commonplace`, and a `pub` `load_canon_for_observer_about_subject(…, include_commonplace)`. The consolidation engine (P4.D271) passes `false`. The per-turn SELF and OTHER passes read the digests. A loaded digest logs v4's `[Canon] Commonplace digest loaded into canon` DEBUG. v4's unreachable "digest unavailable" catch line is not ported.
+
+New `canon_commonplace_tier2` family: v4's real loaders over a vault fixture built through v4's real character create + `linkDocumentContent` (builder `build-canon-commonplace-fixture.ts`, case `canon-commonplace-tier2.ts`). It checks 18 ops, including the `[Canon]` lines. `canon_scenario` gains 21 Commonplace rows plus the cap constant.
+
+#### 2026-10-09 — feat(memory): P4.D270 E1 the fold-grain OTHER prompt — `ExtractionGrain`, `FOLD_GRAIN_OTHER_BLOCK`, `extract_other_memories_from_fold`
+
+_Versions: core 0.0.1266._
+
+Ports the prompt half of v4 `d58548051`'s fold-grain OTHER pass (pin `01a83539d`). `other_body_for_cap` and `get_other_memory_extraction_prompt` take a grain; the fold grain puts the six-line `GRAIN — READ THIS FIRST` block (after any autonomous preamble) before the OTHER body. The turn body is byte-identical to before. New `build_fold_other_extraction_messages` renders the window as `CONVERSATION STRETCH (N messages, in the order spoken)` through the same dated, 1,500-unit render as the fold-episode builder, now one shared function. The cap is raised to 1 and not clamped by the token budget. New `extract_other_memories_from_fold` runs it under the per-turn task type `memory-extraction-other`, attributed to the observer. No caller yet.
+
+`extract-memory-task-prompts.py` learns the pin's `otherBodyForCap(perSubjectCap, grain)` shape: it asserts the `grainBlock` preamble, strips the leading `${grainBlock}` and emits `FOLD_GRAIN_OTHER_BLOCK`. `prompt_text.rs` was regenerated from the pin. `memory_tasks_equivalence` gains six `extractOtherMemoriesFromFold` cases against v4's real extractor, including the executor's task type and character id.
 #### 2026-10-09 — docs(porting): P4.D265 lane close — real-instance note, gate and sweep records
 
 _Docs-only change._

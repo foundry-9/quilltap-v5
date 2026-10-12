@@ -105,7 +105,7 @@ function canonicalizeRows(opts: {
   return { table, columns, rows };
 }
 
-type Kind = 'fold' | 'title' | 'help-title' | 'fold-episode';
+type Kind = 'fold' | 'title' | 'help-title' | 'fold-episode' | 'fold-other';
 interface CompletionRule {
   op: string;
   kind: Kind;
@@ -206,6 +206,12 @@ async function main(): Promise<void> {
   // Classify the system prompt into a rule kind by its opening line (byte-stable
   // prompt bodies from v4 chat-tasks.ts).
   function classifyPrompt(system: string): Kind | null {
+    // P4.D270 (v4 `d58548051`): the fold-grain OTHER pass (`runFoldOtherPass`
+    // → `extractOtherMemoriesFromFold`) runs after the episode pass on EVERY
+    // fold. Its system prompt is the OTHER extraction body behind the GRAIN
+    // block, so it is classified FIRST (by the block, anywhere — an autonomous
+    // preamble may precede it) and answered rather than left to fail.
+    if (system.includes('GRAIN — READ THIS FIRST')) return 'fold-other';
     if (system.startsWith('You are updating an existing summary of an ongoing roleplay conversation.'))
       return 'fold';
     if (system.startsWith('Generate a literary title for this conversation based on the summary provided'))
@@ -276,7 +282,11 @@ async function main(): Promise<void> {
           const system = messages.find((m) => m.role === 'system')?.content ?? '';
           const kind = classifyPrompt(system);
           if (!kind) throw new Error('canned completion: unrecognized system prompt');
-          const rule = ops.completionRules.find((r) => r.op === currentOp && r.kind === kind);
+          // P4.D270: an op-specific rule first, else the corpus-wide `op: '*'`
+          // rule for that kind (the fold OTHER call's default `[]` answer).
+          const rule =
+            ops.completionRules.find((r) => r.op === currentOp && r.kind === kind) ??
+            ops.completionRules.find((r) => r.op === '*' && r.kind === kind);
           if (!rule) {
             throw new Error(`no completion rule for op=${currentOp} kind=${kind}`);
           }

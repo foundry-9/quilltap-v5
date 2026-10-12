@@ -1,0 +1,291 @@
+{
+  "_comment": "Tier-2 corpus for the Commonplace canon reads (v4 `d58548051` canon.ts: loadCommonplaceCanon, loadCanonForSelfWithCommonplace, loadCanonForObserverAboutSubject with includeCommonplace) over a vault fixture built by build-canon-commonplace-fixture.ts through v4's REAL character create + linkDocumentContent. Mirrors v4's canon-commonplace.test.ts:102-207 against the real overlay instead of a mocked readVaultTextFile.",
+  "_safety": "testPepperBase64 is the same THROWAWAY key the other fixtures use — never a real pepper.",
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "userId": "00000000-0000-4000-8000-0000000000ee",
+  "characters": [
+    {
+      "id": "aa000000-0000-4000-8000-0000000f21d0",
+      "name": "Friday",
+      "identity": "The Host of the Estate.",
+      "manifesto": "I serve the Estate.",
+      "controlledBy": "llm",
+      "files": [
+        {
+          "path": "Others/Laura.md",
+          "content": "Laura is my oldest friend."
+        },
+        {
+          "path": "Commonplace/Laura.md",
+          "content": "---\ntype: commonplace-digest\nsubjectCharacterId: \"aa000000-0000-4000-8000-0000000a1a01\"\nupdatedAt: \"2026-10-08T00:00:00.000Z\"\n---\n# Laura\n\n- Laura prefers tea now.\n- Laura keeps the charts.\n"
+        },
+        {
+          "path": "Commonplace/Self.md",
+          "content": "---\ntype: commonplace-digest\nsubjectCharacterId: \"aa000000-0000-4000-8000-0000000f21d0\"\nupdatedAt: \"2026-10-08T00:00:00.000Z\"\n---\n# Self\n\n- I keep the household ledgers.\n"
+        },
+        {
+          "path": "Commonplace/Self (abcdef12).md",
+          "content": "---\ntype: commonplace-digest\nsubjectCharacterId: \"abcdef12-0000-4000-8000-000000005e1f\"\nupdatedAt: \"2026-10-08T00:00:00.000Z\"\n---\n# Self\n\n- The one called Self hums at dusk.\n"
+        },
+        {
+          "path": "Commonplace/Bertie.md",
+          "content": "---\ntype: commonplace-digest\n---\n# Bertie\n\n   \n"
+        },
+        {
+          "path": "Commonplace/Quill.md",
+          "content": "No frontmatter at all.\n## A level-two heading stays\n#hash-without-space stays\n# A level-one heading goes\n﻿trailing line\n"
+        },
+        {
+          "path": "Others/Pascal.md",
+          "content": "hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh"
+        },
+        {
+          "path": "Commonplace/Pascal.md",
+          "content": "---\ntype: commonplace-digest\n---\n# Pascal\n\n- Fact number 0 about Pascal and the charts she keeps.\n- Fact number 1 about Pascal and the charts she keeps.\n- Fact number 2 about Pascal and the charts she keeps.\n- Fact number 3 about Pascal and the charts she keeps.\n- Fact number 4 about Pascal and the charts she keeps.\n- Fact number 5 about Pascal and the charts she keeps.\n- Fact number 6 about Pascal and the charts she keeps.\n- Fact number 7 about Pascal and the charts she keeps.\n- Fact number 8 about Pascal and the charts she keeps.\n- Fact number 9 about Pascal and the charts she keeps.\n- Fact number 10 about Pascal and the charts she keeps.\n- Fact number 11 about Pascal and the charts she keeps.\n- Fact number 12 about Pascal and the charts she keeps.\n- Fact number 13 about Pascal and the charts she keeps.\n- Fact number 14 about Pascal and the charts she keeps.\n- Fact number 15 about Pascal and the charts she keeps.\n- Fact number 16 about Pascal and the charts she keeps.\n- Fact number 17 about Pascal and the charts she keeps.\n- Fact number 18 about Pascal and the charts she keeps.\n- Fact number 19 about Pascal and the charts she keeps.\n- Fact number 20 about Pascal and the charts she keeps.\n- Fact number 21 about Pascal and the charts she keeps.\n- Fact number 22 about Pascal and the charts she keeps.\n- Fact number 23 about Pascal and the charts she keeps.\n- Fact number 24 about Pascal and the charts she keeps.\n- Fact number 25 about Pascal and the charts she keeps.\n- Fact number 26 about Pascal and the charts she keeps.\n- Fact number 27 about Pascal and the charts she keeps.\n- Fact number 28 about Pascal and the charts she keeps.\n- Fact number 29 about Pascal and the charts she keeps.\n- Fact number 30 about Pascal and the charts she keeps.\n- Fact number 31 about Pascal and the charts she keeps.\n- Fact number 32 about Pascal and the charts she keeps.\n- Fact number 33 about Pascal and the charts she keeps.\n- Fact number 34 about Pascal and the charts she keeps.\n- Fact number 35 about Pascal and the charts she keeps.\n- Fact number 36 about Pascal and the charts she keeps.\n- Fact number 37 about Pascal and the charts she keeps.\n- Fact number 38 about Pascal and the charts she keeps.\n- Fact number 39 about Pascal and the charts she keeps.\n- Fact number 40 about Pascal and the charts she keeps.\n- Fact number 41 about Pascal and the charts she keeps.\n- Fact number 42 about Pascal and the charts she keeps.\n- Fact number 43 about Pascal and the charts she keeps.\n- Fact number 44 about Pascal and the charts she keeps.\n- Fact number 45 about Pascal and the charts she keeps.\n- Fact number 46 about Pascal and the charts she keeps.\n- Fact number 47 about Pascal and the charts she keeps.\n- Fact number 48 about Pascal and the charts she keeps.\n- Fact number 49 about Pascal and the charts she keeps.\n- Fact number 50 about Pascal and the charts she keeps.\n- Fact number 51 about Pascal and the charts she keeps.\n- Fact number 52 about Pascal and the charts she keeps.\n- Fact number 53 about Pascal and the charts she keeps.\n- Fact number 54 about Pascal and the charts she keeps.\n- Fact number 55 about Pascal and the charts she keeps.\n- Fact number 56 about Pascal and the charts she keeps.\n- Fact number 57 about Pascal and the charts she keeps.\n- Fact number 58 about Pascal and the charts she keeps.\n- Fact number 59 about Pascal and the charts she keeps.\n- Fact number 60 about Pascal and the charts she keeps.\n- Fact number 61 about Pascal and the charts she keeps.\n- Fact number 62 about Pascal and the charts she keeps.\n- Fact number 63 about Pascal and the charts she keeps.\n- Fact number 64 about Pascal and the charts she keeps.\n- Fact number 65 about Pascal and the charts she keeps.\n- Fact number 66 about Pascal and the charts she keeps.\n- Fact number 67 about Pascal and the charts she keeps.\n- Fact number 68 about Pascal and the charts she keeps.\n- Fact number 69 about Pascal and the charts she keeps.\n- Fact number 70 about Pascal and the charts she keeps.\n- Fact number 71 about Pascal and the charts she keeps.\n- Fact number 72 about Pascal and the charts she keeps.\n- Fact number 73 about Pascal and the charts she keeps.\n- Fact number 74 about Pascal and the charts she keeps.\n- Fact number 75 about Pascal and the charts she keeps.\n- Fact number 76 about Pascal and the charts she keeps.\n- Fact number 77 about Pascal and the charts she keeps.\n- Fact number 78 about Pascal and the charts she keeps.\n- Fact number 79 about Pascal and the charts she keeps.\n- Fact number 80 about Pascal and the charts she keeps.\n- Fact number 81 about Pascal and the charts she keeps.\n- Fact number 82 about Pascal and the charts she keeps.\n- Fact number 83 about Pascal and the charts she keeps.\n- Fact number 84 about Pascal and the charts she keeps.\n- Fact number 85 about Pascal and the charts she keeps.\n- Fact number 86 about Pascal and the charts she keeps.\n- Fact number 87 about Pascal and the charts she keeps.\n- Fact number 88 about Pascal and the charts she keeps.\n- Fact number 89 about Pascal and the charts she keeps.\n- Fact number 90 about Pascal and the charts she keeps.\n- Fact number 91 about Pascal and the charts she keeps.\n- Fact number 92 about Pascal and the charts she keeps.\n- Fact number 93 about Pascal and the charts she keeps.\n- Fact number 94 about Pascal and the charts she keeps.\n- Fact number 95 about Pascal and the charts she keeps.\n- Fact number 96 about Pascal and the charts she keeps.\n- Fact number 97 about Pascal and the charts she keeps.\n- Fact number 98 about Pascal and the charts she keeps.\n- Fact number 99 about Pascal and the charts she keeps.\n- Fact number 100 about Pascal and the charts she keeps.\n- Fact number 101 about Pascal and the charts she keeps.\n- Fact number 102 about Pascal and the charts she keeps.\n- Fact number 103 about Pascal and the charts she keeps.\n- Fact number 104 about Pascal and the charts she keeps.\n- Fact number 105 about Pascal and the charts she keeps.\n- Fact number 106 about Pascal and the charts she keeps.\n- Fact number 107 about Pascal and the charts she keeps.\n- Fact number 108 about Pascal and the charts she keeps.\n- Fact number 109 about Pascal and the charts she keeps.\n- Fact number 110 about Pascal and the charts she keeps.\n- Fact number 111 about Pascal and the charts she keeps.\n- Fact number 112 about Pascal and the charts she keeps.\n- Fact number 113 about Pascal and the charts she keeps.\n- Fact number 114 about Pascal and the charts she keeps.\n- Fact number 115 about Pascal and the charts she keeps.\n- Fact number 116 about Pascal and the charts she keeps.\n- Fact number 117 about Pascal and the charts she keeps.\n- Fact number 118 about Pascal and the charts she keeps.\n- Fact number 119 about Pascal and the charts she keeps.\n- Fact number 120 about Pascal and the charts she keeps.\n- Fact number 121 about Pascal and the charts she keeps.\n- Fact number 122 about Pascal and the charts she keeps.\n- Fact number 123 about Pascal and the charts she keeps.\n- Fact number 124 about Pascal and the charts she keeps.\n- Fact number 125 about Pascal and the charts she keeps.\n- Fact number 126 about Pascal and the charts she keeps.\n- Fact number 127 about Pascal and the charts she keeps.\n- Fact number 128 about Pascal and the charts she keeps.\n- Fact number 129 about Pascal and the charts she keeps.\n- Fact number 130 about Pascal and the charts she keeps.\n- Fact number 131 about Pascal and the charts she keeps.\n- Fact number 132 about Pascal and the charts she keeps.\n- Fact number 133 about Pascal and the charts she keeps.\n- Fact number 134 about Pascal and the charts she keeps.\n- Fact number 135 about Pascal and the charts she keeps.\n- Fact number 136 about Pascal and the charts she keeps.\n- Fact number 137 about Pascal and the charts she keeps.\n- Fact number 138 about Pascal and the charts she keeps.\n- Fact number 139 about Pascal and the charts she keeps.\n- Fact number 140 about Pascal and the charts she keeps.\n- Fact number 141 about Pascal and the charts she keeps.\n- Fact number 142 about Pascal and the charts she keeps.\n- Fact number 143 about Pascal and the charts she keeps.\n- Fact number 144 about Pascal and the charts she keeps.\n- Fact number 145 about Pascal and the charts she keeps.\n- Fact number 146 about Pascal and the charts she keeps.\n- Fact number 147 about Pascal and the charts she keeps.\n- Fact number 148 about Pascal and the charts she keeps.\n- Fact number 149 about Pascal and the charts she keeps.\n- Fact number 150 about Pascal and the charts she keeps.\n- Fact number 151 about Pascal and the charts she keeps.\n- Fact number 152 about Pascal and the charts she keeps.\n- Fact number 153 about Pascal and the charts she keeps.\n- Fact number 154 about Pascal and the charts she keeps.\n- Fact number 155 about Pascal and the charts she keeps.\n- Fact number 156 about Pascal and the charts she keeps.\n- Fact number 157 about Pascal and the charts she keeps.\n- Fact number 158 about Pascal and the charts she keeps.\n- Fact number 159 about Pascal and the charts she keeps.\n- Fact number 160 about Pascal and the charts she keeps.\n- Fact number 161 about Pascal and the charts she keeps.\n- Fact number 162 about Pascal and the charts she keeps.\n- Fact number 163 about Pascal and the charts she keeps.\n- Fact number 164 about Pascal and the charts she keeps.\n- Fact number 165 about Pascal and the charts she keeps.\n- Fact number 166 about Pascal and the charts she keeps.\n- Fact number 167 about Pascal and the charts she keeps.\n- Fact number 168 about Pascal and the charts she keeps.\n- Fact number 169 about Pascal and the charts she keeps.\n- Fact number 170 about Pascal and the charts she keeps.\n- Fact number 171 about Pascal and the charts she keeps.\n- Fact number 172 about Pascal and the charts she keeps.\n- Fact number 173 about Pascal and the charts she keeps.\n- Fact number 174 about Pascal and the charts she keeps.\n- Fact number 175 about Pascal and the charts she keeps.\n- Fact number 176 about Pascal and the charts she keeps.\n- Fact number 177 about Pascal and the charts she keeps.\n- Fact number 178 about Pascal and the charts she keeps.\n- Fact number 179 about Pascal and the charts she keeps.\n- Fact number 180 about Pascal and the charts she keeps.\n- Fact number 181 about Pascal and the charts she keeps.\n- Fact number 182 about Pascal and the charts she keeps.\n- Fact number 183 about Pascal and the charts she keeps.\n- Fact number 184 about Pascal and the charts she keeps.\n- Fact number 185 about Pascal and the charts she keeps.\n- Fact number 186 about Pascal and the charts she keeps.\n- Fact number 187 about Pascal and the charts she keeps.\n- Fact number 188 about Pascal and the charts she keeps.\n- Fact number 189 about Pascal and the charts she keeps.\n- Fact number 190 about Pascal and the charts she keeps.\n- Fact number 191 about Pascal and the charts she keeps.\n- Fact number 192 about Pascal and the charts she keeps.\n- Fact number 193 about Pascal and the charts she keeps.\n- Fact number 194 about Pascal and the charts she keeps.\n- Fact number 195 about Pascal and the charts she keeps.\n- Fact number 196 about Pascal and the charts she keeps.\n- Fact number 197 about Pascal and the charts she keeps.\n- Fact number 198 about Pascal and the charts she keeps.\n- Fact number 199 about Pascal and the charts she keeps.\n"
+        },
+        {
+          "path": "Commonplace/Wooster.md",
+          "content": "---\ntype: commonplace-digest\n---\n# Wooster\n\n- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww\n"
+        }
+      ]
+    },
+    {
+      "id": "aa000000-0000-4000-8000-0000000e3e30",
+      "name": "Nemo",
+      "controlledBy": "llm",
+      "files": []
+    },
+    {
+      "id": "aa000000-0000-4000-8000-00000000a57e",
+      "name": "Aster",
+      "controlledBy": "llm",
+      "files": [
+        {
+          "path": "Commonplace/Laura.md",
+          "content": "---\ntype: commonplace-digest\nsubjectCharacterId: \"aa000000-0000-4000-8000-0000000a1a01\"\nupdatedAt: \"2026-10-08T00:00:00.000Z\"\n---\n# Laura\n\n- Laura prefers tea now.\n- Laura keeps the charts.\n"
+        }
+      ]
+    },
+    {
+      "id": "aa000000-0000-4000-8000-0000000a1a01",
+      "name": "Laura",
+      "identity": "A cartographer.",
+      "controlledBy": "llm",
+      "files": []
+    }
+  ],
+  "ops": [
+    {
+      "op": "other",
+      "name": "other-vault-then-digest",
+      "observer": "aa000000-0000-4000-8000-0000000f21d0",
+      "mount": "vault",
+      "subject": {
+        "id": "aa000000-0000-4000-8000-0000000a1a01",
+        "name": "Laura",
+        "identity": "A cartographer.",
+        "description": null
+      }
+    },
+    {
+      "op": "other",
+      "name": "other-identity-then-digest-no-others-file",
+      "observer": "aa000000-0000-4000-8000-00000000a57e",
+      "mount": "vault",
+      "subject": {
+        "id": "aa000000-0000-4000-8000-0000000a1a01",
+        "name": "Laura",
+        "identity": "A cartographer.",
+        "description": null
+      }
+    },
+    {
+      "op": "other",
+      "name": "other-skip-commonplace",
+      "observer": "aa000000-0000-4000-8000-0000000f21d0",
+      "mount": "vault",
+      "subject": {
+        "id": "aa000000-0000-4000-8000-0000000a1a01",
+        "name": "Laura",
+        "identity": "A cartographer.",
+        "description": null
+      },
+      "includeCommonplace": false
+    },
+    {
+      "op": "other",
+      "name": "other-digest-stands-alone",
+      "observer": "aa000000-0000-4000-8000-00000000a57e",
+      "mount": "vault",
+      "subject": {
+        "id": "aa000000-0000-4000-8000-0000000a1a01",
+        "name": "Laura",
+        "identity": null,
+        "description": null
+      }
+    },
+    {
+      "op": "other",
+      "name": "other-subject-named-self",
+      "observer": "aa000000-0000-4000-8000-0000000f21d0",
+      "mount": "vault",
+      "subject": {
+        "id": "abcdef12-0000-4000-8000-000000005e1f",
+        "name": "Self",
+        "identity": null,
+        "description": "Someone named Self."
+      }
+    },
+    {
+      "op": "other",
+      "name": "other-whitespace-digest",
+      "observer": "aa000000-0000-4000-8000-0000000f21d0",
+      "mount": "vault",
+      "subject": {
+        "id": "aa000000-0000-4000-8000-0000000be471",
+        "name": "Bertie",
+        "identity": "A gentleman of leisure.",
+        "description": null
+      }
+    },
+    {
+      "op": "other",
+      "name": "other-heading-rules-bom",
+      "observer": "aa000000-0000-4000-8000-0000000f21d0",
+      "mount": "vault",
+      "subject": {
+        "id": "aa000000-0000-4000-8000-00000000c011",
+        "name": "Quill",
+        "identity": null,
+        "description": null
+      }
+    },
+    {
+      "op": "other",
+      "name": "other-cap-trims-digest-lines",
+      "observer": "aa000000-0000-4000-8000-0000000f21d0",
+      "mount": "vault",
+      "subject": {
+        "id": "aa000000-0000-4000-8000-0000000ba5ca",
+        "name": "Pascal",
+        "identity": null,
+        "description": null
+      }
+    },
+    {
+      "op": "other",
+      "name": "other-cap-proportional-cut",
+      "observer": "aa000000-0000-4000-8000-0000000f21d0",
+      "mount": "vault",
+      "subject": {
+        "id": "aa000000-0000-4000-8000-00000000b0b0",
+        "name": "Wooster",
+        "identity": "A young man about town.",
+        "description": null
+      }
+    },
+    {
+      "op": "other",
+      "name": "other-no-commonplace-file",
+      "observer": "aa000000-0000-4000-8000-0000000e3e30",
+      "mount": "vault",
+      "subject": {
+        "id": "aa000000-0000-4000-8000-0000000a1a01",
+        "name": "Laura",
+        "identity": "A cartographer.",
+        "description": null
+      }
+    },
+    {
+      "op": "other",
+      "name": "other-no-mount",
+      "observer": "aa000000-0000-4000-8000-0000000f21d0",
+      "mount": "none",
+      "subject": {
+        "id": "aa000000-0000-4000-8000-0000000a1a01",
+        "name": "Laura",
+        "identity": "A cartographer.",
+        "description": null
+      }
+    },
+    {
+      "op": "self",
+      "name": "self-digest-after-card",
+      "character": {
+        "id": "aa000000-0000-4000-8000-0000000f21d0",
+        "name": "Friday",
+        "manifesto": "I serve the Estate.",
+        "personality": null,
+        "description": null,
+        "identity": null
+      },
+      "mount": "vault"
+    },
+    {
+      "op": "self",
+      "name": "self-all-empty-plus-digest",
+      "character": {
+        "id": "aa000000-0000-4000-8000-0000000f21d0",
+        "name": "Friday",
+        "manifesto": null,
+        "personality": "  ",
+        "description": null,
+        "identity": null
+      },
+      "mount": "vault"
+    },
+    {
+      "op": "self",
+      "name": "self-no-vault",
+      "character": {
+        "id": "aa000000-0000-4000-8000-0000000f21d0",
+        "name": "Friday",
+        "manifesto": "I serve.",
+        "personality": null,
+        "description": null,
+        "identity": null
+      },
+      "mount": "none"
+    },
+    {
+      "op": "self",
+      "name": "self-no-self-file",
+      "character": {
+        "id": "aa000000-0000-4000-8000-0000000e3e30",
+        "name": "Nemo",
+        "manifesto": null,
+        "personality": null,
+        "description": null,
+        "identity": "A submariner."
+      },
+      "mount": "vault"
+    },
+    {
+      "op": "commonplace",
+      "name": "commonplace-self",
+      "holder": "aa000000-0000-4000-8000-0000000f21d0",
+      "mount": "vault",
+      "subject": "self"
+    },
+    {
+      "op": "commonplace",
+      "name": "commonplace-other-absent",
+      "holder": "aa000000-0000-4000-8000-0000000e3e30",
+      "mount": "vault",
+      "subject": {
+        "id": "aa000000-0000-4000-8000-0000000a1a01",
+        "name": "Laura"
+      }
+    },
+    {
+      "op": "commonplace",
+      "name": "commonplace-no-mount",
+      "holder": "aa000000-0000-4000-8000-0000000f21d0",
+      "mount": "none",
+      "subject": {
+        "id": "aa000000-0000-4000-8000-0000000a1a01",
+        "name": "Laura"
+      }
+    }
+  ]
+}

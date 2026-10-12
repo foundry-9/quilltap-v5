@@ -41,6 +41,7 @@ use crate::services::cost_estimation::MessageCostEstimator;
 use crate::services::cost_events::{create_memory_extraction_event, TokenUsage};
 use crate::services::dangerous_content::chat_override::should_use_uncensored_route;
 use crate::services::dangerous_content::resolver::resolve_concierge_settings;
+use crate::services::fold_other_pass::{run_fold_other_catchup, RunFoldOtherCatchupInput};
 use crate::services::memory_processor::{
     process_turn_for_memory, CheapLlmSettings, MemoryExtractionLimits, TurnMemoryExtractionContext,
 };
@@ -57,6 +58,31 @@ pub struct MemoryExtractionPayload {
     /// The autonomous-turn terminal anchor (see the transcript builder).
     pub extraction_anchor_message_id: Option<String>,
     pub connection_profile_id: String,
+    /// v4 `foldOtherCatchup?` (`d58548051`): an idle catch-up for the
+    /// fold-grain OTHER pass (the daily sweep enqueues it) — not a turn at all.
+    /// Read JS-TRUTHY, as v4's `if (payload.foldOtherCatchup)` reads it: `true`,
+    /// a non-empty string, a non-zero number all enter the branch.
+    pub fold_other_catchup: bool,
+    /// v4 `foldOtherIgnoreIdle?` — read STRICTLY (`=== true`). Only v4's
+    /// regenerate rebuild sets it (deferred in v5 with that handler), but a
+    /// job row v4 wrote on a shared instance can carry it.
+    pub fold_other_ignore_idle: bool,
+    /// The job's id, for v4's `jobId` log field. The host fills it after
+    /// [`MemoryExtractionPayload::decode`] (which leaves it `None` — the
+    /// payload carries no id); an absent id is OMITTED from the lines, never
+    /// rendered `=` or `null`.
+    pub job_id: Option<String>,
+}
+
+/// JS truthiness of a payload value (`if (payload.foldOtherCatchup)`).
+fn js_truthy(v: Option<&Value>) -> bool {
+    match v {
+        None | Some(Value::Null) => false,
+        Some(Value::Bool(b)) => *b,
+        Some(Value::Number(n)) => n.as_f64().is_some_and(|f| f != 0.0 && !f.is_nan()),
+        Some(Value::String(s)) => !s.is_empty(),
+        Some(_) => true,
+    }
 }
 
 impl MemoryExtractionPayload {
@@ -80,6 +106,9 @@ impl MemoryExtractionPayload {
             turn_opener_message_id: opt("turnOpenerMessageId"),
             extraction_anchor_message_id: opt("extractionAnchorMessageId"),
             connection_profile_id: s("connectionProfileId"),
+            fold_other_catchup: js_truthy(payload.get("foldOtherCatchup")),
+            fold_other_ignore_idle: payload.get("foldOtherIgnoreIdle") == Some(&Value::Bool(true)),
+            job_id: None,
         }
     }
 }
@@ -119,6 +148,72 @@ where
         .read_main(move |c| chat_settings::find_by_user_id(c, &uid))
         .map_err(|e| format!("{e:?}"))?
         .ok_or_else(|| format!("Chat settings not found for user: {user_id}"))?;
+
+    // ── Idle catch-up for the fold-grain OTHER pass (enqueued by the daily
+    //    maintenance sweep): not a turn at all, so it never builds a
+    //    transcript. v4 `d58548051`, `memory-extraction.ts:44-72`. ──
+    if payload.fold_other_catchup {
+        let uid = user_id.to_string();
+        let available_profiles = db
+            .read_main(move |c| connection_profiles::find_by_user_id(c, &uid))
+            .map_err(|e| format!("{e:?}"))?;
+        let cheap_llm_settings = cheap_settings_from(&chat_settings);
+        let catchup = run_fold_other_catchup(
+            db,
+            completion,
+            embedding,
+            executor,
+            &RunFoldOtherCatchupInput {
+                chat_id: &payload.chat_id,
+                user_id,
+                connection_profile: &connection_profile,
+                cheap_llm_settings: &cheap_llm_settings,
+                available_profiles: &available_profiles,
+                ignore_idle: payload.fold_other_ignore_idle,
+                now_ms: None,
+            },
+        )
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+        let watermark = catchup.watermark_advanced_to.as_deref().unwrap_or("null");
+        let skipped = catchup.skipped_reason.unwrap_or("null");
+        match payload.job_id.as_deref() {
+            Some(job_id) => tracing::info!(
+                jobId = %job_id,
+                chatId = %payload.chat_id,
+                skippedReason = %skipped,
+                observers = catchup.observers,
+                created = catchup.memories_written,
+                reinforced = catchup.memories_reinforced,
+                watermarkAdvancedTo = %watermark,
+                "[MemoryExtraction] Fold-grain OTHER catch-up processed"
+            ),
+            None => tracing::info!(
+                chatId = %payload.chat_id,
+                skippedReason = %skipped,
+                observers = catchup.observers,
+                created = catchup.memories_written,
+                reinforced = catchup.memories_reinforced,
+                watermarkAdvancedTo = %watermark,
+                "[MemoryExtraction] Fold-grain OTHER catch-up processed"
+            ),
+        }
+        // A pass lost to a timeout never happened and the watermark did not
+        // move: fail the job so it retries (bug 107), rather than reporting a
+        // clean finish over the hole.
+        if catchup.passes_lost_to_timeout > 0 {
+            return Err(
+                crate::services::cheap_llm_exec::cheap_llm_task_lost_message(
+                    "fold-other-catchup",
+                    Some(&format!(
+                        "{} pass(es) timed out",
+                        catchup.passes_lost_to_timeout
+                    )),
+                ),
+            );
+        }
+        return Ok(());
+    }
 
     // ── Chat missing at job execution → logged skip (v4 warns + returns) ──
     let cid = payload.chat_id.clone();
@@ -325,15 +420,25 @@ where
     // by a different route, and pays less for it (the passes that DID succeed
     // are not thrown away).
     if result.passes_lost_to_timeout > 0 {
-        // v4 also carries `jobId`. v5's core handler takes a payload, not the
-        // job — the host wrapper owns the job row — so the field has no source
-        // here; the chat id and the count are what v5 can name.
-        tracing::error!(
-            chat_id = %payload.chat_id,
-            passes_lost_to_timeout = result.passes_lost_to_timeout,
-            error = result.error.as_deref().unwrap_or(""),
-            "[MemoryExtraction] Extraction passes lost to a cheap-LLM timeout; failing the job for retry"
-        );
+        // v4's keys in v4's order (P4.D270 R-H moved this line: it gained
+        // `jobId`, so §R.5's camelCase applies to the whole line). `jobId` is
+        // the host's to fill (`payload.job_id`); absent, it is omitted.
+        let error = result.error.as_deref().unwrap_or("");
+        match payload.job_id.as_deref() {
+            Some(job_id) => tracing::error!(
+                jobId = %job_id,
+                chatId = %payload.chat_id,
+                passesLostToTimeout = result.passes_lost_to_timeout,
+                error = %error,
+                "[MemoryExtraction] Extraction passes lost to a cheap-LLM timeout; failing the job for retry"
+            ),
+            None => tracing::error!(
+                chatId = %payload.chat_id,
+                passesLostToTimeout = result.passes_lost_to_timeout,
+                error = %error,
+                "[MemoryExtraction] Extraction passes lost to a cheap-LLM timeout; failing the job for retry"
+            ),
+        }
         return Err(
             crate::services::cheap_llm_exec::cheap_llm_task_lost_message(
                 "memory-extraction",
@@ -397,7 +502,7 @@ where
 /// The memory-processor `CheapLlmSettings` off `chatSettings.cheapLLMSettings`
 /// (v4 maps exactly `strategy` / `userDefinedProfileId` / `fallbackToLocal` —
 /// the `carina_memory_extraction` twin).
-fn cheap_settings_from(chat_settings: &Value) -> CheapLlmSettings {
+pub(crate) fn cheap_settings_from(chat_settings: &Value) -> CheapLlmSettings {
     let cheap = chat_settings.get("cheapLLMSettings");
     CheapLlmSettings {
         strategy: cheap

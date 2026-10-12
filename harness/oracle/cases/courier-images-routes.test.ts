@@ -96,6 +96,13 @@ const EPISODE_USAGE = { promptTokens: 99, completionTokens: 3, totalTokens: 102 
 // call would fail silently in v4 but write v5's ruled failed-call error row).
 const TITLE_RESPONSE = 'The Lantern Ledger';
 const TITLE_USAGE = { promptTokens: 55, completionTokens: 6, totalTokens: 61 };
+// P4.D270 (v4 `d58548051`): the fold now also runs the fold-grain OTHER pass
+// (one call per observer, the GRAIN block ahead of the OTHER body) — answered
+// with an explicit `[]` for the same reason as the episode pass: the call is
+// the pinned evidence (its MEMORY_EXTRACTION llm_logs row and the advanced
+// OTHER watermark), the memory writes are other families'.
+const FOLD_OTHER_RESPONSE = '[]';
+const FOLD_OTHER_USAGE = { promptTokens: 88, completionTokens: 2, totalTokens: 90 };
 
 // Canned cheap-LLM calls recorded during `resolve_cadence`, keyed exactly as
 // the Rust `CannedCompletionProvider` lookup; emitted in the case payload's
@@ -186,7 +193,10 @@ function applyMocks(spec: Spec): void {
           const system = messages.find((m) => m.role === 'system')?.content ?? '';
           let response: string;
           let usage: { promptTokens: number; completionTokens: number; totalTokens: number };
-          if (system.startsWith('You are updating an existing summary')) {
+          if (system.includes('GRAIN — READ THIS FIRST')) {
+            response = FOLD_OTHER_RESPONSE;
+            usage = FOLD_OTHER_USAGE;
+          } else if (system.startsWith('You are updating an existing summary')) {
             response = FOLD_RESPONSE;
             usage = FOLD_USAGE;
           } else if (system.startsWith('You are consolidating a batch')) {

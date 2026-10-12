@@ -288,30 +288,45 @@ pub async fn enqueue_job_with_priority(
     Ok(id)
 }
 
+/// One `MEMORY_EXTRACTION` enqueue (v4 `MemoryExtractionPayload` as the
+/// enqueue side writes it). `fold_other_catchup` is v4 `d58548051`'s idle
+/// catch-up flag (the daily sweep's); v4's `foldOtherIgnoreIdle` and
+/// `skipDedupCheck` are set ONLY by the regenerate rebuild, which is DEFERRED
+/// with v5's `MEMORY_REGENERATE_CHAT` handler (P4.D270 R-I — no field without
+/// a caller).
+#[derive(Clone, Copy, Debug)]
+pub struct MemoryExtractionEnqueue<'a> {
+    pub chat_id: &'a str,
+    pub turn_opener_message_id: Option<&'a str>,
+    pub extraction_anchor_message_id: Option<&'a str>,
+    pub connection_profile_id: &'a str,
+    pub fold_other_catchup: bool,
+}
+
 /// v4 `enqueueMemoryExtraction` (`lib/background-jobs/queue-service.ts`): enqueue
-/// a `MEMORY_EXTRACTION` job for a closed turn, deduping on the
-/// `(chatId, turnOpenerMessageId, extractionAnchorMessageId)` triple. If a
-/// PENDING or PROCESSING `MEMORY_EXTRACTION` job with a matching triple already
-/// exists (across the user's jobs), this is a no-op returning the existing id —
-/// so the first character to finalize in a multi-character turn creates the job
-/// and later finalizes fold into it. A `null` opener/anchor dedupe on
-/// `(chatId, null, null)`. A dedupe-lookup failure falls through and enqueues
-/// anyway (v4 warns). `max_attempts` is v4's default 3 (the trigger passes no
-/// options). The `skipDedupCheck` option is not modeled (the finalizer never
-/// sets it).
+/// a `MEMORY_EXTRACTION` job, deduping on the
+/// `(chatId, turnOpenerMessageId, extractionAnchorMessageId, foldOtherCatchup)`
+/// key. If a PENDING or PROCESSING `MEMORY_EXTRACTION` job with a matching key
+/// already exists (across the user's jobs), this is a no-op returning the
+/// existing id — so the first character to finalize in a multi-character turn
+/// creates the job and later finalizes fold into it. A `null` opener/anchor
+/// dedupe on `(chatId, null, null)`. The catch-up term (v4 `d58548051`) is
+/// `(existing.foldOtherCatchup ?? false) === (payload.foldOtherCatchup ??
+/// false)`, a STRICT compare: a stored `true` matches a catch-up, an absent or
+/// `null` key matches a per-turn job, and any other stored value matches
+/// neither — so a per-turn job and a catch-up on the same `(chat, null,
+/// anchor)` triple both enqueue. A dedupe-lookup failure falls through and
+/// enqueues anyway (v4 warns). `max_attempts` is v4's default 3 (no caller
+/// passes options).
 ///
-/// `turn_opener_message_id` / `extraction_anchor_message_id` are v4's payload
-/// fields; both `null` when the turn has no user opener and no anchor is set. The
-/// payload written is `{ chatId, turnOpenerMessageId, extractionAnchorMessageId,
-/// connectionProfileId }` (nulls materialized, matching v4's object literal so
-/// the stored payload bytes match).
-pub async fn enqueue_memory_extraction(
+/// The payload written is v4's object literal in its key order — `{ chatId,
+/// turnOpenerMessageId, extractionAnchorMessageId, connectionProfileId }`
+/// (nulls materialized), with `"foldOtherCatchup": true` APPENDED only for a
+/// catch-up (a per-turn payload carries no such key — absent, not `false`).
+pub async fn enqueue_memory_extraction_with(
     db: &Db,
     user_id: &str,
-    chat_id: &str,
-    turn_opener_message_id: Option<&str>,
-    extraction_anchor_message_id: Option<&str>,
-    connection_profile_id: &str,
+    job: &MemoryExtractionEnqueue<'_>,
 ) -> Result<String, DbError> {
     let uid = user_id.to_string();
     let in_flight = db.read_main(|conn| {
@@ -322,7 +337,7 @@ pub async fn enqueue_memory_extraction(
     });
     if let Ok(jobs) = in_flight {
         // v4 treats a missing/undefined anchor as `null` before comparing.
-        let incoming_anchor = extraction_anchor_message_id;
+        let incoming_anchor = job.extraction_anchor_message_id;
         let existing = jobs.iter().find(|j| {
             if j.job_type != "MEMORY_EXTRACTION" {
                 return false;
@@ -337,9 +352,17 @@ pub async fn enqueue_memory_extraction(
             let job_chat = p.get("chatId").and_then(Value::as_str);
             let job_opener = p.get("turnOpenerMessageId").and_then(Value::as_str);
             let job_anchor = p.get("extractionAnchorMessageId").and_then(Value::as_str);
-            job_chat == Some(chat_id)
-                && job_opener == turn_opener_message_id
+            // `(existing.foldOtherCatchup ?? false) === incoming`: a stored
+            // non-boolean never equals.
+            let catchup_matches = match p.get("foldOtherCatchup") {
+                None | Some(Value::Null) => !job.fold_other_catchup,
+                Some(Value::Bool(b)) => *b == job.fold_other_catchup,
+                Some(_) => false,
+            };
+            job_chat == Some(job.chat_id)
+                && job_opener == job.turn_opener_message_id
                 && job_anchor == incoming_anchor
+                && catchup_matches
         });
         if let Some(existing) = existing {
             return Ok(existing.id.clone());
@@ -347,13 +370,40 @@ pub async fn enqueue_memory_extraction(
     }
 
     // v4's payload object literal materializes every key (nulls included).
-    let payload = serde_json::json!({
-        "chatId": chat_id,
-        "turnOpenerMessageId": turn_opener_message_id,
-        "extractionAnchorMessageId": extraction_anchor_message_id,
-        "connectionProfileId": connection_profile_id,
+    let mut payload = serde_json::json!({
+        "chatId": job.chat_id,
+        "turnOpenerMessageId": job.turn_opener_message_id,
+        "extractionAnchorMessageId": job.extraction_anchor_message_id,
+        "connectionProfileId": job.connection_profile_id,
     });
+    if job.fold_other_catchup {
+        payload["foldOtherCatchup"] = Value::Bool(true);
+    }
     enqueue_job(db, user_id, "MEMORY_EXTRACTION", payload, 3.0).await
+}
+
+/// The per-turn enqueue ([`enqueue_memory_extraction_with`] without the
+/// catch-up flag) — the finalizer's `trigger_turn_memory_extraction` call.
+pub async fn enqueue_memory_extraction(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    turn_opener_message_id: Option<&str>,
+    extraction_anchor_message_id: Option<&str>,
+    connection_profile_id: &str,
+) -> Result<String, DbError> {
+    enqueue_memory_extraction_with(
+        db,
+        user_id,
+        &MemoryExtractionEnqueue {
+            chat_id,
+            turn_opener_message_id,
+            extraction_anchor_message_id,
+            connection_profile_id,
+            fold_other_catchup: false,
+        },
+    )
+    .await
 }
 
 // === P4.6BM ===

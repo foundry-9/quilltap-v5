@@ -1,6 +1,10 @@
 //! Tier-1 differential test #21 (Wave 4 / B12): canon-block renderers and the
 //! scenario-text combiner — exact string / structural equality against the v4
-//! oracle.
+//! oracle. P4.D270 grew it with v4 `d58548051`'s Commonplace arms: the digest
+//! after the hand canon, the SELF no-fallback-with-digest arm, the OTHER 4th
+//! arm, the 2,500-token block cap (line cut, proportional cut, room exhausted,
+//! a digest that truncates to nothing → the bare head) and JS-`trim` fidelity
+//! on U+FEFF / U+0085.
 //!
 //! Generate the oracle output:
 //!   cd ~/source/quilltap-server
@@ -12,7 +16,7 @@
 
 use quilltap_core::canon::{
     load_canon_for_self, render_other_canon_block, render_self_canon_block, CanonSource,
-    CanonSourceKind, SelfCanon, NO_CANON_FALLBACK,
+    CanonSourceKind, SelfCanon, CANON_BLOCK_TOKEN_CAP, NO_CANON_FALLBACK,
 };
 use quilltap_core::scenario_text::combine_scenario_text;
 use serde::Deserialize;
@@ -27,6 +31,9 @@ struct WSelfCanon {
     personality: Option<String>,
     description: Option<String>,
     identity: Option<String>,
+    /// v4 `d58548051`: present only when the row carries a digest.
+    #[serde(default)]
+    commonplace: Option<String>,
 }
 
 impl WSelfCanon {
@@ -38,6 +45,7 @@ impl WSelfCanon {
             personality: self.personality.clone(),
             description: self.description.clone(),
             identity: self.identity.clone(),
+            commonplace: self.commonplace.clone(),
         }
     }
 }
@@ -50,6 +58,8 @@ struct WCanonSource {
     character_name: String,
     body: Option<String>,
     source: String,
+    #[serde(default)]
+    commonplace: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -94,6 +104,8 @@ enum Row {
     },
     #[serde(rename = "fallbackConst")]
     FallbackConst { value: String },
+    #[serde(rename = "canonCap")]
+    CanonCap { value: i64 },
 }
 
 fn parse_source(s: &str) -> CanonSourceKind {
@@ -130,6 +142,7 @@ fn canon_scenario_matches_oracle() {
                     character_name: canon.character_name,
                     body: canon.body,
                     source: parse_source(&canon.source),
+                    commonplace: canon.commonplace,
                 };
                 let got = render_other_canon_block(&core);
                 assert_eq!(got, out, "otherBlock '{id}'");
@@ -156,6 +169,9 @@ fn canon_scenario_matches_oracle() {
             }
             Row::FallbackConst { value } => {
                 assert_eq!(NO_CANON_FALLBACK, value, "fallbackConst");
+            }
+            Row::CanonCap { value } => {
+                assert_eq!(CANON_BLOCK_TOKEN_CAP, value, "canonCap");
             }
         }
         count += 1;

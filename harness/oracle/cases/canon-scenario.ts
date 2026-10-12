@@ -3,7 +3,8 @@
  *
  * Drives the REAL pure helpers:
  *   renderSelfCanonBlock, renderOtherCanonBlock, loadCanonForSelf,
- *     NO_CANON_FALLBACK (lib/memory/cheap-llm-tasks/canon.ts)
+ *     NO_CANON_FALLBACK, CANON_BLOCK_TOKEN_CAP (lib/memory/cheap-llm-tasks/canon.ts)
+ *     — incl. the `d58548051` Commonplace digest arms + the block cap
  *   combineScenarioText (lib/chat/scenario-text.ts)
  * No impurity; no injection. `loadCanonForObserverAboutSubject` is impure
  * (vault I/O) and stays out of the port.
@@ -19,6 +20,7 @@ import {
   renderOtherCanonBlock,
   loadCanonForSelf,
   NO_CANON_FALLBACK,
+  CANON_BLOCK_TOKEN_CAP,
   type SelfCanon,
   type CanonSource,
 } from '@/lib/memory/cheap-llm-tasks/canon';
@@ -89,6 +91,44 @@ const otherCases: Array<[string, CanonSource]> = [
 for (const [id, canon] of otherCases) {
   rows.push({ kind: 'otherBlock', id, canon, out: renderOtherCanonBlock(canon) });
 }
+
+// ---- Commonplace digests (v4 `d58548051`: appendCommonplace + the cap) -----
+// The block is capped at CANON_BLOCK_TOKEN_CAP; only the digest yields.
+const digest = '- Laura prefers tea now.\n- Laura keeps the charts.';
+const manyLines = Array.from({ length: 300 }, (_, i) => `- Fact number ${i} about the charts she keeps.`).join('\n');
+const oneLongLine = `- ${'w'.repeat(12000)} end`;
+const commonplaceSelf: Array<[string, SelfCanon]> = [
+  ['cp-self-digest-after-card', { characterId: 's1', characterName: 'Friday', manifesto: 'I serve.', personality: null, description: null, identity: null, commonplace: digest }],
+  ['cp-self-all-empty-plus-digest', { characterId: 's2', characterName: 'Friday', manifesto: null, personality: '  ', description: null, identity: null, commonplace: digest }],
+  ['cp-self-whitespace-digest-keeps-fallback', { characterId: 's3', characterName: 'Friday', manifesto: null, personality: null, description: null, identity: null, commonplace: ' \n\t ' }],
+  ['cp-self-null-digest', { characterId: 's4', characterName: 'Friday', manifesto: 'M', personality: null, description: null, identity: null, commonplace: null }],
+  ['cp-self-digest-lines-cut-near-cap', { characterId: 's5', characterName: 'Friday', manifesto: 'm'.repeat(5000), personality: null, description: null, identity: null, commonplace: manyLines }],
+  ['cp-self-room-exhausted-bare-block', { characterId: 's6', characterName: 'Friday', manifesto: 'm'.repeat(9000), personality: null, description: null, identity: null, commonplace: digest }],
+  ['cp-self-digest-truncates-to-null-bare-head', { characterId: 's7', characterName: 'N'.repeat(9000), manifesto: null, personality: null, description: null, identity: null, commonplace: digest }],
+  ['cp-self-one-long-digest-line-proportional', { characterId: 's8', characterName: 'Friday', manifesto: null, personality: null, description: null, identity: 'Host.', commonplace: oneLongLine }],
+  ['cp-self-bom-and-nel-padded-fields', { characterId: 's9', characterName: 'Friday', manifesto: '\uFEFFI serve.\uFEFF', personality: '\u0085Wry.\u0085', description: '\uFEFF', identity: '\u0085', commonplace: '\uFEFF- padded digest\uFEFF' }],
+];
+for (const [id, canon] of commonplaceSelf) {
+  rows.push({ kind: 'selfBlock', id, canon, out: renderSelfCanonBlock(canon) });
+}
+const commonplaceOther: Array<[string, CanonSource]> = [
+  ['cp-other-vault-then-digest', { characterId: 'p1', characterName: 'Laura', body: 'Laura is my oldest friend.', source: 'vault', commonplace: digest }],
+  ['cp-other-identity-then-digest', { characterId: 'p2', characterName: 'Laura', body: 'A cartographer.', source: 'identity', commonplace: digest }],
+  ['cp-other-fourth-arm-digest-alone', { characterId: 'p3', characterName: 'Laura', body: null, source: 'none', commonplace: digest }],
+  ['cp-other-empty-vault-body-digest-alone', { characterId: 'p4', characterName: 'Laura', body: '   ', source: 'vault', commonplace: digest }],
+  ['cp-other-none-no-digest-fallback', { characterId: 'p5', characterName: 'Laura', body: null, source: 'none', commonplace: null }],
+  ['cp-other-none-whitespace-digest-fallback', { characterId: 'p6', characterName: 'Laura', body: null, source: 'none', commonplace: '   ' }],
+  ['cp-other-hand-near-cap-line-cut', { characterId: 'p7', characterName: 'Laura', body: 'h'.repeat(6000), source: 'vault', commonplace: manyLines }],
+  ['cp-other-room-exhausted', { characterId: 'p8', characterName: 'Laura', body: 'h'.repeat(9000), source: 'description', commonplace: digest }],
+  ['cp-other-one-long-line-proportional', { characterId: 'p9', characterName: 'Laura', body: 'A cartographer.', source: 'identity', commonplace: oneLongLine }],
+  ['cp-other-bom-padded-identity', { characterId: 'p10', characterName: 'Laura', body: '\uFEFFA cartographer.\uFEFF', source: 'identity', commonplace: null }],
+  ['cp-other-nel-padded-identity', { characterId: 'p11', characterName: 'Laura', body: '\u0085A cartographer.\u0085', source: 'identity', commonplace: null }],
+  ['cp-other-bom-only-body-digest-alone', { characterId: 'p12', characterName: 'Laura', body: '\uFEFF', source: 'identity', commonplace: digest }],
+];
+for (const [id, canon] of commonplaceOther) {
+  rows.push({ kind: 'otherBlock', id, canon, out: renderOtherCanonBlock(canon) });
+}
+rows.push({ kind: 'canonCap', id: 'cap', value: CANON_BLOCK_TOKEN_CAP });
 
 // ---- loadCanonForSelf -----------------------------------------------------
 const loadCases: Array<[string, Parameters<typeof loadCanonForSelf>[0]]> = [

@@ -255,9 +255,26 @@ fn self_body_for_cap(max_memories: i64) -> String {
     )
 }
 
-fn other_body_for_cap(per_subject_cap: i64) -> String {
+/// Which grain an OTHER extraction reads (v4 `'turn' | 'fold'`, `d58548051`):
+/// one turn, or a folded STRETCH of many turns.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExtractionGrain {
+    Turn,
+    Fold,
+}
+
+/// v4 `otherBodyForCap(perSubjectCap, grain = 'turn')`. The fold grain
+/// prepends `FOLD_GRAIN_OTHER_BLOCK` + a blank line — a turn shows one beat of
+/// a thread and yields fragments; a stretch shows the whole thread, so the
+/// model is told to state each thread once, as its settled outcome. The turn
+/// body is byte-identical to before.
+fn other_body_for_cap(per_subject_cap: i64, grain: ExtractionGrain) -> String {
+    let grain_block = match grain {
+        ExtractionGrain::Fold => format!("{}\n\n", prompt_text::FOLD_GRAIN_OTHER_BLOCK),
+        ExtractionGrain::Turn => String::new(),
+    };
     format!(
-        "{}{per_subject_cap}{}",
+        "{grain_block}{}{per_subject_cap}{}",
         prompt_text::OTHER_BODY_BEFORE_CAP,
         prompt_text::OTHER_BODY_AFTER_CAP
     )
@@ -306,7 +323,9 @@ pub struct OtherSubjectInput {
 
 /// v4 `getOtherMemoryExtractionPrompt`: the OTHER extraction system prompt —
 /// the byte-stable body plus the CONTEXT footer naming the observer and every
-/// numbered subject with its canon block.
+/// numbered subject with its canon block. The autonomous preamble comes
+/// BEFORE the fold grain's GRAIN block.
+#[allow(clippy::too_many_arguments)] // mirrors v4 getOtherMemoryExtractionPrompt
 pub fn get_other_memory_extraction_prompt(
     per_subject_cap: i64,
     observer_name: &str,
@@ -314,6 +333,7 @@ pub fn get_other_memory_extraction_prompt(
     in_autonomous_room: bool,
     orienting: Option<&OrientingContext>,
     clock: Option<&ExtractionClock>,
+    grain: ExtractionGrain,
 ) -> String {
     let subjects_block = subjects
         .iter()
@@ -339,7 +359,7 @@ pub fn get_other_memory_extraction_prompt(
     let clock_block = render_clock_block(clock);
     format!(
         "{preamble}{}\n\n{clock_block}{orienting_block}CONTEXT\nOBSERVER: {observer_name}\n\n{subjects_block}",
-        other_body_for_cap(per_subject_cap)
+        other_body_for_cap(per_subject_cap, grain)
     )
 }
 
@@ -559,6 +579,7 @@ pub fn build_other_extraction_messages(
             in_autonomous_room,
             orienting,
             clock,
+            ExtractionGrain::Turn,
         )),
         CompletionMessage::user(render_turn_context(transcript)),
     ])
@@ -958,19 +979,14 @@ pub fn parse_fold_episodes(content: &str) -> Vec<FoldEpisode> {
     episodes
 }
 
-/// Build the fold-episode call's messages (the pure half of v4
-/// `extractEpisodesFromFold`, up to the `executeCheapLLMTask` call). Returns
-/// `None` for an empty window — v4's early `{ success: true, result: [] }`
-/// return, no call made.
-pub fn build_fold_episode_messages(
-    window_messages: &[FoldEpisodeMessage],
-    clock: &ExtractionClock,
-) -> Option<Vec<CompletionMessage>> {
-    if window_messages.is_empty() {
-        return None;
-    }
-
-    let rendered = window_messages
+/// The dated, speaker-labelled render of a folded window — ONE fn for both fold
+/// grains (v4 inlines the same map in `extractEpisodesFromFold` and
+/// `extractOtherMemoriesFromFold`): each message `${stamp}${speaker}: ${content}`,
+/// joined by a blank line, the stamp `[${createdAt.slice(0, 16).replace('T', ' ')}] `
+/// (absent for a falsy `createdAt`) and the content cut at 1,500 UTF-16 units
+/// plus `…`.
+fn render_fold_window(window_messages: &[FoldEpisodeMessage]) -> String {
+    window_messages
         .iter()
         .map(|m| {
             // v4: `[${createdAt.slice(0, 16).replace('T', ' ')}] ` — the FIRST
@@ -990,7 +1006,22 @@ pub fn build_fold_episode_messages(
             format!("{stamp}{}: {content}", m.speaker)
         })
         .collect::<Vec<_>>()
-        .join("\n\n");
+        .join("\n\n")
+}
+
+/// Build the fold-episode call's messages (the pure half of v4
+/// `extractEpisodesFromFold`, up to the `executeCheapLLMTask` call). Returns
+/// `None` for an empty window — v4's early `{ success: true, result: [] }`
+/// return, no call made.
+pub fn build_fold_episode_messages(
+    window_messages: &[FoldEpisodeMessage],
+    clock: &ExtractionClock,
+) -> Option<Vec<CompletionMessage>> {
+    if window_messages.is_empty() {
+        return None;
+    }
+
+    let rendered = render_fold_window(window_messages);
 
     let mut clock_line = format!(
         "CLOCK: current date/time {}; timeline mode {}",
@@ -1005,6 +1036,48 @@ pub fn build_fold_episode_messages(
     Some(vec![
         CompletionMessage::system(fold_episode_prompt()),
         CompletionMessage::user(format!("{clock_line}\n\nDATED TURNS:\n\n{rendered}")),
+    ])
+}
+
+/// One message of a folded stretch for the fold-grain OTHER pass, speaker-
+/// labelled and dated (v4 `FoldOtherMessage = FoldEpisodeMessage`).
+pub type FoldOtherMessage = FoldEpisodeMessage;
+
+/// Build the fold-grain OTHER call's messages (the pure half of v4
+/// `extractOtherMemoriesFromFold`, `d58548051`, up to the
+/// `executeCheapLLMTask` call): what one OBSERVER would retain about each
+/// SUBJECT after a whole stretch. Returns `None` for an empty window or no
+/// subjects — v4's early success-with-an-empty-map return, no call made.
+/// `per_subject_cap` is the caller's (`foldCandidatesPerSubject`), raised to 1
+/// and — unlike the per-turn call — NOT clamped by the token budget.
+pub fn build_fold_other_extraction_messages(
+    window_messages: &[FoldOtherMessage],
+    observer_label: &str,
+    subjects: &[OtherSubjectInput],
+    per_subject_cap: i64,
+    in_autonomous_room: bool,
+    orienting: Option<&OrientingContext>,
+    clock: Option<&ExtractionClock>,
+) -> Option<Vec<CompletionMessage>> {
+    if window_messages.is_empty() || subjects.is_empty() {
+        return None;
+    }
+    let cap = per_subject_cap.max(1);
+    Some(vec![
+        CompletionMessage::system(get_other_memory_extraction_prompt(
+            cap,
+            observer_label,
+            subjects,
+            in_autonomous_room,
+            orienting,
+            clock,
+            ExtractionGrain::Fold,
+        )),
+        CompletionMessage::user(format!(
+            "CONVERSATION STRETCH ({} messages, in the order spoken):\n\n{}",
+            window_messages.len(),
+            render_fold_window(window_messages)
+        )),
     ])
 }
 

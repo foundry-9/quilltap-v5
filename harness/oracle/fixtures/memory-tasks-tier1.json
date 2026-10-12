@@ -1013,6 +1013,330 @@
       "resolvedMaxTokens": null,
       "inAutonomousRoom": false,
       "responseText": "[{\"subjectIndex\":2,\"content\":\"Owen agreed that nothing fires without the household hearing it first\",\"summary\":\"agreed household rule\",\"keywords\":[\"agreement\"],\"importance\":0.85},{\"subjectIndex\":2,\"content\":\"Owen accepted the new household rule\",\"summary\":\"accepted household rule\",\"keywords\":[\"rule\"],\"importance\":0.8}]"
+    },
+    {
+      "kind": "fold-other",
+      "name": "fold-other-grain-basic",
+      "windowMessages": [
+        {
+          "speaker": "Charlie",
+          "content": "Shall we take the early ferry or wait for the noon one?",
+          "createdAt": "2026-07-20T13:58:00.000Z"
+        },
+        {
+          "speaker": "Friday",
+          "content": "*Friday checks the tide table.* The early one, if Amy can be persuaded.",
+          "createdAt": "2026-07-20T13:59:10.000Z"
+        },
+        {
+          "speaker": "Amy",
+          "content": "I'll not set foot on a ferry before nine. That is final.",
+          "createdAt": "2026-07-20T14:01:00.000Z"
+        },
+        {
+          "speaker": "Friday",
+          "content": "Then noon it is, and we walk the jetty at Lighthouse Point while we wait.",
+          "createdAt": "2026-07-20T14:04:30.000Z"
+        }
+      ],
+      "observer": {
+        "id": "0a11ce00-0000-4000-8000-00000000f21d",
+        "name": "Friday",
+        "pronouns": {
+          "subject": "she",
+          "object": "her",
+          "possessive": "her"
+        }
+      },
+      "subjects": [
+        {
+          "id": "0a11ce00-0000-4000-8000-000000000a33",
+          "name": "Amy",
+          "pronouns": {
+            "subject": "she",
+            "object": "her",
+            "possessive": "hers"
+          },
+          "isUser": false,
+          "canonBlock": "ALREADY ESTABLISHED about Amy\n[IDENTITY] Architect of caches and of long silences."
+        },
+        {
+          "id": "0a11ce00-0000-4000-8000-0000000c4a12",
+          "name": "Charlie",
+          "pronouns": {
+            "subject": "he",
+            "object": "him",
+            "possessive": "his"
+          },
+          "isUser": true,
+          "canonBlock": "ALREADY ESTABLISHED about Charlie\n(no canonical identity recorded for this character yet)\n[FROM THE COMMONPLACE BOOK]\n- Charlie keeps the ferry tickets."
+        }
+      ],
+      "perSubjectCap": 3,
+      "inAutonomousRoom": false,
+      "clock": {
+        "nowIso": "2026-07-20T14:04:30.000Z",
+        "timelineMode": "realtime"
+      },
+      "orienting": {
+        "projectDescription": null,
+        "chatContextSummary": "The household is planning a coastal day trip."
+      },
+      "responseText": "[{\"subjectIndex\": 1, \"content\": \"Amy will not board a ferry before nine.\", \"summary\": \"no early ferries\", \"keywords\": [\"ferry\"], \"importance\": 0.7}, {\"subjectIndex\": 1, \"content\": \"Amy agreed to the noon ferry.\", \"summary\": \"agreed to noon ferry\", \"importance\": 0.6}, {\"subjectIndex\": 1, \"content\": \"On July 20th Amy walked the Lighthouse Point jetty with Friday.\", \"summary\": \"walked the jetty\", \"importance\": 0.55, \"kind\": \"episodic\", \"entities\": [\"Lighthouse Point\"]}, {\"subjectIndex\": 1, \"content\": \"Amy hummed.\", \"summary\": \"hummed\", \"importance\": 0.2}, {\"subjectIndex\": 2, \"content\": \"Charlie asked which ferry to take.\", \"summary\": \"asked about ferries\", \"importance\": 0.4}]"
+    },
+    {
+      "kind": "fold-other",
+      "name": "fold-other-cut-astral-unstamped-cap0",
+      "windowMessages": [
+        {
+          "speaker": "Amy",
+          "content": "🌙e lamp-room ledger reads, in a cramped hand: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx🦉z",
+          "createdAt": "2026-07-20T14:01:00.000Z"
+        },
+        {
+          "speaker": "Friday",
+          "content": "No date on this line at all.",
+          "createdAt": null
+        },
+        {
+          "speaker": "Charlie",
+          "content": "Nor on mine.",
+          "createdAt": ""
+        }
+      ],
+      "observer": {
+        "id": "0a11ce00-0000-4000-8000-00000000f21d",
+        "name": "Friday",
+        "pronouns": {
+          "subject": "she",
+          "object": "her",
+          "possessive": "her"
+        }
+      },
+      "subjects": [
+        {
+          "id": "0a11ce00-0000-4000-8000-000000000a33",
+          "name": "Amy",
+          "pronouns": {
+            "subject": "she",
+            "object": "her",
+            "possessive": "hers"
+          },
+          "isUser": false,
+          "canonBlock": "ALREADY ESTABLISHED about Amy\n[IDENTITY] Architect of caches and of long silences."
+        },
+        {
+          "id": "0a11ce00-0000-4000-8000-0000000c4a12",
+          "name": "Charlie",
+          "pronouns": {
+            "subject": "he",
+            "object": "him",
+            "possessive": "his"
+          },
+          "isUser": true,
+          "canonBlock": "ALREADY ESTABLISHED about Charlie\n(no canonical identity recorded for this character yet)\n[FROM THE COMMONPLACE BOOK]\n- Charlie keeps the ferry tickets."
+        }
+      ],
+      "perSubjectCap": 0,
+      "inAutonomousRoom": false,
+      "responseText": "[{\"subjectIndex\": 1, \"content\": \"Amy will not board a ferry before nine.\", \"summary\": \"no early ferries\", \"keywords\": [\"ferry\"], \"importance\": 0.7}, {\"subjectIndex\": 1, \"content\": \"Amy agreed to the noon ferry.\", \"summary\": \"agreed to noon ferry\", \"importance\": 0.6}, {\"subjectIndex\": 1, \"content\": \"On July 20th Amy walked the Lighthouse Point jetty with Friday.\", \"summary\": \"walked the jetty\", \"importance\": 0.55, \"kind\": \"episodic\", \"entities\": [\"Lighthouse Point\"]}, {\"subjectIndex\": 1, \"content\": \"Amy hummed.\", \"summary\": \"hummed\", \"importance\": 0.2}, {\"subjectIndex\": 2, \"content\": \"Charlie asked which ferry to take.\", \"summary\": \"asked about ferries\", \"importance\": 0.4}]"
+    },
+    {
+      "kind": "fold-other",
+      "name": "fold-other-autonomous-narrative-clock",
+      "windowMessages": [
+        {
+          "speaker": "Friday",
+          "content": "*Friday checks the tide table.* The early one, if Amy can be persuaded.",
+          "createdAt": "2026-07-20T13:59:10.000Z"
+        },
+        {
+          "speaker": "Amy",
+          "content": "I'll not set foot on a ferry before nine. That is final.",
+          "createdAt": "2026-07-20T14:01:00.000Z"
+        },
+        {
+          "speaker": "Friday",
+          "content": "Then noon it is, and we walk the jetty at Lighthouse Point while we wait.",
+          "createdAt": "2026-07-20T14:04:30.000Z"
+        }
+      ],
+      "observer": {
+        "id": "0a11ce00-0000-4000-8000-00000000f21d",
+        "name": "Friday",
+        "pronouns": {
+          "subject": "she",
+          "object": "her",
+          "possessive": "her"
+        }
+      },
+      "subjects": [
+        {
+          "id": "0a11ce00-0000-4000-8000-000000000a33",
+          "name": "Amy",
+          "pronouns": {
+            "subject": "she",
+            "object": "her",
+            "possessive": "hers"
+          },
+          "isUser": false,
+          "canonBlock": "ALREADY ESTABLISHED about Amy\n[IDENTITY] Architect of caches and of long silences."
+        }
+      ],
+      "perSubjectCap": 2,
+      "inAutonomousRoom": true,
+      "clock": {
+        "nowIso": "2026-07-20T14:04:30.000Z",
+        "timelineMode": "narrative",
+        "narrativeNow": "the third evening of the voyage"
+      },
+      "orienting": {
+        "projectDescription": "A voyage along the coast.",
+        "chatContextSummary": null
+      },
+      "responseText": "[{\"subjectIndex\": 1, \"content\": \"Amy will not board a ferry before nine.\", \"summary\": \"no early ferries\", \"keywords\": [\"ferry\"], \"importance\": 0.7}, {\"subjectIndex\": 1, \"content\": \"Amy agreed to the noon ferry.\", \"summary\": \"agreed to noon ferry\", \"importance\": 0.6}, {\"subjectIndex\": 1, \"content\": \"On July 20th Amy walked the Lighthouse Point jetty with Friday.\", \"summary\": \"walked the jetty\", \"importance\": 0.55, \"kind\": \"episodic\", \"entities\": [\"Lighthouse Point\"]}, {\"subjectIndex\": 1, \"content\": \"Amy hummed.\", \"summary\": \"hummed\", \"importance\": 0.2}, {\"subjectIndex\": 2, \"content\": \"Charlie asked which ferry to take.\", \"summary\": \"asked about ferries\", \"importance\": 0.4}]"
+    },
+    {
+      "kind": "fold-other",
+      "name": "fold-other-anchored-extra-slot-kept-by-parser",
+      "windowMessages": [
+        {
+          "speaker": "Charlie",
+          "content": "Shall we take the early ferry or wait for the noon one?",
+          "createdAt": "2026-07-20T13:58:00.000Z"
+        },
+        {
+          "speaker": "Friday",
+          "content": "*Friday checks the tide table.* The early one, if Amy can be persuaded.",
+          "createdAt": "2026-07-20T13:59:10.000Z"
+        },
+        {
+          "speaker": "Amy",
+          "content": "I'll not set foot on a ferry before nine. That is final.",
+          "createdAt": "2026-07-20T14:01:00.000Z"
+        },
+        {
+          "speaker": "Friday",
+          "content": "Then noon it is, and we walk the jetty at Lighthouse Point while we wait.",
+          "createdAt": "2026-07-20T14:04:30.000Z"
+        }
+      ],
+      "observer": {
+        "id": "0a11ce00-0000-4000-8000-00000000f21d",
+        "name": "Friday",
+        "pronouns": null
+      },
+      "subjects": [
+        {
+          "id": "0a11ce00-0000-4000-8000-000000000a33",
+          "name": "Amy",
+          "pronouns": {
+            "subject": "she",
+            "object": "her",
+            "possessive": "hers"
+          },
+          "isUser": false,
+          "canonBlock": "ALREADY ESTABLISHED about Amy\n[IDENTITY] Architect of caches and of long silences."
+        },
+        {
+          "id": "0a11ce00-0000-4000-8000-0000000c4a12",
+          "name": "Charlie",
+          "pronouns": {
+            "subject": "he",
+            "object": "him",
+            "possessive": "his"
+          },
+          "isUser": true,
+          "canonBlock": "ALREADY ESTABLISHED about Charlie\n(no canonical identity recorded for this character yet)\n[FROM THE COMMONPLACE BOOK]\n- Charlie keeps the ferry tickets."
+        }
+      ],
+      "perSubjectCap": 2,
+      "inAutonomousRoom": false,
+      "clock": {
+        "nowIso": "2026-07-20T14:04:30.000Z",
+        "timelineMode": "realtime"
+      },
+      "responseText": "[{\"subjectIndex\": 1, \"content\": \"Amy will not board a ferry before nine.\", \"summary\": \"no early ferries\", \"keywords\": [\"ferry\"], \"importance\": 0.7}, {\"subjectIndex\": 1, \"content\": \"Amy agreed to the noon ferry.\", \"summary\": \"agreed to noon ferry\", \"importance\": 0.6}, {\"subjectIndex\": 1, \"content\": \"On July 20th Amy walked the Lighthouse Point jetty with Friday.\", \"summary\": \"walked the jetty\", \"importance\": 0.55, \"kind\": \"episodic\", \"entities\": [\"Lighthouse Point\"]}, {\"subjectIndex\": 1, \"content\": \"Amy hummed.\", \"summary\": \"hummed\", \"importance\": 0.2}, {\"subjectIndex\": 2, \"content\": \"Charlie asked which ferry to take.\", \"summary\": \"asked about ferries\", \"importance\": 0.4}]"
+    },
+    {
+      "kind": "fold-other",
+      "name": "fold-other-empty-window-no-call",
+      "windowMessages": [],
+      "observer": {
+        "id": "0a11ce00-0000-4000-8000-00000000f21d",
+        "name": "Friday",
+        "pronouns": {
+          "subject": "she",
+          "object": "her",
+          "possessive": "her"
+        }
+      },
+      "subjects": [
+        {
+          "id": "0a11ce00-0000-4000-8000-000000000a33",
+          "name": "Amy",
+          "pronouns": {
+            "subject": "she",
+            "object": "her",
+            "possessive": "hers"
+          },
+          "isUser": false,
+          "canonBlock": "ALREADY ESTABLISHED about Amy\n[IDENTITY] Architect of caches and of long silences."
+        },
+        {
+          "id": "0a11ce00-0000-4000-8000-0000000c4a12",
+          "name": "Charlie",
+          "pronouns": {
+            "subject": "he",
+            "object": "him",
+            "possessive": "his"
+          },
+          "isUser": true,
+          "canonBlock": "ALREADY ESTABLISHED about Charlie\n(no canonical identity recorded for this character yet)\n[FROM THE COMMONPLACE BOOK]\n- Charlie keeps the ferry tickets."
+        }
+      ],
+      "perSubjectCap": 3,
+      "inAutonomousRoom": false,
+      "responseText": "[{\"subjectIndex\": 1, \"content\": \"Amy will not board a ferry before nine.\", \"summary\": \"no early ferries\", \"keywords\": [\"ferry\"], \"importance\": 0.7}, {\"subjectIndex\": 1, \"content\": \"Amy agreed to the noon ferry.\", \"summary\": \"agreed to noon ferry\", \"importance\": 0.6}, {\"subjectIndex\": 1, \"content\": \"On July 20th Amy walked the Lighthouse Point jetty with Friday.\", \"summary\": \"walked the jetty\", \"importance\": 0.55, \"kind\": \"episodic\", \"entities\": [\"Lighthouse Point\"]}, {\"subjectIndex\": 1, \"content\": \"Amy hummed.\", \"summary\": \"hummed\", \"importance\": 0.2}, {\"subjectIndex\": 2, \"content\": \"Charlie asked which ferry to take.\", \"summary\": \"asked about ferries\", \"importance\": 0.4}]"
+    },
+    {
+      "kind": "fold-other",
+      "name": "fold-other-no-subjects-no-call",
+      "windowMessages": [
+        {
+          "speaker": "Charlie",
+          "content": "Shall we take the early ferry or wait for the noon one?",
+          "createdAt": "2026-07-20T13:58:00.000Z"
+        },
+        {
+          "speaker": "Friday",
+          "content": "*Friday checks the tide table.* The early one, if Amy can be persuaded.",
+          "createdAt": "2026-07-20T13:59:10.000Z"
+        },
+        {
+          "speaker": "Amy",
+          "content": "I'll not set foot on a ferry before nine. That is final.",
+          "createdAt": "2026-07-20T14:01:00.000Z"
+        },
+        {
+          "speaker": "Friday",
+          "content": "Then noon it is, and we walk the jetty at Lighthouse Point while we wait.",
+          "createdAt": "2026-07-20T14:04:30.000Z"
+        }
+      ],
+      "observer": {
+        "id": "0a11ce00-0000-4000-8000-00000000f21d",
+        "name": "Friday",
+        "pronouns": {
+          "subject": "she",
+          "object": "her",
+          "possessive": "her"
+        }
+      },
+      "subjects": [],
+      "perSubjectCap": 3,
+      "inAutonomousRoom": false,
+      "responseText": "[{\"subjectIndex\": 1, \"content\": \"Amy will not board a ferry before nine.\", \"summary\": \"no early ferries\", \"keywords\": [\"ferry\"], \"importance\": 0.7}, {\"subjectIndex\": 1, \"content\": \"Amy agreed to the noon ferry.\", \"summary\": \"agreed to noon ferry\", \"importance\": 0.6}, {\"subjectIndex\": 1, \"content\": \"On July 20th Amy walked the Lighthouse Point jetty with Friday.\", \"summary\": \"walked the jetty\", \"importance\": 0.55, \"kind\": \"episodic\", \"entities\": [\"Lighthouse Point\"]}, {\"subjectIndex\": 1, \"content\": \"Amy hummed.\", \"summary\": \"hummed\", \"importance\": 0.2}, {\"subjectIndex\": 2, \"content\": \"Charlie asked which ferry to take.\", \"summary\": \"asked about ferries\", \"importance\": 0.4}]"
     }
   ]
 }

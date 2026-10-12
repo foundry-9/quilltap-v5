@@ -132,6 +132,12 @@ interface CallSpec {
   inAutonomousRoom: boolean;
   participantIds: string[];
   transcript: unknown;
+  /**
+   * P4.D270 R-E: a `memoryExtractionMode` patch planted through v4's REAL
+   * `setMemoryExtractionModeSettings` before the call and deleted after it;
+   * absent → no row (v4's default `hybrid`, read by the REAL getter).
+   */
+  memoryExtractionMode?: Record<string, unknown>;
 }
 interface Spec {
   testPepperBase64: string;
@@ -304,6 +310,7 @@ async function main(): Promise<void> {
   const { getRepositories } = await import('@/lib/repositories/factory');
   const { processTurnForMemory } = await import('@/lib/memory/memory-processor');
   const { resolveConciergeSettings } = await import('@/lib/services/dangerous-content/resolver.service');
+  const { setMemoryExtractionModeSettings } = await import('@/lib/instance-settings');
 
   await initializeDatabase();
   const repos = getRepositories();
@@ -333,6 +340,13 @@ async function main(): Promise<void> {
       for (const c of chars) participantCharacters.set(c.id, c);
     }
 
+    if (call.memoryExtractionMode) {
+      // The builder-built fixture has no `instance_settings` table (measured:
+      // v4's `writeSetting` throws `no such table`); the plant creates it with
+      // `fresh_schema.json`'s DDL — the Rust side does the same.
+      await rawQuery('CREATE TABLE IF NOT EXISTS "instance_settings" (\n  "key" TEXT PRIMARY KEY,\n  "value" TEXT NOT NULL\n)');
+      await setMemoryExtractionModeSettings(call.memoryExtractionMode as never);
+    }
     const result = await processTurnForMemory({
       transcript: call.transcript as never,
       participantCharacters: participantCharacters as never,
@@ -357,6 +371,10 @@ async function main(): Promise<void> {
       dryRun: call.dryRun,
       inAutonomousRoom: call.inAutonomousRoom,
     });
+
+    if (call.memoryExtractionMode) {
+      await rawQuery(`DELETE FROM "instance_settings" WHERE "key" = 'memoryExtractionMode'`);
+    }
 
     lines.push(JSON.stringify({ kind: 'result', call: call.name, result }));
   }

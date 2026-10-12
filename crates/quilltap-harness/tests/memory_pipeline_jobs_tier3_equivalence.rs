@@ -101,6 +101,10 @@ struct CsCaseW {
     name: String,
     chat_id: String,
     force_regenerate: Option<bool>,
+    /// P4.D270 R-E: planted through the REAL setter before the case, deleted
+    /// after it (absent → no row → `hybrid`).
+    #[serde(default)]
+    memory_extraction_mode: Option<Value>,
 }
 
 #[derive(Deserialize)]
@@ -623,6 +627,9 @@ async fn memory_pipeline_jobs_tier3_matches_oracle() {
             turn_opener_message_id: case.turn_opener_message_id.clone(),
             extraction_anchor_message_id: case.extraction_anchor_message_id.clone(),
             connection_profile_id: spec.connection_profile_id.clone(),
+            // P4.D270: per-turn jobs (no `foldOtherCatchup`); the host fills
+            // `job_id` (a HANDOFF until unification), so these run without one.
+            ..Default::default()
         };
         let executor = executor_for(&case.chat_id);
         let got = handle_memory_extraction(
@@ -647,6 +654,23 @@ async fn memory_pipeline_jobs_tier3_matches_oracle() {
             force_regenerate: case.force_regenerate.unwrap_or(false),
         };
         let executor = executor_for(&case.chat_id);
+        if let Some(patch) = case.memory_extraction_mode.clone() {
+            db.write(move |w| {
+                // The builder-built fixture has no `instance_settings` table
+                // (measured); the plant creates it with `fresh_schema.json`'s
+                // DDL, as the oracle does.
+                w.main().connection().execute_batch(
+                    "CREATE TABLE IF NOT EXISTS \"instance_settings\" (\n  \"key\" TEXT PRIMARY KEY,\n  \"value\" TEXT NOT NULL\n)",
+                )?;
+                quilltap_core::db::instance_settings::set_memory_extraction_mode_settings(
+                    w.main().connection(),
+                    &patch,
+                )
+                .map(|_| ())
+            })
+            .await
+            .expect("plant memoryExtractionMode");
+        }
         let got = handle_context_summary(
             &db,
             &completion,
@@ -657,6 +681,20 @@ async fn memory_pipeline_jobs_tier3_matches_oracle() {
         )
         .await
         .err();
+        if case.memory_extraction_mode.is_some() {
+            db.write(|w| {
+                w.main()
+                    .connection()
+                    .execute(
+                        "DELETE FROM \"instance_settings\" WHERE \"key\" = 'memoryExtractionMode'",
+                        [],
+                    )
+                    .map(|_| ())
+                    .map_err(Into::into)
+            })
+            .await
+            .expect("unplant memoryExtractionMode");
+        }
         assert_case_error(&case.name, got);
     }
 
