@@ -242,6 +242,10 @@ fn every_sibling_open_logs_and_degrades_as_v4s_client() {
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
+/// v4 `mount-index-case-repair.ts:355`'s INFO, as [`v4_line`] renders it (no
+/// fields) — see `NOCASE_INDEX_FROM_DUMP` in the pass test.
+const NOCASE_INDEX_INFO: &str = "INFO Mount-index: created the unique document-store name index";
+
 #[test]
 fn the_structural_pass_over_a_degraded_partition_matches_v4s() {
     let Some(rows) = rows() else { return };
@@ -278,7 +282,36 @@ fn the_structural_pass_over_a_degraded_partition_matches_v4s() {
             ));
         }
         let got_lines: Vec<String> = lines.iter().map(|l| v5_line(l)).collect();
-        let want_lines: Vec<String> = r["lines"].as_array().unwrap().iter().map(v4_line).collect();
+        let mut want_lines: Vec<String> =
+            r["lines"].as_array().unwrap().iter().map(v4_line).collect();
+        // `NOCASE_INDEX_FROM_DUMP` (the `01a83539d` unification, bug 186): v4's
+        // rig runs the pass as the FIRST access of a fresh in-memory mount
+        // index, so `doc_mount_points`'s table-init hook creates the UNIQUE
+        // NOCASE name index there and logs its INFO inside the pass. v5 creates
+        // an absent table from the D23 dump, which already carries that index
+        // (the dump is taken after v4's hook ran), so its ensure is a no-op and
+        // the line never appears — the same schema, one line apart. Pinned both
+        // ways: v4 logs it exactly once on every pass whose mount index is
+        // sound and never on a degraded one; v5 never logs it here.
+        let mount_sound = !degraded.contains(&"mountIndex");
+        let v4_index_infos = want_lines
+            .iter()
+            .filter(|l| l.as_str() == NOCASE_INDEX_INFO)
+            .count();
+        if v4_index_infos != usize::from(mount_sound) {
+            failures.push(format!(
+                "{degraded:?}: NOCASE_INDEX_FROM_DUMP — v4 logged the index INFO {v4_index_infos} \
+                 time(s) (want {}): the carve has gone vacuous or v4 moved",
+                usize::from(mount_sound)
+            ));
+        }
+        if got_lines.iter().any(|l| l == NOCASE_INDEX_INFO) {
+            failures.push(format!(
+                "{degraded:?}: NOCASE_INDEX_FROM_DUMP — v5 logged the index INFO inside the pass; \
+                 retire the carve"
+            ));
+        }
+        want_lines.retain(|l| l != NOCASE_INDEX_INFO);
         // v4's sound-pass DEBUG (`Structural tables verified`) never fires on
         // a degraded pass, so every v5 line must be one of v4's, in order.
         if got_lines != want_lines {

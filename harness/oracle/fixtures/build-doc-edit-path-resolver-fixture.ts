@@ -3,8 +3,11 @@
  *
  * Bakes: character A (vault minted by the REAL create); the General store; a
  * project P with a database official store; and a set of P-linked database stores
- * — a normal store, TWO with the same name ("Shared Name", ambiguous), and one
- * DISABLED store. Every store is `mountType: 'database'` (the FS scopes stay a
+ * — a normal store, a "Shared Name" store beside its free-name twin "Shared
+ * Name (2)" (bug 186, v4 `ed8b15b50`: the repository REFUSES a second store
+ * under a name another holds, case-insensitively — so the former TWO-identical-
+ * names ambiguity cannot be planted at `01a83539d`; the twin carries the name
+ * v4's own free-name pick would have given it), and one DISABLED store. Every store is `mountType: 'database'` (the FS scopes stay a
  * documented seam). All non-vault ids pinned; the vault id is echoed to stderr.
  *
  * Run (Node 24, from the v4 checkout):
@@ -170,7 +173,9 @@ async function main(): Promise<void> {
   await provision(spec.generalMountPointId, 'Quilltap General', true);
   await provision(spec.normalStore, 'Project Docs', true);
   await provision(spec.sharedStoreA, 'Shared Name', true);
-  await provision(spec.sharedStoreB, 'Shared Name', true);
+  // bug 186 (v4 `ed8b15b50`): a second "Shared Name" is refused by the
+  // repository at the pin; the twin takes the free-name pick's form.
+  await provision(spec.sharedStoreB, 'Shared Name (2)', true);
   await provision(spec.disabledStore, 'Disabled Store', false);
   // P4.6bg: an fs-backed store (sentinel basePath rewritten per-side), linked to P.
   await provision(spec.fsStore, spec.fsStoreName, true, 'filesystem', FS_SENTINEL);
