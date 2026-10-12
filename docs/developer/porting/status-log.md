@@ -178515,3 +178515,36 @@ red is `qtap_schema_embed_guard::the_embedded_schema_equals_the_v4_checkouts`
 (`:106`), **RED by design at the pin until P4.D284 lands** (§R.3 /
 §R.13(f) — `WardrobeItem.folder` in the export schema), not a finding.
 `git diff --stat main..HEAD -- crates/*/src apps/web` EMPTY.
+
+## Lane record — P4.D285: the wardrobe SPA's dialog, browser, folders and picker (branch `claude/wardrobe-spa-dialog-picker-cache-b83447`)
+
+Stage A from `main` at the orders' commit `aeaefc218`; pin `4a38222e6` plus
+the ONE named exception `97f0d8cb8` (its `components/` + `lib/` + `__tests__/`
+hunks only). Every v4 byte read with `git show 4a38222e6:<path>` /
+`git show 97f0d8cb8:<path>`; no lane pin worktree was created — no v4
+component was run, and the lane has no Rust family (the order's regen rule).
+
+### §2 probe at lane start (2026-10-12 16:05 CDT) — an observation (§R.2)
+- `branch --show-current` → `main`; `status --short` → clean.
+- `log 4ce64fa1e..main` → empty; `log 1a2b2164c..bugfix` → empty.
+- The pin: `git rev-parse 4a38222e6` → `4a38222e6da584216eb4b4f21d7ced333de8c5a2`;
+  `git show 4a38222e6:package.json` → `4.10.0-dev.148`; `97f0d8cb8` →
+  `97f0d8cb881973b58118b302665e97ffdcbf3f17`. Usable.
+
+### Unit 1 — `folders.ts`, `folder-view.ts`, `containerForListedItem`, the shared `folder?` line (SPA 0.5.836)
+- `wardrobe/folders.ts`: v4 `lib/wardrobe/folders.ts` at the pin, WHOLE
+  (v4 marks the module client-safe) — the normaliser family, the four error
+  classes, the path helpers, the two constants, `WardrobeFolder`, with
+  `sanitize-file-name.ts` inlined privately. C3 §3's named exports are a
+  subset.
+- `wardrobe/folder-view.ts`: v4 `lib/wardrobe/folder-view.ts` verbatim
+  (`OWN_TIER`, `viewTierOf`, `tierLabel`, `childFolderRows`, `tierRows`).
+- `wardrobe-container.ts` gains `containerForListedItem` (origin first, then
+  `homeContainerForItem`'s rule) — v4 `wardrobe-container.ts:97-102`.
+- `core-contract.ts`: C3 §1's shared line, byte-exact, after `archivedAt`.
+- **Specs:** `folders.spec.ts` = v4 `folders.test.ts` transcribed case for
+  case — **19** cases (premise correction: the survey's §5 said 20; v4's file
+  holds 19 `it`s); `folder-view.spec.ts` = 14 rule rows (v4 has no test for
+  the module); `wardrobe-container.spec.ts` +2 (`containerForListedItem`).
+  **Red-first:** RED BY CONSTRUCTION on `main` (both modules and the export
+  absent — the run compiles nothing). Green: 3 files / 49 tests.

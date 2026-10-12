@@ -182,6 +182,12 @@ _Docs-only change._
 
 The two help pages v4's wardrobe programme moved between `01a83539d` and `4a38222e6` are copied whole from `git show 4a38222e6:help/<page>`: `help/wardrobe.md` (the folders section, the archive paragraphs, "Retiring a garment twice changes nothing", the analyst-profile paragraph for Import from image, "Slots this outfit covers", "Show archived") and `help/project-wardrobe.md` (the card is the shared browser). The tree stays at 131 files, md5-identical to the pin. `help_tree_equivalence` and `help_section_size_equivalence` were regenerated at the pin (131 docs, 766 sections) and measured red before the copy, green after; `help_tree_embed_guard` and `host_help_docs_boot` are unchanged at 131. `help_tree_equivalence`'s history comment gains the P4.D287 line. No crate source changed; the host rebuilds its embedded help table but is not bumped.
 
+#### 2026-10-12 — feat(spa): wardrobe folder rules, the browser's view rules and origin-first item addressing (P4.D285 unit 1)
+
+_Versions: SPA 0.5.836._
+
+Adds `wardrobe/folders.ts` (v4 `lib/wardrobe/folders.ts` at `4a38222e6`, the whole client-safe module: path helpers, the normaliser family, the error classes) and `wardrobe/folder-view.ts` (v4's pure browser view rules: own tier vs borrowed tiers, child folder rows, tier rows). `wardrobe-container.ts` gains `containerForListedItem`, which addresses a listed item through the wardrobe its `origin` names before falling back to the character/General rule. `WardrobeItemDto` gains the shared `folder?` field. Specs: v4's 19 folder cases transcribed, 14 folder-view rule rows, 2 addressing rows.
+
 #### 2026-10-12 — docs(porting): order the `4a38222e6` wardrobe-programme drift catch-up round — nine lanes, one keystone, pinned at `4a38222e6`
 
 _Docs-only change._

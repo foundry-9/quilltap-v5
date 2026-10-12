@@ -4337,6 +4337,8 @@ export interface WardrobeItemDto {
   isDefault?: boolean;
   replace?: boolean;
   archivedAt?: string | null;
+  /** The item's folder under `Wardrobe/` (`''` = root). Derived from the file path (`4a38222e6`). */
+  folder?: string;
   createdAt: string;
   updatedAt: string;
   /**

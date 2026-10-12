@@ -5,6 +5,7 @@ import {
   GENERAL_WARDROBE_NAME,
   decodeWardrobeContainer,
   homeContainerForItem,
+  containerForListedItem,
   wardrobeOriginLabel,
   encodeWardrobeContainer,
   sameWardrobeContainer,
@@ -126,5 +127,29 @@ describe('homeContainerForItem (v4 `wardrobe-container.ts:95-99`)', () => {
   it('anything else is addressed as a Quilltap General archetype', () => {
     expect(homeContainerForItem({ characterId: null })).toEqual(GENERAL_CONTAINER);
     expect(homeContainerForItem({})).toEqual(GENERAL_CONTAINER);
+  });
+});
+
+describe('containerForListedItem (v4 `4a38222e6` `wardrobe-container.ts:97-102`)', () => {
+  it('the origin the collection read attached wins — a borrowed item is addressed through its own wardrobe', () => {
+    expect(
+      containerForListedItem({ characterId: null, origin: { scope: 'group', id: 'g1', name: 'Sisters' } }),
+    ).toEqual({ scope: 'group', id: 'g1' });
+    expect(
+      containerForListedItem({ characterId: null, origin: { scope: 'project', id: 'p1', name: 'Blackwood' } }),
+    ).toEqual({ scope: 'project', id: 'p1' });
+    expect(
+      containerForListedItem({ origin: { scope: 'general', id: null, name: 'Quilltap General' } }),
+    ).toEqual(GENERAL_CONTAINER);
+    // An origin outranks a characterId (v4 reads the origin first).
+    expect(
+      containerForListedItem({ characterId: 'c1', origin: { scope: 'character', id: 'c2', name: 'B' } }),
+    ).toEqual({ scope: 'character', id: 'c2' });
+  });
+
+  it('without an origin, a character-owned item is in its vault and anything else is General', () => {
+    expect(containerForListedItem({ characterId: 'c1' })).toEqual({ scope: 'character', id: 'c1' });
+    expect(containerForListedItem({ characterId: null, origin: null })).toEqual(GENERAL_CONTAINER);
+    expect(containerForListedItem({})).toEqual(GENERAL_CONTAINER);
   });
 });

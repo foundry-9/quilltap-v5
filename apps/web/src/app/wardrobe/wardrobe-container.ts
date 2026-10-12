@@ -83,6 +83,25 @@ export function homeContainerForItem(item: { characterId?: string | null }): War
   return item.characterId ? { scope: 'character', id: item.characterId } : GENERAL_CONTAINER;
 }
 
+/**
+ * The container a listed item is addressed through — where its item routes
+ * (edit, star, archive, delete, picture, folders) live. The `origin` the
+ * collection read attached wins: a garment borrowed from a group or project is
+ * addressed through that group or project, never through Quilltap General.
+ * Without an origin (a fixture, an item resolved from elsewhere) a
+ * character-owned item lives in its character's vault and anything else is
+ * taken for a General archetype, the only shared tier that needs no id to
+ * address. (v4 `4a38222e6` `wardrobe-container.ts:87-102`; the origin-less arm
+ * is {@link homeContainerForItem}'s rule.)
+ */
+export function containerForListedItem(item: {
+  characterId?: string | null;
+  origin?: WardrobeOrigin | null;
+}): WardrobeContainer {
+  if (item.origin) return { scope: item.origin.scope, id: item.origin.id };
+  return homeContainerForItem(item);
+}
+
 /** Serialize a container for use as a `<select>` option value (`scope:id`). */
 export function encodeWardrobeContainer(container: WardrobeContainer): string {
   return `${container.scope}:${container.id ?? ''}`;
