@@ -23,6 +23,7 @@ pub mod mount_index_coercion;
 pub mod orchestrator;
 pub mod preview;
 pub mod rows;
+pub mod store_claims;
 
 use serde::Serialize;
 

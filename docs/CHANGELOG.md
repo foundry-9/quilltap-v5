@@ -657,6 +657,95 @@ Harness and oracle changes only, measured red on the `KEYSTONE` tip before any p
 - `system_import_state` compares v4's `Imported memory` DEBUG on every execute case and checks that the logged ids are the created rows. It gains `execute_memory_tiers`, its preserve variant and `execute_chat_watermark`.
 - `system_export` plants a CONSOLIDATED digest, a cold member, a chat watermark and the two new settings rows on both sides.
 - `qtap-schema-validate.json` gains ten tier / watermark mutation rows.
+#### 2026-10-10 — docs(porting): P4.D273 lane close — gate, measurements, the 23a handoff
+
+_Docs-only change._
+
+The P4.D273 order is marked LANE COMPLETE, and the status log gains the lane-close records:
+
+- **Workspace gate.** 708 binaries ran: 4,681 passed, 2 failed, 3 ignored. The two failures belong to other lanes by design: P4.D272's schema guard and P4.D269's 7 CLI rows.
+- **Ruling evidence.** The R-A filing evidence and R-D's mask count for each case.
+- **Deferrals,** each recorded by name.
+- **The 23a hunk,** handed to the unifier. It calls P4.D274's `reconcile_store_names`, which this branch does not have.
+
+#### 2026-10-09 — test(restore): P4.D273 a QT_DEBUG_RESTORE_CLAIMS dump of every claim outcome
+
+_No crate versions bumped._
+
+When `QT_DEBUG_RESTORE_CLAIMS` is set, `system_restore_state` prints every claim outcome v5 logged for each case: the bound INFOs, the fallback WARNs and the summary INFO. It is kept for the next drift round's measurement.
+
+#### 2026-10-09 — test(restore): P4.D273 three derived restore archives pin the claim map's arms, 22a-i and the memory tiers
+
+_No crate versions bumped._
+
+Three committed derive scripts build three new restore archives, and `system_restore_state` gains six cases (both modes each), bringing it to 51:
+
+- **`restore-archive-store-binding.zip`** covers an untyped vault that still binds, a `not-carried` pointer on an archived character, and a `wrong-kind` group pointer. It also has a bound project with a carried file and a deferred loose file.
+- **`restore-archive-store-row-fails.zip`** has four bound stores whose rows fail at step 22a. Three are re-provisioned, and one archived character's vault is left unhealed.
+- **`restore-archive-memory-tiers.zip`** has a `CONSOLIDATED` digest with its cold members, a pre-tier memory, a refused `warm` tier, and a chat's other-extraction watermark.
+
+New by-name pins assert each arm on both sides. The ruled fallback arm of `ARCHIVED_CHARACTER_RESTORE` is pinned in both directions. All 51 cases match v4 at the pin.
+
+#### 2026-10-09 — feat(restore): P4.D273 the restore binds every entity to its archived store, in both modes (v4 bug 185)
+
+_Versions: core 0.0.1269._
+
+Fixes dogfood #141 and #159 by converging on v4 `ed8b15b50`. A restore used to give every restored character, project and group a fresh, empty store. The store the archive carried for it was restored too, but nothing pointed at it. Now each one is bound to the store the archive carries, in both `replace` and `new-account` mode, with no `replace`-only special case.
+
+- **Claim map.** One claim map over the archive's stores (remapped, in `new-account` mode) decides each binding. The claim comes before validation, as in v4.
+- **Bound creates.** A character goes through a create local to the restore. A project or group goes through `create_bound_to_store`.
+- **Fallback warning.** Any other entity gets v4's warning, `The <kind> "<name>" was given a fresh, empty store because …`, and the WARN `Restored entity falls back to a fresh store`.
+- **Doc mount points (step 22a).** The archive's `createdAt` is kept, and the restore records which stores it restored. A non-string archived name is refused with v4's error text.
+- **Re-provision (new step 22a-i).** A bound store whose own row failed to restore gets a fresh store built from the backup row. An archived character is never given one; it gets v4's warning instead. Every restore that reaches the doc-store family now logs `Restored entities bound to their archived stores`.
+- **Deferred files.** Files of a bound project that still need their bytes re-ingested are deferred to a second pass, with v4's lines.
+- **Completeness backfill.** P4.158's backfill now runs in both modes, and skips a re-provisioned store.
+
+`system_restore_state` was reshaped by measurement:
+
+- **Retired:** `FRESH_STORE_RESIDUAL` and its fold, shared-content, claim-WARN and backfill-shared-content companions, plus the compact `REPLAY_DEDUPE` entries.
+- **New ruled divergence:** `DUP_STORE_ID_FIRST_ROW`.
+- **Re-pinned:** `PRESERVE_BACKFILL`, now as v5-ahead.
+- **Lane-local mask:** `RECONCILE_PENDING_UNION` covers v4's store-name reconcile until the union applies it.
+- **Tombstone case:** now in the bulk diff.
+- **Census:** grows from 68 to 80 v4 lines, plus the bound creates' lines.
+
+All 45 cases match v4 at the pin.
+
+#### 2026-10-09 — feat(db): P4.D273 the store-backed bound create and provisionOfficialStore
+
+_Versions: core 0.0.1268._
+
+Two methods on the store-backed repository (projects and groups), ported from v4 `ed8b15b50`:
+
+- `create_bound_to_store` (v4 `createBoundToStore`) restores a project or group row already pointing at the official store its archive carries. It validates the whole entity first, as v4's create does. It then writes the slim row with `officialMountPointId` in a single INSERT and provisions nothing. On success it logs `<Label> restored bound to its archived store`. On a refusal it logs v4's validation and create lines, then `Error restoring <kind> bound to its store`.
+- `provision_official_store` (v4 `provisionOfficialStore`) is factored out of `create`. When the row is missing it now fails with v4's sentence, `Failed to provision official document store for … refusing to return a storeless …`.
+
+The restore's old two-statement `create_slim_linked` is removed.
+
+#### 2026-10-09 — feat(restore): P4.D273 the new-account remap rewrites every store pointer and the memory-tier references
+
+_Versions: core 0.0.1267._
+
+The `new-account` UUID remap now rewrites six more fields, following v4 `ed8b15b50` (bug 185) and `d58548051`:
+
+- a character's `characterDocumentMountPointId`;
+- a project's and a group's `officialMountPointId`;
+- a memory's `supersededById` and `consolidatedFrom`;
+- a chat's `otherExtractionWatermarkMessageId`.
+
+Each is rewritten in lockstep with the row it names, so a pointer and its store share one id space. That lets the restore bind each entity to its archived store. Absent and null values are skipped, so a memory from before the tier columns gains no key.
+
+The `backup_uuid_remap_equivalence` corpus gains four cases that mirror v4's jest tests. The corpus and the oracle were regenerated together, and all 35 cases are byte-identical with v4's real `remapBackupData`.
+
+#### 2026-10-09 — feat(restore): P4.D273 the store claim map (v4 bug 185's makeStoreClaimMap)
+
+_Versions: core 0.0.1266._
+
+Adds `services/backup/restore/store_claims.rs`, a port of v4's `lib/backup/restore/store-claims.ts`. It decides, for each character, project or group being restored, whether the entity keeps the store its archived pointer names. The four fallback reasons are `no-pointer`, `not-carried`, `wrong-kind` and `already-claimed`. The first claimant wins, and the holder is recorded at claim time. A store with no `storeType` fits every kind.
+
+One ruled divergence (`DUP_STORE_ID_FIRST_ROW`): when an archive carries two rows under one store id, v5 judges the claim by the FIRST row, which is the one 22a actually restores. v4 judges by the last row.
+
+The new tier-1 family `store_claims_equivalence` runs v4's real module over a 20-case shared corpus. It matches on every case, and the ruled divergence is asserted in both directions. The orchestrator does not use the module yet.
 #### 2026-10-09 — docs(porting): P4.D265 lane close — real-instance note, gate and sweep records
 
 _Docs-only change._

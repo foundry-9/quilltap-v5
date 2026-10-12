@@ -402,6 +402,8 @@
             "reinforcementCount": 1,
             "relatedMemoryIds": [],
             "reinforcedImportance": 0.6,
+            "tier": "hot",
+            "consolidatedFrom": [],
             "createdAt": "2026-03-01T00:00:00.000Z",
             "updatedAt": "2026-03-01T00:00:00.000Z"
           },
@@ -428,6 +430,8 @@
             "reinforcementCount": 1,
             "relatedMemoryIds": [],
             "reinforcedImportance": 0.7,
+            "tier": "hot",
+            "consolidatedFrom": [],
             "createdAt": "2026-03-01T00:00:00.000Z",
             "updatedAt": "2026-03-01T00:00:00.000Z"
           },
@@ -446,6 +450,8 @@
             "reinforcementCount": 1,
             "relatedMemoryIds": [],
             "reinforcedImportance": 0.4,
+            "tier": "hot",
+            "consolidatedFrom": [],
             "createdAt": "2026-03-01T00:00:00.000Z",
             "updatedAt": "2026-03-01T00:00:00.000Z"
           }
@@ -4322,7 +4328,7 @@
     },
     {
       "name": "groups_official_mount_point",
-      "note": "ONLY the group id is remapped — officialMountPointId is deliberately left alone (groups.create discards it and provisions a fresh store), and groups get NO userId rewrite",
+      "note": "the group id AND officialMountPointId are remapped (v4 `ed8b15b50` bug 185 — in lockstep with the store row, so the restore binds the group to its archived store); groups get NO userId rewrite",
       "targetUserId": "11111111-2222-3333-4444-555555555555",
       "data": {
         "characters": [],
@@ -4387,6 +4393,272 @@
             "characterId": "char-1"
           }
         ],
+        "textReplacementRules": [],
+        "wardrobeWear": []
+      }
+    },
+    {
+      "name": "store_pointers_lockstep",
+      "note": "a character vault pointer and a project / group official store pointer each equal the NEW id of the store row they name (v4 jest `uuid-remapper.test.ts:479-496`); the three pointers are minted at the entity passes and REUSED by the docMountPoints pass",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [
+          {
+            "id": "char-old",
+            "name": "Friday",
+            "characterDocumentMountPointId": "vault-old"
+          }
+        ],
+        "chats": [],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [
+          {
+            "id": "proj-old",
+            "name": "P",
+            "officialMountPointId": "pstore-old"
+          }
+        ],
+        "groups": [
+          {
+            "id": "group-old",
+            "name": "G",
+            "officialMountPointId": "gstore-old"
+          }
+        ],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "chatInforms": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorIndexMetas": [],
+        "vectorEntries": [],
+        "docMountPoints": [
+          {
+            "id": "vault-old",
+            "name": "Friday Character Vault",
+            "storeType": "character"
+          },
+          {
+            "id": "pstore-old",
+            "name": "Project Files: P",
+            "storeType": "documents"
+          },
+          {
+            "id": "gstore-old",
+            "name": "Group Files: G",
+            "storeType": "documents"
+          }
+        ],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": [],
+        "wardrobeWear": []
+      }
+    },
+    {
+      "name": "consolidation_references",
+      "note": "supersededById and consolidatedFrom are memory-id references remapped in lockstep with id (v4 `d58548051`); m1 is listed BEFORE its digest, so its supersededById mints the digest id the digest row then reuses",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [],
+        "chats": [],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [
+          {
+            "id": "m1-old",
+            "characterId": "c",
+            "tier": "cold",
+            "supersededById": "digest-old",
+            "consolidatedFrom": []
+          },
+          {
+            "id": "digest-old",
+            "characterId": "c",
+            "source": "CONSOLIDATED",
+            "tier": "hot",
+            "consolidatedFrom": [
+              "m1-old",
+              "m2-old"
+            ],
+            "supersededById": null
+          },
+          {
+            "id": "m2-old",
+            "characterId": "c",
+            "tier": "cold",
+            "supersededById": "digest-old",
+            "consolidatedFrom": []
+          }
+        ],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "chatInforms": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorIndexMetas": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": [],
+        "wardrobeWear": []
+      }
+    },
+    {
+      "name": "pre_tier_memory_untouched",
+      "note": "a memory from before the tier columns gains NO supersededById / consolidatedFrom key (remapFields / remapArrayFields skip absent values)",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [],
+        "chats": [],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [
+          {
+            "id": "old",
+            "characterId": "c"
+          }
+        ],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "chatInforms": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorIndexMetas": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": [],
+        "wardrobeWear": []
+      }
+    },
+    {
+      "name": "chat_other_watermark",
+      "note": "a chat's otherExtractionWatermarkMessageId is minted at the chat's scalar pass (LAST in the list) and REUSED by its message (v4 `d58548051`)",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [],
+        "chats": [
+          {
+            "id": "chat-old",
+            "participants": [],
+            "tags": [],
+            "otherExtractionWatermarkMessageId": "msg-old",
+            "messages": [
+              {
+                "id": "msg-old",
+                "type": "message"
+              }
+            ]
+          }
+        ],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "chatInforms": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorIndexMetas": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
         "textReplacementRules": [],
         "wardrobeWear": []
       }
