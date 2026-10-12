@@ -6,7 +6,9 @@ import { CollapsibleCard } from '../../../ui/collapsible-card';
 import { ConversationSummaryRegenerateCard } from './conversation-summary-regenerate-card';
 import { EmbeddingProfilesCard } from './embedding-profiles/embedding-profiles-card';
 import { MemoryBackfillCard } from './memory-backfill-card';
+import { MemoryConsolidationCard } from './memory-consolidation-card';
 import { MemoryDedupCard } from './memory-dedup-card';
+import { MemoryExtractionGrainCard } from './memory-extraction-grain-card';
 import { MemoryHousekeepingCard } from './memory-housekeeping-card';
 import { MemoryRecallCard } from './memory-recall-card';
 import { MemoryRegenerateCard } from './memory-regenerate-card';
@@ -15,9 +17,11 @@ import { MemoryRegenerateCard } from './memory-regenerate-card';
  * The Settings → Memory tab (v4 `components/settings/tabs/
  * MemorySearchTabContent.tsx`, subsystem `commonplace-book`): every
  * CollapsibleCard v4 ships — Embedding Profiles, Repair Missing Embeddings,
- * Housekeeping, Recall Relevance, Memory Deduplication, Regenerate Memories, and
- * Regenerate Conversation Summaries — in v4's card order, on v4's `sectionId`
- * `?section=` deep links, ported verbatim.
+ * Housekeeping, Consolidation, Extraction Grain (both new in v4 `d58548051`),
+ * Recall Relevance, Memory Deduplication, Regenerate Memories, and Regenerate
+ * Conversation Summaries — nine cards in v4's order (`MemorySearchTabContent.tsx:
+ * 25-59` at `01a83539d`), on v4's `sectionId` `?section=` deep links, ported
+ * verbatim.
  */
 @Component({
   selector: 'qt-settings-memory',
@@ -27,7 +31,9 @@ import { MemoryRegenerateCard } from './memory-regenerate-card';
     ConversationSummaryRegenerateCard,
     EmbeddingProfilesCard,
     MemoryBackfillCard,
+    MemoryConsolidationCard,
     MemoryDedupCard,
+    MemoryExtractionGrainCard,
     MemoryHousekeepingCard,
     MemoryRecallCard,
     MemoryRegenerateCard,
@@ -61,11 +67,29 @@ import { MemoryRegenerateCard } from './memory-regenerate-card';
 
         <qt-collapsible-card
           title="Memory Housekeeping"
-          description="Automatically prune stale, low-importance memories as characters approach their cap"
+          description="Retire stale, low-importance memories to the archive as characters approach their cap"
           sectionId="memory-housekeeping"
           [forceOpen]="section() === 'memory-housekeeping'"
         >
           <qt-memory-housekeeping-card />
+        </qt-collapsible-card>
+
+        <qt-collapsible-card
+          title="Consolidation"
+          description="Fold clusters of near-duplicate memories into digests, and shelve the originals in the archive"
+          sectionId="memory-consolidation"
+          [forceOpen]="section() === 'memory-consolidation'"
+        >
+          <qt-memory-consolidation-card />
+        </qt-collapsible-card>
+
+        <qt-collapsible-card
+          title="Extraction Grain"
+          description="Choose how often a character's observations of other characters are noted"
+          sectionId="memory-extraction-grain"
+          [forceOpen]="section() === 'memory-extraction-grain'"
+        >
+          <qt-memory-extraction-grain-card />
         </qt-collapsible-card>
 
         <qt-collapsible-card

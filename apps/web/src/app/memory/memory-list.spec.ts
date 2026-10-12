@@ -3,6 +3,8 @@ import { provideRouter } from '@angular/router';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { describe, expect, it } from 'vitest';
 
+import { ToastService } from '../ui/toast.service';
+
 import { CoreClient } from '../core/core-client';
 import type { MemoryDto } from '../core/core-contract';
 import { MemoryList } from './memory-list';
@@ -39,6 +41,7 @@ interface DispatchReq {
   characterId?: string;
   search?: string;
   source?: string;
+  tier?: string;
   limit?: number;
   offset?: number;
   memoryId?: string;
@@ -84,6 +87,18 @@ async function settle(fixture: ComponentFixture<unknown>, ticks = 6): Promise<vo
     await new Promise((r) => setTimeout(r, 0));
     fixture.detectChanges();
   }
+}
+
+function sourceSelectOf(fixture: ComponentFixture<MemoryList>): HTMLSelectElement {
+  return Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('select')).find((s) =>
+    Array.from(s.options).some((o) => o.value === 'MANUAL'),
+  ) as HTMLSelectElement;
+}
+
+function tierSelectOf(fixture: ComponentFixture<MemoryList>): HTMLSelectElement {
+  return (fixture.nativeElement as HTMLElement).querySelector(
+    'select[aria-label="Filter by tier"]',
+  ) as HTMLSelectElement;
 }
 
 async function render(client: Partial<CoreClient>): Promise<ComponentFixture<MemoryList>> {
@@ -160,9 +175,12 @@ describe('MemoryList', () => {
         (r) => seen.push(r),
       ),
     );
-    const selects = fixture.nativeElement.querySelectorAll('select');
-    const sourceSelect = selects[selects.length - 1] as HTMLSelectElement;
+    // Pinned to the source select BY ITS OPTIONS — since P4.D276 the tier
+    // select follows it, so "the last select" would drive the wrong control
+    // and `.value = 'AUTO'` would silently become '' (a vacuous pass).
+    const sourceSelect = sourceSelectOf(fixture);
     sourceSelect.value = 'AUTO';
+    expect(sourceSelect.value).toBe('AUTO');
     sourceSelect.dispatchEvent(new Event('change'));
     await settle(fixture);
     expect(seen.some((r) => r.type === 'memoryList' && r.source === 'AUTO')).toBe(true);
@@ -196,5 +214,176 @@ describe('MemoryList', () => {
     confirmBtn.click();
     await settle(fixture);
     expect(seen.some((r) => r.type === 'memoryDelete' && r.memoryId === 'del-me')).toBe(true);
+  });
+});
+
+/**
+ * P4.D276 — v4 `d58548051`'s list (`components/memory/memory-list.tsx` at
+ * `01a83539d`): the `Consolidated (digests)` source option, the `Filter by
+ * tier` select, and the digest viewer over `memoryGet`.
+ */
+describe('MemoryList — tiers and digests (P4.D276, v4 d58548051)', () => {
+  it('offers the four source options in v4 order (v4 :296-300)', async () => {
+    const fixture = await render(stubClient([]));
+    const options = Array.from(sourceSelectOf(fixture).options).map((o) => [o.value, o.textContent?.trim()]);
+    expect(options).toEqual([
+      ['ALL', 'All Sources'],
+      ['AUTO', 'Auto-generated'],
+      ['MANUAL', 'Manual'],
+      ['CONSOLIDATED', 'Consolidated (digests)'],
+    ]);
+  });
+
+  it('puts the tier select AFTER the source select, with v4\'s label and options (v4 :302-310)', async () => {
+    const fixture = await render(stubClient([]));
+    const selects = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('select'));
+    const tier = tierSelectOf(fixture);
+    expect(tier).toBeTruthy();
+    expect(selects.indexOf(tier)).toBe(selects.indexOf(sourceSelectOf(fixture)) + 1);
+    expect(tier.classList.contains('qt-select')).toBe(true);
+    expect(tier.classList.contains('w-auto')).toBe(true);
+    expect(Array.from(tier.options).map((o) => [o.value, o.textContent?.trim()])).toEqual([
+      ['ALL', 'All Memories'],
+      ['hot', 'Active'],
+      ['cold', 'Archived'],
+    ]);
+    // v4 labels ONLY the tier select.
+    expect(selects.filter((s) => s.hasAttribute('aria-label'))).toEqual([tier]);
+  });
+
+  it('sends source CONSOLIDATED when the digest option is chosen', async () => {
+    const seen: DispatchReq[] = [];
+    const fixture = await render(stubClient([], (r) => seen.push(r)));
+    const source = sourceSelectOf(fixture);
+    source.value = 'CONSOLIDATED';
+    expect(source.value).toBe('CONSOLIDATED');
+    source.dispatchEvent(new Event('change'));
+    await settle(fixture);
+    expect(seen.some((r) => r.type === 'memoryList' && r.source === 'CONSOLIDATED')).toBe(true);
+  });
+
+  it('sends tier only when filtered, and a tier change re-queries from offset 0 (v4 :92, :131)', async () => {
+    const seen: DispatchReq[] = [];
+    const fixture = await render(stubClient([mem({ id: 'a' })], (r) => seen.push(r)));
+    const first = seen.filter((r) => r.type === 'memoryList');
+    expect(first.length).toBeGreaterThan(0);
+    expect(first.every((r) => !('tier' in r))).toBe(true);
+
+    seen.length = 0;
+    const tier = tierSelectOf(fixture);
+    tier.value = 'cold';
+    expect(tier.value).toBe('cold');
+    tier.dispatchEvent(new Event('change'));
+    await settle(fixture);
+    const cold = seen.filter((r) => r.type === 'memoryList');
+    expect(cold.length).toBeGreaterThan(0);
+    expect(cold[0].tier).toBe('cold');
+    expect(cold[0].offset).toBe(0);
+
+    seen.length = 0;
+    tier.value = 'ALL';
+    tier.dispatchEvent(new Event('change'));
+    await settle(fixture);
+    // Back to All Memories: the cached first query answers, or a re-query carries no tier.
+    expect(seen.filter((r) => r.type === 'memoryList').every((r) => !('tier' in r))).toBe(true);
+  });
+
+  function digestStub(
+    reply: (req: DispatchReq) => Record<string, unknown> | Promise<Record<string, unknown>>,
+    seen: DispatchReq[],
+  ): Partial<CoreClient> {
+    const base = stubClient(
+      [mem({ id: 'cold-1', summary: 'Shelved note', tier: 'cold', supersededById: 'dig-1' })],
+      (r) => seen.push(r),
+    );
+    return {
+      dispatchData: (async (req: DispatchReq) => {
+        if (req.type === 'memoryGet') {
+          seen.push(req);
+          return reply(req);
+        }
+        return base.dispatchData!(req as never);
+      }) as CoreClient['dispatchData'],
+    };
+  }
+
+  function supersededButton(fixture: ComponentFixture<MemoryList>): HTMLButtonElement {
+    return Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('button')).find(
+      (b) => b.textContent?.trim() === 'Superseded by a digest',
+    ) as HTMLButtonElement;
+  }
+
+  it('opens The Digest under document.body over memoryGet, handler-less, and closes it (v4 :195-205, :370-389)', async () => {
+    const seen: DispatchReq[] = [];
+    const digest = mem({
+      id: 'dig-1',
+      summary: 'The denser note',
+      source: 'CONSOLIDATED',
+      consolidatedFrom: ['cold-1'],
+      chatId: 'chat-1',
+      sourceMessageId: 'msg-1',
+    });
+    const fixture = await render(digestStub(() => ({ memory: digest }), seen));
+    const btn = supersededButton(fixture);
+    expect(btn).toBeTruthy();
+    btn.click();
+    await settle(fixture);
+    expect(seen.find((r) => r.type === 'memoryGet')).toEqual({ type: 'memoryGet', memoryId: 'dig-1' });
+
+    const viewer = document.body.querySelector('qt-memory-digest-viewer') as HTMLElement;
+    expect(viewer).toBeTruthy();
+    expect(viewer.parentElement).toBe(document.body);
+    expect((fixture.nativeElement as HTMLElement).contains(viewer)).toBe(false);
+    expect(viewer.querySelector('h2')?.textContent).toBe('The Digest');
+    const card = viewer.querySelector('qt-memory-card') as HTMLElement;
+    expect(card.textContent).toContain('The denser note');
+    expect(card.textContent).toContain('Digest');
+    const cardButtons = Array.from(card.querySelectorAll('button')).map((b) => b.textContent?.trim());
+    expect(cardButtons).not.toContain('Edit');
+    expect(cardButtons).not.toContain('Delete');
+    expect(cardButtons.some((t) => t?.includes('Source'))).toBe(false);
+
+    (Array.from(viewer.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Close') as HTMLButtonElement).click();
+    await settle(fixture);
+    expect(document.body.querySelector('qt-memory-digest-viewer')).toBeNull();
+  });
+
+  it('toasts the server\'s message on a failed memoryGet (v4 :203)', async () => {
+    const seen: DispatchReq[] = [];
+    const fixture = await render(
+      digestStub(() => {
+        throw new Error('Memory not found');
+      }, seen),
+    );
+    supersededButton(fixture).click();
+    await settle(fixture);
+    expect(TestBed.inject(ToastService).toasts().map((t) => `${t.type}:${t.message}`)).toContain(
+      'error:Memory not found',
+    );
+    expect(document.body.querySelector('qt-memory-digest-viewer')).toBeNull();
+  });
+
+  it('toasts `The digest could not be found` on a reply without memory (v4 :199-200)', async () => {
+    const seen: DispatchReq[] = [];
+    const fixture = await render(digestStub(() => ({}), seen));
+    supersededButton(fixture).click();
+    await settle(fixture);
+    expect(TestBed.inject(ToastService).toasts().map((t) => `${t.type}:${t.message}`)).toContain(
+      'error:The digest could not be found',
+    );
+  });
+
+  it('toasts `Failed to load the digest` on a non-Error throw that stringifies to nothing (v4 getErrorMessage)', async () => {
+    const seen: DispatchReq[] = [];
+    const fixture = await render(
+      digestStub(() => {
+        throw {};
+      }, seen),
+    );
+    supersededButton(fixture).click();
+    await settle(fixture);
+    expect(TestBed.inject(ToastService).toasts().map((t) => `${t.type}:${t.message}`)).toContain(
+      'error:Failed to load the digest',
+    );
   });
 });

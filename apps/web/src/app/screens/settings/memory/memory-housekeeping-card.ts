@@ -21,11 +21,14 @@ const DEFAULT_CONFIG: HousekeepingConfig = {
 };
 
 /**
- * The Memory Housekeeping card (v4 `components/tools/memory-housekeeping-card.tsx`):
- * the instance-wide auto-housekeeping toggle, the per-character cap, the
- * collapsible per-character overrides (each validated 100–100,000, blank clears),
- * the merge-similar toggle, and a "Run housekeeping now" sweep. Config writes are
- * merge-patch (`memoryHousekeepingConfigSet`, changed fields only).
+ * The Memory Housekeeping card (v4 `components/tools/memory-housekeeping-card.tsx`
+ * at `01a83539d`): housekeeping ARCHIVES (v4 `d58548051` — stale memories go to
+ * the cold tier, never destroyed). The instance-wide auto-housekeeping toggle,
+ * the per-character cap on ACTIVE memories, the collapsible per-character
+ * overrides (each validated 100–100,000, blank clears), and a "Run housekeeping
+ * now" sweep. v4 retired the merge-similar toggle; `DEFAULT_CONFIG` keeps both
+ * merge keys because v4's does (`:25-31`). Config writes are merge-patch
+ * (`memoryHousekeepingConfigSet`, changed fields only).
  */
 @Component({
   selector: 'qt-memory-housekeeping-card',
@@ -36,9 +39,12 @@ const DEFAULT_CONFIG: HousekeepingConfig = {
     } @else {
       <div class="space-y-4">
         <p class="qt-text-small qt-text-muted">
-          Automatic housekeeping prunes low-importance, stale memories once a character approaches its
-          cap. High-importance, manually added, recently accessed, and well-reinforced memories are
-          never touched. Off by default — toggle on once you've reviewed the limits below.
+          Automatic housekeeping retires low-importance, stale memories to the archive (the cold tier)
+          once a character’s active memories approach the cap. Nothing is destroyed: archived memories
+          stay on the shelf, still guard against repeats, and return to active duty if they are
+          observed again. High-importance, manually added, consolidated, recently accessed, and
+          well-reinforced memories are never moved. Off by default — toggle on once you’ve reviewed
+          the limits below.
         </p>
 
         <label class="flex items-center gap-3 qt-body">
@@ -66,7 +72,7 @@ const DEFAULT_CONFIG: HousekeepingConfig = {
             (input)="capDraft.set($any($event.target).value)"
             (blur)="onCapBlur($any($event.target).value)"
           />
-          <span class="qt-text-small qt-text-muted">memories per character</span>
+          <span class="qt-text-small qt-text-muted">active memories per character</span>
         </div>
 
         @if (characters().length > 0) {
@@ -120,17 +126,6 @@ const DEFAULT_CONFIG: HousekeepingConfig = {
             }
           </div>
         }
-
-        <label class="flex items-center gap-3 qt-body">
-          <input
-            type="checkbox"
-            class="qt-checkbox"
-            [checked]="config().mergeSimilar"
-            [disabled]="saving()"
-            (change)="toggleMergeSimilar()"
-          />
-          <span>Also merge semantically similar memories during the sweep</span>
-        </label>
 
         <div class="flex items-center gap-3">
           <button
@@ -208,12 +203,6 @@ export class MemoryHousekeepingCard {
     const next = !this.config().enabled;
     this.local.set({ ...this.config(), enabled: next });
     void this.save({ enabled: next });
-  }
-
-  protected toggleMergeSimilar(): void {
-    const next = !this.config().mergeSimilar;
-    this.local.set({ ...this.config(), mergeSimilar: next });
-    void this.save({ mergeSimilar: next });
   }
 
   protected onCapBlur(raw: string): void {

@@ -930,6 +930,73 @@ P4.D278 U2. The 19 mirror paths that moved between `f5e953a3f` and `01a83539d` a
 _No crate versions bumped._
 
 P4.D278 U1. The whole `help/` tree is re-copied from v4 `01a83539d`, and all 131 files match the pin byte for byte. One page is new: `help/memory-consolidation.md`. Eight pages changed: `cli-memories`, `episodic-memory`, `memory-housekeeping`, `memory-recall-relevance`, `memory-regenerate`, `mount-points`, `system-backup-restore`, `wardrobe`. The host embeds the tree at build time, so it is rebuilt but not bumped. The count pins move 130 → 131 in `help_tree_embed_guard` and `host_help_docs_boot` (with its module doc); `help_tree_equivalence` gets a history note. Before the copy, `help_tree_equivalence` and `help_section_size_equivalence` were red at the pin (130 vs 131). After the copy and before the pins moved, `help_tree_embed_guard` and `host_help_docs_boot` were red (131 vs 130). All four are green now: 131 docs and 763 chunks.
+#### 2026-10-09 — docs(porting): P4.D276 lane close — the memory SPA lane record and status header
+
+_Docs-only change._
+
+Closes the P4.D276 lane: the lane record in `status-log.md` (gate results, ownership check, the two recorded divergences kept as-is — v5's extra Source link and the narrower realtime refresh — the mechanism translations, the five gated Playwright beats, and the dogfood rows), and the order's status header set to LANE COMPLETE.
+
+#### 2026-10-09 — test(e2e): P4.D276 M8 — the memory consolidation Playwright file (LIVE anchors + gated server beats)
+
+_Versions: SPA 0.5.829._
+
+New `e2e/settings-memory-consolidation-flow.spec.ts`, on its own locked copy of the committed memories fixture at port 4335. Two LIVE beats check that `section=memory-consolidation` and `section=memory-extraction-grain` force-open the new cards with v4's labels and options. Five beats sit behind `P4D265_SERVER_LANDED = false` until the round's server lands: an Extraction Grain round trip; a Consolidation field save, a refused field that posts nothing, and the switch; a dry run on Pip (who has zero memories, so no model call is possible — the beat also asserts `clustersSelected === 0`) followed by a real run; Cleanup archiving Mnemo's old low-importance notes and the `Archived` tier listing them; and a planted digest opened from a superseded card (stop the server, two CLI writes, restart). `settings-flow.spec.ts` gains the `Consolidation` and `Extraction Grain` heading checks.
+
+#### 2026-10-09 — feat(spa): P4.D276 M7 — the Mem chip names consolidation; an editor arm pins the digest edit bag
+
+_Versions: SPA 0.5.828._
+
+The queue-status `Mem` chip's tooltip now reads `Memory work (extraction, regeneration, consolidation, housekeeping)` (v4 `lib/background-jobs/activity-kinds.ts:89` at `d58548051`); `activity-kinds.spec.ts` and `queue-status-badges.spec.ts` are re-pinned. The job-to-kind row for `MEMORY_CONSOLIDATION` is server-side and not part of this change.
+
+A new `memory-editor.spec.ts` arm pins that editing a `CONSOLIDATED` memory sends the same bag v4 sends (`source: 'MANUAL'`, six keys). v4's PUT ignores `source`; whether v5's `memoryUpdate` keeps `CONSOLIDATED` is left to the server lanes and a dogfood check.
+
+#### 2026-10-09 — feat(spa): P4.D276 M4c — the Extraction Grain card; the Memory tab carries v4's nine cards
+
+_Versions: SPA 0.5.827._
+
+New `qt-memory-extraction-grain-card` (v4 `components/tools/memory-extraction-grain-card.tsx`, new in `d58548051`): the `Observations of others` select (`Hybrid (recommended)` / `At the fold only` / `Every turn`) with the current mode's description below it, saved on change; the per-turn importance floor (enabled only in hybrid) and fold candidates per subject (disabled under `turn`), each saved on blur. The blur rules match v4: the draft is cleared before validation, and values go through `Number` with no trim, so a blank floor saves `0` while a blank per-subject is refused. One key per save; the server's echo is shown over the defaults; a failed save snaps the select back.
+
+The Settings → Memory tab mounts the two new cards between Memory Housekeeping and Recall Relevance, as `Consolidation` (`section=memory-consolidation`) and `Extraction Grain` (`section=memory-extraction-grain`), and the housekeeping card's description now reads `Retire stale, low-importance memories to the archive as characters approach their cap`. A new `memory-tab.spec.ts` pins all nine cards' ids, titles and descriptions in v4's order.
+
+#### 2026-10-09 — feat(spa): P4.D276 M4b — the Consolidation settings card and its report dialog
+
+_Versions: SPA 0.5.826._
+
+New `qt-memory-consolidation-card` (v4 `components/tools/memory-consolidation-card.tsx`, new in `d58548051`): the enable checkbox, the connection-profile select (the cheap LLM by default; a stored profile that no longer exists shows as `(a profile that has since left the building)`), the seven number fields with v4's labels, help, limits and blur validation (inline error, no toast, the draft kept), and Consolidate now (a roster select, `Dry run` / `Consolidate for real`). Each save posts exactly one key and then shows the server's echo merged over the defaults, so v4's server-side clobber of the other fields stays visible. A failed save snaps the checkbox and profile select back to the stored values (a React-controlled input does this on its own; an Angular binding whose value did not change does not). A dry run with a report opens the report dialog; any other reply toasts the queued sentence, as v4 does. Error text follows v4's read/write rules.
+
+New `qt-memory-consolidation-report-dialog` (v4 `memory-consolidation-report-dialog.tsx`): title, description, skip reasons, the four stats (with v4's `(created + updated) || clusters' digests` fallback), the note line, and each cluster's members, proposed digests and contradictions. Every composed line is built as one string. Like v4's, it is hand markup with no dialog role or Escape handling, reparented to `document.body`.
+
+The card is mounted on the Memory tab in the next commit.
+
+#### 2026-10-09 — feat(spa): P4.D276 M4a — the housekeeping settings card archives; the read/write error-text twins
+
+_Versions: SPA 0.5.825._
+
+The Settings → Memory housekeeping card takes v4 `d58548051`'s paragraph (housekeeping now retires memories to the archive; nothing is destroyed), the cap suffix `active memories per character`, and loses the `Also merge semantically similar memories during the sweep` checkbox and its handler. `DEFAULT_CONFIG` keeps both merge keys, as v4's does. The old paragraph's straight apostrophe is now U+2019, matching v4's rendered text.
+
+New `screens/settings/memory/api-error-text.ts` ports v4's `readErrorText` / `writeErrorText` (`components/tools/hooks/api-error-text.ts`): a server failure on a read shows the card's fallback; on a write it shows the server's sentence (or the fallback when empty); any other throw goes through v4's `getErrorMessage`, re-exported from `memory/memory-format.ts`. The two new settings cards use them.
+
+#### 2026-10-09 — feat(spa): P4.D276 M3 — memory cards show tiers and digests; the list filters by tier and opens the digest viewer
+
+_Versions: SPA 0.5.824._
+
+The memory card (v4 `memory-card.tsx` at `01a83539d`) shows an `Archived` chip and `opacity-75` on a cold row, a `Digest` chip (warning colors) for a `CONSOLIDATED` row, and the provenance line: `Digested from N note(s). ` and, on an archived row with `supersededById`, either a `Superseded by a digest` button (emits `viewDigest`) or the plain text `Superseded by a digest.`. v4 decides Edit / Delete / Source and the button by whether a handler was passed; Angular outputs always exist, so two inputs carry those gates: `showActions` (default true) and `canViewDigest` (default false).
+
+The list adds the `Consolidated (digests)` source option and a `Filter by tier` select (`All Memories` / `Active` / `Archived`) after it; `tier` joins the query key and is sent only when filtered. Following `Superseded by a digest` fetches the digest with `memoryGet` and opens the new `qt-memory-digest-viewer`, v4's hand-written overlay (no dialog role, no Escape, no backdrop close; reparented to `document.body` after first render) over an action-less card. A missing `memory` toasts `The digest could not be found`; other failures toast through a transcription of v4's `getErrorMessage` (added to `memory-format.ts`).
+
+v5's list keeps the Source link that v4's list never shows (pre-existing; recorded). The existing source-filter spec now finds its select by option, since the tier select comes last.
+
+#### 2026-10-09 — feat(spa): P4.D276 M1+M2 — the memory contract for v4 `d58548051`, and the housekeeping dialog archives
+
+_Versions: SPA 0.5.823._
+
+One compile-coupled commit (the contract change breaks the dialog and its spec, so they move together). The memory appendix of `core-contract.ts` gains v4 `d58548051`'s wire per contract C2: `MemoryDto.source` adds `CONSOLIDATED` plus four optional tier keys (`tier`, `supersededById`, `consolidatedFrom`, `consolidatedAt`); `memoryList` takes an optional `tier`; `memoryList`/`memorySearch` take the three-way source; `HousekeepingPreview` requires `wouldDemote` (`wouldMerge` and `coldCount` optional); `HousekeepingResult` adds `demoted`, `coldCount`, `demotedIds`; the three `mergeSimilar` keys stay, documented as retired. A bracketed P4.D276 block adds the consolidation and extraction-mode settings types, the consolidation report types (from v4 `lib/memory/consolidation.ts:114-205`), and the five new verbs, with their own group in `MemoryRequest`. `CoreRequest` is untouched.
+
+`memory.api.ts` gains `fetchMemory` (over `memoryGet`), the two config get/set pairs (patches sent untouched), `consolidateMemories` (sends only `{ characterId, dryRun }`), and v4's two query keys; `fetchHousekeepingPreview` no longer takes `mergeSimilar`. `search.types.ts` widens the memory hit's source.
+
+The per-character housekeeping dialog now says Archive: v4's description, option copy and empty state; the merge checkbox is gone and neither dispatch sends `mergeSimilar`; the third tile is `Archive` over `wouldDemote`; Run is `qt-button-primary`, labelled `Archive N Memories` over `wouldDemote + wouldDelete`, enabled by either count. The success toast is v4's two sentences over `result.demoted ?? 0` (deleted rows are not counted). The old count-less toast and its comment are gone; the status-log claim that v5's reply carried no count was false.
+
+New spec `memory.api.spec.ts`; the dialog spec re-pinned and extended (tiles by label, Run label/class/enablement, no `mergeSimilar` on either request, the three toast cases incl. a pre-round reply); a `search-results` arm pins that a `CONSOLIDATED` hit still renders `Auto` (v4's render is unchanged).
 #### 2026-10-09 — docs(porting): order the `01a83539d` memory-programme + bugs-183–186 + wardrobe-viewer drift catch-up round — fourteen work orders (P4.D265 → {P4.D266 … P4.D275} ∥ P4.D276 ∥ P4.D277 ∥ P4.D278)
 
 _Docs-only change._

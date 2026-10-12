@@ -41,7 +41,7 @@ export const ACTIVITY_CHIPS: readonly ActivityChip[] = [
   {
     kind: 'memory',
     label: 'Mem',
-    title: 'Memory work (extraction, regeneration, housekeeping)',
+    title: 'Memory work (extraction, regeneration, consolidation, housekeeping)',
     badgeClass: 'qt-queue-badge-memory',
   },
   {

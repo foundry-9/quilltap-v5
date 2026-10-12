@@ -177044,3 +177044,275 @@ do?".
 
 `HANDOFF:` none. Versions at close: core 0.0.1264, host 0.0.194 (rebuilt,
 not bumped), web/cli/tauri/SPA unchanged, harness 0.0.1110.
+
+## Lane record — P4.D276: the memory SPA for v4 `d58548051` (branch `claude/p4-memory-spa-housekeeping-archive-027834`)
+
+Stage A from `main` at the orders' commit `ff2252b83`; pin `01a83539d`
+(every v4 byte read with `git show 01a83539d:<path>` /
+`git show d58548051 -- <path>`; no lane pin worktree was created — no v4
+component was run).
+
+### §2 probe at lane start (2026-10-09 16:44 CDT) — an observation (§R.2)
+- `branch --show-current` → `main`; `status --short` → clean.
+- `log 01a83539d..main` → THREE commits. **v4 moved: `3e6e2f590` and
+  `7a8d6dacc` (both already observed at planning) and NEW `9ecebf986`
+  ("refactor(wardrobe): one location, one wearable pool, one outfit pipeline,
+  one route factory; fix bugs 190, 192-197"), observed 2026-10-09 16:44 CDT.**
+  None touches this lane's files at the pin; never read, never ported.
+- `log 1a2b2164c..bugfix` → empty.
+- The pin: `git rev-parse 01a83539d` → `01a83539dd1c2db31b056d6427b31a04f91563a7`;
+  `git show 01a83539d:package.json` → `4.10.0-dev.143`. Usable.
+
+### Unit M1+M2 — the contract, the data layer, the housekeeping dialog (SPA 0.5.823)
+One compile-coupled commit (items 1–4). Strings asserted, v4
+`components/memory/housekeeping-dialog.tsx` at the pin: description `:126`;
+`Never archiving memories that are:` `:146`; `Archive old low-importance
+memories` `:169`; `Threshold for archiving` `:189`; tiles `Keep` / `Delete` /
+`Archive` `:208-227`; details gate `:230`; `demoted` row warning-classed
+`:241-245`; empty state `:259-260`; Run class + label `:276-283`; toasts
+`:87-92` (singular, plural, pre-round `0`), failure `:95`. Keys `lib/query/
+keys.ts:198-199`. Contract: C2 + `lib/memory/consolidation.ts:114-205`.
+- **Red-first:** `housekeeping-dialog.spec.ts` + `memory.api.spec.ts` against
+  unported `main` source (contract, api, dialog, search types swapped back):
+  RED BY CONSTRUCTION — 16 TypeScript errors (TS2561 `wouldDemote`, TS2322
+  `'demoted'`, TS2305/TS2724 the six missing helpers, TS2339 the two keys); the
+  run compiles nothing. The `search-results` CONSOLIDATED arm is GREEN on main
+  by design: it pins that v4's render did NOT change (`search-results.tsx:
+  204-208`).
+- **Re-pinned by name:** `housekeeping-dialog.spec.ts` `previewOf` (`wouldDemote`
+  in, `wouldMerge` out), the stats arm (tiles by label), the empty-state arm,
+  `Delete 4 Memories` → `Archive 4 Memories`.
+- **RETIRED: the P4.25 unit-7 count-less housekeeping toast (status-log
+  `:52474-52478`) — the premise was false (`api/memories.rs:935` inserts
+  `result.deleted`); v4's `d58548051` sentence restored** over `result.demoted
+  ?? 0` (R-C).
+- **Tier 2 item 17, RECORDED (pre-existing, not span drift, unchanged):**
+  (a) `parseIntOr` keeps a typed `0` (`memory/housekeeping-dialog.ts`
+  `parseIntOr`) where v4's `parseInt(v) || 1000` / `|| 6` substitutes the
+  default (v4 `:140`, `:163`); (b) `run()` sets the inline `error` on a run
+  failure where v4 only toasts (v4 `:94-96`).
+
+### Unit M3 — the card, the list, the digest viewer (SPA 0.5.824)
+Strings asserted, v4 at the pin: `memory-card.tsx` — `Archived` chip + title
+`:79-86`, source chip classes/text `:87-94`, `opacity-75` `:67`, provenance
+`:99-116` (`Digested from N note(s). ` with v4's trailing space, `Superseded
+by a digest` button / `Superseded by a digest.` text), footer gates
+`:157-193`; `memory-list.tsx` — source options `:296-300`, the tier select
+`:302-310`, `tier` param `:92`, `handleViewDigest` `:195-205`, the viewer
+`:370-389` (`The Digest`, `The denser note that took this one’s place on the
+active shelf.` with U+2019, `Close`).
+- **Red-first** (card + list swapped to `main`, the viewer removed; the one
+  output-typed arm reads the output structurally so it COMPILES on main):
+  `memory-card.spec.ts` new arms 10 RED / 3 green (green by design: AUTO/MANUAL
+  chips unchanged, "no provenance on a hot empty digest" and "a pre-round row
+  renders as before" — negative / unchanged pins); `memory-list.spec.ts` new
+  arms 8 RED / 0 green. `memory-digest-viewer.spec.ts` RED BY CONSTRUCTION
+  (the component does not exist on `main`).
+- **Re-pinned by name:** `memory-list.spec.ts` `filters by source via the
+  source select` — now finds the source select by its `MANUAL` option and
+  asserts the value took (`removing-a-select-option-makes-a-spec-vacuous`);
+  it drove "the last select", which is now the tier select.
+- **Mechanism translations, RECORDED:** R-D — `showActions` (gates Edit,
+  Delete AND Source) + `canViewDigest` (button vs text) translate v4's
+  handler-presence gates; the list binds `[canViewDigest]="true"`, the viewer
+  `[showActions]="false"`. R-H — the viewer is v4's hand markup with no
+  `role="dialog"`, no Escape, no backdrop close; host reparented to
+  `document.body` via `afterNextRender` (the `image-detail-modal.ts` idiom).
+  `getErrorMessage` (v4 `lib/error-utils.ts:19-33`) lives ONCE in
+  `memory/memory-format.ts` (the list needs it and `memory/` must not import
+  from `screens/`); the settings `api-error-text.ts` re-exports it.
+- **R-A, RECORDED (both line pins):** v4's `MemoryList` never passes
+  `onNavigateToSource` (`memory-list.tsx:335-342`), so v4 never shows
+  "Source"; v5's list does (`memory-list.ts` `(navigateToSource)` +
+  `navigateToSource()`). Kept; named in both docblocks.
+
+### Unit M4a — the housekeeping settings card + `api-error-text.ts` (SPA 0.5.825)
+Strings asserted, v4 `components/tools/memory-housekeeping-card.tsx` at the
+pin: the paragraph `:177-179` (U+2019 ×2, the literal `—`), the cap suffix
+`:210`, the merge checkbox's absence (hunk `-279..-289`); R-G's twins from
+`components/tools/hooks/api-error-text.ts:17-32` + `lib/error-utils.ts:19-33`.
+- **Red-first:** `memory-housekeeping-card.spec.ts` new arms 3 RED / 0 green
+  against `main`'s card; `api-error-text.spec.ts` RED BY CONSTRUCTION (new
+  file).
+- The old paragraph's straight `'` in "you've" (v4 renders U+2019) fixed while
+  rewriting. `DEFAULT_CONFIG` keeps `autoMergeSimilarThreshold` / `mergeSimilar`
+  (v4 `:25-31`). The survey's "merge cases" in the card spec never existed —
+  only a stub config key (order item 26), left as is.
+
+### Unit M4b — the Consolidation card + its report dialog (SPA 0.5.826)
+Strings asserted, v4 at the pin. `memory-consolidation-card.tsx`: loading line
+`:181-183`; intro `:191-193` (U+2019, U+2014); checkbox `:195-204`; profile
+label/options/help `:206-227` (`House (OPENAI • gpt-4o)`, `Bare (OLLAMA)`, the
+left-the-building arm `:218`); `NUMBER_FIELDS` `:60-68` (labels, help, min/
+max/step, `placeholder="never"`) via `:230-254`; `commitNumber` `:131-155`
+(the three sentence shapes); `saveConfig` `:110-129` (`Consolidation settings
+saved`, `Failed to save consolidation settings`); read failure `:105-108`;
+Consolidate now `:257-294`; `consolidate` `:157-179` (`The consolidation has
+been sent below stairs — it will run in the background`, `The rehearsal
+failed`, `Failed to queue consolidation`). `memory-consolidation-report-
+dialog.tsx`: `SKIPPED_TEXT` `:12-16`; `bucketLabel` `:18-27`; `ClusterBlock`
+`:29-99`; title/description `:115-127`; stats `:135-140` (the `:139` JS
+precedence verbatim); note line `:141-147`; empty sentence `:149-153`; footer
+`:160-164`; `Stat` `:171-178`.
+- **Red-first:** both spec files RED BY CONSTRUCTION (new components; the
+  imports do not resolve on `main`). Card 26 arms, dialog 14 arms, all green
+  after.
+- **Mutation-proven:** deleting the two R-E DOM re-syncs (`el.checked = …`,
+  `el.value = …`) reddens exactly the two failed-save arms (2 of 26).
+- **Mechanism translations, RECORDED:** R-E — each controlled control's change
+  handler takes its element and re-syncs it from the stored config after the
+  save settles (success or failure; on success Angular's binding agrees); the
+  checkbox is NOT optimistic (v4 `:200`). R-F — one key per save; the echo
+  over `DEFAULT_CONFIG`; a clobbered echo renders (spec arm). R-H — the report
+  dialog is v4's hand markup (no `role="dialog"`, no Escape, no backdrop
+  close), host reparented to `document.body`. R-J — no `RealtimeService`.
+  The roster query shares v5's `memoryKeys.characterCounts()`
+  (`['memories','character-counts']`; v4's key reads
+  `'character-memory-counts'`) so the two cards share one cache, as v4's do.
+- **Spec-harness note:** the field-commit helper renders between `input` and
+  `blur` (a browser always does); without it a blank field's binding never saw
+  the draft and could not restore the stored value — a harness artefact, not a
+  card defect. The card spec's `QueryClient` turns retries off so a read
+  failure surfaces at once.
+
+### Unit M4c — the Extraction Grain card + the Memory tab (SPA 0.5.827)
+Strings asserted, v4 at the pin. `memory-extraction-grain-card.tsx`: loading
+`:116`; intro with two `<em>` `:123-125` (U+2019); `OTHER_PASS_OPTIONS`
+`:26-43` (labels + descriptions, U+2014 ×2); labels/help/limits `:128-182`;
+disabled rules `:159`, `:176`; `commitFloor` / `commitPerSubject` `:93-113`
+(the two sentences; draft cleared first; `Number('')` → a blank floor saves
+`0`, a blank per-subject refused); `save` `:72-91` (`Extraction settings
+saved`, `Failed to save extraction settings`); read failure `:69`.
+`MemorySearchTabContent.tsx:25-59` — nine cards' titles, descriptions and
+`sectionId`s (incl. the housekeeping description `:33`).
+- **Red-first:** `memory-extraction-grain-card.spec.ts` RED BY CONSTRUCTION
+  (new component; 15 arms green after); `memory-tab.spec.ts` (new) 1 arm RED
+  against `main`'s tab (seven cards, the old housekeeping description).
+- **R-E** (the select re-syncs from the stored mode after the save settles)
+  and **R-F** (one key; the clobbered echo renders) each have an arm.
+
+### Unit M7 + Tier 2 item 16 — the chip title; the digest edit bag (SPA 0.5.828)
+v4 `lib/background-jobs/activity-kinds.ts:89` at the pin → `layout/activity-
+kinds.ts`'s `memory` chip title. **Re-pinned by name:**
+`layout/activity-kinds.spec.ts` (`carries v4's NEW titles, byte for byte`) and
+`layout/queue-status-badges.spec.ts` (`…housekeeping): 0 active` →
+`…consolidation, housekeeping): 0 active`).
+- **Red-first:** both arms RED against `main`'s title (2 of 2).
+- **Tier 2 item 16:** `memory-editor.ts` needs no source change (the widened
+  `MemoryDto` compiles; `MemoryWriteBag.source` stays `'MANUAL'`, v4
+  `memory-editor.tsx:25` is a type widen only). New arm: editing a
+  `CONSOLIDATED` memory sends `memoryUpdate` with `source: 'MANUAL'` and
+  exactly v4's six keys — GREEN on `main` by design (unchanged behaviour).
+  RECORDED: whether the server re-sources the digest is P4.D265/P4.D266's
+  `memoryUpdate` (v4's PUT schema `[id]/route.ts:18-27` has no `source`); a 💸
+  row checks it live.
+
+### Unit M8 — the Playwright beats (SPA 0.5.829)
+New `apps/web/e2e/settings-memory-consolidation-flow.spec.ts` (port 4335 —
+re-grepped `e2e/` for `43[0-9][0-9]` first: 4319–4334 taken, 4335 free;
+instance `e2e/.artifacts/memory-consolidation-instance`, log
+`memory-consolidation-server.log`, the `characters-flow.spec.ts:439-450`
+`MEM_USER_TABLES` recipe). `settings-flow.spec.ts` gains exactly the two
+heading lines after `Memory Housekeeping`.
+- **Measurements, on the materialized private instance (the spec's
+  `beforeAll` recipe, read with the worktree's release CLI, no server):**
+  - **29 (Dry run) — PASS.** Pip `b1000000-…-000000000003`: 0 memories,
+    `controlledBy='user'`, `archivedAt` null, on the counts roster
+    (`memory_character_counts` lists every character incl. zero-count). Mnemo:
+    51 memories, 47 embedded. Orla: 4, none embedded. **A Mnemo dry run
+    reaches a model call** (non-empty selection; `Local Mock` →
+    `http://127.0.0.1:1/v1` unreachable) — a 💸 row, never a beat.
+  - **30 (Cleanup) — ≥ 1 predicted:** Mnemo AUTO rows with `importance < 0.3`
+    and `createdAt` > 6 months old = **5** (`…100000000010`, `…020`, `…028`,
+    `…038`, `…046`; none accessed, `reinforcementCount` 1). The gated beat
+    asserts the parsed `Archive N Memories` ≥ 1 before clicking, and
+    `result.demoted` ≥ 1.
+  - **31 (plant path):** on `main` the `memories` table has NO tier columns
+    (25 columns; `pragma_table_info`), and the CLI's own open does not add
+    them. The stop → two `--write`s → restart recipe is authored GATED; it
+    plants by UPDATE (Mnemo `MEM_REL_A` → a one-member `CONSOLIDATED` digest of
+    `MEM_REL_B`; `MEM_REL_B` → `tier='cold'`, `supersededById=MEM_REL_A`), so it
+    needs no column list. **Exercised only on the union (§S.9 flips it).**
+- **Runs (by file, one at a time, 4319 + 4335 free, after `npm run build` and
+  `cargo build --release -p quilltap-web -p quilltap-cli` in the worktree):**
+  the new file 2 passed / 5 skipped (the gated beats, reason string naming
+  P4.D265/P4.D266/P4.D269/P4.D271); `settings-flow.spec.ts` 9/9;
+  `characters-flow.spec.ts` 7/7 (its Memories beat drives the changed card and
+  list); `settings-memory-flow.spec.ts` 4/4. The first run of the new file
+  caught a strict-mode collision in the LIVE grain beat (`Observations of
+  others` also prefixes the hybrid description) — `exact: true`, green.
+- **Gated beats (5), each unrun on this branch by design (§S.9):** the grain
+  round trip; consolidation field / refused field (dispatch COUNT, not hope) /
+  switch; Pip dry run (asserts `report.stats.clustersSelected === 0` and no
+  `skippedReason` — R-I's tripwire) + real run toast; Cleanup → Archived tier;
+  the digest viewer over the R-K plant. **Unauthored beats:** none — every
+  Mnemo / Orla consolidation leg is a 💸 row by R-I.
+
+### Lane close — P4.D276 (SPA 0.5.829)
+- **Commits (8):** `4511df1c3` M1+M2 · `ee80e7ab9` M3 · `9133f846d` M4a ·
+  `fe06305e6` M4b · `2964b5903` M4c · `19ec5ce30` M7 + Tier 2 item 16 ·
+  `ff99cc83b` M8 · this close commit. No crate version moved; SPA
+  `0.5.822` → `0.5.829` (the close commit bumps nothing).
+- **Gate:** `npm run lint` (incl. `check-qt-classes`) clean; `npm test` 481
+  files / 9,123 tests, exit 0, 0 `Unhandled Errors`; `npm run build` exit 0
+  (the only real type-check); Playwright by file as in M8. No Rust touched, so
+  `cargo fmt`/`clippy`/`test --workspace` are not this lane's gate;
+  `python3 harness/tools/recipe_sweep.py --self-test` exit 0.
+- **Ownership:** `git diff main --stat` names only `apps/web/src/app/memory/**`,
+  `screens/settings/memory/**`, `layout/activity-kinds*.ts`,
+  `layout/queue-status-badges.spec.ts`, `search/search.types.ts` +
+  `search-results.spec.ts`, `core/core-contract.ts` (hunks only at `:5715–6213`
+  — the memory appendix + its one bracketed union group; no `CoreRequest`), the
+  NEW e2e file, two lines of `e2e/settings-flow.spec.ts`, `package.json` + lock,
+  `docs/CHANGELOG.md`, `status-log.md`, this order's header. The diff over
+  `crates/ harness/ help/ docs/v4/ core/realtime-topic-map.ts ui/modal.ts
+  e2e/support e2e/global-setup.ts` is EMPTY. `mergeSimilar` survives only as
+  the contract's three documented keys, `DEFAULT_CONFIG`, and absence
+  assertions.
+- **R-A, both RECORDED, not changed:** (1) Source — v4 `memory-list.tsx:335-342`
+  passes no `onNavigateToSource`; v5 `memory/memory-list.ts` binds
+  `(navigateToSource)`. Kept; the digest viewer's `[showActions]="false"`
+  hides it as v4's handler-less card does. (2) Realtime — v4
+  `lib/realtime/topic-map.ts:94-98` refetches all of `queryKeys.memories`; v5
+  `core/realtime-topic-map.ts:136-144` narrows the unscoped `memories` hint to
+  `[chatKeys.all, memoryKeys.chatCounts()]` (P4.D177 §C.4). Consequence: after
+  "Consolidate for real" (or a housekeeping job) finishes, the Consolidate-now
+  roster's counts and the two new config queries are stale until the tab
+  remounts — a 💸 row (confirm, don't file).
+- **Recorded mechanism translations:** R-D `showActions` / `canViewDigest`;
+  R-E the DOM re-sync after a save settles (mutation-proven); R-H the two
+  overlays as v4's hand markup, body-reparented after first render; the roster
+  cache key `memoryKeys.characterCounts()` (`['memories','character-counts']`
+  vs v4's `'character-memory-counts'`) shared by both cards; `getErrorMessage`
+  homed once in `memory/memory-format.ts`. Nothing was restyled by the class
+  guard.
+- **HANDOFF:** none. **Deferred (Tier 3, by name):** R-A's two items (a later
+  ruling); the Mnemo / Orla consolidation legs (💸 only — R-I); `anchor-gate-
+  probe` (CLI-only, no SPA consumer in v4); the five gated beats until §S.9.
+  No beat left unauthored.
+- **💸 rows for the dogfood pass (Friday copy, after the union):**
+  - a character's Memories tab: `Filter by tier` → `Archived` lists v4's cold
+    rows with the `Archived` chip + `opacity-75`; `Consolidated (digests)` lists
+    digests with `Digest` + `Digested from N notes.`; a superseded row's
+    `Superseded by a digest` opens `The Digest` ABOVE the workspace chrome
+    (`elementFromPoint`) with no Edit/Delete; Close;
+  - `Cleanup` on a busy character: the `Archive` tile, `Archive N Memories`,
+    v4's toast with the demoted count, the moved rows under `Archived`, the
+    memory row count unchanged (nothing deleted);
+  - Settings → Memory: the Consolidation card on the live settings row; one
+    field saved shows v4's server-side clobber in the others (expected —
+    `PARTIAL_DEFAULTS_CLOBBER`), then restore; the profile labels and, if
+    the stored profile is gone, `(a profile that has since left the building)`;
+  - 💸 a consolidation DRY RUN on one character (one model call per selected
+    cluster): the report's stats, clusters, proposed digests, contradictions,
+    note line; row counts unchanged;
+  - Extraction Grain: the live mode, a change + reload, restore;
+  - the Mem chip tooltip names consolidation while a `MEMORY_CONSOLIDATION`
+    job runs; afterwards the roster's counts stay stale until a remount (R-A);
+  - editing a digest keeps `source = 'CONSOLIDATED'` (Tier 2 item 16).
+- **Gotchas worth keeping:** a jsdom `type=number` input sanitizes a padded
+  value (`' 200 '` → `''`), so a trim arm must seed the draft directly; a
+  spec that fires `input` then `blur` with no render between them leaves a
+  `[value]` binding unable to restore a cleared field (a browser always renders
+  between them); TanStack's default retry hides a read-failure arm for seconds —
+  `retry: false` in the spec's `QueryClient`.

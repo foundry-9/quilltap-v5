@@ -147,3 +147,160 @@ describe('MemoryCard', () => {
     expect(del.disabled).toBe(true);
   });
 });
+
+/**
+ * P4.D276 — v4 `d58548051`'s card (`components/memory/memory-card.tsx` at
+ * `01a83539d`): the `Archived` chip, the `Digest` source chip, the provenance
+ * line, and the handler-presence gates translated to `showActions` /
+ * `canViewDigest` (R-D).
+ */
+describe('MemoryCard — tiers and digests (P4.D276, v4 d58548051)', () => {
+  function renderWith(memory: MemoryDto, inputs: Record<string, unknown> = {}): ComponentFixture<MemoryCard> {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ imports: [MemoryCard] });
+    const fixture = TestBed.createComponent(MemoryCard);
+    fixture.componentRef.setInput('memory', memory);
+    for (const [k, v] of Object.entries(inputs)) {
+      fixture.componentRef.setInput(k, v);
+    }
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  function chips(fixture: ComponentFixture<MemoryCard>): HTMLElement[] {
+    return Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('span.rounded-full'),
+    ) as HTMLElement[];
+  }
+
+  function provenance(fixture: ComponentFixture<MemoryCard>): HTMLElement | null {
+    return (fixture.nativeElement as HTMLElement).querySelector('p.qt-text-xs.qt-text-muted.mb-2');
+  }
+
+  function buttonTexts(fixture: ComponentFixture<MemoryCard>): string[] {
+    return Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('button')).map(
+      (b) => b.textContent?.trim() ?? '',
+    );
+  }
+
+  it('marks a CONSOLIDATED row `Digest` on the warning chip (v4 :87-94)', () => {
+    const chip = chips(renderWith(mem({ source: 'CONSOLIDATED' }))).at(-1)!;
+    expect(chip.textContent?.trim()).toBe('Digest');
+    expect(chip.classList.contains('qt-bg-warning/10')).toBe(true);
+    expect(chip.classList.contains('qt-text-warning')).toBe(true);
+    expect(chip.classList.contains('qt-bg-success/10')).toBe(false);
+  });
+
+  it('keeps the AUTO / MANUAL chips on their classes (v4 :88, :92)', () => {
+    const auto = chips(renderWith(mem({ source: 'AUTO' }))).at(-1)!;
+    expect(auto.textContent?.trim()).toBe('Auto');
+    expect(auto.classList.contains('qt-text-info')).toBe(true);
+    const manual = chips(renderWith(mem({ source: 'MANUAL' }))).at(-1)!;
+    expect(manual.textContent?.trim()).toBe('Manual');
+    expect(manual.classList.contains('qt-text-success')).toBe(true);
+  });
+
+  it('shows the Archived chip only on a cold row, BEFORE the source chip, with its title (v4 :79-86)', () => {
+    const cold = chips(renderWith(mem({ tier: 'cold', source: 'AUTO' })));
+    expect(cold.map((c) => c.textContent?.trim())).toEqual(['Archived', 'Auto']);
+    expect(cold[0].getAttribute('title')).toBe('Archived: out of everyday recall, still on the shelf');
+    for (const cls of ['text-xs', 'px-2', 'py-0.5', 'rounded-full', 'qt-bg-muted', 'qt-text-secondary']) {
+      expect(cold[0].classList.contains(cls)).toBe(true);
+    }
+    const hot = chips(renderWith(mem({ tier: 'hot', source: 'AUTO' })));
+    expect(hot.map((c) => c.textContent?.trim())).toEqual(['Auto']);
+  });
+
+  it('dims only a cold row with opacity-75 (v4 :67)', () => {
+    const root = (f: ComponentFixture<MemoryCard>) =>
+      (f.nativeElement as HTMLElement).querySelector('.qt-card') as HTMLElement;
+    expect(root(renderWith(mem({ tier: 'cold' }))).classList.contains('opacity-75')).toBe(true);
+    expect(root(renderWith(mem({ tier: 'hot' }))).classList.contains('opacity-75')).toBe(false);
+    expect(root(renderWith(mem({}))).classList.contains('opacity-75')).toBe(false);
+  });
+
+  it('writes the provenance lead byte-exact, trailing space included (v4 :101)', () => {
+    expect(
+      provenance(renderWith(mem({ source: 'CONSOLIDATED', consolidatedFrom: ['a'] })))!.textContent,
+    ).toBe('Digested from 1 note. ');
+    expect(
+      provenance(renderWith(mem({ source: 'CONSOLIDATED', consolidatedFrom: ['a', 'b', 'c'] })))!
+        .textContent,
+    ).toBe('Digested from 3 notes. ');
+  });
+
+  it('shows no provenance for a hot digest with empty or absent members (v4 :64, :99)', () => {
+    expect(provenance(renderWith(mem({ source: 'CONSOLIDATED', consolidatedFrom: [] })))).toBeNull();
+    expect(provenance(renderWith(mem({ source: 'CONSOLIDATED' })))).toBeNull();
+    // A non-digest row's members never count.
+    expect(provenance(renderWith(mem({ source: 'AUTO', consolidatedFrom: ['a'] })))).toBeNull();
+  });
+
+  it('offers the superseded BUTTON with canViewDigest and emits the digest id (v4 :103-111)', () => {
+    const fixture = renderWith(mem({ tier: 'cold', supersededById: 'digest-7' }), { canViewDigest: true });
+    let seen: string | null = null;
+    // Read through a structural view so this arm COMPILES against a card
+    // without the output (red-first measures it behaviourally, not by TS).
+    const outputs = fixture.componentInstance as unknown as Record<
+      string,
+      { subscribe(fn: (id: string) => void): unknown } | undefined
+    >;
+    outputs['viewDigest']?.subscribe((id) => (seen = id));
+    const p = provenance(fixture)!;
+    expect(p.textContent).toBe('Superseded by a digest');
+    const btn = p.querySelector('button') as HTMLButtonElement;
+    expect(btn.getAttribute('type')).toBe('button');
+    expect(btn.classList.contains('text-primary')).toBe(true);
+    expect(btn.classList.contains('hover:underline')).toBe(true);
+    btn.click();
+    expect(seen).toBe('digest-7');
+  });
+
+  it('writes the superseded TEXT without canViewDigest (v4 :113)', () => {
+    const p = provenance(renderWith(mem({ tier: 'cold', supersededById: 'digest-7' })))!;
+    expect(p.textContent).toBe('Superseded by a digest.');
+    expect(p.querySelector('button')).toBeNull();
+  });
+
+  it('renders both halves on an archived digest with members (v4 :99-116)', () => {
+    const p = provenance(
+      renderWith(
+        mem({ source: 'CONSOLIDATED', consolidatedFrom: ['a', 'b'], tier: 'cold', supersededById: 'd2' }),
+      ),
+    )!;
+    expect(p.textContent).toBe('Digested from 2 notes. Superseded by a digest.');
+  });
+
+  it('shows the chip but no provenance on an archived row without supersededById', () => {
+    const fixture = renderWith(mem({ tier: 'cold', supersededById: null }));
+    expect(chips(fixture)[0].textContent?.trim()).toBe('Archived');
+    expect(provenance(fixture)).toBeNull();
+  });
+
+  it('a hot row carrying supersededById shows no superseded line (v4 `archived &&`)', () => {
+    expect(provenance(renderWith(mem({ tier: 'hot', supersededById: 'd9' }), { canViewDigest: true }))).toBeNull();
+  });
+
+  it('[showActions]=false renders no Edit, Delete or Source, even on a sourced AUTO row (R-D)', () => {
+    const fixture = renderWith(
+      mem({ source: 'AUTO', chatId: 'chat-1', sourceMessageId: 'msg-1' }),
+      { showActions: false },
+    );
+    const texts = buttonTexts(fixture);
+    expect(texts).not.toContain('Edit');
+    expect(texts).not.toContain('Delete');
+    expect(texts.some((t) => t.includes('Source'))).toBe(false);
+    // The default keeps all three.
+    const full = buttonTexts(renderWith(mem({ source: 'AUTO', chatId: 'chat-1', sourceMessageId: 'msg-1' })));
+    expect(full).toContain('Edit');
+    expect(full).toContain('Delete');
+    expect(full.some((t) => t.includes('Source'))).toBe(true);
+  });
+
+  it('renders a pre-round row (no tier keys) exactly as before', () => {
+    const fixture = renderWith(mem({ source: 'AUTO' }));
+    expect(chips(fixture).map((c) => c.textContent?.trim())).toEqual(['Auto']);
+    expect(provenance(fixture)).toBeNull();
+    expect(((fixture.nativeElement as HTMLElement).querySelector('.qt-card') as HTMLElement).classList.contains('opacity-75')).toBe(false);
+  });
+});

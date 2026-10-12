@@ -102,7 +102,7 @@ describe('QueueStatusBadges (v4 f3892158d — pushed, with a gated heartbeat)', 
       expect(badge.classList.contains('qt-queue-badge-idle')).toBe(true);
     }
     expect(rendered[0].title).toBe(
-      'Memory work (extraction, regeneration, housekeeping): 0 active',
+      'Memory work (extraction, regeneration, consolidation, housekeeping): 0 active',
     );
   });
 

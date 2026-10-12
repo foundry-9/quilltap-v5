@@ -5712,7 +5712,8 @@ export interface MemoryDto {
   keywords: string[];
   tags: string[];
   importance: number;
-  source: 'AUTO' | 'MANUAL';
+  /** `CONSOLIDATED` = a digest (v4 `d58548051`, `memory-card.tsx:22`). */
+  source: 'AUTO' | 'MANUAL' | 'CONSOLIDATED';
   chatId: string | null;
   projectId: string | null;
   aboutCharacterId: string | null;
@@ -5723,6 +5724,17 @@ export interface MemoryDto {
   lastReinforcedAt: string | null;
   relatedMemoryIds: string[];
   reinforcedImportance: number;
+  // P4.D276 — the four tier keys (C2's MemorySchema order). OPTIONAL: v4's
+  // client interfaces (`memory-card.tsx:23-28`, `memory-list.tsx:32-37`) are the
+  // rendering contract, and a pre-round server sends none of them.
+  /** 'cold' rows are archived: out of everyday recall, still on the shelf. */
+  tier?: 'hot' | 'cold';
+  /** The digest that replaced this row, when it has been folded. */
+  supersededById?: string | null;
+  /** The notes a digest was folded from (digest rows only). */
+  consolidatedFrom?: string[];
+  /** When the row was folded into (or became) a digest. */
+  consolidatedAt?: string | null;
   createdAt: string;
   updatedAt: string;
   /** Derived tag rows on list/get/search reads (absent on trimmed shapes). */
@@ -5758,7 +5770,9 @@ export interface MemoryListRequest {
   characterId: string;
   search?: string;
   minImportance?: number;
-  source?: 'AUTO' | 'MANUAL';
+  source?: 'AUTO' | 'MANUAL' | 'CONSOLIDATED';
+  /** P4.D276 — absent = all tiers; v4 ignores any other value (`route.ts:302-303`). */
+  tier?: 'hot' | 'cold';
   sortBy?: MemorySortBy;
   sortOrder?: MemorySortOrder;
   /** Present = paginated; absent = legacy-all (v4's two code paths). */
@@ -5793,7 +5807,7 @@ export interface MemorySearchRequest {
   limit?: number;
   minImportance?: number;
   minScore?: number;
-  source?: 'AUTO' | 'MANUAL';
+  source?: 'AUTO' | 'MANUAL' | 'CONSOLIDATED';
 }
 export interface MemoryCountByChatRequest {
   type: 'memoryCountByChat';
@@ -5809,28 +5823,36 @@ export interface MemoryByMessageRequest {
 /** One line of a housekeeping preview/run detail (v4 `HousekeepingDetail`). */
 export interface HousekeepingDetail {
   memoryId: string;
-  action: 'deleted' | 'merged' | 'kept';
+  action: 'deleted' | 'demoted' | 'merged' | 'kept';
   reason: string;
   summary?: string;
 }
 
 /** The preview shape (v4 GET `action=housekeep` → `data.preview`). */
 export interface HousekeepingPreview {
+  /** P4.D276 — rows housekeeping would ARCHIVE (v4 `housekeeping-dialog.tsx:15`). */
+  wouldDemote: number;
   wouldDelete: number;
-  wouldMerge: number;
+  /** The server still sends it (v4 `route.ts:754`); v4's client type dropped it and nothing renders it. */
+  wouldMerge?: number;
   wouldKeep: number;
   totalBefore: number;
   totalAfter: number;
+  coldCount?: number;
   details: HousekeepingDetail[];
 }
 
 /** The run result (v4 POST `action=housekeep` → `data.result`; `details` only when dryRun). */
 export interface HousekeepingResult {
+  /** P4.D276 — v4's success toast reads `result.demoted ?? 0`; absent on a pre-round server. */
+  demoted?: number;
   deleted: number;
   merged: number;
   kept: number;
   totalBefore: number;
   totalAfter: number;
+  coldCount?: number;
+  demotedIds?: string[];
   deletedIds: string[];
   mergedIds: string[];
   details?: HousekeepingDetail[];
@@ -5842,6 +5864,7 @@ export interface MemoryHousekeepOptions {
   maxMemories?: number;
   maxAgeMonths?: number;
   minImportance?: number;
+  /** Retired by v4 `d58548051`; the server accepts and ignores it; the SPA never sends it. */
   mergeSimilar?: boolean;
   dryRun?: boolean;
 }
@@ -5852,6 +5875,7 @@ export interface HousekeepingConfig {
   perCharacterCap: number;
   perCharacterCapOverrides: Record<string, number>;
   autoMergeSimilarThreshold: number;
+  /** Retired by v4 `d58548051`; the server accepts and ignores it; the SPA never sends it. */
   mergeSimilar: boolean;
 }
 
@@ -5868,6 +5892,7 @@ export interface MemoryHousekeepPreviewRequest {
   maxMemories?: number;
   maxAgeMonths?: number;
   minImportance?: number;
+  /** Retired by v4 `d58548051`; the server accepts and ignores it; the SPA never sends it. */
   mergeSimilar?: boolean;
 }
 export interface MemoryHousekeepRequest {
@@ -5988,6 +6013,167 @@ export interface ChatQueueMemoriesRequest {
   chatId: string;
 }
 
+// === P4.D276: the d58548051 memory surface (append-only) ===
+// v4 `d58548051` ("feat(memory): consolidation and hot/cold tiers") — the two
+// instance settings, the consolidation report, and the five new verbs of
+// contract C2. Report shapes field for field from v4
+// `lib/memory/consolidation.ts:114-205` at `01a83539d`.
+
+/** v4 `memoryConsolidation` instance setting. Declaration order = wire order (C2). */
+export interface MemoryConsolidationConfig {
+  enabled: boolean;
+  connectionProfileId: string | null;
+  clusterThreshold: number;
+  minClusterSize: number;
+  maxClusterSize: number;
+  matureAfterDays: number;
+  maxClustersPerRun: number;
+  watermark: number;
+  coldRetentionDays: number | null;
+}
+
+/** v4 `memoryExtractionMode` instance setting (C2). */
+export interface MemoryExtractionModeConfig {
+  otherPass: 'turn' | 'fold' | 'hybrid';
+  perTurnOtherFloor: number;
+  foldCandidatesPerSubject: number;
+}
+
+/** Which subject bucket a cluster belongs to. */
+export interface ConsolidationBucketRef {
+  /** 'self' = about the holder; 'other' = about another character; 'none' = no subject. */
+  kind: 'self' | 'other' | 'none';
+  /** The subject's character id (the holder's for self; null for none). */
+  subjectCharacterId: string | null;
+  subjectName: string;
+}
+
+/** One digest as reported. */
+export interface ConsolidationDigestReport {
+  /** Planned id — the new row's id, or the existing digest's id for an update. */
+  id: string;
+  action: 'create' | 'update';
+  content: string;
+  summary: string;
+  keywords: string[];
+  importance: number;
+  reinforcedImportance: number;
+  reinforcementCount: number;
+  kind: 'semantic' | 'episodic';
+  occurredAt: string | null;
+  memberIds: string[];
+}
+
+/** v4 `ConsolidationContradictionSchema` (`consolidation-tasks.ts:66-70`; `note` defaults `''`). */
+export interface ConsolidationContradiction {
+  olderId: string;
+  newerId: string;
+  note: string;
+}
+
+/** One attempted (or dry-run) cluster. */
+export interface ConsolidationClusterReport {
+  bucket: ConsolidationBucketRef;
+  clusterKind: 'semantic' | 'episodic';
+  /** Non-digest member ids, oldest first. */
+  memberIds: string[];
+  /** Member contents, same order as `memberIds`. */
+  memberContents: string[];
+  /** The digest this cluster formed around, if any. */
+  existingDigestId: string | null;
+  existingDigestContent: string | null;
+  digests: ConsolidationDigestReport[];
+  keepStandalone: string[];
+  contradictions: ConsolidationContradiction[];
+  /**
+   * 'planned' (dry run), 'written', 'failed' (the call failed or timed out),
+   * 'invalid' (the answer failed the schema or membership rules),
+   * 'embedding-failed' (a digest could not be embedded — nothing written).
+   */
+  status: 'planned' | 'written' | 'failed' | 'invalid' | 'embedding-failed';
+  error?: string;
+}
+
+export interface ConsolidationStats {
+  rowsLoaded: number;
+  candidates: number;
+  digestsLoaded: number;
+  immatureSkipped: number;
+  noEmbeddingSkipped: number;
+  bucketsScanned: number;
+  bucketRowsCapped: number;
+  clustersFound: number;
+  clustersQualified: number;
+  clustersSelected: number;
+  clustersDeferred: number;
+  clustersBelowMin: number;
+  clustersStale: number;
+  clustersAttempted: number;
+  clustersSucceeded: number;
+  clustersFailed: number;
+  clustersLostToTimeout: number;
+  digestsCreated: number;
+  digestsUpdated: number;
+  membersSuperseded: number;
+  contradictionsApplied: number;
+  rowsMarkedConsidered: number;
+  linksRewired: number;
+  mirrorFilesWritten: number;
+  /** True when the run stopped issuing calls because its time budget ran out. */
+  budgetExhausted: boolean;
+  durationMs: number;
+}
+
+export interface ConsolidationReport {
+  characterId: string;
+  characterName: string | null;
+  dryRun: boolean;
+  trigger: 'scheduled' | 'watermark' | 'manual';
+  startedAt: string;
+  finishedAt: string;
+  /** The settings the run actually used (stored settings + overrides). */
+  settings: MemoryConsolidationConfig;
+  clusters: ConsolidationClusterReport[];
+  stats: ConsolidationStats;
+  /** Set when the run did nothing at all, and why. */
+  skippedReason?: 'character-not-found' | 'archived' | 'no-llm';
+}
+
+/** v4 GET `/api/v1/memories?action=consolidation-config` → `{ success, settings }`. */
+export interface MemoryConsolidationConfigGetRequest {
+  type: 'memoryConsolidationConfigGet';
+}
+/** v4 POST `?action=consolidation-config` — the patch is sent untouched (v4's `.partial()` clobber is the server's). */
+export interface MemoryConsolidationConfigSetRequest {
+  type: 'memoryConsolidationConfigSet';
+  config: Partial<MemoryConsolidationConfig>;
+}
+/** v4 GET `?action=extraction-mode-config` → `{ success, settings }`. */
+export interface MemoryExtractionModeConfigGetRequest {
+  type: 'memoryExtractionModeConfigGet';
+}
+/** v4 POST `?action=extraction-mode-config`. */
+export interface MemoryExtractionModeConfigSetRequest {
+  type: 'memoryExtractionModeConfigSet';
+  config: Partial<MemoryExtractionModeConfig>;
+}
+/**
+ * v4 POST `?action=consolidate` → `{ success, dryRun: true, report }` |
+ * `{ success, dryRun: false, jobId }`.
+ */
+export interface MemoryConsolidateRequest {
+  type: 'memoryConsolidate';
+  options: {
+    characterId: string;
+    dryRun?: boolean;
+    /** int 1..1000 */
+    maxClustersPerRun?: number;
+    /** 0..1 */
+    clusterThreshold?: number;
+  };
+}
+// === end ===
+
 /**
  * The memory-surface request variants (P4.6t). Folded into {@link CoreRequest}
  * via {@link MemoryRequest}. Variant `type` names + param names are BINDING at
@@ -6024,6 +6210,13 @@ export type MemoryRequest =
   | MemoryRegenerateAllStatusRequest
   | MemoryRegenerateAllRequest
   | ChatQueueMemoriesRequest
+  // === P4.D276: the d58548051 memory verbs (append-only) ===
+  | MemoryConsolidationConfigGetRequest
+  | MemoryConsolidationConfigSetRequest
+  | MemoryExtractionModeConfigGetRequest
+  | MemoryExtractionModeConfigSetRequest
+  | MemoryConsolidateRequest
+  // === end ===
   // === P4.6x (lane C): the Document Mode client surface ===
   // The chat-scoped document family (lane B's oracle) + the one lane-A variant
   // the SPA consumes (`mountFilesList`). Lane C is the SINGLE AUTHOR of this
