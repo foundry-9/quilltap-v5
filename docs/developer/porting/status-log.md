@@ -178548,3 +178548,25 @@ component was run, and the lane has no Rust family (the order's regen rule).
   the module); `wardrobe-container.spec.ts` +2 (`containerForListedItem`).
   **Red-first:** RED BY CONSTRUCTION on `main` (both modules and the export
   absent — the run compiles nothing). Green: 3 files / 49 tests.
+
+### Unit 2 — the contract region + `wardrobe-folders.api.ts` (SPA 0.5.837)
+- `core-contract.ts`: the fenced `// === P4.D285: wardrobe folders + link-image
+  (append-only) ===` region immediately after the P4.D277 region —
+  `WardrobeFolderDto` + the six request types (C2's camelCase tags; `scope` +
+  `containerId?`, absent for General; body keys `path` / `name` / `itemIds` /
+  `folder` / `itemId` + `fileId`) — and a matching fenced block inside
+  `CoreRequest` right after P4.D277's.
+- `wardrobe/wardrobe-folders.api.ts` (C3 §2): `listWardrobeFolders`,
+  `createWardrobeFolder`, `renameWardrobeFolder`, `deleteWardrobeFolder`,
+  `moveWardrobeItemsToFolder` over the verbs, with v4's result reads
+  (`folders ?? []`, `folder`, `Number(movedItems ?? 0)`, `items ?? []`), plus
+  `createWardrobeFoldersStore` (R-J: v4's `useWardrobeFolders` query as a
+  signal store; v4's warn line `[useWardrobeFolders] Failed to load wardrobe
+  folders` with `{ tierKey, error }`; stale answers dropped by ticket).
+  **Recorded idiom:** every function takes `CoreClient` FIRST (the v5
+  data-layer idiom, `item-images.api.ts`); C3 §2's names and remaining
+  arguments are v4's. P4.D286's Folder field consumes
+  `listWardrobeFolders(core, container)` / `createWardrobeFolder(core,
+  container, path)`.
+- **Spec:** `wardrobe-folders.api.spec.ts` 9 cases. **Red-first:** RED BY
+  CONSTRUCTION on `main` (module + verbs absent). Green 1 / 9.

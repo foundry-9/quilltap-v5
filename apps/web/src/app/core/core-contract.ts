@@ -4562,6 +4562,94 @@ export interface WardrobeItemImageSaveResponse {
 }
 // === end ===
 
+// === P4.D285: wardrobe folders + link-image (append-only) ===
+/**
+ * A wardrobe folder as the folder routes answer it (v4 `4a38222e6`
+ * `lib/wardrobe/folders.ts:69-76` `WardrobeFolder`; C3 §1). `path` is relative
+ * to `Wardrobe/` and never `''`; `itemCount` counts the non-archived items
+ * directly inside (not in subfolders).
+ */
+export interface WardrobeFolderDto {
+  path: string;
+  name: string;
+  itemCount: number;
+}
+
+/**
+ * v4 `GET <tier>/wardrobe?action=folders` (C2) → `{ folders }`, sorted by path.
+ * NO provisioning: a storeless project / group or an unprovisioned General
+ * answers `{ folders: [] }`. `containerId` is absent for General.
+ */
+export interface WardrobeFoldersListRequest {
+  type: 'wardrobeFoldersList';
+  scope: WardrobeOriginScope;
+  containerId?: string;
+}
+
+/**
+ * v4 `POST <tier>/wardrobe?action=create-folder` `{ path }` (C2) → `{ folder }`.
+ * 400 a rule-breaking path (the server's sentence); 409 a collision.
+ */
+export interface WardrobeFolderCreateRequest {
+  type: 'wardrobeFolderCreate';
+  scope: WardrobeOriginScope;
+  containerId?: string;
+  path: string;
+}
+
+/**
+ * v4 `POST <tier>/wardrobe?action=rename-folder` `{ path, name }` (C2) →
+ * `{ folder }`. 404 `Wardrobe folder not found: …`; 409 a collision.
+ */
+export interface WardrobeFolderRenameRequest {
+  type: 'wardrobeFolderRename';
+  scope: WardrobeOriginScope;
+  containerId?: string;
+  path: string;
+  name: string;
+}
+
+/**
+ * v4 `POST <tier>/wardrobe?action=delete-folder` `{ path }` (C2) →
+ * `{ movedItems, movedFolders }` — the folder's items and subfolders go up a
+ * level. 409 when the folder holds files that aren't items.
+ */
+export interface WardrobeFolderDeleteRequest {
+  type: 'wardrobeFolderDelete';
+  scope: WardrobeOriginScope;
+  containerId?: string;
+  path: string;
+}
+
+/**
+ * v4 `POST <tier>/wardrobe?action=move-items` `{ itemIds (≤ 500), folder }`
+ * (C2) → `{ items }` serialized WITH `origin` + `wear`. 400 an id filed
+ * elsewhere (`Not in this wardrobe (shared items are filed where they live):
+ * …`); 404 the folder.
+ */
+export interface WardrobeItemsMoveRequest {
+  type: 'wardrobeItemsMove';
+  scope: WardrobeOriginScope;
+  containerId?: string;
+  itemIds: string[];
+  folder: string;
+}
+
+/**
+ * v4 `POST /wardrobe/[itemId]/images?scope=…&id=…&action=link-image`
+ * `{ fileId }` (`9ecebf986`, C2) → 201 `{ image, current }`; 400 `That
+ * picture cannot be linked`. Mirrored for the wire's completeness — the SPA's
+ * one caller (the import-from-image flow) is a standing deferral (R-L).
+ */
+export interface WardrobeItemImageLinkRequest {
+  type: 'wardrobeItemImageLink';
+  scope: WardrobeOriginScope;
+  containerId?: string;
+  itemId: string;
+  fileId: string;
+}
+// === end P4.D285 ===
+
 /**
  * The story-background resolution (v4 `?action=get-background`,
  * `handleGetBackground`). The BARE body the core verb answers
@@ -6379,6 +6467,14 @@ export type MemoryRequest =
   | WardrobeItemImageSaveTargetsRequest
   | WardrobeItemImageSaveToStoreRequest
   // === end ===
+  // === P4.D285: wardrobe folders + link-image (append-only) ===
+  | WardrobeFoldersListRequest
+  | WardrobeFolderCreateRequest
+  | WardrobeFolderRenameRequest
+  | WardrobeFolderDeleteRequest
+  | WardrobeItemsMoveRequest
+  | WardrobeItemImageLinkRequest
+  // === end P4.D285 ===
   | WardrobeUpdateRequest
   | WardrobeDeleteRequest
   | WardrobePreviewAvatarRequest
