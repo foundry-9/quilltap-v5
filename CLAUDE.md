@@ -859,10 +859,16 @@ records THERE. Update this summary only when a phase or round completes.
   of two RULED divergences (`RULED_RECONCILE_CONSEQUENCES`) + the oracle
   capture's blindness to `logger.child`, the pin's minted memory refs, one
   non-reproducing cell. Gate: fmt/clippy (both feature sets)/release clean; the sweep from the pin 629 ok / 3 standing / 3 refused of 641 (six union reds, each classified and fixed, green by name); Tier R 361/0; `cargo test --workspace` 729 binaries / 4,853 / 8 (the three standing + the two env-block artifacts + three union reds fixed and green by name) / 3 ignored, zero SKIP; SPA 486 / 9,316; Playwright 375 / 0 / 6 (12.3 m) on the final tree, both §S.9 flips LIVE. Versions: core 0.0.1275,
-  host 0.0.197, web 0.0.230, cli 0.0.32, SPA 0.5.835. **Next: the owed
-  dogfood pass (the store-name plan probe on the copy FIRST), then the
-  wardrobe catch-up round (`7a8d6dacc` + `9ecebf986` + `e23fb095b` as ONE
-  round), then the follow-ups round (a human ruling owed on P4.D273's
+  host 0.0.197, web 0.0.230, cli 0.0.32, SPA 0.5.835. **The close probe's
+  `/driftcheck` (`83afedfb9`) found v4 SEVEN commits further — wardrobe
+  folders, scenarios from anywhere (an EIGHTH D23 move), the memory
+  refactor's spec + Phase 0 + bug 227 — and THREE live-data hazards once v4
+  runs past `545e299bb` on live Friday (ledger §1): dogfood a COPY taken
+  before the pull, no v5 chat wipe, no v5 build against live Friday. Next:
+  the owed dogfood pass (the store-name plan probe on the copy FIRST), then
+  the wardrobe catch-up round (`7a8d6dacc` + `9ecebf986` + `e23fb095b` +
+  `4a38222e6` as ONE round), then the scenarios + memory Phase-0 catch-up
+  round, then the follow-ups round (a human ruling owed on P4.D273's
   carried-file metadata source)** — `phase-4.md`. Round record:
   `status-log.md`.
 - **Oracle baseline: `01a83539d` (2026-10-09, v4 main — "feat(wardrobe):

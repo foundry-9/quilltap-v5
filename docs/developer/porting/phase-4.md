@@ -7196,22 +7196,46 @@ Gate: fmt/clippy (both feature sets)/release clean; the sweep from the pin 629 o
 cli 0.0.32, SPA 0.5.835; tauri 0.0.9 unchanged; harness frozen 0.0.1110.
 
 **NEXT (in order):**
-1. **The owed dogfood pass** (`/dogfood`, the Friday COPY) — the round
-   record's 💸 list, headlined by: the store-name plan probe on the copy
-   BEFORE its first v5 boot, then the no-op memory-tiers ensure; the full
+1. **The owed dogfood pass** (`/dogfood`, the Friday COPY — ⚠ a copy taken
+   BEFORE the human pulls v4 past `545e299bb`: the ledger's §1 real-instance
+   note records three live-data hazards once v4 runs past it on live Friday —
+   the `add-chat-scenario-source-v1` columns v5 does not know, wardrobe items
+   filed into folders v5's flat projection cannot see, and a v5 chat wipe
+   deleting rows v4's now spares — so run NO v5 chat wipe on the copy and no
+   v5 build against live Friday until the scenarios + memory Phase-0
+   catch-ups land) — the round record's 💸 list, headlined by: the
+   store-name plan probe on the copy BEFORE its first v5 boot, then the
+   no-op memory-tiers ensure; the full
    backup → restore in BOTH modes with the 365 CONSOLIDATED digests and every
    store bound (#159's F5 archive, 77 → 77); housekeeping DEMOTING on a real
    turn; a digest in a real turn's context; the hybrid / fold-grain OTHER pass
    (💸); a consolidation DRY RUN then a REAL run (💸); the wardrobe wear note,
    the picture viewer's Save + 409; the memory SPA cards and the help page.
-2. **The wardrobe catch-up round** (`/setupphase` from the ledger's four §3
-   rows — ONE round, never commit-by-commit): `7a8d6dacc` (bugs 187 / 188 /
+2. **The wardrobe catch-up round** (`/setupphase` from the ledger's §3 rows
+   — ONE round, never commit-by-commit): `7a8d6dacc` (bugs 187 / 188 /
    189 / 191), `9ecebf986` (the seven-phase refactor that MOVES behaviour —
    `wardrobe_list` drops `include_presets`, one route factory, the tools
    through one table, `POST ?action=link-image` PORT-NEW, the backup's
    `wardrobeItems: []`, bug 197's vision half meeting v5's REFUSAL-ARMED
-   `analyze-image`), `e23fb095b` (bug 198, SPA); `3e6e2f590`'s NO-PORT
-   ratification and the `docs/v4/` + `help/` re-vendor ride it.
+   `analyze-image`), `e23fb095b` (bug 198, SPA), and — recorded by the
+   close probe's `/driftcheck` (`83afedfb9`) — `4a38222e6` (wardrobe
+   FOLDERS, built on the refactor: the vault layout moves to
+   `Wardrobe/<sub>/*.md`, the tools' `folder` key, the carriers' side
+   channels) with the folder-picker fix once v4 commits it under its real
+   bug number; `3e6e2f590`'s NO-PORT ratification and the `docs/v4/` +
+   `help/` re-vendor ride it.
+   Then **a second catch-up round of two lane groups sharing no v5 file with
+   the wardrobe set** (the ledger's §1 "Where they land"): (a) `545e299bb`
+   scenarios from anywhere — the EIGHTH D23 re-dump (`chats.scenarioSource`
+   + `scenarioNotes` after `scenarioText`), `add-chat-scenario-source-v1`
+   re-homed as a boot ensure, the `lib/scenarios/` location + browser + New
+   Chat's single selection + the in-chat control, `help/` 132; (b) the
+   memory Phase-0 pair `124c8aca3` + `69d38dd60` TOGETHER (bugs 199–201 +
+   227: one trailing-context list, the gate's orphan widen, the delete
+   chokepoint's vector removal, the wipe / dedup partition that SPARES
+   manual, cold and digest rows, the deferred mail flip + swipe skip) — the
+   more data-relevant of the two if only one fits. Watch v4 for the memory
+   refactor's Phases A–G (`c19e5d0a9`'s spec: four more D23 moves planned).
 3. **The follow-ups round** (`/setupphase`): the fourteen status headers' OPEN
    lists — led by the HUMAN RULING owed on P4.D273's carried-file
    `mimeType` / `size` / `sha256` source (v4 keeps the archive row's, v5 the
