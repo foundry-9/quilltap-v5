@@ -997,6 +997,118 @@ One compile-coupled commit (the contract change breaks the dialog and its spec, 
 The per-character housekeeping dialog now says Archive: v4's description, option copy and empty state; the merge checkbox is gone and neither dispatch sends `mergeSimilar`; the third tile is `Archive` over `wouldDemote`; Run is `qt-button-primary`, labelled `Archive N Memories` over `wouldDemote + wouldDelete`, enabled by either count. The success toast is v4's two sentences over `result.demoted ?? 0` (deleted rows are not counted). The old count-less toast and its comment are gone; the status-log claim that v5's reply carried no count was false.
 
 New spec `memory.api.spec.ts`; the dialog spec re-pinned and extended (tiles by label, Run label/class/enablement, no `mergeSimilar` on either request, the three toast cases incl. a pre-round reply); a `search-results` arm pins that a `CONSOLIDATED` hit still renders `Auto` (v4's render is unchanged).
+#### 2026-10-09 — docs(porting): P4.D277 lane close — wardrobe/images SPA
+
+_Versions: SPA 0.5.834._
+
+Closes the P4.D277 lane. The order's status header now reads LANE COMPLETE, and `status-log.md` gains the close record:
+
+- the gates;
+- the before/after chat-gallery runs;
+- the recorded divergences and the Tier 3 deferrals;
+- the dogfood rows.
+
+No source changed.
+
+#### 2026-10-09 — test(e2e): the wardrobe picture viewer beats, live + gated — P4.D277 unit 11
+
+_Versions: SPA 0.5.833._
+
+Two Playwright beats for the wardrobe picture viewer in `e2e/wardrobe-flow.spec.ts`. Each beat creates its own garment and hangs two never-seen 1×1 PNGs.
+
+- **Live:** the row thumbnail opens `Picture of <title>` with its four buttons. One Escape closes only the viewer. The editor's current picture opens at `Current picture · 1 of 2`, and the arrow keys walk the history. A history entry opens at `2 of 2`, and Escape leaves the editor up. `elementFromPoint` lands inside the frame.
+- **Gated** behind a new `P4D265_SERVER_LANDED = false`: Save to Quilltap General (asserting the toast), the dated already-saved sentence on a second save, Escape layering, and the dialog opening above the editor.
+
+By file: wardrobe-flow 17 passed / 1 skipped; salon-chat-gallery-flow 4/1; salon-image-detail-flow 0/1 (its own fixture skip); photos-flow 5/0.
+
+#### 2026-10-09 — feat(spa): the item editor's pictures open full screen and walk the history — P4.D277 unit 10
+
+_Versions: SPA 0.5.832._
+
+The wardrobe item editor's Picture section (`item-editor/wardrobe-item-image-section.ts`) opens pictures full screen, as v4 `01a83539d` does. The current picture's new-tab link becomes a view button, and each history thumbnail is wrapped in one. Each button carries v4's labels, and the prompt `title` moves from the img to the button. The viewer's note reads `Current picture · 1 of 2` / `Earlier picture · 2 of 2`, with no count for a single picture. Previous/Next and the arrow keys walk the history. The hover layer is `pointer-events-none`, with its two buttons `pointer-events-auto`, so clicks reach the view button underneath. v4's jest case is transcribed, plus five arms and one re-pin.
+
+#### 2026-10-09 — feat(spa): open a wardrobe row's picture full screen from the dialog — P4.D277 unit 9
+
+_Versions: SPA 0.5.831._
+
+The wardrobe dialog's rows now open their picture full screen (v4 `01a83539d`). `handleOpenImage` picks the container to address the images route through. A borrowed row goes through the wardrobe its `origin` names; otherwise it is the item's home in the character view, or the browsed container. A row with no picture opens nothing. The viewer mounts above the dialog and before the inline editor, with no note and no prev/next. While it is open, `editorOpen` keeps the dialog's backdrop and Escape from closing the dialog, so one Escape closes only the viewer. Seven new spec arms.
+
+#### 2026-10-09 — feat(spa): openable wardrobe thumbnails in the row (v4 01a83539d) — P4.D277 unit 8
+
+_Versions: SPA 0.5.830._
+
+`wardrobe/wardrobe-item-thumbnail.ts` gains v4 `01a83539d`'s open button: with `openable` set, the image sits inside a button with `cursor-zoom-in`, labelled `openLabel` (default `View picture full size`), that emits `open`. `wardrobe/wardrobe-item-row.ts` gains a `canOpenImage` gate and an `openImage` output. The row thumbnail is labelled `View the picture of <title>`, and nested component rows propagate both, so a nested thumbnail opens its own item. The slot picker and the outfit quick-pick thumbnails stay inert, since they already sit inside buttons. New thumbnail spec, three row arms (v4 jest `:183-194` + nested) and one inert-chooser arm in each picker spec.
+
+#### 2026-10-09 — feat(spa): the wardrobe picture viewer (v4 01a83539d) — P4.D277 unit 7
+
+_Versions: SPA 0.5.829._
+
+New `wardrobe/wardrobe-image-viewer.ts`, a port of v4 `01a83539d`'s wardrobe picture viewer. It is the shared full-screen frame at `z-[90]`, named `Picture of <title>`, with three actions:
+
+- **Save to a document store** opens the save dialog's wardrobe door at `z-[100]`, and toasts `Saved to <store>`.
+- **Download** saves the picture as `<Title>.webp`.
+- **Copy to clipboard**.
+
+The title and an optional note make up the caption, and Previous/Next pass through. While the save dialog is up the viewer leaves the keyboard alone, so Escape closes only the dialog. Download and copy failures toast v4's sentences and log v4's `console.error` lines. Not yet mounted anywhere (the next units wire it in).
+
+#### 2026-10-09 — feat(spa): the save dialog's wardrobe door; chatId on the chat targets — P4.D277 unit 6
+
+_Versions: SPA 0.5.828._
+
+`images/save-image-dialog.ts` gains v4 `01a83539d`'s third door. `{ kind: 'wardrobe', itemId, container, fileId }` reads its albums through `wardrobeItemImageSaveTargets`, saves through `wardrobeItemImageSaveToStore`, and shows v4's `No document stores are available.` when the list is empty. The separate `chatId` input is gone: `chatId` now rides the two chat targets, at both hosts (the photo gallery and the one Salon binding). An `overlayClass` input passes v4's `overlayClassName` through to `qt-modal`.
+
+The dialog also ports two v4 `BaseModal` behaviours locally, for all three doors:
+
+- it reparents its own host to `document.body`, so it paints above the body-portalled viewers and escapes the item editor's transformed ancestor;
+- it closes on Escape.
+
+The conflict arm is unchanged. A wardrobe archived-vault 409 with no `code` reads as the undated "already in this album", as in v4 (R-A, a v4-filing candidate).
+
+#### 2026-10-09 — feat(spa): wardrobe save-to-store wire + helpers (C2) — P4.D277 unit 5
+
+_Versions: SPA 0.5.827._
+
+`core-contract.ts` gains, inside a bracketed P4.D277 region, C2's two wardrobe save verbs: `wardrobeItemImageSaveTargets` and `wardrobeItemImageSaveToStore`. It also adds their response types, plus `PhotoAlbumKind` / `PhotoAlbumOption` as aliases of the existing `AlbumKind` / `AlbumOption`. Both variants join the request union. `wardrobe/item-images.api.ts`'s action union gains `save-targets` / `save-to-store` (v4 `01a83539d`).
+
+Two new helpers:
+
+- `listWardrobeSaveTargets` reads an absent `albums` as an empty list.
+- `saveWardrobeImageToStore` sends `{fileId, mountPointId, caption}`, omits a blank caption, and sends no tags.
+
+Five new spec arms.
+
+#### 2026-10-09 — refactor(spa): the chat gallery viewer onto the shared frame (v4 01a83539d) — P4.D277 unit 4
+
+_Versions: SPA 0.5.826._
+
+The chat gallery's detail view (`images/chat-gallery-image-view-modal.ts`) now renders through the shared full-screen frame, as v4 `01a83539d` does. Its own miss flag, keyboard effect and overlay markup are gone, and no user-facing string changed. Four behaviours moved with the frame:
+
+- the overlay is portalled to `document.body`;
+- the dialog is named by the entry's filename;
+- Close stays visible while the image is missing;
+- a miss clears when prev/next changes the picture.
+
+The delete button and the filename/provenance caption are projected into the frame's slots. Unit specs now query `document.body`. Three e2e locators are re-pinned to `qt-full-screen-image-viewer`, two in `salon-chat-gallery-flow` and one in `salon-image-detail-flow`, with the same assertions.
+
+#### 2026-10-09 — feat(spa): the shared full-screen image frame (v4 FullScreenImageViewer) — P4.D277 unit 3
+
+_Versions: SPA 0.5.825._
+
+New `images/full-screen-image-viewer.ts`, a port of v4 `01a83539d`'s `FullScreenImageViewer`: the shared frame for looking at a picture full screen. It provides the blurred overlay, round action buttons with Close always present, optional previous/next arrows, and caption and bottom-right projection slots. It also handles Escape and the arrow keys (gated by `keyboardActive`), locks body scroll, and swaps to the deleted-image placeholder on a miss keyed by `src`. The frame reparents its own host to `document.body`, as v4 portals it (bug 99). Class strings bind through `[attr.class]` so they keep v4's token order. 13 spec arms.
+
+#### 2026-10-09 — feat(spa): qt-modal overlayClass (v4 BaseModal overlayClassName) — P4.D277 unit 2
+
+_Versions: SPA 0.5.824._
+
+`ui/modal.ts` gains v4 `BaseModal`'s `overlayClassName` (`01a83539d`) as an `overlayClass` input, appended to the overlay's `qt-dialog-overlay`. The default adds nothing. It lets the save dialog open above the full-screen viewers at `z-[100]`. Pinned by a new `ui/modal.spec.ts` (two arms). No other `Modal` behaviour changes.
+
+#### 2026-10-09 — fix(spa): wear dates never read "last last week" (bug 183) — P4.D277 unit 1
+
+_Versions: SPA 0.5.823._
+
+Ports v4 `ed8b15b50`'s `formatWornRelative` into `wardrobe/wear-display.ts`. The shared day ladder answers "last week" and "last month" for the 7–13 and 30–59 day rungs, which read "last last week" after the wear line's own "last". Those two rungs now read "a week ago" and "a month ago". `formatWornWhen` delegates to it, so the wardrobe row's wear line, the Prospero project wardrobe's line and the item editor's Wear-history dates all change. `shared/format-date.ts` is untouched (v4 leaves `lib/format-time.ts` alone).
+
+Proven by a new SPA tier-1 oracle: `apps/web/oracle/wear-display.recorder.ts` drives v4's real module at the `01a83539d` pin into `wear-display.ndjson` (112 rows over every ladder rung and rung edge), replayed by `wear-display.oracle.spec.ts`. v4's two new jest cases are transcribed into `wear-display.spec.ts`, plus one wear-history arm.
 #### 2026-10-09 — docs(porting): order the `01a83539d` memory-programme + bugs-183–186 + wardrobe-viewer drift catch-up round — fourteen work orders (P4.D265 → {P4.D266 … P4.D275} ∥ P4.D276 ∥ P4.D277 ∥ P4.D278)
 
 _Docs-only change._

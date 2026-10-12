@@ -313,8 +313,7 @@ interface AlbumImage {
 
     @if (mode() === 'chat' && saveTarget(); as target) {
       <qt-save-image-dialog
-        [chatId]="chatId()!"
-        [target]="{ kind: 'chat', fileId: target.id }"
+        [target]="{ kind: 'chat', chatId: chatId()!, fileId: target.id }"
         [attachments]="[
           { id: target.id, filename: target.filename, filepath: target.url, mimeType: target.mimeType },
         ]"

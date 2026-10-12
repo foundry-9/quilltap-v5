@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { CoreClient } from '../core/core-client';
-import type { CoreRequest } from '../core/core-contract';
+import { CoreDispatchError, type CoreRequest } from '../core/core-contract';
 import {
   deleteWardrobeItemImage,
   generateWardrobeItemImage,
   listWardrobeItemImages,
+  listWardrobeSaveTargets,
+  saveWardrobeImageToStore,
   setCurrentWardrobeItemImage,
   uploadWardrobeItemImage,
   WardrobeImageRequestError,
@@ -133,5 +135,104 @@ describe('generate + upload — the REST route (v4 :102-130)', () => {
     const bare = await generateWardrobeItemImage('i1', { scope: 'general', id: null }).catch((e) => e);
     expect(bare.message).toBe('Request failed (500)');
     expect(bare.refusal).toBeNull();
+  });
+});
+
+/**
+ * P4.D277 — `01a83539d`'s two wardrobe save actions (v4
+ * `item-images-client.ts:51-57`, `SaveImageDialog.tsx:56-72, 130-201` at the
+ * pin), ridden as C2's dispatch verbs `wardrobeItemImageSaveTargets` /
+ * `wardrobeItemImageSaveToStore` (landed server-side by P4.D275).
+ */
+describe('the save-to-store helpers (C2 wardrobe images, 01a83539d)', () => {
+  it('keeps the two new actions in the URL union, for wardrobeItemImagesUrl parity (v4 :51-57)', () => {
+    expect(wardrobeItemImagesUrl('item-1', { scope: 'character', id: 'char-1' }, 'save-targets')).toBe(
+      '/api/v1/wardrobe/item-1/images?scope=character&id=char-1&action=save-targets',
+    );
+    expect(wardrobeItemImagesUrl('item-1', { scope: 'general', id: null }, 'save-to-store')).toBe(
+      '/api/v1/wardrobe/item-1/images?scope=general&action=save-to-store',
+    );
+  });
+
+  it('reads the save targets for a character container and for General (no containerId)', async () => {
+    const albums = [
+      { mountPointId: 'mp-1', name: 'Vivienne', kind: 'character', characterId: 'char-1' },
+      { mountPointId: 'mp-g', name: 'Quilltap General', kind: 'general', isDefault: true },
+    ];
+    const { core, seen } = fakeCore({ albums });
+    expect(await listWardrobeSaveTargets(core, 'item-1', { scope: 'character', id: 'char-1' })).toEqual(albums);
+    await listWardrobeSaveTargets(core, 'item-2', { scope: 'general', id: null });
+    expect(seen).toEqual([
+      { type: 'wardrobeItemImageSaveTargets', scope: 'character', containerId: 'char-1', itemId: 'item-1' },
+      { type: 'wardrobeItemImageSaveTargets', scope: 'general', itemId: 'item-2' },
+    ]);
+  });
+
+  it('reads an absent albums key as an empty list (v4 SaveImageDialog.tsx:135-136)', async () => {
+    const { core } = fakeCore({});
+    expect(await listWardrobeSaveTargets(core, 'item-1', { scope: 'project', id: 'p-1' })).toEqual([]);
+  });
+
+  it('saves with {fileId, mountPointId, caption} — caption OMITTED when undefined, never null; no tags', async () => {
+    const saved = {
+      saved: true,
+      mountPoint: 'Quilltap General',
+      relativePath: 'photos/gown.webp',
+      linkId: 'l-1',
+      keptAt: '2026-10-09T12:00:00.000Z',
+      fileId: 'f-1',
+      sha256: 'abc',
+    };
+    const { core, seen } = fakeCore(saved);
+    expect(
+      await saveWardrobeImageToStore(core, 'item-1', { scope: 'character', id: 'char-1' }, {
+        fileId: 'f-1',
+        mountPointId: 'mp-g',
+        caption: 'For the ball',
+      }),
+    ).toEqual(saved);
+    await saveWardrobeImageToStore(core, 'item-2', { scope: 'general', id: null }, {
+      fileId: 'f-2',
+      mountPointId: 'mp-g',
+    });
+    expect(seen[0]).toEqual({
+      type: 'wardrobeItemImageSaveToStore',
+      scope: 'character',
+      containerId: 'char-1',
+      itemId: 'item-1',
+      fileId: 'f-1',
+      mountPointId: 'mp-g',
+      caption: 'For the ball',
+    });
+    expect(seen[1]).toEqual({
+      type: 'wardrobeItemImageSaveToStore',
+      scope: 'general',
+      itemId: 'item-2',
+      fileId: 'f-2',
+      mountPointId: 'mp-g',
+    });
+    expect('caption' in seen[1]).toBe(false);
+    expect('tags' in seen[0]).toBe(false);
+  });
+
+  it('propagates a CoreDispatchError with kind / code / keptAt intact', async () => {
+    const core = {
+      dispatchData: vi.fn(async () => {
+        throw new CoreDispatchError({
+          kind: 'conflict',
+          message: 'That picture is already in this album',
+          code: 'ALREADY_SAVED',
+          alreadySaved: { relativePath: 'photos/gown.webp', keptAt: '2026-10-01T00:00:00.000Z' },
+        } as never);
+      }),
+    } as unknown as CoreClient;
+    const err = await saveWardrobeImageToStore(core, 'item-1', { scope: 'general', id: null }, {
+      fileId: 'f-1',
+      mountPointId: 'mp-g',
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(CoreDispatchError);
+    expect(err.kind).toBe('conflict');
+    expect(err.code).toBe('ALREADY_SAVED');
+    expect(err.keptAt).toBe('2026-10-01T00:00:00.000Z');
   });
 });

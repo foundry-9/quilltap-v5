@@ -35,6 +35,11 @@ import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
  * components without entering the editor (nested rows are read-only browse:
  * `inChat=false`, v4 `:397`).
  *
+ * When the item has a current picture, a 40 px thumbnail sits at the left of
+ * the title block; an item without one shows nothing there. With
+ * `onOpenImage` the thumbnail opens the picture full screen (v4 `01a83539d`
+ * `:24-26`; here the {@link canOpenImage} gate + the `openImage` output).
+ *
  * **Recorded mechanism divergence — {@link canArchive}.** v4's
  * `onToggleArchived` is an OPTIONAL prop: a surface that must never archive
  * (the outfit composer, which does the same job the outfit-selection LLM does)
@@ -69,7 +74,13 @@ import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
           <span class="inline-block w-3" aria-hidden="true"></span>
         }
 
-        <qt-wardrobe-item-thumbnail [fileId]="item().imageFileId" [size]="40" />
+        <qt-wardrobe-item-thumbnail
+          [fileId]="item().imageFileId"
+          [size]="40"
+          [openable]="canOpenImage()"
+          [openLabel]="'View the picture of ' + item().title"
+          (open)="openImage.emit(item())"
+        />
 
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2 flex-wrap">
@@ -300,6 +311,7 @@ import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
                 [canManage]="canManage()"
                 [canGenerateImage]="canGenerateImage()"
                 [generatingImageIds]="generatingImageIds()"
+                [canOpenImage]="canOpenImage()"
                 [depth]="depth() + 1"
                 (toggleDefault)="toggleDefault.emit($event)"
                 (edit)="edit.emit($event)"
@@ -308,6 +320,7 @@ import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
                 (copyItem)="copyItem.emit($event)"
                 (delete)="delete.emit($event)"
                 (generateImage)="generateImage.emit($event)"
+                (openImage)="openImage.emit($event)"
               />
             }
           }
@@ -361,6 +374,13 @@ export class WardrobeItemRow {
    * down to nested component rows (v4 `:217-219`).
    */
   readonly generatingImageIds = input<ReadonlySet<string>>(new Set());
+  /**
+   * Whether the thumbnail opens the item's current picture full screen — v4's
+   * optional `onOpenImage` prop (`01a83539d`, `:89-90`: "Open the item's
+   * current picture full screen. Passed down to nested rows."), expressed as a
+   * gate (the {@link canGenerateImage} precedent). Default false.
+   */
+  readonly canOpenImage = input(false, { transform: booleanAttribute });
   /** Nesting depth for composite components — indentation. */
   readonly depth = input(0);
 
@@ -374,6 +394,8 @@ export class WardrobeItemRow {
   readonly toggleArchived = output<WardrobeItemDto>();
   /** Draw a picture of this item with the designated wardrobe profile. */
   readonly generateImage = output<WardrobeItemDto>();
+  /** Open this item's (or a nested component's) current picture full screen. */
+  readonly openImage = output<WardrobeItemDto>();
   readonly equip = output<WardrobeItemDto>();
   readonly addToSlot = output<{ item: WardrobeItemDto; slot: WardrobeSlotType }>();
 

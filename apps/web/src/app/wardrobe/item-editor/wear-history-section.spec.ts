@@ -143,6 +143,23 @@ describe('WardrobeWearHistorySection (v4 wardrobe-wear-ledger-ui.test.tsx)', () 
     expect(el.textContent).not.toMatch(/also counts a wear/);
   });
 
+  it('reads a wearer worn 9 days back as "a week ago", never "last last week" (bug 183 via formatWornWhen — P4.D277, no edit here)', async () => {
+    const nineDaysAgo = new Date(Date.now() - 9 * 86_400_000).toISOString();
+    const base = historyResponse();
+    const { el } = await render(
+      { itemId: 'item-9', container: { scope: 'character', id: 'char-1' }, isComposite: false },
+      async () => ({
+        ...base,
+        history: {
+          ...base.history,
+          wearers: [{ ...base.history.wearers[0], lastWornAt: nineDaysAgo }],
+        },
+      }),
+    );
+    const counts = [...el.querySelectorAll('li span.qt-text-xs')].map((s) => s.textContent!.trim());
+    expect(counts[0]).toBe('3×, last a week ago');
+  });
+
   it('says "a chat since deleted" when the last chat is gone', async () => {
     const { el } = await render(
       { itemId: 'item-2', container: { scope: 'general', id: null }, isComposite: true },

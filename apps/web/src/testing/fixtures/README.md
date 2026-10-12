@@ -151,3 +151,34 @@ over v4's own test vectors plus a wider corpus.
 - **Provenance:** recorded by P4.D224 at v4 `b0b6656b5` from a pinned worktree.
 - **Recorder:** `apps/web/oracle/mention-typeahead.recorder.ts` (its header has
   the invocation). Expect 116 lines.
+
+## `wear-display.ndjson`
+
+**112 rows** — 32 `formatWornRelative` + 38 `formatWornWhen` + 42
+`formatWearLine`, each `{fn, id, args, out}`. Drives
+`app/wardrobe/wear-display.oracle.spec.ts`, which replays every row through the
+SPA's `wardrobe/wear-display.ts` and byte-compares the phrase (with a row-count
+guard so a truncated file cannot pass vacuously). Bug 183 (`ed8b15b50`): the
+"last week" / "last month" rungs of the shared day ladder become "a week ago" /
+"a month ago" after the wear line's own "last"; the corpus walks every rung and
+both sides of each rung edge, the empty / unparseable inputs, and the wear line
+for counts 0 / 1 / 2 / 8.
+
+- **Provenance:** v4 `01a83539d` (`4.10.0-dev.143`), recorded 2026-10-09 by the
+  P4.D277 lane from a detached pin worktree (`/tmp/qt-v4-pin-<order>-01a83539d`)
+  against v4's REAL `lib/wardrobe/wear-display.ts` (which imports the REAL
+  `lib/format-time.ts` ladder). A consumer copy — never hand-edited.
+- **Owner of the recorder:** `apps/web/oracle/wear-display.recorder.ts`.
+- **Regenerate** (Node 24 at `~/.nvm/versions/node/v24.13.1/bin`; the full
+  recipe, with the pin variable, is the recorder's header):
+
+  ```bash
+  cp <V5>/apps/web/oracle/wear-display.recorder.ts "$PIN/"
+  rm -f <V5>/apps/web/src/testing/fixtures/wear-display.ndjson
+  cd "$PIN" && npx tsx wear-display.recorder.ts \
+    > <V5>/apps/web/src/testing/fixtures/wear-display.ndjson
+  ```
+
+  Expect 112 lines, with `grep -c 'a week ago'` and `grep -c 'a month ago'`
+  both > 0; a shorter file means the recorder errored and the redirect already
+  truncated the old one.

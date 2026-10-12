@@ -224,4 +224,18 @@ describe('EquippedSlotRow picker — thumbnails (v4 wardrobe-item-images-ui.test
     // The button's FIRST child (v4 :183).
     expect(thumbs[0].closest('button')!.firstElementChild!.contains(thumbs[0])).toBe(true);
   });
+  // P4.D277 — v4 `01a83539d` `wardrobe-item-thumbnail.tsx:14-16`: the picker's
+  // thumbnail already sits inside a button, so it is never openable (buttons
+  // do not nest; `equipped-slot-row.tsx:183` passes no `onOpen`).
+  it('the chooser thumbnail stays inert — no open button', () => {
+    const el = openPicker(
+      render({
+        slot: 'top',
+        equippedIds: [],
+        allItems: [item({ id: 'a', title: 'Pictured Blouse', imageFileId: 'file-a' })],
+      }),
+    );
+    expect(el.querySelector('[data-testid="wardrobe-item-thumbnail"]')).toBeTruthy();
+    expect(el.querySelector('[data-testid="wardrobe-item-thumbnail-open"]')).toBeNull();
+  });
 });

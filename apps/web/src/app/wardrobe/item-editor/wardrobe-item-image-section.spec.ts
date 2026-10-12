@@ -97,6 +97,10 @@ async function mount(opts: {
           return { current: r['fileId'] };
         case 'wardrobeItemImageDelete':
           return { current: 'file-1' };
+        case 'wardrobeItemImageSaveTargets':
+          return {
+            albums: [{ mountPointId: 'mp-gen', name: 'Quilltap General', kind: 'general', isDefault: true }],
+          };
         default:
           throw new Error(`unexpected ${String(r['type'])}`);
       }
@@ -356,7 +360,12 @@ describe('WardrobeItemImageSection — v4 WardrobeItemImageSection.tsx strings a
     const entries = [...h.el.querySelectorAll<HTMLElement>('[data-testid="wardrobe-item-image-history-entry"]')];
     expect(entries[0].className).toContain('qt-border-primary');
     expect(entries[0].querySelector('img')!.getAttribute('alt')).toBe('Current picture');
-    expect(entries[0].querySelector('img')!.getAttribute('title')).toBe('a beaded flapper dress');
+    // P4.D277 (v4 `01a83539d` `:467-480`): the prompt `title` moved from the
+    // img to the wrapping view button.
+    expect(entries[0].querySelector('img')!.getAttribute('title')).toBeNull();
+    expect(entries[0].querySelector('button.cursor-zoom-in')!.getAttribute('title')).toBe(
+      'a beaded flapper dress',
+    );
     expect(entries[1].querySelector('img')!.getAttribute('alt')).toBe('Earlier picture');
     expect(entries[1].querySelector('img')!.getAttribute('src')).toBe('/api/v1/files/file-1?action=thumbnail');
 
@@ -381,5 +390,126 @@ describe('WardrobeItemImageSection — v4 WardrobeItemImageSection.tsx strings a
     await h.settle();
     expect(h.seen.some((r) => r['type'] === 'wardrobeItemImageDelete')).toBe(true);
     expect(toasts()).toContainEqual({ type: 'success', message: 'Picture taken down' });
+  });
+});
+
+/**
+ * P4.D277 — v4 `01a83539d` `WardrobeItemImageSection.tsx`: the current
+ * picture and every history entry open `WardrobeImageViewer` (`:348-361`,
+ * `:467-480`), whose note reads `Current picture · 1 of 2` and whose
+ * Previous / Next walk the history (`:512-528`); the hover layer lets clicks
+ * through (`:483-497`). The viewer is body-portalled, so it is read off
+ * `document.body`.
+ */
+describe('WardrobeItemImageSection — the full-screen viewer (v4 01a83539d)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    TestBed.resetTestingModule();
+    document.body.style.overflow = '';
+  });
+
+  const viewer = (): HTMLElement | null =>
+    document.body.querySelector('qt-full-screen-image-viewer [role="dialog"]');
+  const key = (k: string): void => {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: k }));
+  };
+  const SINGLE = { current: 'file-2', images: [IMAGES_BODY.images[0]] };
+
+  // v4 `wardrobe-item-images-ui.test.tsx:150-172`, transcribed.
+  it('opens a picture full screen, walks the history, and offers Save to a document store', async () => {
+    const h = await mount({
+      item: makeItem({ imageFileId: 'file-2' }),
+      container: { scope: 'character', id: 'char-1' },
+    });
+    h.el
+      .querySelector<HTMLButtonElement>(
+        'button[aria-label="View the picture of Midnight Lightning Flapper Dress full size"]',
+      )!
+      .click();
+    await h.settle();
+    expect(viewer()!.getAttribute('aria-label')).toBe('Picture of Midnight Lightning Flapper Dress');
+    expect(viewer()!.textContent).toContain('Current picture · 1 of 2');
+
+    document.body.querySelector<HTMLButtonElement>('button[title="Next image (Right Arrow)"]')!.click();
+    await h.settle();
+    expect(viewer()!.textContent).toContain('Earlier picture · 2 of 2');
+
+    document.body.querySelector<HTMLButtonElement>('button[aria-label="Save to a document store"]')!.click();
+    await h.settle();
+    const options = [...document.body.querySelectorAll('qt-save-image-dialog option')].map((o) =>
+      o.textContent!.trim(),
+    );
+    expect(options).toContain('Quilltap General');
+    expect(h.seen).toContainEqual({
+      type: 'wardrobeItemImageSaveTargets',
+      scope: 'character',
+      containerId: 'char-1',
+      itemId: 'item-1',
+    });
+  });
+
+  it("the current picture's view button carries v4's bytes (:348-361)", async () => {
+    const h = await mount({ item: makeItem(), container: { scope: 'character', id: 'char-1' } });
+    const img = h.el.querySelector('[data-testid="wardrobe-item-image-current"]')!;
+    const button = img.closest('button')!;
+    expect(button.getAttribute('type')).toBe('button');
+    expect(button.className).toBe('block cursor-zoom-in');
+    expect(button.title).toBe('View full size');
+    expect(button.getAttribute('aria-label')).toBe('View the picture of Midnight Lightning Flapper Dress full size');
+    expect(img.getAttribute('alt')).toBe('Picture of Midnight Lightning Flapper Dress');
+    expect(h.el.querySelector('a[target="_blank"]')).toBeNull();
+  });
+
+  it("a single picture's note is just \"Current picture\" — no count (:518-523)", async () => {
+    const h = await mount({ item: makeItem(), container: { scope: 'character', id: 'char-1' }, images: SINGLE });
+    h.el.querySelector<HTMLButtonElement>('[data-testid="wardrobe-item-image-current"]')!.closest('button')!.click();
+    await h.settle();
+    const note = document.body.querySelector('qt-full-screen-image-viewer .qt-bg-overlay-caption .text-xs')!;
+    expect(note.textContent).toBe('Current picture');
+    expect(document.body.querySelector('button[title="Next image (Right Arrow)"]')).toBeNull();
+    expect(document.body.querySelector('button[title="Previous image (Left Arrow)"]')).toBeNull();
+  });
+
+  it('a history entry opens at its own index, with v4 labels and titles (:467-480)', async () => {
+    const h = await mount({ item: makeItem(), container: { scope: 'character', id: 'char-1' } });
+    const entries = [...h.el.querySelectorAll<HTMLElement>('[data-testid="wardrobe-item-image-history-entry"]')];
+    const currentButton = entries[0].querySelector<HTMLButtonElement>('button.cursor-zoom-in')!;
+    const earlierButton = entries[1].querySelector<HTMLButtonElement>('button.cursor-zoom-in')!;
+    expect(currentButton.getAttribute('aria-label')).toBe('View the current picture full size');
+    expect(earlierButton.getAttribute('aria-label')).toBe('View this earlier picture full size');
+    // No prompt → v4's fallback title.
+    expect(earlierButton.title).toBe('View full size');
+    earlierButton.click();
+    await h.settle();
+    expect(viewer()!.textContent).toContain('Earlier picture · 2 of 2');
+    expect(document.body.querySelector('button[title="Next image (Right Arrow)"]')).toBeNull();
+    expect(document.body.querySelector('button[title="Previous image (Left Arrow)"]')).toBeTruthy();
+  });
+
+  it('the arrow keys walk the history; ArrowLeft at index 0 does nothing', async () => {
+    const h = await mount({ item: makeItem(), container: { scope: 'character', id: 'char-1' } });
+    h.el.querySelector<HTMLButtonElement>('button[aria-label="View the current picture full size"]')!.click();
+    await h.settle();
+    key('ArrowLeft');
+    await h.settle();
+    expect(viewer()!.textContent).toContain('Current picture · 1 of 2');
+    key('ArrowRight');
+    await h.settle();
+    expect(viewer()!.textContent).toContain('Earlier picture · 2 of 2');
+    key('ArrowLeft');
+    await h.settle();
+    expect(viewer()!.textContent).toContain('Current picture · 1 of 2');
+    key('Escape');
+    await h.settle();
+    expect(viewer()).toBeNull();
+  });
+
+  it('the hover layer lets clicks through; its two buttons take them (:483-497)', async () => {
+    const h = await mount({ item: makeItem(), container: { scope: 'character', id: 'char-1' } });
+    const entries = [...h.el.querySelectorAll<HTMLElement>('[data-testid="wardrobe-item-image-history-entry"]')];
+    const layer = entries[1].querySelector<HTMLElement>('div.absolute.inset-0')!;
+    expect(layer.className.split(' ')[0]).toBe('pointer-events-none');
+    expect(buttonByText(entries[1], 'Make current')!.className.split(' ')[0]).toBe('pointer-events-auto');
+    expect(buttonByText(entries[1], 'Delete')!.className.split(' ')[0]).toBe('pointer-events-auto');
   });
 });

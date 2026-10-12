@@ -177316,3 +177316,471 @@ heading lines after `Memory Housekeeping`.
   `[value]` binding unable to restore a cleared field (a browser always renders
   between them); TanStack's default retry hides a read-failure arm for seconds —
   `retry: false` in the spec's `QueryClient`.
+
+## P4.D277 — the wardrobe / images SPA of the `01a83539d` round (lane record)
+
+Branch `claude/wardrobe-images-spa-viewer-4a334b` (worktree
+`.claude/worktrees/wardrobe-images-spa-viewer-4a334b`), cut from `main` at
+`ff2252b83` (the orders' commit). `apps/web` only; no crate touched.
+
+### Lane start — the §2 probe (an observation, §R.2) and the pin
+
+- Probe at 2026-10-09 16:44 CDT: v4 checkout on `main`, tree CLEAN;
+  `01a83539d..main` = THREE commits; `1a2b2164c..bugfix` empty.
+  **v4 moved: `3e6e2f590` (docs + bugs 187–197 filed), `7a8d6dacc` (wardrobe
+  bugs 187/188/189/191) and `9ecebf986` (the wardrobe refactor; bugs 190,
+  192–197) observed at 2026-10-09 16:44 CDT** — out of scope by the pin rule;
+  never read, ported or pinned to; the next `/driftcheck` classifies them
+  (`9ecebf986` is new since planning).
+- Pin `/tmp/qt-v4-pin-p4d277-01a83539d`: `rev-parse HEAD` =
+  `01a83539dd1c2db31b056d6427b31a04f91563a7`; `ls -ld` a real directory;
+  `package.json` `4.10.0-dev.143`; `node_modules/openai/package.json` `7.30.0`
+  through the root symlink (the live lockfile differs from the pin's only in
+  the two version stamps — no dependency moved; the three symlink classes
+  added).
+
+### Unit 1 — bug 183: `formatWornRelative` + the SPA tier-1 oracle (W1)
+
+- `wardrobe/wear-display.ts`: NEW exported `formatWornRelative(ts, nowMs)`
+  (v4 `ed8b15b50`, `lib/wardrobe/wear-display.ts:71-84` at the pin, doc
+  carried); `formatWornWhen` delegates to it (doc `"a week ago"`, v4
+  `:60-64`). `shared/format-date.ts` UNTOUCHED (R-F). The three consumers
+  (`wardrobe-item-row.ts:402`, `item-editor/wear-history-section.ts:191`,
+  `screens/prospero/wardrobe/project-wardrobe-manager.ts:315`) move with no
+  edit.
+- NEW recorder `apps/web/oracle/wear-display.recorder.ts` over v4's REAL
+  module at the pin → `src/testing/fixtures/wear-display.ndjson`: **112 rows**
+  (32 `formatWornRelative` + 38 `formatWornWhen` + 42 `formatWearLine`);
+  `rm -f` first; `wc -l` 112 = the prediction; `grep -c 'a week ago'` 17,
+  `grep -c 'a month ago'` 14, `grep -c 'last week'` 0. README paragraph added.
+  Regen recipe: the recorder's header (`PIN=${PIN:?…}`, `cp` into the pin root,
+  `npx tsx wear-display.recorder.ts > …/wear-display.ndjson` under Node
+  24.13.1).
+- NEW `wardrobe/wear-display.oracle.spec.ts` (row-count guards 112/32/38/42).
+- **Red-first** (the test build type-checks every spec, so the unported module
+  was measured with a scratch passthrough `formatWornRelative = formatRelativeDays`
+  — main's exact behaviour — never committed): `wear-display.oracle.spec.ts`
+  **31 red rows** — `formatWornRelative` 9 (days 7, 9, 13, 13.9, 13.999, 30,
+  45, 59, 59.999: exactly the [7,14) / [30,60) rungs), `formatWornWhen` 10
+  (the same nine + the date-only `2026-09-30`, 7.5 days), `formatWearLine` 12
+  (counts 1/2/8 × days 9/13/30/59); `wear-display.spec.ts` **6 red** (v4
+  `wear-display.test.ts:66-77`'s four `it.each` rows, `:79-90`'s
+  `formatWornRelative` ladder, the new `formatWornWhen` 9/45-day arm);
+  `item-editor/wear-history-section.spec.ts` **1 red** (Tier 2 item 15: a
+  wearer 9 days back read `3×, last last week`). All green after.
+- Tier 2 item 15, Prospero: `project-wardrobe-manager.spec.ts` is outside
+  Ownership — RECORDED, not edited: the manager renders `formatWearLine(…)`
+  (`project-wardrobe-manager.ts:315`), which the oracle proves row for row.
+
+### Unit 2 — `ui/modal.ts` `overlayClass` (W3)
+
+- `readonly overlayClass = input('')` (v4 `BaseModal.tsx:31-35`'s doc, default
+  `''` `:90`), bound as `class="qt-dialog-overlay" [class]="overlayClass()"`
+  (v4 `:107`). No portal, no Escape on `qt-modal` (R-C; Tier 3 item 18).
+- NEW `ui/modal.spec.ts`: **red 2/2 on unported source** (NG8002 — no
+  `overlayClass` input; the build fails the file); green after — the default
+  overlay's `className` is EXACTLY `qt-dialog-overlay`; `z-[100]` appended with
+  `classList.length === 2`.
+
+### Unit 3 — NEW `images/full-screen-image-viewer.ts` (W2)
+
+- v4 `components/images/FullScreenImageViewer.tsx` (NEW at `01a83539d`, 169
+  lines) ported: `FullScreenImageAction` (`:25-31`); `ROUND_BUTTON` /
+  `ARROW_BUTTON` byte-for-byte (`:59-62`); root `fixed inset-0 <z> flex
+  items-center justify-center qt-bg-overlay backdrop-blur-sm` + `role="dialog"
+  aria-modal="true" aria-label={alt}` (`:99-105`); arrows `:106-115`; actions
+  hidden while missing, Close ALWAYS (`:117-134`); bottom-right `:136`; image
+  box + placeholder 600×400 (`:138-154`); caption box only when given
+  (`:156-163`); `missingSrc` keyed by `src` (`:79-81`); keys gated on
+  `keyboardActive` (`:83-89`, Escape via `handleEscape`). Module doc `:3-17`
+  carried.
+- **Mechanism divergences (recorded):** R-B — the frame reparents its own host
+  to `document.body` (`afterNextRender` / `DestroyRef` → `host.remove()`, the
+  `image-detail-modal.ts` idiom); R-E — `isOpen` has no counterpart (hosts
+  mount under `@if`), `actions` a data input, `onPrev`/`onNext`
+  conditionally-`undefined` function inputs, caption / bottom-right as
+  projection slots marked by `[qtFullScreenCaption]` /
+  `[qtFullScreenBottomRight]` directives (`contentChild` decides whether the
+  box renders), `closeModal` = v4 `onClose`; the bottom-right wrapper also
+  stops propagation (order item 4; v4's wrapper does not, its trash button
+  does — no observable difference). Class strings bind through `[attr.class]`
+  — measured: Angular's `[class]` string binding re-sorted the tokens
+  alphabetically, which reddened three byte-for-byte arms.
+- NEW `full-screen-image-viewer.spec.ts`: **red 13/13 on unported source**
+  (the module does not exist — the build fails the file); then 3 red on the
+  first port (the `[class]` re-sort above), green 13/13 after.
+
+### Unit 4 — the chat gallery viewer onto the frame (W2b)
+
+- `images/chat-gallery-image-view-modal.ts` renders `qt-full-screen-image-viewer`
+  (`src`/`alt`/`imageId`/`filename` from the entry; `onPrev`/`onNext` passed
+  through; NO `keyboardActive` — v4 passes none); the three actions as a
+  `computed` array (`bookmark` `Save to a photo album`, `download` `Download`,
+  `copy` `Copy to clipboard`); the delete button projected bottom-right under
+  `@if (entry().deletable)` (class / title / aria-label unchanged); filename +
+  provenance + links + Jump projected as the caption (bytes unchanged). Its
+  `imageMissing` signal, nav effect and overlay markup DELETED. No
+  user-facing string moved. The four behaviour moves (portal, `aria-label` =
+  filename, Close visible while missing, miss reset on navigation) plus the
+  `disabled:opacity-50` token, named in the module doc.
+- `chat-gallery-image-view-modal.spec.ts`: every query moved from the fixture
+  to `document.body` (R-B); `:208` re-pinned (actions + delete hidden, **Close
+  visible**); NEW arms — `aria-label` is the filename; a miss on entry A
+  cleared after the host switches to B; the frame is body-portalled. **Red
+  4/22 on unported source — exactly the re-pinned arm and the three new ones**;
+  green 22/22 after.
+- `photo-gallery-modal.spec.ts`: two arms that reached into the viewer through
+  `qt-chat-gallery-image-view-modal` (`layers the gallery at z-50 and the
+  detail modal at z-[60]`, `hands the arrows down as undefined at the ends of
+  the list`) went RED on the port (measured) and are re-pinned to the frame
+  (`qt-full-screen-image-viewer`, asserted a child of `document.body`); green
+  25/25.
+- e2e re-pins (R-B, same assertions; measured by file at the gate below):
+  `salon-chat-gallery-flow.spec.ts` — the detail beat (`:118`) and the Jump
+  beat (`:233`) read `qt-full-screen-image-viewer`.
+  **Ownership deviation, flagged:** `e2e/salon-image-detail-flow.spec.ts:128`
+  reads the same moved descendants (`detail.locator('[role="dialog"]')`, the
+  arrows) — the order predicted it "unaffected", a planning miss. The file is
+  owned by no lane this round (only P4.D276's memory files are touched under
+  `apps/web` besides this lane's), so it gets the identical R-B re-pin (one
+  locator, same assertions) rather than shipping a red.
+
+### Unit 5 — the contract region + the API helpers (W4a)
+
+- `core-contract.ts` — ONLY two bracketed hunks (`// === P4.D277: wardrobe
+  picture save-to-store (append-only) ===` / `// === end ===`): after
+  `WardrobeItemImageDeleteRequest` (`:4503-4562`) — `PhotoAlbumKind` /
+  `PhotoAlbumOption` as ALIASES of `AlbumKind` / `AlbumOption` (R-D, no
+  duplicate shape), `WardrobeItemImageSaveTargetsRequest`,
+  `WardrobeItemImageSaveTargetsResponse { albums }`,
+  `WardrobeItemImageSaveToStoreRequest` (C2 key order; `scope:
+  WardrobeOriginScope`; doc lines quoting C2's refusals),
+  `WardrobeItemImageSaveResponse` (C2's 200 body, key order as C2); and in the
+  union after `| WardrobeItemImageDeleteRequest` (`:6183-6186`). `CoreRequest`
+  untouched; no other line moved.
+- `wardrobe/item-images.api.ts`: `WardrobeItemImageAction` gains
+  `'save-targets' | 'save-to-store'` (v4 `:51-57`; kept for
+  `wardrobeItemImagesUrl` parity); NEW `listWardrobeSaveTargets` (absent
+  `albums` → `[]`, v4 `SaveImageDialog.tsx:135-136`); NEW
+  `saveWardrobeImageToStore` (`caption` omitted when undefined, no `tags`);
+  module header's divergence list gains the verb-not-URL doors.
+- `item-images.api.spec.ts`: 5 NEW arms — **red on unported source** (TS2305 ×2
+  + TS2345 ×2: the build fails the file); green 12/12 after. Bodies pinned: a
+  character container `{type, scope:'character', containerId:'char-1',
+  itemId}`, General with NO `containerId`; `'caption' in body === false` when
+  blank; no `tags`; a `CoreDispatchError` propagates with `kind:'conflict'`,
+  `code:'ALREADY_SAVED'`, `keptAt` intact.
+
+### Unit 6 — the save dialog's third door + both hosts (W4b)
+
+- `images/save-image-dialog.ts`: `SaveImageTarget` three-armed exactly as v4
+  `SaveImageDialog.tsx:50-53` (`chatId` on `message` / `chat`; `wardrobe`
+  carries `itemId` + `container: WardrobeContainer`); the `chatId` input
+  DELETED; `overlayClass = input('')` → `<qt-modal [overlayClass]>` (v4
+  `:84-88` doc); albums per door — chat doors `chatPhotoAlbums` under
+  `['chatPhotoAlbums', target.chatId]`, wardrobe `listWardrobeSaveTargets`
+  under `['wardrobeItemImageSaveTargets', itemId, scope, id]`, the default seed
+  unchanged; save per door (`messageSaveImage` / `chatSaveGalleryImage` with
+  `chatId: target.chatId`, bodies otherwise byte-identical;
+  `saveWardrobeImageToStore` for the wardrobe door); the empty sentence v4
+  `:298-304`'s ternary (`No document stores are available.` / `No photo albums
+  are available for this chat.`); the conflict arm UNCHANGED (R-A), its doc
+  rewritten for three doors and P4.D275's message-door 409; module doc
+  rewritten from v4 `:3-24`. **R-C:** host reparented to `document.body`
+  (`afterNextRender` / `host.remove()`) and `host: { '(document:keydown.escape)':
+  'close.emit()' }` — v4 `BaseModal`'s `createPortal` (`:106`) and
+  `closeOnEscape` (`:97-100`), for ALL THREE doors (a convergence on v4 for the
+  two chat doors).
+- Hosts: `images/photo-gallery-modal.ts` `[target]="{ kind: 'chat', chatId:
+  chatId()!, fileId: target.id }"`; `screens/salon/salon-conversation.ts`
+  — the ONE binding (`[target]="{ kind: 'message', chatId: chatId()!,
+  messageId, fileId }"`), `[chatId]` removed at both.
+- `save-image-dialog.spec.ts`: every `setInput('chatId', …)` replaced by the
+  target's `chatId`; the empty-state arm tightened to the full chat sentence;
+  **10 NEW arms** — the wardrobe door's read + save bodies (trimmed caption);
+  blank caption ABSENT + General without `containerId` + `saved` emits
+  `Quilltap General`; the wardrobe empty sentence; `overlayClass` on the
+  overlay; the host body-portalled; Escape emits `close` once; the message
+  door's NEW 409 dated; the wardrobe door's ALREADY_SAVED 409 dated; **R-A by
+  name** (`the archived-vault 409 (kind conflict, no code) reads as
+  already-saved — v4-faithful (R-A)` → `That picture is already in this
+  album.`); a wardrobe 400 shows `That picture does not belong to this wardrobe
+  item`. **Red on unported source** (TS2353 ×7 / TS2322 ×2 — the targets'
+  `chatId` and the `wardrobe` kind; the build fails the file); green 22/22.
+  `photo-gallery-modal.spec.ts` re-pinned for the binding (the album read names
+  `chatId: 'chat-1'` through the target); the 13 Salon spec files green
+  (320).
+- **R-A — v4-filing candidate for the human:** v4's dialog keys
+  already-saved on `res.status === 409 || body.code === 'ALREADY_SAVED'`
+  (`SaveImageDialog.tsx:188` at the pin), so the wardrobe door's archived-vault
+  409 (`That store belongs to an archived character and cannot be written to`,
+  no `code`) renders `That picture is already in this album.` in v4 too.
+
+### Unit 7 — NEW `wardrobe/wardrobe-image-viewer.ts` (W5a)
+
+- v4 `components/wardrobe/wardrobe-image-viewer.tsx` (NEW at `01a83539d`, 127
+  lines) ported: inputs `itemId`, `itemTitle`, `container`, `fileId`
+  (required), `note` (`string | null`, default null), `onPrev`, `onNext`;
+  output `closed`. The frame with `alt` `Picture of <title>` (`:93`),
+  `[imageId]="fileId()"`, `filename` = `pictureFilename(title)`,
+  `[keyboardActive]="!saving()"`, `zIndexClass="z-[90]"`, actions `Save to a
+  document store` / `Download` / `Copy to clipboard` (`:99-103`), caption =
+  title + the note div `text-xs opacity-80` only when given (`:104-109`), no
+  bottom-right; `@if (saving())` the save dialog on `{ kind: 'wardrobe', … }`
+  with the one `image/webp` attachment, `overlayClass="z-[100]"`, `(saved)` →
+  toast `` `Saved to ${mountPoint}` `` (`:113-122`). Module doc `:3-20`
+  carried.
+- **Recorded divergences:** `pictureFilename` EXPORTED for the spec (v4's is
+  module-private — no oracle row, Tier 3 item 19); R-I — Download / Copy ride
+  `downloadImageUrl` / `copyImageToClipboard`. **R-I's premise was FALSE
+  (measured):** the order says v5's copy helper "does not throw" and has the
+  viewer branch on its boolean; `core/clipboard-utils.ts:85` THROWS `No
+  clipboard write method available` when every write fails (and its `fetch`
+  can reject) — it never returns `false`. So the viewer keeps v4's own
+  try/catch shape (`:76-86`): success toast on resolution, `console.error(
+  'Failed to copy wardrobe picture:', { error })` + `Failed to copy image to
+  clipboard` on a throw — v4-exact, and pinned. **Follow-up (pre-existing,
+  NOT fixed — the order keeps the chat viewer's strings and handlers):**
+  `images/chat-gallery-image-view-modal.ts`'s `handleCopyToClipboard`
+  branches on `if (await copyImageToClipboard(…))` with no try/catch, so a
+  failed copy there rejects unhandled and shows NO toast (v4's
+  `ChatGalleryImageViewModal.tsx:67-77` catches and toasts `Failed to copy
+  image to clipboard`). A smalls item.
+- NEW `wardrobe-image-viewer.spec.ts`: **red on unported source** (the module
+  does not exist — the build fails the file); green **16/16** — the six
+  `pictureFilename` rows (`Blue Velvet Gown` → `Blue_Velvet_Gown.webp`;
+  `  --Café au Lait!! ` → `Caf_au_Lait.webp`; `!!!` / `''` →
+  `wardrobe_item.webp`; `A__B` → `A_B.webp`; `Dress (2)` → `Dress_2.webp`),
+  each asserted equal to v4's two regexes evaluated in-spec AND to the literal;
+  the dialog named `Picture of Blue Velvet Gown` at `z-[90]`, body-portalled;
+  the three titles + Close in order; the caption with / without the note; Save
+  → the wardrobe dialog at `z-[100]` (body-portalled; the
+  `wardrobeItemImageSaveTargets` read), arrows / Escape do not reach the
+  viewer while it is up, ONE Escape closes only the dialog, the keys return
+  after; `saved` toasts `Saved to Quilltap General`; Download's anchor
+  (`/api/v1/files/file-1?download=1`, `Blue_Velvet_Gown.webp`) and its throw
+  arm (toast + v4's console line); Copy's success and failure arms.
+
+### Unit 8 — thumbnail + row (W5b)
+
+- `wardrobe/wardrobe-item-thumbnail.ts`: `openable` (default false), `openLabel`
+  (default `View picture full size`, v4 `:48`), `open` output (R-E); with a
+  `fileId` and `openable`, the img sits inside v4's button (`:64-74` — `type=
+  "button"`, class `flex-shrink-0 rounded cursor-zoom-in hover:opacity-80
+  transition-opacity`, `title` = `aria-label` = `openLabel()`,
+  `data-testid="wardrobe-item-thumbnail-open"`); the img (one
+  `ng-template`, so both forms share its bytes) keeps
+  `data-testid="wardrobe-item-thumbnail"`; no `fileId` → nothing either way.
+  Module doc gains v4's `:14-16` sentence.
+- `wardrobe/wardrobe-item-row.ts`: `canOpenImage` gate + `openImage` output
+  (R-E; doc from v4 `:89-90`); the thumbnail `[openable]="canOpenImage()"
+  [openLabel]="'View the picture of ' + item().title"`; nested rows pass
+  `[canOpenImage]` and re-emit `(openImage)` (v4 `:503`); class doc gains v4's
+  `:24-26` sentence.
+- Specs: NEW `wardrobe-item-thumbnail.spec.ts` (4 arms — plain without
+  `openable`; the button's bytes + `open` emit; the default label; nothing
+  without a `fileId`) and 3 NEW `wardrobe-item-row.spec.ts` arms (v4 jest
+  `:183-189` → `openImage` emits the item, title `View the picture of Midnight
+  Lightning Flapper Dress`; `:191-194` → no `wardrobe-item-thumbnail-open`
+  without the gate; a nested component row's thumbnail emits ITS item through
+  the parent). **Red on unported source:** NG8002 (`openable` / `openLabel`
+  unknown) + TS2339 (`openImage`) — the build fails both files (7 arms).
+  `equipped-slot-row.spec.ts` / `outfit-quick-pick.spec.ts` each gain ONE
+  inert-chooser arm (no `wardrobe-item-thumbnail-open` where the picture
+  shows) — a REGRESSION GUARD that passes on unported source by design (the
+  source files stay UNTOUCHED; the arm trips if anyone makes a chooser
+  thumbnail openable). Green 55/55 over the four files.
+
+### Unit 9 — the control dialog (W5c)
+
+- `wardrobe/wardrobe-control-dialog.ts`: `viewingImage = signal<{ item;
+  container } | null>` (v4 `:263-267` comment carried); `handleOpenImage(item)`
+  — `item.origin ? { scope, id } : isCharacterScope ? homeContainerForItem(item)
+  : selectedContainer`, bail without a container or `imageFileId` (v4
+  `:613-629`, doc carried); `editorOpen` gains `|| this.viewingImage()` (v4
+  `:1198-1204`); the list rows `canOpenImage` + `(openImage)=
+  "handleOpenImage($event)"` (v4 `:1460`); the viewer `@if (viewingImage(); as
+  viewing) { @if (viewing.item.imageFileId; as fileId) { <qt-wardrobe-image-viewer
+  …/> } }` BEFORE the inline editor (v4 order `:1682-1691`), no note, no
+  prev/next.
+- `wardrobe-control-dialog.spec.ts`: 7 NEW arms — **red 7/7 on unported
+  source** (57 existing green), green after: a character-owned row →
+  `{scope:'character', id:'c1'}` (dialog `Picture of Hat`, no note, no arrows);
+  a borrowed row with a project origin → the origin's container in the
+  character view AND in a group container view; a General archetype with no
+  origin in the character view → `GENERAL_CONTAINER`; a project container view
+  with no origin → the selected container; no `imageFileId` → no viewer; the
+  rows opt in and a row thumbnail's button opens the viewer; **§J.3 / the
+  listener-order measurement** — with the viewer open a backdrop click and an
+  Escape leave the dialog open (`closed` never emits) and ONE Escape closes the
+  viewer only (the dialog's host listener, registered first, reads
+  `editorOpen() === true` before the frame's listener clears `viewingImage`).
+  `wardrobe-control-dialog.race.spec.ts` untouched and green (69/69 over both).
+
+### Unit 10 — the image section (W5d)
+
+- `item-editor/wardrobe-item-image-section.ts` (the inner active component
+  only): `viewingIndex = signal<number | null>`, `viewing` computed,
+  `openViewer(fileId)` (`findIndex`, `>= 0` — v4 `:167-173`); the current
+  picture's `<a target=_blank>` → v4's button (`type="button"`, class `block
+  cursor-zoom-in`, title `View full size`, aria-label `View the picture of
+  <title> full size` — `:348-361`; the img's `alt` + `data-testid` unchanged);
+  each history img wrapped in v4's button (`[attr.title]="img.prompt ?? 'View
+  full size'"`, aria-labels `View the current picture full size` / `View this
+  earlier picture full size` by `img.fileId === currentId()` — `:467-480`), the
+  img's own `title` REMOVED; the hover layer `pointer-events-none`, its two
+  buttons `pointer-events-auto` + v4's comment (`:483-497`); the viewer `@if
+  (viewing(); as v)` with `[note]` = v4 `:518-523` (`viewing.fileId ===
+  currentId` — the CODE, not the survey's `isCurrent`), `[onPrev]` /
+  `[onNext]` as STABLE bound callbacks or `undefined` at the ends,
+  `[container]` = the section's `container()`, `(closed)` →
+  `viewingIndex.set(null)`. Class doc gains v4's `:10-12` sentence.
+- `wardrobe-item-image-section.spec.ts`: v4 jest `:150-172` transcribed (the
+  button name, the dialog `Picture of Midnight Lightning Flapper Dress`,
+  `Current picture · 1 of 2`, `Next image (Right Arrow)` → `Earlier picture ·
+  2 of 2`, `Save to a document store` → option `Quilltap General` + the
+  `wardrobeItemImageSaveTargets` dispatch `{scope:'character',
+  containerId:'char-1', itemId:'item-1'}`); NEW — the current picture's
+  button bytes (no `<a target=_blank>` left); a single picture's note is
+  `Current picture` with no arrows; a history entry opens at its own index (+
+  the fallback title `View full size`); the arrow keys walk, ArrowLeft at 0
+  does nothing, Escape closes; the hover layer / its buttons' pointer classes;
+  the `:359` `title` assertion re-pinned to the wrapping button. **Red 7/17 on
+  unported source** (the six new arms + the re-pin); green 17/17. The
+  `wardrobe/**`, `images/**` and `screens/prospero/**` spec folders: 49 files
+  / 826 tests green.
+
+### Follow-ups for the next smalls round (R-H + found in lane)
+
+- **R-H — the store-detail silent rename failure, made reachable by
+  `ed8b15b50`'s mount-points PATCH 409** (bug 186: `This vault belongs to
+  <name> and is named after them. Rename the character to rename the vault.`).
+  v4's SPA toasts `Failed to update document store` on both paths
+  (`useDocumentStores.ts:86`, `useDocumentStoreDetail.ts:83`). v5: the list
+  path toasts the SERVER text instead
+  (`screens/scriptorium/scriptorium.store.ts:76-84`, `message()` `:169-171`);
+  the detail path swallows with NO toast
+  (`screens/scriptorium/store-detail.ts:326-334`). Neither file is this lane's;
+  both UNTOUCHED.
+- **The chat gallery viewer's unhandled copy failure** (unit 7's finding):
+  `images/chat-gallery-image-view-modal.ts` `handleCopyToClipboard` has no
+  try/catch around `copyImageToClipboard`, which THROWS on failure — no
+  `Failed to copy image to clipboard` toast, an unhandled rejection (v4
+  `ChatGalleryImageViewModal.tsx:67-75` catches, logs and toasts).
+- **R-A — v4-filing candidate** (unit 6): the wardrobe door's archived-vault
+  409 reads `That picture is already in this album.` in v4 too.
+
+### Unit 11 — e2e (W6)
+
+- `e2e/wardrobe-flow.spec.ts` only (+ unit 4's re-pins), on the spec's own
+  port **4329** — no new e2e file. `const P4D265_SERVER_LANDED = false` beside
+  `P4D255_SERVER_LANDED`, doc in that shape (flip at unification, §S.9).
+  `onePixelPng(r, g, b)` (zlib `crc32` + `deflateSync`) — every beat hangs
+  NEVER-SEEN pictures on its own fresh garment (`Viewer … ${Date.now()}`), so
+  no beat leans on another's state (#16).
+- **LIVE — `the wardrobe picture viewer: row thumbnail, editor history walk,
+  Escape layering (P4.D277)`**: GREEN. The row's `View the picture of <title>`
+  → `dialog` `Picture of <title>`, caption the title, the four titles present;
+  **§J.2 measured:** `document.elementFromPoint` at the viewer image's centre
+  resolves inside `qt-full-screen-image-viewer` (from the row AND from the
+  editor); **§J.3 measured:** one Escape closes only the viewer (the wardrobe
+  dialog stays), and from the editor one Escape closes only the viewer (the
+  editor stays); the editor's current picture → `Current picture · 1 of 2`,
+  ArrowRight → `Earlier picture · 2 of 2`, ArrowLeft back; the history entry
+  opens at `2 of 2`; the inert choosers — every `wardrobe-item-thumbnail-open`
+  on the page is a list row's (unit-pinned in the picker specs too).
+  **Measured on the first run (a beat fix, not a port defect):** a CENTRE click
+  on a non-current history entry is intercepted by `Make current` — the two
+  hover buttons (`pointer-events-auto`) stack at the foot of the 64 px
+  thumbnail and cover its centre, exactly v4's layout (`:483-497`); the view
+  button takes the strip above them, so the beat clicks at `{x:32, y:4}`.
+- **GATED — `the wardrobe picture viewer saves to a document store
+  (ACTIVATE-AT-UNIFY, P4.D275)`**: SKIPPED with its reason (the two C2
+  verbs). Asserts, once flipped: `Quilltap General` pre-selected → `Save
+  image` → the TOAST `Saved to Quilltap General`; §J.2 at the save dialog's
+  centre inside `qt-save-image-dialog`; the second save → `That picture is
+  already in this album — it was filed there on <date>.`; §J.3 — Escape
+  closes the dialog only, a second the viewer; from the editor's viewer the
+  dialog opens ABOVE the editor (its Cancel clicks through, no interception).
+- Existing beats: none re-pinned in `wardrobe-flow.spec.ts` — the Picture
+  beat's `Make current` (through `pointer-events-auto`) and the
+  `wardrobe-item-thumbnail` test-id both survived (measured green).
+- **By FILE (one invocation at a time; release `quilltap-web` built in the
+  worktree, `apps/web/dist` fresh):** `wardrobe-flow` 17 passed / 1 skipped
+  (the gated beat) — first run 16 passed / 1 failed (the centre click above) /
+  1 skipped; `salon-chat-gallery-flow` 4 passed / 1 skipped (`Delete a
+  generated file` — its standing fixture guard) — the re-pinned detail and
+  Jump beats GREEN; `salon-image-detail-flow` 0 passed / 1 skipped — its ONE
+  beat skips at run time on its own guard (`no general (non-project) chat in
+  the shared fixture`), so its unit-4 re-pin is NOT exercised by this fixture
+  (recorded; the locator is the same frame locator the chat-gallery beat
+  proves); `photos-flow` 5 passed.
+
+### Lane close — gate, divergences, deferrals, 💸
+
+- **Gate (final tree):** `npm run lint` clean (`check-qt-classes` self-test
+  5/5, 956 classes resolve); `npm run build` clean; `npm test` **479 files /
+  9,204 tests green**; `cargo fmt --all --check` clean; `cargo clippy
+  --workspace --all-targets -- -D warnings` clean, and with
+  `--features quilltap-core/native-transport` clean; `cargo test --workspace`
+  (`CARGO_INCREMENTAL=0`, no oracle env — this lane owns no Rust family) **699
+  binaries / 4,628 passed / 1 failed / 3 ignored**: the one red is
+  `qtap_schema_embed_guard` run against the LIVE v4 checkout — RED BY DESIGN
+  until P4.D272 lands (§R.3 / §R.13(h)); this lane changes no crate.
+  `recipe_sweep.py --self-test` exit 0. `git diff main` — ONLY `apps/web/**`,
+  `docs/CHANGELOG.md`, `status-log.md` and this order's header; `crates/`,
+  `harness/`, `help/`, `docs/v4/` EMPTY; none of P4.D276's files;
+  `shared/format-date.ts`, `equipped-slot-row.ts`, `outfit-quick-pick.ts`,
+  `project-wardrobe-manager.ts`, `screens/scriptorium/**` UNTOUCHED;
+  `core-contract.ts` wholly inside the two P4.D277 brackets;
+  `salon-conversation.ts` the one binding. **Ownership deviation (flagged):**
+  `e2e/salon-image-detail-flow.spec.ts` (one R-B re-pin — unit 4).
+- **§J.4 — the chat-gallery regression net by file, before / after:** the
+  "before" leg ran in this worktree with `main`'s `apps/web/src` + `e2e`
+  restored (the branch-added files removed for the build), then HEAD restored
+  and rebuilt. `salon-chat-gallery-flow`: before 4 passed / 1 skipped, after 4
+  passed / 1 skipped — the SAME beats (`Delete a generated file` skips on its
+  fixture guard both times); no beat moved. `salon-image-detail-flow`: its one
+  beat skips on its fixture guard before AND after.
+- **Tier 2 item 14 — NOT measured live:** the existing chat Save beat
+  (`salon-chat-gallery-flow`) presses no Escape (it saves and the dialog
+  closes on Save), so the chat doors' Escape convergence (R-C) is UNIT-PINNED
+  only (`save-image-dialog.spec.ts` `closes on Escape, once`). Per Tier 3 item
+  21 one Escape there closes BOTH the dialog and the chat viewer, as in v4.
+  → a dogfood row.
+- **Recorded mechanism divergences:** R-B (the frame and its hosts'
+  body-portal consequences — unit specs query `document.body`, three e2e
+  locators re-pinned); R-C (the save dialog's LOCAL portal + Escape, all three
+  doors); R-D (`PhotoAlbumKind` / `PhotoAlbumOption` aliases); R-E (the gate
+  idioms — `openable` + `open`, `canOpenImage` + `openImage`, `actions` as
+  data, conditionally-`undefined` arrows, projection slots by marker
+  directive, no `isOpen`); R-I (Download / Copy on v5's helpers — the copy
+  helper THROWS, so v4's try/catch shape and its `console.error` are kept,
+  contrary to the order's premise); the exported `pictureFilename`; the verb
+  (not URL) doors and the TanStack key per door; `[attr.class]` for v4's class
+  token order.
+- **Tier 3 deferrals (recorded, never silent):** 17 — v4's `Failed to load
+  photo albums (<status>)` has no counterpart on any door (no status on the
+  dispatch error; a failed read renders the empty sentence); 18 — no app-wide
+  `qt-modal` portal / Escape; 19 — `pictureFilename` has no oracle row (spec
+  cases only); 20 — whether the anchor's `download=<Title>.webp` or the
+  server's `Content-Disposition` names the file is a dogfood row; 21 — the
+  chat viewer keeps the keys under an open save dialog, as v4.
+- **💸 dogfood rows (no model spend in this lane):** a real garment with ≥2
+  pictures — the row thumbnail → `Picture of <title>`, Escape back to the
+  dialog; the editor's current picture → `Current picture · 1 of N`, the arrows
+  walk, a history entry opens at its index (click ABOVE the hover buttons on
+  a non-current entry — their layout covers the thumbnail's centre); **Save to
+  Quilltap General** → toast + the file in General's `photos/`, the SECOND
+  save's dated sentence, a save into a live character's vault (`<Name> (you)`),
+  Escape with the dialog up closing only the dialog; Download's filename
+  (Tier 3 item 20); Copy pasting into another app; the chat gallery viewer on
+  a missing picture (`Image Deleted` WITH Close, the next arrow renders);
+  a Salon message Save Image + a gallery Save (the moved `chatId`; the dialog
+  on top of the chat viewer; one Escape closing both there — item 14); a row
+  worn 7–13 days ago reading `Worn N× · last a week ago` and the editor's
+  `a week ago`.
+- **Versions at close:** SPA **0.5.834** (from 0.5.822, +1 per commit — 12
+  commits); no crate bumped; harness frozen. The unifier takes the higher of
+  P4.D276 / P4.D277 +1 (§R.8).
+- Pin `/tmp/qt-v4-pin-p4d277-01a83539d` removed; the lane's `target/` deleted.

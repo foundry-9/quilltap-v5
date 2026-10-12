@@ -32,6 +32,7 @@ import {
   type WardrobeItemImageSummary,
 } from '../item-images.api';
 import type { WardrobeContainer } from '../wardrobe-container';
+import { WardrobeImageViewer } from '../wardrobe-image-viewer';
 
 /** Types accepted by Upload — the same set as Import from image (v4 `:50-52`). */
 export const WARDROBE_IMAGE_ACCEPT = 'image/jpeg,image/png,image/webp,image/gif';
@@ -64,21 +65,27 @@ function profileLabel(p: ImageProfileDto): string {
 @Component({
   selector: 'qt-wardrobe-item-image-active',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, NgTemplateOutlet],
+  imports: [Icon, NgTemplateOutlet, WardrobeImageViewer],
   template: `
     <section aria-label="Picture" data-testid="wardrobe-item-image-section">
       <span class="qt-label mb-1 block">Picture</span>
 
       @if (currentImage(); as current) {
         <div class="relative inline-block">
-          <a [href]="fullUrl(current.fileId)" target="_blank" rel="noreferrer">
+          <button
+            type="button"
+            class="block cursor-zoom-in"
+            title="View full size"
+            [attr.aria-label]="'View the picture of ' + item().title + ' full size'"
+            (click)="openViewer(current.fileId)"
+          >
             <img
               [src]="fullUrl(current.fileId)"
               [alt]="'Picture of ' + item().title"
               class="max-h-[16rem] w-auto rounded border qt-border-default qt-bg-muted"
               data-testid="wardrobe-item-image-current"
             />
-          </a>
+          </button>
           @if (generating()) {
             <div
               class="absolute inset-0 flex items-center justify-center rounded qt-bg-overlay-medium"
@@ -173,20 +180,33 @@ function profileLabel(p: ImageProfileDto): string {
                 [class.qt-border-default]="img.fileId !== currentId()"
                 data-testid="wardrobe-item-image-history-entry"
               >
-                <img
-                  [src]="thumbUrl(img.fileId)"
-                  [alt]="img.fileId === currentId() ? 'Current picture' : 'Earlier picture'"
-                  [attr.title]="img.prompt ?? null"
-                  class="block w-16 h-16 object-cover qt-bg-muted"
-                  loading="lazy"
-                />
+                <button
+                  type="button"
+                  class="block cursor-zoom-in"
+                  [attr.title]="img.prompt ?? 'View full size'"
+                  [attr.aria-label]="
+                    img.fileId === currentId()
+                      ? 'View the current picture full size'
+                      : 'View this earlier picture full size'
+                  "
+                  (click)="openViewer(img.fileId)"
+                >
+                  <img
+                    [src]="thumbUrl(img.fileId)"
+                    [alt]="img.fileId === currentId() ? 'Current picture' : 'Earlier picture'"
+                    class="block w-16 h-16 object-cover qt-bg-muted"
+                    loading="lazy"
+                  />
+                </button>
+                <!-- The hover buttons sit over the thumbnail; the empty part
+                     of this layer lets clicks through to the view button. -->
                 <div
-                  class="absolute inset-0 flex flex-col items-stretch justify-end gap-0.5 p-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity"
+                  class="pointer-events-none absolute inset-0 flex flex-col items-stretch justify-end gap-0.5 p-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity"
                 >
                   @if (img.fileId !== currentId()) {
                     <button
                       type="button"
-                      class="qt-button-secondary qt-button-sm !px-1 !py-0 qt-text-xs"
+                      class="pointer-events-auto qt-button-secondary qt-button-sm !px-1 !py-0 qt-text-xs"
                       [disabled]="busy()"
                       title="Make current"
                       (click)="makeCurrent(img.fileId)"
@@ -196,7 +216,7 @@ function profileLabel(p: ImageProfileDto): string {
                   }
                   <button
                     type="button"
-                    class="qt-button-secondary qt-button-sm !px-1 !py-0 qt-text-xs qt-text-destructive"
+                    class="pointer-events-auto qt-button-secondary qt-button-sm !px-1 !py-0 qt-text-xs qt-text-destructive"
                     [disabled]="busy()"
                     title="Delete this picture"
                     (click)="remove(img.fileId)"
@@ -208,6 +228,19 @@ function profileLabel(p: ImageProfileDto): string {
             }
           </ul>
         </div>
+      }
+
+      @if (viewing(); as v) {
+        <qt-wardrobe-image-viewer
+          [itemId]="item().id"
+          [itemTitle]="item().title"
+          [container]="container()"
+          [fileId]="v.fileId"
+          [note]="viewerNote()"
+          [onPrev]="viewerPrev()"
+          [onNext]="viewerNext()"
+          (closed)="viewingIndex.set(null)"
+        />
       }
 
       <ng-template #buttons>
@@ -326,6 +359,43 @@ export class WardrobeItemImageActive {
   protected readonly currentImage = computed(
     () => this.images().find((i) => i.fileId === this.currentId()) ?? null,
   );
+
+  /** Index into `images` of the picture open full screen, or null (v4 `01a83539d` `:167-173`). */
+  protected readonly viewingIndex = signal<number | null>(null);
+  protected readonly viewing = computed(() => {
+    const index = this.viewingIndex();
+    return index !== null ? (this.images()[index] ?? null) : null;
+  });
+  /** v4 `:518-523` — `Current picture · 1 of 2`; no count for a lone picture. */
+  protected readonly viewerNote = computed(() => {
+    const viewing = this.viewing();
+    const index = this.viewingIndex();
+    if (!viewing || index === null) return null;
+    const total = this.images().length;
+    return [
+      viewing.fileId === this.currentId() ? 'Current picture' : 'Earlier picture',
+      total > 1 ? `${index + 1} of ${total}` : null,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+  });
+  private readonly goPrev = (): void => this.viewingIndex.update((i) => (i !== null && i > 0 ? i - 1 : i));
+  private readonly goNext = (): void =>
+    this.viewingIndex.update((i) => (i !== null && i < this.images().length - 1 ? i + 1 : i));
+  /** v4 `:524-525` — the arrows exist only away from the ends (stable callbacks). */
+  protected readonly viewerPrev = computed(() => {
+    const i = this.viewingIndex();
+    return i !== null && i > 0 ? this.goPrev : undefined;
+  });
+  protected readonly viewerNext = computed(() => {
+    const i = this.viewingIndex();
+    return i !== null && i < this.images().length - 1 ? this.goNext : undefined;
+  });
+
+  protected openViewer(fileId: string): void {
+    const index = this.images().findIndex((i) => i.fileId === fileId);
+    if (index >= 0) this.viewingIndex.set(index);
+  }
   private readonly isCatalogue = computed(() => this.container().scope !== 'character');
 
   protected readonly noProfiles = computed(() => this.profiles().length === 0);
@@ -492,7 +562,10 @@ export class WardrobeItemImageActive {
  * item's current picture (or an empty dashed frame), a Generate button with a
  * profile picker, an Upload button, a caption naming who drew the current
  * picture, and a history strip of every picture the item has had, each of
- * which can be made current or taken down.
+ * which can be made current or taken down. Clicking the current picture or a
+ * history entry opens it full screen in `WardrobeImageViewer` (Save to a
+ * store, Download, Copy), where Previous / Next walk the history (v4
+ * `01a83539d` `:10-12`).
  *
  * In create mode there is no item id to hang a picture on, so the section is
  * present but inert — and makes no request. Labelled **Picture** (R-F), not

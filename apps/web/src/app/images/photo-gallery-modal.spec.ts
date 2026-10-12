@@ -277,11 +277,19 @@ describe('PhotoGalleryModal', () => {
         expect(tiles[1].querySelector('[title="Delete image"]')).toBeNull();
       });
 
+      // `01a83539d` (PhotoGalleryModal.tsx:556): `chatId` rides the chat target
+      // now — the dialog's album read must still name THIS chat (P4.D277).
       it('opens the shared SaveImageDialog with a chat-kind target on Save', async () => {
-        const fixture = await render(stubClient({ entries: [entry({ id: 'f-1' })] }));
+        const seen: Array<{ type: string; [k: string]: unknown }> = [];
+        const fixture = await render(
+          stubClient({ entries: [entry({ id: 'f-1' })], onDispatch: (req) => seen.push(req) }),
+        );
         (document.querySelector('[title="Save to a photo album"]') as HTMLButtonElement).click();
         await flush(fixture);
         expect(document.querySelector('qt-save-image-dialog')).toBeTruthy();
+        expect(seen.filter((r) => r.type === 'chatPhotoAlbums')).toEqual([
+          { type: 'chatPhotoAlbums', chatId: 'chat-1' },
+        ]);
       });
 
       // v4 `PhotoGalleryModal.tsx:566-568` — `onSaved` flashes `Saved to ${mountPoint}`
@@ -462,7 +470,10 @@ describe('PhotoGalleryModal', () => {
       expect(document.querySelector('.fixed.inset-0.z-50')).toBeTruthy();
       (gridImgs(fixture)[0].closest('button') as HTMLButtonElement).click();
       await flush(fixture);
-      const detail = document.querySelector('qt-chat-gallery-image-view-modal');
+      // P4.D277 R-B: the detail's frame is portalled to document.body, so its
+      // overlay is no longer a descendant of the detail view's own host.
+      const detail = document.querySelector('qt-full-screen-image-viewer');
+      expect(detail!.parentElement).toBe(document.body);
       expect(detail!.querySelector('.fixed.inset-0.z-\\[60\\]')).toBeTruthy();
     });
 
@@ -474,7 +485,8 @@ describe('PhotoGalleryModal', () => {
       );
       (gridImgs(fixture)[0].closest('button') as HTMLButtonElement).click();
       await flush(fixture);
-      const detail = () => document.querySelector('qt-chat-gallery-image-view-modal')!;
+      // P4.D277 R-B: the arrows live in the body-portalled frame.
+      const detail = () => document.querySelector('qt-full-screen-image-viewer')!;
       expect(detail().querySelector('button[title="Previous image (Left Arrow)"]')).toBeNull();
       expect(detail().querySelector('button[title="Next image (Right Arrow)"]')).toBeTruthy();
 

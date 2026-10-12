@@ -4500,6 +4500,66 @@ export interface WardrobeItemImageDeleteRequest {
   fileId: string;
 }
 
+// === P4.D277: wardrobe picture save-to-store (append-only) ===
+/**
+ * C2's names for the album picker's option and kind (v4 `01a83539d`
+ * `PhotoAlbumOption`). The shapes are the existing {@link AlbumOption} /
+ * {@link AlbumKind} — aliased, never duplicated (R-D). `participantId` is
+ * only on the chat list, never in save-targets.
+ */
+export type PhotoAlbumKind = AlbumKind;
+export type PhotoAlbumOption = AlbumOption;
+
+/**
+ * v4 GET `/api/v1/wardrobe/[itemId]/images?scope=…&id=…&action=save-targets`
+ * (C2; P4.D275). `containerId` is absent for General. Refusals: a query issue
+ * → 400; the item not in the container → 404 `Wardrobe item not found`.
+ */
+export interface WardrobeItemImageSaveTargetsRequest {
+  type: 'wardrobeItemImageSaveTargets';
+  scope: WardrobeOriginScope;
+  containerId?: string;
+  itemId: string;
+}
+
+/** The save-targets 200 body: every document store the picture may be filed in. */
+export interface WardrobeItemImageSaveTargetsResponse {
+  albums: PhotoAlbumOption[];
+}
+
+/**
+ * v4 POST `…/images?…&action=save-to-store` (C2; P4.D275). An absent
+ * `caption` files the picture under the item's title (`''` is kept). Refusals:
+ * a body schema issue → 400; a picture not the item's → 400 `That picture does
+ * not belong to this wardrobe item`; an archived character's vault → 409 `That
+ * store belongs to an archived character and cannot be written to` (NO
+ * `code`); already in that store → 409 `{ error, code: 'ALREADY_SAVED',
+ * relativePath, keptAt }` (the dispatch error carries kind `conflict`, `code`
+ * and the `alreadySaved.keptAt` rider).
+ */
+export interface WardrobeItemImageSaveToStoreRequest {
+  type: 'wardrobeItemImageSaveToStore';
+  scope: WardrobeOriginScope;
+  containerId?: string;
+  itemId: string;
+  fileId: string;
+  mountPointId: string;
+  caption?: string;
+  tags?: string[];
+}
+
+/** The save-to-store 200 body (C2, key order as C2). */
+export interface WardrobeItemImageSaveResponse {
+  saved: true;
+  mountPoint: string;
+  relativePath: string;
+  linkId: string;
+  keptAt: string;
+  fileId: string;
+  sha256: string;
+}
+// === end ===
+
 /**
  * The story-background resolution (v4 `?action=get-background`,
  * `handleGetBackground`). The BARE body the core verb answers
@@ -6313,6 +6373,10 @@ export type MemoryRequest =
   | WardrobeItemImageGenerateRequest
   | WardrobeItemImageSetCurrentRequest
   | WardrobeItemImageDeleteRequest
+  // === P4.D277: wardrobe picture save-to-store (append-only) ===
+  | WardrobeItemImageSaveTargetsRequest
+  | WardrobeItemImageSaveToStoreRequest
+  // === end ===
   | WardrobeUpdateRequest
   | WardrobeDeleteRequest
   | WardrobePreviewAvatarRequest

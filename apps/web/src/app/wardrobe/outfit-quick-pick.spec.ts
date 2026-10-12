@@ -313,4 +313,16 @@ describe('OutfitQuickPick — thumbnails (v4 7c8572869)', () => {
     expect(thumbs[0].getAttribute('width')).toBe('28');
     expect(thumbs[0].closest('[role="option"]')!.firstElementChild!.contains(thumbs[0])).toBe(true);
   });
+  // P4.D277 — v4 `01a83539d` `wardrobe-item-thumbnail.tsx:14-16`: inside the
+  // option button the thumbnail is never openable (`outfit-quick-pick.tsx:128`
+  // passes no `onOpen`).
+  it('the quick-pick thumbnail stays inert — no open button', () => {
+    const fixture = render([
+      item({ id: 'shirt', title: 'Shirt' }),
+      item({ id: 'b', title: 'Pictured', componentItemIds: ['shirt'], imageFileId: 'file-b' }),
+    ]);
+    openMenu(fixture);
+    expect(el(fixture).querySelector('[data-testid="wardrobe-item-thumbnail"]')).toBeTruthy();
+    expect(el(fixture).querySelector('[data-testid="wardrobe-item-thumbnail-open"]')).toBeNull();
+  });
 });

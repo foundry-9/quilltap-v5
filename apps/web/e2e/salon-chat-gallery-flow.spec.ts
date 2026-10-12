@@ -115,7 +115,10 @@ test.describe('P4.D176 — the Salon chat gallery', () => {
 
     // Open the detail view — the provenance line names the source.
     await tiles.first().click();
-    const detail = page.locator('qt-chat-gallery-image-view-modal');
+    // P4.D277 R-B: the detail view renders through the shared frame, which
+    // portals itself to document.body — its descendants leave the
+    // `qt-chat-gallery-image-view-modal` host, so the beat reads the frame.
+    const detail = page.locator('qt-full-screen-image-viewer');
     await expect(detail.locator('[role="dialog"]')).toBeVisible();
     await expect(detail).toContainText('Attached beneath a message');
 
@@ -230,7 +233,8 @@ test.describe('P4.D176 — the Salon chat gallery', () => {
 
     const gallery = page.locator('qt-photo-gallery-modal');
     await gallery.locator('.qt-dialog img').first().click();
-    const detail = page.locator('qt-chat-gallery-image-view-modal');
+    // P4.D277 R-B: the frame is portalled to the body (see above).
+    const detail = page.locator('qt-full-screen-image-viewer');
     await expect(detail.locator('[role="dialog"]')).toBeVisible();
 
     const jump = detail.getByRole('button', { name: 'Jump to message' });

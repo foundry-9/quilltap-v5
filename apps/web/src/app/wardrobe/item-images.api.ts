@@ -22,6 +22,10 @@
  *  - The byte URLs go through the origin-aware `apiUrl` (identity in a
  *    browser; the qtap origin in the Tauri dev loop), where v4 returns the
  *    bare path.
+ *  - `save-targets` / `save-to-store` (`01a83539d`, P4.D277) ride C2's verbs
+ *    `wardrobeItemImageSaveTargets` / `wardrobeItemImageSaveToStore` where
+ *    v4's `SaveImageDialog` fetches the URL; a refusal therefore arrives as a
+ *    `CoreDispatchError` (kind / `code` / `keptAt`), not a status.
  *
  * @module wardrobe/item-images.api
  */
@@ -29,8 +33,10 @@
 import { apiUrl } from '../core/api-url';
 import type { CoreClient } from '../core/core-client';
 import type {
+  PhotoAlbumOption,
   WardrobeItemImageGenerateResponse,
   WardrobeItemImageRefusal,
+  WardrobeItemImageSaveResponse,
   WardrobeItemImagesResponse,
   WardrobeItemImageSummary,
 } from '../core/core-contract';
@@ -43,7 +49,20 @@ export type {
   WardrobeItemImageSummary,
 } from '../core/core-contract';
 
-export type WardrobeItemImageAction = 'generate' | 'upload' | 'set-current' | 'delete-image';
+/**
+ * v4 `item-images-client.ts:51-57` at `01a83539d` — `save-targets` and
+ * `save-to-store` join the union. v5 rides the two C2 verbs for them
+ * ({@link listWardrobeSaveTargets} / {@link saveWardrobeImageToStore}); the
+ * members are kept so {@link wardrobeItemImagesUrl} names every action v4's
+ * does.
+ */
+export type WardrobeItemImageAction =
+  | 'generate'
+  | 'upload'
+  | 'set-current'
+  | 'delete-image'
+  | 'save-targets'
+  | 'save-to-store';
 
 /** `/api/v1/wardrobe/<itemId>/images?scope=…&id=…[&action=…]` (v4 `:51-62`). */
 export function wardrobeItemImagesUrl(
@@ -190,4 +209,44 @@ export async function deleteWardrobeItemImage(
     fileId,
   });
   return data as unknown as { current: string | null };
+}
+
+/**
+ * Every document store the item's picture may be filed in — the save dialog's
+ * album list for the wardrobe door (v4 `SaveImageDialog.tsx:130-156`,
+ * `01a83539d`; an absent `albums` reads as none, v4 `:135-136`).
+ */
+export async function listWardrobeSaveTargets(
+  core: CoreClient,
+  itemId: string,
+  container: WardrobeContainer,
+): Promise<PhotoAlbumOption[]> {
+  const data = await core.dispatchData({
+    type: 'wardrobeItemImageSaveTargets',
+    ...containerFields(container),
+    itemId,
+  });
+  return (data['albums'] as PhotoAlbumOption[] | undefined) ?? [];
+}
+
+/**
+ * File the item's picture in a document store (v4 `SaveImageDialog.tsx:
+ * 171-175`, `01a83539d`): `{fileId, mountPointId, caption}` — a blank caption
+ * is OMITTED (never sent as `null` or `''`), and no `tags`.
+ */
+export async function saveWardrobeImageToStore(
+  core: CoreClient,
+  itemId: string,
+  container: WardrobeContainer,
+  body: { fileId: string; mountPointId: string; caption?: string },
+): Promise<WardrobeItemImageSaveResponse> {
+  const data = await core.dispatchData({
+    type: 'wardrobeItemImageSaveToStore',
+    ...containerFields(container),
+    itemId,
+    fileId: body.fileId,
+    mountPointId: body.mountPointId,
+    ...(body.caption !== undefined ? { caption: body.caption } : {}),
+  });
+  return data as unknown as WardrobeItemImageSaveResponse;
 }
