@@ -63,10 +63,11 @@ async function render(
   target: SaveImageTarget = { kind: 'message', chatId: 'chat-1', messageId: 'm-1', fileId: 'file-1' },
   attachments: MessageAttachment[] = [IMG],
   overlayClass?: string,
+  queryClient: QueryClient = new QueryClient(),
 ): Promise<ComponentFixture<SaveImageDialog>> {
   TestBed.configureTestingModule({
     imports: [SaveImageDialog],
-    providers: [provideTanStackQuery(new QueryClient()), { provide: CoreClient, useValue: client }],
+    providers: [provideTanStackQuery(queryClient), { provide: CoreClient, useValue: client }],
   });
   const fixture = TestBed.createComponent(SaveImageDialog);
   fixture.componentRef.setInput('target', target);
@@ -323,6 +324,24 @@ describe('SaveImageDialog', () => {
         caption: 'for the ball',
       },
     ]);
+  });
+
+  // The `01a83539d` unification (§S.9's flipped P4.D277 beat): a SECOND open of
+  // the dialog in one session gets the album list from TanStack's cache without
+  // the query function running, so a seed placed INSIDE `queryFn` never ran and
+  // the browser showed the first option. v4 seeds from the fetched albums on
+  // every mount (`SaveImageDialog.tsx`'s effect over the list), cached or not.
+  it('a second open seeds the default album from the CACHED list (no refetch, no query function)', async () => {
+    const log: DispatchLog = { requests: [] };
+    const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity } } });
+    queryClient.setQueryData(['wardrobeItemImageSaveTargets', 'item-1', 'character', 'char-1'], albums());
+    const fixture = await render(stubClient(log, albums()), WARDROBE, [IMG], undefined, queryClient);
+    const select = fixture.nativeElement.querySelector('#save-image-album') as HTMLSelectElement;
+    expect(select.value).toBe('mp-gen');
+    expect(log.requests.filter((r) => r.type === 'wardrobeItemImageSaveTargets')).toEqual([]);
+    clickSave(fixture);
+    await settle(fixture);
+    expect(log.requests.map((r) => r.type)).toEqual(['wardrobeItemImageSaveToStore']);
   });
 
   it('the wardrobe door omits a blank caption (never "") and General carries no containerId', async () => {

@@ -5,6 +5,7 @@ import {
   ElementRef,
   afterNextRender,
   computed,
+  effect,
   inject,
   input,
   output,
@@ -256,7 +257,12 @@ export class SaveImageDialog {
    * The album list for the door (v4 `albumsUrlFor`, `:56-60`): the chat's
    * candidate albums for both chat doors, every document store for the
    * wardrobe door — each under its own key. The default selection is seeded
-   * once (v4 picks `isDefault`, else the first).
+   * once from the list, whenever it ARRIVES — fetched or served from the cache
+   * (v4 picks `isDefault`, else the first, in an effect over the fetched
+   * albums on every mount). It used to be seeded inside the query function,
+   * which TanStack does not run again for a cached key: a second open of the
+   * dialog in one session then selected nothing and the browser showed the
+   * first option (the `01a83539d` unification, §S.9's flipped P4.D277 beat).
    */
   protected readonly albumsQuery = injectQuery(() => {
     const target = this.target();
@@ -272,13 +278,17 @@ export class SaveImageDialog {
             : (((await this.core.dispatchData({ type: 'chatPhotoAlbums', chatId: target.chatId }))[
                 'albums'
               ] as AlbumOption[]) ?? []);
-        const preferred = albums.find((a) => a.isDefault) ?? albums[0];
-        if (preferred && !this.selectedMountPointId()) {
-          this.selectedMountPointId.set(preferred.mountPointId);
-        }
         return albums;
       },
     };
+  });
+
+  private readonly seedDefaultAlbum = effect(() => {
+    const albums = this.albumsQuery.data() ?? [];
+    const preferred = albums.find((a) => a.isDefault) ?? albums[0];
+    if (preferred && !this.selectedMountPointId()) {
+      this.selectedMountPointId.set(preferred.mountPointId);
+    }
   });
 
   protected readonly groupedAlbums = computed<AlbumGroup[]>(() => {
