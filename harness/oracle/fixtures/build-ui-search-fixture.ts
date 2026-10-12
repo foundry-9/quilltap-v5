@@ -38,7 +38,9 @@
  *     whose lowest MATCHING chunk is neither the first nor the last, a `pdf`
  *     outside `EDITABLE_TEXT_FILE_TYPES`, a literal `%` with its unescaped
  *     decoy, a path needing `encodeURIComponent`, and the cross-type tie. The
- *     second "Logbook" lands as "Logbook (2)" and a raw collision cannot be
+ *     second "Logbook" is created AS "Logbook (2)" (since `01a83539d` v4's
+ *     `create` refuses a same-named store outright — bug 186; before, the
+ *     free-name pick gave it that name) and a raw collision cannot be
  *     planted either — `repairMountPointNameCollisions` runs inside the lazy
  *     table init the search's own `findEnabled()` triggers, keyed on the same
  *     `name.trim().toLowerCase()` as `collectAmbiguousStoreNames`, so v4 heals
@@ -440,9 +442,10 @@ async function main(): Promise<void> {
   //         lazily — `repairMountPointNameCollisions` runs inside the
   //         doc-mount-points table init, i.e. on the first read of a process —
   //         so an instance never SERVES two stores with the same trimmed
-  //         lower-cased name. One read here triggers that repair, so the second
-  //         "Logbook" persists as "Logbook (2)" exactly as it would in
-  //         production. Without it the fixture would carry a collision that v4
+  //         lower-cased name. One read here triggers that repair (a no-op since
+  //         the fixture names the second store "Logbook (2)" itself — at
+  //         `01a83539d` `create` refuses the collision, bug 186), so the
+  //         stores persist exactly as they would in production. Without it the fixture would carry a collision that v4
   //         heals inside the search's own `findEnabled()` while v5 (which runs
   //         the same repair at BOOT, `services::builtin_mounts`) does not —
   //         a difference of repair TIMING, not of behaviour, that only a

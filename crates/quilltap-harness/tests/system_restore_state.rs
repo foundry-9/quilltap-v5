@@ -1942,6 +1942,14 @@ fn system_restore_state_equivalence() {
             &mut summary_carve,
             &mut failures,
         );
+        // [the `01a83539d` unification] bug 186's reconcile on top of the two
+        // rulings above — the retired vault row.
+        carve_ruled_reconcile_consequence_rows(
+            name,
+            &mut got_state,
+            &mut want_owned,
+            &mut failures,
+        );
         // [P4.158 R-A] the backfilled managed files, both ways.
         summary_carve.preserve_backfill = assert_preserve_backfill(
             name,
@@ -4358,6 +4366,215 @@ const ARCHIVED_CHARACTER_FALLBACK: &[(&str, &str)] = &[
     ("restore_store_binding_new_account", "Riya"),
 ];
 
+/// ## The ruled store-binding divergences' RECONCILE consequences —
+/// ## `RULED_RECONCILE_CONSEQUENCES` (the `01a83539d` unification)
+///
+/// Lifting P4.D273's `RECONCILE_PENDING_UNION` carve exposed what bug 186's
+/// reconcile (P4.D274) does on top of the two RULED store-binding divergences
+/// above. Each leaves ONE side holding a vault the other does not: v4 mints
+/// Lorian a fresh vault where v5 binds her (`DUP_STORE_ID_FIRST_ROW`); v5
+/// keeps Riya's fresh vault where v4 refuses the archived character
+/// (`ARCHIVED_CHARACTER_FALLBACK`). The reconcile then follows that ruling
+/// mechanically on the holding side — v4's own planner, pinned line for line
+/// in `store_name_reconcile_equivalence`: the create hook plans once more
+/// (`character-created`, 0 renames), and 23a RETIRES the archived vault the
+/// character no longer holds (`<Name> Character Vault (2)` → `<Name> Version
+/// <ts> Store`, one rename) where the other side keeps the ` (2)` form (its
+/// character has no vault, so the name stays adoptable).
+///
+/// Each entry: `(case, the side holding the extra vault, the character)`.
+/// Asserted BOTH ways: the holding side has exactly one `character-created`
+/// plan and the other none; its 23a plan counts exactly one rename more; it
+/// has exactly one `Renamed` record from the ` (2)` form to the retired form
+/// and the retired store row, the other side neither. Then the extra records
+/// leave the holding side, its 23a count takes the other's, and the retired
+/// row's `name` / `updatedAt` take the other side's — so the rest diffs row
+/// for row. A v4 that converges on either ruling trips a direction: retire
+/// the entry with its ruling.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum HoldingSide {
+    V4,
+    V5,
+}
+/// `(case, the holding side, the character, the stores the holding side
+/// counts beyond the other — v4's minted fresh vault in the dup case is
+/// carved from its dump but still counted by its plan)`.
+const RULED_RECONCILE_CONSEQUENCES: &[(&str, HoldingSide, &str, i64)] = &[
+    ("restore_dup_store_id_replace", HoldingSide::V4, "Lorian", 1),
+    ("restore_store_binding_replace", HoldingSide::V5, "Riya", 0),
+    (
+        "restore_store_binding_new_account",
+        HoldingSide::V5,
+        "Riya",
+        0,
+    ),
+];
+
+/// [`RULED_RECONCILE_CONSEQUENCES`]' census half (`compare_restore_logs`).
+fn carve_ruled_reconcile_consequence_records(
+    name: &str,
+    g: &mut Vec<Value>,
+    w: &mut Vec<Value>,
+    failures: &mut Vec<String>,
+) {
+    let Some((_, side, character, extra_stores)) = RULED_RECONCILE_CONSEQUENCES
+        .iter()
+        .find(|(c, ..)| *c == name)
+    else {
+        return;
+    };
+    let (holder, other, hs, os) = match side {
+        HoldingSide::V5 => (&mut *g, &mut *w, "v5", "v4"),
+        HoldingSide::V4 => (&mut *w, &mut *g, "v4", "v5"),
+    };
+    let is_plan = |r: &Value, trigger: &str| {
+        r["message"] == "Store-name reconcile planned" && r["trigger"] == trigger
+    };
+    let count = |recs: &[Value], f: &dyn Fn(&Value) -> bool| recs.iter().filter(|r| f(r)).count();
+    // (1) the create hook's plan.
+    let (hc, oc) = (
+        count(holder, &|r| is_plan(r, "character-created")),
+        count(other, &|r| is_plan(r, "character-created")),
+    );
+    if hc != 1 || oc != 0 {
+        failures.push(format!(
+            "[{name}] RULED_RECONCILE_CONSEQUENCES: `character-created` plans {hs}={hc} {os}={oc} \
+             (want {hs}=1 {os}=0) — a ruling moved"
+        ));
+    }
+    holder.retain(|r| !is_plan(r, "character-created"));
+    // (2) 23a's plan and its completion line: one rename more on the holding
+    // side (and, where the ruling minted it a store, one store more).
+    let counted = |recs: &[Value], pick: &dyn Fn(&Value) -> bool, key: &str| -> Option<i64> {
+        let hits: Vec<&Value> = recs.iter().filter(|r| pick(r)).collect();
+        (hits.len() == 1)
+            .then(|| hits[0][key].as_str().and_then(|s| s.parse().ok()))
+            .flatten()
+    };
+    let is_restore_plan = |r: &Value| is_plan(r, "restore");
+    let is_complete = |r: &Value| r["message"] == "Post-restore store-name reconcile complete";
+    for (pick, key, lead) in [
+        (
+            &is_restore_plan as &dyn Fn(&Value) -> bool,
+            "renameCount",
+            1,
+        ),
+        (&is_restore_plan, "storeCount", *extra_stores),
+        (&is_complete, "renamed", 1),
+    ] {
+        match (counted(holder, pick, key), counted(other, pick, key)) {
+            (Some(h), Some(o)) if h == o + lead => {
+                let o_text = json!(o.to_string());
+                for r in holder.iter_mut().filter(|r| pick(r)) {
+                    r[key] = o_text.clone();
+                }
+            }
+            (h, o) => failures.push(format!(
+                "[{name}] RULED_RECONCILE_CONSEQUENCES: 23a {key} {hs}={h:?} {os}={o:?} \
+                 (want {hs} = {os} + {lead}) — a ruling moved"
+            )),
+        }
+    }
+    // (3) the retire itself.
+    let from = format!("{character} Character Vault (2)");
+    let to_prefix = format!("{character} Version ");
+    let is_retire = |r: &Value| {
+        r["message"] == "Renamed document store to its rightful name"
+            && r["from"] == from.as_str()
+            && r["to"].as_str().is_some_and(|t| t.starts_with(&to_prefix))
+    };
+    let any_rename = |r: &Value| r["message"] == "Renamed document store to its rightful name";
+    let (hr, or) = (count(holder, &is_retire), count(other, &any_rename));
+    if hr != 1 || or != 0 {
+        failures.push(format!(
+            "[{name}] RULED_RECONCILE_CONSEQUENCES: the retire of {from:?} — {hs}={hr} record(s), \
+             {os} renames={or} (want {hs}=1 {os}=0) — a ruling moved"
+        ));
+    }
+    holder.retain(|r| !is_retire(r));
+}
+
+/// [`RULED_RECONCILE_CONSEQUENCES`]' row half, on the RAW dumps (before
+/// normalization): the retired vault row takes the other side's `name` /
+/// `updatedAt`. Matched by id when both sides keep the archive's id
+/// (`replace`), else by the ` (2)` form (`new-account` mints per side).
+fn carve_ruled_reconcile_consequence_rows(
+    name: &str,
+    got: &mut BTreeMap<String, BTreeMap<String, Vec<Value>>>,
+    want: &mut Value,
+    failures: &mut Vec<String>,
+) {
+    let Some((_, side, character, _)) = RULED_RECONCILE_CONSEQUENCES
+        .iter()
+        .find(|(c, ..)| *c == name)
+    else {
+        return;
+    };
+    let retired_prefix = format!("{character} Version ");
+    let two_form = format!("{character} Character Vault (2)");
+    let plain_form = format!("{character} Character Vault");
+    let got_rows: &mut Vec<Value> = got
+        .get_mut("mountIndex")
+        .and_then(|p| p.get_mut("doc_mount_points"))
+        .expect("doc_mount_points dumped");
+    let want_rows: &mut Vec<Value> = want["mountIndex"]["doc_mount_points"]
+        .as_array_mut()
+        .expect("doc_mount_points in the oracle");
+    let (holder, other, hs) = match side {
+        HoldingSide::V5 => (got_rows, want_rows, "v5"),
+        HoldingSide::V4 => (want_rows, got_rows, "v4"),
+    };
+    let retired: Vec<usize> = holder
+        .iter()
+        .enumerate()
+        .filter(|(_, r)| str_at(r, "name").is_some_and(|n| n.starts_with(&retired_prefix)))
+        .map(|(i, _)| i)
+        .collect();
+    if retired.len() != 1 {
+        failures.push(format!(
+            "[{name}] RULED_RECONCILE_CONSEQUENCES: {hs} holds {} retired {character} vault row(s) \
+             (want 1) — a ruling moved",
+            retired.len()
+        ));
+        return;
+    }
+    let i = retired[0];
+    let id = str_at(&holder[i], "id").unwrap_or_default().to_string();
+    let source = other
+        .iter()
+        .find(|r| str_at(r, "id") == Some(id.as_str()))
+        // `new-account` mints per side: the ` (2)` form first (the archived
+        // vault the other side kept), never the fresh plain-named vault.
+        .or_else(|| {
+            other
+                .iter()
+                .find(|r| str_at(r, "name") == Some(two_form.as_str()))
+        })
+        .or_else(|| {
+            other
+                .iter()
+                .find(|r| str_at(r, "name") == Some(plain_form.as_str()))
+        })
+        .cloned();
+    let Some(source) = source else {
+        failures.push(format!(
+            "[{name}] RULED_RECONCILE_CONSEQUENCES: no counterpart row for the retired \
+             {character} vault on the other side — a ruling moved"
+        ));
+        return;
+    };
+    let source_name = str_at(&source, "name").unwrap_or_default();
+    if source_name != two_form && source_name != plain_form {
+        failures.push(format!(
+            "[{name}] RULED_RECONCILE_CONSEQUENCES: the counterpart row reads {source_name:?} \
+             (want the plain or ` (2)` vault form) — a ruling moved"
+        ));
+        return;
+    }
+    holder[i]["name"] = source["name"].clone();
+    holder[i]["updatedAt"] = source["updatedAt"].clone();
+}
+
 fn carve_archived_character_fallback(
     name: &str,
     want_summary: &Value,
@@ -5768,6 +5985,15 @@ fn v5_log_records(lines: &[String], messages: &[&str]) -> Vec<Value> {
             }
             fields = next;
         }
+        // The reconcile's own lines (`RECONCILE_MESSAGES`) go through v4's
+        // `logger.child({ module: 'mount-index:reconcile-store-names' })`, whose
+        // binding lives in the child's default meta — invisible to the oracle's
+        // `Logger.prototype` capture, which records only each call's own meta.
+        // v5 carries `module` as a plain field, so it is dropped here for the
+        // census (the `01a83539d` unification, after P4.D273's carve lifted).
+        if RECONCILE_MESSAGES.contains(message) {
+            rec.shift_remove("module");
+        }
         out.push(Value::Object(rec));
     }
     out
@@ -5852,6 +6078,9 @@ fn compare_restore_logs(
         v5_log_records(got_lines, &messages),
         v4_log_records(want, &messages),
     );
+    // [the `01a83539d` unification] bug 186's reconcile on top of the two
+    // ruled store-binding divergences — the extra plan + the retire records.
+    carve_ruled_reconcile_consequence_records(name, &mut g, &mut w, failures);
     // `Restore operation completed` carries the whole summary and its warning
     // count: each side must log ITS OWN returned summary (the summaries
     // themselves are compared — carves and all — by `compare_case`), then both

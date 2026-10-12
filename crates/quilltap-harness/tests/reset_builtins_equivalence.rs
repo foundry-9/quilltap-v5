@@ -94,6 +94,49 @@ fn normalize(dumps: &mut [Value]) {
             }
         }
     }
+    // Second pass — the memory-reference cells. Since v4 `d58548051` (the
+    // `01a83539d` round) the `.qtap` import mints every memory id UP FRONT, so
+    // `relatedMemoryIds` / `consolidatedFrom` / `supersededById` are rewritten
+    // to the MINTED ids on both sides (a ref to a later item used to stay raw);
+    // every element is labelled through the same first-encounter map as the
+    // `id` column, so the graph compares by shape. An id outside the map (a
+    // ref the archive never resolves) stays as it is.
+    for (i, spec) in TABLES.iter().enumerate() {
+        if spec.table != "memories" {
+            continue;
+        }
+        let rows = dumps[i]
+            .get_mut("rows")
+            .and_then(Value::as_array_mut)
+            .unwrap_or_else(|| panic!("{}: no rows", spec.table));
+        for row in rows.iter_mut() {
+            let obj = row.as_object_mut().unwrap();
+            for col in ["relatedMemoryIds", "consolidatedFrom"] {
+                if let Some(Value::String(raw)) = obj.get(col) {
+                    if let Ok(Value::Array(items)) = serde_json::from_str::<Value>(raw) {
+                        let mapped: Vec<Value> = items
+                            .into_iter()
+                            .map(|v| match v {
+                                Value::String(s) => {
+                                    Value::String(id_map.get(&s).cloned().unwrap_or(s))
+                                }
+                                other => other,
+                            })
+                            .collect();
+                        obj.insert(
+                            col.to_string(),
+                            Value::String(serde_json::to_string(&mapped).unwrap()),
+                        );
+                    }
+                }
+            }
+            if let Some(Value::String(raw)) = obj.get("supersededById") {
+                if let Some(label) = id_map.get(raw) {
+                    obj.insert("supersededById".to_string(), Value::String(label.clone()));
+                }
+            }
+        }
+    }
 }
 
 #[test]
@@ -230,7 +273,13 @@ fn reset_builtins_tier2_matches_oracle() {
         ops["avatarLinkCount"].as_i64().unwrap(),
         "avatar links"
     );
-    assert_eq!(avatar_links, 2);
+    // Four since v4 `ed8b15b50` (bug 186, the `01a83539d` round): the reset's
+    // character delete now runs `reconcileVaultNames('character-deleted')`,
+    // which RETIRES the old vaults (`<Name> Version <ts> Store`) rather than
+    // leaving them to be dropped, so their `images/avatar.webp` links survive
+    // beside the two re-seeded vaults' — both sides agree (the oracle equality
+    // above); this literal is the non-vacuity floor (was 2).
+    assert_eq!(avatar_links, 4);
     assert_eq!(
         chars_with_avatar,
         ops["charsWithDefaultImage"].as_i64().unwrap(),

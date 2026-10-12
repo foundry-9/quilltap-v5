@@ -329,10 +329,10 @@
     },
     {
       "id": "ee000000-0000-4000-8000-000000000003",
-      "name": "Logbook",
+      "name": "Logbook (2)",
       "storeType": "documents",
       "enabled": true,
-      "note": "Created as a SECOND `Logbook`; v4's `docMountPoints.create` runs `nextUniqueMountPointName`, so it lands as `Logbook (2)`. That is the point: v4 cannot hold two stores with the same trimmed lower-cased name, because `repairMountPointNameCollisions` — keyed on the IDENTICAL `name.trim().toLowerCase()` as `collectAmbiguousStoreNames` — runs at the doc-mount-points lazy table init, i.e. inside the very `findEnabled()` the search calls. The store-name AMBIGUITY arm is therefore unreachable through the route on either side; it is pinned at unit tier (`ref_for_mount_arms`). The RESERVED-name arm (`self`) is untouched by the repair and IS exercised here."
+      "note": "Named `Logbook (2)` outright since the `01a83539d` unification: at that pin v4's `docMountPoints.create` REFUSES a second store under a name another holds (bug 186, `ed8b15b50`'s `assertNameFree`), where it used to land as `Logbook (2)` through `nextUniqueMountPointName` — the same name, now given by the fixture. Was: Created as a SECOND `Logbook`; v4's `docMountPoints.create` runs `nextUniqueMountPointName`, so it lands as `Logbook (2)`. That is the point: v4 cannot hold two stores with the same trimmed lower-cased name, because `repairMountPointNameCollisions` — keyed on the IDENTICAL `name.trim().toLowerCase()` as `collectAmbiguousStoreNames` — runs at the doc-mount-points lazy table init, i.e. inside the very `findEnabled()` the search calls. The store-name AMBIGUITY arm is therefore unreachable through the route on either side; it is pinned at unit tier (`ref_for_mount_arms`). The RESERVED-name arm (`self`) is untouched by the repair and IS exercised here."
     },
     {
       "id": "ee000000-0000-4000-8000-000000000004",
