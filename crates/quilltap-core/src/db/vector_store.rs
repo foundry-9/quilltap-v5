@@ -40,10 +40,34 @@ use crate::embedding_vector::cosine_similarity;
 /// One in-memory vector entry (id + its unit-length embedding). v4's `VectorEntry`
 /// also carries metadata + `createdAt`, but the gate's search only needs the id and
 /// the vector; the persisted `createdAt` is minted by the repo on flush.
+///
+/// P4.D265 (v4 `d58548051`): `cold` is v4's `metadata.tier === 'cold'` — NOT
+/// persisted with the index; stamped from the memories table at
+/// [`CharacterVectorStore::load`] and kept in step by
+/// [`CharacterVectorStore::set_tier`]. A freshly added vector is hot (v4's
+/// callers pass metadata without a tier, and an absent tier reads hot).
 #[derive(Debug, Clone)]
 struct VectorEntry {
     id: String,
     embedding: Vec<f32>,
+    cold: bool,
+}
+
+/// v4's `'hot' | 'cold'` tier argument to [`CharacterVectorStore::set_tier`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Tier {
+    Hot,
+    Cold,
+}
+
+impl Tier {
+    /// v4's literal.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Tier::Hot => "hot",
+            Tier::Cold => "cold",
+        }
+    }
 }
 
 /// A single search hit (v4's `VectorSearchResult` minus the metadata the gate does
@@ -77,10 +101,33 @@ impl CharacterVectorStore {
     /// Load a character's index from the DB (v4 `load`). Reads the metadata row and
     /// every entry; `dimensions` comes from the metadata when present, else from the
     /// first entry's length (else `None` for an empty store).
+    ///
+    /// P4.D265 (v4 `d58548051`): AFTER the entries, the character's cold memory
+    /// ids ([`super::memories_read::find_cold_ids_by_character_id`] — v4's
+    /// `loadColdIds`) stamp each entry's tier, then DEBUG `Loaded vector index
+    /// {context: CharacterVectorStore.load, characterId, entries, cold}` (`cold`
+    /// is the cold-id SET's size, as v4's `coldIds.size` is — a cold memory with
+    /// no vector still counts). The cold-id read is a fallback (`[]` + its own
+    /// ERROR), so v4's WARN `Could not read cold memory ids; treating every
+    /// vector as hot {context, characterId, error}` is reachable ONLY inside the
+    /// strict scope, where the read rethrows — then every vector reads hot.
     pub fn load(conn: &Connection, character_id: &str) -> Result<Self, DbError> {
         let repo = VectorIndicesRepository::new(conn);
         let meta = repo.find_meta_by_character_id(character_id)?;
         let rows = repo.find_entries_by_character_id(character_id)?;
+        let cold_ids: std::collections::HashSet<String> =
+            match super::memories_read::find_cold_ids_by_character_id(conn, character_id) {
+                Ok(ids) => ids.into_iter().collect(),
+                Err(error) => {
+                    tracing::warn!(
+                        context = "CharacterVectorStore.load",
+                        characterId = %character_id,
+                        error = %super::fallback::error_text(&error),
+                        "Could not read cold memory ids; treating every vector as hot"
+                    );
+                    std::collections::HashSet::new()
+                }
+            };
 
         let mut entries = Vec::with_capacity(rows.len());
         let mut index = HashMap::with_capacity(rows.len());
@@ -89,8 +136,16 @@ impl CharacterVectorStore {
             entries.push(VectorEntry {
                 id: row.id.clone(),
                 embedding: row.embedding.clone(),
+                cold: cold_ids.contains(&row.id),
             });
         }
+        tracing::debug!(
+            context = "CharacterVectorStore.load",
+            characterId = %character_id,
+            entries = rows.len(),
+            cold = cold_ids.len(),
+            "Loaded vector index"
+        );
 
         // v4: meta ? meta.dimensions : (entries.length > 0 ? entries[0].len : null)
         let dimensions = match &meta {
@@ -144,8 +199,24 @@ impl CharacterVectorStore {
     /// Cosine-similarity search returning the top `limit` matches, descending by
     /// score (v4 `search` → `searchLinear`). Empty store → `[]`; a query whose
     /// length disagrees with the store's known `dimensions` → `[]` (v4 logs a warn
-    /// and returns empty so the caller falls back to text search).
+    /// and returns empty so the caller falls back to text search). BOTH tiers —
+    /// v4's `search` with no filter (the gate, the `search` tool, the Memories
+    /// API search).
     pub fn search(&self, query: &[f32], limit: usize) -> Vec<VectorSearchResult> {
+        self.search_filtered(query, limit, |_, _| true)
+    }
+
+    /// P4.D265 (v4 `d58548051`) — v4 `search(query, limit, filter)`: the filter
+    /// gets `(id, is_cold)` and runs FIRST for each entry — before the per-entry
+    /// length skip and the scoring (`searchLinear` `:376-392`) — so a filtered
+    /// entry never reaches the top-K and `limit` passing results still come back.
+    /// v4's hot-only recall paths pass `isHotVector` → `|_, cold| !cold`.
+    pub fn search_filtered(
+        &self,
+        query: &[f32],
+        limit: usize,
+        filter: impl Fn(&str, bool) -> bool,
+    ) -> Vec<VectorSearchResult> {
         if self.entries.is_empty() {
             return Vec::new();
         }
@@ -157,6 +228,9 @@ impl CharacterVectorStore {
 
         let mut results: Vec<VectorSearchResult> = Vec::with_capacity(self.entries.len());
         for entry in &self.entries {
+            if !filter(&entry.id, entry.cold) {
+                continue;
+            }
             if entry.embedding.len() != query.len() {
                 continue;
             }
@@ -181,6 +255,39 @@ impl CharacterVectorStore {
         results
     }
 
+    /// P4.D265 — v4 `isHotVector` for one loaded id: `true` unless the entry is
+    /// stamped cold. An ABSENT id answers `true` (v4: "absent reads as hot").
+    pub fn is_hot(&self, id: &str) -> bool {
+        self.index.get(id).is_none_or(|&i| !self.entries[i].cold)
+    }
+
+    /// P4.D265 (v4 `d58548051`) — v4 `setTier(ids, tier)` (`:506-522`): re-stamp
+    /// the tier of entries already in the store (in memory only), counting only
+    /// those whose tier actually changed, then DEBUG `Re-stamped vector tiers
+    /// {context: CharacterVectorStore.setTier, characterId, tier, requested,
+    /// changed}` — logged even when `changed` is 0. An id not in the store is
+    /// skipped (it counts in `requested` only).
+    pub fn set_tier(&mut self, ids: &[String], tier: Tier) {
+        let cold = tier == Tier::Cold;
+        let mut changed = 0usize;
+        for id in ids {
+            if let Some(&i) = self.index.get(id) {
+                if self.entries[i].cold != cold {
+                    self.entries[i].cold = cold;
+                    changed += 1;
+                }
+            }
+        }
+        tracing::debug!(
+            context = "CharacterVectorStore.setTier",
+            characterId = %self.character_id,
+            tier = tier.as_str(),
+            requested = ids.len(),
+            changed = changed,
+            "Re-stamped vector tiers"
+        );
+    }
+
     /// Add a vector (v4 `addVector`). Validates the dimension against the store's
     /// known width (setting it on the first add into an empty store), then records
     /// the entry as added (cancelling any pending removal, as v4 does).
@@ -196,13 +303,19 @@ impl CharacterVectorStore {
             self.dimensions = Some(embedding.len());
         }
 
+        // v4 replaces the whole entry (`entries.set(id, {…, metadata})`), and its
+        // callers' metadata carries no tier — so a re-added vector reads hot.
         match self.index.get(id).copied() {
-            Some(i) => self.entries[i].embedding = embedding,
+            Some(i) => {
+                self.entries[i].embedding = embedding;
+                self.entries[i].cold = false;
+            }
             None => {
                 self.index.insert(id.to_string(), self.entries.len());
                 self.entries.push(VectorEntry {
                     id: id.to_string(),
                     embedding,
+                    cold: false,
                 });
             }
         }
@@ -334,9 +447,56 @@ mod tests {
             s.entries.push(VectorEntry {
                 id: (*id).to_string(),
                 embedding: v.clone(),
+                cold: false,
             });
         }
         s
+    }
+
+    /// P4.D265: the hot-only filter runs BEFORE the top-K — a cold entry that
+    /// would rank first is excluded and `limit` hot results still come back;
+    /// the unfiltered `search` keeps both tiers.
+    #[test]
+    fn search_filtered_excludes_cold_before_top_k() {
+        let mut s = store_with(&[
+            ("cold-best", vec![1.0, 0.0]),
+            ("hot-a", vec![0.8, 0.6]),
+            ("hot-b", vec![0.6, 0.8]),
+        ]);
+        s.set_tier(&["cold-best".to_string()], Tier::Cold);
+        let hot: Vec<String> = s
+            .search_filtered(&[1.0, 0.0], 2, |_, cold| !cold)
+            .into_iter()
+            .map(|r| r.id)
+            .collect();
+        assert_eq!(hot, ["hot-a", "hot-b"]);
+        let both: Vec<String> = s.search(&[1.0, 0.0], 2).into_iter().map(|r| r.id).collect();
+        assert_eq!(both, ["cold-best", "hot-a"]);
+        assert!(!s.is_hot("cold-best"));
+        assert!(s.is_hot("hot-a"));
+        assert!(s.is_hot("never-loaded"), "an absent id reads hot (v4)");
+    }
+
+    /// v4 `setTier`: counts only the entries whose tier changed, ignores
+    /// absent ids, and logs its DEBUG even for a no-op re-stamp.
+    #[test]
+    fn set_tier_counts_changes_and_always_logs() {
+        let mut s = store_with(&[("a", vec![1.0]), ("b", vec![1.0])]);
+        let ids = vec!["a".to_string(), "ghost".to_string()];
+        let lines = crate::test_support::captured(|| s.set_tier(&ids, Tier::Cold));
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(
+            lines[0].ends_with(
+                "Re-stamped vector tiers context=CharacterVectorStore.setTier characterId=char \
+                 tier=cold requested=2 changed=1"
+            ),
+            "{lines:?}"
+        );
+        let lines = crate::test_support::captured(|| s.set_tier(&ids, Tier::Cold));
+        assert!(lines[0].ends_with("requested=2 changed=0"), "{lines:?}");
+        // A re-add reads hot again (v4 replaces the entry's metadata).
+        s.add_vector("a", vec![1.0]).unwrap();
+        assert!(s.is_hot("a"));
     }
 
     #[test]

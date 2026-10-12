@@ -189,6 +189,25 @@ pub const SINGLE_USER_ID: &str = "ffffffff-ffff-ffff-ffff-ffffffffffff";
 /// generateDDL surface: the two hand indexes arrive through
 /// `migration_indexes.json` (below), the `ON CONFLICT` target included, and
 /// every ledger read takes `wearCount` type-tolerantly.
+///
+/// `01a83539d` (P4.D265 — D23 re-dump #7, v4 `d58548051` migration
+/// `add-memory-tiers-v1` + `ed8b15b50`'s store-name index; run FROM the pin,
+/// 2026-10-09): EXACTLY three statements move, as measured. (1) `memories`
+/// GAINS `"tier" TEXT DEFAULT 'hot'`, `"supersededById" TEXT`,
+/// `"consolidatedFrom" TEXT DEFAULT '[]'`, `"consolidatedAt" TEXT` between
+/// `reinforcedImportance` and `createdAt`; (2) `chats` GAINS
+/// `"otherExtractionWatermarkMessageId" TEXT` after `timelineMode` — both in
+/// generateDDL's text and schema slot. TWO shapes reach the read: v4's
+/// migration APPENDS the same five columns with `TEXT DEFAULT NULL` on the
+/// three nullable ones (re-homed as `db::memory_tiers_repair`); the defaults
+/// that matter (`'hot'`, `'[]'`) agree, and a fresh instance keeps this
+/// generateDDL surface (the P4.153 / 2026-10-08 ruling, R-B). (3) the
+/// mount-index partition GAINS `CREATE UNIQUE INDEX
+/// "idx_doc_mount_points_name_nocase" ON "doc_mount_points" ("name" COLLATE
+/// NOCASE)` — v4 creates it in `DocMountPointsRepository`'s table-init hook,
+/// which the dumper's repository pass triggers, so bug 186's index rides THIS
+/// dump; its refusal and the existing-instance ensure are P4.D274's. mount-index
+/// 30 → 31. The seed is UNMOVED at this pin (`cmp`-identical).
 static FRESH_SCHEMA_JSON: &str = include_str!("fresh_schema.json");
 
 /// The captured `chat_settings` seed row's columns (all but the minted
@@ -262,6 +281,11 @@ static CHAT_SETTINGS_SEED_JSON: &str = include_str!("chat_settings_seed.json");
 /// `idx_wardrobe_wear_stats_wearer` — in v4's text, line breaks kept (the
 /// first multi-line statements: [`index_name`] now ends a name at ANY
 /// whitespace). main 52 / mount-index 5 / llm-logs 5.
+/// `01a83539d` (P4.D265 — re-dumped from the pin, the REAL first boot's
+/// `sqlite_master` the cross-check, zero findings): main GAINS EXACTLY
+/// `idx_memories_character_tier ("characterId", "tier")` — v4 `d58548051`'s
+/// `add-memory-tiers-v1`. main 53 / mount-index 5 / llm-logs 5.
+/// [`migration_main_index`] reads it for the memory-tiers ensure.
 static MIGRATION_INDEXES_JSON: &str = include_str!("migration_indexes.json");
 
 /// One artifact's statements per partition (`fresh_schema.json` and
@@ -293,6 +317,19 @@ pub(crate) fn fresh_main_index(name: &str) -> Result<Option<String>, ProvisionEr
     let schema: FreshSchema = serde_json::from_str(FRESH_SCHEMA_JSON)
         .map_err(|e| ProvisionError::Artifact(format!("fresh_schema.json: {e}")))?;
     Ok(schema
+        .main
+        .into_iter()
+        .find(|sql| index_name(sql) == Some(name)))
+}
+
+/// The main partition's `migration_indexes.json` `CREATE INDEX` statement
+/// named `name` (`sqlite_master` text, no `IF NOT EXISTS`), if the artifact
+/// carries one — the sibling of [`fresh_main_index`] for v4's MIGRATION-made
+/// family. P4.D265: the memory-tiers ensure (`db::memory_tiers_repair`) reads
+/// `idx_memories_character_tier` through this, so the boot never spells the
+/// index of its own (D23).
+pub(crate) fn migration_main_index(name: &str) -> Result<Option<String>, ProvisionError> {
+    Ok(migration_index_family()?
         .main
         .into_iter()
         .find(|sql| index_name(sql) == Some(name)))
@@ -625,7 +662,7 @@ mod tests {
             .chain(&family.mount_index)
             .chain(&family.llm_logs)
             .collect();
-        assert_eq!(all.len(), 62);
+        assert_eq!(all.len(), 63);
         for sql in all {
             let table = index_table(sql).unwrap_or_else(|| panic!("no table in {sql}"));
             assert!(
@@ -716,6 +753,68 @@ mod tests {
             )
             .unwrap();
         assert!(table.contains("\"wearCount\" REAL NOT NULL"), "{table}");
+    }
+
+    /// P4.D265 (D23 re-dump #7): a fresh instance carries
+    /// `idx_memories_character_tier` (from `migration_indexes.json`) and the
+    /// UNIQUE NOCASE store-name index (from `fresh_schema.json`'s mount-index
+    /// partition), and `memories` / `chats` carry the new columns in
+    /// generateDDL's SCHEMA slots — not the migration's appended order (R-B).
+    #[test]
+    fn a_fresh_instance_carries_the_memory_tiers_surface() {
+        let dir = tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        provision_fresh_instance(&data, PEPPER).unwrap();
+        let main = Writer::open_writable(&data.join("quilltap.db"), PEPPER).unwrap();
+        let conn = main.connection();
+        let columns = |table: &str| -> Vec<String> {
+            conn.prepare(&format!("PRAGMA table_info(\"{table}\")"))
+                .unwrap()
+                .query_map([], |r| r.get::<_, String>(1))
+                .unwrap()
+                .map(Result::unwrap)
+                .collect()
+        };
+        let memories = columns("memories");
+        let at = memories
+            .iter()
+            .position(|c| c == "reinforcedImportance")
+            .unwrap();
+        assert_eq!(
+            memories[at..],
+            [
+                "reinforcedImportance",
+                "tier",
+                "supersededById",
+                "consolidatedFrom",
+                "consolidatedAt",
+                "createdAt",
+                "updatedAt"
+            ]
+        );
+        let chats = columns("chats");
+        let at = chats.iter().position(|c| c == "timelineMode").unwrap();
+        assert_eq!(chats[at + 1], "otherExtractionWatermarkMessageId");
+        let index_sql = |c: &rusqlite::Connection, name: &str| -> Option<String> {
+            c.query_row(
+                "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?1",
+                [name],
+                |r| r.get(0),
+            )
+            .ok()
+        };
+        assert_eq!(
+            index_sql(conn, "idx_memories_character_tier").as_deref(),
+            Some("CREATE INDEX \"idx_memories_character_tier\" ON \"memories\" (\"characterId\", \"tier\")")
+        );
+        let mount = Writer::open_writable(&data.join("quilltap-mount-index.db"), PEPPER).unwrap();
+        assert_eq!(
+            index_sql(mount.connection(), "idx_doc_mount_points_name_nocase").as_deref(),
+            Some(
+                "CREATE UNIQUE INDEX \"idx_doc_mount_points_name_nocase\" ON \"doc_mount_points\" (\"name\" COLLATE NOCASE)"
+            )
+        );
     }
 
     #[test]

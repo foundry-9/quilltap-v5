@@ -2342,6 +2342,40 @@ const CENSUS: &[Row] = &[
         note: "`wardrobe/[itemId]/images/route.ts:82` `sp.get('scope')` (a Zod enum over the query)",
     },
     // === end P4.D255 ===
+    // === P4.D265 (contract C2): the `01a83539d` round's new typed fields ===
+    Row {
+        variant: "MemoryList",
+        field: "tier",
+        rust_type: "Option<String>",
+        v4: V4::Query,
+        note: "`memories/route.ts:302-303` `searchParams.get('tier')` — `'hot'|'cold'` else undefined (honoured by P4.D269)",
+    },
+    Row {
+        variant: "MemoryAnchorGateProbe",
+        field: "limit",
+        rust_type: "Option<f64>",
+        v4: V4::BodySafeParse,
+        note: concat!(
+            "`memories/route.ts:585-603` `anchorGateProbeSchema.safeParse` → `validationError` ",
+            "(`{error: 'Validation error', details}`) for a non-number; the int / 1..200 checks ",
+            "are P4.D269's on the `f64` (C2) — ORDERED(P4.D269)"
+        ),
+    },
+    Row {
+        variant: "WardrobeItemImageSaveTargets",
+        field: "scope",
+        rust_type: "WardrobeContainerScope",
+        v4: V4::Query,
+        note: "`wardrobe/[itemId]/images/route.ts:77-82` `sp.get('scope')` (a Zod enum over the query) — `01a83539d`",
+    },
+    Row {
+        variant: "WardrobeItemImageSaveToStore",
+        field: "scope",
+        rust_type: "WardrobeContainerScope",
+        v4: V4::Query,
+        note: "`wardrobe/[itemId]/images/route.ts:77-82` `sp.get('scope')` (a Zod enum over the query) — `01a83539d`",
+    },
+    // === end P4.D265 ===
 ];
 
 /// The `ChatCreate` trio (the order's anchor). These are NOT `Request` fields —
@@ -2643,7 +2677,13 @@ fn is_route_identifier(field: &str) -> bool {
 // (`WardrobeItemWearHistory`, `WardrobeItemImagesList`, `…ImageGenerate`,
 // `…ImageSetCurrent`, `…ImageDelete`): five `item_id`, five `container_id`, two
 // `file_id`, one `image_profile_id`. Measured red at 464 before this edit.
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 464;
+// **P4.D265 (+7): 464 → 471** — the C2 verbs: `MemoryAnchorGateProbe.
+// character_id` (a v4 BODY key under `safeParse` — the rule drops it, as it
+// drops the others the doc above lists), `WardrobeItemImageSaveTargets.
+// {container_id, item_id}` and `WardrobeItemImageSaveToStore.{container_id,
+// item_id, file_id, mount_point_id}` (the first two query/path, the last two
+// v4 BODY keys of `SaveImageRequestSchema`). The test measures 471 with them.
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 471;
 
 /// **P4.115 item 5 — the field [`strip_noise`] hides, pinned both ways.** The
 /// shared module's rule finds every field this census's walk finds, plus

@@ -66,6 +66,22 @@ function completedCases(): CompletedCase[] {
     cases.push({ name: `completed_nopayload_${type}`, jobType: type });
   }
 
+  // P4.D265 (v4 `d58548051`, `job-topics.ts:91-97`): a consolidation DRY RUN
+  // writes nothing — strict boolean `true` only (a `"true"` string, `1` and an
+  // absent key are real runs).
+  for (const [label, dryRun] of [
+    ['true', true],
+    ['false', false],
+    ['string_true', 'true'],
+    ['one', 1],
+  ] as const) {
+    cases.push({
+      name: `consolidation_dry_run_${label}`,
+      jobType: 'MEMORY_CONSOLIDATION',
+      payload: { characterId: 'char-3333', dryRun },
+    });
+  }
+
   // 3. The story-background probe order: chat BEATS project when both are
   //    present; project answers when chat is absent, empty, or not a string;
   //    nothing at all when neither reads.

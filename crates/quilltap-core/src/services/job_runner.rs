@@ -156,6 +156,9 @@ pub const KNOWN_JOB_TYPES: &[&str] = &[
     "WARDROBE_ITEM_IMAGE_GENERATION",
     "CONVERSATION_RENDER",
     "MEMORY_HOUSEKEEPING",
+    // P4.D265 (v4 `d58548051`): registered by P4.D271; until then the loud
+    // "recognized but not yet available" fallback answers.
+    "MEMORY_CONSOLIDATION",
     "MEMORY_REGENERATE_CHAT",
     "MEMORY_REGENERATE_ALL",
     "WARDROBE_OUTFIT_ANNOUNCEMENT",
@@ -483,6 +486,15 @@ impl JobRunner {
                 for hint in topics_for_completed_job(Some(&job.job_type), Some(&payload)) {
                     publish_realtime(hint.topic, hint.id.as_deref());
                 }
+                // P4.D265 (§R.10(c)): v4's post-commit hooks
+                // (`job-dispatcher.ts:253-259` — `invalidateFrozenArchivesForCompletedJob`,
+                // then `checkConsolidationWatermarkAfterCommit`). v4 runs them only
+                // after a SUCCESSFUL `markCompleted`; this region inherits v5's
+                // placement (both mark arms reach it, as the topics loop above
+                // does). `job` and `payload` are in scope. One call each,
+                // appended by their owners; nothing else.
+                // === job-completion hooks (append-only; P4.D268, P4.D271) ===
+                // === end job-completion hooks ===
             }
             JobOutcome::Failed(message) => {
                 // v4 job-dispatcher.ts:226 `log.warn('Job failed in child', …)`.
@@ -932,6 +944,30 @@ mod tests {
             .contains("recognized but its handler is not yet available"));
     }
 
+    /// P4.D265: `MEMORY_CONSOLIDATION` is a KNOWN type with no handler until
+    /// P4.D271 — an enqueued job fails with the loud "recognized" sentence,
+    /// never v4's unknown-type throw.
+    #[tokio::test]
+    async fn memory_consolidation_is_recognized_but_unhandled() {
+        assert_eq!(
+            HandlerRegistry::unregistered_error("MEMORY_CONSOLIDATION"),
+            "Job type \"MEMORY_CONSOLIDATION\" is recognized but its handler is not yet \
+             available in the native runner"
+        );
+        let (_dir, db) = make_db();
+        enqueue(
+            &db,
+            "c",
+            "MEMORY_CONSOLIDATION",
+            0.0,
+            "2020-01-01T00:00:01.000Z",
+        )
+        .await;
+        let runner = JobRunner::new(db.clone(), HandlerRegistry::new());
+        runner.pump_claim().await;
+        assert_eq!(status_of(&db, "c"), "FAILED");
+    }
+
     /// A handler that fails → the job is marked FAILED with its message.
     #[tokio::test]
     async fn handler_failure_marks_failed() {
@@ -1092,7 +1128,7 @@ mod tests {
             occurredAt TEXT, narrativeTime TEXT, entities TEXT DEFAULT '[]', kind TEXT DEFAULT 'semantic', \
         sourceMessageId TEXT, lastAccessedAt TEXT, reinforcementCount REAL, \
         lastReinforcedAt TEXT, relatedMemoryIds TEXT, reinforcedImportance REAL, \
-        createdAt TEXT, updatedAt TEXT);";
+        tier TEXT DEFAULT 'hot', supersededById TEXT, consolidatedFrom TEXT DEFAULT '[]', consolidatedAt TEXT, createdAt TEXT, updatedAt TEXT);";
 
     /// A `MEMORY_HOUSEKEEPING` handler wrapping the REAL ported
     /// `services::housekeeping::run_housekeeping`. Decodes `characterId` from the

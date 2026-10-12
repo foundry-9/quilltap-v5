@@ -355,6 +355,8 @@ pub async fn run_recall_replay<C: CompletionProvider, E: EmbeddingProvider>(
         // search calls below.)
         current_chat_id: Some(input.chat_id.clone()),
         now_ms: crate::episodic::event_time_ms(Some(&clock_iso)),
+        // P4.D265 (mechanical): honoured from P4.D267.
+        present_participant_names: Vec::new(),
     };
 
     // OLD path — episodic signals inert (byte-identical to pre-overhaul recall).

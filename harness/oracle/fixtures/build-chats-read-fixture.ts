@@ -30,6 +30,9 @@ import { tmpdir } from 'node:os';
 interface Spec {
   testPepperBase64: string;
   chats: Array<Record<string, unknown> & { id: string; createdAt: string; updatedAt: string }>;
+  /** P4.D265: `chats.update(id, data)` calls run AFTER the creates (the
+   *  OTHER-pass watermark is written only by an update in v4). */
+  updates?: Array<{ id: string; data: Record<string, unknown> }>;
 }
 
 async function main(): Promise<void> {
@@ -65,6 +68,9 @@ async function main(): Promise<void> {
   for (const c of spec.chats) {
     const { id, createdAt, updatedAt, ...data } = c;
     await repo.create(data as never, { id, createdAt, updatedAt });
+  }
+  for (const u of spec.updates ?? []) {
+    await repo.update(u.id, u.data as never);
   }
 
   await closeDatabase();

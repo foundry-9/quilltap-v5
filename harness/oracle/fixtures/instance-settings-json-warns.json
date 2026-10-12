@@ -1,5 +1,5 @@
 {
-  "$comment": "P4.113 Tier 2 — v4's readJsonSetting (lib/instance-settings/index.ts:130-145) through its five REAL getters. Each case stores `raw` under `key` in instance_settings (null = the row absent) and calls the getter: the returned value, and every WARN it logged (message + whether `error` was present). A malformed value per key warns `[InstanceSettings] ${key} failed to parse — using defaults`; a valid value (and an absent row) is SILENT.",
+  "$comment": "P4.113 Tier 2 — v4's readJsonSetting (lib/instance-settings/index.ts:130-145) through its REAL getters (five; P4.D265 adds the memoryConsolidation and memoryExtractionMode getters, v4 `d58548051`). Each case stores `raw` under `key` in instance_settings (null = the row absent) and calls the getter: the returned value, and every WARN it logged (message + whether `error` was present). A malformed value per key warns `[InstanceSettings] ${key} failed to parse — using defaults`; a valid value (and an absent row) is SILENT.",
   "cases": [
     { "name": "memoryRecall-absent", "key": "memoryRecall", "raw": null },
     { "name": "memoryRecall-valid", "key": "memoryRecall", "raw": "{\"scopePolicy\":\"exclude\",\"expandRelated\":true}" },
@@ -36,6 +36,18 @@
     { "name": "memoryExtractionLimits-unsafe-int", "key": "memoryExtractionLimits", "raw": "{\"maxPerHour\":9007199254740992}" },
     { "name": "memoryExtractionLimits-fraction-over-one", "key": "memoryExtractionLimits", "raw": "{\"softStartFraction\":1.5}" },
     { "name": "memoryExtractionLimits-bad-bool", "key": "memoryExtractionLimits", "raw": "{\"enabled\":1}" },
-    { "name": "memoryExtractionLimits-non-object", "key": "memoryExtractionLimits", "raw": "true" }
+    { "name": "memoryExtractionLimits-non-object", "key": "memoryExtractionLimits", "raw": "true" },
+    { "name": "memoryConsolidation-absent", "key": "memoryConsolidation", "raw": null },
+    { "name": "memoryConsolidation-valid", "key": "memoryConsolidation", "raw": "{\"enabled\":true,\"watermark\":300,\"coldRetentionDays\":30}" },
+    { "name": "memoryConsolidation-empty-object", "key": "memoryConsolidation", "raw": "{}" },
+    { "name": "memoryConsolidation-bad-json", "key": "memoryConsolidation", "raw": "{not json" },
+    { "name": "memoryConsolidation-non-object", "key": "memoryConsolidation", "raw": "[]" },
+    { "name": "memoryConsolidation-bad-field", "key": "memoryConsolidation", "raw": "{\"watermark\":0}" },
+    { "name": "memoryConsolidation-fraction", "key": "memoryConsolidation", "raw": "{\"minClusterSize\":1.5}" },
+    { "name": "memoryExtractionMode-absent", "key": "memoryExtractionMode", "raw": null },
+    { "name": "memoryExtractionMode-valid", "key": "memoryExtractionMode", "raw": "{\"otherPass\":\"fold\",\"perTurnOtherFloor\":0.5}" },
+    { "name": "memoryExtractionMode-bad-json", "key": "memoryExtractionMode", "raw": "{," },
+    { "name": "memoryExtractionMode-non-object", "key": "memoryExtractionMode", "raw": "\"hybrid\"" },
+    { "name": "memoryExtractionMode-bad-field", "key": "memoryExtractionMode", "raw": "{\"otherPass\":\"bogus\"}" }
   ]
 }

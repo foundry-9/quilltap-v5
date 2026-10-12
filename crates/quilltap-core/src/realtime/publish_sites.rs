@@ -806,7 +806,7 @@ mod memory_gate_tests {
             occurredAt TEXT, narrativeTime TEXT, entities TEXT DEFAULT '[]',
             kind TEXT DEFAULT 'semantic', sourceMessageId TEXT, lastAccessedAt TEXT,
             reinforcementCount REAL, lastReinforcedAt TEXT, relatedMemoryIds TEXT,
-            reinforcedImportance REAL, createdAt TEXT, updatedAt TEXT);
+            reinforcedImportance REAL, tier TEXT DEFAULT 'hot', supersededById TEXT, consolidatedFrom TEXT DEFAULT '[]', consolidatedAt TEXT, createdAt TEXT, updatedAt TEXT);
         CREATE TABLE vector_indices (
             id TEXT PRIMARY KEY, characterId TEXT, version REAL, dimensions REAL,
             createdAt TEXT, updatedAt TEXT);
@@ -859,6 +859,10 @@ mod memory_gate_tests {
                         last_reinforced_at: None,
                         related_memory_ids: vec![],
                         reinforced_importance: 0.5,
+                        tier: "hot".to_string(),
+                        superseded_by_id: None,
+                        consolidated_from: Vec::new(),
+                        consolidated_at: None,
                     },
                     &CreateOptions {
                         id: (*id).to_string(),
@@ -919,11 +923,10 @@ mod memory_gate_tests {
 
         let n = db
             .write(|w| {
-                w.main().memories().delete_many_with_unlink(&[
-                    "m-1".into(),
-                    "m-2".into(),
-                    "m-3".into(),
-                ])
+                w.main().memories().delete_many_with_unlink(
+                    &["m-1".into(), "m-2".into(), "m-3".into()],
+                    crate::db::memories::CountSource::Repository,
+                )
             })
             .await
             .unwrap();
@@ -940,7 +943,11 @@ mod memory_gate_tests {
         cap.arm_writer_thread(&db).await;
 
         let empty = db
-            .write(|w| w.main().memories().delete_many_with_unlink(&[]))
+            .write(|w| {
+                w.main()
+                    .memories()
+                    .delete_many_with_unlink(&[], crate::db::memories::CountSource::Repository)
+            })
             .await
             .unwrap();
         assert_eq!(empty, 0);
@@ -948,9 +955,10 @@ mod memory_gate_tests {
 
         let missing = db
             .write(|w| {
-                w.main()
-                    .memories()
-                    .delete_many_with_unlink(&["m-nope".into()])
+                w.main().memories().delete_many_with_unlink(
+                    &["m-nope".into()],
+                    crate::db::memories::CountSource::Repository,
+                )
             })
             .await
             .unwrap();

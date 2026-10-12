@@ -408,6 +408,13 @@ pub struct ChatCreate {
     /// `'realtime'` | `'narrative'`; `None` (NULL) reads as realtime.
     #[serde(default)]
     pub timeline_mode: Option<String>,
+    /// P4.D265 (v4 `d58548051`): the fold-grain OTHER pass's watermark (a
+    /// message id). A create may carry one (the carriers' restore / import);
+    /// every LATER write goes through
+    /// [`ChatsRepository::set_other_extraction_watermark`] — `ChatUpdate` has no
+    /// field for it.
+    #[serde(default)]
+    pub other_extraction_watermark_message_id: Option<String>,
     #[serde(default)]
     pub budget_max_turns: Option<f64>,
     #[serde(default)]
@@ -876,7 +883,7 @@ impl<'c> ChatsRepository<'c> {
                runPausedAccumMs, runTurnsConsumed, runTokensConsumed, runMilestonesAnnounced, \
                runDestructiveToolsAllowed, budgetExcludeCacheHits, runVisibility, coreWhisperEnabled, \
                coreWhisperInterval, showThinking, createdAt, updatedAt, answerConfirmationOverride, \
-               turnSkippingEnabled) \
+               turnSkippingEnabled, otherExtractionWatermarkMessageId) \
              VALUES (\
                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, \
                ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?98, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, \
@@ -885,7 +892,7 @@ impl<'c> ChatsRepository<'c> {
                ?61, ?62, ?63, ?64, \
                ?65, ?66, ?67, ?68, ?69, ?70, ?71, ?72, ?73, ?74, ?75, ?76, ?77, ?78, ?79, ?80, \
                ?81, ?82, ?83, ?84, ?85, ?86, ?87, ?88, ?89, ?90, ?91, ?92, ?93, ?94, ?95, ?96, \
-               ?97)",
+               ?97, ?102)",
             params![
                 opts.id,
                 data.user_id,
@@ -988,6 +995,8 @@ impl<'c> ChatsRepository<'c> {
                 data.concierge_mode,
                 data.concierge_mode_set_by,
                 data.concierge_mode_reason,
+                // ?102 — P4.D265, appended (never renumber the list above).
+                data.other_extraction_watermark_message_id,
             ],
         )?;
         Ok(())
@@ -1693,6 +1702,52 @@ impl<'c> ChatsRepository<'c> {
             "Concierge state write"
         );
         written
+    }
+
+    // ========================================================================
+    // THE OTHER-PASS WATERMARK (v4 `d58548051`, P4.D265)
+    // ========================================================================
+    //
+    // `otherExtractionWatermarkMessageId` is the fold-grain OTHER pass's
+    // high-water mark. v4 lists it in `patchOnlyFields()`
+    // (`chats.repository.ts:560-564`, beside the Concierge trio) so a stale
+    // whole-row `update` cannot rewind it. That hook is NO-PORT: v5's column-
+    // scoped `ChatUpdate` sets only the columns it names, so the hazard cannot
+    // arise — the RULE is kept instead: `ChatUpdate` has no field for the
+    // column, and the method below is its ONE writer
+    // (`other_extraction_watermark_writers_census` pins it). Callers: the
+    // fold-OTHER pass (`fold-other-pass.ts:444`, P4.D270) and the
+    // regenerate-chat reset to `null` (`memory-regenerate-chat.ts:144`, no v5
+    // handler yet — §R.4(p)).
+
+    /// v4 `chats.update(chatId, {otherExtractionWatermarkMessageId})` as its
+    /// two callers use it: `UPDATE chats SET "otherExtractionWatermarkMessageId"
+    /// = ?1 WHERE id = ?2` — `updatedAt` UNTOUCHED (v4's `ChatsRepository.update`
+    /// preserves it unless named, `:292-301`). `message_id: None` writes NULL.
+    /// `Ok(true)` when a row matched, `Ok(false)` for a missing chat (v4's base
+    /// `_update` WARN `Entity not found for update` is not ported — P4.149
+    /// R-A). A failed write is the base `_update`'s RETHROW: ERROR `Error
+    /// updating entity {collection, id}` (`db::fallback::log_update_failure`),
+    /// then the `Err` propagates. A chat row v4's `ChatMetadataSchema` would
+    /// refuse is still written here (v4's whole-entity `_update` would throw
+    /// `Data validation failed`) — a recorded candidate divergence, P4.D265
+    /// Tier 3 item 23.
+    pub fn set_other_extraction_watermark(
+        &self,
+        chat_id: &str,
+        message_id: Option<&str>,
+    ) -> Result<bool, DbError> {
+        self.conn
+            .execute(
+                "UPDATE chats SET \"otherExtractionWatermarkMessageId\" = ?1 WHERE id = ?2",
+                params![message_id, chat_id],
+            )
+            .map(|n| n > 0)
+            .map_err(|e| {
+                let e = DbError::from(e);
+                super::fallback::log_update_failure("chats", chat_id, &e);
+                e
+            })
     }
 
     /// v4 `setDangerClassification(chatId, telemetry, verdict?)` — record the

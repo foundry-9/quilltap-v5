@@ -138,6 +138,25 @@ const HOME_MESSAGES: &[&str] = &[
     "Error creating roleplay template",
     "Error creating prompt template",
     "Failed to add message to chat",
+    // === P4.D265 — the memories repository's tier-programme reads and writes
+    // (v4 `d58548051` / `3f7320138` / `70f9b495c`) (append-only) ===
+    "Error finding most important memories",
+    "Error finding high-importance memories",
+    "Error finding medium-importance memories",
+    "Error finding low-importance memories",
+    "Error finding paginated memories for character",
+    "Error finding memories about characters",
+    "Error counting hot memories for character",
+    "Error counting unconsidered hot memories",
+    "Error finding cold memory ids",
+    "Error finding hot digests",
+    "Error finding expired cold memories",
+    "Error updating entities",
+    "Error moving memories between tiers",
+    "Error marking memories considered",
+    "Error bulk-updating memory access times",
+    "Error reinforcing memory",
+    // === end ===
 ];
 
 const HOME: &str = "db/fallback.rs";

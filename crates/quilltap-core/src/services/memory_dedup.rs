@@ -396,7 +396,10 @@ async fn deduplicate_character_memories(
                 repo.update_for_character(&cid, memory_id, &patch)?;
             }
             if !removes.is_empty() {
-                repo.delete_many_with_unlink(&removes)?;
+                repo.delete_many_with_unlink(
+                    &removes,
+                    crate::db::memories::CountSource::Repository,
+                )?;
             }
             Ok(())
         })

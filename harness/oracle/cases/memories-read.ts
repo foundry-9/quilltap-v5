@@ -16,6 +16,15 @@
  * of any returned Memory is a `Float32Array` → `JSON.stringify` emits the
  * `{"0":…}` object the Rust port reproduces from the BLOB.
  *
+ * P4.D265 (v4 `d58548051` / `3f7320138`): the tier corpus (a third character
+ * with cold rows, digests, the F4 tie rows and two planted NULL rows), the five
+ * new reads (`findHotDigests`, `countHotByCharacterId`, `countUnconsideredHot`,
+ * `findColdIdsByCharacterId`, `findExpiredColdIds`), the paginated `tier`, and
+ * — per query — the repository's raw-path lines (`Fetched most important
+ * memories` DEBUG, `Memory failed validation in <context>` WARN), captured by
+ * splicing a transport into the singleton logger, as `lines: [{level,
+ * message, fields}]`.
+ *
  * Run (Node 24, from the v4 checkout), AFTER building the fixture:
  *   N=~/.nvm/versions/node/v24.13.1/bin
  *   cd ~/source/quilltap-server
@@ -56,6 +65,10 @@ interface Query {
   medium?: number;
   low?: number;
   chatIds?: string[];
+  // P4.D265
+  tier?: 'hot' | 'cold';
+  subject?: string;
+  olderThan?: string;
 }
 interface Spec {
   testPepperBase64: string;
@@ -82,7 +95,26 @@ async function main(): Promise<void> {
   process.env.SQLITE_PATH = work;
   process.env.QUILLTAP_DATA_DIR = scratch;
   delete process.env.SQLITE_WAL_MODE;
-  process.env.LOG_LEVEL = 'error';
+  process.env.LOG_LEVEL = 'debug';
+
+  const CAPTURED_PREFIXES = ['Fetched most important memories', 'Memory failed validation in '];
+  const { logger } = await import('@/lib/logger');
+  let captured: Array<{ level: string; message: string; fields: Record<string, unknown> }> = [];
+  const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
+  internal.transports.splice(0, internal.transports.length, {
+    write: (d: unknown) => {
+      const data = d as {
+        level: string;
+        message: string;
+        context?: Record<string, unknown>;
+        error?: { message: string };
+      };
+      if (!CAPTURED_PREFIXES.some((p) => data.message.startsWith(p))) return;
+      const { service: _s, environment: _e, ...fields } = data.context ?? {};
+      if (data.error) fields.error = data.error.message;
+      captured.push({ level: data.level, message: data.message, fields });
+    },
+  });
 
   const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
   const { MemoriesRepository } = await import(
@@ -99,8 +131,9 @@ async function main(): Promise<void> {
   const retiredKinds = new Set(['findByKeywords', 'findByAboutCharacterId']);
   const queries = spec.queries.filter((q) => !retiredKinds.has(q.kind));
 
-  const results: Array<{ kind: string; result: unknown }> = [];
+  const results: Array<{ kind: string; result: unknown; lines: unknown[] }> = [];
   for (const q of queries) {
+    captured = [];
     let result: unknown;
     switch (q.kind) {
       case 'findById':
@@ -136,8 +169,9 @@ async function main(): Promise<void> {
           sortBy: q.sortBy,
           sortOrder: q.sortOrder,
           search: q.search,
-          source: q.source as 'AUTO' | 'MANUAL' | undefined,
+          source: q.source as 'AUTO' | 'MANUAL' | 'CONSOLIDATED' | undefined,
           minImportance: q.minImportance,
+          tier: q.tier,
         });
         break;
       case 'searchByContent':
@@ -237,10 +271,26 @@ async function main(): Promise<void> {
           q.query as string
         );
         break;
+      // === P4.D265 (v4 `d58548051`) ===
+      case 'findHotDigests':
+        result = await repo.findHotDigests(q.characterId as string, q.subject as string, q.limit as number);
+        break;
+      case 'countHotByCharacterId':
+        result = await repo.countHotByCharacterId(q.characterId as string);
+        break;
+      case 'countUnconsideredHot':
+        result = await repo.countUnconsideredHot(q.characterId as string);
+        break;
+      case 'findColdIdsByCharacterId':
+        result = await repo.findColdIdsByCharacterId(q.characterId as string);
+        break;
+      case 'findExpiredColdIds':
+        result = await repo.findExpiredColdIds(q.characterId as string, q.olderThan as string);
+        break;
       default:
         throw new Error(`unknown query kind: ${q.kind}`);
     }
-    results.push({ kind: q.kind, result });
+    results.push({ kind: q.kind, result, lines: captured });
   }
 
   await closeDatabase();

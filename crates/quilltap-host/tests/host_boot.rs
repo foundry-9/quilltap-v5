@@ -134,6 +134,7 @@ fn chats_ddl() -> String {
         "commonplaceSceneCache TEXT",
         "commonplaceRecallHistory TEXT",
         "timelineMode TEXT",
+        "otherExtractionWatermarkMessageId TEXT",
         "budgetMaxTurns REAL",
         "budgetMaxTokens REAL",
         "budgetMaxWallClockMs REAL",

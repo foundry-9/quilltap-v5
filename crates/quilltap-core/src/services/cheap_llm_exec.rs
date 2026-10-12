@@ -1734,6 +1734,8 @@ pub const TASK_TYPE_ACTIVITY: &[(&str, ActivityKind)] = &[
     ("batch-memory-extraction", ActivityKind::Memory),
     ("fold-episode-extraction", ActivityKind::Memory),
     ("memory-keyword-extraction", ActivityKind::Memory),
+    // P4.D265 (v4 `d58548051`, `core-execution.ts:466`).
+    ("memory-consolidation", ActivityKind::Memory),
     ("memory-recap-summarization", ActivityKind::Memory),
     // Summarization and post-turn processing
     ("fold-chat-summary", ActivityKind::Summary),

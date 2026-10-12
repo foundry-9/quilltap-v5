@@ -1531,6 +1531,355 @@ pub fn messages_deleted_or_zero(
 }
 // === end P4.156 (the chat-informs wraps) ===
 
+// === P4.D265 — the memories repository's tier-programme reads and writes (v4
+// `d58548051` / `3f7320138` / `70f9b495c`, `memories.repository.ts:361-966`)
+// (append-only) ===
+//
+// Every one is a 4-argument FALLBACK `safeQuery` (`{collection: memories,
+// …context, error, strictFailures?}`, `safe-query.ts:59-70`): outside the
+// strict scope the line and the fallback value; inside
+// [`with_strict_repository_failures`] the line gains `strictFailures=true` and
+// the `Err` propagates — EXCEPT `Error reinforcing memory` (a 3-argument
+// RETHROW: line, then propagate) and the base `updateMany`'s `Error updating
+// entities` (a RETHROW the tier move / consider / access-bulk fallbacks then
+// catch — so a failed write logs TWO lines, the inner first). Each context in
+// v4's key order after the injected `collection`. The raw-SQL reads' backend
+// `Raw query failed` line is v4-only (no `rawQuery` layer in v5 — P4.113's
+// recorded class), not ported.
+
+/// The shared strict-aware fallback shape: log (with `strictFailures` when the
+/// scope is active), then `Err` inside the scope, `Ok(fallback)` outside it.
+fn memories_fallback<T>(
+    fallback: T,
+    read: impl FnOnce() -> Result<T, DbError>,
+    log: impl FnOnce(&DbError, Option<bool>),
+) -> Result<T, DbError> {
+    read().or_else(|error| {
+        let strict = strict_repository_failures_active();
+        log(&error, strict.then_some(true));
+        if strict {
+            Err(error)
+        } else {
+            Ok(fallback)
+        }
+    })
+}
+
+/// v4 `findMostImportant` (`:361-389`): ERROR `Error finding most important
+/// memories {collection, characterId, limit, error}`, fallback `[]`.
+pub fn most_important_memories_or_empty<T>(
+    character_id: &str,
+    limit: i64,
+    read: impl FnOnce() -> Result<Vec<T>, DbError>,
+) -> Result<Vec<T>, DbError> {
+    memories_fallback(Vec::new(), read, |error, strict| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "memories",
+            characterId = %character_id,
+            limit = limit,
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error finding most important memories"
+        );
+    })
+}
+
+/// The three legs of v4 `findRecentByImportanceTier` (`:430-482`) — `which`
+/// is `high` / `medium` / `low`. Each leg's body is a `findByFilter` (itself a
+/// fallback), so OUTSIDE the strict scope its inner `Error finding entities by
+/// filter` answers `[]` first and this outer line is unreachable; INSIDE it
+/// the inner line rethrows and this one follows, both `strictFailures=true`.
+/// Call with the leg's [`find_by_filter_strict_aware`]-wrapped read.
+pub fn importance_tier_leg_or_empty<T>(
+    which: ImportanceTierLeg,
+    character_id: &str,
+    limit: i64,
+    read: impl FnOnce() -> Result<Vec<T>, DbError>,
+) -> Result<Vec<T>, DbError> {
+    memories_fallback(Vec::new(), read, |error, strict| match which {
+        ImportanceTierLeg::High => tracing::error!(
+            target: "quilltap::db",
+            collection = "memories",
+            characterId = %character_id,
+            limit = limit,
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error finding high-importance memories"
+        ),
+        ImportanceTierLeg::Medium => tracing::error!(
+            target: "quilltap::db",
+            collection = "memories",
+            characterId = %character_id,
+            limit = limit,
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error finding medium-importance memories"
+        ),
+        ImportanceTierLeg::Low => tracing::error!(
+            target: "quilltap::db",
+            collection = "memories",
+            characterId = %character_id,
+            limit = limit,
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error finding low-importance memories"
+        ),
+    })
+}
+
+/// Which leg of `findRecentByImportanceTier` a line belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImportanceTierLeg {
+    High,
+    Medium,
+    Low,
+}
+
+/// v4 `findByCharacterIdPaginated` (`:185-240`): its body is a `findByFilter`,
+/// so outside the strict scope the INNER `Error finding entities by filter`
+/// answers `[]` (→ `{memories: [], totalCount: 0}`) and this outer line
+/// (`Error finding paginated memories for character {collection, characterId,
+/// limit, offset, error}`) fires only inside the scope.
+pub fn paginated_memories_or_empty<T>(
+    character_id: &str,
+    limit: i64,
+    offset: i64,
+    read: impl FnOnce() -> Result<(Vec<T>, i64), DbError>,
+) -> Result<(Vec<T>, i64), DbError> {
+    memories_fallback((Vec::new(), 0), read, |error, strict| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "memories",
+            characterId = %character_id,
+            limit = limit,
+            offset = offset,
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error finding paginated memories for character"
+        );
+    })
+}
+
+/// v4 `findByCharacterAboutCharacters` (`:1071-1110`): ERROR `Error finding
+/// memories about characters {collection, characterId, aboutCharacterCount,
+/// limitPerCharacter, error}`, fallback `[]`.
+pub fn memories_about_characters_or_empty<T>(
+    character_id: &str,
+    about_character_count: usize,
+    limit_per_character: i64,
+    read: impl FnOnce() -> Result<Vec<T>, DbError>,
+) -> Result<Vec<T>, DbError> {
+    memories_fallback(Vec::new(), read, |error, strict| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "memories",
+            characterId = %character_id,
+            aboutCharacterCount = about_character_count,
+            limitPerCharacter = limit_per_character,
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error finding memories about characters"
+        );
+    })
+}
+
+/// v4 `countHotByCharacterId` (`:758-771`): ERROR `Error counting hot memories
+/// for character {collection, characterId, error}`, fallback `0`.
+pub fn hot_memory_count_or_zero(
+    character_id: &str,
+    read: impl FnOnce() -> Result<i64, DbError>,
+) -> Result<i64, DbError> {
+    memories_fallback(0, read, |error, strict| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "memories",
+            characterId = %character_id,
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error counting hot memories for character"
+        );
+    })
+}
+
+/// v4 `countUnconsideredHot` (`:777-794`): ERROR `Error counting unconsidered
+/// hot memories {collection, characterId, error}`, fallback `0`.
+pub fn unconsidered_hot_count_or_zero(
+    character_id: &str,
+    read: impl FnOnce() -> Result<i64, DbError>,
+) -> Result<i64, DbError> {
+    memories_fallback(0, read, |error, strict| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "memories",
+            characterId = %character_id,
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error counting unconsidered hot memories"
+        );
+    })
+}
+
+/// v4 `findColdIdsByCharacterId` (`:801-814`): ERROR `Error finding cold
+/// memory ids {collection, characterId, error}`, fallback `[]`.
+pub fn cold_memory_ids_or_empty(
+    character_id: &str,
+    read: impl FnOnce() -> Result<Vec<String>, DbError>,
+) -> Result<Vec<String>, DbError> {
+    memories_fallback(Vec::new(), read, |error, strict| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "memories",
+            characterId = %character_id,
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error finding cold memory ids"
+        );
+    })
+}
+
+/// v4 `findHotDigests` (`:824-860`): ERROR `Error finding hot digests
+/// {collection, characterId, subject, limit, error}` (`subject` renders `self`
+/// / `any` / the id), fallback `[]`.
+pub fn hot_digests_or_empty<T>(
+    character_id: &str,
+    subject: &str,
+    limit: i64,
+    read: impl FnOnce() -> Result<Vec<T>, DbError>,
+) -> Result<Vec<T>, DbError> {
+    memories_fallback(Vec::new(), read, |error, strict| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "memories",
+            characterId = %character_id,
+            subject = %subject,
+            limit = limit,
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error finding hot digests"
+        );
+    })
+}
+
+/// v4 `findExpiredColdIds` (`:947-965`): ERROR `Error finding expired cold
+/// memories {collection, characterId, olderThan, error}`, fallback `[]`.
+pub fn expired_cold_ids_or_empty(
+    character_id: &str,
+    older_than: &str,
+    read: impl FnOnce() -> Result<Vec<String>, DbError>,
+) -> Result<Vec<String>, DbError> {
+    memories_fallback(Vec::new(), read, |error, strict| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "memories",
+            characterId = %character_id,
+            olderThan = %older_than,
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error finding expired cold memories"
+        );
+    })
+}
+
+/// v4's base `updateMany` RETHROW line (`base.repository.ts:526-540`): ERROR
+/// `Error updating entities {collection, error, strictFailures?}`. Logs only —
+/// the caller keeps propagating `error` into its own fallback wrap.
+pub fn log_update_many_failure(collection: &str, error: &DbError) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = collection,
+        error = %error_text(error),
+        strictFailures = strict_repository_failures_active().then_some(true),
+        "Error updating entities"
+    );
+}
+
+/// v4 `updateTierBulk` (`:874-905`): the inner `updateMany`'s rethrow line
+/// ([`log_update_many_failure`]) then ERROR `Error moving memories between
+/// tiers {collection, characterId, tier, count, error}`, fallback `0`.
+pub fn tier_move_or_zero(
+    character_id: &str,
+    tier: &str,
+    count: usize,
+    write: impl FnOnce() -> Result<i64, DbError>,
+) -> Result<i64, DbError> {
+    memories_fallback(0, write, |error, strict| {
+        log_update_many_failure("memories", error);
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "memories",
+            characterId = %character_id,
+            tier = %tier,
+            count = count,
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error moving memories between tiers"
+        );
+    })
+}
+
+/// v4 `markConsidered` (`:911-929`): the inner `updateMany`'s rethrow line
+/// then ERROR `Error marking memories considered {collection, characterId,
+/// count, error}`, fallback `0`.
+pub fn memories_considered_or_zero(
+    character_id: &str,
+    count: usize,
+    write: impl FnOnce() -> Result<i64, DbError>,
+) -> Result<i64, DbError> {
+    memories_fallback(0, write, |error, strict| {
+        log_update_many_failure("memories", error);
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "memories",
+            characterId = %character_id,
+            count = count,
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error marking memories considered"
+        );
+    })
+}
+
+/// v4 `updateAccessTimeBulk` (`:715-731`): the inner `updateMany`'s rethrow
+/// line then ERROR `Error bulk-updating memory access times {collection,
+/// characterId, count, error}`, fallback `0`. The ONE reachable failure line
+/// of `markMemoriesAccessed` (its own `.catch` WARN never fires — this
+/// fallback never rejects; `services::memory_access`).
+pub fn memory_access_times_or_zero(
+    character_id: &str,
+    count: usize,
+    write: impl FnOnce() -> Result<i64, DbError>,
+) -> Result<i64, DbError> {
+    memories_fallback(0, write, |error, strict| {
+        log_update_many_failure("memories", error);
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "memories",
+            characterId = %character_id,
+            count = count,
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error bulk-updating memory access times"
+        );
+    })
+}
+
+/// v4 `incrementReinforcement`'s 3-argument RETHROW (`:571-606`): ERROR `Error
+/// reinforcing memory {collection, characterId, memoryId, error,
+/// strictFailures?}`. Logs only — the caller propagates.
+pub fn log_memory_reinforce_failure(character_id: &str, memory_id: &str, error: &DbError) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "memories",
+        characterId = %character_id,
+        memoryId = %memory_id,
+        error = %error_text(error),
+        strictFailures = strict_repository_failures_active().then_some(true),
+        "Error reinforcing memory"
+    );
+}
+// === end ===
+
 #[cfg(test)]
 mod tests {
     use super::*;

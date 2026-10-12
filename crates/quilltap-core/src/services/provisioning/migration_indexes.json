@@ -1,8 +1,8 @@
 {
   "source": {
     "dumper": "harness/oracle/provision/dump-migration-indexes.ts",
-    "v4Commit": "f5e953a3f557762b18a314004cefc843786df78b",
-    "v4Version": "4.10.0-dev.117",
+    "v4Commit": "01a83539dd1c2db31b056d6427b31a04f91563a7",
+    "v4Version": "4.10.0-dev.143",
     "note": "Generated - never hand-edit (D23). Re-dump from a pinned v4 worktree."
   },
   "main": [
@@ -40,6 +40,7 @@
     "CREATE INDEX \"idx_help_docs_path\" ON \"help_docs\"(\"path\")",
     "CREATE INDEX \"idx_help_docs_url\" ON \"help_docs\"(\"url\")",
     "CREATE INDEX \"idx_memories_characterId\" ON \"memories\" (\"characterId\")",
+    "CREATE INDEX \"idx_memories_character_tier\" ON \"memories\" (\"characterId\", \"tier\")",
     "CREATE INDEX \"idx_memories_chatId\" ON \"memories\" (\"chatId\")",
     "CREATE INDEX \"idx_memories_occurredAt\" ON \"memories\" (\"occurredAt\" DESC)",
     "CREATE INDEX \"idx_memories_projectId\" ON \"memories\" (\"projectId\")",

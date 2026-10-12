@@ -1245,7 +1245,8 @@ async fn delete_own_memories(db: &Db, character_id: &str) -> bool {
                 .collect();
             // Through the gate, never repos.memories.delete*: it scrubs the
             // deleted ids out of surviving neighbours' relatedMemoryIds first.
-            MemoriesRepository::new(conn).delete_many_with_unlink(&ids)?;
+            MemoriesRepository::new(conn)
+                .delete_many_with_unlink(&ids, crate::db::memories::CountSource::Repository)?;
             let statuses = EmbeddingStatusRepository::new(conn);
             for id in &ids {
                 statuses.delete_by_entity("MEMORY", id)?;

@@ -417,6 +417,10 @@
     {"kind": "update", "id": "aaaaaaaa-0000-4000-8000-0000000000c2", "data": {"title": "A title write cannot rewind the Concierge state"}},
     {"kind": "setDangerClassification", "id": "aaaaaaaa-0000-4000-8000-0000000000c2", "telemetry": {"isDangerousChat": true, "dangerScore": 0.93, "dangerCategories": ["sexual", "violence"], "dangerClassifiedAt": "2026-09-25T11:00:00.000Z", "dangerClassifiedAtMessageCount": 14}, "verdict": {"score": 0.93, "threshold": 0.7, "categories": [{"category": "sexual", "score": 0.93}], "source": "llm", "providerName": "OPENAI"}},
     {"kind": "setDangerClassification", "id": "aaaaaaaa-0000-4000-8000-0000000000c1", "telemetry": {"isDangerousChat": false, "dangerScore": 0.1, "dangerCategories": [], "dangerClassifiedAt": "2026-09-25T11:05:00.000Z", "dangerClassifiedAtMessageCount": 3}, "verdict": null},
-    {"kind": "setDangerClassification", "id": "ffffffff-0000-4000-8000-00000000fff2", "telemetry": {"isDangerousChat": true, "dangerScore": 0.9, "dangerCategories": [], "dangerClassifiedAt": "2026-09-25T11:10:00.000Z", "dangerClassifiedAtMessageCount": 1}}
+    {"kind": "setDangerClassification", "id": "ffffffff-0000-4000-8000-00000000fff2", "telemetry": {"isDangerousChat": true, "dangerScore": 0.9, "dangerCategories": [], "dangerClassifiedAt": "2026-09-25T11:10:00.000Z", "dangerClassifiedAtMessageCount": 1}},
+    {"kind": "setOtherExtractionWatermark", "id": "aaaaaaaa-0000-4000-8000-0000000000c4", "messageId": "d2650000-0000-4000-8000-0000000000e1", "comment": "P4.D265 (v4 d58548051): the watermark's ONE writer vs v4's chats.update(id, {otherExtractionWatermarkMessageId}) — updatedAt preserved"},
+    {"kind": "setOtherExtractionWatermark", "id": "aaaaaaaa-0000-4000-8000-0000000000c1", "messageId": "d2650000-0000-4000-8000-0000000000e2"},
+    {"kind": "setOtherExtractionWatermark", "id": "aaaaaaaa-0000-4000-8000-0000000000c1", "messageId": null, "comment": "reset to null (the regenerate-chat reset)"},
+    {"kind": "setOtherExtractionWatermark", "id": "ffffffff-0000-4000-8000-00000000fff3", "messageId": "d2650000-0000-4000-8000-0000000000e3", "comment": "a missing chat: v4 null, v5 false"}
   ]
 }

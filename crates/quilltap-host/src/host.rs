@@ -2044,6 +2044,29 @@ fn seed_built_ins(db: &Db) -> Result<EnsureFailures, String> {
             }
             quilltap_core::db::chat_settings_wardrobe_image_settings_repair::ensure_chat_settings_wardrobe_image_settings(main)?;
             // === end P4.D255 ===
+            // === P4.D265 (v4 d58548051, migration add-memory-tiers-v1) ===
+            // The four `memories` tier columns, `idx_memories_character_tier`,
+            // the NULL-tier heal and `chats.otherExtractionWatermarkMessageId`
+            // — v4 registers the migration LAST, after the wardrobe ones above,
+            // and it must run BEFORE the index-family backfill below, which
+            // would otherwise try `("characterId", "tier")` on a table without
+            // `tier`. FATAL on failure (R-J): v4's migration is not
+            // `resumable`, so its failure stops v4's startup. UNSTAMPED (R-A).
+            // v4's migration lines are NO-PORT; v5 logs its own ONE line when
+            // the ensure did anything, and a no-op boot is silent.
+            let tiers = quilltap_core::db::memory_tiers_repair::ensure_memory_tiers(main)?;
+            if !tiers.is_noop() {
+                tracing::info!(
+                    target: "quilltap::boot",
+                    migrationId = quilltap_core::db::memory_tiers_repair::MIGRATION_ID,
+                    columnsAdded = tiers.columns_added.len(),
+                    indexCreated = tiers.index_created,
+                    healedRows = tiers.healed_rows,
+                    chatColumnAdded = tiers.chat_column_added,
+                    "Fitted the memory tiers"
+                );
+            }
+            // === end P4.D265 ===
             // === P4.160 (P4.153's OPEN item) ===
             // v4's MIGRATION-created index family on an instance provisioned
             // before P4.153 (the 56 absent names + the PLAIN `mp_path`),

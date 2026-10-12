@@ -13,7 +13,23 @@
     "M3": "30000000-0000-4000-8000-000000000003",
     "M4": "40000000-0000-4000-8000-000000000004",
     "M5": "55000000-0000-4000-8000-000000000005",
-    "M6": "66000000-0000-4000-8000-000000000006"
+    "M6": "66000000-0000-4000-8000-000000000006",
+    "charC": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    "charD": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+    "C01": "c0000000-0000-4000-8000-000000000001",
+    "C02": "c0000000-0000-4000-8000-000000000002",
+    "C03": "c0000000-0000-4000-8000-000000000003",
+    "C04": "c0000000-0000-4000-8000-000000000004",
+    "C05": "c0000000-0000-4000-8000-000000000005",
+    "C06": "c0000000-0000-4000-8000-000000000006",
+    "C07": "c0000000-0000-4000-8000-000000000007",
+    "C08": "c0000000-0000-4000-8000-000000000008",
+    "C09": "c0000000-0000-4000-8000-000000000009",
+    "C10": "c0000000-0000-4000-8000-000000000010",
+    "C11": "c0000000-0000-4000-8000-000000000011",
+    "C12": "c0000000-0000-4000-8000-000000000012",
+    "C13": "c0000000-0000-4000-8000-000000000013",
+    "C14": "c0000000-0000-4000-8000-000000000014"
   },
   "memories": [
     {
@@ -153,7 +169,25 @@
       "reinforcedImportance": 0.85,
       "createdAt": "2026-01-01T00:00:06.000Z",
       "updatedAt": "2026-01-01T00:00:06.000Z"
-    }
+    },
+    {"id": "c0000000-0000-4000-8000-000000000001", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "aboutCharacterId": "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "chatId": null, "projectId": null, "content": "tier row 01", "summary": "tier 01", "keywords": [], "tags": [], "importance": 0.9, "embedding": null, "source": "AUTO", "witnessedContext": null, "sourceMessageId": null, "lastAccessedAt": null, "reinforcementCount": 1, "lastReinforcedAt": null, "relatedMemoryIds": [], "reinforcedImportance": 0.9, "createdAt": "2026-01-01T00:00:00.000Z", "updatedAt": "2026-01-01T00:00:00.000Z"},
+    {"id": "c0000000-0000-4000-8000-000000000002", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "aboutCharacterId": "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "chatId": null, "projectId": null, "content": "tier row 02", "summary": "tier 02", "keywords": [], "tags": [], "importance": 0.9, "embedding": null, "source": "AUTO", "witnessedContext": null, "sourceMessageId": null, "lastAccessedAt": null, "reinforcementCount": 1, "lastReinforcedAt": "2026-03-01T00:00:00.000Z", "relatedMemoryIds": [], "reinforcedImportance": 0.9, "createdAt": "2026-01-01T00:00:00.000Z", "updatedAt": "2026-01-01T00:00:00.000Z"},
+    {"id": "c0000000-0000-4000-8000-000000000003", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "aboutCharacterId": "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "chatId": null, "projectId": null, "content": "tier row 03", "summary": "tier 03", "keywords": [], "tags": [], "importance": 0.9, "embedding": null, "source": "AUTO", "witnessedContext": null, "sourceMessageId": null, "lastAccessedAt": null, "reinforcementCount": 1, "lastReinforcedAt": null, "relatedMemoryIds": [], "reinforcedImportance": 0.9, "createdAt": "2026-01-01T00:00:00.000Z", "updatedAt": "2026-01-01T00:00:00.000Z"},
+    {"id": "c0000000-0000-4000-8000-000000000004", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "aboutCharacterId": "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "chatId": null, "projectId": null, "content": "tier row 04", "summary": "tier 04", "keywords": [], "tags": [], "importance": 1, "embedding": null, "source": "AUTO", "witnessedContext": null, "sourceMessageId": null, "lastAccessedAt": null, "reinforcementCount": 1, "lastReinforcedAt": null, "relatedMemoryIds": [], "reinforcedImportance": 1, "createdAt": "2025-01-01T00:00:00.000Z", "updatedAt": "2025-01-01T00:00:00.000Z", "tier": "cold", "supersededById": "c0000000-0000-4000-8000-000000000007"},
+    {"id": "c0000000-0000-4000-8000-000000000005", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "aboutCharacterId": null, "chatId": null, "projectId": null, "content": "tier row 05", "summary": "tier 05", "keywords": [], "tags": [], "importance": 0.4, "embedding": null, "source": "AUTO", "witnessedContext": null, "sourceMessageId": null, "lastAccessedAt": null, "reinforcementCount": 1, "lastReinforcedAt": null, "relatedMemoryIds": [], "reinforcedImportance": 0.4, "createdAt": "2025-01-01T00:00:00.000Z", "updatedAt": "2025-01-01T00:00:00.000Z", "tier": "cold"},
+    {"id": "c0000000-0000-4000-8000-000000000006", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "aboutCharacterId": "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "chatId": null, "projectId": null, "content": "tier row 06", "summary": "tier 06", "keywords": [], "tags": [], "importance": 0.4, "embedding": null, "source": "MANUAL", "witnessedContext": null, "sourceMessageId": null, "lastAccessedAt": null, "reinforcementCount": 1, "lastReinforcedAt": null, "relatedMemoryIds": [], "reinforcedImportance": 0.4, "createdAt": "2025-01-01T00:00:00.000Z", "updatedAt": "2025-01-01T00:00:00.000Z", "tier": "cold", "supersededById": "c0000000-0000-4000-8000-000000000007"},
+    {"id": "c0000000-0000-4000-8000-000000000007", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "aboutCharacterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "chatId": null, "projectId": null, "content": "tier row 07", "summary": "tier 07", "keywords": [], "tags": [], "importance": 0.8, "embedding": null, "source": "CONSOLIDATED", "witnessedContext": null, "sourceMessageId": null, "lastAccessedAt": null, "reinforcementCount": 1, "lastReinforcedAt": null, "relatedMemoryIds": [], "reinforcedImportance": 0.8, "createdAt": "2026-02-01T00:00:00.000Z", "updatedAt": "2026-02-01T00:00:00.000Z", "consolidatedFrom": ["c0000000-0000-4000-8000-000000000004", "c0000000-0000-4000-8000-000000000006"]},
+    {"id": "c0000000-0000-4000-8000-000000000008", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "aboutCharacterId": "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "chatId": null, "projectId": null, "content": "tier row 08", "summary": "tier 08", "keywords": [], "tags": [], "importance": 0.7, "embedding": null, "source": "CONSOLIDATED", "witnessedContext": null, "sourceMessageId": null, "lastAccessedAt": null, "reinforcementCount": 1, "lastReinforcedAt": null, "relatedMemoryIds": [], "reinforcedImportance": 0.7, "createdAt": "2026-02-02T00:00:00.000Z", "updatedAt": "2026-02-02T00:00:00.000Z", "consolidatedFrom": ["c0000000-0000-4000-8000-000000000013", "c0000000-0000-4000-8000-000000000014"]},
+    {"id": "c0000000-0000-4000-8000-000000000009", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "aboutCharacterId": "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "chatId": null, "projectId": null, "content": "tier row 09", "summary": "tier 09", "keywords": [], "tags": [], "importance": 0.95, "embedding": null, "source": "CONSOLIDATED", "witnessedContext": null, "sourceMessageId": null, "lastAccessedAt": null, "reinforcementCount": 1, "lastReinforcedAt": null, "relatedMemoryIds": [], "reinforcedImportance": 0.95, "createdAt": "2026-01-01T00:00:00.000Z", "updatedAt": "2026-01-01T00:00:00.000Z", "tier": "cold"},
+    {"id": "c0000000-0000-4000-8000-000000000010", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "aboutCharacterId": "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "chatId": null, "projectId": null, "content": "tier row 10", "summary": "tier 10", "keywords": [], "tags": [], "importance": 0.5, "embedding": null, "source": "AUTO", "witnessedContext": null, "sourceMessageId": null, "lastAccessedAt": null, "reinforcementCount": 1, "lastReinforcedAt": null, "relatedMemoryIds": [], "reinforcedImportance": 0.5, "createdAt": "2026-01-01T00:00:00.000Z", "updatedAt": "2026-01-01T00:00:00.000Z", "consolidatedAt": "2026-04-01T00:00:00.000Z"},
+    {"id": "c0000000-0000-4000-8000-000000000011", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "aboutCharacterId": "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "chatId": null, "projectId": null, "content": "tier row 11", "summary": "tier 11", "keywords": [], "tags": [], "importance": 0.8, "embedding": null, "source": "AUTO", "witnessedContext": null, "sourceMessageId": null, "lastAccessedAt": null, "reinforcementCount": 1, "lastReinforcedAt": null, "relatedMemoryIds": [], "reinforcedImportance": 0.8, "createdAt": "2026-01-01T00:00:00.000Z", "updatedAt": "2026-01-01T00:00:00.000Z"},
+    {"id": "c0000000-0000-4000-8000-000000000012", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "aboutCharacterId": "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "chatId": null, "projectId": null, "content": "tier row 12", "summary": "tier 12", "keywords": [], "tags": [], "importance": 0.75, "embedding": null, "source": "AUTO", "witnessedContext": null, "sourceMessageId": null, "lastAccessedAt": null, "reinforcementCount": 1, "lastReinforcedAt": null, "relatedMemoryIds": [], "reinforcedImportance": 0.75, "createdAt": "2026-01-01T00:00:00.000Z", "updatedAt": "2026-01-01T00:00:00.000Z"},
+    {"id": "c0000000-0000-4000-8000-000000000013", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "aboutCharacterId": "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "chatId": null, "projectId": null, "content": "tier row 13", "summary": "tier 13", "keywords": [], "tags": [], "importance": 0.3, "embedding": null, "source": "CONSOLIDATED", "witnessedContext": null, "sourceMessageId": null, "lastAccessedAt": null, "reinforcementCount": 1, "lastReinforcedAt": null, "relatedMemoryIds": [], "reinforcedImportance": 0.3, "createdAt": "2025-06-01T00:00:00.000Z", "updatedAt": "2025-06-01T00:00:00.000Z", "tier": "cold", "supersededById": "c0000000-0000-4000-8000-000000000008"},
+    {"id": "c0000000-0000-4000-8000-000000000014", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "aboutCharacterId": "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "chatId": null, "projectId": null, "content": "tier row 14", "summary": "tier 14", "keywords": [], "tags": [], "importance": 0.3, "embedding": null, "source": "AUTO", "witnessedContext": null, "sourceMessageId": null, "lastAccessedAt": null, "reinforcementCount": 1, "lastReinforcedAt": null, "relatedMemoryIds": [], "reinforcedImportance": 0.3, "createdAt": "2025-05-31T23:59:59.999Z", "updatedAt": "2025-05-31T23:59:59.999Z", "tier": "cold", "supersededById": "c0000000-0000-4000-8000-000000000008"}
+  ],
+  "plants": [
+    "UPDATE memories SET tier = NULL WHERE id = 'c0000000-0000-4000-8000-000000000011'",
+    "UPDATE memories SET consolidatedFrom = NULL WHERE id = 'c0000000-0000-4000-8000-000000000012'"
   ],
   "queries": [
     { "kind": "findById", "id": "10000000-0000-4000-8000-000000000001" },
@@ -195,6 +229,27 @@
     { "kind": "findDistinctChatIds" },
     { "kind": "findDistinctCharacterIds", "comment": "P4.d27 / v4 7391404e — the new EMBEDDING_REINDEX_ALL fan-out enumeration. Distinct non-null characterIds over BOTH characters in the corpus; deliberately NOT user-scoped (the SQL carries no userId predicate). The user-scoping pin proper lives in embedding_remainder, where the fan-out's actual consumer runs." },
     { "kind": "searchByContentAboutCharacter", "characterId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "aboutCharacterId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "query": "tea" },
-    { "kind": "searchByContent", "characterId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "query": "xyzzy" }
+    { "kind": "searchByContent", "characterId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "query": "xyzzy" },
+    {"kind": "findMostImportant", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "limit": 10, "comment": "P4.D265 (F4 + d58548051): hot only (the cold rows excluded), reinforcedImportance DESC, COALESCE(lastReinforcedAt, createdAt) DESC, id ASC (C02 before C01/C03, C01 before C03); C11 (tier NULL) and C12 (consolidatedFrom NULL) pass the SQL and are DROPPED by the raw-path validation with v4's WARN"},
+    {"kind": "findMostImportant", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "limit": 0, "comment": "limit <= 0 → [] before any query, no line"},
+    {"kind": "findMostImportant", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "limit": 2},
+    {"kind": "findHotDigests", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "subject": "self", "limit": 10},
+    {"kind": "findHotDigests", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "subject": "any", "limit": 10},
+    {"kind": "findHotDigests", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "subject": "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "limit": 10},
+    {"kind": "findHotDigests", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "subject": "any", "limit": 0},
+    {"kind": "countHotByCharacterId", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc"},
+    {"kind": "countUnconsideredHot", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc"},
+    {"kind": "findColdIdsByCharacterId", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc"},
+    {"kind": "findExpiredColdIds", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "olderThan": "2025-06-01T00:00:00.000Z", "comment": "C13's updatedAt EQUALS the window edge (string <) — excluded; C14 one ms earlier included; C05 not superseded and C06 MANUAL excluded"},
+    {"kind": "findExpiredColdIds", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "olderThan": "2026-01-01T00:00:00.000Z"},
+    {"kind": "findRecentByImportanceTier", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "high": 20, "medium": 10, "low": 5, "comment": "exact tier = 'hot' — C11 (NULL tier) EXCLUDED, C12 kept with consolidatedFrom []"},
+    {"kind": "findByCharacterIdPaginated", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "limit": 50, "offset": 0, "tier": "hot"},
+    {"kind": "findByCharacterIdPaginated", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "limit": 50, "offset": 0, "tier": "cold"},
+    {"kind": "findByCharacterIdPaginated", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "limit": 50, "offset": 0},
+    {"kind": "findByCharacterIdPaginated", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "limit": 50, "offset": 0, "source": "CONSOLIDATED"},
+    {"kind": "findByCharacterAboutCharacters", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "aboutCharacterIds": ["dddddddd-dddd-4ddd-8ddd-dddddddddddd"], "limitPerCharacter": 2, "comment": "cold C04 (importance 1) would outrank — the hot predicate sits inside the CTE"},
+    {"kind": "findByCharacterAboutCharacters", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "aboutCharacterIds": ["dddddddd-dddd-4ddd-8ddd-dddddddddddd"], "limitPerCharacter": 10},
+    {"kind": "findByCharacterId", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "comment": "UNFILTERED by tier (backup / export carry cold rows); NULL tier reads 'hot', NULL consolidatedFrom []"},
+    {"kind": "countByCharacterId", "characterId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc"}
   ]
 }

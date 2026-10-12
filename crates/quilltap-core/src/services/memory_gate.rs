@@ -610,6 +610,12 @@ async fn create_memory_direct_with_embedding(
         last_reinforced_at: None,
         related_memory_ids: Vec::new(),
         reinforced_importance: importance,
+        // P4.D265: v4's `memories.create` prefill (`tier ?? 'hot'`,
+        // `consolidatedFrom ?? []`) — the gate never names either.
+        tier: "hot".to_string(),
+        superseded_by_id: None,
+        consolidated_from: Vec::new(),
+        consolidated_at: None,
     };
     let create_opts = CreateOptions {
         id: id.clone(),
@@ -1156,7 +1162,7 @@ mod tests {
             occurredAt TEXT, narrativeTime TEXT, entities TEXT DEFAULT '[]', kind TEXT DEFAULT 'semantic',
             sourceMessageId TEXT, lastAccessedAt TEXT, reinforcementCount REAL,
             lastReinforcedAt TEXT, relatedMemoryIds TEXT, reinforcedImportance REAL,
-            createdAt TEXT, updatedAt TEXT);
+            tier TEXT DEFAULT 'hot', supersededById TEXT, consolidatedFrom TEXT DEFAULT '[]', consolidatedAt TEXT, createdAt TEXT, updatedAt TEXT);
         CREATE TABLE vector_indices (
             id TEXT PRIMARY KEY, characterId TEXT, version REAL, dimensions REAL,
             createdAt TEXT, updatedAt TEXT);
@@ -1198,6 +1204,10 @@ mod tests {
                             last_reinforced_at: None,
                             related_memory_ids: vec![],
                             reinforced_importance: 0.5,
+                            tier: "hot".to_string(),
+                            superseded_by_id: None,
+                            consolidated_from: Vec::new(),
+                            consolidated_at: None,
                         },
                         &CreateOptions {
                             id: "mem-seed".to_string(),

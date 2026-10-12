@@ -136,6 +136,14 @@ fn open(instance: &Path) -> Db {
         )
     })
     .expect("boot-align the vintage main partition (P4.D182)");
+    // P4.D265: the memory-tiers boot ensure (v4 `add-memory-tiers-v1`) — the
+    // fixture predates `memories.tier` and `chats.otherExtractionWatermarkMessageId`,
+    // and both restore INSERTs bind every column.
+    db.write_blocking(|writers| {
+        quilltap_core::db::memory_tiers_repair::ensure_memory_tiers(writers.main().connection())
+            .map(|_| ())
+    })
+    .expect("boot-align the vintage main partition (P4.D265)");
     db
 }
 

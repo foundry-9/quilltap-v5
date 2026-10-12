@@ -17,7 +17,57 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 _Docs-only change._
 
 `/driftcheck` with the `01a83539d` round finished and about to unify. v4 `main` is seventeen commits past the `f5e953a3f` baseline: the thirteen the round is pinned at, then four wardrobe commits landed 2026-10-09/10 — `3e6e2f590` (the seven-phase wardrobe refactor plan; bugs 187–197 filed from v4's own code audit), `7a8d6dacc` (bugs 187, 188, 189, 191: the vault parser keeps cross-tier UUID component refs, `wardrobe_archive` is idempotent with a new `already_archived` result key, a tool-queued item picture carries its chat into the Concierge policy and the image failover, every equip path refuses an archived item), `9ecebf986` (the refactor itself, 261 files: one wearable pool per request with archived items dropped per tier, one location type, one route factory for all four tiers with POST/PUT answering `origin` + `wear` and cycle → 400 / archived character → 409, the seven tools through one table so `wardrobe_create` + `equip_now` announces, `wardrobe_list` drops `include_presets` from its definition, widen-never-narrow composite slots, the transfer probe walks group before project, a new `link-image` action, preview-avatar through the Concierge failover, the Almanack counting wardrobe pictures as image spend, the backup's `wardrobeItems` always empty; bugs 190 and 192–197) and `e23fb095b` (bug 198, SPA only: the outfit read refetches on every mount and the `chats` realtime topic invalidates it). None is a convergence on a port filing; no schema, migration or dependency moved; `help/wardrobe.md` and `help/project-wardrobe.md` moved. The two rows `/setupphase` had recorded as UNCLASSIFIED are now classified (NO-PORT? and PORT) and two new rows are UNPROCESSED (PORT + PORT-NEW, PORT). The baseline stays `f5e953a3f` — the coming `/unify` moves it to `01a83539d`, not past it. Regen rule unchanged: pin required; this round's regens pin at `01a83539d`.
+#### 2026-10-09 — docs(porting): P4.D265 lane close — real-instance note, gate and sweep records
 
+_Docs-only change._
+
+The P4.D265 order is marked LANE COMPLETE, and the status log gains the lane-close records:
+
+- **Real-instance note**, from a read-only probe of a clone of the dogfood Friday instance. It already has v4's appended tier columns, the index and v4's ledger row, so v5's boot ensure is a no-op. It has no case-insensitive duplicate store names.
+- **Full workspace gate.** The only reds left are by design, owned by P4.D269 and P4.D272.
+- **Own-family sweep.** 23 of 25 families pass; the other two are by design, owned by P4.D266 and P4.D273.
+
+#### 2026-10-09 — test(restore): P4.D265 the vintage restore fixture runs the memory-tiers boot ensure
+
+_No crate versions bumped._
+
+`restore_vintage_state` mirrors boot on its migration-vintage instance before restoring. It now also runs `ensure_memory_tiers`, so restored chats and memories no longer hit `no such column` on `otherExtractionWatermarkMessageId` / `tier`. Five arms were red at the workspace gate; all nine are green.
+
+#### 2026-10-09 — test(memory): P4.D265 host boot test for the memory-tiers ensure + mutation proofs
+
+_No crate versions bumped._
+
+New `host_boot_p4d265_memory_tiers`, four arms through the real `Host::start`: a pre-round instance gets the appended columns, the index, the chat column and one `Fitted the memory tiers` line, with no ledger row; a second boot is silent; a planted NULL tier is healed; a fresh instance and a v4-migrated plant are silent no-ops. Six mutations (the heal, F4's tiebreak, the hot predicate, the `supersededById` SET, filter-before-top-K, the host call) each redden their family. One corpus gap was closed: `memories-tier2.ts` gains an `updateTierBulk` whose `supersededById` survives to the dump.
+
+#### 2026-10-09 — docs(porting): P4.D265 status header records KEYSTONE `609d9d9f2` and the R-F spellings
+
+_Docs-only change._
+
+The order's status header now records the `KEYSTONE` sha. It also records the Rust spellings C1 left open (R-F), the exact `job_runner.rs` hook-region lines, P4.D266's R-C obligation (`ResolvedIds` on the housekeeping job path), the 43 widened fixture pairs, and restore 22a as the only production store-insert site given v4's free-name pick.
+
+#### 2026-10-09 — feat(memory): KEYSTONE — P4.D265 the memory programme's data layer (v4 `01a83539d` pin)
+
+_Versions: core 0.0.1265, host 0.0.195, web 0.0.228._
+
+The shared surface the ten stage-2 lanes of the `01a83539d` round compile against (contract C1 + C2), each unit proven against v4's real code at the pin.
+
+- **D23 re-dump #7.** `fresh_schema.json` re-dumped from the pin: `memories` gains `tier` / `supersededById` / `consolidatedFrom` / `consolidatedAt`, `chats` gains `otherExtractionWatermarkMessageId`, and the mount index gains v4's UNIQUE `("name" COLLATE NOCASE)` store-name index (bug 186's index; the refusal and existing-instance ensure are P4.D274's). `migration_indexes.json` re-dumped through v4's real migration runner with a real `tsx server.ts` first boot as the cross-check (zero findings): `idx_memories_character_tier` (main 52 → 53). The chat-settings seed is byte-identical.
+- **Boot ensure.** `db::memory_tiers_repair::ensure_memory_tiers` re-homes v4 `d58548051`'s `add-memory-tiers-v1`: missing columns appended in the migration's text, the index from `migration_indexes.json`, the NULL-tier heal, the chat column. It is table-gated, idempotent and unstamped (R-A), runs before the index backfill, and is fatal on failure. v4's migration lines are NO-PORT; the host logs one `Fitted the memory tiers` line when it did anything.
+- **Committed fixtures widened in place.** 43 of 49 `*-main.db` pairs, through v4's real migration from the pin. The other six have neither table.
+- **Memory reads and writes.** `memories` rows carry 29 columns in `MemorySchema` order. `find_most_important` gets F4's ranking + the hot predicate + `limit <= 0`; the about-characters CTE and the tier legs get v4's hot predicates. The three raw reads drop rows v4's `MemorySchema` refuses (measured). New: five tier reads, `increment_reinforcement`, `update_tier_bulk`, `mark_considered`. `delete_many_with_unlink` takes F8's `countSource`. The create path applies v4's tier prefill. The Zod twin accepts `CONSOLIDATED` and checks the four new keys. Every changed or new read takes v4's fallback contract.
+- **Chat watermark:** read in its schema slot. ONE writer, `ChatsRepository::set_other_extraction_watermark`, held by a census.
+- **Settings:** `memoryConsolidation` / `memoryExtractionMode`, each with Zod-faithful parsers and v4's merge-then-write.
+- **Job kind:** `MEMORY_CONSOLIDATION` in the job, activity, topic and task-type tables, with no handler yet. An empty completion-hook region in `job_runner.rs`.
+- **Vector store tiers:** `set_tier`, `search_filtered` (the filter runs before top-K), `is_hot`.
+- **New pure leaves:** `memory_pools`, `commonplace_file` and `services::memory_access`.
+- **Search option types** (honoured from P4.D267).
+- **Wire:** eight new C2 verbs and two grown ones, each refusing with the agreed `not yet available (<owner>)` body until its owner lands.
+- **Oracle helper:** `apply-memory-tiers-migration.ts`, now on `memories_routes`' per-case copy on both sides.
+- **Restore 22a:** v4 `ed8b15b50`'s free store-name pick.
+
+New differential families: `memory_tiers_ensure`, `memory_settings_schemas`, `memory_pools`, `commonplace_file`, `vector_store_tiers`, plus the `other_extraction_watermark_writers_census` and the `p4_d265_wire_contract`. Grown: `memories_read`, `memories_tier2`, `repository_zod_messages`, `chats_read`, `chats_tier2`, `memory_delete_tier2`, `realtime_topics`, `instance_settings_json_warns`.
+
+Test fixtures: the `build_context` inter-character log tests now seed UUID ids, because the raw reads drop non-UUID rows as v4's `MemorySchema` does. `dispatch_wrong_type_census` has four more rows.
 #### 2026-10-09 — docs(porting): order the `01a83539d` memory-programme + bugs-183–186 + wardrobe-viewer drift catch-up round — fourteen work orders (P4.D265 → {P4.D266 … P4.D275} ∥ P4.D276 ∥ P4.D277 ∥ P4.D278)
 
 _Docs-only change._

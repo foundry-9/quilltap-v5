@@ -2239,12 +2239,42 @@ fn restore_mount_family(
     // coerce back to domain shape (v4 `mount-index-coercion.ts`, applied at v4's
     // own call site). Without it the patterns read as `[]` and a disabled store
     // comes back enabled; see that module's header.
+    //
+    // C1 §14 (P4.D265 — v4 `ed8b15b50`'s free-name hunk, nothing else of bug
+    // 185): the D23 re-dump #7 gave every fresh mountIndex v4's UNIQUE
+    // `("name" COLLATE NOCASE)` index, so an archive store whose name collides
+    // case-insensitively with a target store (every `new-account` restore — the
+    // target's built-ins share the archive's names — and any legacy
+    // duplicate-name archive) would fail its create. v4 reads the taken names
+    // ONCE before the loop (`docMountPoints.findAll()` — a fallback read: a
+    // failure logs `Error finding all entities` and answers `[]`), picks
+    // `next_unique_mount_point_name` per row (DEBUG `Restored document store
+    // under a free name {mountPointId, archived, name}` when it moved), creates
+    // under that name, and adds it to the set only after a SUCCESSFUL create.
+    // The failure warning keeps the ARCHIVED name. The kept archive
+    // `createdAt`, the restored set and the claim map are P4.D273's.
     {
         let repo = crate::db::doc_mount_points::DocMountPointsRepository::new(mount);
+        let mut taken: std::collections::HashSet<String> =
+            crate::db::fallback::find_all_or_empty("doc_mount_points", || repo.find_all_names())
+                .into_iter()
+                .collect();
         for raw in &data.doc_mount_points {
             let mp = &super::mount_index_coercion::coerce_doc_mount_point_row(raw);
+            let archived = s(mp, "name");
+            let name =
+                crate::db::ensure_official_store::next_unique_mount_point_name(&taken, &archived);
+            if name != archived {
+                tracing::debug!(
+                    target: "quilltap::restore",
+                    mountPointId = %id_of(mp),
+                    archived = %archived,
+                    name = %name,
+                    "Restored document store under a free name"
+                );
+            }
             let create = crate::db::doc_mount_points::DmpCreate {
-                name: s(mp, "name"),
+                name: name.clone(),
                 base_path: s(mp, "basePath"),
                 mount_type: s(mp, "mountType"),
                 store_type: str_or(mp, "storeType", "documents"),
@@ -2260,10 +2290,11 @@ fn restore_mount_family(
                 chunk_count: n(mp, "chunkCount", 0.0),
                 total_size_bytes: n(mp, "totalSizeBytes", 0.0),
             };
+            let restored_before = c.doc_mount_points;
             warn_row!(
                 w,
                 c.doc_mount_points,
-                format!("Failed to restore document store \"{}\"", s(mp, "name")),
+                format!("Failed to restore document store \"{}\"", archived),
                 repo.create(
                     &create,
                     &crate::db::doc_mount_points::CreateOptions {
@@ -2275,6 +2306,9 @@ fn restore_mount_family(
                 "Failed to restore doc mount point",
                 mountPointId = id_of(mp),
             );
+            if c.doc_mount_points > restored_before {
+                taken.insert(name);
+            }
         }
     }
 
@@ -4081,5 +4115,153 @@ mod host_copy_log_tests {
             ]
         );
         assert!(w.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod free_store_name_tests {
+    //! C1 §14 (P4.D265 — v4 `ed8b15b50`'s 22a free-name hunk): an archive store
+    //! whose name collides case-insensitively with a store the target already
+    //! has (or with an earlier archive store) is restored under v4's next free
+    //! name, with v4's DEBUG; the fresh-provisioned mountIndex carries the
+    //! UNIQUE NOCASE index (D23 re-dump #7), so without the pick the create
+    //! fails.
+    use super::*;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    fn data(points: Vec<Value>) -> crate::services::backup::BackupData {
+        crate::services::backup::BackupData {
+            doc_mount_points: points,
+            characters: Vec::new(),
+            chats: Vec::new(),
+            tags: Vec::new(),
+            connection_profiles: Vec::new(),
+            image_profiles: Vec::new(),
+            embedding_profiles: Vec::new(),
+            memories: Vec::new(),
+            files: Vec::new(),
+            prompt_templates: Vec::new(),
+            roleplay_templates: Vec::new(),
+            provider_models: Vec::new(),
+            projects: Vec::new(),
+            groups: Vec::new(),
+            llm_logs: Vec::new(),
+            plugin_configs: Vec::new(),
+            chat_settings: Vec::new(),
+            folders: Vec::new(),
+            wardrobe_items: Vec::new(),
+            character_plugin_data: Vec::new(),
+            conversation_annotations: Vec::new(),
+            chat_documents: Vec::new(),
+            chat_informs: Vec::new(),
+            instance_settings: Vec::new(),
+            embedding_status: Vec::new(),
+            conversation_chunks: Vec::new(),
+            tfidf_vocabularies: Vec::new(),
+            vector_index_metas: Vec::new(),
+            vector_entries: Vec::new(),
+            doc_mount_folders: Vec::new(),
+            doc_mount_files: Vec::new(),
+            doc_mount_file_links: Vec::new(),
+            doc_mount_chunks: Vec::new(),
+            doc_mount_documents: Vec::new(),
+            doc_mount_blobs: Vec::new(),
+            project_doc_mount_links: Vec::new(),
+            group_doc_mount_links: Vec::new(),
+            group_character_members: Vec::new(),
+            text_replacement_rules: Vec::new(),
+            wardrobe_wear: Vec::new(),
+        }
+    }
+
+    fn point(id: &str, name: &str) -> Value {
+        serde_json::json!({
+            "id": id,
+            "name": name,
+            "basePath": "",
+            "mountType": "database",
+            "storeType": "documents",
+            "includePatterns": "[]",
+            "excludePatterns": "[]",
+            "enabled": 1,
+            "createdAt": "2026-01-01T00:00:00.000Z",
+            "updatedAt": "2026-01-01T00:00:00.000Z"
+        })
+    }
+
+    #[test]
+    fn colliding_archive_stores_take_v4s_next_free_name() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER).unwrap();
+        let main =
+            crate::db::Writer::open_writable(&dir.path().join("quilltap.db"), PEPPER).unwrap();
+        let mount =
+            crate::db::Writer::open_writable(&dir.path().join("quilltap-mount-index.db"), PEPPER)
+                .unwrap();
+        mount
+            .connection()
+            .execute(
+                "INSERT INTO doc_mount_points (id, name, basePath, mountType, storeType, \
+                 includePatterns, excludePatterns, enabled, scanStatus, conversionStatus, \
+                 fileCount, chunkCount, totalSizeBytes, createdAt, updatedAt) \
+                 VALUES ('target-lore', 'Lore', '', 'database', 'documents', '[]', '[]', 1, \
+                 'idle', 'idle', 0, 0, 0, 't', 't')",
+                [],
+            )
+            .unwrap();
+        let archive = data(vec![
+            point("a1", "lore"),
+            point("a2", "Atlas"),
+            point("a3", "atlas"),
+        ]);
+        let mut c = Counters::default();
+        let mut w: Vec<String> = Vec::new();
+        let ((), lines) = crate::test_support::captured_with(|| {
+            restore_mount_family(
+                main.connection(),
+                mount.connection(),
+                &archive,
+                &archive,
+                dir.path(),
+                None,
+                &[],
+                &mut c,
+                &mut w,
+            )
+        });
+        assert!(w.is_empty(), "{w:?}");
+        let name_of = |id: &str| -> String {
+            mount
+                .connection()
+                .query_row(
+                    "SELECT name FROM doc_mount_points WHERE id = ?1",
+                    [id],
+                    |r| r.get(0),
+                )
+                .unwrap()
+        };
+        assert_eq!(
+            name_of("a1"),
+            "lore (2)",
+            "collides with the target's `Lore`"
+        );
+        assert_eq!(name_of("a2"), "Atlas", "free — kept, no line");
+        assert_eq!(
+            name_of("a3"),
+            "atlas (2)",
+            "collides with the archive's own `Atlas`"
+        );
+        let moved: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("Restored document store under a free name"))
+            .collect();
+        assert_eq!(
+            moved,
+            [
+                "DEBUG quilltap::restore Restored document store under a free name mountPointId=a1 archived=lore name=lore (2)",
+                "DEBUG quilltap::restore Restored document store under a free name mountPointId=a3 archived=atlas name=atlas (2)",
+            ]
+        );
     }
 }

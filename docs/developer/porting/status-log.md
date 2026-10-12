@@ -175372,3 +175372,111 @@ server; nothing was lost and the row was redone cleanly after #153's fix.
 - **C5 RAN** on the human's authorization: Friday's `wardrobe_create` (switch ON) queued and drew *Leather Tool Belt* through the default desk (GROK `grok-imagine-image-2.0`) — the tool's `- Picture: … being drawn in the background …` sentence, one `WARDROBE_ITEM_IMAGE_GENERATION` job COMPLETED in 24 s, one `WARDROBE_ITEM_IMAGE` `llm_logs` row, the item's `imageFileId` set, the picture (Friday wearing the belt, 864×1152 webp) in the row thumbnail and the editor's Picture section. The walk has no HUMAN rows left.
 - **Filed upstream as v4 bugs 183 and 184** — `docs/developer/bugs/bug-183-wear-line-last-last-week.md` (Low: `last last week` / `last last month` at `wear-display.ts:57`, `wardrobe-read-handler.ts:179-183`, `WardrobeWearHistorySection.tsx:142`) and `bug-184-wardrobe-tools-household-wear-as-own.md` (Medium: `wardrobe_list`'s household `wear_count` / `last_worn_at` unlabelled, `wardrobe_read` never states the reader's own count) + their `bugs.md` rows, v4 commit `5abcd01ea` (docs-only, committed locally in the v4 checkout, NOT pushed — the bug-169 precedent); recorded as a NO-PORT row on the drift ledger. The read head's missing count is covered by 184 (the human's ruling).
 - **#159 RULED a bug** (the human, 2026-10-09: "we shouldn't orphan a vault that should be restored into") — ORDER-PENDING for the follow-ups round (the design and the differential's `new-account` carve on the findings row; not fixed in place because `system_restore_state` needs that carve and an oracle regen from a pin). **Filed upstream as v4 bug 185** (High; covers both restore modes — #141 was never filed to v4), v4 commit `3c56a41e7` (docs-only, local, NOT pushed); the drift ledger records it as a NO-PORT row.
+
+
+## P4.D265 — the memory keystone: `KEYSTONE` (2026-10-09)
+
+Lane `claude/p4-memory-keystone-tiers-220a28` (worktree `.claude/worktrees/p4-memory-keystone-tiers-220a28`, from `main` `ff2252b83`), pinned at v4 `01a83539d` (`/tmp/qt-v4-pin-p4d265-01a83539d`, HEAD verified, root + `packages/quilltap` + 15 plugin `node_modules`, `openai` 7.30.0; for the real boot the two top-level symlinks were replaced by APFS clones, per the P4.153 recipe).
+
+### Lane-start probe (§R.2 — an observation)
+Branch `main`, tree clean. `01a83539d..main` = `3e6e2f590`, `7a8d6dacc`, `9ecebf986`: **v4 moved**, observed 2026-10-09 16:44 CDT. These are out of scope and not ported. `1a2b2164c..bugfix` is empty. The pin's `package.json` is `4.10.0-dev.143`; the lockfile past the pin differs only in version stamps.
+
+### Red-first (unit 0, unported `main`, oracles regenerated at the pin)
+`recipe_sweep.py --run-all` over the twelve existing families:
+- **RED:** `provisioning_equivalence` (1d: the `chats` and `memories` statements differ from the LIVE dump); `migration_index_backfill_equivalence` (2 problems: main `idx_memories_character_tier`, mountIndex `idx_doc_mount_points_name_nocase`); `memories_read_equivalence` (query 0 — the four new keys); `repository_zod_messages_equivalence` (3 rows — `CONSOLIDATED`); `activity_tables_equivalence` (5 arms); `realtime_topics_equivalence` (2 cases).
+- **GREEN, i.e. never compared the moved bytes:** `memories_tier2`, `chats_read`, `chats_tier2`, `instance_settings_json_warns`, `system_jobs_routes` and `memory_delete_tier2` (VACUOUS: it had no line capture).
+- **Correction to the order:** the 25-value job-type sentence is pinned by `system_jobs_collection_equivalence`, not `system_jobs_routes`. It is green at the pin with `MEMORY_CONSOLIDATION`.
+
+### Measurements
+- **(b) Q2 / R-D — CONFIRMED** at the pin through v4's real repository. All three raw reads (`findMostImportant`, `findHotDigests`, `findByCharacterAboutCharacters`) DROP a tier-NULL row (`invalid_value`) and a consolidatedFrom-NULL row (`invalid_type array`). They log WARN `Memory failed validation in <most-important fetch | hot digest fetch | partition fetch>` `{memoryId, error}`, where `error` is the pretty-printed `ZodError.message`.
+  - `findRecentByImportanceTier` and the paginated `tier=hot` use an exact `tier = 'hot'`, so they EXCLUDE the tier-NULL row and keep the consolidatedFrom-NULL row with `[]`.
+  - The paginated list with no `tier`, and `findByCharacterId`, keep both rows, read as `'hot'` / `[]`.
+  - Ported as `hydrate_raw_rows`, documented in `memories_read.rs`, and compared line for line in `memories_read_equivalence`.
+- **(c) R-C re-derived from the pin.** The job-child callers of the batch delete are `housekeeping.ts:397` (`MEMORY_HOUSEKEEPING`) and `memory-service.ts:1807` (`MEMORY_REGENERATE_CHAT`). The parent-side callers are cascade-delete, the archive service, the restore delete-service, the dedup tool (system tools route), regenerate-swipe and messages/[id] via `deleteMemoriesBySourceMessage(s)WithVectors`, and the memories route's delete-by-chat. Every v5 site passes `CountSource::Repository`. **Obligation of P4.D266** (it owns `housekeeping.rs`): thread `ResolvedIds` on the `MEMORY_HOUSEKEEPING` job path.
+- **(d) Q7:** no wire leak of the raw path's explicit `null`s. `frozen_archive.rs:117`, `build_context.rs:2849` and `memory_recap:668` all format into prompt text.
+- **(e) R-K:** see the widen below.
+- **(f) NOCASE production insert sites:**
+  - `ensure_official_store`, `character_vault` and the `.qtap` import already pick free names.
+  - The `api/mount_points` create is v4's refusal at the pin (P4.D274).
+  - The `builtin_mounts` insert runs only on a dangling pointer (P4.D274 R-B).
+  - Restore 22a is KNOWN and given v4's pick (unit 12b).
+  - The gate named no other site.
+- **R-E:** `findSupersededBy` — only its definition exists at the pin. NO-PORT.
+- **The real first boot** at the pin: `migrationsRun 126 / skipped 88`, `add-memory-tiers-v1` `itemsAffected 6`.
+
+### The widen (unit 1b, §R.3 / R-K)
+`migrate-memories-fixture-columns.ts --module add-memory-tiers-v1` was run from the pin over the 43 pairs the `--report-only` pass named:
+- Every pair `+RAN`. There were no heal rows and no residue.
+- 19 pairs × 6 changes, 2 × 5 (`embedding-generate`, `embedding-profiles`), 22 × 1 (chats only). The full list is in the migrator's header.
+- Six pairs were `not needed` and left untouched. `migration-vintage/` (its own pepper) is healed at boot on its scratch copy.
+- No `.meta.json` and no digest pin moved.
+
+### Units and their differentials
+All are green BY NAME from the pin:
+- **K1:** `provisioning_equivalence` (1a–1d, the D23 tripwire with `QT_FRESH_SCHEMA_LIVE` from the pin) and `migration_index_backfill_equivalence`.
+- **K2:** NEW `memory_tiers_ensure_equivalence`, 8 arms — the six migration modes (pre-round, no tables, already migrated + v4's ledger row, NULL plants + no index, no index, chats behind) plus the encrypted and plain helper-parity arms. v4's `itemsAffected` (6 / 0 / 0 / 3 / 1 / 1) equals v5's outcome count.
+- **K3:** `memories_read_equivalence` — 59 queries, 7 raw-path lines, a third character's tier corpus.
+- **K4:** `memories_tier2_equivalence` — 11-row table state, 19 tier ops / 9 lines incl. v4's real `markMemoriesAccessed`; `repository_zod_messages_equivalence` — 240 rows, +18 memory rows, 18 parsed.
+- **K5:** `chats_read_equivalence` (17 queries) and `chats_tier2_equivalence` (the watermark set / reset / missing chat, `updatedAt` preserved). NEW `other_extraction_watermark_writers_census`.
+- **K6:** NEW `memory_settings_schemas_equivalence` (17 accepted / 42 refused byte-exact / 8 merge-writes) and `instance_settings_json_warns_equivalence` (48 cases, 7 keys).
+- **K7:** `activity_tables_equivalence`, `realtime_topics_equivalence` (+4 `dryRun` rows) and `system_jobs_collection_equivalence`.
+- **K8:** NEW `vector_store_tiers_equivalence` (load + DEBUG, filtered vs unfiltered top-K, `setTier`).
+- **Leaves:** NEW `memory_pools_equivalence` (32 cases) and NEW `commonplace_file_equivalence` (43 rows; one recorded lone-surrogate output at `paths[9]` — v5 cuts lossily to U+FFFD).
+- **F8:** `memory_delete_tier2_equivalence` now compares the chokepoint's lines (`countSource=repository`). `ResolvedIds` is a core unit pin.
+- **Wire:** NEW `p4_d265_wire_contract` (every C2 type, the tri-states, each refusal sentence through a booted engine). `dispatch_wrong_type_census` +4 rows; `EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE` 464 → 471.
+- **C1 §13:** `memories_routes_equivalence` per-case hunk on both sides. Re-run: red ONLY on `create_near_duplicate{,_tables}` / `housekeep_{preview,dryrun,run}`, which are P4.D266's by design (§R.13(b)); every list / search row is green.
+- **C1 §14:** restore 22a's free-name pick plus its core pin.
+
+### Mechanical edits outside the new surface
+- `delete_many_with_unlink` takes a `CountSource`: every caller (cascade delete, dedup, delete-all, memory service, housekeeping, the character archive, publish sites, the harness tier-2) passes `Repository`. Housekeeping carries a comment naming P4.D266's `ResolvedIds` obligation.
+- `MemCreate` literals and the hand-written `memories` / `chats` test DDLs (publish sites, memory gate, memory service, job runner, housekeeping, `host_boot.rs`, `host_cadence.rs`, the enclave step + lifecycle, the Almanack's phase-3 ledgers) gain the new columns.
+- `RecallContextInput.present_participant_names` is filled as `Vec::new()` at build_context / pre_compute / recall_replay (P4.D267 fills it).
+- The `build_context` inter-character log tests seed UUID ids: the raw reads now drop non-UUID rows exactly as v4 does (R-D). This is a fixture fix, not a re-pin of behaviour.
+
+### Keystone gate
+- `cargo test -p quilltap-core -p quilltap-host -p quilltap-web --no-fail-fast` with `QT_V4_CHECKOUT` / `QT_V4_ROOT` set to the pin: 108 binaries, 3,780 passed and 1 failed (the fixture above, fixed and 9/9 by module), 1 ignored. No host-boot index or count pin moved beyond the provisioning count (62 → 63).
+- `fmt`, both clippy feature sets and the censuses (`fallback_home_guard`, `zod_issues_home_guard`, `spelling_guard`, `other_extraction_watermark_writers_census`) are clean, as is `recipe_sweep.py --self-test`.
+- The full workspace gate and the own-family sweep are Tier 2 (#19).
+
+### P4.D265 Tier 2 — the host boot test + mutation proofs (2026-10-09)
+- **NEW `crates/quilltap-host/tests/host_boot_p4d265_memory_tiers.rs`, 4/4, through the real `Host::start`.** The pre-round instance is derived from a fresh provision with the round's four columns, the index and the chat column dropped. That follows the `host_boot_p4d255_wardrobe_wear_stats.rs` shape, not the committed-builder derivation in `host_boot_backfilled_indexes.rs`, because the provision IS the current builder.
+  - (a) One boot APPENDS the four columns in the migration's text and adds the index and the chat column. It logs exactly one `INFO quilltap::boot Fitted the memory tiers migrationId=add-memory-tiers-v1 columnsAdded=4 indexCreated=true healedRows=0 chatColumnAdded=true`, none of v4's five migration lines, and writes no `migrations_state` row. A second boot leaves `sqlite_master` byte-equal and logs nothing.
+  - (b) A planted NULL tier is healed on the next boot (`healedRows=1`).
+  - (c) A fresh `setup` keeps generateDDL's column slot and both new indexes (incl. mountIndex `idx_doc_mount_points_name_nocase`), and the ensure is silent.
+  - (d) On a v4-migrated plant the tier surface is unchanged, the ensure is silent, and v4's ledger row is untouched.
+  - **Observed:** planting a `migrations_state` table makes OTHER boot steps append their own `chats` columns (`transcriptVersion`, `moderationRefusalCount`, `lastModerationRefusalAt`). So arm (d) compares the tier surface, not all of `sqlite_master`. No host source moved, so there is no host bump.
+- **Mutation proofs.** Each mutation is run through its family by name from the pin (`recipe_sweep.py --run`) and then reverted. Every one goes RED:
+  - drop the heal → `memory_tiers_ensure` mode d `memoryRows`;
+  - swap F4's tiebreak (id before the reinforcement clock) → `memories_read` query 38 result;
+  - `COALESCE` → `tier = 'hot'` in `find_most_important` → `memories_read` query 38 lines;
+  - omit the `supersededById` SET arm → `memories_tier2` row state;
+  - filter AFTER top-K → `vector_store_tiers` op 1 ids;
+  - the host skips the ensure → `host_boot_p4d265_memory_tiers` (a) and (b).
+- **Corpus gap closed by the mutation run.** The `supersededById` mutation first SURVIVED: op 212's value landed only on `tid(101)` (`tid(106)` belongs to another character) and the hot move reset it. `memories-tier2.ts` gains one `updateTierBulk` that leaves `supersededById` standing on `tid(105)`; the pin is now `>= 20` tier ops. The regenerated family is green (20 ops / 10 lines).
+
+### P4.D265 Tier 2 — the real-instance note (#18) and the NULL-tier record (#17)
+- **#17:** Q2's measured result (kept or dropped per read, the WARN form, the `ZodError.message` bytes) is recorded in `hydrate_raw_rows`' doc and the module doc's tier section. R-E's re-grep (no `findSupersededBy` caller over `lib/ app/ packages/` at the pin) is also in the module doc. Both appear in the `KEYSTONE` record above.
+- **#18, the dogfood Friday instance.** I made an APFS clone of `~/qt-dogfood-friday/data`'s main + mount-index files into lane scratch; a dogfood `quilltap-web`, pid 75618, held the copy itself, so it was left alone. The clone was probed only through `quilltap db` without `--write` (a read-only open), and deleted at lane close.
+  - `memories` has the APPENDED shape: cids 25–28 are `tier TEXT 'hot'`, `supersededById TEXT NULL`, `consolidatedFrom TEXT '[]'` and `consolidatedAt TEXT NULL`, after `kind` at 24.
+  - `chats.otherExtractionWatermarkMessageId` is LAST (cid 104, `DEFAULT NULL`).
+  - `idx_memories_character_tier` is present, in v4's migration text.
+  - v4's ledger row `add-memory-tiers-v1` reads `2026-10-08T22:46:11.823Z`, `4.10.0-dev.139`, `itemsAffected 6`, `Memory tiers in place (6 changes)`.
+  - Tiers: 29,123 hot and 7,800 cold. Zero NULL `tier`, zero NULL `consolidatedFrom`.
+  - So every input to the ensure's assess is satisfied, and the first v5 boot's ensure is a NO-OP that logs nothing. This is derived from the measured state plus the ensure's unit and host-boot arms (c)/(d); no v5 boot was run against the clone. Recorded for §S.6.
+  - **For P4.D274:** v4 has NOT booted this copy past `ed8b15b50`. The mount index carries only `idx_doc_mount_points_createdAt` (no `idx_doc_mount_points_name_nocase`), and `doc_mount_points` has ZERO case-insensitive duplicate names, so the UNIQUE NOCASE index would build cleanly on it.
+
+### P4.D265 lane close — the full gate + the own-family sweep (#19)
+- **`cargo test --workspace --no-fail-fast`** ran with `QT_V4_CHECKOUT` / `QT_V4_ROOT` set to the pin: 707 binaries, 4,663 passed, 7 failed, 3 ignored.
+  - **5 were mine and are fixed:** `restore_vintage_state` arms hit `no such column` because the vintage fixture's mirror-boot lacked `ensure_memory_tiers` (`de95142c5`, 9/9).
+  - **2 are other-owner reds by design (§R.13):**
+    - `qtap_schema_embed_guard` — v4's `qtap-export.schema.json` is 102,523 bytes at the pin vs 101,092 vendored. Owner: P4.D272.
+    - `cli_differential` — 7 rows (`main help`, `completion bash|zsh|fish`, `recall-replay help|no chat|table`). All of them come from v4's new `memories` subcommand and the grown recall-replay help. Owner: P4.D269. `no chat` prints the same help text, so it has the same cause.
+  - The live-checkout guards `public_schemas_vendor_guard`, `builtin_prompt_templates_guard`, `provider_sdk_version_guard` and `zod_version_guard` are GREEN against the pin.
+- **The own-family sweep from the pin** (`recipe_sweep.py --run-all`, 25 families, results at lane scratch): **23 ok by name.**
+  - `provisioning`, `migration_index_backfill`, `memory_tiers_ensure`, `memories_read`, `memories_tier2` (20 ops), `repository_zod_messages`, `chats_read`, `chats_tier2`, `instance_settings_json_warns`, `memory_settings_schemas`, `activity_tables`, `realtime_topics`, `system_jobs_collection`, `system_jobs_routes`, `system_jobs_web_routes`, `vector_store_tiers`, `memory_pools`, `commonplace_file`, `memory_delete_tier2`, `p4_d265_wire_contract`, `restore_vintage_state`, `system_restore_equivalence` and `system_restore_guards_equivalence`.
+  - **2 `run_failed`, both by design:**
+    - `memories_routes_equivalence` — exactly `create_near_duplicate{,_tables}` and `housekeep_{preview,dryrun,run}`. Owner: P4.D266 (§R.13(b)).
+    - `system_restore_state` — `FRESH_STORE_RESIDUAL` (v4's dump now carries 2 fresh stores to carve, against 32), and the `ARCHIVED_CHARACTER_RESTORE` tripwire `v4 converged; re-measure`. These are v4 `ed8b15b50`'s bug-185 restore convergence, which P4.D273 retires by measurement (§R.13(i)). C1 §14's 22a free-name pick does not touch either; the core pin `free_store_name_tests` is green.
+- fmt, both clippy sets and the censuses are clean at `KEYSTONE`. The Tier 2 commits touch tests and docs only.
+- **Versions:** core 0.0.1265, host 0.0.195, web 0.0.228. The harness stays frozen at 0.0.1110.
+- **Cleanup:** the lane `target/` was removed, the pin worktree `/tmp/qt-v4-pin-p4d265-01a83539d` removed, and lane scratch (incl. the Friday clone) deleted.

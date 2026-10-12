@@ -114,6 +114,7 @@ pub mod like_escape;
 pub mod llm_logs;
 pub mod memories;
 pub mod memories_read;
+pub mod memory_tiers_repair;
 pub mod migration_index_family_repair;
 pub mod migrations_ledger;
 pub mod mount_index_case_repair;

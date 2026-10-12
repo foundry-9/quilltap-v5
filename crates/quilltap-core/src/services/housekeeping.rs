@@ -501,7 +501,16 @@ pub async fn run_housekeeping(
         // scrubbed before the rows go away.
         let ids = deleted_ids.clone();
         let deleted_count = db
-            .write(move |writers| writers.main().memories().delete_many_with_unlink(&ids))
+            // P4.D265 (R-C): this ONE function serves BOTH of v4's paths — the
+            // API `?action=housekeep` (parent → `repository`) and the
+            // MEMORY_HOUSEKEEPING job (v4's child → `resolved-ids`). Threading
+            // `ResolvedIds` on the job path is P4.D266's (it owns this file).
+            .write(move |writers| {
+                writers
+                    .main()
+                    .memories()
+                    .delete_many_with_unlink(&ids, crate::db::memories::CountSource::Repository)
+            })
             .await?;
 
         // Vector-store cleanup — non-fatal (v4 logs a warn and keeps the result).
@@ -591,7 +600,7 @@ mod tests {
             occurredAt TEXT, narrativeTime TEXT, entities TEXT DEFAULT '[]', kind TEXT DEFAULT 'semantic',
             sourceMessageId TEXT, lastAccessedAt TEXT, reinforcementCount REAL,
             lastReinforcedAt TEXT, relatedMemoryIds TEXT, reinforcedImportance REAL,
-            createdAt TEXT, updatedAt TEXT);
+            tier TEXT DEFAULT 'hot', supersededById TEXT, consolidatedFrom TEXT DEFAULT '[]', consolidatedAt TEXT, createdAt TEXT, updatedAt TEXT);
         CREATE TABLE vector_indices (
             id TEXT PRIMARY KEY, characterId TEXT, version REAL, dimensions REAL,
             createdAt TEXT, updatedAt TEXT);
@@ -640,6 +649,10 @@ mod tests {
                             last_reinforced_at: None,
                             related_memory_ids: vec![],
                             reinforced_importance: s.importance,
+                            tier: "hot".to_string(),
+                            superseded_by_id: None,
+                            consolidated_from: Vec::new(),
+                            consolidated_at: None,
                         },
                         &CreateOptions {
                             id: s.id.to_string(),

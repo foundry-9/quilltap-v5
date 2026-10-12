@@ -29,6 +29,11 @@ import { tmpdir } from 'node:os';
 interface Spec {
   testPepperBase64: string;
   memories: Array<Record<string, unknown> & { id: string; createdAt: string; updatedAt: string }>;
+  /** P4.D265: raw SQL run AFTER the creates — the shapes no v4 create writes
+   *  (a NULL `tier`, a NULL `consolidatedFrom`: v4's prefill and the column
+   *  defaults never leave one), planted so the raw-path validation drop and
+   *  the three hot-tier semantics are exercised on both sides. */
+  plants?: string[];
 }
 
 async function main(): Promise<void> {
@@ -55,7 +60,7 @@ async function main(): Promise<void> {
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
 
-  const { initializeDatabase, ensureCollection, closeDatabase } = await import(
+  const { initializeDatabase, ensureCollection, closeDatabase, rawQuery } = await import(
     '@/lib/database/manager'
   );
   const { MemoriesRepository } = await import(
@@ -70,6 +75,9 @@ async function main(): Promise<void> {
   for (const m of spec.memories) {
     const { id, createdAt, updatedAt, ...data } = m;
     await repo.create(data as never, { id, createdAt, updatedAt });
+  }
+  for (const sql of spec.plants ?? []) {
+    await rawQuery(sql);
   }
 
   await closeDatabase();

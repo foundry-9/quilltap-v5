@@ -165,6 +165,10 @@ pub fn memory_list(
                 search: search_owned.as_deref(),
                 source,
                 min_importance,
+                // P4.D265 (mechanical): the paginated path's `tier` is
+                // P4.D269's — the request's `tier` is refused upstream until it
+                // lands (R-G), so this site never filters.
+                tier: None,
             };
             let (page, total) = memories_read::find_by_character_id_paginated(main, &cid, &opts)?;
             let memories: Vec<Value> = page.into_iter().map(|m| with_tag_details(m, &tm)).collect();

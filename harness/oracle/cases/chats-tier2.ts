@@ -42,7 +42,10 @@ interface Op {
     | 'getRefusalLedger'
     | 'resetRefusalLedger'
     | 'setConciergeMode'
-    | 'setDangerClassification';
+    | 'setDangerClassification'
+    | 'setOtherExtractionWatermark';
+  /** P4.D265 (v4 `d58548051`): the OTHER-pass watermark's message id (`null` resets). */
+  messageId?: string | null;
   /** P4.D226 (v4 `4d370a90f`): `setConciergeMode`'s columns + compare-and-set state. */
   columns?: Record<string, unknown>;
   expected?: string;
@@ -136,6 +139,13 @@ async function main(): Promise<void> {
         (op.verdict ?? undefined) as never,
       );
       ledger.push({ op: 'setDangerClassification', id: op.id, updated: !!updated });
+    } else if (op.kind === 'setOtherExtractionWatermark') {
+      // P4.D265 (v4 `d58548051`): the fold-OTHER pass's and the
+      // regenerate-chat reset's write — `chats.update(id, {watermark})`.
+      const updated = await repo.update(op.id as string, {
+        otherExtractionWatermarkMessageId: op.messageId ?? null,
+      } as never);
+      ledger.push({ op: 'setOtherExtractionWatermark', id: op.id, updated: !!updated });
     } else {
       // syncVaults defaults to true; the fixture has no provisioned vaults, so
       // the summary sweep is a no-op (and is deferred in the Rust port).

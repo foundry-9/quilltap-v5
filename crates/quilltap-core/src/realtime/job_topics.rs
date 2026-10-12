@@ -110,6 +110,20 @@ pub fn topics_for_completed_job(job_type: Option<&str>, payload: Option<&Value>)
         // the hint is collection-wide by necessity.
         Some("MEMORY_HOUSEKEEPING") => vec![TopicHint::collection(RealtimeTopic::Memories)],
 
+        // P4.D265 (v4 `d58548051`, `job-topics.ts:91-97`): a dry run writes
+        // nothing (strict boolean `true` — a `"true"` string is NOT a dry run);
+        // a real run moves memories and rewrites the Commonplace vault files.
+        Some("MEMORY_CONSOLIDATION") => {
+            if payload.and_then(|p| p.get("dryRun")) == Some(&Value::Bool(true)) {
+                vec![]
+            } else {
+                vec![
+                    TopicHint::collection(RealtimeTopic::Memories),
+                    TopicHint::collection(RealtimeTopic::MountPoints),
+                ]
+            }
+        }
+
         // A rendered conversation lands in a document store; the Scriptorium
         // and the character conversations tab both watch that.
         Some("CONVERSATION_RENDER") => vec![

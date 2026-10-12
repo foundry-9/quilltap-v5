@@ -1623,6 +1623,13 @@ pub enum Request {
         min_importance: Option<f64>,
         #[serde(default)]
         source: Option<String>,
+        /// P4.D265 (C2, v4 `d58548051`): `?tier=hot|cold` — v4 reads it from
+        /// the QUERY (`'hot'|'cold'` else undefined), so it stays typed. The
+        /// paginated path filters EXACTLY (`tier = ?`); the legacy path keeps
+        /// v4's NULL-as-hot rule. Honoured from P4.D269 — until then a PRESENT
+        /// `tier` is refused (R-G); an absent one keeps the existing list.
+        #[serde(default)]
+        tier: Option<String>,
         #[serde(default)]
         sort_by: Option<String>,
         #[serde(default)]
@@ -2839,6 +2846,66 @@ pub enum Request {
     },
     // === end P4.D255 ===
 
+    // === P4.D265: the 01a83539d round's wire (C2) ===
+    // Every variant below answers the typed "recognized but not yet available"
+    // refusal naming its owning order until that order fills the arm (R-G).
+    /// v4 `POST /api/v1/memories?action=anchor-gate-probe` (`route.ts:583-630`)
+    /// — v4's probe body verbatim; 404 `Character not found`, 500 `Anchor gate
+    /// probe failed`. P4.D269 reproduces Zod's int / 1..200 checks on `limit`.
+    #[serde(rename_all = "camelCase")]
+    MemoryAnchorGateProbe {
+        character_id: String,
+        #[serde(default)]
+        limit: Option<f64>,
+    },
+    /// v4 `GET ?action=consolidation-config` — `{success, settings}`. P4.D271.
+    MemoryConsolidationConfigGet,
+    /// v4 `POST ?action=consolidation-config` — the `.partial()` merge
+    /// (v4's clobber, §R.4(c)); `{success, settings}`. P4.D271.
+    MemoryConsolidationConfigSet {
+        config: serde_json::Value,
+    },
+    /// v4 `GET ?action=extraction-mode-config` — `{success, settings}`. P4.D271.
+    MemoryExtractionModeConfigGet,
+    /// v4 `POST ?action=extraction-mode-config` — `{success, settings}`. P4.D271.
+    MemoryExtractionModeConfigSet {
+        config: serde_json::Value,
+    },
+    /// v4 `POST ?action=consolidate` (`consolidateSchema`, `route.ts:153-158`)
+    /// — `{success, dryRun: true, report}` | `{success, dryRun: false, jobId}`.
+    /// RAW options (the `MemoryHousekeep` precedent). P4.D271.
+    MemoryConsolidate {
+        options: serde_json::Value,
+    },
+    /// v4 `GET /api/v1/wardrobe/[itemId]/images?scope=…&id=…&action=save-targets`
+    /// (`01a83539d`) — `{albums: PhotoAlbumOption[]}`. P4.D275.
+    #[serde(rename_all = "camelCase")]
+    WardrobeItemImageSaveTargets {
+        scope: WardrobeContainerScope,
+        #[serde(default)]
+        container_id: Option<String>,
+        item_id: String,
+    },
+    /// v4 `POST …/images?…&action=save-to-store` (`01a83539d`,
+    /// `SaveImageRequestSchema`) — `{saved, mountPoint, relativePath, linkId,
+    /// keptAt, fileId, sha256}`; the 409 riders are P4.D275's body. `caption`
+    /// / `tags` RAW tri-states so a JSON `null` is refused as v4's Zod refuses
+    /// it. P4.D275.
+    #[serde(rename_all = "camelCase")]
+    WardrobeItemImageSaveToStore {
+        scope: WardrobeContainerScope,
+        #[serde(default)]
+        container_id: Option<String>,
+        item_id: String,
+        file_id: String,
+        mount_point_id: String,
+        #[serde(default, deserialize_with = "double_option")]
+        caption: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        tags: Option<Option<serde_json::Value>>,
+    },
+    // === end P4.D265 ===
+
     // === P4.9I1A: the Brahma Console dedicated dispatch family ===
     /// v4 `GET /api/v1/brahma-console` — the user's brahma chats.
     BrahmaConsoleList,
@@ -2915,6 +2982,25 @@ pub enum Request {
         character_id: Option<serde_json::Value>,
         #[serde(default)]
         limit: Option<serde_json::Value>,
+        // P4.D265 (C1 §12 / C2, v4 `3f7320138` / `f7d8064be`): the four replay
+        // growth fields, RAW so P4.D267 reproduces v4's refusal bytes. Honoured
+        // from P4.D267 — until then a PRESENT one is refused (R-G); absent
+        // keeps the existing replay.
+        /// v4 `memoryBudget` — `Number.isFinite && > 0 → Math.floor`, else
+        /// absent: a JSON `null` decodes as ABSENT here (v4 coerces it).
+        #[serde(default)]
+        memory_budget: Option<serde_json::Value>,
+        /// v4 `tuning` (`RecallTuningInput.optional()` — strict; `null` is
+        /// REFUSED, so `Some(None)` is a present `null`).
+        #[serde(default, deserialize_with = "double_option")]
+        tuning: Option<Option<serde_json::Value>>,
+        /// v4 `signals` (`.optional()` — `null` refused).
+        #[serde(default, deserialize_with = "double_option")]
+        signals: Option<Option<serde_json::Value>>,
+        /// v4 `asOf` (`!== undefined && typeof !== 'boolean'` → 400 `asOf must
+        /// be a boolean` — `null` refused).
+        #[serde(default, deserialize_with = "double_option")]
+        as_of: Option<Option<serde_json::Value>>,
     },
     // === end P4.d13 ===
 

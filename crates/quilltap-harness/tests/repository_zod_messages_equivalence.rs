@@ -231,6 +231,11 @@ fn compare_parsed(schema: &str, row: &Map<String, Value>, parsed: &Value) -> Res
         "lastReinforcedAt": opt(&m.last_reinforced_at),
         "relatedMemoryIds": m.related_memory_ids,
         "reinforcedImportance": num(m.reinforced_importance),
+        // P4.D265 (v4 `d58548051`): the tier tail.
+        "tier": m.tier,
+        "supersededById": opt(&m.superseded_by_id),
+        "consolidatedFrom": m.consolidated_from,
+        "consolidatedAt": opt(&m.consolidated_at),
     });
     for (k, v5) in got.as_object().unwrap() {
         // v4's absent optional key is `undefined` (dropped from `r.data`), its
@@ -424,11 +429,14 @@ fn repository_zod_messages_match_oracle() {
     );
     assert_eq!(
         (memory_rows, inform_rows),
-        (54, 24),
+        // P4.D265: +18 MemorySchema rows (the tier tail + `CONSOLIDATED`).
+        (72, 24),
         "P4.161: the recorded MemorySchema / ChatInformSchema rows"
     );
     assert_eq!(
-        parsed_rows, 11,
+        // P4.D265: +7 accepted tier-tail rows, each comparing the four new keys.
+        parsed_rows,
+        18,
         "P4.161: every accepted memory / inform row compared its parsed defaults"
     );
     assert!(
