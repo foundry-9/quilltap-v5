@@ -123,7 +123,10 @@ async fn shipped_help_tree_matches_oracle() {
     // vendored (the tree re-vendored WHOLE); 130 = 130 after. P4.D278 (v4
     // `01a83539d`): measured RED at 130 vs the target pin's 131 before
     // `help/memory-consolidation.md` was vendored (the tree re-vendored
-    // WHOLE); 131 = 131 after.
+    // WHOLE); 131 = 131 after. P4.D287 (v4 `4a38222e6`): the count UNMOVED
+    // at 131 = 131; measured RED on content alone (`docs[86]`, `chunks[526]`)
+    // before `help/wardrobe.md` + `help/project-wardrobe.md` were re-vendored
+    // byte-exact; green after.
     assert_eq!(
         files.len(),
         want.count,
