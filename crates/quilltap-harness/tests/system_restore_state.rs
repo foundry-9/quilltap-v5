@@ -4758,7 +4758,15 @@ const RECONCILE_MESSAGES: &[&str] = &[
     "Renamed document store to its rightful name",
     "Store-name reconcile after a character change failed",
     "Store-name reconcile skipped: mount-index database unavailable",
+    // v4 `reconcile-store-names.ts:36` — unreachable in a restore (v5 has no
+    // job child), whitelisted so the census stays v4's full set.
+    "Store-name reconcile skipped in the job child",
 ];
+
+/// v5-only (`RECONCILE_READ_FAILURE_STRICT`, P4.D274): the reconcile's whole-
+/// query read failed. No committed case may log it.
+const RECONCILE_READ_FAILED_WARN: &str =
+    "WARN quilltap::mount_index Store-name reconcile skipped: a store or character read failed";
 
 /// The `summary` adjustments a ruled carve makes: v5 leads v4's `files`
 /// counter by `files_lead`, and these v4 warnings are the divergence itself.
@@ -5530,7 +5538,10 @@ const BACKFILL_WARNS: &[(&str, &[&str])] = &[(
 /// `(case, the field tails it logs)`.
 type V5OnlyCases = &'static [(&'static str, &'static [&'static str])];
 
-const V5_ONLY_RESTORE_LINES: &[(&str, V5OnlyCases)] = &[(BACKFILL_WARN, BACKFILL_WARNS)];
+const V5_ONLY_RESTORE_LINES: &[(&str, V5OnlyCases)] = &[
+    (BACKFILL_WARN, BACKFILL_WARNS),
+    (RECONCILE_READ_FAILED_WARN, &[]),
+];
 
 fn assert_claimed_store_warns(name: &str, lines: &[String], failures: &mut Vec<String>) {
     for (prefix, cases) in V5_ONLY_RESTORE_LINES {
@@ -5963,10 +5974,21 @@ fn compare_restore_logs(
             }
         }
     }
-    // The ruled files-phase slot (see `files_phase_last`).
+    // The ruled files-phase slot (see `files_phase_last`). [P4.D273 item 10,
+    // widened at the `01a83539d` unification] the two deferred-project-file
+    // lines ride the same slot: v4 logs `Replayed deferred project files` at
+    // 22h-bis, v5 after the whole files family.
+    let is_files_phase_record = |r: &Value| {
+        matches!(
+            r["message"].as_str(),
+            Some("Failed to restore file")
+                | Some("Failed to restore deferred project file")
+                | Some("Replayed deferred project files")
+        )
+    };
     let (mut g, mut w) = (
-        files_phase_last(g, |r: &Value| r["message"] == "Failed to restore file"),
-        files_phase_last(w, |r: &Value| r["message"] == "Failed to restore file"),
+        files_phase_last(g, is_files_phase_record),
+        files_phase_last(w, is_files_phase_record),
     );
     // The family's origin rule: a UUID the archive does not carry was minted
     // (the `new-account` remap), so it is labelled rather than compared.

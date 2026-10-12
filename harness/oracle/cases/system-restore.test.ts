@@ -925,6 +925,9 @@ const RECONCILE_MESSAGES = [
   'Renamed document store to its rightful name',
   'Store-name reconcile after a character change failed',
   'Store-name reconcile skipped: mount-index database unavailable',
+  // `reconcile-store-names.ts:36` — unreachable in a restore; whitelisted so
+  // the census stays the full set (the `01a83539d` unification).
+  'Store-name reconcile skipped in the job child',
 ];
 
 /**

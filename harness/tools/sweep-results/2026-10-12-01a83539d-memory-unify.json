@@ -765,9 +765,73 @@
       "cause": null,
       "exit": 0,
       "warnings": []
+    },
+    {
+      "family": "appearance_sanitize_gate_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "archive_crypto_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "archive_reencrypt_tier2_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "archived_wearer_read_guard",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "ariel_writers_tier3_equivalence",
+      "status": "run_failed",
+      "cause": "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s\n   Compiling quilltap-harness v0.0.1110 (/Volumes/External 1/source_overflow/quilltap-v5/crates/quilltap-harness)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.56s\n     Running tests/ariel_writers_tier3_equivalence.rs (target/debug/deps/ariel_writers_tier3_equivalence-a0b9b271c2bf6e90)\nthread 'ariel_writers_tier3_matches_oracle' (1216519) panicked at crates/quilltap-harness/tests/ariel_writers_tier3_equivalence.rs:199:9:\nassertion `left == right` failed: chat_messages: row 0 differs\n  rust:   {\"id\":\"<id-0>\",\"chatId\":\"c0000001-0000-4000-8000-0000000000c1\",\"type\":\"message\",\"role\":\"ASSISTANT\",\"content\":\"5101011b634d00c48ad37c856e3cad8385132bad7ca3187d117eb2e8e43c50bdb5a855f38c620b028680354b4f36f6a0280a0c110c1cdf02633326bd536c5b338d766ea982a8c9aab20ac82802b3b9850ed75da8234ce98db65841319e0d0f80d802e238c6fff778be58ab07aef34d9ecc68a246576f57dea8e89bbcc803bace3750c706770050228e63\",\"rawResponse\":null,\"tokenCount\":null,\"promptTokens\":null,\"completionTokens\":null,\"swipeGroupId\":null,\"swipeIndex\":null,\"attachments\":\"[]\",\"debugMemoryLogs\":null,\"thoughtSignature\":null,\"reasoningContent\":null,\"reasoningSegments\":null,\"participantId\":null,\"recoveryType\":null,\"renderedHtml\":null,\"dangerFlags\":null,\"confirmed\":null,\"confirmationChecked\":null,\"confirmationRevised\":null,\"confirmationNotes\":null,\"confirmationOriginalContent\":null,\"targetParticipantIds\":null,\"isSilentMessage\":null,\"systemSender\":\"ariel\",\"systemKind\":\"terminal-output-idle\",\"opaqueContent\":null,\"hostEvent\":null,\"customAnnouncer\":null,\"carinaMeta\":null,\"pascalMeta\":null,\"routeTrail\":null,\"pendingExternalPrompt\":null,\"pendingExternalPromptFull\":null,\"pendingExternalAttachments\":null,\"summaryAnchor\":null,\"context\":null,\"systemEventType\":null,\"description\":null,\"totalTokens\":null,\"provider\":null,\"modelName\":null,\"estimatedCostUSD\":null,\"createdAt\":\"<ts>\"}\n  oracle: {\"id\":\"<id-0>\",\"chatId\":\"c0000001-0000-4000-8000-0000000000c1\",\"type\":\"message\",\"role\":\"ASSISTANT\",\"content\":\"5101011b634d00c48ad37c856e3cad8385132bad7ca3187d117eb2e8e43c506bb72f6ad53ca3d882c8213dd9d883a228d8100f0bc7b7c0d98c49ef14dbd64ca39d5baa606eb2eeac023186a034af30e1a61b4d84d43e68ab5514e3d9f000882d208e63fc7f8fe78b8d76e03adfe4c98c266ac47afb3a3c00362afa262ff280aef30d70d1541a711c03\",\"rawResponse\":null,\"tokenCount\":null,\"promptTokens\":null,\"completionTokens\":null,\"swipeGroupId\":null,\"swipeIndex\":null,\"attachments\":\"[]\",\"debugMemoryLogs\":null,\"thoughtSignature\":null,\"reasoningContent\":null,\"reasoningSegments\":null,\"participantId\":null,\"recoveryType\":null,\"renderedHtml\":null,\"dangerFlags\":null,\"confirmed\":null,\"confirmationChecked\":null,\"confirmationRevised\":null,\"confirmationNotes\":null,\"confirmationOriginalContent\":null,\"targetParticipantIds\":null,\"isSilentMessage\":null,\"systemSender\":\"ariel\",\"systemKind\":\"terminal-output-idle\",\"opaqueContent\":null,\"hostEvent\":null,\"customAnnouncer\":null,\"carinaMeta\":null,\"pascalMeta\":null,\"routeTrail\":null,\"pendingExternalPrompt\":null,\"pendingExternalPromptFull\":null,\"pendingExternalAttachments\":null,\"summaryAnchor\":null,\"context\":null,\"systemEventType\":null,\"description\":null,\"totalTokens\":null,\"provider\":null,\"modelName\":null,\"estimatedCostUSD\":null,\"createdAt\":\"<ts>\"}\n  left: Object {\"id\": String(\"<id-0>\"), \"chatId\": String(\"c0000001-0000-4000-8000-0000000000c1\"), \"type\": String(\"message\"), \"role\": String(\"ASSISTANT\"), \"content\": String(\"5101011b634d00c48ad37c856e3cad8385132bad7ca3187d117eb2e8e43c50bdb5a855f38c620b028680354b4f36f6a0280a0c110c1cdf02633326bd536c5b338d766ea982a8c9aab20ac82802b3b9850ed75da8234ce98db65841319e0d0f80d802e238c6fff778be58ab07aef34d9ecc68a246576f57dea8e89bbcc803bace3750c706770050228e63\"), \"rawResponse\": Null, \"tokenCount\": Null, \"promptTokens\": Null, \"completionTokens\": Null, \"swipeGroupId\": Null, \"swipeIndex\": Null, \"attachments\": String(\"[]\"), \"debugMemoryLogs\": Null, \"thoughtSignature\": Null, \"reasoningContent\": Null, \"reasoningSegments\": Null, \"participantId\": Null, \"recoveryType\": Null, \"renderedHtml\": Null, \"dangerFlags\": Null, \"confirmed\": Null, \"confirmationChecked\": Null, \"confirmationRevised\": Null, \"confirmationNotes\": Null, \"confirmationOriginalContent\": Null, \"targetParticipantIds\": Null, \"isSilentMessage\": Null, \"systemSender\": String(\"ariel\"), \"systemKind\": String(\"terminal-output-idle\"), \"opaqueContent\": Null, \"hostEvent\": Null, \"customAnnouncer\": Null, \"carinaMeta\": Null, \"pascalMeta\": Null, \"routeTrail\": Null, \"pendingExternalPrompt\": Null, \"pendingExternalPromptFull\": Null, \"pendingExternalAttachments\": Null, \"summaryAnchor\": Null, \"context\": Null, \"systemEventType\": Null, \"description\": Null, \"totalTokens\": Null, \"provider\": Null, \"modelName\": Null, \"estimatedCostUSD\": Null, \"createdAt\": String(\"<ts>\")}\n right: Object {\"id\": String(\"<id-0>\"), \"chatId\": String(\"c0000001-0000-4000-8000-0000000000c1\"), \"type\": String(\"message\"), \"role\": String(\"ASSISTANT\"), \"content\": String(\"5101011b634d00c48ad37c856e3cad8385132bad7ca3187d117eb2e8e43c506bb72f6ad53ca3d882c8213dd9d883a228d8100f0bc7b7c0d98c49ef14dbd64ca39d5baa606eb2eeac023186a034af30e1a61b4d84d43e68ab5514e3d9f000882d208e63fc7f8fe78b8d76e03adfe4c98c266ac47afb3a3c00362afa262ff280aef30d70d1541a711c03\"), \"rawResponse\": Null, \"tokenCount\": Null, \"promptTokens\": Null, \"completionTokens\": Null, \"swipeGroupId\": Null, \"swipeIndex\": Null, \"attachments\": String(\"[]\"), \"debugMemoryLogs\": Null, \"thoughtSignature\": Null, \"reasoningContent\": Null, \"reasoningSegments\": Null, \"participantId\": Null, \"recoveryType\": Null, \"renderedHtml\": Null, \"dangerFlags\": Null, \"confirmed\": Null, \"confirmationChecked\": Null, \"confirmationRevised\": Null, \"confirmationNotes\": Null, \"confirmationOriginalContent\": Null, \"targetParticipantIds\": Null, \"isSilentMessage\": Null, \"systemSender\": String(\"ariel\"), \"systemKind\": String(\"terminal-output-idle\"), \"opaqueContent\": Null, \"hostEvent\": Null, \"customAnnouncer\": Null, \"carinaMeta\": Null, \"pascalMeta\": Null, \"routeTrail\": Null, \"pendingExternalPrompt\": Null, \"pendingExternalPromptFull\": Null, \"pendingExternalAttachments\": Null, \"summaryAnchor\": Null, \"context\": Null, \"systemEventType\": Null, \"description\": Null, \"totalTokens\": Null, \"provider\": Null, \"modelName\": Null, \"estimatedCostUSD\": Null, \"createdAt\": String(\"<ts>\")}\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nerror: test failed, to rerun pass `-p quilltap-harness --test ariel_writers_tier3_equivalence`",
+      "exit": 101,
+      "warnings": []
+    },
+    {
+      "family": "attach_mount_file_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "attachment_anchor_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "autonomous_rooms_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "avatar_cache_key_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
     }
   ],
   "totals": {
-    "ok": 13
+    "ok": 21,
+    "run_failed": 1
   }
 }
