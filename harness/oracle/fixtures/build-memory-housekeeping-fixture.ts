@@ -19,6 +19,12 @@
  * regenerating after 2026-12, refresh the recent dates in
  * memory-housekeeping-tier2.json first.
  *
+ * P4.D266 (pin `01a83539d`): built FROM THE PIN, so generateDDL carries the
+ * four `memories` tier columns; seeds take an optional `tier` /
+ * `supersededById` / `consolidatedFrom` / `updatedAt`, and v4's
+ * `create-instance-settings-table` migration runs after the seed so the
+ * retention setting has a table.
+ *
  * Run (Node 24, from the v4 checkout):
  *   N=~/.nvm/versions/node/v24.13.1/bin
  *   cd ~/source/quilltap-server
@@ -36,16 +42,23 @@ interface SeedMemory {
   characterId: string;
   importance: number;
   reinforcedImportance: number;
-  source: 'AUTO' | 'MANUAL';
+  source: 'AUTO' | 'MANUAL' | 'CONSOLIDATED';
   createdAt: string;
   lastAccessedAt: string | null;
   lastReinforcedAt: string | null;
   reinforcementCount: number;
   relatedMemoryIds: string[];
   vector: number[] | null;
-  /** Episodic spine — the merge pass's date guard. */
+  /** Episodic spine — the (retired) merge pass's date guard. */
   occurredAt?: string | null;
   kind?: 'semantic' | 'episodic';
+  // P4.D266 (the `d58548051` tiers): optional; absent → the pre-round literals,
+  // so the twenty pre-round seeds' bytes do not move.
+  tier?: 'hot' | 'cold';
+  supersededById?: string | null;
+  consolidatedFrom?: string[];
+  /** Absent → `spec.seedTimestamp`; the retention window reads it. */
+  updatedAt?: string;
 }
 interface Spec {
   testPepperBase64: string;
@@ -125,8 +138,12 @@ async function main(): Promise<void> {
         lastReinforcedAt: seed.lastReinforcedAt,
         relatedMemoryIds: seed.relatedMemoryIds,
         reinforcedImportance: seed.reinforcedImportance,
+        tier: seed.tier ?? 'hot',
+        supersededById: seed.supersededById ?? null,
+        consolidatedFrom: seed.consolidatedFrom ?? [],
+        consolidatedAt: null,
       } as never,
-      { id: seed.id, createdAt: seed.createdAt, updatedAt: spec.seedTimestamp }
+      { id: seed.id, createdAt: seed.createdAt, updatedAt: seed.updatedAt ?? spec.seedTimestamp }
     );
     if (seed.vector) {
       await vectors.addEntry({
@@ -147,6 +164,23 @@ async function main(): Promise<void> {
   await rawQuery('UPDATE vector_entries SET createdAt = ?', [spec.seedTimestamp]);
 
   await closeDatabase();
+
+  // P4.D266 (M2, measured): `initializeDatabase()` at the pin creates no
+  // `instance_settings` table, so v4's retention read would log `Raw query
+  // failed … no such table` and fall back to defaults, and the `setRetention`
+  // op could not write. v4's OWN migration module creates it (never hand-DDL).
+  const { runV4Migrations } = await import('../lib/v4-migrations');
+  const migrated = await runV4Migrations({
+    dbPath: out,
+    pepperBase64: spec.testPepperBase64,
+    migrations: [
+      {
+        file: 'migrations/scripts/create-instance-settings-table.ts',
+        exportName: 'createInstanceSettingsTableMigration',
+      },
+    ],
+  });
+  process.stderr.write(`fixture migrations: ${migrated.join('; ')}\n`);
   process.stderr.write(
     `built memory-housekeeping fixture: ${out} (${spec.seedMemories.length} memories, ` +
       `${spec.seedMetaCharacterIds.length} metas, ${seededEntries} entries)\n`

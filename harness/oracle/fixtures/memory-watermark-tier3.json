@@ -1,5 +1,5 @@
 {
- "_comment": "Tier-3 corpus for the memory gate's watermark auto-housekeeping check (v4 maybeEnqueueHousekeeping + enqueueMemoryHousekeeping). Each scenario drives ONE createMemoryWithGate INSERT (canned embedding, empty vector store) and asserts the background_jobs effect: below-watermark no-op, a real enqueue, the durable 15-minute throttle (a COMPLETED sweep seeded with a FUTURE updatedAt is always inside the window), the in-flight dedupe (a seeded PENDING job), the in-memory ineffective-sweep cache (both sides record the same outcome first), a perCharacterCapOverrides raise, and disabled settings. Counts are watermark-exact AFTER the insert (the gate counts post-write). Seed timestamps are pinned; 2099 rows are always 'recent'.",
+ "_comment": "Tier-3 corpus for the memory gate's watermark auto-housekeeping check (v4 maybeEnqueueHousekeeping + enqueueMemoryHousekeeping). Each scenario drives ONE createMemoryWithGate INSERT (canned embedding, empty vector store) and asserts the background_jobs effect: below-watermark no-op, a real enqueue, the durable 15-minute throttle (a COMPLETED sweep seeded with a FUTURE updatedAt is always inside the window), the in-flight dedupe (a seeded PENDING job), the in-memory ineffective-sweep cache (both sides record the same outcome first), a perCharacterCapOverrides raise, and disabled settings. Counts are watermark-exact AFTER the insert (the gate counts post-write). Seed timestamps are pinned; 2099 rows are always 'recent'. P4.D266 (`d58548051`): cold_rows_not_counted — one hot + two cold seeds; the watermark counts HOT rows only, so the post-insert hot count (2) stays under the floor (3) although the all-tier count (4) would trip it.",
  "_safety": "testPepperBase64 is the same THROWAWAY key the other fixtures use — never a real pepper.",
  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
  "seedTimestamp": "2020-01-01T00:00:00.000Z",
@@ -114,6 +114,26 @@
    "characterId": "ab000000-0000-4000-8000-00000000d15a",
    "content": "seed memory 7b number 2",
    "summary": "seed 7b 2"
+  },
+  {
+   "id": "8c000000-0000-4000-8000-00000008c001",
+   "characterId": "ac000000-0000-4000-8000-00000000c01d",
+   "content": "seed memory 8c number 1",
+   "summary": "seed 8c 1"
+  },
+  {
+   "id": "8c000000-0000-4000-8000-00000008c002",
+   "characterId": "ac000000-0000-4000-8000-00000000c01d",
+   "content": "seed memory 8c number 2",
+   "summary": "seed 8c 2",
+   "tier": "cold"
+  },
+  {
+   "id": "8c000000-0000-4000-8000-00000008c003",
+   "characterId": "ac000000-0000-4000-8000-00000000c01d",
+   "content": "seed memory 8c number 3",
+   "summary": "seed 8c 3",
+   "tier": "cold"
   }
  ],
  "seedJobs": [
@@ -245,6 +265,21 @@
    0.0,
    0.0,
    0.0
+  ],
+  "cold tier fresh\n\nfresh fact for the cold-tier character": [
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   1.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
   ]
  },
  "scenarios": [
@@ -320,6 +355,16 @@
    "candidate": {
     "content": "fresh fact for the disabled-settings character",
     "summary": "disabled fresh"
+   },
+   "expectJob": false
+  },
+  {
+   "name": "cold_rows_not_counted",
+   "userId": "00000000-0000-4000-8000-0000000000e1",
+   "characterId": "ac000000-0000-4000-8000-00000000c01d",
+   "candidate": {
+    "content": "fresh fact for the cold-tier character",
+    "summary": "cold tier fresh"
    },
    "expectJob": false
   }

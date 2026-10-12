@@ -16,6 +16,16 @@
 //! REINFORCE with a content change + re-embed (novel-detail footnote → the vector
 //! is regenerated + rewritten), SKIP_NEAR_DUPLICATE, SKIP_EMBEDDING_FAILED.
 //!
+//! P4.D266 (pin `01a83539d`) grows the corpus with the write side of v4's
+//! memory programme: `absorb_counts` (F1 — a SKIP_NEAR_DUPLICATE counts),
+//! `cap_reached_mid_append` / `at_cap_anchor_fill` / `twelve_entities` (F3 —
+//! the footnote cap, the frozen vector at the cap, the entity guard) and ten
+//! cold-tier scenarios (`d58548051` — a superseded member's absorption and
+//! links redirected to its digest, a vanished digest, a demoted row promoted
+//! on re-observation, the related band collapsed onto a digest, a 4-hop chain,
+//! the date guard on a cold row). The fixture is built FROM THE PIN, so the
+//! four tier columns compare in the `SELECT *` dump.
+//!
 //! NORMALIZATION: minted-values, shared cross-table id-map. The gate mints new
 //! memory ids + timestamps on an INSERT; the seed rows are baked identically into
 //! the fixture. A single first-seen-token id-map is shared across all three tables
@@ -331,10 +341,18 @@ async fn memory_gate_tier3_matches_oracle() {
     // scenarios add 4 seeds + 2 date-guard INSERT_RELATED inserts + 1 fallback
     // insert = 7 rows and 7 entries (reinforce_anchor_upgrade re-embeds in
     // place; date_guard_same_occasion skips; fallback_anchors has no seed).
+    // P4.D266's fourteen cap / cold-tier scenarios add 24 seeds (15 with a
+    // vector — a digest carries none) + 3 INSERT_RELATED inserts = 27 rows and
+    // 18 entries (the cap and promoted-reinforce scenarios re-embed in place).
     let mem_rows = got[0]["rows"].as_array().expect("memory rows");
-    assert_eq!(mem_rows.len(), 16, "expected 16 memory rows");
+    assert_eq!(mem_rows.len(), 43, "expected 43 memory rows");
     let entry_rows = got[1]["rows"].as_array().expect("entry rows");
-    assert_eq!(entry_rows.len(), 16, "expected 16 vector entries");
+    assert_eq!(entry_rows.len(), 34, "expected 34 vector entries");
+    // Silent-stale guard: the rebuilt fixture really carries cold rows.
+    assert!(
+        mem_rows.iter().any(|r| r["tier"] == "cold"),
+        "no cold row in the dump — a stale (pre-P4.D266) fixture?"
+    );
 
     eprintln!(
         "OK: memory-gate tier-3 matched oracle (memories + vector_indices + vector_entries)."

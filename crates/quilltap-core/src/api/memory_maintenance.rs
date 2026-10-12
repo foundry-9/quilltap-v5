@@ -4,8 +4,8 @@
 //! **Memory dedup is LIVE** (P4.43 unit 6; v4 `?action=memory-dedup-preview` /
 //! `memory-dedup` on `/api/v1/system/tools`): the synchronous inline dedup over
 //! [`crate::services::memory_dedup`] (union-find + dim-grouped cosine +
-//! scoreMemory + the novel-detail merge, through the delete-with-unlink
-//! chokepoint).
+//! scoreMemory + the P4.D266 fold into each survivor, through the
+//! delete-with-unlink chokepoint).
 //!
 //! **Conversation-summaries regeneration is LIVE** (P4.43 unit 7; v4
 //! `?action=regenerate` on `/api/v1/system/conversation-summaries`): GET reports
@@ -16,6 +16,7 @@
 use serde_json::json;
 
 use crate::db::runtime::Db;
+use crate::model::embedding::EmbeddingProvider;
 use crate::services::conversation_summaries_regen::count_in_flight;
 use crate::services::memory_dedup::deduplicate_all_memories;
 use crate::services::queue_service::enqueue_regenerate_conversation_summaries;
@@ -31,8 +32,14 @@ fn internal_fixed(sentence: &str, err: impl std::fmt::Display) -> Response {
 /// v4 `?action=memory-dedup-preview` (GET, dry run) / `memory-dedup` (POST,
 /// apply) — `{success, result}`. Threshold defaults to 0.80 and must be in
 /// `[0.5, 1.0]` (v4's exact 400 sentence).
-pub async fn memory_dedup(
+///
+/// `provider` is the memory-embedding seam the dedup fold re-embeds changed
+/// survivors through (R-D, P4.D266): OPTIONAL — v4 dedup never refuses for
+/// embedding reasons, so neither does v5; a `None` seam makes each re-embed
+/// fail non-fatally with v4's WARN.
+pub async fn memory_dedup<P: EmbeddingProvider>(
     db: &Db,
+    provider: Option<&P>,
     user_id: &str,
     threshold: Option<f64>,
     preview: bool,
@@ -46,7 +53,7 @@ pub async fn memory_dedup(
             "Invalid threshold. Must be a number between 0.5 and 1.0",
         );
     }
-    match deduplicate_all_memories(db, user_id, threshold, !preview).await {
+    match deduplicate_all_memories(db, provider, user_id, threshold, !preview).await {
         Ok(result) => Response::MemoryMaintenance(json!({ "success": true, "result": result })),
         Err(e) => internal_fixed(
             if preview {

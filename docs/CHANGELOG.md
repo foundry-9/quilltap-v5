@@ -94,6 +94,147 @@ New `quilltap_core::store_names`, a port of v4's `lib/mount-index/store-names.ts
 `next_unique_mount_point_name` now trims with JS's `trim` rather than Rust's. That also covers restore 22a's free-name pick.
 
 New tier-1 family `store_names_equivalence` runs a committed corpus through v4's real module: 117 rows, with each plan's idempotence pass. The V8 date forms a stored `createdAt` cannot take are pinned both ways as `STORE_STAMP_UNREACHABLE_FORMS`.
+#### 2026-10-10 — docs(porting): P4.D266 lane close — M5, the gate, HANDOFFs and corrections
+
+_Docs-only change._
+
+P4.D266 is marked LANE COMPLETE. Its lane record covers:
+
+- the M5 measurement of P4.D270's families (every red has a P4.D270 cause);
+- the full workspace gate: 709 binaries, 4,705 passed, and the 3 reds — two by design, one fixed in `c6fd8dd1a`;
+- the named ruled-divergence rows;
+- the R-B and R-E measurements;
+- the HANDOFF(P4.D268) frozen-archive probes;
+- the corrections to the order.
+
+#### 2026-10-10 — fix(memory): P4.D266 the retention cutoff renders through the clock's ISO helper
+
+_Versions: core 0.0.1273._
+
+`housekeeping.rs`'s `js_iso_string` now formats through `clock::iso_from_unix_ms` and only rewrites the year prefix into V8's extended `±YYYYYY` form. Before, it did its own UTC civil-day arithmetic, which tripped the `host_zone_sites_census` (P4.153 guard: only listed files may do that maths). The output is unchanged, and the `js_iso_string_matches_v8` unit test is green.
+
+#### 2026-10-09 — fix(memory): P4.D266 the housekeep POST validates its options as v4's schema does
+
+_Versions: core 0.0.1272._
+
+`?action=housekeep` (POST) now checks the body against v4's `housekeepingOptionsSchema` before it looks up the character. Any check that fails answers v4's 400 `Validation error`; before, the sweep ran with the bad values or the request fell to a 404. The checks:
+
+- `characterId` must be an RFC uuid;
+- `maxMemories` must be 10–10000, and a float is accepted then floored;
+- the two month bounds must be 1–120, `minImportance` 0–1 and `mergeThreshold` 0.8–1;
+- `mergeSimilar` and `dryRun` must be booleans.
+
+`memories_routes` gains three config rows (`maxMemories: 5`, `mergeThreshold: 0.5`, a non-uuid id), all green.
+
+#### 2026-10-09 — feat(memory): P4.D266 U6 dedup folds each cluster into its survivor before deleting
+
+_Versions: core 0.0.1271._
+
+Memory deduplication follows v4 `3f7320138` F9 at the `01a83539d` pin.
+
+- **Read.** Memories are read through `memories_read::find_by_character_id`: v4's order, all tiers, Zod-faithful drops.
+- **Preview count.** The preview's detail count is the capped `plan_memory_merge` count.
+- **Apply** runs only when something is to be removed. For each cluster:
+  - It first folds the losers into the survivor through the new `apply_memory_merge`: capped footnotes, summed counts with recomputed importance, unioned links, the earliest `occurredAt`, and ONE re-embed when the content or anchor date changed.
+  - If a fold fails, its losers are kept and two WARNs are logged.
+  - It then deletes through the chokepoint, cleans the vector store (WARN on failure), and invalidates the character's frozen archive.
+- **Embedding seam.** The two `MemoryDedup*` engine arms now pass the optional memory embedding seam (R-D). A missing seam fails each re-embed with a WARN and never refuses the request.
+- **Logging.** The all-characters driver logs v4's two INFO lines and a camelCase per-character ERROR.
+- **Re-embed write order.** `reembed_memory` now writes the row's embedding before the vector store, as v4 does, so a store failure leaves the row updated.
+
+`memory_dedup_equivalence` grows. Both copies get the tier migration, 16 planted rows through the real repositories, a planted abort trigger, and a mocked re-embed whose texts and call count are compared (3 calls). Bodies and dumps are compared byte for byte, and two mutation proofs turn it red. There are new unit tests and host-binary pins for the `repository` label and dedup's INFO lines.
+
+#### 2026-10-09 — feat(host): P4.D266 U5b the housekeeping job counts demotions and logs v4's four lines
+
+_Versions: core 0.0.1270, host 0.0.196._
+
+`MemoryHousekeepingHandler` (v4 `memory-housekeeping.ts` at `01a83539d`):
+
+- The outcome cache now records `demoted + deleted`. A sweep that only demotes rows counts as effective, so the watermark backoff no longer arms after it.
+- The retention delete is labelled `countSource: 'resolved-ids'` (R-C), because v4 runs this path in its job child.
+- The handler now logs v4's four lines, which were missing before:
+  - the ERROR when enumerating characters fails (the job then completes as a no-op);
+  - the per-character INFO `Completed sweep for character`, which gains `demoted` and `cold`;
+  - the per-character ERROR `Sweep failed for character`, which replaces a silent swallow, and the sweep continues;
+  - the closing INFO `Job complete`, which gains `totalDemoted`.
+- `record_housekeeping_outcome` stores a non-finite count as 0, so the backoff stays armed.
+
+New host test `memory_housekeeping_handler.rs` (5 tests). It uses a process-wide capture so it can see the batch-delete line emitted on the writer thread, and it pins the `resolved-ids` and `repository` labels. A mutation proof (recording `deleted` alone) turns the effective-outcome test red.
+
+#### 2026-10-09 — feat(memory): P4.D266 U4 housekeeping demotes to the cold tier; the housekeep wire moves
+
+_Versions: core 0.0.1269._
+
+Housekeeping follows v4 `d58548051` at the `01a83539d` pin. It now demotes rows to the cold tier instead of deleting them.
+
+**The sweep**
+- **Hot rows only.** The sweep reads only hot rows. Cold rows are counted as `coldCount`, and the empty early return is gone.
+- **Protection.** CONSOLIDATED digests are protected, as MANUAL rows already were.
+- **Pass 1** demotes stale rows.
+- **Pass 2.** The merge pass is retired: `mergeSimilar` is accepted and ignored, with one DEBUG line. The `merged` count is always 0.
+- **Pass 3** demotes the rows over the cap and rewrites the pass-1 detail in place, with the reason `Exceeded hot-memory limit (N)`.
+- **Retention.** The only deletion is the opt-in retention sweep (`memoryConsolidation.coldRetentionDays`). It removes superseded cold non-MANUAL rows past the window, so CONSOLIDATED digests go too — faithful to v4. A cutoff out of JS's date range returns `Invalid time value`.
+- **Cache.** A sweep that changed anything invalidates the character's frozen archive.
+- **Logging and plumbing.**
+  - The DEBUG lines `Starting sweep` and `Sweep computed` are added.
+  - So is the WARN for a failed vector cleanup.
+  - The `countSource` label is now threaded through `HousekeepingOptions.count_source`.
+- **`needs_housekeeping`** counts hot rows only, and reports work when `demoted + deleted` is non-zero.
+
+**The API**
+- The housekeep preview now returns `wouldDemote` and `coldCount`.
+- The POST now returns `demoted`, `coldCount` and `demotedIds`, in v4's key order.
+- The retention rows have no `summary`.
+
+**Tests**
+- The housekeeping fixture is rebuilt at the pin. It gains tier seeds, a per-seed `updatedAt`, and `instance_settings` created by v4's own migration.
+- The corpus gains four characters and a `setRetention` op. Results are now compared byte for byte.
+- `memories_routes` gains byte-order checks on the three housekeep bodies.
+
+#### 2026-10-09 — feat(memory): P4.D266 U3 the memory gate's cold tier
+
+_Versions: core 0.0.1268._
+
+The memory gate handles cold matches the way v4 does at `01a83539d` (`d58548051`):
+
+- **Superseded members.** A superseded cold member's absorption is redirected to its digest (up to 3 hops). In the REINFORCE band a redirect becomes a count-only `SKIP_NEAR_DUPLICATE`, with no footnote on the digest.
+- **Demoted rows.** A cap-demoted (unsuperseded) cold row is promoted back to hot when it is re-observed.
+- **Vanished digest.** If the digest is gone, the gate absorbs into the cold row without promoting it.
+- **Related band.** Matches collapse onto their digests, keeping the first-seen order and the maximum similarity. A cold row seen only in the related band is never promoted.
+- **Date guard.** It links the digest of a superseded best match.
+- **Watermark.** It now counts hot rows only.
+
+There is no vector-store re-stamp, because v5 has no cached store (R-B). A fresh `CharacterVectorStore::load` reads the column, and a unit test proves it.
+
+Testing:
+
+- Nine new unit tests mirror v4's `gate-cold-tier.test.ts`, plus a 4-hop chain and a chain that ends on a cold digest.
+- `memory-gate-tier3.json` grows by 14 scenarios: the cap, absorb and cold-tier cases. Their canned texts come from v4's real helpers. The gate builder takes optional tier, source, count and link seed fields, and a seed may now have no vector.
+- `memory-watermark-tier3.json` gains `cold_rows_not_counted`.
+- Both families fail on the pre-U3 code and pass with this commit.
+
+#### 2026-10-09 — feat(memory): P4.D266 U2 the gate counts every re-observation atomically and caps footnotes
+
+_Versions: core 0.0.1267._
+
+The memory gate's write side now matches v4 at the `01a83539d` pin (`3f7320138` F1/F3 and `70f9b495c` bug 182):
+
+- A near-duplicate (similarity ≥ 0.90) counts as a reinforcement. `absorb_near_duplicate` bumps the count, `lastReinforcedAt` and `reinforcedImportance`, and leaves the text and vector alone.
+- `reinforce_memory` counts through the keystone's atomic `increment_reinforcement` first, then writes content and anchors as a second patch. Two reinforcements from one snapshot now land 3, not 2.
+- Footnotes cap at 8. A row already at the cap is not re-embedded.
+- The entity union writes only when the list actually grew.
+- New shared helpers `count_reinforcement`, `patch_memory` and `reembed_memory`. The re-embed makes ONE provider call (no retry), and any failure is the non-fatal WARN `[MemoryGate] Failed to re-embed memory`. This closes P4.88's two recorded divergences.
+- `memory_gate_tier3` goes from red (the two near-duplicate rows) to green, and so do `memories_routes`' `create_near_duplicate` rows. Unit tests cover bug 182, the absorb and its WARN, the cap, the 12-entity row, a single provider call, and capture pins with silence legs.
+
+#### 2026-10-09 — feat(memory): P4.D266 U1 the pure footnote cap and memory-merge plan
+
+_Versions: core 0.0.1266._
+
+Ports the pure half of v4's memory-merge work (`3f7320138` F3/F9, at the `01a83539d` pin):
+
+- `memory_gate.rs` gains `MAX_REINFORCEMENT_FOOTNOTES = 8`, `count_reinforcement_footnotes` and `append_capped_footnotes`.
+- New `memory_merge.rs` holds `plan_memory_merge` and `MemoryMergePlan`. The plan folds losers into a survivor: capped footnotes, summed counts (`?? 1` only for absent/null), the link union minus the group, the earliest `occurredAt` by `Date.parse`, and the UTF-16 string max of `lastReinforcedAt`. The patch keeps v4's key order.
+- New tier-1 family `memory_merge_plan_equivalence` with oracle `memory-merge-plan.ts`, driving v4's real `planMemoryMerge` and footnote helpers: 1 constant, 17 append and 35 plan rows, with the patch compared byte-wise. Mutation proofs: a date compare for `lastReinforcedAt` turns 3 rows red, and `str::cmp` turns the 2 astral rows red.
 #### 2026-10-09 — docs(porting): P4.D265 lane close — real-instance note, gate and sweep records
 
 _Docs-only change._

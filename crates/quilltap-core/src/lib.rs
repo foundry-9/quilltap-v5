@@ -204,6 +204,7 @@ pub mod markdown;
 pub mod memory_format;
 pub mod memory_gate;
 pub mod memory_injector;
+pub mod memory_merge;
 pub mod memory_pools;
 pub mod memory_tasks;
 pub mod memory_weighting;

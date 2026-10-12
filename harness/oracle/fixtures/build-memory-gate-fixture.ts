@@ -10,6 +10,11 @@
  * ids/timestamps — so the seed rows are byte-identical on both sides and only the
  * gate's own effect differs.
  *
+ * Built FROM THE PIN (P4.D266, `01a83539d`): generateDDL carries the four
+ * `memories` tier columns, so a seed may be cold / superseded / a CONSOLIDATED
+ * digest; `idx_memories_character_tier` is migration-only and absent here
+ * (harmless — no read depends on it).
+ *
  * Seed `memories.embedding` is left NULL (the gate reads the `vector_entries`
  * store, never `memories.embedding`, for its search); the vector lives in
  * `vector_entries`. Characters with no seed (`insert_empty`,
@@ -32,7 +37,20 @@ interface SeedMemory {
   id: string;
   content: string;
   summary: string;
-  vector: number[];
+  /** Absent → no `vector_entries` row (a digest the store never indexed). */
+  vector?: number[];
+  // P4.D266 (the `d58548051` cold tier + the `3f7320138` cap): optional row
+  // overrides. Absent → the literals every pre-round scenario was seeded with,
+  // so their seed bytes do not move.
+  tier?: 'hot' | 'cold';
+  supersededById?: string | null;
+  consolidatedFrom?: string[];
+  consolidatedAt?: string | null;
+  source?: 'AUTO' | 'MANUAL' | 'CONSOLIDATED';
+  importance?: number;
+  reinforcementCount?: number;
+  reinforcedImportance?: number;
+  relatedMemoryIds?: string[];
   /** Episodic spine — seeded so the gate's date guard has an existing occasion. */
   occurredAt?: string;
   narrativeTime?: string;
@@ -99,9 +117,9 @@ async function main(): Promise<void> {
           summary: seed.summary,
           keywords: [],
           tags: [],
-          importance: 0.5,
+          importance: seed.importance ?? 0.5,
           embedding: null,
-          source: 'AUTO',
+          source: seed.source ?? 'AUTO',
           witnessedContext: null,
           occurredAt: seed.occurredAt ?? null,
           narrativeTime: seed.narrativeTime ?? null,
@@ -109,10 +127,14 @@ async function main(): Promise<void> {
           kind: seed.kind ?? 'semantic',
           sourceMessageId: null,
           lastAccessedAt: null,
-          reinforcementCount: 1,
+          reinforcementCount: seed.reinforcementCount ?? 1,
           lastReinforcedAt: null,
-          relatedMemoryIds: [],
-          reinforcedImportance: 0.5,
+          relatedMemoryIds: seed.relatedMemoryIds ?? [],
+          reinforcedImportance: seed.reinforcedImportance ?? 0.5,
+          tier: seed.tier ?? 'hot',
+          supersededById: seed.supersededById ?? null,
+          consolidatedFrom: seed.consolidatedFrom ?? [],
+          consolidatedAt: seed.consolidatedAt ?? null,
         } as never,
         {
           id: seed.id,
@@ -122,7 +144,9 @@ async function main(): Promise<void> {
       );
       seededMemories++;
 
-      // Seed the per-character vector index: metadata + one entry per seed.
+      // Seed the per-character vector index: metadata + one entry per seed
+      // that carries a vector.
+      if (!seed.vector) continue;
       await vectors.saveMeta(scenario.characterId, seed.vector.length);
       await vectors.addEntry({
         id: seed.id,

@@ -175676,3 +175676,181 @@ These are exactly the order's published spellings, so no `HANDOFF:` to P4.D273 i
 - **v4 moved during the lane:** `3e6e2f590`, `7a8d6dacc`, `9ecebf986`, observed 2026-10-09 20:43 (never read).
 - **Versions at close:** core 0.0.1271, host 0.0.196 (web / cli / tauri / SPA untouched; harness frozen 0.0.1110).
 - **Cleanup:** the pin worktree `/tmp/qt-v4-pin-p4.d274-01a83539d` removed; lane scratch `/tmp/p4.d274` deleted (incl. both Friday copies and the plan JSON); this lane's `target/` deleted. Nothing pushed to `main`.
+
+### P4.D266 lane start — the §R.2 probe, the pin, and the red-first set (M1)
+- **Branch** `claude/p4-memory-gate-cold-tier-083733`, stacked on P4.D265's lane tip `18e41e403` (= `KEYSTONE` `609d9d9f2` + P4.D265's Tier 2 tests/docs, no C1 change).
+- **§R.2 probe (2026-10-09 20:38 CDT):** checkout `main`, tree CLEAN; `01a83539d..main` = THREE commits. **v4 moved: `3e6e2f590`, `7a8d6dacc`, `9ecebf986` (wardrobe bugs 187–197 + refactor) observed at 2026-10-09 20:38.** Not ported, not read. `1a2b2164c..bugfix` is empty. The post-pin commits move only version stamps in `package.json` / `packages/quilltap/package.json` / the lock (no dependency move).
+- **Pin:** `/tmp/qt-v4-pin-p4.d266-01a83539d`, `rev-parse HEAD` = `01a83539dd1c…`, with the three symlink classes; `node_modules/openai/package.json` reads `7.30.0`. Every regen stages under `/tmp/p4d266/out` through a lane-private script that mirrors each family's header recipe.
+- **M1, the red set at the `KEYSTONE` tip** (oracles regenerated from the pin, Rust from the tip; my only edits at that point were the additive pure U1 helpers):
+  - GREEN: `memory_name_helpers` (19 rows), `extract_novel_details` (15), `memory_watermark_tier3` (current 7 scenarios), `memory_dedup` (preview + apply, the current corpus).
+  - RED: `memory_gate_tier3` — exactly the two SKIP_NEAR_DUPLICATE rows (`reinforcementCount` 1→2, `reinforcedImportance` 0.5→0.5792…, `lastReinforcedAt` minted); `memory_housekeeping_tier2` — the per-op results (deletes → demotions, the new result keys); `memories_routes` — exactly `create_near_duplicate`, `create_near_duplicate_tables`, `housekeep_preview`, `housekeep_dryrun`, `housekeep_run`.
+- **M2:** the housekeeping builder's fixture has NO `instance_settings` table — v4's run logs `Raw query failed … no such table: instance_settings` once per `getMemoryConsolidationSettings` read and falls back to defaults. The gate and watermark paths never read `instance_settings`.
+
+### P4.D266 U1 — the pure footnote cap + `memory_merge.rs` (tier-1)
+- `memory_gate.rs`: `MAX_REINFORCEMENT_FOOTNOTES`, `count_reinforcement_footnotes`, `append_capped_footnotes`. NEW `memory_merge.rs`: `MemoryMergePlan` (+ `to_mem_update`) and `plan_memory_merge`, which is v4 `:75-129` exactly.
+- NEW family `memory_merge_plan_equivalence` + oracle `harness/oracle/cases/memory-merge-plan.ts` (tsx; v4's real `planMemoryMerge`, `appendCappedFootnotes`, `countReinforcementFootnotes`, `MAX_REINFORCEMENT_FOOTNOTES`). Result: **1 constant, 17 append, 35 plan rows — green.** The patch is byte-compared.
+- Red-first: the family could not compile before the module existed. Mutation proofs: a `Date.parse` compare for `lastReinforcedAt` → `lra-string-vs-date`, `lra-z-vs-offset`, `lra-astral-vs-bmp` red; `str::cmp` → `lra-astral-vs-bmp`, `lra-bmp-vs-astral` red. Both reverted.
+- Regen: `cd <pin> && PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH npx tsx $V5W/harness/oracle/cases/memory-merge-plan.ts > /tmp/oracle-memory-merge-plan.ndjson`; run with `QT_ORACLE_MEMORY_MERGE_PLAN`.
+
+### P4.D266 U2a + U2b — the shared write helpers, the counted reinforcement (bug 182), the footnote cap, the near-duplicate absorb (F1)
+- `services/memory_gate.rs` gains `Counted`, `count_reinforcement` (`clock::now_iso()` → C1's `increment_reinforcement`, in one writer closure), `absorb_near_duplicate` (WARN `[MemoryGate] Failed to reinforce near-duplicate memory {memoryId, characterId}` / DEBUG `[MemoryGate] Near-duplicate absorbed as reinforcement {memoryId, reinforcementCount, reinforcedImportance}`), `patch_memory` (`Ok(false)` → `None`; `Ok(true)` → re-read on the caller thread; `Err` propagates — rethrow mode) and `reembed_memory` (ONE provider call; WARN `[MemoryGate] Failed to re-embed memory {memoryId, error}` on ANY failure, with `error` = `EmbeddingError: <message>` for the provider and `Error: <display>` for a v5 DB/store failure; DEBUG `[MemoryGate] Re-embedded memory {memoryId}`). All lines are emitted on the caller thread.
+- `reinforce_memory` follows v4 `:589-685` step for step: `at_cap` is measured before the append; the cap DEBUG `{memoryId, offered, appended, cap: 8}` fires only when details were dropped; the entity write happens only when `merged.len() > existing.len()`; the count lands FIRST; content and anchors are a SECOND patch; a cap row is never re-embedded. P4.88's divergence comment is deleted — both divergences are closed (no second provider call; row/store failures are now non-fatal). `SkipNearDuplicate` calls `absorb_near_duplicate`; per R-H, `memory_id` is the target's id and the outcome shape does not grow.
+- **Unit tests:** `near_duplicate_skips_without_writing` became `near_duplicate_absorbs_as_reinforcement`. New tests: `a_vanished_near_duplicate_warns_and_returns_the_snapshot`, `two_reinforcements_from_one_snapshot_both_count` (bug 182 → 3), `at_cap_counts_and_unions_entities_without_re_embedding` (zero provider calls, a recording provider), `below_cap_appends_up_to_the_cap_and_re_embeds_once` (exactly one call), `a_twelve_entity_row_takes_no_entity_write`. `a_failed_re_embed_…` moved to the new WARN text. 12/12.
+- **Differential:** `memory_gate_tier3` red → green (the same pin oracle as M1); `memories_routes` drops to `housekeep_{preview,dryrun,run}` only (the two `create_near_duplicate` rows are green).
+
+### P4.D266 U3 — the gate's cold tier (`d58548051`) + the gate / watermark corpora grown at the pin
+- `services/memory_gate.rs`:
+  - `MAX_DIGEST_HOPS = 3`, `is_cold` (`tier == "cold"`; NULL/absent = hot — §R.4(b)'s services semantic) and `superseded_by` (JS-truthy).
+  - `resolve_cold_for_absorb`: the DEBUG `[MemoryGate] Superseding digest missing; falling back to cold row {memoryId, supersededById}`; a vanished digest is NOT promoted, per v4's code rather than its doc comment.
+  - `promote_cold_memory`: C1 `update_tier_bulk(…, "hot", TierExtra { superseded_by_id: Some(None), .. })`, then the DEBUG `[MemoryGate] Promoted cold memory to hot on re-observation {memoryId, characterId}`. It returns the local view.
+  - `redirect_cold_link`: no write, silent on a miss.
+  - The date guard links `redirect_cold_link(best)`. The 0.90 band absorbs into the resolved target. The 0.85 band turns a redirect into `SkipNearDuplicate`. The related band collapses in a first-seen, max-similarity ordered list.
+  - `maybe_enqueue_housekeeping_inner` → `count_hot_by_character_id`.
+- **R-B measured:** `a_demoted_cold_row_is_promoted_and_reinforced` asserts that a fresh `CharacterVectorStore::load(…).is_hot("cold")` is `false` before the gate and `true` after it, so the column write is the re-stamp. NO-PORT, log-only: `setTier`'s `Re-stamped vector tiers` debug and the WARN `[MemoryGate] Failed to re-stamp vector tier after promotion`.
+- **Unit tests** (21/21 in the module): v4's `gate-cold-tier.test.ts:79-145` row for row (seven), plus `a_four_hop_chain_absorbs_on_the_third_hop` and `a_chain_ending_cold_unsuperseded_promotes_and_skips`, with capture pins and silence legs for both new DEBUGs.
+- **Differentials (rebuilt at the pin):**
+  - `build-memory-gate-fixture.ts`: `SeedMemory` gains optional `tier` / `supersededById` / `consolidatedFrom` / `consolidatedAt` / `source` / `importance` / `reinforcementCount` / `reinforcedImportance` / `relatedMemoryIds`, and an optional `vector`. The defaults are the old literals, and the twelve old scenarios' seed bytes are unchanged.
+  - `memory-gate-tier3.json` +14 scenarios: `absorb_counts`, `cap_reached_mid_append`, `at_cap_anchor_fill`, `twelve_entities`, `cold_superseded_skip`, `cold_superseded_reinforce_band`, `cold_digest_missing`, `cold_demoted_promoted_reinforce`, `cold_demoted_promoted_skip`, `cold_related_collapse`, `cold_related_only`, `cold_chain_four_hops`, `cold_chain_ends_cold_unsuperseded`, `date_guard_superseded_cold`. The canned candidate and re-embed texts were computed by a scratch generator through v4's REAL `buildMemoryEmbeddingText` / `extractNovelDetails` / `appendCappedFootnotes` at the pin, then spliced in one line each so the existing bytes are unchanged. The builder's last line reads `34 seed memories, 25 seed vectors`. The Rust sanity counts are 43 rows and 34 entries, plus a guard that some dumped row is `tier: "cold"`.
+  - `build-memory-watermark-fixture.ts` seeds take an optional `tier`. `memory-watermark-tier3.json` gains `cold_rows_not_counted`: one hot and two cold seeds at cap 4, so hot 2 < floor 3 while all tiers 4 ≥ 3.
+  - **Red-first:** the U2 tip (pre-U3 `memory_gate.rs`) against the grown oracles is RED. The gate fails at `scenario cold_superseded_reinforce_band action` (REINFORCE where v4 says SKIP_NEAR_DUPLICATE), and the watermark fails on `background_jobs rows diverge` (an extra MEMORY_HOUSEKEEPING job). With U3 both are **green**, and v4's own `expectedAction` checks pass for all 26 gate scenarios.
+
+### P4.D266 U4 + U5a — housekeeping DEMOTES (`d58548051`); the Memories API housekeep wire (C2)
+- **`services/housekeeping.rs`** is v4 `:195-475` at the pin:
+  - `Mem.cold`, and the hot filter with `cold_count` (no early return).
+  - `HousekeepingResult` gains `demoted`, `cold_count` and `demoted_ids`. `HousekeepingDetail.action` gains `"demoted"`.
+  - `is_protected` now also covers CONSOLIDATED.
+  - Pass 2 and the P4.d27 dim skip are DELETED.
+  - Pass 3 mutates the pass-1 detail with `Exceeded hot-memory limit ({max})`.
+  - Retention reads `get_memory_consolidation_settings` on every sweep, and `find_expired_cold_ids` gives details with no `summary`.
+  - Apply: `update_tier_bulk(…, "cold", TierExtra::default())`, then `delete_many_with_unlink(ids, opts.count_source)`, then the vector cleanup, which WARNs on failure. The frozen archive is invalidated when the sweep was dirty.
+  - DEBUG `[Housekeeping] Starting sweep {characterId, hot, cold, cap, dryRun}`, the retired-merge DEBUG `{characterId}`, and DEBUG `[Housekeeping] Sweep computed {characterId, dryRun, demoted, deleted, hotAfter}`.
+  - `needs_housekeeping` → `count_hot_by_character_id` + `demoted + deleted > 0`.
+  - `HousekeepingOptions` gains `count_source: Option<CountSource>`, and `None` means repository. `#[derive(Default)]` is kept, so `job_runner.rs`'s test compiles untouched and stays green unedited. Per R-F, the `merge_*` fields are kept, accepted and read by nothing.
+- **R-J:** the cutoff is computed in f64 through a local JS-faithful `js_iso_string` (±8.64e15 range, extended `±YYYYYY` years). Out of range → `Err(Internal("Invalid time value"))`. **Correction to the order:** `coldRetentionDays: 100000000` does NOT throw at today's clock. 1e8 × 86,400,000 = 8.64e15 exactly, and `now − 8.64e15` ≈ −8.638e15 is inside the range (year −271,8xx). The unit row uses 200,000,000 (`Invalid time value`) and also pins that 100,000,000 succeeds.
+- **R-B measured:** `pass_one_demotes_instead_of_deleting` asserts that a fresh `CharacterVectorStore::load(…).is_hot("stale")` is `false` after the demotion. NO-PORT, log-only: the WARN `[Housekeeping] Failed to re-stamp vector tier after demotion`.
+- **R-I:** `seed_frozen_archive_for_test` is marked `// HANDOFF(P4.D268): re-point to the (character, chat) signature at union` and calls `main`'s `get_or_compute_frozen_archive`. `a_dirty_sweep_invalidates_the_frozen_archive_and_a_noop_does_not` compares archive id sets: a dirty sweep recomputes, and a no-op keeps the cache. The ids are UUIDs because the archive's raw read drops non-UUID ids and characters (memory note `memory-raw-reads-drop-non-uuid-fixtures`).
+- **Unit tests (14):** v4 `housekeeping-demotion.test.ts:93-172` row for row (8), plus retention with CONSOLIDATED, the failed-cleanup WARN, R-J, `js_iso_string`, the frozen archive, and `needs_housekeeping`. The capture pins moved to `test_support::global_capture` (install in `make_db`) after the first run lost the `Starting sweep` callsite to the thread-scoped rig's `Interest` race. The gate module's pins were moved the same way.
+- **`api/memories.rs`:**
+  - The preview returns `{wouldDemote, wouldDelete, wouldMerge, wouldKeep, totalBefore, totalAfter, coldCount, details}`.
+  - The POST returns `{demoted, deleted, merged, kept, totalBefore, totalAfter, coldCount, demotedIds, deletedIds, mergedIds, details?}`.
+  - The POST passes `count_source: Some(Repository)`.
+- **Differential `memory_housekeeping_tier2` (rebuilt at the pin):**
+  - The builder adds optional `tier` / `supersededById` / `consolidatedFrom` / `updatedAt`, and v4's `create-instance-settings-table` migration via `runV4Migrations`. This is M2's cure: the builder logs `+RAN create-instance-settings-table-v1`, and the "Raw query failed" lines are gone.
+  - Four new characters (H5–H8) and five new op kinds/rows, incl. `setRetention` through v4's REAL `setMemoryConsolidationSettings`. The named row `RETENTION_DELETES_SUPERSEDED_DIGEST` (H7's `d7000002`) is faithful to v4 at `01a83539d`; a v4 fix flips it.
+  - Results are compared BYTE-wise in v4's twelve-key order, `summary` omitted when absent. The sentinel set covers every seed's pinned `updatedAt`.
+  - Silent-stale guards: the `"demoted":` key and a `retention window` reason must be present.
+  - Builder line: `35 memories, 5 metas, 15 entries`. Hand counts: 32 rows, 13 entries.
+  - Red at `KEYSTONE` (M1), **green** now.
+- **`memories_routes`:** `housekeep_{preview,dryrun,run}` are green, plus a new byte-wise key-order check on each, all three `bytes OK`. **`housekeep_run_demotes` NOT added, by the order's own condition:** which MNEMO rows a cap demotes rides the protection score and effective weight, and both decay with wall-clock age between the oracle run and the Rust run. Demotion is proven by `memory_housekeeping_tier2`.
+
+### P4.D266 U5b — the `MEMORY_HOUSEKEEPING` handler + the outcome cache (+ Tier 2 item 15, the handler's four lines)
+- **`spine.rs` `MemoryHousekeepingHandler`:**
+  - `count_source: Some(CountSource::ResolvedIds)` (R-C).
+  - `record_housekeeping_outcome(cid, (demoted + deleted) as f64, …)`.
+  - R-F's two merge resolutions are kept and passed.
+  - v4's four lines with keys in v4's order:
+    - ERROR `[Housekeeping] Failed to enumerate characters for user {jobId, userId, error}`, then `Completed(None)`;
+    - INFO `[Housekeeping] Completed sweep for character {jobId, userId, characterId, reason ?? 'unknown', dryRun ?? false, totalBefore, totalAfter, demoted, deleted, cold, merged, kept}`;
+    - ERROR `[Housekeeping] Sweep failed for character {jobId, userId, characterId, error}`, after which the sweep continues;
+    - INFO `[Housekeeping] Job complete {jobId, userId, charactersSwept, totalDemoted, totalDeleted, totalMerged, reason}`.
+  - The auto-disabled early return logs nothing (v4 `:25-32`).
+  - NO-PORT (§R.4(o)): the non-finite `deleted` guard DEBUG.
+- **`housekeeping_outcome_cache.rs`:** `deleted.is_finite() ? deleted : 0`, and the doc now says "demoted (or deleted)". New unit test `a_non_finite_count_arms_the_backoff` (v4 `:326-335`).
+- **NEW `crates/quilltap-host/tests/memory_housekeeping_handler.rs` (5/5):**
+  - Tests: a demote-only sweep of 12 is EFFECTIVE; a dry run records nothing and logs `reason=unknown`; the enumerate failure on a main-only `Db`; a per-character failure (R-J's `Invalid time value`) logs and continues; the F8 labels.
+  - **F8 label pins (Tier 1 item 13):** the batch-delete DEBUG is emitted on the WRITER thread, which `test_support::global_capture` (a thread-local buffer) cannot see either. The order's "use `global_capture`" therefore cannot capture it. This binary installs its own PROCESS-wide capture layer, records every thread while armed, and serializes its tests on a tokio mutex.
+  - The job path asserts `countSource=resolved-ids`, and `run_housekeeping` with `Some(Repository)` asserts `countSource=repository`. Each has the opposite label as its silence leg.
+  - The API's own choice (`Some(Repository)`) is one literal in `memory_housekeep`, which is not driven here: it needs a vault-backed character on the fresh instance. The routes family drives that handler.
+- **Mutation proof:** recording `result.deleted` alone turns `a_demote_only_sweep_records_an_effective_outcome` red.
+- `job_runner`'s `end_to_end_real_handler_dispatch_and_complete` is green UNEDITED.
+
+### P4.D266 U6 — the dedup FOLD (`3f7320138` F9) + Tier 2 item 17 (dedup's lines)
+- **`services/memory_gate.rs`:**
+  - `pub(crate) apply_memory_merge(db, provider: Option<&P>, survivor, plan, user_id, embedding_profile_id)` is v4 `:139-176`:
+    - an empty patch → DEBUG `[MemoryMerge] Nothing to fold into survivor {survivorId}`;
+    - `patch_memory` → `None` → WARN `[MemoryMerge] Failed to update survivor {survivorId, characterId}`, and `Err` propagates;
+    - `needs_reembed = content_changed || patch has occurredAt`;
+    - no userId → WARN `[MemoryMerge] Survivor changed but no userId to re-embed with {survivorId}`. This is unreachable through dedup, so it is pinned at unit level only and recorded;
+    - a `None` seam → WARN `[MemoryGate] Failed to re-embed memory {memoryId, error: "Error: memory embedding not assembled (dedup re-embed seam)"}` (R-D, a v5-only text);
+    - DEBUG `[MemoryMerge] Folded losers into survivor {survivorId, fieldsJson, mergedDetails, reembedded}`, where `reembedded = needs && userId` as in v4.
+  - **`reembed_memory` split into two writes** (row, then store): v4's row `updateForCharacter` has committed before the store work, so a store failure must not roll it back.
+- **`services/memory_dedup.rs`:**
+  - The read goes through `memories_read::find_by_character_id`; the embedding is decoded from the row's `{"0":…}` object, exact. The preview row stayed green after the read swap.
+  - The preview count is the capped `plan_memory_merge`.
+  - Apply runs only when `!dry_run && !all_remove_ids.is_empty()`: fold, then the kept set, then `delete_many_with_unlink(remove_ids, CountSource::Repository)`, the INFO `[MemoryDedup] Bulk deleted memories {context, characterId, requested, deleted}` (always), the vector cleanup WARN, and `invalidate_frozen_archive`.
+  - `removedCount` is the kept-filtered length.
+  - INFO `Starting deduplication for all characters` / `Deduplication complete` with v4's keys. The per-character ERROR is now camelCase `{context, characterId, characterName, error}`; no pin existed on the old snake_case.
+  - R-E's NO-PORT comment is at the call site.
+- **`api/memory_maintenance.rs`:** `memory_dedup<P>(db, provider: Option<&P>, …)`. **`api/engine.rs`:** the two `MemoryDedup*` arm bodies now use `ready_db_and_memory_embedding()` (R-D).
+- **M3 (measured):** in the `embedding-profiles` pair, Aria's memories are 8-dim (her vector store is the only one: 8 dims, one entry), and Bram's and Cleo's are 4-dim. The blobs use v4's quantized codec (`eb01…`, decoded through v4's `blobToFloat32` in a read-only probe from the pin).
+- **M4 (measured — MOOT):** the committed pair already carries the four tier columns and `idx_memories_character_tier`, because P4.D265 widened it in place (§R.3). `applyMemoryTiersMigration` / `ensure_memory_tiers_columns` on the copy are therefore idempotent no-ops. The "without it every fold fails" condition cannot arise on this pair, so the copy-time migration is NOT load-bearing here. It is applied on both sides as ordered.
+- **Differential `memory_dedup` (grown):**
+  - NEW `harness/oracle/fixtures/memory-dedup-plants.json`: 16 plants on Aria across six clusters on axes 2–7.
+    - A: the cap — 7 footnotes plus Lisbon/Porto/Faro, of which ONE is appended, with a re-embed.
+    - B: counts 2+3+1 and an earlier loser `occurredAt`, with a re-embed.
+    - C: R-E — the survivor links a loser of cluster B. The delete scrubs it, and the link survives as `[d…001, e…20]`.
+    - D: `DEDUP_CROSSES_TIERS` — a hot loser folds into a COLD survivor.
+    - E: `DEDUP_DELETES_DIGEST` — the CONSOLIDATED digest `e…51` is deleted and its member `e…52` keeps a dangling `supersededById`.
+    - F: a planted `BEFORE UPDATE` abort on `e…60` — `e…61` is kept, and `e…62`'s link to it survives.
+  - The plants are created on both sides through the REAL repositories. The trigger is planted on both. `MEM_COLS` is widened by 7 columns on both sides, and the REAL columns render JS-style.
+  - R-D: v4's mock records `embedCalls`; v5 registers exactly those texts and records its own. **Apply: 3 calls, texts equal.** Result bodies and dumps are compared byte-wise.
+  - Silent-stale: `reinforcementCount` is in the NDJSON, and `embedCalls` is non-empty in the apply row.
+  - **Green (preview 23 rows, apply 14 rows).**
+  - Mutation proofs: skipping `apply_memory_merge` → apply `embedCalls`, result and memories red; ignoring the kept set → apply result and memories red.
+  - Recipe: the header recipe plus `mkdir -p "$TMPO/fixtures"` and copies of `apply-memory-tiers-migration.ts` and `memory-dedup-plants.json`.
+- **Unit tests (4 new in `memory_dedup.rs`):**
+  - v4 F9 `:338-402`: the fold carries details, counts, links and the earliest `occurredAt`, with one re-embed; at the cap only the counts move and nothing re-embeds.
+  - A failed fold keeps its losers, logs the WARN pair and `requested=0`, and still invalidates the archive (R-I, `HANDOFF(P4.D268)`).
+  - `apply_memory_merge`'s three log arms.
+- **Host pins (`memory_housekeeping_handler.rs`, now 6/6):** dedup on a provisioned instance with a real `character_create` logs `countSource=repository` on the writer-thread batch line, plus the Starting / complete / Bulk deleted INFO lines.
+
+### P4.D266 Tier 2 #16 — `housekeepingOptionsSchema` on the housekeep POST (a pre-existing gap)
+- `api/memories.rs` `validate_housekeep_options` runs before the character lookup, in v4's order:
+  - `characterId` through `zod_uuid_ok`;
+  - `maxMemories` 10–10000 (a float is accepted; `HousekeepBag.max_memories` is now `Option<f64>` and is floored. For an integer row count `remaining > 10.5 ⟺ remaining > 10`, and the excess loop demotes the same number of rows);
+  - months 1–120, `minImportance` 0–1, `mergeThreshold` 0.8–1;
+  - the booleans `mergeSimilar` / `dryRun`.
+- A failure answers 400 `Validation error` (the recorded no-details class). The old `Invalid housekeeping options: …` serde refusal can no longer be reached.
+- `memories-config.test.ts` + the Rust family gain `housekeep_invalid_max_memories`, `housekeep_invalid_merge_threshold` and `housekeep_invalid_character_id`. All three are green (400). On the pre-change code they would have answered 200, 200 and 404.
+
+### P4.D266 M5 — the P4.D270 families measured on this branch (§R.13(b)/(f) — not regenerated in place, not edited)
+- Regenerated from the pin through hand-copied recipes with every `/tmp` path under `/tmp/p4d266/m5/`. Each family was then run on this branch:
+  - `carina_memory_extraction_tier3`: **green**.
+  - `fold_episode_tier3`: **green** (results + the `[FoldEpisodePass]` lines + 3 tables).
+  - `context_summary_service_tier3`: **RED on `chats`**. The first divergence is `otherExtractionWatermarkMessageId` (v4 writes `dd000001-…-000000000015`; this branch leaves NULL). That is P4.D270's OTHER-extraction watermark writer.
+  - `memory_pipeline_jobs_tier3`: **RED on `chats`**. Index 5/6 `otherExtractionWatermarkMessageId` is NULL vs `e600000a…` / `e7000002…` — the same P4.D270 cause.
+  - `memory_processor_tier3`: **RED on the result**. It reports `memoriesCreatedCount` 6 vs v4's 3 (the hybrid OTHER pass, a P4.D270 cause). `memoriesReinforcedCount` 1 = 1 and `reinforcedMemoryIds` agree.
+- **This lane's share:** the oracles' memory dumps carry rows with `reinforcementCount >= 2`: context-summary 1, pipeline-jobs 1, processor 2, carina 0, fold-episode 0. That is where the SKIP-band count write and the REINFORCE count can show.
+  - Each red family stops at its FIRST red table (`chats` or the result), so the `memories` comparison is not reached on this branch. The per-row attribution of those counts is left to the union.
+  - Every red above has a P4.D270 cause. A family both lanes move is green only on the union (§R.13).
+
+### P4.D266 lane close — the gate, every record the order asked for, the versions
+- **Gate (2026-10-09 23:31 → 2026-10-10 02:29 CDT):** `cargo test --workspace --no-fail-fast` with `CARGO_INCREMENTAL=0`, `QT_V4_CHECKOUT`/`QT_V4_ROOT` = the pin, and every owned family's oracle env set. **709 binaries / 4,705 passed / 3 failed / 3 ignored, zero `SKIP`.** Full log `/tmp/p4d266/gate-workspace.log`. The 3 reds:
+  - `cli_differential`: exactly the 7 rows `main help`, `completion bash|zsh|fish`, `recall-replay help|no chat|table`. By design, owner P4.D269 (§R.13(e)).
+  - `qtap_schema_embed_guard`: 102,523 vs 101,092 bytes. By design, owner P4.D272.
+  - `host_zone_sites_census`: **this lane's — fixed** (`c6fd8dd1a`). `js_iso_string` had done its own `civil_from_days` maths in `housekeeping.rs`, and now goes through `clock::iso_from_unix_ms`. Afterwards the census is 6/6, the housekeeping units 15/15, the family green, the host binary 6/6, and clippy/fmt clean. **The workspace gate was NOT re-run in full after this last commit**: it is a one-function change, and every binary that touches it was re-run by name.
+- **Green by name in the gate:**
+  - the live-checkout guards against the pin: `public_schemas_vendor_guard`, `builtin_prompt_templates_guard`, `provider_sdk_version_guard`, `zod_version_guard`;
+  - `activity_span_sites_guard`; `job_runner`'s `end_to_end_real_handler_dispatch_and_complete` (UNEDITED);
+  - `memory_merge_plan`, `memory_gate_tier3`, `memory_watermark_tier3`, `memory_housekeeping_tier2`, `memory_dedup`, `memories_routes` (ALL rows, incl. list/search — nothing red for P4.D269 on this branch), `memory_name_helpers`, `extract_novel_details`.
+- fmt, clippy (both feature sets) and `recipe_sweep.py --self-test` are clean. `--collisions` shows none on this lane's paths.
+- **Ruled divergences landed as named rows (R-A):** `RETENTION_DELETES_SUPERSEDED_DIGEST` (the housekeeping H7 `d7000002`), `DEDUP_CROSSES_TIERS` and `DEDUP_DELETES_DIGEST` (dedup plants D/E). Each is faithful to v4 at `01a83539d`, and a v4 fix flips its row. All are v4-filing candidates for the human.
+- **R-B (NO-PORT, measured):** a fresh `CharacterVectorStore::load(…).is_hot` answers `false` after a demotion and `true` after a promotion (unit tests in both modules).
+- **R-E (NO-PORT, measured):** dedup plant C's survivor keeps `[d…001, e…20]` after its cross-cluster link `e…21` is scrubbed. Green, so no scrub-order red.
+- **HANDOFFs:**
+  - `HANDOFF(P4.D268)`: two `seed_frozen_archive_for_test`-style probes call `main`'s `get_or_compute_frozen_archive(db, character_id, 7, None, now_ms)` — `services/housekeeping.rs` tests `seed_frozen_archive_for_test`, and the `services/memory_dedup.rs` test `a_failed_fold_keeps_its_losers_and_still_invalidates` (closure `archive`). Re-point both to the `(character, chat)` signature at union (§S.5).
+  - No `job_runner.rs` edit. The job-completion hook is P4.D268's (Tier 3 #20).
+- **Corrections to the order:**
+  - R-J's `coldRetentionDays: 100000000` does not throw at today's clock (−8.638e15 is in range); 200,000,000 does.
+  - M4 is moot on the widened pair.
+  - The F8 label line is emitted on the writer thread, which `global_capture` cannot see. It is pinned by a process-global rig in the new host binary.
+  - `housekeep_run_demotes` was not added: it depends on the wall clock.
+- **v4 moved:** `3e6e2f590`, `7a8d6dacc` and `9ecebf986`, observed 2026-10-09 20:38 (recorded at lane start). None were read or ported.
+- **💸 for `/dogfood`** — the order's six rows stand:
+  - a real post-turn `MEMORY_HOUSEKEEPING` demoting with no deletes, with `Completed sweep for character … demoted= cold=`;
+  - the preview's `wouldDemote` / `coldCount`;
+  - a `coldRetentionDays` clone sweep with `countSource=resolved-ids` on the job path;
+  - a ≥0.90 extraction absorb (`Near-duplicate absorbed as reinforcement`);
+  - a consolidated member's re-observation counting on its digest, and a demoted row promoted on re-observation;
+  - a dedup preview and run with ONE re-embed per changed survivor and `Bulk deleted memories`.
+- **Versions at close:** core **0.0.1273**, host **0.0.196**. The harness stays frozen at 0.0.1110; web, cli, tauri and the SPA are untouched.

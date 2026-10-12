@@ -800,6 +800,23 @@ fn memories_routes_match_oracle() {
     }
 
     // --- Housekeeping (deletes-nothing config → clock-independent) ---
+    // P4.D266 (v4 `d58548051`): the three bodies carry `wouldDemote` /
+    // `coldCount` / `demoted` / `demotedIds` in v4's key order. `check_body`'s
+    // `norm` sorts keys, so the ORDER is checked byte-wise here too. (A
+    // `housekeep_run_demotes` row was NOT added: which MNEMO rows a cap
+    // demotes rides the protection score and effective weight, both of which
+    // decay with wall-clock age between the oracle run and the Rust run —
+    // demotion is proven by `memory_housekeeping_tier2`.)
+    let check_key_order = |name: &str, got: &Response, failed: &mut Vec<String>| {
+        let got = serde_json::to_string(&response_data(got)).unwrap();
+        let want = serde_json::to_string(&oracle[name]["body"]).unwrap();
+        if got != want {
+            eprintln!("[{name}] KEY ORDER / BYTES MISMATCH:\n  rust:   {got}\n  oracle: {want}");
+            failed.push(format!("{name}:bytes"));
+        } else {
+            eprintln!("[{name}] bytes OK.");
+        }
+    };
     {
         let db = fresh_db(&spec, "hkp");
         let resp = rt.block_on(memories::memory_housekeep_preview(
@@ -811,6 +828,7 @@ fn memories_routes_match_oracle() {
             None,
         ));
         check_body("housekeep_preview", &resp, &mut failed);
+        check_key_order("housekeep_preview", &resp, &mut failed);
     }
     {
         let db = fresh_db(&spec, "hkd");
@@ -819,6 +837,7 @@ fn memories_routes_match_oracle() {
             json!({ "characterId": MNEMO, "maxMemories": 10000, "minImportance": 0, "dryRun": true }),
         ));
         check_body("housekeep_dryrun", &resp, &mut failed);
+        check_key_order("housekeep_dryrun", &resp, &mut failed);
     }
     {
         let db = fresh_db(&spec, "hkr");
@@ -827,6 +846,26 @@ fn memories_routes_match_oracle() {
             json!({ "characterId": MNEMO, "maxMemories": 10000, "minImportance": 0, "dryRun": false }),
         ));
         check_body("housekeep_run", &resp, &mut failed);
+        check_key_order("housekeep_run", &resp, &mut failed);
+    }
+    // P4.D266 (Tier 2): the POST's `housekeepingOptionsSchema` refusals.
+    for (name, body) in [
+        (
+            "housekeep_invalid_max_memories",
+            json!({ "characterId": MNEMO, "maxMemories": 5 }),
+        ),
+        (
+            "housekeep_invalid_merge_threshold",
+            json!({ "characterId": MNEMO, "mergeThreshold": 0.5 }),
+        ),
+        (
+            "housekeep_invalid_character_id",
+            json!({ "characterId": "not-a-uuid" }),
+        ),
+    ] {
+        let db = fresh_db(&spec, "hkv");
+        let resp = rt.block_on(memories::memory_housekeep(&db, body));
+        check_error(name, &resp, &mut failed);
     }
     {
         let db = fresh_db(&spec, "hks");
