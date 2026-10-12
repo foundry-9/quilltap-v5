@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-12 — docs(porting): drift check records bug 228's reminted import message ids and the bug-229 folder-picker fix past the close probe
+
+_Docs-only change._
+
+`/driftcheck` after the human pulled v4. The §2 probe failed against the close probe's tips: local `main` and `origin/main` now agree at `4ce64fa1e` (`4.10.0-dev.155`), fourteen commits past the `01a83539d` baseline, and the checkout is clean. Three new rows, each classified from its shipped hunks: `8050958be` bug 228 (PORT: a `.qtap` chat imported under a fresh id — the `duplicate` strategy or any import without `preserveIds` — now mints fresh message ids, with swipe groups, summary anchors, the extraction watermark, Courier checkpoints and the inform / annotation / memory / file `linkedTo` sidecars following a per-chat map, and the duplicate branch's phantom chat-map entry gone; v5's `import_chats` carries the pre-fix shape exactly, so v5 shares the defect), `97f0d8cb8` bug 229 (PORT, SPA-only rider on the wardrobe-folders row: the Move-to-folder picker's state moves into the actions hook so the dialog's overlay gate counts it; v5 has no folder browser yet) and `4ce64fa1e` (NO-PORT?: the merge, whose own resolution renumbers the picker bug from 199 to 229 and stamps the version). None is a convergence on a port filing; no schema, migration or dependency moved; `help/system-import-export.md` gained one line. Regen rule unchanged: pin required at `01a83539d`. The ledger's §1 is rewritten (one tip, clean tree, the live-Friday hazards now armed since the checkout has pulled) and §3 gains the three rows; bug 228 joins the second catch-up round as a small lane folded into or sequenced with the scenarios lane's `.qtap` reconcile.
+
 #### 2026-10-12 — docs(porting): drift check records v4's wardrobe folders, scenarios from anywhere, the memory refactor's Phase 0 and bug 227 past the pin
 
 _Docs-only change._
