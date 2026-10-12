@@ -116,6 +116,14 @@ impl<'c> DocMountDocumentsRepository<'c> {
         Self { conn }
     }
 
+    /// The mount-index connection this repository reads (P4.D279: the
+    /// wardrobe pool resolves a character's group tier through
+    /// `tiered_mount_pool`, which takes the raw connection, from call sites
+    /// that hold only this repository).
+    pub fn conn(&self) -> &'c Connection {
+        self.conn
+    }
+
     /// Insert a document with the given pinned id + timestamps. `plainTextLength`
     /// binds `f64` (REAL); the TEXT columns pass through. Columns are bound in
     /// schema/Zod field order (= on-disk order on a fresh fixture).

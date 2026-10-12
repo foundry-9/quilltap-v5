@@ -269,11 +269,11 @@ async function main(): Promise<void> {
   await seedItem(null, I.gArch, 'Retired breeches', ['bottom'], { archivedAt: TS });
 
   // The project store's Wardrobe/ + P_SCARF.
-  const { ensureProjectWardrobeFolder } = await import('@/lib/mount-index/project-wardrobe');
-  const { createProjectWardrobeItem } = await import(
+  const { ensureSharedWardrobeFolder } = await import('@/lib/mount-index/shared-wardrobe');
+  const { createMountWardrobeItem: createProjectWardrobeItem } = await import(
     '@/lib/database/repositories/vault-overlay/wardrobe-writes'
   );
-  await ensureProjectWardrobeFolder(projectMp);
+  await ensureSharedWardrobeFolder(projectMp);
   await createProjectWardrobeItem(projectMp, {
     id: I.pScarf,
     characterId: null,
@@ -295,11 +295,10 @@ async function main(): Promise<void> {
   // a member and must see it through `?scope=group`; Bramwell is not and must
   // see nothing — which is what makes the per-character keying measurable
   // rather than a pair of empty arrays that agree by accident.
-  const { ensureGroupWardrobeFolder } = await import('@/lib/mount-index/group-wardrobe');
   const groupRow = await repos.groups.findByIdRaw(I.group);
   const groupMp = groupRow?.officialMountPointId as string;
   if (!groupMp) throw new Error('group official store not minted');
-  await ensureGroupWardrobeFolder(groupMp);
+  await ensureSharedWardrobeFolder(groupMp);
   await createProjectWardrobeItem(groupMp, {
     id: I.gLivery,
     characterId: null,

@@ -386,3 +386,45 @@ pub fn find_all(conn: &Connection) -> Result<Vec<serde_json::Value>, DbError> {
     }
     Ok(out)
 }
+
+/// v4 `repos.imageProfiles.findDefault(userId)` — `findOneByFilter({ userId,
+/// isDefault: true })` (`image-profiles.repository.ts:39-48`): the user's
+/// default image profile as a net read, or `None`. v4's `findOne` is the
+/// translated filter (`isDefault: true` → `isDefault = 1`, `toSqliteParam`)
+/// with `LIMIT 1` and NO sort, so a user carrying two `isDefault` rows (an
+/// invariant `unsetAllDefaults` keeps but nothing enforces) answers the first
+/// in rowid order — the same here.
+pub fn find_default(
+    conn: &Connection,
+    user_id: &str,
+) -> Result<Option<serde_json::Value>, DbError> {
+    conn.query_row(
+        &format!(
+            "SELECT {IP_COLUMNS} FROM image_profiles \
+             WHERE userId = ?1 AND isDefault = 1 LIMIT 1"
+        ),
+        params![user_id],
+        marshal_ip_row,
+    )
+    .map(Some)
+    .or_else(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        other => Err(other.into()),
+    })
+}
+
+/// v4 `repos.imageProfiles.findDefault` exactly as its callers see it
+/// (P4.D279 §8). v4 wraps the read TWICE: the repository's own `safeQuery(…,
+/// 'Error finding default image profile', { userId })` is RETHROW mode (three
+/// arguments, no fallback), but the `findOneByFilter` it calls is itself a
+/// FALLBACK `safeQuery(…, 'Error finding entity by filter', {}, null)`
+/// (`base.repository.ts:300-314`). A failed read therefore logs the INNER
+/// line — `Error finding entity by filter {collection, error}` — and answers
+/// `null`; the outer `Error finding default image profile` never fires
+/// outside `withStrictRepositoryFailures` (where the inner rethrows), and no
+/// avatar / wardrobe / story-background resolver runs inside that scope. So
+/// the one line this read can log is the base `findOneByFilter` home's, and
+/// the outer message is deliberately NOT emitted anywhere in v5.
+pub fn find_default_or_none(conn: &Connection, user_id: &str) -> Option<serde_json::Value> {
+    super::fallback::find_one_by_filter_or_none("image_profiles", || find_default(conn, user_id))
+}

@@ -2906,6 +2906,70 @@ pub enum Request {
     },
     // === end P4.D265 ===
 
+    // === P4.D279: the 4a38222e6 round's wire (C2) ===
+    // R-D: the folder actions are ONE scoped family of FIVE variants carrying
+    // `WardrobeContainerScope` (the P4.D255 wear-history idiom), not twenty
+    // per-tier variants; bodies RAW in the idiom of `WardrobeTransferApply`'s
+    // flattened body, so the handler answers v4's flat `Validation error`.
+    /// v4 `GET <tier>/wardrobe?action=folders` (`4a38222e6`) — `{ folders }`; NO
+    /// provisioning (`{ folders: [] }` for a storeless project / group or an
+    /// unprovisioned General). P4.D281.
+    #[serde(rename_all = "camelCase")]
+    WardrobeFoldersList {
+        scope: WardrobeContainerScope,
+        #[serde(default)]
+        container_id: Option<String>,
+    },
+    /// v4 `POST <tier>/wardrobe?action=create-folder` `{ path }` → `{ folder }`. P4.D281.
+    #[serde(rename_all = "camelCase")]
+    WardrobeFolderCreate {
+        scope: WardrobeContainerScope,
+        #[serde(default)]
+        container_id: Option<String>,
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// v4 `POST <tier>/wardrobe?action=rename-folder` `{ path, name }` → `{ folder }`. P4.D281.
+    #[serde(rename_all = "camelCase")]
+    WardrobeFolderRename {
+        scope: WardrobeContainerScope,
+        #[serde(default)]
+        container_id: Option<String>,
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// v4 `POST <tier>/wardrobe?action=delete-folder` `{ path }` → `{ movedItems, movedFolders }`. P4.D281.
+    #[serde(rename_all = "camelCase")]
+    WardrobeFolderDelete {
+        scope: WardrobeContainerScope,
+        #[serde(default)]
+        container_id: Option<String>,
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// v4 `POST <tier>/wardrobe?action=move-items` `{ itemIds (≤ 500), folder }` → `{ items }`
+    /// serialized WITH `origin` + `wear`. P4.D281.
+    #[serde(rename_all = "camelCase")]
+    WardrobeItemsMove {
+        scope: WardrobeContainerScope,
+        #[serde(default)]
+        container_id: Option<String>,
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// v4 `POST /wardrobe/[itemId]/images?scope=…&id=…&action=link-image` `{ fileId }`
+    /// (`9ecebf986`, PORT-NEW) → 201 `{ image, current }`; 400 `That picture cannot be
+    /// linked` on `UnlinkableWardrobeImageError`. P4.D281.
+    #[serde(rename_all = "camelCase")]
+    WardrobeItemImageLink {
+        scope: WardrobeContainerScope,
+        #[serde(default)]
+        container_id: Option<String>,
+        item_id: String,
+        file_id: String,
+    },
+    // === end P4.D279 ===
+
     // === P4.9I1A: the Brahma Console dedicated dispatch family ===
     /// v4 `GET /api/v1/brahma-console` — the user's brahma chats.
     BrahmaConsoleList,

@@ -1,24 +1,29 @@
 /**
- * Oracle case (P4.D71 unit 1): bundle dissolution — the pure half of v4
- * `61574563` "wearing a bundled outfit breaks it apart automatically".
+ * Oracle case (P4.D71 unit 1, re-aimed at `9ecebf986` by P4.D279): bundle
+ * dissolution — the pure half of v4 `61574563` "wearing a bundled outfit breaks
+ * it apart automatically", as it now lives in `lib/wardrobe/slot-ops.ts`.
  *
- * Drives the REAL `lib/wardrobe/dissolve-bundles.ts` (`slotsCoveredBy`,
- * `isBundle`, `dissolveBundleToLeaves`, `layLeavesIntoSlots`,
- * `dissolveBundlesInSlots`, `dissolveBundlesInSlotsWithCredit`) and the REAL
- * pure primitives in `lib/wardrobe/outfit-displacement.ts`
- * (`wearItemIntoSlots`, `replaceItemIntoSlots`, `addItemToSlot`,
- * `wornBundlesFor`) plus `lib/wardrobe/default-outfit.ts`'s
- * `buildDefaultOutfitWithCredit` — no mocks, no reimplementation.
+ * v4 `9ecebf986` deleted `dissolve-bundles.ts` and rebuilt it as `slot-ops.ts`
+ * ("bundle" → "composite"); `wearItemIntoSlots` / `addItemToSlot` /
+ * `wornBundlesFor` moved there from `outfit-displacement.ts`, and
+ * `replaceItemIntoSlots` went private behind `computeDisplacedSlots({ mode:
+ * 'replace' })`. This case keeps the P4.D71 corpus and row kinds so the v5
+ * `dissolve_bundles` SHIM (the old names over `slot_ops`) stays differentially
+ * pinned until its callers are re-aimed and it is deleted:
  *
- * P4.D262 (v4 `3ee3b1342`, the wear ledger) adds the three credit row kinds:
- * `snapshot_credit` (every snapshot case through `…WithCredit`, `wornBundles`
- * compared whole), `worn_bundles_for` (item × lookup × `onlySlot`), and
- * `default_credit` (`buildDefaultOutfitWithCredit` over small item sets).
+ *   - `isBundle` → `isComposite` (`@/lib/schemas/wardrobe.types`);
+ *   - `slotsCoveredBy` is private at the pin (`slotsOf`), so the shape row
+ *     carries `coveredSlots` DERIVED through the public surface: the slots
+ *     `computeDisplacedSlots({ mode: 'replace', item })` without a lookup puts
+ *     the item's id in, in canonical slot order (a set — `slotsOf`'s own order
+ *     is the item's `types` order, which the derivation cannot see);
+ *   - `dissolveBundleToLeaves` → `dissolveCompositeToLeaves`;
+ *   - `dissolveBundlesInSlots` and `…WithCredit` → ONE
+ *     `dissolveCompositesInSlots` returning `{ slots, wornBundles }`.
  *
- * The corpus is v4's own `__tests__/unit/lib/wardrobe/dissolve-bundles.test.ts`
- * case-for-case, plus the shapes that test leaves implicit: a depth-5 chain that
- * trips `COMPOSITE_MAX_DEPTH`, a mutual cycle, a bundle whose leaf covers two
- * slots, an already-worn leaf under `replace`, and the multi-bundle snapshot.
+ * Drives the REAL `lib/wardrobe/slot-ops.ts` plus `lib/wardrobe/
+ * default-outfit.ts`'s `buildDefaultOutfitWithCredit` — no mocks, no
+ * reimplementation.
  *
  * Run (Node 24, from the v4 checkout):
  *   N=~/.nvm/versions/node/v24.13.1/bin
@@ -28,20 +33,16 @@
  */
 
 import {
-  dissolveBundleToLeaves,
-  dissolveBundlesInSlots,
-  dissolveBundlesInSlotsWithCredit,
-  isBundle,
-  layLeavesIntoSlots,
-  slotsCoveredBy,
-} from '@/lib/wardrobe/dissolve-bundles';
-import {
   addItemToSlot,
-  replaceItemIntoSlots,
+  computeDisplacedSlots,
+  dissolveCompositeToLeaves,
+  dissolveCompositesInSlots,
+  layLeavesIntoSlots,
   wearItemIntoSlots,
   wornBundlesFor,
-} from '@/lib/wardrobe/outfit-displacement';
+} from '@/lib/wardrobe/slot-ops';
 import { buildDefaultOutfitWithCredit } from '@/lib/wardrobe/default-outfit';
+import { WARDROBE_SLOT_TYPES, isComposite } from '@/lib/schemas/wardrobe.types';
 import type { EquippedSlots, WardrobeItem, WardrobeItemType } from '@/lib/schemas/wardrobe.types';
 
 const NOW = '2026-01-01T00:00:00.000Z';
@@ -66,13 +67,13 @@ function makeItem(
   } as unknown as WardrobeItem;
 }
 
-const empty = (): EquippedSlots => ({ top: [], bottom: [], footwear: [], accessories: [] });
+const empty = (): EquippedSlots => ({ top: [], bottom: [], footwear: [], accessories: [], hair: [] });
 const slots = (
   top: string[] = [],
   bottom: string[] = [],
   footwear: string[] = [],
   accessories: string[] = [],
-): EquippedSlots => ({ top, bottom, footwear, accessories });
+): EquippedSlots => ({ top, bottom, footwear, accessories, hair: [] });
 
 // ── The item universe. Every case names its items out of this list, so the
 // Rust side rebuilds the identical lookup from the emitted `items` array. ──
@@ -99,6 +100,10 @@ const ITEMS: WardrobeItem[] = [
     ['shirt', 'trousers', 'boots', 'gloves'],
     { replace: true },
   ),
+  // A replacing LEAF — the flag-driven rule on a plain garment.
+  makeItem('cloak-replacing', ['top', 'accessories'], [], { replace: true }),
+  // Types out of canonical order, with an unrecognized one in the middle.
+  makeItem('odd-order', ['accessories', 'hat', 'top']),
   makeItem('jewelry', ['accessories'], ['locket', 'ring']),
   makeItem('gala', ['top', 'accessories'], ['gown', 'jewelry']),
   makeItem('top-only', ['top'], ['shirt', 'boots']),
@@ -153,12 +158,18 @@ function emit(row: Record<string, unknown>): void {
 
 // A stable, machine-checkable marker so a stale oracle file cannot pass
 // silently (`oracle-regen-silent-stale-pass`).
-emit({ kind: 'meta', baseline: 'p4.d71-dissolve-bundles', items: ITEMS });
+emit({ kind: 'meta', baseline: 'p4.d279-dissolve-bundles-shim', items: ITEMS });
 
-// ── slotsCoveredBy / isBundle ───────────────────────────────────────────────
+// ── isComposite + the derived covered-slot set ──────────────────────────────
+
+/** The slots a lookup-less `replace` puts the item's id in — `slotsOf` as a set. */
+function coveredSlots(node: { id: string; types: readonly string[] }): WardrobeItemType[] {
+  const out = computeDisplacedSlots(empty(), { mode: 'replace', item: node });
+  return WARDROBE_SLOT_TYPES.filter((slot) => out[slot].includes(node.id));
+}
 
 for (const id of ITEMS.map((i) => i.id)) {
-  emit({ kind: 'shape', id, slotsCoveredBy: slotsCoveredBy(item(id)), isBundle: isBundle(item(id)) });
+  emit({ kind: 'shape', id, coveredSlots: coveredSlots(item(id)), isBundle: isComposite(item(id)) });
 }
 // The structural shape v4's test asserts directly: a node with no
 // `componentItemIds` key at all.
@@ -166,11 +177,11 @@ emit({
   kind: 'shape_bare',
   id: 'bare',
   node: { id: 'bare', types: ['top'] },
-  slotsCoveredBy: slotsCoveredBy({ id: 'bare', types: ['top'] }),
-  isBundle: isBundle({ id: 'bare', types: ['top'] }),
+  coveredSlots: coveredSlots({ id: 'bare', types: ['top'] }),
+  isBundle: isComposite({ id: 'bare', types: ['top'] } as never),
 });
 
-// ── dissolveBundleToLeaves ──────────────────────────────────────────────────
+// ── dissolveCompositeToLeaves ───────────────────────────────────────────────
 
 interface DissolveCase {
   id: string;
@@ -205,18 +216,26 @@ const dissolveCases: DissolveCase[] = [
     lookup: ['echo-1', 'echo-2', 'echo-3', 'echo-4', 'echo-5', 'boots'],
   },
   { id: 'empty-lookup', itemId: 'man-in-black', lookup: [] },
+  // A leaf whose own types are out of canonical order with junk in them.
+  { id: 'odd-order-leaf', itemId: 'odd-kit', lookup: ['odd-order'] },
 ];
 
+// `odd-kit` is not in ITEMS (it would perturb the shape rows' count); make it
+// on the fly for the one dissolve case that needs a composite over `odd-order`.
+const ODD_KIT = makeItem('odd-kit', ['top'], ['odd-order']);
+const itemOrOdd = (id: string): WardrobeItem => (id === 'odd-kit' ? ODD_KIT : item(id));
+
 const lookupOf = (ids: string[] | null): Map<string, WardrobeItem> | undefined =>
-  ids === null ? undefined : new Map(ids.map((id) => [id, item(id)]));
+  ids === null ? undefined : new Map(ids.map((id) => [id, itemOrOdd(id)]));
 
 for (const c of dissolveCases) {
   emit({
     kind: 'dissolve',
     id: c.id,
     itemId: c.itemId,
+    ...(c.itemId === 'odd-kit' ? { node: ODD_KIT } : {}),
     lookup: c.lookup,
-    out: dissolveBundleToLeaves(item(c.itemId), lookupOf(c.lookup)),
+    out: dissolveCompositeToLeaves(itemOrOdd(c.itemId), lookupOf(c.lookup)),
   });
 }
 
@@ -285,6 +304,15 @@ const layCases: LayCase[] = [
     current: slots(['vest'], ['skirt'], ['sandals'], ['hat']),
     clearCoveredSlots: true,
   },
+  // The composite's own `types` carry an unrecognized name: `slotsOf` drops
+  // it from the cleared union.
+  {
+    id: 'odd-order-composite-clearing',
+    bundleId: 'odd-order',
+    leaves: SHIRT_BOOTS,
+    current: slots(['vest'], ['skirt'], ['sandals'], ['hat']),
+    clearCoveredSlots: true,
+  },
 ];
 
 for (const c of layCases) {
@@ -326,6 +354,14 @@ const wearCases: WearCase[] = [
   },
   { id: 'wear-bundle-no-lookup', mode: 'wear', itemId: 'man-in-black', current: empty(), lookup: null },
   { id: 'wear-plain', mode: 'wear', itemId: 'shirt', current: empty(), lookup: ALL },
+  {
+    id: 'wear-replacing-leaf',
+    mode: 'wear',
+    itemId: 'cloak-replacing',
+    current: slots(['vest', 'shirt'], ['skirt'], [], ['hat']),
+    lookup: ALL,
+  },
+  { id: 'wear-odd-order-leaf', mode: 'wear', itemId: 'odd-order', current: slots(['vest']), lookup: ALL },
   { id: 'wear-unresolvable-bundle', mode: 'wear', itemId: 'orphan', current: empty(), lookup: ['orphan'] },
   { id: 'wear-nested-bundle', mode: 'wear', itemId: 'gala', current: empty(), lookup: ALL },
   { id: 'wear-self-echo-bundle', mode: 'wear', itemId: 'loop-1', current: empty(), lookup: ALL },
@@ -340,6 +376,7 @@ const wearCases: WearCase[] = [
   },
   { id: 'replace-plain', mode: 'replace', itemId: 'shirt', current: slots(['vest', 'coat']), lookup: ALL },
   { id: 'replace-no-lookup', mode: 'replace', itemId: 'man-in-black', current: slots(['vest']), lookup: null },
+  { id: 'replace-odd-order-leaf', mode: 'replace', itemId: 'odd-order', current: slots(['vest'], [], [], ['hat']), lookup: ALL },
   { id: 'add-bundle-part-covers-slot', mode: 'add_to_slot', itemId: 'man-in-black', current: empty(), lookup: ALL, slot: 'top' },
   {
     id: 'add-bundle-no-part-covers-slot',
@@ -369,7 +406,8 @@ for (const c of wearCases) {
   if (c.mode === 'wear') {
     out = wearItemIntoSlots(c.current, target, lookup);
   } else if (c.mode === 'replace') {
-    out = replaceItemIntoSlots(c.current, target, lookup);
+    // `replaceItemIntoSlots` is private at the pin — reached through the table.
+    out = computeDisplacedSlots(c.current, { mode: 'replace', item: target, itemsById: lookup });
   } else {
     out = addItemToSlot(c.current, c.slot as WardrobeItemType, target, lookup);
   }
@@ -385,7 +423,7 @@ for (const c of wearCases) {
   });
 }
 
-// ── dissolveBundlesInSlots ──────────────────────────────────────────────────
+// ── dissolveCompositesInSlots (the old `dissolveBundlesInSlots` + `…WithCredit`) ──
 
 interface SnapshotCase {
   id: string;
@@ -427,7 +465,7 @@ for (const c of snapshotCases) {
     id: c.id,
     current: c.current,
     lookup: c.lookup,
-    out: dissolveBundlesInSlots(c.current, lookupOf(c.lookup) as never),
+    out: dissolveCompositesInSlots(c.current, lookupOf(c.lookup) as never).slots,
   });
 }
 
@@ -439,7 +477,7 @@ for (const c of snapshotCases) {
     id: c.id,
     current: c.current,
     lookup: c.lookup,
-    out: dissolveBundlesInSlotsWithCredit(c.current, lookupOf(c.lookup) as never),
+    out: dissolveCompositesInSlots(c.current, lookupOf(c.lookup) as never),
   });
 }
 

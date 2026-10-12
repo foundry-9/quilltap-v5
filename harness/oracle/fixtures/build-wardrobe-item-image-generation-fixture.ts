@@ -235,10 +235,10 @@ async function main(): Promise<void> {
   const projectMp = (await repos.projects.findByIdRaw(spec.projectId))
     ?.officialMountPointId as string;
   if (!projectMp) throw new Error('project official store not minted');
-  const { ensureProjectWardrobeFolder } = await import('@/lib/mount-index/project-wardrobe');
-  await ensureProjectWardrobeFolder(projectMp);
+  const { ensureSharedWardrobeFolder } = await import('@/lib/mount-index/shared-wardrobe');
+  await ensureSharedWardrobeFolder(projectMp);
 
-  const { createProjectWardrobeItem } = await import(
+  const { createMountWardrobeItem: createProjectWardrobeItem } = await import(
     '@/lib/database/repositories/vault-overlay/wardrobe-writes'
   );
   const body = (item: ItemSpec, characterId: string | null) => ({

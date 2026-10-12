@@ -676,9 +676,16 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/db/vault_read_overlay.rs", "load_vault_file_maps", "find_many_by_mount_points_in_folder_or_empty", "converted"),
     ("quilltap-core/src/db/vault_read_overlay.rs", "vault_entry_names", "find_many_by_mount_points_in_folder_or_empty", "no-v4-counterpart"),
     ("quilltap-core/src/db/vault_read_overlay.rs", "vault_entry_names", "find_many_by_mount_points_in_folder_or_empty", "no-v4-counterpart"),
-    ("quilltap-core/src/db/vault_read_overlay.rs", "read_character_vault_wardrobe", "find_many_by_mount_points_in_folder_or_empty", "converted"),
+    ("quilltap-core/src/db/vault_read_overlay.rs", "read_character_vault_wardrobe", "find_many_by_mount_points_in_folder_opts_or_empty", "converted"),
     ("quilltap-core/src/db/vault_read_overlay.rs", "read_character_vault_wardrobe", "find_many_by_mount_points_and_path_or_empty", "converted"),
-    ("quilltap-core/src/db/vault_wardrobe_write.rs", "project_array_into_vault_folder", "find_many_by_mount_points_in_folder_or_empty", "converted"),
+    ("quilltap-core/src/db/vault_wardrobe_public.rs", "find_stored_folder", "find_by_mount_point_and_path_or_none", "converted"),
+    ("quilltap-core/src/db/vault_wardrobe_public.rs", "list_folders_in_mount", "find_by_mount_point_id_or_empty", "converted"),
+    ("quilltap-core/src/db/vault_wardrobe_public.rs", "list_folder_paths_in_mount", "find_by_mount_point_id_or_empty", "converted"),
+    ("quilltap-core/src/db/vault_wardrobe_public.rs", "rename_folder_in_mount", "find_many_by_mount_points_in_folder_opts_or_empty", "converted"),
+    ("quilltap-core/src/db/vault_wardrobe_public.rs", "delete_folder_in_mount", "find_by_mount_point_id_or_empty", "converted"),
+    ("quilltap-core/src/db/vault_wardrobe_public.rs", "delete_folder_in_mount", "find_many_by_mount_points_in_folder_opts_or_empty", "converted"),
+    ("quilltap-core/src/db/vault_wardrobe_public.rs", "delete_folder_in_mount", "find_by_mount_point_id_or_empty", "converted"),
+    ("quilltap-core/src/db/vault_wardrobe_write.rs", "project_array_into_vault_folder", "find_many_by_mount_points_in_folder_opts_or_empty", "converted"),
     ("quilltap-core/src/documents/mod.rs", "classify_resolved_target", "find_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/photos/avatar_rolls_service.rs", "delete_avatar_roll", "delete_with_gc", "strict-by-ruling(write-path)"),
     ("quilltap-core/src/photos/character_gallery_service.rs", "list_character_gallery", "find_by_mount_point_id_or_empty", "converted"),
@@ -752,15 +759,7 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/services/mount_index/sync/apply_store.rs", "apply_store_action", "find_by_mount_point_and_path", "fallback-in-v4"),
     ("quilltap-core/src/services/mount_index/sync/apply_store.rs", "apply_store_action", "delete_with_gc", "fallback-in-v4"),
     ("quilltap-core/src/services/qtap_export/records.rs", "stream_one_store", "find_by_mount_point_id", "strict-by-ruling"),
-    // P4.D264: the picture re-mint's path read — strict in v4 (the import runs
-    // under `withStrictRepositoryFailures`), propagated into the per-picture
-    // warning, as v4's catch does.
     ("quilltap-core/src/services/quilltap_import/wardrobe_images.rs", "import_wardrobe_item_images", "find_by_mount_point_and_path", "strict-in-v4 (import)"),
-    // P4.D255: the item-image cleanup's link delete — v4's bridge
-    // `deleteWardrobeItemImageLink` reads through the fallback `queryJoined`
-    // and deletes through the fallback `deleteWithGC`. P4.D263 moved it into
-    // the bridge it belongs to (`wardrobe_image_bridge.rs`); `primitives.rs`
-    // now calls it — the same two twins.
     ("quilltap-core/src/services/wardrobe_image_bridge.rs", "delete_wardrobe_item_image_link", "find_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/services/wardrobe_image_bridge.rs", "delete_wardrobe_item_image_link", "delete_with_gc_or_false", "converted"),
     ("quilltap-core/src/tools/doc_edit/blob.rs", "handle_read_blob", "find_by_mount_point_and_path", "swallowed-by-other-means"),
@@ -908,6 +907,15 @@ fn the_class_counts_are_pinned() {
 ///   `walkStore` reads through the same fallbacks and, with `propagateDeletes`
 ///   true, would plan the deletion of every unchanged disk file). Each G2/G3 site
 ///   converts only after its v4 downstream arm is read.
+// **P4.D279 (+7 converted): 85 → 92** — the `4a38222e6` wardrobe keystone's
+// folder writer: `read_character_vault_wardrobe` reads RECURSIVELY (the
+// `_opts_or_empty` twin, one row re-spelled), and `vault_wardrobe_public.rs`'s
+// folder verbs read the store's folder rows (`find_by_mount_point_id_or_empty`
+// ×3, `find_by_mount_point_and_path_or_none`), the file links under a folder
+// (`find_by_mount_point_id_or_empty`) and the recursive document listings
+// (`find_many_by_mount_points_in_folder_opts_or_empty` ×2) — every one v4's
+// fallback `safeQuery` read, so every one a twin. The projection's listing is
+// re-spelled onto the `_opts` twin too.
 const COUNTS: (
     usize,
     usize,
@@ -918,7 +926,7 @@ const COUNTS: (
     usize,
     usize,
     usize,
-) = (85, 14, 19, 1, 13, 5, 1, 20, 5);
+) = (92, 14, 19, 1, 13, 5, 1, 20, 5);
 
 /// P4.142 §S.4 — reads HANDED to P4.144 this round, recorded as documentation:
 /// the fold-episode pass's two memory reads (`services/fold_episode_pass.rs` —

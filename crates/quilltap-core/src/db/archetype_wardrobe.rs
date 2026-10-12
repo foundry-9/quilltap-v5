@@ -138,22 +138,15 @@ pub fn with_origin(items: Vec<Value>, origin: &WardrobeOrigin) -> Vec<Value> {
 /// The `Wardrobe/` folder, shared by every tier (v4 `CHARACTER_WARDROBE_FOLDER`).
 const WARDROBE_FOLDER: &str = "Wardrobe";
 
-/// v4 `readSharedWardrobe` — read a shared store's `Wardrobe/` items with
+/// v4 `readSharedWardrobe(mountPointId, includeArchived)`
+/// (`shared-wardrobe.ts:56-60`) — read a shared store's `Wardrobe/` items with
 /// `characterId` coerced to `null` and the archived filter applied. v4 calls
-/// `readCharacterVaultWardrobe(mount, undefined, { seedArchetypes: false })` —
-/// with `characterId` undefined the reader's parse scope becomes the
-/// mountPointId (v4 `characterId ?? mountPointId`).
+/// `readCharacterVaultWardrobe(mp)` with no character — the reader's parse
+/// scope becomes the mountPointId (`characterId ?? mountPointId`).
 ///
-/// Archetype seeding is disabled in the underlying reader: a shared composite
-/// resolves its components within this same folder, not by recursing through
-/// [`find_archetypes`] (which would loop back here).
-///
-/// Consequence, and a known gap: a shared composite whose components live in a
-/// *different* tier loses those refs at parse time — the overlay's component
-/// check only sees this folder's items. Same-tier composites (the common case)
-/// are fine. Read-time hydration in
-/// [`crate::tools::wardrobe_shared::resolve_equipped_outfit_leaf_values`]
-/// recovers the equipped case; the parse-time gap is tracked separately.
+/// Since `9ecebf986` the reader seeds nothing anywhere: a shared composite
+/// whose components live in ANOTHER tier keeps those refs as UUIDs at parse
+/// time (bug 187) and the per-request wearable pool resolves them.
 pub fn read_shared_wardrobe(
     docs: &DocMountDocumentsRepository,
     mount_point_id: &str,
@@ -163,8 +156,6 @@ pub fn read_shared_wardrobe(
         docs,
         mount_point_id,
         mount_point_id, // v4: characterId ?? mountPointId
-        false,          // shared folders never seed archetypes
-        &|| Ok(Vec::new()),
     )?
     else {
         return Ok(Vec::new());
@@ -199,9 +190,9 @@ pub fn read_general_wardrobe(
     read_shared_wardrobe(docs, &mount_point_id, include_archived)
 }
 
-/// v4 `readProjectWardrobe` — a project store's shared archetypes. A
-/// project-scoped façade over [`read_shared_wardrobe`]; see it for the
-/// parse-time composite caveat.
+// LANE-REMOVE(P4.D281): v4 deleted project-wardrobe.ts (readProjectWardrobe) in 9ecebf986
+/// The pre-`9ecebf986` project façade over [`read_shared_wardrobe`]; callers
+/// move to a `WardrobeLocation`'s `read_items`.
 pub fn read_project_wardrobe(
     docs: &DocMountDocumentsRepository,
     mount_point_id: &str,
@@ -218,6 +209,7 @@ pub fn read_project_wardrobe(
 /// The mounts to read are resolved per *character* (never per chat) by
 /// [`super::tiered_mount_pool::resolve_group_mount_point_ids_for_character`]: a
 /// character never gains a co-participant's group stores.
+// LANE-REMOVE(P4.D281): v4 deleted group-wardrobe.ts (readGroupWardrobe) in 9ecebf986
 pub fn read_group_wardrobe(
     docs: &DocMountDocumentsRepository,
     mount_point_id: &str,
@@ -251,7 +243,9 @@ pub fn ensure_shared_wardrobe_folder(
     links.ensure_folder_path(mount_point_id, WARDROBE_FOLDER)
 }
 
-/// v4 `ensureProjectWardrobeFolder` — idempotently create `<projectMount>/Wardrobe/`.
+// LANE-REMOVE(P4.D281): v4 deleted project-wardrobe.ts (ensureProjectWardrobeFolder) in 9ecebf986
+/// The pre-`9ecebf986` project façade over [`ensure_shared_wardrobe_folder`];
+/// callers move to `resolve_wardrobe_location(…, ensure: true)`.
 pub fn ensure_project_wardrobe_folder(
     links: &DocMountFileLinksRepository,
     mount_point_id: &str,
@@ -259,7 +253,8 @@ pub fn ensure_project_wardrobe_folder(
     ensure_shared_wardrobe_folder(links, mount_point_id)
 }
 
-/// v4 `ensureGroupWardrobeFolder` — idempotently create `<groupMount>/Wardrobe/`.
+// LANE-REMOVE(P4.D281): v4 deleted group-wardrobe.ts (ensureGroupWardrobeFolder) in 9ecebf986
+/// The pre-`9ecebf986` group façade over [`ensure_shared_wardrobe_folder`].
 pub fn ensure_group_wardrobe_folder(
     links: &DocMountFileLinksRepository,
     mount_point_id: &str,
@@ -267,186 +262,122 @@ pub fn ensure_group_wardrobe_folder(
     ensure_shared_wardrobe_folder(links, mount_point_id)
 }
 
-/// An insertion-ordered `id → item` upsert accumulator — v4's `Map`, where
-/// `set(id, item)` on an existing id replaces the value **in place** (keeping
-/// its position) and a new id appends.
-struct OrderedById {
-    order: Vec<Value>,
-    index_by_id: std::collections::HashMap<String, usize>,
+/// Strip the read-time `origin` tag the pool / `read_shared_tiers` attach, so
+/// a pre-`9ecebf986` caller sees the untagged shape the deleted finders
+/// answered.
+fn without_origin(mut item: Value) -> Value {
+    if let Some(obj) = item.as_object_mut() {
+        obj.remove("origin");
+    }
+    item
 }
 
-impl OrderedById {
-    fn new() -> Self {
-        OrderedById {
-            order: Vec::new(),
-            index_by_id: std::collections::HashMap::new(),
-        }
-    }
-
-    fn upsert(&mut self, item: Value) {
-        let id = item
-            .get("id")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string();
-        if let Some(&i) = self.index_by_id.get(&id) {
-            self.order[i] = item;
-        } else {
-            self.index_by_id.insert(id, self.order.len());
-            self.order.push(item);
-        }
+/// The pool-level project origin (`pool.ts:112-116`): a POOL never knows which
+/// project a store belongs to, so `{ scope: 'project', id: null, name:
+/// 'Project' }`.
+pub fn pool_project_origin() -> WardrobeOrigin {
+    WardrobeOrigin {
+        scope: WardrobeOriginScope::Project,
+        id: None,
+        name: "Project".to_string(),
     }
 }
 
-/// v4 `WardrobeRepository.findArchetypesInMounts` — read the shared `Wardrobe/`
-/// folder of each given mount, in order. A later mount's item shadows an earlier
-/// one with the same id, so callers pass their mounts **weakest tier first**
-/// (see [`SharedWardrobeTiers::scoped_mounts`]).
-///
-/// A mount that can't be read is logged and skipped: one unreadable group store
-/// must not cost a character the rest of their wardrobe.
+// LANE-REMOVE(P4.D282|P4.D281): v4 deleted WardrobeRepository.findArchetypesInMounts in 9ecebf986
+/// The pre-`9ecebf986` flat tier read over
+/// [`super::wardrobe_read::read_shared_tiers`] (later mount wins), untagged.
 pub fn find_archetypes_in_mounts(
     docs: &DocMountDocumentsRepository,
     mount_point_ids: &[String],
     include_archived: bool,
 ) -> Result<Vec<Value>, DbError> {
-    Ok(merge_mounts(mount_point_ids, |mount_point_id| {
-        read_shared_wardrobe(docs, mount_point_id, include_archived)
-    }))
+    Ok(
+        super::wardrobe_read::read_shared_tiers(docs, mount_point_ids, include_archived, &|_| {
+            pool_project_origin()
+        })
+        .into_iter()
+        .map(without_origin)
+        .collect(),
+    )
 }
 
-/// The merge rule [`find_archetypes_in_mounts`] applies, over an injected
-/// reader — the seam v4's own unit suite gets by mocking `readSharedWardrobe`.
-/// Later mounts shadow earlier ones; a mount whose read fails is logged and
-/// skipped, so one unreadable group store cannot cost a character the rest of
-/// their wardrobe.
-fn merge_mounts<F>(mount_point_ids: &[String], mut read: F) -> Vec<Value>
-where
-    F: FnMut(&str) -> Result<Vec<Value>, DbError>,
-{
-    if mount_point_ids.is_empty() {
-        return Vec::new();
-    }
-    let mut acc = OrderedById::new();
-    for mount_point_id in mount_point_ids {
-        match read(mount_point_id) {
-            Ok(items) => {
-                for item in items {
-                    acc.upsert(item);
-                }
-            }
-            Err(e) => {
-                tracing::warn!(
-                    mount_point_id, context = "wardrobe", error = %e,
-                    "Failed to read shared wardrobe tier; skipping"
-                );
-            }
-        }
-    }
-    acc.order
-}
-
-/// v4 `WardrobeRepository.findArchetypesInMountsAttributed` (`cc80dc89d`) —
-/// the group tier of a character's wardrobe with each item tagged by the group
-/// it hangs in, for the dialog's origin chip. Reads every group's mounts in the
-/// order given (resolve them with
-/// [`super::tiered_mount_pool::resolve_group_mounts_for_character`]) and
-/// resolves an id collision exactly as [`find_archetypes_in_mounts`] does over
-/// the flattened list — a later mount's copy shadows an earlier one — so the
-/// item that wins here is the item that wins there, and it carries ITS OWN
-/// group's origin (the tagged value replaces the earlier one in place, v4's
-/// `Map.set`).
-///
-/// `[]` for no groups BEFORE anything (no line). A mount that can't be read is
-/// logged (with its `groupId`) and skipped. v4's `safeQuery` wrapper (`Error
-/// finding attributed group wardrobe items { groupCount, includeArchived }`) is
-/// unreachable — every read inside it is caught per mount, as in the flat
-/// sibling — so this answers `Ok` always.
+// LANE-REMOVE(P4.D281): v4 deleted WardrobeRepository.findArchetypesInMountsAttributed in 9ecebf986
+/// The pre-`9ecebf986` attributed group read — now
+/// [`super::wardrobe_read::read_shared_tiers`] over the groups' mounts with
+/// each group's origin (what v4's `?scope=group` route does at the pin through
+/// `groupLocationsForCharacter`). The tags STAY (that is what the caller
+/// wanted).
 pub fn find_archetypes_in_mounts_attributed(
     docs: &DocMountDocumentsRepository,
     groups: &[GroupMounts],
     include_archived: bool,
 ) -> Result<Vec<Value>, DbError> {
-    Ok(merge_groups_attributed(groups, |mount_point_id| {
-        read_shared_wardrobe(docs, mount_point_id, include_archived)
-    }))
-}
-
-/// The attributed merge over an injected reader (the [`merge_mounts`] seam).
-fn merge_groups_attributed<F>(groups: &[GroupMounts], mut read: F) -> Vec<Value>
-where
-    F: FnMut(&str) -> Result<Vec<Value>, DbError>,
-{
     if groups.is_empty() {
-        return Vec::new();
+        return Ok(Vec::new());
     }
-    let mut acc = OrderedById::new();
+    let mut origin_by_mount: std::collections::HashMap<String, WardrobeOrigin> =
+        std::collections::HashMap::new();
+    let mut mounts: Vec<String> = Vec::new();
     for g in groups {
-        let origin = WardrobeOrigin::new(WardrobeOriginScope::Group, &g.group.id, &g.group.name);
-        for mount_point_id in &g.mount_point_ids {
-            match read(mount_point_id) {
-                Ok(items) => {
-                    for item in with_origin(items, &origin) {
-                        acc.upsert(item);
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        mountPointId = %mount_point_id, groupId = %g.group.id,
-                        context = "wardrobe", error = %crate::db::fallback::error_text(&e),
-                        "Failed to read shared wardrobe tier; skipping"
-                    );
-                }
-            }
+        for mp in &g.mount_point_ids {
+            origin_by_mount.insert(
+                mp.clone(),
+                WardrobeOrigin::new(WardrobeOriginScope::Group, &g.group.id, &g.group.name),
+            );
+            mounts.push(mp.clone());
         }
     }
-    tracing::debug!(
-        groupCount = groups.len(),
-        itemCount = acc.order.len(),
-        context = "wardrobe",
-        "Attributed group wardrobe read"
-    );
-    acc.order
+    Ok(super::wardrobe_read::read_shared_tiers(
+        docs,
+        &mounts,
+        include_archived,
+        &|mp| {
+            origin_by_mount
+                .get(mp)
+                .cloned()
+                .unwrap_or_else(pool_project_origin)
+        },
+    ))
 }
 
-/// v4 `WardrobeRepository.findArchetypes` — the General tier merged under the
-/// scoped tiers (`tiers.scoped_mounts()`, project-then-group so group wins).
-///
-/// Precedence follows the mount pool's — **character > group > project >
-/// general** — so a group's own livery shadows a project's version of the same
-/// item, and both shadow the household archetype. The character tier is handled
-/// by callers via `find_by_character_id`.
-///
-/// The output order is v4's insertion-ordered `Map`: General items in order,
-/// then scoped-only items appended in mount order (a shadowing scoped item
-/// replaces the value at the General item's position).
+// LANE-REMOVE(P4.D282|P4.D281|P4.D280): v4 deleted WardrobeRepository.findArchetypes in 9ecebf986
+/// The pre-`9ecebf986` "General merged under the scoped tiers" read, untagged:
+/// General, then the project stores, then the group stores (weakest first, a
+/// later mount shadowing in place) — exactly the shared layers of a
+/// [`crate::wearable_pool::WearablePool`]. Callers move to the pool.
 pub fn find_archetypes(
     main: &Connection,
     docs: &DocMountDocumentsRepository,
     include_archived: bool,
     tiers: &SharedWardrobeTiers,
 ) -> Result<Vec<Value>, DbError> {
-    let general = read_general_wardrobe(main, docs, include_archived)?;
-
-    // Weakest tier first: later writes win on id collision.
-    let scoped = tiers.scoped_mounts();
-    if scoped.is_empty() {
-        return Ok(general);
+    let mut mounts: Vec<String> = Vec::new();
+    if let Some(general) = instance_settings::get_general_mount_point_id(main)? {
+        mounts.push(general);
     }
-
-    let mut acc = OrderedById::new();
-    for item in general {
-        acc.upsert(item);
+    let general_count = mounts.len();
+    mounts.extend(tiers.scoped_mounts());
+    if mounts.is_empty() {
+        return Ok(Vec::new());
     }
-    for item in find_archetypes_in_mounts(docs, &scoped, include_archived)? {
-        acc.upsert(item);
-    }
-    Ok(acc.order)
+    let general_id = mounts.first().filter(|_| general_count == 1).cloned();
+    Ok(
+        super::wardrobe_read::read_shared_tiers(docs, &mounts, include_archived, &|mp| {
+            if general_id.as_deref() == Some(mp) {
+                general_wardrobe_origin()
+            } else {
+                pool_project_origin()
+            }
+        })
+        .into_iter()
+        .map(without_origin)
+        .collect(),
+    )
 }
 
-/// v4 `WardrobeRepository.findArchetypeById` — the single shared item by id, or
-/// `None` if no tier holds it. Always reads with `includeArchived = true` (equip
-/// paths need an archived item's `types`).
+// LANE-REMOVE(P4.D281): v4 deleted WardrobeRepository.findArchetypeById in 9ecebf986
+/// The pre-`9ecebf986` single shared item by id (archived included); callers
+/// move to `pool.get(id)`.
 pub fn find_archetype_by_id(
     main: &Connection,
     docs: &DocMountDocumentsRepository,
@@ -463,189 +394,6 @@ pub fn find_archetype_by_id(
 mod tests {
     use super::*;
     use serde_json::json;
-
-    /// v4 `__tests__/unit/lib/database/repositories/wardrobe.repository.pool.test.ts`
-    /// mocks `readSharedWardrobe` and asserts the merge rule alone. v5's
-    /// equivalent seam is [`merge_mounts`]'s injected reader; the arms below are
-    /// that suite's, case for case, for the two claims the DB differentials
-    /// cannot reach — a failing store, and a same-tier collision. (The
-    /// end-to-end precedence claim — character > group > project > general — is
-    /// proven live instead, by the `wardrobe_tools` and `outfit_llm_choose`
-    /// families against v4's real code.)
-    fn item(id: &str, tier: &str) -> Value {
-        json!({ "id": id, "characterId": null, "title": format!("{id} ({tier})") })
-    }
-
-    fn titles(items: &[Value]) -> Vec<String> {
-        items
-            .iter()
-            .map(|i| i["title"].as_str().unwrap_or_default().to_string())
-            .collect()
-    }
-
-    fn ids(list: &[&str]) -> Vec<String> {
-        list.iter().map(|s| s.to_string()).collect()
-    }
-
-    #[test]
-    fn the_last_mount_wins_a_collision_between_stores_of_the_same_tier() {
-        let out = merge_mounts(&ids(&["mp-1", "mp-2"]), |mp| {
-            Ok(vec![item("livery", &format!("project-{mp}"))])
-        });
-        assert_eq!(titles(&out), vec!["livery (project-mp-2)"]);
-    }
-
-    #[test]
-    fn a_failing_store_is_skipped_and_the_others_survive() {
-        let out = merge_mounts(&ids(&["grp-broken", "mp-ok"]), |mp| {
-            if mp == "grp-broken" {
-                return Err(DbError::Internal("store offline".into()));
-            }
-            Ok(vec![item("p-only", "project")])
-        });
-        assert_eq!(titles(&out), vec!["p-only (project)"]);
-    }
-
-    #[test]
-    fn no_scoped_mounts_short_circuits_before_touching_the_reader() {
-        let mut calls = 0usize;
-        let out = merge_mounts(&[], |_| {
-            calls += 1;
-            Ok(Vec::new())
-        });
-        assert!(out.is_empty());
-        assert_eq!(calls, 0, "the reader must not be touched at all");
-    }
-
-    #[test]
-    fn a_shadowing_item_keeps_the_earlier_mounts_position() {
-        // v4's insertion-ordered `Map`: `set(id, item)` on an existing id
-        // REPLACES in place rather than appending, so a shadowed item does not
-        // jump to the end of the pool.
-        let out = merge_mounts(&ids(&["mp-1", "mp-2"]), |mp| {
-            if mp == "mp-1" {
-                Ok(vec![item("shared", "project"), item("p-only", "project")])
-            } else {
-                Ok(vec![item("shared", "group")])
-            }
-        });
-        assert_eq!(titles(&out), vec!["shared (group)", "p-only (project)"]);
-    }
-
-    // === `cc80dc89d`: the attributed read — v4's four
-    // `findArchetypesInMountsAttributed` cases, over the same reader seam. ===
-
-    fn gm(id: &str, name: &str, mounts: &[&str]) -> GroupMounts {
-        GroupMounts {
-            group: super::super::tiered_mount_pool::GroupRef {
-                id: id.to_string(),
-                name: name.to_string(),
-            },
-            mount_point_ids: ids(mounts),
-        }
-    }
-
-    #[test]
-    fn attributed_tags_every_item_with_the_group_whose_store_it_hangs_in() {
-        let (out, lines) = crate::test_support::captured_with(|| {
-            merge_groups_attributed(
-                &[
-                    gm("G1", "The Sisters", &["m-sisters"]),
-                    gm("G2", "The Regiment", &["m-regiment"]),
-                ],
-                |mp| {
-                    Ok(vec![if mp == "m-sisters" {
-                        item("shawl", "sisters")
-                    } else {
-                        item("kit", "regiment")
-                    }])
-                },
-            )
-        });
-        assert_eq!(
-            out,
-            vec![
-                json!({ "id": "shawl", "characterId": null, "title": "shawl (sisters)",
-                        "origin": { "scope": "group", "id": "G1", "name": "The Sisters" } }),
-                json!({ "id": "kit", "characterId": null, "title": "kit (regiment)",
-                        "origin": { "scope": "group", "id": "G2", "name": "The Regiment" } }),
-            ]
-        );
-        // `origin` is the LAST key (v4's object spread).
-        assert_eq!(
-            out[0].as_object().unwrap().keys().next_back().unwrap(),
-            "origin"
-        );
-        assert_eq!(
-            lines,
-            vec!["DEBUG quilltap_core::db::archetype_wardrobe Attributed group wardrobe read groupCount=2 itemCount=2 context=wardrobe".to_string()]
-        );
-    }
-
-    #[test]
-    fn attributed_collision_resolves_as_the_flat_read_and_the_winner_keeps_its_own_origin() {
-        let reader = |mp: &str| {
-            Ok(vec![if mp == "m-sisters" {
-                item("livery", "sisters")
-            } else {
-                item("livery", "regiment")
-            }])
-        };
-        let flat = merge_mounts(&ids(&["m-sisters", "m-regiment"]), reader);
-        let attributed = merge_groups_attributed(
-            &[
-                gm("G1", "The Sisters", &["m-sisters"]),
-                gm("G2", "The Regiment", &["m-regiment"]),
-            ],
-            reader,
-        );
-        assert_eq!(attributed.len(), 1);
-        assert_eq!(attributed[0]["title"], flat[0]["title"]);
-        assert_eq!(attributed[0]["title"], "livery (regiment)");
-        assert_eq!(
-            attributed[0]["origin"],
-            json!({ "scope": "group", "id": "G2", "name": "The Regiment" })
-        );
-    }
-
-    #[test]
-    fn attributed_skips_an_unreadable_store_with_its_group_id() {
-        let (out, lines) = crate::test_support::captured_with(|| {
-            merge_groups_attributed(
-                &[
-                    gm("G1", "The Sisters", &["m-broken"]),
-                    gm("G2", "The Regiment", &["m-regiment"]),
-                ],
-                |mp| {
-                    if mp == "m-broken" {
-                        return Err(DbError::Internal("store offline".into()));
-                    }
-                    Ok(vec![item("kit", "regiment")])
-                },
-            )
-        });
-        assert_eq!(titles(&out), vec!["kit (regiment)"]);
-        assert_eq!(lines.len(), 2, "{lines:?}");
-        assert_eq!(
-            lines[0],
-            "WARN quilltap_core::db::archetype_wardrobe Failed to read shared wardrobe tier; skipping mountPointId=m-broken groupId=G1 context=wardrobe error=store offline"
-        );
-        assert!(lines[1].contains("Attributed group wardrobe read groupCount=2 itemCount=1"));
-    }
-
-    #[test]
-    fn attributed_reads_nothing_and_logs_nothing_for_an_empty_group_tier() {
-        let mut calls = 0usize;
-        let (out, lines) = crate::test_support::captured_with(|| {
-            merge_groups_attributed(&[], |_| {
-                calls += 1;
-                Ok(Vec::new())
-            })
-        });
-        assert!(out.is_empty());
-        assert_eq!(calls, 0);
-        assert!(lines.is_empty(), "{lines:?}");
-    }
 
     #[test]
     fn origin_shapes_and_the_general_name_matches_the_builtin_store() {

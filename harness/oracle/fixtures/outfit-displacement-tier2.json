@@ -1,0 +1,150 @@
+{
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seedTimestamp": "2026-02-01T00:00:00.000Z",
+  "userId": "11111111-1111-4111-8111-111111111111",
+  "characterId": "aaaa1111-1111-4111-8111-111111111111",
+  "chats": [
+    {
+      "id": "c0000001-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Displacement Put-On Chat",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fa000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "aaaa1111-1111-4111-8111-111111111111",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "c0000001-0000-4000-8000-000000000002",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Displacement Take-Off Chat",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fa000001-0000-4000-8000-000000000002",
+          "type": "CHARACTER",
+          "characterId": "aaaa1111-1111-4111-8111-111111111111",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ],
+      "equippedOutfit": {
+        "aaaa1111-1111-4111-8111-111111111111": {
+          "top": ["11111111-0000-4000-8000-000000000005", "11111111-0000-4000-8000-000000000001"],
+          "bottom": ["11111111-0000-4000-8000-000000000002"],
+          "footwear": ["11111111-0000-4000-8000-000000000006"],
+          "accessories": ["11111111-0000-4000-8000-000000000007"],
+          "hair": []
+        }
+      }
+    },
+    {
+      "id": "c0000001-0000-4000-8000-000000000003",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Displacement Malformed-Composites Chat",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fa000001-0000-4000-8000-000000000003",
+          "type": "CHARACTER",
+          "characterId": "aaaa1111-1111-4111-8111-111111111111",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
+    }
+  ],
+  "items": [
+    { "id": "11111111-0000-4000-8000-000000000001", "title": "shirt", "types": ["top"], "componentItemIds": [] },
+    { "id": "11111111-0000-4000-8000-000000000002", "title": "trousers", "types": ["bottom"], "componentItemIds": [] },
+    { "id": "11111111-0000-4000-8000-000000000003", "title": "boots", "types": ["footwear"], "componentItemIds": [] },
+    { "id": "11111111-0000-4000-8000-000000000004", "title": "gloves", "types": ["accessories"], "componentItemIds": [] },
+    { "id": "11111111-0000-4000-8000-000000000005", "title": "vest", "types": ["top"], "componentItemIds": [] },
+    { "id": "11111111-0000-4000-8000-000000000006", "title": "sandals", "types": ["footwear"], "componentItemIds": [] },
+    { "id": "11111111-0000-4000-8000-000000000007", "title": "hat", "types": ["accessories"], "componentItemIds": [] },
+    {
+      "id": "22222222-0000-4000-8000-000000000001",
+      "title": "man-in-black",
+      "types": ["top", "bottom", "footwear", "accessories"],
+      "componentItemIds": [
+        "11111111-0000-4000-8000-000000000001",
+        "11111111-0000-4000-8000-000000000002",
+        "11111111-0000-4000-8000-000000000003",
+        "11111111-0000-4000-8000-000000000004"
+      ]
+    },
+    {
+      "id": "22222222-0000-4000-8000-000000000002",
+      "title": "man-in-black-replacing",
+      "types": ["top", "bottom", "footwear", "accessories"],
+      "componentItemIds": [
+        "11111111-0000-4000-8000-000000000001",
+        "11111111-0000-4000-8000-000000000002",
+        "11111111-0000-4000-8000-000000000003",
+        "11111111-0000-4000-8000-000000000004"
+      ],
+      "replace": true
+    },
+    {
+      "id": "22222222-0000-4000-8000-000000000003",
+      "title": "top-and-bottom-one-part",
+      "types": ["top", "bottom"],
+      "componentItemIds": ["11111111-0000-4000-8000-000000000001"]
+    },
+    {
+      "id": "22222222-0000-4000-8000-000000000004",
+      "title": "orphan",
+      "types": ["top"],
+      "componentItemIds": ["99999999-0000-4000-8000-000000000001", "99999999-0000-4000-8000-000000000002"]
+    },
+    {
+      "id": "22222222-0000-4000-8000-000000000005",
+      "title": "yin",
+      "types": ["top"],
+      "componentItemIds": ["22222222-0000-4000-8000-000000000006", "11111111-0000-4000-8000-000000000001"]
+    },
+    {
+      "id": "22222222-0000-4000-8000-000000000006",
+      "title": "yang",
+      "types": ["bottom"],
+      "componentItemIds": ["22222222-0000-4000-8000-000000000005", "11111111-0000-4000-8000-000000000002"]
+    },
+    { "id": "33333333-0000-4000-8000-000000000001", "title": "chain-1", "types": ["top"], "componentItemIds": ["33333333-0000-4000-8000-000000000002"] },
+    { "id": "33333333-0000-4000-8000-000000000002", "title": "chain-2", "types": ["top"], "componentItemIds": ["33333333-0000-4000-8000-000000000003"] },
+    { "id": "33333333-0000-4000-8000-000000000003", "title": "chain-3", "types": ["top"], "componentItemIds": ["33333333-0000-4000-8000-000000000004"] },
+    { "id": "33333333-0000-4000-8000-000000000004", "title": "chain-4", "types": ["top"], "componentItemIds": ["33333333-0000-4000-8000-000000000005"] },
+    { "id": "33333333-0000-4000-8000-000000000005", "title": "chain-5", "types": ["top"], "componentItemIds": ["11111111-0000-4000-8000-000000000001"] }
+  ],
+  "ops": [
+    { "name": "wear_leaf_ui", "chat": "c0000001-0000-4000-8000-000000000001", "mode": "wear", "item": "11111111-0000-4000-8000-000000000001", "lookup": "all", "source": "ui" },
+    { "name": "wear_leaf_again_no_credit", "chat": "c0000001-0000-4000-8000-000000000001", "mode": "wear", "item": "11111111-0000-4000-8000-000000000001", "lookup": "all", "source": "ui" },
+    { "name": "wear_vest_layers", "chat": "c0000001-0000-4000-8000-000000000001", "mode": "wear", "item": "11111111-0000-4000-8000-000000000005", "lookup": "all", "source": "ui" },
+    { "name": "add_to_slot_composite_covering", "chat": "c0000001-0000-4000-8000-000000000001", "mode": "add_to_slot", "item": "22222222-0000-4000-8000-000000000001", "slot": "footwear", "lookup": "all", "source": "ui" },
+    { "name": "add_to_slot_composite_not_covering", "chat": "c0000001-0000-4000-8000-000000000001", "mode": "add_to_slot", "item": "22222222-0000-4000-8000-000000000003", "slot": "bottom", "lookup": "all", "source": "tool" },
+    { "name": "replace_leaf", "chat": "c0000001-0000-4000-8000-000000000001", "mode": "replace", "item": "11111111-0000-4000-8000-000000000002", "lookup": "all", "source": "ui" },
+    { "name": "wear_replacing_composite_tool", "chat": "c0000001-0000-4000-8000-000000000001", "mode": "wear", "item": "22222222-0000-4000-8000-000000000002", "lookup": "all", "source": "tool" },
+    { "name": "wear_composite_no_lookup", "chat": "c0000001-0000-4000-8000-000000000001", "mode": "wear", "item": "22222222-0000-4000-8000-000000000001", "lookup": null, "source": "ui" },
+    { "name": "wear_missing_item", "chat": "c0000001-0000-4000-8000-000000000001", "mode": "wear", "lookup": "all", "source": "ui" },
+    { "name": "add_to_slot_missing_slot", "chat": "c0000001-0000-4000-8000-000000000001", "mode": "add_to_slot", "item": "11111111-0000-4000-8000-000000000001", "lookup": "all", "source": "ui" },
+    { "name": "replace_composite_with_lookup", "chat": "c0000001-0000-4000-8000-000000000001", "mode": "replace", "item": "22222222-0000-4000-8000-000000000001", "lookup": "all", "source": "ui" },
+    { "name": "remove_from_slot_with_id", "chat": "c0000001-0000-4000-8000-000000000002", "mode": "remove_from_slot", "slot": "top", "itemId": "11111111-0000-4000-8000-000000000005", "lookup": null, "source": "tool" },
+    { "name": "remove_from_slot_without_id", "chat": "c0000001-0000-4000-8000-000000000002", "mode": "remove_from_slot", "slot": "bottom", "lookup": null, "source": "ui" },
+    { "name": "clear_slot", "chat": "c0000001-0000-4000-8000-000000000002", "mode": "clear_slot", "slot": "footwear", "lookup": null, "source": "tool" },
+    { "name": "clear_slot_missing_slot", "chat": "c0000001-0000-4000-8000-000000000002", "mode": "clear_slot", "lookup": null, "source": "ui" },
+    { "name": "remove_from_slot_missing_id_no_op", "chat": "c0000001-0000-4000-8000-000000000002", "mode": "remove_from_slot", "slot": "accessories", "itemId": "99999999-0000-4000-8000-0000000000ff", "lookup": null, "source": "ui" },
+    { "name": "rewear_after_take_off", "chat": "c0000001-0000-4000-8000-000000000002", "mode": "wear", "item": "11111111-0000-4000-8000-000000000005", "lookup": "all", "source": "ui" },
+    { "name": "wear_unresolvable_composite", "chat": "c0000001-0000-4000-8000-000000000003", "mode": "wear", "item": "22222222-0000-4000-8000-000000000004", "lookup": ["22222222-0000-4000-8000-000000000004"], "source": "ui" },
+    { "name": "wear_cyclic_composite", "chat": "c0000001-0000-4000-8000-000000000003", "mode": "wear", "item": "22222222-0000-4000-8000-000000000005", "lookup": "all", "source": "tool" },
+    { "name": "wear_truncated_chain", "chat": "c0000001-0000-4000-8000-000000000003", "mode": "wear", "item": "33333333-0000-4000-8000-000000000001", "lookup": "all", "source": "ui" },
+    { "name": "add_to_slot_cyclic_composite", "chat": "c0000001-0000-4000-8000-000000000003", "mode": "add_to_slot", "item": "22222222-0000-4000-8000-000000000006", "slot": "bottom", "lookup": "all", "source": "ui" },
+    { "name": "wear_into_missing_chat", "chat": "c0000001-0000-4000-8000-0000000000ff", "mode": "wear", "item": "11111111-0000-4000-8000-000000000001", "lookup": "all", "source": "ui" }
+  ]
+}

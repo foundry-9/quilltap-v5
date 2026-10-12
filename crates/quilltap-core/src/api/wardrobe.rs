@@ -299,6 +299,9 @@ pub async fn wardrobe_create(db: &Db, body: Value) -> Response {
             // null` on every create — echoed, never written to the file.
             image_file_id: Some(None),
             archived_at: None,
+            // P4.D279 (C1 §12, mechanical): `WardrobeItem.folder` arrived with v4
+            // `4a38222e6`; the owning lane replaces this with the body's / record's value.
+            folder: String::new(),
             created_at: now.clone(),
             updated_at: now,
         };
@@ -409,6 +412,11 @@ pub async fn wardrobe_update(db: &Db, item_id: &str, body: Value) -> Response {
         replace: parsed.replace,
         archived_at: None,
         image_file_id: parsed.image_file_id.clone(),
+        // P4.D279 (C1 §12, mechanical): `WardrobePatch.folder` arrived with v4
+        // `4a38222e6`; the owning lane fills it from the body. The clothing-record
+        // pointer is a `Partial<WardrobeItem>` key the restore pass carries.
+        folder: None,
+        migrated_from_clothing_record_id: None,
     };
     let archived = parsed.archived;
     let image_file_id = parsed.image_file_id;

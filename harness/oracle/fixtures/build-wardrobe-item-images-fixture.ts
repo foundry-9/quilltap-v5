@@ -267,13 +267,12 @@ async function main(): Promise<void> {
   const projectMp = (await repos.projects.findByIdRaw(spec.projectId))?.officialMountPointId as string;
   const groupMp = (await repos.groups.findByIdRaw(spec.groupId))?.officialMountPointId as string;
   if (!projectMp || !groupMp) throw new Error('project/group official store not minted');
-  const { ensureProjectWardrobeFolder } = await import('@/lib/mount-index/project-wardrobe');
-  const { ensureGroupWardrobeFolder } = await import('@/lib/mount-index/group-wardrobe');
-  await ensureProjectWardrobeFolder(projectMp);
-  await ensureGroupWardrobeFolder(groupMp);
+  const { ensureSharedWardrobeFolder } = await import('@/lib/mount-index/shared-wardrobe');
+  await ensureSharedWardrobeFolder(projectMp);
+  await ensureSharedWardrobeFolder(groupMp);
 
   // Items.
-  const { createProjectWardrobeItem } = await import(
+  const { createMountWardrobeItem: createProjectWardrobeItem } = await import(
     '@/lib/database/repositories/vault-overlay/wardrobe-writes'
   );
   const body = (item: ItemSpec, characterId: string | null) => ({

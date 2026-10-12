@@ -2775,6 +2775,9 @@ pub async fn character_wardrobe_create(
             // null` on every create — echoed, never written to the file.
             image_file_id: Some(None),
             archived_at: None,
+            // P4.D279 (C1 §12, mechanical): `WardrobeItem.folder` arrived with v4
+            // `4a38222e6`; the owning lane replaces this with the body's / record's value.
+            folder: String::new(),
             created_at: now.clone(),
             updated_at: now,
         };

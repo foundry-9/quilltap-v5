@@ -1,0 +1,68 @@
+{
+  "comment": "P4.D279 keystone C1 §7 — the outfit-change side effects (v4 lib/wardrobe/outfit-change-effects.ts). Consumed by build-outfit-change-effects-fixture.ts (the main-DB fixture: a user, a default image profile WITH an apiKeyId so the avatar trigger resolves a usable profile, four chats — avatar auto-update ON / a second ON / OFF / an autonomous room with the flag ON — each seating both characters, and a materialized background_jobs table), by cases/outfit-change-effects-tier3.ts (drives the REAL module through this scripted matrix) and by outfit_change_effects_tier3_equivalence.rs (the same matrix through the Rust port). The two character ids are participants only: the module never reads characters, so no vault is provisioned and no mount index is needed. Steps run IN ORDER against one shared turn set; `dropBackgroundJobs` is destructive and everything after it exercises the schedule's catch leg.",
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "seedTimestamp": "2026-02-01T00:00:00.000Z",
+  "userId": "11111111-1111-4111-8111-111111111111",
+  "user": {
+    "username": "outfit-effects-tester",
+    "name": "Outfit Effects Tester"
+  },
+  "characterAId": "22222222-2222-4222-8222-222222222222",
+  "characterBId": "33333333-3333-4333-8333-333333333333",
+  "imageProfile": {
+    "id": "eeeeeeee-0000-4000-8000-0000000000a1",
+    "name": "Avatar Imagery",
+    "provider": "OPENAI_COMPATIBLE",
+    "apiKeyId": "eeeeeeee-0000-4000-8000-0000000000a2",
+    "baseUrl": "http://127.0.0.1:1/v1",
+    "modelName": "mock-image-model"
+  },
+  "chats": {
+    "on": {
+      "id": "aaaaaaaa-0000-4000-8000-0000000000e1",
+      "title": "Outfit effects: avatar ON",
+      "chatType": "salon",
+      "avatarGenerationEnabled": true
+    },
+    "on2": {
+      "id": "aaaaaaaa-0000-4000-8000-0000000000e2",
+      "title": "Outfit effects: avatar ON (second)",
+      "chatType": "salon",
+      "avatarGenerationEnabled": true
+    },
+    "off": {
+      "id": "aaaaaaaa-0000-4000-8000-0000000000e3",
+      "title": "Outfit effects: avatar OFF",
+      "chatType": "salon",
+      "avatarGenerationEnabled": false
+    },
+    "autonomous": {
+      "id": "aaaaaaaa-0000-4000-8000-0000000000e4",
+      "title": "Outfit effects: autonomous room",
+      "chatType": "autonomous",
+      "avatarGenerationEnabled": true
+    }
+  },
+  "steps": [
+    { "name": "notify_on_b_with_set", "op": "notify", "chat": "on", "character": "B", "withSet": true, "context": "wardrobe-wear-handler" },
+    { "name": "notify_on_a_with_set", "op": "notify", "chat": "on", "character": "A", "withSet": true, "context": "wardrobe-wear-handler" },
+    { "name": "notify_on_a_again_with_set_dedupes_avatar", "op": "notify", "chat": "on", "character": "A", "withSet": true, "context": "wardrobe-take-off-handler" },
+    { "name": "flush_two_ids", "op": "flush", "chat": "on" },
+    { "name": "flush_again_is_noop", "op": "flush", "chat": "on" },
+    { "name": "flush_without_set_is_noop", "op": "flushNoSet", "chat": "on" },
+    { "name": "notify_on_a_without_set_reuses_pending", "op": "notify", "chat": "on", "character": "A", "withSet": false, "context": "wardrobe-routes.equip" },
+    { "name": "notify_off_a_without_set_no_avatar", "op": "notify", "chat": "off", "character": "A", "withSet": false, "context": "wardrobe-routes.equip" },
+    { "name": "notify_autonomous_b_with_set_no_avatar", "op": "notify", "chat": "autonomous", "character": "B", "withSet": true, "context": "wardrobe-create-handler" },
+    { "name": "flush_autonomous", "op": "flush", "chat": "autonomous" },
+    { "name": "refresh_on2_a_enqueues_avatar_only", "op": "refresh", "chat": "on2", "character": "A", "context": "[Chats v1] chat-open" },
+    { "name": "refresh_off_b_is_noop", "op": "refresh", "chat": "off", "character": "B", "context": "[Chats v1] participant-join" },
+    { "name": "record_on2_b_with_set", "op": "record", "chat": "on2", "character": "B", "withSet": true, "context": "wardrobe-wear-handler" },
+    { "name": "record_on2_a_without_set_schedules", "op": "record", "chat": "on2", "character": "A", "withSet": false, "context": "wardrobe-routes.equip" },
+    { "name": "schedule_off_b_direct", "op": "schedule", "chat": "off", "character": "B", "context": "wardrobe-folder-routes" },
+    { "name": "schedule_off_b_again_reuses_pending", "op": "schedule", "chat": "off", "character": "B", "context": "wardrobe-folder-routes" },
+    { "name": "drop_background_jobs", "op": "dropBackgroundJobs" },
+    { "name": "schedule_after_drop_warns", "op": "schedule", "chat": "on", "character": "A", "context": "wardrobe-wear-handler" },
+    { "name": "flush_after_drop_warns_and_clears", "op": "flush", "chat": "on2" },
+    { "name": "notify_after_drop_without_set_warns", "op": "notify", "chat": "on2", "character": "A", "withSet": false, "context": "wardrobe-routes.equip" }
+  ]
+}

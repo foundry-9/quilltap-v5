@@ -412,11 +412,11 @@ async function main(): Promise<void> {
   );
   const projectMp = project.officialMountPointId as string;
   if (!projectMp) throw new Error('project official store not minted');
-  const { ensureProjectWardrobeFolder } = await import('@/lib/mount-index/project-wardrobe');
-  const { createProjectWardrobeItem } = await import(
+  const { ensureSharedWardrobeFolder } = await import('@/lib/mount-index/shared-wardrobe');
+  const { createMountWardrobeItem: createProjectWardrobeItem } = await import(
     '@/lib/database/repositories/vault-overlay/wardrobe-writes'
   );
-  await ensureProjectWardrobeFolder(projectMp);
+  await ensureSharedWardrobeFolder(projectMp);
   await createProjectWardrobeItem(projectMp, {
     id: W.pSash,
     characterId: null,

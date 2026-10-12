@@ -2376,6 +2376,50 @@ const CENSUS: &[Row] = &[
         note: "`wardrobe/[itemId]/images/route.ts:77-82` `sp.get('scope')` (a Zod enum over the query) — `01a83539d`",
     },
     // === end P4.D265 ===
+    // === P4.D279 (contract C2): the `4a38222e6` round's new typed fields ===
+    Row {
+        variant: "WardrobeFoldersList",
+        field: "scope",
+        rust_type: "WardrobeContainerScope",
+        v4: V4::Query,
+        note: "`?action=folders` on the character / General collection edges (P4.D281); the project / group tiers ride dispatch — `4a38222e6`",
+    },
+    Row {
+        variant: "WardrobeFolderCreate",
+        field: "scope",
+        rust_type: "WardrobeContainerScope",
+        v4: V4::Query,
+        note: "`?action=create-folder`; the `{ path }` body rides as a flattened `Value` parsed by v4's `createWardrobeFolderSchema` inside the handler — `4a38222e6`",
+    },
+    Row {
+        variant: "WardrobeFolderRename",
+        field: "scope",
+        rust_type: "WardrobeContainerScope",
+        v4: V4::Query,
+        note: "`?action=rename-folder`; the `{ path, name }` body rides as a flattened `Value` parsed by v4's `renameWardrobeFolderSchema` inside the handler — `4a38222e6`",
+    },
+    Row {
+        variant: "WardrobeFolderDelete",
+        field: "scope",
+        rust_type: "WardrobeContainerScope",
+        v4: V4::Query,
+        note: "`?action=delete-folder`; the `{ path }` body rides as a flattened `Value` parsed by v4's `deleteWardrobeFolderSchema` inside the handler — `4a38222e6`",
+    },
+    Row {
+        variant: "WardrobeItemsMove",
+        field: "scope",
+        rust_type: "WardrobeContainerScope",
+        v4: V4::Query,
+        note: "`?action=move-items`; the `{ itemIds, folder }` body rides as a flattened `Value` parsed by v4's `moveWardrobeItemsSchema` inside the handler — `4a38222e6`",
+    },
+    Row {
+        variant: "WardrobeItemImageLink",
+        field: "scope",
+        rust_type: "WardrobeContainerScope",
+        v4: V4::Query,
+        note: "`wardrobe/[itemId]/images/route.ts` `sp.get('scope')` (a Zod enum over the query) — `9ecebf986` `?action=link-image`",
+    },
+    // === end P4.D279 ===
 ];
 
 /// The `ChatCreate` trio (the order's anchor). These are NOT `Request` fields —
@@ -2683,7 +2727,15 @@ fn is_route_identifier(field: &str) -> bool {
 // {container_id, item_id}` and `WardrobeItemImageSaveToStore.{container_id,
 // item_id, file_id, mount_point_id}` (the first two query/path, the last two
 // v4 BODY keys of `SaveImageRequestSchema`). The test measures 471 with them.
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 471;
+// **P4.D279 (+8): 471 → 479** — the `4a38222e6` round's six C2 verbs (R-D, one
+// scoped family): six `container_id` (the tier's owner id — a URL segment on
+// v4's per-tier routes) plus `WardrobeItemImageLink.{item_id, file_id}` (the
+// `[itemId]` segment and the `{ fileId }` body key of `?action=link-image`,
+// which the rule drops as it drops every `*_id`). The five folder verbs' bodies
+// ride as ONE flattened `serde_json::Value` (`body`) — parsed by v4's own Zod
+// schemas inside P4.D281's handlers — so no body key entered the typed set.
+// Measured by running the test (red at 479 against 471 first).
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 479;
 
 /// **P4.115 item 5 — the field [`strip_noise`] hides, pinned both ways.** The
 /// shared module's rule finds every field this census's walk finds, plus

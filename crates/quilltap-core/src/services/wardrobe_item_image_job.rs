@@ -132,6 +132,8 @@ pub async fn handle_wardrobe_item_image_generation(
             home: &home,
             container_id: Some(&character_id),
             image_profile_id: None,
+            // P4.D279 (C1 §10): the payload's `chatId`, carried for P4.D283.
+            chat_id: Some(&chat_id),
         },
     )
     .await;

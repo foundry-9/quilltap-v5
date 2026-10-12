@@ -29,13 +29,12 @@ use serde_json::{Map, Value};
 use super::doc_mount_documents::{DocMountDocumentsRepository, VaultFolderDoc};
 use super::DbError;
 use crate::vault_overlay::{
-    markdown_to_nullable, parse_legacy_wardrobe_json, parse_prompt_file, parse_scenario_file,
-    parse_vault_metadata, parse_vault_physical_prompts, parse_vault_properties,
-    parse_wardrobe_item_file, resolve_and_check_component_items, slugify_wardrobe_title,
-    stable_uuid_from_string, CharacterScenario, CharacterSystemPrompt, SeedArchetype, VaultDoc,
-    WardrobeItemFromFile,
+    is_wardrobe_item_document_path, markdown_to_nullable, parse_legacy_wardrobe_json,
+    parse_prompt_file, parse_scenario_file, parse_vault_metadata, parse_vault_physical_prompts,
+    parse_vault_properties, parse_wardrobe_item_file, resolve_and_check_component_items,
+    slugify_wardrobe_title, stable_uuid_from_string, CharacterScenario, CharacterSystemPrompt,
+    VaultDoc, WardrobeItemFromFile,
 };
-use crate::wardrobe_instructions::is_wardrobe_instructions_file_name;
 
 /// The nine single-file overlay paths (v4 `SINGLE_FILE_OVERLAY_PATHS`), in order.
 /// `metadata.json` sits SECOND (v4 `schema.ts:109`), the fact sheet beside the
@@ -499,44 +498,56 @@ pub fn apply_document_store_overlay_one(
 }
 
 /// Read a character's vault wardrobe (v4 `readCharacterVaultWardrobe`,
-/// `vault-overlay/vault-readers.ts:234`). Returns `Some({ items })` — from the
-/// `Wardrobe/*.md` folder layout when present, else the legacy `wardrobe.json`
-/// — or `None` when neither yields a usable list.
+/// `vault-overlay/vault-readers.ts:331-402` at `4a38222e6`). Returns
+/// `Some({ items })` — from the `Wardrobe/**/*.md` folder layout when present,
+/// else the legacy `wardrobe.json` — or `None` when neither yields a usable
+/// list.
 ///
-/// The `Wardrobe/*.md` path parses each file, builds the in-vault slug/id lookup
-/// maps (first-claimer wins a slug; every item is addressable by id), and runs
-/// [`resolve_and_check_component_items`] to canonicalize and cycle-check the
-/// `componentItems:` refs. Files are sorted by `relativePath` under the
-/// Decision-B code-unit order (Rust `str::cmp`) before parsing.
+/// **Recursive** (`4a38222e6`): the operator's subfolders
+/// (`Wardrobe/Formal/Evening/`) hold items too, and each item's `folder` is
+/// derived from its path. `instructions.md` is dressing guidance, never a
+/// garment, and `Wardrobe/images/` holds item pictures — the ONE predicate
+/// [`is_wardrobe_item_document_path`] says which documents are items. The
+/// filter runs BEFORE the length check so a folder holding only the
+/// instructions file still falls through to the legacy `wardrobe.json` branch
+/// below; anything filtered out is counted in the debug `Wardrobe read skipped
+/// non-item documents`.
 ///
-/// **Archetype seeding.** v4 additionally seeds the lookup maps with shared
-/// archetypes (`repos.wardrobe.findArchetypes(true)` → the General/project
-/// `Wardrobe` stores) so composites can reference shared items they don't
-/// themselves hold — but only when `seed_archetypes` is set AND some item carries
-/// component refs (v4's `hasComponentRefs && seedArchetypes` guard). The
-/// archetypes are supplied by `fetch_archetypes`, a closure the caller wires to
-/// [`super::general_wardrobe::find_archetypes`] (character/public reads pass
-/// `true`; the General/project readers pass `false` with an empty fetch, since
-/// those folders ARE the shared set and re-seeding would recurse). A local item
-/// wins any slug/id collision with an archetype.
+/// The `Wardrobe/**/*.md` path parses each file, builds the in-vault slug/id
+/// lookup maps (first-claimer wins a slug; every item is addressable by id),
+/// and runs [`resolve_and_check_component_items`] to canonicalize and
+/// cycle-check the `componentItems:` refs. Component refs resolve against THIS
+/// folder alone: a component in another tier is written as its UUID and
+/// survives parsing unresolved (bug 187, `7a8d6dacc`); the per-request
+/// wearable pool (`crate::wearable_pool`) resolves it. **The reader never
+/// calls back into the repository** — the archetype seeding that lived here
+/// before `9ecebf986` is gone with v4's. Files are sorted by `relativePath`
+/// under the Decision-B code-unit order (Rust `str::cmp`) before parsing.
 pub fn read_character_vault_wardrobe(
     repo: &DocMountDocumentsRepository,
     mount_point_id: &str,
     character_id: &str,
-    seed_archetypes: bool,
-    fetch_archetypes: &dyn Fn() -> Result<Vec<SeedArchetype>, DbError>,
 ) -> Result<Option<Value>, DbError> {
     let mount = [mount_point_id.to_string()];
-    let all_docs =
-        repo.find_many_by_mount_points_in_folder_or_empty(&mount, WARDROBE_FOLDER, ".md")?;
-    // `Wardrobe/instructions.md` is dressing guidance, never a garment (v4
-    // `b86bb1a5`). Filter before the length check so a folder holding only the
-    // instructions file still falls through to the legacy `wardrobe.json` branch
-    // below — and so the read no longer warns "no valid types list" on it.
+    let all_docs = repo.find_many_by_mount_points_in_folder_opts_or_empty(
+        &mount,
+        WARDROBE_FOLDER,
+        ".md",
+        true,
+    )?;
+    let total = all_docs.len();
     let mut item_docs: Vec<_> = all_docs
         .into_iter()
-        .filter(|doc| !is_wardrobe_instructions_file_name(&doc.file_name))
+        .filter(|doc| is_wardrobe_item_document_path(&doc.relative_path))
         .collect();
+    if item_docs.len() != total {
+        tracing::debug!(
+            characterId = %character_id,
+            mountPointId = %mount_point_id,
+            skipped = total - item_docs.len(),
+            "Wardrobe read skipped non-item documents"
+        );
+    }
 
     if !item_docs.is_empty() {
         // Decision-B code-unit sort by relativePath, then parse, then drop the
@@ -562,20 +573,10 @@ pub fn read_character_vault_wardrobe(
             item_by_slug.insert(slug, i);
         }
 
-        // v4 fetches archetypes lazily — only when some item has component refs
-        // (the shared set is pure fallback for composites) and seeding is enabled.
-        let has_component_refs = items.iter().any(|it| !it.component_item_ids.is_empty());
-        let archetypes = if has_component_refs && seed_archetypes {
-            fetch_archetypes()?
-        } else {
-            Vec::new()
-        };
-
         resolve_and_check_component_items(
             &mut items,
             &item_by_slug,
             &item_by_id,
-            &archetypes,
             character_id,
             mount_point_id,
         );

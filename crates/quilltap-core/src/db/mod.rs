@@ -149,7 +149,7 @@ pub mod vault_wardrobe_public;
 pub mod vault_wardrobe_write;
 pub mod vector_indices;
 pub mod vector_store;
-pub mod wardrobe;
+pub mod wardrobe_location;
 pub mod wardrobe_read;
 pub mod wardrobe_wear_stats;
 pub mod wardrobe_wear_stats_repair;
@@ -591,15 +591,6 @@ impl Writer {
     /// The users repository over this writer's connection.
     pub fn users(&self) -> users::UsersRepository<'_> {
         users::UsersRepository::new(&self.conn)
-    }
-
-    /// The wardrobe repository over this writer's connection.
-    ///
-    /// NOTE: v4's public `WardrobeRepository` CRUD is vault-only (document store,
-    /// no SQL write mirror); this ports the base-repository SQL marshaling over
-    /// the `wardrobe_items` table (what its reads consume). See the module docs.
-    pub fn wardrobe(&self) -> wardrobe::WardrobeRepository<'_> {
-        wardrobe::WardrobeRepository::new(&self.conn)
     }
 
     /// Canonical dump of one table, in the same shape the tier-2 oracle emits:

@@ -559,11 +559,11 @@ async function main(): Promise<void> {
   await setProjectScenarioDefault(iotaMp, 'Scenarios/opening.md');
 
   // Iota wardrobe (two items, one composite referencing the other).
-  const { ensureProjectWardrobeFolder } = await import('@/lib/mount-index/project-wardrobe');
-  const { createProjectWardrobeItem } = await import(
+  const { ensureSharedWardrobeFolder } = await import('@/lib/mount-index/shared-wardrobe');
+  const { createMountWardrobeItem: createProjectWardrobeItem } = await import(
     '@/lib/database/repositories/vault-overlay/wardrobe-writes'
   );
-  await ensureProjectWardrobeFolder(iotaMp);
+  await ensureSharedWardrobeFolder(iotaMp);
   const CLOAK = 'aa000000-0000-4000-8000-000000000001';
   const ENSEMBLE = 'aa000000-0000-4000-8000-000000000002';
   await createProjectWardrobeItem(iotaMp, {

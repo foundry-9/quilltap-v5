@@ -225,7 +225,14 @@ async function main(): Promise<void> {
   const readback = {
     callerItems: await repos.wardrobe.findByCharacterId(spec.callerCharacterId, true),
     recipientItems: await repos.wardrobe.findByCharacterId(spec.recipientCharacterId, true),
-    generalItems: await repos.wardrobe.findArchetypes(true),
+    // P4.D279 (v4 `4a38222e6`): `findArchetypes(true)` is gone; General alone is
+    // `readSharedWardrobe(generalMountPointId, true)` (lib/mount-index/shared-wardrobe).
+    generalItems: await (async () => {
+      const { getGeneralMountPointId } = await import('@/lib/instance-settings');
+      const { readSharedWardrobe } = await import('@/lib/mount-index/shared-wardrobe');
+      const generalMountPointId = await getGeneralMountPointId();
+      return generalMountPointId ? readSharedWardrobe(generalMountPointId, true) : [];
+    })(),
     equippedOutfit: (await repos.chats.getEquippedOutfit(spec.chatId)) ?? null,
     pendingAnnouncements: Array.from(pendingWardrobeAnnouncements).sort(),
     wardrobeWear: await wearReadback(),

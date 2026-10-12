@@ -1,0 +1,204 @@
+{
+  "$comment": [
+    "P4.D279 (the wardrobe keystone, C1 §2 / §4) — the round's ONE shared four-tier",
+    "seed. Consumers READ it, never change it. build-wardrobe-keystone-fixture.ts",
+    "bakes it into TWO databases (main + mount-index) through v4's REAL repos:",
+    "",
+    "  users:      A (owns Ada + the archived Zed) and B (owns Bo — the ownership",
+    "              gate's otherUserId plant).",
+    "  characters: Ada (live, user A; the vault every folder-writes op runs on),",
+    "              Bo (live, user B), Zed (user A, ARCHIVED through",
+    "              repos.characters.update({ archivedAt }) — the vault stays).",
+    "  General:    the Quilltap General store (pinned id in MAIN instance_settings)",
+    "              with two items.",
+    "  projects:   Bare Manor — provisioned by create, NO Wardrobe/ folder (the R-C",
+    "              GET-shaped probe: ensure:false finds the store and reads [],",
+    "              ensure:true creates ONLY the folder);",
+    "              Null Abbey — officialMountPointId NULLED after create (v4's REAL",
+    "              repos.projects.findById THROWS ProjectStoreUnavailableError, so",
+    "              both ensure arms throw and no store row is ever created);",
+    "              Full Abbey — ensureOwnerOfficialStore + ensureSharedWardrobeFolder",
+    "              + two items via createMountWardrobeItem.",
+    "  group:      Guild — Ada a member, official store, two items; one of them",
+    "              carries the SAME id as Ada's archived own item (the shadow/unmask",
+    "              case).",
+    "  Ada's vault (every write through resolveWardrobeLocation(...).create):",
+    "              a root item, a FILED item (Formal/Evening), an ARCHIVED own item,",
+    "              a composite naming a General item's UUID (cross-tier ref kept);",
+    "              PLUS a hand-made folder row Wardrobe/Hats: Summer, an EMPTY folder",
+    "              row Wardrobe/Empty, a note Wardrobe/Notes/todo.md (no types) and a",
+    "              .txt beside it, a text doc under the reserved Wardrobe/images/…,",
+    "              and an id-less item file Wardrobe/Loose/no-id.md (frontmatter",
+    "              without id: — the rename's stamp-before-move case).",
+    "  scratch:    a pinned 'Projection Scratch' store pre-seeded for the recursive",
+    "              projection family (a note, a half-written garment, a caption under",
+    "              images/, instructions.md at two depths, three item files in two",
+    "              folders, two flat Prompts/ files, the legacy wardrobe.json).",
+    "",
+    "Minted ids (every vault / official-store mount point) are read back by both",
+    "sides from the owner rows; the three pinned store ids are General, the scratch",
+    "store and nothing else. Every item id and timestamp is pinned here.",
+    "",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key (the one every harness",
+    "fixture uses). NOT the real Friday pepper; safe to commit."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seedTimestamp": "2026-02-01T00:00:00.000Z",
+  "userAId": "a9000000-0000-4000-8000-0000000000aa",
+  "userBId": "a9000000-0000-4000-8000-0000000000bb",
+  "characterAId": "c9000000-0000-4000-8000-000000000001",
+  "characterAName": "Ada Keystone",
+  "characterBId": "c9000000-0000-4000-8000-000000000002",
+  "characterBName": "Bo Stranger",
+  "archivedCharacterId": "c9000000-0000-4000-8000-000000000003",
+  "archivedCharacterName": "Zed Archived",
+  "generalMountPointId": "e9000000-0000-4000-8000-0000000000a1",
+  "generalStoreName": "Quilltap General",
+  "scratchMountPointId": "57c0de00-0000-4000-8000-0000000000d1",
+  "scratchStoreName": "Projection Scratch",
+  "bareProjectId": "b9000000-0000-4000-8000-000000000001",
+  "bareProjectName": "Bare Manor",
+  "nullProjectId": "b9000000-0000-4000-8000-000000000002",
+  "nullProjectName": "Null Abbey",
+  "fullProjectId": "b9000000-0000-4000-8000-000000000003",
+  "fullProjectName": "Full Abbey",
+  "groupId": "90000000-0000-4000-8000-000000000001",
+  "groupName": "Guild",
+  "missingId": "00000000-0000-4000-8000-0000000000ff",
+  "items": {
+    "rootCoat": {
+      "id": "d9000000-0000-4000-8000-000000000001",
+      "title": "Tweed Coat",
+      "types": ["top"],
+      "folder": ""
+    },
+    "filedGown": {
+      "id": "d9000000-0000-4000-8000-000000000002",
+      "title": "Evening Gown",
+      "types": ["top", "bottom"],
+      "folder": "Formal/Evening"
+    },
+    "archivedHat": {
+      "id": "d9000000-0000-4000-8000-000000000003",
+      "title": "Shelved Hat",
+      "types": ["accessories"],
+      "folder": "",
+      "archivedAt": "2026-02-01T00:00:00.000Z"
+    },
+    "composite": {
+      "id": "d9000000-0000-4000-8000-000000000004",
+      "title": "Commute Set",
+      "types": ["accessories"],
+      "folder": "",
+      "componentItemIds": ["d9000000-0000-4000-8000-000000000031"]
+    },
+    "archivedCape": {
+      "id": "d9000000-0000-4000-8000-000000000041",
+      "title": "Zed's Cape",
+      "types": ["top"],
+      "folder": ""
+    },
+    "groupShadowHat": {
+      "id": "d9000000-0000-4000-8000-000000000003",
+      "title": "Guild Hat",
+      "types": ["accessories"],
+      "folder": ""
+    },
+    "groupCloak": {
+      "id": "d9000000-0000-4000-8000-000000000011",
+      "title": "Guild Cloak",
+      "types": ["top"],
+      "folder": ""
+    },
+    "projectLivery": {
+      "id": "d9000000-0000-4000-8000-000000000021",
+      "title": "Manor Livery",
+      "types": ["top"],
+      "folder": ""
+    },
+    "projectBoots": {
+      "id": "d9000000-0000-4000-8000-000000000022",
+      "title": "Manor Boots",
+      "types": ["footwear"],
+      "folder": ""
+    },
+    "generalWatch": {
+      "id": "d9000000-0000-4000-8000-000000000031",
+      "title": "Apple Watch",
+      "types": ["accessories"],
+      "folder": ""
+    },
+    "generalBoots": {
+      "id": "d9000000-0000-4000-8000-000000000032",
+      "title": "Rain Boots",
+      "types": ["footwear"],
+      "folder": ""
+    }
+  },
+  "characterVaultFolders": ["Wardrobe/Hats: Summer", "Wardrobe/Empty"],
+  "characterVaultFiles": [
+    {
+      "relativePath": "Wardrobe/Notes/todo.md",
+      "content": "# Wardrobe notes\n\nPress the tails before the gala.\n"
+    },
+    {
+      "relativePath": "Wardrobe/Notes/readme.txt",
+      "content": "Not a garment.\n"
+    },
+    {
+      "relativePath": "Wardrobe/images/d9000000-0000-4000-8000-000000000001/caption.md",
+      "content": "A caption kept beside the coat's picture.\n"
+    },
+    {
+      "relativePath": "Wardrobe/Loose/no-id.md",
+      "content": "---\ntitle: Loose Scarf\ntypes:\n  - accessories\n---\nA scarf whose file carries no id line.\n"
+    }
+  ],
+  "scratchFolders": ["Wardrobe/Rainy-Empty"],
+  "scratchFiles": [
+    {
+      "relativePath": "Wardrobe/Formal/notes.md",
+      "content": "# Notes on the formal wear\n\nPress the tails.\n"
+    },
+    {
+      "relativePath": "Wardrobe/Half-done.md",
+      "content": "---\ntitle: Half-done\n---\nNo slots yet.\n"
+    },
+    {
+      "relativePath": "Wardrobe/images/abc/caption.md",
+      "content": "A caption under the reserved images folder.\n"
+    },
+    {
+      "relativePath": "Wardrobe/instructions.md",
+      "content": "Dress for the weather.\n"
+    },
+    {
+      "relativePath": "Wardrobe/Formal/Instructions.md",
+      "content": "Tweeds after six.\n"
+    },
+    {
+      "relativePath": "Wardrobe/Formal/Coat.md",
+      "content": "---\nid: \"f9000000-0000-4000-8000-000000000001\"\ntitle: Coat\ntypes:\n  - top\ncreatedAt: 2026-01-01T00:00:00.000Z\nupdatedAt: 2026-01-01T00:00:00.000Z\n---\n"
+    },
+    {
+      "relativePath": "Wardrobe/Old/Hat.md",
+      "content": "---\nid: \"f9000000-0000-4000-8000-000000000002\"\ntitle: Hat\ntypes:\n  - accessories\ncreatedAt: 2026-01-01T00:00:00.000Z\nupdatedAt: 2026-01-01T00:00:00.000Z\n---\n"
+    },
+    {
+      "relativePath": "Wardrobe/Formal/Old gown.md",
+      "content": "---\nid: \"f9000000-0000-4000-8000-000000000003\"\ntitle: Old gown\ntypes:\n  - top\ncreatedAt: 2026-01-01T00:00:00.000Z\nupdatedAt: 2026-01-01T00:00:00.000Z\n---\n"
+    },
+    {
+      "relativePath": "Prompts/stale.md",
+      "content": "# Stale prompt\n"
+    },
+    {
+      "relativePath": "Prompts/keep.md",
+      "content": "# Another top-level prompt\n"
+    },
+    {
+      "relativePath": "wardrobe.json",
+      "content": "{\n  \"items\": []\n}\n"
+    }
+  ]
+}

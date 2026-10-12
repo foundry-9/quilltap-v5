@@ -361,6 +361,12 @@ pub struct WardrobeItem {
     pub image_file_id: Option<Option<String>>,
     #[serde(rename = "archivedAt", skip_serializing_if = "Option::is_none")]
     pub archived_at: Option<Option<String>>,
+    /// v4 `4a38222e6` (P4.D279): the item's folder under `Wardrobe/` (`''` =
+    /// the root) — `WardrobeFolderPathSchema.default('')`, between
+    /// `archivedAt` and `createdAt`, ALWAYS materialised. It is the file's path
+    /// and nothing else: derived from `relativePath` on read, written back as
+    /// the path on projection, never stored in frontmatter.
+    pub folder: String,
     #[serde(rename = "createdAt")]
     pub created_at: String,
     #[serde(rename = "updatedAt")]
@@ -409,6 +415,9 @@ impl WardrobeItem {
             migrated_from_clothing_record_id: opt(v, "migratedFromClothingRecordId"),
             image_file_id: opt(v, "imageFileId"),
             archived_at: opt(v, "archivedAt"),
+            // A read item always carries `folder` (the parser derives it); an
+            // older shape without the key reads as the root.
+            folder: s(v, "folder"),
             created_at: s(v, "createdAt"),
             updated_at: s(v, "updatedAt"),
         }
@@ -503,6 +512,22 @@ fn validate_wardrobe_item(v: &Value) -> Option<WardrobeItem> {
         Some(_) => return None,
     };
 
+    // folder: `WardrobeFolderPathSchema.default('')` (`4a38222e6`) — absent →
+    // `''`; else a string of at most 900 UTF-16 units that is already in
+    // normal form (`isValidWardrobeFolderPath`), anything else a violation.
+    let folder = match obj.get("folder") {
+        None => String::new(),
+        Some(Value::String(s)) => {
+            if s.encode_utf16().count() > 900
+                || !crate::wardrobe_folders::is_valid_wardrobe_folder_path(s)
+            {
+                return None;
+            }
+            s.clone()
+        }
+        Some(_) => return None,
+    };
+
     // createdAt / updatedAt: required ISO datetime strings (the transform passes a
     // string through unchanged, so we store as-is).
     let created_at = obj.get("createdAt")?.as_str()?;
@@ -528,6 +553,7 @@ fn validate_wardrobe_item(v: &Value) -> Option<WardrobeItem> {
         migrated_from_clothing_record_id,
         image_file_id,
         archived_at,
+        folder,
         created_at: created_at.to_string(),
         updated_at: updated_at.to_string(),
     })
@@ -1065,6 +1091,10 @@ pub struct WardrobeItemFromFile {
     pub image_file_id: Option<String>,
     #[serde(rename = "archivedAt")]
     pub archived_at: Option<String>,
+    /// v4 `4a38222e6` (P4.D279): the folder under `Wardrobe/` the file lives
+    /// in, DERIVED from `doc.relativePath` (`folderOfWardrobePath`); `''` = the
+    /// root. In v4's literal between `archivedAt` and `createdAt`.
+    pub folder: String,
     #[serde(rename = "createdAt")]
     pub created_at: String,
     #[serde(rename = "updatedAt")]
@@ -1174,6 +1204,21 @@ pub fn parse_wardrobe_item_file(
         .map(str::to_string)
         .unwrap_or_else(|| doc.updated_at.to_string());
 
+    // The folder is the file's path and nothing else (`4a38222e6`). A
+    // hand-edited file that carries a `folder:` key is ignored — the path wins
+    // — and says so.
+    let folder = crate::wardrobe_folders::folder_of_wardrobe_path(doc.relative_path);
+    if let Some(frontmatter_folder) = fm_get(&fm, "folder") {
+        tracing::debug!(
+            characterId = %character_id,
+            mountPointId = %doc.mount_point_id,
+            relativePath = %doc.relative_path,
+            frontmatterFolder = %frontmatter_folder,
+            folder = %folder,
+            "Wardrobe/*.md frontmatter carries a `folder` key; the file path wins"
+        );
+    }
+
     // Body: drop the heading line when one was used as the title.
     let body = match title_line_index {
         Some(idx) => crate::jsstr::js_trim(&lines[idx + 1..].join("\n")).to_string(),
@@ -1195,6 +1240,7 @@ pub fn parse_wardrobe_item_file(
         migrated_from_clothing_record_id,
         image_file_id,
         archived_at,
+        folder,
         created_at,
         updated_at,
     })
@@ -1218,22 +1264,69 @@ pub fn resolve_wardrobe_item_id(
     }
 }
 
-/// v4 `isWardrobeItemDocumentPath(relativePath)` (`parsers.ts:254-261`) — a
-/// `.md` file DIRECTLY inside a mount's `Wardrobe/` folder (not nested
-/// deeper), other than the dressing-guidance `instructions.md`. The whole
-/// test runs on the LOWER-CASED path (`toLowerCase` — the prefix, the `.md`
-/// suffix and the instructions name are all case-insensitive), mirroring the
-/// non-recursive folder read `readCharacterVaultWardrobe` performs.
+/// v4 `isWardrobeItemDocumentPath(relativePath)` (`parsers.ts:257-267`,
+/// `4a38222e6`; P4.D279) — true for a document path that holds a wardrobe
+/// item: a `.md` file ANYWHERE under a mount's `Wardrobe/` folder — the
+/// operator's subfolders are folders of items too — except under
+/// `Wardrobe/images/` (item pictures; only the FIRST level is reserved, so
+/// `Wardrobe/images.md` at the root IS an item and `Wardrobe/A/images/x.md`
+/// IS an item) and except the dressing-guidance `instructions.md` at ANY
+/// depth. Any empty segment (`Wardrobe//x.md`) is refused. The whole test runs
+/// on the LOWER-CASED path (`toLowerCase` — the prefix, the `.md` suffix, the
+/// reserved segment and the instructions name are all case-insensitive).
+///
+/// The ONE predicate: `read_character_vault_wardrobe`, the `.qtap`
+/// wear-ledger export and import, and the restore id remap all agree through
+/// it about which files are items. (Before `4a38222e6` it was DIRECTLY inside
+/// `Wardrobe/` only — `rest.contains('/') → false`; that is exactly what
+/// flipped, and the carriers get the recursive form for free.)
 pub fn is_wardrobe_item_document_path(relative_path: &str) -> bool {
     let prefix = "wardrobe/";
     let lower = relative_path.to_lowercase();
     let Some(rest) = lower.strip_prefix(prefix) else {
         return false;
     };
-    if rest.is_empty() || rest.contains('/') || !rest.ends_with(".md") {
+    if rest.is_empty() || !rest.ends_with(".md") {
         return false;
     }
-    !crate::wardrobe_instructions::is_wardrobe_instructions_file_name(rest)
+    let segments: Vec<&str> = rest.split('/').collect();
+    if segments.iter().any(|segment| segment.is_empty()) {
+        return false;
+    }
+    if segments.len() > 1
+        && crate::wardrobe_folders::WARDROBE_RESERVED_FOLDER_SEGMENTS.contains(&segments[0])
+    {
+        return false;
+    }
+    !crate::wardrobe_instructions::is_wardrobe_instructions_file_name(segments[segments.len() - 1])
+}
+
+/// v4 `isWardrobeItemDocument(doc)` (`parsers.ts:276-279`, `4a38222e6`) — true
+/// for a document the wardrobe OWNS: an item path
+/// ([`is_wardrobe_item_document_path`]) whose frontmatter carries a valid
+/// `types` list — exactly the files [`parse_wardrobe_item_file`] turns into
+/// items. The projection sweeps only these, so a note or a half-written file
+/// kept under `Wardrobe/` is never deleted by a wardrobe write. Quiet: no
+/// logging. A `None` content reads as `''` (v4 `content ?? ''`).
+pub fn is_wardrobe_item_document(relative_path: &str, content: Option<&str>) -> bool {
+    if !is_wardrobe_item_document_path(relative_path) {
+        return false;
+    }
+    let fm = crate::markdown::parse_frontmatter(content.unwrap_or(""));
+    parse_wardrobe_types_field(fm_get(&fm, "types").unwrap_or(&Value::Null)).is_some()
+}
+
+/// v4 `hasStableWardrobeItemId(content)` (`parsers.ts:287-290`, `4a38222e6`)
+/// — true when a wardrobe file carries its own UUID `id` in frontmatter
+/// (`/^[0-9a-f-]{36}$/i`, the same shape test as [`resolve_wardrobe_item_id`]).
+/// A file without one takes a path-derived id, which changes if the file
+/// moves — so anything that moves files without re-projecting them (a folder
+/// rename) must stamp ids first.
+pub fn has_stable_wardrobe_item_id(content: Option<&str>) -> bool {
+    let fm = crate::markdown::parse_frontmatter(content.unwrap_or(""));
+    fm_get(&fm, "id")
+        .and_then(Value::as_str)
+        .is_some_and(is_wardrobe_id_shaped)
 }
 
 /// v4 `wardrobeItemIdForDocument(doc)` (`parsers.ts:268-278`) — a
@@ -1253,101 +1346,65 @@ pub fn wardrobe_item_id_for_document(
     )
 }
 
-/// A shared archetype seeded into component resolution (v4's
-/// `findArchetypes(true)` merge). Carries only what resolution + the cycle walk
-/// consume, so the resolver stays decoupled from the read-path `Value` shape.
-#[derive(Debug, Clone)]
-pub struct SeedArchetype {
-    pub id: String,
-    pub title: String,
-    pub component_item_ids: Vec<String>,
-}
-
-impl SeedArchetype {
-    /// Build a seed from a read-path wardrobe-item JSON object (`id` / `title` /
-    /// `componentItemIds`). Missing/oddly-typed fields degrade to empties — a
-    /// well-formed archetype always carries all three.
-    pub fn from_value(v: &Value) -> Self {
-        SeedArchetype {
-            id: v
-                .get("id")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_string(),
-            title: v
-                .get("title")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_string(),
-            component_item_ids: v
-                .get("componentItemIds")
-                .and_then(Value::as_array)
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|x| x.as_str().map(str::to_string))
-                        .collect()
-                })
-                .unwrap_or_default(),
-        }
+/// A component reference written as a raw UUID (v4 `COMPONENT_UUID_REF`,
+/// `parsers.ts:505`, `7a8d6dacc`) — the STRICT 8-4-4-4-12 form, unlike the
+/// id check's `[0-9a-f-]{36}`. `buildWardrobeItemFile` writes any component
+/// outside the vault's own folder (a group, project or General item) this
+/// way, so a UUID the local maps don't know is a cross-tier part, not a typo.
+fn is_component_uuid_ref(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    if bytes.len() != 36 {
+        return false;
     }
+    bytes.iter().enumerate().all(|(i, b)| match i {
+        8 | 13 | 18 | 23 => *b == b'-',
+        _ => b.is_ascii_hexdigit(),
+    })
 }
 
 /// Resolve every item's raw `componentItemIds` (slug or UUID refs, as written in
 /// the file) to canonical component ids, then clear any item whose resolved
 /// components would form a cycle — v4 `resolveAndCheckComponentItems`
-/// (`vault-overlay/parsers.ts:397`). Mutates `items` in place.
+/// (`vault-overlay/parsers.ts:525-586` at `4a38222e6`). Mutates `items` in
+/// place.
 ///
 /// `item_by_slug` / `item_by_id` map a slug / item-id to the **index** of its
 /// item in `items` (the caller builds them — slug is first-claimer-wins, every
-/// item is addressable by id). A ref is resolved slug-first then UUID; an unknown
-/// ref is dropped (read-tolerant) **with a warning**, and a cycle clears that
-/// item's list **with a warning** — v4 `parsers.ts:435` / `:453`, and
-/// `character_id` / `mount_point_id` are carried solely so those two lines can
-/// name the vault the way v4's do (`characterId ?? mountPointId` upstream).
-/// Dogfood finding #103: v5 did both drops in silence, which is what made an
-/// erased component reference invisible — the drop happens at read time and the
-/// next write to the container re-emits every sibling file from the read state,
-/// so the ref then leaves the disk. The cycle pass reads the **live** (already
-/// mutated) component lists, so clearing one item mid-pass affects later items'
-/// walks, exactly mirroring v4's mutable `itemById`.
+/// item is addressable by id). A ref is resolved slug-first then UUID. **Bug
+/// 187 (`7a8d6dacc`): a UUID that matches nothing local is KEPT as written** —
+/// it names a component in another tier this reader cannot see (a group or
+/// project store), and dropping it here would let the next write of any item
+/// in the folder re-project the stripped list to disk. `expand_composites` and
+/// the per-request wearable pool (`crate::wearable_pool`) resolve it against
+/// the full pool. Only a SLUG that matches nothing is logged and dropped — a
+/// slug is only ever written for an item in the same folder. A cycle clears
+/// that item's list **with a warning** — `character_id` / `mount_point_id` are
+/// carried solely so the lines can name the vault the way v4's do
+/// (`characterId ?? mountPointId` upstream).
 ///
-/// `archetypes` are shared items (Quilltap General / project `Wardrobe` stores)
-/// seeded so a composite in this vault can reference a household archetype it
-/// doesn't itself hold — v4's `hasComponentRefs && seedArchetypes` branch, which
-/// merges `findArchetypes(true)` into the lookup maps AFTER the local items (so a
-/// local item wins any slug/id collision). Archetypes participate in resolution
-/// and in the cycle walk but are never themselves cleared (v4 loops the cycle
-/// pass over `items` only). Pass `&[]` to disable seeding (the General/project
-/// folders, and any read where no General store is provisioned).
+/// Dogfood finding #103 (carried forward): v5 once did every drop in silence,
+/// which is what made an erased component reference invisible — the drop
+/// happens at read time and the next write to the container re-emits every
+/// sibling file from the read state, so the ref then leaves the disk. The UUID
+/// arm is now a KEEP (with a debug line), not a drop at all. The cycle pass
+/// reads the **live** (already mutated) component lists, so clearing one item
+/// mid-pass affects later items' walks, exactly mirroring v4's mutable
+/// `itemById`; a kept cross-tier UUID is unknown to the walk, so it is treated
+/// as a leaf.
+///
+/// The `archetypes` seeding that lived here before `9ecebf986` is GONE: "the
+/// reader never calls back into the repository" (v4 `vault-readers.ts:390`).
 pub fn resolve_and_check_component_items(
     items: &mut [WardrobeItemFromFile],
     item_by_slug: &HashMap<String, usize>,
     item_by_id: &HashMap<String, usize>,
-    archetypes: &[SeedArchetype],
     character_id: &str,
     mount_point_id: &str,
 ) {
-    // Build the archetype gap-fill lookups. v4 seeds each archetype into
-    // `itemById` only when the id is unclaimed by a local item, and into
-    // `itemBySlug` only when its slug is unclaimed (by a local item OR an
-    // earlier archetype) — first-claimer-wins, local-priority. Values are
-    // indices into `archetypes`.
-    let mut arche_by_slug: HashMap<String, usize> = HashMap::new();
-    let mut arche_by_id: HashMap<String, usize> = HashMap::new();
-    for (i, a) in archetypes.iter().enumerate() {
-        if !item_by_id.contains_key(&a.id) {
-            arche_by_id.entry(a.id.clone()).or_insert(i);
-        }
-        let slug = slugify_wardrobe_title(&a.title);
-        if !slug.is_empty() && !item_by_slug.contains_key(&slug) {
-            arche_by_slug.entry(slug).or_insert(i);
-        }
-    }
-
-    // Pass 1 — slug/UUID → canonical id, dropping unknown refs. Compute all
-    // resolved lists first (immutable borrow), then apply. The lookup order
-    // mirrors v4's merged `itemBySlug` (local-then-archetype) checked before
-    // `itemById`: slug-any wins over id-any, local wins within each.
+    // Pass 1 — slug/UUID → canonical id. Unknown UUIDs survive; unknown slugs
+    // are dropped. Compute all resolved lists first (immutable borrow), then
+    // apply. The lookup order mirrors v4's `itemBySlug` checked before
+    // `itemById`.
     let resolved: Vec<Option<Vec<String>>> = items
         .iter()
         .map(|item| {
@@ -1358,26 +1415,27 @@ pub fn resolve_and_check_component_items(
             for r in &item.component_item_ids {
                 if let Some(&j) = item_by_slug.get(r) {
                     out.push(items[j].id.clone());
-                } else if let Some(&j) = arche_by_slug.get(r) {
-                    out.push(archetypes[j].id.clone());
                 } else if let Some(&j) = item_by_id.get(r) {
                     out.push(items[j].id.clone());
-                } else if let Some(&j) = arche_by_id.get(r) {
-                    out.push(archetypes[j].id.clone());
+                } else if is_component_uuid_ref(r) {
+                    // Bug 187: a cross-tier part, kept as written.
+                    tracing::debug!(
+                        characterId = %character_id,
+                        mountPointId = %mount_point_id,
+                        itemId = %item.id,
+                        r#ref = %r,
+                        "Wardrobe item references a component outside this folder; keeping ref"
+                    );
+                    out.push(r.clone());
                 } else {
-                    // Unknown ref → dropped, and SAID SO. v4 warns here
-                    // (`parsers.ts:435`), and the warning is the only signal a
-                    // reference has gone: the drop happens at read time, and the
-                    // next write to this container re-emits every sibling file
-                    // from the read state, so the ref is erased from disk. Both
-                    // apps behave that way; only v5 used to do it in silence.
+                    // Unknown SLUG → dropped, and SAID SO (v4 `parsers.ts:569`).
                     tracing::warn!(
-                        character_id = %character_id,
-                        mount_point_id = %mount_point_id,
-                        item_id = %item.id,
+                        characterId = %character_id,
+                        mountPointId = %mount_point_id,
+                        itemId = %item.id,
                         title = %item.title,
-                        component_ref = %r,
-                        "Wardrobe item references unknown component; dropping ref"
+                        r#ref = %r,
+                        "Wardrobe item references unknown component slug; dropping ref"
                     );
                 }
             }
@@ -1391,31 +1449,23 @@ pub fn resolve_and_check_component_items(
     }
 
     // Pass 2 — cycle check over the now-resolved ids. `by_id` maps each id to its
-    // current component list and is updated as local items are cleared, so the
-    // walk sees prior-this-pass clears (matching v4's live `itemById`). Local
-    // items are seeded first; archetypes gap-fill (their fixed, already-resolved
-    // lists) so a walk can traverse into a shared component. Only local items are
-    // ever cleared.
+    // current component list and is updated as items are cleared, so the walk
+    // sees prior-this-pass clears (matching v4's live `itemById`).
     let mut by_id: HashMap<String, Vec<String>> = items
         .iter()
         .map(|it| (it.id.clone(), it.component_item_ids.clone()))
         .collect();
-    for a in archetypes {
-        by_id
-            .entry(a.id.clone())
-            .or_insert_with(|| a.component_item_ids.clone());
-    }
     for item in items.iter_mut() {
         if item.component_item_ids.is_empty() {
             continue;
         }
         let cycles = detect_component_cycles(&item.id, &item.component_item_ids, &by_id);
         if !cycles.is_empty() {
-            // v4 `parsers.ts:453`.
+            // v4 `parsers.ts:578`.
             tracing::warn!(
-                character_id = %character_id,
-                mount_point_id = %mount_point_id,
-                item_id = %item.id,
+                characterId = %character_id,
+                mountPointId = %mount_point_id,
+                itemId = %item.id,
                 title = %item.title,
                 cycles = ?cycles,
                 "Wardrobe item declares a component cycle in vault; dropping its components"
@@ -2456,16 +2506,9 @@ mod tests {
             migrated_from_clothing_record_id: None,
             image_file_id: None,
             archived_at: None,
+            folder: String::new(),
             created_at: "t".to_string(),
             updated_at: "t".to_string(),
-        }
-    }
-
-    fn seed(id: &str, title: &str, refs: &[&str]) -> SeedArchetype {
-        SeedArchetype {
-            id: id.to_string(),
-            title: title.to_string(),
-            component_item_ids: refs.iter().map(|s| s.to_string()).collect(),
         }
     }
 
@@ -2496,7 +2539,7 @@ mod tests {
             wif("id-outfit", "Outfit", &["shirt", "id-pants", "ghost"]),
         ];
         let (by_slug, by_id) = build_maps(&items);
-        resolve_and_check_component_items(&mut items, &by_slug, &by_id, &[], "char-1", "mount-1");
+        resolve_and_check_component_items(&mut items, &by_slug, &by_id, "char-1", "mount-1");
         assert_eq!(
             items[2].component_item_ids,
             vec!["id-shirt".to_string(), "id-pants".to_string()],
@@ -2513,7 +2556,7 @@ mod tests {
             wif("id-b", "Cycle B", &["cycle-a"]),
         ];
         let (by_slug, by_id) = build_maps(&items);
-        resolve_and_check_component_items(&mut items, &by_slug, &by_id, &[], "char-1", "mount-1");
+        resolve_and_check_component_items(&mut items, &by_slug, &by_id, "char-1", "mount-1");
         assert_eq!(
             items[0].component_item_ids,
             Vec::<String>::new(),
@@ -2542,14 +2585,7 @@ mod tests {
                 wif("id-tunic", "Tactical Tunic", &[]),
             ];
             let (by_slug, by_id) = build_maps(&items);
-            resolve_and_check_component_items(
-                &mut items,
-                &by_slug,
-                &by_id,
-                &[],
-                "char-7",
-                "mount-9",
-            );
+            resolve_and_check_component_items(&mut items, &by_slug, &by_id, "char-7", "mount-9");
             assert_eq!(
                 items[0].component_item_ids,
                 Vec::<String>::new(),
@@ -2558,15 +2594,15 @@ mod tests {
         });
         let hit = logs
             .iter()
-            .find(|l| l.contains("Wardrobe item references unknown component; dropping ref"))
+            .find(|l| l.contains("Wardrobe item references unknown component slug; dropping ref"))
             .unwrap_or_else(|| panic!("no drop warning in {logs:?}"));
         assert!(hit.starts_with("WARN "), "{hit}");
         for field in [
-            "character_id=char-7",
-            "mount_point_id=mount-9",
-            "item_id=id-outfit",
+            "characterId=char-7",
+            "mountPointId=mount-9",
+            "itemId=id-outfit",
             "title=Singularity Armor",
-            "component_ref=departed-belt",
+            "ref=departed-belt",
         ] {
             assert!(hit.contains(field), "missing {field} in {hit}");
         }
@@ -2577,14 +2613,7 @@ mod tests {
         let logs = captured(|| {
             let mut items = vec![wif("id-self", "Self Ref", &["self-ref"])];
             let (by_slug, by_id) = build_maps(&items);
-            resolve_and_check_component_items(
-                &mut items,
-                &by_slug,
-                &by_id,
-                &[],
-                "char-7",
-                "mount-9",
-            );
+            resolve_and_check_component_items(&mut items, &by_slug, &by_id, "char-7", "mount-9");
             assert_eq!(items[0].component_item_ids, Vec::<String>::new());
         });
         let hit = logs
@@ -2596,7 +2625,7 @@ mod tests {
             })
             .unwrap_or_else(|| panic!("no cycle warning in {logs:?}"));
         assert!(
-            hit.contains("item_id=id-self") && hit.contains("cycles="),
+            hit.contains("itemId=id-self") && hit.contains("cycles="),
             "{hit}"
         );
     }
@@ -2612,14 +2641,7 @@ mod tests {
                 wif("id-tunic", "Tactical Tunic", &[]),
             ];
             let (by_slug, by_id) = build_maps(&items);
-            resolve_and_check_component_items(
-                &mut items,
-                &by_slug,
-                &by_id,
-                &[],
-                "char-7",
-                "mount-9",
-            );
+            resolve_and_check_component_items(&mut items, &by_slug, &by_id, "char-7", "mount-9");
             assert_eq!(items[0].component_item_ids, vec!["id-tunic".to_string()]);
         });
         assert!(
@@ -2632,7 +2654,7 @@ mod tests {
     fn self_cycle_clears() {
         let mut items = vec![wif("id-self", "Self Ref", &["self-ref"])];
         let (by_slug, by_id) = build_maps(&items);
-        resolve_and_check_component_items(&mut items, &by_slug, &by_id, &[], "char-1", "mount-1");
+        resolve_and_check_component_items(&mut items, &by_slug, &by_id, "char-1", "mount-1");
         assert_eq!(items[0].component_item_ids, Vec::<String>::new());
     }
 
@@ -2645,65 +2667,103 @@ mod tests {
             wif("id-box", "Box", &["hat"]),
         ];
         let (by_slug, by_id) = build_maps(&items);
-        resolve_and_check_component_items(&mut items, &by_slug, &by_id, &[], "char-1", "mount-1");
+        resolve_and_check_component_items(&mut items, &by_slug, &by_id, "char-1", "mount-1");
         assert_eq!(items[2].component_item_ids, vec!["id-hat-1".to_string()]);
     }
 
+    // ── Bug 187 (v4 `7a8d6dacc`): an unmatched UUID ref is KEPT as written — it
+    // names a component in another tier this reader cannot see — with a debug
+    // line; only an unmatched SLUG is dropped. Before the fix v5 dropped both
+    // (and, before dogfood #103, in silence). ──
+
     #[test]
-    fn seeds_archetypes_local_wins_collision() {
-        // A local outfit references a shared archetype by slug ("apple-watch")
-        // and another by UUID; a local "Belt" shadows an archetype "Belt" slug.
-        let mut items = vec![
-            wif("id-belt-local", "Belt", &[]),
-            wif(
-                "id-outfit",
-                "Outfit",
-                &["apple-watch", "id-fitbit-arche", "belt"],
-            ),
-        ];
-        let (by_slug, by_id) = build_maps(&items);
-        let archetypes = vec![
-            seed("id-applewatch-arche", "Apple Watch", &[]),
-            seed("id-fitbit-arche", "Fitbit", &[]),
-            seed("id-belt-arche", "Belt", &[]), // slug "belt" already claimed by local
-        ];
-        resolve_and_check_component_items(
-            &mut items,
-            &by_slug,
-            &by_id,
-            &archetypes,
-            "char-1",
-            "mount-1",
+    fn a_cross_tier_uuid_ref_is_kept_with_a_debug_line() {
+        let logs = captured(|| {
+            let mut items = vec![
+                wif(
+                    "id-outfit",
+                    "Outfit",
+                    &[
+                        "belt",
+                        "0a0a0a0a-0a0a-4a0a-8a0a-0a0a0a0a0a0a",
+                        "shared-bundle",
+                    ],
+                ),
+                wif("id-belt-local", "Belt", &[]),
+            ];
+            let (by_slug, by_id) = build_maps(&items);
+            resolve_and_check_component_items(&mut items, &by_slug, &by_id, "char-7", "mount-9");
+            assert_eq!(
+                items[0].component_item_ids,
+                vec![
+                    "id-belt-local".to_string(),
+                    "0a0a0a0a-0a0a-4a0a-8a0a-0a0a0a0a0a0a".to_string(),
+                ],
+                "the local slug resolves, the UUID survives, the unknown slug is dropped"
+            );
+        });
+        let kept = logs
+            .iter()
+            .find(|l| {
+                l.contains("Wardrobe item references a component outside this folder; keeping ref")
+            })
+            .unwrap_or_else(|| panic!("no keep line in {logs:?}"));
+        assert!(kept.starts_with("DEBUG "), "{kept}");
+        for field in [
+            "characterId=char-7",
+            "mountPointId=mount-9",
+            "itemId=id-outfit",
+            "ref=0a0a0a0a-0a0a-4a0a-8a0a-0a0a0a0a0a0a",
+        ] {
+            assert!(kept.contains(field), "missing {field} in {kept}");
+        }
+        assert!(
+            !kept.contains("title="),
+            "the keep line carries no title (v4 `parsers.ts:555-560`): {kept}"
         );
-        assert_eq!(
-            items[1].component_item_ids,
-            vec![
-                "id-applewatch-arche".to_string(), // slug → archetype
-                "id-fitbit-arche".to_string(),     // uuid → archetype
-                "id-belt-local".to_string(),       // slug "belt" → LOCAL wins
-            ],
-        );
+        let dropped = logs
+            .iter()
+            .find(|l| l.contains("unknown component slug; dropping ref"))
+            .unwrap_or_else(|| panic!("no drop line in {logs:?}"));
+        assert!(dropped.contains("ref=shared-bundle"), "{dropped}");
     }
 
     #[test]
-    fn archetype_component_walk_detects_cycle_through_shared_item() {
-        // Local outfit → archetype bundle → back to the local outfit: a cycle
-        // routed through a seeded archetype clears the local item.
-        let mut items = vec![wif("id-outfit", "Outfit", &["shared-bundle"])];
+    fn the_uuid_ref_shape_is_the_strict_8_4_4_4_12_form() {
+        // The id check accepts any 36 hex-or-dash chars; the component ref check
+        // wants the dashes in their places, so a 36-char non-uuid is a SLUG.
+        assert!(is_component_uuid_ref(
+            "0a0a0a0a-0a0a-4a0a-8a0a-0a0a0a0a0a0a"
+        ));
+        assert!(is_component_uuid_ref(
+            "0A0A0A0A-0A0A-4A0A-8A0A-0A0A0A0A0A0A"
+        ));
+        assert!(!is_component_uuid_ref(
+            "0a0a0a0a0a0a-4a0a-8a0a-0a0a0a0a0a0a"
+        ));
+        assert!(!is_component_uuid_ref(
+            "------------------------------------"
+        ));
+        assert!(is_wardrobe_id_shaped(
+            "------------------------------------"
+        ));
+        assert!(!is_component_uuid_ref("shared-bundle"));
+    }
+
+    #[test]
+    fn a_kept_uuid_is_a_leaf_to_the_cycle_walk() {
+        // A kept cross-tier id is unknown to `by_id`, so the walk treats it as a
+        // leaf: no cycle, nothing cleared.
+        let mut items = vec![wif(
+            "id-outfit",
+            "Outfit",
+            &["0a0a0a0a-0a0a-4a0a-8a0a-0a0a0a0a0a0a"],
+        )];
         let (by_slug, by_id) = build_maps(&items);
-        let archetypes = vec![seed("id-bundle-arche", "Shared Bundle", &["id-outfit"])];
-        resolve_and_check_component_items(
-            &mut items,
-            &by_slug,
-            &by_id,
-            &archetypes,
-            "char-1",
-            "mount-1",
-        );
+        resolve_and_check_component_items(&mut items, &by_slug, &by_id, "char-1", "mount-1");
         assert_eq!(
             items[0].component_item_ids,
-            Vec::<String>::new(),
-            "the local item is cleared — the cycle runs through the archetype node"
+            vec!["0a0a0a0a-0a0a-4a0a-8a0a-0a0a0a0a0a0a".to_string()]
         );
     }
 
@@ -2723,6 +2783,7 @@ mod tests {
             migrated_from_clothing_record_id: None,
             image_file_id: None,
             archived_at: None,
+            folder: String::new(),
             created_at: "2026-01-01T00:00:00.000Z".to_string(),
             updated_at: "2026-01-01T00:00:00.000Z".to_string(),
         }

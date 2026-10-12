@@ -1976,6 +1976,68 @@
         "updatedAt": "2026-10-08T00:00:00.000Z",
         "characterId": null
       }
+    ],
+    [
+      {
+        "id": "00000000-0000-4000-8000-0000000000f1",
+        "title": "Evening Gown",
+        "types": [
+          "top",
+          "bottom"
+        ],
+        "componentItemIds": [],
+        "appropriateness": "formal",
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": "Filed in Formal/Evening — the folder is the PATH, never frontmatter.",
+        "folder": "Formal/Evening",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-0000000000f2",
+        "title": "Gala Ensemble",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [
+          "00000000-0000-4000-8000-0000000000f1"
+        ],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": true,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "folder": "Formal",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-0000000000f3",
+        "title": "Root Coat",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "folder": "",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      }
     ]
   ]
 }

@@ -172,6 +172,48 @@ pub fn ensure_official_store<E: StoreEntity>(
     }))
 }
 
+/// The two owners that have an official store (v4 `StoreOwnerKind`,
+/// `ensure-owner-store.ts`, `9ecebf986`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StoreOwnerKind {
+    Project,
+    Group,
+}
+
+impl StoreOwnerKind {
+    /// v4's wire spelling.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            StoreOwnerKind::Project => "project",
+            StoreOwnerKind::Group => "group",
+        }
+    }
+}
+
+/// v4 `ensureOwnerOfficialStore(kind, ownerId, ownerName)`
+/// (`lib/mount-index/ensure-owner-store.ts`, `9ecebf986`) — find / adopt /
+/// create the official document store of a project or a group and persist the
+/// FK on the owner's row. The two owners differ only in their repository wiring
+/// and naming ([`StoreEntity`]), which is all the kind selects; the
+/// find/adopt/create flow itself is [`ensure_official_store`]. Idempotent.
+/// `None` when the owner row is missing.
+pub fn ensure_owner_official_store(
+    main: &Connection,
+    mount: &Connection,
+    kind: StoreOwnerKind,
+    owner_id: &str,
+    owner_name: &str,
+) -> Result<Option<EnsureResult>, DbError> {
+    match kind {
+        StoreOwnerKind::Project => ensure_official_store::<super::projects::ProjectEntity>(
+            main, mount, owner_id, owner_name,
+        ),
+        StoreOwnerKind::Group => {
+            ensure_official_store::<super::groups::GroupEntity>(main, mount, owner_id, owner_name)
+        }
+    }
+}
+
 /// `String.prototype.slice(0, n)` over UTF-16 code units would be the exact v4
 /// match; the store names are ASCII (the prefix + a user name), so a char-count
 /// truncation suffices and the corpus stays within ASCII. (Documented alongside

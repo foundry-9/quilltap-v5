@@ -2,9 +2,14 @@
  * Read-differential oracle — the PUBLIC wardrobe READ trio + shared-archetype tier.
  *
  * Opens the pre-seeded main + mount-index fixtures and drives v4's REAL
- * `repos.wardrobe.findByCharacterId` / `.findByIdForCharacter` (which fan out to
- * `getOverlaidWardrobeItems` + `findArchetypeById` -> `readGeneralWardrobe`) over
- * each case, emitting the resulting item list / single item / null. The Rust port
+ * `repos.wardrobe.findByCharacterId` (the owned read) and, for the by-id cases,
+ * the per-request wearable pool's `byId` (`loadWearablePool(repos, characterId)`
+ * from `lib/wardrobe/pool.ts` — P4.D279, v4 `4a38222e6` deleted
+ * `findByIdForCharacter` / `findArchetypeById`): the old id-then-archetype
+ * fallback is now the pool's shadow order (character > group > project > General),
+ * and every pooled item carries the pool's `origin` tag, which stays in the
+ * output (the Rust twin compares against a pool read too). Each case emits the
+ * resulting item list / single item / null. The Rust port
  * (db::wardrobe_read + archetype_wardrobe) reads the same fixtures and must produce
  * the same result exactly (no normalization -- every id/timestamp comes from the
  * shared fixture, no clock mint on a read path).
@@ -12,10 +17,10 @@
  * Cases (see the spec's $comment):
  *   0. findByCharacterId(char, false)        -> active items only.
  *   1. findByCharacterId(char, true)         -> includes the archived item.
- *   2. findByIdForCharacter(char, composite) -> owned composite (componentItemIds
+ *   2. pool.get(composite) ?? null          -> owned composite (componentItemIds
  *                                               resolved to archetype ids -- proves seeding).
- *   3. findByIdForCharacter(char, archeA)    -> archetype fallback (characterId null).
- *   4. findByIdForCharacter(char, no-such)   -> null.
+ *   3. pool.get(archeA) ?? null             -> the General tier, unshadowed (characterId null).
+ *   4. pool.get(no-such) ?? null            -> null.
  *
  * Run (Node 24, from the v4 checkout):
  *   N=~/.nvm/versions/node/v24.13.1/bin
@@ -66,6 +71,7 @@ async function main(): Promise<void> {
 
   const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
   const { getRepositories } = await import('@/lib/repositories/factory');
+  const { loadWearablePool } = await import('@/lib/wardrobe/pool');
 
   await initializeDatabase();
 
@@ -77,12 +83,15 @@ async function main(): Promise<void> {
   results.push(await wardrobe.findByCharacterId(spec.characterId, false));
   // 1. include archived
   results.push(await wardrobe.findByCharacterId(spec.characterId, true));
+  // The by-id reads go through the pool (no chat, so no project tier; the
+  // character has no groups, so the pool is own + General — the old fallback).
+  const pool = await loadWearablePool(repos, spec.characterId);
   // 2. owned composite by id (component refs resolved to archetype ids)
-  results.push((await wardrobe.findByIdForCharacter(spec.characterId, spec.compositeId)) ?? null);
-  // 3. archetype fallback
-  results.push((await wardrobe.findByIdForCharacter(spec.characterId, spec.archetypeAId)) ?? null);
+  results.push(pool.get(spec.compositeId) ?? null);
+  // 3. the General item, unshadowed (the old archetype fallback)
+  results.push(pool.get(spec.archetypeAId) ?? null);
   // 4. unknown id -> null
-  results.push((await wardrobe.findByIdForCharacter(spec.characterId, spec.noSuchId)) ?? null);
+  results.push(pool.get(spec.noSuchId) ?? null);
 
   await closeDatabase();
 

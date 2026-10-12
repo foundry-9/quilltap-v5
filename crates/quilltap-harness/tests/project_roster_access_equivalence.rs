@@ -20,9 +20,9 @@
 //!
 //! **Every op compares its LOG LINES too** — v4's `DocEdit:PathResolver` service
 //! lines against v5's `quilltap_core::doc_edit::path_resolver` target, and v4's
-//! ROOT-logger gate lines (`[ProjectRoster] Tool access check`, the `[Wardrobe]`
+//! ROOT-logger gate lines (`[ProjectRoster] Tool access check`, the `[WearablePool]`
 //! withheld DEBUG, the repository's two fail-closed `safeQuery` lines) against
-//! v5's `project_roster_access` / `wardrobe_tiers` / `quilltap::db` targets —
+//! v5's `project_roster_access` / `wearable_pool` / `quilltap::db` targets —
 //! level, message and fields by name. The line COUNT is the only witness for two
 //! of v4's hunks (`handleOpenDocument` passing `characterId` to the resolver
 //! makes an admitted character's new-blank open log TWO `[ProjectRoster]` lines).
@@ -295,14 +295,14 @@ fn collapse_mtime_strings(v: &mut Value) {
 const RESOLVER_TARGET: &str = "quilltap_core::doc_edit::path_resolver";
 const ROOT_TARGETS: &[&str] = &[
     "quilltap_core::project_roster_access",
-    "quilltap_core::wardrobe_tiers",
+    "quilltap_core::wearable_pool",
     "quilltap::db",
 ];
 /// The ROOT-logger lines the gate emits (the oracle records exactly these).
 const ROOT_MESSAGES: &[&str] = &[
     "[ProjectRoster] Tool access check",
-    "[Wardrobe] Character off project roster — project wardrobe withheld",
-    "[Wardrobe] Project lookup for chat failed",
+    "[WearablePool] Character off project roster — project wardrobe withheld",
+    "[WearablePool] Project lookup for chat failed",
     "Error finding entity by ID",
     "Error checking character participation",
 ];

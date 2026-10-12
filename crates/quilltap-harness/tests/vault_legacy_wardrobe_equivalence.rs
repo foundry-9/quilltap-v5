@@ -9,6 +9,13 @@
 //! per-item extras, in-`outfit` extras), and the discard-but-still-validate
 //! handling of `outfit`. Any single bad item nulls the whole result.
 //!
+//! P4.D279 (v4 `4a38222e6`, wardrobe folders): `folder` is
+//! `WardrobeFolderPathSchema.default('')` — absent → `''`, a VALID normal-form
+//! path kept, and anything `isValidWardrobeFolderPath` refuses (`../x`, a
+//! reserved `images` segment at any depth, a trailing / leading / doubled
+//! slash, an untrimmed or unsanitised segment, a backslash, nine segments, a
+//! non-string, `null`) nulls the WHOLE parse — even when a sibling item is fine.
+//!
 //! Generate the oracle output:
 //!   cd ~/source/quilltap-server
 //!   npx tsx ~/source/quilltap-v5/harness/oracle/cases/vault-legacy-wardrobe.ts \
@@ -51,6 +58,6 @@ fn legacy_wardrobe_parser_matches_oracle() {
         assert_eq!(got, row.out, "[{}] parse_legacy_wardrobe_json", row.id);
         n += 1;
     }
-    assert!(n >= 39, "expected the full corpus, saw {n} rows");
+    assert!(n >= 58, "expected the full corpus, saw {n} rows");
     eprintln!("OK: legacy wardrobe parser matched oracle on {n} cases.");
 }

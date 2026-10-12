@@ -1,17 +1,26 @@
-//! Tier-1 differential (P4.D71 unit 1): bundle dissolution — the pure half of
-//! v4 `61574563` "wearing a bundled outfit breaks it apart automatically".
+//! Tier-1 differential (P4.D71 unit 1, re-aimed at v4 `9ecebf986` by
+//! P4.D279): bundle dissolution — the pure half of v4 `61574563` "wearing a
+//! bundled outfit breaks it apart automatically", now `lib/wardrobe/slot-ops.ts`.
 //!
-//! Diffs [`quilltap_core::dissolve_bundles`] + the widened pure primitives in
-//! [`quilltap_core::wardrobe`] against v4's REAL `lib/wardrobe/dissolve-bundles.ts`
-//! and `lib/wardrobe/outfit-displacement.ts`, field-for-field over a corpus that
-//! carries v4's own unit suite case-for-case plus the shapes it leaves implicit
-//! (a depth-truncated chain, a mutual cycle, a multi-slot leaf, an already-worn
-//! leaf under `replace`, a repeated bundle in one slot).
+//! Diffs the v5 `dissolve_bundles` SHIM (the old names over
+//! [`quilltap_core::slot_ops`]) AND the three `wardrobe` mutator shims against
+//! v4's REAL `slot-ops.ts`, field-for-field over the P4.D71 corpus (v4's old
+//! unit suite case-for-case plus the shapes it leaves implicit: a
+//! depth-truncated chain, a mutual cycle, a multi-slot leaf, an already-worn
+//! leaf under `replace`, a repeated bundle in one slot) — grown with a
+//! replacing LEAF and an out-of-order `types` list carrying an unrecognized
+//! name, the two shapes `9ecebf986`'s `slotsOf` filter changes. Every
+//! shim row is ALSO run through the new `slot_ops` name, so the shim is
+//! proven a pure delegate (the P4.D282 lane deletes it).
+//!
+//! `slotsCoveredBy` is private at the pin: the shape row's `coveredSlots` is
+//! DERIVED (the slots a lookup-less `replace` lands the id in, canonical
+//! order) and compared against `slots_covered_by` as a canonical-order set.
 //!
 //! Generate the oracle output (Node 24, from the v4 checkout):
-//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
 //!   cd ~/source/quilltap-server
-//!   $N/node --import tsx $V5/harness/oracle/cases/dissolve-bundles.ts \
+//!   $N/node --import tsx $V5W/harness/oracle/cases/dissolve-bundles.ts \
 //!     > /tmp/oracle-dissolve-bundles.ndjson
 //! Run:
 //!   QT_ORACLE_DISSOLVE=/tmp/oracle-dissolve-bundles.ndjson \
@@ -32,16 +41,17 @@ use quilltap_core::dissolve_bundles::{
     WearableNode,
 };
 use quilltap_core::services::outfit_selections::default_outfit_from_pool_with_credit;
+use quilltap_core::slot_ops;
 use quilltap_core::tools::wardrobe_shared::worn_bundles_for;
 use quilltap_core::wardrobe::{
-    add_item_to_slot, replace_item_into_slots, wear_item_into_slots, Slots,
+    add_item_to_slot, replace_item_into_slots, wear_item_into_slots, Slots, WARDROBE_SLOT_TYPES,
 };
 use serde::Deserialize;
 use serde_json::Value;
 
 /// The corpus's own marker — a stale NDJSON from before this lane cannot pass
 /// quietly (`oracle-regen-silent-stale-pass`).
-const BASELINE: &str = "p4.d71-dissolve-bundles";
+const BASELINE: &str = "p4.d279-dissolve-bundles-shim";
 
 #[derive(Deserialize)]
 struct WireSlots {
@@ -89,8 +99,8 @@ enum Row {
     #[serde(rename = "shape")]
     Shape {
         id: String,
-        #[serde(rename = "slotsCoveredBy")]
-        slots_covered_by: Vec<String>,
+        #[serde(rename = "coveredSlots")]
+        covered_slots: Vec<String>,
         #[serde(rename = "isBundle")]
         is_bundle: bool,
     },
@@ -98,8 +108,8 @@ enum Row {
     ShapeBare {
         id: String,
         node: Value,
-        #[serde(rename = "slotsCoveredBy")]
-        slots_covered_by: Vec<String>,
+        #[serde(rename = "coveredSlots")]
+        covered_slots: Vec<String>,
         #[serde(rename = "isBundle")]
         is_bundle: bool,
     },
@@ -108,6 +118,9 @@ enum Row {
         id: String,
         #[serde(rename = "itemId")]
         item_id: String,
+        /// An item outside the universe, shipped on the row.
+        #[serde(default)]
+        node: Option<Value>,
         lookup: Option<Vec<String>>,
         out: Option<Vec<WireLeaf>>,
     },
@@ -174,7 +187,7 @@ struct WireWornBundle {
     leaf_ids: Vec<String>,
 }
 
-/// v4's `{ slots, wornBundles }` (`…WithCredit`).
+/// v4's `{ slots, wornBundles }`.
 #[derive(Deserialize)]
 struct WireCredit {
     slots: WireSlots,
@@ -194,10 +207,24 @@ fn assert_worn_bundles(got: &[WornBundle], want: &[WireWornBundle], label: &str)
     assert_eq!(got, want, "{label}: wornBundles");
 }
 
-/// Every slot, hair included (the credit rows postdate the hair slot).
+/// Every slot, hair included.
 fn assert_all_slots(got: &Slots, want: &WireSlots, label: &str) {
-    assert_slots(got, want, label);
+    assert_eq!(got.top, want.top, "{label}: top");
+    assert_eq!(got.bottom, want.bottom, "{label}: bottom");
+    assert_eq!(got.footwear, want.footwear, "{label}: footwear");
+    assert_eq!(got.accessories, want.accessories, "{label}: accessories");
     assert_eq!(got.hair, want.hair, "{label}: hair");
+}
+
+/// `slotsCoveredBy` as the oracle can see it: the recognized slots, in
+/// canonical order, deduped.
+fn covered_set(node: &WearableNode) -> Vec<String> {
+    let covered = slots_covered_by(node);
+    WARDROBE_SLOT_TYPES
+        .iter()
+        .filter(|s| covered.iter().any(|c| c == *s))
+        .map(|s| s.to_string())
+        .collect()
 }
 
 /// Rebuild the case's lookup from the corpus's item universe. `None` = v4 passed
@@ -229,13 +256,6 @@ fn node_of(universe: &HashMap<String, Value>, id: &str) -> WearableNode {
     )
 }
 
-fn assert_slots(got: &Slots, want: &WireSlots, label: &str) {
-    assert_eq!(got.top, want.top, "{label}: top");
-    assert_eq!(got.bottom, want.bottom, "{label}: bottom");
-    assert_eq!(got.footwear, want.footwear, "{label}: footwear");
-    assert_eq!(got.accessories, want.accessories, "{label}: accessories");
-}
-
 #[test]
 fn dissolve_bundles_matches_oracle() {
     let Ok(path) = std::env::var("QT_ORACLE_DISSOLVE") else {
@@ -253,6 +273,8 @@ fn dissolve_bundles_matches_oracle() {
     // Both dissolution outcomes must be present: leaves, and the store-whole
     // fail-safe. A corpus carrying only one is blind to half the contract.
     let (mut dissolved_to_leaves, mut stored_whole) = (0, 0);
+    // The two `9ecebf986` shapes: a replacing leaf, an unrecognized type.
+    let (mut replacing_leaf_rows, mut odd_type_rows) = (0, 0);
 
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         match serde_json::from_str::<Row>(line).expect("oracle row") {
@@ -274,26 +296,35 @@ fn dissolve_bundles_matches_oracle() {
 
             Row::Shape {
                 id,
-                slots_covered_by: want_slots,
+                covered_slots: want_slots,
                 is_bundle: want_bundle,
             } => {
                 let node = node_of(&universe, &id);
-                assert_eq!(slots_covered_by(&node), want_slots, "slotsCoveredBy '{id}'");
+                assert_eq!(covered_set(&node), want_slots, "coveredSlots '{id}'");
                 assert_eq!(is_bundle(&node), want_bundle, "isBundle '{id}'");
+                // The shim is a delegate.
+                assert_eq!(slots_covered_by(&node), slot_ops::slots_of(&node));
+                if node
+                    .types
+                    .iter()
+                    .any(|t| !WARDROBE_SLOT_TYPES.contains(&t.as_str()))
+                {
+                    odd_type_rows += 1;
+                }
                 shapes += 1;
             }
 
             Row::ShapeBare {
                 id,
                 node,
-                slots_covered_by: want_slots,
+                covered_slots: want_slots,
                 is_bundle: want_bundle,
             } => {
                 // A node with no `componentItemIds` key at all — v4's structural
                 // `WearableNode`, which must read as a non-bundle rather than
                 // throwing on the missing field.
                 let node = WearableNode::from_value(&node);
-                assert_eq!(slots_covered_by(&node), want_slots, "slotsCoveredBy '{id}'");
+                assert_eq!(covered_set(&node), want_slots, "coveredSlots '{id}'");
                 assert_eq!(is_bundle(&node), want_bundle, "isBundle '{id}'");
                 shapes += 1;
             }
@@ -301,11 +332,21 @@ fn dissolve_bundles_matches_oracle() {
             Row::Dissolve {
                 id,
                 item_id,
+                node,
                 lookup,
                 out,
             } => {
                 let map = lookup_of(&universe, lookup.as_ref());
-                let got = dissolve_bundle_to_leaves(&node_of(&universe, &item_id), map.as_ref());
+                let node = match node {
+                    Some(n) => WearableNode::from_value(&n),
+                    None => node_of(&universe, &item_id),
+                };
+                let got = dissolve_bundle_to_leaves(&node, map.as_ref());
+                assert_eq!(
+                    got,
+                    slot_ops::dissolve_composite_to_leaves(&node, map.as_ref()),
+                    "dissolve '{id}': shim ≠ slot_ops"
+                );
                 match (&got, &out) {
                     (None, None) => stored_whole += 1,
                     (Some(g), Some(w)) => {
@@ -327,13 +368,20 @@ fn dissolve_bundles_matches_oracle() {
                 out,
             } => {
                 let leaves: Vec<DissolvedLeaf> = leaves.iter().map(WireLeaf::to_leaf).collect();
-                let got = lay_leaves_into_slots(
-                    &current.to_slots(),
-                    &node_of(&universe, &bundle_id),
-                    &leaves,
-                    clear_covered_slots,
+                let node = node_of(&universe, &bundle_id);
+                let got =
+                    lay_leaves_into_slots(&current.to_slots(), &node, &leaves, clear_covered_slots);
+                assert_all_slots(&got, &out, &format!("lay '{id}'"));
+                assert_eq!(
+                    got,
+                    slot_ops::lay_leaves_into_slots(
+                        &current.to_slots(),
+                        &node,
+                        &leaves,
+                        clear_covered_slots
+                    ),
+                    "lay '{id}': shim ≠ slot_ops"
                 );
-                assert_slots(&got, &out, &format!("lay '{id}'"));
                 lays += 1;
             }
 
@@ -347,28 +395,48 @@ fn dissolve_bundles_matches_oracle() {
                 out,
             } => {
                 let map = lookup_of(&universe, lookup.as_ref());
+                // `from_value` reads `replace` off the item itself, as v4 does.
                 let node = node_of(&universe, &item_id);
                 let current = current.to_slots();
-                let got = match mode.as_str() {
-                    "wear" => {
-                        // v4 reads `replace` off the item itself.
-                        let replace = universe
-                            .get(&item_id)
-                            .and_then(|v| v.get("replace"))
-                            .and_then(Value::as_bool)
-                            .unwrap_or(false);
-                        wear_item_into_slots(&current, &node, replace, map.as_ref())
-                    }
-                    "replace" => replace_item_into_slots(&current, &node, map.as_ref()),
-                    "add_to_slot" => add_item_to_slot(
-                        &current,
-                        slot.as_deref().expect("add_to_slot needs a slot"),
-                        &node,
-                        map.as_ref(),
+                let (got_shim, got_new) = match mode.as_str() {
+                    "wear" => (
+                        wear_item_into_slots(&current, &node, node.replace, map.as_ref()),
+                        slot_ops::wear_item_into_slots(&current, &node, map.as_ref()),
                     ),
+                    "replace" => (
+                        replace_item_into_slots(&current, &node, map.as_ref()),
+                        slot_ops::compute_displaced_slots(
+                            &current,
+                            &slot_ops::ComputeDisplacedOptions {
+                                mode: slot_ops::DisplacementMode::Replace,
+                                item: Some(&node),
+                                slot: None,
+                                item_id: None,
+                                items_by_id: map.as_ref(),
+                            },
+                        ),
+                    ),
+                    "add_to_slot" => {
+                        let slot = slot.as_deref().expect("add_to_slot needs a slot");
+                        (
+                            add_item_to_slot(&current, slot, &node, map.as_ref()),
+                            slot_ops::add_item_to_slot(&current, slot, &node, map.as_ref()),
+                        )
+                    }
                     other => panic!("unknown wear mode '{other}'"),
                 };
-                assert_slots(&got, &out, &format!("wear '{id}' ({mode})"));
+                assert_all_slots(&got_shim, &out, &format!("wear '{id}' ({mode})"));
+                assert_eq!(got_shim, got_new, "wear '{id}': shim ≠ slot_ops");
+                if node.replace && node.component_item_ids.is_empty() {
+                    replacing_leaf_rows += 1;
+                }
+                if node
+                    .types
+                    .iter()
+                    .any(|t| !WARDROBE_SLOT_TYPES.contains(&t.as_str()))
+                {
+                    odd_type_rows += 1;
+                }
                 wears += 1;
             }
 
@@ -380,7 +448,7 @@ fn dissolve_bundles_matches_oracle() {
             } => {
                 let map = lookup_of(&universe, Some(&lookup)).expect("snapshot lookup");
                 let got = dissolve_bundles_in_slots(&current.to_slots(), &map);
-                assert_slots(&got, &out, &format!("snapshot '{id}'"));
+                assert_all_slots(&got, &out, &format!("snapshot '{id}'"));
                 snapshots += 1;
             }
 
@@ -395,11 +463,16 @@ fn dissolve_bundles_matches_oracle() {
                 let label = format!("snapshot_credit '{id}'");
                 assert_all_slots(&got.slots, &out.slots, &label);
                 assert_worn_bundles(&got.worn_bundles, &out.worn_bundles, &label);
-                // The plain form is the credit form's slots, always.
+                // The plain form is the credit form's slots, always; and both
+                // are the new name with no `only` filter.
                 assert_eq!(
                     dissolve_bundles_in_slots(&current.to_slots(), &map),
                     got.slots
                 );
+                let (new_slots, new_bundles) =
+                    slot_ops::dissolve_composites_in_slots(&current.to_slots(), &map, None);
+                assert_eq!(new_slots, got.slots, "{label}: shim ≠ slot_ops");
+                assert_eq!(new_bundles, got.worn_bundles, "{label}: shim ≠ slot_ops");
                 if !got.worn_bundles.is_empty() {
                     non_empty_claims += 1;
                 }
@@ -414,12 +487,14 @@ fn dissolve_bundles_matches_oracle() {
                 out,
             } => {
                 let map = lookup_of(&universe, lookup.as_ref());
-                let got = worn_bundles_for(
-                    &node_of(&universe, &item_id),
-                    map.as_ref(),
-                    only_slot.as_deref(),
-                );
+                let node = node_of(&universe, &item_id);
+                let got = worn_bundles_for(&node, map.as_ref(), only_slot.as_deref());
                 assert_worn_bundles(&got, &out, &format!("worn_bundles_for '{id}'"));
+                assert_eq!(
+                    got,
+                    slot_ops::worn_bundles_for(&node, map.as_ref(), only_slot.as_deref()),
+                    "worn_bundles_for '{id}': shim ≠ slot_ops"
+                );
                 if !got.is_empty() {
                     non_empty_claims += 1;
                 }
@@ -443,14 +518,14 @@ fn dissolve_bundles_matches_oracle() {
     // Shape assertions, not hand counts (`harness-corpus-shape-constants-rot`):
     // every arm must have been exercised, and the corpus must cover both the
     // dissolve-to-leaves and store-whole outcomes.
-    assert!(shapes >= 39, "shape cases: {shapes}");
-    assert!(dissolves >= 14, "dissolve cases: {dissolves}");
-    assert!(lays >= 7, "lay cases: {lays}");
-    assert!(wears >= 19, "wear cases: {wears}");
+    assert!(shapes >= 41, "shape cases: {shapes}");
+    assert!(dissolves >= 15, "dissolve cases: {dissolves}");
+    assert!(lays >= 8, "lay cases: {lays}");
+    assert!(wears >= 22, "wear cases: {wears}");
     assert!(snapshots >= 13, "snapshot cases: {snapshots}");
     assert!(
         snapshot_credits >= 13,
-        "snapshot_credit cases: {snapshot_credits} (an oracle predating P4.D262 — regenerate it)"
+        "snapshot_credit cases: {snapshot_credits}"
     );
     assert!(
         worn_bundles_fors >= 12,
@@ -465,15 +540,25 @@ fn dissolve_bundles_matches_oracle() {
         "non-empty credit claims: {non_empty_claims}"
     );
     assert!(
-        dissolved_to_leaves >= 6,
+        dissolved_to_leaves >= 7,
         "dissolve→leaves arms: {dissolved_to_leaves}"
     );
     assert!(
         stored_whole >= 5,
         "dissolve→store-whole arms: {stored_whole}"
     );
+    assert!(
+        replacing_leaf_rows >= 1,
+        "replacing-leaf wear rows: {replacing_leaf_rows}"
+    );
+    assert!(
+        odd_type_rows >= 3,
+        "unrecognized-type rows: {odd_type_rows}"
+    );
     eprintln!(
-        "OK: dissolve-bundles matched oracle ({shapes} shape / {dissolves} dissolve / \
-         {lays} lay / {wears} wear / {snapshots} snapshot cases)."
+        "OK: dissolve-bundles (shim over slot_ops) matched oracle ({shapes} shape / \
+         {dissolves} dissolve / {lays} lay / {wears} wear / {snapshots} snapshot / \
+         {snapshot_credits} credit / {worn_bundles_fors} worn_bundles_for / \
+         {default_credits} default_credit cases)."
     );
 }

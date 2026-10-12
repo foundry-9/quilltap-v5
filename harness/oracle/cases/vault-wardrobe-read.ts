@@ -8,9 +8,17 @@
  * and must produce the same result, exactly (no normalization — there is no clock
  * mint on this path; ids/timestamps come from the shared fixture).
  *
- * The corpus keeps no General-Wardrobe mount provisioned, so v4's archetype
- * seeding (findArchetypes) returns [] and the seed is a verified no-op — matching
- * the Rust port, which defers archetype seeding (see read_character_vault_wardrobe).
+ * `9ecebf986`: the reader seeds nothing — component refs resolve against the
+ * folder alone. P4.D279 (v4 `4a38222e6`, wardrobe folders): the read is
+ * RECURSIVE through `isWardrobeItemDocumentPath` — store A now also holds a
+ * nested item (`Formal/Evening/10-gown.md` → `folder: Formal/Evening`), a
+ * one-deep item whose frontmatter `folder: Casual` key the path overrides
+ * (`Formal/11-blazer.md` → `Formal`), two non-items under the reserved
+ * `images/` (a `.webp` and a valid-looking `.md`), a nested
+ * `Formal/instructions.md` (excluded at any depth), a `Notes/todo.md` with no
+ * `types` (an item PATH the parser returns null for), and a composite whose
+ * `componentItems` carry a cross-tier UUID (KEPT as written, bug 187) and an
+ * unknown slug (dropped). Every item carries `folder` (`''` = the root).
  *
  * Run (Node 24, from the v4 checkout):
  *   N=~/.nvm/versions/node/v24.13.1/bin

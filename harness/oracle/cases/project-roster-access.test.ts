@@ -8,7 +8,7 @@
  *
  * Drives v4's REAL `projectRosterAdmits` / `rosterGatedProjectId` /
  * `getAccessibleMountPoints` / `resolveDocEditPath` / `executeDocEditTool` /
- * `resolveSharedWardrobeTiersForChat` / `executeWardrobeListTool` against a REAL
+ * `resolveProjectTierForChat` (+ the group tier) / `executeWardrobeListTool` against a REAL
  * two-partition fixture whose projects set `allowAnyCharacter` EXPLICITLY (see
  * `build-project-roster-access-fixture.ts`). v4's own `roster-access.test.ts` mocks
  * the repositories; this family does not — the real policy over real stores is
@@ -90,6 +90,9 @@ const ROOT_MESSAGES = new Set([
   '[ProjectRoster] Tool access check',
   '[Wardrobe] Character off project roster — project wardrobe withheld',
   '[Wardrobe] Project lookup for chat failed',
+  // P4.D279: the same two lines under the pool's prefix (v4 `4a38222e6`).
+  '[WearablePool] Character off project roster — project wardrobe withheld',
+  '[WearablePool] Project lookup for chat failed',
   'Error finding entity by ID',
   'Error checking character participation',
 ]);
@@ -233,7 +236,14 @@ async function main(): Promise<void> {
   const { resolveDocEditPath, getAccessibleMountPoints } = await import(
     '@/lib/doc-edit/path-resolver'
   );
-  const { resolveSharedWardrobeTiersForChat } = await import('@/lib/wardrobe/shared-tiers');
+  // P4.D279 (v4 `4a38222e6`): `lib/wardrobe/shared-tiers.ts` is gone; the project
+  // tier is `resolveProjectTierForChat` (lib/wardrobe/pool.ts) and the group tier
+  // `resolveGroupMountPointIdsForCharacter` — the same two resolvers the deleted
+  // module composed, so the recorded row keeps both keys.
+  const { resolveProjectTierForChat } = await import('@/lib/wardrobe/pool');
+  const { resolveGroupMountPointIdsForCharacter } = await import(
+    '@/lib/mount-index/tiered-mount-pool'
+  );
   const { executeWardrobeListTool, formatWardrobeListResults } = await import(
     '@/lib/tools/handlers/wardrobe-list-handler'
   );
@@ -366,15 +376,16 @@ async function main(): Promise<void> {
           break;
         }
         case 'wardrobe_tiers': {
-          const tiers = await resolveSharedWardrobeTiersForChat(
-            chatIdOf(op.chat) ?? null,
-            characterId ?? null,
-            op.operator ? { operator: true } : {},
-          );
-          result = {
-            groupMountPointIds: tiers.groupMountPointIds,
-            projectMountPointIds: tiers.projectMountPointIds,
-          };
+          const [groupMountPointIds, projectMountPointIds] = await Promise.all([
+            resolveGroupMountPointIdsForCharacter(characterId ?? null),
+            resolveProjectTierForChat(
+              repos,
+              chatIdOf(op.chat) ?? null,
+              characterId ?? null,
+              op.operator ? { operator: true } : {},
+            ),
+          ]);
+          result = { groupMountPointIds, projectMountPointIds };
           break;
         }
         case 'wardrobe_list': {

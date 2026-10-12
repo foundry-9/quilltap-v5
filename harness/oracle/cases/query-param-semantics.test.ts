@@ -490,9 +490,8 @@ function applyMocks(): void {
     // ---- P4.72 leaves ----
     // The wardrobe reads the `?action=instructions` routes' DEFAULT legs run.
     wardrobe: {
-      findArchetypes: async () => [],
       findByCharacterId: async () => [],
-      findArchetypesInMounts: async () => [],
+      readSharedTiers: async () => [],
       create: async () => null,
     },
     // `system/jobs/[id]` POST looks the job up only AFTER its action gate, so a

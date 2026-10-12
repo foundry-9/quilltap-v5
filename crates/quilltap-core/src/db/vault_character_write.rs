@@ -42,7 +42,7 @@ use super::doc_mount_file_links::DocMountFileLinksRepository;
 use super::DbError;
 use crate::vault_overlay::{build_scenario_file, build_system_prompt_file, sanitize_file_name};
 
-use super::vault_wardrobe_write::project_array_into_vault_folder;
+use super::vault_wardrobe_write::{project_array_into_vault_folder, ProjectArrayOptions};
 
 const PROPERTIES_JSON_PATH: &str = "properties.json";
 const METADATA_JSON_PATH: &str = "metadata.json";
@@ -355,9 +355,11 @@ pub fn write_character_vault_managed_fields(
                 build_system_prompt_file(&p.name, p.is_default, &p.content),
             )
         },
-        // v4 passes no `preserveFileNames` here: the managed-fields
-        // projections sweep normally.
-        &[],
+        mount_point_id,
+        // v4 passes no options here: the managed-fields projections are FLAT
+        // and sweep normally (`4a38222e6` left the prompts / scenarios callers
+        // on exactly the top-level behaviour they always had).
+        ProjectArrayOptions::FLAT,
     )?;
     result.system_prompts_written = character.system_prompts.len();
 
@@ -373,9 +375,11 @@ pub fn write_character_vault_managed_fields(
                 build_scenario_file(&s.title, &s.content, s.description.as_deref(), s.archived),
             )
         },
-        // v4 passes no `preserveFileNames` here: the managed-fields
-        // projections sweep normally.
-        &[],
+        mount_point_id,
+        // v4 passes no options here: the managed-fields projections are FLAT
+        // and sweep normally (`4a38222e6` left the prompts / scenarios callers
+        // on exactly the top-level behaviour they always had).
+        ProjectArrayOptions::FLAT,
     )?;
     result.scenarios_written = character.scenarios.len();
 

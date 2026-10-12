@@ -139,6 +139,12 @@ pub struct GenerateWardrobeItemImageArgs<'a> {
     /// The container id from the request (the project id, for the aesthetic).
     pub container_id: Option<&'a str>,
     pub image_profile_id: Option<&'a str>,
+    /// P4.D279 (C1 §10, carried for P4.D283 — bug 189): the chat the picture
+    /// is drawn for, from the `WARDROBE_ITEM_IMAGE` job payload's `chatId`
+    /// (the tool call's chat) or `None` for the editor's direct generation.
+    /// Accepted and carried; READ by P4.D283's `llm_logs.chatId` + the chat's
+    /// moderation route in this same round — until then nothing consumes it.
+    pub chat_id: Option<&'a str>,
 }
 
 fn orientation_str(o: Orientation) -> &'static str {

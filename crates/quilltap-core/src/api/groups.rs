@@ -1302,6 +1302,9 @@ pub async fn group_wardrobe_create(db: &Db, group_id: &str, body: Value) -> Resp
             migrated_from_clothing_record_id: Some(None),
             image_file_id: Some(None),
             archived_at: Some(None),
+            // P4.D279 (C1 §12, mechanical): `WardrobeItem.folder` arrived with v4
+            // `4a38222e6`; the owning lane replaces this with the body's / record's value.
+            folder: String::new(),
             created_at: now.clone(),
             updated_at: now,
         };
@@ -1432,6 +1435,11 @@ pub async fn group_wardrobe_update(
             replace: fields.replace,
             archived_at: None,
             image_file_id: fields.image_file_id.clone(),
+            // P4.D279 (C1 §12, mechanical): `WardrobePatch.folder` arrived with v4
+            // `4a38222e6`; the owning lane fills it from the body. The clothing-record
+            // pointer is a `Partial<WardrobeItem>` key the restore pass carries.
+            folder: None,
+            migrated_from_clothing_record_id: None,
         };
         let image_file_id = fields.image_file_id;
         // v4 `7c8572869`: `imageChoiceError` — BEFORE the archive flag. A file

@@ -284,6 +284,8 @@ pub async fn generate_on_home(
                 home,
                 container_id,
                 image_profile_id,
+                // P4.D279 (C1 §10): the editor's direct generation has no chat.
+                chat_id: None,
             },
         ),
     )

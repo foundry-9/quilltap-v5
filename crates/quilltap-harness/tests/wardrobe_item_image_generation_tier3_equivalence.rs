@@ -424,6 +424,8 @@ fn wardrobe_item_image_generation_tier3_matches_oracle() {
                         home: &home,
                         container_id: container.as_deref(),
                         image_profile_id: scenario.get("imageProfileId").and_then(Value::as_str),
+                        // P4.D279 (C1 §10, mechanical): carried for P4.D283; nothing reads it yet.
+                        chat_id: None,
                     },
                 ))
             });

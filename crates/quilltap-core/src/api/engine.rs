@@ -5668,6 +5668,27 @@ impl CoreEngine {
                 Err(r) => r,
             },
             // === end P4.D265 ===
+            // === P4.D279: the 4a38222e6 round's wire (C2) — each arm the agreed
+            // refusal (§R.14), replaced by P4.D281 this round ===
+            Request::WardrobeFoldersList { .. } => {
+                p4d279_not_yet_available("wardrobeFoldersList", "P4.D281")
+            }
+            Request::WardrobeFolderCreate { .. } => {
+                p4d279_not_yet_available("wardrobeFolderCreate", "P4.D281")
+            }
+            Request::WardrobeFolderRename { .. } => {
+                p4d279_not_yet_available("wardrobeFolderRename", "P4.D281")
+            }
+            Request::WardrobeFolderDelete { .. } => {
+                p4d279_not_yet_available("wardrobeFolderDelete", "P4.D281")
+            }
+            Request::WardrobeItemsMove { .. } => {
+                p4d279_not_yet_available("wardrobeItemsMove", "P4.D281")
+            }
+            Request::WardrobeItemImageLink { .. } => {
+                p4d279_not_yet_available("wardrobeItemImageLink", "P4.D281")
+            }
+            // === end P4.D279 ===
             Request::WardrobeItemGet { item_id } => match self.ready_db() {
                 Ok(db) => super::wardrobe::wardrobe_item_get(&db, &item_id),
                 Err(r) => r,
@@ -7295,6 +7316,17 @@ impl CoreEngine {
 
 /// A production draw source over [`random_f64`] — one fresh OS draw per call, so
 /// a rotation of N seats consumes N independent values (P4.D172).
+/// P4.D279 (§R.14): the ONE refusal body for the `4a38222e6` round's new wire —
+/// agreed in advance under CLAUDE.md's no-stub rule, each arm replaced by its
+/// named owner (P4.D281) in this same round. The P4.D255 / P4.D265 sentence
+/// shape.
+fn p4d279_not_yet_available(action: &str, owner: &str) -> Response {
+    Response::error(
+        ErrorKind::Internal,
+        format!("The '{action}' action is recognized but not yet available ({owner})."),
+    )
+}
+
 fn quilltap_draw_source() -> crate::weighted_random::DrawSource {
     crate::weighted_random::DrawSource::from_fn(random_f64)
 }

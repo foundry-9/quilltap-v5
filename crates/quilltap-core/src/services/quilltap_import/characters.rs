@@ -554,6 +554,9 @@ fn import_character_wardrobe_items(
             migrated_from_clothing_record_id: Some(None),
             image_file_id: None,
             archived_at: Some(opt_string(item, "archivedAt")),
+            // P4.D279 (C1 §12, mechanical): `WardrobeItem.folder` arrived with v4
+            // `4a38222e6`; the owning lane replaces this with the body's / record's value.
+            folder: String::new(),
             created_at: now.clone(),
             updated_at: now,
         };

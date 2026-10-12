@@ -10,6 +10,11 @@
 //! slug-vs-UUID `componentItems` map, every `buildWardrobeItemFile` flag branch,
 //! and the description body.
 //!
+//! P4.D279 (v4 `4a38222e6`, wardrobe folders): the eighth case's items carry
+//! `folder` (`Formal/Evening`, `Formal`, the root) — the folder is the file's
+//! PATH and never reaches frontmatter, so the emitted bytes must still match
+//! v4's and (asserted besides) carry no `folder:` line.
+//!
 //! Build the oracle (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   cd ~/source/quilltap-server
@@ -79,6 +84,8 @@ fn item_from_json(v: &Value) -> WardrobeItem {
         migrated_from_clothing_record_id: opt_opt(v.get("migratedFromClothingRecordId")),
         image_file_id: opt_opt(v.get("imageFileId")),
         archived_at: opt_opt(v.get("archivedAt")),
+        // P4.D279: the corpus item's folder (absent → the root).
+        folder: str_field(v, "folder"),
         created_at: str_field(v, "createdAt"),
         updated_at: str_field(v, "updatedAt"),
     }
@@ -117,6 +124,7 @@ fn vault_wardrobe_emit_matches_oracle() {
     );
 
     let mut total = 0usize;
+    let mut foldered = 0usize;
     for (ci, (case, want_case)) in cases.iter().zip(oracle.results.iter()).enumerate() {
         let items_json = case.as_array().expect("case is an array");
         let items: Vec<WardrobeItem> = items_json.iter().map(item_from_json).collect();
@@ -139,9 +147,23 @@ fn vault_wardrobe_emit_matches_oracle() {
                 "case {ci} item {ii} (title {:?}) diverged:\n--- got ---\n{got}\n--- want ---\n{want}",
                 item.title
             );
+            // P4.D279: `folder` is the path, never frontmatter — a filed item
+            // emits NO `folder:` line (both sides; asserted on ours so a
+            // corpus that stopped filing items cannot pass quietly).
+            if !item.folder.is_empty() {
+                foldered += 1;
+                assert!(
+                    !got.lines().any(|l| l.starts_with("folder:")),
+                    "case {ci} item {ii}: `folder` leaked into frontmatter:\n{got}"
+                );
+            }
             total += 1;
         }
     }
+    assert!(
+        foldered >= 2,
+        "expected the P4.D279 filed items, saw {foldered}"
+    );
 
     eprintln!(
         "OK: wardrobe emit matched oracle on {total} items across {} cases.",

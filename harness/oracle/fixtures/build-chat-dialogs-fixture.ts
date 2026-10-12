@@ -871,11 +871,11 @@ async function main(): Promise<void> {
     const lampRow = await repos.groups.findByIdRaw(LAMPLIGHTERS);
     const lampMp = lampRow?.officialMountPointId as string;
     if (!lampMp) throw new Error('Lamplighters official store not minted');
-    const { ensureGroupWardrobeFolder } = await import('@/lib/mount-index/group-wardrobe');
-    const { createProjectWardrobeItem } = await import(
+    const { ensureSharedWardrobeFolder } = await import('@/lib/mount-index/shared-wardrobe');
+    const { createMountWardrobeItem: createProjectWardrobeItem } = await import(
       '@/lib/database/repositories/vault-overlay/wardrobe-writes'
     );
-    await ensureGroupWardrobeFolder(lampMp);
+    await ensureSharedWardrobeFolder(lampMp);
     const seedGroupItem = async (
       id: string,
       title: string,

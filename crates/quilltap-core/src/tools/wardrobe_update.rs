@@ -245,6 +245,11 @@ Only items in your own wardrobe can be changed."
         component_item_ids: input.component_item_ids.clone(),
         archived_at: None,
         image_file_id: None,
+        // P4.D279 (C1 §12, mechanical): `WardrobePatch.folder` arrived with v4
+        // `4a38222e6`; the owning lane fills it from the body. The clothing-record
+        // pointer is a `Partial<WardrobeItem>` key the restore pass carries.
+        folder: None,
+        migrated_from_clothing_record_id: None,
     };
 
     // When components changed and types wasn't supplied, recompute the coverage

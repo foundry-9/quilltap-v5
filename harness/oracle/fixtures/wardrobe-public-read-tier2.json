@@ -2,8 +2,9 @@
   "$comment": [
     "Read-differential for the PUBLIC wardrobe READ trio + the shared-archetype",
     "tier: v4's WardrobeRepository.findByCharacterId (-> getOverlaidWardrobeItems)",
-    "and findByIdForCharacter (-> findArchetypeById), ported to",
-    "quilltap-core::db::wardrobe_read + archetype_wardrobe.",
+    "and (since v4 9ecebf986, P4.D279) loadWearablePool(...).get(id) — the deleted",
+    "findByIdForCharacter's id-then-archetype fallback is the pool's shadow order — ported to",
+    "quilltap-core::db::wardrobe_read + wearable_pool (every pool item carries `origin`).",
     "",
     "ONE committed file drives BOTH sides. build-wardrobe-public-read-fixture.ts bakes",
     "the SHARED state into two DBs (main + mount-index):",
@@ -56,7 +57,11 @@
     "title": "",
     "firstMessage": "",
     "talkativeness": 0.5,
-    "pronouns": { "subject": "they", "object": "them", "possessive": "theirs" },
+    "pronouns": {
+      "subject": "they",
+      "object": "them",
+      "possessive": "theirs"
+    },
     "aliases": [],
     "physicalDescription": null,
     "systemPrompts": [],

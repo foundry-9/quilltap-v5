@@ -15,6 +15,18 @@
 //! an archived item (`09-archived`, archivedAt ← doc.updatedAt). Store B exercises
 //! the legacy `wardrobe.json` fallback; store C the empty-vault `null`.
 //!
+//! P4.D279 (v4 `4a38222e6`, wardrobe folders): the read is RECURSIVE through
+//! the one predicate (`isWardrobeItemDocumentPath`) and every item carries
+//! `folder` (`''` = the root). Store A also holds: a nested item
+//! (`Formal/Evening/10-gown.md` → `Formal/Evening`), a one-deep item whose
+//! frontmatter `folder: Casual` the PATH overrides (`Formal/11-blazer.md` →
+//! `Formal`), two non-items under the reserved `images/` (a `.webp` and a
+//! valid-looking `caption.md` — never items), a nested `Formal/instructions.md`
+//! (excluded at any depth), `Notes/todo.md` with no `types` (an item path the
+//! parser skips), and the composite `12-ensemble` whose refs resolve to
+//! blue-shirt-by-slug + a cross-tier UUID KEPT as written (bug 187) with the
+//! unknown slug `house-livery` dropped. The whole `{ items }` compares exactly.
+//!
 //! Build the fixture + oracle (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   cd ~/source/quilltap-server
@@ -111,13 +123,9 @@ fn vault_wardrobe_read_matches_oracle() {
     let repo = writer.doc_mount_documents();
 
     for (c, want) in spec.cases.iter().zip(oracle.results.iter()) {
-        // v4's readCharacterVaultWardrobe defaults seedArchetypes=true, but this
-        // corpus provisions no General store, so v4's findArchetypes yields [] —
-        // an empty fetch here reproduces that exactly.
-        let got =
-            read_character_vault_wardrobe(&repo, &c.mount_point_id, &c.character_id, true, &|| {
-                Ok(Vec::new())
-            })
+        // `9ecebf986`: the reader seeds nothing — component refs resolve against
+        // the folder alone and a cross-tier UUID survives as written (bug 187).
+        let got = read_character_vault_wardrobe(&repo, &c.mount_point_id, &c.character_id)
             .unwrap_or_else(|e| {
                 panic!("read_character_vault_wardrobe({}): {e:?}", c.mount_point_id)
             })

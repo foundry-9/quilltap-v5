@@ -18,22 +18,19 @@
 use rusqlite::Connection;
 use serde_json::Value;
 
-use crate::db::archetype_wardrobe::find_archetypes;
 use crate::db::chats_outfits::ChatOutfitsRepository;
 use crate::db::chats_read;
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
 use crate::db::project_doc_mount_links::ProjectDocMountLinksRepository;
 use crate::db::vault_wardrobe_public::{WardrobePublicError, NO_MOUNT_MESSAGE};
-use crate::db::wardrobe_read::{
-    find_by_character_id, find_by_id_for_character, find_by_ids_for_character,
-};
+use crate::db::wardrobe_read::{find_by_character_id, find_by_ids_for_character};
 use crate::db::wardrobe_wear_stats::{EquipSource, WornBundle};
 use crate::db::DbError;
 use crate::dissolve_bundles::{WearableLookup, WearableNode};
-use crate::services::wardrobe_wear_commit::{commit_equipped_outfit, CommitEquippedOutfitInput};
+use crate::services::outfit_displacement::apply_displacement;
+use crate::slot_ops::{ComputeDisplacedOptions, DisplacementMode};
 use crate::wardrobe::{
-    describe_outfit, expand_composites, OutfitSlotValues, Slots, COMPOSITE_MAX_DEPTH,
-    WARDROBE_SLOT_TYPES,
+    describe_outfit, expand_composites, OutfitSlotValues, Slots, WARDROBE_SLOT_TYPES,
 };
 use crate::wardrobe_tiers::SharedWardrobeTiers;
 
@@ -88,15 +85,12 @@ pub fn resolve_project_mount_point_ids_for_chat(
     resolve_project_mount_point_ids(mount, chat.get("projectId").and_then(Value::as_str))
 }
 
-/// v4 `resolveWardrobeItemAcrossTiers` — resolve one wardrobe item across EVERY
-/// tier by id (preferred, via [`find_by_id_for_character`], which spans
-/// character → group → project → general) then by title (case-insensitive; the
-/// character's own items first, then the merged archetype set — non-archived).
-/// `None` when nothing matches.
-///
-/// `tiers` comes from
-/// [`resolve_shared_wardrobe_tiers_for_chat`](crate::wardrobe_tiers::resolve_shared_wardrobe_tiers_for_chat)
-/// — pass the whole object rather than picking a tier out of it.
+// LANE-REMOVE(P4.D280): v4 deleted resolveWardrobeItemAcrossTiers (wardrobe-handler-shared.ts) in 9ecebf986
+/// The pre-`9ecebf986` cross-tier resolve — now `wear_ops::find_in_pool` over
+/// a loaded pool: by id (archived included), then by title (own first incl.
+/// archived, then the wearable shared set). The `origin` tag is stripped so
+/// the pre-pool callers see the shape they always did. Callers move to
+/// `load_wearable_pool` + `find_in_pool`.
 pub fn resolve_wardrobe_item_across_tiers(
     main: &Connection,
     docs: &DocMountDocumentsRepository,
@@ -105,26 +99,34 @@ pub fn resolve_wardrobe_item_across_tiers(
     item_title: Option<&str>,
     tiers: &SharedWardrobeTiers,
 ) -> Result<Option<Value>, DbError> {
-    if let Some(id) = item_id {
-        if let Some(found) = find_by_id_for_character(main, docs, character_id, id, tiers)? {
-            return Ok(Some(found));
+    // The pre-pool resolver PROPAGATED a failed own-vault read (v4's
+    // `findByCharacterId` rethrows); the shim keeps that contract for its
+    // remaining callers by reading the own items itself.
+    let own = find_by_character_id(main, docs, character_id, true)?;
+    let pool = crate::wearable_pool::load_wearable_pool(
+        main,
+        docs.conn(),
+        character_id,
+        Some(&tiers.project_mount_point_ids),
+        crate::wearable_pool::LoadWearablePoolOptions {
+            own_items: Some(&own),
+            ..Default::default()
+        },
+    );
+    let found = item_id
+        .filter(|id| !id.is_empty())
+        .and_then(|id| pool.get(id))
+        .or_else(|| {
+            item_title
+                .filter(|t| !t.is_empty())
+                .and_then(|t| pool.find_by_title(t))
+        });
+    Ok(found.cloned().map(|mut item| {
+        if let Some(obj) = item.as_object_mut() {
+            obj.remove("origin");
         }
-    }
-
-    if let Some(title) = item_title {
-        let lower = title.trim().to_lowercase();
-        let own = find_by_character_id(main, docs, character_id, true)?;
-        if let Some(m) = own.into_iter().find(|i| title_lower(i) == lower) {
-            return Ok(Some(m));
-        }
-        // v4 uses includeArchived = false for the archetype title fallback.
-        let archetypes = find_archetypes(main, docs, false, tiers)?;
-        if let Some(m) = archetypes.into_iter().find(|i| title_lower(i) == lower) {
-            return Ok(Some(m));
-        }
-    }
-
-    Ok(None)
+        item
+    }))
 }
 
 /// Render a [`WardrobePublicError`] to v4's thrown-error message (the handlers'
@@ -140,15 +142,6 @@ pub fn public_error_message(e: WardrobePublicError, verb: &str) -> String {
         WardrobePublicError::Cycle(m) => m,
         WardrobePublicError::Db(d) => d.to_string(),
     }
-}
-
-/// The item's `title` lowercased (v4 `i.title.toLowerCase()` — the title is NOT
-/// trimmed, only the search term is).
-fn title_lower(item: &Value) -> String {
-    item.get("title")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_lowercase()
 }
 
 /// v4 `isOwnWardrobeItem` — the item belongs to THIS character (editable), vs a
@@ -203,25 +196,11 @@ pub fn load_current_wardrobe_state(
 // returns `nextSlots`, not the chokepoint's echo); a lost write is an `Err`
 // carrying v4's `Failed to save the equipped outfit …` sentence.
 
-/// v4 `hydrateComponentGraph` (`lib/wardrobe/hydrate-components.ts`) — fill in
-/// every component reachable from the items already in `items_by_id`, mutating
-/// the map in place.
-///
-/// A composite may bundle components the character doesn't own and that aren't
-/// equipped in their own right — the canonical case is a shared "House Livery"
-/// whose coat, waistcoat and boots all live in Quilltap General, a group store
-/// or a project store. Without those components in hand, `expand_composites`
-/// emits each one as an unknown leaf and the whole outfit resolves to nothing.
-///
-/// Walks the graph a level at a time, one bulk query per level, bounded by the
-/// same depth [`expand_composites`] will walk. Bulk matters: both callers sit on
-/// hot paths (avatar generation, story backgrounds, scene state) and the read
-/// side runs on every turn. Failures are logged and swallowed — a component we
-/// can't fetch degrades to an unresolvable leaf, never to a thrown turn.
-///
-/// Shared with the wardrobe item-picture generation
-/// (`services::wardrobe_item_image_generation`, P4.D263 — its local copy
-/// folded onto this one at the `f5e953a3f` unification).
+// LANE-REMOVE(P4.D280|P4.D282|P4.D283): v4 deleted hydrate-components.ts (hydrateComponentGraph) in 9ecebf986
+/// The pre-`9ecebf986` level-at-a-time hydration — now ONE walk over the
+/// pool's `byId` (`wearable_pool::component_graph`): every component reachable
+/// from the items already in `items_by_id` is filled in from the pool, in
+/// place. Callers move to `component_graph` / `pool.by_id()`.
 pub(crate) fn hydrate_component_graph(
     main: &Connection,
     docs: &DocMountDocumentsRepository,
@@ -229,68 +208,36 @@ pub(crate) fn hydrate_component_graph(
     items_by_id: &mut WearableLookup,
     tiers: &SharedWardrobeTiers,
 ) {
-    let mut requested_component_ids: std::collections::HashSet<String> =
-        std::collections::HashSet::new();
-    for depth in 0..COMPOSITE_MAX_DEPTH {
-        let mut wanted: Vec<String> = Vec::new();
-        for item in items_by_id.values() {
-            let components = item
-                .get("componentItemIds")
+    let pool = crate::wearable_pool::load_wearable_pool(
+        main,
+        docs.conn(),
+        character_id,
+        Some(&tiers.project_mount_point_ids),
+        crate::wearable_pool::LoadWearablePoolOptions::default(),
+    );
+    let roots: Vec<String> = items_by_id
+        .values()
+        .flat_map(|item| {
+            item.get("componentItemIds")
                 .and_then(Value::as_array)
-                .map(Vec::as_slice)
-                .unwrap_or_default();
-            for component in components {
-                let Some(component_id) = component.as_str() else {
-                    continue;
-                };
-                if items_by_id.contains_key(component_id) {
-                    continue;
-                }
-                if !requested_component_ids.insert(component_id.to_string()) {
-                    continue;
-                }
-                wanted.push(component_id.to_string());
-            }
-        }
-        if wanted.is_empty() {
-            return;
-        }
-        // v4 warns and returns on a failed level; v5's read returns `Err` where
-        // v4 throws, so the same shape falls out of the match.
-        let components = match find_by_ids_for_character(main, docs, character_id, &wanted, tiers) {
-            Ok(c) => c,
-            Err(e) => {
-                let error = crate::db::fallback::error_text(&e);
-                tracing::warn!(
-                    context = "wardrobe",
-                    characterId = %character_id,
-                    depth = depth,
-                    wantedCount = wanted.len(),
-                    error = %error,
-                    "[hydrateComponentGraph] Component hydration failed"
-                );
-                return;
-            }
-        };
-        if components.is_empty() {
-            return;
-        }
-        for it in components {
-            if let Some(id) = it.get("id").and_then(Value::as_str) {
-                items_by_id.insert(id.to_string(), it);
-            }
-        }
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|c| c.as_str().map(str::to_string))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
+        })
+        .collect();
+    for (id, item) in crate::wearable_pool::component_graph_lookup(&pool, &roots) {
+        items_by_id.entry(id).or_insert(item);
     }
 }
 
-/// v4 `lookupForBundle` (`outfit-displacement.ts`) + `loadBundleLookup`
-/// (`hydrate-components.ts`) — build the lookup a bundle needs to dissolve as it
-/// goes on.
-///
-/// `None` — "wear this item as its own id, the way we always did" — when the
-/// item isn't a bundle (no query fired), when the direct component read fails or
-/// comes back empty, or when nothing resolves. The whole component graph is then
-/// hydrated a level at a time so a nested bundle comes fully apart.
+// LANE-REMOVE(P4.D280|P4.D282): v4 deleted lookupForBundle / loadBundleLookup in 9ecebf986
+/// The pre-`9ecebf986` bundle lookup — now `component_graph` over the pool
+/// from the composite's components. `None` ("wear this item as its own id")
+/// when the item isn't a bundle or nothing resolves. Callers move to
+/// `pool.by_id()` (the whole pool is the lookup).
 pub(crate) fn lookup_for_bundle(
     main: &Connection,
     docs: &DocMountDocumentsRepository,
@@ -301,65 +248,44 @@ pub(crate) fn lookup_for_bundle(
     if component_item_ids.is_empty() {
         return None;
     }
-    let direct =
-        match find_by_ids_for_character(main, docs, character_id, component_item_ids, tiers) {
-            Ok(items) => items,
-            Err(e) => {
-                let error = crate::db::fallback::error_text(&e);
-                tracing::warn!(
-                    context = "wardrobe",
-                    characterId = %character_id,
-                    componentCount = component_item_ids.len(),
-                    error = %error,
-                    "[loadBundleLookup] Failed to load bundle components"
-                );
-                return None;
-            }
-        };
-    let mut items_by_id: WearableLookup = WearableLookup::new();
-    for item in direct {
-        if let Some(id) = item.get("id").and_then(Value::as_str) {
-            items_by_id.insert(id.to_string(), item);
-        }
-    }
+    let pool = crate::wearable_pool::load_wearable_pool(
+        main,
+        docs.conn(),
+        character_id,
+        Some(&tiers.project_mount_point_ids),
+        crate::wearable_pool::LoadWearablePoolOptions::default(),
+    );
+    let items_by_id = crate::wearable_pool::component_graph_lookup(&pool, component_item_ids);
     if items_by_id.is_empty() {
         return None;
     }
-    hydrate_component_graph(main, docs, character_id, &mut items_by_id, tiers);
     Some(items_by_id)
 }
 
-/// v4 `wornBundlesFor(item, itemsById, onlySlot?)` (`outfit-displacement.ts:
-/// 114-124`, `3ee3b1342`) — the bundle credit a put-on gesture claims: the
-/// bundle and the leaves it dissolved into, or nothing when the item is a leaf
-/// or could not dissolve (stored whole — the leaf diff then credits it as
-/// itself). With `only_slot` (`add_to_slot`), only the leaves covering that
-/// slot count; none ⇒ nothing.
+// ── v4 `9ecebf986`: `wornBundlesFor` and the four persisted primitives moved ──
+// `wornBundlesFor` now lives in `slot-ops.ts` ([`crate::slot_ops`]); the four
+// primitives (`equipItem` / `replaceItem` / `addToSlot` / `removeFromSlot`)
+// folded into ONE `applyDisplacement(repos, chatId, characterId, {mode, item,
+// slot, itemId, itemsById}, source)` ([`apply_displacement`]) — load, the
+// one mode → primitive table, the chokepoint, and the `[applyDisplacement]`
+// log lines. The names below are shims with the OLD signatures for the tool
+// handlers and the route until the re-aim lanes reach them; each builds its
+// `items_by_id` exactly as before ([`lookup_for_bundle`]) and a
+// `WearableNode` carrying the `replace` flag.
+
+// LANE-REMOVE(P4.D280): v4 moved wornBundlesFor to slot-ops.ts in 9ecebf986
+/// Old `worn_bundles_for` → [`crate::slot_ops::worn_bundles_for`].
 pub fn worn_bundles_for(
     item: &WearableNode,
     items_by_id: Option<&WearableLookup>,
     only_slot: Option<&str>,
 ) -> Vec<WornBundle> {
-    let Some(leaves) = crate::dissolve_bundles::dissolve_bundle_to_leaves(item, items_by_id) else {
-        return Vec::new();
-    };
-    let contributed: Vec<String> = leaves
-        .into_iter()
-        .filter(|leaf| only_slot.is_none_or(|slot| leaf.slots.iter().any(|s| s == slot)))
-        .map(|leaf| leaf.id)
-        .collect();
-    if contributed.is_empty() {
-        return Vec::new();
-    }
-    vec![WornBundle {
-        id: item.id.clone(),
-        leaf_ids: contributed,
-    }]
+    crate::slot_ops::worn_bundles_for(item, items_by_id, only_slot)
 }
 
-/// v4 `equipItem` — wear an item into the slots its `types` designate, honoring
-/// the `replace` flag. A resolvable bundle dissolves into its leaves as it goes
-/// on (`61574563`); an unresolvable one is stored whole, as before.
+// LANE-REMOVE(P4.D280|P4.D282): v4 folded the four displacement primitives into applyDisplacement in 9ecebf986
+/// Old `equip_item` → [`apply_displacement`] in `wear` mode (the item's
+/// `replace` flag governs).
 #[allow(clippy::too_many_arguments)]
 pub fn equip_item(
     main: &Connection,
@@ -373,18 +299,25 @@ pub fn equip_item(
     tiers: &SharedWardrobeTiers,
     source: EquipSource,
 ) -> Result<Slots, DbError> {
-    let current = load_current_wardrobe_state(main, chat_id, character_id)?;
     let items_by_id = lookup_for_bundle(main, docs, character_id, component_item_ids, tiers);
-    let node = WearableNode::new(id, types, component_item_ids);
-    let next =
-        crate::wardrobe::wear_item_into_slots(&current, &node, replace, items_by_id.as_ref());
-    let worn_bundles = worn_bundles_for(&node, items_by_id.as_ref(), None);
-    commit(main, chat_id, character_id, &next, source, &worn_bundles)
+    let node = WearableNode::new(id, types, component_item_ids).with_replace(replace);
+    apply_displacement(
+        main,
+        chat_id,
+        character_id,
+        &ComputeDisplacedOptions {
+            mode: DisplacementMode::Wear,
+            item: Some(&node),
+            slot: None,
+            item_id: None,
+            items_by_id: items_by_id.as_ref(),
+        },
+        source,
+    )
 }
 
-/// v4 `replaceItem` — force-swap: clear each designated slot and set it to
-/// `[id]`. A resolvable bundle dissolves into its leaves, clearing the union of
-/// the slots it designates and the slots its parts land in.
+// LANE-REMOVE(P4.D280|P4.D282): v4 folded the four displacement primitives into applyDisplacement in 9ecebf986
+/// Old `replace_item` → [`apply_displacement`] in `replace` mode.
 #[allow(clippy::too_many_arguments)]
 pub fn replace_item(
     main: &Connection,
@@ -397,18 +330,25 @@ pub fn replace_item(
     tiers: &SharedWardrobeTiers,
     source: EquipSource,
 ) -> Result<Slots, DbError> {
-    let current = load_current_wardrobe_state(main, chat_id, character_id)?;
     let items_by_id = lookup_for_bundle(main, docs, character_id, component_item_ids, tiers);
     let node = WearableNode::new(id, types, component_item_ids);
-    let next = crate::wardrobe::replace_item_into_slots(&current, &node, items_by_id.as_ref());
-    let worn_bundles = worn_bundles_for(&node, items_by_id.as_ref(), None);
-    commit(main, chat_id, character_id, &next, source, &worn_bundles)
+    apply_displacement(
+        main,
+        chat_id,
+        character_id,
+        &ComputeDisplacedOptions {
+            mode: DisplacementMode::Replace,
+            item: Some(&node),
+            slot: None,
+            item_id: None,
+            items_by_id: items_by_id.as_ref(),
+        },
+        source,
+    )
 }
 
-/// v4 `addToSlot` — append `id` to one named slot (validates `slot ∈ types`, a
-/// guard the wear handler already enforces upstream; no-op if already present).
-/// A bundle contributes the parts covering this slot; if none do, its own id
-/// goes in so the gesture is never silently a no-op.
+// LANE-REMOVE(P4.D280|P4.D282): v4 folded the four displacement primitives into applyDisplacement in 9ecebf986
+/// Old `add_to_slot` → [`apply_displacement`] in `add_to_slot` mode.
 #[allow(clippy::too_many_arguments)]
 pub fn add_to_slot(
     main: &Connection,
@@ -422,22 +362,30 @@ pub fn add_to_slot(
     tiers: &SharedWardrobeTiers,
     source: EquipSource,
 ) -> Result<Slots, DbError> {
-    // v4 throws if the item can't occupy the slot; the wear handler checks first,
-    // so this is unreachable there, but ported for fidelity.
+    // The pre-`9ecebf986` `addToSlot` threw if the item couldn't occupy the
+    // slot; the wear handler checks first, so this is unreachable there.
     debug_assert!(types.iter().any(|t| t == slot));
-    let current = load_current_wardrobe_state(main, chat_id, character_id)?;
     let items_by_id = lookup_for_bundle(main, docs, character_id, component_item_ids, tiers);
     let node = WearableNode::new(id, types, component_item_ids);
-    let next = crate::wardrobe::add_item_to_slot(&current, slot, &node, items_by_id.as_ref());
-    // Only the parts that land in THIS slot are claimed.
-    let worn_bundles = worn_bundles_for(&node, items_by_id.as_ref(), Some(slot));
-    commit(main, chat_id, character_id, &next, source, &worn_bundles)
+    apply_displacement(
+        main,
+        chat_id,
+        character_id,
+        &ComputeDisplacedOptions {
+            mode: DisplacementMode::AddToSlot,
+            item: Some(&node),
+            slot: Some(slot),
+            item_id: None,
+            items_by_id: items_by_id.as_ref(),
+        },
+        source,
+    )
 }
 
-/// v4 `removeFromSlot` — filter `item_id` out of a slot (or clear it entirely when
-/// `item_id` is `None`). Committed as [`EquipSource::TakeOff`] with no bundle
-/// claim: a removal can newly put nothing on, so it credits nothing — the
-/// source is kept for the log line.
+// LANE-REMOVE(P4.D280|P4.D282): v4 folded the four displacement primitives into applyDisplacement in 9ecebf986
+/// Old `remove_from_slot` → [`apply_displacement`] in `remove_from_slot` mode
+/// (always committed as `take-off`; the passed source is what v4's callers
+/// pass — `ui`).
 pub fn remove_from_slot(
     main: &Connection,
     chat_id: &str,
@@ -445,53 +393,19 @@ pub fn remove_from_slot(
     slot: &str,
     item_id: Option<&str>,
 ) -> Result<Slots, DbError> {
-    let mut current = load_current_wardrobe_state(main, chat_id, character_id)?;
-    match item_id {
-        None => current_slot_mut(&mut current, slot).clear(),
-        Some(id) => current_slot_mut(&mut current, slot).retain(|x| x != id),
-    }
-    commit(
+    apply_displacement(
         main,
         chat_id,
         character_id,
-        &current,
-        EquipSource::TakeOff,
-        &[],
-    )
-}
-
-/// v4 `commit(…)` (`outfit-displacement.ts:126-138`): the chokepoint, then the
-/// slots the primitive computed.
-fn commit(
-    main: &Connection,
-    chat_id: &str,
-    character_id: &str,
-    next: &Slots,
-    source: EquipSource,
-    worn_bundles: &[WornBundle],
-) -> Result<Slots, DbError> {
-    commit_equipped_outfit(
-        main,
-        CommitEquippedOutfitInput {
-            chat_id,
-            character_id,
-            next_slots: next,
-            worn_bundles,
-            source,
-            at: None,
+        &ComputeDisplacedOptions {
+            mode: DisplacementMode::RemoveFromSlot,
+            item: None,
+            slot: Some(slot),
+            item_id,
+            items_by_id: None,
         },
-    )?;
-    Ok(next.clone())
-}
-
-fn current_slot_mut<'a>(slots: &'a mut Slots, name: &str) -> &'a mut Vec<String> {
-    match name {
-        "top" => &mut slots.top,
-        "bottom" => &mut slots.bottom,
-        "footwear" => &mut slots.footwear,
-        "hair" => &mut slots.hair,
-        _ => &mut slots.accessories,
-    }
+        EquipSource::Ui,
+    )
 }
 
 // ── resolve-equipped.ts — resolveEquippedOutfitForCharacter ──────────────────

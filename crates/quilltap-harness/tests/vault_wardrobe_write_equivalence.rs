@@ -24,6 +24,18 @@
 //! file swept + new written, slug recomputed in the composite), a removal sweep
 //! (Red Pants + the dup Hat dropped), and the legacy wardrobe.json cleanup.
 //!
+//! P4.D279 (v4 `4a38222e6`, wardrobe folders): the projection is RECURSIVE and
+//! owns only item files. The fixture pre-plants a NON-item note
+//! (`Wardrobe/Notes/keep-me.md`, no `types`) and a valid-looking `.md` under
+//! the reserved `Wardrobe/images/<id>/` — neither is ever swept; three more ops
+//! add an item filed in `Formal/Evening` (written at
+//! `Wardrobe/Formal/Evening/Evening Gown.md`, both folder rows ensured), move
+//! it up to `Formal` (old path swept, new written; the emptied `Formal/Evening`
+//! folder ROW persists — folders are never deleted), then re-title Navy Shirt
+//! to `navy shirt` (a CASE-ONLY change: the store keeps the stored
+//! `Wardrobe/Navy Shirt.md` link, the lower-cased sweep must NOT delete the
+//! just-rewritten file, and no `navy shirt.md` link appears).
+//!
 //! Build the fixture + oracle (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   cd ~/source/quilltap-server
@@ -50,6 +62,8 @@ use serde_json::Value;
 struct Spec {
     #[serde(rename = "testPepperBase64")]
     test_pepper_base64: String,
+    #[serde(rename = "characterId")]
+    character_id: String,
     ops: Vec<Op>,
 }
 
@@ -157,6 +171,9 @@ fn item_from_json(v: &Value) -> WardrobeItem {
         migrated_from_clothing_record_id: opt_opt(v.get("migratedFromClothingRecordId")),
         image_file_id: None,
         archived_at: opt_opt(v.get("archivedAt")),
+        // P4.D279: the item's folder under `Wardrobe/` (absent → the root; v4
+        // reads `item.folder ?? ''`).
+        folder: str_field(v, "folder"),
         created_at: str_field(v, "createdAt"),
         updated_at: str_field(v, "updatedAt"),
     }
@@ -244,7 +261,7 @@ fn vault_wardrobe_write_matches_oracle() {
         let docs = writer.doc_mount_documents();
         for (i, op) in spec.ops.iter().enumerate() {
             let items: Vec<WardrobeItem> = op.items.iter().map(item_from_json).collect();
-            project_vault_wardrobe(&links, &docs, store_id, &items)
+            project_vault_wardrobe(&links, &docs, store_id, &spec.character_id, &items)
                 .unwrap_or_else(|e| panic!("project_vault_wardrobe op {i}: {e:?}"));
         }
     }
@@ -321,6 +338,52 @@ fn vault_wardrobe_write_matches_oracle() {
         link_paths.iter().any(|p| p == "Wardrobe/Instructions-1.md"),
         "an item titled Instructions must disambiguate onto a suffix; links: {link_paths:?}"
     );
+
+    // P4.D279 (`4a38222e6`): the recursive projection's folder shapes, as
+    // v4's dump pins them. The moved item lives at its NEW path only; the
+    // non-item note and the file under the reserved `images/` survive every
+    // projection; the case-only retitle keeps the stored link casing.
+    for p in [
+        "Wardrobe/Formal/Evening Gown.md",
+        "Wardrobe/Notes/keep-me.md",
+        "Wardrobe/images/00000000-0000-4000-8000-0000000000a1/caption.md",
+        "Wardrobe/Navy Shirt.md",
+    ] {
+        assert!(
+            link_paths.iter().any(|q| q == p),
+            "expected link {p:?}; links: {link_paths:?}"
+        );
+    }
+    for p in [
+        "Wardrobe/Formal/Evening/Evening Gown.md",
+        "Wardrobe/navy shirt.md",
+        "Wardrobe/Evening Gown.md",
+    ] {
+        assert!(
+            !link_paths.iter().any(|q| q == p),
+            "unexpected link {p:?}; links: {link_paths:?}"
+        );
+    }
+    let folders_idx = TABLES
+        .iter()
+        .position(|t| t.oracle_key == "folders")
+        .unwrap();
+    let folder_paths: Vec<String> = got[folders_idx]["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["path"].as_str().unwrap_or_default().to_string())
+        .collect();
+    for p in [
+        "Wardrobe/Formal",
+        "Wardrobe/Formal/Evening",
+        "Wardrobe/Notes",
+    ] {
+        assert!(
+            folder_paths.iter().any(|q| q == p),
+            "expected folder row {p:?} (an emptied folder persists); folders: {folder_paths:?}"
+        );
+    }
 
     eprintln!("OK: vault wardrobe write projection matched oracle (5 tables).");
 }

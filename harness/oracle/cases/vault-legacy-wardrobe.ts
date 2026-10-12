@@ -12,6 +12,11 @@
  * z.uuid() / z.iso.datetime() string formats (leap years, Z-only zone, trailing
  * newline rejection).
  *
+ * P4.D279 (v4 `4a38222e6`, wardrobe folders): `WardrobeItemSchema.folder` is
+ * `WardrobeFolderPathSchema.default('')` — absent → `''`; a VALID normal-form
+ * path is kept; anything the refine rejects (`../x`, a reserved `images`
+ * segment, a non-normal spelling, a non-string) fails the WHOLE parse (null).
+ *
  * Run from the v4 server checkout:
  *   cd ~/source/quilltap-server
  *   npx tsx ~/source/quilltap-v5/harness/oracle/cases/vault-legacy-wardrobe.ts \
@@ -125,6 +130,29 @@ wCase('w-archived-bad', J({ items: [{ ...clone(minItem), archivedAt: 'whenever' 
 // pattern v5 carried made them optional and accepted these two.
 wCase('w-ts-no-seconds', J({ items: [{ ...clone(minItem), createdAt: '2024-01-01T10:00Z' }] }));
 wCase('w-archived-no-seconds', J({ items: [{ ...clone(minItem), archivedAt: '2024-01-01T10:00Z' }] }));
+
+// ── P4.D279 (`4a38222e6`): `folder` — `WardrobeFolderPathSchema.default('')`,
+// refined by `isValidWardrobeFolderPath` (normal form, ≤ 8 segments, never a
+// reserved `images` segment); a violation nulls the WHOLE parse ─────────────
+wCase('w-folder-valid', J({ items: [{ ...clone(minItem), folder: 'Formal' }] }));
+wCase('w-folder-valid-nested', J({ items: [{ ...clone(minItem), folder: 'Formal/Evening' }] }));
+wCase('w-folder-empty-root', J({ items: [{ ...clone(minItem), folder: '' }] }));
+wCase('w-folder-absent-default', J({ items: [minItem] }));
+wCase('w-folder-dotdot', J({ items: [{ ...clone(minItem), folder: '../x' }] }));
+wCase('w-folder-dot', J({ items: [{ ...clone(minItem), folder: './x' }] }));
+wCase('w-folder-reserved-images', J({ items: [{ ...clone(minItem), folder: 'images' }] }));
+wCase('w-folder-reserved-images-nested', J({ items: [{ ...clone(minItem), folder: 'Formal/Images' }] }));
+wCase('w-folder-trailing-slash', J({ items: [{ ...clone(minItem), folder: 'Formal/' }] }));
+wCase('w-folder-leading-slash', J({ items: [{ ...clone(minItem), folder: '/Formal' }] }));
+wCase('w-folder-double-slash', J({ items: [{ ...clone(minItem), folder: 'Formal//Evening' }] }));
+wCase('w-folder-untrimmed', J({ items: [{ ...clone(minItem), folder: ' Formal' }] }));
+wCase('w-folder-unsanitised', J({ items: [{ ...clone(minItem), folder: 'Hats: Summer' }] }));
+wCase('w-folder-backslash', J({ items: [{ ...clone(minItem), folder: 'Formal\\Evening' }] }));
+wCase('w-folder-nine-deep', J({ items: [{ ...clone(minItem), folder: 'a/b/c/d/e/f/g/h/i' }] }));
+wCase('w-folder-eight-deep', J({ items: [{ ...clone(minItem), folder: 'a/b/c/d/e/f/g/h' }] }));
+wCase('w-folder-nonstring', J({ items: [{ ...clone(minItem), folder: 5 }] }));
+wCase('w-folder-null', J({ items: [{ ...clone(minItem), folder: null }] }));
+wCase('w-folder-one-bad-of-two', J({ items: [minItem, { ...clone(minItem), id: U2, folder: '../x' }] }));
 
 // ── outfit violations ────────────────────────────────────────────────────────
 wCase('w-outfit-bad-field', J({ items: [], outfit: { top: 5 } }));

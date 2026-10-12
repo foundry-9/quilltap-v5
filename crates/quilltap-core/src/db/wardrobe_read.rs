@@ -1,40 +1,43 @@
 //! The public wardrobe **read** path (v4 `WardrobeRepository.findByCharacterId`
-//! + `findByIdForCharacter` + `getOverlaidWardrobeItems`).
+//! + `readSharedTiers` + `getOverlaidWardrobeItems`, at `4a38222e6`).
 //!
 //! Post-cutover a character's wardrobe lives only in its document vault, so the
 //! public reads are vault overlays, not table scans:
 //!
 //!   - [`find_by_character_id`] (v4 `findByCharacterId` → `getOverlaidWardrobeItems`)
 //!     resolves the character's `characterDocumentMountPointId`, reads its
-//!     `Wardrobe/` via the seeded read overlay (so composites can reference shared
-//!     archetypes), coerces every item's `characterId` to the lookup id, and
-//!     applies the archived filter. Any missing character / unlinked vault /
-//!     unreadable folder degrades to `[]` (v4 logs and returns empty).
-//!   - [`find_by_id_for_character`] (v4 `findByIdForCharacter`) reads the
-//!     character's wardrobe (including archived — equip paths need an archived
-//!     item's `types`), returns the owned item if present, else falls back to
-//!     [`super::archetype_wardrobe::find_archetype_by_id`] across the shared
-//!     General/project tiers.
+//!     `Wardrobe/**` recursively through the read overlay, coerces every item's
+//!     `characterId` to the lookup id, and applies the archived filter. Any
+//!     missing character / unlinked vault / unreadable folder degrades to `[]`
+//!     (v4 logs and returns empty).
+//!   - [`read_shared_tiers`] (v4 `readSharedTiers`, `9ecebf986`) reads the
+//!     `Wardrobe/` folder of each shared mount in order, a later mount's item
+//!     shadowing an earlier one with the same id — so callers pass mounts
+//!     weakest-tier-first — and tags each item with `originOf(mountPointId)`.
 //!
-//! **Tracked deferral — `findByCharacterIdRaw`.** v4's raw variant reads the
-//! pre-cutover `wardrobe_items` SQL table (`findByFilter({ characterId })`),
-//! bypassing the vault. It is deprecated and used only by the one-time vault
-//! populator / cutover migrations while that table still exists; the vault era
-//! drops the table, and no W4.0 consumer calls it (the transfers service and all
-//! live reads go through the overlay). Port it with the migrations if/when they
-//! are ported.
+//! **The shrink (v4 `9ecebf986`).** v4's `WardrobeRepository` lost
+//! `findByIdForCharacter`, `findByIdsForCharacter`, `findWearablePoolForCharacter`,
+//! `findArchetypes*`, `findAll`, `findByCharacterIdRaw`, `archive` and
+//! `unarchive`: every "what can this character reach" question is now a walk
+//! over the per-request [`crate::wearable_pool::WearablePool`]
+//! (`loadWearablePool` / `pool.get` / `pool.getMany` / `pool.wearable()`), and
+//! the reader no longer seeds shared archetypes into component resolution (a
+//! cross-tier ref survives parsing as its UUID — bug 187 — and the pool
+//! resolves it). The three finders below are kept ONLY as `LANE-REMOVE`
+//! wrappers over the pool so the files of the `4a38222e6` round's other lanes
+//! compile until each re-points its callers; the keystone's census
+//! `no_wardrobe_lane_remove_markers_left` fails while any marker remains.
 
 use rusqlite::Connection;
 use serde_json::Value;
 
-use super::archetype_wardrobe::{find_archetype_by_id, find_archetypes};
+use super::archetype_wardrobe::{read_shared_wardrobe, with_origin, WardrobeOrigin};
 use super::characters_read;
 use super::doc_mount_documents::DocMountDocumentsRepository;
 use super::vault_read_overlay::read_character_vault_wardrobe;
 use super::DbError;
-use crate::vault_overlay::SeedArchetype;
 use crate::wardrobe_tiers::SharedWardrobeTiers;
-use crate::wearable_pool::{is_archived_truthy, merge_wearable_pool};
+use crate::wearable_pool::{is_archived_truthy, load_wearable_pool, LoadWearablePoolOptions};
 
 /// v4's `hasLinkedVault(character)` — the character row carries a non-empty
 /// `characterDocumentMountPointId`.
@@ -50,6 +53,10 @@ fn linked_vault_mount(character: &Value) -> Option<String> {
 /// wardrobe items. `main` holds `characters` + `instance_settings`; `docs` is the
 /// mount-index document store. Degrades to `[]` (never errors) on a missing
 /// character or unlinked/unreadable vault, matching v4's graceful reads.
+///
+/// Since `9ecebf986` the read seeds NOTHING: component refs resolve against the
+/// vault's own folder, a cross-tier UUID ref is kept as written (bug 187), and
+/// the wearable pool resolves it per request.
 pub fn find_by_character_id(
     main: &Connection,
     docs: &DocMountDocumentsRepository,
@@ -63,16 +70,7 @@ pub fn find_by_character_id(
         return Ok(Vec::new());
     };
 
-    // The character read seeds shared archetypes so a composite can reference a
-    // household item it doesn't hold — v4 `readCharacterVaultWardrobe(mp, charId)`
-    // with the default `seedArchetypes = true` → `findArchetypes(true)`.
-    let fetch = || -> Result<Vec<SeedArchetype>, DbError> {
-        let archetypes = find_archetypes(main, docs, true, &SharedWardrobeTiers::none())?;
-        Ok(archetypes.iter().map(SeedArchetype::from_value).collect())
-    };
-    let Some(vault) =
-        read_character_vault_wardrobe(docs, &mount_point_id, character_id, true, &fetch)?
-    else {
+    let Some(vault) = read_character_vault_wardrobe(docs, &mount_point_id, character_id)? else {
         return Ok(Vec::new());
     };
 
@@ -97,47 +95,116 @@ pub fn find_by_character_id(
         .collect())
 }
 
-/// v4 `findWearablePoolForCharacter` — everything a character can actually wear:
-/// the shared tiers (Quilltap General + the character's group stores in
-/// `tiers.group_mount_point_ids` + any project stores in
-/// `tiers.project_mount_point_ids`) merged under the character's own vault.
-/// Character items shadow shared ones on id collision; archived items are
-/// dropped.
+/// v4 `WardrobeRepository.readSharedTiers(mountPointIds, includeArchived,
+/// originOf)` (`wardrobe.repository.ts:69-98`, `9ecebf986`) — read the
+/// `Wardrobe/` folder of each shared mount in order, a later mount's item
+/// shadowing an earlier one with the same id (v4's `Map.set`: the value is
+/// replaced IN PLACE, keeping the first position) — so pass mounts
+/// weakest-tier-first. Each item is tagged `{ ...item, origin: originOf(mp) }`
+/// (`origin` LAST).
 ///
-/// This is the pool every "what can this character wear?" question should ask —
-/// `wardrobe_list`, chat-start default resolution, the `llm_choose` candidate
-/// list. Filter it (e.g. `isDefault`) *after* the merge, never before: a
-/// personal `isDefault: false` item shadowing a shared default is invisible to a
-/// merge done on pre-filtered lists.
-///
-/// **Do NOT "simplify" this** to call [`read_character_vault_wardrobe`] directly
-/// or to flip `seed_archetypes` on the shared readers. The archetype read is a
-/// *sibling* of the vault read here, not nested inside it, which is what keeps
-/// the recursion guard in [`super::archetype_wardrobe`] (v4
-/// `lib/mount-index/general-wardrobe.ts`) intact.
-///
-/// Resolve `tiers` through
-/// [`resolve_shared_wardrobe_tiers_for_chat`](crate::wardrobe_tiers::resolve_shared_wardrobe_tiers_for_chat)
-/// (or one of its siblings) rather than by hand — threading one tier and
-/// dropping the other is exactly how the group wardrobe went unreadable for as
-/// long as it did.
+/// A mount that can't be read is logged (WARN `Failed to read shared wardrobe
+/// tier; skipping`) and skipped: one unreadable store must not cost a character
+/// the rest of their wardrobe. Never fails. `[]` for no mounts BEFORE anything
+/// (no line).
+pub fn read_shared_tiers(
+    docs: &DocMountDocumentsRepository,
+    mount_point_ids: &[String],
+    include_archived: bool,
+    origin_of: &dyn Fn(&str) -> WardrobeOrigin,
+) -> Vec<Value> {
+    if mount_point_ids.is_empty() {
+        return Vec::new();
+    }
+    let mut order: Vec<Value> = Vec::new();
+    let mut index_by_id: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    for mount_point_id in mount_point_ids {
+        match read_shared_wardrobe(docs, mount_point_id, include_archived) {
+            Ok(items) => {
+                let origin = origin_of(mount_point_id);
+                for item in with_origin(items, &origin) {
+                    let id = item
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string();
+                    if let Some(&i) = index_by_id.get(&id) {
+                        order[i] = item;
+                    } else {
+                        index_by_id.insert(id, order.len());
+                        order.push(item);
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    mountPointId = %mount_point_id,
+                    context = "wardrobe",
+                    error = %crate::db::fallback::error_text(&e),
+                    "Failed to read shared wardrobe tier; skipping"
+                );
+            }
+        }
+    }
+    tracing::debug!(
+        mountCount = mount_point_ids.len(),
+        itemCount = order.len(),
+        includeArchived = include_archived,
+        context = "wardrobe",
+        "Read shared wardrobe tiers"
+    );
+    order
+}
+
+/// Strip the pool's read-time `origin` tag so a pre-`9ecebf986` caller sees the
+/// untagged shape the deleted finders answered.
+fn without_origin(mut item: Value) -> Value {
+    if let Some(obj) = item.as_object_mut() {
+        obj.remove("origin");
+    }
+    item
+}
+
+// LANE-REMOVE(P4.D282|P4.D280): v4 deleted findWearablePoolForCharacter in 9ecebf986
+/// The pre-`9ecebf986` `findWearablePoolForCharacter` over the pool's
+/// `wearable()` (archived dropped per tier before shadowing — the same set the
+/// old merge produced), untagged. Callers move to
+/// [`crate::wearable_pool::load_wearable_pool`] + `wearable()`.
 pub fn find_wearable_pool_for_character(
     main: &Connection,
     docs: &DocMountDocumentsRepository,
     character_id: &str,
     tiers: &SharedWardrobeTiers,
 ) -> Result<Vec<Value>, DbError> {
-    let shared = find_archetypes(main, docs, false, tiers)?;
-    let own = find_by_character_id(main, docs, character_id, false)?;
-    Ok(merge_wearable_pool(&shared, &own))
+    // The pre-pool finders PROPAGATED a failed own-vault read (v4's
+    // `findByCharacterId` rethrows) where the pool fails soft — the shim keeps
+    // the old contract for its remaining callers by reading the own items
+    // itself and handing them to the pool.
+    let own = find_by_character_id(main, docs, character_id, true)?;
+    let pool = load_wearable_pool(
+        main,
+        docs.conn(),
+        character_id,
+        Some(&tiers.project_mount_point_ids),
+        LoadWearablePoolOptions {
+            own_items: Some(&own),
+            ..LoadWearablePoolOptions::default()
+        },
+    );
+    Ok(pool
+        .wearable()
+        .iter()
+        .cloned()
+        .map(without_origin)
+        .collect())
 }
 
-/// v4 `findByIdsForCharacter` — multiple wardrobe items wearable by a character.
-/// Honours the vault overlay (reads with archived included) and folds in shared
-/// archetypes for any ids not in the character's own wardrobe. Returns items in
-/// v4's `Map` insertion order: the character's own matches first (in read order),
-/// then the archetype fills for the still-missing ids (in archetype read order).
-/// `[]` for an empty id list, matching v4's early return.
+// LANE-REMOVE(P4.D282|P4.D280): v4 deleted findByIdsForCharacter in 9ecebf986
+/// The pre-`9ecebf986` `findByIdsForCharacter` over the pool's `by_id`
+/// (archived included), in the old order — the character's own matches first in
+/// read order, then the shared fills — untagged. Callers move to
+/// `pool.get_many(ids)` (the ORDER ASKED).
 pub fn find_by_ids_for_character(
     main: &Connection,
     docs: &DocMountDocumentsRepository,
@@ -148,46 +215,47 @@ pub fn find_by_ids_for_character(
     if ids.is_empty() {
         return Ok(Vec::new());
     }
+    // The pre-pool finders PROPAGATED a failed own-vault read (v4's
+    // `findByCharacterId` rethrows) where the pool fails soft — the shim keeps
+    // the old contract for its remaining callers by reading the own items
+    // itself and handing them to the pool.
+    let own = find_by_character_id(main, docs, character_id, true)?;
+    let pool = load_wearable_pool(
+        main,
+        docs.conn(),
+        character_id,
+        Some(&tiers.project_mount_point_ids),
+        LoadWearablePoolOptions {
+            own_items: Some(&own),
+            ..LoadWearablePoolOptions::default()
+        },
+    );
     let want: std::collections::HashSet<&str> = ids.iter().map(String::as_str).collect();
-
-    // ⚠ `include_archived: true`, and it must stay that way (v4 `d25dacc1`'s
-    // `resolve-equipped` pin, the OPPOSITE direction from the candidate pool):
-    // a garment archived MID-CHAT is still worn, and an archived-excluding read
-    // here would lose its title from the outfit. The pool reads (line ~130) pass
-    // `false` precisely because they are the audition; this is the wearer.
-    let items = find_by_character_id(main, docs, character_id, true)?;
     let mut ordered: Vec<Value> = Vec::new();
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for it in items {
-        let Some(id) = it.get("id").and_then(Value::as_str) else {
+    for item in pool.by_id_ordered() {
+        let Some(id) = item.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+        if want.contains(id) && pool.owns(item) && seen.insert(id.to_string()) {
+            ordered.push(without_origin(item.clone()));
+        }
+    }
+    for item in pool.by_id_ordered() {
+        let Some(id) = item.get("id").and_then(Value::as_str) else {
             continue;
         };
         if want.contains(id) && seen.insert(id.to_string()) {
-            ordered.push(it);
+            ordered.push(without_origin(item.clone()));
         }
     }
-
-    // Any ids not owned by the character: fill from the merged archetype tiers.
-    let has_missing = ids.iter().any(|id| !seen.contains(id));
-    if has_missing {
-        let archetypes = find_archetypes(main, docs, true, tiers)?;
-        for a in archetypes {
-            let Some(id) = a.get("id").and_then(Value::as_str) else {
-                continue;
-            };
-            if want.contains(id) && seen.insert(id.to_string()) {
-                ordered.push(a);
-            }
-        }
-    }
-
     Ok(ordered)
 }
 
-/// v4 `findByIdForCharacter` — a single wardrobe item by id, preferring the
-/// character's own (including archived), then falling back to the shared
-/// archetype tiers (Quilltap General + the character's group stores + any
-/// project stores). `tiers` scopes the archetype fallback.
+// LANE-REMOVE(P4.D282|P4.D280|P4.D281): v4 deleted findByIdForCharacter in 9ecebf986
+/// The pre-`9ecebf986` `findByIdForCharacter` over the pool's `get(id)`
+/// (archived included; character > group > project > general), untagged.
+/// Callers move to `pool.get(id)`.
 pub fn find_by_id_for_character(
     main: &Connection,
     docs: &DocMountDocumentsRepository,
@@ -195,12 +263,20 @@ pub fn find_by_id_for_character(
     id: &str,
     tiers: &SharedWardrobeTiers,
 ) -> Result<Option<Value>, DbError> {
-    let items = find_by_character_id(main, docs, character_id, true)?;
-    if let Some(owned) = items
-        .into_iter()
-        .find(|it| it.get("id").and_then(Value::as_str) == Some(id))
-    {
-        return Ok(Some(owned));
-    }
-    find_archetype_by_id(main, docs, id, tiers)
+    // The pre-pool finders PROPAGATED a failed own-vault read (v4's
+    // `findByCharacterId` rethrows) where the pool fails soft — the shim keeps
+    // the old contract for its remaining callers by reading the own items
+    // itself and handing them to the pool.
+    let own = find_by_character_id(main, docs, character_id, true)?;
+    let pool = load_wearable_pool(
+        main,
+        docs.conn(),
+        character_id,
+        Some(&tiers.project_mount_point_ids),
+        LoadWearablePoolOptions {
+            own_items: Some(&own),
+            ..LoadWearablePoolOptions::default()
+        },
+    );
+    Ok(pool.get(id).cloned().map(without_origin))
 }

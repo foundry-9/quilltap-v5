@@ -30,6 +30,13 @@
     "real delete (op5, and the surviving composite's now-dangling ref DROPS on read),",
     "a delete of the already-gone id returning false (op6), and a create against a",
     "non-existent character that THROWS no-mount (op7, folder unchanged).",
+    "P4.D279 (v4 `4a38222e6`, wardrobe folders) — four more: a create with a RAW",
+    "`folder: \"Formal/Evening\"` (op8, kept by the writer's safeFolder — the",
+    "read-back item carries `folder`), a create with `folder: \"../x\"` (op9,",
+    "normalised to the ROOT), an update patch `{ folder: \"Formal\" }` moving op9's",
+    "item (op10, old path swept, new written), and a CASE-ONLY `{ folder:",
+    "\"formal\" }` (op11 — the writer's EXACT-case movesFolder; whatever the",
+    "store answers for the read-back folder is pinned by the oracle).",
     "",
     "NORMALIZATION (harness, both sides): each read-back item's `updatedAt` -> <ts>;",
     "everything else exact (createdAt stays pinned, proving preservation on update).",
@@ -124,6 +131,32 @@
       "readBack": "c7000000-0000-4000-8000-000000000001",
       "data": { "characterId": "deadbeef-0000-4000-8000-000000000000", "title": "Ghost Cloak", "types": ["top"] },
       "options": { "id": "d7000003-0000-4000-8000-000000000003", "createdAt": "2026-02-01T00:00:00.000Z", "updatedAt": "2026-02-01T00:00:00.000Z" }
+    },
+    {
+      "op": "create",
+      "readBack": "c7000000-0000-4000-8000-000000000001",
+      "data": { "characterId": "c7000000-0000-4000-8000-000000000001", "title": "Evening Gown", "types": ["top", "bottom"], "folder": "Formal/Evening" },
+      "options": { "id": "d7000004-0000-4000-8000-000000000004", "createdAt": "2026-02-02T00:00:00.000Z", "updatedAt": "2026-02-02T00:00:00.000Z" }
+    },
+    {
+      "op": "create",
+      "readBack": "c7000000-0000-4000-8000-000000000001",
+      "data": { "characterId": "c7000000-0000-4000-8000-000000000001", "title": "Cloak", "types": ["top"], "folder": "../x" },
+      "options": { "id": "d7000005-0000-4000-8000-000000000005", "createdAt": "2026-02-02T00:00:00.000Z", "updatedAt": "2026-02-02T00:00:00.000Z" }
+    },
+    {
+      "op": "update",
+      "readBack": "c7000000-0000-4000-8000-000000000001",
+      "id": "d7000005-0000-4000-8000-000000000005",
+      "characterId": "c7000000-0000-4000-8000-000000000001",
+      "patch": { "folder": "Formal" }
+    },
+    {
+      "op": "update",
+      "readBack": "c7000000-0000-4000-8000-000000000001",
+      "id": "d7000005-0000-4000-8000-000000000005",
+      "characterId": "c7000000-0000-4000-8000-000000000001",
+      "patch": { "folder": "formal" }
     }
   ]
 }

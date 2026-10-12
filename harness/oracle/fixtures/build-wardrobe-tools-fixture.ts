@@ -261,12 +261,12 @@ async function main(): Promise<void> {
   //     co-participant) and that `wardrobe_create` keys component resolution on
   //     the recipient.
   // The official store is provisioned by hand rather than via
-  // `ensureGroupOfficialStore` so its mount-point id can be pinned.
-  const { createProjectWardrobeItem } = await import(
+  // `ensureOwnerOfficialStore` so its mount-point id can be pinned.
+  const { createMountWardrobeItem: createProjectWardrobeItem } = await import(
     '@/lib/database/repositories/vault-overlay/wardrobe-writes'
   );
   const { ensureFolderPath } = await import('@/lib/mount-index/folder-paths');
-  const { ensureGroupOfficialStore } = await import('@/lib/mount-index/ensure-group-store');
+  const { ensureOwnerOfficialStore } = await import('@/lib/mount-index/ensure-owner-store');
 
   const seedGroup = async (
     groupId: string,
@@ -282,11 +282,11 @@ async function main(): Promise<void> {
     } as never);
     // Groups are store-backed entities: their content lives in the official
     // store's `properties.json`, so the store must be provisioned through v4's
-    // own `ensureGroupOfficialStore` (a hand-inserted mount point leaves the
+    // own `ensureOwnerOfficialStore('group', …)` (a hand-inserted mount point leaves the
     // group unhydratable). Its mount-point id is therefore MINTED, not pinned —
     // harmless here, since both sides read this same built fixture and the
     // wardrobe item ids inside it stay pinned.
-    const ensured = await ensureGroupOfficialStore(groupId, groupName);
+    const ensured = await ensureOwnerOfficialStore('group', groupId, groupName);
     if (!ensured) throw new Error(`failed to provision the official store for ${groupName}`);
     await repos.groupCharacterMembers.create(
       { groupId, characterId: memberCharacterId } as never,

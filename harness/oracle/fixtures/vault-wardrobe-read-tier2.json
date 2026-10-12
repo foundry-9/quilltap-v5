@@ -96,6 +96,41 @@
       "mountPointId": "57a4d40b-0000-4000-8000-00000000000d",
       "relativePath": "Wardrobe/instructions.md",
       "content": "You dress for the weather, not the occasion.\n"
+    },
+    {
+      "mountPointId": "57a4d40b-0000-4000-8000-00000000000a",
+      "relativePath": "Wardrobe/Formal/Evening/10-gown.md",
+      "content": "---\nid: \"10101010-1010-4010-8010-101010101010\"\ntitle: Evening Gown\ntypes: [top, bottom]\n---\nA nested item two folders deep (folder = Formal/Evening).\n"
+    },
+    {
+      "mountPointId": "57a4d40b-0000-4000-8000-00000000000a",
+      "relativePath": "Wardrobe/Formal/11-blazer.md",
+      "content": "---\nid: \"11111111-2222-4333-8444-555555555555\"\ntitle: Blazer\ntypes: [top]\nfolder: Casual\n---\nCarries a frontmatter `folder: Casual` key the path (Formal) overrides.\n"
+    },
+    {
+      "mountPointId": "57a4d40b-0000-4000-8000-00000000000a",
+      "relativePath": "Wardrobe/images/10101010-1010-4010-8010-101010101010/pic.webp",
+      "content": "not really a picture; a non-.md file under the reserved images/ folder\n"
+    },
+    {
+      "mountPointId": "57a4d40b-0000-4000-8000-00000000000a",
+      "relativePath": "Wardrobe/images/10101010-1010-4010-8010-101010101010/caption.md",
+      "content": "---\ntitle: Caption\ntypes: [top]\n---\nA valid-looking item file under the reserved images/ folder: never an item.\n"
+    },
+    {
+      "mountPointId": "57a4d40b-0000-4000-8000-00000000000a",
+      "relativePath": "Wardrobe/Formal/instructions.md",
+      "content": "---\ntitle: Formal Instructions\ntypes: [accessories]\n---\nNested dressing guidance: excluded at any depth.\n"
+    },
+    {
+      "mountPointId": "57a4d40b-0000-4000-8000-00000000000a",
+      "relativePath": "Wardrobe/Notes/todo.md",
+      "content": "---\ntitle: Todo\n---\nA note with NO `types`: an item PATH the parser returns null for (skipped).\n"
+    },
+    {
+      "mountPointId": "57a4d40b-0000-4000-8000-00000000000a",
+      "relativePath": "Wardrobe/12-ensemble.md",
+      "content": "---\nid: \"12121212-1212-4212-8212-121212121212\"\ntitle: Ensemble\ntypes: [top]\ncomponentItems: [\"blue-shirt\", \"0a0a0a0a-0a0a-4a0a-8a0a-0a0a0a0a0a0a\", \"house-livery\"]\n---\nA composite: a local slug, a cross-tier UUID (kept as written), an unknown slug (dropped).\n"
     }
   ]
 }

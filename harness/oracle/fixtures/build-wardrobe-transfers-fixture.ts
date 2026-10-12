@@ -323,8 +323,8 @@ async function main(): Promise<void> {
   const groupRow = await repos.groups.findByIdRaw(spec.groupId);
   const groupMp = groupRow?.officialMountPointId as string;
   if (!groupMp) throw new Error('group official store not minted');
-  const { ensureGroupWardrobeFolder } = await import('@/lib/mount-index/group-wardrobe');
-  const { createProjectWardrobeItem } = await import(
+  const { ensureSharedWardrobeFolder } = await import('@/lib/mount-index/shared-wardrobe');
+  const { createMountWardrobeItem: createProjectWardrobeItem } = await import(
     '@/lib/database/repositories/vault-overlay/wardrobe-writes'
   );
   // [P4.D112 / v4 f6a10055] The component-collision seed: a PROJECT-store item
@@ -333,9 +333,8 @@ async function main(): Promise<void> {
   const projectRow = await repos.projects.findByIdRaw(spec.projectId);
   const projectMp = projectRow?.officialMountPointId as string;
   if (!projectMp) throw new Error('project official store not minted');
-  const { ensureProjectWardrobeFolder } = await import('@/lib/mount-index/project-wardrobe');
-  await ensureProjectWardrobeFolder(projectMp);
-  const { createProjectWardrobeItem: createIntoMount } = await import(
+  await ensureSharedWardrobeFolder(projectMp);
+  const { createMountWardrobeItem: createIntoMount } = await import(
     '@/lib/database/repositories/vault-overlay/wardrobe-writes'
   );
   await createIntoMount(projectMp, {
@@ -355,7 +354,7 @@ async function main(): Promise<void> {
     updatedAt: PINNED_TS,
   } as never);
 
-  await ensureGroupWardrobeFolder(groupMp);
+  await ensureSharedWardrobeFolder(groupMp);
   await createProjectWardrobeItem(groupMp, {
     id: spec.groupItem.id,
     characterId: null,

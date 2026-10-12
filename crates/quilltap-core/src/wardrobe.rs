@@ -191,6 +191,30 @@ where
         .collect()
 }
 
+/// v4 `buildCompositeTypes(components, designated)` — a composite's `types`:
+/// every slot its components cover plus any extra slots it designates (a
+/// "Naked" composite that clears accessories it holds nothing for). Widens,
+/// never narrows — the one rule for create and update, client and server, so
+/// an edit can never silently drop a slot the composite claimed. Canonical
+/// slot order; an unknown slot name in either input is dropped (v4 filters
+/// `WARDROBE_SLOT_TYPES` against the set, so only the canonical five survive).
+pub fn build_composite_types(components: &[Vec<String>], designated: &[String]) -> Vec<String> {
+    let mut set: HashSet<&str> = HashSet::new();
+    for types in components {
+        for t in types {
+            set.insert(t.as_str());
+        }
+    }
+    for t in designated {
+        set.insert(t.as_str());
+    }
+    WARDROBE_SLOT_TYPES
+        .iter()
+        .filter(|s| set.contains(**s))
+        .map(|s| s.to_string())
+        .collect()
+}
+
 // ===========================================================================
 // outfit-description.ts — describeOutfit
 // ===========================================================================
@@ -614,6 +638,49 @@ fn to_str_array(v: &[String]) -> Value {
     Value::Array(v.iter().map(|s| Value::String(s.clone())).collect())
 }
 
+// ===========================================================================
+// wardrobe.types.ts — the four pure slot/composite helpers (v4 `4a38222e6`)
+// ===========================================================================
+
+/// v4 `isComposite(item)` — true when the item is a composite (an outfit): it
+/// gathers other items via `componentItemIds`. The one spelling of the check —
+/// client and server. (`None`/absent on the wire reads as the empty list.)
+pub fn is_composite(component_item_ids: &[String]) -> bool {
+    !component_item_ids.is_empty()
+}
+
+/// v4 `addIdToSlot(slots, slot, itemId)` — a copy of `slots` with `item_id`
+/// appended to `slot` (layering). No-op copy when the id is already there.
+pub fn add_id_to_slot(slots: &Slots, slot: &str, item_id: &str) -> Slots {
+    let mut next = slots.clone();
+    let target = next.slot_mut(slot);
+    if !target.iter().any(|id| id == item_id) {
+        target.push(item_id.to_string());
+    }
+    next
+}
+
+/// v4 `removeIdFromSlot(slots, slot, itemId?)` — a copy of `slots` with
+/// `item_id` filtered out of `slot`; with `item_id` omitted (`None`), the slot
+/// is cleared.
+pub fn remove_id_from_slot(slots: &Slots, slot: &str, item_id: Option<&str>) -> Slots {
+    let mut next = slots.clone();
+    let target = next.slot_mut(slot);
+    match item_id {
+        None => target.clear(),
+        Some(item_id) => target.retain(|id| id != item_id),
+    }
+    next
+}
+
+/// v4 `equippedSlotsEqual(a, b)` — true when two slot bags hold the same ids
+/// in the same order, slot by slot.
+pub fn equipped_slots_equal(a: &Slots, b: &Slots) -> bool {
+    WARDROBE_SLOT_TYPES
+        .iter()
+        .all(|slot| a.slot(slot) == b.slot(slot))
+}
+
 /// v4 `normalizeEquippedSlots` (`lib/schemas/wardrobe.types.ts`, `275cd7bc`) —
 /// coerce a raw stored slot bag into a full five-slot outfit.
 ///
@@ -666,88 +733,48 @@ pub fn normalize_equipped_outfit_state(stored: &Value) -> Value {
     Value::Object(out)
 }
 
-/// v4 `wearItemIntoSlots` — for each slot in `types`, replace with `[id]` when
-/// `replace`, else append `id` (no-op if already present).
-///
-/// A **bundle** (`61574563`) goes on as its parts, not as itself: given an
-/// `items_by_id` lookup that resolves its components, the leaves are laid into
-/// the slots their own `types` declare and the bundle's id is never stored.
-/// `replace` still governs — an assembled outfit set to replace clears the slots
-/// it lands in first. Without a lookup (or when a bundle's parts can't be
-/// resolved) the bundle is stored whole, the pre-4.8.2 behaviour, and read-time
-/// [`expand_composites`] still covers it.
+// The three pure slot mutators that lived here (`wearItemIntoSlots` /
+// `replaceItemIntoSlots` / `addItemToSlot`) moved to `lib/wardrobe/slot-ops.ts`
+// in v4 `9ecebf986`, where `wearItemIntoSlots` reads `replace` off the ITEM
+// (`item.replace === true`) instead of taking it as an argument, and every
+// mutator filters `types` through `slotsOf` (an unrecognized type lands
+// nowhere — the old mutators here routed it into `top` through `slot_mut`'s
+// fallback arm). The port is [`crate::slot_ops`]; these are shims with the OLD
+// signatures for the callers the re-aim lane has not reached yet.
+
+// LANE-REMOVE(P4.D282): v4 moved the slot mutators to slot-ops.ts in 9ecebf986
+/// Old `wear_item_into_slots(current, item, replace, lookup)` →
+/// [`crate::slot_ops::wear_item_into_slots`] over a node copy carrying the
+/// `replace` flag.
 pub fn wear_item_into_slots(
     current: &Slots,
-    item: &crate::dissolve_bundles::WearableNode,
+    item: &crate::slot_ops::WearableNode,
     replace: bool,
-    items_by_id: Option<&crate::dissolve_bundles::WearableLookup>,
+    items_by_id: Option<&crate::slot_ops::WearableLookup>,
 ) -> Slots {
-    if let Some(leaves) = crate::dissolve_bundles::dissolve_bundle_to_leaves(item, items_by_id) {
-        return crate::dissolve_bundles::lay_leaves_into_slots(current, item, &leaves, replace);
-    }
-
-    let mut slots = current.clone();
-    for slot in &item.types {
-        if replace {
-            *slots.slot_mut(slot) = vec![item.id.clone()];
-        } else if !slots.slot(slot).contains(&item.id) {
-            slots.slot_mut(slot).push(item.id.clone());
-        }
-    }
-    slots
+    let node = item.clone().with_replace(replace);
+    crate::slot_ops::wear_item_into_slots(current, &node, items_by_id)
 }
 
-/// v4 `replaceItemIntoSlots` — clear each slot in `types` and set it to `[id]`,
-/// ignoring the `replace` flag. A resolvable bundle dissolves into its leaves
-/// with the covered slots cleared first (see [`wear_item_into_slots`]).
+// LANE-REMOVE(P4.D282): v4 moved the slot mutators to slot-ops.ts in 9ecebf986
+/// Old `replace_item_into_slots` → [`crate::slot_ops::replace_item_into_slots`].
 pub fn replace_item_into_slots(
     current: &Slots,
-    item: &crate::dissolve_bundles::WearableNode,
-    items_by_id: Option<&crate::dissolve_bundles::WearableLookup>,
+    item: &crate::slot_ops::WearableNode,
+    items_by_id: Option<&crate::slot_ops::WearableLookup>,
 ) -> Slots {
-    if let Some(leaves) = crate::dissolve_bundles::dissolve_bundle_to_leaves(item, items_by_id) {
-        return crate::dissolve_bundles::lay_leaves_into_slots(current, item, &leaves, true);
-    }
-
-    let mut slots = current.clone();
-    for slot in &item.types {
-        *slots.slot_mut(slot) = vec![item.id.clone()];
-    }
-    slots
+    crate::slot_ops::replace_item_into_slots(current, item, items_by_id)
 }
 
-/// v4 `addItemToSlot` (`61574563`) — pure single-slot layering. A bundle
-/// contributes the parts that cover this slot rather than its own id; if none of
-/// them do (the caller asked for a slot the bundle claims but no part fills), the
-/// bundle's id goes in as before so the gesture is never silently a no-op.
+// LANE-REMOVE(P4.D282): v4 moved the slot mutators to slot-ops.ts in 9ecebf986
+/// Old `add_item_to_slot` → [`crate::slot_ops::add_item_to_slot`].
 pub fn add_item_to_slot(
     current: &Slots,
     slot: &str,
-    item: &crate::dissolve_bundles::WearableNode,
-    items_by_id: Option<&crate::dissolve_bundles::WearableLookup>,
+    item: &crate::slot_ops::WearableNode,
+    items_by_id: Option<&crate::slot_ops::WearableLookup>,
 ) -> Slots {
-    let mut slots = current.clone();
-    let leaves = crate::dissolve_bundles::dissolve_bundle_to_leaves(item, items_by_id);
-    let for_slot: Vec<&crate::dissolve_bundles::DissolvedLeaf> = leaves
-        .as_deref()
-        .unwrap_or_default()
-        .iter()
-        .filter(|leaf| leaf.slots.iter().any(|s| s == slot))
-        .collect();
-
-    if !for_slot.is_empty() {
-        for leaf in for_slot {
-            if !slots.slot(slot).contains(&leaf.id) {
-                slots.slot_mut(slot).push(leaf.id.clone());
-            }
-        }
-        return slots;
-    }
-
-    if !slots.slot(slot).contains(&item.id) {
-        slots.slot_mut(slot).push(item.id.clone());
-    }
-    slots
+    crate::slot_ops::add_item_to_slot(current, slot, item, items_by_id)
 }
 
 // ===========================================================================
@@ -912,6 +939,55 @@ mod tests {
         let got = union_types([a.as_slice(), b.as_slice()]);
         // Canonical order regardless of input order — hair LAST.
         assert_eq!(got, types(&["top", "bottom", "accessories", "hair"]));
+    }
+
+    #[test]
+    fn build_composite_types_widens_never_narrows() {
+        // v4 item-mutations.test.ts: `buildCompositeTypes([boots, shirt], ['accessories'])`.
+        let got = build_composite_types(
+            &[types(&["footwear"]), types(&["top"])],
+            &types(&["accessories"]),
+        );
+        assert_eq!(got, types(&["top", "footwear", "accessories"]));
+        // Never narrows below what was designated.
+        let got = build_composite_types(&[types(&["top"])], &types(&["top", "bottom", "hair"]));
+        assert_eq!(got, types(&["top", "bottom", "hair"]));
+        // Unknown slot names are dropped; empty inputs give an empty list.
+        assert!(build_composite_types(&[], &[]).is_empty());
+        assert_eq!(
+            build_composite_types(&[types(&["cape"])], &types(&["hat", "hair"])),
+            types(&["hair"])
+        );
+    }
+
+    #[test]
+    fn slot_helpers_copy_and_compare() {
+        let mut base = Slots::fresh();
+        base.top = types(&["a"]);
+        assert!(!is_composite(&[]));
+        assert!(is_composite(&types(&["x"])));
+
+        let added = add_id_to_slot(&base, "top", "b");
+        assert_eq!(added.top, types(&["a", "b"]));
+        assert_eq!(base.top, types(&["a"]), "the input is left untouched");
+        assert_eq!(add_id_to_slot(&added, "top", "b").top, types(&["a", "b"]));
+
+        let cleared = remove_id_from_slot(&added, "top", None);
+        assert!(cleared.top.is_empty());
+        assert_eq!(
+            remove_id_from_slot(&added, "top", Some("a")).top,
+            types(&["b"])
+        );
+        assert_eq!(
+            remove_id_from_slot(&added, "top", Some("zz")).top,
+            types(&["a", "b"])
+        );
+
+        assert!(equipped_slots_equal(&base, &base.clone()));
+        assert!(!equipped_slots_equal(&base, &added));
+        let mut reordered = added.clone();
+        reordered.top.reverse();
+        assert!(!equipped_slots_equal(&added, &reordered), "order matters");
     }
 
     #[test]

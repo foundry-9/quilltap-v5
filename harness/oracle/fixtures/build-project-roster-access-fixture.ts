@@ -12,7 +12,7 @@
  *   3. CLOSED ("Closed Ledger"): `allowAnyCharacter: false` EXPLICITLY, roster
  *      [Ada]. Its REAL official store holds `Docs/plan.md` (the word "quarry", so
  *      one grep discriminates) and a project `Wardrobe/` item (the
- *      `build-wardrobe-routes-fixture.ts` idiom — `ensureProjectWardrobeFolder`
+ *      `build-wardrobe-routes-fixture.ts` idiom — `ensureSharedWardrobeFolder`
  *      + `createProjectWardrobeItem`, pinned id).
  *   4. OPEN ("Open Commons"): `allowAnyCharacter: true` EXPLICITLY, roster [];
  *      `Docs/notes.md` in its store.
@@ -267,11 +267,11 @@ async function main(): Promise<void> {
   await seedDoc(spec.generalMountPointId, 'notes.md', 'Quilltap General');
 
   // 6. The Closed project's Wardrobe/ item (the wardrobe-routes idiom).
-  const { ensureProjectWardrobeFolder } = await import('@/lib/mount-index/project-wardrobe');
-  const { createProjectWardrobeItem } = await import(
+  const { ensureSharedWardrobeFolder } = await import('@/lib/mount-index/shared-wardrobe');
+  const { createMountWardrobeItem: createProjectWardrobeItem } = await import(
     '@/lib/database/repositories/vault-overlay/wardrobe-writes'
   );
-  await ensureProjectWardrobeFolder(closedStore);
+  await ensureSharedWardrobeFolder(closedStore);
   await createProjectWardrobeItem(closedStore, {
     id: spec.closedCloakId,
     characterId: null,

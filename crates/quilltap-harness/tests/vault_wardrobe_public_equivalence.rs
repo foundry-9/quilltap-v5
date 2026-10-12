@@ -11,6 +11,13 @@
 //! timestamp lands inside a content-addressed `.md`. The projection primitive is
 //! separately byte-verified (`vault_wardrobe_write_equivalence`).
 //!
+//! P4.D279 (v4 `4a38222e6`, wardrobe folders): every read-back item carries
+//! `folder`, and four more ops drive the writer's `safeFolder` + `movesFolder`:
+//! a create with a RAW `folder: "Formal/Evening"` (kept), a create with
+//! `folder: "../x"` (normalised to the ROOT), an update `{ folder: "Formal" }`
+//! moving that item, and a CASE-ONLY `{ folder: "formal" }` — v4's read-back
+//! answers the STORED casing (`Formal`), which the oracle pins.
+//!
 //! Generate the fixtures + oracle (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   V5=~/source/quilltap-v5
@@ -101,6 +108,9 @@ fn item_for_create(data: &Value, options: &Value) -> WardrobeItem {
         migrated_from_clothing_record_id: None,
         image_file_id: None,
         archived_at: str_field_opt(data, "archivedAt"),
+        // `4a38222e6`: a create body's `folder` (RAW — the writer's `safeFolder`
+        // tames it); absent → the root.
+        folder: str_field(data, "folder"),
         created_at: str_field(options, "createdAt"),
         updated_at: str_field(options, "updatedAt"),
     }
@@ -163,6 +173,14 @@ fn patch_from_json(patch: &Value) -> WardrobePatch {
         archived_at: has("archivedAt").then(|| {
             patch
                 .get("archivedAt")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        }),
+        // `4a38222e6`: a RAW folder for the writer's `safeFolder`.
+        folder: has("folder").then(|| str_field(patch, "folder")),
+        migrated_from_clothing_record_id: has("migratedFromClothingRecordId").then(|| {
+            patch
+                .get("migratedFromClothingRecordId")
                 .and_then(Value::as_str)
                 .map(str::to_string)
         }),
@@ -318,8 +336,6 @@ fn vault_wardrobe_public_matches_oracle() {
             &mount.doc_mount_documents(),
             &mount_point_id,
             &op.read_back,
-            true,
-            &|| Ok(Vec::new()),
         )
         .unwrap_or_else(|e| panic!("read-back: {e:?}"));
         let items = vault

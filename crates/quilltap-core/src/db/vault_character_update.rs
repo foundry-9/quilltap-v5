@@ -73,7 +73,7 @@ use crate::vault_overlay::{
 use super::vault_character_write::{
     CharacterVaultWriteInput, PhysicalDescriptionWrite, Pronouns, ScenarioWrite, SystemPromptWrite,
 };
-use super::vault_wardrobe_write::project_array_into_vault_folder;
+use super::vault_wardrobe_write::{project_array_into_vault_folder, ProjectArrayOptions};
 
 const IDENTITY_MD_PATH: &str = "identity.md";
 const DESCRIPTION_MD_PATH: &str = "description.md";
@@ -278,9 +278,11 @@ pub fn apply_document_store_write_overlay(
                     build_system_prompt_file(&p.name, p.is_default, &p.content),
                 )
             },
-            // v4 passes no `preserveFileNames` here: the managed-fields
-            // projections sweep normally.
-            &[],
+            character_id,
+            // v4 passes no options here: the managed-fields projections are FLAT
+            // and sweep normally (`4a38222e6` left the prompts / scenarios
+            // callers on exactly the top-level behaviour they always had).
+            ProjectArrayOptions::FLAT,
         )?;
         db_patch.remove("systemPrompts");
     }
@@ -298,9 +300,11 @@ pub fn apply_document_store_write_overlay(
                     build_scenario_file(&s.title, &s.content, s.description.as_deref(), s.archived),
                 )
             },
-            // v4 passes no `preserveFileNames` here: the managed-fields
-            // projections sweep normally.
-            &[],
+            character_id,
+            // v4 passes no options here: the managed-fields projections are FLAT
+            // and sweep normally (`4a38222e6` left the prompts / scenarios
+            // callers on exactly the top-level behaviour they always had).
+            ProjectArrayOptions::FLAT,
         )?;
         db_patch.remove("scenarios");
     }

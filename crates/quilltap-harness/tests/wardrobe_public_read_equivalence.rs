@@ -1,7 +1,10 @@
-//! Read-differential test: the PUBLIC wardrobe READ trio + shared-archetype tier
-//! (`db::wardrobe_read::{find_by_character_id, find_by_id_for_character}` +
-//! `db::archetype_wardrobe`) vs v4's REAL
-//! `WardrobeRepository.findByCharacterId` / `.findByIdForCharacter`.
+//! Read-differential test: the PUBLIC wardrobe READ (`db::wardrobe_read::
+//! find_by_character_id`) + the pool's by-id read (`wearable_pool::
+//! load_wearable_pool(...).get(id)`) vs v4's REAL
+//! `WardrobeRepository.findByCharacterId` / `loadWearablePool(...).get(id)`.
+//! P4.D279 (v4 `9ecebf986`): `findByIdForCharacter` is DELETED — the
+//! id-then-archetype fallback is the pool's shadow order (character > group >
+//! project > General), and every pool item carries its `origin` tag.
 //!
 //! Both v4 and the Rust port READ the SAME baked fixtures (a character + its
 //! seeded vault in a MOUNT-INDEX db, plus a provisioned "Quilltap General" store
@@ -12,10 +15,12 @@
 //! Cases:
 //!   0. findByCharacterId(char, false)        -> active items only (archived filtered).
 //!   1. findByCharacterId(char, true)         -> includes the archived item.
-//!   2. findByIdForCharacter(char, composite) -> owned composite whose componentItemIds
-//!      resolve to the two archetype ids (PROVES archetype seeding: slug + UUID refs land).
-//!   3. findByIdForCharacter(char, archetypeA)-> NOT owned -> archetype fallback (characterId null).
-//!   4. findByIdForCharacter(char, no-such)   -> null.
+//!   2. pool.get(composite)  -> the owned composite (origin `character`); its
+//!      componentItemIds keep the General UUID ref (bug 187 — the reader no
+//!      longer seeds archetypes; a hand-written slug for a General item drops).
+//!   3. pool.get(archetypeA) -> NOT owned -> the General tier's item (characterId
+//!      null, origin `general`).
+//!   4. pool.get(no-such)    -> null.
 //!
 //! Build the fixtures + oracle (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
@@ -31,9 +36,9 @@
 
 use std::path::{Path, PathBuf};
 
-use quilltap_core::db::wardrobe_read::{find_by_character_id, find_by_id_for_character};
+use quilltap_core::db::wardrobe_read::find_by_character_id;
 use quilltap_core::db::Writer;
-use quilltap_core::wardrobe_tiers::SharedWardrobeTiers;
+use quilltap_core::wearable_pool::{load_wearable_pool, LoadWearablePoolOptions};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -129,36 +134,22 @@ fn wardrobe_public_read_matches_oracle() {
     let got0 = Value::Array(find_by_character_id(conn, &docs, char_id, false).expect("case0"));
     // Case 1: include archived.
     let got1 = Value::Array(find_by_character_id(conn, &docs, char_id, true).expect("case1"));
-    // Case 2: owned composite by id (component refs resolved to archetype ids).
-    let got2 = find_by_id_for_character(
+    // Cases 2–4 (`9ecebf986`): the deleted `findByIdForCharacter` is the pool's
+    // `byId` — character > group > project > general, archived included, every
+    // item origin-tagged. The oracle loads ONE pool and reads three ids.
+    let pool = load_wearable_pool(
         conn,
-        &docs,
+        mount.connection(),
         char_id,
-        &spec.composite_id,
-        &SharedWardrobeTiers::none(),
-    )
-    .expect("case2")
-    .unwrap_or(Value::Null);
-    // Case 3: archetype fallback.
-    let got3 = find_by_id_for_character(
-        conn,
-        &docs,
-        char_id,
-        &spec.archetype_a_id,
-        &SharedWardrobeTiers::none(),
-    )
-    .expect("case3")
-    .unwrap_or(Value::Null);
-    // Case 4: unknown id -> null.
-    let got4 = find_by_id_for_character(
-        conn,
-        &docs,
-        char_id,
-        &spec.no_such_id,
-        &SharedWardrobeTiers::none(),
-    )
-    .expect("case4")
-    .unwrap_or(Value::Null);
+        None,
+        LoadWearablePoolOptions::default(),
+    );
+    let got2 = pool.get(&spec.composite_id).cloned().unwrap_or(Value::Null);
+    let got3 = pool
+        .get(&spec.archetype_a_id)
+        .cloned()
+        .unwrap_or(Value::Null);
+    let got4 = pool.get(&spec.no_such_id).cloned().unwrap_or(Value::Null);
 
     let got = [got0, got1, got2, got3, got4];
 
