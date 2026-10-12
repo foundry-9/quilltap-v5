@@ -283,11 +283,14 @@ fn zsh_template_is_syntactically_valid() {
 // here — whatever `--help` advertises, the three templates must offer.
 //
 // v4 reads its help out of the JS function that prints it; v5's help IS a file
-// (`src/help/*_help.txt`, byte-copied from v4 and pinned by Tier R), except
-// `recall-replay`, whose help is an inline `const HELP` extracted from source
-// the same way v4 extracts a function body.
+// (`src/help/*_help.txt`, byte-captured from v4's `--help` stdout and pinned by
+// Tier R). Since P4.D269 (R-B) that includes `recall-replay` and
+// `anchor-probe`: v4's grown recall-replay help carries a `\`-continued
+// example line, which a Rust `"…"` literal would silently re-shape, so both
+// verbs' help moved out of inline `const HELP` strings into captured files and
+// the extractor that pulled the old literal out of source is gone.
 //
-// v4's guard covers all twelve subcommands. v5 dispatches five of them and
+// v4's guard covers all fourteen subcommands. v5 dispatches seven of them and
 // answers `not_yet_available` for the rest, so the map covers exactly the
 // dispatched set — and `help_sources_cover_every_dispatched_subcommand` below
 // makes that a mechanical fact, not a comment: implementing another subcommand
@@ -296,13 +299,14 @@ fn zsh_template_is_syntactically_valid() {
 
 const FISH_TEMPLATE: &str = include_str!("../src/help/completion/fish.template");
 const MAIN_RS: &str = include_str!("../src/main.rs");
-const RECALL_REPLAY_RS: &str = include_str!("../src/recall_replay_cmd.rs");
 
 const DB_HELP: &str = include_str!("../src/help/db_help.txt");
 const DOCS_HELP: &str = include_str!("../src/help/docs_help.txt");
 const INSTANCES_HELP: &str = include_str!("../src/help/instances_help.txt");
 const COMPLETION_HELP: &str = include_str!("../src/help/completion_help.txt");
 const SYNC_HELP: &str = include_str!("../src/help/sync_help.txt");
+const RECALL_REPLAY_HELP: &str = include_str!("../src/help/recall_replay_help.txt");
+const ANCHOR_PROBE_HELP: &str = include_str!("../src/help/anchor_probe_help.txt");
 
 /// Each entry names the text one subcommand's `--help` prints.
 fn help_sources() -> Vec<(&'static str, String)> {
@@ -314,22 +318,10 @@ fn help_sources() -> Vec<(&'static str, String)> {
         // v4 `23da0b322`. The help text is CAPTURED from v4's `printSyncHelp`
         // at the pin, so the flags this guard reads off it are v4's own.
         ("sync", SYNC_HELP.to_string()),
-        ("recall-replay", recall_replay_help()),
+        ("recall-replay", RECALL_REPLAY_HELP.to_string()),
+        // v4 `3f7320138` (P4.D269): `printAnchorProbeHelp`, captured at the pin.
+        ("anchor-probe", ANCHOR_PROBE_HELP.to_string()),
     ]
-}
-
-/// `recall-replay`'s help is an inline `const HELP: &str = "…";` — pulled from
-/// the source, as v4 pulls its help out of a function body.
-fn recall_replay_help() -> String {
-    let start = RECALL_REPLAY_RS
-        .find("const HELP: &str = \"")
-        .expect("locate `const HELP` in recall_replay_cmd.rs")
-        + "const HELP: &str = \"".len();
-    let rest = &RECALL_REPLAY_RS[start..];
-    let end = rest
-        .find("\";")
-        .expect("locate the end of `const HELP` in recall_replay_cmd.rs");
-    rest[..end].to_string()
 }
 
 /// v4's `const SUBCOMMANDS: &[&str] = &[…]` twin in `src/main.rs` — parsed, so
@@ -565,4 +557,96 @@ fn zsh_valued_docs_flags(template: &str) -> Vec<String> {
         }
     }
     out
+}
+
+// ---------------------------------------------------------------------------
+// P4.D269 — the `01a83539d` template lines (`3f7320138`'s `anchor-probe` +
+// `--memory-budget`, `f7d8064be`'s four replay flags, `d58548051`'s memories
+// `consolidate` / `--tier` / `--dry-run` / `CONSOLIDATED`), driven for real in
+// bash and checked structurally in fish / zsh. The templates advertise the
+// memories lines because they are v4's bytes; v5's `memories` verb family is a
+// named deferral (R-J), which the flag guard above does not cover (it reads
+// only DISPATCHED subcommands).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn bash_completes_the_p4d269_template_lines() {
+    if !has_shell("bash") {
+        eprintln!(
+            "SKIPPING bash_completes_the_p4d269_template_lines: no working `bash` on this host"
+        );
+        return;
+    }
+    let bash = Bash::new();
+
+    // `anchor-probe` offers exactly its four flags (v4's `ap_flags`).
+    let line = "quilltap anchor-probe --";
+    let mut got = bash.complete(line);
+    got.sort();
+    assert_eq!(got, ["--help", "--json", "--limit", "--port"], "`{line}`");
+
+    // The memories tier values, and CONSOLIDATED among the sources.
+    let line = "quilltap memories --tier ";
+    let mut got = bash.complete(line);
+    got.sort();
+    assert_eq!(got, ["cold", "hot"], "`{line}`");
+    let line = "quilltap memories --source ";
+    assert_offers(&bash.complete(line), "CONSOLIDATED", line);
+
+    // The replay's new flags are offered.
+    let line = "quilltap recall-replay cid --";
+    let got = bash.complete(line);
+    for flag in [
+        "--memory-budget",
+        "--tuning",
+        "--tuning-file",
+        "--signals-from",
+        "--as-of",
+    ] {
+        assert_offers(&got, flag, line);
+    }
+    // MEASURED (the order predicted otherwise): v4's `recall-replay)` arm runs
+    // `compgen -W "$rr_flags"` whatever the previous word, so the word after
+    // `--tuning-file` is offered the flag list too — the `vf_recall_replay`
+    // list only keeps a flag's VALUE from being taken for a verb. So the
+    // valued flags must sit in that list, and a consumed value must not stop
+    // the flag offer after it.
+    let valued = shell_local_list(BASH_TEMPLATE, "vf_recall_replay");
+    for flag in [
+        "--memory-budget",
+        "--tuning",
+        "--tuning-file",
+        "--signals-from",
+    ] {
+        assert!(
+            valued.iter().any(|v| v == flag),
+            "bash's vf_recall_replay lacks the valued {flag}: {valued:?}"
+        );
+    }
+    assert!(
+        !valued.iter().any(|v| v == "--as-of"),
+        "--as-of takes no value"
+    );
+    let line = "quilltap recall-replay cid --tuning-file t.json --as";
+    assert_offers(&bash.complete(line), "--as-of", line);
+}
+
+#[test]
+fn fish_and_zsh_carry_the_p4d269_template_lines() {
+    assert!(
+        FISH_TEMPLATE.contains("-l 'as-of'"),
+        "fish template lost recall-replay's --as-of"
+    );
+    assert!(
+        FISH_TEMPLATE.contains("Probe anchor-line effect on Memory Gate"),
+        "fish template lost the anchor-probe top-level line"
+    );
+    assert!(
+        ZSH_TEMPLATE.contains("_quilltap_anchor_probe"),
+        "zsh template lost the anchor-probe function"
+    );
+    assert!(
+        BASH_TEMPLATE.contains("vf_anchor_probe=\" --limit --port \""),
+        "bash template lost anchor-probe's valued-flag list"
+    );
 }

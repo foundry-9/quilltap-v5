@@ -43,6 +43,7 @@ _quilltap() {
     'memories:Search, browse, and graph memories'
     'memory-diff:Dump existing memories and dry-run re-extraction'
     'recall-replay:Replay a turn'\''s memory recall, old vs episodic ranking'
+    'anchor-probe:Probe whether episodic anchor lines suppress Memory Gate reinforcement'
     'logs:Tail or print an instance log file'
     'migrations:Inspect migration status'
     'maintenance:Run retention/cleanup sweeps'
@@ -99,6 +100,9 @@ _quilltap_subcommand() {
     recall-replay)
       _quilltap_recall_replay
       ;;
+    anchor-probe)
+      _quilltap_anchor_probe
+      ;;
     logs)
       _quilltap_logs
       ;;
@@ -147,7 +151,7 @@ _quilltap_db() {
     '--character[Character name or id]:character:'
     '--project[Project name or id]:project:'
     '--about[Subject character]:character:'
-    '--source[Memory source]:source:(AUTO MANUAL)'
+    '--source[Memory source]:source:(AUTO MANUAL CONSOLIDATED)'
     '--chat[Chat name or id]:chat:'
     '--message[Message id]:id:'
     '--rendered[Render rich content]'
@@ -534,6 +538,7 @@ _quilltap_memories() {
     'tree:ASCII walk of graph'
     'status:Per-character rollup'
     'validate:Health check'
+    'consolidate:Fold memory clusters into digests'
   )
 
   mem_opts=(
@@ -544,7 +549,9 @@ _quilltap_memories() {
     '--json[JSON output]'
     '--character[Character name or id]:character:'
     '--about[Subject of memory]:character:'
-    '--source[Memory source]:source:(AUTO MANUAL)'
+    '--source[Memory source]:source:(AUTO MANUAL CONSOLIDATED)'
+    '--tier[Memory tier]:tier:(hot cold)'
+    '--dry-run[Consolidate: rehearse and print the report, write nothing]'
     '--chat[Chat id or title]:chat:'
     '--project[Project name or id]:project:'
     '--since[Since timestamp]:date:'
@@ -604,6 +611,23 @@ _quilltap_recall_replay() {
     '--turn[interchange to replay]:turn:' \
     '--char[character id]:char:' \
     '--limit[rows per path]:limit:' \
+    '--memory-budget[memory token budget]:tokens:' \
+    '--tuning[new-path tuning JSON]:json:' \
+    '--tuning-file[new-path tuning JSON file]:file:_files' \
+    '--signals-from[reuse signals from a saved replay]:file:_files' \
+    '--as-of[search the corpus as it stood at the turn]' \
+    '--port[server port]:port:' \
+    '--json[raw JSON output]' \
+    '*: :'
+}
+
+_quilltap_anchor_probe() {
+  _arguments \
+    '(-h --help)'{-h,--help}'[Show help]' \
+    '(-i --instance)'{-i,--instance}'[Use instance]:instance:_quilltap_instance_names' \
+    '(-d --data-dir)'{-d,--data-dir}'[Data directory]:directory:_directories' \
+    '--passphrase[Database passphrase]:passphrase:' \
+    '--limit[recent memories to sample]:limit:' \
     '--port[server port]:port:' \
     '--json[raw JSON output]' \
     '*: :'

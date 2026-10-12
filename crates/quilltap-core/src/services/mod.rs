@@ -262,3 +262,6 @@ pub mod route_trail;
 pub mod tool_image_generation;
 pub mod wardrobe_wear_commit;
 // ── end P4.D262 ──
+// ── P4.D269: the F2 anchor-gate probe (measurement only) ──
+pub mod anchor_gate_probe;
+// ── end P4.D269 ──

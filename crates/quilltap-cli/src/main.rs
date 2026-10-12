@@ -15,8 +15,11 @@
 //! output (captured from `node bin/quilltap.js … --help` at v4 `2494a84b`;
 //! `db_help.txt` and `docs_help.txt` re-captured at v4 `ed8934f1` for the
 //! `characters` archive subcommands and `docs docker-mounts`) — the
-//! tool-catalog static-data-transcription precedent.
+//! tool-catalog static-data-transcription precedent. `main_help.txt` (the
+//! `anchor-probe` line), `recall_replay_help.txt` and `anchor_probe_help.txt`
+//! are re-captured / captured at v4 `01a83539d` (P4.D269).
 
+mod anchor_probe_cmd;
 mod completion_cmd;
 mod db_characters;
 mod db_cmd;
@@ -53,6 +56,7 @@ const SUBCOMMANDS: &[&str] = &[
     "instances",
     "memory-diff",
     "recall-replay",
+    "anchor-probe",
     "completion",
     "logs",
     "migrations",
@@ -250,6 +254,7 @@ fn main() {
                 "instances" => instances_cmd::run(&sub_args),
                 "completion" => completion_cmd::run(&sub_args),
                 "recall-replay" => recall_replay_cmd::run(&sub_args),
+                "anchor-probe" => anchor_probe_cmd::run(&sub_args),
                 other => not_yet_available(other),
             }
         }

@@ -211,6 +211,99 @@ pub fn js_parse_int(s: Option<&str>) -> Option<i64> {
     digits.parse::<i64>().ok().map(|n| sign * n)
 }
 
+/// JS `String(x)` / a template literal's `${x}` over a JSON value (P4.D269 —
+/// the recall-replay and anchor-probe renderers). `None` is `undefined`. A
+/// number renders as `String(n)` does — `-0` is `"0"` here, unlike the
+/// inspect form [`js_num_string`] keeps; an array is `Array#join(',')`
+/// (`null` elements render empty); an object is `[object Object]`.
+pub fn js_string(v: Option<&Value>) -> String {
+    match v {
+        None => "undefined".to_string(),
+        Some(Value::Null) => "null".to_string(),
+        Some(Value::Bool(b)) => b.to_string(),
+        Some(Value::Number(n)) => {
+            let f = n.as_f64().unwrap_or(f64::NAN);
+            if f == 0.0 {
+                "0".to_string()
+            } else {
+                js_num_string(f)
+            }
+        }
+        Some(Value::String(s)) => s.clone(),
+        Some(Value::Array(items)) => items
+            .iter()
+            .map(|item| match item {
+                Value::Null => String::new(),
+                other => js_string(Some(other)),
+            })
+            .collect::<Vec<_>>()
+            .join(","),
+        Some(Value::Object(_)) => "[object Object]".to_string(),
+    }
+}
+
+/// JS truthiness over a JSON value (`None` is `undefined`, falsy).
+pub fn js_truthy(v: Option<&Value>) -> bool {
+    match v {
+        None | Some(Value::Null) => false,
+        Some(Value::Bool(b)) => *b,
+        Some(Value::Number(n)) => n.as_f64().is_some_and(|f| f != 0.0 && !f.is_nan()),
+        Some(Value::String(s)) => !s.is_empty(),
+        Some(Value::Array(_)) | Some(Value::Object(_)) => true,
+    }
+}
+
+/// A parsed JSON value re-shaped so `serde_json::to_string` writes what
+/// `JSON.stringify(JSON.parse(text))` writes: every number goes through the
+/// JS-number rule (`1.0` → `1`, `-0` → `0`, `1e2` → `100`; `0.450` already
+/// parsed to `0.45`). Key order is kept (`preserve_order`). Numbers at or past
+/// `1e21` (JS `1e+21`) are out of corpus (P4.D269 R-I).
+pub fn js_faithful_json(v: &Value) -> Value {
+    match v {
+        Value::Number(n) => js_number_to_json(n.as_f64().unwrap_or(0.0)),
+        Value::Array(items) => Value::Array(items.iter().map(js_faithful_json).collect()),
+        Value::Object(map) => Value::Object(
+            map.iter()
+                .map(|(k, v)| (k.clone(), js_faithful_json(v)))
+                .collect(),
+        ),
+        other => other.clone(),
+    }
+}
+
+/// Node's `fs.readFileSync(path, 'utf8')` as v4's `readJsonFile` sees it: the
+/// text (decoded lossily, as Node's `'utf8'` decoder does — one U+FFFD per
+/// maximal invalid sequence, no BOM strip), or the thrown error's `message`.
+/// Node renders a libuv error as `<CODE>: <description>, <syscall>[ '<path>']`
+/// — the OPEN syscall names the path as given; the READ syscall (a directory
+/// opens fine on macOS and fails on read) names none. Codes outside the table
+/// fall back to Rust's own error text (recorded, not chased).
+pub fn node_read_file_utf8(path: &str) -> Result<String, String> {
+    use std::io::Read;
+    fn uv(code: Option<i32>) -> Option<(&'static str, &'static str)> {
+        Some(match code? {
+            libc::ENOENT => ("ENOENT", "no such file or directory"),
+            libc::EACCES => ("EACCES", "permission denied"),
+            libc::EISDIR => ("EISDIR", "illegal operation on a directory"),
+            libc::ENOTDIR => ("ENOTDIR", "not a directory"),
+            libc::ELOOP => ("ELOOP", "too many symbolic links encountered"),
+            libc::ENAMETOOLONG => ("ENAMETOOLONG", "name too long"),
+            _ => return None,
+        })
+    }
+    let mut file = std::fs::File::open(path).map_err(|e| match uv(e.raw_os_error()) {
+        Some((code, desc)) => format!("{code}: {desc}, open '{path}'"),
+        None => e.to_string(),
+    })?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)
+        .map_err(|e| match uv(e.raw_os_error()) {
+            Some((code, desc)) => format!("{code}: {desc}, read"),
+            None => e.to_string(),
+        })?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
 /// The launcher's `formatBytes` (docs-commands.js flavor — `toFixed` via the
 /// ported JS kernel).
 pub fn format_bytes(n: f64) -> String {
@@ -349,6 +442,66 @@ mod tests {
         assert_eq!(node_join("/foo//bar", "data"), "/foo/bar/data");
         assert_eq!(node_join("rel/x", "data"), "rel/x/data");
         assert_eq!(node_normalize("/a/b/../c/./d/"), "/a/c/d");
+    }
+
+    /// P4.D269: JS `String(x)` over JSON values (template-literal semantics).
+    #[test]
+    fn js_string_matches_template_literals() {
+        use serde_json::json;
+        assert_eq!(js_string(None), "undefined");
+        assert_eq!(js_string(Some(&json!(null))), "null");
+        assert_eq!(js_string(Some(&json!(5.0))), "5");
+        assert_eq!(js_string(Some(&json!(-0.0))), "0");
+        assert_eq!(js_string(Some(&json!(0.85))), "0.85");
+        assert_eq!(js_string(Some(&json!("a"))), "a");
+        assert_eq!(js_string(Some(&json!([1, null, "b", [2, 3]]))), "1,,b,2,3");
+        assert_eq!(js_string(Some(&json!({ "a": 1 }))), "[object Object]");
+    }
+
+    #[test]
+    fn js_truthiness() {
+        use serde_json::json;
+        for falsy in [json!(null), json!(false), json!(0), json!(0.0), json!("")] {
+            assert!(!js_truthy(Some(&falsy)), "{falsy}");
+        }
+        assert!(!js_truthy(None));
+        for truthy in [json!(true), json!(1), json!("0"), json!([]), json!({})] {
+            assert!(js_truthy(Some(&truthy)), "{truthy}");
+        }
+    }
+
+    /// `JSON.stringify(JSON.parse(text))` number rendering, key order kept.
+    #[test]
+    fn js_faithful_json_reshapes_numbers_only() {
+        let v: Value =
+            serde_json::from_str(r#"{"z":1.0,"a":[-0,0.450,1e2],"m":{"x":"1.0"}}"#).unwrap();
+        assert_eq!(
+            serde_json::to_string(&js_faithful_json(&v)).unwrap(),
+            r#"{"z":1,"a":[0,0.45,100],"m":{"x":"1.0"}}"#
+        );
+    }
+
+    /// Node's `readFileSync(path, 'utf8')` messages: the open syscall names
+    /// the path as given, the read syscall (a directory) names none.
+    #[test]
+    fn node_read_file_errors_render_like_node() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("nope.json");
+        let missing = missing.to_string_lossy();
+        assert_eq!(
+            node_read_file_utf8(&missing).unwrap_err(),
+            format!("ENOENT: no such file or directory, open '{missing}'")
+        );
+        assert_eq!(
+            node_read_file_utf8(&dir.path().to_string_lossy()).unwrap_err(),
+            "EISDIR: illegal operation on a directory, read"
+        );
+        let latin1 = dir.path().join("l.json");
+        std::fs::write(&latin1, b"caf\xe9").unwrap();
+        assert_eq!(
+            node_read_file_utf8(&latin1.to_string_lossy()).unwrap(),
+            "caf\u{fffd}"
+        );
     }
 
     #[test]

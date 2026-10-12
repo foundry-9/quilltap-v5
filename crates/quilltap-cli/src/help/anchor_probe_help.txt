@@ -1,0 +1,24 @@
+
+Quilltap anchor-probe Tool
+
+Usage: quilltap anchor-probe <characterId> [options]
+
+Measures whether the episodic anchor line embedded with each memory suppresses
+Memory Gate reinforcement. Re-embeds the character's most recent memories with
+and without the anchor line, compares each against older rows, and reports how
+many would cross the reinforce (0.85) and near-duplicate (0.90) thresholds
+each way.
+
+Read-only, but it costs embedding calls (roughly up to 7 per sampled row).
+
+Options:
+      --limit <number>       Recent memories to sample (default: 50, max: 200)
+      --port <number>        Server port for API calls (default: 3000)
+      --json                 Print the raw JSON result instead of tables
+  -h, --help                 Show this help
+
+Examples:
+  quilltap anchor-probe <characterId>
+  quilltap anchor-probe <characterId> --limit 20
+  quilltap anchor-probe <characterId> --json > probe.json
+

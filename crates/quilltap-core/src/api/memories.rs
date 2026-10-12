@@ -126,6 +126,16 @@ fn parse_f64(s: Option<&str>) -> Option<f64> {
 /// paginated query (`{memories, count, totalCount}`); `limit` absent → the legacy
 /// unpaginated in-memory filter/sort returning ALL (`totalCount === count`).
 /// Every memory enriched with `tagDetails`.
+///
+/// P4.D269 (v4 `d58548051`): `tier` is honoured only when exactly `hot` or
+/// `cold` — anything else (`warm`, `HOT`, `''`) lists both tiers, never a
+/// refusal (`route.ts:302-303`). The two paths keep v4's DIFFERENT NULL-tier
+/// rules: the paginated path hands `tier` to the repository, whose
+/// `findByFilter` renders an exact `"tier" = ?`, so a NULL-tier row is listed
+/// under NEITHER tier; the legacy path filters the hydrated rows with
+/// `(m.tier ?? 'hot') === tier`, and `findByFilter`'s hydration has already
+/// defaulted a NULL tier to `'hot'`, so the row lists as hot there. `source`
+/// gains `CONSOLIDATED` (the digests).
 #[allow(clippy::too_many_arguments)]
 pub fn memory_list(
     db: &Db,
@@ -133,6 +143,7 @@ pub fn memory_list(
     search: Option<&str>,
     min_importance: Option<f64>,
     source: Option<&str>,
+    tier: Option<&str>,
     sort_by: Option<&str>,
     sort_order: Option<&str>,
     limit: Option<i64>,
@@ -146,8 +157,10 @@ pub fn memory_list(
 
     let sort_by = sort_by.unwrap_or("createdAt").to_string();
     let sort_order = sort_order.unwrap_or("desc").to_string();
-    // v4 only honors `source` when it is exactly AUTO|MANUAL.
-    let source = source.filter(|s| *s == "AUTO" || *s == "MANUAL");
+    // v4 only honors `source` when it is exactly AUTO|MANUAL|CONSOLIDATED.
+    let source = source.filter(|s| *s == "AUTO" || *s == "MANUAL" || *s == "CONSOLIDATED");
+    // v4: `tierParam === 'hot' || tierParam === 'cold' ? tierParam : undefined`.
+    let tier = tier.filter(|t| *t == "hot" || *t == "cold");
     let search_owned = search.map(str::to_string);
     let cid = character_id.to_string();
 
@@ -165,10 +178,8 @@ pub fn memory_list(
                 search: search_owned.as_deref(),
                 source,
                 min_importance,
-                // P4.D265 (mechanical): the paginated path's `tier` is
-                // P4.D269's — the request's `tier` is refused upstream until it
-                // lands (R-G), so this site never filters.
-                tier: None,
+                // The exact `"tier" = ?` (a NULL-tier row matches neither).
+                tier,
             };
             let (page, total) = memories_read::find_by_character_id_paginated(main, &cid, &opts)?;
             let memories: Vec<Value> = page.into_iter().map(|m| with_tag_details(m, &tm)).collect();
@@ -190,6 +201,11 @@ pub fn memory_list(
             }
             if let Some(src) = source {
                 memories.retain(|m| m.get("source").and_then(Value::as_str) == Some(src));
+            }
+            // v4 `memories.filter(m => (m.tier ?? 'hot') === tier)` — after the
+            // source filter, before the sort.
+            if let Some(t) = tier {
+                memories.retain(|m| m.get("tier").and_then(Value::as_str).unwrap_or("hot") == t);
             }
             sort_memories(&mut memories, &sort_by, &sort_order);
             let memories: Vec<Value> = memories
@@ -719,29 +735,159 @@ pub async fn memory_delete_by_chat(db: &Db, chat_id: &str) -> Response {
 // Search (v4 POST /api/v1/memories?action=search)
 // ===========================================================================
 
-/// v4 `searchMemorySchema` — the search body.
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+/// The parsed search body (v4 `searchMemorySchema.parse(body)`'s output).
 struct SearchBag {
     character_id: String,
     query: String,
-    #[serde(default = "default_search_limit")]
-    limit: usize,
-    #[serde(default)]
+    limit: f64,
     min_importance: Option<f64>,
-    #[serde(default)]
     min_score: Option<f64>,
-    #[serde(default)]
     source: Option<String>,
 }
-fn default_search_limit() -> usize {
-    20
+
+/// v4's search sources (`route.ts:96`, `d58548051` added `CONSOLIDATED`).
+const SEARCH_SOURCES: [&str; 3] = ["AUTO", "MANUAL", "CONSOLIDATED"];
+
+/// One `z.number().min(lo).max(hi)` field: the type issue, else the bounds.
+fn zod_bounded_number(
+    bag: &Map<String, Value>,
+    field: &str,
+    lo: f64,
+    hi: f64,
+    issues: &mut Vec<ZodIssue>,
+) -> Option<f64> {
+    let v = bag.get(field)?;
+    let Some(n) = v.as_f64() else {
+        issues.push(ZodIssue::invalid_type(
+            "number",
+            vec![zod_key(field)],
+            Some(v),
+        ));
+        return None;
+    };
+    if n < lo {
+        issues.push(ZodIssue::too_small_number(
+            crate::db::js_number_to_json(lo),
+            vec![zod_key(field)],
+        ));
+    }
+    if n > hi {
+        issues.push(ZodIssue::too_big_number(
+            crate::db::js_number_to_json(hi),
+            vec![zod_key(field)],
+        ));
+    }
+    Some(n)
 }
 
-/// v4 `handleSearch`: `searchMemoriesSemantic` → each result carries the memory +
-/// `score`, `usedEmbedding`, `tagDetails`; top-level `{count, query, usedEmbedding}`.
-/// `now_ms` is threaded so the recency-weighted ranking is pinnable in the
-/// differential (v4's route uses `Date.now()` — the oracle mocks it).
+/// P4.D269 (R-E) — v4 `searchMemorySchema` (`route.ts:90-97`), Zod-faithful:
+///
+/// ```ts
+/// characterId: z.uuid('Character ID is required'),          // type AND format carry the message
+/// query: z.string().min(1, 'Search query is required'),
+/// limit: z.number().min(1).max(100).prefault(20),
+/// minImportance: z.number().min(0).max(1).optional(),
+/// minScore: z.number().min(0).max(1).optional(),
+/// source: z.enum(['AUTO', 'MANUAL', 'CONSOLIDATED']).optional(),  // null → invalid_value
+/// ```
+///
+/// v4's `.parse` THROWS, and `createContextHandler` maps the `ZodError` to
+/// 400 `{error: 'Validation error', details: issues}` (`context.ts:166-167`).
+/// Issue bytes measured at the pin; unknown keys are stripped. The dispatch
+/// bag is an untyped `Value`, so every shape reaches this gate.
+fn parse_search_bag(bag: &Value) -> Result<SearchBag, Vec<ZodIssue>> {
+    let Some(obj) = bag.as_object() else {
+        return Err(vec![ZodIssue::invalid_type("object", vec![], Some(bag))]);
+    };
+    let mut issues = Vec::new();
+    let with_message = |mut issue: ZodIssue, text: &str| {
+        match &mut issue {
+            ZodIssue::InvalidType { message, .. } | ZodIssue::InvalidFormat { message, .. } => {
+                *message = text.to_string();
+            }
+            _ => {}
+        }
+        issue
+    };
+    let character_id = match obj.get("characterId") {
+        Some(Value::String(s)) if zod_uuid_ok(s) => Some(s.clone()),
+        Some(Value::String(_)) => {
+            issues.push(with_message(
+                ZodIssue::invalid_uuid(vec![zod_key("characterId")]),
+                "Character ID is required",
+            ));
+            None
+        }
+        other => {
+            issues.push(with_message(
+                ZodIssue::invalid_type("string", vec![zod_key("characterId")], other),
+                "Character ID is required",
+            ));
+            None
+        }
+    };
+    let query = match obj.get("query") {
+        Some(Value::String(s)) => {
+            if s.encode_utf16().count() < 1 {
+                issues.push(ZodIssue::too_small_string_message(
+                    json!(1),
+                    vec![zod_key("query")],
+                    "Search query is required",
+                ));
+            }
+            Some(s.clone())
+        }
+        other => {
+            issues.push(ZodIssue::invalid_type(
+                "string",
+                vec![zod_key("query")],
+                other,
+            ));
+            None
+        }
+    };
+    let limit = if obj.contains_key("limit") {
+        zod_bounded_number(obj, "limit", 1.0, 100.0, &mut issues)
+    } else {
+        Some(20.0)
+    };
+    let min_importance = zod_bounded_number(obj, "minImportance", 0.0, 1.0, &mut issues);
+    let min_score = zod_bounded_number(obj, "minScore", 0.0, 1.0, &mut issues);
+    let source = match obj.get("source") {
+        None => None,
+        Some(Value::String(s)) if SEARCH_SOURCES.contains(&s.as_str()) => Some(s.clone()),
+        Some(_) => {
+            issues.push(ZodIssue::invalid_value(
+                &SEARCH_SOURCES,
+                vec![zod_key("source")],
+            ));
+            None
+        }
+    };
+    if !issues.is_empty() {
+        return Err(issues);
+    }
+    Ok(SearchBag {
+        character_id: character_id.unwrap_or_default(),
+        query: query.unwrap_or_default(),
+        limit: limit.unwrap_or(20.0),
+        min_importance,
+        min_score,
+        source,
+    })
+}
+
+/// v4 `handleSearch`: `searchMemoriesSemantic(…, { includeCold: true })` →
+/// each result is `{...memory, score, usedEmbedding, tagDetails}` (that key
+/// order — P4.D269 fixed v5's `tagDetails`-first rows); top-level `{memories,
+/// count, query, usedEmbedding}`. `now_ms` is threaded so the
+/// recency-weighted ranking is pinnable in the differential (v4's route uses
+/// `Date.now()` — the oracle mocks it). The API search stamps no access times
+/// (v4's "bumped inside searchMemoriesSemantic" comment at `:575` is stale at
+/// the pin — F6 removed the bump; that removal is P4.D267's).
+///
+/// A fractional `limit` (Zod admits `2.5`) is floored here, where v4 slices
+/// by the raw number — out of corpus, recorded.
 pub async fn memory_search<P: EmbeddingProvider + Sync>(
     db: &Db,
     provider: &P,
@@ -749,9 +895,9 @@ pub async fn memory_search<P: EmbeddingProvider + Sync>(
     now_ms: f64,
     bag: Value,
 ) -> Response {
-    let bag: SearchBag = match serde_json::from_value(bag) {
+    let bag = match parse_search_bag(&bag) {
         Ok(b) => b,
-        Err(e) => return bad_request(format!("Invalid search body: {e}")),
+        Err(issues) => return Response::validation_error(zod_issue_details(&issues)),
     };
     match character_exists(db, &bag.character_id) {
         Ok(true) => {}
@@ -761,13 +907,15 @@ pub async fn memory_search<P: EmbeddingProvider + Sync>(
     let options = SemanticSearchOptions {
         user_id: user_id.to_string(),
         embedding_profile_id: None,
-        limit: Some(bag.limit),
+        limit: Some(bag.limit as usize),
         min_score: bag.min_score,
         min_importance: bag.min_importance,
         source: bag.source,
         about_character_id: None,
         apply_literal_phrase_boost: false,
         now_ms,
+        // The Commonplace Book browses the whole archive, cold rows included.
+        include_cold: true,
         ..Default::default()
     };
     let results =
@@ -779,21 +927,19 @@ pub async fn memory_search<P: EmbeddingProvider + Sync>(
         };
     let used_embedding = results.first().map(|r| r.used_embedding).unwrap_or(false);
     let query = bag.query.clone();
-    let cid = bag.character_id.clone();
     let body: Result<Value, DbError> = db.read_main(move |main| {
         let tm = tag_map(main)?;
         let memories: Vec<Value> = results
             .into_iter()
             .map(|r| {
-                let mut m = with_tag_details(r.memory, &tm);
+                let mut m = r.memory;
                 if let Some(obj) = m.as_object_mut() {
-                    obj.insert("score".into(), json!(r.score));
+                    obj.insert("score".into(), crate::db::js_number_to_json(r.score));
                     obj.insert("usedEmbedding".into(), json!(r.used_embedding));
                 }
-                m
+                with_tag_details(m, &tm)
             })
             .collect();
-        let _ = cid;
         Ok(json!({
             "memories": memories.clone(),
             "count": memories.len(),
@@ -1942,6 +2088,113 @@ pub async fn chat_queue_memories(db: &Db, user_id: &str, chat_id: &str) -> Respo
 
 // === end P4.6BM ===
 
+// === P4.D269: anchor-gate probe (append-only) ===
+
+use super::zod_issues::{key as zod_key, zod_issue_details, zod_uuid_ok, ZodIssue};
+use crate::services::anchor_gate_probe::{run_anchor_gate_probe, RunAnchorGateProbeInput};
+
+/// The issues of v4's `anchorGateProbeSchema` (`route.ts:585-588` —
+/// `z.object({ characterId: z.string().uuid(), limit:
+/// z.number().int().min(1).max(200).optional() })`), in schema order. The
+/// wire types `characterId` as a `String` and `limit` as an `f64` (P4.D269
+/// R-F), so a non-string id or a non-number limit is the dispatch layer's
+/// refusal; everything Zod checks past the type is reproduced here.
+fn anchor_gate_probe_issues(character_id: &str, limit: Option<f64>) -> Vec<ZodIssue> {
+    let mut issues = Vec::new();
+    if !zod_uuid_ok(character_id) {
+        issues.push(ZodIssue::invalid_uuid(vec![zod_key("characterId")]));
+    }
+    if let Some(n) = limit {
+        let path = || vec![zod_key("limit")];
+        if !(n.is_finite() && n.fract() == 0.0) {
+            // `z.int()` on a non-integer: the issue ABORTS the number's later
+            // checks (measured at the pin — `-0.5` carries this issue alone).
+            let as_value = crate::db::js_number_to_json(n);
+            issues.push(ZodIssue::invalid_int_type(path(), Some(&as_value)));
+        } else {
+            // An integer past the safe range keeps going (non-fatal) — `1e20`
+            // carries the safe-int ceiling AND `.max(200)`.
+            if n > MAX_SAFE_INTEGER {
+                issues.push(ZodIssue::too_big_int(path()));
+            }
+            if n < -MAX_SAFE_INTEGER {
+                issues.push(ZodIssue::too_small_int(path()));
+            }
+            if n < 1.0 {
+                issues.push(ZodIssue::too_small_number(json!(1), path()));
+            }
+            if n > 200.0 {
+                issues.push(ZodIssue::too_big_number(json!(200), path()));
+            }
+        }
+    }
+    issues
+}
+
+/// JS `Number.MAX_SAFE_INTEGER`.
+const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
+
+/// v4 `POST /api/v1/memories?action=anchor-gate-probe` — `handleAnchorGateProbe`
+/// (`route.ts:596-633`): the Zod gate (400 `Validation error` + `details`),
+/// the character gate (404 `Character not found`), DEBUG `[Memories API]
+/// Running anchor gate probe {characterId, limit}` (`limit` omitted when
+/// absent), then `runAnchorGateProbe` with NO `embeddingProfileId` → the result
+/// BARE; a failure logs ERROR `[Memories API] Anchor gate probe failed
+/// {characterId, error}` and answers 500 `Anchor gate probe failed`.
+pub async fn memory_anchor_gate_probe<P: EmbeddingProvider + Sync>(
+    db: &Db,
+    provider: &P,
+    user_id: &str,
+    character_id: &str,
+    limit: Option<f64>,
+) -> Response {
+    let issues = anchor_gate_probe_issues(character_id, limit);
+    if !issues.is_empty() {
+        return Response::validation_error(zod_issue_details(&issues));
+    }
+    match character_exists(db, character_id) {
+        Ok(true) => {}
+        Ok(false) => return not_found("Character"),
+        Err(e) => return internal(e),
+    }
+    match limit {
+        Some(n) => tracing::debug!(
+            characterId = character_id,
+            limit = %crate::db::js_number_to_json(n),
+            "[Memories API] Running anchor gate probe"
+        ),
+        None => tracing::debug!(
+            characterId = character_id,
+            "[Memories API] Running anchor gate probe"
+        ),
+    }
+    let input = RunAnchorGateProbeInput {
+        character_id: character_id.to_string(),
+        user_id: user_id.to_string(),
+        limit,
+        embedding_profile_id: None,
+    };
+    match run_anchor_gate_probe(db, provider, &input).await {
+        Ok(result) => match serde_json::to_value(&result) {
+            Ok(body) => Response::Memory(body),
+            Err(e) => anchor_gate_probe_failed(character_id, &e.to_string()),
+        },
+        Err(e) => anchor_gate_probe_failed(character_id, &crate::db::fallback::error_text(&e)),
+    }
+}
+
+/// v4's catch arm: the ERROR line (no error-object argument) + the 500.
+fn anchor_gate_probe_failed(character_id: &str, error: &str) -> Response {
+    tracing::error!(
+        characterId = character_id,
+        error = error,
+        "[Memories API] Anchor gate probe failed"
+    );
+    Response::error(ErrorKind::Internal, "Anchor gate probe failed")
+}
+
+// === end P4.D269 ===
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2060,4 +2313,138 @@ mod tests {
             "{lines:?}"
         );
     }
+
+    // === P4.D269: anchor-gate probe handler pins (append-only) ===
+    struct OneDim;
+    impl crate::model::embedding::EmbeddingProvider for OneDim {
+        async fn generate_embedding_for_user(
+            &self,
+            _text: &str,
+            _user_id: &str,
+            _profile_id: Option<&str>,
+            _priority: crate::model::embedding::EmbeddingPriority,
+        ) -> Result<crate::model::embedding::EmbeddingResult, crate::model::embedding::EmbeddingError>
+        {
+            Ok(crate::model::embedding::EmbeddingResult {
+                embedding: vec![1.0],
+                model: "m".into(),
+                dimensions: 1,
+                provider: "SCRIPTED".into(),
+            })
+        }
+    }
+
+    /// `provisioned()` plus the character the probe's gate looks up.
+    fn provisioned_with_character() -> (tempfile::TempDir, Db) {
+        let (dir, db) = provisioned();
+        let main = dir.path().join("data/quilltap.db");
+        let w = crate::db::Writer::open_writable(&main, PEPPER).unwrap();
+        w.connection()
+            .execute(
+                "INSERT INTO \"characters\" (\"id\", \"userId\", \"name\", \"createdAt\", \"updatedAt\") \
+                 VALUES (?1, ?2, 'A', '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z')",
+                rusqlite::params![CHAR_A, crate::services::provisioning::SINGLE_USER_ID],
+            )
+            .unwrap();
+        (dir, db)
+    }
+
+    fn probe_lines(lines: &[String]) -> Vec<String> {
+        lines
+            .iter()
+            .filter(|l| l.contains("[Memories API]"))
+            .cloned()
+            .collect()
+    }
+
+    /// v4's DEBUG `{characterId, limit}` — `limit` OMITTED when absent (§R.5).
+    #[tokio::test]
+    async fn anchor_probe_logs_v4s_debug_with_and_without_limit() {
+        let (_dir, db) = provisioned_with_character();
+        for (limit, tail) in [(Some(4.0), " limit=4"), (None, "")] {
+            let (guard, logs) = capture_guard();
+            let resp = memory_anchor_gate_probe(&db, &OneDim, "u", CHAR_A, limit).await;
+            drop(guard);
+            assert!(matches!(resp, Response::Memory(_)), "{resp:?}");
+            assert_eq!(
+                probe_lines(&logs.lock().unwrap()),
+                [format!(
+                    "DEBUG quilltap_core::api::memories [Memories API] Running anchor gate probe characterId={CHAR_A}{tail}"
+                )]
+            );
+        }
+    }
+
+    /// The Zod gate and the character gate both answer BEFORE the debug line.
+    #[tokio::test]
+    async fn anchor_probe_refusals_are_silent() {
+        let (_dir, db) = provisioned_with_character();
+        for (id, limit, status) in [
+            ("nope", None, ErrorKind::BadRequest),
+            (CHAR_A, Some(1.5), ErrorKind::BadRequest),
+            (
+                "a0000000-0000-4000-8000-0000000000ff",
+                None,
+                ErrorKind::NotFound,
+            ),
+        ] {
+            let (guard, logs) = capture_guard();
+            let resp = memory_anchor_gate_probe(&db, &OneDim, "u", id, limit).await;
+            drop(guard);
+            assert!(
+                matches!(&resp, Response::Error(e) if e.kind == status),
+                "{resp:?}"
+            );
+            assert!(probe_lines(&logs.lock().unwrap()).is_empty());
+        }
+    }
+
+    /// v5's only `Err` (a vector-index load failure) → v4's ERROR line and 500
+    /// `Anchor gate probe failed` (P4.D269 R-G: v4's own load never rejects —
+    /// the harness pins that both ways as `PROBE_STORE_LOAD_FAILURE`).
+    #[tokio::test]
+    async fn anchor_probe_store_failure_logs_v4s_error_and_answers_500() {
+        let (dir, db) = provisioned_with_character();
+        {
+            let w = crate::db::Writer::open_writable(&dir.path().join("data/quilltap.db"), PEPPER)
+                .unwrap();
+            w.connection()
+                .execute_batch("DROP TABLE \"vector_entries\"")
+                .unwrap();
+        }
+        let (guard, logs) = capture_guard();
+        let resp = memory_anchor_gate_probe(&db, &OneDim, "u", CHAR_A, None).await;
+        drop(guard);
+        assert!(
+            matches!(&resp, Response::Error(e) if e.kind == ErrorKind::Internal && e.message == "Anchor gate probe failed"),
+            "{resp:?}"
+        );
+        let lines = probe_lines(&logs.lock().unwrap());
+        assert_eq!(
+            lines.last().unwrap(),
+            &format!(
+                "ERROR quilltap_core::api::memories [Memories API] Anchor gate probe failed characterId={CHAR_A} error=no such table: vector_entries"
+            )
+        );
+    }
+
+    /// The probe's Zod issues in schema order, measured at the pin.
+    #[test]
+    fn anchor_probe_issues_follow_zod_4() {
+        let render = |id: &str, limit: Option<f64>| {
+            serde_json::to_string(&zod_issue_details(&anchor_gate_probe_issues(id, limit))).unwrap()
+        };
+        assert_eq!(render(CHAR_A, Some(200.0)), "[]");
+        // A non-integer ABORTS the bounds (`-0.5` carries one issue).
+        assert_eq!(
+            render(CHAR_A, Some(-0.5)),
+            r#"[{"expected":"int","format":"safeint","code":"invalid_type","path":["limit"],"message":"Invalid input: expected int, received number"}]"#
+        );
+        // An unsafe integer keeps going.
+        assert!(render(CHAR_A, Some(1e20)).contains(r#""origin":"int""#));
+        assert!(render(CHAR_A, Some(1e20)).contains(r#""maximum":200"#));
+        let both = render("nope", Some(0.0));
+        assert!(both.find("invalid_format").unwrap() < both.find("too_small").unwrap());
+    }
+    // === end ===
 }

@@ -1,0 +1,49 @@
+
+Quilltap recall-replay Tool
+
+Usage: quilltap recall-replay <chatId> [options]
+
+Replays the per-turn memory recall for a chat turn against the running
+Quilltap server and prints the full candidate table twice — the pre-overhaul
+ranking and the episodic (retrospective/time-window/entity) ranking — so the
+recall constants can be tuned against real "the character forgot" turns.
+
+Options:
+      --turn <number>        1-based interchange to replay at (default: last)
+      --char <characterId>   Character whose memories are searched
+                             (default: first LLM-controlled participant)
+      --limit <number>       Candidate rows per path (default: the larger of 25
+                             and the new path's head size + 10; max: 100)
+      --memory-budget <tokens>
+                             Memory token budget (positive integer). The new
+                             path's selected rows then follow the budget-sized
+                             dynamic head (the head scales with the model's
+                             memory budget); the old path keeps the historical
+                             fixed 5-entry head.
+      --tuning '<json>'      Retuning constants for the NEW path only, e.g.
+                             '{"boostGateAbs":0.45,"boostGateMargin":0.15,
+                             "boostGateRamp":0.1,"boostCap":1.6}'. Keys:
+                             boostGateAbs, boostGateMargin, boostGateRamp,
+                             boostCap, freshBypassesGate, windowBypassesGate,
+                             multipliers
+                             {RECALL_MULTIPLIERS key:
+                             value}, specificAnchors, anchorMinHits,
+                             anchorOrder, backgroundReserve.
+                             Unknown keys are rejected.
+      --tuning-file <path>   Read the --tuning JSON from a file
+      --signals-from <path>  Reuse the signals saved in a previous --json
+                             replay of the same chat and turn, instead of a
+                             fresh (non-deterministic) distillation
+      --as-of                Search only memories created before the turn's
+                             opening message (the corpus as it stood then)
+      --port <number>        Server port for API calls (default: 3000)
+      --json                 Print the raw JSON result instead of tables
+  -h, --help                 Show this help
+
+Examples:
+  quilltap recall-replay <chatId>
+  quilltap recall-replay <chatId> --turn 42
+  quilltap recall-replay <chatId> --turn 42 --memory-budget 4000
+  quilltap recall-replay <chatId> --turn 42 --json > replay.json
+  quilltap recall-replay <chatId> --turn 42 --signals-from replay.json --as-of     --tuning-file tuning-r1.json
+

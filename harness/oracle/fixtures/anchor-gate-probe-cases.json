@@ -1,0 +1,88 @@
+{
+  "$comment": "P4.D269 — the anchor-gate probe tier-3 corpus (v4 `lib/memory/anchor-gate-probe.ts` + `POST /api/v1/memories?action=anchor-gate-probe`, pin `01a83539d`). Read by BOTH sides: harness/oracle/cases/anchor-gate-probe-tier3.test.ts and crates/quilltap-harness/tests/anchor_gate_probe_tier3_equivalence.rs. Every case opens a FRESH copy of the committed episodic-recall-{main,mount}.db pair, applies the memory-tiers migration, then runs `basePlant` and the case's own `plant`, one statement each, identically on both sides. The base plant staggers createdAt (the fixture seeds every row at one instant, which would make nothing older) and turns two rows into restatements of older ones: a2 retells a1 with a different anchor line, f1 retells d1 with none.",
+  "characterId": "c1000000-0000-4000-8000-0000000000e1",
+  "userId": "a0000000-0000-4000-8000-000000000001",
+  "basePlant": [
+    "UPDATE memories SET createdAt = '2026-05-01T01:00:00.000Z' WHERE id = 'e2000000-0000-4000-8000-0000000000d1'",
+    "UPDATE memories SET createdAt = '2026-05-01T02:00:00.000Z' WHERE id = 'e2000000-0000-4000-8000-0000000000c1'",
+    "UPDATE memories SET createdAt = '2026-05-01T03:00:00.000Z' WHERE id = 'e2000000-0000-4000-8000-0000000000b2'",
+    "UPDATE memories SET createdAt = '2026-05-01T04:00:00.000Z' WHERE id = 'e2000000-0000-4000-8000-0000000000a1'",
+    "UPDATE memories SET createdAt = '2026-05-01T05:00:00.000Z' WHERE id = 'e2000000-0000-4000-8000-0000000000f1'",
+    "UPDATE memories SET createdAt = '2026-05-01T06:00:00.000Z' WHERE id = 'e2000000-0000-4000-8000-0000000000e1'",
+    "UPDATE memories SET createdAt = '2026-05-01T07:00:00.000Z' WHERE id = 'e2000000-0000-4000-8000-0000000000a2'",
+    "UPDATE memories SET summary = (SELECT summary FROM memories WHERE id = 'e2000000-0000-4000-8000-0000000000a1'), content = (SELECT content FROM memories WHERE id = 'e2000000-0000-4000-8000-0000000000a1') WHERE id = 'e2000000-0000-4000-8000-0000000000a2'",
+    "UPDATE memories SET summary = (SELECT summary FROM memories WHERE id = 'e2000000-0000-4000-8000-0000000000d1'), content = (SELECT content FROM memories WHERE id = 'e2000000-0000-4000-8000-0000000000d1') WHERE id = 'e2000000-0000-4000-8000-0000000000f1'"
+  ],
+  "cases": [
+    { "name": "probe_default", "kind": "service", "input": {} },
+    { "name": "probe_limit_3", "kind": "service", "input": { "limit": 3 } },
+    {
+      "name": "probe_cold_sample",
+      "kind": "service",
+      "input": {},
+      "plant": [
+        "UPDATE memories SET tier = 'cold' WHERE id IN ('e2000000-0000-4000-8000-0000000000a1', 'e2000000-0000-4000-8000-0000000000e1')"
+      ]
+    },
+    {
+      "name": "probe_no_stored_embedding",
+      "kind": "service",
+      "input": {},
+      "plant": [
+        "UPDATE memories SET embedding = NULL WHERE id = 'e2000000-0000-4000-8000-0000000000d1'"
+      ]
+    },
+    {
+      "name": "probe_tied_created_at",
+      "kind": "service",
+      "input": {},
+      "plant": [
+        "UPDATE memories SET createdAt = '2026-05-01T07:00:00.000Z' WHERE id = 'e2000000-0000-4000-8000-0000000000a1'"
+      ]
+    },
+    {
+      "name": "probe_tied_anchor_free_best",
+      "kind": "service",
+      "input": {},
+      "plant": [
+        "UPDATE memories SET summary = (SELECT summary FROM memories WHERE id = 'e2000000-0000-4000-8000-0000000000a1'), content = (SELECT content FROM memories WHERE id = 'e2000000-0000-4000-8000-0000000000a1') WHERE id = 'e2000000-0000-4000-8000-0000000000b2'"
+      ]
+    },
+    {
+      "name": "probe_dim_mismatch",
+      "kind": "service",
+      "input": {},
+      "plant": [
+        "UPDATE vector_indices SET dimensions = 7 WHERE characterId = 'c1000000-0000-4000-8000-0000000000e1'"
+      ]
+    },
+    {
+      "name": "probe_embed_failure",
+      "kind": "service",
+      "input": {},
+      "failText": "Winter visit to the quay market.\n\nLast winter we visited the quay market to mend the sail lockers.",
+      "failMessage": "canned embedding failure"
+    },
+    {
+      "name": "probe_empty_character",
+      "kind": "service",
+      "input": { "characterId": "c1000000-0000-4000-8000-0000000000f1" }
+    },
+    { "name": "route_ok", "kind": "route", "body": { "characterId": "c1000000-0000-4000-8000-0000000000e1", "limit": 4 } },
+    { "name": "route_no_limit", "kind": "route", "body": { "characterId": "c1000000-0000-4000-8000-0000000000e1" } },
+    { "name": "route_missing_character", "kind": "route", "body": { "characterId": "00000000-0000-4000-8000-0000000000ff" } },
+    { "name": "route_bad_uuid", "kind": "route", "body": { "characterId": "nope" } },
+    { "name": "route_limit_zero", "kind": "route", "body": { "characterId": "c1000000-0000-4000-8000-0000000000e1", "limit": 0 } },
+    { "name": "route_limit_201", "kind": "route", "body": { "characterId": "c1000000-0000-4000-8000-0000000000e1", "limit": 201 } },
+    { "name": "route_limit_fraction", "kind": "route", "body": { "characterId": "c1000000-0000-4000-8000-0000000000e1", "limit": 1.5 } },
+    { "name": "route_limit_negative_fraction", "kind": "route", "body": { "characterId": "c1000000-0000-4000-8000-0000000000e1", "limit": -0.5 } },
+    { "name": "route_limit_unsafe_int", "kind": "route", "body": { "characterId": "c1000000-0000-4000-8000-0000000000e1", "limit": 100000000000000000000 } },
+    { "name": "route_both_bad", "kind": "route", "body": { "characterId": "nope", "limit": 0 } },
+    {
+      "name": "route_vector_entries_dropped",
+      "kind": "route",
+      "body": { "characterId": "c1000000-0000-4000-8000-0000000000e1", "limit": 2 },
+      "plant": ["DROP TABLE vector_entries"]
+    }
+  ]
+}

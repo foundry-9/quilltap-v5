@@ -462,7 +462,38 @@ New `host_boot_p4d265_memory_tiers`, four arms through the real `Host::start`: a
 _Docs-only change._
 
 The order's status header now records the `KEYSTONE` sha. It also records the Rust spellings C1 left open (R-F), the exact `job_runner.rs` hook-region lines, P4.D266's R-C obligation (`ResolvedIds` on the housekeeping job path), the 43 widened fixture pairs, and restore 22a as the only production store-insert site given v4's free-name pick.
+#### 2026-10-10 — docs(porting): P4.D269 lane close — gate record, handoffs, status header
 
+_Docs-only change._
+
+The P4.D269 lane record in `status-log.md`: the workspace gate (707 binaries, 4,683 passed, 8 failed, each attributed to a sibling or the union), the three handoffs, the Tier 3 deferrals, and the order's status header set to LANE COMPLETE.
+
+#### 2026-10-09 — feat(cli): P4.D269 quilltap anchor-probe, the grown recall-replay, and the three completion templates at v4 `01a83539d`
+
+_Versions: cli 0.0.31._
+
+- NEW `quilltap anchor-probe <characterId>` (v4 `lib/anchor-probe-command.js`, `3f7320138`). It posts `memoryAnchorGateProbe` to `/api/dispatch` (no REST edge in v5 — R-A). It has v4's flags and refusals, the band and row tables (padded by the ANSI-stripped UTF-16 width, a JS `\s+` collapse, a 60-unit cut, the `▸` marker), `--json`, and v4's four failure sentences. It prints no `details` lines.
+- `recall-replay` grows to v4's `01a83539d` shape. New flags: `--memory-budget` (JS `Number` + `Number.isInteger`), `--tuning` / `--tuning-file`, `--signals-from` (v4's sentences, colours and order; V8's `JSON.parse` messages; Node's `readFileSync` error text for `ENOENT` / `EISDIR` / `EACCES`; a `null` file through the launcher's `Error:` catch) and `--as-of`. The output adds the `Harness` / `Tuning` header lines, `, head N`, and one line per `details` issue on a 400. Forwarded values are re-serialized JS-faithfully.
+- The help texts are now captured files (`recall_replay_help.txt`, `anchor_probe_help.txt`) instead of inline literals (R-B). `main_help.txt` gains the `anchor-probe` line, and `SUBCOMMANDS` + the dispatch gain `anchor-probe`. The three completion templates are re-copied whole at the pin (md5 equal to v4's).
+- `recall_replay_cmd.rs`'s private HTTP POST is folded into `http::post`.
+- Tier R (`cli_differential`) grows by the anchor-probe block and the grown recall-replay block. Each posting case byte-checks the wire body against v4's (R-I), and the dispatch-dialect stub bodies are built from core. `completion_behavior` reads the two captured help files and gains the new template cases.
+
+#### 2026-10-09 — feat(memory): P4.D269 the memories list's tier + CONSOLIDATED and the search's includeCold, CONSOLIDATED and Zod schema (v4 `d58548051`, pin `01a83539d`)
+
+_Versions: core 0.0.1267._
+
+- `memoryList` honours `tier` (only `hot` / `cold`; anything else lists both, never a refusal), replacing the keystone's present-`tier` refusal. It keeps v4's two NULL-tier rules: the paginated path's exact `"tier" = ?` lists a NULL-tier row under neither tier, while the legacy `(m.tier ?? 'hot') === tier` lists it as hot. `source` accepts `CONSOLIDATED`.
+- `memorySearch` passes `include_cold: true` (v4's comment carried; its stale access-bump comment is not). Its body is validated by a Zod-faithful port of v4's `searchMemorySchema` (the custom `Character ID is required` on both the type and the format issue, `Search query is required`, limit 1..100 with a prefault of 20, the CONSOLIDATED enum where `null` is `invalid_value`), and refusals answer 400 `Validation error` + `details`. Each row is now `{...memory, score, usedEmbedding, tagDetails}` in v4's key order.
+- `memories_routes_equivalence` gains 17 rows on both sides (10 list, 7 search), plus byte compares of the two existing search rows. The rows are planted with two cold rows, a CONSOLIDATED digest and a NULL-tier row, and compared by BYTES in wire order. The existing list calls take the new `tier` argument.
+
+#### 2026-10-09 — feat(memory): P4.D269 the F2 anchor-gate probe and its memoryAnchorGateProbe arm (v4 `3f7320138`, pin `01a83539d`)
+
+_Versions: core 0.0.1266._
+
+- NEW `services::anchor_gate_probe` ports v4 `lib/memory/anchor-gate-probe.ts` line for line. It is measurement only and writes nothing. It samples `findRecent` over both tiers and searches the unfiltered store at 20 then top 5. It compares the anchored and anchor-free re-embeds through a per-id cache filled on success. An anchor-free neighbour of the probe's width is scored on its stored `memories.embedding`. A failed embed leaves a partial row in place. `embeddingsGenerated` counts before each call. It logs v4's two WARNs and its INFO (`anchoredJson` / `anchorFreeJson`).
+- `memoryAnchorGateProbe` now runs `api::memories::memory_anchor_gate_probe`, replacing the keystone refusal. It applies v4's Zod gate (uuid; int 1..200, where a non-integer aborts the bounds and an unsafe integer does not), then the 404 `Character not found`, the DEBUG (`limit` omitted when absent), and 500 `Anchor gate probe failed` with v4's ERROR.
+- NEW tier-3 family `anchor_gate_probe_tier3_equivalence` (20 cases) over the episodic-recall pair with real TF-IDF embeddings on both sides, driving v4's real probe and real POST route. Its corpus is `anchor-gate-probe-cases.json`. One named both-ways divergence, `PROBE_STORE_LOAD_FAILURE`: v4's store load never rejects, while v5's answers 500.
+- The two row helpers are lane-local copies of `memory_service`'s private `anchor_view_of` / `embedding_vec_of`, handed off to P4.D267.
 #### 2026-10-09 — feat(memory): KEYSTONE — P4.D265 the memory programme's data layer (v4 `01a83539d` pin)
 
 _Versions: core 0.0.1265, host 0.0.195, web 0.0.228._
