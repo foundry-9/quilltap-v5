@@ -3,13 +3,17 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  ElementRef,
   input,
   output,
   signal,
+  viewChild,
 } from '@angular/core';
 
 import type { WardrobeItemDto, WardrobeSlotType } from '../core/core-contract';
+import { isComposite } from './composite-types';
 import { WARDROBE_SLOT_META } from './slot-meta';
+import { SlotBadge } from './slot-ui';
 import { wardrobeOriginLabel } from './wardrobe-container';
 import { formatWearLine, wearOf } from './wear-display';
 import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
@@ -24,12 +28,17 @@ import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
  *    column tab is active).
  *  - `[+]` icon that adds the item to a slot. Single-slot items target their
  *    only slot directly; multi-slot items open a small popover picker.
- *  - `⋮` kebab menu with secondary actions: Edit, toggle the default-outfit
- *    flag, Duplicate, Archive/Restore, Move, Copy, and Delete. Which of these
- *    appear is governed by the `canManage` predicate: items living in the
- *    container being browsed get the full set, items merged in from another
- *    shared tier keep only Move and Copy — one character must not be able to
- *    retire a coat the whole household shares.
+ *  - `⋮` kebab menu with secondary actions: Edit, Generate image, toggle the
+ *    default-outfit flag, Duplicate, Archive, Move to folder…, Move to another
+ *    wardrobe…, Copy to another wardrobe…, and Delete. Which of these appear
+ *    is governed by the `canManage` predicate: items living in the container
+ *    being browsed get the full set, items merged in from another shared tier
+ *    keep only the two cross-wardrobe actions (a borrowed item is filed by
+ *    whoever manages its own wardrobe).
+ *
+ * In the browser's select mode a manageable row shows a checkbox and its
+ * other controls go quiet; a search hit shows the folder it lives in (v4
+ * `4a38222e6` `:22-23`).
  *
  * Composite items keep a `▶/▼` expander so the user can peek at the
  * components without entering the editor (nested rows are read-only browse:
@@ -45,22 +54,45 @@ import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
  * (the outfit composer, which does the same job the outfit-selection LLM does)
  * simply omits it and the entry does not render. An Angular `output` is always
  * present, so the same gate is an explicit boolean input, defaulting to FALSE —
- * absence, not presence, is what the two spellings share.
+ * absence, not presence, is what the two spellings share. {@link canMoveToFolder}
+ * is v4's optional `onMoveToFolder` in the same idiom.
+ *
+ * The popovers close on an outside mousedown or Escape (v4 `useClickOutside`,
+ * `:149-167` — the Escape swallowed so the enclosing dialog stays open).
  */
 @Component({
   selector: 'qt-wardrobe-item-row',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [WardrobeItemThumbnail],
+  imports: [WardrobeItemThumbnail, SlotBadge],
   // The host needs a BOX: it is a direct child of a `space-y-*` stack, and a
   // vertical margin never applies to a non-replaced inline box — see
   // `_surfaces.css`'s rule for this class (P4.75, measured).
-  host: { class: 'qt-wardrobe-item-row', '(document:keydown.escape)': 'onEscape($event)' },
+  host: {
+    class: 'qt-wardrobe-item-row',
+    '(document:keydown.escape)': 'onEscape($event)',
+    '(document:mousedown)': 'onDocumentMousedown($event)',
+  },
   template: `
     <div
       class="qt-card-interactive py-2 px-3"
       [style.margin-left]="depth() > 0 ? depth() * 12 + 'px' : null"
     >
       <div class="flex items-start gap-2">
+        <!-- Select mode (v4 4a38222e6 :199-211): a manageable row's checkbox,
+             a borrowed row's spacer. -->
+        @if (selection(); as sel) {
+          @if (manageable()) {
+            <input
+              type="checkbox"
+              class="qt-checkbox mt-1"
+              [checked]="sel.selected"
+              (change)="sel.onToggle()"
+              [attr.aria-label]="'Select ' + item().title"
+            />
+          } @else {
+            <span class="inline-block w-4" aria-hidden="true"></span>
+          }
+        }
         @if (isComposite()) {
           <button
             type="button"
@@ -101,7 +133,7 @@ import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
               <span class="qt-badge qt-badge-secondary">archived</span>
             }
             @for (t of item().types; track t) {
-              <span class="qt-badge" [class]="slotMeta[t].badgeClass">{{ t }}</span>
+              <qt-slot-badge [slot]="t" />
             }
             <!-- The origin chip (v4 cc80dc89d :250-256): only a BORROWED
                  row whose origin resolves to a label — a pre-round server's
@@ -112,6 +144,12 @@ import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
               }}</span>
             }
           </div>
+          <!-- A search hit's folder (v4 4a38222e6 :269-273). -->
+          @if (folderCrumb()) {
+            <div class="qt-text-xs qt-text-secondary mt-0.5" data-testid="wardrobe-folder-crumb">
+              {{ folderCrumb() }}
+            </div>
+          }
           <!-- Wear ledger tally (v4 3ee3b1342 :257-263) — the count is what
                gets compared across rows; the full breakdown is the editor's
                job. Always rendered: an absent annotation reads Never worn. -->
@@ -132,6 +170,7 @@ import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
             <button
               type="button"
               (click)="equip.emit(item())"
+              [disabled]="selectMode()"
               class="qt-button-ghost qt-button-sm"
               title="Puts it on across every slot it covers — layers or replaces per the item's setting"
             >
@@ -144,6 +183,7 @@ import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
               <button
                 type="button"
                 (click)="handleAddClick()"
+                [disabled]="selectMode()"
                 class="qt-button-ghost qt-button-sm"
                 [title]="addTooltip()"
                 [attr.aria-label]="addTooltip()"
@@ -152,6 +192,7 @@ import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
               </button>
               @if (slotPickerOpen() && item().types.length > 1) {
                 <div
+                  #slotPicker
                   class="absolute right-0 top-full mt-1 z-30 min-w-[10rem] rounded border qt-border-default qt-bg-default shadow-md"
                 >
                   <ul class="divide-y qt-border-default">
@@ -163,9 +204,7 @@ import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
                           class="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:qt-bg-muted"
                         >
                           <span>{{ slotMeta[slot].label }}</span>
-                          <span class="qt-badge" [class]="slotMeta[slot].badgeClass">{{
-                            slot
-                          }}</span>
+                          <qt-slot-badge [slot]="slot" />
                         </button>
                       </li>
                     }
@@ -176,10 +215,11 @@ import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
           }
 
           <!-- Kebab menu — item actions (v4 :271-380). -->
-          <div class="relative">
+          <div class="relative" #kebab>
             <button
               type="button"
               (click)="kebabOpen.set(!kebabOpen())"
+              [disabled]="selectMode()"
               class="qt-button-ghost qt-button-sm"
               aria-label="More actions"
               title="More actions"
@@ -256,6 +296,18 @@ import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
                       </li>
                     }
                   }
+                  @if (manageable() && canMoveToFolder()) {
+                    <li>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        (click)="menuAction(moveToFolder)"
+                        class="block w-full text-left px-3 py-2 text-sm hover:qt-bg-muted"
+                      >
+                        Move to folder…
+                      </button>
+                    </li>
+                  }
                   <li>
                     <button
                       type="button"
@@ -263,7 +315,7 @@ import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
                       (click)="menuAction(move)"
                       class="block w-full text-left px-3 py-2 text-sm hover:qt-bg-muted"
                     >
-                      Move
+                      Move to another wardrobe…
                     </button>
                   </li>
                   <li>
@@ -273,7 +325,7 @@ import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
                       (click)="menuAction(copyItem)"
                       class="block w-full text-left px-3 py-2 text-sm hover:qt-bg-muted"
                     >
-                      Copy
+                      Copy to another wardrobe…
                     </button>
                   </li>
                   @if (manageable()) {
@@ -295,7 +347,10 @@ import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
         </div>
       </div>
 
-      <!-- Nested components (read-only here; click Edit to change). -->
+      <!-- Nested components (read-only here; click Edit to change). A nested
+           row cannot be filed, selected or archived from its parent: none of
+           canMoveToFolder / selection / folderCrumb / canArchive is forwarded
+           (v4 4a38222e6 :511-529). -->
       @if (isComposite() && expanded()) {
         <div class="mt-2 border-l-2 qt-border-default pl-2 space-y-1">
           @if (components().length === 0) {
@@ -381,6 +436,23 @@ export class WardrobeItemRow {
    * gate (the {@link canGenerateImage} precedent). Default false.
    */
   readonly canOpenImage = input(false, { transform: booleanAttribute });
+  /**
+   * Whether this host files items into folders at all — v4's optional
+   * `onMoveToFolder` prop (`4a38222e6` `:77-78`: "File the item in another
+   * folder of its own wardrobe (manageable rows only)"), as a gate (the
+   * {@link canArchive} precedent). Default false; the entry additionally
+   * rides on `canManage`, after Archive and before the cross-wardrobe pair.
+   */
+  readonly canMoveToFolder = input(false, { transform: booleanAttribute });
+  /**
+   * Select mode (v4 `4a38222e6` `:79-83`): a checkbox on a manageable row
+   * (never on a borrowed one), and the wear buttons and `⋮` disabled while it
+   * is on. Undefined = not selecting.
+   */
+  readonly selection = input<{ selected: boolean; onToggle: () => void } | undefined>(undefined);
+  /** A search hit's folder, shown as a muted crumb (`Formal › Evening`; v4
+   *  `:84-85`). */
+  readonly folderCrumb = input<string | null>(null);
   /** Nesting depth for composite components — indentation. */
   readonly depth = input(0);
 
@@ -396,6 +468,8 @@ export class WardrobeItemRow {
   readonly generateImage = output<WardrobeItemDto>();
   /** Open this item's (or a nested component's) current picture full screen. */
   readonly openImage = output<WardrobeItemDto>();
+  /** File the item in another folder of its own wardrobe (v4 `onMoveToFolder`). */
+  readonly moveToFolder = output<WardrobeItemDto>();
   readonly equip = output<WardrobeItemDto>();
   readonly addToSlot = output<{ item: WardrobeItemDto; slot: WardrobeSlotType }>();
 
@@ -409,7 +483,12 @@ export class WardrobeItemRow {
     this.generatingImageIds().has(this.item().id),
   );
 
-  protected readonly isComposite = computed(() => (this.item().componentItemIds ?? []).length > 0);
+  protected readonly isComposite = computed(() => isComposite(this.item()));
+  /** v4 `:147` — `selection !== undefined`. */
+  protected readonly selectMode = computed(() => this.selection() !== undefined);
+
+  private readonly kebabRef = viewChild<ElementRef<HTMLElement>>('kebab');
+  private readonly slotPickerRef = viewChild<ElementRef<HTMLElement>>('slotPicker');
   /**
    * v4 `:83-85` — without an explicit predicate, fall back to the
    * character-view rule: personal items are manageable, shared-tier items are
@@ -462,6 +541,24 @@ export class WardrobeItemRow {
   protected menuAction(out: { emit(value: WardrobeItemDto): void }): void {
     this.kebabOpen.set(false);
     out.emit(this.item());
+  }
+
+  /**
+   * v4 `useClickOutside` (`:156-167`, `document` `mousedown`): a press outside
+   * the kebab (its button + menu) closes the kebab; a press outside the slot
+   * popover closes the popover. Closes the pre-existing v5 gap (Escape-only).
+   */
+  protected onDocumentMousedown(event: MouseEvent): void {
+    const target = event.target as Node | null;
+    if (this.kebabOpen() && !(target && this.kebabRef()?.nativeElement.contains(target))) {
+      this.kebabOpen.set(false);
+    }
+    if (
+      this.slotPickerOpen() &&
+      !(target && this.slotPickerRef()?.nativeElement.contains(target))
+    ) {
+      this.slotPickerOpen.set(false);
+    }
   }
 
   /** v4 `:114-133` — Escape closes the popovers without dismissing the modal. */

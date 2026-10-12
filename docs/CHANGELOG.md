@@ -242,6 +242,12 @@ _Versions: SPA 0.5.836._
 
 Adds `wardrobe/folders.ts` (v4 `lib/wardrobe/folders.ts` at `4a38222e6`, the whole client-safe module: path helpers, the normaliser family, the error classes) and `wardrobe/folder-view.ts` (v4's pure browser view rules: own tier vs borrowed tiers, child folder rows, tier rows). `wardrobe-container.ts` gains `containerForListedItem`, which addresses a listed item through the wardrobe its `origin` names before falling back to the character/General rule. `WardrobeItemDto` gains the shared `folder?` field. Specs: v4's 19 folder cases transcribed, 14 folder-view rule rows, 2 addressing rows.
 
+#### 2026-10-12 — feat(spa): the wardrobe row's Move to folder…, select mode, folder crumb and slot labels (P4.D286 unit 5)
+
+_Versions: SPA 0.5.840._
+
+Ports v4 `4a38222e6`'s `wardrobe-item-row` hunks and `9ecebf986`'s slot chips at the `4a38222e6` pin. The kebab gains **Move to folder…** on manageable rows (a `canMoveToFolder` gate and a `moveToFolder` output, after Archive and before the cross-wardrobe pair), and `Move` / `Copy` become **Move to another wardrobe…** / **Copy to another wardrobe…**. In select mode (`selection` input) a manageable row leads with a `Select <title>` checkbox, a borrowed row with a spacer, and the Wear, `+` and `⋮` buttons are disabled. A search hit's `folderCrumb` renders as a muted line above the wear line. Nested component rows get none of the three. Slot chips print display labels through `SlotBadge`. The kebab and slot popover now also close on an outside mousedown, as v4's have, closing a pre-existing gap where only Escape closed them.
+
 #### 2026-10-12 — feat(spa): the wardrobe item editor's Folder field (P4.D286 unit 4)
 
 _Versions: SPA 0.5.839._

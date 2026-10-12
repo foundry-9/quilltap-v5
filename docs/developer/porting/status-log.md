@@ -179011,3 +179011,41 @@ regen (no Rust family); every v4 read is `git show 4a38222e6:<path>`.
   edit + the pick rides the save); two candidate-read pins filter the field's
   read out (`listReads`).
 - SPA gate: lint ok; vitest 490 / 9,356; build ok.
+
+### Unit 5 — the row (C3 §5) + Tier 2 item 10 (outside-press close)
+
+- `wardrobe-item-row.ts` — v4 `4a38222e6` `wardrobe-item-row.tsx` (535
+  lines): **Move to folder…** behind `manageable() && canMoveToFolder()`
+  (`:440-454`), the renames (`:455-480`), `selection` (C3 §5's type: `{
+  selected: boolean; onToggle: () => void } | undefined`) → the `Select
+  ${title}` checkbox `qt-checkbox mt-1` / the `inline-block w-4` spacer
+  (`:199-211`), `[disabled]="selectMode()"` on Wear / `+` / `⋮` (`:292`,
+  `:305`, `:348`), `folderCrumb` (`:269-273`, `data-testid="wardrobe-folder-
+  crumb"`), `SlotBadge` in the chip line and the slot popover (`:259-261`,
+  `:333`), nested rows forward none of the three (`:511-529`), `isComposite`
+  shared.
+- **Tier 2 item 10 MEASURED + CLOSED:** v4's row has had the outside-press
+  close at the pin (`useClickOutside` ×2, `:156-167`; `document` `mousedown`,
+  `hooks/useClickOutside.ts:103`) — the kebab's ref is its WRAPPER (button +
+  menu), the slot popover's ref the popover alone. Ported as a
+  `(document:mousedown)` host listener with the same two refs.
+- **Meeting point for P4.D285's browser (the Angular spellings of C3 §5):**
+  `[canMoveToFolder]="true"` + `(moveToFolder)="openPickerFor([$event])"`;
+  `[selection]="selectMode ? { selected, onToggle } : undefined"` (onToggle
+  takes NO argument, per C3 §5's type); `[folderCrumb]="searching &&
+  item.folder ? folderCrumb(item.folder) : null"`; the existing
+  `[canOpenImage]` + `(openImage)`.
+- **e2e re-pins this rename forces (P4.D285's file, §R.10(k)):**
+  `wardrobe-flow.spec.ts:820` (`menuitem 'Copy'`), `:860` + `:909`
+  (`menuitem 'Move'`) — RED on this branch until P4.D285's re-pins union in.
+- **Red-first:** the row spec's 13 `Move` / `Copy` literals re-pinned + 10
+  new cases; measured with a temporary structural cast on the new output
+  (memory note `spa-component-harness-gotchas`): 16 RED on unported source,
+  37/37 GREEN after.
+- SPA gate: first run 1 file red — `chat/courier-bubble.spec.ts` 8/8 with
+  `TypeError: Cannot assign to read only property 'clipboard' of object
+  '#<Navigator>'` (a cross-file pollution: `wardrobe-image-viewer.spec.ts`
+  `defineProperty`s `navigator.clipboard` without `writable`, and
+  `courier-bubble`'s `Object.assign` then throws when the two share a
+  worker); green alone 8/8; the full re-run green (lint ok; vitest 490 /
+  9,366; build ok). Pre-existing and order-dependent; hardened in unit 6.

@@ -27,6 +27,10 @@ async function render(
     canGenerateImage?: boolean;
     generatingImageIds?: ReadonlySet<string>;
     canOpenImage?: boolean;
+    canMoveToFolder?: boolean;
+    selection?: { selected: boolean; onToggle: () => void };
+    folderCrumb?: string | null;
+    inChat?: boolean;
   } = {},
 ): Promise<ComponentFixture<WardrobeItemRow>> {
   TestBed.resetTestingModule();
@@ -34,7 +38,10 @@ async function render(
   const fixture = TestBed.createComponent(WardrobeItemRow);
   fixture.componentRef.setInput('item', item);
   fixture.componentRef.setInput('allItems', allItems);
-  fixture.componentRef.setInput('inChat', false);
+  fixture.componentRef.setInput('inChat', opts.inChat ?? false);
+  if (opts.canMoveToFolder) fixture.componentRef.setInput('canMoveToFolder', true);
+  if (opts.selection) fixture.componentRef.setInput('selection', opts.selection);
+  if (opts.folderCrumb !== undefined) fixture.componentRef.setInput('folderCrumb', opts.folderCrumb);
   if (canManage) fixture.componentRef.setInput('canManage', canManage);
   if (opts.canArchive) fixture.componentRef.setInput('canArchive', true);
   if (opts.canGenerateImage) fixture.componentRef.setInput('canGenerateImage', true);
@@ -60,6 +67,12 @@ function kebabLabels(fixture: ComponentFixture<WardrobeItemRow>): string[] {
 }
 
 /**
+ * RE-PINNED by P4.D286: v4 `4a38222e6` renamed the cross-wardrobe pair `Move`
+ * / `Copy` to `Move to another wardrobe…` / `Copy to another wardrobe…`
+ * (`wardrobe-item-row.tsx:455-480`; v4's own archive / images jsdom cases
+ * re-pinned the same way, `wardrobe-item-row-archive.test.tsx:137`, `:148`,
+ * `wardrobe-item-images-ui.test.tsx:232`).
+ *
  * v4 `wardrobe-item-row.tsx` at `d7263f39`: the `isShared = !item.characterId`
  * rule became the optional `canManage` predicate. Full kebab iff manageable;
  * otherwise Move/Copy only. RE-PINNED by P4.D261: v4 `cc80dc89d` retired the
@@ -74,14 +87,14 @@ describe('WardrobeItemRow canManage (v4 :36-40, :83-85, :199, :291, :363)', () =
       'Edit',
       '★ Mark as default outfit item',
       'Duplicate',
-      'Move',
-      'Copy',
+      'Move to another wardrobe…',
+      'Copy to another wardrobe…',
       'Delete',
     ]);
     expect((owned.nativeElement as HTMLElement).textContent).not.toContain('· shared');
 
     const shared = await render(dto({ id: 'i2', characterId: null }));
-    expect(kebabLabels(shared)).toEqual(['Move', 'Copy']);
+    expect(kebabLabels(shared)).toEqual(['Move to another wardrobe…', 'Copy to another wardrobe…']);
     expect((shared.nativeElement as HTMLElement).textContent).not.toContain('· shared');
     expect(
       (shared.nativeElement as HTMLElement).querySelector('.qt-badge-wardrobe-shared'),
@@ -99,7 +112,7 @@ describe('WardrobeItemRow canManage (v4 :36-40, :83-85, :199, :291, :363)', () =
 
     // A character-owned item the predicate refuses keeps Move/Copy only.
     const refused = await render(dto({ id: 'i2', characterId: 'c1' }), () => false);
-    expect(kebabLabels(refused)).toEqual(['Move', 'Copy']);
+    expect(kebabLabels(refused)).toEqual(['Move to another wardrobe…', 'Copy to another wardrobe…']);
     expect((refused.nativeElement as HTMLElement).textContent).not.toContain('· shared');
     expect(
       (refused.nativeElement as HTMLElement).querySelector('.qt-badge-wardrobe-shared'),
@@ -111,7 +124,7 @@ describe('WardrobeItemRow canManage (v4 :36-40, :83-85, :199, :291, :363)', () =
     const merged = dto({ id: 'merged', characterId: null });
     const inList = (i: WardrobeItemDto): boolean => i.id === 'local';
     expect(kebabLabels(await render(local, inList))).toContain('Edit');
-    expect(kebabLabels(await render(merged, inList))).toEqual(['Move', 'Copy']);
+    expect(kebabLabels(await render(merged, inList))).toEqual(['Move to another wardrobe…', 'Copy to another wardrobe…']);
   });
 
   it('nested composite components inherit the predicate (v4 :399)', async () => {
@@ -167,8 +180,8 @@ describe('WardrobeItemRow — the archive affordance (v4 d25dacc1)', () => {
       '★ Mark as default outfit item',
       'Duplicate',
       'Archive',
-      'Move',
-      'Copy',
+      'Move to another wardrobe…',
+      'Copy to another wardrobe…',
       'Delete',
     ]);
     const entry = Array.from(
@@ -203,7 +216,7 @@ describe('WardrobeItemRow — the archive affordance (v4 d25dacc1)', () => {
     const labels = kebabLabels(fixture);
     expect(labels).not.toContain('Archive');
     // The unconditional actions are still there.
-    expect(labels).toContain('Move');
+    expect(labels).toContain('Move to another wardrobe…');
   });
 
   it('withholds it from a garment borrowed from another tier, as Edit is withheld', async () => {
@@ -213,7 +226,7 @@ describe('WardrobeItemRow — the archive affordance (v4 d25dacc1)', () => {
     const labels = kebabLabels(fixture);
     expect(labels).not.toContain('Archive');
     expect(labels).not.toContain('Edit');
-    expect(labels).toContain('Copy');
+    expect(labels).toContain('Copy to another wardrobe…');
   });
 });
 
@@ -434,7 +447,7 @@ describe('WardrobeItemRow — picture (v4 wardrobe-item-images-ui.test.tsx)', ()
     );
     const labels = kebabLabels(f);
     expect(labels).not.toContain('Generate image');
-    expect(labels).toContain('Move');
+    expect(labels).toContain('Move to another wardrobe…');
   });
 
   it('a host that does not opt in offers no entry at all (the boolean gate)', async () => {
@@ -456,5 +469,183 @@ describe('WardrobeItemRow — picture (v4 wardrobe-item-images-ui.test.tsx)', ()
     f.detectChanges();
     const labels = [...nested.querySelectorAll('[role="menuitem"]')].map((b) => b.textContent!.trim());
     expect(labels).toContain('Generating image…');
+  });
+});
+
+/**
+ * P4.D286 — v4 `4a38222e6` `wardrobe-item-row.tsx` (read at that pin): the
+ * folder-era inputs (`onMoveToFolder`, `selection`, `folderCrumb`), the slot
+ * chips as `SlotBadge` labels (`9ecebf986`), and the popovers' outside-press
+ * close (`useClickOutside`). v4's browser jsdom file
+ * `wardrobe-browser.folders.test.tsx` drives the row from the browser
+ * (P4.D285's); these pin the row's half of it.
+ */
+describe('WardrobeItemRow — folders, select mode, slot labels (v4 4a38222e6)', () => {
+  const owned = (): WardrobeItemDto => dto({ id: 'i1', characterId: 'c1', title: 'Greatcoat' });
+
+  it('offers Move to folder… on a manageable row, after Archive and before the cross-wardrobe pair', async () => {
+    const fixture = await render(owned(), undefined, [], { canArchive: true, canMoveToFolder: true });
+    const seen: string[] = [];
+    fixture.componentInstance.moveToFolder.subscribe((i: WardrobeItemDto) => seen.push(i.id));
+    expect(kebabLabels(fixture)).toEqual([
+      'Edit',
+      '★ Mark as default outfit item',
+      'Duplicate',
+      'Archive',
+      'Move to folder…',
+      'Move to another wardrobe…',
+      'Copy to another wardrobe…',
+      'Delete',
+    ]);
+    const entry = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('[role="menu"] button'),
+    ).find((b) => (b.textContent ?? '').trim() === 'Move to folder…') as HTMLButtonElement;
+    entry.click();
+    fixture.detectChanges();
+    expect(seen).toEqual(['i1']);
+    expect((fixture.nativeElement as HTMLElement).querySelector('[role="menu"]')).toBeNull();
+  });
+
+  it('withholds Move to folder… from a borrowed row and from a host that does not file', async () => {
+    const borrowed = await render(dto({ id: 'b1', characterId: null }), () => false, [], {
+      canMoveToFolder: true,
+    });
+    expect(kebabLabels(borrowed)).toEqual(['Move to another wardrobe…', 'Copy to another wardrobe…']);
+    const noHost = await render(owned());
+    expect(kebabLabels(noHost)).not.toContain('Move to folder…');
+  });
+
+  it('in select mode a manageable row leads with a checkbox; its controls go quiet', async () => {
+    const toggles: number[] = [];
+    const fixture = await render(owned(), undefined, [], {
+      inChat: true,
+      selection: { selected: true, onToggle: () => toggles.push(1) },
+    });
+    const host = fixture.nativeElement as HTMLElement;
+    const row = host.querySelector('.qt-card-interactive > div')!;
+    const box = row.firstElementChild as HTMLInputElement;
+    expect(box.tagName).toBe('INPUT');
+    expect(box.getAttribute('aria-label')).toBe('Select Greatcoat');
+    expect(box.getAttribute('class')).toBe('qt-checkbox mt-1');
+    expect(box.checked).toBe(true);
+    box.click();
+    expect(toggles).toEqual([1]);
+    const button = (label: string): HTMLButtonElement =>
+      [...host.querySelectorAll('button')].find(
+        (b) =>
+          b.getAttribute('aria-label') === label ||
+          (b.textContent ?? '').trim() === label,
+      ) as HTMLButtonElement;
+    expect(button('Wear').disabled).toBe(true);
+    expect(button('Layer onto top').disabled).toBe(true);
+    expect(button('More actions').disabled).toBe(true);
+  });
+
+  it('a borrowed row in select mode gets a spacer, never a checkbox', async () => {
+    const fixture = await render(dto({ id: 'b1', characterId: null }), () => false, [], {
+      selection: { selected: false, onToggle: () => undefined },
+    });
+    const row = (fixture.nativeElement as HTMLElement).querySelector('.qt-card-interactive > div')!;
+    expect(row.querySelector('input[type="checkbox"]')).toBeNull();
+    const spacer = row.firstElementChild as HTMLElement;
+    expect(spacer.getAttribute('class')).toBe('inline-block w-4');
+    expect(spacer.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('out of select mode there is no checkbox and the controls are live', async () => {
+    const fixture = await render(owned(), undefined, [], { inChat: true });
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('input[type="checkbox"]')).toBeNull();
+    const kebab = host.querySelector('button[aria-label="More actions"]') as HTMLButtonElement;
+    expect(kebab.disabled).toBe(false);
+  });
+
+  it('shows a search hit’s folder crumb between the chips and the wear line', async () => {
+    const fixture = await render(owned(), undefined, [], { folderCrumb: 'Formal › Evening' });
+    const host = fixture.nativeElement as HTMLElement;
+    const crumb = host.querySelector('[data-testid="wardrobe-folder-crumb"]')!;
+    expect(crumb.textContent!.trim()).toBe('Formal › Evening');
+    expect(crumb.getAttribute('class')).toBe('qt-text-xs qt-text-secondary mt-0.5');
+    expect(crumb.nextElementSibling!.getAttribute('data-testid')).toBe('wardrobe-wear-line');
+    const none = await render(owned());
+    expect(
+      (none.nativeElement as HTMLElement).querySelector('[data-testid="wardrobe-folder-crumb"]'),
+    ).toBeNull();
+  });
+
+  it('nested component rows get no folder entry, no checkbox and no crumb', async () => {
+    const child = dto({ id: 'child', characterId: 'c1', title: 'Cravat' });
+    const parent = dto({ id: 'parent', characterId: 'c1', title: 'Evening Kit', componentItemIds: ['child'] });
+    const fixture = await render(parent, undefined, [child], {
+      canMoveToFolder: true,
+      folderCrumb: 'Formal',
+    });
+    const host = fixture.nativeElement as HTMLElement;
+    (host.querySelector('button[aria-label="Expand components"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const nested = host.querySelector('qt-wardrobe-item-row') as HTMLElement;
+    expect(nested.querySelector('[data-testid="wardrobe-folder-crumb"]')).toBeNull();
+    (nested.querySelector('button[aria-label="More actions"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const labels = [...nested.querySelectorAll('[role="menu"] button')].map((b) =>
+      (b.textContent ?? '').trim(),
+    );
+    expect(labels).toContain('Edit');
+    expect(labels).not.toContain('Move to folder…');
+
+    const selecting = await render(parent, undefined, [child], {
+      selection: { selected: false, onToggle: () => undefined },
+    });
+    const sh = selecting.nativeElement as HTMLElement;
+    (sh.querySelector('button[aria-label="Expand components"]') as HTMLButtonElement).click();
+    selecting.detectChanges();
+    const nestedRow = sh.querySelector('qt-wardrobe-item-row') as HTMLElement;
+    expect(nestedRow.querySelector('input[type="checkbox"]')).toBeNull();
+  });
+
+  it('prints the slot chips as labels (SlotBadge), in the row and in the slot popover', async () => {
+    const fixture = await render(
+      dto({ id: 'i1', characterId: 'c1', types: ['top', 'accessories'] }),
+      undefined,
+      [],
+      { inChat: true },
+    );
+    const host = fixture.nativeElement as HTMLElement;
+    const chips = [...host.querySelectorAll('.flex-1 qt-slot-badge span')];
+    expect(chips.map((c) => c.textContent)).toEqual(['Top', 'Accessories']);
+    expect(chips[0].getAttribute('class')).toBe('qt-badge qt-badge-wardrobe-top');
+    (host.querySelector('button[aria-label="Layer onto a slot"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const popover = [...host.querySelectorAll('.min-w-\\[10rem\\] qt-slot-badge span')];
+    expect(popover.map((c) => c.textContent)).toEqual(['Top', 'Accessories']);
+  });
+
+  it('closes the kebab on a press outside it, not on one inside (v4 useClickOutside)', async () => {
+    const fixture = await render(owned());
+    const host = fixture.nativeElement as HTMLElement;
+    kebabLabels(fixture);
+    const menu = host.querySelector('[role="menu"]')!;
+    menu.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    fixture.detectChanges();
+    expect(host.querySelector('[role="menu"]')).not.toBeNull();
+    document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    fixture.detectChanges();
+    expect(host.querySelector('[role="menu"]')).toBeNull();
+  });
+
+  it('closes the slot popover on a press outside it', async () => {
+    const fixture = await render(
+      dto({ id: 'i1', characterId: 'c1', types: ['top', 'bottom'] }),
+      undefined,
+      [],
+      { inChat: true },
+    );
+    const host = fixture.nativeElement as HTMLElement;
+    (host.querySelector('button[aria-label="Layer onto a slot"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(host.querySelector('.min-w-\\[10rem\\]')).not.toBeNull();
+    document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    fixture.detectChanges();
+    expect(host.querySelector('.min-w-\\[10rem\\]')).toBeNull();
   });
 });
