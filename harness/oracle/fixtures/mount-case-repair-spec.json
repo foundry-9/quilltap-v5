@@ -66,6 +66,56 @@
         { "id": "c", "name": "MY VAULT ", "createdAt": "2024-03-01T00:00:00.000Z" },
         { "id": "d", "name": "Other", "createdAt": "2024-01-01T00:00:00.000Z" }
       ]
+    },
+    {
+      "name": "mountpoints-index-jest",
+      "run": "mountpoints-index",
+      "runTwice": true,
+      "mountPoints": [
+        { "id": "a", "name": "Tester Character Vault", "createdAt": "2024-01-01T00:00:00.000Z" },
+        { "id": "b", "name": "tester character vault", "createdAt": "2024-02-01T00:00:00.000Z" }
+      ],
+      "probeInsert": { "id": "c", "name": "TESTER CHARACTER VAULT", "createdAt": "2024-03-01T00:00:00.000Z" }
+    },
+    {
+      "name": "mountpoints-index-tampered",
+      "run": "mountpoints-index",
+      "tamperNameIndex": true,
+      "mountPoints": [
+        { "id": "a", "name": "Quilltap General", "createdAt": "2024-01-01T00:00:00.000Z" },
+        { "id": "b", "name": "Lore", "createdAt": "2024-02-01T00:00:00.000Z" }
+      ],
+      "probeInsert": { "id": "c", "name": "lore", "createdAt": "2024-03-01T00:00:00.000Z" }
+    },
+    {
+      "name": "mountpoints-index-valid",
+      "run": "mountpoints-index",
+      "presetNameIndex": true,
+      "mountPoints": [
+        { "id": "a", "name": "Quilltap General", "createdAt": "2024-01-01T00:00:00.000Z" },
+        { "id": "b", "name": "Lore", "createdAt": "2024-02-01T00:00:00.000Z" }
+      ],
+      "probeInsert": { "id": "c", "name": "Lore (2)", "createdAt": "2024-03-01T00:00:00.000Z" }
+    },
+    {
+      "name": "mountpoints-index-idempotent",
+      "run": "mountpoints-index",
+      "runTwice": true,
+      "mountPoints": [
+        { "id": "a", "name": "Notes", "createdAt": "2024-01-01T00:00:00.000Z" },
+        { "id": "b", "name": "NOTES", "createdAt": "2024-01-01T00:00:00.000Z" },
+        { "id": "c", "name": "notes (2)", "createdAt": "2023-12-01T00:00:00.000Z" }
+      ]
+    },
+    {
+      "name": "mountpoints-index-js-trim",
+      "run": "mountpoints-index",
+      "mountPoints": [
+        { "id": "a", "name": "Lore\ufeff", "createdAt": "2024-01-01T00:00:00.000Z" },
+        { "id": "b", "name": "lore", "createdAt": "2024-02-01T00:00:00.000Z" },
+        { "id": "c", "name": "Ink\u0085", "createdAt": "2024-01-01T00:00:00.000Z" },
+        { "id": "d", "name": "ink", "createdAt": "2024-02-01T00:00:00.000Z" }
+      ]
     }
   ]
 }

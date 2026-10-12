@@ -394,6 +394,22 @@ pub fn update_character(
     // column set to `null` (e.g. the avatar / default-partner "clear" verbs). Issue
     // a supplementary NULL update for the nullable slim columns present-as-null.
     changed |= clear_null_slim_columns(main, character_id, &db_patch)?;
+    // v4 `characters.repository.ts:413-415` (`ed8b15b50`, bug 186): the vault
+    // is named after the character, so a rename renames it. v4's condition:
+    // the update answered a row (`existing` read it), the patch carries `name`,
+    // and it differs from the stored one (a JSON compare — `null` differs).
+    // `name` is a slim column, so a patch carrying it never reaches the
+    // managed-only early return above. Never fails the update.
+    if let (Some(existing), Some(name)) = (existing.as_ref(), patch.get("name")) {
+        if existing.get("name") != Some(name) {
+            crate::db::store_name_reconcile::reconcile_vault_names_or_warn(
+                main,
+                Some(mount),
+                crate::db::store_name_reconcile::TRIGGER_CHARACTER_RENAMED,
+                character_id,
+            );
+        }
+    }
     Ok(changed)
 }
 

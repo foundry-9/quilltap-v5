@@ -157,12 +157,67 @@ impl<'c> DocMountPointsRepository<'c> {
         Self { conn }
     }
 
+    /// The store, other than `except_id`, that holds `name` ignoring case —
+    /// v4 `findNameHolder` (`doc-mount-points.repository.ts:112-116`, bug 186):
+    /// `name.trim().toLowerCase()` against each row's, over `findAll()` (rows
+    /// v4's `DocMountPointSchema` refuses are dropped, as v4 drops them), the
+    /// FIRST in row order. `(id, stored name)`.
+    ///
+    /// A whole-query read failure is the `Err` (P4.D274 R-A arm 3,
+    /// `RECONCILE_READ_FAILURE_STRICT`): v4's fallback `[]` would answer "no
+    /// holder" and let the write through to the index.
+    pub fn find_name_holder(
+        &self,
+        name: &str,
+        except_id: Option<&str>,
+    ) -> Result<Option<(String, String)>, DbError> {
+        let needle = crate::jsstr::js_trim(name).to_lowercase();
+        let rows = super::fallback::find_all_logged_strict("doc_mount_points", || {
+            super::store_name_reconcile::read_store_name_rows(self.conn)
+        })?;
+        Ok(rows
+            .into_iter()
+            .find(|mp| {
+                Some(mp.id.as_str()) != except_id
+                    && crate::jsstr::js_trim(&mp.name).to_lowercase() == needle
+            })
+            .map(|mp| (mp.id, mp.name)))
+    }
+
+    /// v4 `assertNameFree` (`:118-128`): a holder → WARN `Refused a
+    /// document-store name another store holds` `{name, mountPointId, holderId}`
+    /// (root logger; `mountPointId` v4's JSON `null` on a create) and
+    /// [`DbError::MountPointNameTaken`].
+    fn assert_name_free(&self, name: &str, except_id: Option<&str>) -> Result<(), DbError> {
+        let Some((holder_id, holder_name)) = self.find_name_holder(name, except_id)? else {
+            return Ok(());
+        };
+        tracing::warn!(
+            target: "quilltap::db",
+            name = %name,
+            mountPointId = %except_id.unwrap_or("null"),
+            holderId = %holder_id,
+            "Refused a document-store name another store holds"
+        );
+        Err(DbError::MountPointNameTaken {
+            requested_name: name.to_string(),
+            holder_id,
+            holder_name,
+        })
+    }
+
     /// Insert a mount point with the given pinned id + timestamps. The two array
     /// columns → compact JSON array text; `enabled` binds `i64::from(bool)`;
     /// `fileCount`/`chunkCount`/`totalSizeBytes` bind `f64` (REAL); the enum TEXT
     /// columns and nullable strings pass through (`None` → SQL NULL). Columns are
     /// bound in schema/Zod field order (= on-disk order on a fresh fixture).
+    ///
+    /// Refuses a name another store already holds, ignoring case (v4 `create`'s
+    /// `assertNameFree(data.name, null)`, bug 186); a caller that wants a free
+    /// name picks one with `next_unique_mount_point_name` first, so for every
+    /// production caller this is a backstop.
     pub fn create(&self, data: &DmpCreate, opts: &CreateOptions) -> Result<(), DbError> {
+        self.assert_name_free(&data.name, None)?;
         let include_json = serde_json::to_string(&data.include_patterns)
             .map_err(|e| DbError::Internal(format!("includePatterns serialize: {e}")))?;
         let exclude_json = serde_json::to_string(&data.exclude_patterns)
@@ -202,7 +257,14 @@ impl<'c> DocMountPointsRepository<'c> {
     /// Apply an update patch to the mount point `id`. Returns `Ok(false)` when no
     /// row matched (v4's "not found -> null"). id and createdAt are never touched.
     /// Each `Some` field sets that column; `updatedAt` is always set.
+    ///
+    /// A rename is refused when another store holds the name (v4 `update`'s
+    /// `if (data.name !== undefined) assertNameFree(name, id)`, bug 186) — the
+    /// gate runs BEFORE the existence check, as v4's runs before `_update`.
     pub fn update(&self, id: &str, patch: &DmpUpdate) -> Result<bool, DbError> {
+        if let Some(name) = &patch.name {
+            self.assert_name_free(name, Some(id))?;
+        }
         // v4 `_update` first `findById`s — the row must exist or it's a no-op.
         if !self.row_exists(id)? {
             return Ok(false);

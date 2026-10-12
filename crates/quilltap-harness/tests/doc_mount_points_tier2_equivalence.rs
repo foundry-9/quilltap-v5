@@ -11,6 +11,15 @@
 //! `doc_mount_points` table canonically, and assert the post-op state is
 //! identical. Ids and timestamps are pinned on both sides → zero normalization.
 //!
+//! P4.D274 (v4 `ed8b15b50`, bug 186): the oracle's SECOND line is the name
+//! chokepoint — `fixtures/doc-mount-points-name-gate.json`'s steps through the
+//! same repository on the same working copy, after the committed ops. Per step
+//! the error text, the captured lines (the gate's WARN; the Zod drop lines of
+//! a non-uuid planted holder, which is NOT a holder, so its namesake's INSERT
+//! hits the UNIQUE index instead) and every `(id, name)` must match v4's. v4's
+//! table init ensures the name index before any op; the Rust side mirrors it
+//! with `ensure_mount_point_name_unique_index` on the copy.
+//!
 //! Generate the oracle output + fixture (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   cd ~/source/quilltap-server
@@ -27,6 +36,7 @@
 use std::path::{Path, PathBuf};
 
 use quilltap_core::db::doc_mount_points::{CreateOptions, DmpCreate, DmpUpdate};
+use quilltap_core::db::mount_index_case_repair::ensure_mount_point_name_unique_index;
 use quilltap_core::db::Writer;
 use serde::Deserialize;
 use serde_json::Value;
@@ -162,7 +172,15 @@ fn doc_mount_points_tier2_matches_oracle() {
     // Parse the oracle's expected post-op dump (one NDJSON object).
     let oracle_text =
         std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("cannot read oracle: {e}"));
-    let oracle: Value = serde_json::from_str(oracle_text.trim()).expect("parse oracle dump");
+    let mut oracle_lines = oracle_text.lines().filter(|l| !l.trim().is_empty());
+    let oracle: Value = serde_json::from_str(oracle_lines.next().expect("oracle line 1"))
+        .expect("parse oracle dump");
+    let gate_oracle: Value = serde_json::from_str(
+        oracle_lines
+            .next()
+            .expect("oracle line 2 (the P4.D274 name gate — regenerate at the pin)"),
+    )
+    .expect("parse gate oracle");
 
     // Work on a fresh copy of the seed fixture so the shared file stays pristine.
     let work_dir = tempfile::Builder::new()
@@ -176,6 +194,8 @@ fn doc_mount_points_tier2_matches_oracle() {
     // mount-index fixture by path — no special "mount-index writer" needed.
     let writer = Writer::open_writable(&work, &spec.test_pepper_base64)
         .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
+    // v4's table init (`onTableEnsured`) ensures the name index first.
+    ensure_mount_point_name_unique_index(writer.connection()).expect("name index ensure");
     {
         let repo = writer.doc_mount_points();
         for op in &spec.ops {
@@ -258,5 +278,157 @@ fn doc_mount_points_tier2_matches_oracle() {
 
     let n = got["rows"].as_array().map(|a| a.len()).unwrap_or(0);
     assert!(n > 0, "dump looks empty");
-    eprintln!("OK: doc_mount_points tier-2 matched oracle ({n} rows).");
+
+    let steps = run_name_gate(&writer);
+    let want = gate_oracle["steps"].as_array().expect("gate steps");
+    assert_eq!(steps.len(), want.len(), "gate step count");
+    for (got, want) in steps.iter().zip(want) {
+        assert_eq!(
+            serde_json::to_string(got).unwrap(),
+            serde_json::to_string(&normalize_gate_step(want)).unwrap(),
+            "name-gate step {} diverged",
+            want["label"]
+        );
+    }
+    eprintln!(
+        "OK: doc_mount_points tier-2 matched oracle ({n} rows; {} name-gate steps).",
+        steps.len()
+    );
+}
+
+/// The committed name-gate spec (P4.D274).
+#[derive(Deserialize)]
+struct GateSpec {
+    stamp: String,
+    base: CreateData,
+    steps: Vec<GateStep>,
+}
+
+#[derive(Deserialize)]
+struct GateStep {
+    label: String,
+    kind: String,
+    id: String,
+    name: Option<String>,
+}
+
+/// v4's step → the compared shape: lines rendered `level message k=v …` (v4's
+/// key order; a JSON `null` as `null`).
+fn normalize_gate_step(step: &Value) -> Value {
+    let lines: Vec<Value> = step["lines"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| {
+            let mut out = format!(
+                "{} {}",
+                l["level"].as_str().unwrap().to_uppercase(),
+                l["message"].as_str().unwrap()
+            );
+            for (k, v) in l["fields"].as_object().unwrap() {
+                let rendered = match v {
+                    Value::String(s) => s.clone(),
+                    other => other.to_string(),
+                };
+                out.push_str(&format!(" {k}={rendered}"));
+            }
+            Value::String(out)
+        })
+        .collect();
+    serde_json::json!({
+        "label": step["label"],
+        "error": step["error"],
+        "lines": lines,
+        "names": step["names"],
+    })
+}
+
+fn run_name_gate(writer: &Writer) -> Vec<Value> {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../harness/oracle/fixtures/doc-mount-points-name-gate.json");
+    let gate: GateSpec =
+        serde_json::from_str(&std::fs::read_to_string(path).expect("read gate spec")).unwrap();
+    let repo = writer.doc_mount_points();
+    let mut out = Vec::new();
+    for step in &gate.steps {
+        let (error, lines) =
+            quilltap_core::test_support::captured_with(|| match step.kind.as_str() {
+                "create" => repo
+                    .create(
+                        &DmpCreate {
+                            name: step.name.clone().unwrap(),
+                            base_path: gate.base.base_path.clone(),
+                            mount_type: gate.base.mount_type.clone(),
+                            store_type: gate.base.store_type.clone(),
+                            include_patterns: gate.base.include_patterns.clone(),
+                            exclude_patterns: gate.base.exclude_patterns.clone(),
+                            enabled: gate.base.enabled,
+                            last_scanned_at: gate.base.last_scanned_at.clone(),
+                            scan_status: gate.base.scan_status.clone(),
+                            last_scan_error: gate.base.last_scan_error.clone(),
+                            conversion_status: gate.base.conversion_status.clone(),
+                            conversion_error: gate.base.conversion_error.clone(),
+                            file_count: gate.base.file_count,
+                            chunk_count: gate.base.chunk_count,
+                            total_size_bytes: gate.base.total_size_bytes,
+                        },
+                        &CreateOptions {
+                            id: step.id.clone(),
+                            created_at: gate.stamp.clone(),
+                            updated_at: gate.stamp.clone(),
+                        },
+                    )
+                    .err(),
+                "update" => repo
+                    .update(
+                        &step.id,
+                        &DmpUpdate {
+                            name: step.name.clone(),
+                            scan_status: step.name.is_none().then(|| "idle".to_string()),
+                            updated_at: gate.stamp.clone(),
+                            ..Default::default()
+                        },
+                    )
+                    .err(),
+                _ => writer
+                    .connection()
+                    .execute(
+                        "INSERT INTO doc_mount_points (id, name, basePath, mountType, storeType, \
+                       includePatterns, excludePatterns, enabled, scanStatus, conversionStatus, \
+                       fileCount, chunkCount, totalSizeBytes, createdAt, updatedAt) \
+                     VALUES (?1, ?2, '', 'database', 'documents', '[]', '[]', 1, 'idle', 'idle', \
+                       0, 0, 0, ?3, ?3)",
+                        rusqlite::params![step.id, step.name, gate.stamp],
+                    )
+                    .err()
+                    .map(Into::into),
+            });
+        let names = {
+            let mut stmt = writer
+                .connection()
+                .prepare("SELECT id, name FROM doc_mount_points ORDER BY id")
+                .unwrap();
+            let rows = stmt
+                .query_map([], |r| {
+                    Ok(serde_json::json!({ "id": r.get::<_, String>(0)?, "name": r.get::<_, String>(1)? }))
+                })
+                .unwrap();
+            rows.map(|r| r.unwrap()).collect::<Vec<_>>()
+        };
+        let lines: Vec<Value> = lines
+            .iter()
+            .map(|l| {
+                let (level, rest) = l.split_once(' ').unwrap();
+                let (_target, rest) = rest.split_once(' ').unwrap();
+                Value::String(format!("{level} {rest}"))
+            })
+            .collect();
+        out.push(serde_json::json!({
+            "label": step.label,
+            "error": error.map(|e| quilltap_core::db::fallback::error_text(&e)),
+            "lines": lines,
+            "names": names,
+        }));
+    }
+    out
 }

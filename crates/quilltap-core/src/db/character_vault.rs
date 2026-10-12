@@ -291,7 +291,17 @@ pub fn ensure_character_vault(
     // display-side (`doc_edit::uri_producers` deciding when a store name is
     // ambiguous enough to need the UUID form; the CLI's operator-typed store
     // selector, which prefers an id when given one and refuses on ambiguity).
-    let same_name = DocMountPointsRepository::new(mount).find_by_name(&vault_name)?;
+    //
+    // P4.D274: v4 reads `findByName` → `findEnabled()`, a Zod-dropping filter
+    // read (a row its schema refuses is dropped with v4's two lines, never a
+    // candidate), with JS `trim` — so this reads the same way.
+    let needle = crate::jsstr::js_trim(&vault_name).to_lowercase();
+    let same_name: Vec<(String, String)> =
+        crate::db::store_name_reconcile::read_enabled_store_name_rows(mount)?
+            .into_iter()
+            .filter(|mp| crate::jsstr::js_trim(&mp.name).to_lowercase() == needle)
+            .map(|mp| (mp.id, mp.store_type.unwrap_or_default()))
+            .collect();
     let mut populated: Vec<String> = Vec::new();
     for (id, store_type) in same_name {
         if store_type == "character" && vault_has_required_files(mount, &id)? {
@@ -317,10 +327,15 @@ pub fn ensure_character_vault(
     // characters may share a name — suffix ` (N)` rather than mint a duplicate
     // (v4 `0a0419f5`). Adoption above still keys off the un-suffixed base name,
     // so orphaned vaults from earlier releases stay adoptable.
-    let all_store_names: std::collections::HashSet<String> = DocMountPointsRepository::new(mount)
-        .find_all_names()?
-        .into_iter()
-        .collect();
+    //
+    // P4.D274: v4's taken set is `docMountPoints.findAll()`'s names — the
+    // Zod-dropping read, so a row its schema refuses holds no name here (the
+    // repository gate and the index still see it).
+    let all_store_names: std::collections::HashSet<String> =
+        crate::db::store_name_reconcile::read_store_name_rows(mount)?
+            .into_iter()
+            .map(|mp| mp.name)
+            .collect();
     let final_vault_name = crate::db::ensure_official_store::next_unique_mount_point_name(
         &all_store_names,
         &vault_name,
@@ -485,8 +500,59 @@ pub fn create_character_with_options(
     )?;
 
     ensure_character_vault(main, mount, &id, &name, vault, None)?;
+    // v4 `characters.repository.ts:305` (`ed8b15b50`, bug 186): an old vault
+    // left by a namesake may hold "<Name> Character Vault", in which case the
+    // new one was provisioned as "… (2)". Retire the old one and hand the new
+    // vault its plain name. Never fails the create (v4 `reconcileVaultNames`).
+    crate::db::store_name_reconcile::reconcile_vault_names_or_warn(
+        main,
+        Some(mount),
+        crate::db::store_name_reconcile::TRIGGER_CHARACTER_CREATED,
+        &id,
+    );
+    // v4 `:307-311` (P4.D274 R-L) — after the reconcile.
+    tracing::info!(
+        target: "quilltap::db",
+        characterId = %id,
+        userId = %slim.user_id,
+        name = %slim.name,
+        "Character created"
+    );
 
     Ok(id)
+}
+
+/// Delete a character row and retire its vault's name — v4
+/// `CharactersRepository.delete` (`characters.repository.ts:496-512`):
+/// `_delete`, and when a row went, INFO `Character deleted {characterId}` then
+/// `reconcileVaultNames('character-deleted', id)` (the vault outlives its
+/// character; its name is retired). v5's `CharactersRepository::delete` is
+/// main-only, so the hook lives here: the ONE wrapper every per-character
+/// delete goes through (the cascade delete, the `.qtap` import's overwrite —
+/// `characters_delete_callers_census` holds the line; the wipe replays v4's
+/// concurrent cadence itself). `mount` is `None` when the mount index is
+/// unavailable (the reconcile then logs v4's skip WARN). The reconcile never
+/// fails the delete.
+pub fn delete_character_and_reconcile(
+    main: &Connection,
+    mount: Option<&Connection>,
+    character_id: &str,
+) -> Result<bool, DbError> {
+    let deleted = CharactersRepository::new(main).delete(character_id)?;
+    if deleted {
+        tracing::info!(
+            target: "quilltap::db",
+            characterId = %character_id,
+            "Character deleted"
+        );
+        crate::db::store_name_reconcile::reconcile_vault_names_or_warn(
+            main,
+            mount,
+            crate::db::store_name_reconcile::TRIGGER_CHARACTER_DELETED,
+            character_id,
+        );
+    }
+    Ok(deleted)
 }
 
 /// P4.158 (ruling R-A) — complete a PRESERVED vault from the archived row.

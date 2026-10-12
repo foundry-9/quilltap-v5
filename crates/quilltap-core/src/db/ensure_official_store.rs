@@ -41,6 +41,7 @@ use super::doc_mount_points::{
 use super::document_store_overlay::StoreEntity;
 use super::store_backed::StoreBackedRepository;
 use super::DbError;
+use crate::jsstr::js_trim;
 
 /// Returns `desired` if absent from `taken`, else the first of `desired (2)`,
 /// `desired (3)`, … that is absent — v4 `nextUniqueMountPointName`. Numbering
@@ -50,16 +51,22 @@ use super::DbError;
 /// Matching is **case-insensitive (trimmed)** — mount-point names form one
 /// namespace regardless of casing (v4 `0a0419f5`), so `lore` counts as taken
 /// when `Lore` exists. Callers pass names in their stored casing; folding
-/// happens here.
+/// happens here. `desired` comes back UNTRIMMED when it is free, as v4 returns
+/// it.
+///
+/// The trim is JS's `String.prototype.trim` ([`js_trim`]: U+FEFF trims, U+0085
+/// does not), not Rust's `str::trim` — converged at P4.D274, pinned by the
+/// `store_names_equivalence` suffixer rows (which also cover restore 22a's
+/// free-name pick, the C1 §14 caller).
 pub fn next_unique_mount_point_name(taken: &HashSet<String>, desired: &str) -> String {
-    let taken_lower: HashSet<String> = taken.iter().map(|n| n.trim().to_lowercase()).collect();
-    if !taken_lower.contains(&desired.trim().to_lowercase()) {
+    let taken_lower: HashSet<String> = taken.iter().map(|n| js_trim(n).to_lowercase()).collect();
+    if !taken_lower.contains(&js_trim(desired).to_lowercase()) {
         return desired.to_string();
     }
     let mut suffix = 2u32;
     loop {
         let candidate = format!("{desired} ({suffix})");
-        if !taken_lower.contains(&candidate.trim().to_lowercase()) {
+        if !taken_lower.contains(&js_trim(&candidate).to_lowercase()) {
             return candidate;
         }
         suffix += 1;
@@ -194,5 +201,16 @@ mod tests {
         taken.insert("Store (2)".into());
         taken.insert("Store (3)".into());
         assert_eq!(next_unique_mount_point_name(&taken, "Store"), "Store (4)");
+    }
+
+    /// P4.D274: the trim is JS's — U+FEFF trims (so `"Store\u{FEFF}"` holds
+    /// `store`), U+0085 does not (so `"Store\u{85}"` leaves `store` free).
+    /// Rust's `str::trim` had both backwards.
+    #[test]
+    fn next_unique_name_trims_as_js_does() {
+        let feff: HashSet<String> = ["Store\u{FEFF}".to_string()].into();
+        assert_eq!(next_unique_mount_point_name(&feff, "store"), "store (2)");
+        let nel: HashSet<String> = ["Store\u{85}".to_string()].into();
+        assert_eq!(next_unique_mount_point_name(&nel, "store"), "store");
     }
 }

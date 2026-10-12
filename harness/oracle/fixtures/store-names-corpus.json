@@ -1,0 +1,362 @@
+{
+  "vaultNames": [
+    " Tester ",
+    "Tester",
+    "",
+    "  ",
+    " Riya ",
+    "﻿Riya﻿",
+    "\u0085Riya\u0085",
+    "Riya ",
+    "Line\nBreak",
+    "Lorian"
+  ],
+  "baseNames": [
+    "Tester Character Vault",
+    "tester character vault (3)",
+    "Lorian Character Vault (2) (2)",
+    "Tester Version 2026-10-09T164506Z Store",
+    "Group Files: Aeronauts Club",
+    "TESTER CHARACTER VAULT",
+    "Tess  Character Vault",
+    "X\nCharacter Vault",
+    "X Character Vault",
+    "Character Vault",
+    " Character Vault",
+    "X Character Vault(2)",
+    "X Character Vault (2) (3)",
+    "X Character Vault (2)(3)",
+    "X Character Vault ()",
+    "X Character Vault (a)",
+    "X Character Vault (٢)",
+    "X Character  Vault",
+    "X Character\tVault",
+    "X Character Vault",
+    "X﻿Character Vault",
+    "X\u0085Character Vault",
+    "X Character Vault",
+    "﻿X Character Vault﻿",
+    "\u0085X Character Vault\u0085",
+    "X Charaſter Vault",
+    "X CharaKcter Vault",
+    "X Kharacter Vault",
+    "X Character Vault (2)",
+    "X Character Vault (2) ",
+    "X Y\rZ Character Vault",
+    "A B Character Vault",
+    "Abigail Character Vault Character Vault",
+    "Abigail Character Vault (2) Character Vault (3)",
+    "émilie character VAULT",
+    "ÉMILIE Character Vault",
+    "🦊 Character Vault",
+    "X Character Vaults",
+    "XCharacter Vault",
+    "",
+    "   ",
+    "(2) Character Vault (2)"
+  ],
+  "stamps": [
+    "2026-10-09T16:45:06.123Z",
+    "2026-10-09T16:45:06.999Z",
+    "2026-10-09T16:45:06Z",
+    "2026-10-09T16:45Z",
+    "2026-10-09T16:45:06.123456789Z",
+    "2026-10-09T16:45:06.123+05:30",
+    "2026-10-09T01:45:06.123-0800",
+    "2026-10-09",
+    "1969-12-31T23:59:59.999Z",
+    "0001-01-01T00:00:00.000Z",
+    "0000-01-01T00:00:00.000Z",
+    "9999-12-31T23:59:59.999Z",
+    "not a date: 12:30",
+    "2026-13-01T00:00:00.000Z",
+    "",
+    "::"
+  ],
+  "unreachableStamps": [
+    "Oct 9 2026",
+    "Fri, 09 Oct 2026 16:45:06 GMT",
+    "+010000-01-01T00:00:00.000Z",
+    "-000001-01-01T00:00:00.000Z"
+  ],
+  "retired": [
+    { "base": "Tester", "createdAt": "2026-10-09T16:45:06.123Z" },
+    { "base": "  Tester  ", "createdAt": "2026-03-04T05:06:07.000Z" },
+    { "base": "﻿Tester", "createdAt": "not a date: 12:30" },
+    { "base": "Lorian", "createdAt": "2026-09-01T10:00:00.000+02:00" }
+  ],
+  "unique": [
+    { "taken": [], "desired": "Lore" },
+    { "taken": ["Lore"], "desired": "lore" },
+    { "taken": ["Lore", "lore (2)"], "desired": "LORE" },
+    { "taken": ["Lore", "Lore (3)"], "desired": "Lore" },
+    { "taken": [" Lore "], "desired": "Lore" },
+    { "taken": ["Lore"], "desired": "  Lore  " },
+    { "taken": ["Store﻿"], "desired": "store" },
+    { "taken": ["Store\u0085"], "desired": "store" },
+    { "taken": ["store"], "desired": "Store\u0085" },
+    { "taken": ["store"], "desired": "﻿Store" },
+    { "taken": ["﻿store", "﻿store (2)"], "desired": "﻿Store" },
+    { "taken": ["Store "], "desired": "Store" },
+    { "taken": ["Store "], "desired": "store" },
+    { "taken": ["X (2)", "x"], "desired": "X" },
+    { "taken": ["X", "X (2)", "X (3)", "X (4)"], "desired": "x" }
+  ],
+  "plans": [
+    {
+      "label": "jest: the V4test case",
+      "stores": [
+        { "id": "old-1", "name": "Lorian Character Vault", "storeType": "character", "createdAt": "2026-09-01T10:00:00.000Z" },
+        { "id": "old-2", "name": "Lorian Character Vault (2)", "storeType": "character", "createdAt": "2026-09-15T10:00:00.000Z" },
+        { "id": "live", "name": "Lorian Character Vault (3)", "storeType": "character", "createdAt": "2026-10-01T10:00:00.000Z" },
+        { "id": "general", "name": "Quilltap General", "storeType": "documents", "createdAt": "2026-01-01T00:00:00.000Z" }
+      ],
+      "characters": [
+        { "id": "lorian", "name": "Lorian", "characterDocumentMountPointId": "live", "createdAt": "2026-01-01T00:00:00.000Z" }
+      ]
+    },
+    {
+      "label": "jest: follows a character rename",
+      "stores": [{ "id": "v", "name": "Tester Character Vault", "storeType": "character", "createdAt": "2026-01-01T00:00:00.000Z" }],
+      "characters": [{ "id": "t", "name": "Testy", "characterDocumentMountPointId": "v", "createdAt": "2026-01-01T00:00:00.000Z" }]
+    },
+    {
+      "label": "jest: retires the vault of a deleted character",
+      "stores": [{ "id": "v", "name": "Tester Character Vault", "storeType": "character", "createdAt": "2026-03-04T05:06:07.000Z" }],
+      "characters": []
+    },
+    {
+      "label": "jest: the holder of the plain name keeps it",
+      "stores": [
+        { "id": "copy", "name": "Tester Character Vault (2)", "storeType": "character", "createdAt": "2026-10-09T00:00:00.000Z" },
+        { "id": "orig", "name": "Tester Character Vault", "storeType": "character", "createdAt": "2026-10-09T00:00:00.000Z" }
+      ],
+      "characters": [
+        { "id": "t-copy", "name": "Tester", "characterDocumentMountPointId": "copy", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "t-orig", "name": "Tester", "characterDocumentMountPointId": "orig", "createdAt": "2026-06-01T00:00:00.000Z" }
+      ]
+    },
+    {
+      "label": "jest: a namesake takes the lowest free suffix",
+      "stores": [
+        { "id": "orig", "name": "Lorian Character Vault", "storeType": "character", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "copy", "name": "Lorian Character Vault (3)", "storeType": "character", "createdAt": "2026-10-09T00:00:00.000Z" },
+        { "id": "orphan", "name": "Lorian Character Vault (2) (2)", "storeType": "character", "createdAt": "2026-08-13T19:40:40.000Z" }
+      ],
+      "characters": [
+        { "id": "a", "name": "Lorian", "characterDocumentMountPointId": "orig", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "b", "name": "Lorian", "characterDocumentMountPointId": "copy", "createdAt": "2026-10-09T00:00:00.000Z" }
+      ]
+    },
+    {
+      "label": "jest: the older character gets the plain name",
+      "stores": [
+        { "id": "a", "name": "Old Name Character Vault", "storeType": "character", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "b", "name": "Other Character Vault", "storeType": "character", "createdAt": "2026-01-01T00:00:00.000Z" }
+      ],
+      "characters": [
+        { "id": "young", "name": "Tester", "characterDocumentMountPointId": "a", "createdAt": "2026-06-01T00:00:00.000Z" },
+        { "id": "old", "name": "Tester", "characterDocumentMountPointId": "b", "createdAt": "2026-01-01T00:00:00.000Z" }
+      ]
+    },
+    {
+      "label": "jest: an adoptable orphan is left",
+      "stores": [{ "id": "v", "name": "Riya Character Vault", "storeType": "character", "createdAt": "2026-01-01T00:00:00.000Z" }],
+      "characters": [{ "id": "r", "name": "Riya", "characterDocumentMountPointId": null, "createdAt": "2026-01-01T00:00:00.000Z" }]
+    },
+    {
+      "label": "jest: an operator-renamed orphan is left",
+      "stores": [{ "id": "v", "name": "Riya's old things", "storeType": "character", "createdAt": "2026-01-01T00:00:00.000Z" }],
+      "characters": []
+    },
+    {
+      "label": "jest: collisions oldest first, a live vault ahead of any store",
+      "stores": [
+        { "id": "docs-old", "name": "Notes", "storeType": "documents", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "docs-new", "name": "NOTES", "storeType": "documents", "createdAt": "2026-02-01T00:00:00.000Z" },
+        { "id": "impostor", "name": "Tester Character Vault", "storeType": "documents", "createdAt": "2025-01-01T00:00:00.000Z" },
+        { "id": "vault", "name": "Something Else", "storeType": "character", "createdAt": "2026-01-01T00:00:00.000Z" }
+      ],
+      "characters": [{ "id": "t", "name": "Tester", "characterDocumentMountPointId": "vault", "createdAt": "2026-01-01T00:00:00.000Z" }]
+    },
+    {
+      "label": "blank character name: Untitled",
+      "stores": [{ "id": "v", "name": "Whatever Character Vault", "storeType": "character", "createdAt": "2026-01-01T00:00:00.000Z" }],
+      "characters": [{ "id": "c", "name": "", "characterDocumentMountPointId": "v", "createdAt": "2026-01-01T00:00:00.000Z" }]
+    },
+    {
+      "label": "whitespace-only character name: leading-space vault",
+      "stores": [{ "id": "v", "name": "Whatever Character Vault", "storeType": "character", "createdAt": "2026-01-01T00:00:00.000Z" }],
+      "characters": [{ "id": "c", "name": "   ", "characterDocumentMountPointId": "v", "createdAt": "2026-01-01T00:00:00.000Z" }]
+    },
+    {
+      "label": "padded character name: the vault trims (a trim-only rename)",
+      "stores": [{ "id": "v", "name": " Tess  Character Vault", "storeType": "character", "createdAt": "2026-01-01T00:00:00.000Z" }],
+      "characters": [{ "id": "c", "name": " Tess ", "characterDocumentMountPointId": "v", "createdAt": "2026-01-01T00:00:00.000Z" }]
+    },
+    {
+      "label": "re-casing a live vault name is a rename",
+      "stores": [{ "id": "v", "name": "TESS CHARACTER VAULT", "storeType": "character", "createdAt": "2026-01-01T00:00:00.000Z" }],
+      "characters": [{ "id": "c", "name": "Tess", "characterDocumentMountPointId": "v", "createdAt": "2026-01-01T00:00:00.000Z" }]
+    },
+    {
+      "label": "exotic whitespace around names (U+FEFF, U+00A0, U+0085, U+2028)",
+      "stores": [
+        { "id": "s1", "name": "﻿Tess Character Vault﻿", "storeType": "character", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "s2", "name": "Notes\u0085", "storeType": "documents", "createdAt": "2026-01-02T00:00:00.000Z" },
+        { "id": "s3", "name": "notes", "storeType": "documents", "createdAt": "2026-01-03T00:00:00.000Z" },
+        { "id": "s4", "name": " Lore ", "storeType": "documents", "createdAt": "2026-01-04T00:00:00.000Z" },
+        { "id": "s5", "name": "lore", "storeType": "documents", "createdAt": "2026-01-05T00:00:00.000Z" },
+        { "id": "s6", "name": "Ink ", "storeType": "documents", "createdAt": "2026-01-06T00:00:00.000Z" },
+        { "id": "s7", "name": "INK", "storeType": "documents", "createdAt": "2026-01-07T00:00:00.000Z" }
+      ],
+      "characters": []
+    },
+    {
+      "label": "\\n inside a vault-shaped name; U+0085 and U+2028 separators",
+      "stores": [
+        { "id": "n1", "name": "Tess\nCharacter Vault", "storeType": "character", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "n2", "name": "Tess\u0085Character Vault", "storeType": "character", "createdAt": "2026-01-02T00:00:00.000Z" },
+        { "id": "n3", "name": "Tess Character Vault", "storeType": "character", "createdAt": "2026-01-03T00:00:00.000Z" }
+      ],
+      "characters": []
+    },
+    {
+      "label": "non-ASCII case folds (long s, Kelvin sign) are not vault-shaped",
+      "stores": [
+        { "id": "k1", "name": "Tess CharaKcter Vault", "storeType": "character", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "k2", "name": "Tess Character Vault (٢)", "storeType": "character", "createdAt": "2026-01-02T00:00:00.000Z" },
+        { "id": "k3", "name": "TESTER CHARACTER VAULT", "storeType": "character", "createdAt": "2026-01-03T00:00:00.000Z" }
+      ],
+      "characters": []
+    },
+    {
+      "label": "vault-shaped spellings: alone, no-space suffix, double suffix",
+      "stores": [
+        { "id": "v1", "name": "Character Vault", "storeType": "character", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "v2", "name": "X Character Vault(2)", "storeType": "character", "createdAt": "2026-01-02T00:00:00.000Z" },
+        { "id": "v3", "name": "X Character Vault (2) (3)", "storeType": "character", "createdAt": "2026-01-03T00:00:00.000Z" },
+        { "id": "v4", "name": "X Character Vault", "storeType": "character", "createdAt": "2026-01-04T00:00:00.000Z" }
+      ],
+      "characters": []
+    },
+    {
+      "label": "equal createdAt tie-broken by id",
+      "stores": [
+        { "id": "b-store", "name": "Notes", "storeType": "documents", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "a-store", "name": "notes", "storeType": "documents", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "z-vault", "name": "Q Character Vault (5)", "storeType": "character", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "y-vault", "name": "Q Character Vault (4)", "storeType": "character", "createdAt": "2026-01-01T00:00:00.000Z" }
+      ],
+      "characters": [
+        { "id": "c-2", "name": "Q", "characterDocumentMountPointId": "z-vault", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "c-1", "name": "Q", "characterDocumentMountPointId": "y-vault", "createdAt": "2026-01-01T00:00:00.000Z" }
+      ]
+    },
+    {
+      "label": "an offset createdAt and a NaN createdAt on retirees",
+      "stores": [
+        { "id": "r1", "name": "Mara Character Vault", "storeType": "character", "createdAt": "2026-09-01T10:00:00.000+02:00" },
+        { "id": "r2", "name": "Mara Character Vault (2)", "storeType": "character", "createdAt": "not a date: 12:30" }
+      ],
+      "characters": []
+    },
+    {
+      "label": "an archived owner is an owner; a dangling pointer is adoptable",
+      "stores": [
+        { "id": "arch", "name": "Old Vault Name", "storeType": "character", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "orph", "name": "Dangle Character Vault", "storeType": "character", "createdAt": "2026-01-02T00:00:00.000Z" }
+      ],
+      "characters": [
+        { "id": "c-arch", "name": "Archie", "characterDocumentMountPointId": "arch", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "c-dang", "name": "Dangle", "characterDocumentMountPointId": "gone-store", "createdAt": "2026-01-01T00:00:00.000Z" }
+      ]
+    },
+    {
+      "label": "an empty-string pointer is no pointer",
+      "stores": [{ "id": "v", "name": "Pip Character Vault", "storeType": "character", "createdAt": "2026-01-01T00:00:00.000Z" }],
+      "characters": [{ "id": "c", "name": "Pip", "characterDocumentMountPointId": "", "createdAt": "2026-01-01T00:00:00.000Z" }]
+    },
+    {
+      "label": "two characters on one store: the oldest owns it",
+      "stores": [{ "id": "v", "name": "Shared Character Vault", "storeType": "character", "createdAt": "2026-01-01T00:00:00.000Z" }],
+      "characters": [
+        { "id": "c-young", "name": "Younger", "characterDocumentMountPointId": "v", "createdAt": "2026-05-01T00:00:00.000Z" },
+        { "id": "c-old", "name": "Elder", "characterDocumentMountPointId": "v", "createdAt": "2026-01-01T00:00:00.000Z" }
+      ]
+    },
+    {
+      "label": "two retirees of one base and one stamp take (2)",
+      "stores": [
+        { "id": "r-a", "name": "Bo Character Vault", "storeType": "character", "createdAt": "2026-02-02T02:02:02.000Z" },
+        { "id": "r-b", "name": "bo character vault (2)", "storeType": "character", "createdAt": "2026-02-02T02:02:02.000Z" }
+      ],
+      "characters": []
+    },
+    {
+      "label": "untyped stores are never retired; a documents store only suffixed",
+      "stores": [
+        { "id": "u1", "name": "Uma Character Vault", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "u2", "name": "Uma Character Vault", "storeType": null, "createdAt": "2026-01-02T00:00:00.000Z" },
+        { "id": "d1", "name": "Uma Character Vault", "storeType": "documents", "createdAt": "2026-01-03T00:00:00.000Z" }
+      ],
+      "characters": []
+    },
+    {
+      "label": "a documents store squatting a live canonical name",
+      "stores": [
+        { "id": "squat", "name": "vera character vault", "storeType": "documents", "createdAt": "2020-01-01T00:00:00.000Z" },
+        { "id": "vault", "name": "Vera Character Vault (2)", "storeType": "character", "createdAt": "2026-01-01T00:00:00.000Z" }
+      ],
+      "characters": [{ "id": "c", "name": "Vera", "characterDocumentMountPointId": "vault", "createdAt": "2026-01-01T00:00:00.000Z" }]
+    },
+    {
+      "label": "a retiree whose stamp a live store already holds",
+      "stores": [
+        { "id": "squat", "name": "Bo Version 2026-02-02T020202Z Store", "storeType": "documents", "createdAt": "2026-03-01T00:00:00.000Z" },
+        { "id": "r", "name": "Bo Character Vault", "storeType": "character", "createdAt": "2026-02-02T02:02:02.000Z" }
+      ],
+      "characters": []
+    },
+    {
+      "label": "an adoptable name protects every vault-shaped spelling of it",
+      "stores": [
+        { "id": "a1", "name": "Nell Character Vault (2)", "storeType": "character", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "a2", "name": "NELL CHARACTER VAULT", "storeType": "character", "createdAt": "2026-01-02T00:00:00.000Z" }
+      ],
+      "characters": [{ "id": "c", "name": "nell", "characterDocumentMountPointId": null, "createdAt": "2026-01-01T00:00:00.000Z" }]
+    },
+    {
+      "label": "a conforming instance plans nothing",
+      "stores": [
+        { "id": "g", "name": "Quilltap General", "storeType": "documents", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "u", "name": "Quilltap Uploads", "storeType": "documents", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "v", "name": "Abigail Character Vault", "storeType": "character", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "r", "name": "Abigail Version 2025-12-01T000000Z Store", "storeType": "character", "createdAt": "2025-12-01T00:00:00.000Z" }
+      ],
+      "characters": [{ "id": "c", "name": "Abigail", "characterDocumentMountPointId": "v", "createdAt": "2026-01-01T00:00:00.000Z" }]
+    },
+    {
+      "label": "a live vault whose name the other stores crowd up to (4)",
+      "stores": [
+        { "id": "o1", "name": "Ada Character Vault", "storeType": "documents", "createdAt": "2020-01-01T00:00:00.000Z" },
+        { "id": "o2", "name": "Ada Character Vault (2)", "storeType": "documents", "createdAt": "2020-01-02T00:00:00.000Z" },
+        { "id": "o3", "name": "ada character vault (3)", "storeType": "documents", "createdAt": "2020-01-03T00:00:00.000Z" },
+        { "id": "live1", "name": "Ada Character Vault (9)", "storeType": "character", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "live2", "name": "Elsewhere", "storeType": "character", "createdAt": "2026-01-02T00:00:00.000Z" }
+      ],
+      "characters": [
+        { "id": "c1", "name": "Ada", "characterDocumentMountPointId": "live1", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "c2", "name": "Ada", "characterDocumentMountPointId": "live2", "createdAt": "2026-02-01T00:00:00.000Z" }
+      ]
+    },
+    {
+      "label": "a non-ASCII character name and its casing",
+      "stores": [
+        { "id": "e1", "name": "ÉMILIE CHARACTER VAULT", "storeType": "character", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "e2", "name": "émilie character vault (2)", "storeType": "character", "createdAt": "2026-01-02T00:00:00.000Z" }
+      ],
+      "characters": [{ "id": "c", "name": "Émilie", "characterDocumentMountPointId": "e2", "createdAt": "2026-01-01T00:00:00.000Z" }]
+    }
+  ]
+}

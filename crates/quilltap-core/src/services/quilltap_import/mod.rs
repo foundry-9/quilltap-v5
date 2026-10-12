@@ -2003,6 +2003,23 @@ fn import_body(
         );
     }
 
+    // Store names (v4 `execute.ts:986-994`, `ed8b15b50`, bug 186): an
+    // imported vault arrives as "… (2)" when its name was taken; name each
+    // live vault after its character and retire any vault the import left
+    // unlinked. An `Err` is v4's warning, with NO log line. Inside the strict
+    // scope a failed read SKIPS (the reconcile's WARN, no warning) where v4
+    // pushes the warning — `RECONCILE_READ_FAILURE_STRICT`.
+    if let Err(e) = crate::db::store_name_reconcile::reconcile_store_names(
+        main,
+        Some(mount),
+        crate::db::store_name_reconcile::TRIGGER_QTAP_IMPORT,
+    ) {
+        warnings.push(format!(
+            "Failed to tidy document-store names after import: {}",
+            crate::db::fallback::error_text(&e)
+        ));
+    }
+
     // Re-embed what we just inserted (v4 `execute.ts:532`, AFTER the
     // reconcile). Imported memories carry no vector, and without this their
     // semantic search stays broken until the next boot's reconcile sweep runs.

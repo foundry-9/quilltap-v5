@@ -270,7 +270,7 @@ fn ensure_mount_index_tables(
            ON \"doc_mount_folders\" (\"mountPointId\", \"path\");",
     )?;
     // v4 `0a0419f5`: the case-insensitive mount-namespace invariant. v4 calls the
-    // three `ensure*NocaseUniqueIndex` / `repairMountPointNameCollisions` helpers
+    // three `ensure*NocaseUniqueIndex` / `ensureMountPointNameUniqueIndex` helpers
     // from each repo's lazy `getCollection()` table-init block (folders /
     // file-links / mount-points). v5 has no per-repo lazy init; this boot hook is
     // the single once-per-startup cadence, so the three v4 call sites collapse to
@@ -312,15 +312,19 @@ fn ensure_mount_index_tables(
     lazy_ensure(failures, &["doc_mount_file_links"], &mut collected, || {
         mount_index_case_repair::ensure_link_nocase_unique_index(mount_index)
     })?;
-    // v4 `doc-mount-points.repository.ts:37-68`'s ONE `onTableEnsured`: the
-    // four guarded ALTER self-heals (P4.150), THEN the name-collision repair —
-    // one closure, as v4's one method, so a failed ALTER skips the repair (v4
-    // never renames collision rows on a table it could not heal) and logs ONE
-    // ensure line. The `07b8f0209` follow-ups unification folded the lane's
-    // two sub-steps into this shape.
+    // v4 `doc-mount-points.repository.ts:54-86`'s ONE `onTableEnsured`: the
+    // four guarded ALTER self-heals (P4.150), THEN (v4 `ed8b15b50`, bug 186)
+    // `ensureMountPointNameUniqueIndex` — the name-collision repair followed by
+    // the UNIQUE NOCASE name index — one closure, as v4's one method, so a
+    // failed ALTER skips the repair (v4 never renames collision rows on a table
+    // it could not heal) and any failure logs ONE ensure line, collected for
+    // the structural pass (P4.D248). The `07b8f0209` follow-ups unification
+    // folded the lane's two sub-steps into this shape; P4.D274 swapped the bare
+    // repair for the ensure. On a fresh instance (provisioning ran P4.D265's
+    // DDL, which carries the index, before this) it is a no-op and logs nothing.
     lazy_ensure(failures, &["doc_mount_points"], &mut collected, || {
         ensure_doc_mount_points_columns(mount_index)?;
-        mount_index_case_repair::repair_mount_point_name_collisions(mount_index).map(|_| ())
+        mount_index_case_repair::ensure_mount_point_name_unique_index(mount_index)
     })?;
     // Step 2 — collect the backlog of content rows abandoned by
     // content-addressed rewrites before the write path started reaping them.
@@ -375,8 +379,24 @@ fn ensure_one_mount(
     let mount_point_id = match mount_point_id {
         Some(id) => id, // adopt the existing store
         None => {
+            // P4.D274 R-B (`BUILTIN_REPROVISION_FREE_NAME`, a v5-only divergence):
+            // v5 re-provisions here on EVERY boot whose pointer dangles, where
+            // v4's ledger-gated migration never re-runs. The UNIQUE NOCASE name
+            // index (ensured earlier in this pass) would refuse the fixed name
+            // whenever another store holds it in any casing — `UNIQUE
+            // constraint failed`, measured, and the boot FATAL — so the
+            // re-provision picks a free name: a squatted `Quilltap General`
+            // comes back as `Quilltap General (2)`, the end state pre-round v5
+            // reached one boot later through the case repair.
+            let taken: std::collections::HashSet<String> =
+                DocMountPointsRepository::new(mount_index)
+                    .find_all_names()?
+                    .into_iter()
+                    .collect();
+            let name =
+                crate::db::ensure_official_store::next_unique_mount_point_name(&taken, spec.name);
             let id = uuid::Uuid::new_v4().to_string();
-            insert_mount_row(mount_index, &id, spec.name)?;
+            insert_mount_row(mount_index, &id, &name)?;
             (spec.set_pointer)(main, &id)?;
             id
         }
@@ -462,6 +482,148 @@ pub fn ensure_general_scenarios_folder(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A mount index built from v4's fresh-schema DDL (P4.D265's D23 re-dump —
+    /// it carries `idx_doc_mount_points_name_nocase`) plus the main
+    /// `instance_settings` table: what provisioning leaves behind.
+    fn fresh_pair() -> (Connection, Connection) {
+        let main = Connection::open_in_memory().unwrap();
+        main.execute_batch(
+            "CREATE TABLE instance_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+        )
+        .unwrap();
+        let mount = Connection::open_in_memory().unwrap();
+        let dump: serde_json::Value =
+            serde_json::from_str(include_str!("provisioning/fresh_schema.json")).unwrap();
+        for stmt in dump["mountIndex"].as_array().unwrap() {
+            mount.execute_batch(stmt.as_str().unwrap()).unwrap();
+        }
+        (main, mount)
+    }
+
+    const NAME_INDEX_INFO: &str =
+        "INFO quilltap::mount_repair Mount-index: created the unique document-store name index";
+
+    /// P4.D274 (bug 186): on a fresh instance the name-index ensure finds
+    /// P4.D265's index valid — a no-op that logs nothing.
+    #[test]
+    fn a_fresh_instance_keeps_its_name_index_silently() {
+        let (main, mount) = fresh_pair();
+        let (result, lines) = crate::test_support::captured_with(|| {
+            ensure_builtin_mounts_with(&main, &mount, LazyRepairFailures::LogAndContinue)
+        });
+        assert!(result.unwrap().is_empty());
+        assert!(!lines.iter().any(|l| l == NAME_INDEX_INFO), "{lines:?}");
+    }
+
+    /// P4.D274: a pre-round mount index (no name index) gains it on the first
+    /// boot pass, with v4's INFO once; the second pass is silent.
+    #[test]
+    fn a_pre_round_mount_index_gains_the_name_index_once() {
+        let (main, mount) = fresh_pair();
+        mount
+            .execute_batch(&format!(
+                "DROP INDEX \"{}\"",
+                mount_index_case_repair::MOUNT_POINT_NAME_NOCASE_INDEX
+            ))
+            .unwrap();
+        let (_, first) = crate::test_support::captured_with(|| {
+            ensure_builtin_mounts_with(&main, &mount, LazyRepairFailures::LogAndContinue).unwrap()
+        });
+        assert_eq!(
+            first.iter().filter(|l| *l == NAME_INDEX_INFO).count(),
+            1,
+            "{first:?}"
+        );
+        let (_, second) = crate::test_support::captured_with(|| {
+            ensure_builtin_mounts_with(&main, &mount, LazyRepairFailures::LogAndContinue).unwrap()
+        });
+        assert!(!second.iter().any(|l| l == NAME_INDEX_INFO), "{second:?}");
+    }
+
+    /// P4.D274: a TABLE squatting the name index's name fails the ensure's
+    /// CREATE; under `LogAndContinue` that is ONE `Failed to ensure
+    /// doc_mount_points …` line and one structural-pass entry, and the boot
+    /// pass goes on (the three stores still provision).
+    #[test]
+    fn a_squatted_name_index_is_one_ensure_failure() {
+        let (main, mount) = fresh_pair();
+        let idx = mount_index_case_repair::MOUNT_POINT_NAME_NOCASE_INDEX;
+        mount
+            .execute_batch(&format!(
+                "DROP INDEX \"{idx}\"; CREATE TABLE \"{idx}\" (id TEXT PRIMARY KEY);"
+            ))
+            .unwrap();
+        let (result, lines) = crate::test_support::captured_with(|| {
+            ensure_builtin_mounts_with(&main, &mount, LazyRepairFailures::LogAndContinue)
+        });
+        let collected = result.unwrap();
+        let squatted = format!("there is already a table named {idx}");
+        assert_eq!(collected.get("doc_mount_points"), Some(squatted.as_str()));
+        let errors: Vec<&String> = lines.iter().filter(|l| l.starts_with("ERROR")).collect();
+        assert_eq!(
+            errors,
+            vec![&format!(
+                "ERROR quilltap::db Failed to ensure doc_mount_points table in mount index database error={squatted}"
+            )],
+        );
+        let stores: i64 = mount
+            .query_row("SELECT COUNT(*) FROM doc_mount_points", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(stores, 3);
+    }
+
+    /// P4.D274 R-B — `BUILTIN_REPROVISION_FREE_NAME` (a v5-only divergence; v4's
+    /// `provision-*-mount.ts` migrations are ledger-gated and never re-run, so
+    /// v4 has no comparand). v5 re-provisions a built-in store on EVERY boot
+    /// whose pointer dangles; with the name index now ensured earlier in the
+    /// same pass, a store already holding the fixed name in any casing would
+    /// fail the raw INSERT with `UNIQUE constraint failed` and the boot. So the
+    /// re-provision picks a free name: a squatted `Quilltap General`
+    /// re-provisions as `Quilltap General (2)` (the end state pre-round v5
+    /// reached one boot later, via the case repair).
+    #[test]
+    fn builtin_reprovision_free_name_both_ways() {
+        // Squatted: the free name is taken.
+        let (main, mount) = fresh_pair();
+        instance_settings::set_general_mount_point_id(&main, "gone-store").unwrap();
+        mount
+            .execute(
+                "INSERT INTO doc_mount_points (id, name, createdAt, updatedAt) \
+                 VALUES ('squat', 'quilltap general', '2024-01-01T00:00:00.000Z', '2024-01-01T00:00:00.000Z')",
+                [],
+            )
+            .unwrap();
+        ensure_builtin_mounts_with(&main, &mount, LazyRepairFailures::LogAndContinue).unwrap();
+        let pointer = instance_settings::get_general_mount_point_id(&main)
+            .unwrap()
+            .unwrap();
+        assert_ne!(pointer, "gone-store");
+        let name: String = mount
+            .query_row(
+                "SELECT name FROM doc_mount_points WHERE id = ?1",
+                [&pointer],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(name, "Quilltap General (2)");
+
+        // Unsquatted: the plain name.
+        let (main, mount) = fresh_pair();
+        instance_settings::set_general_mount_point_id(&main, "gone-store").unwrap();
+        ensure_builtin_mounts_with(&main, &mount, LazyRepairFailures::LogAndContinue).unwrap();
+        let pointer = instance_settings::get_general_mount_point_id(&main)
+            .unwrap()
+            .unwrap();
+        let name: String = mount
+            .query_row(
+                "SELECT name FROM doc_mount_points WHERE id = ?1",
+                [&pointer],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(name, "Quilltap General");
+    }
 
     /// Migration-vintage regression (v4 `0a0419f5`): a mount-index built with the
     /// LEGACY case-sensitive indexes and carrying planted case-collisions (a shape

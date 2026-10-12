@@ -40,7 +40,7 @@ use rusqlite::Connection;
 
 use self::apply_disk::{
     apply_disk_action, birthtime_is_settable, ensure_target_directory, node_platform, node_resolve,
-    resolve_in_target, target_exists, DiskApplyError,
+    target_exists, DiskApplyError,
 };
 use self::apply_store::{apply_store_action, read_store_bytes};
 use self::manifest::{base_from_manifest, read_manifest, write_manifest, ReadManifestError};
@@ -502,11 +502,9 @@ fn bytes_for(
         };
     }
 
-    let absolute =
-        resolve_in_target(target_path, &action.relative_path).map_err(|e| e.to_string())?;
-    std::fs::read(&absolute)
-        .map(Some)
-        .map_err(|e| node_io_message(&e, "open", &absolute))
+    // v4 `197104649`: the disk side reads through `readDiskFile`, which logs
+    // one DEBUG per read.
+    apply_disk::read_disk_file(target_path, &action.relative_path).map(Some)
 }
 
 // ============================================================================

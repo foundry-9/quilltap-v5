@@ -90,6 +90,22 @@ pub fn resolve_in_target(
     Ok(absolute)
 }
 
+/// Read one file's bytes from the target, refusing a path that escapes it —
+/// v4 `readDiskFile` (`apply-disk.ts:55-60`, `197104649`). The containment
+/// check runs FIRST, so an escape errs before any line; then DEBUG `[Sync]
+/// Reading disk file` `{relativePath}` (v4's root logger); then the read, its
+/// failure in Node's `open` message form. The sync engine's disk-side
+/// `bytesFor` (`sync/index.ts:265-279`) delegates here — the one disk read.
+pub(crate) fn read_disk_file(target_path: &Path, relative_path: &str) -> Result<Vec<u8>, String> {
+    let absolute = resolve_in_target(target_path, relative_path).map_err(|e| e.to_string())?;
+    tracing::debug!(
+        target: "quilltap::mount_index",
+        relativePath = %relative_path,
+        "[Sync] Reading disk file",
+    );
+    std::fs::read(&absolute).map_err(|e| super::node_io_message(&e, "open", &absolute))
+}
+
 /// Node `path.resolve(p)` with one argument — resolve against the process cwd
 /// and normalize, with no containment check.
 pub fn node_resolve(p: &str) -> PathBuf {
@@ -366,6 +382,32 @@ pub fn apply_disk_action(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// P4.D274 (v4 `197104649`): a disk-side read logs `[Sync] Reading disk
+    /// file` `{relativePath}` exactly once and answers the bytes.
+    #[test]
+    fn a_disk_read_logs_v4s_line_once() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("Notes")).unwrap();
+        std::fs::write(dir.path().join("Notes/a.md"), b"hello").unwrap();
+        let (bytes, lines) =
+            crate::test_support::captured_with(|| read_disk_file(dir.path(), "Notes/a.md"));
+        assert_eq!(bytes.unwrap(), b"hello");
+        assert_eq!(
+            lines,
+            ["DEBUG quilltap::mount_index [Sync] Reading disk file relativePath=Notes/a.md"]
+        );
+    }
+
+    /// The containment check runs FIRST: an escaping path errs before any line.
+    #[test]
+    fn an_escaping_disk_read_errs_silently() {
+        let dir = tempfile::tempdir().unwrap();
+        let (result, lines) =
+            crate::test_support::captured_with(|| read_disk_file(dir.path(), "../outside.md"));
+        assert!(result.is_err());
+        assert!(lines.is_empty(), "{lines:?}");
+    }
 
     /// `resolve_in_target`'s escape refusal is DEFENCE IN DEPTH: neither walk can
     /// hand the applier an escaping path (the store walk drops any path with a

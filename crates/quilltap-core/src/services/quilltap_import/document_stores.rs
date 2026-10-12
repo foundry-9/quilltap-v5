@@ -183,10 +183,35 @@ pub(super) fn import_document_stores(
                         // Drop existing documents, links, orphaned files and chunks
                         // before replacing (v4's four repo calls, quirks included).
                         overwrite_clear_mount(mount, existing_id)?;
+                        // v4 `import-document-stores.ts:82-95` (`ed8b15b50`,
+                        // bug 186): the archive's name, unless another store
+                        // now holds it (the namespace is shared; this store's
+                        // own current name never counts against it). The OLD
+                        // name stays in `taken_names`, as v4's does.
+                        let existing_lower = existing_stores
+                            .iter()
+                            .find(|st| st.get("id").and_then(Value::as_str) == Some(existing_id))
+                            .and_then(|st| st.get("name").and_then(Value::as_str))
+                            .map(|n| crate::jsstr::js_trim(n).to_lowercase())
+                            .unwrap_or_default();
+                        let overwrite_name =
+                            if existing_lower == crate::jsstr::js_trim(&mp_name).to_lowercase() {
+                                mp_name.clone()
+                            } else {
+                                let others: std::collections::HashSet<String> = taken_names
+                                    .iter()
+                                    .filter(|n| {
+                                        crate::jsstr::js_trim(n).to_lowercase() != existing_lower
+                                    })
+                                    .cloned()
+                                    .collect();
+                                next_unique_mount_point_name(&others, &mp_name)
+                            };
+                        taken_names.insert(overwrite_name.clone());
                         points_repo.update(
                             existing_id,
                             &DmpUpdate {
-                                name: Some(mp_name.clone()),
+                                name: Some(overwrite_name),
                                 base_path: Some(base_path),
                                 mount_type: Some(mount_type),
                                 store_type: Some(store_type),

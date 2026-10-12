@@ -131,6 +131,7 @@ pub mod scenarios;
 pub mod serde_tristate;
 pub mod sqlite_errors;
 pub mod store_backed;
+pub mod store_name_reconcile;
 pub mod table_shape;
 pub mod tags;
 pub mod terminal_sessions;
@@ -212,7 +213,27 @@ pub enum DbError {
         /// The character the write targeted.
         character_id: String,
     },
+    /// A create or rename would give a document store a name another store
+    /// already holds — v4 `MountPointNameTakenError`
+    /// (`doc-mount-points.repository.ts:27-38`, `ed8b15b50`, bug 186). Store
+    /// names are one case-insensitive namespace; the repository gate
+    /// (`DocMountPointsRepository::create` / `update`) raises it. v4's `code`
+    /// never reaches a wire (both routes pre-check; a raced throw lands in the
+    /// PATCH catch-all) — [`MOUNT_POINT_NAME_TAKEN_CODE`] carries it for the
+    /// record only.
+    MountPointNameTaken {
+        /// The name the caller asked for.
+        requested_name: String,
+        /// The store that holds it.
+        holder_id: String,
+        /// The holder's STORED casing — v4's message quotes it.
+        holder_name: String,
+    },
 }
+
+/// v4 `MountPointNameTakenError.code` — record only (see
+/// [`DbError::MountPointNameTaken`]).
+pub const MOUNT_POINT_NAME_TAKEN_CODE: &str = "MOUNT_POINT_NAME_TAKEN";
 
 impl DbError {
     /// v4 `CharacterArchivedError`'s constructed `.message` — the byte-exact
@@ -239,6 +260,12 @@ impl std::fmt::Display for DbError {
             DbError::CharacterArchived { character_id } => {
                 write!(f, "{}", DbError::character_archived_message(character_id))
             }
+            // v4's constructed message, byte for byte (the HOLDER's casing,
+            // U+2014).
+            DbError::MountPointNameTaken { holder_name, .. } => write!(
+                f,
+                "A document store named \"{holder_name}\" already exists. Names are matched without regard to case \u{2014} please choose a different name."
+            ),
         }
     }
 }

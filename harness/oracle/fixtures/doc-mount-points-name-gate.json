@@ -1,0 +1,31 @@
+{
+  "_doc": "P4.D274 (v4 ed8b15b50, bug 186): the doc_mount_points repository's name chokepoint, run by doc-mount-points-tier2.ts AFTER its committed ops, on the same working copy (mirrors v4's doc-mount-points-find-by-name.test.ts :70-110). Each step either creates through the REAL repository (base fields + name + pinned id/stamps), updates through it, or plants a row raw (plantRaw). Both sides dump per step: the thrown message (or null), the captured lines, and every (id, name).",
+  "stamp": "2026-03-01T00:00:00.000Z",
+  "base": {
+    "name": "(set per step)",
+    "basePath": "",
+    "mountType": "database",
+    "storeType": "character",
+    "includePatterns": ["*.md"],
+    "excludePatterns": [".git"],
+    "enabled": true,
+    "lastScannedAt": null,
+    "scanStatus": "idle",
+    "lastScanError": null,
+    "conversionStatus": "idle",
+    "conversionError": null,
+    "fileCount": 0,
+    "chunkCount": 0,
+    "totalSizeBytes": 0
+  },
+  "steps": [
+    { "label": "create-holder", "kind": "create", "id": "4a000000-0000-4000-8000-0000000000b1", "name": "Tester Character Vault" },
+    { "label": "create-refused-padded-lowercase", "kind": "create", "id": "4a000000-0000-4000-8000-0000000000b2", "name": " tester character vault" },
+    { "label": "create-peer", "kind": "create", "id": "4a000000-0000-4000-8000-0000000000b3", "name": "Peer Store" },
+    { "label": "update-onto-peer-refused", "kind": "update", "id": "4a000000-0000-4000-8000-0000000000b3", "name": "TESTER CHARACTER VAULT" },
+    { "label": "update-recase-own", "kind": "update", "id": "4a000000-0000-4000-8000-0000000000b1", "name": "TESTER CHARACTER VAULT" },
+    { "label": "update-nameless", "kind": "update", "id": "4a000000-0000-4000-8000-0000000000b3" },
+    { "label": "plant-dropped-holder", "kind": "plantRaw", "id": "not-a-uuid", "name": "Dropped Holder" },
+    { "label": "create-onto-dropped-holder", "kind": "create", "id": "4a000000-0000-4000-8000-0000000000b4", "name": "dropped holder" }
+  ]
+}

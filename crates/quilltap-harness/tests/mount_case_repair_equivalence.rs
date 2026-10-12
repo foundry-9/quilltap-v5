@@ -13,7 +13,8 @@
 //! tampered-index replacement, link suffix-before-extension, and vault-name
 //! trim + keep-oldest.
 //!
-//! Generate the oracle (Node 24, from the v4 checkout at `d68638b4`):
+//! Generate the oracle (Node 24, from the v4 checkout or the round's pin; the
+//! `mountpoints-index` rows need v4 `ed8b15b50`+):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   cd ~/source/quilltap-server
 //!   $N/node --import tsx \
@@ -25,13 +26,24 @@
 //!
 //! Skips (does not fail) when the env var is unset — the standing gated
 //! discipline.
+//!
+//! P4.D274 (v4 `ed8b15b50`, bug 186) extends it with the `mountpoints-index`
+//! run — the ported `ensure_mount_point_name_unique_index` (repair → validity →
+//! DROP + CREATE the UNIQUE NOCASE name index → INFO) over a preset-valid, a
+//! tampered, a colliding, an idempotent and a JS-trim-keyed plant, plus a
+//! probe INSERT after the run whose error text must match v4's — and with the
+//! log lines of EVERY case: v4's captured `{level, message, fields}` rendered
+//! as `LEVEL message k=v …` in v4's key order, against v5's captured lines with
+//! the target dropped. The case-repair lines' WARN + camelCase move (R-G) is
+//! pinned here.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 
 use quilltap_core::db::mount_index_case_repair::{
     ensure_folder_nocase_unique_index, ensure_link_nocase_unique_index,
-    repair_mount_point_name_collisions,
+    ensure_mount_point_name_unique_index, repair_mount_point_name_collisions,
+    MOUNT_POINT_NAME_NOCASE_INDEX,
 };
 use rusqlite::{params, Connection};
 use serde::Deserialize;
@@ -61,6 +73,15 @@ struct Case {
     #[serde(default)]
     #[serde(rename = "mountPoints")]
     mount_points: Vec<MountPointSpec>,
+    #[serde(default)]
+    #[serde(rename = "presetNameIndex")]
+    preset_name_index: bool,
+    #[serde(default)]
+    #[serde(rename = "tamperNameIndex")]
+    tamper_name_index: bool,
+    #[serde(default)]
+    #[serde(rename = "probeInsert")]
+    probe_insert: Option<MountPointSpec>,
 }
 
 #[derive(Deserialize)]
@@ -136,9 +157,48 @@ fn dump_rows(db: &Connection, sql: &str, cols: &[&str]) -> Vec<Value> {
     rows.map(|r| r.unwrap()).collect()
 }
 
-fn run_case(spec: &Spec, c: &Case) -> Value {
+/// v4's captured line → `LEVEL message k=v …` (v4's key order; a string
+/// value verbatim, anything else as JSON).
+fn render_v4_line(v: &Value) -> String {
+    let mut out = format!(
+        "{} {}",
+        v["level"].as_str().unwrap().to_uppercase(),
+        v["message"].as_str().unwrap()
+    );
+    for (k, val) in v["fields"].as_object().unwrap() {
+        let rendered = match val {
+            Value::String(s) => s.clone(),
+            other => other.to_string(),
+        };
+        out.push_str(&format!(" {k}={rendered}"));
+    }
+    out
+}
+
+/// v5's captured line (`LEVEL target message k=v …`) with the target dropped.
+fn drop_target(line: &str) -> String {
+    let (level, rest) = line.split_once(' ').unwrap();
+    let (_target, rest) = rest.split_once(' ').unwrap();
+    format!("{level} {rest}")
+}
+
+fn run_case(spec: &Spec, c: &Case) -> (Value, Vec<String>) {
     let db = fresh_db();
     let mp = &spec.mount_point_id;
+
+    if c.preset_name_index {
+        db.execute_batch(&format!(
+            "CREATE UNIQUE INDEX \"{MOUNT_POINT_NAME_NOCASE_INDEX}\" \
+               ON \"doc_mount_points\" (\"name\" COLLATE NOCASE)"
+        ))
+        .unwrap();
+    }
+    if c.tamper_name_index {
+        db.execute_batch(&format!(
+            "CREATE INDEX \"{MOUNT_POINT_NAME_NOCASE_INDEX}\" ON \"doc_mount_points\" (\"name\")"
+        ))
+        .unwrap();
+    }
 
     if c.tamper_folder_index {
         db.execute_batch(
@@ -179,12 +239,24 @@ fn run_case(spec: &Spec, c: &Case) -> Value {
         "mountpoints" => {
             repair_mount_point_name_collisions(&db).unwrap();
         }
+        "mountpoints-index" => ensure_mount_point_name_unique_index(&db).unwrap(),
         other => panic!("unknown run kind: {other}"),
     };
-    run_once();
-    if c.run_twice {
+    let ((), lines) = quilltap_core::test_support::captured_with(|| {
         run_once();
-    }
+        if c.run_twice {
+            run_once();
+        }
+    });
+
+    let probe_error = c.probe_insert.as_ref().map(|m| {
+        db.execute(
+            "INSERT INTO doc_mount_points (id, name, createdAt) VALUES (?1, ?2, ?3)",
+            params![m.id, m.name, m.created_at],
+        )
+        .err()
+        .map(|e| e.to_string())
+    });
 
     let folders = dump_rows(
         &db,
@@ -204,18 +276,22 @@ fn run_case(spec: &Spec, c: &Case) -> Value {
     let indexes = dump_rows(
         &db,
         "SELECT name, sql FROM sqlite_master WHERE type = 'index' \
-           AND tbl_name IN ('doc_mount_folders', 'doc_mount_file_links') \
+           AND tbl_name IN ('doc_mount_folders', 'doc_mount_file_links', 'doc_mount_points') \
            AND sql IS NOT NULL ORDER BY name",
         &["name", "sql"],
     );
 
-    json!({
+    let mut out = json!({
         "case": c.name,
         "folders": folders,
         "links": links,
         "mountPoints": mount_points,
         "indexes": indexes,
-    })
+    });
+    if let Some(probe) = probe_error {
+        out["probeError"] = json!(probe);
+    }
+    (out, lines.iter().map(|l| drop_target(l)).collect())
 }
 
 #[test]
@@ -243,10 +319,23 @@ fn mount_case_repair_matches_oracle() {
 
     let mut checked = 0;
     for c in &spec.cases {
-        let got = run_case(&spec, c);
-        let want = oracle
+        let (got, got_lines) = run_case(&spec, c);
+        let mut want = oracle
             .get(&c.name)
-            .unwrap_or_else(|| panic!("no oracle line for case {}", c.name));
+            .unwrap_or_else(|| panic!("no oracle line for case {}", c.name))
+            .clone();
+        let want_lines: Vec<String> = want
+            .as_object_mut()
+            .unwrap()
+            .shift_remove("lines")
+            .expect("oracle lines (regenerate at the P4.D274 pin)")
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(render_v4_line)
+            .collect();
+        assert_eq!(got_lines, want_lines, "case {} log lines diverged", c.name);
+        let want = &want;
         assert_eq!(
             &got, want,
             "case {} diverged\n  got:  {}\n  want: {}",
@@ -255,7 +344,7 @@ fn mount_case_repair_matches_oracle() {
         checked += 1;
     }
     assert_eq!(checked, spec.cases.len(), "not every case ran");
-    assert!(checked >= 7, "expected >= 7 cases, ran {checked}");
+    assert!(checked >= 12, "expected >= 12 cases, ran {checked}");
 
     // The naming leaf — next_unique_mount_point_name (case-insensitive + trimmed).
     // Same NAMING_CASES (inputs + order) as the oracle.
@@ -288,5 +377,5 @@ fn mount_case_repair_matches_oracle() {
         "next_unique_mount_point_name diverged\n  got:  {got_names:?}\n  want: {want_names:?}"
     );
 
-    eprintln!("mount_case_repair: {checked} cases + naming leaf matched oracle");
+    eprintln!("OK: mount_case_repair: {checked} cases (rows, indexes, probe errors, log lines) + naming leaf matched oracle");
 }

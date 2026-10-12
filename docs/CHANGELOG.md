@@ -17,6 +17,83 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 _Docs-only change._
 
 `/driftcheck` with the `01a83539d` round finished and about to unify. v4 `main` is seventeen commits past the `f5e953a3f` baseline: the thirteen the round is pinned at, then four wardrobe commits landed 2026-10-09/10 — `3e6e2f590` (the seven-phase wardrobe refactor plan; bugs 187–197 filed from v4's own code audit), `7a8d6dacc` (bugs 187, 188, 189, 191: the vault parser keeps cross-tier UUID component refs, `wardrobe_archive` is idempotent with a new `already_archived` result key, a tool-queued item picture carries its chat into the Concierge policy and the image failover, every equip path refuses an archived item), `9ecebf986` (the refactor itself, 261 files: one wearable pool per request with archived items dropped per tier, one location type, one route factory for all four tiers with POST/PUT answering `origin` + `wear` and cycle → 400 / archived character → 409, the seven tools through one table so `wardrobe_create` + `equip_now` announces, `wardrobe_list` drops `include_presets` from its definition, widen-never-narrow composite slots, the transfer probe walks group before project, a new `link-image` action, preview-avatar through the Concierge failover, the Almanack counting wardrobe pictures as image spend, the backup's `wardrobeItems` always empty; bugs 190 and 192–197) and `e23fb095b` (bug 198, SPA only: the outfit read refetches on every mount and the `chats` realtime topic invalidates it). None is a convergence on a port filing; no schema, migration or dependency moved; `help/wardrobe.md` and `help/project-wardrobe.md` moved. The two rows `/setupphase` had recorded as UNCLASSIFIED are now classified (NO-PORT? and PORT) and two new rows are UNPROCESSED (PORT + PORT-NEW, PORT). The baseline stays `f5e953a3f` — the coming `/unify` moves it to `01a83539d`, not past it. Regen rule unchanged: pin required; this round's regens pin at `01a83539d`.
+#### 2026-10-10 — docs(porting): P4.D274 lane close — gate, sweep and measurement records
+
+_Docs-only change._
+
+The P4.D274 order is marked LANE COMPLETE. The status log records the full workspace gate (four failures, all other lanes' by-design reds), the 19-family sweep from the pin, the named divergences, the deferrals, and the dogfood rows.
+
+#### 2026-10-09 — test(mount-index): P4.D274 the store-name writers census
+
+_No crate versions bumped._
+
+New census `doc_mount_points_name_writers_census`: only the repository, the store-name reconcile, the boot case repair and the built-in re-provision may write a document-store name with raw SQL. No other writer exists.
+
+#### 2026-10-09 — feat(mount-index): P4.D274 unit 8 — the sync engine's disk-read DEBUG line (v4 `197104649`)
+
+_Versions: core 0.0.1271._
+
+The document-store sync engine now reads a disk file through one `read_disk_file`, as v4's `readDiskFile` does. It checks containment first, then logs v4's DEBUG `[Sync] Reading disk file` with the relative path, then reads. Two in-crate tests pin the line and its silence on an escaping path.
+
+#### 2026-10-09 — feat(host): P4.D274 unit 7 — the boot store-name reconcile
+
+_Versions: core 0.0.1270, host 0.0.196._
+
+The host boot now runs the store-name reconcile just before the head-and-shoulders backfill enqueue, as v4's startup chain does. A failure logs v4's chain WARN and skips the enqueue. With a degraded mount index the boot logs v4's skip WARN.
+
+The reconcile's reads treat a missing `characters` or `doc_mount_points` table as empty, as v4 (which would create it) reads it.
+
+New host test `host_boot_store_name_reconcile`: the retirement once, the degraded skip, the failed-reconcile chain, and the built-in re-provision's free name.
+
+#### 2026-10-09 — feat(mount-index): P4.D274 units 5+6 — store-name reconcile on character create/rename/delete, the mount-points routes and the import
+
+_Versions: core 0.0.1269._
+
+Creating, renaming or deleting a character now reconciles document-store names, as v4's `CharactersRepository` does. A new character's vault takes the plain `<Name> Character Vault` and an older orphan is retired. A rename renames the vault. A deleted character's vault is retired to `<Name> Version <stamp> Store`. The reconcile never fails the character write: an error is logged as v4's WARN.
+
+New `character_vault::delete_character_and_reconcile` is the one wrapper for a per-character delete; the cascade delete and the `.qtap` import overwrite use it. A new census test holds that. The full-data wipe deletes every character and then replays v4's measured concurrent reconcile cadence. Creates and deletes log v4's `Character created` / `Character deleted` INFO lines.
+
+The vault provisioning's adopt lookup and taken-name set now read stores the way v4 does (schema-refused rows dropped, JS trim).
+
+The mount-points routes now read the name holder through the repository and log v4's `Rejected duplicate mount point name` / `… rename` WARNs. PATCH refuses to rename (or re-case) a live character vault with v4's 409 sentence and WARN; an archived owner still counts. A name the repository gate refuses after the route's own check answers v4's catch-all 500 with its ERROR.
+
+The `.qtap` import reconciles store names at the end of the run; a failure becomes v4's warning. An overwritten store takes the archive's name unless another store holds it (`Name (2)`). Inside the import's strict scope a failed read skips the reconcile with no warning, where v4 pushes one (`RECONCILE_READ_FAILURE_STRICT`).
+
+`store_name_reconcile_equivalence` adds seven scenarios through v4's real character repository, `deleteUserData` and `executeImport`. `mount_points_routes_equivalence` adds four live-vault rows and compares the clash rows' WARNs.
+
+#### 2026-10-09 — feat(mount-index): P4.D274 units 3+4 — the store-name gate and the store-name reconcile (v4 `ed8b15b50`, bug 186)
+
+_Versions: core 0.0.1268._
+
+`DocMountPointsRepository::create` and `update` (when renaming) now refuse a name another store already holds, ignoring case and surrounding JS whitespace. They log v4's WARN and return the new `DbError::MountPointNameTaken`, whose message is v4's sentence. The holder lookup reads stores the way v4's `findAll()` does: a row v4's schema rejects is dropped with v4's two validation lines.
+
+New `db::store_name_reconcile::reconcile_store_names(main, mount, trigger)`, a port of v4's `reconcileStoreNames`. It plans every store's name with the store-name rules and applies the renames in one savepoint, in two phases so name swaps never trip the unique index. It logs v4's DEBUG plan line and one INFO per rename, and publishes one `mountPoints` hint. With no mount index it logs v4's skip WARN.
+
+A failed whole-table read now stops the reconcile (a v5-only WARN, nothing written) where v4 would retire every vault. This is recorded as `RECONCILE_READ_FAILURE_STRICT`. `reconcile_vault_names_or_warn` wraps it for the character hooks and never fails the caller.
+
+New tier-2 family `store_name_reconcile_equivalence`: 11 scenarios against v4's real reconcile, plus a two-way cross-run. v5 renames nothing on v4's result, and v4 renames nothing on v5's. `doc_mount_points_tier2_equivalence` gains the name-gate steps.
+
+#### 2026-10-09 — feat(mount-index): P4.D274 unit 2 — the unique store-name index ensure, the repair lines at WARN
+
+_Versions: core 0.0.1267._
+
+Ports v4's `ensureMountPointNameUniqueIndex`. It repairs case-insensitive store-name collisions, then makes sure the `idx_doc_mount_points_name_nocase` UNIQUE NOCASE index exists (recreating a tampered stand-in), and logs v4's INFO when it creates the index. The boot's `doc_mount_points` lazy ensure now calls it in place of the bare repair. A fresh instance already has the index, so nothing is logged there.
+
+The three case-repair lines (store, folder, link) now log at WARN with v4's camelCase keys, and the store repair trims with JS's `trim`.
+
+A built-in store re-provisioned over a dangling pointer now picks a free name (`Quilltap General (2)`) instead of failing the boot on the new index. This is a v5-only path, recorded as `BUILTIN_REPROVISION_FREE_NAME`.
+
+`mount_case_repair_equivalence` gains five index rows and compares every case's log lines against v4's.
+
+#### 2026-10-09 — feat(mount-index): P4.D274 unit 1 — the document-store naming leaf (v4 `ed8b15b50`, bug 186)
+
+_Versions: core 0.0.1266._
+
+New `quilltap_core::store_names`, a port of v4's `lib/mount-index/store-names.ts`: `character_vault_name`, `vault_base_name`, `store_name_timestamp`, `retired_vault_name` and `plan_store_names`. The planner names each live vault `<Name> Character Vault`, suffixes namesakes ` (N)`, and retires an unlinked vault-shaped `character` store to `<Name> Version <stamp> Store`. v4's vault-name regex is matched by hand with JS's character classes (`\s` includes U+FEFF but not U+0085; `/i` folds ASCII only).
+
+`next_unique_mount_point_name` now trims with JS's `trim` rather than Rust's. That also covers restore 22a's free-name pick.
+
+New tier-1 family `store_names_equivalence` runs a committed corpus through v4's real module: 117 rows, with each plan's idempotence pass. The V8 date forms a stored `createdAt` cannot take are pinned both ways as `STORE_STAMP_UNREACHABLE_FORMS`.
 #### 2026-10-09 — docs(porting): P4.D265 lane close — real-instance note, gate and sweep records
 
 _Docs-only change._
