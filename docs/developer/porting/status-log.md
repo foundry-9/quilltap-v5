@@ -178589,3 +178589,37 @@ component was run, and the lane has no Rust family (the order's regen rule).
   `wearRefusal` (1) = 12. **Red-first:** RED BY CONSTRUCTION on `main` (no
   builder, handler or refusal exists — survey §1.2: "v5 has no gesture
   builders"). Green with the two neighbouring specs: 3 / 50.
+
+### Unit 4 — the actions store + the list-data store (SPA 0.5.839)
+- NEW `wardrobe/wardrobe-item-actions.ts` — v4 `useWardrobeItemActions.ts`
+  at `97f0d8cb8`: `editor` / `transfer` / `imageView` / **`folderPicker`**
+  signals; `overlayOpen` counts all four (R-O, bug 229 from day one);
+  `addressOf` origin-first in a character view (`containerForListedItem`),
+  the browsed container otherwise; `toggleDefault` / `toggleArchived` /
+  `remove` (v4's confirm sentence) / `duplicate` (v4's debug line; title via
+  `nextCopyTitle` over the list) / `generateImage` (v4's two toasts) /
+  `openImage` (needs `imageFileId`); `openCreate(mode, ids, { folder })`;
+  `openFolderPicker` no-op on `[]`. Failure toast = v4's `error.message ||
+  failure`. Success → `refresh()`.
+  **R-J realisation:** `refresh()` = host `reloadLists()` + (in chat)
+  `reloadOutfit()` + a `refreshTick` bump every mounted browser / picker
+  watches to re-read its folder tree; `refreshLists()` is v4's folder
+  mutations' narrower `onSettled` (lists + folders, NOT the outfit).
+  **Divergence vs v5 `main`, toward v4:** toggles now refresh the worn outfit
+  too in chat (v4's one `onSuccess: refresh`), and every handler addresses the
+  item's `addressOf` home instead of the selected container.
+  **HANDOFF (§R.10(l)):** `duplicate` still calls `duplicateWardrobeItem(core,
+  home, item, title)`, whose body has no `folder`; the unifier re-points that
+  helper's body (`wardrobe.api.ts:557-576`) onto P4.D286's
+  `draftToPayload({ ...draftFromItem(item), title })` once both SPA lanes are
+  picked.
+- NEW `wardrobe/wardrobe-list-data.ts` — v4 `useWardrobeListData.ts`:
+  `createWardrobeListData(core, { container, chatId?, includeArchived })` in an
+  injection context (an `effect` reloads on container / archived), signals
+  `listItems` / `resolutionPool` / `characterItems` / `projectId`, the stable
+  `canManage` (v5's `canManageItem` rule = v4's), `reload()`. `loading` is
+  v4's `isLoading` (first read of a view key only — a refresh repaints in
+  place; v5 `main` blanked to "Loading…" on every reload); a late answer for
+  an abandoned view is dropped by ticket.
+- **Specs:** `wardrobe-item-actions.spec.ts` 13, `wardrobe-list-data.spec.ts`
+  6. **Red-first:** RED BY CONSTRUCTION on `main`. Green 2 / 19.

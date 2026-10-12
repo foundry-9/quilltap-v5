@@ -182,6 +182,12 @@ _Docs-only change._
 
 The two help pages v4's wardrobe programme moved between `01a83539d` and `4a38222e6` are copied whole from `git show 4a38222e6:help/<page>`: `help/wardrobe.md` (the folders section, the archive paragraphs, "Retiring a garment twice changes nothing", the analyst-profile paragraph for Import from image, "Slots this outfit covers", "Show archived") and `help/project-wardrobe.md` (the card is the shared browser). The tree stays at 131 files, md5-identical to the pin. `help_tree_equivalence` and `help_section_size_equivalence` were regenerated at the pin (131 docs, 766 sections) and measured red before the copy, green after; `help_tree_embed_guard` and `host_help_docs_boot` are unchanged at 131. `help_tree_equivalence`'s history comment gains the P4.D287 line. No crate source changed; the host rebuilds its embedded help table but is not bumped.
 
+#### 2026-10-12 — feat(spa): the wardrobe actions store and list-data store, with the folder picker counted as an overlay (P4.D285 unit 4)
+
+_Versions: SPA 0.5.839._
+
+New `wardrobe/wardrobe-item-actions.ts` ports v4's `useWardrobeItemActions` (with `97f0d8cb8`'s fix): the overlay state (editor, transfer, picture viewer, folder picker) and `overlayOpen`, which counts the folder picker so the dialog's Escape gate cannot close the wardrobe from inside it (bug 229); origin-first `addressOf`; the star / archive / delete / duplicate / draw-a-picture handlers with v4's toasts; and `refresh` / `refreshLists` plus a tick that browsers watch to re-read folder trees. New `wardrobe/wardrobe-list-data.ts` ports v4's `useWardrobeListData` over the existing loaders as signals: the character arm vs the shared arm, `canManage`, `projectId`, and v4's first-load-only `loading`. Nothing mounts them yet.
+
 #### 2026-10-12 — feat(spa): the composer gesture builders, shared composer handlers and the archived-wear refusal (P4.D285 unit 3)
 
 _Versions: SPA 0.5.838._
