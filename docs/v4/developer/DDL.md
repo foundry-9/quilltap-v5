@@ -644,6 +644,7 @@ CREATE TABLE "chats" (
   "courierCheckpoints" TEXT DEFAULT NULL,
   "commonplaceSceneCache" TEXT DEFAULT NULL,
   "commonplaceRecallHistory" TEXT DEFAULT NULL,
+  "otherExtractionWatermarkMessageId" TEXT DEFAULT NULL,  -- added in 4.10 (add-memory-tiers-v1): message id the other-subject (fold) extraction pass has covered up to; NULL = never. Message-id reference, remapped on restore
   "timelineMode" TEXT DEFAULT NULL,  -- added in 4.9 (add-episodic-memory-fields-v1): 'realtime' (NULL reads as realtime) | 'narrative' — which clock the chat's story runs on (episodic recall)
   -- 4.6 Private Character Rooms: budget caps, schedule, run lifecycle, and visibility
   -- (populated only when chatType = 'autonomous'; NULL on other chats)
@@ -1350,7 +1351,11 @@ CREATE TABLE "memories" (
   "occurredAt" TEXT DEFAULT NULL,        -- added in 4.9 (add-episodic-memory-fields-v1): ISO wall-clock EVENT time (vs createdAt, the write clock). Backfilled from the source message's createdAt, else the memory's own createdAt.
   "narrativeTime" TEXT DEFAULT NULL,     -- added in 4.9: free-text in-story time for fictional-timeline chats ("the third night at sea")
   "entities" TEXT DEFAULT '[]',          -- added in 4.9: JSON string[] of the episode's proper nouns (places, people, named things)
-  "kind" TEXT DEFAULT 'semantic'         -- added in 4.9: 'semantic' (standing fact) | 'episodic' (specific dated occurrence)
+  "kind" TEXT DEFAULT 'semantic',        -- added in 4.9: 'semantic' (standing fact) | 'episodic' (specific dated occurrence)
+  "tier" TEXT DEFAULT 'hot',             -- added in 4.10 (add-memory-tiers-v1): 'hot' | 'cold'. Cold = consolidated member or cap-pressure demotion; hidden from ordinary recall, still read by the gate, search tool, UI and CLI
+  "supersededById" TEXT DEFAULT NULL,    -- added in 4.10: id of the CONSOLIDATED digest that replaced this cold row
+  "consolidatedFrom" TEXT DEFAULT '[]',  -- added in 4.10: on a digest, JSON string[] of the member memory ids it folds
+  "consolidatedAt" TEXT DEFAULT NULL     -- added in 4.10: last time the consolidator considered this row
 );
 
 CREATE INDEX "idx_memories_characterId" ON "memories" ("characterId");
@@ -1359,6 +1364,7 @@ CREATE INDEX "idx_memories_createdAt" ON "memories" ("createdAt" DESC);
 CREATE INDEX "idx_memories_occurredAt" ON "memories" ("occurredAt" DESC);  -- added in 4.9 (episodic spine)
 CREATE INDEX "idx_memories_projectId" ON "memories" ("projectId");
 CREATE INDEX "idx_memories_reinforcedImportance" ON "memories" ("reinforcedImportance" DESC);
+CREATE INDEX "idx_memories_character_tier" ON "memories" ("characterId", "tier");  -- added in 4.10 (add-memory-tiers-v1)
 ```
 
 `aboutCharacterId` semantics: the character the memory is *about*. Three buckets are valid:
@@ -1368,6 +1374,8 @@ CREATE INDEX "idx_memories_reinforcedImportance" ON "memories" ("reinforcedImpor
 - `aboutCharacterId IS NULL` — legacy / ambiguous. New auto-extracted memories should not produce nulls; the `align-about-character-id-v1` migration (v4.4.0) backfilled existing nulls per the name-presence rule.
 
 `createMemoryWithGate` (the chokepoint for AUTO writes) applies a name-presence safety net before insert: when `aboutCharacterId` differs from the holder, the about-character's `name + aliases` (plus `user` / `the user` for `controlledBy: 'user'` characters) must appear in `summary + content`; otherwise `aboutCharacterId` is collapsed to the holder. Manual memories bypass the safety net.
+
+Tiers (4.10+): `tier` is `'hot'` (default; eligible for recall) or `'cold'`. A `source = 'CONSOLIDATED'` row is a digest; its `consolidatedFrom` lists the member ids, and each member is `tier = 'cold'` with `supersededById` pointing back at the digest. A cold row with no `supersededById` was demoted by cap pressure. Export bundles and backups carry all four columns; rows from before tiers read as hot / null / `[]`, and restore/import remap `supersededById` and `consolidatedFrom` with the memory ids (as `relatedMemoryIds`).
 
 ### prompt_templates
 
@@ -1821,7 +1829,13 @@ CREATE TABLE IF NOT EXISTS "doc_mount_points" (
 
 `conversionStatus` is one of `'idle'`, `'converting'`, `'deconverting'`, or `'error'`, and tracks the Convert / Deconvert action that moves a store between filesystem- and database-backed storage (see `POST /api/v1/mount-points/:id?action=convert` / `?action=deconvert`). Distinct from the file-level `doc_mount_files.conversionStatus`, which tracks pdf/docx→text extraction. `conversionError` holds the failure message when `conversionStatus = 'error'`. Both columns are added by in-repo `ALTER TABLE` on first access for legacy databases that predate this feature.
 
-**`name` uniqueness (case-insensitive, app-level):** store names form one case-insensitive namespace — no two stores may share a name, even in different casing. There is deliberately no DB unique index (backup restore must be able to recreate legacy rows verbatim); enforcement lives at the write chokepoints (the mount-points create/rename routes return 409, `nextUniqueMountPointName` suffixes ` (N)` for auto-provisioned stores and character vaults) plus `repairMountPointNameCollisions` in `lib/database/repositories/mount-index-case-repair.ts`, which runs on every table init and suffixes any surviving duplicates (keep-oldest wins).
+```sql
+CREATE UNIQUE INDEX "idx_doc_mount_points_name_nocase" ON "doc_mount_points" ("name" COLLATE NOCASE);
+```
+
+**`name` uniqueness (case-insensitive):** store names form one case-insensitive namespace — no two stores may share a name, even in different casing, because a name is an address (`qtap://` authorities, every doc tool's `mount_point`). `DocMountPointsRepository.create` / `update` refuse a name another store holds with `MountPointNameTakenError` (the mount-points routes answer 409); callers that want a free name pick one with `nextUniqueMountPointName` (` (N)` suffix). The unique NOCASE index is the backstop: `ensureMountPointNameUniqueIndex` (`lib/database/repositories/mount-index-case-repair.ts`) runs on every table init, first suffixing any surviving collisions with `repairMountPointNameCollisions` (keep-oldest wins), then (re)creating the index. NOCASE folds ASCII only; the JS checks fold the rest. A backup restore picks a free name for each incoming store before inserting it.
+
+**Character-vault names** (`lib/mount-index/store-names.ts`, applied by `reconcileStoreNames` in `reconcile-store-names.ts`): the store a character's `characterDocumentMountPointId` names is called `<Name> Character Vault` (live characters sharing a name: the holder of the plain name, else the older character, keeps it; each other namesake takes the lowest free ` (N)`). A vault-shaped name is recognised with any number of trailing ` (N)` suffixes. A `storeType = 'character'` store no character points at, still carrying a vault-shaped name, is retired to `<Name> Version <createdAt as YYYY-MM-DDTHHMMSSZ> Store` — unless a character with no vault bears that name, since `ensureCharacterVault` may adopt it. The reconcile runs at boot (after the character-vault backfill), at the end of a restore and a `.qtap` import, and from `CharactersRepository` on create, rename and delete. It is parent-only and renames in one two-phase transaction so a swap of names never trips the index. The mount-points rename route refuses to rename a live vault (409): rename the character instead.
 
 ### doc_mount_folders
 

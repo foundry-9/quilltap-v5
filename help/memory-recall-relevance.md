@@ -51,7 +51,11 @@ It gives a gentle backward glance to memories the character has explicitly outgr
 
 It also keeps an eye on the company in the room. A memory concerning someone actually present this turn — the character speaking, or any of their fellow guests — is given a small lift, on the sensible principle that one is rather more likely to recall a thing about the very person across the table. (A lift, mind, never a bar: absent figures may still be spoken of, as they always could.)
 
-It keeps the very recent warm besides. A memory of something that happened within the last day or two is given a lift — no matter what the conversation is nominally about — on the plain observation that yesterday's expedition ought not be outranked by a settled truth of a fortnight's standing merely because the latter is more comfortably filed. Memories drawn from the conversation presently underway are passed over for this particular courtesy: they are already before you, and repeating them back would be a poor use of the Book's few sentences.
+It keeps the very recent warm besides. A memory of something that happened within the last day or two is given a modest lift, on the plain observation that yesterday's expedition ought not be outranked by a settled truth of a fortnight's standing merely because the latter is more comfortably filed. Memories drawn from the conversation presently underway are passed over for this particular courtesy: they are already before you, and repeating them back would be a poor use of the Book's few sentences.
+
+These lifts, mind, are now kept firmly in their place. A memory earns them only in proportion to how well it actually answers the moment — one that barely touches the subject keeps its place in the queue but gets no shove forward — and however many courtesies a memory collects at once, together they may carry it only so far. Time was when a middling recollection that happened to be recent, about someone present, and filed under the right project could vault clean over the very memory the conversation was asking for; the Book has since been taught that a pile of small favours is no substitute for being *pertinent*.
+
+When the conversation names a place or a person, the Book leafs through for that name verbatim as well — and it now chooses which names to chase with some discernment, preferring the telling ones (a particular piano, a particular lock) over the names of whoever happens to be in the room, who turn up in half the shelves already and tell it very little.
 
 And it takes a moment's measure of what the present exchange is *about* — whether the talk runs to philosophy, or scheming, or tender confession — and gives a corresponding nudge to memories cut from the same cloth. None of this asks anything of you; it is simply the Book paying closer attention.
 
@@ -60,6 +64,22 @@ Above all, the Book now lets *pertinence* lead the way. A memory of towering imp
 A happy consequence is that the Book has learned the art of holding its tongue. When it leafs through the shelves and finds that nothing truly speaks to the matter at hand, it now says so by saying nothing at all, rather than producing some only-vaguely-related entry to fill the silence. Better an honest blank than a confident irrelevance.
 
 And it keeps a short memory of its own recent remarks, so as not to repeat itself. A recollection it has pressed upon you these last few turns is gently set aside to let another have its say — never barred outright, for a thing that remains the single most pertinent memory will still win out, but no longer permitted to become that tiresome guest who tells the same anecdote at every turn of the conversation.
+
+## How Much the Book Whispers
+
+Each turn the Commonplace Book hands a character two bundles of recollection: a steady shelf of its most weighty memories (the same from turn to turn, so the provider can keep it warm in its cache), and a short list of the memories most pertinent to *this* moment. Both are now sized to the room the model has to spare. A model with a modest context window still receives the familiar handful — five or so pertinent memories and a shelf of twenty-five — but a model with a generous window is given proportionately more: up to fifteen pertinent memories a turn (thirty when the conversation is reaching back into shared history) and a shelf of up to sixty. The Book was, frankly, leaving most of its allowance in the envelope; it now spends it.
+
+The weighty shelf is chosen by how firmly a memory has been *established* — its importance together with how often it has been observed again — with the most recently re-observed winning any tie, and each conversation keeps its own shelf rather than borrowing whichever one an earlier conversation happened to leave lying about. When housekeeping or deduplication tidies a character's memories, every shelf for that character is rebuilt on the next turn.
+
+A memory now counts as *recently consulted* only when it actually reached the character — whispered into the turn, returned by a search the character ran, or set before an answerer — and not merely because a search happened to look at it on the way past. That keeps the "recently used" evidence housekeeping relies on honest.
+
+## Digests First, Fragments After
+
+Once [Memory Consolidation](memory-consolidation.md) has been at work, a character's active memories include *digests*: single entries that each stand for a whole cluster of related observations. Recall leans on them. The steady shelf now opens with the best digests about each person present this turn (three apiece) and the best digests about the character themselves (five), and only then fills the rest of its room with the most firmly established single memories. What one character recalls of another starts with digests about that person too, and the recap that opens a chat puts digests first among its weighty memories.
+
+A digest whispered into a turn carries a short note of where it came from, such as *(from 14 notes)*, so the character knows it is reading a summary of many observations rather than one remembered moment.
+
+Recall only ever draws on **active** memories. The originals a digest replaced, and anything housekeeping has moved to the archive, are not whispered. They have not been lost: when a character searches its own memory with the `search` tool, archived entries come back too, marked *(archived)* or *(archived — superseded by …)*, so a character digging into the past can still find the details.
 
 ## Whose Life Is It, Anyway?
 
@@ -79,6 +99,7 @@ Characters with help tools enabled can navigate directly to this page:
 
 - [The Book Remembers When and Where](episodic-memory.md) — dated, placed memories and the retrospective turn
 - [When You Take the Reins Yourself](memory-playing-a-character.md) — how a character you play forms its own memories
-- [Memory Housekeeping](memory-housekeeping.md) — prunes the shelves once a character's memories grow numerous
+- [Memory Consolidation](memory-consolidation.md) — combines clusters of memories into the digests recall prefers
+- [Memory Housekeeping](memory-housekeeping.md) — archives the least-used memories once a character's memories grow numerous
 - [Embedding Profiles](embedding-profiles.md) — the semantic match that recall ranks on top of
 - [The Command Line and the Commonplace Book](cli-memories.md) — survey and search the memories themselves

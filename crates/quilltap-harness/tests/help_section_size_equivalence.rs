@@ -16,10 +16,13 @@
 //!      are v4's byte for byte — so v4's counts are the counts of v5's texts —
 //!      then holds every count to the v5 constant with v4's failure message.
 //!
-//! Generate (from the v4 checkout, or the pinned worktree; needs `js-tiktoken`
-//! in its `node_modules`):
+//! Generate (Node 24, from the v4 checkout, or the pinned worktree — `--v4
+//! <pin>` on the sweep driver rewrites the `cd`; needs `js-tiktoken` in its
+//! `node_modules`):
+//!   N=~/.nvm/versions/node/v24.13.1/bin
+//!   V5W=${V5W:-$HOME/source/quilltap-v5}
 //!   cd ~/source/quilltap-server
-//!   npx tsx ~/source/quilltap-v5/harness/oracle/cases/help-section-size.ts \
+//!   PATH=$N:$PATH $N/npx tsx $V5W/harness/oracle/cases/help-section-size.ts \
 //!     > /tmp/oracle-help-section-size.ndjson
 //! Run:
 //!   QT_ORACLE_HELP_SECTION_SIZE=/tmp/oracle-help-section-size.ndjson \

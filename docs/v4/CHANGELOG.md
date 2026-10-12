@@ -4,6 +4,343 @@
 
 ### 4.10-dev
 
+#### Wardrobe pictures open full screen, with Save to a document store
+
+- Clicking a wardrobe row's thumbnail, the item editor's current picture, or a history entry opens the
+  picture full screen (`components/wardrobe/wardrobe-image-viewer.tsx`) with Save to a document store,
+  Download and Copy. From the editor, Previous/Next walk the picture history.
+- Save reuses the Salon's `SaveImageDialog`, which gains a `{ kind: 'wardrobe' }` target; chat targets
+  now carry their `chatId` in the target instead of a separate prop. New actions on
+  `/api/v1/wardrobe/[itemId]/images`: `GET ?action=save-targets` (every enabled store, archived
+  characters' vaults excluded, Quilltap General default — `lib/photos/photo-album-options.ts`) and
+  `POST ?action=save-to-store` (refuses a picture that is not the item's and an archived character's
+  vault; files a copy through `saveImageToAlbum`, captioned with the item's title by default).
+- New shared frame `components/images/FullScreenImageViewer.tsx`; the chat gallery's
+  `ChatGalleryImageViewModal` now renders through it. `BaseModal` gains `overlayClassName`.
+- `lib/photos/save-image-response.ts` holds the save-image success and error responses for all three
+  save routes. The message toolbar's Save Image now answers a duplicate with 409 `ALREADY_SAVED` and
+  the filing date, as the gallery's did, instead of a bare 400.
+- `PhotoAlbumOption` / `PhotoAlbumKind` moved to `lib/photos/photo-album-options.ts` (re-exported from
+  the chat photo-albums action).
+
+#### Fix bug 186: two document stores can share a name
+
+- Store names are one case-insensitive namespace (a name is a `qtap://` address), but only the API
+  routes and provisioning helpers enforced it. `DocMountPointsRepository.create` / `update` now refuse
+  a name another store holds (`MountPointNameTakenError`), and a unique NOCASE index
+  (`idx_doc_mount_points_name_nocase`) backs it, created on every table init after the existing
+  collision repair.
+- A restore gives each incoming store its archived name when free, otherwise the next ` (N)`, and keeps
+  the archive's `createdAt`. The `.qtap` import's overwrite path uniquifies the name too.
+- New naming rules (`lib/mount-index/store-names.ts`, applied by `reconcileStoreNames`): a character's
+  live vault is always `<Name> Character Vault`, following character renames; a character vault no
+  character points at is renamed `<Name> Version <YYYY-MM-DDTHHMMSSZ> Store` from its `createdAt`. Vaults
+  a vault-less namesake may still adopt, and orphans the operator renamed, are left alone. Runs at boot
+  after the vault backfill, after a restore or import, and on character create, rename and delete.
+- The mount-points rename route refuses to rename a live character vault (409); rename the character.
+
+#### Fix bug 185: a restore orphans every archived vault and official store
+
+- Restoring a full backup, in either mode, created characters, projects and groups through their
+  create paths, which drop the archived `characterDocumentMountPointId` / `officialMountPointId` and
+  provision fresh stores. The archive's own stores were then restored beside them with nothing
+  pointing at them, so every vault and official store read empty after a restore.
+- The restore now builds a claim map of the stores the archive carries (`store-claims.ts`). An entity
+  whose archived pointer names one is written bound to it through the new
+  `CharactersRepository.createBoundToVault` / store-backed `createBoundToStore`, which write the slim
+  row with the pointer and provision nothing. Otherwise it falls back to the create path. The first
+  claimant keeps a store; a later one, a missing store, or a store of the wrong kind falls back with a
+  restore warning.
+- `new-account` mode now remaps the three pointer fields with the stores' own ids.
+- A bound entity whose store row fails to restore at 22a gets a fresh store populated from its backup
+  row, except an archived character, which is left as a tombstone with a warning.
+- Memories are restored through the global repository, owner checked by id, because the user-scoped
+  check read the character through the vault overlay, which throws until the vault arrives.
+- Carried-store-row detection (bug 12) now covers project-bound files. A non-carried file of a bound
+  project is replayed after the project's store links are restored (22h), since the bridge finds a
+  project's store through them.
+- New `restore-store-binding.test.ts`, `store-claims.test.ts`, and a remap lockstep test.
+
+#### Fix bug 184: the wardrobe tools give a character the household's wear count as her own
+
+- `wardrobe_list` read each item's wear summed over every wearer and reported it unlabelled. New
+  `WardrobeWearRepository.findSummariesForWearer` returns the household total and the caller's own
+  share; the list result carries `worn_by_you` / `last_worn_by_you_at` beside `wear_count` /
+  `last_worn_at`, and the note reads from the caller's side
+  (` · worn by you 12×, last yesterday (115× in the household)`, ` · never worn by you (worn 115× by others)`).
+- `wardrobe_read`'s wear paragraph now leads with the reader's own count and dates, then the
+  household's total and the other wearers. Tool descriptions say which number is whose.
+
+#### Fix bug 183: a wear date 7–13 or 30–59 days old reads "last last week"
+
+- The wear lines put "last" before `formatRelativeDays`, two of whose rungs already begin with
+  "last". New `formatWornRelative` (`lib/wardrobe/wear-display.ts`) maps those two to "a week ago" /
+  "a month ago"; the wardrobe row line, the item editor's wear history and both wardrobe tools use
+  it. Memory-recall labels are unchanged.
+
+#### Release checklist 2: regression tests and coverage for 4.10 work
+
+- Bug 139: the All-LLM pause dialog's Continue handler moved out of `SalonView.tsx` into
+  `continueAllLLMRoom` (`app/salon/[id]/hooks/all-llm-pause-actions.ts`) so it can be tested. New test
+  asserts it lifts the pause, awaits the persist, then requests a turn.
+- Removed the unused `handleAllLLMContinue` / `handleAllLLMStop` from `useChatControls`. Continue was
+  an empty no-op, the same shape as bug 139; `SalonView` has always passed its own handlers to the
+  dialog.
+- Bug 178: new test asserts `next.config.js` keeps `pdf-parse` in `serverExternalPackages` and traces
+  `pdf-parse`, `pdfjs-dist` and `@napi-rs/canvas` into the standalone output.
+- New tests for modules added since 4.9.2 that had no coverage: the sync engine (`walk-disk`,
+  `walk-store`, `apply-store`, orchestrator), memory consolidation (job handler, triggers),
+  `fold-other-catchup`, `daily-db-optimize`, the avatar-rolls and subprompts routes,
+  `save-attribution`, the `useConciergeRetry` / `useRegeneration` / `useSummaryActions` hooks and
+  `GroupScenariosCard`.
+
+#### Sync engine reads disk files through its disk adapter
+
+- `bytesFor` in `lib/mount-index/sync/index.ts` read target-directory bytes with a raw `fs` import.
+  It now calls the new `readDiskFile` in `apply-disk.ts`, which resolves the path through
+  `resolveInTarget` and refuses escapes. Found by release checklist 1 (file provider).
+- New `disk-boundary.test.ts` fails if any sync module other than `apply-disk.ts`, `walk-disk.ts` or
+  `manifest.ts` imports `fs`.
+
+#### Fix bug 182: concurrent memory reinforcements lose a count
+
+- Two extraction jobs reinforcing the same memory at once both wrote `reinforcementCount = N + 1` from
+  their snapshot, so one observation was lost. New `MemoriesRepository.incrementReinforcement`
+  increments the count and recomputes `reinforcedImportance` and `lastReinforcedAt` from the row at
+  write time, in one transaction. In the job child it is buffered as an increment and replayed by the
+  parent.
+- `absorbNearDuplicate` and `reinforceMemory` count through it (`countReinforcement` in
+  `lib/memory/memory-gate.ts`); `reinforceMemory` still patches content and anchors through
+  `patchMemory`, without the reinforcement fields.
+- `calculateReinforcedImportance` moved to `lib/memory/reinforced-importance.ts`; `memory-gate.ts`
+  re-exports it.
+
+#### Memory consolidation and tiers
+
+Implements `docs/developer/features/memory-consolidation-and-tiers.md` (workstreams A–D).
+
+- **Tiers.** Memories now have a `tier`: `hot` (recalled) or `cold` (kept, but only seen by the memory
+  gate, the `search` tool, the Commonplace Book UI and the CLI). New columns `memories.tier`,
+  `supersededById`, `consolidatedFrom`, `consolidatedAt` and index `idx_memories_character_tier`;
+  new column `chats.otherExtractionWatermarkMessageId` (patch-only). Migration `add-memory-tiers-v1`
+  marks every existing memory hot. `MemorySource` gains `CONSOLIDATED` (digest rows).
+- **Housekeeping archives instead of deleting.** The cap counts hot rows only. Pass 1 (old,
+  low-importance, inactive) and pass 3 (cap) move rows to cold. Pass 2 (`mergeSimilar`) is retired;
+  the setting is still read but ignored. MANUAL rows and digests are never archived. The only
+  deletion is of superseded cold AUTO rows older than `memoryConsolidation.coldRetentionDays`
+  (default `null`, never). Housekeeping results and the preview report `demoted` / `wouldDemote` and
+  `coldCount`; `merged` is always 0. The housekeeping dialog and card say "archive" rather than
+  "delete".
+- **Memory gate vs. cold rows.** The gate still searches both tiers. A match on a cold row that a
+  digest superseded reinforces the digest instead (count only, no `[+]` note); an `INSERT_RELATED`
+  links to the digest. A cold row with no `supersededById` that is re-observed at or above the merge
+  threshold is promoted back to hot.
+- **Consolidation job.** New `MEMORY_CONSOLIDATION` job (`lib/memory/consolidation.ts`). Per character
+  and subject bucket (about another character, self, none), it clusters mature hot rows by embedding
+  (average linkage at `clusterThreshold`, default 0.72; episodic rows only with episodic rows within
+  one day), sends each cluster to one LLM call with a Zod-validated JSON answer, writes digest rows
+  (`source: 'CONSOLIDATED'`, skipping the gate), and sends the members cold with `supersededById`.
+  Inbound links are rewritten to the digest; contradicted older rows go cold. Triggers: a daily sweep
+  enqueued before housekeeping (housekeeping now runs 30 minutes later when consolidation runs were
+  enqueued), and a watermark check after extraction commits (`countUnconsideredHot > watermark`,
+  default 150). Both are off unless `memoryConsolidation.enabled` (default false). Manual runs always
+  work. Settings live in `instance_settings['memoryConsolidation']`.
+- **Commonplace files in the vault.** After a run, each subject's hot digests are written to the
+  holder's vault as `Commonplace/<Subject>.md` (and `Commonplace/Self.md`), separate from the
+  hand-written `Others/` folder. Archived characters are skipped. Writes from the job child go
+  through the new `writeCommonplaceDigestsToVault` host-RPC method.
+- **Canon feedback.** Extraction canon now includes those files: OTHER canon is `Others/<name>.md`
+  then `Commonplace/<name>.md`; SELF canon appends `Commonplace/Self.md` after the card fields. The
+  combined block is capped at 2,500 tokens (only the digest is trimmed). The extractor therefore
+  treats digested facts as already established.
+- **Recall reads hot rows and prefers digests.** The frozen archive, dynamic head, proactive search,
+  inter-character recall, recap, first-message context and recall replay read hot rows only (vector
+  searches use the new `isHotVector` predicate; the vector store stamps each entry's tier at load).
+  The frozen archive is now composed of the top 3 hot digests per character present, then the top 5
+  self digests, then the most important hot rows; a change in who is present rebuilds it.
+  Inter-character recall puts digests about that character first (2 each); the recap puts digests
+  first in its high tier. Digests are shown with a `(from N notes)` suffix.
+- **`search` tool** returns cold rows too, labelled `(archived)` or `(archived — superseded by <id>)`.
+  The Commonplace Book search API passes `includeCold: true`. `searchMemoriesSemantic` /
+  `searchMemoriesText` take `includeCold` (default false).
+- **Memories about other characters are extracted at fold grain.** New setting
+  `memoryExtractionMode.otherPass`: `hybrid` (default), `fold` or `turn` (the old behavior). In
+  `hybrid`, the per-turn OTHER pass keeps only candidates with importance ≥ `perTurnOtherFloor`
+  (0.75), and a new fold-grain OTHER pass (`lib/memory/fold-other-pass.ts`) runs at each
+  context-summary fold, up to `foldCandidatesPerSubject` (3) per observer–subject pair, told to state
+  each thread once. The daily maintenance sweep enqueues a catch-up pass (a `MEMORY_EXTRACTION` job
+  with `foldOtherCatchup`) for chats idle more than 2 hours whose last message is past the watermark,
+  at most 50 per sweep. The chat memory regenerate resets the watermark and enqueues one catch-up.
+- **Portability.** `.qtap` export/import and backup/restore carry the new fields; `supersededById`
+  and `consolidatedFrom` are remapped with memory ids, and the chat watermark with message ids. Old
+  bundles import as hot. `.qtap` import now also remaps `relatedMemoryIds`, which previously dangled
+  on a non-preserve import. Export schema and `DDL.md` updated.
+- **API.** `POST /api/v1/memories?action=consolidate` (`{ characterId, dryRun?, maxClustersPerRun?,
+  clusterThreshold? }`): a dry run calls `runConsolidation` in-process (10 clusters by default, at
+  most 40, 2-minute budget) and returns the report; otherwise it enqueues the job and returns
+  `jobId`. `GET`/`POST ?action=consolidation-config` and `?action=extraction-mode-config` read and
+  patch the two new settings. The memory list accepts `tier=hot|cold` and `source=CONSOLIDATED`.
+- **UI.** Settings → Memory gains a Consolidation card (settings, cold retention, Consolidate now
+  with a dry-run report dialog) and an Extraction Grain card. The Commonplace Book memory list gains
+  a tier filter, a Consolidated source option, Archived and Digest badges, and a link from a
+  superseded row to its digest.
+- **CLI.** `quilltap db memories` gains `--tier hot|cold` and `--source CONSOLIDATED`; cold rows are
+  starred in listings; `show` prints the tier and superseding digest; `status` shows hot / cold /
+  digest counts. New `quilltap memories consolidate --character <name> [--dry-run] [--max N]
+  [--threshold X]`, which calls the running server. Completion templates updated.
+- **Help.** New `help/memory-consolidation.md`; housekeeping, recall relevance, regenerate and CLI
+  pages updated.
+
+#### Recall multiplier retuning: chosen values in code
+
+- New defaults for per-turn memory recall (`RECALL_TUNING_DEFAULTS` in `lib/memory/recall-tags.ts`),
+  chosen on the Friday probe set (the `cap14` candidate):
+  - Boosts now scale with relevance. They apply in full at or above `max(0.45, bestCosine − 0.15)`
+    and fade to nothing 0.10 below that; penalties are unchanged (R1).
+  - The product of boosts is capped at 1.4 (R2).
+  - The fresh-event boost drops to ×1.3 (24 h) / ×1.15 (48 h) (R3).
+  - Entity anchors are chosen by rarity, skipping the names of characters in the room (R4).
+  - R6's background reservation and the event-time gate bypasses ship off.
+- The dynamic head and proactive recall pass the present characters' names (`presentParticipantNames`)
+  for R4.
+- With TF-IDF (`BUILTIN`) embeddings the relevance gate stays off; its constants are on the neural
+  cosine scale.
+- On the probe set the new path's gold@head goes from 11/47 to 14/47, off-topic rows in the head from
+  5 to 1, and head rows below cosine 0.40 from 71 to 1. Known regression, accepted: three probe turns
+  (F2, M, O2) each lose one low-cosine cross-chat memory that the stacked boosts used to carry.
+- The pre-retuning ranking is reproducible in `recall-replay` as a tuning (see the retuning spec's
+  implementation notes). Tests pinned to the old products now expect the cap.
+
+#### Recall replay: tuning overrides, pinned signals, as-of corpus (R7)
+
+- `POST /api/v1/chats/[id]?action=recall-replay` and `quilltap recall-replay` take three new inputs.
+  `tuning` (`--tuning` / `--tuning-file`) applies retuning constants to the new path only: the R1
+  relevance gate on boosts, the R2 boost cap, `RECALL_MULTIPLIERS` overrides, R4 specific entity
+  anchors, and the R6 background reservation. It is validated by a strict Zod schema in
+  `lib/memory/recall-tuning.ts`. `signals` (`--signals-from <replay.json>`) reuses a saved
+  distillation instead of a fresh cheap-LLM call. `asOf` (`--as-of`) searches only memories created
+  before the turn's opening message and decays weights against the turn's clock.
+- R1–R6 are built behind defaults that equal the old behavior (gate off, cap 4, fresh 1.6/1.35,
+  first three entity anchors, no reservation). Recall without a tuning object is unchanged; a test
+  pins this.
+- The replay memoizes embeddings by text for the server's lifetime: the provider's probe vectors
+  drifted about 1e-3 in cosine between calls, enough to move a gold memory in or out of a head.
+  With pinned signals, `asOf` and the memo, repeat runs of the probe set are byte-identical.
+- The default candidate `limit` is now the larger of 25 and the new head size + 10.
+- `searchMemoriesSemantic` gains `excludeMemoryIds` (applied inside the vector scan, entity hits and
+  related expansion), `headSize`, `weightClockMs` and `embeddingMemo`. Live recall passes none of
+  them.
+- R5: every sub-floor row in the baseline came from related-memory expansion, which skips the
+  cosine floor by design; probes and entity hits already respected it. A test now pins that.
+
+#### Runbook: recall probe set
+
+- New `docs/developer/features/recall-probe-set-runbook.md`: step-by-step spec for validating the
+  recall multiplier retuning on a local machine. Covers choosing 8–12 probe turns with gold
+  memories approved before any replay, the baseline `recall-replay` runs, building R7, a fixed
+  sweep of candidate tunings with acceptance criteria, and moving the winner into code. Has a
+  progress tracker so work can resume across sessions. Linked from the retuning spec.
+- Probe set chosen and approved (9 turns: A/B/C, two fresh-event turns, one multi-character, three
+  ordinary). Two turns where Friday forgot were dropped because the memory was never extracted.
+- Baseline recorded: Σ gold@head 3/47 old path, 8/47 new path. Found two recall-replay harness
+  issues (query distillation is nondeterministic; replays search memories created after the turn),
+  to be fixed as part of R7.
+- Sweep run (14 candidates): none passes. Gating boosts on relevance drops cross-chat fresh memories
+  with low cosine on three probe turns. Results and diagnosis in the runbook tracker.
+- Added `freshBypassesGate` to the recall tuning (fresh-event boost applied outside the R1 gate;
+  default off, so recall is unchanged). Swept as option 1: it does not pass either. Entity anchors
+  chosen by rarity (R4) drop gold memories from the pool, and F2's gold also depends on the
+  time-window boost, which stays gated.
+- Added `windowBypassesGate`, `anchorMinHits` and `anchorOrder` to the recall tuning (defaults keep
+  recall unchanged). Swept as options 1 + 2: still no pass. The R4 fix restores the right anchors;
+  the R2 cap and the gated participant boost keep three probe turns below their baseline.
+
+#### Fix order-dependent failure in the wardrobe wear repository test
+
+- `wardrobe-wear.repository.test.ts` failed "did not throw" on two rollback tests whenever another
+  test file in the same jest worker had loaded the real better-sqlite3 binding first (seen on
+  `main` at `06a70a7` and on PR 83). The native module is loaded once per worker, so its
+  `SqliteError` belongs to the first file's context and fails `rejects.toThrow()`'s Error check in
+  later files. The two assertions now match the rejection's message with `rejects.toMatchObject`.
+
+#### Spec: recall multiplier retuning
+
+- New `docs/developer/features/recall-multiplier-retuning.md` (proposed, no code). Two Friday
+  recall replays show stacked boosts (up to ×2.43, mostly the fresh-event boost) putting
+  cosine-0.31–0.40 memories ahead of the turn's best matches (0.51–0.64). Proposes gating boosts on
+  relevance, capping the stacked boost, lowering the fresh boost, choosing entity anchors by
+  specificity, closing a floor leak, and `tuning` overrides for `recall-replay`. A third replay
+  (a retrospective turn with uniform boosts and no fresh boost) is the control: its head is good.
+  It adds reserving head slots for out-of-window background when the time window is a hard filter.
+
+#### F2 result recorded: anchor line does not suppress reinforcement
+
+- Ran `quilltap anchor-probe` on Friday's 50 most recent memories. No row reached 0.85 or 0.90
+  either way; anchor-free scores were lower in 45 of 50 rows. The gate is unchanged. Restatements
+  of one fact scored about 0.65–0.73, well below the reinforce threshold; that is left to the
+  consolidation spec. Recorded in `memory-recall-and-housekeeping-fixes.md` ("F2 result").
+
+#### Memory recall and housekeeping fixes (F1–F9)
+
+Spec: `docs/developer/features/memory-recall-and-housekeeping-fixes.md`.
+
+- F1: a Memory Gate `SKIP_NEAR_DUPLICATE` (cosine ≥ 0.90) now counts as reinforcement. New
+  `absorbNearDuplicate` (`memory-gate.ts`) bumps `reinforcementCount`, `lastReinforcedAt` and
+  `reinforcedImportance`; no footnotes, no re-embed, text untouched. The date guard still runs first
+  and the action is still reported as `SKIP_NEAR_DUPLICATE`.
+- F2: new measurement tool for the anchor-line hypothesis. `runAnchorGateProbe`
+  (`lib/memory/anchor-gate-probe.ts`) re-embeds a character's recent rows with and without the
+  anchor line and counts crossings of 0.85 / 0.90 each way. `POST /api/v1/memories?action=anchor-gate-probe`,
+  CLI `quilltap anchor-probe <characterId>`. The gate itself is unchanged.
+- F3: reinforcement footnotes are capped at `MAX_REINFORCEMENT_FOOTNOTES` (8). Past the cap a
+  reinforcement still bumps count/importance and unions entities, but appends nothing and does not
+  re-embed.
+- F4: `MemoriesRepository.findMostImportant` (the frozen archive's pool) now orders by
+  `reinforcedImportance DESC, COALESCE(lastReinforcedAt, createdAt) DESC, id ASC` instead of raw
+  `importance` with no tiebreak. The archive is its only caller.
+- F5: the frozen archive cache is keyed by `(characterId, chatId)` instead of `characterId`, so a
+  new chat no longer reuses another chat's generation-0 archive. LRU-bounded at 64 entries; size is
+  part of the freshness check. `invalidateFrozenArchive(characterId)` now has callers: housekeeping
+  (`runHousekeeping`), deduplication, and the job dispatcher's completion hook for
+  `MEMORY_HOUSEKEEPING` (`invalidateFrozenArchivesForCompletedJob`), since the cache lives in the
+  parent. Per-turn writes do not invalidate.
+- F6: `searchMemoriesSemantic` no longer stamps `lastAccessedAt` on everything it returns. New
+  `markMemoriesAccessed` is called by consumers for what they actually deliver: the context builder
+  (archive, dynamic head and inter-character entries that cleared the token budget), the `search`
+  tool (results returned to the model), Carina recall, the first-message context, and the
+  voice-rewrite recall.
+- F7: the dynamic head and frozen archive are sized from the memory budget by `sizeMemoryPools`
+  (`memory-injector.ts`): head tokens `clamp(15% of budget, 200, 1200)`, head entries
+  `clamp(round(tokens/40), 5, 15)`, retrospective turns 2× (floored at the old 600 / 10, bounded by
+  the budget), archive size `clamp(round((budget − head)/60), 25, 60)` from the ordinary split so it
+  stays stable across turns. The proactive pre-search now pulls and keeps
+  `PROACTIVE_RECALL_POOL_SIZE` (90 = the largest archive plus the largest retrospective head), so
+  the context builder's archive-overlap filter cannot leave the head underfilled.
+  `recall-replay` takes an optional `memoryBudget` to compare the sized head against the old fixed one.
+- F8: `deleteMemoriesWithUnlinkBatch` counted `bulkDelete`'s return, which is `undefined` for a
+  buffered write in the job child, so child sweeps logged `deleted: null` (NaN) and the
+  ineffective-sweep backoff never tripped. It now counts the resolved ids when the return is not a
+  finite number (debug log names which count was used); the housekeeping handler and
+  `recordHousekeepingOutcome` also guard against non-finite counts. The outcome cache's writer
+  (housekeeping job) and reader (extraction job) both run in the single job child; documented in
+  `housekeeping-outcome-cache.ts`.
+- F9: housekeeping's similarity pass and Memory Deduplication now merge instead of discarding. New
+  `lib/memory/memory-merge.ts` (`planMemoryMerge` / `applyMemoryMerge`) folds each loser into its
+  survivor: capped `[+]` details, summed `reinforcementCount`, unioned `relatedMemoryIds` (minus the
+  deleted set), earliest `occurredAt`, recomputed `reinforcedImportance`, re-embed on content change.
+  The survivor is patched before anything is deleted, and only the losers whose fold succeeded
+  are deleted; a failed fold keeps its losers. A plan's links exclude only its own group;
+  `deleteMemoriesWithUnlinkBatch` takes a new `currentLinks` option and scrubs the patched
+  survivors from their new link lists instead of the database row (in the job child that row is
+  still the pre-merge one). Links to kept memories survive. Housekeeping's cap pass never deletes a
+  merge survivor.
+- Reinforcement and merges no longer treat a buffered child write (`undefined`) as "update failed":
+  new `patchMemory` returns the locally patched row, so a reinforcement with novel details in the
+  extraction job now re-embeds. Re-embedding is factored into `reembedMemory`.
+- Filed bug 182 (open, Low): concurrent reinforcements of one memory can lose a count.
+- Help: `help/memory-recall-relevance.md` ("How Much the Book Whispers"),
+  `help/memory-housekeeping.md`.
+
 #### Daily database optimize on startup
 
 - On the first launch of each local calendar day, startup now runs VACUUM, ANALYZE and

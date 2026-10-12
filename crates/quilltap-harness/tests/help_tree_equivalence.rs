@@ -120,7 +120,10 @@ async fn shipped_help_tree_matches_oracle() {
     // RED at 126 vs the target pin's 127 before `help/scenario-builder.md` was
     // vendored; 127 = 127 after. P4.D260 (v4 `f5e953a3f`): measured RED at
     // 129 vs the target pin's 130 before `help/wardrobe-images.md` was
-    // vendored (the tree re-vendored WHOLE); 130 = 130 after.
+    // vendored (the tree re-vendored WHOLE); 130 = 130 after. P4.D278 (v4
+    // `01a83539d`): measured RED at 130 vs the target pin's 131 before
+    // `help/memory-consolidation.md` was vendored (the tree re-vendored
+    // WHOLE); 131 = 131 after.
     assert_eq!(
         files.len(),
         want.count,

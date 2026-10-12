@@ -907,6 +907,29 @@ The shared surface the ten stage-2 lanes of the `01a83539d` round compile agains
 New differential families: `memory_tiers_ensure`, `memory_settings_schemas`, `memory_pools`, `commonplace_file`, `vector_store_tiers`, plus the `other_extraction_watermark_writers_census` and the `p4_d265_wire_contract`. Grown: `memories_read`, `memories_tier2`, `repository_zod_messages`, `chats_read`, `chats_tier2`, `memory_delete_tier2`, `realtime_topics`, `instance_settings_json_warns`.
 
 Test fixtures: the `build_context` inter-character log tests now seed UUID ids, because the raw reads drop non-UUID rows as v4's `MemorySchema` does. `dispatch_wrong_type_census` has four more rows.
+#### 2026-10-09 — docs(porting): P4.D278 lane record — vendored trees at 01a83539d + the six NO-PORT ratifications
+
+_Docs-only change._
+
+Appends the P4.D278 lane record to `status-log.md` and marks the order LANE COMPLETE. The record covers the §2 probe: v4 moved past the pin to `9ecebf986`, which is recorded and not vendored. It also covers the pin verification, the red-first measurements for both trees, the census results, the help mutation, and the evidence that retires six ledger rows as NO-PORT: `1825bfd53`, `da98ca58b`, `7e9eaf42c`, `783385873`, `5abcd01ea`, `3c56a41e7`. For `7e9eaf42c`, the All-LLM pause refactor is compared line by line with v5's Continue handler, and its 19 new v4 tests are mapped to their v5 surfaces; all 19 pass at the pin (251 tests). The record also includes the driver confirmation (`{'ok': 2}`) and the workspace gate: 2 reds, both expected at the pin (P4.D272's schema guard and P4.D269's Tier R, which shows one more case than §R.3 predicted).
+
+#### 2026-10-09 — test(harness): pin Node 24 in the help-section-size recipe header
+
+_No crate versions bumped._
+
+P4.D278 Tier 2. The `help_section_size_equivalence` regen recipe ran a bare `npx tsx` with no Node pin. It now uses the same shape as the `help_tree_equivalence` header: `N=~/.nvm/versions/node/v24.13.1/bin`, `V5W=${V5W:-$HOME/source/quilltap-v5}`, `PATH=$N:$PATH $N/npx tsx …`. `recipe_sweep.py --self-test` passes.
+
+#### 2026-10-09 — docs(v4): bring the docs/v4 mirror to v4 01a83539d (19 paths)
+
+_Docs-only change._
+
+P4.D278 U2. The 19 mirror paths that moved between `f5e953a3f` and `01a83539d` are copied byte-exact from the pin: 10 modified (`CHANGELOG.md`, `developer/API.md`, `BACKGROUND_JOBS_CHILD.md`, `CLI.md`, `DDL.md` with the bug-186 unique store-name index, `bugs.md`, two wardrobe feature specs, `releases/4.10.0.md`, `packages-quilltap-README.md`) and 9 added (`bugs/fixed/` 182–186, and the four memory feature specs including `recall-probe-set-runbook.md`). A census of the whole mirror against the pin finds no other drift and no stray file; 419 files are tracked.
+
+#### 2026-10-09 — chore(help): re-vendor help/ at v4 01a83539d (130 → 131) and move the three count pins
+
+_No crate versions bumped._
+
+P4.D278 U1. The whole `help/` tree is re-copied from v4 `01a83539d`, and all 131 files match the pin byte for byte. One page is new: `help/memory-consolidation.md`. Eight pages changed: `cli-memories`, `episodic-memory`, `memory-housekeeping`, `memory-recall-relevance`, `memory-regenerate`, `mount-points`, `system-backup-restore`, `wardrobe`. The host embeds the tree at build time, so it is rebuilt but not bumped. The count pins move 130 → 131 in `help_tree_embed_guard` and `host_help_docs_boot` (with its module doc); `help_tree_equivalence` gets a history note. Before the copy, `help_tree_equivalence` and `help_section_size_equivalence` were red at the pin (130 vs 131). After the copy and before the pins moved, `help_tree_embed_guard` and `host_help_docs_boot` were red (131 vs 130). All four are green now: 131 docs and 763 chunks.
 #### 2026-10-09 — docs(porting): order the `01a83539d` memory-programme + bugs-183–186 + wardrobe-viewer drift catch-up round — fourteen work orders (P4.D265 → {P4.D266 … P4.D275} ∥ P4.D276 ∥ P4.D277 ∥ P4.D278)
 
 _Docs-only change._
