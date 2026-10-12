@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-12 — docs(porting): P4.D279's status header names `KEYSTONE` (`a7e8814af`) and the R-F spellings the stage-2 lanes compile against
+
+_Docs-only change._
+
+The keystone landed as `a7e8814af`; the order's status header now carries the sha, the gate at `KEYSTONE`, and the recorded C1 spellings (R-F) with every departure from the contract and its reason, so P4.D280–P4.D284 can branch and compile against it.
+
 #### 2026-10-12 — feat(wardrobe): KEYSTONE — one location, one wearable pool, folders, the recursive projection, wear-ops over one displacement (P4.D279, v4 `4a38222e6`)
 
 _Versions: core 0.0.1276, web 0.0.231._
