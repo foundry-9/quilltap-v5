@@ -86,7 +86,12 @@ const OTHERS_FOLDER: &str = "Others";
 /// too (v4 warns `Failed to read vault file` and returns null, never throws).
 /// Both the extraction canons and the consolidation canon read through this
 /// ONE reader, as v4's do (the unifier folded P4.D271's lane-local copy here).
-pub fn read_vault_text_file(db: &Db, mount_point_id: &str, path: &str) -> Option<String> {
+pub fn read_vault_text_file(
+    db: &Db,
+    mount_point_id: &str,
+    path: &str,
+    character_id: Option<&str>,
+) -> Option<String> {
     match crate::services::commonplace_digest_vault_bridge::read_database_document_if_exists(
         db,
         mount_point_id,
@@ -94,12 +99,25 @@ pub fn read_vault_text_file(db: &Db, mount_point_id: &str, path: &str) -> Option
     ) {
         Ok(content) => content,
         Err(error) => {
-            tracing::warn!(
-                mountPointId = %mount_point_id,
-                path = %path,
-                error = %error,
-                "Failed to read vault file"
-            );
+            // v4's `{ mountPointId, path, characterId, error }` — `characterId`
+            // is the caller's optional third argument (both canon sites pass
+            // the holder's / observer's id; an absent one is dropped from the
+            // object).
+            match character_id {
+                Some(character_id) => tracing::warn!(
+                    mountPointId = %mount_point_id,
+                    path = %path,
+                    characterId = %character_id,
+                    error = %error,
+                    "Failed to read vault file"
+                ),
+                None => tracing::warn!(
+                    mountPointId = %mount_point_id,
+                    path = %path,
+                    error = %error,
+                    "Failed to read vault file"
+                ),
+            }
             None
         }
     }
@@ -168,7 +186,7 @@ pub fn load_commonplace_canon(
 ) -> Option<String> {
     let mount_point_id = holder_mount_point_id.filter(|m| !m.is_empty())?;
     let path = commonplace_path_for(subject);
-    let raw = read_vault_text_file(db, mount_point_id, &path);
+    let raw = read_vault_text_file(db, mount_point_id, &path, Some(holder_character_id));
     let text = commonplace_file_to_canon_text(raw.as_deref());
     if let Some(text) = &text {
         tracing::debug!(
@@ -220,7 +238,7 @@ pub fn load_canon_for_observer_about_subject(
     subject: &CanonSubject,
     include_commonplace: bool,
 ) -> CanonSource {
-    let hand = load_hand_canon(db, observer_mount_point_id, subject);
+    let hand = load_hand_canon(db, observer_mount_point_id, observer_character_id, subject);
     if !include_commonplace {
         return hand;
     }
@@ -247,11 +265,14 @@ pub fn load_canon_for_observer_about_subject(
 fn load_hand_canon(
     db: &Db,
     observer_mount_point_id: Option<&str>,
+    observer_character_id: &str,
     subject: &CanonSubject,
 ) -> CanonSource {
     if let Some(mount_id) = observer_mount_point_id.filter(|s| !s.is_empty()) {
         let path = format!("{OTHERS_FOLDER}/{}.md", sanitize_file_name(&subject.name));
-        if let Some(from_vault) = read_vault_text_file(db, mount_id, &path) {
+        if let Some(from_vault) =
+            read_vault_text_file(db, mount_id, &path, Some(observer_character_id))
+        {
             let trimmed = crate::jsstr::js_trim(&from_vault);
             if !trimmed.is_empty() {
                 return CanonSource {

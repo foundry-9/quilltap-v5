@@ -271,8 +271,22 @@ pub async fn check_consolidation_watermark_after_job_at(db: &Db, job: &Backgroun
     if payload.get("dryRun") == Some(&Value::Bool(true)) {
         return;
     }
-    let Ok(settings) = db.read_main(|c| Ok(get_memory_consolidation_settings(c))) else {
-        return;
+    // v5-only early gate (R-B): the rowid window is not worth reading when
+    // consolidation is off. v4's one settings read sits inside
+    // `maybeEnqueueConsolidationForCharacters`'s try, so a failed read logs
+    // v4's non-fatal WARN there — the same line here, with no character ids
+    // known yet (the `01a83539d` unification's §3 review).
+    let settings = match db.read_main(|c| Ok(get_memory_consolidation_settings(c))) {
+        Ok(settings) => settings,
+        Err(e) => {
+            tracing::warn!(
+                module = MODULE,
+                characterIdsJson = "[]",
+                error = %crate::db::fallback::error_text(&e),
+                "Consolidation watermark check failed (non-fatal)"
+            );
+            return;
+        }
     };
     if !settings.enabled {
         return;
@@ -282,7 +296,13 @@ pub async fn check_consolidation_watermark_after_job_at(db: &Db, job: &Backgroun
     };
     let window = {
         let mut marks = mark_log().lock().expect("mark log");
-        let started_ms = job.started_at.as_deref().and_then(crate::clock::iso_to_ms);
+        // `js_date_parse_ms`, not the strict `iso_to_ms`: a v4-written row on a
+        // shared instance may carry a non-canonical ISO (memory note
+        // `v4-safequery-writes-and-v5-date-helpers`).
+        let started_ms = job
+            .started_at
+            .as_deref()
+            .and_then(crate::episodic::js_date_parse_ms);
         let found = started_ms.and_then(|s| claim_mark(&marks, s));
         marks.push((now_ms, current));
         prune_marks(&mut marks, now_ms);
